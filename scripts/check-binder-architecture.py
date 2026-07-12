@@ -284,6 +284,24 @@ def check_scope_arena_contract(files: dict[Path, str], errors: list[str]) -> Non
     ):
         if marker not in files.get(TEST_SOURCE, ""):
             errors.append(f"{TEST_SOURCE}: missing scope arena evidence: {marker}")
+    verifier = files.get(VERIFIER_SOURCE, "")
+    for required in (
+        "ScopeArenaBuilder::build(input)",
+        "encodeImplementation(",
+        "encoder.encodeUint8(0x03)",
+    ):
+        if required not in verifier:
+            errors.append(f"{VERIFIER_SOURCE}: scope arena cutover is disconnected: {required}")
+    for forbidden in ("isUnsupportedScopeProducer", "ScopeId(input.module(), 1)"):
+        if forbidden in verifier:
+            errors.append(f"{VERIFIER_SOURCE}: restricted scope construction remains: {forbidden}")
+    for path, text in files.items():
+        if path in {METADATA_SOURCE, SCOPE_SOURCE} or TEST_DIR in path.parents:
+            continue
+        if re.search(r"\bScopeId(?:\s+\w+)?\s*\(\s*input\.module\(\)", text):
+            errors.append(f"{path}: ScopeId construction escaped the scope arena")
+    if "friend class BindingBuilder;" in type_body(files.get(METADATA_HEADER, ""), "ScopeId"):
+        errors.append(f"{METADATA_HEADER}: BindingBuilder retains ScopeId construction authority")
 
 
 def check_wiring(files: dict[Path, str], errors: list[str]) -> None:
@@ -558,6 +576,25 @@ def self_test(files: dict[Path, str]) -> list[str]:
             SCOPE_SOURCE,
             "auto span = input.parsedModule().spanFor(tree.node(node).range);",
             "zc::Maybe<identity::SourceSpan> span;",
+        ),
+        (
+            "disconnected scope arena cutover",
+            VERIFIER_SOURCE,
+            "ScopeArenaBuilder::build(input)",
+            "disconnectedScopeArena(input)",
+        ),
+        (
+            "restored hard-coded scope construction",
+            VERIFIER_SOURCE,
+            "auto arenaResult = ScopeArenaBuilder::build(input);",
+            "const ScopeId escaped(input.module(), 1);\n"
+            "  auto arenaResult = ScopeArenaBuilder::build(input);",
+        ),
+        (
+            "missing impl scope owner codec",
+            VERIFIER_SOURCE,
+            "encoder.encodeUint8(0x03);",
+            "encoder.encodeUint8(0x02);",
         ),
         (
             "diagnostic-free binding builder",

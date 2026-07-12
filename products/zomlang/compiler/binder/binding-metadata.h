@@ -76,7 +76,6 @@ private:
   ScopeId(identity::ModuleId module, uint32_t index) noexcept;
   identity::ModuleId moduleValue;
   uint32_t indexValue;
-  friend class BindingBuilder;
   friend class ScopeArenaBuilder;
 };
 

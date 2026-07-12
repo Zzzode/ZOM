@@ -9,6 +9,7 @@
 #include "zc/core/vector.h"
 #include "zomlang/compiler/ast/generated/node-payload.h"
 #include "zomlang/compiler/ast/generated/node-traverse.h"
+#include "zomlang/compiler/binder/internal/scope-arena.h"
 #include "zomlang/compiler/diagnostics/diagnostic-engine.h"
 #include "zomlang/compiler/identity/canonical-encoder.h"
 
@@ -261,17 +262,12 @@ zc::Maybe<const FrozenDefinitionEntry&> definitionEntry(const VerifiedBindingInp
   return zc::none;
 }
 
-bool isUnsupportedScopeProducer(ast::SyntaxKind kind) {
-  return kind == ast::SyntaxKind::ExternDecl || kind == ast::SyntaxKind::MethodDecl ||
-         kind == ast::SyntaxKind::ConstructorDecl || kind == ast::SyntaxKind::DestructorDecl ||
-         kind == ast::SyntaxKind::FunctionExpression || kind == ast::SyntaxKind::LambdaExpression ||
-         kind == ast::SyntaxKind::ClassDecl || kind == ast::SyntaxKind::StructDecl ||
-         kind == ast::SyntaxKind::InterfaceDecl || kind == ast::SyntaxKind::EnumDeclaration ||
-         kind == ast::SyntaxKind::ErrorDecl || kind == ast::SyntaxKind::StandaloneImplDecl ||
-         kind == ast::SyntaxKind::MarkerImpl || kind == ast::SyntaxKind::WhileStmt ||
-         kind == ast::SyntaxKind::ForStmt || kind == ast::SyntaxKind::ForInStatement ||
-         kind == ast::SyntaxKind::DoWhileStatement || kind == ast::SyntaxKind::MatchStmt ||
-         kind == ast::SyntaxKind::MatchArmStmt || kind == ast::SyntaxKind::UnsafeBlockExpr;
+zc::Maybe<const FrozenImplEntry&> implementationEntry(const VerifiedBindingInput& input,
+                                                      identity::ImplId implementation) {
+  for (const auto& entry : input.definitions().impls()) {
+    if (entry.implementation == implementation) { return entry; }
+  }
+  return zc::none;
 }
 
 zc::Maybe<uint32_t> schemaPreorderOrdinal(const ast::Tree& tree, ast::NodeId target) {
@@ -295,6 +291,15 @@ bool encodeScopeId(identity::CanonicalEncoder& encoder, const VerifiedBindingInp
 bool encodeDefinition(identity::CanonicalEncoder& encoder, const VerifiedBindingInput& input,
                       identity::DefId definition) {
   ZC_IF_SOME(entry, definitionEntry(input, definition)) {
+    entry.key.encode(encoder);
+    return true;
+  }
+  return false;
+}
+
+bool encodeImplementation(identity::CanonicalEncoder& encoder, const VerifiedBindingInput& input,
+                          identity::ImplId implementation) {
+  ZC_IF_SOME(entry, implementationEntry(input, implementation)) {
     entry.key.encode(encoder);
     return true;
   }
@@ -392,7 +397,8 @@ bool encodeScopeOwner(identity::CanonicalEncoder& encoder, const VerifiedBinding
     encoder.encodeUint8(0x02);
     return encodeDefinition(encoder, input, value.get<DefinitionScopeOwner>().definition);
   }
-  return false;
+  encoder.encodeUint8(0x03);
+  return encodeImplementation(encoder, input, value.get<ImplScopeOwner>().implementation);
 }
 
 zc::Maybe<zc::Array<uint8_t>> encodeAllocationScopeRecord(const VerifiedBindingInput& input,
@@ -411,19 +417,7 @@ zc::Maybe<zc::Array<uint8_t>> encodeAllocationScopeRecord(const VerifiedBindingI
     encoder.encodeUint32(parent.index());
   }
   else { encoder.encodeNone(); }
-  const auto& owner = scope.owner.value();
-  if (owner.is<ModuleScopeOwner>()) {
-    if (owner.get<ModuleScopeOwner>().module != input.module()) { return zc::none; }
-    encoder.encodeUint8(0x01);
-    input.moduleKey().encode(encoder);
-  } else if (owner.is<DefinitionScopeOwner>()) {
-    encoder.encodeUint8(0x02);
-    if (!encodeDefinition(encoder, input, owner.get<DefinitionScopeOwner>().definition)) {
-      return zc::none;
-    }
-  } else {
-    return zc::none;
-  }
+  if (!encodeScopeOwner(encoder, input, scope.owner)) { return zc::none; }
   encoder.encodeUint8(static_cast<uint8_t>(scope.kind));
   scope.source.encode(encoder);
   return encoder.finish();
@@ -745,83 +739,24 @@ BindingCandidateResult BindingBuilder::buildCandidate(
   if (!cleanShape && !unresolvedShape) {
     return builderFailure(input, BinderInvariantKind::MissingRequiredResolution);
   }
-  zc::Vector<ast::NodeId> scopeProducers;
-  bool unsupportedProducer = false;
-  ast::visitTreePreOrder(tree, tree.root(), [&](ast::NodeId node, const ast::Node& value) {
-    if (value.kind == ast::SyntaxKind::FunctionDecl || value.kind == ast::SyntaxKind::BlockStmt) {
-      scopeProducers.add(node);
-    } else if (isUnsupportedScopeProducer(value.kind)) {
-      unsupportedProducer = true;
-    }
-  });
-  if (unsupportedProducer || scopeProducers.size() != 2 || scopeProducers[0] != functionNode ||
-      scopeProducers[1] != bodyNode) {
-    return builderFailure(input, BinderInvariantKind::MissingRequiredResolution);
+  auto arenaResult = ScopeArenaBuilder::build(input);
+  if (!arenaResult.is<ScopeArenaCandidate>()) {
+    return zc::mv(arenaResult.get<BinderInvariantFact>());
   }
-  auto bodySpan = input.parsedModule().spanFor(tree.node(bodyNode).range);
-  if (bodySpan == zc::none) {
-    uint32_t ordinal = 0;
-    ZC_IF_SOME(value, schemaPreorderOrdinal(tree, bodyNode)) { ordinal = value; }
-    return builderFailure(input, BinderInvariantKind::InvalidBindingFact, ordinal);
+  auto arena = zc::mv(arenaResult.get<ScopeArenaCandidate>());
+  if (arena.scopes.empty() || arena.scopes[0].kind != ScopeKind::Module) {
+    return builderFailure(input, BinderInvariantKind::MalformedScopeGraph);
   }
-
-  const ScopeId moduleScope(input.module(), 0);
-  const ScopeId functionScope(input.module(), 1);
-  const ScopeId blockScope(input.module(), 2);
+  const ScopeId moduleScope = arena.scopes[0].id;
   const auto& definition = definitions[0];
   const auto& bindingName = ZC_ASSERT_NONNULL(definition.bindingName);
 
   zc::Maybe<identity::SourceSpan> noAlias;
-  zc::Vector<ScopeBindingEntry> moduleBindings;
-  moduleBindings.add(ScopeBindingEntry(
+  arena.scopes[0].bindings.add(ScopeBindingEntry(
       BindingNameKey(Namespace::Value, bindingName.clone()),
       NameBinding(BindingTarget::definition(definition.definition),
                   BindingTarget::definition(definition.definition), Namespace::Value,
                   BindingOrigin::LocalDeclaration, definition.source.clone(), zc::mv(noAlias))));
-
-  zc::Vector<ScopeRecord> scopes;
-  zc::Maybe<ScopeId> noParent;
-  scopes.add(ScopeRecord(moduleScope, zc::mv(noParent), ScopeOwner::module(input.module()),
-                         ScopeKind::Module, zc::mv(moduleBindings),
-                         input.parsedModule().rootSpan()));
-  zc::Maybe<ScopeId> moduleParent = moduleScope;
-  zc::Vector<ScopeBindingEntry> functionBindings;
-  scopes.add(ScopeRecord(functionScope, zc::mv(moduleParent),
-                         ScopeOwner::definition(definition.definition), ScopeKind::Function,
-                         zc::mv(functionBindings), definition.source.clone()));
-  zc::Maybe<ScopeId> functionParent = functionScope;
-  zc::Vector<ScopeBindingEntry> blockBindings;
-  ZC_IF_SOME(bodySpanValue, bodySpan) {
-    scopes.add(ScopeRecord(blockScope, zc::mv(functionParent),
-                           ScopeOwner::definition(definition.definition), ScopeKind::Block,
-                           zc::mv(blockBindings), zc::mv(bodySpanValue)));
-  }
-
-  zc::Vector<NodeScopeFact> nodeScopes;
-  auto collectNodeScopes = [&](auto&& self, ast::NodeId node, ScopeId enclosingScope) -> void {
-    ScopeId currentScope = enclosingScope;
-    if (node == functionNode) {
-      currentScope = functionScope;
-    } else if (node == bodyNode) {
-      currentScope = blockScope;
-    }
-    nodeScopes.add(NodeScopeFact{node, currentScope});
-    ast::visitChildNodeIds(tree, tree.node(node),
-                           [&](ast::NodeId child) { self(self, child, currentScope); });
-  };
-  collectNodeScopes(collectNodeScopes, tree.root(), moduleScope);
-  if (nodeScopes.size() != tree.nodeCount()) {
-    return builderFailure(input, BinderInvariantKind::MissingRequiredResolution);
-  }
-  for (size_t index = 1; index < nodeScopes.size(); ++index) {
-    auto current = nodeScopes[index];
-    size_t insertion = index;
-    while (insertion > 0 && current.node.value < nodeScopes[insertion - 1].node.value) {
-      nodeScopes[insertion] = nodeScopes[insertion - 1];
-      --insertion;
-    }
-    nodeScopes[insertion] = current;
-  }
 
   zc::Vector<DefinitionFact> facts;
   facts.add(DefinitionFact(definition.definition, DefinitionSite::declaration(functionNode),
@@ -856,8 +791,8 @@ BindingCandidateResult BindingBuilder::buildCandidate(
         ExportSurfaceCandidate surface(input.module(), input.package(), revisionValue,
                                        zc::mv(visibleEntries), zc::mv(exports));
         BindingMetadataCandidate candidate(input.semanticContext(), input.module(),
-                                           zc::mv(nodeScopes), zc::mv(facts), zc::mv(scopes),
-                                           zc::mv(surface));
+                                           zc::mv(arena.nodeScopes), zc::mv(facts),
+                                           zc::mv(arena.scopes), zc::mv(surface));
         if (unresolvedShape) {
           const auto unresolvedNode = unresolvedIdentifiers[0];
           auto unresolvedSpan = input.parsedModule().spanFor(tree.node(unresolvedNode).range);
@@ -912,24 +847,6 @@ BindingVerificationResult BindingVerifier::verify(const VerifiedBindingInput& in
       candidate.sourceFailures.size() > expected.sourceFailures.size() ||
       candidate.nodeBindings.size() > expected.nodeBindings.size()) {
     return rejectBinderInvariant(verifierFailure(input, BinderInvariantKind::InvalidBindingFact));
-  }
-  if (candidate.scopes.size() != 3 || candidate.scopes[0].id.index() != 0 ||
-      candidate.scopes[0].parent != zc::none || candidate.scopes[1].id.index() != 1 ||
-      candidate.scopes[1].parent == zc::none || candidate.scopes[2].id.index() != 2 ||
-      candidate.scopes[2].parent == zc::none) {
-    return rejectBinderInvariant(verifierFailure(input, BinderInvariantKind::MalformedScopeGraph));
-  }
-  ZC_IF_SOME(parent, candidate.scopes[1].parent) {
-    if (parent != candidate.scopes[0].id) {
-      return rejectBinderInvariant(
-          verifierFailure(input, BinderInvariantKind::MalformedScopeGraph));
-    }
-  }
-  ZC_IF_SOME(parent, candidate.scopes[2].parent) {
-    if (parent != candidate.scopes[1].id) {
-      return rejectBinderInvariant(
-          verifierFailure(input, BinderInvariantKind::MalformedScopeGraph));
-    }
   }
   if (!candidate.impls.empty() || !candidate.moduleAliases.empty() || !candidate.imports.empty() ||
       !candidate.localExports.empty() || !candidate.deferredMembers.empty() ||
