@@ -175,6 +175,22 @@ TEST(ResourceVector, OverAlignedElementsRemainAlignedAfterGrowth) {
   EXPECT_EQ(0u, resource.currentAllocatedBytes());
 }
 
+TEST(ResourceVector, StoresPointersToConstElements) {
+  MemoryResource upstream;
+  CountingMemoryResource resource(upstream);
+  uint first = 7;
+  uint second = 9;
+
+  {
+    Vector<const uint*> values(resource, 1);
+    values.add(&first);
+    values.add(&second);
+    EXPECT_EQ(7u, *values[0]);
+    EXPECT_EQ(9u, *values[1]);
+  }
+  EXPECT_EQ(0u, resource.currentAllocatedBytes());
+}
+
 TEST(ResourceVector, ReleasedArrayRetainsResourceDisposer) {
   MemoryResource upstream;
   CountingMemoryResource resource(upstream);

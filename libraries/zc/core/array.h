@@ -366,7 +366,8 @@ inline Array<T> heapArray(size_t size) {
 template <typename T>
 inline Array<T> resourceHeapArray(MemoryResource& resource, size_t size) {
   auto* allocation = _::ResourceArrayDisposer::allocate<T>(resource, size);
-  auto* disposer = *(reinterpret_cast<_::ResourceArrayDisposer**>(allocation) - 1);
+  void* allocationAddress = allocation;
+  auto* disposer = *(reinterpret_cast<_::ResourceArrayDisposer**>(allocationAddress) - 1);
   return Array<T>(allocation, size, *disposer);
 }
 
@@ -598,7 +599,8 @@ template <typename T>
 inline ArrayBuilder<T> resourceHeapArrayBuilder(MemoryResource& resource, size_t size) {
   auto* allocation =
       _::ResourceArrayDisposer::allocateUninitialized<RemoveConst<T>>(resource, size);
-  auto* disposer = *(reinterpret_cast<_::ResourceArrayDisposer**>(allocation) - 1);
+  void* allocationAddress = allocation;
+  auto* disposer = *(reinterpret_cast<_::ResourceArrayDisposer**>(allocationAddress) - 1);
   return ArrayBuilder<T>(reinterpret_cast<RemoveConst<T>*>(allocation), size, *disposer);
 }
 
