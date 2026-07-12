@@ -64,13 +64,13 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y cmake ninja-build clang
-          pip3 install lit psutil
+          pip3 install lit psutil PyYAML
 
       - name: Install dependencies (macOS)
         if: matrix.os == 'macos-latest'
         run: |
           brew install cmake ninja lit
-          pip3 install --break-system-packages psutil
+          pip3 install --break-system-packages psutil PyYAML
 
       - name: Configure CMake
         run: cmake --preset debug
@@ -92,7 +92,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y cmake ninja-build clang
-          pip3 install lit psutil
+          pip3 install lit psutil PyYAML
 
       - name: Configure sanitizer sandbox gate
         run: |
@@ -116,7 +116,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y cmake ninja-build clang lcov llvm
-          pip3 install lit psutil
+          pip3 install lit psutil PyYAML
 
       - name: Configure CMake
         run: cmake --preset coverage
