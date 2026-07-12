@@ -108,5 +108,72 @@ void HeapArrayDisposer::disposeImpl(void* firstElement, size_t elementSize, size
 
 const HeapArrayDisposer HeapArrayDisposer::instance = HeapArrayDisposer();
 
+void* ResourceArrayDisposer::allocate(MemoryResource& resource, size_t elementSize,
+                                      size_t elementAlignment, size_t elementCount, size_t capacity,
+                                      void (*constructElement)(void*),
+                                      void (*destroyElement)(void*)) {
+  ZC_IREQUIRE(capacity == 0 || elementSize <= static_cast<size_t>(zc::maxValue) / capacity,
+              "array allocation size overflow");
+  size_t contentSize = elementSize * capacity;
+  size_t alignment = zc::max(alignof(ResourceArrayDisposer),
+                             zc::max(alignof(ResourceArrayDisposer*), elementAlignment));
+  size_t allocationSize =
+      checkedAllocationAdd(sizeof(ResourceArrayDisposer), sizeof(ResourceArrayDisposer*));
+  allocationSize = checkedAllocationAdd(allocationSize, alignment - 1);
+  allocationSize = checkedAllocationAdd(allocationSize, contentSize);
+
+  void* allocation = resource.allocate(allocationSize, alignment);
+  auto* disposer = reinterpret_cast<ResourceArrayDisposer*>(allocation);
+  zc::ctor(*disposer, resource, allocationSize, alignment);
+  uintptr_t contentAddress =
+      alignAllocationAddress(reinterpret_cast<uintptr_t>(allocation) +
+                                 sizeof(ResourceArrayDisposer) + sizeof(ResourceArrayDisposer*),
+                             alignment);
+  auto* content = reinterpret_cast<void*>(contentAddress);
+  *(reinterpret_cast<ResourceArrayDisposer**>(content) - 1) = disposer;
+
+  try {
+    if (constructElement == nullptr) {
+      // Trivial or intentionally uninitialized elements need no construction.
+    } else if (destroyElement == nullptr) {
+      byte* pos = reinterpret_cast<byte*>(content);
+      while (elementCount > 0) {
+        constructElement(pos);
+        pos += elementSize;
+        --elementCount;
+      }
+    } else {
+      ExceptionSafeArrayUtil guard(content, elementSize, 0, destroyElement);
+      guard.construct(elementCount, constructElement);
+      guard.release();
+    }
+  } catch (...) {
+    zc::dtor(*disposer);
+    resource.deallocate(allocation, allocationSize, alignment);
+    throw;
+  }
+  return content;
+}
+
+void ResourceArrayDisposer::disposeImpl(void* firstElement, size_t elementSize, size_t elementCount,
+                                        size_t capacity, void (*destroyElement)(void*)) const {
+  auto* disposer = *(reinterpret_cast<ResourceArrayDisposer**>(firstElement) - 1);
+  MemoryResource& resource = disposer->resource;
+  size_t allocationSize = disposer->allocationSize;
+  size_t allocationAlignment = disposer->allocationAlignment;
+  try {
+    if (destroyElement != nullptr) {
+      ExceptionSafeArrayUtil guard(firstElement, elementSize, elementCount, destroyElement);
+      guard.destroyAll();
+    }
+  } catch (...) {
+    zc::dtor(*disposer);
+    resource.deallocate(disposer, allocationSize, allocationAlignment);
+    throw;
+  }
+  zc::dtor(*disposer);
+  resource.deallocate(disposer, allocationSize, allocationAlignment);
+}
+
 }  // namespace _
 }  // namespace zc

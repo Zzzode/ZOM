@@ -321,6 +321,35 @@ private:
   struct Allocate_;
 };
 
+class ResourceArrayDisposer final : public ArrayDisposer {
+public:
+  template <typename T>
+  static T* allocate(MemoryResource& resource, size_t count);
+  template <typename T>
+  static T* allocateUninitialized(MemoryResource& resource, size_t count);
+
+  ResourceArrayDisposer(MemoryResource& resource, size_t allocationSize, size_t allocationAlignment)
+      : resource(resource),
+        allocationSize(allocationSize),
+        allocationAlignment(allocationAlignment) {}
+
+private:
+  static void* allocate(MemoryResource& resource, size_t elementSize, size_t elementAlignment,
+                        size_t elementCount, size_t capacity, void (*constructElement)(void*),
+                        void (*destroyElement)(void*));
+  void disposeImpl(void* firstElement, size_t elementSize, size_t elementCount, size_t capacity,
+                   void (*destroyElement)(void*)) const override;
+
+  MemoryResource& resource;
+  size_t allocationSize;
+  size_t allocationAlignment;
+
+  template <typename T>
+  struct Allocate_ {
+    static void construct(void* ptr) { zc::ctor(*reinterpret_cast<T*>(ptr)); }
+  };
+};
+
 }  // namespace _
 
 template <typename T>
@@ -328,6 +357,17 @@ inline Array<T> heapArray(size_t size) {
   // Much like `heap<T>()` from memory.h, allocates a new array on the heap.
 
   return Array<T>(_::HeapArrayDisposer::allocate<T>(size), size, _::HeapArrayDisposer::instance);
+}
+
+/// \brief Construct an owned array in storage owned by an explicit memory resource.
+/// \param resource Resource that must outlive the returned array.
+/// \param size Number of elements to construct.
+/// \return Exclusive array ownership that returns storage to `resource`.
+template <typename T>
+inline Array<T> resourceHeapArray(MemoryResource& resource, size_t size) {
+  auto* allocation = _::ResourceArrayDisposer::allocate<T>(resource, size);
+  auto* disposer = *(reinterpret_cast<_::ResourceArrayDisposer**>(allocation) - 1);
+  return Array<T>(allocation, size, *disposer);
 }
 
 template <typename T>
@@ -550,6 +590,18 @@ inline ArrayBuilder<T> heapArrayBuilder(size_t size) {
                          _::HeapArrayDisposer::instance);
 }
 
+/// \brief Create an uninitialized array builder backed by an explicit memory resource.
+/// \param resource Resource that must outlive the builder and its finished array.
+/// \param size Exact element capacity of the builder.
+/// \return A builder whose finished array returns storage to `resource`.
+template <typename T>
+inline ArrayBuilder<T> resourceHeapArrayBuilder(MemoryResource& resource, size_t size) {
+  auto* allocation =
+      _::ResourceArrayDisposer::allocateUninitialized<RemoveConst<T>>(resource, size);
+  auto* disposer = *(reinterpret_cast<_::ResourceArrayDisposer**>(allocation) - 1);
+  return ArrayBuilder<T>(reinterpret_cast<RemoveConst<T>*>(allocation), size, *disposer);
+}
+
 // =======================================================================================
 // Inline Arrays
 
@@ -766,6 +818,26 @@ T* HeapArrayDisposer::allocate(size_t count) {
 template <typename T>
 T* HeapArrayDisposer::allocateUninitialized(size_t count) {
   return reinterpret_cast<T*>(allocateImpl(sizeof(T), 0, count, nullptr, nullptr));
+}
+
+template <typename T>
+T* ResourceArrayDisposer::allocate(MemoryResource& resource, size_t count) {
+  if constexpr (ZC_HAS_TRIVIAL_CONSTRUCTOR(T)) {
+    return reinterpret_cast<T*>(
+        allocate(resource, sizeof(T), alignof(T), count, count, nullptr, nullptr));
+  } else if (ZC_HAS_NOTHROW_CONSTRUCTOR(T)) {
+    return reinterpret_cast<T*>(
+        allocate(resource, sizeof(T), alignof(T), count, count, &Allocate_<T>::construct, nullptr));
+  } else {
+    return reinterpret_cast<T*>(allocate(resource, sizeof(T), alignof(T), count, count,
+                                         &Allocate_<T>::construct, &Dispose_<T>::destruct));
+  }
+}
+
+template <typename T>
+T* ResourceArrayDisposer::allocateUninitialized(MemoryResource& resource, size_t count) {
+  return reinterpret_cast<T*>(
+      allocate(resource, sizeof(T), alignof(T), 0, count, nullptr, nullptr));
 }
 
 template <typename Element, typename Iterator, bool move, bool = canMemcpy<Element>()>

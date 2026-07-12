@@ -23,6 +23,7 @@
 
 #include <signal.h>
 
+#include "zc/core/array.h"
 #include "zc/core/common.h"
 #include "zc/core/debug.h"
 #include "zc/core/function.h"
@@ -33,6 +34,174 @@
 
 namespace zc {
 namespace {
+
+class RecordingMemoryResource final : public MemoryResource {
+public:
+  size_t allocationCalls = 0;
+  size_t deallocationCalls = 0;
+  size_t allocatedSize = 0;
+  size_t allocatedAlignment = 0;
+
+protected:
+  void* doAllocate(size_t size, size_t alignment) override {
+    ++allocationCalls;
+    allocatedSize = size;
+    allocatedAlignment = alignment;
+    return &storage;
+  }
+
+  void doDeallocate(void* pointer, size_t size, size_t alignment) override {
+    ZC_EXPECT(pointer == &storage);
+    ZC_EXPECT(size == allocatedSize, size, allocatedSize);
+    ZC_EXPECT(alignment == allocatedAlignment, alignment, allocatedAlignment);
+    ++deallocationCalls;
+  }
+
+private:
+  byte storage = 0;
+};
+
+TEST(MemoryResource, CountsExactLiveAndPeakBytes) {
+  MemoryResource upstream;
+  CountingMemoryResource resource(upstream);
+
+  void* first = resource.allocate(13, 64);
+  EXPECT_EQ(0u, reinterpret_cast<uintptr_t>(first) % 64);
+  EXPECT_EQ(13u, resource.currentAllocatedBytes());
+  EXPECT_EQ(13u, resource.peakAllocatedBytes());
+
+  void* second = resource.allocate(29, 128);
+  EXPECT_EQ(0u, reinterpret_cast<uintptr_t>(second) % 128);
+  EXPECT_EQ(42u, resource.currentAllocatedBytes());
+  EXPECT_EQ(42u, resource.peakAllocatedBytes());
+
+  resource.deallocate(first, 13, 64);
+  EXPECT_EQ(29u, resource.currentAllocatedBytes());
+  resource.deallocate(second, 29, 128);
+  EXPECT_EQ(0u, resource.currentAllocatedBytes());
+  EXPECT_EQ(42u, resource.peakAllocatedBytes());
+}
+
+TEST(MemoryResource, RejectsCounterOverflowBeforeDelegating) {
+  RecordingMemoryResource upstream;
+  CountingMemoryResource resource(upstream);
+  size_t firstSize = static_cast<size_t>(zc::maxValue) - 4;
+
+  void* first = resource.allocate(firstSize, 1);
+  EXPECT_EQ(1u, upstream.allocationCalls);
+  EXPECT_ANY_THROW(resource.allocate(8, 1));
+  EXPECT_EQ(1u, upstream.allocationCalls);
+  EXPECT_EQ(firstSize, resource.currentAllocatedBytes());
+
+  resource.deallocate(first, firstSize, 1);
+  EXPECT_EQ(1u, upstream.deallocationCalls);
+  EXPECT_EQ(0u, resource.currentAllocatedBytes());
+}
+
+TEST(MemoryResource, RejectsCounterUnderflowBeforeDelegating) {
+  RecordingMemoryResource upstream;
+  CountingMemoryResource resource(upstream);
+
+  void* allocation = resource.allocate(4, 1);
+  EXPECT_ANY_THROW(resource.deallocate(allocation, 5, 1));
+  EXPECT_EQ(0u, upstream.deallocationCalls);
+  EXPECT_EQ(4u, resource.currentAllocatedBytes());
+
+  resource.deallocate(allocation, 4, 1);
+  EXPECT_EQ(1u, upstream.deallocationCalls);
+  EXPECT_EQ(0u, resource.currentAllocatedBytes());
+}
+
+struct alignas(128) ResourceOwnedValue {
+  ResourceOwnedValue(bool& destroyed, uint value) : destroyed(destroyed), value(value) {}
+  ~ResourceOwnedValue() { destroyed = true; }
+
+  bool& destroyed;
+  uint value;
+};
+
+struct ThrowingResourceValue {
+  ThrowingResourceValue() { ZC_FAIL_REQUIRE("injected constructor failure"); }
+};
+
+struct ThrowingResourceDestructor {
+  ~ThrowingResourceDestructor() noexcept(false) { ZC_FAIL_REQUIRE("injected destructor failure"); }
+};
+
+TEST(MemoryResource, ResourceHeapPreservesAlignmentAndMoveOwnership) {
+  MemoryResource upstream;
+  CountingMemoryResource resource(upstream);
+  bool destroyed = false;
+
+  auto value = resourceHeap<ResourceOwnedValue>(resource, destroyed, 42u);
+  EXPECT_EQ(0u, reinterpret_cast<uintptr_t>(value.get()) % alignof(ResourceOwnedValue));
+  EXPECT_EQ(42u, value->value);
+  EXPECT_TRUE(resource.currentAllocatedBytes() > sizeof(ResourceOwnedValue));
+  size_t peak = resource.peakAllocatedBytes();
+
+  Own<ResourceOwnedValue> moved = zc::mv(value);
+  EXPECT_TRUE(value.get() == nullptr);
+  EXPECT_FALSE(destroyed);
+  moved = nullptr;
+  EXPECT_TRUE(destroyed);
+  EXPECT_EQ(0u, resource.currentAllocatedBytes());
+  EXPECT_EQ(peak, resource.peakAllocatedBytes());
+}
+
+TEST(MemoryResource, ResourceHeapRollsBackFailedConstruction) {
+  MemoryResource upstream;
+  CountingMemoryResource resource(upstream);
+
+  EXPECT_ANY_THROW(resourceHeap<ThrowingResourceValue>(resource));
+  EXPECT_EQ(0u, resource.currentAllocatedBytes());
+  EXPECT_TRUE(resource.peakAllocatedBytes() > 0);
+}
+
+TEST(MemoryResource, ResourceHeapReleasesStorageAfterThrowingDestructor) {
+  MemoryResource upstream;
+  CountingMemoryResource resource(upstream);
+  auto value = resourceHeap<ThrowingResourceDestructor>(resource);
+
+  EXPECT_ANY_THROW(value = nullptr);
+  EXPECT_TRUE(value.get() == nullptr);
+  EXPECT_EQ(0u, resource.currentAllocatedBytes());
+}
+
+struct alignas(64) ResourceArrayValue {
+  ResourceArrayValue(uint& destroyed, uint value) : destroyed(destroyed), value(value) {}
+  ~ResourceArrayValue() { ++destroyed; }
+
+  uint& destroyed;
+  uint value;
+};
+
+TEST(MemoryResource, ResourceArrayBuilderReturnsAllLiveBytes) {
+  MemoryResource upstream;
+  CountingMemoryResource resource(upstream);
+  uint destroyed = 0;
+
+  auto builder = resourceHeapArrayBuilder<ResourceArrayValue>(resource, 3);
+  builder.add(destroyed, 1u);
+  builder.add(destroyed, 2u);
+  builder.add(destroyed, 3u);
+  EXPECT_TRUE(resource.currentAllocatedBytes() > 3 * sizeof(ResourceArrayValue));
+
+  auto array = builder.finish();
+  EXPECT_EQ(0u, reinterpret_cast<uintptr_t>(array.begin()) % alignof(ResourceArrayValue));
+  EXPECT_EQ(2u, array[1].value);
+  auto moved = zc::mv(array);
+  moved = nullptr;
+  EXPECT_EQ(3u, destroyed);
+  EXPECT_EQ(0u, resource.currentAllocatedBytes());
+}
+
+TEST(MemoryResource, ResourceArrayRollsBackFailedConstruction) {
+  MemoryResource upstream;
+  CountingMemoryResource resource(upstream);
+
+  EXPECT_ANY_THROW(resourceHeapArray<ThrowingResourceValue>(resource, 3));
+  EXPECT_EQ(0u, resource.currentAllocatedBytes());
+}
 
 TEST(Memory, OwnConst) {
   Own<int> i = heap<int>(2);

@@ -50,6 +50,69 @@ ZC_BEGIN_HEADER
 
 namespace zc {
 
+// =======================================================================================
+// MemoryResource -- Explicit object-owned allocation.
+
+/// \brief Provide explicit object-owned size-and-alignment allocation.
+///
+/// The resource must outlive every region allocated from it. Calls on one resource must be
+/// externally serialized.
+class MemoryResource {
+public:
+  /// \brief Construct a resource backed by the process heap.
+  MemoryResource() = default;
+  virtual ~MemoryResource() noexcept = default;
+  ZC_DISALLOW_COPY_AND_MOVE(MemoryResource);
+
+  /// \brief Allocate one byte region with an explicit size and alignment.
+  /// \param size Number of requested bytes. Zero is permitted.
+  /// \param alignment Required power-of-two alignment.
+  /// \return A non-null region owned by this resource until `deallocate()`.
+  /// \throws zc::Exception if the size calculation overflows or alignment is invalid.
+  void* allocate(size_t size, size_t alignment);
+
+  /// \brief Return a byte region to the resource that allocated it.
+  /// \param pointer Region returned by `allocate()`.
+  /// \param size Exact size passed to `allocate()`.
+  /// \param alignment Exact alignment passed to `allocate()`.
+  /// \throws zc::Exception if the deallocation contract is invalid.
+  void deallocate(void* pointer, size_t size, size_t alignment);
+
+protected:
+  /// \brief Implement allocation after public contract validation.
+  virtual void* doAllocate(size_t size, size_t alignment);
+
+  /// \brief Implement deallocation after public contract validation.
+  virtual void doDeallocate(void* pointer, size_t size, size_t alignment);
+};
+
+/// \brief Count current and peak live requested bytes while delegating to an upstream resource.
+class CountingMemoryResource final : public MemoryResource {
+public:
+  /// \brief Construct a counter that delegates every allocation to `upstream`.
+  /// \param upstream Resource that must outlive this object and all delegated allocations.
+  explicit CountingMemoryResource(MemoryResource& upstream);
+  ~CountingMemoryResource() noexcept override = default;
+  ZC_DISALLOW_COPY_AND_MOVE(CountingMemoryResource);
+
+  /// \brief Return the number of requested bytes that remain live.
+  /// \return Sum of sizes allocated but not yet deallocated.
+  size_t currentAllocatedBytes() const;
+
+  /// \brief Return the maximum number of simultaneously live requested bytes.
+  /// \return High-water mark of `currentAllocatedBytes()`.
+  size_t peakAllocatedBytes() const;
+
+protected:
+  void* doAllocate(size_t size, size_t alignment) override;
+  void doDeallocate(void* pointer, size_t size, size_t alignment) override;
+
+private:
+  MemoryResource& upstream;
+  size_t currentBytes = 0;
+  size_t peakBytes = 0;
+};
+
 template <typename T>
 inline constexpr bool _zc_internal_isPolymorphic(T*) {
   // If you get a compiler error here complaining that T is incomplete, it's because you are trying
@@ -714,6 +777,52 @@ static constexpr CustomDisposer<T, F> CUSTOM_DISPOSER_INSTANCE{};
 
 }  // namespace _
 
+namespace _ {  // private
+
+inline size_t checkedAllocationAdd(size_t left, size_t right) {
+  ZC_IREQUIRE(right <= static_cast<size_t>(zc::maxValue) - left, "memory allocation size overflow");
+  return left + right;
+}
+
+inline uintptr_t alignAllocationAddress(uintptr_t address, size_t alignment) {
+  return (address + alignment - 1) & ~(static_cast<uintptr_t>(alignment) - 1);
+}
+
+template <typename T>
+class ResourceHeapDisposer final : public Disposer {
+public:
+  ResourceHeapDisposer(MemoryResource& resource, size_t allocationSize, size_t allocationAlignment)
+      : resource(resource),
+        allocationSize(allocationSize),
+        allocationAlignment(allocationAlignment) {}
+
+  void disposeImpl(void* pointer) const override {
+    auto* block = *(reinterpret_cast<ResourceHeapDisposer**>(pointer) - 1);
+    try {
+      zc::dtor(*reinterpret_cast<T*>(pointer));
+    } catch (...) {
+      release(block);
+      throw;
+    }
+    release(block);
+  }
+
+private:
+  MemoryResource& resource;
+  size_t allocationSize;
+  size_t allocationAlignment;
+
+  static void release(ResourceHeapDisposer* block) {
+    MemoryResource& resource = block->resource;
+    size_t allocationSize = block->allocationSize;
+    size_t allocationAlignment = block->allocationAlignment;
+    zc::dtor(*block);
+    resource.deallocate(block, allocationSize, allocationAlignment);
+  }
+};
+
+}  // namespace _
+
 template <typename T, typename... Params>
 Own<T> heap(Params&&... params) {
   // heap<T>(...) allocates a T on the heap, forwarding the parameters to its constructor.  The
@@ -722,6 +831,37 @@ Own<T> heap(Params&&... params) {
   // allocator that is more efficient than operator new.)
 
   return Own<T>(new T(zc::fwd<Params>(params)...), _::HeapDisposer<T>::instance);
+}
+
+/// \brief Construct an object in storage owned by an explicit memory resource.
+/// \param resource Resource that must outlive the returned owner.
+/// \param params Constructor arguments forwarded to `T`.
+/// \return Exclusive ownership whose disposer returns storage to `resource`.
+template <typename T, typename... Params>
+Own<T> resourceHeap(MemoryResource& resource, Params&&... params) {
+  // Store the disposer with the object so ownership moves preserve resource identity.
+  using Block = _::ResourceHeapDisposer<T>;
+  constexpr size_t alignment = zc::max(alignof(Block), zc::max(alignof(Block*), alignof(T)));
+  size_t allocationSize = _::checkedAllocationAdd(sizeof(Block), sizeof(Block*));
+  allocationSize = _::checkedAllocationAdd(allocationSize, alignment - 1);
+  allocationSize = _::checkedAllocationAdd(allocationSize, sizeof(T));
+
+  void* allocation = resource.allocate(allocationSize, alignment);
+  auto* block = reinterpret_cast<Block*>(allocation);
+  zc::ctor(*block, resource, allocationSize, alignment);
+  uintptr_t objectAddress = _::alignAllocationAddress(
+      reinterpret_cast<uintptr_t>(allocation) + sizeof(Block) + sizeof(Block*), alignment);
+  auto* object = reinterpret_cast<T*>(objectAddress);
+  *(reinterpret_cast<Block**>(object) - 1) = block;
+
+  try {
+    zc::ctor(*object, zc::fwd<Params>(params)...);
+  } catch (...) {
+    zc::dtor(*block);
+    resource.deallocate(allocation, allocationSize, alignment);
+    throw;
+  }
+  return Own<T>(object, *block);
 }
 
 template <typename T>

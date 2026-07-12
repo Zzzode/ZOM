@@ -27,6 +27,63 @@
 
 namespace zc {
 
+namespace {
+
+inline void requireValidAlignment(size_t alignment) {
+  ZC_REQUIRE(alignment > 0 && (alignment & (alignment - 1)) == 0,
+             "MemoryResource alignment must be a non-zero power of two");
+}
+
+}  // namespace
+
+void* MemoryResource::allocate(size_t size, size_t alignment) {
+  requireValidAlignment(alignment);
+  return doAllocate(size, alignment);
+}
+
+void MemoryResource::deallocate(void* pointer, size_t size, size_t alignment) {
+  ZC_REQUIRE(pointer != nullptr, "MemoryResource cannot deallocate a null pointer");
+  requireValidAlignment(alignment);
+  doDeallocate(pointer, size, alignment);
+}
+
+void* MemoryResource::doAllocate(size_t size, size_t alignment) {
+  size_t effectiveAlignment = zc::max(alignment, alignof(void*));
+  size_t overhead = _::checkedAllocationAdd(sizeof(void*), effectiveAlignment - 1);
+  size_t allocationSize = _::checkedAllocationAdd(size, overhead);
+  void* allocation = operator new(allocationSize);
+  uintptr_t alignedAddress = _::alignAllocationAddress(
+      reinterpret_cast<uintptr_t>(allocation) + sizeof(void*), effectiveAlignment);
+  auto* aligned = reinterpret_cast<void*>(alignedAddress);
+  *(reinterpret_cast<void**>(aligned) - 1) = allocation;
+  return aligned;
+}
+
+void MemoryResource::doDeallocate(void* pointer, size_t size, size_t alignment) {
+  operator delete(*(reinterpret_cast<void**>(pointer) - 1));
+}
+
+CountingMemoryResource::CountingMemoryResource(MemoryResource& upstream) : upstream(upstream) {}
+
+size_t CountingMemoryResource::currentAllocatedBytes() const { return currentBytes; }
+
+size_t CountingMemoryResource::peakAllocatedBytes() const { return peakBytes; }
+
+void* CountingMemoryResource::doAllocate(size_t size, size_t alignment) {
+  ZC_REQUIRE(size <= static_cast<size_t>(zc::maxValue) - currentBytes,
+             "CountingMemoryResource live-byte counter overflow");
+  void* result = upstream.allocate(size, alignment);
+  currentBytes += size;
+  peakBytes = zc::max(peakBytes, currentBytes);
+  return result;
+}
+
+void CountingMemoryResource::doDeallocate(void* pointer, size_t size, size_t alignment) {
+  ZC_REQUIRE(size <= currentBytes, "CountingMemoryResource live-byte counter underflow");
+  upstream.deallocate(pointer, size, alignment);
+  currentBytes -= size;
+}
+
 const NullDisposer NullDisposer::instance = NullDisposer();
 
 namespace _ {
