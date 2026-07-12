@@ -78,8 +78,9 @@ struct TargetNote {
 };
 
 // The test patches the descriptor and section size with the canonical target selection.
-__attribute__((section(".note.zom.target"), aligned(4), used)) static const struct TargetNote
-    targetNote = {4, 4080, 0x5a4f4d01, {'Z', 'O', 'M', 0}, {0}};
+__attribute__((section(".note.zom.target"), aligned(4),
+               used)) static const struct TargetNote targetNote = {
+    4, 4080, 0x5a4f4d01, {'Z', 'O', 'M', 0}, {0}};
 
 static void exitImmediately(long status) {
   (void)rawSyscall3(kExitGroup, status, 0, 0);
@@ -103,14 +104,13 @@ void _start(void) {
   static const u8 response[] = {
       0, 0, 0, 0, 0, 0, 0, 17,  // Payload length.
       0, 0, 0, 0, 0, 0, 0, 0,   // Correlation identifier.
-      0,                          // Success status.
+      0,                        // Success status.
       0, 0, 0, 0, 0, 0, 0, 0,   // Empty exported environment sequence.
   };
   u64 written = 0;
   while (written < sizeof(response)) {
-    const long count =
-        rawSyscall3(kWrite, kResponseDescriptor, (long)(response + written),
-                    (long)(sizeof(response) - written));
+    const long count = rawSyscall3(kWrite, kResponseDescriptor, (long)(response + written),
+                                   (long)(sizeof(response) - written));
     if (count <= 0) { exitImmediately(122); }
     written += (u64)count;
   }

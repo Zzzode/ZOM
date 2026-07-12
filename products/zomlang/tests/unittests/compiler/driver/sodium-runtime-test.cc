@@ -30,8 +30,8 @@ zc::Array<zc::byte> decodeHex(zc::StringPtr text) {
   ZC_REQUIRE(text.size() % 2 == 0);
   auto result = zc::heapArray<zc::byte>(text.size() / 2);
   for (size_t index = 0; index < result.size(); ++index) {
-    result[index] = static_cast<zc::byte>((hexNibble(text[index * 2]) << 4) |
-                                          hexNibble(text[index * 2 + 1]));
+    result[index] =
+        static_cast<zc::byte>((hexNibble(text[index * 2]) << 4) | hexNibble(text[index * 2 + 1]));
   }
   return result;
 }
@@ -44,9 +44,7 @@ Ed25519PublicKey requirePublicKey(zc::StringPtr text) {
 
 Ed25519Signature requireSignature(zc::StringPtr text) {
   auto bytes = decodeHex(text);
-  ZC_IF_SOME(signature, Ed25519Signature::fromBytes(bytes.asPtr())) {
-    return zc::mv(signature);
-  }
+  ZC_IF_SOME(signature, Ed25519Signature::fromBytes(bytes.asPtr())) { return zc::mv(signature); }
   ZC_FAIL_REQUIRE("invalid Ed25519 signature test oracle");
 }
 
@@ -61,15 +59,17 @@ void expectDigest(const identity::Sha256Digest& digest, zc::StringPtr expected) 
 }
 
 Ed25519PublicKey rfc8032PublicKey() {
-  return requirePublicKey("d75a980182b10ab7d54bfed3c964073a"
-                          "0ee172f3daa62325af021a68f707511a"_zc);
+  return requirePublicKey(
+      "d75a980182b10ab7d54bfed3c964073a"
+      "0ee172f3daa62325af021a68f707511a"_zc);
 }
 
 Ed25519Signature rfc8032Signature() {
-  return requireSignature("e5564300c360ac729086e2cc806e828a"
-                          "84877f1eb8e5d974d873e06522490155"
-                          "5fb8821590a33bacc61e39701cf9b46b"
-                          "d25bf5f0595bbe24655141438e7a100b"_zc);
+  return requireSignature(
+      "e5564300c360ac729086e2cc806e828a"
+      "84877f1eb8e5d974d873e06522490155"
+      "5fb8821590a33bacc61e39701cf9b46b"
+      "d25bf5f0595bbe24655141438e7a100b"_zc);
 }
 
 }  // namespace
@@ -106,10 +106,11 @@ ZC_TEST("SodiumRuntime.VerifiesRfc8032EmptyMessageVector") {
 ZC_TEST("SodiumRuntime.RejectsMutatedEd25519Signature") {
   SodiumRuntime runtime;
   auto publicKey = rfc8032PublicKey();
-  auto signatureBytes = decodeHex("e5564300c360ac729086e2cc806e828a"
-                                  "84877f1eb8e5d974d873e06522490155"
-                                  "5fb8821590a33bacc61e39701cf9b46b"
-                                  "d25bf5f0595bbe24655141438e7a100b"_zc);
+  auto signatureBytes = decodeHex(
+      "e5564300c360ac729086e2cc806e828a"
+      "84877f1eb8e5d974d873e06522490155"
+      "5fb8821590a33bacc61e39701cf9b46b"
+      "d25bf5f0595bbe24655141438e7a100b"_zc);
   signatureBytes[0] ^= 0x01;
   ZC_IF_SOME(signature, Ed25519Signature::fromBytes(signatureBytes.asPtr())) {
     ZC_EXPECT(!runtime.verifyEd25519(publicKey, signature, zc::ArrayPtr<const zc::byte>()));
