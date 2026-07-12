@@ -208,8 +208,8 @@ def check_internal_binding_authority(files: dict[Path, str], errors: list[str]) 
         if internal_include in text:
             errors.append(f"{path}: binder-internal verifier header escaped")
         for symbol in (
-            "DependencyFreeBindingBuilder::buildSingleFunction(",
-            "BindingVerifier::verifySingleFunction(",
+            "BindingBuilder::build(",
+            "BindingVerifier::verify(",
         ):
             if symbol in text:
                 errors.append(f"{path}: binder-internal authority escaped through {symbol}")
@@ -261,7 +261,7 @@ def check_binding_publication_contract(files: dict[Path, str], errors: list[str]
     source = files.get(VERIFIER_SOURCE, "")
     for forbidden in (
         "BindingMetadataCandidate",
-        "class DependencyFreeBindingBuilder final",
+        "class BindingBuilder final",
         "BindingVerifier final",
     ):
         if forbidden in metadata:
@@ -271,14 +271,17 @@ def check_binding_publication_contract(files: dict[Path, str], errors: list[str]
         "class InvariantRejected final",
         "zc::OneOf<VerifiedBindingOutput, SourceRejected, InvariantRejected>",
         "zc::OneOf<identity::IdentityInvariant, BinderInvariantFact>",
-        "const VerifiedBindingInput& input, diagnostics::DiagnosticEngine& diagnostics);",
         "zc::Maybe<diagnostics::DiagnosticEngine&> diagnostics);",
     ):
         if required not in verifier:
             errors.append(f"{VERIFIER_HEADER}: incomplete verification result contract: {required}")
-    if re.search(
-        r"buildSingleFunction\s*\(\s*const VerifiedBindingInput& input\s*\)\s*;", verifier
+    if not re.search(
+        r"BindingCandidateResult\s+build\(const VerifiedBindingInput& input,\s*"
+        r"diagnostics::DiagnosticEngine& diagnostics\);",
+        verifier,
     ):
+        errors.append(f"{VERIFIER_HEADER}: incomplete verified binding builder contract")
+    if re.search(r"build\s*\(\s*const VerifiedBindingInput& input\s*\)\s*;", verifier):
         errors.append(f"{VERIFIER_HEADER}: binding candidate construction can omit diagnostics")
     for required in (
         "encodeAllocationScopeRecord(",
@@ -286,7 +289,7 @@ def check_binding_publication_contract(files: dict[Path, str], errors: list[str]
         "candidateAllocation = encodeBindingAllocationDump(",
         "expectedAllocation = encodeBindingAllocationDump(",
         "engine.diagnose<diagnostics::DiagID::UndefinedIdentifier>(",
-        "buildSingleFunctionCandidate(input, zc::none)",
+        "buildCandidate(input, zc::none)",
     ):
         if required not in source:
             errors.append(f"{VERIFIER_SOURCE}: binding publication contract is disconnected: {required}")
@@ -438,19 +441,20 @@ def self_test(files: dict[Path, str]) -> list[str]:
             "foreign binding builder call",
             Path("products/zomlang/compiler/lexer/escape.cc"),
             "",
-            "DependencyFreeBindingBuilder::buildSingleFunction(input);",
+            "BindingBuilder::build(input);",
         ),
         (
             "diagnostic-free binding builder",
             VERIFIER_HEADER,
-            "const VerifiedBindingInput& input, diagnostics::DiagnosticEngine& diagnostics);",
+            "const VerifiedBindingInput& input,\n"
+            "                                                   diagnostics::DiagnosticEngine& diagnostics);",
             "const VerifiedBindingInput& input);",
         ),
         (
             "public builder authority",
             METADATA_HEADER,
             "class VerifiedBindingMetadata final",
-            "class DependencyFreeBindingBuilder final {};\nclass VerifiedBindingMetadata final",
+            "class BindingBuilder final {};\nclass VerifiedBindingMetadata final",
         ),
         (
             "incomplete verification algebra",

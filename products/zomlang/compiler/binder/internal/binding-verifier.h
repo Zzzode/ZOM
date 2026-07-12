@@ -59,7 +59,7 @@ private:
                            zc::Vector<DefinitionFact>&& definitions,
                            zc::Vector<ScopeRecord>&& scopes,
                            ExportSurfaceCandidate&& currentSurface) noexcept;
-  friend class DependencyFreeBindingBuilder;
+  friend class BindingBuilder;
 };
 
 struct VerifiedBindingOutput final {
@@ -116,21 +116,21 @@ using BindingVerificationResult =
 ZC_NODISCARD zc::Maybe<zc::Array<uint8_t>> encodeBindingAllocationDump(
     const VerifiedBindingInput& input, zc::ArrayPtr<const ScopeRecord> scopes);
 
-class DependencyFreeBindingBuilder final {
+class BindingBuilder final {
 public:
-  ZC_NODISCARD static BindingCandidateResult buildSingleFunction(
-      const VerifiedBindingInput& input, diagnostics::DiagnosticEngine& diagnostics);
+  ZC_NODISCARD static BindingCandidateResult build(const VerifiedBindingInput& input,
+                                                   diagnostics::DiagnosticEngine& diagnostics);
 
 private:
-  ZC_NODISCARD static BindingCandidateResult buildSingleFunctionCandidate(
+  ZC_NODISCARD static BindingCandidateResult buildCandidate(
       const VerifiedBindingInput& input, zc::Maybe<diagnostics::DiagnosticEngine&> diagnostics);
   friend class BindingVerifier;
 };
 
 class BindingVerifier final {
 public:
-  ZC_NODISCARD static BindingVerificationResult verifySingleFunction(
-      const VerifiedBindingInput& input, BindingMetadataCandidate&& candidate);
+  ZC_NODISCARD static BindingVerificationResult verify(const VerifiedBindingInput& input,
+                                                       BindingMetadataCandidate&& candidate);
 };
 
 }  // namespace zomlang::compiler::binder

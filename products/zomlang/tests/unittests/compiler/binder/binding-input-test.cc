@@ -497,11 +497,10 @@ ZC_TEST("BindingVerifier.PublishesCompletePrivateFunctionFactsAndSurface") {
   auto inputResult = verify(fixture);
   ZC_REQUIRE(inputResult.is<VerifiedBindingInput>());
   auto input = zc::mv(inputResult.get<VerifiedBindingInput>());
-  auto candidate =
-      DependencyFreeBindingBuilder::buildSingleFunction(input, *sourceFixture.diagnostics);
+  auto candidate = BindingBuilder::build(input, *sourceFixture.diagnostics);
   ZC_REQUIRE(candidate.is<BindingMetadataCandidate>());
-  auto verification = BindingVerifier::verifySingleFunction(
-      input, zc::mv(candidate.get<BindingMetadataCandidate>()));
+  auto verification =
+      BindingVerifier::verify(input, zc::mv(candidate.get<BindingMetadataCandidate>()));
   ZC_REQUIRE(verification.is<VerifiedBindingOutput>());
   const auto& output = verification.get<VerifiedBindingOutput>();
   ZC_EXPECT(output.metadata.nodeScopes().size() == input.tree().nodeCount());
@@ -547,12 +546,11 @@ ZC_TEST("BindingVerifier.RejectsMissingAndMalformedFunctionScopes") {
   auto missingInputResult = verify(missingFixture);
   ZC_REQUIRE(missingInputResult.is<VerifiedBindingInput>());
   auto missingInput = zc::mv(missingInputResult.get<VerifiedBindingInput>());
-  auto missingCandidate =
-      DependencyFreeBindingBuilder::buildSingleFunction(missingInput, *missingSource.diagnostics);
+  auto missingCandidate = BindingBuilder::build(missingInput, *missingSource.diagnostics);
   ZC_REQUIRE(missingCandidate.is<BindingMetadataCandidate>());
   missingCandidate.get<BindingMetadataCandidate>().scopes.removeLast();
-  auto missing = BindingVerifier::verifySingleFunction(
-      missingInput, zc::mv(missingCandidate.get<BindingMetadataCandidate>()));
+  auto missing = BindingVerifier::verify(missingInput,
+                                         zc::mv(missingCandidate.get<BindingMetadataCandidate>()));
   ZC_EXPECT(requireBinderInvariant(missing).kind == BinderInvariantKind::MissingRequiredResolution);
 
   ParsedSource malformedSource("module root;\nfun run();\n"_zc);
@@ -560,11 +558,10 @@ ZC_TEST("BindingVerifier.RejectsMissingAndMalformedFunctionScopes") {
   auto malformedInputResult = verify(malformedFixture);
   ZC_REQUIRE(malformedInputResult.is<VerifiedBindingInput>());
   auto malformedInput = zc::mv(malformedInputResult.get<VerifiedBindingInput>());
-  auto malformedCandidate = DependencyFreeBindingBuilder::buildSingleFunction(
-      malformedInput, *malformedSource.diagnostics);
+  auto malformedCandidate = BindingBuilder::build(malformedInput, *malformedSource.diagnostics);
   ZC_REQUIRE(malformedCandidate.is<BindingMetadataCandidate>());
   malformedCandidate.get<BindingMetadataCandidate>().scopes[1].parent = zc::none;
-  auto malformed = BindingVerifier::verifySingleFunction(
+  auto malformed = BindingVerifier::verify(
       malformedInput, zc::mv(malformedCandidate.get<BindingMetadataCandidate>()));
   ZC_EXPECT(requireBinderInvariant(malformed).kind == BinderInvariantKind::MalformedScopeGraph);
 }
@@ -575,12 +572,11 @@ ZC_TEST("BindingVerifier.ClassifiesAdditionalFactsAndWrongScopeKinds") {
   auto additionalInputResult = verify(additionalFixture);
   ZC_REQUIRE(additionalInputResult.is<VerifiedBindingInput>());
   auto additionalInput = zc::mv(additionalInputResult.get<VerifiedBindingInput>());
-  auto additionalCandidate = DependencyFreeBindingBuilder::buildSingleFunction(
-      additionalInput, *additionalSource.diagnostics);
+  auto additionalCandidate = BindingBuilder::build(additionalInput, *additionalSource.diagnostics);
   ZC_REQUIRE(additionalCandidate.is<BindingMetadataCandidate>());
   auto& additionalValue = additionalCandidate.get<BindingMetadataCandidate>();
   additionalValue.nodeScopes.add(additionalValue.nodeScopes[0]);
-  auto additional = BindingVerifier::verifySingleFunction(additionalInput, zc::mv(additionalValue));
+  auto additional = BindingVerifier::verify(additionalInput, zc::mv(additionalValue));
   ZC_EXPECT(requireBinderInvariant(additional).kind == BinderInvariantKind::InvalidBindingFact);
 
   ParsedSource kindSource("module root;\nfun run();\n"_zc);
@@ -588,12 +584,11 @@ ZC_TEST("BindingVerifier.ClassifiesAdditionalFactsAndWrongScopeKinds") {
   auto kindInputResult = verify(kindFixture);
   ZC_REQUIRE(kindInputResult.is<VerifiedBindingInput>());
   auto kindInput = zc::mv(kindInputResult.get<VerifiedBindingInput>());
-  auto kindCandidate =
-      DependencyFreeBindingBuilder::buildSingleFunction(kindInput, *kindSource.diagnostics);
+  auto kindCandidate = BindingBuilder::build(kindInput, *kindSource.diagnostics);
   ZC_REQUIRE(kindCandidate.is<BindingMetadataCandidate>());
   auto& kindValue = kindCandidate.get<BindingMetadataCandidate>();
   kindValue.scopes[2].kind = ScopeKind::Loop;
-  auto wrongKind = BindingVerifier::verifySingleFunction(kindInput, zc::mv(kindValue));
+  auto wrongKind = BindingVerifier::verify(kindInput, zc::mv(kindValue));
   ZC_EXPECT(requireBinderInvariant(wrongKind).kind == BinderInvariantKind::MalformedScopeGraph);
 }
 
@@ -603,12 +598,11 @@ ZC_TEST("BindingVerifier.RejectsWrongDeclaringScopeAndExternalPrivateSurface") {
   auto scopeInputResult = verify(scopeFixture);
   ZC_REQUIRE(scopeInputResult.is<VerifiedBindingInput>());
   auto scopeInput = zc::mv(scopeInputResult.get<VerifiedBindingInput>());
-  auto scopeCandidate =
-      DependencyFreeBindingBuilder::buildSingleFunction(scopeInput, *scopeSource.diagnostics);
+  auto scopeCandidate = BindingBuilder::build(scopeInput, *scopeSource.diagnostics);
   ZC_REQUIRE(scopeCandidate.is<BindingMetadataCandidate>());
   auto& scopeValue = scopeCandidate.get<BindingMetadataCandidate>();
   scopeValue.definitions[0].declaringScope = scopeValue.scopes[1].id;
-  auto wrongScope = BindingVerifier::verifySingleFunction(scopeInput, zc::mv(scopeValue));
+  auto wrongScope = BindingVerifier::verify(scopeInput, zc::mv(scopeValue));
   ZC_EXPECT(requireBinderInvariant(wrongScope).kind == BinderInvariantKind::InvalidBindingFact);
 
   ParsedSource surfaceSource("module root;\nfun run();\n"_zc);
@@ -616,15 +610,14 @@ ZC_TEST("BindingVerifier.RejectsWrongDeclaringScopeAndExternalPrivateSurface") {
   auto surfaceInputResult = verify(surfaceFixture);
   ZC_REQUIRE(surfaceInputResult.is<VerifiedBindingInput>());
   auto surfaceInput = zc::mv(surfaceInputResult.get<VerifiedBindingInput>());
-  auto surfaceCandidate =
-      DependencyFreeBindingBuilder::buildSingleFunction(surfaceInput, *surfaceSource.diagnostics);
+  auto surfaceCandidate = BindingBuilder::build(surfaceInput, *surfaceSource.diagnostics);
   ZC_REQUIRE(surfaceCandidate.is<BindingMetadataCandidate>());
   auto& surfaceValue = surfaceCandidate.get<BindingMetadataCandidate>();
   surfaceValue.currentSurface.visibleEntries[0].visibility = VisibilityEnvelope::external();
   surfaceValue.currentSurface.visibleEntries[0].exported = true;
   auto copiedSurface = surfaceValue.currentSurface.clone();
   surfaceValue.currentSurface.exports.add(zc::mv(copiedSurface.visibleEntries[0]));
-  auto wrongSurface = BindingVerifier::verifySingleFunction(surfaceInput, zc::mv(surfaceValue));
+  auto wrongSurface = BindingVerifier::verify(surfaceInput, zc::mv(surfaceValue));
   ZC_EXPECT(requireBinderInvariant(wrongSurface).kind == BinderInvariantKind::InvalidBindingFact);
 }
 
@@ -634,8 +627,7 @@ ZC_TEST("BindingVerifier.RejectsStaleExportSurfaceRevision") {
   auto inputResult = verify(fixture);
   ZC_REQUIRE(inputResult.is<VerifiedBindingInput>());
   auto input = zc::mv(inputResult.get<VerifiedBindingInput>());
-  auto candidate =
-      DependencyFreeBindingBuilder::buildSingleFunction(input, *sourceFixture.diagnostics);
+  auto candidate = BindingBuilder::build(input, *sourceFixture.diagnostics);
   ZC_REQUIRE(candidate.is<BindingMetadataCandidate>());
 
   const identity::Sha256Digest zeroFingerprint;
@@ -649,8 +641,7 @@ ZC_TEST("BindingVerifier.RejectsStaleExportSurfaceRevision") {
   ZC_IF_SOME(staleValue, stale) {
     candidate.get<BindingMetadataCandidate>().currentSurface.revision = staleValue;
   }
-  auto result = BindingVerifier::verifySingleFunction(
-      input, zc::mv(candidate.get<BindingMetadataCandidate>()));
+  auto result = BindingVerifier::verify(input, zc::mv(candidate.get<BindingMetadataCandidate>()));
   const auto& fact = requireBinderInvariant(result);
   ZC_EXPECT(fact.kind == BinderInvariantKind::InvalidBindingFact);
   ZC_EXPECT(fact.emitterSite == BinderEmitterSite::BindingVerifier);
@@ -667,33 +658,29 @@ ZC_TEST("BindingVerifier.RejectsForeignSurfaceAndScopeIdentities") {
   ZC_REQUIRE(foreignInputResult.is<VerifiedBindingInput>());
   auto localInput = zc::mv(localInputResult.get<VerifiedBindingInput>());
   auto foreignInput = zc::mv(foreignInputResult.get<VerifiedBindingInput>());
-  auto foreignCandidate =
-      DependencyFreeBindingBuilder::buildSingleFunction(foreignInput, *foreignSource.diagnostics);
+  auto foreignCandidate = BindingBuilder::build(foreignInput, *foreignSource.diagnostics);
   ZC_REQUIRE(foreignCandidate.is<BindingMetadataCandidate>());
 
-  auto surfaceCandidate =
-      DependencyFreeBindingBuilder::buildSingleFunction(localInput, *localSource.diagnostics);
+  auto surfaceCandidate = BindingBuilder::build(localInput, *localSource.diagnostics);
   ZC_REQUIRE(surfaceCandidate.is<BindingMetadataCandidate>());
   auto& surface = surfaceCandidate.get<BindingMetadataCandidate>().currentSurface;
   surface.sourceModule = foreignInput.module();
   surface.sourcePackage = foreignInput.package();
-  auto surfaceResult = BindingVerifier::verifySingleFunction(
-      localInput, zc::mv(surfaceCandidate.get<BindingMetadataCandidate>()));
+  auto surfaceResult =
+      BindingVerifier::verify(localInput, zc::mv(surfaceCandidate.get<BindingMetadataCandidate>()));
   ZC_EXPECT(requireIdentityInvariant(surfaceResult).kind() ==
             identity::IdentityInvariantKind::ForeignContext);
 
-  auto targetCandidate =
-      DependencyFreeBindingBuilder::buildSingleFunction(localInput, *localSource.diagnostics);
+  auto targetCandidate = BindingBuilder::build(localInput, *localSource.diagnostics);
   ZC_REQUIRE(targetCandidate.is<BindingMetadataCandidate>());
   targetCandidate.get<BindingMetadataCandidate>().currentSurface.visibleEntries[0].bindingIdentity =
       BindingTarget::definition(foreignFixture.definitionId);
-  auto targetResult = BindingVerifier::verifySingleFunction(
-      localInput, zc::mv(targetCandidate.get<BindingMetadataCandidate>()));
+  auto targetResult =
+      BindingVerifier::verify(localInput, zc::mv(targetCandidate.get<BindingMetadataCandidate>()));
   ZC_EXPECT(requireIdentityInvariant(targetResult).kind() ==
             identity::IdentityInvariantKind::ForeignContext);
 
-  auto rangeCandidate =
-      DependencyFreeBindingBuilder::buildSingleFunction(localInput, *localSource.diagnostics);
+  auto rangeCandidate = BindingBuilder::build(localInput, *localSource.diagnostics);
   ZC_REQUIRE(rangeCandidate.is<BindingMetadataCandidate>());
   auto alternateSnapshot =
       identity::ImmutableSourceSnapshot::from(alternateSource(), zc::heapArray("x"_zcb));
@@ -705,13 +692,12 @@ ZC_TEST("BindingVerifier.RejectsForeignSurfaceAndScopeIdentities") {
       rangeCandidate.get<BindingMetadataCandidate>().definitions[0].source = zc::mv(span);
     }
   }
-  auto rangeResult = BindingVerifier::verifySingleFunction(
-      localInput, zc::mv(rangeCandidate.get<BindingMetadataCandidate>()));
+  auto rangeResult =
+      BindingVerifier::verify(localInput, zc::mv(rangeCandidate.get<BindingMetadataCandidate>()));
   ZC_EXPECT(requireIdentityInvariant(rangeResult).kind() ==
             identity::IdentityInvariantKind::InvalidSourceRange);
 
-  auto boundedCandidate =
-      DependencyFreeBindingBuilder::buildSingleFunction(localInput, *localSource.diagnostics);
+  auto boundedCandidate = BindingBuilder::build(localInput, *localSource.diagnostics);
   ZC_REQUIRE(boundedCandidate.is<BindingMetadataCandidate>());
   auto oversizedSnapshot = identity::ImmutableSourceSnapshot::from(
       source(),
@@ -724,13 +710,12 @@ ZC_TEST("BindingVerifier.RejectsForeignSurfaceAndScopeIdentities") {
       boundedCandidate.get<BindingMetadataCandidate>().definitions[0].source = zc::mv(span);
     }
   }
-  auto boundedResult = BindingVerifier::verifySingleFunction(
-      localInput, zc::mv(boundedCandidate.get<BindingMetadataCandidate>()));
+  auto boundedResult =
+      BindingVerifier::verify(localInput, zc::mv(boundedCandidate.get<BindingMetadataCandidate>()));
   ZC_EXPECT(requireIdentityInvariant(boundedResult).kind() ==
             identity::IdentityInvariantKind::InvalidSourceRange);
 
-  auto scopeCandidate =
-      DependencyFreeBindingBuilder::buildSingleFunction(localInput, *localSource.diagnostics);
+  auto scopeCandidate = BindingBuilder::build(localInput, *localSource.diagnostics);
   ZC_REQUIRE(scopeCandidate.is<BindingMetadataCandidate>());
   auto& scopes = scopeCandidate.get<BindingMetadataCandidate>();
   auto& foreignScopes = foreignCandidate.get<BindingMetadataCandidate>();
@@ -744,7 +729,7 @@ ZC_TEST("BindingVerifier.RejectsForeignSurfaceAndScopeIdentities") {
     scopes.nodeScopes[index].scope = foreignScopes.nodeScopes[index].scope;
   }
   scopes.definitions[0].declaringScope = foreignScopes.definitions[0].declaringScope;
-  auto scopeResult = BindingVerifier::verifySingleFunction(localInput, zc::mv(scopes));
+  auto scopeResult = BindingVerifier::verify(localInput, zc::mv(scopes));
   ZC_EXPECT(requireIdentityInvariant(scopeResult).kind() ==
             identity::IdentityInvariantKind::ForeignContext);
 }
@@ -769,15 +754,14 @@ ZC_TEST("BindingVerifier.PublishesSourceRejectionAndPrioritizesInvariants") {
   };
   zc::Vector<diagnostics::DiagID> sourceDiagnosticIds;
   rejectedSource.diagnostics->addConsumer(zc::heap<SourceDiagnosticCapture>(sourceDiagnosticIds));
-  auto rejectedCandidate =
-      DependencyFreeBindingBuilder::buildSingleFunction(rejectedInput, *rejectedSource.diagnostics);
+  auto rejectedCandidate = BindingBuilder::build(rejectedInput, *rejectedSource.diagnostics);
   ZC_REQUIRE(rejectedCandidate.is<BindingMetadataCandidate>());
   ZC_REQUIRE(sourceDiagnosticIds.size() == 1);
   ZC_EXPECT(sourceDiagnosticIds[0] == diagnostics::DiagID::UndefinedIdentifier);
   ZC_EXPECT(rejectedSource.diagnostics->errorCount() == 1);
   ZC_REQUIRE(rejectedCandidate.get<BindingMetadataCandidate>().sourceFailures.size() == 1);
   ZC_REQUIRE(rejectedCandidate.get<BindingMetadataCandidate>().nodeBindings.size() == 1);
-  auto rejected = BindingVerifier::verifySingleFunction(
+  auto rejected = BindingVerifier::verify(
       rejectedInput, zc::mv(rejectedCandidate.get<BindingMetadataCandidate>()));
   ZC_REQUIRE(rejected.is<SourceRejected>());
   ZC_REQUIRE(rejected.get<SourceRejected>().failures().size() == 1);
@@ -791,11 +775,10 @@ ZC_TEST("BindingVerifier.PublishesSourceRejectionAndPrioritizesInvariants") {
   auto precedenceInputResult = verify(precedenceFixture);
   ZC_REQUIRE(precedenceInputResult.is<VerifiedBindingInput>());
   auto precedenceInput = zc::mv(precedenceInputResult.get<VerifiedBindingInput>());
-  auto precedenceCandidate = DependencyFreeBindingBuilder::buildSingleFunction(
-      precedenceInput, *precedenceSource.diagnostics);
+  auto precedenceCandidate = BindingBuilder::build(precedenceInput, *precedenceSource.diagnostics);
   ZC_REQUIRE(precedenceCandidate.is<BindingMetadataCandidate>());
   precedenceCandidate.get<BindingMetadataCandidate>().scopes[2].kind = ScopeKind::Loop;
-  auto precedence = BindingVerifier::verifySingleFunction(
+  auto precedence = BindingVerifier::verify(
       precedenceInput, zc::mv(precedenceCandidate.get<BindingMetadataCandidate>()));
   ZC_EXPECT(requireBinderInvariant(precedence).kind == BinderInvariantKind::MalformedScopeGraph);
 }

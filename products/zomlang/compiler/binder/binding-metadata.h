@@ -76,7 +76,7 @@ private:
   ScopeId(identity::ModuleId module, uint32_t index) noexcept;
   identity::ModuleId moduleValue;
   uint32_t indexValue;
-  friend class DependencyFreeBindingBuilder;
+  friend class BindingBuilder;
   friend class BindingVerifier;
 };
 
@@ -135,7 +135,7 @@ private:
   BindingNameKey(Namespace nameSpace, identity::SemanticIdentifier&& name) noexcept;
   Namespace namespaceValue;
   identity::SemanticIdentifier nameValue;
-  friend class DependencyFreeBindingBuilder;
+  friend class BindingBuilder;
   friend class BindingVerifier;
 };
 
@@ -277,7 +277,7 @@ public:
 private:
   explicit ExportSurfaceRevision(const identity::Sha256Digest& digest) noexcept;
   identity::Sha256Digest value;
-  friend class DependencyFreeBindingBuilder;
+  friend class BindingBuilder;
   friend class BindingVerifier;
 };
 

@@ -689,12 +689,12 @@ zc::ArrayPtr<const ExportSurfaceEntry> VerifiedExportSurface::exports() const {
   return impl->candidate.exports.asPtr();
 }
 
-BindingCandidateResult DependencyFreeBindingBuilder::buildSingleFunction(
-    const VerifiedBindingInput& input, diagnostics::DiagnosticEngine& diagnostics) {
-  return buildSingleFunctionCandidate(input, diagnostics);
+BindingCandidateResult BindingBuilder::build(const VerifiedBindingInput& input,
+                                             diagnostics::DiagnosticEngine& diagnostics) {
+  return buildCandidate(input, diagnostics);
 }
 
-BindingCandidateResult DependencyFreeBindingBuilder::buildSingleFunctionCandidate(
+BindingCandidateResult BindingBuilder::buildCandidate(
     const VerifiedBindingInput& input, zc::Maybe<diagnostics::DiagnosticEngine&> diagnostics) {
   const auto definitions = input.definitions().definitions();
   if (definitions.size() != 1 || definitions[0].kind != identity::DefinitionKind::Function ||
@@ -889,9 +889,9 @@ BindingCandidateResult DependencyFreeBindingBuilder::buildSingleFunctionCandidat
   return builderFailure(input, BinderInvariantKind::InvalidBindingFact);
 }
 
-BindingVerificationResult BindingVerifier::verifySingleFunction(
-    const VerifiedBindingInput& input, BindingMetadataCandidate&& candidate) {
-  auto expectedResult = DependencyFreeBindingBuilder::buildSingleFunctionCandidate(input, zc::none);
+BindingVerificationResult BindingVerifier::verify(const VerifiedBindingInput& input,
+                                                  BindingMetadataCandidate&& candidate) {
+  auto expectedResult = BindingBuilder::buildCandidate(input, zc::none);
   if (!expectedResult.is<BindingMetadataCandidate>()) {
     return rejectBinderInvariant(zc::mv(expectedResult.get<BinderInvariantFact>()));
   }
