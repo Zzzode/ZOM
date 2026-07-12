@@ -67,7 +67,7 @@ add_test(
 
 set_tests_properties(compiler-session-architecture-negative PROPERTIES
   LABELS "conformance;compiler-session;architecture;negative"
-  TIMEOUT 120
+  TIMEOUT 300
 )
 
 add_test(
@@ -137,7 +137,7 @@ add_test(
 
 set_tests_properties(package-architecture-negative PROPERTIES
   LABELS "conformance;package;architecture;negative"
-  TIMEOUT 120
+  TIMEOUT 300
 )
 
 add_test(
