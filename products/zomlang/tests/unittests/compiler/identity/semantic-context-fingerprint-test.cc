@@ -71,15 +71,14 @@ Sha256Digest repeatedDigest(uint8_t byte) {
 PackageKey localPackage(zc::StringPtr name) {
   zc::Vector<CanonicalPathSegment> segments;
   auto path = CanonicalWorkspaceRelativePath::from(0, zc::mv(segments));
-  return PackageKey::from(
-      CanonicalPackageSource::localPath(zc::mv(path)), requirePackageName(name), requireVersion(),
-      emptyFeatures());
+  return PackageKey::from(CanonicalPackageSource::localPath(zc::mv(path)), requirePackageName(name),
+                          requireVersion(), emptyFeatures());
 }
 
 PackageDependencyEdgeKey packageEdge() {
-  auto value = PackageDependencyEdgeKey::from(
-      localPackage("a"_zc), requireDependencyAlias("dep"_zc), DependencyDomain::Target,
-      localPackage("b"_zc));
+  auto value =
+      PackageDependencyEdgeKey::from(localPackage("a"_zc), requireDependencyAlias("dep"_zc),
+                                     DependencyDomain::Target, localPackage("b"_zc));
   ZC_IF_SOME(admitted, value) { return zc::mv(admitted); }
   ZC_FAIL_REQUIRE("valid package edge was rejected");
 }
@@ -99,12 +98,9 @@ SemanticIdentityRegistrySet requireRegistrySet(SemanticContextFactory& factory,
 
 CanonicalTargetSpecificationKey targetSpec() {
   auto value = CanonicalTargetSpecificationKey::from(
-      requireScalar<TargetComponentName>("x"_zc),
-      requireScalar<TargetComponentName>("v"_zc),
-      requireScalar<TargetComponentName>("o"_zc),
-      requireScalar<TargetComponentName>("e"_zc),
-      requireScalar<TargetComponentName>("a"_zc), 64, Endianness::Little,
-      emptyTargetFeatures());
+      requireScalar<TargetComponentName>("x"_zc), requireScalar<TargetComponentName>("v"_zc),
+      requireScalar<TargetComponentName>("o"_zc), requireScalar<TargetComponentName>("e"_zc),
+      requireScalar<TargetComponentName>("a"_zc), 64, Endianness::Little, emptyTargetFeatures());
   ZC_IF_SOME(admitted, value) { return zc::mv(admitted); }
   ZC_FAIL_REQUIRE("invalid target specification test input");
 }
@@ -145,9 +141,9 @@ zc::Maybe<SemanticContextFingerprint> fingerprint(
   zc::Vector<CrateDependencyEdgeKey> crateEdges;
   zc::Vector<SourceContentIdentity> sourceContents;
   zc::Vector<ModuleKey> modules;
-  return SemanticContextFingerprint::compute(packages.asPtr(), packageEdges.asPtr(),
-                                             crates.asPtr(), crateEdges.asPtr(),
-                                             sourceContents.asPtr(), modules.asPtr());
+  return SemanticContextFingerprint::compute(packages.asPtr(), packageEdges.asPtr(), crates.asPtr(),
+                                             crateEdges.asPtr(), sourceContents.asPtr(),
+                                             modules.asPtr());
 }
 
 zc::Maybe<SemanticContextFingerprint> fingerprintWithSources(
@@ -157,9 +153,9 @@ zc::Maybe<SemanticContextFingerprint> fingerprintWithSources(
   zc::Vector<CrateKey> crates;
   zc::Vector<CrateDependencyEdgeKey> crateEdges;
   zc::Vector<ModuleKey> modules;
-  return SemanticContextFingerprint::compute(packages.asPtr(), packageEdges.asPtr(),
-                                             crates.asPtr(), crateEdges.asPtr(),
-                                             sourceContents.asPtr(), modules.asPtr());
+  return SemanticContextFingerprint::compute(packages.asPtr(), packageEdges.asPtr(), crates.asPtr(),
+                                             crateEdges.asPtr(), sourceContents.asPtr(),
+                                             modules.asPtr());
 }
 
 void expectFingerprint(zc::Maybe<SemanticContextFingerprint>& result, zc::StringPtr expected) {
@@ -177,8 +173,7 @@ ZC_TEST("Semantic context fingerprint passes the empty codec fixture") {
   zc::Vector<PackageKey> packages;
   zc::Vector<PackageDependencyEdgeKey> packageEdges;
   auto result = fingerprint(packages, packageEdges);
-  expectFingerprint(result,
-                    "aa36edfdf536f061cd028efd3cfe5003474aee9aa3ab39f294d3b42a95eaae5e"_zc);
+  expectFingerprint(result, "aa36edfdf536f061cd028efd3cfe5003474aee9aa3ab39f294d3b42a95eaae5e"_zc);
 }
 
 ZC_TEST("Semantic context fingerprint passes the sorted package graph fixture") {
@@ -188,8 +183,7 @@ ZC_TEST("Semantic context fingerprint passes the sorted package graph fixture") 
   zc::Vector<PackageDependencyEdgeKey> packageEdges;
   packageEdges.add(packageEdge());
   auto result = fingerprint(packages, packageEdges);
-  expectFingerprint(result,
-                    "20d2a8ab26a6a17066de900f472dab2e6222c949c6b01da507753822bc116eac"_zc);
+  expectFingerprint(result, "20d2a8ab26a6a17066de900f472dab2e6222c949c6b01da507753822bc116eac"_zc);
 
   zc::Vector<PackageKey> permutedPackages;
   permutedPackages.add(localPackage("a"_zc));
@@ -233,8 +227,7 @@ ZC_TEST("Semantic context fingerprint consumes only frozen context registries") 
   ZC_EXPECT(registries.freezeModules() == FrozenRegistryFailure::None);
   auto result =
       SemanticContextFingerprint::compute(registries, packageEdges.asPtr(), crateEdges.asPtr());
-  expectFingerprint(result,
-                    "20d2a8ab26a6a17066de900f472dab2e6222c949c6b01da507753822bc116eac"_zc);
+  expectFingerprint(result, "20d2a8ab26a6a17066de900f472dab2e6222c949c6b01da507753822bc116eac"_zc);
 }
 
 }  // namespace zomlang::compiler::identity

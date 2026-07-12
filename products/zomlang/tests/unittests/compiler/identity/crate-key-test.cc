@@ -50,20 +50,17 @@ SortedTargetFeatureSet emptyTargetFeatures() {
 PackageKey localPackage(zc::StringPtr name) {
   zc::Vector<CanonicalPathSegment> segments;
   auto path = CanonicalWorkspaceRelativePath::from(0, zc::mv(segments));
-  return PackageKey::from(
-      CanonicalPackageSource::localPath(zc::mv(path)), requireScalar<PackageName>(name),
-      requireVersion(), emptyPackageFeatures());
+  return PackageKey::from(CanonicalPackageSource::localPath(zc::mv(path)),
+                          requireScalar<PackageName>(name), requireVersion(),
+                          emptyPackageFeatures());
 }
 
 CanonicalTargetSpecificationKey targetSpec(uint32_t pointerWidth = 64,
                                            Endianness endianness = Endianness::Little) {
   auto value = CanonicalTargetSpecificationKey::from(
-      requireScalar<TargetComponentName>("x"_zc),
-      requireScalar<TargetComponentName>("v"_zc),
-      requireScalar<TargetComponentName>("o"_zc),
-      requireScalar<TargetComponentName>("e"_zc),
-      requireScalar<TargetComponentName>("a"_zc), pointerWidth, endianness,
-      emptyTargetFeatures());
+      requireScalar<TargetComponentName>("x"_zc), requireScalar<TargetComponentName>("v"_zc),
+      requireScalar<TargetComponentName>("o"_zc), requireScalar<TargetComponentName>("e"_zc),
+      requireScalar<TargetComponentName>("a"_zc), pointerWidth, endianness, emptyTargetFeatures());
   ZC_IF_SOME(admitted, value) { return zc::mv(admitted); }
   ZC_FAIL_REQUIRE("invalid target specification test input");
 }
@@ -93,9 +90,9 @@ CrateKey crate(zc::StringPtr packageName) {
 }
 
 PackageDependencyEdgeKey packageEdge() {
-  auto value = PackageDependencyEdgeKey::from(
-      localPackage("a"_zc), requireScalar<DependencyAlias>("dep"_zc),
-      DependencyDomain::Target, localPackage("b"_zc));
+  auto value =
+      PackageDependencyEdgeKey::from(localPackage("a"_zc), requireScalar<DependencyAlias>("dep"_zc),
+                                     DependencyDomain::Target, localPackage("b"_zc));
   ZC_IF_SOME(admitted, value) { return zc::mv(admitted); }
   ZC_FAIL_REQUIRE("invalid package edge test input");
 }
@@ -130,19 +127,14 @@ ZC_TEST("CrateDependencyEdgeKey preserves the complete package edge") {
 
 ZC_TEST("Crate target keys reject unknown closed values and invalid pointer widths") {
   auto invalidWidth = CanonicalTargetSpecificationKey::from(
-      requireScalar<TargetComponentName>("x"_zc),
-      requireScalar<TargetComponentName>("v"_zc),
-      requireScalar<TargetComponentName>("o"_zc),
-      requireScalar<TargetComponentName>("e"_zc),
-      requireScalar<TargetComponentName>("a"_zc), 7, Endianness::Little,
-      emptyTargetFeatures());
+      requireScalar<TargetComponentName>("x"_zc), requireScalar<TargetComponentName>("v"_zc),
+      requireScalar<TargetComponentName>("o"_zc), requireScalar<TargetComponentName>("e"_zc),
+      requireScalar<TargetComponentName>("a"_zc), 7, Endianness::Little, emptyTargetFeatures());
   ZC_EXPECT(invalidWidth == zc::none);
 
   auto invalidEndian = CanonicalTargetSpecificationKey::from(
-      requireScalar<TargetComponentName>("x"_zc),
-      requireScalar<TargetComponentName>("v"_zc),
-      requireScalar<TargetComponentName>("o"_zc),
-      requireScalar<TargetComponentName>("e"_zc),
+      requireScalar<TargetComponentName>("x"_zc), requireScalar<TargetComponentName>("v"_zc),
+      requireScalar<TargetComponentName>("o"_zc), requireScalar<TargetComponentName>("e"_zc),
       requireScalar<TargetComponentName>("a"_zc), 64, static_cast<Endianness>(0xff),
       emptyTargetFeatures());
   ZC_EXPECT(invalidEndian == zc::none);
@@ -153,8 +145,7 @@ ZC_TEST("Crate target keys reject unknown closed values and invalid pointer widt
       SemanticCompilerOptionsKey::from(2026, true, false, false), zc::mv(noOutput));
   ZC_EXPECT(invalidDomain == zc::none);
 
-  auto invalidKind = CrateKey::from(localPackage("a"_zc),
-                                    static_cast<CrateTargetKind>(0xff),
+  auto invalidKind = CrateKey::from(localPackage("a"_zc), static_cast<CrateTargetKind>(0xff),
                                     requireScalar<TargetName>("lib"_zc), targetCompilation());
   ZC_EXPECT(invalidKind == zc::none);
 }

@@ -12,11 +12,10 @@
 // See the License for the specific language governing permissions and limitations under
 // the License.
 
-#include "zomlang/compiler/identity/source-snapshot.h"
-#include "zomlang/compiler/identity/source-manager-identity-resolver.h"
-
 #include "zc/core/encoding.h"
 #include "zc/ztest/test.h"
+#include "zomlang/compiler/identity/source-manager-identity-resolver.h"
+#include "zomlang/compiler/identity/source-snapshot.h"
 
 namespace zomlang::compiler::identity {
 namespace {
@@ -51,19 +50,16 @@ SortedTargetFeatureSet emptyTargetFeatures() {
 PackageKey localPackage(zc::StringPtr name) {
   zc::Vector<CanonicalPathSegment> segments;
   auto path = CanonicalWorkspaceRelativePath::from(0, zc::mv(segments));
-  return PackageKey::from(
-      CanonicalPackageSource::localPath(zc::mv(path)), requireScalar<PackageName>(name),
-      requireVersion(), emptyPackageFeatures());
+  return PackageKey::from(CanonicalPackageSource::localPath(zc::mv(path)),
+                          requireScalar<PackageName>(name), requireVersion(),
+                          emptyPackageFeatures());
 }
 
 CanonicalTargetSpecificationKey targetSpec() {
   auto value = CanonicalTargetSpecificationKey::from(
-      requireScalar<TargetComponentName>("x"_zc),
-      requireScalar<TargetComponentName>("v"_zc),
-      requireScalar<TargetComponentName>("o"_zc),
-      requireScalar<TargetComponentName>("e"_zc),
-      requireScalar<TargetComponentName>("a"_zc), 64, Endianness::Little,
-      emptyTargetFeatures());
+      requireScalar<TargetComponentName>("x"_zc), requireScalar<TargetComponentName>("v"_zc),
+      requireScalar<TargetComponentName>("o"_zc), requireScalar<TargetComponentName>("e"_zc),
+      requireScalar<TargetComponentName>("a"_zc), 64, Endianness::Little, emptyTargetFeatures());
   ZC_IF_SOME(admitted, value) { return zc::mv(admitted); }
   ZC_FAIL_REQUIRE("invalid target specification test input");
 }
@@ -121,8 +117,8 @@ ModuleKey module() {
 }
 
 ImmutableSourceSnapshot snapshot(SourceFileKey&& key, size_t byteCount = 1) {
-  auto value = ImmutableSourceSnapshot::from(
-      zc::mv(key), zc::heapArray<uint8_t>(byteCount, uint8_t{0}));
+  auto value =
+      ImmutableSourceSnapshot::from(zc::mv(key), zc::heapArray<uint8_t>(byteCount, uint8_t{0}));
   ZC_IF_SOME(admitted, value) { return zc::mv(admitted); }
   ZC_FAIL_REQUIRE("valid immutable source snapshot was rejected");
 }
@@ -165,8 +161,8 @@ ZC_TEST("SourceSpan and ModuleKey reject malformed ancestry") {
 
   zc::Vector<ModulePathSegment> emptyPath;
   zc::Maybe<SourceSpan> noAnchor;
-  ZC_EXPECT(ModuleKey::from(crate("a"_zc), zc::mv(emptyPath), source(),
-                            zc::mv(noAnchor)) == zc::none);
+  ZC_EXPECT(ModuleKey::from(crate("a"_zc), zc::mv(emptyPath), source(), zc::mv(noAnchor)) ==
+            zc::none);
 
   zc::Vector<ModulePathSegment> wrongCratePath;
   wrongCratePath.add(requireScalar<ModulePathSegment>("m"_zc));
@@ -178,14 +174,13 @@ ZC_TEST("SourceSpan and ModuleKey reject malformed ancestry") {
   auto wrongAnchor = wrongSnapshot.span(0, 1);
   zc::Vector<ModulePathSegment> path;
   path.add(requireScalar<ModulePathSegment>("m"_zc));
-  ZC_EXPECT(ModuleKey::from(crate("a"_zc), zc::mv(path), source(),
-                            zc::mv(wrongAnchor)) == zc::none);
+  ZC_EXPECT(ModuleKey::from(crate("a"_zc), zc::mv(path), source(), zc::mv(wrongAnchor)) ==
+            zc::none);
 }
 
 ZC_TEST("Source manager resolver binds only byte-identical immutable snapshots") {
   SemanticContextFactory factory;
-  auto created = SemanticIdentityRegistrySet::create(
-      factory, ZC_ASSERT_NONNULL(factory.issue()));
+  auto created = SemanticIdentityRegistrySet::create(factory, ZC_ASSERT_NONNULL(factory.issue()));
   ZC_IF_SOME(registries, created) {
     ZC_REQUIRE(registries.collectPackage(localPackage("a"_zc)) == FrozenRegistryFailure::None);
     ZC_REQUIRE(registries.freezePackages() == FrozenRegistryFailure::None);

@@ -90,8 +90,8 @@ public:
 private:
   IdentityInvariant(IdentityInvariantKind kind, IdentityAllocationPhase phase,
                     zc::Maybe<zc::Array<uint8_t>>&& structuralInputKey,
-                    zc::Maybe<UnbrandedSourceRange>&& diagnosticRange,
-                    IdentityApiSite apiSite, uint32_t inputTraversalOrdinal) noexcept;
+                    zc::Maybe<UnbrandedSourceRange>&& diagnosticRange, IdentityApiSite apiSite,
+                    uint32_t inputTraversalOrdinal) noexcept;
 
   IdentityInvariantKind kindValue;
   IdentityAllocationPhase phaseValue;

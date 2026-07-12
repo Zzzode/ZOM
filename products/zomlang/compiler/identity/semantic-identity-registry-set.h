@@ -30,22 +30,21 @@ public:
   ZC_DISALLOW_COPY(SemanticIdentityRegistrySet);
 
   /// \brief Claims the sole RFC 0011 registry family for one factory-issued context.
-  ZC_NODISCARD static zc::Maybe<SemanticIdentityRegistrySet> create(
-      SemanticContextFactory& factory, SemanticContextBrand context);
+  ZC_NODISCARD static zc::Maybe<SemanticIdentityRegistrySet> create(SemanticContextFactory& factory,
+                                                                    SemanticContextBrand context);
 
   ZC_NODISCARD FrozenRegistryFailure collectPackage(PackageKey&& key,
-                                                     uint32_t traversalOrdinal = 0);
+                                                    uint32_t traversalOrdinal = 0);
   ZC_NODISCARD FrozenRegistryFailure freezePackages();
   ZC_NODISCARD FrozenRegistryFailure collectCrate(CrateKey&& key, uint32_t traversalOrdinal = 0);
   ZC_NODISCARD FrozenRegistryFailure freezeCrates();
   ZC_NODISCARD FrozenRegistryFailure collectSourceFile(ImmutableSourceSnapshot&& snapshot,
-                                                        uint32_t traversalOrdinal = 0);
+                                                       uint32_t traversalOrdinal = 0);
   ZC_NODISCARD FrozenRegistryFailure freezeSourceFiles();
-  ZC_NODISCARD FrozenRegistryFailure collectModule(ModuleKey&& key,
-                                                    uint32_t traversalOrdinal = 0);
+  ZC_NODISCARD FrozenRegistryFailure collectModule(ModuleKey&& key, uint32_t traversalOrdinal = 0);
   ZC_NODISCARD FrozenRegistryFailure freezeModules();
   ZC_NODISCARD FrozenRegistryFailure collectDefinition(DefinitionKey&& key,
-                                                        uint32_t traversalOrdinal = 0);
+                                                       uint32_t traversalOrdinal = 0);
   ZC_NODISCARD FrozenRegistryFailure freezeDefinitions();
   ZC_NODISCARD FrozenRegistryFailure collectImpl(ImplKey&& key, uint32_t traversalOrdinal = 0);
   ZC_NODISCARD FrozenRegistryFailure freezeImpls();
@@ -56,8 +55,7 @@ public:
   ZC_NODISCARD const ModuleRegistry& modules() const noexcept;
   ZC_NODISCARD const DefinitionRegistry& definitions() const noexcept;
   ZC_NODISCARD const ImplRegistry& impls() const noexcept;
-  ZC_NODISCARD zc::Maybe<const ImmutableSourceSnapshot&> sourceSnapshot(
-      SourceFileId source) const;
+  ZC_NODISCARD zc::Maybe<const ImmutableSourceSnapshot&> sourceSnapshot(SourceFileId source) const;
   ZC_NODISCARD zc::Maybe<SourceSpan> sourceSpan(SourceFileId source, uint64_t byteStart,
                                                 uint64_t byteEnd) const;
   ZC_NODISCARD zc::ArrayPtr<const ImmutableSourceSnapshot> sourceSnapshots() const noexcept;
@@ -66,9 +64,10 @@ public:
 
 private:
   explicit SemanticIdentityRegistrySet(SemanticContextBrand context) noexcept;
-  FrozenRegistryFailure recordFailure(
-      FrozenRegistryFailure failure, IdentityAllocationPhase phase, IdentityApiSite apiSite,
-      zc::Maybe<zc::Array<uint8_t>>&& structuralInputKey, uint32_t traversalOrdinal);
+  FrozenRegistryFailure recordFailure(FrozenRegistryFailure failure, IdentityAllocationPhase phase,
+                                      IdentityApiSite apiSite,
+                                      zc::Maybe<zc::Array<uint8_t>>&& structuralInputKey,
+                                      uint32_t traversalOrdinal);
 
   SemanticContextBrand owner;
   PackageRegistry packageRegistry;

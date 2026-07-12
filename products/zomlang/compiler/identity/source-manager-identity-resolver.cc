@@ -18,8 +18,7 @@
 namespace zomlang::compiler::identity {
 namespace {
 
-bool sameBytes(zc::ArrayPtr<const uint8_t> expected,
-               zc::ArrayPtr<const zc::byte> actual) noexcept {
+bool sameBytes(zc::ArrayPtr<const uint8_t> expected, zc::ArrayPtr<const zc::byte> actual) noexcept {
   if (expected.size() != actual.size()) { return false; }
   for (size_t index = 0; index < expected.size(); ++index) {
     if (expected[index] != static_cast<uint8_t>(actual[index])) { return false; }
@@ -97,7 +96,7 @@ zc::Maybe<source::SourceLoc> SourceManagerIdentityResolver::resolve(
       continue;
     }
     return impl->sourceManager.getLocForOffset(binding.bufferValue,
-                                                static_cast<unsigned>(range.byteStart()));
+                                               static_cast<unsigned>(range.byteStart()));
   }
   return zc::none;
 }

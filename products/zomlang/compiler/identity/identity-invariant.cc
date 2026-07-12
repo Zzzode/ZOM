@@ -20,7 +20,8 @@ namespace zomlang::compiler::identity {
 namespace {
 
 bool validPhase(IdentityAllocationPhase value) noexcept {
-  return value >= IdentityAllocationPhase::Context && value <= IdentityAllocationPhase::SemanticType;
+  return value >= IdentityAllocationPhase::Context &&
+         value <= IdentityAllocationPhase::SemanticType;
 }
 
 bool validKind(IdentityInvariantKind value) noexcept {
@@ -53,8 +54,8 @@ int compareOptionalBytes(zc::Maybe<zc::ArrayPtr<const uint8_t>> left,
   ZC_UNREACHABLE
 }
 
-zc::Maybe<zc::ArrayPtr<const uint8_t>> encodeRange(
-    zc::Maybe<const UnbrandedSourceRange&> range, zc::Array<uint8_t>& storage) {
+zc::Maybe<zc::ArrayPtr<const uint8_t>> encodeRange(zc::Maybe<const UnbrandedSourceRange&> range,
+                                                   zc::Array<uint8_t>& storage) {
   ZC_IF_SOME(value, range) {
     storage = value.encode();
     zc::ArrayPtr<const uint8_t> bytes = storage.asPtr();
@@ -124,9 +125,7 @@ zc::Maybe<const UnbrandedSourceRange&> IdentityInvariant::diagnosticRange() cons
   return zc::none;
 }
 IdentityApiSite IdentityInvariant::apiSite() const noexcept { return apiSiteValue; }
-uint32_t IdentityInvariant::inputTraversalOrdinal() const noexcept {
-  return traversalOrdinalValue;
-}
+uint32_t IdentityInvariant::inputTraversalOrdinal() const noexcept { return traversalOrdinalValue; }
 
 struct IdentityInvariantCollector::Impl final {
   zc::Vector<IdentityInvariant> values;

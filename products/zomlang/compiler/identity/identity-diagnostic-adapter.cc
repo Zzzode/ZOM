@@ -35,9 +35,9 @@ bool sameRange(zc::Maybe<const UnbrandedSourceRange&> left,
 
 }  // namespace
 
-IdentityDiagnosticGroup::IdentityDiagnosticGroup(
-    diagnostics::DiagID diagnosticId, zc::Maybe<UnbrandedSourceRange>&& diagnosticRange,
-    uint64_t occurrenceCount) noexcept
+IdentityDiagnosticGroup::IdentityDiagnosticGroup(diagnostics::DiagID diagnosticId,
+                                                 zc::Maybe<UnbrandedSourceRange>&& diagnosticRange,
+                                                 uint64_t occurrenceCount) noexcept
     : idValue(diagnosticId), rangeValue(zc::mv(diagnosticRange)), countValue(occurrenceCount) {}
 
 diagnostics::DiagID IdentityDiagnosticGroup::diagnosticId() const noexcept { return idValue; }
@@ -106,8 +106,8 @@ void emitIdentityDiagnosticGroups(
         ZC_IF_SOME(resolved, resolver.resolve(range)) { location = resolved; }
       }
     }
-    engine.emit(diagnostics::Diagnostic(group.diagnosticId(), location,
-                                        zc::str(group.occurrenceCount())));
+    engine.emit(
+        diagnostics::Diagnostic(group.diagnosticId(), location, zc::str(group.occurrenceCount())));
   }
 }
 

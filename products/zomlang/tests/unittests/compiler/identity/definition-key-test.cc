@@ -13,10 +13,10 @@
 // the License.
 
 #include "zomlang/compiler/identity/definition-key.h"
-#include "zomlang/compiler/identity/source-snapshot.h"
 
 #include "zc/core/encoding.h"
 #include "zc/ztest/test.h"
+#include "zomlang/compiler/identity/source-snapshot.h"
 
 namespace zomlang::compiler::identity {
 namespace {
@@ -59,19 +59,16 @@ Sha256Digest repeatedDigest(uint8_t byte) {
 PackageKey package() {
   zc::Vector<CanonicalPathSegment> segments;
   auto path = CanonicalWorkspaceRelativePath::from(0, zc::mv(segments));
-  return PackageKey::from(
-      CanonicalPackageSource::localPath(zc::mv(path)), requireScalar<PackageName>("a"_zc),
-      requireVersion(), emptyPackageFeatures());
+  return PackageKey::from(CanonicalPackageSource::localPath(zc::mv(path)),
+                          requireScalar<PackageName>("a"_zc), requireVersion(),
+                          emptyPackageFeatures());
 }
 
 CanonicalTargetSpecificationKey targetSpec() {
   auto value = CanonicalTargetSpecificationKey::from(
-      requireScalar<TargetComponentName>("x"_zc),
-      requireScalar<TargetComponentName>("v"_zc),
-      requireScalar<TargetComponentName>("o"_zc),
-      requireScalar<TargetComponentName>("e"_zc),
-      requireScalar<TargetComponentName>("a"_zc), 64, Endianness::Little,
-      emptyTargetFeatures());
+      requireScalar<TargetComponentName>("x"_zc), requireScalar<TargetComponentName>("v"_zc),
+      requireScalar<TargetComponentName>("o"_zc), requireScalar<TargetComponentName>("e"_zc),
+      requireScalar<TargetComponentName>("a"_zc), 64, Endianness::Little, emptyTargetFeatures());
   ZC_IF_SOME(admitted, value) { return zc::mv(admitted); }
   ZC_FAIL_REQUIRE("invalid target specification test input");
 }
@@ -114,8 +111,8 @@ ModuleKey module(uint8_t contentByte = 0x22) {
 }
 
 SourceSpan span(uint8_t contentByte = 0x22) {
-  auto snapshot = ImmutableSourceSnapshot::from(source(contentByte),
-                                                zc::heapArray<uint8_t>(1, uint8_t{0}));
+  auto snapshot =
+      ImmutableSourceSnapshot::from(source(contentByte), zc::heapArray<uint8_t>(1, uint8_t{0}));
   ZC_IF_SOME(admittedSnapshot, snapshot) {
     auto value = admittedSnapshot.span(0, 1);
     ZC_IF_SOME(admitted, value) { return zc::mv(admitted); }
@@ -128,8 +125,8 @@ DefinitionNameKey declaredName() {
 }
 
 DefinitionPathSegment functionSegment(uint8_t contentByte = 0x22) {
-  auto value = DefinitionPathSegment::from(DefinitionKind::Function, declaredName(),
-                                           span(contentByte), 0);
+  auto value =
+      DefinitionPathSegment::from(DefinitionKind::Function, declaredName(), span(contentByte), 0);
   ZC_IF_SOME(admitted, value) { return zc::mv(admitted); }
   ZC_FAIL_REQUIRE("invalid definition segment test input");
 }
@@ -154,9 +151,8 @@ ZC_TEST("DefinitionKey passes the fixed structural definition codec vector") {
   ZC_IF_SOME(key, value) {
     auto encoded = key.encode();
     ZC_EXPECT(encoded.size() == 692);
-    expectDigest(
-        encoded.asPtr(),
-        "3f9ea55ca0ce091341b59f3cd44b64962e9cf26f4c4e9c19815011a702432ca4"_zc);
+    expectDigest(encoded.asPtr(),
+                 "3f9ea55ca0ce091341b59f3cd44b64962e9cf26f4c4e9c19815011a702432ca4"_zc);
     matched = true;
   }
   ZC_EXPECT(matched);
@@ -169,9 +165,8 @@ ZC_TEST("ImplKey passes the fixed structural implementation codec vector") {
   ZC_IF_SOME(key, value) {
     auto encoded = key.encode();
     ZC_EXPECT(encoded.size() == 680);
-    expectDigest(
-        encoded.asPtr(),
-        "e71d00f88b11b9ee6bd0a5f2196f9c7506fbe28f341733df1e788cc192d23882"_zc);
+    expectDigest(encoded.asPtr(),
+                 "e71d00f88b11b9ee6bd0a5f2196f9c7506fbe28f341733df1e788cc192d23882"_zc);
     matched = true;
   }
   ZC_EXPECT(matched);

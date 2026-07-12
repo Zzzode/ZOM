@@ -36,20 +36,16 @@ void expectUrl(zc::StringPtr input, zc::StringPtr expected) {
   ZC_EXPECT(matched);
 }
 
-void expectRejected(zc::StringPtr input) {
-  ZC_EXPECT(CanonicalUrl::fromSource(input) == zc::none);
-}
+void expectRejected(zc::StringPtr input) { ZC_EXPECT(CanonicalUrl::fromSource(input) == zc::none); }
 
 }  // namespace
 
 ZC_TEST("CanonicalUrl passes every normative RFC 0011 vector") {
-  expectUrl("HTTPS://EXAMPLE.COM:443/a/./b/../c/%7euser"_zc,
-            "https://example.com/a/c/~user"_zc);
+  expectUrl("HTTPS://EXAMPLE.COM:443/a/./b/../c/%7euser"_zc, "https://example.com/a/c/~user"_zc);
   expectUrl("ssh://example.com:22/repo/"_zc, "ssh://example.com/repo/"_zc);
   expectUrl("https://example.com/a/%2e/b"_zc, "https://example.com/a/b"_zc);
   expectUrl("https://example.com/a/%2e%2e/b"_zc, "https://example.com/b"_zc);
-  expectUrl("https://example.com/a/%252e%252e/b"_zc,
-            "https://example.com/a/%252e%252e/b"_zc);
+  expectUrl("https://example.com/a/%252e%252e/b"_zc, "https://example.com/a/%252e%252e/b"_zc);
   expectRejected("https://example.com/index?access_token=x"_zc);
   expectRejected("https://user@example.com/index"_zc);
   expectRejected("https://example.com/index#mirror"_zc);
@@ -59,14 +55,10 @@ ZC_TEST("CanonicalUrl normalizes hosts and validates ports") {
   expectUrl("https://EXAMPLE.COM./"_zc, "https://example.com/"_zc);
   expectUrl("https://127.000.0.1:8443"_zc, "https://127.0.0.1:8443/"_zc);
   expectUrl("ssh://example.com:2222/repo"_zc, "ssh://example.com:2222/repo"_zc);
-  expectUrl("https://[2001:0DB8:0:0:0:0:0:1]:443/a"_zc,
-            "https://[2001:db8::1]/a"_zc);
-  expectUrl("ssh://[2001:db8:0:1:0:0:0:1]:22/repo"_zc,
-            "ssh://[2001:db8:0:1::1]/repo"_zc);
-  expectUrl("https://[2001:0:0:1:0:0:1:1]/"_zc,
-            "https://[2001::1:0:0:1:1]/"_zc);
-  expectUrl("https://[2001:db8:0:1:2:3:4:5]/"_zc,
-            "https://[2001:db8:0:1:2:3:4:5]/"_zc);
+  expectUrl("https://[2001:0DB8:0:0:0:0:0:1]:443/a"_zc, "https://[2001:db8::1]/a"_zc);
+  expectUrl("ssh://[2001:db8:0:1:0:0:0:1]:22/repo"_zc, "ssh://[2001:db8:0:1::1]/repo"_zc);
+  expectUrl("https://[2001:0:0:1:0:0:1:1]/"_zc, "https://[2001::1:0:0:1:1]/"_zc);
+  expectUrl("https://[2001:db8:0:1:2:3:4:5]/"_zc, "https://[2001:db8:0:1:2:3:4:5]/"_zc);
   expectUrl("https://[::ffff:192.0.2.1]/"_zc, "https://[::ffff:c000:201]/"_zc);
 
   expectRejected("https://example.com:0/"_zc);

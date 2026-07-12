@@ -12,11 +12,10 @@
 // See the License for the specific language governing permissions and limitations under
 // the License.
 
-#include "zomlang/compiler/identity/semantic-version.h"
-
 #include "zc/core/vector.h"
 #include "zc/ztest/test.h"
 #include "zomlang/compiler/identity/canonical-encoder.h"
+#include "zomlang/compiler/identity/semantic-version.h"
 #include "zomlang/compiler/identity/sorted-feature-set.h"
 
 namespace zomlang::compiler::identity {
@@ -112,9 +111,7 @@ ZC_TEST("SortedFeatureSet encodes its canonical sequence") {
   bool encoded = false;
   ZC_IF_SOME(value, admitted) {
     const uint8_t expected[] = {
-        0, 0, 0, 0, 0, 0, 0, 2,
-        0, 0, 0, 0, 0, 0, 0, 1, 'a',
-        0, 0, 0, 0, 0, 0, 0, 2, 'b', 'b',
+        0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 1, 'a', 0, 0, 0, 0, 0, 0, 0, 2, 'b', 'b',
     };
     CanonicalEncoder encoder;
     value.encode(encoder);

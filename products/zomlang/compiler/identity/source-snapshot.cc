@@ -19,8 +19,8 @@
 namespace zomlang::compiler::identity {
 
 UnbrandedSourceRange::UnbrandedSourceRange(SourceFileKey&& source,
-                                           const Sha256Digest& contentDigest,
-                                           uint64_t byteStart, uint64_t byteEnd) noexcept
+                                           const Sha256Digest& contentDigest, uint64_t byteStart,
+                                           uint64_t byteEnd) noexcept
     : sourceValue(zc::mv(source)),
       digestValue(contentDigest),
       startValue(byteStart),
@@ -72,8 +72,8 @@ zc::ArrayPtr<const uint8_t> ImmutableSourceSnapshot::bytes() const noexcept {
   return bytesValue.asPtr();
 }
 
-zc::Maybe<UnbrandedSourceRange> ImmutableSourceSnapshot::unbrandedRange(
-    uint64_t byteStart, uint64_t byteEnd) const {
+zc::Maybe<UnbrandedSourceRange> ImmutableSourceSnapshot::unbrandedRange(uint64_t byteStart,
+                                                                        uint64_t byteEnd) const {
   if (byteStart > byteEnd || byteEnd > bytesValue.size()) { return zc::none; }
   return UnbrandedSourceRange(sourceValue.clone(), digestValue, byteStart, byteEnd);
 }

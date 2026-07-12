@@ -33,8 +33,8 @@ public:
 protected:
   IdentityDiagnosticLocationResolver() noexcept = default;
   IdentityDiagnosticLocationResolver(IdentityDiagnosticLocationResolver&&) noexcept = default;
-  IdentityDiagnosticLocationResolver& operator=(
-      IdentityDiagnosticLocationResolver&&) noexcept = default;
+  IdentityDiagnosticLocationResolver& operator=(IdentityDiagnosticLocationResolver&&) noexcept =
+      default;
 };
 
 /// \brief One registered diagnostic group without a fabricated source location.

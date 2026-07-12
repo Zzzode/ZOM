@@ -11,10 +11,9 @@
 // See the License for the specific language governing permissions and limitations under
 // the License.
 
-#include "zomlang/compiler/identity/identity-diagnostic-adapter.h"
-
 #include "zc/ztest/test.h"
 #include "zomlang/compiler/diagnostics/diagnostic-info.h"
+#include "zomlang/compiler/identity/identity-diagnostic-adapter.h"
 #include "zomlang/compiler/source/manager.h"
 
 namespace zomlang::compiler::identity {
@@ -24,8 +23,8 @@ IdentityInvariant fact(IdentityInvariantKind kind, IdentityAllocationPhase phase
                        uint8_t structuralByte, IdentityApiSite apiSite, uint32_t ordinal) {
   zc::Maybe<zc::Array<uint8_t>> structural = zc::heapArray<uint8_t>({structuralByte});
   zc::Maybe<UnbrandedSourceRange> noRange;
-  auto value = IdentityInvariant::from(kind, phase, zc::mv(structural), zc::mv(noRange),
-                                       apiSite, ordinal);
+  auto value =
+      IdentityInvariant::from(kind, phase, zc::mv(structural), zc::mv(noRange), apiSite, ordinal);
   ZC_IF_SOME(admitted, value) { return zc::mv(admitted); }
   ZC_FAIL_REQUIRE("valid identity invariant test input was rejected");
 }
@@ -43,22 +42,20 @@ uint8_t structuralByte(const IdentityInvariant& invariant) {
 ZC_TEST("Identity invariant rejects unknown closed values") {
   zc::Maybe<zc::Array<uint8_t>> noStructural;
   zc::Maybe<UnbrandedSourceRange> noRange;
-  ZC_EXPECT(IdentityInvariant::from(
-                static_cast<IdentityInvariantKind>(0xff), IdentityAllocationPhase::Context,
-                zc::mv(noStructural), zc::mv(noRange), IdentityApiSite::ContextBrandIssue, 0) ==
-            zc::none);
+  ZC_EXPECT(IdentityInvariant::from(static_cast<IdentityInvariantKind>(0xff),
+                                    IdentityAllocationPhase::Context, zc::mv(noStructural),
+                                    zc::mv(noRange), IdentityApiSite::ContextBrandIssue,
+                                    0) == zc::none);
 }
 
 ZC_TEST("Identity invariant collector sorts complete structured facts") {
   IdentityInvariantCollector collector;
-  collector.add(fact(IdentityInvariantKind::DuplicateCanonicalKey,
-                     IdentityAllocationPhase::Package, 0x02,
-                     IdentityApiSite::RegistryMutation, 2));
-  collector.add(fact(IdentityInvariantKind::DuplicateCanonicalKey,
-                     IdentityAllocationPhase::Package, 0x01,
-                     IdentityApiSite::RegistryMutation, 1));
-  collector.add(fact(IdentityInvariantKind::InvalidHandle, IdentityAllocationPhase::Registry,
-                     0xff, IdentityApiSite::HandleLookup, 0));
+  collector.add(fact(IdentityInvariantKind::DuplicateCanonicalKey, IdentityAllocationPhase::Package,
+                     0x02, IdentityApiSite::RegistryMutation, 2));
+  collector.add(fact(IdentityInvariantKind::DuplicateCanonicalKey, IdentityAllocationPhase::Package,
+                     0x01, IdentityApiSite::RegistryMutation, 1));
+  collector.add(fact(IdentityInvariantKind::InvalidHandle, IdentityAllocationPhase::Registry, 0xff,
+                     IdentityApiSite::HandleLookup, 0));
   collector.sort();
 
   auto facts = collector.facts();
@@ -80,14 +77,12 @@ ZC_TEST("Identity diagnostics use registered fatal entries and preserve full fac
   ZC_EXPECT(DiagnosticTraits<DiagID::IdentityInvalidHandle>::argCount == 1);
 
   IdentityInvariantCollector collector;
-  collector.add(fact(IdentityInvariantKind::DuplicateCanonicalKey,
-                     IdentityAllocationPhase::Package, 0x01,
-                     IdentityApiSite::PackageFreeze, 0));
-  collector.add(fact(IdentityInvariantKind::DuplicateCanonicalKey,
-                     IdentityAllocationPhase::Package, 0x01,
-                     IdentityApiSite::PackageFreeze, 1));
-  collector.add(fact(IdentityInvariantKind::InvalidHandle, IdentityAllocationPhase::Registry,
-                     0x01, IdentityApiSite::HandleLookup, 2));
+  collector.add(fact(IdentityInvariantKind::DuplicateCanonicalKey, IdentityAllocationPhase::Package,
+                     0x01, IdentityApiSite::PackageFreeze, 0));
+  collector.add(fact(IdentityInvariantKind::DuplicateCanonicalKey, IdentityAllocationPhase::Package,
+                     0x01, IdentityApiSite::PackageFreeze, 1));
+  collector.add(fact(IdentityInvariantKind::InvalidHandle, IdentityAllocationPhase::Registry, 0x01,
+                     IdentityApiSite::HandleLookup, 2));
   collector.sort();
   auto groups = groupIdentityInvariants(collector.facts());
   ZC_REQUIRE(collector.facts().size() == 3);

@@ -75,8 +75,9 @@ ZC_TEST("Identity dump preserves exact empty sections and final LF") {
   freezeRemainingEmptyRegistries(registries);
   auto dump = dumpIdentityRegistries(registries);
   ZC_IF_SOME(text, dump) {
-    ZC_EXPECT(text == "zom.identity.v0\n[packages]\n[crates]\n[sources]\n[modules]\n"
-                      "[definitions]\n[impls]\n"_zc);
+    ZC_EXPECT(text ==
+              "zom.identity.v0\n[packages]\n[crates]\n[sources]\n[modules]\n"
+              "[definitions]\n[impls]\n"_zc);
   }
 }
 
