@@ -271,6 +271,7 @@ def main():
             tmp.write(sys.stdin.read())
             input_file = tmp.name
 
+    checker = None
     try:
         checker = FileChecker(
             args.check_file, input_file, args.strict_whitespace, args.check_prefix
@@ -284,6 +285,13 @@ def main():
 
     except FileCheckError as e:
         print(f"FileCheck error: {e}", file=sys.stderr)
+        if checker is not None and checker.input_content:
+            normalized = checker.normalize_json(checker.input_content)
+            excerpt = normalized[:4096]
+            print("FileCheck input:", file=sys.stderr)
+            print(excerpt, file=sys.stderr)
+            if len(normalized) > len(excerpt):
+                print("[input truncated]", file=sys.stderr)
         sys.exit(1)
     except Exception as e:
         print(f"Unexpected error: {e}", file=sys.stderr)

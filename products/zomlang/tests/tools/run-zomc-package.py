@@ -7,9 +7,27 @@ import argparse
 import os
 from pathlib import Path
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
+
+
+def run_compiler(command: list[str]) -> int:
+    completed = subprocess.run(command, check=False)
+    if completed.returncode >= 0:
+        return completed.returncode
+
+    signal_number = -completed.returncode
+    try:
+        signal_name = signal.Signals(signal_number).name
+    except ValueError:
+        signal_name = "UNKNOWN"
+    print(
+        f"zomc terminated by signal {signal_name} ({signal_number})",
+        file=sys.stderr,
+    )
+    return 128 + signal_number
 
 
 def main() -> int:
@@ -20,7 +38,7 @@ def main() -> int:
 
     arguments = list(parsed.args)
     if not arguments or arguments[0] != "compile":
-        return subprocess.run([parsed.zomc, *arguments], check=False).returncode
+        return run_compiler([parsed.zomc, *arguments])
 
     source_indexes = [
         index
@@ -30,7 +48,7 @@ def main() -> int:
         and (index == 1 or arguments[index - 1] not in {"--output", "-o"})
     ]
     if len(source_indexes) != 1:
-        return subprocess.run([parsed.zomc, *arguments], check=False).returncode
+        return run_compiler([parsed.zomc, *arguments])
 
     source_index = source_indexes[0]
     source_argument = Path(arguments.pop(source_index))
@@ -58,7 +76,7 @@ def main() -> int:
             "conformance",
             "--lib",
         ]
-        return subprocess.run(command, check=False).returncode
+        return run_compiler(command)
 
 
 if __name__ == "__main__":
