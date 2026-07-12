@@ -63,8 +63,19 @@ zc::Array<uint8_t> encodePackageKey(const identity::PackageKey& key) { return ke
 bool containsPackage(zc::ArrayPtr<const LockPackageRecord> packages,
                      const identity::PackageKey& key) {
   const auto encoded = key.encode();
-  for (const auto& package : packages) {
-    if (package.key().encode().asPtr() == encoded.asPtr()) { return true; }
+  size_t first = 0;
+  size_t count = packages.size();
+  while (count != 0) {
+    const size_t step = count / 2;
+    const size_t middle = first + step;
+    const auto candidate = packages[middle].key().encode();
+    if (candidate.asPtr() < encoded.asPtr()) {
+      first = middle + 1;
+      count -= step + 1;
+      continue;
+    }
+    if (candidate.asPtr() == encoded.asPtr()) { return true; }
+    count = step;
   }
   return false;
 }

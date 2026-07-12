@@ -14,8 +14,10 @@
 
 #include "zc/core/filesystem.h"
 #include "zc/ztest/test.h"
+#include "zomlang/compiler/driver/package/lockfile.h"
 #include "zomlang/compiler/driver/package/package-resolver.h"
 #include "zomlang/compiler/identity/canonical-encoder.h"
+#include "zomlang/compiler/identity/sha256.h"
 
 namespace zomlang::compiler::driver::package {
 namespace {
@@ -23,6 +25,9 @@ namespace {
 constexpr uint32_t kPackageCount = 10'000;
 constexpr uint32_t kReleaseCount = 4;
 constexpr uint32_t kEdgeCount = 50'000;
+constexpr uint8_t kFixtureDigest[32] = {
+    0x25, 0x64, 0xb5, 0x35, 0x11, 0xaa, 0x1b, 0xf6, 0x93, 0x65, 0x4f, 0x02, 0x72, 0xa7, 0xd5, 0x62,
+    0x01, 0x21, 0x1d, 0xdc, 0xd6, 0x59, 0x68, 0x85, 0x95, 0x88, 0x58, 0xec, 0xfe, 0x54, 0x32, 0xed};
 
 uint32_t readUint32(zc::ArrayPtr<const zc::byte> bytes, size_t offset) {
   return (static_cast<uint32_t>(bytes[offset]) << 24U) |
@@ -149,6 +154,9 @@ zc::Vector<zc::Vector<uint32_t>> loadEdges() {
   ZC_REQUIRE(fixturePath.size() > 1 && fixturePath[0] == '/');
   auto file = filesystem->getRoot().openFile(zc::Path::parse(fixturePath.slice(1)));
   const auto bytes = file->readAllBytes();
+  auto digest = identity::sha256(bytes.asPtr());
+  ZC_REQUIRE(digest != zc::none);
+  ZC_IF_SOME(value, digest) { ZC_EXPECT(value.bytes() == zc::arrayPtr(kFixtureDigest)); }
   ZC_REQUIRE(bytes.size() == 8 + static_cast<size_t>(kEdgeCount) * 8);
   ZC_REQUIRE(readUint32(bytes, 0) == kPackageCount);
   ZC_REQUIRE(readUint32(bytes, 4) == kEdgeCount);
@@ -189,6 +197,44 @@ ZC_TEST("PackageResolverPerformance.ResolvesCanonicalTenThousandPackageGraph") {
   ZC_EXPECT(metrics.decisions <= 40'000);
   ZC_EXPECT(metrics.selectedPackages == kPackageCount);
   ZC_EXPECT(metrics.emittedEdges == kEdgeCount);
+
+  const auto& resolution = result.get<PackageResolution>();
+  zc::Vector<LockPackageRecord> lockPackages(resolution.packages().size());
+  for (const auto& package : resolution.packages()) {
+    auto packageKey = package.packageKey();
+    auto digest = identity::sha256(packageKey.encode());
+    ZC_REQUIRE(digest != zc::none);
+    ZC_IF_SOME(value, digest) {
+      zc::Maybe<ArchiveFormat> noArchiveFormat;
+      zc::Maybe<identity::Sha256Digest> noArchiveDigest;
+      zc::Maybe<SigningKeyId> noSigningKey;
+      auto record =
+          LockPackageRecord::from(package.packageKey(), value, value, zc::mv(noArchiveFormat),
+                                  zc::mv(noArchiveDigest), zc::mv(noSigningKey));
+      ZC_REQUIRE(record != zc::none);
+      ZC_IF_SOME(recordValue, record) { lockPackages.add(zc::mv(recordValue)); }
+    }
+  }
+  zc::Vector<identity::PackageDependencyEdgeKey> lockEdges(resolution.edges().size());
+  for (const auto& edge : resolution.edges()) { lockEdges.add(edge.clone()); }
+
+  releases.clear();
+  roots.clear();
+  outgoing.clear();
+
+  auto locked = VerifiedLockGraph::from(zc::mv(lockPackages), zc::mv(lockEdges));
+  ZC_REQUIRE(locked.is<VerifiedLockGraph>());
+  auto current = locked.get<VerifiedLockGraph>().clone();
+  zc::Vector<identity::RegistryIdentity> noRegistries;
+  LockReplayMetrics replayMetrics;
+  auto replayed = LockedReplayVerifier::replay(locked.get<VerifiedLockGraph>(), current,
+                                               noRegistries, replayMetrics);
+  ZC_REQUIRE(replayed.is<VerifiedLockGraph>());
+  ZC_EXPECT(replayMetrics.solverInvocations == 0);
+  ZC_EXPECT(replayMetrics.packageVisits == kPackageCount);
+  ZC_EXPECT(replayMetrics.edgeVisits == kEdgeCount);
+  ZC_EXPECT(replayed.get<VerifiedLockGraph>().encode().asPtr() ==
+            locked.get<VerifiedLockGraph>().encode().asPtr());
 }
 
 }  // namespace zomlang::compiler::driver::package
