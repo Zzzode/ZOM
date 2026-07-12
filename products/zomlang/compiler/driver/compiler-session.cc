@@ -29,6 +29,7 @@
 #include "zomlang/compiler/diagnostics/diagnostic-engine.h"
 #include "zomlang/compiler/diagnostics/diagnostic-ids.h"
 #include "zomlang/compiler/driver/package/package-diagnostic.h"
+#include "zomlang/compiler/identity/canonical-encoder.h"
 #include "zomlang/compiler/identity/identity-diagnostic-adapter.h"
 #include "zomlang/compiler/source/manager.h"
 #include "zomlang/compiler/symbol/symbol-table.h"
@@ -41,6 +42,52 @@ namespace {
 
 bool sameBytes(zc::ArrayPtr<const uint8_t> left, zc::ArrayPtr<const uint8_t> right) {
   return left == right;
+}
+
+zc::Array<uint8_t> targetSelectionBytes(const package::RegisteredTargetSelection& selection) {
+  identity::CanonicalEncoder encoder;
+  selection.encode(encoder);
+  return encoder.finish();
+}
+
+bool sameTargetSelection(const package::RegisteredTargetSelection& left,
+                         const package::RegisteredTargetSelection& right) {
+  return sameBytes(targetSelectionBytes(left), targetSelectionBytes(right));
+}
+
+bool graphContainsPackage(const package::PackageResolution& graph,
+                          const identity::PackageKey& package) {
+  const auto expected = package.encode();
+  for (const auto& selected : graph.packages()) {
+    if (sameBytes(expected, selected.packageKey().encode())) { return true; }
+  }
+  return false;
+}
+
+bool graphAndSnapshotsMatch(const package::PackageResolution& graph,
+                            zc::ArrayPtr<const package::ResolvedPackageSourceSnapshot> snapshots) {
+  if (graph.packages().size() == 0 || snapshots.size() == 0) { return false; }
+  for (const auto& selected : graph.packages()) {
+    bool found = false;
+    for (const auto& snapshot : snapshots) {
+      if (sameBytes(selected.base().encode(), snapshot.package().encode())) {
+        found = true;
+        break;
+      }
+    }
+    if (!found) { return false; }
+  }
+  for (const auto& snapshot : snapshots) {
+    bool found = false;
+    for (const auto& selected : graph.packages()) {
+      if (sameBytes(selected.base().encode(), snapshot.package().encode())) {
+        found = true;
+        break;
+      }
+    }
+    if (!found) { return false; }
+  }
+  return true;
 }
 
 zc::Maybe<identity::SourceOriginKey> sourceOriginFor(
@@ -74,6 +121,65 @@ void emitIdentityFailures(identity::SemanticIdentityRegistrySet& registries,
 }
 
 }  // namespace
+// ================================================================================
+// VerifiedPackageSessionInput
+
+struct VerifiedPackageSessionInput::Impl final {
+  Impl(package::VerifiedPackageCompilationRequest&& request,
+       irgen::VerifiedTargetSelection&& hostTarget, irgen::VerifiedTargetSelection&& target,
+       package::PackageResolution&& graph,
+       zc::Vector<package::ResolvedPackageSourceSnapshot>&& snapshots) noexcept
+      : request(zc::mv(request)),
+        hostTarget(zc::mv(hostTarget)),
+        target(zc::mv(target)),
+        graph(zc::mv(graph)),
+        snapshots(zc::mv(snapshots)) {}
+
+  package::VerifiedPackageCompilationRequest request;
+  irgen::VerifiedTargetSelection hostTarget;
+  irgen::VerifiedTargetSelection target;
+  package::PackageResolution graph;
+  zc::Vector<package::ResolvedPackageSourceSnapshot> snapshots;
+};
+
+VerifiedPackageSessionInput::VerifiedPackageSessionInput(
+    package::VerifiedPackageCompilationRequest&& request,
+    irgen::VerifiedTargetSelection&& hostTarget, irgen::VerifiedTargetSelection&& target,
+    package::PackageResolution&& graph,
+    zc::Vector<package::ResolvedPackageSourceSnapshot>&& snapshots)
+    : impl(zc::heap<Impl>(zc::mv(request), zc::mv(hostTarget), zc::mv(target), zc::mv(graph),
+                          zc::mv(snapshots))) {}
+
+VerifiedPackageSessionInput::~VerifiedPackageSessionInput() noexcept(false) = default;
+VerifiedPackageSessionInput::VerifiedPackageSessionInput(VerifiedPackageSessionInput&&) noexcept =
+    default;
+VerifiedPackageSessionInput& VerifiedPackageSessionInput::operator=(
+    VerifiedPackageSessionInput&&) noexcept = default;
+
+zc::Maybe<VerifiedPackageSessionInput> VerifiedPackageSessionInput::from(
+    package::VerifiedPackageCompilationRequest&& request,
+    irgen::VerifiedTargetSelection&& hostTarget, irgen::VerifiedTargetSelection&& target,
+    package::PackageResolution&& graph,
+    zc::Vector<package::ResolvedPackageSourceSnapshot>&& snapshots) {
+  const auto& requestHost = request.hostTarget();
+  const auto& requestTarget = request.target();
+  const auto& verifiedHost = hostTarget.packageSelection();
+  const auto& verifiedTarget = target.packageSelection();
+  if (requestHost.registryRevision() != verifiedHost.registryRevision() ||
+      requestTarget.registryRevision() != verifiedTarget.registryRevision() ||
+      verifiedHost.registryRevision() != verifiedTarget.registryRevision() ||
+      !sameTargetSelection(requestHost, verifiedHost) ||
+      !sameTargetSelection(requestTarget, verifiedTarget) ||
+      !graphAndSnapshotsMatch(graph, snapshots)) {
+    return zc::none;
+  }
+  for (const auto& root : request.roots()) {
+    if (!graphContainsPackage(graph, root.packageKey())) { return zc::none; }
+  }
+  return VerifiedPackageSessionInput(zc::mv(request), zc::mv(hostTarget), zc::mv(target),
+                                     zc::mv(graph), zc::mv(snapshots));
+}
+
 // ================================================================================
 // CompilerSession::Impl
 
@@ -948,81 +1054,23 @@ zc::Maybe<const type::SemanticTypeStore&> CompilerSession::getSemanticTypeStore(
   return *impl->semanticTypeStore;
 }
 
-bool CompilerSession::installPackageCompilationRequest(
-    package::VerifiedPackageCompilationRequest&& request) {
-  if (impl->packageRequest != zc::none) { return false; }
-  auto finalized = request.finalizeRoots(zc::none);
-  ZC_IF_SOME(roots, finalized) { impl->finalizedRoots = zc::mv(roots); }
-  impl->packageRequest = zc::mv(request);
-  return true;
-}
-
-zc::Maybe<const package::VerifiedPackageCompilationRequest&>
-CompilerSession::getPackageCompilationRequest() const noexcept {
-  ZC_IF_SOME(request, impl->packageRequest) { return request; }
-  return zc::none;
-}
-
-zc::ArrayPtr<const package::FinalizedCompilationRoot>
-CompilerSession::getFinalizedCompilationRoots() const noexcept {
-  return impl->finalizedRoots;
-}
-
-bool CompilerSession::installVerifiedTargetSelections(irgen::VerifiedTargetSelection&& host,
-                                                      irgen::VerifiedTargetSelection&& target) {
-  if (impl->verifiedHostTarget != zc::none || impl->verifiedTarget != zc::none ||
-      host.packageSelection().registryRevision() != target.packageSelection().registryRevision()) {
+bool CompilerSession::installVerifiedPackageInput(VerifiedPackageSessionInput&& input) {
+  if (input.impl.get() == nullptr || impl->packageRequest != zc::none ||
+      impl->verifiedHostTarget != zc::none || impl->verifiedTarget != zc::none ||
+      impl->packageGraph != zc::none || impl->packageSnapshots.size() != 0 ||
+      impl->sourceManager->getManagedBufferIds().size() != 0) {
     return false;
   }
-  impl->verifiedHostTarget = zc::mv(host);
-  impl->verifiedTarget = zc::mv(target);
-  return true;
-}
 
-zc::Maybe<const irgen::VerifiedTargetSelection&> CompilerSession::getVerifiedHostTarget()
-    const noexcept {
-  ZC_IF_SOME(target, impl->verifiedHostTarget) { return target; }
-  return zc::none;
-}
-
-zc::Maybe<const irgen::VerifiedTargetSelection&> CompilerSession::getVerifiedTarget()
-    const noexcept {
-  ZC_IF_SOME(target, impl->verifiedTarget) { return target; }
-  return zc::none;
-}
-
-bool CompilerSession::installResolvedPackageGraph(
-    package::PackageResolution&& graph,
-    zc::Vector<package::ResolvedPackageSourceSnapshot>&& snapshots) {
-  if (impl->packageGraph != zc::none || graph.packages().size() == 0 || snapshots.size() == 0) {
-    return false;
-  }
-  for (const auto& selected : graph.packages()) {
-    bool found = false;
-    for (const auto& snapshot : snapshots) {
-      if (selected.base().encode().asPtr() == snapshot.package().encode().asPtr()) {
-        found = true;
-        break;
-      }
-    }
-    if (!found) { return false; }
-  }
-  for (const auto& snapshot : snapshots) {
-    bool found = false;
-    for (const auto& selected : graph.packages()) {
-      if (selected.base().encode().asPtr() == snapshot.package().encode().asPtr()) {
-        found = true;
-        break;
-      }
-    }
-    if (!found) { return false; }
-  }
+  zc::Vector<package::FinalizedCompilationRoot> finalizedRoots;
+  auto finalized = input.impl->request.finalizeRoots(zc::none);
+  ZC_IF_SOME(roots, finalized) { finalizedRoots = zc::mv(roots); }
 
   bool identityFailure = false;
   ZC_IF_SOME(registries, impl->identityRegistries) {
     zc::Vector<zc::Array<uint8_t>> collectedPackageKeys;
     uint32_t traversalOrdinal = 0;
-    for (const auto& selected : graph.packages()) {
+    for (const auto& selected : input.impl->graph.packages()) {
       auto packageKey = selected.packageKey();
       auto encoded = packageKey.encode();
       bool alreadyCollected = false;
@@ -1045,9 +1093,36 @@ bool CompilerSession::installResolvedPackageGraph(
   else { identityFailure = true; }
   if (identityFailure) { return false; }
 
-  impl->packageGraph = zc::mv(graph);
-  impl->packageSnapshots = zc::mv(snapshots);
+  impl->finalizedRoots = zc::mv(finalizedRoots);
+  impl->packageRequest = zc::mv(input.impl->request);
+  impl->verifiedHostTarget = zc::mv(input.impl->hostTarget);
+  impl->verifiedTarget = zc::mv(input.impl->target);
+  impl->packageGraph = zc::mv(input.impl->graph);
+  impl->packageSnapshots = zc::mv(input.impl->snapshots);
   return true;
+}
+
+zc::Maybe<const package::VerifiedPackageCompilationRequest&>
+CompilerSession::getPackageCompilationRequest() const noexcept {
+  ZC_IF_SOME(request, impl->packageRequest) { return request; }
+  return zc::none;
+}
+
+zc::ArrayPtr<const package::FinalizedCompilationRoot>
+CompilerSession::getFinalizedCompilationRoots() const noexcept {
+  return impl->finalizedRoots;
+}
+
+zc::Maybe<const irgen::VerifiedTargetSelection&> CompilerSession::getVerifiedHostTarget()
+    const noexcept {
+  ZC_IF_SOME(target, impl->verifiedHostTarget) { return target; }
+  return zc::none;
+}
+
+zc::Maybe<const irgen::VerifiedTargetSelection&> CompilerSession::getVerifiedTarget()
+    const noexcept {
+  ZC_IF_SOME(target, impl->verifiedTarget) { return target; }
+  return zc::none;
 }
 
 zc::Maybe<const package::PackageResolution&> CompilerSession::getResolvedPackageGraph()

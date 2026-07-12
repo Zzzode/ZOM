@@ -584,16 +584,19 @@ public:
     ZC_UNREACHABLE;
   }
 
-  bool installPackageGraph(const zc::Filesystem& filesystem, zc::PathPtr workspaceRoot,
-                           const package::NormalizedPackageCompilationRequest& normalizedRequest,
-                           const package::VerifiedPackageCompilationRequest& request,
-                           const package::NormalizedWorkspace& workspace) {
+  zc::Maybe<driver::VerifiedPackageSessionInput> resolvePackageInput(
+      const zc::Filesystem& filesystem, zc::PathPtr workspaceRoot,
+      const package::NormalizedPackageCompilationRequest& normalizedRequest,
+      package::VerifiedPackageCompilationRequest&& request,
+      irgen::VerifiedTargetSelection&& verifiedHostTarget,
+      irgen::VerifiedTargetSelection&& verifiedTarget,
+      const package::NormalizedWorkspace& workspace) {
     zc::Vector<package::ResolverRelease> releases;
     zc::Vector<package::LocalPackageRecord> localRecords;
     zc::Vector<package::ResolvedPackageSourceSnapshot> snapshots;
     auto snapshotParent =
         filesystem.getRoot().tryOpenSubdir(workspaceRoot.parent(), zc::WriteMode::MODIFY);
-    if (snapshotParent == zc::none) { return false; }
+    if (snapshotParent == zc::none) { return zc::none; }
     zc::Own<const zc::Directory> snapshotParentDirectory;
     ZC_IF_SOME(directory, snapshotParent) { snapshotParentDirectory = zc::mv(directory); }
     package::ReplacementFreshSourceDirectoryFactory factory(*snapshotParentDirectory);
@@ -637,11 +640,11 @@ public:
       zc::Vector<identity::CanonicalPathSegment> noSegments;
       if (!admitPackage(workspace.root(),
                         identity::CanonicalWorkspaceRelativePath::from(0, zc::mv(noSegments)))) {
-        return false;
+        return zc::none;
       }
     }
     for (const auto& member : workspace.members()) {
-      if (!admitPackage(member.manifest(), member.packageDirectory().clone())) { return false; }
+      if (!admitPackage(member.manifest(), member.packageDirectory().clone())) { return zc::none; }
     }
 
     const auto workspaceDirectory =
@@ -652,7 +655,7 @@ public:
          workspaceDirectory->exists(zc::Path("Zom.lock"_zc)));
     if (useLocked) {
       auto locked = package::LockfileCodec::read(*workspaceDirectory);
-      if (locked.is<package::LockIssue>()) { return false; }
+      if (locked.is<package::LockIssue>()) { return zc::none; }
       const auto& lockedGraph = locked.get<package::VerifiedLockGraph>();
       bool foundRoot = false;
       for (const auto& lockedPackage : lockedGraph.packages()) {
@@ -663,24 +666,24 @@ public:
           }
           if (record.manifestDigest() != lockedPackage.manifestDigest() ||
               record.sourceTreeDigest() != lockedPackage.sourceTreeDigest()) {
-            return false;
+            return zc::none;
           }
           foundCurrent = true;
           break;
         }
-        if (!foundCurrent) { return false; }
+        if (!foundCurrent) { return zc::none; }
         if (lockedPackage.key().encode().asPtr() ==
             request.roots()[0].packageKey().encode().asPtr()) {
           foundRoot = true;
         }
       }
-      if (!foundRoot) { return false; }
+      if (!foundRoot) { return zc::none; }
       auto currentInput = lockedGraph.clone();
       zc::Vector<identity::RegistryIdentity> noRegistries;
       package::LockReplayMetrics metrics;
       auto replayed =
           package::LockedReplayVerifier::replay(lockedGraph, currentInput, noRegistries, metrics);
-      if (replayed.is<package::LockIssue>() || metrics.solverInvocations != 0) { return false; }
+      if (replayed.is<package::LockIssue>() || metrics.solverInvocations != 0) { return zc::none; }
       const auto& replayedGraph = replayed.get<package::VerifiedLockGraph>();
       zc::Vector<package::ResolvedPackageSelection> selections;
       for (const auto& lockedPackage : replayedGraph.packages()) {
@@ -700,7 +703,9 @@ public:
           }
         }
       }
-      return session->installResolvedPackageGraph(zc::mv(graph), zc::mv(selectedSnapshots));
+      return driver::VerifiedPackageSessionInput::from(zc::mv(request), zc::mv(verifiedHostTarget),
+                                                       zc::mv(verifiedTarget), zc::mv(graph),
+                                                       zc::mv(selectedSnapshots));
     }
 
     bool includeDevelopment = false;
@@ -714,7 +719,7 @@ public:
                                           packageFeatures(request.roots()[0].packageKey()), false,
                                           includeDevelopment));
     auto resolved = package::PackageResolver::resolve(roots, releases);
-    if (resolved.is<package::PackageResolverFailure>()) { return false; }
+    if (resolved.is<package::PackageResolverFailure>()) { return zc::none; }
     auto& graph = resolved.get<package::PackageResolution>();
 
     zc::Vector<package::LockPackageRecord> lockPackages;
@@ -729,21 +734,21 @@ public:
             selected.packageKey(), record.manifestDigest(), record.sourceTreeDigest(),
             zc::mv(noArchiveFormat), zc::mv(noArchiveDigest), zc::mv(noSigningKey));
         ZC_IF_SOME(value, lockPackage) { lockPackages.add(zc::mv(value)); }
-        else { return false; }
+        else { return zc::none; }
         found = true;
         break;
       }
-      if (!found) { return false; }
+      if (!found) { return zc::none; }
     }
     zc::Vector<identity::PackageDependencyEdgeKey> lockEdges(graph.edges().size());
     for (const auto& edge : graph.edges()) { lockEdges.add(edge.clone()); }
     auto currentLock = package::VerifiedLockGraph::from(zc::mv(lockPackages), zc::mv(lockEdges));
-    if (currentLock.is<package::LockIssue>()) { return false; }
+    if (currentLock.is<package::LockIssue>()) { return zc::none; }
     if (normalizedRequest.lockMode() == package::PackageLockMode::Update) {
       const auto canonical =
           package::LockfileCodec::write(currentLock.get<package::VerifiedLockGraph>());
       if (package::AtomicLockfileWriter::write(*workspaceDirectory, canonical) != zc::none) {
-        return false;
+        return zc::none;
       }
     }
     zc::Vector<package::ResolvedPackageSourceSnapshot> selectedSnapshots;
@@ -755,7 +760,9 @@ public:
         }
       }
     }
-    return session->installResolvedPackageGraph(zc::mv(graph), zc::mv(selectedSnapshots));
+    return driver::VerifiedPackageSessionInput::from(zc::mv(request), zc::mv(verifiedHostTarget),
+                                                     zc::mv(verifiedTarget), zc::mv(graph),
+                                                     zc::mv(selectedSnapshots));
   }
 
   zc::MainBuilder::Validity emitOutput() {
@@ -822,21 +829,17 @@ public:
         return true;
       }
       auto& verifiedRequest = verified.get<package::VerifiedPackageCompilationRequest>();
-      if (!session->installPackageCompilationRequest(zc::mv(verifiedRequest))) {
-        context.error("Failed to install the verified package compilation request."_zc);
+      auto packageInput = resolvePackageInput(
+          *filesystem, workspace.rootPath, normalizedRequest, zc::mv(verifiedRequest),
+          zc::mv(verifiedHostTarget.get<irgen::VerifiedTargetSelection>()),
+          zc::mv(verifiedTarget.get<irgen::VerifiedTargetSelection>()), workspace.workspace);
+      if (packageInput == zc::none) {
+        context.error("Failed to resolve and verify the atomic package session input."_zc);
         return true;
       }
-      if (!session->installVerifiedTargetSelections(
-              zc::mv(verifiedHostTarget.get<irgen::VerifiedTargetSelection>()),
-              zc::mv(verifiedTarget.get<irgen::VerifiedTargetSelection>()))) {
-        context.error("Failed to install verified backend target selections."_zc);
-        return true;
-      }
-      auto installedRequest = session->getPackageCompilationRequest();
-      ZC_IF_SOME(request, installedRequest) {
-        if (!installPackageGraph(*filesystem, workspace.rootPath, normalizedRequest, request,
-                                 workspace.workspace)) {
-          context.error("Failed to install the resolved package graph and source snapshots."_zc);
+      ZC_IF_SOME(input, packageInput) {
+        if (!session->installVerifiedPackageInput(zc::mv(input))) {
+          context.error("Failed to install the atomic package session input."_zc);
           return true;
         }
       }

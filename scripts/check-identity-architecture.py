@@ -339,7 +339,7 @@ def check_semantic_type_store_architecture(
 
     check_ordered_function_markers(
         session,
-        "CompilerSession::installResolvedPackageGraph(",
+        "CompilerSession::installVerifiedPackageInput(",
         ("freezePackages()",),
         "package registry installation",
         errors,
@@ -477,6 +477,20 @@ def run_self_test() -> int:
                 )
             },
             "missing semantic type store owner marker",
+        )
+    )
+
+    cases.append(
+        (
+            "missing atomic package installation",
+            copy.deepcopy(baseline),
+            {
+                COMPILER_SESSION: session_text.replace(
+                    "CompilerSession::installVerifiedPackageInput(",
+                    "CompilerSession::missingVerifiedPackageInput(",
+                )
+            },
+            "missing package registry installation function body",
         )
     )
 

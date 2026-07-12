@@ -70,7 +70,7 @@ identity::PackageKey packageKey(zc::StringPtr name) {
                                     scalar<identity::ResolvedVersion>("1.0.0"_zc), emptyFeatures());
 }
 
-identity::CanonicalTargetSpecificationKey projection() {
+identity::CanonicalTargetSpecificationKey projection(zc::StringPtr abiProfile = "zom-v1"_zc) {
   zc::Vector<identity::TargetFeatureName> features;
   auto sorted = identity::SortedTargetFeatureSet::from(zc::mv(features));
   ZC_REQUIRE(sorted != zc::none);
@@ -80,7 +80,7 @@ identity::CanonicalTargetSpecificationKey projection() {
         scalar<identity::TargetComponentName>("zom"_zc),
         scalar<identity::TargetComponentName>("none"_zc),
         scalar<identity::TargetComponentName>("unknown"_zc),
-        scalar<identity::TargetComponentName>("zom-v1"_zc), 64, identity::Endianness::Little,
+        scalar<identity::TargetComponentName>(abiProfile), 64, identity::Endianness::Little,
         zc::mv(values));
     ZC_IF_SOME(value, result) { return zc::mv(value); }
   }
@@ -93,17 +93,17 @@ package::RegisteredTargetProfileName profileName() {
   ZC_FAIL_REQUIRE("package-session profile name was rejected");
 }
 
-irgen::TargetRegistrySnapshot targetRegistry() {
+irgen::TargetRegistrySnapshot targetRegistry(zc::StringPtr abiProfile = "zom-v1"_zc) {
   zc::Vector<irgen::CanonicalTargetFeature> targetFeatures;
   auto targetSpec = irgen::CanonicalTargetSpec::from(
-      "x86_64-zom-none"_zc, "e-p:64:64"_zc, "generic"_zc, zc::mv(targetFeatures), "zom-v1"_zc,
+      "x86_64-zom-none"_zc, "e-p:64:64"_zc, "generic"_zc, zc::mv(targetFeatures), abiProfile,
       irgen::BackendPanicStrategy::Unwind, irgen::ObjectFormat::Elf);
   ZC_REQUIRE(targetSpec != zc::none);
   zc::Vector<identity::TargetFeatureName> semanticFeatures;
   zc::Vector<irgen::CanonicalTargetSpec> specifications;
   ZC_IF_SOME(value, targetSpec) { specifications.add(zc::mv(value)); }
   auto profile = irgen::RegisteredTargetProfileRecord::from(
-      profileName(), projection(), zc::mv(semanticFeatures), zc::mv(specifications));
+      profileName(), projection(abiProfile), zc::mv(semanticFeatures), zc::mv(specifications));
   ZC_REQUIRE(profile != zc::none);
   zc::Vector<irgen::RegisteredTargetProfileRecord> profiles;
   ZC_IF_SOME(value, profile) { profiles.add(zc::mv(value)); }
@@ -122,6 +122,12 @@ package::RegisteredTargetSelection selection(const irgen::TargetRegistrySnapshot
   ZC_FAIL_REQUIRE("package-session target selection failed");
 }
 
+irgen::VerifiedTargetSelection verifiedSelection(const irgen::TargetRegistrySnapshot& registry) {
+  auto verified = registry.verify(selection(registry));
+  ZC_REQUIRE(verified.is<irgen::VerifiedTargetSelection>());
+  return zc::mv(verified.get<irgen::VerifiedTargetSelection>());
+}
+
 identity::CanonicalRelativePath path(zc::StringPtr first, zc::StringPtr second) {
   zc::Vector<identity::CanonicalPathSegment> segments;
   segments.add(scalar<identity::CanonicalPathSegment>(first));
@@ -129,18 +135,24 @@ identity::CanonicalRelativePath path(zc::StringPtr first, zc::StringPtr second) 
   return identity::CanonicalRelativePath::from(zc::mv(segments));
 }
 
-package::VerifiedPackageCompilationRequest request(const irgen::TargetRegistrySnapshot& registry,
-                                                   bool requiresBuildScript = false) {
+package::VerifiedPackageCompilationRequest requestForPackage(
+    const irgen::TargetRegistrySnapshot& registry, zc::StringPtr packageName,
+    bool requiresBuildScript = false) {
   zc::Vector<package::VerifiedCompilationRoot> roots;
   roots.add(package::VerifiedCompilationRoot::from(
-      packageKey("app"_zc), identity::CrateTargetKind::Binary,
-      scalar<identity::TargetName>("app"_zc), 2026, requiresBuildScript,
+      packageKey(packageName), identity::CrateTargetKind::Binary,
+      scalar<identity::TargetName>(packageName), 2026, requiresBuildScript,
       path("src"_zc, "main.zom"_zc)));
   auto result = package::VerifiedPackageCompilationRequest::from(
       zc::mv(roots), selection(registry), selection(registry), package::SelectedLanguageOptions{},
       package::PackageLockMode::PreferLocked);
   ZC_IF_SOME(value, result) { return zc::mv(value); }
   ZC_FAIL_REQUIRE("package-session request was rejected");
+}
+
+package::VerifiedPackageCompilationRequest request(const irgen::TargetRegistrySnapshot& registry,
+                                                   bool requiresBuildScript = false) {
+  return requestForPackage(registry, "app"_zc, requiresBuildScript);
 }
 
 class MemoryFreshDirectory final : public package::FreshSourceDirectory {
@@ -180,6 +192,29 @@ package::DigestVerifiedSourceSnapshot snapshot(zc::StringPtr output = zc::String
   auto result = materializer.materialize(*sourceDirectory, factory);
   ZC_REQUIRE(result.is<package::DigestVerifiedSourceSnapshot>());
   return zc::mv(result.get<package::DigestVerifiedSourceSnapshot>());
+}
+
+package::PackageResolution resolution(zc::StringPtr packageName) {
+  zc::Vector<package::ResolvedPackageSelection> packages;
+  packages.add(package::ResolvedPackageSelection::from(
+      packageBase(packageName), package::FeatureActivationDomain::Target, emptyFeatures()));
+  zc::Vector<identity::PackageDependencyEdgeKey> edges;
+  return package::PackageResolution::from(zc::mv(packages), zc::mv(edges));
+}
+
+zc::Vector<package::ResolvedPackageSourceSnapshot> resolvedSnapshots(zc::StringPtr packageName) {
+  zc::Vector<package::ResolvedPackageSourceSnapshot> snapshots;
+  snapshots.add(package::ResolvedPackageSourceSnapshot::from(packageBase(packageName), snapshot()));
+  return snapshots;
+}
+
+VerifiedPackageSessionInput packageInput(const irgen::TargetRegistrySnapshot& registry,
+                                         bool requiresBuildScript = false) {
+  auto input = VerifiedPackageSessionInput::from(
+      request(registry, requiresBuildScript), verifiedSelection(registry),
+      verifiedSelection(registry), resolution("app"_zc), resolvedSnapshots("app"_zc));
+  ZC_IF_SOME(value, input) { return zc::mv(value); }
+  ZC_FAIL_REQUIRE("valid atomic package-session input was rejected");
 }
 
 package::CanonicalBuildScriptManifest contract() {
@@ -273,26 +308,52 @@ zc::Own<CompilerSession> preparedSession(const basic::LangOptions& languageOptio
   identity::SemanticContextFactory contextFactory;
   auto session = zc::heap<CompilerSession>(contextFactory, languageOptions, compilerOptions);
   auto registry = targetRegistry();
-  ZC_REQUIRE(session->installPackageCompilationRequest(request(registry, requiresBuildScript)));
-  auto host = registry.verify(selection(registry));
-  auto target = registry.verify(selection(registry));
-  ZC_REQUIRE(host.is<irgen::VerifiedTargetSelection>());
-  ZC_REQUIRE(target.is<irgen::VerifiedTargetSelection>());
-  ZC_REQUIRE(session->installVerifiedTargetSelections(
-      zc::mv(host.get<irgen::VerifiedTargetSelection>()),
-      zc::mv(target.get<irgen::VerifiedTargetSelection>())));
-  zc::Vector<package::ResolvedPackageSelection> packages;
-  packages.add(package::ResolvedPackageSelection::from(
-      packageBase("app"_zc), package::FeatureActivationDomain::Target, emptyFeatures()));
-  zc::Vector<identity::PackageDependencyEdgeKey> edges;
-  auto graph = package::PackageResolution::from(zc::mv(packages), zc::mv(edges));
-  zc::Vector<package::ResolvedPackageSourceSnapshot> snapshots;
-  snapshots.add(package::ResolvedPackageSourceSnapshot::from(packageBase("app"_zc), snapshot()));
-  ZC_REQUIRE(session->installResolvedPackageGraph(zc::mv(graph), zc::mv(snapshots)));
+  ZC_REQUIRE(session->installVerifiedPackageInput(packageInput(registry, requiresBuildScript)));
   return session;
 }
 
 }  // namespace
+
+ZC_TEST("Verified package input rejects a request root outside the resolved graph") {
+  auto registry = targetRegistry();
+  auto input = VerifiedPackageSessionInput::from(
+      request(registry), verifiedSelection(registry), verifiedSelection(registry),
+      resolution("other"_zc), resolvedSnapshots("other"_zc));
+  ZC_EXPECT(input == zc::none);
+}
+
+ZC_TEST("Verified package input rejects target selections from another registry revision") {
+  auto registry = targetRegistry();
+  auto otherRegistry = targetRegistry("zom-v2"_zc);
+  auto input = VerifiedPackageSessionInput::from(request(registry), verifiedSelection(registry),
+                                                 verifiedSelection(otherRegistry),
+                                                 resolution("app"_zc), resolvedSnapshots("app"_zc));
+  ZC_EXPECT(input == zc::none);
+}
+
+ZC_TEST("Verified package input rejects snapshots outside the resolved graph") {
+  auto registry = targetRegistry();
+  auto input = VerifiedPackageSessionInput::from(request(registry), verifiedSelection(registry),
+                                                 verifiedSelection(registry), resolution("app"_zc),
+                                                 resolvedSnapshots("other"_zc));
+  ZC_EXPECT(input == zc::none);
+}
+
+ZC_TEST("CompilerSession installs one atomic package input exactly once") {
+  basic::LangOptions languageOptions;
+  basic::CompilerOptions compilerOptions;
+  identity::SemanticContextFactory contextFactory;
+  CompilerSession session(contextFactory, languageOptions, compilerOptions);
+  auto registry = targetRegistry();
+
+  ZC_EXPECT(session.installVerifiedPackageInput(packageInput(registry)));
+  ZC_EXPECT(!session.installVerifiedPackageInput(packageInput(registry)));
+  ZC_REQUIRE(session.getIdentityRegistries() != zc::none);
+  ZC_IF_SOME(registries, session.getIdentityRegistries()) {
+    ZC_EXPECT(registries.packages().isFrozen());
+    ZC_EXPECT(registries.packages().size() == 1);
+  }
+}
 
 ZC_TEST("CompilerSession executes and freezes one exact build-plan result map") {
   basic::LangOptions languageOptions;

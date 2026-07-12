@@ -55,6 +55,32 @@ class StringPool;
 
 namespace driver {
 
+/// \brief Atomic package-session input validated before session state changes.
+class VerifiedPackageSessionInput final {
+public:
+  ZC_NODISCARD static zc::Maybe<VerifiedPackageSessionInput> from(
+      package::VerifiedPackageCompilationRequest&& request,
+      irgen::VerifiedTargetSelection&& hostTarget, irgen::VerifiedTargetSelection&& target,
+      package::PackageResolution&& graph,
+      zc::Vector<package::ResolvedPackageSourceSnapshot>&& snapshots);
+
+  ~VerifiedPackageSessionInput() noexcept(false);
+  VerifiedPackageSessionInput(VerifiedPackageSessionInput&&) noexcept;
+  VerifiedPackageSessionInput& operator=(VerifiedPackageSessionInput&&) noexcept;
+  ZC_DISALLOW_COPY(VerifiedPackageSessionInput);
+
+private:
+  struct Impl;
+  zc::Own<Impl> impl;
+
+  VerifiedPackageSessionInput(package::VerifiedPackageCompilationRequest&& request,
+                              irgen::VerifiedTargetSelection&& hostTarget,
+                              irgen::VerifiedTargetSelection&& target,
+                              package::PackageResolution&& graph,
+                              zc::Vector<package::ResolvedPackageSourceSnapshot>&& snapshots);
+  friend class CompilerSession;
+};
+
 class CompilerSession {
 public:
   CompilerSession(identity::SemanticContextFactory& contextFactory,
@@ -134,9 +160,8 @@ public:
   /// \brief Returns the sole RFC 0005 semantic type store owned by this session.
   zc::Maybe<const type::SemanticTypeStore&> getSemanticTypeStore() const noexcept;
 
-  /// \brief Installs the sole workspace-verified package request before parsing begins.
-  ZC_NODISCARD bool installPackageCompilationRequest(
-      package::VerifiedPackageCompilationRequest&& request);
+  /// \brief Installs one fully verified package input before parsing begins.
+  ZC_NODISCARD bool installVerifiedPackageInput(VerifiedPackageSessionInput&& input);
 
   /// \brief Returns the installed package request, if this is a package compilation.
   ZC_NODISCARD zc::Maybe<const package::VerifiedPackageCompilationRequest&>
@@ -146,18 +171,10 @@ public:
   ZC_NODISCARD zc::ArrayPtr<const package::FinalizedCompilationRoot> getFinalizedCompilationRoots()
       const noexcept;
 
-  /// \brief Installs the RFC 0010 verified host and target selections.
-  ZC_NODISCARD bool installVerifiedTargetSelections(irgen::VerifiedTargetSelection&& host,
-                                                    irgen::VerifiedTargetSelection&& target);
-
   ZC_NODISCARD zc::Maybe<const irgen::VerifiedTargetSelection&> getVerifiedHostTarget()
       const noexcept;
   ZC_NODISCARD zc::Maybe<const irgen::VerifiedTargetSelection&> getVerifiedTarget() const noexcept;
 
-  /// \brief Installs the immutable resolved graph and verified source snapshots.
-  ZC_NODISCARD bool installResolvedPackageGraph(
-      package::PackageResolution&& graph,
-      zc::Vector<package::ResolvedPackageSourceSnapshot>&& snapshots);
   ZC_NODISCARD zc::Maybe<const package::PackageResolution&> getResolvedPackageGraph()
       const noexcept;
   ZC_NODISCARD zc::ArrayPtr<const package::ResolvedPackageSourceSnapshot>
