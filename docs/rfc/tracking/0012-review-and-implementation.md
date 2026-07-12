@@ -588,33 +588,49 @@ edges, complete build-script closures, and the production semantic-context
 fingerprint are not yet derived from the authoritative resolution output. RFC
 0008 owns those remaining session-wide crate-graph and fingerprint surfaces.
 
-P9 now has an executable package architecture gate with nine adversarial
+P9 now has an executable package architecture gate with eighteen adversarial
 fixtures, a vendored-dependency mutation self-test, and a Linux-only privileged
 sanitizer CTest registered behind an explicit fail-closed option. The cgroup v2
 runner creates one delegated parent and supplies it to the real production
 launcher; a privileged Linux AArch64 run built the sanitizer target and passed
 the namespace, cgroup, seccomp, pidfd, timerfd, `openat2`, static-PIE, and output
-verification path. The release resolver fixture binds a fixed SHA-256, resolves
-10,000 packages, 40,000 candidate releases, and 50,000 edges, then performs an
-exact zero-solver locked replay with one visit per package and edge. Canonical
-lock-edge validation now uses logarithmic lookup. After the authoritative
-output cutover, deterministic iterative cycle detection and pre-construction
-package-key deduplication kept the same release fixture at 8.13 seconds and
-728,875,008 bytes peak RSS, below the 1 GiB gate. Exact output framing has a
-fixed SHA-256 and all 256 input permutations pass; locked replay invokes the
-solver zero times and visits exactly 10,000 packages and 50,000 edges. The zc
-foundation now provides explicit object, array, Vector, String, canonical
-encoder, and package-identity resource propagation with focused sanitizer
-lifecycle tests. The full sanitizer matrix previously passed
-1,241 of 1,241 tests, including the 653.32-second grammar conformance target.
+verification path.
 
-P9 remains open. The resource must still be threaded through every
-resolver-owned manifest, constraint, analysis, record, sort, output, and locked
-replay allocation before the performance executable can enforce an injected
-peak-live counter in addition to the OS RSS wrapper. The complete checked-in
-generated-oracle set plus one regeneration gate remain
-to be published. Final release evidence must be rerun after the remaining P8,
-RFC 0008 crate-graph, and RFC 0010 LIR target-publication work.
+All resolver-owned manifests, constraints, analyses, records, canonical sort
+buffers, outputs, feature expansion, and locked replay now use the explicit
+session-owned memory resource. The architecture gate rejects default Vector,
+canonical encoder, clone, encode, canonical-admission, and helper-call
+fallbacks throughout that production closure. The release fixture resolves
+10,000 packages, 40,000 candidate releases, and 50,000 edges, then performs an
+exact zero-solver locked replay with one visit per package and edge. On the
+current implementation it completes in 8.94 seconds, records 728,622,169 bytes
+of injected peak-live allocation, returns the injected live count to zero after
+destruction, and reaches 1,001,635,840 bytes peak RSS under the 1 GiB gate.
+
+One generator now owns eight checked-in package oracles covering lock output,
+PubGrub scenarios, canonical framing, source trees, and both seccomp
+architectures. Its check mode rejects drift, and nine independent mutation
+fixtures prove that changed or undeclared generated output is rejected. Exact
+resolution-output framing and all 256 input permutations remain deterministic;
+locked replay invokes the solver zero times and visits exactly 10,000 packages
+and 50,000 edges.
+
+Source materialization now retains each newly created file capability through
+sync and independent SHA-256 readback instead of reopening the destination by
+path. A directory-proxy regression rejects any such read-only reopen, while a
+same-length corruption fixture proves that capability-based readback still
+rejects changed bytes. The corrected composite stress run passed 400 additional
+sanitizer compiler processes together with all 1,078 lit, diagnostics, and
+grammar tests. The final sanitizer matrix passes 1,250 of 1,250 tests, including
+the 1,443.86-second grammar conformance target. Format, RFC, package
+architecture, generated-oracle, vendored-source, and release performance gates
+all pass on the same implementation.
+
+P9 remains open only for the final combined release rerun after P8, the RFC
+0008 crate graph and semantic-context fingerprint, and RFC 0010 target
+publication are complete. That rerun must include the privileged Linux sandbox
+integration on the final implementation before RFC 0012 can transition to
+`LANDED`.
 
 ## Decision Record
 
