@@ -33,6 +33,21 @@ SANDBOX_RUNNER = Path("scripts/run-linux-sandbox-integration.sh")
 TESTS_CMAKE = Path("products/zomlang/tests/CMakeLists.txt")
 PERFORMANCE_CMAKE = Path("products/zomlang/tests/performance/CMakeLists.txt")
 PERFORMANCE_RUNNER = Path("scripts/run_package_resolver_performance.py")
+PERFORMANCE_SOURCE = Path(
+    "products/zomlang/tests/performance/package-resolver-performance.cc"
+)
+RESOLVER_HEADER = Path(
+    "products/zomlang/compiler/driver/package/package-resolver.h"
+)
+RESOLVER_SOURCE = Path(
+    "products/zomlang/compiler/driver/package/package-resolver.cc"
+)
+FEATURE_RESOLVER_SOURCE = Path(
+    "products/zomlang/compiler/driver/package/feature-resolver.cc"
+)
+LOCKFILE_SOURCE = Path("products/zomlang/compiler/driver/package/lockfile.cc")
+PACKAGE_ORACLE_GENERATOR = Path("scripts/codegen/gen_package_oracles.py")
+CONFORMANCE_CMAKE = Path("products/zomlang/tests/conformance/CMakeLists.txt")
 CMAKE_PRESETS = Path("CMakePresets.json")
 SESSION_HEADER = Path("products/zomlang/compiler/driver/compiler-session.h")
 SESSION_SOURCE = Path("products/zomlang/compiler/driver/compiler-session.cc")
@@ -51,6 +66,13 @@ REQUIRED_FILES = (
     TESTS_CMAKE,
     PERFORMANCE_CMAKE,
     PERFORMANCE_RUNNER,
+    PERFORMANCE_SOURCE,
+    RESOLVER_HEADER,
+    RESOLVER_SOURCE,
+    FEATURE_RESOLVER_SOURCE,
+    LOCKFILE_SOURCE,
+    PACKAGE_ORACLE_GENERATOR,
+    CONFORMANCE_CMAKE,
     CMAKE_PRESETS,
     SESSION_HEADER,
     SESSION_SOURCE,
@@ -171,6 +193,34 @@ def function_body(text: str, signature: str) -> str:
             if depth == 0:
                 return text[open_brace + 1 : index]
     return ""
+
+
+def function_bodies(text: str, signature: str) -> list[str]:
+    bodies: list[str] = []
+    cursor = 0
+    while True:
+        start = text.find(signature, cursor)
+        if start < 0:
+            return bodies
+        open_brace = text.find("{", start)
+        semicolon = text.find(";", start)
+        if open_brace < 0:
+            return bodies
+        if 0 <= semicolon < open_brace:
+            cursor = semicolon + 1
+            continue
+        depth = 0
+        for index in range(open_brace, len(text)):
+            if text[index] == "{":
+                depth += 1
+            elif text[index] == "}":
+                depth -= 1
+                if depth == 0:
+                    bodies.append(text[open_brace + 1 : index])
+                    cursor = index + 1
+                    break
+        else:
+            return bodies
 
 
 def require_markers(
@@ -418,6 +468,204 @@ def check_release_performance_gate(files: dict[Path, str], errors: list[str]) ->
         errors.append(f"{CMAKE_PRESETS}: release build preset is required")
 
 
+def check_generated_oracle_gate(files: dict[Path, str], errors: list[str]) -> None:
+    require_markers(
+        files,
+        PACKAGE_ORACLE_GENERATOR,
+        (
+            'mode.add_argument("--write"',
+            'mode.add_argument("--check"',
+            'mode.add_argument("--self-test"',
+            '"zom.package-generated-oracles.v1"',
+            '"zom.package-codec-oracles.v1"',
+            '"ResolutionOutput canonical bytes"',
+            '"registered target selection and registry revision"',
+            '"build execution key"',
+            '"build script output record"',
+        ),
+        "package generated-oracle generator",
+        errors,
+    )
+    require_markers(
+        files,
+        CONFORMANCE_CMAKE,
+        (
+            "NAME package-generated-oracles\n",
+            "gen_package_oracles.py --check",
+            "NAME package-generated-oracles-negative",
+            "gen_package_oracles.py --self-test",
+        ),
+        "package generated-oracle CTest",
+        errors,
+    )
+
+
+def check_resolver_resource_gate(files: dict[Path, str], errors: list[str]) -> None:
+    require_markers(
+        files,
+        RESOLVER_HEADER,
+        (
+            "static ResolutionResult resolve(zc::MemoryResource& resource,",
+            "static ResolutionResult resolveLocked(zc::MemoryResource& resource,",
+            "ResolverRelease clone(zc::MemoryResource& resource) const;",
+            "ResolverRoot clone(zc::MemoryResource& resource) const;",
+            "zc::Array<uint8_t> encode(zc::MemoryResource& resource) const;",
+        ),
+        "explicit resolver allocation boundary",
+        errors,
+    )
+    require_markers(
+        files,
+        RESOLVER_SOURCE,
+        (
+            "zc::Vector<Selection> selections(resource);",
+            "FeatureResolver::expand(resource,",
+            "VerifiedLockGraph::from(resource,",
+            "identity::CanonicalEncoder encoder(resource);",
+            "identity::PackageName::fromCanonical(resource,",
+            "release.manifest().clone(resource)",
+        ),
+        "resource-owned resolver implementation",
+        errors,
+    )
+    require_markers(
+        files,
+        FEATURE_RESOLVER_SOURCE,
+        (
+            "struct ResourceFeatureAllocation final",
+            "ResourceFeatureAllocation allocation(resource);",
+            "return expandFeatures(allocation, manifest, domain, requested, useDefaultFeatures);",
+        ),
+        "resource-owned feature expansion policy",
+        errors,
+    )
+    require_markers(
+        files,
+        SESSION_HEADER,
+        (
+            "zc::MemoryResource& getPackageResolutionMemoryResource() noexcept;",
+        ),
+        "session-owned resolver allocation boundary",
+        errors,
+    )
+    require_markers(
+        files,
+        SESSION_SOURCE,
+        (
+            "zc::MemoryResource packageResolutionMemory;",
+            "CompilerSession::getPackageResolutionMemoryResource() noexcept",
+        ),
+        "session-owned resolver allocation implementation",
+        errors,
+    )
+    require_markers(
+        files,
+        CLI_SOURCE,
+        (
+            "auto& resolverMemory = session->getPackageResolutionMemoryResource();",
+            "ResolverRelease::fromLocal(resolverMemory, recordValue)",
+            "PackageResolver::resolve(resolverMemory, roots, releases)",
+            "PackageResolver::resolveLocked(resolverMemory, roots, releases,",
+        ),
+        "session-lifetime resolver caller",
+        errors,
+    )
+    require_markers(
+        files,
+        PERFORMANCE_SOURCE,
+        (
+            "zc::CountingMemoryResource resource(upstream);",
+            "ResolverRelease::fromLocal(resource, value)",
+            "PackageResolver::resolve(resource, roots, releases, metrics)",
+            "observedPeak = resource.peakAllocatedBytes();",
+            "observedPeak <= uint64_t{1} << 30U",
+            "resource.currentAllocatedBytes() == 0",
+        ),
+        "resolver peak-live allocation gate",
+        errors,
+    )
+
+    header = strip_cpp_comments_and_literals(files.get(RESOLVER_HEADER, ""))
+    if re.search(
+        r"static\s+ResolutionResult\s+resolve(?:Locked)?\s*\(\s*"
+        r"zc::ArrayPtr<const\s+ResolverRoot>",
+        header,
+    ):
+        errors.append(f"{RESOLVER_HEADER}: no-resource resolver overload is forbidden")
+
+    session = files.get(SESSION_SOURCE, "")
+    resource_position = session.find("zc::MemoryResource packageResolutionMemory;")
+    graph_position = session.find("zc::Maybe<package::ResolutionOutput> packageGraph;")
+    if resource_position < 0 or graph_position < 0 or resource_position > graph_position:
+        errors.append(
+            f"{SESSION_SOURCE}: package resolution resource must be declared before the graph"
+        )
+
+    no_resource_call = re.compile(
+        r"\bPackageResolver::resolve(?:Locked)?\s*\(\s*(?:roots|releases)\s*,"
+    )
+    for path, raw_text in sorted(files.items()):
+        if path.suffix not in {".h", ".cc"}:
+            continue
+        if no_resource_call.search(strip_cpp_comments_and_literals(raw_text)):
+            errors.append(f"{path}: package resolver call omits the required memory resource")
+
+    scanned_bodies: list[tuple[Path, str]] = []
+    resolver_text = strip_cpp_comments_and_literals(files.get(RESOLVER_SOURCE, ""))
+    resolver_bodies = function_bodies(resolver_text, "zc::MemoryResource& resource")
+    if not resolver_bodies:
+        errors.append(f"{RESOLVER_SOURCE}: resource-aware resolver algorithm bodies are missing")
+    scanned_bodies.extend((RESOLVER_SOURCE, body) for body in resolver_bodies)
+    feature_text = strip_cpp_comments_and_literals(
+        files.get(FEATURE_RESOLVER_SOURCE, "")
+    )
+    feature_bodies = function_bodies(feature_text, "FeatureExpansionResult expandFeatures(")
+    if not feature_bodies:
+        errors.append(
+            f"{FEATURE_RESOLVER_SOURCE}: feature expansion algorithm body is missing"
+        )
+    scanned_bodies.extend((FEATURE_RESOLVER_SOURCE, body) for body in feature_bodies)
+    lockfile_text = strip_cpp_comments_and_literals(files.get(LOCKFILE_SOURCE, ""))
+    lock_bodies = function_bodies(
+        lockfile_text,
+        "LockedReplayVerifier::replay(\n    zc::MemoryResource& resource",
+    )
+    if not lock_bodies:
+        errors.append(f"{LOCKFILE_SOURCE}: resource-aware lock replay body is missing")
+    scanned_bodies.extend((LOCKFILE_SOURCE, body) for body in lock_bodies)
+
+    forbidden_algorithms = (
+        (
+            re.compile(r"\bzc::Vector<[^\n;]+>\s+[A-Za-z_]\w*\s*;"),
+            "default Vector allocation",
+        ),
+        (
+            re.compile(r"\bidentity::CanonicalEncoder\s+[A-Za-z_]\w*\s*;"),
+            "default CanonicalEncoder allocation",
+        ),
+        (re.compile(r"\.clone\s*\(\s*\)"), "no-resource clone call"),
+        (re.compile(r"\.encode\s*\(\s*\)"), "no-resource encode call"),
+        (
+            re.compile(r"\bfromCanonical\s*\((?!\s*resource\b)"),
+            "no-resource canonical admission",
+        ),
+        (
+            re.compile(
+                r"\b(?:coordinateBytes|copyBytes|activationKey|releaseLookupBytes|"
+                r"requirementLookupBytes|buildReleaseGroups|failure|conflictFailure|"
+                r"sortedFeatures|packageKey|packageBaseKey|canonicalSort|"
+                r"edgeFactBytes|detectDependencyCycle|buildResolutionParts)\s*\("
+                r"(?!\s*resource\b)"
+            ),
+            "resolver helper call omits the memory resource",
+        ),
+    )
+    for path, body in scanned_bodies:
+        for pattern, description in forbidden_algorithms:
+            if pattern.search(body):
+                errors.append(f"{path}: resolver allocation fallback: {description}")
+
+
 def check_atomic_session_handoff(files: dict[Path, str], errors: list[str]) -> None:
     require_markers(
         files,
@@ -495,6 +743,8 @@ def analyze(files: dict[Path, str]) -> list[str]:
     check_vendored_only_dependencies(files, errors)
     check_linux_privileged_gate(files, errors)
     check_release_performance_gate(files, errors)
+    check_generated_oracle_gate(files, errors)
+    check_resolver_resource_gate(files, errors)
     check_atomic_session_handoff(files, errors)
     return errors
 
@@ -508,7 +758,8 @@ def run_check() -> int:
         return 1
     print(
         "RFC 0012 package architecture check passed "
-        "(CLI, vendor, sandbox, performance, and atomic session gates)."
+        "(CLI, vendor, sandbox, performance, generated-oracle, resolver-resource, "
+        "and atomic session gates)."
     )
     return 0
 
@@ -589,6 +840,70 @@ def run_self_test() -> int:
             "resolver RSS limit removed",
             remove_marker(PERFORMANCE_CMAKE, "--max-rss-bytes 1073741824"),
             "missing resolver performance CTest marker",
+        ),
+        (
+            "generated-oracle CTest removed",
+            remove_marker(CONFORMANCE_CMAKE, "NAME package-generated-oracles\n"),
+            "missing package generated-oracle CTest marker",
+        ),
+        (
+            "resolver local allocation fallback restored",
+            replace_marker(
+                RESOLVER_SOURCE,
+                "zc::Vector<Selection> selections(resource);",
+                "zc::Vector<Selection> selections;",
+            ),
+            "resolver allocation fallback: default Vector allocation",
+        ),
+        (
+            "resolver encoder allocation fallback restored",
+            replace_marker(
+                RESOLVER_SOURCE,
+                "identity::CanonicalEncoder encoder(resource);",
+                "identity::CanonicalEncoder encoder;",
+            ),
+            "resolver allocation fallback: default CanonicalEncoder allocation",
+        ),
+        (
+            "resolver clone allocation fallback restored",
+            replace_marker(
+                RESOLVER_SOURCE,
+                "release.manifest().clone(resource)",
+                "release.manifest().clone()",
+            ),
+            "resolver allocation fallback: no-resource clone call",
+        ),
+        (
+            "resolver canonical admission fallback restored",
+            replace_marker(
+                RESOLVER_SOURCE,
+                "identity::PackageName::fromCanonical(resource, base.name())",
+                "identity::PackageName::fromCanonical(base.name())",
+            ),
+            "resolver allocation fallback: no-resource canonical admission",
+        ),
+        (
+            "resolver lock encoding fallback restored",
+            replace_marker(
+                RESOLVER_SOURCE,
+                "locked.encode(resource)",
+                "locked.encode()",
+            ),
+            "resolver allocation fallback: no-resource encode call",
+        ),
+        (
+            "feature resolver resource policy removed",
+            replace_marker(
+                FEATURE_RESOLVER_SOURCE,
+                "ResourceFeatureAllocation allocation(resource);",
+                "DefaultFeatureAllocation allocation;",
+            ),
+            "missing resource-owned feature expansion policy marker",
+        ),
+        (
+            "resolver peak-live zero check removed",
+            remove_marker(PERFORMANCE_SOURCE, "resource.currentAllocatedBytes() == 0"),
+            "missing resolver peak-live allocation gate marker",
         ),
         (
             "non-release performance preset",
