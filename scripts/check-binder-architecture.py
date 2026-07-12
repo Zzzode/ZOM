@@ -14,6 +14,10 @@ ROOT = Path(__file__).resolve().parents[1]
 BINDER_DIR = Path("products/zomlang/compiler/binder")
 HEADER = BINDER_DIR / "binding-input.h"
 SOURCE = BINDER_DIR / "binding-input.cc"
+PARSED_HEADER = BINDER_DIR / "parsed-module.h"
+PARSED_SOURCE = BINDER_DIR / "parsed-module.cc"
+INVENTORY_HEADER = BINDER_DIR / "frozen-definition-inventory.h"
+INVENTORY_SOURCE = BINDER_DIR / "frozen-definition-inventory.cc"
 BINDER_CMAKE = BINDER_DIR / "CMakeLists.txt"
 TEST_DIR = Path("products/zomlang/tests/unittests/compiler/binder")
 TEST_SOURCE = TEST_DIR / "binding-input-test.cc"
@@ -41,13 +45,23 @@ def production_files() -> dict[Path, str]:
                     continue
                 relative = path.relative_to(ROOT)
                 files[relative] = path.read_text(encoding="utf-8")
-    for required in (HEADER, SOURCE, BINDER_CMAKE, TEST_SOURCE, TEST_CMAKE):
+    for required in (
+        HEADER,
+        SOURCE,
+        PARSED_HEADER,
+        PARSED_SOURCE,
+        INVENTORY_HEADER,
+        INVENTORY_SOURCE,
+        BINDER_CMAKE,
+        TEST_SOURCE,
+        TEST_CMAKE,
+    ):
         files.setdefault(required, (ROOT / required).read_text(encoding="utf-8"))
     return files
 
 
-def class_body(text: str, name: str) -> str:
-    match = re.search(rf"\bclass\s+{re.escape(name)}\s+final\s*\{{", text)
+def type_body(text: str, name: str) -> str:
+    match = re.search(rf"\b(?:class|struct)\s+{re.escape(name)}\s+final\s*\{{", text)
     if match is None:
         return ""
     start = match.end()
@@ -63,33 +77,78 @@ def class_body(text: str, name: str) -> str:
 
 
 def check_private_verified_constructors(files: dict[Path, str], errors: list[str]) -> None:
-    header = files.get(HEADER, "")
-    for name in ("VerifiedModuleGraphView", "VerifiedBindingInput"):
-        body = class_body(header, name)
+    types = (
+        (HEADER, "VerifiedModuleGraphView"),
+        (HEADER, "VerifiedBindingInput"),
+        (PARSED_HEADER, "UnbrandedParsedModule"),
+        (PARSED_HEADER, "VerifiedParsedModule"),
+        (INVENTORY_HEADER, "FrozenDefinitionInventoryView"),
+    )
+    for header_path, name in types:
+        body = type_body(files.get(header_path, ""), name)
         private = body.find("private:")
         constructor = f"explicit {name}(zc::Own<Impl>&& impl) noexcept;"
         if private < 0 or body.find(constructor, private) < 0:
-            errors.append(f"{HEADER}: {name} verified constructor must be private")
+            errors.append(f"{header_path}: {name} verified constructor must be private")
         public = body[:private] if private >= 0 else body
         for match in re.finditer(rf"(?<!~)\b{name}\s*\(([^)]*)\)", public):
             if f"{name}&&" not in match.group(1):
-                errors.append(f"{HEADER}: {name} exposes a non-move public constructor")
+                errors.append(f"{header_path}: {name} exposes a non-move public constructor")
 
 
 def check_unique_construction(files: dict[Path, str], errors: list[str]) -> None:
+    publication_sources = {
+        "VerifiedModuleGraphView": SOURCE,
+        "VerifiedBindingInput": SOURCE,
+        "UnbrandedParsedModule": PARSED_SOURCE,
+        "VerifiedParsedModule": PARSED_SOURCE,
+        "FrozenDefinitionInventoryView": INVENTORY_SOURCE,
+    }
     for path, text in files.items():
-        if path.suffix not in {".h", ".cc"} or TEST_DIR in path.parents or path == HEADER:
+        if path.suffix not in {".h", ".cc"} or TEST_DIR in path.parents:
             continue
-        for name in ("VerifiedModuleGraphView", "VerifiedBindingInput"):
-            if path != SOURCE and re.search(rf"\b{name}\s*\(", text):
-                errors.append(f"{path}: {name} may only be constructed in {SOURCE}")
+        for name, publication_source in publication_sources.items():
+            if path in {HEADER, PARSED_HEADER, INVENTORY_HEADER}:
+                continue
+            if path != publication_source and re.search(rf"\b{name}\s*\(", text):
+                errors.append(f"{path}: {name} may only be constructed in {publication_source}")
             impl_marker = f"zc::heap<{name}::Impl>"
-            if path != SOURCE and impl_marker in text:
+            if path != publication_source and impl_marker in text:
                 errors.append(f"{path}: {name} private implementation construction escaped")
-    source = files.get(SOURCE, "")
-    for name in ("VerifiedModuleGraphView", "VerifiedBindingInput"):
-        if source.count(f"zc::heap<{name}::Impl>") != 1:
-            errors.append(f"{SOURCE}: {name} must have exactly one publication site")
+    for name, publication_source in publication_sources.items():
+        if files.get(publication_source, "").count(f"zc::heap<{name}::Impl>") != 1:
+            errors.append(f"{publication_source}: {name} must have exactly one publication site")
+
+
+def check_verified_input_surface(files: dict[Path, str], errors: list[str]) -> None:
+    candidate = type_body(files.get(HEADER, ""), "BindingInputCandidate")
+    for forbidden in ("ast::Tree", "DefinitionIdentityMap", "SourceFileId source"):
+        if forbidden in candidate:
+            errors.append(f"{HEADER}: BindingInputCandidate exposes raw input: {forbidden}")
+    for required in ("VerifiedParsedModule", "FrozenDefinitionInventoryView"):
+        if required not in candidate:
+            errors.append(f"{HEADER}: BindingInputCandidate is missing {required}")
+
+
+def check_producer_boundaries(files: dict[Path, str], errors: list[str]) -> None:
+    allowed_admission = {
+        PARSED_SOURCE,
+        Path("products/zomlang/compiler/basic/frontend.cc"),
+    }
+    allowed_inventory = {
+        INVENTORY_SOURCE,
+        Path("products/zomlang/compiler/driver/compiler-session.cc"),
+    }
+    for path, text in files.items():
+        if TEST_DIR in path.parents:
+            continue
+        if "ParsedModuleVerifier::admit(" in text and path not in allowed_admission:
+            errors.append(f"{path}: parsed-module admission escaped the parse driver boundary")
+        if (
+            "FrozenDefinitionInventoryVerifier::verifySingleModule(" in text
+            and path not in allowed_inventory
+        ):
+            errors.append(f"{path}: frozen inventory publication escaped the session collector boundary")
 
 
 def check_layering(files: dict[Path, str], errors: list[str]) -> None:
@@ -109,6 +168,8 @@ def check_layering(files: dict[Path, str], errors: list[str]) -> None:
 def check_wiring(files: dict[Path, str], errors: list[str]) -> None:
     required = (
         (BINDER_CMAKE, "${CMAKE_CURRENT_SOURCE_DIR}/binding-input.cc"),
+        (BINDER_CMAKE, "${CMAKE_CURRENT_SOURCE_DIR}/parsed-module.cc"),
+        (BINDER_CMAKE, "${CMAKE_CURRENT_SOURCE_DIR}/frozen-definition-inventory.cc"),
         (TEST_CMAKE, 'add_ztest_unit_test("binding-input-test" "binding-input-test.cc"'),
         (TEST_CMAKE, "binder-architecture"),
         (TEST_CMAKE, "check-binder-architecture.py --check"),
@@ -135,6 +196,8 @@ def check(files: dict[Path, str]) -> list[str]:
     errors: list[str] = []
     check_private_verified_constructors(files, errors)
     check_unique_construction(files, errors)
+    check_verified_input_surface(files, errors)
+    check_producer_boundaries(files, errors)
     check_layering(files, errors)
     check_wiring(files, errors)
     check_no_compatibility_facade(files, errors)
@@ -149,6 +212,48 @@ def self_test(files: dict[Path, str]) -> list[str]:
         ("candidate escape", Path("products/zomlang/compiler/lexer/escape.cc"), "", "BindingInputCandidate escaped;"),
         ("missing source wiring", BINDER_CMAKE, "${CMAKE_CURRENT_SOURCE_DIR}/binding-input.cc", "${CMAKE_CURRENT_SOURCE_DIR}/missing.cc"),
         ("compatibility facade", BINDER_DIR / "binder.h", "", "\nVerifiedBindingInput Binder(BindingInputCandidate);\n"),
+        (
+            "raw tree candidate",
+            HEADER,
+            "const VerifiedParsedModule& parsedModule;",
+            "const ast::Tree& parsedModule;",
+        ),
+        (
+            "raw definition candidate",
+            HEADER,
+            "const FrozenDefinitionInventoryView& definitions;",
+            "const DefinitionIdentityMap& definitions;",
+        ),
+        (
+            "public parsed constructor",
+            PARSED_HEADER,
+            "class VerifiedParsedModule final {\npublic:",
+            "class VerifiedParsedModule final {\npublic:\n  explicit VerifiedParsedModule(int);",
+        ),
+        (
+            "foreign parsed publication",
+            Path("products/zomlang/compiler/parser/escape.cc"),
+            "",
+            "VerifiedParsedModule(value);",
+        ),
+        (
+            "public inventory constructor",
+            INVENTORY_HEADER,
+            "class FrozenDefinitionInventoryView final {\npublic:",
+            "class FrozenDefinitionInventoryView final {\npublic:\n  explicit FrozenDefinitionInventoryView(int);",
+        ),
+        (
+            "foreign parser admission",
+            Path("products/zomlang/compiler/parser/escape.cc"),
+            "",
+            "ParsedModuleVerifier::admit(snapshot, sources, buffer, tree);",
+        ),
+        (
+            "foreign inventory publication",
+            Path("products/zomlang/compiler/binder/escape.cc"),
+            "",
+            "FrozenDefinitionInventoryVerifier::verifySingleModule(context, module, parsed, registries, definitions);",
+        ),
     )
     failures: list[str] = []
     for label, path, old, new in cases:
