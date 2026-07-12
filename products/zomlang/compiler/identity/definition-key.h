@@ -168,6 +168,7 @@ public:
   ZC_NODISCARD static zc::Maybe<DefinitionKey> from(ModuleKey&& module,
                                                     zc::Vector<DefinitionPathComponent>&& path);
   ZC_NODISCARD DefinitionKey clone() const;
+  ZC_NODISCARD const ModuleKey& module() const noexcept;
   void encode(CanonicalEncoder& encoder) const;
   ZC_NODISCARD zc::Array<uint8_t> encode() const;
 

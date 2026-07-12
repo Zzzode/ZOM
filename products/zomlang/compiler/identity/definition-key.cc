@@ -185,6 +185,8 @@ DefinitionKey DefinitionKey::clone() const {
   return DefinitionKey(moduleValue.clone(), zc::mv(path));
 }
 
+const ModuleKey& DefinitionKey::module() const noexcept { return moduleValue; }
+
 void DefinitionKey::encode(CanonicalEncoder& encoder) const {
   moduleValue.encode(encoder);
   encoder.encodeSequenceSize(pathValue.size());

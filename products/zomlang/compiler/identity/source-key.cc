@@ -179,6 +179,10 @@ ModuleKey ModuleKey::clone() const {
   return ModuleKey(crateValue.clone(), zc::mv(path), sourceValue.clone(), zc::mv(anchor));
 }
 
+const CrateKey& ModuleKey::crate() const noexcept { return crateValue; }
+
+const SourceFileKey& ModuleKey::source() const noexcept { return sourceValue; }
+
 bool ModuleKey::contains(const SourceSpan& span) const { return span.belongsTo(sourceValue); }
 
 void ModuleKey::encode(CanonicalEncoder& encoder) const {

@@ -140,6 +140,8 @@ public:
                                                 SourceFileKey&& source,
                                                 zc::Maybe<SourceSpan>&& declarationAnchor);
   ZC_NODISCARD ModuleKey clone() const;
+  ZC_NODISCARD const CrateKey& crate() const noexcept;
+  ZC_NODISCARD const SourceFileKey& source() const noexcept;
   ZC_NODISCARD bool contains(const SourceSpan& span) const;
   void encode(CanonicalEncoder& encoder) const;
   ZC_NODISCARD zc::Array<uint8_t> encode() const;
