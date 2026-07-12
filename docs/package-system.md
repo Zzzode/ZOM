@@ -13,7 +13,6 @@ The following integrations are outside this document's implemented contract:
 
 - acquisition of registry or VCS sources by the `zomc` CLI;
 - construction of build-script plans by the `zomc` CLI;
-- RFC 0008 package-edge to crate-edge expansion; and
 - RFC 0010 HIR, MIR, LIR, native backend, or binary publication.
 
 ## Manifest Discovery And Admission

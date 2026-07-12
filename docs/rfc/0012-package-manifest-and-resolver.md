@@ -8,7 +8,7 @@ review-manager: rfc
 required-owners: [rfc, module-system, error-system, ir-backend, runtime-memory, spec-audit, verification]
 approvers: [rfc, module-system, error-system, ir-backend, runtime-memory, spec-audit, verification]
 created: 2026-07-10
-updated: 2026-07-12
+updated: 2026-07-13
 area: compiler
 requires: [11]
 supersedes: []
@@ -1979,6 +1979,7 @@ Build-script issue production is likewise closed:
 | Child result classifier | `ExecutionFailed` |
 | Declared-output verifier | `MissingOutput`, `FileCountLimit`, `OutputSizeLimit`, `InvalidGeneratedSource`, `OutputTreePolicyViolation` |
 | Two-run record and generated-byte comparator | `NondeterministicOutput` |
+| Deterministic result publisher, cache replay verifier, and final session result-set verifier | `BuildResultIntegrityViolation` |
 | `LinuxNativeSandbox::finish()` | `SandboxTeardownFailed` |
 
 Preflight returns `SandboxUnavailable` only when a named mandatory primitive is
@@ -2071,8 +2072,8 @@ numeric codes are forbidden.
 | Manifest, package graph, resolver, lock, materializer, and session inputs | `products/zomlang/compiler/driver/**` | `module-system` |
 | Typed package diagnostics | `products/zomlang/compiler/diagnostics/**` | `error-system` |
 | CLI, backend target profiles, and compiler-level build wiring | `products/zomlang/utils/zomc/**`, `products/zomlang/compiler/basic/compiler-opts.h`, `products/zomlang/compiler/CMakeLists.txt` | `ir-backend` |
-| Build-script executor and platform sandbox adapters | `products/zomlang/runtime/**` | `runtime-memory` |
-| Normative package documentation after implementation | `docs/spec/**` | `spec-audit` |
+| Build-script executor and platform sandbox adapters | `products/zomlang/compiler/driver/package/build-script-*.{h,cc}`, `products/zomlang/compiler/driver/package/linux-*.{h,cc}` | `runtime-memory` |
+| Normative package-tooling documentation after implementation | `docs/package-system.md` | `spec-audit` |
 | Manifest, resolver, lock, materialization, and determinism tests | `products/zomlang/tests/**` | `verification` |
 
 ## Security And Safety Impact
@@ -2436,3 +2437,4 @@ None
 | 2026-07-11 | ACCEPTED | Every required owner approved proposal hash `39b7a9edfd5112b9f72fce569ffab1d274c94c957bd6106f6c9158d23b46a982` after formal target, resolver, ELF manifest, operation, sandbox, diagnostic, and verifier review. Implementation has not started. |
 | 2026-07-11 | IMPLEMENTING | Started the direct package-input implementation series with all five pinned source imports, exact archive and extracted-file inventories, license and commit records, and a mandatory pre-driver vendored-dependency gate. Manifest normalization, resolver, lock, materialization, sandbox, and session handoff remain open. |
 | 2026-07-12 | IMPLEMENTING | Corrected the executable runtime descriptor allocation and added exact cache-candidate and frozen build-result integrity contracts discovered during production launcher and session implementation. Fresh exact-hash owner review is required before LANDED. |
+| 2026-07-13 | IMPLEMENTING | Exact-hash landing review returned the implementation for incomplete build-result publication, production sandbox evidence, typed failure projection, and the unwired build-script CLI path. Result publication and the first production-filter regressions are repaired; native build-script execution remains blocked on RFC 0010 backend, trusted-runtime, and cache implementation. |

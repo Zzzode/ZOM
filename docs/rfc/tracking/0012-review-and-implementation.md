@@ -245,6 +245,34 @@ target matches its preparatory key, and every result key matches its node before
 publishing the exact frozen result set. These corrected proposal bytes require
 fresh module-system, error-system, runtime-memory, verification, and RFC review.
 
+### 2026-07-13 Exact-Hash Landing Review Return
+
+Landing review examined proposal SHA-256
+`2364941d1e3b1bcd2a1fbdc4a5c1973b241adf2c7d489e933329b6b1a549d9ff`
+against implementation commit `e0d7fb0c84f89dd8bd4ad84af83d20baa314f304`.
+Governance, semantic, and invariant owners returned the implementation. The
+public build-result constructor admitted records that were not related to the
+complete execution key; the final session discarded the exact failed relation;
+the privileged fixture installed an allow-all runtime filter and exercised no
+declared file operation; and the production CLI did not execute build-script
+plans.
+
+Commits `4e57203c` and `8621e47f` remove the unchecked result constructor,
+revalidate source, declared-environment, generated, exported-environment, and
+plan-association facts, preserve typed producer evidence, install the generated
+runtime filter in the privileged fixture, and exercise declared input and output
+through descriptor zero together with seccomp, malformed-response, wall-limit,
+and teardown paths. Commits `70f17ac5` and `691d30a3` expose signal-terminated
+compiler processes and run the macOS matrix at its three-core capacity.
+
+RFC 0012 remains `IMPLEMENTING`. The current repository has no production native
+backend, trusted build-runtime link target, or atomic build-script cache, so
+`zomc compile` cannot yet produce and execute a verified build-script static PIE.
+That production path depends on RFC 0010 implementation and must not be replaced
+with an executor that only fails closed. Typed `BuildScriptFailure` provenance,
+the remaining privileged resource and IPC matrix, a final exact-hash release
+run, and fresh approvals for the corrected proposal bytes also remain open.
+
 ## Owner Review
 
 | Owner | State | Evidence |
