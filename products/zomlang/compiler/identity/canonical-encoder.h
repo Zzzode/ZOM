@@ -27,6 +27,10 @@ namespace zomlang::compiler::identity {
 class CanonicalEncoder final {
 public:
   CanonicalEncoder() noexcept;
+
+  /// \brief Constructs an encoder whose object and byte storage use `resource`.
+  /// \param resource Resource that must outlive this encoder and its finished byte array.
+  explicit CanonicalEncoder(zc::MemoryResource& resource);
   ~CanonicalEncoder() noexcept(false);
   CanonicalEncoder(CanonicalEncoder&&) noexcept;
   CanonicalEncoder& operator=(CanonicalEncoder&&) noexcept;

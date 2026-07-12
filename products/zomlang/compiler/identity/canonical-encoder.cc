@@ -19,10 +19,15 @@
 namespace zomlang::compiler::identity {
 
 struct CanonicalEncoder::Impl final {
+  Impl() = default;
+  explicit Impl(zc::MemoryResource& resource) : bytes(resource) {}
+
   zc::Vector<uint8_t> bytes;
 };
 
 CanonicalEncoder::CanonicalEncoder() noexcept : impl(zc::heap<Impl>()) {}
+CanonicalEncoder::CanonicalEncoder(zc::MemoryResource& resource)
+    : impl(zc::resourceHeap<Impl>(resource, resource)) {}
 CanonicalEncoder::~CanonicalEncoder() noexcept(false) = default;
 CanonicalEncoder::CanonicalEncoder(CanonicalEncoder&&) noexcept = default;
 CanonicalEncoder& CanonicalEncoder::operator=(CanonicalEncoder&&) noexcept = default;

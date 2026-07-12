@@ -42,6 +42,48 @@ Sha256Digest requireDigest(zc::ArrayPtr<const uint8_t> bytes) {
   ZC_FAIL_REQUIRE("SHA-256 input length overflow during identity test");
 }
 
+Sha256Digest testDigest() {
+  uint8_t bytes[32];
+  for (uint8_t index = 0; index < sizeof(bytes); ++index) { bytes[index] = index; }
+  auto digest = Sha256Digest::fromBytes(zc::arrayPtr(bytes));
+  ZC_IF_SOME(value, digest) { return value; }
+  ZC_FAIL_REQUIRE("fixed digest has an invalid length");
+}
+
+void encodeEveryField(CanonicalEncoder& encoder) {
+  const uint8_t text[] = {'z', 'o', 'm'};
+  encoder.encodeUint8(0xab);
+  encoder.encodeUint32(0x12345678);
+  encoder.encodeUint64(0x0123456789abcdef);
+  encoder.encodeBool(false);
+  encoder.encodeBool(true);
+  encoder.encodeDigest(testDigest());
+  encoder.encodeByteString(zc::arrayPtr(text));
+  encoder.encodeSequenceSize(0xfedcba9876543210);
+  encoder.encodeNone();
+  encoder.encodeSome();
+}
+
+class FailSecondAllocationResource final : public zc::MemoryResource {
+public:
+  explicit FailSecondAllocationResource(zc::MemoryResource& upstream) : upstream(upstream) {}
+
+protected:
+  void* doAllocate(size_t size, size_t alignment) override {
+    ++allocationCount;
+    ZC_REQUIRE(allocationCount != 2, "injected canonical encoder allocation failure");
+    return upstream.allocate(size, alignment);
+  }
+
+  void doDeallocate(void* pointer, size_t size, size_t alignment) override {
+    upstream.deallocate(pointer, size, alignment);
+  }
+
+private:
+  zc::MemoryResource& upstream;
+  size_t allocationCount = 0;
+};
+
 }  // namespace
 
 ZC_TEST("SHA-256 passes standard padding and block-boundary vectors") {
@@ -92,6 +134,104 @@ ZC_TEST("CanonicalEncoder passes the fixed empty fingerprint-domain vector") {
   ZC_EXPECT(encoded.size() == 72);
   expectDigest(requireDigest(encoded.asPtr()),
                "aa36edfdf536f061cd028efd3cfe5003474aee9aa3ab39f294d3b42a95eaae5e");
+}
+
+ZC_TEST("CanonicalEncoder explicit resource preserves every encoded field") {
+  zc::MemoryResource upstream;
+  zc::CountingMemoryResource resource(upstream);
+  {
+    CanonicalEncoder defaultEncoder;
+    CanonicalEncoder resourceEncoder(resource);
+
+    encodeEveryField(defaultEncoder);
+    encodeEveryField(resourceEncoder);
+    auto expected = defaultEncoder.finish();
+    auto actual = resourceEncoder.finish();
+
+    ZC_EXPECT(actual.asPtr() == expected.asPtr());
+    ZC_EXPECT(resource.currentAllocatedBytes() > 0);
+    actual = nullptr;
+    ZC_EXPECT(resource.currentAllocatedBytes() > 0);
+  }
+  ZC_EXPECT(resource.currentAllocatedBytes() == 0);
+}
+
+ZC_TEST("CanonicalEncoder resource storage survives growth and encoder destruction") {
+  zc::MemoryResource upstream;
+  zc::CountingMemoryResource resource(upstream);
+  zc::Array<uint8_t> output;
+
+  {
+    CanonicalEncoder encoder(resource);
+    for (uint32_t value = 0; value < 4096; ++value) { encoder.encodeUint32(value); }
+    output = encoder.finish();
+    ZC_EXPECT(output.size() == 4096 * sizeof(uint32_t));
+    ZC_EXPECT(resource.peakAllocatedBytes() > resource.currentAllocatedBytes());
+  }
+
+  ZC_EXPECT(resource.currentAllocatedBytes() > 0);
+  output = nullptr;
+  ZC_EXPECT(resource.currentAllocatedBytes() == 0);
+}
+
+ZC_TEST("CanonicalEncoder move construction preserves resource ownership") {
+  zc::MemoryResource upstream;
+  zc::CountingMemoryResource resource(upstream);
+
+  {
+    CanonicalEncoder source(resource);
+    source.encodeUint8(0x7a);
+    const size_t liveBytes = resource.currentAllocatedBytes();
+    CanonicalEncoder destination(zc::mv(source));
+    ZC_EXPECT(resource.currentAllocatedBytes() == liveBytes);
+    destination.encodeUint32(0x01020304);
+    auto output = destination.finish();
+    const uint8_t expected[] = {0x7a, 0x01, 0x02, 0x03, 0x04};
+    ZC_EXPECT(output.asPtr() == zc::arrayPtr(expected));
+  }
+
+  ZC_EXPECT(resource.currentAllocatedBytes() == 0);
+}
+
+ZC_TEST("CanonicalEncoder move assignment transfers resource ownership") {
+  zc::MemoryResource firstUpstream;
+  zc::MemoryResource secondUpstream;
+  zc::CountingMemoryResource firstResource(firstUpstream);
+  zc::CountingMemoryResource secondResource(secondUpstream);
+
+  {
+    CanonicalEncoder destination(firstResource);
+    destination.encodeUint64(9);
+    CanonicalEncoder source(secondResource);
+    source.encodeUint8(3);
+    const size_t sourceBytes = secondResource.currentAllocatedBytes();
+
+    destination = zc::mv(source);
+    ZC_EXPECT(firstResource.currentAllocatedBytes() == 0);
+    ZC_EXPECT(secondResource.currentAllocatedBytes() == sourceBytes);
+    destination.encodeUint8(4);
+    auto output = destination.finish();
+    const uint8_t expected[] = {3, 4};
+    ZC_EXPECT(output.asPtr() == zc::arrayPtr(expected));
+  }
+
+  ZC_EXPECT(firstResource.currentAllocatedBytes() == 0);
+  ZC_EXPECT(secondResource.currentAllocatedBytes() == 0);
+}
+
+ZC_TEST("CanonicalEncoder releases its resource object after failed growth") {
+  zc::MemoryResource upstream;
+  FailSecondAllocationResource failingResource(upstream);
+  zc::CountingMemoryResource resource(failingResource);
+
+  {
+    CanonicalEncoder encoder(resource);
+    ZC_EXPECT(resource.currentAllocatedBytes() > 0);
+    ZC_EXPECT_THROW_MESSAGE("injected canonical encoder allocation failure",
+                            encoder.encodeUint8(1));
+  }
+
+  ZC_EXPECT(resource.currentAllocatedBytes() == 0);
 }
 
 }  // namespace zomlang::compiler::identity
