@@ -72,7 +72,7 @@ not reused.
 | [RFC 0001](0001-ast-dump-format.md) | AST Dump Format | LANDED | compiler | compiler | rfc | [Acceptance Criteria](0001-ast-dump-format.md#acceptance-criteria) | [AST Dumper](../../products/zomlang/compiler/ast/dump.cc) |
 | [RFC 0002](0002-parser-architecture.md) | Parser Architecture | LANDED | compiler | compiler | rfc | [Acceptance Criteria](0002-parser-architecture.md#acceptance-criteria) | [Parser](../../products/zomlang/compiler/parser/parser.cc) |
 | [RFC 0003](0003-lexer-architecture.md) | Lexer Architecture | LANDED | compiler | compiler | rfc | [Acceptance Criteria](0003-lexer-architecture.md#acceptance-criteria) | [Lexer](../../products/zomlang/compiler/lexer/lexer.cc) |
-| [RFC 0004](0004-binder-architecture.md) | Binder Architecture | ACCEPTED | compiler | compiler | rfc | [Review Tracker](tracking/0004-review-and-implementation.md) | TBD |
+| [RFC 0004](0004-binder-architecture.md) | Binder Architecture | IMPLEMENTING | compiler | compiler | rfc | [Review Tracker](tracking/0004-review-and-implementation.md) | [Implementation Tracker](tracking/0004-review-and-implementation.md#implementation-tracker) |
 | [RFC 0005](0005-type-system-architecture.md) | Type System Architecture | ACCEPTED | compiler | compiler | rfc | [Review Tracker](tracking/0005-review-and-implementation.md) | TBD |
 | [RFC 0006](0006-error-lowering-runtime-abi.md) | Error Lowering And Runtime ABI | ACCEPTED | compiler | compiler | rfc | [Review Tracker](tracking/0006-review-and-implementation.md) | TBD |
 | [RFC 0007](0007-borrow-lifetime-ownership-checker.md) | Borrow Lifetime And Ownership Checker | RETURNED | compiler | compiler | rfc | [Review Tracker](tracking/0007-review-and-implementation.md) | TBD |

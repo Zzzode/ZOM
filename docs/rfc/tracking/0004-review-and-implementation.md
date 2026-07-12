@@ -297,6 +297,21 @@ until every required owner approves the exact repaired REVIEW bytes above.
 
 ## Implementation Tracker
 
-Implementation under the revised architecture has not started. Existing binder
-code is evidence about current behavior, not proof that the returned contract
-is implemented.
+RFC 0004 entered `IMPLEMENTING` on 2026-07-12. Existing binder code remains
+evidence about current behavior, not proof that the accepted contract is
+implemented. Only completed rows with executable evidence count toward
+landing.
+
+| Slice | State | Required evidence |
+|---|---|---|
+| Dependency-free root verifier spine | In progress | `ModuleGraphVerifier`, private `VerifiedModuleGraphView`, `BindingInputVerifier`, private `VerifiedBindingInput`, focused unit tests, and the initial binder architecture gate |
+| Complete module resolution input | Blocked by RFC 0012 and RFC 0008 | Authoritative package resolution, production semantic-context fingerprint, verified resolution environment, and resolution receipts |
+| Complete binding facts and surfaces | Pending | Frozen definition inventory, imports, exports, aliases, visibility, scopes, labels, captures, immutable metadata, codecs, and verifier negatives |
+| Production binder cutover | Pending | Session integration, no downstream rebinding, deletion of raw binder inputs and binder-owned module resolution, and all acceptance gates |
+
+The first slice is intentionally fail-closed. It accepts only a single frozen
+root module whose syntax independently proves that no module-resolution receipt
+is required. Imports, foreign re-exports, module aliases, impl inventory, or
+non-zero graph edges must produce an invariant failure until their complete
+verified inputs exist. The slice does not call or wrap the current `Binder` and
+does not add a compatibility entry point.

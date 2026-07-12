@@ -2,20 +2,20 @@
 rfc: 4
 title: Binder Architecture
 type: compiler
-status: ACCEPTED
+status: IMPLEMENTING
 author: ZOM Compiler Team
 review-manager: rfc
 required-owners: [rfc, binder-checker, error-system, module-system, ir-backend, spec-audit, verification]
 approvers: [rfc, binder-checker, error-system, module-system, ir-backend, spec-audit, verification]
 created: 2026-07-05
-updated: 2026-07-11
+updated: 2026-07-12
 area: compiler
 requires: [1, 2, 3, 11]
 supersedes: []
 superseded-by: []
 discussion: docs/rfc/tracking/0004-review-and-implementation.md#discussion-record
 decision: docs/rfc/tracking/0004-review-and-implementation.md#decision-record
-implementation: TBD
+implementation: docs/rfc/tracking/0004-review-and-implementation.md#implementation-tracker
 tracking-issue: docs/rfc/tracking/0004-review-and-implementation.md#implementation-tracker
 ---
 
@@ -1877,3 +1877,4 @@ None
 | 2026-07-11 | DRAFT | Closed entry-review returns with post-freeze parsed-module promotion, context-global inventory freeze, exhaustive scope/label/activation and fact algebras, module-private export surfaces, byte-exact revision and allocation oracles, typed diagnostics, verifier rejection mapping, and executable architecture and coverage gates. |
 | 2026-07-11 | REVIEW | Entered formal review after every required technical owner approved proposal hash `98f4a6b22ebfa1e3f05a67b092b8164bbac24621c0d4b8c58d111a6707bd4620` and the review manager authorized the atomic transition. Acceptance, decision, and implementation remain open. |
 | 2026-07-11 | ACCEPTED | Every required owner approved proposal hash `26bcc9dd95f5abbf623dd39af0cf6bd3ae2de9ed6be89649465803609c8af5cd` after formal graph, resolution-environment, visibility, diagnostic, codec, and verifier review. Implementation has not started. |
+| 2026-07-12 | IMPLEMENTING | Started the direct replacement series with the dependency-free module-graph and binding-input verifier spine tracked by the local implementation record. |
