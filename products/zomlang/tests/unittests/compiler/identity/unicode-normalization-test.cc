@@ -36,6 +36,15 @@ void expectNormalization(zc::StringPtr input, zc::StringPtr expected) {
   ZC_EXPECT(matched);
 }
 
+void expectCaseFold(zc::StringPtr input, zc::StringPtr expected) {
+  bool matched = false;
+  ZC_IF_SOME(value, fullCaseFold(input)) {
+    ZC_EXPECT(value == expected);
+    matched = true;
+  }
+  ZC_EXPECT(matched);
+}
+
 }  // namespace
 
 ZC_TEST("NFC composes canonical Latin and Hangul sequences") {
@@ -62,6 +71,14 @@ ZC_TEST("NFC rejects malformed UTF-8 and reports canonical state") {
   ZC_EXPECT(isNfc("\xC3\xA9"_zc) == true);
   ZC_EXPECT(isNfc("\x65\xCC\x81"_zc) == false);
   ZC_EXPECT(isNfc("\xC0\x80"_zc) == zc::none);
+}
+
+ZC_TEST("Full case folding uses Unicode 15.1 default mappings") {
+  expectCaseFold("ABC"_zc, "abc"_zc);
+  expectCaseFold("\xC3\x9F"_zc, "ss"_zc);
+  expectCaseFold("\xC4\xB0"_zc, "i\xCC\x87"_zc);
+  expectCaseFold("\xEF\xAC\x83"_zc, "ffi"_zc);
+  ZC_EXPECT(fullCaseFold("\xC0\x80"_zc) == zc::none);
 }
 
 ZC_TEST("NFC passes every Unicode 15.1.0 NormalizationTest input") {

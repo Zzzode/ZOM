@@ -17,11 +17,13 @@
 #include "zc/core/vector.h"
 #include "zc/ztest/test.h"
 #include "zomlang/compiler/binder/decl-collector.h"
+#include "zomlang/compiler/binder/definition-identity-map.h"
 #include "zomlang/compiler/binder/name-resolver.h"
 #include "zomlang/compiler/diagnostics/diagnostic-engine.h"
 #include "zomlang/compiler/symbol/scope.h"
 #include "zomlang/compiler/symbol/symbol-table.h"
 #include "zomlang/tests/unittests/compiler/test-ast-builder.h"
+#include "zomlang/tests/unittests/compiler/test-semantic-identities.h"
 
 namespace zomlang {
 namespace compiler {
@@ -34,9 +36,12 @@ namespace {
 // Helper: run DeclCollector then ImportResolver.
 bool collectAndResolveImports(TestFixture& fix, zc::ArrayPtr<const ast::NodeId> decls) {
   auto tree = fix.buildSourceFile("test"_zc, decls);
-  DeclCollector collector(fix.symbols(), fix.scopes(), tree, fix.metadata(), fix.diagnostics());
+  auto identities = tests::makeTestDefinitionIdentityMap(tree);
+  DeclCollector collector(fix.symbols(), fix.scopes(), tree, identities, fix.metadata(),
+                          fix.diagnostics());
   if (!collector.collect()) return false;
-  ImportResolver resolver(fix.symbols(), fix.scopes(), tree, fix.metadata(), fix.diagnostics());
+  ImportResolver resolver(fix.symbols(), fix.scopes(), tree, identities, fix.metadata(),
+                          fix.diagnostics());
   return resolver.resolveImports();
 }
 
@@ -192,9 +197,11 @@ ZC_TEST("ImportResolver.FullPipelineWithImports") {
   topDecls.add(fn);
 
   auto tree = fix.buildSourceFile("test"_zc, topDecls.asPtr());
-  DeclCollector collector(fix.symbols(), fix.scopes(), tree, fix.metadata(), fix.diagnostics());
+  auto identities = tests::makeTestDefinitionIdentityMap(tree);
+  DeclCollector collector(fix.symbols(), fix.scopes(), tree, identities, fix.metadata(),
+                          fix.diagnostics());
   ZC_EXPECT(collector.collect());
-  ImportResolver importResolver(fix.symbols(), fix.scopes(), tree, fix.metadata(),
+  ImportResolver importResolver(fix.symbols(), fix.scopes(), tree, identities, fix.metadata(),
                                 fix.diagnostics());
   importResolver.resolveImports();
   NameResolver nameResolver(fix.symbols(), fix.scopes(), tree, fix.metadata(), fix.diagnostics());

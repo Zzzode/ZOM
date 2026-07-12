@@ -52,31 +52,7 @@
     "Attribute": "semantic metadata rather than a definition"
   },
   "expansion_producers": [],
-  "legacy_symbol_id_allowlist": [
-    "products/zomlang/compiler/ast/tree.cc",
-    "products/zomlang/compiler/ast/tree.h",
-    "products/zomlang/compiler/binder/name-resolver.cc",
-    "products/zomlang/compiler/checker/body-checker.cc",
-    "products/zomlang/compiler/irgen/ir-dump.cc",
-    "products/zomlang/compiler/irgen/ir-dump.h",
-    "products/zomlang/compiler/irgen/ir.cc",
-    "products/zomlang/compiler/irgen/ir.h",
-    "products/zomlang/compiler/irgen/lowering.cc",
-    "products/zomlang/compiler/symbol/namespace-symbol.h",
-    "products/zomlang/compiler/symbol/package-symbol.h",
-    "products/zomlang/compiler/symbol/symbol-id.h",
-    "products/zomlang/compiler/symbol/symbol-table.cc",
-    "products/zomlang/compiler/symbol/symbol.cc",
-    "products/zomlang/compiler/symbol/symbol.h",
-    "products/zomlang/compiler/symbol/type-symbol.cc",
-    "products/zomlang/compiler/symbol/type-symbol.h",
-    "products/zomlang/compiler/symbol/value-symbol.cc",
-    "products/zomlang/compiler/symbol/value-symbol.h",
-    "products/zomlang/compiler/type/type-env.h"
-  ],
-  "pointer_identity_allowlist": [
-    "products/zomlang/compiler/binder/decl-collector.cc",
-    "products/zomlang/compiler/binder/name-resolver.cc",
-    "products/zomlang/compiler/checker/body-checker.cc"
-  ]
+  "legacy_symbol_id_allowlist": [],
+  "legacy_type_identity_allowlist": [],
+  "pointer_identity_allowlist": []
 }

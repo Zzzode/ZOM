@@ -57,6 +57,7 @@ struct ImplInventoryEntry final {
 /// \brief Prebinding description of one explicit module identity producer.
 struct ModuleInventoryEntry final {
   ast::NodeId node;
+  ast::NodeId parentModuleNode;
   ast::ModuleDeclarationForm form;
   ast::IdentId declaredName;
   source::SourceRange source;

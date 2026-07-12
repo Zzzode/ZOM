@@ -24,14 +24,11 @@
 #include "zomlang/compiler/ast/generated/node-layout.h"
 #include "zomlang/compiler/ast/kinds.h"
 #include "zomlang/compiler/ast/node-id.h"
+#include "zomlang/compiler/identity/frozen-registry.h"
 #include "zomlang/compiler/source/location.h"
 
 namespace zomlang {
 namespace compiler {
-
-namespace symbol {
-class SymbolId;
-}
 
 namespace ast {
 
@@ -228,8 +225,8 @@ public:
   void setScope(NodeId node, uint32_t scopeId);
   uint32_t scope(NodeId node) const;
 
-  void setSymbol(NodeId node, symbol::SymbolId symbolId);
-  symbol::SymbolId symbol(NodeId node) const;
+  void setDefinition(NodeId node, identity::DefId definition);
+  identity::DefId definition(NodeId node) const;
 
   void setIsUnresolved(NodeId node, bool value);
   bool isUnresolved(NodeId node) const;

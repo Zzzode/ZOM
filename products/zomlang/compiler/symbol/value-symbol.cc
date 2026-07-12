@@ -31,7 +31,7 @@ struct ValueSymbol::Impl {
 };
 
 // ValueSymbol implementation
-ValueSymbol::ValueSymbol(SymbolId id, zc::StringPtr name, SymbolFlags flags,
+ValueSymbol::ValueSymbol(identity::DefId id, zc::StringPtr name, SymbolFlags flags,
                          const source::SourceLoc& location, zc::Own<TypeSymbol> type)
     : Symbol(id, name, flags, location), impl(zc::heap<Impl>(zc::mv(type))) {}
 
@@ -56,7 +56,7 @@ SymbolKind ValueSymbol::getKind() const { return SymbolKind::Value; }
 zc::StringPtr ValueSymbol::getKindName() const { return "value"_zc; }
 
 // VariableSymbol implementation
-VariableSymbol::VariableSymbol(SymbolId id, zc::StringPtr name, SymbolFlags flags,
+VariableSymbol::VariableSymbol(identity::DefId id, zc::StringPtr name, SymbolFlags flags,
                                const source::SourceLoc& location, zc::Own<TypeSymbol> type,
                                bool isMutable)
     : ValueSymbol(id, name, flags | (isMutable ? SymbolFlags::Mutable : SymbolFlags{}), location,
@@ -87,7 +87,7 @@ struct ConstantSymbol::Impl {
 };
 
 // ConstantSymbol implementation
-ConstantSymbol::ConstantSymbol(SymbolId id, zc::StringPtr name, SymbolFlags flags,
+ConstantSymbol::ConstantSymbol(identity::DefId id, zc::StringPtr name, SymbolFlags flags,
                                const source::SourceLoc& location, zc::Own<TypeSymbol> type)
     : ValueSymbol(id, name, flags | SymbolFlags::Constant, location, zc::mv(type)),
       impl(zc::heap<Impl>()) {}
@@ -116,7 +116,7 @@ struct ParameterSymbol::Impl {
 };
 
 // ParameterSymbol implementation
-ParameterSymbol::ParameterSymbol(SymbolId id, zc::StringPtr name, SymbolFlags flags,
+ParameterSymbol::ParameterSymbol(identity::DefId id, zc::StringPtr name, SymbolFlags flags,
                                  const source::SourceLoc& location, zc::Own<TypeSymbol> type,
                                  bool isOptional)
     : ValueSymbol(id, name, flags | SymbolFlags::Parameter, location, zc::mv(type)),
@@ -147,7 +147,7 @@ struct FunctionSymbol::Impl {
 };
 
 // FunctionSymbol implementation
-FunctionSymbol::FunctionSymbol(SymbolId id, zc::StringPtr name, SymbolFlags flags,
+FunctionSymbol::FunctionSymbol(identity::DefId id, zc::StringPtr name, SymbolFlags flags,
                                const source::SourceLoc& location, zc::Own<TypeSymbol> type)
     : ValueSymbol(id, name, flags | SymbolFlags::Function, location, zc::mv(type)),
       impl(zc::heap<Impl>()) {}
@@ -187,7 +187,7 @@ bool FunctionSymbol::isBuiltin() const { return hasFlag(SymbolFlags::Builtin); }
 bool FunctionSymbol::isVariadic() const { return hasFlag(SymbolFlags::Implicit); }
 
 // FieldSymbol implementation
-FieldSymbol::FieldSymbol(SymbolId id, zc::StringPtr name, SymbolFlags flags,
+FieldSymbol::FieldSymbol(identity::DefId id, zc::StringPtr name, SymbolFlags flags,
                          const source::SourceLoc& location, zc::Own<TypeSymbol> type,
                          bool isMutable)
     : VariableSymbol(id, name, flags | SymbolFlags::Field, location, zc::mv(type), isMutable) {}
@@ -225,7 +225,7 @@ struct EnumCaseSymbol::Impl {
 };
 
 // EnumCaseSymbol implementation
-EnumCaseSymbol::EnumCaseSymbol(SymbolId id, zc::StringPtr name, SymbolFlags flags,
+EnumCaseSymbol::EnumCaseSymbol(identity::DefId id, zc::StringPtr name, SymbolFlags flags,
                                const source::SourceLoc& location, zc::Own<TypeSymbol> type)
     : ValueSymbol(id, name, flags | SymbolFlags::Constant, location, zc::mv(type)),
       impl(zc::heap<Impl>()) {}

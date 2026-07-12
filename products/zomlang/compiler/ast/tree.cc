@@ -17,7 +17,6 @@
 #include "zc/core/arena.h"
 #include "zc/core/debug.h"
 #include "zc/core/map.h"
-#include "zomlang/compiler/symbol/symbol-id.h"
 
 namespace zomlang {
 namespace compiler {
@@ -246,7 +245,7 @@ Tree TreeBuilder::finish() { return zc::mv(tree); }
 struct BindingMetadata::Impl {
   zc::Vector<NodeId> parents;
   zc::Vector<uint32_t> scopes;
-  zc::Vector<symbol::SymbolId> symbols;
+  zc::Vector<identity::DefId> definitions;
   zc::Vector<bool> unresolved;
   zc::Vector<bool> deferredMembers;
   zc::Vector<NodeId> shadowOfs;
@@ -266,7 +265,7 @@ BindingMetadata& BindingMetadata::operator=(BindingMetadata&& other) noexcept = 
 void BindingMetadata::resizeFor(const Tree& tree) {
   impl->parents.resize(tree.nodeCount());
   impl->scopes.resize(tree.nodeCount());
-  impl->symbols.resize(tree.nodeCount());
+  impl->definitions.resize(tree.nodeCount());
   impl->unresolved.resize(tree.nodeCount());
   impl->deferredMembers.resize(tree.nodeCount());
   impl->shadowOfs.resize(tree.nodeCount());
@@ -278,7 +277,7 @@ void BindingMetadata::resizeFor(const Tree& tree) {
 bool BindingMetadata::isSizedFor(const Tree& tree) const {
   const auto count = tree.nodeCount();
   return impl->parents.size() == count && impl->scopes.size() == count &&
-         impl->symbols.size() == count && impl->unresolved.size() == count &&
+         impl->definitions.size() == count && impl->unresolved.size() == count &&
          impl->deferredMembers.size() == count && impl->shadowOfs.size() == count &&
          impl->reexports.size() == count && impl->captureLists.size() == count &&
          impl->labelTargets.size() == count;
@@ -304,14 +303,15 @@ uint32_t BindingMetadata::scope(NodeId node) const {
   return impl->scopes[indexOf(node)];
 }
 
-void BindingMetadata::setSymbol(NodeId node, symbol::SymbolId symbolId) {
-  ZC_IREQUIRE(indexOf(node) < impl->symbols.size(), "metadata symbol write is outside tree");
-  impl->symbols[indexOf(node)] = symbolId;
+void BindingMetadata::setDefinition(NodeId node, identity::DefId definition) {
+  ZC_IREQUIRE(indexOf(node) < impl->definitions.size(),
+              "metadata definition write is outside tree");
+  impl->definitions[indexOf(node)] = definition;
 }
 
-symbol::SymbolId BindingMetadata::symbol(NodeId node) const {
-  ZC_IREQUIRE(indexOf(node) < impl->symbols.size(), "metadata symbol read is outside tree");
-  return impl->symbols[indexOf(node)];
+identity::DefId BindingMetadata::definition(NodeId node) const {
+  ZC_IREQUIRE(indexOf(node) < impl->definitions.size(), "metadata definition read is outside tree");
+  return impl->definitions[indexOf(node)];
 }
 
 void BindingMetadata::setIsUnresolved(NodeId node, bool value) {

@@ -19,6 +19,7 @@
 #include "zomlang/compiler/source/location.h"
 #include "zomlang/compiler/symbol/symbol-table.h"
 #include "zomlang/compiler/symbol/symbol.h"
+#include "zomlang/tests/unittests/compiler/test-semantic-identities.h"
 
 namespace zomlang {
 namespace compiler {
@@ -55,8 +56,8 @@ ZC_TEST("Scope_SymbolManagement") {
   source::SourceLoc location;
 
   // Create symbols
-  SymbolId id1 = SymbolId::create(1);
-  SymbolId id2 = SymbolId::create(2);
+  identity::DefId id1 = tests::testDefinition(1);
+  identity::DefId id2 = tests::testDefinition(2);
   auto symbol1 = zc::heap<Symbol>(id1, "field1", SymbolFlags::Public, location);
   auto symbol2 = zc::heap<Symbol>(id2, "field2", SymbolFlags::Private, location);
 
@@ -86,7 +87,7 @@ ZC_TEST("Scope_SymbolRemoval") {
   Scope& scope = manager.createScope(Scope::Kind::Function, "testFunction");
   source::SourceLoc location;
 
-  SymbolId id = SymbolId::create(1);
+  identity::DefId id = tests::testDefinition(1);
   auto symbol = zc::heap<Symbol>(id, "tempVar", SymbolFlags::Public, location);
 
   // Add symbol first

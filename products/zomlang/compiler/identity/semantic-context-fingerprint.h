@@ -48,8 +48,7 @@ public:
   ZC_NODISCARD static zc::Maybe<SemanticContextFingerprint> compute(
       zc::ArrayPtr<const PackageKey> packages,
       zc::ArrayPtr<const PackageDependencyEdgeKey> packageEdges,
-      zc::ArrayPtr<const CrateKey> crates,
-      zc::ArrayPtr<const CrateDependencyEdgeKey> crateEdges,
+      zc::ArrayPtr<const CrateKey> crates, zc::ArrayPtr<const CrateDependencyEdgeKey> crateEdges,
       zc::ArrayPtr<const SourceContentIdentity> sourceContents,
       zc::ArrayPtr<const ModuleKey> modules);
 
@@ -59,6 +58,7 @@ public:
       zc::ArrayPtr<const PackageDependencyEdgeKey> packageEdges,
       zc::ArrayPtr<const CrateDependencyEdgeKey> crateEdges);
 
+  ZC_NODISCARD SemanticContextFingerprint clone() const noexcept;
   ZC_NODISCARD const Sha256Digest& digest() const noexcept;
 
 private:

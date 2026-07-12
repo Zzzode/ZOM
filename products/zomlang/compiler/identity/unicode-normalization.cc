@@ -83,6 +83,23 @@ zc::Maybe<uint32_t> findTableComposition(uint32_t starter, uint32_t combining) {
   return zc::none;
 }
 
+zc::Maybe<const UnicodeCaseFoldEntry&> findCaseFold(uint32_t codePoint) {
+  size_t left = 0;
+  size_t right = UNICODE_CASE_FOLDS.size();
+  while (left < right) {
+    const size_t middle = left + (right - left) / 2;
+    const auto& entry = UNICODE_CASE_FOLDS[middle];
+    if (codePoint < entry.codePoint) {
+      right = middle;
+    } else if (codePoint > entry.codePoint) {
+      left = middle + 1;
+    } else {
+      return entry;
+    }
+  }
+  return zc::none;
+}
+
 zc::Maybe<uint32_t> findHangulComposition(uint32_t starter, uint32_t combining) {
   const uint32_t leadingIndex = starter - kHangulLeadingJamoBase;
   if (leadingIndex < kHangulLeadingCount) {
@@ -198,6 +215,24 @@ zc::Maybe<zc::String> normalizeNfc(zc::StringPtr input) {
 zc::Maybe<bool> isNfc(zc::StringPtr input) {
   ZC_IF_SOME(normalized, normalizeNfc(input)) { return normalized == input; }
   return zc::none;
+}
+
+zc::Maybe<zc::String> fullCaseFold(zc::StringPtr input) {
+  auto decoded = zc::encodeUtf32(input);
+  if (decoded == zc::none) { return zc::none; }
+
+  zc::Vector<char32_t> folded(decoded.size());
+  for (char32_t codePoint : decoded) {
+    ZC_IF_SOME(entry, findCaseFold(static_cast<uint32_t>(codePoint))) {
+      const auto values =
+          UNICODE_CASE_FOLD_SCALARS.slice(entry.offset, entry.offset + entry.length);
+      for (uint32_t value : values) { folded.add(static_cast<char32_t>(value)); }
+    }
+    else { folded.add(codePoint); }
+  }
+  auto encoded = zc::decodeUtf32(folded.asPtr());
+  if (encoded == zc::none) { return zc::none; }
+  return zc::mv(encoded);
 }
 
 }  // namespace zomlang::compiler::identity

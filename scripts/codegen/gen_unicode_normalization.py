@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate Unicode NFC normalization tables from a pinned UCD release."""
+"""Generate Unicode NFC normalization and full case-fold tables from a pinned UCD release."""
 
 from __future__ import annotations
 
@@ -62,6 +62,23 @@ def parse_full_composition_exclusions(text: str) -> set[int]:
     return exclusions
 
 
+def parse_full_case_folding(text: str) -> dict[int, tuple[int, ...]]:
+    mappings: dict[int, tuple[int, ...]] = {}
+    for line in text.splitlines():
+        content = line.split("#", 1)[0].strip()
+        if not content:
+            continue
+        code_point_text, status, mapping_text, _ = [
+            part.strip() for part in content.split(";", 3)
+        ]
+        if status not in {"C", "F"}:
+            continue
+        mappings[int(code_point_text, 16)] = tuple(
+            int(value, 16) for value in mapping_text.split()
+        )
+    return dict(sorted(mappings.items()))
+
+
 def expand_decompositions(
     raw: dict[int, tuple[int, ...]],
 ) -> dict[int, tuple[int, ...]]:
@@ -88,10 +105,12 @@ def composition_pairs(
 
 def render_header(
     version: str, combining_count: int, decomposition_count: int,
-    scalar_count: int, composition_count: int
+    scalar_count: int, composition_count: int, case_fold_count: int,
+    case_fold_scalar_count: int,
 ) -> str:
     unicode_data_source = ucd_url(version, "UnicodeData.txt")
     normalization_source = ucd_url(version, "DerivedNormalizationProps.txt")
+    case_folding_source = ucd_url(version, "CaseFolding.txt")
     return f'''// Copyright (c) 2026 Zode.Z. All rights reserved
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
@@ -135,21 +154,32 @@ struct UnicodeCompositionEntry final {{
   uint32_t composite;
 }};
 
+struct UnicodeCaseFoldEntry final {{
+  uint32_t codePoint;
+  uint32_t offset;
+  uint8_t length;
+}};
+
 inline constexpr char kUnicodeNormalizationDataVersion[] = "{version}";
 inline constexpr char kUnicodeNormalizationUnicodeDataSource[] =
     "{unicode_data_source}";
 inline constexpr char kUnicodeNormalizationPropertiesSource[] =
     "{normalization_source}";
+inline constexpr char kUnicodeCaseFoldingSource[] = "{case_folding_source}";
 
 inline constexpr size_t kUnicodeCombiningClassCount = {combining_count};
 inline constexpr size_t kUnicodeDecompositionCount = {decomposition_count};
 inline constexpr size_t kUnicodeDecompositionScalarCount = {scalar_count};
 inline constexpr size_t kUnicodeCompositionCount = {composition_count};
+inline constexpr size_t kUnicodeCaseFoldCount = {case_fold_count};
+inline constexpr size_t kUnicodeCaseFoldScalarCount = {case_fold_scalar_count};
 
 extern const zc::ArrayPtr<const UnicodeCombiningClassEntry> UNICODE_COMBINING_CLASSES;
 extern const zc::ArrayPtr<const UnicodeDecompositionEntry> UNICODE_DECOMPOSITIONS;
 extern const zc::ArrayPtr<const uint32_t> UNICODE_DECOMPOSITION_SCALARS;
 extern const zc::ArrayPtr<const UnicodeCompositionEntry> UNICODE_COMPOSITIONS;
+extern const zc::ArrayPtr<const UnicodeCaseFoldEntry> UNICODE_CASE_FOLDS;
+extern const zc::ArrayPtr<const uint32_t> UNICODE_CASE_FOLD_SCALARS;
 
 }}  // namespace zomlang::compiler::identity
 '''
@@ -165,10 +195,12 @@ def format_entries(type_name: str, name: str, rows: list[str]) -> str:
 def render_cc(
     version: str, combining_classes: dict[int, int],
     decompositions: dict[int, tuple[int, ...]],
-    compositions: list[tuple[int, int, int]]
+    compositions: list[tuple[int, int, int]],
+    case_folds: dict[int, tuple[int, ...]],
 ) -> str:
     unicode_data_source = ucd_url(version, "UnicodeData.txt")
     normalization_source = ucd_url(version, "DerivedNormalizationProps.txt")
+    case_folding_source = ucd_url(version, "CaseFolding.txt")
     scalar_values: list[int] = []
     decomposition_rows: list[str] = []
     for code_point, mapping in decompositions.items():
@@ -192,6 +224,20 @@ def render_cc(
         "UnicodeCompositionEntry", "UNICODE_COMPOSITIONS_DATA",
         [f"{{0x{first:06X}, 0x{second:06X}, 0x{composite:06X}}}"
          for first, second, composite in compositions],
+    )
+    case_fold_scalars: list[int] = []
+    case_fold_rows: list[str] = []
+    for code_point, mapping in case_folds.items():
+        case_fold_rows.append(
+            f"{{0x{code_point:06X}, {len(case_fold_scalars)}, {len(mapping)}}}"
+        )
+        case_fold_scalars.extend(mapping)
+    case_fold_array = format_entries(
+        "UnicodeCaseFoldEntry", "UNICODE_CASE_FOLDS_DATA", case_fold_rows
+    )
+    case_fold_scalar_array = format_entries(
+        "uint32_t", "UNICODE_CASE_FOLD_SCALARS_DATA",
+        [f"0x{value:06X}" for value in case_fold_scalars],
     )
     return f'''// Copyright (c) 2026 Zode.Z. All rights reserved
 //
@@ -218,6 +264,7 @@ namespace zomlang::compiler::identity {{
 // UCD version: {version}
 // Source: {unicode_data_source}
 // Source: {normalization_source}
+// Source: {case_folding_source}
 
 {combining_array}
 
@@ -227,11 +274,17 @@ namespace zomlang::compiler::identity {{
 
 {composition_array}
 
+{case_fold_array}
+
+{case_fold_scalar_array}
+
 static_assert(zc::size(UNICODE_COMBINING_CLASSES_DATA) == kUnicodeCombiningClassCount);
 static_assert(zc::size(UNICODE_DECOMPOSITIONS_DATA) == kUnicodeDecompositionCount);
 static_assert(zc::size(UNICODE_DECOMPOSITION_SCALARS_DATA) ==
               kUnicodeDecompositionScalarCount);
 static_assert(zc::size(UNICODE_COMPOSITIONS_DATA) == kUnicodeCompositionCount);
+static_assert(zc::size(UNICODE_CASE_FOLDS_DATA) == kUnicodeCaseFoldCount);
+static_assert(zc::size(UNICODE_CASE_FOLD_SCALARS_DATA) == kUnicodeCaseFoldScalarCount);
 
 constexpr zc::ArrayPtr<const UnicodeCombiningClassEntry> UNICODE_COMBINING_CLASSES =
     zc::arrayPtr(UNICODE_COMBINING_CLASSES_DATA);
@@ -241,6 +294,10 @@ constexpr zc::ArrayPtr<const uint32_t> UNICODE_DECOMPOSITION_SCALARS =
     zc::arrayPtr(UNICODE_DECOMPOSITION_SCALARS_DATA);
 constexpr zc::ArrayPtr<const UnicodeCompositionEntry> UNICODE_COMPOSITIONS =
     zc::arrayPtr(UNICODE_COMPOSITIONS_DATA);
+constexpr zc::ArrayPtr<const UnicodeCaseFoldEntry> UNICODE_CASE_FOLDS =
+    zc::arrayPtr(UNICODE_CASE_FOLDS_DATA);
+constexpr zc::ArrayPtr<const uint32_t> UNICODE_CASE_FOLD_SCALARS =
+    zc::arrayPtr(UNICODE_CASE_FOLD_SCALARS_DATA);
 
 }}  // namespace zomlang::compiler::identity
 '''
@@ -274,20 +331,23 @@ def main() -> int:
 
     unicode_data = load_text(args.ucd_version, "UnicodeData.txt", args.input_dir)
     derived = load_text(args.ucd_version, "DerivedNormalizationProps.txt", args.input_dir)
+    case_folding = load_text(args.ucd_version, "CaseFolding.txt", args.input_dir)
     combining_classes, raw_decompositions = parse_unicode_data(unicode_data)
     decompositions = expand_decompositions(raw_decompositions)
     exclusions = parse_full_composition_exclusions(derived)
     compositions = composition_pairs(raw_decompositions, exclusions)
+    case_folds = parse_full_case_folding(case_folding)
     scalar_count = sum(len(mapping) for mapping in decompositions.values())
+    case_fold_scalar_count = sum(len(mapping) for mapping in case_folds.values())
 
     header_path = args.output_dir / "unicode-normalization-data.h"
     cc_path = args.output_dir / "unicode-normalization-data.cc"
     header = format_cpp(render_header(
         args.ucd_version, len(combining_classes), len(decompositions),
-        scalar_count, len(compositions)
+        scalar_count, len(compositions), len(case_folds), case_fold_scalar_count
     ), header_path)
     implementation = format_cpp(render_cc(
-        args.ucd_version, combining_classes, decompositions, compositions
+        args.ucd_version, combining_classes, decompositions, compositions, case_folds
     ), cc_path)
 
     if args.check:
@@ -302,7 +362,8 @@ def main() -> int:
         print(
             f"unicode normalization data ok: UCD {args.ucd_version}, "
             f"{len(combining_classes)} combining classes, "
-            f"{len(decompositions)} decompositions, {len(compositions)} compositions"
+            f"{len(decompositions)} decompositions, {len(compositions)} compositions, "
+            f"{len(case_folds)} case folds"
         )
         return 0
 
@@ -312,7 +373,8 @@ def main() -> int:
     print(
         f"generated Unicode normalization data: UCD {args.ucd_version}, "
         f"{len(combining_classes)} combining classes, "
-        f"{len(decompositions)} decompositions, {len(compositions)} compositions"
+        f"{len(decompositions)} decompositions, {len(compositions)} compositions, "
+        f"{len(case_folds)} case folds"
     )
     return 0
 

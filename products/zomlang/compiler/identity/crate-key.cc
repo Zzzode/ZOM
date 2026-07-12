@@ -19,9 +19,7 @@
 namespace zomlang::compiler::identity {
 namespace {
 
-bool isValid(Endianness value) {
-  return value == Endianness::Little || value == Endianness::Big;
-}
+bool isValid(Endianness value) { return value == Endianness::Little || value == Endianness::Big; }
 
 bool isValid(CompilationDomain value) {
   return value == CompilationDomain::Host || value == CompilationDomain::Target;
@@ -52,20 +50,28 @@ zc::Maybe<CanonicalTargetSpecificationKey> CanonicalTargetSpecificationKey::from
     TargetComponentName&& operatingSystem, TargetComponentName&& environment,
     TargetComponentName&& abi, uint32_t pointerWidth, Endianness endianness,
     SortedTargetFeatureSet&& semanticFeatures) {
-  if (pointerWidth == 0 || pointerWidth % 8 != 0 || !isValid(endianness)) {
-    return zc::none;
-  }
-  return CanonicalTargetSpecificationKey(
-      zc::mv(architecture), zc::mv(vendor), zc::mv(operatingSystem), zc::mv(environment),
-      zc::mv(abi), pointerWidth, endianness, zc::mv(semanticFeatures));
+  if (pointerWidth == 0 || pointerWidth % 8 != 0 || !isValid(endianness)) { return zc::none; }
+  return CanonicalTargetSpecificationKey(zc::mv(architecture), zc::mv(vendor),
+                                         zc::mv(operatingSystem), zc::mv(environment), zc::mv(abi),
+                                         pointerWidth, endianness, zc::mv(semanticFeatures));
 }
 
 CanonicalTargetSpecificationKey CanonicalTargetSpecificationKey::clone() const {
-  return CanonicalTargetSpecificationKey(
-      architectureValue.clone(), vendorValue.clone(), operatingSystemValue.clone(),
-      environmentValue.clone(), abiValue.clone(), pointerWidthValue, endiannessValue,
-      featureValue.clone());
+  return CanonicalTargetSpecificationKey(architectureValue.clone(), vendorValue.clone(),
+                                         operatingSystemValue.clone(), environmentValue.clone(),
+                                         abiValue.clone(), pointerWidthValue, endiannessValue,
+                                         featureValue.clone());
 }
+
+zc::StringPtr CanonicalTargetSpecificationKey::architecture() const noexcept {
+  return architectureValue.text();
+}
+
+uint32_t CanonicalTargetSpecificationKey::pointerWidth() const noexcept {
+  return pointerWidthValue;
+}
+
+Endianness CanonicalTargetSpecificationKey::endianness() const noexcept { return endiannessValue; }
 
 void CanonicalTargetSpecificationKey::encode(CanonicalEncoder& encoder) const {
   architectureValue.encode(encoder);
@@ -78,17 +84,17 @@ void CanonicalTargetSpecificationKey::encode(CanonicalEncoder& encoder) const {
   featureValue.encode(encoder);
 }
 
-SemanticCompilerOptionsKey::SemanticCompilerOptionsKey(
-    uint32_t editionYear, bool useUnicode, bool allowDollarIdentifiers,
-    bool supportRegexLiterals) noexcept
+SemanticCompilerOptionsKey::SemanticCompilerOptionsKey(uint32_t editionYear, bool useUnicode,
+                                                       bool allowDollarIdentifiers,
+                                                       bool supportRegexLiterals) noexcept
     : editionYearValue(editionYear),
       useUnicodeValue(useUnicode),
       allowDollarIdentifiersValue(allowDollarIdentifiers),
       supportRegexLiteralsValue(supportRegexLiterals) {}
 
-SemanticCompilerOptionsKey SemanticCompilerOptionsKey::from(
-    uint32_t editionYear, bool useUnicode, bool allowDollarIdentifiers,
-    bool supportRegexLiterals) noexcept {
+SemanticCompilerOptionsKey SemanticCompilerOptionsKey::from(uint32_t editionYear, bool useUnicode,
+                                                            bool allowDollarIdentifiers,
+                                                            bool supportRegexLiterals) noexcept {
   return SemanticCompilerOptionsKey(editionYear, useUnicode, allowDollarIdentifiers,
                                     supportRegexLiterals);
 }
@@ -124,8 +130,7 @@ zc::Maybe<CompilationConfigKey> CompilationConfigKey::from(
     SemanticCompilerOptionsKey semanticOptions,
     zc::Maybe<BuildScriptOutputKey>&& buildScriptOutput) {
   if (!isValid(domain)) { return zc::none; }
-  return CompilationConfigKey(domain, zc::mv(target), semanticOptions,
-                              zc::mv(buildScriptOutput));
+  return CompilationConfigKey(domain, zc::mv(target), semanticOptions, zc::mv(buildScriptOutput));
 }
 
 CompilationConfigKey CompilationConfigKey::clone() const {
@@ -143,9 +148,7 @@ void CompilationConfigKey::encode(CanonicalEncoder& encoder) const {
     encoder.encodeSome();
     output.encode(encoder);
   }
-  else {
-    encoder.encodeNone();
-  }
+  else { encoder.encodeNone(); }
 }
 
 CrateKey::CrateKey(PackageKey&& package, CrateTargetKind kind, TargetName&& targetName,
@@ -156,8 +159,7 @@ CrateKey::CrateKey(PackageKey&& package, CrateTargetKind kind, TargetName&& targ
       compilationValue(zc::mv(compilation)) {}
 
 zc::Maybe<CrateKey> CrateKey::from(PackageKey&& package, CrateTargetKind kind,
-                                   TargetName&& targetName,
-                                   CompilationConfigKey&& compilation) {
+                                   TargetName&& targetName, CompilationConfigKey&& compilation) {
   if (!isValid(kind)) { return zc::none; }
   return CrateKey(zc::mv(package), kind, zc::mv(targetName), zc::mv(compilation));
 }
@@ -166,6 +168,12 @@ CrateKey CrateKey::clone() const {
   return CrateKey(packageValue.clone(), kindValue, targetNameValue.clone(),
                   compilationValue.clone());
 }
+
+const PackageKey& CrateKey::package() const noexcept { return packageValue; }
+
+CrateTargetKind CrateKey::targetKind() const noexcept { return kindValue; }
+
+zc::StringPtr CrateKey::targetName() const noexcept { return targetNameValue.text(); }
 
 void CrateKey::encode(CanonicalEncoder& encoder) const {
   packageValue.encode(encoder);
@@ -181,8 +189,7 @@ zc::Array<uint8_t> CrateKey::encode() const {
 }
 
 CrateDependencyEdgeKey::CrateDependencyEdgeKey(PackageDependencyEdgeKey&& packageEdge,
-                                               CrateKey&& consumer,
-                                               CrateKey&& provider) noexcept
+                                               CrateKey&& consumer, CrateKey&& provider) noexcept
     : packageEdgeValue(zc::mv(packageEdge)),
       consumerValue(zc::mv(consumer)),
       providerValue(zc::mv(provider)) {}

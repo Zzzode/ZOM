@@ -41,11 +41,16 @@ public:
       TargetComponentName&& abi, uint32_t pointerWidth, Endianness endianness,
       SortedTargetFeatureSet&& semanticFeatures);
   ZC_NODISCARD CanonicalTargetSpecificationKey clone() const;
+  /// \brief Returns the canonical target architecture component.
+  ZC_NODISCARD zc::StringPtr architecture() const noexcept;
+  /// \brief Returns the canonical target pointer width in bits.
+  ZC_NODISCARD uint32_t pointerWidth() const noexcept;
+  /// \brief Returns the canonical target byte order.
+  ZC_NODISCARD Endianness endianness() const noexcept;
   void encode(CanonicalEncoder& encoder) const;
 
 private:
-  CanonicalTargetSpecificationKey(TargetComponentName&& architecture,
-                                  TargetComponentName&& vendor,
+  CanonicalTargetSpecificationKey(TargetComponentName&& architecture, TargetComponentName&& vendor,
                                   TargetComponentName&& operatingSystem,
                                   TargetComponentName&& environment, TargetComponentName&& abi,
                                   uint32_t pointerWidth, Endianness endianness,
@@ -70,8 +75,8 @@ public:
   void encode(CanonicalEncoder& encoder) const;
 
 private:
-  SemanticCompilerOptionsKey(uint32_t editionYear, bool useUnicode,
-                             bool allowDollarIdentifiers, bool supportRegexLiterals) noexcept;
+  SemanticCompilerOptionsKey(uint32_t editionYear, bool useUnicode, bool allowDollarIdentifiers,
+                             bool supportRegexLiterals) noexcept;
 
   uint32_t editionYearValue;
   bool useUnicodeValue;
@@ -139,6 +144,9 @@ public:
                                                TargetName&& targetName,
                                                CompilationConfigKey&& compilation);
   ZC_NODISCARD CrateKey clone() const;
+  ZC_NODISCARD const PackageKey& package() const noexcept;
+  ZC_NODISCARD CrateTargetKind targetKind() const noexcept;
+  ZC_NODISCARD zc::StringPtr targetName() const noexcept;
   void encode(CanonicalEncoder& encoder) const;
   ZC_NODISCARD zc::Array<uint8_t> encode() const;
 

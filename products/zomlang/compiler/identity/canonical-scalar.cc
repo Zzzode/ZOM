@@ -55,8 +55,7 @@ bool hasTargetComponentShape(zc::StringPtr value) {
 }
 
 bool hasEnvironmentShape(zc::StringPtr value) {
-  if (value.size() == 0 || value.size() > 128 ||
-      (!isAsciiUpper(value[0]) && value[0] != '_')) {
+  if (value.size() == 0 || value.size() > 128 || (!isAsciiUpper(value[0]) && value[0] != '_')) {
     return false;
   }
   for (size_t index = 1; index < value.size(); ++index) {
@@ -102,7 +101,8 @@ bool validate(CanonicalScalarDomain domain, zc::StringPtr value) {
     case CanonicalScalarDomain::ModulePathSegment:
       return isSemanticIdentifier(value);
     case CanonicalScalarDomain::DeclaredDefinitionName:
-      return value == "this"_zc || isSemanticIdentifier(value);
+      return value == "this"_zc || value == "init"_zc || value == "deinit"_zc ||
+             value == "get"_zc || value == "set"_zc || isSemanticIdentifier(value);
   }
   return false;
 }
@@ -126,17 +126,13 @@ CanonicalScalar<Domain>::CanonicalScalar(zc::String&& canonical) noexcept
 
 template <CanonicalScalarDomain Domain>
 zc::Maybe<CanonicalScalar<Domain>> CanonicalScalar<Domain>::fromSource(zc::StringPtr input) {
-  ZC_IF_SOME(canonical, admit(Domain, input, false)) {
-    return CanonicalScalar(zc::mv(canonical));
-  }
+  ZC_IF_SOME(canonical, admit(Domain, input, false)) { return CanonicalScalar(zc::mv(canonical)); }
   return zc::none;
 }
 
 template <CanonicalScalarDomain Domain>
 zc::Maybe<CanonicalScalar<Domain>> CanonicalScalar<Domain>::fromCanonical(zc::StringPtr input) {
-  ZC_IF_SOME(canonical, admit(Domain, input, true)) {
-    return CanonicalScalar(zc::mv(canonical));
-  }
+  ZC_IF_SOME(canonical, admit(Domain, input, true)) { return CanonicalScalar(zc::mv(canonical)); }
   return zc::none;
 }
 

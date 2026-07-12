@@ -43,6 +43,8 @@ enum class SymbolKind : int;
 
 namespace binder {
 
+class DefinitionIdentityMap;
+
 /// \brief DeclCollector - Phase 1 of the Binder
 ///
 /// Traverses the AST and collects all declarations into the symbol table.
@@ -63,7 +65,8 @@ public:
   /// \param metadata Binding metadata to populate with symbol references.
   /// \param diags Diagnostic engine for error reporting.
   DeclCollector(symbol::SymbolTable& symbols, symbol::ScopeManager& scopes, const ast::Tree& tree,
-                ast::BindingMetadata& metadata, diagnostics::DiagnosticEngine& diags) noexcept;
+                const DefinitionIdentityMap& identities, ast::BindingMetadata& metadata,
+                diagnostics::DiagnosticEngine& diags) noexcept;
 
   ~DeclCollector() noexcept(false);
 
@@ -154,6 +157,8 @@ private:
   /// \return The created Symbol, or the existing one if a duplicate was
   ///         detected (in which case an error was also emitted).
   symbol::Symbol& declareSymbol(zc::StringPtr name, ast::NodeId declNode, symbol::SymbolKind kind);
+  symbol::Symbol& declareSymbol(zc::StringPtr name, ast::NodeId declNode, ast::NodeId identityNode,
+                                symbol::SymbolKind kind);
 
   /// \brief Check whether a name is already declared in the current scope.
   ///

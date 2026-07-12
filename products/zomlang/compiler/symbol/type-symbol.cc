@@ -36,7 +36,7 @@ struct TypeSymbol::Impl {
 };
 
 // TypeSymbol implementation
-TypeSymbol::TypeSymbol(SymbolId id, zc::StringPtr name, SymbolFlags flags,
+TypeSymbol::TypeSymbol(identity::DefId id, zc::StringPtr name, SymbolFlags flags,
                        const source::SourceLoc& location) noexcept
     : Symbol(id, name, flags, location), impl(zc::heap<Impl>()) {}
 
@@ -172,35 +172,35 @@ struct BuiltInTypeSymbol::Impl {
 };
 
 // BuiltInTypeSymbol implementation
-BuiltInTypeSymbol::BuiltInTypeSymbol(SymbolId id, zc::StringPtr name, SymbolFlags flags,
+BuiltInTypeSymbol::BuiltInTypeSymbol(identity::DefId id, zc::StringPtr name, SymbolFlags flags,
                                      const source::SourceLoc& location) noexcept
     : TypeSymbol(id, name, flags, location), impl(zc::heap<Impl>()) {}
 
-zc::Own<BuiltInTypeSymbol> BuiltInTypeSymbol::createI32(SymbolId id,
+zc::Own<BuiltInTypeSymbol> BuiltInTypeSymbol::createI32(identity::DefId id,
                                                         const source::SourceLoc& location) {
   return zc::heap<BuiltInTypeSymbol>(id, "i32"_zc, SymbolFlags::TypeKind | SymbolFlags::Builtin,
                                      location);
 }
 
-zc::Own<BuiltInTypeSymbol> BuiltInTypeSymbol::createF32(SymbolId id,
+zc::Own<BuiltInTypeSymbol> BuiltInTypeSymbol::createF32(identity::DefId id,
                                                         const source::SourceLoc& location) {
   return zc::heap<BuiltInTypeSymbol>(id, "f32"_zc, SymbolFlags::TypeKind | SymbolFlags::Builtin,
                                      location);
 }
 
-zc::Own<BuiltInTypeSymbol> BuiltInTypeSymbol::createStr(SymbolId id,
+zc::Own<BuiltInTypeSymbol> BuiltInTypeSymbol::createStr(identity::DefId id,
                                                         const source::SourceLoc& location) {
   return zc::heap<BuiltInTypeSymbol>(id, "str"_zc, SymbolFlags::TypeKind | SymbolFlags::Builtin,
                                      location);
 }
 
-zc::Own<BuiltInTypeSymbol> BuiltInTypeSymbol::createBool(SymbolId id,
+zc::Own<BuiltInTypeSymbol> BuiltInTypeSymbol::createBool(identity::DefId id,
                                                          const source::SourceLoc& location) {
   return zc::heap<BuiltInTypeSymbol>(id, "bool"_zc, SymbolFlags::TypeKind | SymbolFlags::Builtin,
                                      location);
 }
 
-zc::Own<BuiltInTypeSymbol> BuiltInTypeSymbol::createUnit(SymbolId id,
+zc::Own<BuiltInTypeSymbol> BuiltInTypeSymbol::createUnit(identity::DefId id,
                                                          const source::SourceLoc& location) {
   return zc::heap<BuiltInTypeSymbol>(id, "unit"_zc, SymbolFlags::TypeKind | SymbolFlags::Builtin,
                                      location);
@@ -212,7 +212,7 @@ struct InterfaceSymbol::Impl {
 };
 
 // InterfaceSymbol implementation
-InterfaceSymbol::InterfaceSymbol(SymbolId id, zc::StringPtr name, SymbolFlags flags,
+InterfaceSymbol::InterfaceSymbol(identity::DefId id, zc::StringPtr name, SymbolFlags flags,
                                  const source::SourceLoc& location) noexcept
     : TypeSymbol(id, name, flags, location), impl(zc::heap<Impl>()) {}
 
@@ -231,7 +231,7 @@ struct ClassSymbol::Impl {
 };
 
 // ClassSymbol implementation
-ClassSymbol::ClassSymbol(SymbolId id, zc::StringPtr name, SymbolFlags flags,
+ClassSymbol::ClassSymbol(identity::DefId id, zc::StringPtr name, SymbolFlags flags,
                          const source::SourceLoc& location) noexcept
     : TypeSymbol(id, name, flags, location), impl(zc::heap<Impl>()) {}
 
@@ -293,7 +293,7 @@ struct FunctionTypeSymbol::Impl {
 };
 
 // FunctionTypeSymbol implementation
-FunctionTypeSymbol::FunctionTypeSymbol(SymbolId id, zc::StringPtr name, SymbolFlags flags,
+FunctionTypeSymbol::FunctionTypeSymbol(identity::DefId id, zc::StringPtr name, SymbolFlags flags,
                                        const source::SourceLoc& location) noexcept
     : TypeSymbol(id, name, flags, location), impl(zc::heap<Impl>()) {}
 
@@ -335,7 +335,7 @@ struct TypeParameterSymbol::Impl {
 };
 
 // TypeParameterSymbol implementation
-TypeParameterSymbol::TypeParameterSymbol(SymbolId id, zc::StringPtr name, SymbolFlags flags,
+TypeParameterSymbol::TypeParameterSymbol(identity::DefId id, zc::StringPtr name, SymbolFlags flags,
                                          const source::SourceLoc& location) noexcept
     : TypeSymbol(id, name, flags, location), impl(zc::heap<Impl>()) {}
 

@@ -50,6 +50,7 @@ struct BrandStateData final {
   zc::HashSet<uint64_t> issuedContexts;
   zc::HashSet<uint64_t> claimedRegistryIssuers;
   zc::HashSet<uint64_t> claimedIdentityRegistrySets;
+  zc::HashSet<uint64_t> claimedSemanticTypeStores;
 };
 
 class BrandState final : public zc::AtomicRefcounted {
@@ -85,6 +86,16 @@ public:
       return false;
     }
     locked->claimedIdentityRegistrySets.insert(contextToken);
+    return true;
+  }
+
+  bool claimSemanticTypeStore(uint64_t contextToken) const {
+    auto locked = data.lockExclusive();
+    if (!locked->issuedContexts.contains(contextToken) ||
+        locked->claimedSemanticTypeStores.contains(contextToken)) {
+      return false;
+    }
+    locked->claimedSemanticTypeStores.insert(contextToken);
     return true;
   }
 
@@ -153,6 +164,41 @@ zc::Maybe<RegistryBrandIssuer> SemanticContextFactory::issueRegistryBrandIssuer(
 
 bool SemanticContextFactory::claimIdentityRegistrySet(SemanticContextBrand context) const {
   return context.isValid() && impl->state->claimIdentityRegistrySet(context.token);
+}
+
+SemanticTypeStoreConstructionToken::SemanticTypeStoreConstructionToken(
+    SemanticContextBrand owner) noexcept
+    : context(owner) {}
+
+SemanticTypeStoreConstructionToken::SemanticTypeStoreConstructionToken(
+    SemanticTypeStoreConstructionToken&& other) noexcept
+    : context(other.context) {
+  other.context = SemanticContextBrand();
+}
+
+SemanticTypeStoreConstructionToken& SemanticTypeStoreConstructionToken::operator=(
+    SemanticTypeStoreConstructionToken&& other) noexcept {
+  if (this == &other) { return *this; }
+  context = other.context;
+  other.context = SemanticContextBrand();
+  return *this;
+}
+
+bool SemanticTypeStoreConstructionToken::isValid() const noexcept { return context.isValid(); }
+
+SemanticContextBrand SemanticTypeStoreConstructionToken::consume() noexcept {
+  const auto owner = context;
+  context = SemanticContextBrand();
+  return owner;
+}
+
+zc::Maybe<SemanticTypeStoreConstructionToken>
+SemanticContextFactory::issueSemanticTypeStoreConstructionToken(
+    SemanticContextBrand context) const {
+  if (!context.isValid() || !impl->state->claimSemanticTypeStore(context.token)) {
+    return zc::none;
+  }
+  return SemanticTypeStoreConstructionToken(context);
 }
 
 }  // namespace zomlang::compiler::identity

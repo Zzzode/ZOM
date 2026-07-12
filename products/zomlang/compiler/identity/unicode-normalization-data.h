@@ -41,20 +41,32 @@ struct UnicodeCompositionEntry final {
   uint32_t composite;
 };
 
+struct UnicodeCaseFoldEntry final {
+  uint32_t codePoint;
+  uint32_t offset;
+  uint8_t length;
+};
+
 inline constexpr char kUnicodeNormalizationDataVersion[] = "15.1.0";
 inline constexpr char kUnicodeNormalizationUnicodeDataSource[] =
     "https://www.unicode.org/Public/15.1.0/ucd/UnicodeData.txt";
 inline constexpr char kUnicodeNormalizationPropertiesSource[] =
     "https://www.unicode.org/Public/15.1.0/ucd/DerivedNormalizationProps.txt";
+inline constexpr char kUnicodeCaseFoldingSource[] =
+    "https://www.unicode.org/Public/15.1.0/ucd/CaseFolding.txt";
 
 inline constexpr size_t kUnicodeCombiningClassCount = 922;
 inline constexpr size_t kUnicodeDecompositionCount = 2061;
 inline constexpr size_t kUnicodeDecompositionScalarCount = 3406;
 inline constexpr size_t kUnicodeCompositionCount = 941;
+inline constexpr size_t kUnicodeCaseFoldCount = 1530;
+inline constexpr size_t kUnicodeCaseFoldScalarCount = 1650;
 
 extern const zc::ArrayPtr<const UnicodeCombiningClassEntry> UNICODE_COMBINING_CLASSES;
 extern const zc::ArrayPtr<const UnicodeDecompositionEntry> UNICODE_DECOMPOSITIONS;
 extern const zc::ArrayPtr<const uint32_t> UNICODE_DECOMPOSITION_SCALARS;
 extern const zc::ArrayPtr<const UnicodeCompositionEntry> UNICODE_COMPOSITIONS;
+extern const zc::ArrayPtr<const UnicodeCaseFoldEntry> UNICODE_CASE_FOLDS;
+extern const zc::ArrayPtr<const uint32_t> UNICODE_CASE_FOLD_SCALARS;
 
 }  // namespace zomlang::compiler::identity

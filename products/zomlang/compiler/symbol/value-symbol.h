@@ -32,8 +32,8 @@ class ParameterSymbol;
 class ValueSymbol : public Symbol {
 public:
   /// \brief Constructor with location
-  ValueSymbol(SymbolId id, zc::StringPtr name, SymbolFlags flags, const source::SourceLoc& location,
-              zc::Own<TypeSymbol> type);
+  ValueSymbol(identity::DefId id, zc::StringPtr name, SymbolFlags flags,
+              const source::SourceLoc& location, zc::Own<TypeSymbol> type);
 
   // Move constructor and assignment
   ValueSymbol(ValueSymbol&& other) noexcept;
@@ -74,7 +74,7 @@ protected:
 class VariableSymbol : public ValueSymbol {
 public:
   /// \brief Constructor
-  VariableSymbol(SymbolId id, zc::StringPtr name, SymbolFlags flags,
+  VariableSymbol(identity::DefId id, zc::StringPtr name, SymbolFlags flags,
                  const source::SourceLoc& location, zc::Own<TypeSymbol> type,
                  bool isMutable = true);
 
@@ -110,7 +110,7 @@ public:
 class ConstantSymbol final : public ValueSymbol {
 public:
   /// \brief Constructor
-  ConstantSymbol(SymbolId id, zc::StringPtr name, SymbolFlags flags,
+  ConstantSymbol(identity::DefId id, zc::StringPtr name, SymbolFlags flags,
                  const source::SourceLoc& location, zc::Own<TypeSymbol> type);
 
   // Move constructor and assignment
@@ -144,7 +144,7 @@ private:
 class ParameterSymbol final : public ValueSymbol {
 public:
   /// \brief Constructor
-  ParameterSymbol(SymbolId id, zc::StringPtr name, SymbolFlags flags,
+  ParameterSymbol(identity::DefId id, zc::StringPtr name, SymbolFlags flags,
                   const source::SourceLoc& location, zc::Own<TypeSymbol> type,
                   bool isOptional = false);
 
@@ -182,7 +182,7 @@ private:
 class FunctionSymbol final : public ValueSymbol {
 public:
   /// \brief Constructor
-  FunctionSymbol(SymbolId id, zc::StringPtr name, SymbolFlags flags,
+  FunctionSymbol(identity::DefId id, zc::StringPtr name, SymbolFlags flags,
                  const source::SourceLoc& location, zc::Own<TypeSymbol> type);
 
   // Move constructor and assignment
@@ -239,8 +239,8 @@ private:
 class FieldSymbol : public VariableSymbol {
 public:
   /// \brief Constructor
-  FieldSymbol(SymbolId id, zc::StringPtr name, SymbolFlags flags, const source::SourceLoc& location,
-              zc::Own<TypeSymbol> type, bool isMutable = true);
+  FieldSymbol(identity::DefId id, zc::StringPtr name, SymbolFlags flags,
+              const source::SourceLoc& location, zc::Own<TypeSymbol> type, bool isMutable = true);
 
   // Move constructor and assignment
   FieldSymbol(FieldSymbol&& other) noexcept;
@@ -278,7 +278,7 @@ public:
 class EnumCaseSymbol : public ValueSymbol {
 public:
   /// \brief Constructor
-  EnumCaseSymbol(SymbolId id, zc::StringPtr name, SymbolFlags flags,
+  EnumCaseSymbol(identity::DefId id, zc::StringPtr name, SymbolFlags flags,
                  const source::SourceLoc& location, zc::Own<TypeSymbol> type);
 
   // Move constructor and assignment

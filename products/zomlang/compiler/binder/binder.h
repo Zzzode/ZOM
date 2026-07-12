@@ -31,11 +31,14 @@ class SymbolTable;
 
 namespace binder {
 
+class DefinitionIdentityMap;
+
 /// \brief Binds an immutable AST tree into side-table metadata.
 class Binder final {
 public:
   Binder(symbol::SymbolTable& symbolTable, diagnostics::DiagnosticEngine& diagnosticEngine,
-         const ast::Tree& tree, ast::BindingMetadata& metadata) noexcept;
+         const ast::Tree& tree, const DefinitionIdentityMap& identities,
+         ast::BindingMetadata& metadata) noexcept;
   ~Binder() noexcept(false);
 
   ZC_DISALLOW_COPY_AND_MOVE(Binder);

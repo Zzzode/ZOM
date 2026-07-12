@@ -24,6 +24,17 @@ namespace zomlang::compiler::identity {
 class SemanticContextFactory;
 class RegistryBrandIssuer;
 class SemanticIdentityRegistrySet;
+class SemanticTypeStoreConstructionToken;
+
+}  // namespace zomlang::compiler::identity
+
+namespace zomlang::compiler::type {
+
+class SemanticTypeStore;
+
+}  // namespace zomlang::compiler::type
+
+namespace zomlang::compiler::identity {
 
 /// \brief Optional process-root quota used to exercise and constrain brand issuance.
 struct SemanticContextIssueBudget final {
@@ -80,6 +91,27 @@ private:
   friend class RegistryBrandIssuer;
 };
 
+/// \brief Move-only authority to construct the sole semantic type store for one context.
+class SemanticTypeStoreConstructionToken final {
+public:
+  SemanticTypeStoreConstructionToken(SemanticTypeStoreConstructionToken&& other) noexcept;
+  SemanticTypeStoreConstructionToken& operator=(
+      SemanticTypeStoreConstructionToken&& other) noexcept;
+  ZC_DISALLOW_COPY(SemanticTypeStoreConstructionToken);
+
+  /// \brief Returns true while this token has not been consumed.
+  ZC_NODISCARD bool isValid() const noexcept;
+
+private:
+  explicit SemanticTypeStoreConstructionToken(SemanticContextBrand owner) noexcept;
+  ZC_NODISCARD SemanticContextBrand consume() noexcept;
+
+  SemanticContextBrand context;
+
+  friend class SemanticContextFactory;
+  friend class type::SemanticTypeStore;
+};
+
 /// \brief Thread-safe context-local issuer of registry brands.
 class RegistryBrandIssuer final {
 public:
@@ -119,6 +151,11 @@ public:
   /// \return An issuer, or none for an invalid or already-claimed context.
   ZC_NODISCARD zc::Maybe<RegistryBrandIssuer> issueRegistryBrandIssuer(
       SemanticContextBrand context) const;
+
+  /// \brief Claims the one semantic type store construction authority for a context.
+  /// \return A move-only token, or none for an invalid or already-claimed context.
+  ZC_NODISCARD zc::Maybe<SemanticTypeStoreConstructionToken>
+  issueSemanticTypeStoreConstructionToken(SemanticContextBrand context) const;
 
 private:
   ZC_NODISCARD bool claimIdentityRegistrySet(SemanticContextBrand context) const;

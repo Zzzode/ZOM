@@ -191,7 +191,7 @@ struct DefinitionInventory::Impl final {
       return;
     }
 
-    modules.add(ModuleInventoryEntry{node, form, name, syntax.range});
+    modules.add(ModuleInventoryEntry{node, currentModule, form, name, syntax.range});
     const ast::NodeId savedModule = currentModule;
     auto savedParents = zc::mv(parents);
     parents = zc::Vector<StructuralIdentityParent>();
@@ -384,8 +384,8 @@ DefinitionInventory DefinitionInventory::collect(const ast::Tree& tree) {
 DefinitionInventory DefinitionInventory::clone() const {
   DefinitionInventory result;
   for (const auto& module : impl->modules) {
-    result.impl->modules.add(
-        ModuleInventoryEntry{module.node, module.form, module.declaredName, module.source});
+    result.impl->modules.add(ModuleInventoryEntry{module.node, module.parentModuleNode, module.form,
+                                                  module.declaredName, module.source});
   }
   for (const auto& definition : impl->definitions) {
     result.impl->definitions.add(DefinitionInventoryEntry{

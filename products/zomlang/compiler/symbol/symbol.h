@@ -16,10 +16,10 @@
 
 #include "zc/core/common.h"
 #include "zomlang/compiler/ast/node-id.h"
+#include "zomlang/compiler/identity/frozen-registry.h"
 #include "zomlang/compiler/source/location.h"
 #include "zomlang/compiler/source/manager.h"
 #include "zomlang/compiler/symbol/symbol-flags.h"
-#include "zomlang/compiler/symbol/symbol-id.h"
 
 namespace zomlang {
 namespace compiler {
@@ -69,15 +69,11 @@ enum class Visibility { Public, Private, Protected, Internal };
 
 /// \brief Stable declaration reference stored by symbols.
 struct DeclarationRef final {
-  source::BufferId buffer;
   ast::NodeId node;
 
-  DeclarationRef(source::BufferId buffer, ast::NodeId node) noexcept
-      : buffer(zc::mv(buffer)), node(node) {}
+  explicit DeclarationRef(ast::NodeId node) noexcept : node(node) {}
 
-  bool operator==(const DeclarationRef& other) const {
-    return buffer == other.buffer && node == other.node;
-  }
+  bool operator==(const DeclarationRef& other) const { return node == other.node; }
   bool operator!=(const DeclarationRef& other) const { return !operator==(other); }
 };
 
@@ -92,9 +88,9 @@ public:
   /// \param name Symbol name
   /// \param flags Symbol properties flags
   /// \param location Source code location
-  Symbol(SymbolId id, zc::StringPtr name, SymbolFlags flags,
+  Symbol(identity::DefId id, zc::StringPtr name, SymbolFlags flags,
          const source::SourceLoc& location) noexcept;
-  Symbol(SymbolId id, zc::StringPtr name, SymbolFlags flags) noexcept;
+  Symbol(identity::DefId id, zc::StringPtr name, SymbolFlags flags) noexcept;
 
   // Move constructor and assignment
   Symbol(Symbol&& other) noexcept;
@@ -107,7 +103,7 @@ public:
   ZC_DISALLOW_COPY(Symbol);
 
   // Identity and properties (public interface)
-  SymbolId getId() const;
+  identity::DefId getId() const;
   zc::StringPtr getName() const;
   void setName(zc::StringPtr name);
 

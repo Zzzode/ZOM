@@ -59,9 +59,6 @@ struct SymbolTable::Impl {
   // Current compilation phase
   uint32_t currentPhase = 0;
 
-  // Symbol ID generation
-  uint32_t nextSymbolId = 1;
-
   // Internal helpers
   zc::String makeKey(zc::StringPtr name, const Scope& scope) const {
     return zc::str(name, "@", scope.getName());
@@ -82,8 +79,6 @@ struct SymbolTable::Impl {
       symbolsByName.insert(zc::mv(key), zc::mv(newList));
     }
   }
-
-  uint32_t generateSymbolId() { return nextSymbolId++; }
 };
 
 SymbolTable::SymbolTable() noexcept : impl(zc::heap<Impl>()) {
@@ -95,14 +90,14 @@ SymbolTable::~SymbolTable() noexcept(false) = default;
 SymbolTable::SymbolTable(SymbolTable&&) noexcept = default;
 SymbolTable& SymbolTable::operator=(SymbolTable&&) noexcept = default;
 
-VariableSymbol& SymbolTable::createVariable(zc::StringPtr name, const Scope& scope) {
+VariableSymbol& SymbolTable::createVariable(identity::DefId identity, zc::StringPtr name,
+                                            const Scope& scope) {
   // Create a default type for testing purposes
-  auto defaultType = BuiltInTypeSymbol::createUnit(SymbolId::create(impl->generateSymbolId()),
-                                                   source::SourceLoc{});
+  auto defaultType = BuiltInTypeSymbol::createUnit(identity::DefId(), source::SourceLoc{});
 
-  auto symbol = zc::heap<VariableSymbol>(SymbolId::create(impl->generateSymbolId()), name,
-                                         SymbolFlags::Variable | SymbolFlags::TermKind,
-                                         source::SourceLoc{}, zc::mv(defaultType));
+  auto symbol =
+      zc::heap<VariableSymbol>(identity, name, SymbolFlags::Variable | SymbolFlags::TermKind,
+                               source::SourceLoc{}, zc::mv(defaultType));
 
   VariableSymbol& result = *symbol;
   result.setScope(scope);
@@ -116,14 +111,14 @@ VariableSymbol& SymbolTable::createVariable(zc::StringPtr name, const Scope& sco
   return result;
 }
 
-ParameterSymbol& SymbolTable::createParameter(zc::StringPtr name, const Scope& scope) {
+ParameterSymbol& SymbolTable::createParameter(identity::DefId identity, zc::StringPtr name,
+                                              const Scope& scope) {
   // Create a default type for testing purposes
-  auto defaultType = BuiltInTypeSymbol::createUnit(SymbolId::create(impl->generateSymbolId()),
-                                                   source::SourceLoc{});
+  auto defaultType = BuiltInTypeSymbol::createUnit(identity::DefId(), source::SourceLoc{});
 
-  auto symbol = zc::heap<ParameterSymbol>(SymbolId::create(impl->generateSymbolId()), name,
-                                          SymbolFlags::Parameter | SymbolFlags::TermKind,
-                                          source::SourceLoc{}, zc::mv(defaultType));
+  auto symbol =
+      zc::heap<ParameterSymbol>(identity, name, SymbolFlags::Parameter | SymbolFlags::TermKind,
+                                source::SourceLoc{}, zc::mv(defaultType));
 
   ParameterSymbol& result = *symbol;
   result.setScope(scope);
@@ -137,14 +132,14 @@ ParameterSymbol& SymbolTable::createParameter(zc::StringPtr name, const Scope& s
   return result;
 }
 
-FunctionSymbol& SymbolTable::createFunction(zc::StringPtr name, const Scope& scope) {
+FunctionSymbol& SymbolTable::createFunction(identity::DefId identity, zc::StringPtr name,
+                                            const Scope& scope) {
   // Create a default type for testing purposes
-  auto defaultType = BuiltInTypeSymbol::createUnit(SymbolId::create(impl->generateSymbolId()),
-                                                   source::SourceLoc{});
+  auto defaultType = BuiltInTypeSymbol::createUnit(identity::DefId(), source::SourceLoc{});
 
-  auto symbol = zc::heap<FunctionSymbol>(SymbolId::create(impl->generateSymbolId()), name,
-                                         SymbolFlags::Function | SymbolFlags::TermKind,
-                                         source::SourceLoc{}, zc::mv(defaultType));
+  auto symbol =
+      zc::heap<FunctionSymbol>(identity, name, SymbolFlags::Function | SymbolFlags::TermKind,
+                               source::SourceLoc{}, zc::mv(defaultType));
 
   FunctionSymbol& result = *symbol;
   result.setScope(scope);
@@ -158,10 +153,10 @@ FunctionSymbol& SymbolTable::createFunction(zc::StringPtr name, const Scope& sco
   return result;
 }
 
-ClassSymbol& SymbolTable::createClass(zc::StringPtr name, const Scope& scope) {
-  auto symbol =
-      zc::heap<ClassSymbol>(SymbolId::create(impl->generateSymbolId()), name,
-                            SymbolFlags::Class | SymbolFlags::TypeKind, source::SourceLoc{});
+ClassSymbol& SymbolTable::createClass(identity::DefId identity, zc::StringPtr name,
+                                      const Scope& scope) {
+  auto symbol = zc::heap<ClassSymbol>(identity, name, SymbolFlags::Class | SymbolFlags::TypeKind,
+                                      source::SourceLoc{});
 
   ClassSymbol& result = *symbol;
   result.setScope(scope);
@@ -175,10 +170,10 @@ ClassSymbol& SymbolTable::createClass(zc::StringPtr name, const Scope& scope) {
   return result;
 }
 
-InterfaceSymbol& SymbolTable::createInterface(zc::StringPtr name, const Scope& scope) {
-  auto symbol = zc::heap<InterfaceSymbol>(SymbolId::create(impl->generateSymbolId()), name,
-                                          SymbolFlags::Interface | SymbolFlags::TypeKind,
-                                          source::SourceLoc{});
+InterfaceSymbol& SymbolTable::createInterface(identity::DefId identity, zc::StringPtr name,
+                                              const Scope& scope) {
+  auto symbol = zc::heap<InterfaceSymbol>(
+      identity, name, SymbolFlags::Interface | SymbolFlags::TypeKind, source::SourceLoc{});
 
   InterfaceSymbol& result = *symbol;
   result.setScope(scope);
@@ -192,9 +187,9 @@ InterfaceSymbol& SymbolTable::createInterface(zc::StringPtr name, const Scope& s
   return result;
 }
 
-PackageSymbol& SymbolTable::createPackage(zc::StringPtr name, const Scope& scope) {
-  auto symbol = zc::heap<PackageSymbol>(SymbolId::create(impl->generateSymbolId()), name,
-                                        SymbolFlags::Package, source::SourceLoc{});
+PackageSymbol& SymbolTable::createPackage(identity::DefId identity, zc::StringPtr name,
+                                          const Scope& scope) {
+  auto symbol = zc::heap<PackageSymbol>(identity, name, SymbolFlags::Package, source::SourceLoc{});
 
   PackageSymbol& result = *symbol;
   result.setScope(scope);

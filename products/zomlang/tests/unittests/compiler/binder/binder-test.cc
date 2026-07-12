@@ -18,9 +18,11 @@
 #include "zc/ztest/test.h"
 #include "zomlang/compiler/ast/generated/node-payload.h"
 #include "zomlang/compiler/ast/tree.h"
+#include "zomlang/compiler/binder/definition-identity-map.h"
 #include "zomlang/compiler/diagnostics/diagnostic-engine.h"
 #include "zomlang/compiler/source/manager.h"
 #include "zomlang/compiler/symbol/symbol-table.h"
+#include "zomlang/tests/unittests/compiler/test-semantic-identities.h"
 
 namespace zomlang {
 namespace compiler {
@@ -77,7 +79,8 @@ ZC_TEST("Binder.WritesParentMetadataForSourceFileChildren") {
   symbol::SymbolTable symbols;
   ast::BindingMetadata metadata;
 
-  Binder binder(symbols, diagnostics, tree, metadata);
+  auto identities = tests::makeTestDefinitionIdentityMap(tree);
+  Binder binder(symbols, diagnostics, tree, identities, metadata);
 
   ZC_EXPECT(binder.bind());
   ZC_EXPECT(metadata.parent(root) == ast::NodeId());

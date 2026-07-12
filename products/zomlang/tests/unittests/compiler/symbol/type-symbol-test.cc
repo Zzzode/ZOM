@@ -19,6 +19,7 @@
 #include "zomlang/compiler/source/location.h"
 #include "zomlang/compiler/symbol/scope.h"
 #include "zomlang/compiler/symbol/symbol-table.h"
+#include "zomlang/tests/unittests/compiler/test-semantic-identities.h"
 
 namespace zomlang {
 namespace compiler {
@@ -29,7 +30,7 @@ ZC_TEST("TypeSymbol_ClassCreation") {
   ScopeManager& scopeManager = symbolTable.getScopeManager();
   const Scope& globalScope = scopeManager.createScope(Scope::Kind::Global, "global");
 
-  auto& classSymbol = symbolTable.createClass("TestClass", globalScope);
+  auto& classSymbol = symbolTable.createClass(tests::testDefinition(0), "TestClass", globalScope);
 
   ZC_EXPECT(classSymbol.getName() == "TestClass");
   ZC_EXPECT(classSymbol.getKind() == SymbolKind::Class);
@@ -40,7 +41,8 @@ ZC_TEST("TypeSymbol_InterfaceCreation") {
   ScopeManager& scopeManager = symbolTable.getScopeManager();
   const Scope& globalScope = scopeManager.createScope(Scope::Kind::Global, "global");
 
-  auto& interfaceSymbol = symbolTable.createInterface("TestInterface", globalScope);
+  auto& interfaceSymbol =
+      symbolTable.createInterface(tests::testDefinition(0), "TestInterface", globalScope);
 
   ZC_EXPECT(interfaceSymbol.getName() == "TestInterface");
   ZC_EXPECT(interfaceSymbol.getKind() == SymbolKind::Interface);
@@ -52,7 +54,7 @@ ZC_TEST("ClassSymbol_MemberManagement") {
   const Scope& globalScope = scopeManager.createScope(Scope::Kind::Global, "global");
 
   // Create a class symbol
-  ClassSymbol& classSymbol = table.createClass("TestClass", globalScope);
+  ClassSymbol& classSymbol = table.createClass(tests::testDefinition(0), "TestClass", globalScope);
   ZC_EXPECT(classSymbol.getName() == "TestClass");
   ZC_EXPECT(classSymbol.getKind() == SymbolKind::Class);
 
@@ -69,9 +71,11 @@ ZC_TEST("ClassSymbol_Hierarchy") {
   const Scope& globalScope = scopeManager.createScope(Scope::Kind::Global, "global");
 
   // Create class symbols
-  ClassSymbol& baseClass = table.createClass("BaseClass", globalScope);
-  ClassSymbol& derivedClass = table.createClass("DerivedClass", globalScope);
-  InterfaceSymbol& interfaceSymbol = table.createInterface("TestInterface", globalScope);
+  ClassSymbol& baseClass = table.createClass(tests::testDefinition(0), "BaseClass", globalScope);
+  ClassSymbol& derivedClass =
+      table.createClass(tests::testDefinition(0), "DerivedClass", globalScope);
+  InterfaceSymbol& interfaceSymbol =
+      table.createInterface(tests::testDefinition(0), "TestInterface", globalScope);
 
   // Verify symbol kinds before downcasting.
   ZC_EXPECT(baseClass.getKind() == SymbolKind::Class);
@@ -90,7 +94,7 @@ ZC_TEST("ClassSymbol_Hierarchy") {
 ZC_TEST("BuiltInTypeSymbol_Creation") {
   source::SourceLoc defaultLoc;
 
-  auto intType = BuiltInTypeSymbol::createI32(SymbolId::create(1), defaultLoc);
+  auto intType = BuiltInTypeSymbol::createI32(tests::testDefinition(1), defaultLoc);
   ZC_EXPECT(intType->getName() == "i32");
   ZC_EXPECT(intType->getKind() == SymbolKind::Type);
   ZC_EXPECT(intType->isPrimitive());
@@ -99,27 +103,27 @@ ZC_TEST("BuiltInTypeSymbol_Creation") {
   ZC_EXPECT(!intType->isBoolean());
   ZC_EXPECT(!intType->isVoid());
 
-  auto floatType = BuiltInTypeSymbol::createF32(SymbolId::create(2), defaultLoc);
+  auto floatType = BuiltInTypeSymbol::createF32(tests::testDefinition(2), defaultLoc);
   ZC_EXPECT(floatType->getName() == "f32");
   ZC_EXPECT(floatType->getKind() == SymbolKind::Type);
   ZC_EXPECT(floatType->isPrimitive());
   ZC_EXPECT(floatType->isNumeric());
 
-  auto stringType = BuiltInTypeSymbol::createStr(SymbolId::create(3), defaultLoc);
+  auto stringType = BuiltInTypeSymbol::createStr(tests::testDefinition(3), defaultLoc);
   ZC_EXPECT(stringType->getName() == "str");
   ZC_EXPECT(stringType->getKind() == SymbolKind::Type);
   ZC_EXPECT(stringType->isPrimitive());
   ZC_EXPECT(stringType->isString());
   ZC_EXPECT(!stringType->isNumeric());
 
-  auto boolType = BuiltInTypeSymbol::createBool(SymbolId::create(4), defaultLoc);
+  auto boolType = BuiltInTypeSymbol::createBool(tests::testDefinition(4), defaultLoc);
   ZC_EXPECT(boolType->getName() == "bool");
   ZC_EXPECT(boolType->getKind() == SymbolKind::Type);
   ZC_EXPECT(boolType->isPrimitive());
   ZC_EXPECT(boolType->isBoolean());
   ZC_EXPECT(!boolType->isNumeric());
 
-  auto voidType = BuiltInTypeSymbol::createUnit(SymbolId::create(5), defaultLoc);
+  auto voidType = BuiltInTypeSymbol::createUnit(tests::testDefinition(5), defaultLoc);
   ZC_EXPECT(voidType->getName() == "unit");
   ZC_EXPECT(voidType->getKind() == SymbolKind::Type);
   ZC_EXPECT(voidType->isPrimitive());
@@ -130,11 +134,11 @@ ZC_TEST("BuiltInTypeSymbol_Creation") {
 ZC_TEST("BuiltInTypeSymbol_Properties") {
   source::SourceLoc defaultLoc;
 
-  auto intType = BuiltInTypeSymbol::createI32(SymbolId::create(1), defaultLoc);
-  auto floatType = BuiltInTypeSymbol::createF32(SymbolId::create(2), defaultLoc);
-  auto stringType = BuiltInTypeSymbol::createStr(SymbolId::create(3), defaultLoc);
-  auto boolType = BuiltInTypeSymbol::createBool(SymbolId::create(4), defaultLoc);
-  auto voidType = BuiltInTypeSymbol::createUnit(SymbolId::create(5), defaultLoc);
+  auto intType = BuiltInTypeSymbol::createI32(tests::testDefinition(1), defaultLoc);
+  auto floatType = BuiltInTypeSymbol::createF32(tests::testDefinition(2), defaultLoc);
+  auto stringType = BuiltInTypeSymbol::createStr(tests::testDefinition(3), defaultLoc);
+  auto boolType = BuiltInTypeSymbol::createBool(tests::testDefinition(4), defaultLoc);
+  auto voidType = BuiltInTypeSymbol::createUnit(tests::testDefinition(5), defaultLoc);
 
   // Test builtin flag
   ZC_EXPECT(intType->hasFlag(SymbolFlags::Builtin));
@@ -162,7 +166,7 @@ ZC_TEST("TypeSymbol_SymbolFlags") {
   source::SourceLoc defaultLoc;
 
   // Test basic type flags
-  auto intType = BuiltInTypeSymbol::createI32(SymbolId::create(1), defaultLoc);
+  auto intType = BuiltInTypeSymbol::createI32(tests::testDefinition(1), defaultLoc);
   ZC_EXPECT(intType->hasFlag(SymbolFlags::TypeKind));
   ZC_EXPECT(!intType->hasFlag(SymbolFlags::TermKind));
   ZC_EXPECT(intType->hasFlag(SymbolFlags::Builtin));
@@ -170,7 +174,8 @@ ZC_TEST("TypeSymbol_SymbolFlags") {
   // Test class with different flags
   SymbolTable symbolTable;
   auto globalScope = Scope::createGlobalScope();
-  auto& classSymbol = symbolTable.createClass("TestClass"_zc, *globalScope);
+  auto& classSymbol =
+      symbolTable.createClass(tests::testDefinition(0), "TestClass"_zc, *globalScope);
 
   ZC_EXPECT(classSymbol.hasFlag(SymbolFlags::TypeKind));
   ZC_EXPECT(classSymbol.hasFlag(SymbolFlags::Class));
@@ -183,15 +188,18 @@ ZC_TEST("TypeSymbol_VisibilityFlags") {
   auto globalScope = Scope::createGlobalScope();
 
   // Create class with public visibility
-  auto& publicClass = symbolTable.createClass("PublicClass"_zc, *globalScope);
+  auto& publicClass =
+      symbolTable.createClass(tests::testDefinition(0), "PublicClass"_zc, *globalScope);
   publicClass.addFlag(SymbolFlags::Public);
 
   // Create interface with private visibility
-  auto& privateInterface = symbolTable.createInterface("PrivateInterface"_zc, *globalScope);
+  auto& privateInterface =
+      symbolTable.createInterface(tests::testDefinition(0), "PrivateInterface"_zc, *globalScope);
   privateInterface.addFlag(SymbolFlags::Private);
 
   // Create class with protected visibility
-  auto& protectedClass = symbolTable.createClass("ProtectedClass"_zc, *globalScope);
+  auto& protectedClass =
+      symbolTable.createClass(tests::testDefinition(0), "ProtectedClass"_zc, *globalScope);
   protectedClass.addFlag(SymbolFlags::Protected);
 
   ZC_EXPECT(publicClass.isPublic());
@@ -212,15 +220,18 @@ ZC_TEST("TypeSymbol_InheritanceFlags") {
   auto globalScope = Scope::createGlobalScope();
 
   // Create abstract class
-  auto& abstractClass = symbolTable.createClass("AbstractClass"_zc, *globalScope);
+  auto& abstractClass =
+      symbolTable.createClass(tests::testDefinition(0), "AbstractClass"_zc, *globalScope);
   abstractClass.addFlag(SymbolFlags::Abstract);
 
   // Create final class
-  auto& finalClass = symbolTable.createClass("FinalClass"_zc, *globalScope);
+  auto& finalClass =
+      symbolTable.createClass(tests::testDefinition(0), "FinalClass"_zc, *globalScope);
   finalClass.addFlag(SymbolFlags::Final);
 
   // Create sealed class (test flag but not method since isSealed() doesn't exist)
-  auto& sealedClass = symbolTable.createClass("SealedClass"_zc, *globalScope);
+  auto& sealedClass =
+      symbolTable.createClass(tests::testDefinition(0), "SealedClass"_zc, *globalScope);
   sealedClass.addFlag(SymbolFlags::Sealed);
 
   ZC_EXPECT(abstractClass.isAbstract());
@@ -242,11 +253,13 @@ ZC_TEST("TypeSymbol_GenericFlags") {
   auto globalScope = Scope::createGlobalScope();
 
   // Create generic class with Generic flag
-  auto& genericClass = symbolTable.createClass("GenericClass"_zc, *globalScope);
+  auto& genericClass =
+      symbolTable.createClass(tests::testDefinition(0), "GenericClass"_zc, *globalScope);
   genericClass.addFlag(SymbolFlags::Generic);
 
   // Create generic interface with Generic flag
-  auto& genericInterface = symbolTable.createInterface("GenericInterface"_zc, *globalScope);
+  auto& genericInterface =
+      symbolTable.createInterface(tests::testDefinition(0), "GenericInterface"_zc, *globalScope);
   genericInterface.addFlag(SymbolFlags::Generic);
 
   // Test flag checking (isGeneric() checks typeParameters.size(), not the flag)
@@ -261,7 +274,7 @@ ZC_TEST("TypeSymbol_GenericFlags") {
 
 ZC_TEST("TypeParameterSymbol_Creation") {
   source::SourceLoc defaultLoc;
-  TypeParameterSymbol typeParam(SymbolId::create(1), "T"_zc,
+  TypeParameterSymbol typeParam(tests::testDefinition(1), "T"_zc,
                                 SymbolFlags::TypeKind | SymbolFlags::Generic, defaultLoc);
 
   ZC_EXPECT(typeParam.getName() == "T");
@@ -276,17 +289,18 @@ ZC_TEST("TypeParameterSymbol_Variance") {
   source::SourceLoc defaultLoc;
 
   // Test covariant type parameter
-  TypeParameterSymbol covariantParam(SymbolId::create(1), "T"_zc,
+  TypeParameterSymbol covariantParam(tests::testDefinition(1), "T"_zc,
                                      SymbolFlags::TypeKind | SymbolFlags::Covariant, defaultLoc);
   covariantParam.setVariance(TypeParameterSymbol::Variance::Covariant);
 
   // Test contravariant type parameter
-  TypeParameterSymbol contravariantParam(
-      SymbolId::create(2), "U"_zc, SymbolFlags::TypeKind | SymbolFlags::Contravariant, defaultLoc);
+  TypeParameterSymbol contravariantParam(tests::testDefinition(2), "U"_zc,
+                                         SymbolFlags::TypeKind | SymbolFlags::Contravariant,
+                                         defaultLoc);
   contravariantParam.setVariance(TypeParameterSymbol::Variance::Contravariant);
 
   // Test invariant type parameter
-  TypeParameterSymbol invariantParam(SymbolId::create(3), "V"_zc,
+  TypeParameterSymbol invariantParam(tests::testDefinition(3), "V"_zc,
                                      SymbolFlags::TypeKind | SymbolFlags::Invariant, defaultLoc);
   invariantParam.setVariance(TypeParameterSymbol::Variance::Invariant);
 
@@ -302,7 +316,7 @@ ZC_TEST("TypeParameterSymbol_Variance") {
 
 ZC_TEST("FunctionTypeSymbol_Creation") {
   source::SourceLoc defaultLoc;
-  FunctionTypeSymbol funcType(SymbolId::create(1), "TestFunction"_zc,
+  FunctionTypeSymbol funcType(tests::testDefinition(1), "TestFunction"_zc,
                               SymbolFlags::TypeKind | SymbolFlags::Function, defaultLoc);
 
   ZC_EXPECT(funcType.getName() == "TestFunction");
@@ -315,16 +329,16 @@ ZC_TEST("FunctionTypeSymbol_Creation") {
 
 ZC_TEST("FunctionTypeSymbol_Parameters") {
   source::SourceLoc defaultLoc;
-  FunctionTypeSymbol funcType(SymbolId::create(1), "TestFunction"_zc,
+  FunctionTypeSymbol funcType(tests::testDefinition(1), "TestFunction"_zc,
                               SymbolFlags::TypeKind | SymbolFlags::Function, defaultLoc);
 
   // Set return type
-  auto returnType = BuiltInTypeSymbol::createI32(SymbolId::create(2), defaultLoc);
+  auto returnType = BuiltInTypeSymbol::createI32(tests::testDefinition(2), defaultLoc);
   funcType.setReturnType(*returnType);
 
   // Add parameter types
-  auto param1Type = BuiltInTypeSymbol::createStr(SymbolId::create(3), defaultLoc);
-  auto param2Type = BuiltInTypeSymbol::createBool(SymbolId::create(4), defaultLoc);
+  auto param1Type = BuiltInTypeSymbol::createStr(tests::testDefinition(3), defaultLoc);
+  auto param2Type = BuiltInTypeSymbol::createBool(tests::testDefinition(4), defaultLoc);
 
   funcType.addParameterType(*param1Type);
   funcType.addParameterType(*param2Type);
@@ -344,7 +358,7 @@ ZC_TEST("FunctionTypeSymbol_Parameters") {
 
 ZC_TEST("TypeSymbol_Classification") {
   source::SourceLoc defaultLoc;
-  auto intType = BuiltInTypeSymbol::createI32(SymbolId::create(1), defaultLoc);
+  auto intType = BuiltInTypeSymbol::createI32(tests::testDefinition(1), defaultLoc);
 
   ZC_EXPECT(intType->isPrimitive());
   ZC_EXPECT(!intType->isClass());
@@ -356,7 +370,7 @@ ZC_TEST("TypeSymbol_Classification") {
 
 ZC_TEST("TypeSymbol_SymbolTypeChecking") {
   source::SourceLoc defaultLoc;
-  auto intType = BuiltInTypeSymbol::createI32(SymbolId::create(1), defaultLoc);
+  auto intType = BuiltInTypeSymbol::createI32(tests::testDefinition(1), defaultLoc);
 
   ZC_EXPECT(intType->isTypeSymbol());
   ZC_EXPECT(intType->getKind() == SymbolKind::Type);
@@ -366,7 +380,8 @@ ZC_TEST("TypeSymbol_SymbolTypeChecking") {
 ZC_TEST("InterfaceSymbol_Creation") {
   SymbolTable symbolTable;
   auto globalScope = Scope::createGlobalScope();
-  auto& interface = symbolTable.createInterface("ITestInterface"_zc, *globalScope);
+  auto& interface =
+      symbolTable.createInterface(tests::testDefinition(0), "ITestInterface"_zc, *globalScope);
 
   ZC_EXPECT(interface.getName() == "ITestInterface");
   ZC_EXPECT(interface.isInterface());
@@ -377,7 +392,8 @@ ZC_TEST("InterfaceSymbol_Creation") {
 ZC_TEST("ClassSymbol_Creation") {
   SymbolTable symbolTable;
   auto globalScope = Scope::createGlobalScope();
-  auto& classSymbol = symbolTable.createClass("TestClass"_zc, *globalScope);
+  auto& classSymbol =
+      symbolTable.createClass(tests::testDefinition(0), "TestClass"_zc, *globalScope);
 
   ZC_EXPECT(classSymbol.getName() == "TestClass");
   ZC_EXPECT(classSymbol.isClass());
@@ -388,8 +404,9 @@ ZC_TEST("ClassSymbol_Creation") {
 ZC_TEST("ClassSymbol_Hierarchy") {
   SymbolTable symbolTable;
   auto globalScope = Scope::createGlobalScope();
-  auto& baseClass = symbolTable.createClass("BaseClass"_zc, *globalScope);
-  auto& derivedClass = symbolTable.createClass("DerivedClass"_zc, *globalScope);
+  auto& baseClass = symbolTable.createClass(tests::testDefinition(0), "BaseClass"_zc, *globalScope);
+  auto& derivedClass =
+      symbolTable.createClass(tests::testDefinition(0), "DerivedClass"_zc, *globalScope);
 
   // Test initial state
   ZC_EXPECT(derivedClass.getSuperclass() == zc::none);
@@ -404,7 +421,8 @@ ZC_TEST("ClassSymbol_Hierarchy") {
 ZC_TEST("ClassSymbol_MemberManagement") {
   SymbolTable symbolTable;
   auto globalScope = Scope::createGlobalScope();
-  auto& classSymbol = symbolTable.createClass("TestClass"_zc, *globalScope);
+  auto& classSymbol =
+      symbolTable.createClass(tests::testDefinition(0), "TestClass"_zc, *globalScope);
 
   // Test initial state
   auto members = classSymbol.getMembers();
@@ -416,7 +434,7 @@ ZC_TEST("ClassSymbol_MemberManagement") {
 
 ZC_TEST("TypeSymbol_GenericSupport") {
   source::SourceLoc defaultLoc;
-  auto intType = BuiltInTypeSymbol::createI32(SymbolId::create(1), defaultLoc);
+  auto intType = BuiltInTypeSymbol::createI32(tests::testDefinition(1), defaultLoc);
 
   // Test type parameters
   auto typeParams = intType->getTypeParameters();
@@ -428,15 +446,15 @@ ZC_TEST("TypeSymbol_GenericSupport") {
 
 ZC_TEST("TypeSymbol_QualifiedName") {
   source::SourceLoc defaultLoc;
-  auto intType = BuiltInTypeSymbol::createI32(SymbolId::create(1), defaultLoc);
+  auto intType = BuiltInTypeSymbol::createI32(tests::testDefinition(1), defaultLoc);
   auto qualifiedName = intType->getQualifiedName();
   ZC_EXPECT(qualifiedName == "i32");
 }
 
 ZC_TEST("TypeSymbol_BasicProperties") {
   source::SourceLoc defaultLoc;
-  auto intType = BuiltInTypeSymbol::createI32(SymbolId::create(1), defaultLoc);
-  auto floatType = BuiltInTypeSymbol::createF32(SymbolId::create(2), defaultLoc);
+  auto intType = BuiltInTypeSymbol::createI32(tests::testDefinition(1), defaultLoc);
+  auto floatType = BuiltInTypeSymbol::createF32(tests::testDefinition(2), defaultLoc);
 
   // Test basic properties
   ZC_EXPECT(intType->getName() == "i32");
@@ -453,7 +471,7 @@ ZC_TEST("TypeSymbol_MoveOperations") {
   source::SourceLoc defaultLoc;
 
   // Test TypeParameterSymbol move constructor
-  TypeParameterSymbol originalParam(SymbolId::create(1), "T"_zc,
+  TypeParameterSymbol originalParam(tests::testDefinition(1), "T"_zc,
                                     SymbolFlags::TypeKind | SymbolFlags::Generic, defaultLoc);
   originalParam.setVariance(TypeParameterSymbol::Variance::Covariant);
 
@@ -463,7 +481,7 @@ ZC_TEST("TypeSymbol_MoveOperations") {
   ZC_EXPECT(movedParam.hasFlag(SymbolFlags::Generic));
 
   // Test FunctionTypeSymbol move constructor
-  FunctionTypeSymbol originalFunc(SymbolId::create(2), "TestFunc"_zc,
+  FunctionTypeSymbol originalFunc(tests::testDefinition(2), "TestFunc"_zc,
                                   SymbolFlags::TypeKind | SymbolFlags::Function, defaultLoc);
   originalFunc.setVariadic(true);
 
@@ -479,14 +497,16 @@ ZC_TEST("TypeSymbol_TypeClassification") {
   auto globalScope = Scope::createGlobalScope();
 
   // Create different type symbols
-  auto& classSymbol = symbolTable.createClass("TestClass"_zc, *globalScope);
-  auto& interfaceSymbol = symbolTable.createInterface("TestInterface"_zc, *globalScope);
-  auto builtinType = BuiltInTypeSymbol::createI32(SymbolId::create(1), defaultLoc);
+  auto& classSymbol =
+      symbolTable.createClass(tests::testDefinition(0), "TestClass"_zc, *globalScope);
+  auto& interfaceSymbol =
+      symbolTable.createInterface(tests::testDefinition(0), "TestInterface"_zc, *globalScope);
+  auto builtinType = BuiltInTypeSymbol::createI32(tests::testDefinition(1), defaultLoc);
 
-  TypeParameterSymbol typeParam(SymbolId::create(2), "T"_zc,
+  TypeParameterSymbol typeParam(tests::testDefinition(2), "T"_zc,
                                 SymbolFlags::TypeKind | SymbolFlags::Generic, defaultLoc);
 
-  FunctionTypeSymbol funcType(SymbolId::create(3), "TestFunc"_zc,
+  FunctionTypeSymbol funcType(tests::testDefinition(3), "TestFunc"_zc,
                               SymbolFlags::TypeKind | SymbolFlags::Function, defaultLoc);
 
   // Test type kind flags
@@ -508,15 +528,18 @@ ZC_TEST("TypeSymbol_CompilerFlags") {
   auto globalScope = Scope::createGlobalScope();
 
   // Test synthetic type
-  auto& syntheticClass = symbolTable.createClass("SyntheticClass"_zc, *globalScope);
+  auto& syntheticClass =
+      symbolTable.createClass(tests::testDefinition(0), "SyntheticClass"_zc, *globalScope);
   syntheticClass.addFlag(SymbolFlags::Synthetic);
 
   // Test template type
-  auto& templateClass = symbolTable.createClass("TemplateClass"_zc, *globalScope);
+  auto& templateClass =
+      symbolTable.createClass(tests::testDefinition(0), "TemplateClass"_zc, *globalScope);
   templateClass.addFlag(SymbolFlags::Template);
 
   // Test exported type
-  auto& exportedInterface = symbolTable.createInterface("ExportedInterface"_zc, *globalScope);
+  auto& exportedInterface =
+      symbolTable.createInterface(tests::testDefinition(0), "ExportedInterface"_zc, *globalScope);
   exportedInterface.addFlag(SymbolFlags::Export);
 
   ZC_EXPECT(syntheticClass.hasFlag(SymbolFlags::Synthetic));
@@ -530,16 +553,18 @@ ZC_TEST("TypeSymbol_StatusFlags") {
   auto globalScope = Scope::createGlobalScope();
 
   // Test deprecated type
-  auto& deprecatedClass = symbolTable.createClass("DeprecatedClass"_zc, *globalScope);
+  auto& deprecatedClass =
+      symbolTable.createClass(tests::testDefinition(0), "DeprecatedClass"_zc, *globalScope);
   deprecatedClass.addFlag(SymbolFlags::Deprecated);
 
   // Test experimental type
-  auto& experimentalInterface =
-      symbolTable.createInterface("ExperimentalInterface"_zc, *globalScope);
+  auto& experimentalInterface = symbolTable.createInterface(
+      tests::testDefinition(0), "ExperimentalInterface"_zc, *globalScope);
   experimentalInterface.addFlag(SymbolFlags::Experimental);
 
   // Test unsafe type
-  auto& unsafeClass = symbolTable.createClass("UnsafeClass"_zc, *globalScope);
+  auto& unsafeClass =
+      symbolTable.createClass(tests::testDefinition(0), "UnsafeClass"_zc, *globalScope);
   unsafeClass.addFlag(SymbolFlags::Unsafe);
 
   ZC_EXPECT(deprecatedClass.hasFlag(SymbolFlags::Deprecated));
@@ -553,11 +578,12 @@ ZC_TEST("TypeSymbol_UnionTypeDetection") {
   auto globalScope = Scope::createGlobalScope();
 
   // Create a TypeSymbol without AST (should return false)
-  TypeSymbol regularTypeSymbol(SymbolId::create(1), "RegularType"_zc, SymbolFlags::TypeKind,
+  TypeSymbol regularTypeSymbol(tests::testDefinition(1), "RegularType"_zc, SymbolFlags::TypeKind,
                                defaultLoc);
 
   // Create a regular class for comparison
-  auto& classSymbol = symbolTable.createClass("RegularClass"_zc, *globalScope);
+  auto& classSymbol =
+      symbolTable.createClass(tests::testDefinition(0), "RegularClass"_zc, *globalScope);
 
   ZC_EXPECT(!regularTypeSymbol.isUnionType());
   ZC_EXPECT(!classSymbol.isUnionType());
@@ -569,11 +595,12 @@ ZC_TEST("TypeSymbol_IntersectionTypeDetection") {
   auto globalScope = Scope::createGlobalScope();
 
   // Create a TypeSymbol without AST (should return false)
-  TypeSymbol regularTypeSymbol(SymbolId::create(2), "RegularType"_zc, SymbolFlags::TypeKind,
+  TypeSymbol regularTypeSymbol(tests::testDefinition(2), "RegularType"_zc, SymbolFlags::TypeKind,
                                defaultLoc);
 
   // Create a regular interface for comparison
-  auto& interfaceSymbol = symbolTable.createInterface("RegularInterface"_zc, *globalScope);
+  auto& interfaceSymbol =
+      symbolTable.createInterface(tests::testDefinition(0), "RegularInterface"_zc, *globalScope);
 
   ZC_EXPECT(!regularTypeSymbol.isIntersectionType());
   ZC_EXPECT(!interfaceSymbol.isIntersectionType());
@@ -585,9 +612,11 @@ ZC_TEST("TypeSymbol_SubtypeChecking") {
   auto globalScope = Scope::createGlobalScope();
 
   // Create base and derived classes
-  auto& baseClass = symbolTable.createClass("BaseClass"_zc, *globalScope);
-  auto& derivedClass = symbolTable.createClass("DerivedClass"_zc, *globalScope);
-  auto& unrelatedClass = symbolTable.createClass("UnrelatedClass"_zc, *globalScope);
+  auto& baseClass = symbolTable.createClass(tests::testDefinition(0), "BaseClass"_zc, *globalScope);
+  auto& derivedClass =
+      symbolTable.createClass(tests::testDefinition(0), "DerivedClass"_zc, *globalScope);
+  auto& unrelatedClass =
+      symbolTable.createClass(tests::testDefinition(0), "UnrelatedClass"_zc, *globalScope);
 
   // Set up inheritance relationship
   derivedClass.setSuperclass(baseClass);
@@ -599,8 +628,8 @@ ZC_TEST("TypeSymbol_SubtypeChecking") {
   ZC_EXPECT(!unrelatedClass.isSubtypeOf(baseClass));  // Unrelated class is not subtype
 
   // Test with built-in types
-  auto intType = BuiltInTypeSymbol::createI32(SymbolId::create(1), defaultLoc);
-  auto floatType = BuiltInTypeSymbol::createF32(SymbolId::create(2), defaultLoc);
+  auto intType = BuiltInTypeSymbol::createI32(tests::testDefinition(1), defaultLoc);
+  auto floatType = BuiltInTypeSymbol::createF32(tests::testDefinition(2), defaultLoc);
 
   ZC_EXPECT(intType->isSubtypeOf(*intType));     // Same type
   ZC_EXPECT(!intType->isSubtypeOf(*floatType));  // Different built-in types
@@ -613,8 +642,9 @@ ZC_TEST("TypeSymbol_AssignabilityChecking") {
   const Scope& globalScope = scopeManager.createScope(Scope::Kind::Global, "global");
 
   // Create base and derived classes
-  auto& baseClass = symbolTable.createClass("BaseClass"_zc, globalScope);
-  auto& derivedClass = symbolTable.createClass("DerivedClass"_zc, globalScope);
+  auto& baseClass = symbolTable.createClass(tests::testDefinition(0), "BaseClass"_zc, globalScope);
+  auto& derivedClass =
+      symbolTable.createClass(tests::testDefinition(0), "DerivedClass"_zc, globalScope);
   derivedClass.setSuperclass(zc::Maybe<const ClassSymbol&>(baseClass));
 
   // Test assignability for class hierarchy
@@ -623,9 +653,9 @@ ZC_TEST("TypeSymbol_AssignabilityChecking") {
   ZC_EXPECT(!derivedClass.isAssignableFrom(baseClass));  // Derived cannot accept base
 
   // Test with built-in types
-  auto intType = BuiltInTypeSymbol::createI32(SymbolId::create(1), defaultLoc);
-  auto floatType = BuiltInTypeSymbol::createF32(SymbolId::create(2), defaultLoc);
-  auto stringType = BuiltInTypeSymbol::createStr(SymbolId::create(3), defaultLoc);
+  auto intType = BuiltInTypeSymbol::createI32(tests::testDefinition(1), defaultLoc);
+  auto floatType = BuiltInTypeSymbol::createF32(tests::testDefinition(2), defaultLoc);
+  auto stringType = BuiltInTypeSymbol::createStr(tests::testDefinition(3), defaultLoc);
 
   ZC_EXPECT(intType->isAssignableFrom(*intType));      // Same type
   ZC_EXPECT(!intType->isAssignableFrom(*floatType));   // int cannot accept float (narrowing)

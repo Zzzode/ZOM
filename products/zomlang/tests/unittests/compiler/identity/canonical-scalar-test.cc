@@ -102,6 +102,10 @@ ZC_TEST("Canonical semantic names normalize identifiers and reject reserved word
   ZC_EXPECT(SemanticIdentifier::fromCanonical("caf\x65\xCC\x81"_zc) == zc::none);
 
   expectSource<DeclaredDefinitionName>("this"_zc, "this"_zc);
+  expectSource<DeclaredDefinitionName>("init"_zc, "init"_zc);
+  expectSource<DeclaredDefinitionName>("deinit"_zc, "deinit"_zc);
+  expectSource<DeclaredDefinitionName>("get"_zc, "get"_zc);
+  expectSource<DeclaredDefinitionName>("set"_zc, "set"_zc);
   expectSource<DeclaredDefinitionName>("value"_zc, "value"_zc);
   expectRejected<DeclaredDefinitionName>("class"_zc);
 }

@@ -18,6 +18,7 @@
 #include "zomlang/compiler/symbol/scope.h"
 #include "zomlang/compiler/symbol/symbol.h"
 #include "zomlang/compiler/symbol/value-symbol.h"
+#include "zomlang/tests/unittests/compiler/test-semantic-identities.h"
 
 namespace zomlang {
 namespace compiler {
@@ -45,8 +46,8 @@ ZC_TEST("SymbolTable_SymbolCreationWithScope") {
   Scope& classScope = scopeManager.createScope(Scope::Kind::Class, "MyClass", globalScope);
 
   // Create symbols in different scopes
-  VariableSymbol& var1 = table.createVariable("var1", globalScope);
-  VariableSymbol& var2 = table.createVariable("var2", classScope);
+  VariableSymbol& var1 = table.createVariable(tests::testDefinition(0), "var1", globalScope);
+  VariableSymbol& var2 = table.createVariable(tests::testDefinition(0), "var2", classScope);
   (void)var1;  // Mark as used
   (void)var2;  // Mark as used
 
@@ -70,9 +71,9 @@ ZC_TEST("SymbolTable_SymbolLookup") {
   Scope& globalScope = scopeManager.createScope(Scope::Kind::Global, "global");
 
   // Create different types of symbols
-  VariableSymbol& var = table.createVariable("myVar", globalScope);
-  FunctionSymbol& func = table.createFunction("myFunc", globalScope);
-  ClassSymbol& cls = table.createClass("MyClass", globalScope);
+  VariableSymbol& var = table.createVariable(tests::testDefinition(0), "myVar", globalScope);
+  FunctionSymbol& func = table.createFunction(tests::testDefinition(0), "myFunc", globalScope);
+  ClassSymbol& cls = table.createClass(tests::testDefinition(0), "MyClass", globalScope);
   (void)var;   // Mark as used
   (void)func;  // Mark as used
   (void)cls;   // Mark as used
@@ -104,11 +105,11 @@ ZC_TEST("SymbolTable_SymbolLookupByKind") {
   Scope& globalScope = scopeManager.createScope(Scope::Kind::Global, "global");
 
   // Create symbols of different kinds
-  table.createVariable("var1", globalScope);
-  table.createVariable("var2", globalScope);
-  table.createFunction("func1", globalScope);
-  table.createFunction("func2", globalScope);
-  table.createClass("class1", globalScope);
+  table.createVariable(tests::testDefinition(0), "var1", globalScope);
+  table.createVariable(tests::testDefinition(0), "var2", globalScope);
+  table.createFunction(tests::testDefinition(0), "func1", globalScope);
+  table.createFunction(tests::testDefinition(0), "func2", globalScope);
+  table.createClass(tests::testDefinition(0), "class1", globalScope);
 
   // Test symbol type filtering
   auto variables = table.getSymbolsOfType(SymbolKind::Variable);
@@ -133,10 +134,10 @@ ZC_TEST("SymbolTable_SymbolLookupByScope") {
   const Scope& classScope = scopeManager.createScope(Scope::Kind::Class, "MyClass", globalScope);
 
   // Create symbols in different scopes
-  table.createVariable("globalVar", globalScope);
-  table.createFunction("globalFunc", globalScope);
-  table.createVariable("classVar", classScope);
-  table.createFunction("classFunc", classScope);
+  table.createVariable(tests::testDefinition(0), "globalVar", globalScope);
+  table.createFunction(tests::testDefinition(0), "globalFunc", globalScope);
+  table.createVariable(tests::testDefinition(0), "classVar", classScope);
+  table.createFunction(tests::testDefinition(0), "classFunc", classScope);
 
   // Test scope-specific lookup
   auto globalSymbols = table.getSymbolsInScope(globalScope);
@@ -155,8 +156,8 @@ ZC_TEST("SymbolTable_SymbolResolution") {
   const Scope& classScope = scopeManager.createScope(Scope::Kind::Class, "MyClass", globalScope);
 
   // Create symbols in different scopes
-  table.createVariable("globalVar", globalScope);
-  table.createVariable("classVar", classScope);
+  table.createVariable(tests::testDefinition(0), "globalVar", globalScope);
+  table.createVariable(tests::testDefinition(0), "classVar", classScope);
 
   // Test recursive lookup
   auto resolvedGlobal = table.lookupRecursive("globalVar", classScope);
@@ -183,7 +184,7 @@ ZC_TEST("SymbolTable_SymbolRemoval") {
   const Scope& globalScope = scopeManager.createScope(Scope::Kind::Global, "global");
 
   // Create and remove symbol
-  VariableSymbol& tempVar = table.createVariable("tempVar", globalScope);
+  VariableSymbol& tempVar = table.createVariable(tests::testDefinition(0), "tempVar", globalScope);
   ZC_EXPECT(table.getSymbolCount() == 1);
 
   // Remove symbol using dropSymbol - VariableSymbol inherits from Symbol
@@ -200,8 +201,10 @@ ZC_TEST("SymbolTable_ScopeSpecificRemoval") {
   Scope& classScope = scopeManager.createScope(Scope::Kind::Class, "MyClass", globalScope);
 
   // Create symbols with same name in different scopes
-  VariableSymbol& globalVar = table.createVariable("sharedName", globalScope);
-  VariableSymbol& classVar = table.createVariable("sharedName", classScope);
+  VariableSymbol& globalVar =
+      table.createVariable(tests::testDefinition(0), "sharedName", globalScope);
+  VariableSymbol& classVar =
+      table.createVariable(tests::testDefinition(0), "sharedName", classScope);
 
   ZC_EXPECT(table.getSymbolCount() == 2);
 
@@ -250,24 +253,27 @@ ZC_TEST("SymbolTable_SymbolCreationHelpers") {
   const Scope& globalScope = scopeManager.createScope(Scope::Kind::Global, "global");
 
   // Test symbol creation helpers
-  VariableSymbol& variable = table.createVariable("myVariable", globalScope);
+  VariableSymbol& variable =
+      table.createVariable(tests::testDefinition(0), "myVariable", globalScope);
   (void)variable;  // Mark as used
   // ZC_EXPECT(variable.getKind() == SymbolKind::Variable);  // Commented out due to incomplete type
 
-  FunctionSymbol& function = table.createFunction("myFunction", globalScope);
+  FunctionSymbol& function =
+      table.createFunction(tests::testDefinition(0), "myFunction", globalScope);
   (void)function;  // Mark as used
   // ZC_EXPECT(function.getKind() == SymbolKind::Function);  // Commented out due to incomplete type
 
-  ClassSymbol& cls = table.createClass("MyClass", globalScope);
+  ClassSymbol& cls = table.createClass(tests::testDefinition(0), "MyClass", globalScope);
   (void)cls;  // Mark as used
   // ZC_EXPECT(cls.getKind() == SymbolKind::Class);  // Commented out due to incomplete type
 
-  InterfaceSymbol& interface = table.createInterface("MyInterface", globalScope);
+  InterfaceSymbol& interface =
+      table.createInterface(tests::testDefinition(0), "MyInterface", globalScope);
   (void)interface;  // Mark as used
   // ZC_EXPECT(interface.getKind() == SymbolKind::Interface);  // Commented out due to incomplete
   // type
 
-  PackageSymbol& package = table.createPackage("mypackage", globalScope);
+  PackageSymbol& package = table.createPackage(tests::testDefinition(0), "mypackage", globalScope);
   (void)package;  // Mark as used
   // ZC_EXPECT(package.getKind() == SymbolKind::Package);  // Commented out due to incomplete type
 }
@@ -284,10 +290,10 @@ ZC_TEST("SymbolTable_ComplexHierarchy") {
       scopeManager.createScope(Scope::Kind::Function, "myMethod", classScope);
 
   // Create symbols at each level
-  table.createVariable("globalVar", globalScope);
-  table.createVariable("packageVar", packageScope);
-  table.createVariable("classVar", classScope);
-  table.createVariable("methodVar", methodScope);
+  table.createVariable(tests::testDefinition(0), "globalVar", globalScope);
+  table.createVariable(tests::testDefinition(0), "packageVar", packageScope);
+  table.createVariable(tests::testDefinition(0), "classVar", classScope);
+  table.createVariable(tests::testDefinition(0), "methodVar", methodScope);
 
   // Test recursive resolution from deepest scope
   auto resolvedGlobal = table.lookupRecursive("globalVar", methodScope);
@@ -316,12 +322,14 @@ ZC_TEST("SymbolTable_OverwriteBehavior") {
   const Scope& classScope = scopeManager.createScope(Scope::Kind::Class, "MyClass", globalScope);
 
   // Create symbols with same name in different scopes
-  VariableSymbol& symbol1 = table.createVariable("sharedName", globalScope);
+  VariableSymbol& symbol1 =
+      table.createVariable(tests::testDefinition(0), "sharedName", globalScope);
   (void)symbol1;  // Mark as used
   ZC_EXPECT(table.getSymbolCount() == 1);
 
   // Create another symbol with same name in different scope
-  VariableSymbol& symbol2 = table.createVariable("sharedName", classScope);
+  VariableSymbol& symbol2 =
+      table.createVariable(tests::testDefinition(0), "sharedName", classScope);
   (void)symbol2;  // Mark as used
   ZC_EXPECT(table.getSymbolCount() == 2);
 
@@ -344,7 +352,7 @@ ZC_TEST("SymbolTable_EmptyAndValidation") {
   // Test table with symbols
   ScopeManager& scopeManager = table.getScopeManager();
   const Scope& globalScope = scopeManager.createScope(Scope::Kind::Global, "global");
-  table.createVariable("testVar", globalScope);
+  table.createVariable(tests::testDefinition(0), "testVar", globalScope);
 
   ZC_EXPECT(table.getSymbolCount() == 1);
 }
@@ -357,9 +365,9 @@ ZC_TEST("SymbolTable_DumpFunctionality") {
   Scope& globalScope = scopeManager.createScope(Scope::Kind::Global, "global");
   const Scope& classScope = scopeManager.createScope(Scope::Kind::Class, "MyClass", globalScope);
 
-  table.createVariable("var1", globalScope);
-  table.createFunction("func1", globalScope);
-  table.createVariable("var2", classScope);
+  table.createVariable(tests::testDefinition(0), "var1", globalScope);
+  table.createFunction(tests::testDefinition(0), "func1", globalScope);
+  table.createVariable(tests::testDefinition(0), "var2", classScope);
 
   // Test dump functionality (should not throw)
   table.dumpSymbols();
@@ -376,8 +384,8 @@ ZC_TEST("SymbolTable_QualifiedNameResolution") {
       scopeManager.createScope(Scope::Kind::Package, "mypackage", globalScope);
 
   // Create symbols
-  table.createVariable("globalVar", globalScope);
-  table.createClass("MyClass", packageScope);
+  table.createVariable(tests::testDefinition(0), "globalVar", globalScope);
+  table.createClass(tests::testDefinition(0), "MyClass", packageScope);
 
   // Test qualified name resolution
   auto resolved = table.resolveQualified("mypackage.MyClass", globalScope);
@@ -405,7 +413,7 @@ ZC_TEST("SymbolTable_DenotationLookup") {
   // Create scope and symbol
   ScopeManager& scopeManager = table.getScopeManager();
   const Scope& globalScope = scopeManager.createScope(Scope::Kind::Global, "global");
-  table.createVariable("testVar", globalScope);
+  table.createVariable(tests::testDefinition(0), "testVar", globalScope);
 
   // Test denotation lookup
   auto denotation = table.lookupDenotation("testVar", globalScope);
@@ -427,7 +435,8 @@ ZC_TEST("SymbolTable_ImplicitSymbols") {
   // Create scope
   ScopeManager& scopeManager = table.getScopeManager();
   const Scope& globalScope = scopeManager.createScope(Scope::Kind::Global, "global");
-  VariableSymbol& implicitVar = table.createVariable("implicitVar", globalScope);
+  VariableSymbol& implicitVar =
+      table.createVariable(tests::testDefinition(0), "implicitVar", globalScope);
 
   // Register as implicit symbol - VariableSymbol inherits from Symbol
   table.registerImplicitSymbol(implicitVar, globalScope);
@@ -443,7 +452,7 @@ ZC_TEST("SymbolTable_EnterDropSymbols") {
   // Create scope
   ScopeManager& scopeManager = table.getScopeManager();
   const Scope& globalScope = scopeManager.createScope(Scope::Kind::Global, "global");
-  VariableSymbol& testVar = table.createVariable("testVar", globalScope);
+  VariableSymbol& testVar = table.createVariable(tests::testDefinition(0), "testVar", globalScope);
 
   ZC_EXPECT(table.getSymbolCount() == 1);
 
@@ -463,9 +472,9 @@ ZC_TEST("SymbolTable_AllSymbolsRetrieval") {
   ScopeManager& scopeManager = table.getScopeManager();
   const Scope& globalScope = scopeManager.createScope(Scope::Kind::Global, "global");
 
-  table.createVariable("var1", globalScope);
-  table.createFunction("func1", globalScope);
-  table.createClass("Class1", globalScope);
+  table.createVariable(tests::testDefinition(0), "var1", globalScope);
+  table.createFunction(tests::testDefinition(0), "func1", globalScope);
+  table.createClass(tests::testDefinition(0), "Class1", globalScope);
 
   // Test getting all symbols
   auto allSymbols = table.getAllSymbols();
@@ -484,7 +493,7 @@ ZC_TEST("SymbolTable_LookupInCurrentScope") {
   const Scope& globalScope = scopeManager.createScope(Scope::Kind::Global, "global");
   table.setCurrentScope(globalScope);
 
-  table.createVariable("currentVar", globalScope);
+  table.createVariable(tests::testDefinition(0), "currentVar", globalScope);
 
   // Test lookup in current scope
   auto found = table.lookupInCurrentScope("currentVar");

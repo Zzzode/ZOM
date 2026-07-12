@@ -67,9 +67,7 @@ bool appendSortedSequence(zc::Vector<uint8_t>& output, zc::ArrayPtr<const Value>
   }
 
   for (size_t index = 1; index < encoded.size(); ++index) {
-    if (sameBytes(encoded[index - 1].value.asPtr(), encoded[index].value.asPtr())) {
-      return false;
-    }
+    if (sameBytes(encoded[index - 1].value.asPtr(), encoded[index].value.asPtr())) { return false; }
   }
 
   appendUint64(output, encoded.size());
@@ -103,8 +101,8 @@ SemanticContextFingerprint::SemanticContextFingerprint(const Sha256Digest& diges
 
 zc::Maybe<SemanticContextFingerprint> SemanticContextFingerprint::compute(
     zc::ArrayPtr<const PackageKey> packages,
-    zc::ArrayPtr<const PackageDependencyEdgeKey> packageEdges,
-    zc::ArrayPtr<const CrateKey> crates, zc::ArrayPtr<const CrateDependencyEdgeKey> crateEdges,
+    zc::ArrayPtr<const PackageDependencyEdgeKey> packageEdges, zc::ArrayPtr<const CrateKey> crates,
+    zc::ArrayPtr<const CrateDependencyEdgeKey> crateEdges,
     zc::ArrayPtr<const SourceContentIdentity> sourceContents,
     zc::ArrayPtr<const ModuleKey> modules) {
   for (size_t left = 0; left < sourceContents.size(); ++left) {
@@ -155,10 +153,14 @@ zc::Maybe<SemanticContextFingerprint> SemanticContextFingerprint::compute(
     ZC_IF_SOME(key, registries.modules().keyAt(index)) { modules.add(key.clone()); }
   }
 
-  return compute(packages.asPtr(), packageEdges, crates.asPtr(), crateEdges,
-                 sourceContents.asPtr(), modules.asPtr());
+  return compute(packages.asPtr(), packageEdges, crates.asPtr(), crateEdges, sourceContents.asPtr(),
+                 modules.asPtr());
 }
 
 const Sha256Digest& SemanticContextFingerprint::digest() const noexcept { return value; }
+
+SemanticContextFingerprint SemanticContextFingerprint::clone() const noexcept {
+  return SemanticContextFingerprint(value);
+}
 
 }  // namespace zomlang::compiler::identity

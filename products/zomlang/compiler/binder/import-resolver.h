@@ -33,6 +33,8 @@ class Scope;
 
 namespace binder {
 
+class DefinitionIdentityMap;
+
 /// \brief Phase 1.5 Import Resolution.
 ///
 /// ImportResolver is responsible for:
@@ -46,7 +48,8 @@ namespace binder {
 class ImportResolver final {
 public:
   ImportResolver(symbol::SymbolTable& symbols, symbol::ScopeManager& scopes, const ast::Tree& tree,
-                 ast::BindingMetadata& metadata, diagnostics::DiagnosticEngine& diags) noexcept;
+                 const DefinitionIdentityMap& identities, ast::BindingMetadata& metadata,
+                 diagnostics::DiagnosticEngine& diags) noexcept;
   ~ImportResolver() noexcept(false);
 
   ZC_DISALLOW_COPY_AND_MOVE(ImportResolver);

@@ -2,6 +2,7 @@
 
 import argparse
 import copy
+import functools
 import json
 import re
 import sys
@@ -13,6 +14,13 @@ SCHEMA = Path("products/zomlang/compiler/ast/schema.yml")
 MANIFEST = Path("products/zomlang/compiler/identity/definition-producers.json")
 DEFINITION_KEY = Path("products/zomlang/compiler/identity/definition-key.h")
 INVENTORY = Path("products/zomlang/compiler/binder/definition-inventory.cc")
+COMPILER_SESSION = Path("products/zomlang/compiler/driver/compiler-session.cc")
+PACKAGE_COMPILATION_REQUEST = Path(
+    "products/zomlang/compiler/driver/package/package-compilation-request.h"
+)
+SEMANTIC_TYPE_STORE = Path("products/zomlang/compiler/type/semantic-type-store.h")
+TYPE_ENV = Path("products/zomlang/compiler/type/type-env.cc")
+IR_MODULE = Path("products/zomlang/compiler/irgen/ir.cc")
 PARSER_ROOT = Path("products/zomlang/compiler/parser")
 COMPILER_ROOT = ROOT / "products" / "zomlang" / "compiler"
 
@@ -45,10 +53,23 @@ def relative(path: Path) -> str:
     return str(path.relative_to(ROOT))
 
 
+@functools.lru_cache(maxsize=None)
+def repository_text(path: Path) -> str:
+    return (ROOT / path).read_text(encoding="utf-8")
+
+
+@functools.lru_cache(maxsize=1)
+def compiler_source_files() -> tuple[Path, ...]:
+    files: list[Path] = []
+    for suffix in ("*.h", "*.cc"):
+        files.extend(path.relative_to(ROOT) for path in COMPILER_ROOT.rglob(suffix))
+    return tuple(sorted(files))
+
+
 def read_text(path: Path, overrides: dict[Path, str]) -> str:
     if path in overrides:
         return overrides[path]
-    return (ROOT / path).read_text(encoding="utf-8")
+    return repository_text(path)
 
 
 def load_manifest() -> dict[str, object]:
@@ -90,6 +111,7 @@ def check_manifest_shape(manifest: dict[str, object], errors: list[str]) -> None
         "no_identity",
         "expansion_producers",
         "legacy_symbol_id_allowlist",
+        "legacy_type_identity_allowlist",
         "pointer_identity_allowlist",
     ):
         if key not in manifest:
@@ -178,8 +200,9 @@ def check_no_post_parse_expansion(
     maker = re.compile(
         r"\bmake(" + "|".join(re.escape(name) for name in sorted(producers)) + r")\s*\("
     )
-    for path in sorted(COMPILER_ROOT.rglob("*.cc")):
-        relative_path = path.relative_to(ROOT)
+    for relative_path in compiler_source_files():
+        if relative_path.suffix != ".cc":
+            continue
         if relative_path.parent == PARSER_ROOT:
             continue
         text = read_text(relative_path, overrides)
@@ -191,12 +214,51 @@ def check_no_post_parse_expansion(
 
 def matching_files(pattern: re.Pattern[str], overrides: dict[Path, str]) -> set[str]:
     matches: set[str] = set()
-    for suffix in ("*.h", "*.cc"):
-        for path in COMPILER_ROOT.rglob(suffix):
-            relative_path = path.relative_to(ROOT)
-            if pattern.search(read_text(relative_path, overrides)):
-                matches.add(str(relative_path))
+    for relative_path in compiler_source_files():
+        if pattern.search(read_text(relative_path, overrides)):
+            matches.add(str(relative_path))
     return matches
+
+
+def function_body(text: str, marker: str) -> str | None:
+    marker_offset = text.find(marker)
+    if marker_offset < 0:
+        return None
+    body_start = text.find("{", marker_offset + len(marker))
+    if body_start < 0:
+        return None
+
+    depth = 0
+    for offset in range(body_start, len(text)):
+        if text[offset] == "{":
+            depth += 1
+        elif text[offset] == "}":
+            depth -= 1
+            if depth == 0:
+                return text[body_start + 1 : offset]
+    return None
+
+
+def check_ordered_function_markers(
+    text: str,
+    function_marker: str,
+    ordered_markers: tuple[str, ...],
+    description: str,
+    errors: list[str],
+) -> None:
+    body = function_body(text, function_marker)
+    if body is None:
+        errors.append(f"{COMPILER_SESSION}: missing {description} function body")
+        return
+
+    offsets = [body.find(marker) for marker in ordered_markers]
+    for marker, offset in zip(ordered_markers, offsets):
+        if offset < 0:
+            errors.append(f"{COMPILER_SESSION}: {description} is missing {marker}")
+    if all(offset >= 0 for offset in offsets) and offsets != sorted(offsets):
+        errors.append(
+            f"{COMPILER_SESSION}: {description} must order " + " before ".join(ordered_markers)
+        )
 
 
 def check_phase_local_allowlists(
@@ -207,6 +269,11 @@ def check_phase_local_allowlists(
             "legacy_symbol_id_allowlist",
             re.compile(r"\bSymbolId\b"),
             "legacy SymbolId surface",
+        ),
+        (
+            "legacy_type_identity_allowlist",
+            re.compile(r"\b(?:TypeId|TypeInterner)\b"),
+            "legacy semantic type identity surface",
         ),
         (
             "pointer_identity_allowlist",
@@ -227,6 +294,90 @@ def check_phase_local_allowlists(
             errors.append(f"{MANIFEST}: stale {description} allowlist entry {path}")
 
 
+def check_semantic_type_store_architecture(
+    overrides: dict[Path, str], errors: list[str]
+) -> None:
+    session = read_text(COMPILER_SESSION, overrides)
+    package_request = read_text(PACKAGE_COMPILATION_REQUEST, overrides)
+    store = read_text(SEMANTIC_TYPE_STORE, overrides)
+    type_env = read_text(TYPE_ENV, overrides)
+    ir_module = read_text(IR_MODULE, overrides)
+
+    required_session_markers = (
+        "issueSemanticTypeStoreConstructionToken(contextBrand)",
+        "zc::Own<type::SemanticTypeStore> semanticTypeStore;",
+    )
+    for marker in required_session_markers:
+        if marker not in session:
+            errors.append(f"{COMPILER_SESSION}: missing semantic type store owner marker {marker}")
+
+    required_final_crate_markers = (
+        "bool requiresBuildScriptValue;",
+        "finalizeRoots(",
+        "zc::Vector<package::FinalizedCompilationRoot> finalizedRoots;",
+    )
+    combined_final_crate_surface = package_request + session
+    for marker in required_final_crate_markers:
+        if marker not in combined_final_crate_surface:
+            errors.append(
+                f"{COMPILER_SESSION}: missing post-build crate finalization marker {marker}"
+            )
+
+    freeze_markers = (
+        "freezePackages()",
+        "freezeCrates()",
+        "freezeSourceFiles()",
+        "freezeModules()",
+        "freezeDefinitions()",
+        "freezeImpls()",
+    )
+    for marker in freeze_markers:
+        if session.count(marker) != 1:
+            errors.append(
+                f"{COMPILER_SESSION}: identity freeze site {marker} must occur exactly once"
+            )
+
+    check_ordered_function_markers(
+        session,
+        "CompilerSession::installResolvedPackageGraph(",
+        ("freezePackages()",),
+        "package registry installation",
+        errors,
+    )
+    check_ordered_function_markers(
+        session,
+        "bool freezePackageInputIdentities()",
+        ("freezeCrates()", "freezeSourceFiles()"),
+        "pre-parse crate and source freeze",
+        errors,
+    )
+    check_ordered_function_markers(
+        session,
+        "CompilerSession::parseSources()",
+        (
+            "freezePackageInputIdentities()",
+            "freezeModuleIdentities()",
+            "freezeDefinitionAndImplIdentities()",
+        ),
+        "parseSources identity phase schedule",
+        errors,
+    )
+    check_ordered_function_markers(
+        session,
+        "bool freezeDefinitionAndImplIdentities()",
+        ("freezeDefinitions()", "freezeImpls()"),
+        "definition and impl freeze",
+        errors,
+    )
+
+    if "ZC_DISALLOW_COPY_AND_MOVE(SemanticTypeStore);" not in store:
+        errors.append(f"{SEMANTIC_TYPE_STORE}: semantic type store must be pinned")
+    if "SemanticTypeStore& semanticTypes;" not in type_env:
+        errors.append(f"{TYPE_ENV}: TypeEnv must borrow the session semantic type store")
+    if "SemanticTypeStore& semanticTypes;" not in ir_module:
+        errors.append(f"{IR_MODULE}: IR module must borrow the session semantic type store")
+
+
 def analyze(
     manifest: dict[str, object], overrides: dict[Path, str] | None = None
 ) -> list[str]:
@@ -238,6 +389,7 @@ def analyze(
     check_live_producers(manifest, active_overrides, errors)
     check_no_post_parse_expansion(manifest, active_overrides, errors)
     check_phase_local_allowlists(manifest, active_overrides, errors)
+    check_semantic_type_store_architecture(active_overrides, errors)
     return errors
 
 
@@ -293,11 +445,70 @@ def run_self_test() -> int:
     )
 
     missing_allowlist = copy.deepcopy(baseline)
-    missing_allowlist["legacy_symbol_id_allowlist"].remove(  # type: ignore[union-attr]
-        "products/zomlang/compiler/ast/tree.h"
-    )
+    tree_header = Path("products/zomlang/compiler/ast/tree.h")
+    tree_text = (ROOT / tree_header).read_text(encoding="utf-8")
     cases.append(
-        ("unallowlisted legacy identity", missing_allowlist, {}, "unallowlisted legacy SymbolId")
+        (
+            "unallowlisted legacy identity",
+            missing_allowlist,
+            {tree_header: tree_text + "\nclass SymbolId;\n"},
+            "unallowlisted legacy SymbolId",
+        )
+    )
+
+    cases.append(
+        (
+            "unallowlisted legacy type identity",
+            copy.deepcopy(baseline),
+            {tree_header: tree_text + "\nclass TypeId;\n"},
+            "unallowlisted legacy semantic type identity",
+        )
+    )
+
+    session_text = (ROOT / COMPILER_SESSION).read_text(encoding="utf-8")
+    cases.append(
+        (
+            "missing semantic type store construction",
+            copy.deepcopy(baseline),
+            {
+                COMPILER_SESSION: session_text.replace(
+                    "issueSemanticTypeStoreConstructionToken(contextBrand)",
+                    "missingSemanticTypeStoreConstruction(contextBrand)",
+                )
+            },
+            "missing semantic type store owner marker",
+        )
+    )
+
+    package_request_text = (ROOT / PACKAGE_COMPILATION_REQUEST).read_text(encoding="utf-8")
+    cases.append(
+        (
+            "missing post-build crate finalization",
+            copy.deepcopy(baseline),
+            {
+                PACKAGE_COMPILATION_REQUEST: package_request_text.replace(
+                    "bool requiresBuildScriptValue;",
+                    "bool missingBuildScriptRequirement;",
+                )
+            },
+            "missing post-build crate finalization marker",
+        )
+    )
+
+    cases.append(
+        (
+            "misordered identity phase schedule",
+            copy.deepcopy(baseline),
+            {
+                COMPILER_SESSION: session_text.replace(
+                    "!impl->freezeModuleIdentities() ||\n"
+                    "      !impl->freezeDefinitionAndImplIdentities()",
+                    "!impl->freezeDefinitionAndImplIdentities() ||\n"
+                    "      !impl->freezeModuleIdentities()",
+                )
+            },
+            "parseSources identity phase schedule must order",
+        )
     )
 
     for name, manifest, overrides, expected in cases:

@@ -32,7 +32,7 @@ public:
   /// \param name Package name
   /// \param flags Symbol properties flags
   /// \param location Source code location where this package is defined
-  PackageSymbol(SymbolId id, zc::StringPtr name, SymbolFlags flags,
+  PackageSymbol(identity::DefId id, zc::StringPtr name, SymbolFlags flags,
                 const source::SourceLoc& location) noexcept
       : Symbol(id, name, flags, location) {}
 

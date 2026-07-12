@@ -30,7 +30,7 @@ public:
   /// \param name Namespace name
   /// \param flags Symbol properties flags
   /// \param location Source code location where this namespace is defined
-  NamespaceSymbol(SymbolId id, zc::StringPtr name, SymbolFlags flags,
+  NamespaceSymbol(identity::DefId id, zc::StringPtr name, SymbolFlags flags,
                   const source::SourceLoc& location) noexcept
       : Symbol(id, name, flags, location) {}
 

@@ -17,7 +17,6 @@
 #include "zc/core/common.h"
 #include "zomlang/compiler/ast/node-id.h"
 #include "zomlang/compiler/source/location.h"
-#include "zomlang/compiler/symbol/symbol-id.h"
 #include "zomlang/compiler/symbol/symbol.h"
 
 namespace zomlang {
@@ -37,7 +36,7 @@ namespace symbol {
 /// Design follows ZOM style guide with PIMPL pattern for encapsulation.
 class TypeSymbol : public Symbol {
 public:
-  TypeSymbol(SymbolId id, zc::StringPtr name, SymbolFlags flags,
+  TypeSymbol(identity::DefId id, zc::StringPtr name, SymbolFlags flags,
              const source::SourceLoc& location) noexcept;
 
   // Move constructor and assignment
@@ -103,18 +102,23 @@ private:
 /// \brief Special built-in type symbols
 class BuiltInTypeSymbol final : public TypeSymbol {
 public:
-  BuiltInTypeSymbol(SymbolId id, zc::StringPtr name, SymbolFlags flags,
+  BuiltInTypeSymbol(identity::DefId id, zc::StringPtr name, SymbolFlags flags,
                     const source::SourceLoc& location) noexcept;
 
   ZC_DISALLOW_COPY(BuiltInTypeSymbol);
 
   SymbolKind getKind() const override { return SymbolKind::Type; }
 
-  static zc::Own<BuiltInTypeSymbol> createI32(SymbolId id, const source::SourceLoc& location);
-  static zc::Own<BuiltInTypeSymbol> createF32(SymbolId id, const source::SourceLoc& location);
-  static zc::Own<BuiltInTypeSymbol> createStr(SymbolId id, const source::SourceLoc& location);
-  static zc::Own<BuiltInTypeSymbol> createBool(SymbolId id, const source::SourceLoc& location);
-  static zc::Own<BuiltInTypeSymbol> createUnit(SymbolId id, const source::SourceLoc& location);
+  static zc::Own<BuiltInTypeSymbol> createI32(identity::DefId id,
+                                              const source::SourceLoc& location);
+  static zc::Own<BuiltInTypeSymbol> createF32(identity::DefId id,
+                                              const source::SourceLoc& location);
+  static zc::Own<BuiltInTypeSymbol> createStr(identity::DefId id,
+                                              const source::SourceLoc& location);
+  static zc::Own<BuiltInTypeSymbol> createBool(identity::DefId id,
+                                               const source::SourceLoc& location);
+  static zc::Own<BuiltInTypeSymbol> createUnit(identity::DefId id,
+                                               const source::SourceLoc& location);
 
 private:
   struct Impl;
@@ -124,7 +128,7 @@ private:
 /// \brief InterfaceSymbol - Represents interface types
 class InterfaceSymbol final : public TypeSymbol {
 public:
-  InterfaceSymbol(SymbolId id, zc::StringPtr name, SymbolFlags flags,
+  InterfaceSymbol(identity::DefId id, zc::StringPtr name, SymbolFlags flags,
                   const source::SourceLoc& location) noexcept;
 
   // Move constructor and assignment
@@ -148,7 +152,7 @@ private:
 /// \brief ClassSymbol - Represents class types
 class ClassSymbol final : public TypeSymbol {
 public:
-  ClassSymbol(SymbolId id, zc::StringPtr name, SymbolFlags flags,
+  ClassSymbol(identity::DefId id, zc::StringPtr name, SymbolFlags flags,
               const source::SourceLoc& location) noexcept;
 
   // Move constructor and assignment
@@ -196,7 +200,7 @@ private:
 /// \brief FunctionTypeSymbol - Represents function types
 class FunctionTypeSymbol final : public TypeSymbol {
 public:
-  FunctionTypeSymbol(SymbolId id, zc::StringPtr name, SymbolFlags flags,
+  FunctionTypeSymbol(identity::DefId id, zc::StringPtr name, SymbolFlags flags,
                      const source::SourceLoc& location) noexcept;
 
   // Move constructor and assignment
@@ -228,7 +232,7 @@ private:
 /// \brief TypeParameterSymbol - Represents generic type parameters
 class TypeParameterSymbol final : public TypeSymbol {
 public:
-  TypeParameterSymbol(SymbolId id, zc::StringPtr name, SymbolFlags flags,
+  TypeParameterSymbol(identity::DefId id, zc::StringPtr name, SymbolFlags flags,
                       const source::SourceLoc& location) noexcept;
 
   // Move constructor and assignment

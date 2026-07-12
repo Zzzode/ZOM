@@ -100,6 +100,19 @@ void compress(zc::ArrayPtr<uint32_t> state, zc::ArrayPtr<const uint8_t> block) {
 
 }  // namespace
 
+struct Sha256Hasher::Impl final {
+  Impl() {
+    for (size_t index = 0; index < 8; ++index) { state[index] = kInitialState[index]; }
+  }
+
+  uint32_t state[8];
+  uint8_t tail[64] = {};
+  size_t tailSize = 0;
+  uint64_t totalBytes = 0;
+  bool valid = true;
+  bool finished = false;
+};
+
 zc::Maybe<Sha256Digest> Sha256Digest::fromBytes(zc::ArrayPtr<const uint8_t> bytes) {
   if (bytes.size() != 32) { return zc::none; }
 
@@ -108,39 +121,70 @@ zc::Maybe<Sha256Digest> Sha256Digest::fromBytes(zc::ArrayPtr<const uint8_t> byte
   return result;
 }
 
-zc::Maybe<Sha256Digest> sha256(zc::ArrayPtr<const uint8_t> input) {
-  if (input.size() > (~uint64_t{0}) / 8) { return zc::none; }
+Sha256Hasher::Sha256Hasher() : impl(zc::heap<Impl>()) {}
+Sha256Hasher::~Sha256Hasher() noexcept(false) = default;
+Sha256Hasher::Sha256Hasher(Sha256Hasher&&) noexcept = default;
+Sha256Hasher& Sha256Hasher::operator=(Sha256Hasher&&) noexcept = default;
 
-  uint32_t state[8];
-  for (size_t index = 0; index < 8; ++index) { state[index] = kInitialState[index]; }
+bool Sha256Hasher::update(zc::ArrayPtr<const uint8_t> input) {
+  if (!impl->valid || impl->finished || input.size() > (~uint64_t{0}) / 8 ||
+      impl->totalBytes > (~uint64_t{0}) / 8 - input.size()) {
+    impl->valid = false;
+    return false;
+  }
+  impl->totalBytes += input.size();
 
   size_t offset = 0;
+  if (impl->tailSize != 0) {
+    const size_t required = 64 - impl->tailSize;
+    const size_t copied = input.size() < required ? input.size() : required;
+    for (size_t index = 0; index < copied; ++index) {
+      impl->tail[impl->tailSize + index] = input[index];
+    }
+    impl->tailSize += copied;
+    offset += copied;
+    if (impl->tailSize == 64) {
+      compress(zc::arrayPtr(impl->state), zc::arrayPtr(impl->tail));
+      impl->tailSize = 0;
+    }
+  }
   while (input.size() - offset >= 64) {
-    compress(zc::arrayPtr(state), input.slice(offset, offset + 64));
+    compress(zc::arrayPtr(impl->state), input.slice(offset, offset + 64));
     offset += 64;
   }
+  while (offset < input.size()) { impl->tail[impl->tailSize++] = input[offset++]; }
+  return true;
+}
+
+zc::Maybe<Sha256Digest> Sha256Hasher::finish() {
+  if (!impl->valid || impl->finished) { return zc::none; }
+  impl->finished = true;
 
   uint8_t tail[128] = {};
-  const size_t remainder = input.size() - offset;
-  for (size_t index = 0; index < remainder; ++index) { tail[index] = input[offset + index]; }
-  tail[remainder] = 0x80;
-
-  const size_t tailSize = remainder < 56 ? 64 : 128;
-  uint64_t bitLength = static_cast<uint64_t>(input.size()) * 8;
+  for (size_t index = 0; index < impl->tailSize; ++index) { tail[index] = impl->tail[index]; }
+  tail[impl->tailSize] = 0x80;
+  const size_t tailSize = impl->tailSize < 56 ? 64 : 128;
+  uint64_t bitLength = impl->totalBytes * 8;
   for (size_t index = 0; index < 8; ++index) {
     tail[tailSize - 1 - index] = static_cast<uint8_t>(bitLength);
     bitLength >>= 8;
   }
-  compress(zc::arrayPtr(state), zc::arrayPtr(tail, tailSize).first(64));
+  compress(zc::arrayPtr(impl->state), zc::arrayPtr(tail, tailSize).first(64));
   if (tailSize == 128) {
-    compress(zc::arrayPtr(state), zc::arrayPtr(tail, tailSize).slice(64, 128));
+    compress(zc::arrayPtr(impl->state), zc::arrayPtr(tail, tailSize).slice(64, 128));
   }
 
   Sha256Digest result;
   for (size_t index = 0; index < 8; ++index) {
-    writeUint32(zc::arrayPtr(result.value).slice(index * 4, index * 4 + 4), state[index]);
+    writeUint32(zc::arrayPtr(result.value).slice(index * 4, index * 4 + 4), impl->state[index]);
   }
   return result;
+}
+
+zc::Maybe<Sha256Digest> sha256(zc::ArrayPtr<const uint8_t> input) {
+  Sha256Hasher hasher;
+  if (!hasher.update(input)) { return zc::none; }
+  return hasher.finish();
 }
 
 }  // namespace zomlang::compiler::identity

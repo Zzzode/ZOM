@@ -18,6 +18,7 @@
 
 #include "zc/core/array.h"
 #include "zc/core/common.h"
+#include "zc/core/memory.h"
 
 namespace zomlang::compiler::identity {
 
@@ -41,6 +42,26 @@ private:
   uint8_t value[32] = {};
 
   friend zc::Maybe<Sha256Digest> sha256(zc::ArrayPtr<const uint8_t> input);
+  friend class Sha256Hasher;
+};
+
+/// \brief Incremental SHA-256 state for bounded streaming inputs.
+class Sha256Hasher final {
+public:
+  Sha256Hasher();
+  ~Sha256Hasher() noexcept(false);
+  Sha256Hasher(Sha256Hasher&&) noexcept;
+  Sha256Hasher& operator=(Sha256Hasher&&) noexcept;
+  ZC_DISALLOW_COPY(Sha256Hasher);
+
+  /// \return False when the cumulative byte length cannot be represented by SHA-256.
+  bool update(zc::ArrayPtr<const uint8_t> input);
+  /// \return The digest, or none after length overflow or a previous finish.
+  ZC_NODISCARD zc::Maybe<Sha256Digest> finish();
+
+private:
+  struct Impl;
+  zc::Own<Impl> impl;
 };
 
 /// \brief Computes the SHA-256 digest of one canonical byte sequence.

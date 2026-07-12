@@ -37,6 +37,10 @@ namespace type {
 class TypeEnv;
 }
 
+namespace binder {
+class DefinitionIdentityMap;
+}
+
 namespace basic {
 
 class StringPool;
@@ -60,7 +64,8 @@ zc::Maybe<ast::Tree> performParse(const source::SourceManager& sm,
 /// \param metadata Binder metadata side tables keyed by NodeId
 /// \return True if binding succeeded, false if errors occurred
 bool performBind(symbol::SymbolTable& symbolTable, diagnostics::DiagnosticEngine& diagnosticEngine,
-                 const ast::Tree& tree, ast::BindingMetadata& metadata);
+                 const ast::Tree& tree, const binder::DefinitionIdentityMap& identities,
+                 ast::BindingMetadata& metadata);
 
 /// \brief Perform type checking on a bound AST
 /// \param symbolTable Symbol table with resolved names

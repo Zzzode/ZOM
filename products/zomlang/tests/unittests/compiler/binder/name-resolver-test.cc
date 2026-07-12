@@ -19,11 +19,13 @@
 #include "zomlang/compiler/ast/generated/node-payload.h"
 #include "zomlang/compiler/ast/tree.h"
 #include "zomlang/compiler/binder/decl-collector.h"
+#include "zomlang/compiler/binder/definition-identity-map.h"
 #include "zomlang/compiler/diagnostics/diagnostic-engine.h"
 #include "zomlang/compiler/source/manager.h"
 #include "zomlang/compiler/symbol/scope.h"
 #include "zomlang/compiler/symbol/symbol-table.h"
 #include "zomlang/tests/unittests/compiler/test-ast-builder.h"
+#include "zomlang/tests/unittests/compiler/test-semantic-identities.h"
 
 namespace zomlang {
 namespace compiler {
@@ -36,7 +38,9 @@ namespace {
 // Helper: run DeclCollector then NameResolver on a built AST.
 bool collectAndResolve(TestFixture& fix, zc::ArrayPtr<const ast::NodeId> decls) {
   auto tree = fix.buildSourceFile("test"_zc, decls);
-  DeclCollector collector(fix.symbols(), fix.scopes(), tree, fix.metadata(), fix.diagnostics());
+  auto identities = tests::makeTestDefinitionIdentityMap(tree);
+  DeclCollector collector(fix.symbols(), fix.scopes(), tree, identities, fix.metadata(),
+                          fix.diagnostics());
   if (!collector.collect()) return false;
   NameResolver resolver(fix.symbols(), fix.scopes(), tree, fix.metadata(), fix.diagnostics());
   return resolver.resolve();
@@ -69,7 +73,7 @@ ZC_TEST("NameResolver.ResolvesSimpleIdent") {
   ZC_EXPECT(!fix.diagnostics().hasErrors());
 
   // The identifier reference should be bound to a symbol
-  auto symId = fix.metadata().symbol(identRef);
+  auto symId = fix.metadata().definition(identRef);
   ZC_EXPECT(symId.isValid());
 }
 
@@ -85,7 +89,7 @@ ZC_TEST("NameResolver.ResolvesFunctionName") {
   ZC_EXPECT(collectAndResolve(fix, topDecls.asPtr()));
   ZC_EXPECT(!fix.diagnostics().hasErrors());
 
-  auto symId = fix.metadata().symbol(call);
+  auto symId = fix.metadata().definition(call);
   ZC_EXPECT(symId.isValid());
 }
 
@@ -102,7 +106,7 @@ ZC_TEST("NameResolver.ResolvesClassName") {
   ZC_EXPECT(collectAndResolve(fix, topDecls.asPtr()));
   ZC_EXPECT(!fix.diagnostics().hasErrors());
 
-  auto symId = fix.metadata().symbol(ref);
+  auto symId = fix.metadata().definition(ref);
   ZC_EXPECT(symId.isValid());
 }
 
@@ -188,7 +192,7 @@ ZC_TEST("NameResolver.ResolvesFromOuterScope") {
   ZC_EXPECT(collectAndResolve(fix, topDecls.asPtr()));
   ZC_EXPECT(!fix.diagnostics().hasErrors());
 
-  auto symId = fix.metadata().symbol(innerRef);
+  auto symId = fix.metadata().definition(innerRef);
   ZC_EXPECT(symId.isValid());
 }
 
@@ -213,7 +217,7 @@ ZC_TEST("NameResolver.ResolvesFromFunctionScope") {
   ZC_EXPECT(collectAndResolve(fix, topDecls.asPtr()));
   ZC_EXPECT(!fix.diagnostics().hasErrors());
 
-  auto symId = fix.metadata().symbol(ref);
+  auto symId = fix.metadata().definition(ref);
   ZC_EXPECT(symId.isValid());
 }
 
@@ -240,7 +244,7 @@ ZC_TEST("NameResolver.ResolvesFromBlockScope") {
   ZC_EXPECT(collectAndResolve(fix, topDecls.asPtr()));
   ZC_EXPECT(!fix.diagnostics().hasErrors());
 
-  auto symId = fix.metadata().symbol(ref);
+  auto symId = fix.metadata().definition(ref);
   ZC_EXPECT(symId.isValid());
 }
 
@@ -319,8 +323,8 @@ ZC_TEST("NameResolver.InnerReferenceResolvesToInnerBinding") {
   // The inner reference should resolve to the inner binding.
   // Note: the symbol is bound to the VariableDeclarator node (innerDecl),
   // not the BindingPattern node (innerPat).
-  auto refSymId = fix.metadata().symbol(ref);
-  auto innerSymId = fix.metadata().symbol(innerDecl);
+  auto refSymId = fix.metadata().definition(ref);
+  auto innerSymId = fix.metadata().definition(innerDecl);
   ZC_EXPECT(refSymId == innerSymId);
 }
 
@@ -348,7 +352,7 @@ ZC_TEST("NameResolver.ResolvesMemberAccessObject") {
 
   ZC_EXPECT(collectAndResolve(fix, topDecls.asPtr()));
   ZC_EXPECT(!fix.diagnostics().hasErrors());
-  auto objSymId = fix.metadata().symbol(objRef);
+  auto objSymId = fix.metadata().definition(objRef);
   ZC_EXPECT(objSymId.isValid());
   ZC_EXPECT(fix.metadata().isDeferredMember(member));
 }
@@ -372,7 +376,7 @@ ZC_TEST("NameResolver.ResolvesCallCallee") {
   ZC_EXPECT(collectAndResolve(fix, topDecls.asPtr()));
   ZC_EXPECT(!fix.diagnostics().hasErrors());
 
-  auto symId = fix.metadata().symbol(calleeRef);
+  auto symId = fix.metadata().definition(calleeRef);
   ZC_EXPECT(symId.isValid());
 }
 
@@ -405,8 +409,8 @@ ZC_TEST("NameResolver.ResolvesBinaryOperands") {
   ZC_EXPECT(collectAndResolve(fix, topDecls.asPtr()));
   ZC_EXPECT(!fix.diagnostics().hasErrors());
 
-  ZC_EXPECT(fix.metadata().symbol(refA).isValid());
-  ZC_EXPECT(fix.metadata().symbol(refB).isValid());
+  ZC_EXPECT(fix.metadata().definition(refA).isValid());
+  ZC_EXPECT(fix.metadata().definition(refB).isValid());
 }
 
 // ============================================================================
@@ -440,7 +444,7 @@ ZC_TEST("NameResolver.ResolvesReturnExpr") {
   ZC_EXPECT(collectAndResolve(fix, topDecls.asPtr()));
   ZC_EXPECT(!fix.diagnostics().hasErrors());
 
-  auto symId = fix.metadata().symbol(retVal);
+  auto symId = fix.metadata().definition(retVal);
   ZC_EXPECT(symId.isValid());
 }
 
@@ -470,7 +474,7 @@ ZC_TEST("NameResolver.ResolvesIfCondition") {
   ZC_EXPECT(collectAndResolve(fix, topDecls.asPtr()));
   ZC_EXPECT(!fix.diagnostics().hasErrors());
 
-  auto symId = fix.metadata().symbol(condRef);
+  auto symId = fix.metadata().definition(condRef);
   ZC_EXPECT(symId.isValid());
 }
 
@@ -498,7 +502,7 @@ ZC_TEST("NameResolver.ResolvesWhileCondition") {
   ZC_EXPECT(collectAndResolve(fix, topDecls.asPtr()));
   ZC_EXPECT(!fix.diagnostics().hasErrors());
 
-  auto symId = fix.metadata().symbol(condRef);
+  auto symId = fix.metadata().definition(condRef);
   ZC_EXPECT(symId.isValid());
 }
 
@@ -530,9 +534,9 @@ ZC_TEST("NameResolver.MultipleReferencesSameSymbol") {
   ZC_EXPECT(!fix.diagnostics().hasErrors());
 
   // All references should resolve to the same symbol
-  auto sym1 = fix.metadata().symbol(ref1);
-  auto sym2 = fix.metadata().symbol(ref2);
-  auto sym3 = fix.metadata().symbol(ref3);
+  auto sym1 = fix.metadata().definition(ref1);
+  auto sym2 = fix.metadata().definition(ref2);
+  auto sym3 = fix.metadata().definition(ref3);
   ZC_EXPECT(sym1 == sym2);
   ZC_EXPECT(sym2 == sym3);
 }

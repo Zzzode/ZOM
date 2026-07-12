@@ -17,6 +17,7 @@
 #include "zc/core/debug.h"
 #include "zomlang/compiler/ast/generated/node-traverse.h"
 #include "zomlang/compiler/binder/decl-collector.h"
+#include "zomlang/compiler/binder/definition-identity-map.h"
 #include "zomlang/compiler/binder/import-resolver.h"
 #include "zomlang/compiler/binder/name-resolver.h"
 #include "zomlang/compiler/diagnostics/diagnostic-engine.h"
@@ -28,21 +29,25 @@ namespace binder {
 
 struct Binder::Impl {
   Impl(symbol::SymbolTable& symbolTable, diagnostics::DiagnosticEngine& diagnosticEngine,
-       const ast::Tree& tree, ast::BindingMetadata& metadata) noexcept
+       const ast::Tree& tree, const DefinitionIdentityMap& identities,
+       ast::BindingMetadata& metadata) noexcept
       : symbolTable(symbolTable),
         diagnosticEngine(diagnosticEngine),
         tree(tree),
+        identities(identities),
         metadata(metadata) {}
 
   symbol::SymbolTable& symbolTable;
   diagnostics::DiagnosticEngine& diagnosticEngine;
   const ast::Tree& tree;
+  const DefinitionIdentityMap& identities;
   ast::BindingMetadata& metadata;
 };
 
 Binder::Binder(symbol::SymbolTable& symbolTable, diagnostics::DiagnosticEngine& diagnosticEngine,
-               const ast::Tree& tree, ast::BindingMetadata& metadata) noexcept
-    : impl(zc::heap<Impl>(symbolTable, diagnosticEngine, tree, metadata)) {}
+               const ast::Tree& tree, const DefinitionIdentityMap& identities,
+               ast::BindingMetadata& metadata) noexcept
+    : impl(zc::heap<Impl>(symbolTable, diagnosticEngine, tree, identities, metadata)) {}
 
 Binder::~Binder() noexcept(false) = default;
 
@@ -62,12 +67,12 @@ bool Binder::bind() {
 
   // Phase 1: Collect declarations
   DeclCollector collector(impl->symbolTable, impl->symbolTable.getScopeManager(), impl->tree,
-                          impl->metadata, impl->diagnosticEngine);
+                          impl->identities, impl->metadata, impl->diagnosticEngine);
   if (!collector.collect()) return false;
 
   // Phase 1.5: Resolve imports
   ImportResolver importResolver(impl->symbolTable, impl->symbolTable.getScopeManager(), impl->tree,
-                                impl->metadata, impl->diagnosticEngine);
+                                impl->identities, impl->metadata, impl->diagnosticEngine);
   if (!importResolver.resolveImports()) return false;
 
   // Phase 2: Resolve names

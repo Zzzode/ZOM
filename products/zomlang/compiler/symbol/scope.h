@@ -14,6 +14,8 @@
 
 #pragma once
 
+#include <cstdint>
+
 #include "zc/core/common.h"
 #include "zc/core/string.h"
 
@@ -47,13 +49,15 @@ public:
     Namespace
   };
 
-  Scope(Kind kind, zc::StringPtr name, zc::Maybe<Scope&> parent = zc::none) noexcept;
+  Scope(Kind kind, zc::StringPtr name, zc::Maybe<Scope&> parent = zc::none,
+        uint32_t id = 0) noexcept;
   Scope(Scope&& other) noexcept = default;
   Scope& operator=(Scope&& other) noexcept = default;
   ~Scope() noexcept(false);
 
   /// \brief Basic properties
   Kind getKind() const;
+  uint32_t getId() const;
   zc::StringPtr getName() const;
   zc::String getFullName() const;
   zc::Maybe<const Scope&> getParent() const;

@@ -28,11 +28,12 @@ namespace symbol {
 
 // Scope implementation using pimpl pattern
 struct Scope::Impl {
-  Impl(Kind kind, zc::StringPtr name, zc::Maybe<Scope&> parent)
-      : kind(kind), name(name), parent(parent) {}
+  Impl(Kind kind, zc::StringPtr name, zc::Maybe<Scope&> parent, uint32_t id)
+      : kind(kind), id(id), name(name), parent(parent) {}
 
   // Basic properties
   Kind kind;
+  uint32_t id;
   zc::StringPtr name;
   zc::Maybe<Scope&> parent;
 
@@ -44,14 +45,16 @@ struct Scope::Impl {
 };
 
 // Scope constructor
-Scope::Scope(Kind kind, zc::StringPtr name, zc::Maybe<Scope&> parent) noexcept
-    : impl(zc::heap<Impl>(kind, name, parent)) {}
+Scope::Scope(Kind kind, zc::StringPtr name, zc::Maybe<Scope&> parent, uint32_t id) noexcept
+    : impl(zc::heap<Impl>(kind, name, parent, id)) {}
 
 // Scope destructor
 Scope::~Scope() noexcept(false) = default;
 
 // Basic properties
 Scope::Kind Scope::getKind() const { return impl->kind; }
+
+uint32_t Scope::getId() const { return impl->id; }
 
 zc::StringPtr Scope::getName() const { return impl->name; }
 
@@ -232,6 +235,7 @@ struct ScopeManager::Impl {
 
   // All scopes managed by this manager - stored as owned pointers to avoid reference invalidation
   zc::Vector<zc::Own<Scope>> ownedScopes;
+  uint32_t nextScopeId = 1;
 
   // Current scope stack
   zc::Vector<zc::Maybe<const Scope&>> scopeStack;
@@ -258,7 +262,7 @@ ScopeManager::~ScopeManager() noexcept(false) = default;
 // Scope lifecycle
 Scope& ScopeManager::createScope(Scope::Kind kind, zc::StringPtr name, zc::Maybe<Scope&> parent) {
   // Use heap allocation to avoid reference invalidation when vector grows
-  auto scopePtr = zc::heap<Scope>(kind, name, parent);
+  auto scopePtr = zc::heap<Scope>(kind, name, parent, impl->nextScopeId++);
   Scope& scope = *scopePtr;
 
   // Store the owned pointer in a vector to manage lifetime
@@ -268,7 +272,7 @@ Scope& ScopeManager::createScope(Scope::Kind kind, zc::StringPtr name, zc::Maybe
   ZC_IF_SOME(parentScope, parent) {
     // We need to create a separate owned pointer for the parent's children collection
     // This is necessary because the parent needs to own its children
-    auto childPtr = zc::heap<Scope>(kind, name, parent);
+    auto childPtr = zc::heap<Scope>(kind, name, parent, scope.getId());
     parentScope.addChild(zc::mv(childPtr));
   }
 

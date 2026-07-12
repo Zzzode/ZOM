@@ -60,12 +60,14 @@ public:
   SymbolTable& operator=(SymbolTable&&) noexcept;
 
   /// \brief Convenient symbol creation methods
-  VariableSymbol& createVariable(zc::StringPtr name, const Scope& scope);
-  ParameterSymbol& createParameter(zc::StringPtr name, const Scope& scope);
-  FunctionSymbol& createFunction(zc::StringPtr name, const Scope& scope);
-  ClassSymbol& createClass(zc::StringPtr name, const Scope& scope);
-  InterfaceSymbol& createInterface(zc::StringPtr name, const Scope& scope);
-  PackageSymbol& createPackage(zc::StringPtr name, const Scope& scope);
+  VariableSymbol& createVariable(identity::DefId identity, zc::StringPtr name, const Scope& scope);
+  ParameterSymbol& createParameter(identity::DefId identity, zc::StringPtr name,
+                                   const Scope& scope);
+  FunctionSymbol& createFunction(identity::DefId identity, zc::StringPtr name, const Scope& scope);
+  ClassSymbol& createClass(identity::DefId identity, zc::StringPtr name, const Scope& scope);
+  InterfaceSymbol& createInterface(identity::DefId identity, zc::StringPtr name,
+                                   const Scope& scope);
+  PackageSymbol& createPackage(identity::DefId identity, zc::StringPtr name, const Scope& scope);
 
   /// \brief Enhanced symbol lookup - scope-aware resolution
   zc::Maybe<Symbol&> lookup(zc::StringPtr name, const Scope& scope) const;

@@ -145,4 +145,67 @@ ZC_TEST("DefinitionInventory.RecordsAnonymousClosureRole") {
   else { ZC_EXPECT(false); }
 }
 
+ZC_TEST("DefinitionInventory.RecordsConstructorAndParameterParents") {
+  TestFixture fix;
+
+  auto& builder = fix.builder();
+  ast::NodePayload parameterPayload;
+  parameterPayload.words[ast::kFunctionParameterDeclNameWord] =
+      builder.internIdent("value"_zc).value;
+  const auto parameter = builder.makeNode(ast::SyntaxKind::FunctionParameterDecl,
+                                          source::SourceRange(), parameterPayload);
+  zc::Vector<ast::NodeId> parameters;
+  parameters.add(parameter);
+  const auto parameterNodes = builder.makeList(parameters.asPtr());
+  ast::NodePayload parameterListPayload;
+  parameterListPayload.words[ast::kFunctionParameterListNparamsWord] = 1;
+  parameterListPayload.words[ast::kFunctionParameterListParamsFirstWord] = parameterNodes.first;
+  parameterListPayload.words[ast::kFunctionParameterListParamsSizeWord] = parameterNodes.size;
+  const auto parameterList = builder.makeNode(ast::SyntaxKind::FunctionParameterList,
+                                              source::SourceRange(), parameterListPayload);
+
+  ast::NodePayload constructorPayload;
+  constructorPayload.words[ast::kConstructorDeclNameWord] = builder.internIdent("init"_zc).value;
+  constructorPayload.words[ast::kConstructorDeclParamsIdWord] = parameterList.value;
+  constructorPayload.words[ast::kConstructorDeclBodyWord] =
+      fix.makeBlockStmt(ast::NodeList()).value;
+  const auto constructor =
+      builder.makeNode(ast::SyntaxKind::ConstructorDecl, source::SourceRange(), constructorPayload);
+
+  ast::NodePayload emptyParameterListPayload;
+  const auto emptyParameterList = builder.makeNode(
+      ast::SyntaxKind::FunctionParameterList, source::SourceRange(), emptyParameterListPayload);
+  ast::NodePayload destructorPayload;
+  destructorPayload.words[ast::kDestructorDeclNameWord] = builder.internIdent("deinit"_zc).value;
+  destructorPayload.words[ast::kDestructorDeclParamsIdWord] = emptyParameterList.value;
+  destructorPayload.words[ast::kDestructorDeclBodyWord] = fix.makeBlockStmt(ast::NodeList()).value;
+  const auto destructor =
+      builder.makeNode(ast::SyntaxKind::DestructorDecl, source::SourceRange(), destructorPayload);
+  zc::Vector<ast::NodeId> members;
+  members.add(constructor);
+  members.add(destructor);
+  const auto classNode = fix.makeClassDecl("Owner"_zc, ast::NodeId(),
+                                           fix.makeClassMemberList(fix.makeNodeList(members)));
+  zc::Vector<ast::NodeId> declarations;
+  declarations.add(classNode);
+  const ast::Tree tree = fix.buildSourceFile("inventory"_zc, declarations);
+
+  const auto inventory = DefinitionInventory::collect(tree);
+  const auto& constructorEntry = definitionFor(inventory, constructor);
+  ZC_EXPECT(constructorEntry.kind == identity::DefinitionKind::Constructor);
+  ZC_EXPECT(constructorEntry.parentPath.size() == 1);
+  ZC_EXPECT(constructorEntry.parentPath[0].node == classNode);
+
+  const auto& parameterEntry = definitionFor(inventory, parameter);
+  ZC_EXPECT(parameterEntry.kind == identity::DefinitionKind::Parameter);
+  ZC_EXPECT(parameterEntry.parentPath.size() == 2);
+  ZC_EXPECT(parameterEntry.parentPath[0].node == classNode);
+  ZC_EXPECT(parameterEntry.parentPath[1].node == constructor);
+
+  const auto& destructorEntry = definitionFor(inventory, destructor);
+  ZC_EXPECT(destructorEntry.kind == identity::DefinitionKind::Destructor);
+  ZC_EXPECT(destructorEntry.parentPath.size() == 1);
+  ZC_EXPECT(destructorEntry.parentPath[0].node == classNode);
+}
+
 }  // namespace zomlang::compiler::binder

@@ -37,8 +37,7 @@ public:
   CanonicalRelativePath& operator=(CanonicalRelativePath&&) noexcept = default;
   ZC_DISALLOW_COPY(CanonicalRelativePath);
 
-  ZC_NODISCARD static CanonicalRelativePath from(
-      zc::Vector<CanonicalPathSegment>&& segments);
+  ZC_NODISCARD static CanonicalRelativePath from(zc::Vector<CanonicalPathSegment>&& segments);
   ZC_NODISCARD CanonicalRelativePath clone() const;
   ZC_NODISCARD zc::ArrayPtr<const CanonicalPathSegment> segments() const noexcept;
   void encode(CanonicalEncoder& encoder) const;
@@ -80,8 +79,8 @@ public:
   VcsRevision& operator=(VcsRevision&&) noexcept = default;
   ZC_DISALLOW_COPY(VcsRevision);
 
-  ZC_NODISCARD static zc::Maybe<VcsRevision> from(
-      VcsRevisionAlgorithm algorithm, zc::ArrayPtr<const uint8_t> digest);
+  ZC_NODISCARD static zc::Maybe<VcsRevision> from(VcsRevisionAlgorithm algorithm,
+                                                  zc::ArrayPtr<const uint8_t> digest);
   ZC_NODISCARD VcsRevision clone() const;
   ZC_NODISCARD VcsRevisionAlgorithm algorithm() const noexcept;
   ZC_NODISCARD zc::ArrayPtr<const uint8_t> digest() const noexcept;
@@ -104,6 +103,8 @@ public:
   ZC_NODISCARD static RegistryIdentity from(CanonicalUrl&& indexUrl,
                                             const Sha256Digest& trustDomain);
   ZC_NODISCARD RegistryIdentity clone() const;
+  ZC_NODISCARD const CanonicalUrl& indexUrl() const noexcept;
+  ZC_NODISCARD const Sha256Digest& trustDomain() const noexcept;
   void encode(CanonicalEncoder& encoder) const;
 
 private:
@@ -137,13 +138,21 @@ public:
   ZC_DISALLOW_COPY(CanonicalPackageSource);
 
   ZC_NODISCARD static CanonicalPackageSource registry(RegistryIdentity&& value);
-  ZC_NODISCARD static CanonicalPackageSource vcs(CanonicalUrl&& repository,
-                                                 VcsRevision&& revision,
+  ZC_NODISCARD static CanonicalPackageSource vcs(CanonicalUrl&& repository, VcsRevision&& revision,
                                                  CanonicalRelativePath&& subdirectory);
-  ZC_NODISCARD static CanonicalPackageSource localPath(
-      CanonicalWorkspaceRelativePath&& value);
+  ZC_NODISCARD static CanonicalPackageSource localPath(CanonicalWorkspaceRelativePath&& value);
   ZC_NODISCARD CanonicalPackageSource clone() const;
   ZC_NODISCARD PackageSourceKind kind() const noexcept;
+  /// \pre `kind() == PackageSourceKind::Registry`.
+  ZC_NODISCARD const RegistryIdentity& registryIdentity() const;
+  /// \pre `kind() == PackageSourceKind::Vcs`.
+  ZC_NODISCARD const CanonicalUrl& vcsRepository() const;
+  /// \pre `kind() == PackageSourceKind::Vcs`.
+  ZC_NODISCARD const VcsRevision& vcsRevision() const;
+  /// \pre `kind() == PackageSourceKind::Vcs`.
+  ZC_NODISCARD const CanonicalRelativePath& vcsSubdirectory() const;
+  /// \pre `kind() == PackageSourceKind::LocalPath`.
+  ZC_NODISCARD const CanonicalWorkspaceRelativePath& localPath() const;
   void encode(CanonicalEncoder& encoder) const;
 
 private:
@@ -152,6 +161,31 @@ private:
   explicit CanonicalPackageSource(LocalPathPackageSource&& value) noexcept;
 
   zc::OneOf<RegistryPackageSource, VcsPackageSource, LocalPathPackageSource> value;
+};
+
+/// \brief Canonical package coordinate with a resolved version and no feature activation.
+class PackageBaseKey final {
+public:
+  PackageBaseKey(PackageBaseKey&&) noexcept = default;
+  PackageBaseKey& operator=(PackageBaseKey&&) noexcept = default;
+  ZC_DISALLOW_COPY(PackageBaseKey);
+
+  ZC_NODISCARD static PackageBaseKey from(CanonicalPackageSource&& source, PackageName&& name,
+                                          ResolvedVersion&& version);
+  ZC_NODISCARD PackageBaseKey clone() const;
+  ZC_NODISCARD const CanonicalPackageSource& source() const noexcept;
+  ZC_NODISCARD zc::StringPtr name() const noexcept;
+  ZC_NODISCARD zc::StringPtr version() const noexcept;
+  void encode(CanonicalEncoder& encoder) const;
+  ZC_NODISCARD zc::Array<uint8_t> encode() const;
+
+private:
+  PackageBaseKey(CanonicalPackageSource&& source, PackageName&& name,
+                 ResolvedVersion&& version) noexcept;
+
+  CanonicalPackageSource sourceValue;
+  PackageName nameValue;
+  ResolvedVersion versionValue;
 };
 
 /// \brief Complete canonical package identity key.
@@ -165,6 +199,10 @@ public:
                                       ResolvedVersion&& version,
                                       SortedFeatureSet&& enabledFeatures);
   ZC_NODISCARD PackageKey clone() const;
+  ZC_NODISCARD const CanonicalPackageSource& source() const noexcept;
+  ZC_NODISCARD zc::StringPtr name() const noexcept;
+  ZC_NODISCARD zc::StringPtr version() const noexcept;
+  ZC_NODISCARD zc::ArrayPtr<const FeatureName> features() const noexcept;
   void encode(CanonicalEncoder& encoder) const;
   ZC_NODISCARD zc::Array<uint8_t> encode() const;
 
@@ -192,12 +230,16 @@ public:
                                                                DependencyDomain domain,
                                                                PackageKey&& provider);
   ZC_NODISCARD PackageDependencyEdgeKey clone() const;
+  ZC_NODISCARD const PackageKey& consumer() const noexcept;
+  ZC_NODISCARD zc::StringPtr alias() const noexcept;
+  ZC_NODISCARD DependencyDomain domain() const noexcept;
+  ZC_NODISCARD const PackageKey& provider() const noexcept;
   void encode(CanonicalEncoder& encoder) const;
   ZC_NODISCARD zc::Array<uint8_t> encode() const;
 
 private:
-  PackageDependencyEdgeKey(PackageKey&& consumer, DependencyAlias&& alias,
-                           DependencyDomain domain, PackageKey&& provider) noexcept;
+  PackageDependencyEdgeKey(PackageKey&& consumer, DependencyAlias&& alias, DependencyDomain domain,
+                           PackageKey&& provider) noexcept;
 
   PackageKey consumerValue;
   DependencyAlias aliasValue;

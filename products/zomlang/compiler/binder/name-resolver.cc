@@ -33,10 +33,10 @@ namespace zomlang {
 namespace compiler {
 namespace binder {
 
+using identity::DefId;
 using symbol::Scope;
 using symbol::ScopeManager;
 using symbol::Symbol;
-using symbol::SymbolId;
 using symbol::SymbolTable;
 
 using ast::IdentId;
@@ -52,8 +52,6 @@ using diagnostics::DiagnosticEngine;
 namespace {
 
 /// Mask used to extract the lower 32 bits of a Scope pointer as its ID.
-constexpr uint32_t kScopeIdMask = 0xFFFFFFFF;
-
 /// Sentinel value indicating that no scope is associated with a node.
 constexpr uint32_t kInvalidScopeId = 0;
 
@@ -86,7 +84,6 @@ struct NameResolver::Impl {
        DiagnosticEngine& diags) noexcept
       : symbols(symbols), scopes(scopes), tree(tree), metadata(metadata), diags(diags) {
     metadata.resizeFor(tree);
-    buildScopeIdMap();
   }
 
   SymbolTable& symbols;
@@ -95,32 +92,14 @@ struct NameResolver::Impl {
   ast::BindingMetadata& metadata;
   DiagnosticEngine& diags;
 
-  /// Maps scope IDs (lower 32 bits of Scope*) back to the actual Scope.
-  /// Populated from ScopeManager::getAllScopes() so we can reuse
-  /// DeclCollector's scopes.
-  zc::HashMap<uint32_t, const Scope*> scopeIdMap;  // non-owning
+  zc::Vector<zc::Maybe<const Scope&>> scopeStack;
 
-  /// Current scope stack.  Stores const pointers — we only read from
-  /// scopes, never mutate.
-  zc::Vector<const Scope*> scopeStack;  // non-owning
-
-  // -----------------------------------------------------------------------
-  // Scope ID map construction
-  // -----------------------------------------------------------------------
-
-  static uint32_t scopeIdOf(const Scope& s) {
-    return static_cast<uint32_t>(reinterpret_cast<uintptr_t>(&s) & kScopeIdMask);
-  }
-
-  void buildScopeIdMap() {
+  zc::Maybe<const Scope&> scopeById(uint32_t id) const {
     auto allScopes = scopes.getAllScopes();
-    for (size_t i = 0; i < allScopes.size(); ++i) {
-      const auto& own = allScopes[i];
-      if (own) {
-        const Scope& s = *own;
-        scopeIdMap.insert(scopeIdOf(s), &s);
-      }
+    for (const auto& own : allScopes) {
+      if (own && own->getId() == id) { return *own; }
     }
+    return zc::none;
   }
 
   // -----------------------------------------------------------------------
@@ -128,7 +107,9 @@ struct NameResolver::Impl {
   // -----------------------------------------------------------------------
 
   const Scope& currentScope() {
-    if (!scopeStack.empty()) return *scopeStack.back();
+    if (!scopeStack.empty()) {
+      ZC_IF_SOME(scope, scopeStack.back()) { return scope; }
+    }
     auto global = scopes.getGlobalScope();
     ZC_IF_SOME(g, global) { return g; }
     ZC_UNREACHABLE;
@@ -140,10 +121,10 @@ struct NameResolver::Impl {
     uint32_t sid = metadata.scope(node);
     if (sid == kInvalidScopeId) return false;
 
-    auto it = scopeIdMap.find(sid);
-    ZC_IF_SOME(scopePtr, it) {
-      scopeStack.add(scopePtr);
-      scopes.pushScope(*scopePtr);
+    auto found = scopeById(sid);
+    ZC_IF_SOME(scope, found) {
+      scopeStack.add(scope);
+      scopes.pushScope(scope);
       return true;
     }
     return false;
@@ -176,7 +157,7 @@ struct NameResolver::Impl {
   // -----------------------------------------------------------------------
 
   void bindSymbol(NodeId node, const Symbol& sym) {
-    metadata.setSymbol(node, sym.getId());
+    metadata.setDefinition(node, sym.getId());
     metadata.setIsUnresolved(node, false);
   }
 
@@ -266,15 +247,16 @@ struct NameResolver::Impl {
   // Symbol-by-ID resolution (used after child node resolution).
   // -----------------------------------------------------------------------
 
-  zc::Maybe<const Symbol&> findSymbolById(SymbolId id) {
+  zc::Maybe<const Symbol&> findSymbolById(DefId id) {
     // Walk the scope stack from innermost outward.
     for (size_t idx = scopeStack.size(); idx > 0; --idx) {
-      const Scope& s = *scopeStack[idx - 1];
-      auto allSyms = symbols.getSymbolsInScope(s);
-      for (size_t i = 0; i < allSyms.size(); ++i) {
-        auto sym = allSyms[i];
-        ZC_IF_SOME(s, sym) {
-          if (s.getId() == id) { return s; }
+      ZC_IF_SOME(scope, scopeStack[idx - 1]) {
+        auto allSyms = symbols.getSymbolsInScope(scope);
+        for (size_t i = 0; i < allSyms.size(); ++i) {
+          auto sym = allSyms[i];
+          ZC_IF_SOME(candidate, sym) {
+            if (candidate.getId() == id) { return candidate; }
+          }
         }
       }
     }
@@ -319,7 +301,7 @@ struct NameResolver::Impl {
     // Find the base symbol from the resolved object.
     zc::Maybe<const Symbol&> baseSym = zc::none;
     if (tree.contains(objectId)) {
-      SymbolId objSymId = metadata.symbol(objectId);
+      DefId objSymId = metadata.definition(objectId);
       if (objSymId.isValid()) baseSym = findSymbolById(objSymId);
     }
 
@@ -406,9 +388,9 @@ struct NameResolver::Impl {
     if (pathNode.kind == SyntaxKind::MemberExpression) {
       // Qualified type name: e.g. `std::vector`
       resolveNode(pathId);
-      SymbolId memberSymId = metadata.symbol(pathId);
+      DefId memberSymId = metadata.definition(pathId);
       if (memberSymId.isValid()) {
-        metadata.setSymbol(node, memberSymId);
+        metadata.setDefinition(node, memberSymId);
         metadata.setIsUnresolved(node, metadata.isUnresolved(pathId));
       } else {
         markUnresolved(node);
@@ -448,14 +430,15 @@ struct NameResolver::Impl {
   void resolveSuperExpr(NodeId node) {
     // Walk up scope stack to find enclosing class scope.
     for (size_t idx = scopeStack.size(); idx > 0; --idx) {
-      const Scope& s = *scopeStack[idx - 1];
-      if (s.getKind() == Scope::Kind::Class) {
-        auto thisSym = s.lookupSymbolLocally(symbol::INTERNAL_SYMBOL_NAME_THIS);
-        ZC_IF_SOME(ts, thisSym) {
-          bindSymbol(node, ts);
-          return;
+      ZC_IF_SOME(scope, scopeStack[idx - 1]) {
+        if (scope.getKind() == Scope::Kind::Class) {
+          auto thisSym = scope.lookupSymbolLocally(symbol::INTERNAL_SYMBOL_NAME_THIS);
+          ZC_IF_SOME(ts, thisSym) {
+            bindSymbol(node, ts);
+            return;
+          }
+          break;
         }
-        break;
       }
     }
     markUnresolved(node);
@@ -587,7 +570,7 @@ struct NameResolver::Impl {
     // Push global scope.
     auto global = scopes.getGlobalScope();
     ZC_IF_SOME(g, global) {
-      scopeStack.add(&g);
+      scopeStack.add(g);
       scopes.pushScope(g);
     }
 

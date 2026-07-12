@@ -18,6 +18,7 @@
 #include "zomlang/compiler/basic/string-pool.h"
 #include "zomlang/compiler/basic/zomlang-opts.h"
 #include "zomlang/compiler/binder/binder.h"
+#include "zomlang/compiler/binder/definition-identity-map.h"
 #include "zomlang/compiler/checker/checker.h"
 #include "zomlang/compiler/diagnostics/diagnostic-engine.h"
 #include "zomlang/compiler/lexer/lexer.h"
@@ -48,8 +49,9 @@ zc::Maybe<ast::Tree> performParse(const source::SourceManager& sm,
 }
 
 bool performBind(symbol::SymbolTable& symbolTable, diagnostics::DiagnosticEngine& diagnosticEngine,
-                 const ast::Tree& tree, ast::BindingMetadata& metadata) {
-  binder::Binder binder(symbolTable, diagnosticEngine, tree, metadata);
+                 const ast::Tree& tree, const binder::DefinitionIdentityMap& identities,
+                 ast::BindingMetadata& metadata) {
+  binder::Binder binder(symbolTable, diagnosticEngine, tree, identities, metadata);
   return binder.bind();
 }
 

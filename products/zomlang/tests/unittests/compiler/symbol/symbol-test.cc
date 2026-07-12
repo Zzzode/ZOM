@@ -7,6 +7,7 @@
 #include "zomlang/compiler/source/manager.h"
 #include "zomlang/compiler/symbol/type-symbol.h"
 #include "zomlang/compiler/symbol/value-symbol.h"
+#include "zomlang/tests/unittests/compiler/test-semantic-identities.h"
 
 namespace zomlang {
 namespace compiler {
@@ -14,7 +15,7 @@ namespace symbol {
 
 ZC_TEST("SymbolBase_ConstructionAndIdentity") {
   source::SourceLoc location;
-  SymbolId id = SymbolId::create(1);
+  identity::DefId id = tests::testDefinition(1);
 
   Symbol symbol(id, "testSymbol", SymbolFlags::Public, location);
 
@@ -25,7 +26,7 @@ ZC_TEST("SymbolBase_ConstructionAndIdentity") {
 
 ZC_TEST("SymbolBase_FlagsManagement") {
   source::SourceLoc location;
-  SymbolId id = SymbolId::create(2);
+  identity::DefId id = tests::testDefinition(2);
 
   Symbol symbol(id, "testSymbol", SymbolFlags::Public, location);
 
@@ -43,7 +44,7 @@ ZC_TEST("SymbolBase_FlagsManagement") {
 
 ZC_TEST("TypeSymbol_ConstructionAndClassification") {
   source::SourceLoc location;
-  SymbolId id = SymbolId::create(3);
+  identity::DefId id = tests::testDefinition(3);
 
   TypeSymbol typeSymbol(id, "MyType", SymbolFlags::Public, location);
 
@@ -55,7 +56,7 @@ ZC_TEST("TypeSymbol_ConstructionAndClassification") {
 
 ZC_TEST("BuiltInTypeSymbol_PrimitiveTypes") {
   source::SourceLoc location;
-  SymbolId id = SymbolId::create(4);
+  identity::DefId id = tests::testDefinition(4);
 
   auto intType = BuiltInTypeSymbol::createI32(id, location);
   auto floatType = BuiltInTypeSymbol::createF32(id, location);
@@ -72,7 +73,7 @@ ZC_TEST("BuiltInTypeSymbol_PrimitiveTypes") {
 
 ZC_TEST("ClassSymbol_ConstructionAndHierarchy") {
   source::SourceLoc location;
-  SymbolId id1 = SymbolId::create(5);
+  identity::DefId id1 = tests::testDefinition(5);
 
   ClassSymbol classSymbol(id1, "MyClass", SymbolFlags::Public, location);
 
@@ -81,9 +82,9 @@ ZC_TEST("ClassSymbol_ConstructionAndHierarchy") {
 }
 
 ZC_TEST("SymbolId_CreationAndUniqueness") {
-  SymbolId id1 = SymbolId::create(1);
-  SymbolId id2 = SymbolId::create(2);
-  SymbolId id3 = SymbolId::create(3);
+  identity::DefId id1 = tests::testDefinition(1);
+  identity::DefId id2 = tests::testDefinition(2);
+  identity::DefId id3 = tests::testDefinition(3);
 
   ZC_EXPECT(id1 != id2);
   ZC_EXPECT(id1 != id3);
@@ -92,7 +93,7 @@ ZC_TEST("SymbolId_CreationAndUniqueness") {
 
 ZC_TEST("SymbolBase_SetNameAndGetters") {
   source::SourceLoc location;
-  SymbolId id = SymbolId::create(10);
+  identity::DefId id = tests::testDefinition(10);
 
   Symbol symbol(id, "originalName"_zc, SymbolFlags::Public, location);
 
@@ -108,7 +109,7 @@ ZC_TEST("SymbolBase_SetNameAndGetters") {
 
 ZC_TEST("Symbol_IsMethodsAndKindChecking") {
   source::SourceLoc location;
-  SymbolId id = SymbolId::create(11);
+  identity::DefId id = tests::testDefinition(11);
 
   Symbol symbol(id, "testSymbol"_zc, SymbolFlags::Public, location);
   TypeSymbol typeSymbol(id, "TestType"_zc, SymbolFlags::Public, location);
@@ -128,8 +129,8 @@ ZC_TEST("Symbol_IsMethodsAndKindChecking") {
 
 ZC_TEST("Symbol_TypeManagement") {
   source::SourceLoc location;
-  SymbolId id = SymbolId::create(12);
-  SymbolId typeId = SymbolId::create(13);
+  identity::DefId id = tests::testDefinition(12);
+  identity::DefId typeId = tests::testDefinition(13);
 
   Symbol symbol(id, "testSymbol"_zc, SymbolFlags::Public, location);
   TypeSymbol typeSymbol(typeId, "TestType"_zc, SymbolFlags::Public, location);
@@ -141,10 +142,11 @@ ZC_TEST("Symbol_TypeManagement") {
 }
 
 ZC_TEST("Symbol_DeclarationRefsUseStableNodeIds") {
-  Symbol symbol(SymbolId::create(140), "declSymbol"_zc, SymbolFlags::Public, source::SourceLoc());
+  Symbol symbol(tests::testDefinition(140), "declSymbol"_zc, SymbolFlags::Public,
+                source::SourceLoc());
 
-  const DeclarationRef first(source::BufferId(1), ast::NodeId(10));
-  const DeclarationRef second(source::BufferId(1), ast::NodeId(11));
+  const DeclarationRef first(ast::NodeId(10));
+  const DeclarationRef second(ast::NodeId(11));
 
   symbol.addDeclarationRef(first);
   symbol.addDeclarationRef(second);
@@ -163,7 +165,7 @@ ZC_TEST("Symbol_DeclarationRefsUseStableNodeIds") {
 
 ZC_TEST("Symbol_VisibilityMethods") {
   source::SourceLoc location;
-  SymbolId id = SymbolId::create(14);
+  identity::DefId id = tests::testDefinition(14);
 
   Symbol publicSymbol(id, "publicSymbol"_zc, SymbolFlags::Public, location);
   Symbol privateSymbol(id, "privateSymbol"_zc, SymbolFlags::Private, location);
@@ -200,7 +202,7 @@ ZC_TEST("Symbol_VisibilityMethods") {
 
 ZC_TEST("Symbol_StorageAndLifetimeAttributes") {
   source::SourceLoc location;
-  SymbolId id = SymbolId::create(15);
+  identity::DefId id = tests::testDefinition(15);
 
   Symbol staticSymbol(id, "staticSymbol"_zc, SymbolFlags::Static, location);
   Symbol finalSymbol(id, "finalSymbol"_zc, SymbolFlags::Final, location);
@@ -232,7 +234,7 @@ ZC_TEST("Symbol_StorageAndLifetimeAttributes") {
 
 ZC_TEST("Symbol_ToStringMethod") {
   source::SourceLoc location;
-  SymbolId id = SymbolId::create(16);
+  identity::DefId id = tests::testDefinition(16);
 
   Symbol symbol(id, "testSymbol"_zc, SymbolFlags::Public, location);
   TypeSymbol typeSymbol(id, "TestType"_zc, SymbolFlags::Public, location);

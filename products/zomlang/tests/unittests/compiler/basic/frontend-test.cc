@@ -5,9 +5,11 @@
 #include "zomlang/compiler/ast/tree.h"
 #include "zomlang/compiler/basic/string-pool.h"
 #include "zomlang/compiler/basic/zomlang-opts.h"
+#include "zomlang/compiler/binder/definition-identity-map.h"
 #include "zomlang/compiler/diagnostics/diagnostic-engine.h"
 #include "zomlang/compiler/source/manager.h"
 #include "zomlang/compiler/symbol/symbol-table.h"
+#include "zomlang/tests/unittests/compiler/test-semantic-identities.h"
 
 namespace zomlang {
 namespace compiler {
@@ -89,7 +91,8 @@ ZC_TEST("FrontendTest: PerformBindInitializesBindingMetadata") {
 
   ZC_IF_SOME(tree, result) {
     ast::BindingMetadata metadata;
-    ZC_EXPECT(performBind(symbolTable, diagnosticEngine, tree, metadata),
+    auto identities = tests::makeTestDefinitionIdentityMap(tree);
+    ZC_EXPECT(performBind(symbolTable, diagnosticEngine, tree, identities, metadata),
               "Bind should initialize metadata side tables");
     ZC_EXPECT(metadata.parent(tree.root()) == ast::NodeId());
   }

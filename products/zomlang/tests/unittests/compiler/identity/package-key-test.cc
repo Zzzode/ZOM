@@ -67,12 +67,8 @@ void expectDigest(zc::ArrayPtr<const uint8_t> bytes, zc::StringPtr expected) {
 
 ZC_TEST("PackageKey passes the fixed local package codec vector") {
   const uint8_t expected[] = {
-      0x03,
-      0, 0, 0, 0,
-      0, 0, 0, 0, 0, 0, 0, 0,
-      0, 0, 0, 0, 0, 0, 0, 1, 'a',
-      0, 0, 0, 0, 0, 0, 0, 5, '0', '.', '0', '.', '0',
-      0, 0, 0, 0, 0, 0, 0, 0,
+      0x03, 0, 0, 0, 0, 0, 0, 0, 0,   0,   0,   0,   0,   0, 0, 0, 0, 0, 0, 0, 1, 'a',
+      0,    0, 0, 0, 0, 0, 0, 5, '0', '.', '0', '.', '0', 0, 0, 0, 0, 0, 0, 0, 0,
   };
   auto package = localPackage("a"_zc);
   auto encoded = package.encode();
@@ -82,24 +78,34 @@ ZC_TEST("PackageKey passes the fixed local package codec vector") {
                "b0c7b4f55c7faf6d4522b3a6f81e979347436c782d29ad2eeaa09985479d40a6"_zc);
 }
 
+ZC_TEST("PackageBaseKey omits feature activation from the coordinate codec") {
+  zc::Vector<CanonicalPathSegment> segments;
+  auto path = CanonicalWorkspaceRelativePath::from(0, zc::mv(segments));
+  auto base = PackageBaseKey::from(CanonicalPackageSource::localPath(zc::mv(path)),
+                                   requirePackageName("a"_zc), requireVersion("0.0.0"_zc));
+  const auto encoded = base.encode();
+  ZC_EXPECT(encoded.size() == 35);
+  expectDigest(encoded.asPtr(),
+               "b5f5a6cf5c9bd24c96447bd81e14907905aa66142bd73df0d73da9bc8db223ee"_zc);
+}
+
 ZC_TEST("PackageDependencyEdgeKey passes the fixed target edge codec vector") {
-  auto admitted = PackageDependencyEdgeKey::from(
-      localPackage("a"_zc), requireDependencyAlias("dep"_zc), DependencyDomain::Target,
-      localPackage("b"_zc));
+  auto admitted =
+      PackageDependencyEdgeKey::from(localPackage("a"_zc), requireDependencyAlias("dep"_zc),
+                                     DependencyDomain::Target, localPackage("b"_zc));
   bool matched = false;
   ZC_IF_SOME(edge, admitted) {
     auto encoded = edge.encode();
     ZC_EXPECT(encoded.size() == 98);
-    expectDigest(
-        encoded.asPtr(),
-        "b4a6fdda29af9e3c0b0d6a21b062aa94be3315bc47bde3f432d46e85766b2751"_zc);
+    expectDigest(encoded.asPtr(),
+                 "b4a6fdda29af9e3c0b0d6a21b062aa94be3315bc47bde3f432d46e85766b2751"_zc);
     matched = true;
   }
   ZC_EXPECT(matched);
 
-  ZC_EXPECT(PackageDependencyEdgeKey::from(
-                localPackage("a"_zc), requireDependencyAlias("dep"_zc),
-                static_cast<DependencyDomain>(0xff), localPackage("b"_zc)) == zc::none);
+  ZC_EXPECT(PackageDependencyEdgeKey::from(localPackage("a"_zc), requireDependencyAlias("dep"_zc),
+                                           static_cast<DependencyDomain>(0xff),
+                                           localPackage("b"_zc)) == zc::none);
 }
 
 ZC_TEST("Canonical package paths preserve strong normalized segments") {
@@ -122,12 +128,11 @@ ZC_TEST("VcsRevision enforces closed digest widths") {
   uint8_t sha1Bytes[20] = {};
   uint8_t sha256Bytes[32] = {};
   ZC_EXPECT(VcsRevision::from(VcsRevisionAlgorithm::Sha1, zc::arrayPtr(sha1Bytes)) != zc::none);
-  ZC_EXPECT(VcsRevision::from(VcsRevisionAlgorithm::Sha256, zc::arrayPtr(sha256Bytes)) !=
-            zc::none);
+  ZC_EXPECT(VcsRevision::from(VcsRevisionAlgorithm::Sha256, zc::arrayPtr(sha256Bytes)) != zc::none);
   ZC_EXPECT(VcsRevision::from(VcsRevisionAlgorithm::Sha1, zc::arrayPtr(sha256Bytes)) == zc::none);
   ZC_EXPECT(VcsRevision::from(VcsRevisionAlgorithm::Sha256, zc::arrayPtr(sha1Bytes)) == zc::none);
-  ZC_EXPECT(VcsRevision::from(static_cast<VcsRevisionAlgorithm>(0xff),
-                              zc::arrayPtr(sha256Bytes)) == zc::none);
+  ZC_EXPECT(VcsRevision::from(static_cast<VcsRevisionAlgorithm>(0xff), zc::arrayPtr(sha256Bytes)) ==
+            zc::none);
 }
 
 }  // namespace zomlang::compiler::identity

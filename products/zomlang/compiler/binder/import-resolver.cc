@@ -19,6 +19,7 @@
 #include "zc/core/string.h"
 #include "zomlang/compiler/ast/generated/node-payload.h"
 #include "zomlang/compiler/ast/generated/node-traverse.h"
+#include "zomlang/compiler/binder/definition-identity-map.h"
 #include "zomlang/compiler/diagnostics/diagnostic-engine.h"
 #include "zomlang/compiler/symbol/scope.h"
 #include "zomlang/compiler/symbol/symbol-flags.h"
@@ -42,14 +43,26 @@ using symbol::SymbolTable;
 
 struct ImportResolver::Impl {
   Impl(SymbolTable& symbols, ScopeManager& scopes, const ast::Tree& tree,
-       ast::BindingMetadata& metadata, diagnostics::DiagnosticEngine& diags) noexcept
-      : symbols(symbols), scopes(scopes), tree(tree), metadata(metadata), diags(diags) {}
+       const DefinitionIdentityMap& identities, ast::BindingMetadata& metadata,
+       diagnostics::DiagnosticEngine& diags) noexcept
+      : symbols(symbols),
+        scopes(scopes),
+        tree(tree),
+        identities(identities),
+        metadata(metadata),
+        diags(diags) {}
 
   SymbolTable& symbols;
   ScopeManager& scopes;
   const ast::Tree& tree;
+  const DefinitionIdentityMap& identities;
   ast::BindingMetadata& metadata;
   diagnostics::DiagnosticEngine& diags;
+
+  identity::DefId definitionFor(ast::NodeId node) const {
+    ZC_IF_SOME(value, identities.find(node)) { return value; }
+    return {};
+  }
 
   /// Module path (joined by "::") -> module scope (non-owning pointer).
   zc::HashMap<zc::StringPtr, Scope*> moduleScopes;  // non-owning
@@ -200,12 +213,12 @@ struct ImportResolver::Impl {
     }
 
     // Create a variable symbol that refers to the module scope.
-    auto& modSymbol = symbols.createVariable(localName, targetScope);
+    auto& modSymbol = symbols.createVariable(definitionFor(importNode), localName, targetScope);
     modSymbol.addFlag(SymbolFlags::Module | SymbolFlags::Export | SymbolFlags::Public);
     modSymbol.setScope(moduleScope);
 
     // Record the symbol association in metadata.
-    metadata.setSymbol(importNode, modSymbol.getId());
+    metadata.setDefinition(importNode, modSymbol.getId());
   }
 
   void bindImportedSymbol(zc::StringPtr originalName, zc::StringPtr localName, Scope& moduleScope,
@@ -242,10 +255,10 @@ struct ImportResolver::Impl {
     // Note: we do NOT copy the type here because VariableSymbol::setType takes
     // ownership of the TypeSymbol, and we cannot share ownership with the source.
     // The type checker will resolve the type through the symbol's metadata linkage.
-    auto& importSym = symbols.createVariable(localName, targetScope);
+    auto& importSym = symbols.createVariable(definitionFor(specNode), localName, targetScope);
     importSym.addFlag(SymbolFlags::Export | SymbolFlags::Public);
 
-    metadata.setSymbol(specNode, importSym.getId());
+    metadata.setDefinition(specNode, importSym.getId());
   }
 
   // ------------------------------------------------------------------
@@ -339,10 +352,10 @@ struct ImportResolver::Impl {
     }
 
     // Create a re-export alias symbol. Type is not copied (see bindAliasSymbol note).
-    auto& reexportSym = symbols.createVariable(exportName, targetScope);
+    auto& reexportSym = symbols.createVariable(definitionFor(specNode), exportName, targetScope);
     reexportSym.addFlag(SymbolFlags::Export | SymbolFlags::Public);
 
-    metadata.setSymbol(specNode, reexportSym.getId());
+    metadata.setDefinition(specNode, reexportSym.getId());
   }
 
   void resolveLocalExportSpecifier(ast::NodeId specNode, Scope& targetScope,
@@ -369,11 +382,11 @@ struct ImportResolver::Impl {
                                                                    exportName);
           return;
         }
-        auto& aliasSym = symbols.createVariable(exportName, targetScope);
+        auto& aliasSym = symbols.createVariable(definitionFor(specNode), exportName, targetScope);
         aliasSym.addFlag(SymbolFlags::Export | SymbolFlags::Public);
-        metadata.setSymbol(specNode, aliasSym.getId());
+        metadata.setDefinition(specNode, aliasSym.getId());
       } else {
-        metadata.setSymbol(specNode, sym.getId());
+        metadata.setDefinition(specNode, sym.getId());
       }
       metadata.setIsReexport(specNode, true);
       return;
@@ -383,7 +396,7 @@ struct ImportResolver::Impl {
     found = symbols.lookupRecursive(originalName, targetScope);
     ZC_IF_SOME(sym, found) {
       sym.addFlag(SymbolFlags::Export);
-      metadata.setSymbol(specNode, sym.getId());
+      metadata.setDefinition(specNode, sym.getId());
       metadata.setIsReexport(specNode, true);
       return;
     }
@@ -422,9 +435,10 @@ struct ImportResolver::Impl {
 // ---------------------------------------------------------------------------
 
 ImportResolver::ImportResolver(SymbolTable& symbols, ScopeManager& scopes, const ast::Tree& tree,
+                               const DefinitionIdentityMap& identities,
                                ast::BindingMetadata& metadata,
                                diagnostics::DiagnosticEngine& diags) noexcept
-    : impl(zc::heap<Impl>(symbols, scopes, tree, metadata, diags)) {}
+    : impl(zc::heap<Impl>(symbols, scopes, tree, identities, metadata, diags)) {}
 
 ImportResolver::~ImportResolver() noexcept(false) = default;
 

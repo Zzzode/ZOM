@@ -26,14 +26,14 @@ namespace symbol {
 /// system for optimal memory usage and cache locality.
 struct Symbol::Impl {
   /// \brief Construct symbol implementation
-  Impl(SymbolId id, zc::StringPtr name, SymbolFlags flags, const source::SourceLoc& location)
+  Impl(identity::DefId id, zc::StringPtr name, SymbolFlags flags, const source::SourceLoc& location)
       : id(id), name(name), flags(flags), location(location), scope(zc::none), type(zc::none) {}
 
-  Impl(SymbolId id, zc::StringPtr name, SymbolFlags flags)
+  Impl(identity::DefId id, zc::StringPtr name, SymbolFlags flags)
       : id(id), name(name), flags(flags), location(), scope(zc::none), type(zc::none) {}
 
   // Identity and properties
-  SymbolId id;
+  identity::DefId id;
   zc::StringPtr name;
   SymbolFlags flags;
   source::SourceLoc location;
@@ -61,7 +61,7 @@ struct Symbol::Impl {
 /// \param name Symbol name
 /// \param flags Symbol properties flags
 /// \param location Source code location
-Symbol::Symbol(SymbolId id, zc::StringPtr name, SymbolFlags flags,
+Symbol::Symbol(identity::DefId id, zc::StringPtr name, SymbolFlags flags,
                const source::SourceLoc& location) noexcept
     : impl(zc::heap<Impl>(id, name, flags, location)) {}
 
@@ -69,7 +69,7 @@ Symbol::Symbol(SymbolId id, zc::StringPtr name, SymbolFlags flags,
 /// \param id Symbol identifier
 /// \param name Symbol name
 /// \param flags Symbol properties flags
-Symbol::Symbol(SymbolId id, zc::StringPtr name, SymbolFlags flags) noexcept
+Symbol::Symbol(identity::DefId id, zc::StringPtr name, SymbolFlags flags) noexcept
     : impl(zc::heap<Impl>(id, name, flags)) {}
 
 /// \brief Move constructor
@@ -82,7 +82,7 @@ Symbol& Symbol::operator=(Symbol&& other) noexcept = default;
 Symbol::~Symbol() noexcept(false) = default;
 
 /// \brief Get symbol ID
-SymbolId Symbol::getId() const { return impl->id; }
+identity::DefId Symbol::getId() const { return impl->id; }
 
 /// \brief Get symbol name
 zc::StringPtr Symbol::getName() const { return impl->name; }

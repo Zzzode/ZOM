@@ -18,14 +18,12 @@
 
 namespace zomlang::compiler::identity {
 
-SourceOriginKey::SourceOriginKey(LocalFileSourceOrigin&& source) noexcept
-    : value(zc::mv(source)) {}
+SourceOriginKey::SourceOriginKey(LocalFileSourceOrigin&& source) noexcept : value(zc::mv(source)) {}
 
 SourceOriginKey::SourceOriginKey(RegistryFileSourceOrigin&& source) noexcept
     : value(zc::mv(source)) {}
 
-SourceOriginKey::SourceOriginKey(VcsFileSourceOrigin&& source) noexcept
-    : value(zc::mv(source)) {}
+SourceOriginKey::SourceOriginKey(VcsFileSourceOrigin&& source) noexcept : value(zc::mv(source)) {}
 
 SourceOriginKey::SourceOriginKey(GeneratedFileSourceOrigin&& source) noexcept
     : value(zc::mv(source)) {}
@@ -34,8 +32,7 @@ SourceOriginKey SourceOriginKey::localFile(CanonicalWorkspaceRelativePath&& path
   return SourceOriginKey(LocalFileSourceOrigin{zc::mv(path)});
 }
 
-SourceOriginKey SourceOriginKey::registryFile(PackageKey&& package,
-                                              CanonicalRelativePath&& path) {
+SourceOriginKey SourceOriginKey::registryFile(PackageKey&& package, CanonicalRelativePath&& path) {
   return SourceOriginKey(RegistryFileSourceOrigin{zc::mv(package), zc::mv(path)});
 }
 
@@ -46,27 +43,25 @@ SourceOriginKey SourceOriginKey::vcsFile(PackageKey&& package, CanonicalRelative
 SourceOriginKey SourceOriginKey::generatedFile(BuildScriptOutputKey buildScriptOutput,
                                                CanonicalRelativePath&& logicalPath,
                                                const Sha256Digest& contentDigest) {
-  return SourceOriginKey(GeneratedFileSourceOrigin{
-      buildScriptOutput, zc::mv(logicalPath), contentDigest});
+  return SourceOriginKey(
+      GeneratedFileSourceOrigin{buildScriptOutput, zc::mv(logicalPath), contentDigest});
 }
 
-SourceOriginKey SourceOriginKey::clone() const {
-  ZC_SWITCH_ONEOF(value) {
-    ZC_CASE_ONEOF(source, LocalFileSourceOrigin) {
-      return localFile(source.canonicalPath.clone());
-    }
-    ZC_CASE_ONEOF(source, RegistryFileSourceOrigin) {
-      return registryFile(source.package.clone(), source.path.clone());
-    }
-    ZC_CASE_ONEOF(source, VcsFileSourceOrigin) {
-      return vcsFile(source.package.clone(), source.path.clone());
-    }
-    ZC_CASE_ONEOF(source, GeneratedFileSourceOrigin) {
-      return generatedFile(BuildScriptOutputKey::from(source.buildScriptOutput.digest()),
-                           source.logicalPath.clone(), source.contentDigest);
-    }
-  }
-  ZC_UNREACHABLE
+SourceOriginKey SourceOriginKey::clone() const {ZC_SWITCH_ONEOF(value){
+    ZC_CASE_ONEOF(source, LocalFileSourceOrigin){return localFile(source.canonicalPath.clone());
+}  // namespace zomlang::compiler::identity
+ZC_CASE_ONEOF(source, RegistryFileSourceOrigin) {
+  return registryFile(source.package.clone(), source.path.clone());
+}
+ZC_CASE_ONEOF(source, VcsFileSourceOrigin) {
+  return vcsFile(source.package.clone(), source.path.clone());
+}
+ZC_CASE_ONEOF(source, GeneratedFileSourceOrigin) {
+  return generatedFile(BuildScriptOutputKey::from(source.buildScriptOutput.digest()),
+                       source.logicalPath.clone(), source.contentDigest);
+}
+}
+ZC_UNREACHABLE
 }
 
 SourceOriginKind SourceOriginKey::kind() const noexcept {
@@ -114,6 +109,8 @@ SourceFileKey SourceFileKey::clone() const {
   return SourceFileKey(crateValue.clone(), originValue.clone());
 }
 
+const CrateKey& SourceFileKey::crate() const noexcept { return crateValue; }
+
 bool SourceFileKey::sameAs(const SourceFileKey& other) const {
   auto left = encode();
   auto right = other.encode();
@@ -144,7 +141,9 @@ zc::Array<uint8_t> SourceFileKey::encode() const {
 SourceSpan::SourceSpan(SourceFileKey&& source, uint64_t byteStart, uint64_t byteEnd) noexcept
     : sourceValue(zc::mv(source)), startValue(byteStart), endValue(byteEnd) {}
 
-SourceSpan SourceSpan::clone() const { return SourceSpan(sourceValue.clone(), startValue, endValue); }
+SourceSpan SourceSpan::clone() const {
+  return SourceSpan(sourceValue.clone(), startValue, endValue);
+}
 
 bool SourceSpan::belongsTo(const SourceFileKey& source) const { return sourceValue.sameAs(source); }
 
@@ -155,8 +154,7 @@ void SourceSpan::encode(CanonicalEncoder& encoder) const {
 }
 
 ModuleKey::ModuleKey(CrateKey&& crate, zc::Vector<ModulePathSegment>&& canonicalPath,
-                     SourceFileKey&& source,
-                     zc::Maybe<SourceSpan>&& declarationAnchor) noexcept
+                     SourceFileKey&& source, zc::Maybe<SourceSpan>&& declarationAnchor) noexcept
     : crateValue(zc::mv(crate)),
       pathValue(zc::mv(canonicalPath)),
       sourceValue(zc::mv(source)),
@@ -170,8 +168,7 @@ zc::Maybe<ModuleKey> ModuleKey::from(CrateKey&& crate,
   ZC_IF_SOME(anchor, declarationAnchor) {
     if (!anchor.belongsTo(source)) { return zc::none; }
   }
-  return ModuleKey(zc::mv(crate), zc::mv(canonicalPath), zc::mv(source),
-                   zc::mv(declarationAnchor));
+  return ModuleKey(zc::mv(crate), zc::mv(canonicalPath), zc::mv(source), zc::mv(declarationAnchor));
 }
 
 ModuleKey ModuleKey::clone() const {
@@ -193,9 +190,7 @@ void ModuleKey::encode(CanonicalEncoder& encoder) const {
     encoder.encodeSome();
     anchor.encode(encoder);
   }
-  else {
-    encoder.encodeNone();
-  }
+  else { encoder.encodeNone(); }
 }
 
 zc::Array<uint8_t> ModuleKey::encode() const {

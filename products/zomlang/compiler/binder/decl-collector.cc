@@ -20,6 +20,7 @@
 #include "zomlang/compiler/ast/generated/node-schema.h"
 #include "zomlang/compiler/ast/generated/node-traverse.h"
 #include "zomlang/compiler/ast/kinds.h"
+#include "zomlang/compiler/binder/definition-identity-map.h"
 #include "zomlang/compiler/diagnostics/diagnostic-engine.h"
 #include "zomlang/compiler/diagnostics/diagnostic-ids.h"
 #include "zomlang/compiler/symbol/symbol-table.h"
@@ -36,12 +37,6 @@ using namespace zomlang::compiler::ast;
 using namespace zomlang::compiler::diagnostics;
 
 namespace {
-
-// Mask for deriving a compact scope ID from a Scope pointer address.
-constexpr uint32_t kScopeIdMask = 0xFFFFFFFF;
-
-// Sentinel buffer ID used when a declaration has no associated source buffer.
-const source::BufferId kNoBufferId{0};
 
 // Convert AST visibility word encoding (0=Default, 1=Public, 2=Private,
 // 3=Protected) to the symbol::Visibility enum.
@@ -65,20 +60,26 @@ Visibility visibilityFromAst(uint32_t word, Visibility defaultVisibility) {
 // ============================================================================
 
 struct DeclCollector::Impl {
-  Impl(SymbolTable& symbols, ScopeManager& scopes, const Tree& tree, BindingMetadata& metadata,
-       DiagnosticEngine& diags)
-      : symbols(symbols), scopes(scopes), tree(tree), metadata(metadata), diags(diags) {
+  Impl(SymbolTable& symbols, ScopeManager& scopes, const Tree& tree,
+       const DefinitionIdentityMap& identities, BindingMetadata& metadata, DiagnosticEngine& diags)
+      : symbols(symbols),
+        scopes(scopes),
+        tree(tree),
+        identities(identities),
+        metadata(metadata),
+        diags(diags) {
     metadata.resizeFor(tree);
   }
 
   SymbolTable& symbols;
   ScopeManager& scopes;
   const Tree& tree;
+  const DefinitionIdentityMap& identities;
   BindingMetadata& metadata;
   DiagnosticEngine& diags;
 
   // Scope stack for RAII-style management
-  zc::Vector<Scope*> scopeStack;  // non-owning
+  zc::Vector<zc::Maybe<Scope&>> scopeStack;
 
   // Counter for generating unique anonymous scope names
   uint32_t anonymousScopeCounter = 0;
@@ -89,8 +90,9 @@ struct DeclCollector::Impl {
 // ============================================================================
 
 DeclCollector::DeclCollector(SymbolTable& symbols, ScopeManager& scopes, const Tree& tree,
-                             BindingMetadata& metadata, DiagnosticEngine& diags) noexcept
-    : impl(zc::heap<Impl>(symbols, scopes, tree, metadata, diags)) {}
+                             const DefinitionIdentityMap& identities, BindingMetadata& metadata,
+                             DiagnosticEngine& diags) noexcept
+    : impl(zc::heap<Impl>(symbols, scopes, tree, identities, metadata, diags)) {}
 
 DeclCollector::~DeclCollector() noexcept(false) = default;
 
@@ -100,13 +102,13 @@ DeclCollector::~DeclCollector() noexcept(false) = default;
 
 Scope& DeclCollector::enterScope(Scope::Kind kind, zc::StringPtr name) {
   // Determine the parent scope
-  Scope* parent = nullptr;
+  zc::Maybe<Scope&> parent;
   if (!impl->scopeStack.empty()) {
     parent = impl->scopeStack.back();
   } else {
     // Use the global scope as parent if stack is empty
     auto global = impl->scopes.getGlobalScopeMutable();
-    ZC_IF_SOME(g, global) { parent = &g; }
+    ZC_IF_SOME(g, global) { parent = g; }
   }
 
   // Generate a unique name for anonymous scopes.
@@ -114,8 +116,8 @@ Scope& DeclCollector::enterScope(Scope::Kind kind, zc::StringPtr name) {
   // so we pass the empty name directly — anonymous scopes don't need names.
   zc::StringPtr scopeName = name;
 
-  Scope& scope = impl->scopes.createScope(kind, scopeName, parent ? *parent : zc::Maybe<Scope&>{});
-  impl->scopeStack.add(&scope);
+  Scope& scope = impl->scopes.createScope(kind, scopeName, parent);
+  impl->scopeStack.add(scope);
   impl->scopes.pushScope(scope);
   return scope;
 }
@@ -127,7 +129,9 @@ void DeclCollector::leaveScope() {
 }
 
 Scope& DeclCollector::currentScope() {
-  if (!impl->scopeStack.empty()) { return *impl->scopeStack.back(); }
+  if (!impl->scopeStack.empty()) {
+    ZC_IF_SOME(scope, impl->scopeStack.back()) { return scope; }
+  }
   auto global = impl->scopes.getGlobalScopeMutable();
   ZC_IF_SOME(g, global) { return g; }
   ZC_UNREACHABLE;
@@ -154,13 +158,11 @@ zc::StringPtr DeclCollector::fileName(NodeId node) {
 // ============================================================================
 
 void DeclCollector::bindSymbol(NodeId node, Symbol& sym) {
-  impl->metadata.setSymbol(node, sym.getId());
+  impl->metadata.setDefinition(node, sym.getId());
 }
 
 void DeclCollector::bindScope(NodeId node, Scope& scope) {
-  // Scope ID is derived from its address for now; a proper registry can be added later.
-  uint32_t scopeId = static_cast<uint32_t>(reinterpret_cast<uintptr_t>(&scope) & kScopeIdMask);
-  impl->metadata.setScope(node, scopeId);
+  impl->metadata.setScope(node, scope.getId());
 }
 
 // ============================================================================
@@ -210,6 +212,11 @@ bool DeclCollector::checkDuplicate(zc::StringPtr name, NodeId declNode, SymbolKi
 }
 
 Symbol& DeclCollector::declareSymbol(zc::StringPtr name, NodeId declNode, SymbolKind kind) {
+  return declareSymbol(name, declNode, declNode, kind);
+}
+
+Symbol& DeclCollector::declareSymbol(zc::StringPtr name, NodeId declNode, NodeId identityNode,
+                                     SymbolKind kind) {
   Scope& scope = currentScope();
 
   // Check if this name already exists (duplicate detection is done by callers
@@ -223,63 +230,65 @@ Symbol& DeclCollector::declareSymbol(zc::StringPtr name, NodeId declNode, Symbol
   }
 
   // Create the appropriate symbol type
+  identity::DefId definition;
+  ZC_IF_SOME(value, impl->identities.find(identityNode)) { definition = value; }
   Symbol* sym = nullptr;
   switch (kind) {
     case SymbolKind::Variable:
-      sym = &impl->symbols.createVariable(name, scope);
+      sym = &impl->symbols.createVariable(definition, name, scope);
       break;
     case SymbolKind::Parameter:
-      sym = &impl->symbols.createParameter(name, scope);
+      sym = &impl->symbols.createParameter(definition, name, scope);
       break;
     case SymbolKind::Function:
-      sym = &impl->symbols.createFunction(name, scope);
+      sym = &impl->symbols.createFunction(definition, name, scope);
       break;
     case SymbolKind::Class:
-      sym = &impl->symbols.createClass(name, scope);
+      sym = &impl->symbols.createClass(definition, name, scope);
       break;
     case SymbolKind::Interface:
-      sym = &impl->symbols.createInterface(name, scope);
+      sym = &impl->symbols.createInterface(definition, name, scope);
       break;
     case SymbolKind::Enum:
       // For enum, we create a Class-like symbol (enums are types)
-      sym = &impl->symbols.createClass(name, scope);
+      sym = &impl->symbols.createClass(definition, name, scope);
       // Mark it with Enum flag
       sym->addFlag(SymbolFlags::Enum);
       break;
     case SymbolKind::TypeAlias:
       // Type aliases use ClassSymbol infrastructure with TypeAlias flag
-      sym = &impl->symbols.createClass(name, scope);
+      sym = &impl->symbols.createClass(definition, name, scope);
       sym->addFlag(SymbolFlags::TypeAlias);
       sym->removeFlag(SymbolFlags::Class);
       break;
     case SymbolKind::Method:
-      sym = &impl->symbols.createFunction(name, scope);
+      sym = &impl->symbols.createFunction(definition, name, scope);
       sym->addFlag(SymbolFlags::Method);
       break;
     case SymbolKind::Constructor:
-      sym = &impl->symbols.createFunction(name, scope);
+      sym = &impl->symbols.createFunction(definition, name, scope);
       sym->addFlag(SymbolFlags::Constructor);
       break;
     case SymbolKind::Destructor:
-      sym = &impl->symbols.createFunction(name, scope);
+      sym = &impl->symbols.createFunction(definition, name, scope);
       sym->addFlag(SymbolFlags::Destructor);
       break;
     case SymbolKind::Constant:
-      sym = &impl->symbols.createVariable(name, scope);
+      sym = &impl->symbols.createVariable(definition, name, scope);
       sym->addFlag(SymbolFlags::Constant | SymbolFlags::Immutable);
       break;
     case SymbolKind::Field:
-      sym = &impl->symbols.createVariable(name, scope);
+      sym = &impl->symbols.createVariable(definition, name, scope);
       sym->addFlag(SymbolFlags::Field);
       break;
     default:
       // Fallback: create as a generic variable-like symbol
-      sym = &impl->symbols.createVariable(name, scope);
+      sym = &impl->symbols.createVariable(definition, name, scope);
       break;
   }
 
   // Record the declaration reference
-  sym->addDeclarationRef(DeclarationRef(kNoBufferId, declNode));
+  sym->addDeclarationRef(DeclarationRef(declNode));
 
   // Bind the symbol to the AST node
   bindSymbol(declNode, *sym);
@@ -297,7 +306,7 @@ bool DeclCollector::collect() {
   // Start with the global scope
   auto global = impl->scopes.getGlobalScopeMutable();
   ZC_IF_SOME(g, global) {
-    impl->scopeStack.add(&g);
+    impl->scopeStack.add(g);
     impl->scopes.pushScope(g);
   }
 
@@ -780,7 +789,8 @@ void DeclCollector::visitVariableDeclarator(NodeId node, bool declarationIsMutab
     if (varName.size() > 0) {
       // Check for duplicates before declaring
       bool isDuplicate = checkDuplicate(varName, node, SymbolKind::Variable);
-      Symbol& sym = declareSymbol(varName, node, SymbolKind::Variable);
+      Symbol& sym = declareSymbol(varName, node, pattern, SymbolKind::Variable);
+      bindSymbol(pattern, sym);
       sym.removeFlag(SymbolFlags::Mutable);
       sym.removeFlag(SymbolFlags::Immutable);
       sym.removeFlag(SymbolFlags::Constant);

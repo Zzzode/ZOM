@@ -19,8 +19,7 @@
 namespace zomlang::compiler::identity {
 namespace {
 
-zc::Vector<CanonicalPathSegment> cloneSegments(
-    zc::ArrayPtr<const CanonicalPathSegment> input) {
+zc::Vector<CanonicalPathSegment> cloneSegments(zc::ArrayPtr<const CanonicalPathSegment> input) {
   zc::Vector<CanonicalPathSegment> result(input.size());
   for (const auto& segment : input) { result.add(segment.clone()); }
   return result;
@@ -33,12 +32,10 @@ void encodeSegments(CanonicalEncoder& encoder, zc::ArrayPtr<const CanonicalPathS
 
 }  // namespace
 
-CanonicalRelativePath::CanonicalRelativePath(
-    zc::Vector<CanonicalPathSegment>&& canonical) noexcept
+CanonicalRelativePath::CanonicalRelativePath(zc::Vector<CanonicalPathSegment>&& canonical) noexcept
     : value(zc::mv(canonical)) {}
 
-CanonicalRelativePath CanonicalRelativePath::from(
-    zc::Vector<CanonicalPathSegment>&& segments) {
+CanonicalRelativePath CanonicalRelativePath::from(zc::Vector<CanonicalPathSegment>&& segments) {
   return CanonicalRelativePath(zc::mv(segments));
 }
 
@@ -114,12 +111,13 @@ RegistryIdentity::RegistryIdentity(CanonicalUrl&& indexUrl,
                                    const Sha256Digest& trustDomain) noexcept
     : url(zc::mv(indexUrl)), trust(trustDomain) {}
 
-RegistryIdentity RegistryIdentity::from(CanonicalUrl&& indexUrl,
-                                        const Sha256Digest& trustDomain) {
+RegistryIdentity RegistryIdentity::from(CanonicalUrl&& indexUrl, const Sha256Digest& trustDomain) {
   return RegistryIdentity(zc::mv(indexUrl), trustDomain);
 }
 
 RegistryIdentity RegistryIdentity::clone() const { return RegistryIdentity(url.clone(), trust); }
+const CanonicalUrl& RegistryIdentity::indexUrl() const noexcept { return url; }
+const Sha256Digest& RegistryIdentity::trustDomain() const noexcept { return trust; }
 
 void RegistryIdentity::encode(CanonicalEncoder& encoder) const {
   url.encode(encoder);
@@ -146,30 +144,41 @@ CanonicalPackageSource CanonicalPackageSource::vcs(CanonicalUrl&& repository,
       VcsPackageSource{zc::mv(repository), zc::mv(revision), zc::mv(subdirectory)});
 }
 
-CanonicalPackageSource CanonicalPackageSource::localPath(
-    CanonicalWorkspaceRelativePath&& value) {
+CanonicalPackageSource CanonicalPackageSource::localPath(CanonicalWorkspaceRelativePath&& value) {
   return CanonicalPackageSource(LocalPathPackageSource{zc::mv(value)});
 }
 
-CanonicalPackageSource CanonicalPackageSource::clone() const {
-  ZC_SWITCH_ONEOF(value) {
-    ZC_CASE_ONEOF(source, RegistryPackageSource) {
-      return registry(source.registry.clone());
-    }
-    ZC_CASE_ONEOF(source, VcsPackageSource) {
-      return vcs(source.repository.clone(), source.revision.clone(), source.subdirectory.clone());
-    }
-    ZC_CASE_ONEOF(source, LocalPathPackageSource) {
-      return localPath(source.canonicalPath.clone());
-    }
-  }
-  ZC_UNREACHABLE
+CanonicalPackageSource CanonicalPackageSource::clone() const {ZC_SWITCH_ONEOF(value){
+    ZC_CASE_ONEOF(source, RegistryPackageSource){return registry(source.registry.clone());
+}  // namespace zomlang::compiler::identity
+ZC_CASE_ONEOF(source, VcsPackageSource) {
+  return vcs(source.repository.clone(), source.revision.clone(), source.subdirectory.clone());
+}
+ZC_CASE_ONEOF(source, LocalPathPackageSource) { return localPath(source.canonicalPath.clone()); }
+}
+ZC_UNREACHABLE
 }
 
 PackageSourceKind CanonicalPackageSource::kind() const noexcept {
   if (value.is<RegistryPackageSource>()) { return PackageSourceKind::Registry; }
   if (value.is<VcsPackageSource>()) { return PackageSourceKind::Vcs; }
   return PackageSourceKind::LocalPath;
+}
+
+const RegistryIdentity& CanonicalPackageSource::registryIdentity() const {
+  return value.get<RegistryPackageSource>().registry;
+}
+const CanonicalUrl& CanonicalPackageSource::vcsRepository() const {
+  return value.get<VcsPackageSource>().repository;
+}
+const VcsRevision& CanonicalPackageSource::vcsRevision() const {
+  return value.get<VcsPackageSource>().revision;
+}
+const CanonicalRelativePath& CanonicalPackageSource::vcsSubdirectory() const {
+  return value.get<VcsPackageSource>().subdirectory;
+}
+const CanonicalWorkspaceRelativePath& CanonicalPackageSource::localPath() const {
+  return value.get<LocalPathPackageSource>().canonicalPath;
 }
 
 void CanonicalPackageSource::encode(CanonicalEncoder& encoder) const {
@@ -183,6 +192,35 @@ void CanonicalPackageSource::encode(CanonicalEncoder& encoder) const {
     }
     ZC_CASE_ONEOF(source, LocalPathPackageSource) { source.canonicalPath.encode(encoder); }
   }
+}
+
+PackageBaseKey::PackageBaseKey(CanonicalPackageSource&& source, PackageName&& name,
+                               ResolvedVersion&& version) noexcept
+    : sourceValue(zc::mv(source)), nameValue(zc::mv(name)), versionValue(zc::mv(version)) {}
+
+PackageBaseKey PackageBaseKey::from(CanonicalPackageSource&& source, PackageName&& name,
+                                    ResolvedVersion&& version) {
+  return PackageBaseKey(zc::mv(source), zc::mv(name), zc::mv(version));
+}
+
+PackageBaseKey PackageBaseKey::clone() const {
+  return PackageBaseKey(sourceValue.clone(), nameValue.clone(), versionValue.clone());
+}
+
+const CanonicalPackageSource& PackageBaseKey::source() const noexcept { return sourceValue; }
+zc::StringPtr PackageBaseKey::name() const noexcept { return nameValue.text(); }
+zc::StringPtr PackageBaseKey::version() const noexcept { return versionValue.text(); }
+
+void PackageBaseKey::encode(CanonicalEncoder& encoder) const {
+  sourceValue.encode(encoder);
+  nameValue.encode(encoder);
+  versionValue.encode(encoder);
+}
+
+zc::Array<uint8_t> PackageBaseKey::encode() const {
+  CanonicalEncoder encoder;
+  encode(encoder);
+  return encoder.finish();
 }
 
 PackageKey::PackageKey(CanonicalPackageSource&& source, PackageName&& name,
@@ -201,6 +239,12 @@ PackageKey PackageKey::clone() const {
   return PackageKey(sourceValue.clone(), nameValue.clone(), versionValue.clone(),
                     featureValue.clone());
 }
+const CanonicalPackageSource& PackageKey::source() const noexcept { return sourceValue; }
+zc::StringPtr PackageKey::name() const noexcept { return nameValue.text(); }
+zc::StringPtr PackageKey::version() const noexcept { return versionValue.text(); }
+zc::ArrayPtr<const FeatureName> PackageKey::features() const noexcept {
+  return featureValue.values();
+}
 
 void PackageKey::encode(CanonicalEncoder& encoder) const {
   sourceValue.encode(encoder);
@@ -215,8 +259,7 @@ zc::Array<uint8_t> PackageKey::encode() const {
   return encoder.finish();
 }
 
-PackageDependencyEdgeKey::PackageDependencyEdgeKey(PackageKey&& consumer,
-                                                   DependencyAlias&& alias,
+PackageDependencyEdgeKey::PackageDependencyEdgeKey(PackageKey&& consumer, DependencyAlias&& alias,
                                                    DependencyDomain domain,
                                                    PackageKey&& provider) noexcept
     : consumerValue(zc::mv(consumer)),
@@ -232,14 +275,17 @@ zc::Maybe<PackageDependencyEdgeKey> PackageDependencyEdgeKey::from(PackageKey&& 
       domain != DependencyDomain::Build) {
     return zc::none;
   }
-  return PackageDependencyEdgeKey(zc::mv(consumer), zc::mv(alias), domain,
-                                  zc::mv(provider));
+  return PackageDependencyEdgeKey(zc::mv(consumer), zc::mv(alias), domain, zc::mv(provider));
 }
 
 PackageDependencyEdgeKey PackageDependencyEdgeKey::clone() const {
   return PackageDependencyEdgeKey(consumerValue.clone(), aliasValue.clone(), domainValue,
                                   providerValue.clone());
 }
+const PackageKey& PackageDependencyEdgeKey::consumer() const noexcept { return consumerValue; }
+zc::StringPtr PackageDependencyEdgeKey::alias() const noexcept { return aliasValue.text(); }
+DependencyDomain PackageDependencyEdgeKey::domain() const noexcept { return domainValue; }
+const PackageKey& PackageDependencyEdgeKey::provider() const noexcept { return providerValue; }
 
 void PackageDependencyEdgeKey::encode(CanonicalEncoder& encoder) const {
   consumerValue.encode(encoder);

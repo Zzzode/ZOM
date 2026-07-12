@@ -20,6 +20,7 @@
 #include "zomlang/compiler/symbol/scope.h"
 #include "zomlang/compiler/symbol/symbol-table.h"
 #include "zomlang/compiler/symbol/type-symbol.h"
+#include "zomlang/tests/unittests/compiler/test-semantic-identities.h"
 
 namespace zomlang {
 namespace compiler {
@@ -30,7 +31,7 @@ ZC_TEST("ValueSymbol_BasicCreation") {
   ScopeManager& scopeManager = symbolTable.getScopeManager();
 
   ZC_IF_SOME(globalScope, scopeManager.getCurrentScope()) {
-    auto& variable = symbolTable.createVariable("testVar", globalScope);
+    auto& variable = symbolTable.createVariable(tests::testDefinition(0), "testVar", globalScope);
 
     ZC_EXPECT(variable.getName() == "testVar");
     ZC_EXPECT(variable.getKind() == SymbolKind::Variable);
@@ -43,7 +44,7 @@ ZC_TEST("VariableSymbol_Properties") {
   ScopeManager& scopeManager = symbolTable.getScopeManager();
 
   ZC_IF_SOME(globalScope, scopeManager.getCurrentScope()) {
-    auto& variable = symbolTable.createVariable("testVar", globalScope);
+    auto& variable = symbolTable.createVariable(tests::testDefinition(0), "testVar", globalScope);
 
     // Use SymbolKind checks before downcasting.
     ZC_EXPECT(variable.getKind() == SymbolKind::Variable);
@@ -63,7 +64,7 @@ ZC_TEST("FunctionSymbol_Creation") {
   ScopeManager& scopeManager = symbolTable.getScopeManager();
 
   ZC_IF_SOME(globalScope, scopeManager.getCurrentScope()) {
-    auto& function = symbolTable.createFunction("testFunc", globalScope);
+    auto& function = symbolTable.createFunction(tests::testDefinition(0), "testFunc", globalScope);
 
     ZC_EXPECT(function.getName() == "testFunc");
     ZC_EXPECT(function.getKind() == SymbolKind::Function);
@@ -76,7 +77,8 @@ ZC_TEST("ValueSymbol_BasicProperties") {
   ScopeManager& scopeManager = symbolTable.getScopeManager();
 
   ZC_IF_SOME(globalScope, scopeManager.getCurrentScope()) {
-    auto& variableSymbol = symbolTable.createVariable("testVar", globalScope);
+    auto& variableSymbol =
+        symbolTable.createVariable(tests::testDefinition(0), "testVar", globalScope);
 
     // Test that we can access basic symbol properties
     ZC_EXPECT(variableSymbol.getName().size() > 0);
@@ -92,8 +94,10 @@ ZC_TEST("ValueSymbol_Casting") {
   ScopeManager& scopeManager = symbolTable.getScopeManager();
 
   ZC_IF_SOME(globalScope, scopeManager.getCurrentScope()) {
-    auto& variableSymbol = symbolTable.createVariable("testVar", globalScope);
-    auto& functionSymbol = symbolTable.createFunction("testFunc", globalScope);
+    auto& variableSymbol =
+        symbolTable.createVariable(tests::testDefinition(0), "testVar", globalScope);
+    auto& functionSymbol =
+        symbolTable.createFunction(tests::testDefinition(0), "testFunc", globalScope);
 
     // Test symbol kind checking instead of dynamic casting
     ZC_EXPECT(variableSymbol.getKind() == SymbolKind::Variable);
@@ -112,9 +116,9 @@ ZC_TEST("ValueSymbol_SymbolTable_Integration") {
 
   ZC_IF_SOME(globalScope, scopeManager.getCurrentScope()) {
     // Create multiple symbols
-    symbolTable.createVariable("var1", globalScope);
-    symbolTable.createVariable("var2", globalScope);
-    symbolTable.createFunction("func1", globalScope);
+    symbolTable.createVariable(tests::testDefinition(0), "var1", globalScope);
+    symbolTable.createVariable(tests::testDefinition(0), "var2", globalScope);
+    symbolTable.createFunction(tests::testDefinition(0), "func1", globalScope);
 
     // Test lookup
     auto foundVar1 = symbolTable.lookup("var1", globalScope);
@@ -144,10 +148,10 @@ ZC_TEST("ValueSymbol_SymbolKind_Lookup") {
 
   ZC_IF_SOME(globalScope, scopeManager.getCurrentScope()) {
     // Create multiple symbols
-    symbolTable.createVariable("var1", globalScope);
-    symbolTable.createVariable("var2", globalScope);
-    symbolTable.createFunction("func1", globalScope);
-    symbolTable.createFunction("func2", globalScope);
+    symbolTable.createVariable(tests::testDefinition(0), "var1", globalScope);
+    symbolTable.createVariable(tests::testDefinition(0), "var2", globalScope);
+    symbolTable.createFunction(tests::testDefinition(0), "func1", globalScope);
+    symbolTable.createFunction(tests::testDefinition(0), "func2", globalScope);
 
     // Test lookup by kind - using getSymbolsOfType with SymbolKind
     auto variables = symbolTable.getSymbolsOfType(SymbolKind::Variable, globalScope);
@@ -171,8 +175,8 @@ ZC_TEST("ValueSymbol_NameAvailability") {
     ZC_EXPECT(foundNewFunc == zc::none);
 
     // Create symbols
-    symbolTable.createVariable("newVar", globalScope);
-    symbolTable.createFunction("newFunc", globalScope);
+    symbolTable.createVariable(tests::testDefinition(0), "newVar", globalScope);
+    symbolTable.createFunction(tests::testDefinition(0), "newFunc", globalScope);
 
     // Test that names are no longer available after creation
     auto foundNewVar2 = symbolTable.lookup("newVar", globalScope);
@@ -195,9 +199,9 @@ ZC_TEST("ValueSymbol_UniqueNameGeneration") {
 
   ZC_IF_SOME(globalScope, scopeManager.getCurrentScope()) {
     // Create symbols with similar base names
-    auto& symbol1 = symbolTable.createVariable("test", globalScope);
-    auto& symbol2 = symbolTable.createVariable("test_1", globalScope);
-    auto& symbol3 = symbolTable.createVariable("var", globalScope);
+    auto& symbol1 = symbolTable.createVariable(tests::testDefinition(0), "test", globalScope);
+    auto& symbol2 = symbolTable.createVariable(tests::testDefinition(0), "test_1", globalScope);
+    auto& symbol3 = symbolTable.createVariable(tests::testDefinition(0), "var", globalScope);
 
     // Test that names are different
     ZC_EXPECT(symbol1.getName() != symbol2.getName());
@@ -214,8 +218,8 @@ ZC_TEST("ValueSymbol_UniqueNameGeneration") {
 
 // Test ValueSymbol constructor (L34-36)
 ZC_TEST("ValueSymbol_Constructor") {
-  auto type = BuiltInTypeSymbol::createI32(SymbolId::create(1), source::SourceLoc{});
-  ValueSymbol valueSymbol(SymbolId::create(2), "testValue"_zc, SymbolFlags::TermKind,
+  auto type = BuiltInTypeSymbol::createI32(tests::testDefinition(1), source::SourceLoc{});
+  ValueSymbol valueSymbol(tests::testDefinition(2), "testValue"_zc, SymbolFlags::TermKind,
                           source::SourceLoc{}, zc::mv(type));
 
   ZC_EXPECT(valueSymbol.getName() == "testValue");
@@ -226,8 +230,8 @@ ZC_TEST("ValueSymbol_Constructor") {
 
 // Test ConstantSymbol constructor (L89-93)
 ZC_TEST("ConstantSymbol_Constructor") {
-  auto type = BuiltInTypeSymbol::createStr(SymbolId::create(3), source::SourceLoc{});
-  ConstantSymbol constantSymbol(SymbolId::create(4), "testConstant"_zc, SymbolFlags::TermKind,
+  auto type = BuiltInTypeSymbol::createStr(tests::testDefinition(3), source::SourceLoc{});
+  ConstantSymbol constantSymbol(tests::testDefinition(4), "testConstant"_zc, SymbolFlags::TermKind,
                                 source::SourceLoc{}, zc::mv(type));
 
   ZC_EXPECT(constantSymbol.getName() == "testConstant");
@@ -239,8 +243,8 @@ ZC_TEST("ConstantSymbol_Constructor") {
 
 // Test ParameterSymbol constructor (L118-123)
 ZC_TEST("ParameterSymbol_Constructor") {
-  auto type = BuiltInTypeSymbol::createBool(SymbolId::create(5), source::SourceLoc{});
-  ParameterSymbol parameterSymbol(SymbolId::create(6), "testParam"_zc, SymbolFlags::TermKind,
+  auto type = BuiltInTypeSymbol::createBool(tests::testDefinition(5), source::SourceLoc{});
+  ParameterSymbol parameterSymbol(tests::testDefinition(6), "testParam"_zc, SymbolFlags::TermKind,
                                   source::SourceLoc{}, zc::mv(type), true);
 
   ZC_EXPECT(parameterSymbol.getName() == "testParam");
@@ -252,8 +256,8 @@ ZC_TEST("ParameterSymbol_Constructor") {
 
 // Test FunctionSymbol constructor (L149-153)
 ZC_TEST("FunctionSymbol_Constructor") {
-  auto type = BuiltInTypeSymbol::createUnit(SymbolId::create(7), source::SourceLoc{});
-  FunctionSymbol functionSymbol(SymbolId::create(8), "testFunction"_zc, SymbolFlags::TermKind,
+  auto type = BuiltInTypeSymbol::createUnit(tests::testDefinition(7), source::SourceLoc{});
+  FunctionSymbol functionSymbol(tests::testDefinition(8), "testFunction"_zc, SymbolFlags::TermKind,
                                 source::SourceLoc{}, zc::mv(type));
 
   ZC_EXPECT(functionSymbol.getName() == "testFunction");
@@ -265,8 +269,8 @@ ZC_TEST("FunctionSymbol_Constructor") {
 
 // Test FieldSymbol constructor (L195-200)
 ZC_TEST("FieldSymbol_Constructor") {
-  auto type = BuiltInTypeSymbol::createF32(SymbolId::create(9), source::SourceLoc{});
-  FieldSymbol fieldSymbol(SymbolId::create(10), "testField"_zc, SymbolFlags::TermKind,
+  auto type = BuiltInTypeSymbol::createF32(tests::testDefinition(9), source::SourceLoc{});
+  FieldSymbol fieldSymbol(tests::testDefinition(10), "testField"_zc, SymbolFlags::TermKind,
                           source::SourceLoc{}, zc::mv(type), false);
 
   ZC_EXPECT(fieldSymbol.getName() == "testField");
@@ -277,8 +281,8 @@ ZC_TEST("FieldSymbol_Constructor") {
 
 // Test EnumCaseSymbol constructor (L228-232)
 ZC_TEST("EnumCaseSymbol_Constructor") {
-  auto type = BuiltInTypeSymbol::createI32(SymbolId::create(11), source::SourceLoc{});
-  EnumCaseSymbol enumCaseSymbol(SymbolId::create(12), "testCase"_zc, SymbolFlags::TermKind,
+  auto type = BuiltInTypeSymbol::createI32(tests::testDefinition(11), source::SourceLoc{});
+  EnumCaseSymbol enumCaseSymbol(tests::testDefinition(12), "testCase"_zc, SymbolFlags::TermKind,
                                 source::SourceLoc{}, zc::mv(type));
 
   ZC_EXPECT(enumCaseSymbol.getName() == "testCase");
@@ -291,20 +295,20 @@ ZC_TEST("EnumCaseSymbol_Constructor") {
 
 // Additional ValueSymbol tests
 ZC_TEST("ValueSymbol_SetType") {
-  auto initialType = BuiltInTypeSymbol::createI32(SymbolId::create(13), source::SourceLoc{});
-  ValueSymbol valueSymbol(SymbolId::create(14), "testValue"_zc, SymbolFlags::TermKind,
+  auto initialType = BuiltInTypeSymbol::createI32(tests::testDefinition(13), source::SourceLoc{});
+  ValueSymbol valueSymbol(tests::testDefinition(14), "testValue"_zc, SymbolFlags::TermKind,
                           source::SourceLoc{}, zc::mv(initialType));
 
   ZC_EXPECT(valueSymbol.getType().getName() == "i32");
 
-  auto newType = BuiltInTypeSymbol::createStr(SymbolId::create(15), source::SourceLoc{});
+  auto newType = BuiltInTypeSymbol::createStr(tests::testDefinition(15), source::SourceLoc{});
   valueSymbol.setType(zc::mv(newType));
   ZC_EXPECT(valueSymbol.getType().getName() == "str");
 }
 
 ZC_TEST("ValueSymbol_MutableType") {
-  auto type = BuiltInTypeSymbol::createF32(SymbolId::create(16), source::SourceLoc{});
-  ValueSymbol valueSymbol(SymbolId::create(17), "testValue"_zc, SymbolFlags::TermKind,
+  auto type = BuiltInTypeSymbol::createF32(tests::testDefinition(16), source::SourceLoc{});
+  ValueSymbol valueSymbol(tests::testDefinition(17), "testValue"_zc, SymbolFlags::TermKind,
                           source::SourceLoc{}, zc::mv(type));
 
   // Test non-const getType()
@@ -313,13 +317,13 @@ ZC_TEST("ValueSymbol_MutableType") {
 }
 
 ZC_TEST("ValueSymbol_MutabilityFlags") {
-  auto type1 = BuiltInTypeSymbol::createI32(SymbolId::create(18), source::SourceLoc{});
-  ValueSymbol mutableSymbol(SymbolId::create(19), "mutable"_zc,
+  auto type1 = BuiltInTypeSymbol::createI32(tests::testDefinition(18), source::SourceLoc{});
+  ValueSymbol mutableSymbol(tests::testDefinition(19), "mutable"_zc,
                             SymbolFlags::TermKind | SymbolFlags::Mutable, source::SourceLoc{},
                             zc::mv(type1));
 
-  auto type2 = BuiltInTypeSymbol::createI32(SymbolId::create(20), source::SourceLoc{});
-  ValueSymbol immutableSymbol(SymbolId::create(21), "immutable"_zc, SymbolFlags::TermKind,
+  auto type2 = BuiltInTypeSymbol::createI32(tests::testDefinition(20), source::SourceLoc{});
+  ValueSymbol immutableSymbol(tests::testDefinition(21), "immutable"_zc, SymbolFlags::TermKind,
                               source::SourceLoc{}, zc::mv(type2));
 
   ZC_EXPECT(mutableSymbol.isMutable());
@@ -327,34 +331,36 @@ ZC_TEST("ValueSymbol_MutabilityFlags") {
 }
 
 ZC_TEST("ValueSymbol_MoveOperations") {
-  auto type1 = BuiltInTypeSymbol::createI32(SymbolId::create(102), source::SourceLoc{});
-  ValueSymbol originalSymbol(SymbolId::create(103), "original"_zc, SymbolFlags::Mutable,
+  auto type1 = BuiltInTypeSymbol::createI32(tests::testDefinition(102), source::SourceLoc{});
+  const auto originalDefinition = tests::testDefinition(103);
+  ValueSymbol originalSymbol(originalDefinition, "original"_zc, SymbolFlags::Mutable,
                              source::SourceLoc{}, zc::mv(type1));
 
   // Test move constructor
   ValueSymbol movedSymbol = zc::mv(originalSymbol);
   ZC_EXPECT(movedSymbol.getName() == "original"_zc);
-  ZC_EXPECT(movedSymbol.getId().index() == 103);
+  ZC_EXPECT(movedSymbol.getId() == originalDefinition);
   ZC_EXPECT(movedSymbol.isMutable());
 
   // Test move assignment
-  auto type2 = BuiltInTypeSymbol::createI32(SymbolId::create(104), source::SourceLoc{});
-  ValueSymbol sourceSymbol(SymbolId::create(105), "source"_zc, SymbolFlags::TermKind,
+  auto type2 = BuiltInTypeSymbol::createI32(tests::testDefinition(104), source::SourceLoc{});
+  const auto sourceDefinition = tests::testDefinition(105);
+  ValueSymbol sourceSymbol(sourceDefinition, "source"_zc, SymbolFlags::TermKind,
                            source::SourceLoc{}, zc::mv(type2));
 
-  auto type3 = BuiltInTypeSymbol::createI32(SymbolId::create(106), source::SourceLoc{});
-  ValueSymbol targetSymbol(SymbolId::create(107), "target"_zc, SymbolFlags::TermKind,
+  auto type3 = BuiltInTypeSymbol::createI32(tests::testDefinition(106), source::SourceLoc{});
+  ValueSymbol targetSymbol(tests::testDefinition(107), "target"_zc, SymbolFlags::TermKind,
                            source::SourceLoc{}, zc::mv(type3));
 
   targetSymbol = zc::mv(sourceSymbol);
   ZC_EXPECT(targetSymbol.getName() == "source"_zc);
-  ZC_EXPECT(targetSymbol.getId().index() == 105);
+  ZC_EXPECT(targetSymbol.getId() == sourceDefinition);
 }
 
 // Additional VariableSymbol tests
 ZC_TEST("VariableSymbol_Properties") {
-  auto type = BuiltInTypeSymbol::createI32(SymbolId::create(22), source::SourceLoc{});
-  VariableSymbol variableSymbol(SymbolId::create(23), "testVar"_zc, SymbolFlags::TermKind,
+  auto type = BuiltInTypeSymbol::createI32(tests::testDefinition(22), source::SourceLoc{});
+  VariableSymbol variableSymbol(tests::testDefinition(23), "testVar"_zc, SymbolFlags::TermKind,
                                 source::SourceLoc{}, zc::mv(type), true);
 
   ZC_EXPECT(!variableSymbol.isParameter());
@@ -363,8 +369,8 @@ ZC_TEST("VariableSymbol_Properties") {
 }
 
 ZC_TEST("VariableSymbol_ParameterFlags") {
-  auto type = BuiltInTypeSymbol::createI32(SymbolId::create(24), source::SourceLoc{});
-  VariableSymbol parameterSymbol(SymbolId::create(25), "param"_zc,
+  auto type = BuiltInTypeSymbol::createI32(tests::testDefinition(24), source::SourceLoc{});
+  VariableSymbol parameterSymbol(tests::testDefinition(25), "param"_zc,
                                  SymbolFlags::TermKind | SymbolFlags::Parameter,
                                  source::SourceLoc{}, zc::mv(type), false);
 
@@ -373,8 +379,8 @@ ZC_TEST("VariableSymbol_ParameterFlags") {
 }
 
 ZC_TEST("VariableSymbol_CapturedFlags") {
-  auto type = BuiltInTypeSymbol::createI32(SymbolId::create(26), source::SourceLoc{});
-  VariableSymbol capturedSymbol(SymbolId::create(27), "captured"_zc,
+  auto type = BuiltInTypeSymbol::createI32(tests::testDefinition(26), source::SourceLoc{});
+  VariableSymbol capturedSymbol(tests::testDefinition(27), "captured"_zc,
                                 SymbolFlags::TermKind | SymbolFlags::Local, source::SourceLoc{},
                                 zc::mv(type), true);
 
@@ -382,50 +388,52 @@ ZC_TEST("VariableSymbol_CapturedFlags") {
 }
 
 ZC_TEST("VariableSymbol_Classof") {
-  auto type = BuiltInTypeSymbol::createI32(SymbolId::create(28), source::SourceLoc{});
-  VariableSymbol variableSymbol(SymbolId::create(29), "testVar"_zc, SymbolFlags::TermKind,
+  auto type = BuiltInTypeSymbol::createI32(tests::testDefinition(28), source::SourceLoc{});
+  VariableSymbol variableSymbol(tests::testDefinition(29), "testVar"_zc, SymbolFlags::TermKind,
                                 source::SourceLoc{}, zc::mv(type), true);
 
   ZC_EXPECT(VariableSymbol::classof(variableSymbol));
 
-  auto funcType = BuiltInTypeSymbol::createUnit(SymbolId::create(30), source::SourceLoc{});
-  FunctionSymbol functionSymbol(SymbolId::create(31), "testFunc"_zc, SymbolFlags::TermKind,
+  auto funcType = BuiltInTypeSymbol::createUnit(tests::testDefinition(30), source::SourceLoc{});
+  FunctionSymbol functionSymbol(tests::testDefinition(31), "testFunc"_zc, SymbolFlags::TermKind,
                                 source::SourceLoc{}, zc::mv(funcType));
   ZC_EXPECT(!VariableSymbol::classof(functionSymbol));
 }
 
 ZC_TEST("VariableSymbol_MoveOperations") {
-  auto type1 = BuiltInTypeSymbol::createI32(SymbolId::create(108), source::SourceLoc{});
-  VariableSymbol originalSymbol(SymbolId::create(109), "originalVar"_zc, SymbolFlags::Parameter,
+  auto type1 = BuiltInTypeSymbol::createI32(tests::testDefinition(108), source::SourceLoc{});
+  const auto originalDefinition = tests::testDefinition(109);
+  VariableSymbol originalSymbol(originalDefinition, "originalVar"_zc, SymbolFlags::Parameter,
                                 source::SourceLoc{}, zc::mv(type1), true);
 
   // Test move constructor
   VariableSymbol movedSymbol = zc::mv(originalSymbol);
   ZC_EXPECT(movedSymbol.getName() == "originalVar"_zc);
-  ZC_EXPECT(movedSymbol.getId().index() == 109);
+  ZC_EXPECT(movedSymbol.getId() == originalDefinition);
   ZC_EXPECT(movedSymbol.isParameter());
   ZC_EXPECT(movedSymbol.isMutable());
 
   // Test move assignment
-  auto type2 = BuiltInTypeSymbol::createI32(SymbolId::create(110), source::SourceLoc{});
-  VariableSymbol sourceSymbol(SymbolId::create(111), "sourceVar"_zc, SymbolFlags::Local,
+  auto type2 = BuiltInTypeSymbol::createI32(tests::testDefinition(110), source::SourceLoc{});
+  const auto sourceDefinition = tests::testDefinition(111);
+  VariableSymbol sourceSymbol(sourceDefinition, "sourceVar"_zc, SymbolFlags::Local,
                               source::SourceLoc{}, zc::mv(type2), false);
 
-  auto type3 = BuiltInTypeSymbol::createI32(SymbolId::create(112), source::SourceLoc{});
-  VariableSymbol targetSymbol(SymbolId::create(113), "targetVar"_zc, SymbolFlags::TermKind,
+  auto type3 = BuiltInTypeSymbol::createI32(tests::testDefinition(112), source::SourceLoc{});
+  VariableSymbol targetSymbol(tests::testDefinition(113), "targetVar"_zc, SymbolFlags::TermKind,
                               source::SourceLoc{}, zc::mv(type3), true);
 
   targetSymbol = zc::mv(sourceSymbol);
   ZC_EXPECT(targetSymbol.getName() == "sourceVar"_zc);
-  ZC_EXPECT(targetSymbol.getId().index() == 111);
+  ZC_EXPECT(targetSymbol.getId() == sourceDefinition);
   ZC_EXPECT(targetSymbol.isLocal());
   ZC_EXPECT(!targetSymbol.isMutable());
 }
 
 // Additional ConstantSymbol tests
 ZC_TEST("ConstantSymbol_ValueText") {
-  auto type = BuiltInTypeSymbol::createStr(SymbolId::create(32), source::SourceLoc{});
-  ConstantSymbol constantSymbol(SymbolId::create(33), "testConstant"_zc, SymbolFlags::TermKind,
+  auto type = BuiltInTypeSymbol::createStr(tests::testDefinition(32), source::SourceLoc{});
+  ConstantSymbol constantSymbol(tests::testDefinition(33), "testConstant"_zc, SymbolFlags::TermKind,
                                 source::SourceLoc{}, zc::mv(type));
 
   // Test initial empty value text
@@ -441,50 +449,52 @@ ZC_TEST("ConstantSymbol_ValueText") {
 }
 
 ZC_TEST("ConstantSymbol_Classof") {
-  auto type = BuiltInTypeSymbol::createI32(SymbolId::create(31), source::SourceLoc{});
-  ConstantSymbol constantSymbol(SymbolId::create(32), "testConst"_zc, SymbolFlags::TermKind,
+  auto type = BuiltInTypeSymbol::createI32(tests::testDefinition(31), source::SourceLoc{});
+  ConstantSymbol constantSymbol(tests::testDefinition(32), "testConst"_zc, SymbolFlags::TermKind,
                                 source::SourceLoc{}, zc::mv(type));
 
   ZC_EXPECT(ConstantSymbol::classof(constantSymbol));
 
-  auto varType = BuiltInTypeSymbol::createI32(SymbolId::create(33), source::SourceLoc{});
-  VariableSymbol variableSymbol(SymbolId::create(34), "testVar"_zc, SymbolFlags::TermKind,
+  auto varType = BuiltInTypeSymbol::createI32(tests::testDefinition(33), source::SourceLoc{});
+  VariableSymbol variableSymbol(tests::testDefinition(34), "testVar"_zc, SymbolFlags::TermKind,
                                 source::SourceLoc{}, zc::mv(varType), true);
   ZC_EXPECT(!ConstantSymbol::classof(variableSymbol));
 }
 
 ZC_TEST("ConstantSymbol_MoveOperations") {
-  auto type1 = BuiltInTypeSymbol::createI32(SymbolId::create(114), source::SourceLoc{});
-  ConstantSymbol originalSymbol(SymbolId::create(115), "originalConst"_zc, SymbolFlags::TermKind,
+  auto type1 = BuiltInTypeSymbol::createI32(tests::testDefinition(114), source::SourceLoc{});
+  const auto originalDefinition = tests::testDefinition(115);
+  ConstantSymbol originalSymbol(originalDefinition, "originalConst"_zc, SymbolFlags::TermKind,
                                 source::SourceLoc{}, zc::mv(type1));
   originalSymbol.setValueText("42"_zc);
 
   // Test move constructor
   ConstantSymbol movedSymbol = zc::mv(originalSymbol);
   ZC_EXPECT(movedSymbol.getName() == "originalConst"_zc);
-  ZC_EXPECT(movedSymbol.getId().index() == 115);
+  ZC_EXPECT(movedSymbol.getId() == originalDefinition);
   ZC_EXPECT(movedSymbol.getValueText() == "42"_zc);
 
   // Test move assignment
-  auto type2 = BuiltInTypeSymbol::createI32(SymbolId::create(116), source::SourceLoc{});
-  ConstantSymbol sourceSymbol(SymbolId::create(117), "sourceConst"_zc, SymbolFlags::TermKind,
+  auto type2 = BuiltInTypeSymbol::createI32(tests::testDefinition(116), source::SourceLoc{});
+  const auto sourceDefinition = tests::testDefinition(117);
+  ConstantSymbol sourceSymbol(sourceDefinition, "sourceConst"_zc, SymbolFlags::TermKind,
                               source::SourceLoc{}, zc::mv(type2));
   sourceSymbol.setValueText("100"_zc);
 
-  auto type3 = BuiltInTypeSymbol::createI32(SymbolId::create(118), source::SourceLoc{});
-  ConstantSymbol targetSymbol(SymbolId::create(119), "targetConst"_zc, SymbolFlags::TermKind,
+  auto type3 = BuiltInTypeSymbol::createI32(tests::testDefinition(118), source::SourceLoc{});
+  ConstantSymbol targetSymbol(tests::testDefinition(119), "targetConst"_zc, SymbolFlags::TermKind,
                               source::SourceLoc{}, zc::mv(type3));
 
   targetSymbol = zc::mv(sourceSymbol);
   ZC_EXPECT(targetSymbol.getName() == "sourceConst"_zc);
-  ZC_EXPECT(targetSymbol.getId().index() == 117);
+  ZC_EXPECT(targetSymbol.getId() == sourceDefinition);
   ZC_EXPECT(targetSymbol.getValueText() == "100"_zc);
 }
 
 // Additional ParameterSymbol tests
 ZC_TEST("ParameterSymbol_IndexManagement") {
-  auto type = BuiltInTypeSymbol::createI32(SymbolId::create(38), source::SourceLoc{});
-  ParameterSymbol parameterSymbol(SymbolId::create(39), "param"_zc, SymbolFlags::TermKind,
+  auto type = BuiltInTypeSymbol::createI32(tests::testDefinition(38), source::SourceLoc{});
+  ParameterSymbol parameterSymbol(tests::testDefinition(39), "param"_zc, SymbolFlags::TermKind,
                                   source::SourceLoc{}, zc::mv(type), false);
 
   // Test initial index (should be 0)
@@ -500,12 +510,12 @@ ZC_TEST("ParameterSymbol_IndexManagement") {
 }
 
 ZC_TEST("ParameterSymbol_OptionalParameter") {
-  auto type1 = BuiltInTypeSymbol::createI32(SymbolId::create(40), source::SourceLoc{});
-  ParameterSymbol requiredParam(SymbolId::create(41), "required"_zc, SymbolFlags::TermKind,
+  auto type1 = BuiltInTypeSymbol::createI32(tests::testDefinition(40), source::SourceLoc{});
+  ParameterSymbol requiredParam(tests::testDefinition(41), "required"_zc, SymbolFlags::TermKind,
                                 source::SourceLoc{}, zc::mv(type1), false);
 
-  auto type2 = BuiltInTypeSymbol::createI32(SymbolId::create(42), source::SourceLoc{});
-  ParameterSymbol optionalParam(SymbolId::create(43), "optional"_zc, SymbolFlags::TermKind,
+  auto type2 = BuiltInTypeSymbol::createI32(tests::testDefinition(42), source::SourceLoc{});
+  ParameterSymbol optionalParam(tests::testDefinition(43), "optional"_zc, SymbolFlags::TermKind,
                                 source::SourceLoc{}, zc::mv(type2), true);
 
   ZC_EXPECT(!requiredParam.isOptional());
@@ -513,57 +523,60 @@ ZC_TEST("ParameterSymbol_OptionalParameter") {
 }
 
 ZC_TEST("ParameterSymbol_Classof") {
-  auto type = BuiltInTypeSymbol::createI32(SymbolId::create(43), source::SourceLoc{});
-  ParameterSymbol parameterSymbol(SymbolId::create(43), "testParam"_zc, SymbolFlags::TermKind,
+  auto type = BuiltInTypeSymbol::createI32(tests::testDefinition(43), source::SourceLoc{});
+  ParameterSymbol parameterSymbol(tests::testDefinition(43), "testParam"_zc, SymbolFlags::TermKind,
                                   source::SourceLoc{}, zc::mv(type), false);
 
   ZC_EXPECT(ParameterSymbol::classof(parameterSymbol));
 
-  auto varType = BuiltInTypeSymbol::createI32(SymbolId::create(45), source::SourceLoc{});
-  VariableSymbol variableSymbol(SymbolId::create(46), "testVar"_zc, SymbolFlags::TermKind,
+  auto varType = BuiltInTypeSymbol::createI32(tests::testDefinition(45), source::SourceLoc{});
+  VariableSymbol variableSymbol(tests::testDefinition(46), "testVar"_zc, SymbolFlags::TermKind,
                                 source::SourceLoc{}, zc::mv(varType), true);
   ZC_EXPECT(!ParameterSymbol::classof(variableSymbol));
 }
 
 ZC_TEST("ParameterSymbol_MoveOperations") {
-  auto type1 = BuiltInTypeSymbol::createI32(SymbolId::create(120), source::SourceLoc{});
-  ParameterSymbol originalSymbol(SymbolId::create(121), "originalParam"_zc, SymbolFlags::TermKind,
+  auto type1 = BuiltInTypeSymbol::createI32(tests::testDefinition(120), source::SourceLoc{});
+  const auto originalDefinition = tests::testDefinition(121);
+  ParameterSymbol originalSymbol(originalDefinition, "originalParam"_zc, SymbolFlags::TermKind,
                                  source::SourceLoc{}, zc::mv(type1), true);
 
   // Test move constructor
   ParameterSymbol movedSymbol = zc::mv(originalSymbol);
   ZC_EXPECT(movedSymbol.getName() == "originalParam"_zc);
-  ZC_EXPECT(movedSymbol.getId().index() == 121);
+  ZC_EXPECT(movedSymbol.getId() == originalDefinition);
   ZC_EXPECT(movedSymbol.isOptional());  // Should be true since originalSymbol was created with true
 
   // Test move assignment
-  auto type2 = BuiltInTypeSymbol::createI32(SymbolId::create(122), source::SourceLoc{});
-  ParameterSymbol sourceSymbol(SymbolId::create(123), "sourceParam"_zc, SymbolFlags::TermKind,
+  auto type2 = BuiltInTypeSymbol::createI32(tests::testDefinition(122), source::SourceLoc{});
+  const auto sourceDefinition = tests::testDefinition(123);
+  ParameterSymbol sourceSymbol(sourceDefinition, "sourceParam"_zc, SymbolFlags::TermKind,
                                source::SourceLoc{}, zc::mv(type2), false);
 
-  auto type3 = BuiltInTypeSymbol::createI32(SymbolId::create(124), source::SourceLoc{});
-  ParameterSymbol targetSymbol(SymbolId::create(125), "targetParam"_zc, SymbolFlags::TermKind,
+  auto type3 = BuiltInTypeSymbol::createI32(tests::testDefinition(124), source::SourceLoc{});
+  ParameterSymbol targetSymbol(tests::testDefinition(125), "targetParam"_zc, SymbolFlags::TermKind,
                                source::SourceLoc{}, zc::mv(type3), true);
 
   targetSymbol = zc::mv(sourceSymbol);
   ZC_EXPECT(targetSymbol.getName() == "sourceParam"_zc);
-  ZC_EXPECT(targetSymbol.getId().index() == 123);
+  ZC_EXPECT(targetSymbol.getId() == sourceDefinition);
   ZC_EXPECT(!targetSymbol.isOptional());
 }
 
 // Additional FunctionSymbol tests
 ZC_TEST("FunctionSymbol_ParameterManagement") {
-  auto funcType = BuiltInTypeSymbol::createUnit(SymbolId::create(48), source::SourceLoc{});
-  FunctionSymbol functionSymbol(SymbolId::create(49), "testFunc"_zc, SymbolFlags::TermKind,
+  auto funcType = BuiltInTypeSymbol::createUnit(tests::testDefinition(48), source::SourceLoc{});
+  FunctionSymbol functionSymbol(tests::testDefinition(49), "testFunc"_zc, SymbolFlags::TermKind,
                                 source::SourceLoc{}, zc::mv(funcType));
 
   ZC_EXPECT(functionSymbol.getParameterCount() == 0);
   ZC_EXPECT(functionSymbol.getParameters().size() == 0);
 
   // Add first parameter
-  auto param1Type = BuiltInTypeSymbol::createI32(SymbolId::create(50), source::SourceLoc{});
-  auto param1 = zc::heap<ParameterSymbol>(SymbolId::create(51), "param1"_zc, SymbolFlags::TermKind,
-                                          source::SourceLoc{}, zc::mv(param1Type), false);
+  auto param1Type = BuiltInTypeSymbol::createI32(tests::testDefinition(50), source::SourceLoc{});
+  auto param1 =
+      zc::heap<ParameterSymbol>(tests::testDefinition(51), "param1"_zc, SymbolFlags::TermKind,
+                                source::SourceLoc{}, zc::mv(param1Type), false);
   functionSymbol.addParameter(zc::mv(param1));
 
   ZC_EXPECT(functionSymbol.getParameterCount() == 1);
@@ -572,9 +585,10 @@ ZC_TEST("FunctionSymbol_ParameterManagement") {
   ZC_EXPECT(functionSymbol.getParameters()[0].getIndex() == 0);
 
   // Add second parameter
-  auto param2Type = BuiltInTypeSymbol::createStr(SymbolId::create(52), source::SourceLoc{});
-  auto param2 = zc::heap<ParameterSymbol>(SymbolId::create(53), "param2"_zc, SymbolFlags::TermKind,
-                                          source::SourceLoc{}, zc::mv(param2Type), true);
+  auto param2Type = BuiltInTypeSymbol::createStr(tests::testDefinition(52), source::SourceLoc{});
+  auto param2 =
+      zc::heap<ParameterSymbol>(tests::testDefinition(53), "param2"_zc, SymbolFlags::TermKind,
+                                source::SourceLoc{}, zc::mv(param2Type), true);
   functionSymbol.addParameter(zc::mv(param2));
 
   ZC_EXPECT(functionSymbol.getParameterCount() == 2);
@@ -584,23 +598,25 @@ ZC_TEST("FunctionSymbol_ParameterManagement") {
 }
 
 ZC_TEST("FunctionSymbol_FunctionProperties") {
-  auto methodType = BuiltInTypeSymbol::createUnit(SymbolId::create(54), source::SourceLoc{});
-  FunctionSymbol methodSymbol(SymbolId::create(55), "method"_zc,
+  auto methodType = BuiltInTypeSymbol::createUnit(tests::testDefinition(54), source::SourceLoc{});
+  FunctionSymbol methodSymbol(tests::testDefinition(55), "method"_zc,
                               SymbolFlags::TermKind | SymbolFlags::Method, source::SourceLoc{},
                               zc::mv(methodType));
 
-  auto constructorType = BuiltInTypeSymbol::createUnit(SymbolId::create(56), source::SourceLoc{});
-  FunctionSymbol constructorSymbol(SymbolId::create(57), "constructor"_zc,
+  auto constructorType =
+      BuiltInTypeSymbol::createUnit(tests::testDefinition(56), source::SourceLoc{});
+  FunctionSymbol constructorSymbol(tests::testDefinition(57), "constructor"_zc,
                                    SymbolFlags::TermKind | SymbolFlags::Constructor,
                                    source::SourceLoc{}, zc::mv(constructorType));
 
-  auto syntheticType = BuiltInTypeSymbol::createUnit(SymbolId::create(58), source::SourceLoc{});
-  FunctionSymbol builtinSymbol(SymbolId::create(59), "builtin"_zc,
+  auto syntheticType =
+      BuiltInTypeSymbol::createUnit(tests::testDefinition(58), source::SourceLoc{});
+  FunctionSymbol builtinSymbol(tests::testDefinition(59), "builtin"_zc,
                                SymbolFlags::TermKind | SymbolFlags::Builtin, source::SourceLoc{},
                                zc::mv(syntheticType));
 
-  auto variadicType = BuiltInTypeSymbol::createUnit(SymbolId::create(60), source::SourceLoc{});
-  FunctionSymbol variadicSymbol(SymbolId::create(61), "variadic"_zc,
+  auto variadicType = BuiltInTypeSymbol::createUnit(tests::testDefinition(60), source::SourceLoc{});
+  FunctionSymbol variadicSymbol(tests::testDefinition(61), "variadic"_zc,
                                 SymbolFlags::TermKind | SymbolFlags::Implicit, source::SourceLoc{},
                                 zc::mv(variadicType));
 
@@ -626,65 +642,68 @@ ZC_TEST("FunctionSymbol_FunctionProperties") {
 }
 
 ZC_TEST("FunctionSymbol_Classof") {
-  auto type = BuiltInTypeSymbol::createI32(SymbolId::create(76), source::SourceLoc{});
-  FunctionSymbol functionSymbol(SymbolId::create(77), "testFunction"_zc, SymbolFlags::TermKind,
+  auto type = BuiltInTypeSymbol::createI32(tests::testDefinition(76), source::SourceLoc{});
+  FunctionSymbol functionSymbol(tests::testDefinition(77), "testFunction"_zc, SymbolFlags::TermKind,
                                 source::SourceLoc{}, zc::mv(type));
 
   ZC_EXPECT(FunctionSymbol::classof(functionSymbol));
 
-  auto varType = BuiltInTypeSymbol::createI32(SymbolId::create(78), source::SourceLoc{});
-  VariableSymbol variableSymbol(SymbolId::create(79), "testVar"_zc, SymbolFlags::TermKind,
+  auto varType = BuiltInTypeSymbol::createI32(tests::testDefinition(78), source::SourceLoc{});
+  VariableSymbol variableSymbol(tests::testDefinition(79), "testVar"_zc, SymbolFlags::TermKind,
                                 source::SourceLoc{}, zc::mv(varType), true);
   ZC_EXPECT(!FunctionSymbol::classof(variableSymbol));
 }
 
 ZC_TEST("FunctionSymbol_MoveOperations") {
-  auto type1 = BuiltInTypeSymbol::createI32(SymbolId::create(126), source::SourceLoc{});
-  FunctionSymbol originalSymbol(SymbolId::create(127), "originalFunc"_zc, SymbolFlags::Method,
+  auto type1 = BuiltInTypeSymbol::createI32(tests::testDefinition(126), source::SourceLoc{});
+  const auto originalDefinition = tests::testDefinition(127);
+  FunctionSymbol originalSymbol(originalDefinition, "originalFunc"_zc, SymbolFlags::Method,
                                 source::SourceLoc{}, zc::mv(type1));
 
   // Add a parameter to test parameter preservation
-  auto paramType = BuiltInTypeSymbol::createI32(SymbolId::create(128), source::SourceLoc{});
-  auto param = zc::heap<ParameterSymbol>(SymbolId::create(129), "param1"_zc, SymbolFlags::TermKind,
-                                         source::SourceLoc{}, zc::mv(paramType), false);
+  auto paramType = BuiltInTypeSymbol::createI32(tests::testDefinition(128), source::SourceLoc{});
+  auto param =
+      zc::heap<ParameterSymbol>(tests::testDefinition(129), "param1"_zc, SymbolFlags::TermKind,
+                                source::SourceLoc{}, zc::mv(paramType), false);
   originalSymbol.addParameter(zc::mv(param));
 
   // Test move constructor
   FunctionSymbol movedSymbol = zc::mv(originalSymbol);
   ZC_EXPECT(movedSymbol.getName() == "originalFunc"_zc);
-  ZC_EXPECT(movedSymbol.getId().index() == 127);
+  ZC_EXPECT(movedSymbol.getId() == originalDefinition);
   ZC_EXPECT(movedSymbol.isMethod());
   ZC_EXPECT(movedSymbol.getParameters().size() == 1);
 
   // Test move assignment
-  auto type2 = BuiltInTypeSymbol::createI32(SymbolId::create(130), source::SourceLoc{});
-  FunctionSymbol sourceSymbol(SymbolId::create(131), "sourceFunc"_zc, SymbolFlags::Constructor,
+  auto type2 = BuiltInTypeSymbol::createI32(tests::testDefinition(130), source::SourceLoc{});
+  const auto sourceDefinition = tests::testDefinition(131);
+  FunctionSymbol sourceSymbol(sourceDefinition, "sourceFunc"_zc, SymbolFlags::Constructor,
                               source::SourceLoc{}, zc::mv(type2));
 
-  auto type3 = BuiltInTypeSymbol::createI32(SymbolId::create(132), source::SourceLoc{});
-  FunctionSymbol targetSymbol(SymbolId::create(133), "targetFunc"_zc, SymbolFlags::TermKind,
+  auto type3 = BuiltInTypeSymbol::createI32(tests::testDefinition(132), source::SourceLoc{});
+  FunctionSymbol targetSymbol(tests::testDefinition(133), "targetFunc"_zc, SymbolFlags::TermKind,
                               source::SourceLoc{}, zc::mv(type3));
 
   targetSymbol = zc::mv(sourceSymbol);
   ZC_EXPECT(targetSymbol.getName() == "sourceFunc"_zc);
-  ZC_EXPECT(targetSymbol.getId().index() == 131);
+  ZC_EXPECT(targetSymbol.getId() == sourceDefinition);
   ZC_EXPECT(targetSymbol.isConstructor());
 }
 
 // Additional FieldSymbol tests
 ZC_TEST("FieldSymbol_VisibilityProperties") {
-  auto publicType = BuiltInTypeSymbol::createI32(SymbolId::create(66), source::SourceLoc{});
-  FieldSymbol publicField(SymbolId::create(67), "publicField"_zc,
+  auto publicType = BuiltInTypeSymbol::createI32(tests::testDefinition(66), source::SourceLoc{});
+  FieldSymbol publicField(tests::testDefinition(67), "publicField"_zc,
                           SymbolFlags::TermKind | SymbolFlags::Public, source::SourceLoc{},
                           zc::mv(publicType), true);
 
-  auto privateType = BuiltInTypeSymbol::createI32(SymbolId::create(68), source::SourceLoc{});
-  FieldSymbol privateField(SymbolId::create(69), "privateField"_zc,
+  auto privateType = BuiltInTypeSymbol::createI32(tests::testDefinition(68), source::SourceLoc{});
+  FieldSymbol privateField(tests::testDefinition(69), "privateField"_zc,
                            SymbolFlags::TermKind | SymbolFlags::Private, source::SourceLoc{},
                            zc::mv(privateType), false);
 
-  auto protectedType = BuiltInTypeSymbol::createI32(SymbolId::create(70), source::SourceLoc{});
-  FieldSymbol protectedField(SymbolId::create(71), "protectedField"_zc,
+  auto protectedType = BuiltInTypeSymbol::createI32(tests::testDefinition(70), source::SourceLoc{});
+  FieldSymbol protectedField(tests::testDefinition(71), "protectedField"_zc,
                              SymbolFlags::TermKind | SymbolFlags::Protected, source::SourceLoc{},
                              zc::mv(protectedType), true);
 
@@ -702,13 +721,13 @@ ZC_TEST("FieldSymbol_VisibilityProperties") {
 }
 
 ZC_TEST("FieldSymbol_StaticProperty") {
-  auto staticType = BuiltInTypeSymbol::createI32(SymbolId::create(72), source::SourceLoc{});
-  FieldSymbol staticField(SymbolId::create(73), "staticField"_zc,
+  auto staticType = BuiltInTypeSymbol::createI32(tests::testDefinition(72), source::SourceLoc{});
+  FieldSymbol staticField(tests::testDefinition(73), "staticField"_zc,
                           SymbolFlags::TermKind | SymbolFlags::Static, source::SourceLoc{},
                           zc::mv(staticType), false);
 
-  auto instanceType = BuiltInTypeSymbol::createI32(SymbolId::create(74), source::SourceLoc{});
-  FieldSymbol instanceField(SymbolId::create(75), "instanceField"_zc, SymbolFlags::TermKind,
+  auto instanceType = BuiltInTypeSymbol::createI32(tests::testDefinition(74), source::SourceLoc{});
+  FieldSymbol instanceField(tests::testDefinition(75), "instanceField"_zc, SymbolFlags::TermKind,
                             source::SourceLoc{}, zc::mv(instanceType), true);
 
   ZC_EXPECT(staticField.isStatic());
@@ -717,8 +736,8 @@ ZC_TEST("FieldSymbol_StaticProperty") {
 
 ZC_TEST("FieldSymbol_MutabilityOverride") {
   // Test that FieldSymbol uses Symbol::isMutable() instead of ValueSymbol::isMutable()
-  auto type = BuiltInTypeSymbol::createI32(SymbolId::create(76), source::SourceLoc{});
-  FieldSymbol fieldSymbol(SymbolId::create(77), "testField"_zc, SymbolFlags::TermKind,
+  auto type = BuiltInTypeSymbol::createI32(tests::testDefinition(76), source::SourceLoc{});
+  FieldSymbol fieldSymbol(tests::testDefinition(77), "testField"_zc, SymbolFlags::TermKind,
                           source::SourceLoc{}, zc::mv(type), false);
 
   // Should return false because isMutable=false and no Final flag
@@ -726,52 +745,54 @@ ZC_TEST("FieldSymbol_MutabilityOverride") {
 }
 
 ZC_TEST("FieldSymbol_Classof") {
-  auto type = BuiltInTypeSymbol::createI32(SymbolId::create(78), source::SourceLoc{});
-  FieldSymbol fieldSymbol(SymbolId::create(79), "testField"_zc, SymbolFlags::TermKind,
+  auto type = BuiltInTypeSymbol::createI32(tests::testDefinition(78), source::SourceLoc{});
+  FieldSymbol fieldSymbol(tests::testDefinition(79), "testField"_zc, SymbolFlags::TermKind,
                           source::SourceLoc{}, zc::mv(type), true);
 
   ZC_EXPECT(FieldSymbol::classof(fieldSymbol));
 
-  auto varType = BuiltInTypeSymbol::createI32(SymbolId::create(80), source::SourceLoc{});
-  VariableSymbol variableSymbol(SymbolId::create(81), "testVar"_zc, SymbolFlags::TermKind,
+  auto varType = BuiltInTypeSymbol::createI32(tests::testDefinition(80), source::SourceLoc{});
+  VariableSymbol variableSymbol(tests::testDefinition(81), "testVar"_zc, SymbolFlags::TermKind,
                                 source::SourceLoc{}, zc::mv(varType), true);
   ZC_EXPECT(!FieldSymbol::classof(variableSymbol));
 }
 
 ZC_TEST("FieldSymbol_MoveOperations") {
-  auto type1 = BuiltInTypeSymbol::createI32(SymbolId::create(134), source::SourceLoc{});
-  FieldSymbol originalSymbol(SymbolId::create(135), "originalField"_zc,
+  auto type1 = BuiltInTypeSymbol::createI32(tests::testDefinition(134), source::SourceLoc{});
+  const auto originalDefinition = tests::testDefinition(135);
+  FieldSymbol originalSymbol(originalDefinition, "originalField"_zc,
                              SymbolFlags::Public | SymbolFlags::Static, source::SourceLoc{},
                              zc::mv(type1), true);
 
   // Test move constructor
   FieldSymbol movedSymbol = zc::mv(originalSymbol);
   ZC_EXPECT(movedSymbol.getName() == "originalField"_zc);
-  ZC_EXPECT(movedSymbol.getId().index() == 135);
+  ZC_EXPECT(movedSymbol.getId() == originalDefinition);
   ZC_EXPECT(movedSymbol.isPublic());
   ZC_EXPECT(movedSymbol.isStatic());
   ZC_EXPECT(movedSymbol.isMutable());
 
   // Test move assignment
-  auto type2 = BuiltInTypeSymbol::createI32(SymbolId::create(136), source::SourceLoc{});
-  FieldSymbol sourceSymbol(SymbolId::create(137), "sourceField"_zc, SymbolFlags::Private,
+  auto type2 = BuiltInTypeSymbol::createI32(tests::testDefinition(136), source::SourceLoc{});
+  const auto sourceDefinition = tests::testDefinition(137);
+  FieldSymbol sourceSymbol(sourceDefinition, "sourceField"_zc, SymbolFlags::Private,
                            source::SourceLoc{}, zc::mv(type2), false);
 
-  auto type3 = BuiltInTypeSymbol::createI32(SymbolId::create(138), source::SourceLoc{});
-  FieldSymbol targetSymbol(SymbolId::create(139), "targetField"_zc, SymbolFlags::TermKind,
+  auto type3 = BuiltInTypeSymbol::createI32(tests::testDefinition(138), source::SourceLoc{});
+  FieldSymbol targetSymbol(tests::testDefinition(139), "targetField"_zc, SymbolFlags::TermKind,
                            source::SourceLoc{}, zc::mv(type3), true);
 
   targetSymbol = zc::mv(sourceSymbol);
   ZC_EXPECT(targetSymbol.getName() == "sourceField"_zc);
-  ZC_EXPECT(targetSymbol.getId().index() == 137);
+  ZC_EXPECT(targetSymbol.getId() == sourceDefinition);
   ZC_EXPECT(targetSymbol.isPrivate());
   ZC_EXPECT(!targetSymbol.isMutable());
 }
 
 // Additional EnumCaseSymbol tests
 ZC_TEST("EnumCaseSymbol_AssociatedValue") {
-  auto type = BuiltInTypeSymbol::createI32(SymbolId::create(82), source::SourceLoc{});
-  EnumCaseSymbol enumCaseSymbol(SymbolId::create(83), "testCase"_zc, SymbolFlags::TermKind,
+  auto type = BuiltInTypeSymbol::createI32(tests::testDefinition(82), source::SourceLoc{});
+  EnumCaseSymbol enumCaseSymbol(tests::testDefinition(83), "testCase"_zc, SymbolFlags::TermKind,
                                 source::SourceLoc{}, zc::mv(type));
 
   // Test initial state (no associated value)
@@ -789,68 +810,70 @@ ZC_TEST("EnumCaseSymbol_AssociatedValue") {
 }
 
 ZC_TEST("EnumCaseSymbol_Classof") {
-  auto type = BuiltInTypeSymbol::createI32(SymbolId::create(84), source::SourceLoc{});
-  EnumCaseSymbol enumCaseSymbol(SymbolId::create(85), "testCase"_zc, SymbolFlags::TermKind,
+  auto type = BuiltInTypeSymbol::createI32(tests::testDefinition(84), source::SourceLoc{});
+  EnumCaseSymbol enumCaseSymbol(tests::testDefinition(85), "testCase"_zc, SymbolFlags::TermKind,
                                 source::SourceLoc{}, zc::mv(type));
 
   ZC_EXPECT(EnumCaseSymbol::classof(enumCaseSymbol));
 
-  auto varType = BuiltInTypeSymbol::createI32(SymbolId::create(86), source::SourceLoc{});
-  VariableSymbol variableSymbol(SymbolId::create(87), "testVar"_zc, SymbolFlags::TermKind,
+  auto varType = BuiltInTypeSymbol::createI32(tests::testDefinition(86), source::SourceLoc{});
+  VariableSymbol variableSymbol(tests::testDefinition(87), "testVar"_zc, SymbolFlags::TermKind,
                                 source::SourceLoc{}, zc::mv(varType), true);
   ZC_EXPECT(!EnumCaseSymbol::classof(variableSymbol));
 }
 
 ZC_TEST("EnumCaseSymbol_MoveOperations") {
-  auto type1 = BuiltInTypeSymbol::createI32(SymbolId::create(140), source::SourceLoc{});
-  EnumCaseSymbol originalSymbol(SymbolId::create(141), "originalCase"_zc, SymbolFlags::TermKind,
+  auto type1 = BuiltInTypeSymbol::createI32(tests::testDefinition(140), source::SourceLoc{});
+  const auto originalDefinition = tests::testDefinition(141);
+  EnumCaseSymbol originalSymbol(originalDefinition, "originalCase"_zc, SymbolFlags::TermKind,
                                 source::SourceLoc{}, zc::mv(type1));
   originalSymbol.setAssociatedValue(42);
 
   // Test move constructor
   EnumCaseSymbol movedSymbol = zc::mv(originalSymbol);
   ZC_EXPECT(movedSymbol.getName() == "originalCase"_zc);
-  ZC_EXPECT(movedSymbol.getId().index() == 141);
+  ZC_EXPECT(movedSymbol.getId() == originalDefinition);
   ZC_IF_SOME(value, movedSymbol.getAssociatedValue()) { ZC_EXPECT(value == 42); }
   else { ZC_FAIL_REQUIRE("Should have associated value after move"); }
 
   // Test move assignment
-  auto type2 = BuiltInTypeSymbol::createI32(SymbolId::create(142), source::SourceLoc{});
-  EnumCaseSymbol sourceSymbol(SymbolId::create(143), "sourceCase"_zc, SymbolFlags::TermKind,
+  auto type2 = BuiltInTypeSymbol::createI32(tests::testDefinition(142), source::SourceLoc{});
+  const auto sourceDefinition = tests::testDefinition(143);
+  EnumCaseSymbol sourceSymbol(sourceDefinition, "sourceCase"_zc, SymbolFlags::TermKind,
                               source::SourceLoc{}, zc::mv(type2));
   sourceSymbol.setAssociatedValue(-100);
 
-  auto type3 = BuiltInTypeSymbol::createI32(SymbolId::create(144), source::SourceLoc{});
-  EnumCaseSymbol targetSymbol(SymbolId::create(145), "targetCase"_zc, SymbolFlags::TermKind,
+  auto type3 = BuiltInTypeSymbol::createI32(tests::testDefinition(144), source::SourceLoc{});
+  EnumCaseSymbol targetSymbol(tests::testDefinition(145), "targetCase"_zc, SymbolFlags::TermKind,
                               source::SourceLoc{}, zc::mv(type3));
 
   targetSymbol = zc::mv(sourceSymbol);
   ZC_EXPECT(targetSymbol.getName() == "sourceCase"_zc);
-  ZC_EXPECT(targetSymbol.getId().index() == 143);
+  ZC_EXPECT(targetSymbol.getId() == sourceDefinition);
   ZC_IF_SOME(value, targetSymbol.getAssociatedValue()) { ZC_EXPECT(value == -100); }
   else { ZC_FAIL_REQUIRE("Should have associated value after move assignment"); }
 }
 
 ZC_TEST("Symbol_ClassofComprehensive") {
   // Create different types of symbols for comprehensive classof testing
-  auto type1 = BuiltInTypeSymbol::createI32(SymbolId::create(90), source::SourceLoc{});
-  auto type2 = BuiltInTypeSymbol::createI32(SymbolId::create(91), source::SourceLoc{});
-  auto type3 = BuiltInTypeSymbol::createI32(SymbolId::create(92), source::SourceLoc{});
-  auto type4 = BuiltInTypeSymbol::createI32(SymbolId::create(93), source::SourceLoc{});
-  auto type5 = BuiltInTypeSymbol::createI32(SymbolId::create(94), source::SourceLoc{});
-  auto type6 = BuiltInTypeSymbol::createI32(SymbolId::create(95), source::SourceLoc{});
+  auto type1 = BuiltInTypeSymbol::createI32(tests::testDefinition(90), source::SourceLoc{});
+  auto type2 = BuiltInTypeSymbol::createI32(tests::testDefinition(91), source::SourceLoc{});
+  auto type3 = BuiltInTypeSymbol::createI32(tests::testDefinition(92), source::SourceLoc{});
+  auto type4 = BuiltInTypeSymbol::createI32(tests::testDefinition(93), source::SourceLoc{});
+  auto type5 = BuiltInTypeSymbol::createI32(tests::testDefinition(94), source::SourceLoc{});
+  auto type6 = BuiltInTypeSymbol::createI32(tests::testDefinition(95), source::SourceLoc{});
 
-  VariableSymbol variableSymbol(SymbolId::create(96), "testVar"_zc, SymbolFlags::TermKind,
+  VariableSymbol variableSymbol(tests::testDefinition(96), "testVar"_zc, SymbolFlags::TermKind,
                                 source::SourceLoc{}, zc::mv(type1), true);
-  ConstantSymbol constantSymbol(SymbolId::create(97), "testConst"_zc, SymbolFlags::TermKind,
+  ConstantSymbol constantSymbol(tests::testDefinition(97), "testConst"_zc, SymbolFlags::TermKind,
                                 source::SourceLoc{}, zc::mv(type2));
-  ParameterSymbol parameterSymbol(SymbolId::create(98), "testParam"_zc, SymbolFlags::TermKind,
+  ParameterSymbol parameterSymbol(tests::testDefinition(98), "testParam"_zc, SymbolFlags::TermKind,
                                   source::SourceLoc{}, zc::mv(type3), false);
-  FunctionSymbol functionSymbol(SymbolId::create(99), "testFunc"_zc, SymbolFlags::TermKind,
+  FunctionSymbol functionSymbol(tests::testDefinition(99), "testFunc"_zc, SymbolFlags::TermKind,
                                 source::SourceLoc{}, zc::mv(type4));
-  FieldSymbol fieldSymbol(SymbolId::create(100), "testField"_zc, SymbolFlags::TermKind,
+  FieldSymbol fieldSymbol(tests::testDefinition(100), "testField"_zc, SymbolFlags::TermKind,
                           source::SourceLoc{}, zc::mv(type5), true);
-  EnumCaseSymbol enumCaseSymbol(SymbolId::create(101), "testCase"_zc, SymbolFlags::TermKind,
+  EnumCaseSymbol enumCaseSymbol(tests::testDefinition(101), "testCase"_zc, SymbolFlags::TermKind,
                                 source::SourceLoc{}, zc::mv(type6));
 
   // Test VariableSymbol classof false cases

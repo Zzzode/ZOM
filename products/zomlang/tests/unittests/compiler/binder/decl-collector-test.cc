@@ -18,11 +18,13 @@
 #include "zc/ztest/test.h"
 #include "zomlang/compiler/ast/generated/node-payload.h"
 #include "zomlang/compiler/ast/tree.h"
+#include "zomlang/compiler/binder/definition-identity-map.h"
 #include "zomlang/compiler/diagnostics/diagnostic-engine.h"
 #include "zomlang/compiler/source/manager.h"
 #include "zomlang/compiler/symbol/scope.h"
 #include "zomlang/compiler/symbol/symbol-table.h"
 #include "zomlang/tests/unittests/compiler/test-ast-builder.h"
+#include "zomlang/tests/unittests/compiler/test-semantic-identities.h"
 
 namespace zomlang {
 namespace compiler {
@@ -35,7 +37,9 @@ namespace {
 // Helper: build a simple source file with given declarations and run collection.
 bool collect(TestFixture& fix, zc::ArrayPtr<const ast::NodeId> decls) {
   const auto& tree = fix.buildRetainedSourceFile("test"_zc, decls);
-  DeclCollector collector(fix.symbols(), fix.scopes(), tree, fix.metadata(), fix.diagnostics());
+  auto identities = tests::makeTestDefinitionIdentityMap(tree);
+  DeclCollector collector(fix.symbols(), fix.scopes(), tree, identities, fix.metadata(),
+                          fix.diagnostics());
   return collector.collect();
 }
 
@@ -583,7 +587,7 @@ ZC_TEST("DeclCollector.RecordsBindingMetadataForFunction") {
   collect(fix, decls.asPtr());
 
   // The symbol should be bound to the declaration node
-  auto symId = fix.metadata().symbol(fn);
+  auto symId = fix.metadata().definition(fn);
   ZC_EXPECT(symId.isValid());
 }
 
@@ -595,7 +599,7 @@ ZC_TEST("DeclCollector.RecordsBindingMetadataForClass") {
   decls.add(cls);
   collect(fix, decls.asPtr());
 
-  auto symId = fix.metadata().symbol(cls);
+  auto symId = fix.metadata().definition(cls);
   ZC_EXPECT(symId.isValid());
 }
 
@@ -613,7 +617,7 @@ ZC_TEST("DeclCollector.RecordsBindingMetadataForVariable") {
   collect(fix, topDecls.asPtr());
 
   // The symbol is bound to the VariableDeclarator node, not the BindingPattern
-  auto symId = fix.metadata().symbol(decl);
+  auto symId = fix.metadata().definition(decl);
   ZC_EXPECT(symId.isValid());
 }
 

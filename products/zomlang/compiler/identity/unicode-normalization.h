@@ -27,4 +27,8 @@ ZC_NODISCARD zc::Maybe<zc::String> normalizeNfc(zc::StringPtr input);
 /// \return The normalization state, or none when the input is not valid Unicode UTF-8.
 ZC_NODISCARD zc::Maybe<bool> isNfc(zc::StringPtr input);
 
+/// \brief Applies default Unicode full case folding using the pinned UCD release.
+/// \return Folded UTF-8 text, or none when the input is not valid Unicode UTF-8.
+ZC_NODISCARD zc::Maybe<zc::String> fullCaseFold(zc::StringPtr input);
+
 }  // namespace zomlang::compiler::identity

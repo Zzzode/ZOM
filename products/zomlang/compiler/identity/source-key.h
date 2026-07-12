@@ -64,11 +64,10 @@ public:
   ZC_NODISCARD static SourceOriginKey localFile(CanonicalWorkspaceRelativePath&& path);
   ZC_NODISCARD static SourceOriginKey registryFile(PackageKey&& package,
                                                    CanonicalRelativePath&& path);
-  ZC_NODISCARD static SourceOriginKey vcsFile(PackageKey&& package,
-                                              CanonicalRelativePath&& path);
-  ZC_NODISCARD static SourceOriginKey generatedFile(
-      BuildScriptOutputKey buildScriptOutput, CanonicalRelativePath&& logicalPath,
-      const Sha256Digest& contentDigest);
+  ZC_NODISCARD static SourceOriginKey vcsFile(PackageKey&& package, CanonicalRelativePath&& path);
+  ZC_NODISCARD static SourceOriginKey generatedFile(BuildScriptOutputKey buildScriptOutput,
+                                                    CanonicalRelativePath&& logicalPath,
+                                                    const Sha256Digest& contentDigest);
   ZC_NODISCARD SourceOriginKey clone() const;
   ZC_NODISCARD SourceOriginKind kind() const noexcept;
   ZC_NODISCARD bool acceptsContentDigest(const Sha256Digest& contentDigest) const noexcept;
@@ -94,6 +93,7 @@ public:
 
   ZC_NODISCARD static SourceFileKey from(CrateKey&& crate, SourceOriginKey&& origin);
   ZC_NODISCARD SourceFileKey clone() const;
+  ZC_NODISCARD const CrateKey& crate() const noexcept;
   ZC_NODISCARD bool sameAs(const SourceFileKey& other) const;
   ZC_NODISCARD bool belongsTo(const CrateKey& crate) const;
   ZC_NODISCARD bool acceptsContentDigest(const Sha256Digest& contentDigest) const noexcept;
@@ -135,17 +135,18 @@ public:
   ModuleKey& operator=(ModuleKey&&) noexcept = default;
   ZC_DISALLOW_COPY(ModuleKey);
 
-  ZC_NODISCARD static zc::Maybe<ModuleKey> from(
-      CrateKey&& crate, zc::Vector<ModulePathSegment>&& canonicalPath, SourceFileKey&& source,
-      zc::Maybe<SourceSpan>&& declarationAnchor);
+  ZC_NODISCARD static zc::Maybe<ModuleKey> from(CrateKey&& crate,
+                                                zc::Vector<ModulePathSegment>&& canonicalPath,
+                                                SourceFileKey&& source,
+                                                zc::Maybe<SourceSpan>&& declarationAnchor);
   ZC_NODISCARD ModuleKey clone() const;
   ZC_NODISCARD bool contains(const SourceSpan& span) const;
   void encode(CanonicalEncoder& encoder) const;
   ZC_NODISCARD zc::Array<uint8_t> encode() const;
 
 private:
-  ModuleKey(CrateKey&& crate, zc::Vector<ModulePathSegment>&& canonicalPath,
-            SourceFileKey&& source, zc::Maybe<SourceSpan>&& declarationAnchor) noexcept;
+  ModuleKey(CrateKey&& crate, zc::Vector<ModulePathSegment>&& canonicalPath, SourceFileKey&& source,
+            zc::Maybe<SourceSpan>&& declarationAnchor) noexcept;
 
   CrateKey crateValue;
   zc::Vector<ModulePathSegment> pathValue;
