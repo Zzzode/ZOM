@@ -55,22 +55,31 @@ bool sameTargetSelection(const package::RegisteredTargetSelection& left,
   return sameBytes(targetSelectionBytes(left), targetSelectionBytes(right));
 }
 
-bool graphContainsPackage(const package::PackageResolution& graph,
+bool packageMatchesBase(const identity::PackageKey& package, const identity::PackageBaseKey& base) {
+  identity::CanonicalEncoder packageSource;
+  identity::CanonicalEncoder baseSource;
+  package.source().encode(packageSource);
+  base.source().encode(baseSource);
+  return packageSource.finish().asPtr() == baseSource.finish().asPtr() &&
+         package.name() == base.name() && package.version() == base.version();
+}
+
+bool graphContainsPackage(const package::ResolutionOutput& graph,
                           const identity::PackageKey& package) {
   const auto expected = package.encode();
   for (const auto& selected : graph.packages()) {
-    if (sameBytes(expected, selected.packageKey().encode())) { return true; }
+    if (sameBytes(expected, selected.key().encode())) { return true; }
   }
   return false;
 }
 
-bool graphAndSnapshotsMatch(const package::PackageResolution& graph,
+bool graphAndSnapshotsMatch(const package::ResolutionOutput& graph,
                             zc::ArrayPtr<const package::ResolvedPackageSourceSnapshot> snapshots) {
   if (graph.packages().size() == 0 || snapshots.size() == 0) { return false; }
   for (const auto& selected : graph.packages()) {
     bool found = false;
     for (const auto& snapshot : snapshots) {
-      if (sameBytes(selected.base().encode(), snapshot.package().encode())) {
+      if (packageMatchesBase(selected.key(), snapshot.package())) {
         found = true;
         break;
       }
@@ -80,7 +89,7 @@ bool graphAndSnapshotsMatch(const package::PackageResolution& graph,
   for (const auto& snapshot : snapshots) {
     bool found = false;
     for (const auto& selected : graph.packages()) {
-      if (sameBytes(selected.base().encode(), snapshot.package().encode())) {
+      if (packageMatchesBase(selected.key(), snapshot.package())) {
         found = true;
         break;
       }
@@ -127,7 +136,7 @@ void emitIdentityFailures(identity::SemanticIdentityRegistrySet& registries,
 struct VerifiedPackageSessionInput::Impl final {
   Impl(package::VerifiedPackageCompilationRequest&& request,
        irgen::VerifiedTargetSelection&& hostTarget, irgen::VerifiedTargetSelection&& target,
-       package::PackageResolution&& graph,
+       package::ResolutionOutput&& graph,
        zc::Vector<package::ResolvedPackageSourceSnapshot>&& snapshots) noexcept
       : request(zc::mv(request)),
         hostTarget(zc::mv(hostTarget)),
@@ -138,14 +147,14 @@ struct VerifiedPackageSessionInput::Impl final {
   package::VerifiedPackageCompilationRequest request;
   irgen::VerifiedTargetSelection hostTarget;
   irgen::VerifiedTargetSelection target;
-  package::PackageResolution graph;
+  package::ResolutionOutput graph;
   zc::Vector<package::ResolvedPackageSourceSnapshot> snapshots;
 };
 
 VerifiedPackageSessionInput::VerifiedPackageSessionInput(
     package::VerifiedPackageCompilationRequest&& request,
     irgen::VerifiedTargetSelection&& hostTarget, irgen::VerifiedTargetSelection&& target,
-    package::PackageResolution&& graph,
+    package::ResolutionOutput&& graph,
     zc::Vector<package::ResolvedPackageSourceSnapshot>&& snapshots)
     : impl(zc::heap<Impl>(zc::mv(request), zc::mv(hostTarget), zc::mv(target), zc::mv(graph),
                           zc::mv(snapshots))) {}
@@ -159,7 +168,7 @@ VerifiedPackageSessionInput& VerifiedPackageSessionInput::operator=(
 zc::Maybe<VerifiedPackageSessionInput> VerifiedPackageSessionInput::from(
     package::VerifiedPackageCompilationRequest&& request,
     irgen::VerifiedTargetSelection&& hostTarget, irgen::VerifiedTargetSelection&& target,
-    package::PackageResolution&& graph,
+    package::ResolutionOutput&& graph,
     zc::Vector<package::ResolvedPackageSourceSnapshot>&& snapshots) {
   const auto& requestHost = request.hostTarget();
   const auto& requestTarget = request.target();
@@ -251,7 +260,7 @@ struct CompilerSession::Impl {
   zc::Vector<package::FinalizedCompilationRoot> finalizedRoots;
   zc::Maybe<irgen::VerifiedTargetSelection> verifiedHostTarget;
   zc::Maybe<irgen::VerifiedTargetSelection> verifiedTarget;
-  zc::Maybe<package::PackageResolution> packageGraph;
+  zc::Maybe<package::ResolutionOutput> packageGraph;
   zc::Vector<package::ResolvedPackageSourceSnapshot> packageSnapshots;
   zc::Maybe<package::VerifiedBuildScriptPlan> buildScriptPlan;
   zc::Maybe<package::VerifiedBuildScriptResultSet> buildScriptResults;
@@ -1071,7 +1080,7 @@ bool CompilerSession::installVerifiedPackageInput(VerifiedPackageSessionInput&& 
     zc::Vector<zc::Array<uint8_t>> collectedPackageKeys;
     uint32_t traversalOrdinal = 0;
     for (const auto& selected : input.impl->graph.packages()) {
-      auto packageKey = selected.packageKey();
+      auto packageKey = selected.key().clone();
       auto encoded = packageKey.encode();
       bool alreadyCollected = false;
       for (const auto& prior : collectedPackageKeys) {
@@ -1125,7 +1134,7 @@ zc::Maybe<const irgen::VerifiedTargetSelection&> CompilerSession::getVerifiedTar
   return zc::none;
 }
 
-zc::Maybe<const package::PackageResolution&> CompilerSession::getResolvedPackageGraph()
+zc::Maybe<const package::ResolutionOutput&> CompilerSession::getResolvedPackageGraph()
     const noexcept {
   ZC_IF_SOME(graph, impl->packageGraph) { return graph; }
   return zc::none;
@@ -1161,7 +1170,7 @@ zc::Maybe<package::BuildScriptIssue> CompilerSession::executeBuildScriptPlan(
     bool packageFound = false;
     ZC_IF_SOME(graph, impl->packageGraph) {
       for (const auto& selected : graph.packages()) {
-        if (selected.packageKey().encode().asPtr() ==
+        if (selected.key().encode().asPtr() ==
             node.key().preparatory().package().encode().asPtr()) {
           packageFound = true;
           break;

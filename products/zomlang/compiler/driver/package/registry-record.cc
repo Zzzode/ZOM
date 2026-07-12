@@ -209,6 +209,9 @@ const identity::Sha256Digest& VerifiedRegistryReleaseRecord::archiveDigest() con
 const identity::Sha256Digest& VerifiedRegistryReleaseRecord::sourceTreeDigest() const noexcept {
   return candidateValue.sourceTreeDigestValue;
 }
+const SigningKeyId& VerifiedRegistryReleaseRecord::signingKey() const noexcept {
+  return candidateValue.signingKeyValue;
+}
 void VerifiedRegistryReleaseRecord::encode(identity::CanonicalEncoder& encoder) const {
   candidateValue.encodeFields(encoder);
   encoder.encodeByteString(signatureValue.bytes());

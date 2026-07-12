@@ -19,6 +19,7 @@
 #include "zomlang/compiler/diagnostics/diagnostic-engine.h"
 #include "zomlang/compiler/driver/compiler-session.h"
 #include "zomlang/compiler/driver/package/manifest-parser.h"
+#include "zomlang/compiler/driver/package/source-record.h"
 #include "zomlang/compiler/source/manager.h"
 
 namespace zomlang::compiler::driver {
@@ -194,12 +195,36 @@ package::DigestVerifiedSourceSnapshot snapshot(zc::StringPtr output = zc::String
   return zc::mv(result.get<package::DigestVerifiedSourceSnapshot>());
 }
 
-package::PackageResolution resolution(zc::StringPtr packageName) {
-  zc::Vector<package::ResolvedPackageSelection> packages;
-  packages.add(package::ResolvedPackageSelection::from(
-      packageBase(packageName), package::FeatureActivationDomain::Target, emptyFeatures()));
-  zc::Vector<identity::PackageDependencyEdgeKey> edges;
-  return package::PackageResolution::from(zc::mv(packages), zc::mv(edges));
+package::ResolutionOutput resolution(zc::StringPtr packageName) {
+  auto verifiedSource = snapshot();
+  package::ManifestParser parser;
+  zc::Vector<identity::CanonicalRelativePath> files;
+  auto inventory = package::PackageSourceInventory::from(zc::mv(files));
+  ZC_REQUIRE(inventory != zc::none);
+  package::NormalizedManifest normalized = [&]() {
+    ZC_IF_SOME(sourceInventory, inventory) {
+      zc::Vector<identity::CanonicalPathSegment> documentSegments;
+      documentSegments.add(scalar<identity::CanonicalPathSegment>("Zom.toml"_zc));
+      auto parsed = parser.parseWorkspaceManifest(
+          identity::CanonicalWorkspaceRelativePath::from(0, zc::mv(documentSegments)),
+          zc::str("[package]\nname = \"", packageName,
+                  "\"\nversion = \"1.0.0\"\nedition = \"2026\"\n"),
+          sourceInventory);
+      ZC_REQUIRE(parsed.is<package::NormalizedManifest>());
+      return zc::mv(parsed.get<package::NormalizedManifest>());
+    }
+    ZC_UNREACHABLE
+  }();
+  auto record = package::LocalPackageRecord::from(packageBase(packageName), zc::mv(normalized),
+                                                  verifiedSource);
+  ZC_REQUIRE(record != zc::none);
+  zc::Vector<package::ResolverRelease> releases;
+  ZC_IF_SOME(value, record) { releases.add(package::ResolverRelease::fromLocal(value)); }
+  zc::Vector<package::ResolverRoot> roots;
+  roots.add(package::ResolverRoot::from(packageBase(packageName), emptyFeatures(), false, false));
+  auto result = package::PackageResolver::resolve(roots, releases);
+  ZC_REQUIRE(result.is<package::ResolutionOutput>());
+  return zc::mv(result.get<package::ResolutionOutput>());
 }
 
 zc::Vector<package::ResolvedPackageSourceSnapshot> resolvedSnapshots(zc::StringPtr packageName) {

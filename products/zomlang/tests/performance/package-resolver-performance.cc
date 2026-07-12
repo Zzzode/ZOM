@@ -13,9 +13,11 @@
 // the License.
 
 #include "zc/core/filesystem.h"
+#include "zc/core/string-tree.h"
 #include "zc/ztest/test.h"
 #include "zomlang/compiler/driver/package/lockfile.h"
 #include "zomlang/compiler/driver/package/package-resolver.h"
+#include "zomlang/compiler/driver/package/source-record.h"
 #include "zomlang/compiler/identity/canonical-encoder.h"
 #include "zomlang/compiler/identity/sha256.h"
 
@@ -73,6 +75,38 @@ identity::SortedFeatureSet noFeatures() {
   ZC_UNREACHABLE
 }
 
+class MemoryFreshDirectory final : public FreshSourceDirectory {
+public:
+  MemoryFreshDirectory() : rootValue(zc::newInMemoryDirectory(zc::nullClock())) {}
+  ~MemoryFreshDirectory() noexcept override = default;
+  const zc::Directory& root() const override { return *rootValue; }
+  zc::Maybe<MaterializationIssue> finish() override { return zc::none; }
+
+private:
+  zc::Own<zc::Directory> rootValue;
+};
+
+class MemoryFreshDirectoryFactory final : public FreshSourceDirectoryFactory {
+public:
+  FreshSourceDirectoryResult create() override {
+    zc::Own<FreshSourceDirectory> result = zc::heap<MemoryFreshDirectory>();
+    return zc::mv(result);
+  }
+};
+
+DigestVerifiedSourceSnapshot sourceSnapshot() {
+  auto sourceDirectory = zc::newInMemoryDirectory(zc::nullClock());
+  sourceDirectory
+      ->openFile(zc::Path({"src"_zc, "lib.zom"_zc}),
+                 zc::WriteMode::CREATE | zc::WriteMode::CREATE_PARENT)
+      ->writeAll("let library = 0;"_zc);
+  MemoryFreshDirectoryFactory factory;
+  SourceDirectoryMaterializer materializer;
+  auto result = materializer.materialize(*sourceDirectory, factory);
+  ZC_REQUIRE(result.is<DigestVerifiedSourceSnapshot>());
+  return zc::mv(result.get<DigestVerifiedSourceSnapshot>());
+}
+
 identity::PackageBaseKey packageBase(zc::StringPtr name, zc::StringPtr version) {
   auto packageName = identity::PackageName::fromCanonical(name);
   auto packageVersion = identity::ResolvedVersion::fromCanonical(version);
@@ -86,64 +120,31 @@ identity::PackageBaseKey packageBase(zc::StringPtr name, zc::StringPtr version) 
   ZC_UNREACHABLE
 }
 
-DependencyRequirementWithoutOrigin dependency(uint32_t provider) {
-  auto name = decimalName(provider);
-  auto alias = identity::DependencyAlias::fromCanonical(name);
-  auto packageName = identity::PackageName::fromCanonical(name);
-  auto constraint = SemVerConstraint::parse("^1.0.0"_zc);
-  ZC_IF_SOME(aliasValue, alias) {
-    ZC_IF_SOME(packageNameValue, packageName) {
-      ZC_IF_SOME(constraintValue, constraint) {
-        auto result = DependencyRequirementWithoutOrigin::from(
-            zc::mv(aliasValue), zc::mv(packageNameValue), identity::DependencyDomain::Target,
-            PackageSourceConstraint::localPath(workspacePath(name)), zc::mv(constraintValue),
-            noFeatures(), true, false);
-        ZC_IF_SOME(value, result) { return zc::mv(value); }
-      }
-    }
-  }
-  ZC_UNREACHABLE
-}
-
-void sortDependencies(zc::Vector<DependencyRequirementWithoutOrigin>& dependencies) {
-  for (size_t index = 1; index < dependencies.size(); ++index) {
-    auto current = zc::mv(dependencies[index]);
-    const auto currentBytes = current.encode();
-    size_t insertion = index;
-    while (insertion != 0 && currentBytes.asPtr() < dependencies[insertion - 1].encode().asPtr()) {
-      dependencies[insertion] = zc::mv(dependencies[insertion - 1]);
-      --insertion;
-    }
-    dependencies[insertion] = zc::mv(current);
-  }
-}
-
-CanonicalManifestRecord manifest(uint32_t package, uint32_t minor,
-                                 zc::ArrayPtr<const uint32_t> providers) {
+NormalizedManifest manifest(uint32_t package, uint32_t minor,
+                            zc::ArrayPtr<const uint32_t> providers) {
   auto name = decimalName(package);
   auto version = releaseVersion(minor);
-  auto packageName = identity::PackageName::fromCanonical(name);
-  auto packageVersion = identity::ResolvedVersion::fromCanonical(version);
-  auto targetName = identity::TargetName::fromCanonical(name);
-  ZC_IF_SOME(packageNameValue, packageName) {
-    ZC_IF_SOME(packageVersionValue, packageVersion) {
-      ZC_IF_SOME(targetNameValue, targetName) {
-        auto library = CanonicalTargetManifest::from(identity::CrateTargetKind::Library,
-                                                     zc::mv(targetNameValue), libraryPath(), false);
-        ZC_IF_SOME(libraryValue, library) {
-          zc::Vector<DependencyRequirementWithoutOrigin> dependencies;
-          for (uint32_t provider : providers) { dependencies.add(dependency(provider)); }
-          sortDependencies(dependencies);
-          zc::Vector<DependencyRequirementWithoutOrigin> development;
-          zc::Vector<DependencyRequirementWithoutOrigin> build;
-          zc::Vector<CanonicalFeatureManifest> features;
-          return CanonicalManifestRecord::forResolver(
-              PackageManifest::from(zc::mv(packageNameValue), zc::mv(packageVersionValue), 2026),
-              zc::mv(libraryValue), zc::mv(dependencies), zc::mv(development), zc::mv(build),
-              zc::mv(features));
-        }
-      }
-    }
+  zc::Vector<zc::StringTree> pieces;
+  pieces.add(zc::strTree("[package]\nname = \"", name, "\"\nversion = \"", version,
+                         "\"\nedition = \"2026\"\n\n[lib]\nname = \"", name,
+                         "\"\npath = \"src/lib.zom\"\n"));
+  if (providers.size() != 0) { pieces.add(zc::strTree("\n[dependencies]\n")); }
+  for (uint32_t provider : providers) {
+    auto providerName = decimalName(provider);
+    pieces.add(
+        zc::strTree(providerName, " = { path = \"", providerName, "\", version = \"^1.0.0\" }\n"));
+  }
+  zc::StringTree text(pieces.releaseAsArray(), zc::StringPtr());
+  zc::Vector<identity::CanonicalRelativePath> files;
+  files.add(libraryPath());
+  auto inventory = PackageSourceInventory::from(zc::mv(files));
+  ZC_REQUIRE(inventory != zc::none);
+  ZC_IF_SOME(sourceInventory, inventory) {
+    ManifestParser parser;
+    auto parsed = parser.parseWorkspaceManifest(workspacePath("Zom.toml"_zc), text.flatten(),
+                                                sourceInventory);
+    ZC_REQUIRE(parsed.is<NormalizedManifest>());
+    return zc::mv(parsed.get<NormalizedManifest>());
   }
   ZC_UNREACHABLE
 }
@@ -177,64 +178,42 @@ zc::Vector<zc::Vector<uint32_t>> loadEdges() {
 
 ZC_TEST("PackageResolverPerformance.ResolvesCanonicalTenThousandPackageGraph") {
   auto outgoing = loadEdges();
+  auto verifiedSource = sourceSnapshot();
   zc::Vector<ResolverRelease> releases;
   for (uint32_t package = 0; package < kPackageCount; ++package) {
     auto name = decimalName(package);
     for (uint32_t minor = 0; minor < kReleaseCount; ++minor) {
       auto version = releaseVersion(minor);
-      releases.add(ResolverRelease::from(PackageSourceConstraint::localPath(workspacePath(name)),
-                                         packageBase(name, version),
-                                         manifest(package, minor, outgoing[package]), false));
+      auto record = LocalPackageRecord::from(
+          packageBase(name, version), manifest(package, minor, outgoing[package]), verifiedSource);
+      ZC_REQUIRE(record != zc::none);
+      ZC_IF_SOME(value, record) { releases.add(ResolverRelease::fromLocal(value)); }
     }
   }
   zc::Vector<ResolverRoot> roots;
   roots.add(ResolverRoot::from(packageBase("p00000"_zc, "1.3.0"_zc), noFeatures(), true, false));
   PackageResolverMetrics metrics;
   auto result = PackageResolver::resolve(roots, releases, metrics);
-  ZC_REQUIRE(result.is<PackageResolution>());
-  ZC_EXPECT(result.get<PackageResolution>().packages().size() == kPackageCount);
-  ZC_EXPECT(result.get<PackageResolution>().edges().size() == kEdgeCount);
+  ZC_REQUIRE(result.is<ResolutionOutput>());
+  ZC_EXPECT(result.get<ResolutionOutput>().packages().size() == kPackageCount);
+  ZC_EXPECT(result.get<ResolutionOutput>().edges().size() == kEdgeCount);
   ZC_EXPECT(metrics.decisions <= 40'000);
   ZC_EXPECT(metrics.selectedPackages == kPackageCount);
   ZC_EXPECT(metrics.emittedEdges == kEdgeCount);
 
-  const auto& resolution = result.get<PackageResolution>();
-  zc::Vector<LockPackageRecord> lockPackages(resolution.packages().size());
-  for (const auto& package : resolution.packages()) {
-    auto packageKey = package.packageKey();
-    auto digest = identity::sha256(packageKey.encode());
-    ZC_REQUIRE(digest != zc::none);
-    ZC_IF_SOME(value, digest) {
-      zc::Maybe<ArchiveFormat> noArchiveFormat;
-      zc::Maybe<identity::Sha256Digest> noArchiveDigest;
-      zc::Maybe<SigningKeyId> noSigningKey;
-      auto record =
-          LockPackageRecord::from(package.packageKey(), value, value, zc::mv(noArchiveFormat),
-                                  zc::mv(noArchiveDigest), zc::mv(noSigningKey));
-      ZC_REQUIRE(record != zc::none);
-      ZC_IF_SOME(recordValue, record) { lockPackages.add(zc::mv(recordValue)); }
-    }
-  }
-  zc::Vector<identity::PackageDependencyEdgeKey> lockEdges(resolution.edges().size());
-  for (const auto& edge : resolution.edges()) { lockEdges.add(edge.clone()); }
+  const auto& resolution = result.get<ResolutionOutput>();
+  LockReplayMetrics replayMetrics;
+  auto replayed =
+      PackageResolver::resolveLocked(roots, releases, resolution.lockGraph(), replayMetrics);
+  ZC_REQUIRE(replayed.is<ResolutionOutput>());
+  ZC_EXPECT(replayMetrics.solverInvocations == 0);
+  ZC_EXPECT(replayMetrics.packageVisits == kPackageCount);
+  ZC_EXPECT(replayMetrics.edgeVisits == kEdgeCount);
+  ZC_EXPECT(replayed.get<ResolutionOutput>().encode().asPtr() == resolution.encode().asPtr());
 
   releases.clear();
   roots.clear();
   outgoing.clear();
-
-  auto locked = VerifiedLockGraph::from(zc::mv(lockPackages), zc::mv(lockEdges));
-  ZC_REQUIRE(locked.is<VerifiedLockGraph>());
-  auto current = locked.get<VerifiedLockGraph>().clone();
-  zc::Vector<identity::RegistryIdentity> noRegistries;
-  LockReplayMetrics replayMetrics;
-  auto replayed = LockedReplayVerifier::replay(locked.get<VerifiedLockGraph>(), current,
-                                               noRegistries, replayMetrics);
-  ZC_REQUIRE(replayed.is<VerifiedLockGraph>());
-  ZC_EXPECT(replayMetrics.solverInvocations == 0);
-  ZC_EXPECT(replayMetrics.packageVisits == kPackageCount);
-  ZC_EXPECT(replayMetrics.edgeVisits == kEdgeCount);
-  ZC_EXPECT(replayed.get<VerifiedLockGraph>().encode().asPtr() ==
-            locked.get<VerifiedLockGraph>().encode().asPtr());
 }
 
 }  // namespace zomlang::compiler::driver::package

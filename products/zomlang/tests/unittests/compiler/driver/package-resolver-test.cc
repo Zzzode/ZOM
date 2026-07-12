@@ -16,6 +16,7 @@
 
 #include "zc/core/encoding.h"
 #include "zc/ztest/test.h"
+#include "zomlang/compiler/driver/package/source-record.h"
 #include "zomlang/compiler/identity/canonical-encoder.h"
 
 namespace zomlang::compiler::driver::package {
@@ -80,13 +81,49 @@ identity::SortedFeatureSet noFeatures() {
   ZC_FAIL_REQUIRE("empty feature set was rejected");
 }
 
+class MemoryFreshDirectory final : public FreshSourceDirectory {
+public:
+  MemoryFreshDirectory() : rootValue(zc::newInMemoryDirectory(zc::nullClock())) {}
+  ~MemoryFreshDirectory() noexcept override = default;
+  const zc::Directory& root() const override { return *rootValue; }
+  zc::Maybe<MaterializationIssue> finish() override { return zc::none; }
+
+private:
+  zc::Own<zc::Directory> rootValue;
+};
+
+class MemoryFreshDirectoryFactory final : public FreshSourceDirectoryFactory {
+public:
+  FreshSourceDirectoryResult create() override {
+    zc::Own<FreshSourceDirectory> result = zc::heap<MemoryFreshDirectory>();
+    return zc::mv(result);
+  }
+};
+
+DigestVerifiedSourceSnapshot snapshot() {
+  auto sourceDirectory = zc::newInMemoryDirectory(zc::nullClock());
+  sourceDirectory
+      ->openFile(zc::Path({"src"_zc, "lib.zom"_zc}),
+                 zc::WriteMode::CREATE | zc::WriteMode::CREATE_PARENT)
+      ->writeAll("let library = 0;"_zc);
+  sourceDirectory->openFile(zc::Path({"src"_zc, "main.zom"_zc}), zc::WriteMode::CREATE)
+      ->writeAll("let main = 0;"_zc);
+  MemoryFreshDirectoryFactory factory;
+  SourceDirectoryMaterializer materializer;
+  auto result = materializer.materialize(*sourceDirectory, factory);
+  ZC_REQUIRE(result.is<DigestVerifiedSourceSnapshot>());
+  return zc::mv(result.get<DigestVerifiedSourceSnapshot>());
+}
+
 ResolverRelease release(zc::StringPtr name, zc::StringPtr version, uint32_t parents,
-                        zc::StringPtr path, zc::StringPtr manifestText, bool yanked = false,
+                        zc::StringPtr path, zc::StringPtr manifestText,
                         bool includeLibrary = true) {
   auto manifest = parseManifest(manifestText, includeLibrary);
-  return ResolverRelease::from(PackageSourceConstraint::localPath(workspacePath(parents, path)),
-                               base(name, version, parents, path),
-                               CanonicalManifestRecord::from(manifest), yanked);
+  auto sourceSnapshot = snapshot();
+  auto record = LocalPackageRecord::from(base(name, version, parents, path), zc::mv(manifest),
+                                         sourceSnapshot);
+  ZC_IF_SOME(value, record) { return ResolverRelease::fromLocal(value); }
+  ZC_FAIL_REQUIRE("verified local package resolver fixture was rejected");
 }
 
 struct PermutationEntry final {
@@ -173,20 +210,29 @@ ZC_TEST("PackageResolverTest.SelectsGreatestEligibleReleaseAndEmitsGraph") {
   roots.add(ResolverRoot::from(base("app"_zc, "1.0.0"_zc, 0), noFeatures(), false, false));
 
   auto result = PackageResolver::resolve(roots, releases);
-  ZC_REQUIRE(result.is<PackageResolution>());
-  const auto& resolution = result.get<PackageResolution>();
+  ZC_REQUIRE(result.is<ResolutionOutput>());
+  const auto& resolution = result.get<ResolutionOutput>();
   ZC_REQUIRE(resolution.packages().size() == 2);
-  ZC_EXPECT(resolution.packages()[0].base().name() == "app"_zc);
-  ZC_EXPECT(resolution.packages()[1].base().name() == "math"_zc);
-  ZC_EXPECT(resolution.packages()[1].base().version() == "1.3.0"_zc);
-  ZC_EXPECT(resolution.packages()[1].domain() == FeatureActivationDomain::Target);
-  ZC_REQUIRE(resolution.packages()[1].features().size() == 1);
-  ZC_EXPECT(resolution.packages()[1].features()[0].text() == "fast"_zc);
+  ZC_EXPECT(resolution.packages()[0].key().name() == "app"_zc);
+  ZC_EXPECT(resolution.packages()[1].key().name() == "math"_zc);
+  ZC_EXPECT(resolution.packages()[1].key().version() == "1.3.0"_zc);
+  ZC_REQUIRE(resolution.featureSets().size() == 2);
+  ZC_EXPECT(resolution.featureSets()[1].domain() == FeatureActivationDomain::Target);
+  ZC_REQUIRE(resolution.featureSets()[1].features().size() == 1);
+  ZC_EXPECT(resolution.featureSets()[1].features()[0].text() == "fast"_zc);
+  ZC_EXPECT(resolution.lockGraph().packages().size() == resolution.packages().size());
   ZC_EXPECT(resolution.edges().size() == 1);
-  auto outputDigest = identity::sha256(resolution.encode());
+  const auto encoded = resolution.encode();
+  const auto domain = "zom.resolution-output.v0"_zc.asBytes();
+  ZC_REQUIRE(encoded.size() > domain.size());
+  for (size_t index = 0; index < domain.size(); ++index) {
+    ZC_EXPECT(encoded[index] == domain[index]);
+  }
+  ZC_EXPECT(encoded[domain.size()] == 0);
+  auto outputDigest = identity::sha256(encoded);
   ZC_IF_SOME(value, outputDigest) {
     ZC_EXPECT(zc::encodeHex(value.bytes()) ==
-              "9dda2d2a7c89b5c37afa721b6dc6772b412bd6b2d2d50e9752261f66a6876896"_zc);
+              "21640c513f23e7b7e9c51c02d8303ee8d035a0ca6840f05b4428c1351327f9f8"_zc);
   }
 }
 
@@ -203,10 +249,10 @@ ZC_TEST("PackageResolverTest.IsInvariantToReleaseEnumeration") {
   roots.add(ResolverRoot::from(base("app"_zc, "1.0.0"_zc, 0), noFeatures(), false, false));
   auto left = PackageResolver::resolve(roots, first);
   auto right = PackageResolver::resolve(roots, second);
-  ZC_REQUIRE(left.is<PackageResolution>());
-  ZC_REQUIRE(right.is<PackageResolution>());
-  ZC_EXPECT(left.get<PackageResolution>().encode().asPtr() ==
-            right.get<PackageResolution>().encode().asPtr());
+  ZC_REQUIRE(left.is<ResolutionOutput>());
+  ZC_REQUIRE(right.is<ResolutionOutput>());
+  ZC_EXPECT(left.get<ResolutionOutput>().encode().asPtr() ==
+            right.get<ResolutionOutput>().encode().asPtr());
 }
 
 ZC_TEST("PackageResolverTest.MatchesAllCanonicalPermutationSeeds") {
@@ -220,8 +266,8 @@ ZC_TEST("PackageResolverTest.MatchesAllCanonicalPermutationSeeds") {
     zc::Vector<ResolverRoot> roots;
     roots.add(ResolverRoot::from(base("app"_zc, "1.0.0"_zc, 0), noFeatures(), false, false));
     auto result = PackageResolver::resolve(roots, input);
-    ZC_REQUIRE(result.is<PackageResolution>());
-    auto encoded = result.get<PackageResolution>().encode();
+    ZC_REQUIRE(result.is<ResolutionOutput>());
+    auto encoded = result.get<ResolutionOutput>().encode();
     if (seed == 0) {
       expected = zc::mv(encoded);
     } else {
@@ -263,6 +309,26 @@ math = { path = "../math", version = ">=2.0.0" }
   ZC_EXPECT(failed.encode().size() != 0);
 }
 
+ZC_TEST("PackageResolverTest.RejectsStaleLockedPackageRecord") {
+  zc::Vector<ResolverRelease> releases;
+  releases.add(release("app"_zc, "1.0.0"_zc, 0, {}, kRootManifest));
+  releases.add(release("math"_zc, "1.3.0"_zc, 1, "math"_zc, kMath13));
+  zc::Vector<ResolverRoot> roots;
+  roots.add(ResolverRoot::from(base("app"_zc, "1.0.0"_zc, 0), noFeatures(), false, false));
+  auto current = PackageResolver::resolve(roots, releases);
+  ZC_REQUIRE(current.is<ResolutionOutput>());
+
+  zc::Vector<ResolverRelease> staleReleases;
+  staleReleases.add(release("app"_zc, "1.0.0"_zc, 0, {}, kRootManifest));
+  staleReleases.add(release("math"_zc, "1.2.0"_zc, 1, "math"_zc, kMath12));
+  LockReplayMetrics metrics;
+  auto replayed = PackageResolver::resolveLocked(
+      roots, staleReleases, current.get<ResolutionOutput>().lockGraph(), metrics);
+  ZC_REQUIRE(replayed.is<PackageResolverFailure>());
+  ZC_EXPECT(replayed.get<PackageResolverFailure>().issue() == ResolverIssue::LockInputMismatch);
+  ZC_EXPECT(metrics.solverInvocations == 0);
+}
+
 ZC_TEST("PackageResolverTest.SeparatesTargetAndBuildFeatureDomains") {
   constexpr zc::StringPtr rootManifest = R"toml([package]
 name = "app"
@@ -296,25 +362,33 @@ safe = []
   zc::Vector<ResolverRoot> roots;
   roots.add(ResolverRoot::from(base("app"_zc, "1.0.0"_zc, 0), noFeatures(), false, false));
   auto result = PackageResolver::resolve(roots, releases);
-  ZC_REQUIRE(result.is<PackageResolution>());
-  const auto& packages = result.get<PackageResolution>().packages();
-  ZC_REQUIRE(packages.size() == 3);
+  ZC_REQUIRE(result.is<ResolutionOutput>());
+  const auto& featureSets = result.get<ResolutionOutput>().featureSets();
+  ZC_REQUIRE(result.get<ResolutionOutput>().packages().size() == 3);
+  ZC_REQUIRE(featureSets.size() == 3);
   bool foundTarget = false;
   bool foundBuild = false;
-  for (const auto& package : packages) {
-    if (package.base().name() != "math"_zc) { continue; }
-    ZC_REQUIRE(package.features().size() == 1);
-    if (package.domain() == FeatureActivationDomain::Target) {
+  for (const auto& featureSet : featureSets) {
+    if (featureSet.base().name() != "math"_zc) { continue; }
+    ZC_REQUIRE(featureSet.features().size() == 1);
+    if (featureSet.domain() == FeatureActivationDomain::Target) {
       foundTarget = true;
-      ZC_EXPECT(package.features()[0].text() == "fast"_zc);
+      ZC_EXPECT(featureSet.features()[0].text() == "fast"_zc);
     } else {
       foundBuild = true;
-      ZC_EXPECT(package.features()[0].text() == "safe"_zc);
+      ZC_EXPECT(featureSet.features()[0].text() == "safe"_zc);
     }
   }
   ZC_EXPECT(foundTarget);
   ZC_EXPECT(foundBuild);
-  ZC_EXPECT(result.get<PackageResolution>().edges().size() == 2);
+  ZC_EXPECT(result.get<ResolutionOutput>().edges().size() == 2);
+  LockReplayMetrics replayMetrics;
+  auto replayed = PackageResolver::resolveLocked(
+      roots, releases, result.get<ResolutionOutput>().lockGraph(), replayMetrics);
+  ZC_REQUIRE(replayed.is<ResolutionOutput>());
+  ZC_EXPECT(replayMetrics.solverInvocations == 0);
+  ZC_EXPECT(replayed.get<ResolutionOutput>().encode().asPtr() ==
+            result.get<ResolutionOutput>().encode().asPtr());
 }
 
 ZC_TEST("PackageResolverTest.RejectsDependencyProviderWithoutLibrary") {
@@ -332,7 +406,7 @@ fast = []
 )toml"_zc;
   zc::Vector<ResolverRelease> releases;
   releases.add(release("app"_zc, "1.0.0"_zc, 0, {}, kRootManifest));
-  releases.add(release("math"_zc, "1.3.0"_zc, 1, "math"_zc, binaryProvider, false, false));
+  releases.add(release("math"_zc, "1.3.0"_zc, 1, "math"_zc, binaryProvider, false));
   zc::Vector<ResolverRoot> roots;
   roots.add(ResolverRoot::from(base("app"_zc, "1.0.0"_zc, 0), noFeatures(), false, false));
   auto result = PackageResolver::resolve(roots, releases);
@@ -425,29 +499,16 @@ path = "src/lib.zom"
   zc::Vector<ResolverRoot> roots;
   roots.add(ResolverRoot::from(base("app"_zc, "1.0.0"_zc, 0), noFeatures(), false, false));
   auto result = PackageResolver::resolve(roots, releases);
-  ZC_REQUIRE(result.is<PackageResolution>());
-  const auto& packages = result.get<PackageResolution>().packages();
+  ZC_REQUIRE(result.is<ResolutionOutput>());
+  const auto& packages = result.get<ResolutionOutput>().packages();
   ZC_REQUIRE(packages.size() == 3);
   bool foundSolver = false;
   for (const auto& package : packages) {
-    if (package.base().name() != "solver"_zc) { continue; }
+    if (package.key().name() != "solver"_zc) { continue; }
     foundSolver = true;
-    ZC_EXPECT(package.base().version() == "1.0.0"_zc);
+    ZC_EXPECT(package.key().version() == "1.0.0"_zc);
   }
   ZC_EXPECT(foundSolver);
-}
-
-ZC_TEST("PackageResolverTest.SkipsYankedUnlockedRelease") {
-  zc::Vector<ResolverRelease> releases;
-  releases.add(release("app"_zc, "1.0.0"_zc, 0, {}, kRootManifest));
-  releases.add(release("math"_zc, "1.2.0"_zc, 1, "math"_zc, kMath12));
-  releases.add(release("math"_zc, "1.3.0"_zc, 1, "math"_zc, kMath13, true));
-  zc::Vector<ResolverRoot> roots;
-  roots.add(ResolverRoot::from(base("app"_zc, "1.0.0"_zc, 0), noFeatures(), false, false));
-  auto result = PackageResolver::resolve(roots, releases);
-  ZC_REQUIRE(result.is<PackageResolution>());
-  ZC_REQUIRE(result.get<PackageResolution>().packages().size() == 2);
-  ZC_EXPECT(result.get<PackageResolution>().packages()[1].base().version() == "1.2.0"_zc);
 }
 
 }  // namespace zomlang::compiler::driver::package

@@ -144,6 +144,7 @@ public:
   ZC_NODISCARD const identity::Sha256Digest& manifestDigest() const noexcept;
   ZC_NODISCARD const identity::Sha256Digest& archiveDigest() const noexcept;
   ZC_NODISCARD const identity::Sha256Digest& sourceTreeDigest() const noexcept;
+  ZC_NODISCARD const SigningKeyId& signingKey() const noexcept;
   void encode(identity::CanonicalEncoder& encoder) const;
 
 private:

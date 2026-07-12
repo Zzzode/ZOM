@@ -23,11 +23,18 @@ namespace zomlang::compiler::driver::package {
 namespace {
 
 template <typename Value>
-zc::Vector<Value> canonicalSort(zc::Vector<Value>&& input) {
+struct CachedCanonicalValue final {
+  zc::Array<uint8_t> key;
+  Value value;
+};
+
+template <typename Value>
+zc::Vector<CachedCanonicalValue<Value>> cachedCanonicalSort(
+    zc::Vector<CachedCanonicalValue<Value>>&& input) {
   if (input.size() < 2) { return zc::mv(input); }
   const size_t middle = input.size() / 2;
-  zc::Vector<Value> left;
-  zc::Vector<Value> right;
+  zc::Vector<CachedCanonicalValue<Value>> left;
+  zc::Vector<CachedCanonicalValue<Value>> right;
   for (size_t index = 0; index < input.size(); ++index) {
     if (index < middle) {
       left.add(zc::mv(input[index]));
@@ -35,19 +42,15 @@ zc::Vector<Value> canonicalSort(zc::Vector<Value>&& input) {
       right.add(zc::mv(input[index]));
     }
   }
-  left = canonicalSort(zc::mv(left));
-  right = canonicalSort(zc::mv(right));
-  zc::Vector<Value> result;
+  left = cachedCanonicalSort(zc::mv(left));
+  right = cachedCanonicalSort(zc::mv(right));
+  zc::Vector<CachedCanonicalValue<Value>> result;
   size_t leftIndex = 0;
   size_t rightIndex = 0;
   while (leftIndex < left.size() || rightIndex < right.size()) {
     bool takeLeft = rightIndex == right.size();
     if (!takeLeft && leftIndex < left.size()) {
-      identity::CanonicalEncoder leftEncoder;
-      identity::CanonicalEncoder rightEncoder;
-      left[leftIndex].encode(leftEncoder);
-      right[rightIndex].encode(rightEncoder);
-      takeLeft = leftEncoder.finish().asPtr() < rightEncoder.finish().asPtr();
+      takeLeft = left[leftIndex].key.asPtr() < right[rightIndex].key.asPtr();
     }
     if (takeLeft) {
       result.add(zc::mv(left[leftIndex++]));
@@ -56,6 +59,20 @@ zc::Vector<Value> canonicalSort(zc::Vector<Value>&& input) {
     }
   }
   return result;
+}
+
+template <typename Value>
+zc::Vector<Value> canonicalSort(zc::Vector<Value>&& input) {
+  zc::Vector<CachedCanonicalValue<Value>> cached;
+  for (auto& value : input) {
+    identity::CanonicalEncoder encoder;
+    value.encode(encoder);
+    cached.add(CachedCanonicalValue<Value>{encoder.finish(), zc::mv(value)});
+  }
+  cached = cachedCanonicalSort(zc::mv(cached));
+  zc::Vector<Value> sorted;
+  for (auto& value : cached) { sorted.add(zc::mv(value.value)); }
+  return sorted;
 }
 
 zc::Array<uint8_t> encodePackageKey(const identity::PackageKey& key) { return key.encode(); }

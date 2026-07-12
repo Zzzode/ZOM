@@ -1424,6 +1424,10 @@ CanonicalManifestRecord CanonicalManifestRecord::clone() const {
 }
 
 bool CanonicalManifestRecord::hasLibrary() const noexcept { return libraryValue != zc::none; }
+zc::Maybe<const CanonicalTargetManifest&> CanonicalManifestRecord::library() const noexcept {
+  ZC_IF_SOME(value, libraryValue) { return value; }
+  return zc::none;
+}
 zc::ArrayPtr<const DependencyRequirementWithoutOrigin> CanonicalManifestRecord::targetDependencies()
     const noexcept {
   return targetDependencyValues;

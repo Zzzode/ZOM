@@ -21,6 +21,7 @@
 #include "zc/core/one-of.h"
 #include "zc/core/vector.h"
 #include "zomlang/compiler/driver/package/feature-resolver.h"
+#include "zomlang/compiler/driver/package/lockfile.h"
 #include "zomlang/compiler/identity/package-key.h"
 
 namespace zomlang::compiler::driver::package {
@@ -32,9 +33,6 @@ class VerifiedVcsPackageRecord;
 /// \brief Resolver input for one immutable available package release.
 class ResolverRelease final {
 public:
-  ZC_NODISCARD static ResolverRelease from(PackageSourceConstraint&& acceptedSource,
-                                           identity::PackageBaseKey&& base,
-                                           CanonicalManifestRecord&& manifest, bool yanked);
   ZC_NODISCARD static ResolverRelease fromRegistry(const VerifiedRegistryReleaseRecord& release);
   ZC_NODISCARD static ResolverRelease fromVcs(const VerifiedVcsPackageRecord& release);
   ZC_NODISCARD static ResolverRelease fromVcs(const VerifiedVcsPackageRecord& release,
@@ -49,16 +47,34 @@ public:
   ZC_NODISCARD const PackageSourceConstraint& acceptedSource() const noexcept;
   ZC_NODISCARD const identity::PackageBaseKey& base() const noexcept;
   ZC_NODISCARD const CanonicalManifestRecord& manifest() const noexcept;
+  ZC_NODISCARD const identity::Sha256Digest& manifestDigest() const noexcept;
+  ZC_NODISCARD const identity::Sha256Digest& sourceTreeDigest() const noexcept;
+  ZC_NODISCARD bool hasArchive() const noexcept;
+  /// \pre `hasArchive()` is true.
+  ZC_NODISCARD ArchiveFormat archiveFormat() const;
+  /// \pre `hasArchive()` is true.
+  ZC_NODISCARD const identity::Sha256Digest& archiveDigest() const;
+  /// \pre `hasArchive()` is true.
+  ZC_NODISCARD const SigningKeyId& signingKey() const;
   ZC_NODISCARD bool yanked() const noexcept;
   void encode(identity::CanonicalEncoder& encoder) const;
 
 private:
   ResolverRelease(PackageSourceConstraint&& acceptedSource, identity::PackageBaseKey&& base,
-                  CanonicalManifestRecord&& manifest, bool yanked) noexcept;
+                  CanonicalManifestRecord&& manifest, const identity::Sha256Digest& manifestDigest,
+                  const identity::Sha256Digest& sourceTreeDigest,
+                  zc::Maybe<ArchiveFormat> archiveFormat,
+                  zc::Maybe<identity::Sha256Digest> archiveDigest,
+                  zc::Maybe<SigningKeyId> signingKey, bool yanked) noexcept;
 
   PackageSourceConstraint sourceValue;
   identity::PackageBaseKey baseValue;
   CanonicalManifestRecord manifestValue;
+  identity::Sha256Digest manifestDigestValue;
+  identity::Sha256Digest sourceTreeDigestValue;
+  zc::Maybe<ArchiveFormat> archiveFormatValue;
+  zc::Maybe<identity::Sha256Digest> archiveDigestValue;
+  zc::Maybe<SigningKeyId> signingKeyValue;
   bool yankedValue;
 };
 
@@ -96,7 +112,9 @@ enum class ResolverIssue : uint8_t {
   DependencyCycle = 0x03,
   DependencyLibraryTargetMissing = 0x04,
   SourceBindingMissing = 0x05,
-  InvalidRoot = 0x06
+  InvalidRoot = 0x06,
+  InvalidResolutionOutput = 0x07,
+  LockInputMismatch = 0x08
 };
 
 /// \brief One content-addressed canonical incompatibility derivation record.
@@ -178,57 +196,156 @@ private:
   zc::Maybe<IncompatibilityGraph> graphValue;
 };
 
-/// \brief One selected package release in one independently expanded feature domain.
-class ResolvedPackageSelection final {
+/// \brief Immutable source materialization identity for one resolved package.
+class SourceViewKey final {
 public:
-  ZC_NODISCARD static ResolvedPackageSelection from(identity::PackageBaseKey&& base,
-                                                    FeatureActivationDomain domain,
-                                                    identity::SortedFeatureSet&& features);
+  /// \param source Immutable canonical source identity.
+  /// \param sourceTreeDigest Verified digest of the materialized source tree.
+  /// \return One complete immutable source-view key.
+  ZC_NODISCARD static SourceViewKey from(identity::CanonicalPackageSource&& source,
+                                         const identity::Sha256Digest& sourceTreeDigest);
 
-  ResolvedPackageSelection(ResolvedPackageSelection&&) noexcept = default;
-  ResolvedPackageSelection& operator=(ResolvedPackageSelection&&) noexcept = default;
-  ZC_DISALLOW_COPY(ResolvedPackageSelection);
+  SourceViewKey(SourceViewKey&&) noexcept = default;
+  SourceViewKey& operator=(SourceViewKey&&) noexcept = default;
+  ZC_DISALLOW_COPY(SourceViewKey);
 
-  ZC_NODISCARD const identity::PackageBaseKey& base() const noexcept;
-  ZC_NODISCARD FeatureActivationDomain domain() const noexcept;
-  ZC_NODISCARD zc::ArrayPtr<const identity::FeatureName> features() const noexcept;
-  ZC_NODISCARD identity::PackageKey packageKey() const;
+  ZC_NODISCARD SourceViewKey clone() const;
+  ZC_NODISCARD const identity::CanonicalPackageSource& source() const noexcept;
+  ZC_NODISCARD const identity::Sha256Digest& sourceTreeDigest() const noexcept;
   void encode(identity::CanonicalEncoder& encoder) const;
 
 private:
-  ResolvedPackageSelection(identity::PackageBaseKey&& base, FeatureActivationDomain domain,
-                           identity::SortedFeatureSet&& features) noexcept;
+  SourceViewKey(identity::CanonicalPackageSource&& source,
+                const identity::Sha256Digest& sourceTreeDigest) noexcept;
+
+  identity::CanonicalPackageSource sourceValue;
+  identity::Sha256Digest sourceTreeDigestValue;
+};
+
+/// \brief One unique resolved package with verified manifest and source material.
+class ResolvedPackageRecord final {
+public:
+  /// \param key Final package identity selected by the resolver.
+  /// \param manifest Canonical verified package manifest.
+  /// \param manifestDigest Domain-separated digest of `manifest`.
+  /// \param sourceTreeDigest Verified digest of the source tree.
+  /// \param sourceView Source identity paired with `sourceTreeDigest`.
+  /// \param libraryTarget Canonical library target, or none for a binary-only root.
+  /// \return A record when every identity and digest relation is valid; otherwise none.
+  ZC_NODISCARD static zc::Maybe<ResolvedPackageRecord> from(
+      identity::PackageKey&& key, CanonicalManifestRecord&& manifest,
+      const identity::Sha256Digest& manifestDigest, const identity::Sha256Digest& sourceTreeDigest,
+      SourceViewKey&& sourceView, zc::Maybe<identity::TargetName> libraryTarget);
+
+  ResolvedPackageRecord(ResolvedPackageRecord&&) noexcept = default;
+  ResolvedPackageRecord& operator=(ResolvedPackageRecord&&) noexcept = default;
+  ZC_DISALLOW_COPY(ResolvedPackageRecord);
+
+  ZC_NODISCARD ResolvedPackageRecord clone() const;
+  ZC_NODISCARD const identity::PackageKey& key() const noexcept;
+  ZC_NODISCARD const CanonicalManifestRecord& manifest() const noexcept;
+  ZC_NODISCARD const identity::Sha256Digest& manifestDigest() const noexcept;
+  ZC_NODISCARD const identity::Sha256Digest& sourceTreeDigest() const noexcept;
+  ZC_NODISCARD const SourceViewKey& sourceView() const noexcept;
+  ZC_NODISCARD zc::Maybe<const identity::TargetName&> libraryTarget() const noexcept;
+  void encode(identity::CanonicalEncoder& encoder) const;
+
+private:
+  ResolvedPackageRecord(identity::PackageKey&& key, CanonicalManifestRecord&& manifest,
+                        const identity::Sha256Digest& manifestDigest,
+                        const identity::Sha256Digest& sourceTreeDigest, SourceViewKey&& sourceView,
+                        zc::Maybe<identity::TargetName> libraryTarget) noexcept;
+
+  identity::PackageKey keyValue;
+  CanonicalManifestRecord manifestValue;
+  identity::Sha256Digest manifestDigestValue;
+  identity::Sha256Digest sourceTreeDigestValue;
+  SourceViewKey sourceViewValue;
+  zc::Maybe<identity::TargetName> libraryTargetValue;
+};
+
+/// \brief Feature closure for one package activation domain.
+class ResolvedFeatureSet final {
+public:
+  /// \param base Selected package coordinate before feature activation.
+  /// \param domain Independently expanded target or build domain.
+  /// \param features Canonically sorted feature closure.
+  /// \return A feature set for a valid closed activation domain; otherwise none.
+  ZC_NODISCARD static zc::Maybe<ResolvedFeatureSet> from(identity::PackageBaseKey&& base,
+                                                         FeatureActivationDomain domain,
+                                                         identity::SortedFeatureSet&& features);
+
+  ResolvedFeatureSet(ResolvedFeatureSet&&) noexcept = default;
+  ResolvedFeatureSet& operator=(ResolvedFeatureSet&&) noexcept = default;
+  ZC_DISALLOW_COPY(ResolvedFeatureSet);
+
+  ZC_NODISCARD ResolvedFeatureSet clone() const;
+  ZC_NODISCARD const identity::PackageBaseKey& base() const noexcept;
+  ZC_NODISCARD FeatureActivationDomain domain() const noexcept;
+  ZC_NODISCARD zc::ArrayPtr<const identity::FeatureName> features() const noexcept;
+  void encode(identity::CanonicalEncoder& encoder) const;
+
+private:
+  ResolvedFeatureSet(identity::PackageBaseKey&& base, FeatureActivationDomain domain,
+                     identity::SortedFeatureSet&& features) noexcept;
 
   identity::PackageBaseKey baseValue;
   FeatureActivationDomain domainValue;
   identity::SortedFeatureSet featureValues;
 };
 
-/// \brief Canonically ordered selected graph before lockfile projection.
-class PackageResolution final {
+enum class ResolutionOutputIssue : uint8_t {
+  EmptyPackages = 0x01,
+  DuplicatePackage = 0x02,
+  DuplicateEdge = 0x03,
+  DuplicateFeatureSet = 0x04,
+  DanglingEdge = 0x05,
+  MissingPackageRecord = 0x06,
+  LockGraphMismatch = 0x07
+};
+
+/// \brief Canonical resolver authority output with an exact verified lock projection.
+class ResolutionOutput final {
 public:
-  ZC_NODISCARD static PackageResolution from(
-      zc::Vector<ResolvedPackageSelection>&& packages,
-      zc::Vector<identity::PackageDependencyEdgeKey>&& edges);
+  ResolutionOutput(ResolutionOutput&&) noexcept = default;
+  ResolutionOutput& operator=(ResolutionOutput&&) noexcept = default;
+  ZC_DISALLOW_COPY(ResolutionOutput);
 
-  PackageResolution(PackageResolution&&) noexcept = default;
-  PackageResolution& operator=(PackageResolution&&) noexcept = default;
-  ZC_DISALLOW_COPY(PackageResolution);
-
-  ZC_NODISCARD zc::ArrayPtr<const ResolvedPackageSelection> packages() const noexcept;
+  /// \return Canonically sorted unique resolved package records.
+  ZC_NODISCARD zc::ArrayPtr<const ResolvedPackageRecord> packages() const noexcept;
+  /// \return Canonically sorted unique dependency edges.
   ZC_NODISCARD zc::ArrayPtr<const identity::PackageDependencyEdgeKey> edges() const noexcept;
+  /// \return Canonically sorted unique package-domain feature closures.
+  ZC_NODISCARD zc::ArrayPtr<const ResolvedFeatureSet> featureSets() const noexcept;
+  /// \return Exact verified lock projection emitted with this resolution.
+  ZC_NODISCARD const VerifiedLockGraph& lockGraph() const noexcept;
   void encode(identity::CanonicalEncoder& encoder) const;
   ZC_NODISCARD zc::Array<uint8_t> encode() const;
 
 private:
-  PackageResolution(zc::Vector<ResolvedPackageSelection>&& packages,
-                    zc::Vector<identity::PackageDependencyEdgeKey>&& edges) noexcept;
+  friend class PackageResolver;
+  /// \param packages Unique resolved package records produced by the resolver.
+  /// \param edges Unique closed dependency edges produced by the resolver.
+  /// \param featureSets Unique package-domain feature closures.
+  /// \param lockGraph Exact verified projection of `packages` and `edges`.
+  /// \return Canonical output, or the first structural invariant violation.
+  ZC_NODISCARD static zc::OneOf<ResolutionOutput, ResolutionOutputIssue> from(
+      zc::Vector<ResolvedPackageRecord>&& packages,
+      zc::Vector<identity::PackageDependencyEdgeKey>&& edges,
+      zc::Vector<ResolvedFeatureSet>&& featureSets, VerifiedLockGraph&& lockGraph);
 
-  zc::Vector<ResolvedPackageSelection> packageValues;
+  ResolutionOutput(zc::Vector<ResolvedPackageRecord>&& packages,
+                   zc::Vector<identity::PackageDependencyEdgeKey>&& edges,
+                   zc::Vector<ResolvedFeatureSet>&& featureSets,
+                   VerifiedLockGraph&& lockGraph) noexcept;
+
+  zc::Vector<ResolvedPackageRecord> packageValues;
   zc::Vector<identity::PackageDependencyEdgeKey> edgeValues;
+  zc::Vector<ResolvedFeatureSet> featureSetValues;
+  VerifiedLockGraph lockGraphValue;
 };
 
-using PackageResolutionResult = zc::OneOf<PackageResolution, PackageResolverFailure>;
+using ResolutionResult = zc::OneOf<ResolutionOutput, PackageResolverFailure>;
 
 /// \brief Deterministic operation counts for resolver performance gates.
 struct PackageResolverMetrics final {
@@ -240,11 +357,20 @@ struct PackageResolverMetrics final {
 /// \brief Deterministic single-version package and feature resolver.
 class PackageResolver final {
 public:
-  ZC_NODISCARD static PackageResolutionResult resolve(zc::ArrayPtr<const ResolverRoot> roots,
-                                                      zc::ArrayPtr<const ResolverRelease> releases);
-  ZC_NODISCARD static PackageResolutionResult resolve(zc::ArrayPtr<const ResolverRoot> roots,
-                                                      zc::ArrayPtr<const ResolverRelease> releases,
-                                                      PackageResolverMetrics& metrics);
+  ZC_NODISCARD static ResolutionResult resolve(zc::ArrayPtr<const ResolverRoot> roots,
+                                               zc::ArrayPtr<const ResolverRelease> releases);
+  ZC_NODISCARD static ResolutionResult resolve(zc::ArrayPtr<const ResolverRoot> roots,
+                                               zc::ArrayPtr<const ResolverRelease> releases,
+                                               PackageResolverMetrics& metrics);
+  /// \param roots Current verified root and target-domain requests.
+  /// \param releases Source-verified releases available without remote discovery.
+  /// \param locked Canonical lock graph whose exact selection must be retained.
+  /// \param metrics Deterministic replay work counters; solver invocations remain zero.
+  /// \return Exact resolution output, or a structural resolver failure.
+  ZC_NODISCARD static ResolutionResult resolveLocked(zc::ArrayPtr<const ResolverRoot> roots,
+                                                     zc::ArrayPtr<const ResolverRelease> releases,
+                                                     const VerifiedLockGraph& locked,
+                                                     LockReplayMetrics& metrics);
 };
 
 }  // namespace zomlang::compiler::driver::package

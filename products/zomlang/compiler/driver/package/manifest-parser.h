@@ -210,6 +210,7 @@ public:
 
   ZC_NODISCARD CanonicalManifestRecord clone() const;
   ZC_NODISCARD bool hasLibrary() const noexcept;
+  ZC_NODISCARD zc::Maybe<const CanonicalTargetManifest&> library() const noexcept;
   ZC_NODISCARD zc::ArrayPtr<const DependencyRequirementWithoutOrigin> targetDependencies()
       const noexcept;
   ZC_NODISCARD zc::ArrayPtr<const DependencyRequirementWithoutOrigin> developmentDependencies()

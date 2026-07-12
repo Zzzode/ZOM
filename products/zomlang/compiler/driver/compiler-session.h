@@ -61,7 +61,7 @@ public:
   ZC_NODISCARD static zc::Maybe<VerifiedPackageSessionInput> from(
       package::VerifiedPackageCompilationRequest&& request,
       irgen::VerifiedTargetSelection&& hostTarget, irgen::VerifiedTargetSelection&& target,
-      package::PackageResolution&& graph,
+      package::ResolutionOutput&& graph,
       zc::Vector<package::ResolvedPackageSourceSnapshot>&& snapshots);
 
   ~VerifiedPackageSessionInput() noexcept(false);
@@ -76,7 +76,7 @@ private:
   VerifiedPackageSessionInput(package::VerifiedPackageCompilationRequest&& request,
                               irgen::VerifiedTargetSelection&& hostTarget,
                               irgen::VerifiedTargetSelection&& target,
-                              package::PackageResolution&& graph,
+                              package::ResolutionOutput&& graph,
                               zc::Vector<package::ResolvedPackageSourceSnapshot>&& snapshots);
   friend class CompilerSession;
 };
@@ -175,8 +175,7 @@ public:
       const noexcept;
   ZC_NODISCARD zc::Maybe<const irgen::VerifiedTargetSelection&> getVerifiedTarget() const noexcept;
 
-  ZC_NODISCARD zc::Maybe<const package::PackageResolution&> getResolvedPackageGraph()
-      const noexcept;
+  ZC_NODISCARD zc::Maybe<const package::ResolutionOutput&> getResolvedPackageGraph() const noexcept;
   ZC_NODISCARD zc::ArrayPtr<const package::ResolvedPackageSourceSnapshot>
   getResolvedPackageSnapshots() const noexcept;
 

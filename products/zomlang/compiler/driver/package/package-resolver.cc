@@ -782,6 +782,18 @@ identity::PackageKey packageKey(const ResolverRelease& release,
   ZC_UNREACHABLE
 }
 
+identity::PackageBaseKey packageBaseKey(const identity::PackageKey& key) {
+  auto name = identity::PackageName::fromCanonical(key.name());
+  auto version = identity::ResolvedVersion::fromCanonical(key.version());
+  ZC_IF_SOME(nameValue, name) {
+    ZC_IF_SOME(versionValue, version) {
+      return identity::PackageBaseKey::from(key.source().clone(), zc::mv(nameValue),
+                                            zc::mv(versionValue));
+    }
+  }
+  ZC_UNREACHABLE
+}
+
 zc::ArrayPtr<const identity::FeatureName> featuresFor(const Analysis& analysis,
                                                       zc::ArrayPtr<const uint8_t> coordinate,
                                                       FeatureActivationDomain domain) {
@@ -791,11 +803,18 @@ zc::ArrayPtr<const identity::FeatureName> featuresFor(const Analysis& analysis,
 }
 
 template <typename Value>
-zc::Vector<Value> canonicalMergeSort(zc::Vector<Value>&& input) {
+struct CachedCanonicalValue final {
+  zc::Array<uint8_t> key;
+  Value value;
+};
+
+template <typename Value>
+zc::Vector<CachedCanonicalValue<Value>> cachedCanonicalMergeSort(
+    zc::Vector<CachedCanonicalValue<Value>>&& input) {
   if (input.size() < 2) { return zc::mv(input); }
   const size_t middle = input.size() / 2;
-  zc::Vector<Value> left;
-  zc::Vector<Value> right;
+  zc::Vector<CachedCanonicalValue<Value>> left;
+  zc::Vector<CachedCanonicalValue<Value>> right;
   for (size_t index = 0; index < input.size(); ++index) {
     if (index < middle) {
       left.add(zc::mv(input[index]));
@@ -803,19 +822,15 @@ zc::Vector<Value> canonicalMergeSort(zc::Vector<Value>&& input) {
       right.add(zc::mv(input[index]));
     }
   }
-  left = canonicalMergeSort(zc::mv(left));
-  right = canonicalMergeSort(zc::mv(right));
-  zc::Vector<Value> result;
+  left = cachedCanonicalMergeSort(zc::mv(left));
+  right = cachedCanonicalMergeSort(zc::mv(right));
+  zc::Vector<CachedCanonicalValue<Value>> result;
   size_t leftIndex = 0;
   size_t rightIndex = 0;
   while (leftIndex < left.size() || rightIndex < right.size()) {
     bool takeLeft = rightIndex == right.size();
     if (!takeLeft && leftIndex < left.size()) {
-      identity::CanonicalEncoder leftEncoder;
-      identity::CanonicalEncoder rightEncoder;
-      left[leftIndex].encode(leftEncoder);
-      right[rightIndex].encode(rightEncoder);
-      takeLeft = leftEncoder.finish().asPtr() < rightEncoder.finish().asPtr();
+      takeLeft = left[leftIndex].key.asPtr() < right[rightIndex].key.asPtr();
     }
     if (takeLeft) {
       result.add(zc::mv(left[leftIndex++]));
@@ -828,7 +843,16 @@ zc::Vector<Value> canonicalMergeSort(zc::Vector<Value>&& input) {
 
 template <typename Value>
 void canonicalSort(zc::Vector<Value>& values) {
-  values = canonicalMergeSort(zc::mv(values));
+  zc::Vector<CachedCanonicalValue<Value>> cached;
+  for (auto& value : values) {
+    identity::CanonicalEncoder encoder;
+    value.encode(encoder);
+    cached.add(CachedCanonicalValue<Value>{encoder.finish(), zc::mv(value)});
+  }
+  cached = cachedCanonicalMergeSort(zc::mv(cached));
+  zc::Vector<Value> sorted;
+  for (auto& value : cached) { sorted.add(zc::mv(value.value)); }
+  values = zc::mv(sorted);
 }
 
 zc::Array<uint8_t> edgeFactBytes(const EdgeFact& edge) {
@@ -849,54 +873,57 @@ struct EncodedOrderEntry final {
   void encode(identity::CanonicalEncoder& encoder) const { encoder.encodeByteString(key); }
 };
 
-bool visitCycle(size_t node, zc::ArrayPtr<const Selection> selections,
-                zc::ArrayPtr<const EdgeFact> edges, zc::ArrayPtr<const size_t> edgeOrder,
-                zc::Vector<uint8_t>& states, zc::Vector<size_t>& stack,
-                zc::Vector<zc::Array<uint8_t>>& cycle) {
-  states[node] = 1;
-  stack.add(node);
-  for (size_t orderedIndex : edgeOrder) {
-    const auto& edge = edges[orderedIndex];
-    if (edge.consumer.asPtr() != selections[node].coordinate.asPtr()) { continue; }
-    const size_t provider = findSelection(selections, edge.provider);
-    if (provider == selections.size()) { continue; }
-    if (states[provider] == 0 &&
-        visitCycle(provider, selections, edges, edgeOrder, states, stack, cycle)) {
-      return true;
-    }
-    if (states[provider] != 1) { continue; }
-    size_t start = 0;
-    while (start < stack.size() && stack[start] != provider) { ++start; }
-    for (size_t index = start; index < stack.size(); ++index) {
-      cycle.add(copyBytes(selections[stack[index]].coordinate));
-    }
-    cycle.add(copyBytes(selections[provider].coordinate));
-    return true;
-  }
-  stack.removeLast();
-  states[node] = 2;
-  return false;
-}
-
 zc::Maybe<PackageResolverFailure> detectDependencyCycle(zc::ArrayPtr<const Selection> selections,
                                                         zc::ArrayPtr<const EdgeFact> edges) {
-  zc::Vector<size_t> edgeOrder;
   zc::Vector<EncodedOrderEntry> orderedEdges;
   for (size_t index = 0; index < edges.size(); ++index) {
     orderedEdges.add(EncodedOrderEntry{edgeFactBytes(edges[index]), index});
   }
   canonicalSort(orderedEdges);
-  for (const auto& entry : orderedEdges) { edgeOrder.add(entry.index); }
-  zc::Vector<size_t> nodeOrder;
-  for (size_t index = 0; index < selections.size(); ++index) { nodeOrder.add(index); }
+  zc::Vector<zc::Vector<size_t>> outgoing(selections.size());
+  for (size_t index = 0; index < selections.size(); ++index) { outgoing.add(zc::Vector<size_t>()); }
+  for (const auto& entry : orderedEdges) {
+    const size_t consumer = findSelection(selections, edges[entry.index].consumer);
+    if (consumer != selections.size()) { outgoing[consumer].add(entry.index); }
+  }
   zc::Vector<uint8_t> states(selections.size());
   for (size_t index = 0; index < selections.size(); ++index) { states.add(0); }
-  zc::Vector<size_t> stack;
-  for (size_t node : nodeOrder) {
-    if (states[node] != 0) { continue; }
-    zc::Vector<zc::Array<uint8_t>> cycle;
-    if (visitCycle(node, selections, edges, edgeOrder, states, stack, cycle)) {
-      return failure(ResolverIssue::DependencyCycle, selections[node].coordinate, cycle);
+  struct VisitFrame final {
+    size_t node;
+    size_t nextEdge;
+  };
+  zc::Vector<size_t> path;
+  zc::Vector<VisitFrame> frames;
+  for (size_t root = 0; root < selections.size(); ++root) {
+    if (states[root] != 0) { continue; }
+    states[root] = 1;
+    path.add(root);
+    frames.add(VisitFrame{root, 0});
+    while (frames.size() != 0) {
+      auto& frame = frames.back();
+      if (frame.nextEdge == outgoing[frame.node].size()) {
+        states[frame.node] = 2;
+        frames.removeLast();
+        path.removeLast();
+        continue;
+      }
+      const auto& edge = edges[outgoing[frame.node][frame.nextEdge++]];
+      const size_t provider = findSelection(selections, edge.provider);
+      if (provider == selections.size() || states[provider] == 2) { continue; }
+      if (states[provider] == 0) {
+        states[provider] = 1;
+        path.add(provider);
+        frames.add(VisitFrame{provider, 0});
+        continue;
+      }
+      zc::Vector<zc::Array<uint8_t>> cycle;
+      size_t start = 0;
+      while (start < path.size() && path[start] != provider) { ++start; }
+      for (size_t index = start; index < path.size(); ++index) {
+        cycle.add(copyBytes(selections[path[index]].coordinate));
+      }
+      cycle.add(copyBytes(selections[provider].coordinate));
+      return failure(ResolverIssue::DependencyCycle, selections[root].coordinate, cycle);
     }
   }
   return zc::none;
@@ -906,26 +933,34 @@ zc::Maybe<PackageResolverFailure> detectDependencyCycle(zc::ArrayPtr<const Selec
 
 ResolverRelease::ResolverRelease(PackageSourceConstraint&& acceptedSource,
                                  identity::PackageBaseKey&& base,
-                                 CanonicalManifestRecord&& manifest, bool yanked) noexcept
+                                 CanonicalManifestRecord&& manifest,
+                                 const identity::Sha256Digest& manifestDigest,
+                                 const identity::Sha256Digest& sourceTreeDigest,
+                                 zc::Maybe<ArchiveFormat> archiveFormat,
+                                 zc::Maybe<identity::Sha256Digest> archiveDigest,
+                                 zc::Maybe<SigningKeyId> signingKey, bool yanked) noexcept
     : sourceValue(zc::mv(acceptedSource)),
       baseValue(zc::mv(base)),
       manifestValue(zc::mv(manifest)),
+      manifestDigestValue(manifestDigest),
+      sourceTreeDigestValue(sourceTreeDigest),
+      archiveFormatValue(zc::mv(archiveFormat)),
+      archiveDigestValue(zc::mv(archiveDigest)),
+      signingKeyValue(zc::mv(signingKey)),
       yankedValue(yanked) {}
-ResolverRelease ResolverRelease::from(PackageSourceConstraint&& acceptedSource,
-                                      identity::PackageBaseKey&& base,
-                                      CanonicalManifestRecord&& manifest, bool yanked) {
-  return ResolverRelease(zc::mv(acceptedSource), zc::mv(base), zc::mv(manifest), yanked);
-}
 ResolverRelease ResolverRelease::fromRegistry(const VerifiedRegistryReleaseRecord& release) {
   auto name = identity::PackageName::fromCanonical(release.package());
   auto version = identity::ResolvedVersion::fromCanonical(release.version());
   ZC_IF_SOME(nameValue, name) {
     ZC_IF_SOME(versionValue, version) {
-      return from(PackageSourceConstraint::registry(release.registry().clone()),
-                  identity::PackageBaseKey::from(
-                      identity::CanonicalPackageSource::registry(release.registry().clone()),
-                      zc::mv(nameValue), zc::mv(versionValue)),
-                  release.manifest().clone(), release.yanked());
+      return ResolverRelease(
+          PackageSourceConstraint::registry(release.registry().clone()),
+          identity::PackageBaseKey::from(
+              identity::CanonicalPackageSource::registry(release.registry().clone()),
+              zc::mv(nameValue), zc::mv(versionValue)),
+          release.manifest().clone(), release.manifestDigest(), release.sourceTreeDigest(),
+          ArchiveFormat::TarZstdV1, release.archiveDigest(),
+          SigningKeyId::fromDigest(release.signingKey().digest()), release.yanked());
     }
   }
   ZC_UNREACHABLE
@@ -943,29 +978,69 @@ ResolverRelease ResolverRelease::fromVcs(const VerifiedVcsPackageRecord& release
                                          PackageSourceConstraint&& acceptedSelector) {
   ZC_IREQUIRE(acceptedSelector.kind() == PackageSourceConstraintKind::Vcs,
               "VCS resolver record must accept a VCS selector");
-  return from(zc::mv(acceptedSelector), release.base().clone(), release.canonicalManifest().clone(),
-              false);
+  return ResolverRelease(zc::mv(acceptedSelector), release.base().clone(),
+                         release.canonicalManifest().clone(), release.manifestDigest(),
+                         release.sourceTreeDigest(), zc::none, zc::none, zc::none, false);
 }
 ResolverRelease ResolverRelease::fromLocal(const LocalPackageRecord& release) {
   const auto& source = release.base().source();
   ZC_IREQUIRE(source.kind() == identity::PackageSourceKind::LocalPath,
               "local resolver record must carry a local package base");
-  return from(PackageSourceConstraint::localPath(source.localPath().clone()),
-              release.base().clone(), release.canonicalManifest().clone(), false);
+  return ResolverRelease(PackageSourceConstraint::localPath(source.localPath().clone()),
+                         release.base().clone(), release.canonicalManifest().clone(),
+                         release.manifestDigest(), release.sourceTreeDigest(), zc::none, zc::none,
+                         zc::none, false);
 }
 ResolverRelease ResolverRelease::clone() const {
-  return from(sourceValue.clone(), baseValue.clone(), manifestValue.clone(), yankedValue);
+  zc::Maybe<ArchiveFormat> archiveFormat;
+  ZC_IF_SOME(value, archiveFormatValue) { archiveFormat = value; }
+  zc::Maybe<identity::Sha256Digest> archiveDigest;
+  ZC_IF_SOME(value, archiveDigestValue) { archiveDigest = value; }
+  zc::Maybe<SigningKeyId> signingKey;
+  ZC_IF_SOME(value, signingKeyValue) { signingKey = SigningKeyId::fromDigest(value.digest()); }
+  return ResolverRelease(sourceValue.clone(), baseValue.clone(), manifestValue.clone(),
+                         manifestDigestValue, sourceTreeDigestValue, zc::mv(archiveFormat),
+                         zc::mv(archiveDigest), zc::mv(signingKey), yankedValue);
 }
 const PackageSourceConstraint& ResolverRelease::acceptedSource() const noexcept {
   return sourceValue;
 }
 const identity::PackageBaseKey& ResolverRelease::base() const noexcept { return baseValue; }
 const CanonicalManifestRecord& ResolverRelease::manifest() const noexcept { return manifestValue; }
+const identity::Sha256Digest& ResolverRelease::manifestDigest() const noexcept {
+  return manifestDigestValue;
+}
+const identity::Sha256Digest& ResolverRelease::sourceTreeDigest() const noexcept {
+  return sourceTreeDigestValue;
+}
+bool ResolverRelease::hasArchive() const noexcept { return archiveFormatValue != zc::none; }
+ArchiveFormat ResolverRelease::archiveFormat() const {
+  ZC_IF_SOME(value, archiveFormatValue) { return value; }
+  ZC_UNREACHABLE
+}
+const identity::Sha256Digest& ResolverRelease::archiveDigest() const {
+  ZC_IF_SOME(value, archiveDigestValue) { return value; }
+  ZC_UNREACHABLE
+}
+const SigningKeyId& ResolverRelease::signingKey() const {
+  ZC_IF_SOME(value, signingKeyValue) { return value; }
+  ZC_UNREACHABLE
+}
 bool ResolverRelease::yanked() const noexcept { return yankedValue; }
 void ResolverRelease::encode(identity::CanonicalEncoder& encoder) const {
   sourceValue.encode(encoder);
   baseValue.encode(encoder);
   manifestValue.encode(encoder);
+  encoder.encodeDigest(manifestDigestValue);
+  encoder.encodeDigest(sourceTreeDigestValue);
+  if (hasArchive()) {
+    encoder.encodeSome();
+    encoder.encodeUint8(static_cast<uint8_t>(archiveFormat()));
+    encoder.encodeDigest(archiveDigest());
+    signingKey().encode(encoder);
+  } else {
+    encoder.encodeNone();
+  }
   encoder.encodeBool(yankedValue);
 }
 
@@ -1085,69 +1160,408 @@ zc::Array<uint8_t> PackageResolverFailure::encode() const {
   return encoder.finish();
 }
 
-ResolvedPackageSelection::ResolvedPackageSelection(identity::PackageBaseKey&& base,
-                                                   FeatureActivationDomain domain,
-                                                   identity::SortedFeatureSet&& features) noexcept
-    : baseValue(zc::mv(base)), domainValue(domain), featureValues(zc::mv(features)) {}
-ResolvedPackageSelection ResolvedPackageSelection::from(identity::PackageBaseKey&& base,
-                                                        FeatureActivationDomain domain,
-                                                        identity::SortedFeatureSet&& features) {
-  return ResolvedPackageSelection(zc::mv(base), domain, zc::mv(features));
+SourceViewKey::SourceViewKey(identity::CanonicalPackageSource&& source,
+                             const identity::Sha256Digest& sourceTreeDigest) noexcept
+    : sourceValue(zc::mv(source)), sourceTreeDigestValue(sourceTreeDigest) {}
+SourceViewKey SourceViewKey::from(identity::CanonicalPackageSource&& source,
+                                  const identity::Sha256Digest& sourceTreeDigest) {
+  return SourceViewKey(zc::mv(source), sourceTreeDigest);
 }
-const identity::PackageBaseKey& ResolvedPackageSelection::base() const noexcept {
-  return baseValue;
+SourceViewKey SourceViewKey::clone() const {
+  return SourceViewKey(sourceValue.clone(), sourceTreeDigestValue);
 }
-FeatureActivationDomain ResolvedPackageSelection::domain() const noexcept { return domainValue; }
-zc::ArrayPtr<const identity::FeatureName> ResolvedPackageSelection::features() const noexcept {
-  return featureValues.values();
+const identity::CanonicalPackageSource& SourceViewKey::source() const noexcept {
+  return sourceValue;
 }
-identity::PackageKey ResolvedPackageSelection::packageKey() const {
-  auto name = identity::PackageName::fromCanonical(baseValue.name());
-  auto version = identity::ResolvedVersion::fromCanonical(baseValue.version());
-  ZC_IF_SOME(nameValue, name) {
-    ZC_IF_SOME(versionValue, version) {
-      return identity::PackageKey::from(baseValue.source().clone(), zc::mv(nameValue),
-                                        zc::mv(versionValue), featureValues.clone());
+const identity::Sha256Digest& SourceViewKey::sourceTreeDigest() const noexcept {
+  return sourceTreeDigestValue;
+}
+void SourceViewKey::encode(identity::CanonicalEncoder& encoder) const {
+  sourceValue.encode(encoder);
+  encoder.encodeDigest(sourceTreeDigestValue);
+}
+
+ResolvedPackageRecord::ResolvedPackageRecord(identity::PackageKey&& key,
+                                             CanonicalManifestRecord&& manifest,
+                                             const identity::Sha256Digest& manifestDigest,
+                                             const identity::Sha256Digest& sourceTreeDigest,
+                                             SourceViewKey&& sourceView,
+                                             zc::Maybe<identity::TargetName> libraryTarget) noexcept
+    : keyValue(zc::mv(key)),
+      manifestValue(zc::mv(manifest)),
+      manifestDigestValue(manifestDigest),
+      sourceTreeDigestValue(sourceTreeDigest),
+      sourceViewValue(zc::mv(sourceView)),
+      libraryTargetValue(zc::mv(libraryTarget)) {}
+zc::Maybe<ResolvedPackageRecord> ResolvedPackageRecord::from(
+    identity::PackageKey&& key, CanonicalManifestRecord&& manifest,
+    const identity::Sha256Digest& manifestDigest, const identity::Sha256Digest& sourceTreeDigest,
+    SourceViewKey&& sourceView, zc::Maybe<identity::TargetName> libraryTarget) {
+  identity::CanonicalEncoder keySource;
+  identity::CanonicalEncoder viewSource;
+  key.source().encode(keySource);
+  sourceView.source().encode(viewSource);
+  if (keySource.finish().asPtr() != viewSource.finish().asPtr() ||
+      sourceTreeDigest != sourceView.sourceTreeDigest()) {
+    return zc::none;
+  }
+  identity::Sha256Hasher hasher;
+  const uint8_t separator = 0;
+  const auto manifestBytes = manifest.encode();
+  if (!hasher.update("zom.normalized-manifest.v0"_zc.asBytes()) ||
+      !hasher.update(zc::arrayPtr(separator)) || !hasher.update(manifestBytes.asPtr())) {
+    return zc::none;
+  }
+  auto computedDigest = hasher.finish();
+  if (computedDigest == zc::none) { return zc::none; }
+  ZC_IF_SOME(value, computedDigest) {
+    if (value != manifestDigest) { return zc::none; }
+  }
+  const auto library = manifest.library();
+  if ((library == zc::none) != (libraryTarget == zc::none)) { return zc::none; }
+  ZC_IF_SOME(manifestLibrary, library) {
+    ZC_IF_SOME(target, libraryTarget) {
+      if (manifestLibrary.name() != target.text()) { return zc::none; }
     }
   }
+  return ResolvedPackageRecord(zc::mv(key), zc::mv(manifest), manifestDigest, sourceTreeDigest,
+                               zc::mv(sourceView), zc::mv(libraryTarget));
+}
+ResolvedPackageRecord ResolvedPackageRecord::clone() const {
+  zc::Maybe<identity::TargetName> libraryTarget;
+  ZC_IF_SOME(value, libraryTargetValue) { libraryTarget = value.clone(); }
+  auto result = from(keyValue.clone(), manifestValue.clone(), manifestDigestValue,
+                     sourceTreeDigestValue, sourceViewValue.clone(), zc::mv(libraryTarget));
+  ZC_IF_SOME(value, result) { return zc::mv(value); }
   ZC_UNREACHABLE
 }
-void ResolvedPackageSelection::encode(identity::CanonicalEncoder& encoder) const {
+const identity::PackageKey& ResolvedPackageRecord::key() const noexcept { return keyValue; }
+const CanonicalManifestRecord& ResolvedPackageRecord::manifest() const noexcept {
+  return manifestValue;
+}
+const identity::Sha256Digest& ResolvedPackageRecord::manifestDigest() const noexcept {
+  return manifestDigestValue;
+}
+const identity::Sha256Digest& ResolvedPackageRecord::sourceTreeDigest() const noexcept {
+  return sourceTreeDigestValue;
+}
+const SourceViewKey& ResolvedPackageRecord::sourceView() const noexcept { return sourceViewValue; }
+zc::Maybe<const identity::TargetName&> ResolvedPackageRecord::libraryTarget() const noexcept {
+  ZC_IF_SOME(value, libraryTargetValue) { return value; }
+  return zc::none;
+}
+void ResolvedPackageRecord::encode(identity::CanonicalEncoder& encoder) const {
+  keyValue.encode(encoder);
+  manifestValue.encode(encoder);
+  encoder.encodeDigest(manifestDigestValue);
+  encoder.encodeDigest(sourceTreeDigestValue);
+  sourceViewValue.encode(encoder);
+  ZC_IF_SOME(target, libraryTargetValue) {
+    encoder.encodeSome();
+    target.encode(encoder);
+  }
+  else { encoder.encodeNone(); }
+}
+
+ResolvedFeatureSet::ResolvedFeatureSet(identity::PackageBaseKey&& base,
+                                       FeatureActivationDomain domain,
+                                       identity::SortedFeatureSet&& features) noexcept
+    : baseValue(zc::mv(base)), domainValue(domain), featureValues(zc::mv(features)) {}
+zc::Maybe<ResolvedFeatureSet> ResolvedFeatureSet::from(identity::PackageBaseKey&& base,
+                                                       FeatureActivationDomain domain,
+                                                       identity::SortedFeatureSet&& features) {
+  if (domain != FeatureActivationDomain::Target && domain != FeatureActivationDomain::Build) {
+    return zc::none;
+  }
+  return ResolvedFeatureSet(zc::mv(base), domain, zc::mv(features));
+}
+ResolvedFeatureSet ResolvedFeatureSet::clone() const {
+  auto result = from(baseValue.clone(), domainValue, featureValues.clone());
+  ZC_IF_SOME(value, result) { return zc::mv(value); }
+  ZC_UNREACHABLE
+}
+const identity::PackageBaseKey& ResolvedFeatureSet::base() const noexcept { return baseValue; }
+FeatureActivationDomain ResolvedFeatureSet::domain() const noexcept { return domainValue; }
+zc::ArrayPtr<const identity::FeatureName> ResolvedFeatureSet::features() const noexcept {
+  return featureValues.values();
+}
+void ResolvedFeatureSet::encode(identity::CanonicalEncoder& encoder) const {
   baseValue.encode(encoder);
   encoder.encodeUint8(static_cast<uint8_t>(domainValue));
   featureValues.encode(encoder);
 }
 
-PackageResolution::PackageResolution(
-    zc::Vector<ResolvedPackageSelection>&& packages,
-    zc::Vector<identity::PackageDependencyEdgeKey>&& edges) noexcept
-    : packageValues(zc::mv(packages)), edgeValues(zc::mv(edges)) {}
-PackageResolution PackageResolution::from(zc::Vector<ResolvedPackageSelection>&& packages,
-                                          zc::Vector<identity::PackageDependencyEdgeKey>&& edges) {
-  return PackageResolution(zc::mv(packages), zc::mv(edges));
+ResolutionOutput::ResolutionOutput(zc::Vector<ResolvedPackageRecord>&& packages,
+                                   zc::Vector<identity::PackageDependencyEdgeKey>&& edges,
+                                   zc::Vector<ResolvedFeatureSet>&& featureSets,
+                                   VerifiedLockGraph&& lockGraph) noexcept
+    : packageValues(zc::mv(packages)),
+      edgeValues(zc::mv(edges)),
+      featureSetValues(zc::mv(featureSets)),
+      lockGraphValue(zc::mv(lockGraph)) {}
+zc::OneOf<ResolutionOutput, ResolutionOutputIssue> ResolutionOutput::from(
+    zc::Vector<ResolvedPackageRecord>&& packages,
+    zc::Vector<identity::PackageDependencyEdgeKey>&& edges,
+    zc::Vector<ResolvedFeatureSet>&& featureSets, VerifiedLockGraph&& lockGraph) {
+  canonicalSort(packages);
+  canonicalSort(edges);
+  canonicalSort(featureSets);
+  if (packages.size() == 0) { return ResolutionOutputIssue::EmptyPackages; }
+  zc::Vector<zc::Array<uint8_t>> packageKeys;
+  for (const auto& package : packages) { packageKeys.add(package.key().encode()); }
+  sortByteArrays(packageKeys);
+  for (size_t index = 1; index < packages.size(); ++index) {
+    if (packageKeys[index - 1].asPtr() == packageKeys[index].asPtr()) {
+      return ResolutionOutputIssue::DuplicatePackage;
+    }
+  }
+  for (size_t index = 1; index < edges.size(); ++index) {
+    if (edges[index - 1].encode().asPtr() == edges[index].encode().asPtr()) {
+      return ResolutionOutputIssue::DuplicateEdge;
+    }
+  }
+  zc::Vector<zc::Array<uint8_t>> activationKeys;
+  zc::Vector<zc::Array<uint8_t>> featurePackageKeys;
+  for (const auto& featureSet : featureSets) {
+    identity::CanonicalEncoder activation;
+    featureSet.base().encode(activation);
+    activation.encodeUint8(static_cast<uint8_t>(featureSet.domain()));
+    activationKeys.add(activation.finish());
+    auto name = identity::PackageName::fromCanonical(featureSet.base().name());
+    auto version = identity::ResolvedVersion::fromCanonical(featureSet.base().version());
+    ZC_IF_SOME(nameValue, name) {
+      ZC_IF_SOME(versionValue, version) {
+        featurePackageKeys.add(identity::PackageKey::from(featureSet.base().source().clone(),
+                                                          zc::mv(nameValue), zc::mv(versionValue),
+                                                          sortedFeatures(featureSet.features()))
+                                   .encode());
+      }
+    }
+  }
+  sortByteArrays(activationKeys);
+  sortByteArrays(featurePackageKeys);
+  for (size_t index = 1; index < activationKeys.size(); ++index) {
+    if (activationKeys[index - 1].asPtr() == activationKeys[index].asPtr()) {
+      return ResolutionOutputIssue::DuplicateFeatureSet;
+    }
+  }
+  auto containsBytes = [](zc::ArrayPtr<const zc::Array<uint8_t>> values,
+                          zc::ArrayPtr<const uint8_t> key) {
+    size_t lower = 0;
+    size_t upper = values.size();
+    while (lower < upper) {
+      const size_t middle = lower + (upper - lower) / 2;
+      if (values[middle].asPtr() < key) {
+        lower = middle + 1;
+      } else {
+        upper = middle;
+      }
+    }
+    return lower < values.size() && values[lower].asPtr() == key;
+  };
+  for (const auto& edge : edges) {
+    if (!containsBytes(packageKeys, edge.consumer().encode()) ||
+        !containsBytes(packageKeys, edge.provider().encode())) {
+      return ResolutionOutputIssue::DanglingEdge;
+    }
+  }
+  for (const auto& key : featurePackageKeys) {
+    if (!containsBytes(packageKeys, key)) { return ResolutionOutputIssue::MissingPackageRecord; }
+  }
+  for (const auto& key : packageKeys) {
+    if (!containsBytes(featurePackageKeys, key)) {
+      return ResolutionOutputIssue::MissingPackageRecord;
+    }
+  }
+  if (lockGraph.packages().size() != packages.size() || lockGraph.edges().size() != edges.size()) {
+    return ResolutionOutputIssue::LockGraphMismatch;
+  }
+  for (const auto& package : packages) {
+    const auto key = package.key().encode();
+    size_t lower = 0;
+    size_t upper = lockGraph.packages().size();
+    while (lower < upper) {
+      const size_t middle = lower + (upper - lower) / 2;
+      const auto middleBytes = lockGraph.packages()[middle].key().encode();
+      const zc::ArrayPtr<const uint8_t> middleKey = middleBytes;
+      if (middleKey < key.asPtr()) {
+        lower = middle + 1;
+      } else {
+        upper = middle;
+      }
+    }
+    if (lower == lockGraph.packages().size()) { return ResolutionOutputIssue::LockGraphMismatch; }
+    const auto& locked = lockGraph.packages()[lower];
+    if (locked.key().encode().asPtr() != key.asPtr() ||
+        package.manifestDigest() != locked.manifestDigest() ||
+        package.sourceTreeDigest() != locked.sourceTreeDigest()) {
+      return ResolutionOutputIssue::LockGraphMismatch;
+    }
+  }
+  for (size_t index = 0; index < edges.size(); ++index) {
+    if (edges[index].encode().asPtr() != lockGraph.edges()[index].encode().asPtr()) {
+      return ResolutionOutputIssue::LockGraphMismatch;
+    }
+  }
+  return ResolutionOutput(zc::mv(packages), zc::mv(edges), zc::mv(featureSets), zc::mv(lockGraph));
 }
-zc::ArrayPtr<const ResolvedPackageSelection> PackageResolution::packages() const noexcept {
+zc::ArrayPtr<const ResolvedPackageRecord> ResolutionOutput::packages() const noexcept {
   return packageValues;
 }
-zc::ArrayPtr<const identity::PackageDependencyEdgeKey> PackageResolution::edges() const noexcept {
+zc::ArrayPtr<const identity::PackageDependencyEdgeKey> ResolutionOutput::edges() const noexcept {
   return edgeValues;
 }
-void PackageResolution::encode(identity::CanonicalEncoder& encoder) const {
-  encoder.encodeByteString("zom.package-resolution.v0"_zc.asBytes());
+zc::ArrayPtr<const ResolvedFeatureSet> ResolutionOutput::featureSets() const noexcept {
+  return featureSetValues;
+}
+const VerifiedLockGraph& ResolutionOutput::lockGraph() const noexcept { return lockGraphValue; }
+void ResolutionOutput::encode(identity::CanonicalEncoder& encoder) const {
+  for (uint8_t value : "zom.resolution-output.v0"_zc.asBytes()) { encoder.encodeUint8(value); }
   encoder.encodeUint8(0);
   encoder.encodeSequenceSize(packageValues.size());
   for (const auto& package : packageValues) { package.encode(encoder); }
   encoder.encodeSequenceSize(edgeValues.size());
   for (const auto& edge : edgeValues) { edge.encode(encoder); }
+  encoder.encodeSequenceSize(featureSetValues.size());
+  for (const auto& featureSet : featureSetValues) { featureSet.encode(encoder); }
+  lockGraphValue.encode(encoder);
 }
-zc::Array<uint8_t> PackageResolution::encode() const {
+zc::Array<uint8_t> ResolutionOutput::encode() const {
   identity::CanonicalEncoder encoder;
   encode(encoder);
   return encoder.finish();
 }
 
-PackageResolutionResult PackageResolver::resolve(zc::ArrayPtr<const ResolverRoot> roots,
-                                                 zc::ArrayPtr<const ResolverRelease> releases) {
+namespace {
+
+struct ResolutionParts final {
+  zc::Vector<ResolvedPackageRecord> packages;
+  zc::Vector<identity::PackageDependencyEdgeKey> edges;
+  zc::Vector<ResolvedFeatureSet> featureSets;
+  VerifiedLockGraph lockGraph;
+};
+
+zc::OneOf<ResolutionParts, PackageResolverFailure> buildResolutionParts(
+    zc::ArrayPtr<const Selection> selections, const Analysis& analysis,
+    zc::ArrayPtr<const ResolverRelease> releases) {
+  auto cycle = detectDependencyCycle(selections, analysis.edges);
+  ZC_IF_SOME(value, cycle) { return zc::mv(value); }
+  struct PackageCandidate final {
+    zc::Array<uint8_t> keyBytes;
+    size_t selectionIndex;
+    identity::SortedFeatureSet features;
+
+    void encode(identity::CanonicalEncoder& encoder) const {
+      for (uint8_t value : keyBytes) { encoder.encodeUint8(value); }
+    }
+  };
+  zc::Vector<PackageCandidate> candidates;
+  zc::Vector<ResolvedFeatureSet> featureSets;
+  for (const auto& activation : analysis.activations) {
+    const size_t selectionIndex = findSelection(selections, activation.coordinate);
+    if (selectionIndex == selections.size()) {
+      return failure(ResolverIssue::InvalidResolutionOutput, activation.coordinate);
+    }
+    const auto& selection = selections[selectionIndex];
+    const auto& release = releases[selection.releaseIndex];
+    auto features = sortedFeatures(featuresFor(analysis, selection.coordinate, activation.domain));
+    auto featureSet =
+        ResolvedFeatureSet::from(release.base().clone(), activation.domain, features.clone());
+    if (featureSet == zc::none) {
+      return failure(ResolverIssue::InvalidResolutionOutput, selection.coordinate);
+    }
+    ZC_IF_SOME(value, featureSet) { featureSets.add(zc::mv(value)); }
+    auto key = packageKey(release, features.values());
+    candidates.add(PackageCandidate{key.encode(), selectionIndex, zc::mv(features)});
+  }
+  canonicalSort(candidates);
+  zc::Vector<ResolvedPackageRecord> uniquePackages;
+  zc::Vector<LockPackageRecord> uniqueLockPackages;
+  for (size_t candidateIndex = 0; candidateIndex < candidates.size(); ++candidateIndex) {
+    const auto& candidate = candidates[candidateIndex];
+    if (candidateIndex != 0 &&
+        candidates[candidateIndex - 1].keyBytes.asPtr() == candidate.keyBytes.asPtr()) {
+      continue;
+    }
+    const auto& selection = selections[candidate.selectionIndex];
+    const auto& release = releases[selection.releaseIndex];
+    auto key = packageKey(release, candidate.features.values());
+    zc::Maybe<identity::TargetName> libraryTarget;
+    ZC_IF_SOME(library, release.manifest().library()) {
+      auto target = identity::TargetName::fromCanonical(library.name());
+      if (target == zc::none) {
+        return failure(ResolverIssue::InvalidResolutionOutput, selection.coordinate);
+      }
+      ZC_IF_SOME(value, target) { libraryTarget = zc::mv(value); }
+    }
+    auto record = ResolvedPackageRecord::from(
+        key.clone(), release.manifest().clone(), release.manifestDigest(),
+        release.sourceTreeDigest(),
+        SourceViewKey::from(release.base().source().clone(), release.sourceTreeDigest()),
+        zc::mv(libraryTarget));
+    if (record == zc::none) {
+      return failure(ResolverIssue::InvalidResolutionOutput, selection.coordinate);
+    }
+    zc::Maybe<ArchiveFormat> archiveFormat;
+    zc::Maybe<identity::Sha256Digest> archiveDigest;
+    zc::Maybe<SigningKeyId> signingKey;
+    if (release.hasArchive()) {
+      archiveFormat = release.archiveFormat();
+      archiveDigest = release.archiveDigest();
+      signingKey = SigningKeyId::fromDigest(release.signingKey().digest());
+    }
+    auto lockPackage =
+        LockPackageRecord::from(zc::mv(key), release.manifestDigest(), release.sourceTreeDigest(),
+                                zc::mv(archiveFormat), zc::mv(archiveDigest), zc::mv(signingKey));
+    if (lockPackage == zc::none) {
+      return failure(ResolverIssue::InvalidResolutionOutput, selection.coordinate);
+    }
+    ZC_IF_SOME(value, record) { uniquePackages.add(zc::mv(value)); }
+    ZC_IF_SOME(value, lockPackage) { uniqueLockPackages.add(zc::mv(value)); }
+  }
+
+  zc::Vector<identity::PackageDependencyEdgeKey> edges;
+  for (const auto& fact : analysis.edges) {
+    const size_t consumerSelection = findSelection(selections, fact.consumer);
+    const size_t providerSelection = findSelection(selections, fact.provider);
+    if (consumerSelection == selections.size() || providerSelection == selections.size()) {
+      return failure(ResolverIssue::InvalidResolutionOutput, fact.provider);
+    }
+    const auto& consumer = releases[selections[consumerSelection].releaseIndex];
+    const auto& provider = releases[selections[providerSelection].releaseIndex];
+    if (!provider.manifest().hasLibrary()) {
+      return failure(ResolverIssue::DependencyLibraryTargetMissing, fact.provider);
+    }
+    auto alias = identity::DependencyAlias::fromCanonical(fact.alias);
+    ZC_IF_SOME(aliasValue, alias) {
+      auto edge = identity::PackageDependencyEdgeKey::from(
+          packageKey(consumer, featuresFor(analysis, fact.consumer, fact.consumerActivation)),
+          zc::mv(aliasValue), fact.domain,
+          packageKey(provider, featuresFor(analysis, fact.provider, fact.providerActivation)));
+      ZC_IF_SOME(value, edge) { edges.add(zc::mv(value)); }
+    }
+  }
+  canonicalSort(edges);
+  zc::Vector<identity::PackageDependencyEdgeKey> uniqueEdges;
+  zc::Array<uint8_t> previousEdge;
+  for (auto& edge : edges) {
+    const auto encoded = edge.encode();
+    if (previousEdge != nullptr && previousEdge.asPtr() == encoded.asPtr()) { continue; }
+    previousEdge = copyBytes(encoded);
+    uniqueEdges.add(zc::mv(edge));
+  }
+  zc::Vector<identity::PackageDependencyEdgeKey> lockEdges;
+  for (const auto& edge : uniqueEdges) { lockEdges.add(edge.clone()); }
+  auto lockGraph = VerifiedLockGraph::from(zc::mv(uniqueLockPackages), zc::mv(lockEdges));
+  if (lockGraph.is<LockIssue>()) { return failure(ResolverIssue::InvalidResolutionOutput, {}); }
+  return ResolutionParts{zc::mv(uniquePackages), zc::mv(uniqueEdges), zc::mv(featureSets),
+                         zc::mv(lockGraph.get<VerifiedLockGraph>())};
+}
+
+}  // namespace
+
+ResolutionResult PackageResolver::resolve(zc::ArrayPtr<const ResolverRoot> roots,
+                                          zc::ArrayPtr<const ResolverRelease> releases) {
   auto releaseGroups = buildReleaseGroups(releases);
   zc::Vector<Selection> selections;
   for (const auto& root : roots) {
@@ -1195,67 +1609,31 @@ PackageResolutionResult PackageResolver::resolve(zc::ArrayPtr<const ResolverRoot
     return failure(ResolverIssue::NoVersionSatisfiesConstraints, {});
   }
   ZC_IF_SOME(analysis, solved) {
-    auto cycle = detectDependencyCycle(selections, analysis.edges);
-    ZC_IF_SOME(value, cycle) { return zc::mv(value); }
-    zc::Vector<ResolvedPackageSelection> packages;
-    for (const auto& selection : selections) {
-      const auto& release = releases[selection.releaseIndex];
-      for (const auto& activation : analysis.activations) {
-        if (activation.coordinate.asPtr() != selection.coordinate.asPtr()) { continue; }
-        packages.add(ResolvedPackageSelection::from(
-            release.base().clone(), activation.domain,
-            sortedFeatures(featuresFor(analysis, selection.coordinate, activation.domain))));
-      }
+    auto parts = buildResolutionParts(selections, analysis, releases);
+    if (parts.is<PackageResolverFailure>()) { return zc::mv(parts.get<PackageResolverFailure>()); }
+    auto& value = parts.get<ResolutionParts>();
+    auto output = ResolutionOutput::from(zc::mv(value.packages), zc::mv(value.edges),
+                                         zc::mv(value.featureSets), zc::mv(value.lockGraph));
+    if (output.is<ResolutionOutputIssue>()) {
+      return failure(ResolverIssue::InvalidResolutionOutput, {});
     }
-    canonicalSort(packages);
-
-    zc::Vector<identity::PackageDependencyEdgeKey> edges;
-    for (const auto& fact : analysis.edges) {
-      const size_t consumerSelection = findSelection(selections, fact.consumer);
-      const size_t providerSelection = findSelection(selections, fact.provider);
-      if (consumerSelection == selections.size() || providerSelection == selections.size()) {
-        continue;
-      }
-      const auto& consumer = releases[selections[consumerSelection].releaseIndex];
-      const auto& provider = releases[selections[providerSelection].releaseIndex];
-      if (!provider.manifest().hasLibrary()) {
-        return failure(ResolverIssue::DependencyLibraryTargetMissing, fact.provider);
-      }
-      auto alias = identity::DependencyAlias::fromCanonical(fact.alias);
-      ZC_IF_SOME(aliasValue, alias) {
-        auto edge = identity::PackageDependencyEdgeKey::from(
-            packageKey(consumer, featuresFor(analysis, fact.consumer, fact.consumerActivation)),
-            zc::mv(aliasValue), fact.domain,
-            packageKey(provider, featuresFor(analysis, fact.provider, fact.providerActivation)));
-        ZC_IF_SOME(value, edge) { edges.add(zc::mv(value)); }
-      }
-    }
-    canonicalSort(edges);
-    zc::Vector<identity::PackageDependencyEdgeKey> uniqueEdges;
-    zc::Array<uint8_t> previous;
-    for (auto& edge : edges) {
-      const auto encoded = edge.encode();
-      if (previous != nullptr && previous.asPtr() == encoded.asPtr()) { continue; }
-      previous = copyBytes(encoded);
-      uniqueEdges.add(zc::mv(edge));
-    }
-    return PackageResolution::from(zc::mv(packages), zc::mv(uniqueEdges));
+    return zc::mv(output.get<ResolutionOutput>());
   }
   ZC_UNREACHABLE
 }
 
-PackageResolutionResult PackageResolver::resolve(zc::ArrayPtr<const ResolverRoot> roots,
-                                                 zc::ArrayPtr<const ResolverRelease> releases,
-                                                 PackageResolverMetrics& metrics) {
+ResolutionResult PackageResolver::resolve(zc::ArrayPtr<const ResolverRoot> roots,
+                                          zc::ArrayPtr<const ResolverRelease> releases,
+                                          PackageResolverMetrics& metrics) {
   metrics = {};
   auto result = resolve(roots, releases);
-  if (result.is<PackageResolution>()) {
-    const auto& resolution = result.get<PackageResolution>();
+  if (result.is<ResolutionOutput>()) {
+    const auto& resolution = result.get<ResolutionOutput>();
     metrics.selectedPackages = resolution.packages().size();
     metrics.emittedEdges = resolution.edges().size();
     zc::Array<uint8_t> previousCoordinate;
-    for (const auto& package : resolution.packages()) {
-      auto coordinate = coordinateBytes(package.base());
+    for (const auto& featureSet : resolution.featureSets()) {
+      auto coordinate = coordinateBytes(featureSet.base());
       if (previousCoordinate == nullptr || previousCoordinate.asPtr() != coordinate.asPtr()) {
         ++metrics.decisions;
         previousCoordinate = zc::mv(coordinate);
@@ -1263,6 +1641,79 @@ PackageResolutionResult PackageResolver::resolve(zc::ArrayPtr<const ResolverRoot
     }
   }
   return result;
+}
+
+ResolutionResult PackageResolver::resolveLocked(zc::ArrayPtr<const ResolverRoot> roots,
+                                                zc::ArrayPtr<const ResolverRelease> releases,
+                                                const VerifiedLockGraph& locked,
+                                                LockReplayMetrics& metrics) {
+  metrics = {};
+  auto releaseGroups = buildReleaseGroups(releases);
+  zc::Vector<EncodedOrderEntry> releaseOrder;
+  for (size_t index = 0; index < releases.size(); ++index) {
+    releaseOrder.add(EncodedOrderEntry{releases[index].base().encode(), index});
+  }
+  canonicalSort(releaseOrder);
+  for (size_t index = 1; index < releaseOrder.size(); ++index) {
+    if (releaseOrder[index - 1].key.asPtr() == releaseOrder[index].key.asPtr()) {
+      return failure(ResolverIssue::LockInputMismatch, releaseOrder[index].key);
+    }
+  }
+  zc::Vector<Selection> selections;
+  for (const auto& lockedPackage : locked.packages()) {
+    ++metrics.packageVisits;
+    const auto base = packageBaseKey(lockedPackage.key());
+    const auto key = base.encode();
+    size_t lower = 0;
+    size_t upper = releaseOrder.size();
+    while (lower < upper) {
+      const size_t middle = lower + (upper - lower) / 2;
+      const zc::ArrayPtr<const uint8_t> middleKey = releaseOrder[middle].key;
+      if (middleKey < key.asPtr()) {
+        lower = middle + 1;
+      } else {
+        upper = middle;
+      }
+    }
+    if (lower == releaseOrder.size() || releaseOrder[lower].key.asPtr() != key.asPtr()) {
+      return failure(ResolverIssue::LockInputMismatch, key);
+    }
+    const auto& release = releases[releaseOrder[lower].index];
+    if (release.manifestDigest() != lockedPackage.manifestDigest() ||
+        release.sourceTreeDigest() != lockedPackage.sourceTreeDigest() ||
+        release.hasArchive() != lockedPackage.hasArchive()) {
+      return failure(ResolverIssue::LockInputMismatch, key);
+    }
+    if (release.hasArchive() &&
+        (release.archiveFormat() != lockedPackage.archiveFormat() ||
+         release.archiveDigest() != lockedPackage.archiveDigest() ||
+         release.signingKey().digest() != lockedPackage.signingKey().digest())) {
+      return failure(ResolverIssue::LockInputMismatch, key);
+    }
+    const auto coordinate = coordinateBytes(release.base());
+    if (findSelection(selections, coordinate) == selections.size()) {
+      addSelection(selections, Selection{copyBytes(coordinate), releaseOrder[lower].index});
+    }
+  }
+  metrics.edgeVisits = locked.edges().size();
+  zc::Maybe<Analysis> previous;
+  auto analyzed = analyze(roots, releases, releaseGroups, selections, previous);
+  if (analyzed.is<PackageResolverFailure>()) {
+    return zc::mv(analyzed.get<PackageResolverFailure>());
+  }
+  auto parts = buildResolutionParts(selections, analyzed.get<Analysis>(), releases);
+  if (parts.is<PackageResolverFailure>()) { return zc::mv(parts.get<PackageResolverFailure>()); }
+  auto& value = parts.get<ResolutionParts>();
+  auto output = ResolutionOutput::from(zc::mv(value.packages), zc::mv(value.edges),
+                                       zc::mv(value.featureSets), zc::mv(value.lockGraph));
+  if (output.is<ResolutionOutputIssue>()) {
+    return failure(ResolverIssue::InvalidResolutionOutput, {});
+  }
+  auto& resolution = output.get<ResolutionOutput>();
+  if (resolution.lockGraph().encode().asPtr() != locked.encode().asPtr()) {
+    return failure(ResolverIssue::LockInputMismatch, {});
+  }
+  return zc::mv(resolution);
 }
 
 }  // namespace zomlang::compiler::driver::package

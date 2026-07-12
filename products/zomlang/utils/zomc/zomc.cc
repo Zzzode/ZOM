@@ -592,7 +592,6 @@ public:
       irgen::VerifiedTargetSelection&& verifiedTarget,
       const package::NormalizedWorkspace& workspace) {
     zc::Vector<package::ResolverRelease> releases;
-    zc::Vector<package::LocalPackageRecord> localRecords;
     zc::Vector<package::ResolvedPackageSourceSnapshot> snapshots;
     auto snapshotParent =
         filesystem.getRoot().tryOpenSubdir(workspaceRoot.parent(), zc::WriteMode::MODIFY);
@@ -629,7 +628,6 @@ public:
       if (record == zc::none) { return false; }
       ZC_IF_SOME(recordValue, record) {
         releases.add(package::ResolverRelease::fromLocal(recordValue));
-        localRecords.add(zc::mv(recordValue));
       }
       snapshots.add(
           package::ResolvedPackageSourceSnapshot::from(base.clone(), zc::mv(snapshotValue)));
@@ -649,65 +647,6 @@ public:
 
     const auto workspaceDirectory =
         filesystem.getRoot().openSubdir(workspaceRoot, zc::WriteMode::MODIFY);
-    const bool useLocked =
-        normalizedRequest.lockMode() == package::PackageLockMode::LockedOnly ||
-        (normalizedRequest.lockMode() == package::PackageLockMode::PreferLocked &&
-         workspaceDirectory->exists(zc::Path("Zom.lock"_zc)));
-    if (useLocked) {
-      auto locked = package::LockfileCodec::read(*workspaceDirectory);
-      if (locked.is<package::LockIssue>()) { return zc::none; }
-      const auto& lockedGraph = locked.get<package::VerifiedLockGraph>();
-      bool foundRoot = false;
-      for (const auto& lockedPackage : lockedGraph.packages()) {
-        bool foundCurrent = false;
-        for (const auto& record : localRecords) {
-          if (record.base().encode().asPtr() != packageBase(lockedPackage.key()).encode().asPtr()) {
-            continue;
-          }
-          if (record.manifestDigest() != lockedPackage.manifestDigest() ||
-              record.sourceTreeDigest() != lockedPackage.sourceTreeDigest()) {
-            return zc::none;
-          }
-          foundCurrent = true;
-          break;
-        }
-        if (!foundCurrent) { return zc::none; }
-        if (lockedPackage.key().encode().asPtr() ==
-            request.roots()[0].packageKey().encode().asPtr()) {
-          foundRoot = true;
-        }
-      }
-      if (!foundRoot) { return zc::none; }
-      auto currentInput = lockedGraph.clone();
-      zc::Vector<identity::RegistryIdentity> noRegistries;
-      package::LockReplayMetrics metrics;
-      auto replayed =
-          package::LockedReplayVerifier::replay(lockedGraph, currentInput, noRegistries, metrics);
-      if (replayed.is<package::LockIssue>() || metrics.solverInvocations != 0) { return zc::none; }
-      const auto& replayedGraph = replayed.get<package::VerifiedLockGraph>();
-      zc::Vector<package::ResolvedPackageSelection> selections;
-      for (const auto& lockedPackage : replayedGraph.packages()) {
-        selections.add(package::ResolvedPackageSelection::from(
-            packageBase(lockedPackage.key()), package::FeatureActivationDomain::Target,
-            packageFeatures(lockedPackage.key())));
-      }
-      zc::Vector<identity::PackageDependencyEdgeKey> edges(replayedGraph.edges().size());
-      for (const auto& edge : replayedGraph.edges()) { edges.add(edge.clone()); }
-      auto graph = package::PackageResolution::from(zc::mv(selections), zc::mv(edges));
-      zc::Vector<package::ResolvedPackageSourceSnapshot> selectedSnapshots;
-      for (auto& snapshot : snapshots) {
-        for (const auto& selected : graph.packages()) {
-          if (snapshot.package().encode().asPtr() == selected.base().encode().asPtr()) {
-            selectedSnapshots.add(zc::mv(snapshot));
-            break;
-          }
-        }
-      }
-      return driver::VerifiedPackageSessionInput::from(zc::mv(request), zc::mv(verifiedHostTarget),
-                                                       zc::mv(verifiedTarget), zc::mv(graph),
-                                                       zc::mv(selectedSnapshots));
-    }
-
     bool includeDevelopment = false;
     for (const auto& target : normalizedRequest.requestedTargets()) {
       includeDevelopment = includeDevelopment || target.kind == identity::CrateTargetKind::Test ||
@@ -718,35 +657,40 @@ public:
     roots.add(package::ResolverRoot::from(packageBase(request.roots()[0].packageKey()),
                                           packageFeatures(request.roots()[0].packageKey()), false,
                                           includeDevelopment));
+    const bool useLocked =
+        normalizedRequest.lockMode() == package::PackageLockMode::LockedOnly ||
+        (normalizedRequest.lockMode() == package::PackageLockMode::PreferLocked &&
+         workspaceDirectory->exists(zc::Path("Zom.lock"_zc)));
+    if (useLocked) {
+      auto locked = package::LockfileCodec::read(*workspaceDirectory);
+      if (locked.is<package::LockIssue>()) { return zc::none; }
+      const auto& lockedGraph = locked.get<package::VerifiedLockGraph>();
+      package::LockReplayMetrics metrics;
+      auto resolved =
+          package::PackageResolver::resolveLocked(roots, releases, lockedGraph, metrics);
+      if (resolved.is<package::PackageResolverFailure>() || metrics.solverInvocations != 0) {
+        return zc::none;
+      }
+      auto& graph = resolved.get<package::ResolutionOutput>();
+      zc::Vector<package::ResolvedPackageSourceSnapshot> selectedSnapshots;
+      for (auto& snapshot : snapshots) {
+        for (const auto& selected : graph.packages()) {
+          if (snapshot.package().encode().asPtr() == packageBase(selected.key()).encode().asPtr()) {
+            selectedSnapshots.add(zc::mv(snapshot));
+            break;
+          }
+        }
+      }
+      return driver::VerifiedPackageSessionInput::from(zc::mv(request), zc::mv(verifiedHostTarget),
+                                                       zc::mv(verifiedTarget), zc::mv(graph),
+                                                       zc::mv(selectedSnapshots));
+    }
+
     auto resolved = package::PackageResolver::resolve(roots, releases);
     if (resolved.is<package::PackageResolverFailure>()) { return zc::none; }
-    auto& graph = resolved.get<package::PackageResolution>();
-
-    zc::Vector<package::LockPackageRecord> lockPackages;
-    for (const auto& selected : graph.packages()) {
-      bool found = false;
-      for (const auto& record : localRecords) {
-        if (record.base().encode().asPtr() != selected.base().encode().asPtr()) { continue; }
-        zc::Maybe<package::ArchiveFormat> noArchiveFormat;
-        zc::Maybe<identity::Sha256Digest> noArchiveDigest;
-        zc::Maybe<package::SigningKeyId> noSigningKey;
-        auto lockPackage = package::LockPackageRecord::from(
-            selected.packageKey(), record.manifestDigest(), record.sourceTreeDigest(),
-            zc::mv(noArchiveFormat), zc::mv(noArchiveDigest), zc::mv(noSigningKey));
-        ZC_IF_SOME(value, lockPackage) { lockPackages.add(zc::mv(value)); }
-        else { return zc::none; }
-        found = true;
-        break;
-      }
-      if (!found) { return zc::none; }
-    }
-    zc::Vector<identity::PackageDependencyEdgeKey> lockEdges(graph.edges().size());
-    for (const auto& edge : graph.edges()) { lockEdges.add(edge.clone()); }
-    auto currentLock = package::VerifiedLockGraph::from(zc::mv(lockPackages), zc::mv(lockEdges));
-    if (currentLock.is<package::LockIssue>()) { return zc::none; }
+    auto& graph = resolved.get<package::ResolutionOutput>();
     if (normalizedRequest.lockMode() == package::PackageLockMode::Update) {
-      const auto canonical =
-          package::LockfileCodec::write(currentLock.get<package::VerifiedLockGraph>());
+      const auto canonical = package::LockfileCodec::write(graph.lockGraph());
       if (package::AtomicLockfileWriter::write(*workspaceDirectory, canonical) != zc::none) {
         return zc::none;
       }
@@ -754,7 +698,7 @@ public:
     zc::Vector<package::ResolvedPackageSourceSnapshot> selectedSnapshots;
     for (auto& snapshot : snapshots) {
       for (const auto& selected : graph.packages()) {
-        if (snapshot.package().encode().asPtr() == selected.base().encode().asPtr()) {
+        if (snapshot.package().encode().asPtr() == packageBase(selected.key()).encode().asPtr()) {
           selectedSnapshots.add(zc::mv(snapshot));
           break;
         }
