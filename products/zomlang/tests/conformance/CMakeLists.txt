@@ -119,6 +119,28 @@ set_tests_properties(vendored-dependencies-negative PROPERTIES
 )
 
 add_test(
+  NAME package-architecture
+  COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/check-package-architecture.py --check
+  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+)
+
+set_tests_properties(package-architecture PROPERTIES
+  LABELS "conformance;package;architecture"
+  TIMEOUT 120
+)
+
+add_test(
+  NAME package-architecture-negative
+  COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/check-package-architecture.py --self-test
+  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+)
+
+set_tests_properties(package-architecture-negative PROPERTIES
+  LABELS "conformance;package;architecture;negative"
+  TIMEOUT 120
+)
+
+add_test(
   NAME ir-diagnostic-boundary
   COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/check-ir-diagnostic-boundary.py --check
   WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
