@@ -109,7 +109,7 @@ jobs:
           if ! ZOM_LINUX_SANDBOX_TRACE_PREFIX=/tmp/zom-sandbox-strace \
             scripts/run-linux-sandbox-integration.sh build-sanitizer; then
             grep -HE \
-              'clone3|mount\(|pivot_root|seccomp|execveat|cgroup\.(procs|kill)|memory\.max|pids\.max' \
+              'clone3|mount\(|pivot_root|seccomp|execveat|setgroups|uid_map|gid_map|timerfd_settime|cgroup\.(procs|kill)|memory\.max|pids\.max' \
               /tmp/zom-sandbox-strace* | tail -200
             exit 1
           fi

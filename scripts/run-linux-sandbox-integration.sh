@@ -117,7 +117,7 @@ test_command=(
 )
 if [[ -n ${ZOM_LINUX_SANDBOX_TRACE_PREFIX:-} ]]; then
   ZOM_LINUX_SANDBOX_CGROUP_PARENT="${cgroup_parent}" \
-    strace -ff -o "${ZOM_LINUX_SANDBOX_TRACE_PREFIX}" "${test_command[@]}"
+    strace -ff -yy -o "${ZOM_LINUX_SANDBOX_TRACE_PREFIX}" "${test_command[@]}"
 else
   ZOM_LINUX_SANDBOX_CGROUP_PARENT="${cgroup_parent}" "${test_command[@]}"
 fi
