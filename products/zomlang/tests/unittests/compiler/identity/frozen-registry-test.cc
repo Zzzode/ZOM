@@ -12,9 +12,8 @@
 // See the License for the specific language governing permissions and limitations under
 // the License.
 
-#include "zomlang/compiler/identity/semantic-identity-registry-set.h"
-
 #include "zc/ztest/test.h"
+#include "zomlang/compiler/identity/semantic-identity-registry-set.h"
 
 namespace zomlang::compiler::identity {
 namespace {
@@ -76,19 +75,15 @@ Sha256Digest repeatedDigest(uint8_t byte) {
 PackageKey localPackage(zc::StringPtr name) {
   zc::Vector<CanonicalPathSegment> segments;
   auto path = CanonicalWorkspaceRelativePath::from(0, zc::mv(segments));
-  return PackageKey::from(
-      CanonicalPackageSource::localPath(zc::mv(path)), requirePackageName(name), requireVersion(),
-      emptyFeatures());
+  return PackageKey::from(CanonicalPackageSource::localPath(zc::mv(path)), requirePackageName(name),
+                          requireVersion(), emptyFeatures());
 }
 
 CanonicalTargetSpecificationKey targetSpec() {
   auto value = CanonicalTargetSpecificationKey::from(
-      requireScalar<TargetComponentName>("x"_zc),
-      requireScalar<TargetComponentName>("v"_zc),
-      requireScalar<TargetComponentName>("o"_zc),
-      requireScalar<TargetComponentName>("e"_zc),
-      requireScalar<TargetComponentName>("a"_zc), 64, Endianness::Little,
-      emptyTargetFeatures());
+      requireScalar<TargetComponentName>("x"_zc), requireScalar<TargetComponentName>("v"_zc),
+      requireScalar<TargetComponentName>("o"_zc), requireScalar<TargetComponentName>("e"_zc),
+      requireScalar<TargetComponentName>("a"_zc), 64, Endianness::Little, emptyTargetFeatures());
   ZC_IF_SOME(admitted, value) { return zc::mv(admitted); }
   ZC_FAIL_REQUIRE("invalid target specification test input");
 }
@@ -127,8 +122,8 @@ SourceFileKey generatedSource(const Sha256Digest& declaredContentDigest) {
 }
 
 ImmutableSourceSnapshot snapshot(zc::StringPtr packageName, uint8_t contentByte) {
-  auto value = ImmutableSourceSnapshot::from(source(packageName),
-                                             zc::heapArray<uint8_t>(2, contentByte));
+  auto value =
+      ImmutableSourceSnapshot::from(source(packageName), zc::heapArray<uint8_t>(2, contentByte));
   ZC_IF_SOME(admitted, value) { return zc::mv(admitted); }
   ZC_FAIL_REQUIRE("valid immutable source snapshot was rejected");
 }
@@ -137,8 +132,8 @@ ModuleKey module(zc::StringPtr packageName) {
   zc::Vector<ModulePathSegment> path;
   path.add(requireScalar<ModulePathSegment>("m"_zc));
   zc::Maybe<SourceSpan> noAnchor;
-  auto value = ModuleKey::from(crate(packageName), zc::mv(path), source(packageName),
-                               zc::mv(noAnchor));
+  auto value =
+      ModuleKey::from(crate(packageName), zc::mv(path), source(packageName), zc::mv(noAnchor));
   ZC_IF_SOME(admitted, value) { return zc::mv(admitted); }
   ZC_FAIL_REQUIRE("valid module test input was rejected");
 }
@@ -179,8 +174,7 @@ SemanticIdentityRegistrySet populatedRegistrySet(SemanticContextFactory& factory
   ZC_REQUIRE(registries.freezePackages() == FrozenRegistryFailure::None);
   ZC_REQUIRE(registries.collectCrate(crate("a"_zc)) == FrozenRegistryFailure::None);
   ZC_REQUIRE(registries.freezeCrates() == FrozenRegistryFailure::None);
-  ZC_REQUIRE(registries.collectSourceFile(snapshot("a"_zc, 0x41)) ==
-             FrozenRegistryFailure::None);
+  ZC_REQUIRE(registries.collectSourceFile(snapshot("a"_zc, 0x41)) == FrozenRegistryFailure::None);
   ZC_REQUIRE(registries.freezeSourceFiles() == FrozenRegistryFailure::None);
   ZC_REQUIRE(registries.collectModule(module("a"_zc)) == FrozenRegistryFailure::None);
   ZC_REQUIRE(registries.freezeModules() == FrozenRegistryFailure::None);
@@ -199,6 +193,17 @@ void expectPackage(const PackageRegistry& registry, size_t slot, zc::StringPtr n
     matched = true;
   }
   ZC_EXPECT(matched);
+}
+
+void expectSingleAncestorMismatch(SemanticIdentityRegistrySet& registries,
+                                  IdentityAllocationPhase phase) {
+  registries.sortIdentityInvariants();
+  ZC_REQUIRE(registries.identityInvariants().size() == 1);
+  const auto& invariant = registries.identityInvariants()[0];
+  ZC_EXPECT(invariant.kind() == IdentityInvariantKind::AncestorMismatch);
+  ZC_EXPECT(invariant.phase() == phase);
+  ZC_EXPECT(invariant.apiSite() == IdentityApiSite::RegistryMutation);
+  ZC_EXPECT(invariant.structuralInputKey() != zc::none);
 }
 
 }  // namespace
@@ -256,12 +261,10 @@ ZC_TEST("Frozen registry invalidates post-freeze mutation") {
   ZC_EXPECT(registries.collectPackage(localPackage("b"_zc)) ==
             FrozenRegistryFailure::PostFreezeMutation);
   ZC_EXPECT(!registries.packages().isFrozen());
-  ZC_EXPECT(registries.packages().terminalFailure() ==
-            FrozenRegistryFailure::PostFreezeMutation);
+  ZC_EXPECT(registries.packages().terminalFailure() == FrozenRegistryFailure::PostFreezeMutation);
   ZC_EXPECT(registries.packages().find(key) == zc::none);
   ZC_REQUIRE(registries.identityInvariants().size() == 1);
-  ZC_EXPECT(registries.identityInvariants()[0].kind() ==
-            IdentityInvariantKind::PostFreezeMutation);
+  ZC_EXPECT(registries.identityInvariants()[0].kind() == IdentityInvariantKind::PostFreezeMutation);
 }
 
 ZC_TEST("Frozen registry rejects invalid and foreign-context handles") {
@@ -299,6 +302,107 @@ ZC_TEST("Semantic context permits exactly one registry set and enforces freeze o
   }
 }
 
+ZC_TEST("Crate registry rejects a package key outside the frozen package registry") {
+  SemanticContextFactory factory;
+  auto registries = requireRegistrySet(factory, requireContext(factory));
+  ZC_REQUIRE(registries.collectPackage(localPackage("a"_zc)) == FrozenRegistryFailure::None);
+  ZC_REQUIRE(registries.freezePackages() == FrozenRegistryFailure::None);
+
+  ZC_EXPECT(registries.collectCrate(crate("b"_zc)) == FrozenRegistryFailure::AncestorMismatch);
+  ZC_EXPECT(registries.crates().size() == 0);
+  expectSingleAncestorMismatch(registries, IdentityAllocationPhase::Crate);
+
+  ZC_EXPECT(registries.collectCrate(crate("a"_zc)) == FrozenRegistryFailure::None);
+  ZC_EXPECT(registries.freezeCrates() == FrozenRegistryFailure::None);
+}
+
+ZC_TEST("Source registry rejects a crate key outside the frozen crate registry") {
+  SemanticContextFactory factory;
+  auto registries = requireRegistrySet(factory, requireContext(factory));
+  ZC_REQUIRE(registries.collectPackage(localPackage("a"_zc)) == FrozenRegistryFailure::None);
+  ZC_REQUIRE(registries.collectPackage(localPackage("b"_zc)) == FrozenRegistryFailure::None);
+  ZC_REQUIRE(registries.freezePackages() == FrozenRegistryFailure::None);
+  ZC_REQUIRE(registries.collectCrate(crate("a"_zc)) == FrozenRegistryFailure::None);
+  ZC_REQUIRE(registries.freezeCrates() == FrozenRegistryFailure::None);
+
+  ZC_EXPECT(registries.collectSourceFile(snapshot("b"_zc, 0x42)) ==
+            FrozenRegistryFailure::AncestorMismatch);
+  ZC_EXPECT(registries.sourceSnapshots().size() == 0);
+  expectSingleAncestorMismatch(registries, IdentityAllocationPhase::Source);
+
+  ZC_EXPECT(registries.collectSourceFile(snapshot("a"_zc, 0x41)) == FrozenRegistryFailure::None);
+  ZC_EXPECT(registries.freezeSourceFiles() == FrozenRegistryFailure::None);
+}
+
+ZC_TEST("Module registry rejects a source outside the frozen source registry") {
+  SemanticContextFactory factory;
+  auto registries = requireRegistrySet(factory, requireContext(factory));
+  ZC_REQUIRE(registries.collectPackage(localPackage("a"_zc)) == FrozenRegistryFailure::None);
+  ZC_REQUIRE(registries.collectPackage(localPackage("b"_zc)) == FrozenRegistryFailure::None);
+  ZC_REQUIRE(registries.freezePackages() == FrozenRegistryFailure::None);
+  ZC_REQUIRE(registries.collectCrate(crate("a"_zc)) == FrozenRegistryFailure::None);
+  ZC_REQUIRE(registries.collectCrate(crate("b"_zc)) == FrozenRegistryFailure::None);
+  ZC_REQUIRE(registries.freezeCrates() == FrozenRegistryFailure::None);
+  ZC_REQUIRE(registries.collectSourceFile(snapshot("a"_zc, 0x41)) == FrozenRegistryFailure::None);
+  ZC_REQUIRE(registries.freezeSourceFiles() == FrozenRegistryFailure::None);
+
+  ZC_EXPECT(registries.collectModule(module("b"_zc)) == FrozenRegistryFailure::AncestorMismatch);
+  ZC_EXPECT(registries.modules().size() == 0);
+  expectSingleAncestorMismatch(registries, IdentityAllocationPhase::Module);
+
+  ZC_EXPECT(registries.collectModule(module("a"_zc)) == FrozenRegistryFailure::None);
+  ZC_EXPECT(registries.freezeModules() == FrozenRegistryFailure::None);
+}
+
+ZC_TEST("Definition registry rejects a module outside the frozen module registry") {
+  SemanticContextFactory factory;
+  auto registries = requireRegistrySet(factory, requireContext(factory));
+  ZC_REQUIRE(registries.collectPackage(localPackage("a"_zc)) == FrozenRegistryFailure::None);
+  ZC_REQUIRE(registries.collectPackage(localPackage("b"_zc)) == FrozenRegistryFailure::None);
+  ZC_REQUIRE(registries.freezePackages() == FrozenRegistryFailure::None);
+  ZC_REQUIRE(registries.collectCrate(crate("a"_zc)) == FrozenRegistryFailure::None);
+  ZC_REQUIRE(registries.collectCrate(crate("b"_zc)) == FrozenRegistryFailure::None);
+  ZC_REQUIRE(registries.freezeCrates() == FrozenRegistryFailure::None);
+  ZC_REQUIRE(registries.collectSourceFile(snapshot("a"_zc, 0x41)) == FrozenRegistryFailure::None);
+  ZC_REQUIRE(registries.collectSourceFile(snapshot("b"_zc, 0x42)) == FrozenRegistryFailure::None);
+  ZC_REQUIRE(registries.freezeSourceFiles() == FrozenRegistryFailure::None);
+  ZC_REQUIRE(registries.collectModule(module("a"_zc)) == FrozenRegistryFailure::None);
+  ZC_REQUIRE(registries.freezeModules() == FrozenRegistryFailure::None);
+
+  ZC_EXPECT(registries.collectDefinition(definition("b"_zc)) ==
+            FrozenRegistryFailure::AncestorMismatch);
+  ZC_EXPECT(registries.definitions().size() == 0);
+  expectSingleAncestorMismatch(registries, IdentityAllocationPhase::Definition);
+
+  ZC_EXPECT(registries.collectDefinition(definition("a"_zc)) == FrozenRegistryFailure::None);
+  ZC_EXPECT(registries.freezeDefinitions() == FrozenRegistryFailure::None);
+}
+
+ZC_TEST("Impl registry rejects a module outside the frozen module registry") {
+  SemanticContextFactory factory;
+  auto registries = requireRegistrySet(factory, requireContext(factory));
+  ZC_REQUIRE(registries.collectPackage(localPackage("a"_zc)) == FrozenRegistryFailure::None);
+  ZC_REQUIRE(registries.collectPackage(localPackage("b"_zc)) == FrozenRegistryFailure::None);
+  ZC_REQUIRE(registries.freezePackages() == FrozenRegistryFailure::None);
+  ZC_REQUIRE(registries.collectCrate(crate("a"_zc)) == FrozenRegistryFailure::None);
+  ZC_REQUIRE(registries.collectCrate(crate("b"_zc)) == FrozenRegistryFailure::None);
+  ZC_REQUIRE(registries.freezeCrates() == FrozenRegistryFailure::None);
+  ZC_REQUIRE(registries.collectSourceFile(snapshot("a"_zc, 0x41)) == FrozenRegistryFailure::None);
+  ZC_REQUIRE(registries.collectSourceFile(snapshot("b"_zc, 0x42)) == FrozenRegistryFailure::None);
+  ZC_REQUIRE(registries.freezeSourceFiles() == FrozenRegistryFailure::None);
+  ZC_REQUIRE(registries.collectModule(module("a"_zc)) == FrozenRegistryFailure::None);
+  ZC_REQUIRE(registries.freezeModules() == FrozenRegistryFailure::None);
+  ZC_REQUIRE(registries.collectDefinition(definition("a"_zc)) == FrozenRegistryFailure::None);
+  ZC_REQUIRE(registries.freezeDefinitions() == FrozenRegistryFailure::None);
+
+  ZC_EXPECT(registries.collectImpl(impl("b"_zc)) == FrozenRegistryFailure::AncestorMismatch);
+  ZC_EXPECT(registries.impls().size() == 0);
+  expectSingleAncestorMismatch(registries, IdentityAllocationPhase::Impl);
+
+  ZC_EXPECT(registries.collectImpl(impl("a"_zc)) == FrozenRegistryFailure::None);
+  ZC_EXPECT(registries.freezeImpls() == FrozenRegistryFailure::None);
+}
+
 ZC_TEST("Source registry retains immutable contents and bounds source spans") {
   SemanticContextFactory factory;
   auto registries = requireRegistrySet(factory, requireContext(factory));
@@ -331,8 +435,8 @@ ZC_TEST("Source registry rejects a generated-source digest mismatch") {
   ZC_EXPECT(registries.collectCrate(crate()) == FrozenRegistryFailure::None);
   ZC_EXPECT(registries.freezeCrates() == FrozenRegistryFailure::None);
 
-  auto snapshotValue = ImmutableSourceSnapshot::from(
-      generatedSource(repeatedDigest(0x22)), zc::heapArray<uint8_t>(1, uint8_t{0x41}));
+  auto snapshotValue = ImmutableSourceSnapshot::from(generatedSource(repeatedDigest(0x22)),
+                                                     zc::heapArray<uint8_t>(1, uint8_t{0x41}));
   ZC_IF_SOME(admitted, snapshotValue) {
     ZC_EXPECT(registries.collectSourceFile(zc::mv(admitted)) ==
               FrozenRegistryFailure::SourceContentMismatch);
@@ -351,10 +455,8 @@ ZC_TEST("Module registry assigns one global order across crates") {
   ZC_EXPECT(registries.collectCrate(crate("b"_zc)) == FrozenRegistryFailure::None);
   ZC_EXPECT(registries.collectCrate(crate("a"_zc)) == FrozenRegistryFailure::None);
   ZC_EXPECT(registries.freezeCrates() == FrozenRegistryFailure::None);
-  ZC_EXPECT(registries.collectSourceFile(snapshot("b"_zc, 0x42)) ==
-            FrozenRegistryFailure::None);
-  ZC_EXPECT(registries.collectSourceFile(snapshot("a"_zc, 0x41)) ==
-            FrozenRegistryFailure::None);
+  ZC_EXPECT(registries.collectSourceFile(snapshot("b"_zc, 0x42)) == FrozenRegistryFailure::None);
+  ZC_EXPECT(registries.collectSourceFile(snapshot("a"_zc, 0x41)) == FrozenRegistryFailure::None);
   ZC_EXPECT(registries.freezeSourceFiles() == FrozenRegistryFailure::None);
 
   ZC_EXPECT(registries.collectModule(module("b"_zc)) == FrozenRegistryFailure::None);
@@ -382,10 +484,8 @@ ZC_TEST("Definition and impl registries freeze after the global module inventory
   ZC_EXPECT(registries.collectCrate(crate("b"_zc)) == FrozenRegistryFailure::None);
   ZC_EXPECT(registries.collectCrate(crate("a"_zc)) == FrozenRegistryFailure::None);
   ZC_EXPECT(registries.freezeCrates() == FrozenRegistryFailure::None);
-  ZC_EXPECT(registries.collectSourceFile(snapshot("b"_zc, 0x42)) ==
-            FrozenRegistryFailure::None);
-  ZC_EXPECT(registries.collectSourceFile(snapshot("a"_zc, 0x41)) ==
-            FrozenRegistryFailure::None);
+  ZC_EXPECT(registries.collectSourceFile(snapshot("b"_zc, 0x42)) == FrozenRegistryFailure::None);
+  ZC_EXPECT(registries.collectSourceFile(snapshot("a"_zc, 0x41)) == FrozenRegistryFailure::None);
   ZC_EXPECT(registries.freezeSourceFiles() == FrozenRegistryFailure::None);
   ZC_EXPECT(registries.collectModule(module("b"_zc)) == FrozenRegistryFailure::None);
   ZC_EXPECT(registries.collectModule(module("a"_zc)) == FrozenRegistryFailure::None);

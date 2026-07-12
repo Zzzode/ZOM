@@ -34,6 +34,7 @@ enum class FrozenRegistryFailure : uint8_t {
   ForeignContext,
   SlotOutOfRange,
   DuplicateCanonicalKey,
+  AncestorMismatch,
   SourceContentMismatch,
   PostFreezeMutation,
   RegistryNotFrozen
