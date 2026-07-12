@@ -62,8 +62,7 @@ void DefinitionNameKey::encode(CanonicalEncoder& encoder) const {
     value.get<DeclaredDefinitionNameKey>().name.encode(encoder);
   } else {
     encoder.encodeUint8(static_cast<uint8_t>(DefinitionNameKind::Anonymous));
-    encoder.encodeUint8(
-        static_cast<uint8_t>(value.get<AnonymousDefinitionNameKey>().role));
+    encoder.encodeUint8(static_cast<uint8_t>(value.get<AnonymousDefinitionNameKey>().role));
   }
 }
 
@@ -75,9 +74,10 @@ DefinitionPathSegment::DefinitionPathSegment(DefinitionKind kind, DefinitionName
       sourceAnchorValue(zc::mv(sourceAnchor)),
       siblingOrdinalValue(siblingOrdinal) {}
 
-zc::Maybe<DefinitionPathSegment> DefinitionPathSegment::from(
-    DefinitionKind kind, DefinitionNameKey&& name, SourceSpan&& sourceAnchor,
-    uint32_t siblingOrdinal) {
+zc::Maybe<DefinitionPathSegment> DefinitionPathSegment::from(DefinitionKind kind,
+                                                             DefinitionNameKey&& name,
+                                                             SourceSpan&& sourceAnchor,
+                                                             uint32_t siblingOrdinal) {
   if (!isValid(kind)) { return zc::none; }
   return DefinitionPathSegment(kind, zc::mv(name), zc::mv(sourceAnchor), siblingOrdinal);
 }
@@ -134,21 +134,17 @@ DefinitionPathComponent DefinitionPathComponent::impl(ImplPathSegment&& segment)
 }
 
 DefinitionPathComponent DefinitionPathComponent::clone() const {
-  ZC_SWITCH_ONEOF(value) {
-    ZC_CASE_ONEOF(component, DefinitionPathDefinitionComponent) {
-      return definition(component.segment.clone());
-    }
-    ZC_CASE_ONEOF(component, DefinitionPathImplComponent) {
-      return impl(component.segment.clone());
-    }
-  }
-  ZC_UNREACHABLE
+    ZC_SWITCH_ONEOF(value){ZC_CASE_ONEOF(component, DefinitionPathDefinitionComponent){
+        return definition(component.segment.clone());
+}  // namespace zomlang::compiler::identity
+ZC_CASE_ONEOF(component, DefinitionPathImplComponent) { return impl(component.segment.clone()); }
+}
+ZC_UNREACHABLE
 }
 
 DefinitionPathComponentKind DefinitionPathComponent::kind() const noexcept {
-  return value.is<DefinitionPathDefinitionComponent>()
-             ? DefinitionPathComponentKind::Definition
-             : DefinitionPathComponentKind::Impl;
+  return value.is<DefinitionPathDefinitionComponent>() ? DefinitionPathComponentKind::Definition
+                                                       : DefinitionPathComponentKind::Impl;
 }
 
 bool DefinitionPathComponent::belongsTo(const ModuleKey& module) const {
@@ -164,9 +160,7 @@ void DefinitionPathComponent::encode(CanonicalEncoder& encoder) const {
     ZC_CASE_ONEOF(component, DefinitionPathDefinitionComponent) {
       component.segment.encode(encoder);
     }
-    ZC_CASE_ONEOF(component, DefinitionPathImplComponent) {
-      component.segment.encode(encoder);
-    }
+    ZC_CASE_ONEOF(component, DefinitionPathImplComponent) { component.segment.encode(encoder); }
   }
 }
 
@@ -210,8 +204,7 @@ ImplKey::ImplKey(ModuleKey&& module, zc::Vector<DefinitionPathSegment>&& parentP
       sourceValue(zc::mv(source)),
       siblingOrdinalValue(siblingOrdinal) {}
 
-zc::Maybe<ImplKey> ImplKey::from(ModuleKey&& module,
-                                 zc::Vector<DefinitionPathSegment>&& parentPath,
+zc::Maybe<ImplKey> ImplKey::from(ModuleKey&& module, zc::Vector<DefinitionPathSegment>&& parentPath,
                                  SourceSpan&& source, uint32_t siblingOrdinal) {
   if (!module.contains(source)) { return zc::none; }
   for (const auto& segment : parentPath) {
@@ -223,8 +216,7 @@ zc::Maybe<ImplKey> ImplKey::from(ModuleKey&& module,
 ImplKey ImplKey::clone() const {
   zc::Vector<DefinitionPathSegment> path(parentPathValue.size());
   for (const auto& segment : parentPathValue) { path.add(segment.clone()); }
-  return ImplKey(moduleValue.clone(), zc::mv(path), sourceValue.clone(),
-                 siblingOrdinalValue);
+  return ImplKey(moduleValue.clone(), zc::mv(path), sourceValue.clone(), siblingOrdinalValue);
 }
 
 void ImplKey::encode(CanonicalEncoder& encoder) const {

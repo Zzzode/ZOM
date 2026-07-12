@@ -90,16 +90,17 @@ public:
   DefinitionPathSegment& operator=(DefinitionPathSegment&&) noexcept = default;
   ZC_DISALLOW_COPY(DefinitionPathSegment);
 
-  ZC_NODISCARD static zc::Maybe<DefinitionPathSegment> from(
-      DefinitionKind kind, DefinitionNameKey&& name, SourceSpan&& sourceAnchor,
-      uint32_t siblingOrdinal);
+  ZC_NODISCARD static zc::Maybe<DefinitionPathSegment> from(DefinitionKind kind,
+                                                            DefinitionNameKey&& name,
+                                                            SourceSpan&& sourceAnchor,
+                                                            uint32_t siblingOrdinal);
   ZC_NODISCARD DefinitionPathSegment clone() const;
   ZC_NODISCARD bool belongsTo(const ModuleKey& module) const;
   void encode(CanonicalEncoder& encoder) const;
 
 private:
-  DefinitionPathSegment(DefinitionKind kind, DefinitionNameKey&& name,
-                        SourceSpan&& sourceAnchor, uint32_t siblingOrdinal) noexcept;
+  DefinitionPathSegment(DefinitionKind kind, DefinitionNameKey&& name, SourceSpan&& sourceAnchor,
+                        uint32_t siblingOrdinal) noexcept;
 
   DefinitionKind kindValue;
   DefinitionNameKey nameValue;
@@ -114,8 +115,7 @@ public:
   ImplPathSegment& operator=(ImplPathSegment&&) noexcept = default;
   ZC_DISALLOW_COPY(ImplPathSegment);
 
-  ZC_NODISCARD static ImplPathSegment from(SourceSpan&& sourceAnchor,
-                                           uint32_t siblingOrdinal);
+  ZC_NODISCARD static ImplPathSegment from(SourceSpan&& sourceAnchor, uint32_t siblingOrdinal);
   ZC_NODISCARD ImplPathSegment clone() const;
   ZC_NODISCARD bool belongsTo(const ModuleKey& module) const;
   void encode(CanonicalEncoder& encoder) const;
@@ -165,8 +165,8 @@ public:
   DefinitionKey& operator=(DefinitionKey&&) noexcept = default;
   ZC_DISALLOW_COPY(DefinitionKey);
 
-  ZC_NODISCARD static zc::Maybe<DefinitionKey> from(
-      ModuleKey&& module, zc::Vector<DefinitionPathComponent>&& path);
+  ZC_NODISCARD static zc::Maybe<DefinitionKey> from(ModuleKey&& module,
+                                                    zc::Vector<DefinitionPathComponent>&& path);
   ZC_NODISCARD DefinitionKey clone() const;
   void encode(CanonicalEncoder& encoder) const;
   ZC_NODISCARD zc::Array<uint8_t> encode() const;
@@ -185,16 +185,16 @@ public:
   ImplKey& operator=(ImplKey&&) noexcept = default;
   ZC_DISALLOW_COPY(ImplKey);
 
-  ZC_NODISCARD static zc::Maybe<ImplKey> from(
-      ModuleKey&& module, zc::Vector<DefinitionPathSegment>&& parentPath, SourceSpan&& source,
-      uint32_t siblingOrdinal);
+  ZC_NODISCARD static zc::Maybe<ImplKey> from(ModuleKey&& module,
+                                              zc::Vector<DefinitionPathSegment>&& parentPath,
+                                              SourceSpan&& source, uint32_t siblingOrdinal);
   ZC_NODISCARD ImplKey clone() const;
   void encode(CanonicalEncoder& encoder) const;
   ZC_NODISCARD zc::Array<uint8_t> encode() const;
 
 private:
-  ImplKey(ModuleKey&& module, zc::Vector<DefinitionPathSegment>&& parentPath,
-          SourceSpan&& source, uint32_t siblingOrdinal) noexcept;
+  ImplKey(ModuleKey&& module, zc::Vector<DefinitionPathSegment>&& parentPath, SourceSpan&& source,
+          uint32_t siblingOrdinal) noexcept;
 
   ModuleKey moduleValue;
   zc::Vector<DefinitionPathSegment> parentPathValue;
