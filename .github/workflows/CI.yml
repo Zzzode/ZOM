@@ -54,8 +54,13 @@ jobs:
 
   check-unit-tests:
     strategy:
+      fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        include:
+          - os: ubuntu-latest
+            test_jobs: 8
+          - os: macos-latest
+            test_jobs: 3
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
 
@@ -88,7 +93,7 @@ jobs:
         run: cmake --build --preset debug
 
       - name: Run tests
-        run: ctest --preset debug
+        run: ctest --preset debug --parallel ${{ matrix.test_jobs }}
 
   check-linux-sandbox-integration:
     runs-on: ubuntu-latest
