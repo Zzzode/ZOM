@@ -550,6 +550,37 @@ String heapString(const String& value);
 String heapString(ArrayPtr<const char> value);
 // Allocates a copy of the given value on the heap.
 
+/// \brief Allocate an uninitialized string body from an explicit memory resource.
+/// \param resource Resource that must outlive the returned string or released backing array.
+/// \param size Content byte count excluding the NUL terminator.
+/// \return A string whose final byte is initialized to NUL.
+/// \throws zc::Exception if `size + 1` overflows.
+String resourceHeapString(MemoryResource& resource, size_t size);
+
+/// \brief Copy bytes into a string allocated from an explicit memory resource.
+/// \param resource Resource that must outlive the returned string or released backing array.
+/// \param value Source bytes. Embedded NUL and arbitrary UTF-8 bytes are preserved.
+/// \param size Source byte count excluding the appended NUL terminator.
+/// \return A byte-exact copy followed by one NUL terminator.
+/// \throws zc::Exception if `size + 1` overflows.
+String resourceHeapString(MemoryResource& resource, const char* value, size_t size);
+
+template <size_t size>
+inline String resourceHeapString(MemoryResource& resource, const char (&value)[size]) {
+  static_assert(size > 0, "string literal storage must include a NUL terminator");
+  ZC_IREQUIRE(value[size - 1] == '\0', "resourceHeapString char array must be NUL-terminated");
+  return resourceHeapString(resource, value, size - 1);
+}
+inline String resourceHeapString(MemoryResource& resource, StringPtr value) {
+  return resourceHeapString(resource, value.begin(), value.size());
+}
+inline String resourceHeapString(MemoryResource& resource, const String& value) {
+  return resourceHeapString(resource, value.begin(), value.size());
+}
+inline String resourceHeapString(MemoryResource& resource, ArrayPtr<const char> value) {
+  return resourceHeapString(resource, value.begin(), value.size());
+}
+
 // =======================================================================================
 // Magic str() function which transforms parameters to text and concatenates them into one big
 // String.
@@ -559,6 +590,12 @@ namespace _ {  // private
 inline size_t sum(std::initializer_list<size_t> nums) {
   size_t result = 0;
   for (auto num : nums) { result += num; }
+  return result;
+}
+
+inline size_t checkedStringSize(std::initializer_list<size_t> sizes) {
+  size_t result = 0;
+  for (size_t size : sizes) { result = checkedAllocationAdd(result, size); }
   return result;
 }
 
@@ -587,6 +624,13 @@ String concat(Params&&... params) {
   // is iterable and whose elements can be converted to `char`.
 
   String result = heapString(sum({params.size()...}));
+  fill(result.begin(), zc::fwd<Params>(params)...);
+  return result;
+}
+
+template <typename... Params>
+String resourceConcat(MemoryResource& resource, Params&&... params) {
+  String result = resourceHeapString(resource, checkedStringSize({params.size()...}));
   fill(result.begin(), zc::fwd<Params>(params)...);
   return result;
 }
@@ -728,6 +772,16 @@ String str(Params&&... params) {
 
 inline String str(String&& s) { return mv(s); }
 // Overload to prevent redundant allocation.
+
+/// \brief Stringify and concatenate values into storage owned by an explicit resource.
+/// \param resource Resource that must outlive the returned string or released backing array.
+/// \param params Values accepted by the existing ZC stringifier contract.
+/// \return Concatenated byte sequence followed by one NUL terminator.
+/// \throws zc::Exception if the combined byte count overflows or stringification fails.
+template <typename... Params>
+String resourceStr(MemoryResource& resource, Params&&... params) {
+  return _::resourceConcat(resource, toCharSequence(zc::fwd<Params>(params))...);
+}
 
 template <typename T>
 _::Delimited<T> delimited(T&& arr, zc::StringPtr delim);

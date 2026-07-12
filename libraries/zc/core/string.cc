@@ -300,6 +300,19 @@ String heapString(const char* value, size_t size) {
   return String(buffer, size, _::HeapArrayDisposer::instance);
 }
 
+String resourceHeapString(MemoryResource& resource, size_t size) {
+  size_t allocationSize = _::checkedAllocationAdd(size, 1);
+  Array<char> buffer = resourceHeapArray<char>(resource, allocationSize);
+  buffer[size] = '\0';
+  return String(zc::mv(buffer));
+}
+
+String resourceHeapString(MemoryResource& resource, const char* value, size_t size) {
+  String result = resourceHeapString(resource, size);
+  if (size != 0u) { memcpy(result.begin(), value, size); }
+  return result;
+}
+
 template <typename T>
 static CappedArray<char, sizeof(T) * 2 + 1> hexImpl(T i) {
   // We don't use sprintf() because it's not async-signal-safe (for strPreallocated()).
