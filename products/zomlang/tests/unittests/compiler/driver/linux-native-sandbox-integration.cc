@@ -14,17 +14,31 @@
 
 #include <unistd.h>
 
+#include <cerrno>
 #include <cstdlib>
 
 #include "zc/core/filesystem.h"
 #include "zc/core/time.h"
 #include "zc/ztest/test.h"
 #include "zomlang/compiler/driver/package/linux-native-sandbox.h"
+#include "zomlang/compiler/driver/package/linux-sandbox-policy.h"
 #include "zomlang/compiler/identity/canonical-encoder.h"
 #include "zomlang/compiler/irgen/target-registry.h"
 
 namespace zomlang::compiler::driver::package {
 namespace {
+
+enum class FixtureScenario : uint32_t {
+  Success = 0,
+  SeccompDenial = 1,
+  MalformedResponse = 2,
+  WallLimit = 3,
+};
+
+constexpr zc::StringPtr kInputPath = "declared-input.txt"_zc;
+constexpr zc::StringPtr kOutputPath = "declared-output.txt"_zc;
+constexpr zc::StringPtr kInputContents = "sandbox-input\n"_zc;
+constexpr zc::StringPtr kOutputContents = "sandbox-output\n"_zc;
 
 template <typename Scalar>
 Scalar scalar(zc::StringPtr text) {
@@ -97,6 +111,12 @@ uint16_t readUint16(zc::ArrayPtr<const uint8_t> bytes, size_t offset) {
   return static_cast<uint16_t>(bytes[offset]) | static_cast<uint16_t>(bytes[offset + 1] << 8U);
 }
 
+void putUint16(zc::ArrayPtr<uint8_t> bytes, size_t offset, uint16_t value) {
+  ZC_REQUIRE(offset + 2 <= bytes.size());
+  bytes[offset] = static_cast<uint8_t>(value);
+  bytes[offset + 1] = static_cast<uint8_t>(value >> 8U);
+}
+
 uint64_t readUint64(zc::ArrayPtr<const uint8_t> bytes, size_t offset) {
   ZC_REQUIRE(offset + 8 <= bytes.size());
   uint64_t result = 0;
@@ -120,7 +140,7 @@ void putUint64(zc::ArrayPtr<uint8_t> bytes, size_t offset, uint64_t value) {
   }
 }
 
-zc::Array<uint8_t> fixtureImage(const RegisteredTargetSelection& target) {
+zc::Array<uint8_t> fixtureImage(const RegisteredTargetSelection& target, FixtureScenario scenario) {
   auto filesystem = zc::newDiskFilesystem();
   const zc::StringPtr absolutePath = ZOM_LINUX_SANDBOX_RUNTIME_FIXTURE;
   ZC_REQUIRE(absolutePath.startsWith("/"_zc));
@@ -161,12 +181,43 @@ zc::Array<uint8_t> fixtureImage(const RegisteredTargetSelection& target) {
     }
   }
   ZC_REQUIRE(sectionPatched);
+
+  const uint8_t filterMarker[] = {'Z', 'O', 'M', 'R', 'U', 'N', 'T', 'I',
+                                  'M', 'E', 'B', 'P', 'F', '0', '0', '1'};
+  size_t filterOffset = bytes.size();
+  for (size_t offset = 0; offset + zc::size(filterMarker) <= bytes.size(); ++offset) {
+    bool equal = true;
+    for (size_t index = 0; index < zc::size(filterMarker); ++index) {
+      if (bytes[offset + index] != filterMarker[index]) { equal = false; }
+    }
+    if (equal) {
+      ZC_REQUIRE(filterOffset == bytes.size());
+      filterOffset = offset;
+    }
+  }
+  ZC_REQUIRE(filterOffset != bytes.size());
+  const auto architecture = hostArchitectureName() == "x86_64"_zc
+                                ? LinuxSandboxArchitecture::X86_64
+                                : LinuxSandboxArchitecture::AArch64;
+  auto runtimeFilter = generateLinuxSandboxFilter(architecture, LinuxSandboxFilterPhase::Runtime);
+  ZC_REQUIRE(runtimeFilter.size() <= 256);
+  ZC_REQUIRE(filterOffset + 24 + runtimeFilter.size() * 8 <= bytes.size());
+  putUint32(bytes, filterOffset + 16, static_cast<uint32_t>(runtimeFilter.size()));
+  putUint32(bytes, filterOffset + 20, static_cast<uint32_t>(scenario));
+  size_t instructionOffset = filterOffset + 24;
+  for (const auto& instruction : runtimeFilter) {
+    putUint16(bytes, instructionOffset, instruction.code);
+    bytes[instructionOffset + 2] = instruction.jumpTrue;
+    bytes[instructionOffset + 3] = instruction.jumpFalse;
+    putUint32(bytes, instructionOffset + 4, instruction.operand);
+    instructionOffset += 8;
+  }
   return bytes;
 }
 
-VerifiedBuildScriptExecutable executable() {
+VerifiedBuildScriptExecutable executable(FixtureScenario scenario) {
   auto target = targetSelection();
-  auto image = fixtureImage(target);
+  auto image = fixtureImage(target, scenario);
   auto digest = identity::sha256(image);
   ZC_REQUIRE(digest != zc::none);
   ZC_IF_SOME(value, digest) {
@@ -243,8 +294,17 @@ private:
   bool used = false;
 };
 
-DigestVerifiedSourceSnapshot emptyInputSnapshot() {
+identity::CanonicalRelativePath path(zc::StringPtr text) {
+  zc::Vector<identity::CanonicalPathSegment> segments;
+  auto segment = identity::CanonicalPathSegment::fromCanonical(text);
+  ZC_IF_SOME(value, segment) { segments.add(zc::mv(value)); }
+  ZC_REQUIRE(segments.size() == 1);
+  return identity::CanonicalRelativePath::from(zc::mv(segments));
+}
+
+DigestVerifiedSourceSnapshot inputSnapshot() {
   auto source = zc::newInMemoryDirectory(zc::nullClock());
+  source->openFile(zc::Path(kInputPath), zc::WriteMode::CREATE)->writeAll(kInputContents);
   MemoryFreshDirectoryFactory factory;
   SourceDirectoryMaterializer materializer;
   auto result = materializer.materialize(*source, factory);
@@ -252,26 +312,95 @@ DigestVerifiedSourceSnapshot emptyInputSnapshot() {
   return zc::mv(result.get<DigestVerifiedSourceSnapshot>());
 }
 
-BuildScriptLimitKey limits() {
-  auto result = BuildScriptLimitKey::verify(BuildScriptLimitKey::defaults());
+BuildScriptLimitKey limits(FixtureScenario scenario = FixtureScenario::Success) {
+  auto values = BuildScriptLimitKey::defaults();
+  if (scenario == FixtureScenario::WallLimit) {
+    values.cpuMilliseconds = 1'000;
+    values.wallMilliseconds = 500;
+  }
+  auto result = BuildScriptLimitKey::verify(values);
   ZC_REQUIRE(result.is<BuildScriptLimitKey>());
   return zc::mv(result.get<BuildScriptLimitKey>());
 }
 
-BuildScriptRequestFrame request() {
+BuildScriptRequestFrame request(const BuildScriptLimitKey& buildLimits) {
   zc::Vector<identity::CanonicalRelativePath> inputs;
+  inputs.add(path(kInputPath));
   zc::Vector<BuildScriptEnvironmentValue> environment;
   zc::Vector<identity::CanonicalRelativePath> outputs;
-  auto buildLimits = limits();
+  outputs.add(path(kOutputPath));
   auto result = BuildScriptRequestFrame::encode(zc::mv(inputs), zc::mv(environment),
                                                 zc::mv(outputs), buildLimits);
   ZC_REQUIRE(result.is<BuildScriptRequestFrame>());
   return zc::mv(result.get<BuildScriptRequestFrame>());
 }
 
+zc::StringPtr scenarioName(FixtureScenario scenario) {
+  switch (scenario) {
+    case FixtureScenario::Success:
+      return "success"_zc;
+    case FixtureScenario::SeccompDenial:
+      return "seccomp-denial"_zc;
+    case FixtureScenario::MalformedResponse:
+      return "malformed-response"_zc;
+    case FixtureScenario::WallLimit:
+      return "wall-limit"_zc;
+  }
+  ZC_UNREACHABLE;
+}
+
+void requireOutput(const VerifiedBuildScriptRun& run) {
+  ZC_REQUIRE(run.outputs().files().size() == 1);
+  auto contents = run.outputSnapshot().readVerifiedFile(path(kOutputPath));
+  ZC_REQUIRE(contents.is<zc::Array<zc::byte>>());
+  ZC_EXPECT(contents.get<zc::Array<zc::byte>>().asPtr() == kOutputContents.asBytes());
+  ZC_EXPECT(run.response().exportedEnvironment().size() == 0);
+}
+
+void runScenario(const zc::Directory& testRoot, const zc::Directory& sandboxParent,
+                 zc::StringPtr rootAbsolutePath, zc::StringPtr cgroupParent,
+                 FixtureScenario scenario, zc::Maybe<BuildScriptIssue> expectedIssue) {
+  const auto leafName = zc::str("isolated-"_zc, scenarioName(scenario));
+  auto outputFactory = zc::Own<FreshSourceDirectoryFactory>(zc::heap<DiskFreshDirectoryFactory>(
+      testRoot, zc::str("captured-output-"_zc, scenarioName(scenario))));
+  auto sandboxName = scalar<identity::CanonicalPathSegment>(leafName);
+  auto input = inputSnapshot();
+  auto platform = createProductionLinuxNativeSandboxPlatform(
+      executable(scenario), input, sandboxParent, zc::str(rootAbsolutePath, "/sandboxes"_zc),
+      zc::mv(sandboxName), cgroupParent, zc::mv(outputFactory));
+  ZC_REQUIRE(platform.is<zc::Own<LinuxNativeSandboxPlatform>>());
+  auto buildLimits = limits(scenario);
+  auto sandbox = LinuxNativeSandboxV1::create(
+      zc::mv(platform.get<zc::Own<LinuxNativeSandboxPlatform>>()), buildLimits);
+  ZC_REQUIRE(sandbox.is<zc::Own<BuildScriptSandboxAdapter>>());
+  auto adapter = zc::mv(sandbox.get<zc::Own<BuildScriptSandboxAdapter>>());
+  auto result = adapter->execute(request(buildLimits));
+  ZC_IF_SOME(issue, expectedIssue) {
+    ZC_REQUIRE(result.is<BuildScriptIssue>());
+    ZC_EXPECT(result.get<BuildScriptIssue>() == issue);
+  }
+  else {
+    if (result.is<BuildScriptIssue>()) {
+      ZC_FAIL_REQUIRE("production Linux sandbox returned issue ",
+                      static_cast<uint32_t>(result.get<BuildScriptIssue>()));
+    }
+    ZC_REQUIRE(result.is<VerifiedBuildScriptRun>());
+    requireOutput(result.get<VerifiedBuildScriptRun>());
+  }
+  ZC_EXPECT(adapter->finish() == zc::none);
+  ZC_EXPECT(adapter->finish() == zc::none);
+  ZC_EXPECT(!sandboxParent.exists(zc::Path(leafName)));
+  const auto cgroupPath = zc::str(cgroupParent, "/"_zc, leafName);
+  errno = 0;
+  const int cgroupAccess = access(cgroupPath.cStr(), F_OK);
+  const int cgroupError = errno;
+  ZC_EXPECT(cgroupAccess != 0);
+  ZC_EXPECT(cgroupError == ENOENT);
+}
+
 }  // namespace
 
-ZC_TEST("Production LinuxNativeSandboxV1 executes an admitted static PIE in kernel isolation") {
+ZC_TEST("Production LinuxNativeSandboxV1 enforces runtime policy and deterministic teardown") {
   const char* cgroupParent = getenv("ZOM_LINUX_SANDBOX_CGROUP_PARENT");
   ZC_REQUIRE(cgroupParent != nullptr && cgroupParent[0] == '/');
   auto filesystem = zc::newDiskFilesystem();
@@ -283,28 +412,14 @@ ZC_TEST("Production LinuxNativeSandboxV1 executes an admitted static PIE in kern
   {
     auto sandboxParent = testRoot->openSubdir(zc::Path("sandboxes"_zc),
                                               zc::WriteMode::CREATE | zc::WriteMode::PRIVATE);
-    auto outputFactory = zc::Own<FreshSourceDirectoryFactory>(
-        zc::heap<DiskFreshDirectoryFactory>(*testRoot, "captured-output"_zc));
-    auto sandboxName = scalar<identity::CanonicalPathSegment>("isolated-run"_zc);
-    auto input = emptyInputSnapshot();
-    auto platform = createProductionLinuxNativeSandboxPlatform(
-        executable(), input, *sandboxParent, zc::str(rootAbsolutePath, "/sandboxes"_zc),
-        zc::mv(sandboxName), cgroupParent, zc::mv(outputFactory));
-    ZC_REQUIRE(platform.is<zc::Own<LinuxNativeSandboxPlatform>>());
-    auto buildLimits = limits();
-    auto sandbox = LinuxNativeSandboxV1::create(
-        zc::mv(platform.get<zc::Own<LinuxNativeSandboxPlatform>>()), buildLimits);
-    ZC_REQUIRE(sandbox.is<zc::Own<BuildScriptSandboxAdapter>>());
-    auto adapter = zc::mv(sandbox.get<zc::Own<BuildScriptSandboxAdapter>>());
-    auto result = adapter->execute(request());
-    if (result.is<BuildScriptIssue>()) {
-      ZC_FAIL_REQUIRE("production Linux sandbox returned issue ",
-                      static_cast<uint32_t>(result.get<BuildScriptIssue>()));
-    }
-    ZC_REQUIRE(result.is<VerifiedBuildScriptRun>());
-    ZC_EXPECT(result.get<VerifiedBuildScriptRun>().outputs().files().size() == 0);
-    ZC_EXPECT(result.get<VerifiedBuildScriptRun>().response().exportedEnvironment().size() == 0);
-    ZC_EXPECT(adapter->finish() == zc::none);
+    runScenario(*testRoot, *sandboxParent, rootAbsolutePath, cgroupParent, FixtureScenario::Success,
+                zc::none);
+    runScenario(*testRoot, *sandboxParent, rootAbsolutePath, cgroupParent,
+                FixtureScenario::SeccompDenial, BuildScriptIssue::SeccompPolicyViolation);
+    runScenario(*testRoot, *sandboxParent, rootAbsolutePath, cgroupParent,
+                FixtureScenario::MalformedResponse, BuildScriptIssue::MalformedResponse);
+    runScenario(*testRoot, *sandboxParent, rootAbsolutePath, cgroupParent,
+                FixtureScenario::WallLimit, BuildScriptIssue::WallLimit);
   }
   testRoot = nullptr;
   filesystem->getRoot().remove(rootPath);
