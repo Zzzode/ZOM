@@ -112,7 +112,11 @@ Ban by default. If you must use `std::`:
 
 Known exceptions (documented here — do not add without amending this list):
 
-- *None today.* If you add one, update this table.
+- `products/zomlang/compiler/driver/package/manifest-parser.cc` may use
+  `std::string_view` and non-owning raw pointers returned by the vendored
+  toml++ API. The adapter must not expose either through a ZOM header or retain
+  a pointer beyond the owning `toml::parse_result`. RFC 0012 and its
+  implementation tracker own removal if toml++ gains a zc-native adapter.
 
 ---
 
