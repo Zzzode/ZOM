@@ -69,7 +69,7 @@ jobs:
       - name: Install dependencies (macOS)
         if: matrix.os == 'macos-latest'
         run: |
-          brew install bash cmake ninja lit
+          brew install antlr bash cmake ninja lit
           pip3 install --break-system-packages psutil PyYAML
 
       - name: Configure CMake
