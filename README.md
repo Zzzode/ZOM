@@ -13,3 +13,8 @@ cd ZOM
 cmake --preset sanitizer
 cmake --build --preset sanitizer
 ```
+
+## 2. Documentation
+
+- [Package system](docs/package-system.md) — implemented `Zom.toml`, workspace,
+  lock, source identity, build-script, diagnostic, and determinism contracts.
