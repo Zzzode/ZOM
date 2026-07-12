@@ -62,6 +62,39 @@ zc::Vector<CachedCanonicalValue<Value>> cachedCanonicalSort(
 }
 
 template <typename Value>
+zc::Vector<CachedCanonicalValue<Value>> cachedCanonicalSort(
+    zc::MemoryResource& resource, zc::Vector<CachedCanonicalValue<Value>>&& input) {
+  if (input.size() < 2) { return zc::mv(input); }
+  const size_t middle = input.size() / 2;
+  zc::Vector<CachedCanonicalValue<Value>> left(resource, middle);
+  zc::Vector<CachedCanonicalValue<Value>> right(resource, input.size() - middle);
+  for (size_t index = 0; index < input.size(); ++index) {
+    if (index < middle) {
+      left.add(zc::mv(input[index]));
+    } else {
+      right.add(zc::mv(input[index]));
+    }
+  }
+  left = cachedCanonicalSort(resource, zc::mv(left));
+  right = cachedCanonicalSort(resource, zc::mv(right));
+  zc::Vector<CachedCanonicalValue<Value>> result(resource, input.size());
+  size_t leftIndex = 0;
+  size_t rightIndex = 0;
+  while (leftIndex < left.size() || rightIndex < right.size()) {
+    bool takeLeft = rightIndex == right.size();
+    if (!takeLeft && leftIndex < left.size()) {
+      takeLeft = left[leftIndex].key.asPtr() < right[rightIndex].key.asPtr();
+    }
+    if (takeLeft) {
+      result.add(zc::mv(left[leftIndex++]));
+    } else {
+      result.add(zc::mv(right[rightIndex++]));
+    }
+  }
+  return result;
+}
+
+template <typename Value>
 zc::Vector<Value> canonicalSort(zc::Vector<Value>&& input) {
   zc::Vector<CachedCanonicalValue<Value>> cached;
   for (auto& value : input) {
@@ -75,7 +108,27 @@ zc::Vector<Value> canonicalSort(zc::Vector<Value>&& input) {
   return sorted;
 }
 
+template <typename Value>
+zc::Vector<Value> canonicalSort(zc::MemoryResource& resource, zc::Vector<Value>&& input) {
+  zc::Vector<CachedCanonicalValue<Value>> cached(resource, input.size());
+  for (auto& value : input) {
+    identity::CanonicalEncoder encoder(resource);
+    value.encode(encoder);
+    cached.add(CachedCanonicalValue<Value>{encoder.finish(), zc::mv(value)});
+  }
+  cached = cachedCanonicalSort(resource, zc::mv(cached));
+  zc::Vector<Value> sorted(resource, cached.size());
+  for (auto& value : cached) { sorted.add(zc::mv(value.value)); }
+  return sorted;
+}
+
 zc::Array<uint8_t> encodePackageKey(const identity::PackageKey& key) { return key.encode(); }
+
+zc::Array<uint8_t> encodePackageKey(zc::MemoryResource& resource, const identity::PackageKey& key) {
+  identity::CanonicalEncoder encoder(resource);
+  key.encode(encoder);
+  return encoder.finish();
+}
 
 bool containsPackage(zc::ArrayPtr<const LockPackageRecord> packages,
                      const identity::PackageKey& key) {
@@ -86,6 +139,26 @@ bool containsPackage(zc::ArrayPtr<const LockPackageRecord> packages,
     const size_t step = count / 2;
     const size_t middle = first + step;
     const auto candidate = packages[middle].key().encode();
+    if (candidate.asPtr() < encoded.asPtr()) {
+      first = middle + 1;
+      count -= step + 1;
+      continue;
+    }
+    if (candidate.asPtr() == encoded.asPtr()) { return true; }
+    count = step;
+  }
+  return false;
+}
+
+bool containsPackage(zc::MemoryResource& resource, zc::ArrayPtr<const LockPackageRecord> packages,
+                     const identity::PackageKey& key) {
+  const auto encoded = encodePackageKey(resource, key);
+  size_t first = 0;
+  size_t count = packages.size();
+  while (count != 0) {
+    const size_t step = count / 2;
+    const size_t middle = first + step;
+    const auto candidate = encodePackageKey(resource, packages[middle].key());
     if (candidate.asPtr() < encoded.asPtr()) {
       first = middle + 1;
       count -= step + 1;
@@ -466,6 +539,13 @@ LockPackageRecord LockPackageRecord::clone() const {
   ZC_IF_SOME(value, result) { return zc::mv(value); }
   ZC_UNREACHABLE
 }
+LockPackageRecord LockPackageRecord::clone(zc::MemoryResource& resource) const {
+  auto result = from(keyValue.clone(resource), manifestDigestValue, sourceTreeDigestValue,
+                     cloneArchiveFormat(archiveFormatValue), cloneDigest(archiveDigestValue),
+                     cloneSigningKey(signingKeyValue));
+  ZC_IF_SOME(value, result) { return zc::mv(value); }
+  ZC_UNREACHABLE
+}
 const identity::PackageKey& LockPackageRecord::key() const noexcept { return keyValue; }
 const identity::Sha256Digest& LockPackageRecord::manifestDigest() const noexcept {
   return manifestDigestValue;
@@ -529,6 +609,36 @@ zc::OneOf<VerifiedLockGraph, LockIssue> VerifiedLockGraph::from(
   }
   return VerifiedLockGraph(zc::mv(packages), zc::mv(edges));
 }
+zc::OneOf<VerifiedLockGraph, LockIssue> VerifiedLockGraph::from(
+    zc::MemoryResource& resource, zc::Vector<LockPackageRecord>&& packages,
+    zc::Vector<identity::PackageDependencyEdgeKey>&& edges) {
+  zc::Vector<LockPackageRecord> retainedPackages(resource, packages.size());
+  for (const auto& package : packages) { retainedPackages.add(package.clone(resource)); }
+  zc::Vector<identity::PackageDependencyEdgeKey> retainedEdges(resource, edges.size());
+  for (const auto& edge : edges) { retainedEdges.add(edge.clone(resource)); }
+  retainedPackages = canonicalSort(resource, zc::mv(retainedPackages));
+  retainedEdges = canonicalSort(resource, zc::mv(retainedEdges));
+  for (size_t index = 1; index < retainedPackages.size(); ++index) {
+    if (encodePackageKey(resource, retainedPackages[index - 1].key()).asPtr() ==
+        encodePackageKey(resource, retainedPackages[index].key()).asPtr()) {
+      return LockIssue::DuplicatePackageKey;
+    }
+  }
+  for (size_t index = 1; index < retainedEdges.size(); ++index) {
+    identity::CanonicalEncoder previous(resource);
+    identity::CanonicalEncoder current(resource);
+    retainedEdges[index - 1].encode(previous);
+    retainedEdges[index].encode(current);
+    if (previous.finish().asPtr() == current.finish().asPtr()) { return LockIssue::DuplicateEdge; }
+  }
+  for (const auto& edge : retainedEdges) {
+    if (!containsPackage(resource, retainedPackages, edge.consumer()) ||
+        !containsPackage(resource, retainedPackages, edge.provider())) {
+      return LockIssue::DanglingEdge;
+    }
+  }
+  return VerifiedLockGraph(zc::mv(retainedPackages), zc::mv(retainedEdges));
+}
 zc::ArrayPtr<const LockPackageRecord> VerifiedLockGraph::packages() const noexcept {
   return packageValues;
 }
@@ -542,6 +652,13 @@ VerifiedLockGraph VerifiedLockGraph::clone() const {
   for (const auto& edge : edgeValues) { edges.add(edge.clone()); }
   return VerifiedLockGraph(zc::mv(packages), zc::mv(edges));
 }
+VerifiedLockGraph VerifiedLockGraph::clone(zc::MemoryResource& resource) const {
+  zc::Vector<LockPackageRecord> packages(resource, packageValues.size());
+  for (const auto& package : packageValues) { packages.add(package.clone(resource)); }
+  zc::Vector<identity::PackageDependencyEdgeKey> edges(resource, edgeValues.size());
+  for (const auto& edge : edgeValues) { edges.add(edge.clone(resource)); }
+  return VerifiedLockGraph(zc::mv(packages), zc::mv(edges));
+}
 void VerifiedLockGraph::encode(identity::CanonicalEncoder& encoder) const {
   encoder.encodeSequenceSize(packageValues.size());
   for (const auto& package : packageValues) { package.encode(encoder); }
@@ -550,6 +667,11 @@ void VerifiedLockGraph::encode(identity::CanonicalEncoder& encoder) const {
 }
 zc::Array<uint8_t> VerifiedLockGraph::encode() const {
   identity::CanonicalEncoder encoder;
+  encode(encoder);
+  return encoder.finish();
+}
+zc::Array<uint8_t> VerifiedLockGraph::encode(zc::MemoryResource& resource) const {
+  identity::CanonicalEncoder encoder(resource);
   encode(encoder);
   return encoder.finish();
 }
@@ -583,6 +705,38 @@ zc::OneOf<VerifiedLockGraph, LockIssue> LockedReplayVerifier::replay(
     return LockIssue::CurrentInputMismatch;
   }
   return locked.clone();
+}
+
+zc::OneOf<VerifiedLockGraph, LockIssue> LockedReplayVerifier::replay(
+    zc::MemoryResource& resource, const VerifiedLockGraph& locked,
+    const VerifiedLockGraph& currentInput,
+    zc::ArrayPtr<const identity::RegistryIdentity> trustedRegistries, LockReplayMetrics& metrics) {
+  metrics = {};
+  for (const auto& package : locked.packages()) {
+    ++metrics.packageVisits;
+    if (package.key().source().kind() != identity::PackageSourceKind::Registry) { continue; }
+    identity::CanonicalEncoder packageRegistry(resource);
+    package.key().source().registryIdentity().encode(packageRegistry);
+    const auto packageRegistryBytes = packageRegistry.finish();
+    bool trusted = false;
+    for (const auto& registry : trustedRegistries) {
+      identity::CanonicalEncoder trustedRegistry(resource);
+      registry.encode(trustedRegistry);
+      if (trustedRegistry.finish().asPtr() == packageRegistryBytes.asPtr()) {
+        trusted = true;
+        break;
+      }
+    }
+    if (!trusted) { return LockIssue::TrustDomainMismatch; }
+  }
+  for (const auto& edge : locked.edges()) {
+    static_cast<void>(edge);
+    ++metrics.edgeVisits;
+  }
+  if (locked.encode(resource).asPtr() != currentInput.encode(resource).asPtr()) {
+    return LockIssue::CurrentInputMismatch;
+  }
+  return locked.clone(resource);
 }
 
 zc::String LockfileCodec::write(const VerifiedLockGraph& graph) {

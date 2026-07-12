@@ -68,6 +68,9 @@ public:
   ZC_DISALLOW_COPY(LockPackageRecord);
 
   ZC_NODISCARD LockPackageRecord clone() const;
+  /// \brief Clone every allocating identity leaf through `resource`.
+  /// \param resource Resource that must outlive the returned record.
+  ZC_NODISCARD LockPackageRecord clone(zc::MemoryResource& resource) const;
   ZC_NODISCARD const identity::PackageKey& key() const noexcept;
   ZC_NODISCARD const identity::Sha256Digest& manifestDigest() const noexcept;
   ZC_NODISCARD const identity::Sha256Digest& sourceTreeDigest() const noexcept;
@@ -98,6 +101,11 @@ public:
   ZC_NODISCARD static zc::OneOf<VerifiedLockGraph, LockIssue> from(
       zc::Vector<LockPackageRecord>&& packages,
       zc::Vector<identity::PackageDependencyEdgeKey>&& edges);
+  /// \brief Validate a graph while retaining all graph storage in `resource`.
+  /// \param resource Resource that must outlive the returned graph.
+  ZC_NODISCARD static zc::OneOf<VerifiedLockGraph, LockIssue> from(
+      zc::MemoryResource& resource, zc::Vector<LockPackageRecord>&& packages,
+      zc::Vector<identity::PackageDependencyEdgeKey>&& edges);
 
   VerifiedLockGraph(VerifiedLockGraph&&) noexcept = default;
   VerifiedLockGraph& operator=(VerifiedLockGraph&&) noexcept = default;
@@ -106,8 +114,14 @@ public:
   ZC_NODISCARD zc::ArrayPtr<const LockPackageRecord> packages() const noexcept;
   ZC_NODISCARD zc::ArrayPtr<const identity::PackageDependencyEdgeKey> edges() const noexcept;
   ZC_NODISCARD VerifiedLockGraph clone() const;
+  /// \brief Clone graph storage and all allocating identity leaves through `resource`.
+  /// \param resource Resource that must outlive the returned graph.
+  ZC_NODISCARD VerifiedLockGraph clone(zc::MemoryResource& resource) const;
   void encode(identity::CanonicalEncoder& encoder) const;
   ZC_NODISCARD zc::Array<uint8_t> encode() const;
+  /// \brief Encode into an array owned by `resource`.
+  /// \param resource Resource that must outlive the returned array.
+  ZC_NODISCARD zc::Array<uint8_t> encode(zc::MemoryResource& resource) const;
 
 private:
   VerifiedLockGraph(zc::Vector<LockPackageRecord>&& packages,
@@ -130,6 +144,12 @@ class LockedReplayVerifier final {
 public:
   ZC_NODISCARD static zc::OneOf<VerifiedLockGraph, LockIssue> replay(
       const VerifiedLockGraph& locked, const VerifiedLockGraph& currentInput,
+      zc::ArrayPtr<const identity::RegistryIdentity> trustedRegistries, LockReplayMetrics& metrics);
+  /// \brief Validate replay and retain its graph through `resource` without solver work.
+  /// \param resource Resource that must outlive the returned graph.
+  ZC_NODISCARD static zc::OneOf<VerifiedLockGraph, LockIssue> replay(
+      zc::MemoryResource& resource, const VerifiedLockGraph& locked,
+      const VerifiedLockGraph& currentInput,
       zc::ArrayPtr<const identity::RegistryIdentity> trustedRegistries, LockReplayMetrics& metrics);
 };
 

@@ -130,6 +130,28 @@ identity::PackageDependencyEdgeKey edge(const identity::PackageKey& consumer, zc
   ZC_UNREACHABLE
 }
 
+class FailNthAllocationResource final : public zc::MemoryResource {
+public:
+  FailNthAllocationResource(zc::MemoryResource& upstream, size_t failureIndex)
+      : upstream(upstream), failureIndex(failureIndex) {}
+
+protected:
+  void* doAllocate(size_t size, size_t alignment) override {
+    ++allocationCount;
+    ZC_REQUIRE(allocationCount != failureIndex, "injected lock graph allocation failure");
+    return upstream.allocate(size, alignment);
+  }
+
+  void doDeallocate(void* pointer, size_t size, size_t alignment) override {
+    upstream.deallocate(pointer, size, alignment);
+  }
+
+private:
+  zc::MemoryResource& upstream;
+  size_t failureIndex;
+  size_t allocationCount = 0;
+};
+
 VerifiedLockGraph graph(bool reverse = false) {
   auto local = localPackage();
   auto vcs = vcsPackage();
@@ -196,6 +218,100 @@ ZC_TEST("LockfileTest.CanonicalGraphAndWriterIgnoreInputOrder") {
     ZC_EXPECT(zc::encodeHex(value.bytes()) ==
               "f87025b6c542149a01d5788f17307a44198de3caa5f71c2ecd129cd0c301b32f"_zc);
   }
+}
+
+ZC_TEST("LockfileTest.ResourceGraphRetainsEverySourceAndCanonicalByte") {
+  auto source = graph(true);
+  const auto expected = source.encode();
+  zc::Vector<LockPackageRecord> packages;
+  for (const auto& package : source.packages()) { packages.add(package.clone()); }
+  zc::Vector<identity::PackageDependencyEdgeKey> edges;
+  for (const auto& dependency : source.edges()) { edges.add(dependency.clone()); }
+
+  zc::MemoryResource upstream;
+  zc::CountingMemoryResource resource(upstream);
+  {
+    auto admitted = VerifiedLockGraph::from(resource, zc::mv(packages), zc::mv(edges));
+    ZC_REQUIRE(admitted.is<VerifiedLockGraph>());
+    auto retained = zc::mv(admitted.get<VerifiedLockGraph>());
+    ZC_REQUIRE(retained.packages().size() == 3);
+    ZC_REQUIRE(retained.edges().size() == 2);
+    ZC_EXPECT(resource.peakAllocatedBytes() > resource.currentAllocatedBytes());
+
+    size_t registryCount = 0;
+    size_t vcsCount = 0;
+    size_t localCount = 0;
+    for (const auto& package : retained.packages()) {
+      switch (package.key().source().kind()) {
+        case identity::PackageSourceKind::Registry:
+          ++registryCount;
+          ZC_EXPECT(package.hasArchive());
+          ZC_EXPECT(package.archiveDigest() == digest("archive"_zc));
+          ZC_EXPECT(package.signingKey().digest() == SigningKeyId::from(publicKey()).digest());
+          break;
+        case identity::PackageSourceKind::Vcs:
+          ++vcsCount;
+          ZC_EXPECT(!package.hasArchive());
+          break;
+        case identity::PackageSourceKind::LocalPath:
+          ++localCount;
+          ZC_EXPECT(!package.hasArchive());
+          break;
+      }
+    }
+    ZC_EXPECT(registryCount == 1);
+    ZC_EXPECT(vcsCount == 1);
+    ZC_EXPECT(localCount == 1);
+
+    auto encoded = retained.encode(resource);
+    ZC_EXPECT(encoded.asPtr() == expected.asPtr());
+    auto cloned = retained.clone(resource);
+    ZC_EXPECT(cloned.encode(resource).asPtr() == expected.asPtr());
+    zc::Vector<identity::RegistryIdentity> trusted;
+    for (const auto& package : retained.packages()) {
+      if (package.key().source().kind() == identity::PackageSourceKind::Registry) {
+        trusted.add(package.key().source().registryIdentity().clone());
+      }
+    }
+    LockReplayMetrics metrics;
+    auto replay = LockedReplayVerifier::replay(resource, retained, cloned, trusted, metrics);
+    ZC_REQUIRE(replay.is<VerifiedLockGraph>());
+    ZC_EXPECT(replay.get<VerifiedLockGraph>().encode(resource).asPtr() == expected.asPtr());
+    ZC_EXPECT(metrics.solverInvocations == 0);
+    auto moved = zc::mv(retained);
+    ZC_EXPECT(moved.encode(resource).asPtr() == expected.asPtr());
+    ZC_EXPECT(resource.currentAllocatedBytes() > 0);
+  }
+  ZC_EXPECT(resource.peakAllocatedBytes() > 0);
+  ZC_EXPECT(resource.currentAllocatedBytes() == 0);
+}
+
+ZC_TEST("LockfileTest.ResourceGraphCleansUpRejectedAndFailedConstruction") {
+  {
+    auto duplicatePackage = localPackage();
+    zc::Vector<LockPackageRecord> packages;
+    packages.add(duplicatePackage.clone());
+    packages.add(zc::mv(duplicatePackage));
+    zc::Vector<identity::PackageDependencyEdgeKey> edges;
+    zc::MemoryResource upstream;
+    zc::CountingMemoryResource resource(upstream);
+    auto rejected = VerifiedLockGraph::from(resource, zc::mv(packages), zc::mv(edges));
+    ZC_REQUIRE(rejected.is<LockIssue>());
+    ZC_EXPECT(rejected.get<LockIssue>() == LockIssue::DuplicatePackageKey);
+    ZC_EXPECT(resource.currentAllocatedBytes() == 0);
+  }
+
+  auto source = graph();
+  zc::Vector<LockPackageRecord> packages;
+  for (const auto& package : source.packages()) { packages.add(package.clone()); }
+  zc::Vector<identity::PackageDependencyEdgeKey> edges;
+  for (const auto& dependency : source.edges()) { edges.add(dependency.clone()); }
+  zc::MemoryResource upstream;
+  FailNthAllocationResource failing(upstream, 6);
+  zc::CountingMemoryResource resource(failing);
+  ZC_EXPECT_THROW_MESSAGE("injected lock graph allocation failure",
+                          VerifiedLockGraph::from(resource, zc::mv(packages), zc::mv(edges)));
+  ZC_EXPECT(resource.currentAllocatedBytes() == 0);
 }
 
 ZC_TEST("LockfileTest.RejectsDuplicateAndDanglingGraphEntries") {
