@@ -168,30 +168,129 @@ struct ParsedSource final {
   ast::Tree tree;
 };
 
-identity::DefinitionKey definitionKey(
-    const ParsedSource& parsed, const identity::ImmutableSourceSnapshot& snapshot,
-    identity::DefinitionKind kind = identity::DefinitionKind::Function) {
-  const auto inventory = DefinitionInventory::collect(parsed.tree);
-  ZC_REQUIRE(inventory.definitions().size() == 1);
-  const auto& entry = inventory.definitions()[0];
-  auto name = identity::DeclaredDefinitionName::fromSource(parsed.tree.ident(entry.declaredName));
+bool sameParentPath(zc::ArrayPtr<const StructuralIdentityParent> left,
+                    zc::ArrayPtr<const StructuralIdentityParent> right) {
+  if (left.size() != right.size()) { return false; }
+  for (size_t index = 0; index < left.size(); ++index) {
+    if (left[index].kind != right[index].kind || left[index].node != right[index].node) {
+      return false;
+    }
+  }
+  return true;
+}
+
+uint32_t siblingOrdinal(const DefinitionInventory& inventory, ast::NodeId moduleNode,
+                        zc::ArrayPtr<const StructuralIdentityParent> parents, ast::NodeId node) {
+  uint32_t ordinal = 0;
+  for (const auto& candidate : inventory.definitions()) {
+    if (candidate.node.value < node.value && candidate.moduleNode == moduleNode &&
+        sameParentPath(candidate.parentPath.asPtr(), parents)) {
+      ++ordinal;
+    }
+  }
+  for (const auto& candidate : inventory.impls()) {
+    if (candidate.node.value < node.value && candidate.moduleNode == moduleNode &&
+        sameParentPath(candidate.parentPath.asPtr(), parents)) {
+      ++ordinal;
+    }
+  }
+  return ordinal;
+}
+
+const DefinitionInventoryEntry& inventoryDefinition(const DefinitionInventory& inventory,
+                                                    ast::NodeId node) {
+  for (const auto& entry : inventory.definitions()) {
+    if (entry.node == node) { return entry; }
+  }
+  ZC_FAIL_REQUIRE("definition parent fixture is missing");
+}
+
+const ImplInventoryEntry& inventoryImpl(const DefinitionInventory& inventory, ast::NodeId node) {
+  for (const auto& entry : inventory.impls()) {
+    if (entry.node == node) { return entry; }
+  }
+  ZC_FAIL_REQUIRE("implementation parent fixture is missing");
+}
+
+identity::DefinitionPathSegment definitionSegment(const ParsedSource& parsed,
+                                                  const identity::ImmutableSourceSnapshot& snapshot,
+                                                  const DefinitionInventory& inventory,
+                                                  const DefinitionInventoryEntry& entry,
+                                                  identity::DefinitionKind kind) {
+  zc::Maybe<identity::DefinitionNameKey> name;
+  if (entry.nameKind == InventoryDefinitionNameKind::Declared) {
+    ZC_IF_SOME(value, identity::DeclaredDefinitionName::fromSource(
+                          parsed.tree.ident(entry.declaredName))) {
+      name = identity::DefinitionNameKey::declared(zc::mv(value));
+    }
+  } else {
+    ZC_IF_SOME(role, entry.anonymousRole) { name = identity::DefinitionNameKey::anonymous(role); }
+  }
   const auto start = parsed.sources->getLocOffsetInBuffer(entry.source.getStart(), parsed.buffer);
   const auto end = parsed.sources->getLocOffsetInBuffer(entry.source.getEnd(), parsed.buffer);
   auto span = snapshot.span(start, end);
   ZC_IF_SOME(nameValue, name) {
     ZC_IF_SOME(spanValue, span) {
       auto segment = identity::DefinitionPathSegment::from(
-          kind, identity::DefinitionNameKey::declared(zc::mv(nameValue)), zc::mv(spanValue), 0);
-      ZC_IF_SOME(segmentValue, segment) {
-        zc::Vector<identity::DefinitionPathComponent> path;
-        path.add(identity::DefinitionPathComponent::definition(zc::mv(segmentValue)));
-        ZC_IF_SOME(value, identity::DefinitionKey::from(module(), zc::mv(path))) {
-          return zc::mv(value);
-        }
+          kind, zc::mv(nameValue), zc::mv(spanValue),
+          siblingOrdinal(inventory, entry.moduleNode, entry.parentPath.asPtr(), entry.node));
+      ZC_IF_SOME(value, segment) { return zc::mv(value); }
+    }
+  }
+  ZC_FAIL_REQUIRE("definition segment fixture failed");
+}
+
+identity::DefinitionKey definitionKey(const ParsedSource& parsed,
+                                      const identity::ImmutableSourceSnapshot& snapshot,
+                                      const DefinitionInventory& inventory,
+                                      const DefinitionInventoryEntry& entry,
+                                      bool wrongKind = false) {
+  zc::Vector<identity::DefinitionPathComponent> path;
+  for (const auto& parent : entry.parentPath) {
+    if (parent.kind == StructuralIdentityParentKind::Definition) {
+      const auto& definition = inventoryDefinition(inventory, parent.node);
+      path.add(identity::DefinitionPathComponent::definition(
+          definitionSegment(parsed, snapshot, inventory, definition, definition.kind)));
+    } else {
+      const auto& implementation = inventoryImpl(inventory, parent.node);
+      const auto start =
+          parsed.sources->getLocOffsetInBuffer(implementation.source.getStart(), parsed.buffer);
+      const auto end =
+          parsed.sources->getLocOffsetInBuffer(implementation.source.getEnd(), parsed.buffer);
+      ZC_IF_SOME(span, snapshot.span(start, end)) {
+        path.add(identity::DefinitionPathComponent::impl(identity::ImplPathSegment::from(
+            zc::mv(span), siblingOrdinal(inventory, implementation.moduleNode,
+                                         implementation.parentPath.asPtr(), implementation.node))));
       }
     }
   }
+  const auto kind = wrongKind ? identity::DefinitionKind::Class : entry.kind;
+  path.add(identity::DefinitionPathComponent::definition(
+      definitionSegment(parsed, snapshot, inventory, entry, kind)));
+  ZC_IF_SOME(value, identity::DefinitionKey::from(module(), zc::mv(path))) { return zc::mv(value); }
   ZC_FAIL_REQUIRE("definition key fixture failed");
+}
+
+identity::ImplKey implKey(const ParsedSource& parsed,
+                          const identity::ImmutableSourceSnapshot& snapshot,
+                          const DefinitionInventory& inventory, const ImplInventoryEntry& entry,
+                          bool wrongOrdinal = false) {
+  zc::Vector<identity::DefinitionPathSegment> parentPath;
+  for (const auto& parent : entry.parentPath) {
+    ZC_REQUIRE(parent.kind == StructuralIdentityParentKind::Definition);
+    const auto& definition = inventoryDefinition(inventory, parent.node);
+    parentPath.add(definitionSegment(parsed, snapshot, inventory, definition, definition.kind));
+  }
+  const auto start = parsed.sources->getLocOffsetInBuffer(entry.source.getStart(), parsed.buffer);
+  const auto end = parsed.sources->getLocOffsetInBuffer(entry.source.getEnd(), parsed.buffer);
+  ZC_IF_SOME(span, snapshot.span(start, end)) {
+    auto value = identity::ImplKey::from(
+        module(), zc::mv(parentPath), zc::mv(span),
+        siblingOrdinal(inventory, entry.moduleNode, entry.parentPath.asPtr(), entry.node) +
+            (wrongOrdinal ? 1 : 0));
+    ZC_IF_SOME(result, value) { return zc::mv(result); }
+  }
+  ZC_FAIL_REQUIRE("implementation key fixture failed");
 }
 
 ast::Tree manualModuleTree(source::SourceRange range, zc::StringPtr moduleName) {
@@ -219,6 +318,7 @@ struct FrozenFixture final {
                          ImplRegistration implRegistration = ImplRegistration::None)
       : context(requireContext(factory)), registries(createRegistries()) {
     auto snapshot = sourceFixture.snapshot();
+    const auto inventory = DefinitionInventory::collect(sourceFixture.tree);
     ZC_REQUIRE(registries.collectPackage(package()) == identity::FrozenRegistryFailure::None);
     ZC_REQUIRE(registries.freezePackages() == identity::FrozenRegistryFailure::None);
     ZC_REQUIRE(registries.collectCrate(crate()) == identity::FrozenRegistryFailure::None);
@@ -229,43 +329,33 @@ struct FrozenFixture final {
     ZC_REQUIRE(registries.collectModule(module()) == identity::FrozenRegistryFailure::None);
     ZC_REQUIRE(registries.freezeModules() == identity::FrozenRegistryFailure::None);
     if (includeDefinition) {
-      auto key = definitionKey(sourceFixture, snapshot,
-                               wrongDefinitionKind ? identity::DefinitionKind::Class
-                                                   : identity::DefinitionKind::Function);
-      auto retained = key.clone();
-      ZC_REQUIRE(registries.collectDefinition(zc::mv(key)) ==
-                 identity::FrozenRegistryFailure::None);
+      for (size_t index = 0; index < inventory.definitions().size(); ++index) {
+        auto key = definitionKey(sourceFixture, snapshot, inventory, inventory.definitions()[index],
+                                 wrongDefinitionKind && index == 0);
+        ZC_REQUIRE(registries.collectDefinition(zc::mv(key), index) ==
+                   identity::FrozenRegistryFailure::None);
+      }
       ZC_REQUIRE(registries.freezeDefinitions() == identity::FrozenRegistryFailure::None);
-      definitionId = requireHandle(registries.definitions().find(retained));
-      const auto node = DefinitionInventory::collect(sourceFixture.tree).definitions()[0].node;
-      ZC_REQUIRE(rawDefinitions.insert(node, definitionId));
+      for (size_t index = 0; index < inventory.definitions().size(); ++index) {
+        const auto& entry = inventory.definitions()[index];
+        auto key = definitionKey(sourceFixture, snapshot, inventory, entry,
+                                 wrongDefinitionKind && index == 0);
+        const auto identity = requireHandle(registries.definitions().find(key));
+        if (index == 0) { definitionId = identity; }
+        ZC_REQUIRE(rawDefinitions.insert(entry.node, identity));
+      }
     } else {
       ZC_REQUIRE(registries.freezeDefinitions() == identity::FrozenRegistryFailure::None);
     }
     if (implRegistration != ImplRegistration::None) {
-      const auto inventory = DefinitionInventory::collect(sourceFixture.tree);
       ZC_REQUIRE(inventory.impls().size() == 1);
       const auto& implementation = inventory.impls()[0];
-      const auto start = sourceFixture.sources->getLocOffsetInBuffer(
-          implementation.source.getStart(), sourceFixture.buffer);
-      const auto end = sourceFixture.sources->getLocOffsetInBuffer(implementation.source.getEnd(),
-                                                                   sourceFixture.buffer);
-      auto span = snapshot.span(start, end);
-      ZC_REQUIRE(span != zc::none);
-      ZC_IF_SOME(spanValue, span) {
-        zc::Vector<identity::DefinitionPathSegment> parentPath;
-        const uint32_t ordinal = implRegistration == ImplRegistration::Exact ? 0 : 1;
-        auto key =
-            identity::ImplKey::from(module(), zc::mv(parentPath), zc::mv(spanValue), ordinal);
-        ZC_REQUIRE(key != zc::none);
-        ZC_IF_SOME(keyValue, key) {
-          auto retained = keyValue.clone();
-          ZC_REQUIRE(registries.collectImpl(zc::mv(keyValue)) ==
-                     identity::FrozenRegistryFailure::None);
-          ZC_REQUIRE(registries.freezeImpls() == identity::FrozenRegistryFailure::None);
-          implId = requireHandle(registries.impls().find(retained));
-        }
-      }
+      auto key = implKey(sourceFixture, snapshot, inventory, implementation,
+                         implRegistration == ImplRegistration::WrongOrdinal);
+      auto retained = key.clone();
+      ZC_REQUIRE(registries.collectImpl(zc::mv(key)) == identity::FrozenRegistryFailure::None);
+      ZC_REQUIRE(registries.freezeImpls() == identity::FrozenRegistryFailure::None);
+      implId = requireHandle(registries.impls().find(retained));
     } else {
       ZC_REQUIRE(registries.freezeImpls() == identity::FrozenRegistryFailure::None);
     }
