@@ -307,16 +307,18 @@ landing.
 | Dependency-free root verifier spine | Complete | Commit `05d12af5`; `ModuleGraphVerifier`, private `VerifiedModuleGraphView`, `BindingInputVerifier`, private `VerifiedBindingInput`, focused sanitizer tests, and positive plus adversarial binder architecture gates |
 | Parsed-module and frozen-inventory provenance | Complete | Commits `46839dcd` and `1b863942`; normative `ParsedModuleReceipt` oracle, immutable source promotion, exact single-module identity projection, ten focused sanitizer cases, and thirteen architecture mutations |
 | Dependency-free binding metadata publication | Complete | Commit `1745926f`; immutable `VerifiedBindingMetadata` and `VerifiedExportSurface`, private candidate authority, closed verification results, production allocation and surface codecs, registered invariant diagnostics, emitted `ZOM3001`, twenty focused sanitizer cases, and adversarial architecture mutations |
+| Deterministic scope allocation | Complete | Commits `9373d0e7`, `3e38e063`, `765cf8e1`, and `a75f0937`; frozen impl identities, all ten accepted scope kinds, schema-preorder allocation, exact parents, semantic owners and source spans, checked index overflow, production verifier cutover, bodyless-function range repair, twenty-five focused sanitizer cases, and adversarial architecture mutations |
 | Complete module resolution input | Blocked by RFC 0012 and RFC 0008 | Authoritative package resolution, production semantic-context fingerprint, verified resolution environment, and resolution receipts |
-| Complete binding facts and surfaces | Pending | Frozen definition inventory, imports, exports, aliases, visibility, scopes, labels, captures, immutable metadata, codecs, and verifier negatives |
+| Complete binding facts and surfaces | Pending | Definition activation, imports, exports, aliases, visibility, labels, captures, immutable metadata, codecs, and verifier negatives |
 | Production binder cutover | Pending | Session integration, no downstream rebinding, deletion of raw binder inputs and binder-owned module resolution, and all acceptance gates |
 
 The first slice is intentionally fail-closed. It accepts only a single frozen
 root module whose syntax independently proves that no module-resolution receipt
-is required. Imports, foreign re-exports, module aliases, impl inventory, or
-non-zero graph edges must produce an invariant failure until their complete
-verified inputs exist. The slice does not call or wrap the current `Binder` and
-does not add a compatibility entry point.
+is required. Imports, foreign re-exports, module aliases, or non-zero graph
+edges must produce an invariant failure until their complete verified inputs
+exist. Impl identities are now frozen for deterministic scope ownership, while
+complete impl binding facts remain pending. The slice does not call or wrap the
+current `Binder` and does not add a compatibility entry point.
 
 The completed slice publishes the full accepted invariant fact shape and an
 actual fatal `ZOM9956` producer. Six focused unit cases cover successful frozen
@@ -338,15 +340,16 @@ same snapshot and receipt. The normative 105-byte receipt preimage reproduces
 SHA-256 `7a4ab18a31387244311bd2a1b1472350536140c89532ce64240d7670d5a20b8e`.
 
 `FrozenDefinitionInventoryVerifier` independently walks that verified tree,
-rejects impl producers in the dependency-free slice, reconstructs each complete
-`DefinitionKey` from its kind, name, parent path, source site, and sibling
-ordinal, and publishes the private `FrozenDefinitionInventoryView` only when
-the frozen registry and tree-local map agree exactly. `ModuleGraphVerifier` and
+reconstructs every complete `DefinitionKey` and `ImplKey` from its kind, name,
+parent path, source site, and sibling ordinal, and publishes the private
+`FrozenDefinitionInventoryView` only when the frozen registries and tree-local
+definition map agree exactly. `ModuleGraphVerifier` and
 `BindingInputVerifier` now consume these verified values rather than reopening
 the raw inputs. Ten focused sanitizer cases cover exact receipt bytes, exact
 tree binding, stale source content and length, cross-source ranges, successful
 promotion, missing, additional, wrong-kind, and foreign-context definitions,
-impl rejection, graph revision, and diagnostic projection. The architecture
+missing and mismatched impl identities, graph revision, and diagnostic
+projection. The architecture
 gate's thirteen mutations reject public constructors, foreign publication,
 foreign producer calls, raw candidate fields, missing build wiring, forbidden
 layering, and compatibility facades.
@@ -355,10 +358,11 @@ On the frozen implementation, the complete sanitizer matrix passes 1,250 of
 1,250 tests in 987.15 seconds; the full grammar oracle passes in 986.41 seconds.
 Lexer architecture, parser coverage, AST conformance coverage, RFC validation,
 format, `git diff --check`, and the focused Binder architecture gates also pass.
-This slice establishes trustworthy dependency-free Binder inputs only. It does
-not publish scopes, name bindings, definition facts, export surfaces, imports,
-re-exports, module aliases, or production Binder cutover, and it does not
-unblock the RFC 0008 multi-module graph.
+This slice establishes trustworthy dependency-free Binder inputs only. Scope
+allocation is now published by the later deterministic arena slice; name
+bindings, complete definition and impl facts, import and export surfaces,
+module aliases, and production Binder cutover remain incomplete. This slice
+does not unblock the RFC 0008 multi-module graph.
 
 The third slice publishes the accepted metadata boundary without exposing its
 mutable construction authority. `VerifiedBindingInput` now retains the exact
@@ -367,17 +371,22 @@ to verify the input. The frozen definition inventory carries the canonical
 definition key, complete semantic name, optional binding name, and source span
 needed to construct binding facts without reopening parser or registry state.
 
-The dependency-free builder accepts only the frozen one-function shapes covered
-by the slice. It publishes module, function, and block scopes, definition facts,
-node-to-scope facts, a module-private visible surface, and closed source failure
-facts. An unresolved identifier emits the registered `ZOM3001` diagnostic before
+The dependency-free metadata builder still accepts only the frozen one-function
+shapes covered by its semantic-fact slice. Structural allocation is no longer
+restricted to that shape: `ScopeArenaBuilder` publishes module, function,
+closure, type, impl, block, loop, match, match-arm, and unsafe-block scopes in
+generated schema preorder, with exact nearest parents, inherited semantic
+owners, node-to-scope facts, source containment, and checked indices. The
+metadata builder adds its current definition facts, module-private surface, and
+closed source failure facts to that verified structure. An unresolved identifier
+emits the registered `ZOM3001` diagnostic before
 verification returns `SourceRejected`; invariant rejection retains priority and
 does not duplicate source diagnostics during verifier reconstruction. Same-source
 spans whose byte end exceeds the verified source snapshot are rejected as
 `InvalidSourceRange` rather than passing source-key-only validation.
 
 The verifier compares the production 3,227-byte allocation dump with SHA-256
-`058bc5e736e3562fb8d85a81c219b4e3c9917935e271c0f9162209289bb7c152` and the
+`2c5b3604e7bb003b11cff64d1b19af3405ab1940b4379846faba3a05754a9cb6` and the
 production export-surface revision
 `1764a287bf612ee8a648563f8f525b36ef5e7de5f8238a8c97194bd99796722b`.
 It rejects foreign context handles, cross-source and same-source out-of-bounds
@@ -397,3 +406,16 @@ AST conformance coverage for 865 corpus inputs, and `git diff --check` also pass
 This evidence closes only dependency-free metadata publication. Imports,
 re-exports, aliases, labels, control transfers, captures, complete visibility,
 multi-module resolution, and production Binder cutover remain pending.
+
+The deterministic scope series freezes standalone and marker impl identities,
+routes all `ScopeId` construction through the internal arena, encodes impl
+owners with their canonical `ImplKey`, and removes the hard-coded three-scope
+verifier. The parser anchors a bodyless function's synthetic block at its
+terminating semicolon so the child range is contained by the function range.
+The complete grammar suite passed in 553.15 seconds. After regenerating the
+eighteen affected AST snapshots, those eighteen lit cases plus AST coverage
+passed 19 of 19; the sanitizer build, twenty-five focused Binder cases, Binder
+architecture positive and negative suites, parser unit tests, parser coverage,
+lexer architecture, RFC validation, format, and `git diff --check` also pass.
+Labels, scope binding maps, and the combined scope-plus-label production oracle
+remain owned by later binding-fact slices.
