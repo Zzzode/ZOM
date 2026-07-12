@@ -314,7 +314,8 @@ def check_semantic_type_store_architecture(
     required_final_crate_markers = (
         "bool requiresBuildScriptValue;",
         "finalizeRoots(",
-        "zc::Vector<package::FinalizedCompilationRoot> finalizedRoots;",
+        "VerifiedCrateGraph::buildFinal(",
+        "zc::Maybe<VerifiedCrateGraph> crateGraph;",
     )
     combined_final_crate_surface = package_request + session
     for marker in required_final_crate_markers:
@@ -339,16 +340,9 @@ def check_semantic_type_store_architecture(
 
     check_ordered_function_markers(
         session,
-        "CompilerSession::installVerifiedPackageInput(",
-        ("freezePackages()",),
-        "package registry installation",
-        errors,
-    )
-    check_ordered_function_markers(
-        session,
         "bool freezePackageInputIdentities()",
-        ("freezeCrates()", "freezeSourceFiles()"),
-        "pre-parse crate and source freeze",
+        ("freezePackages()", "freezeCrates()", "freezeSourceFiles()"),
+        "final context identity freeze",
         errors,
     )
     check_ordered_function_markers(
@@ -482,15 +476,14 @@ def run_self_test() -> int:
 
     cases.append(
         (
-            "missing atomic package installation",
+            "missing final context package freeze",
             copy.deepcopy(baseline),
             {
                 COMPILER_SESSION: session_text.replace(
-                    "CompilerSession::installVerifiedPackageInput(",
-                    "CompilerSession::missingVerifiedPackageInput(",
+                    "registries.freezePackages()", "registries.missingFreezePackages()"
                 )
             },
-            "missing package registry installation function body",
+            "final context identity freeze is missing freezePackages()",
         )
     )
 
@@ -516,9 +509,11 @@ def run_self_test() -> int:
             {
                 COMPILER_SESSION: session_text.replace(
                     "!impl->freezeModuleIdentities() ||\n"
-                    "      !impl->freezeDefinitionAndImplIdentities()",
+                    "      !impl->freezeSemanticContextFingerprint() || "
+                    "!impl->freezeDefinitionAndImplIdentities()",
                     "!impl->freezeDefinitionAndImplIdentities() ||\n"
-                    "      !impl->freezeModuleIdentities()",
+                    "      !impl->freezeSemanticContextFingerprint() || "
+                    "!impl->freezeModuleIdentities()",
                 )
             },
             "parseSources identity phase schedule must order",
