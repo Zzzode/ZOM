@@ -13,6 +13,13 @@ VENDOR_ROOT = ROOT / "products" / "zomlang" / "compiler" / "driver" / "package" 
 MANIFEST_PATH = VENDOR_ROOT / "vendor-manifest.json"
 CMAKE_PATH = VENDOR_ROOT / "CMakeLists.txt"
 EMPTY_SHA256 = hashlib.sha256(b"").hexdigest()
+FORBIDDEN_CMAKE_DEPENDENCY_DISCOVERY = (
+    "find_package(",
+    "find_library(",
+    "find_path(",
+    "find_file(",
+    "pkg_check_modules(",
+)
 
 ENABLED_SOURCE_VARIABLES = {
     "libarchive": (
@@ -203,13 +210,34 @@ def canonical_json(value: dict[str, object]) -> str:
     return json.dumps(value, indent=2, sort_keys=True, ensure_ascii=True) + "\n"
 
 
+def validate_cmake_policy(cmake: str) -> None:
+    lowered = cmake.lower()
+    for forbidden in FORBIDDEN_CMAKE_DEPENDENCY_DISCOVERY:
+        if forbidden in lowered:
+            raise ValueError(
+                f"forbidden system dependency discovery in vendor CMake: {forbidden}"
+            )
+
+
+def expected_manifest_text() -> str:
+    validate_cmake_policy(CMAKE_PATH.read_text(encoding="utf-8"))
+    return canonical_json(generated_manifest())
+
+
+def manifest_matches(actual: str, expected: str | None = None) -> bool:
+    try:
+        return actual == (expected if expected is not None else expected_manifest_text())
+    except (OSError, ValueError):
+        return False
+
+
 def check() -> int:
     if not MANIFEST_PATH.is_file():
         print(f"error: missing {MANIFEST_PATH.relative_to(ROOT)}", file=sys.stderr)
         return 1
     try:
         actual = MANIFEST_PATH.read_text(encoding="utf-8")
-        expected = canonical_json(generated_manifest())
+        expected = expected_manifest_text()
     except (OSError, ValueError) as error:
         print(f"error: {error}", file=sys.stderr)
         return 1
@@ -221,6 +249,77 @@ def check() -> int:
         )
         return 1
     print("vendored dependency inventory check passed")
+    return 0
+
+
+def self_test() -> int:
+    try:
+        pristine_text = MANIFEST_PATH.read_text(encoding="utf-8")
+        pristine = json.loads(pristine_text)
+        expected = expected_manifest_text()
+    except (OSError, ValueError, json.JSONDecodeError) as error:
+        print(f"error: cannot prepare vendored checker self-test: {error}", file=sys.stderr)
+        return 1
+
+    if pristine_text != expected:
+        print("error: pristine vendored manifest fails before mutation", file=sys.stderr)
+        return 1
+
+    dependency_name = sorted(pristine["dependencies"])[0]
+
+    def mutated_manifest(mutator) -> str:
+        candidate = json.loads(pristine_text)
+        mutator(candidate["dependencies"][dependency_name])
+        return canonical_json(candidate)
+
+    mutations = {
+        "archive URL": lambda dependency: dependency.__setitem__(
+            "archive_url", "https://invalid.example/source.tar.gz"
+        ),
+        "tag": lambda dependency: dependency.__setitem__("version", "v0.0.0"),
+        "commit": lambda dependency: dependency.__setitem__("commit", "0" * 40),
+        "SPDX identifier": lambda dependency: dependency.__setitem__(
+            "spdx", "LicenseRef-Invalid"
+        ),
+        "archive digest": lambda dependency: dependency.__setitem__(
+            "archive_sha256", "0" * 64
+        ),
+        "extracted digest": lambda dependency: dependency.__setitem__(
+            "extracted_content_sha256", "0" * 64
+        ),
+        "compile options": lambda dependency: dependency["compile_options"].append(
+            "system-fallback"
+        ),
+        "patch digest": lambda dependency: dependency.__setitem__(
+            "local_patch_sha256", "0" * 64
+        ),
+        "removed declared file": lambda dependency: dependency["files"].pop(),
+        "added undeclared file": lambda dependency: dependency["files"].append(
+            {"path": "injected.c", "size": 0, "sha256": EMPTY_SHA256}
+        ),
+        "enabled source inventory": lambda dependency: dependency[
+            "enabled_sources"
+        ].append("injected.c"),
+    }
+    for name, mutator in mutations.items():
+        if manifest_matches(mutated_manifest(mutator), expected):
+            print(f"error: checker accepted {name} mutation", file=sys.stderr)
+            return 1
+
+    pristine_cmake = CMAKE_PATH.read_text(encoding="utf-8")
+    for name, injection in (
+        ("find_package", "\nfind_package(OpenSSL REQUIRED)\n"),
+        ("find_library", "\nfind_library(HOST_CRYPTO crypto REQUIRED)\n"),
+        ("pkg-config fallback", "\npkg_check_modules(HOST_ZSTD libzstd)\n"),
+    ):
+        try:
+            validate_cmake_policy(pristine_cmake + injection)
+        except ValueError:
+            continue
+        print(f"error: checker accepted {name} injection", file=sys.stderr)
+        return 1
+
+    print("vendored dependency checker self-test passed")
     return 0
 
 
@@ -240,8 +339,15 @@ def main() -> int:
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--check", action="store_true", help="verify the checked inventory")
     mode.add_argument("--write", action="store_true", help="regenerate the checked inventory")
+    mode.add_argument(
+        "--self-test", action="store_true", help="prove required mutations are rejected"
+    )
     args = parser.parse_args()
-    return write() if args.write else check()
+    if args.write:
+        return write()
+    if args.self_test:
+        return self_test()
+    return check()
 
 
 if __name__ == "__main__":

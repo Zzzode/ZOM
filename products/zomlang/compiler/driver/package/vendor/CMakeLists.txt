@@ -130,11 +130,11 @@ target_include_directories(
   PRIVATE ${ZOM_VENDOR_SODIUM_ROOT}/include/sodium)
 
 if(UNIX)
-  find_package(Threads REQUIRED)
   target_compile_definitions(
     zom_vendor_sodium
     PRIVATE HAVE_POSIX_MEMALIGN=1 HAVE_PTHREAD=1 HAVE_SYSCONF=1)
-  target_link_libraries(zom_vendor_sodium PUBLIC Threads::Threads)
+  target_compile_options(zom_vendor_sodium PRIVATE -pthread)
+  target_link_options(zom_vendor_sodium INTERFACE -pthread)
 endif()
 
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")

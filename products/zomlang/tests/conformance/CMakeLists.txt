@@ -106,6 +106,19 @@ set_tests_properties(vendored-dependencies PROPERTIES
 )
 
 add_test(
+  NAME vendored-dependencies-negative
+  COMMAND python3
+          ${CMAKE_SOURCE_DIR}/products/zomlang/tests/tools/check-vendored-dependencies.py
+          --self-test
+  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+)
+
+set_tests_properties(vendored-dependencies-negative PROPERTIES
+  LABELS "conformance;package;vendor;architecture;negative"
+  TIMEOUT 120
+)
+
+add_test(
   NAME ir-diagnostic-boundary
   COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/check-ir-diagnostic-boundary.py --check
   WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
