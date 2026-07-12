@@ -108,7 +108,9 @@ jobs:
         run: |
           if ! strace -ff -o /tmp/zom-sandbox-strace \
             scripts/run-linux-sandbox-integration.sh build-sanitizer; then
-            grep -H ' = -1 ' /tmp/zom-sandbox-strace* | tail -100
+            grep -HE \
+              'clone3|mount\(|pivot_root|seccomp|execveat|cgroup\.(procs|kill)|memory\.max|pids\.max' \
+              /tmp/zom-sandbox-strace* | tail -200
             exit 1
           fi
 
