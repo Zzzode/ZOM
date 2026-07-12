@@ -22,8 +22,15 @@
 #include "zomlang/compiler/basic/compiler-opts.h"
 #include "zomlang/compiler/basic/zomlang-opts.h"
 #include "zomlang/compiler/binder/definition-inventory.h"
+#include "zomlang/compiler/driver/package/build-script-plan.h"
+#include "zomlang/compiler/driver/package/build-script-runtime.h"
+#include "zomlang/compiler/driver/package/package-compilation-request.h"
+#include "zomlang/compiler/driver/package/package-resolver.h"
+#include "zomlang/compiler/driver/package/source-snapshot.h"
 #include "zomlang/compiler/identity/brand.h"
 #include "zomlang/compiler/identity/semantic-identity-registry-set.h"
+#include "zomlang/compiler/irgen/target-registry.h"
+#include "zomlang/compiler/type/semantic-type-store.h"
 #include "zomlang/compiler/type/type-env.h"
 
 namespace zomlang {
@@ -59,6 +66,11 @@ public:
   /// \param file The path to the source file to add
   /// \return The buffer ID of the added file, or none if the file could not be added
   zc::Maybe<source::BufferId> addSourceFile(zc::StringPtr file);
+
+  /// \brief Adds a verified package source with a host-path-free diagnostic identifier.
+  zc::Maybe<source::BufferId> addPackageSourceFile(zc::StringPtr file,
+                                                   zc::StringPtr displayIdentifier,
+                                                   const package::FinalizedCompilationRoot& root);
 
   /// Get the diagnostic engine used by the compiler.
   /// \return A reference to the diagnostic engine
@@ -118,6 +130,51 @@ public:
 
   /// \brief Returns the sole RFC 0011 registry family owned by this session.
   zc::Maybe<const identity::SemanticIdentityRegistrySet&> getIdentityRegistries() const noexcept;
+
+  /// \brief Returns the sole RFC 0005 semantic type store owned by this session.
+  zc::Maybe<const type::SemanticTypeStore&> getSemanticTypeStore() const noexcept;
+
+  /// \brief Installs the sole workspace-verified package request before parsing begins.
+  ZC_NODISCARD bool installPackageCompilationRequest(
+      package::VerifiedPackageCompilationRequest&& request);
+
+  /// \brief Returns the installed package request, if this is a package compilation.
+  ZC_NODISCARD zc::Maybe<const package::VerifiedPackageCompilationRequest&>
+  getPackageCompilationRequest() const noexcept;
+
+  /// \brief Returns post-build roots whose complete CrateKey values may enter identity freeze.
+  ZC_NODISCARD zc::ArrayPtr<const package::FinalizedCompilationRoot> getFinalizedCompilationRoots()
+      const noexcept;
+
+  /// \brief Installs the RFC 0010 verified host and target selections.
+  ZC_NODISCARD bool installVerifiedTargetSelections(irgen::VerifiedTargetSelection&& host,
+                                                    irgen::VerifiedTargetSelection&& target);
+
+  ZC_NODISCARD zc::Maybe<const irgen::VerifiedTargetSelection&> getVerifiedHostTarget()
+      const noexcept;
+  ZC_NODISCARD zc::Maybe<const irgen::VerifiedTargetSelection&> getVerifiedTarget() const noexcept;
+
+  /// \brief Installs the immutable resolved graph and verified source snapshots.
+  ZC_NODISCARD bool installResolvedPackageGraph(
+      package::PackageResolution&& graph,
+      zc::Vector<package::ResolvedPackageSourceSnapshot>&& snapshots);
+  ZC_NODISCARD zc::Maybe<const package::PackageResolution&> getResolvedPackageGraph()
+      const noexcept;
+  ZC_NODISCARD zc::ArrayPtr<const package::ResolvedPackageSourceSnapshot>
+  getResolvedPackageSnapshots() const noexcept;
+
+  /// \brief Explicitly removes private source snapshots before process quick-exit.
+  ZC_NODISCARD zc::Maybe<package::MaterializationIssue> finishResolvedPackageSnapshots();
+
+  /// \brief Executes a verified build plan once and freezes the exact result map.
+  ZC_NODISCARD zc::Maybe<package::BuildScriptIssue> executeBuildScriptPlan(
+      package::VerifiedBuildScriptPlan&& plan, package::BuildScriptPlanExecutor& executor);
+  /// \brief Returns the retained verified build plan, if execution completed.
+  ZC_NODISCARD zc::Maybe<const package::VerifiedBuildScriptPlan&> getBuildScriptPlan()
+      const noexcept;
+  /// \brief Returns the final verified build-script results, if installed.
+  ZC_NODISCARD zc::Maybe<const package::VerifiedBuildScriptResultSet&> getBuildScriptResults()
+      const noexcept;
 
 private:
   struct Impl;

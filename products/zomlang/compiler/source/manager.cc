@@ -384,6 +384,11 @@ CharSourceRange SourceManager::getRangeForBuffer(BufferId bufferId) const {
 }
 
 zc::Maybe<BufferId> SourceManager::getFileSystemSourceBufferID(const zc::StringPtr path) {
+  return getFileSystemSourceBufferID(path, zc::StringPtr());
+}
+
+zc::Maybe<BufferId> SourceManager::getFileSystemSourceBufferID(
+    const zc::StringPtr path, const zc::StringPtr displayIdentifier) {
   // Return none for empty paths
   if (path.size() == 0) { return zc::none; }
 
@@ -402,7 +407,9 @@ zc::Maybe<BufferId> SourceManager::getFileSystemSourceBufferID(const zc::StringP
 
   ZC_IF_SOME(file, dir.tryOpenFile(sourcePath)) {
     zc::Array<zc::byte> data = file->readAllBytes();
-    const BufferId bufferId = addNewSourceBuffer(zc::mv(data), sourcePath.toString());
+    const BufferId bufferId = addNewSourceBuffer(zc::mv(data), displayIdentifier.size() == 0
+                                                                   ? sourcePath.toString()
+                                                                   : zc::str(displayIdentifier));
     impl->pathToBufferId.insert(sourcePath.toString(), bufferId);
     return bufferId;
   }

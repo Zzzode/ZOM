@@ -27,6 +27,10 @@
 #include "zomlang/compiler/basic/zomlang-opts.h"
 #include "zomlang/compiler/diagnostics/diagnostic-engine.h"
 #include "zomlang/compiler/driver/compiler-session.h"
+#include "zomlang/compiler/driver/package/lockfile.h"
+#include "zomlang/compiler/driver/package/package-compilation-request.h"
+#include "zomlang/compiler/driver/package/package-diagnostic.h"
+#include "zomlang/compiler/driver/package/source-record.h"
 #include "zomlang/compiler/irgen/ir-dump.h"
 #include "zomlang/compiler/irgen/lowering.h"
 #include "zomlang/compiler/source/manager.h"
@@ -38,6 +42,8 @@
 namespace zomlang {
 namespace compiler {
 namespace utils {
+
+namespace package = driver::package;
 
 static constexpr char VERSION_STRING[] = "ZomLang Version " VERSION;
 
@@ -70,6 +76,30 @@ public:
 
   void addCompileOptions(zc::MainBuilder& builder) {
     builder
+        .addOptionWithArg({"manifest-path"}, ZC_BIND_METHOD(*this, setManifestPath),
+                          "<path-to-Zom.toml>", "Select the package manifest.")
+        .addOptionWithArg({"package"}, ZC_BIND_METHOD(*this, addPackageSelection), "<name>",
+                          "Select one workspace package.")
+        .addOption({"lib"}, ZC_BIND_METHOD(*this, addLibraryTarget),
+                   "Compile the package library target.")
+        .addOptionWithArg({"bin"}, ZC_BIND_METHOD(*this, addBinaryTarget), "<name>",
+                          "Compile a named binary target.")
+        .addOptionWithArg({"test"}, ZC_BIND_METHOD(*this, addTestTarget), "<name>",
+                          "Compile a named test target.")
+        .addOptionWithArg({"bench"}, ZC_BIND_METHOD(*this, addBenchmarkTarget), "<name>",
+                          "Compile a named benchmark target.")
+        .addOptionWithArg({"example"}, ZC_BIND_METHOD(*this, addExampleTarget), "<name>",
+                          "Compile a named example target.")
+        .addOptionWithArg({"features"}, ZC_BIND_METHOD(*this, addFeatureList), "<name[,name...]>",
+                          "Enable package features.")
+        .addOption({"no-default-features"}, ZC_BIND_METHOD(*this, disableDefaultFeatures),
+                   "Disable the package default feature set.")
+        .addOptionWithArg({"target"}, ZC_BIND_METHOD(*this, addTargetProfile), "<profile>",
+                          "Select a registered target profile.")
+        .addOption({"locked"}, ZC_BIND_METHOD(*this, enableLockedMode),
+                   "Require the existing canonical lock graph.")
+        .addOption({"update-lock"}, ZC_BIND_METHOD(*this, enableUpdateLockMode),
+                   "Resolve and atomically update Zom.lock.")
         .addOptionWithArg({'o', "output"}, ZC_BIND_METHOD(*this, addOutput), "<dir>",
                           "Specify the output directory or file path.")
         .addOptionWithArg({"emit"}, ZC_BIND_METHOD(*this, setEmitType), "<type>",
@@ -92,20 +122,81 @@ public:
                    "Allow dollar signs in identifiers")
         .addOption({"no-regex-literals"}, ZC_BIND_METHOD(*this, disableRegexLiterals),
                    "Disable regex literal syntax")
-        .expectOneOrMoreArgs("<source>", ZC_BIND_METHOD(*this, addSource))
+        .expectZeroOrMoreArgs("<source>", ZC_BIND_METHOD(*this, rejectPositionalSource))
         .callAfterParsing(ZC_BIND_METHOD(*this, emitOutput));
   }
 
   // =====================================================================================
   // "compile" command
 
-  zc::MainBuilder::Validity addSource(const zc::StringPtr file) {
-    if (!file.endsWith(".zom")) { return "Error: zomc: source file must have .zom extension"; }
+  zc::MainBuilder::Validity rejectPositionalSource(zc::StringPtr value) {
+    packageRequest.positionalArguments.add(zc::str(value));
+    return true;
+  }
 
-    if (const zc::Maybe<source::BufferId> bufferId = session->addSourceFile(file);
-        bufferId == zc::none) {
-      return zc::str("Failed to load source file.");
+  zc::MainBuilder::Validity setManifestPath(zc::StringPtr value) {
+    manifestPaths.add(zc::str(value));
+    return true;
+  }
+
+  zc::MainBuilder::Validity addPackageSelection(zc::StringPtr value) {
+    packageRequest.packageSelections.add(zc::str(value));
+    return true;
+  }
+
+  zc::MainBuilder::Validity addLibraryTarget() {
+    zc::Maybe<identity::TargetName> noName;
+    packageRequest.targetSelections.add(
+        package::RequestedTargetSelection(identity::CrateTargetKind::Library, zc::mv(noName)));
+    return true;
+  }
+
+  zc::MainBuilder::Validity addNamedTarget(identity::CrateTargetKind kind, zc::StringPtr value) {
+    auto name = identity::TargetName::fromSource(value);
+    if (name == zc::none) {
+      package::PackageDiagnosticAdapter::emitInvocationIssue(
+          session->getDiagnosticEngine(), package::InvocationIssue::DuplicateTargetSelection);
+      return zc::str("Invalid target name.");
     }
+    ZC_IF_SOME(admitted, name) {
+      zc::Maybe<identity::TargetName> selected = zc::mv(admitted);
+      packageRequest.targetSelections.add(
+          package::RequestedTargetSelection(kind, zc::mv(selected)));
+    }
+    return true;
+  }
+
+  zc::MainBuilder::Validity addBinaryTarget(zc::StringPtr value) {
+    return addNamedTarget(identity::CrateTargetKind::Binary, value);
+  }
+  zc::MainBuilder::Validity addTestTarget(zc::StringPtr value) {
+    return addNamedTarget(identity::CrateTargetKind::Test, value);
+  }
+  zc::MainBuilder::Validity addBenchmarkTarget(zc::StringPtr value) {
+    return addNamedTarget(identity::CrateTargetKind::Benchmark, value);
+  }
+  zc::MainBuilder::Validity addExampleTarget(zc::StringPtr value) {
+    return addNamedTarget(identity::CrateTargetKind::Example, value);
+  }
+
+  zc::MainBuilder::Validity addFeatureList(zc::StringPtr value) {
+    packageRequest.featureLists.add(zc::str(value));
+    return true;
+  }
+  zc::MainBuilder::Validity disableDefaultFeatures() {
+    packageRequest.useDefaultFeatures = false;
+    return true;
+  }
+  zc::MainBuilder::Validity addTargetProfile(zc::StringPtr value) {
+    packageRequest.targetProfiles.add(zc::str(value));
+    return true;
+  }
+  zc::MainBuilder::Validity enableLockedMode() {
+    ++packageRequest.lockedCount;
+    return true;
+  }
+  zc::MainBuilder::Validity enableUpdateLockMode() {
+    ++packageRequest.updateLockCount;
     return true;
   }
 
@@ -179,32 +270,587 @@ public:
   }
 
   zc::MainBuilder::Validity setPanicStrategy(zc::StringPtr strategy) {
+    ++packageRequest.panicCount;
+    packageRequest.panicStrategy = zc::str(strategy);
     if (strategy == "abort") {
       compilerOpts.panicStrategy = basic::CompilerOptions::PanicStrategy::Abort;
     } else if (strategy == "unwind") {
       compilerOpts.panicStrategy = basic::CompilerOptions::PanicStrategy::Unwind;
     } else {
-      return zc::str("Invalid panic strategy: ", strategy, ". Valid strategies are: abort, unwind");
+      return true;
     }
     return true;
   }
 
   zc::MainBuilder::Validity disableUnicode() {
     langOpts.useUnicode = false;
+    packageRequest.languageOptions.useUnicode = false;
     return true;
   }
 
   zc::MainBuilder::Validity enableDollarIdentifiers() {
     langOpts.allowDollarIdentifiers = true;
+    packageRequest.languageOptions.allowDollarIdentifiers = true;
     return true;
   }
 
   zc::MainBuilder::Validity disableRegexLiterals() {
     langOpts.supportRegexLiterals = false;
+    packageRequest.languageOptions.supportRegexLiterals = false;
     return true;
   }
 
+  template <typename Scalar>
+  static Scalar requireScalar(zc::StringPtr text) {
+    auto result = Scalar::fromCanonical(text);
+    ZC_IF_SOME(value, result) { return zc::mv(value); }
+    ZC_UNREACHABLE;
+  }
+
+  static identity::CanonicalTargetSpecificationKey hostSemanticProjection() {
+    zc::StringPtr architecture;
+    zc::StringPtr vendor;
+    zc::StringPtr operatingSystem;
+#if defined(__aarch64__) || defined(__arm64__)
+    architecture = "aarch64"_zc;
+#elif defined(__x86_64__)
+    architecture = "x86_64"_zc;
+#else
+#error "The compiler host architecture must have a registered target profile."
+#endif
+#if defined(__APPLE__)
+    vendor = "apple"_zc;
+    operatingSystem = "darwin"_zc;
+#elif defined(__linux__)
+    vendor = "unknown"_zc;
+    operatingSystem = "linux"_zc;
+#else
+#error "The compiler host operating system must have a registered target profile."
+#endif
+    zc::Vector<identity::TargetFeatureName> features;
+    auto sortedFeatures = identity::SortedTargetFeatureSet::from(zc::mv(features));
+    ZC_IF_SOME(featureValues, sortedFeatures) {
+      auto projection = identity::CanonicalTargetSpecificationKey::from(
+          requireScalar<identity::TargetComponentName>(architecture),
+          requireScalar<identity::TargetComponentName>(vendor),
+          requireScalar<identity::TargetComponentName>(operatingSystem),
+          requireScalar<identity::TargetComponentName>("unknown"_zc),
+          requireScalar<identity::TargetComponentName>("zom-v1"_zc),
+          static_cast<uint32_t>(sizeof(void*) * 8), identity::Endianness::Little,
+          zc::mv(featureValues));
+      ZC_IF_SOME(value, projection) { return zc::mv(value); }
+    }
+    ZC_UNREACHABLE;
+  }
+
+  static irgen::TargetRegistrySnapshot targetRegistry() {
+    zc::StringPtr triple;
+    irgen::ObjectFormat objectFormat;
+#if defined(__aarch64__) || defined(__arm64__)
+#if defined(__APPLE__)
+    triple = "aarch64-apple-darwin"_zc;
+#else
+    triple = "aarch64-unknown-linux"_zc;
+#endif
+#elif defined(__x86_64__)
+#if defined(__APPLE__)
+    triple = "x86_64-apple-darwin"_zc;
+#else
+    triple = "x86_64-unknown-linux"_zc;
+#endif
+#endif
+#if defined(__APPLE__)
+    objectFormat = irgen::ObjectFormat::MachO;
+#else
+    objectFormat = irgen::ObjectFormat::Elf;
+#endif
+    const zc::StringPtr dataLayout = sizeof(void*) == 8 ? "e-p:64:64"_zc : "e-p:32:32"_zc;
+    zc::Vector<irgen::CanonicalTargetFeature> backendFeatures;
+    auto specification = irgen::CanonicalTargetSpec::from(
+        triple, dataLayout, "generic"_zc, zc::mv(backendFeatures), "zom-v1"_zc,
+        irgen::BackendPanicStrategy::Abort, objectFormat);
+    auto name = package::RegisteredTargetProfileName::from("host"_zc);
+    ZC_IF_SOME(profileName, name) {
+      ZC_IF_SOME(specificationValue, specification) {
+        zc::Vector<identity::TargetFeatureName> semanticFeatures;
+        zc::Vector<irgen::CanonicalTargetSpec> specifications;
+        specifications.add(zc::mv(specificationValue));
+        auto profile = irgen::RegisteredTargetProfileRecord::from(
+            profileName.clone(), hostSemanticProjection(), zc::mv(semanticFeatures),
+            zc::mv(specifications));
+        ZC_IF_SOME(profileValue, profile) {
+          zc::Vector<irgen::RegisteredTargetProfileRecord> profiles;
+          profiles.add(zc::mv(profileValue));
+          auto registry =
+              irgen::TargetRegistrySnapshot::from(zc::mv(profileName), zc::mv(profiles));
+          ZC_IF_SOME(value, registry) { return zc::mv(value); }
+        }
+      }
+    }
+    ZC_UNREACHABLE;
+  }
+
+  static package::RegisteredTargetService packageTargetService(
+      const irgen::TargetRegistrySnapshot& registry) {
+    auto service = registry.packageTargetService();
+    ZC_IF_SOME(value, service) { return zc::mv(value); }
+    ZC_UNREACHABLE;
+  }
+
+  zc::MainBuilder::Validity diagnoseTargetSelectionIssue(
+      irgen::TargetSelectionVerificationIssue issue,
+      package::PackagePanicStrategy requestedPanicStrategy) {
+    if (issue == irgen::TargetSelectionVerificationIssue::CapabilityUnavailable) {
+      if (requestedPanicStrategy == package::PackagePanicStrategy::Unwind) {
+        return diagnoseEmission<diagnostics::DiagID::PanicUnwindUnsupported>(source::SourceLoc());
+      }
+      return diagnoseEmission<diagnostics::DiagID::TargetCapabilityUnavailable>(
+          source::SourceLoc());
+    }
+    session->getDiagnosticEngine().diagnose<diagnostics::DiagID::LirInvariant>(
+        source::SourceLoc(), zc::str(uint64_t{1}));
+    context.error(zc::StringPtr());
+    return true;
+  }
+
+  static identity::CanonicalWorkspaceRelativePath workspacePath(zc::PathPtr path) {
+    zc::Vector<identity::CanonicalPathSegment> segments(path.size());
+    for (const auto& component : path) {
+      auto admitted = identity::CanonicalPathSegment::fromSource(component);
+      ZC_IF_SOME(value, admitted) { segments.add(zc::mv(value)); }
+      else { ZC_UNREACHABLE; }
+    }
+    return identity::CanonicalWorkspaceRelativePath::from(0, zc::mv(segments));
+  }
+
+  static zc::Path filesystemPath(const identity::CanonicalWorkspaceRelativePath& path) {
+    zc::Path result(nullptr);
+    for (uint32_t index = 0; index < path.leadingParents(); ++index) {
+      result = zc::mv(result).eval(".."_zc);
+    }
+    for (const auto& segment : path.segments()) { result = zc::mv(result).append(segment.text()); }
+    return result;
+  }
+
+  static zc::Path filesystemPath(const identity::CanonicalRelativePath& path) {
+    zc::Path result(nullptr);
+    for (const auto& segment : path.segments()) { result = zc::mv(result).append(segment.text()); }
+    return result;
+  }
+
+  static zc::Maybe<package::PackageSourceInventory> inventory(const zc::ReadableDirectory& root) {
+    zc::Vector<identity::CanonicalRelativePath> files;
+    zc::Vector<zc::Path> pending;
+    pending.add(zc::Path(nullptr));
+    while (pending.size() != 0) {
+      auto relativeDirectory = zc::mv(pending.back());
+      pending.removeLast();
+      zc::Own<const zc::ReadableDirectory> directory =
+          relativeDirectory.size() == 0 ? root.clone() : root.openSubdir(relativeDirectory);
+      for (auto& entry : directory->listEntries()) {
+        auto path = relativeDirectory.clone().append(zc::mv(entry.name));
+        if (entry.type == zc::FsNode::Type::DIRECTORY) {
+          pending.add(zc::mv(path));
+          continue;
+        }
+        if (entry.type != zc::FsNode::Type::FILE) { continue; }
+        zc::Vector<identity::CanonicalPathSegment> segments(path.size());
+        bool valid = true;
+        for (const auto& component : path) {
+          auto admitted = identity::CanonicalPathSegment::fromSource(component);
+          if (admitted == zc::none) {
+            valid = false;
+            break;
+          }
+          ZC_IF_SOME(value, admitted) { segments.add(zc::mv(value)); }
+        }
+        if (valid) { files.add(identity::CanonicalRelativePath::from(zc::mv(segments))); }
+      }
+    }
+    return package::PackageSourceInventory::from(zc::mv(files));
+  }
+
+  zc::OneOf<zc::Path, package::InvocationIssue> discoverManifestPath(
+      const zc::Filesystem& filesystem) const {
+    try {
+      if (manifestPaths.size() == 1) {
+        auto path = filesystem.getCurrentPath().eval(manifestPaths[0]);
+        if (path.basename().size() != 1 || path.basename()[0] != "Zom.toml"_zc) {
+          return package::InvocationIssue::InvalidManifestPath;
+        }
+        auto metadata = filesystem.getRoot().tryLstat(path);
+        if (metadata == zc::none) { return package::InvocationIssue::InvalidManifestPath; }
+        ZC_IF_SOME(value, metadata) {
+          if (value.type != zc::FsNode::Type::FILE) {
+            return package::InvocationIssue::InvalidManifestPath;
+          }
+        }
+        return zc::mv(path);
+      }
+      auto directory = filesystem.getCurrentPath().clone();
+      for (;;) {
+        auto candidate = directory.clone().append("Zom.toml"_zc);
+        auto metadata = filesystem.getRoot().tryLstat(candidate);
+        ZC_IF_SOME(value, metadata) {
+          if (value.type == zc::FsNode::Type::FILE) { return zc::mv(candidate); }
+        }
+        if (directory.size() == 0) { break; }
+        directory = zc::mv(directory).parent();
+      }
+    } catch (const zc::Exception&) { return package::InvocationIssue::InvalidManifestPath; }
+    return package::InvocationIssue::ManifestNotFound;
+  }
+
+  struct LoadedWorkspace final {
+    package::NormalizedWorkspace workspace;
+    zc::Path rootPath;
+  };
+
+  zc::Maybe<LoadedWorkspace> loadWorkspace(const zc::Filesystem& filesystem,
+                                           zc::Path&& manifestPath) {
+    try {
+      auto rootPath = manifestPath.parent().clone();
+      auto rootDirectory = filesystem.getRoot().openSubdir(rootPath);
+      auto rootSource = rootDirectory->openFile(zc::Path("Zom.toml"_zc))->readAllText();
+      auto rootInventory = inventory(*rootDirectory);
+      if (rootInventory == zc::none) { return zc::none; }
+      ZC_IF_SOME(rootInventoryValue, rootInventory) {
+        package::ManifestParser parser;
+        auto parsed = parser.parseWorkspaceManifest(workspacePath(zc::Path("Zom.toml"_zc)),
+                                                    rootSource, rootInventoryValue);
+        if (parsed.is<package::ManifestFailure>()) { return zc::none; }
+        const auto& rootManifest = parsed.get<package::NormalizedManifest>();
+        zc::Vector<package::WorkspaceMemberInput> members;
+        if (rootManifest.hasWorkspace()) {
+          for (const auto& memberPath : rootManifest.workspaceMembers()) {
+            auto relative = filesystemPath(memberPath);
+            auto memberDirectory = rootDirectory->openSubdir(relative);
+            auto memberSource = memberDirectory->openFile(zc::Path("Zom.toml"_zc))->readAllText();
+            auto memberInventory = inventory(*memberDirectory);
+            if (memberInventory == zc::none) { return zc::none; }
+            ZC_IF_SOME(memberInventoryValue, memberInventory) {
+              members.add(package::WorkspaceMemberInput::from(
+                  memberPath.clone(), zc::mv(memberSource), zc::mv(memberInventoryValue)));
+            }
+          }
+        }
+        auto normalized =
+            package::normalizeWorkspace(rootSource, rootInventoryValue, zc::mv(members));
+        if (normalized.is<package::NormalizedWorkspace>()) {
+          return LoadedWorkspace{zc::mv(normalized.get<package::NormalizedWorkspace>()),
+                                 zc::mv(rootPath)};
+        }
+      }
+    } catch (const zc::Exception&) { return zc::none; }
+    return zc::none;
+  }
+
+  bool addVerifiedRoots(const zc::Filesystem& filesystem, zc::PathPtr workspaceRoot,
+                        zc::ArrayPtr<const package::FinalizedCompilationRoot> roots) {
+    for (const auto& root : roots) {
+      auto packageRoot = workspaceRoot.clone();
+      const auto& source = root.packageKey().source();
+      if (source.kind() != identity::PackageSourceKind::LocalPath) { return false; }
+      auto packageRelative = filesystemPath(source.localPath());
+      packageRoot = zc::mv(packageRoot).eval(packageRelative.toString());
+      auto sourceRelative = filesystemPath(root.sourcePath());
+      auto displayPath = zc::mv(packageRelative).append(sourceRelative.clone());
+      auto sourcePath = zc::mv(packageRoot).append(zc::mv(sourceRelative));
+      if (session->addPackageSourceFile(sourcePath.toString(true), displayPath.toString(), root) ==
+          zc::none) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  static identity::PackageBaseKey packageBase(const identity::PackageKey& packageKey) {
+    auto name = identity::PackageName::fromCanonical(packageKey.name());
+    auto version = identity::ResolvedVersion::fromCanonical(packageKey.version());
+    ZC_IF_SOME(nameValue, name) {
+      ZC_IF_SOME(versionValue, version) {
+        return identity::PackageBaseKey::from(packageKey.source().clone(), zc::mv(nameValue),
+                                              zc::mv(versionValue));
+      }
+    }
+    ZC_UNREACHABLE;
+  }
+
+  static identity::SortedFeatureSet packageFeatures(const identity::PackageKey& packageKey) {
+    zc::Vector<identity::FeatureName> features(packageKey.features().size());
+    for (const auto& feature : packageKey.features()) { features.add(feature.clone()); }
+    auto result = identity::SortedFeatureSet::from(zc::mv(features));
+    ZC_IF_SOME(value, result) { return zc::mv(value); }
+    ZC_UNREACHABLE;
+  }
+
+  bool installPackageGraph(const zc::Filesystem& filesystem, zc::PathPtr workspaceRoot,
+                           const package::NormalizedPackageCompilationRequest& normalizedRequest,
+                           const package::VerifiedPackageCompilationRequest& request,
+                           const package::NormalizedWorkspace& workspace) {
+    zc::Vector<package::ResolverRelease> releases;
+    zc::Vector<package::LocalPackageRecord> localRecords;
+    zc::Vector<package::ResolvedPackageSourceSnapshot> snapshots;
+    auto snapshotParent =
+        filesystem.getRoot().tryOpenSubdir(workspaceRoot.parent(), zc::WriteMode::MODIFY);
+    if (snapshotParent == zc::none) { return false; }
+    zc::Own<const zc::Directory> snapshotParentDirectory;
+    ZC_IF_SOME(directory, snapshotParent) { snapshotParentDirectory = zc::mv(directory); }
+    package::ReplacementFreshSourceDirectoryFactory factory(*snapshotParentDirectory);
+
+    auto admitPackage = [&](const package::NormalizedManifest& manifest,
+                            identity::CanonicalWorkspaceRelativePath&& relativePath) -> bool {
+      auto name = identity::PackageName::fromCanonical(manifest.packageName());
+      auto version = identity::ResolvedVersion::fromCanonical(manifest.packageVersion());
+      if (name == zc::none || version == zc::none) { return false; }
+      identity::PackageBaseKey base = packageBase(request.roots()[0].packageKey());
+      ZC_IF_SOME(nameValue, name) {
+        ZC_IF_SOME(versionValue, version) {
+          base = identity::PackageBaseKey::from(
+              identity::CanonicalPackageSource::localPath(relativePath.clone()), zc::mv(nameValue),
+              zc::mv(versionValue));
+        }
+      }
+      auto packageRoot = workspaceRoot.clone().eval(filesystemPath(relativePath).toString());
+      auto directory = filesystem.getRoot().openSubdir(packageRoot);
+      package::SourceDirectoryMaterializer materializer;
+      auto snapshot = materializer.materialize(*directory, factory);
+      if (snapshot.is<package::MaterializationIssue>()) {
+        package::PackageDiagnosticAdapter::emitMaterializationIssue(
+            session->getDiagnosticEngine(), snapshot.get<package::MaterializationIssue>());
+        return false;
+      }
+      auto& snapshotValue = snapshot.get<package::DigestVerifiedSourceSnapshot>();
+      auto record =
+          package::LocalPackageRecord::from(base.clone(), manifest.clone(), snapshotValue);
+      if (record == zc::none) { return false; }
+      ZC_IF_SOME(recordValue, record) {
+        releases.add(package::ResolverRelease::fromLocal(recordValue));
+        localRecords.add(zc::mv(recordValue));
+      }
+      snapshots.add(
+          package::ResolvedPackageSourceSnapshot::from(base.clone(), zc::mv(snapshotValue)));
+      return true;
+    };
+
+    if (workspace.root().hasPackage()) {
+      zc::Vector<identity::CanonicalPathSegment> noSegments;
+      if (!admitPackage(workspace.root(),
+                        identity::CanonicalWorkspaceRelativePath::from(0, zc::mv(noSegments)))) {
+        return false;
+      }
+    }
+    for (const auto& member : workspace.members()) {
+      if (!admitPackage(member.manifest(), member.packageDirectory().clone())) { return false; }
+    }
+
+    const auto workspaceDirectory =
+        filesystem.getRoot().openSubdir(workspaceRoot, zc::WriteMode::MODIFY);
+    const bool useLocked =
+        normalizedRequest.lockMode() == package::PackageLockMode::LockedOnly ||
+        (normalizedRequest.lockMode() == package::PackageLockMode::PreferLocked &&
+         workspaceDirectory->exists(zc::Path("Zom.lock"_zc)));
+    if (useLocked) {
+      auto locked = package::LockfileCodec::read(*workspaceDirectory);
+      if (locked.is<package::LockIssue>()) { return false; }
+      const auto& lockedGraph = locked.get<package::VerifiedLockGraph>();
+      bool foundRoot = false;
+      for (const auto& lockedPackage : lockedGraph.packages()) {
+        bool foundCurrent = false;
+        for (const auto& record : localRecords) {
+          if (record.base().encode().asPtr() != packageBase(lockedPackage.key()).encode().asPtr()) {
+            continue;
+          }
+          if (record.manifestDigest() != lockedPackage.manifestDigest() ||
+              record.sourceTreeDigest() != lockedPackage.sourceTreeDigest()) {
+            return false;
+          }
+          foundCurrent = true;
+          break;
+        }
+        if (!foundCurrent) { return false; }
+        if (lockedPackage.key().encode().asPtr() ==
+            request.roots()[0].packageKey().encode().asPtr()) {
+          foundRoot = true;
+        }
+      }
+      if (!foundRoot) { return false; }
+      auto currentInput = lockedGraph.clone();
+      zc::Vector<identity::RegistryIdentity> noRegistries;
+      package::LockReplayMetrics metrics;
+      auto replayed =
+          package::LockedReplayVerifier::replay(lockedGraph, currentInput, noRegistries, metrics);
+      if (replayed.is<package::LockIssue>() || metrics.solverInvocations != 0) { return false; }
+      const auto& replayedGraph = replayed.get<package::VerifiedLockGraph>();
+      zc::Vector<package::ResolvedPackageSelection> selections;
+      for (const auto& lockedPackage : replayedGraph.packages()) {
+        selections.add(package::ResolvedPackageSelection::from(
+            packageBase(lockedPackage.key()), package::FeatureActivationDomain::Target,
+            packageFeatures(lockedPackage.key())));
+      }
+      zc::Vector<identity::PackageDependencyEdgeKey> edges(replayedGraph.edges().size());
+      for (const auto& edge : replayedGraph.edges()) { edges.add(edge.clone()); }
+      auto graph = package::PackageResolution::from(zc::mv(selections), zc::mv(edges));
+      zc::Vector<package::ResolvedPackageSourceSnapshot> selectedSnapshots;
+      for (auto& snapshot : snapshots) {
+        for (const auto& selected : graph.packages()) {
+          if (snapshot.package().encode().asPtr() == selected.base().encode().asPtr()) {
+            selectedSnapshots.add(zc::mv(snapshot));
+            break;
+          }
+        }
+      }
+      return session->installResolvedPackageGraph(zc::mv(graph), zc::mv(selectedSnapshots));
+    }
+
+    bool includeDevelopment = false;
+    for (const auto& target : normalizedRequest.requestedTargets()) {
+      includeDevelopment = includeDevelopment || target.kind == identity::CrateTargetKind::Test ||
+                           target.kind == identity::CrateTargetKind::Benchmark ||
+                           target.kind == identity::CrateTargetKind::Example;
+    }
+    zc::Vector<package::ResolverRoot> roots;
+    roots.add(package::ResolverRoot::from(packageBase(request.roots()[0].packageKey()),
+                                          packageFeatures(request.roots()[0].packageKey()), false,
+                                          includeDevelopment));
+    auto resolved = package::PackageResolver::resolve(roots, releases);
+    if (resolved.is<package::PackageResolverFailure>()) { return false; }
+    auto& graph = resolved.get<package::PackageResolution>();
+
+    zc::Vector<package::LockPackageRecord> lockPackages;
+    for (const auto& selected : graph.packages()) {
+      bool found = false;
+      for (const auto& record : localRecords) {
+        if (record.base().encode().asPtr() != selected.base().encode().asPtr()) { continue; }
+        zc::Maybe<package::ArchiveFormat> noArchiveFormat;
+        zc::Maybe<identity::Sha256Digest> noArchiveDigest;
+        zc::Maybe<package::SigningKeyId> noSigningKey;
+        auto lockPackage = package::LockPackageRecord::from(
+            selected.packageKey(), record.manifestDigest(), record.sourceTreeDigest(),
+            zc::mv(noArchiveFormat), zc::mv(noArchiveDigest), zc::mv(noSigningKey));
+        ZC_IF_SOME(value, lockPackage) { lockPackages.add(zc::mv(value)); }
+        else { return false; }
+        found = true;
+        break;
+      }
+      if (!found) { return false; }
+    }
+    zc::Vector<identity::PackageDependencyEdgeKey> lockEdges(graph.edges().size());
+    for (const auto& edge : graph.edges()) { lockEdges.add(edge.clone()); }
+    auto currentLock = package::VerifiedLockGraph::from(zc::mv(lockPackages), zc::mv(lockEdges));
+    if (currentLock.is<package::LockIssue>()) { return false; }
+    if (normalizedRequest.lockMode() == package::PackageLockMode::Update) {
+      const auto canonical =
+          package::LockfileCodec::write(currentLock.get<package::VerifiedLockGraph>());
+      if (package::AtomicLockfileWriter::write(*workspaceDirectory, canonical) != zc::none) {
+        return false;
+      }
+    }
+    zc::Vector<package::ResolvedPackageSourceSnapshot> selectedSnapshots;
+    for (auto& snapshot : snapshots) {
+      for (const auto& selected : graph.packages()) {
+        if (snapshot.package().encode().asPtr() == selected.base().encode().asPtr()) {
+          selectedSnapshots.add(zc::mv(snapshot));
+          break;
+        }
+      }
+    }
+    return session->installResolvedPackageGraph(zc::mv(graph), zc::mv(selectedSnapshots));
+  }
+
   zc::MainBuilder::Validity emitOutput() {
+    auto result = emitOutputImpl();
+    ZC_IF_SOME(issue, session->finishResolvedPackageSnapshots()) {
+      package::PackageDiagnosticAdapter::emitMaterializationIssue(session->getDiagnosticEngine(),
+                                                                  issue);
+      context.error(zc::StringPtr());
+      return true;
+    }
+    return result;
+  }
+
+  zc::MainBuilder::Validity emitOutputImpl() {
+    if (manifestPaths.size() > 1) {
+      package::PackageDiagnosticAdapter::emitInvocationIssue(
+          session->getDiagnosticEngine(), package::InvocationIssue::InvalidManifestPath);
+      context.error(zc::StringPtr());
+      return true;
+    }
+    auto registry = targetRegistry();
+    auto targets = packageTargetService(registry);
+    auto normalized = package::normalizePackageCompilationRequest(zc::mv(packageRequest), targets);
+    if (normalized.is<package::InvocationIssue>()) {
+      package::PackageDiagnosticAdapter::emitInvocationIssue(
+          session->getDiagnosticEngine(), normalized.get<package::InvocationIssue>());
+      context.error(zc::StringPtr());
+      return true;
+    }
+    const auto& normalizedRequest = normalized.get<package::NormalizedPackageCompilationRequest>();
+    auto verifiedHostTarget = registry.verify(normalizedRequest.hostTarget());
+    if (verifiedHostTarget.is<irgen::TargetSelectionVerificationIssue>()) {
+      return diagnoseTargetSelectionIssue(
+          verifiedHostTarget.get<irgen::TargetSelectionVerificationIssue>(),
+          normalizedRequest.hostTarget().panicStrategy());
+    }
+    auto verifiedTarget = registry.verify(normalizedRequest.target());
+    if (verifiedTarget.is<irgen::TargetSelectionVerificationIssue>()) {
+      return diagnoseTargetSelectionIssue(
+          verifiedTarget.get<irgen::TargetSelectionVerificationIssue>(),
+          normalizedRequest.target().panicStrategy());
+    }
+    auto filesystem = zc::newDiskFilesystem();
+    auto manifest = discoverManifestPath(*filesystem);
+    if (manifest.is<package::InvocationIssue>()) {
+      package::PackageDiagnosticAdapter::emitInvocationIssue(
+          session->getDiagnosticEngine(), manifest.get<package::InvocationIssue>());
+      context.error(zc::StringPtr());
+      return true;
+    }
+    auto loaded = loadWorkspace(*filesystem, zc::mv(manifest.get<zc::Path>()));
+    if (loaded == zc::none) {
+      context.error("Package manifest or workspace normalization failed."_zc);
+      return true;
+    }
+    ZC_IF_SOME(workspace, loaded) {
+      auto verified = package::verifyPackageCompilationRequest(
+          normalized.get<package::NormalizedPackageCompilationRequest>(), workspace.workspace);
+      if (verified.is<package::TargetSelectionIssue>()) {
+        session->getDiagnosticEngine().diagnose<diagnostics::DiagID::PackageTargetSelectionInvalid>(
+            source::SourceLoc(),
+            zc::str(static_cast<uint64_t>(verified.get<package::TargetSelectionIssue>())));
+        context.error(zc::StringPtr());
+        return true;
+      }
+      auto& verifiedRequest = verified.get<package::VerifiedPackageCompilationRequest>();
+      if (!session->installPackageCompilationRequest(zc::mv(verifiedRequest))) {
+        context.error("Failed to install the verified package compilation request."_zc);
+        return true;
+      }
+      if (!session->installVerifiedTargetSelections(
+              zc::mv(verifiedHostTarget.get<irgen::VerifiedTargetSelection>()),
+              zc::mv(verifiedTarget.get<irgen::VerifiedTargetSelection>()))) {
+        context.error("Failed to install verified backend target selections."_zc);
+        return true;
+      }
+      auto installedRequest = session->getPackageCompilationRequest();
+      ZC_IF_SOME(request, installedRequest) {
+        if (!installPackageGraph(*filesystem, workspace.rootPath, normalizedRequest, request,
+                                 workspace.workspace)) {
+          context.error("Failed to install the resolved package graph and source snapshots."_zc);
+          return true;
+        }
+      }
+      auto finalizedRoots = session->getFinalizedCompilationRoots();
+      if (finalizedRoots.size() == 0 ||
+          !addVerifiedRoots(*filesystem, workspace.rootPath, finalizedRoots)) {
+        package::PackageDiagnosticAdapter::emitBuildScriptIssue(
+            session->getDiagnosticEngine(),
+            package::BuildScriptIssue::BuildResultIntegrityViolation);
+        context.error(zc::StringPtr());
+        return true;
+      }
+    }
+
     // 1. Parsing
     if (!session->parseSources() || session->getDiagnosticEngine().hasErrors()) {
       return zc::str("Compilation failed due to parsing errors.");
@@ -606,32 +1252,47 @@ private:
     ZC_IF_SOME(checkedTree, tree) {
       ZC_IF_SOME(bindingMetadata, metadata) {
         ZC_IF_SOME(checkedTypeEnv, typeEnv) {
-          irgen::LoweringSourceContext sourceContext(session->getSourceManager(), bufferId);
-          auto lowering = irgen::lowerCheckedTree(checkedTree, bindingMetadata, checkedTypeEnv,
-                                                  irgen::TargetDataLayout::lp64(), sourceContext);
-          if (lowering.is<irgen::LoweringFailure>()) {
-            return diagnoseLoweringFailure(checkedTree, lowering.get<irgen::LoweringFailure>());
-          }
-
-          zc::Maybe<zc::Own<zc::OutputStream>> outputStream = createOutputStream(
-              compilerOpts.emission.outputPath, ASTDumpFormat::Tree, DumpOutputKind::Ir);
-          ZC_IF_SOME(stream, outputStream) {
-            auto dumpResult = irgen::dumpModule(*stream, lowering.get<irgen::Module>());
-            ZC_IF_SOME(failure, dumpResult) {
-              session->getDiagnosticEngine()
-                  .diagnose<diagnostics::DiagID::IrDumpInvariantViolation>(
-                      emissionLocation(), irDumpVerifierSiteName(failure.site),
-                      irDumpFailureName(failure.kind), zc::str(failure.symbol.getRaw()),
-                      zc::str(static_cast<uint64_t>(failure.block.value)),
-                      zc::str(static_cast<uint64_t>(failure.value.value)),
-                      zc::str(static_cast<uint64_t>(failure.type.value)),
-                      zc::str(static_cast<uint64_t>(failure.index)));
-              context.error(zc::StringPtr());
-              return true;
-            }
+          auto selectedTarget = session->getVerifiedTarget();
+          if (selectedTarget == zc::none) {
+            session->getDiagnosticEngine().diagnose<diagnostics::DiagID::LirInvariant>(
+                emissionLocation(), zc::str(uint64_t{1}));
+            context.error(zc::StringPtr());
             return true;
           }
-          return diagnoseEmission<diagnostics::DiagID::IrOutputCreationFailed>(emissionLocation());
+          irgen::LoweringSourceContext sourceContext(session->getSourceManager(), bufferId);
+          ZC_IF_SOME(target, selectedTarget) {
+            const auto dataLayout = target.targetSpec().llvmDataLayout();
+            const auto targetLayout = (dataLayout == "e-p:32:32"_zc || dataLayout == "E-p:32:32"_zc)
+                                          ? irgen::TargetDataLayout::ilp32()
+                                          : irgen::TargetDataLayout::lp64();
+            auto lowering = irgen::lowerCheckedTree(checkedTree, bindingMetadata, checkedTypeEnv,
+                                                    targetLayout, sourceContext);
+            if (lowering.is<irgen::LoweringFailure>()) {
+              return diagnoseLoweringFailure(checkedTree, lowering.get<irgen::LoweringFailure>());
+            }
+
+            zc::Maybe<zc::Own<zc::OutputStream>> outputStream = createOutputStream(
+                compilerOpts.emission.outputPath, ASTDumpFormat::Tree, DumpOutputKind::Ir);
+            ZC_IF_SOME(stream, outputStream) {
+              auto dumpResult = irgen::dumpModule(*stream, lowering.get<irgen::Module>());
+              ZC_IF_SOME(failure, dumpResult) {
+                session->getDiagnosticEngine()
+                    .diagnose<diagnostics::DiagID::IrDumpInvariantViolation>(
+                        emissionLocation(), irDumpVerifierSiteName(failure.site),
+                        irDumpFailureName(failure.kind),
+                        failure.definition.isValid() ? "resolved"_zc : "none"_zc,
+                        zc::str(static_cast<uint64_t>(failure.block.value)),
+                        zc::str(static_cast<uint64_t>(failure.value.value)),
+                        failure.type.isValid() ? "resolved"_zc : "none"_zc,
+                        zc::str(static_cast<uint64_t>(failure.index)));
+                context.error(zc::StringPtr());
+                return true;
+              }
+              return true;
+            }
+            return diagnoseEmission<diagnostics::DiagID::IrOutputCreationFailed>(
+                emissionLocation());
+          }
         }
       }
     }
@@ -650,6 +1311,8 @@ private:
   zc::SpaceFor<driver::CompilerSession> sessionSpace;
   basic::CompilerOptions compilerOpts;
   basic::LangOptions langOpts;
+  package::RawPackageCompilationRequest packageRequest;
+  zc::Vector<zc::String> manifestPaths;
 };
 
 }  // namespace utils

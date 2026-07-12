@@ -142,6 +142,8 @@ public:
 
   /// External source support
   zc::Maybe<BufferId> getFileSystemSourceBufferID(zc::StringPtr path);
+  zc::Maybe<BufferId> getFileSystemSourceBufferID(zc::StringPtr path,
+                                                  zc::StringPtr displayIdentifier);
   SourceLoc getLocFromExternalSource(zc::StringPtr path, unsigned line, unsigned col);
 
   zc::StringPtr getIdentifierForBuffer(BufferId bufferId) const;
