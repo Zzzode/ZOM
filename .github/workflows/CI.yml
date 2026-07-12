@@ -9,6 +9,9 @@ on:
 env:
   BUILD_TYPE: Release
   CLANG_FORMAT_VERSION: 20.1.8
+  ANTLR_VERSION: 4.13.2
+  ANTLR_SHA256: eae2dfa119a64327444672aff63e9ec35a20180dc5b8090b7a6ab85125df4d76
+  ANTLRJAR: /tmp/antlr-4.13.2-complete.jar
 
 jobs:
   check-rfc:
@@ -69,8 +72,14 @@ jobs:
       - name: Install dependencies (macOS)
         if: matrix.os == 'macos-latest'
         run: |
-          brew install antlr bash cmake ninja lit
+          brew install bash cmake ninja lit
           pip3 install --break-system-packages psutil PyYAML
+
+      - name: Install pinned ANTLR grammar oracle
+        run: |
+          curl -L --fail --output "${ANTLRJAR}" \
+            "https://www.antlr.org/download/antlr-${ANTLR_VERSION}-complete.jar"
+          printf '%s  %s\n' "${ANTLR_SHA256}" "${ANTLRJAR}" | shasum -a 256 --check
 
       - name: Configure CMake
         run: cmake --preset debug
