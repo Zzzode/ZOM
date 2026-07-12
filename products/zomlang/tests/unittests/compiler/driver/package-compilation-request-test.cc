@@ -106,6 +106,48 @@ identity::CanonicalRelativePath relativePath(zc::StringPtr first, zc::StringPtr 
   return identity::CanonicalRelativePath::from(zc::mv(segments));
 }
 
+identity::SortedFeatureSet noPackageFeatures() {
+  zc::Vector<identity::FeatureName> features;
+  auto result = identity::SortedFeatureSet::from(zc::mv(features));
+  ZC_IF_SOME(value, result) { return zc::mv(value); }
+  ZC_FAIL_REQUIRE("invalid empty package feature set");
+}
+
+identity::PackageKey packageKey(zc::StringPtr name) {
+  zc::Vector<identity::CanonicalPathSegment> segments;
+  auto packageName = identity::PackageName::fromCanonical(name);
+  auto version = identity::ResolvedVersion::fromCanonical("1.0.0"_zc);
+  ZC_REQUIRE(packageName != zc::none);
+  ZC_REQUIRE(version != zc::none);
+  ZC_IF_SOME(packageNameValue, packageName) {
+    ZC_IF_SOME(versionValue, version) {
+      return identity::PackageKey::from(
+          identity::CanonicalPackageSource::localPath(
+              identity::CanonicalWorkspaceRelativePath::from(0, zc::mv(segments))),
+          zc::mv(packageNameValue), zc::mv(versionValue), noPackageFeatures());
+    }
+  }
+  ZC_UNREACHABLE
+}
+
+identity::CrateKey crateKey(zc::StringPtr packageName) {
+  auto compilation = identity::CompilationConfigKey::from(
+      identity::CompilationDomain::Target, targetProjection(),
+      identity::SemanticCompilerOptionsKey::from(2026, true, false, false), zc::none);
+  auto targetName = identity::TargetName::fromCanonical("app"_zc);
+  ZC_REQUIRE(compilation != zc::none);
+  ZC_REQUIRE(targetName != zc::none);
+  ZC_IF_SOME(compilationValue, compilation) {
+    ZC_IF_SOME(targetNameValue, targetName) {
+      auto result =
+          identity::CrateKey::from(packageKey(packageName), identity::CrateTargetKind::Binary,
+                                   zc::mv(targetNameValue), zc::mv(compilationValue));
+      ZC_IF_SOME(value, result) { return zc::mv(value); }
+    }
+  }
+  ZC_FAIL_REQUIRE("invalid crate key fixture");
+}
+
 NormalizedWorkspace workspace() {
   zc::Vector<identity::CanonicalRelativePath> files;
   files.add(relativePath("src"_zc, "lib.zom"_zc));
@@ -259,6 +301,16 @@ ZC_TEST("Workspace verification finalizes complete package and crate keys") {
     ZC_EXPECT(roots[1].crateKey().encode().size() != 0);
     ZC_EXPECT(roots[0].crateKey().encode().asPtr() != roots[1].crateKey().encode().asPtr());
   }
+}
+
+ZC_TEST("Finalized compilation roots reject a crate from another package") {
+  auto matching = FinalizedCompilationRoot::from(packageKey("app"_zc), crateKey("app"_zc),
+                                                 relativePath("src"_zc, "main.zom"_zc));
+  ZC_EXPECT(matching != zc::none);
+
+  auto mismatched = FinalizedCompilationRoot::from(packageKey("app"_zc), crateKey("dependency"_zc),
+                                                   relativePath("src"_zc, "main.zom"_zc));
+  ZC_EXPECT(mismatched == zc::none);
 }
 
 ZC_TEST("Workspace verification rejects unknown packages targets and root features") {

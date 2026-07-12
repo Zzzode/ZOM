@@ -267,9 +267,9 @@ private:
 /// \brief One selected root whose complete post-build RFC 0011 CrateKey is immutable.
 class FinalizedCompilationRoot final {
 public:
-  ZC_NODISCARD static FinalizedCompilationRoot from(identity::PackageKey&& package,
-                                                    identity::CrateKey&& crate,
-                                                    identity::CanonicalRelativePath&& sourcePath);
+  ZC_NODISCARD static zc::Maybe<FinalizedCompilationRoot> from(
+      identity::PackageKey&& package, identity::CrateKey&& crate,
+      identity::CanonicalRelativePath&& sourcePath);
   FinalizedCompilationRoot(FinalizedCompilationRoot&&) noexcept = default;
   FinalizedCompilationRoot& operator=(FinalizedCompilationRoot&&) noexcept = default;
   ZC_DISALLOW_COPY(FinalizedCompilationRoot);

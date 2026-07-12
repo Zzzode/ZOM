@@ -499,9 +499,10 @@ FinalizedCompilationRoot::FinalizedCompilationRoot(
       crateValue(zc::mv(crate)),
       sourcePathValue(zc::mv(sourcePath)) {}
 
-FinalizedCompilationRoot FinalizedCompilationRoot::from(
+zc::Maybe<FinalizedCompilationRoot> FinalizedCompilationRoot::from(
     identity::PackageKey&& package, identity::CrateKey&& crate,
     identity::CanonicalRelativePath&& sourcePath) {
+  if (package.encode().asPtr() != crate.package().encode().asPtr()) { return zc::none; }
   return FinalizedCompilationRoot(zc::mv(package), zc::mv(crate), zc::mv(sourcePath));
 }
 
@@ -598,8 +599,10 @@ zc::Maybe<zc::Vector<FinalizedCompilationRoot>> VerifiedPackageCompilationReques
                                               zc::mv(targetNameValue), zc::mv(compilationValue));
         if (crate == zc::none) { return zc::none; }
         ZC_IF_SOME(crateValue, crate) {
-          finalized.add(FinalizedCompilationRoot::from(
-              root.packageKey().clone(), zc::mv(crateValue), root.sourcePath().clone()));
+          auto finalizedRoot = FinalizedCompilationRoot::from(
+              root.packageKey().clone(), zc::mv(crateValue), root.sourcePath().clone());
+          if (finalizedRoot == zc::none) { return zc::none; }
+          ZC_IF_SOME(value, finalizedRoot) { finalized.add(zc::mv(value)); }
         }
       }
     }
