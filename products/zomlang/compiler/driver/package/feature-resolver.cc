@@ -26,9 +26,49 @@ bool containsFeature(zc::ArrayPtr<const identity::FeatureName> values, zc::Strin
   return false;
 }
 
-bool addFeature(zc::Vector<identity::FeatureName>& values, zc::StringPtr name) {
+struct DefaultFeatureAllocation final {
+  template <typename Value>
+  zc::Vector<Value> vector() const {
+    return zc::Vector<Value>();
+  }
+
+  zc::Maybe<identity::FeatureName> feature(zc::StringPtr name) const {
+    return identity::FeatureName::fromCanonical(name);
+  }
+
+  zc::Maybe<identity::DependencyAlias> alias(zc::StringPtr name) const {
+    return identity::DependencyAlias::fromCanonical(name);
+  }
+
+  identity::CanonicalEncoder encoder() const { return identity::CanonicalEncoder(); }
+};
+
+struct ResourceFeatureAllocation final {
+  explicit ResourceFeatureAllocation(zc::MemoryResource& resource) : resource(resource) {}
+
+  template <typename Value>
+  zc::Vector<Value> vector() const {
+    return zc::Vector<Value>(resource);
+  }
+
+  zc::Maybe<identity::FeatureName> feature(zc::StringPtr name) const {
+    return identity::FeatureName::fromCanonical(resource, name);
+  }
+
+  zc::Maybe<identity::DependencyAlias> alias(zc::StringPtr name) const {
+    return identity::DependencyAlias::fromCanonical(resource, name);
+  }
+
+  identity::CanonicalEncoder encoder() const { return identity::CanonicalEncoder(resource); }
+
+  zc::MemoryResource& resource;
+};
+
+template <typename Allocation>
+bool addFeature(Allocation& allocation, zc::Vector<identity::FeatureName>& values,
+                zc::StringPtr name) {
   if (containsFeature(values, name)) { return false; }
-  auto feature = identity::FeatureName::fromCanonical(name);
+  auto feature = allocation.feature(name);
   ZC_IF_SOME(value, feature) {
     values.add(zc::mv(value));
     return true;
@@ -73,45 +113,51 @@ struct MutableDependency final {
   zc::Vector<identity::FeatureName> features;
 };
 
-size_t activateDependency(zc::Vector<MutableDependency>& dependencies, zc::StringPtr alias) {
+template <typename Allocation>
+size_t activateDependency(Allocation& allocation, zc::Vector<MutableDependency>& dependencies,
+                          zc::StringPtr alias) {
   for (size_t index = 0; index < dependencies.size(); ++index) {
     if (dependencies[index].alias.text() == alias) { return index; }
   }
-  auto admitted = identity::DependencyAlias::fromCanonical(alias);
+  auto admitted = allocation.alias(alias);
   ZC_IF_SOME(value, admitted) {
-    dependencies.add(MutableDependency{zc::mv(value), {}});
+    dependencies.add(
+        MutableDependency{zc::mv(value), allocation.template vector<identity::FeatureName>()});
     return dependencies.size() - 1;
   }
   ZC_UNREACHABLE
 }
 
-bool dependencyLess(const ActivatedDependency& left, const ActivatedDependency& right) {
-  identity::CanonicalEncoder leftEncoder;
-  identity::CanonicalEncoder rightEncoder;
+template <typename Allocation>
+bool dependencyLess(Allocation& allocation, const ActivatedDependency& left,
+                    const ActivatedDependency& right) {
+  auto leftEncoder = allocation.encoder();
+  auto rightEncoder = allocation.encoder();
   left.encode(leftEncoder);
   right.encode(rightEncoder);
   return leftEncoder.finish().asPtr() < rightEncoder.finish().asPtr();
 }
 
-template <typename Manifest>
-FeatureExpansionResult expandFeatures(const Manifest& manifest, FeatureActivationDomain domain,
+template <typename Allocation, typename Manifest>
+FeatureExpansionResult expandFeatures(Allocation& allocation, const Manifest& manifest,
+                                      FeatureActivationDomain domain,
                                       zc::ArrayPtr<const identity::FeatureName> requested,
                                       bool useDefaultFeatures) {
   if (domain != FeatureActivationDomain::Target && domain != FeatureActivationDomain::Build) {
     return FeatureIssue::RequestedFeatureMissing;
   }
-  zc::Vector<identity::FeatureName> active;
+  auto active = allocation.template vector<identity::FeatureName>();
   for (const auto& feature : requested) {
     if (findFeature(manifest, feature.text()) == zc::none) {
       return FeatureIssue::RequestedFeatureMissing;
     }
-    addFeature(active, feature.text());
+    addFeature(allocation, active, feature.text());
   }
   if (useDefaultFeatures && findFeature(manifest, "default"_zc) != zc::none) {
-    addFeature(active, "default"_zc);
+    addFeature(allocation, active, "default"_zc);
   }
 
-  zc::Vector<MutableDependency> dependencies;
+  auto dependencies = allocation.template vector<MutableDependency>();
   for (size_t cursor = 0; cursor < active.size(); ++cursor) {
     ZC_IF_SOME(definition, findFeature(manifest, active[cursor].text())) {
       for (const auto& edgeRecord : definition.edges()) {
@@ -126,16 +172,17 @@ FeatureExpansionResult expandFeatures(const Manifest& manifest, FeatureActivatio
           if (findFeature(manifest, edge.localFeature()) == zc::none) {
             return FeatureIssue::UnknownFeature;
           }
-          addFeature(active, edge.localFeature());
+          addFeature(allocation, active, edge.localFeature());
           continue;
         }
         ZC_IF_SOME(requirement, findDependency(manifest, edge.dependencyAlias())) {
           if (edge.kind() == FeatureEdgeKind::EnableDependency && !requirement.optional()) {
             return FeatureIssue::DependencyNotOptional;
           }
-          const size_t dependency = activateDependency(dependencies, edge.dependencyAlias());
+          const size_t dependency =
+              activateDependency(allocation, dependencies, edge.dependencyAlias());
           if (edge.kind() == FeatureEdgeKind::EnableDependencyFeature) {
-            addFeature(dependencies[dependency].features, edge.dependencyFeature());
+            addFeature(allocation, dependencies[dependency].features, edge.dependencyFeature());
           }
         }
         else { return FeatureIssue::UnknownDependency; }
@@ -146,7 +193,7 @@ FeatureExpansionResult expandFeatures(const Manifest& manifest, FeatureActivatio
 
   auto sortedActive = identity::SortedFeatureSet::from(zc::mv(active));
   if (sortedActive == zc::none) { return FeatureIssue::DuplicateEdge; }
-  zc::Vector<ActivatedDependency> activated;
+  auto activated = allocation.template vector<ActivatedDependency>();
   for (auto& dependency : dependencies) {
     auto features = identity::SortedFeatureSet::from(zc::mv(dependency.features));
     if (features == zc::none) { return FeatureIssue::DuplicateEdge; }
@@ -157,7 +204,7 @@ FeatureExpansionResult expandFeatures(const Manifest& manifest, FeatureActivatio
   for (size_t index = 1; index < activated.size(); ++index) {
     auto current = zc::mv(activated[index]);
     size_t insertion = index;
-    while (insertion != 0 && dependencyLess(current, activated[insertion - 1])) {
+    while (insertion != 0 && dependencyLess(allocation, current, activated[insertion - 1])) {
       activated[insertion] = zc::mv(activated[insertion - 1]);
       --insertion;
     }
@@ -223,14 +270,25 @@ FeatureExpansionResult FeatureResolver::expand(const NormalizedManifest& manifes
                                                FeatureActivationDomain domain,
                                                zc::ArrayPtr<const identity::FeatureName> requested,
                                                bool useDefaultFeatures) {
-  return expandFeatures(manifest, domain, requested, useDefaultFeatures);
+  DefaultFeatureAllocation allocation;
+  return expandFeatures(allocation, manifest, domain, requested, useDefaultFeatures);
 }
 
 FeatureExpansionResult FeatureResolver::expand(const CanonicalManifestRecord& manifest,
                                                FeatureActivationDomain domain,
                                                zc::ArrayPtr<const identity::FeatureName> requested,
                                                bool useDefaultFeatures) {
-  return expandFeatures(manifest, domain, requested, useDefaultFeatures);
+  DefaultFeatureAllocation allocation;
+  return expandFeatures(allocation, manifest, domain, requested, useDefaultFeatures);
+}
+
+FeatureExpansionResult FeatureResolver::expand(zc::MemoryResource& resource,
+                                               const CanonicalManifestRecord& manifest,
+                                               FeatureActivationDomain domain,
+                                               zc::ArrayPtr<const identity::FeatureName> requested,
+                                               bool useDefaultFeatures) {
+  ResourceFeatureAllocation allocation(resource);
+  return expandFeatures(allocation, manifest, domain, requested, useDefaultFeatures);
 }
 
 }  // namespace zomlang::compiler::driver::package

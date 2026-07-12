@@ -95,6 +95,11 @@ public:
   ZC_NODISCARD static FeatureExpansionResult expand(
       const CanonicalManifestRecord& manifest, FeatureActivationDomain domain,
       zc::ArrayPtr<const identity::FeatureName> requested, bool useDefaultFeatures);
+  /// \brief Expands canonical features with every owned result allocated by `resource`.
+  ZC_NODISCARD static FeatureExpansionResult expand(
+      zc::MemoryResource& resource, const CanonicalManifestRecord& manifest,
+      FeatureActivationDomain domain, zc::ArrayPtr<const identity::FeatureName> requested,
+      bool useDefaultFeatures);
 };
 
 }  // namespace zomlang::compiler::driver::package
