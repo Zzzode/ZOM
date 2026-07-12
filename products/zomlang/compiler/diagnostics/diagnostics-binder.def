@@ -35,3 +35,5 @@ DIAG(3015, ReexportModuleNotFound, kError,
              "Cannot resolve module '{0}' for re-export", 1)
 DIAG(3016, ReexportMemberNotFound, kError,
              "Module '{0}' has no exported member '{1}' for re-export", 2)
+DIAG(9956, ModuleGraphInvariant, kFatal,
+     "Internal module graph invariant violated ({0} occurrence(s))", 1)

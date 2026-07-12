@@ -1,4 +1,5 @@
 set(BINDER_SRC
+  ${CMAKE_CURRENT_SOURCE_DIR}/binding-input.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/binder.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/decl-collector.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/definition-identity-map.cc
