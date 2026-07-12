@@ -48,7 +48,7 @@ public:
 class UnexpectedBuildScriptPlanExecutor final : public package::BuildScriptPlanExecutor {
 public:
   package::BuildScriptExecutionResult execute(
-      const package::BuildScriptPlanNode&,
+      const package::BuildScriptPlanNode&, const VerifiedPreparatoryCrateGraph&,
       zc::ArrayPtr<const package::VerifiedBuildScriptResult>) override {
     return package::BuildScriptIssue::ExecutionFailed;
   }
@@ -96,14 +96,9 @@ ZC_TEST("CompilerSessionTest.RejectsBuildPlanBeforePackageHandoff") {
   auto langOpts = basic::LangOptions();
   auto compilerOpts = basic::CompilerOptions();
   auto session = makeSession(langOpts, compilerOpts);
-  zc::Vector<package::BuildScriptPlanNode> nodes;
-  auto plan = package::VerifiedBuildScriptPlan::from(zc::mv(nodes));
-  ZC_REQUIRE(plan != zc::none);
   UnexpectedBuildScriptPlanExecutor executor;
-  ZC_IF_SOME(value, plan) {
-    ZC_EXPECT(session->executeBuildScriptPlan(zc::mv(value), executor) ==
-              package::BuildScriptIssue::BuildResultIntegrityViolation);
-  }
+  ZC_EXPECT(session->executeBuildScripts(executor) ==
+            package::BuildScriptIssue::BuildResultIntegrityViolation);
   ZC_EXPECT(session->getBuildScriptPlan() == zc::none);
   ZC_EXPECT(session->getBuildScriptResults() == zc::none);
 }

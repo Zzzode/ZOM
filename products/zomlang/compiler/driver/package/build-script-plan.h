@@ -22,6 +22,10 @@
 #include "zomlang/compiler/driver/package/manifest-model.h"
 #include "zomlang/compiler/identity/build-script-key.h"
 
+namespace zomlang::compiler::driver {
+class VerifiedPreparatoryCrateGraph;
+}
+
 namespace zomlang::compiler::driver::package {
 
 /// \brief Canonical key of one preparatory build-script plan node.
@@ -87,7 +91,7 @@ class BuildScriptPlanExecutor {
 public:
   virtual ~BuildScriptPlanExecutor() noexcept(false) = default;
   ZC_NODISCARD virtual BuildScriptExecutionResult execute(
-      const BuildScriptPlanNode& node,
+      const BuildScriptPlanNode& node, const VerifiedPreparatoryCrateGraph& crateGraph,
       zc::ArrayPtr<const VerifiedBuildScriptResult> completedResults) = 0;
 };
 

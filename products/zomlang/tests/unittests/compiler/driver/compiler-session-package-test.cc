@@ -61,8 +61,22 @@ identity::CanonicalPackageSource source() {
       identity::CanonicalWorkspaceRelativePath::from(0, zc::mv(segments)));
 }
 
+identity::CanonicalPackageSource dependencySource(uint32_t parents, zc::StringPtr segment) {
+  zc::Vector<identity::CanonicalPathSegment> segments;
+  if (segment.size() != 0) { segments.add(scalar<identity::CanonicalPathSegment>(segment)); }
+  return identity::CanonicalPackageSource::localPath(
+      identity::CanonicalWorkspaceRelativePath::from(parents, zc::mv(segments)));
+}
+
 identity::PackageBaseKey packageBase(zc::StringPtr name) {
   return identity::PackageBaseKey::from(source(), scalar<identity::PackageName>(name),
+                                        scalar<identity::ResolvedVersion>("1.0.0"_zc));
+}
+
+identity::PackageBaseKey dependencyBase(zc::StringPtr name, uint32_t parents,
+                                        zc::StringPtr segment) {
+  return identity::PackageBaseKey::from(dependencySource(parents, segment),
+                                        scalar<identity::PackageName>(name),
                                         scalar<identity::ResolvedVersion>("1.0.0"_zc));
 }
 
@@ -136,19 +150,25 @@ identity::CanonicalRelativePath path(zc::StringPtr first, zc::StringPtr second) 
   return identity::CanonicalRelativePath::from(zc::mv(segments));
 }
 
-package::VerifiedPackageCompilationRequest requestForPackage(
+package::VerifiedPackageCompilationRequest requestForKind(
     const irgen::TargetRegistrySnapshot& registry, zc::StringPtr packageName,
-    bool requiresBuildScript = false) {
+    identity::CrateTargetKind kind, zc::StringPtr targetName, bool requiresBuildScript = false) {
   zc::Vector<package::VerifiedCompilationRoot> roots;
   roots.add(package::VerifiedCompilationRoot::from(
-      packageKey(packageName), identity::CrateTargetKind::Binary,
-      scalar<identity::TargetName>(packageName), 2026, requiresBuildScript,
-      path("src"_zc, "main.zom"_zc)));
+      packageKey(packageName), kind, scalar<identity::TargetName>(targetName), 2026,
+      requiresBuildScript, path("src"_zc, "main.zom"_zc)));
   auto result = package::VerifiedPackageCompilationRequest::from(
       zc::mv(roots), selection(registry), selection(registry), package::SelectedLanguageOptions{},
       package::PackageLockMode::PreferLocked);
   ZC_IF_SOME(value, result) { return zc::mv(value); }
   ZC_FAIL_REQUIRE("package-session request was rejected");
+}
+
+package::VerifiedPackageCompilationRequest requestForPackage(
+    const irgen::TargetRegistrySnapshot& registry, zc::StringPtr packageName,
+    bool requiresBuildScript = false) {
+  return requestForKind(registry, packageName, identity::CrateTargetKind::Binary, packageName,
+                        requiresBuildScript);
 }
 
 package::VerifiedPackageCompilationRequest request(const irgen::TargetRegistrySnapshot& registry,
@@ -182,6 +202,8 @@ package::DigestVerifiedSourceSnapshot snapshot(zc::StringPtr output = zc::String
         ->openFile(zc::Path({"src"_zc, "main.zom"_zc}),
                    zc::WriteMode::CREATE | zc::WriteMode::CREATE_PARENT)
         ->writeAll("let main = 0;"_zc);
+    sourceDirectory->openFile(zc::Path({"src"_zc, "lib.zom"_zc}), zc::WriteMode::CREATE)
+        ->writeAll("let library = 0;"_zc);
   } else {
     sourceDirectory
         ->openFile(zc::Path({"generated"_zc, "out.zom"_zc}),
@@ -195,20 +217,28 @@ package::DigestVerifiedSourceSnapshot snapshot(zc::StringPtr output = zc::String
   return zc::mv(result.get<package::DigestVerifiedSourceSnapshot>());
 }
 
-package::ResolutionOutput resolution(zc::MemoryResource& resource, zc::StringPtr packageName) {
+package::ResolutionOutput resolution(zc::MemoryResource& resource, zc::StringPtr packageName,
+                                     bool requiresBuildScript = false) {
   auto verifiedSource = snapshot();
   package::ManifestParser parser;
   zc::Vector<identity::CanonicalRelativePath> files;
+  if (requiresBuildScript) {
+    files.add(path("tools"_zc, "build.zom"_zc));
+    files.add(path("data"_zc, "input.txt"_zc));
+  }
   auto inventory = package::PackageSourceInventory::from(zc::mv(files));
   ZC_REQUIRE(inventory != zc::none);
   package::NormalizedManifest normalized = [&]() {
     ZC_IF_SOME(sourceInventory, inventory) {
       zc::Vector<identity::CanonicalPathSegment> documentSegments;
       documentSegments.add(scalar<identity::CanonicalPathSegment>("Zom.toml"_zc));
+      auto manifestText = zc::str(
+          "[package]\nname = \"", packageName, "\"\nversion = \"1.0.0\"\nedition = \"2026\"\n",
+          requiresBuildScript
+              ? "\n[build]\npath = \"tools/build.zom\"\ninputs = [\"data/input.txt\"]\noutputs = [\"generated/out.zom\"]\n"_zc
+              : ""_zc);
       auto parsed = parser.parseWorkspaceManifest(
-          identity::CanonicalWorkspaceRelativePath::from(0, zc::mv(documentSegments)),
-          zc::str("[package]\nname = \"", packageName,
-                  "\"\nversion = \"1.0.0\"\nedition = \"2026\"\n"),
+          identity::CanonicalWorkspaceRelativePath::from(0, zc::mv(documentSegments)), manifestText,
           sourceInventory);
       ZC_REQUIRE(parsed.is<package::NormalizedManifest>());
       return zc::mv(parsed.get<package::NormalizedManifest>());
@@ -227,6 +257,206 @@ package::ResolutionOutput resolution(zc::MemoryResource& resource, zc::StringPtr
   return zc::mv(result.get<package::ResolutionOutput>());
 }
 
+package::NormalizedManifest dependencyManifest(zc::StringPtr text) {
+  package::ManifestParser parser;
+  zc::Vector<identity::CanonicalRelativePath> files;
+  files.add(path("src"_zc, "lib.zom"_zc));
+  files.add(path("src"_zc, "main.zom"_zc));
+  files.add(path("tools"_zc, "build.zom"_zc));
+  files.add(path("data"_zc, "input.txt"_zc));
+  auto inventory = package::PackageSourceInventory::from(zc::mv(files));
+  ZC_REQUIRE(inventory != zc::none);
+  ZC_IF_SOME(sourceInventory, inventory) {
+    zc::Vector<identity::CanonicalPathSegment> documentSegments;
+    documentSegments.add(scalar<identity::CanonicalPathSegment>("Zom.toml"_zc));
+    auto parsed = parser.parseWorkspaceManifest(
+        identity::CanonicalWorkspaceRelativePath::from(0, zc::mv(documentSegments)), text,
+        sourceInventory);
+    ZC_REQUIRE(parsed.is<package::NormalizedManifest>());
+    return zc::mv(parsed.get<package::NormalizedManifest>());
+  }
+  ZC_UNREACHABLE
+}
+
+package::ResolverRelease dependencyRelease(identity::PackageBaseKey&& base,
+                                           zc::StringPtr manifestText) {
+  auto sourceSnapshot = snapshot();
+  auto record = package::LocalPackageRecord::from(zc::mv(base), dependencyManifest(manifestText),
+                                                  sourceSnapshot);
+  ZC_REQUIRE(record != zc::none);
+  ZC_IF_SOME(value, record) { return package::ResolverRelease::fromLocal(value); }
+  ZC_UNREACHABLE
+}
+
+package::ResolutionOutput dependencyResolution(zc::MemoryResource& resource) {
+  constexpr zc::StringPtr appManifest = R"toml([package]
+name = "app"
+version = "1.0.0"
+edition = "2026"
+
+[lib]
+path = "src/lib.zom"
+
+[dependencies]
+math = { path = "../math", version = "^1.0.0" }
+)toml"_zc;
+  constexpr zc::StringPtr mathManifest = R"toml([package]
+name = "math"
+version = "1.0.0"
+edition = "2026"
+
+[lib]
+path = "src/lib.zom"
+)toml"_zc;
+  zc::Vector<package::ResolverRelease> releases;
+  releases.add(dependencyRelease(packageBase("app"_zc), appManifest));
+  releases.add(dependencyRelease(dependencyBase("math"_zc, 1, "math"_zc), mathManifest));
+  zc::Vector<package::ResolverRoot> roots;
+  roots.add(package::ResolverRoot::from(packageBase("app"_zc), emptyFeatures(), false, false));
+  auto result = package::PackageResolver::resolve(resource, roots, releases);
+  ZC_REQUIRE(result.is<package::ResolutionOutput>());
+  return zc::mv(result.get<package::ResolutionOutput>());
+}
+
+package::ResolutionOutput developmentDependencyResolution(zc::MemoryResource& resource) {
+  constexpr zc::StringPtr appManifest = R"toml([package]
+name = "app"
+version = "1.0.0"
+edition = "2026"
+
+[dev-dependencies]
+math = { path = "../math", version = "^1.0.0" }
+)toml"_zc;
+  constexpr zc::StringPtr mathManifest = R"toml([package]
+name = "math"
+version = "1.0.0"
+edition = "2026"
+
+[lib]
+path = "src/lib.zom"
+)toml"_zc;
+  zc::Vector<package::ResolverRelease> releases;
+  releases.add(dependencyRelease(packageBase("app"_zc), appManifest));
+  releases.add(dependencyRelease(dependencyBase("math"_zc, 1, "math"_zc), mathManifest));
+  zc::Vector<package::ResolverRoot> roots;
+  roots.add(package::ResolverRoot::from(packageBase("app"_zc), emptyFeatures(), false, true));
+  auto result = package::PackageResolver::resolve(resource, roots, releases);
+  ZC_REQUIRE(result.is<package::ResolutionOutput>());
+  return zc::mv(result.get<package::ResolutionOutput>());
+}
+
+package::ResolutionOutput buildDependencyResolution(zc::MemoryResource& resource) {
+  constexpr zc::StringPtr appManifest = R"toml([package]
+name = "app"
+version = "1.0.0"
+edition = "2026"
+
+[build-dependencies]
+tool = { path = "../tool", version = "^1.0.0" }
+)toml"_zc;
+  constexpr zc::StringPtr toolManifest = R"toml([package]
+name = "tool"
+version = "1.0.0"
+edition = "2026"
+
+[lib]
+path = "src/lib.zom"
+)toml"_zc;
+  zc::Vector<package::ResolverRelease> releases;
+  releases.add(dependencyRelease(packageBase("app"_zc), appManifest));
+  releases.add(dependencyRelease(dependencyBase("tool"_zc, 1, "tool"_zc), toolManifest));
+  zc::Vector<package::ResolverRoot> roots;
+  roots.add(package::ResolverRoot::from(packageBase("app"_zc), emptyFeatures(), false, false));
+  auto result = package::PackageResolver::resolve(resource, roots, releases);
+  ZC_REQUIRE(result.is<package::ResolutionOutput>());
+  return zc::mv(result.get<package::ResolutionOutput>());
+}
+
+package::ResolutionOutput preparatoryDependencyResolution(zc::MemoryResource& resource) {
+  constexpr zc::StringPtr appManifest = R"toml([package]
+name = "app"
+version = "1.0.0"
+edition = "2026"
+
+[build]
+path = "tools/build.zom"
+inputs = ["data/input.txt"]
+outputs = ["generated/out.zom"]
+
+[build-dependencies]
+tool = { path = "../tool", version = "^1.0.0" }
+)toml"_zc;
+  constexpr zc::StringPtr toolManifest = R"toml([package]
+name = "tool"
+version = "1.0.0"
+edition = "2026"
+
+[lib]
+path = "src/lib.zom"
+)toml"_zc;
+  zc::Vector<package::ResolverRelease> releases;
+  releases.add(dependencyRelease(packageBase("app"_zc), appManifest));
+  releases.add(dependencyRelease(dependencyBase("tool"_zc, 1, "tool"_zc), toolManifest));
+  zc::Vector<package::ResolverRoot> roots;
+  roots.add(package::ResolverRoot::from(packageBase("app"_zc), emptyFeatures(), false, false));
+  auto result = package::PackageResolver::resolve(resource, roots, releases);
+  ZC_REQUIRE(result.is<package::ResolutionOutput>());
+  return zc::mv(result.get<package::ResolutionOutput>());
+}
+
+package::ResolutionOutput builtDependencyResolution(zc::MemoryResource& resource) {
+  constexpr zc::StringPtr appManifest = R"toml([package]
+name = "app"
+version = "1.0.0"
+edition = "2026"
+
+[build]
+path = "tools/build.zom"
+inputs = ["data/input.txt"]
+outputs = ["generated/out.zom"]
+
+[build-dependencies]
+tool = { path = "../tool", version = "^1.0.0" }
+)toml"_zc;
+  constexpr zc::StringPtr toolManifest = R"toml([package]
+name = "tool"
+version = "1.0.0"
+edition = "2026"
+
+[lib]
+path = "src/lib.zom"
+
+[build]
+path = "tools/build.zom"
+inputs = ["data/input.txt"]
+outputs = ["generated/out.zom"]
+)toml"_zc;
+  zc::Vector<package::ResolverRelease> releases;
+  releases.add(dependencyRelease(packageBase("app"_zc), appManifest));
+  releases.add(dependencyRelease(dependencyBase("tool"_zc, 1, "tool"_zc), toolManifest));
+  zc::Vector<package::ResolverRoot> roots;
+  roots.add(package::ResolverRoot::from(packageBase("app"_zc), emptyFeatures(), false, false));
+  auto result = package::PackageResolver::resolve(resource, roots, releases);
+  ZC_REQUIRE(result.is<package::ResolutionOutput>());
+  return zc::mv(result.get<package::ResolutionOutput>());
+}
+
+zc::Vector<package::ResolvedPackageSourceSnapshot> dependencySnapshots() {
+  zc::Vector<package::ResolvedPackageSourceSnapshot> snapshots;
+  snapshots.add(package::ResolvedPackageSourceSnapshot::from(packageBase("app"_zc), snapshot()));
+  snapshots.add(package::ResolvedPackageSourceSnapshot::from(
+      dependencyBase("math"_zc, 1, "math"_zc), snapshot()));
+  return snapshots;
+}
+
+zc::Vector<package::ResolvedPackageSourceSnapshot> buildDependencySnapshots() {
+  zc::Vector<package::ResolvedPackageSourceSnapshot> snapshots;
+  snapshots.add(package::ResolvedPackageSourceSnapshot::from(packageBase("app"_zc), snapshot()));
+  snapshots.add(package::ResolvedPackageSourceSnapshot::from(
+      dependencyBase("tool"_zc, 1, "tool"_zc), snapshot()));
+  return snapshots;
+}
+
 zc::Vector<package::ResolvedPackageSourceSnapshot> resolvedSnapshots(zc::StringPtr packageName) {
   zc::Vector<package::ResolvedPackageSourceSnapshot> snapshots;
   snapshots.add(package::ResolvedPackageSourceSnapshot::from(packageBase(packageName), snapshot()));
@@ -238,69 +468,18 @@ VerifiedPackageSessionInput packageInput(zc::MemoryResource& resource,
                                          bool requiresBuildScript = false) {
   auto input = VerifiedPackageSessionInput::from(
       request(registry, requiresBuildScript), verifiedSelection(registry),
-      verifiedSelection(registry), resolution(resource, "app"_zc), resolvedSnapshots("app"_zc));
+      verifiedSelection(registry), resolution(resource, "app"_zc, requiresBuildScript),
+      resolvedSnapshots("app"_zc));
   ZC_IF_SOME(value, input) { return zc::mv(value); }
   ZC_FAIL_REQUIRE("valid atomic package-session input was rejected");
-}
-
-package::CanonicalBuildScriptManifest contract() {
-  zc::Vector<identity::CanonicalRelativePath> files;
-  files.add(path("tools"_zc, "build.zom"_zc));
-  files.add(path("data"_zc, "input.txt"_zc));
-  auto inventory = package::PackageSourceInventory::from(zc::mv(files));
-  ZC_REQUIRE(inventory != zc::none);
-  ZC_IF_SOME(sourceInventory, inventory) {
-    zc::Vector<identity::CanonicalPathSegment> documentSegments;
-    documentSegments.add(scalar<identity::CanonicalPathSegment>("Zom.toml"_zc));
-    package::ManifestParser parser;
-    auto parsed = parser.parseWorkspaceManifest(
-        identity::CanonicalWorkspaceRelativePath::from(0, zc::mv(documentSegments)),
-        R"toml([package]
-name = "app"
-version = "1.0.0"
-edition = "2026"
-
-[build]
-path = "tools/build.zom"
-inputs = ["data/input.txt"]
-outputs = ["generated/out.zom"]
-)toml"_zc,
-        sourceInventory);
-    if (parsed.is<package::NormalizedManifest>()) {
-      return package::CanonicalBuildScriptManifest::from(
-          parsed.get<package::NormalizedManifest>().buildScript());
-    }
-  }
-  ZC_FAIL_REQUIRE("package-session build contract was rejected");
-}
-
-identity::PreparatoryBuildScriptKey preparatory(zc::StringPtr name = "app"_zc) {
-  zc::Vector<identity::PackageKey> dependencies;
-  auto result = identity::PreparatoryBuildScriptKey::from(
-      packageKey(name), scalar<identity::TargetName>("build"_zc), projection(),
-      identity::SemanticCompilerOptionsKey::from(2026, true, false, true), zc::mv(dependencies));
-  ZC_IF_SOME(value, result) { return zc::mv(value); }
-  ZC_FAIL_REQUIRE("package-session preparatory key was rejected");
-}
-
-package::VerifiedBuildScriptPlan plan(zc::StringPtr packageName = "app"_zc) {
-  zc::Vector<package::BuildScriptPlanNodeKey> predecessors;
-  auto node = package::BuildScriptPlanNode::from(
-      package::BuildScriptPlanNodeKey::from(preparatory(packageName)), contract(),
-      zc::mv(predecessors));
-  ZC_REQUIRE(node != zc::none);
-  zc::Vector<package::BuildScriptPlanNode> nodes;
-  ZC_IF_SOME(value, node) { nodes.add(zc::mv(value)); }
-  auto result = package::VerifiedBuildScriptPlan::from(zc::mv(nodes));
-  ZC_IF_SOME(value, result) { return zc::mv(value); }
-  ZC_FAIL_REQUIRE("package-session build plan was rejected");
 }
 
 class RecordingPlanExecutor final : public package::BuildScriptPlanExecutor {
 public:
   package::BuildScriptExecutionResult execute(
-      const package::BuildScriptPlanNode& node,
+      const package::BuildScriptPlanNode& node, const VerifiedPreparatoryCrateGraph& crateGraph,
       zc::ArrayPtr<const package::VerifiedBuildScriptResult> completedResults) override {
+    observedCrateCounts.add(crateGraph.crates().size());
     observedCompletedCounts.add(completedResults.size());
     auto generatedSnapshot = snapshot("generated"_zc);
     zc::Vector<identity::BuildScriptDigestEntry> sourceDigests;
@@ -326,6 +505,7 @@ public:
   }
 
   zc::Vector<size_t> observedCompletedCounts;
+  zc::Vector<size_t> observedCrateCounts;
 };
 
 zc::Own<CompilerSession> preparedSession(const basic::LangOptions& languageOptions,
@@ -382,8 +562,8 @@ ZC_TEST("CompilerSession installs one atomic package input exactly once") {
       packageInput(session.getPackageResolutionMemoryResource(), registry)));
   ZC_REQUIRE(session.getIdentityRegistries() != zc::none);
   ZC_IF_SOME(registries, session.getIdentityRegistries()) {
-    ZC_EXPECT(registries.packages().isFrozen());
-    ZC_EXPECT(registries.packages().size() == 1);
+    ZC_EXPECT(!registries.packages().isFrozen());
+    ZC_EXPECT(registries.packages().size() == 0);
   }
 }
 
@@ -411,14 +591,12 @@ ZC_TEST("CompilerSession executes and freezes one exact build-plan result map") 
   ZC_EXPECT(session->getFinalizedCompilationRoots().size() == 0);
   ZC_REQUIRE(session->getIdentityRegistries() != zc::none);
   ZC_IF_SOME(registries, session->getIdentityRegistries()) {
-    ZC_EXPECT(registries.packages().isFrozen());
-    ZC_EXPECT(registries.packages().size() == 1);
+    ZC_EXPECT(!registries.packages().isFrozen());
+    ZC_EXPECT(registries.packages().size() == 0);
     ZC_EXPECT(registries.crates().size() == 0);
-    auto admittedPackage = packageKey("app"_zc);
-    ZC_EXPECT(registries.packages().find(admittedPackage) != zc::none);
   }
   RecordingPlanExecutor executor;
-  ZC_EXPECT(session->executeBuildScriptPlan(plan(), executor) == zc::none);
+  ZC_EXPECT(session->executeBuildScripts(executor) == zc::none);
   ZC_REQUIRE(session->getFinalizedCompilationRoots().size() == 1);
   ZC_EXPECT(session->getFinalizedCompilationRoots()[0].crateKey().encode().size() != 0);
   ZC_EXPECT(session->getFinalizedCompilationRoots()[0].crateKey().encode().asPtr() !=
@@ -431,8 +609,82 @@ ZC_TEST("CompilerSession executes and freezes one exact build-plan result map") 
   }
   ZC_REQUIRE(executor.observedCompletedCounts.size() == 1);
   ZC_EXPECT(executor.observedCompletedCounts[0] == 0);
-  ZC_EXPECT(session->executeBuildScriptPlan(plan(), executor) ==
+  ZC_REQUIRE(executor.observedCrateCounts.size() == 1);
+  ZC_EXPECT(executor.observedCrateCounts[0] == 1);
+  ZC_REQUIRE(session->getVerifiedPreparatoryCrateGraphs().size() == 1);
+  ZC_EXPECT(session->getVerifiedPreparatoryCrateGraphs()[0].root().targetKind() ==
+            identity::CrateTargetKind::BuildScript);
+  ZC_EXPECT(session->executeBuildScripts(executor) ==
             package::BuildScriptIssue::BuildResultIntegrityViolation);
+}
+
+ZC_TEST("CompilerSession expands one isolated preparatory host dependency closure") {
+  basic::LangOptions languageOptions;
+  basic::CompilerOptions compilerOptions;
+  identity::SemanticContextFactory contextFactory;
+  CompilerSession session(contextFactory, languageOptions, compilerOptions);
+  auto registry = targetRegistry();
+  auto input = VerifiedPackageSessionInput::from(
+      request(registry, true), verifiedSelection(registry), verifiedSelection(registry),
+      preparatoryDependencyResolution(session.getPackageResolutionMemoryResource()),
+      buildDependencySnapshots());
+  ZC_REQUIRE(input != zc::none);
+  ZC_IF_SOME(value, input) { ZC_REQUIRE(session.installVerifiedPackageInput(zc::mv(value))); }
+
+  RecordingPlanExecutor executor;
+  ZC_REQUIRE(session.executeBuildScripts(executor) == zc::none);
+  ZC_REQUIRE(executor.observedCrateCounts.size() == 1);
+  ZC_EXPECT(executor.observedCrateCounts[0] == 2);
+  ZC_REQUIRE(session.getVerifiedPreparatoryCrateGraphs().size() == 1);
+  const auto& graph = session.getVerifiedPreparatoryCrateGraphs()[0];
+  ZC_EXPECT(graph.packages().size() == 2);
+  ZC_EXPECT(graph.packageEdges().size() == 1);
+  ZC_EXPECT(graph.crates().size() == 2);
+  ZC_EXPECT(graph.edges().size() == 1);
+  ZC_EXPECT(graph.edges()[0].packageEdge().domain() == identity::DependencyDomain::Build);
+  ZC_EXPECT(graph.edges()[0].consumer().targetKind() == identity::CrateTargetKind::BuildScript);
+  ZC_EXPECT(graph.edges()[0].provider().targetKind() == identity::CrateTargetKind::Library);
+  ZC_EXPECT(graph.edges()[0].provider().package().name() == "tool"_zc);
+  ZC_REQUIRE(session.getVerifiedCrateGraph() != zc::none);
+  ZC_IF_SOME(finalGraph, session.getVerifiedCrateGraph()) {
+    ZC_EXPECT(finalGraph.crates().size() == 1);
+    ZC_EXPECT(finalGraph.packageEdges().size() == 0);
+    ZC_EXPECT(finalGraph.edges().size() == 0);
+  }
+}
+
+ZC_TEST("CompilerSession carries completed provider build identity into a host closure") {
+  basic::LangOptions languageOptions;
+  basic::CompilerOptions compilerOptions;
+  identity::SemanticContextFactory contextFactory;
+  CompilerSession session(contextFactory, languageOptions, compilerOptions);
+  auto registry = targetRegistry();
+  auto input = VerifiedPackageSessionInput::from(
+      request(registry, true), verifiedSelection(registry), verifiedSelection(registry),
+      builtDependencyResolution(session.getPackageResolutionMemoryResource()),
+      buildDependencySnapshots());
+  ZC_REQUIRE(input != zc::none);
+  ZC_IF_SOME(value, input) { ZC_REQUIRE(session.installVerifiedPackageInput(zc::mv(value))); }
+
+  RecordingPlanExecutor executor;
+  ZC_REQUIRE(session.executeBuildScripts(executor) == zc::none);
+  ZC_REQUIRE(executor.observedCompletedCounts.size() == 2);
+  ZC_EXPECT(executor.observedCompletedCounts[0] == 0);
+  ZC_EXPECT(executor.observedCompletedCounts[1] == 1);
+  ZC_REQUIRE(executor.observedCrateCounts.size() == 2);
+  ZC_EXPECT(executor.observedCrateCounts[0] == 1);
+  ZC_EXPECT(executor.observedCrateCounts[1] == 2);
+  ZC_REQUIRE(session.getVerifiedPreparatoryCrateGraphs().size() == 2);
+  bool foundAppClosure = false;
+  for (const auto& graph : session.getVerifiedPreparatoryCrateGraphs()) {
+    if (graph.root().package().name() == "app"_zc) {
+      foundAppClosure = true;
+      ZC_EXPECT(graph.crates().size() == 2);
+      ZC_EXPECT(graph.edges().size() == 1);
+      ZC_EXPECT(graph.edges()[0].provider().package().name() == "tool"_zc);
+    }
+  }
+  ZC_EXPECT(foundAppClosure);
 }
 
 ZC_TEST("CompilerSession rejects identity freeze before required build outputs exist") {
@@ -445,15 +697,26 @@ ZC_TEST("CompilerSession rejects identity freeze before required build outputs e
   ZC_EXPECT(session->getDiagnosticEngine().hasErrors());
 }
 
-ZC_TEST("CompilerSession rejects a build plan outside the resolved package graph") {
+ZC_TEST("CompilerSession does not execute an unselected build-only dependency") {
   basic::LangOptions languageOptions;
   basic::CompilerOptions compilerOptions;
-  auto session = preparedSession(languageOptions, compilerOptions);
+  identity::SemanticContextFactory contextFactory;
+  CompilerSession session(contextFactory, languageOptions, compilerOptions);
+  auto registry = targetRegistry();
+  auto input = VerifiedPackageSessionInput::from(
+      request(registry), verifiedSelection(registry), verifiedSelection(registry),
+      buildDependencyResolution(session.getPackageResolutionMemoryResource()),
+      buildDependencySnapshots());
+  ZC_REQUIRE(input != zc::none);
+  ZC_IF_SOME(value, input) { ZC_REQUIRE(session.installVerifiedPackageInput(zc::mv(value))); }
   RecordingPlanExecutor executor;
-  ZC_EXPECT(session->executeBuildScriptPlan(plan("other"_zc), executor) ==
-            package::BuildScriptIssue::BuildResultIntegrityViolation);
+  ZC_EXPECT(session.executeBuildScripts(executor) == zc::none);
   ZC_EXPECT(executor.observedCompletedCounts.size() == 0);
-  ZC_EXPECT(session->getBuildScriptResults() == zc::none);
+  ZC_REQUIRE(session.getBuildScriptResults() != zc::none);
+  ZC_IF_SOME(results, session.getBuildScriptResults()) {
+    ZC_EXPECT(results.planKeys().size() == 0);
+    ZC_EXPECT(results.results().size() == 0);
+  }
 }
 
 ZC_TEST("CompilerSession freezes canonical crate and source identities before parsing") {
@@ -486,6 +749,126 @@ ZC_TEST("CompilerSession freezes canonical crate and source identities before pa
     ZC_EXPECT(registries.definitions().size() == 2);
     ZC_EXPECT(registries.impls().isFrozen());
     ZC_EXPECT(registries.impls().size() == 1);
+  }
+}
+
+ZC_TEST("CompilerSession expands final dependency crates and publishes semantic fingerprint") {
+  basic::LangOptions languageOptions;
+  basic::CompilerOptions compilerOptions;
+  identity::SemanticContextFactory contextFactory;
+  CompilerSession session(contextFactory, languageOptions, compilerOptions);
+  auto registry = targetRegistry();
+  auto input = VerifiedPackageSessionInput::from(
+      request(registry), verifiedSelection(registry), verifiedSelection(registry),
+      dependencyResolution(session.getPackageResolutionMemoryResource()), dependencySnapshots());
+  ZC_REQUIRE(input != zc::none);
+  ZC_IF_SOME(value, input) { ZC_REQUIRE(session.installVerifiedPackageInput(zc::mv(value))); }
+
+  ZC_REQUIRE(session.getVerifiedCrateGraph() != zc::none);
+  ZC_IF_SOME(graph, session.getVerifiedCrateGraph()) {
+    ZC_REQUIRE(graph.roots().size() == 1);
+    ZC_REQUIRE(graph.crates().size() == 2);
+    ZC_REQUIRE(graph.edges().size() == 1);
+    ZC_EXPECT(graph.edges()[0].consumer().targetKind() == identity::CrateTargetKind::Binary);
+    ZC_EXPECT(graph.edges()[0].provider().targetKind() == identity::CrateTargetKind::Library);
+    ZC_EXPECT(graph.edges()[0].provider().package().name() == "math"_zc);
+  }
+
+  auto sourceFile = writeTempSource("module app;\nfun main() {}\n"_zc);
+  ZC_DEFER(unlink(sourceFile.cStr()));
+  const auto roots = session.getFinalizedCompilationRoots();
+  ZC_REQUIRE(roots.size() == 1);
+  ZC_REQUIRE(session.addPackageSourceFile(sourceFile, "src/main.zom"_zc, roots[0]) != zc::none);
+  ZC_REQUIRE(session.parseSources());
+  ZC_REQUIRE(session.getSemanticContextFingerprint() != zc::none);
+  ZC_REQUIRE(session.getIdentityRegistries() != zc::none);
+  ZC_IF_SOME(registries, session.getIdentityRegistries()) {
+    ZC_EXPECT(registries.packages().size() == 2);
+    ZC_EXPECT(registries.crates().size() == 2);
+    ZC_IF_SOME(crates, session.getVerifiedCrateGraph()) {
+      auto expected = identity::SemanticContextFingerprint::compute(
+          registries, crates.packageEdges(), crates.edges());
+      ZC_REQUIRE(expected != zc::none);
+      ZC_IF_SOME(expectedValue, expected) {
+        ZC_IF_SOME(actual, session.getSemanticContextFingerprint()) {
+          ZC_EXPECT(actual.digest() == expectedValue.digest());
+        }
+      }
+    }
+  }
+}
+
+ZC_TEST("CompilerSession applies development dependencies only to development target kinds") {
+  basic::LangOptions languageOptions;
+  basic::CompilerOptions compilerOptions;
+  auto registry = targetRegistry();
+  {
+    identity::SemanticContextFactory contextFactory;
+    CompilerSession session(contextFactory, languageOptions, compilerOptions);
+    auto input = VerifiedPackageSessionInput::from(
+        request(registry), verifiedSelection(registry), verifiedSelection(registry),
+        developmentDependencyResolution(session.getPackageResolutionMemoryResource()),
+        dependencySnapshots());
+    ZC_REQUIRE(input != zc::none);
+    ZC_IF_SOME(value, input) { ZC_REQUIRE(session.installVerifiedPackageInput(zc::mv(value))); }
+    ZC_REQUIRE(session.getVerifiedCrateGraph() != zc::none);
+    ZC_IF_SOME(graph, session.getVerifiedCrateGraph()) {
+      ZC_EXPECT(graph.crates().size() == 1);
+      ZC_EXPECT(graph.edges().size() == 0);
+    }
+  }
+  {
+    identity::SemanticContextFactory contextFactory;
+    CompilerSession session(contextFactory, languageOptions, compilerOptions);
+    auto input = VerifiedPackageSessionInput::from(
+        requestForKind(registry, "app"_zc, identity::CrateTargetKind::Test, "integration"_zc),
+        verifiedSelection(registry), verifiedSelection(registry),
+        developmentDependencyResolution(session.getPackageResolutionMemoryResource()),
+        dependencySnapshots());
+    ZC_REQUIRE(input != zc::none);
+    ZC_IF_SOME(value, input) { ZC_REQUIRE(session.installVerifiedPackageInput(zc::mv(value))); }
+    ZC_REQUIRE(session.getVerifiedCrateGraph() != zc::none);
+    ZC_IF_SOME(graph, session.getVerifiedCrateGraph()) {
+      ZC_EXPECT(graph.crates().size() == 2);
+      ZC_REQUIRE(graph.edges().size() == 1);
+      ZC_EXPECT(graph.edges()[0].packageEdge().domain() == identity::DependencyDomain::Development);
+      ZC_EXPECT(graph.edges()[0].consumer().targetKind() == identity::CrateTargetKind::Test);
+      ZC_EXPECT(graph.edges()[0].provider().targetKind() == identity::CrateTargetKind::Library);
+    }
+  }
+}
+
+ZC_TEST("CompilerSession excludes build-only dependencies from the final semantic context") {
+  basic::LangOptions languageOptions;
+  basic::CompilerOptions compilerOptions;
+  identity::SemanticContextFactory contextFactory;
+  CompilerSession session(contextFactory, languageOptions, compilerOptions);
+  auto registry = targetRegistry();
+  auto input = VerifiedPackageSessionInput::from(
+      request(registry), verifiedSelection(registry), verifiedSelection(registry),
+      buildDependencyResolution(session.getPackageResolutionMemoryResource()),
+      buildDependencySnapshots());
+  ZC_REQUIRE(input != zc::none);
+  ZC_IF_SOME(value, input) { ZC_REQUIRE(session.installVerifiedPackageInput(zc::mv(value))); }
+
+  ZC_REQUIRE(session.getVerifiedCrateGraph() != zc::none);
+  ZC_IF_SOME(graph, session.getVerifiedCrateGraph()) {
+    ZC_EXPECT(graph.crates().size() == 1);
+    ZC_EXPECT(graph.packageEdges().size() == 0);
+    ZC_EXPECT(graph.edges().size() == 0);
+  }
+
+  auto sourceFile = writeTempSource("module app;\nfun main() {}\n"_zc);
+  ZC_DEFER(unlink(sourceFile.cStr()));
+  const auto roots = session.getFinalizedCompilationRoots();
+  ZC_REQUIRE(roots.size() == 1);
+  ZC_REQUIRE(session.addPackageSourceFile(sourceFile, "src/main.zom"_zc, roots[0]) != zc::none);
+  ZC_REQUIRE(session.parseSources());
+  ZC_REQUIRE(session.getIdentityRegistries() != zc::none);
+  ZC_IF_SOME(registries, session.getIdentityRegistries()) {
+    ZC_EXPECT(registries.packages().size() == 1);
+    ZC_EXPECT(registries.crates().size() == 1);
+    ZC_EXPECT(registries.packages().find(packageKey("tool"_zc)) == zc::none);
   }
 }
 

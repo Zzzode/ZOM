@@ -704,7 +704,9 @@ def check_atomic_session_handoff(files: dict[Path, str], errors: list[str]) -> N
             "impl->verifiedHostTarget = zc::mv(input.impl->hostTarget);",
             "impl->verifiedTarget = zc::mv(input.impl->target);",
             "impl->packageGraph = zc::mv(input.impl->graph);",
+            "impl->buildScriptPlan = zc::mv(input.impl->buildScriptPlan);",
             "impl->packageSnapshots = zc::mv(input.impl->snapshots);",
+            "VerifiedPreparatoryCrateGraph::buildPlan(request, graph)",
         ),
         "atomic package-session implementation",
         errors,
@@ -728,9 +730,18 @@ def check_atomic_session_handoff(files: dict[Path, str], errors: list[str]) -> N
             f"{SESSION_SOURCE}: atomic package-session install body is missing"
         )
     else:
-        first_mutation = install_body.find("impl->finalizedRoots =")
-        identity_gate = install_body.find("if (identityFailure) { return false; }")
-        if first_mutation < 0 or identity_gate < 0 or identity_gate > first_mutation:
+        first_mutation = install_body.find("impl->packageRequest =")
+        crate_graph_gate = install_body.find("VerifiedCrateGraph::buildFinal(")
+        rejected_graph = install_body.find(
+            "graphResult.get<CrateGraphIssue>() != CrateGraphIssue::BuildResultsRequired"
+        )
+        if (
+            first_mutation < 0
+            or crate_graph_gate < 0
+            or rejected_graph < 0
+            or crate_graph_gate > first_mutation
+            or rejected_graph > first_mutation
+        ):
             errors.append(
                 f"{SESSION_SOURCE}: package-session validation must complete before state mutation"
             )
@@ -942,11 +953,18 @@ def run_self_test() -> int:
             "missing atomic package-session boundary marker",
         ),
         (
+            "authoritative build plan derivation removed",
+            remove_marker(
+                SESSION_SOURCE, "VerifiedPreparatoryCrateGraph::buildPlan(request, graph)"
+            ),
+            "missing atomic package-session implementation marker",
+        ),
+        (
             "partial package install failure",
             replace_marker(
                 SESSION_SOURCE,
-                "impl->finalizedRoots = zc::mv(finalizedRoots);",
-                "impl->finalizedRoots = zc::mv(finalizedRoots);\n  return false;",
+                "impl->packageRequest = zc::mv(input.impl->request);",
+                "impl->packageRequest = zc::mv(input.impl->request);\n  return false;",
             ),
             "package-session install may fail after state mutation",
         ),

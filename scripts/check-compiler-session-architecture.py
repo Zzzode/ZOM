@@ -11,6 +11,8 @@ COMPILER_ROOT = ROOT / "products" / "zomlang" / "compiler"
 UTILS_ROOT = ROOT / "products" / "zomlang" / "utils"
 SESSION_HEADER = Path("products/zomlang/compiler/driver/compiler-session.h")
 SESSION_SOURCE = Path("products/zomlang/compiler/driver/compiler-session.cc")
+CRATE_GRAPH_HEADER = Path("products/zomlang/compiler/driver/crate-graph.h")
+CRATE_GRAPH_SOURCE = Path("products/zomlang/compiler/driver/crate-graph.cc")
 DRIVER_CMAKE = Path("products/zomlang/compiler/driver/CMakeLists.txt")
 CLI_SOURCE = Path("products/zomlang/utils/zomc/zomc.cc")
 THREAD_POOL_HEADER = Path("products/zomlang/compiler/basic/thread-pool.h")
@@ -26,6 +28,8 @@ EXPECTED_DRIVER_FILES = {
     DRIVER_CMAKE,
     SESSION_HEADER,
     SESSION_SOURCE,
+    CRATE_GRAPH_HEADER,
+    CRATE_GRAPH_SOURCE,
 }
 
 SESSION_HEADER_MARKERS = (
@@ -34,6 +38,9 @@ SESSION_HEADER_MARKERS = (
     "identity::SemanticContextBrand getSemanticContextBrand() const noexcept;",
     "zc::Maybe<const identity::SemanticIdentityRegistrySet&> getIdentityRegistries() const noexcept;",
     "zc::Maybe<binder::DefinitionInventory> getDefinitionInventory(",
+    "zc::Maybe<const VerifiedCrateGraph&> getVerifiedCrateGraph() const noexcept;",
+    "getVerifiedPreparatoryCrateGraphs()\n      const noexcept;",
+    "getSemanticContextFingerprint() const noexcept;",
 )
 
 SESSION_SOURCE_MARKERS = (
@@ -49,6 +56,14 @@ SESSION_SOURCE_MARKERS = (
     "diagnostics::DiagID::IdentityDuplicateSingletonStore",
     "basic::ThreadPool threadPool;",
     "threadPool.enqueue(",
+    "zc::Maybe<VerifiedCrateGraph> crateGraph;",
+    "zc::Vector<VerifiedPreparatoryCrateGraph> preparatoryCrateGraphs;",
+    "zc::Maybe<identity::SemanticContextFingerprint> semanticContextFingerprint;",
+    "identity::SemanticContextFingerprint::compute(",
+    "registries, crates.packageEdges(), crates.edges()",
+    "VerifiedPreparatoryCrateGraph::build(request, node, resolution, completed)",
+    "VerifiedPreparatoryCrateGraph::buildPlan(request, graph)",
+    "executor.execute(node, graph.get<VerifiedPreparatoryCrateGraph>(), completed)",
 )
 
 CLI_MARKERS = (
@@ -251,10 +266,61 @@ def check_cli_root(files: dict[Path, str], errors: list[str]) -> None:
 
 def check_build_wiring(files: dict[Path, str], errors: list[str]) -> None:
     cmake = files.get(DRIVER_CMAKE, "")
-    if "file(GLOB DRIVER_SRC compiler-session.cc)" not in cmake:
-        errors.append(f"{DRIVER_CMAKE}: driver target must compile compiler-session.cc directly")
+    for marker in ("set(DRIVER_SRC compiler-session.cc crate-graph.cc)",):
+        if marker not in cmake:
+            errors.append(f"{DRIVER_CMAKE}: missing direct driver build marker: {marker}")
     if re.search(r"\bdriver\.cc\b", cmake):
         errors.append(f"{DRIVER_CMAKE}: forbidden driver.cc build input remains")
+
+
+def check_crate_graph_authority(files: dict[Path, str], errors: list[str]) -> None:
+    header = files.get(CRATE_GRAPH_HEADER, "")
+    source = files.get(CRATE_GRAPH_SOURCE, "")
+    for marker in (
+        "class VerifiedCrateGraph final",
+        "class VerifiedPreparatoryCrateGraph final",
+        "static CrateGraphBuildResult buildFinal(",
+        "static PreparatoryCrateGraphBuildResult build(",
+        "static BuildScriptPlanBuildResult buildPlan(",
+        "zc::ArrayPtr<const identity::PackageDependencyEdgeKey> packageEdges() const noexcept;",
+        "zc::ArrayPtr<const identity::CrateDependencyEdgeKey> edges() const noexcept;",
+        "explicit VerifiedCrateGraph(zc::Own<Impl>&& impl) noexcept;",
+    ):
+        if marker not in header:
+            errors.append(f"{CRATE_GRAPH_HEADER}: missing verified crate graph marker: {marker}")
+    for marker in (
+        "CrateGraphBuildResult VerifiedCrateGraph::buildFinal(",
+        "PreparatoryCrateGraphBuildResult VerifiedPreparatoryCrateGraph::build(",
+        "BuildScriptPlanBuildResult VerifiedPreparatoryCrateGraph::buildPlan(",
+        "request.finalizeRoots(buildResults)",
+        "identity::CrateDependencyEdgeKey::from(",
+        "hasCycle(crates.asPtr(), edges.asPtr())",
+        "identity::SemanticContextFingerprint::compute(",
+    ):
+        if marker not in source:
+            errors.append(f"{CRATE_GRAPH_SOURCE}: missing crate expansion marker: {marker}")
+    for path, text in files.items():
+        if path in {
+            CRATE_GRAPH_SOURCE,
+            CRATE_GRAPH_HEADER,
+            Path("products/zomlang/compiler/driver/package/package-compilation-request.h"),
+            Path("products/zomlang/compiler/driver/package/package-compilation-request.cc"),
+        }:
+            continue
+        if "finalizeRoots(" in text and path.suffix in {".h", ".cc"}:
+            errors.append(f"{path}: final crate identity bypasses VerifiedCrateGraph")
+    if "collectCrate(root.crateKey().clone()" in files.get(SESSION_SOURCE, ""):
+        errors.append(f"{SESSION_SOURCE}: root-only crate freeze bypasses VerifiedCrateGraph")
+    session = files.get(SESSION_SOURCE, "")
+    if session.count("registries.freezePackages()") != 1:
+        errors.append(f"{SESSION_SOURCE}: final crate graph must freeze exactly one package set")
+    if "registries, packages.edges(), crates.edges()" in session:
+        errors.append(f"{SESSION_SOURCE}: resolution edges must not enter final semantic context")
+    if session.count("executor.execute(") != 1:
+        errors.append(f"{SESSION_SOURCE}: build scripts must have exactly one verified execute site")
+    for path, text in files.items():
+        if "executeBuildScriptPlan" in text:
+            errors.append(f"{path}: caller-supplied build-script plan is forbidden")
 
 
 def analyze(files: dict[Path, str]) -> list[str]:
@@ -264,6 +330,7 @@ def analyze(files: dict[Path, str]) -> list[str]:
     check_single_scheduler(files, errors)
     check_cli_root(files, errors)
     check_build_wiring(files, errors)
+    check_crate_graph_authority(files, errors)
     return errors
 
 
@@ -361,13 +428,83 @@ def run_self_test() -> int:
         ),
         "raw session invariant assertion is forbidden",
     )
+    failures += expect_rejection(
+        baseline,
+        "missing crate graph wiring",
+        lambda files: files.__setitem__(
+            DRIVER_CMAKE,
+            files[DRIVER_CMAKE].replace(
+                "set(DRIVER_SRC compiler-session.cc crate-graph.cc)",
+                "set(DRIVER_SRC compiler-session.cc)",
+            ),
+        ),
+        "missing direct driver build marker",
+    )
+    failures += expect_rejection(
+        baseline,
+        "root-only crate freeze",
+        lambda files: files.__setitem__(
+            SESSION_SOURCE,
+            files[SESSION_SOURCE] + "\nvoid bypass() { collectCrate(root.crateKey().clone()); }\n",
+        ),
+        "root-only crate freeze bypasses VerifiedCrateGraph",
+    )
+    failures += expect_rejection(
+        baseline,
+        "missing semantic fingerprint",
+        lambda files: files.__setitem__(
+            SESSION_SOURCE,
+            files[SESSION_SOURCE].replace(
+                "identity::SemanticContextFingerprint::compute(",
+                "missingSemanticContextFingerprint(",
+                1,
+            ),
+        ),
+        "missing session ownership marker",
+    )
+    failures += expect_rejection(
+        baseline,
+        "resolution edges in final context",
+        lambda files: files.__setitem__(
+            SESSION_SOURCE,
+            files[SESSION_SOURCE].replace(
+                "registries, crates.packageEdges(), crates.edges()",
+                "registries, packages.edges(), crates.edges()",
+                1,
+            ),
+        ),
+        "resolution edges must not enter final semantic context",
+    )
+    failures += expect_rejection(
+        baseline,
+        "missing preparatory crate graph",
+        lambda files: files.__setitem__(
+            SESSION_SOURCE,
+            files[SESSION_SOURCE].replace(
+                "VerifiedPreparatoryCrateGraph::build(request, node, resolution, completed)",
+                "bypassPreparatoryCrateGraph(request, node, resolution, completed)",
+                1,
+            ),
+        ),
+        "missing session ownership marker",
+    )
+    failures += expect_rejection(
+        baseline,
+        "caller supplied build plan",
+        lambda files: files.__setitem__(
+            SESSION_HEADER,
+            files[SESSION_HEADER]
+            + "\nvoid executeBuildScriptPlan(package::VerifiedBuildScriptPlan&& plan);\n",
+        ),
+        "caller-supplied build-script plan is forbidden",
+    )
 
     if failures:
         print("CompilerSession architecture self-test failed:", file=sys.stderr)
         for failure in failures:
             print(f"  - {failure}", file=sys.stderr)
         return 1
-    print("CompilerSession architecture negative fixtures passed (7/7).")
+    print("CompilerSession architecture negative fixtures passed (13/13).")
     return 0
 
 

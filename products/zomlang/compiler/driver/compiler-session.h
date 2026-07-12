@@ -22,6 +22,7 @@
 #include "zomlang/compiler/basic/compiler-opts.h"
 #include "zomlang/compiler/basic/zomlang-opts.h"
 #include "zomlang/compiler/binder/definition-inventory.h"
+#include "zomlang/compiler/driver/crate-graph.h"
 #include "zomlang/compiler/driver/package/build-script-plan.h"
 #include "zomlang/compiler/driver/package/build-script-runtime.h"
 #include "zomlang/compiler/driver/package/package-compilation-request.h"
@@ -77,6 +78,7 @@ private:
                               irgen::VerifiedTargetSelection&& hostTarget,
                               irgen::VerifiedTargetSelection&& target,
                               package::ResolutionOutput&& graph,
+                              package::VerifiedBuildScriptPlan&& buildScriptPlan,
                               zc::Vector<package::ResolvedPackageSourceSnapshot>&& snapshots);
   friend class CompilerSession;
 };
@@ -174,6 +176,11 @@ public:
   /// \brief Returns post-build roots whose complete CrateKey values may enter identity freeze.
   ZC_NODISCARD zc::ArrayPtr<const package::FinalizedCompilationRoot> getFinalizedCompilationRoots()
       const noexcept;
+  ZC_NODISCARD zc::Maybe<const VerifiedCrateGraph&> getVerifiedCrateGraph() const noexcept;
+  ZC_NODISCARD zc::ArrayPtr<const VerifiedPreparatoryCrateGraph> getVerifiedPreparatoryCrateGraphs()
+      const noexcept;
+  ZC_NODISCARD zc::Maybe<const identity::SemanticContextFingerprint&>
+  getSemanticContextFingerprint() const noexcept;
 
   ZC_NODISCARD zc::Maybe<const irgen::VerifiedTargetSelection&> getVerifiedHostTarget()
       const noexcept;
@@ -186,9 +193,9 @@ public:
   /// \brief Explicitly removes private source snapshots before process quick-exit.
   ZC_NODISCARD zc::Maybe<package::MaterializationIssue> finishResolvedPackageSnapshots();
 
-  /// \brief Executes a verified build plan once and freezes the exact result map.
-  ZC_NODISCARD zc::Maybe<package::BuildScriptIssue> executeBuildScriptPlan(
-      package::VerifiedBuildScriptPlan&& plan, package::BuildScriptPlanExecutor& executor);
+  /// \brief Derives and executes the authoritative build plan once, then freezes its result map.
+  ZC_NODISCARD zc::Maybe<package::BuildScriptIssue> executeBuildScripts(
+      package::BuildScriptPlanExecutor& executor);
   /// \brief Returns the retained verified build plan, if execution completed.
   ZC_NODISCARD zc::Maybe<const package::VerifiedBuildScriptPlan&> getBuildScriptPlan()
       const noexcept;

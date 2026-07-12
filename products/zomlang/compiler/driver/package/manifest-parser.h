@@ -211,8 +211,11 @@ public:
   ZC_NODISCARD CanonicalManifestRecord clone() const;
   /// \brief Clones this canonical record and all owned storage into `resource`.
   ZC_NODISCARD CanonicalManifestRecord clone(zc::MemoryResource& resource) const;
+  ZC_NODISCARD zc::Maybe<const PackageManifest&> package() const noexcept;
   ZC_NODISCARD bool hasLibrary() const noexcept;
   ZC_NODISCARD zc::Maybe<const CanonicalTargetManifest&> library() const noexcept;
+  ZC_NODISCARD bool hasBuildScript() const noexcept;
+  ZC_NODISCARD zc::Maybe<const CanonicalBuildScriptManifest&> buildScript() const noexcept;
   ZC_NODISCARD zc::ArrayPtr<const DependencyRequirementWithoutOrigin> targetDependencies()
       const noexcept;
   ZC_NODISCARD zc::ArrayPtr<const DependencyRequirementWithoutOrigin> developmentDependencies()

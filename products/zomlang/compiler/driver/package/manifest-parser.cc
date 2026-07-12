@@ -1448,9 +1448,21 @@ CanonicalManifestRecord CanonicalManifestRecord::clone(zc::MemoryResource& resou
       cloneSequence(resource, featureValues.asPtr()));
 }
 
+zc::Maybe<const PackageManifest&> CanonicalManifestRecord::package() const noexcept {
+  ZC_IF_SOME(value, packageValue) { return value; }
+  return zc::none;
+}
 bool CanonicalManifestRecord::hasLibrary() const noexcept { return libraryValue != zc::none; }
 zc::Maybe<const CanonicalTargetManifest&> CanonicalManifestRecord::library() const noexcept {
   ZC_IF_SOME(value, libraryValue) { return value; }
+  return zc::none;
+}
+bool CanonicalManifestRecord::hasBuildScript() const noexcept {
+  return buildScriptValue != zc::none;
+}
+zc::Maybe<const CanonicalBuildScriptManifest&> CanonicalManifestRecord::buildScript()
+    const noexcept {
+  ZC_IF_SOME(value, buildScriptValue) { return value; }
   return zc::none;
 }
 zc::ArrayPtr<const DependencyRequirementWithoutOrigin> CanonicalManifestRecord::targetDependencies()

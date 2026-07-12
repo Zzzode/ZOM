@@ -136,28 +136,30 @@ void emitIdentityFailures(identity::SemanticIdentityRegistrySet& registries,
 struct VerifiedPackageSessionInput::Impl final {
   Impl(package::VerifiedPackageCompilationRequest&& request,
        irgen::VerifiedTargetSelection&& hostTarget, irgen::VerifiedTargetSelection&& target,
-       package::ResolutionOutput&& graph,
+       package::ResolutionOutput&& graph, package::VerifiedBuildScriptPlan&& buildScriptPlan,
        zc::Vector<package::ResolvedPackageSourceSnapshot>&& snapshots) noexcept
       : request(zc::mv(request)),
         hostTarget(zc::mv(hostTarget)),
         target(zc::mv(target)),
         graph(zc::mv(graph)),
+        buildScriptPlan(zc::mv(buildScriptPlan)),
         snapshots(zc::mv(snapshots)) {}
 
   package::VerifiedPackageCompilationRequest request;
   irgen::VerifiedTargetSelection hostTarget;
   irgen::VerifiedTargetSelection target;
   package::ResolutionOutput graph;
+  package::VerifiedBuildScriptPlan buildScriptPlan;
   zc::Vector<package::ResolvedPackageSourceSnapshot> snapshots;
 };
 
 VerifiedPackageSessionInput::VerifiedPackageSessionInput(
     package::VerifiedPackageCompilationRequest&& request,
     irgen::VerifiedTargetSelection&& hostTarget, irgen::VerifiedTargetSelection&& target,
-    package::ResolutionOutput&& graph,
+    package::ResolutionOutput&& graph, package::VerifiedBuildScriptPlan&& buildScriptPlan,
     zc::Vector<package::ResolvedPackageSourceSnapshot>&& snapshots)
     : impl(zc::heap<Impl>(zc::mv(request), zc::mv(hostTarget), zc::mv(target), zc::mv(graph),
-                          zc::mv(snapshots))) {}
+                          zc::mv(buildScriptPlan), zc::mv(snapshots))) {}
 
 VerifiedPackageSessionInput::~VerifiedPackageSessionInput() noexcept(false) = default;
 VerifiedPackageSessionInput::VerifiedPackageSessionInput(VerifiedPackageSessionInput&&) noexcept =
@@ -185,8 +187,11 @@ zc::Maybe<VerifiedPackageSessionInput> VerifiedPackageSessionInput::from(
   for (const auto& root : request.roots()) {
     if (!graphContainsPackage(graph, root.packageKey())) { return zc::none; }
   }
+  auto plan = VerifiedPreparatoryCrateGraph::buildPlan(request, graph);
+  if (!plan.is<package::VerifiedBuildScriptPlan>()) { return zc::none; }
+  auto buildScriptPlan = zc::mv(plan.get<package::VerifiedBuildScriptPlan>());
   return VerifiedPackageSessionInput(zc::mv(request), zc::mv(hostTarget), zc::mv(target),
-                                     zc::mv(graph), zc::mv(snapshots));
+                                     zc::mv(graph), zc::mv(buildScriptPlan), zc::mv(snapshots));
 }
 
 // ================================================================================
@@ -258,11 +263,12 @@ struct CompilerSession::Impl {
   zc::MemoryResource packageResolutionMemory;
   /// Workspace-verified package roots and their semantic identities.
   zc::Maybe<package::VerifiedPackageCompilationRequest> packageRequest;
-  /// Post-build roots whose complete CrateKey values are safe to freeze.
-  zc::Vector<package::FinalizedCompilationRoot> finalizedRoots;
   zc::Maybe<irgen::VerifiedTargetSelection> verifiedHostTarget;
   zc::Maybe<irgen::VerifiedTargetSelection> verifiedTarget;
   zc::Maybe<package::ResolutionOutput> packageGraph;
+  zc::Maybe<VerifiedCrateGraph> crateGraph;
+  zc::Vector<VerifiedPreparatoryCrateGraph> preparatoryCrateGraphs;
+  zc::Maybe<identity::SemanticContextFingerprint> semanticContextFingerprint;
   zc::Vector<package::ResolvedPackageSourceSnapshot> packageSnapshots;
   zc::Maybe<package::VerifiedBuildScriptPlan> buildScriptPlan;
   zc::Maybe<package::VerifiedBuildScriptResultSet> buildScriptResults;
@@ -311,31 +317,42 @@ struct CompilerSession::Impl {
 
   bool freezePackageInputIdentities() {
     if (packageRequest == zc::none) { return true; }
-    if (identityRegistries == zc::none || packageGraph == zc::none) { return false; }
+    if (identityRegistries == zc::none) { return false; }
+    if (crateGraph == zc::none) {
+      package::PackageDiagnosticAdapter::emitBuildScriptIssue(
+          *diagnosticEngine, package::BuildScriptIssue::BuildResultIntegrityViolation);
+      return false;
+    }
 
     bool failed = false;
     ZC_IF_SOME(registries, identityRegistries) {
-      zc::Vector<zc::Array<uint8_t>> collectedCrateKeys;
       uint32_t traversalOrdinal = 0;
-      if (finalizedRoots.size() == 0) {
-        package::PackageDiagnosticAdapter::emitBuildScriptIssue(
-            *diagnosticEngine, package::BuildScriptIssue::BuildResultIntegrityViolation);
-        return false;
-      }
-      for (const auto& root : finalizedRoots) {
-        auto encoded = root.crateKey().encode();
-        bool alreadyCollected = false;
-        for (const auto& prior : collectedCrateKeys) {
-          if (sameBytes(prior.asPtr(), encoded.asPtr())) {
-            alreadyCollected = true;
-            break;
+      ZC_IF_SOME(graph, crateGraph) {
+        zc::Vector<zc::Array<uint8_t>> collectedPackageKeys;
+        for (const auto& crate : graph.crates()) {
+          auto packageKey = crate.package().clone();
+          auto encoded = packageKey.encode();
+          bool alreadyCollected = false;
+          for (const auto& prior : collectedPackageKeys) {
+            if (sameBytes(prior.asPtr(), encoded.asPtr())) {
+              alreadyCollected = true;
+              break;
+            }
           }
+          if (alreadyCollected) { continue; }
+          collectedPackageKeys.add(zc::mv(encoded));
+          failed = registries.collectPackage(zc::mv(packageKey), traversalOrdinal++) !=
+                       identity::FrozenRegistryFailure::None ||
+                   failed;
         }
-        if (alreadyCollected) { continue; }
-        collectedCrateKeys.add(zc::mv(encoded));
-        failed = registries.collectCrate(root.crateKey().clone(), traversalOrdinal++) !=
-                     identity::FrozenRegistryFailure::None ||
-                 failed;
+        failed = registries.freezePackages() != identity::FrozenRegistryFailure::None || failed;
+
+        traversalOrdinal = 0;
+        for (const auto& crate : graph.crates()) {
+          failed = registries.collectCrate(crate.clone(), traversalOrdinal++) !=
+                       identity::FrozenRegistryFailure::None ||
+                   failed;
+        }
       }
       failed = registries.freezeCrates() != identity::FrozenRegistryFailure::None || failed;
 
@@ -372,6 +389,25 @@ struct CompilerSession::Impl {
       if (failed) { emitIdentityFailures(registries, *diagnosticEngine); }
     }
     return !failed;
+  }
+
+  bool freezeSemanticContextFingerprint() {
+    if (packageRequest == zc::none) { return true; }
+    if (identityRegistries == zc::none || crateGraph == zc::none ||
+        semanticContextFingerprint != zc::none) {
+      return false;
+    }
+    ZC_IF_SOME(registries, identityRegistries) {
+      ZC_IF_SOME(crates, crateGraph) {
+        auto fingerprint = identity::SemanticContextFingerprint::compute(
+            registries, crates.packageEdges(), crates.edges());
+        ZC_IF_SOME(value, fingerprint) {
+          semanticContextFingerprint = zc::mv(value);
+          return true;
+        }
+      }
+    }
+    return false;
   }
 
   zc::Maybe<identity::SourceFileId> sourceIdentity(const source::BufferId& buffer) const {
@@ -978,7 +1014,7 @@ bool CompilerSession::parseSources() {
   }
 
   if (impl->diagnosticEngine->hasErrors() || !impl->freezeModuleIdentities() ||
-      !impl->freezeDefinitionAndImplIdentities()) {
+      !impl->freezeSemanticContextFingerprint() || !impl->freezeDefinitionAndImplIdentities()) {
     return false;
   }
   if (impl->packageRequest == zc::none) {
@@ -1072,47 +1108,27 @@ zc::MemoryResource& CompilerSession::getPackageResolutionMemoryResource() noexce
 bool CompilerSession::installVerifiedPackageInput(VerifiedPackageSessionInput&& input) {
   if (input.impl.get() == nullptr || impl->packageRequest != zc::none ||
       impl->verifiedHostTarget != zc::none || impl->verifiedTarget != zc::none ||
-      impl->packageGraph != zc::none || impl->packageSnapshots.size() != 0 ||
+      impl->packageGraph != zc::none || impl->buildScriptPlan != zc::none ||
+      impl->packageSnapshots.size() != 0 ||
       impl->sourceManager->getManagedBufferIds().size() != 0) {
     return false;
   }
 
-  zc::Vector<package::FinalizedCompilationRoot> finalizedRoots;
-  auto finalized = input.impl->request.finalizeRoots(zc::none);
-  ZC_IF_SOME(roots, finalized) { finalizedRoots = zc::mv(roots); }
-
-  bool identityFailure = false;
-  ZC_IF_SOME(registries, impl->identityRegistries) {
-    zc::Vector<zc::Array<uint8_t>> collectedPackageKeys;
-    uint32_t traversalOrdinal = 0;
-    for (const auto& selected : input.impl->graph.packages()) {
-      auto packageKey = selected.key().clone();
-      auto encoded = packageKey.encode();
-      bool alreadyCollected = false;
-      for (const auto& prior : collectedPackageKeys) {
-        if (sameBytes(prior.asPtr(), encoded.asPtr())) {
-          alreadyCollected = true;
-          break;
-        }
-      }
-      if (alreadyCollected) { continue; }
-      collectedPackageKeys.add(zc::mv(encoded));
-      identityFailure = registries.collectPackage(zc::mv(packageKey), traversalOrdinal++) !=
-                            identity::FrozenRegistryFailure::None ||
-                        identityFailure;
-    }
-    identityFailure =
-        registries.freezePackages() != identity::FrozenRegistryFailure::None || identityFailure;
-    if (identityFailure) { emitIdentityFailures(registries, *impl->diagnosticEngine); }
+  zc::Maybe<VerifiedCrateGraph> crateGraph;
+  auto graphResult =
+      VerifiedCrateGraph::buildFinal(input.impl->request, input.impl->graph, zc::none);
+  if (graphResult.is<VerifiedCrateGraph>()) {
+    crateGraph = zc::mv(graphResult.get<VerifiedCrateGraph>());
+  } else if (graphResult.get<CrateGraphIssue>() != CrateGraphIssue::BuildResultsRequired) {
+    return false;
   }
-  else { identityFailure = true; }
-  if (identityFailure) { return false; }
 
-  impl->finalizedRoots = zc::mv(finalizedRoots);
   impl->packageRequest = zc::mv(input.impl->request);
   impl->verifiedHostTarget = zc::mv(input.impl->hostTarget);
   impl->verifiedTarget = zc::mv(input.impl->target);
   impl->packageGraph = zc::mv(input.impl->graph);
+  impl->buildScriptPlan = zc::mv(input.impl->buildScriptPlan);
+  ZC_IF_SOME(graph, crateGraph) { impl->crateGraph = zc::mv(graph); }
   impl->packageSnapshots = zc::mv(input.impl->snapshots);
   return true;
 }
@@ -1125,7 +1141,24 @@ CompilerSession::getPackageCompilationRequest() const noexcept {
 
 zc::ArrayPtr<const package::FinalizedCompilationRoot>
 CompilerSession::getFinalizedCompilationRoots() const noexcept {
-  return impl->finalizedRoots;
+  ZC_IF_SOME(graph, impl->crateGraph) { return graph.roots(); }
+  return zc::ArrayPtr<const package::FinalizedCompilationRoot>();
+}
+
+zc::Maybe<const VerifiedCrateGraph&> CompilerSession::getVerifiedCrateGraph() const noexcept {
+  ZC_IF_SOME(graph, impl->crateGraph) { return graph; }
+  return zc::none;
+}
+
+zc::Maybe<const identity::SemanticContextFingerprint&>
+CompilerSession::getSemanticContextFingerprint() const noexcept {
+  ZC_IF_SOME(fingerprint, impl->semanticContextFingerprint) { return fingerprint; }
+  return zc::none;
+}
+
+zc::ArrayPtr<const VerifiedPreparatoryCrateGraph>
+CompilerSession::getVerifiedPreparatoryCrateGraphs() const noexcept {
+  return impl->preparatoryCrateGraphs;
 }
 
 zc::Maybe<const irgen::VerifiedTargetSelection&> CompilerSession::getVerifiedHostTarget()
@@ -1162,59 +1195,79 @@ zc::Maybe<package::MaterializationIssue> CompilerSession::finishResolvedPackageS
   return firstIssue;
 }
 
-zc::Maybe<package::BuildScriptIssue> CompilerSession::executeBuildScriptPlan(
-    package::VerifiedBuildScriptPlan&& plan, package::BuildScriptPlanExecutor& executor) {
+zc::Maybe<package::BuildScriptIssue> CompilerSession::executeBuildScripts(
+    package::BuildScriptPlanExecutor& executor) {
   if (impl->packageRequest == zc::none || impl->verifiedHostTarget == zc::none ||
       impl->verifiedTarget == zc::none || impl->packageGraph == zc::none ||
-      impl->packageSnapshots.size() == 0 || impl->buildScriptPlan != zc::none ||
+      impl->packageSnapshots.size() == 0 || impl->buildScriptPlan == zc::none ||
       impl->buildScriptResults != zc::none) {
     return package::BuildScriptIssue::BuildResultIntegrityViolation;
   }
 
-  zc::Vector<package::VerifiedBuildScriptResult> completed(plan.nodes().size());
-  for (const auto& node : plan.nodes()) {
-    bool packageFound = false;
-    ZC_IF_SOME(graph, impl->packageGraph) {
-      for (const auto& selected : graph.packages()) {
-        if (selected.key().encode().asPtr() ==
-            node.key().preparatory().package().encode().asPtr()) {
-          packageFound = true;
-          break;
+  ZC_IF_SOME(plan, impl->buildScriptPlan) {
+    zc::Vector<package::VerifiedBuildScriptResult> completed(plan.nodes().size());
+    zc::Vector<VerifiedPreparatoryCrateGraph> preparatoryGraphs(plan.nodes().size());
+    for (const auto& node : plan.nodes()) {
+      bool packageFound = false;
+      ZC_IF_SOME(graph, impl->packageGraph) {
+        for (const auto& selected : graph.packages()) {
+          if (selected.key().encode().asPtr() ==
+              node.key().preparatory().package().encode().asPtr()) {
+            packageFound = true;
+            break;
+          }
+        }
+      }
+      if (!packageFound ||
+          node.key().preparatory().targetName() != node.contract().target().name()) {
+        return package::BuildScriptIssue::BuildResultIntegrityViolation;
+      }
+    }
+    for (const auto nodeIndex : plan.executionOrder()) {
+      const auto& node = plan.nodes()[nodeIndex];
+      ZC_IF_SOME(request, impl->packageRequest) {
+        ZC_IF_SOME(resolution, impl->packageGraph) {
+          auto graph = VerifiedPreparatoryCrateGraph::build(request, node, resolution, completed);
+          if (!graph.is<VerifiedPreparatoryCrateGraph>()) {
+            return package::BuildScriptIssue::BuildResultIntegrityViolation;
+          }
+          auto executed =
+              executor.execute(node, graph.get<VerifiedPreparatoryCrateGraph>(), completed);
+          if (executed.is<package::BuildScriptIssue>()) {
+            return executed.get<package::BuildScriptIssue>();
+          }
+          auto result = zc::mv(executed.get<package::VerifiedBuildScriptResult>());
+          if (result.output().preparatoryKey().encode().asPtr() !=
+              node.key().preparatory().encode().asPtr()) {
+            return package::BuildScriptIssue::BuildResultIntegrityViolation;
+          }
+          preparatoryGraphs.add(zc::mv(graph.get<VerifiedPreparatoryCrateGraph>()));
+          completed.add(zc::mv(result));
         }
       }
     }
-    if (!packageFound || node.key().preparatory().targetName() != node.contract().target().name()) {
-      return package::BuildScriptIssue::BuildResultIntegrityViolation;
-    }
-  }
-  for (const auto nodeIndex : plan.executionOrder()) {
-    const auto& node = plan.nodes()[nodeIndex];
-    auto executed = executor.execute(node, completed);
-    if (executed.is<package::BuildScriptIssue>()) {
-      return executed.get<package::BuildScriptIssue>();
-    }
-    auto result = zc::mv(executed.get<package::VerifiedBuildScriptResult>());
-    if (result.output().preparatoryKey().encode().asPtr() !=
-        node.key().preparatory().encode().asPtr()) {
-      return package::BuildScriptIssue::BuildResultIntegrityViolation;
-    }
-    completed.add(zc::mv(result));
-  }
 
-  zc::Vector<identity::PreparatoryBuildScriptKey> planKeys(plan.nodes().size());
-  for (const auto& node : plan.nodes()) { planKeys.add(node.key().preparatory().clone()); }
-  auto results = package::VerifiedBuildScriptResultSet::from(zc::mv(planKeys), zc::mv(completed));
-  if (results == zc::none) { return package::BuildScriptIssue::BuildResultIntegrityViolation; }
-  ZC_IF_SOME(value, results) {
-    zc::Maybe<const package::VerifiedBuildScriptResultSet&> resultView = value;
-    zc::Maybe<zc::Vector<package::FinalizedCompilationRoot>> finalized;
-    ZC_IF_SOME(request, impl->packageRequest) { finalized = request.finalizeRoots(resultView); }
-    if (finalized == zc::none) { return package::BuildScriptIssue::BuildResultIntegrityViolation; }
-    ZC_IF_SOME(roots, finalized) { impl->finalizedRoots = zc::mv(roots); }
+    zc::Vector<identity::PreparatoryBuildScriptKey> planKeys(plan.nodes().size());
+    for (const auto& node : plan.nodes()) { planKeys.add(node.key().preparatory().clone()); }
+    auto results = package::VerifiedBuildScriptResultSet::from(zc::mv(planKeys), zc::mv(completed));
+    if (results == zc::none) { return package::BuildScriptIssue::BuildResultIntegrityViolation; }
+    ZC_IF_SOME(value, results) {
+      ZC_IF_SOME(request, impl->packageRequest) {
+        ZC_IF_SOME(graph, impl->packageGraph) {
+          zc::Maybe<const package::VerifiedBuildScriptResultSet&> resultView = value;
+          auto crateGraph = VerifiedCrateGraph::buildFinal(request, graph, resultView);
+          if (!crateGraph.is<VerifiedCrateGraph>()) {
+            return package::BuildScriptIssue::BuildResultIntegrityViolation;
+          }
+          impl->crateGraph = zc::mv(crateGraph.get<VerifiedCrateGraph>());
+        }
+      }
+    }
+    impl->preparatoryCrateGraphs = zc::mv(preparatoryGraphs);
+    ZC_IF_SOME(value, results) { impl->buildScriptResults = zc::mv(value); }
+    return zc::none;
   }
-  impl->buildScriptPlan = zc::mv(plan);
-  ZC_IF_SOME(value, results) { impl->buildScriptResults = zc::mv(value); }
-  return zc::none;
+  return package::BuildScriptIssue::BuildResultIntegrityViolation;
 }
 
 zc::Maybe<const package::VerifiedBuildScriptPlan&> CompilerSession::getBuildScriptPlan()

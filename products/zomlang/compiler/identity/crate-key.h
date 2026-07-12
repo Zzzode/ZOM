@@ -170,6 +170,9 @@ public:
   ZC_NODISCARD static CrateDependencyEdgeKey from(PackageDependencyEdgeKey&& packageEdge,
                                                   CrateKey&& consumer, CrateKey&& provider);
   ZC_NODISCARD CrateDependencyEdgeKey clone() const;
+  ZC_NODISCARD const PackageDependencyEdgeKey& packageEdge() const noexcept;
+  ZC_NODISCARD const CrateKey& consumer() const noexcept;
+  ZC_NODISCARD const CrateKey& provider() const noexcept;
   void encode(CanonicalEncoder& encoder) const;
   ZC_NODISCARD zc::Array<uint8_t> encode() const;
 

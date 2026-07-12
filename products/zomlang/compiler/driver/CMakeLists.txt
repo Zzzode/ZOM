@@ -1,4 +1,4 @@
-file(GLOB DRIVER_SRC compiler-session.cc)
+set(DRIVER_SRC compiler-session.cc crate-graph.cc)
 
 enable_language(C)
 add_subdirectory(package/vendor)

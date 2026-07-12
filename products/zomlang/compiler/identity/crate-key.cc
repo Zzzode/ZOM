@@ -204,6 +204,14 @@ CrateDependencyEdgeKey CrateDependencyEdgeKey::clone() const {
                                 providerValue.clone());
 }
 
+const PackageDependencyEdgeKey& CrateDependencyEdgeKey::packageEdge() const noexcept {
+  return packageEdgeValue;
+}
+
+const CrateKey& CrateDependencyEdgeKey::consumer() const noexcept { return consumerValue; }
+
+const CrateKey& CrateDependencyEdgeKey::provider() const noexcept { return providerValue; }
+
 void CrateDependencyEdgeKey::encode(CanonicalEncoder& encoder) const {
   packageEdgeValue.encode(encoder);
   consumerValue.encode(encoder);
