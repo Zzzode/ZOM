@@ -195,7 +195,7 @@ package::DigestVerifiedSourceSnapshot snapshot(zc::StringPtr output = zc::String
   return zc::mv(result.get<package::DigestVerifiedSourceSnapshot>());
 }
 
-package::ResolutionOutput resolution(zc::StringPtr packageName) {
+package::ResolutionOutput resolution(zc::MemoryResource& resource, zc::StringPtr packageName) {
   auto verifiedSource = snapshot();
   package::ManifestParser parser;
   zc::Vector<identity::CanonicalRelativePath> files;
@@ -222,7 +222,7 @@ package::ResolutionOutput resolution(zc::StringPtr packageName) {
   ZC_IF_SOME(value, record) { releases.add(package::ResolverRelease::fromLocal(value)); }
   zc::Vector<package::ResolverRoot> roots;
   roots.add(package::ResolverRoot::from(packageBase(packageName), emptyFeatures(), false, false));
-  auto result = package::PackageResolver::resolve(roots, releases);
+  auto result = package::PackageResolver::resolve(resource, roots, releases);
   ZC_REQUIRE(result.is<package::ResolutionOutput>());
   return zc::mv(result.get<package::ResolutionOutput>());
 }
@@ -233,11 +233,12 @@ zc::Vector<package::ResolvedPackageSourceSnapshot> resolvedSnapshots(zc::StringP
   return snapshots;
 }
 
-VerifiedPackageSessionInput packageInput(const irgen::TargetRegistrySnapshot& registry,
+VerifiedPackageSessionInput packageInput(zc::MemoryResource& resource,
+                                         const irgen::TargetRegistrySnapshot& registry,
                                          bool requiresBuildScript = false) {
   auto input = VerifiedPackageSessionInput::from(
       request(registry, requiresBuildScript), verifiedSelection(registry),
-      verifiedSelection(registry), resolution("app"_zc), resolvedSnapshots("app"_zc));
+      verifiedSelection(registry), resolution(resource, "app"_zc), resolvedSnapshots("app"_zc));
   ZC_IF_SOME(value, input) { return zc::mv(value); }
   ZC_FAIL_REQUIRE("valid atomic package-session input was rejected");
 }
@@ -333,34 +334,38 @@ zc::Own<CompilerSession> preparedSession(const basic::LangOptions& languageOptio
   identity::SemanticContextFactory contextFactory;
   auto session = zc::heap<CompilerSession>(contextFactory, languageOptions, compilerOptions);
   auto registry = targetRegistry();
-  ZC_REQUIRE(session->installVerifiedPackageInput(packageInput(registry, requiresBuildScript)));
+  ZC_REQUIRE(session->installVerifiedPackageInput(
+      packageInput(session->getPackageResolutionMemoryResource(), registry, requiresBuildScript)));
   return session;
 }
 
 }  // namespace
 
 ZC_TEST("Verified package input rejects a request root outside the resolved graph") {
+  zc::MemoryResource resource;
   auto registry = targetRegistry();
   auto input = VerifiedPackageSessionInput::from(
       request(registry), verifiedSelection(registry), verifiedSelection(registry),
-      resolution("other"_zc), resolvedSnapshots("other"_zc));
+      resolution(resource, "other"_zc), resolvedSnapshots("other"_zc));
   ZC_EXPECT(input == zc::none);
 }
 
 ZC_TEST("Verified package input rejects target selections from another registry revision") {
+  zc::MemoryResource resource;
   auto registry = targetRegistry();
   auto otherRegistry = targetRegistry("zom-v2"_zc);
-  auto input = VerifiedPackageSessionInput::from(request(registry), verifiedSelection(registry),
-                                                 verifiedSelection(otherRegistry),
-                                                 resolution("app"_zc), resolvedSnapshots("app"_zc));
+  auto input = VerifiedPackageSessionInput::from(
+      request(registry), verifiedSelection(registry), verifiedSelection(otherRegistry),
+      resolution(resource, "app"_zc), resolvedSnapshots("app"_zc));
   ZC_EXPECT(input == zc::none);
 }
 
 ZC_TEST("Verified package input rejects snapshots outside the resolved graph") {
+  zc::MemoryResource resource;
   auto registry = targetRegistry();
-  auto input = VerifiedPackageSessionInput::from(request(registry), verifiedSelection(registry),
-                                                 verifiedSelection(registry), resolution("app"_zc),
-                                                 resolvedSnapshots("other"_zc));
+  auto input = VerifiedPackageSessionInput::from(
+      request(registry), verifiedSelection(registry), verifiedSelection(registry),
+      resolution(resource, "app"_zc), resolvedSnapshots("other"_zc));
   ZC_EXPECT(input == zc::none);
 }
 
@@ -371,8 +376,10 @@ ZC_TEST("CompilerSession installs one atomic package input exactly once") {
   CompilerSession session(contextFactory, languageOptions, compilerOptions);
   auto registry = targetRegistry();
 
-  ZC_EXPECT(session.installVerifiedPackageInput(packageInput(registry)));
-  ZC_EXPECT(!session.installVerifiedPackageInput(packageInput(registry)));
+  ZC_EXPECT(session.installVerifiedPackageInput(
+      packageInput(session.getPackageResolutionMemoryResource(), registry)));
+  ZC_EXPECT(!session.installVerifiedPackageInput(
+      packageInput(session.getPackageResolutionMemoryResource(), registry)));
   ZC_REQUIRE(session.getIdentityRegistries() != zc::none);
   ZC_IF_SOME(registries, session.getIdentityRegistries()) {
     ZC_EXPECT(registries.packages().isFrozen());
@@ -386,7 +393,7 @@ ZC_TEST("CompilerSession rejects a moved-from atomic package input") {
   identity::SemanticContextFactory contextFactory;
   CompilerSession session(contextFactory, languageOptions, compilerOptions);
   auto registry = targetRegistry();
-  auto original = packageInput(registry);
+  auto original = packageInput(session.getPackageResolutionMemoryResource(), registry);
   auto retained = zc::mv(original);
 
   ZC_EXPECT(!session.installVerifiedPackageInput(zc::mv(original)));

@@ -31,6 +31,7 @@
 #include "zomlang/compiler/driver/package/package-compilation-request.h"
 #include "zomlang/compiler/driver/package/package-diagnostic.h"
 #include "zomlang/compiler/driver/package/source-record.h"
+#include "zomlang/compiler/identity/canonical-encoder.h"
 #include "zomlang/compiler/irgen/ir-dump.h"
 #include "zomlang/compiler/irgen/lowering.h"
 #include "zomlang/compiler/source/manager.h"
@@ -564,21 +565,23 @@ public:
     return true;
   }
 
-  static identity::PackageBaseKey packageBase(const identity::PackageKey& packageKey) {
-    auto name = identity::PackageName::fromCanonical(packageKey.name());
-    auto version = identity::ResolvedVersion::fromCanonical(packageKey.version());
+  static identity::PackageBaseKey packageBase(zc::MemoryResource& resource,
+                                              const identity::PackageKey& packageKey) {
+    auto name = identity::PackageName::fromCanonical(resource, packageKey.name());
+    auto version = identity::ResolvedVersion::fromCanonical(resource, packageKey.version());
     ZC_IF_SOME(nameValue, name) {
       ZC_IF_SOME(versionValue, version) {
-        return identity::PackageBaseKey::from(packageKey.source().clone(), zc::mv(nameValue),
-                                              zc::mv(versionValue));
+        return identity::PackageBaseKey::from(packageKey.source().clone(resource),
+                                              zc::mv(nameValue), zc::mv(versionValue));
       }
     }
     ZC_UNREACHABLE;
   }
 
-  static identity::SortedFeatureSet packageFeatures(const identity::PackageKey& packageKey) {
-    zc::Vector<identity::FeatureName> features(packageKey.features().size());
-    for (const auto& feature : packageKey.features()) { features.add(feature.clone()); }
+  static identity::SortedFeatureSet packageFeatures(zc::MemoryResource& resource,
+                                                    const identity::PackageKey& packageKey) {
+    zc::Vector<identity::FeatureName> features(resource, packageKey.features().size());
+    for (const auto& feature : packageKey.features()) { features.add(feature.clone(resource)); }
     auto result = identity::SortedFeatureSet::from(zc::mv(features));
     ZC_IF_SOME(value, result) { return zc::mv(value); }
     ZC_UNREACHABLE;
@@ -591,7 +594,8 @@ public:
       irgen::VerifiedTargetSelection&& verifiedHostTarget,
       irgen::VerifiedTargetSelection&& verifiedTarget,
       const package::NormalizedWorkspace& workspace) {
-    zc::Vector<package::ResolverRelease> releases;
+    auto& resolverMemory = session->getPackageResolutionMemoryResource();
+    zc::Vector<package::ResolverRelease> releases(resolverMemory);
     zc::Vector<package::ResolvedPackageSourceSnapshot> snapshots;
     auto snapshotParent =
         filesystem.getRoot().tryOpenSubdir(workspaceRoot.parent(), zc::WriteMode::MODIFY);
@@ -605,7 +609,7 @@ public:
       auto name = identity::PackageName::fromCanonical(manifest.packageName());
       auto version = identity::ResolvedVersion::fromCanonical(manifest.packageVersion());
       if (name == zc::none || version == zc::none) { return false; }
-      identity::PackageBaseKey base = packageBase(request.roots()[0].packageKey());
+      identity::PackageBaseKey base = packageBase(resolverMemory, request.roots()[0].packageKey());
       ZC_IF_SOME(nameValue, name) {
         ZC_IF_SOME(versionValue, version) {
           base = identity::PackageBaseKey::from(
@@ -627,7 +631,7 @@ public:
           package::LocalPackageRecord::from(base.clone(), manifest.clone(), snapshotValue);
       if (record == zc::none) { return false; }
       ZC_IF_SOME(recordValue, record) {
-        releases.add(package::ResolverRelease::fromLocal(recordValue));
+        releases.add(package::ResolverRelease::fromLocal(resolverMemory, recordValue));
       }
       snapshots.add(
           package::ResolvedPackageSourceSnapshot::from(base.clone(), zc::mv(snapshotValue)));
@@ -653,10 +657,11 @@ public:
                            target.kind == identity::CrateTargetKind::Benchmark ||
                            target.kind == identity::CrateTargetKind::Example;
     }
-    zc::Vector<package::ResolverRoot> roots;
-    roots.add(package::ResolverRoot::from(packageBase(request.roots()[0].packageKey()),
-                                          packageFeatures(request.roots()[0].packageKey()), false,
-                                          includeDevelopment));
+    zc::Vector<package::ResolverRoot> roots(resolverMemory);
+    roots.add(package::ResolverRoot::from(
+        packageBase(resolverMemory, request.roots()[0].packageKey()),
+        packageFeatures(resolverMemory, request.roots()[0].packageKey()), false,
+        includeDevelopment));
     const bool useLocked =
         normalizedRequest.lockMode() == package::PackageLockMode::LockedOnly ||
         (normalizedRequest.lockMode() == package::PackageLockMode::PreferLocked &&
@@ -666,8 +671,8 @@ public:
       if (locked.is<package::LockIssue>()) { return zc::none; }
       const auto& lockedGraph = locked.get<package::VerifiedLockGraph>();
       package::LockReplayMetrics metrics;
-      auto resolved =
-          package::PackageResolver::resolveLocked(roots, releases, lockedGraph, metrics);
+      auto resolved = package::PackageResolver::resolveLocked(resolverMemory, roots, releases,
+                                                              lockedGraph, metrics);
       if (resolved.is<package::PackageResolverFailure>() || metrics.solverInvocations != 0) {
         return zc::none;
       }
@@ -675,7 +680,11 @@ public:
       zc::Vector<package::ResolvedPackageSourceSnapshot> selectedSnapshots;
       for (auto& snapshot : snapshots) {
         for (const auto& selected : graph.packages()) {
-          if (snapshot.package().encode().asPtr() == packageBase(selected.key()).encode().asPtr()) {
+          identity::CanonicalEncoder snapshotEncoder(resolverMemory);
+          identity::CanonicalEncoder selectedEncoder(resolverMemory);
+          snapshot.package().encode(snapshotEncoder);
+          packageBase(resolverMemory, selected.key()).encode(selectedEncoder);
+          if (snapshotEncoder.finish().asPtr() == selectedEncoder.finish().asPtr()) {
             selectedSnapshots.add(zc::mv(snapshot));
             break;
           }
@@ -686,7 +695,7 @@ public:
                                                        zc::mv(selectedSnapshots));
     }
 
-    auto resolved = package::PackageResolver::resolve(roots, releases);
+    auto resolved = package::PackageResolver::resolve(resolverMemory, roots, releases);
     if (resolved.is<package::PackageResolverFailure>()) { return zc::none; }
     auto& graph = resolved.get<package::ResolutionOutput>();
     if (normalizedRequest.lockMode() == package::PackageLockMode::Update) {
@@ -698,7 +707,11 @@ public:
     zc::Vector<package::ResolvedPackageSourceSnapshot> selectedSnapshots;
     for (auto& snapshot : snapshots) {
       for (const auto& selected : graph.packages()) {
-        if (snapshot.package().encode().asPtr() == packageBase(selected.key()).encode().asPtr()) {
+        identity::CanonicalEncoder snapshotEncoder(resolverMemory);
+        identity::CanonicalEncoder selectedEncoder(resolverMemory);
+        snapshot.package().encode(snapshotEncoder);
+        packageBase(resolverMemory, selected.key()).encode(selectedEncoder);
+        if (snapshotEncoder.finish().asPtr() == selectedEncoder.finish().asPtr()) {
           selectedSnapshots.add(zc::mv(snapshot));
           break;
         }

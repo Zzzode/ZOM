@@ -52,6 +52,14 @@ zc::String releaseVersion(uint32_t minor) {
   return zc::heapString(zc::StringPtr(text, 5));
 }
 
+identity::CanonicalWorkspaceRelativePath workspacePath(zc::MemoryResource& resource,
+                                                       zc::StringPtr name) {
+  zc::Vector<identity::CanonicalPathSegment> segments(resource);
+  auto segment = identity::CanonicalPathSegment::fromCanonical(resource, name);
+  ZC_IF_SOME(value, segment) { segments.add(zc::mv(value)); }
+  return identity::CanonicalWorkspaceRelativePath::from(0, zc::mv(segments));
+}
+
 identity::CanonicalWorkspaceRelativePath workspacePath(zc::StringPtr name) {
   zc::Vector<identity::CanonicalPathSegment> segments;
   auto segment = identity::CanonicalPathSegment::fromCanonical(name);
@@ -68,8 +76,8 @@ identity::CanonicalRelativePath libraryPath() {
   return identity::CanonicalRelativePath::from(zc::mv(segments));
 }
 
-identity::SortedFeatureSet noFeatures() {
-  zc::Vector<identity::FeatureName> values;
+identity::SortedFeatureSet noFeatures(zc::MemoryResource& resource) {
+  zc::Vector<identity::FeatureName> values(resource);
   auto result = identity::SortedFeatureSet::from(zc::mv(values));
   ZC_IF_SOME(value, result) { return zc::mv(value); }
   ZC_UNREACHABLE
@@ -107,14 +115,15 @@ DigestVerifiedSourceSnapshot sourceSnapshot() {
   return zc::mv(result.get<DigestVerifiedSourceSnapshot>());
 }
 
-identity::PackageBaseKey packageBase(zc::StringPtr name, zc::StringPtr version) {
-  auto packageName = identity::PackageName::fromCanonical(name);
-  auto packageVersion = identity::ResolvedVersion::fromCanonical(version);
+identity::PackageBaseKey packageBase(zc::MemoryResource& resource, zc::StringPtr name,
+                                     zc::StringPtr version) {
+  auto packageName = identity::PackageName::fromCanonical(resource, name);
+  auto packageVersion = identity::ResolvedVersion::fromCanonical(resource, version);
   ZC_IF_SOME(nameValue, packageName) {
     ZC_IF_SOME(versionValue, packageVersion) {
       return identity::PackageBaseKey::from(
-          identity::CanonicalPackageSource::localPath(workspacePath(name)), zc::mv(nameValue),
-          zc::mv(versionValue));
+          identity::CanonicalPackageSource::localPath(workspacePath(resource, name)),
+          zc::mv(nameValue), zc::mv(versionValue));
     }
   }
   ZC_UNREACHABLE
@@ -179,40 +188,63 @@ zc::Vector<zc::Vector<uint32_t>> loadEdges() {
 ZC_TEST("PackageResolverPerformance.ResolvesCanonicalTenThousandPackageGraph") {
   auto outgoing = loadEdges();
   auto verifiedSource = sourceSnapshot();
-  zc::Vector<ResolverRelease> releases;
-  for (uint32_t package = 0; package < kPackageCount; ++package) {
-    auto name = decimalName(package);
-    for (uint32_t minor = 0; minor < kReleaseCount; ++minor) {
-      auto version = releaseVersion(minor);
-      auto record = LocalPackageRecord::from(
-          packageBase(name, version), manifest(package, minor, outgoing[package]), verifiedSource);
-      ZC_REQUIRE(record != zc::none);
-      ZC_IF_SOME(value, record) { releases.add(ResolverRelease::fromLocal(value)); }
+  zc::MemoryResource upstream;
+  zc::CountingMemoryResource resource(upstream);
+  size_t observedPeak = 0;
+  {
+    zc::Vector<ResolverRelease> releases(resource);
+    for (uint32_t package = 0; package < kPackageCount; ++package) {
+      auto name = decimalName(package);
+      for (uint32_t minor = 0; minor < kReleaseCount; ++minor) {
+        auto version = releaseVersion(minor);
+        auto record =
+            LocalPackageRecord::from(packageBase(resource, name, version),
+                                     manifest(package, minor, outgoing[package]), verifiedSource);
+        ZC_REQUIRE(record != zc::none);
+        ZC_IF_SOME(value, record) { releases.add(ResolverRelease::fromLocal(resource, value)); }
+      }
     }
+    zc::Vector<ResolverRoot> roots(resource);
+    roots.add(ResolverRoot::from(packageBase(resource, "p00000"_zc, "1.3.0"_zc),
+                                 noFeatures(resource), true, false));
+    PackageResolverMetrics metrics;
+    zc::Array<uint8_t> expectedResolution;
+    zc::Maybe<VerifiedLockGraph> replayLock;
+    {
+      auto result = PackageResolver::resolve(resource, roots, releases, metrics);
+      ZC_REQUIRE(result.is<ResolutionOutput>());
+      const auto& resolution = result.get<ResolutionOutput>();
+      ZC_EXPECT(resolution.packages().size() == kPackageCount);
+      ZC_EXPECT(resolution.edges().size() == kEdgeCount);
+      expectedResolution = resolution.encode(resource);
+      replayLock = resolution.lockGraph().clone(resource);
+    }
+    ZC_EXPECT(metrics.decisions <= 40'000);
+    ZC_EXPECT(metrics.selectedPackages == kPackageCount);
+    ZC_EXPECT(metrics.emittedEdges == kEdgeCount);
+
+    LockReplayMetrics replayMetrics;
+    ZC_IF_SOME(locked, replayLock) {
+      auto replayed =
+          PackageResolver::resolveLocked(resource, roots, releases, locked, replayMetrics);
+      ZC_REQUIRE(replayed.is<ResolutionOutput>());
+      ZC_EXPECT(replayed.get<ResolutionOutput>().encode(resource).asPtr() ==
+                expectedResolution.asPtr());
+    }
+    else { ZC_FAIL_REQUIRE("resolver lock replay fixture was not retained"); }
+    ZC_EXPECT(replayMetrics.solverInvocations == 0);
+    ZC_EXPECT(replayMetrics.packageVisits == kPackageCount);
+    ZC_EXPECT(replayMetrics.edgeVisits == kEdgeCount);
+    observedPeak = resource.peakAllocatedBytes();
+    ZC_EXPECT(observedPeak <= uint64_t{1} << 30U);
+    ZC_LOG(WARNING, "package resolver resource metrics", observedPeak,
+           resource.currentAllocatedBytes(), metrics.decisions, metrics.selectedPackages,
+           metrics.emittedEdges, replayMetrics.solverInvocations, replayMetrics.packageVisits,
+           replayMetrics.edgeVisits);
   }
-  zc::Vector<ResolverRoot> roots;
-  roots.add(ResolverRoot::from(packageBase("p00000"_zc, "1.3.0"_zc), noFeatures(), true, false));
-  PackageResolverMetrics metrics;
-  auto result = PackageResolver::resolve(roots, releases, metrics);
-  ZC_REQUIRE(result.is<ResolutionOutput>());
-  ZC_EXPECT(result.get<ResolutionOutput>().packages().size() == kPackageCount);
-  ZC_EXPECT(result.get<ResolutionOutput>().edges().size() == kEdgeCount);
-  ZC_EXPECT(metrics.decisions <= 40'000);
-  ZC_EXPECT(metrics.selectedPackages == kPackageCount);
-  ZC_EXPECT(metrics.emittedEdges == kEdgeCount);
-
-  const auto& resolution = result.get<ResolutionOutput>();
-  LockReplayMetrics replayMetrics;
-  auto replayed =
-      PackageResolver::resolveLocked(roots, releases, resolution.lockGraph(), replayMetrics);
-  ZC_REQUIRE(replayed.is<ResolutionOutput>());
-  ZC_EXPECT(replayMetrics.solverInvocations == 0);
-  ZC_EXPECT(replayMetrics.packageVisits == kPackageCount);
-  ZC_EXPECT(replayMetrics.edgeVisits == kEdgeCount);
-  ZC_EXPECT(replayed.get<ResolutionOutput>().encode().asPtr() == resolution.encode().asPtr());
-
-  releases.clear();
-  roots.clear();
+  ZC_EXPECT(resource.currentAllocatedBytes() == 0);
+  ZC_LOG(WARNING, "package resolver resource released", observedPeak,
+         resource.currentAllocatedBytes());
   outgoing.clear();
 }
 

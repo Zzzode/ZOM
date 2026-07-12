@@ -34,16 +34,26 @@ class VerifiedVcsPackageRecord;
 class ResolverRelease final {
 public:
   ZC_NODISCARD static ResolverRelease fromRegistry(const VerifiedRegistryReleaseRecord& release);
+  ZC_NODISCARD static ResolverRelease fromRegistry(zc::MemoryResource& resource,
+                                                   const VerifiedRegistryReleaseRecord& release);
   ZC_NODISCARD static ResolverRelease fromVcs(const VerifiedVcsPackageRecord& release);
+  ZC_NODISCARD static ResolverRelease fromVcs(zc::MemoryResource& resource,
+                                              const VerifiedVcsPackageRecord& release);
   ZC_NODISCARD static ResolverRelease fromVcs(const VerifiedVcsPackageRecord& release,
                                               PackageSourceConstraint&& acceptedSelector);
+  ZC_NODISCARD static ResolverRelease fromVcs(zc::MemoryResource& resource,
+                                              const VerifiedVcsPackageRecord& release,
+                                              PackageSourceConstraint&& acceptedSelector);
   ZC_NODISCARD static ResolverRelease fromLocal(const LocalPackageRecord& release);
+  ZC_NODISCARD static ResolverRelease fromLocal(zc::MemoryResource& resource,
+                                                const LocalPackageRecord& release);
 
   ResolverRelease(ResolverRelease&&) noexcept = default;
   ResolverRelease& operator=(ResolverRelease&&) noexcept = default;
   ZC_DISALLOW_COPY(ResolverRelease);
 
   ZC_NODISCARD ResolverRelease clone() const;
+  ZC_NODISCARD ResolverRelease clone(zc::MemoryResource& resource) const;
   ZC_NODISCARD const PackageSourceConstraint& acceptedSource() const noexcept;
   ZC_NODISCARD const identity::PackageBaseKey& base() const noexcept;
   ZC_NODISCARD const CanonicalManifestRecord& manifest() const noexcept;
@@ -90,6 +100,7 @@ public:
   ZC_DISALLOW_COPY(ResolverRoot);
 
   ZC_NODISCARD ResolverRoot clone() const;
+  ZC_NODISCARD ResolverRoot clone(zc::MemoryResource& resource) const;
   ZC_NODISCARD const identity::PackageBaseKey& base() const noexcept;
   ZC_NODISCARD zc::ArrayPtr<const identity::FeatureName> requestedFeatures() const noexcept;
   ZC_NODISCARD bool useDefaultFeatures() const noexcept;
@@ -210,6 +221,7 @@ public:
   ZC_DISALLOW_COPY(SourceViewKey);
 
   ZC_NODISCARD SourceViewKey clone() const;
+  ZC_NODISCARD SourceViewKey clone(zc::MemoryResource& resource) const;
   ZC_NODISCARD const identity::CanonicalPackageSource& source() const noexcept;
   ZC_NODISCARD const identity::Sha256Digest& sourceTreeDigest() const noexcept;
   void encode(identity::CanonicalEncoder& encoder) const;
@@ -233,6 +245,10 @@ public:
   /// \param libraryTarget Canonical library target, or none for a binary-only root.
   /// \return A record when every identity and digest relation is valid; otherwise none.
   ZC_NODISCARD static zc::Maybe<ResolvedPackageRecord> from(
+      zc::MemoryResource& resource, identity::PackageKey&& key, CanonicalManifestRecord&& manifest,
+      const identity::Sha256Digest& manifestDigest, const identity::Sha256Digest& sourceTreeDigest,
+      SourceViewKey&& sourceView, zc::Maybe<identity::TargetName> libraryTarget);
+  ZC_NODISCARD static zc::Maybe<ResolvedPackageRecord> from(
       identity::PackageKey&& key, CanonicalManifestRecord&& manifest,
       const identity::Sha256Digest& manifestDigest, const identity::Sha256Digest& sourceTreeDigest,
       SourceViewKey&& sourceView, zc::Maybe<identity::TargetName> libraryTarget);
@@ -242,6 +258,7 @@ public:
   ZC_DISALLOW_COPY(ResolvedPackageRecord);
 
   ZC_NODISCARD ResolvedPackageRecord clone() const;
+  ZC_NODISCARD ResolvedPackageRecord clone(zc::MemoryResource& resource) const;
   ZC_NODISCARD const identity::PackageKey& key() const noexcept;
   ZC_NODISCARD const CanonicalManifestRecord& manifest() const noexcept;
   ZC_NODISCARD const identity::Sha256Digest& manifestDigest() const noexcept;
@@ -280,6 +297,7 @@ public:
   ZC_DISALLOW_COPY(ResolvedFeatureSet);
 
   ZC_NODISCARD ResolvedFeatureSet clone() const;
+  ZC_NODISCARD ResolvedFeatureSet clone(zc::MemoryResource& resource) const;
   ZC_NODISCARD const identity::PackageBaseKey& base() const noexcept;
   ZC_NODISCARD FeatureActivationDomain domain() const noexcept;
   ZC_NODISCARD zc::ArrayPtr<const identity::FeatureName> features() const noexcept;
@@ -321,6 +339,7 @@ public:
   ZC_NODISCARD const VerifiedLockGraph& lockGraph() const noexcept;
   void encode(identity::CanonicalEncoder& encoder) const;
   ZC_NODISCARD zc::Array<uint8_t> encode() const;
+  ZC_NODISCARD zc::Array<uint8_t> encode(zc::MemoryResource& resource) const;
 
 private:
   friend class PackageResolver;
@@ -330,7 +349,7 @@ private:
   /// \param lockGraph Exact verified projection of `packages` and `edges`.
   /// \return Canonical output, or the first structural invariant violation.
   ZC_NODISCARD static zc::OneOf<ResolutionOutput, ResolutionOutputIssue> from(
-      zc::Vector<ResolvedPackageRecord>&& packages,
+      zc::MemoryResource& resource, zc::Vector<ResolvedPackageRecord>&& packages,
       zc::Vector<identity::PackageDependencyEdgeKey>&& edges,
       zc::Vector<ResolvedFeatureSet>&& featureSets, VerifiedLockGraph&& lockGraph);
 
@@ -357,9 +376,11 @@ struct PackageResolverMetrics final {
 /// \brief Deterministic single-version package and feature resolver.
 class PackageResolver final {
 public:
-  ZC_NODISCARD static ResolutionResult resolve(zc::ArrayPtr<const ResolverRoot> roots,
+  ZC_NODISCARD static ResolutionResult resolve(zc::MemoryResource& resource,
+                                               zc::ArrayPtr<const ResolverRoot> roots,
                                                zc::ArrayPtr<const ResolverRelease> releases);
-  ZC_NODISCARD static ResolutionResult resolve(zc::ArrayPtr<const ResolverRoot> roots,
+  ZC_NODISCARD static ResolutionResult resolve(zc::MemoryResource& resource,
+                                               zc::ArrayPtr<const ResolverRoot> roots,
                                                zc::ArrayPtr<const ResolverRelease> releases,
                                                PackageResolverMetrics& metrics);
   /// \param roots Current verified root and target-domain requests.
@@ -367,7 +388,8 @@ public:
   /// \param locked Canonical lock graph whose exact selection must be retained.
   /// \param metrics Deterministic replay work counters; solver invocations remain zero.
   /// \return Exact resolution output, or a structural resolver failure.
-  ZC_NODISCARD static ResolutionResult resolveLocked(zc::ArrayPtr<const ResolverRoot> roots,
+  ZC_NODISCARD static ResolutionResult resolveLocked(zc::MemoryResource& resource,
+                                                     zc::ArrayPtr<const ResolverRoot> roots,
                                                      zc::ArrayPtr<const ResolverRelease> releases,
                                                      const VerifiedLockGraph& locked,
                                                      LockReplayMetrics& metrics);
