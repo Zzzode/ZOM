@@ -48,8 +48,7 @@ bool isAsciiLetter(char value) {
 bool isAsciiDigit(char value) { return value >= '0' && value <= '9'; }
 
 bool isAsciiHex(char value) {
-  return isAsciiDigit(value) || (value >= 'a' && value <= 'f') ||
-         (value >= 'A' && value <= 'F');
+  return isAsciiDigit(value) || (value >= 'a' && value <= 'f') || (value >= 'A' && value <= 'F');
 }
 
 uint8_t hexValue(char value) {
@@ -94,15 +93,15 @@ void addHexWord(TextBuilder& output, uint16_t value) {
   size_t count = 0;
   do {
     const uint8_t digit = static_cast<uint8_t>(value & 0x0f);
-    digits[count++] = digit < 10 ? static_cast<char>('0' + digit)
-                                 : static_cast<char>('a' + digit - 10);
+    digits[count++] =
+        digit < 10 ? static_cast<char>('0' + digit) : static_cast<char>('a' + digit - 10);
     value = static_cast<uint16_t>(value >> 4);
   } while (value != 0);
   while (count > 0) { output.add(digits[--count]); }
 }
 
-zc::Maybe<uint32_t> parseDecimal(zc::StringPtr input, size_t start, size_t end,
-                                 uint32_t maximum, bool rejectLeadingZero) {
+zc::Maybe<uint32_t> parseDecimal(zc::StringPtr input, size_t start, size_t end, uint32_t maximum,
+                                 bool rejectLeadingZero) {
   if (start == end || (rejectLeadingZero && end - start > 1 && input[start] == '0')) {
     return zc::none;
   }
@@ -124,9 +123,7 @@ bool parseIpv4(zc::StringPtr input, size_t start, size_t end, uint8_t (&octets)[
     if (component >= 4) { return false; }
     auto value = parseDecimal(input, componentStart, index, 255, false);
     ZC_IF_SOME(parsed, value) { octets[component++] = static_cast<uint8_t>(parsed); }
-    else {
-      return false;
-    }
+    else { return false; }
     componentStart = index + 1;
   }
   return component == 4;
@@ -155,8 +152,8 @@ bool parseHexWord(zc::StringPtr input, size_t start, size_t end, uint16_t& resul
   return true;
 }
 
-bool parseIpv6Side(zc::StringPtr input, size_t start, size_t end,
-                   zc::Vector<uint16_t>& words, bool finalSide) {
+bool parseIpv6Side(zc::StringPtr input, size_t start, size_t end, zc::Vector<uint16_t>& words,
+                   bool finalSide) {
   if (start == end) { return true; }
   if (input[start] == ':' || input[end - 1] == ':') { return false; }
   size_t cursor = start;
@@ -307,9 +304,7 @@ zc::Maybe<zc::String> canonicalizeHost(zc::StringPtr host) {
 
   if (!validateDnsHost(host, effectiveEnd)) { return zc::none; }
   auto result = zc::heapString(effectiveEnd);
-  for (size_t index = 0; index < effectiveEnd; ++index) {
-    result[index] = lowerAscii(host[index]);
-  }
+  for (size_t index = 0; index < effectiveEnd; ++index) { result[index] = lowerAscii(host[index]); }
   return result;
 }
 
@@ -342,8 +337,8 @@ zc::Maybe<zc::String> canonicalizeSegment(zc::StringPtr input) {
           !isAsciiHex(input[index + 2])) {
         return zc::none;
       }
-      const uint8_t decoded = static_cast<uint8_t>((hexValue(input[index + 1]) << 4) |
-                                                   hexValue(input[index + 2]));
+      const uint8_t decoded =
+          static_cast<uint8_t>((hexValue(input[index + 1]) << 4) | hexValue(input[index + 2]));
       index += 2;
       if (decoded < 0x80 && !isUnreserved(decoded)) {
         if (!flushUnicodeText(pending, output)) { return zc::none; }
@@ -408,8 +403,8 @@ zc::Maybe<zc::String> canonicalizeUrl(zc::StringPtr input) {
 
   size_t schemeEnd = 0;
   while (schemeEnd < input.size() && input[schemeEnd] != ':') { ++schemeEnd; }
-  if (schemeEnd == input.size() || schemeEnd + 2 >= input.size() ||
-      input[schemeEnd + 1] != '/' || input[schemeEnd + 2] != '/') {
+  if (schemeEnd == input.size() || schemeEnd + 2 >= input.size() || input[schemeEnd + 1] != '/' ||
+      input[schemeEnd + 2] != '/') {
     return zc::none;
   }
   auto schemeInput = zc::heapString(input.slice(0, schemeEnd));

@@ -32,8 +32,7 @@ zc::Vector<CanonicalPathSegment> cloneSegments(zc::MemoryResource& resource,
   return result;
 }
 
-zc::Array<uint8_t> cloneBytes(zc::MemoryResource& resource,
-                              zc::ArrayPtr<const uint8_t> input) {
+zc::Array<uint8_t> cloneBytes(zc::MemoryResource& resource, zc::ArrayPtr<const uint8_t> input) {
   auto result = zc::resourceHeapArray<uint8_t>(resource, input.size());
   for (size_t index = 0; index < input.size(); ++index) { result[index] = input[index]; }
   return result;
@@ -190,19 +189,18 @@ ZC_UNREACHABLE
 }
 
 CanonicalPackageSource CanonicalPackageSource::clone(zc::MemoryResource& resource) const {
-  ZC_SWITCH_ONEOF(value) {
-    ZC_CASE_ONEOF(source, RegistryPackageSource) {
-      return registry(source.registry.clone(resource));
-    }
-    ZC_CASE_ONEOF(source, VcsPackageSource) {
-      return vcs(source.repository.clone(resource), source.revision.clone(resource),
-                 source.subdirectory.clone(resource));
-    }
-    ZC_CASE_ONEOF(source, LocalPathPackageSource) {
-      return localPath(source.canonicalPath.clone(resource));
-    }
-  }
-  ZC_UNREACHABLE
+    ZC_SWITCH_ONEOF(value){ZC_CASE_ONEOF(source, RegistryPackageSource){
+        return registry(source.registry.clone(resource));
+}
+ZC_CASE_ONEOF(source, VcsPackageSource) {
+  return vcs(source.repository.clone(resource), source.revision.clone(resource),
+             source.subdirectory.clone(resource));
+}
+ZC_CASE_ONEOF(source, LocalPathPackageSource) {
+  return localPath(source.canonicalPath.clone(resource));
+}
+}
+ZC_UNREACHABLE
 }
 
 PackageSourceKind CanonicalPackageSource::kind() const noexcept {

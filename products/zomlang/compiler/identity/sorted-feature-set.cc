@@ -74,8 +74,7 @@ void SortedFeatureSet::encode(CanonicalEncoder& encoder) const {
   for (const auto& feature : features) { feature.encode(encoder); }
 }
 
-SortedTargetFeatureSet::SortedTargetFeatureSet(
-    zc::Vector<TargetFeatureName>&& canonical) noexcept
+SortedTargetFeatureSet::SortedTargetFeatureSet(zc::Vector<TargetFeatureName>&& canonical) noexcept
     : features(zc::mv(canonical)) {}
 
 zc::Maybe<SortedTargetFeatureSet> SortedTargetFeatureSet::from(

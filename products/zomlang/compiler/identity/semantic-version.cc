@@ -34,8 +34,7 @@ bool isNumericIdentifier(zc::StringPtr input, size_t start, size_t end) {
 }
 
 bool isCoreNumericIdentifier(zc::StringPtr input, size_t start, size_t end) {
-  return isNumericIdentifier(input, start, end) &&
-         (end - start == 1 || input[start] != '0');
+  return isNumericIdentifier(input, start, end) && (end - start == 1 || input[start] != '0');
 }
 
 bool validateCore(zc::StringPtr input, size_t end) {

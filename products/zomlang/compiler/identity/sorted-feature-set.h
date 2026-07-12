@@ -61,8 +61,7 @@ public:
   ZC_DISALLOW_COPY(SortedTargetFeatureSet);
 
   /// \brief Sorts a target-feature sequence canonically and rejects duplicate values.
-  ZC_NODISCARD static zc::Maybe<SortedTargetFeatureSet> from(
-      zc::Vector<TargetFeatureName>&& input);
+  ZC_NODISCARD static zc::Maybe<SortedTargetFeatureSet> from(zc::Vector<TargetFeatureName>&& input);
 
   /// \brief Creates an explicit owned duplicate of this move-only set.
   ZC_NODISCARD SortedTargetFeatureSet clone() const;

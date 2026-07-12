@@ -83,12 +83,10 @@ using DependencyAlias = CanonicalScalar<CanonicalScalarDomain::DependencyAlias>;
 using FeatureName = CanonicalScalar<CanonicalScalarDomain::FeatureName>;
 using TargetComponentName = CanonicalScalar<CanonicalScalarDomain::TargetComponentName>;
 using TargetFeatureName = CanonicalScalar<CanonicalScalarDomain::TargetFeatureName>;
-using SemanticEnvironmentName =
-    CanonicalScalar<CanonicalScalarDomain::SemanticEnvironmentName>;
+using SemanticEnvironmentName = CanonicalScalar<CanonicalScalarDomain::SemanticEnvironmentName>;
 using SemanticIdentifier = CanonicalScalar<CanonicalScalarDomain::SemanticIdentifier>;
 using ModulePathSegment = CanonicalScalar<CanonicalScalarDomain::ModulePathSegment>;
-using DeclaredDefinitionName =
-    CanonicalScalar<CanonicalScalarDomain::DeclaredDefinitionName>;
+using DeclaredDefinitionName = CanonicalScalar<CanonicalScalarDomain::DeclaredDefinitionName>;
 
 extern template class CanonicalScalar<CanonicalScalarDomain::PathSegment>;
 extern template class CanonicalScalar<CanonicalScalarDomain::PackageName>;
