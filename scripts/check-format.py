@@ -4,6 +4,7 @@ import os
 import subprocess
 import sys
 import argparse
+from pathlib import PurePath
 
 # ANSI escape sequences for colored output
 RED = "\033[91m"
@@ -12,6 +13,16 @@ YELLOW = "\033[93m"
 RESET = "\033[0m"
 
 formatted_files = []  # Global list to track formatted files
+
+
+def is_format_owned(file_path):
+    """Return whether a C/C++ source is maintained under ZOM formatting rules."""
+    parts = PurePath(file_path).parts
+    if "third_party" in parts or "vendor" in parts:
+        return False
+    if file_path.startswith(("src/rtsvm/", "src/rts/", "test/rtsvm/")):
+        return file_path.startswith("src/rtsvm/vm/heap/")
+    return True
 
 
 def check_and_format(file_path, auto_format=False):
@@ -114,19 +125,12 @@ def get_changed_files():
 
     # Filter the list for allowed extensions.
     allowed_extensions = {".c", ".cpp", ".cc", ".h", ".hpp"}
-    # TODO: remove skip runtime judge after runtime format is determined
     filtered_files = [
         f
         for f in changed_files
         if os.path.splitext(f)[1] in allowed_extensions
         and os.path.exists(f)
-        and (
-            not f.startswith("third_party/")
-            and not f.startswith("src/rtsvm/")
-            and not f.startswith("src/rts/")
-            and not f.startswith("test/rtsvm/")
-            or f.startswith("src/rtsvm/vm/heap/")
-        )
+        and is_format_owned(f)
     ]
 
     if filtered_files:
@@ -153,18 +157,12 @@ def get_files_from_path(path):
     elif os.path.isdir(path):
         # Directory - recursively find all C/C++ files
         for root, dirs, filenames in os.walk(path):
-            # Skip third_party and runtime directories
-            dirs[:] = [d for d in dirs if not d.startswith('third_party') and d not in ['rtsvm', 'rts']]
+            dirs[:] = [d for d in dirs if d not in {"third_party", "vendor", "rtsvm", "rts"}]
 
             for filename in filenames:
                 if os.path.splitext(filename)[1] in allowed_extensions:
                     file_path = os.path.join(root, filename)
-                    # Apply the same filtering as get_changed_files
-                    if (not file_path.startswith("third_party/")
-                        and not file_path.startswith("src/rtsvm/")
-                        and not file_path.startswith("src/rts/")
-                        and not file_path.startswith("test/rtsvm/")
-                        or file_path.startswith("src/rtsvm/vm/heap/")):
+                    if is_format_owned(file_path):
                         files.append(file_path)
     else:
         print(f"{RED}Error: {path} is not a valid file or directory{RESET}")
