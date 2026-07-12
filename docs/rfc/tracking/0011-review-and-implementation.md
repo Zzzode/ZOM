@@ -317,8 +317,9 @@ identifiers, module path segments, and declared definition names. Source
 constructors NFC-normalize before validation; canonical constructors reject a
 non-NFC input. Identifier domains reuse the live lexer identifier and reserved
 keyword classification, while declared definition names admit the exact
-receiver spelling `this`. The ASCII domains enforce the accepted RFC length,
-case, character, and keyword constraints. `ResolvedVersion` validates complete
+grammar spellings `this`, `init`, `deinit`, `get`, and `set`. The ASCII domains
+enforce the accepted RFC length, case, character, and keyword constraints.
+`ResolvedVersion` validates complete
 Semantic Versioning 2.0.0 text without integer-width limits or spelling
 rewrites. `SortedFeatureSet` sorts by the actual length-prefixed encoded key
 bytes and rejects duplicates rather than sorting by ordinary string order.
@@ -450,11 +451,71 @@ The session architecture gate requires both the owner and the collection site;
 the focused session suite passes 14/14 and the combined session/inventory
 positive and negative architecture slice passes 6/6. The complete sanitizer
 build and all 71 unit targets pass after the session integration.
+The exact-current default sanitizer matrix subsequently passes 1,208/1,208 at
+repository commit `676abdaf3ee6bb4c0895c37f8851f7c588efb46f` with zero failures.
 
-Open slices are session integration of package, crate, source, module,
-definition, and impl collection, canonical key construction and registry
-freeze, semantic type and store-local handle integration, consumer migration,
-and deletion of every phase-local old-identity allowlist entry. This tracker
-does not claim `LANDED` until every RFC 0011 acceptance criterion and deletion
-gate has executable evidence. A new exact-current-byte full suite remains
-required after this slice.
+The six-registry session-integration slice now constructs package identity from
+the verified resolution graph, freezes packages while installing that graph,
+and retains only pre-build target selection in the compilation request.
+`VerifiedPackageCompilationRequest::finalizeRoots()` constructs complete
+`CrateKey` values only after the exact verified build-script result set exists;
+targets without a build script finalize with an absent output key. Parsing a
+build-script package before that result exists stops with the registered
+package diagnostic instead of freezing a partial crate identity. The session
+then freezes crates and immutable source snapshots before parsing, modules
+after AST and definition-inventory publication, and definitions before impls.
+Definition handles are published through `DefinitionIdentityMap` to binder and
+symbol consumers. Focused package compilation, session package, and CLI
+invocation tests pass 3/3 after the post-build crate-finalization repair.
+
+The semantic-type integration slice gives `SemanticContextFactory` one
+move-only `SemanticTypeStoreConstructionToken` claim per semantic context. A
+final `CompilerSession` owns one pinned, append-only `SemanticTypeStore` and
+`SemanticTypeId` is a context-branded `ContextHandle`. `TypeEnv`, checker,
+borrow, constraint, query-cycle, dispatch, IR, error-union layout, lowering,
+and dumps all borrow or consume that same store. Primitive, named, tuple,
+reference, and canonical flattened union forms are interned by structural key;
+lookup rejects invalid, foreign-context, and out-of-range handles. The old
+`TypeInterner`, table-local `TypeId`, table-local `SymbolId`, and every
+pointer-derived identity allowlist entry are deleted. The sanitizer build and
+all 102 unit-test targets passed before the final crate-timing repair; the
+three affected package/session/CLI targets passed after that repair.
+
+The identity architecture gate now rejects an old symbol or type identity,
+pointer-derived identity, a missing sole semantic type store, premature crate
+finalization, duplicate or missing registry freeze sites, and a session phase
+schedule other than package, crate, source, module, definition, then impl. Its
+positive check and all ten negative fixtures pass. The three phase-local
+identity allowlists are empty.
+
+### 2026-07-12 Completion Audit
+
+The completion audit checked every acceptance criterion against executable
+evidence rather than the implementation narrative:
+
+| Criteria | Completion evidence |
+|---|---|
+| 1-2, 17-18, 24 | `brand-test`, `handle-test`, `identity-invariant-test`, and `frozen-registry-test` prove private construction, process-wide issuer uniqueness, context and registry branding, foreign-handle rejection, exhaustion, and structured invariant facts. |
+| 3-8, 19, 33 | `package-key-test`, `crate-key-test`, `build-script-key-test`, `build-script-execution-key-test`, and `compiler-session-package-test` prove canonical package and target categories, host/target separation, preparatory build-script keys, post-build final crate keys, configuration identity, and dependency-edge fingerprint inputs. |
+| 9-14, 25-27, 34 | `definition-inventory-test`, `compiler-session-test`, `compiler-session-package-test`, `definition-key-test`, and both architecture gates prove source-before-module freezing, the complete global module registry, exhaustive live definition producers, structural definition and impl ancestry, re-export identity, and the exact package, crate, source, module, definition, impl schedule. |
+| 15-16, 21, 28, 31, 35 | `canonical-encoder-test`, `canonical-values-test`, `semantic-context-fingerprint-test`, `identity-dump-test`, and `identity-invariant-test` prove fixed encodings and hashes, canonical ordering, explicit traversal ordinals, registered fatal diagnostics, deterministic dumps, and exact line grammar. |
+| 20 | Same-slot and same-name tests in `handle-test`, `frozen-registry-test`, `package-key-test`, `crate-key-test`, and `definition-key-test` cover distinct contexts, packages, targets, modules, definitions, and impls. |
+| 22 | `check-identity-architecture.py --check` and all ten negative fixtures prove that `SymbolId`, the old type identity, pointer-derived identity, compatibility aliases, and their allowlist entries are absent. |
+| 23 | The sanitizer build passes; all 102 unit targets pass; the final default matrix passes 1,238/1,238 in 707.45 seconds; RFC, format, diff, compiler-session, IR diagnostic, identity, vendored-dependency, and repository hygiene gates pass. |
+| 29-30 | `canonical-scalar-test`, `canonical-url-test`, `unicode-normalization-test`, and the pinned Unicode generator checks prove every scalar domain, duplicate and normalization policy, and the closed credential-free URL model. |
+| 32 | `semantic-type-store-test`, `semantic-type-canonicalization-test`, type-environment, checker, borrow, dispatch, and IR tests prove one session-owned store and context-branded `SemanticTypeId` use across all consumers. |
+
+The deletion audit also confirms that `symbol-id.h`, `symbol-id-test.cc`,
+`type-interner.h`, `type-interner.cc`, and `type-interner-test.cc` are deleted;
+all three identity allowlists are empty; and no old compatibility entry point
+remains. Constructor, destructor, and keyword-named method regressions prove
+that every parser-admitted declared name can construct a canonical definition
+key. Materialization failures now use the registered package diagnostic path,
+and explicit snapshot completion leaves neither corpus-local nor system staging
+directories after successful compilation.
+
+Linux native sandbox integration passes 1/1 in the privileged Ubuntu 24.04
+arm64 sanitizer environment with delegated CPU, memory, and process cgroup
+controllers. Repository hygiene finds no CJK text, workspace-absolute paths,
+credential markers, temporary files, or generated user presets in the complete
+change set. RFC 0011 is therefore `LANDED`.

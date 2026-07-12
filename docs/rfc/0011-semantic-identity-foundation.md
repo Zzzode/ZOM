@@ -2,13 +2,13 @@
 rfc: 11
 title: Semantic Identity Foundation
 type: compiler
-status: IMPLEMENTING
+status: LANDED
 author: ZOM Compiler Team
 review-manager: rfc
 required-owners: [task-router, rfc, lexer-parser, module-system, binder-checker, error-system, ir-backend, spec-audit, verification]
 approvers: [task-router, rfc, lexer-parser, module-system, binder-checker, error-system, ir-backend, spec-audit, verification]
 created: 2026-07-10
-updated: 2026-07-11
+updated: 2026-07-12
 area: compiler
 requires: []
 supersedes: []
@@ -267,7 +267,7 @@ validating constructor and one canonical encoding:
 | `SemanticEnvironmentName` | `^[A-Z_][A-Z0-9_]{0,127}$` | Exact uppercase ASCII text |
 | `SemanticIdentifier` | One decoded ZOM `IdentifierName` that is not classified as a reserved keyword | NFC-normalized UTF-8 text |
 | `ModulePathSegment` | One `SemanticIdentifier` | A distinct strong type encoded as its canonical identifier text |
-| `DeclaredDefinitionName` | One `SemanticIdentifier`, or the exact receiver spelling `this` | Canonical identifier text or exact ASCII `this` |
+| `DeclaredDefinitionName` | One `SemanticIdentifier`, the exact receiver spelling `this`, or the exact declaration spellings `init`, `deinit`, `get`, and `set` | Canonical identifier text or the admitted exact ASCII spelling |
 
 `ResolvedVersion` is a distinct strong type containing one valid Semantic
 Versioning 2.0.0 value. It rejects a leading `v`, whitespace, missing core
@@ -1364,3 +1364,4 @@ None
 | 2026-07-11 | REVIEW | Acceptance review returned scalar-domain, Unicode, URL, producer, parameter, build-graph, and cross-RFC blockers. The proposal remains in review after repairing them; all acceptance approvals must be obtained again. |
 | 2026-07-11 | ACCEPTED | All nine required owners independently approved the repaired final design after scalar, URL, producer, grammar, diagnostic, dependency, codec, inventory, and full-suite verification. Implementation has not started. |
 | 2026-07-11 | IMPLEMENTING | Started the coordinated direct-replacement series with compiler build wiring, process-root semantic and registry brand issuance, private-construction context/store handle primitives, SHA-256, and the fixed-width canonical byte primitives. Canonical text and composite keys, registries, consumer migration, and the architecture gate remain open. |
+| 2026-07-12 | LANDED | Completed the six-registry session lifecycle, post-build crate finalization, exhaustive definition inventory, context-branded semantic type store migration, old identity deletion gates, registered failure boundaries, Linux native sandbox integration, and all architecture and repository hygiene gates. The final sanitizer matrix passes 1,238/1,238 tests. |
