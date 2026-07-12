@@ -204,6 +204,47 @@ The `rfc` governance owner remains pending. This technical approval does not
 populate proposal frontmatter, record an acceptance decision, or authorize
 implementation until governance approves the tracker and atomic transition.
 
+### 2026-07-12 Runtime Descriptor Allocation Correction
+
+Production launcher implementation found that the accepted descriptor policy
+was not executable. The proposal closed descriptors 0 through 2, occupied fixed
+descriptors 3 through 7, and admitted runtime file operations only on descriptors
+8 through 15. Linux `openat2`, like `open`, returns the lowest unused descriptor,
+so the first admitted runtime open necessarily returned 0 and was immediately
+trapped by the accepted seccomp filter. The stated minimum `RLIMIT_NOFILE` of 8
+also could not make descriptor 8 available.
+
+The corrected contract admits exactly one runtime-tracked regular file on
+descriptor 0, keeps descriptors 1 and 2 closed, and retains fixed descriptors 3
+through 7. The trusted runtime must close descriptor 0 before another open. This
+preserves the closed-world capability proof, keeps the accepted descriptor-limit
+range, and follows the kernel's deterministic lowest-unused-descriptor rule.
+The symbolic filter tests and all four generated BPF hash oracles are regenerated
+with this correction. The prior exact-hash acceptance record remains historical
+evidence for `39b7a9ed...`; the corrected proposal bytes require fresh exact-hash
+review before RFC 0012 can move from `IMPLEMENTING` to `LANDED`.
+
+### 2026-07-12 Build Result Integrity Closure
+
+Cache and session implementation exposed one missing typed producer: stale
+execution-key bytes, stale output-record bytes, a plan/result key mismatch, and
+a generated inventory or digest mismatch all need one disjoint failure before
+the value can enter the final package session. The corrected proposal adds
+`BuildResultIntegrityViolation` and defines the complete untrusted cache
+candidate and frozen result-set relations. Cache hits now reverify the exact
+execution-key bytes, exact output-record bytes, source and environment facts,
+generated inventory, generated file bytes, UTF-8 validity, and exported values
+before reuse.
+
+The implementation adds canonical acyclic build plans with duplicate,
+dangling-predecessor, and cycle rejection; stable predecessor-first execution;
+cache-hit revalidation; atomic cache publication after byte-equal double
+execution; and `CompilerSession` ownership of the plan-to-result transition.
+The session verifies every node belongs to the resolved graph, every build
+target matches its preparatory key, and every result key matches its node before
+publishing the exact frozen result set. These corrected proposal bytes require
+fresh module-system, error-system, runtime-memory, verification, and RFC review.
+
 ## Owner Review
 
 | Owner | State | Evidence |
@@ -256,9 +297,8 @@ bytes, changed metadata, or non-canonical manifest rendering. The checker is a
 registered conformance test and a mandatory dependency of the driver target,
 so drift fails before driver compilation.
 
-This source-admission slice does not claim that the portable C source lists are
-already reduced to their final minimal link inventories or that package parsing
-has begun.
+The Zstandard, libsodium, and libarchive portable C source lists are now reduced
+to the direct wrapper link closures recorded below.
 
 The first portable C boundary is now executable. `zom_vendor_zstd` compiles the
 exact twelve common and decompression C11 sources as a static library with
@@ -275,11 +315,250 @@ fragmentation, success bytes, trailing frames, truncation, compressed and
 working-memory limits, and typed source/sink failure forwarding. The complete
 sanitizer build and all 72 unit targets pass.
 
-The next slices must trim and compile the exact libsodium and libarchive static
-source lists, implement `SodiumRuntime` and `ArchiveReader`, and then implement
-the closed manifest records and parser. Resolver, lock, materialization,
-build-script sandboxing, package CLI cutover, and CompilerSession handoff remain
-open. RFC 0012 is therefore `IMPLEMENTING`, not `LANDED`.
+The cryptographic boundary now compiles one exact 32-source portable libsodium
+closure as a static library. `SodiumRuntime` has explicit caller-owned
+initialization, SHA-256, and Ed25519 verification; it exposes no singleton,
+secret-key, signing, key-generation, or generic primitive surface. Five
+sanitizer tests cover initialization, the accepted SHA-256 vector, accepted and
+rejected Ed25519 signatures, invalid key and signature widths, and repeatable
+caller-owned construction.
+
+The archive boundary now compiles one exact 21-source portable libarchive C11
+closure as a static library with only the no-filter and tar readers enabled.
+`ArchiveReader` is a move-only Pimpl whose `.cc` file immediately owns the only
+`archive*` through `zc::Own<archive, ArchiveDisposer>`. It admits exactly one
+POSIX ustar stream, requires regular files, rejects links and every special
+entry, validates canonical relative UTF-8 paths, counts headers, path bytes,
+and per-file padding against the metadata limit, enforces file and aggregate
+limits with overflow checks, rejects trailing tar bytes, and forwards typed
+source and destination failures without exposing libarchive state or text.
+Five sanitizer tests cover fragmented input, successful extraction, link and
+special-entry rejection, header/file/metadata limits, trailing data, and typed
+failure forwarding. The vendored dependency checker now freezes both exact C
+source closures in `vendor-manifest.json`. The complete sanitizer build, all
+115 unit tests, and the exact-current default matrix pass 1,209/1,209 with zero
+failures in 572.24 seconds; the complete grammar oracle passes in 572.10
+seconds.
+
+The manifest admission slice now exposes a move-only Pimpl parser and result,
+the complete closed `ManifestIssue` discriminants, exact original-byte failure
+spans, and a header-only toml++ target compiled without exceptions. The toml++
+standard-library and borrowed-node surface is confined to one `.cc` adapter and
+recorded as the sole repository `std::` exception. Admission rejects a BOM,
+invalid UTF-8, TOML syntax failures, unknown tables and keys, wrong types,
+missing package/workspace roots, invalid edition and identity scalars,
+non-canonical paths, dependency source conflicts, invalid SemVer comparator
+syntax, invalid VCS selectors, forbidden optional dependency domains, invalid
+feature edges, missing or non-optional dependency activation, duplicate
+canonical features and edges, and local feature cycles. Seven sanitizer test
+groups cover the successful minimal package and those rejection families with
+one exact key-span oracle. The complete sanitizer build and all 75 compiler
+unit tests pass. The exact-current default matrix passes 1,210/1,210 with zero
+failures in 630.16 seconds; the complete grammar oracle passes in 630.05
+seconds.
+
+This is an admission checkpoint, not the completed normalized-manifest slice.
+The first normalized-model layer now implements host-path-free
+`DiagnosticDocumentPath`, `InputDocumentKey`, bounded `ManifestSpan`, manifest
+diagnostic anchors, `PackageManifest`, canonically sorted unique
+`WorkspaceManifest`, provenance-bearing `TargetManifest`, and
+`CanonicalTargetManifest`. Package, workspace, and canonical target codecs have
+fixed byte and SHA-256 vectors; closed enum and span bounds have negative tests.
+The parser now retains the exact input-document digest, package record, and
+sorted workspace members instead of temporary strings and counts. The feature
+model implements all three closed edge variants, provenance-bearing edge
+records, canonical edge sorting, duplicate rejection, fixed SHA-256 vectors,
+and sorted `FeatureManifest` records. The parser now retains those records
+instead of only their count.
+
+The normalized dependency layer now implements the closed registry, VCS, and
+local source constraints; revision, tag, and branch selectors; all three
+dependency domains; origin-bearing and origin-free dependency requirements;
+and canonical requirement sorting. The parser retains target, development, and
+build dependency records with aliases, required package names, source
+constraints, requested feature sets, default-feature and optional flags, and
+exact manifest provenance. `SemVerConstraint` parses the accepted comparator
+grammar into an intersection of arbitrary-width SemVer bounds, retains sorted
+unique prerelease cores, represents empty intersections without rejecting the
+manifest, and encodes only normalized intervals rather than source text. Fixed
+byte and SHA-256 vectors cover both a normalized constraint and an origin-free
+dependency requirement. Focused sanitizer tests cover caret and tilde bounds,
+arbitrary-width increments, comparator intersection, empty intersections,
+SemVer prerelease ordering, grammar rejection, all dependency domains, all
+source kinds, and parser retention.
+
+The target layer now retains explicit library, binary, test, benchmark,
+example, and build-script records with default names and paths, canonical byte
+ordering, and manifest provenance. Build-script inputs, outputs, environment,
+and exported environment names are validated, sorted, and deduplicated; the
+build-script source is automatically included in the normalized input set.
+`CanonicalBuildScriptManifest`, `CanonicalFeatureManifest`, and the complete
+`CanonicalManifestRecord` remove every document and diagnostic anchor while
+preserving the accepted declaration order. Fixed codec vectors and permutation
+tests prove that TOML key order, target order, dependency order, feature order,
+whitespace, and document digest do not affect canonical manifest bytes.
+
+The structural P0 manifest model is complete. The next normalization boundary
+must expand workspace members and prove the complete workspace collision and
+permutation matrix. Resolver, lock, complete source materialization and snapshot
+ownership, build-script sandboxing, package CLI cutover, and CompilerSession
+handoff remain open. RFC 0012 is therefore `IMPLEMENTING`, not `LANDED`.
+
+P1 now injects an immutable, canonically sorted
+regular-file inventory into manifest normalization. Explicit and defaulted
+targets must name inventoried regular files; build-script sources and declared
+inputs must also be present. Exact `src/lib.zom` and `src/main.zom` inventory
+entries create implicit package targets only when the package name admits a
+target name. Target kind/name collisions and cross-kind path collisions reject
+the normalized manifest. Inventory ordering, duplicate rejection, implicit
+target derivation, missing paths, target collisions, path collisions, and
+build-input admission have sanitizer coverage. Workspace normalization expands
+the exact declared member set, rejects missing members and nested workspaces,
+and detects duplicate package names with the first canonical member retained as
+related provenance. Member-order permutations produce identical normalized
+workspace bytes. The P1 normalization boundary is complete.
+
+P2 now registers the complete `ZOM7001-ZOM7017`, `ZOM7091-ZOM7093`, and
+`ZOM9905-ZOM9906` package diagnostic family. Manifest and workspace failures
+carry a complete `ManifestFailure` with canonical primary and related anchors.
+The typed package diagnostic adapter admits only digest-verified documents,
+renders host-path-free identifiers, escapes all source bytes through
+`SanitizedSourceView`, and maps original byte spans onto the escaped buffer.
+All 24 `ManifestIssue` variants emit `ZOM7001`; duplicate workspace package
+names attach exactly one `ZOM7093` note. Focused sanitizer tests cover every
+issue token, invalid UTF-8 escaping, offset projection, digest rejection, safe
+document names, and primary/related diagnostic placement. The P2 manifest
+diagnostic boundary is complete.
+
+P3 now streams one bounded Zstandard frame directly into the POSIX ustar
+reader and writes admitted regular files into a factory-provided fresh private
+directory. Source paths are normalized to NFC and rejected with the required
+duplicate, Unicode-collision, and Unicode 15.1 full-case-fold collision
+priority on every host. Incremental SHA-256 produces sorted `SourceTreeFile`
+records and the domain-separated source-tree digest without buffering complete
+archives or files. Registry archives and two-pass VCS/local directory copies
+publish only `DigestVerifiedSourceSnapshot` values; every read rechecks file
+type, link count, length, and digest, and verified copies independently
+reproduce the complete destination inventory. Explicit `finish()` and the
+noexcept retry path own cleanup to completion. Fault-injection tests cover
+fresh-directory creation, destination creation/write/sync, partial cleanup,
+cleanup retry, and mutation between source passes. `PackageBaseKey`, VCS
+selector records, VCS/local package records, canonical registry trust maps,
+signing-key identities, and complete Ed25519-verified registry release records
+bind resolver inputs to the verified manifest and source-tree digests. Unicode
+table regeneration, format, sanitizer build, and all 85 unit executables pass.
+The P3 source-admission and source-record boundary is complete.
+
+P4 now has normalized SemVer interval intersection and direct release-membership
+queries, plus additive feature expansion over both provenance-bearing and
+canonical manifests. The first cross-package resolver slice enforces the
+single-version coordinate rule, chooses the greatest eligible non-yanked
+release, backtracks when a later dependency invalidates that choice, keeps
+target and preparatory-build feature activations separate, expands optional
+dependency feature edges to a fixed point, validates dependency library
+providers, emits canonical package dependency edges, collapses byte-identical
+edges, and reports canonically ordered constraint and cycle evidence. Registry,
+VCS, and local verified source records have direct resolver adapters; mutable
+VCS selectors remain explicit accepted-selector inputs. Sanitizer tests cover
+highest-version selection, backtracking, yanked releases, target/build feature
+separation, missing libraries, canonical dependency cycles, deterministic
+conflict bytes, and all 256 RFC permutation seeds. Conflict failures now publish
+the domain-separated, content-addressed incompatibility derivation DAG rather
+than an iterator trace. The release performance gate generates the exact RFC
+edge fixture and resolves 10,000 packages, 40,000 candidate releases, and
+50,000 edges in 7.26 seconds; its wrapper enforces the 1 GiB peak-RSS limit and
+the executable enforces the 40,000-decision limit. The checked-in
+`pubgrub-scenarios-v1.json` corpus covers greatest-version selection,
+content-addressed no-version derivation, backtracking, yanked releases, and
+separate activation domains; an independent schema/hash oracle binds its exact
+SHA-256 outputs to the C++ replay tests. The P4 dependency and feature resolver
+boundary is complete.
+
+P5 now implements the closed `VerifiedLockGraph` and `LockPackageRecord`
+models, canonical package and edge ordering, duplicate and dangling-edge
+validation, and the exact canonical TOML writer. The reader validates UTF-8 and
+the closed schema, decodes lowercase canonical source and package-key bytes for
+registry, VCS, and local sources, reconstructs every strong scalar and feature
+set, checks all redundant fields and digests, resolves edge targets, and then
+requires byte-for-byte writer reproduction. The checked-in three-source golden
+file has a fixed SHA-256 oracle. Durable updates use the zc replacement-file
+primitive, file sync, atomic commit, and directory sync; injected failures at
+all five stages prove pre-commit preservation and post-commit reporting.
+Locked replay compares the verified current graph, checks registry trust, visits
+each package and edge once, and records zero resolver invocations. Corruption,
+round-trip, release-build, and fault-injection tests pass. The P5 lockfile
+boundary is complete.
+
+P6 now has a closed, canonically encoded package compilation request with
+sorted non-empty target selections, normalized feature sets, lock mode,
+language options, and registry-issued host/target selections. Workspace
+verification resolves package and target names, expands root features, derives
+the complete RFC 0011 `PackageKey` and `CrateKey`, and hands selected roots to
+`CompilerSession`. `zomc compile` is package-only: positional source arguments
+are rejected, manifest discovery walks parent directories, explicit manifests
+must be regular `Zom.toml` files, and the package, target, feature, lock,
+target-profile, language, and panic flags enter the typed request. The real CLI
+has an 11-case process test for every `InvocationIssue`, all emitted as
+source-less `ZOM7016` without rejected argv or host-path disclosure. Corpus
+tests use a package fixture adapter rather than a compiler compatibility path.
+The RFC 0010 target registry now reproduces the fixed target-specification hash,
+validates semantic projection against backend facts, binds package selections
+to one registry revision, rejects unavailable panic capabilities as `ZOM6009`,
+and supplies the verified layout token consumed by IR lowering. The session
+owns the verified package request, host/target tokens, a package graph, and
+digest-verified local snapshots. The local-workspace coordinator materializes
+every member through the two-pass snapshot boundary, runs the deterministic
+resolver for unlocked and update requests, emits canonical package and edge
+lock records, atomically publishes `--update-lock`, and reconstructs a verified
+resolution directly from `--locked` without invoking the solver. A two-member
+workspace integration test proves dependency resolution, lock publication, and
+zero-solver locked replay through the real CLI. The P6 package CLI and session
+handoff boundary is complete; remote source acquisition remains an injected
+registry/VCS service concern rather than a command-normalization path.
+
+P7 now has the RFC 0011 `PreparatoryBuildScriptKey`, canonical
+`BuildScriptOutputRecord`, domain-separated `BuildScriptOutputKey`, and the
+complete RFC 0012 `BuildScriptExecutionKey`. All map-like fields sort by
+canonical bytes and reject duplicate keys even when the colliding values or
+digests differ. Trusted runtime identity is derived from exact object and
+manifest bytes, rejects an empty object closure, duplicate object digests, and
+runtime ABI mismatch, and participates in the execution-key encoding. Request
+and response framing, exact contract input/environment/output/export checks,
+all resource-limit invariants, closed response tags, and every build-script and
+internal-invariant diagnostic display algebra are executable.
+
+Every cache miss runs through two independently created sandbox adapters. Each
+run is contract-verified and converted into a complete RFC 0011 output record;
+publication requires byte-identical output records and re-read generated file
+bytes. The `LinuxNativeSandboxV1` ownership state machine covers partial setup,
+running, exited, and finished states, retains only failed teardown owners, and
+has fault injection at every setup and teardown boundary. The checked-in
+x86-64 and AArch64 bootstrap/runtime seccomp generators bind the audit
+architecture, reject x32, enforce the fixed syscall and scalar-argument policy,
+default to `SECCOMP_RET_TRAP`, and have fixed generated-byte SHA-256 oracles.
+Host preflight rejects unsupported platforms and checks Linux namespaces,
+cgroup v2, seccomp action availability, pidfds, timerfds, and `openat2` without
+an unsandboxed fallback. Resource-plan and post-reap priority classifiers are
+also executable.
+
+The production Linux launcher now acquires user, mount, PID, and network
+namespaces; installs private mounts, cgroup v2 limits, rlimits, fixed
+descriptors, bootstrap seccomp, pidfd/timerfd observation, and explicit setup
+failure signaling around a digest- and target-verified static PIE image. A
+privileged Linux sanitizer integration test executes the real launcher through
+canonical IPC and independently materializes the output snapshot. The trusted
+runtime verifier decodes the complete ELF symbol and relocation inventories,
+checks exact operation classification and required tags, rejects initializers,
+and binds the verified object and manifest bytes into the runtime key.
+
+Every cache miss is contract-checked and double-executed. Cache hits reverify
+all key, record, generated inventory, byte, UTF-8, environment, and export
+facts. Canonical build plans reject duplicates, dangling predecessors, and
+cycles; `CompilerSession` executes their stable predecessor-first order and
+publishes only an exact plan-key result set. Focused sanitizer tests cover the
+cache, plan, final-result, session, policy, launcher, ELF, and manifest
+boundaries. P7 implementation is complete; P8 identity integration and the P9
+full repository release gates remain open.
 
 ## Decision Record
 
@@ -289,6 +568,6 @@ On 2026-07-11, every required owner approved RFC 0012 proposal hash
 `39b7a9edfd5112b9f72fce569ffab1d274c94c957bd6106f6c9158d23b46a982`.
 The accepted design freezes the manifest, deterministic resolver, lock graph,
 source materialization, registered target selection, build-script runtime,
-sandbox, diagnostic, and verification contracts. Implementation remains `TBD`;
-the next legal transition is `ACCEPTED -> IMPLEMENTING` only when the direct
-implementation series is named and starts.
+sandbox, diagnostic, and verification contracts. The direct implementation
+series has entered `IMPLEMENTING`; the checkpoints above record current
+evidence without claiming completion.
