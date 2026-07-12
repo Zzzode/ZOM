@@ -583,12 +583,23 @@ from current roots and verified releases without invoking version solving, then
 requires byte-identical lock output. The CLI and `CompilerSession` consume this
 output directly and no longer rebuild package keys or activation domains.
 
-P8 remains open. Final and preparatory dependency crates, crate dependency
-edges, complete build-script closures, and the production semantic-context
-fingerprint are not yet derived from the authoritative resolution output. RFC
-0008 owns those remaining session-wide crate-graph and fingerprint surfaces.
+Commit `4f4a646f` completes P8. The atomic package handoff now seals the unique
+build plan derived from `ResolutionOutput`; callers can no longer inject a
+second plan. Each build-script node receives an isolated host preparatory crate
+graph whose direct Build providers, recursive Target providers, prior provider
+outputs, package edges, crate edges, and semantic-context fingerprint are
+verified before execution. The final graph applies the closed Target and
+Development consumer matrix, excludes Build-only packages and edges, and
+freezes only its selected package and crate ancestors. The production final
+semantic-context fingerprint is published after source and module identity
+freeze from that final graph's exact package and crate edge sets. Focused
+sanitizer tests cover empty plans, recursive provider build outputs,
+Development filtering, Build isolation, final dependency expansion, and
+fingerprint publication. The complete sanitizer build, both architecture
+checks, their adversarial self-tests, format, RFC, and diff-hygiene gates pass
+on the same implementation. P8 implementation is complete.
 
-P9 now has an executable package architecture gate with eighteen adversarial
+P9 now has an executable package architecture gate with nineteen adversarial
 fixtures, a vendored-dependency mutation self-test, and a Linux-only privileged
 sanitizer CTest registered behind an explicit fail-closed option. The cgroup v2
 runner creates one delegated parent and supplies it to the real production
