@@ -35,6 +35,10 @@ else
   privileged=(sudo)
 fi
 
+apparmor_userns_path=/proc/sys/kernel/apparmor_restrict_unprivileged_userns
+unprivileged_userns_path=/proc/sys/kernel/unprivileged_userns_clone
+apparmor_userns_original=
+unprivileged_userns_original=
 cgroup_parent="${cgroup_root}/zom-linux-sandbox-${UID}-$$"
 
 cleanup() {
@@ -54,12 +58,40 @@ cleanup() {
   if [[ -d "${cgroup_parent}" ]]; then
     "${privileged[@]}" rmdir "${cgroup_parent}" || cleanup_status=$?
   fi
+  if [[ -n ${unprivileged_userns_original} ]]; then
+    printf '%s\n' "${unprivileged_userns_original}" | "${privileged[@]}" tee \
+      "${unprivileged_userns_path}" >/dev/null || cleanup_status=$?
+  fi
+  if [[ -n ${apparmor_userns_original} ]]; then
+    printf '%s\n' "${apparmor_userns_original}" | "${privileged[@]}" tee \
+      "${apparmor_userns_path}" >/dev/null || cleanup_status=$?
+  fi
   if ((status != 0)); then
     exit "${status}"
   fi
   exit "${cleanup_status}"
 }
 trap cleanup EXIT
+
+if ((EUID != 0)); then
+  if [[ -r "${apparmor_userns_path}" ]]; then
+    apparmor_userns_original=$(<"${apparmor_userns_path}")
+    if [[ ${apparmor_userns_original} != 0 ]]; then
+      printf '0\n' | "${privileged[@]}" tee "${apparmor_userns_path}" >/dev/null
+    fi
+  fi
+  if [[ -r "${unprivileged_userns_path}" ]]; then
+    unprivileged_userns_original=$(<"${unprivileged_userns_path}")
+    if [[ ${unprivileged_userns_original} != 1 ]]; then
+      printf '1\n' | "${privileged[@]}" tee "${unprivileged_userns_path}" >/dev/null
+    fi
+  fi
+fi
+
+if ! unshare --user --map-root-user true; then
+  echo "error: unprivileged user namespaces remain unavailable after host provisioning" >&2
+  exit 1
+fi
 
 "${privileged[@]}" mkdir "${cgroup_parent}"
 for controller in memory pids; do
