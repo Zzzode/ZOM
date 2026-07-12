@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and limitations under
 // the License.
 
+#include "zc/core/encoding.h"
 #include "zc/core/time.h"
 #include "zc/ztest/test.h"
 #include "zomlang/compiler/driver/package/build-script-runtime.h"
@@ -546,7 +547,14 @@ BuildScriptRequestFrame request(const BuildScriptExecutionKey& key) {
 }  // namespace
 
 ZC_TEST("BuildScriptExecutionKey canonicalizes the complete host closure") {
-  ZC_EXPECT(executionKey(false).encode().asPtr() == executionKey(true).encode().asPtr());
+  auto encoded = executionKey(false).encode();
+  ZC_EXPECT(encoded.asPtr() == executionKey(true).encode().asPtr());
+  auto oracleDigest = identity::sha256(encoded.asPtr());
+  ZC_REQUIRE(oracleDigest != zc::none);
+  ZC_IF_SOME(value, oracleDigest) {
+    ZC_EXPECT(zc::encodeHex(value.bytes()) ==
+              "a4afe01afa0cfef1f85f0835d4801de5c1648410e218a469c2823b33f7e0f12f"_zc);
+  }
 }
 
 ZC_TEST("Build script executable admission requires exact static PIE identity") {
@@ -622,6 +630,13 @@ ZC_TEST("Build-script cache miss publishes one complete byte-identical output re
   ZC_EXPECT(factory.createCount() == 2);
   ZC_EXPECT(result.get<VerifiedBuildScriptResult>().run().outputs().files().size() == 1);
   ZC_EXPECT(result.get<VerifiedBuildScriptResult>().output().generatedSources().size() == 1);
+  auto outputBytes = result.get<VerifiedBuildScriptResult>().output().encode();
+  auto outputDigest = identity::sha256(outputBytes.asPtr());
+  ZC_REQUIRE(outputDigest != zc::none);
+  ZC_IF_SOME(value, outputDigest) {
+    ZC_EXPECT(zc::encodeHex(value.bytes()) ==
+              "d7e0bdb6b5a960cc8803f7f0f7191bc91bca8c259928c604dd09094d0598a5ff"_zc);
+  }
 }
 
 ZC_TEST("Build-script cache miss rejects record bytes outputs and teardown divergence") {

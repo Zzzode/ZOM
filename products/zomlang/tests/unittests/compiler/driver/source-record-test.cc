@@ -272,6 +272,14 @@ ZC_TEST("SourceRecordTest.VerifiesCompleteRegistryReleaseSignature") {
     ZC_IF_SOME(value, verified) {
       ZC_EXPECT(value.archiveDigest() == archiveDigest);
       ZC_EXPECT(value.sourceTreeDigest() == sourceSnapshot.record().digest());
+      identity::CanonicalEncoder encoder;
+      value.encode(encoder);
+      auto oracleDigest = identity::sha256(encoder.finish().asPtr());
+      ZC_REQUIRE(oracleDigest != zc::none);
+      ZC_IF_SOME(digestValue, oracleDigest) {
+        ZC_EXPECT(zc::encodeHex(digestValue.bytes()) ==
+                  "ed5b5ab7ea48e60b2f236a3010a967c441eccce9327b9c003a974b57a62b9103"_zc);
+      }
       verifiedRelease = true;
     }
   }

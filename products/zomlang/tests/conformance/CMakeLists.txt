@@ -141,6 +141,28 @@ set_tests_properties(package-architecture-negative PROPERTIES
 )
 
 add_test(
+  NAME package-generated-oracles
+  COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/codegen/gen_package_oracles.py --check
+  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+)
+
+set_tests_properties(package-generated-oracles PROPERTIES
+  LABELS "conformance;package;generated;architecture"
+  TIMEOUT 180
+)
+
+add_test(
+  NAME package-generated-oracles-negative
+  COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/codegen/gen_package_oracles.py --self-test
+  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+)
+
+set_tests_properties(package-generated-oracles-negative PROPERTIES
+  LABELS "conformance;package;generated;architecture;negative"
+  TIMEOUT 120
+)
+
+add_test(
   NAME ir-diagnostic-boundary
   COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/check-ir-diagnostic-boundary.py --check
   WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}

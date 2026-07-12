@@ -1,0 +1,113 @@
+{
+  "schema": "zom.package-generated-oracles.v1",
+  "managed": [
+    {
+      "path": "products/zomlang/tests/fixtures/Zom.lock.golden",
+      "byteLength": 2524,
+      "sha256": "f87025b6c542149a01d5788f17307a44198de3caa5f71c2ecd129cd0c301b32f",
+      "producer": "scripts/codegen/gen_package_oracles.py"
+    },
+    {
+      "path": "products/zomlang/tests/fixtures/package-oracles/linux-seccomp-aarch64-bootstrap.bpf",
+      "byteLength": 704,
+      "sha256": "bc73026ef01827a882538ffd7405b1bbda5ff3ace08d15c06cbdbe80d9f4033b",
+      "producer": "scripts/codegen/gen_package_oracles.py"
+    },
+    {
+      "path": "products/zomlang/tests/fixtures/package-oracles/linux-seccomp-aarch64-runtime.bpf",
+      "byteLength": 584,
+      "sha256": "e5442959710b82f7cef71c704b98feb1855d5cc444f60815277a1adcaa70df4f",
+      "producer": "scripts/codegen/gen_package_oracles.py"
+    },
+    {
+      "path": "products/zomlang/tests/fixtures/package-oracles/linux-seccomp-x86_64-bootstrap.bpf",
+      "byteLength": 720,
+      "sha256": "98dbe2df91eedb4cd8c805e239558cde4deabd3ab0d37dbda75e1d6dad22466e",
+      "producer": "scripts/codegen/gen_package_oracles.py"
+    },
+    {
+      "path": "products/zomlang/tests/fixtures/package-oracles/linux-seccomp-x86_64-runtime.bpf",
+      "byteLength": 600,
+      "sha256": "0a3a652806873f8018139385f0d52614e45c744045560cb16dec84198a81b0e7",
+      "producer": "scripts/codegen/gen_package_oracles.py"
+    },
+    {
+      "path": "products/zomlang/tests/fixtures/package-oracles/package-codec-oracles-v1.json",
+      "byteLength": 3802,
+      "sha256": "95eeb8a5eb10fe6f0844a7bcf7bb869596ab609049e6a35a48fdc3b2bb9ca880",
+      "producer": "scripts/codegen/gen_package_oracles.py"
+    },
+    {
+      "path": "products/zomlang/tests/fixtures/pubgrub-scenarios-v1.json",
+      "byteLength": 2286,
+      "sha256": "1a30b63a9e55a96929120c0344982198b5938aa8496e8086b4a915dbda2467d7",
+      "producer": "scripts/codegen/gen_package_oracles.py"
+    }
+  ],
+  "delegated": [
+    {
+      "path": "products/zomlang/compiler/driver/package/vendor/vendor-manifest.json",
+      "producer": "products/zomlang/tests/tools/check-vendored-dependencies.py --write",
+      "checker": "products/zomlang/tests/tools/check-vendored-dependencies.py --check"
+    },
+    {
+      "path": "build/generated/package-resolver-performance-edges.bin",
+      "producer": "scripts/codegen/gen_package_resolver_performance_edges.py --packages 10000 --edges 50000",
+      "checker": "performance-package-resolver",
+      "checkedIn": false,
+      "sha256": "2564b53511aa1bf693654f0272a7d56201211ddcd6596885958858ecfe5432ed",
+      "reason": "The 400008-byte performance payload is build output with a fixed generator input and executable SHA-256 check."
+    },
+    {
+      "path": "build/**/zom-linux-sandbox-runtime-fixture",
+      "producer": "zom-linux-sandbox-runtime-fixture CMake target",
+      "checker": "linux-native-sandbox-integration",
+      "checkedIn": false,
+      "reason": "The static PIE image is target-toolchain output and is admitted by digest and ELF facts at execution time."
+    }
+  ],
+  "runtimeProduced": [
+    {
+      "artifact": "ResolutionOutput canonical bytes",
+      "producer": "package-resolver-test",
+      "test": "PackageResolverTest.SelectsGreatestEligibleReleaseAndEmitsGraph",
+      "sha256": "21640c513f23e7b7e9c51c02d8303ee8d035a0ca6840f05b4428c1351327f9f8"
+    },
+    {
+      "artifact": "resolver incompatibility derivation graph",
+      "producer": "package-resolver-test",
+      "test": "PackageResolverTest.ProducesCanonicalConflictExplanation",
+      "sha256": "f9baa53243bb4c42f9700484b2af10593b2e8ea609213d9b01618ba8882d2a35"
+    },
+    {
+      "artifact": "registered target selection and registry revision",
+      "producer": "target-registry-test",
+      "test": "Target registry issues and verifies one revision-bound package selection",
+      "sha256": "ee53bebededb1c6020619cc95979fe960814b4ef732afcba82cb96157546febc"
+    },
+    {
+      "artifact": "build execution key",
+      "producer": "build-script-execution-key-test",
+      "test": "BuildScriptExecutionKey canonicalizes the complete host closure",
+      "sha256": "a4afe01afa0cfef1f85f0835d4801de5c1648410e218a469c2823b33f7e0f12f"
+    },
+    {
+      "artifact": "build script output record",
+      "producer": "build-script-execution-key-test",
+      "test": "Build-script cache miss publishes one complete byte-identical output record",
+      "sha256": "d7e0bdb6b5a960cc8803f7f0f7191bc91bca8c259928c604dd09094d0598a5ff"
+    },
+    {
+      "artifact": "registry signed release and source snapshot records",
+      "producer": "source-record-test",
+      "test": "SourceRecordTest.VerifiesCompleteRegistryReleaseSignature",
+      "sha256": "ed5b5ab7ea48e60b2f236a3010a967c441eccce9327b9c003a974b57a62b9103"
+    },
+    {
+      "artifact": "source tree framing and digest",
+      "producer": "source-tree-test",
+      "test": "SourceTreeTest.SortsInventoryAndProducesPermutationInvariantDigest",
+      "sha256": "0668fd1bb87e8db7be9ef51c47573f47aa854f0493b05d72872b4398dcc17574"
+    }
+  ]
+}

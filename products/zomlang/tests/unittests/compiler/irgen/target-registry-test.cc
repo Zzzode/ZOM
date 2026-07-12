@@ -16,6 +16,7 @@
 
 #include "zc/core/encoding.h"
 #include "zc/ztest/test.h"
+#include "zomlang/compiler/identity/canonical-encoder.h"
 
 namespace zomlang::compiler::irgen {
 namespace {
@@ -96,6 +97,14 @@ ZC_TEST("Target registry issues and verifies one revision-bound package selectio
     auto selected = targets.select(zc::none, driver::package::PackagePanicStrategy::Unwind);
     ZC_REQUIRE(selected != zc::none);
     ZC_IF_SOME(selection, selected) {
+      identity::CanonicalEncoder selectionEncoder;
+      selection.encode(selectionEncoder);
+      auto oracleDigest = identity::sha256(selectionEncoder.finish().asPtr());
+      ZC_REQUIRE(oracleDigest != zc::none);
+      ZC_IF_SOME(value, oracleDigest) {
+        ZC_EXPECT(zc::encodeHex(value.bytes()) ==
+                  "ee53bebededb1c6020619cc95979fe960814b4ef732afcba82cb96157546febc"_zc);
+      }
       auto verified = registry.verify(selection);
       ZC_REQUIRE(verified.is<VerifiedTargetSelection>());
       ZC_EXPECT(verified.get<VerifiedTargetSelection>().targetSpecId() ==
