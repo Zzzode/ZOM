@@ -210,9 +210,12 @@ ast::Tree manualModuleTree(source::SourceRange range, zc::StringPtr moduleName) 
   return builder.finish();
 }
 
+enum class ImplRegistration : uint8_t { None, Exact, WrongOrdinal };
+
 struct FrozenFixture final {
   explicit FrozenFixture(ParsedSource& sourceFixture, bool includeDefinition = false,
-                         bool wrongDefinitionKind = false)
+                         bool wrongDefinitionKind = false,
+                         ImplRegistration implRegistration = ImplRegistration::None)
       : context(requireContext(factory)), registries(createRegistries()) {
     auto snapshot = sourceFixture.snapshot();
     ZC_REQUIRE(registries.collectPackage(package()) == identity::FrozenRegistryFailure::None);
@@ -238,7 +241,33 @@ struct FrozenFixture final {
     } else {
       ZC_REQUIRE(registries.freezeDefinitions() == identity::FrozenRegistryFailure::None);
     }
-    ZC_REQUIRE(registries.freezeImpls() == identity::FrozenRegistryFailure::None);
+    if (implRegistration != ImplRegistration::None) {
+      const auto inventory = DefinitionInventory::collect(sourceFixture.tree);
+      ZC_REQUIRE(inventory.impls().size() == 1);
+      const auto& implementation = inventory.impls()[0];
+      const auto start = sourceFixture.sources->getLocOffsetInBuffer(
+          implementation.source.getStart(), sourceFixture.buffer);
+      const auto end = sourceFixture.sources->getLocOffsetInBuffer(implementation.source.getEnd(),
+                                                                   sourceFixture.buffer);
+      auto span = snapshot.span(start, end);
+      ZC_REQUIRE(span != zc::none);
+      ZC_IF_SOME(spanValue, span) {
+        zc::Vector<identity::DefinitionPathSegment> parentPath;
+        const uint32_t ordinal = implRegistration == ImplRegistration::Exact ? 0 : 1;
+        auto key =
+            identity::ImplKey::from(module(), zc::mv(parentPath), zc::mv(spanValue), ordinal);
+        ZC_REQUIRE(key != zc::none);
+        ZC_IF_SOME(keyValue, key) {
+          auto retained = keyValue.clone();
+          ZC_REQUIRE(registries.collectImpl(zc::mv(keyValue)) ==
+                     identity::FrozenRegistryFailure::None);
+          ZC_REQUIRE(registries.freezeImpls() == identity::FrozenRegistryFailure::None);
+          implId = requireHandle(registries.impls().find(retained));
+        }
+      }
+    } else {
+      ZC_REQUIRE(registries.freezeImpls() == identity::FrozenRegistryFailure::None);
+    }
     packageId = requireHandle(registries.packages().find(package()));
     crateId = requireHandle(registries.crates().find(crate()));
     moduleId = requireHandle(registries.modules().find(module()));
@@ -288,6 +317,7 @@ struct FrozenFixture final {
   identity::CrateId crateId;
   identity::ModuleId moduleId;
   identity::DefId definitionId;
+  identity::ImplId implId;
   DefinitionIdentityMap rawDefinitions;
   zc::Maybe<VerifiedParsedModule> parsed;
   zc::Maybe<VerifiedModuleGraphView> graph;
@@ -912,11 +942,35 @@ ZC_TEST("FrozenInventory.RejectsMissingAdditionalWrongKindAndForeignDefinitions"
   }
 }
 
-ZC_TEST("BindingInput.RejectsImplProducerUntilImplInventoryPublicationExists") {
+ZC_TEST("FrozenInventory.PublishesStandaloneAndMarkerImplIdentities") {
+  for (const auto sourceText : {"module root;\nimpl Trait for Target {}\n"_zc,
+                                "module root;\nimpl !Shared for Target;\n"_zc}) {
+    ParsedSource sourceFixture(sourceText);
+    FrozenFixture fixture(sourceFixture, false, false, ImplRegistration::Exact);
+    ZC_EXPECT(fixture.inventoryFailure == zc::none);
+    ZC_IF_SOME(inventory, fixture.frozenDefinitions) {
+      ZC_REQUIRE(inventory.impls().size() == 1);
+      ZC_EXPECT(inventory.impls()[0].implementation == fixture.implId);
+      ZC_EXPECT(inventory.implAt(inventory.impls()[0].node) == fixture.implId);
+    }
+    else { ZC_EXPECT(false); }
+  }
+}
+
+ZC_TEST("FrozenInventory.RejectsMissingImplIdentity") {
   ParsedSource sourceFixture("module root;\nimpl Trait for Target {}\n"_zc);
   FrozenFixture fixture(sourceFixture);
   ZC_IF_SOME(kind, fixture.inventoryFailure) {
-    ZC_EXPECT(kind == FrozenInventoryInvariantKind::UnsupportedImplInventory);
+    ZC_EXPECT(kind == FrozenInventoryInvariantKind::IncompleteInventory);
+  }
+  else { ZC_EXPECT(false); }
+}
+
+ZC_TEST("FrozenInventory.RejectsWrongImplIdentity") {
+  ParsedSource sourceFixture("module root;\nimpl Trait for Target {}\n"_zc);
+  FrozenFixture fixture(sourceFixture, false, false, ImplRegistration::WrongOrdinal);
+  ZC_IF_SOME(kind, fixture.inventoryFailure) {
+    ZC_EXPECT(kind == FrozenInventoryInvariantKind::InvalidDefinitionIdentity);
   }
   else { ZC_EXPECT(false); }
 }

@@ -21,8 +21,7 @@ enum class FrozenInventoryInvariantKind : uint8_t {
   InputMismatch,
   IncompleteInventory,
   InvalidDefinitionSite,
-  InvalidDefinitionIdentity,
-  UnsupportedImplInventory
+  InvalidDefinitionIdentity
 };
 
 struct FrozenInventoryInvariantFact final {
@@ -49,6 +48,20 @@ struct FrozenDefinitionEntry final {
   identity::SourceSpan source;
 };
 
+/// \brief One implementation site paired with its frozen semantic identity.
+struct FrozenImplEntry final {
+  FrozenImplEntry(ast::NodeId node, identity::ImplId implementation, identity::ImplKey&& key,
+                  identity::SourceSpan&& source) noexcept;
+  FrozenImplEntry(FrozenImplEntry&&) noexcept = default;
+  FrozenImplEntry& operator=(FrozenImplEntry&&) noexcept = default;
+  ZC_DISALLOW_COPY(FrozenImplEntry);
+
+  ast::NodeId node;
+  identity::ImplId implementation;
+  identity::ImplKey key;
+  identity::SourceSpan source;
+};
+
 /// \brief Immutable single-module projection of the context-global identity inventory.
 class FrozenDefinitionInventoryView final {
 public:
@@ -61,7 +74,9 @@ public:
   ZC_NODISCARD identity::ModuleId module() const noexcept;
   ZC_NODISCARD ast::NodeId moduleNode() const noexcept;
   ZC_NODISCARD zc::ArrayPtr<const FrozenDefinitionEntry> definitions() const;
+  ZC_NODISCARD zc::ArrayPtr<const FrozenImplEntry> impls() const;
   ZC_NODISCARD zc::Maybe<identity::DefId> definitionAt(ast::NodeId node) const;
+  ZC_NODISCARD zc::Maybe<identity::ImplId> implAt(ast::NodeId node) const;
 
 private:
   struct Impl;

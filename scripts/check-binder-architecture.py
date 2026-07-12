@@ -150,6 +150,28 @@ def check_verified_input_surface(files: dict[Path, str], errors: list[str]) -> N
             errors.append(f"{HEADER}: BindingInputCandidate is missing {required}")
 
 
+def check_frozen_impl_inventory_contract(files: dict[Path, str], errors: list[str]) -> None:
+    header = files.get(INVENTORY_HEADER, "")
+    source = files.get(INVENTORY_SOURCE, "")
+    for required in (
+        "struct FrozenImplEntry final",
+        "zc::ArrayPtr<const FrozenImplEntry> impls() const;",
+        "zc::Maybe<identity::ImplId> implAt(ast::NodeId node) const;",
+    ):
+        if required not in header:
+            errors.append(f"{INVENTORY_HEADER}: incomplete frozen impl inventory: {required}")
+    for required in (
+        "expectedImplKey(",
+        "registries.impls().size() != inventory.impls().size()",
+        "registries.impls().find(keyValue)",
+        "frozenImpls.add(FrozenImplEntry(",
+    ):
+        if required not in source:
+            errors.append(f"{INVENTORY_SOURCE}: frozen impl authority is disconnected: {required}")
+    if "UnsupportedImplInventory" in header or "UnsupportedImplInventory" in source:
+        errors.append(f"{INVENTORY_HEADER}: impl inventory compatibility rejection is forbidden")
+
+
 def check_private_binding_candidate(files: dict[Path, str], errors: list[str]) -> None:
     body = type_body(files.get(VERIFIER_HEADER, ""), "BindingMetadataCandidate")
     private = body.find("private:")
@@ -310,6 +332,7 @@ def check(files: dict[Path, str]) -> list[str]:
     check_private_verified_constructors(files, errors)
     check_unique_construction(files, errors)
     check_verified_input_surface(files, errors)
+    check_frozen_impl_inventory_contract(files, errors)
     check_private_binding_candidate(files, errors)
     check_producer_boundaries(files, errors)
     check_layering(files, errors)
@@ -358,6 +381,24 @@ def self_test(files: dict[Path, str]) -> list[str]:
             INVENTORY_HEADER,
             "class FrozenDefinitionInventoryView final {\npublic:",
             "class FrozenDefinitionInventoryView final {\npublic:\n  explicit FrozenDefinitionInventoryView(int);",
+        ),
+        (
+            "missing frozen impl lookup",
+            INVENTORY_HEADER,
+            "zc::Maybe<identity::ImplId> implAt(ast::NodeId node) const;",
+            "zc::Maybe<identity::ImplId> missingImplAt(ast::NodeId node) const;",
+        ),
+        (
+            "missing frozen impl cardinality",
+            INVENTORY_SOURCE,
+            "registries.impls().size() != inventory.impls().size()",
+            "registries.impls().size() == inventory.impls().size()",
+        ),
+        (
+            "impl compatibility rejection",
+            INVENTORY_HEADER,
+            "InvalidDefinitionIdentity\n};",
+            "InvalidDefinitionIdentity,\n  UnsupportedImplInventory\n};",
         ),
         (
             "foreign parser admission",
