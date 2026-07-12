@@ -305,6 +305,7 @@ landing.
 | Slice | State | Required evidence |
 |---|---|---|
 | Dependency-free root verifier spine | Complete | Commit `05d12af5`; `ModuleGraphVerifier`, private `VerifiedModuleGraphView`, `BindingInputVerifier`, private `VerifiedBindingInput`, focused sanitizer tests, and positive plus adversarial binder architecture gates |
+| Parsed-module and frozen-inventory provenance | Complete | Commits `46839dcd` and `1b863942`; normative `ParsedModuleReceipt` oracle, immutable source promotion, exact single-module identity projection, ten focused sanitizer cases, and thirteen architecture mutations |
 | Complete module resolution input | Blocked by RFC 0012 and RFC 0008 | Authoritative package resolution, production semantic-context fingerprint, verified resolution environment, and resolution receipts |
 | Complete binding facts and surfaces | Pending | Frozen definition inventory, imports, exports, aliases, visibility, scopes, labels, captures, immutable metadata, codecs, and verifier negatives |
 | Production binder cutover | Pending | Session integration, no downstream rebinding, deletion of raw binder inputs and binder-owned module resolution, and all acceptance gates |
@@ -325,3 +326,35 @@ six-mutation `--self-test`, and the registered `binder-architecture` and
 `binder-architecture-negative` CTests pass. This evidence closes only the
 dependency-free spine; it does not claim dependency surfaces, complete binding
 facts, or production binder cutover.
+
+The second slice removes raw `ast::Tree`, `SourceFileId`, and
+`DefinitionIdentityMap` values from `BindingInputCandidate`. Parser output is
+now moved into `UnbrandedParsedModule`, bound to the exact expanded
+`SourceFileKey`, source digest, byte length, generated AST schema fingerprint,
+deterministic schema dump, and every node's canonical byte range, then promoted
+to `VerifiedParsedModule` only after the frozen source registry reproduces the
+same snapshot and receipt. The normative 105-byte receipt preimage reproduces
+SHA-256 `7a4ab18a31387244311bd2a1b1472350536140c89532ce64240d7670d5a20b8e`.
+
+`FrozenDefinitionInventoryVerifier` independently walks that verified tree,
+rejects impl producers in the dependency-free slice, reconstructs each complete
+`DefinitionKey` from its kind, name, parent path, source site, and sibling
+ordinal, and publishes the private `FrozenDefinitionInventoryView` only when
+the frozen registry and tree-local map agree exactly. `ModuleGraphVerifier` and
+`BindingInputVerifier` now consume these verified values rather than reopening
+the raw inputs. Ten focused sanitizer cases cover exact receipt bytes, exact
+tree binding, stale source content and length, cross-source ranges, successful
+promotion, missing, additional, wrong-kind, and foreign-context definitions,
+impl rejection, graph revision, and diagnostic projection. The architecture
+gate's thirteen mutations reject public constructors, foreign publication,
+foreign producer calls, raw candidate fields, missing build wiring, forbidden
+layering, and compatibility facades.
+
+On the frozen implementation, the complete sanitizer matrix passes 1,250 of
+1,250 tests in 987.15 seconds; the full grammar oracle passes in 986.41 seconds.
+Lexer architecture, parser coverage, AST conformance coverage, RFC validation,
+format, `git diff --check`, and the focused Binder architecture gates also pass.
+This slice establishes trustworthy dependency-free Binder inputs only. It does
+not publish scopes, name bindings, definition facts, export surfaces, imports,
+re-exports, module aliases, or production Binder cutover, and it does not
+unblock the RFC 0008 multi-module graph.
