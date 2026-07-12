@@ -165,8 +165,12 @@ void reorderCanonical(zc::Vector<char32_t>& values) {
   }
 }
 
-zc::Vector<char32_t> composeCanonical(zc::ArrayPtr<const char32_t> values) {
-  zc::Vector<char32_t> output(values.size());
+zc::Vector<char32_t> composeCanonical(zc::Maybe<zc::MemoryResource&> resource,
+                                      zc::ArrayPtr<const char32_t> values) {
+  zc::Vector<char32_t> output = [&] {
+    ZC_IF_SOME(value, resource) { return zc::Vector<char32_t>(value, values.size()); }
+    return zc::Vector<char32_t>(values.size());
+  }();
   if (values.size() == 0) { return output; }
 
   output.add(values[0]);
@@ -197,23 +201,46 @@ zc::Vector<char32_t> composeCanonical(zc::ArrayPtr<const char32_t> values) {
 
 }  // namespace
 
-zc::Maybe<zc::String> normalizeNfc(zc::StringPtr input) {
-  auto decoded = zc::encodeUtf32(input);
+zc::Maybe<zc::String> normalizeNfcImpl(zc::Maybe<zc::MemoryResource&> resource,
+                                       zc::StringPtr input) {
+  auto decoded = [&] {
+    ZC_IF_SOME(value, resource) { return zc::encodeUtf32(value, input); }
+    return zc::encodeUtf32(input);
+  }();
   if (decoded == zc::none) { return zc::none; }
 
-  zc::Vector<char32_t> decomposed(decoded.size());
+  zc::Vector<char32_t> decomposed = [&] {
+    ZC_IF_SOME(value, resource) { return zc::Vector<char32_t>(value, decoded.size()); }
+    return zc::Vector<char32_t>(decoded.size());
+  }();
   for (char32_t codePoint : decoded) {
     appendCanonicalDecomposition(static_cast<uint32_t>(codePoint), decomposed);
   }
   reorderCanonical(decomposed);
-  auto composed = composeCanonical(decomposed.asPtr());
-  auto encoded = zc::decodeUtf32(composed.asPtr());
+  auto composed = composeCanonical(resource, decomposed.asPtr());
+  auto encoded = [&] {
+    ZC_IF_SOME(value, resource) { return zc::decodeUtf32(value, composed.asPtr()); }
+    return zc::decodeUtf32(composed.asPtr());
+  }();
   if (encoded == zc::none) { return zc::none; }
   return zc::mv(encoded);
 }
 
+zc::Maybe<zc::String> normalizeNfc(zc::StringPtr input) {
+  return normalizeNfcImpl(zc::none, input);
+}
+
+zc::Maybe<zc::String> normalizeNfc(zc::MemoryResource& resource, zc::StringPtr input) {
+  return normalizeNfcImpl(resource, input);
+}
+
 zc::Maybe<bool> isNfc(zc::StringPtr input) {
   ZC_IF_SOME(normalized, normalizeNfc(input)) { return normalized == input; }
+  return zc::none;
+}
+
+zc::Maybe<bool> isNfc(zc::MemoryResource& resource, zc::StringPtr input) {
+  ZC_IF_SOME(normalized, normalizeNfc(resource, input)) { return normalized == input; }
   return zc::none;
 }
 

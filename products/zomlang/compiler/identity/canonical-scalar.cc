@@ -137,6 +137,16 @@ zc::Maybe<CanonicalScalar<Domain>> CanonicalScalar<Domain>::fromCanonical(zc::St
 }
 
 template <CanonicalScalarDomain Domain>
+zc::Maybe<CanonicalScalar<Domain>> CanonicalScalar<Domain>::fromCanonical(
+    zc::MemoryResource& resource, zc::StringPtr input) {
+  ZC_IF_SOME(canonical, normalizeNfc(resource, input)) {
+    if (canonical != input || !validate(Domain, canonical)) { return zc::none; }
+    return CanonicalScalar(zc::mv(canonical));
+  }
+  return zc::none;
+}
+
+template <CanonicalScalarDomain Domain>
 CanonicalScalar<Domain> CanonicalScalar<Domain>::clone() const {
   return CanonicalScalar(zc::heapString(value));
 }

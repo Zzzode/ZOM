@@ -31,6 +31,11 @@ public:
   /// \brief Validates a complete SemVer 2.0.0 value without rewriting its text.
   ZC_NODISCARD static zc::Maybe<ResolvedVersion> fromCanonical(zc::StringPtr input);
 
+  /// \brief Validates SemVer text and owns the accepted bytes through `resource`.
+  /// \param resource Resource that must outlive the returned version.
+  ZC_NODISCARD static zc::Maybe<ResolvedVersion> fromCanonical(zc::MemoryResource& resource,
+                                                               zc::StringPtr input);
+
   /// \brief Creates an explicit owned duplicate of this move-only version.
   ZC_NODISCARD ResolvedVersion clone() const;
 

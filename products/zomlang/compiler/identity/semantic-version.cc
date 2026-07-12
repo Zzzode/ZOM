@@ -106,6 +106,12 @@ zc::Maybe<ResolvedVersion> ResolvedVersion::fromCanonical(zc::StringPtr input) {
   return ResolvedVersion(zc::heapString(input));
 }
 
+zc::Maybe<ResolvedVersion> ResolvedVersion::fromCanonical(zc::MemoryResource& resource,
+                                                          zc::StringPtr input) {
+  if (!isSemanticVersion(input)) { return zc::none; }
+  return ResolvedVersion(zc::resourceHeapString(resource, input));
+}
+
 ResolvedVersion ResolvedVersion::clone() const { return ResolvedVersion(zc::heapString(value)); }
 
 ResolvedVersion ResolvedVersion::clone(zc::MemoryResource& resource) const {

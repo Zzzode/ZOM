@@ -23,9 +23,15 @@ namespace zomlang::compiler::identity {
 /// \return NFC text, or none when the input is not valid Unicode UTF-8.
 ZC_NODISCARD zc::Maybe<zc::String> normalizeNfc(zc::StringPtr input);
 
+/// \brief Normalizes valid UTF-8 text into storage owned by `resource`.
+ZC_NODISCARD zc::Maybe<zc::String> normalizeNfc(zc::MemoryResource& resource, zc::StringPtr input);
+
 /// \brief Checks whether valid UTF-8 text is already in Unicode NFC.
 /// \return The normalization state, or none when the input is not valid Unicode UTF-8.
 ZC_NODISCARD zc::Maybe<bool> isNfc(zc::StringPtr input);
+
+/// \brief Checks NFC using temporary storage owned by `resource`.
+ZC_NODISCARD zc::Maybe<bool> isNfc(zc::MemoryResource& resource, zc::StringPtr input);
 
 /// \brief Applies default Unicode full case folding using the pinned UCD release.
 /// \return Folded UTF-8 text, or none when the input is not valid Unicode UTF-8.

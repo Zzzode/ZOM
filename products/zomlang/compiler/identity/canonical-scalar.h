@@ -52,6 +52,12 @@ public:
   /// \brief Admits text only when it is already valid and in Unicode NFC.
   ZC_NODISCARD static zc::Maybe<CanonicalScalar> fromCanonical(zc::StringPtr input);
 
+  /// \brief Admits canonical text and owns the accepted bytes through `resource`.
+  /// \param resource Resource that must outlive the returned scalar.
+  /// \param input Text that must already satisfy this scalar domain and Unicode NFC.
+  ZC_NODISCARD static zc::Maybe<CanonicalScalar> fromCanonical(zc::MemoryResource& resource,
+                                                               zc::StringPtr input);
+
   /// \brief Creates an explicit owned duplicate of this move-only scalar.
   ZC_NODISCARD CanonicalScalar clone() const;
 

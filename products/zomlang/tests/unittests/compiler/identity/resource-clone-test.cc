@@ -121,6 +121,48 @@ ZC_TEST("Canonical identity leaves clone through an explicit memory resource") {
   ZC_EXPECT(resource.currentAllocatedBytes() == 0);
 }
 
+ZC_TEST("Canonical identity admission owns accepted bytes through the explicit resource") {
+  zc::MemoryResource upstream;
+  zc::CountingMemoryResource resource(upstream);
+  {
+    auto package = PackageName::fromCanonical(resource, "package_01"_zc);
+    auto feature = FeatureName::fromCanonical(resource, "simd-v2"_zc);
+    auto version = ResolvedVersion::fromCanonical(resource, "2.3.4-rc.1+build.7"_zc);
+    ZC_REQUIRE(package != zc::none);
+    ZC_REQUIRE(feature != zc::none);
+    ZC_REQUIRE(version != zc::none);
+    ZC_IF_SOME(value, package) { ZC_EXPECT(value.text() == "package_01"_zc); }
+    ZC_IF_SOME(value, feature) { ZC_EXPECT(value.text() == "simd-v2"_zc); }
+    ZC_IF_SOME(value, version) { ZC_EXPECT(value.text() == "2.3.4-rc.1+build.7"_zc); }
+    ZC_EXPECT(resource.currentAllocatedBytes() > 0);
+  }
+  ZC_EXPECT(resource.peakAllocatedBytes() > 0);
+  ZC_EXPECT(resource.currentAllocatedBytes() == 0);
+
+  const size_t peakBeforeInvalid = resource.peakAllocatedBytes();
+  ZC_EXPECT(PackageName::fromCanonical(resource, "Package"_zc) == zc::none);
+  ZC_EXPECT(ResolvedVersion::fromCanonical(resource, "01.0.0"_zc) == zc::none);
+  ZC_EXPECT(resource.currentAllocatedBytes() == 0);
+  ZC_EXPECT(resource.peakAllocatedBytes() == peakBeforeInvalid);
+}
+
+ZC_TEST("Canonical Unicode admission keeps normalization storage in the explicit resource") {
+  zc::MemoryResource upstream;
+  zc::CountingMemoryResource resource(upstream);
+  {
+    auto identifier = SemanticIdentifier::fromCanonical(resource, "caf\xC3\xA9"_zc);
+    ZC_REQUIRE(identifier != zc::none);
+    ZC_IF_SOME(value, identifier) { ZC_EXPECT(value.text() == "caf\xC3\xA9"_zc); }
+    ZC_EXPECT(resource.currentAllocatedBytes() > 0);
+  }
+  ZC_EXPECT(resource.currentAllocatedBytes() == 0);
+
+  ZC_EXPECT(SemanticIdentifier::fromCanonical(resource, "caf\x65\xCC\x81"_zc) == zc::none);
+  ZC_EXPECT(resource.currentAllocatedBytes() == 0);
+  ZC_EXPECT(SemanticIdentifier::fromCanonical(resource, "\xC0\x80"_zc) == zc::none);
+  ZC_EXPECT(resource.currentAllocatedBytes() == 0);
+}
+
 ZC_TEST("Package identity composites clone every source variant through one resource") {
   Sha256Digest trust;
   auto registrySource = CanonicalPackageSource::registry(
