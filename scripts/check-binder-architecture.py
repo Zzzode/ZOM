@@ -22,6 +22,8 @@ METADATA_HEADER = BINDER_DIR / "binding-metadata.h"
 METADATA_SOURCE = BINDER_DIR / "binding-metadata.cc"
 VERIFIER_HEADER = BINDER_DIR / "internal" / "binding-verifier.h"
 VERIFIER_SOURCE = BINDER_DIR / "binding-verifier.cc"
+SCOPE_HEADER = BINDER_DIR / "internal" / "scope-arena.h"
+SCOPE_SOURCE = BINDER_DIR / "scope-arena.cc"
 DIAGNOSTIC_DEFINITIONS = Path("products/zomlang/compiler/diagnostics/diagnostics-binder.def")
 BINDER_CMAKE = BINDER_DIR / "CMakeLists.txt"
 TEST_DIR = Path("products/zomlang/tests/unittests/compiler/binder")
@@ -61,6 +63,8 @@ def production_files() -> dict[Path, str]:
         METADATA_SOURCE,
         VERIFIER_HEADER,
         VERIFIER_SOURCE,
+        SCOPE_HEADER,
+        SCOPE_SOURCE,
         DIAGNOSTIC_DEFINITIONS,
         BINDER_CMAKE,
         TEST_SOURCE,
@@ -237,6 +241,51 @@ def check_internal_binding_authority(files: dict[Path, str], errors: list[str]) 
                 errors.append(f"{path}: binder-internal authority escaped through {symbol}")
 
 
+def check_scope_arena_contract(files: dict[Path, str], errors: list[str]) -> None:
+    header = files.get(SCOPE_HEADER, "")
+    source = files.get(SCOPE_SOURCE, "")
+    internal_include = '"zomlang/compiler/binder/internal/scope-arena.h"'
+    for path, text in files.items():
+        if path in {SCOPE_HEADER, SCOPE_SOURCE, VERIFIER_SOURCE} or TEST_DIR in path.parents:
+            continue
+        if internal_include in text:
+            errors.append(f"{path}: scope arena internal authority escaped")
+    for forbidden in ("zc::HashMap", "ScopeManager", "ast::BindingMetadata", "const_cast"):
+        if forbidden in header or forbidden in source:
+            errors.append(f"{SCOPE_SOURCE}: forbidden scope allocation dependency: {forbidden}")
+    for required in (
+        "ScopeArenaCandidate",
+        "ScopeArenaBuilder",
+        "checkedScopeIndex(uint64_t value)",
+    ):
+        if required not in header:
+            errors.append(f"{SCOPE_HEADER}: incomplete scope arena contract: {required}")
+    for required in (
+        "ast::visitChildNodeIds(",
+        "rootSpan()",
+        "spanFor(",
+        "definitionAt(node)",
+        "implAt(node)",
+        "checkedScopeIndex(nextScopeIndex)",
+        "SyntaxKind::ExternDecl",
+        "case ast::SyntaxKind::LambdaExpression:\n      return ScopeKind::Closure;",
+        "SyntaxKind::ErrorDecl",
+        "SyntaxKind::MarkerImpl",
+        "SyntaxKind::DoWhileStatement",
+        "SyntaxKind::MatchArmStmt",
+        "SyntaxKind::UnsafeBlockExpr",
+    ):
+        if required not in source:
+            errors.append(f"{SCOPE_SOURCE}: incomplete deterministic scope allocation: {required}")
+    for marker in (
+        "ScopeArena.AllocatesStructuralScopesInSchemaPreorder",
+        "ScopeArena.AssignsDefinitionAndImplOwners",
+        "ScopeArena.RejectsScopeIndexOverflow",
+    ):
+        if marker not in files.get(TEST_SOURCE, ""):
+            errors.append(f"{TEST_SOURCE}: missing scope arena evidence: {marker}")
+
+
 def check_wiring(files: dict[Path, str], errors: list[str]) -> None:
     required = (
         (BINDER_CMAKE, "${CMAKE_CURRENT_SOURCE_DIR}/binding-input.cc"),
@@ -244,6 +293,7 @@ def check_wiring(files: dict[Path, str], errors: list[str]) -> None:
         (BINDER_CMAKE, "${CMAKE_CURRENT_SOURCE_DIR}/frozen-definition-inventory.cc"),
         (BINDER_CMAKE, "${CMAKE_CURRENT_SOURCE_DIR}/binding-metadata.cc"),
         (BINDER_CMAKE, "${CMAKE_CURRENT_SOURCE_DIR}/binding-verifier.cc"),
+        (BINDER_CMAKE, "${CMAKE_CURRENT_SOURCE_DIR}/scope-arena.cc"),
         (TEST_CMAKE, 'add_ztest_unit_test("binding-input-test" "binding-input-test.cc"'),
         (TEST_CMAKE, "binder-architecture"),
         (TEST_CMAKE, "check-binder-architecture.py --check"),
@@ -337,6 +387,7 @@ def check(files: dict[Path, str]) -> list[str]:
     check_producer_boundaries(files, errors)
     check_layering(files, errors)
     check_internal_binding_authority(files, errors)
+    check_scope_arena_contract(files, errors)
     check_wiring(files, errors)
     check_invariant_diagnostics(files, errors)
     check_binding_publication_contract(files, errors)
@@ -483,6 +534,30 @@ def self_test(files: dict[Path, str]) -> list[str]:
             Path("products/zomlang/compiler/lexer/escape.cc"),
             "",
             "BindingBuilder::build(input);",
+        ),
+        (
+            "missing scope arena wiring",
+            BINDER_CMAKE,
+            "${CMAKE_CURRENT_SOURCE_DIR}/scope-arena.cc",
+            "${CMAKE_CURRENT_SOURCE_DIR}/missing-scope-arena.cc",
+        ),
+        (
+            "foreign scope arena include",
+            Path("products/zomlang/compiler/checker/escape.cc"),
+            "",
+            '#include "zomlang/compiler/binder/internal/scope-arena.h"',
+        ),
+        (
+            "missing closure scope producer",
+            SCOPE_SOURCE,
+            "case ast::SyntaxKind::LambdaExpression:\n      return ScopeKind::Closure;",
+            "case ast::SyntaxKind::LambdaExpression:\n      return zc::none;",
+        ),
+        (
+            "disconnected scope source validation",
+            SCOPE_SOURCE,
+            "auto span = input.parsedModule().spanFor(tree.node(node).range);",
+            "zc::Maybe<identity::SourceSpan> span;",
         ),
         (
             "diagnostic-free binding builder",

@@ -77,7 +77,7 @@ private:
   identity::ModuleId moduleValue;
   uint32_t indexValue;
   friend class BindingBuilder;
-  friend class BindingVerifier;
+  friend class ScopeArenaBuilder;
 };
 
 struct ModuleScopeOwner final {

@@ -10,6 +10,7 @@ set(BINDER_SRC
   ${CMAKE_CURRENT_SOURCE_DIR}/import-resolver.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/name-resolver.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/parsed-module.cc
+  ${CMAKE_CURRENT_SOURCE_DIR}/scope-arena.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/utilities.cc)
 
 add_library(binder STATIC ${BINDER_SRC})

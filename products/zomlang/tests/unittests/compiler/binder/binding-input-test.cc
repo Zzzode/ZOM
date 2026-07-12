@@ -13,6 +13,7 @@
 #include "zomlang/compiler/basic/zomlang-opts.h"
 #include "zomlang/compiler/binder/definition-inventory.h"
 #include "zomlang/compiler/binder/internal/binding-verifier.h"
+#include "zomlang/compiler/binder/internal/scope-arena.h"
 #include "zomlang/compiler/diagnostics/diagnostic-consumer.h"
 #include "zomlang/compiler/diagnostics/diagnostic-engine.h"
 #include "zomlang/compiler/diagnostics/diagnostic-info.h"
@@ -973,6 +974,83 @@ ZC_TEST("FrozenInventory.RejectsWrongImplIdentity") {
     ZC_EXPECT(kind == FrozenInventoryInvariantKind::InvalidDefinitionIdentity);
   }
   else { ZC_EXPECT(false); }
+}
+
+ZC_TEST("ScopeArena.AllocatesStructuralScopesInSchemaPreorder") {
+  ParsedSource sourceFixture(
+      "module root;\n"
+      "fun run() {\n"
+      "  while (true) {}\n"
+      "  for (;;) {}\n"
+      "  do {} while (true);\n"
+      "  match (true) { when true => {} }\n"
+      "  unsafe {};\n"
+      "}\n"_zc);
+  FrozenFixture fixture(sourceFixture, true);
+  auto inputResult = verify(fixture);
+  ZC_REQUIRE(inputResult.is<VerifiedBindingInput>());
+  auto arenaResult = ScopeArenaBuilder::build(inputResult.get<VerifiedBindingInput>());
+  ZC_REQUIRE(arenaResult.is<ScopeArenaCandidate>());
+  const auto& arena = arenaResult.get<ScopeArenaCandidate>();
+
+  ZC_REQUIRE(arena.nodeScopes.size() == inputResult.get<VerifiedBindingInput>().tree().nodeCount());
+  ZC_REQUIRE(arena.scopes.size() == 14);
+  const ScopeKind expectedKinds[] = {
+      ScopeKind::Module,      ScopeKind::Function, ScopeKind::Block,    ScopeKind::Loop,
+      ScopeKind::Block,       ScopeKind::Loop,     ScopeKind::Block,    ScopeKind::Loop,
+      ScopeKind::Block,       ScopeKind::Match,    ScopeKind::MatchArm, ScopeKind::Block,
+      ScopeKind::UnsafeBlock, ScopeKind::Block,
+  };
+  const uint32_t expectedParents[] = {0, 0, 1, 2, 3, 2, 5, 2, 7, 2, 9, 10, 2, 12};
+  for (size_t index = 0; index < arena.scopes.size(); ++index) {
+    ZC_EXPECT(arena.scopes[index].id.index() == index);
+    ZC_EXPECT(arena.scopes[index].kind == expectedKinds[index]);
+    if (index == 0) {
+      ZC_EXPECT(arena.scopes[index].parent == zc::none);
+      ZC_EXPECT(arena.scopes[index].owner.value().is<ModuleScopeOwner>());
+    } else {
+      ZC_REQUIRE(arena.scopes[index].parent != zc::none);
+      ZC_IF_SOME(parent, arena.scopes[index].parent) {
+        ZC_EXPECT(parent.index() == expectedParents[index]);
+        ZC_EXPECT(arena.scopes[parent.index()].source.byteStart() <=
+                  arena.scopes[index].source.byteStart());
+        ZC_EXPECT(arena.scopes[index].source.byteEnd() <=
+                  arena.scopes[parent.index()].source.byteEnd());
+      }
+      ZC_EXPECT(arena.scopes[index].owner.value().is<DefinitionScopeOwner>());
+    }
+  }
+  for (size_t index = 1; index < arena.nodeScopes.size(); ++index) {
+    ZC_EXPECT(arena.nodeScopes[index - 1].node.value < arena.nodeScopes[index].node.value);
+  }
+}
+
+ZC_TEST("ScopeArena.AssignsDefinitionAndImplOwners") {
+  ParsedSource typeSource("module root;\nclass Box {}\n"_zc);
+  FrozenFixture typeFixture(typeSource, true, true);
+  auto typeInput = verify(typeFixture);
+  ZC_REQUIRE(typeInput.is<VerifiedBindingInput>());
+  auto typeArena = ScopeArenaBuilder::build(typeInput.get<VerifiedBindingInput>());
+  ZC_REQUIRE(typeArena.is<ScopeArenaCandidate>());
+  ZC_REQUIRE(typeArena.get<ScopeArenaCandidate>().scopes.size() == 2);
+  ZC_EXPECT(typeArena.get<ScopeArenaCandidate>().scopes[1].kind == ScopeKind::TypeBody);
+  ZC_EXPECT(
+      typeArena.get<ScopeArenaCandidate>().scopes[1].owner.value().is<DefinitionScopeOwner>());
+
+  ParsedSource implSource("module root;\nimpl Trait for Target {}\n"_zc);
+  FrozenFixture implFixture(implSource, false, false, ImplRegistration::Exact);
+  auto implInput = verify(implFixture);
+  ZC_REQUIRE(implInput.is<VerifiedBindingInput>());
+  auto implArena = ScopeArenaBuilder::build(implInput.get<VerifiedBindingInput>());
+  ZC_REQUIRE(implArena.is<ScopeArenaCandidate>());
+  ZC_REQUIRE(implArena.get<ScopeArenaCandidate>().scopes.size() == 2);
+  ZC_EXPECT(implArena.get<ScopeArenaCandidate>().scopes[1].kind == ScopeKind::ImplBody);
+  ZC_EXPECT(implArena.get<ScopeArenaCandidate>().scopes[1].owner.value().is<ImplScopeOwner>());
+}
+
+ZC_TEST("ScopeArena.RejectsScopeIndexOverflow") {
+  ZC_EXPECT(checkedScopeIndex(UINT32_MAX) == UINT32_MAX);
+  ZC_EXPECT(checkedScopeIndex(uint64_t(UINT32_MAX) + 1) == zc::none);
 }
 
 ZC_TEST("ModuleGraph.ClassifiesUnresolvedSyntaxRequesterAndRevisionFailures") {
