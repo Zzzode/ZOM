@@ -39,14 +39,28 @@ struct DefinitionInventory::Impl final {
 
   void addDeclared(ast::NodeId node, identity::DefinitionKind kind, ast::IdentId name) {
     const auto& syntax = tree->node(node);
-    definitions.add(DefinitionInventoryEntry{node, currentModule, kind,
-                                             InventoryDefinitionNameKind::Declared, name, zc::none,
-                                             syntax.range, cloneParents(parents.asPtr())});
+    definitions.add(DefinitionInventoryEntry{node, DefinitionSite::declaration(node), currentModule,
+                                             kind, InventoryDefinitionNameKind::Declared, name,
+                                             zc::none, syntax.range,
+                                             cloneParents(parents.asPtr())});
+  }
+
+  void addPatternBinding(ast::NodeId node, ast::NodeId introducer,
+                         zc::ArrayPtr<const uint32_t> patternPath, identity::DefinitionKind kind,
+                         ast::IdentId name) {
+    const auto& syntax = tree->node(node);
+    zc::Vector<uint32_t> path(patternPath.size());
+    path.addAll(patternPath);
+    definitions.add(
+        DefinitionInventoryEntry{node, DefinitionSite::pattern(introducer, zc::mv(path)),
+                                 currentModule, kind, InventoryDefinitionNameKind::Declared, name,
+                                 zc::none, syntax.range, cloneParents(parents.asPtr())});
   }
 
   void addAnonymous(ast::NodeId node, identity::AnonymousDefinitionRole role) {
     const auto& syntax = tree->node(node);
-    definitions.add(DefinitionInventoryEntry{node, currentModule, identity::DefinitionKind::Closure,
+    definitions.add(DefinitionInventoryEntry{node, DefinitionSite::declaration(node), currentModule,
+                                             identity::DefinitionKind::Closure,
                                              InventoryDefinitionNameKind::Anonymous, ast::IdentId(),
                                              zc::Maybe<identity::AnonymousDefinitionRole>(role),
                                              syntax.range, cloneParents(parents.asPtr())});
@@ -74,44 +88,108 @@ struct DefinitionInventory::Impl final {
     parents.removeLast();
   }
 
-  void collectPatternBindings(ast::NodeId node, identity::DefinitionKind kind) {
+  void collectPatternBindings(ast::NodeId node, ast::NodeId introducer, zc::Vector<uint32_t>& path,
+                              identity::DefinitionKind kind) {
     if (!tree->contains(node)) { return; }
     const auto& syntax = tree->node(node);
     switch (syntax.kind) {
       case ast::SyntaxKind::RestPattern: {
         ast::IdentId name(syntax.payload.words[ast::kRestPatternBindingWord]);
-        if (name) { addDeclared(node, kind, name); }
+        if (name) { addPatternBinding(node, introducer, path.asPtr(), kind, name); }
         return;
       }
       case ast::SyntaxKind::BindingPattern: {
-        addDeclared(node, kind, ast::IdentId(syntax.payload.words[ast::kBindingPatternNameWord]));
-        collectPatternBindings(ast::NodeId(syntax.payload.words[ast::kBindingPatternSubWord]),
-                               kind);
+        addPatternBinding(node, introducer, path.asPtr(), kind,
+                          ast::IdentId(syntax.payload.words[ast::kBindingPatternNameWord]));
+        const ast::NodeId sub(syntax.payload.words[ast::kBindingPatternSubWord]);
+        if (tree->contains(sub)) {
+          path.add(3);
+          collectPatternBindings(sub, introducer, path, kind);
+          path.removeLast();
+        }
         return;
       }
       case ast::SyntaxKind::IdentifierPattern:
-        addDeclared(node, kind,
-                    ast::IdentId(syntax.payload.words[ast::kIdentifierPatternNameWord]));
+        addPatternBinding(node, introducer, path.asPtr(), kind,
+                          ast::IdentId(syntax.payload.words[ast::kIdentifierPatternNameWord]));
         return;
       case ast::SyntaxKind::PatternProperty: {
         const bool shortForm = syntax.payload.words[ast::kPatternPropertyShortFormWord] != 0;
         if (shortForm) {
-          addDeclared(node, kind,
-                      ast::IdentId(syntax.payload.words[ast::kPatternPropertyNameWord]));
+          addPatternBinding(node, introducer, path.asPtr(), kind,
+                            ast::IdentId(syntax.payload.words[ast::kPatternPropertyNameWord]));
         } else {
+          path.add(2);
           collectPatternBindings(ast::NodeId(syntax.payload.words[ast::kPatternPropertyPatWord]),
-                                 kind);
+                                 introducer, path, kind);
+          path.removeLast();
         }
         return;
       }
-      case ast::SyntaxKind::TuplePattern:
-      case ast::SyntaxKind::StructPattern:
-      case ast::SyntaxKind::ArrayPattern:
-      case ast::SyntaxKind::EnumPattern:
-        ast::visitChildNodeIds(*tree, syntax, [this, kind](ast::NodeId child) {
-          collectPatternBindings(child, kind);
-        });
+      case ast::SyntaxKind::TuplePattern: {
+        ast::NodeList elements{syntax.payload.words[ast::kTuplePatternPatsFirstWord],
+                               syntax.payload.words[ast::kTuplePatternPatsSizeWord]};
+        uint32_t index = 0;
+        for (ast::NodeId child : tree->list(elements)) {
+          path.add(0);
+          path.add(index++);
+          collectPatternBindings(child, introducer, path, kind);
+          path.removeLast();
+          path.removeLast();
+        }
         return;
+      }
+      case ast::SyntaxKind::StructPattern: {
+        ast::NodeList fields{syntax.payload.words[ast::kStructPatternFieldsFirstWord],
+                             syntax.payload.words[ast::kStructPatternFieldsSizeWord]};
+        uint32_t index = 0;
+        for (ast::NodeId child : tree->list(fields)) {
+          path.add(1);
+          path.add(index++);
+          collectPatternBindings(child, introducer, path, kind);
+          path.removeLast();
+          path.removeLast();
+        }
+        const ast::NodeId rest(syntax.payload.words[ast::kStructPatternRestWord]);
+        if (tree->contains(rest)) {
+          path.add(2);
+          collectPatternBindings(rest, introducer, path, kind);
+          path.removeLast();
+        }
+        return;
+      }
+      case ast::SyntaxKind::ArrayPattern: {
+        ast::NodeList elements{syntax.payload.words[ast::kArrayPatternPatsFirstWord],
+                               syntax.payload.words[ast::kArrayPatternPatsSizeWord]};
+        uint32_t index = 0;
+        for (ast::NodeId child : tree->list(elements)) {
+          path.add(0);
+          path.add(index++);
+          collectPatternBindings(child, introducer, path, kind);
+          path.removeLast();
+          path.removeLast();
+        }
+        const ast::NodeId rest(syntax.payload.words[ast::kArrayPatternRestWord]);
+        if (tree->contains(rest)) {
+          path.add(1);
+          collectPatternBindings(rest, introducer, path, kind);
+          path.removeLast();
+        }
+        return;
+      }
+      case ast::SyntaxKind::EnumPattern: {
+        ast::NodeList arguments{syntax.payload.words[ast::kEnumPatternArgsFirstWord],
+                                syntax.payload.words[ast::kEnumPatternArgsSizeWord]};
+        uint32_t index = 0;
+        for (ast::NodeId child : tree->list(arguments)) {
+          path.add(1);
+          path.add(index++);
+          collectPatternBindings(child, introducer, path, kind);
+          path.removeLast();
+          path.removeLast();
+        }
+        return;
+      }
       default:
         return;
     }
@@ -135,8 +213,10 @@ struct DefinitionInventory::Impl final {
                                 list.payload.words[ast::kVariableDeclaratorListDeclsSizeWord]};
       for (ast::NodeId declarator : tree->list(declarators)) {
         const auto& declaration = tree->node(declarator);
+        zc::Vector<uint32_t> path;
         collectPatternBindings(
-            ast::NodeId(declaration.payload.words[ast::kVariableDeclaratorPatternWord]), kind);
+            ast::NodeId(declaration.payload.words[ast::kVariableDeclaratorPatternWord]), declarator,
+            path, kind);
       }
     }
     visitChildren(node, moduleScope);
@@ -320,16 +400,20 @@ struct DefinitionInventory::Impl final {
       case ast::SyntaxKind::LetStmt:
         visitLet(node, moduleScope);
         return;
-      case ast::SyntaxKind::ForInStatement:
+      case ast::SyntaxKind::ForInStatement: {
+        zc::Vector<uint32_t> path;
         collectPatternBindings(ast::NodeId(syntax.payload.words[ast::kForInStatementBindingWord]),
-                               identity::DefinitionKind::PatternBinding);
+                               node, path, identity::DefinitionKind::PatternBinding);
         visitChildren(node, false);
         return;
-      case ast::SyntaxKind::MatchArmStmt:
+      }
+      case ast::SyntaxKind::MatchArmStmt: {
+        zc::Vector<uint32_t> path;
         collectPatternBindings(ast::NodeId(syntax.payload.words[ast::kMatchArmStmtPatternWord]),
-                               identity::DefinitionKind::PatternBinding);
+                               node, path, identity::DefinitionKind::PatternBinding);
         visitChildren(node, false);
         return;
+      }
       case ast::SyntaxKind::FunctionExpression:
         visitClosure(node, identity::AnonymousDefinitionRole::FunctionExpression);
         return;
@@ -389,8 +473,8 @@ DefinitionInventory DefinitionInventory::clone() const {
   }
   for (const auto& definition : impl->definitions) {
     result.impl->definitions.add(DefinitionInventoryEntry{
-        definition.node, definition.moduleNode, definition.kind, definition.nameKind,
-        definition.declaredName, definition.anonymousRole, definition.source,
+        definition.node, definition.site.clone(), definition.moduleNode, definition.kind,
+        definition.nameKind, definition.declaredName, definition.anonymousRole, definition.source,
         cloneParents(definition.parentPath.asPtr())});
   }
   for (const auto& implementation : impl->impls) {

@@ -164,13 +164,15 @@ bool allRegistriesFrozen(const identity::SemanticIdentityRegistrySet& registries
 
 }  // namespace
 
-FrozenDefinitionEntry::FrozenDefinitionEntry(ast::NodeId node, identity::DefId definition,
+FrozenDefinitionEntry::FrozenDefinitionEntry(ast::NodeId node, DefinitionSite&& site,
+                                             identity::DefId definition,
                                              identity::DefinitionKey&& key,
                                              identity::DefinitionKind kind,
                                              identity::DefinitionNameKey&& name,
                                              zc::Maybe<identity::SemanticIdentifier>&& bindingName,
                                              identity::SourceSpan&& source) noexcept
     : node(node),
+      site(zc::mv(site)),
       definition(definition),
       key(zc::mv(key)),
       kind(kind),
@@ -292,9 +294,9 @@ FrozenDefinitionInventoryResult FrozenDefinitionInventoryVerifier::verifySingleM
           ZC_IF_SOME(keyValue, key) {
             ZC_IF_SOME(nameValue, name) {
               ZC_IF_SOME(spanValue, span) {
-                frozen.add(FrozenDefinitionEntry(entry.node, definitionValue, keyValue.clone(),
-                                                 entry.kind, zc::mv(nameValue), zc::mv(bindingName),
-                                                 zc::mv(spanValue)));
+                frozen.add(FrozenDefinitionEntry(entry.node, entry.site.clone(), definitionValue,
+                                                 keyValue.clone(), entry.kind, zc::mv(nameValue),
+                                                 zc::mv(bindingName), zc::mv(spanValue)));
               }
             }
           }

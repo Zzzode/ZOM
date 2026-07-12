@@ -11,6 +11,7 @@
 #include "zc/core/one-of.h"
 #include "zc/core/vector.h"
 #include "zomlang/compiler/ast/tree.h"
+#include "zomlang/compiler/binder/definition-site.h"
 #include "zomlang/compiler/identity/canonical-scalar.h"
 #include "zomlang/compiler/identity/definition-key.h"
 #include "zomlang/compiler/identity/source-snapshot.h"
@@ -180,25 +181,6 @@ struct ScopeRecord final {
 ZC_NODISCARD zc::Array<uint8_t> frameBindingAllocationDump(
     zc::ArrayPtr<const zc::ArrayPtr<const uint8_t>> scopeRecords,
     zc::ArrayPtr<const zc::ArrayPtr<const uint8_t>> labelRecords);
-
-struct DeclarationDefinitionSite final {
-  ast::NodeId node;
-};
-struct PatternBindingSite final {
-  ast::NodeId introducer;
-  zc::Vector<uint32_t> patternPath;
-};
-using DefinitionSiteValue = zc::OneOf<DeclarationDefinitionSite, PatternBindingSite>;
-
-class DefinitionSite final {
-public:
-  ZC_NODISCARD static DefinitionSite declaration(ast::NodeId node);
-  ZC_NODISCARD const DefinitionSiteValue& value() const noexcept;
-
-private:
-  explicit DefinitionSite(DefinitionSiteValue&& value) noexcept;
-  DefinitionSiteValue valueValue;
-};
 
 struct DefinitionFact final {
   DefinitionFact(identity::DefId identity, DefinitionSite&& site, identity::DefinitionKind kind,

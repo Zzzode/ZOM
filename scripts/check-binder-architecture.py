@@ -18,6 +18,8 @@ PARSED_HEADER = BINDER_DIR / "parsed-module.h"
 PARSED_SOURCE = BINDER_DIR / "parsed-module.cc"
 INVENTORY_HEADER = BINDER_DIR / "frozen-definition-inventory.h"
 INVENTORY_SOURCE = BINDER_DIR / "frozen-definition-inventory.cc"
+SITE_HEADER = BINDER_DIR / "definition-site.h"
+SITE_SOURCE = BINDER_DIR / "definition-site.cc"
 METADATA_HEADER = BINDER_DIR / "binding-metadata.h"
 METADATA_SOURCE = BINDER_DIR / "binding-metadata.cc"
 VERIFIER_HEADER = BINDER_DIR / "internal" / "binding-verifier.h"
@@ -59,6 +61,8 @@ def production_files() -> dict[Path, str]:
         PARSED_SOURCE,
         INVENTORY_HEADER,
         INVENTORY_SOURCE,
+        SITE_HEADER,
+        SITE_SOURCE,
         METADATA_HEADER,
         METADATA_SOURCE,
         VERIFIER_HEADER,
@@ -174,6 +178,38 @@ def check_frozen_impl_inventory_contract(files: dict[Path, str], errors: list[st
             errors.append(f"{INVENTORY_SOURCE}: frozen impl authority is disconnected: {required}")
     if "UnsupportedImplInventory" in header or "UnsupportedImplInventory" in source:
         errors.append(f"{INVENTORY_HEADER}: impl inventory compatibility rejection is forbidden")
+
+
+def check_definition_site_contract(files: dict[Path, str], errors: list[str]) -> None:
+    site_header = files.get(SITE_HEADER, "")
+    inventory_header_path = BINDER_DIR / "definition-inventory.h"
+    inventory_source_path = BINDER_DIR / "definition-inventory.cc"
+    inventory_header = files.get(inventory_header_path, "")
+    inventory_source = files.get(inventory_source_path, "")
+    frozen_header = files.get(INVENTORY_HEADER, "")
+    frozen_source = files.get(INVENTORY_SOURCE, "")
+    for required in (
+        "struct PatternBindingSite final",
+        "static DefinitionSite pattern(ast::NodeId introducer,",
+        "DefinitionSite clone() const;",
+    ):
+        if required not in site_header:
+            errors.append(f"{SITE_HEADER}: incomplete definition-site provenance: {required}")
+    for path, text in ((inventory_header_path, inventory_header),
+                       (INVENTORY_HEADER, frozen_header)):
+        if "DefinitionSite site;" not in text:
+            errors.append(f"{path}: definition inventory drops exact DefinitionSite")
+    for required in (
+        "addPatternBinding(",
+        "DefinitionSite::pattern(introducer, zc::mv(path))",
+        "ast::kVariableDeclaratorPatternWord]), declarator,",
+        "ast::kMatchArmStmtPatternWord]",
+        "ast::kForInStatementBindingWord]",
+    ):
+        if required not in inventory_source:
+            errors.append(f"{inventory_source_path}: pattern site is incomplete: {required}")
+    if "entry.node, entry.site.clone(), definitionValue" not in frozen_source:
+        errors.append(f"{INVENTORY_SOURCE}: frozen inventory drops DefinitionSite provenance")
 
 
 def check_private_binding_candidate(files: dict[Path, str], errors: list[str]) -> None:
@@ -309,6 +345,7 @@ def check_wiring(files: dict[Path, str], errors: list[str]) -> None:
         (BINDER_CMAKE, "${CMAKE_CURRENT_SOURCE_DIR}/binding-input.cc"),
         (BINDER_CMAKE, "${CMAKE_CURRENT_SOURCE_DIR}/parsed-module.cc"),
         (BINDER_CMAKE, "${CMAKE_CURRENT_SOURCE_DIR}/frozen-definition-inventory.cc"),
+        (BINDER_CMAKE, "${CMAKE_CURRENT_SOURCE_DIR}/definition-site.cc"),
         (BINDER_CMAKE, "${CMAKE_CURRENT_SOURCE_DIR}/binding-metadata.cc"),
         (BINDER_CMAKE, "${CMAKE_CURRENT_SOURCE_DIR}/binding-verifier.cc"),
         (BINDER_CMAKE, "${CMAKE_CURRENT_SOURCE_DIR}/scope-arena.cc"),
@@ -401,6 +438,7 @@ def check(files: dict[Path, str]) -> list[str]:
     check_unique_construction(files, errors)
     check_verified_input_surface(files, errors)
     check_frozen_impl_inventory_contract(files, errors)
+    check_definition_site_contract(files, errors)
     check_private_binding_candidate(files, errors)
     check_producer_boundaries(files, errors)
     check_layering(files, errors)
@@ -468,6 +506,24 @@ def self_test(files: dict[Path, str]) -> list[str]:
             INVENTORY_HEADER,
             "InvalidDefinitionIdentity\n};",
             "InvalidDefinitionIdentity,\n  UnsupportedImplInventory\n};",
+        ),
+        (
+            "missing pattern site factory",
+            SITE_HEADER,
+            "static DefinitionSite pattern(ast::NodeId introducer,",
+            "static DefinitionSite missingPattern(ast::NodeId introducer,",
+        ),
+        (
+            "declaration-only pattern inventory",
+            BINDER_DIR / "definition-inventory.cc",
+            "DefinitionSite::pattern(introducer, zc::mv(path))",
+            "DefinitionSite::declaration(node)",
+        ),
+        (
+            "dropped frozen definition site",
+            INVENTORY_SOURCE,
+            "entry.node, entry.site.clone(), definitionValue",
+            "entry.node, DefinitionSite::declaration(entry.node), definitionValue",
         ),
         (
             "foreign parser admission",

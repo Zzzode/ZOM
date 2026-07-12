@@ -11,6 +11,7 @@
 #include "zc/core/one-of.h"
 #include "zomlang/compiler/ast/node-id.h"
 #include "zomlang/compiler/binder/definition-identity-map.h"
+#include "zomlang/compiler/binder/definition-site.h"
 #include "zomlang/compiler/binder/parsed-module.h"
 #include "zomlang/compiler/identity/canonical-scalar.h"
 #include "zomlang/compiler/identity/definition-key.h"
@@ -31,8 +32,9 @@ struct FrozenInventoryInvariantFact final {
 
 /// \brief One declaration site paired with its frozen semantic identity.
 struct FrozenDefinitionEntry final {
-  FrozenDefinitionEntry(ast::NodeId node, identity::DefId definition, identity::DefinitionKey&& key,
-                        identity::DefinitionKind kind, identity::DefinitionNameKey&& name,
+  FrozenDefinitionEntry(ast::NodeId node, DefinitionSite&& site, identity::DefId definition,
+                        identity::DefinitionKey&& key, identity::DefinitionKind kind,
+                        identity::DefinitionNameKey&& name,
                         zc::Maybe<identity::SemanticIdentifier>&& bindingName,
                         identity::SourceSpan&& source) noexcept;
   FrozenDefinitionEntry(FrozenDefinitionEntry&&) noexcept = default;
@@ -40,6 +42,7 @@ struct FrozenDefinitionEntry final {
   ZC_DISALLOW_COPY(FrozenDefinitionEntry);
 
   ast::NodeId node;
+  DefinitionSite site;
   identity::DefId definition;
   identity::DefinitionKey key;
   identity::DefinitionKind kind;

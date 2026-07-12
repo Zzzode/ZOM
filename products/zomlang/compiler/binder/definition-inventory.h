@@ -20,6 +20,7 @@
 #include "zc/core/vector.h"
 #include "zomlang/compiler/ast/generated/node-payload.h"
 #include "zomlang/compiler/ast/tree.h"
+#include "zomlang/compiler/binder/definition-site.h"
 #include "zomlang/compiler/identity/definition-key.h"
 
 namespace zomlang::compiler::binder {
@@ -37,6 +38,7 @@ enum class InventoryDefinitionNameKind : uint8_t { Declared = 0x01, Anonymous = 
 /// \brief Prebinding description of one semantic definition producer.
 struct DefinitionInventoryEntry final {
   ast::NodeId node;
+  DefinitionSite site;
   ast::NodeId moduleNode;
   identity::DefinitionKind kind;
   InventoryDefinitionNameKind nameKind;

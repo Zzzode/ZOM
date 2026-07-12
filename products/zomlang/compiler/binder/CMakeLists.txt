@@ -6,6 +6,7 @@ set(BINDER_SRC
   ${CMAKE_CURRENT_SOURCE_DIR}/decl-collector.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/definition-identity-map.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/definition-inventory.cc
+  ${CMAKE_CURRENT_SOURCE_DIR}/definition-site.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/frozen-definition-inventory.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/import-resolver.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/name-resolver.cc

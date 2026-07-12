@@ -137,12 +137,6 @@ zc::Array<uint8_t> frameBindingAllocationDump(
   return bytes.releaseAsArray();
 }
 
-DefinitionSite::DefinitionSite(DefinitionSiteValue&& value) noexcept : valueValue(zc::mv(value)) {}
-DefinitionSite DefinitionSite::declaration(ast::NodeId node) {
-  return DefinitionSite(DefinitionSiteValue(DeclarationDefinitionSite{node}));
-}
-const DefinitionSiteValue& DefinitionSite::value() const noexcept { return valueValue; }
-
 DefinitionFact::DefinitionFact(identity::DefId identity, DefinitionSite&& site,
                                identity::DefinitionKind kind, identity::DefinitionNameKey&& name,
                                Namespace nameSpace, ScopeId declaringScope,
