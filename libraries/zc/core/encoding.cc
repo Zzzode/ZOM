@@ -41,8 +41,12 @@ inline void addChar32(Vector<char16_t>& vec, char32_t u) {
 inline void addChar32(Vector<char32_t>& vec, char32_t u) { vec.add(u); }
 
 template <typename T>
-EncodingResult<Array<T>> encodeUtf(ArrayPtr<const char> text, bool nulTerminate) {
-  Vector<T> result(text.size() + nulTerminate);
+EncodingResult<Array<T>> encodeUtf(Maybe<MemoryResource&> resource, ArrayPtr<const char> text,
+                                   bool nulTerminate) {
+  Vector<T> result = [&] {
+    ZC_IF_SOME(value, resource) { return Vector<T>(value, text.size() + nulTerminate); }
+    return Vector<T>(text.size() + nulTerminate);
+  }();
   bool hadErrors = false;
 
   size_t i = 0;
@@ -140,11 +144,16 @@ EncodingResult<Array<T>> encodeUtf(ArrayPtr<const char> text, bool nulTerminate)
 }  // namespace
 
 EncodingResult<Array<char16_t>> encodeUtf16(ArrayPtr<const char> text, bool nulTerminate) {
-  return encodeUtf<char16_t>(text, nulTerminate);
+  return encodeUtf<char16_t>(none, text, nulTerminate);
 }
 
 EncodingResult<Array<char32_t>> encodeUtf32(ArrayPtr<const char> text, bool nulTerminate) {
-  return encodeUtf<char32_t>(text, nulTerminate);
+  return encodeUtf<char32_t>(none, text, nulTerminate);
+}
+
+EncodingResult<Array<char32_t>> encodeUtf32(MemoryResource& resource, ArrayPtr<const char> text,
+                                            bool nulTerminate) {
+  return encodeUtf<char32_t>(resource, text, nulTerminate);
 }
 
 EncodingResult<String> decodeUtf16(ArrayPtr<const char16_t> utf16) {
@@ -192,8 +201,14 @@ EncodingResult<String> decodeUtf16(ArrayPtr<const char16_t> utf16) {
   return {String(result.releaseAsArray()), hadErrors};
 }
 
-EncodingResult<String> decodeUtf32(ArrayPtr<const char32_t> utf16) {
-  Vector<char> result(utf16.size() + 1);
+namespace {
+
+EncodingResult<String> decodeUtf32Impl(Maybe<MemoryResource&> resource,
+                                       ArrayPtr<const char32_t> utf16) {
+  Vector<char> result = [&] {
+    ZC_IF_SOME(value, resource) { return Vector<char>(value, utf16.size() + 1); }
+    return Vector<char>(utf16.size() + 1);
+  }();
   bool hadErrors = false;
 
   size_t i = 0;
@@ -231,6 +246,16 @@ EncodingResult<String> decodeUtf32(ArrayPtr<const char32_t> utf16) {
 
   result.add(0);
   return {String(result.releaseAsArray()), hadErrors};
+}
+
+}  // namespace
+
+EncodingResult<String> decodeUtf32(ArrayPtr<const char32_t> utf32) {
+  return decodeUtf32Impl(none, utf32);
+}
+
+EncodingResult<String> decodeUtf32(MemoryResource& resource, ArrayPtr<const char32_t> utf32) {
+  return decodeUtf32Impl(resource, utf32);
 }
 
 namespace {

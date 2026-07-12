@@ -61,6 +61,9 @@ inline auto ZC_STRINGIFY(const EncodingResult<T>& value)
 
 EncodingResult<Array<char16_t>> encodeUtf16(ArrayPtr<const char> text, bool nulTerminate = false);
 EncodingResult<Array<char32_t>> encodeUtf32(ArrayPtr<const char> text, bool nulTerminate = false);
+/// \brief Decode UTF-8 into UTF-32 storage owned by `resource`.
+EncodingResult<Array<char32_t>> encodeUtf32(MemoryResource& resource, ArrayPtr<const char> text,
+                                            bool nulTerminate = false);
 // Convert UTF-8 text (which ZC strings use) to UTF-16 or UTF-32.
 //
 // If `nulTerminate` is true, an extra NUL character will be added to the end of the output.
@@ -74,6 +77,8 @@ EncodingResult<Array<char32_t>> encodeUtf32(ArrayPtr<const char> text, bool nulT
 
 EncodingResult<String> decodeUtf16(ArrayPtr<const char16_t> utf16);
 EncodingResult<String> decodeUtf32(ArrayPtr<const char32_t> utf32);
+/// \brief Encode UTF-32 into UTF-8 storage owned by `resource`.
+EncodingResult<String> decodeUtf32(MemoryResource& resource, ArrayPtr<const char32_t> utf32);
 // Convert UTF-16 or UTF-32 to UTF-8 (which ZC strings use).
 //
 // The input should NOT include a NUL terminator; any NUL characters in the input array will be

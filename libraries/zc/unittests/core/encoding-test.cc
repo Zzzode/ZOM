@@ -152,6 +152,21 @@ ZC_TEST("encode UTF-8 to UTF-32") {
   expectRes(encodeUtf32(u8"😺☁☄🐵"), U"😺☁☄🐵");
 }
 
+ZC_TEST("UTF-32 conversion storage follows an explicit memory resource") {
+  MemoryResource upstream;
+  CountingMemoryResource resource(upstream);
+  {
+    auto decoded = encodeUtf32(resource, "caf\xC3\xA9"_zc);
+    ZC_EXPECT(!decoded.hadErrors);
+    auto encoded = decodeUtf32(resource, decoded.asPtr());
+    ZC_EXPECT(!encoded.hadErrors);
+    ZC_EXPECT(encoded == "caf\xC3\xA9"_zc);
+    ZC_EXPECT(resource.currentAllocatedBytes() > 0);
+  }
+  ZC_EXPECT(resource.peakAllocatedBytes() > 0);
+  ZC_EXPECT(resource.currentAllocatedBytes() == 0);
+}
+
 ZC_TEST("invalid UTF-8 to UTF-32") {
   // Disembodied continuation byte.
   expectRes(encodeUtf32("\x80"), U"\ufffd", true);
