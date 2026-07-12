@@ -306,6 +306,7 @@ landing.
 |---|---|---|
 | Dependency-free root verifier spine | Complete | Commit `05d12af5`; `ModuleGraphVerifier`, private `VerifiedModuleGraphView`, `BindingInputVerifier`, private `VerifiedBindingInput`, focused sanitizer tests, and positive plus adversarial binder architecture gates |
 | Parsed-module and frozen-inventory provenance | Complete | Commits `46839dcd` and `1b863942`; normative `ParsedModuleReceipt` oracle, immutable source promotion, exact single-module identity projection, ten focused sanitizer cases, and thirteen architecture mutations |
+| Dependency-free binding metadata publication | Complete | Commit `1745926f`; immutable `VerifiedBindingMetadata` and `VerifiedExportSurface`, private candidate authority, closed verification results, production allocation and surface codecs, registered invariant diagnostics, emitted `ZOM3001`, twenty focused sanitizer cases, and adversarial architecture mutations |
 | Complete module resolution input | Blocked by RFC 0012 and RFC 0008 | Authoritative package resolution, production semantic-context fingerprint, verified resolution environment, and resolution receipts |
 | Complete binding facts and surfaces | Pending | Frozen definition inventory, imports, exports, aliases, visibility, scopes, labels, captures, immutable metadata, codecs, and verifier negatives |
 | Production binder cutover | Pending | Session integration, no downstream rebinding, deletion of raw binder inputs and binder-owned module resolution, and all acceptance gates |
@@ -358,3 +359,41 @@ This slice establishes trustworthy dependency-free Binder inputs only. It does
 not publish scopes, name bindings, definition facts, export surfaces, imports,
 re-exports, module aliases, or production Binder cutover, and it does not
 unblock the RFC 0008 multi-module graph.
+
+The third slice publishes the accepted metadata boundary without exposing its
+mutable construction authority. `VerifiedBindingInput` now retains the exact
+semantic context, package, crate, module, and semantic-context fingerprint used
+to verify the input. The frozen definition inventory carries the canonical
+definition key, complete semantic name, optional binding name, and source span
+needed to construct binding facts without reopening parser or registry state.
+
+The dependency-free builder accepts only the frozen one-function shapes covered
+by the slice. It publishes module, function, and block scopes, definition facts,
+node-to-scope facts, a module-private visible surface, and closed source failure
+facts. An unresolved identifier emits the registered `ZOM3001` diagnostic before
+verification returns `SourceRejected`; invariant rejection retains priority and
+does not duplicate source diagnostics during verifier reconstruction. Same-source
+spans whose byte end exceeds the verified source snapshot are rejected as
+`InvalidSourceRange` rather than passing source-key-only validation.
+
+The verifier compares the production 3,227-byte allocation dump with SHA-256
+`058bc5e736e3562fb8d85a81c219b4e3c9917935e271c0f9162209289bb7c152` and the
+production export-surface revision
+`1764a287bf612ee8a648563f8f525b36ef5e7de5f8238a8c97194bd99796722b`.
+It rejects foreign context handles, cross-source and same-source out-of-bounds
+spans, missing and additional facts, malformed scope ancestry, stale surfaces,
+and unsupported fact families. `ZOM9922-ZOM9926` are registered and mapped by the
+closed invariant diagnostic adapter; alias-cycle and invalid-emitter producers
+remain part of the pending complete binding-facts slice.
+
+The sanitizer build completed all 222 targets. The focused Binder executable
+passed 20 of 20 cases, and the Binder architecture positive and mutation suites
+passed. The full grammar oracle passed in 590.01 seconds. The first full CTest
+attempt exposed one unrelated socketpair timing failure in the vendored HTTP
+suite; that exact test then passed four consecutive runs. With the already-passed
+grammar and socketpair cases excluded, the remaining matrix passed 1,248 of
+1,248 tests in 385.28 seconds. Format, RFC, lexer architecture, parser coverage,
+AST conformance coverage for 865 corpus inputs, and `git diff --check` also pass.
+This evidence closes only dependency-free metadata publication. Imports,
+re-exports, aliases, labels, control transfers, captures, complete visibility,
+multi-module resolution, and production Binder cutover remain pending.
