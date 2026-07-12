@@ -25,6 +25,8 @@
 
 namespace zomlang::compiler::driver::package {
 
+class ArchiveInput;
+
 struct ZstdInputData final {
   size_t byteCount;
 };
@@ -32,6 +34,7 @@ struct ZstdInputData final {
 struct ZstdInputEnd final {};
 
 using ZstdInputResult = zc::OneOf<ZstdInputData, ZstdInputEnd, MaterializationIssue>;
+using ZstdDecodedInputResult = zc::OneOf<zc::Own<ArchiveInput>, MaterializationIssue>;
 
 /// \brief Pull-based bounded compressed-byte source.
 class ZstdInput {
@@ -63,6 +66,9 @@ public:
 
   /// \brief Decode exactly one frame and reject any trailing compressed bytes.
   ZC_NODISCARD zc::Maybe<MaterializationIssue> decode(ZstdInput& input, ZstdOutput& output);
+
+  /// \brief Opens one pull-based decoded stream for direct archive admission.
+  ZC_NODISCARD ZstdDecodedInputResult openDecodedInput(ZstdInput& input) const;
 
 private:
   struct Impl;

@@ -43,6 +43,7 @@ struct DiagnosticTraits;
 #include "zomlang/compiler/diagnostics/diagnostics-common.def"
 #include "zomlang/compiler/diagnostics/diagnostics-identity.def"
 #include "zomlang/compiler/diagnostics/diagnostics-lowering.def"
+#include "zomlang/compiler/diagnostics/diagnostics-package.def"
 #include "zomlang/compiler/diagnostics/diagnostics-parse.def"
 #undef DIAG
 
@@ -70,6 +71,7 @@ constexpr DiagnosticInfo getDiagnosticInfo(const DiagID id) {
 #include "zomlang/compiler/diagnostics/diagnostics-common.def"
 #include "zomlang/compiler/diagnostics/diagnostics-identity.def"
 #include "zomlang/compiler/diagnostics/diagnostics-lowering.def"
+#include "zomlang/compiler/diagnostics/diagnostics-package.def"
 #include "zomlang/compiler/diagnostics/diagnostics-parse.def"
 
 #undef DIAG

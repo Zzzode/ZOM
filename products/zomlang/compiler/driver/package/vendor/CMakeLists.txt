@@ -1,5 +1,50 @@
 set(ZOM_VENDOR_ZSTD_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/zstd)
 
+add_library(zom_vendor_tomlplusplus INTERFACE)
+target_compile_definitions(zom_vendor_tomlplusplus INTERFACE TOML_EXCEPTIONS=0)
+target_include_directories(
+  zom_vendor_tomlplusplus
+  SYSTEM INTERFACE ${CMAKE_CURRENT_SOURCE_DIR}/tomlplusplus/include)
+
+set(ZOM_VENDOR_ARCHIVE_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/libarchive/libarchive)
+set(ZOM_VENDOR_ARCHIVE_SOURCES
+  ${ZOM_VENDOR_ARCHIVE_ROOT}/archive_acl.c
+  ${ZOM_VENDOR_ARCHIVE_ROOT}/archive_check_magic.c
+  ${ZOM_VENDOR_ARCHIVE_ROOT}/archive_entry.c
+  ${ZOM_VENDOR_ARCHIVE_ROOT}/archive_entry_copy_stat.c
+  ${ZOM_VENDOR_ARCHIVE_ROOT}/archive_entry_link_resolver.c
+  ${ZOM_VENDOR_ARCHIVE_ROOT}/archive_entry_sparse.c
+  ${ZOM_VENDOR_ARCHIVE_ROOT}/archive_entry_stat.c
+  ${ZOM_VENDOR_ARCHIVE_ROOT}/archive_entry_strmode.c
+  ${ZOM_VENDOR_ARCHIVE_ROOT}/archive_entry_xattr.c
+  ${ZOM_VENDOR_ARCHIVE_ROOT}/archive_options.c
+  ${ZOM_VENDOR_ARCHIVE_ROOT}/archive_pack_dev.c
+  ${ZOM_VENDOR_ARCHIVE_ROOT}/archive_pathmatch.c
+  ${ZOM_VENDOR_ARCHIVE_ROOT}/archive_random.c
+  ${ZOM_VENDOR_ARCHIVE_ROOT}/archive_read.c
+  ${ZOM_VENDOR_ARCHIVE_ROOT}/archive_read_support_filter_none.c
+  ${ZOM_VENDOR_ARCHIVE_ROOT}/archive_read_support_format_tar.c
+  ${ZOM_VENDOR_ARCHIVE_ROOT}/archive_string.c
+  ${ZOM_VENDOR_ARCHIVE_ROOT}/archive_string_sprintf.c
+  ${ZOM_VENDOR_ARCHIVE_ROOT}/archive_time.c
+  ${ZOM_VENDOR_ARCHIVE_ROOT}/archive_util.c
+  ${ZOM_VENDOR_ARCHIVE_ROOT}/archive_virtual.c)
+
+add_library(zom_vendor_archive STATIC ${ZOM_VENDOR_ARCHIVE_SOURCES})
+set_target_properties(
+  zom_vendor_archive
+  PROPERTIES C_STANDARD 11
+             C_STANDARD_REQUIRED ON
+             C_EXTENSIONS OFF
+             C_VISIBILITY_PRESET hidden)
+target_compile_definitions(
+  zom_vendor_archive
+  PRIVATE PLATFORM_CONFIG_H="zomlang/compiler/driver/package/libarchive-config.h")
+target_include_directories(
+  zom_vendor_archive
+  PUBLIC ${ZOM_VENDOR_ARCHIVE_ROOT}
+  PRIVATE ${CMAKE_SOURCE_DIR}/products)
+
 set(ZOM_VENDOR_ZSTD_SOURCES
   ${ZOM_VENDOR_ZSTD_ROOT}/lib/common/debug.c
   ${ZOM_VENDOR_ZSTD_ROOT}/lib/common/entropy_common.c
@@ -90,6 +135,11 @@ if(UNIX)
     zom_vendor_sodium
     PRIVATE HAVE_POSIX_MEMALIGN=1 HAVE_PTHREAD=1 HAVE_SYSCONF=1)
   target_link_libraries(zom_vendor_sodium PUBLIC Threads::Threads)
+endif()
+
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  target_compile_definitions(
+    zom_vendor_sodium PRIVATE _GNU_SOURCE=1 _POSIX_C_SOURCE=200809L)
 endif()
 
 if(CMAKE_C_COMPILER_ID MATCHES "Clang|GNU")

@@ -26,8 +26,28 @@ add_subdirectory(conformance)
 
 # Performance Tests - Benchmarks and performance regression tests
 if(ZOM_ENABLE_PERFORMANCE_TESTS)
-  # add_subdirectory(performance)
+  add_subdirectory(performance)
 endif()
+
+find_package(Python3 COMPONENTS Interpreter REQUIRED)
+add_test(
+  NAME package-invocation-cli
+  COMMAND
+    ${Python3_EXECUTABLE}
+    "${CMAKE_CURRENT_SOURCE_DIR}/tools/check-package-invocation.py"
+    --zomc
+    "$<TARGET_FILE:zomc>")
+set_tests_properties(package-invocation-cli
+                     PROPERTIES LABELS "unittest;package;cli" TIMEOUT 30)
+add_test(
+  NAME package-workspace-compile
+  COMMAND
+    ${Python3_EXECUTABLE}
+    "${CMAKE_CURRENT_SOURCE_DIR}/tools/check-package-compile.py"
+    --zomc
+    "$<TARGET_FILE:zomc>")
+set_tests_properties(package-workspace-compile
+                     PROPERTIES LABELS "integration;package;cli" TIMEOUT 60)
 
 # Benchmarks - Frontend micro-benchmarks
 add_subdirectory(benchmarks)

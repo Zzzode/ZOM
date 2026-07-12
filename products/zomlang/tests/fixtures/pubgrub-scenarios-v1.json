@@ -1,0 +1,59 @@
+{
+  "schema": "zom.pubgrub-scenarios.v1",
+  "scenarios": [
+    {
+      "id": "greatest-eligible-release",
+      "root": "app@1.0.0",
+      "requirements": ["math@local:../math ^1.0.0 features=fast"],
+      "available": ["math@1.2.0", "app@1.0.0", "math@1.3.0"],
+      "expected": {
+        "packages": ["app@1.0.0[target]", "math@1.3.0[target,fast]"],
+        "edgeCount": 1,
+        "resolutionSha256": "9dda2d2a7c89b5c37afa721b6dc6772b412bd6b2d2d50e9752261f66a6876896"
+      }
+    },
+    {
+      "id": "no-version-conflict",
+      "root": "app@1.0.0",
+      "requirements": ["math@local:../math >=2.0.0"],
+      "available": ["app@1.0.0", "math@1.3.0"],
+      "expected": {
+        "issue": "NoVersionSatisfiesConstraints",
+        "incompatibilityRecordCount": 3,
+        "incompatibilityGraphSha256": "f9baa53243bb4c42f9700484b2af10593b2e8ea609213d9b01618ba8882d2a35"
+      }
+    },
+    {
+      "id": "backtrack-highest-conflict",
+      "root": "app@1.0.0",
+      "requirements": [
+        "app -> solver ^1.0.0",
+        "solver@1.1.0 -> util >=2.0.0",
+        "solver@1.0.0 -> util ^1.0.0"
+      ],
+      "available": ["solver@1.1.0", "util@1.5.0", "app@1.0.0", "solver@1.0.0"],
+      "expected": {"selected": ["app@1.0.0", "solver@1.0.0", "util@1.5.0"]}
+    },
+    {
+      "id": "skip-yanked-release",
+      "root": "app@1.0.0",
+      "requirements": ["math@local:../math ^1.0.0"],
+      "available": ["app@1.0.0", "math@1.2.0", "math@1.3.0[yanked]"],
+      "expected": {"selected": ["app@1.0.0", "math@1.2.0"]}
+    },
+    {
+      "id": "separate-activation-domains",
+      "root": "app@1.0.0",
+      "requirements": ["target:math features=fast", "build:math features=safe"],
+      "available": ["math@1.0.0", "app@1.0.0"],
+      "expected": {
+        "packages": [
+          "app@1.0.0[target]",
+          "math@1.0.0[target,fast]",
+          "math@1.0.0[build,safe]"
+        ],
+        "edgeCount": 2
+      }
+    }
+  ]
+}

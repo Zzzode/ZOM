@@ -1,5 +1,7 @@
 set(IDENTITY_SRC
   ${CMAKE_CURRENT_SOURCE_DIR}/brand.cc
+  ${CMAKE_CURRENT_SOURCE_DIR}/build-script-key.cc
+  ${CMAKE_CURRENT_SOURCE_DIR}/canonical-decoder.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/canonical-encoder.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/canonical-scalar.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/canonical-url.cc

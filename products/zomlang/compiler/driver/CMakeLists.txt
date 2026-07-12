@@ -13,5 +13,10 @@ add_custom_target(
   VERBATIM)
 
 add_library(driver STATIC ${DRIVER_SRC})
-add_dependencies(driver check-vendored-dependencies zom_vendor_sodium zom_vendor_zstd)
+add_dependencies(
+  driver
+  check-vendored-dependencies
+  zom_vendor_archive
+  zom_vendor_sodium
+  zom_vendor_zstd)
 add_subdirectory(package)

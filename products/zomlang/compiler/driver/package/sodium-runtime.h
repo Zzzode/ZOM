@@ -25,11 +25,15 @@ namespace zomlang::compiler::driver::package {
 class Ed25519PublicKey final {
 public:
   /// \brief Copies exactly 32 public-key bytes.
-  ZC_NODISCARD static zc::Maybe<Ed25519PublicKey> fromBytes(
-      zc::ArrayPtr<const zc::byte> bytes);
+  ZC_NODISCARD static zc::Maybe<Ed25519PublicKey> fromBytes(zc::ArrayPtr<const zc::byte> bytes);
+
+  Ed25519PublicKey(Ed25519PublicKey&&) noexcept = default;
+  Ed25519PublicKey& operator=(Ed25519PublicKey&&) noexcept = default;
+  ZC_DISALLOW_COPY(Ed25519PublicKey);
 
   /// \brief Returns the immutable public-key bytes.
   ZC_NODISCARD zc::ArrayPtr<const zc::byte> bytes() const ZC_LIFETIMEBOUND;
+  ZC_NODISCARD Ed25519PublicKey clone() const;
 
 private:
   explicit Ed25519PublicKey(zc::Array<zc::byte>&& bytes) noexcept;
@@ -41,11 +45,15 @@ private:
 class Ed25519Signature final {
 public:
   /// \brief Copies exactly 64 signature bytes.
-  ZC_NODISCARD static zc::Maybe<Ed25519Signature> fromBytes(
-      zc::ArrayPtr<const zc::byte> bytes);
+  ZC_NODISCARD static zc::Maybe<Ed25519Signature> fromBytes(zc::ArrayPtr<const zc::byte> bytes);
+
+  Ed25519Signature(Ed25519Signature&&) noexcept = default;
+  Ed25519Signature& operator=(Ed25519Signature&&) noexcept = default;
+  ZC_DISALLOW_COPY(Ed25519Signature);
 
   /// \brief Returns the immutable signature bytes.
   ZC_NODISCARD zc::ArrayPtr<const zc::byte> bytes() const ZC_LIFETIMEBOUND;
+  ZC_NODISCARD Ed25519Signature clone() const;
 
 private:
   explicit Ed25519Signature(zc::Array<zc::byte>&& bytes) noexcept;
@@ -64,8 +72,7 @@ public:
   ZC_DISALLOW_COPY(SodiumRuntime);
 
   /// \brief Computes SHA-256 over the exact input bytes.
-  ZC_NODISCARD identity::Sha256Digest hashSha256(
-      zc::ArrayPtr<const zc::byte> input) const;
+  ZC_NODISCARD identity::Sha256Digest hashSha256(zc::ArrayPtr<const zc::byte> input) const;
 
   /// \brief Verifies one detached Ed25519 signature over the exact message bytes.
   ZC_NODISCARD bool verifyEd25519(const Ed25519PublicKey& publicKey,

@@ -1,5 +1,34 @@
 target_sources(
   driver
-  PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/sodium-runtime.cc
+  PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/archive-reader.cc
+          ${CMAKE_CURRENT_SOURCE_DIR}/build-script-plan.cc
+          ${CMAKE_CURRENT_SOURCE_DIR}/build-script-runtime.cc
+          ${CMAKE_CURRENT_SOURCE_DIR}/dependency-manifest.cc
+          ${CMAKE_CURRENT_SOURCE_DIR}/feature-resolver.cc
+          ${CMAKE_CURRENT_SOURCE_DIR}/lockfile.cc
+          ${CMAKE_CURRENT_SOURCE_DIR}/linux-native-sandbox.cc
+          ${CMAKE_CURRENT_SOURCE_DIR}/linux-native-sandbox-platform.cc
+          ${CMAKE_CURRENT_SOURCE_DIR}/linux-sandbox-policy.cc
+          ${CMAKE_CURRENT_SOURCE_DIR}/manifest-model.cc
+          ${CMAKE_CURRENT_SOURCE_DIR}/manifest-parser.cc
+          ${CMAKE_CURRENT_SOURCE_DIR}/package-compilation-request.cc
+          ${CMAKE_CURRENT_SOURCE_DIR}/package-diagnostic.cc
+          ${CMAKE_CURRENT_SOURCE_DIR}/package-resolver.cc
+          ${CMAKE_CURRENT_SOURCE_DIR}/registry-record.cc
+          ${CMAKE_CURRENT_SOURCE_DIR}/semver-constraint.cc
+          ${CMAKE_CURRENT_SOURCE_DIR}/source-archive.cc
+          ${CMAKE_CURRENT_SOURCE_DIR}/source-inventory.cc
+          ${CMAKE_CURRENT_SOURCE_DIR}/source-record.cc
+          ${CMAKE_CURRENT_SOURCE_DIR}/source-snapshot.cc
+          ${CMAKE_CURRENT_SOURCE_DIR}/source-tree.cc
+          ${CMAKE_CURRENT_SOURCE_DIR}/trusted-runtime-manifest.cc
+          ${CMAKE_CURRENT_SOURCE_DIR}/trusted-runtime-elf.cc
+          ${CMAKE_CURRENT_SOURCE_DIR}/sodium-runtime.cc
+          ${CMAKE_CURRENT_SOURCE_DIR}/workspace-normalizer.cc
           ${CMAKE_CURRENT_SOURCE_DIR}/zstd-decoder.cc)
-target_link_libraries(driver PUBLIC zom_vendor_sodium zom_vendor_zstd)
+target_link_libraries(
+  driver
+  PUBLIC zom_vendor_archive
+         zom_vendor_sodium
+         zom_vendor_tomlplusplus
+         zom_vendor_zstd)

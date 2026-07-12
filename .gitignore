@@ -1,5 +1,5 @@
-# Build folders
-build*
+# Root build folders
+/build*/
 
 # Python-related
 __pycache__/

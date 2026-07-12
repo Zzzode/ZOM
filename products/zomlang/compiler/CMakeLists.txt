@@ -29,7 +29,13 @@ add_library(
   $<TARGET_OBJECTS:symbol>
   $<TARGET_OBJECTS:trace>
   $<TARGET_OBJECTS:type>)
-target_link_libraries(frontend PUBLIC zc zom_vendor_sodium zom_vendor_zstd)
+target_link_libraries(
+  frontend
+  PUBLIC zc
+         zom_vendor_archive
+         zom_vendor_sodium
+         zom_vendor_tomlplusplus
+         zom_vendor_zstd)
 
 set_target_include_directories(
   "${INCLUDE_DIRS}"

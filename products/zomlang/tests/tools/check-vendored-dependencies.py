@@ -15,6 +15,11 @@ CMAKE_PATH = VENDOR_ROOT / "CMakeLists.txt"
 EMPTY_SHA256 = hashlib.sha256(b"").hexdigest()
 
 ENABLED_SOURCE_VARIABLES = {
+    "libarchive": (
+        "ZOM_VENDOR_ARCHIVE_SOURCES",
+        "ZOM_VENDOR_ARCHIVE_ROOT",
+        "libarchive",
+    ),
     "libsodium": ("ZOM_VENDOR_SODIUM_SOURCES", "ZOM_VENDOR_SODIUM_ROOT", "libsodium"),
     "zstd": ("ZOM_VENDOR_ZSTD_SOURCES", "ZOM_VENDOR_ZSTD_ROOT", ""),
 }

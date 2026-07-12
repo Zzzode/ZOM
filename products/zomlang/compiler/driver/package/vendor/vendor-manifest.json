@@ -54,7 +54,29 @@
         "libarchive/config_freebsd.h",
         "libarchive/filter_fork.h"
       ],
-      "enabled_sources": [],
+      "enabled_sources": [
+        "libarchive/archive_acl.c",
+        "libarchive/archive_check_magic.c",
+        "libarchive/archive_entry.c",
+        "libarchive/archive_entry_copy_stat.c",
+        "libarchive/archive_entry_link_resolver.c",
+        "libarchive/archive_entry_sparse.c",
+        "libarchive/archive_entry_stat.c",
+        "libarchive/archive_entry_strmode.c",
+        "libarchive/archive_entry_xattr.c",
+        "libarchive/archive_options.c",
+        "libarchive/archive_pack_dev.c",
+        "libarchive/archive_pathmatch.c",
+        "libarchive/archive_random.c",
+        "libarchive/archive_read.c",
+        "libarchive/archive_read_support_filter_none.c",
+        "libarchive/archive_read_support_format_tar.c",
+        "libarchive/archive_string.c",
+        "libarchive/archive_string_sprintf.c",
+        "libarchive/archive_time.c",
+        "libarchive/archive_util.c",
+        "libarchive/archive_virtual.c"
+      ],
       "extracted_content_sha256": "7a49462ec81c6140af24ba814bf767f883037a057d956322eed939850fb036ed",
       "files": [
         {
