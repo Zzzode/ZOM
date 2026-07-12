@@ -116,7 +116,8 @@ test_command=(
   --output-on-failure --verbose
 )
 (
-  printf '%s\n' "${BASHPID}" | "${privileged[@]}" tee \
+  test_process_id=${BASHPID}
+  printf '%s\n' "${test_process_id}" | "${privileged[@]}" tee \
     "${cgroup_parent}/cgroup.procs" >/dev/null
   ZOM_LINUX_SANDBOX_CGROUP_PARENT="${cgroup_parent}" \
     "${test_command[@]}"
