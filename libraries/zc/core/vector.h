@@ -35,12 +35,39 @@ class Vector {
   // move constructor throws, the Vector is left in an inconsistent state.  This is acceptable
   // under ZC exception theory which assumes that exceptions leave things in inconsistent states.
 
-  // TODO(someday): Allow specifying a custom allocator.
-
 public:
   inline Vector() = default;
   inline explicit Vector(size_t capacity) : builder(heapArrayBuilder<T>(capacity)) {}
   inline Vector(Array<T>&& array) : builder(zc::mv(array)) {}
+
+  /// \brief Construct an empty vector whose storage comes from `resource`.
+  /// \param resource Resource that must outlive this vector and any released array.
+  inline explicit Vector(MemoryResource& resource) : resource(resource) {}
+
+  /// \brief Construct a reserved vector whose storage comes from `resource`.
+  /// \param resource Resource that must outlive this vector and any released array.
+  /// \param capacity Initial element capacity. Zero performs no allocation.
+  inline Vector(MemoryResource& resource, size_t capacity)
+      : builder(capacity == 0 ? ArrayBuilder<T>()
+                              : resourceHeapArrayBuilder<T>(resource, capacity)),
+        resource(resource) {}
+
+  /// \brief Adopt an array and use `resource` for every later reallocation.
+  /// \param resource Resource that must outlive this vector and any released array.
+  /// \param array Initial storage whose own disposer remains authoritative until reallocation.
+  inline Vector(MemoryResource& resource, Array<T>&& array)
+      : builder(zc::mv(array)), resource(resource) {}
+
+  inline Vector(Vector&& other) noexcept
+      : builder(zc::mv(other.builder)), resource(other.resource) {}
+  inline Vector& operator=(Vector&& other) {
+    if (this != &other) {
+      builder = zc::mv(other.builder);
+      resource = other.resource;
+    }
+    return *this;
+  }
+  ZC_DISALLOW_COPY(Vector);
 
   inline operator ArrayPtr<T>() ZC_LIFETIMEBOUND { return builder; }
   inline operator ArrayPtr<const T>() const ZC_LIFETIMEBOUND { return builder; }
@@ -120,14 +147,25 @@ public:
 
 private:
   ArrayBuilder<T> builder;
+  Maybe<MemoryResource&> resource;
 
   void grow(size_t minCapacity = 0) {
-    setCapacity(zc::max(minCapacity, capacity() == 0 ? 4 : capacity() * 2));
+    size_t doubledCapacity = 4;
+    if (capacity() != 0) {
+      ZC_IREQUIRE(capacity() <= static_cast<size_t>(zc::maxValue) / 2,
+                  "Vector capacity growth overflow");
+      doubledCapacity = capacity() * 2;
+    }
+    setCapacity(zc::max(minCapacity, doubledCapacity));
   }
   void setCapacity(size_t newSize) {
     if (builder.size() > newSize) { builder.truncate(newSize); }
-    ArrayBuilder<T> newBuilder = heapArrayBuilder<T>(newSize);
-    newBuilder.addAll(zc::mv(builder));
+    ArrayBuilder<T> newBuilder;
+    if (newSize != 0) {
+      ZC_IF_SOME(r, resource) { newBuilder = resourceHeapArrayBuilder<T>(r, newSize); }
+      else { newBuilder = heapArrayBuilder<T>(newSize); }
+    }
+    if (newSize != 0) { newBuilder.addAll(zc::mv(builder)); }
     builder = zc::mv(newBuilder);
   }
 };
