@@ -164,14 +164,15 @@ def check_driver_surface(files: dict[Path, str], errors: list[str]) -> None:
             errors.append(f"{path}: raw session invariant assertion is forbidden")
 
     header_text = strip_cpp_comments_and_literals(files.get(SESSION_HEADER, ""))
-    if len(re.findall(r"\bclass\s+CompilerSession\b", header_text)) != 1:
+    class_surface = re.sub(r"\bfriend\s+class\s+CompilerSession\s*;", "", header_text)
+    if len(re.findall(r"\bclass\s+CompilerSession\b", class_surface)) != 1:
         errors.append(f"{SESSION_HEADER}: must declare exactly one CompilerSession class")
-    if re.search(r"\busing\s+\w+\s*=\s*(?:driver::)?CompilerSession\b", header_text):
+    if re.search(r"\busing\s+\w+\s*=\s*(?:driver::)?CompilerSession\b", class_surface):
         errors.append(f"{SESSION_HEADER}: CompilerSession compatibility alias is forbidden")
-    if re.search(r"\btypedef\b[^;]*\bCompilerSession\b", header_text):
+    if re.search(r"\btypedef\b[^;]*\bCompilerSession\b", class_surface):
         errors.append(f"{SESSION_HEADER}: CompilerSession typedef wrapper is forbidden")
     for match in re.finditer(
-        r"\b(?:class|struct)\s+([A-Za-z_]\w*)[^;{]*\{(.*?)\};", header_text, re.S
+        r"\b(?:class|struct)\s+([A-Za-z_]\w*)[^;{]*\{(.*?)\};", class_surface, re.S
     ):
         if match.group(1) != "CompilerSession" and re.search(
             r"\bCompilerSession\b", match.group(2)
