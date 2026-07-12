@@ -557,8 +557,46 @@ facts. Canonical build plans reject duplicates, dangling predecessors, and
 cycles; `CompilerSession` executes their stable predecessor-first order and
 publishes only an exact plan-key result set. Focused sanitizer tests cover the
 cache, plan, final-result, session, policy, launcher, ELF, and manifest
-boundaries. P7 implementation is complete; P8 identity integration and the P9
-full repository release gates remain open.
+boundaries. P7 implementation is complete.
+
+P8 now rejects every crate, source, module, definition, and impl identity whose
+canonical ancestor is absent from the preceding frozen registry. A finalized
+compilation root cannot retain one package while naming a crate from another
+package. `VerifiedPackageSessionInput` directly replaces the three independent
+request, target, and graph installation APIs: its fallible private-constructor
+boundary verifies the complete request-root membership, canonical host and
+target selections, registry revision, and bidirectional graph-to-snapshot
+coverage before `CompilerSession` can mutate state or freeze package identities.
+The real CLI resolves, verifies, and installs exactly one such move-only input.
+Focused sanitizer and architecture-negative tests cover request/graph,
+target-revision, snapshot/graph, ancestor, moved-from, and duplicate-install
+failures without publishing partial session state.
+
+P8 remains open. The current resolver still publishes the narrower
+`PackageResolution` prototype instead of the accepted `ResolutionOutput`, and
+locked replay still reconstructs activation domains incompletely. Final and
+preparatory dependency crates, crate dependency edges, complete build-script
+closures, and the production semantic-context fingerprint are not yet derived
+from one authoritative resolution output.
+
+P9 now has an executable package architecture gate with nine adversarial
+fixtures, a vendored-dependency mutation self-test, and a Linux-only privileged
+sanitizer CTest registered behind an explicit fail-closed option. The cgroup v2
+runner creates one delegated parent and supplies it to the real production
+launcher; a privileged Linux AArch64 run built the sanitizer target and passed
+the namespace, cgroup, seccomp, pidfd, timerfd, `openat2`, static-PIE, and output
+verification path. The release resolver fixture binds a fixed SHA-256, resolves
+10,000 packages, 40,000 candidate releases, and 50,000 edges, then performs an
+exact zero-solver locked replay with one visit per package and edge. Canonical
+lock-edge validation now uses logarithmic lookup; the release gate completed in
+8.79 seconds with 507,887,616 bytes peak RSS. The full sanitizer matrix passed
+1,241 of 1,241 tests, including the 653.32-second grammar conformance target.
+
+P9 remains open. The resolver performance executable still requires an
+injected peak-live allocation counter in addition to the OS RSS wrapper, and
+the complete checked-in generated-oracle set plus one regeneration gate remain
+to be published. Final release evidence must be rerun after the remaining P8,
+RFC 0008 crate-graph, and RFC 0010 LIR target-publication work.
 
 ## Decision Record
 
