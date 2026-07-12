@@ -254,6 +254,12 @@ zc::Maybe<SemVerBound> cloneBound(const zc::Maybe<SemVerBound>& source) {
   return zc::none;
 }
 
+zc::Maybe<SemVerBound> cloneBound(zc::MemoryResource& resource,
+                                  const zc::Maybe<SemVerBound>& source) {
+  ZC_IF_SOME(value, source) { return value.clone(resource); }
+  return zc::none;
+}
+
 zc::Array<uint8_t> encodeCore(const SemVerCore& core) {
   identity::CanonicalEncoder encoder;
   core.encode(encoder);
@@ -296,6 +302,10 @@ zc::Maybe<SemVerBound> SemVerBound::from(identity::ResolvedVersion&& version, bo
 
 SemVerBound SemVerBound::clone() const { return SemVerBound(versionValue.clone(), inclusiveValue); }
 
+SemVerBound SemVerBound::clone(zc::MemoryResource& resource) const {
+  return SemVerBound(versionValue.clone(resource), inclusiveValue);
+}
+
 zc::StringPtr SemVerBound::version() const noexcept { return versionValue.text(); }
 bool SemVerBound::inclusive() const noexcept { return inclusiveValue; }
 
@@ -315,6 +325,12 @@ SemVerCore SemVerCore::from(const identity::ResolvedVersion& version) {
 SemVerCore SemVerCore::clone() const {
   return SemVerCore(zc::heapString(majorValue), zc::heapString(minorValue),
                     zc::heapString(patchValue));
+}
+
+SemVerCore SemVerCore::clone(zc::MemoryResource& resource) const {
+  return SemVerCore(zc::resourceHeapString(resource, majorValue),
+                    zc::resourceHeapString(resource, minorValue),
+                    zc::resourceHeapString(resource, patchValue));
 }
 
 zc::StringPtr SemVerCore::major() const noexcept { return majorValue; }
@@ -350,6 +366,10 @@ zc::Maybe<SemVerInterval> SemVerInterval::from(zc::Maybe<SemVerBound>&& lower,
 
 SemVerInterval SemVerInterval::clone() const {
   return SemVerInterval(cloneBound(lowerValue), cloneBound(upperValue));
+}
+
+SemVerInterval SemVerInterval::clone(zc::MemoryResource& resource) const {
+  return SemVerInterval(cloneBound(resource, lowerValue), cloneBound(resource, upperValue));
 }
 
 bool SemVerInterval::hasLower() const noexcept { return lowerValue != zc::none; }
@@ -462,6 +482,14 @@ SemVerConstraint SemVerConstraint::clone() const {
   for (const auto& interval : intervalValues) { intervals.add(interval.clone()); }
   zc::Vector<SemVerCore> cores(prereleaseCoreValues.size());
   for (const auto& core : prereleaseCoreValues) { cores.add(core.clone()); }
+  return SemVerConstraint(zc::mv(intervals), zc::mv(cores));
+}
+
+SemVerConstraint SemVerConstraint::clone(zc::MemoryResource& resource) const {
+  zc::Vector<SemVerInterval> intervals(resource, intervalValues.size());
+  for (const auto& interval : intervalValues) { intervals.add(interval.clone(resource)); }
+  zc::Vector<SemVerCore> cores(resource, prereleaseCoreValues.size());
+  for (const auto& core : prereleaseCoreValues) { cores.add(core.clone(resource)); }
   return SemVerConstraint(zc::mv(intervals), zc::mv(cores));
 }
 

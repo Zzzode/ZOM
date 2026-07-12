@@ -40,6 +40,8 @@ public:
   ZC_DISALLOW_COPY(SemVerBound);
 
   ZC_NODISCARD SemVerBound clone() const;
+  /// \brief Clones this bound and all owned storage into `resource`.
+  ZC_NODISCARD SemVerBound clone(zc::MemoryResource& resource) const;
   ZC_NODISCARD zc::StringPtr version() const noexcept;
   ZC_NODISCARD bool inclusive() const noexcept;
   void encode(identity::CanonicalEncoder& encoder) const;
@@ -62,6 +64,8 @@ public:
   ZC_DISALLOW_COPY(SemVerCore);
 
   ZC_NODISCARD SemVerCore clone() const;
+  /// \brief Clones this core and all owned storage into `resource`.
+  ZC_NODISCARD SemVerCore clone(zc::MemoryResource& resource) const;
   ZC_NODISCARD zc::StringPtr major() const noexcept;
   ZC_NODISCARD zc::StringPtr minor() const noexcept;
   ZC_NODISCARD zc::StringPtr patch() const noexcept;
@@ -87,6 +91,8 @@ public:
   ZC_DISALLOW_COPY(SemVerInterval);
 
   ZC_NODISCARD SemVerInterval clone() const;
+  /// \brief Clones this interval and all owned storage into `resource`.
+  ZC_NODISCARD SemVerInterval clone(zc::MemoryResource& resource) const;
   ZC_NODISCARD bool hasLower() const noexcept;
   ZC_NODISCARD bool hasUpper() const noexcept;
   /// \pre `hasLower()` is true.
@@ -116,6 +122,8 @@ public:
   ZC_DISALLOW_COPY(SemVerConstraint);
 
   ZC_NODISCARD SemVerConstraint clone() const;
+  /// \brief Clones this constraint and all owned storage into `resource`.
+  ZC_NODISCARD SemVerConstraint clone(zc::MemoryResource& resource) const;
   ZC_NODISCARD zc::ArrayPtr<const SemVerInterval> intervals() const noexcept;
   ZC_NODISCARD zc::ArrayPtr<const SemVerCore> prereleaseCores() const noexcept;
   ZC_NODISCARD bool allows(const identity::ResolvedVersion& version) const;

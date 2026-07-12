@@ -161,6 +161,8 @@ public:
   ZC_DISALLOW_COPY(PackageManifest);
 
   ZC_NODISCARD PackageManifest clone() const;
+  /// \brief Clones this package record and all owned storage into `resource`.
+  ZC_NODISCARD PackageManifest clone(zc::MemoryResource& resource) const;
   ZC_NODISCARD zc::StringPtr name() const noexcept;
   ZC_NODISCARD zc::StringPtr version() const noexcept;
   ZC_NODISCARD uint32_t editionYear() const noexcept;
@@ -187,6 +189,8 @@ public:
   ZC_DISALLOW_COPY(WorkspaceManifest);
 
   ZC_NODISCARD WorkspaceManifest clone() const;
+  /// \brief Clones this workspace record and all owned storage into `resource`.
+  ZC_NODISCARD WorkspaceManifest clone(zc::MemoryResource& resource) const;
   ZC_NODISCARD zc::ArrayPtr<const identity::CanonicalWorkspaceRelativePath> members()
       const noexcept;
   void encode(identity::CanonicalEncoder& encoder) const;
@@ -243,6 +247,8 @@ public:
   ZC_DISALLOW_COPY(CanonicalTargetManifest);
 
   ZC_NODISCARD CanonicalTargetManifest clone() const;
+  /// \brief Clones this target and all owned storage into `resource`.
+  ZC_NODISCARD CanonicalTargetManifest clone(zc::MemoryResource& resource) const;
   ZC_NODISCARD identity::CrateTargetKind kind() const noexcept;
   ZC_NODISCARD zc::StringPtr name() const noexcept;
   ZC_NODISCARD const identity::CanonicalRelativePath& path() const noexcept;
@@ -305,6 +311,8 @@ public:
   ZC_DISALLOW_COPY(CanonicalBuildScriptManifest);
 
   ZC_NODISCARD CanonicalBuildScriptManifest clone() const;
+  /// \brief Clones this build-script record and all owned storage into `resource`.
+  ZC_NODISCARD CanonicalBuildScriptManifest clone(zc::MemoryResource& resource) const;
   ZC_NODISCARD const CanonicalTargetManifest& target() const noexcept;
   ZC_NODISCARD zc::ArrayPtr<const identity::CanonicalRelativePath> inputs() const noexcept;
   ZC_NODISCARD zc::ArrayPtr<const identity::CanonicalRelativePath> outputs() const noexcept;
@@ -363,6 +371,8 @@ public:
   ZC_DISALLOW_COPY(FeatureEdge);
 
   ZC_NODISCARD FeatureEdge clone() const;
+  /// \brief Clones this edge and all owned storage into `resource`.
+  ZC_NODISCARD FeatureEdge clone(zc::MemoryResource& resource) const;
   ZC_NODISCARD FeatureEdgeKind kind() const noexcept;
   /// \pre `kind() == FeatureEdgeKind::Local`.
   ZC_NODISCARD zc::StringPtr localFeature() const;
@@ -433,6 +443,8 @@ public:
   ZC_DISALLOW_COPY(CanonicalFeatureManifest);
 
   ZC_NODISCARD CanonicalFeatureManifest clone() const;
+  /// \brief Clones this feature and all owned storage into `resource`.
+  ZC_NODISCARD CanonicalFeatureManifest clone(zc::MemoryResource& resource) const;
   ZC_NODISCARD zc::StringPtr name() const noexcept;
   ZC_NODISCARD zc::ArrayPtr<const FeatureEdge> edges() const noexcept;
   void encode(identity::CanonicalEncoder& encoder) const;

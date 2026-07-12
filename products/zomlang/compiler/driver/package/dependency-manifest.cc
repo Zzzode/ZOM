@@ -39,6 +39,12 @@ zc::Maybe<SemVerConstraint> cloneConstraint(const zc::Maybe<SemVerConstraint>& v
   return zc::none;
 }
 
+zc::Maybe<SemVerConstraint> cloneConstraint(zc::MemoryResource& resource,
+                                            const zc::Maybe<SemVerConstraint>& value) {
+  ZC_IF_SOME(admitted, value) { return admitted.clone(resource); }
+  return zc::none;
+}
+
 }  // namespace
 
 VcsSelector::VcsSelector(RevisionVcsSelector&& selector) noexcept : value(zc::mv(selector)) {}
@@ -73,6 +79,19 @@ VcsSelector VcsSelector::clone() const {
   }
   ZC_IREQUIRE(false, "admitted VCS selector must remain valid");
   ZC_UNREACHABLE
+}
+
+VcsSelector VcsSelector::clone(zc::MemoryResource& resource) const {
+  if (value.is<RevisionVcsSelector>()) {
+    const auto& selector = value.get<RevisionVcsSelector>();
+    return VcsSelector(RevisionVcsSelector{selector.revision.clone(resource)});
+  }
+  if (value.is<TagVcsSelector>()) {
+    const auto& selector = value.get<TagVcsSelector>();
+    return VcsSelector(TagVcsSelector{zc::resourceHeapString(resource, selector.tag)});
+  }
+  const auto& selector = value.get<BranchVcsSelector>();
+  return VcsSelector(BranchVcsSelector{zc::resourceHeapString(resource, selector.branch)});
 }
 
 VcsSelectorKind VcsSelector::kind() const noexcept {
@@ -126,6 +145,21 @@ ZC_CASE_ONEOF(source, LocalPathSourceConstraint) { return localPath(source.canon
 ZC_UNREACHABLE
 }
 
+PackageSourceConstraint PackageSourceConstraint::clone(zc::MemoryResource& resource) const {
+  if (value.is<RegistrySourceConstraint>()) {
+    const auto& source = value.get<RegistrySourceConstraint>();
+    return PackageSourceConstraint(RegistrySourceConstraint{source.registry.clone(resource)});
+  }
+  if (value.is<VcsSourceConstraint>()) {
+    const auto& source = value.get<VcsSourceConstraint>();
+    return PackageSourceConstraint(VcsSourceConstraint{source.repository.clone(resource),
+                                                       source.selector.clone(resource),
+                                                       source.subdirectory.clone(resource)});
+  }
+  const auto& source = value.get<LocalPathSourceConstraint>();
+  return PackageSourceConstraint(LocalPathSourceConstraint{source.canonicalPath.clone(resource)});
+}
+
 PackageSourceConstraintKind PackageSourceConstraint::kind() const noexcept {
   if (value.is<RegistrySourceConstraint>()) { return PackageSourceConstraintKind::Registry; }
   if (value.is<VcsSourceConstraint>()) { return PackageSourceConstraintKind::Vcs; }
@@ -177,6 +211,14 @@ DependencyRequirementWithoutOrigin DependencyRequirementWithoutOrigin::clone() c
       aliasValue.clone(), requiredPackageValue.clone(), domainValue, sourceValue.clone(),
       cloneConstraint(versionCheckValue), requestedFeatureValues.clone(), useDefaultFeaturesValue,
       optionalValue);
+}
+
+DependencyRequirementWithoutOrigin DependencyRequirementWithoutOrigin::clone(
+    zc::MemoryResource& resource) const {
+  return DependencyRequirementWithoutOrigin(
+      aliasValue.clone(resource), requiredPackageValue.clone(resource), domainValue,
+      sourceValue.clone(resource), cloneConstraint(resource, versionCheckValue),
+      requestedFeatureValues.clone(resource), useDefaultFeaturesValue, optionalValue);
 }
 
 zc::StringPtr DependencyRequirementWithoutOrigin::alias() const noexcept {

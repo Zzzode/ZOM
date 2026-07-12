@@ -52,6 +52,8 @@ public:
   ZC_DISALLOW_COPY(VcsSelector);
 
   ZC_NODISCARD VcsSelector clone() const;
+  /// \brief Clones this selector and all owned storage into `resource`.
+  ZC_NODISCARD VcsSelector clone(zc::MemoryResource& resource) const;
   ZC_NODISCARD VcsSelectorKind kind() const noexcept;
   void encode(identity::CanonicalEncoder& encoder) const;
 
@@ -94,6 +96,8 @@ public:
   ZC_DISALLOW_COPY(PackageSourceConstraint);
 
   ZC_NODISCARD PackageSourceConstraint clone() const;
+  /// \brief Clones this source constraint and all owned storage into `resource`.
+  ZC_NODISCARD PackageSourceConstraint clone(zc::MemoryResource& resource) const;
   ZC_NODISCARD PackageSourceConstraintKind kind() const noexcept;
   void encode(identity::CanonicalEncoder& encoder) const;
 
@@ -120,6 +124,8 @@ public:
   ZC_DISALLOW_COPY(DependencyRequirementWithoutOrigin);
 
   ZC_NODISCARD DependencyRequirementWithoutOrigin clone() const;
+  /// \brief Clones this requirement and all owned storage into `resource`.
+  ZC_NODISCARD DependencyRequirementWithoutOrigin clone(zc::MemoryResource& resource) const;
   ZC_NODISCARD zc::StringPtr alias() const noexcept;
   ZC_NODISCARD zc::StringPtr requiredPackage() const noexcept;
   ZC_NODISCARD identity::DependencyDomain domain() const noexcept;

@@ -1351,6 +1351,19 @@ zc::Vector<CanonicalFeatureManifest> cloneCanonicalFeatures(
 }
 
 template <typename Value>
+zc::Maybe<Value> cloneOptional(zc::MemoryResource& resource, const zc::Maybe<Value>& source) {
+  ZC_IF_SOME(value, source) { return value.clone(resource); }
+  return zc::none;
+}
+
+template <typename Value>
+zc::Vector<Value> cloneSequence(zc::MemoryResource& resource, zc::ArrayPtr<const Value> source) {
+  zc::Vector<Value> result(resource, source.size());
+  for (const auto& value : source) { result.add(value.clone(resource)); }
+  return result;
+}
+
+template <typename Value>
 void encodeSequence(identity::CanonicalEncoder& encoder, zc::ArrayPtr<const Value> values) {
   encoder.encodeSequenceSize(values.size());
   for (const auto& value : values) { value.encode(encoder); }
@@ -1421,6 +1434,18 @@ CanonicalManifestRecord CanonicalManifestRecord::clone() const {
       cloneCanonicalDependencies(developmentDependencyValues.asPtr()),
       cloneCanonicalDependencies(buildDependencyValues.asPtr()),
       cloneCanonicalFeatures(featureValues.asPtr()));
+}
+
+CanonicalManifestRecord CanonicalManifestRecord::clone(zc::MemoryResource& resource) const {
+  return CanonicalManifestRecord(
+      cloneOptional(resource, packageValue), cloneOptional(resource, workspaceValue),
+      cloneOptional(resource, libraryValue), cloneSequence(resource, binaryValues.asPtr()),
+      cloneSequence(resource, testValues.asPtr()), cloneSequence(resource, benchmarkValues.asPtr()),
+      cloneSequence(resource, exampleValues.asPtr()), cloneOptional(resource, buildScriptValue),
+      cloneSequence(resource, targetDependencyValues.asPtr()),
+      cloneSequence(resource, developmentDependencyValues.asPtr()),
+      cloneSequence(resource, buildDependencyValues.asPtr()),
+      cloneSequence(resource, featureValues.asPtr()));
 }
 
 bool CanonicalManifestRecord::hasLibrary() const noexcept { return libraryValue != zc::none; }

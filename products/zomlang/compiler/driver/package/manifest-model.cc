@@ -85,6 +85,13 @@ bool encodedEqual(const identity::CanonicalWorkspaceRelativePath& left,
   return encodePath(left).asPtr() == encodePath(right).asPtr();
 }
 
+template <typename Value>
+zc::Vector<Value> cloneValues(zc::MemoryResource& resource, zc::ArrayPtr<const Value> source) {
+  zc::Vector<Value> result(resource, source.size());
+  for (const auto& value : source) { result.add(value.clone(resource)); }
+  return result;
+}
+
 }  // namespace
 
 DiagnosticDocumentPath::DiagnosticDocumentPath(WorkspaceDiagnosticDocumentPath&& path) noexcept
@@ -254,6 +261,10 @@ PackageManifest PackageManifest::clone() const {
   return PackageManifest(nameValue.clone(), versionValue.clone(), editionYearValue);
 }
 
+PackageManifest PackageManifest::clone(zc::MemoryResource& resource) const {
+  return PackageManifest(nameValue.clone(resource), versionValue.clone(resource), editionYearValue);
+}
+
 zc::StringPtr PackageManifest::name() const noexcept { return nameValue.text(); }
 zc::StringPtr PackageManifest::version() const noexcept { return versionValue.text(); }
 uint32_t PackageManifest::editionYear() const noexcept { return editionYearValue; }
@@ -287,6 +298,10 @@ WorkspaceManifest WorkspaceManifest::clone() const {
   zc::Vector<identity::CanonicalWorkspaceRelativePath> result(memberValues.size());
   for (const auto& member : memberValues) { result.add(member.clone()); }
   return WorkspaceManifest(zc::mv(result));
+}
+
+WorkspaceManifest WorkspaceManifest::clone(zc::MemoryResource& resource) const {
+  return WorkspaceManifest(cloneValues(resource, memberValues.asPtr()));
 }
 
 zc::ArrayPtr<const identity::CanonicalWorkspaceRelativePath> WorkspaceManifest::members()
@@ -365,6 +380,11 @@ CanonicalTargetManifest CanonicalTargetManifest::from(const TargetManifest& targ
 
 CanonicalTargetManifest CanonicalTargetManifest::clone() const {
   return CanonicalTargetManifest(kindValue, nameValue.clone(), pathValue.clone(), implicitValue);
+}
+
+CanonicalTargetManifest CanonicalTargetManifest::clone(zc::MemoryResource& resource) const {
+  return CanonicalTargetManifest(kindValue, nameValue.clone(resource), pathValue.clone(resource),
+                                 implicitValue);
 }
 
 identity::CrateTargetKind CanonicalTargetManifest::kind() const noexcept { return kindValue; }
@@ -521,6 +541,14 @@ CanonicalBuildScriptManifest CanonicalBuildScriptManifest::clone() const {
                                       zc::mv(environment), zc::mv(exported));
 }
 
+CanonicalBuildScriptManifest CanonicalBuildScriptManifest::clone(
+    zc::MemoryResource& resource) const {
+  return CanonicalBuildScriptManifest(
+      targetValue.clone(resource), cloneValues(resource, inputValues.asPtr()),
+      cloneValues(resource, outputValues.asPtr()), cloneValues(resource, environmentValues.asPtr()),
+      cloneValues(resource, exportedEnvironmentValues.asPtr()));
+}
+
 const CanonicalTargetManifest& CanonicalBuildScriptManifest::target() const noexcept {
   return targetValue;
 }
@@ -589,6 +617,20 @@ ZC_CASE_ONEOF(edge, EnableDependencyFeatureEdge) {
 }
 }
 ZC_UNREACHABLE
+}
+
+FeatureEdge FeatureEdge::clone(zc::MemoryResource& resource) const {
+  if (value.is<LocalFeatureEdge>()) {
+    const auto& edge = value.get<LocalFeatureEdge>();
+    return FeatureEdge(LocalFeatureEdge{edge.feature.clone(resource)});
+  }
+  if (value.is<EnableDependencyEdge>()) {
+    const auto& edge = value.get<EnableDependencyEdge>();
+    return FeatureEdge(EnableDependencyEdge{edge.dependency.clone(resource)});
+  }
+  const auto& edge = value.get<EnableDependencyFeatureEdge>();
+  return FeatureEdge(
+      EnableDependencyFeatureEdge{edge.dependency.clone(resource), edge.feature.clone(resource)});
 }
 
 FeatureEdgeKind FeatureEdge::kind() const noexcept {
@@ -710,6 +752,11 @@ CanonicalFeatureManifest CanonicalFeatureManifest::clone() const {
   zc::Vector<FeatureEdge> edges(edgeValues.size());
   for (const auto& edge : edgeValues) { edges.add(edge.clone()); }
   return CanonicalFeatureManifest(nameValue.clone(), zc::mv(edges));
+}
+
+CanonicalFeatureManifest CanonicalFeatureManifest::clone(zc::MemoryResource& resource) const {
+  return CanonicalFeatureManifest(nameValue.clone(resource),
+                                  cloneValues(resource, edgeValues.asPtr()));
 }
 
 zc::StringPtr CanonicalFeatureManifest::name() const noexcept { return nameValue.text(); }

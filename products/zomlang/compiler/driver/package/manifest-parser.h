@@ -209,6 +209,8 @@ public:
   ZC_DISALLOW_COPY(CanonicalManifestRecord);
 
   ZC_NODISCARD CanonicalManifestRecord clone() const;
+  /// \brief Clones this canonical record and all owned storage into `resource`.
+  ZC_NODISCARD CanonicalManifestRecord clone(zc::MemoryResource& resource) const;
   ZC_NODISCARD bool hasLibrary() const noexcept;
   ZC_NODISCARD zc::Maybe<const CanonicalTargetManifest&> library() const noexcept;
   ZC_NODISCARD zc::ArrayPtr<const DependencyRequirementWithoutOrigin> targetDependencies()
