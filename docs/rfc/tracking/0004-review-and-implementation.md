@@ -304,7 +304,7 @@ landing.
 
 | Slice | State | Required evidence |
 |---|---|---|
-| Dependency-free root verifier spine | In progress | `ModuleGraphVerifier`, private `VerifiedModuleGraphView`, `BindingInputVerifier`, private `VerifiedBindingInput`, focused unit tests, and the initial binder architecture gate |
+| Dependency-free root verifier spine | Complete | Commit `05d12af5`; `ModuleGraphVerifier`, private `VerifiedModuleGraphView`, `BindingInputVerifier`, private `VerifiedBindingInput`, focused sanitizer tests, and positive plus adversarial binder architecture gates |
 | Complete module resolution input | Blocked by RFC 0012 and RFC 0008 | Authoritative package resolution, production semantic-context fingerprint, verified resolution environment, and resolution receipts |
 | Complete binding facts and surfaces | Pending | Frozen definition inventory, imports, exports, aliases, visibility, scopes, labels, captures, immutable metadata, codecs, and verifier negatives |
 | Production binder cutover | Pending | Session integration, no downstream rebinding, deletion of raw binder inputs and binder-owned module resolution, and all acceptance gates |
@@ -315,3 +315,13 @@ is required. Imports, foreign re-exports, module aliases, impl inventory, or
 non-zero graph edges must produce an invariant failure until their complete
 verified inputs exist. The slice does not call or wrap the current `Binder` and
 does not add a compatibility entry point.
+
+The completed slice publishes the full accepted invariant fact shape and an
+actual fatal `ZOM9956` producer. Six focused unit cases cover successful frozen
+input, missing, additional, and foreign definitions, unresolved module syntax,
+impl rejection, invalid requesters, stale fingerprints, fixed revision bytes,
+and diagnostic projection. `scripts/check-binder-architecture.py --check`, its
+six-mutation `--self-test`, and the registered `binder-architecture` and
+`binder-architecture-negative` CTests pass. This evidence closes only the
+dependency-free spine; it does not claim dependency surfaces, complete binding
+facts, or production binder cutover.
