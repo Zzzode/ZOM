@@ -466,6 +466,21 @@ def check_release_performance_gate(files: dict[Path, str], errors: list[str]) ->
     ]
     if len(release_builds) != 1:
         errors.append(f"{CMAKE_PRESETS}: release build preset is required")
+    sanitizer_configures = [
+        preset
+        for preset in presets.get("configurePresets", [])
+        if preset.get("name") == "sanitizer"
+    ]
+    if (
+        len(sanitizer_configures) != 1
+        or sanitizer_configures[0]
+        .get("cacheVariables", {})
+        .get("ZOM_ENABLE_PERFORMANCE_TESTS")
+        != "OFF"
+    ):
+        errors.append(
+            f"{CMAKE_PRESETS}: sanitizer preset must disable release performance tests"
+        )
 
 
 def check_generated_oracle_gate(files: dict[Path, str], errors: list[str]) -> None:
@@ -909,6 +924,15 @@ def run_self_test() -> int:
             "non-release performance preset",
             remove_marker(CMAKE_PRESETS, '"CMAKE_BUILD_TYPE": "Release"'),
             "exactly one Release configure preset is required",
+        ),
+        (
+            "sanitizer performance benchmark enabled",
+            replace_marker(
+                CMAKE_PRESETS,
+                '"ZOM_ENABLE_PERFORMANCE_TESTS": "OFF"',
+                '"ZOM_ENABLE_PERFORMANCE_TESTS": "ON"',
+            ),
+            "sanitizer preset must disable release performance tests",
         ),
         (
             "atomic package input factory removed",

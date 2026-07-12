@@ -40,6 +40,7 @@
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
         "ZOM_ENABLE_ADDRESS_SANITIZER": "ON",
+        "ZOM_ENABLE_PERFORMANCE_TESTS": "OFF",
         "ZOM_ENABLE_UNDEFINED_SANITIZER": "ON"
       }
     },
