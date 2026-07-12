@@ -7,10 +7,9 @@
 
 #include "zc/core/debug.h"
 #include "zc/core/vector.h"
-#include "zomlang/compiler/ast/generated/node-payload.h"
 #include "zomlang/compiler/ast/generated/node-traverse.h"
+#include "zomlang/compiler/binder/internal/binding-skeleton.h"
 #include "zomlang/compiler/binder/internal/scope-arena.h"
-#include "zomlang/compiler/diagnostics/diagnostic-engine.h"
 #include "zomlang/compiler/identity/canonical-encoder.h"
 
 namespace zomlang::compiler::binder {
@@ -270,16 +269,6 @@ zc::Maybe<const FrozenImplEntry&> implementationEntry(const VerifiedBindingInput
   return zc::none;
 }
 
-zc::Maybe<uint32_t> schemaPreorderOrdinal(const ast::Tree& tree, ast::NodeId target) {
-  uint32_t ordinal = 0;
-  zc::Maybe<uint32_t> result;
-  ast::visitTreePreOrder(tree, tree.root(), [&](ast::NodeId node, const ast::Node&) {
-    if (node == target) { result = ordinal; }
-    ++ordinal;
-  });
-  return result;
-}
-
 bool encodeScopeId(identity::CanonicalEncoder& encoder, const VerifiedBindingInput& input,
                    ScopeId id) {
   if (id.module() != input.module() || !id.belongsTo(input.semanticContext())) { return false; }
@@ -468,9 +457,16 @@ zc::Maybe<zc::Array<uint8_t>> encodeCandidate(const VerifiedBindingInput& input,
   for (const auto& fact : candidate.definitions) {
     if (!encodeDefinition(encoder, input, fact.identity)) { return zc::none; }
     const auto& site = fact.site.value();
-    if (!site.is<DeclarationDefinitionSite>()) { return zc::none; }
-    encoder.encodeUint8(0x01);
-    encoder.encodeUint32(site.get<DeclarationDefinitionSite>().node.value);
+    if (site.is<DeclarationDefinitionSite>()) {
+      encoder.encodeUint8(0x01);
+      encoder.encodeUint32(site.get<DeclarationDefinitionSite>().node.value);
+    } else {
+      const auto& pattern = site.get<PatternBindingSite>();
+      encoder.encodeUint8(0x02);
+      encoder.encodeUint32(pattern.introducer.value);
+      encoder.encodeSequenceSize(pattern.patternPath.size());
+      for (const auto component : pattern.patternPath) { encoder.encodeUint32(component); }
+    }
     encoder.encodeUint8(static_cast<uint8_t>(fact.kind));
     fact.name.encode(encoder);
     encoder.encodeUint8(static_cast<uint8_t>(fact.nameSpace));
@@ -690,53 +686,13 @@ BindingCandidateResult BindingBuilder::build(const VerifiedBindingInput& input,
 
 BindingCandidateResult BindingBuilder::buildCandidate(
     const VerifiedBindingInput& input, zc::Maybe<diagnostics::DiagnosticEngine&> diagnostics) {
-  const auto definitions = input.definitions().definitions();
-  if (definitions.size() != 1 || definitions[0].kind != identity::DefinitionKind::Function ||
-      definitions[0].bindingName == zc::none) {
-    return builderFailure(input, BinderInvariantKind::MissingRequiredResolution);
-  }
+  (void)diagnostics;
   const auto& tree = input.tree();
-  const auto functionNode = definitions[0].node;
-  if (!tree.contains(functionNode) ||
-      tree.node(functionNode).kind != ast::SyntaxKind::FunctionDecl) {
-    uint32_t ordinal = 0;
-    ZC_IF_SOME(value, schemaPreorderOrdinal(tree, functionNode)) { ordinal = value; }
-    return builderFailure(input, BinderInvariantKind::InvalidBindingFact, ordinal);
-  }
-  const ast::NodeId bodyNode(tree.node(functionNode).payload.words[ast::kFunctionDeclBodyWord]);
-  const ast::NodeId parameterListNode(
-      tree.node(functionNode).payload.words[ast::kFunctionDeclParamsIdWord]);
-  if (!tree.contains(bodyNode) || tree.node(bodyNode).kind != ast::SyntaxKind::BlockStmt) {
-    uint32_t ordinal = 0;
-    ZC_IF_SOME(value, schemaPreorderOrdinal(tree, functionNode)) { ordinal = value; }
-    return builderFailure(input, BinderInvariantKind::InvalidBindingFact, ordinal);
-  }
-  if (!tree.contains(parameterListNode) ||
-      tree.node(parameterListNode).kind != ast::SyntaxKind::FunctionParameterList ||
-      tree.node(parameterListNode).payload.words[ast::kFunctionParameterListNparamsWord] != 0 ||
-      tree.node(parameterListNode).payload.words[ast::kFunctionParameterListParamsSizeWord] != 0) {
-    return builderFailure(input, BinderInvariantKind::MissingRequiredResolution);
-  }
   zc::Vector<ast::NodeId> unresolvedIdentifiers;
-  uint32_t expressionStatements = 0;
-  uint32_t statementListItems = 0;
   ast::visitTreePreOrder(tree, tree.root(), [&](ast::NodeId node, const ast::Node& value) {
-    if (value.kind == ast::SyntaxKind::IdentExpr) {
-      unresolvedIdentifiers.add(node);
-    } else if (value.kind == ast::SyntaxKind::ExpressionStatement) {
-      ++expressionStatements;
-    } else if (value.kind == ast::SyntaxKind::StatementListItem) {
-      ++statementListItems;
-    }
+    if (value.kind == ast::SyntaxKind::IdentExpr) { unresolvedIdentifiers.add(node); }
   });
-  const uint32_t bodyItemCount = tree.node(bodyNode).payload.words[ast::kBlockStmtStmtsSizeWord];
-  const bool cleanShape = bodyItemCount == 0 && tree.nodeCount() == 6 &&
-                          unresolvedIdentifiers.empty() && expressionStatements == 0 &&
-                          statementListItems == 1;
-  const bool unresolvedShape = bodyItemCount == 1 && tree.nodeCount() == 9 &&
-                               unresolvedIdentifiers.size() == 1 && expressionStatements == 1 &&
-                               statementListItems == 2;
-  if (!cleanShape && !unresolvedShape) {
+  if (!unresolvedIdentifiers.empty()) {
     return builderFailure(input, BinderInvariantKind::MissingRequiredResolution);
   }
   auto arenaResult = ScopeArenaBuilder::build(input);
@@ -747,33 +703,23 @@ BindingCandidateResult BindingBuilder::buildCandidate(
   if (arena.scopes.empty() || arena.scopes[0].kind != ScopeKind::Module) {
     return builderFailure(input, BinderInvariantKind::MalformedScopeGraph);
   }
-  const ScopeId moduleScope = arena.scopes[0].id;
-  const auto& definition = definitions[0];
-  const auto& bindingName = ZC_ASSERT_NONNULL(definition.bindingName);
+  auto skeletonResult = BindingSkeletonBuilder::build(input, arena);
+  if (!skeletonResult.is<DefinitionSkeletonCandidate>()) {
+    return zc::mv(skeletonResult.get<BinderInvariantFact>());
+  }
+  auto skeleton = zc::mv(skeletonResult.get<DefinitionSkeletonCandidate>());
 
-  zc::Maybe<identity::SourceSpan> noAlias;
-  arena.scopes[0].bindings.add(ScopeBindingEntry(
-      BindingNameKey(Namespace::Value, bindingName.clone()),
-      NameBinding(BindingTarget::definition(definition.definition),
-                  BindingTarget::definition(definition.definition), Namespace::Value,
-                  BindingOrigin::LocalDeclaration, definition.source.clone(), zc::mv(noAlias))));
-
-  zc::Vector<DefinitionFact> facts;
-  facts.add(DefinitionFact(definition.definition, DefinitionSite::declaration(functionNode),
-                           identity::DefinitionKind::Function, definition.name.clone(),
-                           Namespace::Value, moduleScope, definition.source.clone(),
-                           DefinitionActivation::ModuleSkeleton));
-
-  zc::Maybe<identity::SourceSpan> noSurfaceAlias;
-  zc::Maybe<identity::SourceSpan> noExportSpan;
-  zc::Vector<ReexportProvenanceStep> noChain;
   zc::Vector<ExportSurfaceEntry> visibleEntries;
-  visibleEntries.add(ExportSurfaceEntry(
-      BindingNameKey(Namespace::Value, bindingName.clone()),
-      BindingTarget::definition(definition.definition),
-      BindingTarget::definition(definition.definition), VisibilityEnvelope::module(input.module()),
-      false, definition.source.clone(), definition.source.clone(), zc::mv(noSurfaceAlias),
-      zc::mv(noExportSpan), zc::mv(noChain)));
+  for (auto& seed : skeleton.moduleSurfaceSeeds) {
+    zc::Maybe<identity::SourceSpan> noSurfaceAlias;
+    zc::Maybe<identity::SourceSpan> noExportSpan;
+    zc::Vector<ReexportProvenanceStep> noChain;
+    visibleEntries.add(ExportSurfaceEntry(
+        zc::mv(seed.name), BindingTarget::definition(seed.identity),
+        BindingTarget::definition(seed.identity), VisibilityEnvelope::module(input.module()), false,
+        seed.source.clone(), seed.source.clone(), zc::mv(noSurfaceAlias), zc::mv(noExportSpan),
+        zc::mv(noChain)));
+  }
   zc::Vector<ExportSurfaceEntry> exports;
   auto encodedVisible = encodeSurfaceMap(input, visibleEntries.asPtr());
   auto encodedExports = encodeSurfaceMap(input, exports.asPtr());
@@ -791,32 +737,8 @@ BindingCandidateResult BindingBuilder::buildCandidate(
         ExportSurfaceCandidate surface(input.module(), input.package(), revisionValue,
                                        zc::mv(visibleEntries), zc::mv(exports));
         BindingMetadataCandidate candidate(input.semanticContext(), input.module(),
-                                           zc::mv(arena.nodeScopes), zc::mv(facts),
+                                           zc::mv(arena.nodeScopes), zc::mv(skeleton.definitions),
                                            zc::mv(arena.scopes), zc::mv(surface));
-        if (unresolvedShape) {
-          const auto unresolvedNode = unresolvedIdentifiers[0];
-          auto unresolvedSpan = input.parsedModule().spanFor(tree.node(unresolvedNode).range);
-          if (unresolvedSpan == zc::none) {
-            return builderFailure(input, BinderInvariantKind::InvalidBindingFact);
-          }
-          uint32_t ordinal = 0;
-          ZC_IF_SOME(value, schemaPreorderOrdinal(tree, unresolvedNode)) { ordinal = value; }
-          ZC_IF_SOME(span, unresolvedSpan) {
-            ZC_IF_SOME(engine, diagnostics) {
-              engine.diagnose<diagnostics::DiagID::UndefinedIdentifier>(
-                  tree.node(unresolvedNode).range.getStart(),
-                  tree.ident(ast::IdentId(
-                      tree.node(unresolvedNode).payload.words[ast::kIdentExprNameWord])));
-            }
-            zc::Vector<BindingDiagnosticNoteRef> notes;
-            candidate.sourceFailures.add(BindingFailureRef{
-                BinderDiagnosticCode::UndefinedIdentifier, span.clone(),
-                (uint64_t(BinderEmitterSite::BodyBinding) << 56) | (uint64_t(ordinal) << 16),
-                zc::mv(notes)});
-            candidate.nodeBindings.add(BindingResolution{
-                unresolvedNode, BindingResolutionValue(FailedBindingResolution{0})});
-          }
-        }
         return candidate;
       }
     }
@@ -852,7 +774,6 @@ BindingVerificationResult BindingVerifier::verify(const VerifiedBindingInput& in
       !candidate.localExports.empty() || !candidate.deferredMembers.empty() ||
       !candidate.labels.empty() || !candidate.controlTransfers.empty() ||
       !candidate.shadowTargets.empty() || !candidate.closureFreeVariables.empty() ||
-      candidate.currentSurface.visibleEntries.size() != 1 ||
       !candidate.currentSurface.exports.empty()) {
     return rejectBinderInvariant(verifierFailure(input, BinderInvariantKind::InvalidBindingFact));
   }

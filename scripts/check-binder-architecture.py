@@ -26,6 +26,8 @@ VERIFIER_HEADER = BINDER_DIR / "internal" / "binding-verifier.h"
 VERIFIER_SOURCE = BINDER_DIR / "binding-verifier.cc"
 SCOPE_HEADER = BINDER_DIR / "internal" / "scope-arena.h"
 SCOPE_SOURCE = BINDER_DIR / "scope-arena.cc"
+SKELETON_HEADER = BINDER_DIR / "internal" / "binding-skeleton.h"
+SKELETON_SOURCE = BINDER_DIR / "binding-skeleton.cc"
 DIAGNOSTIC_DEFINITIONS = Path("products/zomlang/compiler/diagnostics/diagnostics-binder.def")
 BINDER_CMAKE = BINDER_DIR / "CMakeLists.txt"
 TEST_DIR = Path("products/zomlang/tests/unittests/compiler/binder")
@@ -69,6 +71,8 @@ def production_files() -> dict[Path, str]:
         VERIFIER_SOURCE,
         SCOPE_HEADER,
         SCOPE_SOURCE,
+        SKELETON_HEADER,
+        SKELETON_SOURCE,
         DIAGNOSTIC_DEFINITIONS,
         BINDER_CMAKE,
         TEST_SOURCE,
@@ -282,7 +286,8 @@ def check_scope_arena_contract(files: dict[Path, str], errors: list[str]) -> Non
     source = files.get(SCOPE_SOURCE, "")
     internal_include = '"zomlang/compiler/binder/internal/scope-arena.h"'
     for path, text in files.items():
-        if path in {SCOPE_HEADER, SCOPE_SOURCE, VERIFIER_SOURCE} or TEST_DIR in path.parents:
+        if path in {SCOPE_HEADER, SCOPE_SOURCE, SKELETON_HEADER, SKELETON_SOURCE,
+                    VERIFIER_SOURCE} or TEST_DIR in path.parents:
             continue
         if internal_include in text:
             errors.append(f"{path}: scope arena internal authority escaped")
@@ -340,6 +345,42 @@ def check_scope_arena_contract(files: dict[Path, str], errors: list[str]) -> Non
         errors.append(f"{METADATA_HEADER}: BindingBuilder retains ScopeId construction authority")
 
 
+def check_binding_skeleton_contract(files: dict[Path, str], errors: list[str]) -> None:
+    header = files.get(SKELETON_HEADER, "")
+    source = files.get(SKELETON_SOURCE, "")
+    internal_include = '"zomlang/compiler/binder/internal/binding-skeleton.h"'
+    for path, text in files.items():
+        if path in {SKELETON_HEADER, SKELETON_SOURCE, VERIFIER_SOURCE} or TEST_DIR in path.parents:
+            continue
+        if internal_include in text:
+            errors.append(f"{path}: binding skeleton internal authority escaped")
+    for forbidden in ("zc::HashMap", "ScopeManager", "ast::BindingMetadata", "const_cast",
+                      "switch (kind) default:"):
+        if forbidden in header or forbidden in source:
+            errors.append(f"{SKELETON_SOURCE}: forbidden skeleton dependency: {forbidden}")
+    for required in (
+        "class BindingSkeletonBuilder final",
+        "DefinitionSkeletonBuildResult build(const VerifiedBindingInput& input,",
+        "zc::Vector<DefinitionFact> definitions;",
+        "zc::Vector<ModuleSkeletonSurfaceSeed> moduleSurfaceSeeds;",
+    ):
+        if required not in header:
+            errors.append(f"{SKELETON_HEADER}: incomplete skeleton contract: {required}")
+    for required in (
+        "SkeletonEligibility eligibility(identity::DefinitionKind kind)",
+        "case DefinitionKind::ReexportAlias:",
+        "inventory[current].key.encode()",
+        "definition.site.clone()",
+        "DefinitionActivation::ModuleSkeleton",
+        "sortBindings(scope.bindings)",
+        "sortSurfaceSeeds(result.moduleSurfaceSeeds)",
+    ):
+        if required not in source:
+            errors.append(f"{SKELETON_SOURCE}: incomplete skeleton projection: {required}")
+    if "BindingSkeletonBuilder::build(input, arena)" not in files.get(VERIFIER_SOURCE, ""):
+        errors.append(f"{VERIFIER_SOURCE}: binding skeleton cutover is disconnected")
+
+
 def check_wiring(files: dict[Path, str], errors: list[str]) -> None:
     required = (
         (BINDER_CMAKE, "${CMAKE_CURRENT_SOURCE_DIR}/binding-input.cc"),
@@ -349,6 +390,7 @@ def check_wiring(files: dict[Path, str], errors: list[str]) -> None:
         (BINDER_CMAKE, "${CMAKE_CURRENT_SOURCE_DIR}/binding-metadata.cc"),
         (BINDER_CMAKE, "${CMAKE_CURRENT_SOURCE_DIR}/binding-verifier.cc"),
         (BINDER_CMAKE, "${CMAKE_CURRENT_SOURCE_DIR}/scope-arena.cc"),
+        (BINDER_CMAKE, "${CMAKE_CURRENT_SOURCE_DIR}/binding-skeleton.cc"),
         (TEST_CMAKE, 'add_ztest_unit_test("binding-input-test" "binding-input-test.cc"'),
         (TEST_CMAKE, "binder-architecture"),
         (TEST_CMAKE, "check-binder-architecture.py --check"),
@@ -415,7 +457,7 @@ def check_binding_publication_contract(files: dict[Path, str], errors: list[str]
         "encodeBindingAllocationDump(",
         "candidateAllocation = encodeBindingAllocationDump(",
         "expectedAllocation = encodeBindingAllocationDump(",
-        "engine.diagnose<diagnostics::DiagID::UndefinedIdentifier>(",
+        "BindingSkeletonBuilder::build(input, arena)",
         "buildCandidate(input, zc::none)",
     ):
         if required not in source:
@@ -444,6 +486,7 @@ def check(files: dict[Path, str]) -> list[str]:
     check_layering(files, errors)
     check_internal_binding_authority(files, errors)
     check_scope_arena_contract(files, errors)
+    check_binding_skeleton_contract(files, errors)
     check_wiring(files, errors)
     check_invariant_diagnostics(files, errors)
     check_binding_publication_contract(files, errors)
@@ -614,6 +657,24 @@ def self_test(files: dict[Path, str]) -> list[str]:
             BINDER_CMAKE,
             "${CMAKE_CURRENT_SOURCE_DIR}/scope-arena.cc",
             "${CMAKE_CURRENT_SOURCE_DIR}/missing-scope-arena.cc",
+        ),
+        (
+            "missing binding skeleton wiring",
+            BINDER_CMAKE,
+            "${CMAKE_CURRENT_SOURCE_DIR}/binding-skeleton.cc",
+            "${CMAKE_CURRENT_SOURCE_DIR}/missing-binding-skeleton.cc",
+        ),
+        (
+            "disconnected binding skeleton cutover",
+            VERIFIER_SOURCE,
+            "BindingSkeletonBuilder::build(input, arena)",
+            "disconnectedBindingSkeleton(input, arena)",
+        ),
+        (
+            "numeric definition ordering",
+            SKELETON_SOURCE,
+            "inventory[current].key.encode()",
+            "zc::heapArray<uint8_t>(0)",
         ),
         (
             "foreign scope arena include",

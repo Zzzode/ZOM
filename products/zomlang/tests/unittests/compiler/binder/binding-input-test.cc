@@ -772,53 +772,17 @@ ZC_TEST("BindingVerifier.RejectsForeignSurfaceAndScopeIdentities") {
             identity::IdentityInvariantKind::ForeignContext);
 }
 
-ZC_TEST("BindingVerifier.PublishesSourceRejectionAndPrioritizesInvariants") {
-  ParsedSource rejectedSource("module root;\nfun run() { missing; }\n"_zc);
-  FrozenFixture rejectedFixture(rejectedSource, true);
-  auto rejectedInputResult = verify(rejectedFixture);
-  ZC_REQUIRE(rejectedInputResult.is<VerifiedBindingInput>());
-  auto rejectedInput = zc::mv(rejectedInputResult.get<VerifiedBindingInput>());
-  class SourceDiagnosticCapture final : public diagnostics::DiagnosticConsumer {
-  public:
-    explicit SourceDiagnosticCapture(zc::Vector<diagnostics::DiagID>& ids) : ids(ids) {}
-
-    void handleDiagnostic(const source::SourceManager&,
-                          const diagnostics::Diagnostic& diagnostic) override {
-      ids.add(diagnostic.getId());
-    }
-
-  private:
-    zc::Vector<diagnostics::DiagID>& ids;
-  };
-  zc::Vector<diagnostics::DiagID> sourceDiagnosticIds;
-  rejectedSource.diagnostics->addConsumer(zc::heap<SourceDiagnosticCapture>(sourceDiagnosticIds));
-  auto rejectedCandidate = BindingBuilder::build(rejectedInput, *rejectedSource.diagnostics);
-  ZC_REQUIRE(rejectedCandidate.is<BindingMetadataCandidate>());
-  ZC_REQUIRE(sourceDiagnosticIds.size() == 1);
-  ZC_EXPECT(sourceDiagnosticIds[0] == diagnostics::DiagID::UndefinedIdentifier);
-  ZC_EXPECT(rejectedSource.diagnostics->errorCount() == 1);
-  ZC_REQUIRE(rejectedCandidate.get<BindingMetadataCandidate>().sourceFailures.size() == 1);
-  ZC_REQUIRE(rejectedCandidate.get<BindingMetadataCandidate>().nodeBindings.size() == 1);
-  auto rejected = BindingVerifier::verify(
-      rejectedInput, zc::mv(rejectedCandidate.get<BindingMetadataCandidate>()));
-  ZC_REQUIRE(rejected.is<SourceRejected>());
-  ZC_REQUIRE(rejected.get<SourceRejected>().failures().size() == 1);
-  ZC_EXPECT(rejected.get<SourceRejected>().failures()[0].diagnostic ==
-            BinderDiagnosticCode::UndefinedIdentifier);
-  ZC_EXPECT((rejected.get<SourceRejected>().failures()[0].emitterOrdinal >> 56) ==
-            static_cast<uint64_t>(BinderEmitterSite::BodyBinding));
-
-  ParsedSource precedenceSource("module root;\nfun run() { missing; }\n"_zc);
-  FrozenFixture precedenceFixture(precedenceSource, true);
-  auto precedenceInputResult = verify(precedenceFixture);
-  ZC_REQUIRE(precedenceInputResult.is<VerifiedBindingInput>());
-  auto precedenceInput = zc::mv(precedenceInputResult.get<VerifiedBindingInput>());
-  auto precedenceCandidate = BindingBuilder::build(precedenceInput, *precedenceSource.diagnostics);
-  ZC_REQUIRE(precedenceCandidate.is<BindingMetadataCandidate>());
-  precedenceCandidate.get<BindingMetadataCandidate>().scopes[2].kind = ScopeKind::Loop;
-  auto precedence = BindingVerifier::verify(
-      precedenceInput, zc::mv(precedenceCandidate.get<BindingMetadataCandidate>()));
-  ZC_EXPECT(requireBinderInvariant(precedence).kind == BinderInvariantKind::MalformedScopeGraph);
+ZC_TEST("BindingBuilder.DefersIdentifierResolutionBeforePublishingMetadata") {
+  ParsedSource sourceFixture("module root;\nfun run() { missing; }\n"_zc);
+  FrozenFixture fixture(sourceFixture, true);
+  auto inputResult = verify(fixture);
+  ZC_REQUIRE(inputResult.is<VerifiedBindingInput>());
+  auto input = zc::mv(inputResult.get<VerifiedBindingInput>());
+  auto result = BindingBuilder::build(input, *sourceFixture.diagnostics);
+  ZC_REQUIRE(result.is<BinderInvariantFact>());
+  ZC_EXPECT(result.get<BinderInvariantFact>().kind ==
+            BinderInvariantKind::MissingRequiredResolution);
+  ZC_EXPECT(sourceFixture.diagnostics->errorCount() == 0);
 }
 
 ZC_TEST("BinderInvariant.EmitsEveryRegisteredFatalDiagnostic") {
