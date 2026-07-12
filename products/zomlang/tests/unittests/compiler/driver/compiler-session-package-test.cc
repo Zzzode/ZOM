@@ -355,6 +355,19 @@ ZC_TEST("CompilerSession installs one atomic package input exactly once") {
   }
 }
 
+ZC_TEST("CompilerSession rejects a moved-from atomic package input") {
+  basic::LangOptions languageOptions;
+  basic::CompilerOptions compilerOptions;
+  identity::SemanticContextFactory contextFactory;
+  CompilerSession session(contextFactory, languageOptions, compilerOptions);
+  auto registry = targetRegistry();
+  auto original = packageInput(registry);
+  auto retained = zc::mv(original);
+
+  ZC_EXPECT(!session.installVerifiedPackageInput(zc::mv(original)));
+  ZC_EXPECT(session.installVerifiedPackageInput(zc::mv(retained)));
+}
+
 ZC_TEST("CompilerSession executes and freezes one exact build-plan result map") {
   basic::LangOptions languageOptions;
   basic::CompilerOptions compilerOptions;
