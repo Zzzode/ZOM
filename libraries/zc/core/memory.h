@@ -21,6 +21,8 @@
 
 #pragma once
 
+#include <stdint.h>
+
 #include "zc/core/common.h"
 
 // ZC_DEBUG_MEMORY == 1 enables variety of checks designed to catch memory usage errors.
