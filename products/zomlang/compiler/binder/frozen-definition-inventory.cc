@@ -75,17 +75,23 @@ zc::Maybe<const ImplInventoryEntry&> implEntry(const DefinitionInventory& invent
   return zc::none;
 }
 
+zc::Maybe<identity::DefinitionNameKey> definitionName(const DefinitionInventoryEntry& entry,
+                                                      const VerifiedParsedModule& parsedModule) {
+  if (entry.nameKind == InventoryDefinitionNameKind::Declared) {
+    ZC_IF_SOME(value, identity::DeclaredDefinitionName::fromSource(
+                          parsedModule.tree().ident(entry.declaredName))) {
+      return identity::DefinitionNameKey::declared(zc::mv(value));
+    }
+    return zc::none;
+  }
+  ZC_IF_SOME(role, entry.anonymousRole) { return identity::DefinitionNameKey::anonymous(role); }
+  return zc::none;
+}
+
 zc::Maybe<identity::DefinitionPathSegment> definitionSegment(
     const DefinitionInventory& inventory, const DefinitionInventoryEntry& entry,
     const VerifiedParsedModule& parsedModule) {
-  zc::Maybe<identity::DefinitionNameKey> name;
-  if (entry.nameKind == InventoryDefinitionNameKind::Declared) {
-    auto declared =
-        identity::DeclaredDefinitionName::fromSource(parsedModule.tree().ident(entry.declaredName));
-    ZC_IF_SOME(value, declared) { name = identity::DefinitionNameKey::declared(zc::mv(value)); }
-  } else {
-    ZC_IF_SOME(role, entry.anonymousRole) { name = identity::DefinitionNameKey::anonymous(role); }
-  }
+  auto name = definitionName(entry, parsedModule);
   auto span = parsedModule.spanFor(entry.source);
   if (name == zc::none || span == zc::none) { return zc::none; }
   ZC_IF_SOME(nameValue, name) {
@@ -137,9 +143,18 @@ bool allRegistriesFrozen(const identity::SemanticIdentityRegistrySet& registries
 }  // namespace
 
 FrozenDefinitionEntry::FrozenDefinitionEntry(ast::NodeId node, identity::DefId definition,
+                                             identity::DefinitionKey&& key,
                                              identity::DefinitionKind kind,
+                                             identity::DefinitionNameKey&& name,
+                                             zc::Maybe<identity::SemanticIdentifier>&& bindingName,
                                              identity::SourceSpan&& source) noexcept
-    : node(node), definition(definition), kind(kind), source(zc::mv(source)) {}
+    : node(node),
+      definition(definition),
+      key(zc::mv(key)),
+      kind(kind),
+      name(zc::mv(name)),
+      bindingName(zc::mv(bindingName)),
+      source(zc::mv(source)) {}
 
 struct FrozenDefinitionInventoryView::Impl final {
   Impl(identity::SemanticContextBrand context, identity::ModuleId module, ast::NodeId moduleNode,
@@ -227,9 +242,26 @@ FrozenDefinitionInventoryResult FrozenDefinitionInventoryVerifier::verifySingleM
               }
             }
           }
-          ZC_IF_SOME(spanValue, span) {
-            frozen.add(
-                FrozenDefinitionEntry(entry.node, definitionValue, entry.kind, zc::mv(spanValue)));
+          auto name = definitionName(entry, parsedModule);
+          if (name == zc::none) {
+            return failure(FrozenInventoryInvariantKind::InvalidDefinitionIdentity);
+          }
+          zc::Maybe<identity::SemanticIdentifier> bindingName;
+          if (entry.nameKind == InventoryDefinitionNameKind::Declared) {
+            bindingName = identity::SemanticIdentifier::fromSource(
+                parsedModule.tree().ident(entry.declaredName));
+            if (bindingName == zc::none) {
+              return failure(FrozenInventoryInvariantKind::InvalidDefinitionIdentity);
+            }
+          }
+          ZC_IF_SOME(keyValue, key) {
+            ZC_IF_SOME(nameValue, name) {
+              ZC_IF_SOME(spanValue, span) {
+                frozen.add(FrozenDefinitionEntry(entry.node, definitionValue, keyValue.clone(),
+                                                 entry.kind, zc::mv(nameValue), zc::mv(bindingName),
+                                                 zc::mv(spanValue)));
+              }
+            }
           }
         }
       }

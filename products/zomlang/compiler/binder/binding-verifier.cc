@@ -1,0 +1,977 @@
+// Copyright (c) 2026 Zode.Z. All rights reserved
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+
+#include "zomlang/compiler/binder/internal/binding-verifier.h"
+
+#include "zc/core/debug.h"
+#include "zc/core/vector.h"
+#include "zomlang/compiler/ast/generated/node-payload.h"
+#include "zomlang/compiler/ast/generated/node-traverse.h"
+#include "zomlang/compiler/diagnostics/diagnostic-engine.h"
+#include "zomlang/compiler/identity/canonical-encoder.h"
+
+namespace zomlang::compiler::binder {
+namespace {
+
+BinderInvariantFact failure(const VerifiedBindingInput& input, BinderInvariantKind kind,
+                            BinderEmitterSite site, uint32_t ordinal = 0) {
+  return BinderInvariantFact{kind, input.module(), zc::none, site, ordinal};
+}
+
+BinderInvariantFact builderFailure(const VerifiedBindingInput& input, BinderInvariantKind kind,
+                                   uint32_t ordinal = 0) {
+  return failure(input, kind, BinderEmitterSite::ModuleSkeleton, ordinal);
+}
+
+BinderInvariantFact verifierFailure(const VerifiedBindingInput& input, BinderInvariantKind kind,
+                                    uint32_t ordinal = 0) {
+  return failure(input, kind, BinderEmitterSite::BindingVerifier, ordinal);
+}
+
+BindingVerificationResult rejectBinderInvariant(BinderInvariantFact&& fact) {
+  return InvariantRejected::single(
+      BindingVerificationFailure(BindingVerificationFailureValue(zc::mv(fact))));
+}
+
+BindingVerificationResult rejectIdentityInvariant(const VerifiedBindingInput& input,
+                                                  identity::IdentityInvariantKind kind,
+                                                  identity::IdentityAllocationPhase phase,
+                                                  uint32_t ordinal = 0) {
+  zc::Maybe<zc::Array<uint8_t>> noKey;
+  zc::Maybe<identity::UnbrandedSourceRange> noRange;
+  auto fact = identity::IdentityInvariant::from(kind, phase, zc::mv(noKey), zc::mv(noRange),
+                                                identity::IdentityApiSite::HandleLookup, ordinal);
+  ZC_IF_SOME(value, fact) {
+    return InvariantRejected::single(
+        BindingVerificationFailure(BindingVerificationFailureValue(zc::mv(value))));
+  }
+  return rejectBinderInvariant(
+      verifierFailure(input, BinderInvariantKind::InvalidBindingFact, ordinal));
+}
+
+BindingVerificationResult rejectForeignContext(const VerifiedBindingInput& input,
+                                               uint32_t ordinal = 0) {
+  return rejectIdentityInvariant(input, identity::IdentityInvariantKind::ForeignContext,
+                                 identity::IdentityAllocationPhase::Module, ordinal);
+}
+
+BindingVerificationResult rejectInvalidSourceRange(const VerifiedBindingInput& input,
+                                                   uint32_t ordinal = 0) {
+  return rejectIdentityInvariant(input, identity::IdentityInvariantKind::InvalidSourceRange,
+                                 identity::IdentityAllocationPhase::Source, ordinal);
+}
+
+bool targetHasForeignContext(const VerifiedBindingInput& input, const BindingTarget& target) {
+  const auto& value = target.value();
+  if (value.is<DefinitionBindingTarget>()) {
+    return !value.get<DefinitionBindingTarget>().definition.belongsTo(input.semanticContext());
+  }
+  return !value.get<ModuleBindingTarget>().module.belongsTo(input.semanticContext());
+}
+
+bool entryHasForeignContext(const VerifiedBindingInput& input, const ExportSurfaceEntry& entry) {
+  if (targetHasForeignContext(input, entry.bindingIdentity) ||
+      targetHasForeignContext(input, entry.canonicalTarget)) {
+    return true;
+  }
+  const auto& visibility = entry.visibility.value();
+  if (visibility.is<ModuleVisibility>() &&
+      !visibility.get<ModuleVisibility>().module.belongsTo(input.semanticContext())) {
+    return true;
+  }
+  for (const auto& step : entry.reexportChain) {
+    if (!step.module.belongsTo(input.semanticContext()) ||
+        !step.alias.belongsTo(input.semanticContext()) ||
+        targetHasForeignContext(input, step.canonicalTarget)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+bool hasForeignContext(const VerifiedBindingInput& input,
+                       const BindingMetadataCandidate& candidate) {
+  if (candidate.semanticContext != input.semanticContext() || candidate.module != input.module() ||
+      !candidate.module.belongsTo(input.semanticContext()) ||
+      candidate.currentSurface.sourceModule != input.module() ||
+      candidate.currentSurface.sourcePackage != input.package() ||
+      !candidate.currentSurface.sourceModule.belongsTo(input.semanticContext()) ||
+      !candidate.currentSurface.sourcePackage.belongsTo(input.semanticContext())) {
+    return true;
+  }
+  for (const auto& fact : candidate.nodeScopes) {
+    if (fact.scope.module() != input.module() || !fact.scope.belongsTo(input.semanticContext())) {
+      return true;
+    }
+  }
+  for (const auto& fact : candidate.definitions) {
+    if (!fact.identity.belongsTo(input.semanticContext()) ||
+        fact.declaringScope.module() != input.module() ||
+        !fact.declaringScope.belongsTo(input.semanticContext())) {
+      return true;
+    }
+  }
+  for (const auto& scope : candidate.scopes) {
+    if (scope.id.module() != input.module() || !scope.id.belongsTo(input.semanticContext())) {
+      return true;
+    }
+    ZC_IF_SOME(parent, scope.parent) {
+      if (parent.module() != input.module() || !parent.belongsTo(input.semanticContext())) {
+        return true;
+      }
+    }
+    const auto& owner = scope.owner.value();
+    if ((owner.is<ModuleScopeOwner>() &&
+         !owner.get<ModuleScopeOwner>().module.belongsTo(input.semanticContext())) ||
+        (owner.is<DefinitionScopeOwner>() &&
+         !owner.get<DefinitionScopeOwner>().definition.belongsTo(input.semanticContext())) ||
+        (owner.is<ImplScopeOwner>() &&
+         !owner.get<ImplScopeOwner>().implementation.belongsTo(input.semanticContext()))) {
+      return true;
+    }
+    for (const auto& binding : scope.bindings) {
+      if (targetHasForeignContext(input, binding.binding.bindingIdentity) ||
+          targetHasForeignContext(input, binding.binding.canonicalTarget)) {
+        return true;
+      }
+    }
+  }
+  for (const auto& entry : candidate.currentSurface.visibleEntries) {
+    if (entryHasForeignContext(input, entry)) { return true; }
+  }
+  for (const auto& entry : candidate.currentSurface.exports) {
+    if (entryHasForeignContext(input, entry)) { return true; }
+  }
+  for (const auto& fact : candidate.impls) {
+    if (!fact.identity.belongsTo(input.semanticContext())) { return true; }
+    for (const auto member : fact.members) {
+      if (!member.belongsTo(input.semanticContext())) { return true; }
+    }
+  }
+  for (const auto& fact : candidate.moduleAliases) {
+    if (!fact.alias.belongsTo(input.semanticContext()) ||
+        !fact.canonicalTarget.belongsTo(input.semanticContext())) {
+      return true;
+    }
+  }
+  for (const auto& fact : candidate.imports) {
+    if (!fact.alias.belongsTo(input.semanticContext()) ||
+        !fact.sourceModule.belongsTo(input.semanticContext()) ||
+        targetHasForeignContext(input, fact.canonicalTarget)) {
+      return true;
+    }
+  }
+  for (const auto& fact : candidate.localExports) {
+    if (!fact.alias.belongsTo(input.semanticContext()) ||
+        targetHasForeignContext(input, fact.sourceBinding) ||
+        targetHasForeignContext(input, fact.canonicalTarget)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+bool hasInvalidSourceRange(const VerifiedBindingInput& input,
+                           const BindingMetadataCandidate& candidate) {
+  const auto spanIsInvalid = [&](const identity::SourceSpan& span) {
+    return !input.moduleKey().contains(span) || span.byteStart() > span.byteEnd() ||
+           span.byteEnd() > input.parsedModule().byteLength();
+  };
+  for (const auto& failureFact : candidate.sourceFailures) {
+    if (spanIsInvalid(failureFact.primary)) { return true; }
+    for (const auto& note : failureFact.notes) {
+      if (spanIsInvalid(note.source)) { return true; }
+    }
+  }
+  for (const auto& fact : candidate.definitions) {
+    if (spanIsInvalid(fact.source)) { return true; }
+  }
+  for (const auto& scope : candidate.scopes) {
+    if (spanIsInvalid(scope.source)) { return true; }
+    for (const auto& binding : scope.bindings) {
+      if (spanIsInvalid(binding.binding.declarationSpan)) { return true; }
+      ZC_IF_SOME(alias, binding.binding.aliasSpan) {
+        if (spanIsInvalid(alias)) { return true; }
+      }
+    }
+  }
+  const auto entryIsInvalid = [&](const ExportSurfaceEntry& entry) {
+    if (spanIsInvalid(entry.bindingSpan) || spanIsInvalid(entry.canonicalDeclarationSpan)) {
+      return true;
+    }
+    ZC_IF_SOME(alias, entry.aliasSpan) {
+      if (spanIsInvalid(alias)) { return true; }
+    }
+    ZC_IF_SOME(exportSpan, entry.exportSpan) {
+      if (spanIsInvalid(exportSpan)) { return true; }
+    }
+    for (const auto& step : entry.reexportChain) {
+      if (spanIsInvalid(step.exportSpan)) { return true; }
+    }
+    return false;
+  };
+  for (const auto& entry : candidate.currentSurface.visibleEntries) {
+    if (entryIsInvalid(entry)) { return true; }
+  }
+  for (const auto& entry : candidate.currentSurface.exports) {
+    if (entryIsInvalid(entry)) { return true; }
+  }
+  return false;
+}
+
+BindingTarget cloneTarget(const BindingTarget& target) {
+  const auto& value = target.value();
+  if (value.is<DefinitionBindingTarget>()) {
+    return BindingTarget::definition(value.get<DefinitionBindingTarget>().definition);
+  }
+  return BindingTarget::module(value.get<ModuleBindingTarget>().module);
+}
+
+VisibilityEnvelope cloneVisibility(const VisibilityEnvelope& visibility) {
+  const auto& value = visibility.value();
+  if (value.is<ModuleVisibility>()) {
+    return VisibilityEnvelope::module(value.get<ModuleVisibility>().module);
+  }
+  return VisibilityEnvelope::external();
+}
+
+ExportSurfaceEntry cloneEntry(const ExportSurfaceEntry& entry) {
+  zc::Maybe<identity::SourceSpan> aliasSpan;
+  ZC_IF_SOME(value, entry.aliasSpan) { aliasSpan = value.clone(); }
+  zc::Maybe<identity::SourceSpan> exportSpan;
+  ZC_IF_SOME(value, entry.exportSpan) { exportSpan = value.clone(); }
+  zc::Vector<ReexportProvenanceStep> chain;
+  for (const auto& step : entry.reexportChain) {
+    chain.add(ReexportProvenanceStep{step.module, step.alias, cloneTarget(step.canonicalTarget),
+                                     step.exportSpan.clone()});
+  }
+  return ExportSurfaceEntry(
+      entry.name.clone(), cloneTarget(entry.bindingIdentity), cloneTarget(entry.canonicalTarget),
+      cloneVisibility(entry.visibility), entry.exported, entry.bindingSpan.clone(),
+      entry.canonicalDeclarationSpan.clone(), zc::mv(aliasSpan), zc::mv(exportSpan), zc::mv(chain));
+}
+
+zc::Maybe<const FrozenDefinitionEntry&> definitionEntry(const VerifiedBindingInput& input,
+                                                        identity::DefId definition) {
+  for (const auto& entry : input.definitions().definitions()) {
+    if (entry.definition == definition) { return entry; }
+  }
+  return zc::none;
+}
+
+bool isUnsupportedScopeProducer(ast::SyntaxKind kind) {
+  return kind == ast::SyntaxKind::ExternDecl || kind == ast::SyntaxKind::MethodDecl ||
+         kind == ast::SyntaxKind::ConstructorDecl || kind == ast::SyntaxKind::DestructorDecl ||
+         kind == ast::SyntaxKind::FunctionExpression || kind == ast::SyntaxKind::LambdaExpression ||
+         kind == ast::SyntaxKind::ClassDecl || kind == ast::SyntaxKind::StructDecl ||
+         kind == ast::SyntaxKind::InterfaceDecl || kind == ast::SyntaxKind::EnumDeclaration ||
+         kind == ast::SyntaxKind::ErrorDecl || kind == ast::SyntaxKind::StandaloneImplDecl ||
+         kind == ast::SyntaxKind::MarkerImpl || kind == ast::SyntaxKind::WhileStmt ||
+         kind == ast::SyntaxKind::ForStmt || kind == ast::SyntaxKind::ForInStatement ||
+         kind == ast::SyntaxKind::DoWhileStatement || kind == ast::SyntaxKind::MatchStmt ||
+         kind == ast::SyntaxKind::MatchArmStmt || kind == ast::SyntaxKind::UnsafeBlockExpr;
+}
+
+zc::Maybe<uint32_t> schemaPreorderOrdinal(const ast::Tree& tree, ast::NodeId target) {
+  uint32_t ordinal = 0;
+  zc::Maybe<uint32_t> result;
+  ast::visitTreePreOrder(tree, tree.root(), [&](ast::NodeId node, const ast::Node&) {
+    if (node == target) { result = ordinal; }
+    ++ordinal;
+  });
+  return result;
+}
+
+bool encodeScopeId(identity::CanonicalEncoder& encoder, const VerifiedBindingInput& input,
+                   ScopeId id) {
+  if (id.module() != input.module() || !id.belongsTo(input.semanticContext())) { return false; }
+  input.moduleKey().encode(encoder);
+  encoder.encodeUint32(id.index());
+  return true;
+}
+
+bool encodeDefinition(identity::CanonicalEncoder& encoder, const VerifiedBindingInput& input,
+                      identity::DefId definition) {
+  ZC_IF_SOME(entry, definitionEntry(input, definition)) {
+    entry.key.encode(encoder);
+    return true;
+  }
+  return false;
+}
+
+bool encodeTarget(identity::CanonicalEncoder& encoder, const VerifiedBindingInput& input,
+                  const BindingTarget& target) {
+  const auto& value = target.value();
+  if (value.is<DefinitionBindingTarget>()) {
+    encoder.encodeUint8(0x01);
+    return encodeDefinition(encoder, input, value.get<DefinitionBindingTarget>().definition);
+  }
+  const auto module = value.get<ModuleBindingTarget>().module;
+  if (module != input.module()) { return false; }
+  encoder.encodeUint8(0x02);
+  input.moduleKey().encode(encoder);
+  return true;
+}
+
+void encodeName(identity::CanonicalEncoder& encoder, const BindingNameKey& name) {
+  encoder.encodeUint8(static_cast<uint8_t>(name.nameSpace()));
+  name.name().encode(encoder);
+}
+
+bool encodeVisibility(identity::CanonicalEncoder& encoder, const VerifiedBindingInput& input,
+                      const VisibilityEnvelope& visibility) {
+  const auto& value = visibility.value();
+  if (value.is<ModuleVisibility>()) {
+    if (value.get<ModuleVisibility>().module != input.module()) { return false; }
+    encoder.encodeUint8(0x01);
+    input.moduleKey().encode(encoder);
+    return true;
+  }
+  encoder.encodeUint8(0x02);
+  return true;
+}
+
+void encodeMaybeSpan(identity::CanonicalEncoder& encoder,
+                     const zc::Maybe<identity::SourceSpan>& span) {
+  ZC_IF_SOME(value, span) {
+    encoder.encodeSome();
+    value.encode(encoder);
+    return;
+  }
+  encoder.encodeNone();
+}
+
+bool encodeEntry(identity::CanonicalEncoder& encoder, const VerifiedBindingInput& input,
+                 const ExportSurfaceEntry& entry) {
+  encodeName(encoder, entry.name);
+  if (!encodeTarget(encoder, input, entry.bindingIdentity) ||
+      !encodeTarget(encoder, input, entry.canonicalTarget) ||
+      !encodeVisibility(encoder, input, entry.visibility)) {
+    return false;
+  }
+  encoder.encodeBool(entry.exported);
+  entry.bindingSpan.encode(encoder);
+  entry.canonicalDeclarationSpan.encode(encoder);
+  encodeMaybeSpan(encoder, entry.aliasSpan);
+  encodeMaybeSpan(encoder, entry.exportSpan);
+  encoder.encodeSequenceSize(entry.reexportChain.size());
+  for (const auto& step : entry.reexportChain) {
+    if (step.module != input.module() || !encodeDefinition(encoder, input, step.alias)) {
+      return false;
+    }
+    input.moduleKey().encode(encoder);
+    if (!encodeTarget(encoder, input, step.canonicalTarget)) { return false; }
+    step.exportSpan.encode(encoder);
+  }
+  return true;
+}
+
+zc::Maybe<zc::Array<uint8_t>> encodeSurfaceMap(const VerifiedBindingInput& input,
+                                               zc::ArrayPtr<const ExportSurfaceEntry> entries) {
+  identity::CanonicalEncoder encoder;
+  encoder.encodeSequenceSize(entries.size());
+  for (const auto& entry : entries) {
+    encodeName(encoder, entry.name);
+    if (!encodeEntry(encoder, input, entry)) { return zc::none; }
+  }
+  return encoder.finish();
+}
+
+bool encodeScopeOwner(identity::CanonicalEncoder& encoder, const VerifiedBindingInput& input,
+                      const ScopeOwner& owner) {
+  const auto& value = owner.value();
+  if (value.is<ModuleScopeOwner>()) {
+    if (value.get<ModuleScopeOwner>().module != input.module()) { return false; }
+    encoder.encodeUint8(0x01);
+    input.moduleKey().encode(encoder);
+    return true;
+  }
+  if (value.is<DefinitionScopeOwner>()) {
+    encoder.encodeUint8(0x02);
+    return encodeDefinition(encoder, input, value.get<DefinitionScopeOwner>().definition);
+  }
+  return false;
+}
+
+zc::Maybe<zc::Array<uint8_t>> encodeAllocationScopeRecord(const VerifiedBindingInput& input,
+                                                          const ScopeRecord& scope) {
+  if (scope.id.module() != input.module() || !scope.id.belongsTo(input.semanticContext())) {
+    return zc::none;
+  }
+  identity::CanonicalEncoder encoder;
+  input.moduleKey().encode(encoder);
+  encoder.encodeUint32(scope.id.index());
+  ZC_IF_SOME(parent, scope.parent) {
+    if (parent.module() != input.module() || !parent.belongsTo(input.semanticContext())) {
+      return zc::none;
+    }
+    encoder.encodeSome();
+    encoder.encodeUint32(parent.index());
+  }
+  else { encoder.encodeNone(); }
+  const auto& owner = scope.owner.value();
+  if (owner.is<ModuleScopeOwner>()) {
+    if (owner.get<ModuleScopeOwner>().module != input.module()) { return zc::none; }
+    encoder.encodeUint8(0x01);
+    input.moduleKey().encode(encoder);
+  } else if (owner.is<DefinitionScopeOwner>()) {
+    encoder.encodeUint8(0x02);
+    if (!encodeDefinition(encoder, input, owner.get<DefinitionScopeOwner>().definition)) {
+      return zc::none;
+    }
+  } else {
+    return zc::none;
+  }
+  encoder.encodeUint8(static_cast<uint8_t>(scope.kind));
+  scope.source.encode(encoder);
+  return encoder.finish();
+}
+
+bool encodeNameBinding(identity::CanonicalEncoder& encoder, const VerifiedBindingInput& input,
+                       const NameBinding& binding) {
+  if (!encodeTarget(encoder, input, binding.bindingIdentity) ||
+      !encodeTarget(encoder, input, binding.canonicalTarget)) {
+    return false;
+  }
+  encoder.encodeUint8(static_cast<uint8_t>(binding.nameSpace));
+  encoder.encodeUint8(static_cast<uint8_t>(binding.origin));
+  binding.declarationSpan.encode(encoder);
+  encodeMaybeSpan(encoder, binding.aliasSpan);
+  return true;
+}
+
+zc::Maybe<zc::Array<uint8_t>> encodeCandidate(const VerifiedBindingInput& input,
+                                              const BindingMetadataCandidate& candidate) {
+  identity::CanonicalEncoder encoder;
+  input.moduleKey().encode(encoder);
+  encoder.encodeSequenceSize(candidate.sourceFailures.size());
+  for (const auto& failureFact : candidate.sourceFailures) {
+    encoder.encodeUint32(static_cast<uint32_t>(failureFact.diagnostic));
+    failureFact.primary.encode(encoder);
+    encoder.encodeUint64(failureFact.emitterOrdinal);
+    encoder.encodeSequenceSize(failureFact.notes.size());
+    for (const auto& note : failureFact.notes) {
+      encoder.encodeUint32(static_cast<uint32_t>(note.diagnostic));
+      note.source.encode(encoder);
+    }
+  }
+  encoder.encodeSequenceSize(candidate.nodeScopes.size());
+  for (const auto& nodeScope : candidate.nodeScopes) {
+    encoder.encodeUint32(nodeScope.node.value);
+    if (!encodeScopeId(encoder, input, nodeScope.scope)) { return zc::none; }
+  }
+  encoder.encodeSequenceSize(candidate.nodeBindings.size());
+  for (const auto& binding : candidate.nodeBindings) {
+    encoder.encodeUint32(binding.node.value);
+    const auto& value = binding.value;
+    if (!value.is<FailedBindingResolution>()) { return zc::none; }
+    encoder.encodeUint8(0x04);
+    encoder.encodeUint64(value.get<FailedBindingResolution>().failureIndex);
+  }
+  encoder.encodeSequenceSize(candidate.definitions.size());
+  for (const auto& fact : candidate.definitions) {
+    if (!encodeDefinition(encoder, input, fact.identity)) { return zc::none; }
+    const auto& site = fact.site.value();
+    if (!site.is<DeclarationDefinitionSite>()) { return zc::none; }
+    encoder.encodeUint8(0x01);
+    encoder.encodeUint32(site.get<DeclarationDefinitionSite>().node.value);
+    encoder.encodeUint8(static_cast<uint8_t>(fact.kind));
+    fact.name.encode(encoder);
+    encoder.encodeUint8(static_cast<uint8_t>(fact.nameSpace));
+    if (!encodeScopeId(encoder, input, fact.declaringScope)) { return zc::none; }
+    fact.source.encode(encoder);
+    encoder.encodeUint8(static_cast<uint8_t>(fact.activation));
+  }
+  encoder.encodeSequenceSize(candidate.impls.size());
+  encoder.encodeSequenceSize(candidate.scopes.size());
+  for (const auto& scope : candidate.scopes) {
+    if (!encodeScopeId(encoder, input, scope.id)) { return zc::none; }
+    ZC_IF_SOME(parent, scope.parent) {
+      encoder.encodeSome();
+      if (!encodeScopeId(encoder, input, parent)) { return zc::none; }
+    }
+    else { encoder.encodeNone(); }
+    if (!encodeScopeOwner(encoder, input, scope.owner)) { return zc::none; }
+    encoder.encodeUint8(static_cast<uint8_t>(scope.kind));
+    encoder.encodeSequenceSize(scope.bindings.size());
+    for (const auto& binding : scope.bindings) {
+      encodeName(encoder, binding.name);
+      if (!encodeNameBinding(encoder, input, binding.binding)) { return zc::none; }
+    }
+    scope.source.encode(encoder);
+  }
+  encoder.encodeSequenceSize(candidate.moduleAliases.size());
+  encoder.encodeSequenceSize(candidate.imports.size());
+  encoder.encodeSequenceSize(candidate.localExports.size());
+  encoder.encodeSequenceSize(candidate.deferredMembers.size());
+  encoder.encodeSequenceSize(candidate.labels.size());
+  encoder.encodeSequenceSize(candidate.controlTransfers.size());
+  encoder.encodeSequenceSize(candidate.shadowTargets.size());
+  encoder.encodeSequenceSize(candidate.closureFreeVariables.size());
+  if (candidate.currentSurface.sourceModule != input.module() ||
+      candidate.currentSurface.sourcePackage != input.package()) {
+    return zc::none;
+  }
+  input.moduleKey().encode(encoder);
+  input.packageKey().encode(encoder);
+  encoder.encodeDigest(candidate.currentSurface.revision.digest());
+  ZC_IF_SOME(visible, encodeSurfaceMap(input, candidate.currentSurface.visibleEntries.asPtr())) {
+    encoder.encodeByteString(visible.asPtr());
+  }
+  else { return zc::none; }
+  ZC_IF_SOME(exports, encodeSurfaceMap(input, candidate.currentSurface.exports.asPtr())) {
+    encoder.encodeByteString(exports.asPtr());
+  }
+  else { return zc::none; }
+  return encoder.finish();
+}
+
+bool sameBytes(zc::ArrayPtr<const uint8_t> left, zc::ArrayPtr<const uint8_t> right) {
+  return left == right;
+}
+
+}  // namespace
+
+zc::Maybe<zc::Array<uint8_t>> encodeBindingAllocationDump(const VerifiedBindingInput& input,
+                                                          zc::ArrayPtr<const ScopeRecord> scopes) {
+  zc::Vector<zc::Array<uint8_t>> storage;
+  for (size_t index = 0; index < scopes.size(); ++index) {
+    if (scopes[index].id.index() != index) { return zc::none; }
+    auto encoded = encodeAllocationScopeRecord(input, scopes[index]);
+    ZC_IF_SOME(value, encoded) { storage.add(zc::mv(value)); }
+    else { return zc::none; }
+  }
+  zc::Vector<zc::ArrayPtr<const uint8_t>> records;
+  for (const auto& value : storage) { records.add(value.asPtr()); }
+  zc::Vector<zc::ArrayPtr<const uint8_t>> labels;
+  return frameBindingAllocationDump(records.asPtr(), labels.asPtr());
+}
+
+ExportSurfaceCandidate::ExportSurfaceCandidate(identity::ModuleId sourceModule,
+                                               identity::PackageId sourcePackage,
+                                               ExportSurfaceRevision revision,
+                                               zc::Vector<ExportSurfaceEntry>&& visibleEntries,
+                                               zc::Vector<ExportSurfaceEntry>&& exports) noexcept
+    : sourceModule(sourceModule),
+      sourcePackage(sourcePackage),
+      revision(revision),
+      visibleEntries(zc::mv(visibleEntries)),
+      exports(zc::mv(exports)) {}
+
+ExportSurfaceCandidate ExportSurfaceCandidate::clone() const {
+  zc::Vector<ExportSurfaceEntry> visible;
+  for (const auto& entry : visibleEntries) { visible.add(cloneEntry(entry)); }
+  zc::Vector<ExportSurfaceEntry> external;
+  for (const auto& entry : exports) { external.add(cloneEntry(entry)); }
+  return ExportSurfaceCandidate(sourceModule, sourcePackage, revision, zc::mv(visible),
+                                zc::mv(external));
+}
+
+BindingMetadataCandidate::BindingMetadataCandidate(identity::SemanticContextBrand semanticContext,
+                                                   identity::ModuleId module,
+                                                   zc::Vector<NodeScopeFact>&& nodeScopes,
+                                                   zc::Vector<DefinitionFact>&& definitions,
+                                                   zc::Vector<ScopeRecord>&& scopes,
+                                                   ExportSurfaceCandidate&& currentSurface) noexcept
+    : semanticContext(semanticContext),
+      module(module),
+      nodeScopes(zc::mv(nodeScopes)),
+      definitions(zc::mv(definitions)),
+      scopes(zc::mv(scopes)),
+      currentSurface(zc::mv(currentSurface)) {}
+
+VerifiedBindingOutput::VerifiedBindingOutput(VerifiedBindingMetadata&& metadata,
+                                             VerifiedExportSurface&& surface) noexcept
+    : metadata(zc::mv(metadata)), surface(zc::mv(surface)) {}
+
+SourceRejected::SourceRejected(zc::Vector<BindingFailureRef>&& failures) noexcept
+    : failureValues(zc::mv(failures)) {}
+zc::ArrayPtr<const BindingFailureRef> SourceRejected::failures() const noexcept {
+  return failureValues.asPtr();
+}
+
+BindingVerificationFailure::BindingVerificationFailure(
+    BindingVerificationFailureValue&& value) noexcept
+    : value(zc::mv(value)) {}
+
+InvariantRejected::InvariantRejected(zc::Vector<BindingVerificationFailure>&& failures) noexcept
+    : failureValues(zc::mv(failures)) {}
+InvariantRejected InvariantRejected::single(BindingVerificationFailure&& failure) {
+  zc::Vector<BindingVerificationFailure> failures;
+  failures.add(zc::mv(failure));
+  return InvariantRejected(zc::mv(failures));
+}
+zc::ArrayPtr<const BindingVerificationFailure> InvariantRejected::failures() const noexcept {
+  return failureValues.asPtr();
+}
+
+struct VerifiedBindingMetadata::Impl final {
+  explicit Impl(BindingMetadataCandidate&& candidate) : candidate(zc::mv(candidate)) {}
+  BindingMetadataCandidate candidate;
+};
+
+VerifiedBindingMetadata::VerifiedBindingMetadata(zc::Own<Impl>&& impl) noexcept
+    : impl(zc::mv(impl)) {}
+VerifiedBindingMetadata::~VerifiedBindingMetadata() noexcept(false) = default;
+VerifiedBindingMetadata::VerifiedBindingMetadata(VerifiedBindingMetadata&&) noexcept = default;
+VerifiedBindingMetadata& VerifiedBindingMetadata::operator=(VerifiedBindingMetadata&&) noexcept =
+    default;
+identity::SemanticContextBrand VerifiedBindingMetadata::semanticContext() const noexcept {
+  return impl->candidate.semanticContext;
+}
+identity::ModuleId VerifiedBindingMetadata::module() const noexcept {
+  return impl->candidate.module;
+}
+zc::ArrayPtr<const NodeScopeFact> VerifiedBindingMetadata::nodeScopes() const {
+  return impl->candidate.nodeScopes.asPtr();
+}
+zc::ArrayPtr<const BindingResolution> VerifiedBindingMetadata::nodeBindings() const {
+  return impl->candidate.nodeBindings.asPtr();
+}
+zc::ArrayPtr<const ScopeRecord> VerifiedBindingMetadata::scopes() const {
+  return impl->candidate.scopes.asPtr();
+}
+zc::ArrayPtr<const DefinitionFact> VerifiedBindingMetadata::definitions() const {
+  return impl->candidate.definitions.asPtr();
+}
+zc::ArrayPtr<const ImplBindingFact> VerifiedBindingMetadata::impls() const {
+  return impl->candidate.impls.asPtr();
+}
+zc::ArrayPtr<const ModuleAliasBindingFact> VerifiedBindingMetadata::moduleAliases() const {
+  return impl->candidate.moduleAliases.asPtr();
+}
+zc::ArrayPtr<const ImportBindingFact> VerifiedBindingMetadata::imports() const {
+  return impl->candidate.imports.asPtr();
+}
+zc::ArrayPtr<const LocalExportFact> VerifiedBindingMetadata::localExports() const {
+  return impl->candidate.localExports.asPtr();
+}
+zc::ArrayPtr<const DeferredMemberFact> VerifiedBindingMetadata::deferredMembers() const {
+  return impl->candidate.deferredMembers.asPtr();
+}
+zc::ArrayPtr<const LabelFact> VerifiedBindingMetadata::labels() const {
+  return impl->candidate.labels.asPtr();
+}
+zc::ArrayPtr<const ControlTransferFact> VerifiedBindingMetadata::controlTransfers() const {
+  return impl->candidate.controlTransfers.asPtr();
+}
+zc::ArrayPtr<const ShadowTargetFact> VerifiedBindingMetadata::shadowTargets() const {
+  return impl->candidate.shadowTargets.asPtr();
+}
+zc::ArrayPtr<const ClosureFreeVariableFact> VerifiedBindingMetadata::closureFreeVariables() const {
+  return impl->candidate.closureFreeVariables.asPtr();
+}
+
+struct VerifiedExportSurface::Impl final {
+  explicit Impl(ExportSurfaceCandidate&& candidate) : candidate(zc::mv(candidate)) {}
+  ExportSurfaceCandidate candidate;
+};
+
+VerifiedExportSurface::VerifiedExportSurface(zc::Own<Impl>&& impl) noexcept : impl(zc::mv(impl)) {}
+VerifiedExportSurface::~VerifiedExportSurface() noexcept(false) = default;
+VerifiedExportSurface::VerifiedExportSurface(VerifiedExportSurface&&) noexcept = default;
+VerifiedExportSurface& VerifiedExportSurface::operator=(VerifiedExportSurface&&) noexcept = default;
+identity::ModuleId VerifiedExportSurface::sourceModule() const noexcept {
+  return impl->candidate.sourceModule;
+}
+identity::PackageId VerifiedExportSurface::sourcePackage() const noexcept {
+  return impl->candidate.sourcePackage;
+}
+const ExportSurfaceRevision& VerifiedExportSurface::revision() const noexcept {
+  return impl->candidate.revision;
+}
+zc::ArrayPtr<const ExportSurfaceEntry> VerifiedExportSurface::visibleEntries() const {
+  return impl->candidate.visibleEntries.asPtr();
+}
+zc::ArrayPtr<const ExportSurfaceEntry> VerifiedExportSurface::exports() const {
+  return impl->candidate.exports.asPtr();
+}
+
+BindingCandidateResult DependencyFreeBindingBuilder::buildSingleFunction(
+    const VerifiedBindingInput& input, diagnostics::DiagnosticEngine& diagnostics) {
+  return buildSingleFunctionCandidate(input, diagnostics);
+}
+
+BindingCandidateResult DependencyFreeBindingBuilder::buildSingleFunctionCandidate(
+    const VerifiedBindingInput& input, zc::Maybe<diagnostics::DiagnosticEngine&> diagnostics) {
+  const auto definitions = input.definitions().definitions();
+  if (definitions.size() != 1 || definitions[0].kind != identity::DefinitionKind::Function ||
+      definitions[0].bindingName == zc::none) {
+    return builderFailure(input, BinderInvariantKind::MissingRequiredResolution);
+  }
+  const auto& tree = input.tree();
+  const auto functionNode = definitions[0].node;
+  if (!tree.contains(functionNode) ||
+      tree.node(functionNode).kind != ast::SyntaxKind::FunctionDecl) {
+    uint32_t ordinal = 0;
+    ZC_IF_SOME(value, schemaPreorderOrdinal(tree, functionNode)) { ordinal = value; }
+    return builderFailure(input, BinderInvariantKind::InvalidBindingFact, ordinal);
+  }
+  const ast::NodeId bodyNode(tree.node(functionNode).payload.words[ast::kFunctionDeclBodyWord]);
+  const ast::NodeId parameterListNode(
+      tree.node(functionNode).payload.words[ast::kFunctionDeclParamsIdWord]);
+  if (!tree.contains(bodyNode) || tree.node(bodyNode).kind != ast::SyntaxKind::BlockStmt) {
+    uint32_t ordinal = 0;
+    ZC_IF_SOME(value, schemaPreorderOrdinal(tree, functionNode)) { ordinal = value; }
+    return builderFailure(input, BinderInvariantKind::InvalidBindingFact, ordinal);
+  }
+  if (!tree.contains(parameterListNode) ||
+      tree.node(parameterListNode).kind != ast::SyntaxKind::FunctionParameterList ||
+      tree.node(parameterListNode).payload.words[ast::kFunctionParameterListNparamsWord] != 0 ||
+      tree.node(parameterListNode).payload.words[ast::kFunctionParameterListParamsSizeWord] != 0) {
+    return builderFailure(input, BinderInvariantKind::MissingRequiredResolution);
+  }
+  zc::Vector<ast::NodeId> unresolvedIdentifiers;
+  uint32_t expressionStatements = 0;
+  uint32_t statementListItems = 0;
+  ast::visitTreePreOrder(tree, tree.root(), [&](ast::NodeId node, const ast::Node& value) {
+    if (value.kind == ast::SyntaxKind::IdentExpr) {
+      unresolvedIdentifiers.add(node);
+    } else if (value.kind == ast::SyntaxKind::ExpressionStatement) {
+      ++expressionStatements;
+    } else if (value.kind == ast::SyntaxKind::StatementListItem) {
+      ++statementListItems;
+    }
+  });
+  const uint32_t bodyItemCount = tree.node(bodyNode).payload.words[ast::kBlockStmtStmtsSizeWord];
+  const bool cleanShape = bodyItemCount == 0 && tree.nodeCount() == 6 &&
+                          unresolvedIdentifiers.empty() && expressionStatements == 0 &&
+                          statementListItems == 1;
+  const bool unresolvedShape = bodyItemCount == 1 && tree.nodeCount() == 9 &&
+                               unresolvedIdentifiers.size() == 1 && expressionStatements == 1 &&
+                               statementListItems == 2;
+  if (!cleanShape && !unresolvedShape) {
+    return builderFailure(input, BinderInvariantKind::MissingRequiredResolution);
+  }
+  zc::Vector<ast::NodeId> scopeProducers;
+  bool unsupportedProducer = false;
+  ast::visitTreePreOrder(tree, tree.root(), [&](ast::NodeId node, const ast::Node& value) {
+    if (value.kind == ast::SyntaxKind::FunctionDecl || value.kind == ast::SyntaxKind::BlockStmt) {
+      scopeProducers.add(node);
+    } else if (isUnsupportedScopeProducer(value.kind)) {
+      unsupportedProducer = true;
+    }
+  });
+  if (unsupportedProducer || scopeProducers.size() != 2 || scopeProducers[0] != functionNode ||
+      scopeProducers[1] != bodyNode) {
+    return builderFailure(input, BinderInvariantKind::MissingRequiredResolution);
+  }
+  auto bodySpan = input.parsedModule().spanFor(tree.node(bodyNode).range);
+  if (bodySpan == zc::none) {
+    uint32_t ordinal = 0;
+    ZC_IF_SOME(value, schemaPreorderOrdinal(tree, bodyNode)) { ordinal = value; }
+    return builderFailure(input, BinderInvariantKind::InvalidBindingFact, ordinal);
+  }
+
+  const ScopeId moduleScope(input.module(), 0);
+  const ScopeId functionScope(input.module(), 1);
+  const ScopeId blockScope(input.module(), 2);
+  const auto& definition = definitions[0];
+  const auto& bindingName = ZC_ASSERT_NONNULL(definition.bindingName);
+
+  zc::Maybe<identity::SourceSpan> noAlias;
+  zc::Vector<ScopeBindingEntry> moduleBindings;
+  moduleBindings.add(ScopeBindingEntry(
+      BindingNameKey(Namespace::Value, bindingName.clone()),
+      NameBinding(BindingTarget::definition(definition.definition),
+                  BindingTarget::definition(definition.definition), Namespace::Value,
+                  BindingOrigin::LocalDeclaration, definition.source.clone(), zc::mv(noAlias))));
+
+  zc::Vector<ScopeRecord> scopes;
+  zc::Maybe<ScopeId> noParent;
+  scopes.add(ScopeRecord(moduleScope, zc::mv(noParent), ScopeOwner::module(input.module()),
+                         ScopeKind::Module, zc::mv(moduleBindings),
+                         input.parsedModule().rootSpan()));
+  zc::Maybe<ScopeId> moduleParent = moduleScope;
+  zc::Vector<ScopeBindingEntry> functionBindings;
+  scopes.add(ScopeRecord(functionScope, zc::mv(moduleParent),
+                         ScopeOwner::definition(definition.definition), ScopeKind::Function,
+                         zc::mv(functionBindings), definition.source.clone()));
+  zc::Maybe<ScopeId> functionParent = functionScope;
+  zc::Vector<ScopeBindingEntry> blockBindings;
+  ZC_IF_SOME(bodySpanValue, bodySpan) {
+    scopes.add(ScopeRecord(blockScope, zc::mv(functionParent),
+                           ScopeOwner::definition(definition.definition), ScopeKind::Block,
+                           zc::mv(blockBindings), zc::mv(bodySpanValue)));
+  }
+
+  zc::Vector<NodeScopeFact> nodeScopes;
+  auto collectNodeScopes = [&](auto&& self, ast::NodeId node, ScopeId enclosingScope) -> void {
+    ScopeId currentScope = enclosingScope;
+    if (node == functionNode) {
+      currentScope = functionScope;
+    } else if (node == bodyNode) {
+      currentScope = blockScope;
+    }
+    nodeScopes.add(NodeScopeFact{node, currentScope});
+    ast::visitChildNodeIds(tree, tree.node(node),
+                           [&](ast::NodeId child) { self(self, child, currentScope); });
+  };
+  collectNodeScopes(collectNodeScopes, tree.root(), moduleScope);
+  if (nodeScopes.size() != tree.nodeCount()) {
+    return builderFailure(input, BinderInvariantKind::MissingRequiredResolution);
+  }
+  for (size_t index = 1; index < nodeScopes.size(); ++index) {
+    auto current = nodeScopes[index];
+    size_t insertion = index;
+    while (insertion > 0 && current.node.value < nodeScopes[insertion - 1].node.value) {
+      nodeScopes[insertion] = nodeScopes[insertion - 1];
+      --insertion;
+    }
+    nodeScopes[insertion] = current;
+  }
+
+  zc::Vector<DefinitionFact> facts;
+  facts.add(DefinitionFact(definition.definition, DefinitionSite::declaration(functionNode),
+                           identity::DefinitionKind::Function, definition.name.clone(),
+                           Namespace::Value, moduleScope, definition.source.clone(),
+                           DefinitionActivation::ModuleSkeleton));
+
+  zc::Maybe<identity::SourceSpan> noSurfaceAlias;
+  zc::Maybe<identity::SourceSpan> noExportSpan;
+  zc::Vector<ReexportProvenanceStep> noChain;
+  zc::Vector<ExportSurfaceEntry> visibleEntries;
+  visibleEntries.add(ExportSurfaceEntry(
+      BindingNameKey(Namespace::Value, bindingName.clone()),
+      BindingTarget::definition(definition.definition),
+      BindingTarget::definition(definition.definition), VisibilityEnvelope::module(input.module()),
+      false, definition.source.clone(), definition.source.clone(), zc::mv(noSurfaceAlias),
+      zc::mv(noExportSpan), zc::mv(noChain)));
+  zc::Vector<ExportSurfaceEntry> exports;
+  auto encodedVisible = encodeSurfaceMap(input, visibleEntries.asPtr());
+  auto encodedExports = encodeSurfaceMap(input, exports.asPtr());
+  if (encodedVisible == zc::none || encodedExports == zc::none) {
+    return builderFailure(input, BinderInvariantKind::InvalidBindingFact);
+  }
+  ZC_IF_SOME(visible, encodedVisible) {
+    ZC_IF_SOME(external, encodedExports) {
+      const auto moduleBytes = input.moduleKey().encode();
+      const auto packageBytes = input.packageKey().encode();
+      auto revision = ExportSurfaceRevision::computeFramed(
+          input.semanticFingerprint().digest(), moduleBytes.asPtr(), packageBytes.asPtr(),
+          visible.asPtr(), external.asPtr());
+      ZC_IF_SOME(revisionValue, revision) {
+        ExportSurfaceCandidate surface(input.module(), input.package(), revisionValue,
+                                       zc::mv(visibleEntries), zc::mv(exports));
+        BindingMetadataCandidate candidate(input.semanticContext(), input.module(),
+                                           zc::mv(nodeScopes), zc::mv(facts), zc::mv(scopes),
+                                           zc::mv(surface));
+        if (unresolvedShape) {
+          const auto unresolvedNode = unresolvedIdentifiers[0];
+          auto unresolvedSpan = input.parsedModule().spanFor(tree.node(unresolvedNode).range);
+          if (unresolvedSpan == zc::none) {
+            return builderFailure(input, BinderInvariantKind::InvalidBindingFact);
+          }
+          uint32_t ordinal = 0;
+          ZC_IF_SOME(value, schemaPreorderOrdinal(tree, unresolvedNode)) { ordinal = value; }
+          ZC_IF_SOME(span, unresolvedSpan) {
+            ZC_IF_SOME(engine, diagnostics) {
+              engine.diagnose<diagnostics::DiagID::UndefinedIdentifier>(
+                  tree.node(unresolvedNode).range.getStart(),
+                  tree.ident(ast::IdentId(
+                      tree.node(unresolvedNode).payload.words[ast::kIdentExprNameWord])));
+            }
+            zc::Vector<BindingDiagnosticNoteRef> notes;
+            candidate.sourceFailures.add(BindingFailureRef{
+                BinderDiagnosticCode::UndefinedIdentifier, span.clone(),
+                (uint64_t(BinderEmitterSite::BodyBinding) << 56) | (uint64_t(ordinal) << 16),
+                zc::mv(notes)});
+            candidate.nodeBindings.add(BindingResolution{
+                unresolvedNode, BindingResolutionValue(FailedBindingResolution{0})});
+          }
+        }
+        return candidate;
+      }
+    }
+  }
+  return builderFailure(input, BinderInvariantKind::InvalidBindingFact);
+}
+
+BindingVerificationResult BindingVerifier::verifySingleFunction(
+    const VerifiedBindingInput& input, BindingMetadataCandidate&& candidate) {
+  auto expectedResult = DependencyFreeBindingBuilder::buildSingleFunctionCandidate(input, zc::none);
+  if (!expectedResult.is<BindingMetadataCandidate>()) {
+    return rejectBinderInvariant(zc::mv(expectedResult.get<BinderInvariantFact>()));
+  }
+  if (hasForeignContext(input, candidate)) { return rejectForeignContext(input); }
+  if (hasInvalidSourceRange(input, candidate)) { return rejectInvalidSourceRange(input); }
+  const auto& expected = expectedResult.get<BindingMetadataCandidate>();
+  if (candidate.scopes.size() < expected.scopes.size() ||
+      candidate.definitions.size() < expected.definitions.size() ||
+      candidate.nodeScopes.size() < expected.nodeScopes.size() ||
+      candidate.sourceFailures.size() < expected.sourceFailures.size() ||
+      candidate.nodeBindings.size() < expected.nodeBindings.size()) {
+    return rejectBinderInvariant(
+        verifierFailure(input, BinderInvariantKind::MissingRequiredResolution));
+  }
+  if (candidate.scopes.size() > expected.scopes.size() ||
+      candidate.definitions.size() > expected.definitions.size() ||
+      candidate.nodeScopes.size() > expected.nodeScopes.size() ||
+      candidate.sourceFailures.size() > expected.sourceFailures.size() ||
+      candidate.nodeBindings.size() > expected.nodeBindings.size()) {
+    return rejectBinderInvariant(verifierFailure(input, BinderInvariantKind::InvalidBindingFact));
+  }
+  if (candidate.scopes.size() != 3 || candidate.scopes[0].id.index() != 0 ||
+      candidate.scopes[0].parent != zc::none || candidate.scopes[1].id.index() != 1 ||
+      candidate.scopes[1].parent == zc::none || candidate.scopes[2].id.index() != 2 ||
+      candidate.scopes[2].parent == zc::none) {
+    return rejectBinderInvariant(verifierFailure(input, BinderInvariantKind::MalformedScopeGraph));
+  }
+  ZC_IF_SOME(parent, candidate.scopes[1].parent) {
+    if (parent != candidate.scopes[0].id) {
+      return rejectBinderInvariant(
+          verifierFailure(input, BinderInvariantKind::MalformedScopeGraph));
+    }
+  }
+  ZC_IF_SOME(parent, candidate.scopes[2].parent) {
+    if (parent != candidate.scopes[1].id) {
+      return rejectBinderInvariant(
+          verifierFailure(input, BinderInvariantKind::MalformedScopeGraph));
+    }
+  }
+  if (!candidate.impls.empty() || !candidate.moduleAliases.empty() || !candidate.imports.empty() ||
+      !candidate.localExports.empty() || !candidate.deferredMembers.empty() ||
+      !candidate.labels.empty() || !candidate.controlTransfers.empty() ||
+      !candidate.shadowTargets.empty() || !candidate.closureFreeVariables.empty() ||
+      candidate.currentSurface.visibleEntries.size() != 1 ||
+      !candidate.currentSurface.exports.empty()) {
+    return rejectBinderInvariant(verifierFailure(input, BinderInvariantKind::InvalidBindingFact));
+  }
+  auto candidateAllocation = encodeBindingAllocationDump(input, candidate.scopes.asPtr());
+  auto expectedAllocation = encodeBindingAllocationDump(input, expected.scopes.asPtr());
+  if (candidateAllocation == zc::none || expectedAllocation == zc::none) {
+    return rejectBinderInvariant(verifierFailure(input, BinderInvariantKind::MalformedScopeGraph));
+  }
+  ZC_IF_SOME(candidateDump, candidateAllocation) {
+    ZC_IF_SOME(expectedDump, expectedAllocation) {
+      if (!sameBytes(candidateDump.asPtr(), expectedDump.asPtr())) {
+        return rejectBinderInvariant(
+            verifierFailure(input, BinderInvariantKind::MalformedScopeGraph));
+      }
+    }
+  }
+  auto candidateBytes = encodeCandidate(input, candidate);
+  auto expectedBytes = encodeCandidate(input, expected);
+  if (candidateBytes == zc::none || expectedBytes == zc::none) {
+    return rejectBinderInvariant(verifierFailure(input, BinderInvariantKind::InvalidBindingFact));
+  }
+  ZC_IF_SOME(candidateValue, candidateBytes) {
+    ZC_IF_SOME(expectedValue, expectedBytes) {
+      if (!sameBytes(candidateValue.asPtr(), expectedValue.asPtr())) {
+        return rejectBinderInvariant(
+            verifierFailure(input, BinderInvariantKind::InvalidBindingFact));
+      }
+    }
+  }
+  if (!candidate.sourceFailures.empty()) {
+    return SourceRejected(zc::mv(candidate.sourceFailures));
+  }
+  auto surface = candidate.currentSurface.clone();
+  return VerifiedBindingOutput(
+      VerifiedBindingMetadata(zc::heap<VerifiedBindingMetadata::Impl>(zc::mv(candidate))),
+      VerifiedExportSurface(zc::heap<VerifiedExportSurface::Impl>(zc::mv(surface))));
+}
+
+}  // namespace zomlang::compiler::binder

@@ -116,6 +116,8 @@ public:
 
   ZC_NODISCARD SourceSpan clone() const;
   ZC_NODISCARD bool belongsTo(const SourceFileKey& source) const;
+  ZC_NODISCARD uint64_t byteStart() const noexcept;
+  ZC_NODISCARD uint64_t byteEnd() const noexcept;
   void encode(CanonicalEncoder& encoder) const;
 
 private:

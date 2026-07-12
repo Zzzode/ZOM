@@ -108,7 +108,14 @@ public:
   VerifiedBindingInput& operator=(VerifiedBindingInput&&) noexcept;
   ZC_DISALLOW_COPY(VerifiedBindingInput);
 
+  ZC_NODISCARD identity::SemanticContextBrand semanticContext() const noexcept;
+  ZC_NODISCARD identity::PackageId package() const noexcept;
+  ZC_NODISCARD const identity::PackageKey& packageKey() const noexcept;
+  ZC_NODISCARD identity::CrateId crate() const noexcept;
+  ZC_NODISCARD const identity::CrateKey& crateKey() const noexcept;
   ZC_NODISCARD identity::ModuleId module() const noexcept;
+  ZC_NODISCARD const identity::ModuleKey& moduleKey() const noexcept;
+  ZC_NODISCARD const identity::SemanticContextFingerprint& semanticFingerprint() const noexcept;
   ZC_NODISCARD const ast::Tree& tree() const noexcept;
   ZC_NODISCARD const VerifiedParsedModule& parsedModule() const noexcept;
   ZC_NODISCARD const FrozenDefinitionInventoryView& definitions() const noexcept;
@@ -119,6 +126,7 @@ private:
   zc::Own<Impl> impl;
 
   friend class BindingInputVerifier;
+  friend class BindingVerifier;
 };
 
 using BindingInputVerificationResult = zc::OneOf<VerifiedBindingInput, ModuleGraphInvariantFact>;

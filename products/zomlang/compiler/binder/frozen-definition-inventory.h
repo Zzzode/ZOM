@@ -12,6 +12,7 @@
 #include "zomlang/compiler/ast/node-id.h"
 #include "zomlang/compiler/binder/definition-identity-map.h"
 #include "zomlang/compiler/binder/parsed-module.h"
+#include "zomlang/compiler/identity/canonical-scalar.h"
 #include "zomlang/compiler/identity/definition-key.h"
 
 namespace zomlang::compiler::binder {
@@ -31,7 +32,9 @@ struct FrozenInventoryInvariantFact final {
 
 /// \brief One declaration site paired with its frozen semantic identity.
 struct FrozenDefinitionEntry final {
-  FrozenDefinitionEntry(ast::NodeId node, identity::DefId definition, identity::DefinitionKind kind,
+  FrozenDefinitionEntry(ast::NodeId node, identity::DefId definition, identity::DefinitionKey&& key,
+                        identity::DefinitionKind kind, identity::DefinitionNameKey&& name,
+                        zc::Maybe<identity::SemanticIdentifier>&& bindingName,
                         identity::SourceSpan&& source) noexcept;
   FrozenDefinitionEntry(FrozenDefinitionEntry&&) noexcept = default;
   FrozenDefinitionEntry& operator=(FrozenDefinitionEntry&&) noexcept = default;
@@ -39,7 +42,10 @@ struct FrozenDefinitionEntry final {
 
   ast::NodeId node;
   identity::DefId definition;
+  identity::DefinitionKey key;
   identity::DefinitionKind kind;
+  identity::DefinitionNameKey name;
+  zc::Maybe<identity::SemanticIdentifier> bindingName;
   identity::SourceSpan source;
 };
 

@@ -147,6 +147,10 @@ SourceSpan SourceSpan::clone() const {
 
 bool SourceSpan::belongsTo(const SourceFileKey& source) const { return sourceValue.sameAs(source); }
 
+uint64_t SourceSpan::byteStart() const noexcept { return startValue; }
+
+uint64_t SourceSpan::byteEnd() const noexcept { return endValue; }
+
 void SourceSpan::encode(CanonicalEncoder& encoder) const {
   sourceValue.encode(encoder);
   encoder.encodeUint64(startValue);

@@ -35,5 +35,15 @@ DIAG(3015, ReexportModuleNotFound, kError,
              "Cannot resolve module '{0}' for re-export", 1)
 DIAG(3016, ReexportMemberNotFound, kError,
              "Module '{0}' has no exported member '{1}' for re-export", 2)
+DIAG(9922, BinderMalformedScopeGraph, kFatal,
+     "Internal binder scope graph is invalid ({0} occurrence(s))", 1)
+DIAG(9923, BinderMissingRequiredResolution, kFatal,
+     "Internal binder required resolution is missing ({0} occurrence(s))", 1)
+DIAG(9924, BinderAliasCycle, kFatal,
+     "Internal binder alias graph contains a cycle ({0} occurrence(s))", 1)
+DIAG(9925, BinderInvalidFact, kFatal,
+     "Internal binder fact is invalid ({0} occurrence(s))", 1)
+DIAG(9926, BinderInvalidEmitterOrdinal, kFatal,
+     "Internal binder diagnostic ordinal is invalid ({0} occurrence(s))", 1)
 DIAG(9956, ModuleGraphInvariant, kFatal,
      "Internal module graph invariant violated ({0} occurrence(s))", 1)

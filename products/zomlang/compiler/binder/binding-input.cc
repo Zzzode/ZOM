@@ -164,12 +164,28 @@ void emitModuleGraphInvariant(diagnostics::DiagnosticEngine& diagnostics,
 }
 
 struct VerifiedBindingInput::Impl final {
-  explicit Impl(const BindingInputCandidate& candidate)
-      : module(candidate.module),
+  Impl(const BindingInputCandidate& candidate, identity::PackageKey&& packageKey,
+       identity::CrateKey&& crateKey, identity::ModuleKey&& moduleKey,
+       identity::SemanticContextFingerprint&& semanticFingerprint)
+      : semanticContext(candidate.semanticContext),
+        package(candidate.package),
+        packageKey(zc::mv(packageKey)),
+        crate(candidate.crate),
+        crateKey(zc::mv(crateKey)),
+        module(candidate.module),
+        moduleKey(zc::mv(moduleKey)),
+        semanticFingerprint(zc::mv(semanticFingerprint)),
         parsedModule(candidate.parsedModule),
         definitions(candidate.definitions) {}
 
+  identity::SemanticContextBrand semanticContext;
+  identity::PackageId package;
+  identity::PackageKey packageKey;
+  identity::CrateId crate;
+  identity::CrateKey crateKey;
   identity::ModuleId module;
+  identity::ModuleKey moduleKey;
+  identity::SemanticContextFingerprint semanticFingerprint;
   const VerifiedParsedModule& parsedModule;
   const FrozenDefinitionInventoryView& definitions;
 };
@@ -178,7 +194,23 @@ VerifiedBindingInput::VerifiedBindingInput(zc::Own<Impl>&& impl) noexcept : impl
 VerifiedBindingInput::~VerifiedBindingInput() noexcept(false) = default;
 VerifiedBindingInput::VerifiedBindingInput(VerifiedBindingInput&&) noexcept = default;
 VerifiedBindingInput& VerifiedBindingInput::operator=(VerifiedBindingInput&&) noexcept = default;
+identity::SemanticContextBrand VerifiedBindingInput::semanticContext() const noexcept {
+  return impl->semanticContext;
+}
+identity::PackageId VerifiedBindingInput::package() const noexcept { return impl->package; }
+const identity::PackageKey& VerifiedBindingInput::packageKey() const noexcept {
+  return impl->packageKey;
+}
+identity::CrateId VerifiedBindingInput::crate() const noexcept { return impl->crate; }
+const identity::CrateKey& VerifiedBindingInput::crateKey() const noexcept { return impl->crateKey; }
 identity::ModuleId VerifiedBindingInput::module() const noexcept { return impl->module; }
+const identity::ModuleKey& VerifiedBindingInput::moduleKey() const noexcept {
+  return impl->moduleKey;
+}
+const identity::SemanticContextFingerprint& VerifiedBindingInput::semanticFingerprint()
+    const noexcept {
+  return impl->semanticFingerprint;
+}
 const ast::Tree& VerifiedBindingInput::tree() const noexcept { return impl->parsedModule.tree(); }
 const VerifiedParsedModule& VerifiedBindingInput::parsedModule() const noexcept {
   return impl->parsedModule;
@@ -216,6 +248,10 @@ BindingInputVerificationResult BindingInputVerifier::verify(
       registries.sourceSnapshot(candidate.parsedModule.sourceFile()) == zc::none) {
     return inputFailure();
   }
+  zc::Maybe<identity::PackageKey> verifiedPackage;
+  zc::Maybe<identity::CrateKey> verifiedCrate;
+  zc::Maybe<identity::ModuleKey> verifiedModule;
+  zc::Maybe<identity::SemanticContextFingerprint> verifiedFingerprint;
   ZC_IF_SOME(packageValue, package) {
     ZC_IF_SOME(crateValue, crate) {
       ZC_IF_SOME(sourceValue, source) {
@@ -255,11 +291,28 @@ BindingInputVerificationResult BindingInputVerifier::verify(
               if (keyValue.module().encode() != moduleValue.encode()) { return inputFailure(); }
             }
           }
+          ZC_IF_SOME(fingerprintValue, fingerprint) {
+            verifiedPackage = packageValue.clone();
+            verifiedCrate = crateValue.clone();
+            verifiedModule = moduleValue.clone();
+            verifiedFingerprint = fingerprintValue.clone();
+          }
         }
       }
     }
   }
-  return VerifiedBindingInput(zc::heap<VerifiedBindingInput::Impl>(candidate));
+  ZC_IF_SOME(packageValue, verifiedPackage) {
+    ZC_IF_SOME(crateValue, verifiedCrate) {
+      ZC_IF_SOME(moduleValue, verifiedModule) {
+        ZC_IF_SOME(fingerprintValue, verifiedFingerprint) {
+          return VerifiedBindingInput(zc::heap<VerifiedBindingInput::Impl>(
+              candidate, zc::mv(packageValue), zc::mv(crateValue), zc::mv(moduleValue),
+              zc::mv(fingerprintValue)));
+        }
+      }
+    }
+  }
+  return inputFailure();
 }
 
 }  // namespace zomlang::compiler::binder
