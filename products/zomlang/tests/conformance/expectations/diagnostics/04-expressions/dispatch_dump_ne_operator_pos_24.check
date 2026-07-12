@@ -3,4 +3,4 @@
 
 
 // CHECK-LITERAL: zom.dispatch.v0
-// CHECK: node={{[0-9]+}} target=OperatorMethod receiver=OperatorLeftHandSide interface=Eq method=eq impl={{[0-9]+}} args=[{{[0-9]+}},{{[0-9]+}}] result={{[0-9]+}}
+// CHECK: node={{[0-9]+}} target=OperatorMethod receiver=OperatorLeftHandSide interface=Eq method=eq impl={{[0-9]+}} args=[named(Point),named(Point)] result=bool

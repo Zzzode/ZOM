@@ -3,4 +3,4 @@
 
 
 // CHECK-LITERAL: zom.dispatch.v0
-// CHECK: node={{[0-9]+}} target=DynVTable receiver=ImplicitSelf interface=Drawable method=draw slot=0 args=[{{[0-9]+}}] result={{[0-9]+}}
+// CHECK: node={{[0-9]+}} target=DynVTable receiver=ImplicitSelf interface=Drawable method=draw slot=0 args=[dyn(named(Drawable))] result=unit

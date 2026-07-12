@@ -3,7 +3,7 @@
 
 
 // CHECK-LITERAL: zom.dispatch.v0
-// CHECK: node={{[0-9]+}} target=PrimitiveOperator receiver=IndexBase args=[{{[0-9]+}},{{[0-9]+}}] result={{[0-9]+}}
-// CHECK: node={{[0-9]+}} target=PrimitiveOperator receiver=IndexBase args=[{{[0-9]+}},{{[0-9]+}}] result={{[0-9]+}}
-// CHECK: node={{[0-9]+}} target=PrimitiveOperator receiver=OperatorOperand args=[{{[0-9]+}}] result={{[0-9]+}}
-// CHECK: node={{[0-9]+}} target=PrimitiveOperator receiver=OperatorOperand args=[{{[0-9]+}}] result={{[0-9]+}}
+// CHECK: node={{[0-9]+}} target=PrimitiveOperator receiver=IndexBase args=[array(i32),i32] result=i32
+// CHECK: node={{[0-9]+}} target=PrimitiveOperator receiver=IndexBase args=[tuple(i32, i32),i32] result=i32
+// CHECK: node={{[0-9]+}} target=PrimitiveOperator receiver=OperatorOperand args=[i32] result=i32
+// CHECK: node={{[0-9]+}} target=PrimitiveOperator receiver=OperatorOperand args=[bool] result=bool

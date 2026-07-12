@@ -3,4 +3,4 @@
 
 
 // CHECK-LITERAL: zom.dispatch.v0
-// CHECK: node={{[0-9]+}} target=StaticMethod receiver=None symbol={{[0-9]+}} args=[] result={{[0-9]+}}
+// CHECK: node={{[0-9]+}} target=StaticMethod receiver=None definition=resolved args=[] result=named(Counter)

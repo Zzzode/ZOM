@@ -3,4 +3,4 @@
 
 
 // CHECK-LITERAL: zom.dispatch.v0
-// CHECK: node={{[0-9]+}} target=FreeFunction receiver=None symbol={{[0-9]+}} args=[{{[0-9]+}}] result={{[0-9]+}}
+// CHECK: node={{[0-9]+}} target=FreeFunction receiver=None definition=resolved args=[i32] result=i32
