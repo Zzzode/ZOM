@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and limitations under
 // the License.
 
+#include <stdlib.h>
 #include <unistd.h>
 
 #include "zc/core/time.h"
@@ -40,8 +41,8 @@ identity::SortedFeatureSet emptyFeatures() {
 }
 
 zc::String writeTempSource(zc::StringPtr sourceText) {
-  zc::String file = zc::str("/tmp/zom-package-session-test.XXXXXX.zom");
-  const int descriptor = mkstemps(file.begin(), 4);
+  zc::String file = zc::str("/tmp/zom-package-session-test.XXXXXX");
+  const int descriptor = mkstemp(file.begin());
   ZC_REQUIRE(descriptor >= 0);
   size_t remaining = sourceText.size();
   const char* cursor = sourceText.cStr();

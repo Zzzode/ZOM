@@ -15,6 +15,7 @@
 #include "zomlang/compiler/driver/compiler-session.h"
 
 #include <errno.h>
+#include <stdlib.h>
 #include <unistd.h>
 
 #include "zc/core/common.h"
@@ -62,9 +63,9 @@ bool containsDiagnosticId(const CapturingDiagnosticConsumer& consumer, diagnosti
 }
 
 zc::String writeTempZomFile(zc::StringPtr source) {
-  zc::String path = zc::str("/tmp/zom-session-test.XXXXXX.zom");
-  int fd = mkstemps(path.begin(), 4);
-  ZC_IREQUIRE(fd >= 0, "mkstemps failed for compiler session test");
+  zc::String path = zc::str("/tmp/zom-session-test.XXXXXX");
+  int fd = mkstemp(path.begin());
+  ZC_IREQUIRE(fd >= 0, "mkstemp failed for compiler session test");
   const char* data = source.cStr();
   size_t remaining = source.size();
   while (remaining > 0) {
