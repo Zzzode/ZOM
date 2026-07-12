@@ -106,7 +106,7 @@ jobs:
 
       - name: Run production sandbox in delegated cgroup
         run: |
-          if ! strace -ff -o /tmp/zom-sandbox-strace \
+          if ! ZOM_LINUX_SANDBOX_TRACE_PREFIX=/tmp/zom-sandbox-strace \
             scripts/run-linux-sandbox-integration.sh build-sanitizer; then
             grep -HE \
               'clone3|mount\(|pivot_root|seccomp|execveat|cgroup\.(procs|kill)|memory\.max|pids\.max' \

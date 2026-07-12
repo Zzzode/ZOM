@@ -110,7 +110,14 @@ if [[ -f "${cgroup_parent}/cgroup.threads" ]]; then
   "${privileged[@]}" chown "${UID}:$(id -g)" "${cgroup_parent}/cgroup.threads"
 fi
 
-ZOM_LINUX_SANDBOX_CGROUP_PARENT="${cgroup_parent}" \
-  ctest --test-dir "$1" \
-    -R '^linux-native-sandbox-integration$' \
-    --output-on-failure --verbose
+test_command=(
+  ctest --test-dir "$1"
+  -R '^linux-native-sandbox-integration$'
+  --output-on-failure --verbose
+)
+if [[ -n ${ZOM_LINUX_SANDBOX_TRACE_PREFIX:-} ]]; then
+  ZOM_LINUX_SANDBOX_CGROUP_PARENT="${cgroup_parent}" \
+    strace -ff -o "${ZOM_LINUX_SANDBOX_TRACE_PREFIX}" "${test_command[@]}"
+else
+  ZOM_LINUX_SANDBOX_CGROUP_PARENT="${cgroup_parent}" "${test_command[@]}"
+fi
