@@ -406,6 +406,9 @@ ZC_TEST("ParsedModule.PromotesExactSourceTreeAndRootSpan") {
   ZC_REQUIRE(fixture.frozenDefinitions != zc::none);
   ZC_IF_SOME(definitions, fixture.frozenDefinitions) {
     ZC_EXPECT(definitions.definitions().size() == 1);
+    ZC_REQUIRE(definitions.definitions()[0].site.value().is<DeclarationDefinitionSite>());
+    ZC_EXPECT(definitions.definitions()[0].site.value().get<DeclarationDefinitionSite>().node ==
+              definitions.definitions()[0].node);
   }
 }
 

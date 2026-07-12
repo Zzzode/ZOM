@@ -31,6 +31,11 @@ const DefinitionInventoryEntry& definitionFor(const DefinitionInventory& invento
   ZC_UNREACHABLE;
 }
 
+const PatternBindingSite& patternSite(const DefinitionInventoryEntry& entry) {
+  ZC_REQUIRE(entry.site.value().is<PatternBindingSite>());
+  return entry.site.value().get<PatternBindingSite>();
+}
+
 }  // namespace
 
 ZC_TEST("DefinitionInventory.ClassifiesModuleAndLexicalBindings") {
@@ -71,16 +76,22 @@ ZC_TEST("DefinitionInventory.ClassifiesModuleAndLexicalBindings") {
   ZC_EXPECT(global.kind == identity::DefinitionKind::Constant);
   ZC_EXPECT(global.moduleNode == module);
   ZC_EXPECT(global.parentPath.empty());
+  ZC_EXPECT(patternSite(global).introducer == globalDeclarator);
+  ZC_EXPECT(patternSite(global).patternPath.empty());
 
   const auto& functionEntry = definitionFor(inventory, function);
   ZC_EXPECT(functionEntry.kind == identity::DefinitionKind::Function);
   ZC_EXPECT(functionEntry.parentPath.empty());
+  ZC_REQUIRE(functionEntry.site.value().is<DeclarationDefinitionSite>());
+  ZC_EXPECT(functionEntry.site.value().get<DeclarationDefinitionSite>().node == function);
 
   const auto& local = definitionFor(inventory, localPattern);
   ZC_EXPECT(local.kind == identity::DefinitionKind::Local);
   ZC_EXPECT(local.parentPath.size() == 1);
   ZC_EXPECT(local.parentPath[0].kind == StructuralIdentityParentKind::Definition);
   ZC_EXPECT(local.parentPath[0].node == function);
+  ZC_EXPECT(patternSite(local).introducer == localDeclarator);
+  ZC_EXPECT(patternSite(local).patternPath.empty());
 }
 
 ZC_TEST("DefinitionInventory.RecordsPatternLeavesAndImplParents") {
@@ -118,6 +129,165 @@ ZC_TEST("DefinitionInventory.RecordsPatternLeavesAndImplParents") {
   ZC_EXPECT(binding.kind == identity::DefinitionKind::PatternBinding);
   ZC_EXPECT(binding.parentPath.size() == 2);
   ZC_EXPECT(binding.parentPath[1].node == method);
+  ZC_EXPECT(patternSite(binding).introducer == arm);
+  ZC_EXPECT(patternSite(binding).patternPath.empty());
+}
+
+ZC_TEST("DefinitionInventory.RecordsExactPatternIntroducersAndSchemaPaths") {
+  TestFixture fix;
+
+  const auto first = fix.makeIdentifierPattern("first"_zc);
+  const auto nested = fix.makeIdentifierPattern("nested"_zc);
+  const auto whole = fix.makeBindingPattern("whole"_zc, false, nested);
+  zc::Vector<ast::NodeId> tupleElements;
+  tupleElements.add(first);
+  tupleElements.add(whole);
+  const auto tuple = fix.makeTuplePattern(fix.makeNodeList(tupleElements));
+  const auto declarator = fix.makeVariableDeclarator(tuple);
+  zc::Vector<ast::NodeId> declarators;
+  declarators.add(declarator);
+  const auto declarationList = fix.makeVariableDeclaratorList(fix.makeNodeList(declarators));
+  const auto global =
+      fix.makeLetStmt(declarationList, static_cast<uint8_t>(ast::BindingDeclarationKind::Const));
+
+  const auto loopBinding = fix.makeIdentifierPattern("item"_zc);
+  ast::NodePayload forPayload;
+  forPayload.words[ast::kForInStatementBindingWord] = loopBinding.value;
+  forPayload.words[ast::kForInStatementExpressionWord] = fix.makeIdentExpr("items"_zc).value;
+  forPayload.words[ast::kForInStatementBodyWord] = fix.makeBlockStmt(ast::NodeList()).value;
+  const auto forIn =
+      fix.builder().makeNode(ast::SyntaxKind::ForInStatement, source::SourceRange(), forPayload);
+
+  const auto armBinding = fix.makeIdentifierPattern("selected"_zc);
+  const auto arm = fix.makeMatchArm(armBinding, fix.makeBlockStmt(ast::NodeList()));
+  zc::Vector<ast::NodeId> arms;
+  arms.add(arm);
+  const auto match = fix.makeMatchStmt(fix.makeIdentExpr("value"_zc), fix.makeNodeList(arms));
+  zc::Vector<ast::NodeId> statements;
+  statements.add(forIn);
+  statements.add(match);
+  const auto function =
+      fix.makeFunctionDecl("run"_zc, fix.makeBlockStmt(fix.makeNodeList(statements)));
+
+  const auto module = fix.makeModuleDecl("inventory"_zc);
+  zc::Vector<ast::NodeId> sourceItems;
+  sourceItems.add(fix.makeStatementListItem(global));
+  sourceItems.add(fix.makeStatementListItem(function));
+  fix.makeSourceFile(module, fix.makeNodeList(sourceItems));
+  const auto inventory = DefinitionInventory::collect(fix.finishTree());
+
+  const auto& firstSite = patternSite(definitionFor(inventory, first));
+  ZC_REQUIRE(firstSite.patternPath.size() == 2);
+  ZC_EXPECT(firstSite.introducer == declarator);
+  ZC_EXPECT(firstSite.patternPath[0] == 0);
+  ZC_EXPECT(firstSite.patternPath[1] == 0);
+
+  const auto& wholeSite = patternSite(definitionFor(inventory, whole));
+  ZC_REQUIRE(wholeSite.patternPath.size() == 2);
+  ZC_EXPECT(wholeSite.patternPath[0] == 0);
+  ZC_EXPECT(wholeSite.patternPath[1] == 1);
+
+  const auto& nestedSite = patternSite(definitionFor(inventory, nested));
+  ZC_REQUIRE(nestedSite.patternPath.size() == 3);
+  ZC_EXPECT(nestedSite.patternPath[0] == 0);
+  ZC_EXPECT(nestedSite.patternPath[1] == 1);
+  ZC_EXPECT(nestedSite.patternPath[2] == 3);
+
+  const auto& loopSite = patternSite(definitionFor(inventory, loopBinding));
+  ZC_EXPECT(loopSite.introducer == forIn);
+  ZC_EXPECT(loopSite.patternPath.empty());
+  const auto& armSite = patternSite(definitionFor(inventory, armBinding));
+  ZC_EXPECT(armSite.introducer == arm);
+  ZC_EXPECT(armSite.patternPath.empty());
+
+  const auto clone = inventory.clone();
+  const auto& clonedFirst = patternSite(definitionFor(clone, first));
+  ZC_REQUIRE(clonedFirst.patternPath.size() == 2);
+  ZC_EXPECT(clonedFirst.introducer == declarator);
+  ZC_EXPECT(clonedFirst.patternPath[0] == 0);
+  ZC_EXPECT(clonedFirst.patternPath[1] == 0);
+}
+
+ZC_TEST("DefinitionInventory.RecordsNestedStructArrayEnumAndRestPaths") {
+  TestFixture fix;
+  auto& builder = fix.builder();
+
+  ast::NodePayload shortPropertyPayload;
+  shortPropertyPayload.words[ast::kPatternPropertyNameWord] =
+      builder.internIdent("short_value"_zc).value;
+  shortPropertyPayload.words[ast::kPatternPropertyShortFormWord] = 1;
+  const auto shortProperty = builder.makeNode(ast::SyntaxKind::PatternProperty,
+                                              source::SourceRange(), shortPropertyPayload);
+
+  const auto enumLeaf = fix.makeIdentifierPattern("enum_value"_zc);
+  zc::Vector<ast::NodeId> enumArguments;
+  enumArguments.add(enumLeaf);
+  const auto enumPattern = fix.makeEnumPattern("Choice"_zc, fix.makeNodeList(enumArguments));
+  ast::NodePayload arrayRestPayload;
+  arrayRestPayload.words[ast::kRestPatternBindingWord] = builder.internIdent("array_rest"_zc).value;
+  const auto arrayRest =
+      builder.makeNode(ast::SyntaxKind::RestPattern, source::SourceRange(), arrayRestPayload);
+  zc::Vector<ast::NodeId> arrayElements;
+  arrayElements.add(enumPattern);
+  const auto arrayElementList = fix.makeNodeList(arrayElements);
+  ast::NodePayload arrayPayload;
+  arrayPayload.words[ast::kArrayPatternPatsFirstWord] = arrayElementList.first;
+  arrayPayload.words[ast::kArrayPatternPatsSizeWord] = arrayElementList.size;
+  arrayPayload.words[ast::kArrayPatternRestWord] = arrayRest.value;
+  const auto arrayPattern =
+      builder.makeNode(ast::SyntaxKind::ArrayPattern, source::SourceRange(), arrayPayload);
+
+  ast::NodePayload longPropertyPayload;
+  longPropertyPayload.words[ast::kPatternPropertyNameWord] = builder.internIdent("items"_zc).value;
+  longPropertyPayload.words[ast::kPatternPropertyPatWord] = arrayPattern.value;
+  const auto longProperty = builder.makeNode(ast::SyntaxKind::PatternProperty,
+                                             source::SourceRange(), longPropertyPayload);
+  ast::NodePayload structRestPayload;
+  structRestPayload.words[ast::kRestPatternBindingWord] =
+      builder.internIdent("struct_rest"_zc).value;
+  const auto structRest =
+      builder.makeNode(ast::SyntaxKind::RestPattern, source::SourceRange(), structRestPayload);
+  zc::Vector<ast::NodeId> fields;
+  fields.add(shortProperty);
+  fields.add(longProperty);
+  const auto fieldList = fix.makeNodeList(fields);
+  ast::NodePayload structPayload;
+  structPayload.words[ast::kStructPatternTyPathWord] = fix.makeModulePath("Record"_zc).value;
+  structPayload.words[ast::kStructPatternFieldsFirstWord] = fieldList.first;
+  structPayload.words[ast::kStructPatternFieldsSizeWord] = fieldList.size;
+  structPayload.words[ast::kStructPatternRestWord] = structRest.value;
+  const auto structPattern =
+      builder.makeNode(ast::SyntaxKind::StructPattern, source::SourceRange(), structPayload);
+
+  const auto declarator = fix.makeVariableDeclarator(structPattern);
+  zc::Vector<ast::NodeId> declarators;
+  declarators.add(declarator);
+  const auto list = fix.makeVariableDeclaratorList(fix.makeNodeList(declarators));
+  zc::Vector<ast::NodeId> declarations;
+  declarations.add(fix.makeLetStmt(list, static_cast<uint8_t>(ast::BindingDeclarationKind::Const)));
+  const auto inventory =
+      DefinitionInventory::collect(fix.buildSourceFile("inventory"_zc, declarations));
+
+  const auto& shortSite = patternSite(definitionFor(inventory, shortProperty));
+  ZC_REQUIRE(shortSite.patternPath.size() == 2);
+  ZC_EXPECT(shortSite.patternPath[0] == 1);
+  ZC_EXPECT(shortSite.patternPath[1] == 0);
+  const auto& enumSite = patternSite(definitionFor(inventory, enumLeaf));
+  const uint32_t expectedEnumPath[] = {1, 1, 2, 0, 0, 1, 0};
+  ZC_REQUIRE(enumSite.patternPath.size() == zc::size(expectedEnumPath));
+  for (size_t index = 0; index < zc::size(expectedEnumPath); ++index) {
+    ZC_EXPECT(enumSite.patternPath[index] == expectedEnumPath[index]);
+  }
+  const auto& arrayRestSite = patternSite(definitionFor(inventory, arrayRest));
+  const uint32_t expectedArrayRestPath[] = {1, 1, 2, 1};
+  ZC_REQUIRE(arrayRestSite.patternPath.size() == zc::size(expectedArrayRestPath));
+  for (size_t index = 0; index < zc::size(expectedArrayRestPath); ++index) {
+    ZC_EXPECT(arrayRestSite.patternPath[index] == expectedArrayRestPath[index]);
+  }
+  const auto& structRestSite = patternSite(definitionFor(inventory, structRest));
+  ZC_REQUIRE(structRestSite.patternPath.size() == 1);
+  ZC_EXPECT(structRestSite.patternPath[0] == 2);
+  ZC_EXPECT(structRestSite.introducer == declarator);
 }
 
 ZC_TEST("DefinitionInventory.RecordsAnonymousClosureRole") {
