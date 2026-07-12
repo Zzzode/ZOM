@@ -34,6 +34,6 @@
 // CHECK-NEXT:                     ModulePath #9 @1:36..1:38 segments=["E3"]
 // CHECK-NEXT:                   args: []
 // CHECK-NEXT:           body:
-// CHECK-NEXT:             BlockStmt #12 @2:1..2:1
+// CHECK-NEXT:             BlockStmt #12 @1:38..1:39
 // CHECK-NEXT:               stmts: []
 // CHECK-NEXT:       attrs: null

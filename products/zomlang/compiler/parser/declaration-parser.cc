@@ -1935,8 +1935,16 @@ ast::NodeId Parser::Impl::parseFunctionDeclaration(AstFactory& builder, size_t s
     typeParams = builder.makeGenericParams(rangeFor(where, parts.headerEnd), 0,
                                            builder.makeList(emptyParams.asPtr()), whereClause);
   }
+  ast::NodeId body;
+  if (parts.bodyOpen < end) {
+    body = parseBlock(builder, parts.bodyOpen, end);
+  } else {
+    zc::Vector<ast::NodeId> emptyBody;
+    body = builder.makeBlockStmt(rangeFor(parts.headerEnd, parts.headerEnd),
+                                 builder.makeList(emptyBody.asPtr()));
+  }
   return builder.makeFunctionDecl(rangeFor(start, end), name, params, typeParams, retTy, raisesTy,
-                                  parseBlock(builder, parts.bodyOpen, end));
+                                  body);
 }
 
 ast::NodeId Parser::Impl::parseNamedTypeDeclaration(AstFactory& builder, size_t start, size_t end,

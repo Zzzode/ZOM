@@ -543,6 +543,10 @@ ZC_TEST("BindingVerifier.PublishesCompletePrivateFunctionFactsAndSurface") {
   ZC_EXPECT(output.metadata.scopes()[1].kind == ScopeKind::Function);
   ZC_EXPECT(output.metadata.scopes()[2].id.index() == 2);
   ZC_EXPECT(output.metadata.scopes()[2].kind == ScopeKind::Block);
+  ZC_EXPECT(output.metadata.scopes()[1].source.byteStart() <=
+            output.metadata.scopes()[2].source.byteStart());
+  ZC_EXPECT(output.metadata.scopes()[2].source.byteEnd() <=
+            output.metadata.scopes()[1].source.byteEnd());
   ZC_REQUIRE(output.metadata.definitions().size() == 1);
   ZC_EXPECT(output.metadata.definitions()[0].declaringScope.index() == 0);
   ZC_EXPECT(output.metadata.definitions()[0].activation == DefinitionActivation::ModuleSkeleton);
@@ -566,7 +570,7 @@ ZC_TEST("BindingVerifier.PublishesCompletePrivateFunctionFactsAndSurface") {
     ZC_EXPECT(dump.size() == 3227);
     ZC_IF_SOME(digest, identity::sha256(dump.asPtr())) {
       ZC_EXPECT(zc::encodeHex(digest.bytes()) ==
-                "058bc5e736e3562fb8d85a81c219b4e3c9917935e271c0f9162209289bb7c152"_zc);
+                "2c5b3604e7bb003b11cff64d1b19af3405ab1940b4379846faba3a05754a9cb6"_zc);
     }
   }
 }

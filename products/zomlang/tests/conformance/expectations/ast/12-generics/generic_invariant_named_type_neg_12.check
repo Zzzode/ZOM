@@ -36,7 +36,7 @@
 // CHECK-NEXT:                     PredefinedTypeExpr #7 @3:33..3:36 kind=I32
 // CHECK-NEXT:           raises_ty: null
 // CHECK-NEXT:           body:
-// CHECK-NEXT:             BlockStmt #11 @5:1..5:4
+// CHECK-NEXT:             BlockStmt #11 @3:37..3:38
 // CHECK-NEXT:               stmts: []
 // CHECK-NEXT:       attrs: null
 // CHECK-NEXT:     StatementListItem #25 @5:1..7:2

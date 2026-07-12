@@ -14,7 +14,7 @@
 // CHECK-NEXT:           ret_ty: null
 // CHECK-NEXT:           raises_ty: null
 // CHECK-NEXT:           body:
-// CHECK-NEXT:             BlockStmt #6 @3:1..3:1
+// CHECK-NEXT:             BlockStmt #6 @2:19..2:20
 // CHECK-NEXT:               stmts: []
 // CHECK-NEXT:       attrs:
 // CHECK-NEXT:         AttributeList #4 @1:1..1:52
