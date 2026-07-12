@@ -91,7 +91,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y cmake ninja-build clang
+          sudo apt-get install -y cmake ninja-build clang strace
           pip3 install lit psutil PyYAML
 
       - name: Configure sanitizer sandbox gate
@@ -105,7 +105,12 @@ jobs:
             --target linux-native-sandbox-integration-test -j2
 
       - name: Run production sandbox in delegated cgroup
-        run: scripts/run-linux-sandbox-integration.sh build-sanitizer
+        run: |
+          if ! strace -ff -o /tmp/zom-sandbox-strace \
+            scripts/run-linux-sandbox-integration.sh build-sanitizer; then
+            grep -H ' = -1 ' /tmp/zom-sandbox-strace* | tail -100
+            exit 1
+          fi
 
   generate-coverage:
     runs-on: ubuntu-latest
