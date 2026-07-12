@@ -47,20 +47,29 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND
     PRIVATE
       ZOM_LINUX_SANDBOX_RUNTIME_FIXTURE="$<TARGET_FILE:zom-linux-sandbox-runtime-fixture>")
 
-  add_executable(
-    linux-native-sandbox-integration-test EXCLUDE_FROM_ALL
-    ${CMAKE_CURRENT_SOURCE_DIR}/linux-native-sandbox-integration.cc)
-  target_link_libraries(
-    linux-native-sandbox-integration-test PRIVATE ztest frontend)
-  target_include_directories(
-    linux-native-sandbox-integration-test
-    PRIVATE ${ZOM_ROOT}/libraries ${ZOM_ROOT}/products)
-  target_compile_options(
-    linux-native-sandbox-integration-test PRIVATE -Wno-global-constructors)
-  target_compile_definitions(
-    linux-native-sandbox-integration-test
-    PRIVATE
-      ZOM_LINUX_SANDBOX_RUNTIME_FIXTURE="$<TARGET_FILE:zom-linux-sandbox-runtime-fixture>")
-  add_dependencies(
-    linux-native-sandbox-integration-test zom-linux-sandbox-runtime-fixture)
+  if(ZOM_ENABLE_PRIVILEGED_LINUX_SANDBOX_TESTS)
+    add_executable(
+      linux-native-sandbox-integration-test
+      ${CMAKE_CURRENT_SOURCE_DIR}/linux-native-sandbox-integration.cc)
+    target_link_libraries(
+      linux-native-sandbox-integration-test PRIVATE ztest frontend)
+    target_include_directories(
+      linux-native-sandbox-integration-test
+      PRIVATE ${ZOM_ROOT}/libraries ${ZOM_ROOT}/products)
+    target_compile_options(
+      linux-native-sandbox-integration-test PRIVATE -Wno-global-constructors)
+    target_compile_definitions(
+      linux-native-sandbox-integration-test
+      PRIVATE
+        ZOM_LINUX_SANDBOX_RUNTIME_FIXTURE="$<TARGET_FILE:zom-linux-sandbox-runtime-fixture>")
+    add_dependencies(
+      linux-native-sandbox-integration-test zom-linux-sandbox-runtime-fixture)
+    add_test(
+      NAME linux-native-sandbox-integration
+      COMMAND $<TARGET_FILE:linux-native-sandbox-integration-test>)
+    set_tests_properties(
+      linux-native-sandbox-integration
+      PROPERTIES LABELS "integration;package;linux;privileged;release"
+                 TIMEOUT 180)
+  endif()
 endif()

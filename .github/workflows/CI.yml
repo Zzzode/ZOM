@@ -81,6 +81,32 @@ jobs:
       - name: Run tests
         run: ctest --preset allTests
 
+  check-linux-sandbox-integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build clang
+          pip3 install lit psutil
+
+      - name: Configure sanitizer sandbox gate
+        run: |
+          cmake --preset sanitizer \
+            -DZOM_ENABLE_PRIVILEGED_LINUX_SANDBOX_TESTS=ON
+
+      - name: Build sanitizer sandbox gate
+        run: |
+          cmake --build --preset sanitizer \
+            --target linux-native-sandbox-integration-test -j2
+
+      - name: Run production sandbox in delegated cgroup
+        run: scripts/run-linux-sandbox-integration.sh build-sanitizer
+
   generate-coverage:
     runs-on: ubuntu-latest
 
