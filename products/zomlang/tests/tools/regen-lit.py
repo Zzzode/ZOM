@@ -87,12 +87,21 @@ class SnapshotRegenerator:
         zomc = self.find_zomc()
         if not zomc:
             raise RuntimeError("Could not find zomc compiler")
+        package_runner = (
+            self.repo_root
+            / "products"
+            / "zomlang"
+            / "tests"
+            / "tools"
+            / "run-zomc-package.py"
+        )
+        command_prefix = [sys.executable, str(package_runner), "--zomc", zomc]
 
         if snapshot_kind == "diagnostics":
             source_file = Path(test_file).resolve()
             rel = source_file.relative_to(self.corpus_root).as_posix()
             result = subprocess.run(
-                [zomc, "compile", "--syntax-only", rel],
+                [*command_prefix, "compile", "--syntax-only", rel],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 text=True,
@@ -102,7 +111,7 @@ class SnapshotRegenerator:
             return result.returncode, result.stdout
 
         result = subprocess.run(
-            [zomc, "compile", "--dump-ast", test_file],
+            [*command_prefix, "compile", "--dump-ast", test_file],
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,

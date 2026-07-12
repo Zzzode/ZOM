@@ -59,8 +59,12 @@ if not zomc_path:
 filecheck_path = os.path.join(
     repo_root, "products", "zomlang", "tests", "tools", "filecheck.py"
 )
+package_runner_path = os.path.join(
+    repo_root, "products", "zomlang", "tests", "tools", "run-zomc-package.py"
+)
+zomc_command = f"python3 {package_runner_path} --zomc {zomc_path}"
 
-config.substitutions.append(("%zomc", zomc_path))
+config.substitutions.append(("%zomc", zomc_command))
 config.substitutions.append(("%corpus", corpus_root))
 config.substitutions.append(("%t", os.path.join(config.test_exec_root, "temp")))
 config.substitutions.append(("%FileCheck", f"python3 {filecheck_path}"))
@@ -77,7 +81,7 @@ if os.environ.get("ZOM_ENABLE_COVERAGE"):
         if pattern == "%zomc":
             config.substitutions[index] = (
                 "%zomc",
-                f"LLVM_PROFILE_FILE={profile_path} ZC_CLEAN_SHUTDOWN=1 {zomc_path}",
+                f"LLVM_PROFILE_FILE={profile_path} ZC_CLEAN_SHUTDOWN=1 {zomc_command}",
             )
             break
     lit_config.note(f"Coverage enabled: LLVM_PROFILE_FILE={profile_path}")
