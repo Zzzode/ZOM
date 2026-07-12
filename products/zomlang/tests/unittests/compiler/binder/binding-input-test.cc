@@ -1170,6 +1170,15 @@ ZC_TEST("BindingSkeleton.PublishesImplMemberMapsAndDefersParameters") {
     ZC_EXPECT(scope.bindings[0].name.name().text() == "act"_zc);
   }
   ZC_EXPECT(foundImpl);
+  auto implCandidate = BindingBuilder::build(implInput, *implSource.diagnostics);
+  ZC_REQUIRE(implCandidate.is<BindingMetadataCandidate>());
+  auto implVerified =
+      BindingVerifier::verify(implInput, zc::mv(implCandidate.get<BindingMetadataCandidate>()));
+  ZC_REQUIRE(implVerified.is<VerifiedBindingOutput>());
+  const auto& implFacts = implVerified.get<VerifiedBindingOutput>().metadata.impls();
+  ZC_REQUIRE(implFacts.size() == 1);
+  ZC_EXPECT(implFacts[0].identity == implFixture.implId);
+  ZC_REQUIRE(implFacts[0].members.size() == 1);
 
   ParsedSource parameterSource("module root;\nfun apply(value: i32);\n"_zc);
   FrozenFixture parameterFixture(parameterSource, true);
@@ -1183,6 +1192,73 @@ ZC_TEST("BindingSkeleton.PublishesImplMemberMapsAndDefersParameters") {
   ZC_REQUIRE(deferred.is<BinderInvariantFact>());
   ZC_EXPECT(deferred.get<BinderInvariantFact>().kind ==
             BinderInvariantKind::MissingRequiredResolution);
+}
+
+ZC_TEST("BindingSkeleton.PublishesEmptyMarkerImplFact") {
+  ParsedSource sourceFixture("module root;\nimpl !Shared for Target;\n"_zc);
+  FrozenFixture fixture(sourceFixture, false, false, ImplRegistration::Exact);
+  auto inputResult = verify(fixture);
+  ZC_REQUIRE(inputResult.is<VerifiedBindingInput>());
+  auto input = zc::mv(inputResult.get<VerifiedBindingInput>());
+  auto candidate = BindingBuilder::build(input, *sourceFixture.diagnostics);
+  ZC_REQUIRE(candidate.is<BindingMetadataCandidate>());
+  auto verified = BindingVerifier::verify(input, zc::mv(candidate.get<BindingMetadataCandidate>()));
+  ZC_REQUIRE(verified.is<VerifiedBindingOutput>());
+  const auto& facts = verified.get<VerifiedBindingOutput>().metadata.impls();
+  ZC_REQUIRE(facts.size() == 1);
+  ZC_EXPECT(facts[0].identity == fixture.implId);
+  ZC_EXPECT(facts[0].members.empty());
+}
+
+ZC_TEST("BindingVerifier.RejectsMalformedImplFactsAndMemberOrder") {
+  ParsedSource sourceFixture(
+      "module root;\ninterface Action { fun alpha(); fun zeta(); }\nclass Target {}\n"
+      "impl Action for Target { fun zeta(); fun alpha(); }\n"_zc);
+  FrozenFixture fixture(sourceFixture, true, false, ImplRegistration::Exact);
+  auto inputResult = verify(fixture);
+  ZC_REQUIRE(inputResult.is<VerifiedBindingInput>());
+  auto input = zc::mv(inputResult.get<VerifiedBindingInput>());
+
+  auto reorderedCandidate = BindingBuilder::build(input, *sourceFixture.diagnostics);
+  ZC_REQUIRE(reorderedCandidate.is<BindingMetadataCandidate>());
+  auto& reordered = reorderedCandidate.get<BindingMetadataCandidate>();
+  ZC_REQUIRE(reordered.impls.size() == 1);
+  ZC_REQUIRE(reordered.impls[0].members.size() == 2);
+  const auto first = reordered.impls[0].members[0];
+  reordered.impls[0].members[0] = reordered.impls[0].members[1];
+  reordered.impls[0].members[1] = first;
+  auto reorderedResult = BindingVerifier::verify(input, zc::mv(reordered));
+  ZC_EXPECT(requireBinderInvariant(reorderedResult).kind ==
+            BinderInvariantKind::InvalidBindingFact);
+
+  auto missingCandidate = BindingBuilder::build(input, *sourceFixture.diagnostics);
+  ZC_REQUIRE(missingCandidate.is<BindingMetadataCandidate>());
+  auto& missing = missingCandidate.get<BindingMetadataCandidate>();
+  missing.impls[0].members.removeLast();
+  auto missingResult = BindingVerifier::verify(input, zc::mv(missing));
+  ZC_EXPECT(requireBinderInvariant(missingResult).kind == BinderInvariantKind::InvalidBindingFact);
+
+  auto additionalCandidate = BindingBuilder::build(input, *sourceFixture.diagnostics);
+  ZC_REQUIRE(additionalCandidate.is<BindingMetadataCandidate>());
+  auto& additional = additionalCandidate.get<BindingMetadataCandidate>();
+  additional.impls[0].members.add(additional.impls[0].members[0]);
+  auto additionalResult = BindingVerifier::verify(input, zc::mv(additional));
+  ZC_EXPECT(requireBinderInvariant(additionalResult).kind ==
+            BinderInvariantKind::InvalidBindingFact);
+
+  auto scopeCandidate = BindingBuilder::build(input, *sourceFixture.diagnostics);
+  ZC_REQUIRE(scopeCandidate.is<BindingMetadataCandidate>());
+  auto& wrongScope = scopeCandidate.get<BindingMetadataCandidate>();
+  wrongScope.impls[0].scope = wrongScope.scopes[0].id;
+  auto scopeResult = BindingVerifier::verify(input, zc::mv(wrongScope));
+  ZC_EXPECT(requireBinderInvariant(scopeResult).kind == BinderInvariantKind::InvalidBindingFact);
+
+  auto sourceCandidate = BindingBuilder::build(input, *sourceFixture.diagnostics);
+  ZC_REQUIRE(sourceCandidate.is<BindingMetadataCandidate>());
+  auto& wrongSource = sourceCandidate.get<BindingMetadataCandidate>();
+  wrongSource.impls[0].source = wrongSource.definitions[0].source.clone();
+  auto sourceResult = BindingVerifier::verify(input, zc::mv(wrongSource));
+  ZC_EXPECT(requireBinderInvariant(sourceResult).kind == BinderInvariantKind::InvalidBindingFact);
 }
 
 ZC_TEST("BindingSkeleton.IncludesModuleConstantPatternLeaves") {

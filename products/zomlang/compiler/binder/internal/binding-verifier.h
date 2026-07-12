@@ -57,7 +57,7 @@ private:
   BindingMetadataCandidate(identity::SemanticContextBrand semanticContext,
                            identity::ModuleId module, zc::Vector<NodeScopeFact>&& nodeScopes,
                            zc::Vector<DefinitionFact>&& definitions,
-                           zc::Vector<ScopeRecord>&& scopes,
+                           zc::Vector<ImplBindingFact>&& impls, zc::Vector<ScopeRecord>&& scopes,
                            ExportSurfaceCandidate&& currentSurface) noexcept;
   friend class BindingBuilder;
 };

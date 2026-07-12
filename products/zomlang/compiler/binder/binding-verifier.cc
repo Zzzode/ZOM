@@ -145,7 +145,10 @@ bool hasForeignContext(const VerifiedBindingInput& input,
     if (entryHasForeignContext(input, entry)) { return true; }
   }
   for (const auto& fact : candidate.impls) {
-    if (!fact.identity.belongsTo(input.semanticContext())) { return true; }
+    if (!fact.identity.belongsTo(input.semanticContext()) ||
+        fact.scope.module() != input.module() || !fact.scope.belongsTo(input.semanticContext())) {
+      return true;
+    }
     for (const auto member : fact.members) {
       if (!member.belongsTo(input.semanticContext())) { return true; }
     }
@@ -186,6 +189,9 @@ bool hasInvalidSourceRange(const VerifiedBindingInput& input,
     }
   }
   for (const auto& fact : candidate.definitions) {
+    if (spanIsInvalid(fact.source)) { return true; }
+  }
+  for (const auto& fact : candidate.impls) {
     if (spanIsInvalid(fact.source)) { return true; }
   }
   for (const auto& scope : candidate.scopes) {
@@ -475,6 +481,16 @@ zc::Maybe<zc::Array<uint8_t>> encodeCandidate(const VerifiedBindingInput& input,
     encoder.encodeUint8(static_cast<uint8_t>(fact.activation));
   }
   encoder.encodeSequenceSize(candidate.impls.size());
+  for (const auto& fact : candidate.impls) {
+    if (!encodeImplementation(encoder, input, fact.identity)) { return zc::none; }
+    encoder.encodeUint32(fact.node.value);
+    if (!encodeScopeId(encoder, input, fact.scope)) { return zc::none; }
+    encoder.encodeSequenceSize(fact.members.size());
+    for (const auto member : fact.members) {
+      if (!encodeDefinition(encoder, input, member)) { return zc::none; }
+    }
+    fact.source.encode(encoder);
+  }
   encoder.encodeSequenceSize(candidate.scopes.size());
   for (const auto& scope : candidate.scopes) {
     if (!encodeScopeId(encoder, input, scope.id)) { return zc::none; }
@@ -563,12 +579,14 @@ BindingMetadataCandidate::BindingMetadataCandidate(identity::SemanticContextBran
                                                    identity::ModuleId module,
                                                    zc::Vector<NodeScopeFact>&& nodeScopes,
                                                    zc::Vector<DefinitionFact>&& definitions,
+                                                   zc::Vector<ImplBindingFact>&& impls,
                                                    zc::Vector<ScopeRecord>&& scopes,
                                                    ExportSurfaceCandidate&& currentSurface) noexcept
     : semanticContext(semanticContext),
       module(module),
       nodeScopes(zc::mv(nodeScopes)),
       definitions(zc::mv(definitions)),
+      impls(zc::mv(impls)),
       scopes(zc::mv(scopes)),
       currentSurface(zc::mv(currentSurface)) {}
 
@@ -738,7 +756,8 @@ BindingCandidateResult BindingBuilder::buildCandidate(
                                        zc::mv(visibleEntries), zc::mv(exports));
         BindingMetadataCandidate candidate(input.semanticContext(), input.module(),
                                            zc::mv(arena.nodeScopes), zc::mv(skeleton.definitions),
-                                           zc::mv(arena.scopes), zc::mv(surface));
+                                           zc::mv(skeleton.impls), zc::mv(arena.scopes),
+                                           zc::mv(surface));
         return candidate;
       }
     }
@@ -757,6 +776,7 @@ BindingVerificationResult BindingVerifier::verify(const VerifiedBindingInput& in
   const auto& expected = expectedResult.get<BindingMetadataCandidate>();
   if (candidate.scopes.size() < expected.scopes.size() ||
       candidate.definitions.size() < expected.definitions.size() ||
+      candidate.impls.size() < expected.impls.size() ||
       candidate.nodeScopes.size() < expected.nodeScopes.size() ||
       candidate.sourceFailures.size() < expected.sourceFailures.size() ||
       candidate.nodeBindings.size() < expected.nodeBindings.size()) {
@@ -765,12 +785,13 @@ BindingVerificationResult BindingVerifier::verify(const VerifiedBindingInput& in
   }
   if (candidate.scopes.size() > expected.scopes.size() ||
       candidate.definitions.size() > expected.definitions.size() ||
+      candidate.impls.size() > expected.impls.size() ||
       candidate.nodeScopes.size() > expected.nodeScopes.size() ||
       candidate.sourceFailures.size() > expected.sourceFailures.size() ||
       candidate.nodeBindings.size() > expected.nodeBindings.size()) {
     return rejectBinderInvariant(verifierFailure(input, BinderInvariantKind::InvalidBindingFact));
   }
-  if (!candidate.impls.empty() || !candidate.moduleAliases.empty() || !candidate.imports.empty() ||
+  if (!candidate.moduleAliases.empty() || !candidate.imports.empty() ||
       !candidate.localExports.empty() || !candidate.deferredMembers.empty() ||
       !candidate.labels.empty() || !candidate.controlTransfers.empty() ||
       !candidate.shadowTargets.empty() || !candidate.closureFreeVariables.empty() ||

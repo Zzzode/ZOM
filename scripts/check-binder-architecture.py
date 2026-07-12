@@ -362,6 +362,7 @@ def check_binding_skeleton_contract(files: dict[Path, str], errors: list[str]) -
         "class BindingSkeletonBuilder final",
         "DefinitionSkeletonBuildResult build(const VerifiedBindingInput& input,",
         "zc::Vector<DefinitionFact> definitions;",
+        "zc::Vector<ImplBindingFact> impls;",
         "zc::Vector<ModuleSkeletonSurfaceSeed> moduleSurfaceSeeds;",
     ):
         if required not in header:
@@ -374,15 +375,28 @@ def check_binding_skeleton_contract(files: dict[Path, str], errors: list[str]) -
         "DefinitionActivation::ModuleSkeleton",
         "sortBindings(scope.bindings)",
         "sortSurfaceSeeds(result.moduleSurfaceSeeds)",
+        "implementations[current].key.encode()",
+        "definition.declaringScope == scopeValue",
+        "result.impls.add(ImplBindingFact",
     ):
         if required not in source:
             errors.append(f"{SKELETON_SOURCE}: incomplete skeleton projection: {required}")
     if "BindingSkeletonBuilder::build(input, arena)" not in files.get(VERIFIER_SOURCE, ""):
         errors.append(f"{VERIFIER_SOURCE}: binding skeleton cutover is disconnected")
+    for required in (
+        "encodeSequenceSize(candidate.impls.size())",
+        "encodeImplementation(encoder, input, fact.identity)",
+        "candidate.impls.size() < expected.impls.size()",
+        "candidate.impls.size() > expected.impls.size()",
+    ):
+        if required not in files.get(VERIFIER_SOURCE, ""):
+            errors.append(f"{VERIFIER_SOURCE}: impl fact verification is disconnected: {required}")
     for marker in (
         "BindingSkeleton.PublishesModuleAndTypeFactsInCanonicalMaps",
         "BindingSkeleton.PublishesImplMemberMapsAndDefersParameters",
         "BindingSkeleton.IncludesModuleConstantPatternLeaves",
+        "BindingSkeleton.PublishesEmptyMarkerImplFact",
+        "BindingVerifier.RejectsMalformedImplFactsAndMemberOrder",
         "BindingBuilder.DefersIdentifierResolutionBeforePublishingMetadata",
     ):
         if marker not in files.get(TEST_SOURCE, ""):
@@ -683,6 +697,24 @@ def self_test(files: dict[Path, str]) -> list[str]:
             SKELETON_SOURCE,
             "inventory[current].key.encode()",
             "zc::heapArray<uint8_t>(0)",
+        ),
+        (
+            "numeric implementation ordering",
+            SKELETON_SOURCE,
+            "implementations[current].key.encode()",
+            "zc::heapArray<uint8_t>(0)",
+        ),
+        (
+            "disconnected direct impl members",
+            SKELETON_SOURCE,
+            "definition.declaringScope == scopeValue",
+            "definition.declaringScope != scopeValue",
+        ),
+        (
+            "missing impl fact codec",
+            VERIFIER_SOURCE,
+            "encodeImplementation(encoder, input, fact.identity)",
+            "encodeDefinition(encoder, input, fact.identity)",
         ),
         (
             "foreign scope arena include",

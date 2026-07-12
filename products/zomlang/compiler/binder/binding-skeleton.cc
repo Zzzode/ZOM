@@ -253,6 +253,54 @@ DefinitionSkeletonBuildResult BindingSkeletonBuilder::build(const VerifiedBindin
     }
   }
 
+  const auto implementations = input.definitions().impls();
+  zc::Vector<size_t> implOrder;
+  for (size_t index = 0; index < implementations.size(); ++index) { implOrder.add(index); }
+  for (size_t index = 1; index < implOrder.size(); ++index) {
+    const size_t current = implOrder[index];
+    const auto currentKey = implementations[current].key.encode();
+    size_t insertion = index;
+    while (insertion > 0) {
+      const auto previousKey = implementations[implOrder[insertion - 1]].key.encode();
+      if (compareBytes(currentKey.asPtr(), previousKey.asPtr()) >= 0) { break; }
+      implOrder[insertion] = implOrder[insertion - 1];
+      --insertion;
+    }
+    implOrder[insertion] = current;
+  }
+  for (const size_t index : implOrder) {
+    const auto& implementation = implementations[index];
+    auto scope = scopeForNode(arena, implementation.node);
+    auto syntaxSpan = input.parsedModule().spanFor(input.tree().node(implementation.node).range);
+    if (scope == zc::none || syntaxSpan == zc::none) {
+      return failure(input, BinderInvariantKind::MissingRequiredResolution, implementation.node);
+    }
+    ZC_IF_SOME(scopeValue, scope) {
+      if (scopeValue.index() >= arena.scopes.size() ||
+          arena.scopes[scopeValue.index()].id != scopeValue) {
+        return failure(input, BinderInvariantKind::MalformedScopeGraph, implementation.node);
+      }
+      const auto& record = arena.scopes[scopeValue.index()];
+      const auto& owner = record.owner.value();
+      if (record.kind != ScopeKind::ImplBody || !owner.is<ImplScopeOwner>() ||
+          owner.get<ImplScopeOwner>().implementation != implementation.implementation ||
+          !sameSpan(record.source, implementation.source)) {
+        return failure(input, BinderInvariantKind::MalformedScopeGraph, implementation.node);
+      }
+      ZC_IF_SOME(span, syntaxSpan) {
+        if (!sameSpan(span, implementation.source)) {
+          return failure(input, BinderInvariantKind::InvalidBindingFact, implementation.node);
+        }
+      }
+      zc::Vector<identity::DefId> members;
+      for (const auto& definition : result.definitions) {
+        if (definition.declaringScope == scopeValue) { members.add(definition.identity); }
+      }
+      result.impls.add(ImplBindingFact{implementation.implementation, implementation.node,
+                                       scopeValue, zc::mv(members), implementation.source.clone()});
+    }
+  }
+
   for (auto& scope : arena.scopes) {
     sortBindings(scope.bindings);
     for (size_t index = 1; index < scope.bindings.size(); ++index) {

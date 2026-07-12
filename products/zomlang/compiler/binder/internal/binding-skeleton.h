@@ -24,6 +24,7 @@ struct ModuleSkeletonSurfaceSeed final {
 
 struct DefinitionSkeletonCandidate final {
   zc::Vector<DefinitionFact> definitions;
+  zc::Vector<ImplBindingFact> impls;
   zc::Vector<ModuleSkeletonSurfaceSeed> moduleSurfaceSeeds;
 };
 
