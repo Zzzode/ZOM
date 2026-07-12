@@ -79,7 +79,7 @@ jobs:
         run: cmake --build --preset debug
 
       - name: Run tests
-        run: ctest --preset allTests
+        run: ctest --preset debug
 
   check-linux-sandbox-integration:
     runs-on: ubuntu-latest

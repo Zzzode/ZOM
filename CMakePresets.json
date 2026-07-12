@@ -88,6 +88,18 @@
   ],
   "testPresets": [
     {
+      "name": "debug",
+      "configurePreset": "debug",
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "error",
+        "stopOnFailure": true,
+        "jobs": 8
+      }
+    },
+    {
       "name": "default",
       "configurePreset": "sanitizer",
       "output": {
