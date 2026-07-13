@@ -12,7 +12,7 @@
 namespace zomlang::compiler::binder {
 namespace {
 
-enum class SkeletonEligibility : uint8_t { Value, Type, Generic, Deferred };
+enum class SkeletonEligibility : uint8_t { Value, Type, Generic, Parameter, Deferred };
 
 SkeletonEligibility eligibility(identity::DefinitionKind kind) {
   using identity::DefinitionKind;
@@ -36,8 +36,9 @@ SkeletonEligibility eligibility(identity::DefinitionKind kind) {
       return SkeletonEligibility::Type;
     case DefinitionKind::TypeParameter:
       return SkeletonEligibility::Generic;
-    case DefinitionKind::ModuleAlias:
     case DefinitionKind::Parameter:
+      return SkeletonEligibility::Parameter;
+    case DefinitionKind::ModuleAlias:
     case DefinitionKind::Local:
     case DefinitionKind::PatternBinding:
     case DefinitionKind::Closure:
@@ -46,6 +47,60 @@ SkeletonEligibility eligibility(identity::DefinitionKind kind) {
       return SkeletonEligibility::Deferred;
   }
   ZC_UNREACHABLE;
+}
+
+zc::Maybe<ast::NodeId> parameterListNode(const ast::Node& syntax) {
+  switch (syntax.kind) {
+    case ast::SyntaxKind::FunctionDecl:
+      return ast::NodeId(syntax.payload.words[ast::kFunctionDeclParamsIdWord]);
+    case ast::SyntaxKind::MethodDecl:
+      return ast::NodeId(syntax.payload.words[ast::kMethodDeclParamsIdWord]);
+    default:
+      return zc::none;
+  }
+}
+
+bool parameterListContains(const ast::Tree& tree, ast::NodeId listNode, ast::NodeId parameter) {
+  if (!tree.contains(listNode) ||
+      tree.node(listNode).kind != ast::SyntaxKind::FunctionParameterList) {
+    return false;
+  }
+  const auto& list = tree.node(listNode);
+  ast::NodeList parameters{list.payload.words[ast::kFunctionParameterListParamsFirstWord],
+                           list.payload.words[ast::kFunctionParameterListParamsSizeWord]};
+  for (ast::NodeId candidate : tree.list(parameters)) {
+    if (candidate == parameter) { return true; }
+  }
+  return false;
+}
+
+bool externParametersContain(const ast::Tree& tree, const ast::Node& syntax,
+                             ast::NodeId parameter) {
+  if (syntax.kind != ast::SyntaxKind::ExternDecl) { return false; }
+  ast::NodeList parameters{syntax.payload.words[ast::kExternDeclParamsFirstWord],
+                           syntax.payload.words[ast::kExternDeclParamsSizeWord]};
+  for (ast::NodeId candidate : tree.list(parameters)) {
+    if (candidate == parameter) { return true; }
+  }
+  return false;
+}
+
+zc::Maybe<ast::NodeId> parameterOwner(const ast::Tree& tree, ast::NodeId parameter,
+                                      bool& ambiguous) {
+  zc::Maybe<ast::NodeId> result;
+  ast::visitTreePreOrder(tree, tree.root(), [&](ast::NodeId node, const ast::Node& syntax) {
+    bool containsParameter = externParametersContain(tree, syntax, parameter);
+    ZC_IF_SOME(listNode, parameterListNode(syntax)) {
+      containsParameter = parameterListContains(tree, listNode, parameter);
+    }
+    if (!containsParameter) { return; }
+    if (result != zc::none) {
+      ambiguous = true;
+      return;
+    }
+    result = node;
+  });
+  return result;
 }
 
 zc::Maybe<ast::NodeId> genericParamsNode(const ast::Node& syntax) {
@@ -377,6 +432,19 @@ DefinitionSkeletonBuildResult BindingSkeletonBuilder::build(const VerifiedBindin
         }
       }
     }
+    if (classification == SkeletonEligibility::Parameter) {
+      bool ambiguousOwner = false;
+      auto owner = parameterOwner(input.tree(), definition.node, ambiguousOwner);
+      if (ambiguousOwner || owner == zc::none) {
+        return failure(input, BinderInvariantKind::MissingRequiredResolution, definition.node);
+      }
+      ZC_IF_SOME(ownerNode, owner) {
+        auto ownerScope = scopeForNode(arena, ownerNode);
+        if (ownerScope == zc::none || ownerScope != nodeScope) {
+          return failure(input, BinderInvariantKind::MalformedScopeGraph, definition.node);
+        }
+      }
+    }
     if (declaringScope == zc::none) {
       return failure(input, BinderInvariantKind::MalformedScopeGraph, definition.node);
     }
@@ -392,7 +460,10 @@ DefinitionSkeletonBuildResult BindingSkeletonBuilder::build(const VerifiedBindin
                                  record.kind == ScopeKind::TypeBody ||
                                  record.kind == ScopeKind::ImplBody;
       if ((classification == SkeletonEligibility::Generic && !genericScope) ||
-          (classification != SkeletonEligibility::Generic && !skeletonScope)) {
+          (classification == SkeletonEligibility::Parameter &&
+           record.kind != ScopeKind::Function) ||
+          (classification != SkeletonEligibility::Generic &&
+           classification != SkeletonEligibility::Parameter && !skeletonScope)) {
         return failure(input, BinderInvariantKind::MissingRequiredResolution, definition.node);
       }
       ZC_IF_SOME(span, syntaxSpan) {
@@ -400,11 +471,14 @@ DefinitionSkeletonBuildResult BindingSkeletonBuilder::build(const VerifiedBindin
           return failure(input, BinderInvariantKind::InvalidBindingFact, definition.node);
         }
       }
-      const Namespace nameSpace =
-          classification == SkeletonEligibility::Value ? Namespace::Value : Namespace::Type;
-      const DefinitionActivation activation = classification == SkeletonEligibility::Generic
-                                                  ? DefinitionActivation::GenericList
-                                                  : DefinitionActivation::ModuleSkeleton;
+      const Namespace nameSpace = classification == SkeletonEligibility::Value ||
+                                          classification == SkeletonEligibility::Parameter
+                                      ? Namespace::Value
+                                      : Namespace::Type;
+      const DefinitionActivation activation =
+          classification == SkeletonEligibility::Generic     ? DefinitionActivation::GenericList
+          : classification == SkeletonEligibility::Parameter ? DefinitionActivation::ParameterList
+                                                             : DefinitionActivation::ModuleSkeleton;
       const auto& name = ZC_ASSERT_NONNULL(definition.bindingName);
       zc::Maybe<identity::SourceSpan> noAlias;
       record.bindings.add(
@@ -416,7 +490,8 @@ DefinitionSkeletonBuildResult BindingSkeletonBuilder::build(const VerifiedBindin
       result.definitions.add(DefinitionFact(definition.definition, definition.site.clone(),
                                             definition.kind, definition.name.clone(), nameSpace,
                                             scope, definition.source.clone(), activation));
-      if (classification != SkeletonEligibility::Generic && record.kind == ScopeKind::Module) {
+      if (classification != SkeletonEligibility::Generic &&
+          classification != SkeletonEligibility::Parameter && record.kind == ScopeKind::Module) {
         bool ambiguousExport = false;
         auto exportNode = declarationExport(input.tree(), definition.node, ambiguousExport);
         if (ambiguousExport) {
