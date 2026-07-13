@@ -1419,6 +1419,55 @@ ZC_TEST("BindingSkeleton.PublishesOnlyDeclarationExports") {
   ZC_EXPECT(surface.exports()[0].exported);
 }
 
+ZC_TEST("BindingActivation.PublishesScopeOwningGenericLists") {
+  ParsedSource sourceFixture(
+      "module root;\n"
+      "fun build<T>();\n"
+      "class Box<U> { fun map<Z>(); }\n"
+      "struct Pair<V> {}\n"
+      "interface Action<W> {}\n"
+      "enum Choice<X> { None }\n"
+      "impl<Y> Action<Y> for Box<Y> {}\n"_zc);
+  FrozenFixture fixture(sourceFixture, true, false, ImplRegistration::Exact);
+  auto inputResult = verify(fixture);
+  ZC_REQUIRE(inputResult.is<VerifiedBindingInput>());
+  auto input = zc::mv(inputResult.get<VerifiedBindingInput>());
+  auto candidate = BindingBuilder::build(input, *sourceFixture.diagnostics);
+  ZC_REQUIRE(candidate.is<BindingMetadataCandidate>());
+  auto verified = BindingVerifier::verify(input, zc::mv(candidate.get<BindingMetadataCandidate>()));
+  ZC_REQUIRE(verified.is<VerifiedBindingOutput>());
+  const auto& metadata = verified.get<VerifiedBindingOutput>().metadata;
+
+  size_t genericCount = 0;
+  for (const auto& fact : metadata.definitions()) {
+    if (fact.kind != identity::DefinitionKind::TypeParameter) { continue; }
+    ++genericCount;
+    ZC_EXPECT(fact.activation == DefinitionActivation::GenericList);
+    ZC_EXPECT(fact.nameSpace == Namespace::Type);
+    ZC_EXPECT(metadata.scopes()[fact.declaringScope.index()].kind != ScopeKind::Module);
+  }
+  ZC_EXPECT(genericCount == 7);
+  ZC_REQUIRE(metadata.impls().size() == 1);
+  ZC_EXPECT(metadata.impls()[0].members.empty());
+}
+
+ZC_TEST("BindingActivation.RejectsDuplicateGenericParameters") {
+  ParsedSource sourceFixture("module root;\nfun build<T, T>();\n"_zc);
+  FrozenFixture fixture(sourceFixture, true);
+  auto inputResult = verify(fixture);
+  ZC_REQUIRE(inputResult.is<VerifiedBindingInput>());
+  auto input = zc::mv(inputResult.get<VerifiedBindingInput>());
+  auto candidate = BindingBuilder::build(input, *sourceFixture.diagnostics);
+  ZC_REQUIRE(candidate.is<BindingMetadataCandidate>());
+  auto result = BindingVerifier::verify(input, zc::mv(candidate.get<BindingMetadataCandidate>()));
+  ZC_REQUIRE(result.is<SourceRejected>());
+  const auto failures = result.get<SourceRejected>().failures();
+  ZC_REQUIRE(failures.size() == 1);
+  ZC_EXPECT(failures[0].diagnostic == BinderDiagnosticCode::DuplicateIdentifier);
+  ZC_REQUIRE(failures[0].notes.size() == 1);
+  ZC_EXPECT(failures[0].notes[0].diagnostic == BinderDiagnosticCode::PreviousDeclarationHere);
+}
+
 ZC_TEST("ModuleGraph.ClassifiesUnresolvedSyntaxRequesterAndRevisionFailures") {
   ParsedSource importSource("module root;\nimport math::geometry;\n"_zc);
   FrozenFixture unresolved(importSource);
