@@ -166,7 +166,7 @@
 // CHECK-NEXT:           expression:
 // CHECK-NEXT:             CallExpression #62 @21:1..21:13
 // CHECK-NEXT:               callee:
-// CHECK-NEXT:                 MemberExpression #61 @21:1..21:11 property="ping"
+// CHECK-NEXT:                 MemberExpression #61 @21:1..21:11 property="ping" access=Dot
 // CHECK-NEXT:                   object:
 // CHECK-NEXT:                     IdentExpr #60 @21:1..21:6 name="child"
 // CHECK-NEXT:               type_args: []

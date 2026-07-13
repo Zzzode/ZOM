@@ -18,6 +18,7 @@
 #include "zc/core/vector.h"
 #include "zc/ztest/test.h"
 #include "zomlang/compiler/ast/dump.h"
+#include "zomlang/compiler/ast/generated/node-payload.h"
 #include "zomlang/compiler/ast/generated/node-schema.h"
 #include "zomlang/compiler/ast/tree.h"
 #include "zomlang/compiler/basic/string-pool.h"
@@ -164,6 +165,28 @@ ZC_TEST("SchemaVerifier.InvalidChildKindFails") {
 
   auto failure = verifySchemaFailure(tree);
   ZC_EXPECT(failure != zc::none);
+}
+
+ZC_TEST("SchemaVerifier.InvalidMemberAccessKindFails") {
+  TreeBuilder builder;
+
+  const IdentId objectName = builder.internIdent("object"_zc);
+  NodePayload objectPayload;
+  objectPayload.words[kIdentExprNameWord] = objectName.value;
+  const NodeId object =
+      builder.makeNode(SyntaxKind::IdentExpr, source::SourceRange(), objectPayload);
+
+  const IdentId propertyName = builder.internIdent("field"_zc);
+  NodePayload memberPayload;
+  memberPayload.words[kMemberExpressionObjectWord] = object.value;
+  memberPayload.words[kMemberExpressionPropertyWord] = propertyName.value;
+  memberPayload.words[kMemberExpressionAccessWord] = 3;
+  const NodeId member =
+      builder.makeNode(SyntaxKind::MemberExpression, source::SourceRange(), memberPayload);
+
+  Tree tree = wrapExprInSourceFile(builder, member);
+  ZC_EXPECT(!verifySchema(tree));
+  ZC_EXPECT(verifySchemaFailure(tree) != zc::none);
 }
 
 // ---------------------------------------------------------------------------

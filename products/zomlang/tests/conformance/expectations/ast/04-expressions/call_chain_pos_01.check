@@ -18,11 +18,11 @@
 // CHECK-NEXT:                   init:
 // CHECK-NEXT:                     IndexExpression #9 @1:9..1:33
 // CHECK-NEXT:                       object:
-// CHECK-NEXT:                         MemberExpression #7 @1:9..1:30 property="name"
+// CHECK-NEXT:                         MemberExpression #7 @1:9..1:30 property="name" access=Optional
 // CHECK-NEXT:                           object:
 // CHECK-NEXT:                             CallExpression #6 @1:9..1:24
 // CHECK-NEXT:                               callee:
-// CHECK-NEXT:                                 MemberExpression #3 @1:9..1:16 property="get"
+// CHECK-NEXT:                                 MemberExpression #3 @1:9..1:16 property="get" access=Dot
 // CHECK-NEXT:                                   object:
 // CHECK-NEXT:                                     IdentExpr #2 @1:9..1:12 name="obj"
 // CHECK-NEXT:                               type_args: []

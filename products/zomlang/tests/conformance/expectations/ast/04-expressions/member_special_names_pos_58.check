@@ -1,0 +1,154 @@
+// RUN: %zomc compile --dump-ast %corpus/04-expressions/member_special_names_pos_58.zom | %FileCheck %s
+
+
+// CHECK: SourceFile #65 @1:1..10:1 file_name="member_special_names_pos_58.zom"
+// CHECK-NEXT:   module: null
+// CHECK-NEXT:   statements:
+// CHECK-NEXT:     StatementListItem #7 @1:1..1:38
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         LetStmt #6 @1:1..1:38 kind=Let
+// CHECK-NEXT:           declarations:
+// CHECK-NEXT:             VariableDeclaratorList #5 @1:5..1:37 n_decls=1
+// CHECK-NEXT:               decls:
+// CHECK-NEXT:                 VariableDeclarator #4 @1:5..1:37
+// CHECK-NEXT:                   pattern:
+// CHECK-NEXT:                     IdentifierPattern #1 @1:5..1:22 name="identifier_member"
+// CHECK-NEXT:                       ty: null
+// CHECK-NEXT:                   ty: null
+// CHECK-NEXT:                   init:
+// CHECK-NEXT:                     MemberExpression #3 @1:25..1:37 property="member" access=Dot
+// CHECK-NEXT:                       object:
+// CHECK-NEXT:                         IdentExpr #2 @1:25..1:30 name="value"
+// CHECK-NEXT:       attrs: null
+// CHECK-NEXT:     StatementListItem #14 @2:1..2:30
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         LetStmt #13 @2:1..2:30 kind=Let
+// CHECK-NEXT:           declarations:
+// CHECK-NEXT:             VariableDeclaratorList #12 @2:5..2:29 n_decls=1
+// CHECK-NEXT:               decls:
+// CHECK-NEXT:                 VariableDeclarator #11 @2:5..2:29
+// CHECK-NEXT:                   pattern:
+// CHECK-NEXT:                     IdentifierPattern #8 @2:5..2:16 name="init_member"
+// CHECK-NEXT:                       ty: null
+// CHECK-NEXT:                   ty: null
+// CHECK-NEXT:                   init:
+// CHECK-NEXT:                     MemberExpression #10 @2:19..2:29 property="init" access=Dot
+// CHECK-NEXT:                       object:
+// CHECK-NEXT:                         IdentExpr #9 @2:19..2:24 name="value"
+// CHECK-NEXT:       attrs: null
+// CHECK-NEXT:     StatementListItem #21 @3:1..3:34
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         LetStmt #20 @3:1..3:34 kind=Let
+// CHECK-NEXT:           declarations:
+// CHECK-NEXT:             VariableDeclaratorList #19 @3:5..3:33 n_decls=1
+// CHECK-NEXT:               decls:
+// CHECK-NEXT:                 VariableDeclarator #18 @3:5..3:33
+// CHECK-NEXT:                   pattern:
+// CHECK-NEXT:                     IdentifierPattern #15 @3:5..3:18 name="deinit_member"
+// CHECK-NEXT:                       ty: null
+// CHECK-NEXT:                   ty: null
+// CHECK-NEXT:                   init:
+// CHECK-NEXT:                     MemberExpression #17 @3:21..3:33 property="deinit" access=Dot
+// CHECK-NEXT:                       object:
+// CHECK-NEXT:                         IdentExpr #16 @3:21..3:26 name="value"
+// CHECK-NEXT:       attrs: null
+// CHECK-NEXT:     StatementListItem #28 @4:1..4:28
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         LetStmt #27 @4:1..4:28 kind=Let
+// CHECK-NEXT:           declarations:
+// CHECK-NEXT:             VariableDeclaratorList #26 @4:5..4:27 n_decls=1
+// CHECK-NEXT:               decls:
+// CHECK-NEXT:                 VariableDeclarator #25 @4:5..4:27
+// CHECK-NEXT:                   pattern:
+// CHECK-NEXT:                     IdentifierPattern #22 @4:5..4:15 name="get_member"
+// CHECK-NEXT:                       ty: null
+// CHECK-NEXT:                   ty: null
+// CHECK-NEXT:                   init:
+// CHECK-NEXT:                     MemberExpression #24 @4:18..4:27 property="get" access=Dot
+// CHECK-NEXT:                       object:
+// CHECK-NEXT:                         IdentExpr #23 @4:18..4:23 name="value"
+// CHECK-NEXT:       attrs: null
+// CHECK-NEXT:     StatementListItem #35 @5:1..5:28
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         LetStmt #34 @5:1..5:28 kind=Let
+// CHECK-NEXT:           declarations:
+// CHECK-NEXT:             VariableDeclaratorList #33 @5:5..5:27 n_decls=1
+// CHECK-NEXT:               decls:
+// CHECK-NEXT:                 VariableDeclarator #32 @5:5..5:27
+// CHECK-NEXT:                   pattern:
+// CHECK-NEXT:                     IdentifierPattern #29 @5:5..5:15 name="set_member"
+// CHECK-NEXT:                       ty: null
+// CHECK-NEXT:                   ty: null
+// CHECK-NEXT:                   init:
+// CHECK-NEXT:                     MemberExpression #31 @5:18..5:27 property="set" access=Dot
+// CHECK-NEXT:                       object:
+// CHECK-NEXT:                         IdentExpr #30 @5:18..5:23 name="value"
+// CHECK-NEXT:       attrs: null
+// CHECK-NEXT:     StatementListItem #42 @6:1..6:30
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         LetStmt #41 @6:1..6:30 kind=Let
+// CHECK-NEXT:           declarations:
+// CHECK-NEXT:             VariableDeclaratorList #40 @6:5..6:29 n_decls=1
+// CHECK-NEXT:               decls:
+// CHECK-NEXT:                 VariableDeclarator #39 @6:5..6:29
+// CHECK-NEXT:                   pattern:
+// CHECK-NEXT:                     IdentifierPattern #36 @6:5..6:16 name="this_member"
+// CHECK-NEXT:                       ty: null
+// CHECK-NEXT:                   ty: null
+// CHECK-NEXT:                   init:
+// CHECK-NEXT:                     MemberExpression #38 @6:19..6:29 property="this" access=Dot
+// CHECK-NEXT:                       object:
+// CHECK-NEXT:                         IdentExpr #37 @6:19..6:24 name="value"
+// CHECK-NEXT:       attrs: null
+// CHECK-NEXT:     StatementListItem #49 @7:1..7:34
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         LetStmt #48 @7:1..7:34 kind=Let
+// CHECK-NEXT:           declarations:
+// CHECK-NEXT:             VariableDeclaratorList #47 @7:5..7:33 n_decls=1
+// CHECK-NEXT:               decls:
+// CHECK-NEXT:                 VariableDeclarator #46 @7:5..7:33
+// CHECK-NEXT:                   pattern:
+// CHECK-NEXT:                     IdentifierPattern #43 @7:5..7:20 name="optional_member"
+// CHECK-NEXT:                       ty: null
+// CHECK-NEXT:                   ty: null
+// CHECK-NEXT:                   init:
+// CHECK-NEXT:                     MemberExpression #45 @7:23..7:33 property="get" access=Optional
+// CHECK-NEXT:                       object:
+// CHECK-NEXT:                         IdentExpr #44 @7:23..7:28 name="value"
+// CHECK-NEXT:       attrs: null
+// CHECK-NEXT:     StatementListItem #56 @8:1..8:35
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         LetStmt #55 @8:1..8:35 kind=Let
+// CHECK-NEXT:           declarations:
+// CHECK-NEXT:             VariableDeclaratorList #54 @8:5..8:34 n_decls=1
+// CHECK-NEXT:               decls:
+// CHECK-NEXT:                 VariableDeclarator #53 @8:5..8:34
+// CHECK-NEXT:                   pattern:
+// CHECK-NEXT:                     IdentifierPattern #50 @8:5..8:21 name="qualified_member"
+// CHECK-NEXT:                       ty: null
+// CHECK-NEXT:                   ty: null
+// CHECK-NEXT:                   init:
+// CHECK-NEXT:                     MemberExpression #52 @8:24..8:34 property="set" access=Qualified
+// CHECK-NEXT:                       object:
+// CHECK-NEXT:                         IdentExpr #51 @8:24..8:29 name="value"
+// CHECK-NEXT:       attrs: null
+// CHECK-NEXT:     StatementListItem #64 @9:1..9:38
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         LetStmt #63 @9:1..9:38 kind=Let
+// CHECK-NEXT:           declarations:
+// CHECK-NEXT:             VariableDeclaratorList #62 @9:5..9:37 n_decls=1
+// CHECK-NEXT:               decls:
+// CHECK-NEXT:                 VariableDeclarator #61 @9:5..9:37
+// CHECK-NEXT:                   pattern:
+// CHECK-NEXT:                     IdentifierPattern #57 @9:5..9:22 name="super_constructor"
+// CHECK-NEXT:                       ty: null
+// CHECK-NEXT:                   ty: null
+// CHECK-NEXT:                   init:
+// CHECK-NEXT:                     CallExpression #60 @9:25..9:37
+// CHECK-NEXT:                       callee:
+// CHECK-NEXT:                         MemberExpression #59 @9:25..9:35 property="init" access=Dot
+// CHECK-NEXT:                           object:
+// CHECK-NEXT:                             SuperExpr #58 @9:25..9:30
+// CHECK-NEXT:                       type_args: []
+// CHECK-NEXT:                       args: []
+// CHECK-NEXT:       attrs: null

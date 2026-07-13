@@ -68,7 +68,7 @@ struct NodeSchemaEntry final {
 
 constexpr uint8_t kNodeSchemaNoWord = 0xff;
 constexpr const char* kAstSchemaVersion = "2.0";
-constexpr const char* kAstSchemaFingerprint = "23ae342ab11e0d8a4541b0b2f04f18c40067ed3948e6d215826a06b5636d2733";
+constexpr const char* kAstSchemaFingerprint = "b39d02f2a10e5f9440d0d888f8f589e5780b1a73f6b0aa3999b1da2897159415";
 constexpr uint32_t kAstSchemaVariantCount = 134;
 
 constexpr NodeSchemaEnumValue kAttributePathLeadingEnumValues[] = {
@@ -171,6 +171,12 @@ constexpr NodeSchemaEnumValue kAssignmentExprOpEnumValues[] = {
   {13, "LogicalAndAssign"},
   {14, "LogicalOrAssign"},
   {15, "NullCoalesceAssign"},
+};
+
+constexpr NodeSchemaEnumValue kMemberExpressionAccessEnumValues[] = {
+  {0, "Dot"},
+  {1, "Optional"},
+  {2, "Qualified"},
 };
 
 constexpr NodeSchemaEnumValue kUnaryExpressionOpEnumValues[] = {
@@ -500,6 +506,7 @@ constexpr NodeSchemaFieldEntry kCommaExprFields[] = {
 constexpr NodeSchemaFieldEntry kMemberExpressionFields[] = {
   {"object", NodeSchemaFieldStorage::NodeId, 0, kNodeSchemaNoWord, false, "Expression", nullptr, nullptr, 0},
   {"property", NodeSchemaFieldStorage::IdentId, 1, kNodeSchemaNoWord, false, nullptr, nullptr, nullptr, 0},
+  {"access", NodeSchemaFieldStorage::Enum, 2, kNodeSchemaNoWord, false, nullptr, "MemberAccessKind", kMemberExpressionAccessEnumValues, 3},
 };
 
 constexpr NodeSchemaFieldEntry kIndexExpressionFields[] = {
@@ -1027,7 +1034,7 @@ constexpr NodeSchemaEntry kNodeSchemaEntries[] = {
   {SyntaxKind::ConditionalExpr, "ConditionalExpr", kConditionalExprFields, 3},
   {SyntaxKind::AssignmentExpr, "AssignmentExpr", kAssignmentExprFields, 3},
   {SyntaxKind::CommaExpr, "CommaExpr", kCommaExprFields, 1},
-  {SyntaxKind::MemberExpression, "MemberExpression", kMemberExpressionFields, 2},
+  {SyntaxKind::MemberExpression, "MemberExpression", kMemberExpressionFields, 3},
   {SyntaxKind::IndexExpression, "IndexExpression", kIndexExpressionFields, 2},
   {SyntaxKind::NewExpression, "NewExpression", kNewExpressionFields, 3},
   {SyntaxKind::FunctionExpression, "FunctionExpression", kFunctionExpressionFields, 6},

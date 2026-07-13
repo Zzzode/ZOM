@@ -35,7 +35,7 @@
 // CHECK-NEXT:                               expression:
 // CHECK-NEXT:                                 AssignmentExpr #9 @2:37..2:47 op=Assign
 // CHECK-NEXT:                                   lhs:
-// CHECK-NEXT:                                     MemberExpression #7 @2:37..2:43 property="y"
+// CHECK-NEXT:                                     MemberExpression #7 @2:37..2:43 property="y" access=Dot
 // CHECK-NEXT:                                       object:
 // CHECK-NEXT:                                         IdentExpr #6 @2:37..2:41 name="self"
 // CHECK-NEXT:                                   rhs:

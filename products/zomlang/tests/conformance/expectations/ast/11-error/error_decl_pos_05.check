@@ -33,7 +33,7 @@
 // CHECK-NEXT:                           item:
 // CHECK-NEXT:                             ReturnStmt #9 @4:29..4:49
 // CHECK-NEXT:                               value:
-// CHECK-NEXT:                                 MemberExpression #8 @4:36..4:48 property="message"
+// CHECK-NEXT:                                 MemberExpression #8 @4:36..4:48 property="message" access=Dot
 // CHECK-NEXT:                                   object:
 // CHECK-NEXT:                                     IdentExpr #7 @4:36..4:40 name="self"
 // CHECK-NEXT:                           attrs: null

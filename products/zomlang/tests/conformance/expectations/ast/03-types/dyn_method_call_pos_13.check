@@ -110,7 +110,7 @@
 // CHECK-NEXT:           expression:
 // CHECK-NEXT:             CallExpression #41 @13:1..13:16
 // CHECK-NEXT:               callee:
-// CHECK-NEXT:                 MemberExpression #40 @13:1..13:14 property="draw"
+// CHECK-NEXT:                 MemberExpression #40 @13:1..13:14 property="draw" access=Dot
 // CHECK-NEXT:                   object:
 // CHECK-NEXT:                     IdentExpr #39 @13:1..13:9 name="drawable"
 // CHECK-NEXT:               type_args: []

@@ -351,10 +351,11 @@ public:
     return static_cast<Derived*>(this)->makeTypedNode(SyntaxKind::CommaExpr, zc::mv(range), payload);
   }
 
-  NodeId makeMemberExpression(source::SourceRange range, NodeId object, IdentId property) {
+  NodeId makeMemberExpression(source::SourceRange range, NodeId object, IdentId property, MemberAccessKind access) {
     NodePayload payload;
     payload.words[kMemberExpressionObjectWord] = object.value;
     payload.words[kMemberExpressionPropertyWord] = property.value;
+    payload.words[kMemberExpressionAccessWord] = static_cast<uint32_t>(access);
     return static_cast<Derived*>(this)->makeTypedNode(SyntaxKind::MemberExpression, zc::mv(range), payload);
   }
 

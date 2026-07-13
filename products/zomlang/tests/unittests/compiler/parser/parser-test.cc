@@ -4116,8 +4116,52 @@ ZC_TEST("ParserTest.ParseChainedMemberAccess") {
   ZC_EXPECT(result != zc::none);
 }
 
-/// Covers parseRightSideOfDot - keyword as property name
-ZC_TEST("ParserTest.ParseKeywordAsProperty") {
+/// Covers parseRightSideOfDot - declared definition names as properties
+ZC_TEST("ParserTest.ParseDeclaredDefinitionNamesAsProperties") {
+  auto sourceManager = zc::heap<source::SourceManager>();
+  auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
+  basic::LangOptions langOpts;
+  basic::StringPool stringPool;
+
+  auto bufferId = sourceManager->addMemBufferCopy(
+      zc::str("let a = obj.init; let b = obj.deinit; let c = obj.get; "
+              "let d = obj.set; let e = obj.this;")
+          .asBytes(),
+      "test.zom");
+  Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
+  auto result = parser.parse();
+  ZC_EXPECT(result != zc::none);
+  ZC_EXPECT(!diagnosticEngine->hasErrors());
+}
+
+ZC_TEST("ParserTest.PreservesMemberAccessKinds") {
+  auto sourceManager = zc::heap<source::SourceManager>();
+  auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
+  basic::LangOptions langOpts;
+  basic::StringPool stringPool;
+
+  auto bufferId = sourceManager->addMemBufferCopy(
+      zc::str("let dot = obj.field; let optional = obj?.field; let qualified = obj::field;")
+          .asBytes(),
+      "test.zom");
+  Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
+  auto result = parser.parse();
+  ZC_REQUIRE(result != zc::none);
+  ZC_EXPECT(!diagnosticEngine->hasErrors());
+  ZC_IF_SOME(tree, result) {
+    const ast::MemberAccessKind expected[] = {ast::MemberAccessKind::Dot,
+                                              ast::MemberAccessKind::Optional,
+                                              ast::MemberAccessKind::Qualified};
+    for (size_t index = 0; index < 3; ++index) {
+      const auto& member = letInitializer(tree, index);
+      ZC_REQUIRE(member.kind == ast::SyntaxKind::MemberExpression);
+      ZC_EXPECT(static_cast<ast::MemberAccessKind>(
+                    member.payload.words[ast::kMemberExpressionAccessWord]) == expected[index]);
+    }
+  }
+}
+
+ZC_TEST("ParserTest.RejectsReservedKeywordAsProperty") {
   auto sourceManager = zc::heap<source::SourceManager>();
   auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
   basic::LangOptions langOpts;
@@ -4127,7 +4171,8 @@ ZC_TEST("ParserTest.ParseKeywordAsProperty") {
       sourceManager->addMemBufferCopy(zc::str("let x = obj.type;").asBytes(), "test.zom");
   Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
   auto result = parser.parse();
-  ZC_EXPECT(result != zc::none);
+  ZC_EXPECT(result == zc::none);
+  ZC_EXPECT(diagnosticEngine->hasErrors());
 }
 
 /// Covers parseInterfaceElement - method signatures with modifiers

@@ -31,7 +31,7 @@
 // CHECK-NEXT:           expression:
 // CHECK-NEXT:             CallExpression #10 @5:1..5:15
 // CHECK-NEXT:               callee:
-// CHECK-NEXT:                 MemberExpression #9 @5:1..5:13 property="make"
+// CHECK-NEXT:                 MemberExpression #9 @5:1..5:13 property="make" access=Dot
 // CHECK-NEXT:                   object:
 // CHECK-NEXT:                     IdentExpr #8 @5:1..5:8 name="Counter"
 // CHECK-NEXT:               type_args: []

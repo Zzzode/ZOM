@@ -28,15 +28,15 @@
 // CHECK-NEXT:                                   ty: null
 // CHECK-NEXT:                               ty: null
 // CHECK-NEXT:                               init:
-// CHECK-NEXT:                                 MemberExpression #9 @2:11..2:29 property="d"
+// CHECK-NEXT:                                 MemberExpression #9 @2:11..2:29 property="d" access=Optional
 // CHECK-NEXT:                                   object:
 // CHECK-NEXT:                                     IndexExpression #8 @2:11..2:26
 // CHECK-NEXT:                                       object:
 // CHECK-NEXT:                                         CallExpression #6 @2:11..2:21
 // CHECK-NEXT:                                           callee:
-// CHECK-NEXT:                                             MemberExpression #5 @2:11..2:17 property="c"
+// CHECK-NEXT:                                             MemberExpression #5 @2:11..2:17 property="c" access=Optional
 // CHECK-NEXT:                                               object:
-// CHECK-NEXT:                                                 MemberExpression #4 @2:11..2:14 property="b"
+// CHECK-NEXT:                                                 MemberExpression #4 @2:11..2:14 property="b" access=Dot
 // CHECK-NEXT:                                                   object:
 // CHECK-NEXT:                                                     IdentExpr #3 @2:11..2:12 name="a"
 // CHECK-NEXT:                                           type_args: []

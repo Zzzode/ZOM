@@ -30,7 +30,7 @@
 // CHECK-NEXT:                   init:
 // CHECK-NEXT:                     CallExpression #10 @2:9..2:16
 // CHECK-NEXT:                       callee:
-// CHECK-NEXT:                         MemberExpression #8 @2:9..2:13 property="A"
+// CHECK-NEXT:                         MemberExpression #8 @2:9..2:13 property="A" access=Qualified
 // CHECK-NEXT:                           object:
 // CHECK-NEXT:                             IdentExpr #7 @2:9..2:10 name="E"
 // CHECK-NEXT:                       type_args: []

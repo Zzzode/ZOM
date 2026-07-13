@@ -127,10 +127,15 @@ let origin = geometry.Point { x: 0, y: 0 };
 
 ### Member Access
 
+A member-bearing `.`, `?.`, or `::` suffix is followed by a
+`DeclaredDefinitionName`. This name domain contains identifiers and the five
+declaration names `init`, `deinit`, `get`, `set`, and `this`.
+
 ```zom
 // Dot notation
 let length = myString.length;
 let method = myObject.doSomething();
+super.init();
 
 // Bracket notation
 let element = myArray[0];

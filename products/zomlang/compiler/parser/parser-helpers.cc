@@ -34,7 +34,9 @@ bool isIdentifierLike(ast::SyntaxKind kind) {
 bool isExpressionIdentifierLike(ast::SyntaxKind kind) { return isIdentifierLike(kind); }
 
 bool isPropertyNameLike(ast::SyntaxKind kind) {
-  return kind == ast::SyntaxKind::Identifier || lexer::isKeyword(kind);
+  return kind == ast::SyntaxKind::Identifier || kind == ast::SyntaxKind::InitKeyword ||
+         kind == ast::SyntaxKind::DeinitKeyword || kind == ast::SyntaxKind::GetKeyword ||
+         kind == ast::SyntaxKind::SetKeyword || kind == ast::SyntaxKind::ThisKeyword;
 }
 
 // --- Primitive type keywords ---

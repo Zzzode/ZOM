@@ -66,6 +66,10 @@ enum class AssignmentOperatorKind : uint8_t {
   Assign, AddAssign, SubAssign, MulAssign, DivAssign, ModAssign, PowAssign, ShlAssign, ShrAssign, UShrAssign, BitAndAssign, BitOrAssign, BitXorAssign, LogicalAndAssign, LogicalOrAssign, NullCoalesceAssign
 };
 
+enum class MemberAccessKind : uint8_t {
+  Dot, Optional, Qualified
+};
+
 enum class CaptureMode : uint8_t {
   ByValue, ByRef, This
 };
@@ -263,9 +267,10 @@ constexpr uint32_t kCommaExprPayloadWordCount = 2;
 constexpr uint32_t kCommaExprElemsFirstWord = 0;
 constexpr uint32_t kCommaExprElemsSizeWord = 1;
 
-constexpr uint32_t kMemberExpressionPayloadWordCount = 2;
+constexpr uint32_t kMemberExpressionPayloadWordCount = 3;
 constexpr uint32_t kMemberExpressionObjectWord = 0;
 constexpr uint32_t kMemberExpressionPropertyWord = 1;
+constexpr uint32_t kMemberExpressionAccessWord = 2;
 
 constexpr uint32_t kIndexExpressionPayloadWordCount = 2;
 constexpr uint32_t kIndexExpressionObjectWord = 0;

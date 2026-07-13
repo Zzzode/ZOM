@@ -32,11 +32,11 @@
 // CHECK-NEXT:                                   operand:
 // CHECK-NEXT:                                     IndexExpression #8 @2:11..2:34
 // CHECK-NEXT:                                       object:
-// CHECK-NEXT:                                         MemberExpression #6 @2:11..2:31 property="field"
+// CHECK-NEXT:                                         MemberExpression #6 @2:11..2:31 property="field" access=Optional
 // CHECK-NEXT:                                           object:
 // CHECK-NEXT:                                             CallExpression #5 @2:11..2:24
 // CHECK-NEXT:                                               callee:
-// CHECK-NEXT:                                                 MemberExpression #4 @2:11..2:22 property="method"
+// CHECK-NEXT:                                                 MemberExpression #4 @2:11..2:22 property="method" access=Optional
 // CHECK-NEXT:                                                   object:
 // CHECK-NEXT:                                                     IdentExpr #3 @2:11..2:14 name="obj"
 // CHECK-NEXT:                                               type_args: []

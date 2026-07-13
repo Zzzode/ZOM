@@ -33,7 +33,7 @@
 // CHECK-NEXT:                                   ty: null
 // CHECK-NEXT:                               ty: null
 // CHECK-NEXT:                               init:
-// CHECK-NEXT:                                 MemberExpression #6 @2:13..2:20 property="prop"
+// CHECK-NEXT:                                 MemberExpression #6 @2:13..2:20 property="prop" access=Optional
 // CHECK-NEXT:                                   object:
 // CHECK-NEXT:                                     IdentExpr #5 @2:13..2:14 name="a"
 // CHECK-NEXT:                   attrs: null

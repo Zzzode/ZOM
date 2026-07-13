@@ -132,7 +132,7 @@
 // CHECK-NEXT:                                   expression:
 // CHECK-NEXT:                                     AssignmentExpr #53 @8:30..8:40 op=Assign
 // CHECK-NEXT:                                       lhs:
-// CHECK-NEXT:                                         MemberExpression #51 @8:30..8:36 property="x"
+// CHECK-NEXT:                                         MemberExpression #51 @8:30..8:36 property="x" access=Dot
 // CHECK-NEXT:                                           object:
 // CHECK-NEXT:                                             IdentExpr #50 @8:30..8:34 name="self"
 // CHECK-NEXT:                                       rhs:
@@ -144,7 +144,7 @@
 // CHECK-NEXT:                                   expression:
 // CHECK-NEXT:                                     AssignmentExpr #59 @8:42..8:52 op=Assign
 // CHECK-NEXT:                                       lhs:
-// CHECK-NEXT:                                         MemberExpression #57 @8:42..8:48 property="y"
+// CHECK-NEXT:                                         MemberExpression #57 @8:42..8:48 property="y" access=Dot
 // CHECK-NEXT:                                           object:
 // CHECK-NEXT:                                             IdentExpr #56 @8:42..8:46 name="self"
 // CHECK-NEXT:                                       rhs:
@@ -156,7 +156,7 @@
 // CHECK-NEXT:                                   expression:
 // CHECK-NEXT:                                     AssignmentExpr #65 @8:54..8:64 op=Assign
 // CHECK-NEXT:                                       lhs:
-// CHECK-NEXT:                                         MemberExpression #63 @8:54..8:60 property="z"
+// CHECK-NEXT:                                         MemberExpression #63 @8:54..8:60 property="z" access=Dot
 // CHECK-NEXT:                                           object:
 // CHECK-NEXT:                                             IdentExpr #62 @8:54..8:58 name="self"
 // CHECK-NEXT:                                       rhs:
@@ -206,31 +206,31 @@
 // CHECK-NEXT:                                           lhs:
 // CHECK-NEXT:                                             BinaryExpr #85 @10:43..10:59 op=Mul
 // CHECK-NEXT:                                               lhs:
-// CHECK-NEXT:                                                 MemberExpression #82 @10:43..10:49 property="x"
+// CHECK-NEXT:                                                 MemberExpression #82 @10:43..10:49 property="x" access=Dot
 // CHECK-NEXT:                                                   object:
 // CHECK-NEXT:                                                     IdentExpr #81 @10:43..10:47 name="self"
 // CHECK-NEXT:                                               rhs:
-// CHECK-NEXT:                                                 MemberExpression #84 @10:52..10:59 property="x"
+// CHECK-NEXT:                                                 MemberExpression #84 @10:52..10:59 property="x" access=Dot
 // CHECK-NEXT:                                                   object:
 // CHECK-NEXT:                                                     IdentExpr #83 @10:52..10:57 name="other"
 // CHECK-NEXT:                                           rhs:
 // CHECK-NEXT:                                             BinaryExpr #90 @10:62..10:78 op=Mul
 // CHECK-NEXT:                                               lhs:
-// CHECK-NEXT:                                                 MemberExpression #87 @10:62..10:68 property="y"
+// CHECK-NEXT:                                                 MemberExpression #87 @10:62..10:68 property="y" access=Dot
 // CHECK-NEXT:                                                   object:
 // CHECK-NEXT:                                                     IdentExpr #86 @10:62..10:66 name="self"
 // CHECK-NEXT:                                               rhs:
-// CHECK-NEXT:                                                 MemberExpression #89 @10:71..10:78 property="y"
+// CHECK-NEXT:                                                 MemberExpression #89 @10:71..10:78 property="y" access=Dot
 // CHECK-NEXT:                                                   object:
 // CHECK-NEXT:                                                     IdentExpr #88 @10:71..10:76 name="other"
 // CHECK-NEXT:                                       rhs:
 // CHECK-NEXT:                                         BinaryExpr #96 @10:81..10:97 op=Mul
 // CHECK-NEXT:                                           lhs:
-// CHECK-NEXT:                                             MemberExpression #93 @10:81..10:87 property="z"
+// CHECK-NEXT:                                             MemberExpression #93 @10:81..10:87 property="z" access=Dot
 // CHECK-NEXT:                                               object:
 // CHECK-NEXT:                                                 IdentExpr #92 @10:81..10:85 name="self"
 // CHECK-NEXT:                                           rhs:
-// CHECK-NEXT:                                             MemberExpression #95 @10:90..10:97 property="z"
+// CHECK-NEXT:                                             MemberExpression #95 @10:90..10:97 property="z" access=Dot
 // CHECK-NEXT:                                               object:
 // CHECK-NEXT:                                                 IdentExpr #94 @10:90..10:95 name="other"
 // CHECK-NEXT:                               attrs: null

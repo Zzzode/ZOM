@@ -92,7 +92,7 @@
 // CHECK-NEXT:                                   expression:
 // CHECK-NEXT:                                     AssignmentExpr #30 @6:31..6:47 op=Assign
 // CHECK-NEXT:                                       lhs:
-// CHECK-NEXT:                                         MemberExpression #28 @6:31..6:40 property="name"
+// CHECK-NEXT:                                         MemberExpression #28 @6:31..6:40 property="name" access=Dot
 // CHECK-NEXT:                                           object:
 // CHECK-NEXT:                                             IdentExpr #27 @6:31..6:35 name="self"
 // CHECK-NEXT:                                       rhs:
@@ -104,7 +104,7 @@
 // CHECK-NEXT:                                   expression:
 // CHECK-NEXT:                                     AssignmentExpr #36 @6:49..6:59 op=Assign
 // CHECK-NEXT:                                       lhs:
-// CHECK-NEXT:                                         MemberExpression #34 @6:49..6:55 property="x"
+// CHECK-NEXT:                                         MemberExpression #34 @6:49..6:55 property="x" access=Dot
 // CHECK-NEXT:                                           object:
 // CHECK-NEXT:                                             IdentExpr #33 @6:49..6:53 name="self"
 // CHECK-NEXT:                                       rhs:
@@ -143,13 +143,13 @@
 // CHECK-NEXT:                                   expression:
 // CHECK-NEXT:                                     AssignmentExpr #55 @8:35..8:55 op=Assign
 // CHECK-NEXT:                                       lhs:
-// CHECK-NEXT:                                         MemberExpression #50 @8:35..8:41 property="x"
+// CHECK-NEXT:                                         MemberExpression #50 @8:35..8:41 property="x" access=Dot
 // CHECK-NEXT:                                           object:
 // CHECK-NEXT:                                             IdentExpr #49 @8:35..8:39 name="self"
 // CHECK-NEXT:                                       rhs:
 // CHECK-NEXT:                                         BinaryExpr #54 @8:44..8:55 op=Add
 // CHECK-NEXT:                                           lhs:
-// CHECK-NEXT:                                             MemberExpression #52 @8:44..8:50 property="x"
+// CHECK-NEXT:                                             MemberExpression #52 @8:44..8:50 property="x" access=Dot
 // CHECK-NEXT:                                               object:
 // CHECK-NEXT:                                                 IdentExpr #51 @8:44..8:48 name="self"
 // CHECK-NEXT:                                           rhs:

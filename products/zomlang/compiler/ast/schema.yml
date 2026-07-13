@@ -51,6 +51,10 @@ enums:
     type: uint8
     values: [ Assign, AddAssign, SubAssign, MulAssign, DivAssign, ModAssign, PowAssign, ShlAssign, ShrAssign, UShrAssign, BitAndAssign, BitOrAssign, BitXorAssign, LogicalAndAssign, LogicalOrAssign, NullCoalesceAssign ]
 
+  MemberAccessKind:
+    type: uint8
+    values: [ Dot, Optional, Qualified ]
+
   CaptureMode:
     type: uint8
     values: [ ByValue, ByRef, This ]
@@ -463,10 +467,11 @@ variants:
 
   - id: 0x088
     name: MemberExpression
-    doc:  "object.property member access"
+    doc:  "object.property, object?.property, or object::property member access"
     fields:
       - {name: object, type: NodeId, cast: Expression}
       - {name: property, type: IdentId}
+      - {name: access, type: MemberAccessKind}
 
   - id: 0x089
     name: IndexExpression

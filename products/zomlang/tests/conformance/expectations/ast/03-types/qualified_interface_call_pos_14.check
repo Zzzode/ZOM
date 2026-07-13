@@ -102,7 +102,7 @@
 // CHECK-NEXT:           expression:
 // CHECK-NEXT:             CallExpression #38 @12:1..12:23
 // CHECK-NEXT:               callee:
-// CHECK-NEXT:                 MemberExpression #36 @12:1..12:15 property="draw"
+// CHECK-NEXT:                 MemberExpression #36 @12:1..12:15 property="draw" access=Qualified
 // CHECK-NEXT:                   object:
 // CHECK-NEXT:                     IdentExpr #35 @12:1..12:9 name="Drawable"
 // CHECK-NEXT:               type_args: []

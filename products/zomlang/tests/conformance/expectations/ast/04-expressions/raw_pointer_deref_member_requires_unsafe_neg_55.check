@@ -36,7 +36,7 @@
 // CHECK-NEXT:                                   ty: null
 // CHECK-NEXT:                               ty: null
 // CHECK-NEXT:                               init:
-// CHECK-NEXT:                                 MemberExpression #11 @2:17..2:40 property="field"
+// CHECK-NEXT:                                 MemberExpression #11 @2:17..2:40 property="field" access=Dot
 // CHECK-NEXT:                                   object:
 // CHECK-NEXT:                                     ObjectLiteralExpr #10 @2:17..2:34
 // CHECK-NEXT:                                       properties:

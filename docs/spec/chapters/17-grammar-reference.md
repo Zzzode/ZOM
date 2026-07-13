@@ -509,10 +509,10 @@ MemberExpression ::= PrimaryExpression
                   | SuperProperty
                   | 'new' MemberExpression Arguments
                   | MemberExpression '[' Expression ']'
-                  | MemberExpression '.' Identifier
-                  | MemberExpression '::' Identifier
+                  | MemberExpression '.' DeclaredDefinitionName
+                  | MemberExpression '::' DeclaredDefinitionName
 
-SuperProperty ::= 'super' '.' Identifier
+SuperProperty ::= 'super' '.' DeclaredDefinitionName
 SuperCall ::= 'super' Arguments
 ImportCall ::= 'import' Arguments
 
@@ -521,11 +521,14 @@ CallExpression ::= MemberExpression TypeArguments? Arguments
                 | ImportCall
                 | CallExpression Arguments
                 | CallExpression '[' Expression ']'
-                | CallExpression '.' Identifier
+                | CallExpression '.' DeclaredDefinitionName
+                | CallExpression '::' DeclaredDefinitionName
 
 OptionalExpression ::= (MemberExpression | CallExpression) OptionalChain+
-OptionalChain ::= '?.' (Identifier | '[' Expression ']' | Arguments)
-                  (Arguments | '[' Expression ']' | '.' Identifier)*
+OptionalChain ::= '?.' (DeclaredDefinitionName | '[' Expression ']' | Arguments)
+                  (Arguments | '[' Expression ']' | '.' DeclaredDefinitionName)*
+
+DeclaredDefinitionName ::= Identifier | 'init' | 'deinit' | 'get' | 'set' | 'this'
 
 Arguments ::= '(' ArgumentList? ')'
 ArgumentList ::= (AssignmentExpression | '...' AssignmentExpression)

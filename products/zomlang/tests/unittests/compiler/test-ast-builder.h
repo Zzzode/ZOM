@@ -459,11 +459,13 @@ public:
   }
 
   /// \brief Create a MemberExpression.
-  ast::NodeId makeMemberExpr(ast::NodeId object, zc::StringPtr property) {
+  ast::NodeId makeMemberExpr(ast::NodeId object, zc::StringPtr property,
+                             ast::MemberAccessKind access = ast::MemberAccessKind::Dot) {
     ast::NodePayload payload;
     payload.words[ast::kMemberExpressionObjectWord] = object.value;
     auto propId = builder_.internIdent(property);
     payload.words[ast::kMemberExpressionPropertyWord] = propId.value;
+    payload.words[ast::kMemberExpressionAccessWord] = static_cast<uint32_t>(access);
     return builder_.makeNode(ast::SyntaxKind::MemberExpression, source::SourceRange(), payload);
   }
 

@@ -40,11 +40,11 @@
 // CHECK-NEXT:                   init:
 // CHECK-NEXT:                     CallExpression #21 @2:9..2:35
 // CHECK-NEXT:                       callee:
-// CHECK-NEXT:                         MemberExpression #20 @2:9..2:33 property="baz"
+// CHECK-NEXT:                         MemberExpression #20 @2:9..2:33 property="baz" access=Dot
 // CHECK-NEXT:                           object:
 // CHECK-NEXT:                             IndexExpression #19 @2:9..2:29
 // CHECK-NEXT:                               object:
-// CHECK-NEXT:                                 MemberExpression #17 @2:9..2:26 property="bar"
+// CHECK-NEXT:                                 MemberExpression #17 @2:9..2:26 property="bar" access=Dot
 // CHECK-NEXT:                                   object:
 // CHECK-NEXT:                                     NewExpression #16 @2:9..2:22
 // CHECK-NEXT:                                       callee:
@@ -70,13 +70,13 @@
 // CHECK-NEXT:                       ty: null
 // CHECK-NEXT:                   ty: null
 // CHECK-NEXT:                   init:
-// CHECK-NEXT:                     MemberExpression #33 @3:9..3:32 property="field"
+// CHECK-NEXT:                     MemberExpression #33 @3:9..3:32 property="field" access=Dot
 // CHECK-NEXT:                       object:
 // CHECK-NEXT:                         IndexExpression #32 @3:9..3:26
 // CHECK-NEXT:                           object:
 // CHECK-NEXT:                             CallExpression #30 @3:9..3:23
 // CHECK-NEXT:                               callee:
-// CHECK-NEXT:                                 MemberExpression #28 @3:9..3:20 property="method"
+// CHECK-NEXT:                                 MemberExpression #28 @3:9..3:20 property="method" access=Optional
 // CHECK-NEXT:                                   object:
 // CHECK-NEXT:                                     IdentExpr #27 @3:9..3:12 name="obj"
 // CHECK-NEXT:                               type_args: []

@@ -51,6 +51,7 @@ productions:
   DecimalDigits: {status: lexical}
   DecimalIntegerLiteral: {status: lexical}
   DecimalLiteral: {status: lexical}
+  DeclaredDefinitionName: {status: inlined, parser: parsePostfixExpressionAt, parent: MemberExpression}
   Declaration: {status: inlined, parser: parseSourceElement, parent: ModuleItem}
   DefaultClause: {status: inlined, parser: parseMatchStatement, parent: MatchStatement}
   DeinitDeclaration: {status: inlined, parser: parseNamedTypeDeclaration, parent: ClassElement, ast: [DestructorDecl]}

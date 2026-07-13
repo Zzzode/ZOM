@@ -986,8 +986,11 @@ Parser::Impl::ExpressionParseResult Parser::Impl::parsePostfixExpressionAt(AstFa
         return ExpressionParseResult();
       }
 
+      const auto access = kind == ast::SyntaxKind::Period       ? ast::MemberAccessKind::Dot
+                          : kind == ast::SyntaxKind::ColonColon ? ast::MemberAccessKind::Qualified
+                                                                : ast::MemberAccessKind::Optional;
       current = {builder.makeMemberExpression(rangeFor(start, cursor + 2), current.node,
-                                              internIdent(builder, cursor + 1)),
+                                              internIdent(builder, cursor + 1), access),
                  cursor + 2};
       cursor = current.next;
       continue;

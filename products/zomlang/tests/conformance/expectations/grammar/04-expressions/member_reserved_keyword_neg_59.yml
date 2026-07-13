@@ -1,0 +1,4 @@
+section: "Ch.04 Declared definition names in member access"
+covers_rule: "callExpr, declaredDefinitionName"
+expected: "REJECT"
+notes: []

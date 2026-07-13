@@ -46,7 +46,7 @@
 // CHECK-NEXT:                               expression:
 // CHECK-NEXT:                                 AssignmentExpr #16 @5:26..5:47 op=Assign
 // CHECK-NEXT:                                   lhs:
-// CHECK-NEXT:                                     MemberExpression #14 @5:26..5:37 property="_value"
+// CHECK-NEXT:                                     MemberExpression #14 @5:26..5:37 property="_value" access=Dot
 // CHECK-NEXT:                                       object:
 // CHECK-NEXT:                                         IdentExpr #13 @5:26..5:30 name="self"
 // CHECK-NEXT:                                   rhs:
@@ -69,13 +69,13 @@
 // CHECK-NEXT:                               expression:
 // CHECK-NEXT:                                 AssignmentExpr #29 @6:25..6:54 op=Assign
 // CHECK-NEXT:                                   lhs:
-// CHECK-NEXT:                                     MemberExpression #24 @6:25..6:36 property="_value"
+// CHECK-NEXT:                                     MemberExpression #24 @6:25..6:36 property="_value" access=Dot
 // CHECK-NEXT:                                       object:
 // CHECK-NEXT:                                         IdentExpr #23 @6:25..6:29 name="self"
 // CHECK-NEXT:                                   rhs:
 // CHECK-NEXT:                                     BinaryExpr #28 @6:39..6:54 op=Add
 // CHECK-NEXT:                                       lhs:
-// CHECK-NEXT:                                         MemberExpression #26 @6:39..6:50 property="_value"
+// CHECK-NEXT:                                         MemberExpression #26 @6:39..6:50 property="_value" access=Dot
 // CHECK-NEXT:                                           object:
 // CHECK-NEXT:                                             IdentExpr #25 @6:39..6:43 name="self"
 // CHECK-NEXT:                                       rhs:
@@ -96,7 +96,7 @@
 // CHECK-NEXT:                           item:
 // CHECK-NEXT:                             ReturnStmt #38 @7:29..7:48
 // CHECK-NEXT:                               value:
-// CHECK-NEXT:                                 MemberExpression #37 @7:36..7:47 property="_value"
+// CHECK-NEXT:                                 MemberExpression #37 @7:36..7:47 property="_value" access=Dot
 // CHECK-NEXT:                                   object:
 // CHECK-NEXT:                                     IdentExpr #36 @7:36..7:40 name="self"
 // CHECK-NEXT:                           attrs: null

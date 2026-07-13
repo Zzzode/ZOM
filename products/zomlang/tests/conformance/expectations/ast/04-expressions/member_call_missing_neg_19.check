@@ -45,7 +45,7 @@
 // CHECK-NEXT:           expression:
 // CHECK-NEXT:             CallExpression #16 @6:1..6:18
 // CHECK-NEXT:               callee:
-// CHECK-NEXT:                 MemberExpression #15 @6:1..6:16 property="missing"
+// CHECK-NEXT:                 MemberExpression #15 @6:1..6:16 property="missing" access=Dot
 // CHECK-NEXT:                   object:
 // CHECK-NEXT:                     IdentExpr #14 @6:1..6:8 name="counter"
 // CHECK-NEXT:               type_args: []

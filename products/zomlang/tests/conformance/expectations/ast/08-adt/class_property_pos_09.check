@@ -31,7 +31,7 @@
 // CHECK-NEXT:                           item:
 // CHECK-NEXT:                             ReturnStmt #7 @3:32..3:50
 // CHECK-NEXT:                               value:
-// CHECK-NEXT:                                 MemberExpression #6 @3:39..3:49 property="_name"
+// CHECK-NEXT:                                 MemberExpression #6 @3:39..3:49 property="_name" access=Dot
 // CHECK-NEXT:                                   object:
 // CHECK-NEXT:                                     IdentExpr #5 @3:39..3:43 name="self"
 // CHECK-NEXT:                           attrs: null
@@ -57,7 +57,7 @@
 // CHECK-NEXT:                               expression:
 // CHECK-NEXT:                                 AssignmentExpr #18 @4:39..4:53 op=Assign
 // CHECK-NEXT:                                   lhs:
-// CHECK-NEXT:                                     MemberExpression #16 @4:39..4:49 property="_name"
+// CHECK-NEXT:                                     MemberExpression #16 @4:39..4:49 property="_name" access=Dot
 // CHECK-NEXT:                                       object:
 // CHECK-NEXT:                                         IdentExpr #15 @4:39..4:43 name="self"
 // CHECK-NEXT:                                   rhs:

@@ -55,7 +55,7 @@
 // CHECK-NEXT:                       value:
 // CHECK-NEXT:                         UnaryExpression #18 @7:12..7:22 op=Ref
 // CHECK-NEXT:                           operand:
-// CHECK-NEXT:                             MemberExpression #17 @7:13..7:22 property="field"
+// CHECK-NEXT:                             MemberExpression #17 @7:13..7:22 property="field" access=Dot
 // CHECK-NEXT:                               object:
 // CHECK-NEXT:                                 IdentExpr #16 @7:13..7:16 name="obj"
 // CHECK-NEXT:                   attrs: null

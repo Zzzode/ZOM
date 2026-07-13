@@ -1362,7 +1362,7 @@ readonly : READONLY ;
 
 
 //
-//       identifier-or-keyword helper (memberIdentifier) = IDENTIFIER | INIT | DEINIT | GET | SET
+//       declaration-name helper (memberIdentifier) = IDENTIFIER | INIT | DEINIT | GET | SET
 
 classBody : LBRACE classMember* RBRACE ;
 
@@ -1375,6 +1375,15 @@ memberIdentifier
     | DEINIT
     | GET
     | SET
+    ;
+
+declaredDefinitionName
+    : identifier
+    | INIT
+    | DEINIT
+    | GET
+    | SET
+    | THIS
     ;
 
 
@@ -2005,9 +2014,9 @@ callExpr
     | callExpr LT typeArgList genericClose LPAREN expressionList? RPAREN
       (RAISES typeExpr)?                                                                  # exprGenericCall
     | callExpr OPTIONAL_CHAIN LPAREN expressionList? RPAREN (RAISES typeExpr)?             # exprOptionalCall
-    | callExpr QUESTION? PERIOD memberIdentifier                                          # exprMember
-    | callExpr colonColon memberIdentifier                                                # exprQualifiedMember
-    | callExpr OPTIONAL_CHAIN memberIdentifier                                            # exprOptionalMember
+    | callExpr QUESTION? PERIOD declaredDefinitionName                                    # exprMember
+    | callExpr colonColon declaredDefinitionName                                          # exprQualifiedMember
+    | callExpr OPTIONAL_CHAIN declaredDefinitionName                                      # exprOptionalMember
     | callExpr OPTIONAL_CHAIN LBRACK expression RBRACK                                     # exprOptionalIndex
     | callExpr QUESTION? LBRACK expression RBRACK                                         # exprIndex
     | primaryExpr                                                                         # exprPrimarySingle

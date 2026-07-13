@@ -44,7 +44,7 @@
 // CHECK-NEXT:           expression:
 // CHECK-NEXT:             CallExpression #16 @6:1..6:13
 // CHECK-NEXT:               callee:
-// CHECK-NEXT:                 MemberExpression #15 @6:1..6:11 property="norm"
+// CHECK-NEXT:                 MemberExpression #15 @6:1..6:11 property="norm" access=Dot
 // CHECK-NEXT:                   object:
 // CHECK-NEXT:                     IdentExpr #14 @6:1..6:6 name="point"
 // CHECK-NEXT:               type_args: []

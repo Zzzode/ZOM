@@ -37,7 +37,7 @@
 // CHECK-NEXT:                   item:
 // CHECK-NEXT:                     ReturnStmt #15 @3:5..3:36
 // CHECK-NEXT:                       value:
-// CHECK-NEXT:                         MemberExpression #14 @3:12..3:35 property="item"
+// CHECK-NEXT:                         MemberExpression #14 @3:12..3:35 property="item" access=Dot
 // CHECK-NEXT:                           object:
 // CHECK-NEXT:                             ObjectLiteralExpr #13 @3:12..3:30
 // CHECK-NEXT:                               properties:
