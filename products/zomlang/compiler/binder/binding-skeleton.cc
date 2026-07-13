@@ -12,20 +12,28 @@
 namespace zomlang::compiler::binder {
 namespace {
 
-enum class SkeletonEligibility : uint8_t { Value, Type, Generic, Parameter, Deferred };
+enum class SkeletonEligibility : uint8_t {
+  Value,
+  SpecialCallable,
+  Type,
+  Generic,
+  Parameter,
+  Deferred
+};
 
 SkeletonEligibility eligibility(identity::DefinitionKind kind) {
   using identity::DefinitionKind;
   switch (kind) {
     case DefinitionKind::Function:
     case DefinitionKind::Method:
-    case DefinitionKind::Constructor:
-    case DefinitionKind::Destructor:
     case DefinitionKind::Field:
     case DefinitionKind::EnumVariant:
     case DefinitionKind::Constant:
     case DefinitionKind::Static:
       return SkeletonEligibility::Value;
+    case DefinitionKind::Constructor:
+    case DefinitionKind::Destructor:
+      return SkeletonEligibility::SpecialCallable;
     case DefinitionKind::Class:
     case DefinitionKind::Struct:
     case DefinitionKind::Interface:
@@ -55,6 +63,10 @@ zc::Maybe<ast::NodeId> parameterListNode(const ast::Node& syntax) {
       return ast::NodeId(syntax.payload.words[ast::kFunctionDeclParamsIdWord]);
     case ast::SyntaxKind::MethodDecl:
       return ast::NodeId(syntax.payload.words[ast::kMethodDeclParamsIdWord]);
+    case ast::SyntaxKind::ConstructorDecl:
+      return ast::NodeId(syntax.payload.words[ast::kConstructorDeclParamsIdWord]);
+    case ast::SyntaxKind::DestructorDecl:
+      return ast::NodeId(syntax.payload.words[ast::kDestructorDeclParamsIdWord]);
     default:
       return zc::none;
   }
@@ -392,7 +404,10 @@ DefinitionSkeletonBuildResult BindingSkeletonBuilder::build(const VerifiedBindin
     if (classification == SkeletonEligibility::Deferred) {
       return failure(input, BinderInvariantKind::MissingRequiredResolution, definition.node);
     }
-    if (definition.bindingName == zc::none || !input.tree().contains(definition.node)) {
+    const bool lexicalBinding = classification != SkeletonEligibility::SpecialCallable;
+    if ((lexicalBinding && definition.bindingName == zc::none) ||
+        (!lexicalBinding && definition.bindingName != zc::none) ||
+        !input.tree().contains(definition.node)) {
       return failure(input, BinderInvariantKind::InvalidBindingFact, definition.node);
     }
     auto syntaxSpan = input.parsedModule().spanFor(input.tree().node(definition.node).range);
@@ -459,9 +474,12 @@ DefinitionSkeletonBuildResult BindingSkeletonBuilder::build(const VerifiedBindin
       const bool skeletonScope = record.kind == ScopeKind::Module ||
                                  record.kind == ScopeKind::TypeBody ||
                                  record.kind == ScopeKind::ImplBody;
+      const bool specialCallableScope =
+          record.kind == ScopeKind::TypeBody || record.kind == ScopeKind::ImplBody;
       if ((classification == SkeletonEligibility::Generic && !genericScope) ||
           (classification == SkeletonEligibility::Parameter &&
            record.kind != ScopeKind::Function) ||
+          (classification == SkeletonEligibility::SpecialCallable && !specialCallableScope) ||
           (classification != SkeletonEligibility::Generic &&
            classification != SkeletonEligibility::Parameter && !skeletonScope)) {
         return failure(input, BinderInvariantKind::MissingRequiredResolution, definition.node);
@@ -472,6 +490,7 @@ DefinitionSkeletonBuildResult BindingSkeletonBuilder::build(const VerifiedBindin
         }
       }
       const Namespace nameSpace = classification == SkeletonEligibility::Value ||
+                                          classification == SkeletonEligibility::SpecialCallable ||
                                           classification == SkeletonEligibility::Parameter
                                       ? Namespace::Value
                                       : Namespace::Type;
@@ -479,19 +498,22 @@ DefinitionSkeletonBuildResult BindingSkeletonBuilder::build(const VerifiedBindin
           classification == SkeletonEligibility::Generic     ? DefinitionActivation::GenericList
           : classification == SkeletonEligibility::Parameter ? DefinitionActivation::ParameterList
                                                              : DefinitionActivation::ModuleSkeleton;
-      const auto& name = ZC_ASSERT_NONNULL(definition.bindingName);
-      zc::Maybe<identity::SourceSpan> noAlias;
-      record.bindings.add(
-          ScopeBindingEntry(BindingNameKey(nameSpace, name.clone()),
-                            NameBinding(BindingTarget::definition(definition.definition),
-                                        BindingTarget::definition(definition.definition), nameSpace,
-                                        BindingOrigin::LocalDeclaration, definition.source.clone(),
-                                        zc::mv(noAlias))));
+      if (lexicalBinding) {
+        const auto& name = ZC_ASSERT_NONNULL(definition.bindingName);
+        zc::Maybe<identity::SourceSpan> noAlias;
+        record.bindings.add(
+            ScopeBindingEntry(BindingNameKey(nameSpace, name.clone()),
+                              NameBinding(BindingTarget::definition(definition.definition),
+                                          BindingTarget::definition(definition.definition),
+                                          nameSpace, BindingOrigin::LocalDeclaration,
+                                          definition.source.clone(), zc::mv(noAlias))));
+      }
       result.definitions.add(DefinitionFact(definition.definition, definition.site.clone(),
                                             definition.kind, definition.name.clone(), nameSpace,
                                             scope, definition.source.clone(), activation));
-      if (classification != SkeletonEligibility::Generic &&
+      if (lexicalBinding && classification != SkeletonEligibility::Generic &&
           classification != SkeletonEligibility::Parameter && record.kind == ScopeKind::Module) {
+        const auto& name = ZC_ASSERT_NONNULL(definition.bindingName);
         bool ambiguousExport = false;
         auto exportNode = declarationExport(input.tree(), definition.node, ambiguousExport);
         if (ambiguousExport) {

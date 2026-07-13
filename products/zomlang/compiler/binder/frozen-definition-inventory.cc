@@ -13,6 +13,11 @@ namespace {
 
 FrozenInventoryInvariantFact failure(FrozenInventoryInvariantKind kind) { return {kind, 1}; }
 
+bool permitsAbsentLexicalBinding(identity::DefinitionKind kind) {
+  return kind == identity::DefinitionKind::Constructor ||
+         kind == identity::DefinitionKind::Destructor;
+}
+
 bool sameParentPath(zc::ArrayPtr<const StructuralIdentityParent> left,
                     zc::ArrayPtr<const StructuralIdentityParent> right) {
   if (left.size() != right.size()) { return false; }
@@ -287,7 +292,7 @@ FrozenDefinitionInventoryResult FrozenDefinitionInventoryVerifier::verifySingleM
           if (entry.nameKind == InventoryDefinitionNameKind::Declared) {
             bindingName = identity::SemanticIdentifier::fromSource(
                 parsedModule.tree().ident(entry.declaredName));
-            if (bindingName == zc::none) {
+            if (bindingName == zc::none && !permitsAbsentLexicalBinding(entry.kind)) {
               return failure(FrozenInventoryInvariantKind::InvalidDefinitionIdentity);
             }
           }
