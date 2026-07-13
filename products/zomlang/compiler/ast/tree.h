@@ -243,9 +243,6 @@ public:
   void setCaptures(NodeId node, NodeList captures);
   NodeList captures(NodeId node) const;
 
-  void setLabelTarget(NodeId node, NodeId target);
-  NodeId labelTarget(NodeId node) const;
-
 private:
   struct Impl;
   zc::Own<Impl> impl;

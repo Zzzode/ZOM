@@ -63,6 +63,74 @@ bool ScopeId::operator==(const ScopeId& other) const noexcept {
   return moduleValue == other.moduleValue && indexValue == other.indexValue;
 }
 
+LabelOwner::LabelOwner(LabelOwnerValue&& value) noexcept : valueValue(zc::mv(value)) {}
+LabelOwner LabelOwner::module(identity::ModuleId value) {
+  return LabelOwner(LabelOwnerValue(ModuleLabelOwner{value}));
+}
+LabelOwner LabelOwner::callable(identity::DefId value) {
+  return LabelOwner(LabelOwnerValue(CallableLabelOwner{value}));
+}
+LabelOwner LabelOwner::clone() const {
+  if (valueValue.is<ModuleLabelOwner>()) {
+    return module(valueValue.get<ModuleLabelOwner>().module);
+  }
+  return callable(valueValue.get<CallableLabelOwner>().callable);
+}
+const LabelOwnerValue& LabelOwner::value() const noexcept { return valueValue; }
+bool LabelOwner::belongsTo(identity::SemanticContextBrand context) const noexcept {
+  if (valueValue.is<ModuleLabelOwner>()) {
+    return valueValue.get<ModuleLabelOwner>().module.belongsTo(context);
+  }
+  return valueValue.get<CallableLabelOwner>().callable.belongsTo(context);
+}
+bool LabelOwner::operator==(const LabelOwner& other) const noexcept {
+  if (valueValue.is<ModuleLabelOwner>() != other.valueValue.is<ModuleLabelOwner>()) {
+    return false;
+  }
+  if (valueValue.is<ModuleLabelOwner>()) {
+    return valueValue.get<ModuleLabelOwner>().module ==
+           other.valueValue.get<ModuleLabelOwner>().module;
+  }
+  return valueValue.get<CallableLabelOwner>().callable ==
+         other.valueValue.get<CallableLabelOwner>().callable;
+}
+
+LabelId::LabelId(LabelOwner&& owner, uint32_t index) noexcept
+    : ownerValue(zc::mv(owner)), indexValue(index) {}
+const LabelOwner& LabelId::owner() const noexcept { return ownerValue; }
+uint32_t LabelId::index() const noexcept { return indexValue; }
+bool LabelId::belongsTo(identity::SemanticContextBrand context) const noexcept {
+  return ownerValue.belongsTo(context);
+}
+bool LabelId::operator==(const LabelId& other) const noexcept {
+  return ownerValue == other.ownerValue && indexValue == other.indexValue;
+}
+
+LabelTarget::LabelTarget(LabelTargetValue&& value) noexcept : valueValue(zc::mv(value)) {}
+LabelTarget LabelTarget::block(ScopeId scope) {
+  return LabelTarget(LabelTargetValue(BlockLabelTarget{scope}));
+}
+LabelTarget LabelTarget::loop(ScopeId scope) {
+  return LabelTarget(LabelTargetValue(LoopLabelTarget{scope}));
+}
+const LabelTargetValue& LabelTarget::value() const noexcept { return valueValue; }
+bool LabelTarget::belongsTo(identity::SemanticContextBrand context) const noexcept {
+  if (valueValue.is<BlockLabelTarget>()) {
+    return valueValue.get<BlockLabelTarget>().scope.belongsTo(context);
+  }
+  return valueValue.get<LoopLabelTarget>().scope.belongsTo(context);
+}
+bool LabelTarget::operator==(const LabelTarget& other) const noexcept {
+  if (valueValue.is<BlockLabelTarget>() != other.valueValue.is<BlockLabelTarget>()) {
+    return false;
+  }
+  if (valueValue.is<BlockLabelTarget>()) {
+    return valueValue.get<BlockLabelTarget>().scope ==
+           other.valueValue.get<BlockLabelTarget>().scope;
+  }
+  return valueValue.get<LoopLabelTarget>().scope == other.valueValue.get<LoopLabelTarget>().scope;
+}
+
 ScopeOwner::ScopeOwner(ScopeOwnerValue&& value) noexcept : valueValue(zc::mv(value)) {}
 ScopeOwner ScopeOwner::module(identity::ModuleId value) {
   return ScopeOwner(ScopeOwnerValue(ModuleScopeOwner{value}));

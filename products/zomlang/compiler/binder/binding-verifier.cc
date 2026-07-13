@@ -13,6 +13,7 @@
 #include "zomlang/compiler/binder/internal/binding-skeleton.h"
 #include "zomlang/compiler/binder/internal/body-binding.h"
 #include "zomlang/compiler/binder/internal/control-transfer.h"
+#include "zomlang/compiler/binder/internal/label-facts.h"
 #include "zomlang/compiler/binder/internal/scope-arena.h"
 #include "zomlang/compiler/identity/canonical-encoder.h"
 
@@ -39,7 +40,7 @@ BinderInvariantFact verifierFailure(const VerifiedBindingInput& input, BinderInv
   return failure(input, kind, BinderEmitterSite::BindingVerifier, ordinal);
 }
 
-enum class PendingFailureKind : uint8_t { Duplicate, BodyLookup, ControlTransfer };
+enum class PendingFailureKind : uint8_t { Duplicate, BodyLookup, LabelDuplicate, ControlTransfer };
 
 struct PendingFailureRef final {
   PendingFailureKind kind;
@@ -189,6 +190,26 @@ bool hasForeignContext(const VerifiedBindingInput& input,
       }
     }
   }
+  for (const auto& fact : candidate.labels) {
+    if (!fact.owner.belongsTo(input.semanticContext()) ||
+        !fact.identity.belongsTo(input.semanticContext()) ||
+        !fact.target.belongsTo(input.semanticContext())) {
+      return true;
+    }
+    const auto& owner = fact.owner.value();
+    if (owner.is<ModuleLabelOwner>()) {
+      if (owner.get<ModuleLabelOwner>().module != input.module()) { return true; }
+    } else {
+      const auto callable = owner.get<CallableLabelOwner>().callable;
+      if (input.definitions().definitionKey(callable) == zc::none) { return true; }
+    }
+    const auto& target = fact.target.value();
+    const auto scope = target.is<BlockLabelTarget>() ? target.get<BlockLabelTarget>().scope
+                                                     : target.get<LoopLabelTarget>().scope;
+    if (scope.module() != input.module() || !scope.belongsTo(input.semanticContext())) {
+      return true;
+    }
+  }
   for (const auto& fact : candidate.controlTransfers) {
     const auto& target = fact.target;
     if (target.is<LoopControlTarget>()) {
@@ -263,6 +284,9 @@ bool hasInvalidSourceRange(const VerifiedBindingInput& input,
     if (spanIsInvalid(fact.source)) { return true; }
   }
   for (const auto& fact : candidate.impls) {
+    if (spanIsInvalid(fact.source)) { return true; }
+  }
+  for (const auto& fact : candidate.labels) {
     if (spanIsInvalid(fact.source)) { return true; }
   }
   for (const auto& fact : candidate.controlTransfers) {
@@ -463,6 +487,332 @@ enum class ControlOracleResult : uint8_t {
 
 bool sameSpan(const identity::SourceSpan& left, const identity::SourceSpan& right) {
   return left.byteStart() == right.byteStart() && left.byteEnd() == right.byteEnd();
+}
+
+enum class LabelOracleResult : uint8_t {
+  Valid,
+  MissingRequiredResolution,
+  InvalidBindingFact,
+  MalformedScopeGraph
+};
+
+struct OracleLabelOwner final {
+  bool callable;
+  identity::DefId definition;
+};
+
+struct OracleLabelCounter final {
+  OracleLabelOwner owner;
+  uint64_t nextIndex;
+};
+
+struct OracleLabelTarget final {
+  bool loop;
+  ScopeId scope;
+};
+
+struct OracleLabelRecord final {
+  ast::NodeId node;
+  ast::NodeId statement;
+  OracleLabelOwner owner;
+  uint32_t index;
+  identity::SemanticIdentifier name;
+  OracleLabelTarget target;
+  identity::SourceSpan source;
+  zc::Maybe<identity::SourceSpan> previous;
+  uint32_t schemaPreorderOrdinal;
+  zc::Array<uint8_t> ownerKey;
+};
+
+bool sameOracleOwner(const OracleLabelOwner& left, const OracleLabelOwner& right) {
+  return left.callable == right.callable && (!left.callable || left.definition == right.definition);
+}
+
+int compareCanonicalBytes(zc::ArrayPtr<const uint8_t> left, zc::ArrayPtr<const uint8_t> right) {
+  const size_t count = left.size() < right.size() ? left.size() : right.size();
+  for (size_t index = 0; index < count; ++index) {
+    if (left[index] < right[index]) { return -1; }
+    if (left[index] > right[index]) { return 1; }
+  }
+  if (left.size() < right.size()) { return -1; }
+  if (left.size() > right.size()) { return 1; }
+  return 0;
+}
+
+bool oracleLabelLess(const OracleLabelRecord& left, const OracleLabelRecord& right) {
+  if (left.owner.callable != right.owner.callable) { return !left.owner.callable; }
+  const int keyOrder = compareCanonicalBytes(left.ownerKey.asPtr(), right.ownerKey.asPtr());
+  if (keyOrder != 0) { return keyOrder < 0; }
+  return left.index < right.index;
+}
+
+bool oracleLoopKind(ast::SyntaxKind kind) {
+  return kind == ast::SyntaxKind::WhileStmt || kind == ast::SyntaxKind::ForStmt ||
+         kind == ast::SyntaxKind::ForInStatement || kind == ast::SyntaxKind::DoWhileStatement;
+}
+
+LabelOracleResult verifyLabelFacts(const VerifiedBindingInput& input,
+                                   const BindingMetadataCandidate& candidate) {
+  const auto& tree = input.tree();
+  auto arenaResult = ScopeArenaBuilder::build(input);
+  if (!arenaResult.is<ScopeArenaCandidate>()) { return LabelOracleResult::MalformedScopeGraph; }
+  auto arena = zc::mv(arenaResult.get<ScopeArenaCandidate>());
+  if (arena.scopes.empty() || arena.scopes[0].kind != ScopeKind::Module ||
+      arena.nodeScopes.size() != tree.nodeCount()) {
+    return LabelOracleResult::MalformedScopeGraph;
+  }
+
+  zc::Vector<uint32_t> scopeByNode;
+  scopeByNode.resize(tree.nodeCount() + 1);
+  for (auto& value : scopeByNode) { value = UINT32_MAX; }
+  for (const auto& fact : arena.nodeScopes) {
+    if (!tree.contains(fact.node) || fact.node.value >= scopeByNode.size() ||
+        scopeByNode[fact.node.value] != UINT32_MAX || fact.scope.module() != input.module() ||
+        fact.scope.index() >= arena.scopes.size() ||
+        arena.scopes[fact.scope.index()].id != fact.scope) {
+      return LabelOracleResult::MalformedScopeGraph;
+    }
+    scopeByNode[fact.node.value] = fact.scope.index();
+  }
+  for (size_t index = 0; index < arena.scopes.size(); ++index) {
+    const auto& scope = arena.scopes[index];
+    if (scope.id.index() != index || scope.id.module() != input.module() ||
+        (index == 0 && scope.parent != zc::none) || (index != 0 && scope.parent == zc::none)) {
+      return LabelOracleResult::MalformedScopeGraph;
+    }
+    ZC_IF_SOME(parent, scope.parent) {
+      if (parent.module() != input.module() || parent.index() >= index) {
+        return LabelOracleResult::MalformedScopeGraph;
+      }
+    }
+  }
+
+  auto schemaOrdinalsResult = schemaPreorderOrdinals(tree);
+  if (schemaOrdinalsResult == zc::none) { return LabelOracleResult::MalformedScopeGraph; }
+  auto schemaOrdinals = zc::mv(ZC_ASSERT_NONNULL(schemaOrdinalsResult));
+  zc::Vector<OracleLabelCounter> counters;
+  zc::Vector<OracleLabelRecord> expected;
+  LabelOracleResult result = LabelOracleResult::Valid;
+
+  const auto ownerFor = [&](ast::NodeId node) -> zc::Maybe<OracleLabelOwner> {
+    if (!tree.contains(node) || node.value >= scopeByNode.size() ||
+        scopeByNode[node.value] == UINT32_MAX) {
+      return zc::none;
+    }
+    uint32_t scopeIndex = scopeByNode[node.value];
+    for (size_t traversed = 0; traversed < arena.scopes.size(); ++traversed) {
+      if (scopeIndex >= arena.scopes.size()) { return zc::none; }
+      const auto& scope = arena.scopes[scopeIndex];
+      if (scope.kind == ScopeKind::Function || scope.kind == ScopeKind::Closure) {
+        const auto& owner = scope.owner.value();
+        if (!owner.is<DefinitionScopeOwner>()) { return zc::none; }
+        return OracleLabelOwner{true, owner.get<DefinitionScopeOwner>().definition};
+      }
+      if (scope.kind == ScopeKind::Module) {
+        const auto& owner = scope.owner.value();
+        if (!owner.is<ModuleScopeOwner>() ||
+            owner.get<ModuleScopeOwner>().module != input.module()) {
+          return zc::none;
+        }
+        return OracleLabelOwner{false, identity::DefId()};
+      }
+      if (scope.parent == zc::none) { return zc::none; }
+      ZC_IF_SOME(parent, scope.parent) { scopeIndex = parent.index(); }
+    }
+    return zc::none;
+  };
+
+  const auto targetFor = [&](ast::NodeId statement) -> zc::Maybe<OracleLabelTarget> {
+    ast::NodeId target = statement;
+    for (size_t traversed = 0; traversed <= tree.nodeCount(); ++traversed) {
+      if (!tree.contains(target)) { return zc::none; }
+      const auto& syntax = tree.node(target);
+      if (syntax.kind != ast::SyntaxKind::LabeledStatement) { break; }
+      target = ast::NodeId(syntax.payload.words[ast::kLabeledStatementStatementWord]);
+      if (traversed == tree.nodeCount()) { return zc::none; }
+    }
+    if (!tree.contains(target) || target.value >= scopeByNode.size() ||
+        scopeByNode[target.value] == UINT32_MAX) {
+      return zc::none;
+    }
+    const auto scopeIndex = scopeByNode[target.value];
+    if (scopeIndex >= arena.scopes.size()) { return zc::none; }
+    const auto& scope = arena.scopes[scopeIndex];
+    const auto kind = tree.node(target).kind;
+    if (kind == ast::SyntaxKind::BlockStmt && scope.kind == ScopeKind::Block) {
+      return OracleLabelTarget{false, scope.id};
+    }
+    if (oracleLoopKind(kind) && scope.kind == ScopeKind::Loop) {
+      return OracleLabelTarget{true, scope.id};
+    }
+    return zc::none;
+  };
+
+  ast::visitTreePreOrder(tree, tree.root(), [&](ast::NodeId node, const ast::Node& syntax) {
+    if (result != LabelOracleResult::Valid || syntax.kind != ast::SyntaxKind::LabeledStatement) {
+      return;
+    }
+    const ast::NodeId statement(syntax.payload.words[ast::kLabeledStatementStatementWord]);
+    if (!tree.contains(statement)) {
+      result = LabelOracleResult::MissingRequiredResolution;
+      return;
+    }
+    auto owner = ownerFor(node);
+    auto target = targetFor(statement);
+    auto source = input.parsedModule().retainedTokenSpan(node, 0, ast::SyntaxKind::Identifier);
+    auto name = identity::SemanticIdentifier::fromSource(
+        tree.ident(ast::IdentId(syntax.payload.words[ast::kLabeledStatementLabelWord])));
+    if (owner == zc::none || target == zc::none || source == zc::none || name == zc::none) {
+      result = LabelOracleResult::InvalidBindingFact;
+      return;
+    }
+    ZC_IF_SOME(ownerValue, owner) {
+      size_t counterIndex = counters.size();
+      for (size_t index = 0; index < counters.size(); ++index) {
+        if (sameOracleOwner(counters[index].owner, ownerValue)) {
+          counterIndex = index;
+          break;
+        }
+      }
+      if (counterIndex == counters.size()) { counters.add(OracleLabelCounter{ownerValue, 0}); }
+      if (counters[counterIndex].nextIndex > static_cast<uint64_t>(UINT32_MAX)) {
+        result = LabelOracleResult::InvalidBindingFact;
+        return;
+      }
+      zc::Maybe<identity::SourceSpan> previous;
+      ZC_IF_SOME(nameValue, name) {
+        for (const auto& prior : expected) {
+          if (sameOracleOwner(prior.owner, ownerValue) && prior.name == nameValue) {
+            previous = prior.source.clone();
+            break;
+          }
+        }
+        zc::Array<uint8_t> ownerKey;
+        if (ownerValue.callable) {
+          auto key = input.definitions().definitionKey(ownerValue.definition);
+          if (key == zc::none) {
+            result = LabelOracleResult::MissingRequiredResolution;
+            return;
+          }
+          ZC_IF_SOME(value, key) { ownerKey = value.encode(); }
+        } else {
+          ownerKey = input.moduleKey().encode();
+        }
+        ZC_IF_SOME(targetValue, target) {
+          ZC_IF_SOME(sourceValue, source) {
+            expected.add(OracleLabelRecord{node, statement, ownerValue,
+                                           static_cast<uint32_t>(counters[counterIndex].nextIndex),
+                                           zc::mv(nameValue), targetValue, zc::mv(sourceValue),
+                                           zc::mv(previous), schemaOrdinals[node.value],
+                                           zc::mv(ownerKey)});
+            ++counters[counterIndex].nextIndex;
+          }
+        }
+      }
+    }
+  });
+  if (result != LabelOracleResult::Valid) { return result; }
+
+  for (size_t index = 1; index < expected.size(); ++index) {
+    auto current = zc::mv(expected[index]);
+    size_t insertion = index;
+    while (insertion > 0 && oracleLabelLess(current, expected[insertion - 1])) {
+      expected[insertion] = zc::mv(expected[insertion - 1]);
+      --insertion;
+    }
+    expected[insertion] = zc::mv(current);
+  }
+
+  if (candidate.labels.size() < expected.size()) {
+    return LabelOracleResult::MissingRequiredResolution;
+  }
+  if (candidate.labels.size() > expected.size()) { return LabelOracleResult::InvalidBindingFact; }
+  for (size_t index = 0; index < expected.size(); ++index) {
+    const auto& actual = candidate.labels[index];
+    const auto& wanted = expected[index];
+    const auto& actualOwner = actual.owner.value();
+    const bool ownerMatches =
+        wanted.owner.callable
+            ? actualOwner.is<CallableLabelOwner>() &&
+                  actualOwner.get<CallableLabelOwner>().callable == wanted.owner.definition
+            : actualOwner.is<ModuleLabelOwner>() &&
+                  actualOwner.get<ModuleLabelOwner>().module == input.module();
+    const auto& actualTarget = actual.target.value();
+    const bool targetMatches =
+        wanted.target.loop ? actualTarget.is<LoopLabelTarget>() &&
+                                 actualTarget.get<LoopLabelTarget>().scope == wanted.target.scope
+                           : actualTarget.is<BlockLabelTarget>() &&
+                                 actualTarget.get<BlockLabelTarget>().scope == wanted.target.scope;
+    if (!ownerMatches || actual.identity.owner() != actual.owner ||
+        actual.identity.index() != wanted.index || actual.name != wanted.name ||
+        actual.statement != wanted.statement || !targetMatches ||
+        !sameSpan(actual.source, wanted.source)) {
+      return LabelOracleResult::InvalidBindingFact;
+    }
+    for (const auto& binding : candidate.nodeBindings) {
+      if (binding.node == wanted.node) { return LabelOracleResult::InvalidBindingFact; }
+    }
+  }
+
+  zc::Vector<bool> consumedFailures;
+  consumedFailures.resize(candidate.sourceFailures.size());
+  for (auto& consumed : consumedFailures) { consumed = false; }
+  for (const auto& wanted : expected) {
+    if (wanted.previous == zc::none) { continue; }
+    size_t match = candidate.sourceFailures.size();
+    for (size_t index = 0; index < candidate.sourceFailures.size(); ++index) {
+      const auto& failureFact = candidate.sourceFailures[index];
+      const uint8_t emitterSite = static_cast<uint8_t>(failureFact.emitterOrdinal >> 56);
+      const uint32_t schemaOrdinal =
+          static_cast<uint32_t>((failureFact.emitterOrdinal >> 16) & UINT32_MAX);
+      if (emitterSite == static_cast<uint8_t>(BinderEmitterSite::LabelAndClosure) &&
+          schemaOrdinal == wanted.schemaPreorderOrdinal) {
+        if (match != candidate.sourceFailures.size()) {
+          return LabelOracleResult::InvalidBindingFact;
+        }
+        match = index;
+      }
+    }
+    if (match == candidate.sourceFailures.size()) {
+      return LabelOracleResult::MissingRequiredResolution;
+    }
+    const auto& failureFact = candidate.sourceFailures[match];
+    const uint16_t localOrdinal = static_cast<uint16_t>(failureFact.emitterOrdinal);
+    if (failureFact.diagnostic != BinderDiagnosticCode::DuplicateIdentifier || localOrdinal != 0 ||
+        !sameSpan(failureFact.primary, wanted.source) || failureFact.notes.size() != 1 ||
+        failureFact.notes[0].diagnostic != BinderDiagnosticCode::PreviousDeclarationHere) {
+      return LabelOracleResult::InvalidBindingFact;
+    }
+    ZC_IF_SOME(previous, wanted.previous) {
+      if (!sameSpan(failureFact.notes[0].source, previous)) {
+        return LabelOracleResult::InvalidBindingFact;
+      }
+    }
+    consumedFailures[match] = true;
+  }
+  for (size_t index = 0; index < candidate.sourceFailures.size(); ++index) {
+    const uint8_t emitterSite =
+        static_cast<uint8_t>(candidate.sourceFailures[index].emitterOrdinal >> 56);
+    if (emitterSite == static_cast<uint8_t>(BinderEmitterSite::LabelAndClosure) &&
+        !consumedFailures[index]) {
+      return LabelOracleResult::InvalidBindingFact;
+    }
+  }
+  return LabelOracleResult::Valid;
+}
+
+BinderInvariantKind labelOracleInvariant(LabelOracleResult result) {
+  switch (result) {
+    case LabelOracleResult::MissingRequiredResolution:
+      return BinderInvariantKind::MissingRequiredResolution;
+    case LabelOracleResult::InvalidBindingFact:
+      return BinderInvariantKind::InvalidBindingFact;
+    case LabelOracleResult::MalformedScopeGraph:
+      return BinderInvariantKind::MalformedScopeGraph;
+    case LabelOracleResult::Valid:
+      ZC_UNREACHABLE;
+  }
+  ZC_UNREACHABLE;
 }
 
 ControlOracleResult verifyControlTransferFacts(const VerifiedBindingInput& input,
@@ -742,6 +1092,53 @@ bool encodeDefinition(identity::CanonicalEncoder& encoder, const VerifiedBinding
   return false;
 }
 
+bool encodeLabelOwner(identity::CanonicalEncoder& encoder, const VerifiedBindingInput& input,
+                      const LabelOwner& owner) {
+  const auto& value = owner.value();
+  if (value.is<ModuleLabelOwner>()) {
+    if (value.get<ModuleLabelOwner>().module != input.module()) { return false; }
+    encoder.encodeUint8(0x01);
+    input.moduleKey().encode(encoder);
+    return true;
+  }
+  encoder.encodeUint8(0x02);
+  return encodeDefinition(encoder, input, value.get<CallableLabelOwner>().callable);
+}
+
+bool encodeLabelId(identity::CanonicalEncoder& encoder, const VerifiedBindingInput& input,
+                   const LabelId& identity) {
+  if (!identity.belongsTo(input.semanticContext()) ||
+      !encodeLabelOwner(encoder, input, identity.owner())) {
+    return false;
+  }
+  encoder.encodeUint32(identity.index());
+  return true;
+}
+
+bool encodeLabelTarget(identity::CanonicalEncoder& encoder, const VerifiedBindingInput& input,
+                       const LabelTarget& target) {
+  const auto& value = target.value();
+  if (value.is<BlockLabelTarget>()) {
+    encoder.encodeUint8(0x01);
+    return encodeScopeId(encoder, input, value.get<BlockLabelTarget>().scope);
+  }
+  encoder.encodeUint8(0x02);
+  return encodeScopeId(encoder, input, value.get<LoopLabelTarget>().scope);
+}
+
+bool encodeLabelFact(identity::CanonicalEncoder& encoder, const VerifiedBindingInput& input,
+                     const LabelFact& fact) {
+  if (fact.identity.owner() != fact.owner || !encodeLabelId(encoder, input, fact.identity)) {
+    return false;
+  }
+  fact.name.encode(encoder);
+  if (!encodeLabelOwner(encoder, input, fact.owner)) { return false; }
+  encoder.encodeUint32(fact.statement.value);
+  if (!encodeLabelTarget(encoder, input, fact.target)) { return false; }
+  fact.source.encode(encoder);
+  return true;
+}
+
 bool encodeImplementation(identity::CanonicalEncoder& encoder, const VerifiedBindingInput& input,
                           identity::ImplId implementation) {
   ZC_IF_SOME(key, input.definitions().implKey(implementation)) {
@@ -868,6 +1265,31 @@ zc::Maybe<zc::Array<uint8_t>> encodeAllocationScopeRecord(const VerifiedBindingI
   return encoder.finish();
 }
 
+zc::Maybe<zc::Array<uint8_t>> encodeAllocationLabelRecord(const VerifiedBindingInput& input,
+                                                          zc::ArrayPtr<const ScopeRecord> scopes,
+                                                          const LabelFact& fact) {
+  if (fact.identity.owner() != fact.owner || !fact.identity.belongsTo(input.semanticContext())) {
+    return zc::none;
+  }
+  identity::CanonicalEncoder encoder;
+  if (!encodeLabelOwner(encoder, input, fact.owner)) { return zc::none; }
+  encoder.encodeUint32(fact.identity.index());
+  fact.name.encode(encoder);
+  const auto& target = fact.target.value();
+  ScopeId scope = target.is<BlockLabelTarget>() ? target.get<BlockLabelTarget>().scope
+                                                : target.get<LoopLabelTarget>().scope;
+  encoder.encodeUint8(target.is<BlockLabelTarget>() ? 0x01 : 0x02);
+  if (scope.module() != input.module() || !scope.belongsTo(input.semanticContext()) ||
+      scope.index() >= scopes.size() || scopes[scope.index()].id != scope) {
+    return zc::none;
+  }
+  const auto expectedKind = target.is<BlockLabelTarget>() ? ScopeKind::Block : ScopeKind::Loop;
+  if (scopes[scope.index()].kind != expectedKind) { return zc::none; }
+  encoder.encodeUint32(scope.index());
+  fact.source.encode(encoder);
+  return encoder.finish();
+}
+
 bool encodeNameBinding(identity::CanonicalEncoder& encoder, const VerifiedBindingInput& input,
                        const NameBinding& binding) {
   if (!encodeTarget(encoder, input, binding.bindingIdentity) ||
@@ -975,6 +1397,9 @@ zc::Maybe<zc::Array<uint8_t>> encodeCandidate(const VerifiedBindingInput& input,
   encoder.encodeSequenceSize(candidate.localExports.size());
   encoder.encodeSequenceSize(candidate.deferredMembers.size());
   encoder.encodeSequenceSize(candidate.labels.size());
+  for (const auto& fact : candidate.labels) {
+    if (!encodeLabelFact(encoder, input, fact)) { return zc::none; }
+  }
   encoder.encodeSequenceSize(candidate.controlTransfers.size());
   for (const auto& fact : candidate.controlTransfers) {
     encoder.encodeUint32(fact.node.value);
@@ -1015,18 +1440,38 @@ bool sameBytes(zc::ArrayPtr<const uint8_t> left, zc::ArrayPtr<const uint8_t> rig
 }  // namespace
 
 zc::Maybe<zc::Array<uint8_t>> encodeBindingAllocationDump(const VerifiedBindingInput& input,
-                                                          zc::ArrayPtr<const ScopeRecord> scopes) {
-  zc::Vector<zc::Array<uint8_t>> storage;
+                                                          zc::ArrayPtr<const ScopeRecord> scopes,
+                                                          zc::ArrayPtr<const LabelFact> labels) {
+  zc::Vector<zc::Array<uint8_t>> scopeStorage;
   for (size_t index = 0; index < scopes.size(); ++index) {
     if (scopes[index].id.index() != index) { return zc::none; }
     auto encoded = encodeAllocationScopeRecord(input, scopes[index]);
-    ZC_IF_SOME(value, encoded) { storage.add(zc::mv(value)); }
+    ZC_IF_SOME(value, encoded) { scopeStorage.add(zc::mv(value)); }
     else { return zc::none; }
   }
-  zc::Vector<zc::ArrayPtr<const uint8_t>> records;
-  for (const auto& value : storage) { records.add(value.asPtr()); }
-  zc::Vector<zc::ArrayPtr<const uint8_t>> labels;
-  return frameBindingAllocationDump(records.asPtr(), labels.asPtr());
+  zc::Vector<zc::Array<uint8_t>> labelStorage;
+  zc::Array<uint8_t> previousLabelIdentity;
+  bool hasPreviousLabelIdentity = false;
+  for (const auto& fact : labels) {
+    if (fact.identity.owner() != fact.owner) { return zc::none; }
+    identity::CanonicalEncoder identityEncoder;
+    if (!encodeLabelId(identityEncoder, input, fact.identity)) { return zc::none; }
+    auto labelIdentity = identityEncoder.finish();
+    if (hasPreviousLabelIdentity &&
+        compareCanonicalBytes(previousLabelIdentity.asPtr(), labelIdentity.asPtr()) >= 0) {
+      return zc::none;
+    }
+    previousLabelIdentity = zc::mv(labelIdentity);
+    hasPreviousLabelIdentity = true;
+    auto encoded = encodeAllocationLabelRecord(input, scopes, fact);
+    ZC_IF_SOME(value, encoded) { labelStorage.add(zc::mv(value)); }
+    else { return zc::none; }
+  }
+  zc::Vector<zc::ArrayPtr<const uint8_t>> scopeRecords;
+  for (const auto& value : scopeStorage) { scopeRecords.add(value.asPtr()); }
+  zc::Vector<zc::ArrayPtr<const uint8_t>> labelRecords;
+  for (const auto& value : labelStorage) { labelRecords.add(value.asPtr()); }
+  return frameBindingAllocationDump(scopeRecords.asPtr(), labelRecords.asPtr());
 }
 
 ExportSurfaceCandidate::ExportSurfaceCandidate(identity::ModuleId sourceModule,
@@ -1197,6 +1642,11 @@ BindingCandidateResult BindingBuilder::buildCandidate(
     return zc::mv(bodyResult.get<BinderInvariantFact>());
   }
   auto body = zc::mv(bodyResult.get<BodyBindingCandidate>());
+  auto labelResult = LabelBuilder::build(input, arena);
+  if (!labelResult.is<LabelFactsCandidate>()) {
+    return zc::mv(labelResult.get<BinderInvariantFact>());
+  }
+  auto labels = zc::mv(labelResult.get<LabelFactsCandidate>());
   auto controlResult = ControlTransferBuilder::build(input, arena);
   if (!controlResult.is<ControlTransferCandidate>()) {
     return zc::mv(controlResult.get<BinderInvariantFact>());
@@ -1231,6 +1681,15 @@ BindingCandidateResult BindingBuilder::buildCandidate(
                                static_cast<uint8_t>(BinderEmitterSite::BodyBinding),
                                bodyFailure.schemaPreorderOrdinal, sequence++},
         PendingFailureRef{PendingFailureKind::BodyLookup, index});
+  }
+  for (size_t index = 0; index < labels.duplicates.size(); ++index) {
+    const auto& duplicate = labels.duplicates[index];
+    failureOrder.insert(
+        PendingFailureOrderKey{duplicate.primary.byteStart(), duplicate.primary.byteEnd(),
+                               static_cast<uint16_t>(BinderDiagnosticCode::DuplicateIdentifier),
+                               static_cast<uint8_t>(BinderEmitterSite::LabelAndClosure),
+                               duplicate.schemaPreorderOrdinal, sequence++},
+        PendingFailureRef{PendingFailureKind::LabelDuplicate, index});
   }
   for (size_t index = 0; index < control.failures.size(); ++index) {
     const auto& controlFailure = control.failures[index];
@@ -1280,6 +1739,35 @@ BindingCandidateResult BindingBuilder::buildCandidate(
                                          duplicate.previous.clone()});
       sourceFailures.add(BindingFailureRef{duplicate.diagnostic, duplicate.primary.clone(),
                                            emitterOrdinal, zc::mv(notes)});
+      continue;
+    }
+
+    if (ordered.value.kind == PendingFailureKind::LabelDuplicate) {
+      const auto& duplicate = labels.duplicates[ordered.value.index];
+      auto primaryLocation = input.parsedModule().sourceLocFor(duplicate.primary);
+      auto previousLocation = input.parsedModule().sourceLocFor(duplicate.previous);
+      if (primaryLocation == zc::none || previousLocation == zc::none) {
+        return failure(input, BinderInvariantKind::InvalidBindingFact,
+                       BinderEmitterSite::LabelAndClosure, schemaOrdinal);
+      }
+      ZC_IF_SOME(engine, diagnostics) {
+        ZC_IF_SOME(primary, primaryLocation) {
+          ZC_IF_SOME(previous, previousLocation) {
+            if (!BindingDiagnosticAdapter::emitRedeclaration(
+                    engine, BinderDiagnosticCode::DuplicateIdentifier, primary, previous,
+                    VerifiedIdentifierArgument::from(duplicate.name))) {
+              return failure(input, BinderInvariantKind::InvalidBindingFact,
+                             BinderEmitterSite::LabelAndClosure, schemaOrdinal);
+            }
+          }
+        }
+      }
+      zc::Vector<BindingDiagnosticNoteRef> notes;
+      notes.add(BindingDiagnosticNoteRef{BinderDiagnosticCode::PreviousDeclarationHere,
+                                         duplicate.previous.clone()});
+      sourceFailures.add(BindingFailureRef{BinderDiagnosticCode::DuplicateIdentifier,
+                                           duplicate.primary.clone(), emitterOrdinal,
+                                           zc::mv(notes)});
       continue;
     }
 
@@ -1367,6 +1855,7 @@ BindingCandidateResult BindingBuilder::buildCandidate(
                                            zc::mv(surface));
         candidate.sourceFailures = zc::mv(sourceFailures);
         candidate.nodeBindings = zc::mv(nodeBindings);
+        candidate.labels = zc::mv(labels.labels);
         candidate.controlTransfers = zc::mv(control.controlTransfers);
         candidate.shadowTargets = zc::mv(body.shadowTargets);
         return candidate;
@@ -1385,6 +1874,14 @@ BindingVerificationResult BindingVerifier::verify(const VerifiedBindingInput& in
   if (hasForeignContext(input, candidate)) { return rejectForeignContext(input); }
   if (hasInvalidSourceRange(input, candidate)) { return rejectInvalidSourceRange(input); }
   const auto& expected = expectedResult.get<BindingMetadataCandidate>();
+  const auto expectedLabels = verifyLabelFacts(input, expected);
+  if (expectedLabels != LabelOracleResult::Valid) {
+    return rejectBinderInvariant(verifierFailure(input, labelOracleInvariant(expectedLabels)));
+  }
+  const auto candidateLabels = verifyLabelFacts(input, candidate);
+  if (candidateLabels != LabelOracleResult::Valid) {
+    return rejectBinderInvariant(verifierFailure(input, labelOracleInvariant(candidateLabels)));
+  }
   const auto expectedControl = verifyControlTransferFacts(input, expected);
   if (expectedControl != ControlOracleResult::Valid) {
     return rejectBinderInvariant(verifierFailure(input, controlOracleInvariant(expectedControl)));
@@ -1403,6 +1900,7 @@ BindingVerificationResult BindingVerifier::verify(const VerifiedBindingInput& in
       candidate.nodeScopes.size() < expected.nodeScopes.size() ||
       candidate.sourceFailures.size() < expected.sourceFailures.size() ||
       candidate.nodeBindings.size() < expected.nodeBindings.size() ||
+      candidate.labels.size() < expected.labels.size() ||
       candidate.controlTransfers.size() < expected.controlTransfers.size() ||
       candidate.shadowTargets.size() < expected.shadowTargets.size()) {
     return rejectBinderInvariant(
@@ -1414,17 +1912,20 @@ BindingVerificationResult BindingVerifier::verify(const VerifiedBindingInput& in
       candidate.nodeScopes.size() > expected.nodeScopes.size() ||
       candidate.sourceFailures.size() > expected.sourceFailures.size() ||
       candidate.nodeBindings.size() > expected.nodeBindings.size() ||
+      candidate.labels.size() > expected.labels.size() ||
       candidate.controlTransfers.size() > expected.controlTransfers.size() ||
       candidate.shadowTargets.size() > expected.shadowTargets.size()) {
     return rejectBinderInvariant(verifierFailure(input, BinderInvariantKind::InvalidBindingFact));
   }
   if (!candidate.moduleAliases.empty() || !candidate.imports.empty() ||
       !candidate.localExports.empty() || !candidate.deferredMembers.empty() ||
-      !candidate.labels.empty() || !candidate.closureFreeVariables.empty()) {
+      !candidate.closureFreeVariables.empty()) {
     return rejectBinderInvariant(verifierFailure(input, BinderInvariantKind::InvalidBindingFact));
   }
-  auto candidateAllocation = encodeBindingAllocationDump(input, candidate.scopes.asPtr());
-  auto expectedAllocation = encodeBindingAllocationDump(input, expected.scopes.asPtr());
+  auto candidateAllocation =
+      encodeBindingAllocationDump(input, candidate.scopes.asPtr(), candidate.labels.asPtr());
+  auto expectedAllocation =
+      encodeBindingAllocationDump(input, expected.scopes.asPtr(), expected.labels.asPtr());
   if (candidateAllocation == zc::none || expectedAllocation == zc::none) {
     return rejectBinderInvariant(verifierFailure(input, BinderInvariantKind::MalformedScopeGraph));
   }

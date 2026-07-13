@@ -28,6 +28,7 @@ class IdentityDiagnosticLocationResolver;
 namespace zomlang::compiler::binder {
 
 class BodyBindingCursor;
+class LabelBuilder;
 
 enum class Namespace : uint8_t {
   Value = 0x01,
@@ -306,11 +307,39 @@ struct ModuleLabelOwner final {
 struct CallableLabelOwner final {
   identity::DefId callable;
 };
-using LabelOwner = zc::OneOf<ModuleLabelOwner, CallableLabelOwner>;
+using LabelOwnerValue = zc::OneOf<ModuleLabelOwner, CallableLabelOwner>;
 
-struct LabelId final {
-  LabelOwner owner;
-  uint32_t index;
+/// \brief Sealed context-checked owner of one flat label namespace.
+class LabelOwner final {
+public:
+  ZC_NODISCARD const LabelOwnerValue& value() const noexcept;
+  ZC_NODISCARD bool belongsTo(identity::SemanticContextBrand context) const noexcept;
+  bool operator==(const LabelOwner& other) const noexcept;
+  bool operator!=(const LabelOwner& other) const noexcept { return !(*this == other); }
+
+private:
+  explicit LabelOwner(LabelOwnerValue&& value) noexcept;
+  ZC_NODISCARD static LabelOwner module(identity::ModuleId value);
+  ZC_NODISCARD static LabelOwner callable(identity::DefId value);
+  ZC_NODISCARD LabelOwner clone() const;
+  LabelOwnerValue valueValue;
+  friend class LabelBuilder;
+};
+
+/// \brief Sealed owner-local label identity.
+class LabelId final {
+public:
+  ZC_NODISCARD const LabelOwner& owner() const noexcept;
+  ZC_NODISCARD uint32_t index() const noexcept;
+  ZC_NODISCARD bool belongsTo(identity::SemanticContextBrand context) const noexcept;
+  bool operator==(const LabelId& other) const noexcept;
+  bool operator!=(const LabelId& other) const noexcept { return !(*this == other); }
+
+private:
+  LabelId(LabelOwner&& owner, uint32_t index) noexcept;
+  LabelOwner ownerValue;
+  uint32_t indexValue;
+  friend class LabelBuilder;
 };
 
 struct BlockLabelTarget final {
@@ -319,10 +348,22 @@ struct BlockLabelTarget final {
 struct LoopLabelTarget final {
   ScopeId scope;
 };
-using LabelTarget = zc::OneOf<BlockLabelTarget, LoopLabelTarget>;
+using LabelTargetValue = zc::OneOf<BlockLabelTarget, LoopLabelTarget>;
 
-struct ExplicitLabelControlTarget final {
-  LabelId label;
+/// \brief Sealed block-or-loop target selected from the verified scope arena.
+class LabelTarget final {
+public:
+  ZC_NODISCARD const LabelTargetValue& value() const noexcept;
+  ZC_NODISCARD bool belongsTo(identity::SemanticContextBrand context) const noexcept;
+  bool operator==(const LabelTarget& other) const noexcept;
+  bool operator!=(const LabelTarget& other) const noexcept { return !(*this == other); }
+
+private:
+  explicit LabelTarget(LabelTargetValue&& value) noexcept;
+  ZC_NODISCARD static LabelTarget block(ScopeId scope);
+  ZC_NODISCARD static LabelTarget loop(ScopeId scope);
+  LabelTargetValue valueValue;
+  friend class LabelBuilder;
 };
 struct LoopControlTarget final {
   ScopeId scope;
@@ -330,17 +371,13 @@ struct LoopControlTarget final {
 struct MatchControlTarget final {
   ScopeId scope;
 };
-using ControlTarget = zc::OneOf<ExplicitLabelControlTarget, LoopControlTarget, MatchControlTarget>;
+using ControlTarget = zc::OneOf<LoopControlTarget, MatchControlTarget>;
 
 struct BoundNameResolution final {
   BindingTarget bindingIdentity;
   BindingTarget canonicalTarget;
   Namespace nameSpace;
   BindingOrigin origin;
-};
-struct BoundLabelResolution final {
-  LabelId label;
-  LabelTarget target;
 };
 struct FailedBindingResolution final {
   size_t failureIndex;
@@ -355,8 +392,8 @@ struct DeferredMemberFact final {
   identity::SourceSpan source;
 };
 
-using BindingResolutionValue = zc::OneOf<BoundNameResolution, BoundLabelResolution,
-                                         DeferredMemberFact, FailedBindingResolution>;
+using BindingResolutionValue =
+    zc::OneOf<BoundNameResolution, DeferredMemberFact, FailedBindingResolution>;
 struct BindingResolution final {
   ast::NodeId node;
   BindingResolutionValue value;

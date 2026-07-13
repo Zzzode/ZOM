@@ -80,23 +80,20 @@ struct MetadataSnapshotEntry {
   ast::NodeId shadowOf;
   bool reexport = false;
   ast::NodeList captures;
-  ast::NodeId labelTarget;
 };
 
 MetadataSnapshotEntry snapshotMetadata(const ast::BindingMetadata& metadata, ast::NodeId node) {
   return MetadataSnapshotEntry{metadata.parent(node),           metadata.scope(node),
                                metadata.definition(node),       metadata.isUnresolved(node),
                                metadata.isDeferredMember(node), metadata.shadowOf(node),
-                               metadata.isReexport(node),       metadata.captures(node),
-                               metadata.labelTarget(node)};
+                               metadata.isReexport(node),       metadata.captures(node)};
 }
 
 bool sameMetadata(const MetadataSnapshotEntry& lhs, const MetadataSnapshotEntry& rhs) {
   return lhs.parent == rhs.parent && lhs.scope == rhs.scope && lhs.definition == rhs.definition &&
          lhs.unresolved == rhs.unresolved && lhs.deferredMember == rhs.deferredMember &&
          lhs.shadowOf == rhs.shadowOf && lhs.reexport == rhs.reexport &&
-         lhs.captures.first == rhs.captures.first && lhs.captures.size == rhs.captures.size &&
-         lhs.labelTarget == rhs.labelTarget;
+         lhs.captures.first == rhs.captures.first && lhs.captures.size == rhs.captures.size;
 }
 
 CheckerRunResult runChecker(TestFixture& fix, zc::ArrayPtr<const ast::NodeId> decls) {

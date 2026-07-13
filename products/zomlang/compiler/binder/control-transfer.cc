@@ -40,11 +40,6 @@ public:
     if (!initialize()) { return takeRejection(); }
     ast::visitTreePreOrder(tree, tree.root(), [&](ast::NodeId node, const ast::Node& syntax) {
       if (rejected != zc::none) { return; }
-      if (syntax.kind == ast::SyntaxKind::LabeledStatement) {
-        reject(BinderInvariantKind::MissingRequiredResolution, BinderEmitterSite::LabelAndClosure,
-               node);
-        return;
-      }
       if (syntax.kind != ast::SyntaxKind::BreakStmt &&
           syntax.kind != ast::SyntaxKind::ContinueStatement) {
         return;

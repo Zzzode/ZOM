@@ -13,6 +13,7 @@ set(BINDER_SRC
   ${CMAKE_CURRENT_SOURCE_DIR}/definition-site.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/frozen-definition-inventory.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/import-resolver.cc
+  ${CMAKE_CURRENT_SOURCE_DIR}/label-facts.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/name-resolver.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/parsed-module.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/scope-arena.cc

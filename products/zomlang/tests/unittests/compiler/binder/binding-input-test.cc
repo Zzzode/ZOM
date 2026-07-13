@@ -16,6 +16,7 @@
 #include "zomlang/compiler/binder/definition-inventory.h"
 #include "zomlang/compiler/binder/internal/binding-skeleton.h"
 #include "zomlang/compiler/binder/internal/binding-verifier.h"
+#include "zomlang/compiler/binder/internal/label-facts.h"
 #include "zomlang/compiler/binder/internal/scope-arena.h"
 #include "zomlang/compiler/diagnostics/diagnostic-consumer.h"
 #include "zomlang/compiler/diagnostics/diagnostic-engine.h"
@@ -588,7 +589,21 @@ ControlTarget cloneControlTarget(const ControlTarget& target) {
   if (target.is<MatchControlTarget>()) {
     return ControlTarget(MatchControlTarget{target.get<MatchControlTarget>().scope});
   }
-  ZC_FAIL_REQUIRE("explicit label targets are unavailable before label cutover");
+  ZC_FAIL_REQUIRE("invalid control target");
+}
+
+LabelFact& requireLabel(zc::ArrayPtr<LabelFact> facts, zc::StringPtr name, size_t occurrence = 0) {
+  size_t matching = 0;
+  for (auto& fact : facts) {
+    if (fact.name.text() == name && matching++ == occurrence) { return fact; }
+  }
+  ZC_FAIL_REQUIRE("mutable label fact is missing");
+}
+
+ScopeId labelTargetScope(const LabelTarget& target) {
+  const auto& value = target.value();
+  if (value.is<BlockLabelTarget>()) { return value.get<BlockLabelTarget>().scope; }
+  return value.get<LoopLabelTarget>().scope;
 }
 
 bool sameSpan(const identity::SourceSpan& left, const identity::SourceSpan& right) {
@@ -936,13 +951,547 @@ ZC_TEST("BindingVerifier.PublishesCompletePrivateFunctionFactsAndSurface") {
   ZC_EXPECT(output.surface.visibleEntries()[0].visibility.value().is<ModuleVisibility>());
   ZC_EXPECT(zc::encodeHex(output.surface.revision().digest().bytes()) ==
             "1764a287bf612ee8a648563f8f525b36ef5e7de5f8238a8c97194bd99796722b"_zc);
-  ZC_IF_SOME(dump, encodeBindingAllocationDump(input, output.metadata.scopes())) {
+  ZC_IF_SOME(dump, encodeBindingAllocationDump(input, output.metadata.scopes(),
+                                               output.metadata.labels())) {
     ZC_EXPECT(dump.size() == 3227);
     ZC_IF_SOME(digest, identity::sha256(dump.asPtr())) {
       ZC_EXPECT(zc::encodeHex(digest.bytes()) ==
                 "2c5b3604e7bb003b11cff64d1b19af3405ab1940b4379846faba3a05754a9cb6"_zc);
     }
   }
+}
+
+ZC_TEST("LabelFacts.ResolvesAllTargetsNestedLabelsAndPreservesControlTransfers") {
+  ParsedSource sourceFixture(
+      "module root;\n"
+      "fun run() {\n"
+      "  block_label: {}\n"
+      "  while_label: while (false) {}\n"
+      "  for_label: for (;;) {}\n"
+      "  for_in_label: for (let item in 0) {}\n"
+      "  do_label: do {} while (false);\n"
+      "  outer: inner: while (true) { break; continue; }\n"
+      "}\n"_zc);
+  FrozenFixture fixture(sourceFixture, true);
+  auto inputResult = verify(fixture);
+  ZC_REQUIRE(inputResult.is<VerifiedBindingInput>());
+  auto input = zc::mv(inputResult.get<VerifiedBindingInput>());
+  auto candidate = BindingBuilder::build(input, *sourceFixture.diagnostics);
+  ZC_REQUIRE(candidate.is<BindingMetadataCandidate>());
+  auto& value = candidate.get<BindingMetadataCandidate>();
+  ZC_REQUIRE(value.labels.size() == 7);
+  ZC_REQUIRE(value.controlTransfers.size() == 2);
+  ZC_EXPECT(value.sourceFailures.empty());
+  for (size_t index = 0; index < value.labels.size(); ++index) {
+    const auto& fact = value.labels[index];
+    ZC_REQUIRE(fact.owner.value().is<CallableLabelOwner>());
+    ZC_EXPECT(fact.identity.owner() == fact.owner);
+    ZC_EXPECT(fact.identity.index() == index);
+    ZC_EXPECT(fact.owner.belongsTo(input.semanticContext()));
+    ZC_EXPECT(fact.target.belongsTo(input.semanticContext()));
+  }
+  ZC_EXPECT(
+      requireLabel(value.labels.asPtr(), "block_label"_zc).target.value().is<BlockLabelTarget>());
+  const zc::StringPtr loopLabels[] = {"while_label"_zc, "for_label"_zc, "for_in_label"_zc,
+                                      "do_label"_zc,    "outer"_zc,     "inner"_zc};
+  for (const auto name : loopLabels) {
+    ZC_EXPECT(requireLabel(value.labels.asPtr(), name).target.value().is<LoopLabelTarget>());
+  }
+  const auto& outer = requireLabel(value.labels.asPtr(), "outer"_zc);
+  const auto& inner = requireLabel(value.labels.asPtr(), "inner"_zc);
+  ZC_EXPECT(input.tree().node(outer.statement).kind == ast::SyntaxKind::LabeledStatement);
+  ZC_EXPECT(input.tree().node(inner.statement).kind == ast::SyntaxKind::WhileStmt);
+  ZC_EXPECT(labelTargetScope(outer.target) == labelTargetScope(inner.target));
+  const auto labeledNodes = nodesOfKind(input.tree(), ast::SyntaxKind::LabeledStatement);
+  ZC_REQUIRE(labeledNodes.size() == 7);
+  zc::Maybe<ScopeId> outerLabelScope;
+  zc::Maybe<ScopeId> innerLabelScope;
+  for (const auto& fact : value.nodeScopes) {
+    if (fact.node == labeledNodes[5]) { outerLabelScope = fact.scope; }
+    if (fact.node == labeledNodes[6]) { innerLabelScope = fact.scope; }
+  }
+  ZC_REQUIRE(outerLabelScope != zc::none);
+  ZC_REQUIRE(innerLabelScope != zc::none);
+  ZC_IF_SOME(outerScope, outerLabelScope) {
+    ZC_IF_SOME(innerScope, innerLabelScope) { ZC_EXPECT(outerScope == innerScope); }
+  }
+  auto verification = BindingVerifier::verify(input, zc::mv(value));
+  ZC_REQUIRE(verification.is<VerifiedBindingOutput>());
+  ZC_EXPECT(verification.get<VerifiedBindingOutput>().metadata.labels().size() == 7);
+}
+
+ZC_TEST("LabelFacts.AllocatesModuleAndCallableOwnerIndicesIndependently") {
+  ParsedSource sourceFixture(
+      "module root;\n"
+      "module_first: {}\n"
+      "fun alpha() { shared: {} alpha_second: {} }\n"
+      "module_second: while (false) {}\n"
+      "fun beta() { shared: {} }\n"_zc);
+  FrozenFixture fixture(sourceFixture, true);
+  auto inputResult = verify(fixture);
+  ZC_REQUIRE(inputResult.is<VerifiedBindingInput>());
+  auto input = zc::mv(inputResult.get<VerifiedBindingInput>());
+  auto candidate = BindingBuilder::build(input, *sourceFixture.diagnostics);
+  ZC_REQUIRE(candidate.is<BindingMetadataCandidate>());
+  auto& value = candidate.get<BindingMetadataCandidate>();
+  ZC_REQUIRE(value.labels.size() == 5);
+  ZC_EXPECT(value.sourceFailures.empty());
+
+  const auto& moduleFirst = requireLabel(value.labels.asPtr(), "module_first"_zc);
+  const auto& moduleSecond = requireLabel(value.labels.asPtr(), "module_second"_zc);
+  ZC_REQUIRE(moduleFirst.owner.value().is<ModuleLabelOwner>());
+  ZC_REQUIRE(moduleSecond.owner.value().is<ModuleLabelOwner>());
+  ZC_EXPECT(moduleFirst.identity.index() == 0);
+  ZC_EXPECT(moduleSecond.identity.index() == 1);
+  const auto alpha = requireScopeDefinition(value.scopes.asPtr(), "alpha"_zc);
+  const auto beta = requireScopeDefinition(value.scopes.asPtr(), "beta"_zc);
+  const auto& alphaSecond = requireLabel(value.labels.asPtr(), "alpha_second"_zc);
+  ZC_EXPECT(alphaSecond.owner.value().get<CallableLabelOwner>().callable == alpha);
+  ZC_EXPECT(alphaSecond.identity.index() == 1);
+  bool foundAlphaShared = false;
+  bool foundBetaShared = false;
+  for (const auto& fact : value.labels) {
+    if (fact.name.text() != "shared"_zc) { continue; }
+    ZC_REQUIRE(fact.owner.value().is<CallableLabelOwner>());
+    const auto callable = fact.owner.value().get<CallableLabelOwner>().callable;
+    if (callable == alpha) { foundAlphaShared = true; }
+    if (callable == beta) { foundBetaShared = true; }
+    ZC_EXPECT(fact.identity.index() == 0);
+  }
+  ZC_EXPECT(foundAlphaShared);
+  ZC_EXPECT(foundBetaShared);
+  auto verification = BindingVerifier::verify(input, zc::mv(value));
+  ZC_REQUIRE(verification.is<VerifiedBindingOutput>());
+}
+
+ZC_TEST("LabelFacts.ResetsClosureOwnerIndicesIndependently") {
+  ParsedSource sourceFixture(
+      "module root;\n"
+      "fun run() {\n"
+      "  function_first: {}\n"
+      "  let closure = fun() { closure_first: {} closure_second: {} };\n"
+      "  function_second: {}\n"
+      "}\n"_zc);
+  FrozenFixture fixture(sourceFixture, true);
+  auto inputResult = verify(fixture);
+  ZC_REQUIRE(inputResult.is<VerifiedBindingInput>());
+  auto input = zc::mv(inputResult.get<VerifiedBindingInput>());
+  auto candidate = BindingBuilder::build(input, *sourceFixture.diagnostics);
+  ZC_REQUIRE(candidate.is<BindingMetadataCandidate>());
+  auto& value = candidate.get<BindingMetadataCandidate>();
+  ZC_REQUIRE(value.labels.size() == 4);
+  ZC_EXPECT(value.sourceFailures.empty());
+
+  const auto function = requireScopeDefinition(value.scopes.asPtr(), "run"_zc);
+  const auto& functionFirst = requireLabel(value.labels.asPtr(), "function_first"_zc);
+  const auto& functionSecond = requireLabel(value.labels.asPtr(), "function_second"_zc);
+  ZC_REQUIRE(functionFirst.owner.value().is<CallableLabelOwner>());
+  ZC_REQUIRE(functionSecond.owner.value().is<CallableLabelOwner>());
+  ZC_EXPECT(functionFirst.owner.value().get<CallableLabelOwner>().callable == function);
+  ZC_EXPECT(functionSecond.owner.value().get<CallableLabelOwner>().callable == function);
+  ZC_EXPECT(functionFirst.identity.index() == 0);
+  ZC_EXPECT(functionSecond.identity.index() == 1);
+
+  const auto& closureFirst = requireLabel(value.labels.asPtr(), "closure_first"_zc);
+  const auto& closureSecond = requireLabel(value.labels.asPtr(), "closure_second"_zc);
+  ZC_REQUIRE(closureFirst.owner.value().is<CallableLabelOwner>());
+  ZC_REQUIRE(closureSecond.owner.value().is<CallableLabelOwner>());
+  const auto closure = closureFirst.owner.value().get<CallableLabelOwner>().callable;
+  ZC_EXPECT(closure != function);
+  ZC_EXPECT(closureSecond.owner.value().get<CallableLabelOwner>().callable == closure);
+  ZC_EXPECT(closureFirst.identity.index() == 0);
+  ZC_EXPECT(closureSecond.identity.index() == 1);
+
+  auto verification = BindingVerifier::verify(input, zc::mv(value));
+  ZC_REQUIRE(verification.is<VerifiedBindingOutput>());
+}
+
+ZC_TEST("LabelFacts.SortsCallableOwnersByCanonicalDefinitionKey") {
+  ParsedSource sourceFixture(
+      "module root;\n"
+      "fun zulu() { zulu_label: {} }\n"
+      "fun alfa() { alfa_label: {} }\n"_zc);
+  FrozenFixture fixture(sourceFixture, true);
+  auto inputResult = verify(fixture);
+  ZC_REQUIRE(inputResult.is<VerifiedBindingInput>());
+  auto input = zc::mv(inputResult.get<VerifiedBindingInput>());
+  auto candidate = BindingBuilder::build(input, *sourceFixture.diagnostics);
+  ZC_REQUIRE(candidate.is<BindingMetadataCandidate>());
+  auto& value = candidate.get<BindingMetadataCandidate>();
+  ZC_REQUIRE(value.labels.size() == 2);
+  ZC_EXPECT(value.sourceFailures.empty());
+
+  const auto zulu = requireScopeDefinition(value.scopes.asPtr(), "zulu"_zc);
+  const auto alfa = requireScopeDefinition(value.scopes.asPtr(), "alfa"_zc);
+  auto zuluKey = input.definitions().definitionKey(zulu);
+  auto alfaKey = input.definitions().definitionKey(alfa);
+  ZC_REQUIRE(zuluKey != zc::none);
+  ZC_REQUIRE(alfaKey != zc::none);
+  const auto& zuluLabel = requireLabel(value.labels.asPtr(), "zulu_label"_zc);
+  const auto& alfaLabel = requireLabel(value.labels.asPtr(), "alfa_label"_zc);
+  ZC_EXPECT(zuluLabel.source.byteStart() < alfaLabel.source.byteStart());
+  ZC_IF_SOME(zuluKeyValue, zuluKey) {
+    ZC_IF_SOME(alfaKeyValue, alfaKey) {
+      const auto zuluBytes = zuluKeyValue.encode();
+      const auto alfaBytes = alfaKeyValue.encode();
+      ZC_EXPECT(encodedBytesLess(alfaBytes.asPtr(), zuluBytes.asPtr()));
+    }
+  }
+  ZC_EXPECT(value.labels[0].name.text() == "alfa_label"_zc);
+  ZC_EXPECT(value.labels[1].name.text() == "zulu_label"_zc);
+  ZC_EXPECT(value.labels[0].identity.index() == 0);
+  ZC_EXPECT(value.labels[1].identity.index() == 0);
+
+  auto allocation = encodeBindingAllocationDump(input, value.scopes.asPtr(), value.labels.asPtr());
+  ZC_REQUIRE(allocation != zc::none);
+  auto verification = BindingVerifier::verify(input, zc::mv(value));
+  ZC_REQUIRE(verification.is<VerifiedBindingOutput>());
+}
+
+ZC_TEST("LabelFacts.ReportsSiblingNestedAndNfcEquivalentDuplicates") {
+  ParsedSource sourceFixture(
+      "module root;\n"
+      "fun run() {\n"
+      "  caf\\u00e9: {} cafe\\u0301: {}\n"
+      "  duplicate: {} duplicate: while (false) {}\n"
+      "  nested: nested: while (false) {}\n"
+      "}\n"_zc);
+  FrozenFixture fixture(sourceFixture, true);
+  auto inputResult = verify(fixture);
+  ZC_REQUIRE(inputResult.is<VerifiedBindingInput>());
+  auto input = zc::mv(inputResult.get<VerifiedBindingInput>());
+  auto candidate = BindingBuilder::build(input, *sourceFixture.diagnostics);
+  ZC_REQUIRE(candidate.is<BindingMetadataCandidate>());
+  auto& value = candidate.get<BindingMetadataCandidate>();
+  ZC_REQUIRE(value.labels.size() == 6);
+  ZC_REQUIRE(value.sourceFailures.size() == 3);
+  ZC_EXPECT(requireLabel(value.labels.asPtr(), "caf\xc3\xa9"_zc, 0).identity.index() == 0);
+  ZC_EXPECT(requireLabel(value.labels.asPtr(), "caf\xc3\xa9"_zc, 1).identity.index() == 1);
+  const auto labeledNodes = nodesOfKind(input.tree(), ast::SyntaxKind::LabeledStatement);
+  ZC_REQUIRE(labeledNodes.size() == 6);
+  for (size_t index = 0; index < value.sourceFailures.size(); ++index) {
+    const auto& failureFact = value.sourceFailures[index];
+    ZC_EXPECT(failureFact.diagnostic == BinderDiagnosticCode::DuplicateIdentifier);
+    ZC_EXPECT(static_cast<uint8_t>(failureFact.emitterOrdinal >> 56) ==
+              static_cast<uint8_t>(BinderEmitterSite::LabelAndClosure));
+    ZC_EXPECT(static_cast<uint16_t>(failureFact.emitterOrdinal) == 0);
+    ZC_REQUIRE(failureFact.notes.size() == 1);
+    ZC_EXPECT(failureFact.notes[0].diagnostic == BinderDiagnosticCode::PreviousDeclarationHere);
+  }
+  ZC_EXPECT(value.sourceFailures[0].primary.byteEnd() -
+                value.sourceFailures[0].primary.byteStart() ==
+            10);
+  ZC_EXPECT(value.sourceFailures[0].notes[0].source.byteEnd() -
+                value.sourceFailures[0].notes[0].source.byteStart() ==
+            9);
+  for (const auto& binding : value.nodeBindings) {
+    for (const auto node : labeledNodes) { ZC_EXPECT(binding.node != node); }
+  }
+  auto verification = BindingVerifier::verify(input, zc::mv(value));
+  ZC_REQUIRE(verification.is<SourceRejected>());
+  ZC_EXPECT(verification.get<SourceRejected>().failures().size() == 3);
+  ZC_EXPECT(sourceFixture.diagnostics->errorCount() == 3);
+}
+
+ZC_TEST("LabelFacts.RejectsLabelIndexOverflow") {
+  ZC_IF_SOME(maximum, checkedLabelIndex(UINT32_MAX)) { ZC_EXPECT(maximum == UINT32_MAX); }
+  ZC_EXPECT(checkedLabelIndex(static_cast<uint64_t>(UINT32_MAX) + 1) == zc::none);
+}
+
+ZC_TEST("BindingAllocationDump.EncodesSchemaBackedLabelRecords") {
+  ParsedSource sourceFixture(
+      "module root;\n"
+      "first: {}\n"
+      "fun run() { second: while (false) {} }\n"_zc);
+  FrozenFixture fixture(sourceFixture, true);
+  auto inputResult = verify(fixture);
+  ZC_REQUIRE(inputResult.is<VerifiedBindingInput>());
+  auto input = zc::mv(inputResult.get<VerifiedBindingInput>());
+  auto candidate = BindingBuilder::build(input, *sourceFixture.diagnostics);
+  ZC_REQUIRE(candidate.is<BindingMetadataCandidate>());
+  auto& value = candidate.get<BindingMetadataCandidate>();
+  ZC_REQUIRE(value.labels.size() == 2);
+  auto complete = encodeBindingAllocationDump(input, value.scopes.asPtr(), value.labels.asPtr());
+  auto scopesOnly =
+      encodeBindingAllocationDump(input, value.scopes.asPtr(), zc::ArrayPtr<const LabelFact>());
+  ZC_REQUIRE(complete != zc::none);
+  ZC_REQUIRE(scopesOnly != zc::none);
+  ZC_IF_SOME(completeValue, complete) {
+    ZC_IF_SOME(scopeValue, scopesOnly) {
+      ZC_EXPECT(completeValue.size() > scopeValue.size());
+      ZC_EXPECT(completeValue.asPtr() != scopeValue.asPtr());
+    }
+    ZC_IF_SOME(digest, identity::sha256(completeValue.asPtr())) {
+      ZC_EXPECT(zc::encodeHex(digest.bytes()) ==
+                "c6e9e1a3febdc564be5fa5613435ad515943f4b16a47b186d0bf19f81c91e659"_zc);
+    }
+  }
+  auto verification = BindingVerifier::verify(input, zc::mv(value));
+  ZC_REQUIRE(verification.is<VerifiedBindingOutput>());
+}
+
+ZC_TEST("BindingAllocationDump.RejectsNonCanonicalLabelsAndInvalidTargetScopes") {
+  ParsedSource sourceFixture(
+      "module root;\n"
+      "fun run() { first: {} second: {} }\n"_zc);
+  FrozenFixture fixture(sourceFixture, true);
+  auto inputResult = verify(fixture);
+  ZC_REQUIRE(inputResult.is<VerifiedBindingInput>());
+  auto input = zc::mv(inputResult.get<VerifiedBindingInput>());
+
+  auto reorderedCandidate = BindingBuilder::build(input, *sourceFixture.diagnostics);
+  ZC_REQUIRE(reorderedCandidate.is<BindingMetadataCandidate>());
+  auto& reordered = reorderedCandidate.get<BindingMetadataCandidate>();
+  ZC_REQUIRE(reordered.labels.size() == 2);
+  auto first = zc::mv(reordered.labels[0]);
+  reordered.labels[0] = zc::mv(reordered.labels[1]);
+  reordered.labels[1] = zc::mv(first);
+  ZC_EXPECT(encodeBindingAllocationDump(input, reordered.scopes.asPtr(),
+                                        reordered.labels.asPtr()) == zc::none);
+
+  auto duplicateCandidate = BindingBuilder::build(input, *sourceFixture.diagnostics);
+  auto identityDonorCandidate = BindingBuilder::build(input, *sourceFixture.diagnostics);
+  ZC_REQUIRE(duplicateCandidate.is<BindingMetadataCandidate>());
+  ZC_REQUIRE(identityDonorCandidate.is<BindingMetadataCandidate>());
+  auto& duplicate = duplicateCandidate.get<BindingMetadataCandidate>();
+  auto& identityDonor = identityDonorCandidate.get<BindingMetadataCandidate>();
+  duplicate.labels[1].identity = zc::mv(identityDonor.labels[0].identity);
+  ZC_EXPECT(encodeBindingAllocationDump(input, duplicate.scopes.asPtr(),
+                                        duplicate.labels.asPtr()) == zc::none);
+
+  auto wrongKindCandidate = BindingBuilder::build(input, *sourceFixture.diagnostics);
+  ZC_REQUIRE(wrongKindCandidate.is<BindingMetadataCandidate>());
+  auto& wrongKind = wrongKindCandidate.get<BindingMetadataCandidate>();
+  const auto wrongKindScope = labelTargetScope(wrongKind.labels[0].target);
+  ZC_REQUIRE(wrongKindScope.index() < wrongKind.scopes.size());
+  wrongKind.scopes[wrongKindScope.index()].kind = ScopeKind::Loop;
+  ZC_EXPECT(encodeBindingAllocationDump(input, wrongKind.scopes.asPtr(),
+                                        wrongKind.labels.asPtr()) == zc::none);
+
+  auto missingScopeCandidate = BindingBuilder::build(input, *sourceFixture.diagnostics);
+  ZC_REQUIRE(missingScopeCandidate.is<BindingMetadataCandidate>());
+  auto& missingScope = missingScopeCandidate.get<BindingMetadataCandidate>();
+  const auto missingTarget = labelTargetScope(missingScope.labels[1].target);
+  ZC_REQUIRE(missingTarget.index() + 1 == missingScope.scopes.size());
+  missingScope.scopes.removeLast();
+  ZC_EXPECT(encodeBindingAllocationDump(input, missingScope.scopes.asPtr(),
+                                        missingScope.labels.asPtr()) == zc::none);
+}
+
+ZC_TEST("BindingVerifier.RejectsMissingAdditionalReorderedAndMutatedLabels") {
+  ParsedSource sourceFixture(
+      "module root;\n"
+      "module_label: {}\n"
+      "fun run() { first: {} second: while (false) {} }\n"_zc);
+  FrozenFixture fixture(sourceFixture, true);
+  auto inputResult = verify(fixture);
+  ZC_REQUIRE(inputResult.is<VerifiedBindingInput>());
+  auto input = zc::mv(inputResult.get<VerifiedBindingInput>());
+
+  auto missingCandidate = BindingBuilder::build(input, *sourceFixture.diagnostics);
+  ZC_REQUIRE(missingCandidate.is<BindingMetadataCandidate>());
+  auto& missing = missingCandidate.get<BindingMetadataCandidate>();
+  ZC_REQUIRE(missing.labels.size() == 3);
+  missing.labels.removeLast();
+  auto missingResult = BindingVerifier::verify(input, zc::mv(missing));
+  ZC_EXPECT(requireBinderInvariant(missingResult).kind ==
+            BinderInvariantKind::MissingRequiredResolution);
+
+  auto additionalCandidate = BindingBuilder::build(input, *sourceFixture.diagnostics);
+  auto donorCandidate = BindingBuilder::build(input, *sourceFixture.diagnostics);
+  ZC_REQUIRE(additionalCandidate.is<BindingMetadataCandidate>());
+  ZC_REQUIRE(donorCandidate.is<BindingMetadataCandidate>());
+  auto& additional = additionalCandidate.get<BindingMetadataCandidate>();
+  auto& donor = donorCandidate.get<BindingMetadataCandidate>();
+  additional.labels.add(zc::mv(donor.labels[0]));
+  auto additionalResult = BindingVerifier::verify(input, zc::mv(additional));
+  ZC_EXPECT(requireBinderInvariant(additionalResult).kind ==
+            BinderInvariantKind::InvalidBindingFact);
+
+  auto reorderedCandidate = BindingBuilder::build(input, *sourceFixture.diagnostics);
+  ZC_REQUIRE(reorderedCandidate.is<BindingMetadataCandidate>());
+  auto& reordered = reorderedCandidate.get<BindingMetadataCandidate>();
+  auto firstFact = zc::mv(reordered.labels[0]);
+  reordered.labels[0] = zc::mv(reordered.labels[1]);
+  reordered.labels[1] = zc::mv(firstFact);
+  auto reorderedResult = BindingVerifier::verify(input, zc::mv(reordered));
+  ZC_EXPECT(requireBinderInvariant(reorderedResult).kind ==
+            BinderInvariantKind::InvalidBindingFact);
+
+  auto identityCandidate = BindingBuilder::build(input, *sourceFixture.diagnostics);
+  ZC_REQUIRE(identityCandidate.is<BindingMetadataCandidate>());
+  auto& wrongIdentity = identityCandidate.get<BindingMetadataCandidate>();
+  auto firstIdentity = zc::mv(wrongIdentity.labels[1].identity);
+  wrongIdentity.labels[1].identity = zc::mv(wrongIdentity.labels[2].identity);
+  wrongIdentity.labels[2].identity = zc::mv(firstIdentity);
+  auto identityResult = BindingVerifier::verify(input, zc::mv(wrongIdentity));
+  ZC_EXPECT(requireBinderInvariant(identityResult).kind == BinderInvariantKind::InvalidBindingFact);
+
+  auto ownerCandidate = BindingBuilder::build(input, *sourceFixture.diagnostics);
+  ZC_REQUIRE(ownerCandidate.is<BindingMetadataCandidate>());
+  auto& wrongOwner = ownerCandidate.get<BindingMetadataCandidate>();
+  auto moduleOwner = zc::mv(wrongOwner.labels[0].owner);
+  wrongOwner.labels[0].owner = zc::mv(wrongOwner.labels[1].owner);
+  wrongOwner.labels[1].owner = zc::mv(moduleOwner);
+  auto ownerResult = BindingVerifier::verify(input, zc::mv(wrongOwner));
+  ZC_EXPECT(requireBinderInvariant(ownerResult).kind == BinderInvariantKind::InvalidBindingFact);
+
+  auto statementCandidate = BindingBuilder::build(input, *sourceFixture.diagnostics);
+  ZC_REQUIRE(statementCandidate.is<BindingMetadataCandidate>());
+  auto& wrongStatement = statementCandidate.get<BindingMetadataCandidate>();
+  wrongStatement.labels[1].statement = wrongStatement.labels[2].statement;
+  auto statementResult = BindingVerifier::verify(input, zc::mv(wrongStatement));
+  ZC_EXPECT(requireBinderInvariant(statementResult).kind ==
+            BinderInvariantKind::InvalidBindingFact);
+
+  auto targetCandidate = BindingBuilder::build(input, *sourceFixture.diagnostics);
+  ZC_REQUIRE(targetCandidate.is<BindingMetadataCandidate>());
+  auto& wrongTarget = targetCandidate.get<BindingMetadataCandidate>();
+  auto firstTarget = zc::mv(wrongTarget.labels[1].target);
+  wrongTarget.labels[1].target = zc::mv(wrongTarget.labels[2].target);
+  wrongTarget.labels[2].target = zc::mv(firstTarget);
+  auto targetResult = BindingVerifier::verify(input, zc::mv(wrongTarget));
+  ZC_EXPECT(requireBinderInvariant(targetResult).kind == BinderInvariantKind::InvalidBindingFact);
+
+  auto sourceCandidate = BindingBuilder::build(input, *sourceFixture.diagnostics);
+  ZC_REQUIRE(sourceCandidate.is<BindingMetadataCandidate>());
+  auto& wrongSource = sourceCandidate.get<BindingMetadataCandidate>();
+  wrongSource.labels[1].source = wrongSource.labels[2].source.clone();
+  auto sourceResult = BindingVerifier::verify(input, zc::mv(wrongSource));
+  ZC_EXPECT(requireBinderInvariant(sourceResult).kind == BinderInvariantKind::InvalidBindingFact);
+
+  auto nameCandidate = BindingBuilder::build(input, *sourceFixture.diagnostics);
+  ZC_REQUIRE(nameCandidate.is<BindingMetadataCandidate>());
+  auto& wrongName = nameCandidate.get<BindingMetadataCandidate>();
+  auto replacementName = identity::SemanticIdentifier::fromCanonical("changed"_zc);
+  ZC_REQUIRE(replacementName != zc::none);
+  ZC_IF_SOME(name, replacementName) { wrongName.labels[1].name = zc::mv(name); }
+  auto nameResult = BindingVerifier::verify(input, zc::mv(wrongName));
+  ZC_EXPECT(requireBinderInvariant(nameResult).kind == BinderInvariantKind::InvalidBindingFact);
+}
+
+ZC_TEST("BindingVerifier.RejectsForeignLabelOwnersAndTargets") {
+  ParsedSource localSource("module root;\nfun run() { local: while (false) {} }\n"_zc);
+  ParsedSource foreignSource("module root;\nfun run() { local: while (false) {} }\n"_zc);
+  FrozenFixture localFixture(localSource, true);
+  FrozenFixture foreignFixture(foreignSource, true);
+  auto localInputResult = verify(localFixture);
+  auto foreignInputResult = verify(foreignFixture);
+  ZC_REQUIRE(localInputResult.is<VerifiedBindingInput>());
+  ZC_REQUIRE(foreignInputResult.is<VerifiedBindingInput>());
+  auto localInput = zc::mv(localInputResult.get<VerifiedBindingInput>());
+  auto foreignInput = zc::mv(foreignInputResult.get<VerifiedBindingInput>());
+
+  auto foreignOwnerCandidate = BindingBuilder::build(foreignInput, *foreignSource.diagnostics);
+  auto localOwnerCandidate = BindingBuilder::build(localInput, *localSource.diagnostics);
+  ZC_REQUIRE(foreignOwnerCandidate.is<BindingMetadataCandidate>());
+  ZC_REQUIRE(localOwnerCandidate.is<BindingMetadataCandidate>());
+  localOwnerCandidate.get<BindingMetadataCandidate>().labels[0].owner =
+      zc::mv(foreignOwnerCandidate.get<BindingMetadataCandidate>().labels[0].owner);
+  auto ownerResult = BindingVerifier::verify(
+      localInput, zc::mv(localOwnerCandidate.get<BindingMetadataCandidate>()));
+  ZC_EXPECT(requireIdentityInvariant(ownerResult).kind() ==
+            identity::IdentityInvariantKind::ForeignContext);
+
+  auto foreignIdentityCandidate = BindingBuilder::build(foreignInput, *foreignSource.diagnostics);
+  auto localIdentityCandidate = BindingBuilder::build(localInput, *localSource.diagnostics);
+  ZC_REQUIRE(foreignIdentityCandidate.is<BindingMetadataCandidate>());
+  ZC_REQUIRE(localIdentityCandidate.is<BindingMetadataCandidate>());
+  localIdentityCandidate.get<BindingMetadataCandidate>().labels[0].identity =
+      zc::mv(foreignIdentityCandidate.get<BindingMetadataCandidate>().labels[0].identity);
+  auto identityResult = BindingVerifier::verify(
+      localInput, zc::mv(localIdentityCandidate.get<BindingMetadataCandidate>()));
+  ZC_EXPECT(requireIdentityInvariant(identityResult).kind() ==
+            identity::IdentityInvariantKind::ForeignContext);
+
+  auto foreignTargetCandidate = BindingBuilder::build(foreignInput, *foreignSource.diagnostics);
+  auto localTargetCandidate = BindingBuilder::build(localInput, *localSource.diagnostics);
+  ZC_REQUIRE(foreignTargetCandidate.is<BindingMetadataCandidate>());
+  ZC_REQUIRE(localTargetCandidate.is<BindingMetadataCandidate>());
+  localTargetCandidate.get<BindingMetadataCandidate>().labels[0].target =
+      zc::mv(foreignTargetCandidate.get<BindingMetadataCandidate>().labels[0].target);
+  auto targetResult = BindingVerifier::verify(
+      localInput, zc::mv(localTargetCandidate.get<BindingMetadataCandidate>()));
+  ZC_EXPECT(requireIdentityInvariant(targetResult).kind() ==
+            identity::IdentityInvariantKind::ForeignContext);
+}
+
+ZC_TEST("BindingVerifier.RejectsMalformedLabelDuplicateFailuresAndDeclarationBindings") {
+  ParsedSource sourceFixture(
+      "module root;\nfun run() { duplicate: {} duplicate: while (false) {} }\n"_zc);
+  FrozenFixture fixture(sourceFixture, true);
+  auto inputResult = verify(fixture);
+  ZC_REQUIRE(inputResult.is<VerifiedBindingInput>());
+  auto input = zc::mv(inputResult.get<VerifiedBindingInput>());
+  const auto labeledNodes = nodesOfKind(input.tree(), ast::SyntaxKind::LabeledStatement);
+  ZC_REQUIRE(labeledNodes.size() == 2);
+
+  auto missingCandidate = BindingBuilder::build(input, *sourceFixture.diagnostics);
+  ZC_REQUIRE(missingCandidate.is<BindingMetadataCandidate>());
+  auto& missing = missingCandidate.get<BindingMetadataCandidate>();
+  ZC_REQUIRE(missing.sourceFailures.size() == 1);
+  missing.sourceFailures.removeLast();
+  auto missingResult = BindingVerifier::verify(input, zc::mv(missing));
+  ZC_EXPECT(requireBinderInvariant(missingResult).kind ==
+            BinderInvariantKind::MissingRequiredResolution);
+
+  auto diagnosticCandidate = BindingBuilder::build(input, *sourceFixture.diagnostics);
+  ZC_REQUIRE(diagnosticCandidate.is<BindingMetadataCandidate>());
+  auto& wrongDiagnostic = diagnosticCandidate.get<BindingMetadataCandidate>();
+  wrongDiagnostic.sourceFailures[0].diagnostic = BinderDiagnosticCode::UndefinedIdentifier;
+  auto diagnosticResult = BindingVerifier::verify(input, zc::mv(wrongDiagnostic));
+  ZC_EXPECT(requireBinderInvariant(diagnosticResult).kind ==
+            BinderInvariantKind::InvalidBindingFact);
+
+  auto noteCandidate = BindingBuilder::build(input, *sourceFixture.diagnostics);
+  ZC_REQUIRE(noteCandidate.is<BindingMetadataCandidate>());
+  auto& missingNote = noteCandidate.get<BindingMetadataCandidate>();
+  missingNote.sourceFailures[0].notes.removeLast();
+  auto noteResult = BindingVerifier::verify(input, zc::mv(missingNote));
+  ZC_EXPECT(requireBinderInvariant(noteResult).kind == BinderInvariantKind::InvalidBindingFact);
+
+  auto primaryCandidate = BindingBuilder::build(input, *sourceFixture.diagnostics);
+  ZC_REQUIRE(primaryCandidate.is<BindingMetadataCandidate>());
+  auto& wrongPrimary = primaryCandidate.get<BindingMetadataCandidate>();
+  wrongPrimary.sourceFailures[0].primary = wrongPrimary.sourceFailures[0].notes[0].source.clone();
+  auto primaryResult = BindingVerifier::verify(input, zc::mv(wrongPrimary));
+  ZC_EXPECT(requireBinderInvariant(primaryResult).kind == BinderInvariantKind::InvalidBindingFact);
+
+  auto noteSourceCandidate = BindingBuilder::build(input, *sourceFixture.diagnostics);
+  ZC_REQUIRE(noteSourceCandidate.is<BindingMetadataCandidate>());
+  auto& wrongNoteSource = noteSourceCandidate.get<BindingMetadataCandidate>();
+  wrongNoteSource.sourceFailures[0].notes[0].source =
+      wrongNoteSource.sourceFailures[0].primary.clone();
+  auto noteSourceResult = BindingVerifier::verify(input, zc::mv(wrongNoteSource));
+  ZC_EXPECT(requireBinderInvariant(noteSourceResult).kind ==
+            BinderInvariantKind::InvalidBindingFact);
+
+  auto ordinalCandidate = BindingBuilder::build(input, *sourceFixture.diagnostics);
+  ZC_REQUIRE(ordinalCandidate.is<BindingMetadataCandidate>());
+  auto& wrongOrdinal = ordinalCandidate.get<BindingMetadataCandidate>();
+  ++wrongOrdinal.sourceFailures[0].emitterOrdinal;
+  auto ordinalResult = BindingVerifier::verify(input, zc::mv(wrongOrdinal));
+  ZC_EXPECT(requireBinderInvariant(ordinalResult).kind == BinderInvariantKind::InvalidBindingFact);
+
+  auto extraCandidate = BindingBuilder::build(input, *sourceFixture.diagnostics);
+  ZC_REQUIRE(extraCandidate.is<BindingMetadataCandidate>());
+  auto& extraFailure = extraCandidate.get<BindingMetadataCandidate>();
+  const auto& original = extraFailure.sourceFailures[0];
+  zc::Vector<BindingDiagnosticNoteRef> extraNotes;
+  extraNotes.add(
+      BindingDiagnosticNoteRef{original.notes[0].diagnostic, original.notes[0].source.clone()});
+  extraFailure.sourceFailures.add(BindingFailureRef{original.diagnostic, original.primary.clone(),
+                                                    original.emitterOrdinal, zc::mv(extraNotes)});
+  auto extraResult = BindingVerifier::verify(input, zc::mv(extraFailure));
+  ZC_EXPECT(requireBinderInvariant(extraResult).kind == BinderInvariantKind::InvalidBindingFact);
+
+  auto bindingCandidate = BindingBuilder::build(input, *sourceFixture.diagnostics);
+  ZC_REQUIRE(bindingCandidate.is<BindingMetadataCandidate>());
+  auto& declarationBinding = bindingCandidate.get<BindingMetadataCandidate>();
+  declarationBinding.nodeBindings.add(
+      BindingResolution{labeledNodes[1], BindingResolutionValue(FailedBindingResolution{0})});
+  auto bindingResult = BindingVerifier::verify(input, zc::mv(declarationBinding));
+  ZC_EXPECT(requireBinderInvariant(bindingResult).kind == BinderInvariantKind::InvalidBindingFact);
 }
 
 ZC_TEST("ControlTransfer.TargetsEveryLoopForm") {
@@ -1217,10 +1766,24 @@ ZC_TEST("ControlTransfer.MergesFailuresWithLexicalSourceOrder") {
 }
 
 ZC_TEST("ControlTransfer.FailsClosedForExplicitLabels") {
+  ParsedSource declarationSource(
+      "module root;\nfun run() { outer: while (true) { break; continue; } }\n"_zc);
+  FrozenFixture declarationFixture(declarationSource, true);
+  auto declarationInputResult = verify(declarationFixture);
+  ZC_REQUIRE(declarationInputResult.is<VerifiedBindingInput>());
+  auto declarationInput = zc::mv(declarationInputResult.get<VerifiedBindingInput>());
+  auto declarationCandidate =
+      BindingBuilder::build(declarationInput, *declarationSource.diagnostics);
+  ZC_REQUIRE(declarationCandidate.is<BindingMetadataCandidate>());
+  ZC_EXPECT(declarationCandidate.get<BindingMetadataCandidate>().labels.size() == 1);
+  ZC_EXPECT(declarationCandidate.get<BindingMetadataCandidate>().controlTransfers.size() == 2);
+  auto declarationVerification = BindingVerifier::verify(
+      declarationInput, zc::mv(declarationCandidate.get<BindingMetadataCandidate>()));
+  ZC_REQUIRE(declarationVerification.is<VerifiedBindingOutput>());
+
   const zc::StringPtr sources[] = {
-      "module root;\nfun run() { outer: while (true) { break; } }\n"_zc,
-      "module root;\nfun run() { while (true) { break outer; } }\n"_zc,
-      "module root;\nfun run() { while (true) { continue outer; } }\n"_zc,
+      "module root;\nfun run() { outer: while (true) { break outer; } }\n"_zc,
+      "module root;\nfun run() { outer: while (true) { continue outer; } }\n"_zc,
   };
   for (const auto sourceText : sources) {
     ParsedSource sourceFixture(sourceText);

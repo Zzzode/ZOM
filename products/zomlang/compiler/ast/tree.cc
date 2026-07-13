@@ -251,7 +251,6 @@ struct BindingMetadata::Impl {
   zc::Vector<NodeId> shadowOfs;
   zc::Vector<bool> reexports;
   zc::Vector<NodeList> captureLists;
-  zc::Vector<NodeId> labelTargets;
 };
 
 BindingMetadata::BindingMetadata() noexcept : impl(zc::heap<Impl>()) {}
@@ -271,7 +270,6 @@ void BindingMetadata::resizeFor(const Tree& tree) {
   impl->shadowOfs.resize(tree.nodeCount());
   impl->reexports.resize(tree.nodeCount());
   impl->captureLists.resize(tree.nodeCount());
-  impl->labelTargets.resize(tree.nodeCount());
 }
 
 bool BindingMetadata::isSizedFor(const Tree& tree) const {
@@ -279,8 +277,7 @@ bool BindingMetadata::isSizedFor(const Tree& tree) const {
   return impl->parents.size() == count && impl->scopes.size() == count &&
          impl->definitions.size() == count && impl->unresolved.size() == count &&
          impl->deferredMembers.size() == count && impl->shadowOfs.size() == count &&
-         impl->reexports.size() == count && impl->captureLists.size() == count &&
-         impl->labelTargets.size() == count;
+         impl->reexports.size() == count && impl->captureLists.size() == count;
 }
 
 void BindingMetadata::setParent(NodeId node, NodeId parent) {
@@ -364,18 +361,6 @@ void BindingMetadata::setCaptures(NodeId node, NodeList captures) {
 NodeList BindingMetadata::captures(NodeId node) const {
   ZC_IREQUIRE(indexOf(node) < impl->captureLists.size(), "metadata captures read is outside tree");
   return impl->captureLists[indexOf(node)];
-}
-
-void BindingMetadata::setLabelTarget(NodeId node, NodeId target) {
-  ZC_IREQUIRE(indexOf(node) < impl->labelTargets.size(),
-              "metadata label target write is outside tree");
-  impl->labelTargets[indexOf(node)] = target;
-}
-
-NodeId BindingMetadata::labelTarget(NodeId node) const {
-  ZC_IREQUIRE(indexOf(node) < impl->labelTargets.size(),
-              "metadata label target read is outside tree");
-  return impl->labelTargets[indexOf(node)];
 }
 
 }  // namespace ast

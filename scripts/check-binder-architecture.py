@@ -35,8 +35,12 @@ SKELETON_HEADER = BINDER_DIR / "internal" / "binding-skeleton.h"
 SKELETON_SOURCE = BINDER_DIR / "binding-skeleton.cc"
 BODY_HEADER = BINDER_DIR / "internal" / "body-binding.h"
 BODY_SOURCE = BINDER_DIR / "body-binding.cc"
+LABEL_HEADER = BINDER_DIR / "internal" / "label-facts.h"
+LABEL_SOURCE = BINDER_DIR / "label-facts.cc"
 CONTROL_HEADER = BINDER_DIR / "internal" / "control-transfer.h"
 CONTROL_SOURCE = BINDER_DIR / "control-transfer.cc"
+AST_TREE_HEADER = Path("products/zomlang/compiler/ast/tree.h")
+AST_TREE_SOURCE = Path("products/zomlang/compiler/ast/tree.cc")
 DIAGNOSTIC_ADAPTER_HEADER = BINDER_DIR / "binding-diagnostic-adapter.h"
 DIAGNOSTIC_ADAPTER_SOURCE = BINDER_DIR / "binding-diagnostic-adapter.cc"
 DIAGNOSTIC_DEFINITIONS = Path("products/zomlang/compiler/diagnostics/diagnostics-binder.def")
@@ -91,6 +95,8 @@ def production_files() -> dict[Path, str]:
         SKELETON_SOURCE,
         BODY_HEADER,
         BODY_SOURCE,
+        LABEL_HEADER,
+        LABEL_SOURCE,
         CONTROL_HEADER,
         CONTROL_SOURCE,
         DIAGNOSTIC_ADAPTER_HEADER,
@@ -555,6 +561,372 @@ def check_body_binding_contract(files: dict[Path, str], errors: list[str]) -> No
             errors.append(f"{path}: body-binding internal authority escaped")
 
 
+def check_label_fact_contract(files: dict[Path, str], errors: list[str]) -> None:
+    metadata = files.get(METADATA_HEADER, "")
+    metadata_source = files.get(METADATA_SOURCE, "")
+    header = files.get(LABEL_HEADER, "")
+    source = files.get(LABEL_SOURCE, "")
+    verifier = files.get(VERIFIER_SOURCE, "")
+    verifier_header = files.get(VERIFIER_HEADER, "")
+    control = files.get(CONTROL_SOURCE, "")
+    tests = files.get(TEST_SOURCE, "")
+
+    sealed_types = (
+        (
+            "LabelOwner",
+            (
+                "explicit LabelOwner(LabelOwnerValue&& value) noexcept;",
+                "static LabelOwner module(identity::ModuleId value);",
+                "static LabelOwner callable(identity::DefId value);",
+                "LabelOwner clone() const;",
+            ),
+        ),
+        (
+            "LabelId",
+            (
+                "LabelId(LabelOwner&& owner, uint32_t index) noexcept;",
+                "LabelOwner ownerValue;",
+                "uint32_t indexValue;",
+            ),
+        ),
+        (
+            "LabelTarget",
+            (
+                "explicit LabelTarget(LabelTargetValue&& value) noexcept;",
+                "static LabelTarget block(ScopeId scope);",
+                "static LabelTarget loop(ScopeId scope);",
+            ),
+        ),
+    )
+    for name, private_markers in sealed_types:
+        body = type_body(metadata, name)
+        private = body.find("private:")
+        if not body or private < 0:
+            errors.append(f"{METADATA_HEADER}: {name} must be a sealed final type")
+            continue
+        public = body[:private]
+        if re.search(rf"(?<!~)\b{name}\s*\(", public):
+            errors.append(f"{METADATA_HEADER}: {name} exposes public construction")
+        for required in private_markers:
+            if required not in body[private:]:
+                errors.append(f"{METADATA_HEADER}: incomplete sealed {name}: {required}")
+        friends = re.findall(r"friend class\s+([A-Za-z_][A-Za-z0-9_]*);", body)
+        if friends != ["LabelBuilder"]:
+            errors.append(f"{METADATA_HEADER}: {name} construction authority is not sole LabelBuilder")
+
+    for required in (
+        "using LabelOwnerValue = zc::OneOf<ModuleLabelOwner, CallableLabelOwner>;",
+        "using LabelTargetValue = zc::OneOf<BlockLabelTarget, LoopLabelTarget>;",
+        "struct LabelFact final",
+        "LabelId identity;",
+        "identity::SemanticIdentifier name;",
+        "LabelOwner owner;",
+        "ast::NodeId statement;",
+        "LabelTarget target;",
+        "identity::SourceSpan source;",
+    ):
+        if required not in metadata:
+            errors.append(f"{METADATA_HEADER}: incomplete canonical label fact: {required}")
+
+    for required in (
+        '#include "zomlang/compiler/binder/internal/scope-arena.h"',
+        "struct LabelDuplicateFact final",
+        "identity::SemanticIdentifier name;",
+        "identity::SourceSpan primary;",
+        "identity::SourceSpan previous;",
+        "uint32_t schemaPreorderOrdinal;",
+        "struct LabelFactsCandidate final",
+        "zc::Vector<LabelFact> labels;",
+        "zc::Vector<LabelDuplicateFact> duplicates;",
+        "using LabelFactsBuildResult =",
+        "checkedLabelIndex(uint64_t value)",
+        "class LabelBuilder final",
+        "build(const VerifiedBindingInput& input,",
+        "const ScopeArenaCandidate& arena)",
+    ):
+        if required not in header:
+            errors.append(f"{LABEL_HEADER}: incomplete label authority: {required}")
+    for forbidden in ("ScopeManager", "ast::BindingMetadata", "const_cast"):
+        if forbidden in header or forbidden in source:
+            errors.append(f"{LABEL_SOURCE}: forbidden label dependency: {forbidden}")
+
+    internal_include = '"zomlang/compiler/binder/internal/label-facts.h"'
+    for path, text in files.items():
+        if path in {LABEL_HEADER, LABEL_SOURCE, VERIFIER_SOURCE} or TEST_DIR in path.parents:
+            continue
+        if internal_include in text or re.search(r"\bLabelBuilder::build\(", text):
+            errors.append(f"{path}: label internal authority escaped")
+        for factory in (
+            "LabelOwner::module(",
+            "LabelOwner::callable(",
+            "LabelTarget::block(",
+            "LabelTarget::loop(",
+        ):
+            if factory in text and path != METADATA_SOURCE:
+                errors.append(f"{path}: sealed label factory escaped LabelBuilder")
+
+    for required in (
+        "zc::Maybe<uint32_t> checkedLabelIndex(uint64_t value)",
+        "value > static_cast<uint64_t>(UINT32_MAX)",
+        "ast::visitTreePreOrder(tree, tree.root()",
+        "syntax.kind != ast::SyntaxKind::LabeledStatement",
+        "zc::Vector<OwnerCounter> counters;",
+        "counters[index].owner == ownerValue",
+        "checkedLabelIndex(counters[counterIndex].nextIndex)",
+        "++counters[counterIndex].nextIndex;",
+        "schemaOrdinals[node.value]",
+        "scope.kind == ScopeKind::Function || scope.kind == ScopeKind::Closure",
+        "owner.is<DefinitionScopeOwner>()",
+        "LabelOwner::callable(owner.get<DefinitionScopeOwner>().definition)",
+        "owner.is<ModuleScopeOwner>()",
+        "LabelOwner::module(input.module())",
+        "target = ast::NodeId(syntax.payload.words[ast::kLabeledStatementStatementWord])",
+        "kind == ast::SyntaxKind::BlockStmt && scope.kind == ScopeKind::Block",
+        "LabelTarget::block(scope.id)",
+        "LabelTarget::loop(scope.id)",
+        "kind == ast::SyntaxKind::WhileStmt",
+        "kind == ast::SyntaxKind::ForStmt",
+        "kind == ast::SyntaxKind::ForInStatement",
+        "kind == ast::SyntaxKind::DoWhileStatement",
+        "input.parsedModule().retainedTokenSpan(node, 0, ast::SyntaxKind::Identifier)",
+        "identity::SemanticIdentifier::fromSource(",
+        "prior.owner == ownerValue && prior.name == nameValue",
+        "candidate.duplicates.add(LabelDuplicateFact",
+        "const LabelId identity(ownerValue.clone(), indexValue);",
+        "candidate.labels.add(LabelFact",
+        "candidate.labels = zc::mv(sorted);",
+    ):
+        if required not in source:
+            errors.append(f"{LABEL_SOURCE}: incomplete canonical label projection: {required}")
+    if source.count("ast::visitTreePreOrder(tree, tree.root()") < 2:
+        errors.append(f"{LABEL_SOURCE}: label allocation is not independently schema-preorder")
+    if source.count("syntax.kind != ast::SyntaxKind::LabeledStatement") < 2:
+        errors.append(f"{LABEL_SOURCE}: nested label target flattening is incomplete")
+
+    if "${CMAKE_CURRENT_SOURCE_DIR}/label-facts.cc" not in files.get(BINDER_CMAKE, ""):
+        errors.append(f"{BINDER_CMAKE}: label facts source is not compiled")
+    pipeline = function_body(verifier, "BindingCandidateResult BindingBuilder::buildCandidate(")
+    pipeline_markers = (
+        "ScopeArenaBuilder::build(input)",
+        "BindingSkeletonBuilder::build(input, arena)",
+        "BodyBindingBuilder::build(input, arena, skeleton)",
+        "LabelBuilder::build(input, arena)",
+        "ControlTransferBuilder::build(input, arena)",
+        "zc::TreeMap<PendingFailureOrderKey, PendingFailureRef>",
+    )
+    pipeline_positions = [pipeline.find(marker) for marker in pipeline_markers]
+    if any(position < 0 for position in pipeline_positions) or pipeline_positions != sorted(
+        pipeline_positions
+    ):
+        errors.append(
+            f"{VERIFIER_SOURCE}: label facts must run after body binding and before control transfer"
+        )
+
+    for required in (
+        "enum class PendingFailureKind : uint8_t { Duplicate, BodyLookup, LabelDuplicate, ControlTransfer };",
+        "labelResult.is<LabelFactsCandidate>()",
+        "labels.duplicates.size()",
+        "PendingFailureRef{PendingFailureKind::LabelDuplicate, index}",
+        "static_cast<uint8_t>(BinderEmitterSite::LabelAndClosure)",
+        "ordered.value.kind == PendingFailureKind::LabelDuplicate",
+        "input.parsedModule().sourceLocFor(duplicate.primary)",
+        "input.parsedModule().sourceLocFor(duplicate.previous)",
+        "BinderDiagnosticCode::DuplicateIdentifier",
+        "BinderDiagnosticCode::PreviousDeclarationHere",
+        "candidate.labels = zc::mv(labels.labels)",
+    ):
+        if required not in verifier:
+            errors.append(f"{VERIFIER_SOURCE}: label candidate publication is disconnected: {required}")
+    if "zc::Vector<LabelFact> labels;" not in verifier_header:
+        errors.append(f"{VERIFIER_HEADER}: label candidate storage is missing")
+
+    label_owner_codec = function_body(verifier, "bool encodeLabelOwner(")
+    for required in (
+        "value.is<ModuleLabelOwner>()",
+        "encoder.encodeUint8(0x01);",
+        "input.moduleKey().encode(encoder);",
+        "encoder.encodeUint8(0x02);",
+        "encodeDefinition(encoder, input, value.get<CallableLabelOwner>().callable)",
+    ):
+        if required not in label_owner_codec:
+            errors.append(f"{VERIFIER_SOURCE}: incomplete label owner codec: {required}")
+    codec_contracts = (
+        (
+            "bool encodeLabelId(",
+            ("encodeLabelOwner(encoder, input, identity.owner())", "identity.index()"),
+        ),
+        (
+            "bool encodeLabelTarget(",
+            (
+                "value.is<BlockLabelTarget>()",
+                "encoder.encodeUint8(0x01);",
+                "value.get<BlockLabelTarget>().scope",
+                "encoder.encodeUint8(0x02);",
+                "value.get<LoopLabelTarget>().scope",
+            ),
+        ),
+        (
+            "bool encodeLabelFact(",
+            (
+                "fact.identity.owner() != fact.owner",
+                "encodeLabelId(encoder, input, fact.identity)",
+                "fact.name.encode(encoder);",
+                "encodeLabelOwner(encoder, input, fact.owner)",
+                "encoder.encodeUint32(fact.statement.value);",
+                "encodeLabelTarget(encoder, input, fact.target)",
+                "fact.source.encode(encoder);",
+            ),
+        ),
+        (
+            "zc::Maybe<zc::Array<uint8_t>> encodeAllocationLabelRecord(",
+            (
+                "encodeLabelOwner(encoder, input, fact.owner)",
+                "encoder.encodeUint32(fact.identity.index());",
+                "fact.name.encode(encoder);",
+                "target.is<BlockLabelTarget>() ? 0x01 : 0x02",
+                "scope.index() >= scopes.size()",
+                "scopes[scope.index()].id != scope",
+                "scopes[scope.index()].kind != expectedKind",
+                "encoder.encodeUint32(scope.index());",
+                "fact.source.encode(encoder);",
+            ),
+        ),
+    )
+    for signature, required_markers in codec_contracts:
+        body = function_body(verifier, signature)
+        for required in required_markers:
+            if required not in body:
+                errors.append(f"{VERIFIER_SOURCE}: incomplete label codec: {required}")
+    candidate_codec = function_body(verifier, "zc::Maybe<zc::Array<uint8_t>> encodeCandidate(")
+    for required in (
+        "encoder.encodeSequenceSize(candidate.labels.size());",
+        "for (const auto& fact : candidate.labels)",
+        "encodeLabelFact(encoder, input, fact)",
+    ):
+        if required not in candidate_codec:
+            errors.append(f"{VERIFIER_SOURCE}: candidate label codec is incomplete: {required}")
+    allocation_dump = function_body(verifier, "zc::Maybe<zc::Array<uint8_t>> encodeBindingAllocationDump(")
+    for required in (
+        "for (const auto& fact : labels)",
+        "encodeAllocationLabelRecord(input, scopes, fact)",
+        "compareCanonicalBytes(previousLabelIdentity.asPtr(), labelIdentity.asPtr()) >= 0",
+        "frameBindingAllocationDump(scopeRecords.asPtr(), labelRecords.asPtr())",
+    ):
+        if required not in allocation_dump:
+            errors.append(f"{VERIFIER_SOURCE}: label allocation dump is incomplete: {required}")
+    for required in (
+        "zc::ArrayPtr<const LabelFact> labels",
+        "encodeBindingAllocationDump(input, candidate.scopes.asPtr(), candidate.labels.asPtr())",
+        "encodeBindingAllocationDump(input, expected.scopes.asPtr(), expected.labels.asPtr())",
+    ):
+        if required not in verifier and required not in verifier_header:
+            errors.append(f"{VERIFIER_SOURCE}: label allocation verification is disconnected: {required}")
+    for required in ("labelRecords.size()", "for (const auto record : labelRecords)"):
+        if required not in metadata_source:
+            errors.append(f"{METADATA_SOURCE}: label allocation framing is incomplete: {required}")
+
+    foreign_check = function_body(verifier, "bool hasForeignContext(")
+    for required in (
+        "for (const auto& fact : candidate.labels)",
+        "fact.owner.value()",
+        "owner.is<ModuleLabelOwner>()",
+        "input.definitions().definitionKey(callable)",
+        "fact.target.value()",
+        "scope.module() != input.module() || !scope.belongsTo(input.semanticContext())",
+    ):
+        if required not in foreign_check:
+            errors.append(f"{VERIFIER_SOURCE}: label foreign-context check is incomplete: {required}")
+    source_check = function_body(verifier, "bool hasInvalidSourceRange(")
+    for required in (
+        "for (const auto& fact : candidate.labels)",
+        "if (spanIsInvalid(fact.source)) { return true; }",
+    ):
+        if required not in source_check:
+            errors.append(f"{VERIFIER_SOURCE}: label source-range check is incomplete: {required}")
+    for required in (
+        "candidate.labels.size() < expected.labels.size()",
+        "candidate.labels.size() > expected.labels.size()",
+    ):
+        if required not in verifier:
+            errors.append(f"{VERIFIER_SOURCE}: label fact size check is incomplete: {required}")
+
+    oracle = function_body(verifier, "LabelOracleResult verifyLabelFacts(")
+    if not oracle:
+        errors.append(f"{VERIFIER_SOURCE}: independent label oracle is missing")
+    else:
+        if "LabelBuilder::build" in oracle:
+            errors.append(f"{VERIFIER_SOURCE}: label oracle reuses LabelBuilder authority")
+        for required in (
+            "ScopeArenaBuilder::build(input)",
+            "ast::visitTreePreOrder(tree, tree.root()",
+            "scope.kind == ScopeKind::Function || scope.kind == ScopeKind::Closure",
+            "owner.get<DefinitionScopeOwner>().definition",
+            "syntax.kind != ast::SyntaxKind::LabeledStatement",
+            "ast::kLabeledStatementStatementWord",
+            "kind == ast::SyntaxKind::BlockStmt && scope.kind == ScopeKind::Block",
+            "oracleLoopKind(kind) && scope.kind == ScopeKind::Loop",
+            "retainedTokenSpan(node, 0, ast::SyntaxKind::Identifier)",
+            "identity::SemanticIdentifier::fromSource(",
+            "sameOracleOwner(counters[index].owner, ownerValue)",
+            "counters[counterIndex].nextIndex",
+            "oracleLabelLess(current, expected[insertion - 1])",
+            "actual.identity.owner() != actual.owner",
+            "actual.identity.index() != wanted.index",
+            "actual.name != wanted.name",
+            "actual.statement != wanted.statement",
+            "!sameSpan(actual.source, wanted.source)",
+            "BinderDiagnosticCode::DuplicateIdentifier",
+            "BinderDiagnosticCode::PreviousDeclarationHere",
+            "BinderEmitterSite::LabelAndClosure",
+            "consumedFailures",
+        ):
+            if required not in oracle:
+                errors.append(f"{VERIFIER_SOURCE}: incomplete independent label oracle: {required}")
+    for required in (
+        "const auto expectedLabels = verifyLabelFacts(input, expected);",
+        "const auto candidateLabels = verifyLabelFacts(input, candidate);",
+    ):
+        if required not in verifier:
+            errors.append(f"{VERIFIER_SOURCE}: independent label verification is disconnected: {required}")
+
+    if "syntax.kind == ast::SyntaxKind::LabeledStatement" in control:
+        errors.append(f"{CONTROL_SOURCE}: non-empty label declarations remain fail-closed")
+    for required in (
+        "ast::kBreakStmtLabelWord",
+        "ast::kContinueStatementLabelWord",
+        "if (label != 0)",
+        "BinderInvariantKind::MissingRequiredResolution",
+        "BinderEmitterSite::LabelAndClosure",
+    ):
+        if required not in control:
+            errors.append(f"{CONTROL_SOURCE}: explicit label references do not fail closed: {required}")
+    for path in (AST_TREE_HEADER, AST_TREE_SOURCE):
+        text = files.get(path, "")
+        for forbidden in ("setLabelTarget(", "BindingMetadata::labelTarget(", "labelTargets"):
+            if forbidden in text:
+                errors.append(f"{path}: obsolete ast label target side table remains: {forbidden}")
+    for path, text in files.items():
+        for forbidden in ("BoundLabel", "ExplicitLabelControlTarget", "ContinueTargetNotLoop"):
+            if forbidden in text:
+                errors.append(f"{path}: premature explicit-label contract is forbidden: {forbidden}")
+        if "DIAG(3022," in text:
+            errors.append(f"{path}: premature ZOM3022 registration is forbidden")
+
+    for marker in (
+        "LabelFacts.ResolvesAllTargetsNestedLabelsAndPreservesControlTransfers",
+        "LabelFacts.AllocatesModuleAndCallableOwnerIndicesIndependently",
+        "LabelFacts.ReportsSiblingNestedAndNfcEquivalentDuplicates",
+        "LabelFacts.RejectsLabelIndexOverflow",
+        "BindingAllocationDump.EncodesSchemaBackedLabelRecords",
+        "BindingVerifier.RejectsMissingAdditionalReorderedAndMutatedLabels",
+        "BindingVerifier.RejectsForeignLabelOwnersAndTargets",
+        "BindingVerifier.RejectsMalformedLabelDuplicateFailuresAndDeclarationBindings",
+        "ControlTransfer.FailsClosedForExplicitLabels",
+    ):
+        if marker not in tests:
+            errors.append(f"{TEST_SOURCE}: missing label-fact evidence: {marker}")
+
+
 def check_control_transfer_contract(files: dict[Path, str], errors: list[str]) -> None:
     header = files.get(CONTROL_HEADER, "")
     source = files.get(CONTROL_SOURCE, "")
@@ -586,8 +958,6 @@ def check_control_transfer_contract(files: dict[Path, str], errors: list[str]) -
 
     for required in (
         "ast::visitTreePreOrder(tree, tree.root()",
-        "syntax.kind == ast::SyntaxKind::LabeledStatement",
-        "BinderEmitterSite::LabelAndClosure",
         "ast::kBreakStmtLabelWord",
         "ast::kContinueStatementLabelWord",
         "input.parsedModule().spanFor(tree.node(node).range)",
@@ -623,7 +993,7 @@ def check_control_transfer_contract(files: dict[Path, str], errors: list[str]) -
             "failure merge"
         )
     for required in (
-        "enum class PendingFailureKind : uint8_t { Duplicate, BodyLookup, ControlTransfer };",
+        "enum class PendingFailureKind : uint8_t { Duplicate, BodyLookup, LabelDuplicate, ControlTransfer };",
         "controlResult.is<ControlTransferCandidate>()",
         "control.failures.size()",
         "PendingFailureRef{PendingFailureKind::ControlTransfer, index}",
@@ -908,7 +1278,7 @@ def check_scope_arena_contract(files: dict[Path, str], errors: list[str]) -> Non
     internal_include = '"zomlang/compiler/binder/internal/scope-arena.h"'
     for path, text in files.items():
         if path in {SCOPE_HEADER, SCOPE_SOURCE, SKELETON_HEADER, SKELETON_SOURCE,
-                    BODY_HEADER, BODY_SOURCE, CONTROL_HEADER, CONTROL_SOURCE,
+                    BODY_HEADER, BODY_SOURCE, LABEL_HEADER, LABEL_SOURCE, CONTROL_HEADER, CONTROL_SOURCE,
                     VERIFIER_SOURCE} or TEST_DIR in path.parents:
             continue
         if internal_include in text:
@@ -1093,6 +1463,8 @@ def check_binding_diagnostic_adapter(files: dict[Path, str], errors: list[str]) 
         errors.append(f"{TEST_SOURCE}: missing typed redeclaration adapter evidence")
     if "BindingBuilder.PublishesUndefinedIdentifierFailure" not in files.get(TEST_SOURCE, ""):
         errors.append(f"{TEST_SOURCE}: missing typed lookup failure evidence")
+    if "engine.diagnose<" in files.get(VERIFIER_SOURCE, ""):
+        errors.append(f"{VERIFIER_SOURCE}: raw diagnostics bypass the typed binding adapter")
 
 
 def check_wiring(files: dict[Path, str], errors: list[str]) -> None:
@@ -1106,6 +1478,7 @@ def check_wiring(files: dict[Path, str], errors: list[str]) -> None:
         (BINDER_CMAKE, "${CMAKE_CURRENT_SOURCE_DIR}/scope-arena.cc"),
         (BINDER_CMAKE, "${CMAKE_CURRENT_SOURCE_DIR}/binding-skeleton.cc"),
         (BINDER_CMAKE, "${CMAKE_CURRENT_SOURCE_DIR}/body-binding.cc"),
+        (BINDER_CMAKE, "${CMAKE_CURRENT_SOURCE_DIR}/label-facts.cc"),
         (BINDER_CMAKE, "${CMAKE_CURRENT_SOURCE_DIR}/control-transfer.cc"),
         (BINDER_CMAKE, "${CMAKE_CURRENT_SOURCE_DIR}/binding-diagnostic-adapter.cc"),
         (TEST_CMAKE, 'add_ztest_unit_test("binding-input-test" "binding-input-test.cc"'),
@@ -1174,9 +1547,10 @@ def check_binding_publication_contract(files: dict[Path, str], errors: list[str]
         errors.append(f"{VERIFIER_HEADER}: binding candidate construction can omit diagnostics")
     for required in (
         "encodeAllocationScopeRecord(",
+        "encodeAllocationLabelRecord(",
         "encodeBindingAllocationDump(",
-        "candidateAllocation = encodeBindingAllocationDump(",
-        "expectedAllocation = encodeBindingAllocationDump(",
+        "encodeBindingAllocationDump(input, candidate.scopes.asPtr(), candidate.labels.asPtr())",
+        "encodeBindingAllocationDump(input, expected.scopes.asPtr(), expected.labels.asPtr())",
         "BindingSkeletonBuilder::build(input, arena)",
         "buildCandidate(input, zc::none)",
     ):
@@ -1206,6 +1580,7 @@ def check(files: dict[Path, str]) -> list[str]:
     check_closure_activation_contract(files, errors)
     check_pattern_activation_contract(files, errors)
     check_body_binding_contract(files, errors)
+    check_label_fact_contract(files, errors)
     check_control_transfer_contract(files, errors)
     check_definition_site_contract(files, errors)
     check_private_binding_candidate(files, errors)
@@ -1438,6 +1813,190 @@ def self_test(files: dict[Path, str]) -> list[str]:
             "${CMAKE_CURRENT_SOURCE_DIR}/missing-body-binding.cc",
         ),
         (
+            "public label owner construction",
+            METADATA_HEADER,
+            "private:\n  explicit LabelOwner(LabelOwnerValue&& value) noexcept;",
+            "public:\n  explicit LabelOwner(LabelOwnerValue&& value) noexcept;",
+        ),
+        (
+            "public label identity construction",
+            METADATA_HEADER,
+            "private:\n  LabelId(LabelOwner&& owner, uint32_t index) noexcept;",
+            "public:\n  LabelId(LabelOwner&& owner, uint32_t index) noexcept;",
+        ),
+        (
+            "public label target construction",
+            METADATA_HEADER,
+            "private:\n  explicit LabelTarget(LabelTargetValue&& value) noexcept;",
+            "public:\n  explicit LabelTarget(LabelTargetValue&& value) noexcept;",
+        ),
+        (
+            "shared label construction authority",
+            METADATA_HEADER,
+            "LabelOwnerValue valueValue;\n  friend class LabelBuilder;",
+            "LabelOwnerValue valueValue;\n  friend class BindingBuilder;",
+        ),
+        (
+            "missing label facts wiring",
+            BINDER_CMAKE,
+            "${CMAKE_CURRENT_SOURCE_DIR}/label-facts.cc",
+            "${CMAKE_CURRENT_SOURCE_DIR}/missing-label-facts.cc",
+        ),
+        (
+            "foreign label facts include",
+            Path("products/zomlang/compiler/checker/escape.cc"),
+            "",
+            '#include "zomlang/compiler/binder/internal/label-facts.h"',
+        ),
+        (
+            "non-preorder label allocation",
+            LABEL_SOURCE,
+            "ast::visitTreePreOrder(tree, tree.root()",
+            "ast::visitChildNodeIds(tree, tree.root()",
+        ),
+        (
+            "global label allocation counter",
+            LABEL_SOURCE,
+            "counters[index].owner == ownerValue",
+            "index == 0",
+        ),
+        (
+            "missing closure label owner",
+            LABEL_SOURCE,
+            "scope.kind == ScopeKind::Function || scope.kind == ScopeKind::Closure",
+            "scope.kind == ScopeKind::Function",
+        ),
+        (
+            "missing nested label flattening",
+            LABEL_SOURCE,
+            "syntax.kind != ast::SyntaxKind::LabeledStatement",
+            "syntax.kind != ast::SyntaxKind::EmptyStatement",
+        ),
+        (
+            "missing for-in label target",
+            LABEL_SOURCE,
+            "kind == ast::SyntaxKind::ForInStatement",
+            "kind == ast::SyntaxKind::MatchStatement",
+        ),
+        (
+            "wrong label token ordinal",
+            LABEL_SOURCE,
+            "retainedTokenSpan(node, 0, ast::SyntaxKind::Identifier)",
+            "retainedTokenSpan(node, 1, ast::SyntaxKind::Identifier)",
+        ),
+        (
+            "non-canonical label names",
+            LABEL_SOURCE,
+            "identity::SemanticIdentifier::fromSource(",
+            "identity::SemanticIdentifier::fromCanonical(",
+        ),
+        (
+            "cross-owner label duplicates",
+            LABEL_SOURCE,
+            "prior.owner == ownerValue && prior.name == nameValue",
+            "prior.name == nameValue",
+        ),
+        (
+            "disconnected label builder cutover",
+            VERIFIER_SOURCE,
+            "LabelBuilder::build(input, arena)",
+            "disconnectedLabelBuilder(input, arena)",
+        ),
+        (
+            "missing label candidate publication",
+            VERIFIER_SOURCE,
+            "candidate.labels = zc::mv(labels.labels)",
+            "candidate.labels = zc::Vector<LabelFact>()",
+        ),
+        (
+            "missing label statement codec",
+            VERIFIER_SOURCE,
+            "encoder.encodeUint32(fact.statement.value);",
+            "encoder.encodeUint32(0);",
+        ),
+        (
+            "missing allocation label records",
+            VERIFIER_SOURCE,
+            "encodeAllocationLabelRecord(input, scopes, fact)",
+            "missingAllocationLabelRecord(input, scopes, fact)",
+        ),
+        (
+            "missing label foreign-context check",
+            VERIFIER_SOURCE,
+            "for (const auto& fact : candidate.labels) {\n"
+            "    if (!fact.owner.belongsTo(input.semanticContext())",
+            "for (const auto& fact : candidate.controlTransfers) {\n"
+            "    if (!fact.owner.belongsTo(input.semanticContext())",
+        ),
+        (
+            "missing label source-range check",
+            VERIFIER_SOURCE,
+            "for (const auto& fact : candidate.labels) {\n"
+            "    if (spanIsInvalid(fact.source)) { return true; }\n"
+            "  }",
+            "",
+        ),
+        (
+            "missing smaller label fact classification",
+            VERIFIER_SOURCE,
+            "candidate.labels.size() < expected.labels.size()",
+            "false",
+        ),
+        (
+            "missing larger label fact classification",
+            VERIFIER_SOURCE,
+            "candidate.labels.size() > expected.labels.size()",
+            "false",
+        ),
+        (
+            "label oracle reuses builder",
+            VERIFIER_SOURCE,
+            "ScopeArenaBuilder::build(input)",
+            "LabelBuilder::build(input, arena)",
+        ),
+        (
+            "label oracle drops exact declaration token",
+            VERIFIER_SOURCE,
+            "retainedTokenSpan(node, 0, ast::SyntaxKind::Identifier)",
+            "spanFor(tree.node(node).range)",
+        ),
+        (
+            "disconnected candidate label oracle",
+            VERIFIER_SOURCE,
+            "const auto candidateLabels = verifyLabelFacts(input, candidate);",
+            "const auto candidateLabels = LabelOracleResult::Valid;",
+        ),
+        (
+            "restored ast label target side table",
+            AST_TREE_HEADER,
+            "",
+            "\nvoid setLabelTarget(ast::NodeId node, ast::NodeId target);\n",
+        ),
+        (
+            "explicit label references accepted prematurely",
+            CONTROL_SOURCE,
+            "if (label != 0)",
+            "if (label == 0)",
+        ),
+        (
+            "premature bound label resolution",
+            METADATA_HEADER,
+            "",
+            "\nstruct BoundLabel final {};\n",
+        ),
+        (
+            "premature ZOM3022 registration",
+            DIAGNOSTIC_DEFINITIONS,
+            "",
+            '\nDIAG(3022, ContinueTargetNotLoop, kError, "continue label failed", 0)\n',
+        ),
+        (
+            "missing label behavior evidence",
+            TEST_SOURCE,
+            "LabelFacts.ResolvesAllTargetsNestedLabelsAndPreservesControlTransfers",
+            "LabelFacts.MissingNestedTargetEvidence",
+        ),
+        (
             "missing control transfer wiring",
             BINDER_CMAKE,
             "${CMAKE_CURRENT_SOURCE_DIR}/control-transfer.cc",
@@ -1474,10 +2033,11 @@ def self_test(files: dict[Path, str]) -> list[str]:
             "input.parsedModule().spanFor(",
         ),
         (
-            "missing explicit label rejection",
+            "restored non-empty label rejection",
             CONTROL_SOURCE,
-            "syntax.kind == ast::SyntaxKind::LabeledStatement",
-            "syntax.kind == ast::SyntaxKind::EmptyStatement",
+            "if (syntax.kind != ast::SyntaxKind::BreakStmt &&",
+            "if (syntax.kind == ast::SyntaxKind::LabeledStatement) { return; }\n"
+            "      if (syntax.kind != ast::SyntaxKind::BreakStmt &&",
         ),
         (
             "disconnected control transfer cutover",
@@ -1488,8 +2048,8 @@ def self_test(files: dict[Path, str]) -> list[str]:
         (
             "missing control failure kind",
             VERIFIER_SOURCE,
-            "enum class PendingFailureKind : uint8_t { Duplicate, BodyLookup, ControlTransfer };",
-            "enum class PendingFailureKind : uint8_t { Duplicate, BodyLookup };",
+            "enum class PendingFailureKind : uint8_t { Duplicate, BodyLookup, LabelDuplicate, ControlTransfer };",
+            "enum class PendingFailureKind : uint8_t { Duplicate, BodyLookup, LabelDuplicate };",
         ),
         (
             "disconnected control diagnostic merge",
@@ -2012,8 +2572,9 @@ def self_test(files: dict[Path, str]) -> list[str]:
         (
             "disconnected allocation verifier",
             VERIFIER_SOURCE,
-            "candidateAllocation = encodeBindingAllocationDump(",
-            "candidateAllocation = disconnectedBindingAllocationDump(",
+            "encodeBindingAllocationDump(input, candidate.scopes.asPtr(), candidate.labels.asPtr())",
+            "disconnectedBindingAllocationDump(input, candidate.scopes.asPtr(), "
+            "candidate.labels.asPtr())",
         ),
     )
     failures: list[str] = []

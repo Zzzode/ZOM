@@ -112,9 +112,10 @@ using BindingCandidateResult = zc::OneOf<BindingMetadataCandidate, BinderInvaria
 using BindingVerificationResult =
     zc::OneOf<VerifiedBindingOutput, SourceRejected, InvariantRejected>;
 
-/// \brief Encodes production scope records using the RFC 0004 allocation-dump codec.
+/// \brief Encodes production scope and label records using the RFC 0004 allocation codec.
 ZC_NODISCARD zc::Maybe<zc::Array<uint8_t>> encodeBindingAllocationDump(
-    const VerifiedBindingInput& input, zc::ArrayPtr<const ScopeRecord> scopes);
+    const VerifiedBindingInput& input, zc::ArrayPtr<const ScopeRecord> scopes,
+    zc::ArrayPtr<const LabelFact> labels);
 
 class BindingBuilder final {
 public:
