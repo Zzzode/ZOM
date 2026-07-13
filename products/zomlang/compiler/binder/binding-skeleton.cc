@@ -15,6 +15,7 @@ namespace {
 enum class SkeletonEligibility : uint8_t {
   Value,
   SpecialCallable,
+  Closure,
   Type,
   Generic,
   Parameter,
@@ -34,6 +35,8 @@ SkeletonEligibility eligibility(identity::DefinitionKind kind) {
     case DefinitionKind::Constructor:
     case DefinitionKind::Destructor:
       return SkeletonEligibility::SpecialCallable;
+    case DefinitionKind::Closure:
+      return SkeletonEligibility::Closure;
     case DefinitionKind::Class:
     case DefinitionKind::Struct:
     case DefinitionKind::Interface:
@@ -49,7 +52,6 @@ SkeletonEligibility eligibility(identity::DefinitionKind kind) {
     case DefinitionKind::ModuleAlias:
     case DefinitionKind::Local:
     case DefinitionKind::PatternBinding:
-    case DefinitionKind::Closure:
     case DefinitionKind::ImportAlias:
     case DefinitionKind::ReexportAlias:
       return SkeletonEligibility::Deferred;
@@ -67,6 +69,10 @@ zc::Maybe<ast::NodeId> parameterListNode(const ast::Node& syntax) {
       return ast::NodeId(syntax.payload.words[ast::kConstructorDeclParamsIdWord]);
     case ast::SyntaxKind::DestructorDecl:
       return ast::NodeId(syntax.payload.words[ast::kDestructorDeclParamsIdWord]);
+    case ast::SyntaxKind::FunctionExpression:
+      return ast::NodeId(syntax.payload.words[ast::kFunctionExpressionParamsIdWord]);
+    case ast::SyntaxKind::LambdaExpression:
+      return ast::NodeId(syntax.payload.words[ast::kLambdaExpressionParamsIdWord]);
     default:
       return zc::none;
   }
@@ -177,6 +183,7 @@ bool ownsScope(identity::DefinitionKind kind) {
     case DefinitionKind::Interface:
     case DefinitionKind::Enum:
     case DefinitionKind::Error:
+    case DefinitionKind::Closure:
       return true;
     case DefinitionKind::ModuleAlias:
     case DefinitionKind::TypeAlias:
@@ -189,12 +196,16 @@ bool ownsScope(identity::DefinitionKind kind) {
     case DefinitionKind::Static:
     case DefinitionKind::Local:
     case DefinitionKind::PatternBinding:
-    case DefinitionKind::Closure:
     case DefinitionKind::ImportAlias:
     case DefinitionKind::ReexportAlias:
       return false;
   }
   ZC_UNREACHABLE;
+}
+
+bool hasLexicalBinding(SkeletonEligibility classification) {
+  return classification != SkeletonEligibility::SpecialCallable &&
+         classification != SkeletonEligibility::Closure;
 }
 
 BinderInvariantFact failure(const VerifiedBindingInput& input, BinderInvariantKind kind,
@@ -404,7 +415,7 @@ DefinitionSkeletonBuildResult BindingSkeletonBuilder::build(const VerifiedBindin
     if (classification == SkeletonEligibility::Deferred) {
       return failure(input, BinderInvariantKind::MissingRequiredResolution, definition.node);
     }
-    const bool lexicalBinding = classification != SkeletonEligibility::SpecialCallable;
+    const bool lexicalBinding = hasLexicalBinding(classification);
     if ((lexicalBinding && definition.bindingName == zc::none) ||
         (!lexicalBinding && definition.bindingName != zc::none) ||
         !input.tree().contains(definition.node)) {
@@ -477,11 +488,12 @@ DefinitionSkeletonBuildResult BindingSkeletonBuilder::build(const VerifiedBindin
       const bool specialCallableScope =
           record.kind == ScopeKind::TypeBody || record.kind == ScopeKind::ImplBody;
       if ((classification == SkeletonEligibility::Generic && !genericScope) ||
-          (classification == SkeletonEligibility::Parameter &&
-           record.kind != ScopeKind::Function) ||
+          (classification == SkeletonEligibility::Parameter && record.kind != ScopeKind::Function &&
+           record.kind != ScopeKind::Closure) ||
           (classification == SkeletonEligibility::SpecialCallable && !specialCallableScope) ||
           (classification != SkeletonEligibility::Generic &&
-           classification != SkeletonEligibility::Parameter && !skeletonScope)) {
+           classification != SkeletonEligibility::Parameter &&
+           classification != SkeletonEligibility::Closure && !skeletonScope)) {
         return failure(input, BinderInvariantKind::MissingRequiredResolution, definition.node);
       }
       ZC_IF_SOME(span, syntaxSpan) {
@@ -491,13 +503,16 @@ DefinitionSkeletonBuildResult BindingSkeletonBuilder::build(const VerifiedBindin
       }
       const Namespace nameSpace = classification == SkeletonEligibility::Value ||
                                           classification == SkeletonEligibility::SpecialCallable ||
+                                          classification == SkeletonEligibility::Closure ||
                                           classification == SkeletonEligibility::Parameter
                                       ? Namespace::Value
                                       : Namespace::Type;
       const DefinitionActivation activation =
           classification == SkeletonEligibility::Generic     ? DefinitionActivation::GenericList
           : classification == SkeletonEligibility::Parameter ? DefinitionActivation::ParameterList
-                                                             : DefinitionActivation::ModuleSkeleton;
+          : classification == SkeletonEligibility::Closure
+              ? DefinitionActivation::ExpressionIntroduction
+              : DefinitionActivation::ModuleSkeleton;
       if (lexicalBinding) {
         const auto& name = ZC_ASSERT_NONNULL(definition.bindingName);
         zc::Maybe<identity::SourceSpan> noAlias;
