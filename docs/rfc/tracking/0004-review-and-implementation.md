@@ -316,8 +316,10 @@ landing.
 | Loop and match pattern facts | Complete | Commits `37a2b8d7` and `69454c7d`; `PatternBindingSite` provenance, value-namespace `LoopPattern` and `MatchPattern` facts, exact loop and match-arm scopes, ordinary-binding and surface exclusion, focused sanitizer coverage, and adversarial architecture mutations |
 | Dependency-free lexical body binding | Complete | Commits `c1b27a9e`, `88bd4452`, and `ce12fb34`; independently owned frozen key projections, source-ordered local and parameter activation, lexical value and type resolution, exact failed-name and shadow facts, complete lexical-site census, eighty focused Binder cases, sixteen frozen-registry cases, and adversarial architecture mutations |
 | Dependency-free unlabeled control-transfer facts | Complete | Commit `3ea452ce`; nearest loop and match targets, callable-boundary rejection, exact escaped-keyword failures, typed `ZOM3020-ZOM3021`, full target and fact codecs, independent verifier reconstruction, ninety-four focused Binder cases, 106 unit CTests, 1,082 lit CTests, full sanitizer build, and adversarial architecture mutations |
+| Canonical label declaration facts | Complete | Commits `17575e9b` and `2d04166e`; generalized retained-token lookup, sealed module-or-callable `LabelId`, owner-local schema-preorder allocation, immediate statement edges, flattened block-or-loop targets, exact declaration-token provenance, deterministic duplicate facts with `ZOM3010` and `ZOM3017`, allocation codecs, independent verifier reconstruction, 107 focused Binder cases, full sanitizer build, and adversarial architecture mutations |
+| Dependency-free explicit labeled control-transfer facts | Complete | Commit `da0e4958`; active-ancestor lookup, innermost canonical selection, function and closure boundaries, no implicit fallback, paired `BoundLabel` and explicit control facts, exact retained reference failures, typed `ZOM3022`, full codecs, foreign-context checks, independent verifier reconstruction, 116 focused Binder cases, three diagnostic-adapter cases, all 1,251 CTests, and adversarial architecture mutations |
 | Complete module resolution input | Blocked by RFC 0012 and RFC 0008 | Authoritative package resolution, production semantic-context fingerprint, verified resolution environment, and resolution receipts |
-| Complete binding facts and surfaces | Pending | Imports, re-exports, module aliases, local exports, visibility envelopes, prelude and module-member resolution, labels and labeled control transfers, closure captures, deferred members, receiver, `ThisExpr`, and `Self` binding, current-surface completion, remaining codecs, and verifier negatives |
+| Complete binding facts and surfaces | Pending | Imports, re-exports, module aliases, local exports, visibility envelopes, prelude and module-member resolution, closure captures, deferred members, receiver, `ThisExpr`, and `Self` binding, current-surface completion, remaining codecs, and verifier negatives |
 | Production binder cutover | Pending | Session integration, no downstream rebinding, deletion of raw binder inputs and binder-owned module resolution, and all acceptance gates |
 
 The first slice is intentionally fail-closed. It accepts only a single frozen
@@ -561,9 +563,7 @@ binding and publishes one source-range `ControlTransferFact` for each valid
 `continue` skips match scopes and selects the nearest loop. Function and closure
 boundaries terminate lookup. A statement without a target publishes only one
 failed resolution whose primary is the exact retained raw keyword token.
-`ZOM3020-ZOM3021` are registered with these executable producers, while
-explicit labels remain fail-closed and `ZOM3022` remains unregistered until its
-producer lands.
+`ZOM3020-ZOM3021` are registered with these executable producers.
 
 `BindingVerifier` independently rebuilds the scope arena, walks parents without
 calling `ControlTransferBuilder`, and enforces nearest-target semantics,
@@ -575,3 +575,34 @@ build, format and include checks, RFC validation, the Binder architecture
 positive gate, and its adversarial mutation suite. Parser coverage, generated
 AST schema, AST conformance coverage, lexer architecture, and the 874.48-second
 ANTLR grammar matrix also pass.
+
+The canonical label declaration slice assigns every label an owner-local
+schema-preorder `LabelId`, records its immediate statement edge, flattens nested
+labels to one block-or-loop `LabelTarget`, and retains the exact raw declaration
+identifier at ordinal zero. Later duplicates retain their IDs and facts while
+publishing deterministic `ZOM3010` primaries with attached `ZOM3017` notes. The
+allocation dump, candidate codec, foreign-context checks, source-range checks,
+and independent label oracle cover every field. Commits `17575e9b` and
+`2d04166e` passed the 107-case focused Binder executable, sanitizer configure
+and full build, format and include checks, RFC validation, and the Binder
+architecture positive and adversarial mutation gates.
+
+The explicit labeled control-transfer slice traverses label statement subtrees
+with an active stack, resets that stack at function and closure boundaries, and
+searches canonical names from innermost to outermost without implicit fallback.
+Success publishes a paired `BoundLabel` resolution and
+`ExplicitLabelControlTarget`; missing or inactive labels publish `ZOM3001` at
+retained ordinal one, and `continue` to a block publishes `ZOM3022` at the same
+exact token. The independent verifier reproduces the recursive active-label
+oracle, success/failure XOR, source provenance, emitter sites, foreign-context
+rules, and complete codecs without calling `ControlTransferBuilder`. Commit
+`da0e4958` passes the 116-case focused Binder executable, the three-case typed
+diagnostic adapter executable, sanitizer configure and full build, format and
+include checks, the Binder architecture positive gate, and its adversarial
+mutation suite. The complete CTest preset passes all 1,251 tests, including
+1,082 lit tests and the grammar conformance oracle. Coverage includes every
+loop form, blocks, nested and module-owned labels, escaped and NFC-equivalent
+names, duplicate-label diagnostics with active lookup,
+forward/sibling/completed and cross-closure rejection, no-fallback failures,
+malformed success and failure pairs, and mixed global diagnostic ordering. The
+production frontend cutover remains a separate pending slice.

@@ -403,7 +403,14 @@ outer: for (mut i = 0; i < 10; ++i) {
 }
 ```
 
-Without a label, `break` exits the innermost enclosing `while`, `do-while`, `for`, `for-in`, or `match`. With a label, it exits the labeled statement.
+Without a label, `break` exits the innermost enclosing `while`, `do-while`,
+`for`, `for-in`, or `match` in the current callable. With a label, it exits the
+active labeled statement selected by canonical identifier equality. Explicit
+lookup considers only labels on the current AST ancestor chain, searches from
+innermost to outermost, and stops at a function or closure boundary. It does not
+consider forward labels, siblings, completed labels, or labels outside the
+current labeled statement subtree. A failed explicit lookup does not fall back
+to an unlabeled loop or `match` target.
 
 ### `continue` Statement
 
@@ -429,7 +436,12 @@ outer: for (mut i = 0; i < 5; ++i) {
 }
 ```
 
-Without a label, `continue` applies to the innermost enclosing loop. With a label, it applies to the labeled loop.
+Without a label, `continue` applies to the innermost enclosing loop in the
+current callable and does not target `match`. With a label, it applies only when
+the selected active label ultimately prefixes a `while`, `do-while`, `for`, or
+`for-in` statement. A label that ultimately prefixes a block is not a valid
+`continue` target. Explicit lookup uses the same active-ancestor rules and
+callable boundaries as `break` and never falls back to an unlabeled loop.
 
 ### `return` Statement
 
@@ -476,6 +488,19 @@ LabelTarget      ::= BlockStatement
 
 Labels prefix `while`, `do-while`, classic `for`, iterator `for`, blocks, or
 another label that ultimately prefixes one of those targets.
+
+A label is active only while evaluating or executing its immediate target
+statement. Nested labels therefore make each enclosing label active throughout
+the final block or loop subtree, while a label ceases to be active as soon as
+its statement completes. Function and closure bodies start independent label
+lookup regions; a module-owned label is never visible inside a nested callable.
+
+Each source module and each callable owns one flat label namespace. Label names
+are compared after canonical identifier normalization. Two declarations with
+the same canonical name in one owner are invalid even when they occur in
+disjoint blocks or as nested labels. Labels do not shadow other labels in the
+same owner. Label lookup never consults value, type, module, or attribute
+namespaces.
 
 ```zom
 // Label a loop

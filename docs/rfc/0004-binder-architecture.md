@@ -879,7 +879,10 @@ Within the module owner and independently within each callable `DefId`, explicit
 `LabeledStatement` nodes receive label indices starting at zero in the same
 schema preorder. A label outside a callable uses `Module(currentModule)`;
 otherwise it uses the innermost `Callable(callableDef)`. Implicit loop and match
-targets use their produced `ScopeId` and receive no `LabelId`.
+targets use their produced `ScopeId` and receive no `LabelId`. Every declaration,
+including a later duplicate, receives its owner-local index and publishes one
+`LabelFact`. Published label facts sort by `LabelOwner` tag, expanded owner key,
+and unsigned label index.
 
 ```text
 LabelTarget = BlockScope(ScopeId) | LoopScope(ScopeId)
@@ -899,14 +902,25 @@ A `break` or `continue` fact records one `ControlTarget`. `continue` may target
 only a loop scope or an explicit label whose `LabelFact.target` is a loop scope.
 An unlabeled `break` selects the nearest enclosing loop or match scope; an
 unlabeled `continue` ignores match scopes and selects the nearest loop scope. An
-explicit label resolves to one `LabelFact`; nested labels resolve recursively to
-the one underlying block or loop scope required by Chapter 5 and record that
-scope as `LabelTarget`. Callable and closure boundaries end label, loop, and
-match lookup. Recovery labels still receive a preorder candidate index, but
-duplicate, cyclic, missing-target, or invalid labels prevent publication.
-Label names form one namespace per `LabelOwner`; nested label shadowing inside
-the same owner is forbidden, so the later duplicate receives `ZOM3010` and the
-first receives `ZOM3017`.
+explicit label reference considers only active label declarations on its AST
+ancestor chain. A declaration becomes active for exactly its immediate
+statement subtree and is removed when that subtree ends. Lookup searches the
+active stack from innermost to outermost after canonical identifier
+normalization. Forward labels, siblings, completed labels, labels outside the
+current statement subtree, and labels across a function or closure boundary are
+not candidates. Explicit lookup never falls back to an implicit loop or match
+target.
+
+`LabelFact.statement` is the declaration's immediate statement child. For a
+nested label, `LabelFact.target` is the flattened block or loop scope reached by
+following those direct statement edges. `LabelFact.source` is the exact raw
+declaration identifier returned by
+`VerifiedParsedModule::retainedTokenSpan(node, 0, Identifier)`. Label names form
+one flat namespace per `LabelOwner`; nested label shadowing inside the same
+owner is forbidden. A later duplicate still retains its `LabelId` and
+`LabelFact`, publishes `ZOM3010` at its exact declaration token, and attaches
+`ZOM3017` at the first declaration. A missing or invalid label target rejects
+the candidate as a binder invariant.
 
 An unlabeled successful control-transfer statement publishes exactly one
 `ControlTransferFact` and no `BindingResolution` for the statement node. The
@@ -916,6 +930,18 @@ exactly one `Failed` resolution that references one `sourceFailures` record.
 Its primary is the exact retained raw `break` or `continue` token returned by
 `VerifiedParsedModule::retainedTokenSpan(node, 0, expectedKind)`. Control-transfer
 facts sort by `NodeId`.
+
+A successful explicit control transfer publishes exactly one `BoundLabel`
+resolution and one `ControlTransferFact`. `BoundLabel` records the selected
+`LabelId` and flattened `LabelTarget`; the control fact records
+`ExplicitLabel(selectedLabelId)` and the complete statement range. A missing or
+inactive label publishes no control fact and exactly one `Failed` resolution for
+`ZOM3001`, anchored to the exact raw reference identifier returned by
+`retainedTokenSpan(node, 1, Identifier)` with the `LabelAndClosure` emitter. An
+explicit `continue` that selects a block label likewise publishes no control
+fact and exactly one `Failed` resolution for `ZOM3022`, anchored to retained
+ordinal one with the `BodyBinding` emitter. Neither failure path falls back to
+an implicit target or emits a second diagnostic for the same reference.
 
 The test oracle serializes every assigned `ScopeId` and `LabelId` for one
 fixture containing every producer, nested same-span recovery nodes, explicit
@@ -1382,11 +1408,18 @@ Only `BindingVerifier` can construct `VerifiedBindingMetadata`. It checks:
 - no semantic type, inference variable, receiver adjustment, overload
   candidate, witness, capture mode, layout, or ABI payload occurs.
 
-For unlabeled control transfer, the verifier independently rebuilds the scope
-arena from `VerifiedBindingInput` and walks scope parents without invoking
-`ControlTransferBuilder`. It recomputes the nearest legal loop or match target,
-enforces callable and closure boundaries, and requires an exact success-fact or
-failed-resolution XOR for every `break` and `continue` statement.
+For control transfer, the verifier independently rebuilds the scope arena from
+`VerifiedBindingInput` without invoking `ControlTransferBuilder`. It recursively
+walks the AST with its own active-label stack, pushes only the label whose
+immediate statement subtree is being visited, clears and restores that stack at
+function and closure boundaries, and performs its own innermost-first canonical
+name lookup. For unlabeled statements it independently walks scope parents and
+recomputes the nearest legal loop or match target. For explicit statements it
+requires the selected `LabelId`, flattened `LabelTarget`, full statement span,
+retained ordinal-one failure span, diagnostic, emitter site, schema ordinal, and
+local ordinal to match. Every statement must satisfy exactly one legal outcome:
+one successful fact, plus `BoundLabel` only for explicit success; or one
+`Failed` resolution and its exact source failure, with no control fact.
 
 Verification failure is a closed result:
 
@@ -1873,6 +1906,14 @@ temporary immutable verified inputs.
   failed-resolution indices and diagnostics; fact/failure XOR violations;
   escaped-keyword primary spans; callable and closure boundaries; and exact
   source ordering against lexical failures.
+- Explicit control-transfer matrix: block, every loop form, nested, module-owned,
+  escaped, and NFC-equivalent labels; innermost active selection in the presence
+  of duplicate-label diagnostics; forward, sibling, completed, out-of-subtree,
+  and cross-closure rejection without implicit fallback; `continue` to a block;
+  exact retained ordinal-one primaries and emitter sites; paired `BoundLabel`
+  and explicit-target facts; foreign identities; malformed success and failure
+  pairs; canonical codecs; and global ordering with duplicate-label and lexical
+  body failures.
 - Focused lit command:
   `ctest --preset default --output-on-failure -R '^lit-(05-statements|06-declarations|13-modules|23-visibility)-'`.
   Fixtures cover current Chapter 13 import forms, aliases, re-exports, missing and
@@ -1958,3 +1999,5 @@ None
 | 2026-07-13 | IMPLEMENTING | Activated for-in and match-arm pattern leaves in their exact lexical scopes while keeping source-ordered block declarators separate. |
 | 2026-07-13 | IMPLEMENTING | Added dependency-free lexical body binding with source-ordered local activation, sequential parameter-default visibility, role-routed type-query, marker, shorthand, and optional struct-pattern references, deterministic bound and failed name facts, lexical shadow targets, and verifier and codec coverage. |
 | 2026-07-13 | IMPLEMENTING | Completed dependency-free unlabeled `break` and `continue` binding with nearest loop or match targets, exact retained keyword failures, an independent verifier oracle, canonical encoding, and typed `ZOM3020-ZOM3021`; explicit labels and `ZOM3022` remain pending. |
+| 2026-07-13 | IMPLEMENTING | Completed canonical label declaration facts with module-or-callable owner-local identities, immediate statement edges, flattened block-or-loop targets, exact retained declaration tokens, deterministic duplicate facts and diagnostics, canonical allocation encoding, and an independent verifier oracle. |
+| 2026-07-13 | IMPLEMENTING | Completed explicit labeled `break` and `continue` binding with active-ancestor lookup, function and closure boundaries, no implicit fallback, paired `BoundLabel` and explicit control facts, exact retained reference failures, typed `ZOM3022`, canonical codecs, independent verification, and adversarial boundary coverage. |
