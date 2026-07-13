@@ -1909,3 +1909,4 @@ None
 | 2026-07-13 | IMPLEMENTING | Clarified that RFC 0011 special constructor and destructor declaration names publish definition and scope facts without an ordinary lexical binding, preserving `BindingNameKey` as a `SemanticIdentifier`-only key. |
 | 2026-07-13 | IMPLEMENTING | Activated anonymous closure expression facts and closure-owned generic and parameter facts without creating a lexical or surface binding. |
 | 2026-07-13 | IMPLEMENTING | Activated for-in and match-arm pattern leaves in their exact lexical scopes while keeping source-ordered block declarators separate. |
+| 2026-07-13 | IMPLEMENTING | Added dependency-free lexical body binding with source-ordered local activation, sequential parameter-default visibility, role-routed type-query, marker, shorthand, and optional struct-pattern references, deterministic bound and failed name facts, lexical shadow targets, and verifier and codec coverage. |

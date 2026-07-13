@@ -313,8 +313,9 @@ landing.
 | Special callable identity and parameter facts | Complete | Commits `115445a5` and `570f6a82`; constructor and destructor `DeclaredDefinitionName` identities without fabricated lexical names, value-namespace `DefinitionFact` publication, type- or impl-owned function scopes, `ParameterList` facts, ordinary-binding exclusion, focused sanitizer coverage, and adversarial architecture mutations |
 | Closure identity, generic, and parameter facts | Complete | Commits `6749c23c` and `da426edc`; anonymous function-expression and lambda identities, value-namespace `ExpressionIntroduction` facts, closure-owned generic and parameter facts, ordinary-binding and surface exclusion, focused sanitizer coverage, and adversarial architecture mutations |
 | Loop and match pattern facts | Complete | Commits `37a2b8d7` and `69454c7d`; `PatternBindingSite` provenance, value-namespace `LoopPattern` and `MatchPattern` facts, exact loop and match-arm scopes, ordinary-binding and surface exclusion, focused sanitizer coverage, and adversarial architecture mutations |
+| Dependency-free lexical body binding | Complete | Commits `c1b27a9e`, `88bd4452`, and `ce12fb34`; independently owned frozen key projections, source-ordered local and parameter activation, lexical value and type resolution, exact failed-name and shadow facts, complete lexical-site census, eighty focused Binder cases, sixteen frozen-registry cases, and adversarial architecture mutations |
 | Complete module resolution input | Blocked by RFC 0012 and RFC 0008 | Authoritative package resolution, production semantic-context fingerprint, verified resolution environment, and resolution receipts |
-| Complete binding facts and surfaces | Pending | Source-ordered locals, imports, re-exports, aliases, visibility, labels, captures, body resolution, immutable metadata completion, codecs, and verifier negatives |
+| Complete binding facts and surfaces | Pending | Imports, re-exports, module aliases, local exports, visibility envelopes, prelude and module-member resolution, labels, control transfers, closure captures, deferred members, receiver, `ThisExpr`, and `Self` binding, current-surface completion, remaining codecs, and verifier negatives |
 | Production binder cutover | Pending | Session integration, no downstream rebinding, deletion of raw binder inputs and binder-owned module resolution, and all acceptance gates |
 
 The first slice is intentionally fail-closed. It accepts only a single frozen
@@ -469,6 +470,41 @@ leaf becomes a `LoopPattern` value binding in the loop scope; a `MatchArmStmt`
 leaf becomes a `MatchPattern` value binding in the match-arm scope. Neither
 enters a module or export surface. Source-ordered block declarators remain
 separate because their bindings activate only after each initializer.
+
+The dependency-free lexical body-binding slice moves source-ordered local facts
+out of the module skeleton and into an internal `BodyBindingBuilder` that runs
+after deterministic scope allocation and skeleton publication. It seeds module
+and generic definitions, walks callable signatures before parameter defaults,
+activates each parameter only after its own default, activates block locals only
+after their initializers, and activates loop and match patterns only after their
+scrutinee or iterable. Successful references publish canonical `BoundName`
+facts; lookup failures publish deterministic `Failed` facts through the typed
+diagnostic adapter; lexical shadowing records the exact prior canonical target.
+
+Reference routing is explicit for value and type sites, including value-namespace
+type queries, type-namespace dynamic marker paths, object-literal shorthand, and
+optional struct-pattern type paths. Qualified paths fail closed until verified
+module-member inputs exist. `BindingVerifier` independently reconstructs the
+complete lexical-site census, merges source failures in schema-preorder, rejects
+foreign or malformed targets, and encodes bound-name, failed-name, and shadow
+facts through owned constant-time frozen key projections. The focused sanitizer
+executables pass eighty Binder cases and sixteen frozen-registry cases; the
+Binder and identity architecture positive and mutation suites also pass.
+
+This slice is limited to dependency-free lexical value and type binding. The
+production frontend still invokes the existing `Binder`; module aliases,
+imports, re-exports, local exports, visibility filtering, prelude and
+module-member lookup, explicit receivers, `ThisExpr`, `Self`, labels, control
+transfers, closure free-variable facts, deferred members, and the final
+metadata and surface codecs remain open.
+
+The lexical body-binding evidence series passed sanitizer configure and build,
+the eighty-case Binder executable, the sixteen-case frozen-registry executable,
+and the Binder and identity architecture positive and negative mutation suites.
+The final sanitizer-backed matrix passed 1,250 of 1,250 tests in 1,284.92
+seconds, with the complete grammar oracle accounting for 1,087.51 seconds. RFC
+validation, format and include checks, lexer architecture, parser coverage, AST
+conformance coverage for 865 corpus inputs, and `git diff --check` also pass.
 
 The complete sanitizer-backed landing gate passed 1,250 of 1,250 tests in
 654.78 seconds. The gate also passed format, RFC validation, parser coverage,
