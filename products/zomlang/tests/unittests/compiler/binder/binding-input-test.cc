@@ -1650,6 +1650,60 @@ ZC_TEST("BindingActivation.PublishesClosureIdentityAndParameters") {
   ZC_REQUIRE(output.surface.visibleEntries().size() == 2);
 }
 
+ZC_TEST("BindingActivation.PublishesMatchAndLoopPatternFacts") {
+  ParsedSource sourceFixture(
+      "module root;\n"
+      "fun scan() {\n"
+      "  for (let item in [1]) {}\n"
+      "  match (1) {\n"
+      "    when matched => {}\n"
+      "  }\n"
+      "}\n"_zc);
+  FrozenFixture fixture(sourceFixture, true);
+  auto inputResult = verify(fixture);
+  ZC_REQUIRE(inputResult.is<VerifiedBindingInput>());
+  auto input = zc::mv(inputResult.get<VerifiedBindingInput>());
+  auto candidate = BindingBuilder::build(input, *sourceFixture.diagnostics);
+  ZC_REQUIRE(candidate.is<BindingMetadataCandidate>());
+  auto verified = BindingVerifier::verify(input, zc::mv(candidate.get<BindingMetadataCandidate>()));
+  ZC_REQUIRE(verified.is<VerifiedBindingOutput>());
+  const auto& output = verified.get<VerifiedBindingOutput>();
+  const auto& metadata = output.metadata;
+
+  size_t loopPatternCount = 0;
+  size_t matchPatternCount = 0;
+  for (const auto& fact : metadata.definitions()) {
+    if (fact.kind != identity::DefinitionKind::PatternBinding) { continue; }
+    ZC_EXPECT(fact.nameSpace == Namespace::Value);
+    ZC_REQUIRE(fact.site.value().is<PatternBindingSite>());
+    const auto introducer = fact.site.value().get<PatternBindingSite>().introducer;
+    if (fact.activation == DefinitionActivation::LoopPattern) {
+      ++loopPatternCount;
+      ZC_EXPECT(metadata.scopes()[fact.declaringScope.index()].kind == ScopeKind::Loop);
+      ZC_EXPECT(input.tree().node(introducer).kind == ast::SyntaxKind::ForInStatement);
+    }
+    if (fact.activation == DefinitionActivation::MatchPattern) {
+      ++matchPatternCount;
+      ZC_EXPECT(metadata.scopes()[fact.declaringScope.index()].kind == ScopeKind::MatchArm);
+      ZC_EXPECT(input.tree().node(introducer).kind == ast::SyntaxKind::MatchArmStmt);
+    }
+  }
+  ZC_EXPECT(loopPatternCount == 1);
+  ZC_EXPECT(matchPatternCount == 1);
+
+  size_t loopBindingCount = 0;
+  size_t armBindingCount = 0;
+  for (const auto& scope : metadata.scopes()) {
+    if (scope.kind == ScopeKind::Loop) { loopBindingCount += scope.bindings.size(); }
+    if (scope.kind == ScopeKind::MatchArm) { armBindingCount += scope.bindings.size(); }
+  }
+  ZC_EXPECT(loopBindingCount == 1);
+  ZC_EXPECT(armBindingCount == 1);
+  ZC_REQUIRE(metadata.scopes()[0].bindings.size() == 1);
+  ZC_EXPECT(metadata.scopes()[0].bindings[0].name.name().text() == "scan"_zc);
+  ZC_REQUIRE(output.surface.visibleEntries().size() == 1);
+}
+
 ZC_TEST("ModuleGraph.ClassifiesUnresolvedSyntaxRequesterAndRevisionFailures") {
   ParsedSource importSource("module root;\nimport math::geometry;\n"_zc);
   FrozenFixture unresolved(importSource);

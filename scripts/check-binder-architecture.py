@@ -226,7 +226,8 @@ def check_closure_activation_contract(files: dict[Path, str], errors: list[str])
         "ast::kLambdaExpressionParamsIdWord",
         "case DefinitionKind::Closure:\n      return true;",
         "record.kind != ScopeKind::Function &&\n           record.kind != ScopeKind::Closure",
-        "classification != SkeletonEligibility::Closure && !skeletonScope",
+        "classification != SkeletonEligibility::Closure &&\n"
+        "           classification != SkeletonEligibility::Pattern && !skeletonScope",
         "classification == SkeletonEligibility::Closure ||",
         "classification == SkeletonEligibility::Closure\n"
         "              ? DefinitionActivation::ExpressionIntroduction",
@@ -235,6 +236,27 @@ def check_closure_activation_contract(files: dict[Path, str], errors: list[str])
             errors.append(f"{SKELETON_SOURCE}: closure activation contract is disconnected: {required}")
     if "BindingActivation.PublishesClosureIdentityAndParameters" not in tests:
         errors.append(f"{TEST_SOURCE}: missing closure activation evidence")
+
+
+def check_pattern_activation_contract(files: dict[Path, str], errors: list[str]) -> None:
+    skeleton = files.get(SKELETON_SOURCE, "")
+    tests = files.get(TEST_SOURCE, "")
+    for required in (
+        "case DefinitionKind::PatternBinding:\n      return SkeletonEligibility::Pattern;",
+        "zc::Maybe<DefinitionActivation> patternActivation(",
+        "site.value().is<PatternBindingSite>()",
+        "case ast::SyntaxKind::ForInStatement:\n      return DefinitionActivation::LoopPattern;",
+        "case ast::SyntaxKind::MatchArmStmt:\n      return DefinitionActivation::MatchPattern;",
+        "classification == SkeletonEligibility::Pattern && !patternScope",
+        "classification != SkeletonEligibility::Pattern && !skeletonScope",
+        "classification == SkeletonEligibility::Pattern ||",
+        "classification == SkeletonEligibility::Pattern\n"
+        "              ? ZC_ASSERT_NONNULL(patternActivationValue)",
+    ):
+        if required not in skeleton:
+            errors.append(f"{SKELETON_SOURCE}: pattern activation contract is disconnected: {required}")
+    if "BindingActivation.PublishesMatchAndLoopPatternFacts" not in tests:
+        errors.append(f"{TEST_SOURCE}: missing pattern activation evidence")
 
 
 def check_definition_site_contract(files: dict[Path, str], errors: list[str]) -> None:
@@ -620,6 +642,7 @@ def check(files: dict[Path, str]) -> list[str]:
     check_frozen_impl_inventory_contract(files, errors)
     check_special_callable_contract(files, errors)
     check_closure_activation_contract(files, errors)
+    check_pattern_activation_contract(files, errors)
     check_definition_site_contract(files, errors)
     check_private_binding_candidate(files, errors)
     check_producer_boundaries(files, errors)
@@ -949,6 +972,36 @@ def self_test(files: dict[Path, str]) -> list[str]:
             TEST_SOURCE,
             "BindingActivation.PublishesClosureIdentityAndParameters",
             "BindingActivation.MissingClosureIdentityAndParameters",
+        ),
+        (
+            "deferred pattern activation",
+            SKELETON_SOURCE,
+            "case DefinitionKind::PatternBinding:\n      return SkeletonEligibility::Pattern;",
+            "case DefinitionKind::PatternBinding:\n      return SkeletonEligibility::Deferred;",
+        ),
+        (
+            "missing loop pattern activation",
+            SKELETON_SOURCE,
+            "case ast::SyntaxKind::ForInStatement:\n      return DefinitionActivation::LoopPattern;",
+            "case ast::SyntaxKind::ForInStatement:\n      return DefinitionActivation::ModuleSkeleton;",
+        ),
+        (
+            "missing match pattern activation",
+            SKELETON_SOURCE,
+            "case ast::SyntaxKind::MatchArmStmt:\n      return DefinitionActivation::MatchPattern;",
+            "case ast::SyntaxKind::MatchArmStmt:\n      return DefinitionActivation::ModuleSkeleton;",
+        ),
+        (
+            "pattern scope bypass",
+            SKELETON_SOURCE,
+            "classification == SkeletonEligibility::Pattern && !patternScope",
+            "classification == SkeletonEligibility::Pattern && false",
+        ),
+        (
+            "missing pattern activation evidence",
+            TEST_SOURCE,
+            "BindingActivation.PublishesMatchAndLoopPatternFacts",
+            "BindingActivation.MissingMatchAndLoopPatternFacts",
         ),
         (
             "missing impl fact codec",
