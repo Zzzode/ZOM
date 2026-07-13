@@ -280,8 +280,7 @@ enum class BinderDiagnosticCode : uint16_t {
   DuplicateIdentifier = 3010,
   PreviousDeclarationHere = 3017,
   BreakTargetNotFound = 3020,
-  ContinueTargetNotFound = 3021,
-  ContinueTargetNotLoop = 3022
+  ContinueTargetNotFound = 3021
 };
 
 struct BindingDiagnosticNoteRef final {

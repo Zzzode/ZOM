@@ -91,6 +91,8 @@ ZC_TEST("DiagnosticTest.TypeCheckerDiagnosticIdsAreStable") {
   ZC_EXPECT(static_cast<uint32_t>(DiagID::CircularReexport) == 3014);
   ZC_EXPECT(static_cast<uint32_t>(DiagID::ReexportModuleNotFound) == 3015);
   ZC_EXPECT(static_cast<uint32_t>(DiagID::ReexportMemberNotFound) == 3016);
+  ZC_EXPECT(static_cast<uint32_t>(DiagID::BreakTargetNotFound) == 3020);
+  ZC_EXPECT(static_cast<uint32_t>(DiagID::ContinueTargetNotFound) == 3021);
   ZC_EXPECT(static_cast<uint32_t>(DiagID::UndeclaredValue) == 4027);
   ZC_EXPECT(static_cast<uint32_t>(DiagID::InvalidBinaryOperands) == 4028);
   ZC_EXPECT(static_cast<uint32_t>(DiagID::InvalidComparisonOperands) == 4029);
@@ -135,6 +137,20 @@ ZC_TEST("DiagnosticTest.TypeCheckerDiagnosticIdsAreStable") {
   ZC_EXPECT(static_cast<uint32_t>(DiagID::ScopedTaskReferentHere) == 4068);
   ZC_EXPECT(static_cast<uint32_t>(DiagID::RawPointerBoundaryRequiresUnsafe) == 4069);
   ZC_EXPECT(static_cast<uint32_t>(DiagID::MoveOutOfBorrow) == 4070);
+}
+
+ZC_TEST("DiagnosticTest.ControlTransferDiagnosticContractsAreStable") {
+  const auto breakInfo = getDiagnosticInfo(DiagID::BreakTargetNotFound);
+  ZC_EXPECT(breakInfo.id == DiagID::BreakTargetNotFound);
+  ZC_EXPECT(breakInfo.severity == DiagSeverity::kError);
+  ZC_EXPECT(breakInfo.message == "break requires an enclosing loop, match, or label"_zc);
+  ZC_EXPECT(breakInfo.argCount == 0);
+
+  const auto continueInfo = getDiagnosticInfo(DiagID::ContinueTargetNotFound);
+  ZC_EXPECT(continueInfo.id == DiagID::ContinueTargetNotFound);
+  ZC_EXPECT(continueInfo.severity == DiagSeverity::kError);
+  ZC_EXPECT(continueInfo.message == "continue requires an enclosing loop or loop label"_zc);
+  ZC_EXPECT(continueInfo.argCount == 0);
 }
 
 ZC_TEST("DiagnosticTest.IrDiagnosticIdsAreStable") {

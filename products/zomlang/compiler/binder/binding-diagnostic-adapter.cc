@@ -31,6 +31,33 @@ VerifiedIdentifierArgument VerifiedIdentifierArgument::from(
 
 zc::String VerifiedIdentifierArgument::take() && { return zc::mv(value); }
 
+bool BindingDiagnosticAdapter::emitControlTransferFailure(
+    diagnostics::DiagnosticEngine& diagnostics, BinderDiagnosticCode code,
+    source::SourceLoc primary) {
+  using diagnostics::DiagID;
+  switch (code) {
+    case BinderDiagnosticCode::BreakTargetNotFound:
+      diagnostics.diagnose<DiagID::BreakTargetNotFound>(primary).emit();
+      return true;
+    case BinderDiagnosticCode::ContinueTargetNotFound:
+      diagnostics.diagnose<DiagID::ContinueTargetNotFound>(primary).emit();
+      return true;
+    case BinderDiagnosticCode::UndefinedIdentifier:
+    case BinderDiagnosticCode::SymbolNamespaceMismatch:
+    case BinderDiagnosticCode::RedeclareVariable:
+    case BinderDiagnosticCode::RedeclareParameter:
+    case BinderDiagnosticCode::RedeclareFunction:
+    case BinderDiagnosticCode::RedeclareClass:
+    case BinderDiagnosticCode::RedeclareInterface:
+    case BinderDiagnosticCode::RedeclareEnum:
+    case BinderDiagnosticCode::RedeclareTypeAlias:
+    case BinderDiagnosticCode::DuplicateIdentifier:
+    case BinderDiagnosticCode::PreviousDeclarationHere:
+      return false;
+  }
+  ZC_UNREACHABLE;
+}
+
 bool BindingDiagnosticAdapter::emitLookupFailure(diagnostics::DiagnosticEngine& diagnostics,
                                                  BinderDiagnosticCode code,
                                                  source::SourceLoc primary,
@@ -59,7 +86,6 @@ bool BindingDiagnosticAdapter::emitLookupFailure(diagnostics::DiagnosticEngine& 
     case BinderDiagnosticCode::PreviousDeclarationHere:
     case BinderDiagnosticCode::BreakTargetNotFound:
     case BinderDiagnosticCode::ContinueTargetNotFound:
-    case BinderDiagnosticCode::ContinueTargetNotLoop:
       return false;
   }
   ZC_UNREACHABLE;
@@ -109,7 +135,6 @@ bool BindingDiagnosticAdapter::emitRedeclaration(diagnostics::DiagnosticEngine& 
     case BinderDiagnosticCode::PreviousDeclarationHere:
     case BinderDiagnosticCode::BreakTargetNotFound:
     case BinderDiagnosticCode::ContinueTargetNotFound:
-    case BinderDiagnosticCode::ContinueTargetNotLoop:
       return false;
   }
   ZC_UNREACHABLE;

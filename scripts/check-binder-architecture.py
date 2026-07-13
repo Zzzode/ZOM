@@ -35,6 +35,8 @@ SKELETON_HEADER = BINDER_DIR / "internal" / "binding-skeleton.h"
 SKELETON_SOURCE = BINDER_DIR / "binding-skeleton.cc"
 BODY_HEADER = BINDER_DIR / "internal" / "body-binding.h"
 BODY_SOURCE = BINDER_DIR / "body-binding.cc"
+CONTROL_HEADER = BINDER_DIR / "internal" / "control-transfer.h"
+CONTROL_SOURCE = BINDER_DIR / "control-transfer.cc"
 DIAGNOSTIC_ADAPTER_HEADER = BINDER_DIR / "binding-diagnostic-adapter.h"
 DIAGNOSTIC_ADAPTER_SOURCE = BINDER_DIR / "binding-diagnostic-adapter.cc"
 DIAGNOSTIC_DEFINITIONS = Path("products/zomlang/compiler/diagnostics/diagnostics-binder.def")
@@ -42,6 +44,7 @@ BINDER_CMAKE = BINDER_DIR / "CMakeLists.txt"
 TEST_DIR = Path("products/zomlang/tests/unittests/compiler/binder")
 TEST_SOURCE = TEST_DIR / "binding-input-test.cc"
 TEST_CMAKE = TEST_DIR / "CMakeLists.txt"
+DIAGNOSTIC_ADAPTER_TEST = TEST_DIR / "binding-diagnostic-adapter-test.cc"
 PARSER_TEST_SOURCE = Path("products/zomlang/tests/unittests/compiler/parser/parser-test.cc")
 FROZEN_REGISTRY_TEST = Path(
     "products/zomlang/tests/unittests/compiler/identity/frozen-registry-test.cc"
@@ -88,6 +91,8 @@ def production_files() -> dict[Path, str]:
         SKELETON_SOURCE,
         BODY_HEADER,
         BODY_SOURCE,
+        CONTROL_HEADER,
+        CONTROL_SOURCE,
         DIAGNOSTIC_ADAPTER_HEADER,
         DIAGNOSTIC_ADAPTER_SOURCE,
         DIAGNOSTIC_DEFINITIONS,
@@ -112,6 +117,24 @@ def type_body(text: str, name: str) -> str:
             depth -= 1
             if depth == 0:
                 return text[start:index]
+    return ""
+
+
+def function_body(text: str, signature: str) -> str:
+    start = text.find(signature)
+    if start < 0:
+        return ""
+    brace = text.find("{", start + len(signature))
+    if brace < 0:
+        return ""
+    depth = 1
+    for index in range(brace + 1, len(text)):
+        if text[index] == "{":
+            depth += 1
+        elif text[index] == "}":
+            depth -= 1
+            if depth == 0:
+                return text[brace + 1:index]
     return ""
 
 
@@ -523,6 +546,254 @@ def check_body_binding_contract(files: dict[Path, str], errors: list[str]) -> No
             errors.append(f"{path}: body-binding internal authority escaped")
 
 
+def check_control_transfer_contract(files: dict[Path, str], errors: list[str]) -> None:
+    header = files.get(CONTROL_HEADER, "")
+    source = files.get(CONTROL_SOURCE, "")
+    verifier = files.get(VERIFIER_SOURCE, "")
+    tests = files.get(TEST_SOURCE, "")
+    adapter_header = files.get(DIAGNOSTIC_ADAPTER_HEADER, "")
+    adapter_source = files.get(DIAGNOSTIC_ADAPTER_SOURCE, "")
+    definitions = files.get(DIAGNOSTIC_DEFINITIONS, "")
+
+    for required in (
+        '#include "zomlang/compiler/binder/internal/scope-arena.h"',
+        "struct ControlTransferFailureFact final",
+        "BinderDiagnosticCode diagnostic;",
+        "identity::SourceSpan source;",
+        "uint32_t schemaPreorderOrdinal;",
+        "struct ControlTransferCandidate final",
+        "zc::Vector<ControlTransferFact> controlTransfers;",
+        "zc::Vector<ControlTransferFailureFact> failures;",
+        "using ControlTransferBuildResult =",
+        "class ControlTransferBuilder final",
+        "build(const VerifiedBindingInput& input,",
+        "const ScopeArenaCandidate& arena)",
+    ):
+        if required not in header:
+            errors.append(f"{CONTROL_HEADER}: incomplete control-transfer authority: {required}")
+    for forbidden in ("ScopeManager", "ast::BindingMetadata", "const_cast"):
+        if forbidden in header or forbidden in source:
+            errors.append(f"{CONTROL_SOURCE}: forbidden control-transfer dependency: {forbidden}")
+
+    for required in (
+        "ast::visitTreePreOrder(tree, tree.root()",
+        "syntax.kind == ast::SyntaxKind::LabeledStatement",
+        "BinderEmitterSite::LabelAndClosure",
+        "ast::kBreakStmtLabelWord",
+        "ast::kContinueStatementLabelWord",
+        "input.parsedModule().spanFor(tree.node(node).range)",
+        "input.parsedModule().leadingTokenSpan(",
+        "ast::SyntaxKind::BreakKeyword : ast::SyntaxKind::ContinueKeyword",
+        "scope.kind == ScopeKind::Loop",
+        "scope.kind == ScopeKind::Match && isBreak",
+        "scope.kind == ScopeKind::Function || scope.kind == ScopeKind::Closure ||",
+        "scope.kind == ScopeKind::Module || scope.parent == zc::none",
+        "ControlTarget(LoopControlTarget{scope.id})",
+        "ControlTarget(MatchControlTarget{scope.id})",
+        "BinderDiagnosticCode::BreakTargetNotFound",
+        "BinderDiagnosticCode::ContinueTargetNotFound",
+        "ControlTransferKind::Break : ControlTransferKind::Continue",
+        "zc::TreeMap<uint32_t, size_t> order;",
+        "candidate.controlTransfers = zc::mv(sorted);",
+    ):
+        if required not in source:
+            errors.append(f"{CONTROL_SOURCE}: incomplete unlabeled control semantics: {required}")
+
+    body_build = verifier.find("BodyBindingBuilder::build(input, arena, skeleton)")
+    control_build = verifier.find("ControlTransferBuilder::build(input, arena)")
+    failure_merge = verifier.find("zc::TreeMap<PendingFailureOrderKey, PendingFailureRef>")
+    if (
+        body_build < 0
+        or control_build < 0
+        or failure_merge < 0
+        or not body_build < control_build < failure_merge
+    ):
+        errors.append(
+            f"{VERIFIER_SOURCE}: control transfer must run after body binding and before "
+            "failure merge"
+        )
+    for required in (
+        "enum class PendingFailureKind : uint8_t { Duplicate, BodyLookup, ControlTransfer };",
+        "controlResult.is<ControlTransferCandidate>()",
+        "control.failures.size()",
+        "PendingFailureRef{PendingFailureKind::ControlTransfer, index}",
+        "static_cast<uint8_t>(BinderEmitterSite::BodyBinding)",
+        "ordered.value.kind == PendingFailureKind::ControlTransfer",
+        "BindingDiagnosticAdapter::emitControlTransferFailure(",
+        "BindingResolutionValue(FailedBindingResolution{failureIndex})",
+        "candidate.controlTransfers = zc::mv(control.controlTransfers)",
+    ):
+        if required not in verifier:
+            errors.append(f"{VERIFIER_SOURCE}: control failure merge is disconnected: {required}")
+    for required in (
+        "static_cast<uint8_t>(BinderEmitterSite::BodyBinding),\n"
+        "                               controlFailure.schemaPreorderOrdinal, sequence++}",
+        "controlFailure.diagnostic,\n"
+        "                tree.node(controlFailure.node).range.getStart()",
+        "BindingFailureRef{controlFailure.diagnostic, controlFailure.source.clone(),\n"
+        "                                           emitterOrdinal, zc::mv(noNotes)}",
+        "controlFailure.node, BindingResolutionValue(FailedBindingResolution{failureIndex})",
+    ):
+        if required not in verifier:
+            errors.append(
+                f"{VERIFIER_SOURCE}: control failure provenance merge is incomplete: {required}"
+            )
+
+    target_codec = function_body(verifier, "bool encodeControlTarget(")
+    for required in (
+        "target.is<LoopControlTarget>()",
+        "encoder.encodeUint8(0x02);",
+        "target.get<LoopControlTarget>().scope",
+        "target.is<MatchControlTarget>()",
+        "encoder.encodeUint8(0x03);",
+        "target.get<MatchControlTarget>().scope",
+    ):
+        if required not in target_codec:
+            errors.append(f"{VERIFIER_SOURCE}: incomplete control target codec: {required}")
+    control_fact_codec = (
+        "encoder.encodeSequenceSize(candidate.controlTransfers.size());\n"
+        "  for (const auto& fact : candidate.controlTransfers) {\n"
+        "    encoder.encodeUint32(fact.node.value);\n"
+        "    encoder.encodeUint8(static_cast<uint8_t>(fact.kind));\n"
+        "    if (!encodeControlTarget(encoder, input, fact.target)) { return zc::none; }\n"
+        "    fact.source.encode(encoder);\n"
+        "  }"
+    )
+    if control_fact_codec not in verifier:
+        errors.append(
+            f"{VERIFIER_SOURCE}: control fact codec must cover node, kind, target, and source"
+        )
+
+    foreign_check = function_body(verifier, "bool hasForeignContext(")
+    for required in (
+        "for (const auto& fact : candidate.controlTransfers)",
+        "const auto& target = fact.target;",
+        "target.is<LoopControlTarget>()",
+        "target.get<LoopControlTarget>().scope",
+        "target.is<MatchControlTarget>()",
+        "target.get<MatchControlTarget>().scope",
+        "scope.module() != input.module() || !scope.belongsTo(input.semanticContext())",
+    ):
+        if required not in foreign_check:
+            errors.append(
+                f"{VERIFIER_SOURCE}: control foreign-context check is incomplete: {required}"
+            )
+    source_check = function_body(verifier, "bool hasInvalidSourceRange(")
+    for required in (
+        "for (const auto& fact : candidate.controlTransfers)",
+        "if (spanIsInvalid(fact.source)) { return true; }",
+    ):
+        if required not in source_check:
+            errors.append(
+                f"{VERIFIER_SOURCE}: control source-range check is incomplete: {required}"
+            )
+    for required in (
+        "candidate.controlTransfers.size() < expected.controlTransfers.size()",
+        "candidate.controlTransfers.size() > expected.controlTransfers.size()",
+    ):
+        if required not in verifier:
+            errors.append(f"{VERIFIER_SOURCE}: control fact size check is incomplete: {required}")
+
+    oracle = function_body(verifier, "ControlOracleResult verifyControlTransferFacts(")
+    if not oracle:
+        errors.append(f"{VERIFIER_SOURCE}: independent control-transfer oracle is missing")
+    else:
+        if "ControlTransferBuilder::build" in oracle:
+            errors.append(f"{VERIFIER_SOURCE}: control-transfer oracle reuses builder authority")
+        for required in (
+            "ScopeArenaBuilder::build(input)",
+            "ast::visitTreePreOrder(tree, tree.root()",
+            "scope.kind == ScopeKind::Loop",
+            "scope.kind == ScopeKind::Match && isBreak",
+            "scope.kind == ScopeKind::Function || scope.kind == ScopeKind::Closure ||",
+            "fact.kind != expectedKind",
+            "!sameSpan(fact.source, source)",
+            "fact.target.is<LoopControlTarget>()",
+            "fact.target.is<MatchControlTarget>()",
+            "resolutionIndex != kMissing",
+            "factIndex != kMissing",
+            "resolutionIndex == kMissing",
+            "resolution.value.is<FailedBindingResolution>()",
+            "failureFact.diagnostic != expectedDiagnostic",
+            "leadingTokenSpan(",
+            "BinderEmitterSite::BodyBinding",
+            "schemaOrdinal != schemaOrdinals[node.value]",
+            "localOrdinal != 0",
+            "consumedFacts",
+            "consumedFailures",
+        ):
+            if required not in oracle:
+                errors.append(
+                    f"{VERIFIER_SOURCE}: incomplete independent control-transfer oracle: {required}"
+                )
+
+    census = function_body(verifier, "bool hasCompleteLexicalBindingSites(")
+    for required in (
+        "requiredNamespaces[binding.node.value] == 0",
+        "nodeKind != ast::SyntaxKind::BreakStmt",
+        "nodeKind != ast::SyntaxKind::ContinueStatement",
+        "!binding.value.is<FailedBindingResolution>()",
+        "published[binding.node.value] = true;",
+        "continue;",
+    ):
+        if required not in census:
+            errors.append(
+                f"{VERIFIER_SOURCE}: control failure XOR census is incomplete: {required}"
+            )
+
+    if (
+        "emitControlTransferFailure(" not in adapter_header
+        or "emitControlTransferFailure(" not in adapter_source
+    ):
+        errors.append("binding diagnostic adapter lacks control projection")
+    for required in (
+        "BinderDiagnosticCode::BreakTargetNotFound",
+        "BinderDiagnosticCode::ContinueTargetNotFound",
+    ):
+        if required not in adapter_source:
+            errors.append(f"{DIAGNOSTIC_ADAPTER_SOURCE}: missing control projection: {required}")
+    for required in (
+        'DIAG(3020, BreakTargetNotFound, kError,\n'
+        '     "break requires an enclosing loop, match, or label", 0)',
+        'DIAG(3021, ContinueTargetNotFound, kError,\n'
+        '     "continue requires an enclosing loop or loop label", 0)',
+    ):
+        if required not in definitions:
+            errors.append(
+                f"{DIAGNOSTIC_DEFINITIONS}: missing stable control diagnostic: {required}"
+            )
+
+    for marker in (
+        "ControlTransfer.TargetsEveryLoopForm",
+        "ControlTransfer.BreakTargetsMatchWhileContinueSkipsMatch",
+        "ControlTransfer.SelectsInnerLoopInsideMatch",
+        "ControlTransfer.StopsAtFunctionAndClosureBoundaries",
+        "ControlTransfer.OrdersExactKeywordFailures",
+        "ControlTransfer.FailsClosedForExplicitLabels",
+        "BindingVerifier.RejectsMissingAdditionalAndReorderedControlTransfers",
+        "BindingVerifier.RejectsInvalidControlTargetsAndSources",
+        "BindingVerifier.RejectsForeignControlTargets",
+        "BindingVerifier.EnforcesControlFailureXor",
+    ):
+        if marker not in tests:
+            errors.append(f"{TEST_SOURCE}: missing control-transfer evidence: {marker}")
+    for marker in (
+        "BindingDiagnosticAdapter.EmitsZeroArgumentControlTransferFailures",
+        "BindingDiagnosticAdapter.RejectsUnsupportedControlTransferCodes",
+    ):
+        if marker not in files.get(DIAGNOSTIC_ADAPTER_TEST, ""):
+            errors.append(f"{DIAGNOSTIC_ADAPTER_TEST}: missing control adapter evidence: {marker}")
+
+    internal_include = '"zomlang/compiler/binder/internal/control-transfer.h"'
+    for path, text in files.items():
+        if "ContinueTargetNotLoop" in text:
+            errors.append(f"{path}: obsolete ContinueTargetNotLoop contract is forbidden")
+        if path in {CONTROL_HEADER, CONTROL_SOURCE, VERIFIER_SOURCE} or TEST_DIR in path.parents:
+            continue
+        if internal_include in text or re.search(r"\bControlTransferBuilder::build\(", text):
+            errors.append(f"{path}: control-transfer internal authority escaped")
+
+
 def check_definition_site_contract(files: dict[Path, str], errors: list[str]) -> None:
     site_header = files.get(SITE_HEADER, "")
     inventory_header_path = BINDER_DIR / "definition-inventory.h"
@@ -626,7 +897,8 @@ def check_scope_arena_contract(files: dict[Path, str], errors: list[str]) -> Non
     internal_include = '"zomlang/compiler/binder/internal/scope-arena.h"'
     for path, text in files.items():
         if path in {SCOPE_HEADER, SCOPE_SOURCE, SKELETON_HEADER, SKELETON_SOURCE,
-                    BODY_HEADER, BODY_SOURCE, VERIFIER_SOURCE} or TEST_DIR in path.parents:
+                    BODY_HEADER, BODY_SOURCE, CONTROL_HEADER, CONTROL_SOURCE,
+                    VERIFIER_SOURCE} or TEST_DIR in path.parents:
             continue
         if internal_include in text:
             errors.append(f"{path}: scope arena internal authority escaped")
@@ -823,8 +1095,12 @@ def check_wiring(files: dict[Path, str], errors: list[str]) -> None:
         (BINDER_CMAKE, "${CMAKE_CURRENT_SOURCE_DIR}/scope-arena.cc"),
         (BINDER_CMAKE, "${CMAKE_CURRENT_SOURCE_DIR}/binding-skeleton.cc"),
         (BINDER_CMAKE, "${CMAKE_CURRENT_SOURCE_DIR}/body-binding.cc"),
+        (BINDER_CMAKE, "${CMAKE_CURRENT_SOURCE_DIR}/control-transfer.cc"),
         (BINDER_CMAKE, "${CMAKE_CURRENT_SOURCE_DIR}/binding-diagnostic-adapter.cc"),
         (TEST_CMAKE, 'add_ztest_unit_test("binding-input-test" "binding-input-test.cc"'),
+        (TEST_CMAKE,
+         'add_ztest_unit_test("binding-diagnostic-adapter-test" '
+         '"binding-diagnostic-adapter-test.cc"'),
         (TEST_CMAKE, "binder-architecture"),
         (TEST_CMAKE, "check-binder-architecture.py --check"),
         (TEST_CMAKE, "check-binder-architecture.py --self-test"),
@@ -919,6 +1195,7 @@ def check(files: dict[Path, str]) -> list[str]:
     check_closure_activation_contract(files, errors)
     check_pattern_activation_contract(files, errors)
     check_body_binding_contract(files, errors)
+    check_control_transfer_contract(files, errors)
     check_definition_site_contract(files, errors)
     check_private_binding_candidate(files, errors)
     check_producer_boundaries(files, errors)
@@ -1148,6 +1425,202 @@ def self_test(files: dict[Path, str]) -> list[str]:
             BINDER_CMAKE,
             "${CMAKE_CURRENT_SOURCE_DIR}/body-binding.cc",
             "${CMAKE_CURRENT_SOURCE_DIR}/missing-body-binding.cc",
+        ),
+        (
+            "missing control transfer wiring",
+            BINDER_CMAKE,
+            "${CMAKE_CURRENT_SOURCE_DIR}/control-transfer.cc",
+            "${CMAKE_CURRENT_SOURCE_DIR}/missing-control-transfer.cc",
+        ),
+        (
+            "missing control scope dependency",
+            CONTROL_HEADER,
+            '#include "zomlang/compiler/binder/internal/scope-arena.h"',
+            '#include "zomlang/compiler/binder/binding-metadata.h"',
+        ),
+        (
+            "foreign control transfer include",
+            Path("products/zomlang/compiler/checker/escape.cc"),
+            "",
+            '#include "zomlang/compiler/binder/internal/control-transfer.h"',
+        ),
+        (
+            "control continue targets match",
+            CONTROL_SOURCE,
+            "scope.kind == ScopeKind::Match && isBreak",
+            "scope.kind == ScopeKind::Match",
+        ),
+        (
+            "missing control callable boundary",
+            CONTROL_SOURCE,
+            "scope.kind == ScopeKind::Function || scope.kind == ScopeKind::Closure ||",
+            "scope.kind == ScopeKind::Function ||",
+        ),
+        (
+            "missing exact control keyword provenance",
+            CONTROL_SOURCE,
+            "input.parsedModule().leadingTokenSpan(",
+            "input.parsedModule().spanFor(",
+        ),
+        (
+            "missing explicit label rejection",
+            CONTROL_SOURCE,
+            "syntax.kind == ast::SyntaxKind::LabeledStatement",
+            "syntax.kind == ast::SyntaxKind::EmptyStatement",
+        ),
+        (
+            "disconnected control transfer cutover",
+            VERIFIER_SOURCE,
+            "ControlTransferBuilder::build(input, arena)",
+            "disconnectedControlTransfer(input, arena)",
+        ),
+        (
+            "missing control failure kind",
+            VERIFIER_SOURCE,
+            "enum class PendingFailureKind : uint8_t { Duplicate, BodyLookup, ControlTransfer };",
+            "enum class PendingFailureKind : uint8_t { Duplicate, BodyLookup };",
+        ),
+        (
+            "disconnected control diagnostic merge",
+            VERIFIER_SOURCE,
+            "BindingDiagnosticAdapter::emitControlTransferFailure(",
+            "disconnectedControlTransferFailure(",
+        ),
+        (
+            "wrong control failure emitter site",
+            VERIFIER_SOURCE,
+            "static_cast<uint8_t>(BinderEmitterSite::BodyBinding),\n"
+            "                               controlFailure.schemaPreorderOrdinal, sequence++}",
+            "static_cast<uint8_t>(BinderEmitterSite::LabelAndClosure),\n"
+            "                               controlFailure.schemaPreorderOrdinal, sequence++}",
+        ),
+        (
+            "missing control failed resolution",
+            VERIFIER_SOURCE,
+            "controlFailure.node, BindingResolutionValue(FailedBindingResolution{failureIndex})",
+            "controlFailure.node, BindingResolutionValue(UnresolvedBindingResolution{})",
+        ),
+        (
+            "wrong loop control target tag",
+            VERIFIER_SOURCE,
+            "encoder.encodeUint8(0x02);",
+            "encoder.encodeUint8(0x04);",
+        ),
+        (
+            "missing control fact node codec",
+            VERIFIER_SOURCE,
+            "encoder.encodeSequenceSize(candidate.controlTransfers.size());\n"
+            "  for (const auto& fact : candidate.controlTransfers) {\n"
+            "    encoder.encodeUint32(fact.node.value);",
+            "encoder.encodeSequenceSize(candidate.controlTransfers.size());\n"
+            "  for (const auto& fact : candidate.controlTransfers) {\n"
+            "    encoder.encodeUint32(0);",
+        ),
+        (
+            "missing control fact kind codec",
+            VERIFIER_SOURCE,
+            "encoder.encodeUint32(fact.node.value);\n"
+            "    encoder.encodeUint8(static_cast<uint8_t>(fact.kind));\n"
+            "    if (!encodeControlTarget(encoder, input, fact.target))",
+            "encoder.encodeUint32(fact.node.value);\n"
+            "    encoder.encodeUint8(0);\n"
+            "    if (!encodeControlTarget(encoder, input, fact.target))",
+        ),
+        (
+            "missing control fact target codec",
+            VERIFIER_SOURCE,
+            "if (!encodeControlTarget(encoder, input, fact.target)) { return zc::none; }",
+            "if (false) { return zc::none; }",
+        ),
+        (
+            "missing control fact source codec",
+            VERIFIER_SOURCE,
+            "if (!encodeControlTarget(encoder, input, fact.target)) { return zc::none; }\n"
+            "    fact.source.encode(encoder);",
+            "if (!encodeControlTarget(encoder, input, fact.target)) { return zc::none; }",
+        ),
+        (
+            "missing control foreign context check",
+            VERIFIER_SOURCE,
+            "for (const auto& fact : candidate.controlTransfers) {\n"
+            "    const auto& target = fact.target;",
+            "for (const auto& fact : candidate.controlTransfers) {\n"
+            "    const auto& target = candidate.controlTransfers[0].target;",
+        ),
+        (
+            "missing control source range check",
+            VERIFIER_SOURCE,
+            "for (const auto& fact : candidate.controlTransfers) {\n"
+            "    if (spanIsInvalid(fact.source)) { return true; }\n"
+            "  }",
+            "",
+        ),
+        (
+            "missing smaller control fact classification",
+            VERIFIER_SOURCE,
+            "candidate.controlTransfers.size() < expected.controlTransfers.size()",
+            "false",
+        ),
+        (
+            "missing larger control fact classification",
+            VERIFIER_SOURCE,
+            "candidate.controlTransfers.size() > expected.controlTransfers.size()",
+            "false",
+        ),
+        (
+            "control oracle reuses builder",
+            VERIFIER_SOURCE,
+            "ScopeArenaBuilder::build(input)",
+            "ControlTransferBuilder::build(input, arena)",
+        ),
+        (
+            "control oracle permits continue to match",
+            VERIFIER_SOURCE,
+            "scope.kind == ScopeKind::Match && isBreak",
+            "scope.kind == ScopeKind::Match",
+        ),
+        (
+            "control oracle drops callable boundary",
+            VERIFIER_SOURCE,
+            "scope.kind == ScopeKind::Function || scope.kind == ScopeKind::Closure ||",
+            "scope.kind == ScopeKind::Function ||",
+        ),
+        (
+            "control oracle drops exact failure primary",
+            VERIFIER_SOURCE,
+            "auto expectedPrimary = input.parsedModule().leadingTokenSpan(",
+            "auto expectedPrimary = input.parsedModule().spanFor(",
+        ),
+        (
+            "missing control failure XOR census",
+            VERIFIER_SOURCE,
+            "nodeKind != ast::SyntaxKind::ContinueStatement",
+            "nodeKind != ast::SyntaxKind::BreakStmt",
+        ),
+        (
+            "missing control behavior evidence",
+            TEST_SOURCE,
+            "ControlTransfer.BreakTargetsMatchWhileContinueSkipsMatch",
+            "ControlTransfer.MissingMatchPartitionEvidence",
+        ),
+        (
+            "missing zero argument control adapter evidence",
+            DIAGNOSTIC_ADAPTER_TEST,
+            "BindingDiagnosticAdapter.EmitsZeroArgumentControlTransferFailures",
+            "BindingDiagnosticAdapter.MissingZeroArgumentControlTransferFailures",
+        ),
+        (
+            "unstable control diagnostic registration",
+            DIAGNOSTIC_DEFINITIONS,
+            'DIAG(3020, BreakTargetNotFound, kError,\n'
+            '     "break requires an enclosing loop, match, or label", 0)',
+            'DIAG(3020, BreakTargetNotFound, kError, "break failed", 0)',
+        ),
+        (
+            "obsolete continue diagnostic contract",
+            METADATA_HEADER,
+            "",
+            "\nenum class EscapedControlDiagnostic { ContinueTargetNotLoop };\n",
         ),
         (
             "disconnected body binding cutover",
