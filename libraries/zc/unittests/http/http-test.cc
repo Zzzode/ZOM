@@ -5879,8 +5879,7 @@ ZC_TEST("HttpClient connection management") {
   serverTimer.advanceTo(serverTimer.now() + serverSettings.pipelineTimeout * 2);
   waitScope.poll();
   clientTimer.advanceTo(clientTimer.now() + 100 * zc::MILLISECONDS);
-  waitScope.poll();
-  waitScope.poll();
+  for (uint turn = 0; count != 0 && turn < 32; ++turn) { waitScope.poll(1); }
   ZC_EXPECT(count == 0);
   ZC_EXPECT(cumulative == 8);
 
