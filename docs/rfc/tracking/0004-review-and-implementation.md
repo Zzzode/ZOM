@@ -311,8 +311,9 @@ landing.
 | Module, type, and impl skeleton facts | Complete | Commits `632d1669` through `b5692a75`; exact declaration and pattern sites, canonical `DefinitionFact` and `ImplBindingFact` ordering, module/type/impl scope maps, direct impl members, module constant pattern leaves, private and declaration-export surfaces, typed `ZOM3003-ZOM3010` duplicate failures with `ZOM3017` notes, NFC collision coverage, thirty-five focused sanitizer cases, and adversarial architecture mutations |
 | Scope-owned generic and ordinary callable parameter facts | Complete | Commits `4434b909`, `aecfea09`, `1d640fe5`, and `593f4b64`; `GenericList` facts for scope-owning type parameter lists, `ParameterList` facts for direct function, method, and extern parameters, exact function-scope ownership, value-namespace placement, duplicate generic and parameter source diagnostics with `ZOM3017` notes, module-surface and direct-impl-member exclusion, focused sanitizer coverage, and adversarial architecture mutations |
 | Special callable identity and parameter facts | Complete | Commits `115445a5` and `570f6a82`; constructor and destructor `DeclaredDefinitionName` identities without fabricated lexical names, value-namespace `DefinitionFact` publication, type- or impl-owned function scopes, `ParameterList` facts, ordinary-binding exclusion, focused sanitizer coverage, and adversarial architecture mutations |
+| Closure identity, generic, and parameter facts | Complete | Commits `6749c23c` and `da426edc`; anonymous function-expression and lambda identities, value-namespace `ExpressionIntroduction` facts, closure-owned generic and parameter facts, ordinary-binding and surface exclusion, focused sanitizer coverage, and adversarial architecture mutations |
 | Complete module resolution input | Blocked by RFC 0012 and RFC 0008 | Authoritative package resolution, production semantic-context fingerprint, verified resolution environment, and resolution receipts |
-| Complete binding facts and surfaces | Pending | Closures, locals and patterns, imports, re-exports, aliases, visibility, labels, captures, body resolution, immutable metadata completion, codecs, and verifier negatives |
+| Complete binding facts and surfaces | Pending | Locals and patterns, imports, re-exports, aliases, visibility, labels, captures, body resolution, immutable metadata completion, codecs, and verifier negatives |
 | Production binder cutover | Pending | Session integration, no downstream rebinding, deletion of raw binder inputs and binder-owned module resolution, and all acceptance gates |
 
 The first slice is intentionally fail-closed. It accepts only a single frozen
@@ -453,6 +454,14 @@ kinds; every other declared definition remains required to have a
 `SemanticIdentifier`. Target-dependent module aliases, imports, and re-exports
 remain blocked on verified resolution input.
 
+The closure slice publishes anonymous `FunctionExpression` and
+`LambdaExpression` identities through `ExpressionIntroduction` without
+fabricating a lexical name. Each closure owns a closure scope; its direct
+generic and parameter facts activate in that scope through `GenericList` and
+`ParameterList`. A closure has no ordinary binding, module surface seed, or
+export surface entry. Local and pattern activation remain separate because
+they require source-order body binding rather than expression introduction.
+
 The complete sanitizer-backed landing gate passed 1,250 of 1,250 tests in
 654.78 seconds. The gate also passed format, RFC validation, parser coverage,
 lexer architecture, and `git diff --check`; the ANTLR grammar matrix accounted
@@ -472,3 +481,13 @@ passed sanitizer configure and build, format, RFC validation, `git diff
 --check`, the Binder architecture positive gate, and its negative mutation
 matrix. The production implementation is recorded in `115445a5` and
 `570f6a82`.
+
+The closure evidence series passed sanitizer configure and build, the focused
+binding unit test, the Binder architecture positive gate, and its negative
+mutation matrix. The production implementation is recorded in `6749c23c` and
+`da426edc`.
+
+The closure evidence series then passed the complete sanitizer-backed serial
+matrix: 1,250 of 1,250 tests in 2,634.87 seconds, with the ANTLR grammar oracle
+accounting for 820.04 seconds. The same run passed all five IR conformance
+cases and the complete Binder architecture positive and negative gate set.

@@ -961,6 +961,13 @@ that scope. It produces no `ScopeBindingEntry`, module-surface seed, or export
 surface entry. RFC 0009 selects these special callable members from verified
 type or impl member facts rather than ordinary lexical lookup.
 
+`FunctionExpression` and `LambdaExpression` use RFC 0011 anonymous closure
+identity and likewise cannot form a `BindingNameKey`. Each publishes one
+value-namespace `DefinitionFact` with `ExpressionIntroduction` activation,
+owns its closure scope, and produces no `ScopeBindingEntry`, module-surface
+seed, or export surface entry. Its generic and parameter facts activate inside
+that closure scope through `GenericList` and `ParameterList`, respectively.
+
 `ScopeKind` covers exactly module, function, type body, impl body, block, loop,
 match, match arm, closure, and unsafe block. The module scope has no parent and
 owner `Module(currentModule)`. Every other scope's parent is the nearest
@@ -1893,3 +1900,4 @@ None
 | 2026-07-12 | IMPLEMENTING | Started the direct replacement series with the dependency-free module-graph and binding-input verifier spine tracked by the local implementation record. |
 | 2026-07-13 | IMPLEMENTING | Corrected module-discovery versus semantic-SCC ownership, described the live insertion-ordered legacy state accurately, and moved active module diagnostics into their owned registry family. Future diagnostics must land atomically with their first producer. |
 | 2026-07-13 | IMPLEMENTING | Clarified that RFC 0011 special constructor and destructor declaration names publish definition and scope facts without an ordinary lexical binding, preserving `BindingNameKey` as a `SemanticIdentifier`-only key. |
+| 2026-07-13 | IMPLEMENTING | Activated anonymous closure expression facts and closure-owned generic and parameter facts without creating a lexical or surface binding. |
