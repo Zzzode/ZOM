@@ -37,6 +37,10 @@ public:
   ZC_NODISCARD static bool emitControlTransferFailure(diagnostics::DiagnosticEngine& diagnostics,
                                                       BinderDiagnosticCode code,
                                                       source::SourceLoc primary);
+  ZC_NODISCARD static bool emitLabelLookupFailure(diagnostics::DiagnosticEngine& diagnostics,
+                                                  BinderDiagnosticCode code,
+                                                  source::SourceLoc primary,
+                                                  VerifiedIdentifierArgument&& identifier);
   ZC_NODISCARD static bool emitLookupFailure(diagnostics::DiagnosticEngine& diagnostics,
                                              BinderDiagnosticCode code, source::SourceLoc primary,
                                              VerifiedIdentifierArgument&& identifier,

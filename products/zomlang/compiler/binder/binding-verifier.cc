@@ -113,6 +113,23 @@ bool targetHasForeignContext(const VerifiedBindingInput& input, const BindingTar
   return !value.get<ModuleBindingTarget>().module.belongsTo(input.semanticContext());
 }
 
+bool labelIdHasForeignContext(const VerifiedBindingInput& input, const LabelId& label) {
+  if (!label.belongsTo(input.semanticContext())) { return true; }
+  const auto& owner = label.owner().value();
+  if (owner.is<ModuleLabelOwner>()) {
+    return owner.get<ModuleLabelOwner>().module != input.module();
+  }
+  return input.definitions().definitionKey(owner.get<CallableLabelOwner>().callable) == zc::none;
+}
+
+bool labelTargetHasForeignContext(const VerifiedBindingInput& input, const LabelTarget& target) {
+  if (!target.belongsTo(input.semanticContext())) { return true; }
+  const auto& value = target.value();
+  const auto scope = value.is<BlockLabelTarget>() ? value.get<BlockLabelTarget>().scope
+                                                  : value.get<LoopLabelTarget>().scope;
+  return scope.module() != input.module() || !scope.belongsTo(input.semanticContext());
+}
+
 bool entryHasForeignContext(const VerifiedBindingInput& input, const ExportSurfaceEntry& entry) {
   if (targetHasForeignContext(input, entry.bindingIdentity) ||
       targetHasForeignContext(input, entry.canonicalTarget)) {
@@ -188,12 +205,18 @@ bool hasForeignContext(const VerifiedBindingInput& input,
           targetHasForeignContext(input, bound.canonicalTarget)) {
         return true;
       }
+    } else if (value.is<BoundLabelResolution>()) {
+      const auto& bound = value.get<BoundLabelResolution>();
+      if (labelIdHasForeignContext(input, bound.label) ||
+          labelTargetHasForeignContext(input, bound.target)) {
+        return true;
+      }
     }
   }
   for (const auto& fact : candidate.labels) {
     if (!fact.owner.belongsTo(input.semanticContext()) ||
-        !fact.identity.belongsTo(input.semanticContext()) ||
-        !fact.target.belongsTo(input.semanticContext())) {
+        labelIdHasForeignContext(input, fact.identity) ||
+        labelTargetHasForeignContext(input, fact.target)) {
       return true;
     }
     const auto& owner = fact.owner.value();
@@ -203,16 +226,14 @@ bool hasForeignContext(const VerifiedBindingInput& input,
       const auto callable = owner.get<CallableLabelOwner>().callable;
       if (input.definitions().definitionKey(callable) == zc::none) { return true; }
     }
-    const auto& target = fact.target.value();
-    const auto scope = target.is<BlockLabelTarget>() ? target.get<BlockLabelTarget>().scope
-                                                     : target.get<LoopLabelTarget>().scope;
-    if (scope.module() != input.module() || !scope.belongsTo(input.semanticContext())) {
-      return true;
-    }
   }
   for (const auto& fact : candidate.controlTransfers) {
     const auto& target = fact.target;
-    if (target.is<LoopControlTarget>()) {
+    if (target.is<ExplicitLabelControlTarget>()) {
+      if (labelIdHasForeignContext(input, target.get<ExplicitLabelControlTarget>().label)) {
+        return true;
+      }
+    } else if (target.is<LoopControlTarget>()) {
       const auto scope = target.get<LoopControlTarget>().scope;
       if (scope.module() != input.module() || !scope.belongsTo(input.semanticContext())) {
         return true;
@@ -458,8 +479,17 @@ bool hasCompleteLexicalBindingSites(const ast::Tree& tree,
     if (requiredNamespaces[binding.node.value] == 0) {
       if ((nodeKind != ast::SyntaxKind::BreakStmt &&
            nodeKind != ast::SyntaxKind::ContinueStatement) ||
-          !binding.value.is<FailedBindingResolution>()) {
+          (!binding.value.is<BoundLabelResolution>() &&
+           !binding.value.is<FailedBindingResolution>())) {
         return false;
+      }
+      if (binding.value.is<BoundLabelResolution>()) {
+        const auto& syntax = tree.node(binding.node);
+        const uint32_t label =
+            syntax.payload
+                .words[nodeKind == ast::SyntaxKind::BreakStmt ? ast::kBreakStmtLabelWord
+                                                              : ast::kContinueStatementLabelWord];
+        if (label == 0) { return false; }
       }
       published[binding.node.value] = true;
       continue;
@@ -794,6 +824,7 @@ LabelOracleResult verifyLabelFacts(const VerifiedBindingInput& input,
     const uint8_t emitterSite =
         static_cast<uint8_t>(candidate.sourceFailures[index].emitterOrdinal >> 56);
     if (emitterSite == static_cast<uint8_t>(BinderEmitterSite::LabelAndClosure) &&
+        candidate.sourceFailures[index].diagnostic == BinderDiagnosticCode::DuplicateIdentifier &&
         !consumedFailures[index]) {
       return LabelOracleResult::InvalidBindingFact;
     }
@@ -896,101 +927,19 @@ ControlOracleResult verifyControlTransferFacts(const VerifiedBindingInput& input
   auto schemaOrdinals = zc::mv(ZC_ASSERT_NONNULL(schemaOrdinalsResult));
   zc::Vector<bool> consumedFacts;
   zc::Vector<bool> consumedFailures;
+  zc::Vector<bool> consumedResolutions;
   consumedFacts.resize(candidate.controlTransfers.size());
   consumedFailures.resize(candidate.sourceFailures.size());
+  consumedResolutions.resize(candidate.nodeBindings.size());
   for (auto& consumed : consumedFacts) { consumed = false; }
   for (auto& consumed : consumedFailures) { consumed = false; }
+  for (auto& consumed : consumedResolutions) { consumed = false; }
 
   ControlOracleResult result = ControlOracleResult::Valid;
-  ast::visitTreePreOrder(tree, tree.root(), [&](ast::NodeId node, const ast::Node& syntax) {
-    if (result != ControlOracleResult::Valid ||
-        (syntax.kind != ast::SyntaxKind::BreakStmt &&
-         syntax.kind != ast::SyntaxKind::ContinueStatement)) {
-      return;
-    }
-    const bool isBreak = syntax.kind == ast::SyntaxKind::BreakStmt;
-    const uint32_t label =
-        syntax.payload.words[isBreak ? ast::kBreakStmtLabelWord : ast::kContinueStatementLabelWord];
-    if (label != 0 || node.value >= scopeByNode.size() || scopeByNode[node.value] == UINT32_MAX) {
-      result = ControlOracleResult::InvalidBindingFact;
-      return;
-    }
-
-    enum class ExpectedTargetKind : uint8_t { None, Loop, Match };
-    ExpectedTargetKind targetKind = ExpectedTargetKind::None;
-    zc::Maybe<ScopeId> targetScope;
-    uint32_t scopeIndex = scopeByNode[node.value];
-    bool terminated = false;
-    for (size_t traversed = 0; traversed < arena.scopes.size(); ++traversed) {
-      if (scopeIndex >= arena.scopes.size()) {
-        result = ControlOracleResult::MalformedScopeGraph;
-        return;
-      }
-      const auto& scope = arena.scopes[scopeIndex];
-      if (scope.kind == ScopeKind::Loop) {
-        targetKind = ExpectedTargetKind::Loop;
-        targetScope = scope.id;
-        terminated = true;
-        break;
-      }
-      if (scope.kind == ScopeKind::Match && isBreak) {
-        targetKind = ExpectedTargetKind::Match;
-        targetScope = scope.id;
-        terminated = true;
-        break;
-      }
-      if (scope.kind == ScopeKind::Function || scope.kind == ScopeKind::Closure ||
-          scope.kind == ScopeKind::Module || scope.parent == zc::none) {
-        terminated = true;
-        break;
-      }
-      ZC_IF_SOME(parent, scope.parent) { scopeIndex = parent.index(); }
-    }
-    if (!terminated) {
-      result = ControlOracleResult::MalformedScopeGraph;
-      return;
-    }
-
-    const size_t factIndex = factByNode[node.value];
-    const size_t resolutionIndex = resolutionByNode[node.value];
-    if (targetKind != ExpectedTargetKind::None) {
-      if (factIndex == kMissing) {
-        result = resolutionIndex == kMissing ? ControlOracleResult::MissingRequiredResolution
-                                             : ControlOracleResult::InvalidBindingFact;
-        return;
-      }
-      if (resolutionIndex != kMissing || targetScope == zc::none) {
-        result = ControlOracleResult::InvalidBindingFact;
-        return;
-      }
-      const auto& fact = candidate.controlTransfers[factIndex];
-      const auto expectedKind =
-          isBreak ? ControlTransferKind::Break : ControlTransferKind::Continue;
-      auto expectedSource = input.parsedModule().spanFor(syntax.range);
-      if (fact.kind != expectedKind || expectedSource == zc::none) {
-        result = ControlOracleResult::InvalidBindingFact;
-        return;
-      }
-      ZC_IF_SOME(source, expectedSource) {
-        if (!sameSpan(fact.source, source)) {
-          result = ControlOracleResult::InvalidBindingFact;
-          return;
-        }
-      }
-      const auto expectedScope = ZC_ASSERT_NONNULL(targetScope);
-      if ((targetKind == ExpectedTargetKind::Loop &&
-           (!fact.target.is<LoopControlTarget>() ||
-            fact.target.get<LoopControlTarget>().scope != expectedScope)) ||
-          (targetKind == ExpectedTargetKind::Match &&
-           (!fact.target.is<MatchControlTarget>() ||
-            fact.target.get<MatchControlTarget>().scope != expectedScope))) {
-        result = ControlOracleResult::InvalidBindingFact;
-        return;
-      }
-      consumedFacts[factIndex] = true;
-      return;
-    }
-
+  const auto consumeFailure = [&](ast::NodeId node, size_t factIndex, size_t resolutionIndex,
+                                  BinderDiagnosticCode diagnostic,
+                                  const identity::SourceSpan& primary,
+                                  BinderEmitterSite emitterSite) {
     if (factIndex != kMissing) {
       result = ControlOracleResult::InvalidBindingFact;
       return;
@@ -1010,37 +959,255 @@ ControlOracleResult verifyControlTransferFacts(const VerifiedBindingInput& input
       return;
     }
     const auto& failureFact = candidate.sourceFailures[failureIndex];
-    const auto expectedDiagnostic = isBreak ? BinderDiagnosticCode::BreakTargetNotFound
-                                            : BinderDiagnosticCode::ContinueTargetNotFound;
-    auto expectedPrimary = input.parsedModule().retainedTokenSpan(
-        node, 0, isBreak ? ast::SyntaxKind::BreakKeyword : ast::SyntaxKind::ContinueKeyword);
-    const uint8_t emitterSite = static_cast<uint8_t>(failureFact.emitterOrdinal >> 56);
+    const uint8_t actualSite = static_cast<uint8_t>(failureFact.emitterOrdinal >> 56);
     const uint32_t schemaOrdinal =
         static_cast<uint32_t>((failureFact.emitterOrdinal >> 16) & UINT32_MAX);
     const uint16_t localOrdinal = static_cast<uint16_t>(failureFact.emitterOrdinal);
-    if (failureFact.diagnostic != expectedDiagnostic || expectedPrimary == zc::none ||
-        !failureFact.notes.empty() ||
-        emitterSite != static_cast<uint8_t>(BinderEmitterSite::BodyBinding) ||
+    if (failureFact.diagnostic != diagnostic || !sameSpan(failureFact.primary, primary) ||
+        !failureFact.notes.empty() || actualSite != static_cast<uint8_t>(emitterSite) ||
         schemaOrdinal != schemaOrdinals[node.value] || localOrdinal != 0) {
       result = ControlOracleResult::InvalidBindingFact;
       return;
     }
-    ZC_IF_SOME(primary, expectedPrimary) {
-      if (!sameSpan(failureFact.primary, primary)) {
+    consumedFailures[failureIndex] = true;
+    consumedResolutions[resolutionIndex] = true;
+  };
+
+  const auto consumeSuccessful = [&](ast::NodeId node, const ast::Node& syntax, bool isBreak,
+                                     size_t expectedLabel, zc::Maybe<ScopeId> expectedScope,
+                                     uint8_t targetTag) {
+    const size_t factIndex = factByNode[node.value];
+    const size_t resolutionIndex = resolutionByNode[node.value];
+    if (factIndex == kMissing) {
+      result = resolutionIndex == kMissing ? ControlOracleResult::MissingRequiredResolution
+                                           : ControlOracleResult::InvalidBindingFact;
+      return;
+    }
+    const auto& fact = candidate.controlTransfers[factIndex];
+    auto expectedSource = input.parsedModule().spanFor(syntax.range);
+    if (fact.kind != (isBreak ? ControlTransferKind::Break : ControlTransferKind::Continue) ||
+        expectedSource == zc::none) {
+      result = ControlOracleResult::InvalidBindingFact;
+      return;
+    }
+    ZC_IF_SOME(source, expectedSource) {
+      if (!sameSpan(fact.source, source)) {
         result = ControlOracleResult::InvalidBindingFact;
         return;
       }
     }
-    consumedFailures[failureIndex] = true;
-  });
+
+    if (targetTag == 0x01) {
+      if (expectedLabel >= candidate.labels.size() ||
+          !fact.target.is<ExplicitLabelControlTarget>()) {
+        result = ControlOracleResult::InvalidBindingFact;
+        return;
+      }
+      if (resolutionIndex == kMissing) {
+        result = ControlOracleResult::MissingRequiredResolution;
+        return;
+      }
+      const auto& expected = candidate.labels[expectedLabel];
+      if (fact.target.get<ExplicitLabelControlTarget>().label != expected.identity) {
+        result = ControlOracleResult::InvalidBindingFact;
+        return;
+      }
+      const auto& resolution = candidate.nodeBindings[resolutionIndex];
+      if (!resolution.value.is<BoundLabelResolution>()) {
+        result = ControlOracleResult::InvalidBindingFact;
+        return;
+      }
+      const auto& bound = resolution.value.get<BoundLabelResolution>();
+      if (bound.label != expected.identity || bound.target != expected.target) {
+        result = ControlOracleResult::InvalidBindingFact;
+        return;
+      }
+      consumedResolutions[resolutionIndex] = true;
+    } else {
+      if (resolutionIndex != kMissing || expectedScope == zc::none) {
+        result = ControlOracleResult::InvalidBindingFact;
+        return;
+      }
+      const auto scope = ZC_ASSERT_NONNULL(expectedScope);
+      if ((targetTag == 0x02 && (!fact.target.is<LoopControlTarget>() ||
+                                 fact.target.get<LoopControlTarget>().scope != scope)) ||
+          (targetTag == 0x03 && (!fact.target.is<MatchControlTarget>() ||
+                                 fact.target.get<MatchControlTarget>().scope != scope))) {
+        result = ControlOracleResult::InvalidBindingFact;
+        return;
+      }
+    }
+    consumedFacts[factIndex] = true;
+  };
+
+  zc::Vector<size_t> activeLabels;
+  auto visit = [&](auto& self, ast::NodeId node) -> void {
+    if (result != ControlOracleResult::Valid) { return; }
+    if (!tree.contains(node) || node.value >= scopeByNode.size() ||
+        scopeByNode[node.value] == UINT32_MAX) {
+      result = ControlOracleResult::MalformedScopeGraph;
+      return;
+    }
+
+    const auto nodeScope = scopeByNode[node.value];
+    const auto scopeKind = arena.scopes[nodeScope].kind;
+    const bool resetsLabels = scopeKind == ScopeKind::Function || scopeKind == ScopeKind::Closure;
+    zc::Vector<size_t> savedLabels;
+    if (resetsLabels) {
+      savedLabels = zc::mv(activeLabels);
+      activeLabels = zc::Vector<size_t>();
+    }
+
+    const auto& syntax = tree.node(node);
+    if (syntax.kind == ast::SyntaxKind::LabeledStatement) {
+      const ast::NodeId statement(syntax.payload.words[ast::kLabeledStatementStatementWord]);
+      size_t labelIndex = candidate.labels.size();
+      for (size_t index = 0; index < candidate.labels.size(); ++index) {
+        if (candidate.labels[index].statement != statement) { continue; }
+        if (labelIndex != candidate.labels.size()) {
+          result = ControlOracleResult::InvalidBindingFact;
+          break;
+        }
+        labelIndex = index;
+      }
+      if (result == ControlOracleResult::Valid &&
+          (labelIndex == candidate.labels.size() || !tree.contains(statement))) {
+        result = ControlOracleResult::MissingRequiredResolution;
+      }
+      if (result == ControlOracleResult::Valid) {
+        activeLabels.add(labelIndex);
+        self(self, statement);
+        activeLabels.removeLast();
+      }
+    } else {
+      if (syntax.kind == ast::SyntaxKind::BreakStmt ||
+          syntax.kind == ast::SyntaxKind::ContinueStatement) {
+        const bool isBreak = syntax.kind == ast::SyntaxKind::BreakStmt;
+        const uint32_t label =
+            syntax.payload
+                .words[isBreak ? ast::kBreakStmtLabelWord : ast::kContinueStatementLabelWord];
+        const size_t factIndex = factByNode[node.value];
+        const size_t resolutionIndex = resolutionByNode[node.value];
+        if (label != 0) {
+          auto name = identity::SemanticIdentifier::fromSource(tree.ident(ast::IdentId(label)));
+          auto primary =
+              input.parsedModule().retainedTokenSpan(node, 1, ast::SyntaxKind::Identifier);
+          if (name == zc::none || primary == zc::none) {
+            result = ControlOracleResult::InvalidBindingFact;
+          } else {
+            size_t targetLabel = candidate.labels.size();
+            ZC_IF_SOME(nameValue, name) {
+              for (size_t offset = activeLabels.size(); offset > 0; --offset) {
+                const size_t active = activeLabels[offset - 1];
+                if (active >= candidate.labels.size()) {
+                  result = ControlOracleResult::InvalidBindingFact;
+                  break;
+                }
+                if (candidate.labels[active].name == nameValue) {
+                  targetLabel = active;
+                  break;
+                }
+              }
+            }
+            if (result == ControlOracleResult::Valid) {
+              ZC_IF_SOME(primaryValue, primary) {
+                if (targetLabel == candidate.labels.size()) {
+                  consumeFailure(node, factIndex, resolutionIndex,
+                                 BinderDiagnosticCode::UndefinedIdentifier, primaryValue,
+                                 BinderEmitterSite::LabelAndClosure);
+                } else if (!isBreak &&
+                           candidate.labels[targetLabel].target.value().is<BlockLabelTarget>()) {
+                  consumeFailure(node, factIndex, resolutionIndex,
+                                 BinderDiagnosticCode::ContinueTargetNotLoop, primaryValue,
+                                 BinderEmitterSite::BodyBinding);
+                } else {
+                  zc::Maybe<ScopeId> noScope;
+                  consumeSuccessful(node, syntax, isBreak, targetLabel, zc::mv(noScope), 0x01);
+                }
+              }
+            }
+          }
+        } else {
+          enum class ExpectedTarget : uint8_t { None, Loop, Match };
+          ExpectedTarget target = ExpectedTarget::None;
+          zc::Maybe<ScopeId> targetScope;
+          uint32_t scopeIndex = scopeByNode[node.value];
+          bool terminated = false;
+          for (size_t traversed = 0; traversed < arena.scopes.size(); ++traversed) {
+            if (scopeIndex >= arena.scopes.size()) {
+              result = ControlOracleResult::MalformedScopeGraph;
+              break;
+            }
+            const auto& scope = arena.scopes[scopeIndex];
+            if (scope.kind == ScopeKind::Loop) {
+              target = ExpectedTarget::Loop;
+              targetScope = scope.id;
+              terminated = true;
+              break;
+            }
+            if (scope.kind == ScopeKind::Match && isBreak) {
+              target = ExpectedTarget::Match;
+              targetScope = scope.id;
+              terminated = true;
+              break;
+            }
+            if (scope.kind == ScopeKind::Function || scope.kind == ScopeKind::Closure ||
+                scope.kind == ScopeKind::Module || scope.parent == zc::none) {
+              terminated = true;
+              break;
+            }
+            ZC_IF_SOME(parent, scope.parent) { scopeIndex = parent.index(); }
+          }
+          if (result == ControlOracleResult::Valid && !terminated) {
+            result = ControlOracleResult::MalformedScopeGraph;
+          } else if (result == ControlOracleResult::Valid && target != ExpectedTarget::None) {
+            consumeSuccessful(node, syntax, isBreak, candidate.labels.size(), zc::mv(targetScope),
+                              target == ExpectedTarget::Loop ? 0x02 : 0x03);
+          } else if (result == ControlOracleResult::Valid) {
+            auto primary = input.parsedModule().retainedTokenSpan(
+                node, 0,
+                isBreak ? ast::SyntaxKind::BreakKeyword : ast::SyntaxKind::ContinueKeyword);
+            if (primary == zc::none) {
+              result = ControlOracleResult::InvalidBindingFact;
+            } else {
+              ZC_IF_SOME(primaryValue, primary) {
+                consumeFailure(node, factIndex, resolutionIndex,
+                               isBreak ? BinderDiagnosticCode::BreakTargetNotFound
+                                       : BinderDiagnosticCode::ContinueTargetNotFound,
+                               primaryValue, BinderEmitterSite::BodyBinding);
+              }
+            }
+          }
+        }
+      }
+      if (result == ControlOracleResult::Valid) {
+        ast::visitChildNodeIds(tree, syntax, [&](ast::NodeId child) { self(self, child); });
+      }
+    }
+
+    if (resetsLabels) { activeLabels = zc::mv(savedLabels); }
+  };
+  visit(visit, tree.root());
   if (result != ControlOracleResult::Valid) { return result; }
   for (const auto consumed : consumedFacts) {
     if (!consumed) { return ControlOracleResult::InvalidBindingFact; }
   }
+  for (size_t index = 0; index < candidate.nodeBindings.size(); ++index) {
+    if (candidate.nodeBindings[index].value.is<BoundLabelResolution>() &&
+        !consumedResolutions[index]) {
+      return ControlOracleResult::InvalidBindingFact;
+    }
+  }
   for (size_t index = 0; index < candidate.sourceFailures.size(); ++index) {
     const auto diagnostic = candidate.sourceFailures[index].diagnostic;
-    if ((diagnostic == BinderDiagnosticCode::BreakTargetNotFound ||
-         diagnostic == BinderDiagnosticCode::ContinueTargetNotFound) &&
+    const auto emitterSite =
+        static_cast<uint8_t>(candidate.sourceFailures[index].emitterOrdinal >> 56);
+    const bool explicitLookup =
+        diagnostic == BinderDiagnosticCode::UndefinedIdentifier &&
+        emitterSite == static_cast<uint8_t>(BinderEmitterSite::LabelAndClosure);
+    if ((explicitLookup || diagnostic == BinderDiagnosticCode::BreakTargetNotFound ||
+         diagnostic == BinderDiagnosticCode::ContinueTargetNotFound ||
+         diagnostic == BinderDiagnosticCode::ContinueTargetNotLoop) &&
         !consumedFailures[index]) {
       return ControlOracleResult::InvalidBindingFact;
     }
@@ -1068,19 +1235,6 @@ bool encodeScopeId(identity::CanonicalEncoder& encoder, const VerifiedBindingInp
   input.moduleKey().encode(encoder);
   encoder.encodeUint32(id.index());
   return true;
-}
-
-bool encodeControlTarget(identity::CanonicalEncoder& encoder, const VerifiedBindingInput& input,
-                         const ControlTarget& target) {
-  if (target.is<LoopControlTarget>()) {
-    encoder.encodeUint8(0x02);
-    return encodeScopeId(encoder, input, target.get<LoopControlTarget>().scope);
-  }
-  if (target.is<MatchControlTarget>()) {
-    encoder.encodeUint8(0x03);
-    return encodeScopeId(encoder, input, target.get<MatchControlTarget>().scope);
-  }
-  return false;
 }
 
 bool encodeDefinition(identity::CanonicalEncoder& encoder, const VerifiedBindingInput& input,
@@ -1124,6 +1278,23 @@ bool encodeLabelTarget(identity::CanonicalEncoder& encoder, const VerifiedBindin
   }
   encoder.encodeUint8(0x02);
   return encodeScopeId(encoder, input, value.get<LoopLabelTarget>().scope);
+}
+
+bool encodeControlTarget(identity::CanonicalEncoder& encoder, const VerifiedBindingInput& input,
+                         const ControlTarget& target) {
+  if (target.is<ExplicitLabelControlTarget>()) {
+    encoder.encodeUint8(0x01);
+    return encodeLabelId(encoder, input, target.get<ExplicitLabelControlTarget>().label);
+  }
+  if (target.is<LoopControlTarget>()) {
+    encoder.encodeUint8(0x02);
+    return encodeScopeId(encoder, input, target.get<LoopControlTarget>().scope);
+  }
+  if (target.is<MatchControlTarget>()) {
+    encoder.encodeUint8(0x03);
+    return encodeScopeId(encoder, input, target.get<MatchControlTarget>().scope);
+  }
+  return false;
 }
 
 bool encodeLabelFact(identity::CanonicalEncoder& encoder, const VerifiedBindingInput& input,
@@ -1336,6 +1507,13 @@ zc::Maybe<zc::Array<uint8_t>> encodeCandidate(const VerifiedBindingInput& input,
       }
       encoder.encodeUint8(static_cast<uint8_t>(bound.nameSpace));
       encoder.encodeUint8(static_cast<uint8_t>(bound.origin));
+    } else if (value.is<BoundLabelResolution>()) {
+      const auto& bound = value.get<BoundLabelResolution>();
+      encoder.encodeUint8(0x02);
+      if (!encodeLabelId(encoder, input, bound.label) ||
+          !encodeLabelTarget(encoder, input, bound.target)) {
+        return zc::none;
+      }
     } else if (value.is<FailedBindingResolution>()) {
       encoder.encodeUint8(0x04);
       encoder.encodeUint64(value.get<FailedBindingResolution>().failureIndex);
@@ -1647,11 +1825,12 @@ BindingCandidateResult BindingBuilder::buildCandidate(
     return zc::mv(labelResult.get<BinderInvariantFact>());
   }
   auto labels = zc::mv(labelResult.get<LabelFactsCandidate>());
-  auto controlResult = ControlTransferBuilder::build(input, arena);
+  auto controlResult = ControlTransferBuilder::build(input, arena, labels);
   if (!controlResult.is<ControlTransferCandidate>()) {
     return zc::mv(controlResult.get<BinderInvariantFact>());
   }
   auto control = zc::mv(controlResult.get<ControlTransferCandidate>());
+  for (auto& binding : control.nodeBindings) { body.nodeBindings.add(zc::mv(binding)); }
 
   auto schemaOrdinalsResult = schemaPreorderOrdinals(tree);
   if (schemaOrdinalsResult == zc::none) {
@@ -1696,7 +1875,7 @@ BindingCandidateResult BindingBuilder::buildCandidate(
     failureOrder.insert(
         PendingFailureOrderKey{controlFailure.source.byteStart(), controlFailure.source.byteEnd(),
                                static_cast<uint16_t>(controlFailure.diagnostic),
-                               static_cast<uint8_t>(BinderEmitterSite::BodyBinding),
+                               static_cast<uint8_t>(controlFailure.emitterSite),
                                controlFailure.schemaPreorderOrdinal, sequence++},
         PendingFailureRef{PendingFailureKind::ControlTransfer, index});
   }
@@ -1773,11 +1952,27 @@ BindingCandidateResult BindingBuilder::buildCandidate(
 
     if (ordered.value.kind == PendingFailureKind::ControlTransfer) {
       const auto& controlFailure = control.failures[ordered.value.index];
+      auto primaryLocation = input.parsedModule().sourceLocFor(controlFailure.source);
+      if (primaryLocation == zc::none) {
+        return failure(input, BinderInvariantKind::InvalidBindingFact, controlFailure.emitterSite,
+                       schemaOrdinal);
+      }
       ZC_IF_SOME(engine, diagnostics) {
-        if (!BindingDiagnosticAdapter::emitControlTransferFailure(
-                engine, controlFailure.diagnostic,
-                tree.node(controlFailure.node).range.getStart())) {
-          return bodyBuilderFailure(input, BinderInvariantKind::InvalidBindingFact, schemaOrdinal);
+        bool emitted = false;
+        ZC_IF_SOME(primary, primaryLocation) {
+          ZC_IF_SOME(label, controlFailure.label) {
+            emitted = BindingDiagnosticAdapter::emitLabelLookupFailure(
+                engine, controlFailure.diagnostic, primary,
+                VerifiedIdentifierArgument::from(label));
+          }
+          else {
+            emitted = BindingDiagnosticAdapter::emitControlTransferFailure(
+                engine, controlFailure.diagnostic, primary);
+          }
+        }
+        if (!emitted) {
+          return failure(input, BinderInvariantKind::InvalidBindingFact, controlFailure.emitterSite,
+                         schemaOrdinal);
         }
       }
       zc::Vector<BindingDiagnosticNoteRef> noNotes;

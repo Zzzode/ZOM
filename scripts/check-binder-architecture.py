@@ -580,14 +580,17 @@ def check_label_fact_contract(files: dict[Path, str], errors: list[str]) -> None
                 "static LabelOwner callable(identity::DefId value);",
                 "LabelOwner clone() const;",
             ),
+            ("LabelId", "LabelBuilder"),
         ),
         (
             "LabelId",
             (
                 "LabelId(LabelOwner&& owner, uint32_t index) noexcept;",
+                "LabelId clone() const;",
                 "LabelOwner ownerValue;",
                 "uint32_t indexValue;",
             ),
+            ("LabelBuilder", "ControlTransferBuilder"),
         ),
         (
             "LabelTarget",
@@ -595,10 +598,12 @@ def check_label_fact_contract(files: dict[Path, str], errors: list[str]) -> None
                 "explicit LabelTarget(LabelTargetValue&& value) noexcept;",
                 "static LabelTarget block(ScopeId scope);",
                 "static LabelTarget loop(ScopeId scope);",
+                "LabelTarget clone() const;",
             ),
+            ("LabelBuilder", "ControlTransferBuilder"),
         ),
     )
-    for name, private_markers in sealed_types:
+    for name, private_markers, expected_friends in sealed_types:
         body = type_body(metadata, name)
         private = body.find("private:")
         if not body or private < 0:
@@ -611,8 +616,8 @@ def check_label_fact_contract(files: dict[Path, str], errors: list[str]) -> None
             if required not in body[private:]:
                 errors.append(f"{METADATA_HEADER}: incomplete sealed {name}: {required}")
         friends = re.findall(r"friend class\s+([A-Za-z_][A-Za-z0-9_]*);", body)
-        if friends != ["LabelBuilder"]:
-            errors.append(f"{METADATA_HEADER}: {name} construction authority is not sole LabelBuilder")
+        if tuple(friends) != expected_friends:
+            errors.append(f"{METADATA_HEADER}: {name} construction authority is not sealed")
 
     for required in (
         "using LabelOwnerValue = zc::OneOf<ModuleLabelOwner, CallableLabelOwner>;",
@@ -652,7 +657,7 @@ def check_label_fact_contract(files: dict[Path, str], errors: list[str]) -> None
 
     internal_include = '"zomlang/compiler/binder/internal/label-facts.h"'
     for path, text in files.items():
-        if path in {LABEL_HEADER, LABEL_SOURCE, VERIFIER_SOURCE} or TEST_DIR in path.parents:
+        if path in {LABEL_HEADER, LABEL_SOURCE, CONTROL_HEADER, VERIFIER_SOURCE} or TEST_DIR in path.parents:
             continue
         if internal_include in text or re.search(r"\bLabelBuilder::build\(", text):
             errors.append(f"{path}: label internal authority escaped")
@@ -711,7 +716,7 @@ def check_label_fact_contract(files: dict[Path, str], errors: list[str]) -> None
         "BindingSkeletonBuilder::build(input, arena)",
         "BodyBindingBuilder::build(input, arena, skeleton)",
         "LabelBuilder::build(input, arena)",
-        "ControlTransferBuilder::build(input, arena)",
+        "ControlTransferBuilder::build(input, arena, labels)",
         "zc::TreeMap<PendingFailureOrderKey, PendingFailureRef>",
     )
     pipeline_positions = [pipeline.find(marker) for marker in pipeline_markers]
@@ -831,8 +836,8 @@ def check_label_fact_contract(files: dict[Path, str], errors: list[str]) -> None
         "fact.owner.value()",
         "owner.is<ModuleLabelOwner>()",
         "input.definitions().definitionKey(callable)",
-        "fact.target.value()",
-        "scope.module() != input.module() || !scope.belongsTo(input.semanticContext())",
+        "labelIdHasForeignContext(input, fact.identity)",
+        "labelTargetHasForeignContext(input, fact.target)",
     ):
         if required not in foreign_check:
             errors.append(f"{VERIFIER_SOURCE}: label foreign-context check is incomplete: {required}")
@@ -889,29 +894,11 @@ def check_label_fact_contract(files: dict[Path, str], errors: list[str]) -> None
         if required not in verifier:
             errors.append(f"{VERIFIER_SOURCE}: independent label verification is disconnected: {required}")
 
-    if "syntax.kind == ast::SyntaxKind::LabeledStatement" in control:
-        errors.append(f"{CONTROL_SOURCE}: non-empty label declarations remain fail-closed")
-    for required in (
-        "ast::kBreakStmtLabelWord",
-        "ast::kContinueStatementLabelWord",
-        "if (label != 0)",
-        "BinderInvariantKind::MissingRequiredResolution",
-        "BinderEmitterSite::LabelAndClosure",
-    ):
-        if required not in control:
-            errors.append(f"{CONTROL_SOURCE}: explicit label references do not fail closed: {required}")
     for path in (AST_TREE_HEADER, AST_TREE_SOURCE):
         text = files.get(path, "")
         for forbidden in ("setLabelTarget(", "BindingMetadata::labelTarget(", "labelTargets"):
             if forbidden in text:
                 errors.append(f"{path}: obsolete ast label target side table remains: {forbidden}")
-    for path, text in files.items():
-        for forbidden in ("BoundLabel", "ExplicitLabelControlTarget", "ContinueTargetNotLoop"):
-            if forbidden in text:
-                errors.append(f"{path}: premature explicit-label contract is forbidden: {forbidden}")
-        if "DIAG(3022," in text:
-            errors.append(f"{path}: premature ZOM3022 registration is forbidden")
-
     for marker in (
         "LabelFacts.ResolvesAllTargetsNestedLabelsAndPreservesControlTransfers",
         "LabelFacts.AllocatesModuleAndCallableOwnerIndicesIndependently",
@@ -921,13 +908,14 @@ def check_label_fact_contract(files: dict[Path, str], errors: list[str]) -> None
         "BindingVerifier.RejectsMissingAdditionalReorderedAndMutatedLabels",
         "BindingVerifier.RejectsForeignLabelOwnersAndTargets",
         "BindingVerifier.RejectsMalformedLabelDuplicateFailuresAndDeclarationBindings",
-        "ControlTransfer.FailsClosedForExplicitLabels",
+        "ControlTransfer.ResolvesExplicitBlockLoopAndNestedLabels",
     ):
         if marker not in tests:
             errors.append(f"{TEST_SOURCE}: missing label-fact evidence: {marker}")
 
 
 def check_control_transfer_contract(files: dict[Path, str], errors: list[str]) -> None:
+    metadata = files.get(METADATA_HEADER, "")
     header = files.get(CONTROL_HEADER, "")
     source = files.get(CONTROL_SOURCE, "")
     verifier = files.get(VERIFIER_SOURCE, "")
@@ -937,18 +925,26 @@ def check_control_transfer_contract(files: dict[Path, str], errors: list[str]) -
     definitions = files.get(DIAGNOSTIC_DEFINITIONS, "")
 
     for required in (
-        '#include "zomlang/compiler/binder/internal/scope-arena.h"',
+        '#include "zomlang/compiler/binder/internal/label-facts.h"',
         "struct ControlTransferFailureFact final",
         "BinderDiagnosticCode diagnostic;",
+        "ast::NodeId node;",
         "identity::SourceSpan source;",
+        "zc::Maybe<identity::SemanticIdentifier> label;",
+        "BinderEmitterSite emitterSite;",
         "uint32_t schemaPreorderOrdinal;",
         "struct ControlTransferCandidate final",
+        "zc::Vector<BindingResolution> nodeBindings;",
         "zc::Vector<ControlTransferFact> controlTransfers;",
         "zc::Vector<ControlTransferFailureFact> failures;",
         "using ControlTransferBuildResult =",
         "class ControlTransferBuilder final",
         "build(const VerifiedBindingInput& input,",
-        "const ScopeArenaCandidate& arena)",
+        "const ScopeArenaCandidate& arena,",
+        "const LabelFactsCandidate& labels);",
+        "class Cursor;",
+        "static LabelId cloneLabelId(const LabelId& value);",
+        "static LabelTarget cloneLabelTarget(const LabelTarget& value);",
     ):
         if required not in header:
             errors.append(f"{CONTROL_HEADER}: incomplete control-transfer authority: {required}")
@@ -957,9 +953,27 @@ def check_control_transfer_contract(files: dict[Path, str], errors: list[str]) -
             errors.append(f"{CONTROL_SOURCE}: forbidden control-transfer dependency: {forbidden}")
 
     for required in (
-        "ast::visitTreePreOrder(tree, tree.root()",
+        "visit(tree.root());",
+        "zc::Vector<size_t> activeLabels;",
+        "isCallableBoundary(node)",
+        "return kind == ScopeKind::Function || kind == ScopeKind::Closure;",
+        "syntax.kind == ast::SyntaxKind::LabeledStatement",
+        "ast::kLabeledStatementStatementWord",
+        "labelForStatement(statement)",
+        "activeLabels.add(index);",
+        "activeLabels.removeLast();",
         "ast::kBreakStmtLabelWord",
         "ast::kContinueStatementLabelWord",
+        "if (label == 0)",
+        "resolveLabel(node, isBreak, ast::IdentId(label))",
+        "retainedTokenSpan(node, 1, ast::SyntaxKind::Identifier)",
+        "identity::SemanticIdentifier::fromSource(tree.ident(label))",
+        "for (size_t offset = activeLabels.size(); offset > 0; --offset)",
+        "BinderDiagnosticCode::UndefinedIdentifier",
+        "BinderEmitterSite::LabelAndClosure",
+        "BinderDiagnosticCode::ContinueTargetNotLoop",
+        "BindingResolutionValue(BoundLabelResolution{",
+        "ExplicitLabelControlTarget{ControlTransferBuilder::cloneLabelId(fact.identity)}",
         "input.parsedModule().spanFor(tree.node(node).range)",
         "input.parsedModule().retainedTokenSpan(",
         "node, 0,",
@@ -977,39 +991,59 @@ def check_control_transfer_contract(files: dict[Path, str], errors: list[str]) -
         "candidate.controlTransfers = zc::mv(sorted);",
     ):
         if required not in source:
-            errors.append(f"{CONTROL_SOURCE}: incomplete unlabeled control semantics: {required}")
+            errors.append(f"{CONTROL_SOURCE}: incomplete control-transfer semantics: {required}")
 
-    body_build = verifier.find("BodyBindingBuilder::build(input, arena, skeleton)")
-    control_build = verifier.find("ControlTransferBuilder::build(input, arena)")
-    failure_merge = verifier.find("zc::TreeMap<PendingFailureOrderKey, PendingFailureRef>")
+    for required in (
+        "struct ExplicitLabelControlTarget final",
+        "LabelId label;",
+        "using ControlTarget = zc::OneOf<ExplicitLabelControlTarget, LoopControlTarget, MatchControlTarget>;",
+        "struct BoundLabelResolution final",
+        "LabelTarget target;",
+        "using BindingResolutionValue = zc::OneOf<BoundNameResolution, BoundLabelResolution,",
+        "ContinueTargetNotLoop = 3022",
+    ):
+        if required not in metadata:
+            errors.append(f"{METADATA_HEADER}: incomplete explicit-label result algebra: {required}")
+
+    pipeline = function_body(verifier, "BindingCandidateResult BindingBuilder::buildCandidate(")
+    body_build = pipeline.find("BodyBindingBuilder::build(input, arena, skeleton)")
+    label_build = pipeline.find("LabelBuilder::build(input, arena)")
+    control_build = pipeline.find("ControlTransferBuilder::build(input, arena, labels)")
+    failure_merge = pipeline.find("zc::TreeMap<PendingFailureOrderKey, PendingFailureRef>")
     if (
         body_build < 0
+        or label_build < 0
         or control_build < 0
         or failure_merge < 0
-        or not body_build < control_build < failure_merge
+        or not body_build < label_build < control_build < failure_merge
     ):
         errors.append(
-            f"{VERIFIER_SOURCE}: control transfer must run after body binding and before "
-            "failure merge"
+            f"{VERIFIER_SOURCE}: control transfer must consume labels after body binding and "
+            "before failure merge"
         )
     for required in (
         "enum class PendingFailureKind : uint8_t { Duplicate, BodyLookup, LabelDuplicate, ControlTransfer };",
         "controlResult.is<ControlTransferCandidate>()",
+        "for (auto& binding : control.nodeBindings)",
+        "body.nodeBindings.add(zc::mv(binding));",
         "control.failures.size()",
         "PendingFailureRef{PendingFailureKind::ControlTransfer, index}",
-        "static_cast<uint8_t>(BinderEmitterSite::BodyBinding)",
+        "static_cast<uint8_t>(controlFailure.emitterSite)",
         "ordered.value.kind == PendingFailureKind::ControlTransfer",
+        "input.parsedModule().sourceLocFor(controlFailure.source)",
+        "BindingDiagnosticAdapter::emitLabelLookupFailure(",
         "BindingDiagnosticAdapter::emitControlTransferFailure(",
         "BindingResolutionValue(FailedBindingResolution{failureIndex})",
+        "candidate.nodeBindings = zc::mv(nodeBindings)",
         "candidate.controlTransfers = zc::mv(control.controlTransfers)",
     ):
         if required not in verifier:
             errors.append(f"{VERIFIER_SOURCE}: control failure merge is disconnected: {required}")
     for required in (
-        "static_cast<uint8_t>(BinderEmitterSite::BodyBinding),\n"
-        "                               controlFailure.schemaPreorderOrdinal, sequence++}",
-        "controlFailure.diagnostic,\n"
-        "                tree.node(controlFailure.node).range.getStart()",
+        "controlFailure.source.byteStart(), controlFailure.source.byteEnd()",
+        "controlFailure.schemaPreorderOrdinal, sequence++",
+        "ZC_IF_SOME(label, controlFailure.label)",
+        "VerifiedIdentifierArgument::from(label)",
         "BindingFailureRef{controlFailure.diagnostic, controlFailure.source.clone(),\n"
         "                                           emitterOrdinal, zc::mv(noNotes)}",
         "controlFailure.node, BindingResolutionValue(FailedBindingResolution{failureIndex})",
@@ -1021,6 +1055,9 @@ def check_control_transfer_contract(files: dict[Path, str], errors: list[str]) -
 
     target_codec = function_body(verifier, "bool encodeControlTarget(")
     for required in (
+        "target.is<ExplicitLabelControlTarget>()",
+        "encoder.encodeUint8(0x01);",
+        "encodeLabelId(encoder, input, target.get<ExplicitLabelControlTarget>().label)",
         "target.is<LoopControlTarget>()",
         "encoder.encodeUint8(0x02);",
         "target.get<LoopControlTarget>().scope",
@@ -1030,24 +1067,47 @@ def check_control_transfer_contract(files: dict[Path, str], errors: list[str]) -
     ):
         if required not in target_codec:
             errors.append(f"{VERIFIER_SOURCE}: incomplete control target codec: {required}")
-    control_fact_codec = (
-        "encoder.encodeSequenceSize(candidate.controlTransfers.size());\n"
-        "  for (const auto& fact : candidate.controlTransfers) {\n"
-        "    encoder.encodeUint32(fact.node.value);\n"
-        "    encoder.encodeUint8(static_cast<uint8_t>(fact.kind));\n"
-        "    if (!encodeControlTarget(encoder, input, fact.target)) { return zc::none; }\n"
-        "    fact.source.encode(encoder);\n"
-        "  }"
+    candidate_codec = function_body(verifier, "zc::Maybe<zc::Array<uint8_t>> encodeCandidate(")
+    for required in (
+        "value.is<BoundLabelResolution>()",
+        "encoder.encodeUint8(0x02);",
+        "encodeLabelId(encoder, input, bound.label)",
+        "encodeLabelTarget(encoder, input, bound.target)",
+    ):
+        if required not in candidate_codec:
+            errors.append(f"{VERIFIER_SOURCE}: incomplete explicit control codec: {required}")
+    control_codec_start = candidate_codec.find(
+        "encoder.encodeSequenceSize(candidate.controlTransfers.size());"
     )
-    if control_fact_codec not in verifier:
-        errors.append(
-            f"{VERIFIER_SOURCE}: control fact codec must cover node, kind, target, and source"
-        )
+    control_codec_end = candidate_codec.find(
+        "encoder.encodeSequenceSize(candidate.shadowTargets.size());", control_codec_start
+    )
+    control_codec = (
+        candidate_codec[control_codec_start:control_codec_end]
+        if control_codec_start >= 0 and control_codec_end > control_codec_start
+        else ""
+    )
+    for required in (
+        "encoder.encodeSequenceSize(candidate.controlTransfers.size());",
+        "for (const auto& fact : candidate.controlTransfers)",
+        "encoder.encodeUint32(fact.node.value);",
+        "encoder.encodeUint8(static_cast<uint8_t>(fact.kind));",
+        "encodeControlTarget(encoder, input, fact.target)",
+        "fact.source.encode(encoder);",
+    ):
+        if required not in control_codec:
+            errors.append(f"{VERIFIER_SOURCE}: incomplete control fact codec: {required}")
 
     foreign_check = function_body(verifier, "bool hasForeignContext(")
     for required in (
+        "for (const auto& resolution : candidate.nodeBindings)",
+        "value.is<BoundLabelResolution>()",
+        "labelIdHasForeignContext(input, bound.label)",
+        "labelTargetHasForeignContext(input, bound.target)",
         "for (const auto& fact : candidate.controlTransfers)",
         "const auto& target = fact.target;",
+        "target.is<ExplicitLabelControlTarget>()",
+        "labelIdHasForeignContext(input, target.get<ExplicitLabelControlTarget>().label)",
         "target.is<LoopControlTarget>()",
         "target.get<LoopControlTarget>().scope",
         "target.is<MatchControlTarget>()",
@@ -1082,11 +1142,27 @@ def check_control_transfer_contract(files: dict[Path, str], errors: list[str]) -
             errors.append(f"{VERIFIER_SOURCE}: control-transfer oracle reuses builder authority")
         for required in (
             "ScopeArenaBuilder::build(input)",
-            "ast::visitTreePreOrder(tree, tree.root()",
+            "zc::Vector<size_t> activeLabels;",
+            "auto visit = [&](auto& self, ast::NodeId node) -> void",
+            "scopeKind == ScopeKind::Function || scopeKind == ScopeKind::Closure",
+            "syntax.kind == ast::SyntaxKind::LabeledStatement",
+            "ast::kLabeledStatementStatementWord",
+            "activeLabels.add(labelIndex);",
+            "activeLabels.removeLast();",
+            "if (label != 0)",
+            "identity::SemanticIdentifier::fromSource(tree.ident(ast::IdentId(label)))",
+            "retainedTokenSpan(node, 1, ast::SyntaxKind::Identifier)",
+            "for (size_t offset = activeLabels.size(); offset > 0; --offset)",
+            "BinderDiagnosticCode::UndefinedIdentifier",
+            "BinderDiagnosticCode::ContinueTargetNotLoop",
+            "BinderEmitterSite::LabelAndClosure",
+            "fact.target.is<ExplicitLabelControlTarget>()",
+            "resolution.value.is<BoundLabelResolution>()",
+            "bound.label != expected.identity || bound.target != expected.target",
             "scope.kind == ScopeKind::Loop",
             "scope.kind == ScopeKind::Match && isBreak",
             "scope.kind == ScopeKind::Function || scope.kind == ScopeKind::Closure ||",
-            "fact.kind != expectedKind",
+            "fact.kind != (isBreak ? ControlTransferKind::Break : ControlTransferKind::Continue)",
             "!sameSpan(fact.source, source)",
             "fact.target.is<LoopControlTarget>()",
             "fact.target.is<MatchControlTarget>()",
@@ -1094,7 +1170,7 @@ def check_control_transfer_contract(files: dict[Path, str], errors: list[str]) -
             "factIndex != kMissing",
             "resolutionIndex == kMissing",
             "resolution.value.is<FailedBindingResolution>()",
-            "failureFact.diagnostic != expectedDiagnostic",
+            "failureFact.diagnostic != diagnostic",
             "retainedTokenSpan(",
             "node, 0,",
             "BinderEmitterSite::BodyBinding",
@@ -1102,18 +1178,27 @@ def check_control_transfer_contract(files: dict[Path, str], errors: list[str]) -
             "localOrdinal != 0",
             "consumedFacts",
             "consumedFailures",
+            "consumedResolutions",
         ):
             if required not in oracle:
                 errors.append(
                     f"{VERIFIER_SOURCE}: incomplete independent control-transfer oracle: {required}"
                 )
+    for required in (
+        "const auto expectedControl = verifyControlTransferFacts(input, expected);",
+        "const auto candidateControl = verifyControlTransferFacts(input, candidate);",
+    ):
+        if required not in verifier:
+            errors.append(f"{VERIFIER_SOURCE}: independent control verification is disconnected: {required}")
 
     census = function_body(verifier, "bool hasCompleteLexicalBindingSites(")
     for required in (
         "requiredNamespaces[binding.node.value] == 0",
         "nodeKind != ast::SyntaxKind::BreakStmt",
         "nodeKind != ast::SyntaxKind::ContinueStatement",
-        "!binding.value.is<FailedBindingResolution>()",
+        "binding.value.is<BoundLabelResolution>()",
+        "binding.value.is<FailedBindingResolution>()",
+        "if (label == 0) { return false; }",
         "published[binding.node.value] = true;",
         "continue;",
     ):
@@ -1125,19 +1210,31 @@ def check_control_transfer_contract(files: dict[Path, str], errors: list[str]) -
     if (
         "emitControlTransferFailure(" not in adapter_header
         or "emitControlTransferFailure(" not in adapter_source
+        or "emitLabelLookupFailure(" not in adapter_header
+        or "emitLabelLookupFailure(" not in adapter_source
     ):
-        errors.append("binding diagnostic adapter lacks control projection")
+        errors.append("binding diagnostic adapter lacks explicit control projection")
     for required in (
         "BinderDiagnosticCode::BreakTargetNotFound",
         "BinderDiagnosticCode::ContinueTargetNotFound",
+        "BinderDiagnosticCode::ContinueTargetNotLoop",
     ):
         if required not in adapter_source:
             errors.append(f"{DIAGNOSTIC_ADAPTER_SOURCE}: missing control projection: {required}")
+    label_projection = function_body(adapter_source, "bool BindingDiagnosticAdapter::emitLabelLookupFailure(")
+    for required in (
+        "BinderDiagnosticCode::UndefinedIdentifier",
+        "DiagID::UndefinedIdentifier",
+        "zc::mv(identifier).take()",
+    ):
+        if required not in label_projection:
+            errors.append(f"{DIAGNOSTIC_ADAPTER_SOURCE}: missing label lookup projection: {required}")
     for required in (
         'DIAG(3020, BreakTargetNotFound, kError,\n'
         '     "break requires an enclosing loop, match, or label", 0)',
         'DIAG(3021, ContinueTargetNotFound, kError,\n'
         '     "continue requires an enclosing loop or loop label", 0)',
+        'DIAG(3022, ContinueTargetNotLoop, kError, "continue label must name a loop", 0)',
     ):
         if required not in definitions:
             errors.append(
@@ -1150,7 +1247,16 @@ def check_control_transfer_contract(files: dict[Path, str], errors: list[str]) -
         "ControlTransfer.SelectsInnerLoopInsideMatch",
         "ControlTransfer.StopsAtFunctionAndClosureBoundaries",
         "ControlTransfer.OrdersExactKeywordFailures",
-        "ControlTransfer.FailsClosedForExplicitLabels",
+        "ControlTransfer.ResolvesExplicitBlockLoopAndNestedLabels",
+        "ControlTransfer.ResolvesCanonicalEscapedLabels",
+        "ControlTransfer.ResolvesActiveDuplicateLabelsAlongsideDiagnostics",
+        "ControlTransfer.ResolvesModuleOwnedLabels",
+        "ControlTransfer.RejectsInactiveAndCrossClosureLabelsWithoutFallback",
+        "ControlTransfer.RejectsContinueToBlockLabelWithoutLoopFallback",
+        "ControlTransfer.OrdersMixedLabelAndBodyFailures",
+        "BindingVerifier.RejectsMalformedExplicitLabelSuccessPairs",
+        "BindingVerifier.RejectsForeignExplicitLabelIdentities",
+        "BindingVerifier.RejectsMalformedExplicitLabelFailures",
         "BindingVerifier.RejectsMissingAdditionalAndReorderedControlTransfers",
         "BindingVerifier.RejectsInvalidControlTargetsAndSources",
         "BindingVerifier.RejectsForeignControlTargets",
@@ -1160,6 +1266,7 @@ def check_control_transfer_contract(files: dict[Path, str], errors: list[str]) -
             errors.append(f"{TEST_SOURCE}: missing control-transfer evidence: {marker}")
     for marker in (
         "BindingDiagnosticAdapter.EmitsZeroArgumentControlTransferFailures",
+        "BindingDiagnosticAdapter.EmitsTypedMissingLabelFailure",
         "BindingDiagnosticAdapter.RejectsUnsupportedControlTransferCodes",
     ):
         if marker not in files.get(DIAGNOSTIC_ADAPTER_TEST, ""):
@@ -1167,8 +1274,6 @@ def check_control_transfer_contract(files: dict[Path, str], errors: list[str]) -
 
     internal_include = '"zomlang/compiler/binder/internal/control-transfer.h"'
     for path, text in files.items():
-        if "ContinueTargetNotLoop" in text:
-            errors.append(f"{path}: obsolete ContinueTargetNotLoop contract is forbidden")
         if path in {CONTROL_HEADER, CONTROL_SOURCE, VERIFIER_SOURCE} or TEST_DIR in path.parents:
             continue
         if internal_include in text or re.search(r"\bControlTransferBuilder::build\(", text):
@@ -1833,8 +1938,8 @@ def self_test(files: dict[Path, str]) -> list[str]:
         (
             "shared label construction authority",
             METADATA_HEADER,
-            "LabelOwnerValue valueValue;\n  friend class LabelBuilder;",
-            "LabelOwnerValue valueValue;\n  friend class BindingBuilder;",
+            "friend class LabelId;\n  friend class LabelBuilder;",
+            "friend class LabelId;\n  friend class BindingBuilder;",
         ),
         (
             "missing label facts wiring",
@@ -1973,22 +2078,22 @@ def self_test(files: dict[Path, str]) -> list[str]:
             "\nvoid setLabelTarget(ast::NodeId node, ast::NodeId target);\n",
         ),
         (
-            "explicit label references accepted prematurely",
+            "reversed explicit label branch",
             CONTROL_SOURCE,
-            "if (label != 0)",
             "if (label == 0)",
+            "if (label != 0)",
         ),
         (
-            "premature bound label resolution",
+            "missing bound label resolution algebra",
             METADATA_HEADER,
-            "",
-            "\nstruct BoundLabel final {};\n",
+            "struct BoundLabelResolution final",
+            "struct MissingBoundLabelResolution final",
         ),
         (
-            "premature ZOM3022 registration",
+            "unstable ZOM3022 registration",
             DIAGNOSTIC_DEFINITIONS,
-            "",
-            '\nDIAG(3022, ContinueTargetNotLoop, kError, "continue label failed", 0)\n',
+            'DIAG(3022, ContinueTargetNotLoop, kError, "continue label must name a loop", 0)',
+            'DIAG(3022, ContinueTargetNotLoop, kError, "continue label failed", 0)',
         ),
         (
             "missing label behavior evidence",
@@ -2003,9 +2108,9 @@ def self_test(files: dict[Path, str]) -> list[str]:
             "${CMAKE_CURRENT_SOURCE_DIR}/missing-control-transfer.cc",
         ),
         (
-            "missing control scope dependency",
+            "missing control label dependency",
             CONTROL_HEADER,
-            '#include "zomlang/compiler/binder/internal/scope-arena.h"',
+            '#include "zomlang/compiler/binder/internal/label-facts.h"',
             '#include "zomlang/compiler/binder/binding-metadata.h"',
         ),
         (
@@ -2027,23 +2132,46 @@ def self_test(files: dict[Path, str]) -> list[str]:
             "scope.kind == ScopeKind::Function ||",
         ),
         (
+            "missing explicit label callable reset",
+            CONTROL_SOURCE,
+            "return kind == ScopeKind::Function || kind == ScopeKind::Closure;",
+            "return kind == ScopeKind::Function;",
+        ),
+        (
+            "forward explicit label lookup",
+            CONTROL_SOURCE,
+            "for (size_t offset = activeLabels.size(); offset > 0; --offset)",
+            "for (size_t offset = 0; offset < activeLabels.size(); ++offset)",
+        ),
+        (
+            "wrong explicit label token ordinal",
+            CONTROL_SOURCE,
+            "retainedTokenSpan(node, 1, ast::SyntaxKind::Identifier)",
+            "retainedTokenSpan(node, 0, ast::SyntaxKind::Identifier)",
+        ),
+        (
+            "missing explicit bound label pairing",
+            CONTROL_SOURCE,
+            "BindingResolutionValue(BoundLabelResolution{",
+            "BindingResolutionValue(FailedBindingResolution{",
+        ),
+        (
             "missing exact control keyword provenance",
             CONTROL_SOURCE,
             "input.parsedModule().retainedTokenSpan(",
             "input.parsedModule().spanFor(",
         ),
         (
-            "restored non-empty label rejection",
+            "missing labeled statement traversal",
             CONTROL_SOURCE,
-            "if (syntax.kind != ast::SyntaxKind::BreakStmt &&",
-            "if (syntax.kind == ast::SyntaxKind::LabeledStatement) { return; }\n"
-            "      if (syntax.kind != ast::SyntaxKind::BreakStmt &&",
+            "syntax.kind == ast::SyntaxKind::LabeledStatement",
+            "syntax.kind == ast::SyntaxKind::EmptyStatement",
         ),
         (
             "disconnected control transfer cutover",
             VERIFIER_SOURCE,
-            "ControlTransferBuilder::build(input, arena)",
-            "disconnectedControlTransfer(input, arena)",
+            "ControlTransferBuilder::build(input, arena, labels)",
+            "disconnectedControlTransfer(input, arena, labels)",
         ),
         (
             "missing control failure kind",
@@ -2058,12 +2186,16 @@ def self_test(files: dict[Path, str]) -> list[str]:
             "disconnectedControlTransferFailure(",
         ),
         (
+            "disconnected explicit label diagnostic merge",
+            VERIFIER_SOURCE,
+            "BindingDiagnosticAdapter::emitLabelLookupFailure(",
+            "disconnectedLabelLookupFailure(",
+        ),
+        (
             "wrong control failure emitter site",
             VERIFIER_SOURCE,
-            "static_cast<uint8_t>(BinderEmitterSite::BodyBinding),\n"
-            "                               controlFailure.schemaPreorderOrdinal, sequence++}",
-            "static_cast<uint8_t>(BinderEmitterSite::LabelAndClosure),\n"
-            "                               controlFailure.schemaPreorderOrdinal, sequence++}",
+            "static_cast<uint8_t>(controlFailure.emitterSite)",
+            "static_cast<uint8_t>(BinderEmitterSite::BodyBinding)",
         ),
         (
             "missing control failed resolution",
@@ -2076,6 +2208,14 @@ def self_test(files: dict[Path, str]) -> list[str]:
             VERIFIER_SOURCE,
             "encoder.encodeUint8(0x02);",
             "encoder.encodeUint8(0x04);",
+        ),
+        (
+            "wrong explicit control target tag",
+            VERIFIER_SOURCE,
+            "if (target.is<ExplicitLabelControlTarget>()) {\n"
+            "    encoder.encodeUint8(0x01);",
+            "if (target.is<ExplicitLabelControlTarget>()) {\n"
+            "    encoder.encodeUint8(0x04);",
         ),
         (
             "missing control fact node codec",
@@ -2157,10 +2297,22 @@ def self_test(files: dict[Path, str]) -> list[str]:
             "scope.kind == ScopeKind::Function ||",
         ),
         (
+            "control oracle drops explicit label boundary",
+            VERIFIER_SOURCE,
+            "scopeKind == ScopeKind::Function || scopeKind == ScopeKind::Closure",
+            "scopeKind == ScopeKind::Function",
+        ),
+        (
+            "control oracle drops bound label pairing",
+            VERIFIER_SOURCE,
+            "resolution.value.is<BoundLabelResolution>()",
+            "resolution.value.is<FailedBindingResolution>()",
+        ),
+        (
             "control oracle drops exact failure primary",
             VERIFIER_SOURCE,
-            "auto expectedPrimary = input.parsedModule().retainedTokenSpan(",
-            "auto expectedPrimary = input.parsedModule().spanFor(",
+            "auto primary =\n              input.parsedModule().retainedTokenSpan(node, 1, ast::SyntaxKind::Identifier);",
+            "auto primary = input.parsedModule().spanFor(tree.node(node).range);",
         ),
         (
             "missing control failure XOR census",
@@ -2173,6 +2325,36 @@ def self_test(files: dict[Path, str]) -> list[str]:
             TEST_SOURCE,
             "ControlTransfer.BreakTargetsMatchWhileContinueSkipsMatch",
             "ControlTransfer.MissingMatchPartitionEvidence",
+        ),
+        (
+            "missing explicit label failure evidence",
+            TEST_SOURCE,
+            "ControlTransfer.RejectsInactiveAndCrossClosureLabelsWithoutFallback",
+            "ControlTransfer.MissingInactiveLabelEvidence",
+        ),
+        (
+            "missing canonical explicit label evidence",
+            TEST_SOURCE,
+            "ControlTransfer.ResolvesCanonicalEscapedLabels",
+            "ControlTransfer.MissingCanonicalEscapedLabelEvidence",
+        ),
+        (
+            "missing duplicate explicit label evidence",
+            TEST_SOURCE,
+            "ControlTransfer.ResolvesActiveDuplicateLabelsAlongsideDiagnostics",
+            "ControlTransfer.MissingActiveDuplicateLabelEvidence",
+        ),
+        (
+            "missing module explicit label evidence",
+            TEST_SOURCE,
+            "ControlTransfer.ResolvesModuleOwnedLabels",
+            "ControlTransfer.MissingModuleOwnedLabelEvidence",
+        ),
+        (
+            "missing mixed control failure ordering evidence",
+            TEST_SOURCE,
+            "ControlTransfer.OrdersMixedLabelAndBodyFailures",
+            "ControlTransfer.MissingMixedFailureOrderingEvidence",
         ),
         (
             "missing zero argument control adapter evidence",
@@ -2188,10 +2370,10 @@ def self_test(files: dict[Path, str]) -> list[str]:
             'DIAG(3020, BreakTargetNotFound, kError, "break failed", 0)',
         ),
         (
-            "obsolete continue diagnostic contract",
+            "wrong continue label diagnostic code",
             METADATA_HEADER,
-            "",
-            "\nenum class EscapedControlDiagnostic { ContinueTargetNotLoop };\n",
+            "ContinueTargetNotLoop = 3022",
+            "ContinueTargetNotLoop = 3023",
         ),
         (
             "disconnected body binding cutover",

@@ -28,6 +28,7 @@ class IdentityDiagnosticLocationResolver;
 namespace zomlang::compiler::binder {
 
 class BodyBindingCursor;
+class ControlTransferBuilder;
 class LabelBuilder;
 
 enum class Namespace : uint8_t {
@@ -281,7 +282,8 @@ enum class BinderDiagnosticCode : uint16_t {
   DuplicateIdentifier = 3010,
   PreviousDeclarationHere = 3017,
   BreakTargetNotFound = 3020,
-  ContinueTargetNotFound = 3021
+  ContinueTargetNotFound = 3021,
+  ContinueTargetNotLoop = 3022
 };
 
 struct BindingDiagnosticNoteRef final {
@@ -323,6 +325,7 @@ private:
   ZC_NODISCARD static LabelOwner callable(identity::DefId value);
   ZC_NODISCARD LabelOwner clone() const;
   LabelOwnerValue valueValue;
+  friend class LabelId;
   friend class LabelBuilder;
 };
 
@@ -337,9 +340,11 @@ public:
 
 private:
   LabelId(LabelOwner&& owner, uint32_t index) noexcept;
+  ZC_NODISCARD LabelId clone() const;
   LabelOwner ownerValue;
   uint32_t indexValue;
   friend class LabelBuilder;
+  friend class ControlTransferBuilder;
 };
 
 struct BlockLabelTarget final {
@@ -362,8 +367,13 @@ private:
   explicit LabelTarget(LabelTargetValue&& value) noexcept;
   ZC_NODISCARD static LabelTarget block(ScopeId scope);
   ZC_NODISCARD static LabelTarget loop(ScopeId scope);
+  ZC_NODISCARD LabelTarget clone() const;
   LabelTargetValue valueValue;
   friend class LabelBuilder;
+  friend class ControlTransferBuilder;
+};
+struct ExplicitLabelControlTarget final {
+  LabelId label;
 };
 struct LoopControlTarget final {
   ScopeId scope;
@@ -371,13 +381,17 @@ struct LoopControlTarget final {
 struct MatchControlTarget final {
   ScopeId scope;
 };
-using ControlTarget = zc::OneOf<LoopControlTarget, MatchControlTarget>;
+using ControlTarget = zc::OneOf<ExplicitLabelControlTarget, LoopControlTarget, MatchControlTarget>;
 
 struct BoundNameResolution final {
   BindingTarget bindingIdentity;
   BindingTarget canonicalTarget;
   Namespace nameSpace;
   BindingOrigin origin;
+};
+struct BoundLabelResolution final {
+  LabelId label;
+  LabelTarget target;
 };
 struct FailedBindingResolution final {
   size_t failureIndex;
@@ -392,8 +406,8 @@ struct DeferredMemberFact final {
   identity::SourceSpan source;
 };
 
-using BindingResolutionValue =
-    zc::OneOf<BoundNameResolution, DeferredMemberFact, FailedBindingResolution>;
+using BindingResolutionValue = zc::OneOf<BoundNameResolution, BoundLabelResolution,
+                                         DeferredMemberFact, FailedBindingResolution>;
 struct BindingResolution final {
   ast::NodeId node;
   BindingResolutionValue value;

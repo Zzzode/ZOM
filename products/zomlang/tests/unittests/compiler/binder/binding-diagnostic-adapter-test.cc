@@ -41,9 +41,10 @@ public:
 
 ZC_TEST("BindingDiagnosticAdapter.EmitsZeroArgumentControlTransferFailures") {
   source::SourceManager sources;
-  const auto buffer = sources.addMemBufferCopy("break; continue;"_zcb, "main.zom");
+  const auto buffer = sources.addMemBufferCopy("break; continue; continue block;"_zcb, "main.zom");
   const auto breakLoc = sources.getLocForBufferStart(buffer);
   const auto continueLoc = breakLoc.getAdvancedLoc(7);
+  const auto blockLoc = breakLoc.getAdvancedLoc(26);
   diagnostics::DiagnosticEngine diagnostics(sources);
   auto consumer = zc::heap<CapturingDiagnosticConsumer>();
   const auto& captured = *consumer;
@@ -53,17 +54,44 @@ ZC_TEST("BindingDiagnosticAdapter.EmitsZeroArgumentControlTransferFailures") {
       diagnostics, BinderDiagnosticCode::BreakTargetNotFound, breakLoc));
   ZC_EXPECT(BindingDiagnosticAdapter::emitControlTransferFailure(
       diagnostics, BinderDiagnosticCode::ContinueTargetNotFound, continueLoc));
+  ZC_EXPECT(BindingDiagnosticAdapter::emitControlTransferFailure(
+      diagnostics, BinderDiagnosticCode::ContinueTargetNotLoop, blockLoc));
 
-  ZC_REQUIRE(captured.ids.size() == 2);
-  ZC_REQUIRE(captured.locations.size() == 2);
-  ZC_REQUIRE(captured.argumentCounts.size() == 2);
+  ZC_REQUIRE(captured.ids.size() == 3);
+  ZC_REQUIRE(captured.locations.size() == 3);
+  ZC_REQUIRE(captured.argumentCounts.size() == 3);
   ZC_EXPECT(captured.ids[0] == diagnostics::DiagID::BreakTargetNotFound);
   ZC_EXPECT(captured.ids[1] == diagnostics::DiagID::ContinueTargetNotFound);
+  ZC_EXPECT(captured.ids[2] == diagnostics::DiagID::ContinueTargetNotLoop);
   ZC_EXPECT(captured.locations[0] == breakLoc);
   ZC_EXPECT(captured.locations[1] == continueLoc);
+  ZC_EXPECT(captured.locations[2] == blockLoc);
   ZC_EXPECT(captured.argumentCounts[0] == 0);
   ZC_EXPECT(captured.argumentCounts[1] == 0);
-  ZC_EXPECT(diagnostics.errorCount() == 2);
+  ZC_EXPECT(captured.argumentCounts[2] == 0);
+  ZC_EXPECT(diagnostics.errorCount() == 3);
+}
+
+ZC_TEST("BindingDiagnosticAdapter.EmitsTypedMissingLabelFailure") {
+  source::SourceManager sources;
+  const auto buffer = sources.addMemBufferCopy("missing"_zcb, "main.zom");
+  const auto primary = sources.getLocForBufferStart(buffer);
+  diagnostics::DiagnosticEngine diagnostics(sources);
+  auto consumer = zc::heap<CapturingDiagnosticConsumer>();
+  const auto& captured = *consumer;
+  diagnostics.addConsumer(zc::mv(consumer));
+  auto identifier = identity::SemanticIdentifier::fromSource("missing"_zc);
+  ZC_REQUIRE(identifier != zc::none);
+  ZC_IF_SOME(value, identifier) {
+    ZC_EXPECT(BindingDiagnosticAdapter::emitLabelLookupFailure(
+        diagnostics, BinderDiagnosticCode::UndefinedIdentifier, primary,
+        VerifiedIdentifierArgument::from(value)));
+  }
+  ZC_REQUIRE(captured.ids.size() == 1);
+  ZC_EXPECT(captured.ids[0] == diagnostics::DiagID::UndefinedIdentifier);
+  ZC_EXPECT(captured.locations[0] == primary);
+  ZC_EXPECT(captured.argumentCounts[0] == 1);
+  ZC_EXPECT(diagnostics.errorCount() == 1);
 }
 
 ZC_TEST("BindingDiagnosticAdapter.RejectsUnsupportedControlTransferCodes") {

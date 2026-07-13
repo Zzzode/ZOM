@@ -42,6 +42,9 @@ bool BindingDiagnosticAdapter::emitControlTransferFailure(
     case BinderDiagnosticCode::ContinueTargetNotFound:
       diagnostics.diagnose<DiagID::ContinueTargetNotFound>(primary).emit();
       return true;
+    case BinderDiagnosticCode::ContinueTargetNotLoop:
+      diagnostics.diagnose<DiagID::ContinueTargetNotLoop>(primary).emit();
+      return true;
     case BinderDiagnosticCode::UndefinedIdentifier:
     case BinderDiagnosticCode::SymbolNamespaceMismatch:
     case BinderDiagnosticCode::RedeclareVariable:
@@ -53,6 +56,33 @@ bool BindingDiagnosticAdapter::emitControlTransferFailure(
     case BinderDiagnosticCode::RedeclareTypeAlias:
     case BinderDiagnosticCode::DuplicateIdentifier:
     case BinderDiagnosticCode::PreviousDeclarationHere:
+      return false;
+  }
+  ZC_UNREACHABLE;
+}
+
+bool BindingDiagnosticAdapter::emitLabelLookupFailure(diagnostics::DiagnosticEngine& diagnostics,
+                                                      BinderDiagnosticCode code,
+                                                      source::SourceLoc primary,
+                                                      VerifiedIdentifierArgument&& identifier) {
+  using diagnostics::DiagID;
+  switch (code) {
+    case BinderDiagnosticCode::UndefinedIdentifier:
+      diagnostics.diagnose<DiagID::UndefinedIdentifier>(primary, zc::mv(identifier).take()).emit();
+      return true;
+    case BinderDiagnosticCode::SymbolNamespaceMismatch:
+    case BinderDiagnosticCode::RedeclareVariable:
+    case BinderDiagnosticCode::RedeclareParameter:
+    case BinderDiagnosticCode::RedeclareFunction:
+    case BinderDiagnosticCode::RedeclareClass:
+    case BinderDiagnosticCode::RedeclareInterface:
+    case BinderDiagnosticCode::RedeclareEnum:
+    case BinderDiagnosticCode::RedeclareTypeAlias:
+    case BinderDiagnosticCode::DuplicateIdentifier:
+    case BinderDiagnosticCode::PreviousDeclarationHere:
+    case BinderDiagnosticCode::BreakTargetNotFound:
+    case BinderDiagnosticCode::ContinueTargetNotFound:
+    case BinderDiagnosticCode::ContinueTargetNotLoop:
       return false;
   }
   ZC_UNREACHABLE;
@@ -86,6 +116,7 @@ bool BindingDiagnosticAdapter::emitLookupFailure(diagnostics::DiagnosticEngine& 
     case BinderDiagnosticCode::PreviousDeclarationHere:
     case BinderDiagnosticCode::BreakTargetNotFound:
     case BinderDiagnosticCode::ContinueTargetNotFound:
+    case BinderDiagnosticCode::ContinueTargetNotLoop:
       return false;
   }
   ZC_UNREACHABLE;
@@ -135,6 +166,7 @@ bool BindingDiagnosticAdapter::emitRedeclaration(diagnostics::DiagnosticEngine& 
     case BinderDiagnosticCode::PreviousDeclarationHere:
     case BinderDiagnosticCode::BreakTargetNotFound:
     case BinderDiagnosticCode::ContinueTargetNotFound:
+    case BinderDiagnosticCode::ContinueTargetNotLoop:
       return false;
   }
   ZC_UNREACHABLE;

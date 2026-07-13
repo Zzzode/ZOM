@@ -97,6 +97,7 @@ bool LabelOwner::operator==(const LabelOwner& other) const noexcept {
 
 LabelId::LabelId(LabelOwner&& owner, uint32_t index) noexcept
     : ownerValue(zc::mv(owner)), indexValue(index) {}
+LabelId LabelId::clone() const { return LabelId(ownerValue.clone(), indexValue); }
 const LabelOwner& LabelId::owner() const noexcept { return ownerValue; }
 uint32_t LabelId::index() const noexcept { return indexValue; }
 bool LabelId::belongsTo(identity::SemanticContextBrand context) const noexcept {
@@ -112,6 +113,10 @@ LabelTarget LabelTarget::block(ScopeId scope) {
 }
 LabelTarget LabelTarget::loop(ScopeId scope) {
   return LabelTarget(LabelTargetValue(LoopLabelTarget{scope}));
+}
+LabelTarget LabelTarget::clone() const {
+  if (valueValue.is<BlockLabelTarget>()) { return block(valueValue.get<BlockLabelTarget>().scope); }
+  return loop(valueValue.get<LoopLabelTarget>().scope);
 }
 const LabelTargetValue& LabelTarget::value() const noexcept { return valueValue; }
 bool LabelTarget::belongsTo(identity::SemanticContextBrand context) const noexcept {
