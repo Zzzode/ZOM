@@ -44,7 +44,7 @@ struct DefinitionSkeletonCandidate final {
 
 using DefinitionSkeletonBuildResult = zc::OneOf<DefinitionSkeletonCandidate, BinderInvariantFact>;
 
-/// \brief Sole authority for collision-free module, type, and impl skeleton bindings.
+/// \brief Sole authority for collision-free skeleton and scope-owning generic bindings.
 class BindingSkeletonBuilder final {
 public:
   ZC_NODISCARD static DefinitionSkeletonBuildResult build(const VerifiedBindingInput& input,
