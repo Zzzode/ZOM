@@ -1597,6 +1597,59 @@ ZC_TEST("BindingActivation.PublishesSpecialCallableParameterLists") {
   ZC_EXPECT(metadata.scopes()[1].bindings.empty());
 }
 
+ZC_TEST("BindingActivation.PublishesClosureIdentityAndParameters") {
+  ParsedSource sourceFixture(
+      "module root;\n"
+      "const transform = fun<T>(value: T) -> T {};\n"
+      "const project = (item: i32) => 0;\n"_zc);
+  FrozenFixture fixture(sourceFixture, true);
+  auto inputResult = verify(fixture);
+  ZC_REQUIRE(inputResult.is<VerifiedBindingInput>());
+  auto input = zc::mv(inputResult.get<VerifiedBindingInput>());
+  auto candidate = BindingBuilder::build(input, *sourceFixture.diagnostics);
+  ZC_REQUIRE(candidate.is<BindingMetadataCandidate>());
+  auto verified = BindingVerifier::verify(input, zc::mv(candidate.get<BindingMetadataCandidate>()));
+  ZC_REQUIRE(verified.is<VerifiedBindingOutput>());
+  const auto& output = verified.get<VerifiedBindingOutput>();
+  const auto& metadata = output.metadata;
+
+  size_t closureCount = 0;
+  size_t genericCount = 0;
+  size_t parameterCount = 0;
+  for (const auto& fact : metadata.definitions()) {
+    if (fact.kind == identity::DefinitionKind::Closure) {
+      ++closureCount;
+      ZC_EXPECT(fact.activation == DefinitionActivation::ExpressionIntroduction);
+      ZC_EXPECT(fact.nameSpace == Namespace::Value);
+      ZC_EXPECT(metadata.scopes()[fact.declaringScope.index()].kind == ScopeKind::Module);
+    }
+    if (fact.kind == identity::DefinitionKind::TypeParameter) {
+      ++genericCount;
+      ZC_EXPECT(fact.activation == DefinitionActivation::GenericList);
+      ZC_EXPECT(metadata.scopes()[fact.declaringScope.index()].kind == ScopeKind::Closure);
+    }
+    if (fact.kind == identity::DefinitionKind::Parameter) {
+      ++parameterCount;
+      ZC_EXPECT(fact.activation == DefinitionActivation::ParameterList);
+      ZC_EXPECT(metadata.scopes()[fact.declaringScope.index()].kind == ScopeKind::Closure);
+    }
+  }
+  ZC_EXPECT(closureCount == 2);
+  ZC_EXPECT(genericCount == 1);
+  ZC_EXPECT(parameterCount == 2);
+
+  size_t closureScopeCount = 0;
+  for (const auto& scope : metadata.scopes()) {
+    if (scope.kind != ScopeKind::Closure) { continue; }
+    ++closureScopeCount;
+  }
+  ZC_EXPECT(closureScopeCount == 2);
+  ZC_REQUIRE(metadata.scopes()[0].bindings.size() == 2);
+  ZC_EXPECT(metadata.scopes()[0].bindings[0].name.name().text() == "project"_zc);
+  ZC_EXPECT(metadata.scopes()[0].bindings[1].name.name().text() == "transform"_zc);
+  ZC_REQUIRE(output.surface.visibleEntries().size() == 2);
+}
+
 ZC_TEST("ModuleGraph.ClassifiesUnresolvedSyntaxRequesterAndRevisionFailures") {
   ParsedSource importSource("module root;\nimport math::geometry;\n"_zc);
   FrozenFixture unresolved(importSource);

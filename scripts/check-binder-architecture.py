@@ -204,7 +204,10 @@ def check_special_callable_contract(files: dict[Path, str], errors: list[str]) -
         "return SkeletonEligibility::SpecialCallable;",
         "ast::kConstructorDeclParamsIdWord",
         "ast::kDestructorDeclParamsIdWord",
-        "const bool lexicalBinding = classification != SkeletonEligibility::SpecialCallable;",
+        "bool hasLexicalBinding(SkeletonEligibility classification)",
+        "return classification != SkeletonEligibility::SpecialCallable &&\n"
+        "         classification != SkeletonEligibility::Closure;",
+        "const bool lexicalBinding = hasLexicalBinding(classification);",
         "classification == SkeletonEligibility::SpecialCallable && !specialCallableScope",
         "if (lexicalBinding) {",
     ):
@@ -212,6 +215,26 @@ def check_special_callable_contract(files: dict[Path, str], errors: list[str]) -
             errors.append(f"{SKELETON_SOURCE}: special callable binding contract is disconnected: {required}")
     if "BindingActivation.PublishesSpecialCallableParameterLists" not in tests:
         errors.append(f"{TEST_SOURCE}: missing special callable activation evidence")
+
+
+def check_closure_activation_contract(files: dict[Path, str], errors: list[str]) -> None:
+    skeleton = files.get(SKELETON_SOURCE, "")
+    tests = files.get(TEST_SOURCE, "")
+    for required in (
+        "case DefinitionKind::Closure:\n      return SkeletonEligibility::Closure;",
+        "ast::kFunctionExpressionParamsIdWord",
+        "ast::kLambdaExpressionParamsIdWord",
+        "case DefinitionKind::Closure:\n      return true;",
+        "record.kind != ScopeKind::Function &&\n           record.kind != ScopeKind::Closure",
+        "classification != SkeletonEligibility::Closure && !skeletonScope",
+        "classification == SkeletonEligibility::Closure ||",
+        "classification == SkeletonEligibility::Closure\n"
+        "              ? DefinitionActivation::ExpressionIntroduction",
+    ):
+        if required not in skeleton:
+            errors.append(f"{SKELETON_SOURCE}: closure activation contract is disconnected: {required}")
+    if "BindingActivation.PublishesClosureIdentityAndParameters" not in tests:
+        errors.append(f"{TEST_SOURCE}: missing closure activation evidence")
 
 
 def check_definition_site_contract(files: dict[Path, str], errors: list[str]) -> None:
@@ -596,6 +619,7 @@ def check(files: dict[Path, str]) -> list[str]:
     check_verified_input_surface(files, errors)
     check_frozen_impl_inventory_contract(files, errors)
     check_special_callable_contract(files, errors)
+    check_closure_activation_contract(files, errors)
     check_definition_site_contract(files, errors)
     check_private_binding_candidate(files, errors)
     check_producer_boundaries(files, errors)
@@ -855,8 +879,33 @@ def self_test(files: dict[Path, str]) -> list[str]:
         (
             "special callable lexical binding leak",
             SKELETON_SOURCE,
-            "const bool lexicalBinding = classification != SkeletonEligibility::SpecialCallable;",
+            "const bool lexicalBinding = hasLexicalBinding(classification);",
             "const bool lexicalBinding = true;",
+        ),
+        (
+            "deferred closure activation",
+            SKELETON_SOURCE,
+            "case DefinitionKind::Closure:\n      return SkeletonEligibility::Closure;",
+            "case DefinitionKind::Closure:\n      return SkeletonEligibility::Deferred;",
+        ),
+        (
+            "closure lexical binding leak",
+            SKELETON_SOURCE,
+            "return classification != SkeletonEligibility::SpecialCallable &&\n"
+            "         classification != SkeletonEligibility::Closure;",
+            "return true;",
+        ),
+        (
+            "missing closure parameter payload",
+            SKELETON_SOURCE,
+            "ast::kFunctionExpressionParamsIdWord",
+            "ast::kMissingFunctionExpressionParamsIdWord",
+        ),
+        (
+            "missing closure expression activation",
+            SKELETON_SOURCE,
+            "DefinitionActivation::ExpressionIntroduction",
+            "DefinitionActivation::ModuleSkeleton",
         ),
         (
             "generic parameter module surface leak",
@@ -894,6 +943,12 @@ def self_test(files: dict[Path, str]) -> list[str]:
             TEST_SOURCE,
             "BindingActivation.PublishesSpecialCallableParameterLists",
             "BindingActivation.MissingSpecialCallableParameterLists",
+        ),
+        (
+            "missing closure activation evidence",
+            TEST_SOURCE,
+            "BindingActivation.PublishesClosureIdentityAndParameters",
+            "BindingActivation.MissingClosureIdentityAndParameters",
         ),
         (
             "missing impl fact codec",
