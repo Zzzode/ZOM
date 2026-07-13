@@ -952,6 +952,15 @@ BindingNameKey {
 BindingTarget = Definition(DefId) | Module(ModuleId)
 ```
 
+`init` and `deinit` use RFC 0011 `DeclaredDefinitionName` identity but cannot
+form a `BindingNameKey`: both spellings are reserved declaration tokens rather
+than `SemanticIdentifier` source names. A constructor or destructor therefore
+publishes one value-namespace `DefinitionFact` with `ModuleSkeleton`
+activation, owns its function scope, and may publish parameter bindings inside
+that scope. It produces no `ScopeBindingEntry`, module-surface seed, or export
+surface entry. RFC 0009 selects these special callable members from verified
+type or impl member facts rather than ordinary lexical lookup.
+
 `ScopeKind` covers exactly module, function, type body, impl body, block, loop,
 match, match arm, closure, and unsafe block. The module scope has no parent and
 owner `Module(currentModule)`. Every other scope's parent is the nearest
@@ -1883,3 +1892,4 @@ None
 | 2026-07-11 | ACCEPTED | Every required owner approved proposal hash `26bcc9dd95f5abbf623dd39af0cf6bd3ae2de9ed6be89649465803609c8af5cd` after formal graph, resolution-environment, visibility, diagnostic, codec, and verifier review. Implementation has not started. |
 | 2026-07-12 | IMPLEMENTING | Started the direct replacement series with the dependency-free module-graph and binding-input verifier spine tracked by the local implementation record. |
 | 2026-07-13 | IMPLEMENTING | Corrected module-discovery versus semantic-SCC ownership, described the live insertion-ordered legacy state accurately, and moved active module diagnostics into their owned registry family. Future diagnostics must land atomically with their first producer. |
+| 2026-07-13 | IMPLEMENTING | Clarified that RFC 0011 special constructor and destructor declaration names publish definition and scope facts without an ordinary lexical binding, preserving `BindingNameKey` as a `SemanticIdentifier`-only key. |

@@ -309,9 +309,10 @@ landing.
 | Dependency-free binding metadata publication | Complete | Commit `1745926f`; immutable `VerifiedBindingMetadata` and `VerifiedExportSurface`, private candidate authority, closed verification results, production allocation and surface codecs, registered invariant diagnostics, emitted `ZOM3001`, twenty focused sanitizer cases, and adversarial architecture mutations |
 | Deterministic scope allocation | Complete | Commits `9373d0e7`, `3e38e063`, `765cf8e1`, and `a75f0937`; frozen impl identities, all ten accepted scope kinds, schema-preorder allocation, exact parents, semantic owners and source spans, checked index overflow, production verifier cutover, bodyless-function range repair, twenty-five focused sanitizer cases, and adversarial architecture mutations |
 | Module, type, and impl skeleton facts | Complete | Commits `632d1669` through `b5692a75`; exact declaration and pattern sites, canonical `DefinitionFact` and `ImplBindingFact` ordering, module/type/impl scope maps, direct impl members, module constant pattern leaves, private and declaration-export surfaces, typed `ZOM3003-ZOM3010` duplicate failures with `ZOM3017` notes, NFC collision coverage, thirty-five focused sanitizer cases, and adversarial architecture mutations |
-| Scope-owned generic and named callable parameter facts | Complete | Commits `4434b909`, `aecfea09`, `1d640fe5`, and `593f4b64`; `GenericList` facts for scope-owning type parameter lists, `ParameterList` facts for direct function, method, and extern parameters, exact function-scope ownership, value-namespace placement, duplicate generic and parameter source diagnostics with `ZOM3017` notes, module-surface and direct-impl-member exclusion, focused sanitizer coverage, and adversarial architecture mutations |
+| Scope-owned generic and ordinary callable parameter facts | Complete | Commits `4434b909`, `aecfea09`, `1d640fe5`, and `593f4b64`; `GenericList` facts for scope-owning type parameter lists, `ParameterList` facts for direct function, method, and extern parameters, exact function-scope ownership, value-namespace placement, duplicate generic and parameter source diagnostics with `ZOM3017` notes, module-surface and direct-impl-member exclusion, focused sanitizer coverage, and adversarial architecture mutations |
+| Special callable identity and parameter facts | Complete | Commits `115445a5` and `570f6a82`; constructor and destructor `DeclaredDefinitionName` identities without fabricated lexical names, value-namespace `DefinitionFact` publication, type- or impl-owned function scopes, `ParameterList` facts, ordinary-binding exclusion, focused sanitizer coverage, and adversarial architecture mutations |
 | Complete module resolution input | Blocked by RFC 0012 and RFC 0008 | Authoritative package resolution, production semantic-context fingerprint, verified resolution environment, and resolution receipts |
-| Complete binding facts and surfaces | Pending | Constructor and destructor parameter activation, closures, locals and patterns, imports, re-exports, aliases, visibility, labels, captures, body resolution, immutable metadata completion, codecs, and verifier negatives |
+| Complete binding facts and surfaces | Pending | Closures, locals and patterns, imports, re-exports, aliases, visibility, labels, captures, body resolution, immutable metadata completion, codecs, and verifier negatives |
 | Production binder cutover | Pending | Session integration, no downstream rebinding, deletion of raw binder inputs and binder-owned module resolution, and all acceptance gates |
 
 The first slice is intentionally fail-closed. It accepts only a single frozen
@@ -441,13 +442,16 @@ existing duplicate-parameter diagnostic and `ZOM3017` note. The builder proves
 the direct AST owner before publication, so a parameter cannot be attached to
 an unrelated function scope.
 
-Constructor and destructor parameter activation remains fail-closed. The
-current production frozen inventory requires a `SemanticIdentifier` binding
-name, while the accepted RFC 0011 `DeclaredDefinitionName` contract permits the
-reserved callable names `init` and `deinit`. A dedicated RFC 0011/RFC 0004
-identity-contract correction must resolve that contradiction before the binder
-can publish constructor or destructor parameter facts. Target-dependent module
-aliases, imports, and re-exports remain blocked on verified resolution input.
+The special callable slice preserves RFC 0011 `DeclaredDefinitionName` identity
+for `init` and `deinit` without fabricating a `SemanticIdentifier` or ordinary
+lexical binding. A constructor or destructor publishes one value-namespace
+`DefinitionFact`, owns an exact function scope below its type or impl body, and
+activates its direct parameters through `ParameterList`. Its reserved name does
+not enter a `ScopeBindingEntry`, module surface, or export surface. The frozen
+inventory permits an absent lexical binding only for these two closed definition
+kinds; every other declared definition remains required to have a
+`SemanticIdentifier`. Target-dependent module aliases, imports, and re-exports
+remain blocked on verified resolution input.
 
 The complete sanitizer-backed landing gate passed 1,250 of 1,250 tests in
 654.78 seconds. The gate also passed format, RFC validation, parser coverage,
@@ -461,3 +465,10 @@ configure and build, format, RFC validation, `git diff --check`, the Binder
 architecture positive gate, and its negative mutation matrix. The production
 implementation is recorded in `4434b909`, `aecfea09`, `1d640fe5`, and
 `593f4b64`.
+
+The special-callable evidence series completed the 1,250-test
+sanitizer-backed serial CTest matrix without a CTest failure record. It also
+passed sanitizer configure and build, format, RFC validation, `git diff
+--check`, the Binder architecture positive gate, and its negative mutation
+matrix. The production implementation is recorded in `115445a5` and
+`570f6a82`.
