@@ -375,6 +375,7 @@ def check_binding_skeleton_contract(files: dict[Path, str], errors: list[str]) -
     for required in (
         "SkeletonEligibility eligibility(identity::DefinitionKind kind)",
         "return SkeletonEligibility::Generic;",
+        "return SkeletonEligibility::Parameter;",
         "case DefinitionKind::ReexportAlias:",
         "ast::kEnumDeclarationTypeParamsIdWord",
         "ast::kFunctionExpressionTypeParamsIdWord",
@@ -386,11 +387,17 @@ def check_binding_skeleton_contract(files: dict[Path, str], errors: list[str]) -
         "ast::kInterfaceDeclTypeParamsIdWord",
         "ast::kMethodDeclTypeParamsIdWord",
         "genericOwner(input.tree(), definition.node, ambiguousOwner)",
+        "ast::kExternDeclParamsFirstWord",
+        "ast::kFunctionDeclParamsIdWord",
+        "ast::kMethodDeclParamsIdWord",
+        "parameterOwner(input.tree(), definition.node, ambiguousOwner)",
         "inventory[current].key.encode()",
         "definition.site.clone()",
         "DefinitionActivation::ModuleSkeleton",
         "DefinitionActivation::GenericList",
-        "classification != SkeletonEligibility::Generic && record.kind == ScopeKind::Module",
+        "DefinitionActivation::ParameterList",
+        "classification != SkeletonEligibility::Generic &&\n"
+        "          classification != SkeletonEligibility::Parameter && record.kind == ScopeKind::Module",
         "sortBindings(scope.bindings)",
         "sortSurfaceSeeds(result.moduleSurfaceSeeds)",
         "implementations[current].key.encode()",
@@ -419,7 +426,7 @@ def check_binding_skeleton_contract(files: dict[Path, str], errors: list[str]) -
             errors.append(f"{VERIFIER_SOURCE}: impl fact verification is disconnected: {required}")
     for marker in (
         "BindingSkeleton.PublishesModuleAndTypeFactsInCanonicalMaps",
-        "BindingSkeleton.PublishesImplMemberMapsAndDefersParameters",
+        "BindingActivation.PublishesImplMembersAndNamedParameters",
         "BindingSkeleton.IncludesModuleConstantPatternLeaves",
         "BindingSkeleton.PublishesOnlyDeclarationExports",
         "BindingSkeleton.PublishesEmptyMarkerImplFact",
@@ -429,6 +436,8 @@ def check_binding_skeleton_contract(files: dict[Path, str], errors: list[str]) -
         "BindingSkeleton.UsesKindSpecificRedeclarationCodes",
         "BindingActivation.PublishesScopeOwningGenericLists",
         "BindingActivation.RejectsDuplicateGenericParameters",
+        "BindingActivation.PublishesNamedCallableParameterLists",
+        "BindingActivation.RejectsDuplicateNamedParameters",
         "BindingBuilder.DefersIdentifierResolutionBeforePublishingMetadata",
     ):
         if marker not in files.get(TEST_SOURCE, ""):
@@ -788,9 +797,16 @@ def self_test(files: dict[Path, str]) -> list[str]:
             "case DefinitionKind::TypeParameter:\n      return SkeletonEligibility::Deferred;",
         ),
         (
+            "deferred named parameter activation",
+            SKELETON_SOURCE,
+            "case DefinitionKind::Parameter:\n      return SkeletonEligibility::Parameter;",
+            "case DefinitionKind::Parameter:\n      return SkeletonEligibility::Deferred;",
+        ),
+        (
             "generic parameter module surface leak",
             SKELETON_SOURCE,
-            "classification != SkeletonEligibility::Generic && record.kind == ScopeKind::Module",
+            "classification != SkeletonEligibility::Generic &&\n"
+            "          classification != SkeletonEligibility::Parameter && record.kind == ScopeKind::Module",
             "record.kind == ScopeKind::Module",
         ),
         (
@@ -800,10 +816,22 @@ def self_test(files: dict[Path, str]) -> list[str]:
             "zc::Maybe<ast::NodeId> owner;",
         ),
         (
+            "missing parameter owner validation",
+            SKELETON_SOURCE,
+            "parameterOwner(input.tree(), definition.node, ambiguousOwner)",
+            "zc::Maybe<ast::NodeId> owner;",
+        ),
+        (
             "missing generic activation evidence",
             TEST_SOURCE,
             "BindingActivation.PublishesScopeOwningGenericLists",
             "BindingActivation.MissingScopeOwningGenericLists",
+        ),
+        (
+            "missing parameter activation evidence",
+            TEST_SOURCE,
+            "BindingActivation.PublishesNamedCallableParameterLists",
+            "BindingActivation.MissingNamedCallableParameterLists",
         ),
         (
             "missing impl fact codec",

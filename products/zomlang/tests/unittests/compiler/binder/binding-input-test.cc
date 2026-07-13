@@ -1260,7 +1260,7 @@ ZC_TEST("BindingSkeleton.PublishesModuleAndTypeFactsInCanonicalMaps") {
   ZC_EXPECT(output.surface.visibleEntries()[1].name.name().text() == "Alpha"_zc);
 }
 
-ZC_TEST("BindingSkeleton.PublishesImplMemberMapsAndDefersParameters") {
+ZC_TEST("BindingActivation.PublishesImplMembersAndNamedParameters") {
   ParsedSource implSource(
       "module root;\ninterface Action { fun act(); }\nclass Target {}\n"
       "impl Action for Target { fun act(); }\n"_zc);
@@ -1299,10 +1299,33 @@ ZC_TEST("BindingSkeleton.PublishesImplMemberMapsAndDefersParameters") {
   auto parameterArenaResult = ScopeArenaBuilder::build(parameterInput);
   ZC_REQUIRE(parameterArenaResult.is<ScopeArenaCandidate>());
   auto parameterArena = zc::mv(parameterArenaResult.get<ScopeArenaCandidate>());
-  auto deferred = BindingSkeletonBuilder::build(parameterInput, parameterArena);
-  ZC_REQUIRE(deferred.is<BinderInvariantFact>());
-  ZC_EXPECT(deferred.get<BinderInvariantFact>().kind ==
-            BinderInvariantKind::MissingRequiredResolution);
+  auto parameterResult = BindingSkeletonBuilder::build(parameterInput, parameterArena);
+  ZC_REQUIRE(parameterResult.is<DefinitionSkeletonCandidate>());
+  const auto& parameterFacts = parameterResult.get<DefinitionSkeletonCandidate>().definitions;
+  ZC_REQUIRE(parameterFacts.size() == 2);
+  size_t parameterIndex = parameterFacts.size();
+  for (size_t index = 0; index < parameterFacts.size(); ++index) {
+    if (parameterFacts[index].kind == identity::DefinitionKind::Parameter) {
+      parameterIndex = index;
+      break;
+    }
+  }
+  ZC_REQUIRE(parameterIndex < parameterFacts.size());
+  const auto& parameterFact = parameterFacts[parameterIndex];
+  ZC_EXPECT(parameterFact.activation == DefinitionActivation::ParameterList);
+  ZC_EXPECT(parameterFact.nameSpace == Namespace::Value);
+  const auto parameterScopeIndex = parameterFact.declaringScope.index();
+  ZC_REQUIRE(parameterScopeIndex < parameterArena.scopes.size());
+  ZC_EXPECT(parameterArena.scopes[parameterScopeIndex].kind == ScopeKind::Function);
+  ZC_REQUIRE(parameterArena.scopes[parameterScopeIndex].bindings.size() == 1);
+  ZC_EXPECT(parameterArena.scopes[parameterScopeIndex].bindings[0].name.name().text() ==
+            "value"_zc);
+
+  auto parameterCandidate = BindingBuilder::build(parameterInput, *parameterSource.diagnostics);
+  ZC_REQUIRE(parameterCandidate.is<BindingMetadataCandidate>());
+  auto parameterVerified = BindingVerifier::verify(
+      parameterInput, zc::mv(parameterCandidate.get<BindingMetadataCandidate>()));
+  ZC_REQUIRE(parameterVerified.is<VerifiedBindingOutput>());
 }
 
 ZC_TEST("BindingSkeleton.PublishesEmptyMarkerImplFact") {
@@ -1464,6 +1487,50 @@ ZC_TEST("BindingActivation.RejectsDuplicateGenericParameters") {
   const auto failures = result.get<SourceRejected>().failures();
   ZC_REQUIRE(failures.size() == 1);
   ZC_EXPECT(failures[0].diagnostic == BinderDiagnosticCode::DuplicateIdentifier);
+  ZC_REQUIRE(failures[0].notes.size() == 1);
+  ZC_EXPECT(failures[0].notes[0].diagnostic == BinderDiagnosticCode::PreviousDeclarationHere);
+}
+
+ZC_TEST("BindingActivation.PublishesNamedCallableParameterLists") {
+  ParsedSource sourceFixture(
+      "module root;\n"
+      "extern \"C\" { fun ffi(raw: i32); }\n"
+      "fun apply(first: i32, second: i32);\n"
+      "class Box { fun map(item: i32); }\n"_zc);
+  FrozenFixture fixture(sourceFixture, true);
+  auto inputResult = verify(fixture);
+  ZC_REQUIRE(inputResult.is<VerifiedBindingInput>());
+  auto input = zc::mv(inputResult.get<VerifiedBindingInput>());
+  auto candidate = BindingBuilder::build(input, *sourceFixture.diagnostics);
+  ZC_REQUIRE(candidate.is<BindingMetadataCandidate>());
+  auto verified = BindingVerifier::verify(input, zc::mv(candidate.get<BindingMetadataCandidate>()));
+  ZC_REQUIRE(verified.is<VerifiedBindingOutput>());
+  const auto& metadata = verified.get<VerifiedBindingOutput>().metadata;
+
+  size_t parameterCount = 0;
+  for (const auto& fact : metadata.definitions()) {
+    if (fact.kind != identity::DefinitionKind::Parameter) { continue; }
+    ++parameterCount;
+    ZC_EXPECT(fact.activation == DefinitionActivation::ParameterList);
+    ZC_EXPECT(fact.nameSpace == Namespace::Value);
+    ZC_EXPECT(metadata.scopes()[fact.declaringScope.index()].kind == ScopeKind::Function);
+  }
+  ZC_EXPECT(parameterCount == 4);
+}
+
+ZC_TEST("BindingActivation.RejectsDuplicateNamedParameters") {
+  ParsedSource sourceFixture("module root;\nfun apply(value: i32, value: i32);\n"_zc);
+  FrozenFixture fixture(sourceFixture, true);
+  auto inputResult = verify(fixture);
+  ZC_REQUIRE(inputResult.is<VerifiedBindingInput>());
+  auto input = zc::mv(inputResult.get<VerifiedBindingInput>());
+  auto candidate = BindingBuilder::build(input, *sourceFixture.diagnostics);
+  ZC_REQUIRE(candidate.is<BindingMetadataCandidate>());
+  auto result = BindingVerifier::verify(input, zc::mv(candidate.get<BindingMetadataCandidate>()));
+  ZC_REQUIRE(result.is<SourceRejected>());
+  const auto failures = result.get<SourceRejected>().failures();
+  ZC_REQUIRE(failures.size() == 1);
+  ZC_EXPECT(failures[0].diagnostic == BinderDiagnosticCode::RedeclareParameter);
   ZC_REQUIRE(failures[0].notes.size() == 1);
   ZC_EXPECT(failures[0].notes[0].diagnostic == BinderDiagnosticCode::PreviousDeclarationHere);
 }
