@@ -8,6 +8,7 @@
 #include "zc/core/debug.h"
 #include "zc/core/vector.h"
 #include "zomlang/compiler/ast/generated/node-traverse.h"
+#include "zomlang/compiler/binder/binding-diagnostic-adapter.h"
 #include "zomlang/compiler/binder/internal/binding-skeleton.h"
 #include "zomlang/compiler/binder/internal/scope-arena.h"
 #include "zomlang/compiler/identity/canonical-encoder.h"
@@ -273,6 +274,16 @@ zc::Maybe<const FrozenImplEntry&> implementationEntry(const VerifiedBindingInput
     if (entry.implementation == implementation) { return entry; }
   }
   return zc::none;
+}
+
+zc::Maybe<uint32_t> schemaPreorderOrdinal(const ast::Tree& tree, ast::NodeId target) {
+  uint32_t ordinal = 0;
+  zc::Maybe<uint32_t> result;
+  ast::visitTreePreOrder(tree, tree.root(), [&](ast::NodeId node, const ast::Node&) {
+    if (node == target) { result = ordinal; }
+    ++ordinal;
+  });
+  return result;
 }
 
 bool encodeScopeId(identity::CanonicalEncoder& encoder, const VerifiedBindingInput& input,
@@ -726,6 +737,44 @@ BindingCandidateResult BindingBuilder::buildCandidate(
     return zc::mv(skeletonResult.get<BinderInvariantFact>());
   }
   auto skeleton = zc::mv(skeletonResult.get<DefinitionSkeletonCandidate>());
+  zc::Vector<size_t> duplicateOrder;
+  for (size_t index = 0; index < skeleton.duplicates.size(); ++index) { duplicateOrder.add(index); }
+  for (size_t index = 1; index < duplicateOrder.size(); ++index) {
+    const size_t current = duplicateOrder[index];
+    size_t insertion = index;
+    while (insertion > 0 &&
+           skeleton.duplicates[current].primary.byteStart() <
+               skeleton.duplicates[duplicateOrder[insertion - 1]].primary.byteStart()) {
+      duplicateOrder[insertion] = duplicateOrder[insertion - 1];
+      --insertion;
+    }
+    duplicateOrder[insertion] = current;
+  }
+  zc::Vector<BindingFailureRef> sourceFailures;
+  for (const size_t index : duplicateOrder) {
+    const auto& duplicate = skeleton.duplicates[index];
+    auto ordinal = schemaPreorderOrdinal(tree, duplicate.primaryNode);
+    if (ordinal == zc::none) {
+      return builderFailure(input, BinderInvariantKind::InvalidEmitterOrdinal);
+    }
+    ZC_IF_SOME(value, ordinal) {
+      ZC_IF_SOME(engine, diagnostics) {
+        if (!BindingDiagnosticAdapter::emitRedeclaration(
+                engine, duplicate.diagnostic, tree.node(duplicate.primaryNode).range.getStart(),
+                tree.node(duplicate.previousNode).range.getStart(),
+                VerifiedIdentifierArgument::from(duplicate.name))) {
+          return builderFailure(input, BinderInvariantKind::InvalidBindingFact, value);
+        }
+      }
+      zc::Vector<BindingDiagnosticNoteRef> notes;
+      notes.add(BindingDiagnosticNoteRef{BinderDiagnosticCode::PreviousDeclarationHere,
+                                         duplicate.previous.clone()});
+      sourceFailures.add(BindingFailureRef{
+          duplicate.diagnostic, duplicate.primary.clone(),
+          (uint64_t(BinderEmitterSite::ModuleSkeleton) << 56) | (uint64_t(value) << 16),
+          zc::mv(notes)});
+    }
+  }
 
   zc::Vector<ExportSurfaceEntry> visibleEntries;
   zc::Vector<ExportSurfaceEntry> exports;
@@ -760,6 +809,7 @@ BindingCandidateResult BindingBuilder::buildCandidate(
                                            zc::mv(arena.nodeScopes), zc::mv(skeleton.definitions),
                                            zc::mv(skeleton.impls), zc::mv(arena.scopes),
                                            zc::mv(surface));
+        candidate.sourceFailures = zc::mv(sourceFailures);
         return candidate;
       }
     }

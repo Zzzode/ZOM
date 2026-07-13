@@ -997,6 +997,80 @@ ZC_TEST("BindingDiagnosticAdapter.EmitsTypedRedeclarationWithPreviousNote") {
   ZC_EXPECT(capture.argument == "value"_zc);
 }
 
+ZC_TEST("BindingSkeleton.RejectsDuplicateFunctionsAsSourceFailures") {
+  ParsedSource sourceFixture("module root;\nfun value();\nfun value();\n"_zc);
+  FrozenFixture fixture(sourceFixture, true);
+  auto inputResult = verify(fixture);
+  ZC_REQUIRE(inputResult.is<VerifiedBindingInput>());
+  auto input = zc::mv(inputResult.get<VerifiedBindingInput>());
+  auto candidate = BindingBuilder::build(input, *sourceFixture.diagnostics);
+  ZC_REQUIRE(candidate.is<BindingMetadataCandidate>());
+  auto& value = candidate.get<BindingMetadataCandidate>();
+  ZC_REQUIRE(value.definitions.size() == 2);
+  ZC_REQUIRE(value.scopes[0].bindings.size() == 1);
+  ZC_REQUIRE(value.currentSurface.visibleEntries.size() == 1);
+  ZC_REQUIRE(value.sourceFailures.size() == 1);
+  ZC_EXPECT(value.sourceFailures[0].diagnostic == BinderDiagnosticCode::RedeclareFunction);
+  ZC_REQUIRE(value.sourceFailures[0].notes.size() == 1);
+  ZC_EXPECT(value.sourceFailures[0].notes[0].diagnostic ==
+            BinderDiagnosticCode::PreviousDeclarationHere);
+  ZC_EXPECT((value.sourceFailures[0].emitterOrdinal >> 56) ==
+            static_cast<uint64_t>(BinderEmitterSite::ModuleSkeleton));
+  auto rejected = BindingVerifier::verify(input, zc::mv(value));
+  ZC_REQUIRE(rejected.is<SourceRejected>());
+  ZC_REQUIRE(rejected.get<SourceRejected>().failures().size() == 1);
+  ZC_EXPECT(sourceFixture.diagnostics->errorCount() == 1);
+}
+
+ZC_TEST("BindingSkeleton.RejectsNfcEquivalentFunctionNames") {
+  ParsedSource sourceFixture("module root;\nfun e\xcc\x81();\nfun \xc3\xa9();\n"_zc);
+  FrozenFixture fixture(sourceFixture, true);
+  auto inputResult = verify(fixture);
+  ZC_REQUIRE(inputResult.is<VerifiedBindingInput>());
+  auto input = zc::mv(inputResult.get<VerifiedBindingInput>());
+  auto candidate = BindingBuilder::build(input, *sourceFixture.diagnostics);
+  ZC_REQUIRE(candidate.is<BindingMetadataCandidate>());
+  ZC_REQUIRE(candidate.get<BindingMetadataCandidate>().sourceFailures.size() == 1);
+  auto rejected = BindingVerifier::verify(input, zc::mv(candidate.get<BindingMetadataCandidate>()));
+  ZC_REQUIRE(rejected.is<SourceRejected>());
+  ZC_EXPECT(rejected.get<SourceRejected>().failures()[0].diagnostic ==
+            BinderDiagnosticCode::RedeclareFunction);
+}
+
+ZC_TEST("BindingSkeleton.UsesKindSpecificRedeclarationCodes") {
+  ParsedSource sourceFixture(
+      "module root;\n"
+      "fun f(); fun f();\n"
+      "class C {} class C {}\n"
+      "interface I {} interface I {}\n"
+      "enum E {} enum E {}\n"
+      "alias A = i32; alias A = i32;\n"
+      "struct S {} struct S {}\n"
+      "class Holder { let value: i32; let value: i32; }\n"_zc);
+  FrozenFixture fixture(sourceFixture, true);
+  auto inputResult = verify(fixture);
+  ZC_REQUIRE(inputResult.is<VerifiedBindingInput>());
+  auto input = zc::mv(inputResult.get<VerifiedBindingInput>());
+  auto candidate = BindingBuilder::build(input, *sourceFixture.diagnostics);
+  ZC_REQUIRE(candidate.is<BindingMetadataCandidate>());
+  const BinderDiagnosticCode expected[] = {
+      BinderDiagnosticCode::RedeclareFunction,  BinderDiagnosticCode::RedeclareClass,
+      BinderDiagnosticCode::RedeclareInterface, BinderDiagnosticCode::RedeclareEnum,
+      BinderDiagnosticCode::RedeclareTypeAlias, BinderDiagnosticCode::DuplicateIdentifier,
+      BinderDiagnosticCode::RedeclareVariable,
+  };
+  const auto& failures = candidate.get<BindingMetadataCandidate>().sourceFailures;
+  ZC_REQUIRE(failures.size() == zc::size(expected));
+  for (size_t index = 0; index < zc::size(expected); ++index) {
+    ZC_EXPECT(failures[index].diagnostic == expected[index]);
+    ZC_REQUIRE(failures[index].notes.size() == 1);
+    ZC_EXPECT(failures[index].notes[0].diagnostic == BinderDiagnosticCode::PreviousDeclarationHere);
+  }
+  auto rejected = BindingVerifier::verify(input, zc::mv(candidate.get<BindingMetadataCandidate>()));
+  ZC_REQUIRE(rejected.is<SourceRejected>());
+  ZC_EXPECT(rejected.get<SourceRejected>().failures().size() == zc::size(expected));
+}
+
 ZC_TEST("FrozenInventory.RejectsMissingAdditionalWrongKindAndForeignDefinitions") {
   ParsedSource missingSource("module root;\nfun run() {}\n"_zc);
   FrozenFixture missingFixture(missingSource, true);

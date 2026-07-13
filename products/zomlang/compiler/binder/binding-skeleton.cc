@@ -116,7 +116,11 @@ bool bindingLess(const ScopeBindingEntry& left, const ScopeBindingEntry& right) 
     return static_cast<uint8_t>(left.name.nameSpace()) <
            static_cast<uint8_t>(right.name.nameSpace());
   }
-  return left.name.name() < right.name.name();
+  if (left.name.name() != right.name.name()) { return left.name.name() < right.name.name(); }
+  if (left.binding.declarationSpan.byteStart() != right.binding.declarationSpan.byteStart()) {
+    return left.binding.declarationSpan.byteStart() < right.binding.declarationSpan.byteStart();
+  }
+  return left.binding.declarationSpan.byteEnd() < right.binding.declarationSpan.byteEnd();
 }
 
 bool sameBindingName(const ScopeBindingEntry& left, const ScopeBindingEntry& right) {
@@ -153,6 +157,73 @@ void sortSurfaceSeeds(zc::Vector<ModuleSkeletonSurfaceSeed>& seeds) {
     }
     seeds[insertion] = zc::mv(current);
   }
+}
+
+zc::Maybe<identity::DefId> definitionTarget(const ScopeBindingEntry& binding) {
+  const auto& target = binding.binding.bindingIdentity.value();
+  if (!target.is<DefinitionBindingTarget>()) { return zc::none; }
+  return target.get<DefinitionBindingTarget>().definition;
+}
+
+zc::Maybe<const DefinitionFact&> definitionFact(const DefinitionSkeletonCandidate& candidate,
+                                                identity::DefId identity) {
+  for (const auto& fact : candidate.definitions) {
+    if (fact.identity == identity) { return fact; }
+  }
+  return zc::none;
+}
+
+zc::Maybe<ast::NodeId> definitionNode(const VerifiedBindingInput& input, identity::DefId identity) {
+  for (const auto& entry : input.definitions().definitions()) {
+    if (entry.definition == identity) { return entry.node; }
+  }
+  return zc::none;
+}
+
+zc::Maybe<BinderDiagnosticCode> redeclarationCode(identity::DefinitionKind kind) {
+  using identity::DefinitionKind;
+  switch (kind) {
+    case DefinitionKind::Function:
+    case DefinitionKind::Method:
+    case DefinitionKind::Constructor:
+    case DefinitionKind::Destructor:
+      return BinderDiagnosticCode::RedeclareFunction;
+    case DefinitionKind::Class:
+      return BinderDiagnosticCode::RedeclareClass;
+    case DefinitionKind::Interface:
+      return BinderDiagnosticCode::RedeclareInterface;
+    case DefinitionKind::Enum:
+      return BinderDiagnosticCode::RedeclareEnum;
+    case DefinitionKind::TypeAlias:
+    case DefinitionKind::AssociatedType:
+      return BinderDiagnosticCode::RedeclareTypeAlias;
+    case DefinitionKind::Parameter:
+      return BinderDiagnosticCode::RedeclareParameter;
+    case DefinitionKind::Field:
+    case DefinitionKind::Constant:
+    case DefinitionKind::Static:
+    case DefinitionKind::Local:
+    case DefinitionKind::PatternBinding:
+      return BinderDiagnosticCode::RedeclareVariable;
+    case DefinitionKind::ModuleAlias:
+    case DefinitionKind::Struct:
+    case DefinitionKind::Error:
+    case DefinitionKind::EnumVariant:
+    case DefinitionKind::TypeParameter:
+    case DefinitionKind::ImportAlias:
+    case DefinitionKind::ReexportAlias:
+      return BinderDiagnosticCode::DuplicateIdentifier;
+    case DefinitionKind::Closure:
+      return zc::none;
+  }
+  ZC_UNREACHABLE;
+}
+
+bool isRejected(const DefinitionSkeletonCandidate& candidate, identity::DefId identity) {
+  for (const auto& duplicate : candidate.duplicates) {
+    if (duplicate.rejected == identity) { return true; }
+  }
+  return false;
 }
 
 zc::Maybe<ast::NodeId> declarationExport(const ast::Tree& tree, ast::NodeId target,
@@ -342,12 +413,51 @@ DefinitionSkeletonBuildResult BindingSkeletonBuilder::build(const VerifiedBindin
 
   for (auto& scope : arena.scopes) {
     sortBindings(scope.bindings);
-    for (size_t index = 1; index < scope.bindings.size(); ++index) {
-      if (sameBindingName(scope.bindings[index - 1], scope.bindings[index])) {
-        return failure(input, BinderInvariantKind::InvalidBindingFact, input.tree().root());
+    zc::Vector<ScopeBindingEntry> unique;
+    for (auto& binding : scope.bindings) {
+      if (!unique.empty() && sameBindingName(unique.back(), binding)) {
+        auto rejected = definitionTarget(binding);
+        auto previous = definitionTarget(unique.back());
+        if (rejected == zc::none || previous == zc::none) {
+          return failure(input, BinderInvariantKind::InvalidBindingFact, input.tree().root());
+        }
+        ZC_IF_SOME(rejectedValue, rejected) {
+          auto fact = definitionFact(result, rejectedValue);
+          auto primaryNode = definitionNode(input, rejectedValue);
+          ZC_IF_SOME(previousValue, previous) {
+            auto previousNode = definitionNode(input, previousValue);
+            if (fact == zc::none || primaryNode == zc::none || previousNode == zc::none) {
+              return failure(input, BinderInvariantKind::InvalidBindingFact, input.tree().root());
+            }
+            ZC_IF_SOME(factValue, fact) {
+              auto code = redeclarationCode(factValue.kind);
+              if (code == zc::none) {
+                return failure(input, BinderInvariantKind::InvalidBindingFact, input.tree().root());
+              }
+              ZC_IF_SOME(codeValue, code) {
+                ZC_IF_SOME(primaryNodeValue, primaryNode) {
+                  ZC_IF_SOME(previousNodeValue, previousNode) {
+                    result.duplicates.add(SkeletonDuplicateFact{
+                        codeValue, binding.name.name().clone(), rejectedValue, primaryNodeValue,
+                        previousNodeValue, binding.binding.declarationSpan.clone(),
+                        unique.back().binding.declarationSpan.clone()});
+                  }
+                }
+              }
+            }
+          }
+        }
+        continue;
       }
+      unique.add(zc::mv(binding));
     }
+    scope.bindings = zc::mv(unique);
   }
+  zc::Vector<ModuleSkeletonSurfaceSeed> retainedSeeds;
+  for (auto& seed : result.moduleSurfaceSeeds) {
+    if (!isRejected(result, seed.identity)) { retainedSeeds.add(zc::mv(seed)); }
+  }
+  result.moduleSurfaceSeeds = zc::mv(retainedSeeds);
   sortSurfaceSeeds(result.moduleSurfaceSeeds);
   return result;
 }

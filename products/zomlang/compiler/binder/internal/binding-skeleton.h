@@ -25,9 +25,20 @@ struct ModuleSkeletonSurfaceSeed final {
   zc::Maybe<identity::SourceSpan> exportSpan;
 };
 
+struct SkeletonDuplicateFact final {
+  BinderDiagnosticCode diagnostic;
+  identity::SemanticIdentifier name;
+  identity::DefId rejected;
+  ast::NodeId primaryNode;
+  ast::NodeId previousNode;
+  identity::SourceSpan primary;
+  identity::SourceSpan previous;
+};
+
 struct DefinitionSkeletonCandidate final {
   zc::Vector<DefinitionFact> definitions;
   zc::Vector<ImplBindingFact> impls;
+  zc::Vector<SkeletonDuplicateFact> duplicates;
   zc::Vector<ModuleSkeletonSurfaceSeed> moduleSurfaceSeeds;
 };
 

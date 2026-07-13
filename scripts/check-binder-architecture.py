@@ -367,6 +367,7 @@ def check_binding_skeleton_contract(files: dict[Path, str], errors: list[str]) -
         "DefinitionSkeletonBuildResult build(const VerifiedBindingInput& input,",
         "zc::Vector<DefinitionFact> definitions;",
         "zc::Vector<ImplBindingFact> impls;",
+        "zc::Vector<SkeletonDuplicateFact> duplicates;",
         "zc::Vector<ModuleSkeletonSurfaceSeed> moduleSurfaceSeeds;",
     ):
         if required not in header:
@@ -384,6 +385,9 @@ def check_binding_skeleton_contract(files: dict[Path, str], errors: list[str]) -
         "result.impls.add(ImplBindingFact",
         "declarationExport(input.tree(), definition.node, ambiguousExport)",
         "exportNode != zc::none",
+        "redeclarationCode(factValue.kind)",
+        "scope.bindings = zc::mv(unique)",
+        "isRejected(result, seed.identity)",
     ):
         if required not in source:
             errors.append(f"{SKELETON_SOURCE}: incomplete skeleton projection: {required}")
@@ -394,6 +398,8 @@ def check_binding_skeleton_contract(files: dict[Path, str], errors: list[str]) -
         "encodeImplementation(encoder, input, fact.identity)",
         "candidate.impls.size() < expected.impls.size()",
         "candidate.impls.size() > expected.impls.size()",
+        "BindingDiagnosticAdapter::emitRedeclaration(",
+        "candidate.sourceFailures = zc::mv(sourceFailures)",
     ):
         if required not in files.get(VERIFIER_SOURCE, ""):
             errors.append(f"{VERIFIER_SOURCE}: impl fact verification is disconnected: {required}")
@@ -404,6 +410,9 @@ def check_binding_skeleton_contract(files: dict[Path, str], errors: list[str]) -
         "BindingSkeleton.PublishesOnlyDeclarationExports",
         "BindingSkeleton.PublishesEmptyMarkerImplFact",
         "BindingVerifier.RejectsMalformedImplFactsAndMemberOrder",
+        "BindingSkeleton.RejectsDuplicateFunctionsAsSourceFailures",
+        "BindingSkeleton.RejectsNfcEquivalentFunctionNames",
+        "BindingSkeleton.UsesKindSpecificRedeclarationCodes",
         "BindingBuilder.DefersIdentifierResolutionBeforePublishingMetadata",
     ):
         if marker not in files.get(TEST_SOURCE, ""):
@@ -761,6 +770,18 @@ def self_test(files: dict[Path, str]) -> list[str]:
             VERIFIER_SOURCE,
             "encodeImplementation(encoder, input, fact.identity)",
             "encodeDefinition(encoder, input, fact.identity)",
+        ),
+        (
+            "duplicate overwrite path",
+            SKELETON_SOURCE,
+            "scope.bindings = zc::mv(unique)",
+            "scope.bindings = zc::Vector<ScopeBindingEntry>()",
+        ),
+        (
+            "raw duplicate diagnostics",
+            VERIFIER_SOURCE,
+            "BindingDiagnosticAdapter::emitRedeclaration(",
+            "engine.diagnose<diagnostics::DiagID::RedeclareFunction>(",
         ),
         (
             "foreign scope arena include",
