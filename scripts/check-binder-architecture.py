@@ -188,6 +188,32 @@ def check_frozen_impl_inventory_contract(files: dict[Path, str], errors: list[st
         errors.append(f"{INVENTORY_HEADER}: impl inventory compatibility rejection is forbidden")
 
 
+def check_special_callable_contract(files: dict[Path, str], errors: list[str]) -> None:
+    inventory = files.get(INVENTORY_SOURCE, "")
+    skeleton = files.get(SKELETON_SOURCE, "")
+    tests = files.get(TEST_SOURCE, "")
+    for required in (
+        "bool permitsAbsentLexicalBinding(identity::DefinitionKind kind)",
+        "return kind == identity::DefinitionKind::Constructor ||\n"
+        "         kind == identity::DefinitionKind::Destructor;",
+        "bindingName == zc::none && !permitsAbsentLexicalBinding(entry.kind)",
+    ):
+        if required not in inventory:
+            errors.append(f"{INVENTORY_SOURCE}: special callable identity contract is disconnected: {required}")
+    for required in (
+        "return SkeletonEligibility::SpecialCallable;",
+        "ast::kConstructorDeclParamsIdWord",
+        "ast::kDestructorDeclParamsIdWord",
+        "const bool lexicalBinding = classification != SkeletonEligibility::SpecialCallable;",
+        "classification == SkeletonEligibility::SpecialCallable && !specialCallableScope",
+        "if (lexicalBinding) {",
+    ):
+        if required not in skeleton:
+            errors.append(f"{SKELETON_SOURCE}: special callable binding contract is disconnected: {required}")
+    if "BindingActivation.PublishesSpecialCallableParameterLists" not in tests:
+        errors.append(f"{TEST_SOURCE}: missing special callable activation evidence")
+
+
 def check_definition_site_contract(files: dict[Path, str], errors: list[str]) -> None:
     site_header = files.get(SITE_HEADER, "")
     inventory_header_path = BINDER_DIR / "definition-inventory.h"
@@ -569,6 +595,7 @@ def check(files: dict[Path, str]) -> list[str]:
     check_unique_construction(files, errors)
     check_verified_input_surface(files, errors)
     check_frozen_impl_inventory_contract(files, errors)
+    check_special_callable_contract(files, errors)
     check_definition_site_contract(files, errors)
     check_private_binding_candidate(files, errors)
     check_producer_boundaries(files, errors)
@@ -803,6 +830,35 @@ def self_test(files: dict[Path, str]) -> list[str]:
             "case DefinitionKind::Parameter:\n      return SkeletonEligibility::Deferred;",
         ),
         (
+            "special callable inventory rejection",
+            INVENTORY_SOURCE,
+            "bindingName == zc::none && !permitsAbsentLexicalBinding(entry.kind)",
+            "bindingName == zc::none",
+        ),
+        (
+            "unbounded special callable identity admission",
+            INVENTORY_SOURCE,
+            "return kind == identity::DefinitionKind::Constructor ||\n"
+            "         kind == identity::DefinitionKind::Destructor;",
+            "return true;",
+        ),
+        (
+            "deferred special callable activation",
+            SKELETON_SOURCE,
+            "case DefinitionKind::Constructor:\n"
+            "    case DefinitionKind::Destructor:\n"
+            "      return SkeletonEligibility::SpecialCallable;",
+            "case DefinitionKind::Constructor:\n"
+            "    case DefinitionKind::Destructor:\n"
+            "      return SkeletonEligibility::Deferred;",
+        ),
+        (
+            "special callable lexical binding leak",
+            SKELETON_SOURCE,
+            "const bool lexicalBinding = classification != SkeletonEligibility::SpecialCallable;",
+            "const bool lexicalBinding = true;",
+        ),
+        (
             "generic parameter module surface leak",
             SKELETON_SOURCE,
             "classification != SkeletonEligibility::Generic &&\n"
@@ -832,6 +888,12 @@ def self_test(files: dict[Path, str]) -> list[str]:
             TEST_SOURCE,
             "BindingActivation.PublishesNamedCallableParameterLists",
             "BindingActivation.MissingNamedCallableParameterLists",
+        ),
+        (
+            "missing special callable activation evidence",
+            TEST_SOURCE,
+            "BindingActivation.PublishesSpecialCallableParameterLists",
+            "BindingActivation.MissingSpecialCallableParameterLists",
         ),
         (
             "missing impl fact codec",

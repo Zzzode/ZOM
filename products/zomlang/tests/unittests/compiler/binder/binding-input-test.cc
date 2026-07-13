@@ -1535,6 +1535,68 @@ ZC_TEST("BindingActivation.RejectsDuplicateNamedParameters") {
   ZC_EXPECT(failures[0].notes[0].diagnostic == BinderDiagnosticCode::PreviousDeclarationHere);
 }
 
+ZC_TEST("BindingActivation.PublishesSpecialCallableParameterLists") {
+  ParsedSource sourceFixture(
+      "module root;\n"
+      "class Box {\n"
+      "  init(value: i32) {}\n"
+      "  deinit(token: i32) {}\n"
+      "}\n"_zc);
+  FrozenFixture fixture(sourceFixture, true);
+  auto inputResult = verify(fixture);
+  ZC_REQUIRE(inputResult.is<VerifiedBindingInput>());
+  auto input = zc::mv(inputResult.get<VerifiedBindingInput>());
+  size_t specialIdentityCount = 0;
+  for (const auto& entry : input.definitions().definitions()) {
+    if (entry.kind != identity::DefinitionKind::Constructor &&
+        entry.kind != identity::DefinitionKind::Destructor) {
+      continue;
+    }
+    ++specialIdentityCount;
+    ZC_EXPECT(entry.bindingName == zc::none);
+  }
+  ZC_EXPECT(specialIdentityCount == 2);
+  auto candidate = BindingBuilder::build(input, *sourceFixture.diagnostics);
+  ZC_REQUIRE(candidate.is<BindingMetadataCandidate>());
+  auto verified = BindingVerifier::verify(input, zc::mv(candidate.get<BindingMetadataCandidate>()));
+  ZC_REQUIRE(verified.is<VerifiedBindingOutput>());
+  const auto& metadata = verified.get<VerifiedBindingOutput>().metadata;
+
+  size_t constructorCount = 0;
+  size_t destructorCount = 0;
+  size_t parameterCount = 0;
+  size_t specialCallableScopeCount = 0;
+  for (const auto& fact : metadata.definitions()) {
+    if (fact.kind == identity::DefinitionKind::Constructor) {
+      ++constructorCount;
+      ZC_EXPECT(fact.activation == DefinitionActivation::ModuleSkeleton);
+      ZC_EXPECT(fact.nameSpace == Namespace::Value);
+    }
+    if (fact.kind == identity::DefinitionKind::Destructor) {
+      ++destructorCount;
+      ZC_EXPECT(fact.activation == DefinitionActivation::ModuleSkeleton);
+      ZC_EXPECT(fact.nameSpace == Namespace::Value);
+    }
+    if (fact.kind == identity::DefinitionKind::Parameter) {
+      ++parameterCount;
+      ZC_EXPECT(fact.activation == DefinitionActivation::ParameterList);
+      ZC_EXPECT(metadata.scopes()[fact.declaringScope.index()].kind == ScopeKind::Function);
+    }
+  }
+  for (const auto& scope : metadata.scopes()) {
+    if (scope.kind != ScopeKind::Function) { continue; }
+    ++specialCallableScopeCount;
+    ZC_REQUIRE(scope.bindings.size() == 1);
+  }
+  ZC_EXPECT(constructorCount == 1);
+  ZC_EXPECT(destructorCount == 1);
+  ZC_EXPECT(parameterCount == 2);
+  ZC_EXPECT(specialCallableScopeCount == 2);
+  ZC_REQUIRE(metadata.scopes().size() > 1);
+  ZC_EXPECT(metadata.scopes()[1].kind == ScopeKind::TypeBody);
+  ZC_EXPECT(metadata.scopes()[1].bindings.empty());
+}
+
 ZC_TEST("ModuleGraph.ClassifiesUnresolvedSyntaxRequesterAndRevisionFailures") {
   ParsedSource importSource("module root;\nimport math::geometry;\n"_zc);
   FrozenFixture unresolved(importSource);
