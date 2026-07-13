@@ -18,6 +18,7 @@ PARSED_HEADER = BINDER_DIR / "parsed-module.h"
 PARSED_SOURCE = BINDER_DIR / "parsed-module.cc"
 INVENTORY_HEADER = BINDER_DIR / "frozen-definition-inventory.h"
 INVENTORY_SOURCE = BINDER_DIR / "frozen-definition-inventory.cc"
+FROZEN_REGISTRY_HEADER = Path("products/zomlang/compiler/identity/frozen-registry.h")
 SITE_HEADER = BINDER_DIR / "definition-site.h"
 SITE_SOURCE = BINDER_DIR / "definition-site.cc"
 METADATA_HEADER = BINDER_DIR / "binding-metadata.h"
@@ -28,6 +29,8 @@ SCOPE_HEADER = BINDER_DIR / "internal" / "scope-arena.h"
 SCOPE_SOURCE = BINDER_DIR / "scope-arena.cc"
 SKELETON_HEADER = BINDER_DIR / "internal" / "binding-skeleton.h"
 SKELETON_SOURCE = BINDER_DIR / "binding-skeleton.cc"
+BODY_HEADER = BINDER_DIR / "internal" / "body-binding.h"
+BODY_SOURCE = BINDER_DIR / "body-binding.cc"
 DIAGNOSTIC_ADAPTER_HEADER = BINDER_DIR / "binding-diagnostic-adapter.h"
 DIAGNOSTIC_ADAPTER_SOURCE = BINDER_DIR / "binding-diagnostic-adapter.cc"
 DIAGNOSTIC_DEFINITIONS = Path("products/zomlang/compiler/diagnostics/diagnostics-binder.def")
@@ -35,6 +38,9 @@ BINDER_CMAKE = BINDER_DIR / "CMakeLists.txt"
 TEST_DIR = Path("products/zomlang/tests/unittests/compiler/binder")
 TEST_SOURCE = TEST_DIR / "binding-input-test.cc"
 TEST_CMAKE = TEST_DIR / "CMakeLists.txt"
+FROZEN_REGISTRY_TEST = Path(
+    "products/zomlang/tests/unittests/compiler/identity/frozen-registry-test.cc"
+)
 FORBIDDEN_INCLUDE_ROOTS = (
     Path("products/zomlang/compiler/checker"),
     Path("products/zomlang/compiler/irgen"),
@@ -75,6 +81,8 @@ def production_files() -> dict[Path, str]:
         SCOPE_SOURCE,
         SKELETON_HEADER,
         SKELETON_SOURCE,
+        BODY_HEADER,
+        BODY_SOURCE,
         DIAGNOSTIC_ADAPTER_HEADER,
         DIAGNOSTIC_ADAPTER_SOURCE,
         DIAGNOSTIC_DEFINITIONS,
@@ -188,6 +196,41 @@ def check_frozen_impl_inventory_contract(files: dict[Path, str], errors: list[st
         errors.append(f"{INVENTORY_HEADER}: impl inventory compatibility rejection is forbidden")
 
 
+def check_owned_key_projection_contract(files: dict[Path, str], errors: list[str]) -> None:
+    registry = files.get(FROZEN_REGISTRY_HEADER, "")
+    inventory = files.get(INVENTORY_SOURCE, "")
+    inventory_impl = type_body(inventory, "FrozenDefinitionInventoryView::Impl")
+    binder_tests = files.get(TEST_SOURCE, "")
+    identity_tests = files.get(FROZEN_REGISTRY_TEST, "")
+    for required in (
+        "class FrozenKeyIndex final",
+        "zc::Maybe<FrozenKeyIndex> snapshotKeys() const",
+        "lookupProjectedKey(owner, keys.asPtr(), handle)",
+        "handle.slot >= keys.size()",
+        "return keys[handle.slot];",
+    ):
+        if required not in registry:
+            errors.append(
+                f"{FROZEN_REGISTRY_HEADER}: owned frozen key projection is incomplete: {required}"
+            )
+    for required in (
+        "identity::DefinitionRegistry::FrozenKeyIndex definitionKeys;",
+        "identity::ImplRegistry::FrozenKeyIndex implKeys;",
+        "registries.definitions().snapshotKeys()",
+        "registries.impls().snapshotKeys()",
+        "impl->definitionKeys.lookup(definition)",
+        "impl->implKeys.lookup(implementation)",
+    ):
+        if required not in inventory:
+            errors.append(f"{INVENTORY_SOURCE}: owned key projection is disconnected: {required}")
+    if "SemanticIdentityRegistrySet&" in inventory_impl:
+        errors.append(f"{INVENTORY_SOURCE}: frozen inventory view retains registry lifetime")
+    if "FrozenInventory.OwnsCanonicalKeyProjection" not in binder_tests:
+        errors.append(f"{TEST_SOURCE}: missing owned frozen inventory key evidence")
+    if "Frozen key index owns canonical lookup after registry move" not in identity_tests:
+        errors.append(f"{FROZEN_REGISTRY_TEST}: missing owned frozen key index evidence")
+
+
 def check_special_callable_contract(files: dict[Path, str], errors: list[str]) -> None:
     inventory = files.get(INVENTORY_SOURCE, "")
     skeleton = files.get(SKELETON_SOURCE, "")
@@ -257,6 +300,158 @@ def check_pattern_activation_contract(files: dict[Path, str], errors: list[str])
             errors.append(f"{SKELETON_SOURCE}: pattern activation contract is disconnected: {required}")
     if "BindingActivation.PublishesMatchAndLoopPatternFacts" not in tests:
         errors.append(f"{TEST_SOURCE}: missing pattern activation evidence")
+
+
+def check_body_binding_contract(files: dict[Path, str], errors: list[str]) -> None:
+    header = files.get(BODY_HEADER, "")
+    source = files.get(BODY_SOURCE, "")
+    skeleton = files.get(SKELETON_SOURCE, "")
+    verifier = files.get(VERIFIER_SOURCE, "")
+    tests = files.get(TEST_SOURCE, "")
+    for required in (
+        "class BodyBindingBuilder final",
+        "struct BodyBindingCandidate final",
+        "using BodyBindingBuildResult = zc::OneOf<BodyBindingCandidate, BinderInvariantFact>;",
+        "DefinitionSkeletonCandidate& skeleton",
+    ):
+        if required not in header:
+            errors.append(f"{BODY_HEADER}: incomplete body-binding authority: {required}")
+    for required in (
+        "BinderEmitterSite::BodyBinding",
+        "struct ActiveScopeIndex final",
+        "zc::HashMap<zc::String, size_t> values;",
+        "activeDefinition(scopeIndex, expected, name.text())",
+        "BindingResolutionValue(BoundNameResolution",
+        "BodyBindingFailureFact{diagnostic, node",
+        "ShadowTargetFact{entry.definition",
+        "DefinitionActivation::AfterInitializer",
+        "DefinitionActivation::ParameterList",
+        "DefinitionActivation::LoopPattern",
+        "DefinitionActivation::MatchPattern",
+        "visitForIn(node, scopeIndex)",
+        "visitMatchArm(node, scopeIndex)",
+        "resolveIdentifierPath(node, scopeIndex, inherited)",
+        "visitCallable(node, scopeIndex)",
+        "visitParameterSignature(parameter, scopeIndex)",
+        "visitParameterDefaultAndActivate(parameter, scopeIndex)",
+        "visitMarkerImpl(node, scopeIndex)",
+        "visitTypeQuery(node, scopeIndex)",
+        "visitDynTypeMarkers(node, scopeIndex)",
+        "visitObjectProperty(node, scopeIndex)",
+        "resolveIdentifierPath(path, scopeIndex, Namespace::Value)",
+        "resolveIdentifierPath(marker, scopeIndex, Namespace::Type)",
+        "resolveName(node, scopeIndex, Namespace::Value, tree.ident(name))",
+        "finishDefinitions()",
+        "finishNodeBindings()",
+        "finishShadowTargets()",
+        "BinderDiagnosticCode::RedeclareVariable, BinderEmitterSite::BodyBinding",
+    ):
+        if required not in source:
+            errors.append(f"{BODY_SOURCE}: incomplete source-ordered body binding: {required}")
+    initializer_visit = source.find(
+        "if (tree.contains(initializer)) { visitNode(initializer, scopeIndex, Namespace::Value); }"
+    )
+    activation = source.find(
+        "activateIntroducer(node, DefinitionActivation::AfterInitializer, true);"
+    )
+    if initializer_visit < 0 or activation < 0 or initializer_visit > activation:
+        errors.append(f"{BODY_SOURCE}: local activation must follow initializer traversal")
+    iterable_visit = source.find(
+        "if (tree.contains(expression)) { visitNode(expression, scopeIndex, Namespace::Value); }"
+    )
+    loop_activation = source.find(
+        "activateIntroducer(node, DefinitionActivation::LoopPattern, false);"
+    )
+    if iterable_visit < 0 or loop_activation < 0 or iterable_visit > loop_activation:
+        errors.append(f"{BODY_SOURCE}: loop pattern activation must follow iterable traversal")
+    parameter_signature = source.find("visitParameterSignature(parameter, scopeIndex);")
+    return_type = source.find(
+        "if (tree.contains(returnType)) { visitNode(returnType, scopeIndex, Namespace::Type); }"
+    )
+    parameter_default = source.find("visitParameterDefaultAndActivate(parameter, scopeIndex);")
+    callable_body = source.find(
+        "if (tree.contains(body)) { visitNode(body, scopeIndex, Namespace::Value); }"
+    )
+    if (
+        parameter_signature < 0
+        or return_type < 0
+        or parameter_default < 0
+        or callable_body < 0
+        or not parameter_signature < return_type < parameter_default < callable_body
+    ):
+        errors.append(f"{BODY_SOURCE}: callable signature/default/body phases are out of order")
+    if "if (definition.kind == identity::DefinitionKind::Local) { continue; }" not in skeleton:
+        errors.append(f"{SKELETON_SOURCE}: local facts did not leave the module skeleton")
+    for required in (
+        "BodyBindingBuilder::build(input, arena, skeleton)",
+        "bodyResult.is<BodyBindingCandidate>()",
+        "BindingDiagnosticAdapter::emitLookupFailure(",
+        "BindingResolutionValue(FailedBindingResolution{failureIndex})",
+        "candidate.nodeBindings = zc::mv(nodeBindings)",
+        "candidate.shadowTargets = zc::mv(body.shadowTargets)",
+        "value.is<BoundNameResolution>()",
+        "!encodeTarget(encoder, input, bound.canonicalTarget)",
+        "encodeSequenceSize(candidate.shadowTargets.size())",
+        "hasCompleteLexicalBindingSites(input.tree(), expected.nodeBindings.asPtr())",
+        "bodyBuilderFailure(input, BinderInvariantKind::InvalidBindingFact, ordinal)",
+        "input.definitions().definitionKey(definition)",
+        "case ast::SyntaxKind::TypeQueryExpr:",
+        "case ast::SyntaxKind::DynTypeMarkerList:",
+        "case ast::SyntaxKind::ObjectProperty:",
+        "if (tree.contains(typePath)) {\n          requireSite(typePath, ast::SyntaxKind::ModulePath, Namespace::Type);",
+        "requiredNamespaces[binding.node.value]",
+    ):
+        if required not in verifier:
+            errors.append(f"{VERIFIER_SOURCE}: body-binding cutover is disconnected: {required}")
+    if "${CMAKE_CURRENT_SOURCE_DIR}/body-binding.cc" not in files.get(BINDER_CMAKE, ""):
+        errors.append(f"{BINDER_CMAKE}: body-binding source is not compiled")
+    for marker in (
+        "BindingActivation.PublishesBlockLocalsAfterInitializers",
+        "BindingActivation.RejectsDuplicateBlockLocals",
+        "BodyBinding.ResolvesEarlierDeclaratorsAfterActivation",
+        "BodyBinding.RejectsSelfReferenceBeforeActivation",
+        "BodyBinding.RejectsLaterDeclaratorReference",
+        "BodyBinding.RecordsOuterShadowTargetAndResolvesNearestBinding",
+        "BodyBinding.ActivatesForInPatternAfterIterable",
+        "BodyBinding.ActivatesMatchPatternForGuardAndBody",
+        "BodyBinding.OrdersParameterDefaultVisibilityBySource",
+        "BodyBinding.RejectsLaterParameterInEarlierDefault",
+        "BodyBinding.ReportsValueUseOfTypeNameAsNamespaceMismatch",
+        "BodyBinding.ResolvesNamedTypeReferences",
+        "BodyBinding.ResolvesTypeQueryPathsInValueNamespace",
+        "BodyBinding.ReportsTypeQueryTypeOnlyNamespaceMismatch",
+        "BodyBinding.RejectsUnverifiedQualifiedTypeQueryPaths",
+        "BodyBinding.ResolvesDynMarkerPathsInTypeNamespace",
+        "BodyBinding.RejectsUndefinedDynMarkerPaths",
+        "BodyBinding.RejectsUnverifiedQualifiedDynMarkerPaths",
+        "BodyBinding.ResolvesObjectShorthandAndSkipsExplicitKeys",
+        "BodyBinding.RejectsUndefinedObjectShorthand",
+        "BodyBinding.RejectsUndefinedTypeReferences",
+        "BodyBinding.KeepsParametersOutOfLaterParameterTypes",
+        "BodyBinding.KeepsParametersOutOfReturnTypes",
+        "BodyBinding.ReportsTypeUseOfValueNameAsNamespaceMismatch",
+        "BodyBinding.ResolvesStructPatternTypePaths",
+        "BodyBinding.AcceptsStructPatternsWithoutTypePaths",
+        "BodyBinding.RejectsUnverifiedQualifiedTypePaths",
+        "BodyBinding.RejectsNfcEquivalentLocalNames",
+        "BodyBinding.OrdersLookupAndDuplicateFailuresBySource",
+        "BodyBinding.CanonicalizesSkeletonAndBodyDefinitionFactsTogether",
+        "BindingVerifier.RejectsWrongBoundNameTarget",
+        "BindingVerifier.RejectsMalformedBoundNameFieldsAndOrder",
+        "BindingVerifier.RejectsInvalidFailedResolutionIndex",
+        "BindingVerifier.RejectsMalformedShadowFacts",
+        "BindingVerifier.RejectsForeignBodyBindingIdentities",
+        "BindingVerifier.RejectsMissingShadowTarget",
+    ):
+        if marker not in tests:
+            errors.append(f"{TEST_SOURCE}: missing body-binding evidence: {marker}")
+
+    internal_include = '"zomlang/compiler/binder/internal/body-binding.h"'
+    for path, text in files.items():
+        if path in {BODY_HEADER, BODY_SOURCE, VERIFIER_SOURCE} or TEST_DIR in path.parents:
+            continue
+        if internal_include in text or re.search(r"\bBodyBindingBuilder::build\(", text):
+            errors.append(f"{path}: body-binding internal authority escaped")
 
 
 def check_definition_site_contract(files: dict[Path, str], errors: list[str]) -> None:
@@ -352,7 +547,7 @@ def check_internal_binding_authority(files: dict[Path, str], errors: list[str]) 
             "BindingBuilder::build(",
             "BindingVerifier::verify(",
         ):
-            if symbol in text:
+            if re.search(rf"\b{re.escape(symbol)}", text):
                 errors.append(f"{path}: binder-internal authority escaped through {symbol}")
 
 
@@ -362,7 +557,7 @@ def check_scope_arena_contract(files: dict[Path, str], errors: list[str]) -> Non
     internal_include = '"zomlang/compiler/binder/internal/scope-arena.h"'
     for path, text in files.items():
         if path in {SCOPE_HEADER, SCOPE_SOURCE, SKELETON_HEADER, SKELETON_SOURCE,
-                    VERIFIER_SOURCE} or TEST_DIR in path.parents:
+                    BODY_HEADER, BODY_SOURCE, VERIFIER_SOURCE} or TEST_DIR in path.parents:
             continue
         if internal_include in text:
             errors.append(f"{path}: scope arena internal authority escaped")
@@ -425,7 +620,8 @@ def check_binding_skeleton_contract(files: dict[Path, str], errors: list[str]) -
     source = files.get(SKELETON_SOURCE, "")
     internal_include = '"zomlang/compiler/binder/internal/binding-skeleton.h"'
     for path, text in files.items():
-        if path in {SKELETON_HEADER, SKELETON_SOURCE, VERIFIER_SOURCE} or TEST_DIR in path.parents:
+        if path in {SKELETON_HEADER, SKELETON_SOURCE, BODY_SOURCE,
+                    VERIFIER_SOURCE} or TEST_DIR in path.parents:
             continue
         if internal_include in text:
             errors.append(f"{path}: binding skeleton internal authority escaped")
@@ -436,9 +632,11 @@ def check_binding_skeleton_contract(files: dict[Path, str], errors: list[str]) -
     for required in (
         "class BindingSkeletonBuilder final",
         "DefinitionSkeletonBuildResult build(const VerifiedBindingInput& input,",
+        "struct BindingDuplicateFact final",
+        "BinderEmitterSite emitterSite;",
         "zc::Vector<DefinitionFact> definitions;",
         "zc::Vector<ImplBindingFact> impls;",
-        "zc::Vector<SkeletonDuplicateFact> duplicates;",
+        "zc::Vector<BindingDuplicateFact> duplicates;",
         "zc::Vector<ModuleSkeletonSurfaceSeed> moduleSurfaceSeeds;",
     ):
         if required not in header:
@@ -509,7 +707,7 @@ def check_binding_skeleton_contract(files: dict[Path, str], errors: list[str]) -
         "BindingActivation.RejectsDuplicateGenericParameters",
         "BindingActivation.PublishesNamedCallableParameterLists",
         "BindingActivation.RejectsDuplicateNamedParameters",
-        "BindingBuilder.DefersIdentifierResolutionBeforePublishingMetadata",
+        "BindingBuilder.PublishesUndefinedIdentifierFailure",
     ):
         if marker not in files.get(TEST_SOURCE, ""):
             errors.append(f"{TEST_SOURCE}: missing binding skeleton evidence: {marker}")
@@ -523,12 +721,15 @@ def check_binding_diagnostic_adapter(files: dict[Path, str], errors: list[str]) 
         "class VerifiedIdentifierArgument final",
         "const identity::SemanticIdentifier& identifier",
         "class BindingDiagnosticAdapter final",
+        "emitLookupFailure(",
         "VerifiedIdentifierArgument&& identifier",
     ):
         if required not in header:
             errors.append(f"{DIAGNOSTIC_ADAPTER_HEADER}: incomplete typed adapter: {required}")
     for required in (
         "VerifiedIdentifierArgument::from(",
+        "case BinderDiagnosticCode::UndefinedIdentifier:",
+        "case BinderDiagnosticCode::SymbolNamespaceMismatch:",
         "diagnostics::DiagID::PreviousDeclarationHere",
         "case BinderDiagnosticCode::DuplicateIdentifier:",
     ):
@@ -538,6 +739,8 @@ def check_binding_diagnostic_adapter(files: dict[Path, str], errors: list[str]) 
         errors.append(f"{DIAGNOSTIC_DEFINITIONS}: missing ZOM3017 previous declaration note")
     if "BindingDiagnosticAdapter.EmitsTypedRedeclarationWithPreviousNote" not in files.get(TEST_SOURCE, ""):
         errors.append(f"{TEST_SOURCE}: missing typed redeclaration adapter evidence")
+    if "BindingBuilder.PublishesUndefinedIdentifierFailure" not in files.get(TEST_SOURCE, ""):
+        errors.append(f"{TEST_SOURCE}: missing typed lookup failure evidence")
 
 
 def check_wiring(files: dict[Path, str], errors: list[str]) -> None:
@@ -550,6 +753,7 @@ def check_wiring(files: dict[Path, str], errors: list[str]) -> None:
         (BINDER_CMAKE, "${CMAKE_CURRENT_SOURCE_DIR}/binding-verifier.cc"),
         (BINDER_CMAKE, "${CMAKE_CURRENT_SOURCE_DIR}/scope-arena.cc"),
         (BINDER_CMAKE, "${CMAKE_CURRENT_SOURCE_DIR}/binding-skeleton.cc"),
+        (BINDER_CMAKE, "${CMAKE_CURRENT_SOURCE_DIR}/body-binding.cc"),
         (BINDER_CMAKE, "${CMAKE_CURRENT_SOURCE_DIR}/binding-diagnostic-adapter.cc"),
         (TEST_CMAKE, 'add_ztest_unit_test("binding-input-test" "binding-input-test.cc"'),
         (TEST_CMAKE, "binder-architecture"),
@@ -640,9 +844,11 @@ def check(files: dict[Path, str]) -> list[str]:
     check_unique_construction(files, errors)
     check_verified_input_surface(files, errors)
     check_frozen_impl_inventory_contract(files, errors)
+    check_owned_key_projection_contract(files, errors)
     check_special_callable_contract(files, errors)
     check_closure_activation_contract(files, errors)
     check_pattern_activation_contract(files, errors)
+    check_body_binding_contract(files, errors)
     check_definition_site_contract(files, errors)
     check_private_binding_candidate(files, errors)
     check_producer_boundaries(files, errors)
@@ -659,6 +865,9 @@ def check(files: dict[Path, str]) -> list[str]:
 
 
 def self_test(files: dict[Path, str]) -> list[str]:
+    baseline = check(files)
+    if baseline:
+        return [f"self-test baseline rejected: {error}" for error in baseline]
     cases: tuple[tuple[str, Path, str, str], ...] = (
         ("public constructor", HEADER, "class VerifiedBindingInput final {\npublic:", "class VerifiedBindingInput final {\npublic:\n  explicit VerifiedBindingInput(int);"),
         ("foreign construction", Path("products/zomlang/compiler/checker/escape.cc"), "", "VerifiedBindingInput(value);"),
@@ -707,6 +916,18 @@ def self_test(files: dict[Path, str]) -> list[str]:
             INVENTORY_SOURCE,
             "registries.impls().size() != inventory.impls().size()",
             "registries.impls().size() == inventory.impls().size()",
+        ),
+        (
+            "retained frozen registry lifetime",
+            INVENTORY_SOURCE,
+            "identity::DefinitionRegistry::FrozenKeyIndex definitionKeys;",
+            "const identity::SemanticIdentityRegistrySet& registries;",
+        ),
+        (
+            "linear frozen key projection",
+            FROZEN_REGISTRY_HEADER,
+            "return keys[handle.slot];",
+            "for (const auto& key : keys) { return key; }",
         ),
         (
             "impl compatibility rejection",
@@ -827,6 +1048,139 @@ def self_test(files: dict[Path, str]) -> list[str]:
             BINDER_CMAKE,
             "${CMAKE_CURRENT_SOURCE_DIR}/binding-skeleton.cc",
             "${CMAKE_CURRENT_SOURCE_DIR}/missing-binding-skeleton.cc",
+        ),
+        (
+            "missing body binding wiring",
+            BINDER_CMAKE,
+            "${CMAKE_CURRENT_SOURCE_DIR}/body-binding.cc",
+            "${CMAKE_CURRENT_SOURCE_DIR}/missing-body-binding.cc",
+        ),
+        (
+            "disconnected body binding cutover",
+            VERIFIER_SOURCE,
+            "BodyBindingBuilder::build(input, arena, skeleton)",
+            "disconnectedBodyBinding(input, arena, skeleton)",
+        ),
+        (
+            "premature local activation",
+            BODY_SOURCE,
+            "if (tree.contains(initializer)) { visitNode(initializer, scopeIndex, Namespace::Value); }",
+            "activateIntroducer(node, DefinitionActivation::AfterInitializer, true);\n"
+            "    if (tree.contains(initializer)) { visitNode(initializer, scopeIndex, Namespace::Value); }",
+        ),
+        (
+            "restored local skeleton activation",
+            SKELETON_SOURCE,
+            "if (definition.kind == identity::DefinitionKind::Local) { continue; }",
+            "if (definition.kind == identity::DefinitionKind::Local) {}",
+        ),
+        (
+            "missing body emitter provenance",
+            SKELETON_HEADER,
+            "BinderEmitterSite emitterSite;",
+            "BinderEmitterSite missingEmitterSite;",
+        ),
+        (
+            "missing earlier declarator evidence",
+            TEST_SOURCE,
+            "BodyBinding.ResolvesEarlierDeclaratorsAfterActivation",
+            "BodyBinding.MissingEarlierDeclaratorsAfterActivation",
+        ),
+        (
+            "missing self reference evidence",
+            TEST_SOURCE,
+            "BodyBinding.RejectsSelfReferenceBeforeActivation",
+            "BodyBinding.MissingSelfReferenceBeforeActivation",
+        ),
+        (
+            "missing type path resolution",
+            BODY_SOURCE,
+            "resolveIdentifierPath(node, scopeIndex, inherited)",
+            "skipIdentifierPath(node, scopeIndex, inherited)",
+        ),
+        (
+            "missing type query value routing",
+            BODY_SOURCE,
+            "visitTypeQuery(node, scopeIndex)",
+            "visitSchemaChildren(node, scopeIndex, inherited)",
+        ),
+        (
+            "missing dyn marker routing",
+            BODY_SOURCE,
+            "visitDynTypeMarkers(node, scopeIndex)",
+            "visitSchemaChildren(node, scopeIndex, inherited)",
+        ),
+        (
+            "missing object shorthand routing",
+            BODY_SOURCE,
+            "visitObjectProperty(node, scopeIndex)",
+            "visitSchemaChildren(node, scopeIndex, inherited)",
+        ),
+        (
+            "missing type query census role",
+            VERIFIER_SOURCE,
+            "case ast::SyntaxKind::TypeQueryExpr:",
+            "case ast::SyntaxKind::TypeOfExpression:",
+        ),
+        (
+            "missing dyn marker census role",
+            VERIFIER_SOURCE,
+            "case ast::SyntaxKind::DynTypeMarkerList:",
+            "case ast::SyntaxKind::DynTypeIfaceList:",
+        ),
+        (
+            "missing object shorthand census role",
+            VERIFIER_SOURCE,
+            "case ast::SyntaxKind::ObjectProperty:",
+            "case ast::SyntaxKind::ObjectSpread:",
+        ),
+        (
+            "missing optional struct pattern path guard",
+            VERIFIER_SOURCE,
+            "if (tree.contains(typePath)) {\n          requireSite(typePath, ast::SyntaxKind::ModulePath, Namespace::Type);",
+            "requireSite(typePath, ast::SyntaxKind::ModulePath, Namespace::Type);",
+        ),
+        (
+            "premature callable parameter activation",
+            BODY_SOURCE,
+            "visitParameterSignature(parameter, scopeIndex);",
+            "visitParameterDefaultAndActivate(parameter, scopeIndex);",
+        ),
+        (
+            "missing lexical binding census",
+            VERIFIER_SOURCE,
+            "hasCompleteLexicalBindingSites(input.tree(), expected.nodeBindings.asPtr())",
+            "expected.nodeBindings.empty()",
+        ),
+        (
+            "missing constant time definition key lookup",
+            VERIFIER_SOURCE,
+            "input.definitions().definitionKey(definition)",
+            "missingDefinitionKey(definition)",
+        ),
+        (
+            "missing callable signature evidence",
+            TEST_SOURCE,
+            "BodyBinding.KeepsParametersOutOfReturnTypes",
+            "BodyBinding.MissingParametersOutOfReturnTypes",
+        ),
+        (
+            "foreign body binding include",
+            Path("products/zomlang/compiler/checker/escape.cc"),
+            "",
+            '#include "zomlang/compiler/binder/internal/body-binding.h"',
+        ),
+        (
+            "missing bound name codec",
+            VERIFIER_SOURCE,
+            "!encodeTarget(encoder, input, bound.canonicalTarget)",
+            "!encodeTarget(encoder, input, bound.bindingIdentity)",
+        ),
+        (
+            "missing shadow target codec",
+            VERIFIER_SOURCE,
+            "encodeSequenceSize(candidate.shadowTargets.size())",
+            "encodeSequenceSize(0)",
         ),
         (
             "missing typed binder diagnostic wiring",
