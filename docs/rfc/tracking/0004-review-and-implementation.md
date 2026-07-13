@@ -312,8 +312,9 @@ landing.
 | Scope-owned generic and ordinary callable parameter facts | Complete | Commits `4434b909`, `aecfea09`, `1d640fe5`, and `593f4b64`; `GenericList` facts for scope-owning type parameter lists, `ParameterList` facts for direct function, method, and extern parameters, exact function-scope ownership, value-namespace placement, duplicate generic and parameter source diagnostics with `ZOM3017` notes, module-surface and direct-impl-member exclusion, focused sanitizer coverage, and adversarial architecture mutations |
 | Special callable identity and parameter facts | Complete | Commits `115445a5` and `570f6a82`; constructor and destructor `DeclaredDefinitionName` identities without fabricated lexical names, value-namespace `DefinitionFact` publication, type- or impl-owned function scopes, `ParameterList` facts, ordinary-binding exclusion, focused sanitizer coverage, and adversarial architecture mutations |
 | Closure identity, generic, and parameter facts | Complete | Commits `6749c23c` and `da426edc`; anonymous function-expression and lambda identities, value-namespace `ExpressionIntroduction` facts, closure-owned generic and parameter facts, ordinary-binding and surface exclusion, focused sanitizer coverage, and adversarial architecture mutations |
+| Loop and match pattern facts | Complete | Commits `37a2b8d7` and `69454c7d`; `PatternBindingSite` provenance, value-namespace `LoopPattern` and `MatchPattern` facts, exact loop and match-arm scopes, ordinary-binding and surface exclusion, focused sanitizer coverage, and adversarial architecture mutations |
 | Complete module resolution input | Blocked by RFC 0012 and RFC 0008 | Authoritative package resolution, production semantic-context fingerprint, verified resolution environment, and resolution receipts |
-| Complete binding facts and surfaces | Pending | Locals and patterns, imports, re-exports, aliases, visibility, labels, captures, body resolution, immutable metadata completion, codecs, and verifier negatives |
+| Complete binding facts and surfaces | Pending | Source-ordered locals, imports, re-exports, aliases, visibility, labels, captures, body resolution, immutable metadata completion, codecs, and verifier negatives |
 | Production binder cutover | Pending | Session integration, no downstream rebinding, deletion of raw binder inputs and binder-owned module resolution, and all acceptance gates |
 
 The first slice is intentionally fail-closed. It accepts only a single frozen
@@ -459,8 +460,15 @@ The closure slice publishes anonymous `FunctionExpression` and
 fabricating a lexical name. Each closure owns a closure scope; its direct
 generic and parameter facts activate in that scope through `GenericList` and
 `ParameterList`. A closure has no ordinary binding, module surface seed, or
-export surface entry. Local and pattern activation remain separate because
-they require source-order body binding rather than expression introduction.
+export surface entry. Source-ordered local activation remains separate because
+it requires body binding rather than expression introduction.
+
+The loop and match pattern slice preserves each frozen `PatternBindingSite`
+and selects its activation from the pattern introducer. A `ForInStatement`
+leaf becomes a `LoopPattern` value binding in the loop scope; a `MatchArmStmt`
+leaf becomes a `MatchPattern` value binding in the match-arm scope. Neither
+enters a module or export surface. Source-ordered block declarators remain
+separate because their bindings activate only after each initializer.
 
 The complete sanitizer-backed landing gate passed 1,250 of 1,250 tests in
 654.78 seconds. The gate also passed format, RFC validation, parser coverage,
@@ -491,3 +499,8 @@ The closure evidence series then passed the complete sanitizer-backed serial
 matrix: 1,250 of 1,250 tests in 2,634.87 seconds, with the ANTLR grammar oracle
 accounting for 820.04 seconds. The same run passed all five IR conformance
 cases and the complete Binder architecture positive and negative gate set.
+
+The pattern evidence series passed sanitizer configure and build, the focused
+binding unit test, the Binder architecture positive gate, and its negative
+mutation matrix. The production implementation is recorded in `37a2b8d7` and
+`69454c7d`.

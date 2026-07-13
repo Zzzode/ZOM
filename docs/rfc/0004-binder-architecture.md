@@ -968,6 +968,13 @@ owns its closure scope, and produces no `ScopeBindingEntry`, module-surface
 seed, or export surface entry. Its generic and parameter facts activate inside
 that closure scope through `GenericList` and `ParameterList`, respectively.
 
+Each `ForInStatement` and `MatchArmStmt` pattern leaf retains its
+`PatternBindingSite` introducer and path. It publishes one value-namespace
+`DefinitionFact` with `LoopPattern` or `MatchPattern` activation, respectively,
+and creates its ordinary lexical binding only in the exact loop or match-arm
+scope. Pattern facts do not enter a module or export surface. Block-scope
+declarator activation remains governed by the separate source-order rule.
+
 `ScopeKind` covers exactly module, function, type body, impl body, block, loop,
 match, match arm, closure, and unsafe block. The module scope has no parent and
 owner `Module(currentModule)`. Every other scope's parent is the nearest
@@ -1901,3 +1908,4 @@ None
 | 2026-07-13 | IMPLEMENTING | Corrected module-discovery versus semantic-SCC ownership, described the live insertion-ordered legacy state accurately, and moved active module diagnostics into their owned registry family. Future diagnostics must land atomically with their first producer. |
 | 2026-07-13 | IMPLEMENTING | Clarified that RFC 0011 special constructor and destructor declaration names publish definition and scope facts without an ordinary lexical binding, preserving `BindingNameKey` as a `SemanticIdentifier`-only key. |
 | 2026-07-13 | IMPLEMENTING | Activated anonymous closure expression facts and closure-owned generic and parameter facts without creating a lexical or surface binding. |
+| 2026-07-13 | IMPLEMENTING | Activated for-in and match-arm pattern leaves in their exact lexical scopes while keeping source-ordered block declarators separate. |
