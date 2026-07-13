@@ -34,6 +34,7 @@ struct BodyBindingFailureFact final {
 struct BodyBindingCandidate final {
   zc::Vector<BindingResolution> nodeBindings;
   zc::Vector<BodyBindingFailureFact> failures;
+  zc::Vector<DeferredMemberFact> deferredMembers;
   zc::Vector<ShadowTargetFact> shadowTargets;
 };
 

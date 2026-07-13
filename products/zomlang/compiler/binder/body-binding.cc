@@ -226,6 +226,19 @@ Namespace childNamespace(const ast::NodeSchemaFieldEntry& field, Namespace inher
   return inherited;
 }
 
+DeferredMemberFact cloneDeferredMemberFact(const DeferredMemberFact& fact) {
+  zc::Vector<Namespace> expectedNamespaces;
+  for (const auto nameSpace : fact.expectedNamespaces) { expectedNamespaces.add(nameSpace); }
+  zc::Vector<ast::NodeId> genericArguments;
+  for (const auto argument : fact.genericArguments) { genericArguments.add(argument); }
+  return DeferredMemberFact{fact.node,
+                            fact.base,
+                            fact.member.clone(),
+                            zc::mv(expectedNamespaces),
+                            zc::mv(genericArguments),
+                            fact.source.clone()};
+}
+
 }  // namespace
 
 class BodyBindingCursor final {
@@ -258,8 +271,8 @@ public:
         return rejectNow(BinderInvariantKind::MissingRequiredResolution, inventory[index].node);
       }
     }
-    if (!finishDefinitions() || !finishNodeBindings() || !finishShadowTargets() ||
-        !finishScopeBindings()) {
+    if (!finishDefinitions() || !finishNodeBindings() || !finishDeferredMembers() ||
+        !finishShadowTargets() || !finishScopeBindings()) {
       return takeRejection();
     }
     return zc::mv(result);
@@ -646,6 +659,12 @@ private:
         case ast::SyntaxKind::ObjectProperty:
           visitObjectProperty(node, scopeIndex);
           return;
+        case ast::SyntaxKind::CallExpression:
+          visitCallExpression(node, scopeIndex);
+          return;
+        case ast::SyntaxKind::MemberExpression:
+          visitMemberExpression(node, scopeIndex, ast::NodeList());
+          return;
         case ast::SyntaxKind::LetStmt:
           visitLet(node, scopeIndex);
           return;
@@ -727,6 +746,86 @@ private:
       return;
     }
     visitNode(value, scopeIndex, Namespace::Value);
+  }
+
+  void visitCallExpression(ast::NodeId node, uint32_t scopeIndex) {
+    const auto& call = tree.node(node);
+    const ast::NodeId callee(call.payload.words[ast::kCallExpressionCalleeWord]);
+    const ast::NodeList typeArguments{call.payload.words[ast::kCallExpressionTypeArgsFirstWord],
+                                      call.payload.words[ast::kCallExpressionTypeArgsSizeWord]};
+    const ast::NodeList arguments{call.payload.words[ast::kCallExpressionArgsFirstWord],
+                                  call.payload.words[ast::kCallExpressionArgsSizeWord]};
+    if (!tree.contains(callee) || !tree.contains(typeArguments) || !tree.contains(arguments)) {
+      reject(BinderInvariantKind::InvalidBindingFact, node);
+      return;
+    }
+    if (tree.node(callee).kind == ast::SyntaxKind::MemberExpression) {
+      visitMemberExpression(callee, scopeIndex, typeArguments);
+    } else {
+      visitNode(callee, scopeIndex, Namespace::Value);
+    }
+    if (rejected != zc::none) { return; }
+    for (const ast::NodeId argument : tree.list(typeArguments)) {
+      visitNode(argument, scopeIndex, Namespace::Type);
+      if (rejected != zc::none) { return; }
+    }
+    for (const ast::NodeId argument : tree.list(arguments)) {
+      visitNode(argument, scopeIndex, Namespace::Value);
+      if (rejected != zc::none) { return; }
+    }
+  }
+
+  void visitMemberExpression(ast::NodeId node, uint32_t scopeIndex,
+                             ast::NodeList genericArguments) {
+    if (!tree.contains(node) || tree.node(node).kind != ast::SyntaxKind::MemberExpression ||
+        !tree.contains(genericArguments)) {
+      reject(BinderInvariantKind::InvalidBindingFact, node);
+      return;
+    }
+    const auto& member = tree.node(node);
+    switch (static_cast<ast::MemberAccessKind>(
+        member.payload.words[ast::kMemberExpressionAccessWord])) {
+      case ast::MemberAccessKind::Dot:
+      case ast::MemberAccessKind::Optional:
+        break;
+      case ast::MemberAccessKind::Qualified:
+        reject(BinderInvariantKind::MissingRequiredResolution, node);
+        return;
+      default:
+        reject(BinderInvariantKind::InvalidBindingFact, node);
+        return;
+    }
+    const ast::NodeId base(member.payload.words[ast::kMemberExpressionObjectWord]);
+    if (!tree.contains(base)) {
+      reject(BinderInvariantKind::InvalidBindingFact, node);
+      return;
+    }
+    visitNode(base, scopeIndex, Namespace::Value);
+    if (rejected != zc::none) { return; }
+
+    auto name = identity::DeclaredDefinitionName::fromSource(
+        tree.ident(ast::IdentId(member.payload.words[ast::kMemberExpressionPropertyWord])));
+    auto source = input.parsedModule().spanFor(member.range);
+    if (name == zc::none || source == zc::none) {
+      reject(BinderInvariantKind::InvalidBindingFact, node);
+      return;
+    }
+    zc::Vector<Namespace> expectedNamespaces;
+    expectedNamespaces.add(Namespace::Value);
+    zc::Vector<ast::NodeId> arguments;
+    for (const ast::NodeId argument : tree.list(genericArguments)) { arguments.add(argument); }
+    ZC_IF_SOME(nameValue, name) {
+      ZC_IF_SOME(sourceValue, source) {
+        DeferredMemberFact fact{node,
+                                base,
+                                zc::mv(nameValue),
+                                zc::mv(expectedNamespaces),
+                                zc::mv(arguments),
+                                zc::mv(sourceValue)};
+        result.deferredMembers.add(cloneDeferredMemberFact(fact));
+        result.nodeBindings.add(BindingResolution{node, BindingResolutionValue(zc::mv(fact))});
+      }
+    }
   }
 
   void visitLet(ast::NodeId node, uint32_t scopeIndex) {
@@ -1013,7 +1112,8 @@ private:
   bool finishNodeBindings() {
     zc::TreeMap<uint32_t, size_t> order;
     for (size_t index = 0; index < result.nodeBindings.size(); ++index) {
-      if (!tree.contains(result.nodeBindings[index].node)) {
+      if (!tree.contains(result.nodeBindings[index].node) ||
+          order.find(result.nodeBindings[index].node.value) != zc::none) {
         reject(BinderInvariantKind::InvalidBindingFact, tree.root());
         return false;
       }
@@ -1022,6 +1122,24 @@ private:
     zc::Vector<BindingResolution> canonical;
     for (const auto& ordered : order) { canonical.add(zc::mv(result.nodeBindings[ordered.value])); }
     result.nodeBindings = zc::mv(canonical);
+    return true;
+  }
+
+  bool finishDeferredMembers() {
+    zc::TreeMap<uint32_t, size_t> order;
+    for (size_t index = 0; index < result.deferredMembers.size(); ++index) {
+      const auto node = result.deferredMembers[index].node;
+      if (!tree.contains(node) || order.find(node.value) != zc::none) {
+        reject(BinderInvariantKind::InvalidBindingFact, tree.root());
+        return false;
+      }
+      order.insert(node.value, index);
+    }
+    zc::Vector<DeferredMemberFact> canonical;
+    for (const auto& ordered : order) {
+      canonical.add(zc::mv(result.deferredMembers[ordered.value]));
+    }
+    result.deferredMembers = zc::mv(canonical);
     return true;
   }
 

@@ -1168,6 +1168,19 @@ Member expressions are split by ownership:
 - RFC 0005 and RFC 0009 must replace every deferred member with a complete
   checked target before successful checked-module publication.
 
+Each deferred member fact is reconstructed directly from one
+`MemberExpression`. `node` is that expression, `base` is its exact object child,
+and `member` is the canonical `DeclaredDefinitionName` derived from source. A
+`MemberExpression` retains the closed access kind `Dot`, `Optional`, or
+`Qualified`; consumers do not reconstruct that distinction from token text. A
+value-domain `.` or `?.` access has exactly `[Value]` in
+`expectedNamespaces`. When the member expression is the direct callee of a
+`CallExpression`, `genericArguments` is exactly that call's type-argument list
+in source order; it is empty otherwise. `source` covers the complete member
+expression. Every node in a chained access publishes its own fact. Module and
+associated-member syntax must remain unpublished until verified module or type
+context selects its namespace; it cannot be projected as a value-domain fact.
+
 ### Labels And Closures
 
 Labels use `LabelId` under either the module owner or an innermost callable
@@ -1270,7 +1283,7 @@ LocalExportFact {
 DeferredMemberFact {
   node: NodeId,
   base: NodeId,
-  member: SemanticIdentifier,
+  member: DeclaredDefinitionName,
   expectedNamespaces: SortedSet<Namespace>,
   genericArguments: Sequence<NodeId>,
   source: SourceSpan,

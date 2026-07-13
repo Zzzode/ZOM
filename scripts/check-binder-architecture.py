@@ -561,6 +561,147 @@ def check_body_binding_contract(files: dict[Path, str], errors: list[str]) -> No
             errors.append(f"{path}: body-binding internal authority escaped")
 
 
+def check_deferred_member_contract(files: dict[Path, str], errors: list[str]) -> None:
+    header = files.get(BODY_HEADER, "")
+    source = files.get(BODY_SOURCE, "")
+    verifier = files.get(VERIFIER_SOURCE, "")
+    tests = files.get(TEST_SOURCE, "")
+
+    if "zc::Vector<DeferredMemberFact> deferredMembers;" not in type_body(
+        header, "BodyBindingCandidate"
+    ):
+        errors.append(f"{BODY_HEADER}: body binding does not retain deferred-member facts")
+
+    for required in (
+        "case ast::SyntaxKind::CallExpression:\n"
+        "          visitCallExpression(node, scopeIndex);",
+        "case ast::SyntaxKind::MemberExpression:\n"
+        "          visitMemberExpression(node, scopeIndex, ast::NodeList());",
+        "finishDeferredMembers()",
+    ):
+        if required not in source:
+            errors.append(f"{BODY_SOURCE}: deferred-member dispatch is disconnected: {required}")
+
+    call_producer = function_body(
+        source, "void visitCallExpression(ast::NodeId node, uint32_t scopeIndex)"
+    )
+    for required in (
+        "ast::kCallExpressionCalleeWord",
+        "ast::kCallExpressionTypeArgsFirstWord",
+        "tree.node(callee).kind == ast::SyntaxKind::MemberExpression",
+        "visitMemberExpression(callee, scopeIndex, typeArguments);",
+        "visitNode(argument, scopeIndex, Namespace::Type);",
+    ):
+        if required not in call_producer:
+            errors.append(f"{BODY_SOURCE}: incomplete member-call producer: {required}")
+
+    member_producer = function_body(
+        source, "void visitMemberExpression(ast::NodeId node, uint32_t scopeIndex,"
+    )
+    for required in (
+        "ast::kMemberExpressionObjectWord",
+        "ast::kMemberExpressionAccessWord",
+        "case ast::MemberAccessKind::Dot:",
+        "case ast::MemberAccessKind::Optional:",
+        "case ast::MemberAccessKind::Qualified:",
+        "reject(BinderInvariantKind::MissingRequiredResolution, node);",
+        "identity::DeclaredDefinitionName::fromSource(",
+        "input.parsedModule().spanFor(member.range)",
+        "expectedNamespaces.add(Namespace::Value);",
+        "DeferredMemberFact fact{node,",
+        "result.deferredMembers.add(cloneDeferredMemberFact(fact));",
+        "result.nodeBindings.add(BindingResolution{node, BindingResolutionValue(zc::mv(fact))});",
+    ):
+        if required not in member_producer:
+            errors.append(f"{BODY_SOURCE}: incomplete deferred-member producer: {required}")
+
+    if "candidate.deferredMembers = zc::mv(body.deferredMembers);" not in verifier:
+        errors.append(f"{VERIFIER_SOURCE}: deferred-member candidate publication is disconnected")
+
+    fact_codec = function_body(verifier, "bool encodeDeferredMemberFact(")
+    for required in (
+        "encoder.encodeUint32(fact.node.value);",
+        "encoder.encodeUint32(fact.base.value);",
+        "fact.member.encode(encoder);",
+        "encoder.encodeSequenceSize(fact.expectedNamespaces.size());",
+        "encoder.encodeUint8(static_cast<uint8_t>(nameSpace));",
+        "encoder.encodeSequenceSize(fact.genericArguments.size());",
+        "encoder.encodeUint32(argument.value);",
+        "fact.source.encode(encoder);",
+    ):
+        if required not in fact_codec:
+            errors.append(f"{VERIFIER_SOURCE}: incomplete deferred-member codec: {required}")
+
+    candidate_codec = function_body(verifier, "zc::Maybe<zc::Array<uint8_t>> encodeCandidate(")
+    for required in (
+        "value.is<DeferredMemberFact>()",
+        "encoder.encodeUint8(0x03);",
+        "encodeDeferredMemberFact(encoder, input, value.get<DeferredMemberFact>())",
+        "encoder.encodeSequenceSize(candidate.deferredMembers.size());",
+        "for (const auto& fact : candidate.deferredMembers)",
+        "encodeDeferredMemberFact(encoder, input, fact)",
+    ):
+        if required not in candidate_codec:
+            errors.append(
+                f"{VERIFIER_SOURCE}: deferred-member candidate codec is incomplete: {required}"
+            )
+
+    oracle = function_body(verifier, "DeferredMemberOracleResult verifyDeferredMemberFacts(")
+    if not oracle:
+        errors.append(f"{VERIFIER_SOURCE}: independent deferred-member oracle is missing")
+    else:
+        for forbidden in ("BodyBindingBuilder::build", "BindingBuilder::buildCandidate"):
+            if forbidden in oracle:
+                errors.append(
+                    f"{VERIFIER_SOURCE}: deferred-member oracle reuses producer authority: {forbidden}"
+                )
+        for required in (
+            "const ast::NodeId base(syntax.payload.words[ast::kMemberExpressionObjectWord]);",
+            "syntax.payload.words[ast::kMemberExpressionAccessWord]",
+            "access != ast::MemberAccessKind::Dot && access != ast::MemberAccessKind::Optional",
+            "identity::DeclaredDefinitionName::fromSource(",
+            "ast::kMemberExpressionPropertyWord",
+            "input.parsedModule().spanFor(syntax.range)",
+            "fact.expectedNamespaces.size() != 1",
+            "fact.expectedNamespaces[0] != Namespace::Value",
+            "fact.genericArguments.size() != expectedArguments.size()",
+            "sameSpan(fact.source, sourceValue)",
+        ):
+            if required not in oracle:
+                errors.append(
+                    f"{VERIFIER_SOURCE}: deferred-member oracle omits AST reconstruction: {required}"
+                )
+        access_guard = (
+            "access != ast::MemberAccessKind::Dot && access != ast::MemberAccessKind::Optional"
+        )
+        if oracle.count(access_guard) != 2:
+            errors.append(
+                f"{VERIFIER_SOURCE}: deferred-member oracle must reject qualified access "
+                "during both census and fact validation"
+            )
+    for required in (
+        "enum class DeferredMemberOracleResult",
+        "const auto expectedDeferredMembers = verifyDeferredMemberFacts(input, expected);",
+        "expectedDeferredMembers != DeferredMemberOracleResult::Valid",
+        "const auto candidateDeferredMembers = verifyDeferredMemberFacts(input, candidate);",
+        "candidateDeferredMembers != DeferredMemberOracleResult::Valid",
+        "candidate.deferredMembers.size() < expected.deferredMembers.size()",
+        "candidate.deferredMembers.size() > expected.deferredMembers.size()",
+    ):
+        if required not in verifier:
+            errors.append(f"{VERIFIER_SOURCE}: deferred-member verification is disconnected: {required}")
+
+    for marker in (
+        "DeferredMember.PublishesCanonicalFactsAndGenericArguments",
+        "DeferredMember.PublishesSpecialDeclaredMemberName",
+        "DeferredMember.PublishesOptionalMember",
+        "DeferredMember.RejectsQualifiedAccessWithoutVerifiedContext",
+        "BindingVerifier.RejectsMalformedDeferredMemberFacts",
+    ):
+        if marker not in tests:
+            errors.append(f"{TEST_SOURCE}: missing deferred-member evidence: {marker}")
+
+
 def check_label_fact_contract(files: dict[Path, str], errors: list[str]) -> None:
     metadata = files.get(METADATA_HEADER, "")
     metadata_source = files.get(METADATA_SOURCE, "")
@@ -1685,6 +1826,7 @@ def check(files: dict[Path, str]) -> list[str]:
     check_closure_activation_contract(files, errors)
     check_pattern_activation_contract(files, errors)
     check_body_binding_contract(files, errors)
+    check_deferred_member_contract(files, errors)
     check_label_fact_contract(files, errors)
     check_control_transfer_contract(files, errors)
     check_definition_site_contract(files, errors)
@@ -2380,6 +2522,95 @@ def self_test(files: dict[Path, str]) -> list[str]:
             VERIFIER_SOURCE,
             "BodyBindingBuilder::build(input, arena, skeleton)",
             "disconnectedBodyBinding(input, arena, skeleton)",
+        ),
+        (
+            "missing deferred member dispatch",
+            BODY_SOURCE,
+            "case ast::SyntaxKind::MemberExpression:\n"
+            "          visitMemberExpression(node, scopeIndex, ast::NodeList());",
+            "case ast::SyntaxKind::MemberExpression:\n"
+            "          visitSchemaChildren(node, scopeIndex, inherited);",
+        ),
+        (
+            "missing deferred member call dispatch",
+            BODY_SOURCE,
+            "case ast::SyntaxKind::CallExpression:\n"
+            "          visitCallExpression(node, scopeIndex);",
+            "case ast::SyntaxKind::CallExpression:\n"
+            "          visitSchemaChildren(node, scopeIndex, inherited);",
+        ),
+        (
+            "wrong deferred member resolution tag",
+            VERIFIER_SOURCE,
+            "} else if (value.is<DeferredMemberFact>()) {\n"
+            "      encoder.encodeUint8(0x03);",
+            "} else if (value.is<DeferredMemberFact>()) {\n"
+            "      encoder.encodeUint8(0x05);",
+        ),
+        (
+            "missing deferred member candidate wiring",
+            VERIFIER_SOURCE,
+            "candidate.deferredMembers = zc::mv(body.deferredMembers);",
+            "candidate.deferredMembers = zc::Vector<DeferredMemberFact>();",
+        ),
+        (
+            "disconnected candidate deferred member oracle",
+            VERIFIER_SOURCE,
+            "const auto candidateDeferredMembers = verifyDeferredMemberFacts(input, candidate);",
+            "const auto candidateDeferredMembers = DeferredMemberOracleResult::Valid;",
+        ),
+        (
+            "missing deferred member base codec",
+            VERIFIER_SOURCE,
+            "encoder.encodeUint32(fact.base.value);",
+            "encoder.encodeUint32(0);",
+        ),
+        (
+            "qualified member published as a value fact",
+            BODY_SOURCE,
+            "case ast::MemberAccessKind::Qualified:\n"
+            "        reject(BinderInvariantKind::MissingRequiredResolution, node);",
+            "case ast::MemberAccessKind::Qualified:\n"
+            "        break;",
+        ),
+        (
+            "deferred member oracle ignores the AST base",
+            VERIFIER_SOURCE,
+            "const ast::NodeId base(syntax.payload.words[ast::kMemberExpressionObjectWord]);",
+            "const ast::NodeId base(node.value);",
+        ),
+        (
+            "deferred member oracle ignores the AST member name",
+            VERIFIER_SOURCE,
+            "auto name = identity::DeclaredDefinitionName::fromSource(\n"
+            "        tree.ident(ast::IdentId(syntax.payload.words[ast::kMemberExpressionPropertyWord])));",
+            "auto name = identity::DeclaredDefinitionName::fromCanonical(\"member\"_zc);",
+        ),
+        (
+            "deferred member oracle ignores the AST source range",
+            VERIFIER_SOURCE,
+            "auto source = input.parsedModule().spanFor(syntax.range);",
+            "auto source = input.parsedModule().spanFor(tree.node(tree.root()).range);",
+        ),
+        (
+            "deferred member oracle ignores the value namespace",
+            VERIFIER_SOURCE,
+            "fact.expectedNamespaces.size() != 1",
+            "fact.expectedNamespaces.size() != 2",
+        ),
+        (
+            "deferred member oracle ignores direct call generics",
+            VERIFIER_SOURCE,
+            "fact.genericArguments.size() != expectedArguments.size()",
+            "fact.genericArguments.size() == expectedArguments.size()",
+        ),
+        (
+            "deferred member oracle accepts qualified access",
+            VERIFIER_SOURCE,
+            "access != ast::MemberAccessKind::Dot && access != ast::MemberAccessKind::Optional) {\n"
+            "        treeIsValid = false;",
+            "access != ast::MemberAccessKind::Dot && access != ast::MemberAccessKind::Qualified) {\n"
+            "        treeIsValid = false;",
         ),
         (
             "premature local activation",

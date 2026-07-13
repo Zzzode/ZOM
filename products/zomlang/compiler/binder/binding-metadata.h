@@ -400,7 +400,7 @@ struct FailedBindingResolution final {
 struct DeferredMemberFact final {
   ast::NodeId node;
   ast::NodeId base;
-  identity::SemanticIdentifier member;
+  identity::DeclaredDefinitionName member;
   zc::Vector<Namespace> expectedNamespaces;
   zc::Vector<ast::NodeId> genericArguments;
   identity::SourceSpan source;

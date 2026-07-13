@@ -301,6 +301,15 @@ bool hasInvalidSourceRange(const VerifiedBindingInput& input,
       if (spanIsInvalid(note.source)) { return true; }
     }
   }
+  for (const auto& resolution : candidate.nodeBindings) {
+    if (resolution.value.is<DeferredMemberFact>() &&
+        spanIsInvalid(resolution.value.get<DeferredMemberFact>().source)) {
+      return true;
+    }
+  }
+  for (const auto& fact : candidate.deferredMembers) {
+    if (spanIsInvalid(fact.source)) { return true; }
+  }
   for (const auto& fact : candidate.definitions) {
     if (spanIsInvalid(fact.source)) { return true; }
   }
@@ -464,6 +473,9 @@ bool hasCompleteLexicalBindingSites(const ast::Tree& tree,
           requireSite(node, ast::SyntaxKind::ObjectProperty, Namespace::Value);
         }
         return;
+      case ast::SyntaxKind::MemberExpression:
+        requireSite(node, ast::SyntaxKind::MemberExpression, Namespace::Value);
+        return;
       default:
         return;
     }
@@ -494,6 +506,12 @@ bool hasCompleteLexicalBindingSites(const ast::Tree& tree,
       published[binding.node.value] = true;
       continue;
     }
+    if (nodeKind == ast::SyntaxKind::MemberExpression) {
+      if (!binding.value.is<DeferredMemberFact>()) { return false; }
+      published[binding.node.value] = true;
+      ++publishedCount;
+      continue;
+    }
     if (binding.value.is<BoundNameResolution>() &&
         static_cast<uint8_t>(binding.value.get<BoundNameResolution>().nameSpace) !=
             requiredNamespaces[binding.node.value]) {
@@ -517,6 +535,197 @@ enum class ControlOracleResult : uint8_t {
 
 bool sameSpan(const identity::SourceSpan& left, const identity::SourceSpan& right) {
   return left.byteStart() == right.byteStart() && left.byteEnd() == right.byteEnd();
+}
+
+enum class DeferredMemberOracleResult : uint8_t {
+  Valid,
+  MissingRequiredResolution,
+  InvalidBindingFact
+};
+
+bool sameDeferredMemberFact(const DeferredMemberFact& left, const DeferredMemberFact& right) {
+  if (left.node != right.node || left.base != right.base || left.member != right.member ||
+      left.expectedNamespaces.size() != right.expectedNamespaces.size() ||
+      left.genericArguments.size() != right.genericArguments.size() ||
+      !sameSpan(left.source, right.source)) {
+    return false;
+  }
+  for (size_t index = 0; index < left.expectedNamespaces.size(); ++index) {
+    if (left.expectedNamespaces[index] != right.expectedNamespaces[index]) { return false; }
+  }
+  for (size_t index = 0; index < left.genericArguments.size(); ++index) {
+    if (left.genericArguments[index] != right.genericArguments[index]) { return false; }
+  }
+  return true;
+}
+
+DeferredMemberOracleResult verifyDeferredMemberFacts(const VerifiedBindingInput& input,
+                                                     const BindingMetadataCandidate& candidate) {
+  const auto& tree = input.tree();
+  constexpr size_t kMissing = static_cast<size_t>(-1);
+  zc::Vector<ast::NodeList> directCallTypeArguments;
+  zc::Vector<bool> hasDirectCall;
+  zc::Vector<size_t> factByNode;
+  zc::Vector<size_t> resolutionByNode;
+  directCallTypeArguments.resize(tree.nodeCount() + 1);
+  hasDirectCall.resize(tree.nodeCount() + 1);
+  factByNode.resize(tree.nodeCount() + 1);
+  resolutionByNode.resize(tree.nodeCount() + 1);
+  for (size_t index = 0; index < factByNode.size(); ++index) {
+    hasDirectCall[index] = false;
+    factByNode[index] = kMissing;
+    resolutionByNode[index] = kMissing;
+  }
+
+  size_t memberCount = 0;
+  bool treeIsValid = true;
+  ast::visitTreePreOrder(tree, tree.root(), [&](ast::NodeId node, const ast::Node& syntax) {
+    if (!treeIsValid) { return; }
+    if (syntax.kind == ast::SyntaxKind::MemberExpression) {
+      const auto access = static_cast<ast::MemberAccessKind>(
+          syntax.payload.words[ast::kMemberExpressionAccessWord]);
+      if (access != ast::MemberAccessKind::Dot && access != ast::MemberAccessKind::Optional) {
+        treeIsValid = false;
+        return;
+      }
+      ++memberCount;
+      return;
+    }
+    if (syntax.kind != ast::SyntaxKind::CallExpression) { return; }
+    const ast::NodeId callee(syntax.payload.words[ast::kCallExpressionCalleeWord]);
+    const ast::NodeList typeArguments{syntax.payload.words[ast::kCallExpressionTypeArgsFirstWord],
+                                      syntax.payload.words[ast::kCallExpressionTypeArgsSizeWord]};
+    if (!tree.contains(callee) || !tree.contains(typeArguments)) {
+      treeIsValid = false;
+      return;
+    }
+    for (const ast::NodeId argument : tree.list(typeArguments)) {
+      if (!tree.contains(argument)) {
+        treeIsValid = false;
+        return;
+      }
+    }
+    if (tree.node(callee).kind != ast::SyntaxKind::MemberExpression) { return; }
+    if (callee.value >= hasDirectCall.size() || hasDirectCall[callee.value]) {
+      treeIsValid = false;
+      return;
+    }
+    hasDirectCall[callee.value] = true;
+    directCallTypeArguments[callee.value] = typeArguments;
+  });
+  if (!treeIsValid) { return DeferredMemberOracleResult::InvalidBindingFact; }
+
+  uint32_t previousNode = 0;
+  for (size_t index = 0; index < candidate.deferredMembers.size(); ++index) {
+    const auto& fact = candidate.deferredMembers[index];
+    if (!tree.contains(fact.node) || fact.node.value >= factByNode.size() ||
+        tree.node(fact.node).kind != ast::SyntaxKind::MemberExpression ||
+        factByNode[fact.node.value] != kMissing ||
+        (index != 0 && fact.node.value <= previousNode)) {
+      return DeferredMemberOracleResult::InvalidBindingFact;
+    }
+    factByNode[fact.node.value] = index;
+    previousNode = fact.node.value;
+  }
+  if (candidate.deferredMembers.size() > memberCount) {
+    return DeferredMemberOracleResult::InvalidBindingFact;
+  }
+
+  for (size_t index = 0; index < candidate.nodeBindings.size(); ++index) {
+    const auto& resolution = candidate.nodeBindings[index];
+    if (!tree.contains(resolution.node)) { return DeferredMemberOracleResult::InvalidBindingFact; }
+    const bool isMember = tree.node(resolution.node).kind == ast::SyntaxKind::MemberExpression;
+    if (resolution.value.is<DeferredMemberFact>() && !isMember) {
+      return DeferredMemberOracleResult::InvalidBindingFact;
+    }
+    if (!isMember) { continue; }
+    if (resolution.node.value >= resolutionByNode.size() ||
+        resolutionByNode[resolution.node.value] != kMissing) {
+      return DeferredMemberOracleResult::InvalidBindingFact;
+    }
+    resolutionByNode[resolution.node.value] = index;
+  }
+
+  DeferredMemberOracleResult result = DeferredMemberOracleResult::Valid;
+  ast::visitTreePreOrder(tree, tree.root(), [&](ast::NodeId node, const ast::Node& syntax) {
+    if (result != DeferredMemberOracleResult::Valid ||
+        syntax.kind != ast::SyntaxKind::MemberExpression) {
+      return;
+    }
+    const size_t factIndex = factByNode[node.value];
+    const size_t resolutionIndex = resolutionByNode[node.value];
+    if (factIndex == kMissing || resolutionIndex == kMissing) {
+      result = DeferredMemberOracleResult::MissingRequiredResolution;
+      return;
+    }
+    const auto& resolution = candidate.nodeBindings[resolutionIndex];
+    if (!resolution.value.is<DeferredMemberFact>()) {
+      result = DeferredMemberOracleResult::InvalidBindingFact;
+      return;
+    }
+    const auto& fact = candidate.deferredMembers[factIndex];
+    const auto& inlineFact = resolution.value.get<DeferredMemberFact>();
+    if (!sameDeferredMemberFact(fact, inlineFact)) {
+      result = DeferredMemberOracleResult::InvalidBindingFact;
+      return;
+    }
+
+    const ast::NodeId base(syntax.payload.words[ast::kMemberExpressionObjectWord]);
+    const auto access =
+        static_cast<ast::MemberAccessKind>(syntax.payload.words[ast::kMemberExpressionAccessWord]);
+    auto name = identity::DeclaredDefinitionName::fromSource(
+        tree.ident(ast::IdentId(syntax.payload.words[ast::kMemberExpressionPropertyWord])));
+    auto source = input.parsedModule().spanFor(syntax.range);
+    if (!tree.contains(base) || name == zc::none || source == zc::none || fact.node != node ||
+        fact.base != base || fact.expectedNamespaces.size() != 1 ||
+        fact.expectedNamespaces[0] != Namespace::Value ||
+        (access != ast::MemberAccessKind::Dot && access != ast::MemberAccessKind::Optional)) {
+      result = DeferredMemberOracleResult::InvalidBindingFact;
+      return;
+    }
+    ZC_IF_SOME(nameValue, name) {
+      if (fact.member != nameValue) {
+        result = DeferredMemberOracleResult::InvalidBindingFact;
+        return;
+      }
+    }
+    ZC_IF_SOME(sourceValue, source) {
+      if (!sameSpan(fact.source, sourceValue)) {
+        result = DeferredMemberOracleResult::InvalidBindingFact;
+        return;
+      }
+    }
+
+    const auto expectedArguments = hasDirectCall[node.value]
+                                       ? tree.list(directCallTypeArguments[node.value])
+                                       : zc::ArrayPtr<const ast::NodeId>();
+    if (fact.genericArguments.size() != expectedArguments.size()) {
+      result = DeferredMemberOracleResult::InvalidBindingFact;
+      return;
+    }
+    for (size_t index = 0; index < expectedArguments.size(); ++index) {
+      if (fact.genericArguments[index] != expectedArguments[index]) {
+        result = DeferredMemberOracleResult::InvalidBindingFact;
+        return;
+      }
+    }
+  });
+  if (result != DeferredMemberOracleResult::Valid) { return result; }
+  return candidate.deferredMembers.size() == memberCount
+             ? DeferredMemberOracleResult::Valid
+             : DeferredMemberOracleResult::MissingRequiredResolution;
+}
+
+BinderInvariantKind deferredMemberOracleInvariant(DeferredMemberOracleResult result) {
+  switch (result) {
+    case DeferredMemberOracleResult::MissingRequiredResolution:
+      return BinderInvariantKind::MissingRequiredResolution;
+    case DeferredMemberOracleResult::InvalidBindingFact:
+      return BinderInvariantKind::InvalidBindingFact;
+    case DeferredMemberOracleResult::Valid:
+      ZC_UNREACHABLE;
+  }
+  ZC_UNREACHABLE;
 }
 
 enum class LabelOracleResult : uint8_t {
@@ -1338,6 +1547,26 @@ void encodeName(identity::CanonicalEncoder& encoder, const BindingNameKey& name)
   name.name().encode(encoder);
 }
 
+bool encodeDeferredMemberFact(identity::CanonicalEncoder& encoder,
+                              const VerifiedBindingInput& input, const DeferredMemberFact& fact) {
+  const auto& tree = input.tree();
+  if (!tree.contains(fact.node) || !tree.contains(fact.base)) { return false; }
+  encoder.encodeUint32(fact.node.value);
+  encoder.encodeUint32(fact.base.value);
+  fact.member.encode(encoder);
+  encoder.encodeSequenceSize(fact.expectedNamespaces.size());
+  for (const auto nameSpace : fact.expectedNamespaces) {
+    encoder.encodeUint8(static_cast<uint8_t>(nameSpace));
+  }
+  encoder.encodeSequenceSize(fact.genericArguments.size());
+  for (const auto argument : fact.genericArguments) {
+    if (!tree.contains(argument)) { return false; }
+    encoder.encodeUint32(argument.value);
+  }
+  fact.source.encode(encoder);
+  return true;
+}
+
 bool encodeVisibility(identity::CanonicalEncoder& encoder, const VerifiedBindingInput& input,
                       const VisibilityEnvelope& visibility) {
   const auto& value = visibility.value();
@@ -1514,6 +1743,11 @@ zc::Maybe<zc::Array<uint8_t>> encodeCandidate(const VerifiedBindingInput& input,
           !encodeLabelTarget(encoder, input, bound.target)) {
         return zc::none;
       }
+    } else if (value.is<DeferredMemberFact>()) {
+      encoder.encodeUint8(0x03);
+      if (!encodeDeferredMemberFact(encoder, input, value.get<DeferredMemberFact>())) {
+        return zc::none;
+      }
     } else if (value.is<FailedBindingResolution>()) {
       encoder.encodeUint8(0x04);
       encoder.encodeUint64(value.get<FailedBindingResolution>().failureIndex);
@@ -1574,6 +1808,9 @@ zc::Maybe<zc::Array<uint8_t>> encodeCandidate(const VerifiedBindingInput& input,
   encoder.encodeSequenceSize(candidate.imports.size());
   encoder.encodeSequenceSize(candidate.localExports.size());
   encoder.encodeSequenceSize(candidate.deferredMembers.size());
+  for (const auto& fact : candidate.deferredMembers) {
+    if (!encodeDeferredMemberFact(encoder, input, fact)) { return zc::none; }
+  }
   encoder.encodeSequenceSize(candidate.labels.size());
   for (const auto& fact : candidate.labels) {
     if (!encodeLabelFact(encoder, input, fact)) { return zc::none; }
@@ -2050,6 +2287,7 @@ BindingCandidateResult BindingBuilder::buildCandidate(
                                            zc::mv(surface));
         candidate.sourceFailures = zc::mv(sourceFailures);
         candidate.nodeBindings = zc::mv(nodeBindings);
+        candidate.deferredMembers = zc::mv(body.deferredMembers);
         candidate.labels = zc::mv(labels.labels);
         candidate.controlTransfers = zc::mv(control.controlTransfers);
         candidate.shadowTargets = zc::mv(body.shadowTargets);
@@ -2085,6 +2323,16 @@ BindingVerificationResult BindingVerifier::verify(const VerifiedBindingInput& in
   if (candidateControl != ControlOracleResult::Valid) {
     return rejectBinderInvariant(verifierFailure(input, controlOracleInvariant(candidateControl)));
   }
+  const auto expectedDeferredMembers = verifyDeferredMemberFacts(input, expected);
+  if (expectedDeferredMembers != DeferredMemberOracleResult::Valid) {
+    return rejectBinderInvariant(
+        verifierFailure(input, deferredMemberOracleInvariant(expectedDeferredMembers)));
+  }
+  const auto candidateDeferredMembers = verifyDeferredMemberFacts(input, candidate);
+  if (candidateDeferredMembers != DeferredMemberOracleResult::Valid) {
+    return rejectBinderInvariant(
+        verifierFailure(input, deferredMemberOracleInvariant(candidateDeferredMembers)));
+  }
   if (!hasCompleteLexicalBindingSites(input.tree(), expected.nodeBindings.asPtr())) {
     return rejectBinderInvariant(
         bodyBuilderFailure(input, BinderInvariantKind::MissingRequiredResolution));
@@ -2095,6 +2343,7 @@ BindingVerificationResult BindingVerifier::verify(const VerifiedBindingInput& in
       candidate.nodeScopes.size() < expected.nodeScopes.size() ||
       candidate.sourceFailures.size() < expected.sourceFailures.size() ||
       candidate.nodeBindings.size() < expected.nodeBindings.size() ||
+      candidate.deferredMembers.size() < expected.deferredMembers.size() ||
       candidate.labels.size() < expected.labels.size() ||
       candidate.controlTransfers.size() < expected.controlTransfers.size() ||
       candidate.shadowTargets.size() < expected.shadowTargets.size()) {
@@ -2107,14 +2356,14 @@ BindingVerificationResult BindingVerifier::verify(const VerifiedBindingInput& in
       candidate.nodeScopes.size() > expected.nodeScopes.size() ||
       candidate.sourceFailures.size() > expected.sourceFailures.size() ||
       candidate.nodeBindings.size() > expected.nodeBindings.size() ||
+      candidate.deferredMembers.size() > expected.deferredMembers.size() ||
       candidate.labels.size() > expected.labels.size() ||
       candidate.controlTransfers.size() > expected.controlTransfers.size() ||
       candidate.shadowTargets.size() > expected.shadowTargets.size()) {
     return rejectBinderInvariant(verifierFailure(input, BinderInvariantKind::InvalidBindingFact));
   }
   if (!candidate.moduleAliases.empty() || !candidate.imports.empty() ||
-      !candidate.localExports.empty() || !candidate.deferredMembers.empty() ||
-      !candidate.closureFreeVariables.empty()) {
+      !candidate.localExports.empty() || !candidate.closureFreeVariables.empty()) {
     return rejectBinderInvariant(verifierFailure(input, BinderInvariantKind::InvalidBindingFact));
   }
   auto candidateAllocation =

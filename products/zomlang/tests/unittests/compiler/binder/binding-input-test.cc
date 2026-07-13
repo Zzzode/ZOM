@@ -550,6 +550,24 @@ zc::Vector<ast::NodeId> shorthandProperties(const ast::Tree& tree, zc::StringPtr
   return result;
 }
 
+zc::Vector<ast::NodeId> memberExpressions(const ast::Tree& tree, zc::StringPtr name) {
+  zc::Vector<ast::NodeId> result;
+  ast::visitTreePreOrder(tree, tree.root(), [&](ast::NodeId node, const ast::Node& syntax) {
+    if (syntax.kind != ast::SyntaxKind::MemberExpression) { return; }
+    const ast::IdentId identifier(syntax.payload.words[ast::kMemberExpressionPropertyWord]);
+    if (tree.ident(identifier) == name) { result.add(node); }
+  });
+  return result;
+}
+
+DeferredMemberFact& requireDeferredMember(zc::ArrayPtr<DeferredMemberFact> facts,
+                                          ast::NodeId node) {
+  for (auto& fact : facts) {
+    if (fact.node == node) { return fact; }
+  }
+  ZC_FAIL_REQUIRE("mutable deferred-member fact is missing");
+}
+
 const BindingResolution& requireResolution(zc::ArrayPtr<const BindingResolution> resolutions,
                                            ast::NodeId node) {
   for (const auto& resolution : resolutions) {
@@ -4049,6 +4067,224 @@ ZC_TEST("BodyBinding.RejectsUndefinedObjectShorthand") {
                  .value.is<FailedBindingResolution>());
   auto rejected = BindingVerifier::verify(input, zc::mv(value));
   ZC_REQUIRE(rejected.is<SourceRejected>());
+}
+
+ZC_TEST("DeferredMember.PublishesCanonicalFactsAndGenericArguments") {
+  ParsedSource sourceFixture(
+      "module root;\n"
+      "class Type {}\n"
+      "fun run(value: Type) {\n"
+      "  value.field;\n"
+      "  value.method<Type>();\n"
+      "  value.inner.leaf;\n"
+      "}\n"_zc);
+  FrozenFixture fixture(sourceFixture, true);
+  auto inputResult = verify(fixture);
+  ZC_REQUIRE(inputResult.is<VerifiedBindingInput>());
+  auto input = zc::mv(inputResult.get<VerifiedBindingInput>());
+  auto candidate = BindingBuilder::build(input, *sourceFixture.diagnostics);
+  ZC_REQUIRE(candidate.is<BindingMetadataCandidate>());
+  auto& value = candidate.get<BindingMetadataCandidate>();
+  ZC_EXPECT(value.sourceFailures.empty());
+  ZC_REQUIRE(value.deferredMembers.size() == 4);
+
+  const auto fields = memberExpressions(input.tree(), "field"_zc);
+  const auto methods = memberExpressions(input.tree(), "method"_zc);
+  const auto inners = memberExpressions(input.tree(), "inner"_zc);
+  const auto leaves = memberExpressions(input.tree(), "leaf"_zc);
+  ZC_REQUIRE(fields.size() == 1);
+  ZC_REQUIRE(methods.size() == 1);
+  ZC_REQUIRE(inners.size() == 1);
+  ZC_REQUIRE(leaves.size() == 1);
+
+  for (const auto node : {fields[0], methods[0], inners[0], leaves[0]}) {
+    const auto& fact = requireDeferredMember(value.deferredMembers.asPtr(), node);
+    const auto& resolution = requireResolution(value.nodeBindings.asPtr(), node);
+    ZC_REQUIRE(resolution.value.is<DeferredMemberFact>());
+    const auto& resolved = resolution.value.get<DeferredMemberFact>();
+    ZC_EXPECT(fact.node == node);
+    ZC_EXPECT(fact.base ==
+              ast::NodeId(input.tree().node(node).payload.words[ast::kMemberExpressionObjectWord]));
+    ZC_REQUIRE(fact.expectedNamespaces.size() == 1);
+    ZC_EXPECT(fact.expectedNamespaces[0] == Namespace::Value);
+    ZC_EXPECT(resolved.node == fact.node);
+    ZC_EXPECT(resolved.base == fact.base);
+    ZC_EXPECT(resolved.member == fact.member);
+    ZC_EXPECT(sameSpan(resolved.source, fact.source));
+    auto nodeSource = input.parsedModule().spanFor(input.tree().node(node).range);
+    ZC_REQUIRE(nodeSource != zc::none);
+    ZC_IF_SOME(source, nodeSource) { ZC_EXPECT(sameSpan(fact.source, source)); }
+  }
+
+  const auto& field = requireDeferredMember(value.deferredMembers.asPtr(), fields[0]);
+  ZC_EXPECT(field.member.text() == "field"_zc);
+  ZC_EXPECT(field.genericArguments.empty());
+
+  const auto& method = requireDeferredMember(value.deferredMembers.asPtr(), methods[0]);
+  ZC_EXPECT(method.member.text() == "method"_zc);
+  ZC_REQUIRE(method.genericArguments.size() == 1);
+  ZC_EXPECT(input.tree().node(method.genericArguments[0]).kind == ast::SyntaxKind::NamedTypeExpr);
+
+  const auto& leaf = requireDeferredMember(value.deferredMembers.asPtr(), leaves[0]);
+  ZC_EXPECT(leaf.base == inners[0]);
+  auto verified = BindingVerifier::verify(input, zc::mv(value));
+  ZC_REQUIRE(verified.is<VerifiedBindingOutput>());
+  ZC_EXPECT(verified.get<VerifiedBindingOutput>().metadata.deferredMembers().size() == 4);
+}
+
+ZC_TEST("DeferredMember.PublishesSpecialDeclaredMemberName") {
+  ParsedSource sourceFixture(
+      "module root;\n"
+      "class Type {}\n"
+      "fun run(value: Type) { value.init; }\n"_zc);
+  FrozenFixture fixture(sourceFixture, true);
+  auto inputResult = verify(fixture);
+  ZC_REQUIRE(inputResult.is<VerifiedBindingInput>());
+  auto input = zc::mv(inputResult.get<VerifiedBindingInput>());
+  auto candidate = BindingBuilder::build(input, *sourceFixture.diagnostics);
+  ZC_REQUIRE(candidate.is<BindingMetadataCandidate>());
+  auto& value = candidate.get<BindingMetadataCandidate>();
+  const auto members = memberExpressions(input.tree(), "init"_zc);
+  ZC_REQUIRE(members.size() == 1);
+  const auto& fact = requireDeferredMember(value.deferredMembers.asPtr(), members[0]);
+  ZC_EXPECT(fact.member.text() == "init"_zc);
+  auto verified = BindingVerifier::verify(input, zc::mv(value));
+  ZC_REQUIRE(verified.is<VerifiedBindingOutput>());
+}
+
+ZC_TEST("DeferredMember.PublishesOptionalMember") {
+  ParsedSource sourceFixture(
+      "module root;\n"
+      "class Type {}\n"
+      "fun run(value: Type) { value?.field; }\n"_zc);
+  FrozenFixture fixture(sourceFixture, true);
+  auto inputResult = verify(fixture);
+  ZC_REQUIRE(inputResult.is<VerifiedBindingInput>());
+  auto input = zc::mv(inputResult.get<VerifiedBindingInput>());
+  auto candidate = BindingBuilder::build(input, *sourceFixture.diagnostics);
+  ZC_REQUIRE(candidate.is<BindingMetadataCandidate>());
+  auto& value = candidate.get<BindingMetadataCandidate>();
+  const auto members = memberExpressions(input.tree(), "field"_zc);
+  ZC_REQUIRE(members.size() == 1);
+  const auto& fact = requireDeferredMember(value.deferredMembers.asPtr(), members[0]);
+  auto source = input.parsedModule().spanFor(input.tree().node(members[0]).range);
+  ZC_REQUIRE(source != zc::none);
+  ZC_IF_SOME(expected, source) { ZC_EXPECT(sameSpan(fact.source, expected)); }
+  auto verified = BindingVerifier::verify(input, zc::mv(value));
+  ZC_REQUIRE(verified.is<VerifiedBindingOutput>());
+}
+
+ZC_TEST("DeferredMember.RejectsQualifiedAccessWithoutVerifiedContext") {
+  ParsedSource sourceFixture(
+      "module root;\n"
+      "class Type {}\n"
+      "fun run(value: Type) { value::field; }\n"_zc);
+  FrozenFixture fixture(sourceFixture, true);
+  auto inputResult = verify(fixture);
+  ZC_REQUIRE(inputResult.is<VerifiedBindingInput>());
+  auto input = zc::mv(inputResult.get<VerifiedBindingInput>());
+  auto candidate = BindingBuilder::build(input, *sourceFixture.diagnostics);
+  ZC_REQUIRE(candidate.is<BinderInvariantFact>());
+  ZC_EXPECT(candidate.get<BinderInvariantFact>().kind ==
+            BinderInvariantKind::MissingRequiredResolution);
+  ZC_EXPECT(candidate.get<BinderInvariantFact>().emitterSite == BinderEmitterSite::BodyBinding);
+  ZC_EXPECT(sourceFixture.diagnostics->errorCount() == 0);
+}
+
+ZC_TEST("BindingVerifier.RejectsMalformedDeferredMemberFacts") {
+  ParsedSource sourceFixture(
+      "module root;\n"
+      "class Type {}\n"
+      "fun run(value: Type) { value.method<Type>(); value.field; }\n"_zc);
+  FrozenFixture fixture(sourceFixture, true);
+  auto inputResult = verify(fixture);
+  ZC_REQUIRE(inputResult.is<VerifiedBindingInput>());
+  auto input = zc::mv(inputResult.get<VerifiedBindingInput>());
+  const auto methods = memberExpressions(input.tree(), "method"_zc);
+  const auto fields = memberExpressions(input.tree(), "field"_zc);
+  ZC_REQUIRE(methods.size() == 1);
+  ZC_REQUIRE(fields.size() == 1);
+
+  auto baseCandidate = BindingBuilder::build(input, *sourceFixture.diagnostics);
+  ZC_REQUIRE(baseCandidate.is<BindingMetadataCandidate>());
+  auto& wrongBase = baseCandidate.get<BindingMetadataCandidate>();
+  auto& baseFact = requireDeferredMember(wrongBase.deferredMembers.asPtr(), methods[0]);
+  auto& baseResolution = requireResolution(wrongBase.nodeBindings.asPtr(), methods[0]);
+  ZC_REQUIRE(baseResolution.value.is<DeferredMemberFact>());
+  baseFact.base = methods[0];
+  baseResolution.value.get<DeferredMemberFact>().base = methods[0];
+  auto baseRejected = BindingVerifier::verify(input, zc::mv(wrongBase));
+  ZC_EXPECT(requireBinderInvariant(baseRejected).kind == BinderInvariantKind::InvalidBindingFact);
+
+  auto namespaceCandidate = BindingBuilder::build(input, *sourceFixture.diagnostics);
+  ZC_REQUIRE(namespaceCandidate.is<BindingMetadataCandidate>());
+  auto& wrongNamespace = namespaceCandidate.get<BindingMetadataCandidate>();
+  auto& namespaceFact = requireDeferredMember(wrongNamespace.deferredMembers.asPtr(), methods[0]);
+  auto& namespaceResolution = requireResolution(wrongNamespace.nodeBindings.asPtr(), methods[0]);
+  ZC_REQUIRE(namespaceResolution.value.is<DeferredMemberFact>());
+  namespaceFact.expectedNamespaces[0] = Namespace::Type;
+  namespaceResolution.value.get<DeferredMemberFact>().expectedNamespaces[0] = Namespace::Type;
+  auto namespaceRejected = BindingVerifier::verify(input, zc::mv(wrongNamespace));
+  ZC_EXPECT(requireBinderInvariant(namespaceRejected).kind ==
+            BinderInvariantKind::InvalidBindingFact);
+
+  auto genericCandidate = BindingBuilder::build(input, *sourceFixture.diagnostics);
+  ZC_REQUIRE(genericCandidate.is<BindingMetadataCandidate>());
+  auto& wrongGeneric = genericCandidate.get<BindingMetadataCandidate>();
+  auto& genericFact = requireDeferredMember(wrongGeneric.deferredMembers.asPtr(), methods[0]);
+  auto& genericResolution = requireResolution(wrongGeneric.nodeBindings.asPtr(), methods[0]);
+  ZC_REQUIRE(genericResolution.value.is<DeferredMemberFact>());
+  genericFact.genericArguments.clear();
+  genericResolution.value.get<DeferredMemberFact>().genericArguments.clear();
+  auto genericRejected = BindingVerifier::verify(input, zc::mv(wrongGeneric));
+  ZC_EXPECT(requireBinderInvariant(genericRejected).kind ==
+            BinderInvariantKind::InvalidBindingFact);
+
+  auto sourceCandidate = BindingBuilder::build(input, *sourceFixture.diagnostics);
+  ZC_REQUIRE(sourceCandidate.is<BindingMetadataCandidate>());
+  auto& wrongSource = sourceCandidate.get<BindingMetadataCandidate>();
+  auto& sourceFact = requireDeferredMember(wrongSource.deferredMembers.asPtr(), methods[0]);
+  auto& sourceResolution = requireResolution(wrongSource.nodeBindings.asPtr(), methods[0]);
+  ZC_REQUIRE(sourceResolution.value.is<DeferredMemberFact>());
+  const auto& replacementSource =
+      requireDeferredMember(wrongSource.deferredMembers.asPtr(), fields[0]).source;
+  sourceFact.source = replacementSource.clone();
+  sourceResolution.value.get<DeferredMemberFact>().source = replacementSource.clone();
+  auto sourceRejected = BindingVerifier::verify(input, zc::mv(wrongSource));
+  ZC_EXPECT(requireBinderInvariant(sourceRejected).kind == BinderInvariantKind::InvalidBindingFact);
+
+  auto orderCandidate = BindingBuilder::build(input, *sourceFixture.diagnostics);
+  ZC_REQUIRE(orderCandidate.is<BindingMetadataCandidate>());
+  auto& wrongOrder = orderCandidate.get<BindingMetadataCandidate>();
+  ZC_REQUIRE(wrongOrder.deferredMembers.size() == 2);
+  auto firstFact = zc::mv(wrongOrder.deferredMembers[0]);
+  wrongOrder.deferredMembers[0] = zc::mv(wrongOrder.deferredMembers[1]);
+  wrongOrder.deferredMembers[1] = zc::mv(firstFact);
+  auto orderRejected = BindingVerifier::verify(input, zc::mv(wrongOrder));
+  ZC_EXPECT(requireBinderInvariant(orderRejected).kind == BinderInvariantKind::InvalidBindingFact);
+
+  auto missingCandidate = BindingBuilder::build(input, *sourceFixture.diagnostics);
+  ZC_REQUIRE(missingCandidate.is<BindingMetadataCandidate>());
+  auto& missing = missingCandidate.get<BindingMetadataCandidate>();
+  missing.deferredMembers.removeLast();
+  auto missingRejected = BindingVerifier::verify(input, zc::mv(missing));
+  ZC_EXPECT(requireBinderInvariant(missingRejected).kind ==
+            BinderInvariantKind::MissingRequiredResolution);
+
+  auto resolutionCandidate = BindingBuilder::build(input, *sourceFixture.diagnostics);
+  ZC_REQUIRE(resolutionCandidate.is<BindingMetadataCandidate>());
+  auto& wrongResolution = resolutionCandidate.get<BindingMetadataCandidate>();
+  auto& resolution = requireResolution(wrongResolution.nodeBindings.asPtr(), fields[0]);
+  ZC_REQUIRE(resolution.value.is<DeferredMemberFact>());
+  auto changedName = identity::DeclaredDefinitionName::fromCanonical("changed"_zc);
+  ZC_REQUIRE(changedName != zc::none);
+  ZC_IF_SOME(name, changedName) {
+    requireDeferredMember(wrongResolution.deferredMembers.asPtr(), fields[0]).member = name.clone();
+    resolution.value.get<DeferredMemberFact>().member = zc::mv(name);
+  }
+  auto resolutionRejected = BindingVerifier::verify(input, zc::mv(wrongResolution));
+  ZC_EXPECT(requireBinderInvariant(resolutionRejected).kind ==
+            BinderInvariantKind::InvalidBindingFact);
 }
 
 ZC_TEST("BodyBinding.RejectsUndefinedTypeReferences") {
