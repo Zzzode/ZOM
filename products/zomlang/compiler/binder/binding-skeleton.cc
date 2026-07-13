@@ -16,6 +16,7 @@ enum class SkeletonEligibility : uint8_t {
   Value,
   SpecialCallable,
   Closure,
+  Pattern,
   Type,
   Generic,
   Parameter,
@@ -37,6 +38,8 @@ SkeletonEligibility eligibility(identity::DefinitionKind kind) {
       return SkeletonEligibility::SpecialCallable;
     case DefinitionKind::Closure:
       return SkeletonEligibility::Closure;
+    case DefinitionKind::PatternBinding:
+      return SkeletonEligibility::Pattern;
     case DefinitionKind::Class:
     case DefinitionKind::Struct:
     case DefinitionKind::Interface:
@@ -51,7 +54,6 @@ SkeletonEligibility eligibility(identity::DefinitionKind kind) {
       return SkeletonEligibility::Parameter;
     case DefinitionKind::ModuleAlias:
     case DefinitionKind::Local:
-    case DefinitionKind::PatternBinding:
     case DefinitionKind::ImportAlias:
     case DefinitionKind::ReexportAlias:
       return SkeletonEligibility::Deferred;
@@ -206,6 +208,21 @@ bool ownsScope(identity::DefinitionKind kind) {
 bool hasLexicalBinding(SkeletonEligibility classification) {
   return classification != SkeletonEligibility::SpecialCallable &&
          classification != SkeletonEligibility::Closure;
+}
+
+zc::Maybe<DefinitionActivation> patternActivation(const ast::Tree& tree,
+                                                  const DefinitionSite& site) {
+  if (!site.value().is<PatternBindingSite>()) { return zc::none; }
+  const auto introducer = site.value().get<PatternBindingSite>().introducer;
+  if (!tree.contains(introducer)) { return zc::none; }
+  switch (tree.node(introducer).kind) {
+    case ast::SyntaxKind::ForInStatement:
+      return DefinitionActivation::LoopPattern;
+    case ast::SyntaxKind::MatchArmStmt:
+      return DefinitionActivation::MatchPattern;
+    default:
+      return zc::none;
+  }
 }
 
 BinderInvariantFact failure(const VerifiedBindingInput& input, BinderInvariantKind kind,
@@ -474,6 +491,13 @@ DefinitionSkeletonBuildResult BindingSkeletonBuilder::build(const VerifiedBindin
     if (declaringScope == zc::none) {
       return failure(input, BinderInvariantKind::MalformedScopeGraph, definition.node);
     }
+    zc::Maybe<DefinitionActivation> patternActivationValue;
+    if (classification == SkeletonEligibility::Pattern) {
+      patternActivationValue = patternActivation(input.tree(), definition.site);
+      if (patternActivationValue == zc::none) {
+        return failure(input, BinderInvariantKind::MissingRequiredResolution, definition.node);
+      }
+    }
     ZC_IF_SOME(scope, declaringScope) {
       if (scope.index() >= arena.scopes.size() || arena.scopes[scope.index()].id != scope) {
         return failure(input, BinderInvariantKind::MalformedScopeGraph, definition.node);
@@ -487,13 +511,19 @@ DefinitionSkeletonBuildResult BindingSkeletonBuilder::build(const VerifiedBindin
                                  record.kind == ScopeKind::ImplBody;
       const bool specialCallableScope =
           record.kind == ScopeKind::TypeBody || record.kind == ScopeKind::ImplBody;
+      const bool patternScope = (patternActivationValue == DefinitionActivation::LoopPattern &&
+                                 record.kind == ScopeKind::Loop) ||
+                                (patternActivationValue == DefinitionActivation::MatchPattern &&
+                                 record.kind == ScopeKind::MatchArm);
       if ((classification == SkeletonEligibility::Generic && !genericScope) ||
           (classification == SkeletonEligibility::Parameter && record.kind != ScopeKind::Function &&
            record.kind != ScopeKind::Closure) ||
           (classification == SkeletonEligibility::SpecialCallable && !specialCallableScope) ||
+          (classification == SkeletonEligibility::Pattern && !patternScope) ||
           (classification != SkeletonEligibility::Generic &&
            classification != SkeletonEligibility::Parameter &&
-           classification != SkeletonEligibility::Closure && !skeletonScope)) {
+           classification != SkeletonEligibility::Closure &&
+           classification != SkeletonEligibility::Pattern && !skeletonScope)) {
         return failure(input, BinderInvariantKind::MissingRequiredResolution, definition.node);
       }
       ZC_IF_SOME(span, syntaxSpan) {
@@ -504,6 +534,7 @@ DefinitionSkeletonBuildResult BindingSkeletonBuilder::build(const VerifiedBindin
       const Namespace nameSpace = classification == SkeletonEligibility::Value ||
                                           classification == SkeletonEligibility::SpecialCallable ||
                                           classification == SkeletonEligibility::Closure ||
+                                          classification == SkeletonEligibility::Pattern ||
                                           classification == SkeletonEligibility::Parameter
                                       ? Namespace::Value
                                       : Namespace::Type;
@@ -512,6 +543,8 @@ DefinitionSkeletonBuildResult BindingSkeletonBuilder::build(const VerifiedBindin
           : classification == SkeletonEligibility::Parameter ? DefinitionActivation::ParameterList
           : classification == SkeletonEligibility::Closure
               ? DefinitionActivation::ExpressionIntroduction
+          : classification == SkeletonEligibility::Pattern
+              ? ZC_ASSERT_NONNULL(patternActivationValue)
               : DefinitionActivation::ModuleSkeleton;
       if (lexicalBinding) {
         const auto& name = ZC_ASSERT_NONNULL(definition.bindingName);
