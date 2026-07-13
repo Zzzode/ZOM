@@ -44,6 +44,9 @@ PUBLIC_LEXER_API_BANNED_TERMS = BANNED_LEXER_APIS + [
     "Snapshot",
     "snapshot",
 ]
+PARSER_BANNED_LEXER_API_TERMS = BANNED_LEXER_APIS + [
+    "LexerMode",
+]
 PARSER_RAW_SOURCE_ACCESS_TERMS = [
     "bufferStart",
     "bufferEnd",
@@ -390,7 +393,7 @@ def check_public_lexer_contract() -> None:
 
     for path in parser_source_paths():
         text = path.read_text(encoding="utf-8")
-        for banned in PUBLIC_LEXER_API_BANNED_TERMS:
+        for banned in PARSER_BANNED_LEXER_API_TERMS:
             if banned in text:
                 fail(f"{rel(path)} depends on banned lexer API: {banned}")
         for term in PARSER_RAW_SOURCE_ACCESS_TERMS:
