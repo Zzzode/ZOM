@@ -46,6 +46,28 @@ class FrozenContextRegistry final {
 public:
   using Handle = ContextHandle<Tag>;
 
+  /// \brief Immutable owned key projection preserving deterministic handle-slot lookup.
+  class FrozenKeyIndex final {
+  public:
+    FrozenKeyIndex(FrozenKeyIndex&&) noexcept = default;
+    FrozenKeyIndex& operator=(FrozenKeyIndex&&) noexcept = default;
+    ZC_DISALLOW_COPY(FrozenKeyIndex);
+
+    /// \brief Looks up one canonical key without retaining the issuing registry.
+    ZC_NODISCARD zc::Maybe<const Key&> lookup(Handle handle) const {
+      return FrozenContextRegistry::lookupProjectedKey(owner, keys.asPtr(), handle);
+    }
+
+  private:
+    FrozenKeyIndex(SemanticContextBrand owner, zc::Array<Key>&& keys) noexcept
+        : owner(owner), keys(zc::mv(keys)) {}
+
+    SemanticContextBrand owner;
+    zc::Array<Key> keys;
+
+    friend class FrozenContextRegistry;
+  };
+
   FrozenContextRegistry(FrozenContextRegistry&&) noexcept = default;
   FrozenContextRegistry& operator=(FrozenContextRegistry&&) noexcept = default;
   ZC_DISALLOW_COPY(FrozenContextRegistry);
@@ -91,6 +113,15 @@ public:
 
   /// \brief Returns the number of collected canonical keys.
   ZC_NODISCARD size_t size() const noexcept { return entries.size(); }
+
+  /// \brief Clones the frozen handle-to-key projection into independently owned storage.
+  ZC_NODISCARD zc::Maybe<FrozenKeyIndex> snapshotKeys() const {
+    if (!isFrozen()) { return zc::none; }
+    zc::Vector<Key> keys;
+    keys.reserve(entries.size());
+    for (const auto& entry : entries) { keys.add(entry.key.clone()); }
+    return FrozenKeyIndex(owner, keys.releaseAsArray());
+  }
 
   /// \brief Returns the canonical key at one deterministic slot after freeze.
   ZC_NODISCARD zc::Maybe<const Key&> keyAt(size_t slot) const {
@@ -156,6 +187,12 @@ private:
       if (left[index] != right[index]) { return false; }
     }
     return true;
+  }
+
+  static zc::Maybe<const Key&> lookupProjectedKey(SemanticContextBrand owner,
+                                                  zc::ArrayPtr<const Key> keys, Handle handle) {
+    if (!handle.belongsTo(owner) || handle.slot >= keys.size()) { return zc::none; }
+    return keys[handle.slot];
   }
 
   void sortEntries() {

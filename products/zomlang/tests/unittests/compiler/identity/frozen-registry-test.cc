@@ -230,6 +230,51 @@ ZC_TEST("Frozen registry assigns slots in canonical key order") {
   ZC_IF_SOME(handle, second) { ZC_EXPECT(registries.packages().lookup(handle) != zc::none); }
 }
 
+ZC_TEST("Frozen key index owns canonical lookup after registry move") {
+  SemanticContextFactory factory;
+  auto registries = requireRegistrySet(factory, requireContext(factory));
+  ZC_EXPECT(registries.packages().snapshotKeys() == zc::none);
+  ZC_REQUIRE(registries.collectPackage(localPackage("b"_zc)) == FrozenRegistryFailure::None);
+  ZC_REQUIRE(registries.collectPackage(localPackage("a"_zc)) == FrozenRegistryFailure::None);
+  ZC_REQUIRE(registries.freezePackages() == FrozenRegistryFailure::None);
+
+  auto firstKey = localPackage("a"_zc);
+  auto secondKey = localPackage("b"_zc);
+  auto first = registries.packages().find(firstKey);
+  auto second = registries.packages().find(secondKey);
+  auto index = registries.packages().snapshotKeys();
+  ZC_REQUIRE(first != zc::none);
+  ZC_REQUIRE(second != zc::none);
+  ZC_REQUIRE(index != zc::none);
+
+  auto displacedRegistries = zc::mv(registries);
+  ZC_IF_SOME(keys, index) {
+    ZC_IF_SOME(firstHandle, first) {
+      ZC_IF_SOME(key, keys.lookup(firstHandle)) {
+        ZC_EXPECT(key.encode().asPtr() == firstKey.encode().asPtr());
+      }
+      else { ZC_EXPECT(false); }
+    }
+    ZC_IF_SOME(secondHandle, second) {
+      ZC_IF_SOME(key, keys.lookup(secondHandle)) {
+        ZC_EXPECT(key.encode().asPtr() == secondKey.encode().asPtr());
+      }
+      else { ZC_EXPECT(false); }
+    }
+    const PackageId invalid;
+    ZC_EXPECT(keys.lookup(invalid) == zc::none);
+
+    auto foreignRegistries = requireRegistrySet(factory, requireContext(factory));
+    ZC_REQUIRE(foreignRegistries.collectPackage(localPackage("a"_zc)) ==
+               FrozenRegistryFailure::None);
+    ZC_REQUIRE(foreignRegistries.freezePackages() == FrozenRegistryFailure::None);
+    ZC_IF_SOME(foreign, foreignRegistries.packages().find(firstKey)) {
+      ZC_EXPECT(keys.lookup(foreign) == zc::none);
+    }
+  }
+  ZC_EXPECT(displacedRegistries.packages().size() == 2);
+}
+
 ZC_TEST("Frozen registry rejects duplicate canonical keys without issuing handles") {
   SemanticContextFactory factory;
   auto registries = requireRegistrySet(factory, requireContext(factory));
