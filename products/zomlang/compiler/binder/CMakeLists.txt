@@ -1,4 +1,5 @@
 set(BINDER_SRC
+  ${CMAKE_CURRENT_SOURCE_DIR}/binding-diagnostic-adapter.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/binding-metadata.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/binding-skeleton.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/binding-input.cc

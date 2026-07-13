@@ -11,6 +11,7 @@
 #include "zomlang/compiler/ast/generated/node-payload.h"
 #include "zomlang/compiler/basic/string-pool.h"
 #include "zomlang/compiler/basic/zomlang-opts.h"
+#include "zomlang/compiler/binder/binding-diagnostic-adapter.h"
 #include "zomlang/compiler/binder/definition-inventory.h"
 #include "zomlang/compiler/binder/internal/binding-skeleton.h"
 #include "zomlang/compiler/binder/internal/binding-verifier.h"
@@ -958,6 +959,42 @@ ZC_TEST("BinderInvariant.EmitsEveryRegisteredFatalDiagnostic") {
   ZC_EXPECT(groupedCapture.ids[0] == diagnostics::DiagID::BinderInvalidFact);
   ZC_EXPECT(groupedCapture.occurrences[0] == "3"_zc);
   ZC_EXPECT(groupedDiagnostics.hasErrors());
+}
+
+ZC_TEST("BindingDiagnosticAdapter.EmitsTypedRedeclarationWithPreviousNote") {
+  class Capture final : public diagnostics::DiagnosticConsumer {
+  public:
+    diagnostics::DiagID primary = diagnostics::DiagID::UndefinedIdentifier;
+    diagnostics::DiagID note = diagnostics::DiagID::UndefinedIdentifier;
+    zc::String argument;
+
+    void handleDiagnostic(const source::SourceManager&,
+                          const diagnostics::Diagnostic& diagnostic) override {
+      primary = diagnostic.getId();
+      ZC_REQUIRE(diagnostic.getArgs().size() == 1);
+      argument = zc::str(diagnostic.getArgs()[0].get<zc::String>());
+      ZC_REQUIRE(diagnostic.getChildDiagnostics().size() == 1);
+      note = diagnostic.getChildDiagnostics()[0]->getId();
+    }
+  };
+
+  source::SourceManager sources;
+  const auto buffer = sources.addMemBufferCopy("first second"_zcb, "main.zom");
+  diagnostics::DiagnosticEngine diagnostics(sources);
+  auto consumer = zc::heap<Capture>();
+  const auto& capture = *consumer;
+  diagnostics.addConsumer(zc::mv(consumer));
+  auto identifier = identity::SemanticIdentifier::fromCanonical("value"_zc);
+  ZC_REQUIRE(identifier != zc::none);
+  ZC_IF_SOME(value, identifier) {
+    ZC_EXPECT(BindingDiagnosticAdapter::emitRedeclaration(
+        diagnostics, BinderDiagnosticCode::RedeclareVariable,
+        sources.getLocForBufferStart(buffer).getAdvancedLoc(6),
+        sources.getLocForBufferStart(buffer), VerifiedIdentifierArgument::from(value)));
+  }
+  ZC_EXPECT(capture.primary == diagnostics::DiagID::RedeclareVariable);
+  ZC_EXPECT(capture.note == diagnostics::DiagID::PreviousDeclarationHere);
+  ZC_EXPECT(capture.argument == "value"_zc);
 }
 
 ZC_TEST("FrozenInventory.RejectsMissingAdditionalWrongKindAndForeignDefinitions") {

@@ -28,6 +28,8 @@ SCOPE_HEADER = BINDER_DIR / "internal" / "scope-arena.h"
 SCOPE_SOURCE = BINDER_DIR / "scope-arena.cc"
 SKELETON_HEADER = BINDER_DIR / "internal" / "binding-skeleton.h"
 SKELETON_SOURCE = BINDER_DIR / "binding-skeleton.cc"
+DIAGNOSTIC_ADAPTER_HEADER = BINDER_DIR / "binding-diagnostic-adapter.h"
+DIAGNOSTIC_ADAPTER_SOURCE = BINDER_DIR / "binding-diagnostic-adapter.cc"
 DIAGNOSTIC_DEFINITIONS = Path("products/zomlang/compiler/diagnostics/diagnostics-binder.def")
 BINDER_CMAKE = BINDER_DIR / "CMakeLists.txt"
 TEST_DIR = Path("products/zomlang/tests/unittests/compiler/binder")
@@ -73,6 +75,8 @@ def production_files() -> dict[Path, str]:
         SCOPE_SOURCE,
         SKELETON_HEADER,
         SKELETON_SOURCE,
+        DIAGNOSTIC_ADAPTER_HEADER,
+        DIAGNOSTIC_ADAPTER_SOURCE,
         DIAGNOSTIC_DEFINITIONS,
         BINDER_CMAKE,
         TEST_SOURCE,
@@ -406,6 +410,31 @@ def check_binding_skeleton_contract(files: dict[Path, str], errors: list[str]) -
             errors.append(f"{TEST_SOURCE}: missing binding skeleton evidence: {marker}")
 
 
+def check_binding_diagnostic_adapter(files: dict[Path, str], errors: list[str]) -> None:
+    header = files.get(DIAGNOSTIC_ADAPTER_HEADER, "")
+    source = files.get(DIAGNOSTIC_ADAPTER_SOURCE, "")
+    definitions = files.get(DIAGNOSTIC_DEFINITIONS, "")
+    for required in (
+        "class VerifiedIdentifierArgument final",
+        "const identity::SemanticIdentifier& identifier",
+        "class BindingDiagnosticAdapter final",
+        "VerifiedIdentifierArgument&& identifier",
+    ):
+        if required not in header:
+            errors.append(f"{DIAGNOSTIC_ADAPTER_HEADER}: incomplete typed adapter: {required}")
+    for required in (
+        "VerifiedIdentifierArgument::from(",
+        "diagnostics::DiagID::PreviousDeclarationHere",
+        "case BinderDiagnosticCode::DuplicateIdentifier:",
+    ):
+        if required not in source:
+            errors.append(f"{DIAGNOSTIC_ADAPTER_SOURCE}: incomplete redeclaration adapter: {required}")
+    if 'DIAG(3017, PreviousDeclarationHere, kNote, "Previous declaration is here", 0)' not in definitions:
+        errors.append(f"{DIAGNOSTIC_DEFINITIONS}: missing ZOM3017 previous declaration note")
+    if "BindingDiagnosticAdapter.EmitsTypedRedeclarationWithPreviousNote" not in files.get(TEST_SOURCE, ""):
+        errors.append(f"{TEST_SOURCE}: missing typed redeclaration adapter evidence")
+
+
 def check_wiring(files: dict[Path, str], errors: list[str]) -> None:
     required = (
         (BINDER_CMAKE, "${CMAKE_CURRENT_SOURCE_DIR}/binding-input.cc"),
@@ -416,6 +445,7 @@ def check_wiring(files: dict[Path, str], errors: list[str]) -> None:
         (BINDER_CMAKE, "${CMAKE_CURRENT_SOURCE_DIR}/binding-verifier.cc"),
         (BINDER_CMAKE, "${CMAKE_CURRENT_SOURCE_DIR}/scope-arena.cc"),
         (BINDER_CMAKE, "${CMAKE_CURRENT_SOURCE_DIR}/binding-skeleton.cc"),
+        (BINDER_CMAKE, "${CMAKE_CURRENT_SOURCE_DIR}/binding-diagnostic-adapter.cc"),
         (TEST_CMAKE, 'add_ztest_unit_test("binding-input-test" "binding-input-test.cc"'),
         (TEST_CMAKE, "binder-architecture"),
         (TEST_CMAKE, "check-binder-architecture.py --check"),
@@ -512,6 +542,7 @@ def check(files: dict[Path, str]) -> list[str]:
     check_internal_binding_authority(files, errors)
     check_scope_arena_contract(files, errors)
     check_binding_skeleton_contract(files, errors)
+    check_binding_diagnostic_adapter(files, errors)
     check_wiring(files, errors)
     check_invariant_diagnostics(files, errors)
     check_binding_publication_contract(files, errors)
@@ -688,6 +719,18 @@ def self_test(files: dict[Path, str]) -> list[str]:
             BINDER_CMAKE,
             "${CMAKE_CURRENT_SOURCE_DIR}/binding-skeleton.cc",
             "${CMAKE_CURRENT_SOURCE_DIR}/missing-binding-skeleton.cc",
+        ),
+        (
+            "missing typed binder diagnostic wiring",
+            BINDER_CMAKE,
+            "${CMAKE_CURRENT_SOURCE_DIR}/binding-diagnostic-adapter.cc",
+            "${CMAKE_CURRENT_SOURCE_DIR}/missing-binding-diagnostic-adapter.cc",
+        ),
+        (
+            "missing previous declaration note",
+            DIAGNOSTIC_DEFINITIONS,
+            'DIAG(3017, PreviousDeclarationHere, kNote, "Previous declaration is here", 0)',
+            'DIAG(3017, MissingPreviousDeclarationHere, kNote, "Previous declaration is here", 0)',
         ),
         (
             "disconnected binding skeleton cutover",
