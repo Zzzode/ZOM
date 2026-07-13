@@ -662,8 +662,8 @@ ControlOracleResult verifyControlTransferFacts(const VerifiedBindingInput& input
     const auto& failureFact = candidate.sourceFailures[failureIndex];
     const auto expectedDiagnostic = isBreak ? BinderDiagnosticCode::BreakTargetNotFound
                                             : BinderDiagnosticCode::ContinueTargetNotFound;
-    auto expectedPrimary = input.parsedModule().leadingTokenSpan(
-        node, isBreak ? ast::SyntaxKind::BreakKeyword : ast::SyntaxKind::ContinueKeyword);
+    auto expectedPrimary = input.parsedModule().retainedTokenSpan(
+        node, 0, isBreak ? ast::SyntaxKind::BreakKeyword : ast::SyntaxKind::ContinueKeyword);
     const uint8_t emitterSite = static_cast<uint8_t>(failureFact.emitterOrdinal >> 56);
     const uint32_t schemaOrdinal =
         static_cast<uint32_t>((failureFact.emitterOrdinal >> 16) & UINT32_MAX);

@@ -142,8 +142,8 @@ private:
 
   void resolve(ast::NodeId node, bool isBreak) {
     auto statementSource = input.parsedModule().spanFor(tree.node(node).range);
-    auto keywordSource = input.parsedModule().leadingTokenSpan(
-        node, isBreak ? ast::SyntaxKind::BreakKeyword : ast::SyntaxKind::ContinueKeyword);
+    auto keywordSource = input.parsedModule().retainedTokenSpan(
+        node, 0, isBreak ? ast::SyntaxKind::BreakKeyword : ast::SyntaxKind::ContinueKeyword);
     if (statementSource == zc::none || keywordSource == zc::none ||
         node.value >= nodeScopeIndices.size() || nodeScopeIndices[node.value] == kMissingIndex) {
       reject(BinderInvariantKind::InvalidBindingFact, BinderEmitterSite::BodyBinding, node);

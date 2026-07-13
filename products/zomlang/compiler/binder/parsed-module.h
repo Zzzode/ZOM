@@ -80,9 +80,11 @@ public:
   ZC_NODISCARD const ParsedModuleReceipt& receipt() const noexcept;
   ZC_NODISCARD identity::SourceSpan rootSpan() const;
   ZC_NODISCARD zc::Maybe<identity::SourceSpan> spanFor(source::SourceRange range) const;
-  /// \brief Return the parser-retained leading token when kind and ownership match.
-  ZC_NODISCARD zc::Maybe<identity::SourceSpan> leadingTokenSpan(ast::NodeId owner,
-                                                                ast::SyntaxKind expectedKind) const;
+  /// \brief Return one parser-retained token when ordinal, kind, and ownership match.
+  ZC_NODISCARD zc::Maybe<identity::SourceSpan> retainedTokenSpan(
+      ast::NodeId owner, uint32_t tokenOrdinal, ast::SyntaxKind expectedKind) const;
+  /// \brief Resolve the start of a checked source span back to its parser source location.
+  ZC_NODISCARD zc::Maybe<source::SourceLoc> sourceLocFor(const identity::SourceSpan& span) const;
 
 private:
   struct Impl;

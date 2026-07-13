@@ -193,9 +193,12 @@ def check_parsed_token_provenance(files: dict[Path, str], errors: list[str]) -> 
             errors.append(f"{PARSER_SOURCE}: parser token capability is not single-use: {required}")
     for required in (
         "parser::ParsedTokenSnapshot&& tokens, ast::Tree&& tree",
-        "leadingTokenSpan(",
+        "retainedTokenSpan(",
         "ast::NodeId owner,",
+        "uint32_t tokenOrdinal",
         "ast::SyntaxKind expectedKind",
+        "sourceLocFor(",
+        "const identity::SourceSpan& span",
         "InvalidTokenProvenance",
     ):
         if required not in parsed_header:
@@ -205,13 +208,19 @@ def check_parsed_token_provenance(files: dict[Path, str], errors: list[str]) -> 
         "admitTokenOffsets(tokens.tokenValues.asPtr(), sourceBytes)",
         "token.kind == ast::SyntaxKind::EndOfFile",
         "token.kind == ast::SyntaxKind::Unknown || start == end",
+        "static_cast<size_t>(tokenOrdinal) >= impl->tokens.size() - first",
         "token.kind != expectedKind",
         "token.end > span.byteEnd()",
+        "!span.belongsTo(impl->snapshot.source())",
+        "span.byteEnd() > impl->snapshot.bytes().size()",
+        "impl->sources.getLocForOffset(impl->buffer",
     ):
         if required not in parsed_source:
             errors.append(f"{PARSED_SOURCE}: parsed token validation is incomplete: {required}")
     for marker in (
         "ParsedModule.RetainsExactEscapedKeywordTokenSpans",
+        "ParsedModule.RetainsLabelTokenOrdinalsAndExactSourceLocations",
+        "ParsedModule.RejectsInvalidRetainedTokenAndSourceQueries",
         "ParsedModule.RejectsIdentifierPrefixesAsKeywordProvenance",
     ):
         if marker not in files.get(TEST_SOURCE, ""):
@@ -582,7 +591,8 @@ def check_control_transfer_contract(files: dict[Path, str], errors: list[str]) -
         "ast::kBreakStmtLabelWord",
         "ast::kContinueStatementLabelWord",
         "input.parsedModule().spanFor(tree.node(node).range)",
-        "input.parsedModule().leadingTokenSpan(",
+        "input.parsedModule().retainedTokenSpan(",
+        "node, 0,",
         "ast::SyntaxKind::BreakKeyword : ast::SyntaxKind::ContinueKeyword",
         "scope.kind == ScopeKind::Loop",
         "scope.kind == ScopeKind::Match && isBreak",
@@ -715,7 +725,8 @@ def check_control_transfer_contract(files: dict[Path, str], errors: list[str]) -
             "resolutionIndex == kMissing",
             "resolution.value.is<FailedBindingResolution>()",
             "failureFact.diagnostic != expectedDiagnostic",
-            "leadingTokenSpan(",
+            "retainedTokenSpan(",
+            "node, 0,",
             "BinderEmitterSite::BodyBinding",
             "schemaOrdinal != schemaOrdinals[node.value]",
             "localOrdinal != 0",
@@ -1459,7 +1470,7 @@ def self_test(files: dict[Path, str]) -> list[str]:
         (
             "missing exact control keyword provenance",
             CONTROL_SOURCE,
-            "input.parsedModule().leadingTokenSpan(",
+            "input.parsedModule().retainedTokenSpan(",
             "input.parsedModule().spanFor(",
         ),
         (
@@ -1588,7 +1599,7 @@ def self_test(files: dict[Path, str]) -> list[str]:
         (
             "control oracle drops exact failure primary",
             VERIFIER_SOURCE,
-            "auto expectedPrimary = input.parsedModule().leadingTokenSpan(",
+            "auto expectedPrimary = input.parsedModule().retainedTokenSpan(",
             "auto expectedPrimary = input.parsedModule().spanFor(",
         ),
         (

@@ -255,10 +255,11 @@ their complete raw token span without borrowing the parser string pool. Raw
 After the source registry freezes, `ParsedModulePromoter` matches that
 structural key to its issued `SourceFileId`, revalidates the unchanged snapshot
 and receipt, and constructs `VerifiedParsedModule` without reparsing, cloning,
-or mutating the tree. Token records move through promotion unchanged. A leading
-token query succeeds only when the requested AST node starts at a retained token
-of the requested `SyntaxKind` and the complete token range is contained by that
-node.
+or mutating the tree. Token records move through promotion unchanged. An ordinal
+token query succeeds only when the requested AST node starts at a retained token,
+the indexed token has the requested `SyntaxKind`, and its complete range is
+contained by that node. `sourceLocFor` converts only a same-source, in-bounds
+span start back to the admitted parser buffer.
 
 `ParsedModuleReceipt` is SHA-256 over
 `ASCII("zom.parsed-module.v0")`, one zero byte, the expanded `SourceFileKey`,
@@ -913,8 +914,8 @@ fact source equals the complete statement range. For an unlabeled statement
 with no valid target, the candidate publishes no control-transfer fact and
 exactly one `Failed` resolution that references one `sourceFailures` record.
 Its primary is the exact retained raw `break` or `continue` token returned by
-`VerifiedParsedModule::leadingTokenSpan`. Control-transfer facts sort by
-`NodeId`.
+`VerifiedParsedModule::retainedTokenSpan(node, 0, expectedKind)`. Control-transfer
+facts sort by `NodeId`.
 
 The test oracle serializes every assigned `ScopeId` and `LabelId` for one
 fixture containing every producer, nested same-span recovery nodes, explicit

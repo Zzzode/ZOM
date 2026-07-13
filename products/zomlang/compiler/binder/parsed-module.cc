@@ -5,6 +5,7 @@
 
 #include "zomlang/compiler/binder/parsed-module.h"
 
+#include <climits>
 #include <cstdint>
 
 #include "zc/core/debug.h"
@@ -220,8 +221,8 @@ zc::Maybe<identity::SourceSpan> VerifiedParsedModule::spanFor(source::SourceRang
   return impl->snapshot.span(start, end);
 }
 
-zc::Maybe<identity::SourceSpan> VerifiedParsedModule::leadingTokenSpan(
-    ast::NodeId owner, ast::SyntaxKind expectedKind) const {
+zc::Maybe<identity::SourceSpan> VerifiedParsedModule::retainedTokenSpan(
+    ast::NodeId owner, uint32_t tokenOrdinal, ast::SyntaxKind expectedKind) const {
   if (!impl->tree.contains(owner)) { return zc::none; }
   auto ownerSpan = spanFor(impl->tree.node(owner).range);
   if (ownerSpan == zc::none) { return zc::none; }
@@ -239,14 +240,27 @@ zc::Maybe<identity::SourceSpan> VerifiedParsedModule::leadingTokenSpan(
       }
     }
     if (first >= impl->tokens.size()) { return zc::none; }
-    const auto& token = impl->tokens[first];
-    if (token.start != span.byteStart() || token.kind != expectedKind || token.start >= token.end ||
+    if (impl->tokens[first].start != span.byteStart() ||
+        static_cast<size_t>(tokenOrdinal) >= impl->tokens.size() - first) {
+      return zc::none;
+    }
+    const auto& token = impl->tokens[first + static_cast<size_t>(tokenOrdinal)];
+    if (token.kind != expectedKind || token.start < span.byteStart() || token.start >= token.end ||
         token.end > span.byteEnd()) {
       return zc::none;
     }
     return impl->snapshot.span(token.start, token.end);
   }
   ZC_UNREACHABLE;
+}
+
+zc::Maybe<source::SourceLoc> VerifiedParsedModule::sourceLocFor(
+    const identity::SourceSpan& span) const {
+  if (!span.belongsTo(impl->snapshot.source()) || span.byteStart() > span.byteEnd() ||
+      span.byteEnd() > impl->snapshot.bytes().size() || span.byteStart() > UINT_MAX) {
+    return zc::none;
+  }
+  return impl->sources.getLocForOffset(impl->buffer, static_cast<unsigned>(span.byteStart()));
 }
 
 identity::SourceSpan VerifiedParsedModule::rootSpan() const {

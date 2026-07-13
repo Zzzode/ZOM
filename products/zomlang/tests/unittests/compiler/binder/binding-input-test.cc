@@ -681,16 +681,86 @@ ZC_TEST("ParsedModule.RetainsExactEscapedKeywordTokenSpans") {
     const auto continues = nodesOfKind(parsed.tree(), ast::SyntaxKind::ContinueStatement);
     ZC_REQUIRE(breaks.size() == 2);
     ZC_REQUIRE(continues.size() == 1);
-    auto leadingBreakToken = parsed.leadingTokenSpan(breaks[0], ast::SyntaxKind::BreakKeyword);
-    auto middleBreakToken = parsed.leadingTokenSpan(breaks[1], ast::SyntaxKind::BreakKeyword);
-    auto continueToken = parsed.leadingTokenSpan(continues[0], ast::SyntaxKind::ContinueKeyword);
+    auto leadingBreakToken = parsed.retainedTokenSpan(breaks[0], 0, ast::SyntaxKind::BreakKeyword);
+    auto middleBreakToken = parsed.retainedTokenSpan(breaks[1], 0, ast::SyntaxKind::BreakKeyword);
+    auto continueToken =
+        parsed.retainedTokenSpan(continues[0], 0, ast::SyntaxKind::ContinueKeyword);
     ZC_REQUIRE(leadingBreakToken != zc::none);
     ZC_REQUIRE(middleBreakToken != zc::none);
     ZC_REQUIRE(continueToken != zc::none);
     ZC_IF_SOME(span, leadingBreakToken) { ZC_EXPECT(span.byteEnd() - span.byteStart() == 10); }
     ZC_IF_SOME(span, middleBreakToken) { ZC_EXPECT(span.byteEnd() - span.byteStart() == 10); }
     ZC_IF_SOME(span, continueToken) { ZC_EXPECT(span.byteEnd() - span.byteStart() == 13); }
-    ZC_EXPECT(parsed.leadingTokenSpan(breaks[0], ast::SyntaxKind::ContinueKeyword) == zc::none);
+    ZC_EXPECT(parsed.retainedTokenSpan(breaks[0], 0, ast::SyntaxKind::ContinueKeyword) == zc::none);
+  }
+}
+
+ZC_TEST("ParsedModule.RetainsLabelTokenOrdinalsAndExactSourceLocations") {
+  ParsedSource sourceFixture(
+      "module root;\n"
+      "fun run() { out\\u0065r: while (true) { br\\u0065ak out\\u0065r; } }\n"_zc);
+  FrozenFixture fixture(sourceFixture, true);
+  ZC_REQUIRE(fixture.parsed != zc::none);
+  ZC_IF_SOME(parsed, fixture.parsed) {
+    const auto labels = nodesOfKind(parsed.tree(), ast::SyntaxKind::LabeledStatement);
+    const auto breaks = nodesOfKind(parsed.tree(), ast::SyntaxKind::BreakStmt);
+    ZC_REQUIRE(labels.size() == 1);
+    ZC_REQUIRE(breaks.size() == 1);
+    auto declaration = parsed.retainedTokenSpan(labels[0], 0, ast::SyntaxKind::Identifier);
+    auto keyword = parsed.retainedTokenSpan(breaks[0], 0, ast::SyntaxKind::BreakKeyword);
+    auto reference = parsed.retainedTokenSpan(breaks[0], 1, ast::SyntaxKind::Identifier);
+    ZC_REQUIRE(declaration != zc::none);
+    ZC_REQUIRE(keyword != zc::none);
+    ZC_REQUIRE(reference != zc::none);
+    ZC_IF_SOME(span, declaration) {
+      ZC_EXPECT(span.byteEnd() - span.byteStart() == 10);
+      auto location = parsed.sourceLocFor(span);
+      ZC_REQUIRE(location != zc::none);
+      ZC_IF_SOME(value, location) {
+        ZC_EXPECT(value == parsed.tree().node(labels[0]).range.getStart());
+      }
+    }
+    ZC_IF_SOME(span, keyword) {
+      ZC_EXPECT(span.byteEnd() - span.byteStart() == 10);
+      auto location = parsed.sourceLocFor(span);
+      ZC_REQUIRE(location != zc::none);
+      ZC_IF_SOME(value, location) {
+        ZC_EXPECT(value == parsed.tree().node(breaks[0]).range.getStart());
+      }
+    }
+    ZC_IF_SOME(span, reference) {
+      ZC_EXPECT(span.byteEnd() - span.byteStart() == 10);
+      auto location = parsed.sourceLocFor(span);
+      ZC_REQUIRE(location != zc::none);
+      ZC_IF_SOME(value, location) {
+        ZC_EXPECT(value == parsed.tree().node(breaks[0]).range.getStart().getAdvancedLoc(11));
+      }
+    }
+  }
+}
+
+ZC_TEST("ParsedModule.RejectsInvalidRetainedTokenAndSourceQueries") {
+  ParsedSource sourceFixture(
+      "module root;\n"
+      "fun run() { outer: while (true) { break outer; } }\n"_zc);
+  FrozenFixture fixture(sourceFixture, true);
+  ZC_REQUIRE(fixture.parsed != zc::none);
+  ZC_IF_SOME(parsed, fixture.parsed) {
+    const auto breaks = nodesOfKind(parsed.tree(), ast::SyntaxKind::BreakStmt);
+    ZC_REQUIRE(breaks.size() == 1);
+    ZC_EXPECT(parsed.retainedTokenSpan(breaks[0], 1, ast::SyntaxKind::BreakKeyword) == zc::none);
+    ZC_EXPECT(parsed.retainedTokenSpan(breaks[0], UINT32_MAX, ast::SyntaxKind::Identifier) ==
+              zc::none);
+    ZC_EXPECT(parsed.retainedTokenSpan(ast::NodeId(), 0, ast::SyntaxKind::Identifier) == zc::none);
+
+    auto alternateSnapshot =
+        identity::ImmutableSourceSnapshot::from(alternateSource(), zc::heapArray("x"_zcb));
+    ZC_REQUIRE(alternateSnapshot != zc::none);
+    ZC_IF_SOME(snapshot, alternateSnapshot) {
+      auto alternateSpan = snapshot.span(0, 1);
+      ZC_REQUIRE(alternateSpan != zc::none);
+      ZC_IF_SOME(span, alternateSpan) { ZC_EXPECT(parsed.sourceLocFor(span) == zc::none); }
+    }
   }
 }
 
@@ -701,7 +771,8 @@ ZC_TEST("ParsedModule.RejectsIdentifierPrefixesAsKeywordProvenance") {
   ZC_IF_SOME(parsed, fixture.parsed) {
     const auto identifiers = nodesOfKind(parsed.tree(), ast::SyntaxKind::IdentExpr);
     ZC_REQUIRE(identifiers.size() == 1);
-    ZC_EXPECT(parsed.leadingTokenSpan(identifiers[0], ast::SyntaxKind::BreakKeyword) == zc::none);
+    ZC_EXPECT(parsed.retainedTokenSpan(identifiers[0], 0, ast::SyntaxKind::BreakKeyword) ==
+              zc::none);
   }
 }
 
