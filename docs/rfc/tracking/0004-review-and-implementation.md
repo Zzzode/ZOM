@@ -306,6 +306,7 @@ landing.
 |---|---|---|
 | Dependency-free root verifier spine | Complete | Commit `05d12af5`; `ModuleGraphVerifier`, private `VerifiedModuleGraphView`, `BindingInputVerifier`, private `VerifiedBindingInput`, focused sanitizer tests, and positive plus adversarial binder architecture gates |
 | Parsed-module and frozen-inventory provenance | Complete | Commits `46839dcd` and `1b863942`; normative `ParsedModuleReceipt` oracle, immutable source promotion, exact single-module identity projection, ten focused sanitizer cases, and thirteen architecture mutations |
+| Retained parser token provenance | Complete | Commit `6036f93d`; single-use successful-parser capability, same-source and same-buffer admission, exact EOF and ordered-range validation, owned canonical token text, exact escaped-keyword spans, identifier-prefix rejection, 268 parser cases, 82 binder cases, 105 unit CTests, full sanitizer build, and adversarial architecture mutations |
 | Dependency-free binding metadata publication | Complete | Commit `1745926f`; immutable `VerifiedBindingMetadata` and `VerifiedExportSurface`, private candidate authority, closed verification results, production allocation and surface codecs, registered invariant diagnostics, emitted `ZOM3001`, twenty focused sanitizer cases, and adversarial architecture mutations |
 | Deterministic scope allocation | Complete | Commits `9373d0e7`, `3e38e063`, `765cf8e1`, and `a75f0937`; frozen impl identities, all ten accepted scope kinds, schema-preorder allocation, exact parents, semantic owners and source spans, checked index overflow, production verifier cutover, bodyless-function range repair, twenty-five focused sanitizer cases, and adversarial architecture mutations |
 | Module, type, and impl skeleton facts | Complete | Commits `632d1669` through `b5692a75`; exact declaration and pattern sites, canonical `DefinitionFact` and `ImplBindingFact` ordering, module/type/impl scope maps, direct impl members, module constant pattern leaves, private and declaration-export surfaces, typed `ZOM3003-ZOM3010` duplicate failures with `ZOM3017` notes, NFC collision coverage, thirty-five focused sanitizer cases, and adversarial architecture mutations |
@@ -359,6 +360,18 @@ projection. The architecture
 gate's thirteen mutations reject public constructors, foreign publication,
 foreign producer calls, raw candidate fields, missing build wiring, forbidden
 layering, and compatibility facades.
+
+Commit `6036f93d` extends the verified parsed-module boundary with retained
+lexer provenance. `Parser::takeTokenSnapshot` is available once after a
+successful parse and never after a failed parse. `ParsedModuleVerifier` accepts
+only that capability for the matching source manager and buffer, validates the
+complete token sequence, and stores owned canonical text with exact raw ranges.
+Focused evidence covers escaped-at-start `break`, escaped-in-middle `break`,
+escaped `continue`, identifier-prefix rejection, wrong-kind lookup, source and
+range rejection, and the single-use capability. The normative
+`ParsedModuleReceipt v0` preimage remains unchanged because the retained token
+table is derived from the receipt-bound immutable source by the private
+successful-parser capability.
 
 On the frozen implementation, the complete sanitizer matrix passes 1,250 of
 1,250 tests in 987.15 seconds; the full grammar oracle passes in 986.41 seconds.

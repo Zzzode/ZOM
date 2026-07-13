@@ -228,18 +228,38 @@ VerifiedParsedModule {
   contentDigest: Sha256Digest,
   byteLength: uint64,
   tree: const ast::Tree,
+  retainedTokens: Sequence<RetainedTokenProvenance>,
   parserReceipt: ParsedModuleReceipt,
+}
+
+RetainedTokenProvenance {
+  kind: SyntaxKind,
+  rawSource: SourceSpan,
+  canonicalText: String,
 }
 ```
 
 The parse driver first constructs a move-only `UnbrandedParsedModule` while
 parsing the immutable source snapshot. It contains the structural RFC 0011
 `SourceFileKey`, exact content digest and length, immutable tree, parser schema
-digest, and deterministic AST schema dump receipt, but no `SourceFileId`. After
-the source registry freezes, `ParsedModulePromoter` matches that structural key
-to its issued `SourceFileId`, revalidates the unchanged snapshot and receipt,
-and constructs `VerifiedParsedModule` without reparsing, cloning, or mutating
-the tree. `ParsedModuleReceipt` is SHA-256 over
+digest, deterministic AST schema dump receipt, and parser-issued retained token
+provenance, but no `SourceFileId`. A successful single-use parser may issue
+exactly one `ParsedTokenSnapshot`. Admission requires that snapshot to name the
+same `SourceManager` and buffer, contain one final EOF token at the exact source
+length, and contain non-empty, ordered, non-overlapping non-EOF ranges. Each
+record owns its lexer-canonical text, so escaped keywords and identifiers retain
+their complete raw token span without borrowing the parser string pool. Raw
+`TokenStream` copies carry no admission authority.
+
+After the source registry freezes, `ParsedModulePromoter` matches that
+structural key to its issued `SourceFileId`, revalidates the unchanged snapshot
+and receipt, and constructs `VerifiedParsedModule` without reparsing, cloning,
+or mutating the tree. Token records move through promotion unchanged. A leading
+token query succeeds only when the requested AST node starts at a retained token
+of the requested `SyntaxKind` and the complete token range is contained by that
+node.
+
+`ParsedModuleReceipt` is SHA-256 over
 `ASCII("zom.parsed-module.v0")`, one zero byte, the expanded `SourceFileKey`,
 exact source content digest, byte length, parser schema digest, and deterministic
 AST schema dump bytes. Every fixed-width integer uses unsigned big-endian
@@ -248,7 +268,9 @@ contributes its already-canonical bytes, and the AST schema dump is one RFC 0011
 byte string: `uint64be(length)` followed by the exact dump bytes. Promotion
 verifies every node belongs to this tree and every valid half-open node range is
 bounded by the same source snapshot. No caller can pair an arbitrary tree with
-a source ID or promote a different tree under a retained receipt.
+a source ID or promote a different tree under a retained receipt. Retained token
+records are derived from the same immutable source by the successful parser
+capability and are not an additional field in the `v0` receipt preimage.
 
 The independent receipt oracle uses expanded source-file bytes `a1`, content
 digest as 32 bytes of `22`, byte length `3`, parser-schema digest as 32 bytes of
