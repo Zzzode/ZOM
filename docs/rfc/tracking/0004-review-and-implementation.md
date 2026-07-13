@@ -308,8 +308,9 @@ landing.
 | Parsed-module and frozen-inventory provenance | Complete | Commits `46839dcd` and `1b863942`; normative `ParsedModuleReceipt` oracle, immutable source promotion, exact single-module identity projection, ten focused sanitizer cases, and thirteen architecture mutations |
 | Dependency-free binding metadata publication | Complete | Commit `1745926f`; immutable `VerifiedBindingMetadata` and `VerifiedExportSurface`, private candidate authority, closed verification results, production allocation and surface codecs, registered invariant diagnostics, emitted `ZOM3001`, twenty focused sanitizer cases, and adversarial architecture mutations |
 | Deterministic scope allocation | Complete | Commits `9373d0e7`, `3e38e063`, `765cf8e1`, and `a75f0937`; frozen impl identities, all ten accepted scope kinds, schema-preorder allocation, exact parents, semantic owners and source spans, checked index overflow, production verifier cutover, bodyless-function range repair, twenty-five focused sanitizer cases, and adversarial architecture mutations |
+| Module, type, and impl skeleton facts | Complete | Commits `632d1669` through `b5692a75`; exact declaration and pattern sites, canonical `DefinitionFact` and `ImplBindingFact` ordering, module/type/impl scope maps, direct impl members, module constant pattern leaves, private and declaration-export surfaces, typed `ZOM3003-ZOM3010` duplicate failures with `ZOM3017` notes, NFC collision coverage, thirty-five focused sanitizer cases, and adversarial architecture mutations |
 | Complete module resolution input | Blocked by RFC 0012 and RFC 0008 | Authoritative package resolution, production semantic-context fingerprint, verified resolution environment, and resolution receipts |
-| Complete binding facts and surfaces | Pending | Definition activation, imports, exports, aliases, visibility, labels, captures, immutable metadata, codecs, and verifier negatives |
+| Complete binding facts and surfaces | Pending | Generic parameters, callable parameters, closures, locals and patterns, imports, re-exports, aliases, visibility, labels, captures, body resolution, immutable metadata completion, codecs, and verifier negatives |
 | Production binder cutover | Pending | Session integration, no downstream rebinding, deletion of raw binder inputs and binder-owned module resolution, and all acceptance gates |
 
 The first slice is intentionally fail-closed. It accepts only a single frozen
@@ -371,19 +372,15 @@ to verify the input. The frozen definition inventory carries the canonical
 definition key, complete semantic name, optional binding name, and source span
 needed to construct binding facts without reopening parser or registry state.
 
-The dependency-free metadata builder still accepts only the frozen one-function
-shapes covered by its semantic-fact slice. Structural allocation is no longer
-restricted to that shape: `ScopeArenaBuilder` publishes module, function,
+The dependency-free metadata builder accepts complete collision-free module,
+type, and impl skeletons. `ScopeArenaBuilder` publishes module, function,
 closure, type, impl, block, loop, match, match-arm, and unsafe-block scopes in
 generated schema preorder, with exact nearest parents, inherited semantic
-owners, node-to-scope facts, source containment, and checked indices. The
-metadata builder adds its current definition facts, module-private surface, and
-closed source failure facts to that verified structure. An unresolved identifier
-emits the registered `ZOM3001` diagnostic before
-verification returns `SourceRejected`; invariant rejection retains priority and
-does not duplicate source diagnostics during verifier reconstruction. Same-source
-spans whose byte end exceeds the verified source snapshot are rejected as
-`InvalidSourceRange` rather than passing source-key-only validation.
+owners, node-to-scope facts, source containment, and checked indices. Body
+identifier resolution and every later activation family fail closed without
+publishing partial name facts. Same-source spans whose byte end exceeds the
+verified source snapshot are rejected as `InvalidSourceRange` rather than
+passing source-key-only validation.
 
 The verifier compares the production 3,227-byte allocation dump with SHA-256
 `2c5b3604e7bb003b11cff64d1b19af3405ab1940b4379846faba3a05754a9cb6` and the
@@ -417,5 +414,24 @@ eighteen affected AST snapshots, those eighteen lit cases plus AST coverage
 passed 19 of 19; the sanitizer build, twenty-five focused Binder cases, Binder
 architecture positive and negative suites, parser unit tests, parser coverage,
 lexer architecture, RFC validation, format, and `git diff --check` also pass.
-Labels, scope binding maps, and the combined scope-plus-label production oracle
-remain owned by later binding-fact slices.
+Labels and the combined scope-plus-label production oracle remain owned by later
+binding-fact slices.
+
+The skeleton-fact series preserves exact declaration or pattern provenance
+through inventory freeze, including variable declarator, match-arm, and for-in
+introducers plus canonical schema paths. `BindingSkeletonBuilder` is the sole
+authority for collision-free module, type, and impl bindings. It orders facts
+by expanded RFC 0011 keys, orders scope maps by namespace and canonical name,
+publishes direct impl members, and excludes type and impl members from module
+surfaces. Direct declaration exports carry exact export provenance and form the
+complete external subset. Duplicate NFC-equivalent bindings retain the first
+source occurrence and produce kind-specific `ZOM3003-ZOM3010` source failures
+with an attached `ZOM3017` note through the typed identifier adapter. Generic,
+parameter, closure, local, match-pattern, and loop-pattern activations remain
+fail-closed for the next implementation slice; target-dependent module aliases,
+imports, and re-exports remain blocked on verified resolution input.
+
+The complete sanitizer-backed landing gate passed 1,250 of 1,250 tests in
+654.78 seconds. The gate also passed format, RFC validation, parser coverage,
+lexer architecture, and `git diff --check`; the ANTLR grammar matrix accounted
+for 654.68 seconds of the test duration.
