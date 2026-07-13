@@ -315,8 +315,9 @@ landing.
 | Closure identity, generic, and parameter facts | Complete | Commits `6749c23c` and `da426edc`; anonymous function-expression and lambda identities, value-namespace `ExpressionIntroduction` facts, closure-owned generic and parameter facts, ordinary-binding and surface exclusion, focused sanitizer coverage, and adversarial architecture mutations |
 | Loop and match pattern facts | Complete | Commits `37a2b8d7` and `69454c7d`; `PatternBindingSite` provenance, value-namespace `LoopPattern` and `MatchPattern` facts, exact loop and match-arm scopes, ordinary-binding and surface exclusion, focused sanitizer coverage, and adversarial architecture mutations |
 | Dependency-free lexical body binding | Complete | Commits `c1b27a9e`, `88bd4452`, and `ce12fb34`; independently owned frozen key projections, source-ordered local and parameter activation, lexical value and type resolution, exact failed-name and shadow facts, complete lexical-site census, eighty focused Binder cases, sixteen frozen-registry cases, and adversarial architecture mutations |
+| Dependency-free unlabeled control-transfer facts | Complete | Commit `3ea452ce`; nearest loop and match targets, callable-boundary rejection, exact escaped-keyword failures, typed `ZOM3020-ZOM3021`, full target and fact codecs, independent verifier reconstruction, ninety-four focused Binder cases, 106 unit CTests, 1,082 lit CTests, full sanitizer build, and adversarial architecture mutations |
 | Complete module resolution input | Blocked by RFC 0012 and RFC 0008 | Authoritative package resolution, production semantic-context fingerprint, verified resolution environment, and resolution receipts |
-| Complete binding facts and surfaces | Pending | Imports, re-exports, module aliases, local exports, visibility envelopes, prelude and module-member resolution, labels, control transfers, closure captures, deferred members, receiver, `ThisExpr`, and `Self` binding, current-surface completion, remaining codecs, and verifier negatives |
+| Complete binding facts and surfaces | Pending | Imports, re-exports, module aliases, local exports, visibility envelopes, prelude and module-member resolution, labels and labeled control transfers, closure captures, deferred members, receiver, `ThisExpr`, and `Self` binding, current-surface completion, remaining codecs, and verifier negatives |
 | Production binder cutover | Pending | Session integration, no downstream rebinding, deletion of raw binder inputs and binder-owned module resolution, and all acceptance gates |
 
 The first slice is intentionally fail-closed. It accepts only a single frozen
@@ -553,3 +554,24 @@ The pattern evidence series passed sanitizer configure and build, the focused
 binding unit test, the Binder architecture positive gate, and its negative
 mutation matrix. The production implementation is recorded in `37a2b8d7` and
 `69454c7d`.
+
+The dependency-free unlabeled control-transfer slice runs after lexical body
+binding and publishes one source-range `ControlTransferFact` for each valid
+`break` or `continue`. `break` selects the nearest loop or match scope;
+`continue` skips match scopes and selects the nearest loop. Function and closure
+boundaries terminate lookup. A statement without a target publishes only one
+failed resolution whose primary is the exact retained raw keyword token.
+`ZOM3020-ZOM3021` are registered with these executable producers, while
+explicit labels remain fail-closed and `ZOM3022` remains unregistered until its
+producer lands.
+
+`BindingVerifier` independently rebuilds the scope arena, walks parents without
+calling `ControlTransferBuilder`, and enforces nearest-target semantics,
+canonical fact order, full node/kind/target/source encoding, foreign-context and
+source-range rejection, and the exact success-fact versus failed-resolution
+XOR. Commit `3ea452ce` passed the 94-case focused Binder executable, all 106
+sanitizer-backed unit CTests, all 1,082 lit CTests, sanitizer configure and full
+build, format and include checks, RFC validation, the Binder architecture
+positive gate, and its adversarial mutation suite. Parser coverage, generated
+AST schema, AST conformance coverage, lexer architecture, and the 874.48-second
+ANTLR grammar matrix also pass.

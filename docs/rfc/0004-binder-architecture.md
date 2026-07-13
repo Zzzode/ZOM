@@ -201,7 +201,8 @@ flowchart LR
   I --> R[Import and re-export binding]
   C --> R
   R --> B[Source-ordered body binding]
-  B --> V[Binding verifier]
+  B --> X[Control-transfer binding]
+  X --> V[Binding verifier]
   V --> M[VerifiedBindingMetadata]
   M --> T[RFC 0005 checker]
 ```
@@ -906,6 +907,15 @@ Label names form one namespace per `LabelOwner`; nested label shadowing inside
 the same owner is forbidden, so the later duplicate receives `ZOM3010` and the
 first receives `ZOM3017`.
 
+An unlabeled successful control-transfer statement publishes exactly one
+`ControlTransferFact` and no `BindingResolution` for the statement node. The
+fact source equals the complete statement range. For an unlabeled statement
+with no valid target, the candidate publishes no control-transfer fact and
+exactly one `Failed` resolution that references one `sourceFailures` record.
+Its primary is the exact retained raw `break` or `continue` token returned by
+`VerifiedParsedModule::leadingTokenSpan`. Control-transfer facts sort by
+`NodeId`.
+
 The test oracle serializes every assigned `ScopeId` and `LabelId` for one
 fixture containing every producer, nested same-span recovery nodes, explicit
 labels, and implicit loop targets; reverse source registration and worker-count
@@ -1371,6 +1381,12 @@ Only `BindingVerifier` can construct `VerifiedBindingMetadata`. It checks:
 - no semantic type, inference variable, receiver adjustment, overload
   candidate, witness, capture mode, layout, or ABI payload occurs.
 
+For unlabeled control transfer, the verifier independently rebuilds the scope
+arena from `VerifiedBindingInput` and walks scope parents without invoking
+`ControlTransferBuilder`. It recomputes the nearest legal loop or match target,
+enforces callable and closure boundaries, and requires an exact success-fact or
+failed-resolution XOR for every `break` and `continue` statement.
+
 Verification failure is a closed result:
 
 ```text
@@ -1479,9 +1495,11 @@ Diagnostic ownership is exhaustive:
 `ZOM3011-ZOM3016` move from `diagnostics-binder.def` to one
 `diagnostics-module.def` included by the same central registry; their numeric
 IDs and headlines remain the exact table contract. `ZOM3018-ZOM3019` and
-`ZOM3023-ZOM3024` are registered in that module file, `ZOM3020-ZOM3022` in
-`diagnostics-binder.def`, in the same atomic change as each first producer,
-with these exact definitions:
+`ZOM3023-ZOM3024` are registered in that module file. `ZOM3020-ZOM3022` belong
+to `diagnostics-binder.def`: `ZOM3020-ZOM3021` are registered atomically with
+the first unlabeled control-transfer producer, while `ZOM3022` is registered
+only with the first explicit-label control-transfer producer. Their exact
+definitions are:
 
 | Code | Severity | Registered headline | Arity and safe arguments |
 |---|---|---|---|
@@ -1848,6 +1866,12 @@ temporary immutable verified inputs.
   precedence when a source failure and structural mutation coexist. It includes
   duplicate declaration, NFC-equivalent duplicate, and duplicate-label
   primaries with attached `ZOM3017` and no required failed reference node.
+- Unlabeled control-transfer matrix: missing, additional, and reordered facts;
+  wrong transfer kind, nearest target, target variant, and statement source;
+  foreign target scopes; `continue` targeting a match; missing or malformed
+  failed-resolution indices and diagnostics; fact/failure XOR violations;
+  escaped-keyword primary spans; callable and closure boundaries; and exact
+  source ordering against lexical failures.
 - Focused lit command:
   `ctest --preset default --output-on-failure -R '^lit-(05-statements|06-declarations|13-modules|23-visibility)-'`.
   Fixtures cover current Chapter 13 import forms, aliases, re-exports, missing and
@@ -1932,3 +1956,4 @@ None
 | 2026-07-13 | IMPLEMENTING | Activated anonymous closure expression facts and closure-owned generic and parameter facts without creating a lexical or surface binding. |
 | 2026-07-13 | IMPLEMENTING | Activated for-in and match-arm pattern leaves in their exact lexical scopes while keeping source-ordered block declarators separate. |
 | 2026-07-13 | IMPLEMENTING | Added dependency-free lexical body binding with source-ordered local activation, sequential parameter-default visibility, role-routed type-query, marker, shorthand, and optional struct-pattern references, deterministic bound and failed name facts, lexical shadow targets, and verifier and codec coverage. |
+| 2026-07-13 | IMPLEMENTING | Completed dependency-free unlabeled `break` and `continue` binding with nearest loop or match targets, exact retained keyword failures, an independent verifier oracle, canonical encoding, and typed `ZOM3020-ZOM3021`; explicit labels and `ZOM3022` remain pending. |
