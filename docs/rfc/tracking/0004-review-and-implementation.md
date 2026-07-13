@@ -318,8 +318,9 @@ landing.
 | Dependency-free unlabeled control-transfer facts | Complete | Commit `3ea452ce`; nearest loop and match targets, callable-boundary rejection, exact escaped-keyword failures, typed `ZOM3020-ZOM3021`, full target and fact codecs, independent verifier reconstruction, ninety-four focused Binder cases, 106 unit CTests, 1,082 lit CTests, full sanitizer build, and adversarial architecture mutations |
 | Canonical label declaration facts | Complete | Commits `17575e9b` and `2d04166e`; generalized retained-token lookup, sealed module-or-callable `LabelId`, owner-local schema-preorder allocation, immediate statement edges, flattened block-or-loop targets, exact declaration-token provenance, deterministic duplicate facts with `ZOM3010` and `ZOM3017`, allocation codecs, independent verifier reconstruction, 107 focused Binder cases, full sanitizer build, and adversarial architecture mutations |
 | Dependency-free explicit labeled control-transfer facts | Complete | Commit `da0e4958`; active-ancestor lookup, innermost canonical selection, function and closure boundaries, no implicit fallback, paired `BoundLabel` and explicit control facts, exact retained reference failures, typed `ZOM3022`, full codecs, foreign-context checks, independent verifier reconstruction, 116 focused Binder cases, three diagnostic-adapter cases, all 1,251 CTests, and adversarial architecture mutations |
+| Dependency-free value deferred-member facts | Complete | Commits `cc1ef743` and `c3d14f40`; schema-backed dot, optional, and qualified access, closed `DeclaredDefinitionName` member spelling, exact base, source, value namespace, and direct-call generic arguments, paired top-level and inline facts, deterministic codecs, independent verifier reconstruction, all 1,253 CTests, full sanitizer build, and adversarial architecture mutations |
 | Complete module resolution input | Blocked by RFC 0012 and RFC 0008 | Authoritative package resolution, production semantic-context fingerprint, verified resolution environment, and resolution receipts |
-| Complete binding facts and surfaces | Pending | Imports, re-exports, module aliases, local exports, visibility envelopes, prelude and module-member resolution, closure captures, deferred members, receiver, `ThisExpr`, and `Self` binding, current-surface completion, remaining codecs, and verifier negatives |
+| Complete binding facts and surfaces | Pending | Imports, re-exports, module aliases, local exports, visibility envelopes, prelude and module-member resolution, closure captures, qualified, module, and associated members, receiver, `ThisExpr`, and `Self` binding, current-surface completion, remaining codecs, and verifier negatives |
 | Production binder cutover | Pending | Session integration, no downstream rebinding, deletion of raw binder inputs and binder-owned module resolution, and all acceptance gates |
 
 The first slice is intentionally fail-closed. It accepts only a single frozen
@@ -606,3 +607,22 @@ names, duplicate-label diagnostics with active lookup,
 forward/sibling/completed and cross-closure rejection, no-fallback failures,
 malformed success and failure pairs, and mixed global diagnostic ordering. The
 production frontend cutover remains a separate pending slice.
+
+The dependency-free value deferred-member slice gives every
+`MemberExpression` an explicit dot, optional, or qualified access kind and
+restricts member spelling to the closed `DeclaredDefinitionName` domain. Dot
+and optional access publish one canonical `DeferredMemberFact` in both the
+top-level sequence and the node binding, with the exact base, member name,
+value namespace, full expression source, and direct-call type arguments.
+Qualified access fails closed until a verified module or associated-member
+context is available.
+
+`BindingVerifier` independently reconstructs every expected member fact from
+the AST, rejects missing, additional, reordered, malformed, and divergent
+top-level versus inline facts, and encodes every field. Commits `cc1ef743` and
+`c3d14f40` pass sanitizer configure and full build, format and include checks,
+RFC validation, AST generation, parser coverage, lexer architecture, AST
+conformance coverage, the Binder architecture positive gate, and its complete
+adversarial mutation suite. The complete CTest preset passes all 1,253 tests in
+1,107.29 seconds; the ANTLR grammar conformance oracle passes in 1,106.89
+seconds.
