@@ -11,6 +11,7 @@
 #include "zomlang/compiler/ast/tree.h"
 #include "zomlang/compiler/identity/semantic-identity-registry-set.h"
 #include "zomlang/compiler/identity/source-snapshot.h"
+#include "zomlang/compiler/parser/token-snapshot.h"
 #include "zomlang/compiler/source/manager.h"
 
 namespace zomlang::compiler::binder {
@@ -19,6 +20,7 @@ enum class ParsedModuleInvariantKind : uint8_t {
   SourceMismatch,
   InvalidTree,
   InvalidSourceRange,
+  InvalidTokenProvenance,
   ReceiptMismatch,
   RegistryMismatch
 };
@@ -78,6 +80,9 @@ public:
   ZC_NODISCARD const ParsedModuleReceipt& receipt() const noexcept;
   ZC_NODISCARD identity::SourceSpan rootSpan() const;
   ZC_NODISCARD zc::Maybe<identity::SourceSpan> spanFor(source::SourceRange range) const;
+  /// \brief Return the parser-retained leading token when kind and ownership match.
+  ZC_NODISCARD zc::Maybe<identity::SourceSpan> leadingTokenSpan(ast::NodeId owner,
+                                                                ast::SyntaxKind expectedKind) const;
 
 private:
   struct Impl;
@@ -95,7 +100,7 @@ class ParsedModuleVerifier final {
 public:
   ZC_NODISCARD static ParsedModuleAdmissionResult admit(
       const identity::ImmutableSourceSnapshot& snapshot, const source::SourceManager& sources,
-      const source::BufferId& buffer, ast::Tree&& tree);
+      const source::BufferId& buffer, parser::ParsedTokenSnapshot&& tokens, ast::Tree&& tree);
 
   ZC_NODISCARD static ParsedModulePromotionResult promote(
       identity::SemanticContextBrand context,

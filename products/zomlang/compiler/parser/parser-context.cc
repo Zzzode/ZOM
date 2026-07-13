@@ -77,6 +77,10 @@ const source::BufferId& ParserContext::sourceBuffer() const { return bufferId; }
 
 size_t ParserContext::errorCount() const { return diagnosticEngine.errorCount(); }
 
+zc::Array<ParsedTokenRange> ParserContext::copyBufferedTokenRanges() const {
+  return stream.copyBufferedTokenRanges();
+}
+
 }  // namespace parser
 }  // namespace compiler
 }  // namespace zomlang

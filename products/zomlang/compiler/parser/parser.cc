@@ -149,6 +149,10 @@ Parser::Parser(const source::SourceManager& sourceMgr,
 Parser::~Parser() noexcept(false) = default;
 
 zc::Maybe<ast::Tree> Parser::parse() {
+  ZC_IREQUIRE(!impl->parseAttempted, "parser instances are single-use");
+  impl->parseAttempted = true;
+  impl->parseSucceeded = false;
+  impl->tokenSnapshotTaken = false;
   trace::FunctionTracer functionTracer(trace::TraceCategory::kParser, __FUNCTION__);
   const size_t initialErrorCount = impl->context.errorCount();
   ast::Tree tree = impl->buildTree();
@@ -162,7 +166,15 @@ zc::Maybe<ast::Tree> Parser::parse() {
     return zc::none;
   }
   trace::traceEvent(trace::TraceCategory::kParser, "Parse completed successfully");
+  impl->parseSucceeded = true;
   return zc::mv(tree);
+}
+
+zc::Maybe<ParsedTokenSnapshot> Parser::takeTokenSnapshot() {
+  if (!impl->parseSucceeded || impl->tokenSnapshotTaken) { return zc::none; }
+  impl->tokenSnapshotTaken = true;
+  return ParsedTokenSnapshot(impl->sourceMgr, impl->bufferId,
+                             impl->context.copyBufferedTokenRanges());
 }
 
 }  // namespace parser

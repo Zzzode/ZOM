@@ -17,6 +17,7 @@
 #include "zc/core/common.h"
 #include "zc/core/memory.h"
 #include "zomlang/compiler/ast/tree.h"
+#include "zomlang/compiler/parser/token-snapshot.h"
 
 namespace zomlang {
 namespace compiler {
@@ -49,6 +50,9 @@ public:
 
   /// \brief Parse the source file and return the syntax tree.
   zc::Maybe<ast::Tree> parse();
+
+  /// \brief Return complete token provenance only after a successful parse.
+  ZC_NODISCARD zc::Maybe<ParsedTokenSnapshot> takeTokenSnapshot();
 
 private:
   struct Impl;

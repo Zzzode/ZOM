@@ -33,6 +33,11 @@ TokenStream::TokenStream(const source::SourceManager& sourceMgr,
 
 TokenStream::~TokenStream() noexcept(false) = default;
 
+ParsedTokenSnapshot::ParsedTokenSnapshot(const source::SourceManager& sources,
+                                         const source::BufferId& buffer,
+                                         zc::Array<ParsedTokenRange>&& tokens) noexcept
+    : sourceManager(&sources), buffer(buffer), tokenValues(zc::mv(tokens)) {}
+
 void TokenStream::reset(zc::ArrayPtr<const lexer::Token> newTokens) {
   lexer = nullptr;
   tokens.clear();
@@ -62,6 +67,16 @@ size_t TokenStream::clampIndex(size_t index) const {
   ensure(index);
   if (reachedEof && index >= tokens.size()) { return eofIndex(); }
   return index;
+}
+
+zc::Array<ParsedTokenRange> TokenStream::copyBufferedTokenRanges() const {
+  ZC_IREQUIRE(reachedEof && tokens.size() != 0 && tokens.back().is(ast::SyntaxKind::EndOfFile),
+              "successful parse must retain its final EOF token");
+  zc::Vector<ParsedTokenRange> ranges;
+  for (const auto& token : tokens) {
+    ranges.add(ParsedTokenRange(token.getKind(), token.getRange(), zc::str(token.getValue())));
+  }
+  return ranges.releaseAsArray();
 }
 
 void TokenStream::ensure(size_t index) const {

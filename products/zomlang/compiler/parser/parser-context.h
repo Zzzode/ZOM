@@ -83,6 +83,9 @@ public:
   /// \brief Return the current parser error count.
   ZC_NODISCARD size_t errorCount() const;
 
+  /// \brief Deep-copy parser token data for the Parser capability boundary.
+  ZC_NODISCARD zc::Array<ParsedTokenRange> copyBufferedTokenRanges() const;
+
 private:
   const source::SourceManager& sourceMgr;
   diagnostics::DiagnosticEngine& diagnosticEngine;

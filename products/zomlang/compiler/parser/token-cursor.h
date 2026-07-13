@@ -21,6 +21,7 @@
 #include "zc/core/vector.h"
 #include "zomlang/compiler/ast/kinds.h"
 #include "zomlang/compiler/lexer/token.h"
+#include "zomlang/compiler/parser/token-snapshot.h"
 
 namespace zomlang {
 namespace compiler {
@@ -76,6 +77,9 @@ public:
 
   /// \brief Clamp an absolute index to EOF after lexing as needed.
   ZC_NODISCARD size_t clampIndex(size_t index) const;
+
+  /// \brief Deep-copy buffered token data without granting parser-result authority.
+  ZC_NODISCARD zc::Array<ParsedTokenRange> copyBufferedTokenRanges() const;
 
 private:
   mutable zc::Own<lexer::Lexer> lexer;

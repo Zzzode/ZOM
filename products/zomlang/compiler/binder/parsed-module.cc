@@ -21,6 +21,19 @@ namespace {
 
 constexpr char kReceiptDomain[] = "zom.parsed-module.v0";
 
+struct ParsedTokenOffset final {
+  ParsedTokenOffset(ast::SyntaxKind kind, uint64_t start, uint64_t end,
+                    zc::String&& canonicalText) noexcept
+      : kind(kind), start(start), end(end), canonicalText(zc::mv(canonicalText)) {}
+  ParsedTokenOffset(ParsedTokenOffset&&) noexcept = default;
+  ParsedTokenOffset& operator=(ParsedTokenOffset&&) noexcept = default;
+  ZC_DISALLOW_COPY(ParsedTokenOffset);
+  ast::SyntaxKind kind;
+  uint64_t start;
+  uint64_t end;
+  zc::String canonicalText;
+};
+
 ParsedModuleInvariantFact failure(ParsedModuleInvariantKind kind) { return {kind, 1}; }
 
 void appendUint64(zc::Vector<uint8_t>& bytes, uint64_t value) {
@@ -54,6 +67,30 @@ bool offsetsFor(source::SourceRange range, zc::ArrayPtr<const zc::byte> sourceBy
   start = startAddress - baseAddress;
   end = endAddress - baseAddress;
   return true;
+}
+
+zc::Maybe<zc::Array<ParsedTokenOffset>> admitTokenOffsets(
+    zc::ArrayPtr<parser::ParsedTokenRange> tokens, zc::ArrayPtr<const zc::byte> sourceBytes) {
+  if (tokens.size() == 0) { return zc::none; }
+  zc::Vector<ParsedTokenOffset> offsets;
+  uint64_t previousEnd = 0;
+  for (size_t index = 0; index < tokens.size(); ++index) {
+    auto& token = tokens[index];
+    uint64_t start = 0;
+    uint64_t end = 0;
+    if (!offsetsFor(token.source, sourceBytes, start, end) || start < previousEnd) {
+      return zc::none;
+    }
+    const bool isEof = token.kind == ast::SyntaxKind::EndOfFile;
+    if (isEof != (index + 1 == tokens.size()) ||
+        (isEof && (start != end || end != sourceBytes.size())) ||
+        (!isEof && (token.kind == ast::SyntaxKind::Unknown || start == end))) {
+      return zc::none;
+    }
+    offsets.add(ParsedTokenOffset(token.kind, start, end, zc::mv(token.canonicalText)));
+    previousEnd = end;
+  }
+  return offsets.releaseAsArray();
 }
 
 zc::Maybe<zc::Array<uint8_t>> schemaDump(const ast::Tree& tree,
@@ -108,13 +145,15 @@ zc::Maybe<ParsedModuleReceipt> ParsedModuleReceipt::compute(
 struct UnbrandedParsedModule::Impl final {
   Impl(identity::SourceFileKey&& source, const identity::Sha256Digest& contentDigest,
        uint64_t byteLength, const source::SourceManager& sources, const source::BufferId& buffer,
-       ast::Tree&& tree, identity::Sha256Digest parserSchemaDigest, zc::Array<uint8_t>&& schemaDump,
+       zc::Array<ParsedTokenOffset>&& tokens, ast::Tree&& tree,
+       identity::Sha256Digest parserSchemaDigest, zc::Array<uint8_t>&& schemaDump,
        ParsedModuleReceipt receipt)
       : source(zc::mv(source)),
         contentDigest(contentDigest),
         byteLength(byteLength),
         sources(sources),
         buffer(buffer),
+        tokens(zc::mv(tokens)),
         tree(zc::mv(tree)),
         parserSchemaDigest(parserSchemaDigest),
         schemaDump(zc::mv(schemaDump)),
@@ -125,6 +164,7 @@ struct UnbrandedParsedModule::Impl final {
   uint64_t byteLength;
   const source::SourceManager& sources;
   source::BufferId buffer;
+  zc::Array<ParsedTokenOffset> tokens;
   ast::Tree tree;
   identity::Sha256Digest parserSchemaDigest;
   zc::Array<uint8_t> schemaDump;
@@ -139,12 +179,13 @@ const ParsedModuleReceipt& UnbrandedParsedModule::receipt() const noexcept { ret
 
 struct VerifiedParsedModule::Impl final {
   Impl(identity::SourceFileId sourceFile, identity::ImmutableSourceSnapshot&& snapshot,
-       const source::SourceManager& sources, const source::BufferId& buffer, ast::Tree&& tree,
-       ParsedModuleReceipt receipt)
+       const source::SourceManager& sources, const source::BufferId& buffer,
+       zc::Array<ParsedTokenOffset>&& tokens, ast::Tree&& tree, ParsedModuleReceipt receipt)
       : sourceFile(sourceFile),
         snapshot(zc::mv(snapshot)),
         sources(sources),
         buffer(buffer),
+        tokens(zc::mv(tokens)),
         tree(zc::mv(tree)),
         receipt(receipt) {}
 
@@ -152,6 +193,7 @@ struct VerifiedParsedModule::Impl final {
   identity::ImmutableSourceSnapshot snapshot;
   const source::SourceManager& sources;
   source::BufferId buffer;
+  zc::Array<ParsedTokenOffset> tokens;
   ast::Tree tree;
   ParsedModuleReceipt receipt;
 };
@@ -178,6 +220,35 @@ zc::Maybe<identity::SourceSpan> VerifiedParsedModule::spanFor(source::SourceRang
   return impl->snapshot.span(start, end);
 }
 
+zc::Maybe<identity::SourceSpan> VerifiedParsedModule::leadingTokenSpan(
+    ast::NodeId owner, ast::SyntaxKind expectedKind) const {
+  if (!impl->tree.contains(owner)) { return zc::none; }
+  auto ownerSpan = spanFor(impl->tree.node(owner).range);
+  if (ownerSpan == zc::none) { return zc::none; }
+  ZC_IF_SOME(span, ownerSpan) {
+    size_t first = 0;
+    size_t count = impl->tokens.size();
+    while (count != 0) {
+      const size_t step = count / 2;
+      const size_t middle = first + step;
+      if (impl->tokens[middle].start < span.byteStart()) {
+        first = middle + 1;
+        count -= step + 1;
+      } else {
+        count = step;
+      }
+    }
+    if (first >= impl->tokens.size()) { return zc::none; }
+    const auto& token = impl->tokens[first];
+    if (token.start != span.byteStart() || token.kind != expectedKind || token.start >= token.end ||
+        token.end > span.byteEnd()) {
+      return zc::none;
+    }
+    return impl->snapshot.span(token.start, token.end);
+  }
+  ZC_UNREACHABLE;
+}
+
 identity::SourceSpan VerifiedParsedModule::rootSpan() const {
   auto span = spanFor(impl->tree.node(impl->tree.root()).range);
   return zc::mv(ZC_ASSERT_NONNULL(span));
@@ -185,10 +256,15 @@ identity::SourceSpan VerifiedParsedModule::rootSpan() const {
 
 ParsedModuleAdmissionResult ParsedModuleVerifier::admit(
     const identity::ImmutableSourceSnapshot& snapshot, const source::SourceManager& sources,
-    const source::BufferId& buffer, ast::Tree&& tree) {
+    const source::BufferId& buffer, parser::ParsedTokenSnapshot&& tokens, ast::Tree&& tree) {
   const auto sourceBytes = sources.getEntireTextForBuffer(buffer);
-  if (!sameBytes(sourceBytes, snapshot.bytes())) {
+  if (tokens.sourceManager != &sources || tokens.buffer != buffer ||
+      !sameBytes(sourceBytes, snapshot.bytes())) {
     return failure(ParsedModuleInvariantKind::SourceMismatch);
+  }
+  auto tokenOffsets = admitTokenOffsets(tokens.tokenValues.asPtr(), sourceBytes);
+  if (tokenOffsets == zc::none) {
+    return failure(ParsedModuleInvariantKind::InvalidTokenProvenance);
   }
   if (!ast::verifySchema(tree)) { return failure(ParsedModuleInvariantKind::InvalidTree); }
   auto dump = schemaDump(tree, sources, sourceBytes);
@@ -202,9 +278,12 @@ ParsedModuleAdmissionResult ParsedModuleVerifier::admit(
                                                   snapshot.bytes().size(), schemaDigestValue,
                                                   dumpValue.asPtr());
       ZC_IF_SOME(receiptValue, receipt) {
-        return UnbrandedParsedModule(zc::heap<UnbrandedParsedModule::Impl>(
-            snapshot.source().clone(), snapshot.contentDigest(), snapshot.bytes().size(), sources,
-            buffer, zc::mv(tree), schemaDigestValue, zc::mv(dumpValue), receiptValue));
+        ZC_IF_SOME(tokenValues, tokenOffsets) {
+          return UnbrandedParsedModule(zc::heap<UnbrandedParsedModule::Impl>(
+              snapshot.source().clone(), snapshot.contentDigest(), snapshot.bytes().size(), sources,
+              buffer, zc::mv(tokenValues), zc::mv(tree), schemaDigestValue, zc::mv(dumpValue),
+              receiptValue));
+        }
       }
     }
   }
@@ -245,8 +324,8 @@ ParsedModulePromotionResult ParsedModuleVerifier::promote(
             return failure(ParsedModuleInvariantKind::ReceiptMismatch);
           }
           return VerifiedParsedModule(zc::heap<VerifiedParsedModule::Impl>(
-              sourceId, snapshotValue.clone(), parsed.sources, parsed.buffer, zc::mv(parsed.tree),
-              receiptValue));
+              sourceId, snapshotValue.clone(), parsed.sources, parsed.buffer, zc::mv(parsed.tokens),
+              zc::mv(parsed.tree), receiptValue));
         }
       }
     }

@@ -157,6 +157,9 @@ struct Parser::Impl {
   diagnostics::DiagnosticEngine& diagnosticEngine;
   source::BufferId bufferId;
   ParserContext context;
+  bool parseAttempted = false;
+  bool parseSucceeded = false;
+  bool tokenSnapshotTaken = false;
 
   enum class RecoveryContext : uint8_t {
     SourceFile,

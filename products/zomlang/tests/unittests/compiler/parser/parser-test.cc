@@ -4585,6 +4585,29 @@ ZC_TEST("ParserTest.ParseGenericClassBase") {
   ZC_EXPECT(result != zc::none);
 }
 
+ZC_TEST("ParserTest.TokenSnapshotIsSingleUseAfterSuccessfulParse") {
+  source::SourceManager sources;
+  diagnostics::DiagnosticEngine diagnostics(sources);
+  basic::LangOptions options;
+  basic::StringPool strings;
+  const auto buffer = sources.addMemBufferCopy("module root;"_zcb, "test.zom");
+  Parser parser(sources, diagnostics, options, strings, buffer);
+  ZC_REQUIRE(parser.parse() != zc::none);
+  ZC_EXPECT(parser.takeTokenSnapshot() != zc::none);
+  ZC_EXPECT(parser.takeTokenSnapshot() == zc::none);
+}
+
+ZC_TEST("ParserTest.FailedParseCannotPublishTokenSnapshot") {
+  source::SourceManager sources;
+  diagnostics::DiagnosticEngine diagnostics(sources);
+  basic::LangOptions options;
+  basic::StringPool strings;
+  const auto buffer = sources.addMemBufferCopy("@"_zcb, "test.zom");
+  Parser parser(sources, diagnostics, options, strings, buffer);
+  ZC_EXPECT(parser.parse() == zc::none);
+  ZC_EXPECT(parser.takeTokenSnapshot() == zc::none);
+}
+
 }  // namespace parser
 }  // namespace compiler
 }  // namespace zomlang

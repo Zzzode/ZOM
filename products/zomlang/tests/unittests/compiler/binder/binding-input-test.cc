@@ -154,6 +154,9 @@ struct ParsedSource final {
     ZC_IF_SOME(parsed, parser.parse()) { tree = zc::mv(parsed); }
     else { ZC_FAIL_REQUIRE("source fixture did not parse"); }
     ZC_REQUIRE(!diagnostics->hasErrors());
+    auto retainedTokens = parser.takeTokenSnapshot();
+    ZC_REQUIRE(retainedTokens != zc::none);
+    ZC_IF_SOME(value, retainedTokens) { tokens = zc::mv(value); }
   }
 
   identity::ImmutableSourceSnapshot snapshot() const {
@@ -169,7 +172,21 @@ struct ParsedSource final {
   basic::StringPool strings;
   source::BufferId buffer;
   ast::Tree tree;
+  zc::Maybe<parser::ParsedTokenSnapshot> tokens;
 };
+
+parser::ParsedTokenSnapshot parseTokenSnapshot(source::SourceManager& sources,
+                                               const source::BufferId& buffer) {
+  diagnostics::DiagnosticEngine diagnostics(sources);
+  basic::LangOptions options;
+  basic::StringPool strings;
+  parser::Parser parser(sources, diagnostics, options, strings, buffer);
+  ZC_REQUIRE(parser.parse() != zc::none);
+  auto tokens = parser.takeTokenSnapshot();
+  ZC_REQUIRE(tokens != zc::none);
+  ZC_IF_SOME(value, tokens) { return zc::mv(value); }
+  ZC_FAIL_REQUIRE("parser token snapshot fixture failed");
+}
 
 bool sameParentPath(zc::ArrayPtr<const StructuralIdentityParent> left,
                     zc::ArrayPtr<const StructuralIdentityParent> right) {
@@ -366,8 +383,11 @@ struct FrozenFixture final {
     crateId = requireHandle(registries.crates().find(crate()));
     moduleId = requireHandle(registries.modules().find(module()));
 
-    auto admission = ParsedModuleVerifier::admit(snapshot, *sourceFixture.sources,
-                                                 sourceFixture.buffer, zc::mv(sourceFixture.tree));
+    ZC_REQUIRE(sourceFixture.tokens != zc::none);
+    auto retainedTokens = zc::mv(ZC_ASSERT_NONNULL(sourceFixture.tokens));
+    auto admission =
+        ParsedModuleVerifier::admit(snapshot, *sourceFixture.sources, sourceFixture.buffer,
+                                    zc::mv(retainedTokens), zc::mv(sourceFixture.tree));
     ZC_REQUIRE(admission.is<UnbrandedParsedModule>());
     auto promotion = ParsedModuleVerifier::promote(context, registries,
                                                    zc::mv(admission.get<UnbrandedParsedModule>()));
@@ -485,6 +505,14 @@ zc::Vector<ast::NodeId> identifierExpressions(const ast::Tree& tree, zc::StringP
     if (syntax.kind != ast::SyntaxKind::IdentExpr) { return; }
     const ast::IdentId identifier(syntax.payload.words[ast::kIdentExprNameWord]);
     if (tree.ident(identifier) == name) { result.add(node); }
+  });
+  return result;
+}
+
+zc::Vector<ast::NodeId> nodesOfKind(const ast::Tree& tree, ast::SyntaxKind kind) {
+  zc::Vector<ast::NodeId> result;
+  ast::visitTreePreOrder(tree, tree.root(), [&](ast::NodeId node, const ast::Node& syntax) {
+    if (syntax.kind == kind) { result.add(node); }
   });
   return result;
 }
@@ -612,6 +640,41 @@ ZC_TEST("ParsedModule.PromotesExactSourceTreeAndRootSpan") {
   }
 }
 
+ZC_TEST("ParsedModule.RetainsExactEscapedKeywordTokenSpans") {
+  ParsedSource sourceFixture(
+      "module root;\n"
+      "fun run() { \\u0062reak; br\\u0065ak; cont\\u0069nue; }\n"_zc);
+  FrozenFixture fixture(sourceFixture, true);
+  ZC_REQUIRE(fixture.parsed != zc::none);
+  ZC_IF_SOME(parsed, fixture.parsed) {
+    const auto breaks = nodesOfKind(parsed.tree(), ast::SyntaxKind::BreakStmt);
+    const auto continues = nodesOfKind(parsed.tree(), ast::SyntaxKind::ContinueStatement);
+    ZC_REQUIRE(breaks.size() == 2);
+    ZC_REQUIRE(continues.size() == 1);
+    auto leadingBreakToken = parsed.leadingTokenSpan(breaks[0], ast::SyntaxKind::BreakKeyword);
+    auto middleBreakToken = parsed.leadingTokenSpan(breaks[1], ast::SyntaxKind::BreakKeyword);
+    auto continueToken = parsed.leadingTokenSpan(continues[0], ast::SyntaxKind::ContinueKeyword);
+    ZC_REQUIRE(leadingBreakToken != zc::none);
+    ZC_REQUIRE(middleBreakToken != zc::none);
+    ZC_REQUIRE(continueToken != zc::none);
+    ZC_IF_SOME(span, leadingBreakToken) { ZC_EXPECT(span.byteEnd() - span.byteStart() == 10); }
+    ZC_IF_SOME(span, middleBreakToken) { ZC_EXPECT(span.byteEnd() - span.byteStart() == 10); }
+    ZC_IF_SOME(span, continueToken) { ZC_EXPECT(span.byteEnd() - span.byteStart() == 13); }
+    ZC_EXPECT(parsed.leadingTokenSpan(breaks[0], ast::SyntaxKind::ContinueKeyword) == zc::none);
+  }
+}
+
+ZC_TEST("ParsedModule.RejectsIdentifierPrefixesAsKeywordProvenance") {
+  ParsedSource sourceFixture("module root;\nfun run() { breakfast; }\n"_zc);
+  FrozenFixture fixture(sourceFixture, true);
+  ZC_REQUIRE(fixture.parsed != zc::none);
+  ZC_IF_SOME(parsed, fixture.parsed) {
+    const auto identifiers = nodesOfKind(parsed.tree(), ast::SyntaxKind::IdentExpr);
+    ZC_REQUIRE(identifiers.size() == 1);
+    ZC_EXPECT(parsed.leadingTokenSpan(identifiers[0], ast::SyntaxKind::BreakKeyword) == zc::none);
+  }
+}
+
 ZC_TEST("ParsedModule.RejectsCrossSourceAndInvalidRanges") {
   source::SourceManager sources;
   const auto buffer = sources.addMemBufferCopy("module root;"_zcb, "main.zom");
@@ -620,7 +683,8 @@ ZC_TEST("ParsedModule.RejectsCrossSourceAndInvalidRanges") {
   const uint8_t foreign[] = {0, 1};
   const auto badRange = source::SourceRange(foreign, foreign + 1);
   ZC_IF_SOME(snapshotValue, snapshot) {
-    auto result = ParsedModuleVerifier::admit(snapshotValue, sources, buffer,
+    auto tokens = parseTokenSnapshot(sources, buffer);
+    auto result = ParsedModuleVerifier::admit(snapshotValue, sources, buffer, zc::mv(tokens),
                                               manualModuleTree(badRange, "root"_zc));
     ZC_REQUIRE(result.is<ParsedModuleInvariantFact>());
     ZC_EXPECT(result.get<ParsedModuleInvariantFact>().kind ==
@@ -635,9 +699,11 @@ ZC_TEST("ParsedModule.ReceiptBindsExactTreeAndPromotionRejectsStaleSource") {
       source(), zc::heapArray(sources.getEntireTextForBuffer(buffer)));
   ZC_IF_SOME(snapshotValue, snapshot) {
     const auto bufferRange = sources.getRangeForBuffer(buffer).getAsRange();
-    auto first = ParsedModuleVerifier::admit(snapshotValue, sources, buffer,
+    auto firstTokens = parseTokenSnapshot(sources, buffer);
+    auto secondTokens = parseTokenSnapshot(sources, buffer);
+    auto first = ParsedModuleVerifier::admit(snapshotValue, sources, buffer, zc::mv(firstTokens),
                                              manualModuleTree(bufferRange, "root"_zc));
-    auto second = ParsedModuleVerifier::admit(snapshotValue, sources, buffer,
+    auto second = ParsedModuleVerifier::admit(snapshotValue, sources, buffer, zc::mv(secondTokens),
                                               manualModuleTree(bufferRange, "other"_zc));
     ZC_REQUIRE(first.is<UnbrandedParsedModule>());
     ZC_REQUIRE(second.is<UnbrandedParsedModule>());

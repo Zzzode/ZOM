@@ -16,6 +16,10 @@ HEADER = BINDER_DIR / "binding-input.h"
 SOURCE = BINDER_DIR / "binding-input.cc"
 PARSED_HEADER = BINDER_DIR / "parsed-module.h"
 PARSED_SOURCE = BINDER_DIR / "parsed-module.cc"
+PARSER_HEADER = Path("products/zomlang/compiler/parser/parser.h")
+PARSER_SOURCE = Path("products/zomlang/compiler/parser/parser.cc")
+TOKEN_SNAPSHOT_HEADER = Path("products/zomlang/compiler/parser/token-snapshot.h")
+TOKEN_CURSOR_HEADER = Path("products/zomlang/compiler/parser/token-cursor.h")
 INVENTORY_HEADER = BINDER_DIR / "frozen-definition-inventory.h"
 INVENTORY_SOURCE = BINDER_DIR / "frozen-definition-inventory.cc"
 FROZEN_REGISTRY_HEADER = Path("products/zomlang/compiler/identity/frozen-registry.h")
@@ -38,6 +42,7 @@ BINDER_CMAKE = BINDER_DIR / "CMakeLists.txt"
 TEST_DIR = Path("products/zomlang/tests/unittests/compiler/binder")
 TEST_SOURCE = TEST_DIR / "binding-input-test.cc"
 TEST_CMAKE = TEST_DIR / "CMakeLists.txt"
+PARSER_TEST_SOURCE = Path("products/zomlang/tests/unittests/compiler/parser/parser-test.cc")
 FROZEN_REGISTRY_TEST = Path(
     "products/zomlang/tests/unittests/compiler/identity/frozen-registry-test.cc"
 )
@@ -130,6 +135,70 @@ def check_private_verified_constructors(files: dict[Path, str], errors: list[str
         for match in re.finditer(rf"(?<!~)\b{name}\s*\(([^)]*)\)", public):
             if f"{name}&&" not in match.group(1):
                 errors.append(f"{header_path}: {name} exposes a non-move public constructor")
+
+
+def check_parsed_token_provenance(files: dict[Path, str], errors: list[str]) -> None:
+    snapshot = files.get(TOKEN_SNAPSHOT_HEADER, "")
+    cursor = files.get(TOKEN_CURSOR_HEADER, "")
+    parser_header = files.get(PARSER_HEADER, "")
+    parser_source = files.get(PARSER_SOURCE, "")
+    parsed_header = files.get(PARSED_HEADER, "")
+    parsed_source = files.get(PARSED_SOURCE, "")
+    for required in (
+        "class ParsedTokenSnapshot final",
+        "zc::String canonicalText;",
+        "const source::SourceManager* sourceManager;",
+        "source::BufferId buffer;",
+        "friend class Parser;",
+        "friend class binder::ParsedModuleVerifier;",
+    ):
+        if required not in snapshot:
+            errors.append(f"{TOKEN_SNAPSHOT_HEADER}: incomplete parser token capability: {required}")
+    if "friend class TokenStream;" in snapshot:
+        errors.append(f"{TOKEN_SNAPSHOT_HEADER}: resettable TokenStream can forge parser authority")
+    if "copyBufferedTokenRanges() const" not in cursor or "ParsedTokenSnapshot snapshot(" in cursor:
+        errors.append(f"{TOKEN_CURSOR_HEADER}: raw token copies must not construct parser authority")
+    if "zc::Maybe<ParsedTokenSnapshot> takeTokenSnapshot();" not in parser_header:
+        errors.append(f"{PARSER_HEADER}: successful parse cannot publish token provenance")
+    for required in (
+        "impl->parseSucceeded = true;",
+        "impl->tokenSnapshotTaken = true;",
+        "if (!impl->parseSucceeded || impl->tokenSnapshotTaken)",
+        "ParsedTokenSnapshot(impl->sourceMgr, impl->bufferId,",
+    ):
+        if required not in parser_source:
+            errors.append(f"{PARSER_SOURCE}: parser token capability is not single-use: {required}")
+    for required in (
+        "parser::ParsedTokenSnapshot&& tokens, ast::Tree&& tree",
+        "leadingTokenSpan(",
+        "ast::NodeId owner,",
+        "ast::SyntaxKind expectedKind",
+        "InvalidTokenProvenance",
+    ):
+        if required not in parsed_header:
+            errors.append(f"{PARSED_HEADER}: verified parsed token contract is incomplete: {required}")
+    for required in (
+        "tokens.sourceManager != &sources || tokens.buffer != buffer",
+        "admitTokenOffsets(tokens.tokenValues.asPtr(), sourceBytes)",
+        "token.kind == ast::SyntaxKind::EndOfFile",
+        "token.kind == ast::SyntaxKind::Unknown || start == end",
+        "token.kind != expectedKind",
+        "token.end > span.byteEnd()",
+    ):
+        if required not in parsed_source:
+            errors.append(f"{PARSED_SOURCE}: parsed token validation is incomplete: {required}")
+    for marker in (
+        "ParsedModule.RetainsExactEscapedKeywordTokenSpans",
+        "ParsedModule.RejectsIdentifierPrefixesAsKeywordProvenance",
+    ):
+        if marker not in files.get(TEST_SOURCE, ""):
+            errors.append(f"{TEST_SOURCE}: missing retained token evidence: {marker}")
+    for marker in (
+        "ParserTest.TokenSnapshotIsSingleUseAfterSuccessfulParse",
+        "ParserTest.FailedParseCannotPublishTokenSnapshot",
+    ):
+        if marker not in files.get(PARSER_TEST_SOURCE, ""):
+            errors.append(f"{PARSER_TEST_SOURCE}: missing parser capability evidence: {marker}")
 
 
 def check_unique_construction(files: dict[Path, str], errors: list[str]) -> None:
@@ -841,6 +910,7 @@ def check_no_compatibility_facade(files: dict[Path, str], errors: list[str]) -> 
 def check(files: dict[Path, str]) -> list[str]:
     errors: list[str] = []
     check_private_verified_constructors(files, errors)
+    check_parsed_token_provenance(files, errors)
     check_unique_construction(files, errors)
     check_verified_input_surface(files, errors)
     check_frozen_impl_inventory_contract(files, errors)
@@ -870,6 +940,30 @@ def self_test(files: dict[Path, str]) -> list[str]:
         return [f"self-test baseline rejected: {error}" for error in baseline]
     cases: tuple[tuple[str, Path, str, str], ...] = (
         ("public constructor", HEADER, "class VerifiedBindingInput final {\npublic:", "class VerifiedBindingInput final {\npublic:\n  explicit VerifiedBindingInput(int);"),
+        (
+            "resettable token stream authority",
+            TOKEN_SNAPSHOT_HEADER,
+            "friend class Parser;",
+            "friend class Parser;\n  friend class TokenStream;",
+        ),
+        (
+            "missing parsed token admission",
+            PARSED_HEADER,
+            "parser::ParsedTokenSnapshot&& tokens, ast::Tree&& tree",
+            "ast::Tree&& tree",
+        ),
+        (
+            "missing token kind verification",
+            PARSED_SOURCE,
+            "token.kind != expectedKind",
+            "false",
+        ),
+        (
+            "missing parser one-shot evidence",
+            PARSER_TEST_SOURCE,
+            "ParserTest.TokenSnapshotIsSingleUseAfterSuccessfulParse",
+            "ParserTest.TokenSnapshotCanBeReused",
+        ),
         ("foreign construction", Path("products/zomlang/compiler/checker/escape.cc"), "", "VerifiedBindingInput(value);"),
         ("forbidden include", Path("products/zomlang/compiler/irgen/escape.cc"), "", '#include "zomlang/compiler/binder/binding-input.h"'),
         ("candidate escape", Path("products/zomlang/compiler/lexer/escape.cc"), "", "BindingInputCandidate escaped;"),
@@ -957,7 +1051,7 @@ def self_test(files: dict[Path, str]) -> list[str]:
             "foreign parser admission",
             Path("products/zomlang/compiler/parser/escape.cc"),
             "",
-            "ParsedModuleVerifier::admit(snapshot, sources, buffer, tree);",
+            "ParsedModuleVerifier::admit(snapshot, sources, buffer, zc::mv(tokens), tree);",
         ),
         (
             "foreign inventory publication",
