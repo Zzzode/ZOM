@@ -6,10 +6,12 @@
 #include "zomlang/compiler/binder/internal/binding-verifier.h"
 
 #include "zc/core/debug.h"
+#include "zc/core/map.h"
 #include "zc/core/vector.h"
 #include "zomlang/compiler/ast/generated/node-traverse.h"
 #include "zomlang/compiler/binder/binding-diagnostic-adapter.h"
 #include "zomlang/compiler/binder/internal/binding-skeleton.h"
+#include "zomlang/compiler/binder/internal/body-binding.h"
 #include "zomlang/compiler/binder/internal/scope-arena.h"
 #include "zomlang/compiler/identity/canonical-encoder.h"
 
@@ -26,10 +28,47 @@ BinderInvariantFact builderFailure(const VerifiedBindingInput& input, BinderInva
   return failure(input, kind, BinderEmitterSite::ModuleSkeleton, ordinal);
 }
 
+BinderInvariantFact bodyBuilderFailure(const VerifiedBindingInput& input, BinderInvariantKind kind,
+                                       uint32_t ordinal = 0) {
+  return failure(input, kind, BinderEmitterSite::BodyBinding, ordinal);
+}
+
 BinderInvariantFact verifierFailure(const VerifiedBindingInput& input, BinderInvariantKind kind,
                                     uint32_t ordinal = 0) {
   return failure(input, kind, BinderEmitterSite::BindingVerifier, ordinal);
 }
+
+enum class PendingFailureKind : uint8_t { Duplicate, BodyLookup };
+
+struct PendingFailureRef final {
+  PendingFailureKind kind;
+  size_t index;
+};
+
+struct PendingFailureOrderKey final {
+  uint64_t start;
+  uint64_t end;
+  uint16_t diagnostic;
+  uint8_t emitterSite;
+  uint32_t schemaPreorderOrdinal;
+  size_t sequence;
+
+  bool operator==(const PendingFailureOrderKey& other) const noexcept {
+    return start == other.start && end == other.end && diagnostic == other.diagnostic &&
+           emitterSite == other.emitterSite &&
+           schemaPreorderOrdinal == other.schemaPreorderOrdinal && sequence == other.sequence;
+  }
+  bool operator<(const PendingFailureOrderKey& other) const noexcept {
+    if (start != other.start) { return start < other.start; }
+    if (end != other.end) { return end < other.end; }
+    if (diagnostic != other.diagnostic) { return diagnostic < other.diagnostic; }
+    if (emitterSite != other.emitterSite) { return emitterSite < other.emitterSite; }
+    if (schemaPreorderOrdinal != other.schemaPreorderOrdinal) {
+      return schemaPreorderOrdinal < other.schemaPreorderOrdinal;
+    }
+    return sequence < other.sequence;
+  }
+};
 
 BindingVerificationResult rejectBinderInvariant(BinderInvariantFact&& fact) {
   return InvariantRejected::single(
@@ -137,6 +176,22 @@ bool hasForeignContext(const VerifiedBindingInput& input,
           targetHasForeignContext(input, binding.binding.canonicalTarget)) {
         return true;
       }
+    }
+  }
+  for (const auto& resolution : candidate.nodeBindings) {
+    const auto& value = resolution.value;
+    if (value.is<BoundNameResolution>()) {
+      const auto& bound = value.get<BoundNameResolution>();
+      if (targetHasForeignContext(input, bound.bindingIdentity) ||
+          targetHasForeignContext(input, bound.canonicalTarget)) {
+        return true;
+      }
+    }
+  }
+  for (const auto& shadow : candidate.shadowTargets) {
+    if (!shadow.definition.belongsTo(input.semanticContext()) ||
+        targetHasForeignContext(input, shadow.target)) {
+      return true;
     }
   }
   for (const auto& entry : candidate.currentSurface.visibleEntries) {
@@ -260,30 +315,113 @@ ExportSurfaceEntry cloneEntry(const ExportSurfaceEntry& entry) {
       entry.canonicalDeclarationSpan.clone(), zc::mv(aliasSpan), zc::mv(exportSpan), zc::mv(chain));
 }
 
-zc::Maybe<const FrozenDefinitionEntry&> definitionEntry(const VerifiedBindingInput& input,
-                                                        identity::DefId definition) {
-  for (const auto& entry : input.definitions().definitions()) {
-    if (entry.definition == definition) { return entry; }
-  }
-  return zc::none;
-}
-
-zc::Maybe<const FrozenImplEntry&> implementationEntry(const VerifiedBindingInput& input,
-                                                      identity::ImplId implementation) {
-  for (const auto& entry : input.definitions().impls()) {
-    if (entry.implementation == implementation) { return entry; }
-  }
-  return zc::none;
-}
-
-zc::Maybe<uint32_t> schemaPreorderOrdinal(const ast::Tree& tree, ast::NodeId target) {
+zc::Maybe<zc::Vector<uint32_t>> schemaPreorderOrdinals(const ast::Tree& tree) {
+  zc::Vector<uint32_t> ordinals;
+  ordinals.resize(tree.nodeCount() + 1);
+  for (auto& value : ordinals) { value = UINT32_MAX; }
   uint32_t ordinal = 0;
-  zc::Maybe<uint32_t> result;
   ast::visitTreePreOrder(tree, tree.root(), [&](ast::NodeId node, const ast::Node&) {
-    if (node == target) { result = ordinal; }
-    ++ordinal;
+    if (node.value >= ordinals.size() || ordinals[node.value] != UINT32_MAX) { return; }
+    ordinals[node.value] = ordinal++;
   });
-  return result;
+  if (ordinal != tree.nodeCount()) { return zc::none; }
+  return zc::mv(ordinals);
+}
+
+bool hasCompleteLexicalBindingSites(const ast::Tree& tree,
+                                    zc::ArrayPtr<const BindingResolution> bindings) {
+  zc::Vector<uint8_t> requiredNamespaces;
+  zc::Vector<bool> published;
+  requiredNamespaces.resize(tree.nodeCount() + 1);
+  published.resize(tree.nodeCount() + 1);
+  for (size_t index = 0; index < requiredNamespaces.size(); ++index) {
+    requiredNamespaces[index] = 0;
+    published[index] = false;
+  }
+  size_t requiredCount = 0;
+  bool valid = true;
+  const auto requireSite = [&](ast::NodeId node, ast::SyntaxKind kind, Namespace nameSpace) {
+    if (!tree.contains(node) || node.value >= requiredNamespaces.size() ||
+        tree.node(node).kind != kind ||
+        (nameSpace != Namespace::Value && nameSpace != Namespace::Type)) {
+      valid = false;
+      return;
+    }
+    const auto encodedNamespace = static_cast<uint8_t>(nameSpace);
+    if (requiredNamespaces[node.value] != 0) {
+      if (requiredNamespaces[node.value] != encodedNamespace) { valid = false; }
+      return;
+    }
+    requiredNamespaces[node.value] = encodedNamespace;
+    ++requiredCount;
+  };
+  ast::visitTreePreOrder(tree, tree.root(), [&](ast::NodeId node, const ast::Node& syntax) {
+    switch (syntax.kind) {
+      case ast::SyntaxKind::IdentExpr:
+        requireSite(node, ast::SyntaxKind::IdentExpr, Namespace::Value);
+        return;
+      case ast::SyntaxKind::NamedTypeExpr:
+        requireSite(ast::NodeId(syntax.payload.words[ast::kNamedTypeExprPathWord]),
+                    ast::SyntaxKind::ModulePath, Namespace::Type);
+        return;
+      case ast::SyntaxKind::TypeQueryExpr:
+        requireSite(ast::NodeId(syntax.payload.words[ast::kTypeQueryExprPathWord]),
+                    ast::SyntaxKind::ModulePath, Namespace::Value);
+        return;
+      case ast::SyntaxKind::EnumPattern:
+        requireSite(ast::NodeId(syntax.payload.words[ast::kEnumPatternPathWord]),
+                    ast::SyntaxKind::ModulePath, Namespace::Value);
+        return;
+      case ast::SyntaxKind::StructPattern: {
+        const ast::NodeId typePath(syntax.payload.words[ast::kStructPatternTyPathWord]);
+        if (tree.contains(typePath)) {
+          requireSite(typePath, ast::SyntaxKind::ModulePath, Namespace::Type);
+        }
+        return;
+      }
+      case ast::SyntaxKind::MarkerImpl:
+        requireSite(ast::NodeId(syntax.payload.words[ast::kMarkerImplMarkerPathWord]),
+                    ast::SyntaxKind::AttributePath, Namespace::Type);
+        return;
+      case ast::SyntaxKind::DynTypeMarkerList: {
+        const ast::NodeList markers{syntax.payload.words[ast::kDynTypeMarkerListMarkersFirstWord],
+                                    syntax.payload.words[ast::kDynTypeMarkerListMarkersSizeWord]};
+        if (!tree.contains(markers) ||
+            syntax.payload.words[ast::kDynTypeMarkerListNMarkersWord] != markers.size) {
+          valid = false;
+          return;
+        }
+        for (const ast::NodeId marker : tree.list(markers)) {
+          requireSite(marker, ast::SyntaxKind::AttributePath, Namespace::Type);
+        }
+        return;
+      }
+      case ast::SyntaxKind::ObjectProperty:
+        if (syntax.payload.words[ast::kObjectPropertyShortFormWord] != 0) {
+          requireSite(node, ast::SyntaxKind::ObjectProperty, Namespace::Value);
+        }
+        return;
+      default:
+        return;
+    }
+  });
+  if (!valid || requiredCount != bindings.size()) { return false; }
+  for (const auto& binding : bindings) {
+    if (!tree.contains(binding.node) || binding.node.value >= requiredNamespaces.size() ||
+        requiredNamespaces[binding.node.value] == 0 || published[binding.node.value]) {
+      return false;
+    }
+    if (binding.value.is<BoundNameResolution>() &&
+        static_cast<uint8_t>(binding.value.get<BoundNameResolution>().nameSpace) !=
+            requiredNamespaces[binding.node.value]) {
+      return false;
+    }
+    if (!binding.value.is<BoundNameResolution>() && !binding.value.is<FailedBindingResolution>()) {
+      return false;
+    }
+    published[binding.node.value] = true;
+  }
+  return true;
 }
 
 bool encodeScopeId(identity::CanonicalEncoder& encoder, const VerifiedBindingInput& input,
@@ -296,8 +434,8 @@ bool encodeScopeId(identity::CanonicalEncoder& encoder, const VerifiedBindingInp
 
 bool encodeDefinition(identity::CanonicalEncoder& encoder, const VerifiedBindingInput& input,
                       identity::DefId definition) {
-  ZC_IF_SOME(entry, definitionEntry(input, definition)) {
-    entry.key.encode(encoder);
+  ZC_IF_SOME(key, input.definitions().definitionKey(definition)) {
+    key.encode(encoder);
     return true;
   }
   return false;
@@ -305,8 +443,8 @@ bool encodeDefinition(identity::CanonicalEncoder& encoder, const VerifiedBinding
 
 bool encodeImplementation(identity::CanonicalEncoder& encoder, const VerifiedBindingInput& input,
                           identity::ImplId implementation) {
-  ZC_IF_SOME(entry, implementationEntry(input, implementation)) {
-    entry.key.encode(encoder);
+  ZC_IF_SOME(key, input.definitions().implKey(implementation)) {
+    key.encode(encoder);
     return true;
   }
   return false;
@@ -466,9 +604,21 @@ zc::Maybe<zc::Array<uint8_t>> encodeCandidate(const VerifiedBindingInput& input,
   for (const auto& binding : candidate.nodeBindings) {
     encoder.encodeUint32(binding.node.value);
     const auto& value = binding.value;
-    if (!value.is<FailedBindingResolution>()) { return zc::none; }
-    encoder.encodeUint8(0x04);
-    encoder.encodeUint64(value.get<FailedBindingResolution>().failureIndex);
+    if (value.is<BoundNameResolution>()) {
+      const auto& bound = value.get<BoundNameResolution>();
+      encoder.encodeUint8(0x01);
+      if (!encodeTarget(encoder, input, bound.bindingIdentity) ||
+          !encodeTarget(encoder, input, bound.canonicalTarget)) {
+        return zc::none;
+      }
+      encoder.encodeUint8(static_cast<uint8_t>(bound.nameSpace));
+      encoder.encodeUint8(static_cast<uint8_t>(bound.origin));
+    } else if (value.is<FailedBindingResolution>()) {
+      encoder.encodeUint8(0x04);
+      encoder.encodeUint64(value.get<FailedBindingResolution>().failureIndex);
+    } else {
+      return zc::none;
+    }
   }
   encoder.encodeSequenceSize(candidate.definitions.size());
   for (const auto& fact : candidate.definitions) {
@@ -526,6 +676,12 @@ zc::Maybe<zc::Array<uint8_t>> encodeCandidate(const VerifiedBindingInput& input,
   encoder.encodeSequenceSize(candidate.labels.size());
   encoder.encodeSequenceSize(candidate.controlTransfers.size());
   encoder.encodeSequenceSize(candidate.shadowTargets.size());
+  for (const auto& shadow : candidate.shadowTargets) {
+    if (!encodeDefinition(encoder, input, shadow.definition) ||
+        !encodeTarget(encoder, input, shadow.target)) {
+      return zc::none;
+    }
+  }
   encoder.encodeSequenceSize(candidate.closureFreeVariables.size());
   if (candidate.currentSurface.sourceModule != input.module() ||
       candidate.currentSurface.sourcePackage != input.package()) {
@@ -715,15 +871,7 @@ BindingCandidateResult BindingBuilder::build(const VerifiedBindingInput& input,
 
 BindingCandidateResult BindingBuilder::buildCandidate(
     const VerifiedBindingInput& input, zc::Maybe<diagnostics::DiagnosticEngine&> diagnostics) {
-  (void)diagnostics;
   const auto& tree = input.tree();
-  zc::Vector<ast::NodeId> unresolvedIdentifiers;
-  ast::visitTreePreOrder(tree, tree.root(), [&](ast::NodeId node, const ast::Node& value) {
-    if (value.kind == ast::SyntaxKind::IdentExpr) { unresolvedIdentifiers.add(node); }
-  });
-  if (!unresolvedIdentifiers.empty()) {
-    return builderFailure(input, BinderInvariantKind::MissingRequiredResolution);
-  }
   auto arenaResult = ScopeArenaBuilder::build(input);
   if (!arenaResult.is<ScopeArenaCandidate>()) {
     return zc::mv(arenaResult.get<BinderInvariantFact>());
@@ -737,43 +885,112 @@ BindingCandidateResult BindingBuilder::buildCandidate(
     return zc::mv(skeletonResult.get<BinderInvariantFact>());
   }
   auto skeleton = zc::mv(skeletonResult.get<DefinitionSkeletonCandidate>());
-  zc::Vector<size_t> duplicateOrder;
-  for (size_t index = 0; index < skeleton.duplicates.size(); ++index) { duplicateOrder.add(index); }
-  for (size_t index = 1; index < duplicateOrder.size(); ++index) {
-    const size_t current = duplicateOrder[index];
-    size_t insertion = index;
-    while (insertion > 0 &&
-           skeleton.duplicates[current].primary.byteStart() <
-               skeleton.duplicates[duplicateOrder[insertion - 1]].primary.byteStart()) {
-      duplicateOrder[insertion] = duplicateOrder[insertion - 1];
-      --insertion;
-    }
-    duplicateOrder[insertion] = current;
+  auto bodyResult = BodyBindingBuilder::build(input, arena, skeleton);
+  if (!bodyResult.is<BodyBindingCandidate>()) {
+    return zc::mv(bodyResult.get<BinderInvariantFact>());
   }
-  zc::Vector<BindingFailureRef> sourceFailures;
-  for (const size_t index : duplicateOrder) {
+  auto body = zc::mv(bodyResult.get<BodyBindingCandidate>());
+
+  auto schemaOrdinalsResult = schemaPreorderOrdinals(tree);
+  if (schemaOrdinalsResult == zc::none) {
+    return bodyBuilderFailure(input, BinderInvariantKind::InvalidEmitterOrdinal);
+  }
+  auto schemaOrdinals = zc::mv(ZC_ASSERT_NONNULL(schemaOrdinalsResult));
+  zc::TreeMap<PendingFailureOrderKey, PendingFailureRef> failureOrder;
+  size_t sequence = 0;
+  for (size_t index = 0; index < skeleton.duplicates.size(); ++index) {
     const auto& duplicate = skeleton.duplicates[index];
-    auto ordinal = schemaPreorderOrdinal(tree, duplicate.primaryNode);
-    if (ordinal == zc::none) {
+    if (!tree.contains(duplicate.primaryNode) ||
+        schemaOrdinals[duplicate.primaryNode.value] == UINT32_MAX) {
       return builderFailure(input, BinderInvariantKind::InvalidEmitterOrdinal);
     }
-    ZC_IF_SOME(value, ordinal) {
+    const auto ordinal = schemaOrdinals[duplicate.primaryNode.value];
+    failureOrder.insert(
+        PendingFailureOrderKey{duplicate.primary.byteStart(), duplicate.primary.byteEnd(),
+                               static_cast<uint16_t>(duplicate.diagnostic),
+                               static_cast<uint8_t>(duplicate.emitterSite), ordinal, sequence++},
+        PendingFailureRef{PendingFailureKind::Duplicate, index});
+  }
+  for (size_t index = 0; index < body.failures.size(); ++index) {
+    const auto& bodyFailure = body.failures[index];
+    failureOrder.insert(
+        PendingFailureOrderKey{bodyFailure.source.byteStart(), bodyFailure.source.byteEnd(),
+                               static_cast<uint16_t>(bodyFailure.diagnostic),
+                               static_cast<uint8_t>(BinderEmitterSite::BodyBinding),
+                               bodyFailure.schemaPreorderOrdinal, sequence++},
+        PendingFailureRef{PendingFailureKind::BodyLookup, index});
+  }
+
+  zc::Vector<BindingFailureRef> sourceFailures;
+  uint8_t previousSite = 0;
+  uint32_t previousOrdinal = 0;
+  uint16_t localOrdinal = 0;
+  bool hasPrevious = false;
+  for (const auto& ordered : failureOrder) {
+    const auto site = ordered.key.emitterSite;
+    const auto schemaOrdinal = ordered.key.schemaPreorderOrdinal;
+    if (hasPrevious && site == previousSite && schemaOrdinal == previousOrdinal) {
+      if (localOrdinal == UINT16_MAX) {
+        return builderFailure(input, BinderInvariantKind::InvalidEmitterOrdinal, schemaOrdinal);
+      }
+      ++localOrdinal;
+    } else {
+      localOrdinal = 0;
+    }
+    hasPrevious = true;
+    previousSite = site;
+    previousOrdinal = schemaOrdinal;
+    const uint64_t emitterOrdinal =
+        (uint64_t(site) << 56) | (uint64_t(schemaOrdinal) << 16) | localOrdinal;
+
+    if (ordered.value.kind == PendingFailureKind::Duplicate) {
+      const auto& duplicate = skeleton.duplicates[ordered.value.index];
       ZC_IF_SOME(engine, diagnostics) {
         if (!BindingDiagnosticAdapter::emitRedeclaration(
                 engine, duplicate.diagnostic, tree.node(duplicate.primaryNode).range.getStart(),
                 tree.node(duplicate.previousNode).range.getStart(),
                 VerifiedIdentifierArgument::from(duplicate.name))) {
-          return builderFailure(input, BinderInvariantKind::InvalidBindingFact, value);
+          return failure(input, BinderInvariantKind::InvalidBindingFact, duplicate.emitterSite,
+                         schemaOrdinal);
         }
       }
       zc::Vector<BindingDiagnosticNoteRef> notes;
       notes.add(BindingDiagnosticNoteRef{BinderDiagnosticCode::PreviousDeclarationHere,
                                          duplicate.previous.clone()});
-      sourceFailures.add(BindingFailureRef{
-          duplicate.diagnostic, duplicate.primary.clone(),
-          (uint64_t(BinderEmitterSite::ModuleSkeleton) << 56) | (uint64_t(value) << 16),
-          zc::mv(notes)});
+      sourceFailures.add(BindingFailureRef{duplicate.diagnostic, duplicate.primary.clone(),
+                                           emitterOrdinal, zc::mv(notes)});
+      continue;
     }
+
+    const auto& bodyFailure = body.failures[ordered.value.index];
+    ZC_IF_SOME(engine, diagnostics) {
+      if (!BindingDiagnosticAdapter::emitLookupFailure(
+              engine, bodyFailure.diagnostic, tree.node(bodyFailure.node).range.getStart(),
+              VerifiedIdentifierArgument::from(bodyFailure.name), bodyFailure.expectedNamespace)) {
+        return bodyBuilderFailure(input, BinderInvariantKind::InvalidBindingFact, schemaOrdinal);
+      }
+    }
+    zc::Vector<BindingDiagnosticNoteRef> noNotes;
+    const size_t failureIndex = sourceFailures.size();
+    sourceFailures.add(BindingFailureRef{bodyFailure.diagnostic, bodyFailure.source.clone(),
+                                         emitterOrdinal, zc::mv(noNotes)});
+    body.nodeBindings.add(BindingResolution{
+        bodyFailure.node, BindingResolutionValue(FailedBindingResolution{failureIndex})});
+  }
+
+  zc::TreeMap<uint32_t, size_t> bindingOrder;
+  for (size_t index = 0; index < body.nodeBindings.size(); ++index) {
+    const auto node = body.nodeBindings[index].node;
+    if (!tree.contains(node) || bindingOrder.find(node.value) != zc::none) {
+      const uint32_t ordinal =
+          tree.contains(node) ? schemaOrdinals[node.value] : static_cast<uint32_t>(0);
+      return bodyBuilderFailure(input, BinderInvariantKind::InvalidBindingFact, ordinal);
+    }
+    bindingOrder.insert(node.value, index);
+  }
+  zc::Vector<BindingResolution> nodeBindings;
+  for (const auto& ordered : bindingOrder) {
+    nodeBindings.add(zc::mv(body.nodeBindings[ordered.value]));
   }
 
   zc::Vector<ExportSurfaceEntry> visibleEntries;
@@ -810,6 +1027,8 @@ BindingCandidateResult BindingBuilder::buildCandidate(
                                            zc::mv(skeleton.impls), zc::mv(arena.scopes),
                                            zc::mv(surface));
         candidate.sourceFailures = zc::mv(sourceFailures);
+        candidate.nodeBindings = zc::mv(nodeBindings);
+        candidate.shadowTargets = zc::mv(body.shadowTargets);
         return candidate;
       }
     }
@@ -826,12 +1045,17 @@ BindingVerificationResult BindingVerifier::verify(const VerifiedBindingInput& in
   if (hasForeignContext(input, candidate)) { return rejectForeignContext(input); }
   if (hasInvalidSourceRange(input, candidate)) { return rejectInvalidSourceRange(input); }
   const auto& expected = expectedResult.get<BindingMetadataCandidate>();
+  if (!hasCompleteLexicalBindingSites(input.tree(), expected.nodeBindings.asPtr())) {
+    return rejectBinderInvariant(
+        bodyBuilderFailure(input, BinderInvariantKind::MissingRequiredResolution));
+  }
   if (candidate.scopes.size() < expected.scopes.size() ||
       candidate.definitions.size() < expected.definitions.size() ||
       candidate.impls.size() < expected.impls.size() ||
       candidate.nodeScopes.size() < expected.nodeScopes.size() ||
       candidate.sourceFailures.size() < expected.sourceFailures.size() ||
-      candidate.nodeBindings.size() < expected.nodeBindings.size()) {
+      candidate.nodeBindings.size() < expected.nodeBindings.size() ||
+      candidate.shadowTargets.size() < expected.shadowTargets.size()) {
     return rejectBinderInvariant(
         verifierFailure(input, BinderInvariantKind::MissingRequiredResolution));
   }
@@ -840,13 +1064,14 @@ BindingVerificationResult BindingVerifier::verify(const VerifiedBindingInput& in
       candidate.impls.size() > expected.impls.size() ||
       candidate.nodeScopes.size() > expected.nodeScopes.size() ||
       candidate.sourceFailures.size() > expected.sourceFailures.size() ||
-      candidate.nodeBindings.size() > expected.nodeBindings.size()) {
+      candidate.nodeBindings.size() > expected.nodeBindings.size() ||
+      candidate.shadowTargets.size() > expected.shadowTargets.size()) {
     return rejectBinderInvariant(verifierFailure(input, BinderInvariantKind::InvalidBindingFact));
   }
   if (!candidate.moduleAliases.empty() || !candidate.imports.empty() ||
       !candidate.localExports.empty() || !candidate.deferredMembers.empty() ||
       !candidate.labels.empty() || !candidate.controlTransfers.empty() ||
-      !candidate.shadowTargets.empty() || !candidate.closureFreeVariables.empty()) {
+      !candidate.closureFreeVariables.empty()) {
     return rejectBinderInvariant(verifierFailure(input, BinderInvariantKind::InvalidBindingFact));
   }
   auto candidateAllocation = encodeBindingAllocationDump(input, candidate.scopes.asPtr());

@@ -34,6 +34,10 @@ private:
 /// \brief Sole typed projection from binder source failures to user diagnostics.
 class BindingDiagnosticAdapter final {
 public:
+  ZC_NODISCARD static bool emitLookupFailure(diagnostics::DiagnosticEngine& diagnostics,
+                                             BinderDiagnosticCode code, source::SourceLoc primary,
+                                             VerifiedIdentifierArgument&& identifier,
+                                             Namespace expectedNamespace);
   ZC_NODISCARD static bool emitRedeclaration(diagnostics::DiagnosticEngine& diagnostics,
                                              BinderDiagnosticCode code, source::SourceLoc primary,
                                              source::SourceLoc previous,

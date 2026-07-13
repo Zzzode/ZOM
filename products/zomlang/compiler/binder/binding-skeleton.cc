@@ -430,6 +430,7 @@ DefinitionSkeletonBuildResult BindingSkeletonBuilder::build(const VerifiedBindin
     const auto& definition = inventory[index];
     const auto classification = eligibility(definition.kind);
     if (classification == SkeletonEligibility::Deferred) {
+      if (definition.kind == identity::DefinitionKind::Local) { continue; }
       return failure(input, BinderInvariantKind::MissingRequiredResolution, definition.node);
     }
     const bool lexicalBinding = hasLexicalBinding(classification);
@@ -658,9 +659,10 @@ DefinitionSkeletonBuildResult BindingSkeletonBuilder::build(const VerifiedBindin
               ZC_IF_SOME(codeValue, code) {
                 ZC_IF_SOME(primaryNodeValue, primaryNode) {
                   ZC_IF_SOME(previousNodeValue, previousNode) {
-                    result.duplicates.add(SkeletonDuplicateFact{
-                        codeValue, binding.name.name().clone(), rejectedValue, primaryNodeValue,
-                        previousNodeValue, binding.binding.declarationSpan.clone(),
+                    result.duplicates.add(BindingDuplicateFact{
+                        codeValue, BinderEmitterSite::ModuleSkeleton, binding.name.name().clone(),
+                        rejectedValue, primaryNodeValue, previousNodeValue,
+                        binding.binding.declarationSpan.clone(),
                         unique.back().binding.declarationSpan.clone()});
                   }
                 }

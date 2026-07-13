@@ -190,15 +190,22 @@ FrozenImplEntry::FrozenImplEntry(ast::NodeId node, identity::ImplId implementati
     : node(node), implementation(implementation), key(zc::mv(key)), source(zc::mv(source)) {}
 
 struct FrozenDefinitionInventoryView::Impl final {
-  Impl(identity::SemanticContextBrand context, identity::ModuleId module, ast::NodeId moduleNode,
-       zc::Vector<FrozenDefinitionEntry>&& definitions, zc::Vector<FrozenImplEntry>&& impls)
+  Impl(identity::SemanticContextBrand context,
+       identity::DefinitionRegistry::FrozenKeyIndex&& definitionKeys,
+       identity::ImplRegistry::FrozenKeyIndex&& implKeys, identity::ModuleId module,
+       ast::NodeId moduleNode, zc::Vector<FrozenDefinitionEntry>&& definitions,
+       zc::Vector<FrozenImplEntry>&& impls)
       : context(context),
+        definitionKeys(zc::mv(definitionKeys)),
+        implKeys(zc::mv(implKeys)),
         module(module),
         moduleNode(moduleNode),
         definitions(zc::mv(definitions)),
         impls(zc::mv(impls)) {}
 
   identity::SemanticContextBrand context;
+  identity::DefinitionRegistry::FrozenKeyIndex definitionKeys;
+  identity::ImplRegistry::FrozenKeyIndex implKeys;
   identity::ModuleId module;
   ast::NodeId moduleNode;
   zc::Vector<FrozenDefinitionEntry> definitions;
@@ -222,6 +229,14 @@ zc::ArrayPtr<const FrozenDefinitionEntry> FrozenDefinitionInventoryView::definit
 }
 zc::ArrayPtr<const FrozenImplEntry> FrozenDefinitionInventoryView::impls() const {
   return impl->impls.asPtr();
+}
+zc::Maybe<const identity::DefinitionKey&> FrozenDefinitionInventoryView::definitionKey(
+    identity::DefId definition) const {
+  return impl->definitionKeys.lookup(definition);
+}
+zc::Maybe<const identity::ImplKey&> FrozenDefinitionInventoryView::implKey(
+    identity::ImplId implementation) const {
+  return impl->implKeys.lookup(implementation);
 }
 zc::Maybe<identity::DefId> FrozenDefinitionInventoryView::definitionAt(ast::NodeId node) const {
   for (const auto& entry : impl->definitions) {
@@ -330,8 +345,19 @@ FrozenDefinitionInventoryResult FrozenDefinitionInventoryVerifier::verifySingleM
           }
         }
       }
-      return FrozenDefinitionInventoryView(zc::heap<FrozenDefinitionInventoryView::Impl>(
-          context, module, inventory.modules()[0].node, zc::mv(frozen), zc::mv(frozenImpls)));
+      auto definitionKeys = registries.definitions().snapshotKeys();
+      auto implKeys = registries.impls().snapshotKeys();
+      if (definitionKeys == zc::none || implKeys == zc::none) {
+        return failure(FrozenInventoryInvariantKind::InputMismatch);
+      }
+      ZC_IF_SOME(definitionKeyIndex, definitionKeys) {
+        ZC_IF_SOME(implKeyIndex, implKeys) {
+          return FrozenDefinitionInventoryView(zc::heap<FrozenDefinitionInventoryView::Impl>(
+              context, zc::mv(definitionKeyIndex), zc::mv(implKeyIndex), module,
+              inventory.modules()[0].node, zc::mv(frozen), zc::mv(frozenImpls)));
+        }
+      }
+      ZC_UNREACHABLE;
     }
   }
   return failure(FrozenInventoryInvariantKind::InputMismatch);

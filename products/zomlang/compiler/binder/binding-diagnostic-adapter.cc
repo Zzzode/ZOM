@@ -31,6 +31,40 @@ VerifiedIdentifierArgument VerifiedIdentifierArgument::from(
 
 zc::String VerifiedIdentifierArgument::take() && { return zc::mv(value); }
 
+bool BindingDiagnosticAdapter::emitLookupFailure(diagnostics::DiagnosticEngine& diagnostics,
+                                                 BinderDiagnosticCode code,
+                                                 source::SourceLoc primary,
+                                                 VerifiedIdentifierArgument&& identifier,
+                                                 Namespace expectedNamespace) {
+  using diagnostics::DiagID;
+  switch (code) {
+    case BinderDiagnosticCode::UndefinedIdentifier:
+      diagnostics.diagnose<DiagID::UndefinedIdentifier>(primary, zc::mv(identifier).take()).emit();
+      return true;
+    case BinderDiagnosticCode::SymbolNamespaceMismatch: {
+      const zc::StringPtr expected = expectedNamespace == Namespace::Value ? "value"_zc : "type"_zc;
+      diagnostics
+          .diagnose<DiagID::SymbolNamespaceMismatch>(primary, zc::mv(identifier).take(), expected)
+          .emit();
+      return true;
+    }
+    case BinderDiagnosticCode::RedeclareVariable:
+    case BinderDiagnosticCode::RedeclareParameter:
+    case BinderDiagnosticCode::RedeclareFunction:
+    case BinderDiagnosticCode::RedeclareClass:
+    case BinderDiagnosticCode::RedeclareInterface:
+    case BinderDiagnosticCode::RedeclareEnum:
+    case BinderDiagnosticCode::RedeclareTypeAlias:
+    case BinderDiagnosticCode::DuplicateIdentifier:
+    case BinderDiagnosticCode::PreviousDeclarationHere:
+    case BinderDiagnosticCode::BreakTargetNotFound:
+    case BinderDiagnosticCode::ContinueTargetNotFound:
+    case BinderDiagnosticCode::ContinueTargetNotLoop:
+      return false;
+  }
+  ZC_UNREACHABLE;
+}
+
 bool BindingDiagnosticAdapter::emitRedeclaration(diagnostics::DiagnosticEngine& diagnostics,
                                                  BinderDiagnosticCode code,
                                                  source::SourceLoc primary,

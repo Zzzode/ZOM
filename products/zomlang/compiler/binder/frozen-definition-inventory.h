@@ -78,6 +78,9 @@ public:
   ZC_NODISCARD ast::NodeId moduleNode() const noexcept;
   ZC_NODISCARD zc::ArrayPtr<const FrozenDefinitionEntry> definitions() const;
   ZC_NODISCARD zc::ArrayPtr<const FrozenImplEntry> impls() const;
+  ZC_NODISCARD zc::Maybe<const identity::DefinitionKey&> definitionKey(
+      identity::DefId definition) const;
+  ZC_NODISCARD zc::Maybe<const identity::ImplKey&> implKey(identity::ImplId implementation) const;
   ZC_NODISCARD zc::Maybe<identity::DefId> definitionAt(ast::NodeId node) const;
   ZC_NODISCARD zc::Maybe<identity::ImplId> implAt(ast::NodeId node) const;
 

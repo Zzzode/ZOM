@@ -27,6 +27,8 @@ class IdentityDiagnosticLocationResolver;
 
 namespace zomlang::compiler::binder {
 
+class BodyBindingCursor;
+
 enum class Namespace : uint8_t {
   Value = 0x01,
   Type = 0x02,
@@ -135,6 +137,8 @@ private:
   BindingNameKey(Namespace nameSpace, identity::SemanticIdentifier&& name) noexcept;
   Namespace namespaceValue;
   identity::SemanticIdentifier nameValue;
+  friend class BodyBindingCursor;
+  friend class BodyBindingBuilder;
   friend class BindingBuilder;
   friend class BindingSkeletonBuilder;
   friend class BindingVerifier;
