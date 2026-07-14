@@ -1,138 +1,170 @@
 // RUN: %zomc compile --dump-ast %corpus/08-adt/classes/class-declaration.zom | %FileCheck %s
 
 
-// CHECK: SourceFile #57 @1:1..25:1 file_name="class-declaration.zom"
+// CHECK: SourceFile #69 @1:1..25:1 file_name="class-declaration.zom"
 // CHECK-NEXT:   module: null
 // CHECK-NEXT:   statements:
-// CHECK-NEXT:     StatementListItem #23 @1:1..11:2
+// CHECK-NEXT:     StatementListItem #29 @1:1..11:2
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         ClassDecl #22 @1:1..11:2 name="Animal"
+// CHECK-NEXT:         ClassDecl #28 @1:1..11:2 name="Animal"
 // CHECK-NEXT:           type_params_id: null
 // CHECK-NEXT:           base_ty: null
 // CHECK-NEXT:           members_id:
-// CHECK-NEXT:             ClassMemberList #21 @1:14..11:2 nmembers=3
+// CHECK-NEXT:             ClassMemberList #27 @1:14..11:2 nmembers=3
 // CHECK-NEXT:               members:
 // CHECK-NEXT:                 FieldDecl #2 @2:3..2:24 name="name" is_mut=false is_static=false visibility=Public
 // CHECK-NEXT:                   ty:
 // CHECK-NEXT:                     PredefinedTypeExpr #1 @2:20..2:23 kind=Str
 // CHECK-NEXT:                   init: null
-// CHECK-NEXT:                 ConstructorDecl #13 @4:3..6:4 name="init" visibility=Default
+// CHECK-NEXT:                 ConstructorDecl #16 @4:3..6:4 name="init" visibility=Default
 // CHECK-NEXT:                   params_id:
-// CHECK-NEXT:                     FunctionParameterList #5 @4:7..4:15 nparams=1
+// CHECK-NEXT:                     FunctionParameterList #8 @4:7..4:21 nparams=2
 // CHECK-NEXT:                       params:
-// CHECK-NEXT:                         FunctionParameterDecl #4 @4:8..4:14 name="n"
+// CHECK-NEXT:                         FunctionParameterDecl #5 @4:8..4:12 name="this"
 // CHECK-NEXT:                           ty:
-// CHECK-NEXT:                             PredefinedTypeExpr #3 @4:11..4:14 kind=Str
+// CHECK-NEXT:                             NamedTypeExpr #4 @4:8..4:12
+// CHECK-NEXT:                               path:
+// CHECK-NEXT:                                 ModulePath #3 @4:8..4:12 segments=["Self"]
+// CHECK-NEXT:                               args: []
+// CHECK-NEXT:                           default_: null
+// CHECK-NEXT:                           attrs: null
+// CHECK-NEXT:                         FunctionParameterDecl #7 @4:14..4:20 name="n"
+// CHECK-NEXT:                           ty:
+// CHECK-NEXT:                             PredefinedTypeExpr #6 @4:17..4:20 kind=Str
 // CHECK-NEXT:                           default_: null
 // CHECK-NEXT:                           attrs: null
 // CHECK-NEXT:                   raises_ty: null
 // CHECK-NEXT:                   body:
-// CHECK-NEXT:                     BlockStmt #12 @4:16..6:4
+// CHECK-NEXT:                     BlockStmt #15 @4:22..6:4
 // CHECK-NEXT:                       stmts:
-// CHECK-NEXT:                         StatementListItem #11 @5:5..5:19
+// CHECK-NEXT:                         StatementListItem #14 @5:5..5:19
 // CHECK-NEXT:                           item:
-// CHECK-NEXT:                             ExpressionStatement #10 @5:5..5:19
+// CHECK-NEXT:                             ExpressionStatement #13 @5:5..5:19
 // CHECK-NEXT:                               expression:
-// CHECK-NEXT:                                 AssignmentExpr #9 @5:5..5:18 op=Assign
+// CHECK-NEXT:                                 AssignmentExpr #12 @5:5..5:18 op=Assign
 // CHECK-NEXT:                                   lhs:
-// CHECK-NEXT:                                     MemberExpression #7 @5:5..5:14 property="name" access=Dot
+// CHECK-NEXT:                                     MemberExpression #10 @5:5..5:14 property="name" access=Dot
 // CHECK-NEXT:                                       object:
-// CHECK-NEXT:                                         ThisExpr #6 @5:5..5:9
+// CHECK-NEXT:                                         ThisExpr #9 @5:5..5:9
 // CHECK-NEXT:                                   rhs:
-// CHECK-NEXT:                                     IdentExpr #8 @5:17..5:18 name="n"
+// CHECK-NEXT:                                     IdentExpr #11 @5:17..5:18 name="n"
 // CHECK-NEXT:                           attrs: null
-// CHECK-NEXT:                 MethodDecl #20 @8:3..10:4 name="makeSound" is_static=false visibility=Public
+// CHECK-NEXT:                 MethodDecl #26 @8:3..10:4 name="makeSound" is_static=false visibility=Public
 // CHECK-NEXT:                   params_id:
-// CHECK-NEXT:                     FunctionParameterList #14 @8:23..8:25 nparams=0
-// CHECK-NEXT:                       params: []
+// CHECK-NEXT:                     FunctionParameterList #20 @8:23..8:29 nparams=1
+// CHECK-NEXT:                       params:
+// CHECK-NEXT:                         FunctionParameterDecl #19 @8:24..8:28 name="this"
+// CHECK-NEXT:                           ty:
+// CHECK-NEXT:                             NamedTypeExpr #18 @8:24..8:28
+// CHECK-NEXT:                               path:
+// CHECK-NEXT:                                 ModulePath #17 @8:24..8:28 segments=["Self"]
+// CHECK-NEXT:                               args: []
+// CHECK-NEXT:                           default_: null
+// CHECK-NEXT:                           attrs: null
 // CHECK-NEXT:                   type_params_id: null
 // CHECK-NEXT:                   ret_ty:
-// CHECK-NEXT:                     PredefinedTypeExpr #15 @8:29..8:32 kind=Str
+// CHECK-NEXT:                     PredefinedTypeExpr #21 @8:33..8:36 kind=Str
 // CHECK-NEXT:                   raises_ty: null
 // CHECK-NEXT:                   body:
-// CHECK-NEXT:                     BlockStmt #19 @8:33..10:4
+// CHECK-NEXT:                     BlockStmt #25 @8:37..10:4
 // CHECK-NEXT:                       stmts:
-// CHECK-NEXT:                         StatementListItem #18 @9:5..9:20
+// CHECK-NEXT:                         StatementListItem #24 @9:5..9:20
 // CHECK-NEXT:                           item:
-// CHECK-NEXT:                             ReturnStmt #17 @9:5..9:20
+// CHECK-NEXT:                             ReturnStmt #23 @9:5..9:20
 // CHECK-NEXT:                               value:
-// CHECK-NEXT:                                 StrLiteral #16 @9:12..9:19 value="noise" is_raw=false prefix=None
+// CHECK-NEXT:                                 StrLiteral #22 @9:12..9:19 value="noise" is_raw=false prefix=None
 // CHECK-NEXT:                           attrs: null
 // CHECK-NEXT:       attrs: null
-// CHECK-NEXT:     StatementListItem #56 @13:1..24:2
+// CHECK-NEXT:     StatementListItem #68 @13:1..24:2
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         ClassDecl #55 @13:1..24:2 name="Dog"
+// CHECK-NEXT:         ClassDecl #67 @13:1..24:2 name="Dog"
 // CHECK-NEXT:           type_params_id: null
 // CHECK-NEXT:           base_ty:
-// CHECK-NEXT:             NamedTypeExpr #25 @13:13..13:19
+// CHECK-NEXT:             NamedTypeExpr #31 @13:13..13:19
 // CHECK-NEXT:               path:
-// CHECK-NEXT:                 ModulePath #24 @13:13..13:19 segments=["Animal"]
+// CHECK-NEXT:                 ModulePath #30 @13:13..13:19 segments=["Animal"]
 // CHECK-NEXT:               args: []
 // CHECK-NEXT:           members_id:
-// CHECK-NEXT:             ClassMemberList #54 @13:20..24:2 nmembers=3
+// CHECK-NEXT:             ClassMemberList #66 @13:20..24:2 nmembers=3
 // CHECK-NEXT:               members:
-// CHECK-NEXT:                 FieldDecl #27 @14:3..14:26 name="breed" is_mut=false is_static=false visibility=Private
+// CHECK-NEXT:                 FieldDecl #33 @14:3..14:26 name="breed" is_mut=false is_static=false visibility=Private
 // CHECK-NEXT:                   ty:
-// CHECK-NEXT:                     PredefinedTypeExpr #26 @14:22..14:25 kind=Str
+// CHECK-NEXT:                     PredefinedTypeExpr #32 @14:22..14:25 kind=Str
 // CHECK-NEXT:                   init: null
-// CHECK-NEXT:                 ConstructorDecl #46 @16:3..19:4 name="init" visibility=Default
+// CHECK-NEXT:                 ConstructorDecl #55 @16:3..19:4 name="init" visibility=Default
 // CHECK-NEXT:                   params_id:
-// CHECK-NEXT:                     FunctionParameterList #32 @16:7..16:23 nparams=2
+// CHECK-NEXT:                     FunctionParameterList #41 @16:7..16:29 nparams=3
 // CHECK-NEXT:                       params:
-// CHECK-NEXT:                         FunctionParameterDecl #29 @16:8..16:14 name="n"
+// CHECK-NEXT:                         FunctionParameterDecl #36 @16:8..16:12 name="this"
 // CHECK-NEXT:                           ty:
-// CHECK-NEXT:                             PredefinedTypeExpr #28 @16:11..16:14 kind=Str
+// CHECK-NEXT:                             NamedTypeExpr #35 @16:8..16:12
+// CHECK-NEXT:                               path:
+// CHECK-NEXT:                                 ModulePath #34 @16:8..16:12 segments=["Self"]
+// CHECK-NEXT:                               args: []
 // CHECK-NEXT:                           default_: null
 // CHECK-NEXT:                           attrs: null
-// CHECK-NEXT:                         FunctionParameterDecl #31 @16:16..16:22 name="b"
+// CHECK-NEXT:                         FunctionParameterDecl #38 @16:14..16:20 name="n"
 // CHECK-NEXT:                           ty:
-// CHECK-NEXT:                             PredefinedTypeExpr #30 @16:19..16:22 kind=Str
+// CHECK-NEXT:                             PredefinedTypeExpr #37 @16:17..16:20 kind=Str
+// CHECK-NEXT:                           default_: null
+// CHECK-NEXT:                           attrs: null
+// CHECK-NEXT:                         FunctionParameterDecl #40 @16:22..16:28 name="b"
+// CHECK-NEXT:                           ty:
+// CHECK-NEXT:                             PredefinedTypeExpr #39 @16:25..16:28 kind=Str
 // CHECK-NEXT:                           default_: null
 // CHECK-NEXT:                           attrs: null
 // CHECK-NEXT:                   raises_ty: null
 // CHECK-NEXT:                   body:
-// CHECK-NEXT:                     BlockStmt #45 @16:24..19:4
+// CHECK-NEXT:                     BlockStmt #54 @16:30..19:4
 // CHECK-NEXT:                       stmts:
-// CHECK-NEXT:                         StatementListItem #38 @17:5..17:19
+// CHECK-NEXT:                         StatementListItem #47 @17:5..17:19
 // CHECK-NEXT:                           item:
-// CHECK-NEXT:                             ExpressionStatement #37 @17:5..17:19
+// CHECK-NEXT:                             ExpressionStatement #46 @17:5..17:19
 // CHECK-NEXT:                               expression:
-// CHECK-NEXT:                                 CallExpression #36 @17:5..17:18
+// CHECK-NEXT:                                 CallExpression #45 @17:5..17:18
 // CHECK-NEXT:                                   callee:
-// CHECK-NEXT:                                     MemberExpression #34 @17:5..17:15 property="init" access=Dot
+// CHECK-NEXT:                                     MemberExpression #43 @17:5..17:15 property="init" access=Dot
 // CHECK-NEXT:                                       object:
-// CHECK-NEXT:                                         SuperExpr #33 @17:5..17:10
+// CHECK-NEXT:                                         SuperExpr #42 @17:5..17:10
 // CHECK-NEXT:                                   type_args: []
 // CHECK-NEXT:                                   args:
-// CHECK-NEXT:                                     IdentExpr #35 @17:16..17:17 name="n"
+// CHECK-NEXT:                                     IdentExpr #44 @17:16..17:17 name="n"
 // CHECK-NEXT:                           attrs: null
-// CHECK-NEXT:                         StatementListItem #44 @18:5..18:20
+// CHECK-NEXT:                         StatementListItem #53 @18:5..18:20
 // CHECK-NEXT:                           item:
-// CHECK-NEXT:                             ExpressionStatement #43 @18:5..18:20
+// CHECK-NEXT:                             ExpressionStatement #52 @18:5..18:20
 // CHECK-NEXT:                               expression:
-// CHECK-NEXT:                                 AssignmentExpr #42 @18:5..18:19 op=Assign
+// CHECK-NEXT:                                 AssignmentExpr #51 @18:5..18:19 op=Assign
 // CHECK-NEXT:                                   lhs:
-// CHECK-NEXT:                                     MemberExpression #40 @18:5..18:15 property="breed" access=Dot
+// CHECK-NEXT:                                     MemberExpression #49 @18:5..18:15 property="breed" access=Dot
 // CHECK-NEXT:                                       object:
-// CHECK-NEXT:                                         ThisExpr #39 @18:5..18:9
+// CHECK-NEXT:                                         ThisExpr #48 @18:5..18:9
 // CHECK-NEXT:                                   rhs:
-// CHECK-NEXT:                                     IdentExpr #41 @18:18..18:19 name="b"
+// CHECK-NEXT:                                     IdentExpr #50 @18:18..18:19 name="b"
 // CHECK-NEXT:                           attrs: null
-// CHECK-NEXT:                 MethodDecl #53 @21:3..23:4 name="makeSound" is_static=false visibility=Public
+// CHECK-NEXT:                 MethodDecl #65 @21:3..23:4 name="makeSound" is_static=false visibility=Public
 // CHECK-NEXT:                   params_id:
-// CHECK-NEXT:                     FunctionParameterList #47 @21:23..21:25 nparams=0
-// CHECK-NEXT:                       params: []
+// CHECK-NEXT:                     FunctionParameterList #59 @21:23..21:29 nparams=1
+// CHECK-NEXT:                       params:
+// CHECK-NEXT:                         FunctionParameterDecl #58 @21:24..21:28 name="this"
+// CHECK-NEXT:                           ty:
+// CHECK-NEXT:                             NamedTypeExpr #57 @21:24..21:28
+// CHECK-NEXT:                               path:
+// CHECK-NEXT:                                 ModulePath #56 @21:24..21:28 segments=["Self"]
+// CHECK-NEXT:                               args: []
+// CHECK-NEXT:                           default_: null
+// CHECK-NEXT:                           attrs: null
 // CHECK-NEXT:                   type_params_id: null
 // CHECK-NEXT:                   ret_ty:
-// CHECK-NEXT:                     PredefinedTypeExpr #48 @21:29..21:32 kind=Str
+// CHECK-NEXT:                     PredefinedTypeExpr #60 @21:33..21:36 kind=Str
 // CHECK-NEXT:                   raises_ty: null
 // CHECK-NEXT:                   body:
-// CHECK-NEXT:                     BlockStmt #52 @21:33..23:4
+// CHECK-NEXT:                     BlockStmt #64 @21:37..23:4
 // CHECK-NEXT:                       stmts:
-// CHECK-NEXT:                         StatementListItem #51 @22:5..22:19
+// CHECK-NEXT:                         StatementListItem #63 @22:5..22:19
 // CHECK-NEXT:                           item:
-// CHECK-NEXT:                             ReturnStmt #50 @22:5..22:19
+// CHECK-NEXT:                             ReturnStmt #62 @22:5..22:19
 // CHECK-NEXT:                               value:
-// CHECK-NEXT:                                 StrLiteral #49 @22:12..22:18 value="Woof" is_raw=false prefix=None
+// CHECK-NEXT:                                 StrLiteral #61 @22:12..22:18 value="Woof" is_raw=false prefix=None
 // CHECK-NEXT:                           attrs: null
 // CHECK-NEXT:       attrs: null

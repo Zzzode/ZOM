@@ -59,7 +59,7 @@ ModifierList ::= Modifier*
 | `protected` | Class members | Protected member visibility fact |
 | `static` | Class/struct/interface members | Belongs to type, not instances |
 | `readonly` | Struct fields, interface properties | Cannot be mutated after initialization |
-| `mutating` | Methods | May mutate `self` / `this` |
+| `mutating` | Methods | May mutate storage through an explicit `this` receiver |
 | `override` | Class methods | Overrides a superclass method |
 | `abstract` | Classes, methods | No implementation; must be overridden |
 | `export` | Module declarations | Adds a symbol to the module export surface |
@@ -104,7 +104,10 @@ Runtime bindings are block-scoped. `const` declarations are available wherever d
 
 Only `mut` bindings may be reassigned or used as mutable places, including calls that require a mutable receiver or mutable borrow. `let` bindings may be read, moved, or immutably borrowed, but may not be reassigned or mutably borrowed.
 
-For fields, `let` denotes immutable storage after object initialization. A `let` field may be definitely assigned by the owning `init` path before `this` escapes; after initialization it follows the same immutable-place rule as a local `let`.
+For fields, `let` denotes immutable storage after object initialization. A `let`
+field may be definitely assigned by an `init` callable that explicitly declares
+`this`, before that receiver escapes. After initialization it follows the same
+immutable-place rule as a local `let`.
 
 ### `mut` Declarations
 
@@ -204,6 +207,11 @@ Parameter       ::= OuterAttributeList? Identifier ':' TypeExpr Initializer?
                   | OuterAttributeList? 'this' (':' TypeExpr)?
                     (* `this` is the explicit receiver parameter and defaults to Self. *)
 ```
+
+A callable has a receiver only when its parameter clause explicitly declares
+`this`. Placement in a class, struct, error, interface, or `impl` body does not
+synthesize a receiver. A `this` expression in the callable body resolves to
+that declared parameter.
 
 ### Basic Function Declaration
 
@@ -379,12 +387,12 @@ class Person {
     let name: str;
     let age: i32;
 
-    init(name: str, age: i32) {
+    init(this, name: str, age: i32) {
         this.name = name;
         this.age = age;
     }
 
-    fun greet() -> str {
+    fun greet(this) -> str {
         return "Hello, I'm " + this.name;
     }
 }
@@ -398,23 +406,23 @@ class BankAccount {
     private mut balance: f64;
     protected let owner: str;
 
-    public init(accountNumber: str, owner: str, initialBalance: f64 = 0.0) {
+    public init(this, accountNumber: str, owner: str, initialBalance: f64 = 0.0) {
         this.accountNumber = accountNumber;
         this.owner = owner;
         this.balance = initialBalance;
     }
 
-    public fun getBalance() -> f64 {
+    public fun getBalance(this) -> f64 {
         return this.balance;
     }
 
-    public fun deposit(amount: f64) {
+    public fun deposit(this, amount: f64) {
         if (amount > 0) {
             this.balance += amount;
         }
     }
 
-    private fun validateTransaction(amount: f64) -> bool {
+    private fun validateTransaction(this, amount: f64) -> bool {
         return amount > 0 && amount <= this.balance;
     }
 }
@@ -430,16 +438,16 @@ class Animal {
     protected let name: str;
     protected let species: str;
 
-    init(name: str, species: str) {
+    init(this, name: str, species: str) {
         this.name = name;
         this.species = species;
     }
 
-    fun makeSound() -> str {
+    fun makeSound(this) -> str {
         return "Some generic animal sound";
     }
 
-    fun getInfo() -> str {
+    fun getInfo(this) -> str {
         return this.name + " is a " + this.species;
     }
 }
@@ -448,16 +456,16 @@ class Animal {
 class Dog: Animal {
     private let breed: str;
 
-    init(name: str, breed: str) {
+    init(this, name: str, breed: str) {
         super(name, "Dog");
         this.breed = breed;
     }
 
-    override fun makeSound() -> str {
+    override fun makeSound(this) -> str {
         return "Woof!";
     }
 
-    fun getBreed() -> str {
+    fun getBreed(this) -> str {
         return this.breed;
     }
 }
@@ -469,16 +477,16 @@ class Dog: Animal {
 abstract class Shape {
     protected let color: str;
 
-    public init(color: str) {
+    public init(this, color: str) {
         this.color = color;
     }
 
     // Abstract method — must be implemented by subclasses
-    abstract public fun area() -> f64;
-    abstract public fun perimeter() -> f64;
+    abstract public fun area(this) -> f64;
+    abstract public fun perimeter(this) -> f64;
 
     // Concrete method
-    public fun getColor() -> str {
+    public fun getColor(this) -> str {
         return this.color;
     }
 }
@@ -486,16 +494,16 @@ abstract class Shape {
 class Circle: Shape {
     private let radius: f64;
 
-    public init(color: str, radius: f64) {
+    public init(this, color: str, radius: f64) {
         super(color);
         this.radius = radius;
     }
 
-    override public fun area() -> f64 {
+    override public fun area(this) -> f64 {
         return 3.14159 * this.radius * this.radius;
     }
 
-    override public fun perimeter() -> f64 {
+    override public fun perimeter(this) -> f64 {
         return 2.0 * 3.14159 * this.radius;
     }
 }
@@ -507,20 +515,20 @@ class Circle: Shape {
 class Temperature {
     private mut celsius: f64;
 
-    init(celsius: f64) {
+    init(this, celsius: f64) {
         this.celsius = celsius;
     }
 
     // Read-only computed property
-    get fahrenheit() -> f64 {
+    get fahrenheit(this) -> f64 {
         return this.celsius * 9.0 / 5.0 + 32.0;
     }
 
     // Computed property with getter and setter
-    get kelvin() -> f64 {
+    get kelvin(this) -> f64 {
         return this.celsius + 273.15;
     }
-    set kelvin(value: f64) {
+    set kelvin(this, value: f64) {
         this.celsius = value - 273.15;
     }
 }
@@ -532,19 +540,19 @@ class Temperature {
 class Stack<T> {
     private let items: T[] = [];
 
-    fun push(item: T) {
+    fun push(this, item: T) {
         this.items.push(item);
     }
 
-    fun pop() -> T? {
+    fun pop(this) -> T? {
         return this.items.pop();
     }
 
-    fun peek() -> T? {
+    fun peek(this) -> T? {
         return this.items.length > 0 ? this.items[this.items.length - 1] : null;
     }
 
-    fun isEmpty() -> bool {
+    fun isEmpty(this) -> bool {
         return this.items.length == 0;
     }
 }
@@ -553,12 +561,12 @@ class Stack<T> {
 class SortedList<T: Comparable> {
     private let items: T[] = [];
 
-    fun add(item: T) {
+    fun add(this, item: T) {
         let index = this.findInsertionPoint(item);
         this.items.insert(index, item);
     }
 
-    private fun findInsertionPoint(item: T) -> i32 {
+    private fun findInsertionPoint(this, item: T) -> i32 {
         mut left = 0;
         mut right = this.items.length;
 
@@ -581,11 +589,11 @@ class SortedList<T: Comparable> {
 class Resource {
     private let handle: *mut u8;
 
-    init() {
+    init(this) {
         this.handle = unsafe { allocate_memory(1024) };
     }
 
-    deinit() {
+    deinit(this) {
         unsafe { free_memory(this.handle) };
     }
 }
@@ -660,11 +668,11 @@ struct Vector2D {
     x: f64,
     y: f64;
 
-    fun length() -> f64 {
+    fun length(this) -> f64 {
         return sqrt(this.x * this.x + this.y * this.y);
     }
 
-    fun normalize() -> Vector2D {
+    fun normalize(this) -> Vector2D {
         let len = this.length();
         return Vector2D { x: this.x / len, y: this.y / len };
     }
@@ -679,13 +687,13 @@ struct Person {
     readonly age: i32;
     mut email: str?;
 
-    init(name: str, age: i32) {
+    init(this, name: str, age: i32) {
         this.name = name;
         this.age = age;
         this.email = null;
     }
 
-    init(name: str, age: i32, email: str) {
+    init(this, name: str, age: i32, email: str) {
         this.name = name;
         this.age = age;
         this.email = email;
@@ -727,8 +735,8 @@ CallSignature     ::= TypeParameters? FunctionSignature
 
 ```zom
 interface Drawable {
-    fun draw();
-    fun getBounds() -> Rectangle;
+    fun draw(this);
+    fun getBounds(this) -> Rectangle;
 }
 ```
 
@@ -736,8 +744,8 @@ interface Drawable {
 
 ```zom
 interface Named {
-    get name() -> str;
-    readonly get id() -> i64;
+    get name(this) -> str;
+    readonly get id(this) -> i64;
 }
 ```
 
@@ -745,11 +753,11 @@ interface Named {
 
 ```zom
 interface Shape {
-    readonly get area() -> f64;
-    readonly get perimeter() -> f64;
+    readonly get area(this) -> f64;
+    readonly get perimeter(this) -> f64;
 
-    fun scale(factor: f64);
-    fun contains(point: Point) -> bool;
+    fun scale(this, factor: f64);
+    fun contains(this, point: Point) -> bool;
 }
 ```
 
@@ -757,10 +765,10 @@ interface Shape {
 
 ```zom
 interface Container<T> {
-    fun add(item: T);
-    fun remove(item: T) -> bool;
-    fun contains(item: T) -> bool;
-    fun size() -> i32;
+    fun add(this, item: T);
+    fun remove(this, item: T) -> bool;
+    fun contains(this, item: T) -> bool;
+    fun size(this) -> i32;
 }
 ```
 
@@ -771,13 +779,13 @@ Interface inheritance uses the colon (`:`) syntax with `+` for multiple super-in
 ```zom
 // Single super-interface
 interface ColoredShape: Shape {
-    get color() -> Color;
-    fun changeColor(newColor: Color);
+    get color(this) -> Color;
+    fun changeColor(this, newColor: Color);
 }
 
 // Multiple super-interfaces (conjunction via '+')
 interface NamedShape: Named + Shape {
-    fun getDisplayName() -> str;
+    fun getDisplayName(this) -> str;
 }
 ```
 
@@ -785,8 +793,8 @@ interface NamedShape: Named + Shape {
 
 ```zom
 interface Configurable {
-    fun configure(options: ConfigOptions);
-    fun reset();
+    fun configure(this, options: ConfigOptions);
+    fun reset(this);
 }
 ```
 
@@ -796,16 +804,16 @@ interface Configurable {
 interface Iterator {
     type Item;   // Associated type
 
-    fun next() -> Self::Item?;
-    fun hasNext() -> bool;
+    fun next(this) -> Self::Item?;
+    fun hasNext(this) -> bool;
 }
 
 interface Collection {
     type Element;
     type Iter: Iterator;
 
-    fun iter() -> Self::Iter;
-    fun count() -> i32;
+    fun iter(this) -> Self::Iter;
+    fun count(this) -> i32;
 }
 ```
 
@@ -984,8 +992,8 @@ MarkerImplPath ::= AttrPath | BindingIdent
 
 ```zom
 interface Drawable {
-    fun draw();
-    fun getBounds() -> Rectangle;
+    fun draw(this);
+    fun getBounds(this) -> Rectangle;
 }
 
 class Button {
@@ -993,7 +1001,7 @@ class Button {
     let size: Size;
     let text: str;
 
-    init(position: Point, size: Size, text: str) {
+    init(this, position: Point, size: Size, text: str) {
         this.position = position;
         this.size = size;
         this.text = text;
@@ -1001,11 +1009,11 @@ class Button {
 }
 
 impl Drawable for Button {
-    public fun draw() {
+    public fun draw(this) {
         print("Drawing button: " + this.text);
     }
 
-    public fun getBounds() -> Rectangle {
+    public fun getBounds(this) -> Rectangle {
         return Rectangle(this.position, this.size);
     }
 }
@@ -1016,15 +1024,15 @@ impl Drawable for Button {
 ```zom
 interface Iterator {
     type Item;
-    fun next() -> Self::Item?;
-    fun hasNext() -> bool;
+    fun next(this) -> Self::Item?;
+    fun hasNext(this) -> bool;
 }
 
 struct VecIter<T> {
     readonly data: T[];
     mut index: i32;
 
-    init(data: T[]) {
+    init(this, data: T[]) {
         this.data = data;
         this.index = 0;
     }
@@ -1033,14 +1041,14 @@ struct VecIter<T> {
 impl<T> Iterator for VecIter<T> {
     type Item = T;
 
-    fun next() -> T? {
+    fun next(this) -> T? {
         if (this.index >= this.data.length) return null;
         let value = this.data[this.index];
         this.index += 1;
         return value;
     }
 
-    fun hasNext() -> bool {
+    fun hasNext(this) -> bool {
         return this.index < this.data.length;
     }
 }

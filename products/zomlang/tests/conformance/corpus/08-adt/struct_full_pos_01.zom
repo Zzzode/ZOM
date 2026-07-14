@@ -5,7 +5,9 @@ export struct Vec3<T: numeric> {
     public mut x: T;
     public mut y: T;
     readonly z: T;
-    init(x: T, y: T, z: T) { self.x = x; self.y = y; self.z = z; }
-    deinit() {}
-    fun dot(other: Vec3<T>) -> T { return self.x * other.x + self.y * other.y + self.z * other.z; }
+    init(this, x: T, y: T, z: T) { this.x = x; this.y = y; this.z = z; }
+    deinit(this) {}
+    fun dot(this, other: Vec3<T>) -> T {
+        return this.x * other.x + this.y * other.y + this.z * other.z;
+    }
 }

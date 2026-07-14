@@ -164,8 +164,8 @@ ConstExpression ::= AssignmentExpression
 
 (* `mut` and `let` are runtime bindings. Only `mut` may be reassigned or used
    as a mutable place. `const` is a compile-time value and has no stable
-   storage address. A `let` field may be definitely assigned by its owning
-   `init` path before `this` escapes; after initialization it is immutable. *)
+   storage address. A `let` field may be definitely assigned by an `init`
+   callable that explicitly declares `this`, before that receiver escapes. *)
 
 FunctionDeclaration ::= ModifierList 'fun' BindingIdentifier TypeParameters?
                         FunctionSignature WhereClause? (BlockStatement | ';')
@@ -340,6 +340,8 @@ ParameterClause ::= '(' ParameterList? ')'
 ParameterList ::= Parameter (',' Parameter)* ','?
 Parameter ::= OuterAttributeList? Identifier ':' TypeExpression Initializer?
             | OuterAttributeList? 'this' (':' TypeExpression)?
+    (* The second form is the only receiver declaration. A containing type or
+       impl declaration does not synthesize a receiver. *)
 RaisesClause ::= 'raises' TypeExpression
     (* Multiple error types are written as a union type expression.
        Example: 'fun f() -> T raises IoError | ParseError | ZOM80xx'

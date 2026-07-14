@@ -1,11 +1,11 @@
 class Animal {
   public let name: str;
 
-  init(n: str) {
+  init(this, n: str) {
     this.name = n;
   }
 
-  public fun makeSound() -> str {
+  public fun makeSound(this) -> str {
     return "noise";
   }
 }
@@ -13,12 +13,12 @@ class Animal {
 class Dog : Animal {
   private let breed: str;
 
-  init(n: str, b: str) {
+  init(this, n: str, b: str) {
     super.init(n);
     this.breed = b;
   }
 
-  public fun makeSound() -> str {
+  public fun makeSound(this) -> str {
     return "Woof";
   }
 }

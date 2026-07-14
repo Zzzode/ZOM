@@ -3,6 +3,9 @@
 ## Classes
 
 Classes are reference types that support inheritance, polymorphism, and encapsulation.
+A class or struct member is instance-bound only when its parameter clause
+explicitly declares `this`. The member body may resolve a `this` expression
+only to that declared receiver parameter.
 
 ### Class Definition
 
@@ -13,22 +16,22 @@ class Vehicle {
     protected let year: i32;
     private let vin: str;
 
-    public init(make: str, model: str, year: i32, vin: str) {
+    public init(this, make: str, model: str, year: i32, vin: str) {
         this.make = make;
         this.model = model;
         this.year = year;
         this.vin = vin;
     }
 
-    public fun getInfo() -> str {
+    public fun getInfo(this) -> str {
         return this.year.toString() + " " + this.make + " " + this.model;
     }
 
-    public fun start() {
+    public fun start(this) {
         print("Starting " + this.getInfo());
     }
 
-    protected fun getVin() -> str {
+    protected fun getVin(this) -> str {
         return this.vin;
     }
 }
@@ -41,18 +44,18 @@ class Car : Vehicle {
     private let doors: i32;
     private let fuelType: str;
 
-    public init(make: str, model: str, year: i32, vin: str, doors: i32, fuelType: str) {
+    public init(this, make: str, model: str, year: i32, vin: str, doors: i32, fuelType: str) {
         super(make, model, year, vin);
         this.doors = doors;
         this.fuelType = fuelType;
     }
 
-    override public fun start() {
+    override public fun start(this) {
         print("Turning key...");
         super.start();
     }
 
-    public fun getDoors() -> i32 {
+    public fun getDoors(this) -> i32 {
         return this.doors;
     }
 }
@@ -64,20 +67,20 @@ class Car : Vehicle {
 abstract class Shape {
     protected let color: str;
 
-    public init(color: str) {
+    public init(this, color: str) {
         this.color = color;
     }
 
     // Abstract method - must be implemented by subclasses
-    abstract public fun area() -> f64;
-    abstract public fun perimeter() -> f64;
+    abstract public fun area(this) -> f64;
+    abstract public fun perimeter(this) -> f64;
 
     // Concrete method
-    public fun getColor() -> str {
+    public fun getColor(this) -> str {
         return this.color;
     }
 
-    public fun describe() -> str {
+    public fun describe(this) -> str {
         return "A " + this.color + " shape with area " + this.area().toString();
     }
 }
@@ -85,16 +88,16 @@ abstract class Shape {
 class Circle : Shape {
     private let radius: f64;
 
-    public init(color: str, radius: f64) {
+    public init(this, color: str, radius: f64) {
         super(color);
         this.radius = radius;
     }
 
-    override public fun area() -> f64 {
+    override public fun area(this) -> f64 {
         return 3.14159 * this.radius * this.radius;
     }
 
-    override public fun perimeter() -> f64 {
+    override public fun perimeter(this) -> f64 {
         return 2.0 * 3.14159 * this.radius;
     }
 }
@@ -104,37 +107,37 @@ class Circle : Shape {
 
 ```zom
 class Rectangle {
-    private let _width: f64;
-    private let _height: f64;
+    private mut _width: f64;
+    private mut _height: f64;
 
-    public init(width: f64, height: f64) {
+    public init(this, width: f64, height: f64) {
         this._width = width;
         this._height = height;
     }
 
     // Getter property
-    public get width() -> f64 {
+    public get width(this) -> f64 {
         return this._width;
     }
 
     // Setter property
-    public set width(value: f64) {
+    public set width(this, value: f64) {
         if (value > 0) {
             this._width = value;
         }
     }
 
     // Read-only computed property
-    public get area() -> f64 {
+    public get area(this) -> f64 {
         return this._width * this._height;
     }
 
     // Property with both getter and setter
-    public get height() -> f64 {
+    public get height(this) -> f64 {
         return this._height;
     }
 
-    public set height(value: f64) {
+    public set height(this, value: f64) {
         if (value > 0) {
             this._height = value;
         }
@@ -168,20 +171,20 @@ struct Vector3D {
     y: f64,
     z: f64,
 
-    fun length() -> f64 {
+    fun length(this) -> f64 {
         return sqrt(this.x * this.x + this.y * this.y + this.z * this.z);
     }
 
-    fun normalize() -> Vector3D {
+    fun normalize(this) -> Vector3D {
         let len = this.length();
         return Vector3D(this.x / len, this.y / len, this.z / len);
     }
 
-    fun dot(other: Vector3D) -> f64 {
+    fun dot(this, other: Vector3D) -> f64 {
         return this.x * other.x + this.y * other.y + this.z * other.z;
     }
 
-    fun cross(other: Vector3D) -> Vector3D {
+    fun cross(this, other: Vector3D) -> Vector3D {
         return Vector3D(
             this.y * other.z - this.z * other.y,
             this.z * other.x - this.x * other.z,
@@ -191,21 +194,21 @@ struct Vector3D {
 }
 ```
 
-### Struct with Computed Properties
+### Struct Derived-Value Methods
 
 ```zom
 struct Circle {
     radius: f64,
 
-    get area() -> f64 {
+    fun area(this) -> f64 {
         return 3.14159 * this.radius * this.radius;
     }
 
-    get circumference() -> f64 {
+    fun circumference(this) -> f64 {
         return 2.0 * 3.14159 * this.radius;
     }
 
-    get diameter() -> f64 {
+    fun diameter(this) -> f64 {
         return 2.0 * this.radius;
     }
 }
@@ -215,17 +218,17 @@ struct Circle {
 
 ```zom
 struct Counter {
-    mutable value: i32,
+    mut value: i32,
 
-    fun increment() {
+    fun increment(this) {
         this.value += 1;
     }
 
-    fun decrement() {
+    fun decrement(this) {
         this.value -= 1;
     }
 
-    fun reset() {
+    fun reset(this) {
         this.value = 0;
     }
 }

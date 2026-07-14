@@ -1,0 +1,5 @@
+section: "Section 8.2 Explicit Class Receivers"
+covers_rule: "classMethod, classCtor, classProperty"
+expected: "ACCEPT"
+notes:
+  - "Initializers, deinitializers, getters, and setters declare this explicitly; static methods do not."

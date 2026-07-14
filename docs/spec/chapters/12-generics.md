@@ -29,19 +29,22 @@ fun parseValue<T = str>(input: str) -> T? {
 
 ### Generic Classes
 
+Generic class and interface instance members explicitly declare `this` in
+their parameter clause.
+
 ```zom
 class Box<T> {
     private let value: T;
 
-    public init(value: T) {
+    public init(this, value: T) {
         this.value = value;
     }
 
-    public fun getValue() -> T {
+    public fun getValue(this) -> T {
         return this.value;
     }
 
-    public fun map<U>(transform: (T) -> U) -> Box<U> {
+    public fun map<U>(this, transform: (T) -> U) -> Box<U> {
         return Box(transform(this.value));
     }
 }
@@ -55,15 +58,15 @@ let stringBox = intBox.map(fun (x: i32) -> str { return x.toString(); });
 
 ```zom
 interface Comparable<T> {
-    fun compareTo(other: T) -> i32;
+    fun compareTo(this, other: T) -> i32;
 }
 
 interface Functor<T> {
-    fun map<U>(transform: (T) -> U) -> Functor<U>;
+    fun map<U>(this, transform: (T) -> U) -> Functor<U>;
 }
 
 interface Monad<T> : Functor<T> {
-    fun flatMap<U>(transform: (T) -> Monad<U>) -> Monad<U>;
+    fun flatMap<U>(this, transform: (T) -> Monad<U>) -> Monad<U>;
 }
 ```
 
@@ -188,16 +191,16 @@ contravariant, and return and raises members are covariant. See
 interface Iterator<T> {
     type Item = T;
 
-    fun next() -> Item?;
-    fun hasNext() -> bool;
+    fun next(this) -> Item?;
+    fun hasNext(this) -> bool;
 }
 
 interface Collection<T> {
     type Iterator: Iterator<T>;
     type Item = T;
 
-    fun iterator() -> Iterator;
-    fun size() -> i32;
+    fun iterator(this) -> Iterator;
+    fun size(this) -> i32;
 }
 ```
 
@@ -206,20 +209,11 @@ interface Collection<T> {
 ```zom
 enum Option<T> {
     Some(T),
-    None,
+    None
+}
 
-    fun map<U>(transform: (T) -> U) -> Option<U> {
-        match (this) {
-            when Some(value) => { return Some(transform(value)); }
-            when None => { return None; }
-        }
-    }
-
-    fun flatMap<U>(transform: (T) -> Option<U>) -> Option<U> {
-        match (this) {
-            when Some(value) => { return transform(value); }
-            when None => { return None; }
-        }
-    }
+enum Result<T, E> {
+    Success(T),
+    Failure(E)
 }
 ```

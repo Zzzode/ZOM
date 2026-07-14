@@ -1,5 +1,5 @@
 struct Connection {
     fd: i32;
-    init(path: str) raises IoError { self.fd = 0; }
-    deinit() raises IoError { }
+    init(this, path: str) raises IoError { this.fd = 0; }
+    deinit(this) raises IoError { }
 }

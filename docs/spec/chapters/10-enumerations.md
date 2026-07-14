@@ -35,31 +35,9 @@ enum Option<T> {
 
 enum Message {
     Text(str),
-    Image { url: str, width: i32, height: i32 },
-    Video { url: str, duration: f64 },
-    Audio { url: str, duration: f64 }
-}
-```
-
-### Enum Methods
-
-```zom
-enum Color {
-    Red = 0xFF0000,
-    Green = 0x00FF00,
-    Blue = 0x0000FF,
-
-    fun toHex() -> str {
-        return "#" + this.value.toString(16).padStart(6, '0');
-    }
-
-    fun toRgb() -> (u8, u8, u8) {
-        let value = this.value;
-        let r = (value >> 16) & 0xFF;
-        let g = (value >> 8) & 0xFF;
-        let b = value & 0xFF;
-        return (r as u8, g as u8, b as u8);
-    }
+    Image(str, i32, i32),
+    Video(str, f64),
+    Audio(str, f64)
 }
 ```
 
@@ -82,13 +60,13 @@ fun handleMessage(message: Message) {
         when Text(content) => {
             print("Text message: " + content);
         }
-        when Image { url, width, height } => {
+        when Image(url, width, height) => {
             print("Image: " + url + " (" + width + "x" + height + ")");
         }
-        when Video { url, duration } => {
+        when Video(url, duration) => {
             print("Video: " + url + " (" + duration + "s)");
         }
-        when Audio { url, duration } => {
+        when Audio(url, duration) => {
             print("Audio: " + url + " (" + duration + "s)");
         }
     }

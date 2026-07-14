@@ -1,6 +1,6 @@
 export interface Iterator<T> : Iterable {
     type Item;
     type Index = u64;
-    fun next() -> Option<Self.Item>;
-    get current() -> Self.Item;
+    fun next(this) -> Option<Self.Item>;
+    get current(this) -> Self.Item;
 }

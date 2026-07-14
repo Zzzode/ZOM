@@ -34,14 +34,17 @@ SOME_CONSTANT   // Constant reference
 
 ### `this` Expression
 
-Refers to the current instance in class methods:
+`this` resolves only inside a callable that declares an explicit `this`
+receiver parameter. It names that receiver. A nested closure may use the
+receiver only through the capture rules in this chapter; a named function
+without its own receiver does not inherit one.
 
 ```zom
 class Point {
     let x: f64;
     let y: f64;
 
-    fun distanceFromOrigin() -> f64 {
+    fun distanceFromOrigin(this) -> f64 {
         return sqrt(this.x * this.x + this.y * this.y);
     }
 }
@@ -99,8 +102,8 @@ let shorthand = { name, age }; // Same as { name: name, age: age }
 // Object with function-valued properties (not method syntax)
 let calculator = {
     value: 0,
-    add: fun(x: i32) { this.value += x; },
-    result: fun() -> i32 { return this.value; }
+    add: fun(current: i32, x: i32) -> i32 { return current + x; },
+    result: fun(current: i32) -> i32 { return current; }
 };
 
 // Spread properties
@@ -108,7 +111,7 @@ let base = { a: 1, b: 2 };
 let extended = { ...base, c: 3 }; // { a: 1, b: 2, c: 3 }
 ```
 
-> **Note:** Object literals in ZOM are pure records. Method shorthand (`{ m() {} }`) and computed keys (`{ [expr]: v }`) are not valid syntax. To attach behavior to an object, use function-valued properties as shown above, or define methods in a class body or `impl` block.
+> **Note:** Object literals in ZOM are pure records. Method shorthand (`{ m() {} }`) and computed keys (`{ [expr]: v }`) are not valid syntax. Function-valued properties do not synthesize a receiver. To attach receiver-based behavior, define a callable with an explicit `this` receiver in a class body or `impl` block.
 
 ### Struct Literals
 
@@ -409,7 +412,7 @@ The capture clause is an explicit capture set:
 
 - `name` captures the enclosing lexical binding by value.
 - `&name` captures the enclosing lexical binding by reference.
-- `this` captures the current instance receiver.
+- `this` captures the nearest enclosing explicitly declared receiver.
 
 The `this` form is valid only when a receiver is in scope. `&this` is not valid;
 receiver capture is always written as `this`. Capture entries name bindings in

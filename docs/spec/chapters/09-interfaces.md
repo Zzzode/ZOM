@@ -4,6 +4,9 @@ Interfaces define contracts that types can implement, enabling polymorphism and
 code reuse without coupling behavior to a class hierarchy. An interface
 declares method signatures, accessor signatures, and associated type
 requirements. A type implements an interface through an `impl I for T` block.
+An interface member has an instance dispatch target only when its parameter
+clause explicitly declares `this`; the interface body does not synthesize a
+receiver.
 
 ## 9.1 Basic Interface Declaration
 
@@ -11,13 +14,13 @@ An interface declaration introduces a new nominal interface type. The declaratio
 
 ```zom
 interface Drawable {
-    fun draw();
-    get bounds() -> Rectangle;
+    fun draw(this);
+    get bounds(this) -> Rectangle;
 }
 
 interface Movable {
-    fun move(deltaX: f64, deltaY: f64);
-    get position() -> Point;
+    fun move(this, deltaX: f64, deltaY: f64);
+    get position(this) -> Point;
 }
 ```
 
@@ -35,7 +38,7 @@ declaration.
 
 ```zom
 export interface Container<T> : Iterable {
-    fun size() -> i32;
+    fun size(this) -> i32;
 }
 ```
 
@@ -43,10 +46,10 @@ Individual interface members may also carry visibility modifiers (`private`, `pr
 
 ```zom
 interface MixedAccess {
-    protected fun helper();
-    protected get context() -> Context;
-    fun publicOp();
-    get id() -> u64;
+    protected fun helper(this);
+    protected get context(this) -> Context;
+    fun publicOp(this);
+    get id(this) -> u64;
 }
 ```
 
@@ -56,19 +59,19 @@ An interface may inherit from one or more super-interfaces using the colon (`:`)
 
 ```zom
 interface ReadableStream {
-    fun read(buffer: u8[], offset: i32, length: i32) -> i32;
-    fun close();
+    fun read(this, buffer: u8[], offset: i32, length: i32) -> i32;
+    fun close(this);
 }
 
 interface WritableStream {
-    fun write(buffer: u8[], offset: i32, length: i32) -> i32;
-    fun flush();
-    fun close();
+    fun write(this, buffer: u8[], offset: i32, length: i32) -> i32;
+    fun flush(this);
+    fun close(this);
 }
 
 interface ReadWriteStream : ReadableStream + WritableStream {
-    fun seek(position: i64);
-    get position() -> i64;
+    fun seek(this, position: i64);
+    get position(this) -> i64;
 }
 ```
 
@@ -80,7 +83,7 @@ Generic interfaces may inherit from other generic interfaces with type arguments
 
 ```zom
 interface Numeric<T> : Comparable<T> + Hash<T> {
-    fun add(other: T) -> T;
+    fun add(this, other: T) -> T;
 }
 ```
 
@@ -94,8 +97,8 @@ A method signature declares the name, parameter list, and optional return type o
 
 ```zom
 interface Writer {
-    fun write_bytes(data: u8[]) -> i32;
-    fun flush();
+    fun write_bytes(this, data: u8[]) -> i32;
+    fun flush(this);
 }
 ```
 
@@ -103,9 +106,9 @@ Methods may carry the `mutating` modifier to indicate that the call mutates the 
 
 ```zom
 interface Counter {
-    mutating fun inc();
-    mutating fun reset();
-    get value() -> i64;
+    mutating fun inc(this);
+    mutating fun reset(this);
+    get value(this) -> i64;
 }
 ```
 
@@ -113,8 +116,8 @@ The `override` modifier is permitted on a method signature when the interface re
 
 ```zom
 interface OverrideReadonly {
-    override fun toString() -> str;
-    readonly get tag() -> str;
+    override fun toString(this) -> str;
+    readonly get tag(this) -> str;
 }
 ```
 
@@ -124,10 +127,10 @@ Property signatures declare getter and setter requirements using the `get` and `
 
 ```zom
 interface UserRecord {
-    get id() -> u64;
-    get name() -> str;
-    set name(v: str);
-    set email(v: str);
+    get id(this) -> u64;
+    get name(this) -> str;
+    set name(this, v: str);
+    set email(this, v: str);
 }
 ```
 
@@ -135,8 +138,8 @@ The `readonly` modifier on a `get` signature indicates that the property is read
 
 ```zom
 interface Named {
-    readonly get name() -> str;
-    readonly get id() -> u64;
+    readonly get name(this) -> str;
+    readonly get id(this) -> u64;
 }
 ```
 
@@ -183,11 +186,11 @@ A standalone impl declaration uses the keyword `impl` followed by an interface b
 
 ```zom
 impl Drawable for Button {
-    fun draw() {
+    fun draw(this) {
         print("Drawing " + this.text);
     }
 
-    fun bounds() -> Rectangle {
+    fun bounds(this) -> Rectangle {
         return Rectangle(this.position, this.size);
     }
 }
@@ -210,11 +213,11 @@ class ByteReader {
 impl Iterator for ByteReader {
     type Item = u8;
 
-    fun hasNext() -> bool {
+    fun hasNext(this) -> bool {
         return this.pos < this.buf.length;
     }
 
-    fun next() -> u8? {
+    fun next(this) -> u8? {
         if (!this.hasNext()) { return null; }
         let byte = this.buf[this.pos];
         this.pos = this.pos + 1;
@@ -229,7 +232,7 @@ Generic standalone impls may use a `where`-clause to constrain type parameters:
 
 ```zom
 impl<T> Debug for Vec<T> where T: Debug {
-    fun fmt(f: &mut Formatter) {
+    fun fmt(this, f: &mut Formatter) {
         f.write_char('[');
         for (mut i = 0; i < this.length; i = i + 1) {
             if (i > 0) { f.write_str(", "); }
@@ -317,22 +320,22 @@ Under IR-1, `D` inherits `foo()` from `A` without conflict. For `bar()`, both `B
 When a type implements multiple interfaces that share a method name, the user may disambiguate inside the implementing class body by invoking a specific interface's method using the `InterfaceName::method` qualified-call form:
 
 ```zom
-interface IBase { fun foo() -> str; }
-interface IA : IBase { fun bar() -> str; }
-interface IB : IBase { fun baz() -> str; }
+interface IBase { fun foo(this) -> str; }
+interface IA : IBase { fun bar(this) -> str; }
+interface IB : IBase { fun baz(this) -> str; }
 
 class C {
     let data: str;
 }
 
 impl IA for C {
-    fun foo() -> str { return "IA: " + this.data; }
-    fun bar() -> str { return this.foo(); }
+    fun foo(this) -> str { return "IA: " + this.data; }
+    fun bar(this) -> str { return this.foo(); }
 }
 
 impl IB for C {
-    fun foo() -> str { return "IB: " + this.data; }
-    fun baz() -> str { return IB::foo(this); }
+    fun foo(this) -> str { return "IB: " + this.data; }
+    fun baz(this) -> str { return IB::foo(this); }
 }
 ```
 
@@ -354,7 +357,7 @@ flowchart TD
     OS1 -->|Yes| E1[ZOM4001 DynGenericMethod]
     OS1 -->|No| OS2{"OS-2: Any method returning<br/>bare Self?"}
     OS2 -->|Yes| E2[ZOM4002 DynSelfReturn]
-    OS2 -->|No| OS3{"OS-3: Any method with move self<br/>#[zom::param::move]?"}
+    OS2 -->|No| OS3{"OS-3: Any receiver with<br/>#[zom::param::move]?"}
     OS3 -->|Yes| E3[ZOM4003 DynMoveSelf]
     OS3 -->|No| OS4{"OS-4: All associated types<br/>bound in dyn head?"}
     OS4 -->|No| E4[ZOM4004 DynUnassociatedType]
@@ -376,7 +379,7 @@ If `I : J` and `I` is object-safe, every superinterface `J` must also be object-
 Methods may not introduce their own type parameters. Each distinct instantiation would otherwise require a fresh vtable slot and the set of instantiations is unbounded.
 
 ```zom
-interface X { fun map<T>(f: fun(Self)->T) -> T; }   // ZOM4001 DynGenericMethod
+interface X { fun map<T>(this, f: fun(Self)->T) -> T; }   // ZOM4001 DynGenericMethod
 ```
 
 ### 9.6.4 OS-2 No Methods Returning Bare Self
@@ -384,12 +387,12 @@ interface X { fun map<T>(f: fun(Self)->T) -> T; }   // ZOM4001 DynGenericMethod
 `Self` (the concrete implementing type) cannot be returned by value because its size is not statically known behind `dyn`. `Self?` is allowed only because the `dyn` calling convention lowers it as an explicit nullable union whose success payload is materialized behind the erased data pointer. The source type remains `Self | null`; the pointer-sized representation is a dyn ABI lowering detail, not the general layout of every nullable union.
 
 ```zom
-interface Cloneable { fun clone() -> Self; }           // ZOM4002 DynSelfReturn
+interface Cloneable { fun clone(this) -> Self; }        // ZOM4002 DynSelfReturn
 ```
 
 ### 9.6.5 OS-3 No Move-Consume Self
 
-A receiver with the linear move attribute, `fun consume(#[zom::param::move] this)`, is forbidden. Linear move of a `dyn I` receiver requires compile-time known size, which is not available. Allowed receivers are `borrow this`, `&mut this`, and `self` passed by non-move reference.
+A receiver with the linear move attribute, `fun consume(#[zom::param::move] this)`, is forbidden. Linear move of a `dyn I` receiver requires compile-time known size, which is not available. An explicit `this` receiver without that attribute remains eligible for object-safety analysis.
 
 ```zom
 interface Consumable { fun consume(#[zom::param::move] this); }   // ZOM4003 DynMoveSelf
@@ -406,7 +409,7 @@ let it_ok: dyn Iterator<Item = u8> = make_iter();         // OK
 
 ### 9.6.7 OS-5 No Static Methods
 
-A method lacking any form of `this` receiver has no dispatch target in the
+A method lacking an explicit `this` receiver has no dispatch target in the
 vtable. Such methods remain callable through the qualified path
 `I::static_method()` on the interface itself, but their presence makes the
 interface ineligible for `dyn I`.
@@ -435,8 +438,8 @@ A minimal object-safe interface:
 
 ```zom
 interface Writer {
-    fun write_bytes(data: u8[]) -> i32;
-    fun flush();
+    fun write_bytes(this, data: u8[]) -> i32;
+    fun flush(this);
 }
 
 fun write_all(w: &mut dyn Writer, data: u8[]) {
@@ -453,7 +456,7 @@ A dyn-compatible interface combined with marker bounds for cross-thread safety:
 
 ```zom
 interface RpcHandler {
-    fun handle(req: Request) -> Response;
+    fun handle(this, req: Request) -> Response;
 }
 
 fun dispatch(h: &(dyn RpcHandler + Sendable + Shared), req: Request) -> Response {

@@ -548,7 +548,7 @@ let circle: dyn Drawable + Sendable = Circle(radius: 5.0);
 let shape: dyn Shape + Sendable = circle;  // zero-cost upcast if Drawable inherits Shape
 ```
 
-**Downcasting.** `dyn I.is<T>()` and `dyn I.downcast<T>()` are **not** part of ZOM v1. Users who need runtime type recovery on a specific interface hierarchy should declare an explicit `as_any() -> any` method on that interface. See [Chapter 9](09-interfaces.md) for object safety rules.
+**Downcasting.** `dyn I.is<T>()` and `dyn I.downcast<T>()` are **not** part of ZOM. Users who need runtime type recovery on a specific interface hierarchy should declare an explicit `as_any() -> any` method on that interface. See [Chapter 9](09-interfaces.md) for object safety rules.
 
 **Variance.** Type parameters inside an interface are **invariant** by default when instantiated as a `dyn` type. Covariance or contravariance requires explicit `#[zom::variance(...)]` on the interface declaration. See [Chapter 12](12-generics.md).
 
@@ -559,12 +559,12 @@ Associated types are type members of interfaces that are determined by the imple
 ```zom
 interface Iterator {
     type Item;
-    fun next(self: &mut Self) -> Option<Self::Item>;
+    fun next(this: &mut Self) -> Option<Self::Item>;
 }
 
 impl Iterator for VecIter<T> {
     type Item = T;
-    fun next(self: &mut Self) -> Option<T> { ... }
+    fun next(this: &mut Self) -> Option<T> { ... }
 }
 ```
 

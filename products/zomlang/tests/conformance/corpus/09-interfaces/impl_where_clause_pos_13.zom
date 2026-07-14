@@ -1,5 +1,5 @@
 interface Eq {
-    fun eq(rhs: Self) -> bool;
+    fun eq(this, rhs: Self) -> bool;
 }
 
 class Box<T> {
@@ -7,5 +7,5 @@ class Box<T> {
 }
 
 impl<T> Eq for Box<T> where T: Eq {
-    fun eq(rhs: Box<T>) -> bool;
+    fun eq(this, rhs: Box<T>) -> bool;
 }

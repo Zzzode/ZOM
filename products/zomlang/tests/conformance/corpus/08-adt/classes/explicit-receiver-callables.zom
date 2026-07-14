@@ -1,0 +1,9 @@
+class ReceiverSurface {
+  init(this, value: i32) { return; }
+  deinit(this) {}
+
+  get value(this) -> i32 { return 0; }
+  set value(this, value: i32) { return; }
+
+  static fun create() -> unit {}
+}
