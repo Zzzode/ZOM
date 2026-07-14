@@ -51,6 +51,7 @@ struct BindingMetadataCandidate final {
   zc::Vector<ControlTransferFact> controlTransfers;
   zc::Vector<ShadowTargetFact> shadowTargets;
   zc::Vector<ClosureFreeVariableFact> closureFreeVariables;
+  zc::Vector<ExplicitClosureCaptureFact> explicitClosureCaptures;
   ExportSurfaceCandidate currentSurface;
 
 private:

@@ -28,7 +28,7 @@ struct ModuleSkeletonSurfaceSeed final {
 struct BindingDuplicateFact final {
   BinderDiagnosticCode diagnostic;
   BinderEmitterSite emitterSite;
-  identity::SemanticIdentifier name;
+  identity::DeclaredDefinitionName name;
   identity::DefId rejected;
   ast::NodeId primaryNode;
   ast::NodeId previousNode;

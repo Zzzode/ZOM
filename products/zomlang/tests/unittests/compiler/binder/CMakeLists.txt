@@ -9,5 +9,6 @@ add_test(NAME binder-architecture-negative
 set_tests_properties(binder-architecture-negative PROPERTIES LABELS "binding;architecture")
 add_ztest_unit_test("decl-collector-test" "decl-collector-test.cc" LIBRARIES binder identity diagnostics symbol lexer ast source basic)
 add_ztest_unit_test("definition-inventory-test" "definition-inventory-test.cc" LIBRARIES binder identity diagnostics symbol lexer ast source basic)
+add_ztest_unit_test("frozen-definition-inventory-test" "frozen-definition-inventory-test.cc" LIBRARIES binder parser trace identity diagnostics symbol lexer ast source basic)
 add_ztest_unit_test("name-resolver-test" "name-resolver-test.cc" LIBRARIES binder identity diagnostics symbol lexer ast source basic)
 add_ztest_unit_test("import-resolver-test" "import-resolver-test.cc" LIBRARIES binder identity diagnostics symbol lexer ast source basic)

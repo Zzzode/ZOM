@@ -485,6 +485,21 @@ struct ClosureFreeVariableFact final {
   zc::Vector<FreeVariableFact> variables;
 };
 
+/// \brief One syntax capture bound to enclosing runtime storage.
+struct ExplicitCaptureBindingFact final {
+  ast::NodeId item;
+  identity::DefId target;
+  identity::SourceSpan source;
+};
+
+/// \brief Source-ordered explicit capture bindings for one function expression.
+struct ExplicitClosureCaptureFact final {
+  identity::DefId closure;
+  ast::NodeId captureList;
+  identity::SourceSpan source;
+  zc::Vector<ExplicitCaptureBindingFact> captures;
+};
+
 enum class BinderInvariantKind : uint8_t {
   MalformedScopeGraph = 0x01,
   MissingRequiredResolution = 0x02,
@@ -567,6 +582,7 @@ public:
   ZC_NODISCARD zc::ArrayPtr<const ControlTransferFact> controlTransfers() const;
   ZC_NODISCARD zc::ArrayPtr<const ShadowTargetFact> shadowTargets() const;
   ZC_NODISCARD zc::ArrayPtr<const ClosureFreeVariableFact> closureFreeVariables() const;
+  ZC_NODISCARD zc::ArrayPtr<const ExplicitClosureCaptureFact> explicitClosureCaptures() const;
 
 private:
   struct Impl;

@@ -29,6 +29,11 @@ VerifiedIdentifierArgument VerifiedIdentifierArgument::from(
   return VerifiedIdentifierArgument(zc::str(identifier.text()));
 }
 
+VerifiedIdentifierArgument VerifiedIdentifierArgument::from(
+    const identity::DeclaredDefinitionName& identifier) {
+  return VerifiedIdentifierArgument(zc::str(identifier.text()));
+}
+
 zc::String VerifiedIdentifierArgument::take() && { return zc::mv(value); }
 
 bool BindingDiagnosticAdapter::emitControlTransferFailure(

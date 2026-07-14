@@ -79,18 +79,6 @@ bool spanContainedBy(const identity::SourceSpan& parent, const identity::SourceS
   return parent.byteStart() <= child.byteStart() && child.byteEnd() <= parent.byteEnd();
 }
 
-void sortNodeScopes(zc::Vector<NodeScopeFact>& facts) {
-  for (size_t index = 1; index < facts.size(); ++index) {
-    auto current = facts[index];
-    size_t insertion = index;
-    while (insertion > 0 && current.node.value < facts[insertion - 1].node.value) {
-      facts[insertion] = facts[insertion - 1];
-      --insertion;
-    }
-    facts[insertion] = current;
-  }
-}
-
 }  // namespace
 
 zc::Maybe<uint32_t> checkedScopeIndex(uint64_t value) {
@@ -112,10 +100,10 @@ ScopeArenaBuildResult ScopeArenaBuilder::build(const VerifiedBindingInput& input
                                    ScopeOwner::module(input.module()), ScopeKind::Module,
                                    zc::mv(moduleBindings), input.parsedModule().rootSpan()));
 
-  zc::Vector<bool> visited;
-  visited.resize(tree.nodeCount() + 1);
-  for (size_t index = 0; index < visited.size(); ++index) { visited[index] = false; }
+  zc::Vector<zc::Maybe<NodeScopeFact>> nodeScopeSlots;
+  nodeScopeSlots.resize(tree.nodeCount());
   uint64_t nextScopeIndex = 1;
+  uint64_t scopeNodeCount = 0;
   uint32_t preorderOrdinal = 0;
   zc::Maybe<BinderInvariantFact> rejected;
   const OwnerCursor moduleOwner{OwnerKind::Module, input.module(), identity::DefId(),
@@ -125,15 +113,20 @@ ScopeArenaBuildResult ScopeArenaBuilder::build(const VerifiedBindingInput& input
                    OwnerCursor owner) -> void {
     if (rejected != zc::none) { return; }
     const uint32_t ordinal = preorderOrdinal++;
-    if (!node || node.value > tree.nodeCount() || visited[node.value] || !tree.contains(node)) {
+    if (!node || node.value > tree.nodeCount() || !tree.contains(node)) {
       rejected = failure(input, BinderInvariantKind::InvalidBindingFact, ordinal);
       return;
     }
-    visited[node.value] = true;
+    const size_t nodeSlot = static_cast<size_t>(node.value - 1);
+    if (nodeScopeSlots[nodeSlot] != zc::none) {
+      rejected = failure(input, BinderInvariantKind::InvalidBindingFact, ordinal);
+      return;
+    }
 
     ScopeId currentScope = enclosingScope;
     OwnerCursor currentOwner = owner;
     ZC_IF_SOME(kind, scopeKind(tree.node(node).kind)) {
+      ++scopeNodeCount;
       auto index = checkedScopeIndex(nextScopeIndex);
       auto span = input.parsedModule().spanFor(tree.node(node).range);
       if (index == zc::none || span == zc::none) {
@@ -177,7 +170,7 @@ ScopeArenaBuildResult ScopeArenaBuilder::build(const VerifiedBindingInput& input
       }
     }
 
-    candidate.nodeScopes.add(NodeScopeFact{node, currentScope});
+    nodeScopeSlots[nodeSlot] = NodeScopeFact{node, currentScope};
     ast::visitChildNodeIds(tree, tree.node(node), [&](ast::NodeId child) {
       self(self, child, currentScope, currentOwner);
     });
@@ -185,15 +178,25 @@ ScopeArenaBuildResult ScopeArenaBuilder::build(const VerifiedBindingInput& input
   visit(visit, tree.root(), moduleScope, moduleOwner);
 
   ZC_IF_SOME(fact, rejected) { return zc::mv(fact); }
-  if (candidate.nodeScopes.size() != tree.nodeCount()) {
+  const uint64_t expectedScopeCount = scopeNodeCount + 1;
+  if (static_cast<uint64_t>(candidate.scopes.size()) != expectedScopeCount ||
+      nextScopeIndex != expectedScopeCount) {
     return failure(input, BinderInvariantKind::MissingRequiredResolution, preorderOrdinal);
   }
-  for (size_t index = 1; index < visited.size(); ++index) {
-    if (!visited[index]) {
+  candidate.nodeScopes.reserve(tree.nodeCount());
+  for (size_t index = 0; index < nodeScopeSlots.size(); ++index) {
+    if (nodeScopeSlots[index] == zc::none) {
       return failure(input, BinderInvariantKind::MissingRequiredResolution, preorderOrdinal);
     }
+    ZC_IF_SOME(fact, zc::mv(nodeScopeSlots[index])) {
+      if (fact.node.value != index + 1 || !tree.contains(fact.node) ||
+          fact.scope.module() != input.module() || fact.scope.index() >= candidate.scopes.size() ||
+          candidate.scopes[fact.scope.index()].id != fact.scope) {
+        return failure(input, BinderInvariantKind::InvalidBindingFact, preorderOrdinal);
+      }
+      candidate.nodeScopes.add(zc::mv(fact));
+    }
   }
-  sortNodeScopes(candidate.nodeScopes);
   return candidate;
 }
 

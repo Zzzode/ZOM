@@ -5,6 +5,8 @@
 
 #include "zomlang/compiler/binder/frozen-definition-inventory.h"
 
+#include "zc/core/map.h"
+#include "zc/core/string.h"
 #include "zc/core/vector.h"
 #include "zomlang/compiler/binder/definition-inventory.h"
 
@@ -13,9 +15,20 @@ namespace {
 
 FrozenInventoryInvariantFact failure(FrozenInventoryInvariantKind kind) { return {kind, 1}; }
 
-bool permitsAbsentLexicalBinding(identity::DefinitionKind kind) {
-  return kind == identity::DefinitionKind::Constructor ||
-         kind == identity::DefinitionKind::Destructor;
+bool isReceiverParameter(const DefinitionInventoryEntry& entry,
+                         const VerifiedParsedModule& parsedModule) {
+  return entry.kind == identity::DefinitionKind::Parameter &&
+         parsedModule.tree().contains(entry.node) &&
+         parsedModule.tree().node(entry.node).kind == ast::SyntaxKind::FunctionParameterDecl &&
+         parsedModule.functionParameterNameSpan(entry.node, ast::SyntaxKind::ThisKeyword) !=
+             zc::none;
+}
+
+bool permitsAbsentLexicalBinding(const DefinitionInventoryEntry& entry,
+                                 const VerifiedParsedModule& parsedModule) {
+  return entry.kind == identity::DefinitionKind::Constructor ||
+         entry.kind == identity::DefinitionKind::Destructor ||
+         isReceiverParameter(entry, parsedModule);
 }
 
 bool sameParentPath(zc::ArrayPtr<const StructuralIdentityParent> left,
@@ -190,18 +203,120 @@ FrozenImplEntry::FrozenImplEntry(ast::NodeId node, identity::ImplId implementati
     : node(node), implementation(implementation), key(zc::mv(key)), source(zc::mv(source)) {}
 
 struct FrozenDefinitionInventoryView::Impl final {
+  using CreateResult = zc::OneOf<zc::Own<Impl>, FrozenInventoryInvariantKind>;
+
+  static CreateResult create(identity::SemanticContextBrand context,
+                             identity::DefinitionRegistry::FrozenKeyIndex&& definitionKeys,
+                             identity::ImplRegistry::FrozenKeyIndex&& implKeys,
+                             identity::ModuleId module, ast::NodeId moduleNode,
+                             const ast::Tree& tree, zc::Vector<FrozenDefinitionEntry>&& definitions,
+                             zc::Vector<FrozenImplEntry>&& impls) {
+    if (!context.isValid() || !module.belongsTo(context)) {
+      return FrozenInventoryInvariantKind::InputMismatch;
+    }
+    if (!tree.contains(moduleNode) ||
+        tree.node(moduleNode).kind != ast::SyntaxKind::ModuleDeclaration ||
+        tree.nodeCount() > static_cast<size_t>(UINT32_MAX) || tree.nodeCount() == SIZE_MAX) {
+      return FrozenInventoryInvariantKind::InvalidDefinitionSite;
+    }
+    if (definitions.size() > static_cast<size_t>(UINT32_MAX) ||
+        impls.size() > static_cast<size_t>(UINT32_MAX)) {
+      return FrozenInventoryInvariantKind::IncompleteInventory;
+    }
+
+    constexpr uint32_t kMissing = UINT32_MAX;
+    zc::Vector<uint32_t> definitionSlotsByNode;
+    zc::Vector<uint32_t> implSlotsByNode;
+    definitionSlotsByNode.resize(tree.nodeCount() + 1);
+    implSlotsByNode.resize(tree.nodeCount() + 1);
+    for (auto& slot : definitionSlotsByNode) { slot = kMissing; }
+    for (auto& slot : implSlotsByNode) { slot = kMissing; }
+    zc::TreeMap<zc::String, size_t> canonicalDefinitionSlots;
+    zc::TreeMap<zc::String, size_t> canonicalImplSlots;
+
+    size_t definitionCensus = 0;
+    for (size_t slot = 0; slot < definitions.size(); ++slot) {
+      const auto& entry = definitions[slot];
+      auto registeredKey = definitionKeys.lookup(entry.definition);
+      if (!tree.contains(entry.node) || entry.node.value >= definitionSlotsByNode.size() ||
+          definitionSlotsByNode[entry.node.value] != kMissing ||
+          implSlotsByNode[entry.node.value] != kMissing) {
+        return FrozenInventoryInvariantKind::InvalidDefinitionSite;
+      }
+      if (!entry.definition.belongsTo(context) || registeredKey == zc::none) {
+        return FrozenInventoryInvariantKind::InvalidDefinitionIdentity;
+      }
+      const auto entryKey = entry.key.encode();
+      bool keyMatches = false;
+      ZC_IF_SOME(key, registeredKey) {
+        const auto registeredKeyBytes = key.encode();
+        keyMatches = entryKey.asPtr() == registeredKeyBytes.asPtr();
+      }
+      auto canonicalKey = zc::str(entryKey.asChars());
+      if (!keyMatches || canonicalDefinitionSlots.find(canonicalKey) != zc::none) {
+        return FrozenInventoryInvariantKind::InvalidDefinitionIdentity;
+      }
+      canonicalDefinitionSlots.insert(zc::mv(canonicalKey), slot);
+      definitionSlotsByNode[entry.node.value] = static_cast<uint32_t>(slot);
+      ++definitionCensus;
+    }
+
+    size_t implCensus = 0;
+    for (size_t slot = 0; slot < impls.size(); ++slot) {
+      const auto& entry = impls[slot];
+      auto registeredKey = implKeys.lookup(entry.implementation);
+      if (!tree.contains(entry.node) || entry.node.value >= implSlotsByNode.size() ||
+          definitionSlotsByNode[entry.node.value] != kMissing ||
+          implSlotsByNode[entry.node.value] != kMissing) {
+        return FrozenInventoryInvariantKind::InvalidDefinitionSite;
+      }
+      if (!entry.implementation.belongsTo(context) || registeredKey == zc::none) {
+        return FrozenInventoryInvariantKind::InvalidDefinitionIdentity;
+      }
+      const auto entryKey = entry.key.encode();
+      bool keyMatches = false;
+      ZC_IF_SOME(key, registeredKey) {
+        const auto registeredKeyBytes = key.encode();
+        keyMatches = entryKey.asPtr() == registeredKeyBytes.asPtr();
+      }
+      auto canonicalKey = zc::str(entryKey.asChars());
+      if (!keyMatches || canonicalImplSlots.find(canonicalKey) != zc::none) {
+        return FrozenInventoryInvariantKind::InvalidDefinitionIdentity;
+      }
+      canonicalImplSlots.insert(zc::mv(canonicalKey), slot);
+      implSlotsByNode[entry.node.value] = static_cast<uint32_t>(slot);
+      ++implCensus;
+    }
+
+    if (definitionCensus != definitions.size() || implCensus != impls.size() ||
+        canonicalDefinitionSlots.size() != definitions.size() ||
+        canonicalImplSlots.size() != impls.size()) {
+      return FrozenInventoryInvariantKind::IncompleteInventory;
+    }
+    if (definitionSlotsByNode[moduleNode.value] != kMissing ||
+        implSlotsByNode[moduleNode.value] != kMissing) {
+      return FrozenInventoryInvariantKind::InvalidDefinitionSite;
+    }
+    return zc::heap<Impl>(context, zc::mv(definitionKeys), zc::mv(implKeys), module, moduleNode,
+                          zc::mv(definitions), zc::mv(impls), zc::mv(definitionSlotsByNode),
+                          zc::mv(implSlotsByNode));
+  }
+
   Impl(identity::SemanticContextBrand context,
        identity::DefinitionRegistry::FrozenKeyIndex&& definitionKeys,
        identity::ImplRegistry::FrozenKeyIndex&& implKeys, identity::ModuleId module,
        ast::NodeId moduleNode, zc::Vector<FrozenDefinitionEntry>&& definitions,
-       zc::Vector<FrozenImplEntry>&& impls)
+       zc::Vector<FrozenImplEntry>&& impls, zc::Vector<uint32_t>&& definitionSlotsByNode,
+       zc::Vector<uint32_t>&& implSlotsByNode)
       : context(context),
         definitionKeys(zc::mv(definitionKeys)),
         implKeys(zc::mv(implKeys)),
         module(module),
         moduleNode(moduleNode),
         definitions(zc::mv(definitions)),
-        impls(zc::mv(impls)) {}
+        impls(zc::mv(impls)),
+        definitionSlotsByNode(zc::mv(definitionSlotsByNode)),
+        implSlotsByNode(zc::mv(implSlotsByNode)) {}
 
   identity::SemanticContextBrand context;
   identity::DefinitionRegistry::FrozenKeyIndex definitionKeys;
@@ -210,6 +325,8 @@ struct FrozenDefinitionInventoryView::Impl final {
   ast::NodeId moduleNode;
   zc::Vector<FrozenDefinitionEntry> definitions;
   zc::Vector<FrozenImplEntry> impls;
+  zc::Vector<uint32_t> definitionSlotsByNode;
+  zc::Vector<uint32_t> implSlotsByNode;
 };
 
 FrozenDefinitionInventoryView::FrozenDefinitionInventoryView(zc::Own<Impl>&& impl) noexcept
@@ -239,14 +356,22 @@ zc::Maybe<const identity::ImplKey&> FrozenDefinitionInventoryView::implKey(
   return impl->implKeys.lookup(implementation);
 }
 zc::Maybe<identity::DefId> FrozenDefinitionInventoryView::definitionAt(ast::NodeId node) const {
-  for (const auto& entry : impl->definitions) {
-    if (entry.node == node) { return entry.definition; }
-  }
+  constexpr uint32_t kMissing = UINT32_MAX;
+  if (!node || node.value >= impl->definitionSlotsByNode.size()) { return zc::none; }
+  const uint32_t slot = impl->definitionSlotsByNode[node.value];
+  if (slot == kMissing || slot >= impl->definitions.size()) { return zc::none; }
+  const auto& entry = impl->definitions[slot];
+  if (entry.node == node && entry.definition.belongsTo(impl->context)) { return entry.definition; }
   return zc::none;
 }
 zc::Maybe<identity::ImplId> FrozenDefinitionInventoryView::implAt(ast::NodeId node) const {
-  for (const auto& entry : impl->impls) {
-    if (entry.node == node) { return entry.implementation; }
+  constexpr uint32_t kMissing = UINT32_MAX;
+  if (!node || node.value >= impl->implSlotsByNode.size()) { return zc::none; }
+  const uint32_t slot = impl->implSlotsByNode[node.value];
+  if (slot == kMissing || slot >= impl->impls.size()) { return zc::none; }
+  const auto& entry = impl->impls[slot];
+  if (entry.node == node && entry.implementation.belongsTo(impl->context)) {
+    return entry.implementation;
   }
   return zc::none;
 }
@@ -307,7 +432,7 @@ FrozenDefinitionInventoryResult FrozenDefinitionInventoryVerifier::verifySingleM
           if (entry.nameKind == InventoryDefinitionNameKind::Declared) {
             bindingName = identity::SemanticIdentifier::fromSource(
                 parsedModule.tree().ident(entry.declaredName));
-            if (bindingName == zc::none && !permitsAbsentLexicalBinding(entry.kind)) {
+            if (bindingName == zc::none && !permitsAbsentLexicalBinding(entry, parsedModule)) {
               return failure(FrozenInventoryInvariantKind::InvalidDefinitionIdentity);
             }
           }
@@ -347,14 +472,24 @@ FrozenDefinitionInventoryResult FrozenDefinitionInventoryVerifier::verifySingleM
       }
       auto definitionKeys = registries.definitions().snapshotKeys();
       auto implKeys = registries.impls().snapshotKeys();
+      if (frozen.size() != inventory.definitions().size() ||
+          frozenImpls.size() != inventory.impls().size()) {
+        return failure(FrozenInventoryInvariantKind::IncompleteInventory);
+      }
       if (definitionKeys == zc::none || implKeys == zc::none) {
         return failure(FrozenInventoryInvariantKind::InputMismatch);
       }
       ZC_IF_SOME(definitionKeyIndex, definitionKeys) {
         ZC_IF_SOME(implKeyIndex, implKeys) {
-          return FrozenDefinitionInventoryView(zc::heap<FrozenDefinitionInventoryView::Impl>(
+          auto implResult = FrozenDefinitionInventoryView::Impl::create(
               context, zc::mv(definitionKeyIndex), zc::mv(implKeyIndex), module,
-              inventory.modules()[0].node, zc::mv(frozen), zc::mv(frozenImpls)));
+              inventory.modules()[0].node, parsedModule.tree(), zc::mv(frozen),
+              zc::mv(frozenImpls));
+          if (implResult.is<FrozenInventoryInvariantKind>()) {
+            return failure(implResult.get<FrozenInventoryInvariantKind>());
+          }
+          return FrozenDefinitionInventoryView(
+              zc::mv(implResult.get<zc::Own<FrozenDefinitionInventoryView::Impl>>()));
         }
       }
       ZC_UNREACHABLE;

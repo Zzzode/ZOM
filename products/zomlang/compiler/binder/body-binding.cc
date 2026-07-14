@@ -16,6 +16,7 @@
 
 #include <cstdint>
 
+#include "zc/core/debug.h"
 #include "zc/core/map.h"
 #include "zc/core/string.h"
 #include "zomlang/compiler/ast/generated/node-schema.h"
@@ -64,6 +65,11 @@ bool ownsScope(identity::DefinitionKind kind) {
       return false;
   }
   ZC_UNREACHABLE;
+}
+
+bool isCapturable(identity::DefinitionKind kind) {
+  return kind == identity::DefinitionKind::Parameter || kind == identity::DefinitionKind::Local ||
+         kind == identity::DefinitionKind::PatternBinding;
 }
 
 zc::Maybe<Namespace> definitionNamespace(identity::DefinitionKind kind) {
@@ -168,7 +174,10 @@ struct SourceOrderKey final {
 struct ActiveScopeIndex final {
   zc::HashMap<zc::String, size_t> values;
   zc::HashMap<zc::String, size_t> types;
+  size_t receiver = kMissingSize;
 };
+
+enum class ClosureCaptureDomain : uint8_t { NotClosure, Inferred, Explicit };
 
 zc::HashMap<zc::String, size_t>& bindingsFor(ActiveScopeIndex& scope, Namespace nameSpace) {
   if (nameSpace == Namespace::Value) { return scope.values; }
@@ -272,7 +281,7 @@ public:
       }
     }
     if (!finishDefinitions() || !finishNodeBindings() || !finishDeferredMembers() ||
-        !finishShadowTargets() || !finishScopeBindings()) {
+        !finishShadowTargets() || !finishExplicitCaptures() || !finishScopeBindings()) {
       return takeRejection();
     }
     return zc::mv(result);
@@ -288,6 +297,11 @@ private:
   zc::Vector<uint32_t> nodeScopeIndices;
   zc::Vector<uint32_t> schemaOrdinals;
   zc::Vector<uint32_t> definitionScopeIndices;
+  zc::Vector<uint32_t> owningCallableScopeIndices;
+  zc::Vector<size_t> callableDefinitionIndices;
+  zc::Vector<ClosureCaptureDomain> closureCaptureDomains;
+  zc::Vector<size_t> explicitCaptureRowSlots;
+  zc::TreeMap<zc::String, size_t> definitionIndices;
   zc::Vector<zc::Vector<size_t>> definitionsByIntroducer;
   zc::Vector<zc::Vector<size_t>> definitionsByScope;
   zc::Vector<ActiveScopeIndex> activeScopes;
@@ -351,11 +365,27 @@ private:
     }
 
     definitionScopeIndices.resize(inventory.size());
+    owningCallableScopeIndices.resize(inventory.size());
+    closureCaptureDomains.resize(inventory.size());
+    explicitCaptureRowSlots.resize(inventory.size());
+    callableDefinitionIndices.resize(arena.scopes.size());
     localFactSlots.resize(inventory.size());
+    for (size_t index = 0; index < callableDefinitionIndices.size(); ++index) {
+      callableDefinitionIndices[index] = kMissingSize;
+    }
     for (size_t index = 0; index < inventory.size(); ++index) {
       definitionScopeIndices[index] = kMissingIndex;
+      owningCallableScopeIndices[index] = kMissingIndex;
+      closureCaptureDomains[index] = ClosureCaptureDomain::NotClosure;
+      explicitCaptureRowSlots[index] = kMissingSize;
       localFactSlots[index] = kMissingSize;
       const auto& entry = inventory[index];
+      auto definitionKey = encodedDefinitionKey(entry);
+      if (definitionIndices.find(definitionKey) != zc::none) {
+        reject(BinderInvariantKind::InvalidBindingFact, entry.node);
+        return;
+      }
+      definitionIndices.insert(zc::mv(definitionKey), index);
       auto scope = scopeIndexFor(entry.node);
       if (scope == zc::none) {
         reject(BinderInvariantKind::MalformedScopeGraph, entry.node);
@@ -370,6 +400,16 @@ private:
             return;
           }
           ZC_IF_SOME(parent, record.parent) { declaringScope = parent.index(); }
+          if (record.kind == ScopeKind::Function || record.kind == ScopeKind::Closure) {
+            const auto& owner = record.owner.value();
+            if (!owner.is<DefinitionScopeOwner>() ||
+                owner.get<DefinitionScopeOwner>().definition != entry.definition ||
+                callableDefinitionIndices[scopeIndex] != kMissingSize) {
+              reject(BinderInvariantKind::MalformedScopeGraph, entry.node);
+              return;
+            }
+            callableDefinitionIndices[scopeIndex] = index;
+          }
         }
         if (declaringScope >= definitionsByScope.size()) {
           reject(BinderInvariantKind::MalformedScopeGraph, entry.node);
@@ -388,6 +428,54 @@ private:
         return;
       }
       definitionsByIntroducer[introducer.value].add(index);
+
+      if (entry.kind == identity::DefinitionKind::Closure) {
+        const auto& syntax = tree.node(entry.node);
+        if (syntax.kind == ast::SyntaxKind::LambdaExpression) {
+          closureCaptureDomains[index] = ClosureCaptureDomain::Inferred;
+        } else if (syntax.kind == ast::SyntaxKind::FunctionExpression) {
+          const ast::NodeId captures(syntax.payload.words[ast::kFunctionExpressionCapturesIdWord]);
+          if (captures && (!tree.contains(captures) ||
+                           tree.node(captures).kind != ast::SyntaxKind::CaptureList)) {
+            reject(BinderInvariantKind::InvalidBindingFact, entry.node);
+            return;
+          }
+          closureCaptureDomains[index] =
+              captures ? ClosureCaptureDomain::Explicit : ClosureCaptureDomain::Inferred;
+        } else {
+          reject(BinderInvariantKind::InvalidBindingFact, entry.node);
+          return;
+        }
+      }
+    }
+
+    for (size_t scopeIndex = 0; scopeIndex < arena.scopes.size(); ++scopeIndex) {
+      const auto kind = arena.scopes[scopeIndex].kind;
+      if ((kind == ScopeKind::Function || kind == ScopeKind::Closure) &&
+          callableDefinitionIndices[scopeIndex] == kMissingSize) {
+        reject(BinderInvariantKind::MalformedScopeGraph, tree.root());
+        return;
+      }
+    }
+    for (size_t index = 0; index < inventory.size(); ++index) {
+      uint32_t scopeIndex = definitionScopeIndices[index];
+      for (size_t traversed = 0; traversed < arena.scopes.size(); ++traversed) {
+        if (scopeIndex >= arena.scopes.size()) {
+          reject(BinderInvariantKind::MalformedScopeGraph, inventory[index].node);
+          return;
+        }
+        const auto& scope = arena.scopes[scopeIndex];
+        if (scope.kind == ScopeKind::Function || scope.kind == ScopeKind::Closure) {
+          if (callableDefinitionIndices[scopeIndex] == kMissingSize) {
+            reject(BinderInvariantKind::MalformedScopeGraph, inventory[index].node);
+            return;
+          }
+          owningCallableScopeIndices[index] = scopeIndex;
+          break;
+        }
+        if (scope.kind == ScopeKind::Module || scope.parent == zc::none) { break; }
+        ZC_IF_SOME(parent, scope.parent) { scopeIndex = parent.index(); }
+      }
     }
   }
 
@@ -433,6 +521,127 @@ private:
     return zc::none;
   }
 
+  zc::Maybe<size_t> activeReceiver(uint32_t scopeIndex, bool includeCurrent = true) const {
+    uint32_t current = scopeIndex;
+    bool first = true;
+    while (current < arena.scopes.size()) {
+      if ((includeCurrent || !first) && activeScopes[current].receiver != kMissingSize) {
+        return activeScopes[current].receiver;
+      }
+      first = false;
+      const auto& scope = arena.scopes[current];
+      if (scope.kind == ScopeKind::Function || scope.kind == ScopeKind::Module ||
+          scope.parent == zc::none) {
+        break;
+      }
+      ZC_IF_SOME(parent, scope.parent) { current = parent.index(); }
+    }
+    return zc::none;
+  }
+
+  bool isReceiverParameter(const FrozenDefinitionEntry& entry) const {
+    return entry.kind == identity::DefinitionKind::Parameter && tree.contains(entry.node) &&
+           tree.node(entry.node).kind == ast::SyntaxKind::FunctionParameterDecl &&
+           input.parsedModule().functionParameterNameSpan(entry.node,
+                                                          ast::SyntaxKind::ThisKeyword) != zc::none;
+  }
+
+  zc::Maybe<size_t> definitionIndex(identity::DefId definition) const {
+    auto key = input.definitions().definitionKey(definition);
+    if (key == zc::none) { return zc::none; }
+    ZC_IF_SOME(value, key) {
+      const auto bytes = value.encode();
+      auto index = definitionIndices.find(zc::str(bytes.asChars()));
+      ZC_IF_SOME(found, index) {
+        if (found < inventory.size() && inventory[found].definition == definition) { return found; }
+      }
+    }
+    return zc::none;
+  }
+
+  zc::Maybe<uint32_t> owningCallableScope(size_t inventoryIndex) const {
+    if (inventoryIndex >= owningCallableScopeIndices.size() ||
+        owningCallableScopeIndices[inventoryIndex] == kMissingIndex) {
+      return zc::none;
+    }
+    return owningCallableScopeIndices[inventoryIndex];
+  }
+
+  zc::Maybe<const ExplicitClosureCaptureFact&> explicitCaptureRow(
+      size_t closureInventoryIndex) const {
+    if (closureInventoryIndex >= explicitCaptureRowSlots.size() ||
+        closureCaptureDomains[closureInventoryIndex] != ClosureCaptureDomain::Explicit) {
+      return zc::none;
+    }
+    const size_t slot = explicitCaptureRowSlots[closureInventoryIndex];
+    if (slot >= result.explicitClosureCaptures.size() ||
+        result.explicitClosureCaptures[slot].closure !=
+            inventory[closureInventoryIndex].definition) {
+      return zc::none;
+    }
+    return result.explicitClosureCaptures[slot];
+  }
+
+  enum class CaptureAccess : uint8_t { Allowed, Denied, Malformed };
+  enum class CaptureAccessPurpose : uint8_t { Reference, CaptureItem };
+
+  CaptureAccess captureAccess(uint32_t referenceScope, size_t targetIndex,
+                              CaptureAccessPurpose purpose) const {
+    if (targetIndex >= inventory.size() || targetIndex >= definitionScopeIndices.size()) {
+      return CaptureAccess::Malformed;
+    }
+    if (!isCapturable(inventory[targetIndex].kind)) { return CaptureAccess::Allowed; }
+    const uint32_t targetDeclaringScope = definitionScopeIndices[targetIndex];
+    if (targetDeclaringScope >= arena.scopes.size()) { return CaptureAccess::Malformed; }
+    const auto targetCallableScope = owningCallableScope(targetIndex);
+    if (purpose == CaptureAccessPurpose::CaptureItem && targetCallableScope == zc::none) {
+      return CaptureAccess::Denied;
+    }
+
+    uint32_t scopeIndex = referenceScope;
+    bool crossedClosure = false;
+    for (size_t traversed = 0; traversed < arena.scopes.size(); ++traversed) {
+      if (scopeIndex >= arena.scopes.size()) { return CaptureAccess::Malformed; }
+      if (scopeIndex == targetDeclaringScope) {
+        return crossedClosure && targetCallableScope == zc::none ? CaptureAccess::Denied
+                                                                 : CaptureAccess::Allowed;
+      }
+      const auto& scope = arena.scopes[scopeIndex];
+      if (scope.kind == ScopeKind::Function) { return CaptureAccess::Denied; }
+      if (scope.kind == ScopeKind::Closure) {
+        crossedClosure = true;
+        if (scopeIndex >= callableDefinitionIndices.size() ||
+            callableDefinitionIndices[scopeIndex] == kMissingSize) {
+          return CaptureAccess::Malformed;
+        }
+        const size_t closureIndex = callableDefinitionIndices[scopeIndex];
+        if (closureIndex >= closureCaptureDomains.size() ||
+            closureCaptureDomains[closureIndex] == ClosureCaptureDomain::NotClosure) {
+          return CaptureAccess::Malformed;
+        }
+        if (closureCaptureDomains[closureIndex] == ClosureCaptureDomain::Explicit) {
+          auto row = explicitCaptureRow(closureIndex);
+          if (row == zc::none) { return CaptureAccess::Malformed; }
+          bool listed = false;
+          ZC_IF_SOME(value, row) {
+            for (const auto& capture : value.captures) {
+              if (capture.target == inventory[targetIndex].definition) {
+                listed = true;
+                break;
+              }
+            }
+          }
+          if (!listed) { return CaptureAccess::Denied; }
+        }
+      }
+      if (scope.kind == ScopeKind::Module || scope.parent == zc::none) {
+        return CaptureAccess::Denied;
+      }
+      ZC_IF_SOME(parent, scope.parent) { scopeIndex = parent.index(); }
+    }
+    return CaptureAccess::Malformed;
+  }
+
   void publishLocalFact(size_t inventoryIndex, uint32_t scopeIndex) {
     if (inventoryIndex >= localFactSlots.size() || localFactSlots[inventoryIndex] != kMissingSize) {
       reject(BinderInvariantKind::InvalidBindingFact, inventory[inventoryIndex].node);
@@ -464,6 +673,16 @@ private:
       publishLocalFact(inventoryIndex, scopeIndex);
       if (rejected != zc::none) { return; }
     }
+    if (isReceiverParameter(entry)) {
+      if (entry.bindingName != zc::none || expected != DefinitionActivation::ParameterList) {
+        reject(BinderInvariantKind::InvalidBindingFact, entry.node);
+        return;
+      }
+      if (activeScopes[scopeIndex].receiver == kMissingSize) {
+        activeScopes[scopeIndex].receiver = inventoryIndex;
+      }
+      return;
+    }
     auto nameSpace = definitionNamespace(entry.kind);
     if (nameSpace == zc::none) { return; }
     if (entry.bindingName == zc::none) {
@@ -479,10 +698,17 @@ private:
           if (recordLocalDuplicate) {
             ZC_IF_SOME(previousIndex, existing) {
               const auto& previous = inventory[previousIndex];
-              skeleton.duplicates.add(BindingDuplicateFact{
-                  BinderDiagnosticCode::RedeclareVariable, BinderEmitterSite::BodyBinding,
-                  name.clone(), entry.definition, entry.node, previous.node, entry.source.clone(),
-                  previous.source.clone()});
+              auto diagnosticName = identity::DeclaredDefinitionName::fromCanonical(name.text());
+              if (diagnosticName == zc::none) {
+                reject(BinderInvariantKind::InvalidBindingFact, entry.node);
+                return;
+              }
+              ZC_IF_SOME(nameValue, diagnosticName) {
+                skeleton.duplicates.add(BindingDuplicateFact{
+                    BinderDiagnosticCode::RedeclareVariable, BinderEmitterSite::BodyBinding,
+                    zc::mv(nameValue), entry.definition, entry.node, previous.node,
+                    entry.source.clone(), previous.source.clone()});
+              }
             }
           }
           return;
@@ -528,18 +754,43 @@ private:
     }
   }
 
-  void resolveName(ast::NodeId node, uint32_t scopeIndex, Namespace expected,
-                   zc::StringPtr sourceName) {
+  void recordLookupFailure(ast::NodeId node, zc::StringPtr sourceName, Namespace expected,
+                           const identity::SourceSpan& source, BinderDiagnosticCode diagnostic,
+                           BinderEmitterSite emitterSite) {
+    auto name = identity::DeclaredDefinitionName::fromCanonical(sourceName);
+    if (name == zc::none) {
+      reject(BinderInvariantKind::InvalidBindingFact, node);
+      return;
+    }
+    ZC_IF_SOME(nameValue, name) {
+      result.failures.add(BodyBindingFailureFact{diagnostic, node, zc::mv(nameValue), expected,
+                                                 source.clone(), emitterSite,
+                                                 schemaOrdinals[node.value]});
+    }
+  }
+
+  void resolveNameAt(ast::NodeId node, uint32_t scopeIndex, Namespace expected,
+                     zc::StringPtr sourceName, const identity::SourceSpan& source,
+                     BinderEmitterSite emitterSite) {
     auto semanticName = identity::SemanticIdentifier::fromSource(sourceName);
-    auto source = input.parsedModule().spanFor(tree.node(node).range);
-    if (semanticName == zc::none || source == zc::none ||
-        (expected != Namespace::Value && expected != Namespace::Type)) {
+    if (semanticName == zc::none || (expected != Namespace::Value && expected != Namespace::Type)) {
       reject(BinderInvariantKind::InvalidBindingFact, node);
       return;
     }
     ZC_IF_SOME(name, semanticName) {
       auto resolved = activeDefinition(scopeIndex, expected, name.text());
       ZC_IF_SOME(inventoryIndex, resolved) {
+        const auto access =
+            captureAccess(scopeIndex, inventoryIndex, CaptureAccessPurpose::Reference);
+        if (access == CaptureAccess::Malformed) {
+          reject(BinderInvariantKind::MalformedScopeGraph, node);
+          return;
+        }
+        if (access == CaptureAccess::Denied) {
+          recordLookupFailure(node, name.text(), expected, source,
+                              BinderDiagnosticCode::UndefinedIdentifier, emitterSite);
+          return;
+        }
         const auto definition = inventory[inventoryIndex].definition;
         result.nodeBindings.add(BindingResolution{
             node, BindingResolutionValue(BoundNameResolution{
@@ -552,10 +803,19 @@ private:
           activeDefinition(scopeIndex, alternate, name.text()) == zc::none
               ? BinderDiagnosticCode::UndefinedIdentifier
               : BinderDiagnosticCode::SymbolNamespaceMismatch;
-      ZC_IF_SOME(span, source) {
-        result.failures.add(BodyBindingFailureFact{diagnostic, node, zc::mv(name), expected,
-                                                   zc::mv(span), schemaOrdinals[node.value]});
-      }
+      recordLookupFailure(node, name.text(), expected, source, diagnostic, emitterSite);
+    }
+  }
+
+  void resolveName(ast::NodeId node, uint32_t scopeIndex, Namespace expected,
+                   zc::StringPtr sourceName) {
+    auto source = input.parsedModule().spanFor(tree.node(node).range);
+    if (source == zc::none) {
+      reject(BinderInvariantKind::InvalidBindingFact, node);
+      return;
+    }
+    ZC_IF_SOME(span, source) {
+      resolveNameAt(node, scopeIndex, expected, sourceName, span, BinderEmitterSite::BodyBinding);
     }
   }
 
@@ -647,6 +907,9 @@ private:
         case ast::SyntaxKind::IdentExpr:
           resolveIdentifier(node, scopeIndex, inherited);
           return;
+        case ast::SyntaxKind::ThisExpr:
+          resolveThis(node, scopeIndex);
+          return;
         case ast::SyntaxKind::ModulePath:
           resolveIdentifierPath(node, scopeIndex, inherited);
           return;
@@ -707,6 +970,36 @@ private:
       return;
     }
     resolveIdentifierPath(path, scopeIndex, Namespace::Value);
+  }
+
+  void resolveThis(ast::NodeId node, uint32_t scopeIndex) {
+    auto source = input.parsedModule().retainedTokenSpan(node, 0, ast::SyntaxKind::ThisKeyword);
+    if (source == zc::none) {
+      reject(BinderInvariantKind::InvalidBindingFact, node);
+      return;
+    }
+    ZC_IF_SOME(span, source) {
+      auto resolved = activeReceiver(scopeIndex);
+      ZC_IF_SOME(inventoryIndex, resolved) {
+        const auto access =
+            captureAccess(scopeIndex, inventoryIndex, CaptureAccessPurpose::Reference);
+        if (access == CaptureAccess::Malformed) {
+          reject(BinderInvariantKind::MalformedScopeGraph, node);
+          return;
+        }
+        if (access == CaptureAccess::Allowed) {
+          const auto target = inventory[inventoryIndex].definition;
+          result.nodeBindings.add(BindingResolution{
+              node, BindingResolutionValue(BoundNameResolution{
+                        BindingTarget::definition(target), BindingTarget::definition(target),
+                        Namespace::Value, BindingOrigin::LocalDeclaration})});
+          return;
+        }
+      }
+      recordLookupFailure(node, "this"_zc, Namespace::Value, span,
+                          BinderDiagnosticCode::UndefinedIdentifier,
+                          BinderEmitterSite::BodyBinding);
+    }
   }
 
   void visitDynTypeMarkers(ast::NodeId node, uint32_t scopeIndex) {
@@ -918,6 +1211,179 @@ private:
     activateIntroducer(parameter, DefinitionActivation::ParameterList, false);
   }
 
+  zc::Maybe<ExplicitCaptureBindingFact> resolveCaptureItem(ast::NodeId item, uint32_t closureScope,
+                                                           uint32_t enclosingScope) {
+    if (!tree.contains(item) || tree.node(item).kind != ast::SyntaxKind::CaptureItem ||
+        scopeIndexFor(item) != closureScope) {
+      reject(BinderInvariantKind::InvalidBindingFact, item);
+      return zc::none;
+    }
+    const auto& syntax = tree.node(item);
+    const auto mode =
+        static_cast<ast::CaptureMode>(syntax.payload.words[ast::kCaptureItemModeWord]);
+    size_t tokenOrdinal = 0;
+    ast::SyntaxKind tokenKind = ast::SyntaxKind::Identifier;
+    switch (mode) {
+      case ast::CaptureMode::ByValue:
+        break;
+      case ast::CaptureMode::ByRef:
+        tokenOrdinal = 1;
+        break;
+      case ast::CaptureMode::This:
+        tokenKind = ast::SyntaxKind::ThisKeyword;
+        break;
+      default:
+        reject(BinderInvariantKind::InvalidBindingFact, item);
+        return zc::none;
+    }
+    const ast::IdentId identifier(syntax.payload.words[ast::kCaptureItemNameWord]);
+    auto source = input.parsedModule().retainedTokenSpan(item, tokenOrdinal, tokenKind);
+    if (source == zc::none) {
+      reject(BinderInvariantKind::InvalidBindingFact, item);
+      return zc::none;
+    }
+    if (mode == ast::CaptureMode::This) {
+      ZC_IF_SOME(span, source) {
+        auto resolved = activeReceiver(enclosingScope);
+        ZC_IF_SOME(inventoryIndex, resolved) {
+          const auto access =
+              captureAccess(enclosingScope, inventoryIndex, CaptureAccessPurpose::CaptureItem);
+          if (access == CaptureAccess::Malformed) {
+            reject(BinderInvariantKind::MalformedScopeGraph, item);
+            return zc::none;
+          }
+          if (access == CaptureAccess::Allowed) {
+            const auto target = inventory[inventoryIndex].definition;
+            result.nodeBindings.add(BindingResolution{
+                item, BindingResolutionValue(BoundNameResolution{
+                          BindingTarget::definition(target), BindingTarget::definition(target),
+                          Namespace::Value, BindingOrigin::LocalDeclaration})});
+            return ExplicitCaptureBindingFact{item, target, span.clone()};
+          }
+        }
+        recordLookupFailure(item, "this"_zc, Namespace::Value, span,
+                            BinderDiagnosticCode::UndefinedIdentifier,
+                            BinderEmitterSite::LabelAndClosure);
+      }
+      return zc::none;
+    }
+    auto semanticName = identity::SemanticIdentifier::fromSource(tree.ident(identifier));
+    if (semanticName == zc::none) {
+      reject(BinderInvariantKind::InvalidBindingFact, item);
+      return zc::none;
+    }
+    ZC_IF_SOME(name, semanticName) {
+      ZC_IF_SOME(span, source) {
+        auto resolved = activeDefinition(enclosingScope, Namespace::Value, name.text());
+        if (resolved != zc::none) {
+          const auto inventoryIndex = ZC_ASSERT_NONNULL(resolved);
+          if (isCapturable(inventory[inventoryIndex].kind)) {
+            const auto access =
+                captureAccess(enclosingScope, inventoryIndex, CaptureAccessPurpose::CaptureItem);
+            if (access == CaptureAccess::Malformed) {
+              reject(BinderInvariantKind::MalformedScopeGraph, item);
+              return zc::none;
+            }
+            if (access == CaptureAccess::Allowed) {
+              const auto target = inventory[inventoryIndex].definition;
+              result.nodeBindings.add(BindingResolution{
+                  item, BindingResolutionValue(BoundNameResolution{
+                            BindingTarget::definition(target), BindingTarget::definition(target),
+                            Namespace::Value, BindingOrigin::LocalDeclaration})});
+              return ExplicitCaptureBindingFact{item, target, span.clone()};
+            }
+          }
+          recordLookupFailure(item, name.text(), Namespace::Value, span,
+                              BinderDiagnosticCode::UndefinedIdentifier,
+                              BinderEmitterSite::LabelAndClosure);
+          return zc::none;
+        }
+        const BinderDiagnosticCode diagnostic =
+            activeDefinition(enclosingScope, Namespace::Type, name.text()) == zc::none
+                ? BinderDiagnosticCode::UndefinedIdentifier
+                : BinderDiagnosticCode::SymbolNamespaceMismatch;
+        recordLookupFailure(item, name.text(), Namespace::Value, span, diagnostic,
+                            BinderEmitterSite::LabelAndClosure);
+      }
+    }
+    return zc::none;
+  }
+
+  void visitExplicitCaptureList(ast::NodeId callableNode, ast::NodeId listNode,
+                                uint32_t closureScope) {
+    if (!tree.contains(listNode) || tree.node(listNode).kind != ast::SyntaxKind::CaptureList ||
+        scopeIndexFor(listNode) != closureScope || closureScope >= arena.scopes.size() ||
+        arena.scopes[closureScope].kind != ScopeKind::Closure ||
+        arena.scopes[closureScope].parent == zc::none) {
+      reject(BinderInvariantKind::InvalidBindingFact, callableNode);
+      return;
+    }
+    const auto& owner = arena.scopes[closureScope].owner.value();
+    if (!owner.is<DefinitionScopeOwner>()) {
+      reject(BinderInvariantKind::MalformedScopeGraph, callableNode);
+      return;
+    }
+    const auto closure = owner.get<DefinitionScopeOwner>().definition;
+    if (closureScope >= callableDefinitionIndices.size() ||
+        callableDefinitionIndices[closureScope] == kMissingSize) {
+      reject(BinderInvariantKind::MalformedScopeGraph, callableNode);
+      return;
+    }
+    const size_t closureIndex = callableDefinitionIndices[closureScope];
+    if (closureIndex >= inventory.size() || inventory[closureIndex].definition != closure ||
+        inventory[closureIndex].node != callableNode ||
+        inventory[closureIndex].kind != identity::DefinitionKind::Closure ||
+        closureCaptureDomains[closureIndex] != ClosureCaptureDomain::Explicit ||
+        explicitCaptureRowSlots[closureIndex] != kMissingSize) {
+      reject(BinderInvariantKind::InvalidBindingFact, callableNode);
+      return;
+    }
+    const auto& list = tree.node(listNode);
+    const ast::NodeList items{list.payload.words[ast::kCaptureListCapturesFirstWord],
+                              list.payload.words[ast::kCaptureListCapturesSizeWord]};
+    if (!tree.contains(items) || list.payload.words[ast::kCaptureListNCapturesWord] != items.size) {
+      reject(BinderInvariantKind::InvalidBindingFact, listNode);
+      return;
+    }
+    auto source = input.parsedModule().spanFor(list.range);
+    if (source == zc::none) {
+      reject(BinderInvariantKind::InvalidBindingFact, listNode);
+      return;
+    }
+
+    zc::Vector<ExplicitCaptureBindingFact> captures;
+    const uint32_t enclosingScope = ZC_ASSERT_NONNULL(arena.scopes[closureScope].parent).index();
+    for (const auto item : tree.list(items)) {
+      auto capture = resolveCaptureItem(item, closureScope, enclosingScope);
+      if (rejected != zc::none) { return; }
+      ZC_IF_SOME(value, capture) {
+        for (const auto& previous : captures) {
+          if (previous.target != value.target) { continue; }
+          const auto& syntax = tree.node(item);
+          auto name = identity::DeclaredDefinitionName::fromSource(
+              tree.ident(ast::IdentId(syntax.payload.words[ast::kCaptureItemNameWord])));
+          if (name == zc::none) {
+            reject(BinderInvariantKind::InvalidBindingFact, item);
+            return;
+          }
+          ZC_IF_SOME(nameValue, name) {
+            skeleton.duplicates.add(BindingDuplicateFact{
+                BinderDiagnosticCode::DuplicateIdentifier, BinderEmitterSite::LabelAndClosure,
+                zc::mv(nameValue), value.target, item, previous.item, value.source.clone(),
+                previous.source.clone()});
+          }
+          break;
+        }
+        captures.add(zc::mv(value));
+      }
+    }
+    ZC_IF_SOME(span, source) {
+      explicitCaptureRowSlots[closureIndex] = result.explicitClosureCaptures.size();
+      result.explicitClosureCaptures.add(
+          ExplicitClosureCaptureFact{closure, listNode, span.clone(), zc::mv(captures)});
+    }
+  }
+
   void visitCallable(ast::NodeId node, uint32_t scopeIndex) {
     const auto& callable = tree.node(node);
     ast::NodeId parameterList;
@@ -989,7 +1455,8 @@ private:
     if (tree.contains(genericParameters)) {
       visitNode(genericParameters, scopeIndex, Namespace::Type);
     }
-    if (tree.contains(captures)) { visitNode(captures, scopeIndex, Namespace::Value); }
+    if (tree.contains(captures)) { visitExplicitCaptureList(node, captures, scopeIndex); }
+    if (rejected != zc::none) { return; }
 
     zc::Vector<ast::NodeId> parameters;
     if (isExtern) {
@@ -1150,6 +1617,54 @@ private:
     }
     for (const auto& ordered : order) {
       result.shadowTargets.add(zc::mv(shadows[ordered.value].fact));
+    }
+    return true;
+  }
+
+  bool finishExplicitCaptures() {
+    for (size_t index = 0; index < inventory.size(); ++index) {
+      const bool explicitClosure = closureCaptureDomains[index] == ClosureCaptureDomain::Explicit;
+      const bool hasRow = explicitCaptureRowSlots[index] != kMissingSize;
+      if (explicitClosure == hasRow) { continue; }
+      reject(explicitClosure ? BinderInvariantKind::MissingRequiredResolution
+                             : BinderInvariantKind::InvalidBindingFact,
+             inventory[index].node);
+      return false;
+    }
+    zc::TreeMap<zc::String, size_t> order;
+    for (size_t index = 0; index < result.explicitClosureCaptures.size(); ++index) {
+      const auto& row = result.explicitClosureCaptures[index];
+      auto inventoryIndex = definitionIndex(row.closure);
+      if (inventoryIndex == zc::none ||
+          inventory[ZC_ASSERT_NONNULL(inventoryIndex)].kind != identity::DefinitionKind::Closure ||
+          closureCaptureDomains[ZC_ASSERT_NONNULL(inventoryIndex)] !=
+              ClosureCaptureDomain::Explicit ||
+          explicitCaptureRowSlots[ZC_ASSERT_NONNULL(inventoryIndex)] != index) {
+        reject(BinderInvariantKind::InvalidBindingFact, row.captureList);
+        return false;
+      }
+      auto key = encodedDefinitionKey(inventory[ZC_ASSERT_NONNULL(inventoryIndex)]);
+      if (order.find(key) != zc::none) {
+        reject(BinderInvariantKind::InvalidBindingFact, row.captureList);
+        return false;
+      }
+      order.insert(zc::mv(key), index);
+    }
+    zc::Vector<ExplicitClosureCaptureFact> canonical;
+    for (const auto& ordered : order) {
+      canonical.add(zc::mv(result.explicitClosureCaptures[ordered.value]));
+    }
+    result.explicitClosureCaptures = zc::mv(canonical);
+    for (auto& slot : explicitCaptureRowSlots) { slot = kMissingSize; }
+    for (size_t index = 0; index < result.explicitClosureCaptures.size(); ++index) {
+      const auto& row = result.explicitClosureCaptures[index];
+      auto inventoryIndex = definitionIndex(row.closure);
+      if (inventoryIndex == zc::none ||
+          explicitCaptureRowSlots[ZC_ASSERT_NONNULL(inventoryIndex)] != kMissingSize) {
+        reject(BinderInvariantKind::InvalidBindingFact, row.captureList);
+        return false;
+      }
+      explicitCaptureRowSlots[ZC_ASSERT_NONNULL(inventoryIndex)] = index;
     }
     return true;
   }

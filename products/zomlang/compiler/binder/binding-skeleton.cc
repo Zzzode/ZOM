@@ -210,6 +210,35 @@ bool hasLexicalBinding(SkeletonEligibility classification) {
          classification != SkeletonEligibility::Closure;
 }
 
+bool isReceiverParameter(const VerifiedBindingInput& input,
+                         const FrozenDefinitionEntry& definition) {
+  return definition.kind == identity::DefinitionKind::Parameter &&
+         input.tree().contains(definition.node) &&
+         input.tree().node(definition.node).kind == ast::SyntaxKind::FunctionParameterDecl &&
+         input.parsedModule().functionParameterNameSpan(definition.node,
+                                                        ast::SyntaxKind::ThisKeyword) != zc::none;
+}
+
+struct ReceiverCandidate final {
+  ScopeId scope;
+  identity::DefId definition;
+  ast::NodeId node;
+  identity::SourceSpan source;
+};
+
+bool receiverLess(const ReceiverCandidate& left, const ReceiverCandidate& right) {
+  if (left.scope.index() != right.scope.index()) {
+    return left.scope.index() < right.scope.index();
+  }
+  if (left.source.byteStart() != right.source.byteStart()) {
+    return left.source.byteStart() < right.source.byteStart();
+  }
+  if (left.source.byteEnd() != right.source.byteEnd()) {
+    return left.source.byteEnd() < right.source.byteEnd();
+  }
+  return left.node.value < right.node.value;
+}
+
 zc::Maybe<DefinitionActivation> patternActivation(const ast::Tree& tree,
                                                   const DefinitionSite& site) {
   if (!site.value().is<PatternBindingSite>()) { return zc::none; }
@@ -426,6 +455,7 @@ DefinitionSkeletonBuildResult BindingSkeletonBuilder::build(const VerifiedBindin
   }
 
   DefinitionSkeletonCandidate result;
+  zc::Vector<ReceiverCandidate> receivers;
   for (const size_t index : order) {
     const auto& definition = inventory[index];
     const auto classification = eligibility(definition.kind);
@@ -433,7 +463,8 @@ DefinitionSkeletonBuildResult BindingSkeletonBuilder::build(const VerifiedBindin
       if (definition.kind == identity::DefinitionKind::Local) { continue; }
       return failure(input, BinderInvariantKind::MissingRequiredResolution, definition.node);
     }
-    const bool lexicalBinding = hasLexicalBinding(classification);
+    const bool receiver = isReceiverParameter(input, definition);
+    const bool lexicalBinding = hasLexicalBinding(classification) && !receiver;
     if ((lexicalBinding && definition.bindingName == zc::none) ||
         (!lexicalBinding && definition.bindingName != zc::none) ||
         !input.tree().contains(definition.node)) {
@@ -560,6 +591,17 @@ DefinitionSkeletonBuildResult BindingSkeletonBuilder::build(const VerifiedBindin
       result.definitions.add(DefinitionFact(definition.definition, definition.site.clone(),
                                             definition.kind, definition.name.clone(), nameSpace,
                                             scope, definition.source.clone(), activation));
+      if (receiver) {
+        auto source = input.parsedModule().functionParameterNameSpan(definition.node,
+                                                                     ast::SyntaxKind::ThisKeyword);
+        if (source == zc::none) {
+          return failure(input, BinderInvariantKind::InvalidBindingFact, definition.node);
+        }
+        ZC_IF_SOME(value, source) {
+          receivers.add(
+              ReceiverCandidate{scope, definition.definition, definition.node, zc::mv(value)});
+        }
+      }
       if (lexicalBinding && classification != SkeletonEligibility::Generic &&
           classification != SkeletonEligibility::Parameter && record.kind == ScopeKind::Module) {
         const auto& name = ZC_ASSERT_NONNULL(definition.bindingName);
@@ -578,6 +620,33 @@ DefinitionSkeletonBuildResult BindingSkeletonBuilder::build(const VerifiedBindin
         result.moduleSurfaceSeeds.add(ModuleSkeletonSurfaceSeed(
             BindingNameKey(nameSpace, name.clone()), definition.definition,
             definition.source.clone(), exportNode != zc::none, zc::mv(exportSpan)));
+      }
+    }
+  }
+
+  for (size_t index = 1; index < receivers.size(); ++index) {
+    auto current = zc::mv(receivers[index]);
+    size_t insertion = index;
+    while (insertion > 0 && receiverLess(current, receivers[insertion - 1])) {
+      receivers[insertion] = zc::mv(receivers[insertion - 1]);
+      --insertion;
+    }
+    receivers[insertion] = zc::mv(current);
+  }
+  size_t receiverIndex = 0;
+  while (receiverIndex < receivers.size()) {
+    const auto& previous = receivers[receiverIndex++];
+    while (receiverIndex < receivers.size() && receivers[receiverIndex].scope == previous.scope) {
+      const auto& rejected = receivers[receiverIndex++];
+      auto name = identity::DeclaredDefinitionName::fromCanonical("this"_zc);
+      if (name == zc::none) {
+        return failure(input, BinderInvariantKind::InvalidBindingFact, rejected.node);
+      }
+      ZC_IF_SOME(nameValue, name) {
+        result.duplicates.add(BindingDuplicateFact{
+            BinderDiagnosticCode::RedeclareParameter, BinderEmitterSite::ModuleSkeleton,
+            zc::mv(nameValue), rejected.definition, rejected.node, previous.node,
+            rejected.source.clone(), previous.source.clone()});
       }
     }
   }
@@ -659,11 +728,19 @@ DefinitionSkeletonBuildResult BindingSkeletonBuilder::build(const VerifiedBindin
               ZC_IF_SOME(codeValue, code) {
                 ZC_IF_SOME(primaryNodeValue, primaryNode) {
                   ZC_IF_SOME(previousNodeValue, previousNode) {
-                    result.duplicates.add(BindingDuplicateFact{
-                        codeValue, BinderEmitterSite::ModuleSkeleton, binding.name.name().clone(),
-                        rejectedValue, primaryNodeValue, previousNodeValue,
-                        binding.binding.declarationSpan.clone(),
-                        unique.back().binding.declarationSpan.clone()});
+                    auto name =
+                        identity::DeclaredDefinitionName::fromCanonical(binding.name.name().text());
+                    if (name == zc::none) {
+                      return failure(input, BinderInvariantKind::InvalidBindingFact,
+                                     primaryNodeValue);
+                    }
+                    ZC_IF_SOME(nameValue, name) {
+                      result.duplicates.add(BindingDuplicateFact{
+                          codeValue, BinderEmitterSite::ModuleSkeleton, zc::mv(nameValue),
+                          rejectedValue, primaryNodeValue, previousNodeValue,
+                          binding.binding.declarationSpan.clone(),
+                          unique.back().binding.declarationSpan.clone()});
+                    }
                   }
                 }
               }

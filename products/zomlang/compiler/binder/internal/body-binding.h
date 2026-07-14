@@ -24,9 +24,10 @@ struct DefinitionSkeletonCandidate;
 struct BodyBindingFailureFact final {
   BinderDiagnosticCode diagnostic;
   ast::NodeId node;
-  identity::SemanticIdentifier name;
+  identity::DeclaredDefinitionName name;
   Namespace expectedNamespace;
   identity::SourceSpan source;
+  BinderEmitterSite emitterSite;
   uint32_t schemaPreorderOrdinal;
 };
 
@@ -36,6 +37,7 @@ struct BodyBindingCandidate final {
   zc::Vector<BodyBindingFailureFact> failures;
   zc::Vector<DeferredMemberFact> deferredMembers;
   zc::Vector<ShadowTargetFact> shadowTargets;
+  zc::Vector<ExplicitClosureCaptureFact> explicitClosureCaptures;
 };
 
 using BodyBindingBuildResult = zc::OneOf<BodyBindingCandidate, BinderInvariantFact>;

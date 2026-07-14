@@ -13,6 +13,7 @@
 #include "zc/core/io.h"
 #include "zc/core/vector.h"
 #include "zomlang/compiler/ast/dump.h"
+#include "zomlang/compiler/ast/generated/node-payload.h"
 #include "zomlang/compiler/ast/generated/node-schema.h"
 #include "zomlang/compiler/ast/schema-verifier.h"
 #include "zomlang/compiler/identity/sha256.h"
@@ -34,6 +35,22 @@ struct ParsedTokenOffset final {
   uint64_t end;
   zc::String canonicalText;
 };
+
+size_t lowerBoundTokenStart(zc::ArrayPtr<const ParsedTokenOffset> tokens, uint64_t start) {
+  size_t first = 0;
+  size_t count = tokens.size();
+  while (count != 0) {
+    const size_t step = count / 2;
+    const size_t middle = first + step;
+    if (tokens[middle].start < start) {
+      first = middle + 1;
+      count -= step + 1;
+    } else {
+      count = step;
+    }
+  }
+  return first;
+}
 
 ParsedModuleInvariantFact failure(ParsedModuleInvariantKind kind) { return {kind, 1}; }
 
@@ -227,18 +244,7 @@ zc::Maybe<identity::SourceSpan> VerifiedParsedModule::retainedTokenSpan(
   auto ownerSpan = spanFor(impl->tree.node(owner).range);
   if (ownerSpan == zc::none) { return zc::none; }
   ZC_IF_SOME(span, ownerSpan) {
-    size_t first = 0;
-    size_t count = impl->tokens.size();
-    while (count != 0) {
-      const size_t step = count / 2;
-      const size_t middle = first + step;
-      if (impl->tokens[middle].start < span.byteStart()) {
-        first = middle + 1;
-        count -= step + 1;
-      } else {
-        count = step;
-      }
-    }
+    const size_t first = lowerBoundTokenStart(impl->tokens.asPtr(), span.byteStart());
     if (first >= impl->tokens.size()) { return zc::none; }
     if (impl->tokens[first].start != span.byteStart() ||
         static_cast<size_t>(tokenOrdinal) >= impl->tokens.size() - first) {
@@ -252,6 +258,45 @@ zc::Maybe<identity::SourceSpan> VerifiedParsedModule::retainedTokenSpan(
     return impl->snapshot.span(token.start, token.end);
   }
   ZC_UNREACHABLE;
+}
+
+zc::Maybe<identity::SourceSpan> VerifiedParsedModule::functionParameterNameSpan(
+    ast::NodeId parameter, ast::SyntaxKind expectedKind) const {
+  if (!impl->tree.contains(parameter) ||
+      impl->tree.node(parameter).kind != ast::SyntaxKind::FunctionParameterDecl ||
+      (expectedKind != ast::SyntaxKind::Identifier &&
+       expectedKind != ast::SyntaxKind::ThisKeyword)) {
+    return zc::none;
+  }
+  const auto& syntax = impl->tree.node(parameter);
+  auto parameterSpan = spanFor(syntax.range);
+  if (parameterSpan == zc::none) { return zc::none; }
+  uint64_t nameSearchStart = ZC_ASSERT_NONNULL(parameterSpan).byteStart();
+  const ast::NodeId attributes(syntax.payload.words[ast::kFunctionParameterDeclAttrsWord]);
+  if (attributes) {
+    if (!impl->tree.contains(attributes) ||
+        impl->tree.node(attributes).kind != ast::SyntaxKind::AttributeList) {
+      return zc::none;
+    }
+    auto attributeSpan = spanFor(impl->tree.node(attributes).range);
+    if (attributeSpan == zc::none ||
+        ZC_ASSERT_NONNULL(attributeSpan).byteStart() !=
+            ZC_ASSERT_NONNULL(parameterSpan).byteStart() ||
+        ZC_ASSERT_NONNULL(attributeSpan).byteEnd() > ZC_ASSERT_NONNULL(parameterSpan).byteEnd()) {
+      return zc::none;
+    }
+    nameSearchStart = ZC_ASSERT_NONNULL(attributeSpan).byteEnd();
+  }
+  const size_t tokenIndex = lowerBoundTokenStart(impl->tokens.asPtr(), nameSearchStart);
+  if (tokenIndex >= impl->tokens.size()) { return zc::none; }
+  const auto& token = impl->tokens[tokenIndex];
+  if (token.kind != expectedKind || token.start < nameSearchStart || token.start >= token.end ||
+      token.end > ZC_ASSERT_NONNULL(parameterSpan).byteEnd()) {
+    return zc::none;
+  }
+  const ast::IdentId name(syntax.payload.words[ast::kFunctionParameterDeclNameWord]);
+  if (impl->tree.ident(name) != token.canonicalText) { return zc::none; }
+  return impl->snapshot.span(token.start, token.end);
 }
 
 zc::Maybe<source::SourceLoc> VerifiedParsedModule::sourceLocFor(

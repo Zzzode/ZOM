@@ -49,6 +49,7 @@ DIAGNOSTIC_DEFINITIONS = Path("products/zomlang/compiler/diagnostics/diagnostics
 BINDER_CMAKE = BINDER_DIR / "CMakeLists.txt"
 TEST_DIR = Path("products/zomlang/tests/unittests/compiler/binder")
 TEST_SOURCE = TEST_DIR / "binding-input-test.cc"
+FROZEN_INVENTORY_TEST = TEST_DIR / "frozen-definition-inventory-test.cc"
 TEST_CMAKE = TEST_DIR / "CMakeLists.txt"
 DIAGNOSTIC_ADAPTER_TEST = TEST_DIR / "binding-diagnostic-adapter-test.cc"
 PARSER_TEST_SOURCE = Path("products/zomlang/tests/unittests/compiler/parser/parser-test.cc")
@@ -108,6 +109,7 @@ def production_files() -> dict[Path, str]:
         DIAGNOSTIC_DEFINITIONS,
         BINDER_CMAKE,
         TEST_SOURCE,
+        FROZEN_INVENTORY_TEST,
         TEST_CMAKE,
     ):
         files.setdefault(required, (ROOT / required).read_text(encoding="utf-8"))
@@ -219,7 +221,6 @@ def check_parsed_token_provenance(files: dict[Path, str], errors: list[str]) -> 
         "token.kind == ast::SyntaxKind::EndOfFile",
         "token.kind == ast::SyntaxKind::Unknown || start == end",
         "static_cast<size_t>(tokenOrdinal) >= impl->tokens.size() - first",
-        "token.kind != expectedKind",
         "token.end > span.byteEnd()",
         "!span.belongsTo(impl->snapshot.source())",
         "span.byteEnd() > impl->snapshot.bytes().size()",
@@ -227,6 +228,11 @@ def check_parsed_token_provenance(files: dict[Path, str], errors: list[str]) -> 
     ):
         if required not in parsed_source:
             errors.append(f"{PARSED_SOURCE}: parsed token validation is incomplete: {required}")
+    retained_token_span = function_body(
+        parsed_source, "VerifiedParsedModule::retainedTokenSpan("
+    )
+    if "token.kind != expectedKind" not in retained_token_span:
+        errors.append(f"{PARSED_SOURCE}: retained token kind validation is incomplete")
     for marker in (
         "ParsedModule.RetainsExactEscapedKeywordTokenSpans",
         "ParsedModule.RetainsLabelTokenOrdinalsAndExactSourceLocations",
@@ -271,7 +277,12 @@ def check_unique_construction(files: dict[Path, str], errors: list[str]) -> None
             if path != publication_source and impl_marker in text:
                 errors.append(f"{path}: {name} private implementation construction escaped")
     for name, publication_source in publication_sources.items():
-        if files.get(publication_source, "").count(f"zc::heap<{name}::Impl>") != 1:
+        publication_count = files.get(publication_source, "").count(f"zc::heap<{name}::Impl>")
+        if name == "FrozenDefinitionInventoryView":
+            publication_count = type_body(
+                files.get(publication_source, ""), "FrozenDefinitionInventoryView::Impl"
+            ).count("zc::heap<Impl>")
+        if publication_count != 1:
             errors.append(f"{publication_source}: {name} must have exactly one publication site")
 
 
@@ -288,6 +299,8 @@ def check_verified_input_surface(files: dict[Path, str], errors: list[str]) -> N
 def check_frozen_impl_inventory_contract(files: dict[Path, str], errors: list[str]) -> None:
     header = files.get(INVENTORY_HEADER, "")
     source = files.get(INVENTORY_SOURCE, "")
+    tests = files.get(FROZEN_INVENTORY_TEST, "")
+    cmake = files.get(TEST_CMAKE, "")
     for required in (
         "struct FrozenImplEntry final",
         "zc::ArrayPtr<const FrozenImplEntry> impls() const;",
@@ -305,6 +318,160 @@ def check_frozen_impl_inventory_contract(files: dict[Path, str], errors: list[st
             errors.append(f"{INVENTORY_SOURCE}: frozen impl authority is disconnected: {required}")
     if "UnsupportedImplInventory" in header or "UnsupportedImplInventory" in source:
         errors.append(f"{INVENTORY_HEADER}: impl inventory compatibility rejection is forbidden")
+
+    inventory_impl = type_body(source, "FrozenDefinitionInventoryView::Impl")
+    for required in (
+        "using CreateResult = zc::OneOf<zc::Own<Impl>, FrozenInventoryInvariantKind>;",
+        "zc::Vector<uint32_t> definitionSlotsByNode;",
+        "zc::Vector<uint32_t> implSlotsByNode;",
+        "identity::DefinitionRegistry::FrozenKeyIndex definitionKeys;",
+        "identity::ImplRegistry::FrozenKeyIndex implKeys;",
+    ):
+        if required not in inventory_impl:
+            errors.append(
+                f"{INVENTORY_SOURCE}: dense frozen inventory storage is incomplete: {required}"
+            )
+
+    create = function_body(inventory_impl, "static CreateResult create(")
+    for required in (
+        "return FrozenInventoryInvariantKind::InputMismatch;",
+        "tree.node(moduleNode).kind != ast::SyntaxKind::ModuleDeclaration",
+        "tree.nodeCount() > static_cast<size_t>(UINT32_MAX)",
+        "return FrozenInventoryInvariantKind::InvalidDefinitionSite;",
+        "return FrozenInventoryInvariantKind::InvalidDefinitionIdentity;",
+        "return FrozenInventoryInvariantKind::IncompleteInventory;",
+        "!context.isValid()",
+        "!module.belongsTo(context)",
+        "!tree.contains(moduleNode)",
+        "definitions.size() > static_cast<size_t>(UINT32_MAX)",
+        "impls.size() > static_cast<size_t>(UINT32_MAX)",
+        "tree.nodeCount() == SIZE_MAX",
+        "definitionSlotsByNode.resize(tree.nodeCount() + 1);",
+        "implSlotsByNode.resize(tree.nodeCount() + 1);",
+        "for (auto& slot : definitionSlotsByNode) { slot = kMissing; }",
+        "for (auto& slot : implSlotsByNode) { slot = kMissing; }",
+        "zc::TreeMap<zc::String, size_t> canonicalDefinitionSlots;",
+        "zc::TreeMap<zc::String, size_t> canonicalImplSlots;",
+        "definitionCensus != definitions.size()",
+        "implCensus != impls.size()",
+        "canonicalDefinitionSlots.size() != definitions.size()",
+        "canonicalImplSlots.size() != impls.size()",
+        "definitionSlotsByNode[moduleNode.value] != kMissing",
+        "implSlotsByNode[moduleNode.value] != kMissing",
+        "zc::mv(definitionSlotsByNode)",
+        "zc::mv(implSlotsByNode)",
+    ):
+        if required not in create:
+            errors.append(
+                f"{INVENTORY_SOURCE}: dense frozen inventory construction is incomplete: "
+                f"{required}"
+            )
+    if create.count("zc::heap<Impl>") != 1:
+        errors.append(
+            f"{INVENTORY_SOURCE}: dense frozen inventory must have one validated publication site"
+        )
+
+    definition_census_start = create.find("size_t definitionCensus = 0;")
+    definition_census_end = create.find("size_t implCensus = 0;", definition_census_start)
+    definition_census = (
+        create[definition_census_start:definition_census_end]
+        if definition_census_start >= 0 and definition_census_end > definition_census_start
+        else ""
+    )
+    for required in (
+        "for (size_t slot = 0; slot < definitions.size(); ++slot)",
+        "definitionKeys.lookup(entry.definition)",
+        "!tree.contains(entry.node)",
+        "!entry.definition.belongsTo(context)",
+        "if (!entry.definition.belongsTo(context) || registeredKey == zc::none) {",
+        "definitionSlotsByNode[entry.node.value] != kMissing",
+        "implSlotsByNode[entry.node.value] != kMissing",
+        "const auto entryKey = entry.key.encode();",
+        "const auto registeredKeyBytes = key.encode();",
+        "keyMatches = entryKey.asPtr() == registeredKeyBytes.asPtr();",
+        "canonicalDefinitionSlots.find(canonicalKey) != zc::none",
+        "canonicalDefinitionSlots.insert(zc::mv(canonicalKey), slot);",
+        "definitionSlotsByNode[entry.node.value] = static_cast<uint32_t>(slot);",
+        "++definitionCensus;",
+    ):
+        if required not in definition_census:
+            errors.append(
+                f"{INVENTORY_SOURCE}: definition dense census is incomplete: {required}"
+            )
+
+    impl_census_start = definition_census_end
+    impl_census_end = create.find(
+        "if (definitionCensus != definitions.size()", impl_census_start
+    )
+    impl_census = (
+        create[impl_census_start:impl_census_end]
+        if impl_census_start >= 0 and impl_census_end > impl_census_start
+        else ""
+    )
+    for required in (
+        "for (size_t slot = 0; slot < impls.size(); ++slot)",
+        "implKeys.lookup(entry.implementation)",
+        "!tree.contains(entry.node)",
+        "!entry.implementation.belongsTo(context)",
+        "if (!entry.implementation.belongsTo(context) || registeredKey == zc::none) {",
+        "definitionSlotsByNode[entry.node.value] != kMissing",
+        "implSlotsByNode[entry.node.value] != kMissing",
+        "const auto entryKey = entry.key.encode();",
+        "const auto registeredKeyBytes = key.encode();",
+        "keyMatches = entryKey.asPtr() == registeredKeyBytes.asPtr();",
+        "canonicalImplSlots.find(canonicalKey) != zc::none",
+        "canonicalImplSlots.insert(zc::mv(canonicalKey), slot);",
+        "implSlotsByNode[entry.node.value] = static_cast<uint32_t>(slot);",
+        "++implCensus;",
+    ):
+        if required not in impl_census:
+            errors.append(f"{INVENTORY_SOURCE}: impl dense census is incomplete: {required}")
+
+    definition_lookup = function_body(
+        source, "FrozenDefinitionInventoryView::definitionAt(ast::NodeId node) const"
+    )
+    for required in (
+        "node.value >= impl->definitionSlotsByNode.size()",
+        "const uint32_t slot = impl->definitionSlotsByNode[node.value];",
+        "slot == kMissing || slot >= impl->definitions.size()",
+        "const auto& entry = impl->definitions[slot];",
+        "entry.node == node && entry.definition.belongsTo(impl->context)",
+    ):
+        if required not in definition_lookup:
+            errors.append(
+                f"{INVENTORY_SOURCE}: indexed definitionAt lookup is incomplete: {required}"
+            )
+    if "for (" in definition_lookup or "while (" in definition_lookup:
+        errors.append(f"{INVENTORY_SOURCE}: definitionAt regressed to a linear inventory scan")
+
+    impl_lookup = function_body(
+        source, "FrozenDefinitionInventoryView::implAt(ast::NodeId node) const"
+    )
+    for required in (
+        "node.value >= impl->implSlotsByNode.size()",
+        "const uint32_t slot = impl->implSlotsByNode[node.value];",
+        "slot == kMissing || slot >= impl->impls.size()",
+        "const auto& entry = impl->impls[slot];",
+        "entry.node == node && entry.implementation.belongsTo(impl->context)",
+    ):
+        if required not in impl_lookup:
+            errors.append(f"{INVENTORY_SOURCE}: indexed implAt lookup is incomplete: {required}")
+    if "for (" in impl_lookup or "while (" in impl_lookup:
+        errors.append(f"{INVENTORY_SOURCE}: implAt regressed to a linear inventory scan")
+
+    for marker in (
+        "FrozenDefinitionInventory.DenseLookupSeparatesDefinitionsAndImplementations",
+        "FrozenDefinitionInventory.DenseLookupRejectsHolesAndInvalidNodeIds",
+        "FrozenDefinitionInventory.RejectsIncompleteDefinitionCensus",
+    ):
+        registration = rf'^\s*ZC_TEST\("{re.escape(marker)}"\)\s*\{{'
+        if re.search(registration, tests, flags=re.MULTILINE) is None:
+            errors.append(f"{FROZEN_INVENTORY_TEST}: missing dense lookup evidence: {marker}")
+    if (
+        'add_ztest_unit_test("frozen-definition-inventory-test" '
+        '"frozen-definition-inventory-test.cc"' not in cmake
+    ):
+        errors.append(f"{TEST_CMAKE}: frozen definition inventory tests are not registered")
 
 
 def check_owned_key_projection_contract(files: dict[Path, str], errors: list[str]) -> None:
@@ -345,12 +512,15 @@ def check_owned_key_projection_contract(files: dict[Path, str], errors: list[str
 def check_special_callable_contract(files: dict[Path, str], errors: list[str]) -> None:
     inventory = files.get(INVENTORY_SOURCE, "")
     skeleton = files.get(SKELETON_SOURCE, "")
+    parsed_header = files.get(PARSED_HEADER, "")
+    parsed_source = files.get(PARSED_SOURCE, "")
     tests = files.get(TEST_SOURCE, "")
     for required in (
-        "bool permitsAbsentLexicalBinding(identity::DefinitionKind kind)",
-        "return kind == identity::DefinitionKind::Constructor ||\n"
-        "         kind == identity::DefinitionKind::Destructor;",
-        "bindingName == zc::none && !permitsAbsentLexicalBinding(entry.kind)",
+        "bool isReceiverParameter(const DefinitionInventoryEntry& entry,",
+        "parsedModule.functionParameterNameSpan(entry.node, ast::SyntaxKind::ThisKeyword)",
+        "bool permitsAbsentLexicalBinding(const DefinitionInventoryEntry& entry,",
+        "isReceiverParameter(entry, parsedModule);",
+        "bindingName == zc::none && !permitsAbsentLexicalBinding(entry, parsedModule)",
     ):
         if required not in inventory:
             errors.append(f"{INVENTORY_SOURCE}: special callable identity contract is disconnected: {required}")
@@ -361,14 +531,52 @@ def check_special_callable_contract(files: dict[Path, str], errors: list[str]) -
         "bool hasLexicalBinding(SkeletonEligibility classification)",
         "return classification != SkeletonEligibility::SpecialCallable &&\n"
         "         classification != SkeletonEligibility::Closure;",
-        "const bool lexicalBinding = hasLexicalBinding(classification);",
+        "bool isReceiverParameter(const VerifiedBindingInput& input,",
+        "const bool receiver = isReceiverParameter(input, definition);",
+        "const bool lexicalBinding = hasLexicalBinding(classification) && !receiver;",
+        "zc::Vector<ReceiverCandidate> receivers;",
+        "BinderDiagnosticCode::RedeclareParameter, BinderEmitterSite::ModuleSkeleton,",
         "classification == SkeletonEligibility::SpecialCallable && !specialCallableScope",
         "if (lexicalBinding) {",
     ):
         if required not in skeleton:
             errors.append(f"{SKELETON_SOURCE}: special callable binding contract is disconnected: {required}")
-    if "BindingActivation.PublishesSpecialCallableParameterLists" not in tests:
-        errors.append(f"{TEST_SOURCE}: missing special callable activation evidence")
+    if re.search(
+        r"auto\s+source\s*=\s*input\.parsedModule\(\)\.functionParameterNameSpan\(\s*"
+        r"definition\.node\s*,\s*ast::SyntaxKind::ThisKeyword\s*\);",
+        skeleton,
+    ) is None or re.search(
+        r"ReceiverCandidate\{\s*scope\s*,\s*definition\.definition\s*,\s*"
+        r"definition\.node\s*,\s*zc::mv\(value\)\s*\}",
+        skeleton,
+    ) is None:
+        errors.append(
+            f"{SKELETON_SOURCE}: receiver duplicate source must be the retained this token"
+        )
+    if "functionParameterNameSpan(" not in parsed_header:
+        errors.append(f"{PARSED_HEADER}: missing retained parameter-name token surface")
+    parameter_name_span = function_body(
+        parsed_source, "VerifiedParsedModule::functionParameterNameSpan("
+    )
+    for required in (
+        "ast::SyntaxKind::FunctionParameterDecl",
+        "expectedKind != ast::SyntaxKind::Identifier",
+        "expectedKind != ast::SyntaxKind::ThisKeyword",
+        "lowerBoundTokenStart(impl->tokens.asPtr(), nameSearchStart)",
+        "if (token.kind != expectedKind || token.start < nameSearchStart",
+        "impl->tree.ident(name) != token.canonicalText",
+        "return impl->snapshot.span(token.start, token.end);",
+    ):
+        if required not in parameter_name_span:
+            errors.append(
+                f"{PARSED_SOURCE}: retained parameter-name token contract is incomplete: {required}"
+            )
+    for marker in (
+        "BindingActivation.PublishesSpecialCallableParameterLists",
+        "ReceiverBinding.RejectsMissingAndDuplicateReceivers",
+    ):
+        if marker not in tests:
+            errors.append(f"{TEST_SOURCE}: missing special callable activation evidence: {marker}")
 
 
 def check_closure_activation_contract(files: dict[Path, str], errors: list[str]) -> None:
@@ -523,6 +731,9 @@ def check_body_binding_contract(files: dict[Path, str], errors: list[str]) -> No
         "BodyBinding.RejectsSelfReferenceBeforeActivation",
         "BodyBinding.RejectsLaterDeclaratorReference",
         "BodyBinding.RecordsOuterShadowTargetAndResolvesNearestBinding",
+        "BodyBinding.ResolvesModuleOwnedLoopPatternInBody",
+        "BodyBinding.ResolvesModuleOwnedMatchPatternInGuardAndBody",
+        "BodyBinding.ResolvesModuleOwnedLocalThroughNestedBlock",
         "BodyBinding.ActivatesForInPatternAfterIterable",
         "BodyBinding.ActivatesMatchPatternForGuardAndBody",
         "BodyBinding.OrdersParameterDefaultVisibilityBySource",
@@ -726,9 +937,14 @@ def check_closure_free_variable_contract(
 
     for required in (
         "BinderEmitterSite::LabelAndClosure",
-        "rejectExplicitCaptureClauses()",
+        "enum class ClosureCaptureDomain : uint8_t { NotClosure, Inferred, Explicit }",
         "ast::kFunctionExpressionCapturesIdWord",
-        "reject(BinderInvariantKind::MissingRequiredResolution, node);",
+        "zc::Vector<uint32_t> owningCallableScopeIndices;",
+        "zc::Vector<size_t> callableDefinitionIndices;",
+        "zc::Vector<ClosureCaptureDomain> closureCaptureDomains;",
+        "zc::Vector<size_t> closureFactRows;",
+        "zc::TreeMap<zc::String, size_t> definitionIndices;",
+        "reject(BinderInvariantKind::MissingRequiredResolution, resolution.node);",
         "kind == identity::DefinitionKind::Parameter ||",
         "kind == identity::DefinitionKind::Local ||",
         "kind == identity::DefinitionKind::PatternBinding",
@@ -738,12 +954,14 @@ def check_closure_free_variable_contract(
         "canonicalTarget.is<DefinitionBindingTarget>()",
         "canonicalTarget.get<DefinitionBindingTarget>().definition",
         "initializeDenseRows()",
-        "entry.kind != identity::DefinitionKind::Closure",
-        "entry.key.encode()",
+        "for (const auto& ordered : definitionIndices)",
+        "closureCaptureDomains[definitionIndexValue] == ClosureCaptureDomain::Explicit",
+        "closureCaptureDomains[definitionIndexValue] != ClosureCaptureDomain::Inferred",
+        "closureFactRows[definitionIndexValue] = facts.size();",
         "ReferenceSiteOrderKey",
         "value.byteStart(), value.byteEnd(),",
         "schemaOrdinals[site.value]",
-        "crossedClosures.add(ZC_ASSERT_NONNULL(row));",
+        "crossedClosures.add(row);",
         "for (const auto closureIndex : crossedClosures)",
         "appendReference(closureIndex, target, resolution.node)",
         "scope.kind == ScopeKind::Function",
@@ -752,6 +970,85 @@ def check_closure_free_variable_contract(
     ):
         if required not in source:
             errors.append(f"{CLOSURE_SOURCE}: closure-fact producer is disconnected: {required}")
+
+    initialize = function_body(source, "bool initialize()")
+    for required in (
+        "definitionIndices.insert(zc::mv(encoded), index);",
+        "callableDefinitionIndices[scopeIndex] = index;",
+        "owningCallableScopeIndices[index] = scopeIndex;",
+        "closureCaptureDomains[index] = ClosureCaptureDomain::Inferred;",
+        "captures ? ClosureCaptureDomain::Explicit : ClosureCaptureDomain::Inferred",
+    ):
+        if required not in initialize:
+            errors.append(
+                f"{CLOSURE_SOURCE}: closure index precomputation is incomplete: {required}"
+            )
+
+    definition_lookup = function_body(
+        source, "zc::Maybe<size_t> definitionIndex(identity::DefId definition) const"
+    )
+    for required in (
+        "input.definitions().definitionKey(definition)",
+        "definitionIndices.find(zc::str(bytes.asChars()))",
+        "definitions[found].identity == definition",
+    ):
+        if required not in definition_lookup:
+            errors.append(
+                f"{CLOSURE_SOURCE}: indexed closure definition lookup is incomplete: {required}"
+            )
+    if "for (" in definition_lookup:
+        errors.append(f"{CLOSURE_SOURCE}: closure definition lookup regressed to a linear scan")
+
+    callable_lookup = function_body(
+        source, "zc::Maybe<uint32_t> owningCallableScope(size_t definitionIndexValue) const"
+    )
+    for required in (
+        "definitionIndexValue >= owningCallableScopeIndices.size()",
+        "owningCallableScopeIndices[definitionIndexValue] == kMissingIndex",
+        "return owningCallableScopeIndices[definitionIndexValue];",
+    ):
+        if required not in callable_lookup:
+            errors.append(
+                f"{CLOSURE_SOURCE}: indexed callable ownership lookup is incomplete: {required}"
+            )
+    if "for (" in callable_lookup:
+        errors.append(f"{CLOSURE_SOURCE}: callable ownership lookup regressed to a linear scan")
+
+    dense_rows = function_body(source, "bool initializeDenseRows()")
+    for required in (
+        "for (const auto& ordered : definitionIndices)",
+        "closureCaptureDomains[definitionIndexValue] == ClosureCaptureDomain::Explicit",
+        "closureCaptureDomains[definitionIndexValue] != ClosureCaptureDomain::Inferred",
+        "closureFactRows[definitionIndexValue] = facts.size();",
+    ):
+        if required not in dense_rows:
+            errors.append(
+                f"{CLOSURE_SOURCE}: indexed dense closure rows are incomplete: {required}"
+            )
+
+    collect = function_body(source, "void collect(const BindingResolution& resolution)")
+    for required in (
+        "auto targetCallableScope = owningCallableScope(definitionIndexValue);",
+        "if (targetCallableScope == zc::none) {",
+        "const uint32_t targetDeclaringScope = targetDefinition.declaringScope.index();",
+        "if (scopeIndex == targetDeclaringScope) { return; }",
+        "scope.kind == ScopeKind::Function || scope.kind == ScopeKind::Closure ||\n"
+        "            scope.kind == ScopeKind::Module || scope.parent == zc::none",
+        "const size_t callableIndex = callableDefinitionIndices[scopeIndex];",
+        "closureCaptureDomains[callableIndex] == ClosureCaptureDomain::NotClosure",
+        "closureCaptureDomains[callableIndex] == ClosureCaptureDomain::Inferred",
+        "const size_t row = closureFactRows[callableIndex];",
+        "crossedClosures.add(row);",
+        "if (scope.kind == ScopeKind::Module || scope.parent == zc::none) {\n"
+        "        reject(BinderInvariantKind::MalformedScopeGraph, resolution.node);\n"
+        "        return;\n"
+        "      }\n"
+        "      ZC_IF_SOME(parent, scope.parent) { scopeIndex = parent.index(); }",
+    ):
+        if required not in collect:
+            errors.append(
+                f"{CLOSURE_SOURCE}: indexed closure traversal contract is incomplete: {required}"
+            )
 
     for forbidden in (
         "ast::BindingMetadata",
@@ -764,9 +1061,10 @@ def check_closure_free_variable_contract(
         if forbidden in source:
             errors.append(f"{CLOSURE_SOURCE}: forbidden closure-fact dependency: {forbidden}")
 
-    run_body = function_body(source, "ClosureFreeVariableBuildResult run()")
-    if "if (!rejectExplicitCaptureClauses()) { return takeRejection(); }" not in run_body:
-        errors.append(f"{CLOSURE_SOURCE}: explicit capture clauses do not fail closed")
+    if "rejectExplicitCaptureClauses" in source:
+        errors.append(f"{CLOSURE_SOURCE}: obsolete explicit-capture rejection remains")
+    if "hasExplicitCaptureClause(" in source:
+        errors.append(f"{CLOSURE_SOURCE}: closure domains regressed to per-reference syntax scans")
 
     identity_guard = (
         "if (!bindingIdentity.is<DefinitionBindingTarget>() ||\n"
@@ -784,7 +1082,8 @@ def check_closure_free_variable_contract(
         "ClosureFreeVariableBuilder::build(input, arena, skeleton.definitions.asPtr(),",
         "candidate.closureFreeVariables = zc::mv(closureFreeVariables);",
         "for (const auto& closure : candidate.closureFreeVariables)",
-        "closure.closure.belongsTo(input.semanticContext())",
+        "for (const auto& closure : candidate.closureFreeVariables) {\n"
+        "    if (!closure.closure.belongsTo(input.semanticContext()))",
         "variable.target.belongsTo(input.semanticContext())",
         "encoder.encodeSequenceSize(candidate.closureFreeVariables.size());",
         "encodeDefinition(encoder, input, closure.closure)",
@@ -809,6 +1108,9 @@ def check_closure_free_variable_contract(
     )
     for required in (
         "encoder.encodeSequenceSize(candidate.closureFreeVariables.size());",
+        "encoder.encodeSequenceSize(candidate.closureFreeVariables.size());\n"
+        "  for (const auto& closure : candidate.closureFreeVariables) {\n"
+        "    if (!encodeDefinition(encoder, input, closure.closure))",
         "encodeDefinition(encoder, input, closure.closure)",
         "encoder.encodeSequenceSize(closure.variables.size());",
         "encodeDefinition(encoder, input, variable.target)",
@@ -842,23 +1144,277 @@ def check_closure_free_variable_contract(
             "DefinitionKind::Parameter",
             "DefinitionKind::Local",
             "DefinitionKind::PatternBinding",
-            "crossedClosures.add(callable);",
+            "crossedClosures.add(callableIndex);",
             "scope.kind == ScopeKind::Function",
-            "sameOracleCapture(canonicalTriples.back(), triple)",
+            "auto existing = triples.find(key);",
+            "for (const auto& ordered : triples) { canonicalTriples.add(ordered.value); }",
             "variable.referenceSites[siteIndex] !=",
         ):
             if required not in oracle:
                 errors.append(
                     f"{VERIFIER_SOURCE}: closure-fact oracle omits reconstruction: {required}"
                 )
+        triple_order = type_body(verifier, "ClosureFreeOracleTripleOrderKey")
         for required in (
-            "compareDefinitionKeys(input, left.closure, right.closure)",
-            "compareDefinitionKeys(input, left.target, right.target)",
-            "left.schemaPreorderOrdinal < right.schemaPreorderOrdinal",
+            "closureRank == other.closureRank && targetRank == other.targetRank",
+            "if (closureRank != other.closureRank) { return closureRank < other.closureRank; }",
+            "if (targetRank != other.targetRank) { return targetRank < other.targetRank; }",
+            "if (start != other.start) { return start < other.start; }",
+            "if (end != other.end) { return end < other.end; }",
+            "return schemaPreorderOrdinal < other.schemaPreorderOrdinal;",
+            "return false;",
         ):
-            if required not in verifier:
+            if required not in triple_order:
                 errors.append(
-                    f"{VERIFIER_SOURCE}: closure-fact oracle omits canonical order: {required}"
+                    f"{VERIFIER_SOURCE}: indexed closure triple order is incomplete: {required}"
+                )
+        if (
+            "referenceNode" in triple_order
+            or "definitionKey(" in triple_order
+            or ".encode()" in triple_order
+        ):
+            errors.append(
+                f"{VERIFIER_SOURCE}: closure triple ordering must use only precomputed canonical "
+                "ranks and source order"
+            )
+
+        for required in (
+            "zc::TreeMap<zc::String, size_t> inventoryByCanonicalKey;",
+            "zc::Vector<size_t> canonicalRankByInventory;",
+            "canonicalRankByInventory[ordered.value] = canonicalRank++;",
+            "enum class ClosureFreeOracleClosureSyntax : uint8_t { NotClosure, Inferred, "
+            "Explicit };",
+            "zc::Vector<ClosureFreeOracleClosureSyntax> closureSyntaxDomains;",
+            "for (const auto& ordered : inventoryByCanonicalKey) {",
+            "closureSyntaxDomains[entryIndex] = ClosureFreeOracleClosureSyntax::Inferred;",
+            "closureOrder.add(entryIndex);",
+            "zc::Vector<uint32_t> definitionScopeIndices;",
+            "zc::Vector<uint32_t> owningCallableScopeIndices;",
+            "zc::Vector<size_t> callableInventoryByScope;",
+            "zc::Vector<uint32_t> ownedCallableScopeByInventory;",
+            "zc::Vector<uint32_t> nearestCallableScopeByScope;",
+            "zc::Vector<uint32_t> parentCallableScopeByScope;",
+            "zc::Vector<uint32_t> scopeEnter;",
+            "zc::Vector<uint32_t> scopeExit;",
+            "callableInventoryByScope[scopeIndex] = ZC_ASSERT_NONNULL(callableIndex);",
+            "owningCallableScopeIndices[index] = "
+            "nearestCallableScopeByScope[definitionScopeIndices[index]];",
+            "struct ScopeTraversalEvent final",
+            "scopeEnter[event.scope] = nextScopeEntry++;",
+            "scopeExit[event.scope] = nextScopeEntry;",
+            "zc::TreeMap<ClosureFreeOracleTripleOrderKey, OracleCaptureTriple> triples;",
+            "zc::Vector<OracleCaptureTriple> canonicalTriples;",
+        ):
+            if required not in oracle:
+                errors.append(
+                    f"{VERIFIER_SOURCE}: closure-fact oracle index precomputation is incomplete: "
+                    f"{required}"
+                )
+
+        inventory_lookup = function_body(oracle, "const auto inventoryIndex = [&](")
+        for required in (
+            "input.definitions().definitionKey(definition)",
+            "auto found = inventoryByCanonicalKey.find(canonicalKey);",
+            "inventory[index].definition == definition",
+        ):
+            if required not in inventory_lookup:
+                errors.append(
+                    f"{VERIFIER_SOURCE}: canonical closure-oracle inventory lookup is incomplete: "
+                    f"{required}"
+                )
+        if "for (" in inventory_lookup or "while (" in inventory_lookup:
+            errors.append(
+                f"{VERIFIER_SOURCE}: closure-oracle inventory lookup regressed to a linear scan"
+            )
+
+        closure_order_start = oracle.find("zc::Vector<size_t> closureOrder;")
+        closure_order_end = oracle.find(
+            "if (candidate.closureFreeVariables.size() < closureOrder.size())",
+            closure_order_start,
+        )
+        closure_ordering = (
+            oracle[closure_order_start:closure_order_end]
+            if closure_order_start >= 0 and closure_order_end > closure_order_start
+            else ""
+        )
+        for required in (
+            "for (const auto& ordered : inventoryByCanonicalKey) {",
+            "const size_t entryIndex = ordered.value;",
+            "closureOrder.add(entryIndex);",
+        ):
+            if required not in closure_ordering:
+                errors.append(
+                    f"{VERIFIER_SOURCE}: canonical inferred-closure order is incomplete: {required}"
+                )
+        if (
+            "while (insertion" in closure_ordering
+            or "compareDefinitionKeys(" in closure_ordering
+            or "definitionKey(" in closure_ordering
+            or ".encode()" in closure_ordering
+        ):
+            errors.append(
+                f"{VERIFIER_SOURCE}: inferred-closure order regressed to encoded insertion sorting"
+            )
+
+        scope_projection_start = oracle.find("zc::Vector<uint32_t> definitionScopeIndices;")
+        scope_projection_end = oracle.find(
+            "zc::TreeMap<ClosureFreeOracleTripleOrderKey, OracleCaptureTriple> triples;",
+            scope_projection_start,
+        )
+        scope_projection = (
+            oracle[scope_projection_start:scope_projection_end]
+            if scope_projection_start >= 0 and scope_projection_end > scope_projection_start
+            else ""
+        )
+        for required in (
+            "parentCallableScopeByScope[scopeIndex] = parentCallableScope;",
+            "nearestCallableScopeByScope[scopeIndex] =",
+            "previousSibling[scopeIndex] = lastChild[parent.index()];",
+            "lastChild[parent.index()] = static_cast<uint32_t>(scopeIndex);",
+            "while (!traversal.empty()) {",
+            "scopeEnter[event.scope] = nextScopeEntry++;",
+            "scopeExit[event.scope] = nextScopeEntry;",
+            "owningCallableScopeIndices[index] = "
+            "nearestCallableScopeByScope[definitionScopeIndices[index]];",
+        ):
+            if required not in scope_projection:
+                errors.append(
+                    f"{VERIFIER_SOURCE}: dense closure scope projection is incomplete: {required}"
+                )
+        if "for (size_t traversed" in scope_projection:
+            errors.append(
+                f"{VERIFIER_SOURCE}: definition callable ownership regressed to per-definition "
+                "ancestor walks"
+            )
+
+        module_reference_start = oracle.find("if (targetCallableScope == UINT32_MAX) {")
+        module_reference_end = oracle.find(
+            "if (targetCallableScope >= callableInventoryByScope.size()", module_reference_start
+        )
+        module_reference = (
+            oracle[module_reference_start:module_reference_end]
+            if module_reference_start >= 0 and module_reference_end > module_reference_start
+            else ""
+        )
+        for required in (
+            "nearestCallableScopeByScope[referenceScope] != UINT32_MAX",
+            "scopeEnter[referenceScope] < scopeEnter[targetDefinitionScope]",
+            "scopeEnter[referenceScope] >= scopeExit[targetDefinitionScope]",
+        ):
+            if required not in module_reference:
+                errors.append(
+                    f"{VERIFIER_SOURCE}: constant-time module-owned reference check is incomplete: "
+                    f"{required}"
+                )
+        if re.search(r"(?:for|while)\s*\(", module_reference) or any(
+            forbidden in module_reference
+            for forbidden in ("inventoryIndex(", "definitionKey(", ".encode()")
+        ):
+            errors.append(
+                f"{VERIFIER_SOURCE}: module-owned reference validation regressed to repeated "
+                "ancestor or identity scans"
+            )
+
+        ancestor_start = oracle.find("zc::Vector<size_t> crossedClosures;")
+        ancestor_end = oracle.find("if (!reachedTarget)", ancestor_start)
+        ancestor_traversal = (
+            oracle[ancestor_start:ancestor_end]
+            if ancestor_start >= 0 and ancestor_end > ancestor_start
+            else ""
+        )
+        for required in (
+            "uint32_t scopeIndex = "
+            "nearestCallableScopeByScope[scopeByNode[resolution.node.value]];",
+            "const size_t callableIndex = callableInventoryByScope[scopeIndex];",
+            "closureSyntaxDomains[callableIndex] == ClosureFreeOracleClosureSyntax::Inferred",
+            "crossedClosures.add(callableIndex);",
+            "scopeIndex = parentCallableScopeByScope[scopeIndex];",
+        ):
+            if required not in ancestor_traversal:
+                errors.append(
+                    f"{VERIFIER_SOURCE}: indexed closure ancestor traversal is incomplete: "
+                    f"{required}"
+                )
+        for forbidden in (
+            "inventoryIndex(",
+            "definitionKey(",
+            ".encode()",
+            "tree.node(",
+        ):
+            if forbidden in ancestor_traversal:
+                errors.append(
+                    f"{VERIFIER_SOURCE}: closure ancestor traversal repeats identity work: "
+                    f"{forbidden}"
+                )
+
+        triple_collection_start = oracle.find(
+            "for (const auto closureIndex : crossedClosures) {"
+        )
+        triple_collection_end = oracle.find(
+            "zc::Vector<OracleCaptureTriple> canonicalTriples;", triple_collection_start
+        )
+        triple_collection = (
+            oracle[triple_collection_start:triple_collection_end]
+            if triple_collection_start >= 0
+            and triple_collection_end > triple_collection_start
+            else ""
+        )
+        for required in (
+            "const ClosureFreeOracleTripleOrderKey key{canonicalRankByInventory[closureIndex],\n"
+            "                                                canonicalRankByInventory[targetIndex],",
+            "schemaOrdinals[resolution.node.value]",
+            "auto existing = triples.find(key);",
+            "triples.insert(",
+            "triple.closure != inventory[closureIndex].definition",
+            "triple.target != target",
+            "triple.referenceSite != resolution.node",
+        ):
+            if required not in triple_collection:
+                errors.append(
+                    f"{VERIFIER_SOURCE}: canonical closure triple index is incomplete: {required}"
+                )
+        for forbidden in (
+            "inventoryIndex(",
+            "definitionKey(",
+            ".encode()",
+            "compareDefinitionKeys(",
+        ):
+            if forbidden in triple_collection:
+                errors.append(
+                    f"{VERIFIER_SOURCE}: closure triple ordering repeats identity work: {forbidden}"
+                )
+
+        canonical_materialization_start = oracle.find(
+            "zc::Vector<OracleCaptureTriple> canonicalTriples;"
+        )
+        canonical_materialization_end = oracle.find(
+            "size_t tripleIndex = 0;", canonical_materialization_start
+        )
+        canonical_materialization = (
+            oracle[canonical_materialization_start:canonical_materialization_end]
+            if canonical_materialization_start >= 0
+            and canonical_materialization_end > canonical_materialization_start
+            else ""
+        )
+        if (
+            canonical_materialization.count("for (") != 1
+            or "for (const auto& ordered : triples) { canonicalTriples.add(ordered.value); }"
+            not in canonical_materialization
+            or "while (" in canonical_materialization
+        ):
+            errors.append(
+                f"{VERIFIER_SOURCE}: canonical closure triples must materialize in one TreeMap pass"
+            )
+
+        for obsolete_sort in (
+            "oracleCaptureLess(",
+            "sameOracleCapture(",
+            "compareDefinitionKeys(",
+        ):
+            if obsolete_sort in verifier:
+                errors.append(
+                    f"{VERIFIER_SOURCE}: obsolete closure-fact sorting helper remains: "
+                    f"{obsolete_sort}"
                 )
 
     candidate_oracle_guard = (
@@ -884,14 +1440,801 @@ def check_closure_free_variable_contract(
     for marker in (
         "ClosureFreeVariables.PublishesDenseCapturableFactsAndNonCaptures",
         "ClosureFreeVariables.PropagatesOriginalSitesAcrossNestedClosures",
-        "ClosureFreeVariables.RejectsExplicitCaptureClauses",
         "ClosureFreeVariables.RejectsCrossFunctionCapture",
+        "ClosureFreeVariables.RejectsModuleOwnedPatternAndLocalReferences",
         "BindingVerifier.RejectsMalformedClosureFreeVariableFacts",
         "BindingVerifier.RejectsForeignClosureFreeVariableIdentities",
     ):
         registration = rf'^\s*ZC_TEST\("{re.escape(marker)}"\)\s*\{{'
         if re.search(registration, tests, flags=re.MULTILINE) is None:
             errors.append(f"{TEST_SOURCE}: missing closure-fact evidence: {marker}")
+
+
+def check_explicit_capture_contract(files: dict[Path, str], errors: list[str]) -> None:
+    metadata = files.get(METADATA_HEADER, "")
+    body_header = files.get(BODY_HEADER, "")
+    body = files.get(BODY_SOURCE, "")
+    verifier = files.get(VERIFIER_SOURCE, "")
+    tests = files.get(TEST_SOURCE, "")
+
+    capture_fact = type_body(metadata, "ExplicitCaptureBindingFact")
+    closure_fact = type_body(metadata, "ExplicitClosureCaptureFact")
+    for required in (
+        "ast::NodeId item;",
+        "identity::DefId target;",
+        "identity::SourceSpan source;",
+    ):
+        if required not in capture_fact:
+            errors.append(
+                f"{METADATA_HEADER}: explicit capture item surface is incomplete: {required}"
+            )
+    for required in (
+        "identity::DefId closure;",
+        "ast::NodeId captureList;",
+        "identity::SourceSpan source;",
+        "zc::Vector<ExplicitCaptureBindingFact> captures;",
+    ):
+        if required not in closure_fact:
+            errors.append(
+                f"{METADATA_HEADER}: explicit capture row surface is incomplete: {required}"
+            )
+
+    for required in (
+        "struct ExplicitCaptureBindingFact final",
+        "identity::DefId target;",
+        "struct ExplicitClosureCaptureFact final",
+        "ast::NodeId captureList;",
+        "zc::Vector<ExplicitCaptureBindingFact> captures;",
+        "explicitClosureCaptures() const;",
+    ):
+        if required not in metadata:
+            errors.append(f"{METADATA_HEADER}: explicit-capture surface is incomplete: {required}")
+    for required in (
+        "zc::Vector<ExplicitClosureCaptureFact> explicitClosureCaptures;",
+        "identity::DeclaredDefinitionName name;",
+    ):
+        if required not in body_header:
+            errors.append(f"{BODY_HEADER}: explicit-capture candidate is incomplete: {required}")
+
+    for required in (
+        "enum class CaptureAccess : uint8_t { Allowed, Denied, Malformed }",
+        "enum class CaptureAccessPurpose : uint8_t { Reference, CaptureItem }",
+        "CaptureAccess captureAccess(uint32_t referenceScope, size_t targetIndex,",
+        "auto row = explicitCaptureRow(closureIndex);",
+        "zc::Vector<uint32_t> definitionScopeIndices;",
+        "zc::Vector<uint32_t> owningCallableScopeIndices;",
+        "zc::Vector<size_t> callableDefinitionIndices;",
+        "zc::Vector<ClosureCaptureDomain> closureCaptureDomains;",
+        "zc::Vector<size_t> explicitCaptureRowSlots;",
+        "zc::TreeMap<zc::String, size_t> definitionIndices;",
+        "if (!listed) { return CaptureAccess::Denied; }",
+        "bool isReceiverParameter(const FrozenDefinitionEntry& entry) const",
+        "ast::SyntaxKind::ThisKeyword",
+        "case ast::SyntaxKind::ThisExpr:",
+        "resolveThis(node, scopeIndex);",
+        "resolveCaptureItem(ast::NodeId item,",
+        "case ast::CaptureMode::ByRef:\n        tokenOrdinal = 1;",
+        "case ast::CaptureMode::This:\n        tokenKind = ast::SyntaxKind::ThisKeyword;",
+        "if (isCapturable(inventory[inventoryIndex].kind))",
+        "visitExplicitCaptureList(ast::NodeId callableNode, ast::NodeId listNode,",
+        "result.explicitClosureCaptures.add(\n"
+        "          ExplicitClosureCaptureFact{closure, listNode, span.clone(), zc::mv(captures)});",
+        "if (tree.contains(captures)) { visitExplicitCaptureList(node, captures, scopeIndex); }",
+        "bool finishExplicitCaptures()",
+        "result.explicitClosureCaptures = zc::mv(canonical);",
+    ):
+        if required not in body:
+            errors.append(f"{BODY_SOURCE}: explicit-capture producer is disconnected: {required}")
+
+    body_initialize = function_body(body, "void initializeIndices()")
+    for required in (
+        "definitionIndices.insert(zc::mv(definitionKey), index);",
+        "callableDefinitionIndices[scopeIndex] = index;",
+        "owningCallableScopeIndices[index] = scopeIndex;",
+        "closureCaptureDomains[index] = ClosureCaptureDomain::Inferred;",
+        "captures ? ClosureCaptureDomain::Explicit : ClosureCaptureDomain::Inferred",
+        "explicitCaptureRowSlots[index] = kMissingSize;",
+    ):
+        if required not in body_initialize:
+            errors.append(
+                f"{BODY_SOURCE}: body index precomputation is incomplete: {required}"
+            )
+
+    body_definition_lookup = function_body(
+        body, "zc::Maybe<size_t> definitionIndex(identity::DefId definition) const"
+    )
+    for required in (
+        "input.definitions().definitionKey(definition)",
+        "definitionIndices.find(zc::str(bytes.asChars()))",
+        "inventory[found].definition == definition",
+    ):
+        if required not in body_definition_lookup:
+            errors.append(
+                f"{BODY_SOURCE}: indexed body definition lookup is incomplete: {required}"
+            )
+    if "for (" in body_definition_lookup:
+        errors.append(f"{BODY_SOURCE}: body definition lookup regressed to a linear scan")
+
+    body_callable_lookup = function_body(
+        body, "zc::Maybe<uint32_t> owningCallableScope(size_t inventoryIndex) const"
+    )
+    for required in (
+        "inventoryIndex >= owningCallableScopeIndices.size()",
+        "owningCallableScopeIndices[inventoryIndex] == kMissingIndex",
+        "return owningCallableScopeIndices[inventoryIndex];",
+    ):
+        if required not in body_callable_lookup:
+            errors.append(
+                f"{BODY_SOURCE}: indexed body callable lookup is incomplete: {required}"
+            )
+    if "for (" in body_callable_lookup:
+        errors.append(f"{BODY_SOURCE}: body callable lookup regressed to a linear scan")
+
+    explicit_row_lookup = function_body(
+        body, "zc::Maybe<const ExplicitClosureCaptureFact&> explicitCaptureRow("
+    )
+    for required in (
+        "closureInventoryIndex >= explicitCaptureRowSlots.size()",
+        "closureCaptureDomains[closureInventoryIndex] != ClosureCaptureDomain::Explicit",
+        "const size_t slot = explicitCaptureRowSlots[closureInventoryIndex];",
+        "result.explicitClosureCaptures[slot].closure !=\n"
+        "            inventory[closureInventoryIndex].definition",
+        "return result.explicitClosureCaptures[slot];",
+    ):
+        if required not in explicit_row_lookup:
+            errors.append(
+                f"{BODY_SOURCE}: indexed explicit capture row lookup is incomplete: {required}"
+            )
+    if "for (" in explicit_row_lookup:
+        errors.append(f"{BODY_SOURCE}: explicit capture row lookup regressed to a linear scan")
+
+    body_capture_access = function_body(body, "CaptureAccess captureAccess(")
+    for required in (
+        "const uint32_t targetDeclaringScope = definitionScopeIndices[targetIndex];",
+        "const auto targetCallableScope = owningCallableScope(targetIndex);",
+        "if (purpose == CaptureAccessPurpose::CaptureItem && targetCallableScope == zc::none) {",
+        "if (scopeIndex == targetDeclaringScope)",
+        "crossedClosure && targetCallableScope == zc::none ? CaptureAccess::Denied",
+        "if (scope.kind == ScopeKind::Function) { return CaptureAccess::Denied; }",
+        "const size_t closureIndex = callableDefinitionIndices[scopeIndex];",
+        "closureCaptureDomains[closureIndex] == ClosureCaptureDomain::Explicit",
+        "auto row = explicitCaptureRow(closureIndex);",
+    ):
+        if required not in body_capture_access:
+            errors.append(
+                f"{BODY_SOURCE}: indexed capture access contract is incomplete: {required}"
+            )
+
+    resolve_this = function_body(body, "void resolveThis(")
+    if (
+        "retainedTokenSpan(node, 0, ast::SyntaxKind::ThisKeyword)" not in resolve_this
+        or "captureAccess(scopeIndex, inventoryIndex, CaptureAccessPurpose::Reference)"
+        not in resolve_this
+    ):
+        errors.append(f"{BODY_SOURCE}: this-expression receiver binding is disconnected")
+
+    capture_item = function_body(body, "zc::Maybe<ExplicitCaptureBindingFact> resolveCaptureItem(")
+    if capture_item.count("CaptureAccessPurpose::CaptureItem") != 2:
+        errors.append(
+            f"{BODY_SOURCE}: receiver and named CaptureItem targets must both be callable-owned"
+        )
+    for obsolete_shape in (
+        "CaptureAccess captureAccess(uint32_t referenceScope, size_t targetIndex) const",
+        "explicitCaptureRow(identity::DefId",
+    ):
+        if obsolete_shape in body:
+            errors.append(
+                f"{BODY_SOURCE}: obsolete capture traversal shape remains: {obsolete_shape}"
+            )
+
+    for required in (
+        "candidate.explicitClosureCaptures = zc::mv(body.explicitClosureCaptures);",
+        "encoder.encodeSequenceSize(candidate.explicitClosureCaptures.size());",
+        "encodeDefinition(encoder, input, closure.closure)",
+        "encoder.encodeUint32(closure.captureList.value);",
+        "encoder.encodeSequenceSize(closure.captures.size());",
+        "encodeDefinition(encoder, input, capture.target)",
+        "encoder.encodeUint32(capture.item.value);",
+        "verifyExplicitCaptureFacts(input, expected)",
+        "verifyExplicitCaptureFacts(input, candidate)",
+        "candidateExplicitCaptures != ExplicitCaptureOracleResult::Valid",
+        "candidate.explicitClosureCaptures.size() < expected.explicitClosureCaptures.size()",
+        "candidate.explicitClosureCaptures.size() > expected.explicitClosureCaptures.size()",
+        "VerifiedBindingMetadata::explicitClosureCaptures()",
+        "return impl->candidate.explicitClosureCaptures.asPtr();",
+        "case ast::SyntaxKind::CaptureItem:\n"
+        "        requireSite(node, ast::SyntaxKind::CaptureItem, Namespace::Value);",
+        "case ast::SyntaxKind::ThisExpr:\n"
+        "        requireSite(node, ast::SyntaxKind::ThisExpr, Namespace::Value);",
+        "syntaxKindAtSchemaOrdinal(tree, schemaOrdinal)",
+        "labelDuplicate && !consumedFailures[index]",
+        "BinderEmitterSite::LabelAndClosure) && controlNode",
+    ):
+        if required not in verifier:
+            errors.append(f"{VERIFIER_SOURCE}: explicit-capture verification is disconnected: {required}")
+
+    candidate_codec = function_body(
+        verifier, "zc::Maybe<zc::Array<uint8_t>> encodeCandidate("
+    )
+    for required in (
+        "encoder.encodeSequenceSize(candidate.explicitClosureCaptures.size());",
+        "for (const auto& closure : candidate.explicitClosureCaptures) {",
+        "if (!encodeDefinition(encoder, input, closure.closure) ||\n"
+        "        !input.tree().contains(closure.captureList))",
+        "encoder.encodeUint32(closure.captureList.value);",
+        "closure.source.encode(encoder);",
+        "encoder.encodeSequenceSize(closure.captures.size());",
+        "for (const auto& capture : closure.captures) {",
+        "if (!input.tree().contains(capture.item) ||\n"
+        "          !encodeDefinition(encoder, input, capture.target))",
+        "encoder.encodeUint32(capture.item.value);",
+        "capture.source.encode(encoder);",
+    ):
+        if required not in candidate_codec:
+            errors.append(f"{VERIFIER_SOURCE}: explicit-capture codec is incomplete: {required}")
+
+    foreign_context = function_body(verifier, "bool hasForeignContext(")
+    for required in (
+        "for (const auto& closure : candidate.explicitClosureCaptures) {\n"
+        "    if (!closure.closure.belongsTo(input.semanticContext())) { return true; }",
+        "for (const auto& capture : closure.captures) {\n"
+        "      if (!capture.target.belongsTo(input.semanticContext())) { return true; }",
+    ):
+        if required not in foreign_context:
+            errors.append(
+                f"{VERIFIER_SOURCE}: explicit-capture foreign-context guard is incomplete: {required}"
+            )
+    source_ranges = function_body(verifier, "bool hasInvalidSourceRange(")
+    for required in (
+        "for (const auto& closure : candidate.explicitClosureCaptures)",
+        "spanIsInvalid(closure.source)",
+        "spanIsInvalid(capture.source)",
+    ):
+        if required not in source_ranges:
+            errors.append(
+                f"{VERIFIER_SOURCE}: explicit-capture source-range guard is incomplete: {required}"
+            )
+
+    lexical_census = function_body(verifier, "bool hasCompleteLexicalBindingSites(")
+    for required in (
+        "case ast::SyntaxKind::ThisExpr:\n"
+        "        requireSite(node, ast::SyntaxKind::ThisExpr, Namespace::Value);",
+        "case ast::SyntaxKind::CaptureItem:\n"
+        "        requireSite(node, ast::SyntaxKind::CaptureItem, Namespace::Value);",
+    ):
+        if required not in lexical_census:
+            errors.append(
+                f"{VERIFIER_SOURCE}: explicit-capture lexical census is incomplete: {required}"
+            )
+
+    source_order_key = type_body(verifier, "ExplicitOracleSourceOrderKey")
+    for required in (
+        "if (start != other.start) { return start < other.start; }",
+        "if (end != other.end) { return end < other.end; }",
+        "return inventoryIndex < other.inventoryIndex;",
+    ):
+        if required not in source_order_key:
+            errors.append(
+                f"{VERIFIER_SOURCE}: lexical source-order key is incomplete: {required}"
+            )
+    receiver_order = type_body(verifier, "ExplicitOracleReceiverOrderKey")
+    for required in (
+        "scopeIndex == other.scopeIndex && start == other.start && end == other.end",
+        "if (scopeIndex != other.scopeIndex) { return scopeIndex < other.scopeIndex; }",
+        "if (start != other.start) { return start < other.start; }",
+        "if (end != other.end) { return end < other.end; }",
+        "return node < other.node;",
+    ):
+        if required not in receiver_order:
+            errors.append(
+                f"{VERIFIER_SOURCE}: indexed receiver census order is incomplete: {required}"
+            )
+    activation_oracle = function_body(
+        verifier, "zc::Maybe<DefinitionActivation> explicitOracleActivation("
+    )
+    for required in (
+        "case DefinitionKind::TypeParameter:\n      return DefinitionActivation::GenericList;",
+        "case DefinitionKind::Parameter:\n      return DefinitionActivation::ParameterList;",
+        "case DefinitionKind::Closure:\n      return DefinitionActivation::ExpressionIntroduction;",
+        "case DefinitionKind::Local:\n      return DefinitionActivation::AfterInitializer;",
+        "return DefinitionActivation::LoopPattern;",
+        "return DefinitionActivation::MatchPattern;",
+        "return DefinitionActivation::ModuleSkeleton;",
+    ):
+        if required not in activation_oracle:
+            errors.append(
+                f"{VERIFIER_SOURCE}: lexical activation classification is incomplete: {required}"
+            )
+
+    oracle = function_body(
+        verifier, "ExplicitCaptureOracleResult verifyExplicitCaptureFacts("
+    )
+    if not oracle:
+        errors.append(f"{VERIFIER_SOURCE}: independent explicit-capture oracle is missing")
+    else:
+        for forbidden in (
+            "BodyBindingBuilder::build",
+            "BindingBuilder::buildCandidate",
+            "ClosureFreeVariableBuilder::build",
+        ):
+            if forbidden in oracle:
+                errors.append(
+                    f"{VERIFIER_SOURCE}: explicit-capture oracle reuses producer authority: {forbidden}"
+                )
+        for required in (
+            "ScopeArenaBuilder::build(input)",
+            "ast::kFunctionExpressionCapturesIdWord",
+            "ast::SyntaxKind::CaptureList",
+            "ast::SyntaxKind::CaptureItem",
+            "ast::CaptureMode::This",
+            "ast::SyntaxKind::ThisKeyword",
+            "BoundNameResolution",
+            "FailedBindingResolution",
+            "BinderEmitterSite::LabelAndClosure",
+            "BinderDiagnosticCode::DuplicateIdentifier",
+            "sameSpan(capture.source, ZC_ASSERT_NONNULL(itemSource))",
+            "} else if (closureSyntax.kind == ast::SyntaxKind::FunctionExpression) {",
+            "closureSyntaxDomains[index] = ExplicitOracleClosureSyntax::Explicit;",
+            "if (explicitFact && inferredFact)",
+            "if (!explicitFact && !inferredFact)",
+            "if (partitionCount != closureCount)",
+        ):
+            if required not in oracle:
+                errors.append(
+                    f"{VERIFIER_SOURCE}: explicit-capture oracle omits reconstruction: {required}"
+                )
+
+        for required in (
+            "zc::Vector<ExplicitOracleReceiverRecord> receivers;",
+            "zc::TreeMap<ExplicitOracleReceiverOrderKey, ExplicitOracleReceiverRecord> "
+            "receiverOrder;",
+            "input.parsedModule().functionParameterNameSpan(entry.node, "
+            "ast::SyntaxKind::ThisKeyword);",
+            "if (tokenSource == zc::none) { continue; }",
+            "if (entry.bindingName != zc::none ||",
+            "receiverOrder.insert(orderKey,",
+            "for (const auto& ordered : receiverOrder) { receivers.add(ordered.value); }",
+            "const size_t definitionMatches = candidateDefinitionCounts[wanted.inventoryIndex];",
+            "const size_t factSlot = candidateDefinitionSlots[wanted.inventoryIndex];",
+            "mentionedByScopeBinding[wanted.inventoryIndex]",
+            "mentionedBySurface[wanted.inventoryIndex]",
+            "resolutionByNode[entry.node.value] != kMissing",
+            "sourceFailureCountsBySpan.find(primaryKey)",
+            "const auto& matchingFailures = receiverFailuresBySchema[schemaOrdinal];",
+            "fact.activation != DefinitionActivation::ParameterList",
+            "!sameSpan(fact.source, entry.source)",
+            "failureFact.diagnostic != BinderDiagnosticCode::RedeclareParameter",
+            "failureFact.notes[0].diagnostic != BinderDiagnosticCode::PreviousDeclarationHere",
+            "!sameSpan(failureFact.primary, primary)",
+            "!sameSpan(failureFact.notes[0].source, ZC_ASSERT_NONNULL(previous))",
+            "if (first && relatedFailures != 0)",
+            "if (!first && failureMatches == 0)",
+            "if (!first && (failureMatches != 1 || !failureValid))",
+            "if (!receiverActivated[wanted.inventoryIndex])",
+            "if (activeScopes[scopeIndex].receiver != expectedReceiver)",
+        ):
+            if required not in oracle:
+                errors.append(
+                    f"{VERIFIER_SOURCE}: receiver census oracle omits reconstruction: {required}"
+                )
+
+        for required in (
+            "zc::TreeMap<zc::String, size_t> inventoryByCanonicalKey;",
+            "inventoryByCanonicalKey.insert(zc::mv(canonicalKey), index);",
+            "for (const auto& ordered : inventoryByCanonicalKey) {",
+            "explicitOrder.add(ordered.value);",
+            "zc::Vector<uint32_t> owningCallableScopeIndices;",
+            "zc::Vector<size_t> callableInventoryByScope;",
+            "callableInventoryByScope[scopeIndex] = ZC_ASSERT_NONNULL(callableIndex);",
+            "owningCallableScopeIndices[index] = scopeIndex;",
+            "zc::Vector<size_t> candidateDefinitionCounts;",
+            "zc::Vector<size_t> candidateDefinitionSlots;",
+            "zc::Vector<bool> mentionedByScopeBinding;",
+            "zc::Vector<bool> mentionedBySurface;",
+            "candidateDefinitionSlots[found] = index;",
+            "markDefinitionTarget(binding.binding.bindingIdentity, mentionedByScopeBinding);",
+            "markDefinitionTarget(surface.bindingIdentity, mentionedBySurface);",
+            "zc::TreeMap<ExplicitOracleSpanKey, size_t> sourceFailureCountsBySpan;",
+            "zc::Vector<zc::Vector<size_t>> receiverFailuresBySchema;",
+            "zc::Vector<zc::Vector<size_t>> duplicateFailuresBySchema;",
+            "receiverFailuresBySchema[ordinal].add(index);",
+            "duplicateFailuresBySchema[ordinal].add(index);",
+        ):
+            if required not in oracle:
+                errors.append(
+                    f"{VERIFIER_SOURCE}: explicit-capture oracle index census is incomplete: "
+                    f"{required}"
+                )
+
+        inventory_lookup = function_body(oracle, "const auto inventoryIndex = [&](")
+        for required in (
+            "input.definitions().definitionKey(definition)",
+            "auto found = inventoryByCanonicalKey.find(canonicalKey);",
+            "inventory[index].definition == definition",
+        ):
+            if required not in inventory_lookup:
+                errors.append(
+                    f"{VERIFIER_SOURCE}: canonical explicit-oracle inventory lookup is "
+                    f"incomplete: {required}"
+                )
+        if "for (" in inventory_lookup or "while (" in inventory_lookup:
+            errors.append(
+                f"{VERIFIER_SOURCE}: explicit-oracle inventory lookup regressed to a linear scan"
+            )
+
+        receiver_validation_start = oracle.find("zc::Vector<bool> receiverActivated;")
+        receiver_validation_end = oracle.find(
+            "const auto activateDefinition = [&](", receiver_validation_start
+        )
+        receiver_validation = (
+            oracle[receiver_validation_start:receiver_validation_end]
+            if receiver_validation_start >= 0 and receiver_validation_end > receiver_validation_start
+            else ""
+        )
+        if not receiver_validation:
+            errors.append(f"{VERIFIER_SOURCE}: indexed receiver validation section is missing")
+        elif re.search(
+            r"(?:for|while)\s*\([^)]*candidate\."
+            r"(?:definitions|scopes|nodeBindings|sourceFailures|currentSurface)",
+            receiver_validation,
+        ):
+            errors.append(
+                f"{VERIFIER_SOURCE}: receiver validation regressed to a per-receiver full-table scan"
+            )
+
+        for obsolete_ordering in (
+            "while (insertion > 0",
+            "compareDefinitionKeys(input",
+            "explicitOracleReceiverLess(",
+        ):
+            if obsolete_ordering in oracle:
+                errors.append(
+                    f"{VERIFIER_SOURCE}: explicit-oracle ordering regressed to insertion sorting: "
+                    f"{obsolete_ordering}"
+                )
+
+        activate_definition = function_body(oracle, "const auto activateDefinition = [&](")
+        for required in (
+            "receiverActivated[index] = true;",
+            "if (active.receiver == kMissing) { active.receiver = index; }",
+            "auto nameSpace = explicitOracleNamespace(entry.kind);",
+            "auto& bindings = value == Namespace::Value ? active.values : active.types;",
+            "if (bindings.find(name.text()) == zc::none)",
+            "bindings.insert(zc::str(name.text()), index);",
+        ):
+            if required not in activate_definition:
+                errors.append(
+                    f"{VERIFIER_SOURCE}: lexical activation oracle is incomplete: {required}"
+                )
+
+        activate_introducer = function_body(oracle, "const auto activateIntroducer = [&](")
+        for required in (
+            "explicitOracleActivation(tree, inventory[index])",
+            "activation == zc::none || activation != expectedActivation",
+            "ExplicitOracleSourceOrderKey{source.byteStart(), source.byteEnd(), index}",
+            "if (!activateDefinition(ordered.value)) { return false; }",
+        ):
+            if required not in activate_introducer:
+                errors.append(
+                    f"{VERIFIER_SOURCE}: source-ordered activation oracle is incomplete: {required}"
+                )
+
+        seed_definitions = function_body(oracle, "const auto seedDefinitions = [&](")
+        for required in (
+            "for (size_t scopeIndex = 0; scopeIndex < definitionsByScope.size(); ++scopeIndex)",
+            "explicitOracleActivation(tree, inventory[index])",
+            "ExplicitOracleSourceOrderKey{source.byteStart(), source.byteEnd(), index}",
+            "if (!activateDefinition(ordered.value)) { return false; }",
+        ):
+            if required not in seed_definitions:
+                errors.append(
+                    f"{VERIFIER_SOURCE}: seeded lexical activation oracle is incomplete: {required}"
+                )
+
+        active_definition = function_body(oracle, "const auto activeDefinition = [&](")
+        for required in (
+            "nameSpace == Namespace::Value ? activeScopes[current].values",
+            "auto found = bindings.find(name);",
+            "ZC_IF_SOME(index, found) { return index; }",
+            "ZC_IF_SOME(parent, scope.parent) { current = parent.index(); }",
+        ):
+            if required not in active_definition:
+                errors.append(
+                    f"{VERIFIER_SOURCE}: independent lexical target lookup is incomplete: {required}"
+                )
+
+        active_receiver = function_body(oracle, "const auto activeReceiver = [&](")
+        for required in (
+            "if (activeScopes[current].receiver != kMissing) { return activeScopes[current].receiver; }",
+            "scope.kind == ScopeKind::Function || scope.kind == ScopeKind::Module ||",
+            "ZC_IF_SOME(parent, scope.parent) { current = parent.index(); }",
+        ):
+            if required not in active_receiver:
+                errors.append(
+                    f"{VERIFIER_SOURCE}: independent receiver lookup boundary is incomplete: {required}"
+                )
+
+        capture_access = function_body(oracle, "const auto captureAccess = [&](")
+        for required in (
+            "if (scope.kind == ScopeKind::Function) { return ExplicitOracleCaptureAccess::Denied; }",
+            "const size_t targetCallableIndex = callableInventoryByScope[targetScopeIndex];",
+            "const size_t callableIndex = callableInventoryByScope[scopeIndex];",
+            "if (!explicitClosureProcessed[callableIndex]) {",
+            "expectedTargetsByClosure[callableIndex].find(targetIndex) == zc::none",
+        ):
+            if required not in capture_access:
+                errors.append(
+                    f"{VERIFIER_SOURCE}: independent explicit-capture boundary is incomplete: {required}"
+                )
+        if (
+            re.search(r"(?:for|while)\s*\([^)]*expectedTargetsByClosure", capture_access)
+            or "validatedCaptureTargetsByClosure" in capture_access
+        ):
+            errors.append(
+                f"{VERIFIER_SOURCE}: capture access regressed to a linear expected-target scan"
+            )
+
+        for required in (
+            "zc::Vector<zc::TreeMap<size_t, size_t>> expectedTargetsByClosure;",
+            "expectedTargetsByClosure[callableIndex].find(targetIndex)",
+            "expectedTargets.insert(targetIndex, item.value);",
+            "zc::Vector<size_t> explicitCaptureRowByClosure;",
+            "zc::Vector<size_t> explicitCaptureRowCounts;",
+            "zc::Vector<size_t> inferredCaptureRowByClosure;",
+            "zc::Vector<size_t> inferredCaptureRowCounts;",
+            "zc::Vector<zc::TreeMap<size_t, size_t>> validatedCaptureTargetsByClosure;",
+            "explicitCaptureRowByClosure[index] = rowIndex;",
+            "++explicitCaptureRowCounts[index];",
+            "inferredCaptureRowByClosure[index] = rowIndex;",
+            "++inferredCaptureRowCounts[index];",
+            "validatedCaptureTargetsByClosure[closureInventoryIndex]",
+            "validatedTargets.find(targetIndex)",
+            "validatedTargets.insert(targetIndex, captureIndex)",
+        ):
+            if required not in oracle:
+                errors.append(
+                    f"{VERIFIER_SOURCE}: explicit-capture row or target index is incomplete: "
+                    f"{required}"
+                )
+
+        row_index_start = oracle.find("zc::Vector<size_t> explicitCaptureRowByClosure;")
+        row_index_end = oracle.find("const auto duplicateFailure = [&]", row_index_start)
+        row_indexing = (
+            oracle[row_index_start:row_index_end]
+            if row_index_start >= 0 and row_index_end > row_index_start
+            else ""
+        )
+        explicit_row_loop = (
+            "for (size_t rowIndex = 0; rowIndex < "
+            "candidate.explicitClosureCaptures.size(); ++rowIndex)"
+        )
+        inferred_row_loop = (
+            "for (size_t rowIndex = 0; rowIndex < "
+            "candidate.closureFreeVariables.size(); ++rowIndex)"
+        )
+        if (
+            not row_indexing
+            or row_indexing.count(explicit_row_loop) != 1
+            or row_indexing.count(inferred_row_loop) != 1
+            or row_indexing.count("for (") != 3
+            or "while (" in row_indexing
+        ):
+            errors.append(
+                f"{VERIFIER_SOURCE}: closure capture rows must be indexed in one pass per domain"
+            )
+
+        duplicate_failure = function_body(oracle, "const auto duplicateFailure = [&]")
+        for required in (
+            "const auto& matchingFailures = duplicateFailuresBySchema[schemaOrdinals[item.value]];",
+            "for (const auto failureIndex : matchingFailures)",
+            "const auto& failureFact = candidate.sourceFailures[failureIndex];",
+        ):
+            if required not in duplicate_failure:
+                errors.append(
+                    f"{VERIFIER_SOURCE}: duplicate-capture failure index is incomplete: {required}"
+                )
+        if re.search(r"for\s*\([^)]*candidate\.sourceFailures", duplicate_failure):
+            errors.append(
+                f"{VERIFIER_SOURCE}: duplicate-capture validation regressed to a full failure scan"
+            )
+
+        capture_validation_start = oracle.find(
+            "for (size_t rowIndex = 0; rowIndex < explicitOrder.size(); ++rowIndex)"
+        )
+        capture_validation_end = oracle.find("size_t partitionCount = 0;", capture_validation_start)
+        capture_validation = (
+            oracle[capture_validation_start:capture_validation_end]
+            if capture_validation_start >= 0
+            and capture_validation_end > capture_validation_start
+            else ""
+        )
+        capture_fact_position = capture_validation.find(
+            "if (capture.item != item || capture.target != target ||"
+        )
+        duplicate_position = capture_validation.find(
+            "if (!duplicateFailure(item, capture.source, previous))"
+        )
+        validated_insert_position = capture_validation.find(
+            "validatedTargets.insert(targetIndex, captureIndex)"
+        )
+        if (
+            capture_fact_position < 0
+            or duplicate_position < 0
+            or validated_insert_position < 0
+            or not capture_fact_position < duplicate_position < validated_insert_position
+        ):
+            errors.append(
+                f"{VERIFIER_SOURCE}: validated capture targets must publish only after full fact "
+                "and duplicate validation"
+            )
+        if re.search(
+            r"(?:for|while)\s*\([^)]*(?:actual\.captures|captureIndex|previousCapture)",
+            capture_validation,
+        ):
+            errors.append(
+                f"{VERIFIER_SOURCE}: capture validation regressed to a prior-capture linear scan"
+            )
+
+        partition_start = oracle.find("size_t partitionCount = 0;")
+        final_resolution_start = oracle.rfind(
+            "for (const auto& resolution : candidate.nodeBindings) {"
+        )
+        partition_validation = (
+            oracle[partition_start:final_resolution_start]
+            if partition_start >= 0 and final_resolution_start > partition_start
+            else ""
+        )
+        if re.search(
+            r"(?:for|while)\s*\([^)]*candidate\."
+            r"(?:explicitClosureCaptures|closureFreeVariables)",
+            partition_validation,
+        ):
+            errors.append(
+                f"{VERIFIER_SOURCE}: closure partition regressed to per-closure domain scans"
+            )
+
+        final_resolution_validation = (
+            oracle[final_resolution_start:] if final_resolution_start >= 0 else ""
+        )
+        for required in (
+            "const size_t targetCallableIndex = callableInventoryByScope[targetCallableScope];",
+            "const size_t callableIndex = callableInventoryByScope[scopeIndex];",
+            "validatedCaptureTargetsByClosure[callableIndex].find(targetInventoryIndex)",
+        ):
+            if required not in final_resolution_validation:
+                errors.append(
+                    f"{VERIFIER_SOURCE}: final capture boundary index is incomplete: {required}"
+                )
+        if "expectedTargetsByClosure" in final_resolution_validation or re.search(
+            r"(?:for|while)\s*\([^)]*candidate\."
+            r"(?:explicitClosureCaptures|closureFreeVariables)",
+            final_resolution_validation,
+        ):
+            errors.append(
+                f"{VERIFIER_SOURCE}: final capture boundary must use validated target indices "
+                "without row scans"
+            )
+
+        lexical_visit = function_body(oracle, "const auto visit = [&](")
+        for required in (
+            "if (tree.contains(initializer)) { self(self, initializer); }",
+            "if (!activateIntroducer(declarator, DefinitionActivation::AfterInitializer))",
+            "if (!activateIntroducer(node, DefinitionActivation::LoopPattern))",
+            "if (!activateIntroducer(node, DefinitionActivation::MatchPattern))",
+            "if (isClosure && !activateIntroducer(node, "
+            "DefinitionActivation::ExpressionIntroduction))",
+            "const uint32_t enclosingScope = "
+            "ZC_ASSERT_NONNULL(arena.scopes[scopeIndex].parent).index();",
+            "target = activeReceiver(enclosingScope);",
+            "target = activeDefinition(enclosingScope, Namespace::Value, name.text());",
+            "activeDefinition(enclosingScope, Namespace::Type, name.text()) != zc::none",
+            "expectedCaptureTarget[item.value] = targetIndex;",
+            "explicitClosureProcessed[closureInventoryIndex] = true;",
+            "if (tree.contains(defaultValue)) { self(self, defaultValue); }",
+            "if (!activateIntroducer(parameter, DefinitionActivation::ParameterList))",
+        ):
+            if required not in lexical_visit:
+                errors.append(
+                    f"{VERIFIER_SOURCE}: lexical capture traversal is incomplete: {required}"
+                )
+        capture_position = lexical_visit.find("if (tree.contains(captures)) {")
+        parameter_position = lexical_visit.find("zc::Vector<ast::NodeId> parameters;")
+        if capture_position < 0 or parameter_position < 0 or capture_position >= parameter_position:
+            errors.append(
+                f"{VERIFIER_SOURCE}: explicit capture clauses must resolve before own parameters"
+            )
+
+        for required in (
+            "bindingIdentity.get<DefinitionBindingTarget>().definition !=\n"
+            "              inventory[expectedCaptureTarget[item.value]].definition",
+            "canonicalTarget.get<DefinitionBindingTarget>().definition !=\n"
+            "              inventory[expectedCaptureTarget[item.value]].definition",
+            "if (tree.node(resolution.node).kind == ast::SyntaxKind::CaptureItem) { continue; }",
+            "validatedCaptureTargetsByClosure[callableIndex].find(targetInventoryIndex)",
+        ):
+            if required not in oracle:
+                errors.append(
+                    f"{VERIFIER_SOURCE}: independent lexical target enforcement is incomplete: {required}"
+                )
+
+        this_expression_target_guard = (
+            "if (tree.node(resolution.node).kind == ast::SyntaxKind::ThisExpr) {"
+            in oracle
+            and "activeReceiver(scopeByNode[resolution.node.value])" in oracle
+            and "ZC_ASSERT_NONNULL(expectedReceiver) != ZC_ASSERT_NONNULL(targetIndex)"
+            in oracle
+        )
+        if not this_expression_target_guard:
+            errors.append(
+                f"{VERIFIER_SOURCE}: explicit-capture oracle does not independently verify the "
+                "nearest receiver target for ThisExpr"
+            )
+
+    label_oracle = function_body(verifier, "LabelOracleResult verifyLabelFacts(")
+    for required in (
+        "syntaxKindAtSchemaOrdinal(tree, schemaOrdinal)",
+        "ZC_ASSERT_NONNULL(sourceKind) == ast::SyntaxKind::LabeledStatement",
+        "candidate.sourceFailures[index].diagnostic == BinderDiagnosticCode::DuplicateIdentifier",
+        "labelDuplicate && !consumedFailures[index]",
+    ):
+        if required not in label_oracle:
+            errors.append(
+                f"{VERIFIER_SOURCE}: label failure ownership is incomplete: {required}"
+            )
+    control_oracle = function_body(
+        verifier, "ControlOracleResult verifyControlTransferFacts("
+    )
+    for required in (
+        "syntaxKindAtSchemaOrdinal(tree, schemaOrdinal)",
+        "ZC_ASSERT_NONNULL(sourceKind) == ast::SyntaxKind::BreakStmt",
+        "ZC_ASSERT_NONNULL(sourceKind) == ast::SyntaxKind::ContinueStatement",
+        "diagnostic == BinderDiagnosticCode::UndefinedIdentifier",
+        "BinderEmitterSite::LabelAndClosure) && controlNode",
+    ):
+        if required not in control_oracle:
+            errors.append(
+                f"{VERIFIER_SOURCE}: control failure ownership is incomplete: {required}"
+            )
+
+    candidate_oracle_guard = (
+        "const auto candidateExplicitCaptures = verifyExplicitCaptureFacts(input, candidate);\n"
+        "  if (candidateExplicitCaptures != ExplicitCaptureOracleResult::Valid) {\n"
+        "    return rejectBinderInvariant(\n"
+        "        verifierFailure(input, explicitCaptureOracleInvariant(candidateExplicitCaptures)));\n"
+        "  }"
+    )
+    if candidate_oracle_guard not in verifier:
+        errors.append(f"{VERIFIER_SOURCE}: candidate explicit-capture oracle result is not enforced")
+
+    for marker in (
+        "ExplicitClosureCaptures.PublishSourceOrderedBindingsAndEmptyClauses",
+        "ExplicitClosureCaptures.ResolveBeforeOwnParametersActivate",
+        "ExplicitClosureCaptures.ResolveBeforeOwnReceiverActivates",
+        "ExplicitClosureCaptures.PreferEarlierEnclosingBlockLocal",
+        "ExplicitClosureCaptures.RejectLaterInitializerAndSiblingLocals",
+        "ExplicitClosureCaptures.EmptyClauseRejectsOuterReceiverReference",
+        "ReceiverBinding.DoesNotLeakAcrossNamedFunctions",
+        "ExplicitClosureCaptures.BindReceiverAndThisExpression",
+        "ReceiverBinding.BindsAttributedReceiverAndPreservesNameToken",
+        "ReceiverBinding.DoesNotClassifyAttributedOrdinaryParameter",
+        "ReceiverBinding.BindsReceiverAfterStackedOuterAttributes",
+        "ReceiverBinding.RejectsMissingAndDuplicateReceivers",
+        "BindingVerifier.RejectsMalformedDuplicateReceiverFailures",
+        "BindingVerifier.RejectsWrongThisExpressionReceiverTarget",
+        "ExplicitClosureCaptures.EnforcesDeclaredCaptureExhaustiveness",
+        "ExplicitClosureCaptures.EnforcesExhaustivenessForNestedCaptureItems",
+        "ExplicitClosureCaptures.RejectsUndefinedNonCapturableAndMissingReceiverItems",
+        "ExplicitClosureCaptures.RejectsModuleOwnedPatternAndLocalItems",
+        "ExplicitClosureCaptures.ReportsWrongNamespaceAtExactToken",
+        "ExplicitClosureCaptures.ReportsDuplicateTargetsAtExactTokens",
+        "BindingVerifier.RejectsMalformedExplicitCaptureFailures",
+        "ExplicitClosureCaptures.PartitionsNestedExplicitAndInferredClosures",
+        "BindingVerifier.RejectsMalformedExplicitClosureCaptureFacts",
+        "BindingVerifier.RejectsForeignExplicitCaptureIdentities",
+    ):
+        registration = rf'^\s*ZC_TEST\("{re.escape(marker)}"\)\s*\{{'
+        if re.search(registration, tests, flags=re.MULTILINE) is None:
+            errors.append(f"{TEST_SOURCE}: missing explicit-capture evidence: {marker}")
 
 
 def check_label_fact_contract(files: dict[Path, str], errors: list[str]) -> None:
@@ -1748,6 +3091,52 @@ def check_scope_arena_contract(files: dict[Path, str], errors: list[str]) -> Non
     ):
         if required not in source:
             errors.append(f"{SCOPE_SOURCE}: incomplete deterministic scope allocation: {required}")
+
+    build = function_body(source, "ScopeArenaBuildResult ScopeArenaBuilder::build(")
+    for required in (
+        "zc::Vector<zc::Maybe<NodeScopeFact>> nodeScopeSlots;",
+        "nodeScopeSlots.resize(tree.nodeCount());",
+        "uint64_t scopeNodeCount = 0;",
+        "!node || node.value > tree.nodeCount() || !tree.contains(node)",
+        "const size_t nodeSlot = static_cast<size_t>(node.value - 1);",
+        "if (nodeScopeSlots[nodeSlot] != zc::none)",
+        "++scopeNodeCount;",
+        "nodeScopeSlots[nodeSlot] = NodeScopeFact{node, currentScope};",
+        "const uint64_t expectedScopeCount = scopeNodeCount + 1;",
+        "static_cast<uint64_t>(candidate.scopes.size()) != expectedScopeCount",
+        "nextScopeIndex != expectedScopeCount",
+        "candidate.nodeScopes.reserve(tree.nodeCount());",
+    ):
+        if required not in build:
+            errors.append(f"{SCOPE_SOURCE}: dense node-scope construction is incomplete: {required}")
+
+    materialization_start = build.find("candidate.nodeScopes.reserve(tree.nodeCount());")
+    materialization = build[materialization_start:] if materialization_start >= 0 else ""
+    for required in (
+        "for (size_t index = 0; index < nodeScopeSlots.size(); ++index)",
+        "if (nodeScopeSlots[index] == zc::none)",
+        "fact.node.value != index + 1",
+        "!tree.contains(fact.node)",
+        "fact.scope.module() != input.module()",
+        "fact.scope.index() >= candidate.scopes.size()",
+        "candidate.scopes[fact.scope.index()].id != fact.scope",
+        "candidate.nodeScopes.add(zc::mv(fact));",
+    ):
+        if required not in materialization:
+            errors.append(
+                f"{SCOPE_SOURCE}: dense node-scope materialization is incomplete: {required}"
+            )
+    if materialization.count("for (") != 1 or "while (" in materialization:
+        errors.append(
+            f"{SCOPE_SOURCE}: canonical node scopes must materialize in one dense linear pass"
+        )
+    for obsolete_sort in (
+        "sortNodeScopes(",
+        "oracleNodeScopeLess(",
+        "while (insertion",
+    ):
+        if obsolete_sort in source:
+            errors.append(f"{SCOPE_SOURCE}: obsolete node-scope sorting remains: {obsolete_sort}")
     for marker in (
         "ScopeArena.AllocatesStructuralScopesInSchemaPreorder",
         "ScopeArena.AssignsDefinitionAndImplOwners",
@@ -1880,6 +3269,7 @@ def check_binding_diagnostic_adapter(files: dict[Path, str], errors: list[str]) 
     for required in (
         "class VerifiedIdentifierArgument final",
         "const identity::SemanticIdentifier& identifier",
+        "const identity::DeclaredDefinitionName& identifier",
         "class BindingDiagnosticAdapter final",
         "emitLookupFailure(",
         "VerifiedIdentifierArgument&& identifier",
@@ -2021,6 +3411,7 @@ def check(files: dict[Path, str]) -> list[str]:
     check_body_binding_contract(files, errors)
     check_deferred_member_contract(files, errors)
     check_closure_free_variable_contract(files, errors)
+    check_explicit_capture_contract(files, errors)
     check_label_fact_contract(files, errors)
     check_control_transfer_contract(files, errors)
     check_definition_site_contract(files, errors)
@@ -2059,8 +3450,8 @@ def self_test(files: dict[Path, str]) -> list[str]:
         (
             "missing token kind verification",
             PARSED_SOURCE,
-            "token.kind != expectedKind",
-            "false",
+            "if (token.kind != expectedKind || token.start < span.byteStart()",
+            "if (false || token.start < span.byteStart()",
         ),
         (
             "missing parser one-shot evidence",
@@ -2114,6 +3505,121 @@ def self_test(files: dict[Path, str]) -> list[str]:
             INVENTORY_SOURCE,
             "registries.impls().size() != inventory.impls().size()",
             "registries.impls().size() == inventory.impls().size()",
+        ),
+        (
+            "definition dense slots use inventory cardinality",
+            INVENTORY_SOURCE,
+            "definitionSlotsByNode.resize(tree.nodeCount() + 1);",
+            "definitionSlotsByNode.resize(definitions.size());",
+        ),
+        (
+            "impl dense slots use inventory cardinality",
+            INVENTORY_SOURCE,
+            "implSlotsByNode.resize(tree.nodeCount() + 1);",
+            "implSlotsByNode.resize(impls.size());",
+        ),
+        (
+            "definition dense census permits cross-kind node collision",
+            INVENTORY_SOURCE,
+            "entry.node.value >= definitionSlotsByNode.size() ||\n"
+            "          definitionSlotsByNode[entry.node.value] != kMissing ||\n"
+            "          implSlotsByNode[entry.node.value] != kMissing) {",
+            "entry.node.value >= definitionSlotsByNode.size() ||\n"
+            "          definitionSlotsByNode[entry.node.value] != kMissing || false) {",
+        ),
+        (
+            "impl dense census permits cross-kind node collision",
+            INVENTORY_SOURCE,
+            "entry.node.value >= implSlotsByNode.size() ||\n"
+            "          definitionSlotsByNode[entry.node.value] != kMissing ||",
+            "entry.node.value >= implSlotsByNode.size() ||\n"
+            "          false ||",
+        ),
+        (
+            "definition dense census trusts mismatched key bytes",
+            INVENTORY_SOURCE,
+            "if (!entry.definition.belongsTo(context) || registeredKey == zc::none) {\n"
+            "        return FrozenInventoryInvariantKind::InvalidDefinitionIdentity;\n"
+            "      }\n"
+            "      const auto entryKey = entry.key.encode();",
+            "if (!entry.definition.belongsTo(context) || registeredKey == zc::none) {\n"
+            "        return FrozenInventoryInvariantKind::InvalidDefinitionIdentity;\n"
+            "      }\n"
+            "      const auto entryKey = ZC_ASSERT_NONNULL(registeredKey).encode();",
+        ),
+        (
+            "definition dense census permits canonical duplicates",
+            INVENTORY_SOURCE,
+            "canonicalDefinitionSlots.find(canonicalKey) != zc::none",
+            "false",
+        ),
+        (
+            "dense inventory bypasses module-node hole",
+            INVENTORY_SOURCE,
+            "definitionSlotsByNode[moduleNode.value] != kMissing ||\n"
+            "        implSlotsByNode[moduleNode.value] != kMissing",
+            "false",
+        ),
+        (
+            "dense inventory loses validated publication",
+            INVENTORY_SOURCE,
+            "return zc::heap<Impl>(context, zc::mv(definitionKeys), zc::mv(implKeys), module, "
+            "moduleNode,",
+            "return FrozenInventoryInvariantKind::IncompleteInventory;\n"
+            "    // removed publication\n"
+            "    (void)context;",
+        ),
+        (
+            "definitionAt restores linear inventory scan",
+            INVENTORY_SOURCE,
+            "const uint32_t slot = impl->definitionSlotsByNode[node.value];",
+            "for (const auto& candidate : impl->definitions) { (void)candidate; }\n"
+            "  const uint32_t slot = impl->definitionSlotsByNode[node.value];",
+        ),
+        (
+            "implAt restores linear inventory scan",
+            INVENTORY_SOURCE,
+            "const uint32_t slot = impl->implSlotsByNode[node.value];",
+            "for (const auto& candidate : impl->impls) { (void)candidate; }\n"
+            "  const uint32_t slot = impl->implSlotsByNode[node.value];",
+        ),
+        (
+            "definitionAt drops exact node and context check",
+            INVENTORY_SOURCE,
+            "entry.node == node && entry.definition.belongsTo(impl->context)",
+            "true",
+        ),
+        (
+            "implAt drops exact node and context check",
+            INVENTORY_SOURCE,
+            "entry.node == node && entry.implementation.belongsTo(impl->context)",
+            "true",
+        ),
+        (
+            "missing dense frozen inventory separation evidence",
+            FROZEN_INVENTORY_TEST,
+            "FrozenDefinitionInventory.DenseLookupSeparatesDefinitionsAndImplementations",
+            "FrozenDefinitionInventory.MissingDenseLookupSeparation",
+        ),
+        (
+            "missing dense frozen inventory hole evidence",
+            FROZEN_INVENTORY_TEST,
+            "FrozenDefinitionInventory.DenseLookupRejectsHolesAndInvalidNodeIds",
+            "FrozenDefinitionInventory.MissingDenseLookupHoleEvidence",
+        ),
+        (
+            "missing dense frozen inventory census evidence",
+            FROZEN_INVENTORY_TEST,
+            "FrozenDefinitionInventory.RejectsIncompleteDefinitionCensus",
+            "FrozenDefinitionInventory.MissingIncompleteDefinitionCensus",
+        ),
+        (
+            "missing frozen inventory test registration",
+            TEST_CMAKE,
+            'add_ztest_unit_test("frozen-definition-inventory-test" '
+            '"frozen-definition-inventory-test.cc"',
+            'add_ztest_unit_test("missing-frozen-definition-inventory-test" '
+            '"missing-frozen-definition-inventory-test.cc"',
         ),
         (
             "retained frozen registry lifetime",
@@ -2832,6 +4338,24 @@ def self_test(files: dict[Path, str]) -> list[str]:
             "BodyBinding.MissingEarlierDeclaratorsAfterActivation",
         ),
         (
+            "missing direct module loop-pattern reference evidence",
+            TEST_SOURCE,
+            "BodyBinding.ResolvesModuleOwnedLoopPatternInBody",
+            "BodyBinding.MissingModuleOwnedLoopPatternInBody",
+        ),
+        (
+            "missing direct module match-pattern reference evidence",
+            TEST_SOURCE,
+            "BodyBinding.ResolvesModuleOwnedMatchPatternInGuardAndBody",
+            "BodyBinding.MissingModuleOwnedMatchPatternInGuardAndBody",
+        ),
+        (
+            "missing direct module local reference evidence",
+            TEST_SOURCE,
+            "BodyBinding.ResolvesModuleOwnedLocalThroughNestedBlock",
+            "BodyBinding.MissingModuleOwnedLocalThroughNestedBlock",
+        ),
+        (
             "missing self reference evidence",
             TEST_SOURCE,
             "BodyBinding.RejectsSelfReferenceBeforeActivation",
@@ -2978,15 +4502,26 @@ def self_test(files: dict[Path, str]) -> list[str]:
         (
             "special callable inventory rejection",
             INVENTORY_SOURCE,
-            "bindingName == zc::none && !permitsAbsentLexicalBinding(entry.kind)",
+            "bindingName == zc::none && !permitsAbsentLexicalBinding(entry, parsedModule)",
             "bindingName == zc::none",
         ),
         (
-            "unbounded special callable identity admission",
+            "receiver identity admission",
             INVENTORY_SOURCE,
-            "return kind == identity::DefinitionKind::Constructor ||\n"
-            "         kind == identity::DefinitionKind::Destructor;",
-            "return true;",
+            "isReceiverParameter(entry, parsedModule);",
+            "false;",
+        ),
+        (
+            "receiver inventory token drift",
+            INVENTORY_SOURCE,
+            "parsedModule.functionParameterNameSpan(entry.node, ast::SyntaxKind::ThisKeyword)",
+            "parsedModule.functionParameterNameSpan(entry.node, ast::SyntaxKind::Identifier)",
+        ),
+        (
+            "retained receiver token loses kind check",
+            PARSED_SOURCE,
+            "if (token.kind != expectedKind || token.start < nameSearchStart",
+            "if (false || token.start < nameSearchStart",
         ),
         (
             "deferred special callable activation",
@@ -3001,8 +4536,14 @@ def self_test(files: dict[Path, str]) -> list[str]:
         (
             "special callable lexical binding leak",
             SKELETON_SOURCE,
-            "const bool lexicalBinding = hasLexicalBinding(classification);",
+            "const bool lexicalBinding = hasLexicalBinding(classification) && !receiver;",
             "const bool lexicalBinding = true;",
+        ),
+        (
+            "receiver duplicate source broadens beyond token",
+            SKELETON_SOURCE,
+            "ast::SyntaxKind::ThisKeyword);",
+            "ast::SyntaxKind::Identifier);",
         ),
         (
             "deferred closure activation",
@@ -3087,8 +4628,22 @@ def self_test(files: dict[Path, str]) -> list[str]:
         (
             "explicit captures enter inference",
             CLOSURE_SOURCE,
-            "if (!rejectExplicitCaptureClauses()) { return takeRejection(); }",
-            "if (false) { return takeRejection(); }",
+            "closureCaptureDomains[definitionIndexValue] == ClosureCaptureDomain::Explicit",
+            "closureCaptureDomains[definitionIndexValue] == ClosureCaptureDomain::Inferred",
+        ),
+        (
+            "explicit captures block outer inference propagation",
+            CLOSURE_SOURCE,
+            "if (scope.kind == ScopeKind::Module || scope.parent == zc::none) {\n"
+            "        reject(BinderInvariantKind::MalformedScopeGraph, resolution.node);\n"
+            "        return;\n"
+            "      }\n"
+            "      ZC_IF_SOME(parent, scope.parent) { scopeIndex = parent.index(); }",
+            "if (scope.kind == ScopeKind::Module || scope.parent == zc::none) {\n"
+            "        reject(BinderInvariantKind::MalformedScopeGraph, resolution.node);\n"
+            "        return;\n"
+            "      }\n"
+            "      return;",
         ),
         (
             "expanded capturable definition set",
@@ -3105,16 +4660,57 @@ def self_test(files: dict[Path, str]) -> list[str]:
             "            canonicalTarget.get<DefinitionBindingTarget>().definition",
         ),
         (
-            "numeric closure fact ordering",
+            "non-indexed closure fact ordering",
             CLOSURE_SOURCE,
-            "const auto bytes = entry.key.encode();",
-            "const auto bytes = zc::heapArray<uint8_t>(0);",
+            "for (const auto& ordered : definitionIndices) {",
+            "for (size_t definitionIndexValue = 0; definitionIndexValue < definitions.size(); "
+            "++definitionIndexValue) {",
         ),
         (
             "missing nested closure propagation",
             CLOSURE_SOURCE,
-            "crossedClosures.add(ZC_ASSERT_NONNULL(row));",
+            "crossedClosures.add(row);",
             "return;",
+        ),
+        (
+            "linear closure definition lookup",
+            CLOSURE_SOURCE,
+            "definitionIndices.find(zc::str(bytes.asChars()))",
+            "zc::none",
+        ),
+        (
+            "closure builder accepts cross-closure module-owned target",
+            CLOSURE_SOURCE,
+            "scope.kind == ScopeKind::Function || scope.kind == ScopeKind::Closure ||\n"
+            "            scope.kind == ScopeKind::Module || scope.parent == zc::none",
+            "scope.kind == ScopeKind::Function ||\n"
+            "            scope.kind == ScopeKind::Module || scope.parent == zc::none",
+        ),
+        (
+            "linear body definition lookup",
+            BODY_SOURCE,
+            "definitionIndices.find(zc::str(bytes.asChars()))",
+            "zc::none",
+        ),
+        (
+            "explicit capture row ignores precomputed slot",
+            BODY_SOURCE,
+            "const size_t slot = explicitCaptureRowSlots[closureInventoryIndex];",
+            "const size_t slot = 0;",
+        ),
+        (
+            "capture item accepts module-owned target",
+            BODY_SOURCE,
+            "purpose == CaptureAccessPurpose::CaptureItem && targetCallableScope == zc::none",
+            "false && purpose == CaptureAccessPurpose::CaptureItem && "
+            "targetCallableScope == zc::none",
+        ),
+        (
+            "direct module-owned reference is rejected",
+            BODY_SOURCE,
+            "return crossedClosure && targetCallableScope == zc::none ? CaptureAccess::Denied\n"
+            "                                                                 : CaptureAccess::Allowed;",
+            "return CaptureAccess::Denied;",
         ),
         (
             "disconnected closure fact producer",
@@ -3189,6 +4785,147 @@ def self_test(files: dict[Path, str]) -> list[str]:
             "if (false && candidateClosureFreeVariables != ClosureFreeVariableOracleResult::Valid) {",
         ),
         (
+            "linear closure-oracle inventory lookup",
+            VERIFIER_SOURCE,
+            "canonicalRankByInventory[ordered.value] = canonicalRank++;\n"
+            "  }\n"
+            "  const auto inventoryIndex = [&](identity::DefId definition) -> zc::Maybe<size_t> {\n"
+            "    auto registeredKey = input.definitions().definitionKey(definition);",
+            "canonicalRankByInventory[ordered.value] = canonicalRank++;\n"
+            "  }\n"
+            "  const auto inventoryIndex = [&](identity::DefId definition) -> zc::Maybe<size_t> {\n"
+            "    zc::Maybe<identity::DefinitionKey> registeredKey;",
+        ),
+        (
+            "closure order regresses to encoded insertion sorting",
+            VERIFIER_SOURCE,
+            "zc::Vector<size_t> closureOrder;\n"
+            "  for (const auto& ordered : inventoryByCanonicalKey) {",
+            "zc::Vector<size_t> closureOrder;\n"
+            "  size_t insertion = 0;\n"
+            "  while (insertion < inventory.size()) {\n"
+            "    (void)compareDefinitionKeys(input, inventory[insertion].definition,\n"
+            "                                inventory[0].definition);",
+        ),
+        (
+            "closure canonical rank is not precomputed",
+            VERIFIER_SOURCE,
+            "canonicalRankByInventory[ordered.value] = canonicalRank++;",
+            "canonicalRankByInventory[ordered.value] = 0;",
+        ),
+        (
+            "definition callable ownership loses dense projection",
+            VERIFIER_SOURCE,
+            "owningCallableScopeIndices[index] = "
+            "nearestCallableScopeByScope[definitionScopeIndices[index]];",
+            "owningCallableScopeIndices[index] = UINT32_MAX;",
+        ),
+        (
+            "definition callable ownership restores ancestor walks",
+            VERIFIER_SOURCE,
+            "definitionScopeIndices[index] = scopeByNode[node.value];\n"
+            "    owningCallableScopeIndices[index] =",
+            "definitionScopeIndices[index] = scopeByNode[node.value];\n"
+            "    for (size_t traversed = 0; traversed < arena.scopes.size(); ++traversed) {\n"
+            "      (void)traversed;\n"
+            "    }\n"
+            "    owningCallableScopeIndices[index] =",
+        ),
+        (
+            "module-owned reference restores ancestor walks",
+            VERIFIER_SOURCE,
+            "if (nearestCallableScopeByScope[referenceScope] != UINT32_MAX ||",
+            "for (size_t traversed = 0; traversed < arena.scopes.size(); ++traversed) {\n"
+            "        (void)traversed;\n"
+            "      }\n"
+            "      if (nearestCallableScopeByScope[referenceScope] != UINT32_MAX ||",
+        ),
+        (
+            "closure ancestor path repeats DefId lookup",
+            VERIFIER_SOURCE,
+            "if (callableIndex >= closureSyntaxDomains.size() ||\n"
+            "          inventory[callableIndex].kind != identity::DefinitionKind::Closure ||\n"
+            "          closureSyntaxDomains[callableIndex] == "
+            "ClosureFreeOracleClosureSyntax::NotClosure) {",
+            "auto repeatedLookup = inventoryIndex(inventory[callableIndex].definition);\n"
+            "      (void)repeatedLookup;\n"
+            "      if (callableIndex >= closureSyntaxDomains.size() ||\n"
+            "          inventory[callableIndex].kind != identity::DefinitionKind::Closure ||\n"
+            "          closureSyntaxDomains[callableIndex] == "
+            "ClosureFreeOracleClosureSyntax::NotClosure) {",
+        ),
+        (
+            "closure ancestor path repeats DefinitionKey encoding",
+            VERIFIER_SOURCE,
+            "if (closureSyntaxDomains[callableIndex] == "
+            "ClosureFreeOracleClosureSyntax::Inferred) {",
+            "const auto repeatedBytes = inventory[callableIndex].key.encode();\n"
+            "      (void)repeatedBytes;\n"
+            "      if (closureSyntaxDomains[callableIndex] == "
+            "ClosureFreeOracleClosureSyntax::Inferred) {",
+        ),
+        (
+            "closure ancestor path rereads closure syntax",
+            VERIFIER_SOURCE,
+            "crossedClosures.add(callableIndex);",
+            "(void)tree.node(inventory[callableIndex].node);\n"
+            "        crossedClosures.add(callableIndex);",
+        ),
+        (
+            "closure ancestor path loses callable jumps",
+            VERIFIER_SOURCE,
+            "scopeIndex = parentCallableScopeByScope[scopeIndex];",
+            "ZC_IF_SOME(parent, arena.scopes[scopeIndex].parent) { scopeIndex = parent.index(); }",
+        ),
+        (
+            "closure triple collection loses ordered map",
+            VERIFIER_SOURCE,
+            "zc::TreeMap<ClosureFreeOracleTripleOrderKey, OracleCaptureTriple> triples;",
+            "zc::Vector<OracleCaptureTriple> triples;",
+        ),
+        (
+            "closure triple key bypasses canonical ranks",
+            VERIFIER_SOURCE,
+            "const ClosureFreeOracleTripleOrderKey key{canonicalRankByInventory[closureIndex],\n"
+            "                                                canonicalRankByInventory[targetIndex],",
+            "const ClosureFreeOracleTripleOrderKey key{closureIndex,\n"
+            "                                                targetIndex,",
+        ),
+        (
+            "closure triple dedup restores linear comparison",
+            VERIFIER_SOURCE,
+            "auto existing = triples.find(key);",
+            "auto existing = sameOracleCapture(canonicalTriples.back(), triple);",
+        ),
+        (
+            "closure triple conflict loses exact identity check",
+            VERIFIER_SOURCE,
+            "triple.closure != inventory[closureIndex].definition || triple.target != target ||",
+            "false || triple.target != target ||",
+        ),
+        (
+            "closure triple materialization restores insertion sorting",
+            VERIFIER_SOURCE,
+            "for (const auto& ordered : triples) { canonicalTriples.add(ordered.value); }",
+            "for (const auto& ordered : triples) {\n"
+            "    size_t insertion = canonicalTriples.size();\n"
+            "    while (insertion > 0) { --insertion; }\n"
+            "    canonicalTriples.add(ordered.value);\n"
+            "  }",
+        ),
+        (
+            "closure triple comparator restores reference-node tie break",
+            VERIFIER_SOURCE,
+            "return false;\n"
+            "  }\n"
+            "};\n\n"
+            "struct ExplicitOracleSourceOrderKey final",
+            "return referenceNode < other.referenceNode;\n"
+            "  }\n"
+            "};\n\n"
+            "struct ExplicitOracleSourceOrderKey final",
+        ),
+        (
             "missing closure fact cardinality",
             VERIFIER_SOURCE,
             "candidate.closureFreeVariables.size() < expected.closureFreeVariables.size()",
@@ -3219,16 +4956,22 @@ def self_test(files: dict[Path, str]) -> list[str]:
             "ClosureFreeVariables.MissingOriginalSitesAcrossNestedClosures",
         ),
         (
-            "missing explicit closure rejection evidence",
+            "missing explicit closure publication evidence",
             TEST_SOURCE,
-            "ClosureFreeVariables.RejectsExplicitCaptureClauses",
-            "ClosureFreeVariables.MissingExplicitCaptureClauses",
+            "ExplicitClosureCaptures.PublishSourceOrderedBindingsAndEmptyClauses",
+            "ExplicitClosureCaptures.MissingSourceOrderedBindingsAndEmptyClauses",
         ),
         (
             "missing cross-function closure evidence",
             TEST_SOURCE,
             "ClosureFreeVariables.RejectsCrossFunctionCapture",
             "ClosureFreeVariables.MissingCrossFunctionCapture",
+        ),
+        (
+            "missing module-owned closure rejection evidence",
+            TEST_SOURCE,
+            "ClosureFreeVariables.RejectsModuleOwnedPatternAndLocalReferences",
+            "ClosureFreeVariables.MissingModuleOwnedPatternAndLocalReferences",
         ),
         (
             "missing closure mutation evidence",
@@ -3241,6 +4984,414 @@ def self_test(files: dict[Path, str]) -> list[str]:
             TEST_SOURCE,
             "BindingVerifier.RejectsForeignClosureFreeVariableIdentities",
             "BindingVerifier.MissingForeignClosureFreeVariableIdentities",
+        ),
+        (
+            "disconnected explicit capture producer",
+            BODY_SOURCE,
+            "if (tree.contains(captures)) { visitExplicitCaptureList(node, captures, scopeIndex); }",
+            "if (false) { visitExplicitCaptureList(node, captures, scopeIndex); }",
+        ),
+        (
+            "bypassed explicit capture exhaustiveness",
+            BODY_SOURCE,
+            "if (!listed) { return CaptureAccess::Denied; }",
+            "if (!listed) { return CaptureAccess::Allowed; }",
+        ),
+        (
+            "missing receiver token contract",
+            BODY_SOURCE,
+            "case ast::CaptureMode::This:\n        tokenKind = ast::SyntaxKind::ThisKeyword;",
+            "case ast::CaptureMode::This:\n        tokenKind = ast::SyntaxKind::Identifier;",
+        ),
+        (
+            "missing this-expression receiver token contract",
+            BODY_SOURCE,
+            "retainedTokenSpan(node, 0, ast::SyntaxKind::ThisKeyword)",
+            "retainedTokenSpan(node, 0, ast::SyntaxKind::Identifier)",
+        ),
+        (
+            "missing explicit capture publication",
+            VERIFIER_SOURCE,
+            "candidate.explicitClosureCaptures = zc::mv(body.explicitClosureCaptures);",
+            "candidate.explicitClosureCaptures = zc::Vector<ExplicitClosureCaptureFact>();",
+        ),
+        (
+            "missing explicit capture row codec",
+            VERIFIER_SOURCE,
+            "encoder.encodeSequenceSize(candidate.explicitClosureCaptures.size());",
+            "encoder.encodeSequenceSize(0);",
+        ),
+        (
+            "missing explicit capture item codec",
+            VERIFIER_SOURCE,
+            "encoder.encodeUint32(capture.item.value);",
+            "encoder.encodeUint32(0);",
+        ),
+        (
+            "missing explicit capture target codec",
+            VERIFIER_SOURCE,
+            "!encodeDefinition(encoder, input, capture.target))",
+            "!encodeDefinition(encoder, input, closure.closure))",
+        ),
+        (
+            "missing explicit capture foreign-context guard",
+            VERIFIER_SOURCE,
+            "for (const auto& closure : candidate.explicitClosureCaptures) {\n"
+            "    if (!closure.closure.belongsTo(input.semanticContext())) { return true; }",
+            "for (const auto& closure : candidate.explicitClosureCaptures) {\n"
+            "    if (false) { return true; }",
+        ),
+        (
+            "missing explicit capture source-range guard",
+            VERIFIER_SOURCE,
+            "for (const auto& closure : candidate.explicitClosureCaptures) {\n"
+            "    if (spanIsInvalid(closure.source)) { return true; }",
+            "for (const auto& closure : candidate.explicitClosureCaptures) {\n"
+            "    if (false) { return true; }",
+        ),
+        (
+            "disconnected candidate explicit capture oracle",
+            VERIFIER_SOURCE,
+            "const auto candidateExplicitCaptures = verifyExplicitCaptureFacts(input, candidate);",
+            "const auto candidateExplicitCaptures = ExplicitCaptureOracleResult::Valid;",
+        ),
+        (
+            "bypassed candidate explicit capture oracle",
+            VERIFIER_SOURCE,
+            "if (candidateExplicitCaptures != ExplicitCaptureOracleResult::Valid) {",
+            "if (false && candidateExplicitCaptures != ExplicitCaptureOracleResult::Valid) {",
+        ),
+        (
+            "linear explicit-oracle inventory lookup",
+            VERIFIER_SOURCE,
+            "auto found = inventoryByCanonicalKey.find(canonicalKey);",
+            "zc::Maybe<size_t> found;",
+        ),
+        (
+            "explicit order regresses to comparison insertion",
+            VERIFIER_SOURCE,
+            "for (const auto& ordered : inventoryByCanonicalKey) {",
+            "for (size_t insertion = 0; insertion < inventory.size(); ++insertion) {\n"
+            "    (void)compareDefinitionKeys(input, inventory[insertion].definition,\n"
+            "                                inventory[0].definition);",
+        ),
+        (
+            "receiver order regresses to insertion sorting",
+            VERIFIER_SOURCE,
+            "for (const auto& ordered : receiverOrder) { receivers.add(ordered.value); }",
+            "for (const auto& ordered : receiverOrder) {\n"
+            "    size_t insertion = receivers.size();\n"
+            "    while (insertion > 0) { --insertion; }\n"
+            "    receivers.add(ordered.value);\n"
+            "  }",
+        ),
+        (
+            "receiver validation rescans all definitions",
+            VERIFIER_SOURCE,
+            "const size_t definitionMatches = candidateDefinitionCounts[wanted.inventoryIndex];",
+            "size_t definitionMatches = 0;\n"
+            "    for (const auto& fact : candidate.definitions) {\n"
+            "      (void)fact;\n"
+            "      ++definitionMatches;\n"
+            "    }",
+        ),
+        (
+            "receiver validation rescans every scope",
+            VERIFIER_SOURCE,
+            "if (mentionedByScopeBinding[wanted.inventoryIndex] ||\n"
+            "        mentionedBySurface[wanted.inventoryIndex] ||",
+            "for (const auto& scope : candidate.scopes) { (void)scope; }\n"
+            "    if (mentionedByScopeBinding[wanted.inventoryIndex] ||\n"
+            "        mentionedBySurface[wanted.inventoryIndex] ||",
+        ),
+        (
+            "receiver validation bypasses failure ordinal bucket",
+            VERIFIER_SOURCE,
+            "const auto& matchingFailures = receiverFailuresBySchema[schemaOrdinal];",
+            "const auto& matchingFailures = candidate.sourceFailures;",
+        ),
+        (
+            "receiver definition slot loses dense index",
+            VERIFIER_SOURCE,
+            "candidateDefinitionSlots[found] = index;",
+            "candidateDefinitionSlots[found] = 0;",
+        ),
+        (
+            "receiver failure ordinal bucket is disconnected",
+            VERIFIER_SOURCE,
+            "receiverFailuresBySchema[ordinal].add(index);",
+            "receiverFailuresBySchema[0].add(index);",
+        ),
+        (
+            "duplicate failure ordinal bucket is disconnected",
+            VERIFIER_SOURCE,
+            "duplicateFailuresBySchema[ordinal].add(index);",
+            "duplicateFailuresBySchema[0].add(index);",
+        ),
+        (
+            "capture access bypasses callable scope index",
+            VERIFIER_SOURCE,
+            "const size_t targetCallableIndex = callableInventoryByScope[targetScopeIndex];",
+            "const size_t targetCallableIndex = 0;",
+        ),
+        (
+            "capture access linearly scans expected targets",
+            VERIFIER_SOURCE,
+            "if (expectedTargetsByClosure[callableIndex].find(targetIndex) == zc::none) {",
+            "bool listed = false;\n"
+            "          for (const auto& expectedTarget : expectedTargetsByClosure[callableIndex]) {\n"
+            "            if (expectedTarget.key == targetIndex) { listed = true; }\n"
+            "          }\n"
+            "          if (!listed) {",
+        ),
+        (
+            "explicit capture row loses closure index",
+            VERIFIER_SOURCE,
+            "explicitCaptureRowByClosure[index] = rowIndex;",
+            "explicitCaptureRowByClosure[index] = 0;",
+        ),
+        (
+            "inferred capture row loses closure index",
+            VERIFIER_SOURCE,
+            "inferredCaptureRowByClosure[index] = rowIndex;",
+            "inferredCaptureRowByClosure[index] = 0;",
+        ),
+        (
+            "inferred capture row linearly rescans prior rows",
+            VERIFIER_SOURCE,
+            "++inferredCaptureRowCounts[index];",
+            "for (size_t previousRow = 0; previousRow < rowIndex; ++previousRow) {\n"
+            "      (void)candidate.closureFreeVariables[previousRow];\n"
+            "    }\n"
+            "    ++inferredCaptureRowCounts[index];",
+        ),
+        (
+            "capture duplicate check linearly rescans prior captures",
+            VERIFIER_SOURCE,
+            "auto firstCaptureIndex = validatedTargets.find(targetIndex);",
+            "zc::Maybe<size_t> firstCaptureIndex;\n"
+            "      for (size_t previousCapture = 0; previousCapture < captureIndex;\n"
+            "           ++previousCapture) {\n"
+            "        (void)actual.captures[previousCapture];\n"
+            "      }",
+        ),
+        (
+            "validated target publishes before complete capture validation",
+            VERIFIER_SOURCE,
+            "if (capture.item != item || capture.target != target ||",
+            "validatedTargets.insert(targetIndex, captureIndex);\n"
+            "      if (capture.item != item || capture.target != target ||",
+        ),
+        (
+            "closure partition rescans explicit capture rows",
+            VERIFIER_SOURCE,
+            "size_t partitionCount = 0;\n"
+            "  for (size_t index = 0; index < inventory.size(); ++index) {\n"
+            "    const auto& entry = inventory[index];",
+            "size_t partitionCount = 0;\n"
+            "  for (size_t index = 0; index < inventory.size(); ++index) {\n"
+            "    for (const auto& row : candidate.explicitClosureCaptures) { (void)row; }\n"
+            "    const auto& entry = inventory[index];",
+        ),
+        (
+            "final capture boundary trusts expected targets",
+            VERIFIER_SOURCE,
+            "validatedCaptureTargetsByClosure[callableIndex].find(targetInventoryIndex)",
+            "expectedTargetsByClosure[callableIndex].find(targetInventoryIndex)",
+        ),
+        (
+            "final ancestor traversal rescans explicit rows",
+            VERIFIER_SOURCE,
+            "if (closureSyntaxDomains[callableIndex] == ExplicitOracleClosureSyntax::Explicit &&\n"
+            "            validatedCaptureTargetsByClosure[callableIndex].find(targetInventoryIndex)",
+            "for (const auto& row : candidate.explicitClosureCaptures) { (void)row; }\n"
+            "        if (closureSyntaxDomains[callableIndex] == "
+            "ExplicitOracleClosureSyntax::Explicit &&\n"
+            "            validatedCaptureTargetsByClosure[callableIndex].find(targetInventoryIndex)",
+        ),
+        (
+            "wrong independent local activation",
+            VERIFIER_SOURCE,
+            "case DefinitionKind::Local:\n      return DefinitionActivation::AfterInitializer;",
+            "case DefinitionKind::Local:\n      return DefinitionActivation::ModuleSkeleton;",
+        ),
+        (
+            "numeric explicit capture activation order",
+            VERIFIER_SOURCE,
+            "order.insert(ExplicitOracleSourceOrderKey{source.byteStart(), source.byteEnd(), index},\n"
+            "                   index);",
+            "order.insert(ExplicitOracleSourceOrderKey{index, index, index}, index);",
+        ),
+        (
+            "producer supplied explicit capture target",
+            VERIFIER_SOURCE,
+            "target = activeDefinition(enclosingScope, Namespace::Value, name.text());",
+            "target = zc::none;",
+        ),
+        (
+            "explicit capture resolves in own closure scope",
+            VERIFIER_SOURCE,
+            "const uint32_t enclosingScope = "
+            "ZC_ASSERT_NONNULL(arena.scopes[scopeIndex].parent).index();",
+            "const uint32_t enclosingScope = scopeIndex;",
+        ),
+        (
+            "receiver crosses named function boundary",
+            VERIFIER_SOURCE,
+            "scope.kind == ScopeKind::Function || scope.kind == ScopeKind::Module ||",
+            "scope.kind == ScopeKind::Closure || scope.kind == ScopeKind::Module ||",
+        ),
+        (
+            "nested explicit boundary skips processed capture census",
+            VERIFIER_SOURCE,
+            "if (!explicitClosureProcessed[callableIndex]) {",
+            "if (false) {",
+        ),
+        (
+            "receiver duplicate diagnostic escapes oracle",
+            VERIFIER_SOURCE,
+            "if (first || failureFact.diagnostic != BinderDiagnosticCode::RedeclareParameter ||",
+            "if (first || failureFact.diagnostic != BinderDiagnosticCode::DuplicateIdentifier ||",
+        ),
+        (
+            "receiver duplicate source ordering ignores token start",
+            VERIFIER_SOURCE,
+            "if (scopeIndex != other.scopeIndex) { return scopeIndex < other.scopeIndex; }",
+            "if (scopeIndex != other.scopeIndex) { return node < other.node; }",
+        ),
+        (
+            "receiver declaration gains node resolution",
+            VERIFIER_SOURCE,
+            "resolutionByNode[entry.node.value] != kMissing",
+            "resolutionByNode[entry.node.value] == kMissing",
+        ),
+        (
+            "receiver activation overwrites nearest receiver",
+            VERIFIER_SOURCE,
+            "if (active.receiver == kMissing) { active.receiver = index; }",
+            "active.receiver = index;",
+        ),
+        (
+            "producer supplied this-expression receiver target",
+            VERIFIER_SOURCE,
+            "activeReceiver(scopeByNode[resolution.node.value])",
+            "zc::Maybe<size_t>(targetIndex)",
+        ),
+        (
+            "missing capture-item lexical census",
+            VERIFIER_SOURCE,
+            "case ast::SyntaxKind::CaptureItem:\n"
+            "        requireSite(node, ast::SyntaxKind::CaptureItem, Namespace::Value);",
+            "case ast::SyntaxKind::CaptureItem:\n        return;",
+        ),
+        (
+            "missing this-expression lexical census",
+            VERIFIER_SOURCE,
+            "case ast::SyntaxKind::ThisExpr:\n"
+            "        requireSite(node, ast::SyntaxKind::ThisExpr, Namespace::Value);",
+            "case ast::SyntaxKind::ThisExpr:\n        return;",
+        ),
+        (
+            "missing explicit and inferred closure partition",
+            VERIFIER_SOURCE,
+            "if (!explicitFact && !inferredFact) {",
+            "if (false && !explicitFact && !inferredFact) {",
+        ),
+        (
+            "label oracle consumes capture duplicate",
+            VERIFIER_SOURCE,
+            "labelDuplicate && !consumedFailures[index]",
+            "!consumedFailures[index]",
+        ),
+        (
+            "label oracle loses syntax ownership",
+            VERIFIER_SOURCE,
+            "ZC_ASSERT_NONNULL(sourceKind) == ast::SyntaxKind::LabeledStatement;",
+            "ZC_ASSERT_NONNULL(sourceKind) == ast::SyntaxKind::CaptureItem;",
+        ),
+        (
+            "control oracle consumes capture lookup",
+            VERIFIER_SOURCE,
+            "BinderEmitterSite::LabelAndClosure) && controlNode",
+            "BinderEmitterSite::LabelAndClosure)",
+        ),
+        (
+            "control oracle loses syntax ownership",
+            VERIFIER_SOURCE,
+            "ZC_ASSERT_NONNULL(sourceKind) == ast::SyntaxKind::ContinueStatement);",
+            "ZC_ASSERT_NONNULL(sourceKind) == ast::SyntaxKind::CaptureItem);",
+        ),
+        (
+            "missing explicit capture exhaustiveness evidence",
+            TEST_SOURCE,
+            "ExplicitClosureCaptures.EnforcesDeclaredCaptureExhaustiveness",
+            "ExplicitClosureCaptures.MissingDeclaredCaptureExhaustiveness",
+        ),
+        (
+            "missing module-owned capture-item rejection evidence",
+            TEST_SOURCE,
+            "ExplicitClosureCaptures.RejectsModuleOwnedPatternAndLocalItems",
+            "ExplicitClosureCaptures.MissingModuleOwnedPatternAndLocalItems",
+        ),
+        (
+            "missing explicit capture mutation evidence",
+            TEST_SOURCE,
+            "BindingVerifier.RejectsMalformedExplicitClosureCaptureFacts",
+            "BindingVerifier.MissingMalformedExplicitClosureCaptureFacts",
+        ),
+        (
+            "missing capture-before-parameter evidence",
+            TEST_SOURCE,
+            "ExplicitClosureCaptures.ResolveBeforeOwnParametersActivate",
+            "ExplicitClosureCaptures.MissingBeforeOwnParametersActivate",
+        ),
+        (
+            "missing lexical source-order evidence",
+            TEST_SOURCE,
+            "ExplicitClosureCaptures.PreferEarlierEnclosingBlockLocal",
+            "ExplicitClosureCaptures.MissingEarlierEnclosingBlockLocal",
+        ),
+        (
+            "missing deferred-local rejection evidence",
+            TEST_SOURCE,
+            "ExplicitClosureCaptures.RejectLaterInitializerAndSiblingLocals",
+            "ExplicitClosureCaptures.MissingLaterInitializerAndSiblingLocals",
+        ),
+        (
+            "missing attributed receiver token evidence",
+            TEST_SOURCE,
+            "ReceiverBinding.BindsAttributedReceiverAndPreservesNameToken",
+            "ReceiverBinding.MissingAttributedReceiverAndNameToken",
+        ),
+        (
+            "missing receiver duplicate oracle evidence",
+            TEST_SOURCE,
+            "BindingVerifier.RejectsMalformedDuplicateReceiverFailures",
+            "BindingVerifier.MissingMalformedDuplicateReceiverFailures",
+        ),
+        (
+            "missing explicit capture failure oracle evidence",
+            TEST_SOURCE,
+            "BindingVerifier.RejectsMalformedExplicitCaptureFailures",
+            "BindingVerifier.MissingMalformedExplicitCaptureFailures",
+        ),
+        (
+            "missing this-expression receiver target oracle evidence",
+            TEST_SOURCE,
+            "BindingVerifier.RejectsWrongThisExpressionReceiverTarget",
+            "BindingVerifier.MissingWrongThisExpressionReceiverTarget",
+        ),
+        (
+            "missing receiver binding evidence",
+            TEST_SOURCE,
+            "ReceiverBinding.RejectsMissingAndDuplicateReceivers",
+            "ReceiverBinding.MissingAndDuplicateReceivers",
+        ),
+        (
+            "missing declared-name diagnostic adapter",
+            DIAGNOSTIC_ADAPTER_HEADER,
+            "const identity::DeclaredDefinitionName& identifier",
+            "const identity::SemanticIdentifier& identifier",
         ),
         (
             "deferred pattern activation",
@@ -3301,6 +5452,69 @@ def self_test(files: dict[Path, str]) -> list[str]:
             SCOPE_SOURCE,
             "case ast::SyntaxKind::LambdaExpression:\n      return ScopeKind::Closure;",
             "case ast::SyntaxKind::LambdaExpression:\n      return zc::none;",
+        ),
+        (
+            "node-scope slots restore sentinel offset",
+            SCOPE_SOURCE,
+            "nodeScopeSlots.resize(tree.nodeCount());",
+            "nodeScopeSlots.resize(tree.nodeCount() + 1);",
+        ),
+        (
+            "node-scope slot loses NodeId minus one projection",
+            SCOPE_SOURCE,
+            "const size_t nodeSlot = static_cast<size_t>(node.value - 1);",
+            "const size_t nodeSlot = static_cast<size_t>(node.value);",
+        ),
+        (
+            "node-scope dense census accepts duplicate nodes",
+            SCOPE_SOURCE,
+            "if (nodeScopeSlots[nodeSlot] != zc::none) {",
+            "if (false) {",
+        ),
+        (
+            "scope-node census is disconnected",
+            SCOPE_SOURCE,
+            "const uint64_t expectedScopeCount = scopeNodeCount + 1;",
+            "const uint64_t expectedScopeCount = nextScopeIndex;",
+        ),
+        (
+            "node-scope materialization restores sorting",
+            SCOPE_SOURCE,
+            "candidate.nodeScopes.reserve(tree.nodeCount());\n"
+            "  for (size_t index = 0; index < nodeScopeSlots.size(); ++index) {",
+            "candidate.nodeScopes.reserve(tree.nodeCount());\n"
+            "  sortNodeScopes(candidate.nodeScopes);\n"
+            "  for (size_t index = 0; index < nodeScopeSlots.size(); ++index) {",
+        ),
+        (
+            "node-scope materialization reverses NodeId order",
+            SCOPE_SOURCE,
+            "for (size_t index = 0; index < nodeScopeSlots.size(); ++index) {",
+            "for (size_t index = nodeScopeSlots.size(); index-- > 0;) {",
+        ),
+        (
+            "node-scope materialization accepts holes",
+            SCOPE_SOURCE,
+            "if (nodeScopeSlots[index] == zc::none) {",
+            "if (false) {",
+        ),
+        (
+            "node-scope materialization loses exact NodeId order",
+            SCOPE_SOURCE,
+            "fact.node.value != index + 1",
+            "false",
+        ),
+        (
+            "node-scope materialization loses exact scope identity",
+            SCOPE_SOURCE,
+            "candidate.scopes[fact.scope.index()].id != fact.scope",
+            "false",
+        ),
+        (
+            "node-scope materialization drops canonical fact",
+            SCOPE_SOURCE,
+            "candidate.nodeScopes.add(zc::mv(fact));",
+            "(void)fact;",
         ),
         (
             "disconnected scope source validation",

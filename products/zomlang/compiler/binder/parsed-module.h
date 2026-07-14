@@ -83,6 +83,9 @@ public:
   /// \brief Return one parser-retained token when ordinal, kind, and ownership match.
   ZC_NODISCARD zc::Maybe<identity::SourceSpan> retainedTokenSpan(
       ast::NodeId owner, uint32_t tokenOrdinal, ast::SyntaxKind expectedKind) const;
+  /// \brief Return the parser-retained name token of one function parameter.
+  ZC_NODISCARD zc::Maybe<identity::SourceSpan> functionParameterNameSpan(
+      ast::NodeId parameter, ast::SyntaxKind expectedKind) const;
   /// \brief Resolve the start of a checked source span back to its parser source location.
   ZC_NODISCARD zc::Maybe<source::SourceLoc> sourceLocFor(const identity::SourceSpan& span) const;
 

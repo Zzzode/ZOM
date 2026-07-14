@@ -15,7 +15,7 @@ class DiagnosticEngine;
 
 namespace zomlang::compiler::binder {
 
-/// \brief Owned diagnostic argument admitted only from a canonical semantic identifier.
+/// \brief Owned diagnostic argument admitted only from a verified canonical name.
 class VerifiedIdentifierArgument final {
 public:
   VerifiedIdentifierArgument(VerifiedIdentifierArgument&&) noexcept = default;
@@ -24,6 +24,8 @@ public:
 
   ZC_NODISCARD static VerifiedIdentifierArgument from(
       const identity::SemanticIdentifier& identifier);
+  ZC_NODISCARD static VerifiedIdentifierArgument from(
+      const identity::DeclaredDefinitionName& identifier);
   ZC_NODISCARD zc::String take() &&;
 
 private:
