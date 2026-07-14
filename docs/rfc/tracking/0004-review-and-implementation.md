@@ -320,8 +320,11 @@ landing.
 | Dependency-free explicit labeled control-transfer facts | Complete | Commit `da0e4958`; active-ancestor lookup, innermost canonical selection, function and closure boundaries, no implicit fallback, paired `BoundLabel` and explicit control facts, exact retained reference failures, typed `ZOM3022`, full codecs, foreign-context checks, independent verifier reconstruction, 116 focused Binder cases, three diagnostic-adapter cases, all 1,251 CTests, and adversarial architecture mutations |
 | Dependency-free value deferred-member facts | Complete | Commits `cc1ef743` and `c3d14f40`; schema-backed dot, optional, and qualified access, closed `DeclaredDefinitionName` member spelling, exact base, source, value namespace, and direct-call generic arguments, paired top-level and inline facts, deterministic codecs, independent verifier reconstruction, all 1,253 CTests, full sanitizer build, and adversarial architecture mutations |
 | Dependency-free inferred closure free-variable facts | Complete | Commit `a8f04055`; one dense row per frozen closure, capturable-only successful local-value references, original-site nested propagation, named-function boundary rejection, expanded-key and source ordering, complete codecs, foreign-context checks, independent verifier reconstruction, 127 focused Binder cases, all 1,253 CTests in 886.75 seconds, the grammar oracle in 886.45 seconds, full sanitizer build, format/include/RFC checks, and positive plus adversarial architecture gates |
+| Dependency-free explicit closure-capture and receiver facts | In review | Current implementation checkout: complementary `explicitClosureCaptures` rows including `use []`, exact source-ordered capture tokens, capturable-target and explicit-boundary enforcement, special receiver `DefId(Parameter)` handling outside `BindingNameKey`, `ThisExpr`, full codec and foreign-context checks, independent verifier reconstruction, and focused positive plus negative tests; landing commit and complete gate evidence pending |
+| Block-scope named-function alignment | Pending | Chapters 5, 6, and 17 admit `FunctionDecl` as a block declaration and the parser constructs that AST, while the current skeleton rejects a function whose declaring scope is `Block` with `MissingRequiredResolution`; resolve the language and binder contract by implementing the complete activation, duplicate, shadow, closure-boundary, codec, and verifier behavior or by removing the syntax from every normative and parser surface |
+| Module-owned block-local classification | Pending | `DefinitionInventory` resets module-item classification for top-level `for-in` and match subtrees but propagates it through top-level `while` and ordinary nested blocks, so a block-scoped `let` in those paths is incorrectly frozen as `Static` instead of `Local`; replace the inherited boolean with syntax-owned declaration classification and cover every module-owned block, loop, match, and unsafe scope |
 | Complete module resolution input | Blocked by RFC 0012 and RFC 0008 | Authoritative package resolution, production semantic-context fingerprint, verified resolution environment, and resolution receipts |
-| Complete binding facts and surfaces | Pending | Imports, re-exports, module aliases, local exports, visibility envelopes, prelude and module-member resolution, explicit capture-list name binding, qualified, module, and associated members, receiver, `ThisExpr`, and `Self` binding, current-surface completion, remaining codecs, and verifier negatives; RFC 0007 owns final capture places and modes |
+| Complete binding facts and surfaces | Pending | Imports, re-exports, module aliases, local exports, visibility envelopes, prelude and module-member resolution, qualified, module, and associated members, `Self` binding, current-surface completion, and remaining codecs and verifier negatives; the in-review explicit closure-capture and receiver slice covers binder-owned capture names and `ThisExpr`, while RFC 0007 owns final capture places and modes |
 | Production binder cutover | Pending | Session integration, no downstream rebinding, deletion of raw binder inputs and binder-owned module resolution, and all acceptance gates |
 
 The first slice is intentionally fail-closed. It accepts only a single frozen
@@ -509,12 +512,13 @@ facts through owned constant-time frozen key projections. The focused sanitizer
 executables pass eighty Binder cases and sixteen frozen-registry cases; the
 Binder and identity architecture positive and mutation suites also pass.
 
-This slice is limited to dependency-free lexical value and type binding. The
-production frontend still invokes the existing `Binder`; module aliases,
-imports, re-exports, local exports, visibility filtering, prelude and
-module-member lookup, explicit receivers, `ThisExpr`, `Self`, labels, control
-transfers, closure free-variable facts, deferred members, and the final
-metadata and surface codecs remain open.
+At this slice's checkpoint, the production frontend still invoked the existing
+`Binder`; module aliases, imports, re-exports, local exports, visibility
+filtering, prelude and module-member lookup, explicit receivers, `ThisExpr`,
+`Self`, labels, control transfers, closure facts, deferred members, and the
+final metadata and surface codecs remained open. Subsequent tracker rows record
+the closure, label, control-transfer, deferred-member, receiver, and `ThisExpr`
+implementation slices.
 
 The lexical body-binding evidence series passed sanitizer configure and build,
 the eighty-case Binder executable, the sixteen-case frozen-registry executable,
@@ -629,14 +633,14 @@ adversarial mutation suite. The complete CTest preset passes all 1,253 tests in
 seconds.
 
 The dependency-free inferred closure slice publishes one dense row for every
-frozen function-expression or lambda identity, including verified empty rows.
-It consumes only successful local value bindings to parameters, locals, and
-pattern bindings. The original reference site propagates through every crossed
-closure and stops at the callable owning the target; unrelated named-function
-boundaries fail closed. Module declarations, functions, types, and a closure's
-own parameters or locals do not become free variables. Explicit capture clauses
-remain fail-closed until verified capture-list name binding exists; RFC 0007
-owns final capture places and modes.
+frozen function-expression without a capture clause and every lambda identity,
+including verified empty rows. It consumes only successful local value bindings
+to parameters, locals, and pattern bindings. The original reference site
+propagates through every crossed implicit closure and through explicit closures
+without adding inferred rows for them, then stops at the callable owning the
+target; unrelated named-function boundaries fail closed. Module declarations,
+functions, types, and a closure's own parameters or locals do not become free
+variables. RFC 0007 owns final capture places and modes.
 
 `BindingVerifier` independently rebuilds the scope arena and expected capture
 triples without calling `ClosureFreeVariableBuilder`. It verifies the dense
@@ -649,5 +653,37 @@ architecture positive gate, and the complete adversarial mutation suite. The
 complete CTest preset passes all 1,253 tests in 886.75 seconds; the ANTLR grammar
 conformance oracle passes in 886.45 seconds. Coverage includes dense empty rows,
 capturable and non-capturable targets, two-level original-site propagation,
-explicit capture-list rejection, a real unrelated named-function boundary,
-every row/target/site mutation class, foreign contexts, and every codec field.
+explicit-clause exclusion from inference, a real unrelated named-function
+boundary, every row/target/site mutation class, foreign contexts, and every
+codec field.
+
+The explicit closure-capture and receiver slice is present in the current
+implementation checkout and remains in review until a landing commit and the
+complete gate record are attached above. Every function expression with a
+capture clause publishes one expanded-`DefinitionKey`-ordered
+`ExplicitClosureCaptureFact`, including an empty row for `use []`. Successful
+items stay in AST source order and bind only parameters, locals, or pattern
+bindings. By-value and by-reference items retain their exact identifier tokens;
+`use [this]` retains its exact `ThisKeyword` and targets the enclosing special
+receiver `DefId(Parameter)`.
+
+Receiver parameters publish `ParameterList` definition facts but have no
+lexical `bindingName`, `BindingNameKey`, or ordinary scope entry. Body binding
+uses a separate receiver slot, resolves `ThisExpr` through closure scopes, and
+stops at named-function boundaries. Every capturable body reference crossing an
+explicit closure must occur in that closure's capture row. Duplicate captures
+and receivers retain deterministic primary and previous-declaration spans;
+undefined, wrong-namespace, non-capturable, inaccessible, and missing-receiver
+items publish exact failed resolutions.
+
+`BindingVerifier` independently rebuilds the scope arena, explicit-closure
+census, receiver recognition, capture targets, duplicate diagnostics, and
+crossed-closure exhaustiveness without calling the capture producer. It proves
+that inferred and explicit rows partition all closures exactly once, validates
+foreign semantic contexts, and encodes every closure, capture-list node and
+span, item node and span, and target. Focused tests in the current worktree cover
+positive value, reference, empty, receiver, nested-partition, and propagation
+cases plus malformed row, list, item, target, source, resolution, partition,
+duplicate, and foreign-context mutations. Complete sanitizer, architecture,
+format, RFC, and default-suite evidence is still pending for this in-review
+row; RFC 0007 continues to own semantic capture places and modes.

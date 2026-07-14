@@ -1027,6 +1027,20 @@ owns its closure scope, and produces no `ScopeBindingEntry`, module-surface
 seed, or export surface entry. Its generic and parameter facts activate inside
 that closure scope through `GenericList` and `ParameterList`, respectively.
 
+A `FunctionParameterDecl` whose parser-retained name token is `ThisKeyword`
+publishes a special value-namespace `DefId(Parameter)`. The name token is the
+first retained token after its optional leading `AttributeList`, or the first
+token of an un-attributed parameter; its canonical text must equal the AST name.
+It uses RFC 0011 `DeclaredDefinitionName("this")` for identity and diagnostics
+and publishes its ordinary `DefinitionFact` with `ParameterList` activation,
+but it has no lexical `bindingName` and produces no `BindingNameKey` or
+`ScopeBindingEntry`. Each callable scope contains at most one such receiver;
+additional receiver parameters produce `ZOM3004 RedeclareParameter` with a
+`ZOM3017 PreviousDeclarationHere` note in canonical source order. Body binding
+stores the receiver in a separate per-scope slot. A `ThisExpr` resolves to that
+same `DefId(Parameter)` through enclosing closure scopes and stops at a named
+function or module boundary.
+
 Each `ForInStatement` and `MatchArmStmt` pattern leaf retains its
 `PatternBindingSite` introducer and path. It publishes one value-namespace
 `DefinitionFact` with `LoopPattern` or `MatchPattern` activation, respectively,
@@ -1188,11 +1202,56 @@ owner. `break` and `continue` facts record the exact label, loop, or match
 target. Function and closure boundaries stop unlabeled loop and match lookup;
 module-owned labels never enter a nested callable.
 
+Every frozen closure identity belongs to exactly one capture-binding domain:
+
+- a `FunctionExpression` with no capture clause and every `LambdaExpression`
+  publish one dense `ClosureFreeVariableFact`, including an empty row when no
+  external local value is referenced;
+- a `FunctionExpression` with a `CaptureList` publishes one
+  `ExplicitClosureCaptureFact`, including an empty row for `use []`;
+- no closure may occur in both domains or in neither domain.
+
 For an implicitly capturing closure, the binder records each referenced
 `DefId` declared outside the closure plus the reference sites. It does not
 choose by-value, shared-borrow, mutable-borrow, move, or lifetime behavior. An
-explicit capture list is never projected through this inference path. RFC 0005
-supplies type facts and RFC 0007 computes final capture places and modes.
+explicitly capturing closure is omitted from this inference table. When an
+original reference site passes through an explicit closure toward an enclosing
+implicit closure, inference continues through the explicit closure without
+creating an inferred row for it. RFC 0005 supplies type facts and RFC 0007
+computes final capture places and modes for both domains.
+
+An explicit capture list binds in source order against the function
+expression's enclosing scope before the closure's parameters or body are
+bound. Each successfully resolved `CaptureItem` publishes one value-domain
+`BoundName` whose binding identity and canonical target are the same frozen
+`DefId`, plus one `ExplicitCaptureBindingFact`. The only legal targets are
+`DefId(Parameter)`, block-local `DefId(Local)`, and
+`DefId(PatternBinding)`. The stored source is the exact retained identifier at
+ordinal zero for a by-value item, the exact retained identifier at ordinal one
+for a by-reference item, or the exact retained ordinal-zero `ThisKeyword` for
+`this`. The capture-mode syntax remains in the AST; the binder does not assign
+semantic capture places or modes.
+
+`use [this]` resolves the enclosing active receiver through the separate
+receiver slot and binds to its special `DefId(Parameter)`. An undefined,
+wrong-namespace, non-capturable, inaccessible, or missing-receiver item
+publishes the corresponding failed resolution at that exact token and prevents
+verified metadata publication. Repeating the same target produces
+`ZOM3010 DuplicateIdentifier` at the later item with a
+`ZOM3017 PreviousDeclarationHere` note at the first item.
+
+A capture item reports `ZOM3002 SymbolNamespaceMismatch` only when value lookup
+finds no binding and type lookup finds one. A value binding that exists but is
+not capturable, is hidden by an explicit capture boundary, or crosses a named
+function reports `ZOM3001 UndefinedIdentifier`; a same-name type does not
+replace that value-domain outcome.
+
+Every successful body reference to capturable storage walks from its reference
+scope toward the callable that owns the target. Each explicit closure crossed
+by that walk must list the target in its `ExplicitClosureCaptureFact`; otherwise
+the reference is `ZOM3001 UndefinedIdentifier`. This exhaustiveness rule also
+applies when an explicit capture item itself reaches through another explicit
+closure. Named-function boundaries never act as capture bridges.
 
 ### Mutable Builder Output
 
@@ -1315,6 +1374,19 @@ ClosureFreeVariableFact {
   closure: DefId(Closure),
   variables: SortedSequence<FreeVariableFact>,
 }
+
+ExplicitCaptureBindingFact {
+  item: NodeId(CaptureItem),
+  target: DefId(Parameter | Local | PatternBinding),
+  source: SourceSpan,
+}
+
+ExplicitClosureCaptureFact {
+  closure: DefId(Closure),
+  captureList: NodeId(CaptureList),
+  source: SourceSpan,
+  captures: Sequence<ExplicitCaptureBindingFact>,
+}
 ```
 
 `BinderDiagnosticCode` contains exactly the binder-produced registered IDs in
@@ -1352,19 +1424,14 @@ closure row and every intervening outer closure row. If that same inner closure
 references a parameter or local owned by an outer closure, the site appears in
 the inner row only: propagation stops before the target-owning outer closure.
 
-`closureFreeVariables` is a dense map encoded as a sequence. It contains exactly
-one row for every frozen `DefId(Closure)`, ordered by expanded `DefinitionKey`,
-including a row with an empty `variables` sequence when verification proves that
-the closure captures nothing. A missing row therefore means missing resolution;
-it never means an empty capture set.
-
-An omitted capture clause selects this inference path. An explicit function
-expression capture clause requires verified binding for every capture element
-before metadata publication. While that producer is absent, every explicit
-clause, including `use []`, value captures, reference captures, and
-`use [this]`, fails closed with `MissingRequiredResolution`. The invariant is
-anchored to the complete `FunctionExpression`, uses the `LabelAndClosure`
-emitter, and carries that function expression's schema-preorder ordinal.
+`closureFreeVariables` and `explicitClosureCaptures` are complementary dense
+maps encoded as sequences. Each sequence is ordered by expanded
+`DefinitionKey`; together they contain exactly one row for every frozen
+`DefId(Closure)`. An inferred row contains an empty `variables` sequence when
+the closure captures nothing. An explicit row contains an empty `captures`
+sequence for `use []`, retains the exact full `CaptureList` span, and preserves
+its successful capture items in AST source order. A missing row in both maps
+means missing resolution; it never means an empty capture set.
 
 The complete candidate output is:
 
@@ -1386,6 +1453,7 @@ BindingMetadataCandidate {
   controlTransfers: NodeId -> ControlTransferFact,
   shadowTargets: DefId -> BindingTarget,
   closureFreeVariables: SortedSequence<ClosureFreeVariableFact>,
+  explicitClosureCaptures: SortedSequence<ExplicitClosureCaptureFact>,
   currentSurface: ExportSurfaceCandidate,
 }
 ```
@@ -1449,6 +1517,10 @@ Only `BindingVerifier` can construct `VerifiedBindingMetadata`. It checks:
 - closure free-variable facts reproduce the dense closure census, successful
   local-value filter, callable-boundary propagation, sorting, and deduplication
   algorithm;
+- explicit closure-capture facts reproduce every capture-list row, exact list
+  and token source, source-ordered item, capturable target, receiver binding,
+  duplicate diagnostic, body-reference exhaustiveness rule, and the exact
+  inferred-versus-explicit closure partition;
 - the current surface contains every local module-private binding and
   every explicit export, its exports are exactly the external subset, ordinary
   imports are absent, and every target is visible and canonically terminated;
@@ -1480,6 +1552,22 @@ site, context-owned identity, and codec field. A missing closure row, target, or
 site yields `MissingRequiredResolution`; an additional, duplicate, reordered,
 or otherwise malformed fact yields `InvalidBindingFact`. A foreign-context
 closure or target is rejected earlier as RFC 0011 `ForeignContext`.
+
+For explicit closure-capture facts, the verifier independently rebuilds the
+scope arena and frozen-closure census without invoking the body-binding capture
+producer. It enumerates every
+function-expression `CaptureList`, reproduces expanded-`DefinitionKey` row
+ordering and AST item ordering, and validates the exact list span, retained
+item token, `BoundName`, target kind, spelling, and receiver classification,
+duplicate primary/note pair, and every crossed explicit-closure requirement. It
+also proves that every frozen closure occurs exactly once across the inferred
+and explicit sequences.
+The canonical metadata codec encodes the explicit sequence size and every
+closure, list node, list span, target, item node, and item span. Missing facts
+yield `MissingRequiredResolution`; additional, overlapping, reordered, or
+malformed facts yield `InvalidBindingFact`; malformed callable ancestry yields
+`MalformedScopeGraph`; and foreign closure or target identities are rejected
+through RFC 0011 context checks.
 
 Verification failure is a closed result:
 
@@ -1568,8 +1656,8 @@ Diagnostic ownership is exhaustive:
 
 | Code | Unique producer | Condition | Primary anchor and suppression |
 |---|---|---|---|
-| `ZOM3001 UndefinedIdentifier` | Body or label binder | No binding exists in the expected lexical namespace after the complete lookup order, including a local-export source name or explicit label | Identifier, local-export source-name, or explicit-label token; records `Failed` and suppresses dependent binder lookup for that node |
-| `ZOM3002 SymbolNamespaceMismatch` | Body binder | The normalized name exists in another lexical namespace but not the expected namespace | Identifier token; suppresses `ZOM3001` for the same node; type-directed member namespace failures belong only to RFC 0005 |
+| `ZOM3001 UndefinedIdentifier` | Body or label binder | No usable binding exists in the expected lexical domain after the complete lookup order, including a local-export source name or explicit label; a capture item with a non-capturable or inaccessible value target uses this row | Identifier, capture-item, local-export source-name, or explicit-label token; records `Failed` and suppresses dependent binder lookup for that node |
+| `ZOM3002 SymbolNamespaceMismatch` | Body binder | The normalized name has no binding in the expected namespace and has a binding in another lexical namespace | Identifier or capture-item token; suppresses `ZOM3001` for the same node; type-directed member namespace failures belong only to RFC 0005 |
 | `ZOM3003-ZOM3010` | Module skeleton, body, or label binder | Duplicate binding selected by the complete kind table below; duplicate labels use `ZOM3010` | Later declaration, binding leaf, or label token, plus `ZOM3017` at the first; one pair suppresses every other duplicate diagnostic for that later binding |
 | `ZOM3011 CircularImport` | Global `ModuleGraphVerifier` | A prelude-free cyclic SCC or self-edge contains no foreign re-export edge; import/module-alias mixed cycles use this row | Canonically least encoded edge; no verified graph is published |
 | `ZOM3012 ImportModuleNotFound` | Global `ModuleGraphVerifier` | Explicit import or module-alias path selects no module | Import or module-alias target span; suppresses member, visibility, and binder lookup failures for that syntax |
@@ -1863,10 +1951,17 @@ temporary immutable verified inputs.
    deferred-member, control-transfer, and closure free-variable facts are
    complete for every applicable AST node.
    Closure free-variable facts contain one expanded-`DefinitionKey`-ordered row
-   for every frozen closure, including verified empty rows, and contain only
-   canonical capturable local-value targets with source-ordered original sites.
-   Explicit function-expression capture clauses fail closed until their own
-   verified binding producer exists.
+   for every implicitly capturing frozen closure, including verified empty
+   rows, and contain only canonical capturable local-value targets with
+   source-ordered original sites. Explicit capture facts contain one
+   expanded-`DefinitionKey`-ordered row for every function expression with a
+   capture clause, including an empty row for `use []`, and preserve exact
+   source-ordered `CaptureItem` nodes, retained token spans, and capturable
+   targets. The inferred and explicit sequences partition all frozen closures
+   exactly once. Every capturable body reference crossing an explicit closure
+   names a target in that closure's row, and receiver declarations,
+   `use [this]`, and `ThisExpr` bind to the same special `DefId(Parameter)`
+   without creating a `BindingNameKey`.
 10. Type-directed members remain deferred and contain enough syntax provenance
     for RFC 0005 and RFC 0009 to finish resolution without repeating binding.
 11. `BindingVerifier` is the only constructor of
@@ -1931,7 +2026,8 @@ temporary immutable verified inputs.
 5. Implement module skeleton collection and every activation-table row for
    source-ordered local binding.
 6. Implement lexical, module-alias, import, local-export, label, control-transfer,
-   shadow, closure free-variable, and deferred-member facts.
+   shadow, inferred and explicit closure-capture, receiver, `ThisExpr`, and
+   deferred-member facts.
 7. Implement the complete current-surface candidate and `BindingVerifier` as the
    only constructor of `VerifiedBindingMetadata` and `VerifiedExportSurface`.
 8. Register and migrate the exhaustive diagnostic producer table, typed-safe
@@ -1980,14 +2076,26 @@ temporary immutable verified inputs.
   pairs; canonical codecs; and global ordering with duplicate-label and lexical
   body failures.
 - Closure free-variable matrix: one dense row per frozen function expression or
-  lambda; verified empty rows; parameter, local, and pattern targets; global,
-  declaration, non-value, and non-local non-captures; nested propagation to a
-  named-function owner; stopping before an outer closure owner; unrelated
+  lambda without a capture clause; verified empty rows; parameter, local, and
+  pattern targets; global, declaration, non-value, and non-local non-captures;
+  nested propagation through explicit closures to an enclosing implicit
+  closure; stopping before a target-owning outer closure; unrelated
   named-function rejection; exact target and source-site ordering and
-  deduplication; explicit empty, value, reference, and `this` capture-list
-  rejection; missing, additional, reordered, wrong, duplicate, and
+  deduplication; missing, additional, reordered, wrong, duplicate, and
   foreign-context rows, targets, and sites; complete codec mutation coverage;
   and an independent verifier oracle that does not call the producer.
+- Explicit closure-capture matrix: one expanded-`DefinitionKey`-ordered row per
+  function expression with a capture clause; `use []`; source-ordered by-value,
+  by-reference, and `this` items with exact retained token spans; only
+  parameter, local, and pattern-binding targets; receiver and `ThisExpr`
+  resolution through closure scopes; missing and duplicate receiver failures;
+  undefined, wrong-namespace, non-capturable, inaccessible, and duplicate
+  capture items; `ZOM3010` plus `ZOM3017` source provenance; body-reference
+  exhaustiveness across every explicit closure; inferred-versus-explicit
+  partition and nested propagation; missing, additional, reordered, wrong,
+  overlapping, and foreign-context rows, lists, items, targets, sources, and
+  resolutions; every codec field; and an independent verifier oracle that does
+  not call the capture producer.
 - Focused lit command:
   `ctest --preset default --output-on-failure -R '^lit-(05-statements|06-declarations|13-modules|23-visibility)-'`.
   Fixtures cover current Chapter 13 import forms, aliases, re-exports, missing and
@@ -2067,7 +2175,7 @@ None
 | 2026-07-11 | REVIEW | Entered formal review after every required technical owner approved proposal hash `98f4a6b22ebfa1e3f05a67b092b8164bbac24621c0d4b8c58d111a6707bd4620` and the review manager authorized the atomic transition. Acceptance, decision, and implementation remain open. |
 | 2026-07-11 | ACCEPTED | Every required owner approved proposal hash `26bcc9dd95f5abbf623dd39af0cf6bd3ae2de9ed6be89649465803609c8af5cd` after formal graph, resolution-environment, visibility, diagnostic, codec, and verifier review. Implementation has not started. |
 | 2026-07-12 | IMPLEMENTING | Started the direct replacement series with the dependency-free module-graph and binding-input verifier spine tracked by the local implementation record. |
-| 2026-07-13 | IMPLEMENTING | Corrected module-discovery versus semantic-SCC ownership, described the live insertion-ordered legacy state accurately, and moved active module diagnostics into their owned registry family. Future diagnostics must land atomically with their first producer. |
+| 2026-07-13 | IMPLEMENTING | Corrected module-discovery versus semantic-SCC ownership, described the live insertion-ordered state accurately, and moved active module diagnostics into their owned registry family. Future diagnostics must land atomically with their first producer. |
 | 2026-07-13 | IMPLEMENTING | Clarified that RFC 0011 special constructor and destructor declaration names publish definition and scope facts without an ordinary lexical binding, preserving `BindingNameKey` as a `SemanticIdentifier`-only key. |
 | 2026-07-13 | IMPLEMENTING | Activated anonymous closure expression facts and closure-owned generic and parameter facts without creating a lexical or surface binding. |
 | 2026-07-13 | IMPLEMENTING | Activated for-in and match-arm pattern leaves in their exact lexical scopes while keeping source-ordered block declarators separate. |
@@ -2076,4 +2184,5 @@ None
 | 2026-07-13 | IMPLEMENTING | Completed canonical label declaration facts with module-or-callable owner-local identities, immediate statement edges, flattened block-or-loop targets, exact retained declaration tokens, deterministic duplicate facts and diagnostics, canonical allocation encoding, and an independent verifier oracle. |
 | 2026-07-13 | IMPLEMENTING | Completed explicit labeled `break` and `continue` binding with active-ancestor lookup, function and closure boundaries, no implicit fallback, paired `BoundLabel` and explicit control facts, exact retained reference failures, typed `ZOM3022`, canonical codecs, independent verification, and adversarial boundary coverage. |
 | 2026-07-13 | IMPLEMENTING | Completed dependency-free value member deferral for dot and optional access with a canonical `DeclaredDefinitionName`, direct-call type arguments, full syntax provenance, deterministic codecs, independent verification, and fail-closed qualified access. |
-| 2026-07-14 | IMPLEMENTING | Added dependency-free inferred closure free-variable facts with dense closure rows, capturable local-value filtering, original-site nested propagation, named-function boundaries, deterministic ordering, complete codecs, independent verification, and fail-closed explicit capture clauses. |
+| 2026-07-14 | IMPLEMENTING | Added dependency-free inferred closure free-variable facts with dense inferred rows, capturable local-value filtering, original-site nested propagation, named-function boundaries, deterministic ordering, complete codecs, and independent verification while reserving explicit clauses for their own fact sequence. |
+| 2026-07-14 | IMPLEMENTING | Added explicit closure-capture binding and receiver resolution in the active implementation checkout: exact capture-token facts, dense `use []` rows, exhaustive explicit boundaries, special receiver `DefId(Parameter)` handling, `ThisExpr`, complementary inferred/explicit closure rows, complete codecs, and an independent oracle. Landing commit and complete verification evidence remain pending in the implementation tracker. |
