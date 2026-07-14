@@ -319,8 +319,9 @@ landing.
 | Canonical label declaration facts | Complete | Commits `17575e9b` and `2d04166e`; generalized retained-token lookup, sealed module-or-callable `LabelId`, owner-local schema-preorder allocation, immediate statement edges, flattened block-or-loop targets, exact declaration-token provenance, deterministic duplicate facts with `ZOM3010` and `ZOM3017`, allocation codecs, independent verifier reconstruction, 107 focused Binder cases, full sanitizer build, and adversarial architecture mutations |
 | Dependency-free explicit labeled control-transfer facts | Complete | Commit `da0e4958`; active-ancestor lookup, innermost canonical selection, function and closure boundaries, no implicit fallback, paired `BoundLabel` and explicit control facts, exact retained reference failures, typed `ZOM3022`, full codecs, foreign-context checks, independent verifier reconstruction, 116 focused Binder cases, three diagnostic-adapter cases, all 1,251 CTests, and adversarial architecture mutations |
 | Dependency-free value deferred-member facts | Complete | Commits `cc1ef743` and `c3d14f40`; schema-backed dot, optional, and qualified access, closed `DeclaredDefinitionName` member spelling, exact base, source, value namespace, and direct-call generic arguments, paired top-level and inline facts, deterministic codecs, independent verifier reconstruction, all 1,253 CTests, full sanitizer build, and adversarial architecture mutations |
+| Dependency-free inferred closure free-variable facts | Complete | Commit `a8f04055`; one dense row per frozen closure, capturable-only successful local-value references, original-site nested propagation, named-function boundary rejection, expanded-key and source ordering, complete codecs, foreign-context checks, independent verifier reconstruction, 127 focused Binder cases, all 1,253 CTests in 886.75 seconds, the grammar oracle in 886.45 seconds, full sanitizer build, format/include/RFC checks, and positive plus adversarial architecture gates |
 | Complete module resolution input | Blocked by RFC 0012 and RFC 0008 | Authoritative package resolution, production semantic-context fingerprint, verified resolution environment, and resolution receipts |
-| Complete binding facts and surfaces | Pending | Imports, re-exports, module aliases, local exports, visibility envelopes, prelude and module-member resolution, closure captures, qualified, module, and associated members, receiver, `ThisExpr`, and `Self` binding, current-surface completion, remaining codecs, and verifier negatives |
+| Complete binding facts and surfaces | Pending | Imports, re-exports, module aliases, local exports, visibility envelopes, prelude and module-member resolution, explicit capture-list name binding, qualified, module, and associated members, receiver, `ThisExpr`, and `Self` binding, current-surface completion, remaining codecs, and verifier negatives; RFC 0007 owns final capture places and modes |
 | Production binder cutover | Pending | Session integration, no downstream rebinding, deletion of raw binder inputs and binder-owned module resolution, and all acceptance gates |
 
 The first slice is intentionally fail-closed. It accepts only a single frozen
@@ -626,3 +627,27 @@ conformance coverage, the Binder architecture positive gate, and its complete
 adversarial mutation suite. The complete CTest preset passes all 1,253 tests in
 1,107.29 seconds; the ANTLR grammar conformance oracle passes in 1,106.89
 seconds.
+
+The dependency-free inferred closure slice publishes one dense row for every
+frozen function-expression or lambda identity, including verified empty rows.
+It consumes only successful local value bindings to parameters, locals, and
+pattern bindings. The original reference site propagates through every crossed
+closure and stops at the callable owning the target; unrelated named-function
+boundaries fail closed. Module declarations, functions, types, and a closure's
+own parameters or locals do not become free variables. Explicit capture clauses
+remain fail-closed until verified capture-list name binding exists; RFC 0007
+owns final capture places and modes.
+
+`BindingVerifier` independently rebuilds the scope arena and expected capture
+triples without calling `ClosureFreeVariableBuilder`. It verifies the dense
+closure census, exact targets and sites, nested propagation, expanded
+`DefinitionKey` ordering, source-span plus schema-preorder site ordering,
+deduplication, context ownership, and the complete closure, target, and site
+codec. Commit `a8f04055` passes 127 focused Binder cases, sanitizer configure
+and full build, format and include checks, RFC validation, the Binder
+architecture positive gate, and the complete adversarial mutation suite. The
+complete CTest preset passes all 1,253 tests in 886.75 seconds; the ANTLR grammar
+conformance oracle passes in 886.45 seconds. Coverage includes dense empty rows,
+capturable and non-capturable targets, two-level original-site propagation,
+explicit capture-list rejection, a real unrelated named-function boundary,
+every row/target/site mutation class, foreign contexts, and every codec field.

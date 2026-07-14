@@ -8,7 +8,7 @@ review-manager: rfc
 required-owners: [rfc, binder-checker, error-system, module-system, ir-backend, spec-audit, verification]
 approvers: [rfc, binder-checker, error-system, module-system, ir-backend, spec-audit, verification]
 created: 2026-07-05
-updated: 2026-07-13
+updated: 2026-07-14
 area: compiler
 requires: [1, 2, 3, 11]
 supersedes: []
@@ -1188,10 +1188,11 @@ owner. `break` and `continue` facts record the exact label, loop, or match
 target. Function and closure boundaries stop unlabeled loop and match lookup;
 module-owned labels never enter a nested callable.
 
-For a closure, the binder records each referenced `DefId` declared outside the
-closure plus the reference sites. It does not choose by-value, shared-borrow,
-mutable-borrow, move, or lifetime behavior. RFC 0005 supplies type facts and
-RFC 0007 computes final capture places and modes.
+For an implicitly capturing closure, the binder records each referenced
+`DefId` declared outside the closure plus the reference sites. It does not
+choose by-value, shared-borrow, mutable-borrow, move, or lifetime behavior. An
+explicit capture list is never projected through this inference path. RFC 0005
+supplies type facts and RFC 0007 computes final capture places and modes.
 
 ### Mutable Builder Output
 
@@ -1309,6 +1310,11 @@ FreeVariableFact {
   target: DefId,
   referenceSites: SortedSequence<NodeId>,
 }
+
+ClosureFreeVariableFact {
+  closure: DefId(Closure),
+  variables: SortedSequence<FreeVariableFact>,
+}
 ```
 
 `BinderDiagnosticCode` contains exactly the binder-produced registered IDs in
@@ -1321,15 +1327,44 @@ Only `DefId(Parameter)`, block-local `DefId(Local)`, and
 `DefId(PatternBinding)` values whose declaring scope is inside an enclosing
 callable have capturable runtime storage. Module-level constants/statics,
 functions, types, module/import/re-export aliases, fields, associated items, and
-prelude bindings are never closure free variables. For every bound reference to
-a capturable definition outside the current closure, collection starts at the
-innermost closure and walks enclosing closures until it reaches the callable
-owning the target's declaring scope. It adds the original reference site to
-every crossed closure. Exact
+prelude bindings are never closure free variables. The producer consumes only a
+successful `BoundName` whose namespace is `Value`, whose origin is
+`LocalDeclaration`, and whose `bindingIdentity` and `canonicalTarget` are both
+`Definition(target)` for the same frozen definition. A local-value result that
+claims any other identity or canonical-target shape is invalid. Failed,
+deferred, label, module, import, re-export, non-value, and non-local resolutions
+cannot create a free-variable fact.
+
+For every bound reference to a capturable definition outside the current
+closure, collection starts at the innermost closure and walks enclosing closures
+until it reaches the callable owning the target's declaring scope. It adds the
+original reference site to every crossed closure. Reaching any other named
+function before that owner is a malformed scope graph; a named function cannot
+act as an implicit capture bridge. Exact
 `(closure, target, referenceSite)` triples deduplicate; targets sort by expanded
 `DefinitionKey` and sites by source span then schema preorder. This propagation
 lets an enclosing closure carry a value needed to construct a nested closure
 without assigning a capture mode in the binder.
+
+For example, if an inner closure references a local owned by the enclosing
+named function, the original inner reference site appears in both the inner
+closure row and every intervening outer closure row. If that same inner closure
+references a parameter or local owned by an outer closure, the site appears in
+the inner row only: propagation stops before the target-owning outer closure.
+
+`closureFreeVariables` is a dense map encoded as a sequence. It contains exactly
+one row for every frozen `DefId(Closure)`, ordered by expanded `DefinitionKey`,
+including a row with an empty `variables` sequence when verification proves that
+the closure captures nothing. A missing row therefore means missing resolution;
+it never means an empty capture set.
+
+An omitted capture clause selects this inference path. An explicit function
+expression capture clause requires verified binding for every capture element
+before metadata publication. While that producer is absent, every explicit
+clause, including `use []`, value captures, reference captures, and
+`use [this]`, fails closed with `MissingRequiredResolution`. The invariant is
+anchored to the complete `FunctionExpression`, uses the `LabelAndClosure`
+emitter, and carries that function expression's schema-preorder ordinal.
 
 The complete candidate output is:
 
@@ -1350,7 +1385,7 @@ BindingMetadataCandidate {
   labels: LabelId -> LabelFact,
   controlTransfers: NodeId -> ControlTransferFact,
   shadowTargets: DefId -> BindingTarget,
-  closureFreeVariables: DefId -> [FreeVariableFact],
+  closureFreeVariables: SortedSequence<ClosureFreeVariableFact>,
   currentSurface: ExportSurfaceCandidate,
 }
 ```
@@ -1411,8 +1446,9 @@ Only `BindingVerifier` can construct `VerifiedBindingMetadata`. It checks:
 - every deferred member has a bound base and complete syntax provenance;
 - label and control-transfer targets obey block, loop, match, label, callable,
   and closure boundaries, and `continue` never targets a match or block;
-- closure free-variable facts reproduce the propagation, sorting, and
-  deduplication algorithm;
+- closure free-variable facts reproduce the dense closure census, successful
+  local-value filter, callable-boundary propagation, sorting, and deduplication
+  algorithm;
 - the current surface contains every local module-private binding and
   every explicit export, its exports are exactly the external subset, ordinary
   imports are absent, and every target is visible and canonically terminated;
@@ -1433,6 +1469,17 @@ retained ordinal-one failure span, diagnostic, emitter site, schema ordinal, and
 local ordinal to match. Every statement must satisfy exactly one legal outcome:
 one successful fact, plus `BoundLabel` only for explicit success; or one
 `Failed` resolution and its exact source failure, with no control fact.
+
+For closure free-variable facts, the verifier independently rebuilds the scope
+arena and dense frozen-closure census without invoking
+`ClosureFreeVariableBuilder`. It derives capturable targets from the frozen
+inventory, derives each reference scope from canonical node-scope facts, walks
+callable boundaries independently, and reconstructs the exact canonical
+`(closure, target, referenceSite)` triples. It then compares every row, target,
+site, context-owned identity, and codec field. A missing closure row, target, or
+site yields `MissingRequiredResolution`; an additional, duplicate, reordered,
+or otherwise malformed fact yields `InvalidBindingFact`. A foreign-context
+closure or target is rejected earlier as RFC 0011 `ForeignContext`.
 
 Verification failure is a closed result:
 
@@ -1815,6 +1862,11 @@ temporary immutable verified inputs.
 9. Identifier, module member, module-alias, label, shadow, import, local-export,
    deferred-member, control-transfer, and closure free-variable facts are
    complete for every applicable AST node.
+   Closure free-variable facts contain one expanded-`DefinitionKey`-ordered row
+   for every frozen closure, including verified empty rows, and contain only
+   canonical capturable local-value targets with source-ordered original sites.
+   Explicit function-expression capture clauses fail closed until their own
+   verified binding producer exists.
 10. Type-directed members remain deferred and contain enough syntax provenance
     for RFC 0005 and RFC 0009 to finish resolution without repeating binding.
 11. `BindingVerifier` is the only constructor of
@@ -1927,6 +1979,15 @@ temporary immutable verified inputs.
   and explicit-target facts; foreign identities; malformed success and failure
   pairs; canonical codecs; and global ordering with duplicate-label and lexical
   body failures.
+- Closure free-variable matrix: one dense row per frozen function expression or
+  lambda; verified empty rows; parameter, local, and pattern targets; global,
+  declaration, non-value, and non-local non-captures; nested propagation to a
+  named-function owner; stopping before an outer closure owner; unrelated
+  named-function rejection; exact target and source-site ordering and
+  deduplication; explicit empty, value, reference, and `this` capture-list
+  rejection; missing, additional, reordered, wrong, duplicate, and
+  foreign-context rows, targets, and sites; complete codec mutation coverage;
+  and an independent verifier oracle that does not call the producer.
 - Focused lit command:
   `ctest --preset default --output-on-failure -R '^lit-(05-statements|06-declarations|13-modules|23-visibility)-'`.
   Fixtures cover current Chapter 13 import forms, aliases, re-exports, missing and
@@ -2015,3 +2076,4 @@ None
 | 2026-07-13 | IMPLEMENTING | Completed canonical label declaration facts with module-or-callable owner-local identities, immediate statement edges, flattened block-or-loop targets, exact retained declaration tokens, deterministic duplicate facts and diagnostics, canonical allocation encoding, and an independent verifier oracle. |
 | 2026-07-13 | IMPLEMENTING | Completed explicit labeled `break` and `continue` binding with active-ancestor lookup, function and closure boundaries, no implicit fallback, paired `BoundLabel` and explicit control facts, exact retained reference failures, typed `ZOM3022`, canonical codecs, independent verification, and adversarial boundary coverage. |
 | 2026-07-13 | IMPLEMENTING | Completed dependency-free value member deferral for dot and optional access with a canonical `DeclaredDefinitionName`, direct-call type arguments, full syntax provenance, deterministic codecs, independent verification, and fail-closed qualified access. |
+| 2026-07-14 | IMPLEMENTING | Added dependency-free inferred closure free-variable facts with dense closure rows, capturable local-value filtering, original-site nested propagation, named-function boundaries, deterministic ordering, complete codecs, independent verification, and fail-closed explicit capture clauses. |
