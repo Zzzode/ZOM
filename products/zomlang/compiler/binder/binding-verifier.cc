@@ -12,6 +12,7 @@
 #include "zomlang/compiler/binder/binding-diagnostic-adapter.h"
 #include "zomlang/compiler/binder/internal/binding-skeleton.h"
 #include "zomlang/compiler/binder/internal/body-binding.h"
+#include "zomlang/compiler/binder/internal/closure-free-variables.h"
 #include "zomlang/compiler/binder/internal/control-transfer.h"
 #include "zomlang/compiler/binder/internal/label-facts.h"
 #include "zomlang/compiler/binder/internal/scope-arena.h"
@@ -249,6 +250,12 @@ bool hasForeignContext(const VerifiedBindingInput& input,
     if (!shadow.definition.belongsTo(input.semanticContext()) ||
         targetHasForeignContext(input, shadow.target)) {
       return true;
+    }
+  }
+  for (const auto& closure : candidate.closureFreeVariables) {
+    if (!closure.closure.belongsTo(input.semanticContext())) { return true; }
+    for (const auto& variable : closure.variables) {
+      if (!variable.target.belongsTo(input.semanticContext())) { return true; }
     }
   }
   for (const auto& entry : candidate.currentSurface.visibleEntries) {
@@ -776,6 +783,311 @@ int compareCanonicalBytes(zc::ArrayPtr<const uint8_t> left, zc::ArrayPtr<const u
   if (left.size() < right.size()) { return -1; }
   if (left.size() > right.size()) { return 1; }
   return 0;
+}
+
+enum class ClosureFreeVariableOracleResult : uint8_t {
+  Valid,
+  MissingRequiredResolution,
+  InvalidBindingFact,
+  MalformedScopeGraph
+};
+
+struct OracleCaptureTriple final {
+  identity::DefId closure;
+  identity::DefId target;
+  ast::NodeId referenceSite;
+  uint64_t start;
+  uint64_t end;
+  uint32_t schemaPreorderOrdinal;
+};
+
+int compareDefinitionKeys(const VerifiedBindingInput& input, identity::DefId left,
+                          identity::DefId right) {
+  auto leftKey = input.definitions().definitionKey(left);
+  auto rightKey = input.definitions().definitionKey(right);
+  if (leftKey == zc::none || rightKey == zc::none) { return 0; }
+  const auto leftBytes = ZC_ASSERT_NONNULL(leftKey).encode();
+  const auto rightBytes = ZC_ASSERT_NONNULL(rightKey).encode();
+  return compareCanonicalBytes(leftBytes.asPtr(), rightBytes.asPtr());
+}
+
+bool oracleCaptureLess(const VerifiedBindingInput& input, const OracleCaptureTriple& left,
+                       const OracleCaptureTriple& right) {
+  const int closureOrder = compareDefinitionKeys(input, left.closure, right.closure);
+  if (closureOrder != 0) { return closureOrder < 0; }
+  const int targetOrder = compareDefinitionKeys(input, left.target, right.target);
+  if (targetOrder != 0) { return targetOrder < 0; }
+  if (left.start != right.start) { return left.start < right.start; }
+  if (left.end != right.end) { return left.end < right.end; }
+  return left.schemaPreorderOrdinal < right.schemaPreorderOrdinal;
+}
+
+bool sameOracleCapture(const OracleCaptureTriple& left, const OracleCaptureTriple& right) {
+  return left.closure == right.closure && left.target == right.target &&
+         left.referenceSite == right.referenceSite;
+}
+
+ClosureFreeVariableOracleResult verifyClosureFreeVariableFacts(
+    const VerifiedBindingInput& input, const BindingMetadataCandidate& candidate) {
+  const auto& tree = input.tree();
+  auto arenaResult = ScopeArenaBuilder::build(input);
+  if (!arenaResult.is<ScopeArenaCandidate>()) {
+    return ClosureFreeVariableOracleResult::MalformedScopeGraph;
+  }
+  auto arena = zc::mv(arenaResult.get<ScopeArenaCandidate>());
+  if (arena.scopes.empty() || arena.nodeScopes.size() != tree.nodeCount()) {
+    return ClosureFreeVariableOracleResult::MalformedScopeGraph;
+  }
+
+  zc::Vector<uint32_t> scopeByNode;
+  scopeByNode.resize(tree.nodeCount() + 1);
+  for (auto& scope : scopeByNode) { scope = UINT32_MAX; }
+  for (size_t index = 0; index < arena.scopes.size(); ++index) {
+    const auto& scope = arena.scopes[index];
+    if (scope.id.module() != input.module() || scope.id.index() != index ||
+        !scope.id.belongsTo(input.semanticContext()) || (index == 0 && scope.parent != zc::none) ||
+        (index != 0 && scope.parent == zc::none)) {
+      return ClosureFreeVariableOracleResult::MalformedScopeGraph;
+    }
+    ZC_IF_SOME(parent, scope.parent) {
+      if (parent.module() != input.module() || parent.index() >= index ||
+          !parent.belongsTo(input.semanticContext())) {
+        return ClosureFreeVariableOracleResult::MalformedScopeGraph;
+      }
+    }
+    if (scope.kind == ScopeKind::Function || scope.kind == ScopeKind::Closure) {
+      const auto& owner = scope.owner.value();
+      if (!owner.is<DefinitionScopeOwner>() ||
+          input.definitions().definitionKey(owner.get<DefinitionScopeOwner>().definition) ==
+              zc::none) {
+        return ClosureFreeVariableOracleResult::MalformedScopeGraph;
+      }
+    }
+  }
+  for (const auto& fact : arena.nodeScopes) {
+    if (!tree.contains(fact.node) || fact.node.value >= scopeByNode.size() ||
+        scopeByNode[fact.node.value] != UINT32_MAX || fact.scope.module() != input.module() ||
+        fact.scope.index() >= arena.scopes.size() ||
+        arena.scopes[fact.scope.index()].id != fact.scope) {
+      return ClosureFreeVariableOracleResult::MalformedScopeGraph;
+    }
+    scopeByNode[fact.node.value] = fact.scope.index();
+  }
+  auto schemaOrdinalsResult = schemaPreorderOrdinals(tree);
+  if (schemaOrdinalsResult == zc::none) {
+    return ClosureFreeVariableOracleResult::MalformedScopeGraph;
+  }
+  auto schemaOrdinals = zc::mv(ZC_ASSERT_NONNULL(schemaOrdinalsResult));
+
+  zc::Vector<identity::DefId> closureOrder;
+  for (const auto& entry : input.definitions().definitions()) {
+    if (entry.kind != identity::DefinitionKind::Closure) { continue; }
+    closureOrder.add(entry.definition);
+  }
+  for (size_t index = 1; index < closureOrder.size(); ++index) {
+    const auto current = closureOrder[index];
+    size_t insertion = index;
+    while (insertion > 0 &&
+           compareDefinitionKeys(input, current, closureOrder[insertion - 1]) < 0) {
+      closureOrder[insertion] = closureOrder[insertion - 1];
+      --insertion;
+    }
+    closureOrder[insertion] = current;
+  }
+  if (candidate.closureFreeVariables.size() < closureOrder.size()) {
+    return ClosureFreeVariableOracleResult::MissingRequiredResolution;
+  }
+  if (candidate.closureFreeVariables.size() > closureOrder.size()) {
+    return ClosureFreeVariableOracleResult::InvalidBindingFact;
+  }
+  for (size_t index = 0; index < closureOrder.size(); ++index) {
+    if (candidate.closureFreeVariables[index].closure != closureOrder[index]) {
+      return ClosureFreeVariableOracleResult::InvalidBindingFact;
+    }
+  }
+
+  const auto inventory = input.definitions().definitions();
+  const auto inventoryIndex = [&](identity::DefId definition) -> zc::Maybe<size_t> {
+    zc::Maybe<size_t> result;
+    for (size_t index = 0; index < inventory.size(); ++index) {
+      if (inventory[index].definition != definition) { continue; }
+      if (result != zc::none) { return zc::none; }
+      result = index;
+    }
+    return result;
+  };
+  const auto capturable = [](identity::DefinitionKind kind) {
+    return kind == identity::DefinitionKind::Parameter || kind == identity::DefinitionKind::Local ||
+           kind == identity::DefinitionKind::PatternBinding;
+  };
+  const auto callableScope = [&](ast::NodeId definitionNode) -> zc::Maybe<uint32_t> {
+    if (!tree.contains(definitionNode) || definitionNode.value >= scopeByNode.size() ||
+        scopeByNode[definitionNode.value] == UINT32_MAX) {
+      return zc::none;
+    }
+    uint32_t scopeIndex = scopeByNode[definitionNode.value];
+    for (size_t traversed = 0; traversed < arena.scopes.size(); ++traversed) {
+      if (scopeIndex >= arena.scopes.size()) { return zc::none; }
+      const auto& scope = arena.scopes[scopeIndex];
+      if (scope.kind == ScopeKind::Function || scope.kind == ScopeKind::Closure) {
+        return scopeIndex;
+      }
+      if (scope.kind == ScopeKind::Module || scope.parent == zc::none) { return zc::none; }
+      ZC_IF_SOME(parent, scope.parent) { scopeIndex = parent.index(); }
+    }
+    return zc::none;
+  };
+
+  zc::Vector<OracleCaptureTriple> triples;
+  for (const auto& resolution : candidate.nodeBindings) {
+    if (!tree.contains(resolution.node) || resolution.node.value >= scopeByNode.size() ||
+        scopeByNode[resolution.node.value] == UINT32_MAX) {
+      return ClosureFreeVariableOracleResult::InvalidBindingFact;
+    }
+    if (!resolution.value.is<BoundNameResolution>()) { continue; }
+    const auto& bound = resolution.value.get<BoundNameResolution>();
+    if (bound.nameSpace != Namespace::Value || bound.origin != BindingOrigin::LocalDeclaration) {
+      continue;
+    }
+    const auto& bindingIdentity = bound.bindingIdentity.value();
+    const auto& canonicalTarget = bound.canonicalTarget.value();
+    if (!bindingIdentity.is<DefinitionBindingTarget>() ||
+        !canonicalTarget.is<DefinitionBindingTarget>() ||
+        bindingIdentity.get<DefinitionBindingTarget>().definition !=
+            canonicalTarget.get<DefinitionBindingTarget>().definition) {
+      return ClosureFreeVariableOracleResult::InvalidBindingFact;
+    }
+    const auto target = bindingIdentity.get<DefinitionBindingTarget>().definition;
+    auto targetInventoryIndex = inventoryIndex(target);
+    if (targetInventoryIndex == zc::none) {
+      return ClosureFreeVariableOracleResult::InvalidBindingFact;
+    }
+    const auto& targetEntry = inventory[ZC_ASSERT_NONNULL(targetInventoryIndex)];
+    if (!capturable(targetEntry.kind)) { continue; }
+    auto targetCallableScope = callableScope(targetEntry.node);
+    if (targetCallableScope == zc::none) { continue; }
+    const auto& targetOwner = arena.scopes[ZC_ASSERT_NONNULL(targetCallableScope)].owner.value();
+    if (!targetOwner.is<DefinitionScopeOwner>()) {
+      return ClosureFreeVariableOracleResult::MalformedScopeGraph;
+    }
+    const auto targetCallable = targetOwner.get<DefinitionScopeOwner>().definition;
+
+    auto source = input.parsedModule().spanFor(tree.node(resolution.node).range);
+    if (source == zc::none || resolution.node.value >= schemaOrdinals.size() ||
+        schemaOrdinals[resolution.node.value] == UINT32_MAX) {
+      return ClosureFreeVariableOracleResult::InvalidBindingFact;
+    }
+    const auto start = ZC_ASSERT_NONNULL(source).byteStart();
+    const auto end = ZC_ASSERT_NONNULL(source).byteEnd();
+
+    zc::Vector<identity::DefId> crossedClosures;
+    uint32_t scopeIndex = scopeByNode[resolution.node.value];
+    bool reachedTarget = false;
+    for (size_t traversed = 0; traversed < arena.scopes.size(); ++traversed) {
+      if (scopeIndex >= arena.scopes.size()) {
+        return ClosureFreeVariableOracleResult::MalformedScopeGraph;
+      }
+      const auto& scope = arena.scopes[scopeIndex];
+      if (scope.kind == ScopeKind::Function || scope.kind == ScopeKind::Closure) {
+        const auto& owner = scope.owner.value();
+        if (!owner.is<DefinitionScopeOwner>()) {
+          return ClosureFreeVariableOracleResult::MalformedScopeGraph;
+        }
+        const auto callable = owner.get<DefinitionScopeOwner>().definition;
+        if (callable == targetCallable) {
+          reachedTarget = true;
+          break;
+        }
+        if (scope.kind == ScopeKind::Function) {
+          return ClosureFreeVariableOracleResult::MalformedScopeGraph;
+        }
+        auto closureIndex = inventoryIndex(callable);
+        if (closureIndex == zc::none ||
+            inventory[ZC_ASSERT_NONNULL(closureIndex)].kind != identity::DefinitionKind::Closure) {
+          return ClosureFreeVariableOracleResult::MalformedScopeGraph;
+        }
+        crossedClosures.add(callable);
+      }
+      if (scope.kind == ScopeKind::Module || scope.parent == zc::none) { break; }
+      ZC_IF_SOME(parent, scope.parent) { scopeIndex = parent.index(); }
+    }
+    if (!reachedTarget) { return ClosureFreeVariableOracleResult::MalformedScopeGraph; }
+    for (const auto closure : crossedClosures) {
+      triples.add(OracleCaptureTriple{closure, target, resolution.node, start, end,
+                                      schemaOrdinals[resolution.node.value]});
+    }
+  }
+
+  for (size_t index = 1; index < triples.size(); ++index) {
+    const auto current = triples[index];
+    size_t insertion = index;
+    while (insertion > 0 && oracleCaptureLess(input, current, triples[insertion - 1])) {
+      triples[insertion] = triples[insertion - 1];
+      --insertion;
+    }
+    triples[insertion] = current;
+  }
+  zc::Vector<OracleCaptureTriple> canonicalTriples;
+  for (const auto& triple : triples) {
+    if (!canonicalTriples.empty() && sameOracleCapture(canonicalTriples.back(), triple)) {
+      continue;
+    }
+    canonicalTriples.add(triple);
+  }
+
+  size_t tripleIndex = 0;
+  for (const auto& closure : candidate.closureFreeVariables) {
+    size_t variableIndex = 0;
+    while (tripleIndex < canonicalTriples.size() &&
+           canonicalTriples[tripleIndex].closure == closure.closure) {
+      const auto target = canonicalTriples[tripleIndex].target;
+      if (variableIndex >= closure.variables.size()) {
+        return ClosureFreeVariableOracleResult::MissingRequiredResolution;
+      }
+      const auto& variable = closure.variables[variableIndex];
+      if (variable.target != target) { return ClosureFreeVariableOracleResult::InvalidBindingFact; }
+      size_t siteCount = 0;
+      while (tripleIndex + siteCount < canonicalTriples.size() &&
+             canonicalTriples[tripleIndex + siteCount].closure == closure.closure &&
+             canonicalTriples[tripleIndex + siteCount].target == target) {
+        ++siteCount;
+      }
+      if (variable.referenceSites.size() < siteCount) {
+        return ClosureFreeVariableOracleResult::MissingRequiredResolution;
+      }
+      if (variable.referenceSites.size() > siteCount) {
+        return ClosureFreeVariableOracleResult::InvalidBindingFact;
+      }
+      for (size_t siteIndex = 0; siteIndex < siteCount; ++siteIndex) {
+        if (variable.referenceSites[siteIndex] !=
+            canonicalTriples[tripleIndex + siteIndex].referenceSite) {
+          return ClosureFreeVariableOracleResult::InvalidBindingFact;
+        }
+      }
+      tripleIndex += siteCount;
+      ++variableIndex;
+    }
+    if (variableIndex < closure.variables.size()) {
+      return ClosureFreeVariableOracleResult::InvalidBindingFact;
+    }
+  }
+  return tripleIndex == canonicalTriples.size()
+             ? ClosureFreeVariableOracleResult::Valid
+             : ClosureFreeVariableOracleResult::MissingRequiredResolution;
+}
+
+BinderInvariantKind closureFreeVariableOracleInvariant(ClosureFreeVariableOracleResult result) {
+  switch (result) {
+    case ClosureFreeVariableOracleResult::MissingRequiredResolution:
+      return BinderInvariantKind::MissingRequiredResolution;
+    case ClosureFreeVariableOracleResult::InvalidBindingFact:
+      return BinderInvariantKind::InvalidBindingFact;
+    case ClosureFreeVariableOracleResult::MalformedScopeGraph:
+      return BinderInvariantKind::MalformedScopeGraph;
+    case ClosureFreeVariableOracleResult::Valid:
+      ZC_UNREACHABLE;
+  }
+  ZC_UNREACHABLE;
 }
 
 bool oracleLabelLess(const OracleLabelRecord& left, const OracleLabelRecord& right) {
@@ -1830,6 +2142,18 @@ zc::Maybe<zc::Array<uint8_t>> encodeCandidate(const VerifiedBindingInput& input,
     }
   }
   encoder.encodeSequenceSize(candidate.closureFreeVariables.size());
+  for (const auto& closure : candidate.closureFreeVariables) {
+    if (!encodeDefinition(encoder, input, closure.closure)) { return zc::none; }
+    encoder.encodeSequenceSize(closure.variables.size());
+    for (const auto& variable : closure.variables) {
+      if (!encodeDefinition(encoder, input, variable.target)) { return zc::none; }
+      encoder.encodeSequenceSize(variable.referenceSites.size());
+      for (const auto site : variable.referenceSites) {
+        if (!input.tree().contains(site)) { return zc::none; }
+        encoder.encodeUint32(site.value);
+      }
+    }
+  }
   if (candidate.currentSurface.sourceModule != input.module() ||
       candidate.currentSurface.sourcePackage != input.package()) {
     return zc::none;
@@ -2252,6 +2576,13 @@ BindingCandidateResult BindingBuilder::buildCandidate(
     nodeBindings.add(zc::mv(body.nodeBindings[ordered.value]));
   }
 
+  auto closureResult = ClosureFreeVariableBuilder::build(input, arena, skeleton.definitions.asPtr(),
+                                                         nodeBindings.asPtr());
+  if (!closureResult.is<zc::Vector<ClosureFreeVariableFact>>()) {
+    return zc::mv(closureResult.get<BinderInvariantFact>());
+  }
+  auto closureFreeVariables = zc::mv(closureResult.get<zc::Vector<ClosureFreeVariableFact>>());
+
   zc::Vector<ExportSurfaceEntry> visibleEntries;
   zc::Vector<ExportSurfaceEntry> exports;
   for (auto& seed : skeleton.moduleSurfaceSeeds) {
@@ -2291,6 +2622,7 @@ BindingCandidateResult BindingBuilder::buildCandidate(
         candidate.labels = zc::mv(labels.labels);
         candidate.controlTransfers = zc::mv(control.controlTransfers);
         candidate.shadowTargets = zc::mv(body.shadowTargets);
+        candidate.closureFreeVariables = zc::mv(closureFreeVariables);
         return candidate;
       }
     }
@@ -2333,6 +2665,16 @@ BindingVerificationResult BindingVerifier::verify(const VerifiedBindingInput& in
     return rejectBinderInvariant(
         verifierFailure(input, deferredMemberOracleInvariant(candidateDeferredMembers)));
   }
+  const auto expectedClosureFreeVariables = verifyClosureFreeVariableFacts(input, expected);
+  if (expectedClosureFreeVariables != ClosureFreeVariableOracleResult::Valid) {
+    return rejectBinderInvariant(
+        verifierFailure(input, closureFreeVariableOracleInvariant(expectedClosureFreeVariables)));
+  }
+  const auto candidateClosureFreeVariables = verifyClosureFreeVariableFacts(input, candidate);
+  if (candidateClosureFreeVariables != ClosureFreeVariableOracleResult::Valid) {
+    return rejectBinderInvariant(
+        verifierFailure(input, closureFreeVariableOracleInvariant(candidateClosureFreeVariables)));
+  }
   if (!hasCompleteLexicalBindingSites(input.tree(), expected.nodeBindings.asPtr())) {
     return rejectBinderInvariant(
         bodyBuilderFailure(input, BinderInvariantKind::MissingRequiredResolution));
@@ -2346,7 +2688,8 @@ BindingVerificationResult BindingVerifier::verify(const VerifiedBindingInput& in
       candidate.deferredMembers.size() < expected.deferredMembers.size() ||
       candidate.labels.size() < expected.labels.size() ||
       candidate.controlTransfers.size() < expected.controlTransfers.size() ||
-      candidate.shadowTargets.size() < expected.shadowTargets.size()) {
+      candidate.shadowTargets.size() < expected.shadowTargets.size() ||
+      candidate.closureFreeVariables.size() < expected.closureFreeVariables.size()) {
     return rejectBinderInvariant(
         verifierFailure(input, BinderInvariantKind::MissingRequiredResolution));
   }
@@ -2359,11 +2702,12 @@ BindingVerificationResult BindingVerifier::verify(const VerifiedBindingInput& in
       candidate.deferredMembers.size() > expected.deferredMembers.size() ||
       candidate.labels.size() > expected.labels.size() ||
       candidate.controlTransfers.size() > expected.controlTransfers.size() ||
-      candidate.shadowTargets.size() > expected.shadowTargets.size()) {
+      candidate.shadowTargets.size() > expected.shadowTargets.size() ||
+      candidate.closureFreeVariables.size() > expected.closureFreeVariables.size()) {
     return rejectBinderInvariant(verifierFailure(input, BinderInvariantKind::InvalidBindingFact));
   }
   if (!candidate.moduleAliases.empty() || !candidate.imports.empty() ||
-      !candidate.localExports.empty() || !candidate.closureFreeVariables.empty()) {
+      !candidate.localExports.empty()) {
     return rejectBinderInvariant(verifierFailure(input, BinderInvariantKind::InvalidBindingFact));
   }
   auto candidateAllocation =

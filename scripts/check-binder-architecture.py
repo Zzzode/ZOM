@@ -39,6 +39,8 @@ LABEL_HEADER = BINDER_DIR / "internal" / "label-facts.h"
 LABEL_SOURCE = BINDER_DIR / "label-facts.cc"
 CONTROL_HEADER = BINDER_DIR / "internal" / "control-transfer.h"
 CONTROL_SOURCE = BINDER_DIR / "control-transfer.cc"
+CLOSURE_HEADER = BINDER_DIR / "internal" / "closure-free-variables.h"
+CLOSURE_SOURCE = BINDER_DIR / "closure-free-variables.cc"
 AST_TREE_HEADER = Path("products/zomlang/compiler/ast/tree.h")
 AST_TREE_SOURCE = Path("products/zomlang/compiler/ast/tree.cc")
 DIAGNOSTIC_ADAPTER_HEADER = BINDER_DIR / "binding-diagnostic-adapter.h"
@@ -99,6 +101,8 @@ def production_files() -> dict[Path, str]:
         LABEL_SOURCE,
         CONTROL_HEADER,
         CONTROL_SOURCE,
+        CLOSURE_HEADER,
+        CLOSURE_SOURCE,
         DIAGNOSTIC_ADAPTER_HEADER,
         DIAGNOSTIC_ADAPTER_SOURCE,
         DIAGNOSTIC_DEFINITIONS,
@@ -700,6 +704,194 @@ def check_deferred_member_contract(files: dict[Path, str], errors: list[str]) ->
     ):
         if marker not in tests:
             errors.append(f"{TEST_SOURCE}: missing deferred-member evidence: {marker}")
+
+
+def check_closure_free_variable_contract(
+    files: dict[Path, str], errors: list[str]
+) -> None:
+    header = files.get(CLOSURE_HEADER, "")
+    source = files.get(CLOSURE_SOURCE, "")
+    verifier = files.get(VERIFIER_SOURCE, "")
+    tests = files.get(TEST_SOURCE, "")
+
+    for required in (
+        "using ClosureFreeVariableBuildResult =",
+        "class ClosureFreeVariableBuilder final",
+        "const ScopeArenaCandidate& arena",
+        "zc::ArrayPtr<const DefinitionFact> definitions",
+        "zc::ArrayPtr<const BindingResolution> nodeBindings",
+    ):
+        if required not in header:
+            errors.append(f"{CLOSURE_HEADER}: incomplete closure-fact authority: {required}")
+
+    for required in (
+        "BinderEmitterSite::LabelAndClosure",
+        "rejectExplicitCaptureClauses()",
+        "ast::kFunctionExpressionCapturesIdWord",
+        "reject(BinderInvariantKind::MissingRequiredResolution, node);",
+        "kind == identity::DefinitionKind::Parameter ||",
+        "kind == identity::DefinitionKind::Local ||",
+        "kind == identity::DefinitionKind::PatternBinding",
+        "bound.nameSpace != Namespace::Value",
+        "bound.origin != BindingOrigin::LocalDeclaration",
+        "bindingIdentity.is<DefinitionBindingTarget>()",
+        "canonicalTarget.is<DefinitionBindingTarget>()",
+        "canonicalTarget.get<DefinitionBindingTarget>().definition",
+        "initializeDenseRows()",
+        "entry.kind != identity::DefinitionKind::Closure",
+        "entry.key.encode()",
+        "ReferenceSiteOrderKey",
+        "value.byteStart(), value.byteEnd(),",
+        "schemaOrdinals[site.value]",
+        "crossedClosures.add(ZC_ASSERT_NONNULL(row));",
+        "for (const auto closureIndex : crossedClosures)",
+        "appendReference(closureIndex, target, resolution.node)",
+        "scope.kind == ScopeKind::Function",
+        "existing == site",
+        "input.definitions().definitionKey(closure.variables[index].target)",
+    ):
+        if required not in source:
+            errors.append(f"{CLOSURE_SOURCE}: closure-fact producer is disconnected: {required}")
+
+    for forbidden in (
+        "ast::BindingMetadata",
+        "setCaptures(",
+        "SyntaxKind::IdentExpr",
+        "zomlang/compiler/checker",
+        "zomlang/compiler/type",
+        "zomlang/compiler/symbol",
+    ):
+        if forbidden in source:
+            errors.append(f"{CLOSURE_SOURCE}: forbidden closure-fact dependency: {forbidden}")
+
+    run_body = function_body(source, "ClosureFreeVariableBuildResult run()")
+    if "if (!rejectExplicitCaptureClauses()) { return takeRejection(); }" not in run_body:
+        errors.append(f"{CLOSURE_SOURCE}: explicit capture clauses do not fail closed")
+
+    identity_guard = (
+        "if (!bindingIdentity.is<DefinitionBindingTarget>() ||\n"
+        "        !canonicalTarget.is<DefinitionBindingTarget>() ||\n"
+        "        bindingIdentity.get<DefinitionBindingTarget>().definition !=\n"
+        "            canonicalTarget.get<DefinitionBindingTarget>().definition) {"
+    )
+    if identity_guard not in source:
+        errors.append(
+            f"{CLOSURE_SOURCE}: local binding identity and canonical target are not enforced"
+        )
+
+    for required in (
+        '"zomlang/compiler/binder/internal/closure-free-variables.h"',
+        "ClosureFreeVariableBuilder::build(input, arena, skeleton.definitions.asPtr(),",
+        "candidate.closureFreeVariables = zc::mv(closureFreeVariables);",
+        "for (const auto& closure : candidate.closureFreeVariables)",
+        "closure.closure.belongsTo(input.semanticContext())",
+        "variable.target.belongsTo(input.semanticContext())",
+        "encoder.encodeSequenceSize(candidate.closureFreeVariables.size());",
+        "encodeDefinition(encoder, input, closure.closure)",
+        "encoder.encodeSequenceSize(closure.variables.size());",
+        "encodeDefinition(encoder, input, variable.target)",
+        "encoder.encodeSequenceSize(variable.referenceSites.size());",
+        "input.tree().contains(site)",
+        "encoder.encodeUint32(site.value);",
+        "const auto expectedClosureFreeVariables = verifyClosureFreeVariableFacts(input, expected);",
+        "const auto candidateClosureFreeVariables = verifyClosureFreeVariableFacts(input, candidate);",
+        "candidate.closureFreeVariables.size() < expected.closureFreeVariables.size()",
+        "candidate.closureFreeVariables.size() > expected.closureFreeVariables.size()",
+    ):
+        if required not in verifier:
+            errors.append(f"{VERIFIER_SOURCE}: closure-fact verification is disconnected: {required}")
+
+    if "!candidate.closureFreeVariables.empty()" in verifier:
+        errors.append(f"{VERIFIER_SOURCE}: verified closure facts are still rejected as unsupported")
+
+    candidate_codec = function_body(
+        verifier, "zc::Maybe<zc::Array<uint8_t>> encodeCandidate("
+    )
+    for required in (
+        "encoder.encodeSequenceSize(candidate.closureFreeVariables.size());",
+        "encodeDefinition(encoder, input, closure.closure)",
+        "encoder.encodeSequenceSize(closure.variables.size());",
+        "encodeDefinition(encoder, input, variable.target)",
+        "encoder.encodeSequenceSize(variable.referenceSites.size());",
+        "input.tree().contains(site)",
+        "encoder.encodeUint32(site.value);",
+    ):
+        if required not in candidate_codec:
+            errors.append(f"{VERIFIER_SOURCE}: closure-fact codec is incomplete: {required}")
+
+    oracle = function_body(
+        verifier, "ClosureFreeVariableOracleResult verifyClosureFreeVariableFacts("
+    )
+    if not oracle:
+        errors.append(f"{VERIFIER_SOURCE}: independent closure-fact oracle is missing")
+    else:
+        for forbidden in (
+            "ClosureFreeVariableBuilder::build",
+            "BindingBuilder::buildCandidate",
+            "BodyBindingBuilder::build",
+        ):
+            if forbidden in oracle:
+                errors.append(
+                    f"{VERIFIER_SOURCE}: closure-fact oracle reuses producer authority: {forbidden}"
+                )
+        for required in (
+            "ScopeArenaBuilder::build(input)",
+            "entry.kind != identity::DefinitionKind::Closure",
+            "bound.nameSpace != Namespace::Value",
+            "bound.origin != BindingOrigin::LocalDeclaration",
+            "DefinitionKind::Parameter",
+            "DefinitionKind::Local",
+            "DefinitionKind::PatternBinding",
+            "crossedClosures.add(callable);",
+            "scope.kind == ScopeKind::Function",
+            "sameOracleCapture(canonicalTriples.back(), triple)",
+            "variable.referenceSites[siteIndex] !=",
+        ):
+            if required not in oracle:
+                errors.append(
+                    f"{VERIFIER_SOURCE}: closure-fact oracle omits reconstruction: {required}"
+                )
+        for required in (
+            "compareDefinitionKeys(input, left.closure, right.closure)",
+            "compareDefinitionKeys(input, left.target, right.target)",
+            "left.schemaPreorderOrdinal < right.schemaPreorderOrdinal",
+        ):
+            if required not in verifier:
+                errors.append(
+                    f"{VERIFIER_SOURCE}: closure-fact oracle omits canonical order: {required}"
+                )
+
+    candidate_oracle_guard = (
+        "const auto candidateClosureFreeVariables = verifyClosureFreeVariableFacts(input, candidate);\n"
+        "  if (candidateClosureFreeVariables != ClosureFreeVariableOracleResult::Valid) {\n"
+        "    return rejectBinderInvariant(\n"
+        "        verifierFailure(input, closureFreeVariableOracleInvariant(candidateClosureFreeVariables)));\n"
+        "  }"
+    )
+    if candidate_oracle_guard not in verifier:
+        errors.append(f"{VERIFIER_SOURCE}: candidate closure-fact oracle result is not enforced")
+
+    internal_include = '"zomlang/compiler/binder/internal/closure-free-variables.h"'
+    for path, text in files.items():
+        if path in {CLOSURE_HEADER, CLOSURE_SOURCE, VERIFIER_SOURCE} or TEST_DIR in path.parents:
+            continue
+        if internal_include in text or re.search(r"\bClosureFreeVariableBuilder::build\(", text):
+            errors.append(f"{path}: closure-fact internal authority escaped")
+
+    if re.search(r"(?m)^\s*#if\s+0(?:\s|$)", tests):
+        errors.append(f"{TEST_SOURCE}: disabled test block is forbidden")
+
+    for marker in (
+        "ClosureFreeVariables.PublishesDenseCapturableFactsAndNonCaptures",
+        "ClosureFreeVariables.PropagatesOriginalSitesAcrossNestedClosures",
+        "ClosureFreeVariables.RejectsExplicitCaptureClauses",
+        "ClosureFreeVariables.RejectsCrossFunctionCapture",
+        "BindingVerifier.RejectsMalformedClosureFreeVariableFacts",
+        "BindingVerifier.RejectsForeignClosureFreeVariableIdentities",
+    ):
+        registration = rf'^\s*ZC_TEST\("{re.escape(marker)}"\)\s*\{{'
+        if re.search(registration, tests, flags=re.MULTILINE) is None:
+            errors.append(f"{TEST_SOURCE}: missing closure-fact evidence: {marker}")
 
 
 def check_label_fact_contract(files: dict[Path, str], errors: list[str]) -> None:
@@ -1525,7 +1717,7 @@ def check_scope_arena_contract(files: dict[Path, str], errors: list[str]) -> Non
     for path, text in files.items():
         if path in {SCOPE_HEADER, SCOPE_SOURCE, SKELETON_HEADER, SKELETON_SOURCE,
                     BODY_HEADER, BODY_SOURCE, LABEL_HEADER, LABEL_SOURCE, CONTROL_HEADER, CONTROL_SOURCE,
-                    VERIFIER_SOURCE} or TEST_DIR in path.parents:
+                    CLOSURE_HEADER, CLOSURE_SOURCE, VERIFIER_SOURCE} or TEST_DIR in path.parents:
             continue
         if internal_include in text:
             errors.append(f"{path}: scope arena internal authority escaped")
@@ -1726,6 +1918,7 @@ def check_wiring(files: dict[Path, str], errors: list[str]) -> None:
         (BINDER_CMAKE, "${CMAKE_CURRENT_SOURCE_DIR}/body-binding.cc"),
         (BINDER_CMAKE, "${CMAKE_CURRENT_SOURCE_DIR}/label-facts.cc"),
         (BINDER_CMAKE, "${CMAKE_CURRENT_SOURCE_DIR}/control-transfer.cc"),
+        (BINDER_CMAKE, "${CMAKE_CURRENT_SOURCE_DIR}/closure-free-variables.cc"),
         (BINDER_CMAKE, "${CMAKE_CURRENT_SOURCE_DIR}/binding-diagnostic-adapter.cc"),
         (TEST_CMAKE, 'add_ztest_unit_test("binding-input-test" "binding-input-test.cc"'),
         (TEST_CMAKE,
@@ -1827,6 +2020,7 @@ def check(files: dict[Path, str]) -> list[str]:
     check_pattern_activation_contract(files, errors)
     check_body_binding_contract(files, errors)
     check_deferred_member_contract(files, errors)
+    check_closure_free_variable_contract(files, errors)
     check_label_fact_contract(files, errors)
     check_control_transfer_contract(files, errors)
     check_definition_site_contract(files, errors)
@@ -2877,6 +3071,176 @@ def self_test(files: dict[Path, str]) -> list[str]:
             TEST_SOURCE,
             "BindingActivation.PublishesClosureIdentityAndParameters",
             "BindingActivation.MissingClosureIdentityAndParameters",
+        ),
+        (
+            "missing closure fact wiring",
+            BINDER_CMAKE,
+            "${CMAKE_CURRENT_SOURCE_DIR}/closure-free-variables.cc",
+            "${CMAKE_CURRENT_SOURCE_DIR}/missing-closure-free-variables.cc",
+        ),
+        (
+            "foreign closure fact include",
+            Path("products/zomlang/compiler/checker/escape.cc"),
+            "",
+            '#include "zomlang/compiler/binder/internal/closure-free-variables.h"',
+        ),
+        (
+            "explicit captures enter inference",
+            CLOSURE_SOURCE,
+            "if (!rejectExplicitCaptureClauses()) { return takeRejection(); }",
+            "if (false) { return takeRejection(); }",
+        ),
+        (
+            "expanded capturable definition set",
+            CLOSURE_SOURCE,
+            "kind == identity::DefinitionKind::PatternBinding",
+            "kind == identity::DefinitionKind::Function",
+        ),
+        (
+            "bypassed closure binding identity agreement",
+            CLOSURE_SOURCE,
+            "bindingIdentity.get<DefinitionBindingTarget>().definition !=\n"
+            "            canonicalTarget.get<DefinitionBindingTarget>().definition",
+            "false && bindingIdentity.get<DefinitionBindingTarget>().definition !=\n"
+            "            canonicalTarget.get<DefinitionBindingTarget>().definition",
+        ),
+        (
+            "numeric closure fact ordering",
+            CLOSURE_SOURCE,
+            "const auto bytes = entry.key.encode();",
+            "const auto bytes = zc::heapArray<uint8_t>(0);",
+        ),
+        (
+            "missing nested closure propagation",
+            CLOSURE_SOURCE,
+            "crossedClosures.add(ZC_ASSERT_NONNULL(row));",
+            "return;",
+        ),
+        (
+            "disconnected closure fact producer",
+            VERIFIER_SOURCE,
+            "ClosureFreeVariableBuilder::build(input, arena, skeleton.definitions.asPtr(),",
+            "disconnectedClosureFreeVariableBuilder(input, arena, skeleton.definitions.asPtr(),",
+        ),
+        (
+            "missing closure fact publication",
+            VERIFIER_SOURCE,
+            "candidate.closureFreeVariables = zc::mv(closureFreeVariables);",
+            "candidate.closureFreeVariables = zc::Vector<ClosureFreeVariableFact>();",
+        ),
+        (
+            "missing closure identity codec",
+            VERIFIER_SOURCE,
+            "encodeDefinition(encoder, input, closure.closure)",
+            "encodeDefinition(encoder, input, variable.target)",
+        ),
+        (
+            "missing closure row count codec",
+            VERIFIER_SOURCE,
+            "encoder.encodeSequenceSize(candidate.closureFreeVariables.size());",
+            "encoder.encodeSequenceSize(0);",
+        ),
+        (
+            "missing closure variable count codec",
+            VERIFIER_SOURCE,
+            "encoder.encodeSequenceSize(closure.variables.size());",
+            "encoder.encodeSequenceSize(0);",
+        ),
+        (
+            "missing closure target codec",
+            VERIFIER_SOURCE,
+            "encodeDefinition(encoder, input, variable.target)",
+            "encodeDefinition(encoder, input, closure.closure)",
+        ),
+        (
+            "missing closure site count codec",
+            VERIFIER_SOURCE,
+            "encoder.encodeSequenceSize(variable.referenceSites.size());",
+            "encoder.encodeSequenceSize(0);",
+        ),
+        (
+            "missing closure site range guard",
+            VERIFIER_SOURCE,
+            "if (!input.tree().contains(site)) { return zc::none; }",
+            "if (false) { return zc::none; }",
+        ),
+        (
+            "missing closure reference site codec",
+            VERIFIER_SOURCE,
+            "encoder.encodeUint32(site.value);",
+            "encoder.encodeUint32(0);",
+        ),
+        (
+            "missing closure foreign context check",
+            VERIFIER_SOURCE,
+            "closure.closure.belongsTo(input.semanticContext())",
+            "input.module().belongsTo(input.semanticContext())",
+        ),
+        (
+            "disconnected candidate closure oracle",
+            VERIFIER_SOURCE,
+            "const auto candidateClosureFreeVariables = verifyClosureFreeVariableFacts(input, candidate);",
+            "const auto candidateClosureFreeVariables = ClosureFreeVariableOracleResult::Valid;",
+        ),
+        (
+            "bypassed candidate closure oracle",
+            VERIFIER_SOURCE,
+            "if (candidateClosureFreeVariables != ClosureFreeVariableOracleResult::Valid) {",
+            "if (false && candidateClosureFreeVariables != ClosureFreeVariableOracleResult::Valid) {",
+        ),
+        (
+            "missing closure fact cardinality",
+            VERIFIER_SOURCE,
+            "candidate.closureFreeVariables.size() < expected.closureFreeVariables.size()",
+            "false",
+        ),
+        (
+            "restored unsupported closure fact rejection",
+            VERIFIER_SOURCE,
+            "",
+            "\n!candidate.closureFreeVariables.empty();\n",
+        ),
+        (
+            "missing dense closure fact evidence",
+            TEST_SOURCE,
+            "ClosureFreeVariables.PublishesDenseCapturableFactsAndNonCaptures",
+            "ClosureFreeVariables.MissingDenseCapturableFactsAndNonCaptures",
+        ),
+        (
+            "disabled closure fact evidence",
+            TEST_SOURCE,
+            'ZC_TEST("ClosureFreeVariables.PublishesDenseCapturableFactsAndNonCaptures") {',
+            '#if 0\nZC_TEST("ClosureFreeVariables.PublishesDenseCapturableFactsAndNonCaptures") {',
+        ),
+        (
+            "missing nested closure fact evidence",
+            TEST_SOURCE,
+            "ClosureFreeVariables.PropagatesOriginalSitesAcrossNestedClosures",
+            "ClosureFreeVariables.MissingOriginalSitesAcrossNestedClosures",
+        ),
+        (
+            "missing explicit closure rejection evidence",
+            TEST_SOURCE,
+            "ClosureFreeVariables.RejectsExplicitCaptureClauses",
+            "ClosureFreeVariables.MissingExplicitCaptureClauses",
+        ),
+        (
+            "missing cross-function closure evidence",
+            TEST_SOURCE,
+            "ClosureFreeVariables.RejectsCrossFunctionCapture",
+            "ClosureFreeVariables.MissingCrossFunctionCapture",
+        ),
+        (
+            "missing closure mutation evidence",
+            TEST_SOURCE,
+            "BindingVerifier.RejectsMalformedClosureFreeVariableFacts",
+            "BindingVerifier.MissingMalformedClosureFreeVariableFacts",
+        ),
+        (
+            "missing foreign closure evidence",
+            TEST_SOURCE,
+            "BindingVerifier.RejectsForeignClosureFreeVariableIdentities",
+            "BindingVerifier.MissingForeignClosureFreeVariableIdentities",
         ),
         (
             "deferred pattern activation",

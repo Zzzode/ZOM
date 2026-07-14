@@ -16,6 +16,7 @@
 #include "zomlang/compiler/binder/definition-inventory.h"
 #include "zomlang/compiler/binder/internal/binding-skeleton.h"
 #include "zomlang/compiler/binder/internal/binding-verifier.h"
+#include "zomlang/compiler/binder/internal/closure-free-variables.h"
 #include "zomlang/compiler/binder/internal/label-facts.h"
 #include "zomlang/compiler/binder/internal/scope-arena.h"
 #include "zomlang/compiler/diagnostics/diagnostic-consumer.h"
@@ -650,6 +651,130 @@ bool sameEncodedBytes(zc::ArrayPtr<const uint8_t> left, zc::ArrayPtr<const uint8
     if (left[index] != right[index]) { return false; }
   }
   return true;
+}
+
+identity::DefId requireDefinitionAt(const VerifiedBindingInput& input, ast::NodeId node) {
+  auto definition = input.definitions().definitionAt(node);
+  ZC_IF_SOME(value, definition) { return value; }
+  ZC_FAIL_REQUIRE("definition identity is missing at syntax node");
+}
+
+identity::DefId requireNamedFrozenDefinition(const VerifiedBindingInput& input, zc::StringPtr name,
+                                             identity::DefinitionKind kind, size_t occurrence = 0) {
+  size_t matching = 0;
+  for (const auto& entry : input.definitions().definitions()) {
+    if (entry.kind != kind || entry.bindingName == zc::none) { continue; }
+    ZC_IF_SOME(bindingName, entry.bindingName) {
+      if (bindingName.text() == name && matching++ == occurrence) { return entry.definition; }
+    }
+  }
+  ZC_FAIL_REQUIRE("named frozen definition is missing");
+}
+
+const ClosureFreeVariableFact& requireClosureFreeVariable(
+    zc::ArrayPtr<const ClosureFreeVariableFact> facts, identity::DefId closure) {
+  for (const auto& fact : facts) {
+    if (fact.closure == closure) { return fact; }
+  }
+  ZC_FAIL_REQUIRE("closure free-variable fact is missing");
+}
+
+ClosureFreeVariableFact& requireClosureFreeVariable(zc::ArrayPtr<ClosureFreeVariableFact> facts,
+                                                    identity::DefId closure) {
+  for (auto& fact : facts) {
+    if (fact.closure == closure) { return fact; }
+  }
+  ZC_FAIL_REQUIRE("mutable closure free-variable fact is missing");
+}
+
+const FreeVariableFact& requireFreeVariable(const ClosureFreeVariableFact& closure,
+                                            identity::DefId target) {
+  for (const auto& variable : closure.variables) {
+    if (variable.target == target) { return variable; }
+  }
+  ZC_FAIL_REQUIRE("free-variable target is missing");
+}
+
+FreeVariableFact& requireFreeVariable(ClosureFreeVariableFact& closure, identity::DefId target) {
+  for (auto& variable : closure.variables) {
+    if (variable.target == target) { return variable; }
+  }
+  ZC_FAIL_REQUIRE("mutable free-variable target is missing");
+}
+
+FreeVariableFact cloneFreeVariable(const FreeVariableFact& fact) {
+  zc::Vector<ast::NodeId> sites;
+  for (const auto site : fact.referenceSites) { sites.add(site); }
+  return FreeVariableFact{fact.target, zc::mv(sites)};
+}
+
+ClosureFreeVariableFact cloneClosureFreeVariable(const ClosureFreeVariableFact& fact) {
+  zc::Vector<FreeVariableFact> variables;
+  for (const auto& variable : fact.variables) { variables.add(cloneFreeVariable(variable)); }
+  return ClosureFreeVariableFact{fact.closure, zc::mv(variables)};
+}
+
+zc::Vector<ast::NodeId> identifierExpressionsInSubtree(const ast::Tree& tree, ast::NodeId root,
+                                                       zc::StringPtr name) {
+  zc::Vector<ast::NodeId> result;
+  ast::visitTreePreOrder(tree, root, [&](ast::NodeId node, const ast::Node& syntax) {
+    if (syntax.kind != ast::SyntaxKind::IdentExpr) { return; }
+    const ast::IdentId identifier(syntax.payload.words[ast::kIdentExprNameWord]);
+    if (tree.ident(identifier) == name) { result.add(node); }
+  });
+  return result;
+}
+
+uint32_t schemaPreorderOrdinal(const ast::Tree& tree, ast::NodeId wanted) {
+  uint32_t ordinal = 0;
+  zc::Maybe<uint32_t> result;
+  ast::visitTreePreOrder(tree, tree.root(), [&](ast::NodeId node, const ast::Node&) {
+    if (node == wanted) { result = ordinal; }
+    ++ordinal;
+  });
+  ZC_IF_SOME(value, result) { return value; }
+  ZC_FAIL_REQUIRE("schema preorder node is missing");
+}
+
+void expectCanonicalClosureFreeVariables(const VerifiedBindingInput& input,
+                                         zc::ArrayPtr<const ClosureFreeVariableFact> facts) {
+  for (size_t index = 1; index < facts.size(); ++index) {
+    const auto previous = requireFrozenDefinition(input, facts[index - 1].closure).key.encode();
+    const auto current = requireFrozenDefinition(input, facts[index].closure).key.encode();
+    ZC_EXPECT(encodedBytesLess(previous.asPtr(), current.asPtr()));
+  }
+  for (const auto& closure : facts) {
+    for (size_t index = 1; index < closure.variables.size(); ++index) {
+      const auto previous =
+          requireFrozenDefinition(input, closure.variables[index - 1].target).key.encode();
+      const auto current =
+          requireFrozenDefinition(input, closure.variables[index].target).key.encode();
+      ZC_EXPECT(encodedBytesLess(previous.asPtr(), current.asPtr()));
+    }
+    for (const auto& variable : closure.variables) {
+      uint64_t previousStart = 0;
+      uint64_t previousEnd = 0;
+      uint32_t previousOrdinal = 0;
+      bool hasPrevious = false;
+      for (const auto site : variable.referenceSites) {
+        auto source = input.parsedModule().spanFor(input.tree().node(site).range);
+        ZC_REQUIRE(source != zc::none);
+        ZC_IF_SOME(value, source) {
+          const auto ordinal = schemaPreorderOrdinal(input.tree(), site);
+          if (hasPrevious) {
+            ZC_EXPECT(previousStart < value.byteStart() ||
+                      (previousStart == value.byteStart() && previousEnd < value.byteEnd()) ||
+                      (previousStart == value.byteStart() && previousEnd == value.byteEnd() &&
+                       previousOrdinal < ordinal));
+          }
+          previousStart = value.byteStart();
+          previousEnd = value.byteEnd();
+          previousOrdinal = ordinal;
+          hasPrevious = true;
+        }
+      }
+    }
+  }
 }
 
 const identity::IdentityInvariant& requireIdentityInvariant(BindingVerificationResult& result) {
@@ -3498,6 +3623,392 @@ ZC_TEST("BindingActivation.PublishesClosureIdentityAndParameters") {
   ZC_EXPECT(metadata.scopes()[0].bindings[0].name.name().text() == "project"_zc);
   ZC_EXPECT(metadata.scopes()[0].bindings[1].name.name().text() == "transform"_zc);
   ZC_REQUIRE(output.surface.visibleEntries().size() == 2);
+}
+
+ZC_TEST("ClosureFreeVariables.PublishesDenseCapturableFactsAndNonCaptures") {
+  ParsedSource sourceFixture(
+      "module root;\n"
+      "const moduleValue = 1;\n"
+      "class Type {}\n"
+      "fun helper() {}\n"
+      "fun run(parameter: i32) {\n"
+      "  let local = parameter;\n"
+      "  const direct = fun(own: i32) {\n"
+      "    local; parameter; own;\n"
+      "    let closureLocal = own;\n"
+      "    closureLocal; moduleValue; helper();\n"
+      "  };\n"
+      "  const empty = () => 0;\n"
+      "  for (let item in [1]) { const fromLoop = () => item; }\n"
+      "  match (1) { when matched => { const fromMatch = () => matched; } }\n"
+      "}\n"_zc);
+  FrozenFixture fixture(sourceFixture, true);
+  auto inputResult = verify(fixture);
+  ZC_REQUIRE(inputResult.is<VerifiedBindingInput>());
+  auto input = zc::mv(inputResult.get<VerifiedBindingInput>());
+  const auto functionExpressions = nodesOfKind(input.tree(), ast::SyntaxKind::FunctionExpression);
+  const auto lambdas = nodesOfKind(input.tree(), ast::SyntaxKind::LambdaExpression);
+  ZC_REQUIRE(functionExpressions.size() == 1);
+  ZC_REQUIRE(lambdas.size() == 3);
+  const auto direct = requireDefinitionAt(input, functionExpressions[0]);
+  const auto empty = requireDefinitionAt(input, lambdas[0]);
+  const auto fromLoop = requireDefinitionAt(input, lambdas[1]);
+  const auto fromMatch = requireDefinitionAt(input, lambdas[2]);
+  const auto parameter =
+      requireNamedFrozenDefinition(input, "parameter"_zc, identity::DefinitionKind::Parameter);
+  const auto local =
+      requireNamedFrozenDefinition(input, "local"_zc, identity::DefinitionKind::Local);
+  const auto own =
+      requireNamedFrozenDefinition(input, "own"_zc, identity::DefinitionKind::Parameter);
+  const auto closureLocal =
+      requireNamedFrozenDefinition(input, "closureLocal"_zc, identity::DefinitionKind::Local);
+  const auto item =
+      requireNamedFrozenDefinition(input, "item"_zc, identity::DefinitionKind::PatternBinding);
+  const auto matched =
+      requireNamedFrozenDefinition(input, "matched"_zc, identity::DefinitionKind::PatternBinding);
+
+  auto candidate = BindingBuilder::build(input, *sourceFixture.diagnostics);
+  ZC_REQUIRE(candidate.is<BindingMetadataCandidate>());
+  auto verified = BindingVerifier::verify(input, zc::mv(candidate.get<BindingMetadataCandidate>()));
+  ZC_REQUIRE(verified.is<VerifiedBindingOutput>());
+  const auto facts = verified.get<VerifiedBindingOutput>().metadata.closureFreeVariables();
+  ZC_REQUIRE(facts.size() == 4);
+  expectCanonicalClosureFreeVariables(input, facts);
+
+  const auto& directFact = requireClosureFreeVariable(facts, direct);
+  ZC_REQUIRE(directFact.variables.size() == 2);
+  const auto& parameterFact = requireFreeVariable(directFact, parameter);
+  const auto& localFact = requireFreeVariable(directFact, local);
+  const auto parameterSites =
+      identifierExpressionsInSubtree(input.tree(), functionExpressions[0], "parameter"_zc);
+  const auto localSites =
+      identifierExpressionsInSubtree(input.tree(), functionExpressions[0], "local"_zc);
+  ZC_REQUIRE(parameterSites.size() == 1);
+  ZC_REQUIRE(localSites.size() == 1);
+  ZC_REQUIRE(parameterFact.referenceSites.size() == 1);
+  ZC_REQUIRE(localFact.referenceSites.size() == 1);
+  ZC_EXPECT(parameterFact.referenceSites[0] == parameterSites[0]);
+  ZC_EXPECT(localFact.referenceSites[0] == localSites[0]);
+  for (const auto& variable : directFact.variables) {
+    ZC_EXPECT(variable.target != own);
+    ZC_EXPECT(variable.target != closureLocal);
+  }
+
+  ZC_EXPECT(requireClosureFreeVariable(facts, empty).variables.empty());
+  const auto& loopFact = requireClosureFreeVariable(facts, fromLoop);
+  const auto& matchFact = requireClosureFreeVariable(facts, fromMatch);
+  ZC_REQUIRE(loopFact.variables.size() == 1);
+  ZC_REQUIRE(matchFact.variables.size() == 1);
+  ZC_EXPECT(loopFact.variables[0].target == item);
+  ZC_EXPECT(matchFact.variables[0].target == matched);
+  const auto itemSites = identifierExpressionsInSubtree(input.tree(), lambdas[1], "item"_zc);
+  const auto matchedSites = identifierExpressionsInSubtree(input.tree(), lambdas[2], "matched"_zc);
+  ZC_REQUIRE(itemSites.size() == 1);
+  ZC_REQUIRE(matchedSites.size() == 1);
+  ZC_REQUIRE(loopFact.variables[0].referenceSites.size() == 1);
+  ZC_REQUIRE(matchFact.variables[0].referenceSites.size() == 1);
+  ZC_EXPECT(loopFact.variables[0].referenceSites[0] == itemSites[0]);
+  ZC_EXPECT(matchFact.variables[0].referenceSites[0] == matchedSites[0]);
+}
+
+ZC_TEST("ClosureFreeVariables.PropagatesOriginalSitesAcrossNestedClosures") {
+  ParsedSource sourceFixture(
+      "module root;\n"
+      "fun run(root: i32) {\n"
+      "  const outer = (outerParam: i32) => {\n"
+      "    let outerLocal = outerParam;\n"
+      "    const inner = () => { root; root; outerParam; outerLocal; };\n"
+      "  };\n"
+      "}\n"_zc);
+  FrozenFixture fixture(sourceFixture, true);
+  auto inputResult = verify(fixture);
+  ZC_REQUIRE(inputResult.is<VerifiedBindingInput>());
+  auto input = zc::mv(inputResult.get<VerifiedBindingInput>());
+  const auto lambdas = nodesOfKind(input.tree(), ast::SyntaxKind::LambdaExpression);
+  ZC_REQUIRE(lambdas.size() == 2);
+  const auto outer = requireDefinitionAt(input, lambdas[0]);
+  const auto inner = requireDefinitionAt(input, lambdas[1]);
+  const auto root =
+      requireNamedFrozenDefinition(input, "root"_zc, identity::DefinitionKind::Parameter);
+  const auto outerParameter =
+      requireNamedFrozenDefinition(input, "outerParam"_zc, identity::DefinitionKind::Parameter);
+  const auto outerLocal =
+      requireNamedFrozenDefinition(input, "outerLocal"_zc, identity::DefinitionKind::Local);
+
+  auto candidate = BindingBuilder::build(input, *sourceFixture.diagnostics);
+  ZC_REQUIRE(candidate.is<BindingMetadataCandidate>());
+  auto verified = BindingVerifier::verify(input, zc::mv(candidate.get<BindingMetadataCandidate>()));
+  ZC_REQUIRE(verified.is<VerifiedBindingOutput>());
+  const auto facts = verified.get<VerifiedBindingOutput>().metadata.closureFreeVariables();
+  ZC_REQUIRE(facts.size() == 2);
+  expectCanonicalClosureFreeVariables(input, facts);
+  const auto& outerFact = requireClosureFreeVariable(facts, outer);
+  const auto& innerFact = requireClosureFreeVariable(facts, inner);
+  ZC_REQUIRE(outerFact.variables.size() == 1);
+  ZC_REQUIRE(innerFact.variables.size() == 3);
+  const auto& outerRoot = requireFreeVariable(outerFact, root);
+  const auto& innerRoot = requireFreeVariable(innerFact, root);
+  ZC_REQUIRE(requireFreeVariable(innerFact, outerParameter).referenceSites.size() == 1);
+  ZC_REQUIRE(requireFreeVariable(innerFact, outerLocal).referenceSites.size() == 1);
+  const auto originalSites = identifierExpressionsInSubtree(input.tree(), lambdas[1], "root"_zc);
+  ZC_REQUIRE(originalSites.size() == 2);
+  ZC_REQUIRE(outerRoot.referenceSites.size() == originalSites.size());
+  ZC_REQUIRE(innerRoot.referenceSites.size() == originalSites.size());
+  for (size_t index = 0; index < originalSites.size(); ++index) {
+    ZC_EXPECT(outerRoot.referenceSites[index] == originalSites[index]);
+    ZC_EXPECT(innerRoot.referenceSites[index] == originalSites[index]);
+  }
+}
+
+ZC_TEST("ClosureFreeVariables.RejectsExplicitCaptureClauses") {
+  const zc::StringPtr sources[] = {
+      "module root; fun run() { const closure = fun() use [] {}; }"_zc,
+      "module root; fun run() { let local = 1; const closure = fun() use [local] {}; }"_zc,
+      "module root; fun run() { let local = 1; const closure = fun() use [&local] {}; }"_zc,
+      "module root; fun run() { const closure = fun() use [this] {}; }"_zc,
+  };
+  for (const auto source : sources) {
+    ParsedSource sourceFixture(source);
+    FrozenFixture fixture(sourceFixture, true);
+    auto inputResult = verify(fixture);
+    ZC_REQUIRE(inputResult.is<VerifiedBindingInput>());
+    auto input = zc::mv(inputResult.get<VerifiedBindingInput>());
+    const auto closures = nodesOfKind(input.tree(), ast::SyntaxKind::FunctionExpression);
+    ZC_REQUIRE(closures.size() == 1);
+    auto candidate = BindingBuilder::build(input, *sourceFixture.diagnostics);
+    ZC_REQUIRE(candidate.is<BinderInvariantFact>());
+    const auto& fact = candidate.get<BinderInvariantFact>();
+    ZC_EXPECT(fact.kind == BinderInvariantKind::MissingRequiredResolution);
+    ZC_EXPECT(fact.module == input.module());
+    ZC_EXPECT(fact.emitterSite == BinderEmitterSite::LabelAndClosure);
+    ZC_EXPECT(fact.schemaPreorderOrdinal == schemaPreorderOrdinal(input.tree(), closures[0]));
+    ZC_EXPECT(fact.diagnosticRange == zc::none);
+    ZC_EXPECT(sourceFixture.diagnostics->errorCount() == 0);
+  }
+}
+
+ZC_TEST("ClosureFreeVariables.RejectsCrossFunctionCapture") {
+  ParsedSource sourceFixture(
+      "module root;\n"
+      "fun barrier() {}\n"
+      "fun outer(value: i32) { const closure = () => value; }\n"_zc);
+  FrozenFixture fixture(sourceFixture, true);
+  auto inputResult = verify(fixture);
+  ZC_REQUIRE(inputResult.is<VerifiedBindingInput>());
+  auto input = zc::mv(inputResult.get<VerifiedBindingInput>());
+  const auto references = identifierExpressions(input.tree(), "value"_zc);
+  const auto closures = nodesOfKind(input.tree(), ast::SyntaxKind::LambdaExpression);
+  const auto barrier =
+      requireNamedFrozenDefinition(input, "barrier"_zc, identity::DefinitionKind::Function);
+  ZC_REQUIRE(references.size() == 1);
+  ZC_REQUIRE(closures.size() == 1);
+  auto candidate = BindingBuilder::build(input, *sourceFixture.diagnostics);
+  ZC_REQUIRE(candidate.is<BindingMetadataCandidate>());
+  auto& value = candidate.get<BindingMetadataCandidate>();
+  auto arenaResult = ScopeArenaBuilder::build(input);
+  ZC_REQUIRE(arenaResult.is<ScopeArenaCandidate>());
+  auto arena = zc::mv(arenaResult.get<ScopeArenaCandidate>());
+  zc::Maybe<uint32_t> closureScopeIndex;
+  for (const auto& nodeScope : arena.nodeScopes) {
+    if (nodeScope.node == closures[0]) { closureScopeIndex = nodeScope.scope.index(); }
+  }
+  ZC_REQUIRE(closureScopeIndex != zc::none);
+  const auto closureScope = ZC_ASSERT_NONNULL(closureScopeIndex);
+  ZC_REQUIRE(closureScope < arena.scopes.size());
+  ZC_REQUIRE(arena.scopes[closureScope].parent != zc::none);
+  const auto interveningScope = ZC_ASSERT_NONNULL(arena.scopes[closureScope].parent).index();
+  ZC_REQUIRE(interveningScope < arena.scopes.size());
+  arena.scopes[interveningScope].kind = ScopeKind::Function;
+  arena.scopes[interveningScope].owner = ScopeOwner::definition(barrier);
+  auto closureResult = ClosureFreeVariableBuilder::build(input, arena, value.definitions.asPtr(),
+                                                         value.nodeBindings.asPtr());
+  ZC_REQUIRE(closureResult.is<BinderInvariantFact>());
+  const auto& fact = closureResult.get<BinderInvariantFact>();
+  ZC_EXPECT(fact.kind == BinderInvariantKind::MalformedScopeGraph);
+  ZC_EXPECT(fact.emitterSite == BinderEmitterSite::LabelAndClosure);
+  ZC_EXPECT(fact.schemaPreorderOrdinal == schemaPreorderOrdinal(input.tree(), references[0]));
+  ZC_EXPECT(sourceFixture.diagnostics->errorCount() == 0);
+}
+
+ZC_TEST("BindingVerifier.RejectsMalformedClosureFreeVariableFacts") {
+  ParsedSource sourceFixture(
+      "module root;\n"
+      "fun run(first: i32, second: i32) {\n"
+      "  const outer = () => {\n"
+      "    first; second; first;\n"
+      "    const inner = () => first;\n"
+      "  };\n"
+      "}\n"_zc);
+  FrozenFixture fixture(sourceFixture, true);
+  auto inputResult = verify(fixture);
+  ZC_REQUIRE(inputResult.is<VerifiedBindingInput>());
+  auto input = zc::mv(inputResult.get<VerifiedBindingInput>());
+  const auto lambdas = nodesOfKind(input.tree(), ast::SyntaxKind::LambdaExpression);
+  ZC_REQUIRE(lambdas.size() == 2);
+  const auto outer = requireDefinitionAt(input, lambdas[0]);
+  const auto first =
+      requireNamedFrozenDefinition(input, "first"_zc, identity::DefinitionKind::Parameter);
+  const auto run =
+      requireNamedFrozenDefinition(input, "run"_zc, identity::DefinitionKind::Function);
+  const auto secondSites = identifierExpressions(input.tree(), "second"_zc);
+  ZC_REQUIRE(secondSites.size() == 1);
+
+  const auto buildCandidate = [&]() -> BindingMetadataCandidate {
+    auto result = BindingBuilder::build(input, *sourceFixture.diagnostics);
+    if (!result.is<BindingMetadataCandidate>()) {
+      ZC_FAIL_REQUIRE("closure mutation fixture failed to build");
+    }
+    return zc::mv(result.get<BindingMetadataCandidate>());
+  };
+
+  auto missingClosure = buildCandidate();
+  ZC_REQUIRE(missingClosure.closureFreeVariables.size() == 2);
+  missingClosure.closureFreeVariables.removeLast();
+  auto missingClosureResult = BindingVerifier::verify(input, zc::mv(missingClosure));
+  ZC_EXPECT(requireBinderInvariant(missingClosureResult).kind ==
+            BinderInvariantKind::MissingRequiredResolution);
+
+  auto additionalClosure = buildCandidate();
+  auto duplicateClosure = cloneClosureFreeVariable(additionalClosure.closureFreeVariables[0]);
+  additionalClosure.closureFreeVariables.add(zc::mv(duplicateClosure));
+  auto additionalClosureResult = BindingVerifier::verify(input, zc::mv(additionalClosure));
+  ZC_EXPECT(requireBinderInvariant(additionalClosureResult).kind ==
+            BinderInvariantKind::InvalidBindingFact);
+
+  auto reorderedClosures = buildCandidate();
+  auto displacedClosure = zc::mv(reorderedClosures.closureFreeVariables[0]);
+  reorderedClosures.closureFreeVariables[0] = zc::mv(reorderedClosures.closureFreeVariables[1]);
+  reorderedClosures.closureFreeVariables[1] = zc::mv(displacedClosure);
+  auto reorderedClosureResult = BindingVerifier::verify(input, zc::mv(reorderedClosures));
+  ZC_EXPECT(requireBinderInvariant(reorderedClosureResult).kind ==
+            BinderInvariantKind::InvalidBindingFact);
+
+  auto wrongClosure = buildCandidate();
+  wrongClosure.closureFreeVariables[0].closure = run;
+  auto wrongClosureResult = BindingVerifier::verify(input, zc::mv(wrongClosure));
+  ZC_EXPECT(requireBinderInvariant(wrongClosureResult).kind ==
+            BinderInvariantKind::InvalidBindingFact);
+
+  auto missingVariable = buildCandidate();
+  auto& missingVariableClosure =
+      requireClosureFreeVariable(missingVariable.closureFreeVariables.asPtr(), outer);
+  ZC_REQUIRE(missingVariableClosure.variables.size() == 2);
+  missingVariableClosure.variables.removeLast();
+  auto missingVariableResult = BindingVerifier::verify(input, zc::mv(missingVariable));
+  ZC_EXPECT(requireBinderInvariant(missingVariableResult).kind ==
+            BinderInvariantKind::MissingRequiredResolution);
+
+  auto additionalVariable = buildCandidate();
+  auto& additionalVariableClosure =
+      requireClosureFreeVariable(additionalVariable.closureFreeVariables.asPtr(), outer);
+  auto duplicateVariable = cloneFreeVariable(additionalVariableClosure.variables[0]);
+  additionalVariableClosure.variables.add(zc::mv(duplicateVariable));
+  auto additionalVariableResult = BindingVerifier::verify(input, zc::mv(additionalVariable));
+  ZC_EXPECT(requireBinderInvariant(additionalVariableResult).kind ==
+            BinderInvariantKind::InvalidBindingFact);
+
+  auto reorderedVariables = buildCandidate();
+  auto& reorderedVariableClosure =
+      requireClosureFreeVariable(reorderedVariables.closureFreeVariables.asPtr(), outer);
+  auto displacedVariable = zc::mv(reorderedVariableClosure.variables[0]);
+  reorderedVariableClosure.variables[0] = zc::mv(reorderedVariableClosure.variables[1]);
+  reorderedVariableClosure.variables[1] = zc::mv(displacedVariable);
+  auto reorderedVariableResult = BindingVerifier::verify(input, zc::mv(reorderedVariables));
+  ZC_EXPECT(requireBinderInvariant(reorderedVariableResult).kind ==
+            BinderInvariantKind::InvalidBindingFact);
+
+  auto wrongTarget = buildCandidate();
+  auto& wrongTargetClosure =
+      requireClosureFreeVariable(wrongTarget.closureFreeVariables.asPtr(), outer);
+  wrongTargetClosure.variables[0].target = run;
+  auto wrongTargetResult = BindingVerifier::verify(input, zc::mv(wrongTarget));
+  ZC_EXPECT(requireBinderInvariant(wrongTargetResult).kind ==
+            BinderInvariantKind::InvalidBindingFact);
+
+  auto missingSite = buildCandidate();
+  auto& missingSiteFact = requireFreeVariable(
+      requireClosureFreeVariable(missingSite.closureFreeVariables.asPtr(), outer), first);
+  ZC_REQUIRE(missingSiteFact.referenceSites.size() >= 2);
+  missingSiteFact.referenceSites.removeLast();
+  auto missingSiteResult = BindingVerifier::verify(input, zc::mv(missingSite));
+  ZC_EXPECT(requireBinderInvariant(missingSiteResult).kind ==
+            BinderInvariantKind::MissingRequiredResolution);
+
+  auto additionalSite = buildCandidate();
+  auto& additionalSiteFact = requireFreeVariable(
+      requireClosureFreeVariable(additionalSite.closureFreeVariables.asPtr(), outer), first);
+  additionalSiteFact.referenceSites.add(additionalSiteFact.referenceSites[0]);
+  auto additionalSiteResult = BindingVerifier::verify(input, zc::mv(additionalSite));
+  ZC_EXPECT(requireBinderInvariant(additionalSiteResult).kind ==
+            BinderInvariantKind::InvalidBindingFact);
+
+  auto reorderedSites = buildCandidate();
+  auto& reorderedSiteFact = requireFreeVariable(
+      requireClosureFreeVariable(reorderedSites.closureFreeVariables.asPtr(), outer), first);
+  const auto displacedSite = reorderedSiteFact.referenceSites[0];
+  reorderedSiteFact.referenceSites[0] = reorderedSiteFact.referenceSites[1];
+  reorderedSiteFact.referenceSites[1] = displacedSite;
+  auto reorderedSiteResult = BindingVerifier::verify(input, zc::mv(reorderedSites));
+  ZC_EXPECT(requireBinderInvariant(reorderedSiteResult).kind ==
+            BinderInvariantKind::InvalidBindingFact);
+
+  auto wrongSite = buildCandidate();
+  auto& wrongSiteFact = requireFreeVariable(
+      requireClosureFreeVariable(wrongSite.closureFreeVariables.asPtr(), outer), first);
+  wrongSiteFact.referenceSites[0] = secondSites[0];
+  auto wrongSiteResult = BindingVerifier::verify(input, zc::mv(wrongSite));
+  ZC_EXPECT(requireBinderInvariant(wrongSiteResult).kind ==
+            BinderInvariantKind::InvalidBindingFact);
+
+  auto outsideSite = buildCandidate();
+  auto& outsideSiteFact = requireFreeVariable(
+      requireClosureFreeVariable(outsideSite.closureFreeVariables.asPtr(), outer), first);
+  outsideSiteFact.referenceSites[0] = ast::NodeId(input.tree().nodeCount() + 1);
+  auto outsideSiteResult = BindingVerifier::verify(input, zc::mv(outsideSite));
+  ZC_EXPECT(requireBinderInvariant(outsideSiteResult).kind ==
+            BinderInvariantKind::InvalidBindingFact);
+}
+
+ZC_TEST("BindingVerifier.RejectsForeignClosureFreeVariableIdentities") {
+  const auto source = "module root; fun run(value: i32) { const closure = () => value; }"_zc;
+  ParsedSource localSource(source);
+  ParsedSource foreignSource(source);
+  FrozenFixture localFixture(localSource, true);
+  FrozenFixture foreignFixture(foreignSource, true);
+  auto localInputResult = verify(localFixture);
+  auto foreignInputResult = verify(foreignFixture);
+  ZC_REQUIRE(localInputResult.is<VerifiedBindingInput>());
+  ZC_REQUIRE(foreignInputResult.is<VerifiedBindingInput>());
+  auto localInput = zc::mv(localInputResult.get<VerifiedBindingInput>());
+  auto foreignInput = zc::mv(foreignInputResult.get<VerifiedBindingInput>());
+  const auto localClosures = nodesOfKind(localInput.tree(), ast::SyntaxKind::LambdaExpression);
+  const auto foreignClosures = nodesOfKind(foreignInput.tree(), ast::SyntaxKind::LambdaExpression);
+  ZC_REQUIRE(localClosures.size() == 1);
+  ZC_REQUIRE(foreignClosures.size() == 1);
+  const auto localClosure = requireDefinitionAt(localInput, localClosures[0]);
+  const auto foreignClosure = requireDefinitionAt(foreignInput, foreignClosures[0]);
+  const auto foreignTarget =
+      requireNamedFrozenDefinition(foreignInput, "value"_zc, identity::DefinitionKind::Parameter);
+
+  auto closureCandidate = BindingBuilder::build(localInput, *localSource.diagnostics);
+  ZC_REQUIRE(closureCandidate.is<BindingMetadataCandidate>());
+  auto& foreignClosureFact = closureCandidate.get<BindingMetadataCandidate>();
+  ZC_REQUIRE(foreignClosureFact.closureFreeVariables.size() == 1);
+  foreignClosureFact.closureFreeVariables[0].closure = foreignClosure;
+  auto closureResult = BindingVerifier::verify(localInput, zc::mv(foreignClosureFact));
+  ZC_EXPECT(requireIdentityInvariant(closureResult).kind() ==
+            identity::IdentityInvariantKind::ForeignContext);
+
+  auto targetCandidate = BindingBuilder::build(localInput, *localSource.diagnostics);
+  ZC_REQUIRE(targetCandidate.is<BindingMetadataCandidate>());
+  auto& foreignTargetFact = targetCandidate.get<BindingMetadataCandidate>();
+  auto& closure =
+      requireClosureFreeVariable(foreignTargetFact.closureFreeVariables.asPtr(), localClosure);
+  ZC_REQUIRE(closure.variables.size() == 1);
+  closure.variables[0].target = foreignTarget;
+  auto targetResult = BindingVerifier::verify(localInput, zc::mv(foreignTargetFact));
+  ZC_EXPECT(requireIdentityInvariant(targetResult).kind() ==
+            identity::IdentityInvariantKind::ForeignContext);
 }
 
 ZC_TEST("BindingActivation.PublishesMatchAndLoopPatternFacts") {
