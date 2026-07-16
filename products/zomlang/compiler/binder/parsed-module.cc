@@ -299,6 +299,43 @@ zc::Maybe<identity::SourceSpan> VerifiedParsedModule::functionParameterNameSpan(
   return impl->snapshot.span(token.start, token.end);
 }
 
+bool VerifiedParsedModule::functionParameterHasImplicitSelfType(ast::NodeId parameter) const {
+  auto receiver = functionParameterNameSpan(parameter, ast::SyntaxKind::ThisKeyword);
+  if (receiver == zc::none || !impl->tree.contains(parameter)) { return false; }
+  const auto& parameterSyntax = impl->tree.node(parameter);
+  const ast::NodeId type(parameterSyntax.payload.words[ast::kFunctionParameterDeclTyWord]);
+  if (!impl->tree.contains(type) || impl->tree.node(type).kind != ast::SyntaxKind::NamedTypeExpr) {
+    return false;
+  }
+  const auto& typeSyntax = impl->tree.node(type);
+  const ast::NodeList arguments{typeSyntax.payload.words[ast::kNamedTypeExprArgsFirstWord],
+                                typeSyntax.payload.words[ast::kNamedTypeExprArgsSizeWord]};
+  const ast::NodeId path(typeSyntax.payload.words[ast::kNamedTypeExprPathWord]);
+  if (arguments.size != 0 || !impl->tree.contains(path) ||
+      impl->tree.node(path).kind != ast::SyntaxKind::ModulePath) {
+    return false;
+  }
+  const auto& pathSyntax = impl->tree.node(path);
+  const ast::IdentList segments{pathSyntax.payload.words[ast::kModulePathSegmentsFirstWord],
+                                pathSyntax.payload.words[ast::kModulePathSegmentsSizeWord]};
+  if (segments.size != 1 || !impl->tree.contains(segments)) { return false; }
+  const auto names = impl->tree.identList(segments);
+  if (names.size() != 1 || impl->tree.ident(names[0]) != "Self"_zc) { return false; }
+
+  auto parameterSpan = spanFor(parameterSyntax.range);
+  auto typeSpan = spanFor(typeSyntax.range);
+  auto pathSpan = spanFor(pathSyntax.range);
+  if (parameterSpan == zc::none || typeSpan == zc::none || pathSpan == zc::none) { return false; }
+  const auto& receiverSpan = ZC_ASSERT_NONNULL(receiver);
+  const auto hasReceiverSpan = [&](const identity::SourceSpan& candidate) {
+    return candidate.byteStart() == receiverSpan.byteStart() &&
+           candidate.byteEnd() == receiverSpan.byteEnd();
+  };
+  return ZC_ASSERT_NONNULL(parameterSpan).byteEnd() == receiverSpan.byteEnd() &&
+         hasReceiverSpan(ZC_ASSERT_NONNULL(typeSpan)) &&
+         hasReceiverSpan(ZC_ASSERT_NONNULL(pathSpan));
+}
+
 zc::Maybe<source::SourceLoc> VerifiedParsedModule::sourceLocFor(
     const identity::SourceSpan& span) const {
   if (!span.belongsTo(impl->snapshot.source()) || span.byteStart() > span.byteEnd() ||

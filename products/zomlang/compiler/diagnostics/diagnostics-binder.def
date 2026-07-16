@@ -32,6 +32,8 @@ DIAG(3020, BreakTargetNotFound, kError,
 DIAG(3021, ContinueTargetNotFound, kError,
      "continue requires an enclosing loop or loop label", 0)
 DIAG(3022, ContinueTargetNotLoop, kError, "continue label must name a loop", 0)
+DIAG(3025, ContextualSelfOutsideType, kError,
+     "Self is only available in a nominal, interface, or impl context", 0)
 DIAG(9922, BinderMalformedScopeGraph, kFatal,
      "Internal binder scope graph is invalid ({0} occurrence(s))", 1)
 DIAG(9923, BinderMissingRequiredResolution, kFatal,

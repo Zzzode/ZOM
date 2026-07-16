@@ -552,6 +552,23 @@ let shape: dyn Shape + Sendable = circle;  // zero-cost upcast if Drawable inher
 
 **Variance.** Type parameters inside an interface are **invariant** by default when instantiated as a `dyn` type. Covariance or contravariance requires explicit `#[zom::variance(...)]` on the interface declaration. See [Chapter 12](12-generics.md).
 
+### Contextual `Self`
+
+`Self` denotes the nearest enclosing class, struct, enum, error, interface, or
+`impl` owner whose body contains the type expression. Nested callable and
+closure syntax inherits that owner. A nested owner body replaces it.
+
+The declaration header does not activate its own owner. In particular, an
+`impl` interface list, implemented type, generic list, and `where` clause use
+the surrounding context. The `impl` body activates the implementation owner.
+The parser-generated `Self` type of a bare `this` receiver is intrinsic syntax
+and does not constitute a lexical contextual `Self` occurrence.
+
+`Self`, `Self::Item`, and a parenthesized `(Self)` begin with a contextual
+`Self` root. A qualified path such as `package::Self` is an ordinary qualified
+type reference. A contextual root outside an active owner produces `ZOM3025
+ContextualSelfOutsideType` at the `Self` token.
+
 ### Associated Types
 
 Associated types are type members of interfaces that are determined by the implementing type.
@@ -732,19 +749,19 @@ the same checked result contracts.
 
 | Operator | Interface | Method | Notes |
 |---|---|---|---|
-| `a + b` | `Add<Rhs>` | `add(rhs: Rhs) -> Output` | Receiver is `a` |
-| `a - b` | `Sub<Rhs>` | `sub(rhs: Rhs) -> Output` | Receiver is `a` |
-| `a * b` | `Mul<Rhs>` | `mul(rhs: Rhs) -> Output` | Receiver is `a` |
-| `a / b` | `Div<Rhs>` | `div(rhs: Rhs) -> Output` | Receiver is `a` |
-| `a % b` | `Rem<Rhs>` | `rem(rhs: Rhs) -> Output` | Receiver is `a` |
-| `a ** b` | `Pow<Rhs>` | `pow(rhs: Rhs) -> Output` | Receiver is `a` |
-| `a == b`, `a != b` | `Eq<Rhs>` | `eq(rhs: Rhs) -> bool` | `!=` negates the result |
-| `a < b`, `a <= b`, `a > b`, `a >= b` | `Ord<Rhs>` | `cmp(rhs: Rhs) -> i32` | Lowering tests the ordering relation |
-| `-a` | `Neg` | `neg() -> Output` | Receiver is `a` |
-| `!a` | `Not` | `not() -> bool` | Receiver is `a` |
-| rvalue `a[b]` | `Index<Idx>` | `index(idx: Idx) -> Output` | Receiver is `a` |
-| mutable place for `a[b] = c` or `a[b] op= c` | `IndexMut<Idx>` | `index_mut(idx: Idx) -> &mut Output` | Acquires one mutable place |
-| `a in b` | `Contains` | `contains(value: Value) -> bool` | Receiver is `b` |
+| `a + b` | `Add<Rhs>` | `add(this, rhs: Rhs) -> Output` | Receiver is `a` |
+| `a - b` | `Sub<Rhs>` | `sub(this, rhs: Rhs) -> Output` | Receiver is `a` |
+| `a * b` | `Mul<Rhs>` | `mul(this, rhs: Rhs) -> Output` | Receiver is `a` |
+| `a / b` | `Div<Rhs>` | `div(this, rhs: Rhs) -> Output` | Receiver is `a` |
+| `a % b` | `Rem<Rhs>` | `rem(this, rhs: Rhs) -> Output` | Receiver is `a` |
+| `a ** b` | `Pow<Rhs>` | `pow(this, rhs: Rhs) -> Output` | Receiver is `a` |
+| `a == b`, `a != b` | `Eq<Rhs>` | `eq(this, rhs: Rhs) -> bool` | `!=` negates the result |
+| `a < b`, `a <= b`, `a > b`, `a >= b` | `Ord<Rhs>` | `cmp(this, rhs: Rhs) -> i32` | Lowering tests the ordering relation |
+| `-a` | `Neg` | `neg(this) -> Output` | Receiver is `a` |
+| `!a` | `Not` | `not(this) -> bool` | Receiver is `a` |
+| rvalue `a[b]` | `Index<Idx>` | `index(this, idx: Idx) -> Output` | Receiver is `a` |
+| mutable place for `a[b] = c` or `a[b] op= c` | `IndexMut<Idx>` | `index_mut(this, idx: Idx) -> &mut Output` | Acquires one mutable place |
+| `a in b` | `Contains` | `contains(this, value: Value) -> bool` | Receiver is `b` |
 
 Unary plus, bitwise not, reference and dereference, pre/post update, shifts,
 bitwise operations, short-circuit logical operations, strict equality, and null

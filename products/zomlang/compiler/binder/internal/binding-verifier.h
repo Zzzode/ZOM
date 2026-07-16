@@ -9,6 +9,10 @@
 #include "zomlang/compiler/binder/binding-metadata.h"
 #include "zomlang/compiler/identity/identity-invariant.h"
 
+namespace zomlang::compiler::identity {
+class CanonicalEncoder;
+}
+
 namespace zomlang::compiler::diagnostics {
 class DiagnosticEngine;
 }
@@ -40,6 +44,8 @@ struct BindingMetadataCandidate final {
   zc::Vector<BindingFailureRef> sourceFailures;
   zc::Vector<NodeScopeFact> nodeScopes;
   zc::Vector<BindingResolution> nodeBindings;
+  zc::Vector<BoundSelfType> selfTypes;
+  zc::Vector<BoundThis> thisBindings;
   zc::Vector<DefinitionFact> definitions;
   zc::Vector<ImplBindingFact> impls;
   zc::Vector<ScopeRecord> scopes;
@@ -117,6 +123,12 @@ using BindingVerificationResult =
 ZC_NODISCARD zc::Maybe<zc::Array<uint8_t>> encodeBindingAllocationDump(
     const VerifiedBindingInput& input, zc::ArrayPtr<const ScopeRecord> scopes,
     zc::ArrayPtr<const LabelFact> labels);
+
+/// \brief Encodes the RFC 0014 contextual Self and receiver extension sequences.
+ZC_NODISCARD bool encodeBindingExtensionSequences(identity::CanonicalEncoder& encoder,
+                                                  const VerifiedBindingInput& input,
+                                                  zc::ArrayPtr<const BoundSelfType> selfTypes,
+                                                  zc::ArrayPtr<const BoundThis> thisBindings);
 
 class BindingBuilder final {
 public:

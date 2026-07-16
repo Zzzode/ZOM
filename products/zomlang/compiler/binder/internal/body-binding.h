@@ -34,6 +34,8 @@ struct BodyBindingFailureFact final {
 /// \brief Deterministic body facts awaiting candidate-wide failure indexing.
 struct BodyBindingCandidate final {
   zc::Vector<BindingResolution> nodeBindings;
+  zc::Vector<BoundSelfType> selfTypes;
+  zc::Vector<BoundThis> thisBindings;
   zc::Vector<BodyBindingFailureFact> failures;
   zc::Vector<DeferredMemberFact> deferredMembers;
   zc::Vector<ShadowTargetFact> shadowTargets;

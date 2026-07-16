@@ -215,6 +215,20 @@ bool hasForeignContext(const VerifiedBindingInput& input,
       }
     }
   }
+  for (const auto& fact : candidate.selfTypes) {
+    const auto& owner = fact.owner;
+    if ((owner.is<NominalSelfOwner>() &&
+         !owner.get<NominalSelfOwner>().definition.belongsTo(input.semanticContext())) ||
+        (owner.is<InterfaceSelfOwner>() &&
+         !owner.get<InterfaceSelfOwner>().definition.belongsTo(input.semanticContext())) ||
+        (owner.is<ImplSelfOwner>() &&
+         !owner.get<ImplSelfOwner>().implementation.belongsTo(input.semanticContext()))) {
+      return true;
+    }
+  }
+  for (const auto& fact : candidate.thisBindings) {
+    if (!fact.binding.receiverParameter.belongsTo(input.semanticContext())) { return true; }
+  }
   for (const auto& fact : candidate.labels) {
     if (!fact.owner.belongsTo(input.semanticContext()) ||
         labelIdHasForeignContext(input, fact.identity) ||
@@ -320,6 +334,12 @@ bool hasInvalidSourceRange(const VerifiedBindingInput& input,
         spanIsInvalid(resolution.value.get<DeferredMemberFact>().source)) {
       return true;
     }
+  }
+  for (const auto& fact : candidate.selfTypes) {
+    if (spanIsInvalid(fact.source)) { return true; }
+  }
+  for (const auto& fact : candidate.thisBindings) {
+    if (spanIsInvalid(fact.source)) { return true; }
   }
   for (const auto& fact : candidate.deferredMembers) {
     if (spanIsInvalid(fact.source)) { return true; }
@@ -429,16 +449,50 @@ zc::Maybe<ast::SyntaxKind> syntaxKindAtSchemaOrdinal(const ast::Tree& tree, uint
   return result;
 }
 
-bool hasCompleteLexicalBindingSites(const ast::Tree& tree,
-                                    zc::ArrayPtr<const BindingResolution> bindings) {
+bool hasCompleteLexicalBindingSites(const VerifiedBindingInput& input,
+                                    zc::ArrayPtr<const BindingResolution> bindings,
+                                    zc::ArrayPtr<const BoundSelfType> selfTypes,
+                                    zc::ArrayPtr<const BoundThis> thisBindings) {
+  const auto& tree = input.tree();
   zc::Vector<uint8_t> requiredNamespaces;
   zc::Vector<bool> published;
+  zc::Vector<bool> implicitReceiverTypes;
   requiredNamespaces.resize(tree.nodeCount() + 1);
   published.resize(tree.nodeCount() + 1);
+  implicitReceiverTypes.resize(tree.nodeCount() + 1);
   for (size_t index = 0; index < requiredNamespaces.size(); ++index) {
     requiredNamespaces[index] = 0;
     published[index] = false;
+    implicitReceiverTypes[index] = false;
   }
+  zc::Vector<bool> contextualSelfTypes;
+  contextualSelfTypes.resize(tree.nodeCount() + 1);
+  for (auto& value : contextualSelfTypes) { value = false; }
+  for (const auto& fact : selfTypes) {
+    if (!tree.contains(fact.syntax) || fact.syntax.value >= contextualSelfTypes.size()) {
+      return false;
+    }
+    contextualSelfTypes[fact.syntax.value] = true;
+  }
+  zc::Vector<bool> boundThisExpressions;
+  boundThisExpressions.resize(tree.nodeCount() + 1);
+  for (auto& value : boundThisExpressions) { value = false; }
+  for (const auto& fact : thisBindings) {
+    if (!tree.contains(fact.expression) || fact.expression.value >= boundThisExpressions.size() ||
+        tree.node(fact.expression).kind != ast::SyntaxKind::ThisExpr ||
+        boundThisExpressions[fact.expression.value]) {
+      return false;
+    }
+    boundThisExpressions[fact.expression.value] = true;
+  }
+  ast::visitTreePreOrder(tree, tree.root(), [&](ast::NodeId parameter, const ast::Node& syntax) {
+    if (syntax.kind != ast::SyntaxKind::FunctionParameterDecl) { return; }
+    const ast::NodeId parameterType(syntax.payload.words[ast::kFunctionParameterDeclTyWord]);
+    if (tree.contains(parameterType) &&
+        input.parsedModule().functionParameterHasImplicitSelfType(parameter)) {
+      implicitReceiverTypes[parameterType.value] = true;
+    }
+  });
   size_t requiredCount = 0;
   bool valid = true;
   const auto requireSite = [&](ast::NodeId node, ast::SyntaxKind kind, Namespace nameSpace) {
@@ -462,12 +516,33 @@ bool hasCompleteLexicalBindingSites(const ast::Tree& tree,
         requireSite(node, ast::SyntaxKind::IdentExpr, Namespace::Value);
         return;
       case ast::SyntaxKind::ThisExpr:
+        if (boundThisExpressions[node.value]) { return; }
         requireSite(node, ast::SyntaxKind::ThisExpr, Namespace::Value);
         return;
       case ast::SyntaxKind::CaptureItem:
         requireSite(node, ast::SyntaxKind::CaptureItem, Namespace::Value);
         return;
       case ast::SyntaxKind::NamedTypeExpr:
+        if (node.value < implicitReceiverTypes.size() && implicitReceiverTypes[node.value]) {
+          return;
+        }
+        if (node.value < contextualSelfTypes.size() && contextualSelfTypes[node.value]) { return; }
+        {
+          const ast::NodeId path(syntax.payload.words[ast::kNamedTypeExprPathWord]);
+          if (tree.contains(path) && tree.node(path).kind == ast::SyntaxKind::ModulePath) {
+            const auto& pathSyntax = tree.node(path);
+            const ast::IdentList segments{
+                pathSyntax.payload.words[ast::kModulePathSegmentsFirstWord],
+                pathSyntax.payload.words[ast::kModulePathSegmentsSizeWord]};
+            if (tree.contains(segments)) {
+              const auto names = tree.identList(segments);
+              if (names.size() != 0 && tree.ident(names[0]) == "Self"_zc) {
+                requireSite(node, ast::SyntaxKind::NamedTypeExpr, Namespace::Type);
+                return;
+              }
+            }
+          }
+        }
         requireSite(ast::NodeId(syntax.payload.words[ast::kNamedTypeExprPathWord]),
                     ast::SyntaxKind::ModulePath, Namespace::Type);
         return;
@@ -758,6 +833,231 @@ BinderInvariantKind deferredMemberOracleInvariant(DeferredMemberOracleResult res
     case DeferredMemberOracleResult::InvalidBindingFact:
       return BinderInvariantKind::InvalidBindingFact;
     case DeferredMemberOracleResult::Valid:
+      ZC_UNREACHABLE;
+  }
+  ZC_UNREACHABLE;
+}
+
+enum class ContextualSelfOracleResult : uint8_t {
+  Valid,
+  MissingRequiredResolution,
+  InvalidBindingFact,
+  MalformedScopeGraph
+};
+
+bool sameSelfOwner(const SelfOwner& left, const SelfOwner& right) {
+  if (left.is<NominalSelfOwner>()) {
+    return right.is<NominalSelfOwner>() &&
+           left.get<NominalSelfOwner>().definition == right.get<NominalSelfOwner>().definition;
+  }
+  if (left.is<InterfaceSelfOwner>()) {
+    return right.is<InterfaceSelfOwner>() &&
+           left.get<InterfaceSelfOwner>().definition == right.get<InterfaceSelfOwner>().definition;
+  }
+  return right.is<ImplSelfOwner>() &&
+         left.get<ImplSelfOwner>().implementation == right.get<ImplSelfOwner>().implementation;
+}
+
+zc::Maybe<SelfOwner> reconstructContextualSelfOwner(const VerifiedBindingInput& input,
+                                                    zc::ArrayPtr<const ast::NodeId> parentNodes,
+                                                    ast::NodeId node, bool& malformed) {
+  const auto& tree = input.tree();
+  ast::NodeId child = node;
+  size_t remaining = parentNodes.size();
+  while (tree.contains(child) && child.value < parentNodes.size() && remaining != 0) {
+    --remaining;
+    const ast::NodeId parent = parentNodes[child.value];
+    if (!parent) { return zc::none; }
+    if (!tree.contains(parent)) {
+      malformed = true;
+      return zc::none;
+    }
+
+    const auto& syntax = tree.node(parent);
+    ast::NodeId body;
+    bool nominal = false;
+    bool interface = false;
+    bool implementation = false;
+    switch (syntax.kind) {
+      case ast::SyntaxKind::ClassDecl:
+        body = ast::NodeId(syntax.payload.words[ast::kClassDeclMembersIdWord]);
+        nominal = true;
+        break;
+      case ast::SyntaxKind::StructDecl:
+        body = ast::NodeId(syntax.payload.words[ast::kStructDeclMembersIdWord]);
+        nominal = true;
+        break;
+      case ast::SyntaxKind::EnumDeclaration:
+        body = ast::NodeId(syntax.payload.words[ast::kEnumDeclarationVariantsIdWord]);
+        nominal = true;
+        break;
+      case ast::SyntaxKind::ErrorDecl:
+        body = ast::NodeId(syntax.payload.words[ast::kErrorDeclMembersIdWord]);
+        nominal = true;
+        break;
+      case ast::SyntaxKind::InterfaceDecl:
+        body = ast::NodeId(syntax.payload.words[ast::kInterfaceDeclMembersIdWord]);
+        interface = true;
+        break;
+      case ast::SyntaxKind::StandaloneImplDecl:
+        body = ast::NodeId(syntax.payload.words[ast::kStandaloneImplDeclMembersIdWord]);
+        implementation = true;
+        break;
+      default:
+        break;
+    }
+    if (body && !tree.contains(body)) {
+      malformed = true;
+      return zc::none;
+    }
+    if (body && child == body) {
+      if (implementation) {
+        auto owner = input.definitions().implAt(parent);
+        if (owner == zc::none) {
+          malformed = true;
+          return zc::none;
+        }
+        return SelfOwner(ImplSelfOwner{ZC_ASSERT_NONNULL(owner)});
+      }
+      auto owner = input.definitions().definitionAt(parent);
+      if (owner == zc::none || (!nominal && !interface)) {
+        malformed = true;
+        return zc::none;
+      }
+      if (interface) { return SelfOwner(InterfaceSelfOwner{ZC_ASSERT_NONNULL(owner)}); }
+      return SelfOwner(NominalSelfOwner{ZC_ASSERT_NONNULL(owner)});
+    }
+    child = parent;
+  }
+  if (remaining == 0) { malformed = true; }
+  return zc::none;
+}
+
+ContextualSelfOracleResult verifyContextualSelfFacts(const VerifiedBindingInput& input,
+                                                     const BindingMetadataCandidate& candidate) {
+  const auto& tree = input.tree();
+  constexpr size_t kMissing = static_cast<size_t>(-1);
+  zc::Vector<ast::NodeId> parentNodes;
+  zc::Vector<bool> visited;
+  zc::Vector<size_t> factByNode;
+  parentNodes.resize(tree.nodeCount() + 1);
+  visited.resize(tree.nodeCount() + 1);
+  factByNode.resize(tree.nodeCount() + 1);
+  for (size_t index = 0; index < parentNodes.size(); ++index) {
+    parentNodes[index] = ast::NodeId();
+    visited[index] = false;
+    factByNode[index] = kMissing;
+  }
+
+  size_t visitedCount = 0;
+  bool treeIsValid = true;
+  ast::visitTreePreOrder(tree, tree.root(), [&](ast::NodeId node, const ast::Node& syntax) {
+    if (!treeIsValid || !tree.contains(node) || node.value >= visited.size() ||
+        visited[node.value]) {
+      treeIsValid = false;
+      return;
+    }
+    visited[node.value] = true;
+    ++visitedCount;
+    ast::visitChildNodeIds(tree, syntax, [&](ast::NodeId child) {
+      if (!tree.contains(child) || child.value >= parentNodes.size() || parentNodes[child.value]) {
+        treeIsValid = false;
+        return;
+      }
+      parentNodes[child.value] = node;
+    });
+  });
+  if (!treeIsValid || visitedCount != tree.nodeCount()) {
+    return ContextualSelfOracleResult::MalformedScopeGraph;
+  }
+
+  uint32_t previousNode = 0;
+  for (size_t index = 0; index < candidate.selfTypes.size(); ++index) {
+    const auto& fact = candidate.selfTypes[index];
+    if (!tree.contains(fact.syntax) || fact.syntax.value >= factByNode.size() ||
+        tree.node(fact.syntax).kind != ast::SyntaxKind::NamedTypeExpr ||
+        factByNode[fact.syntax.value] != kMissing ||
+        (index != 0 && fact.syntax.value <= previousNode)) {
+      return ContextualSelfOracleResult::InvalidBindingFact;
+    }
+    factByNode[fact.syntax.value] = index;
+    previousNode = fact.syntax.value;
+  }
+
+  size_t expectedCount = 0;
+  ContextualSelfOracleResult result = ContextualSelfOracleResult::Valid;
+  ast::visitTreePreOrder(tree, tree.root(), [&](ast::NodeId node, const ast::Node& syntax) {
+    if (result != ContextualSelfOracleResult::Valid ||
+        syntax.kind != ast::SyntaxKind::NamedTypeExpr) {
+      return;
+    }
+    const ast::NodeId path(syntax.payload.words[ast::kNamedTypeExprPathWord]);
+    if (!tree.contains(path) || tree.node(path).kind != ast::SyntaxKind::ModulePath) {
+      result = ContextualSelfOracleResult::MalformedScopeGraph;
+      return;
+    }
+    const auto& pathSyntax = tree.node(path);
+    const ast::IdentList segments{pathSyntax.payload.words[ast::kModulePathSegmentsFirstWord],
+                                  pathSyntax.payload.words[ast::kModulePathSegmentsSizeWord]};
+    if (!tree.contains(segments)) {
+      result = ContextualSelfOracleResult::MalformedScopeGraph;
+      return;
+    }
+    const auto names = tree.identList(segments);
+    if (names.size() == 0 || tree.ident(names[0]) != "Self"_zc) { return; }
+
+    const ast::NodeId parent = parentNodes[node.value];
+    if (tree.contains(parent) && tree.node(parent).kind == ast::SyntaxKind::FunctionParameterDecl) {
+      const auto& parameter = tree.node(parent);
+      const ast::NodeId type(parameter.payload.words[ast::kFunctionParameterDeclTyWord]);
+      if (type == node && input.parsedModule().functionParameterHasImplicitSelfType(parent)) {
+        return;
+      }
+    }
+
+    bool malformedOwner = false;
+    auto owner = reconstructContextualSelfOwner(input, parentNodes.asPtr(), node, malformedOwner);
+    if (malformedOwner) {
+      result = ContextualSelfOracleResult::MalformedScopeGraph;
+      return;
+    }
+    if (owner == zc::none) { return; }
+    ++expectedCount;
+
+    const size_t factIndex = factByNode[node.value];
+    if (factIndex == kMissing) {
+      result = ContextualSelfOracleResult::MissingRequiredResolution;
+      return;
+    }
+    auto source = input.parsedModule().retainedTokenSpan(node, 0, ast::SyntaxKind::Identifier);
+    if (source == zc::none) {
+      result = ContextualSelfOracleResult::MalformedScopeGraph;
+      return;
+    }
+    const auto& fact = candidate.selfTypes[factIndex];
+    if (!sameSelfOwner(fact.owner, ZC_ASSERT_NONNULL(owner)) ||
+        !sameSpan(fact.source, ZC_ASSERT_NONNULL(source))) {
+      result = ContextualSelfOracleResult::InvalidBindingFact;
+    }
+  });
+  if (result != ContextualSelfOracleResult::Valid) { return result; }
+  if (candidate.selfTypes.size() < expectedCount) {
+    return ContextualSelfOracleResult::MissingRequiredResolution;
+  }
+  return candidate.selfTypes.size() == expectedCount
+             ? ContextualSelfOracleResult::Valid
+             : ContextualSelfOracleResult::InvalidBindingFact;
+}
+
+BinderInvariantKind contextualSelfOracleInvariant(ContextualSelfOracleResult result) {
+  switch (result) {
+    case ContextualSelfOracleResult::MissingRequiredResolution:
+      return BinderInvariantKind::MissingRequiredResolution;
+    case ContextualSelfOracleResult::InvalidBindingFact:
+      return BinderInvariantKind::InvalidBindingFact;
+    case ContextualSelfOracleResult::MalformedScopeGraph:
+      return BinderInvariantKind::MalformedScopeGraph;
+    case ContextualSelfOracleResult::Valid:
       ZC_UNREACHABLE;
   }
   ZC_UNREACHABLE;
@@ -1114,6 +1414,18 @@ ExplicitCaptureOracleResult verifyExplicitCaptureFacts(const VerifiedBindingInpu
       return ExplicitCaptureOracleResult::InvalidBindingFact;
     }
     resolutionByNode[node.value] = index;
+  }
+  zc::Vector<size_t> thisBindingByNode;
+  thisBindingByNode.resize(tree.nodeCount() + 1);
+  for (auto& value : thisBindingByNode) { value = kMissing; }
+  for (size_t index = 0; index < candidate.thisBindings.size(); ++index) {
+    const auto node = candidate.thisBindings[index].expression;
+    if (!tree.contains(node) || node.value >= thisBindingByNode.size() ||
+        tree.node(node).kind != ast::SyntaxKind::ThisExpr ||
+        thisBindingByNode[node.value] != kMissing || resolutionByNode[node.value] != kMissing) {
+      return ExplicitCaptureOracleResult::InvalidBindingFact;
+    }
+    thisBindingByNode[node.value] = index;
   }
   const auto capturable = [](identity::DefinitionKind kind) {
     return kind == identity::DefinitionKind::Parameter || kind == identity::DefinitionKind::Local ||
@@ -1626,75 +1938,59 @@ ExplicitCaptureOracleResult verifyExplicitCaptureFacts(const VerifiedBindingInpu
         return;
       }
       expectedThisSeen[node.value] = true;
-      if (resolutionByNode[node.value] == kMissing) {
+      auto source = input.parsedModule().retainedTokenSpan(node, 0, ast::SyntaxKind::ThisKeyword);
+      if (source == zc::none) {
+        oracleResult = ExplicitCaptureOracleResult::InvalidBindingFact;
+        return;
+      }
+      auto expectedReceiver = activeReceiver(scopeByNode[node.value]);
+      bool expectedSuccess = false;
+      ZC_IF_SOME(receiverIndex, expectedReceiver) {
+        const auto access = captureAccess(scopeByNode[node.value], receiverIndex);
+        if (access == ExplicitOracleCaptureAccess::Malformed) {
+          oracleResult = ExplicitCaptureOracleResult::MalformedScopeGraph;
+          return;
+        }
+        expectedSuccess = access == ExplicitOracleCaptureAccess::Allowed;
+      }
+      if (expectedSuccess) {
+        if (thisBindingByNode[node.value] == kMissing || resolutionByNode[node.value] != kMissing) {
+          oracleResult = ExplicitCaptureOracleResult::MissingRequiredResolution;
+          return;
+        }
+        const auto& binding = candidate.thisBindings[thisBindingByNode[node.value]];
+        auto targetIndex = inventoryIndex(binding.binding.receiverParameter);
+        if (targetIndex == zc::none || expectedReceiver == zc::none ||
+            ZC_ASSERT_NONNULL(expectedReceiver) != ZC_ASSERT_NONNULL(targetIndex) ||
+            !receiverDefinitions[ZC_ASSERT_NONNULL(targetIndex)] ||
+            !sameSpan(binding.source, ZC_ASSERT_NONNULL(source))) {
+          oracleResult = ExplicitCaptureOracleResult::InvalidBindingFact;
+        }
+        return;
+      }
+      if (thisBindingByNode[node.value] != kMissing || resolutionByNode[node.value] == kMissing) {
         oracleResult = ExplicitCaptureOracleResult::MissingRequiredResolution;
         return;
       }
       const auto& resolution = candidate.nodeBindings[resolutionByNode[node.value]];
-      if (tree.node(resolution.node).kind == ast::SyntaxKind::ThisExpr) {
-        auto source = input.parsedModule().retainedTokenSpan(resolution.node, 0,
-                                                             ast::SyntaxKind::ThisKeyword);
-        if (source == zc::none) {
-          oracleResult = ExplicitCaptureOracleResult::InvalidBindingFact;
-          return;
-        }
-        auto expectedReceiver = activeReceiver(scopeByNode[resolution.node.value]);
-        bool expectedSuccess = false;
-        ZC_IF_SOME(receiverIndex, expectedReceiver) {
-          const auto access = captureAccess(scopeByNode[resolution.node.value], receiverIndex);
-          if (access == ExplicitOracleCaptureAccess::Malformed) {
-            oracleResult = ExplicitCaptureOracleResult::MalformedScopeGraph;
-            return;
-          }
-          expectedSuccess = access == ExplicitOracleCaptureAccess::Allowed;
-        }
-        if (!expectedSuccess) {
-          if (!resolution.value.is<FailedBindingResolution>()) {
-            oracleResult = ExplicitCaptureOracleResult::InvalidBindingFact;
-            return;
-          }
-          const auto failureIndex = resolution.value.get<FailedBindingResolution>().failureIndex;
-          if (failureIndex >= candidate.sourceFailures.size()) {
-            oracleResult = ExplicitCaptureOracleResult::InvalidBindingFact;
-            return;
-          }
-          const auto& failureFact = candidate.sourceFailures[failureIndex];
-          const auto site = static_cast<uint8_t>(failureFact.emitterOrdinal >> 56);
-          const auto ordinal =
-              static_cast<uint32_t>((failureFact.emitterOrdinal >> 16) & UINT32_MAX);
-          if (failureFact.diagnostic != BinderDiagnosticCode::UndefinedIdentifier ||
-              site != static_cast<uint8_t>(BinderEmitterSite::BodyBinding) ||
-              ordinal != schemaOrdinals[resolution.node.value] ||
-              static_cast<uint16_t>(failureFact.emitterOrdinal) != 0 ||
-              !sameSpan(failureFact.primary, ZC_ASSERT_NONNULL(source)) ||
-              !failureFact.notes.empty()) {
-            oracleResult = ExplicitCaptureOracleResult::InvalidBindingFact;
-          }
-          return;
-        }
-        if (!resolution.value.is<BoundNameResolution>()) {
-          oracleResult = ExplicitCaptureOracleResult::InvalidBindingFact;
-          return;
-        }
-        const auto& bound = resolution.value.get<BoundNameResolution>();
-        const auto& bindingIdentity = bound.bindingIdentity.value();
-        const auto& canonicalTarget = bound.canonicalTarget.value();
-        if (bound.nameSpace != Namespace::Value ||
-            bound.origin != BindingOrigin::LocalDeclaration ||
-            !bindingIdentity.is<DefinitionBindingTarget>() ||
-            !canonicalTarget.is<DefinitionBindingTarget>() ||
-            bindingIdentity.get<DefinitionBindingTarget>().definition !=
-                canonicalTarget.get<DefinitionBindingTarget>().definition) {
-          oracleResult = ExplicitCaptureOracleResult::InvalidBindingFact;
-          return;
-        }
-        auto targetIndex =
-            inventoryIndex(bindingIdentity.get<DefinitionBindingTarget>().definition);
-        if (targetIndex == zc::none || expectedReceiver == zc::none ||
-            ZC_ASSERT_NONNULL(expectedReceiver) != ZC_ASSERT_NONNULL(targetIndex) ||
-            !receiverDefinitions[ZC_ASSERT_NONNULL(targetIndex)]) {
-          oracleResult = ExplicitCaptureOracleResult::InvalidBindingFact;
-        }
+      if (!resolution.value.is<FailedBindingResolution>()) {
+        oracleResult = ExplicitCaptureOracleResult::InvalidBindingFact;
+        return;
+      }
+      const auto failureIndex = resolution.value.get<FailedBindingResolution>().failureIndex;
+      if (failureIndex >= candidate.sourceFailures.size()) {
+        oracleResult = ExplicitCaptureOracleResult::InvalidBindingFact;
+        return;
+      }
+      const auto& failureFact = candidate.sourceFailures[failureIndex];
+      const auto site = static_cast<uint8_t>(failureFact.emitterOrdinal >> 56);
+      const auto ordinal = static_cast<uint32_t>((failureFact.emitterOrdinal >> 16) & UINT32_MAX);
+      if (failureFact.diagnostic != BinderDiagnosticCode::UndefinedIdentifier ||
+          site != static_cast<uint8_t>(BinderEmitterSite::BodyBinding) ||
+          ordinal != schemaOrdinals[node.value] ||
+          static_cast<uint16_t>(failureFact.emitterOrdinal) != 0 ||
+          !sameSpan(failureFact.primary, ZC_ASSERT_NONNULL(source)) || !failureFact.notes.empty()) {
+        oracleResult = ExplicitCaptureOracleResult::InvalidBindingFact;
       }
       return;
     }
@@ -1989,7 +2285,10 @@ ExplicitCaptureOracleResult verifyExplicitCaptureFacts(const VerifiedBindingInpu
       const ast::NodeId type(parameterSyntax.payload.words[ast::kFunctionParameterDeclTyWord]);
       const ast::NodeId attributes(
           parameterSyntax.payload.words[ast::kFunctionParameterDeclAttrsWord]);
-      if (tree.contains(type)) { self(self, type); }
+      if (tree.contains(type) &&
+          !input.parsedModule().functionParameterHasImplicitSelfType(parameter)) {
+        self(self, type);
+      }
       if (tree.contains(attributes)) { self(self, attributes); }
     }
     if (tree.contains(returnType)) { self(self, returnType); }
@@ -2596,6 +2895,11 @@ ClosureFreeVariableOracleResult verifyClosureFreeVariableFacts(
   }
 
   zc::TreeMap<ClosureFreeOracleTripleOrderKey, OracleCaptureTriple> triples;
+  struct OracleReference final {
+    ast::NodeId node;
+    identity::DefId target;
+  };
+  zc::Vector<OracleReference> references;
   for (const auto& resolution : candidate.nodeBindings) {
     if (!tree.contains(resolution.node) || resolution.node.value >= scopeByNode.size() ||
         scopeByNode[resolution.node.value] == UINT32_MAX) {
@@ -2615,6 +2919,17 @@ ClosureFreeVariableOracleResult verifyClosureFreeVariableFacts(
       return ClosureFreeVariableOracleResult::InvalidBindingFact;
     }
     const auto target = bindingIdentity.get<DefinitionBindingTarget>().definition;
+    references.add(OracleReference{resolution.node, target});
+  }
+  for (const auto& binding : candidate.thisBindings) {
+    if (!tree.contains(binding.expression) ||
+        tree.node(binding.expression).kind != ast::SyntaxKind::ThisExpr) {
+      return ClosureFreeVariableOracleResult::InvalidBindingFact;
+    }
+    references.add(OracleReference{binding.expression, binding.binding.receiverParameter});
+  }
+  for (const auto& reference : references) {
+    const auto target = reference.target;
     auto targetInventoryIndex = inventoryIndex(target);
     if (targetInventoryIndex == zc::none) {
       return ClosureFreeVariableOracleResult::InvalidBindingFact;
@@ -2628,7 +2943,7 @@ ClosureFreeVariableOracleResult verifyClosureFreeVariableFacts(
     const uint32_t targetCallableScope = owningCallableScopeIndices[targetIndex];
     if (targetCallableScope == UINT32_MAX) {
       const uint32_t targetDefinitionScope = definitionScopeIndices[targetIndex];
-      const uint32_t referenceScope = scopeByNode[resolution.node.value];
+      const uint32_t referenceScope = scopeByNode[reference.node.value];
       if (targetDefinitionScope >= scopeEnter.size() || referenceScope >= scopeEnter.size()) {
         return ClosureFreeVariableOracleResult::MalformedScopeGraph;
       }
@@ -2645,16 +2960,16 @@ ClosureFreeVariableOracleResult verifyClosureFreeVariableFacts(
     }
     const size_t targetCallableIndex = callableInventoryByScope[targetCallableScope];
 
-    auto source = input.parsedModule().spanFor(tree.node(resolution.node).range);
-    if (source == zc::none || resolution.node.value >= schemaOrdinals.size() ||
-        schemaOrdinals[resolution.node.value] == UINT32_MAX) {
+    auto source = input.parsedModule().spanFor(tree.node(reference.node).range);
+    if (source == zc::none || reference.node.value >= schemaOrdinals.size() ||
+        schemaOrdinals[reference.node.value] == UINT32_MAX) {
       return ClosureFreeVariableOracleResult::InvalidBindingFact;
     }
     const auto start = ZC_ASSERT_NONNULL(source).byteStart();
     const auto end = ZC_ASSERT_NONNULL(source).byteEnd();
 
     zc::Vector<size_t> crossedClosures;
-    uint32_t scopeIndex = nearestCallableScopeByScope[scopeByNode[resolution.node.value]];
+    uint32_t scopeIndex = nearestCallableScopeByScope[scopeByNode[reference.node.value]];
     bool reachedTarget = false;
     for (size_t traversed = 0; traversed < arena.scopes.size(); ++traversed) {
       if (scopeIndex == UINT32_MAX) { break; }
@@ -2696,15 +3011,15 @@ ClosureFreeVariableOracleResult verifyClosureFreeVariableFacts(
       }
       const ClosureFreeOracleTripleOrderKey key{canonicalRankByInventory[closureIndex],
                                                 canonicalRankByInventory[targetIndex], start, end,
-                                                schemaOrdinals[resolution.node.value]};
+                                                schemaOrdinals[reference.node.value]};
       auto existing = triples.find(key);
       if (existing == zc::none) {
         triples.insert(
-            key, OracleCaptureTriple{inventory[closureIndex].definition, target, resolution.node});
+            key, OracleCaptureTriple{inventory[closureIndex].definition, target, reference.node});
       } else {
         ZC_IF_SOME(triple, existing) {
           if (triple.closure != inventory[closureIndex].definition || triple.target != target ||
-              triple.referenceSite != resolution.node) {
+              triple.referenceSite != reference.node) {
             return ClosureFreeVariableOracleResult::InvalidBindingFact;
           }
         }
@@ -3864,6 +4179,10 @@ zc::Maybe<zc::Array<uint8_t>> encodeCandidate(const VerifiedBindingInput& input,
       capture.source.encode(encoder);
     }
   }
+  if (!encodeBindingExtensionSequences(encoder, input, candidate.selfTypes.asPtr(),
+                                       candidate.thisBindings.asPtr())) {
+    return zc::none;
+  }
   if (candidate.currentSurface.sourceModule != input.module() ||
       candidate.currentSurface.sourcePackage != input.package()) {
     return zc::none;
@@ -3887,6 +4206,45 @@ bool sameBytes(zc::ArrayPtr<const uint8_t> left, zc::ArrayPtr<const uint8_t> rig
 }
 
 }  // namespace
+
+bool encodeBindingExtensionSequences(identity::CanonicalEncoder& encoder,
+                                     const VerifiedBindingInput& input,
+                                     zc::ArrayPtr<const BoundSelfType> selfTypes,
+                                     zc::ArrayPtr<const BoundThis> thisBindings) {
+  encoder.encodeSequenceSize(selfTypes.size());
+  for (const auto& fact : selfTypes) {
+    if (!input.tree().contains(fact.syntax)) { return false; }
+    encoder.encodeUint32(fact.syntax.value);
+    if (fact.owner.is<NominalSelfOwner>()) {
+      encoder.encodeUint8(0x01);
+      if (!encodeDefinition(encoder, input, fact.owner.get<NominalSelfOwner>().definition)) {
+        return false;
+      }
+    } else if (fact.owner.is<InterfaceSelfOwner>()) {
+      encoder.encodeUint8(0x02);
+      if (!encodeDefinition(encoder, input, fact.owner.get<InterfaceSelfOwner>().definition)) {
+        return false;
+      }
+    } else if (fact.owner.is<ImplSelfOwner>()) {
+      encoder.encodeUint8(0x03);
+      if (!encodeImplementation(encoder, input, fact.owner.get<ImplSelfOwner>().implementation)) {
+        return false;
+      }
+    } else {
+      return false;
+    }
+    fact.source.encode(encoder);
+  }
+  encoder.encodeSequenceSize(thisBindings.size());
+  for (const auto& fact : thisBindings) {
+    if (!input.tree().contains(fact.expression)) { return false; }
+    encoder.encodeUint32(fact.expression.value);
+    encoder.encodeUint8(0x01);
+    if (!encodeDefinition(encoder, input, fact.binding.receiverParameter)) { return false; }
+    fact.source.encode(encoder);
+  }
+  return true;
+}
 
 zc::Maybe<zc::Array<uint8_t>> encodeBindingAllocationDump(const VerifiedBindingInput& input,
                                                           zc::ArrayPtr<const ScopeRecord> scopes,
@@ -4005,6 +4363,12 @@ zc::ArrayPtr<const NodeScopeFact> VerifiedBindingMetadata::nodeScopes() const {
 }
 zc::ArrayPtr<const BindingResolution> VerifiedBindingMetadata::nodeBindings() const {
   return impl->candidate.nodeBindings.asPtr();
+}
+zc::ArrayPtr<const BoundSelfType> VerifiedBindingMetadata::selfTypes() const {
+  return impl->candidate.selfTypes.asPtr();
+}
+zc::ArrayPtr<const BoundThis> VerifiedBindingMetadata::thisBindings() const {
+  return impl->candidate.thisBindings.asPtr();
 }
 zc::ArrayPtr<const ScopeRecord> VerifiedBindingMetadata::scopes() const {
   return impl->candidate.scopes.asPtr();
@@ -4311,8 +4675,8 @@ BindingCandidateResult BindingBuilder::buildCandidate(
     nodeBindings.add(zc::mv(body.nodeBindings[ordered.value]));
   }
 
-  auto closureResult = ClosureFreeVariableBuilder::build(input, arena, skeleton.definitions.asPtr(),
-                                                         nodeBindings.asPtr());
+  auto closureResult = ClosureFreeVariableBuilder::build(
+      input, arena, skeleton.definitions.asPtr(), nodeBindings.asPtr(), body.thisBindings.asPtr());
   if (!closureResult.is<zc::Vector<ClosureFreeVariableFact>>()) {
     return zc::mv(closureResult.get<BinderInvariantFact>());
   }
@@ -4353,6 +4717,8 @@ BindingCandidateResult BindingBuilder::buildCandidate(
                                            zc::mv(surface));
         candidate.sourceFailures = zc::mv(sourceFailures);
         candidate.nodeBindings = zc::mv(nodeBindings);
+        candidate.selfTypes = zc::mv(body.selfTypes);
+        candidate.thisBindings = zc::mv(body.thisBindings);
         candidate.deferredMembers = zc::mv(body.deferredMembers);
         candidate.labels = zc::mv(labels.labels);
         candidate.controlTransfers = zc::mv(control.controlTransfers);
@@ -4401,6 +4767,16 @@ BindingVerificationResult BindingVerifier::verify(const VerifiedBindingInput& in
     return rejectBinderInvariant(
         verifierFailure(input, deferredMemberOracleInvariant(candidateDeferredMembers)));
   }
+  const auto expectedContextualSelf = verifyContextualSelfFacts(input, expected);
+  if (expectedContextualSelf != ContextualSelfOracleResult::Valid) {
+    return rejectBinderInvariant(
+        verifierFailure(input, contextualSelfOracleInvariant(expectedContextualSelf)));
+  }
+  const auto candidateContextualSelf = verifyContextualSelfFacts(input, candidate);
+  if (candidateContextualSelf != ContextualSelfOracleResult::Valid) {
+    return rejectBinderInvariant(
+        verifierFailure(input, contextualSelfOracleInvariant(candidateContextualSelf)));
+  }
   const auto expectedExplicitCaptures = verifyExplicitCaptureFacts(input, expected);
   if (expectedExplicitCaptures != ExplicitCaptureOracleResult::Valid) {
     return rejectBinderInvariant(
@@ -4421,7 +4797,8 @@ BindingVerificationResult BindingVerifier::verify(const VerifiedBindingInput& in
     return rejectBinderInvariant(
         verifierFailure(input, closureFreeVariableOracleInvariant(candidateClosureFreeVariables)));
   }
-  if (!hasCompleteLexicalBindingSites(input.tree(), expected.nodeBindings.asPtr())) {
+  if (!hasCompleteLexicalBindingSites(input, expected.nodeBindings.asPtr(),
+                                      expected.selfTypes.asPtr(), expected.thisBindings.asPtr())) {
     return rejectBinderInvariant(
         bodyBuilderFailure(input, BinderInvariantKind::MissingRequiredResolution));
   }
@@ -4431,6 +4808,8 @@ BindingVerificationResult BindingVerifier::verify(const VerifiedBindingInput& in
       candidate.nodeScopes.size() < expected.nodeScopes.size() ||
       candidate.sourceFailures.size() < expected.sourceFailures.size() ||
       candidate.nodeBindings.size() < expected.nodeBindings.size() ||
+      candidate.selfTypes.size() < expected.selfTypes.size() ||
+      candidate.thisBindings.size() < expected.thisBindings.size() ||
       candidate.deferredMembers.size() < expected.deferredMembers.size() ||
       candidate.labels.size() < expected.labels.size() ||
       candidate.controlTransfers.size() < expected.controlTransfers.size() ||
@@ -4446,6 +4825,8 @@ BindingVerificationResult BindingVerifier::verify(const VerifiedBindingInput& in
       candidate.nodeScopes.size() > expected.nodeScopes.size() ||
       candidate.sourceFailures.size() > expected.sourceFailures.size() ||
       candidate.nodeBindings.size() > expected.nodeBindings.size() ||
+      candidate.selfTypes.size() > expected.selfTypes.size() ||
+      candidate.thisBindings.size() > expected.thisBindings.size() ||
       candidate.deferredMembers.size() > expected.deferredMembers.size() ||
       candidate.labels.size() > expected.labels.size() ||
       candidate.controlTransfers.size() > expected.controlTransfers.size() ||

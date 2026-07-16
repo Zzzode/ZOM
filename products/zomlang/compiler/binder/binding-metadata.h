@@ -189,6 +189,11 @@ ZC_NODISCARD zc::Array<uint8_t> frameBindingAllocationDump(
     zc::ArrayPtr<const zc::ArrayPtr<const uint8_t>> scopeRecords,
     zc::ArrayPtr<const zc::ArrayPtr<const uint8_t>> labelRecords);
 
+/// \brief Frames already-canonical contextual Self and receiver records.
+ZC_NODISCARD zc::Array<uint8_t> frameBindingExtensionSequences(
+    zc::ArrayPtr<const zc::ArrayPtr<const uint8_t>> selfTypeRecords,
+    zc::ArrayPtr<const zc::ArrayPtr<const uint8_t>> thisBindingRecords);
+
 struct DefinitionFact final {
   DefinitionFact(identity::DefId identity, DefinitionSite&& site, identity::DefinitionKind kind,
                  identity::DefinitionNameKey&& name, Namespace nameSpace, ScopeId declaringScope,
@@ -283,7 +288,8 @@ enum class BinderDiagnosticCode : uint16_t {
   PreviousDeclarationHere = 3017,
   BreakTargetNotFound = 3020,
   ContinueTargetNotFound = 3021,
-  ContinueTargetNotLoop = 3022
+  ContinueTargetNotLoop = 3022,
+  ContextualSelfOutsideType = 3025
 };
 
 struct BindingDiagnosticNoteRef final {
@@ -411,6 +417,42 @@ using BindingResolutionValue = zc::OneOf<BoundNameResolution, BoundLabelResoluti
 struct BindingResolution final {
   ast::NodeId node;
   BindingResolutionValue value;
+};
+
+/// \brief Contextual Self owned by a nominal declaration.
+struct NominalSelfOwner final {
+  identity::DefId definition;
+};
+
+/// \brief Contextual Self owned by an interface declaration.
+struct InterfaceSelfOwner final {
+  identity::DefId definition;
+};
+
+/// \brief Contextual Self owned by an implementation declaration.
+struct ImplSelfOwner final {
+  identity::ImplId implementation;
+};
+
+using SelfOwner = zc::OneOf<NominalSelfOwner, InterfaceSelfOwner, ImplSelfOwner>;
+
+/// \brief One lexical root Self bound to its nearest semantic owner.
+struct BoundSelfType final {
+  ast::NodeId syntax;
+  SelfOwner owner;
+  identity::SourceSpan source;
+};
+
+/// \brief Receiver parameter selected by a successful this expression binding.
+struct ThisBinding final {
+  identity::DefId receiverParameter;
+};
+
+/// \brief One this expression resolved in the receiver-only binding domain.
+struct BoundThis final {
+  ast::NodeId expression;
+  ThisBinding binding;
+  identity::SourceSpan source;
 };
 
 struct ImplBindingFact final {
@@ -571,6 +613,8 @@ public:
   ZC_NODISCARD identity::ModuleId module() const noexcept;
   ZC_NODISCARD zc::ArrayPtr<const NodeScopeFact> nodeScopes() const;
   ZC_NODISCARD zc::ArrayPtr<const BindingResolution> nodeBindings() const;
+  ZC_NODISCARD zc::ArrayPtr<const BoundSelfType> selfTypes() const;
+  ZC_NODISCARD zc::ArrayPtr<const BoundThis> thisBindings() const;
   ZC_NODISCARD zc::ArrayPtr<const ScopeRecord> scopes() const;
   ZC_NODISCARD zc::ArrayPtr<const DefinitionFact> definitions() const;
   ZC_NODISCARD zc::ArrayPtr<const ImplBindingFact> impls() const;

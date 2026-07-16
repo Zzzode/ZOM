@@ -23,6 +23,7 @@
 #include "zomlang/compiler/diagnostics/diagnostic-engine.h"
 #include "zomlang/compiler/diagnostics/diagnostic-info.h"
 #include "zomlang/compiler/diagnostics/diagnostic.h"
+#include "zomlang/compiler/identity/canonical-encoder.h"
 #include "zomlang/compiler/identity/sha256.h"
 #include "zomlang/compiler/parser/parser.h"
 #include "zomlang/compiler/source/manager.h"
@@ -585,6 +586,27 @@ BindingResolution& requireResolution(zc::ArrayPtr<BindingResolution> resolutions
   ZC_FAIL_REQUIRE("identifier resolution is missing");
 }
 
+const BoundThis& requireThisBinding(zc::ArrayPtr<const BoundThis> bindings, ast::NodeId node) {
+  for (const auto& binding : bindings) {
+    if (binding.expression == node) { return binding; }
+  }
+  ZC_FAIL_REQUIRE("this binding is missing");
+}
+
+BoundThis& requireThisBinding(zc::ArrayPtr<BoundThis> bindings, ast::NodeId node) {
+  for (auto& binding : bindings) {
+    if (binding.expression == node) { return binding; }
+  }
+  ZC_FAIL_REQUIRE("mutable this binding is missing");
+}
+
+const BoundSelfType& requireSelfType(zc::ArrayPtr<const BoundSelfType> facts, ast::NodeId node) {
+  for (const auto& fact : facts) {
+    if (fact.syntax == node) { return fact; }
+  }
+  ZC_FAIL_REQUIRE("contextual Self fact is missing");
+}
+
 const ControlTransferFact& requireControlTransfer(zc::ArrayPtr<const ControlTransferFact> facts,
                                                   ast::NodeId node) {
   for (const auto& fact : facts) {
@@ -1083,6 +1105,78 @@ ZC_TEST("BindingAllocationDump.MatchesNormativeRFC0004Oracle") {
     return;
   }
   ZC_EXPECT(false);
+}
+
+ZC_TEST("BindingExtensionFraming.MatchesNormativeRFC0014Oracles") {
+  const uint8_t selfRecord[] = {0xa1};
+  const uint8_t firstThisRecord[] = {0xb2};
+  const uint8_t secondThisRecord[] = {0xc3};
+  zc::Vector<zc::ArrayPtr<const uint8_t>> selfTypes;
+  zc::Vector<zc::ArrayPtr<const uint8_t>> thisBindings;
+
+  const auto verifyOracle = [&](zc::StringPtr expectedPreimage, zc::StringPtr expectedDigest) {
+    const auto framed = frameBindingExtensionSequences(selfTypes.asPtr(), thisBindings.asPtr());
+    const auto preimage = decodeHexBytes(expectedPreimage);
+    ZC_EXPECT(framed.asPtr() == preimage.asPtr());
+    ZC_IF_SOME(digest, identity::sha256(framed.asPtr())) {
+      ZC_EXPECT(zc::encodeHex(digest.bytes()) == expectedDigest);
+      return;
+    }
+    ZC_EXPECT(false);
+  };
+
+  verifyOracle("00000000000000000000000000000000"_zc,
+               "374708fff7719dd5979ec875d56cd2286f6d3cf7ec317a3b25632aab28ec37bb"_zc);
+  selfTypes.add(zc::arrayPtr(selfRecord));
+  verifyOracle("0000000000000001a10000000000000000"_zc,
+               "c02ad86008dffaa50c141da2dc596ec90bf4fdddb44e29500d33ba32ab9a07eb"_zc);
+  thisBindings.add(zc::arrayPtr(firstThisRecord));
+  thisBindings.add(zc::arrayPtr(secondThisRecord));
+  verifyOracle("0000000000000001a10000000000000002b2c3"_zc,
+               "c8d7b4d650f7730b37fe8f562b8963fa19c339fc3f9d01528090d49d1c1aea22"_zc);
+}
+
+ZC_TEST("BindingExtensionFraming.ComposesCompleteContextualSelfRecords") {
+  ParsedSource sourceFixture(
+      "module root;\n"
+      "class Box { fun use(this: Self) -> Self { this; } }\n"_zc);
+  FrozenFixture fixture(sourceFixture, true);
+  auto inputResult = verify(fixture);
+  ZC_REQUIRE(inputResult.is<VerifiedBindingInput>());
+  auto input = zc::mv(inputResult.get<VerifiedBindingInput>());
+  auto candidateResult = BindingBuilder::build(input, *sourceFixture.diagnostics);
+  ZC_REQUIRE(candidateResult.is<BindingMetadataCandidate>());
+  const auto& candidate = candidateResult.get<BindingMetadataCandidate>();
+  ZC_REQUIRE(candidate.selfTypes.size() == 2);
+  ZC_REQUIRE(candidate.thisBindings.size() == 1);
+
+  const auto encode =
+      [&](zc::ArrayPtr<const BoundSelfType> selfTypes,
+          zc::ArrayPtr<const BoundThis> thisBindings) -> zc::Maybe<zc::Array<uint8_t>> {
+    identity::CanonicalEncoder encoder;
+    if (!encodeBindingExtensionSequences(encoder, input, selfTypes, thisBindings)) {
+      return zc::none;
+    }
+    return encoder.finish();
+  };
+  auto complete = encode(candidate.selfTypes.asPtr(), candidate.thisBindings.asPtr());
+  auto selfOnly = encode(candidate.selfTypes.asPtr(), zc::ArrayPtr<const BoundThis>());
+  auto thisOnly = encode(zc::ArrayPtr<const BoundSelfType>(), candidate.thisBindings.asPtr());
+  ZC_REQUIRE(complete != zc::none);
+  ZC_REQUIRE(selfOnly != zc::none);
+  ZC_REQUIRE(thisOnly != zc::none);
+  const auto& completeBytes = ZC_ASSERT_NONNULL(complete);
+  const auto& selfBytes = ZC_ASSERT_NONNULL(selfOnly);
+  const auto& thisBytes = ZC_ASSERT_NONNULL(thisOnly);
+  ZC_REQUIRE(selfBytes.size() >= 16);
+  ZC_REQUIRE(thisBytes.size() >= 16);
+  const auto zeroCount = decodeHexBytes("0000000000000000"_zc);
+  ZC_EXPECT(selfBytes.asPtr().slice(selfBytes.size() - 8) == zeroCount.asPtr());
+  ZC_EXPECT(thisBytes.asPtr().first(8) == zeroCount.asPtr());
+  zc::Vector<uint8_t> composed;
+  composed.addAll(selfBytes.asPtr().slice(0, selfBytes.size() - 8));
+  composed.addAll(thisBytes.asPtr().slice(8));
+  ZC_EXPECT(completeBytes.asPtr() == composed.asPtr());
 }
 
 ZC_TEST("BindingVerifier.PublishesCompletePrivateFunctionFactsAndSurface") {
@@ -3551,7 +3645,7 @@ ZC_TEST("BindingActivation.PublishesSpecialCallableParameterLists") {
       "module root;\n"
       "class Box {\n"
       "  init(value: i32) {}\n"
-      "  deinit(token: i32) {}\n"
+      "  deinit() {}\n"
       "}\n"_zc);
   FrozenFixture fixture(sourceFixture, true);
   auto inputResult = verify(fixture);
@@ -3597,11 +3691,10 @@ ZC_TEST("BindingActivation.PublishesSpecialCallableParameterLists") {
   for (const auto& scope : metadata.scopes()) {
     if (scope.kind != ScopeKind::Function) { continue; }
     ++specialCallableScopeCount;
-    ZC_REQUIRE(scope.bindings.size() == 1);
   }
   ZC_EXPECT(constructorCount == 1);
   ZC_EXPECT(destructorCount == 1);
-  ZC_EXPECT(parameterCount == 2);
+  ZC_EXPECT(parameterCount == 1);
   ZC_EXPECT(specialCallableScopeCount == 2);
   ZC_REQUIRE(metadata.scopes().size() > 1);
   ZC_EXPECT(metadata.scopes()[1].kind == ScopeKind::TypeBody);
@@ -4000,11 +4093,13 @@ ZC_TEST("ExplicitClosureCaptures.ResolveBeforeOwnParametersActivate") {
   ZC_EXPECT(sourceFixture.diagnostics->errorCount() == 0);
 }
 
-ZC_TEST("ExplicitClosureCaptures.ResolveBeforeOwnReceiverActivates") {
+ZC_TEST("ExplicitClosureCaptures.ResolveReceiverAcrossOrdinaryClosureParameter") {
   ParsedSource sourceFixture(
       "module root;\n"
-      "fun run(this: i32) {\n"
-      "  const closure = fun(this: i32) use [this] { this; };\n"
+      "class Host {\n"
+      "  fun run(this: i32) {\n"
+      "    const closure = fun(value: i32) use [this] { this; };\n"
+      "  }\n"
       "}\n"_zc);
   FrozenFixture fixture(sourceFixture, true);
   auto inputResult = verify(fixture);
@@ -4041,10 +4136,8 @@ ZC_TEST("ExplicitClosureCaptures.ResolveBeforeOwnReceiverActivates") {
   ZC_EXPECT(
       requireDefinitionTarget(captureResolution.value.get<BoundNameResolution>().bindingIdentity) ==
       outerReceiver);
-  const auto& bodyResolution = requireResolution(metadata.nodeBindings(), receivers[0]);
-  ZC_REQUIRE(bodyResolution.value.is<BoundNameResolution>());
-  ZC_EXPECT(requireDefinitionTarget(
-                bodyResolution.value.get<BoundNameResolution>().bindingIdentity) == innerReceiver);
+  const auto& bodyBinding = requireThisBinding(metadata.thisBindings(), receivers[0]);
+  ZC_EXPECT(bodyBinding.binding.receiverParameter == outerReceiver);
 
   auto wrongInnerCapture = buildCandidate();
   auto& wrongBound = requireResolution(wrongInnerCapture.nodeBindings.asPtr(), captureItems[0])
@@ -4063,8 +4156,11 @@ ZC_TEST("ExplicitClosureCaptures.ResolveBeforeOwnReceiverActivates") {
 ZC_TEST("BindingVerifier.RejectsWrongThisExpressionReceiverTarget") {
   ParsedSource sourceFixture(
       "module root;\n"
-      "fun run(this: i32) {\n"
-      "  const closure = fun(this: i32) use [this] { this; };\n"
+      "class Host {\n"
+      "  fun run(this: i32) {\n"
+      "    const closure = fun() use [this] { this; };\n"
+      "  }\n"
+      "  fun other(this: i32) {}\n"
       "}\n"_zc);
   FrozenFixture fixture(sourceFixture, true);
   auto inputResult = verify(fixture);
@@ -4102,19 +4198,14 @@ ZC_TEST("BindingVerifier.RejectsWrongThisExpressionReceiverTarget") {
   const auto& captureBound = captureResolution.value.get<BoundNameResolution>();
   ZC_EXPECT(requireDefinitionTarget(captureBound.bindingIdentity) == outerReceiver);
   ZC_EXPECT(requireDefinitionTarget(captureBound.canonicalTarget) == outerReceiver);
-  const auto& receiverResolution = requireResolution(baseline.nodeBindings.asPtr(), receivers[0]);
-  ZC_REQUIRE(receiverResolution.value.is<BoundNameResolution>());
-  const auto& receiverBound = receiverResolution.value.get<BoundNameResolution>();
-  ZC_EXPECT(requireDefinitionTarget(receiverBound.bindingIdentity) == innerReceiver);
-  ZC_EXPECT(requireDefinitionTarget(receiverBound.canonicalTarget) == innerReceiver);
+  const auto& receiverBinding = requireThisBinding(baseline.thisBindings.asPtr(), receivers[0]);
+  ZC_EXPECT(receiverBinding.binding.receiverParameter == outerReceiver);
   auto verified = BindingVerifier::verify(input, zc::mv(baseline));
   ZC_REQUIRE(verified.is<VerifiedBindingOutput>());
 
   auto wrongTarget = buildCandidate();
-  auto& wrongReceiver = requireResolution(wrongTarget.nodeBindings.asPtr(), receivers[0])
-                            .value.get<BoundNameResolution>();
-  wrongReceiver.bindingIdentity = BindingTarget::definition(outerReceiver);
-  wrongReceiver.canonicalTarget = BindingTarget::definition(outerReceiver);
+  auto& wrongReceiver = requireThisBinding(wrongTarget.thisBindings.asPtr(), receivers[0]);
+  wrongReceiver.binding.receiverParameter = innerReceiver;
   const auto& unchangedRow =
       requireExplicitClosureCapture(wrongTarget.explicitClosureCaptures.asPtr(), closure);
   ZC_REQUIRE(unchangedRow.captures.size() == 1);
@@ -4238,7 +4329,9 @@ ZC_TEST("ExplicitClosureCaptures.RejectLaterInitializerAndSiblingLocals") {
 ZC_TEST("ExplicitClosureCaptures.EmptyClauseRejectsOuterReceiverReference") {
   ParsedSource sourceFixture(
       "module root;\n"
-      "fun outer(this: i32) { const closure = fun() use [] { this; }; }\n"_zc);
+      "class Host {\n"
+      "  fun outer(this: i32) { const closure = fun() use [] { this; }; }\n"
+      "}\n"_zc);
   FrozenFixture fixture(sourceFixture, true);
   auto inputResult = verify(fixture);
   ZC_REQUIRE(inputResult.is<VerifiedBindingInput>());
@@ -4277,8 +4370,10 @@ ZC_TEST("ExplicitClosureCaptures.EmptyClauseRejectsOuterReceiverReference") {
 ZC_TEST("ReceiverBinding.DoesNotLeakAcrossNamedFunctions") {
   ParsedSource sourceFixture(
       "module root;\n"
-      "fun owner(this: i32) {}\n"
-      "fun observer() { this; }\n"_zc);
+      "class Host {\n"
+      "  fun owner(this: i32) {}\n"
+      "  fun observer() { this; }\n"
+      "}\n"_zc);
   FrozenFixture fixture(sourceFixture, true);
   auto inputResult = verify(fixture);
   ZC_REQUIRE(inputResult.is<VerifiedBindingInput>());
@@ -4311,7 +4406,9 @@ ZC_TEST("ReceiverBinding.DoesNotLeakAcrossNamedFunctions") {
 ZC_TEST("ClosureFreeVariables.InfersReceiverAcrossImplicitClosure") {
   ParsedSource sourceFixture(
       "module root;\n"
-      "fun outer(this: i32) { const closure = fun() { this; }; }\n"_zc);
+      "class Host {\n"
+      "  fun outer(this: i32) { const closure = fun() { this; }; }\n"
+      "}\n"_zc);
   FrozenFixture fixture(sourceFixture, true);
   auto inputResult = verify(fixture);
   ZC_REQUIRE(inputResult.is<VerifiedBindingInput>());
@@ -4337,17 +4434,29 @@ ZC_TEST("ClosureFreeVariables.InfersReceiverAcrossImplicitClosure") {
   const auto& variable = requireFreeVariable(row, receiver);
   ZC_REQUIRE(variable.referenceSites.size() == 1);
   ZC_EXPECT(variable.referenceSites[0] == receivers[0]);
-  const auto& resolution = requireResolution(metadata.nodeBindings(), receivers[0]);
-  ZC_REQUIRE(resolution.value.is<BoundNameResolution>());
-  ZC_EXPECT(requireDefinitionTarget(resolution.value.get<BoundNameResolution>().bindingIdentity) ==
-            receiver);
+  const auto& binding = requireThisBinding(metadata.thisBindings(), receivers[0]);
+  ZC_EXPECT(binding.binding.receiverParameter == receiver);
+
+  const auto& parameterSyntax = input.tree().node(parameters[0]);
+  const ast::NodeId type(parameterSyntax.payload.words[ast::kFunctionParameterDeclTyWord]);
+  const auto& typeSyntax = input.tree().node(type);
+  const ast::NodeId selfPath(typeSyntax.payload.words[ast::kNamedTypeExprPathWord]);
+  auto additionalCandidate = BindingBuilder::build(input, *sourceFixture.diagnostics);
+  ZC_REQUIRE(additionalCandidate.is<BindingMetadataCandidate>());
+  additionalCandidate.get<BindingMetadataCandidate>().nodeBindings.add(
+      BindingResolution{selfPath, BindingResolutionValue(FailedBindingResolution{0})});
+  auto additional =
+      BindingVerifier::verify(input, zc::mv(additionalCandidate.get<BindingMetadataCandidate>()));
+  ZC_EXPECT(requireBinderInvariant(additional).kind == BinderInvariantKind::InvalidBindingFact);
   ZC_EXPECT(sourceFixture.diagnostics->errorCount() == 0);
 }
 
 ZC_TEST("ExplicitClosureCaptures.BindReceiverAndThisExpression") {
   ParsedSource sourceFixture(
       "module root;\n"
-      "fun make(this: i32) { const closure = fun() use [this] { this; }; }\n"_zc);
+      "class Host {\n"
+      "  fun make(this: i32) { const closure = fun() use [this] { this; }; }\n"
+      "}\n"_zc);
   FrozenFixture fixture(sourceFixture, true);
   auto inputResult = verify(fixture);
   ZC_REQUIRE(inputResult.is<VerifiedBindingInput>());
@@ -4371,21 +4480,202 @@ ZC_TEST("ExplicitClosureCaptures.BindReceiverAndThisExpression") {
   const auto& fact = requireExplicitClosureCapture(metadata.explicitClosureCaptures(), closure);
   ZC_REQUIRE(fact.captures.size() == 1);
   ZC_EXPECT(fact.captures[0].target == receiver);
-  const auto& receiverResolution = requireResolution(metadata.nodeBindings(), receivers[0]);
-  ZC_REQUIRE(receiverResolution.value.is<BoundNameResolution>());
-  ZC_EXPECT(requireDefinitionTarget(
-                receiverResolution.value.get<BoundNameResolution>().bindingIdentity) == receiver);
+  const auto& receiverBinding = requireThisBinding(metadata.thisBindings(), receivers[0]);
+  ZC_EXPECT(receiverBinding.binding.receiverParameter == receiver);
+  ZC_EXPECT(sourceFixture.diagnostics->errorCount() == 0);
+}
+
+ZC_TEST("ReceiverBinding.BareReceiverUsesIntrinsicSelfType") {
+  ParsedSource sourceFixture(
+      "module root;\n"
+      "class Host { fun make(this) { this; } }\n"_zc);
+  FrozenFixture fixture(sourceFixture, true);
+  auto inputResult = verify(fixture);
+  ZC_REQUIRE(inputResult.is<VerifiedBindingInput>());
+  auto input = zc::mv(inputResult.get<VerifiedBindingInput>());
+  const auto parameters = nodesOfKind(input.tree(), ast::SyntaxKind::FunctionParameterDecl);
+  const auto receivers = nodesOfKind(input.tree(), ast::SyntaxKind::ThisExpr);
+  ZC_REQUIRE(parameters.size() == 1);
+  ZC_REQUIRE(receivers.size() == 1);
+  ZC_EXPECT(input.parsedModule().functionParameterHasImplicitSelfType(parameters[0]));
+  const auto receiver = requireDefinitionAt(input, parameters[0]);
+
+  auto candidate = BindingBuilder::build(input, *sourceFixture.diagnostics);
+  ZC_REQUIRE(candidate.is<BindingMetadataCandidate>());
+  auto verified = BindingVerifier::verify(input, zc::mv(candidate.get<BindingMetadataCandidate>()));
+  ZC_REQUIRE(verified.is<VerifiedBindingOutput>());
+  const auto& metadata = verified.get<VerifiedBindingOutput>().metadata;
+  const auto& binding = requireThisBinding(metadata.thisBindings(), receivers[0]);
+  ZC_EXPECT(binding.binding.receiverParameter == receiver);
+  ZC_EXPECT(metadata.selfTypes().size() == 0);
+  for (const auto& resolution : metadata.nodeBindings()) {
+    ZC_EXPECT(resolution.node != receivers[0]);
+  }
+
+  const auto& parameterSyntax = input.tree().node(parameters[0]);
+  const ast::NodeId type(parameterSyntax.payload.words[ast::kFunctionParameterDeclTyWord]);
+  const auto& typeSyntax = input.tree().node(type);
+  const ast::NodeId selfPath(typeSyntax.payload.words[ast::kNamedTypeExprPathWord]);
+  auto additionalCandidate = BindingBuilder::build(input, *sourceFixture.diagnostics);
+  ZC_REQUIRE(additionalCandidate.is<BindingMetadataCandidate>());
+  additionalCandidate.get<BindingMetadataCandidate>().nodeBindings.add(
+      BindingResolution{selfPath, BindingResolutionValue(FailedBindingResolution{0})});
+  auto additional =
+      BindingVerifier::verify(input, zc::mv(additionalCandidate.get<BindingMetadataCandidate>()));
+  ZC_EXPECT(requireBinderInvariant(additional).kind == BinderInvariantKind::InvalidBindingFact);
+  ZC_EXPECT(sourceFixture.diagnostics->errorCount() == 0);
+}
+
+ZC_TEST("ContextualSelfBinding.PublishesNominalOwnerAndReceiverFacts") {
+  ParsedSource sourceFixture(
+      "module root;\n"
+      "class Box {\n"
+      "  fun use(this: Self, value: Self::Item) -> Self { this; }\n"
+      "}\n"_zc);
+  FrozenFixture fixture(sourceFixture, true);
+  auto inputResult = verify(fixture);
+  ZC_REQUIRE(inputResult.is<VerifiedBindingInput>());
+  auto input = zc::mv(inputResult.get<VerifiedBindingInput>());
+  const auto classes = nodesOfKind(input.tree(), ast::SyntaxKind::ClassDecl);
+  const auto types = nodesOfKind(input.tree(), ast::SyntaxKind::NamedTypeExpr);
+  const auto receivers = nodesOfKind(input.tree(), ast::SyntaxKind::ThisExpr);
+  ZC_REQUIRE(classes.size() == 1);
+  ZC_REQUIRE(types.size() == 3);
+  ZC_REQUIRE(receivers.size() == 1);
+  const auto owner = requireDefinitionAt(input, classes[0]);
+
+  const auto buildCandidate = [&]() -> BindingMetadataCandidate {
+    auto candidate = BindingBuilder::build(input, *sourceFixture.diagnostics);
+    ZC_REQUIRE(candidate.is<BindingMetadataCandidate>());
+    return zc::mv(candidate.get<BindingMetadataCandidate>());
+  };
+  auto candidate = buildCandidate();
+  ZC_REQUIRE(candidate.selfTypes.size() == 3);
+  ZC_REQUIRE(candidate.thisBindings.size() == 1);
+  for (const auto type : types) {
+    const auto& fact = requireSelfType(candidate.selfTypes.asPtr(), type);
+    ZC_REQUIRE(fact.owner.is<NominalSelfOwner>());
+    ZC_EXPECT(fact.owner.get<NominalSelfOwner>().definition == owner);
+  }
+  for (const auto& resolution : candidate.nodeBindings) {
+    ZC_EXPECT(resolution.node != receivers[0]);
+  }
+  auto verified = BindingVerifier::verify(input, zc::mv(candidate));
+  ZC_REQUIRE(verified.is<VerifiedBindingOutput>());
+
+  auto missing = buildCandidate();
+  missing.selfTypes.removeLast();
+  auto missingResult = BindingVerifier::verify(input, zc::mv(missing));
+  ZC_EXPECT(requireBinderInvariant(missingResult).kind ==
+            BinderInvariantKind::MissingRequiredResolution);
+  ZC_EXPECT(sourceFixture.diagnostics->errorCount() == 0);
+}
+
+ZC_TEST("ContextualSelfBinding.ReportsModuleScopeSelf") {
+  ParsedSource sourceFixture("module root;\nfun invalid(value: Self) {}\n"_zc);
+  FrozenFixture fixture(sourceFixture, true);
+  auto inputResult = verify(fixture);
+  ZC_REQUIRE(inputResult.is<VerifiedBindingInput>());
+  auto input = zc::mv(inputResult.get<VerifiedBindingInput>());
+  auto candidate = BindingBuilder::build(input, *sourceFixture.diagnostics);
+  ZC_REQUIRE(candidate.is<BindingMetadataCandidate>());
+  auto& value = candidate.get<BindingMetadataCandidate>();
+  ZC_EXPECT(value.selfTypes.empty());
+  auto rejected = BindingVerifier::verify(input, zc::mv(value));
+  ZC_REQUIRE(rejected.is<SourceRejected>());
+  const auto failures = rejected.get<SourceRejected>().failures();
+  ZC_REQUIRE(failures.size() == 1);
+  ZC_EXPECT(failures[0].diagnostic == BinderDiagnosticCode::ContextualSelfOutsideType);
+  ZC_EXPECT(sourceFixture.diagnostics->errorCount() == 1);
+}
+
+ZC_TEST("BindingVerifier.RejectsMalformedContextualSelfFacts") {
+  ParsedSource sourceFixture(
+      "module root;\n"
+      "class Box {\n"
+      "  fun use(value: Self::Item) -> Self {}\n"
+      "}\n"_zc);
+  FrozenFixture fixture(sourceFixture, true);
+  auto inputResult = verify(fixture);
+  ZC_REQUIRE(inputResult.is<VerifiedBindingInput>());
+  auto input = zc::mv(inputResult.get<VerifiedBindingInput>());
+  const auto classes = nodesOfKind(input.tree(), ast::SyntaxKind::ClassDecl);
+  ZC_REQUIRE(classes.size() == 1);
+  const auto owner = requireDefinitionAt(input, classes[0]);
+
+  const auto buildCandidate = [&]() -> BindingMetadataCandidate {
+    auto candidate = BindingBuilder::build(input, *sourceFixture.diagnostics);
+    ZC_REQUIRE(candidate.is<BindingMetadataCandidate>());
+    return zc::mv(candidate.get<BindingMetadataCandidate>());
+  };
+
+  auto wrongOwner = buildCandidate();
+  ZC_REQUIRE(wrongOwner.selfTypes.size() == 2);
+  wrongOwner.selfTypes[0].owner = SelfOwner(InterfaceSelfOwner{owner});
+  auto wrongOwnerResult = BindingVerifier::verify(input, zc::mv(wrongOwner));
+  ZC_EXPECT(requireBinderInvariant(wrongOwnerResult).kind ==
+            BinderInvariantKind::InvalidBindingFact);
+
+  auto wrongSource = buildCandidate();
+  ZC_REQUIRE(wrongSource.selfTypes.size() == 2);
+  wrongSource.selfTypes[0].source = wrongSource.selfTypes[1].source.clone();
+  auto wrongSourceResult = BindingVerifier::verify(input, zc::mv(wrongSource));
+  ZC_EXPECT(requireBinderInvariant(wrongSourceResult).kind ==
+            BinderInvariantKind::InvalidBindingFact);
+  ZC_EXPECT(sourceFixture.diagnostics->errorCount() == 0);
+}
+
+ZC_TEST("ContextualSelfBinding.PublishesInterfaceAndImplOwners") {
+  ParsedSource sourceFixture(
+      "module root;\n"
+      "interface Cloneable { fun clone(this: Self) -> Self; }\n"
+      "class Box {}\n"
+      "impl Cloneable for Box { fun clone(this: Self) -> Self { this; } }\n"_zc);
+  FrozenFixture fixture(sourceFixture, true, false, ImplRegistration::Exact);
+  auto inputResult = verify(fixture);
+  ZC_REQUIRE(inputResult.is<VerifiedBindingInput>());
+  auto input = zc::mv(inputResult.get<VerifiedBindingInput>());
+  const auto interfaces = nodesOfKind(input.tree(), ast::SyntaxKind::InterfaceDecl);
+  const auto implementations = nodesOfKind(input.tree(), ast::SyntaxKind::StandaloneImplDecl);
+  ZC_REQUIRE(interfaces.size() == 1);
+  ZC_REQUIRE(implementations.size() == 1);
+  const auto interfaceOwner = requireDefinitionAt(input, interfaces[0]);
+  auto implOwner = input.definitions().implAt(implementations[0]);
+  ZC_REQUIRE(implOwner != zc::none);
+
+  auto candidate = BindingBuilder::build(input, *sourceFixture.diagnostics);
+  ZC_REQUIRE(candidate.is<BindingMetadataCandidate>());
+  auto& value = candidate.get<BindingMetadataCandidate>();
+  size_t interfaceFacts = 0;
+  size_t implFacts = 0;
+  for (const auto& fact : value.selfTypes) {
+    if (fact.owner.is<InterfaceSelfOwner>()) {
+      ++interfaceFacts;
+      ZC_EXPECT(fact.owner.get<InterfaceSelfOwner>().definition == interfaceOwner);
+    } else if (fact.owner.is<ImplSelfOwner>()) {
+      ++implFacts;
+      ZC_EXPECT(fact.owner.get<ImplSelfOwner>().implementation == ZC_ASSERT_NONNULL(implOwner));
+    } else {
+      ZC_FAIL_REQUIRE("unexpected contextual Self owner");
+    }
+  }
+  ZC_EXPECT(interfaceFacts == 2);
+  ZC_EXPECT(implFacts == 2);
+  auto verified = BindingVerifier::verify(input, zc::mv(value));
+  ZC_REQUIRE(verified.is<VerifiedBindingOutput>());
   ZC_EXPECT(sourceFixture.diagnostics->errorCount() == 0);
 }
 
 ZC_TEST("ReceiverBinding.BindsAttributedReceiverAndPreservesNameToken") {
   ParsedSource sourceFixture(
       "module root;\n"
-      "fun make(#[zom::param::move] this: i32) {\n"
-      "  const closure = fun() use [this] { this; };\n"
+      "class Host {\n"
+      "  fun make(#[zom::param::move] this: i32) {\n"
+      "    const closure = fun() use [this] { this; };\n"
+      "  }\n"
       "}\n"_zc);
   auto snapshot = sourceFixture.snapshot();
-  auto expectedReceiverToken = snapshot.span(42, 46);
+  auto expectedReceiverToken = snapshot.span(57, 61);
   ZC_REQUIRE(expectedReceiverToken != zc::none);
   FrozenFixture fixture(sourceFixture, true);
   auto inputResult = verify(fixture);
@@ -4433,10 +4723,8 @@ ZC_TEST("ReceiverBinding.BindsAttributedReceiverAndPreservesNameToken") {
   ZC_REQUIRE(captureResolution.value.is<BoundNameResolution>());
   ZC_EXPECT(requireDefinitionTarget(
                 captureResolution.value.get<BoundNameResolution>().bindingIdentity) == receiver);
-  const auto& receiverResolution = requireResolution(metadata.nodeBindings(), receivers[0]);
-  ZC_REQUIRE(receiverResolution.value.is<BoundNameResolution>());
-  ZC_EXPECT(requireDefinitionTarget(
-                receiverResolution.value.get<BoundNameResolution>().bindingIdentity) == receiver);
+  const auto& receiverBinding = requireThisBinding(metadata.thisBindings(), receivers[0]);
+  ZC_EXPECT(receiverBinding.binding.receiverParameter == receiver);
   ZC_EXPECT(sourceFixture.diagnostics->errorCount() == 0);
 }
 
@@ -4495,11 +4783,13 @@ ZC_TEST("ReceiverBinding.DoesNotClassifyAttributedOrdinaryParameter") {
 ZC_TEST("ReceiverBinding.BindsReceiverAfterStackedOuterAttributes") {
   ParsedSource sourceFixture(
       "module root;\n"
-      "fun make(#[audit::first] #[zom::param::move] this: i32) {\n"
-      "  const closure = fun() use [this] { this; };\n"
+      "class Host {\n"
+      "  fun make(#[audit::first] #[zom::param::move] this: i32) {\n"
+      "    const closure = fun() use [this] { this; };\n"
+      "  }\n"
       "}\n"_zc);
   auto snapshot = sourceFixture.snapshot();
-  auto expectedReceiverToken = snapshot.span(58, 62);
+  auto expectedReceiverToken = snapshot.span(73, 77);
   ZC_REQUIRE(expectedReceiverToken != zc::none);
   FrozenFixture fixture(sourceFixture, true);
   auto inputResult = verify(fixture);
@@ -4534,14 +4824,12 @@ ZC_TEST("ReceiverBinding.BindsReceiverAfterStackedOuterAttributes") {
   ZC_REQUIRE(captureResolution.value.is<BoundNameResolution>());
   ZC_EXPECT(requireDefinitionTarget(
                 captureResolution.value.get<BoundNameResolution>().bindingIdentity) == receiver);
-  const auto& receiverResolution = requireResolution(metadata.nodeBindings(), receivers[0]);
-  ZC_REQUIRE(receiverResolution.value.is<BoundNameResolution>());
-  ZC_EXPECT(requireDefinitionTarget(
-                receiverResolution.value.get<BoundNameResolution>().bindingIdentity) == receiver);
+  const auto& receiverBinding = requireThisBinding(metadata.thisBindings(), receivers[0]);
+  ZC_EXPECT(receiverBinding.binding.receiverParameter == receiver);
   ZC_EXPECT(sourceFixture.diagnostics->errorCount() == 0);
 }
 
-ZC_TEST("ReceiverBinding.RejectsMissingAndDuplicateReceivers") {
+ZC_TEST("ReceiverBinding.RejectsMissingReceiver") {
   ParsedSource missingSource("module root;\nfun run() { this; }\n"_zc);
   FrozenFixture missingFixture(missingSource, true);
   auto missingInputResult = verify(missingFixture);
@@ -4562,153 +4850,6 @@ ZC_TEST("ReceiverBinding.RejectsMissingAndDuplicateReceivers") {
   ZC_IF_SOME(span, missingToken) { ZC_EXPECT(sameSpan(missing.sourceFailures[0].primary, span)); }
   auto missingRejected = BindingVerifier::verify(missingInput, zc::mv(missing));
   ZC_REQUIRE(missingRejected.is<SourceRejected>());
-
-  ParsedSource duplicateSource(
-      "module root;\n"
-      "fun run(this: i32, this: i32) { this; }\n"_zc);
-  FrozenFixture duplicateFixture(duplicateSource, true);
-  auto duplicateInputResult = verify(duplicateFixture);
-  ZC_REQUIRE(duplicateInputResult.is<VerifiedBindingInput>());
-  auto duplicateInput = zc::mv(duplicateInputResult.get<VerifiedBindingInput>());
-  const auto duplicateParameters =
-      nodesOfKind(duplicateInput.tree(), ast::SyntaxKind::FunctionParameterDecl);
-  ZC_REQUIRE(duplicateParameters.size() == 2);
-  auto duplicateCandidate = BindingBuilder::build(duplicateInput, *duplicateSource.diagnostics);
-  ZC_REQUIRE(duplicateCandidate.is<BindingMetadataCandidate>());
-  auto& duplicate = duplicateCandidate.get<BindingMetadataCandidate>();
-  ZC_REQUIRE(duplicate.sourceFailures.size() == 1);
-  ZC_EXPECT(duplicate.sourceFailures[0].diagnostic == BinderDiagnosticCode::RedeclareParameter);
-  ZC_REQUIRE(duplicate.sourceFailures[0].notes.size() == 1);
-  ZC_EXPECT(duplicate.sourceFailures[0].notes[0].diagnostic ==
-            BinderDiagnosticCode::PreviousDeclarationHere);
-  auto firstReceiverToken = duplicateInput.parsedModule().retainedTokenSpan(
-      duplicateParameters[0], 0, ast::SyntaxKind::ThisKeyword);
-  auto secondReceiverToken = duplicateInput.parsedModule().retainedTokenSpan(
-      duplicateParameters[1], 0, ast::SyntaxKind::ThisKeyword);
-  ZC_REQUIRE(firstReceiverToken != zc::none);
-  ZC_REQUIRE(secondReceiverToken != zc::none);
-  ZC_IF_SOME(span, firstReceiverToken) {
-    ZC_EXPECT(sameSpan(duplicate.sourceFailures[0].notes[0].source, span));
-  }
-  ZC_IF_SOME(span, secondReceiverToken) {
-    ZC_EXPECT(sameSpan(duplicate.sourceFailures[0].primary, span));
-  }
-  for (const auto& scope : duplicate.scopes) {
-    for (const auto& binding : scope.bindings) {
-      ZC_EXPECT(binding.name.name().text() != "this"_zc);
-    }
-  }
-  auto duplicateRejected = BindingVerifier::verify(duplicateInput, zc::mv(duplicate));
-  ZC_REQUIRE(duplicateRejected.is<SourceRejected>());
-}
-
-ZC_TEST("BindingVerifier.RejectsMalformedDuplicateReceiverFailures") {
-  ParsedSource sourceFixture(
-      "module root;\n"
-      "fun run(this: i32, this: i32, this: i32) {}\n"_zc);
-  FrozenFixture fixture(sourceFixture, true);
-  auto inputResult = verify(fixture);
-  ZC_REQUIRE(inputResult.is<VerifiedBindingInput>());
-  auto input = zc::mv(inputResult.get<VerifiedBindingInput>());
-  const auto parameters = nodesOfKind(input.tree(), ast::SyntaxKind::FunctionParameterDecl);
-  ZC_REQUIRE(parameters.size() == 3);
-  zc::Vector<identity::SourceSpan> receiverTokens;
-  for (const auto parameter : parameters) {
-    auto token =
-        input.parsedModule().functionParameterNameSpan(parameter, ast::SyntaxKind::ThisKeyword);
-    ZC_REQUIRE(token != zc::none);
-    ZC_IF_SOME(span, token) { receiverTokens.add(span.clone()); }
-  }
-  ZC_REQUIRE(receiverTokens.size() == 3);
-
-  const auto buildCandidate = [&]() -> BindingMetadataCandidate {
-    auto result = BindingBuilder::build(input, *sourceFixture.diagnostics);
-    if (!result.is<BindingMetadataCandidate>()) {
-      ZC_FAIL_REQUIRE("duplicate receiver mutation fixture failed to build");
-    }
-    return zc::mv(result.get<BindingMetadataCandidate>());
-  };
-  auto baseline = buildCandidate();
-  ZC_REQUIRE(baseline.sourceFailures.size() == 2);
-  for (size_t index = 0; index < baseline.sourceFailures.size(); ++index) {
-    const auto& failure = baseline.sourceFailures[index];
-    ZC_EXPECT(failure.diagnostic == BinderDiagnosticCode::RedeclareParameter);
-    ZC_EXPECT((failure.emitterOrdinal >> 56) ==
-              static_cast<uint64_t>(BinderEmitterSite::ModuleSkeleton));
-    ZC_EXPECT(((failure.emitterOrdinal >> 16) & UINT32_MAX) ==
-              schemaPreorderOrdinal(input.tree(), parameters[index + 1]));
-    ZC_EXPECT(static_cast<uint16_t>(failure.emitterOrdinal) == 0);
-    ZC_EXPECT(sameSpan(failure.primary, receiverTokens[index + 1]));
-    ZC_REQUIRE(failure.notes.size() == 1);
-    ZC_EXPECT(failure.notes[0].diagnostic == BinderDiagnosticCode::PreviousDeclarationHere);
-    ZC_EXPECT(sameSpan(failure.notes[0].source, receiverTokens[0]));
-  }
-  auto baselineRejected = BindingVerifier::verify(input, zc::mv(baseline));
-  ZC_REQUIRE(baselineRejected.is<SourceRejected>());
-
-  auto missingFailure = buildCandidate();
-  missingFailure.sourceFailures.removeLast();
-  auto missingFailureResult = BindingVerifier::verify(input, zc::mv(missingFailure));
-  ZC_EXPECT(requireBinderInvariant(missingFailureResult).kind ==
-            BinderInvariantKind::MissingRequiredResolution);
-
-  auto wrongDiagnostic = buildCandidate();
-  wrongDiagnostic.sourceFailures[0].diagnostic = BinderDiagnosticCode::UndefinedIdentifier;
-  auto wrongDiagnosticResult = BindingVerifier::verify(input, zc::mv(wrongDiagnostic));
-  ZC_EXPECT(requireBinderInvariant(wrongDiagnosticResult).kind ==
-            BinderInvariantKind::InvalidBindingFact);
-
-  auto missingNote = buildCandidate();
-  missingNote.sourceFailures[0].notes.removeLast();
-  auto missingNoteResult = BindingVerifier::verify(input, zc::mv(missingNote));
-  ZC_EXPECT(requireBinderInvariant(missingNoteResult).kind ==
-            BinderInvariantKind::InvalidBindingFact);
-
-  auto wrongNoteDiagnostic = buildCandidate();
-  wrongNoteDiagnostic.sourceFailures[0].notes[0].diagnostic =
-      BinderDiagnosticCode::UndefinedIdentifier;
-  auto wrongNoteDiagnosticResult = BindingVerifier::verify(input, zc::mv(wrongNoteDiagnostic));
-  ZC_EXPECT(requireBinderInvariant(wrongNoteDiagnosticResult).kind ==
-            BinderInvariantKind::InvalidBindingFact);
-
-  auto wrongEmitterSite = buildCandidate();
-  wrongEmitterSite.sourceFailures[0].emitterOrdinal =
-      (uint64_t(static_cast<uint8_t>(BinderEmitterSite::BodyBinding)) << 56) |
-      (wrongEmitterSite.sourceFailures[0].emitterOrdinal & 0x00ffffffffffffffULL);
-  auto wrongEmitterSiteResult = BindingVerifier::verify(input, zc::mv(wrongEmitterSite));
-  ZC_EXPECT(wrongEmitterSiteResult.is<InvariantRejected>());
-
-  auto wrongSchemaOrdinal = buildCandidate();
-  wrongSchemaOrdinal.sourceFailures[0].emitterOrdinal ^= uint64_t{1} << 16;
-  auto wrongSchemaOrdinalResult = BindingVerifier::verify(input, zc::mv(wrongSchemaOrdinal));
-  ZC_EXPECT(wrongSchemaOrdinalResult.is<InvariantRejected>());
-
-  auto wrongLocalOrdinal = buildCandidate();
-  wrongLocalOrdinal.sourceFailures[0].emitterOrdinal =
-      (wrongLocalOrdinal.sourceFailures[0].emitterOrdinal & 0xffffffffffff0000ULL) | 1;
-  auto wrongLocalOrdinalResult = BindingVerifier::verify(input, zc::mv(wrongLocalOrdinal));
-  ZC_EXPECT(requireBinderInvariant(wrongLocalOrdinalResult).kind ==
-            BinderInvariantKind::InvalidBindingFact);
-
-  auto wrongPrimary = buildCandidate();
-  wrongPrimary.sourceFailures[0].primary = receiverTokens[0].clone();
-  auto wrongPrimaryResult = BindingVerifier::verify(input, zc::mv(wrongPrimary));
-  ZC_EXPECT(requireBinderInvariant(wrongPrimaryResult).kind ==
-            BinderInvariantKind::InvalidBindingFact);
-
-  auto wrongNoteSource = buildCandidate();
-  wrongNoteSource.sourceFailures[0].notes[0].source = receiverTokens[1].clone();
-  auto wrongNoteSourceResult = BindingVerifier::verify(input, zc::mv(wrongNoteSource));
-  ZC_EXPECT(requireBinderInvariant(wrongNoteSourceResult).kind ==
-            BinderInvariantKind::InvalidBindingFact);
-
-  auto reorderedFailures = buildCandidate();
-  auto displacedFailure = zc::mv(reorderedFailures.sourceFailures[0]);
-  reorderedFailures.sourceFailures[0] = zc::mv(reorderedFailures.sourceFailures[1]);
-  reorderedFailures.sourceFailures[1] = zc::mv(displacedFailure);
-  auto reorderedFailuresResult = BindingVerifier::verify(input, zc::mv(reorderedFailures));
-  ZC_EXPECT(requireBinderInvariant(reorderedFailuresResult).kind ==
-            BinderInvariantKind::InvalidBindingFact);
 }
 
 ZC_TEST("ExplicitClosureCaptures.EnforcesDeclaredCaptureExhaustiveness") {
@@ -5412,8 +5553,9 @@ ZC_TEST("ClosureFreeVariables.RejectsCrossFunctionCapture") {
   ZC_REQUIRE(interveningScope < arena.scopes.size());
   arena.scopes[interveningScope].kind = ScopeKind::Function;
   arena.scopes[interveningScope].owner = ScopeOwner::definition(barrier);
-  auto closureResult = ClosureFreeVariableBuilder::build(input, arena, value.definitions.asPtr(),
-                                                         value.nodeBindings.asPtr());
+  auto closureResult =
+      ClosureFreeVariableBuilder::build(input, arena, value.definitions.asPtr(),
+                                        value.nodeBindings.asPtr(), value.thisBindings.asPtr());
   ZC_REQUIRE(closureResult.is<BinderInvariantFact>());
   const auto& fact = closureResult.get<BinderInvariantFact>();
   ZC_EXPECT(fact.kind == BinderInvariantKind::MalformedScopeGraph);

@@ -573,7 +573,7 @@ def check_special_callable_contract(files: dict[Path, str], errors: list[str]) -
             )
     for marker in (
         "BindingActivation.PublishesSpecialCallableParameterLists",
-        "ReceiverBinding.RejectsMissingAndDuplicateReceivers",
+        "ReceiverBinding.RejectsMissingReceiver",
     ):
         if marker not in tests:
             errors.append(f"{TEST_SOURCE}: missing special callable activation evidence: {marker}")
@@ -711,7 +711,7 @@ def check_body_binding_contract(files: dict[Path, str], errors: list[str]) -> No
         "value.is<BoundNameResolution>()",
         "!encodeTarget(encoder, input, bound.canonicalTarget)",
         "encodeSequenceSize(candidate.shadowTargets.size())",
-        "hasCompleteLexicalBindingSites(input.tree(), expected.nodeBindings.asPtr())",
+        "hasCompleteLexicalBindingSites(input, expected.nodeBindings.asPtr(),",
         "bodyBuilderFailure(input, BinderInvariantKind::InvalidBindingFact, ordinal)",
         "input.definitions().definitionKey(definition)",
         "case ast::SyntaxKind::TypeQueryExpr:",
@@ -849,9 +849,9 @@ def check_deferred_member_contract(files: dict[Path, str], errors: list[str]) ->
 
     candidate_codec = function_body(verifier, "zc::Maybe<zc::Array<uint8_t>> encodeCandidate(")
     for required in (
-        "value.is<DeferredMemberFact>()",
-        "encoder.encodeUint8(0x03);",
-        "encodeDeferredMemberFact(encoder, input, value.get<DeferredMemberFact>())",
+        "} else if (value.is<DeferredMemberFact>()) {\n"
+        "      encoder.encodeUint8(0x03);\n"
+        "      if (!encodeDeferredMemberFact(encoder, input, value.get<DeferredMemberFact>()))",
         "encoder.encodeSequenceSize(candidate.deferredMembers.size());",
         "for (const auto& fact : candidate.deferredMembers)",
         "encodeDeferredMemberFact(encoder, input, fact)",
@@ -917,6 +917,146 @@ def check_deferred_member_contract(files: dict[Path, str], errors: list[str]) ->
             errors.append(f"{TEST_SOURCE}: missing deferred-member evidence: {marker}")
 
 
+def check_contextual_self_contract(files: dict[Path, str], errors: list[str]) -> None:
+    metadata_header = files.get(METADATA_HEADER, "")
+    metadata_source = files.get(METADATA_SOURCE, "")
+    verifier_header = files.get(VERIFIER_HEADER, "")
+    verifier = files.get(VERIFIER_SOURCE, "")
+    tests = files.get(TEST_SOURCE, "")
+
+    oracle = function_body(verifier, "ContextualSelfOracleResult verifyContextualSelfFacts(")
+    if not oracle:
+        errors.append(f"{VERIFIER_SOURCE}: independent contextual-Self oracle is missing")
+    else:
+        for forbidden in ("BodyBindingBuilder::build", "BindingBuilder::buildCandidate"):
+            if forbidden in oracle:
+                errors.append(
+                    f"{VERIFIER_SOURCE}: contextual-Self oracle reuses producer authority: "
+                    f"{forbidden}"
+                )
+        for required in (
+            "ast::visitChildNodeIds(tree, syntax",
+            "ast::kNamedTypeExprPathWord",
+            "ast::kModulePathSegmentsFirstWord",
+            'tree.ident(names[0]) != "Self"_zc',
+            "input.parsedModule().functionParameterHasImplicitSelfType(parent)",
+            "reconstructContextualSelfOwner(input, parentNodes.asPtr(), node, malformedOwner)",
+            "input.parsedModule().retainedTokenSpan(node, 0, ast::SyntaxKind::Identifier)",
+            "sameSelfOwner(fact.owner, ZC_ASSERT_NONNULL(owner))",
+            "sameSpan(fact.source, ZC_ASSERT_NONNULL(source))",
+        ):
+            if required not in oracle:
+                errors.append(
+                    f"{VERIFIER_SOURCE}: contextual-Self oracle omits AST reconstruction: "
+                    f"{required}"
+                )
+
+    owner_oracle = function_body(verifier, "zc::Maybe<SelfOwner> reconstructContextualSelfOwner(")
+    for required in (
+        "ast::kClassDeclMembersIdWord",
+        "ast::kStructDeclMembersIdWord",
+        "ast::kEnumDeclarationVariantsIdWord",
+        "ast::kErrorDeclMembersIdWord",
+        "ast::kInterfaceDeclMembersIdWord",
+        "ast::kStandaloneImplDeclMembersIdWord",
+        "input.definitions().definitionAt(parent)",
+        "input.definitions().implAt(parent)",
+    ):
+        if required not in owner_oracle:
+            errors.append(
+                f"{VERIFIER_SOURCE}: contextual-Self owner oracle is incomplete: {required}"
+            )
+
+    for required in (
+        "enum class ContextualSelfOracleResult",
+        "const auto expectedContextualSelf = verifyContextualSelfFacts(input, expected);",
+        "expectedContextualSelf != ContextualSelfOracleResult::Valid",
+        "const auto candidateContextualSelf = verifyContextualSelfFacts(input, candidate);",
+        "candidateContextualSelf != ContextualSelfOracleResult::Valid",
+    ):
+        if required not in verifier:
+            errors.append(
+                f"{VERIFIER_SOURCE}: contextual-Self verification is disconnected: {required}"
+            )
+
+    for marker in (
+        "ContextualSelfBinding.PublishesNominalOwnerAndReceiverFacts",
+        "ContextualSelfBinding.PublishesInterfaceAndImplOwners",
+        "ContextualSelfBinding.ReportsModuleScopeSelf",
+        "BindingVerifier.RejectsMalformedContextualSelfFacts",
+    ):
+        if marker not in tests:
+            errors.append(f"{TEST_SOURCE}: missing contextual-Self evidence: {marker}")
+
+    framing = function_body(
+        metadata_source, "zc::Array<uint8_t> frameBindingExtensionSequences("
+    )
+    for required in (
+        "frameBindingExtensionSequences(",
+        "zc::ArrayPtr<const zc::ArrayPtr<const uint8_t>> selfTypeRecords",
+        "zc::ArrayPtr<const zc::ArrayPtr<const uint8_t>> thisBindingRecords",
+    ):
+        if required not in metadata_header:
+            errors.append(f"{METADATA_HEADER}: incomplete RFC 0014 framing oracle: {required}")
+    for required in (
+        "appendUint64(bytes, selfTypeRecords.size());",
+        "for (const auto record : selfTypeRecords) { bytes.addAll(record); }",
+        "appendUint64(bytes, thisBindingRecords.size());",
+        "for (const auto record : thisBindingRecords) { bytes.addAll(record); }",
+    ):
+        if required not in framing:
+            errors.append(f"{METADATA_SOURCE}: RFC 0014 framing oracle drifted: {required}")
+
+    extension_codec = function_body(verifier, "bool encodeBindingExtensionSequences(")
+    for required in (
+        "encodeBindingExtensionSequences(",
+        "identity::CanonicalEncoder& encoder",
+        "zc::ArrayPtr<const BoundSelfType> selfTypes",
+        "zc::ArrayPtr<const BoundThis> thisBindings",
+    ):
+        if required not in verifier_header:
+            errors.append(f"{VERIFIER_HEADER}: incomplete RFC 0014 extension codec: {required}")
+    for required in (
+        "encoder.encodeSequenceSize(selfTypes.size());",
+        "encoder.encodeUint32(fact.syntax.value);",
+        "encoder.encodeUint8(0x01);",
+        "encoder.encodeUint8(0x02);",
+        "encoder.encodeUint8(0x03);",
+        "encoder.encodeSequenceSize(thisBindings.size());",
+        "encoder.encodeUint32(fact.expression.value);",
+        "fact.binding.receiverParameter",
+    ):
+        if required not in extension_codec:
+            errors.append(f"{VERIFIER_SOURCE}: RFC 0014 extension codec drifted: {required}")
+
+    candidate_codec = function_body(
+        verifier, "zc::Maybe<zc::Array<uint8_t>> encodeCandidate("
+    )
+    extension_call = "encodeBindingExtensionSequences(encoder, input, candidate.selfTypes.asPtr(),"
+    surface_check = "if (candidate.currentSurface.sourceModule != input.module()"
+    if extension_call not in candidate_codec:
+        errors.append(f"{VERIFIER_SOURCE}: RFC 0014 extension codec is disconnected")
+    elif surface_check not in candidate_codec or candidate_codec.index(
+        extension_call
+    ) > candidate_codec.index(surface_check):
+        errors.append(
+            f"{VERIFIER_SOURCE}: RFC 0014 extensions must precede currentSurface encoding"
+        )
+
+    for marker in (
+        "BindingExtensionFraming.MatchesNormativeRFC0014Oracles",
+        "BindingExtensionFraming.ComposesCompleteContextualSelfRecords",
+        "00000000000000000000000000000000",
+        "374708fff7719dd5979ec875d56cd2286f6d3cf7ec317a3b25632aab28ec37bb",
+        "0000000000000001a10000000000000000",
+        "c02ad86008dffaa50c141da2dc596ec90bf4fdddb44e29500d33ba32ab9a07eb",
+        "0000000000000001a10000000000000002b2c3",
+        "c8d7b4d650f7730b37fe8f562b8963fa19c339fc3f9d01528090d49d1c1aea22",
+    ):
+        if marker not in tests:
+            errors.append(f"{TEST_SOURCE}: missing RFC 0014 framing evidence: {marker}")
+
+
 def check_closure_free_variable_contract(
     files: dict[Path, str], errors: list[str]
 ) -> None:
@@ -944,7 +1084,7 @@ def check_closure_free_variable_contract(
         "zc::Vector<ClosureCaptureDomain> closureCaptureDomains;",
         "zc::Vector<size_t> closureFactRows;",
         "zc::TreeMap<zc::String, size_t> definitionIndices;",
-        "reject(BinderInvariantKind::MissingRequiredResolution, resolution.node);",
+        "reject(BinderInvariantKind::MissingRequiredResolution, node);",
         "kind == identity::DefinitionKind::Parameter ||",
         "kind == identity::DefinitionKind::Local ||",
         "kind == identity::DefinitionKind::PatternBinding",
@@ -963,7 +1103,7 @@ def check_closure_free_variable_contract(
         "schemaOrdinals[site.value]",
         "crossedClosures.add(row);",
         "for (const auto closureIndex : crossedClosures)",
-        "appendReference(closureIndex, target, resolution.node)",
+        "appendReference(closureIndex, target, node)",
         "scope.kind == ScopeKind::Function",
         "existing == site",
         "input.definitions().definitionKey(closure.variables[index].target)",
@@ -1026,7 +1166,9 @@ def check_closure_free_variable_contract(
                 f"{CLOSURE_SOURCE}: indexed dense closure rows are incomplete: {required}"
             )
 
-    collect = function_body(source, "void collect(const BindingResolution& resolution)")
+    collect = function_body(
+        source, "void collectReference(ast::NodeId node, identity::DefId target)"
+    )
     for required in (
         "auto targetCallableScope = owningCallableScope(definitionIndexValue);",
         "if (targetCallableScope == zc::none) {",
@@ -1040,7 +1182,7 @@ def check_closure_free_variable_contract(
         "const size_t row = closureFactRows[callableIndex];",
         "crossedClosures.add(row);",
         "if (scope.kind == ScopeKind::Module || scope.parent == zc::none) {\n"
-        "        reject(BinderInvariantKind::MalformedScopeGraph, resolution.node);\n"
+        "        reject(BinderInvariantKind::MalformedScopeGraph, node);\n"
         "        return;\n"
         "      }\n"
         "      ZC_IF_SOME(parent, scope.parent) { scopeIndex = parent.index(); }",
@@ -1079,7 +1221,8 @@ def check_closure_free_variable_contract(
 
     for required in (
         '"zomlang/compiler/binder/internal/closure-free-variables.h"',
-        "ClosureFreeVariableBuilder::build(input, arena, skeleton.definitions.asPtr(),",
+        "ClosureFreeVariableBuilder::build(\n"
+        "      input, arena, skeleton.definitions.asPtr(), nodeBindings.asPtr(),",
         "candidate.closureFreeVariables = zc::mv(closureFreeVariables);",
         "for (const auto& closure : candidate.closureFreeVariables)",
         "for (const auto& closure : candidate.closureFreeVariables) {\n"
@@ -1324,7 +1467,7 @@ def check_closure_free_variable_contract(
         )
         for required in (
             "uint32_t scopeIndex = "
-            "nearestCallableScopeByScope[scopeByNode[resolution.node.value]];",
+            "nearestCallableScopeByScope[scopeByNode[reference.node.value]];",
             "const size_t callableIndex = callableInventoryByScope[scopeIndex];",
             "closureSyntaxDomains[callableIndex] == ClosureFreeOracleClosureSyntax::Inferred",
             "crossedClosures.add(callableIndex);",
@@ -1362,12 +1505,12 @@ def check_closure_free_variable_contract(
         for required in (
             "const ClosureFreeOracleTripleOrderKey key{canonicalRankByInventory[closureIndex],\n"
             "                                                canonicalRankByInventory[targetIndex],",
-            "schemaOrdinals[resolution.node.value]",
+            "schemaOrdinals[reference.node.value]",
             "auto existing = triples.find(key);",
             "triples.insert(",
             "triple.closure != inventory[closureIndex].definition",
             "triple.target != target",
-            "triple.referenceSite != resolution.node",
+            "triple.referenceSite != reference.node",
         ):
             if required not in triple_collection:
                 errors.append(
@@ -1644,8 +1787,7 @@ def check_explicit_capture_contract(files: dict[Path, str], errors: list[str]) -
         "return impl->candidate.explicitClosureCaptures.asPtr();",
         "case ast::SyntaxKind::CaptureItem:\n"
         "        requireSite(node, ast::SyntaxKind::CaptureItem, Namespace::Value);",
-        "case ast::SyntaxKind::ThisExpr:\n"
-        "        requireSite(node, ast::SyntaxKind::ThisExpr, Namespace::Value);",
+        "if (boundThisExpressions[node.value]) { return; }",
         "syntaxKindAtSchemaOrdinal(tree, schemaOrdinal)",
         "labelDuplicate && !consumedFailures[index]",
         "BinderEmitterSite::LabelAndClosure) && controlNode",
@@ -1697,8 +1839,7 @@ def check_explicit_capture_contract(files: dict[Path, str], errors: list[str]) -
 
     lexical_census = function_body(verifier, "bool hasCompleteLexicalBindingSites(")
     for required in (
-        "case ast::SyntaxKind::ThisExpr:\n"
-        "        requireSite(node, ast::SyntaxKind::ThisExpr, Namespace::Value);",
+        "if (boundThisExpressions[node.value]) { return; }",
         "case ast::SyntaxKind::CaptureItem:\n"
         "        requireSite(node, ast::SyntaxKind::CaptureItem, Namespace::Value);",
     ):
@@ -2158,9 +2299,9 @@ def check_explicit_capture_contract(files: dict[Path, str], errors: list[str]) -
                 )
 
         this_expression_target_guard = (
-            "if (tree.node(resolution.node).kind == ast::SyntaxKind::ThisExpr) {"
+            "if (syntax.kind == ast::SyntaxKind::ThisExpr) {"
             in oracle
-            and "activeReceiver(scopeByNode[resolution.node.value])" in oracle
+            and "activeReceiver(scopeByNode[node.value])" in oracle
             and "ZC_ASSERT_NONNULL(expectedReceiver) != ZC_ASSERT_NONNULL(targetIndex)"
             in oracle
         )
@@ -2209,7 +2350,7 @@ def check_explicit_capture_contract(files: dict[Path, str], errors: list[str]) -
     for marker in (
         "ExplicitClosureCaptures.PublishSourceOrderedBindingsAndEmptyClauses",
         "ExplicitClosureCaptures.ResolveBeforeOwnParametersActivate",
-        "ExplicitClosureCaptures.ResolveBeforeOwnReceiverActivates",
+        "ExplicitClosureCaptures.ResolveReceiverAcrossOrdinaryClosureParameter",
         "ExplicitClosureCaptures.PreferEarlierEnclosingBlockLocal",
         "ExplicitClosureCaptures.RejectLaterInitializerAndSiblingLocals",
         "ExplicitClosureCaptures.EmptyClauseRejectsOuterReceiverReference",
@@ -2218,8 +2359,7 @@ def check_explicit_capture_contract(files: dict[Path, str], errors: list[str]) -
         "ReceiverBinding.BindsAttributedReceiverAndPreservesNameToken",
         "ReceiverBinding.DoesNotClassifyAttributedOrdinaryParameter",
         "ReceiverBinding.BindsReceiverAfterStackedOuterAttributes",
-        "ReceiverBinding.RejectsMissingAndDuplicateReceivers",
-        "BindingVerifier.RejectsMalformedDuplicateReceiverFailures",
+        "ReceiverBinding.RejectsMissingReceiver",
         "BindingVerifier.RejectsWrongThisExpressionReceiverTarget",
         "ExplicitClosureCaptures.EnforcesDeclaredCaptureExhaustiveness",
         "ExplicitClosureCaptures.EnforcesExhaustivenessForNestedCaptureItems",
@@ -3410,6 +3550,7 @@ def check(files: dict[Path, str]) -> list[str]:
     check_pattern_activation_contract(files, errors)
     check_body_binding_contract(files, errors)
     check_deferred_member_contract(files, errors)
+    check_contextual_self_contract(files, errors)
     check_closure_free_variable_contract(files, errors)
     check_explicit_capture_contract(files, errors)
     check_label_fact_contract(files, errors)
@@ -4313,6 +4454,48 @@ def self_test(files: dict[Path, str]) -> list[str]:
             "        treeIsValid = false;",
         ),
         (
+            "disconnected candidate contextual Self oracle",
+            VERIFIER_SOURCE,
+            "const auto candidateContextualSelf = verifyContextualSelfFacts(input, candidate);",
+            "const auto candidateContextualSelf = ContextualSelfOracleResult::Valid;",
+        ),
+        (
+            "contextual Self oracle ignores implicit receiver types",
+            VERIFIER_SOURCE,
+            "input.parsedModule().functionParameterHasImplicitSelfType(parent)",
+            "false",
+        ),
+        (
+            "contextual Self owner oracle ignores impl identity",
+            VERIFIER_SOURCE,
+            "input.definitions().implAt(parent)",
+            "zc::none",
+        ),
+        (
+            "missing malformed contextual Self evidence",
+            TEST_SOURCE,
+            "BindingVerifier.RejectsMalformedContextualSelfFacts",
+            "BindingVerifier.MissingMalformedContextualSelfFacts",
+        ),
+        (
+            "disconnected RFC 0014 extension codec",
+            VERIFIER_SOURCE,
+            "encodeBindingExtensionSequences(encoder, input, candidate.selfTypes.asPtr(),",
+            "disconnectedBindingExtensionSequences(encoder, input, candidate.selfTypes.asPtr(),",
+        ),
+        (
+            "swapped RFC 0014 extension sequence framing",
+            METADATA_SOURCE,
+            "appendUint64(bytes, selfTypeRecords.size());",
+            "appendUint64(bytes, thisBindingRecords.size());",
+        ),
+        (
+            "missing RFC 0014 fixed framing evidence",
+            TEST_SOURCE,
+            "BindingExtensionFraming.MatchesNormativeRFC0014Oracles",
+            "BindingExtensionFraming.MissingNormativeRFC0014Oracles",
+        ),
+        (
             "premature local activation",
             BODY_SOURCE,
             "if (tree.contains(initializer)) { visitNode(initializer, scopeIndex, Namespace::Value); }",
@@ -4418,7 +4601,7 @@ def self_test(files: dict[Path, str]) -> list[str]:
         (
             "missing lexical binding census",
             VERIFIER_SOURCE,
-            "hasCompleteLexicalBindingSites(input.tree(), expected.nodeBindings.asPtr())",
+            "hasCompleteLexicalBindingSites(input, expected.nodeBindings.asPtr(),",
             "expected.nodeBindings.empty()",
         ),
         (
@@ -4635,12 +4818,12 @@ def self_test(files: dict[Path, str]) -> list[str]:
             "explicit captures block outer inference propagation",
             CLOSURE_SOURCE,
             "if (scope.kind == ScopeKind::Module || scope.parent == zc::none) {\n"
-            "        reject(BinderInvariantKind::MalformedScopeGraph, resolution.node);\n"
+            "        reject(BinderInvariantKind::MalformedScopeGraph, node);\n"
             "        return;\n"
             "      }\n"
             "      ZC_IF_SOME(parent, scope.parent) { scopeIndex = parent.index(); }",
             "if (scope.kind == ScopeKind::Module || scope.parent == zc::none) {\n"
-            "        reject(BinderInvariantKind::MalformedScopeGraph, resolution.node);\n"
+            "        reject(BinderInvariantKind::MalformedScopeGraph, node);\n"
             "        return;\n"
             "      }\n"
             "      return;",
@@ -4715,7 +4898,8 @@ def self_test(files: dict[Path, str]) -> list[str]:
         (
             "disconnected closure fact producer",
             VERIFIER_SOURCE,
-            "ClosureFreeVariableBuilder::build(input, arena, skeleton.definitions.asPtr(),",
+            "ClosureFreeVariableBuilder::build(\n"
+            "      input, arena, skeleton.definitions.asPtr(), nodeBindings.asPtr(),",
             "disconnectedClosureFreeVariableBuilder(input, arena, skeleton.definitions.asPtr(),",
         ),
         (
@@ -5274,7 +5458,7 @@ def self_test(files: dict[Path, str]) -> list[str]:
         (
             "producer supplied this-expression receiver target",
             VERIFIER_SOURCE,
-            "activeReceiver(scopeByNode[resolution.node.value])",
+            "activeReceiver(scopeByNode[node.value])",
             "zc::Maybe<size_t>(targetIndex)",
         ),
         (
@@ -5288,6 +5472,7 @@ def self_test(files: dict[Path, str]) -> list[str]:
             "missing this-expression lexical census",
             VERIFIER_SOURCE,
             "case ast::SyntaxKind::ThisExpr:\n"
+            "        if (boundThisExpressions[node.value]) { return; }\n"
             "        requireSite(node, ast::SyntaxKind::ThisExpr, Namespace::Value);",
             "case ast::SyntaxKind::ThisExpr:\n        return;",
         ),
@@ -5364,12 +5549,6 @@ def self_test(files: dict[Path, str]) -> list[str]:
             "ReceiverBinding.MissingAttributedReceiverAndNameToken",
         ),
         (
-            "missing receiver duplicate oracle evidence",
-            TEST_SOURCE,
-            "BindingVerifier.RejectsMalformedDuplicateReceiverFailures",
-            "BindingVerifier.MissingMalformedDuplicateReceiverFailures",
-        ),
-        (
             "missing explicit capture failure oracle evidence",
             TEST_SOURCE,
             "BindingVerifier.RejectsMalformedExplicitCaptureFailures",
@@ -5384,8 +5563,8 @@ def self_test(files: dict[Path, str]) -> list[str]:
         (
             "missing receiver binding evidence",
             TEST_SOURCE,
-            "ReceiverBinding.RejectsMissingAndDuplicateReceivers",
-            "ReceiverBinding.MissingAndDuplicateReceivers",
+            "ReceiverBinding.RejectsMissingReceiver",
+            "ReceiverBinding.MissingReceiver",
         ),
         (
             "missing declared-name diagnostic adapter",

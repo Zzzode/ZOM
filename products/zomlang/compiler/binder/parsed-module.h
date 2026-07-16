@@ -86,6 +86,8 @@ public:
   /// \brief Return the parser-retained name token of one function parameter.
   ZC_NODISCARD zc::Maybe<identity::SourceSpan> functionParameterNameSpan(
       ast::NodeId parameter, ast::SyntaxKind expectedKind) const;
+  /// \brief Return whether a receiver parameter omits its source type annotation.
+  ZC_NODISCARD bool functionParameterHasImplicitSelfType(ast::NodeId parameter) const;
   /// \brief Resolve the start of a checked source span back to its parser source location.
   ZC_NODISCARD zc::Maybe<source::SourceLoc> sourceLocFor(const identity::SourceSpan& span) const;
 

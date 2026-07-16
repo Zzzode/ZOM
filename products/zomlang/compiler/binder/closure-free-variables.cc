@@ -54,18 +54,24 @@ class ClosureFreeVariableCursor final {
 public:
   ClosureFreeVariableCursor(const VerifiedBindingInput& input, const ScopeArenaCandidate& arena,
                             zc::ArrayPtr<const DefinitionFact> definitions,
-                            zc::ArrayPtr<const BindingResolution> nodeBindings)
+                            zc::ArrayPtr<const BindingResolution> nodeBindings,
+                            zc::ArrayPtr<const BoundThis> thisBindings)
       : input(input),
         tree(input.tree()),
         arena(arena),
         definitions(definitions),
-        nodeBindings(nodeBindings) {}
+        nodeBindings(nodeBindings),
+        thisBindings(thisBindings) {}
 
   ClosureFreeVariableBuildResult run() {
     if (!initialize()) { return takeRejection(); }
     if (!initializeDenseRows()) { return takeRejection(); }
     for (const auto& resolution : nodeBindings) {
       collect(resolution);
+      if (rejected != zc::none) { return takeRejection(); }
+    }
+    for (const auto& binding : thisBindings) {
+      collectReference(binding.expression, binding.binding.receiverParameter);
       if (rejected != zc::none) { return takeRejection(); }
     }
     if (!canonicalize()) { return takeRejection(); }
@@ -78,6 +84,7 @@ private:
   const ScopeArenaCandidate& arena;
   zc::ArrayPtr<const DefinitionFact> definitions;
   zc::ArrayPtr<const BindingResolution> nodeBindings;
+  zc::ArrayPtr<const BoundThis> thisBindings;
   zc::Vector<uint32_t> scopeByNode;
   zc::Vector<uint32_t> schemaOrdinals;
   zc::Vector<uint32_t> owningCallableScopeIndices;
@@ -369,9 +376,102 @@ private:
     return true;
   }
 
+  void collectReference(ast::NodeId node, identity::DefId target) {
+    if (!tree.contains(node) || node.value >= scopeByNode.size() ||
+        scopeByNode[node.value] == kMissingIndex) {
+      reject(BinderInvariantKind::InvalidBindingFact, node);
+      return;
+    }
+    auto targetIndex = definitionIndex(target);
+    if (targetIndex == zc::none) {
+      reject(BinderInvariantKind::MissingRequiredResolution, node);
+      return;
+    }
+    const auto definitionIndexValue = ZC_ASSERT_NONNULL(targetIndex);
+    const auto& targetDefinition = definitions[definitionIndexValue];
+    if (!isCapturable(targetDefinition.kind)) { return; }
+    auto targetCallableScope = owningCallableScope(definitionIndexValue);
+    if (targetCallableScope == zc::none) {
+      uint32_t scopeIndex = scopeByNode[node.value];
+      const uint32_t targetDeclaringScope = targetDefinition.declaringScope.index();
+      for (size_t traversed = 0; traversed < arena.scopes.size(); ++traversed) {
+        if (scopeIndex >= arena.scopes.size()) {
+          reject(BinderInvariantKind::MalformedScopeGraph, node);
+          return;
+        }
+        if (scopeIndex == targetDeclaringScope) { return; }
+        const auto& scope = arena.scopes[scopeIndex];
+        if (scope.kind == ScopeKind::Function || scope.kind == ScopeKind::Closure ||
+            scope.kind == ScopeKind::Module || scope.parent == zc::none) {
+          reject(BinderInvariantKind::MalformedScopeGraph, node);
+          return;
+        }
+        ZC_IF_SOME(parent, scope.parent) { scopeIndex = parent.index(); }
+      }
+      reject(BinderInvariantKind::MalformedScopeGraph, node);
+      return;
+    }
+
+    const uint32_t targetScopeIndex = ZC_ASSERT_NONNULL(targetCallableScope);
+    if (targetScopeIndex >= callableDefinitionIndices.size() ||
+        callableDefinitionIndices[targetScopeIndex] == kMissingSize) {
+      reject(BinderInvariantKind::MalformedScopeGraph, node);
+      return;
+    }
+
+    zc::Vector<size_t> crossedClosures;
+    uint32_t scopeIndex = scopeByNode[node.value];
+    for (size_t traversed = 0; traversed < arena.scopes.size(); ++traversed) {
+      if (scopeIndex >= arena.scopes.size()) {
+        reject(BinderInvariantKind::MalformedScopeGraph, node);
+        return;
+      }
+      if (scopeIndex == targetScopeIndex) {
+        for (const auto closureIndex : crossedClosures) {
+          if (!appendReference(closureIndex, target, node)) {
+            reject(BinderInvariantKind::InvalidBindingFact, node);
+            return;
+          }
+        }
+        return;
+      }
+      const auto& scope = arena.scopes[scopeIndex];
+      if (scope.kind == ScopeKind::Function || scope.kind == ScopeKind::Closure) {
+        if (scopeIndex >= callableDefinitionIndices.size() ||
+            callableDefinitionIndices[scopeIndex] == kMissingSize) {
+          reject(BinderInvariantKind::MalformedScopeGraph, node);
+          return;
+        }
+        const size_t callableIndex = callableDefinitionIndices[scopeIndex];
+        if (scope.kind == ScopeKind::Function) {
+          reject(BinderInvariantKind::MalformedScopeGraph, node);
+          return;
+        }
+        if (callableIndex >= definitions.size() ||
+            closureCaptureDomains[callableIndex] == ClosureCaptureDomain::NotClosure) {
+          reject(BinderInvariantKind::InvalidBindingFact, node);
+          return;
+        }
+        if (closureCaptureDomains[callableIndex] == ClosureCaptureDomain::Inferred) {
+          const size_t row = closureFactRows[callableIndex];
+          if (row >= facts.size() || facts[row].closure != definitions[callableIndex].identity) {
+            reject(BinderInvariantKind::MissingRequiredResolution, node);
+            return;
+          }
+          crossedClosures.add(row);
+        }
+      }
+      if (scope.kind == ScopeKind::Module || scope.parent == zc::none) {
+        reject(BinderInvariantKind::MalformedScopeGraph, node);
+        return;
+      }
+      ZC_IF_SOME(parent, scope.parent) { scopeIndex = parent.index(); }
+    }
+    reject(BinderInvariantKind::MalformedScopeGraph, node);
+  }
+
   void collect(const BindingResolution& resolution) {
-    if (!tree.contains(resolution.node) || resolution.node.value >= scopeByNode.size() ||
-        scopeByNode[resolution.node.value] == kMissingIndex) {
+    if (!tree.contains(resolution.node)) {
       reject(BinderInvariantKind::InvalidBindingFact, resolution.node);
       return;
     }
@@ -389,94 +489,7 @@ private:
       reject(BinderInvariantKind::InvalidBindingFact, resolution.node);
       return;
     }
-
-    const auto target = bindingIdentity.get<DefinitionBindingTarget>().definition;
-    auto targetIndex = definitionIndex(target);
-    if (targetIndex == zc::none) {
-      reject(BinderInvariantKind::MissingRequiredResolution, resolution.node);
-      return;
-    }
-    const auto definitionIndexValue = ZC_ASSERT_NONNULL(targetIndex);
-    const auto& targetDefinition = definitions[definitionIndexValue];
-    if (!isCapturable(targetDefinition.kind)) { return; }
-    auto targetCallableScope = owningCallableScope(definitionIndexValue);
-    if (targetCallableScope == zc::none) {
-      uint32_t scopeIndex = scopeByNode[resolution.node.value];
-      const uint32_t targetDeclaringScope = targetDefinition.declaringScope.index();
-      for (size_t traversed = 0; traversed < arena.scopes.size(); ++traversed) {
-        if (scopeIndex >= arena.scopes.size()) {
-          reject(BinderInvariantKind::MalformedScopeGraph, resolution.node);
-          return;
-        }
-        if (scopeIndex == targetDeclaringScope) { return; }
-        const auto& scope = arena.scopes[scopeIndex];
-        if (scope.kind == ScopeKind::Function || scope.kind == ScopeKind::Closure ||
-            scope.kind == ScopeKind::Module || scope.parent == zc::none) {
-          reject(BinderInvariantKind::MalformedScopeGraph, resolution.node);
-          return;
-        }
-        ZC_IF_SOME(parent, scope.parent) { scopeIndex = parent.index(); }
-      }
-      reject(BinderInvariantKind::MalformedScopeGraph, resolution.node);
-      return;
-    }
-
-    const uint32_t targetScopeIndex = ZC_ASSERT_NONNULL(targetCallableScope);
-    if (targetScopeIndex >= callableDefinitionIndices.size() ||
-        callableDefinitionIndices[targetScopeIndex] == kMissingSize) {
-      reject(BinderInvariantKind::MalformedScopeGraph, resolution.node);
-      return;
-    }
-
-    zc::Vector<size_t> crossedClosures;
-    uint32_t scopeIndex = scopeByNode[resolution.node.value];
-    for (size_t traversed = 0; traversed < arena.scopes.size(); ++traversed) {
-      if (scopeIndex >= arena.scopes.size()) {
-        reject(BinderInvariantKind::MalformedScopeGraph, resolution.node);
-        return;
-      }
-      if (scopeIndex == targetScopeIndex) {
-        for (const auto closureIndex : crossedClosures) {
-          if (!appendReference(closureIndex, target, resolution.node)) {
-            reject(BinderInvariantKind::InvalidBindingFact, resolution.node);
-            return;
-          }
-        }
-        return;
-      }
-      const auto& scope = arena.scopes[scopeIndex];
-      if (scope.kind == ScopeKind::Function || scope.kind == ScopeKind::Closure) {
-        if (scopeIndex >= callableDefinitionIndices.size() ||
-            callableDefinitionIndices[scopeIndex] == kMissingSize) {
-          reject(BinderInvariantKind::MalformedScopeGraph, resolution.node);
-          return;
-        }
-        const size_t callableIndex = callableDefinitionIndices[scopeIndex];
-        if (scope.kind == ScopeKind::Function) {
-          reject(BinderInvariantKind::MalformedScopeGraph, resolution.node);
-          return;
-        }
-        if (callableIndex >= definitions.size() ||
-            closureCaptureDomains[callableIndex] == ClosureCaptureDomain::NotClosure) {
-          reject(BinderInvariantKind::InvalidBindingFact, resolution.node);
-          return;
-        }
-        if (closureCaptureDomains[callableIndex] == ClosureCaptureDomain::Inferred) {
-          const size_t row = closureFactRows[callableIndex];
-          if (row >= facts.size() || facts[row].closure != definitions[callableIndex].identity) {
-            reject(BinderInvariantKind::MissingRequiredResolution, resolution.node);
-            return;
-          }
-          crossedClosures.add(row);
-        }
-      }
-      if (scope.kind == ScopeKind::Module || scope.parent == zc::none) {
-        reject(BinderInvariantKind::MalformedScopeGraph, resolution.node);
-        return;
-      }
-      ZC_IF_SOME(parent, scope.parent) { scopeIndex = parent.index(); }
-    }
-    reject(BinderInvariantKind::MalformedScopeGraph, resolution.node);
+    collectReference(resolution.node, bindingIdentity.get<DefinitionBindingTarget>().definition);
   }
 
   bool canonicalizeSites(FreeVariableFact& fact) {
@@ -539,8 +552,9 @@ private:
 ClosureFreeVariableBuildResult ClosureFreeVariableBuilder::build(
     const VerifiedBindingInput& input, const ScopeArenaCandidate& arena,
     zc::ArrayPtr<const DefinitionFact> definitions,
-    zc::ArrayPtr<const BindingResolution> nodeBindings) {
-  return ClosureFreeVariableCursor(input, arena, definitions, nodeBindings).run();
+    zc::ArrayPtr<const BindingResolution> nodeBindings,
+    zc::ArrayPtr<const BoundThis> thisBindings) {
+  return ClosureFreeVariableCursor(input, arena, definitions, nodeBindings, thisBindings).run();
 }
 
 }  // namespace zomlang::compiler::binder

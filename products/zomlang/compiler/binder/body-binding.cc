@@ -280,8 +280,9 @@ public:
         return rejectNow(BinderInvariantKind::MissingRequiredResolution, inventory[index].node);
       }
     }
-    if (!finishDefinitions() || !finishNodeBindings() || !finishDeferredMembers() ||
-        !finishShadowTargets() || !finishExplicitCaptures() || !finishScopeBindings()) {
+    if (!finishDefinitions() || !finishNodeBindings() || !finishSelfTypes() ||
+        !finishThisBindings() || !finishDeferredMembers() || !finishShadowTargets() ||
+        !finishExplicitCaptures() || !finishScopeBindings()) {
       return takeRejection();
     }
     return zc::mv(result);
@@ -296,6 +297,7 @@ private:
   BodyBindingCandidate result;
   zc::Vector<uint32_t> nodeScopeIndices;
   zc::Vector<uint32_t> schemaOrdinals;
+  zc::Vector<ast::NodeId> parentNodes;
   zc::Vector<uint32_t> definitionScopeIndices;
   zc::Vector<uint32_t> owningCallableScopeIndices;
   zc::Vector<size_t> callableDefinitionIndices;
@@ -332,10 +334,12 @@ private:
   void initializeIndices() {
     nodeScopeIndices.resize(tree.nodeCount() + 1);
     schemaOrdinals.resize(tree.nodeCount() + 1);
+    parentNodes.resize(tree.nodeCount() + 1);
     definitionsByIntroducer.resize(tree.nodeCount() + 1);
     for (size_t index = 0; index < nodeScopeIndices.size(); ++index) {
       nodeScopeIndices[index] = kMissingIndex;
       schemaOrdinals[index] = kMissingIndex;
+      parentNodes[index] = ast::NodeId();
     }
     definitionsByScope.resize(arena.scopes.size());
     activeScopes.reserve(arena.scopes.size());
@@ -358,6 +362,14 @@ private:
         return;
       }
       schemaOrdinals[node.value] = ordinal++;
+      ast::visitChildNodeIds(tree, tree.node(node), [&](ast::NodeId child) {
+        if (!tree.contains(child) || child.value >= parentNodes.size() ||
+            parentNodes[child.value]) {
+          reject(BinderInvariantKind::InvalidBindingFact, child);
+          return;
+        }
+        parentNodes[child.value] = node;
+      });
     });
     if (rejected != zc::none || ordinal != tree.nodeCount()) {
       if (rejected == zc::none) { reject(BinderInvariantKind::InvalidEmitterOrdinal, tree.root()); }
@@ -855,6 +867,112 @@ private:
     resolveName(node, scopeIndex, expected, tree.ident(names[0]));
   }
 
+  bool isContextualSelfRoot(ast::NodeId node) const {
+    if (!tree.contains(node) || tree.node(node).kind != ast::SyntaxKind::NamedTypeExpr) {
+      return false;
+    }
+    const auto& type = tree.node(node);
+    const ast::NodeId path(type.payload.words[ast::kNamedTypeExprPathWord]);
+    if (!tree.contains(path) || tree.node(path).kind != ast::SyntaxKind::ModulePath) {
+      return false;
+    }
+    const auto& pathSyntax = tree.node(path);
+    const ast::IdentList segments{pathSyntax.payload.words[ast::kModulePathSegmentsFirstWord],
+                                  pathSyntax.payload.words[ast::kModulePathSegmentsSizeWord]};
+    if (!tree.contains(segments)) { return false; }
+    const auto names = tree.identList(segments);
+    return names.size() != 0 && tree.ident(names[0]) == "Self"_zc;
+  }
+
+  zc::Maybe<SelfOwner> contextualSelfOwner(ast::NodeId node) const {
+    ast::NodeId child = node;
+    while (tree.contains(child) && child.value < parentNodes.size()) {
+      const ast::NodeId parent = parentNodes[child.value];
+      if (!tree.contains(parent)) { break; }
+      const auto& syntax = tree.node(parent);
+      ast::NodeId body;
+      bool nominal = false;
+      bool interface = false;
+      bool implementation = false;
+      switch (syntax.kind) {
+        case ast::SyntaxKind::ClassDecl:
+          body = ast::NodeId(syntax.payload.words[ast::kClassDeclMembersIdWord]);
+          nominal = true;
+          break;
+        case ast::SyntaxKind::StructDecl:
+          body = ast::NodeId(syntax.payload.words[ast::kStructDeclMembersIdWord]);
+          nominal = true;
+          break;
+        case ast::SyntaxKind::EnumDeclaration:
+          body = ast::NodeId(syntax.payload.words[ast::kEnumDeclarationVariantsIdWord]);
+          nominal = true;
+          break;
+        case ast::SyntaxKind::ErrorDecl:
+          body = ast::NodeId(syntax.payload.words[ast::kErrorDeclMembersIdWord]);
+          nominal = true;
+          break;
+        case ast::SyntaxKind::InterfaceDecl:
+          body = ast::NodeId(syntax.payload.words[ast::kInterfaceDeclMembersIdWord]);
+          interface = true;
+          break;
+        case ast::SyntaxKind::StandaloneImplDecl:
+          body = ast::NodeId(syntax.payload.words[ast::kStandaloneImplDeclMembersIdWord]);
+          implementation = true;
+          break;
+        default:
+          break;
+      }
+      if (body && child == body) {
+        if (implementation) {
+          ZC_IF_SOME(owner, input.definitions().implAt(parent)) {
+            return SelfOwner(ImplSelfOwner{owner});
+          }
+          return zc::none;
+        }
+        ZC_IF_SOME(owner, input.definitions().definitionAt(parent)) {
+          if (interface) { return SelfOwner(InterfaceSelfOwner{owner}); }
+          if (nominal) { return SelfOwner(NominalSelfOwner{owner}); }
+        }
+        return zc::none;
+      }
+      child = parent;
+    }
+    return zc::none;
+  }
+
+  void visitNamedType(ast::NodeId node, uint32_t scopeIndex) {
+    if (!isContextualSelfRoot(node)) {
+      visitSchemaChildren(node, scopeIndex, Namespace::Type);
+      return;
+    }
+    const auto& syntax = tree.node(node);
+    const ast::NodeList arguments{syntax.payload.words[ast::kNamedTypeExprArgsFirstWord],
+                                  syntax.payload.words[ast::kNamedTypeExprArgsSizeWord]};
+    if (!tree.contains(arguments)) {
+      reject(BinderInvariantKind::InvalidBindingFact, node);
+      return;
+    }
+    for (const ast::NodeId argument : tree.list(arguments)) {
+      visitNode(argument, scopeIndex, Namespace::Type);
+      if (rejected != zc::none) { return; }
+    }
+    auto source = input.parsedModule().retainedTokenSpan(node, 0, ast::SyntaxKind::Identifier);
+    if (source == zc::none) {
+      reject(BinderInvariantKind::InvalidBindingFact, node);
+      return;
+    }
+    auto owner = contextualSelfOwner(node);
+    ZC_IF_SOME(sourceValue, source) {
+      ZC_IF_SOME(ownerValue, owner) {
+        result.selfTypes.add(BoundSelfType{node, zc::mv(ownerValue), sourceValue.clone()});
+        return;
+      }
+      recordLookupFailure(node, "Self"_zc, Namespace::Type, sourceValue,
+                          BinderDiagnosticCode::ContextualSelfOutsideType,
+                          BinderEmitterSite::BodyBinding);
+    }
+  }
+
   void visitSchemaChildren(ast::NodeId node, uint32_t scopeIndex, Namespace inherited) {
     const auto& syntax = tree.node(node);
     const auto* schema = ast::lookupNodeSchema(syntax.kind);
@@ -912,6 +1030,9 @@ private:
           return;
         case ast::SyntaxKind::ModulePath:
           resolveIdentifierPath(node, scopeIndex, inherited);
+          return;
+        case ast::SyntaxKind::NamedTypeExpr:
+          visitNamedType(node, scopeIndex);
           return;
         case ast::SyntaxKind::TypeQueryExpr:
           visitTypeQuery(node, scopeIndex);
@@ -989,10 +1110,7 @@ private:
         }
         if (access == CaptureAccess::Allowed) {
           const auto target = inventory[inventoryIndex].definition;
-          result.nodeBindings.add(BindingResolution{
-              node, BindingResolutionValue(BoundNameResolution{
-                        BindingTarget::definition(target), BindingTarget::definition(target),
-                        Namespace::Value, BindingOrigin::LocalDeclaration})});
+          result.thisBindings.add(BoundThis{node, ThisBinding{target}, span.clone()});
           return;
         }
       }
@@ -1198,7 +1316,10 @@ private:
     const auto& syntax = tree.node(parameter);
     const ast::NodeId type(syntax.payload.words[ast::kFunctionParameterDeclTyWord]);
     const ast::NodeId attributes(syntax.payload.words[ast::kFunctionParameterDeclAttrsWord]);
-    if (tree.contains(type)) { visitNode(type, scopeIndex, Namespace::Type); }
+    if (tree.contains(type) &&
+        !input.parsedModule().functionParameterHasImplicitSelfType(parameter)) {
+      visitNode(type, scopeIndex, Namespace::Type);
+    }
     if (tree.contains(attributes)) { visitNode(attributes, scopeIndex, Namespace::Attribute); }
   }
 
@@ -1589,6 +1710,40 @@ private:
     zc::Vector<BindingResolution> canonical;
     for (const auto& ordered : order) { canonical.add(zc::mv(result.nodeBindings[ordered.value])); }
     result.nodeBindings = zc::mv(canonical);
+    return true;
+  }
+
+  bool finishSelfTypes() {
+    zc::TreeMap<uint32_t, size_t> order;
+    for (size_t index = 0; index < result.selfTypes.size(); ++index) {
+      const auto node = result.selfTypes[index].syntax;
+      if (!tree.contains(node) || tree.node(node).kind != ast::SyntaxKind::NamedTypeExpr ||
+          order.find(node.value) != zc::none) {
+        reject(BinderInvariantKind::InvalidBindingFact, node);
+        return false;
+      }
+      order.insert(node.value, index);
+    }
+    zc::Vector<BoundSelfType> canonical;
+    for (const auto& ordered : order) { canonical.add(zc::mv(result.selfTypes[ordered.value])); }
+    result.selfTypes = zc::mv(canonical);
+    return true;
+  }
+
+  bool finishThisBindings() {
+    zc::TreeMap<uint32_t, size_t> order;
+    for (size_t index = 0; index < result.thisBindings.size(); ++index) {
+      const auto node = result.thisBindings[index].expression;
+      if (!tree.contains(node) || tree.node(node).kind != ast::SyntaxKind::ThisExpr ||
+          order.find(node.value) != zc::none) {
+        reject(BinderInvariantKind::InvalidBindingFact, node);
+        return false;
+      }
+      order.insert(node.value, index);
+    }
+    zc::Vector<BoundThis> canonical;
+    for (const auto& ordered : order) { canonical.add(zc::mv(result.thisBindings[ordered.value])); }
+    result.thisBindings = zc::mv(canonical);
     return true;
   }
 

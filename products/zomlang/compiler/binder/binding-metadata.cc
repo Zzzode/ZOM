@@ -210,6 +210,17 @@ zc::Array<uint8_t> frameBindingAllocationDump(
   return bytes.releaseAsArray();
 }
 
+zc::Array<uint8_t> frameBindingExtensionSequences(
+    zc::ArrayPtr<const zc::ArrayPtr<const uint8_t>> selfTypeRecords,
+    zc::ArrayPtr<const zc::ArrayPtr<const uint8_t>> thisBindingRecords) {
+  zc::Vector<uint8_t> bytes;
+  appendUint64(bytes, selfTypeRecords.size());
+  for (const auto record : selfTypeRecords) { bytes.addAll(record); }
+  appendUint64(bytes, thisBindingRecords.size());
+  for (const auto record : thisBindingRecords) { bytes.addAll(record); }
+  return bytes.releaseAsArray();
+}
+
 DefinitionFact::DefinitionFact(identity::DefId identity, DefinitionSite&& site,
                                identity::DefinitionKind kind, identity::DefinitionNameKey&& name,
                                Namespace nameSpace, ScopeId declaringScope,

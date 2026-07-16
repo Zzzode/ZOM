@@ -50,6 +50,7 @@ bool BindingDiagnosticAdapter::emitControlTransferFailure(
     case BinderDiagnosticCode::ContinueTargetNotLoop:
       diagnostics.diagnose<DiagID::ContinueTargetNotLoop>(primary).emit();
       return true;
+    case BinderDiagnosticCode::ContextualSelfOutsideType:
     case BinderDiagnosticCode::UndefinedIdentifier:
     case BinderDiagnosticCode::SymbolNamespaceMismatch:
     case BinderDiagnosticCode::RedeclareVariable:
@@ -88,6 +89,7 @@ bool BindingDiagnosticAdapter::emitLabelLookupFailure(diagnostics::DiagnosticEng
     case BinderDiagnosticCode::BreakTargetNotFound:
     case BinderDiagnosticCode::ContinueTargetNotFound:
     case BinderDiagnosticCode::ContinueTargetNotLoop:
+    case BinderDiagnosticCode::ContextualSelfOutsideType:
       return false;
   }
   ZC_UNREACHABLE;
@@ -110,6 +112,9 @@ bool BindingDiagnosticAdapter::emitLookupFailure(diagnostics::DiagnosticEngine& 
           .emit();
       return true;
     }
+    case BinderDiagnosticCode::ContextualSelfOutsideType:
+      diagnostics.diagnose<DiagID::ContextualSelfOutsideType>(primary).emit();
+      return true;
     case BinderDiagnosticCode::RedeclareVariable:
     case BinderDiagnosticCode::RedeclareParameter:
     case BinderDiagnosticCode::RedeclareFunction:
@@ -172,6 +177,7 @@ bool BindingDiagnosticAdapter::emitRedeclaration(diagnostics::DiagnosticEngine& 
     case BinderDiagnosticCode::BreakTargetNotFound:
     case BinderDiagnosticCode::ContinueTargetNotFound:
     case BinderDiagnosticCode::ContinueTargetNotLoop:
+    case BinderDiagnosticCode::ContextualSelfOutsideType:
       return false;
   }
   ZC_UNREACHABLE;
