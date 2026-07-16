@@ -729,12 +729,24 @@ accepted. The accepted design freezes the constraint-based checker, canonical
 semantic type store, complete verified facts, three cast modes, raw-pointer
 reinterpret and unsafe-boundary matrix, error-union roles, evidence leases,
 diagnostics, codecs, and downstream no-reclassification boundary.
-Implementation remains `TBD`; the next legal transition is
-`ACCEPTED -> IMPLEMENTING` only when the direct replacement series is named
-and starts.
+The named direct replacement series started on 2026-07-16. RFC 0005 therefore
+advanced from `ACCEPTED` to `IMPLEMENTING` without changing the accepted
+semantic contract.
 
 ## Implementation Tracker
 
-Implementation under the revised architecture has not started. Existing
-checker behavior remains partial evidence and must not be treated as proof of
-the returned canonical type and frozen-fact contract.
+### Canonical Semantic Foundation Direct Replacement Series
+
+This series replaces the polymorphic type trees, rendered-string keys, mutable
+`TypeEnv` facts, and partial checker publication described by the accepted
+implementation plan. It introduces no adapter, compatibility alias, second
+store, or receiver-only side table. Existing checker behavior remains partial
+evidence and is not proof of the accepted canonical contract.
+
+| Slice | State | Required evidence |
+|---|---|---|
+| Closed semantic type value algebra | Implemented | Exact `0x01-0x10` branch tags, primitive and field tags, complete value payload coverage, move-only semantics, and focused unit tests |
+| Semantic type v1 key codec | Implemented | RFC 0014 fixed vectors, recursive v1 union oracle, complete branch encoding, canonical ordering validation, and malformed-input rejection |
+| Canonical semantic type store | Pending | Closed results, linearizable interning, stable reads, and context validation |
+| Signature facts and verifier | Pending | Complete candidate, independent census, revision, and typed diagnostics |
+| Body facts and production cutover | Pending | Complete verifier, downstream handoff, deletion of the polymorphic type path, and full gates |

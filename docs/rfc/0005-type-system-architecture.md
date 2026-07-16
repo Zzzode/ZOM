@@ -2,20 +2,20 @@
 rfc: 5
 title: Type System Architecture
 type: compiler
-status: ACCEPTED
+status: IMPLEMENTING
 author: ZOM Compiler Team
 review-manager: rfc
 required-owners: [rfc, lexer-parser, binder-checker, error-system, module-system, ir-backend, runtime-memory, concurrency, spec-audit, verification]
 approvers: [rfc, lexer-parser, binder-checker, error-system, module-system, ir-backend, runtime-memory, concurrency, spec-audit, verification]
 created: 2026-07-05
-updated: 2026-07-11
+updated: 2026-07-16
 area: compiler
 requires: [1, 2, 3, 4, 11]
 supersedes: []
 superseded-by: []
 discussion: docs/rfc/tracking/0005-review-and-implementation.md#discussion-record
 decision: docs/rfc/tracking/0005-review-and-implementation.md#decision-record
-implementation: TBD
+implementation: docs/rfc/tracking/0005-review-and-implementation.md#canonical-semantic-foundation-direct-replacement-series
 tracking-issue: docs/rfc/tracking/0005-review-and-implementation.md#implementation-tracker
 ---
 
@@ -2890,3 +2890,4 @@ None
 | 2026-07-11 | DRAFT | Fixed the remaining error-model drift by defining `Result<T, E>` only as a nominal enum and excluding it from raising-call role inference. |
 | 2026-07-11 | REVIEW | Entered formal review after exact-hash governance, semantic, and invariant reviewers approved the coordinated RFC 0005, 0006, 0008, 0009, and 0010 design set. Approvers and decision remain open. |
 | 2026-07-11 | ACCEPTED | All ten required owners approved proposal hash `31e8ff83dc535f3af5a91c00122277a108af41540233d4f6a06b0a2a4c9fb25c` after raw-pointer cast, checked-facts v3, runtime-memory routing, diagnostic, evidence, codec, and verifier review. Implementation has not started. |
+| 2026-07-16 | IMPLEMENTING | Started the Canonical Semantic Foundation Direct Replacement Series with the closed semantic type value algebra. |
