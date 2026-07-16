@@ -16,6 +16,7 @@ set(TYPE_SRC
   ${CMAKE_CURRENT_SOURCE_DIR}/reference-type.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/raw-pointer-type.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/semantic-type-store.cc
+  ${CMAKE_CURRENT_SOURCE_DIR}/semantic-type-key.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/existential-type.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/associated-type.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/coercion.cc
