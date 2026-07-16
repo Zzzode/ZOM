@@ -8,7 +8,7 @@ review-manager: rfc
 required-owners: [rfc, binder-checker, error-system, module-system, ir-backend, spec-audit, verification]
 approvers: [rfc, binder-checker, error-system, module-system, ir-backend, spec-audit, verification]
 created: 2026-07-05
-updated: 2026-07-14
+updated: 2026-07-15
 area: compiler
 requires: [1, 2, 3, 11]
 supersedes: []
@@ -137,6 +137,21 @@ declarations. ZOM should copy the explicit distinction between package/module
 visibility and local lexical activation.
 
 Reference: <https://go.dev/ref/spec#Declarations_and_scope>
+
+### Explicit Receiver Parameters
+
+Rust methods, Go method declarations, Zig namespaced functions, and C++23
+explicit object member functions all place an explicit receiver before ordinary
+parameters. ZOM copies that leading-position rule: `this` is unique, must be the
+first parameter, and cannot have a default value. The parser rejects later
+receivers with `ZOM2093` and receiver initializers with `ZOM2094` before binding.
+
+References:
+
+- <https://doc.rust-lang.org/reference/items/associated-items.html#methods>
+- <https://go.dev/ref/spec#Method_declarations>
+- <https://ziglang.org/documentation/0.15.2/#struct>
+- <https://www.open-std.org/jtc1/sc22/wg21/docs/papers/2021/p0847r7.html>
 
 ### Common Failure Modes
 
@@ -1034,12 +1049,15 @@ token of an un-attributed parameter; its canonical text must equal the AST name.
 It uses RFC 0011 `DeclaredDefinitionName("this")` for identity and diagnostics
 and publishes its ordinary `DefinitionFact` with `ParameterList` activation,
 but it has no lexical `bindingName` and produces no `BindingNameKey` or
-`ScopeBindingEntry`. Each callable scope contains at most one such receiver;
-additional receiver parameters produce `ZOM3004 RedeclareParameter` with a
-`ZOM3017 PreviousDeclarationHere` note in canonical source order. Body binding
-stores the receiver in a separate per-scope slot. A `ThisExpr` resolves to that
-same `DefId(Parameter)` through enclosing closure scopes and stops at a named
-function or module boundary.
+`ScopeBindingEntry`. Source grammar admits at most one receiver and only in the
+first parameter position; a receiver has no default value. Body binding stores
+the receiver in a separate per-scope slot. The parser-generated `Self` type for
+a bare `this` occupies the receiver token's exact source span and is a default
+expansion rather than a lexical type-name use, so the binder publishes no name
+resolution for that synthetic path. Explicit source type annotations remain
+ordinary type syntax. A `ThisExpr` resolves to that same `DefId(Parameter)`
+through enclosing closure scopes and stops at a named function or module
+boundary.
 
 Each `ForInStatement` and `MatchArmStmt` pattern leaf retains its
 `PatternBindingSite` introducer and path. It publishes one value-namespace
@@ -2088,7 +2106,8 @@ temporary immutable verified inputs.
   function expression with a capture clause; `use []`; source-ordered by-value,
   by-reference, and `this` items with exact retained token spans; only
   parameter, local, and pattern-binding targets; receiver and `ThisExpr`
-  resolution through closure scopes; missing and duplicate receiver failures;
+  resolution through closure scopes; missing receiver failure; parser
+  first-position and receiver-default failures;
   undefined, wrong-namespace, non-capturable, inaccessible, and duplicate
   capture items; `ZOM3010` plus `ZOM3017` source provenance; body-reference
   exhaustiveness across every explicit closure; inferred-versus-explicit
@@ -2186,3 +2205,4 @@ None
 | 2026-07-13 | IMPLEMENTING | Completed dependency-free value member deferral for dot and optional access with a canonical `DeclaredDefinitionName`, direct-call type arguments, full syntax provenance, deterministic codecs, independent verification, and fail-closed qualified access. |
 | 2026-07-14 | IMPLEMENTING | Added dependency-free inferred closure free-variable facts with dense inferred rows, capturable local-value filtering, original-site nested propagation, named-function boundaries, deterministic ordering, complete codecs, and independent verification while reserving explicit clauses for their own fact sequence. |
 | 2026-07-14 | IMPLEMENTING | Added explicit closure-capture binding and receiver resolution in the active implementation checkout: exact capture-token facts, dense `use []` rows, exhaustive explicit boundaries, special receiver `DefId(Parameter)` handling, `ThisExpr`, complementary inferred/explicit closure rows, complete codecs, and an independent oracle. Landing commit and complete verification evidence remain pending in the implementation tracker. |
+| 2026-07-15 | IMPLEMENTING | Required the explicit receiver to be unique and first, rejected receiver default values with parser diagnostics, and classified the parser-generated bare-receiver `Self` node as a non-lexical default expansion while preserving explicit source type binding. |

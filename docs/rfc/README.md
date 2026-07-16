@@ -82,6 +82,7 @@ not reused.
 | [RFC 0011](0011-semantic-identity-foundation.md) | Semantic Identity Foundation | LANDED | compiler | compiler | rfc | [Review Tracker](tracking/0011-review-and-implementation.md) | [Implementation Tracker](tracking/0011-review-and-implementation.md#implementation-tracker) |
 | [RFC 0012](0012-package-manifest-and-resolver.md) | Package Manifest And Deterministic Resolver | IMPLEMENTING | compiler | compiler | rfc | [Review Tracker](tracking/0012-review-and-implementation.md) | [Implementation Tracker](tracking/0012-review-and-implementation.md#implementation-tracker) |
 | [RFC 0013](0013-ownership-analysis-integration-boundary.md) | Ownership Analysis Integration Boundary | ACCEPTED | compiler | compiler | rfc | [Review Tracker](tracking/0013-review-and-implementation.md) | TBD |
+| [RFC 0014](0014-contextual-self-and-receiver-semantics.md) | Contextual Self And Receiver Semantics | IMPLEMENTING | language | language | rfc | [Review Tracker](tracking/0014-review-and-implementation.md) | [Implementation Tracker](tracking/0014-review-and-implementation.md#implementation-tracker) |
 
 ## Status Values
 

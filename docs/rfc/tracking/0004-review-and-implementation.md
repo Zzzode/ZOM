@@ -320,7 +320,7 @@ landing.
 | Dependency-free explicit labeled control-transfer facts | Complete | Commit `da0e4958`; active-ancestor lookup, innermost canonical selection, function and closure boundaries, no implicit fallback, paired `BoundLabel` and explicit control facts, exact retained reference failures, typed `ZOM3022`, full codecs, foreign-context checks, independent verifier reconstruction, 116 focused Binder cases, three diagnostic-adapter cases, all 1,251 CTests, and adversarial architecture mutations |
 | Dependency-free value deferred-member facts | Complete | Commits `cc1ef743` and `c3d14f40`; schema-backed dot, optional, and qualified access, closed `DeclaredDefinitionName` member spelling, exact base, source, value namespace, and direct-call generic arguments, paired top-level and inline facts, deterministic codecs, independent verifier reconstruction, all 1,253 CTests, full sanitizer build, and adversarial architecture mutations |
 | Dependency-free inferred closure free-variable facts | Complete | Commit `a8f04055`; one dense row per frozen closure, capturable-only successful local-value references, original-site nested propagation, named-function boundary rejection, expanded-key and source ordering, complete codecs, foreign-context checks, independent verifier reconstruction, 127 focused Binder cases, all 1,253 CTests in 886.75 seconds, the grammar oracle in 886.45 seconds, full sanitizer build, format/include/RFC checks, and positive plus adversarial architecture gates |
-| Dependency-free explicit closure-capture and receiver facts | In review | Current implementation checkout: complementary `explicitClosureCaptures` rows including `use []`, exact source-ordered capture tokens, capturable-target and explicit-boundary enforcement, special receiver `DefId(Parameter)` handling outside `BindingNameKey`, `ThisExpr`, full codec and foreign-context checks, independent verifier reconstruction, and focused positive plus negative tests; landing commit and complete gate evidence pending |
+| Dependency-free explicit closure-capture and receiver facts | In review | Current implementation checkout: complementary `explicitClosureCaptures` rows including `use []`, exact source-ordered capture tokens, capturable-target and explicit-boundary enforcement, unique leading receiver syntax with no default value, special receiver `DefId(Parameter)` handling outside `BindingNameKey`, parser-provenance recognition of the bare-receiver `Self` expansion, `ThisExpr`, full codec and foreign-context checks, independent verifier reconstruction, and focused positive plus negative tests; landing commit and complete gate evidence pending |
 | Block-scope named-function alignment | Pending | Chapters 5, 6, and 17 admit `FunctionDecl` as a block declaration and the parser constructs that AST, while the current skeleton rejects a function whose declaring scope is `Block` with `MissingRequiredResolution`; resolve the language and binder contract by implementing the complete activation, duplicate, shadow, closure-boundary, codec, and verifier behavior or by removing the syntax from every normative and parser surface |
 | Module-owned block-local classification | Pending | `DefinitionInventory` resets module-item classification for top-level `for-in` and match subtrees but propagates it through top-level `while` and ordinary nested blocks, so a block-scoped `let` in those paths is incorrectly frozen as `Static` instead of `Local`; replace the inherited boolean with syntax-owned declaration classification and cover every module-owned block, loop, match, and unsafe scope |
 | Complete module resolution input | Blocked by RFC 0012 and RFC 0008 | Authoritative package resolution, production semantic-context fingerprint, verified resolution environment, and resolution receipts |
@@ -670,11 +670,14 @@ receiver `DefId(Parameter)`.
 Receiver parameters publish `ParameterList` definition facts but have no
 lexical `bindingName`, `BindingNameKey`, or ordinary scope entry. Body binding
 uses a separate receiver slot, resolves `ThisExpr` through closure scopes, and
-stops at named-function boundaries. Every capturable body reference crossing an
-explicit closure must occur in that closure's capture row. Duplicate captures
-and receivers retain deterministic primary and previous-declaration spans;
-undefined, wrong-namespace, non-capturable, inaccessible, and missing-receiver
-items publish exact failed resolutions.
+stops at named-function boundaries. The parser requires the receiver to be the
+unique first parameter and rejects a receiver default value. The `Self` type
+node synthesized for a bare receiver is recognized by its exact receiver-token
+provenance and does not create a lexical type-name resolution. Every capturable
+body reference crossing an explicit closure must occur in that closure's
+capture row. Duplicate captures retain deterministic primary and
+previous-declaration spans; undefined, wrong-namespace, non-capturable,
+inaccessible, and missing-receiver items publish exact failed resolutions.
 
 `BindingVerifier` independently rebuilds the scope arena, explicit-closure
 census, receiver recognition, capture targets, duplicate diagnostics, and
