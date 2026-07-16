@@ -1,0 +1,12 @@
+fun moduleReceiver(this) {}
+
+fun outer() {
+    fun blockReceiver(this) {}
+}
+
+extern {
+    fun externReceiver(this);
+}
+
+let functionReceiver = fun(this) {};
+let lambdaReceiver = (this) => this;

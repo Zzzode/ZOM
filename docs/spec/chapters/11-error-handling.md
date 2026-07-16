@@ -18,7 +18,7 @@ fun read() -> str raises IoError;
 class Resource {
     init() raises InitError { }
     deinit() raises CleanupError { }
-    fun refresh() -> bool raises IoError | ParseError { true }
+    fun refresh(this) -> bool raises IoError | ParseError { true }
 }
 ```
 

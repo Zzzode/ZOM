@@ -369,7 +369,8 @@ ast::NodeId Parser::Impl::parseFunctionExpression(AstFactory& builder, size_t st
     raises = consumeBalancedTypeUntil(raisesCursor, signatureEnd, ast::SyntaxKind::RaisesKeyword);
   }
 
-  const ast::NodeId params = parseFunctionParameterList(builder, openParen, closeParen);
+  const ast::NodeId params = parseFunctionParameterList(
+      builder, openParen, closeParen, CallableParameterContext::FunctionExpression);
 
   ast::NodeId captures;
   TokenCursor useCursor = tokenCursorAt(closeParen + 1);
@@ -428,7 +429,8 @@ ast::NodeId Parser::Impl::parseLambdaExpression(AstFactory& builder, size_t star
       consumeBalancedUntil(fatArrowCursor, end, ast::SyntaxKind::EqualsGreaterThan);
   if (fatArrow >= end) { return ast::NodeId(); }
 
-  const ast::NodeId params = parseFunctionParameterList(builder, start, closeParen);
+  const ast::NodeId params =
+      parseFunctionParameterList(builder, start, closeParen, CallableParameterContext::Lambda);
 
   ast::NodeId retTy;
   ast::NodeId raisesTy;

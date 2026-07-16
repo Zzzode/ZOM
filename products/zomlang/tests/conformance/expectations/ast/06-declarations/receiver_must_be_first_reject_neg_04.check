@@ -1,0 +1,13 @@
+// RUN: ! %zomc compile --dump-ast %corpus/06-declarations/receiver_must_be_first_reject_neg_04.zom 2>&1 | %FileCheck %s
+
+
+// CHECK-LITERAL: Error [ZOM2093]: The 'this' receiver must be the first parameter
+// CHECK-LITERAL:   --> receiver_must_be_first_reject_neg_04.zom:2:26
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 2 |     fun late(value: i32, this) {}
+// CHECK-LITERAL:   |                          ^
+// CHECK-LITERAL: Error [ZOM2093]: The 'this' receiver must be the first parameter
+// CHECK-LITERAL:   --> receiver_must_be_first_reject_neg_04.zom:3:25
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 3 |     fun duplicate(this, this: Self) {}
+// CHECK-LITERAL:   |                         ^

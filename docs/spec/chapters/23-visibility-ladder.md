@@ -46,8 +46,8 @@ MemberVisibility ::= 'public' | 'private' | 'protected'
 ```zom
 class Session {
     private let token: str;
-    public fun user_id() -> i32 { 0 }
-    protected fun refresh_hook() -> unit {}
+    public fun user_id(this) -> i32 { 0 }
+    protected fun refresh_hook(this) -> unit {}
 }
 ```
 

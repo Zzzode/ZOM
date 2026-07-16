@@ -169,7 +169,8 @@ ConstExpression ::= AssignmentExpression
 
 FunctionDeclaration ::= ModifierList 'fun' BindingIdentifier TypeParameters?
                         FunctionSignature WhereClause? (BlockStatement | ';')
-FunctionSignature ::= ParameterClause (ReturnType | RaisesClause)?
+FunctionSignature ::= OrdinaryParameterClause (ReturnType | RaisesClause)?
+MemberFunctionSignature ::= ParameterClause (ReturnType | RaisesClause)?
 ReturnType ::= '->' TypeExpression RaisesClause?
 
 ClassDeclaration ::= ModifierList 'class' BindingIdentifier
@@ -200,8 +201,8 @@ InterfaceElement ::= ModifierList 'fun' MethodSignature ';'
                          declarations are not part of ZOM v1. The parser
                          rejects a block after an interface method signature.
                          See Ch.09 §9.3.1. *)
-PropertySignature ::= PropertyName FunctionSignature
-MethodSignature ::= PropertyName TypeParameters? FunctionSignature
+PropertySignature ::= PropertyName MemberFunctionSignature
+MethodSignature ::= PropertyName TypeParameters? MemberFunctionSignature
 PropertyStorage ::= 'mut' | 'let'
 ConstantDeclaration ::= 'const' BindingIdentifier TypeAnnotation? '=' ConstExpression ';'
 
@@ -218,11 +219,11 @@ StructElement ::= ModifierList ('mut' | 'readonly')? PropertyName ':' TypeExpres
                 | ModifierList 'fun' MethodDeclaration
                 | ModifierList InitDeclaration
                 | ModifierList DeinitDeclaration
-MethodDeclaration ::= PropertyName TypeParameters? FunctionSignature (BlockStatement | ';')
+MethodDeclaration ::= PropertyName TypeParameters? MemberFunctionSignature (BlockStatement | ';')
 InitDeclaration ::= 'init' ParameterClause RaisesClause? BlockStatement
 DeinitDeclaration ::= 'deinit' ParameterClause RaisesClause? BlockStatement
-AccessorDeclaration ::= ModifierList 'get' PropertyName FunctionSignature BlockStatement
-                        (ModifierList 'set' PropertyName FunctionSignature BlockStatement)?
+AccessorDeclaration ::= ModifierList 'get' PropertyName MemberFunctionSignature BlockStatement
+                        (ModifierList 'set' PropertyName MemberFunctionSignature BlockStatement)?
 FieldTerminator ::= ';' | ',' | /* empty */
     (* The empty form is accepted only before the next member or the closing brace. *)
 
@@ -337,11 +338,19 @@ FunctionType ::= TypeParameters? FunctionTypeParameterClause '->' TypeExpression
 FunctionTypeParameterClause ::= '(' FunctionTypeParameterList? ')'
 FunctionTypeParameterList ::= TypeExpression (',' TypeExpression)* ','?
 ParameterClause ::= '(' ParameterList? ')'
-ParameterList ::= Parameter (',' Parameter)* ','?
-Parameter ::= OuterAttributeList? Identifier ':' TypeExpression Initializer?
-            | OuterAttributeList? 'this' (':' TypeExpression)?
-    (* The second form is the only receiver declaration. A containing type or
-       impl declaration does not synthesize a receiver. *)
+OrdinaryParameterClause ::= '(' OrdinaryParameterList? ')'
+ParameterList ::= Parameter (',' OrdinaryParameter)* ','?
+OrdinaryParameterList ::= OrdinaryParameter (',' OrdinaryParameter)* ','?
+Parameter ::= ReceiverParameter | OrdinaryParameter
+ReceiverParameter ::= OuterAttributeList? 'this' (':' TypeExpression)?
+    (* A receiver is unique, occupies the first parameter position, defaults
+       to Self, and cannot have an initializer. Only direct methods, accessors,
+       initializers, and deinitializers use ParameterClause.
+       Module and block functions, extern functions, function expressions,
+       and lambdas use OrdinaryParameterClause. Initializers and
+       deinitializers use ParameterClause.
+       A containing declaration does not synthesize a receiver. *)
+OrdinaryParameter ::= OuterAttributeList? Identifier ':' TypeExpression Initializer?
 RaisesClause ::= 'raises' TypeExpression
     (* Multiple error types are written as a union type expression.
        Example: 'fun f() -> T raises IoError | ParseError | ZOM80xx'
@@ -571,9 +580,9 @@ StructLiteralFields ::= StructLiteralField (',' StructLiteralField)* ','?
 StructLiteralField ::= Identifier ':' Expression
                     | Identifier
 
-FunctionExpression ::= 'fun' TypeParameters? ParameterClause CaptureClause? ReturnType? BlockStatement
+FunctionExpression ::= 'fun' TypeParameters? OrdinaryParameterClause CaptureClause? ReturnType? BlockStatement
                      | LambdaExpression
-LambdaExpression ::= ParameterClause ReturnType? '=>' (AssignmentExpression | BlockStatement)
+LambdaExpression ::= OrdinaryParameterClause ReturnType? '=>' (AssignmentExpression | BlockStatement)
 CaptureClause ::= 'use' '[' CaptureList? ']'
 CaptureList ::= CaptureElement (',' CaptureElement)* ','?
 CaptureElement ::= '&'? Identifier | 'this'

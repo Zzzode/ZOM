@@ -169,3 +169,8 @@ DIAG(2091, UnknownExternAbi, kError,
      "Unknown extern ABI '{0}'; expected one of 'C', 'Cdecl', 'system', or 'zom-cdecl'", 1)
 DIAG(2092, InterfaceMemberExpected, kError,
      "Interface bodies accept only methods, accessors, and associated type declarations", 0)
+DIAG(2093, ReceiverMustBeFirstParameter, kError,
+     "The 'this' receiver must be the first parameter", 0)
+DIAG(2094, ReceiverDefaultNotAllowed, kError,
+     "The 'this' receiver cannot have a default value", 0)
+DIAG(2095, ReceiverNotAllowedHere, kError, "Receiver 'this' is not allowed in {0}", 1)

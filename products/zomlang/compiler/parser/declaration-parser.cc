@@ -904,7 +904,8 @@ ast::NodeId Parser::Impl::parseClassMemberList(AstFactory& builder, size_t bodyO
       ast::NodeId paramsId;
       if (openParen < memberContentEnd) {
         const size_t closeParen = findMatchingRightParen(openParen, memberContentEnd);
-        paramsId = parseFunctionParameterList(builder, openParen, closeParen);
+        paramsId = parseFunctionParameterList(builder, openParen, closeParen,
+                                              CallableParameterContext::Member);
       } else if (isInitOrDeinit) {
         diagnosticEngine.diagnose<diagnostics::DiagID::ExpectedToken>(diagnosticLoc(cursor + 1),
                                                                       "("_zc);
@@ -1233,7 +1234,8 @@ size_t Parser::Impl::recoverFunctionParameter(TokenCursor& cursor, size_t closeP
 }
 
 ast::NodeId Parser::Impl::parseFunctionParameter(AstFactory& builder, TokenCursor& cursor,
-                                                 size_t closeParen) const {
+                                                 size_t closeParen, size_t parameterOrdinal,
+                                                 CallableParameterContext context) const {
   const size_t parameterStart = cursor.position();
   const ast::NodeId attrs = parseOuterAttributeList(builder, parameterStart, closeParen);
   cursor.moveTo(skipOuterAttributePrefix(parameterStart, closeParen));
@@ -1251,8 +1253,47 @@ ast::NodeId Parser::Impl::parseFunctionParameter(AstFactory& builder, TokenCurso
   const ast::IdentId name = internIdent(builder, nameIndex);
   cursor.advance();
 
-  if (kindAt(nameIndex) == ast::SyntaxKind::ThisKeyword &&
-      (cursor.position() >= closeParen || cursor.peek() == ast::SyntaxKind::Comma)) {
+  const bool isReceiver = kindAt(nameIndex) == ast::SyntaxKind::ThisKeyword;
+  if (isReceiver && context != CallableParameterContext::Member) {
+    zc::StringPtr callableKind;
+    switch (context) {
+      case CallableParameterContext::Member:
+        ZC_UNREACHABLE;
+      case CallableParameterContext::ModuleFunction:
+        callableKind = "module function"_zc;
+        break;
+      case CallableParameterContext::BlockFunction:
+        callableKind = "block function"_zc;
+        break;
+      case CallableParameterContext::ExternFunction:
+        callableKind = "extern function"_zc;
+        break;
+      case CallableParameterContext::FunctionExpression:
+        callableKind = "function expression"_zc;
+        break;
+      case CallableParameterContext::Lambda:
+        callableKind = "lambda"_zc;
+        break;
+    }
+    diagnosticEngine.diagnose<diagnostics::DiagID::ReceiverNotAllowedHere>(
+        tokenAt(nameIndex).getLocation(), callableKind);
+    recoverFunctionParameter(cursor, closeParen);
+    return ast::NodeId();
+  }
+  if (isReceiver && parameterOrdinal != 0) {
+    diagnosticEngine.diagnose<diagnostics::DiagID::ReceiverMustBeFirstParameter>(
+        tokenAt(nameIndex).getLocation());
+    recoverFunctionParameter(cursor, closeParen);
+    return ast::NodeId();
+  }
+  if (isReceiver && cursor.position() < closeParen && cursor.peek() == ast::SyntaxKind::Equals) {
+    diagnosticEngine.diagnose<diagnostics::DiagID::ReceiverDefaultNotAllowed>(
+        tokenAt(cursor.position()).getLocation());
+    recoverFunctionParameter(cursor, closeParen);
+    return ast::NodeId();
+  }
+
+  if (isReceiver && (cursor.position() >= closeParen || cursor.peek() == ast::SyntaxKind::Comma)) {
     zc::Vector<ast::IdentId> selfSegment;
     selfSegment.add(builder.internIdent("Self"_zc));
     const ast::NodeId selfPath = builder.makeModulePath(rangeFor(nameIndex, nameIndex + 1),
@@ -1282,6 +1323,12 @@ ast::NodeId Parser::Impl::parseFunctionParameter(AstFactory& builder, TokenCurso
   ast::NodeId defaultValue;
 
   if (cursor.position() < closeParen && cursor.peek() == ast::SyntaxKind::Equals) {
+    if (isReceiver) {
+      diagnosticEngine.diagnose<diagnostics::DiagID::ReceiverDefaultNotAllowed>(
+          tokenAt(cursor.position()).getLocation());
+      recoverFunctionParameter(cursor, closeParen);
+      return ast::NodeId();
+    }
     cursor.advance();
     const size_t defaultStart = cursor.position();
     const size_t defaultEnd = consumeVariableInitializer(cursor, closeParen);
@@ -1297,10 +1344,12 @@ ast::NodeId Parser::Impl::parseFunctionParameter(AstFactory& builder, TokenCurso
 }
 
 ast::NodeList Parser::Impl::parseFunctionParameterNodeList(AstFactory& builder, size_t openParen,
-                                                           size_t closeParen) const {
+                                                           size_t closeParen,
+                                                           CallableParameterContext context) const {
   zc::Vector<ast::NodeId> parameters;
   if (openParen < closeParen && !isAtEnd(closeParen)) {
     TokenCursor cursor = tokenCursorAt(openParen + 1);
+    size_t parameterOrdinal = 0;
     while (cursor.position() < closeParen) {
       if (cursor.peek() == ast::SyntaxKind::Comma) {
         cursor.advance();
@@ -1308,7 +1357,9 @@ ast::NodeList Parser::Impl::parseFunctionParameterNodeList(AstFactory& builder, 
       }
 
       const size_t parameterStart = cursor.position();
-      addNodeIfPresent(parameters, parseFunctionParameter(builder, cursor, closeParen));
+      addNodeIfPresent(parameters, parseFunctionParameter(builder, cursor, closeParen,
+                                                          parameterOrdinal, context));
+      ++parameterOrdinal;
       if (cursor.position() <= parameterStart) { cursor.moveTo(parameterStart + 1); }
       if (cursor.position() >= closeParen) { break; }
 
@@ -1326,9 +1377,10 @@ ast::NodeList Parser::Impl::parseFunctionParameterNodeList(AstFactory& builder, 
 }
 
 ast::NodeId Parser::Impl::parseFunctionParameterList(AstFactory& builder, size_t openParen,
-                                                     size_t closeParen) const {
+                                                     size_t closeParen,
+                                                     CallableParameterContext context) const {
   const ast::NodeList parameterList =
-      parseFunctionParameterNodeList(builder, openParen, closeParen);
+      parseFunctionParameterNodeList(builder, openParen, closeParen, context);
   return builder.makeFunctionParameterList(rangeFor(openParen, closeParen + 1),
                                            static_cast<uint16_t>(parameterList.size),
                                            parameterList);
@@ -1864,7 +1916,9 @@ ast::NodeId Parser::Impl::parseExternFunctionDecl(AstFactory& builder, size_t st
   }
   return builder.makeExternDecl(
       rangeFor(start, end), internIdent(builder, parts.nameIndex), abi,
-      parseFunctionParameterNodeList(builder, parts.openParen, parts.closeParen), retTy, raisesTy);
+      parseFunctionParameterNodeList(builder, parts.openParen, parts.closeParen,
+                                     CallableParameterContext::ExternFunction),
+      retTy, raisesTy);
 }
 
 ast::NodeId Parser::Impl::parseExternVarDecl(AstFactory& builder, size_t start, size_t end,
@@ -1888,8 +1942,8 @@ ast::NodeId Parser::Impl::parseExternVarDecl(AstFactory& builder, size_t start, 
                                    parseTypeRange(builder, colon + 1, typeEnd), abi, true);
 }
 
-ast::NodeId Parser::Impl::parseFunctionDeclaration(AstFactory& builder, size_t start,
-                                                   size_t end) const {
+ast::NodeId Parser::Impl::parseFunctionDeclaration(AstFactory& builder, size_t start, size_t end,
+                                                   bool isBlockFunction) const {
   const FunctionDeclarationParts parts = parseFunctionDeclarationParts(start, end);
 
   // Parse type parameters (also runs diagnostics).
@@ -1912,7 +1966,10 @@ ast::NodeId Parser::Impl::parseFunctionDeclaration(AstFactory& builder, size_t s
 
   ast::IdentId name;
   if (parts.nameIndex < end) { name = internIdent(builder, parts.nameIndex); }
-  const ast::NodeId params = parseFunctionParameterList(builder, parts.openParen, parts.closeParen);
+  const ast::NodeId params =
+      parseFunctionParameterList(builder, parts.openParen, parts.closeParen,
+                                 isBlockFunction ? CallableParameterContext::BlockFunction
+                                                 : CallableParameterContext::ModuleFunction);
   ast::NodeId retTy;
   const size_t signatureEnd = where < parts.headerEnd ? where : parts.headerEnd;
   if (parts.arrow < signatureEnd) {

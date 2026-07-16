@@ -1,0 +1,4 @@
+section: "Section 6 Function Parameters"
+covers_rule: "parameterList permits a receiver only in the first position"
+expected: "REJECT"
+notes: []

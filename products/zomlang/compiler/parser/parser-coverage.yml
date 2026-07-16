@@ -93,6 +93,7 @@ productions:
   FieldTerminator: {status: inlined, parser: parseClassMemberList, parent: StructElement}
   FunctionDeclaration: {status: direct, parser: parseFunctionDeclaration, ast: [FunctionDecl]}
   FunctionSignature: {status: inlined, parser: parseFunctionDeclarationParts, parent: FunctionDeclaration}
+  MemberFunctionSignature: {status: inlined, parser: parseFunctionDeclarationParts, parent: MethodDeclaration}
   FunctionExpression: {status: direct, parser: parseFunctionExpression, ast: [FunctionExpression]}
   FunctionType: {status: direct, parser: parseFunctionType, ast: [FunctionTypeExpr]}
   FunctionTypeParameterClause: {status: inlined, parser: parseFunctionTypeParameters, parent: FunctionType}
@@ -177,9 +178,12 @@ productions:
   BuiltinSingleSegmentAttribute: {status: inlined, parser: parseAttribute, parent: AttributePath}
   OuterAttribute: {status: direct, parser: parseOuterAttributeList}
   OuterAttributeList: {status: inlined, parser: parseOuterAttributeList, parent: StatementListItem}
+  OrdinaryParameter: {status: inlined, parser: parseFunctionParameter, parent: Parameter}
+  OrdinaryParameterClause: {status: inlined, parser: parseFunctionParameterList, parent: FunctionSignature}
+  OrdinaryParameterList: {status: direct, parser: parseFunctionParameterList, ast: [FunctionParameterList]}
   QualifiedModulePath: {status: inlined, parser: parseImportDeclaration, parent: ImportClause}
   Parameter: {status: direct, parser: parseFunctionParameter, ast: [FunctionParameterDecl]}
-  ParameterClause: {status: inlined, parser: parseFunctionParameterList, parent: FunctionDeclaration}
+  ParameterClause: {status: inlined, parser: parseFunctionParameterList, parent: MemberFunctionSignature}
   ParameterList: {status: direct, parser: parseFunctionParameterList, ast: [FunctionParameterList]}
   ParenthesizedType: {status: inlined, parser: parseTypeRange, parent: TypeExpression}
   PathPrefix: {status: inlined, parser: parseSourceElement, parent: Declaration}
@@ -188,6 +192,7 @@ productions:
   PatternProperty: {status: inlined, parser: parsePatternRange, parent: Pattern}
   PatternPropertyList: {status: inlined, parser: parsePatternRange, parent: Pattern}
   PostfixExpression: {status: inlined, parser: parseExpressionRange, parent: Expression}
+  ReceiverParameter: {status: inlined, parser: parseFunctionParameter, parent: Parameter}
   PostfixSuffix: {status: inlined, parser: parseExpressionRange, parent: Expression}
   PostfixType: {status: inlined, parser: parseTypeRange, parent: TypeExpression}
   PostfixTypeSuffix: {status: inlined, parser: parseTypeRange, parent: TypeExpression}

@@ -1,0 +1,4 @@
+section: "Section 6 Function Parameters"
+covers_rule: "receiverParameter has no initializer"
+expected: "REJECT"
+notes: []

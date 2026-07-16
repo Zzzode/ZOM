@@ -139,6 +139,12 @@ ZC_TEST("DiagnosticTest.TypeCheckerDiagnosticIdsAreStable") {
   ZC_EXPECT(static_cast<uint32_t>(DiagID::MoveOutOfBorrow) == 4070);
 }
 
+ZC_TEST("DiagnosticTest.ReceiverParserDiagnosticIdsAreStable") {
+  ZC_EXPECT(static_cast<uint32_t>(DiagID::ReceiverMustBeFirstParameter) == 2093);
+  ZC_EXPECT(static_cast<uint32_t>(DiagID::ReceiverDefaultNotAllowed) == 2094);
+  ZC_EXPECT(static_cast<uint32_t>(DiagID::ReceiverNotAllowedHere) == 2095);
+}
+
 ZC_TEST("DiagnosticTest.ControlTransferDiagnosticContractsAreStable") {
   const auto breakInfo = getDiagnosticInfo(DiagID::BreakTargetNotFound);
   ZC_EXPECT(breakInfo.id == DiagID::BreakTargetNotFound);

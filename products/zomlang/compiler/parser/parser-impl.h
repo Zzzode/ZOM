@@ -195,6 +195,15 @@ struct Parser::Impl {
 
   mutable zc::Vector<RecoveryFrame> recoveryFrames;
 
+  enum class CallableParameterContext : uint8_t {
+    Member,
+    ModuleFunction,
+    BlockFunction,
+    ExternFunction,
+    FunctionExpression,
+    Lambda,
+  };
+
   RecoveryFrame makeRecoveryFrame(RecoveryContext context, size_t anchor) const;
 
   void pushRecoveryFrame(RecoveryContext context, size_t anchor) const;
@@ -522,14 +531,16 @@ struct Parser::Impl {
 
   size_t recoverFunctionParameter(TokenCursor& cursor, size_t closeParen) const;
 
-  ast::NodeId parseFunctionParameter(AstFactory& builder, TokenCursor& cursor,
-                                     size_t closeParen) const;
+  ast::NodeId parseFunctionParameter(AstFactory& builder, TokenCursor& cursor, size_t closeParen,
+                                     size_t parameterOrdinal,
+                                     CallableParameterContext context) const;
 
   ast::NodeList parseFunctionParameterNodeList(AstFactory& builder, size_t openParen,
-                                               size_t closeParen) const;
+                                               size_t closeParen,
+                                               CallableParameterContext context) const;
 
-  ast::NodeId parseFunctionParameterList(AstFactory& builder, size_t openParen,
-                                         size_t closeParen) const;
+  ast::NodeId parseFunctionParameterList(AstFactory& builder, size_t openParen, size_t closeParen,
+                                         CallableParameterContext context) const;
 
   size_t consumeSimpleStatementEnd(size_t start, size_t limit) const;
 
@@ -721,7 +732,8 @@ struct Parser::Impl {
 
   ast::NodeId parseExternBlockDeclaration(AstFactory& builder, size_t start, size_t end) const;
 
-  ast::NodeId parseFunctionDeclaration(AstFactory& builder, size_t start, size_t end) const;
+  ast::NodeId parseFunctionDeclaration(AstFactory& builder, size_t start, size_t end,
+                                       bool isBlockFunction = false) const;
 
   ast::NodeId parseNamedTypeDeclaration(AstFactory& builder, size_t start, size_t end,
                                         ast::SyntaxKind kind) const;

@@ -1,0 +1,4 @@
+class ReceiverOrder {
+    fun late(value: i32, this) {}
+    fun duplicate(this, this: Self) {}
+}

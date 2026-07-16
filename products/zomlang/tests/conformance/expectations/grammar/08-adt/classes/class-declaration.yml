@@ -1,5 +1,5 @@
 section: "Section 8.2 Explicit Receiver Parameters"
-covers_rule: "functionParameter"
+covers_rule: "parameter"
 expected: "ACCEPT"
 notes:
   - "Constructors and methods declare the receiver with an explicit this parameter."

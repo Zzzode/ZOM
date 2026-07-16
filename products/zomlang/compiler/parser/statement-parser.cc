@@ -400,9 +400,11 @@ ast::NodeId Parser::Impl::parseBlock(AstFactory& builder, size_t openBrace, size
            kindAt(itemResult.boundary.end - 1) != ast::SyntaxKind::Semicolon);
       if (!invalidAttributedExpression) {
         itemResult.node =
-            finalExpression
-                ? parseExpressionStatementWithoutSemicolon(builder, itemResult.boundary.nodeStart,
-                                                           itemResult.boundary.end)
+            finalExpression ? parseExpressionStatementWithoutSemicolon(
+                                  builder, itemResult.boundary.nodeStart, itemResult.boundary.end)
+            : itemResult.boundary.kind == ast::SyntaxKind::FunctionDecl
+                ? parseFunctionDeclaration(builder, itemResult.boundary.nodeStart,
+                                           itemResult.boundary.end, true)
                 : parseSourceElementOfKind(builder, itemResult.boundary.nodeStart,
                                            itemResult.boundary.end, itemResult.boundary.kind);
       }

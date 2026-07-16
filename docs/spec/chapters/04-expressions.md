@@ -397,7 +397,7 @@ same parameter, generic parameter, return-type, and `raises` syntax as a
 function declaration, but it has no binding identifier.
 
 ```text
-FunctionExpression ::= 'fun' TypeParameters? ParameterClause CaptureClause?
+FunctionExpression ::= 'fun' TypeParameters? OrdinaryParameterClause CaptureClause?
                        ReturnType? BlockStatement
 CaptureClause ::= 'use' '[' CaptureList? ']'
 CaptureList ::= CaptureElement (',' CaptureElement)* ','?
@@ -407,6 +407,7 @@ CaptureElement ::= Identifier | '&' Identifier | 'this'
 The `use` token is contextual. It starts a capture clause only in the position
 immediately after the parameter clause and before the optional return type. In
 all other expression positions, `use` remains an ordinary identifier.
+Function expressions and lambdas cannot declare a receiver parameter.
 
 The capture clause is an explicit capture set:
 

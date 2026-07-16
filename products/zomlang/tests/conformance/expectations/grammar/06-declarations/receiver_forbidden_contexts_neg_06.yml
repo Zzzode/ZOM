@@ -1,0 +1,4 @@
+section: "Section 6 Function Parameters"
+covers_rule: "receiver parameters are accepted only by receiver-capable direct member parameter clauses"
+expected: "REJECT"
+notes: []

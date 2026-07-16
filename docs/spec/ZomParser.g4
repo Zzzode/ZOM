@@ -1240,7 +1240,7 @@ implBody
     ;
 implMember
     // Method impl (abstract w/ SEMICOLON or concrete w/ blockBody)
-    : modifierList FUN memberIdentifier typeParameters? functionSignature ( SEMICOLON | blockBody )
+    : modifierList FUN memberIdentifier typeParameters? memberFunctionSignature ( SEMICOLON | blockBody )
     // Associated-type assignment (impl-block-level 'type Item = T;' per 17-gr)
     | TYPE memberIdentifier typeParameters? ASSIGN typeExpr SEMICOLON
     // Let / mut / const inside impl (follow Ch.06 Value Declarations)
@@ -1397,7 +1397,7 @@ errorBody  : LBRACE structMember* RBRACE ;
 
 
 classMember
-    : modifierList FUN memberIdentifier typeParameters? functionSignature
+    : modifierList FUN memberIdentifier typeParameters? memberFunctionSignature
       ( SEMICOLON
       | blockBody { checkAbstractNoBlock($modifierList.ctx, this) }?
       )                                                                                     # classMethod
@@ -1416,9 +1416,9 @@ classMember
 
 
 
-    | modifierList GET memberIdentifier functionSignature blockBody
-      ( modifierList SET memberIdentifier functionSignature blockBody
-      | SET memberIdentifier functionSignature blockBody
+    | modifierList GET memberIdentifier memberFunctionSignature blockBody
+      ( modifierList SET memberIdentifier memberFunctionSignature blockBody
+      | SET memberIdentifier memberFunctionSignature blockBody
       )?                                                                                   # classProperty
     ;
 
@@ -1432,7 +1432,7 @@ structMember
 
     : modifierList (MUT | readonly)? memberIdentifier COLON typeExpr (ASSIGN expression)?
       ( SEMICOLON | COMMA | { okAfterStructFieldNoSeparator(this) }? )            # structField
-    | modifierList FUN memberIdentifier typeParameters? functionSignature
+    | modifierList FUN memberIdentifier typeParameters? memberFunctionSignature
       ( SEMICOLON | blockBody )                                                             # structMethod
     | modifierList (INIT | DEINIT) parameterList (RAISES typeExpr)? blockBody   # structCtor
     ;
@@ -1444,8 +1444,8 @@ interfaceBody : LBRACE interfaceMember* RBRACE ;
 
 
 interfaceMember
-    : modifierList FUN memberIdentifier typeParameters? functionSignature SEMICOLON    # interfaceMethod
-    | modifierList (GET | SET) memberIdentifier functionSignature SEMICOLON            # interfaceProperty
+    : modifierList FUN memberIdentifier typeParameters? memberFunctionSignature SEMICOLON    # interfaceMethod
+    | modifierList (GET | SET) memberIdentifier memberFunctionSignature SEMICOLON            # interfaceProperty
     | modifierList TYPE memberIdentifier typeParameters?
       ( COLON interfaceBoundList )? ( ASSIGN typeExpr )? SEMICOLON                                       # interfaceAssocType
     ;
@@ -1476,19 +1476,40 @@ variantTypeList : typeExpr ( COMMA typeExpr )* COMMA? ;
 //       (b) WITHOUT return type (standalone raises): `parameters raises X | Y`
 //       (c) Neither: just `parameters`
 functionSignature
+    : ordinaryParameterList ( ARROW typeExpr ( RAISES typeExpr )? )?
+    | ordinaryParameterList RAISES typeExpr
+    ;
+
+
+memberFunctionSignature
     : parameterList ( ARROW typeExpr ( RAISES typeExpr )? )?
     | parameterList RAISES typeExpr
     ;
 
 
 parameterList
-    : LPAREN ( parameter ( COMMA parameter )* COMMA? )? RPAREN
+    : LPAREN ( parameter ( COMMA ordinaryParameter )* COMMA? )? RPAREN
+    ;
+
+
+ordinaryParameterList
+    : LPAREN ( ordinaryParameter ( COMMA ordinaryParameter )* COMMA? )? RPAREN
     ;
 
 
 parameter
+    : receiverParameter
+    | ordinaryParameter
+    ;
+
+
+ordinaryParameter
     : outerAttributeList identifier COLON typeExpr ( ASSIGN expression )?
-    | outerAttributeList THIS ( COLON typeExpr )?
+    ;
+
+
+receiverParameter
+    : outerAttributeList THIS ( COLON typeExpr )?
     ;
 
 
@@ -2081,8 +2102,8 @@ templateLiteral
 // ---- Lambda -----------------------------------------------------------
 
 lambdaExpr
-    : parameterList (ARROW typeExpr ( RAISES typeExpr )? )? ROCKET blockBody               # lambdaBlock
-    | parameterList (ARROW typeExpr ( RAISES typeExpr )? )? ROCKET expression              # lambdaExprArrow
+    : ordinaryParameterList (ARROW typeExpr ( RAISES typeExpr )? )? ROCKET blockBody       # lambdaBlock
+    | ordinaryParameterList (ARROW typeExpr ( RAISES typeExpr )? )? ROCKET expression      # lambdaExprArrow
     ;
 
 // ---- Struct literal ---------------------------------------------------
@@ -2195,7 +2216,7 @@ functionTypeParameterList
     ;
 
 functionExpression
-    : FUN typeParameters? parameterList captureClause?
+    : FUN typeParameters? ordinaryParameterList captureClause?
       ( ARROW typeExpr ( RAISES typeExpr )? )? blockBody
     ;
 

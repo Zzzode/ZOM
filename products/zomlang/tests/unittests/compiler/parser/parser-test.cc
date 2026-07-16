@@ -1183,6 +1183,107 @@ ZC_TEST("ParserTest.ParseParameterAttributeOnThisReceiver") {
   }
 }
 
+ZC_TEST("ParserTest.RejectsThisReceiverAfterFirstParameter") {
+  auto sourceManager = zc::heap<source::SourceManager>();
+  auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
+
+  class MockConsumer final : public diagnostics::DiagnosticConsumer {
+  public:
+    size_t receiverMustBeFirstCount = 0;
+
+    void handleDiagnostic(const source::SourceManager&,
+                          const diagnostics::Diagnostic& diagnostic) override {
+      if (diagnostic.getId() == diagnostics::DiagID::ReceiverMustBeFirstParameter) {
+        ++receiverMustBeFirstCount;
+      }
+    }
+  };
+
+  auto consumer = zc::heap<MockConsumer>();
+  auto consumerPtr = consumer.get();
+  diagnosticEngine->addConsumer(zc::mv(consumer));
+  basic::LangOptions langOpts;
+  basic::StringPool stringPool;
+  auto bufferId = sourceManager->addMemBufferCopy(zc::str("class C {\n"
+                                                          "  fun late(value: i32, this) {}\n"
+                                                          "  fun duplicate(this, this: Self) {}\n"
+                                                          "}\n"_zc)
+                                                      .asBytes(),
+                                                  "test.zom");
+  Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
+
+  ZC_EXPECT(parser.parse() == zc::none);
+  ZC_EXPECT(consumerPtr->receiverMustBeFirstCount == 2);
+}
+
+ZC_TEST("ParserTest.RejectsThisReceiverDefaultValue") {
+  auto sourceManager = zc::heap<source::SourceManager>();
+  auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
+
+  class MockConsumer final : public diagnostics::DiagnosticConsumer {
+  public:
+    size_t receiverDefaultCount = 0;
+
+    void handleDiagnostic(const source::SourceManager&,
+                          const diagnostics::Diagnostic& diagnostic) override {
+      if (diagnostic.getId() == diagnostics::DiagID::ReceiverDefaultNotAllowed) {
+        ++receiverDefaultCount;
+      }
+    }
+  };
+
+  auto consumer = zc::heap<MockConsumer>();
+  auto consumerPtr = consumer.get();
+  diagnosticEngine->addConsumer(zc::mv(consumer));
+  basic::LangOptions langOpts;
+  basic::StringPool stringPool;
+  auto bufferId = sourceManager->addMemBufferCopy(zc::str("class C {\n"
+                                                          "  fun inferred(this = value) {}\n"
+                                                          "  fun typed(this: i32 = 0) {}\n"
+                                                          "}\n"_zc)
+                                                      .asBytes(),
+                                                  "test.zom");
+  Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
+
+  ZC_EXPECT(parser.parse() == zc::none);
+  ZC_EXPECT(consumerPtr->receiverDefaultCount == 2);
+}
+
+ZC_TEST("ParserTest.RejectsReceiverOutsideDirectMember") {
+  auto sourceManager = zc::heap<source::SourceManager>();
+  auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
+
+  class MockConsumer final : public diagnostics::DiagnosticConsumer {
+  public:
+    size_t receiverNotAllowedCount = 0;
+
+    void handleDiagnostic(const source::SourceManager&,
+                          const diagnostics::Diagnostic& diagnostic) override {
+      if (diagnostic.getId() == diagnostics::DiagID::ReceiverNotAllowedHere) {
+        ++receiverNotAllowedCount;
+      }
+    }
+  };
+
+  auto consumer = zc::heap<MockConsumer>();
+  auto consumerPtr = consumer.get();
+  diagnosticEngine->addConsumer(zc::mv(consumer));
+  basic::LangOptions langOpts;
+  basic::StringPool stringPool;
+  auto bufferId =
+      sourceManager->addMemBufferCopy(zc::str("fun moduleReceiver(this) {}\n"
+                                              "fun outer() { fun blockReceiver(this) {} }\n"
+                                              "extern { fun foreignReceiver(this); }\n"
+                                              "let expressionReceiver = fun(this) {};\n"
+                                              "let lambdaReceiver = (this) => this;\n"_zc)
+                                          .asBytes(),
+                                      "test.zom");
+  Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
+
+  ZC_EXPECT(parser.parse() == zc::none);
+  ZC_EXPECT(consumerPtr->receiverNotAllowedCount == 5);
+}
+
 ZC_TEST("ParserTest.ParseGetSetKeywordMethodNames") {
   auto sourceManager = zc::heap<source::SourceManager>();
   auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);

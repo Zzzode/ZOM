@@ -1,0 +1,4 @@
+class ReceiverDefaults {
+    fun inferred(this = value) {}
+    fun typed(this: i32 = 0) {}
+}

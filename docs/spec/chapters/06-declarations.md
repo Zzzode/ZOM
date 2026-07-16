@@ -192,8 +192,10 @@ bindings.
 FunctionDecl   ::= ModifierList 'fun' BindingIdent TypeParameters?
                    FunctionSignature WhereClause? FunctionBody
 
-FunctionSignature ::= ParameterClause
+FunctionSignature ::= OrdinaryParameterClause
                       ( '->' TypeExpr RaisesClause? | RaisesClause )?
+MemberFunctionSignature ::= ParameterClause
+                            ( '->' TypeExpr RaisesClause? | RaisesClause )?
 
 FunctionBody   ::= BlockStatement | ';'
 
@@ -202,16 +204,28 @@ RaisesClause   ::= 'raises' TypeExpr
                       TypeExpr itself: e.g. `raises ParseError | IoError` *)
 
 ParameterClause ::= '(' ParameterList? ')'
-ParameterList   ::= Parameter (',' Parameter)* ','?
-Parameter       ::= OuterAttributeList? Identifier ':' TypeExpr Initializer?
-                  | OuterAttributeList? 'this' (':' TypeExpr)?
-                    (* `this` is the explicit receiver parameter and defaults to Self. *)
+OrdinaryParameterClause ::= '(' OrdinaryParameterList? ')'
+ParameterList   ::= Parameter (',' OrdinaryParameter)* ','?
+OrdinaryParameterList ::= OrdinaryParameter (',' OrdinaryParameter)* ','?
+Parameter       ::= ReceiverParameter | OrdinaryParameter
+ReceiverParameter ::= OuterAttributeList? 'this' (':' TypeExpr)?
+                      (* `this` is the explicit receiver parameter and defaults to Self. *)
+OrdinaryParameter ::= OuterAttributeList? Identifier ':' TypeExpr Initializer?
 ```
 
 A callable has a receiver only when its parameter clause explicitly declares
 `this`. Placement in a class, struct, error, interface, or `impl` body does not
 synthesize a receiver. A `this` expression in the callable body resolves to
-that declared parameter.
+that declared parameter. Only a direct method, accessor, initializer, or
+deinitializer member may declare a receiver. Module functions, block
+functions, extern functions, function expressions, and lambdas use
+`OrdinaryParameterClause`. `ZOM2095 ReceiverNotAllowedHere` rejects `this` in
+ordinary callable contexts.
+
+The receiver is unique and must be the first parameter. `ZOM2093
+ReceiverMustBeFirstParameter` rejects a receiver in any later position. A
+receiver never has a default value;
+`ZOM2094 ReceiverDefaultNotAllowed` rejects an initializer on `this`.
 
 ### Basic Function Declaration
 
@@ -368,16 +382,16 @@ PropertyDecl    ::= PropertyStorage PropertyName
 ClassConstDecl  ::= 'const' BindingIdent TypeAnnotation? '=' ConstExpression ';'
 ClassFieldDecl  ::= PropertyName ':' TypeExpr ('=' Expression)?
                      (';' | ',' | (* implicit separator before next keyword-starting member *))
-MethodDecl      ::= 'fun' PropertyName TypeParameters? FunctionSignature
+MethodDecl      ::= 'fun' PropertyName TypeParameters? MemberFunctionSignature
                      ( BlockStatement | ';' )
 InitDecl        ::= 'init' ParameterClause RaisesClause? BlockStatement
 DeinitDecl      ::= 'deinit' ParameterClause RaisesClause? BlockStatement
 
-ComputedPropertyDecl ::= 'get' PropertyName FunctionSignature BlockStatement
+ComputedPropertyDecl ::= 'get' PropertyName MemberFunctionSignature BlockStatement
                           SetAccessorDecl?
 SetAccessorDecl  ::= ModifierList 'set' PropertyName
-                      FunctionSignature BlockStatement
-                   | 'set' PropertyName FunctionSignature BlockStatement
+                      MemberFunctionSignature BlockStatement
+                   | 'set' PropertyName MemberFunctionSignature BlockStatement
 ```
 
 ### Basic Class Declaration
@@ -726,9 +740,9 @@ InterfaceElement ::= ModifierList 'fun' MethodSignature ';'
                   | ModifierList 'type' Identifier TypeParameters?
                     ( ':' InterfaceBoundList )? ( '=' TypeExpr )? ';'
 
-PropertySignature ::= PropertyName FunctionSignature
+PropertySignature ::= PropertyName MemberFunctionSignature
 MethodSignature   ::= PropertyName CallSignature
-CallSignature     ::= TypeParameters? FunctionSignature
+CallSignature     ::= TypeParameters? MemberFunctionSignature
 ```
 
 ### Basic Interface
@@ -974,7 +988,7 @@ StandaloneImplDecl ::= UnsafePrefix? 'impl' TypeParameters? InterfaceBoundList '
     (* 'impl' is a SOFT keyword — recognized only at impl-head position *)
 
 ImplMember     ::= ModifierList 'fun' BindingIdent TypeParameters?
-                    FunctionSignature ( ';' | BlockStatement )
+                    MemberFunctionSignature ( ';' | BlockStatement )
                  | 'type' Identifier TypeParameters? '=' TypeExpr ';'
                  | 'mut' VariableDeclList ';'
                  | 'let' VariableDeclList ';'
