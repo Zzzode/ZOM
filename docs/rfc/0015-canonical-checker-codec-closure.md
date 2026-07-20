@@ -2,13 +2,13 @@
 rfc: 15
 title: Canonical Checker Codec Closure
 type: language
-status: IMPLEMENTING
+status: LANDED
 author: ZOM Compiler Team
 review-manager: rfc
 required-owners: [rfc, lexer-parser, binder-checker, module-system, error-system, spec-audit, verification]
 approvers: [rfc, lexer-parser, binder-checker, module-system, error-system, spec-audit, verification]
 created: 2026-07-16
-updated: 2026-07-18
+updated: 2026-07-20
 area: language
 requires: [4, 5, 8, 9, 11, 13, 14]
 supersedes: []
@@ -2395,3 +2395,4 @@ None
 | 2026-07-17 | ACCEPTED | All required owners approved exact review SHA-256 `642836225d54f6fa28f8c27e9985972081dbd221c2e8f3e61a0aafd04fe9bb1e`: `rfc`, `lexer-parser`, `binder-checker`, `module-system`, `error-system`, `spec-audit`, and `verification`. |
 | 2026-07-17 | IMPLEMENTING | Began the accepted direct checker-codec cutover through the implementation tracker. The transition changes status metadata only and preserves the approved design; no prior codec producer or consumer may remain. |
 | 2026-07-18 | IMPLEMENTING | Synchronized the accepted RFC 0018 occurrence bridge, per-occurrence mixed-form classification, post-classification ordinary and marker survivor streams, and occurrence-specific diagnostic lineage. |
+| 2026-07-20 | LANDED | The direct implementation, RFC records, architecture guidance, and complete verification evidence landed on `develop` through commits `0bba7e34`, `f86b5660`, and `76e73196`; no replaced codec producer or consumer remains. |

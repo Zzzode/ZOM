@@ -527,13 +527,14 @@ Implementation is authorized by the accepted decision. States advance only
 when the named evidence is attached; acceptance alone is not implementation
 evidence.
 
-### 2026-07-19 Implementation Completion Evidence
+### 2026-07-20 Landing Evidence
 
-The working tree completes every RFC 0015 implementation slice with one
-production rail. Signature facts use revision v1, coherence uses revision v1,
-and module interfaces use revision v3. Imported signature view revision v0 is
-an independent projection protocol and is not an alternate signature-facts,
-coherence, or module-interface producer.
+Commits `0bba7e34`, `f86b5660`, and `76e73196` landed every RFC 0015
+implementation slice, its governance records, and its current architecture
+guidance on `develop` with one production rail. Signature facts use revision
+v1, coherence uses revision v1, and module interfaces use revision v3.
+Imported signature view revision v0 is an independent projection protocol and
+is not an alternate signature-facts, coherence, or module-interface producer.
 
 The final marker-proof integration removes the manual verified-signature test
 fixture. Its source is parsed and bound, `SignatureFactsBuilder` reconstructs
@@ -542,9 +543,9 @@ verification publish them, and `MarkerProofEngine` proves or rejects the
 result. The checker architecture gate rejects removal of this producer path or
 restoration of a manual candidate rail.
 
-RFC 0015 remains `IMPLEMENTING` until these changes are committed and landed.
-The implementation state does not by itself authorize a `LANDED` metadata
-transition.
+The sanitizer build, all 204 CTest targets, RFC validation, format validation,
+architecture gates, and diff hygiene passed for the landed repository state.
+RFC 0015 is therefore `LANDED`.
 
 # RFC 0018 Occurrence Bridge Overlay
 

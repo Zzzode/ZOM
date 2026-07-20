@@ -173,13 +173,14 @@ flowchart TD
     M --> D
 ```
 
-**CRITICAL KNOWN GAPS (as of 2026-07-17)** that are tracked by audit findings
+**CRITICAL KNOWN GAPS (as of 2026-07-20)** that are tracked by audit findings
 and must be handled with principle #4 (delete or implement, no drift):
 
-1. **RFC 0007 remains a reviewed DRAFT.** The frontend publishes verified
+1. **RFC 0007 is accepted, not implementing.** The frontend publishes verified
    borrow contracts and evidence, but production ownership facts remain
-   fail-closed until the exact ownership-event, dataflow, unsafe-boundary, and
-   concurrency contracts complete governance and enter implementation.
+   fail-closed until the accepted ownership-event, dataflow, unsafe-boundary,
+   and concurrency contracts enter implementation through the recorded
+   enablement transaction.
 2. **RFC 0013 is implementing, not complete.** BorrowEvidence, CheckedModule,
    HIR lineage, and Built MIR v2 are implemented; OwnershipProofValidation and
    production ownership-result publication remain gated on RFC 0007.

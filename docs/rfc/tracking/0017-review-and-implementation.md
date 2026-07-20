@@ -178,10 +178,10 @@ of that snapshot.
 | Slice | State | Required evidence |
 |---|---|---|
 | Routing and ownership | Complete | Query subsystem and architecture-gate ownership is explicit and validated |
-| Stable identity replacement | In progress | RFC 0018 named-definition and implementation record replacement is complete; subordinate-parameter, semantic-import, stable-body-owner, and owner-local domains have strict canonical decoders. RFC 0019 detached module-body syntax and revision-local provenance value schemas are implemented, while their query registration, persistent query inventory ownership, and remaining materialization migration stay open |
-| Revision-domain separation | In progress | Database revisions, durability, reuse classes, semantic query values, stable semantic-import keys, revision-local materialization values, detached module-body syntax, and module-body provenance are distinct; complete query-owned provenance, materialization, identity-store ownership, and call-site migration remain open |
-| In-memory query runtime | Complete | Typed registration, atomic set/erase transactions, snapshots, actual reads, canonical parallel dependency groups, red-green validation, equality backdating, durability, cycles, cancellation, single-flight, eviction metadata retention, and observability are covered by native tests |
-| Session and module migration | In progress | `CompilerSession` owns the sole frontend scheduler and query database, atomically stages compilation, package graph, topology, source, and exact module-resolution inputs, demands module order and semantic module candidates, and contains no readiness scheduler, linear dependency-output lookup, or batch module-resolution authority; tracked request derivation, body inputs, provenance, and a reusable edit lifecycle remain open |
+| Stable identity replacement | In progress | RFC 0018 named-definition and implementation record replacement is complete; subordinate-parameter, semantic-import, stable-body-owner, and owner-local domains have strict canonical decoders. RFC 0019 registers detached module-body, named-item, owner-inventory, owner-syntax, and owner-provenance queries, while persistent query inventory ownership, owner binding, and remaining materialization migration stay open |
+| Revision-domain separation | In progress | Database revisions, durability, reuse classes, semantic query values, stable semantic-import keys, revision-local materialization values, detached module-body syntax, module-body provenance, semantic owner-body syntax, and revision-local owner-body provenance are distinct; owner binding, materialization, identity-store ownership, and call-site migration remain open |
+| In-memory query runtime | Complete | Typed registration, atomic set/erase transactions, snapshots, required reads, input-only optional probes, `Present` and `Absent` dependency observations, canonical parallel dependency groups, red-green validation, equality backdating, durability, cycles, cancellation, single-flight, eviction metadata retention, and observability are covered by native tests |
+| Session and module migration | In progress | `CompilerSession` owns the sole frontend scheduler and query database, atomically stages compilation, package graph, topology, source, exact module-resolution inputs, and the readiness-gated complete active-definition authority map. It demands module order, semantic module candidates, module-body values, and every active named-item syntax and provenance value from a ready snapshot. Owner projections are registered and tested but are not yet production session roots; tracked request derivation, owner-body binding and materialization, and a reusable edit lifecycle remain open |
 | Binder aggregate query | Blocked by prior slices | Existing complete Binder behind one verified query with clean-build differential evidence |
 | Projection firewalls | Blocked by Binder aggregate query | Export, name, header, signature, visibility, import, closure, and diagnostic projections with mutation tests |
 | Item-level Binder split | Blocked by projections | Immutable skeleton and named-item body providers plus independent domain verification |
@@ -261,9 +261,10 @@ canonical records, subordinate parameter registries are separate from the
 definition registry, and import/re-export bindings use
 `SemanticImportBindingKey` instead of alias `DefId` values. RFC 0019 now supplies
 the closed owner model for module-owned statements and anonymous-callable
-subordinate entities. Complete body-syntax provenance, materialization, query
-ownership, and identity-store migration are still required before
-revision-domain separation can complete.
+subordinate entities. Its Phase 2 module-body syntax and provenance queries are
+registered and demanded in production. Owner-body materialization, complete
+query ownership beyond Phase 2, and identity-store migration are still required
+before revision-domain separation can complete.
 
 ### 2026-07-19 Narrow Module Input Evidence
 
@@ -294,8 +295,9 @@ gates pass. The verifier is mechanically forbidden from reusing these producer
 classes. Complete definition and implementation records, owner validation,
 site and duplicate-bound provenance, digest admission, registry replacement,
 and the compiler-wide named-identity consumer cut are implemented. The slice
-remains in progress because stable body-syntax provenance, materialization,
-query ownership, and remaining consumer migration are not yet complete.
+remains in progress because owner-body binding, materialization, complete
+production query ownership, and remaining consumer migration are not yet
+complete.
 
 ### 2026-07-19 In-Memory Runtime And Production Topology Evidence
 
@@ -442,8 +444,13 @@ completed the named-item and owner-local record portion of stable identity and
 the in-memory query runtime. Session migration now owns the production
 compilation-option, package-graph, active-crate, source-snapshot, and
 module-topology roots.
-RFC 0019 module-body syntax and provenance value foundations are implemented,
-while their `ParseSource` and stable-inventory prerequisites, derived query
-registration, production demand, and owner-body query ownership remain open.
+RFC 0019 Phase 2 is complete: `ParseSource`, stable named inventories,
+module-body syntax, and revision-local module-body provenance are registered and
+demanded through the production session. RFC 0020 adds input-only tracked
+absence, the readiness-gated complete active-definition authority map, and
+independently verified named-item syntax and provenance. RFC 0019 Phase 3 now
+adds canonical owner inventories, semantic owner-body syntax, and
+revision-local owner-body provenance. Owner-body binding and materialization
+remain open.
 Manifest inputs, the complete revision-domain migration, Binder queries, and
 diagnostic migration also remain open.

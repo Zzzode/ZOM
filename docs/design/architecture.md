@@ -1,7 +1,7 @@
 <!-- @dsCard group="Design Documents" name="ARCHITECTURE" -->
 # ZOM Compiler Architecture - Current Implementation
 
-Updated: 2026-07-17
+Updated: 2026-07-20
 
 This document describes executable code in the repository. RFC status and
 future contracts are tracked under `docs/rfc`; a contract is listed here only
@@ -18,7 +18,12 @@ The compiler currently provides:
 - fixed-point structural module discovery;
 - one session-owned semantic context, frozen identity registries, and one
   canonical semantic type store;
+- one session-owned incremental query database and scheduler with exact source,
+  package, topology, selected-source, definition-authority, and readiness
+  inputs;
 - a complete verified module graph before binding starts;
+- verified module-body, named-item, and stable owner-body semantic syntax
+  separated from revision-local source provenance;
 - dependency-ordered module binding with immutable binding metadata and export
   surfaces;
 - canonical signature, coherence, module-interface, checked, dispatch, and
@@ -30,6 +35,8 @@ The compiler currently provides:
 The production path does not yet provide:
 
 - production ownership analysis and ownership-proof publication;
+- owner-body binding, materialization, aggregate verification, and complete
+  replacement of definition-only body processing required by RFC 0019;
 - complete language-wide body checking and exhaustiveness beyond the admitted
   checker fact inventory; or
 - executable MIR, target LIR, LLVM IR, object files, linking, or binaries.
@@ -45,6 +52,7 @@ fact or any source, identity, codec, or IR invariant rejects the entire stage.
 | `compiler/source` | Own source buffers and source locations | `BufferId`, `SourceLoc`, source text views |
 | `compiler/lexer` | Produce tokens on demand | parser-consumed tokens |
 | `compiler/parser` | Parse one retained source snapshot | `ast::Tree` and `ParsedTokenSnapshot` |
+| `compiler/query` | Own tracked inputs, immutable snapshots, dependency validation, red-green memo reuse, and deterministic demand telemetry | `QueryDatabase`, `QuerySnapshot`, typed query values, dependency groups, and memo metadata |
 | `compiler/ast` | Own immutable schema-backed syntax | `Tree`, `NodeId`, schema verification, deterministic dumps |
 | `compiler/identity` | Define and freeze canonical semantic identities | context-branded package, crate, source, module, definition, impl, and type handles |
 | `compiler/driver/package` | Resolve packages, targets, source snapshots, and build scripts | verified package-session inputs and finalized compilation roots |
@@ -59,8 +67,10 @@ fact or any source, identity, codec, or IR invariant rejects the entire stage.
 | `utils/zomc` | Admit a workspace and invoke the production session | AST output, syntax-only binding success, or explicit stage failure |
 | `runtime` | Provide runtime support symbols | runtime libraries; no compiler backend consumer yet |
 
-Binder identities are `DefId`, `ImplId`, `ModuleId`, and module-local
-`ScopeId`; semantic types enter through `SemanticTypeStore`.
+Stable Binder query identities are canonical package, crate, source, module,
+definition, implementation, and owner keys. Active semantic publications use
+context-branded `DefId`, `ImplId`, `ModuleId`, and module-local `ScopeId`;
+semantic types enter through `SemanticTypeStore`.
 
 ## 3. Session Pipeline
 
@@ -72,7 +82,8 @@ flowchart TD
     R --> B["Verified build plan and available finalized roots"]
     T --> S["CompilerSession"]
     B --> S
-    S --> D["Fixed-point parse and structural discovery"]
+    S --> Q["Session-owned QueryDatabase"]
+    Q --> D["ParseSource and fixed-point structural discovery"]
     D --> U["Unbranded parsed modules"]
     U --> SI["Freeze source identities"]
     SI --> PS["VerifiedParsedModule sequence"]
@@ -81,7 +92,11 @@ flowchart TD
     F --> DI["Freeze definition and impl identities"]
     DI --> G["VerifiedModuleGraph"]
     PS --> G
-    G --> O["Dependency-order binder scheduling"]
+    G --> TI["Exact topology and selected-source inputs"]
+    TI --> MB["ModuleBodySyntax and ModuleBodyProvenance"]
+    MB --> AP["Atomic definition authority replacement"]
+    AP --> NI["NamedItemSyntax and NamedItemProvenance"]
+    NI --> O["Dependency-order binder scheduling"]
     O --> VI["VerifiedBindingInput per module"]
     VI --> VO["VerifiedBindingOutput per module"]
     VO --> VBM["VerifiedBoundModuleInput"]
@@ -97,11 +112,12 @@ flowchart TD
 
 ### Parse and discovery
 
-`parseSources()` starts from finalized crate roots. It repeatedly processes the
-canonically ordered set of unparsed source identities, parses each source,
-retains the token snapshot, verifies the parser result against an immutable
-source snapshot, derives structural module dependency requests, and admits any
-newly discovered source. The loop ends only when no source remains.
+`parseSources()` starts from finalized crate roots. It repeatedly stages exact
+source snapshots and compilation options, demands `ParseSource` for the
+canonically ordered set of unparsed source identities, verifies the query
+result against the immutable source snapshot, derives structural module
+dependency requests, and admits any newly discovered source. The loop ends
+only when no source remains.
 
 The session then freezes source identities, promotes every parser result to a
 context-branded `VerifiedParsedModule`, freezes module identities, computes the
@@ -120,6 +136,18 @@ lexical or syntax diagnostic, so no failed parser result can be promoted.
 verified binding publication. For each module it constructs a requester-owned
 graph view, imports only verified dependency export surfaces, verifies the
 complete `BindingInputCandidate`, and calls `runBinding()`.
+
+Before binding starts, the session stages exact active-crate, active-module,
+dependency, selected-source, and source-snapshot inputs and verifies the
+query-derived module order against the frozen module graph. It then refreshes
+the complete active-definition authority map in one transaction and restores
+readiness only with the complete set fingerprint. A new ready snapshot demands
+`NamedItemSyntax` and `NamedItemProvenance` for every active definition. No
+named-item provider scans modules or reads session registries. The registered
+owner projection catalog derives canonical `ModuleBodyOwners`, projects one
+module-or-definition `OwnerBodySyntax`, and retains exact revision-local
+`OwnerBodyProvenance` through alternative-specific dependencies. These owner
+queries are not yet production Binder roots.
 
 Successful binding publishes one atomic `VerifiedBindingOutput`:
 
@@ -163,6 +191,7 @@ preparation. Packages with directly available roots do not require that API.
 | Package resolution memory, request, graph, snapshots, build plan, and results | `CompilerSession` | installed atomically before parsing; snapshots explicitly finalized |
 | Source bytes | `SourceManager` | immutable source snapshots bind bytes, length, and digest before parser promotion |
 | Parser tokens and AST | `VerifiedParsedModule` | receipt-verified and immutable after source-registry freeze |
+| Query inputs and memos | `CompilerSession` and `QueryDatabase` | base mutations remove definition-authority readiness; complete authority replacement restores readiness atomically before named-item demand; owner projection memos retain canonical owner syntax separately from revision-local provenance |
 | Semantic context and identity registries | `CompilerSession` | one brand and one registry family; handles are context and slot checked |
 | Semantic types | `SemanticTypeStore` | one append-only store; only store-bound `canonicalizeClosed()` may create an internable payload |
 | Module dependencies | `VerifiedModuleGraph` | one complete immutable graph and requester-filtered views |
@@ -186,6 +215,11 @@ The production session is deterministic and phase-ordered:
 - parse/discovery worklists sort complete canonical source keys;
 - identity registries freeze canonical keys before public handles are used;
 - module graph records and edges use canonical encodings and revisions;
+- tracked input transactions publish exact root sets, and query snapshots
+  validate presence-aware dependencies without tombstones;
+- active-definition authority replacement is complete and atomic, and
+  named-item and owner projection query keys and canonical values are
+  independent of worker execution order;
 - binding runs in dependency order and consumes immutable dependency surfaces;
 - binder source failures are constructed deterministically, and identity and
   binder invariant facts are ordered and grouped before rendering; and
@@ -193,10 +227,11 @@ The production session is deterministic and phase-ordered:
 - checked facts, interfaces, HIR, and Built MIR use canonical revisions and
   atomically ordered module vectors.
 
-The current `CompilerSession` executes parse/discovery and binding scheduling
-sequentially. `basic::ThreadPool` exists as a utility but is not the session's
-stage scheduler. No API promises parallel module execution, incremental
-snapshots, or concurrent mutation of session publications.
+The current `CompilerSession` sequences parse/discovery and binding publication
+deterministically and owns a four-worker scheduler for query dependency groups.
+No public API promises parallel module publication, reusable incremental
+compilation across separate sessions, or concurrent mutation of session
+publications.
 
 ## 6. IR And Backend Boundary
 
@@ -249,6 +284,7 @@ The merge-ready verification set is:
 - `python3 scripts/check-binder-architecture.py --check`;
 - `python3 scripts/check-checker-architecture.py --check`;
 - `python3 scripts/check-compiler-session-architecture.py --check`;
+- `python3 scripts/check-incremental-query-architecture.py --check`;
 - `python3 scripts/check-identity-architecture.py --check`;
 - `python3 scripts/check-ir-architecture.py --check`;
 - `python3 scripts/check-diagnostic-coverage.py --check` and `--self-test`;

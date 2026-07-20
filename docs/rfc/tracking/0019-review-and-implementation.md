@@ -148,9 +148,9 @@ implementation evidence.
 |---|---|---|---|
 | 1 | Stable body owner and owner-local codec replacement | Complete | `StableBodyOwnerKey`, `OwnerLocalBindingKey`, and `AnonymousOwnerLocalKey` are the direct call-site authorities; strict bounded standalone decoders, fixed vectors for both owner alternatives and both owner-local domains, and adversarial codec tests pass. |
 | 2 | Module body syntax and provenance | Complete | Query-safe `ParseSource`, stable named definition and implementation inventories, revision-local current-site projections, `ModuleBodySyntax`, and `ModuleBodyProvenance` are registered with exact dependencies and independent verifiers. `CompilerSession` stages the selected source authority, demands every value, and retains the verified module-body pair for owner-body queries. Native codec, dependency, range-only backdating, production-session, architecture, and adversarial gate tests pass. |
-| 3 | Owner-body query catalog and aggregate verification | Pending | Requires completed module-body syntax and provenance. |
+| 3 | Owner-body query catalog and aggregate verification | In progress | RFC 0020 supplies the tracked complete-record authority projection. `ModuleBodyOwners`, `OwnerBodySyntax`, and `OwnerBodyProvenance` now have strict bounded codecs, registered descriptors, exact alternative dependencies, independent executable-root and provenance reconstruction, canonical parallel owner census, and worker-count regressions. `BindModuleSkeleton`, `BindOwnerBody`, `MaterializeOwnerBody`, aggregate verification, production demand, and removal of the batch production path remain open. |
 | 4 | Anonymous subordinate parameter, scope, closure, and diagnostic migration | In progress | Owner-local anonymous callable parameters and module-owned local and pattern captures are implemented. Production validators independently reconstruct explicit and inferred capture domains, module and callable boundaries, nested propagation, own-parameter exclusion, contextual `Self` owners, and receiver reachability across function and closure boundaries. Stable body scopes, diagnostic provenance, and query materialization remain open. |
-| 5 | Independent schema mutations and native regressions | In progress | Identity and incremental-query gates reject malformed owner records, noncanonical module and source keys, removed selected-source and snapshot roots, and source-closure violations. The Binder gate rejects capture/context/control validator disconnection, module-body verifier reuse of either producer authority or `DefinitionInventory`, production-source omission, independent boundary-census removal, canonical-order removal, and removal of module-owned capture boundaries. Native module-body tests cover source-form equivalence, stable-boundary pruning, range shielding, strict codec rejection, and incomplete inventories. Complete owner-query mutation coverage remains open. |
+| 5 | Independent schema mutations and native regressions | In progress | Identity and incremental-query gates reject malformed owner records, noncanonical module and source keys, removed selected-source and snapshot roots, source-closure violations, sequential replacement of the canonical named-item group, verifier reuse of producer root or provenance algorithms, wrong retention, missing registration, forbidden parser reads, reduced worker matrices, and missing owner codec adversaries. Native tests cover owner census, exact alternative dependencies, bodyless definitions, worker counts 1, 2, and 8, strict value codecs, duplicate, missing, and foreign module owners, stable-boundary pruning, and range shielding. Full owner-body binding and materialization mutations remain open. |
 | 6 | Full sanitizer, differential, architecture, format, and benchmark gates | Pending | Requires completed implementation slices. |
 | 7 | Current architecture documentation and landing evidence | Pending | Requires completed implementation and verification. |
 
@@ -204,6 +204,22 @@ control portions of Phase 4. The Phase 2 value foundation is recorded below;
 query registration, stable body-scope and diagnostic materialization, complete
 query mutations, differential editing, benchmarks, and landing evidence remain
 open.
+
+### 2026-07-20 Owner-Body Inverse-Key Blocker
+
+Phase 3 stopped before named-item or owner-body query implementation. The
+accepted key `NamedItemSyntax(DefinitionKey)` does not carry the module needed
+to demand `NamedDefinitionInventory(ModuleKey)`, and `DefinitionKey` is a
+one-way SHA-256 digest. `QueryContext` has no tracked inverse authority and may
+not read `CompilerSession` or semantic identity registries.
+
+RFC 0020 governs the required
+`ActiveDefinitionAuthorityInput(DefinitionKey) -> DefinitionIdentityRecord`
+projection, complete-map replacement protocol, collision checks, and exact
+owning-inventory membership dependency. Phase 3 was blocked until that RFC was
+accepted and its authority staging foundation was implemented. No module
+scan, registry fallback, query-key replacement, or dual Binder path is
+authorized.
 
 ### 2026-07-19 Module Body Value And Projection Evidence
 
@@ -280,6 +296,62 @@ Evidence:
 
 This evidence completes Phase 2. Phase 3 remains open and begins with the
 owner-body query catalog and its stable item syntax inputs.
+
+### 2026-07-20 Active Definition Authority And Named-Item Evidence
+
+RFC 0020 resolves the inverse-key blocker without a module scan, registry
+fallback, query-key change, or second named-item path. The session-maintained
+`ActiveDefinitionAuthorityInput(DefinitionKey)` stores the complete active
+identity record and is protected by an atomically replaced readiness
+fingerprint. Equal records preserve input `changedAt`; removed, renamed, and
+moved definitions erase their prior keys before a ready snapshot is exposed.
+
+Semantic `NamedItemSyntax` and revision-local `NamedItemProvenance` recover the
+module only from that tracked record, prove exact membership in
+`NamedDefinitionInventory(ModuleKey)`, select the canonical authority
+occurrence, and reconstruct detached syntax and source provenance through
+independent Binder implementations. `CompilerSession` demands both values for
+every active definition after authority refresh and before binding.
+
+Sanitizer native tests cover strict codecs, failed replacement, stale-ledger
+retry, old snapshots, conditional readiness, range-only and body-only edits,
+add, delete, rename, cross-module edit, active-set shrink, and definition move.
+The focused differential sequence runs with worker counts 1, 2, and 8 and
+compares reused and clean canonical values and dependency groups. Incremental
+query, Binder, and CompilerSession architecture checks and adversarial
+self-tests pass.
+
+Phase 3 is therefore unblocked and in progress.
+
+### 2026-07-20 Owner Projection Catalog Evidence
+
+The first Phase 3 catalog slice is implemented without adding a second
+semantic Binder publication path:
+
+- `ModuleBodyOwners(ModuleKey)` reads one named-definition inventory and one
+  canonical parallel group containing every `NamedItemSyntax` key, then
+  publishes exactly one module owner plus the closed executable definition
+  subset in complete canonical byte order;
+- `OwnerBodySyntax(ModuleOwner)` reads only `ModuleBodySyntax`, while
+  `OwnerBodySyntax(DefinitionOwner)` reads only `NamedItemSyntax` and rejects
+  definitions outside the closed executable-root set;
+- `OwnerBodyProvenance` reads `OwnerBodySyntax` and exactly the matching module
+  or named-item provenance alternative, then independently proves total legal
+  path coverage without entering a stable-item boundary; and
+- semantic values retain complete owner and owning-module identity, while
+  current source, node, range, and path mappings remain revision-local.
+
+Provider and verifier code use separate executable-root field decoding and
+separate provenance traversals. Native tests prove strict codec round trips,
+trailing-data rejection, duplicate, missing, and foreign module-owner
+rejection, exact dependency groups, bodyless-definition exclusion, and byte
+determinism with worker counts 1, 2, and 8. The incremental-query architecture
+gate has adversarial mutations for each dependency, verifier-separation,
+retention, registration, parser-purity, worker-matrix, and codec-test marker.
+
+The next implementation slice is `BindModuleSkeleton`, followed by
+`BindOwnerBody`, revision-local materialization, aggregate verification,
+production session demand, and direct removal of the batch production path.
 
 ## Required Review Commands
 

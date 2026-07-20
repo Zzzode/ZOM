@@ -1,7 +1,7 @@
 <!-- @dsCard group="Design Documents" name="COMPILER_CONTRACTS" -->
 # ZOM Compiler Subsystem Contracts
 
-Updated: 2026-07-17
+Updated: 2026-07-20
 
 ## 1. Authority And Scope
 
@@ -52,6 +52,60 @@ The following rules apply to every stage boundary:
 6. Canonical maps and sequences sort by the exact encoded key named by their
    owning RFC. Hash iteration, pointer address, worker completion, and
    diagnostic emission time are not ordering inputs.
+
+### Query runtime reads
+
+#### Q-01 Required input reads
+
+`QueryContext::get<InputSpec>(key)` remains the required-input operation. A
+missing input produces `MissingInput`, marks the current provider failed, and
+cannot be converted into semantic absence by a caller.
+
+#### Q-02 Optional input probes
+
+`QueryContext::probeInput<InputSpec>(key)` is defined only for registered input
+kinds. It returns a completed value or explicit absence without poisoning the
+provider context, after applying the input kind's canonical key decoder.
+Probing a derived kind, malformed key, fingerprint collision, cancellation, or
+runtime invariant returns the corresponding runtime failure.
+`QuerySnapshot::probeInput` exposes the same operation for root inspection.
+
+Input probes are sequential dependencies. They are forbidden inside parallel
+dependency groups, and no parallel probe API exists.
+
+#### Q-03 Presence-aware validation
+
+Every probe dependency records exactly one `Present` or `Absent` observation.
+Validation compares the current observation with the recorded alternative, so
+both `Absent -> Present` and `Present -> Absent` transitions invalidate the
+dependent memo. Stable absence remains reusable without storing a tombstone.
+Stable presence remains reusable only while the present input's `changedAt`
+does not exceed the dependent memo's verified revision.
+
+#### Q-04 Definition authority readiness
+
+`ActiveDefinitionAuthorityInput(DefinitionKey)` is the sole tracked
+module-recovery authority for named-item queries. It contains the complete
+active identity record but does not replace exact membership in
+`NamedDefinitionInventory(ModuleKey)`. Base-input mutation removes
+`ActiveDefinitionAuthorityReadyInput` in the same transaction. The session
+restores readiness only while atomically replacing the complete authority map;
+named-item roots are demanded only from a new ready snapshot.
+
+#### Q-05 Stable owner projection
+
+`ModuleBodyOwners(ModuleKey)` reads exactly one named-definition inventory and
+one canonical parallel group of all corresponding `NamedItemSyntax` values. It
+publishes one module owner plus only definitions in the closed executable-root
+set, sorted by complete owner bytes. `OwnerBodySyntax` then reads only the
+matching module-body or named-item syntax alternative.
+
+`OwnerBodyProvenance` is revision-local. It reads `OwnerBodySyntax` and exactly
+the matching module-body or named-item provenance alternative, and it rejects
+missing, extra, duplicate, foreign-source, or boundary-crossing paths. Owner
+projection providers and verifiers use independent executable-root and path
+coverage algorithms and may not read parser, session, registry, or module-graph
+state directly.
 
 ## 3. Lexer To Parser Contract
 
