@@ -1,0 +1,8 @@
+// RUN: ! %zomc compile --dump-ast %corpus/09-interfaces/impl_multiple_interfaces_neg_23.zom 2>&1 | %FileCheck %s
+
+
+// CHECK-LITERAL: Error [ZOM2100]: An impl declaration implements exactly one interface
+// CHECK-LITERAL:   --> conformance/impl_multiple_interfaces_neg_23.zom:1:13
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 1 | impl Reader + Writer for File { }
+// CHECK-LITERAL:   |             ^

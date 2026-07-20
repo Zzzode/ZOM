@@ -30,7 +30,7 @@
 // CHECK-NEXT:               pattern:
 // CHECK-NEXT:                 EnumPattern #16 @3:10..3:45
 // CHECK-NEXT:                   path:
-// CHECK-NEXT:                     ModulePath #15 @3:10..3:20 segments=["Shape", "Pair"]
+// CHECK-NEXT:                     ModulePath #15 @3:10..3:20 segments=["Shape", "Pair"] root=Relative
 // CHECK-NEXT:                   args:
 // CHECK-NEXT:                     TuplePattern #10 @3:21..3:27
 // CHECK-NEXT:                       pats:
@@ -65,7 +65,7 @@
 // CHECK-NEXT:               pattern:
 // CHECK-NEXT:                 StructPattern #30 @4:10..4:42
 // CHECK-NEXT:                   ty_path:
-// CHECK-NEXT:                     ModulePath #24 @4:10..4:11 segments=["S"]
+// CHECK-NEXT:                     ModulePath #24 @4:10..4:11 segments=["S"] root=Relative
 // CHECK-NEXT:                   fields:
 // CHECK-NEXT:                     PatternProperty #26 @4:14..4:21 name="left" short_form=false
 // CHECK-NEXT:                       pat:

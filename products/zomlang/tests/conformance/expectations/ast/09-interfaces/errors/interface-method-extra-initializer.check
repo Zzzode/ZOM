@@ -2,7 +2,7 @@
 
 
 // CHECK-LITERAL: Error [ZOM2079]: Interface method signatures cannot have initializers
-// CHECK:   --> products {{(?:.*[/\\])?interface\-method\-extra\-initializer\.zom:2:13$}}
+// CHECK-LITERAL:   --> conformance/interface-method-extra-initializer.zom:2:13
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 2 |   fun foo() = 1;
 // CHECK-LITERAL:   |             ^

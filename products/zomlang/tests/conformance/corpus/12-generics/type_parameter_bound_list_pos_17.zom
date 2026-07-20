@@ -1,0 +1,14 @@
+interface Readable { }
+interface Writable { }
+
+class Resource { }
+
+impl Readable for Resource { }
+impl Writable for Resource { }
+
+fun require_both<T: Readable + Writable>(value: T) -> unit {
+    return;
+}
+
+let resource: Resource;
+require_both(resource);

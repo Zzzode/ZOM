@@ -28,13 +28,13 @@
 // CHECK-NEXT:                                 IdentExpr #3 @2:18..2:23 name="print"
 // CHECK-NEXT:                               type_args: []
 // CHECK-NEXT:                               args:
-// CHECK-NEXT:                                 StrLiteral #4 @2:24..2:29 value="yes" is_raw=false prefix=None
+// CHECK-NEXT:                                 StringLiteralExpr #4 @2:24..2:29 value="yes"
 // CHECK-NEXT:                       attrs: null
 // CHECK-NEXT:             MatchArmStmt #18 @3:5..3:40
 // CHECK-NEXT:               pattern:
 // CHECK-NEXT:                 LiteralPattern #11 @3:10..3:17
 // CHECK-NEXT:                   literal:
-// CHECK-NEXT:                     StrLiteral #10 @3:10..3:17 value="hello" is_raw=false prefix=None
+// CHECK-NEXT:                     StringLiteralExpr #10 @3:10..3:17 value="hello"
 // CHECK-NEXT:               guard: null
 // CHECK-NEXT:               body:
 // CHECK-NEXT:                 BlockStmt #17 @3:21..3:40
@@ -48,7 +48,7 @@
 // CHECK-NEXT:                                 IdentExpr #12 @3:23..3:28 name="print"
 // CHECK-NEXT:                               type_args: []
 // CHECK-NEXT:                               args:
-// CHECK-NEXT:                                 StrLiteral #13 @3:29..3:36 value="greet" is_raw=false prefix=None
+// CHECK-NEXT:                                 StringLiteralExpr #13 @3:29..3:36 value="greet"
 // CHECK-NEXT:                       attrs: null
 // CHECK-NEXT:             MatchArmStmt #27 @4:5..4:33
 // CHECK-NEXT:               pattern:
@@ -68,7 +68,7 @@
 // CHECK-NEXT:                                 IdentExpr #21 @4:20..4:25 name="print"
 // CHECK-NEXT:                               type_args: []
 // CHECK-NEXT:                               args:
-// CHECK-NEXT:                                 StrLiteral #22 @4:26..4:29 value="t" is_raw=false prefix=None
+// CHECK-NEXT:                                 StringLiteralExpr #22 @4:26..4:29 value="t"
 // CHECK-NEXT:                       attrs: null
 // CHECK-NEXT:             MatchArmStmt #36 @5:5..5:33
 // CHECK-NEXT:               pattern:
@@ -88,6 +88,6 @@
 // CHECK-NEXT:                                 IdentExpr #30 @5:20..5:25 name="print"
 // CHECK-NEXT:                               type_args: []
 // CHECK-NEXT:                               args:
-// CHECK-NEXT:                                 StrLiteral #31 @5:26..5:29 value="n" is_raw=false prefix=None
+// CHECK-NEXT:                                 StringLiteralExpr #31 @5:26..5:29 value="n"
 // CHECK-NEXT:                       attrs: null
 // CHECK-NEXT:       attrs: null

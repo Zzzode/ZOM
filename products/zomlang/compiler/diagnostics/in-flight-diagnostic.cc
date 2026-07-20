@@ -15,7 +15,7 @@
 #include "zomlang/compiler/diagnostics/in-flight-diagnostic.h"
 
 #include "zc/core/common.h"
-#include "zomlang/compiler/diagnostics/diagnostic-engine.h"
+#include "zomlang/compiler/diagnostics/diagnostic-emitter.h"
 #include "zomlang/compiler/diagnostics/diagnostic.h"
 #include "zomlang/compiler/source/location.h"
 
@@ -27,19 +27,21 @@ namespace diagnostics {
 // InflightDiagnostic::Impl
 
 struct InFlightDiagnostic::Impl {
-  Impl(DiagnosticEngine& engine, Diagnostic&& diag)
-      : engine(engine), diag(zc::mv(diag)), emitted(false) {}
+  Impl(DiagnosticEmitter& emitter, Diagnostic&& diag, zc::SourceLocation emitterLocation)
+      : emitter(emitter), diag(zc::mv(diag)), emitterLocation(emitterLocation), emitted(false) {}
 
-  DiagnosticEngine& engine;
+  DiagnosticEmitter& emitter;
   Diagnostic diag;
+  zc::SourceLocation emitterLocation;
   bool emitted;
 };
 
 // ================================================================================
 // InFlightDiagnostic
 
-InFlightDiagnostic::InFlightDiagnostic(DiagnosticEngine& engine, Diagnostic&& diag)
-    : impl(zc::heap<Impl>(engine, zc::mv(diag))) {}
+InFlightDiagnostic::InFlightDiagnostic(DiagnosticEmitter& emitter, Diagnostic&& diag,
+                                       zc::SourceLocation emitterLocation)
+    : impl(zc::heap<Impl>(emitter, zc::mv(diag), emitterLocation)) {}
 
 InFlightDiagnostic::InFlightDiagnostic(InFlightDiagnostic&& other) noexcept = default;
 
@@ -49,7 +51,7 @@ InFlightDiagnostic::~InFlightDiagnostic() {
 
 void InFlightDiagnostic::emit() {
   if (!impl->emitted) {
-    impl->engine.emit(impl->diag);
+    impl->emitter.emitDiagnostic(impl->diag, impl->emitterLocation);
     impl->emitted = true;
   }
 }

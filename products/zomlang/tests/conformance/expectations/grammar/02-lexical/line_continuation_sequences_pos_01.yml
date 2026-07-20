@@ -1,0 +1,5 @@
+section: "Section 3.6.2 LineContinuation"
+covers_rule: "LINE_CONTINUATION, LINE_TERMINATOR_SEQUENCE"
+expected: "ACCEPT"
+notes:
+  - "LF, CRLF, CR, LS, and PS are line-continuation sequences; CRLF is atomic."

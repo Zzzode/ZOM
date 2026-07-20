@@ -16,7 +16,7 @@
 // CHECK-NEXT:           raises_ty:
 // CHECK-NEXT:             NamedTypeExpr #4 @1:26..1:31
 // CHECK-NEXT:               path:
-// CHECK-NEXT:                 ModulePath #3 @1:26..1:31 segments=["Error"]
+// CHECK-NEXT:                 ModulePath #3 @1:26..1:31 segments=["Error"] root=Relative
 // CHECK-NEXT:               args: []
 // CHECK-NEXT:           body:
 // CHECK-NEXT:             BlockStmt #8 @1:32..3:2
@@ -40,7 +40,7 @@
 // CHECK-NEXT:           raises_ty:
 // CHECK-NEXT:             NamedTypeExpr #14 @5:26..5:31
 // CHECK-NEXT:               path:
-// CHECK-NEXT:                 ModulePath #13 @5:26..5:31 segments=["Error"]
+// CHECK-NEXT:                 ModulePath #13 @5:26..5:31 segments=["Error"] root=Relative
 // CHECK-NEXT:               args: []
 // CHECK-NEXT:           body:
 // CHECK-NEXT:             BlockStmt #20 @5:32..7:2

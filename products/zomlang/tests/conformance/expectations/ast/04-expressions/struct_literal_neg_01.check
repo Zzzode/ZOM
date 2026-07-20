@@ -2,7 +2,7 @@
 
 
 // CHECK-LITERAL: Error [ZOM2076]: Unexpected token expected
-// CHECK:   --> products {{(?:.*[/\\])?struct_literal_neg_01\.zom:1:11$}}
+// CHECK-LITERAL:   --> conformance/struct_literal_neg_01.zom:1:11
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 1 | struct Box(i32);
 // CHECK-LITERAL:   |           ^

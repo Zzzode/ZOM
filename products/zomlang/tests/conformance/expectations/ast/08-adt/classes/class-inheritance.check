@@ -12,7 +12,7 @@
 // CHECK-NEXT:           members_id:
 // CHECK-NEXT:             ClassMemberList #4 @1:12..3:2 nmembers=1
 // CHECK-NEXT:               members:
-// CHECK-NEXT:                 MethodDecl #3 @2:3..2:15 name="foo" is_static=false visibility=Default
+// CHECK-NEXT:                 MethodDecl #3 @2:3..2:15 name="foo" mode=Instance visibility=Default
 // CHECK-NEXT:                   params_id:
 // CHECK-NEXT:                     FunctionParameterList #1 @2:10..2:12 nparams=0
 // CHECK-NEXT:                       params: []
@@ -30,12 +30,12 @@
 // CHECK-NEXT:           base_ty:
 // CHECK-NEXT:             NamedTypeExpr #8 @5:17..5:21
 // CHECK-NEXT:               path:
-// CHECK-NEXT:                 ModulePath #7 @5:17..5:21 segments=["Base"]
+// CHECK-NEXT:                 ModulePath #7 @5:17..5:21 segments=["Base"] root=Relative
 // CHECK-NEXT:               args: []
 // CHECK-NEXT:           members_id:
 // CHECK-NEXT:             ClassMemberList #12 @5:22..7:2 nmembers=1
 // CHECK-NEXT:               members:
-// CHECK-NEXT:                 MethodDecl #11 @6:3..6:15 name="bar" is_static=false visibility=Default
+// CHECK-NEXT:                 MethodDecl #11 @6:3..6:15 name="bar" mode=Instance visibility=Default
 // CHECK-NEXT:                   params_id:
 // CHECK-NEXT:                     FunctionParameterList #9 @6:10..6:12 nparams=0
 // CHECK-NEXT:                       params: []

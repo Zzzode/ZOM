@@ -25,7 +25,7 @@
 // CHECK-NEXT:                       elem:
 // CHECK-NEXT:                         NamedTypeExpr #5 @3:21..3:26
 // CHECK-NEXT:                           path:
-// CHECK-NEXT:                             ModulePath #4 @3:21..3:26 segments=["Owner"]
+// CHECK-NEXT:                             ModulePath #4 @3:21..3:26 segments=["Owner"] root=Relative
 // CHECK-NEXT:                           args: []
 // CHECK-NEXT:                   default_: null
 // CHECK-NEXT:                   attrs: null
@@ -68,7 +68,7 @@
 // CHECK-NEXT:                               ty:
 // CHECK-NEXT:                                 NamedTypeExpr #19 @8:16..8:21
 // CHECK-NEXT:                                   path:
-// CHECK-NEXT:                                     ModulePath #18 @8:16..8:21 segments=["Owner"]
+// CHECK-NEXT:                                     ModulePath #18 @8:16..8:21 segments=["Owner"] root=Relative
 // CHECK-NEXT:                                   args: []
 // CHECK-NEXT:                               init: null
 // CHECK-NEXT:                   attrs: null
@@ -98,7 +98,7 @@
 // CHECK-NEXT:                               ty:
 // CHECK-NEXT:                                 NamedTypeExpr #32 @10:15..10:20
 // CHECK-NEXT:                                   path:
-// CHECK-NEXT:                                     ModulePath #31 @10:15..10:20 segments=["Owner"]
+// CHECK-NEXT:                                     ModulePath #31 @10:15..10:20 segments=["Owner"] root=Relative
 // CHECK-NEXT:                                   args: []
 // CHECK-NEXT:                               init:
 // CHECK-NEXT:                                 IdentExpr #33 @10:23..10:28 name="owned"

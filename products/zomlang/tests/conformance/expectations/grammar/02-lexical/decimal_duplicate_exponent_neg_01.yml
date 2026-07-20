@@ -1,0 +1,5 @@
+section: "Section 3.5.1 DecimalLiteral"
+covers_rule: "DECIMAL_LITERAL"
+expected: "REJECT"
+notes:
+  - "A decimal literal has exactly one exponent position."

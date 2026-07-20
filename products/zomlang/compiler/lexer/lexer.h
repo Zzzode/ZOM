@@ -30,7 +30,7 @@ class SourceManager;
 }  // namespace source
 
 namespace diagnostics {
-class DiagnosticEngine;
+class DiagnosticEmitter;
 class InFlightDiagnostic;
 }  // namespace diagnostics
 
@@ -55,7 +55,7 @@ struct CommentDirective {
 
 class Lexer {
 public:
-  Lexer(const source::SourceManager& sourceMgr, diagnostics::DiagnosticEngine& diagnosticEngine,
+  Lexer(const source::SourceManager& sourceMgr, diagnostics::DiagnosticEmitter& diagnosticEmitter,
         const basic::LangOptions& options, basic::StringPool& stringPool,
         const source::BufferId& bufferId);
   ~Lexer();

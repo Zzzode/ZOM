@@ -2,7 +2,7 @@
 
 
 // CHECK-LITERAL: Error [ZOM2076]: Unexpected token expected
-// CHECK:   --> products {{(?:.*[/\\])?union_vs_intersect_neg_01\.zom:1:16$}}
+// CHECK-LITERAL:   --> conformance/union_vs_intersect_neg_01.zom:1:16
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 1 | alias OrOp = A || B;
 // CHECK-LITERAL:   |                ^

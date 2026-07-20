@@ -18,7 +18,7 @@
 // CHECK-NEXT:                   ty:
 // CHECK-NEXT:                     PredefinedTypeExpr #3 @3:14..3:17 kind=Str
 // CHECK-NEXT:                   init: null
-// CHECK-NEXT:                 MethodDecl #12 @4:5..4:51 name="describe" is_static=false visibility=Default
+// CHECK-NEXT:                 MethodDecl #12 @4:5..4:51 name="describe" mode=Instance visibility=Default
 // CHECK-NEXT:                   params_id:
 // CHECK-NEXT:                     FunctionParameterList #5 @4:17..4:19 nparams=0
 // CHECK-NEXT:                       params: []

@@ -1,9 +1,0 @@
-// RUN: cd %corpus && ! %zomc compile --syntax-only 05-statements/match_guard_non_bool_neg_08.zom > %t 2>&1
-// RUN: %FileCheck %s --input-file %t
-
-
-// CHECK-LITERAL: Error [ZOM4051]: Match guard must be of type 'bool'
-// CHECK-LITERAL:   --> 05-statements/match_guard_non_bool_neg_08.zom:3:22
-// CHECK-LITERAL:   |
-// CHECK-LITERAL: 3 |         when true if 1 => { }
-// CHECK-LITERAL:   |                      ^

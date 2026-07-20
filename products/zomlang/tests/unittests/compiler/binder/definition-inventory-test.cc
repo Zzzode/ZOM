@@ -25,8 +25,13 @@ using tests::TestFixture;
 
 const DefinitionInventoryEntry& definitionFor(const DefinitionInventory& inventory,
                                               ast::NodeId node) {
-  for (const auto& entry : inventory.definitions()) {
-    if (entry.node == node) { return entry; }
+  const zc::ArrayPtr<const DefinitionInventoryEntry> domains[] = {
+      inventory.definitions(), inventory.genericParameters(), inventory.callableParameters(),
+      inventory.ownerLocalBindings(), inventory.anonymousEntities()};
+  for (const auto domain : domains) {
+    for (const auto& entry : domain) {
+      if (entry.node == node) { return entry; }
+    }
   }
   ZC_UNREACHABLE;
 }
@@ -70,7 +75,8 @@ ZC_TEST("DefinitionInventory.ClassifiesModuleAndLexicalBindings") {
   const auto inventory = DefinitionInventory::collect(tree);
   ZC_EXPECT(inventory.modules().size() == 1);
   ZC_EXPECT(inventory.modules()[0].node == module);
-  ZC_EXPECT(inventory.definitions().size() == 3);
+  ZC_EXPECT(inventory.definitions().size() == 2);
+  ZC_EXPECT(inventory.ownerLocalBindings().size() == 1);
 
   const auto& global = definitionFor(inventory, globalPattern);
   ZC_EXPECT(global.kind == identity::DefinitionKind::Constant);
@@ -94,6 +100,72 @@ ZC_TEST("DefinitionInventory.ClassifiesModuleAndLexicalBindings") {
   ZC_EXPECT(patternSite(local).patternPath.empty());
 }
 
+ZC_TEST("DefinitionInventory.ClassifiesBindingsByDeclarationSlot") {
+  TestFixture fix;
+  zc::Vector<ast::NodeId> localPatterns;
+  auto makeLocal = [&](zc::StringPtr name) {
+    const auto pattern = fix.makeBindingPattern(name);
+    localPatterns.add(pattern);
+    const auto declarator = fix.makeVariableDeclarator(pattern);
+    zc::Vector<ast::NodeId> declarators;
+    declarators.add(declarator);
+    return fix.makeLetStmt(fix.makeVariableDeclaratorList(fix.makeNodeList(declarators)));
+  };
+  auto blockWith = [&](ast::NodeId statement) {
+    zc::Vector<ast::NodeId> statements;
+    statements.add(statement);
+    return fix.makeBlockStmt(fix.makeNodeList(statements));
+  };
+
+  const auto modulePattern = fix.makeBindingPattern("module_value"_zc);
+  const auto moduleDeclarator = fix.makeVariableDeclarator(modulePattern);
+  zc::Vector<ast::NodeId> moduleDeclarators;
+  moduleDeclarators.add(moduleDeclarator);
+  const auto moduleLet =
+      fix.makeLetStmt(fix.makeVariableDeclaratorList(fix.makeNodeList(moduleDeclarators)));
+
+  const auto plainBlock = blockWith(makeLocal("block_value"_zc));
+  const auto whileStatement =
+      fix.makeWhileStmt(fix.makeIdentExpr("condition"_zc), blockWith(makeLocal("while_value"_zc)));
+  const auto forStatement =
+      fix.makeForStmt(makeLocal("for_value"_zc), fix.makeIdentExpr("condition"_zc), ast::NodeId(),
+                      fix.makeBlockStmt(ast::NodeList()));
+  const auto forInBinding = fix.makeWildcardPattern();
+  ast::NodePayload forInPayload;
+  forInPayload.words[ast::kForInStatementBindingWord] = forInBinding.value;
+  forInPayload.words[ast::kForInStatementExpressionWord] = fix.makeIdentExpr("items"_zc).value;
+  forInPayload.words[ast::kForInStatementBodyWord] = blockWith(makeLocal("for_in_value"_zc)).value;
+  const auto forInStatement =
+      fix.builder().makeNode(ast::SyntaxKind::ForInStatement, source::SourceRange(), forInPayload);
+  const auto matchArm =
+      fix.makeMatchArm(fix.makeWildcardPattern(), blockWith(makeLocal("match_value"_zc)));
+  zc::Vector<ast::NodeId> matchArms;
+  matchArms.add(matchArm);
+  const auto matchStatement =
+      fix.makeMatchStmt(fix.makeIdentExpr("subject"_zc), fix.makeNodeList(matchArms));
+  const auto unsafeBlock = fix.makeUnsafeBlockExpr(blockWith(makeLocal("unsafe_value"_zc)));
+
+  const auto module = fix.makeModuleDecl("inventory"_zc);
+  zc::Vector<ast::NodeId> sourceItems;
+  sourceItems.add(fix.makeStatementListItem(moduleLet));
+  sourceItems.add(fix.makeStatementListItem(plainBlock));
+  sourceItems.add(fix.makeStatementListItem(whileStatement));
+  sourceItems.add(fix.makeStatementListItem(forStatement));
+  sourceItems.add(fix.makeStatementListItem(forInStatement));
+  sourceItems.add(fix.makeStatementListItem(matchStatement));
+  sourceItems.add(fix.makeStatementListItem(unsafeBlock));
+  fix.makeSourceFile(module, fix.makeNodeList(sourceItems));
+
+  const auto inventory = DefinitionInventory::collect(fix.finishTree());
+  ZC_EXPECT(inventory.definitions().size() == 1);
+  ZC_EXPECT(inventory.ownerLocalBindings().size() == 6);
+  ZC_EXPECT(definitionFor(inventory, modulePattern).kind == identity::DefinitionKind::Static);
+  ZC_REQUIRE(localPatterns.size() == 6);
+  for (const auto pattern : localPatterns) {
+    ZC_EXPECT(definitionFor(inventory, pattern).kind == identity::DefinitionKind::Local);
+  }
+}
+
 ZC_TEST("DefinitionInventory.RecordsPatternLeavesAndImplParents") {
   TestFixture fix;
 
@@ -109,8 +181,8 @@ ZC_TEST("DefinitionInventory.RecordsPatternLeavesAndImplParents") {
   zc::Vector<ast::NodeId> members;
   members.add(method);
   const auto memberList = fix.makeClassMemberList(fix.makeNodeList(members));
-  const auto impl =
-      fix.makeStandaloneImplDecl(fix.makeNamedTypeExpr("Target"_zc), ast::NodeId(), memberList);
+  const auto impl = fix.makeStandaloneImplDecl(fix.makeNamedTypeExpr("Target"_zc),
+                                               fix.makeNamedTypeExpr("Selectable"_zc), memberList);
 
   zc::Vector<ast::NodeId> declarations;
   declarations.add(impl);
@@ -119,6 +191,8 @@ ZC_TEST("DefinitionInventory.RecordsPatternLeavesAndImplParents") {
 
   ZC_EXPECT(inventory.impls().size() == 1);
   ZC_EXPECT(inventory.impls()[0].node == impl);
+  ZC_EXPECT(inventory.definitions().size() == 1);
+  ZC_EXPECT(inventory.ownerLocalBindings().size() == 1);
   const auto& methodEntry = definitionFor(inventory, method);
   ZC_EXPECT(methodEntry.kind == identity::DefinitionKind::Method);
   ZC_EXPECT(methodEntry.parentPath.size() == 1);
@@ -175,6 +249,8 @@ ZC_TEST("DefinitionInventory.RecordsExactPatternIntroducersAndSchemaPaths") {
   sourceItems.add(fix.makeStatementListItem(function));
   fix.makeSourceFile(module, fix.makeNodeList(sourceItems));
   const auto inventory = DefinitionInventory::collect(fix.finishTree());
+  ZC_EXPECT(inventory.definitions().size() == 4);
+  ZC_EXPECT(inventory.ownerLocalBindings().size() == 2);
 
   const auto& firstSite = patternSite(definitionFor(inventory, first));
   ZC_REQUIRE(firstSite.patternPath.size() == 2);
@@ -305,14 +381,17 @@ ZC_TEST("DefinitionInventory.RecordsAnonymousClosureRole") {
   declarations.add(binding);
   const ast::Tree tree = fix.buildSourceFile("inventory"_zc, declarations);
   const auto inventory = DefinitionInventory::collect(tree);
+  ZC_EXPECT(inventory.definitions().size() == 1);
+  ZC_EXPECT(inventory.anonymousEntities().size() == 1);
   const auto& closure = definitionFor(inventory, lambda);
 
   ZC_EXPECT(closure.kind == identity::DefinitionKind::Closure);
   ZC_EXPECT(closure.nameKind == InventoryDefinitionNameKind::Anonymous);
   ZC_IF_SOME(role, closure.anonymousRole) {
-    ZC_EXPECT(role == identity::AnonymousDefinitionRole::Lambda);
+    ZC_EXPECT(role == AnonymousSyntaxRole::Lambda);
+  } else {
+    ZC_EXPECT(false);
   }
-  else { ZC_EXPECT(false); }
 }
 
 ZC_TEST("DefinitionInventory.RecordsConstructorAndParameterParents") {
@@ -361,6 +440,8 @@ ZC_TEST("DefinitionInventory.RecordsConstructorAndParameterParents") {
   const ast::Tree tree = fix.buildSourceFile("inventory"_zc, declarations);
 
   const auto inventory = DefinitionInventory::collect(tree);
+  ZC_EXPECT(inventory.definitions().size() == 3);
+  ZC_EXPECT(inventory.callableParameters().size() == 1);
   const auto& constructorEntry = definitionFor(inventory, constructor);
   ZC_EXPECT(constructorEntry.kind == identity::DefinitionKind::Constructor);
   ZC_EXPECT(constructorEntry.parentPath.size() == 1);

@@ -26,11 +26,12 @@ bool validPhase(IdentityAllocationPhase value) noexcept {
 
 bool validKind(IdentityInvariantKind value) noexcept {
   return value >= IdentityInvariantKind::InvalidHandle &&
-         value <= IdentityInvariantKind::NonCanonicalEncoding;
+         value <= IdentityInvariantKind::DigestCollision;
 }
 
 bool validApiSite(IdentityApiSite value) noexcept {
-  return value >= IdentityApiSite::ContextBrandIssue && value <= IdentityApiSite::RegistryMutation;
+  return value >= IdentityApiSite::ContextBrandIssue &&
+         value <= IdentityApiSite::CallableParameterFreeze;
 }
 
 int compareBytes(zc::ArrayPtr<const uint8_t> left, zc::ArrayPtr<const uint8_t> right) noexcept {

@@ -2,7 +2,7 @@
 
 
 // CHECK-LITERAL: Error [ZOM2049]: A module declaration can only appear at the top of a file
-// CHECK:   --> products {{(?:.*[/\\])?nested_module_reject_neg_11\.zom:2:5$}}
+// CHECK-LITERAL:   --> conformance/nested_module_reject_neg_11.zom:2:5
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 2 |     module b {}
 // CHECK-LITERAL:   |     ^

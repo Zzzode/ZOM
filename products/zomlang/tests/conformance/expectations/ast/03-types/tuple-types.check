@@ -1,4 +1,4 @@
-// RUN: %zomc compile --dump-ast %corpus/03-types/tuple-types.zom 2>&1 | %FileCheck %s
+// RUN: %zomc compile --dump-ast %corpus/03-types/tuple-types.zom | %FileCheck %s
 
 
 // CHECK: SourceFile #23 @1:1..3:1 file_name="tuple-types.zom"
@@ -23,7 +23,7 @@
 // CHECK-NEXT:                     TupleLiteral #7 @1:22..1:32
 // CHECK-NEXT:                       elems:
 // CHECK-NEXT:                         IntLiteral #5 @1:22..1:23 base=10 value="1"
-// CHECK-NEXT:                         StrLiteral #6 @1:25..1:32 value="hello" is_raw=false prefix=None
+// CHECK-NEXT:                         StringLiteralExpr #6 @1:25..1:32 value="hello"
 // CHECK-NEXT:       attrs: null
 // CHECK-NEXT:     StatementListItem #22 @2:1..2:31
 // CHECK-NEXT:       item:

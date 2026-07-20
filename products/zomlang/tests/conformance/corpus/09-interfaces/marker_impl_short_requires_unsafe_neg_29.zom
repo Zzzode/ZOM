@@ -1,0 +1,3 @@
+interface ShortMarker {}
+
+impl ShortMarker for i32;

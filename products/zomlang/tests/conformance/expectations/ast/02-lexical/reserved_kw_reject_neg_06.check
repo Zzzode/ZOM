@@ -2,12 +2,12 @@
 
 
 // CHECK-LITERAL: Error [ZOM2056]: Expression expected
-// CHECK:   --> products {{(?:.*[/\\])?reserved_kw_reject_neg_06\.zom:1:11$}}
+// CHECK-LITERAL:   --> conformance/reserved_kw_reject_neg_06.zom:1:11
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 1 | fun f() { throw 1; }
 // CHECK-LITERAL:   |           ^
 // CHECK-LITERAL: Error [ZOM2076]: Unexpected token expected
-// CHECK:   --> products {{(?:.*[/\\])?reserved_kw_reject_neg_06\.zom:1:11$}}
+// CHECK-LITERAL:   --> conformance/reserved_kw_reject_neg_06.zom:1:11
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 1 | fun f() { throw 1; }
 // CHECK-LITERAL:   |           ^

@@ -2,7 +2,7 @@
 
 
 // CHECK-LITERAL: Error [ZOM2076]: Unexpected token expected
-// CHECK:   --> products {{(?:.*[/\\])?function_type_neg_01\.zom:1:21$}}
+// CHECK-LITERAL:   --> conformance/function_type_neg_01.zom:1:21
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 1 | alias NoParen = i32 -> str;
 // CHECK-LITERAL:   |                     ^

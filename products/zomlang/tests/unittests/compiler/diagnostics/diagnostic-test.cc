@@ -62,11 +62,13 @@ ZC_TEST("DiagnosticTest.TypeCheckerDiagnosticIdsAreStable") {
   ZC_EXPECT(static_cast<uint32_t>(DiagID::TypeCheckerTypeMismatch) == 4009);
   ZC_EXPECT(static_cast<uint32_t>(DiagID::CannotUnifyTypes) == 4010);
   ZC_EXPECT(static_cast<uint32_t>(DiagID::InfiniteType) == 4011);
+  ZC_EXPECT(static_cast<uint32_t>(DiagID::CannotCallNonFunction) == 4012);
   ZC_EXPECT(static_cast<uint32_t>(DiagID::CheckerInvalidCast) == 4013);
   ZC_EXPECT(static_cast<uint32_t>(DiagID::CannotInferTypeParameter) == 4014);
   ZC_EXPECT(static_cast<uint32_t>(DiagID::CannotInferNullInitializer) == 4015);
   ZC_EXPECT(static_cast<uint32_t>(DiagID::ExplicitTypeArgumentCountMismatch) == 4016);
   ZC_EXPECT(static_cast<uint32_t>(DiagID::ConflictingImpl) == 4017);
+  ZC_EXPECT(static_cast<uint32_t>(DiagID::CheckerTraitNotImplemented) == 4018);
   ZC_EXPECT(static_cast<uint32_t>(DiagID::OperatorTraitSignatureMismatch) == 4019);
   ZC_EXPECT(static_cast<uint32_t>(DiagID::AmbiguousAssociatedTypeProjection) == 4021);
   ZC_EXPECT(static_cast<uint32_t>(DiagID::NoAssociatedTypeProjection) == 4020);
@@ -91,16 +93,17 @@ ZC_TEST("DiagnosticTest.TypeCheckerDiagnosticIdsAreStable") {
   ZC_EXPECT(static_cast<uint32_t>(DiagID::CircularReexport) == 3014);
   ZC_EXPECT(static_cast<uint32_t>(DiagID::ReexportModuleNotFound) == 3015);
   ZC_EXPECT(static_cast<uint32_t>(DiagID::ReexportMemberNotFound) == 3016);
+  ZC_EXPECT(static_cast<uint32_t>(DiagID::ImportModuleAmbiguous) == 3023);
+  ZC_EXPECT(static_cast<uint32_t>(DiagID::ReexportModuleAmbiguous) == 3024);
+  ZC_EXPECT(static_cast<uint32_t>(DiagID::ModuleDeclarationNameMismatch) == 3026);
   ZC_EXPECT(static_cast<uint32_t>(DiagID::BreakTargetNotFound) == 3020);
   ZC_EXPECT(static_cast<uint32_t>(DiagID::ContinueTargetNotFound) == 3021);
-  ZC_EXPECT(static_cast<uint32_t>(DiagID::UndeclaredValue) == 4027);
   ZC_EXPECT(static_cast<uint32_t>(DiagID::InvalidBinaryOperands) == 4028);
   ZC_EXPECT(static_cast<uint32_t>(DiagID::InvalidComparisonOperands) == 4029);
   ZC_EXPECT(static_cast<uint32_t>(DiagID::CannotDereferenceType) == 4030);
   ZC_EXPECT(static_cast<uint32_t>(DiagID::PostfixUpdateRequiresNumeric) == 4031);
   ZC_EXPECT(static_cast<uint32_t>(DiagID::ErrorPropagateNonUnion) == 4032);
   ZC_EXPECT(static_cast<uint32_t>(DiagID::ErrorUnionEmpty) == 4033);
-  ZC_EXPECT(static_cast<uint32_t>(DiagID::UnsupportedExplicitTypeArgument) == 4034);
   ZC_EXPECT(static_cast<uint32_t>(DiagID::ExplicitTypeArgumentsRequireGenericCallee) == 4035);
   ZC_EXPECT(static_cast<uint32_t>(DiagID::CallArgumentCountMismatch) == 4036);
   ZC_EXPECT(static_cast<uint32_t>(DiagID::MemberNotFound) == 4037);
@@ -108,18 +111,15 @@ ZC_TEST("DiagnosticTest.TypeCheckerDiagnosticIdsAreStable") {
   ZC_EXPECT(static_cast<uint32_t>(DiagID::TupleIndexRequiresIntegerLiteral) == 4039);
   ZC_EXPECT(static_cast<uint32_t>(DiagID::TupleIndexOutOfBounds) == 4040);
   ZC_EXPECT(static_cast<uint32_t>(DiagID::CannotIndexType) == 4041);
-  ZC_EXPECT(static_cast<uint32_t>(DiagID::UnsupportedCastTarget) == 4042);
-  ZC_EXPECT(static_cast<uint32_t>(DiagID::RawPointerCastRequiresUnsafe) == 4043);
   ZC_EXPECT(static_cast<uint32_t>(DiagID::InvalidDynUpcast) == 4044);
   ZC_EXPECT(static_cast<uint32_t>(DiagID::ConditionMustBeBool) == 4045);
   ZC_EXPECT(static_cast<uint32_t>(DiagID::MissingReturnValue) == 4046);
-  ZC_EXPECT(static_cast<uint32_t>(DiagID::UnsupportedStructLiteralTarget) == 4047);
+  ZC_EXPECT(static_cast<uint32_t>(DiagID::AggregateLiteralTargetRequired) == 4047);
   ZC_EXPECT(static_cast<uint32_t>(DiagID::UnknownStructField) == 4048);
   ZC_EXPECT(static_cast<uint32_t>(DiagID::MissingStructField) == 4049);
   ZC_EXPECT(static_cast<uint32_t>(DiagID::ArrayElementTypeMismatch) == 4050);
   ZC_EXPECT(static_cast<uint32_t>(DiagID::MatchGuardMustBeBool) == 4051);
   ZC_EXPECT(static_cast<uint32_t>(DiagID::RecursiveTypeAliasCycle) == 4052);
-  ZC_EXPECT(static_cast<uint32_t>(DiagID::UnsupportedTypeExpression) == 4053);
   ZC_EXPECT(static_cast<uint32_t>(DiagID::OrphanImpl) == 4054);
   ZC_EXPECT(static_cast<uint32_t>(DiagID::DynDuplicateAssociatedTypeBinding) == 4055);
   ZC_EXPECT(static_cast<uint32_t>(DiagID::UseAfterMove) == 4056);
@@ -137,12 +137,138 @@ ZC_TEST("DiagnosticTest.TypeCheckerDiagnosticIdsAreStable") {
   ZC_EXPECT(static_cast<uint32_t>(DiagID::ScopedTaskReferentHere) == 4068);
   ZC_EXPECT(static_cast<uint32_t>(DiagID::RawPointerBoundaryRequiresUnsafe) == 4069);
   ZC_EXPECT(static_cast<uint32_t>(DiagID::MoveOutOfBorrow) == 4070);
+  ZC_EXPECT(static_cast<uint32_t>(DiagID::PreviousImplHere) == 4071);
+  ZC_EXPECT(static_cast<uint32_t>(DiagID::ObjectSafetyCauseHere) == 4072);
+  ZC_EXPECT(static_cast<uint32_t>(DiagID::AssociatedTypeCandidateHere) == 4073);
+  ZC_EXPECT(static_cast<uint32_t>(DiagID::PreviousAssociatedBindingHere) == 4074);
+  ZC_EXPECT(static_cast<uint32_t>(DiagID::AliasCycleMemberHere) == 4075);
+  ZC_EXPECT(static_cast<uint32_t>(DiagID::OperatorMethodDeclaredHere) == 4076);
+  ZC_EXPECT(static_cast<uint32_t>(DiagID::BodyLiteralOutOfRange) == 4077);
+  ZC_EXPECT(static_cast<uint32_t>(DiagID::ConstantValueOutOfRange) == 4078);
+  ZC_EXPECT(static_cast<uint32_t>(DiagID::ConstantExpressionNotAllowed) == 4079);
+  ZC_EXPECT(static_cast<uint32_t>(DiagID::ConstantDependencyCycle) == 4080);
+  ZC_EXPECT(static_cast<uint32_t>(DiagID::ConstantArithmeticFailure) == 4081);
+  ZC_EXPECT(static_cast<uint32_t>(DiagID::MarkerInterfaceRequiresBodylessImpl) == 4088);
+  ZC_EXPECT(static_cast<uint32_t>(DiagID::BehaviorInterfaceRequiresImplBody) == 4089);
+  ZC_EXPECT(static_cast<uint32_t>(DiagID::GenericMarkerInterfaceNotAllowed) == 4090);
+  ZC_EXPECT(static_cast<uint32_t>(DiagID::PositiveMarkerImplRequiresUnsafe) == 4091);
+  ZC_EXPECT(static_cast<uint32_t>(DiagID::ExplicitImplConflictsWithBuiltinMarker) == 4092);
 }
 
 ZC_TEST("DiagnosticTest.ReceiverParserDiagnosticIdsAreStable") {
   ZC_EXPECT(static_cast<uint32_t>(DiagID::ReceiverMustBeFirstParameter) == 2093);
   ZC_EXPECT(static_cast<uint32_t>(DiagID::ReceiverDefaultNotAllowed) == 2094);
   ZC_EXPECT(static_cast<uint32_t>(DiagID::ReceiverNotAllowedHere) == 2095);
+}
+
+ZC_TEST("DiagnosticTest.ActiveLexerAndParserDiagnosticIdsAreStable") {
+  struct Expected final {
+    DiagID id;
+    uint32_t code;
+  };
+  const Expected expected[] = {
+      {DiagID::ThisCharCannotBeEscapedInARegularExpression, 2001},
+      {DiagID::UnterminatedTemplateLiteral, 2004},
+      {DiagID::AsteriskSlashExpected, 2006},
+      {DiagID::UnexpectedEndOfText, 2007},
+      {DiagID::InvalidOptionalChainFromNewExpression, 2009},
+      {DiagID::OctalEscapeSequencesAndBackreferencesNotAllowed, 2028},
+      {DiagID::DecimalEscapeSequencesAndBackreferencesNotAllowed, 2029},
+      {DiagID::UnterminatedUnicodeEscapeSequence, 2039},
+      {DiagID::DecimalsWithLeadingZerosAreNotAllowed, 2041},
+      {DiagID::DigitExpected, 2042},
+      {DiagID::ABigIntLiteralCannotUseExponentialNotation, 2043},
+      {DiagID::ABigIntLiteralMustBeAnInteger, 2044},
+      {DiagID::TypeParameterDeclarationExpected, 2070},
+  };
+  for (const auto& entry : expected) {
+    const auto info = getDiagnosticInfo(entry.id);
+    ZC_EXPECT(static_cast<uint32_t>(entry.id) == entry.code);
+    ZC_EXPECT(info.id == entry.id);
+    ZC_EXPECT(info.severity == DiagSeverity::kError);
+  }
+}
+
+ZC_TEST("DiagnosticTest.ActiveBinderAndBorrowDiagnosticIdsAreStable") {
+  struct Expected final {
+    DiagID id;
+    uint32_t code;
+  };
+  const Expected expected[] = {
+      {DiagID::ContextualSelfOutsideType, 3025},
+      {DiagID::BorrowOutputRegionAmbiguous, 4082},
+      {DiagID::BorrowOutputRegionUnexpressible, 4083},
+      {DiagID::BorrowExternContractUnverified, 4084},
+  };
+  for (const auto& entry : expected) {
+    const auto info = getDiagnosticInfo(entry.id);
+    ZC_EXPECT(static_cast<uint32_t>(entry.id) == entry.code);
+    ZC_EXPECT(info.id == entry.id);
+    ZC_EXPECT(info.severity == DiagSeverity::kError);
+  }
+}
+
+ZC_TEST("DiagnosticTest.DispatchDiagnosticContractsAreStable") {
+  struct Expected final {
+    DiagID id;
+    uint32_t code;
+  };
+  const Expected expected[] = {
+      {DiagID::DispatchInputMismatch, 9937},          {DiagID::DispatchMissingFact, 9938},
+      {DiagID::DispatchAdditionalFact, 9939},         {DiagID::DispatchInvalidFact, 9940},
+      {DiagID::DispatchCanonicalCodecMismatch, 9941},
+  };
+  for (const auto& entry : expected) {
+    const auto info = getDiagnosticInfo(entry.id);
+    ZC_EXPECT(static_cast<uint32_t>(entry.id) == entry.code);
+    ZC_EXPECT(info.id == entry.id);
+    ZC_EXPECT(info.severity == DiagSeverity::kFatal);
+    ZC_EXPECT(info.argCount == 1);
+  }
+}
+
+ZC_TEST("DiagnosticTest.ModuleInterfaceDiagnosticContractsAreStable") {
+  struct Expected final {
+    DiagID id;
+    uint32_t code;
+  };
+  const Expected expected[] = {
+      {DiagID::ModuleInterfaceInputMismatch, 9950},
+      {DiagID::ModuleInterfaceMissingProjection, 9951},
+      {DiagID::ModuleInterfaceAdditionalProjection, 9952},
+      {DiagID::ModuleInterfaceInvalidProjection, 9953},
+      {DiagID::ModuleInterfaceCanonicalCodecMismatch, 9954},
+  };
+  for (const auto& entry : expected) {
+    const auto info = getDiagnosticInfo(entry.id);
+    ZC_EXPECT(static_cast<uint32_t>(entry.id) == entry.code);
+    ZC_EXPECT(info.id == entry.id);
+    ZC_EXPECT(info.severity == DiagSeverity::kFatal);
+    ZC_EXPECT(info.argCount == 1);
+  }
+}
+
+ZC_TEST("DiagnosticTest.ActivePackageDiagnosticContractsAreStable") {
+  struct Expected final {
+    DiagID id;
+    uint32_t code;
+    DiagSeverity severity;
+    uint32_t argCount;
+  };
+  const Expected expected[] = {
+      {DiagID::PackageManifestInvalid, 7001, DiagSeverity::kError, 1},
+      {DiagID::PackageTargetSelectionInvalid, 7015, DiagSeverity::kError, 1},
+      {DiagID::PreviousWorkspacePackageHere, 7093, DiagSeverity::kNote, 0},
+      {DiagID::BuildScriptLimitInvariantViolation, 9905, DiagSeverity::kFatal, 1},
+      {DiagID::TrustedBuildRuntimeInvariantViolation, 9906, DiagSeverity::kFatal, 1},
+  };
+  for (const auto& entry : expected) {
+    const auto info = getDiagnosticInfo(entry.id);
+    ZC_EXPECT(static_cast<uint32_t>(entry.id) == entry.code);
+    ZC_EXPECT(info.id == entry.id);
+    ZC_EXPECT(info.severity == entry.severity);
+    ZC_EXPECT(info.argCount == entry.argCount);
+  }
 }
 
 ZC_TEST("DiagnosticTest.ControlTransferDiagnosticContractsAreStable") {
@@ -159,20 +285,38 @@ ZC_TEST("DiagnosticTest.ControlTransferDiagnosticContractsAreStable") {
   ZC_EXPECT(continueInfo.argCount == 0);
 }
 
-ZC_TEST("DiagnosticTest.IrDiagnosticIdsAreStable") {
-  ZC_EXPECT(static_cast<uint32_t>(DiagID::IrUnsupportedSourceShape) == 6001);
-  ZC_EXPECT(static_cast<uint32_t>(DiagID::IrUnsupportedExpression) == 6002);
-  ZC_EXPECT(static_cast<uint32_t>(DiagID::IrUnknownTargetLayout) == 6003);
-  ZC_EXPECT(static_cast<uint32_t>(DiagID::IrCrossSourceCallUnsupported) == 6004);
-  ZC_EXPECT(static_cast<uint32_t>(DiagID::IrSingleSourceRequired) == 6005);
+ZC_TEST("DiagnosticTest.ModuleGraphAmbiguityDiagnosticContractsAreStable") {
+  const auto importInfo = getDiagnosticInfo(DiagID::ImportModuleAmbiguous);
+  ZC_EXPECT(importInfo.id == DiagID::ImportModuleAmbiguous);
+  ZC_EXPECT(importInfo.severity == DiagSeverity::kError);
+  ZC_EXPECT(importInfo.message == "Import path resolves to multiple modules"_zc);
+  ZC_EXPECT(importInfo.argCount == 0);
+
+  const auto reexportInfo = getDiagnosticInfo(DiagID::ReexportModuleAmbiguous);
+  ZC_EXPECT(reexportInfo.id == DiagID::ReexportModuleAmbiguous);
+  ZC_EXPECT(reexportInfo.severity == DiagSeverity::kError);
+  ZC_EXPECT(reexportInfo.message == "Re-export path resolves to multiple modules"_zc);
+  ZC_EXPECT(reexportInfo.argCount == 0);
+
+  auto sourceManager = zc::heap<source::SourceManager>();
+  zc::VectorOutputStream output;
+
+  DiagnosticEngine::formatDiagnosticMessage(*sourceManager, output, importInfo.message,
+                                            zc::ArrayPtr<const DiagnosticArgument>());
+  ZC_EXPECT(output.getArray() == importInfo.message.asBytes());
+
+  output.clear();
+  DiagnosticEngine::formatDiagnosticMessage(*sourceManager, output, reexportInfo.message,
+                                            zc::ArrayPtr<const DiagnosticArgument>());
+  ZC_EXPECT(output.getArray() == reexportInfo.message.asBytes());
+}
+
+ZC_TEST("DiagnosticTest.BackendDiagnosticIdsAreStable") {
   ZC_EXPECT(static_cast<uint32_t>(DiagID::PanicUnwindUnsupported) == 6006);
   ZC_EXPECT(static_cast<uint32_t>(DiagID::BinaryEmissionUnavailable) == 6007);
-  ZC_EXPECT(static_cast<uint32_t>(DiagID::IrOutputCreationFailed) == 6008);
-  ZC_EXPECT(static_cast<uint32_t>(DiagID::IrLoweringInvariantViolation) == 9901);
-  ZC_EXPECT(static_cast<uint32_t>(DiagID::IrCheckedInputMissing) == 9902);
-  ZC_EXPECT(static_cast<uint32_t>(DiagID::IrDumpInvariantViolation) == 9903);
-  ZC_EXPECT(DiagnosticTraits<DiagID::IrLoweringInvariantViolation>::argCount == 3);
-  ZC_EXPECT(DiagnosticTraits<DiagID::IrDumpInvariantViolation>::argCount == 7);
+  ZC_EXPECT(static_cast<uint32_t>(DiagID::TargetCapabilityUnavailable) == 6009);
+  ZC_EXPECT(static_cast<uint32_t>(DiagID::LirInvariant) == 9947);
+  ZC_EXPECT(static_cast<uint32_t>(DiagID::IrCanonicalCodecMismatch) == 9949);
 }
 
 ZC_TEST("DiagnosticTest.IdentityDiagnosticIdsAreStable") {
@@ -189,6 +333,42 @@ ZC_TEST("DiagnosticTest.IdentityDiagnosticIdsAreStable") {
   ZC_EXPECT(static_cast<uint32_t>(DiagID::IdentityDuplicateSingletonStore) == 9920);
   ZC_EXPECT(static_cast<uint32_t>(DiagID::IdentityNonCanonicalEncoding) == 9921);
   ZC_EXPECT(DiagnosticTraits<DiagID::IdentityNonCanonicalEncoding>::argCount == 1);
+}
+
+ZC_TEST("DiagnosticTest.CheckerInvariantDiagnosticContractsAreStable") {
+  struct Expected final {
+    DiagID id;
+    uint32_t code;
+    zc::StringPtr message;
+  };
+  const Expected expected[] = {
+      {DiagID::CheckerInputReceiptMismatch, 9927,
+       "Internal checker input receipt is inconsistent ({0} occurrence(s))"_zc},
+      {DiagID::CheckerMissingRequiredFact, 9928,
+       "Internal checker required fact is missing ({0} occurrence(s))"_zc},
+      {DiagID::CheckerInvalidFact, 9929, "Internal checker fact is invalid ({0} occurrence(s))"_zc},
+      {DiagID::CheckerStaleRevision, 9930,
+       "Internal checker revision is stale ({0} occurrence(s))"_zc},
+      {DiagID::CheckerViewMismatch, 9931,
+       "Internal checker semantic view is inconsistent ({0} occurrence(s))"_zc},
+      {DiagID::CheckerInferenceLifecycle, 9932,
+       "Internal checker inference lifecycle is invalid ({0} occurrence(s))"_zc},
+      {DiagID::CheckerSolverInvariant, 9933,
+       "Internal checker solver state is invalid ({0} occurrence(s))"_zc},
+      {DiagID::CheckerInvalidEmitterOrdinal, 9934,
+       "Internal checker diagnostic ordinal is invalid ({0} occurrence(s))"_zc},
+      {DiagID::CheckerCanonicalCodecMismatch, 9935,
+       "Internal checker canonical encoding is invalid ({0} occurrence(s))"_zc},
+      {DiagID::CheckerAdditionalFact, 9936,
+       "Internal checker fact is not authorized ({0} occurrence(s))"_zc},
+  };
+  for (const auto& entry : expected) {
+    const auto info = getDiagnosticInfo(entry.id);
+    ZC_EXPECT(static_cast<uint32_t>(entry.id) == entry.code);
+    ZC_EXPECT(info.severity == DiagSeverity::kFatal);
+    ZC_EXPECT(info.message == entry.message);
+    ZC_EXPECT(info.argCount == 1);
+  }
 }
 
 ZC_TEST("DiagnosticTest.MultipleDiagnostics") {

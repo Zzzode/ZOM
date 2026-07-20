@@ -16,6 +16,7 @@
 
 #include "zc/core/string.h"
 #include "zc/ztest/test.h"
+#include "zomlang/compiler/identity/canonical-decoder.h"
 #include "zomlang/compiler/identity/canonical-encoder.h"
 
 namespace zomlang::compiler::identity {
@@ -122,6 +123,40 @@ ZC_TEST("Canonical scalar encoding uses normalized UTF-8 byte strings") {
     encoded = true;
   }
   ZC_EXPECT(encoded);
+}
+
+ZC_TEST("Canonical scalar decoder validates canonical text and hard byte limits") {
+  auto scalar = SemanticIdentifier::fromCanonical("caf\xC3\xA9"_zc);
+  ZC_REQUIRE(scalar != zc::none);
+  ZC_IF_SOME(value, scalar) {
+    CanonicalEncoder encoder;
+    value.encode(encoder);
+    auto bytes = encoder.finish();
+    CanonicalDecoder decoder(bytes);
+    auto decoded = SemanticIdentifier::decodeCanonical(decoder);
+    ZC_REQUIRE(decoded != zc::none);
+    ZC_IF_SOME(decodedValue, decoded) { ZC_EXPECT(decodedValue.text() == value.text()); }
+    ZC_EXPECT(decoder.finished());
+  }
+
+  CanonicalEncoder nonCanonicalEncoder;
+  nonCanonicalEncoder.encodeByteString("caf\x65\xCC\x81"_zc.asBytes());
+  auto nonCanonicalBytes = nonCanonicalEncoder.finish();
+  CanonicalDecoder nonCanonicalDecoder(nonCanonicalBytes);
+  ZC_EXPECT(SemanticIdentifier::decodeCanonical(nonCanonicalDecoder) == zc::none);
+
+  CanonicalEncoder oversizedEncoder;
+  oversizedEncoder.encodeUint64(4097);
+  auto oversizedBytes = oversizedEncoder.finish();
+  CanonicalDecoder oversizedDecoder(oversizedBytes);
+  ZC_EXPECT(ModulePathSegment::decodeCanonical(oversizedDecoder) == zc::none);
+  auto oversizedText = repeated('a', 4097);
+  ZC_EXPECT(ModulePathSegment::fromSource(oversizedText) == zc::none);
+  ZC_EXPECT(ModulePathSegment::fromCanonical(oversizedText) == zc::none);
+
+  const uint8_t truncated[] = {0, 0, 0, 0, 0, 0, 0};
+  CanonicalDecoder truncatedDecoder(zc::arrayPtr(truncated));
+  ZC_EXPECT(PackageName::decodeCanonical(truncatedDecoder) == zc::none);
 }
 
 }  // namespace zomlang::compiler::identity

@@ -12,7 +12,7 @@
 // CHECK-NEXT:           members_id:
 // CHECK-NEXT:             ClassMemberList #11 @1:19..4:2 nmembers=2
 // CHECK-NEXT:               members:
-// CHECK-NEXT:                 MethodDecl #5 @2:5..2:30 name="sink" is_static=false visibility=Default
+// CHECK-NEXT:                 MethodDecl #5 @2:5..2:30 name="sink" mode=Instance visibility=Default
 // CHECK-NEXT:                   params_id:
 // CHECK-NEXT:                     FunctionParameterList #3 @2:13..2:21 nparams=1
 // CHECK-NEXT:                       params:
@@ -26,7 +26,7 @@
 // CHECK-NEXT:                     PredefinedTypeExpr #4 @2:25..2:29 kind=Unit
 // CHECK-NEXT:                   raises_ty: null
 // CHECK-NEXT:                   body: null
-// CHECK-NEXT:                 MethodDecl #10 @3:5..3:33 name="counter" is_static=false visibility=Default
+// CHECK-NEXT:                 MethodDecl #10 @3:5..3:33 name="counter" mode=Instance visibility=Default
 // CHECK-NEXT:                   params_id:
 // CHECK-NEXT:                     FunctionParameterList #8 @3:16..3:24 nparams=1
 // CHECK-NEXT:                       params:

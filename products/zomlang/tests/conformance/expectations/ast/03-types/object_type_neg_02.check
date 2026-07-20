@@ -2,7 +2,7 @@
 
 
 // CHECK-LITERAL: Error [ZOM2025]: Expected ':'
-// CHECK:   --> products {{(?:.*[/\\])?object_type_neg_02\.zom:1:17$}}
+// CHECK-LITERAL:   --> conformance/object_type_neg_02.zom:1:17
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 1 | alias Bad2 = { x, y };
 // CHECK-LITERAL:   |                 ^

@@ -1,0 +1,5 @@
+section: "Ch.03 Dynamic interface marker composition"
+covers_rule: "dynType, standaloneImplDeclaration"
+expected: "ACCEPT"
+notes:
+  - "Covers a concrete type with an explicit marker implementation used in a dynamic interface type."

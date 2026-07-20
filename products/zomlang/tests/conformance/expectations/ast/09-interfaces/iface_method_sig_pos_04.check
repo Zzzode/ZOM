@@ -12,7 +12,7 @@
 // CHECK-NEXT:           members_id:
 // CHECK-NEXT:             ClassMemberList #32 @1:19..6:2 nmembers=4
 // CHECK-NEXT:               members:
-// CHECK-NEXT:                 MethodDecl #7 @2:5..2:43 name="add" is_static=false visibility=Public
+// CHECK-NEXT:                 MethodDecl #7 @2:5..2:43 name="add" mode=Instance visibility=Public
 // CHECK-NEXT:                   params_id:
 // CHECK-NEXT:                     FunctionParameterList #5 @2:19..2:35 nparams=2
 // CHECK-NEXT:                       params:
@@ -31,7 +31,7 @@
 // CHECK-NEXT:                     PredefinedTypeExpr #6 @2:39..2:42 kind=I32
 // CHECK-NEXT:                   raises_ty: null
 // CHECK-NEXT:                   body: null
-// CHECK-NEXT:                 MethodDecl #16 @3:5..3:53 name="mul" is_static=false visibility=Default
+// CHECK-NEXT:                 MethodDecl #16 @3:5..3:53 name="mul" mode=Instance visibility=Default
 // CHECK-NEXT:                   params_id:
 // CHECK-NEXT:                     FunctionParameterList #12 @3:12..3:28 nparams=2
 // CHECK-NEXT:                       params:
@@ -51,10 +51,10 @@
 // CHECK-NEXT:                   raises_ty:
 // CHECK-NEXT:                     NamedTypeExpr #15 @3:43..3:52
 // CHECK-NEXT:                       path:
-// CHECK-NEXT:                         ModulePath #14 @3:43..3:52 segments=["MathError"]
+// CHECK-NEXT:                         ModulePath #14 @3:43..3:52 segments=["MathError"] root=Relative
 // CHECK-NEXT:                       args: []
 // CHECK-NEXT:                   body: null
-// CHECK-NEXT:                 MethodDecl #26 @4:5..4:64 name="greet" is_static=false visibility=Default
+// CHECK-NEXT:                 MethodDecl #26 @4:5..4:64 name="greet" mode=Instance visibility=Default
 // CHECK-NEXT:                   params_id:
 // CHECK-NEXT:                     FunctionParameterList #19 @4:14..4:25 nparams=1
 // CHECK-NEXT:                       params:
@@ -71,14 +71,14 @@
 // CHECK-NEXT:                       alts:
 // CHECK-NEXT:                         NamedTypeExpr #22 @4:40..4:47
 // CHECK-NEXT:                           path:
-// CHECK-NEXT:                             ModulePath #21 @4:40..4:47 segments=["IOError"]
+// CHECK-NEXT:                             ModulePath #21 @4:40..4:47 segments=["IOError"] root=Relative
 // CHECK-NEXT:                           args: []
 // CHECK-NEXT:                         NamedTypeExpr #24 @4:50..4:63
 // CHECK-NEXT:                           path:
-// CHECK-NEXT:                             ModulePath #23 @4:50..4:63 segments=["EncodingError"]
+// CHECK-NEXT:                             ModulePath #23 @4:50..4:63 segments=["EncodingError"] root=Relative
 // CHECK-NEXT:                           args: []
 // CHECK-NEXT:                   body: null
-// CHECK-NEXT:                 MethodDecl #31 @5:5..5:41 name="exec" is_static=false visibility=Default
+// CHECK-NEXT:                 MethodDecl #31 @5:5..5:41 name="exec" mode=Instance visibility=Default
 // CHECK-NEXT:                   params_id:
 // CHECK-NEXT:                     FunctionParameterList #29 @5:22..5:32 nparams=1
 // CHECK-NEXT:                       params:

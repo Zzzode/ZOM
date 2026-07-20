@@ -23,6 +23,9 @@ namespace zomlang::compiler::identity {
 template <typename Key, typename Tag>
 class FrozenContextRegistry;
 
+template <typename Key, typename Record, typename Authority, typename Tag>
+class FrozenAuthorityRegistry;
+
 /// \brief Context-owned semantic handle whose tag is its only issuing registry or store.
 template <typename Tag>
 class ContextHandle final {
@@ -52,6 +55,8 @@ private:
   friend Tag;
   template <typename Key, typename IdentityTag>
   friend class FrozenContextRegistry;
+  template <typename Key, typename Record, typename Authority, typename IdentityTag>
+  friend class FrozenAuthorityRegistry;
 };
 
 /// \brief Store-owned semantic handle for tags with multiple issuing stores per context.

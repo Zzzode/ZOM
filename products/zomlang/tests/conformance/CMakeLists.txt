@@ -18,11 +18,32 @@
 add_subdirectory(runners/grammar)
 add_subdirectory(runners/ast)
 add_subdirectory(runners/diagnostics)
-add_subdirectory(runners/ir)
+
+add_test(
+  NAME lit-exec-root
+  COMMAND "${Python3_EXECUTABLE}" ${CMAKE_SOURCE_DIR}/scripts/check-lit-exec-root.py --check
+  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+)
+
+set_tests_properties(lit-exec-root PROPERTIES
+  LABELS "conformance;lit;architecture"
+  TIMEOUT 120
+)
+
+add_test(
+  NAME lit-exec-root-negative
+  COMMAND "${Python3_EXECUTABLE}" ${CMAKE_SOURCE_DIR}/scripts/check-lit-exec-root.py --self-test
+  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+)
+
+set_tests_properties(lit-exec-root-negative PROPERTIES
+  LABELS "conformance;lit;architecture;negative"
+  TIMEOUT 120
+)
 
 add_test(
   NAME parser-coverage
-  COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/check-parser-coverage.py
+  COMMAND "${Python3_EXECUTABLE}" ${CMAKE_SOURCE_DIR}/scripts/check-parser-coverage.py
   WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
 )
 
@@ -33,7 +54,7 @@ set_tests_properties(parser-coverage PROPERTIES
 
 add_test(
   NAME lexer-architecture
-  COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/check-lexer-architecture.py
+  COMMAND "${Python3_EXECUTABLE}" ${CMAKE_SOURCE_DIR}/scripts/check-lexer-architecture.py
   WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
 )
 
@@ -44,13 +65,13 @@ set_tests_properties(lexer-architecture PROPERTIES
 
 add_test(
   NAME ast-generated-schema
-  COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/codegen/gen_ast.py --check
+  COMMAND "${Python3_EXECUTABLE}" ${CMAKE_SOURCE_DIR}/scripts/codegen/gen_ast.py --check
   WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
 )
 
 add_test(
   NAME compiler-session-architecture
-  COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/check-compiler-session-architecture.py --check
+  COMMAND "${Python3_EXECUTABLE}" ${CMAKE_SOURCE_DIR}/scripts/check-compiler-session-architecture.py --check
   WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
 )
 
@@ -61,7 +82,7 @@ set_tests_properties(compiler-session-architecture PROPERTIES
 
 add_test(
   NAME compiler-session-architecture-negative
-  COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/check-compiler-session-architecture.py --self-test
+  COMMAND "${Python3_EXECUTABLE}" ${CMAKE_SOURCE_DIR}/scripts/check-compiler-session-architecture.py --self-test
   WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
 )
 
@@ -71,8 +92,78 @@ set_tests_properties(compiler-session-architecture-negative PROPERTIES
 )
 
 add_test(
+  NAME checker-architecture
+  COMMAND "${Python3_EXECUTABLE}" ${CMAKE_SOURCE_DIR}/scripts/check-checker-architecture.py --check
+  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+)
+
+set_tests_properties(checker-architecture PROPERTIES
+  LABELS "conformance;checker;architecture"
+  TIMEOUT 120
+)
+
+add_test(
+  NAME checker-architecture-negative
+  COMMAND "${Python3_EXECUTABLE}" ${CMAKE_SOURCE_DIR}/scripts/check-checker-architecture.py --self-test
+  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+)
+
+add_test(
+  NAME impl-source-architecture
+  COMMAND "${Python3_EXECUTABLE}" ${CMAKE_SOURCE_DIR}/scripts/check-impl-source-architecture.py --check
+  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+)
+
+set_tests_properties(impl-source-architecture PROPERTIES
+  LABELS "conformance;parser;binder;checker;architecture;specification"
+  TIMEOUT 120
+)
+
+add_test(
+  NAME impl-source-architecture-negative
+  COMMAND "${Python3_EXECUTABLE}" ${CMAKE_SOURCE_DIR}/scripts/check-impl-source-architecture.py --self-test
+  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+)
+
+set_tests_properties(impl-source-architecture-negative PROPERTIES
+  LABELS "conformance;parser;binder;checker;architecture;negative;specification"
+  TIMEOUT 120
+)
+
+set_tests_properties(checker-architecture-negative PROPERTIES
+  LABELS "conformance;checker;architecture;negative"
+  TIMEOUT 120
+)
+
+add_test(
+  NAME canonical-header-syntax-schema
+  COMMAND "${Python3_EXECUTABLE}"
+          ${CMAKE_SOURCE_DIR}/scripts/generate-canonical-header-syntax-schema.py
+          --check
+  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+)
+
+set_tests_properties(canonical-header-syntax-schema PROPERTIES
+  LABELS "conformance;identity;generated;architecture"
+  TIMEOUT 120
+)
+
+add_test(
+  NAME canonical-header-syntax-schema-negative
+  COMMAND "${Python3_EXECUTABLE}"
+          ${CMAKE_SOURCE_DIR}/scripts/generate-canonical-header-syntax-schema.py
+          --self-test
+  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+)
+
+set_tests_properties(canonical-header-syntax-schema-negative PROPERTIES
+  LABELS "conformance;identity;generated;architecture;negative"
+  TIMEOUT 120
+)
+
+add_test(
   NAME identity-architecture
-  COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/check-identity-architecture.py --check
+  COMMAND "${Python3_EXECUTABLE}" ${CMAKE_SOURCE_DIR}/scripts/check-identity-architecture.py --check
   WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
 )
 
@@ -83,18 +174,40 @@ set_tests_properties(identity-architecture PROPERTIES
 
 add_test(
   NAME identity-architecture-negative
-  COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/check-identity-architecture.py --self-test
+  COMMAND "${Python3_EXECUTABLE}" ${CMAKE_SOURCE_DIR}/scripts/check-identity-architecture.py --self-test
   WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
 )
 
 set_tests_properties(identity-architecture-negative PROPERTIES
   LABELS "conformance;identity;architecture;negative"
+  TIMEOUT 300
+)
+
+add_test(
+  NAME incremental-query-architecture
+  COMMAND "${Python3_EXECUTABLE}" ${CMAKE_SOURCE_DIR}/scripts/check-incremental-query-architecture.py --check
+  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+)
+
+set_tests_properties(incremental-query-architecture PROPERTIES
+  LABELS "conformance;query;incremental;architecture"
+  TIMEOUT 120
+)
+
+add_test(
+  NAME incremental-query-architecture-negative
+  COMMAND "${Python3_EXECUTABLE}" ${CMAKE_SOURCE_DIR}/scripts/check-incremental-query-architecture.py --self-test
+  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+)
+
+set_tests_properties(incremental-query-architecture-negative PROPERTIES
+  LABELS "conformance;query;incremental;architecture;negative"
   TIMEOUT 120
 )
 
 add_test(
   NAME vendored-dependencies
-  COMMAND python3
+  COMMAND "${Python3_EXECUTABLE}"
           ${CMAKE_SOURCE_DIR}/products/zomlang/tests/tools/check-vendored-dependencies.py
           --check
   WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
@@ -107,7 +220,7 @@ set_tests_properties(vendored-dependencies PROPERTIES
 
 add_test(
   NAME vendored-dependencies-negative
-  COMMAND python3
+  COMMAND "${Python3_EXECUTABLE}"
           ${CMAKE_SOURCE_DIR}/products/zomlang/tests/tools/check-vendored-dependencies.py
           --self-test
   WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
@@ -120,7 +233,7 @@ set_tests_properties(vendored-dependencies-negative PROPERTIES
 
 add_test(
   NAME package-architecture
-  COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/check-package-architecture.py --check
+  COMMAND "${Python3_EXECUTABLE}" ${CMAKE_SOURCE_DIR}/scripts/check-package-architecture.py --check
   WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
 )
 
@@ -131,7 +244,7 @@ set_tests_properties(package-architecture PROPERTIES
 
 add_test(
   NAME package-architecture-negative
-  COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/check-package-architecture.py --self-test
+  COMMAND "${Python3_EXECUTABLE}" ${CMAKE_SOURCE_DIR}/scripts/check-package-architecture.py --self-test
   WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
 )
 
@@ -142,7 +255,7 @@ set_tests_properties(package-architecture-negative PROPERTIES
 
 add_test(
   NAME package-generated-oracles
-  COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/codegen/gen_package_oracles.py --check
+  COMMAND "${Python3_EXECUTABLE}" ${CMAKE_SOURCE_DIR}/scripts/codegen/gen_package_oracles.py --check
   WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
 )
 
@@ -153,7 +266,7 @@ set_tests_properties(package-generated-oracles PROPERTIES
 
 add_test(
   NAME package-generated-oracles-negative
-  COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/codegen/gen_package_oracles.py --self-test
+  COMMAND "${Python3_EXECUTABLE}" ${CMAKE_SOURCE_DIR}/scripts/codegen/gen_package_oracles.py --self-test
   WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
 )
 
@@ -163,24 +276,46 @@ set_tests_properties(package-generated-oracles-negative PROPERTIES
 )
 
 add_test(
-  NAME ir-diagnostic-boundary
-  COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/check-ir-diagnostic-boundary.py --check
+  NAME ir-architecture
+  COMMAND "${Python3_EXECUTABLE}" ${CMAKE_SOURCE_DIR}/scripts/check-ir-architecture.py --check
   WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
 )
 
-set_tests_properties(ir-diagnostic-boundary PROPERTIES
+set_tests_properties(ir-architecture PROPERTIES
   LABELS "conformance;ir;diagnostics;architecture"
   TIMEOUT 120
 )
 
 add_test(
-  NAME ir-diagnostic-boundary-negative
-  COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/check-ir-diagnostic-boundary.py --self-test
+  NAME ir-architecture-negative
+  COMMAND "${Python3_EXECUTABLE}" ${CMAKE_SOURCE_DIR}/scripts/check-ir-architecture.py --self-test
   WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
 )
 
-set_tests_properties(ir-diagnostic-boundary-negative PROPERTIES
+set_tests_properties(ir-architecture-negative PROPERTIES
   LABELS "conformance;ir;diagnostics;architecture;negative"
+  TIMEOUT 120
+)
+
+add_test(
+  NAME diagnostic-coverage
+  COMMAND "${Python3_EXECUTABLE}" ${CMAKE_SOURCE_DIR}/scripts/check-diagnostic-coverage.py --check
+  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+)
+
+set_tests_properties(diagnostic-coverage PROPERTIES
+  LABELS "conformance;diagnostics;coverage;architecture"
+  TIMEOUT 120
+)
+
+add_test(
+  NAME diagnostic-coverage-negative
+  COMMAND "${Python3_EXECUTABLE}" ${CMAKE_SOURCE_DIR}/scripts/check-diagnostic-coverage.py --self-test
+  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+)
+
+set_tests_properties(diagnostic-coverage-negative PROPERTIES
+  LABELS "conformance;diagnostics;coverage;architecture;negative"
   TIMEOUT 120
 )
 
@@ -209,12 +344,6 @@ add_custom_target(check-conformance-diagnostics
   COMMENT "Running diagnostics/FileCheck conformance tests"
 )
 
-add_custom_target(check-conformance-ir
-  COMMAND ${CMAKE_CTEST_COMMAND} --test-dir ${CMAKE_BINARY_DIR} --output-on-failure -L "conformance-ir"
-  COMMENT "Running IR/FileCheck conformance tests"
-)
-
 add_dependencies(check-conformance zomc)
 add_dependencies(check-conformance-ast zomc)
 add_dependencies(check-conformance-diagnostics zomc)
-add_dependencies(check-conformance-ir zomc)

@@ -75,9 +75,10 @@ void Parser::Impl::diagnoseTokenPatterns() {
       sawFunSinceLastInterfaceBoundary = true;
     }
 
-    if (isDeclarationModifier(kind) && (i == 0 || !isDeclarationModifier(kindAt(i - 1)))) {
+    if (isNamedDeclarationModifier(kind) &&
+        (i == 0 || !isNamedDeclarationModifier(kindAt(i - 1)))) {
       size_t head = i + 1;
-      while (head < count && isDeclarationModifier(kindAt(head))) { ++head; }
+      while (head < count && isNamedDeclarationModifier(kindAt(head))) { ++head; }
       if (head < count && isDeclarationHead(kindAt(head))) {
         diagnoseDeclarationModifierGroup(i, head);
       }

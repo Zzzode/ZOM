@@ -1,9 +1,0 @@
-// RUN: cd %corpus && ! %zomc compile --syntax-only 03-types/null_initializer_missing_type_neg_01.zom > %t 2>&1
-// RUN: %FileCheck %s --input-file %t
-
-
-// CHECK-LITERAL: Error [ZOM4015]: Cannot infer type from null initializer without annotation
-// CHECK-LITERAL:   --> 03-types/null_initializer_missing_type_neg_01.zom:1:5
-// CHECK-LITERAL:   |
-// CHECK-LITERAL: 1 | let x = null;
-// CHECK-LITERAL:   |     ^

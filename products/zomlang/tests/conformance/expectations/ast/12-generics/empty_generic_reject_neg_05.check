@@ -2,7 +2,7 @@
 
 
 // CHECK-LITERAL: Error [ZOM2071]: Type argument expected
-// CHECK:   --> products {{(?:.*[/\\])?empty_generic_reject_neg_05\.zom:1:15$}}
+// CHECK-LITERAL:   --> conformance/empty_generic_reject_neg_05.zom:1:15
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 1 | alias E = Foo<>;
 // CHECK-LITERAL:   |               ^

@@ -1,0 +1,8 @@
+// RUN: ! %zomc compile --dump-ast %corpus/02-lexical/string_octal_escape_neg_04.zom 2>&1 | %FileCheck %s
+
+
+// CHECK-LITERAL: Error [ZOM2027]: Octal escape sequences are not allowed. Use the syntax '\x07'
+// CHECK-LITERAL:   --> conformance/string_octal_escape_neg_04.zom:1:13
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 1 | let value = "invalid: \07";
+// CHECK-LITERAL:   |             ^

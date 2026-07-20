@@ -12,7 +12,7 @@
 // CHECK-NEXT:           members_id:
 // CHECK-NEXT:             ClassMemberList #7 @1:28..4:2 nmembers=2
 // CHECK-NEXT:               members:
-// CHECK-NEXT:                 MethodDecl #3 @2:5..2:36 name="toString" is_static=false visibility=Default
+// CHECK-NEXT:                 MethodDecl #3 @2:5..2:36 name="toString" mode=Instance visibility=Default
 // CHECK-NEXT:                   params_id:
 // CHECK-NEXT:                     FunctionParameterList #1 @2:26..2:28 nparams=0
 // CHECK-NEXT:                       params: []
@@ -21,7 +21,7 @@
 // CHECK-NEXT:                     PredefinedTypeExpr #2 @2:32..2:35 kind=Str
 // CHECK-NEXT:                   raises_ty: null
 // CHECK-NEXT:                   body: null
-// CHECK-NEXT:                 MethodDecl #6 @3:5..3:31 name="tag" is_static=false visibility=Default
+// CHECK-NEXT:                 MethodDecl #6 @3:5..3:31 name="tag" mode=Instance visibility=Default
 // CHECK-NEXT:                   params_id:
 // CHECK-NEXT:                     FunctionParameterList #4 @3:21..3:23 nparams=0
 // CHECK-NEXT:                       params: []

@@ -2,27 +2,27 @@
 
 
 // CHECK-LITERAL: Error [ZOM2095]: Receiver 'this' is not allowed in module function
-// CHECK-LITERAL:   --> receiver_forbidden_contexts_neg_06.zom:1:20
+// CHECK-LITERAL:   --> conformance/receiver_forbidden_contexts_neg_06.zom:1:20
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 1 | fun moduleReceiver(this) {}
 // CHECK-LITERAL:   |                    ^
 // CHECK-LITERAL: Error [ZOM2095]: Receiver 'this' is not allowed in block function
-// CHECK-LITERAL:   --> receiver_forbidden_contexts_neg_06.zom:4:23
+// CHECK-LITERAL:   --> conformance/receiver_forbidden_contexts_neg_06.zom:4:23
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 4 |     fun blockReceiver(this) {}
 // CHECK-LITERAL:   |                       ^
 // CHECK-LITERAL: Error [ZOM2095]: Receiver 'this' is not allowed in extern function
-// CHECK-LITERAL:   --> receiver_forbidden_contexts_neg_06.zom:8:24
+// CHECK-LITERAL:   --> conformance/receiver_forbidden_contexts_neg_06.zom:8:24
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 8 |     fun externReceiver(this);
 // CHECK-LITERAL:   |                        ^
 // CHECK-LITERAL: Error [ZOM2095]: Receiver 'this' is not allowed in function expression
-// CHECK-LITERAL:   --> receiver_forbidden_contexts_neg_06.zom:11:28
+// CHECK-LITERAL:   --> conformance/receiver_forbidden_contexts_neg_06.zom:11:28
 // CHECK-LITERAL:    |
 // CHECK-LITERAL: 11 | let functionReceiver = fun(this) {};
 // CHECK-LITERAL:    |                            ^
 // CHECK-LITERAL: Error [ZOM2095]: Receiver 'this' is not allowed in lambda
-// CHECK-LITERAL:   --> receiver_forbidden_contexts_neg_06.zom:12:23
+// CHECK-LITERAL:   --> conformance/receiver_forbidden_contexts_neg_06.zom:12:23
 // CHECK-LITERAL:    |
 // CHECK-LITERAL: 12 | let lambdaReceiver = (this) => this;
 // CHECK-LITERAL:    |                       ^

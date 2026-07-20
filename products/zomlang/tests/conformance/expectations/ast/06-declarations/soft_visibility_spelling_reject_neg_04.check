@@ -1,0 +1,8 @@
+// RUN: ! %zomc compile --dump-ast %corpus/06-declarations/soft_visibility_spelling_reject_neg_04.zom 2>&1 | %FileCheck %s
+
+
+// CHECK-LITERAL: Error [ZOM2105]: Unknown visibility modifier 'pub'; expected 'public', 'private', or 'protected'
+// CHECK-LITERAL:   --> conformance/soft_visibility_spelling_reject_neg_04.zom:2:5
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 2 |     pub value: i32;
+// CHECK-LITERAL:   |     ^

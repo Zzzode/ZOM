@@ -27,13 +27,14 @@
 #include "zomlang/compiler/identity/sha256.h"
 #include "zomlang/compiler/identity/sorted-feature-set.h"
 
-namespace zomlang::compiler::irgen {
+namespace zomlang::compiler::ir {
 class TargetRegistrySnapshot;
 }
 
 namespace zomlang::compiler::driver::package {
 
 class VerifiedBuildScriptResultSet;
+class VerifiedBuildScriptPlan;
 
 enum class InvocationIssue : uint8_t {
   ManifestNotFound = 0x01,
@@ -150,7 +151,7 @@ private:
   RegisteredTargetProfileName hostProfileValue;
   zc::Vector<RegisteredTargetProfile> profileValues;
   identity::Sha256Digest revisionValue;
-  friend class ::zomlang::compiler::irgen::TargetRegistrySnapshot;
+  friend class ::zomlang::compiler::ir::TargetRegistrySnapshot;
 };
 
 struct RequestedTargetSelection final {
@@ -264,7 +265,7 @@ private:
   identity::CanonicalRelativePath sourcePathValue;
 };
 
-/// \brief One selected root whose complete post-build RFC 0011 CrateKey is immutable.
+/// \brief One selected root whose complete RFC 0011 CrateKey is immutable.
 class FinalizedCompilationRoot final {
 public:
   ZC_NODISCARD static zc::Maybe<FinalizedCompilationRoot> from(
@@ -305,9 +306,9 @@ public:
   ZC_NODISCARD const SelectedLanguageOptions& languageOptions() const noexcept;
   ZC_NODISCARD PackageLockMode lockMode() const noexcept;
 
-  /// \brief Finalizes every ordinary root after exact build outputs are known.
+  /// \brief Finalizes every ordinary root from the stable build-producer plan.
   ZC_NODISCARD zc::Maybe<zc::Vector<FinalizedCompilationRoot>> finalizeRoots(
-      zc::Maybe<const VerifiedBuildScriptResultSet&> buildResults) const;
+      const VerifiedBuildScriptPlan& buildPlan) const;
 
 private:
   VerifiedPackageCompilationRequest(zc::Vector<VerifiedCompilationRoot>&& roots,

@@ -32,7 +32,7 @@
 // CHECK-NEXT:                                 IdentExpr #5 @2:26..2:31 name="print"
 // CHECK-NEXT:                               type_args: []
 // CHECK-NEXT:                               args:
-// CHECK-NEXT:                                 StrLiteral #6 @2:32..2:37 value="pos" is_raw=false prefix=None
+// CHECK-NEXT:                                 StringLiteralExpr #6 @2:32..2:37 value="pos"
 // CHECK-NEXT:                       attrs: null
 // CHECK-NEXT:             MatchArmStmt #22 @3:5..3:41
 // CHECK-NEXT:               pattern:
@@ -56,7 +56,7 @@
 // CHECK-NEXT:                                 IdentExpr #16 @3:26..3:31 name="print"
 // CHECK-NEXT:                               type_args: []
 // CHECK-NEXT:                               args:
-// CHECK-NEXT:                                 StrLiteral #17 @3:32..3:37 value="neg" is_raw=false prefix=None
+// CHECK-NEXT:                                 StringLiteralExpr #17 @3:32..3:37 value="neg"
 // CHECK-NEXT:                       attrs: null
 // CHECK-NEXT:             MatchArmStmt #31 @4:5..4:33
 // CHECK-NEXT:               pattern:
@@ -76,6 +76,6 @@
 // CHECK-NEXT:                                 IdentExpr #25 @4:17..4:22 name="print"
 // CHECK-NEXT:                               type_args: []
 // CHECK-NEXT:                               args:
-// CHECK-NEXT:                                 StrLiteral #26 @4:23..4:29 value="zero" is_raw=false prefix=None
+// CHECK-NEXT:                                 StringLiteralExpr #26 @4:23..4:29 value="zero"
 // CHECK-NEXT:                       attrs: null
 // CHECK-NEXT:       attrs: null

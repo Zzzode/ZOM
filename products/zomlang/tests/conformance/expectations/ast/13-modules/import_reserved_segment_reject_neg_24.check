@@ -1,0 +1,8 @@
+// RUN: ! %zomc compile --dump-ast %corpus/13-modules/import_reserved_segment_reject_neg_24.zom 2>&1 | %FileCheck %s
+
+
+// CHECK-LITERAL: Error [ZOM2076]: Unexpected token expected
+// CHECK-LITERAL:   --> conformance/import_reserved_segment_reject_neg_24.zom:1:11
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 1 | import app::module;
+// CHECK-LITERAL:   |           ^

@@ -352,13 +352,12 @@ echo "  TOTAL: $pass/$total passed, $fail failed"
 echo "=============================================================="
 
 # ==================================================================
-# Rule coverage
+# Declared parser-rule coverage
 # ==================================================================
-covered=$(grep -rh "^covers_rule:" "$EXPECTATION_ROOT" 2>/dev/null \
-  | sed -nE 's|^covers_rule:[[:space:]]*"(.*)"[[:space:]]*$|\1|p' \
-  | sort -u | wc -l | tr -d ' ')
+all_rules_file="/tmp/zom_all_rules_$$.txt"
+covered_rules_file="/tmp/zom_covered_rules_$$.txt"
 
-total_rules=$(awk '
+awk '
   # Skip comment lines.
   /^[[:space:]]*\/\// { next }
   /^[a-zA-Z][a-zA-Z0-9_]*[[:space:]]*:/ {
@@ -371,37 +370,35 @@ total_rules=$(awk '
     getline
     if ($0 ~ /^[[:space:]]*:/ && name ~ /^[a-z]/) print name
   }
-' "$SPEC_DIR/ZomParser.g4" 2>/dev/null | grep -v "^$" | sort -u | wc -l | tr -d ' ')
+' "$SPEC_DIR/ZomParser.g4" 2>/dev/null | grep -v "^$" | sort -u > "$all_rules_file"
+
+# covers_rule is human-readable metadata and may name several productions.
+# Tokenize it, then intersect with actual parser rule names so prose and lexer
+# symbols cannot inflate this count above 100 percent.
+grep -rh "^covers_rule:" "$EXPECTATION_ROOT" 2>/dev/null \
+  | sed -nE 's|^covers_rule:[[:space:]]*"(.*)"[[:space:]]*$|\1|p' \
+  | tr -cs '[:alnum:]_' '\n' \
+  | sort -u \
+  | comm -12 "$all_rules_file" - > "$covered_rules_file"
+
+covered=$(wc -l < "$covered_rules_file" | tr -d ' ')
+total_rules=$(wc -l < "$all_rules_file" | tr -d ' ')
 
 pct="0.0"
 if [ "$total_rules" -gt 0 ]; then
   pct=$(awk -v a="$covered" -v b="$total_rules" 'BEGIN {printf "%.1f", a*100/b}')
 fi
 echo
-echo "Rule coverage: $covered/$total_rules parser rules have at least one test (${pct}%)"
+echo "Declared parser-rule coverage: $covered/$total_rules rules named by fixture metadata (${pct}%)"
 
 if [ "$covered" -lt "$total_rules" ] 2>/dev/null; then
-  grep -rh "^covers_rule:" "$EXPECTATION_ROOT" 2>/dev/null \
-    | sed -nE 's|^covers_rule:[[:space:]]*"(.*)"[[:space:]]*$|\1|p' \
-    | sort -u > /tmp/zom_cov.txt
-  awk '
-    /^[[:space:]]*\/\// { next }
-    /^[a-zA-Z][a-zA-Z0-9_]*[[:space:]]*:/ {
-      sub(":.*", "", $1)
-      if ($1 ~ /^[a-z]/) print $1
-      next
-    }
-    /^[a-zA-Z][a-zA-Z0-9_]*[[:space:]]*$/ {
-      name=$1; getline
-      if ($0 ~ /^[[:space:]]*:/ && name ~ /^[a-z]/) print name
-    }
-  ' "$SPEC_DIR/ZomParser.g4" 2>/dev/null | grep -v "^$" | sort -u > /tmp/zom_all.txt
-  missing=$(/usr/bin/comm -23 /tmp/zom_all.txt /tmp/zom_cov.txt 2>/dev/null | wc -l | tr -d ' ')
+  missing=$(comm -23 "$all_rules_file" "$covered_rules_file" | wc -l | tr -d ' ')
   if [ "$missing" -gt 0 ] 2>/dev/null; then
-    echo "--- Uncovered parser rules ($missing) ---"
-    /usr/bin/comm -23 /tmp/zom_all.txt /tmp/zom_cov.txt 2>/dev/null | awk '{printf "  [ ] %s\n", $0}'
+    echo "--- Parser rules not named by covers_rule metadata ($missing) ---"
+    comm -23 "$all_rules_file" "$covered_rules_file" | awk '{printf "  [ ] %s\n", $0}'
   fi
 fi
+rm -f "$all_rules_file" "$covered_rules_file"
 
 # ==================================================================
 # Failure list and exit status.

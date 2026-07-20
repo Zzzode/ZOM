@@ -14,7 +14,7 @@
 // CHECK-NEXT:                   ty:
 // CHECK-NEXT:                     NamedTypeExpr #2 @1:21..1:27
 // CHECK-NEXT:                       path:
-// CHECK-NEXT:                         ModulePath #1 @1:21..1:27 segments=["String"]
+// CHECK-NEXT:                         ModulePath #1 @1:21..1:27 segments=["String"] root=Relative
 // CHECK-NEXT:                       args: []
 // CHECK-NEXT:                   default_: null
 // CHECK-NEXT:                   attrs: null
@@ -22,7 +22,7 @@
 // CHECK-NEXT:           ret_ty:
 // CHECK-NEXT:             NamedTypeExpr #6 @1:32..1:38
 // CHECK-NEXT:               path:
-// CHECK-NEXT:                 ModulePath #5 @1:32..1:38 segments=["String"]
+// CHECK-NEXT:                 ModulePath #5 @1:32..1:38 segments=["String"] root=Relative
 // CHECK-NEXT:               args: []
 // CHECK-NEXT:           raises_ty: null
 // CHECK-NEXT:           body:

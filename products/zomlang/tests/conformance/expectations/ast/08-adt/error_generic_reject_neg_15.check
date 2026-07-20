@@ -2,7 +2,7 @@
 
 
 // CHECK-LITERAL: Error [ZOM2076]: Unexpected token expected
-// CHECK:   --> products {{(?:.*[/\\])?error_generic_reject_neg_15\.zom:1:17$}}
+// CHECK-LITERAL:   --> conformance/error_generic_reject_neg_15.zom:1:17
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 1 | error ParseError<T> {
 // CHECK-LITERAL:   |                 ^

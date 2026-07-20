@@ -1,0 +1,6 @@
+// RUN: %zomc compile --dump-ast %corpus/09-interfaces/interface_heritage_over_255_pos_33.zom | %FileCheck %s
+
+
+// CHECK: InterfaceDecl
+// CHECK: ImplIfaceList
+// CHECK-COUNT-300: NamedTypeExpr

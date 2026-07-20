@@ -1,0 +1,4 @@
+section: "§4 Shift operators"
+covers_rule: "shiftExpr requires a compound shift token"
+expected: "REJECT"
+notes: []

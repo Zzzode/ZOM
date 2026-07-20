@@ -5,4 +5,5 @@ class Duck : Animal {
     override fun fly() -> unit { }
     fun swim() -> unit { }
 }
-impl Flyable + Swimmable for Duck { }
+impl Flyable for Duck { }
+impl Swimmable for Duck { }

@@ -17,7 +17,7 @@
 // CHECK-NEXT:                     PredefinedTypeExpr #1 @2:21..2:24 kind=I32
 // CHECK-NEXT:                   init:
 // CHECK-NEXT:                     IntLiteral #2 @2:27..2:28 base=10 value="0"
-// CHECK-NEXT:                 MethodDecl #11 @3:5..3:41 name="val" is_static=false visibility=Default
+// CHECK-NEXT:                 MethodDecl #11 @3:5..3:41 name="val" mode=Instance visibility=Default
 // CHECK-NEXT:                   params_id:
 // CHECK-NEXT:                     FunctionParameterList #4 @3:12..3:14 nparams=0
 // CHECK-NEXT:                       params: []

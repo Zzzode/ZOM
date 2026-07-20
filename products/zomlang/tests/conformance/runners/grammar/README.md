@@ -6,7 +6,7 @@ The ZOM Grammar Test Suite validates the ZomLexer.g4 / ZomParser.g4 ANTLR4 gramm
 
 ## Purpose
 
-1. **Validate the g4 grammar** -- every parser rule, lexer mode, and semantic predicate has positive, edge, and negative coverage.
+1. **Validate the g4 grammar** -- executable ACCEPT and REJECT expectations cover language forms, lexer modes, parser rules, and semantic predicates.
 2. **Cross-reference the spec** -- every grammar expectation records the spec chapter/section, the grammar rule under test, and the expected verdict.
 3. **Serve as a regression harness** -- any change to the grammar that breaks an ACCEPT case or silently accepts a REJECT case fails the suite.
 
@@ -36,21 +36,21 @@ those belong in compiler AST/FileCheck expectations under
 
 | # | Directory | Purpose | Total |
 |---|-----------|---------|------:|
-| 1 | `02-lexical` | Lexer tokens, literals, identifiers, escapes, whitespace, and comments | 44 |
-| 2 | `03-types` | Type syntax, projections, dynamic types, references, and aliases | 109 |
-| 3 | `04-expressions` | Operators, calls, casts, literals, lambdas, and spawn expressions | 175 |
+| 1 | `02-lexical` | Lexer tokens, literals, identifiers, escapes, whitespace, and comments | 48 |
+| 2 | `03-types` | Type syntax, projections, dynamic types, references, and aliases | 114 |
+| 3 | `04-expressions` | Operators, calls, casts, literals, lambdas, and spawn expressions | 184 |
 | 4 | `05-statements` | Bindings, control flow, borrow syntax, and returns | 116 |
-| 5 | `06-declarations` | Functions, named types, aliases, modifiers, and declarations | 39 |
+| 5 | `06-declarations` | Functions, named types, aliases, modifiers, and declarations | 43 |
 | 6 | `07-patterns` | Binding, literal, structural, alternative, and guarded patterns | 31 |
-| 7 | `08-adt` | Structs, classes, enums, variants, constructors, and fields | 44 |
-| 8 | `09-interfaces` | Interfaces, impls, method signatures, and trait bounds | 41 |
-| 9 | `11-error` | Raises clauses and reserved error-handling syntax | 35 |
+| 7 | `08-adt` | Structs, classes, enums, variants, constructors, and fields | 46 |
+| 8 | `09-interfaces` | Interfaces, impls, method signatures, and trait bounds | 47 |
+| 9 | `11-error` | Raises clauses and reserved error-handling syntax | 36 |
 | 10 | `12-generics` | Generic parameters, constraints, and instantiation | 36 |
-| 11 | `13-modules` | Module declarations, imports, exports, and paths | 52 |
+| 11 | `13-modules` | Module declarations, imports, exports, and paths | 54 |
 | 12 | `15-concurrency` | Spawn modifiers and suspend forms | 22 |
 | 13 | `16-attributes` | Outer attributes, inputs, paths, attachment targets, and unavailable paths | 34 |
 | 14 | `20-ffi` | Extern declarations, ABI strings, and unsafe blocks | 16 |
-|   | **Total** | | **794** |
+|   | **Total** | | **827** |
 
 ## Usage
 
@@ -90,6 +90,11 @@ Generated ANTLR output is written outside the source corpus. CTest sets
 `build/conformance-grammar`.
 
 Exit codes: `0` = all tests passed, `1` = one or more verdicts mismatched, `2` = a fixture is missing its expectation metadata.
+
+The runner reports how many ANTLR parser-rule names appear in `covers_rule`
+metadata. This is an inventory aid, not the normative compiler-parser coverage
+gate. Run `python3 scripts/check-parser-coverage.py` for the authoritative
+specification-to-compiler coverage check.
 
 ## Spec Chapter Matrix
 
@@ -147,4 +152,4 @@ Each semantic predicate in the grammar has explicit trigger coverage in the suit
 
 ## Total
 
-Recursive count of grammar expectation files: **794**
+Recursive count of grammar expectation files: **827**

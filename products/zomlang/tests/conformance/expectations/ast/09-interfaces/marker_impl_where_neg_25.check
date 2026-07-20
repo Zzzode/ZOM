@@ -1,0 +1,8 @@
+// RUN: ! %zomc compile --dump-ast %corpus/09-interfaces/marker_impl_where_neg_25.zom 2>&1 | %FileCheck %s
+
+
+// CHECK-LITERAL: Error [ZOM2102]: A marker implementation cannot have a where clause
+// CHECK-LITERAL:   --> conformance/marker_impl_where_neg_25.zom:1:31
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 1 | impl marker::Sendable for Box where Box: Sized;
+// CHECK-LITERAL:   |                               ^

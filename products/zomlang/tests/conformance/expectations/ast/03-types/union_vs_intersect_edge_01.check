@@ -13,14 +13,14 @@
 // CHECK-NEXT:               alts:
 // CHECK-NEXT:                 NamedTypeExpr #2 @1:16..1:17
 // CHECK-NEXT:                   path:
-// CHECK-NEXT:                     ModulePath #1 @1:16..1:17 segments=["A"]
+// CHECK-NEXT:                     ModulePath #1 @1:16..1:17 segments=["A"] root=Relative
 // CHECK-NEXT:                   args: []
 // CHECK-NEXT:                 NamedTypeExpr #4 @1:20..1:21
 // CHECK-NEXT:                   path:
-// CHECK-NEXT:                     ModulePath #3 @1:20..1:21 segments=["B"]
+// CHECK-NEXT:                     ModulePath #3 @1:20..1:21 segments=["B"] root=Relative
 // CHECK-NEXT:                   args: []
 // CHECK-NEXT:                 NamedTypeExpr #6 @1:24..1:25
 // CHECK-NEXT:                   path:
-// CHECK-NEXT:                     ModulePath #5 @1:24..1:25 segments=["C"]
+// CHECK-NEXT:                     ModulePath #5 @1:24..1:25 segments=["C"] root=Relative
 // CHECK-NEXT:                   args: []
 // CHECK-NEXT:       attrs: null

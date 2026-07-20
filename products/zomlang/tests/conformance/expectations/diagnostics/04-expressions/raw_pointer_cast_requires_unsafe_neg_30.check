@@ -1,9 +1,0 @@
-// RUN: cd %corpus && ! %zomc compile --syntax-only 04-expressions/raw_pointer_cast_requires_unsafe_neg_30.zom > %t 2>&1
-// RUN: %FileCheck %s --input-file %t
-
-
-// CHECK-LITERAL: Error [ZOM4043]: Raw pointer cast from '*mut i32' to '*mut u32' requires unsafe block
-// CHECK-LITERAL:   --> 04-expressions/raw_pointer_cast_requires_unsafe_neg_30.zom:2:9
-// CHECK-LITERAL:   |
-// CHECK-LITERAL: 2 | let q = p as *mut u32;
-// CHECK-LITERAL:   |         ^

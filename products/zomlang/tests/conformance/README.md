@@ -13,14 +13,12 @@ conformance/
 │   ├── binder/
 │   ├── diagnostics/
 │   ├── e2e/
-│   ├── ir/
 │   └── grammar/
 └── runners/           # Executable runner glue registered with CTest
     ├── ast/
     ├── binder/
     ├── diagnostics/
     ├── e2e/
-    ├── ir/
     └── grammar/
 ```
 
@@ -35,7 +33,6 @@ expectation file.
 | Grammar | `conformance-grammar` | `corpus/**/*.zom` | `expectations/grammar/**/*.yml` |
 | AST | `conformance-ast` | `corpus/**/*.zom` | `expectations/ast/**/*.check` |
 | Diagnostics | `conformance-diagnostics` | `corpus/**/*.zom` | `expectations/diagnostics/**/*.check` |
-| IR | `conformance-ir` | `corpus/**/*.zom` | `expectations/ir/**/*.check` |
 | Parser coverage | `parser;coverage;specification` | `docs/spec/chapters/17-grammar-reference.md` | `products/zomlang/compiler/parser/parser-coverage.yml` |
 
 Every additional layer must reuse `corpus/` and add only its own expectation

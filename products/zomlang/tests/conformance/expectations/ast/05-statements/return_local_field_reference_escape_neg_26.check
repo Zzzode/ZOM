@@ -45,7 +45,7 @@
 // CHECK-NEXT:                               ty:
 // CHECK-NEXT:                                 NamedTypeExpr #11 @6:14..6:19
 // CHECK-NEXT:                                   path:
-// CHECK-NEXT:                                     ModulePath #10 @6:14..6:19 segments=["Owner"]
+// CHECK-NEXT:                                     ModulePath #10 @6:14..6:19 segments=["Owner"] root=Relative
 // CHECK-NEXT:                                   args: []
 // CHECK-NEXT:                               init: null
 // CHECK-NEXT:                   attrs: null

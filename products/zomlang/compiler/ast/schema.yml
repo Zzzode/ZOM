@@ -11,12 +11,12 @@ enums:
   # §20 FFI ABI convention
   Abi:
     type: uint16
-    values: [ Cdecl, Stdcall, Fastcall, Swift, Rust, ZomNative, VarArgs ]
+    values: [ Cdecl, Stdcall, ZomNative ]
 
   # §12 Generics · Where clause bound
   WhereBoundKind:
     type: uint8
-    values: [ Lt, Le, Eq, Ne, Ge, Gt, Subtype, Implements, SendableMarker ]
+    values: [ Implements ]
 
   # §4.9 Concurrency · Detached modifier
   SuspendMode:
@@ -115,6 +115,7 @@ variants:
     doc: "Qualified module path"
     fields:
       - {name: segments, type: IdentList}
+      - {name: root, type: uint8, enum: [Relative, Absolute]}
 
   - id: 0x172
     name: ImportDeclaration
@@ -320,13 +321,7 @@ variants:
       - {name: path, type: NodeId, cast: ModulePath}
       - {name: args, type: NodeList, cast: Pattern}
 
-# 0x60..0x7F Literal / Leaf Expressions (25)
-  - id: 0x061
-    name: TupleLiteral1
-    doc:  "(a,) forced 1-tuple (disambiguated vs ParenthesizedExpr)"
-    fields:
-      - {name: elem, type: NodeId, cast: Expression}
-
+# 0x60..0x7F Literal / Leaf Expressions
   - id: 0x062
     name: ErrorDefaultExpr
     doc:  "a ?: fallback error-default operator"
@@ -381,12 +376,10 @@ variants:
       - {name: value, type: BigIntId}
 
   - id: 0x06A
-    name: StrLiteral
-    doc:  "Double-quoted string (supports escapes)"
+    name: StringLiteralExpr
+    doc:  "Double-quoted string literal"
     fields:
       - {name: value, type: StringId}
-      - {name: is_raw, type: bool}
-      - {name: prefix, type: uint8, enum: ["None", f, r, b, br]}
 
   - id: 0x06B
     name: ArrayLiteral
@@ -405,6 +398,18 @@ variants:
     doc:  "unit literal expression"
     fields:
       []
+
+  - id: 0x06E
+    name: CharacterLiteralExpr
+    doc:  "Single Unicode scalar character literal"
+    fields:
+      - {name: value, type: StringId}
+
+  - id: 0x06F
+    name: NoSubstitutionTemplateLiteralExpr
+    doc:  "Template literal without substitutions"
+    fields:
+      - {name: value, type: StringId}
 
 # 0x80..0xBF Expressions (46)
   - id: 0x080
@@ -611,18 +616,9 @@ variants:
     name: DynTypeExpr
     doc:  "Existential: dyn Display<Item = T> + Sendable + 'static"
     fields:
-      - {name: ifaces_id, type: NodeId, cast: DynTypeIfaceList}
+      - {name: principal, type: NodeId, cast: TypeExpr}
       - {name: markers_id, type: NodeId, cast: DynTypeMarkerList, optional: true}
       - {name: assoc_bindings_id, type: NodeId, cast: DynTypeAssocBindingList, optional: true}
-      - {name: has_lifetime, type: bool}
-      - {name: lifetime, type: IdentId, optional: true}
-
-  - id: 0x0CB
-    name: DynTypeIfaceList
-    doc:  "Container for dynamic interface types"
-    fields:
-      - {name: n_ifaces, type: uint8}
-      - {name: ifaces, type: NodeList, cast: TypeExpr}
 
   - id: 0x0CC
     name: DynTypeMarkerList
@@ -644,12 +640,6 @@ variants:
     fields:
       - {name: n_bindings, type: uint8}
       - {name: bindings, type: NodeList, cast: DynTypeAssocBinding}
-
-  - id: 0x0C1
-    name: BottomTypeExpr
-    doc:  "Bottom type ! — only valid in type context"
-    fields:
-      []
 
   - id: 0x0C2
     name: FixedArrayTypeExpr
@@ -706,10 +696,9 @@ variants:
 
   - id: 0x0CA
     name: ArrayTypeExpr
-    doc:  "T[] / T[N] array or slice type"
+    doc:  "T[] owned dynamic array type"
     fields:
       - {name: elem, type: NodeId, cast: TypeExpr}
-      - {name: len_expr, type: NodeId, cast: Expression, optional: true}
 
   - id: 0x0D1
     name: ReferenceTypeExpr
@@ -769,12 +758,6 @@ variants:
       - {name: mode, type: SuspendMode}
       - {name: until_cond, type: NodeId, cast: Expression, optional: true}
       - {name: on_timeout_ms, type: uint32, optional: true}
-
-  - id: 0x0E1
-    name: UntilClause
-    doc:  "suspend until expr child node (binder wait-queue helper)"
-    fields:
-      - {name: cond, type: NodeId, cast: Expression}
 
   - id: 0x0E2
     name: BlockStmt
@@ -920,10 +903,10 @@ variants:
   - id: 0x110
     name: StandaloneImplDecl
     bases: [DeclarationStatement]
-    doc:  "impl Hash for MyType where T: Send { fn hash(...) -> u64; ... }"
+    doc:  "impl Hash for MyType where T: Send { fun hash(...) -> u64; ... }"
     fields:
       - {name: is_unsafe, type: bool}
-      - {name: ifaces_id, type: NodeId, cast: ImplIfaceList, optional: true}
+      - {name: interface, type: NodeId, cast: TypeExpr}
       - {name: for_ty, type: NodeId, cast: TypeExpr}
       - {name: where_, type: NodeId, cast: WhereClause, optional: true}
       - {name: type_params_id, type: NodeId, cast: GenericParams, optional: true}
@@ -932,14 +915,12 @@ variants:
   - id: 0x111
     name: MarkerImpl
     bases: [DeclarationStatement]
-    doc:  "unsafe impl !marker::Sendable for *mut T { }"
+    doc:  "unsafe impl marker::Sendable for *mut u8;"
     fields:
       - {name: is_unsafe, type: bool}
       - {name: is_negated, type: bool}
       - {name: marker_path, type: NodeId, cast: AttributePath}
       - {name: for_ty, type: NodeId, cast: TypeExpr}
-      - {name: where_, type: NodeId, cast: WhereClause, optional: true}
-      - {name: type_params_id, type: NodeId, cast: GenericParams, optional: true}
 
   - id: 0x112
     name: WhereClause
@@ -1005,9 +986,8 @@ variants:
 
   - id: 0x11B
     name: ImplIfaceList
-    doc:  "impl A + B + C : IList (comma-list of implemented ifaces for impl-block declarations)"
+    doc:  "A + B + C interface heritage list"
     fields:
-      - {name: n_ifaces, type: uint8}
       - {name: ifaces, type: NodeList, cast: TypeExpr}
 
   - id: 0x11C
@@ -1055,7 +1035,7 @@ variants:
       - {name: ret_ty, type: NodeId, cast: TypeExpr, optional: true}
       - {name: raises_ty, type: NodeId, cast: TypeExpr, optional: true}
       - {name: body, type: NodeId, cast: BlockStmt, optional: true}
-      - {name: is_static, type: bool}
+      - {name: mode, type: uint8, enum: [Instance, Static, Mutating, StaticMutating]}
       - {name: visibility, type: uint8, enum: [Default, Public, Private, Protected]}
 
   - id: 0x121
@@ -1073,21 +1053,32 @@ variants:
   - id: 0x122
     name: AssociatedTypeDecl
     bases: [DeclarationStatement]
-    doc:  "Interface associated type: type Name [<T...>] [: Bound] [= DefaultTy];"
+    doc:  "Interface associated type: type Name [<T...>] [: Bound (+ Bound)*] [= DefaultTy];"
     fields:
       - {name: name, type: IdentId}
       - {name: type_params_id, type: NodeId, cast: GenericParams, optional: true}
-      - {name: bound, type: NodeId, cast: TypeExpr, optional: true}
+      - {name: bounds_id, type: NodeId, cast: AssociatedTypeBoundList, optional: true}
       - {name: default_ty, type: NodeId, cast: TypeExpr, optional: true}
 
   - id: 0x123
     name: GenericTypeParam
-    doc:  "Generic type parameter: [variance] Name [: Bound] [= DefaultTy]"
+    doc:  "Generic type parameter: Name [: Bound (+ Bound)*] [= DefaultTy]"
     fields:
       - {name: name, type: IdentId}
-      - {name: bound, type: NodeId, cast: TypeExpr, optional: true}
+      - {name: bounds_id, type: NodeId, cast: TypeParameterBoundList, optional: true}
       - {name: default_ty, type: NodeId, cast: TypeExpr, optional: true}
-      - {name: variance, type: uint8, enum: [Invariant, Covariant, Contravariant]}
+
+  - id: 0x127
+    name: TypeParameterBoundList
+    doc:  "Ordered generic parameter bound conjunction: Bound (+ Bound)*"
+    fields:
+      - {name: bounds, type: NodeList, cast: TypeExpr}
+
+  - id: 0x128
+    name: AssociatedTypeBoundList
+    doc:  "Ordered associated type bound conjunction: Bound (+ Bound)*"
+    fields:
+      - {name: bounds, type: NodeList, cast: TypeExpr}
 
   - id: 0x124
     name: ConstructorDecl
@@ -1155,8 +1146,8 @@ derived:
     name: FirstPatternFamily / LastPatternFamily
 
   - kind: RangeSyntax
-    from: TupleLiteral1            # 0x061
-    to:   UnitLiteral         # 0x06D
+    from: ErrorDefaultExpr    # 0x062
+    to:   NoSubstitutionTemplateLiteralExpr # 0x06F
     name: FirstLiteralExprFamily / LastLiteralExprFamily
 
   - kind: RangeSyntax
@@ -1208,8 +1199,7 @@ derived:
       - LambdaExpression
       - SpawnExpression
       - StructLiteralExpr
-      # LiteralExpr range (0x060..0x06C) counts as expressions
-      - TupleLiteral1
+      # Literal expressions count as expressions
       - ErrorDefaultExpr
       - NullCoalesceExpr
       - IsExpression
@@ -1218,10 +1208,12 @@ derived:
       - IntLiteral
       - FloatLiteral
       - BigIntLiteral
-      - StrLiteral
+      - StringLiteralExpr
       - ArrayLiteral
       - TupleLiteral
       - UnitLiteral
+      - CharacterLiteralExpr
+      - NoSubstitutionTemplateLiteralExpr
       # FFI expression-ish
       - UnsafeBlockExpr
 
@@ -1230,7 +1222,6 @@ derived:
     includes:
       # Stmt range (0x0E0..0x0EB)
       - SuspendStatement
-      - UntilClause
       - BlockStmt
       - IfStmt
       - MatchStmt

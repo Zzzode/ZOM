@@ -11,6 +11,6 @@
 // CHECK-NEXT:           target:
 // CHECK-NEXT:             NamedTypeExpr #2 @1:11..1:36
 // CHECK-NEXT:               path:
-// CHECK-NEXT:                 ModulePath #1 @1:11..1:36 segments=["std", "collections", "HashMap"]
+// CHECK-NEXT:                 ModulePath #1 @1:11..1:36 segments=["std", "collections", "HashMap"] root=Relative
 // CHECK-NEXT:               args: []
 // CHECK-NEXT:       attrs: null

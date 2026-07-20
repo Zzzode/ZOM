@@ -11,7 +11,7 @@
 // CHECK-NEXT:           target:
 // CHECK-NEXT:             NamedTypeExpr #4 @1:19..1:32
 // CHECK-NEXT:               path:
-// CHECK-NEXT:                 ModulePath #3 @1:19..1:22 segments=["Vec"]
+// CHECK-NEXT:                 ModulePath #3 @1:19..1:22 segments=["Vec"] root=Relative
 // CHECK-NEXT:               args:
 // CHECK-NEXT:                 ReferenceTypeExpr #2 @1:23..1:31 is_mut=true
 // CHECK-NEXT:                   elem:
@@ -24,7 +24,7 @@
 // CHECK-NEXT:           target:
 // CHECK-NEXT:             NamedTypeExpr #10 @2:22..2:31
 // CHECK-NEXT:               path:
-// CHECK-NEXT:                 ModulePath #9 @2:22..2:25 segments=["Vec"]
+// CHECK-NEXT:                 ModulePath #9 @2:22..2:25 segments=["Vec"] root=Relative
 // CHECK-NEXT:               args:
 // CHECK-NEXT:                 ReferenceTypeExpr #8 @2:26..2:30 is_mut=false
 // CHECK-NEXT:                   elem:

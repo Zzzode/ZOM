@@ -5,6 +5,6 @@
 // CHECK-NEXT:   module:
 // CHECK-NEXT:     ModuleDeclaration #2 @1:1..1:23 form=Alias declared_name="foo" exported_alias=false
 // CHECK-NEXT:       alias_target:
-// CHECK-NEXT:         ModulePath #1 @1:14..1:22 segments=["bar", "baz"]
+// CHECK-NEXT:         ModulePath #1 @1:14..1:22 segments=["bar", "baz"] root=Relative
 // CHECK-NEXT:       inline_items: []
 // CHECK-NEXT:   statements: []

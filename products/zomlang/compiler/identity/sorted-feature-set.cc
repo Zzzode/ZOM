@@ -14,10 +14,13 @@
 
 #include "zomlang/compiler/identity/sorted-feature-set.h"
 
+#include "zomlang/compiler/identity/canonical-decoder.h"
 #include "zomlang/compiler/identity/canonical-encoder.h"
 
 namespace zomlang::compiler::identity {
 namespace {
+
+constexpr uint64_t kMaximumFeatureCount = 256;
 
 template <typename Scalar>
 bool encodedLess(const Scalar& left, const Scalar& right) {
@@ -46,11 +49,30 @@ SortedFeatureSet::SortedFeatureSet(zc::Vector<FeatureName>&& canonical) noexcept
     : features(zc::mv(canonical)) {}
 
 zc::Maybe<SortedFeatureSet> SortedFeatureSet::from(zc::Vector<FeatureName>&& input) {
+  if (input.size() > kMaximumFeatureCount) { return zc::none; }
   sortCanonical(input);
   for (size_t index = 1; index < input.size(); ++index) {
     if (input[index] == input[index - 1]) { return zc::none; }
   }
   return SortedFeatureSet(zc::mv(input));
+}
+
+zc::Maybe<SortedFeatureSet> SortedFeatureSet::decodeCanonical(CanonicalDecoder& decoder) {
+  auto count = decoder.decodeSequenceSize(kMaximumFeatureCount);
+  if (count == zc::none) { return zc::none; }
+  ZC_IF_SOME(size, count) {
+    zc::Vector<FeatureName> result(static_cast<size_t>(size));
+    for (uint64_t index = 0; index < size; ++index) {
+      auto feature = FeatureName::decodeCanonical(decoder);
+      if (feature == zc::none) { return zc::none; }
+      ZC_IF_SOME(value, feature) {
+        if (result.size() != 0 && !encodedLess(result.back(), value)) { return zc::none; }
+        result.add(zc::mv(value));
+      }
+    }
+    return SortedFeatureSet(zc::mv(result));
+  }
+  return zc::none;
 }
 
 SortedFeatureSet SortedFeatureSet::clone() const {
@@ -79,11 +101,31 @@ SortedTargetFeatureSet::SortedTargetFeatureSet(zc::Vector<TargetFeatureName>&& c
 
 zc::Maybe<SortedTargetFeatureSet> SortedTargetFeatureSet::from(
     zc::Vector<TargetFeatureName>&& input) {
+  if (input.size() > kMaximumFeatureCount) { return zc::none; }
   sortCanonical(input);
   for (size_t index = 1; index < input.size(); ++index) {
     if (input[index] == input[index - 1]) { return zc::none; }
   }
   return SortedTargetFeatureSet(zc::mv(input));
+}
+
+zc::Maybe<SortedTargetFeatureSet> SortedTargetFeatureSet::decodeCanonical(
+    CanonicalDecoder& decoder) {
+  auto count = decoder.decodeSequenceSize(kMaximumFeatureCount);
+  if (count == zc::none) { return zc::none; }
+  ZC_IF_SOME(size, count) {
+    zc::Vector<TargetFeatureName> result(static_cast<size_t>(size));
+    for (uint64_t index = 0; index < size; ++index) {
+      auto feature = TargetFeatureName::decodeCanonical(decoder);
+      if (feature == zc::none) { return zc::none; }
+      ZC_IF_SOME(value, feature) {
+        if (result.size() != 0 && !encodedLess(result.back(), value)) { return zc::none; }
+        result.add(zc::mv(value));
+      }
+    }
+    return SortedTargetFeatureSet(zc::mv(result));
+  }
+  return zc::none;
 }
 
 SortedTargetFeatureSet SortedTargetFeatureSet::clone() const {

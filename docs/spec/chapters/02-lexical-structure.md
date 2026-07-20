@@ -236,6 +236,19 @@ let isFalse: bool = false;
 0xDEAD_BEEF // With separators
 ```
 
+**Arbitrary-Precision Integers:**
+
+Appending `n` to any decimal, binary, octal, or hexadecimal integer literal
+produces a `bigint` value. The suffix follows the final digit, and separators
+remain valid only between digits.
+
+```zom
+9_007_199_254_740_993n
+0b1111_0000n
+0o755n
+0xDEAD_BEEFn
+```
+
 #### Floating-Point Literals
 
 ```zom
@@ -270,9 +283,19 @@ literals. Empty or multi-scalar single-quoted forms are lexical errors.
 | `\r` | Carriage return |
 | `\t` | Horizontal tab |
 | `\v` | Vertical tab |
+| `\0` | Null scalar |
 | `\xHH` | Hexadecimal byte (e.g., `\x41` = 'A') |
 | `\uHHHH` | Unicode code point (e.g., `\u03C0` = 'π') |
 | `\u{HHHHHH}` | Extended Unicode (e.g., `\u{1F600}` = '😀') |
+
+This table is the complete escape set for both string and character literals.
+An unlisted escape such as `\q` is a lexical error. The `\0` escape cannot be
+followed by a decimal digit; octal escapes are not part of the language.
+
+A backslash followed by LF, CRLF, CR, LS, or PS is a line continuation. The
+line-terminator sequence contributes no scalar to the literal value. CRLF is
+one indivisible line-terminator sequence. A line terminator without a preceding
+backslash is a lexical error inside string and character literals.
 
 #### String Examples
 
@@ -294,6 +317,23 @@ Character literals represent single Unicode characters:
 '\n'        // Escaped newline
 '\u03C0'    // Unicode escape
 '\u{1F600}' // Extended Unicode emoji
+```
+
+### Template Literals
+
+Template literal text is delimited by backticks. `${` enters a substitution
+expression, and the matching `}` returns to template text. Braces nested inside
+the expression do not end the substitution. Template middle and tail tokens exist
+only while a substitution is active, so an ordinary `}` is always punctuation
+outside that state. A template escape consumes one following source character;
+when that character begins a line continuation, CRLF remains one indivisible
+line-terminator sequence.
+
+```zom
+`plain text`
+`name: ${name}`
+`values: ${left}, ${right}`
+`a trailing dollar is text: $`
 ```
 
 ## Punctuators and Operators

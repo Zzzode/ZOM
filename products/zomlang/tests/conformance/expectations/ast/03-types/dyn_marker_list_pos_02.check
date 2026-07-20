@@ -1,24 +1,22 @@
 // RUN: %zomc compile --dump-ast %corpus/03-types/dyn_marker_list_pos_02.zom | %FileCheck %s
 
 
-// CHECK: SourceFile #9 @1:1..2:1 file_name="dyn_marker_list_pos_02.zom"
+// CHECK: SourceFile #8 @1:1..2:1 file_name="dyn_marker_list_pos_02.zom"
 // CHECK-NEXT:   module: null
 // CHECK-NEXT:   statements:
-// CHECK-NEXT:     StatementListItem #8 @1:1..1:37
+// CHECK-NEXT:     StatementListItem #7 @1:1..1:37
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         AliasDecl #7 @1:1..1:37 name="Handler"
+// CHECK-NEXT:         AliasDecl #6 @1:1..1:37 name="Handler"
 // CHECK-NEXT:           type_params_id: null
 // CHECK-NEXT:           target:
-// CHECK-NEXT:             DynTypeExpr #6 @1:17..1:36 has_lifetime=false lifetime=null
-// CHECK-NEXT:               ifaces_id:
-// CHECK-NEXT:                 DynTypeIfaceList #4 @1:21..1:25 n_ifaces=1
-// CHECK-NEXT:                   ifaces:
-// CHECK-NEXT:                     NamedTypeExpr #2 @1:21..1:25
-// CHECK-NEXT:                       path:
-// CHECK-NEXT:                         ModulePath #1 @1:21..1:25 segments=["Read"]
-// CHECK-NEXT:                       args: []
+// CHECK-NEXT:             DynTypeExpr #5 @1:17..1:36
+// CHECK-NEXT:               principal:
+// CHECK-NEXT:                 NamedTypeExpr #2 @1:21..1:25
+// CHECK-NEXT:                   path:
+// CHECK-NEXT:                     ModulePath #1 @1:21..1:25 segments=["Read"] root=Relative
+// CHECK-NEXT:                   args: []
 // CHECK-NEXT:               markers_id:
-// CHECK-NEXT:                 DynTypeMarkerList #5 @1:28..1:36 n_markers=1
+// CHECK-NEXT:                 DynTypeMarkerList #4 @1:28..1:36 n_markers=1
 // CHECK-NEXT:                   markers:
 // CHECK-NEXT:                     AttributePath #3 @1:28..1:36 segments=["Sendable"] leading=None
 // CHECK-NEXT:               assoc_bindings_id: null

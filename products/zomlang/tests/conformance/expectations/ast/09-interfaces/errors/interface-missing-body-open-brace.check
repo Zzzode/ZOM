@@ -2,12 +2,12 @@
 
 
 // CHECK-LITERAL: Error [ZOM2072]: Type expected
-// CHECK:   --> products {{(?:.*[/\\])?interface\-missing\-body\-open\-brace\.zom:2:8$}}
+// CHECK-LITERAL:   --> conformance/interface-missing-body-open-brace.zom:2:8
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 2 | let x: i32 = 1;
 // CHECK-LITERAL:   |        ^
 // CHECK-LITERAL: Error [ZOM2025]: Expected '{'
-// CHECK:   --> products {{(?:.*[/\\])?interface\-missing\-body\-open\-brace\.zom:2:15$}}
+// CHECK-LITERAL:   --> conformance/interface-missing-body-open-brace.zom:2:15
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 2 | let x: i32 = 1;
 // CHECK-LITERAL:   |               ^

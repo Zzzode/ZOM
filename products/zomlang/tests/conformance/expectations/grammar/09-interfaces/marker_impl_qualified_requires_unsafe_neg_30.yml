@@ -1,0 +1,5 @@
+section: "Ch.17 MarkerImplDeclaration"
+covers_rule: "markerImplRest"
+expected: "ACCEPT"
+notes:
+  - "A current-module-qualified positive marker candidate shares the short-path parser contract."

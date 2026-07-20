@@ -483,8 +483,7 @@ Parser::Impl::SourceElementBoundary Parser::Impl::consumeSourceElement(TokenCurs
   }
 
   while (cursor.position() < limit && cursor.peek() != ast::SyntaxKind::EndOfFile &&
-         isDeclarationModifier(cursor.peek())) {
-    if (cursor.position() == nodeStart && cursor.peek() == ast::SyntaxKind::MutKeyword) { break; }
+         isNamedDeclarationModifier(cursor.peek())) {
     cursor.advance();
   }
   const size_t head = cursor.position();
@@ -636,9 +635,9 @@ Parser::Impl::SourceElementBoundary Parser::Impl::consumeSourceElement(TokenCurs
   return boundary;
 }
 
-Parser::Impl::SourceElementParseResult Parser::Impl::parseSourceElement(AstFactory& builder,
-                                                                        TokenCursor& cursor,
-                                                                        size_t limit) const {
+Parser::Impl::SourceElementParseResult Parser::Impl::parseSourceElement(
+    AstFactory& builder, TokenCursor& cursor, size_t limit,
+    SourceElementContext elementContext) const {
   SourceElementParseResult result;
   result.boundary = consumeSourceElement(cursor, limit);
   if (result.boundary.start >= limit || result.boundary.nodeStart >= limit ||
@@ -668,7 +667,7 @@ Parser::Impl::SourceElementParseResult Parser::Impl::parseSourceElement(AstFacto
     return result;
   }
   result.node = parseSourceElementOfKind(builder, result.boundary.nodeStart, result.boundary.end,
-                                         result.boundary.kind);
+                                         result.boundary.kind, elementContext);
   return result;
 }
 
@@ -693,8 +692,17 @@ void Parser::Impl::conditionRangeAfterKeyword(size_t start, size_t end, size_t& 
 }
 
 ast::NodeId Parser::Impl::parseSourceElementOfKind(AstFactory& builder, size_t start, size_t end,
-                                                   ast::SyntaxKind kind) const {
+                                                   ast::SyntaxKind kind,
+                                                   SourceElementContext elementContext) const {
   if (start >= end) { return ast::NodeId(); }
+
+  const bool moduleItemOnly =
+      kind == ast::SyntaxKind::ImportDeclaration || kind == ast::SyntaxKind::ExportDeclaration;
+  if (moduleItemOnly && elementContext != SourceElementContext::ModuleItem) {
+    diagnosticEngine.diagnose<diagnostics::DiagID::ImportOrExportDeclarationRequiresModuleScope>(
+        diagnosticLoc(start));
+    return ast::NodeId();
+  }
 
   switch (kind) {
     case ast::SyntaxKind::ModuleDeclaration:

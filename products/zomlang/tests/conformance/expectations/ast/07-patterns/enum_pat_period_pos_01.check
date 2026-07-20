@@ -30,7 +30,7 @@
 // CHECK-NEXT:               pattern:
 // CHECK-NEXT:                 EnumPattern #10 @3:10..3:22
 // CHECK-NEXT:                   path:
-// CHECK-NEXT:                     ModulePath #9 @3:10..3:19 segments=["Result", "Ok"]
+// CHECK-NEXT:                     ModulePath #9 @3:10..3:19 segments=["Result", "Ok"] root=Relative
 // CHECK-NEXT:                   args:
 // CHECK-NEXT:                     IdentifierPattern #8 @3:20..3:21 name="v"
 // CHECK-NEXT:                       ty: null
@@ -53,7 +53,7 @@
 // CHECK-NEXT:               pattern:
 // CHECK-NEXT:                 EnumPattern #20 @4:10..4:25
 // CHECK-NEXT:                   path:
-// CHECK-NEXT:                     ModulePath #19 @4:10..4:20 segments=["Result", "Err"]
+// CHECK-NEXT:                     ModulePath #19 @4:10..4:20 segments=["Result", "Err"] root=Relative
 // CHECK-NEXT:                   args:
 // CHECK-NEXT:                     IdentifierPattern #18 @4:21..4:24 name="msg"
 // CHECK-NEXT:                       ty: null

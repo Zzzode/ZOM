@@ -2,7 +2,7 @@
 
 
 // CHECK-LITERAL: Error [ZOM2026]: Octal literals are not allowed. Use the syntax '0o123'
-// CHECK:   --> products {{(?:.*[/\\])?legacy\-octal\.zom:2:9$}}
+// CHECK-LITERAL:   --> conformance/legacy-octal.zom:2:9
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 2 | let x = 0123;
 // CHECK-LITERAL:   |         ^~~~

@@ -39,6 +39,10 @@ using DiagnosticArgument = zc::OneOf<zc::String, zc::StringPtr, lexer::Token>;
 
 class Diagnostic {
 public:
+  explicit Diagnostic(const DiagID id, const source::SourceLoc loc,
+                      zc::Vector<DiagnosticArgument>&& args)
+      : id(id), location(loc), diagnosticArgs(zc::mv(args)) {}
+
   template <typename... Args>
   explicit Diagnostic(const DiagID id, const source::SourceLoc loc, Args&&... args)
       : id(id), location(loc) {

@@ -2,7 +2,7 @@
 
 
 // CHECK-LITERAL: Error [ZOM2025]: Expected ';'
-// CHECK:   --> products {{(?:.*[/\\])?reserved_kw_reject_neg_04\.zom:2:1$}}
+// CHECK-LITERAL:   --> conformance/reserved_kw_reject_neg_04.zom:2:1
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 2 |
 // CHECK-LITERAL:   | ^

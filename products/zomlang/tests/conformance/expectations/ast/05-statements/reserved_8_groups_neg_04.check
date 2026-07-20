@@ -2,12 +2,12 @@
 
 
 // CHECK-LITERAL: Error [ZOM2056]: Expression expected
-// CHECK:   --> products {{(?:.*[/\\])?reserved_8_groups_neg_04\.zom:1:1$}}
+// CHECK-LITERAL:   --> conformance/reserved_8_groups_neg_04.zom:1:1
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 1 | actor A {};
 // CHECK-LITERAL:   | ^
 // CHECK-LITERAL: Error [ZOM2076]: Unexpected token expected
-// CHECK:   --> products {{(?:.*[/\\])?reserved_8_groups_neg_04\.zom:1:1$}}
+// CHECK-LITERAL:   --> conformance/reserved_8_groups_neg_04.zom:1:1
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 1 | actor A {};
 // CHECK-LITERAL:   | ^

@@ -1,4 +1,4 @@
-// RUN: %zomc compile --dump-ast %corpus/04-expressions/literals/bigint-normalization.zom 2>&1 | %FileCheck %s
+// RUN: %zomc compile --dump-ast %corpus/04-expressions/literals/bigint-normalization.zom | %FileCheck %s
 
 
 // CHECK: SourceFile #31 @2:1..11:1 file_name="bigint-normalization.zom"

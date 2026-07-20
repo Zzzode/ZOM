@@ -82,6 +82,7 @@ struct ThreadPool::Impl {
         lockedTasks->remove(taskRef);
         taskToRun = taskRef;
       }
+      lockedTasks.release();
 
       ZC_IF_SOME(taskRef, taskToRun) {
         zc::Maybe<zc::Exception> exception = zc::runCatchingExceptions([&]() { taskRef.func(); });

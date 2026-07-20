@@ -1,0 +1,5 @@
+section: "§11 Error propagation"
+covers_rule: "postfixExpr excludes RAISES QUESTION"
+expected: "REJECT"
+notes:
+  - "Error propagation uses the single `?!` token."

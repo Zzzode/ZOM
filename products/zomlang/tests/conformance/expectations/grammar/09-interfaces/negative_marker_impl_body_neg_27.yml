@@ -1,0 +1,5 @@
+section: "Ch.09 Negative marker implementation restrictions"
+covers_rule: "markerImplRest"
+expected: "REJECT"
+notes:
+  - "A negative marker implementation is bodyless."

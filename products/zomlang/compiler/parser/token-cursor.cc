@@ -15,7 +15,7 @@
 #include "zomlang/compiler/parser/token-cursor.h"
 
 #include "zc/core/debug.h"
-#include "zomlang/compiler/diagnostics/diagnostic-engine.h"
+#include "zomlang/compiler/diagnostics/diagnostic-emitter.h"
 #include "zomlang/compiler/diagnostics/diagnostic-ids.h"
 #include "zomlang/compiler/lexer/lexer.h"
 
@@ -26,7 +26,7 @@ namespace parser {
 TokenStream::TokenStream() = default;
 
 TokenStream::TokenStream(const source::SourceManager& sourceMgr,
-                         diagnostics::DiagnosticEngine& diagnosticEngine,
+                         diagnostics::DiagnosticEmitter& diagnosticEngine,
                          const basic::LangOptions& langOpts, basic::StringPool& stringPool,
                          const source::BufferId& bufferId)
     : lexer(zc::heap<lexer::Lexer>(sourceMgr, diagnosticEngine, langOpts, stringPool, bufferId)) {}
@@ -202,7 +202,7 @@ void TokenCursor::moveTo(size_t index) {
   splitOriginalKind_ = ast::SyntaxKind::Unknown;
 }
 
-bool TokenCursor::expect(ast::SyntaxKind kind, diagnostics::DiagnosticEngine& diagnosticEngine,
+bool TokenCursor::expect(ast::SyntaxKind kind, diagnostics::DiagnosticEmitter& diagnosticEngine,
                          zc::StringPtr expected) {
   if (eat(kind)) { return true; }
   diagnosticEngine.diagnose<diagnostics::DiagID::ExpectedToken>(token().getLocation(), expected);

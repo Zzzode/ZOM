@@ -3,7 +3,7 @@
 
 
 // CHECK-LITERAL: Error [ZOM3001]: Undefined identifier: 'missing_value'
-// CHECK-LITERAL:   --> 04-expressions/undefined_identifier_neg_15.zom:1:1
+// CHECK:   --> {{.*}}04-expressions/undefined_identifier_neg_15.zom:1:1
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 1 | missing_value;
 // CHECK-LITERAL:   | ^

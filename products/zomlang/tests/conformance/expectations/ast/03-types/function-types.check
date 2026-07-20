@@ -19,17 +19,17 @@
 // CHECK-NEXT:                       params:
 // CHECK-NEXT:                         NamedTypeExpr #7 @1:12..1:13
 // CHECK-NEXT:                           path:
-// CHECK-NEXT:                             ModulePath #6 @1:12..1:13 segments=["T"]
+// CHECK-NEXT:                             ModulePath #6 @1:12..1:13 segments=["T"] root=Relative
 // CHECK-NEXT:                           args: []
 // CHECK-NEXT:                       ret_ty:
 // CHECK-NEXT:                         NamedTypeExpr #3 @1:18..1:19
 // CHECK-NEXT:                           path:
-// CHECK-NEXT:                             ModulePath #2 @1:18..1:19 segments=["T"]
+// CHECK-NEXT:                             ModulePath #2 @1:18..1:19 segments=["T"] root=Relative
 // CHECK-NEXT:                           args: []
 // CHECK-NEXT:                       raises:
 // CHECK-NEXT:                         NamedTypeExpr #5 @1:27..1:30
 // CHECK-NEXT:                           path:
-// CHECK-NEXT:                             ModulePath #4 @1:27..1:30 segments=["Err"]
+// CHECK-NEXT:                             ModulePath #4 @1:27..1:30 segments=["Err"] root=Relative
 // CHECK-NEXT:                           args: []
 // CHECK-NEXT:                   init:
 // CHECK-NEXT:                     IdentExpr #9 @1:33..1:35 name="fn"

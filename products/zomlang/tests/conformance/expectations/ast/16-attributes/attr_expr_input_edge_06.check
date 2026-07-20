@@ -32,4 +32,4 @@
 // CHECK-NEXT:                   lhs:
 // CHECK-NEXT:                     IdentExpr #4 @1:56..1:61 name="cache"
 // CHECK-NEXT:                   rhs:
-// CHECK-NEXT:                     StrLiteral #5 @1:64..1:73 value="dynamic" is_raw=false prefix=None
+// CHECK-NEXT:                     StringLiteralExpr #5 @1:64..1:73 value="dynamic"

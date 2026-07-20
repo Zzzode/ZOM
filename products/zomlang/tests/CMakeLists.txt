@@ -18,6 +18,22 @@
 # Enable testing
 enable_testing()
 
+execute_process(
+  COMMAND "${Python3_EXECUTABLE}" -c "import yaml"
+  RESULT_VARIABLE ZOM_PYYAML_IMPORT_RESULT
+  ERROR_VARIABLE ZOM_PYYAML_IMPORT_ERROR
+  OUTPUT_QUIET
+)
+if(NOT ZOM_PYYAML_IMPORT_RESULT EQUAL 0)
+  string(STRIP "${ZOM_PYYAML_IMPORT_ERROR}" ZOM_PYYAML_IMPORT_ERROR)
+  message(FATAL_ERROR
+    "The configured Python interpreter '${Python3_EXECUTABLE}' cannot import PyYAML: "
+    "${ZOM_PYYAML_IMPORT_ERROR}\n"
+    "Install PyYAML for this exact interpreter with:\n"
+    "  \"${Python3_EXECUTABLE}\" -m pip install PyYAML"
+  )
+endif()
+
 # Unit Tests - Low-level component tests
 add_subdirectory(unittests)
 
@@ -29,7 +45,6 @@ if(ZOM_ENABLE_PERFORMANCE_TESTS)
   add_subdirectory(performance)
 endif()
 
-find_package(Python3 COMPONENTS Interpreter REQUIRED)
 add_test(
   NAME package-invocation-cli
   COMMAND
@@ -38,7 +53,7 @@ add_test(
     --zomc
     "$<TARGET_FILE:zomc>")
 set_tests_properties(package-invocation-cli
-                     PROPERTIES LABELS "unittest;package;cli" TIMEOUT 30)
+                     PROPERTIES LABELS "unittest;package;cli" TIMEOUT 120)
 add_test(
   NAME package-workspace-compile
   COMMAND

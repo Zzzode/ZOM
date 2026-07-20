@@ -83,6 +83,25 @@ constexpr DiagnosticInfo getDiagnosticInfo(const DiagID id) {
   }
 }
 
+constexpr bool isKnownDiagnostic(const DiagID id) {
+  switch (id) {
+#define DIAG(Code, Name, ...) \
+  case DiagID::Name:          \
+    return true;
+#include "zomlang/compiler/diagnostics/diagnostics-binder.def"
+#include "zomlang/compiler/diagnostics/diagnostics-checker.def"
+#include "zomlang/compiler/diagnostics/diagnostics-common.def"
+#include "zomlang/compiler/diagnostics/diagnostics-identity.def"
+#include "zomlang/compiler/diagnostics/diagnostics-lowering.def"
+#include "zomlang/compiler/diagnostics/diagnostics-module.def"
+#include "zomlang/compiler/diagnostics/diagnostics-package.def"
+#include "zomlang/compiler/diagnostics/diagnostics-parse.def"
+#undef DIAG
+    default:
+      return false;
+  }
+}
+
 }  // namespace diagnostics
 }  // namespace compiler
 }  // namespace zomlang

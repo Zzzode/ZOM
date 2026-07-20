@@ -2,7 +2,7 @@
 
 
 // CHECK-LITERAL: Error [ZOM2076]: Unexpected token expected
-// CHECK:   --> products {{(?:.*[/\\])?module_name_coloncol_reject_neg_16\.zom:1:9$}}
+// CHECK-LITERAL:   --> conformance/module_name_coloncol_reject_neg_16.zom:1:9
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 1 | module a::b;
 // CHECK-LITERAL:   |         ^

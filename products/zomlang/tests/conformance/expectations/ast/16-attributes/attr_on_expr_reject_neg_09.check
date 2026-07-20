@@ -2,7 +2,7 @@
 
 
 // CHECK-LITERAL: Error [ZOM2076]: Unexpected token expected
-// CHECK:   --> products {{(?:.*[/\\])?attr_on_expr_reject_neg_09\.zom:2:3$}}
+// CHECK-LITERAL:   --> conformance/attr_on_expr_reject_neg_09.zom:2:3
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 2 |   #[deprecated::note("not on expressions")]
 // CHECK-LITERAL:   |   ^

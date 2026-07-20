@@ -32,11 +32,11 @@
 // CHECK-NEXT:               alts:
 // CHECK-NEXT:                 NamedTypeExpr #11 @3:11..3:12
 // CHECK-NEXT:                   path:
-// CHECK-NEXT:                     ModulePath #10 @3:11..3:12 segments=["A"]
+// CHECK-NEXT:                     ModulePath #10 @3:11..3:12 segments=["A"] root=Relative
 // CHECK-NEXT:                   args: []
 // CHECK-NEXT:                 NamedTypeExpr #13 @3:15..3:16
 // CHECK-NEXT:                   path:
-// CHECK-NEXT:                     ModulePath #12 @3:15..3:16 segments=["B"]
+// CHECK-NEXT:                     ModulePath #12 @3:15..3:16 segments=["B"] root=Relative
 // CHECK-NEXT:                   args: []
 // CHECK-NEXT:       attrs: null
 // CHECK-NEXT:     StatementListItem #22 @4:1..4:29
@@ -50,7 +50,7 @@
 // CHECK-NEXT:                   ty:
 // CHECK-NEXT:                     NamedTypeExpr #18 @4:25..4:26
 // CHECK-NEXT:                       path:
-// CHECK-NEXT:                         ModulePath #17 @4:25..4:26 segments=["T"]
+// CHECK-NEXT:                         ModulePath #17 @4:25..4:26 segments=["T"] root=Relative
 // CHECK-NEXT:                       args: []
 // CHECK-NEXT:       attrs: null
 // CHECK-NEXT:     StatementListItem #26 @5:1..5:31
@@ -60,6 +60,6 @@
 // CHECK-NEXT:           target:
 // CHECK-NEXT:             NamedTypeExpr #24 @5:29..5:30
 // CHECK-NEXT:               path:
-// CHECK-NEXT:                 ModulePath #23 @5:29..5:30 segments=["T"]
+// CHECK-NEXT:                 ModulePath #23 @5:29..5:30 segments=["T"] root=Relative
 // CHECK-NEXT:               args: []
 // CHECK-NEXT:       attrs: null

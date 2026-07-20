@@ -27,11 +27,11 @@ namespace compiler {
 namespace ast {
 
 enum class Abi : uint16_t {
-  Cdecl, Stdcall, Fastcall, Swift, Rust, ZomNative, VarArgs
+  Cdecl, Stdcall, ZomNative
 };
 
 enum class WhereBoundKind : uint8_t {
-  Lt, Le, Eq, Ne, Ge, Gt, Subtype, Implements, SendableMarker
+  Implements
 };
 
 enum class SuspendMode : uint8_t {
@@ -185,9 +185,6 @@ constexpr uint32_t kEnumPatternPathWord = 0;
 constexpr uint32_t kEnumPatternArgsFirstWord = 1;
 constexpr uint32_t kEnumPatternArgsSizeWord = 2;
 
-constexpr uint32_t kTupleLiteral1PayloadWordCount = 1;
-constexpr uint32_t kTupleLiteral1ElemWord = 0;
-
 constexpr uint32_t kErrorDefaultExprPayloadWordCount = 2;
 constexpr uint32_t kErrorDefaultExprPrimaryWord = 0;
 constexpr uint32_t kErrorDefaultExprFallbackWord = 1;
@@ -216,10 +213,8 @@ constexpr uint32_t kFloatLiteralExprValueWord = 1;
 constexpr uint32_t kBigIntLiteralPayloadWordCount = 1;
 constexpr uint32_t kBigIntLiteralValueWord = 0;
 
-constexpr uint32_t kStrLiteralPayloadWordCount = 3;
-constexpr uint32_t kStrLiteralValueWord = 0;
-constexpr uint32_t kStrLiteralIsRawWord = 1;
-constexpr uint32_t kStrLiteralPrefixWord = 2;
+constexpr uint32_t kStringLiteralExprPayloadWordCount = 1;
+constexpr uint32_t kStringLiteralExprValueWord = 0;
 
 constexpr uint32_t kArrayLiteralPayloadWordCount = 2;
 constexpr uint32_t kArrayLiteralElemsFirstWord = 0;
@@ -230,6 +225,12 @@ constexpr uint32_t kTupleLiteralElemsFirstWord = 0;
 constexpr uint32_t kTupleLiteralElemsSizeWord = 1;
 
 constexpr uint32_t kUnitLiteralPayloadWordCount = 0;
+
+constexpr uint32_t kCharacterLiteralExprPayloadWordCount = 1;
+constexpr uint32_t kCharacterLiteralExprValueWord = 0;
+
+constexpr uint32_t kNoSubstitutionTemplateLiteralExprPayloadWordCount = 1;
+constexpr uint32_t kNoSubstitutionTemplateLiteralExprValueWord = 0;
 
 constexpr uint32_t kWherePredPayloadWordCount = 3;
 constexpr uint32_t kWherePredKindWord = 0;
@@ -355,14 +356,10 @@ constexpr uint32_t kCaptureListNCapturesWord = 0;
 constexpr uint32_t kCaptureListCapturesFirstWord = 1;
 constexpr uint32_t kCaptureListCapturesSizeWord = 2;
 
-constexpr uint32_t kDynTypeExprPayloadWordCount = 5;
-constexpr uint32_t kDynTypeExprIfacesIdWord = 0;
+constexpr uint32_t kDynTypeExprPayloadWordCount = 3;
+constexpr uint32_t kDynTypeExprPrincipalWord = 0;
 constexpr uint32_t kDynTypeExprMarkersIdWord = 1;
 constexpr uint32_t kDynTypeExprAssocBindingsIdWord = 2;
-constexpr uint32_t kDynTypeExprHasLifetimeWord = 3;
-constexpr uint32_t kDynTypeExprLifetimeWord = 4;
-
-constexpr uint32_t kBottomTypeExprPayloadWordCount = 0;
 
 constexpr uint32_t kFixedArrayTypeExprPayloadWordCount = 2;
 constexpr uint32_t kFixedArrayTypeExprElemWord = 0;
@@ -397,14 +394,8 @@ constexpr uint32_t kIntersectionTypeExprPayloadWordCount = 2;
 constexpr uint32_t kIntersectionTypeExprAltsFirstWord = 0;
 constexpr uint32_t kIntersectionTypeExprAltsSizeWord = 1;
 
-constexpr uint32_t kArrayTypeExprPayloadWordCount = 2;
+constexpr uint32_t kArrayTypeExprPayloadWordCount = 1;
 constexpr uint32_t kArrayTypeExprElemWord = 0;
-constexpr uint32_t kArrayTypeExprLenExprWord = 1;
-
-constexpr uint32_t kDynTypeIfaceListPayloadWordCount = 3;
-constexpr uint32_t kDynTypeIfaceListNIfacesWord = 0;
-constexpr uint32_t kDynTypeIfaceListIfacesFirstWord = 1;
-constexpr uint32_t kDynTypeIfaceListIfacesSizeWord = 2;
 
 constexpr uint32_t kDynTypeMarkerListPayloadWordCount = 3;
 constexpr uint32_t kDynTypeMarkerListNMarkersWord = 0;
@@ -448,9 +439,6 @@ constexpr uint32_t kSuspendStatementPayloadWordCount = 3;
 constexpr uint32_t kSuspendStatementModeWord = 0;
 constexpr uint32_t kSuspendStatementUntilCondWord = 1;
 constexpr uint32_t kSuspendStatementOnTimeoutMsWord = 2;
-
-constexpr uint32_t kUntilClausePayloadWordCount = 1;
-constexpr uint32_t kUntilClauseCondWord = 0;
 
 constexpr uint32_t kBlockStmtPayloadWordCount = 2;
 constexpr uint32_t kBlockStmtStmtsFirstWord = 0;
@@ -538,19 +526,17 @@ constexpr uint32_t kVariableDeclaratorInitWord = 2;
 
 constexpr uint32_t kStandaloneImplDeclPayloadWordCount = 6;
 constexpr uint32_t kStandaloneImplDeclIsUnsafeWord = 0;
-constexpr uint32_t kStandaloneImplDeclIfacesIdWord = 1;
+constexpr uint32_t kStandaloneImplDeclInterfaceWord = 1;
 constexpr uint32_t kStandaloneImplDeclForTyWord = 2;
 constexpr uint32_t kStandaloneImplDeclWhereWord = 3;
 constexpr uint32_t kStandaloneImplDeclTypeParamsIdWord = 4;
 constexpr uint32_t kStandaloneImplDeclMembersIdWord = 5;
 
-constexpr uint32_t kMarkerImplPayloadWordCount = 6;
+constexpr uint32_t kMarkerImplPayloadWordCount = 4;
 constexpr uint32_t kMarkerImplIsUnsafeWord = 0;
 constexpr uint32_t kMarkerImplIsNegatedWord = 1;
 constexpr uint32_t kMarkerImplMarkerPathWord = 2;
 constexpr uint32_t kMarkerImplForTyWord = 3;
-constexpr uint32_t kMarkerImplWhereWord = 4;
-constexpr uint32_t kMarkerImplTypeParamsIdWord = 5;
 
 constexpr uint32_t kWhereClausePayloadWordCount = 2;
 constexpr uint32_t kWhereClausePredsFirstWord = 0;
@@ -592,10 +578,9 @@ constexpr uint32_t kFunctionParameterListNparamsWord = 0;
 constexpr uint32_t kFunctionParameterListParamsFirstWord = 1;
 constexpr uint32_t kFunctionParameterListParamsSizeWord = 2;
 
-constexpr uint32_t kImplIfaceListPayloadWordCount = 3;
-constexpr uint32_t kImplIfaceListNIfacesWord = 0;
-constexpr uint32_t kImplIfaceListIfacesFirstWord = 1;
-constexpr uint32_t kImplIfaceListIfacesSizeWord = 2;
+constexpr uint32_t kImplIfaceListPayloadWordCount = 2;
+constexpr uint32_t kImplIfaceListIfacesFirstWord = 0;
+constexpr uint32_t kImplIfaceListIfacesSizeWord = 1;
 
 constexpr uint32_t kClassMemberListPayloadWordCount = 3;
 constexpr uint32_t kClassMemberListNmembersWord = 0;
@@ -624,7 +609,7 @@ constexpr uint32_t kMethodDeclTypeParamsIdWord = 2;
 constexpr uint32_t kMethodDeclRetTyWord = 3;
 constexpr uint32_t kMethodDeclRaisesTyWord = 4;
 constexpr uint32_t kMethodDeclBodyWord = 5;
-constexpr uint32_t kMethodDeclIsStaticWord = 6;
+constexpr uint32_t kMethodDeclModeWord = 6;
 constexpr uint32_t kMethodDeclVisibilityWord = 7;
 
 constexpr uint32_t kFieldDeclPayloadWordCount = 6;
@@ -638,14 +623,13 @@ constexpr uint32_t kFieldDeclVisibilityWord = 5;
 constexpr uint32_t kAssociatedTypeDeclPayloadWordCount = 4;
 constexpr uint32_t kAssociatedTypeDeclNameWord = 0;
 constexpr uint32_t kAssociatedTypeDeclTypeParamsIdWord = 1;
-constexpr uint32_t kAssociatedTypeDeclBoundWord = 2;
+constexpr uint32_t kAssociatedTypeDeclBoundsIdWord = 2;
 constexpr uint32_t kAssociatedTypeDeclDefaultTyWord = 3;
 
-constexpr uint32_t kGenericTypeParamPayloadWordCount = 4;
+constexpr uint32_t kGenericTypeParamPayloadWordCount = 3;
 constexpr uint32_t kGenericTypeParamNameWord = 0;
-constexpr uint32_t kGenericTypeParamBoundWord = 1;
+constexpr uint32_t kGenericTypeParamBoundsIdWord = 1;
 constexpr uint32_t kGenericTypeParamDefaultTyWord = 2;
-constexpr uint32_t kGenericTypeParamVarianceWord = 3;
 
 constexpr uint32_t kConstructorDeclPayloadWordCount = 5;
 constexpr uint32_t kConstructorDeclNameWord = 0;
@@ -668,15 +652,24 @@ constexpr uint32_t kClassConstDeclInitWord = 2;
 constexpr uint32_t kClassConstDeclIsStaticWord = 3;
 constexpr uint32_t kClassConstDeclVisibilityWord = 4;
 
+constexpr uint32_t kTypeParameterBoundListPayloadWordCount = 2;
+constexpr uint32_t kTypeParameterBoundListBoundsFirstWord = 0;
+constexpr uint32_t kTypeParameterBoundListBoundsSizeWord = 1;
+
+constexpr uint32_t kAssociatedTypeBoundListPayloadWordCount = 2;
+constexpr uint32_t kAssociatedTypeBoundListBoundsFirstWord = 0;
+constexpr uint32_t kAssociatedTypeBoundListBoundsSizeWord = 1;
+
 constexpr uint32_t kSourceFilePayloadWordCount = 4;
 constexpr uint32_t kSourceFileFileNameWord = 0;
 constexpr uint32_t kSourceFileModuleWord = 1;
 constexpr uint32_t kSourceFileStatementsFirstWord = 2;
 constexpr uint32_t kSourceFileStatementsSizeWord = 3;
 
-constexpr uint32_t kModulePathPayloadWordCount = 2;
+constexpr uint32_t kModulePathPayloadWordCount = 3;
 constexpr uint32_t kModulePathSegmentsFirstWord = 0;
 constexpr uint32_t kModulePathSegmentsSizeWord = 1;
+constexpr uint32_t kModulePathRootWord = 2;
 
 constexpr uint32_t kImportDeclarationPayloadWordCount = 4;
 constexpr uint32_t kImportDeclarationPathWord = 0;

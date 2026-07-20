@@ -16,7 +16,7 @@
 // CHECK-NEXT:                       ty: null
 // CHECK-NEXT:                   ty: null
 // CHECK-NEXT:                   init:
-// CHECK-NEXT:                     StrLiteral #2 @1:16..1:23 value="hello" is_raw=false prefix=None
+// CHECK-NEXT:                     NoSubstitutionTemplateLiteralExpr #2 @1:16..1:23 value="hello"
 // CHECK-NEXT:       attrs: null
 // CHECK-NEXT:     StatementListItem #16 @2:1..2:51
 // CHECK-NEXT:       item:

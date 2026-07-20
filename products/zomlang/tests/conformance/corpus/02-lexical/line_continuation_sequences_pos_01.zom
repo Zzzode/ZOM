@@ -1,0 +1,9 @@
+let lf = "left\
+right";
+let crlf = "left\
+right";
+let cr = "left\right";
+let ls = "left\ right";
+let ps = "left\ right";
+let scalar = 'a\
+';

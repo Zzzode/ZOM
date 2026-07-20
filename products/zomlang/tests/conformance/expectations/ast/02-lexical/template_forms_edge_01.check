@@ -1,7 +1,7 @@
 // RUN: %zomc compile --dump-ast %corpus/02-lexical/template_forms_edge_01.zom | %FileCheck %s
 
 
-// CHECK: SourceFile #22 @1:1..4:1 file_name="template_forms_edge_01.zom"
+// CHECK: SourceFile #52 @1:1..12:1 file_name="template_forms_edge_01.zom"
 // CHECK-NEXT:   module: null
 // CHECK-NEXT:   statements:
 // CHECK-NEXT:     StatementListItem #6 @1:1..1:17
@@ -16,7 +16,7 @@
 // CHECK-NEXT:                       ty: null
 // CHECK-NEXT:                   ty: null
 // CHECK-NEXT:                   init:
-// CHECK-NEXT:                     StrLiteral #2 @1:9..1:16 value="hello" is_raw=false prefix=None
+// CHECK-NEXT:                     NoSubstitutionTemplateLiteralExpr #2 @1:9..1:16 value="hello"
 // CHECK-NEXT:       attrs: null
 // CHECK-NEXT:     StatementListItem #13 @2:1..2:25
 // CHECK-NEXT:       item:
@@ -50,4 +50,78 @@
 // CHECK-NEXT:                       exprs:
 // CHECK-NEXT:                         IdentExpr #15 @3:14..3:15 name="x"
 // CHECK-NEXT:                         IdentExpr #16 @3:21..3:22 name="y"
+// CHECK-NEXT:       attrs: null
+// CHECK-NEXT:     StatementListItem #27 @4:1..4:29
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         LetStmt #26 @4:1..4:29 kind=Let
+// CHECK-NEXT:           declarations:
+// CHECK-NEXT:             VariableDeclaratorList #25 @4:5..4:28 n_decls=1
+// CHECK-NEXT:               decls:
+// CHECK-NEXT:                 VariableDeclarator #24 @4:5..4:28
+// CHECK-NEXT:                   pattern:
+// CHECK-NEXT:                     IdentifierPattern #22 @4:5..4:6 name="d"
+// CHECK-NEXT:                       ty: null
+// CHECK-NEXT:                   ty: null
+// CHECK-NEXT:                   init:
+// CHECK-NEXT:                     NoSubstitutionTemplateLiteralExpr #23 @4:9..4:28 value="trailing dollar $"
+// CHECK-NEXT:       attrs: null
+// CHECK-NEXT:     StatementListItem #33 @6:1..8:2
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         FunctionDecl #32 @6:1..8:2 name="close_global_scope"
+// CHECK-NEXT:           params_id:
+// CHECK-NEXT:             FunctionParameterList #28 @6:23..6:25 nparams=0
+// CHECK-NEXT:               params: []
+// CHECK-NEXT:           type_params_id: null
+// CHECK-NEXT:           ret_ty: null
+// CHECK-NEXT:           raises_ty: null
+// CHECK-NEXT:           body:
+// CHECK-NEXT:             BlockStmt #31 @6:26..8:2
+// CHECK-NEXT:               stmts:
+// CHECK-NEXT:                 StatementListItem #30 @7:5..7:12
+// CHECK-NEXT:                   item:
+// CHECK-NEXT:                     ReturnStmt #29 @7:5..7:12
+// CHECK-NEXT:                       value: null
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:       attrs: null
+// CHECK-NEXT:     StatementListItem #41 @10:1..10:54
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         LetStmt #40 @10:1..10:54 kind=Let
+// CHECK-NEXT:           declarations:
+// CHECK-NEXT:             VariableDeclaratorList #39 @10:5..10:53 n_decls=1
+// CHECK-NEXT:               decls:
+// CHECK-NEXT:                 VariableDeclarator #38 @10:5..10:53
+// CHECK-NEXT:                   pattern:
+// CHECK-NEXT:                     IdentifierPattern #34 @10:5..10:6 name="e"
+// CHECK-NEXT:                       ty: null
+// CHECK-NEXT:                   ty: null
+// CHECK-NEXT:                   init:
+// CHECK-NEXT:                     TemplateLiteralExpr #37 @10:9..10:53
+// CHECK-NEXT:                       exprs:
+// CHECK-NEXT:                         CallExpression #36 @10:31..10:51
+// CHECK-NEXT:                           callee:
+// CHECK-NEXT:                             IdentExpr #35 @10:31..10:49 name="close_global_scope"
+// CHECK-NEXT:                           type_args: []
+// CHECK-NEXT:                           args: []
+// CHECK-NEXT:       attrs: null
+// CHECK-NEXT:     StatementListItem #51 @11:1..11:47
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         LetStmt #50 @11:1..11:47 kind=Let
+// CHECK-NEXT:           declarations:
+// CHECK-NEXT:             VariableDeclaratorList #49 @11:5..11:46 n_decls=1
+// CHECK-NEXT:               decls:
+// CHECK-NEXT:                 VariableDeclarator #48 @11:5..11:46
+// CHECK-NEXT:                   pattern:
+// CHECK-NEXT:                     IdentifierPattern #42 @11:5..11:6 name="f"
+// CHECK-NEXT:                       ty: null
+// CHECK-NEXT:                   ty: null
+// CHECK-NEXT:                   init:
+// CHECK-NEXT:                     TemplateLiteralExpr #47 @11:9..11:46
+// CHECK-NEXT:                       exprs:
+// CHECK-NEXT:                         MemberExpression #46 @11:25..11:44 property="value" access=Dot
+// CHECK-NEXT:                           object:
+// CHECK-NEXT:                             ObjectLiteralExpr #45 @11:25..11:38
+// CHECK-NEXT:                               properties:
+// CHECK-NEXT:                                 ObjectProperty #44 @11:26..11:37 name="value" short_form=false
+// CHECK-NEXT:                                   value:
+// CHECK-NEXT:                                     IdentExpr #43 @11:33..11:37 name="name"
 // CHECK-NEXT:       attrs: null

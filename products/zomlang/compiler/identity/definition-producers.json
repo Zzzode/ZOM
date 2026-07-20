@@ -31,11 +31,7 @@
     "IdentifierPattern": {"identities": ["PatternBinding", "Constant", "Static", "Local"], "parser": "pattern-parser.cc"},
     "PatternProperty": {"identities": ["PatternBinding", "Constant", "Static", "Local"], "parser": "pattern-parser.cc"},
     "FunctionExpression": {"identities": ["Closure"], "anonymous_role": "FunctionExpression", "parser": "expression-parser.cc"},
-    "LambdaExpression": {"identities": ["Closure"], "anonymous_role": "Lambda", "parser": "expression-parser.cc"},
-    "ImportDeclaration": {"identities": ["ImportAlias"], "parser": "declaration-parser.cc"},
-    "ImportSpecifier": {"identities": ["ImportAlias"], "parser": "declaration-parser.cc"},
-    "ExportDeclaration": {"identities": ["ReexportAlias"], "parser": "declaration-parser.cc"},
-    "ExportSpecifier": {"identities": ["ReexportAlias"], "parser": "declaration-parser.cc"}
+    "LambdaExpression": {"identities": ["Closure"], "anonymous_role": "Lambda", "parser": "expression-parser.cc"}
   },
   "no_identity": {
     "SourceFile": "compilation-unit container",
@@ -48,6 +44,10 @@
     "ImplIfaceList": "implemented-interface container",
     "ClassMemberList": "member container",
     "StatementListItem": "attribute-bearing statement container",
+    "ImportDeclaration": "semantic import binding site",
+    "ImportSpecifier": "semantic import binding site",
+    "ExportDeclaration": "semantic export binding site",
+    "ExportSpecifier": "semantic export binding site",
     "AttributeList": "attribute container",
     "Attribute": "semantic metadata rather than a definition"
   },

@@ -248,7 +248,7 @@ def check_package_only_cli(files: dict[Path, str], errors: list[str]) -> None:
             '.addOptionWithArg({"bin"}',
             '.expectZeroOrMoreArgs("<source>", ZC_BIND_METHOD(*this, rejectPositionalSource))',
             "packageRequest.positionalArguments.add(",
-            "session->addPackageSourceFile(",
+            "session->addVerifiedPackageRoot(",
         ),
         "package-only CLI",
         errors,
@@ -275,6 +275,8 @@ def check_package_only_cli(files: dict[Path, str], errors: list[str]) -> None:
         errors.append(
             f"{CLI_SOURCE}: positional direct-source installation is forbidden"
         )
+    if re.search(r"\bsession\s*->\s*addPackageSourceFile\s*\(", cli_code):
+        errors.append(f"{CLI_SOURCE}: package source path reread is forbidden")
     if re.search(
         r"\.expect(?:One|OneOrMore)Args\s*\(\s*\"<source>\"", files.get(CLI_SOURCE, "")
     ):
@@ -705,8 +707,10 @@ def check_atomic_session_handoff(files: dict[Path, str], errors: list[str]) -> N
             "impl->verifiedTarget = zc::mv(input.impl->target);",
             "impl->packageGraph = zc::mv(input.impl->graph);",
             "impl->buildScriptPlan = zc::mv(input.impl->buildScriptPlan);",
+            "impl->crateGraph = zc::mv(graph);",
             "impl->packageSnapshots = zc::mv(input.impl->snapshots);",
             "VerifiedPreparatoryCrateGraph::buildPlan(request, graph)",
+            "VerifiedCrateGraph::buildFinal(input.impl->request, input.impl->graph,",
         ),
         "atomic package-session implementation",
         errors,
@@ -733,7 +737,7 @@ def check_atomic_session_handoff(files: dict[Path, str], errors: list[str]) -> N
         first_mutation = install_body.find("impl->packageRequest =")
         crate_graph_gate = install_body.find("VerifiedCrateGraph::buildFinal(")
         rejected_graph = install_body.find(
-            "graphResult.get<CrateGraphIssue>() != CrateGraphIssue::BuildResultsRequired"
+            "if (!graphResult.is<VerifiedCrateGraph>()) { return false; }"
         )
         if (
             first_mutation < 0

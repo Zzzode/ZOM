@@ -2,12 +2,12 @@
 
 
 // CHECK-LITERAL: Error [ZOM2076]: Unexpected token expected
-// CHECK:   --> products {{(?:.*[/\\])?postfix_lr_edge_01\.zom:3:16$}}
+// CHECK-LITERAL:   --> conformance/postfix_lr_edge_01.zom:3:16
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 3 |   let y = x++?!!?;
 // CHECK-LITERAL:   |                ^
 // CHECK-LITERAL: Error [ZOM2056]: Expression expected
-// CHECK:   --> products {{(?:.*[/\\])?postfix_lr_edge_01\.zom:3:11$}}
+// CHECK-LITERAL:   --> conformance/postfix_lr_edge_01.zom:3:11
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 3 |   let y = x++?!!?;
 // CHECK-LITERAL:   |           ^

@@ -2,7 +2,7 @@
 
 
 // CHECK-LITERAL: Error [ZOM2025]: Expected 'attribute path'
-// CHECK:   --> products {{(?:.*[/\\])?empty_attr_reject_neg_05\.zom:1:3$}}
+// CHECK-LITERAL:   --> conformance/empty_attr_reject_neg_05.zom:1:3
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 1 | #[]
 // CHECK-LITERAL:   |   ^

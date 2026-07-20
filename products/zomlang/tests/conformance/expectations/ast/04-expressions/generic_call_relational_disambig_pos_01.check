@@ -56,7 +56,7 @@
 // CHECK-NEXT:                                   type_args:
 // CHECK-NEXT:                                     NamedTypeExpr #15 @3:18..3:19
 // CHECK-NEXT:                                       path:
-// CHECK-NEXT:                                         ModulePath #14 @3:18..3:19 segments=["T"]
+// CHECK-NEXT:                                         ModulePath #14 @3:18..3:19 segments=["T"] root=Relative
 // CHECK-NEXT:                                       args: []
 // CHECK-NEXT:                                   args:
 // CHECK-NEXT:                                     IdentExpr #16 @3:21..3:22 name="x"

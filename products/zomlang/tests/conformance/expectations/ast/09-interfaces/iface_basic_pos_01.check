@@ -14,7 +14,7 @@
 // CHECK-NEXT:               members_id:
 // CHECK-NEXT:                 ClassMemberList #4 @1:27..3:2 nmembers=1
 // CHECK-NEXT:                   members:
-// CHECK-NEXT:                     MethodDecl #3 @2:5..2:24 name="draw" is_static=false visibility=Default
+// CHECK-NEXT:                     MethodDecl #3 @2:5..2:24 name="draw" mode=Instance visibility=Default
 // CHECK-NEXT:                       params_id:
 // CHECK-NEXT:                         FunctionParameterList #1 @2:13..2:15 nparams=0
 // CHECK-NEXT:                           params: []

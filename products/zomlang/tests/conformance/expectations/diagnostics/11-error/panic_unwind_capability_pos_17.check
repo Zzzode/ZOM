@@ -1,3 +1,0 @@
-// RUN: %zomc compile --syntax-only %corpus/11-error/panic_unwind_capability_pos_17.zom 2>&1 | %FileCheck %s
-
-// CHECK-NOT: error:

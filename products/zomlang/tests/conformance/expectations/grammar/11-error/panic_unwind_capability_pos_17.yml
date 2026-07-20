@@ -2,4 +2,4 @@ section: "Ch.11 Panic strategy capability"
 covers_rule: "functionDeclaration, raisesClause, returnStatement"
 expected: "ACCEPT"
 notes:
-  - "The IR runner invokes the valid source with panic unwind and verifies pre-lowering rejection."
+  - "This fixture covers the accepted source form; target capability validation is a later semantic phase."

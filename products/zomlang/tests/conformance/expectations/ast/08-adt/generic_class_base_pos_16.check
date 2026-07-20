@@ -10,8 +10,8 @@
 // CHECK-NEXT:           type_params_id:
 // CHECK-NEXT:             GenericParams #2 @1:11..1:14 nparams=1
 // CHECK-NEXT:               params:
-// CHECK-NEXT:                 GenericTypeParam #1 @1:12..1:13 name="T" variance=Invariant
-// CHECK-NEXT:                   bound: null
+// CHECK-NEXT:                 GenericTypeParam #1 @1:12..1:13 name="T"
+// CHECK-NEXT:                   bounds_id: null
 // CHECK-NEXT:                   default_ty: null
 // CHECK-NEXT:               where_: null
 // CHECK-NEXT:           base_ty: null
@@ -22,7 +22,7 @@
 // CHECK-NEXT:                   ty:
 // CHECK-NEXT:                     NamedTypeExpr #4 @2:14..2:15
 // CHECK-NEXT:                       path:
-// CHECK-NEXT:                         ModulePath #3 @2:14..2:15 segments=["T"]
+// CHECK-NEXT:                         ModulePath #3 @2:14..2:15 segments=["T"] root=Relative
 // CHECK-NEXT:                       args: []
 // CHECK-NEXT:                   init: null
 // CHECK-NEXT:                 ConstructorDecl #17 @3:5..3:33 name="init" visibility=Default
@@ -33,7 +33,7 @@
 // CHECK-NEXT:                           ty:
 // CHECK-NEXT:                             NamedTypeExpr #7 @3:13..3:14
 // CHECK-NEXT:                               path:
-// CHECK-NEXT:                                 ModulePath #6 @3:13..3:14 segments=["T"]
+// CHECK-NEXT:                                 ModulePath #6 @3:13..3:14 segments=["T"] root=Relative
 // CHECK-NEXT:                               args: []
 // CHECK-NEXT:                           default_: null
 // CHECK-NEXT:                           attrs: null
@@ -60,20 +60,20 @@
 // CHECK-NEXT:           type_params_id:
 // CHECK-NEXT:             GenericParams #22 @5:14..5:17 nparams=1
 // CHECK-NEXT:               params:
-// CHECK-NEXT:                 GenericTypeParam #21 @5:15..5:16 name="T" variance=Invariant
-// CHECK-NEXT:                   bound: null
+// CHECK-NEXT:                 GenericTypeParam #21 @5:15..5:16 name="T"
+// CHECK-NEXT:                   bounds_id: null
 // CHECK-NEXT:                   default_ty: null
 // CHECK-NEXT:               where_: null
 // CHECK-NEXT:           base_ty:
 // CHECK-NEXT:             NamedTypeExpr #27 @5:20..5:28
 // CHECK-NEXT:               path:
-// CHECK-NEXT:                 ModulePath #26 @5:20..5:24 segments=["Base"]
+// CHECK-NEXT:                 ModulePath #26 @5:20..5:24 segments=["Base"] root=Relative
 // CHECK-NEXT:               args:
 // CHECK-NEXT:                 OptionalTypeExpr #25 @5:25..5:27 double=false
 // CHECK-NEXT:                   inner:
 // CHECK-NEXT:                     NamedTypeExpr #24 @5:25..5:26
 // CHECK-NEXT:                       path:
-// CHECK-NEXT:                         ModulePath #23 @5:25..5:26 segments=["T"]
+// CHECK-NEXT:                         ModulePath #23 @5:25..5:26 segments=["T"] root=Relative
 // CHECK-NEXT:                       args: []
 // CHECK-NEXT:           members_id:
 // CHECK-NEXT:             ClassMemberList #51 @5:29..8:2 nmembers=2
@@ -91,7 +91,7 @@
 // CHECK-NEXT:                           ty:
 // CHECK-NEXT:                             NamedTypeExpr #32 @7:13..7:14
 // CHECK-NEXT:                               path:
-// CHECK-NEXT:                                 ModulePath #31 @7:13..7:14 segments=["T"]
+// CHECK-NEXT:                                 ModulePath #31 @7:13..7:14 segments=["T"] root=Relative
 // CHECK-NEXT:                               args: []
 // CHECK-NEXT:                           default_: null
 // CHECK-NEXT:                           attrs: null

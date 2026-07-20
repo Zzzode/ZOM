@@ -1,9 +1,0 @@
-// RUN: cd %corpus && ! %zomc compile --syntax-only 04-expressions/operator_trait_missing_neg_01.zom > %t 2>&1
-// RUN: %FileCheck %s --input-file %t
-
-
-// CHECK-LITERAL: Error [ZOM4018]: 'Operand' does not implement 'Neg'
-// CHECK-LITERAL:   --> 04-expressions/operator_trait_missing_neg_01.zom:5:1
-// CHECK-LITERAL:   |
-// CHECK-LITERAL: 5 | -value;
-// CHECK-LITERAL:   | ^

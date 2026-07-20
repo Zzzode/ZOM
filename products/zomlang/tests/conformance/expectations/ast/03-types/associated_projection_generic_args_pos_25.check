@@ -13,13 +13,13 @@
 // CHECK-NEXT:               base_ty:
 // CHECK-NEXT:                 NamedTypeExpr #3 @1:19..1:27
 // CHECK-NEXT:                   path:
-// CHECK-NEXT:                     ModulePath #2 @1:19..1:22 segments=["Box"]
+// CHECK-NEXT:                     ModulePath #2 @1:19..1:22 segments=["Box"] root=Relative
 // CHECK-NEXT:                   args:
 // CHECK-NEXT:                     PredefinedTypeExpr #1 @1:23..1:26 kind=I32
 // CHECK-NEXT:               iface_ty:
 // CHECK-NEXT:                 NamedTypeExpr #6 @1:31..1:45
 // CHECK-NEXT:                   path:
-// CHECK-NEXT:                     ModulePath #5 @1:31..1:39 segments=["Iterator"]
+// CHECK-NEXT:                     ModulePath #5 @1:31..1:39 segments=["Iterator"] root=Relative
 // CHECK-NEXT:                   args:
 // CHECK-NEXT:                     PredefinedTypeExpr #4 @1:40..1:43 kind=I32
 // CHECK-NEXT:       attrs: null

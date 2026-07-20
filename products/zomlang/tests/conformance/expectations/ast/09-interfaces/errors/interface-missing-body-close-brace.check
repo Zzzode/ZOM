@@ -2,12 +2,12 @@
 
 
 // CHECK-LITERAL: Error [ZOM2025]: Expected '}'
-// CHECK:   --> products {{(?:.*[/\\])?interface\-missing\-body\-close\-brace\.zom:3:1$}}
+// CHECK-LITERAL:   --> conformance/interface-missing-body-close-brace.zom:3:1
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 3 |
 // CHECK-LITERAL:   | ^
 // CHECK-LITERAL: Error [ZOM2025]: Expected '}'
-// CHECK:   --> products {{(?:.*[/\\])?interface\-missing\-body\-close\-brace\.zom:2:13$}}
+// CHECK-LITERAL:   --> conformance/interface-missing-body-close-brace.zom:2:13
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 2 |   let x: i32;
 // CHECK-LITERAL:   |             ^

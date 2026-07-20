@@ -1,0 +1,257 @@
+// Copyright (c) 2026 Zode.Z. All rights reserved
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+
+#include "zomlang/compiler/checker/cross-module-facts.h"
+
+#include "zc/core/encoding.h"
+#include "zc/ztest/test.h"
+#include "zomlang/tests/unittests/compiler/test-semantic-identities.h"
+
+namespace zomlang::compiler::checker::cross_module {
+namespace {
+
+identity::Sha256Digest repeatedDigest(uint8_t byte) {
+  uint8_t bytes[32];
+  for (auto& value : bytes) { value = byte; }
+  ZC_IF_SOME(digest, identity::Sha256Digest::fromBytes(zc::arrayPtr(bytes))) { return digest; }
+  ZC_FAIL_REQUIRE("invalid cross-module digest fixture");
+}
+
+zc::Array<uint8_t> decoded(zc::StringPtr hex) {
+  auto bytes = zc::decodeHex(hex);
+  ZC_REQUIRE(bytes != zc::none);
+  return zc::mv(ZC_REQUIRE_NONNULL(bytes));
+}
+
+identity::Sha256Digest digest(zc::StringPtr hex) {
+  auto bytes = decoded(hex);
+  auto value = identity::Sha256Digest::fromBytes(bytes.asPtr());
+  ZC_REQUIRE(value != zc::none);
+  return ZC_REQUIRE_NONNULL(value);
+}
+
+identity::ModuleResolutionPolicyKey resolutionPolicy() {
+  auto value = identity::ModuleResolutionPolicyKey::from(
+      identity::UnicodeNormalizationPolicy::Nfc, identity::CaseComparisonPolicy::CaseSensitive,
+      identity::SymlinkHandlingPolicy::ResolveThenConfine,
+      identity::ModuleContainmentPolicy::DeclaredRootsOnly,
+      identity::LocalModuleLookupPolicy::RequesterAncestryAndCrateRoot,
+      identity::DependencyAliasLookupPolicy::ExactFirstSegment,
+      identity::PreludeLookupPolicy::ConfiguredCratePrelude,
+      identity::ModuleCandidateSelectionPolicy::AllDistinctMatchesNoPrecedence);
+  return zc::mv(ZC_REQUIRE_NONNULL(value));
+}
+
+identity::SemanticImportBindingKey semanticBinding(zc::StringPtr localName) {
+  using namespace tests::test_identity_detail;
+  zc::Vector<identity::ModulePathSegment> path;
+  path.add(scalar<identity::ModulePathSegment>("dependency"_zc));
+  zc::Maybe<zc::Vector<identity::ModulePathSegment>> retainedPath(zc::mv(path));
+  zc::Maybe<identity::DependencyAlias> alias(scalar<identity::DependencyAlias>("dependency"_zc));
+  auto resolution =
+      identity::ModuleResolutionKey::from(module(), identity::ModuleDependencyKind::Import,
+                                          zc::mv(retainedPath), zc::mv(alias), resolutionPolicy());
+  ZC_REQUIRE(resolution != zc::none);
+  auto binding = identity::SemanticImportBindingKey::from(
+      module(), zc::mv(ZC_REQUIRE_NONNULL(resolution)), identity::SemanticImportOperation::Import,
+      identity::DefinitionNamespace::Type, scalar<identity::DeclaredDefinitionName>("source"_zc),
+      identity::DefinitionNamespace::Type, scalar<identity::DeclaredDefinitionName>(localName));
+  return zc::mv(ZC_REQUIRE_NONNULL(binding));
+}
+
+identity::ModuleId moduleIdentity() {
+  using namespace tests::test_identity_detail;
+  identity::SemanticContextFactory factory;
+  auto context = factory.issue();
+  ZC_REQUIRE(context != zc::none);
+  auto registries =
+      identity::SemanticIdentityRegistrySet::create(factory, ZC_REQUIRE_NONNULL(context));
+  ZC_REQUIRE(registries != zc::none);
+  ZC_IF_SOME(values, registries) {
+    ZC_REQUIRE(values.collectPackage(package()) == identity::FrozenRegistryFailure::None);
+    ZC_REQUIRE(values.freezePackages() == identity::FrozenRegistryFailure::None);
+    ZC_REQUIRE(values.collectCrate(crate()) == identity::FrozenRegistryFailure::None);
+    ZC_REQUIRE(values.freezeCrates() == identity::FrozenRegistryFailure::None);
+    auto snapshot = identity::ImmutableSourceSnapshot::from(tests::test_identity_detail::source(),
+                                                            zc::heapArray<uint8_t>(1, uint8_t{0}));
+    ZC_REQUIRE(snapshot != zc::none);
+    ZC_REQUIRE(values.collectSourceFile(zc::mv(ZC_REQUIRE_NONNULL(snapshot))) ==
+               identity::FrozenRegistryFailure::None);
+    ZC_REQUIRE(values.freezeSourceFiles() == identity::FrozenRegistryFailure::None);
+    ZC_REQUIRE(values.collectModule(module()) == identity::FrozenRegistryFailure::None);
+    ZC_REQUIRE(values.freezeModules() == identity::FrozenRegistryFailure::None);
+    return ZC_REQUIRE_NONNULL(values.modules().find(module()));
+  }
+  ZC_UNREACHABLE;
+}
+
+}  // namespace
+
+ZC_TEST("ImportedSignatureViewRevision.ReproducesRfc0005FramingOracle") {
+  const uint8_t requester[] = {0xa1};
+  const uint8_t module[] = {0xb2};
+  const zc::ArrayPtr<const uint8_t> records[] = {module};
+  auto revision =
+      ImportedSignatureViewRevision::computeFramed(repeatedDigest(0x00), requester, records);
+  ZC_REQUIRE(revision != zc::none);
+  ZC_IF_SOME(value, revision) {
+    ZC_EXPECT(zc::encodeHex(value.digest().bytes()) ==
+              "e8632559fd0e8fcbc78435f7ad142d48a58ec306111deee20e8c2f722bd6e218"_zc);
+  }
+}
+
+ZC_TEST("ImportedSignatureModuleCanonicalCodec.EncodesCompleteRfc0005Record") {
+  const uint8_t source[] = {0xa1};
+  const zc::ArrayPtr<const zc::ArrayPtr<const uint8_t>> emptyRecords;
+  auto record = ImportedSignatureModuleCanonicalCodec::encodeFramed(
+      SignatureViewOrigin::ExplicitImport, source, repeatedDigest(0x22), repeatedDigest(0x33),
+      emptyRecords, emptyRecords, emptyRecords, emptyRecords);
+  ZC_REQUIRE(record != zc::none);
+  ZC_IF_SOME(bytes, record) {
+    ZC_EXPECT(zc::encodeHex(bytes.asPtr()) ==
+              "01a1"
+              "2222222222222222222222222222222222222222222222222222222222222222"
+              "3333333333333333333333333333333333333333333333333333333333333333"
+              "0000000000000000000000000000000000000000000000000000000000000000"_zc);
+  }
+}
+
+ZC_TEST("ImportedSignatureModuleCanonicalCodec.RejectsNonCanonicalRecords") {
+  const uint8_t source[] = {0xa1};
+  const uint8_t high[] = {0xb2};
+  const uint8_t low[] = {0xa1};
+  const zc::ArrayPtr<const uint8_t> reversed[] = {high, low};
+  const zc::ArrayPtr<const zc::ArrayPtr<const uint8_t>> emptyRecords;
+  ZC_EXPECT(ImportedSignatureModuleCanonicalCodec::encodeFramed(
+                SignatureViewOrigin::NamespaceImport, source, repeatedDigest(0x22),
+                repeatedDigest(0x33), reversed, emptyRecords, emptyRecords,
+                emptyRecords) == zc::none);
+}
+
+ZC_TEST("CoherenceViewRevision.ReproducesRfc0015V1FramingOracle") {
+  const uint8_t module[] = {0xc3};
+  const uint8_t impl[] = {0xd4};
+  const uint8_t marker[] = {0xe5};
+  const zc::ArrayPtr<const uint8_t> modules[] = {module};
+  const zc::ArrayPtr<const uint8_t> impls[] = {impl};
+  const zc::ArrayPtr<const uint8_t> markers[] = {marker};
+  auto revision = CoherenceViewRevision::computeFramed(repeatedDigest(0x00), repeatedDigest(0x77),
+                                                       modules, impls, markers);
+  ZC_REQUIRE(revision != zc::none);
+  ZC_IF_SOME(value, revision) {
+    ZC_EXPECT(zc::encodeHex(value.digest().bytes()) ==
+              "f14947d682f1992fc62eb0f4688265013138a8749015202e2fbe46817a2d2975"_zc);
+  }
+}
+
+ZC_TEST("CoherenceViewRevision.ReproducesRfc0015ImplIntegrationOracle") {
+  const uint8_t module[] = {0xc3};
+  auto impl = decoded(
+      "a100000000000000317a6f6d2e696d706c2d7061747465726e2e763100a100000000000000"
+      "01110000000008b20000000000000001110000000008b2000000000000000109c309b20000"
+      "000000000001c30000000000000000010000000000000000d4"_zc);
+  const zc::ArrayPtr<const uint8_t> modules[] = {module};
+  const zc::ArrayPtr<const uint8_t> impls[] = {impl.asPtr()};
+  const zc::ArrayPtr<const zc::ArrayPtr<const uint8_t>> emptyRecords;
+  auto revision = CoherenceViewRevision::computeFramed(repeatedDigest(0x00), repeatedDigest(0x77),
+                                                       modules, impls, emptyRecords);
+  ZC_REQUIRE(revision != zc::none);
+  ZC_IF_SOME(value, revision) {
+    ZC_EXPECT(zc::encodeHex(value.digest().bytes()) ==
+              "f71392f504dd043ee1fd476fec8ae1885fe122b1563d91f2c99e27877256cea3"_zc);
+  }
+}
+
+ZC_TEST("CoherenceViewRevision.ReproducesEndToEndPolicyLineageOracle") {
+  auto moduleRecord =
+      decoded("a1701f41323c3e469b94012bfb98191c9b2b68bdd7be4f52697d2178227c37dd9f"_zc);
+  const zc::ArrayPtr<const uint8_t> modules[] = {moduleRecord.asPtr()};
+  const zc::ArrayPtr<const zc::ArrayPtr<const uint8_t>> emptyRecords;
+  auto revision = CoherenceViewRevision::computeFramed(
+      repeatedDigest(0x00),
+      digest("15329853e2faae147a2f5ca73c85a58c4084c70faa3d1faef278c856fd75067b"_zc), modules,
+      emptyRecords, emptyRecords);
+  ZC_REQUIRE(revision != zc::none);
+  ZC_IF_SOME(value, revision) {
+    ZC_EXPECT(zc::encodeHex(value.digest().bytes()) ==
+              "7a76db8d220726a014782b28ced02e9bd5ea64724829798e3e83c6679858d1f5"_zc);
+  }
+}
+
+ZC_TEST("CoherenceViewRevision.BindsEveryV1ParentAndProjection") {
+  const uint8_t module[] = {0xc3};
+  const uint8_t impl[] = {0xd4};
+  const uint8_t marker[] = {0xe5};
+  const uint8_t mutation[] = {0xf6};
+  const zc::ArrayPtr<const uint8_t> modules[] = {module};
+  const zc::ArrayPtr<const uint8_t> impls[] = {impl};
+  const zc::ArrayPtr<const uint8_t> markers[] = {marker};
+  const zc::ArrayPtr<const uint8_t> mutated[] = {mutation};
+  auto baseline = CoherenceViewRevision::computeFramed(repeatedDigest(0x00), repeatedDigest(0x77),
+                                                       modules, impls, markers);
+  ZC_REQUIRE(baseline != zc::none);
+  ZC_IF_SOME(value, baseline) {
+    const auto expectDifferent = [&](const identity::Sha256Digest& context,
+                                     const identity::Sha256Digest& policy,
+                                     zc::ArrayPtr<const zc::ArrayPtr<const uint8_t>> moduleValues,
+                                     zc::ArrayPtr<const zc::ArrayPtr<const uint8_t>> implValues,
+                                     zc::ArrayPtr<const zc::ArrayPtr<const uint8_t>> markerValues) {
+      auto changed = CoherenceViewRevision::computeFramed(context, policy, moduleValues, implValues,
+                                                          markerValues);
+      ZC_REQUIRE(changed != zc::none);
+      ZC_IF_SOME(changedValue, changed) { ZC_EXPECT(changedValue.digest() != value.digest()); }
+    };
+    expectDifferent(repeatedDigest(0x01), repeatedDigest(0x77), modules, impls, markers);
+    expectDifferent(repeatedDigest(0x00), repeatedDigest(0x78), modules, impls, markers);
+    expectDifferent(repeatedDigest(0x00), repeatedDigest(0x77), mutated, impls, markers);
+    expectDifferent(repeatedDigest(0x00), repeatedDigest(0x77), modules, mutated, markers);
+    expectDifferent(repeatedDigest(0x00), repeatedDigest(0x77), modules, impls, mutated);
+  }
+}
+
+ZC_TEST("CrossModuleRevisions.RejectNonCanonicalRecordOrder") {
+  const uint8_t requester[] = {0xa1};
+  const uint8_t high[] = {0xb2};
+  const uint8_t low[] = {0xa1};
+  const zc::ArrayPtr<const uint8_t> reversed[] = {high, low};
+  ZC_EXPECT(ImportedSignatureViewRevision::computeFramed(repeatedDigest(0x00), requester,
+                                                         reversed) == zc::none);
+
+  const zc::ArrayPtr<const uint8_t> empty;
+  const zc::ArrayPtr<const uint8_t> emptyEntry[] = {empty};
+  const zc::ArrayPtr<const zc::ArrayPtr<const uint8_t>> noRecords;
+  ZC_EXPECT(CoherenceViewRevision::computeFramed(repeatedDigest(0x00), repeatedDigest(0x77),
+                                                 reversed, noRecords, noRecords) == zc::none);
+  ZC_EXPECT(CoherenceViewRevision::computeFramed(repeatedDigest(0x00), repeatedDigest(0x77),
+                                                 emptyEntry, noRecords, noRecords) == zc::none);
+}
+
+ZC_TEST("SignatureRootBinding.AcceptsOnlyDefinitionAndSemanticImportIdentities") {
+  auto definitions = tests::makeTestDefinitionIds(2);
+  auto definition = binder::BindingTarget::definition(definitions[0]);
+  auto sameDefinition = binder::BindingTarget::definition(definitions[0]);
+  auto otherDefinition = binder::BindingTarget::definition(definitions[1]);
+  auto semantic = binder::BindingTarget::semanticImport(semanticBinding("local"_zc));
+  auto sameSemantic = semantic.clone();
+  auto otherSemantic = binder::BindingTarget::semanticImport(semanticBinding("other"_zc));
+  auto module = binder::BindingTarget::module(moduleIdentity());
+
+  ZC_EXPECT(module_interface::isSignatureRootBinding(definition));
+  ZC_EXPECT(module_interface::isSignatureRootBinding(semantic));
+  ZC_EXPECT(!module_interface::isSignatureRootBinding(module));
+  ZC_EXPECT(module_interface::sameSignatureRootBinding(definition, sameDefinition));
+  ZC_EXPECT(!module_interface::sameSignatureRootBinding(definition, otherDefinition));
+  ZC_EXPECT(module_interface::sameSignatureRootBinding(semantic, sameSemantic));
+  ZC_EXPECT(!module_interface::sameSignatureRootBinding(semantic, otherSemantic));
+  ZC_EXPECT(!module_interface::sameSignatureRootBinding(definition, semantic));
+
+  ImportedDefinitionBindingSelection selection{semantic.clone(), definitions[0],
+                                               SignatureViewOrigin::ExplicitImport};
+  auto cloned = selection.clone();
+  ZC_EXPECT(module_interface::sameSignatureRootBinding(selection.requesterBinding,
+                                                       cloned.requesterBinding));
+}
+
+}  // namespace zomlang::compiler::checker::cross_module

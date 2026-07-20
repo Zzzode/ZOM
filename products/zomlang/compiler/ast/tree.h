@@ -24,7 +24,6 @@
 #include "zomlang/compiler/ast/generated/node-layout.h"
 #include "zomlang/compiler/ast/kinds.h"
 #include "zomlang/compiler/ast/node-id.h"
-#include "zomlang/compiler/identity/frozen-registry.h"
 #include "zomlang/compiler/source/location.h"
 
 namespace zomlang {
@@ -200,52 +199,6 @@ public:
 
 private:
   Tree tree;
-};
-
-/// \brief Binder/checker side metadata keyed by NodeId.
-class BindingMetadata final {
-public:
-  BindingMetadata() noexcept;
-  ~BindingMetadata() noexcept(false);
-
-  BindingMetadata(BindingMetadata&& other) noexcept;
-  BindingMetadata& operator=(BindingMetadata&& other) noexcept;
-  ZC_DISALLOW_COPY(BindingMetadata);
-
-  void resizeFor(const Tree& tree);
-
-  /// \brief Return whether every metadata side table is sized for the tree.
-  /// \param tree Syntax tree whose node capacity must be covered exactly.
-  /// \return True when all side tables match the tree node count.
-  bool isSizedFor(const Tree& tree) const;
-
-  void setParent(NodeId node, NodeId parent);
-  NodeId parent(NodeId node) const;
-
-  void setScope(NodeId node, uint32_t scopeId);
-  uint32_t scope(NodeId node) const;
-
-  void setDefinition(NodeId node, identity::DefId definition);
-  identity::DefId definition(NodeId node) const;
-
-  void setIsUnresolved(NodeId node, bool value);
-  bool isUnresolved(NodeId node) const;
-
-  void setIsDeferredMember(NodeId node, bool value);
-  bool isDeferredMember(NodeId node) const;
-
-  void setShadowOf(NodeId node, NodeId shadowed);
-  NodeId shadowOf(NodeId node) const;
-
-  void setIsReexport(NodeId node, bool value);
-  bool isReexport(NodeId node) const;
-
-  void setCaptures(NodeId node, NodeList captures);
-  NodeList captures(NodeId node) const;
-
-private:
-  struct Impl;
-  zc::Own<Impl> impl;
 };
 
 }  // namespace ast

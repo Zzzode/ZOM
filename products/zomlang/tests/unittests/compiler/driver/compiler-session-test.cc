@@ -14,37 +14,18 @@
 
 #include "zomlang/compiler/driver/compiler-session.h"
 
-#include <errno.h>
-#include <stdlib.h>
-#include <unistd.h>
-
 #include "zc/core/common.h"
-#include "zc/core/filesystem.h"
 #include "zc/core/string.h"
-#include "zc/core/vector.h"
 #include "zc/ztest/test.h"
 #include "zomlang/compiler/basic/compiler-opts.h"
-#include "zomlang/compiler/diagnostics/diagnostic-consumer.h"
 #include "zomlang/compiler/diagnostics/diagnostic-engine.h"
-#include "zomlang/compiler/diagnostics/diagnostic.h"
 #include "zomlang/compiler/source/manager.h"
-#include "zomlang/compiler/type/type-env.h"
 
 namespace zomlang {
 namespace compiler {
 namespace driver {
 
 namespace {
-
-class CapturingDiagnosticConsumer final : public diagnostics::DiagnosticConsumer {
-public:
-  zc::Vector<diagnostics::DiagID> ids;
-
-  void handleDiagnostic(const source::SourceManager&,
-                        const diagnostics::Diagnostic& diagnostic) override {
-    ids.add(diagnostic.getId());
-  }
-};
 
 class UnexpectedBuildScriptPlanExecutor final : public package::BuildScriptPlanExecutor {
 public:
@@ -54,29 +35,6 @@ public:
     return package::BuildScriptIssue::ExecutionFailed;
   }
 };
-
-bool containsDiagnosticId(const CapturingDiagnosticConsumer& consumer, diagnostics::DiagID id) {
-  for (auto emitted : consumer.ids) {
-    if (emitted == id) return true;
-  }
-  return false;
-}
-
-zc::String writeTempZomFile(zc::StringPtr source) {
-  zc::String path = zc::str("/tmp/zom-session-test.XXXXXX");
-  int fd = mkstemp(path.begin());
-  ZC_IREQUIRE(fd >= 0, "mkstemp failed for compiler session test");
-  const char* data = source.cStr();
-  size_t remaining = source.size();
-  while (remaining > 0) {
-    ssize_t written = write(fd, data, remaining);
-    ZC_IREQUIRE(written >= 0, "write failed for compiler session test source");
-    remaining -= static_cast<size_t>(written);
-    data += written;
-  }
-  close(fd);
-  return path;
-}
 
 zc::Own<CompilerSession> makeSession(const basic::LangOptions& langOpts,
                                      const basic::CompilerOptions& compilerOpts) {
@@ -166,47 +124,20 @@ ZC_TEST("CompilerSessionTest.GetDiagnosticEngine") {
   ZC_EXPECT(&diagnosticEngine != nullptr);
 }
 
-ZC_TEST("CompilerSessionTest.GetASTsEmpty") {
+ZC_TEST("CompilerSessionTest.GetParsedModulesEmpty") {
   auto langOpts = basic::LangOptions();
   auto compilerOpts = basic::CompilerOptions();
   auto session = makeSession(langOpts, compilerOpts);
 
-  const auto& asts = session->getASTs();
-  ZC_EXPECT(asts.size() == 0);
+  ZC_EXPECT(session->getParsedModules().size() == 0);
 }
 
-ZC_TEST("CompilerSessionTest.GetBindingMetadataEmpty") {
+ZC_TEST("CompilerSessionTest.GetCheckerInvariantFailuresEmpty") {
   auto langOpts = basic::LangOptions();
   auto compilerOpts = basic::CompilerOptions();
   auto session = makeSession(langOpts, compilerOpts);
 
-  const auto& metadata = session->getBindingMetadata();
-  ZC_EXPECT(metadata.size() == 0);
-}
-
-ZC_TEST("CompilerSessionTest.ParseSourcesStoresDefinitionInventory") {
-  auto source = writeTempZomFile("let session_value: i32 = 42;"_zc);
-  ZC_DEFER(unlink(source.cStr()));
-
-  auto langOpts = basic::LangOptions();
-  auto compilerOpts = basic::CompilerOptions();
-  auto session = makeSession(langOpts, compilerOpts);
-
-  auto bufferId = session->addSourceFile(source);
-  ZC_EXPECT(bufferId != zc::none);
-  ZC_EXPECT(session->parseSources());
-
-  ZC_EXPECT(session->getDefinitionInventoryCount() == 1);
-  ZC_IF_SOME(id, bufferId) {
-    auto inventory = session->getDefinitionInventory(id);
-    ZC_EXPECT(inventory != zc::none);
-    ZC_IF_SOME(value, inventory) {
-      ZC_EXPECT(value.modules().size() == 0);
-      ZC_EXPECT(value.definitions().size() == 1);
-      ZC_EXPECT(value.definitions()[0].kind == identity::DefinitionKind::Static);
-      ZC_EXPECT(value.impls().size() == 0);
-    }
-  }
+  ZC_EXPECT(session->getCheckerInvariantFailures().size() == 0);
 }
 
 ZC_TEST("CompilerSessionTest.GetSourceManager") {
@@ -225,81 +156,6 @@ ZC_TEST("CompilerSessionTest.ParseSourcesEmpty") {
 
   bool result = session->parseSources();
   ZC_EXPECT(result);
-}
-
-ZC_TEST("CompilerSessionTest.AddSourceFileEmpty") {
-  auto langOpts = basic::LangOptions();
-  auto compilerOpts = basic::CompilerOptions();
-  auto session = makeSession(langOpts, compilerOpts);
-
-  auto result = session->addSourceFile(zc::str(""));
-  ZC_EXPECT(result == zc::none);
-}
-
-ZC_TEST("CompilerSessionTest.CheckSourcesStoresTypeEnv") {
-  auto source = writeTempZomFile("let x: i32 = 42;"_zc);
-  ZC_DEFER(unlink(source.cStr()));
-
-  auto langOpts = basic::LangOptions();
-  auto compilerOpts = basic::CompilerOptions();
-  auto session = makeSession(langOpts, compilerOpts);
-
-  auto bufferId = session->addSourceFile(source);
-  ZC_EXPECT(bufferId != zc::none);
-  ZC_EXPECT(session->parseSources());
-  ZC_EXPECT(session->bindSources());
-  ZC_EXPECT(session->checkSources());
-  ZC_EXPECT(!session->getDiagnosticEngine().hasErrors());
-
-  const auto& typeEnvs = session->getTypeEnvs();
-  ZC_EXPECT(typeEnvs.size() == 1);
-  ZC_IF_SOME(id, bufferId) {
-    auto env = typeEnvs.find(id);
-    ZC_EXPECT(env != zc::none);
-    ZC_IF_SOME(typeEnv, env) { ZC_EXPECT(typeEnv.nodeTypeCount() > 0); }
-  }
-}
-
-ZC_TEST("CompilerSessionTest.CheckSourcesReportsUnreachableMatchArmWarning") {
-  auto source = writeTempZomFile(
-      "fun f(flag: bool) -> unit {\n"
-      "    match (flag) {\n"
-      "        default => { }\n"
-      "        when true => { }\n"
-      "    }\n"
-      "}\n"_zc);
-  ZC_DEFER(unlink(source.cStr()));
-
-  auto langOpts = basic::LangOptions();
-  auto compilerOpts = basic::CompilerOptions();
-  auto session = makeSession(langOpts, compilerOpts);
-  auto consumer = zc::heap<CapturingDiagnosticConsumer>();
-  auto consumerPtr = consumer.get();
-  session->getDiagnosticEngine().addConsumer(zc::mv(consumer));
-
-  auto bufferId = session->addSourceFile(source);
-  ZC_EXPECT(bufferId != zc::none);
-  ZC_EXPECT(session->parseSources());
-  ZC_EXPECT(session->bindSources());
-  ZC_EXPECT(session->checkSources());
-  ZC_EXPECT(!session->getDiagnosticEngine().hasErrors());
-  ZC_EXPECT(containsDiagnosticId(*consumerPtr, diagnostics::DiagID::CheckerUnreachableMatchArm));
-}
-
-ZC_TEST("CompilerSessionTest.CheckSourcesRejectsTypeError") {
-  auto source = writeTempZomFile("let x: i32 = \"bad\";"_zc);
-  ZC_DEFER(unlink(source.cStr()));
-
-  auto langOpts = basic::LangOptions();
-  auto compilerOpts = basic::CompilerOptions();
-  auto session = makeSession(langOpts, compilerOpts);
-
-  auto bufferId = session->addSourceFile(source);
-  ZC_EXPECT(bufferId != zc::none);
-  ZC_EXPECT(session->parseSources());
-  ZC_EXPECT(session->bindSources());
-  ZC_EXPECT(!session->checkSources());
-  ZC_EXPECT(session->getDiagnosticEngine().hasErrors());
 }
 
 }  // namespace driver

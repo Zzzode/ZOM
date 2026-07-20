@@ -1,8 +1,0 @@
-// RUN: cd %corpus && ! %zomc compile --syntax-only 04-expressions/index_non_indexable_neg_21.zom > %t 2>&1
-// RUN: %FileCheck %s --input-file %t
-
-
-// CHECK-LITERAL: Error [ZOM4041]: Cannot index non-array/non-tuple type
-// CHECK-LITERAL:   --> 04-expressions/index_non_indexable_neg_21.zom:1:9
-// CHECK-LITERAL: 1 | let x = 1[0];
-// CHECK-LITERAL:   |         ^

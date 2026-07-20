@@ -21,6 +21,7 @@
 
 namespace zomlang::compiler::identity {
 
+class CanonicalDecoder;
 class CanonicalEncoder;
 
 /// \brief Unique feature names sorted by canonical encoded bytes.
@@ -32,6 +33,9 @@ public:
 
   /// \brief Sorts a feature sequence canonically and rejects duplicate values.
   ZC_NODISCARD static zc::Maybe<SortedFeatureSet> from(zc::Vector<FeatureName>&& input);
+
+  /// \brief Decodes an already sorted, unique, bounded feature sequence.
+  ZC_NODISCARD static zc::Maybe<SortedFeatureSet> decodeCanonical(CanonicalDecoder& decoder);
 
   /// \brief Creates an explicit owned duplicate of this move-only set.
   ZC_NODISCARD SortedFeatureSet clone() const;
@@ -62,6 +66,9 @@ public:
 
   /// \brief Sorts a target-feature sequence canonically and rejects duplicate values.
   ZC_NODISCARD static zc::Maybe<SortedTargetFeatureSet> from(zc::Vector<TargetFeatureName>&& input);
+
+  /// \brief Decodes an already sorted, unique, bounded target-feature sequence.
+  ZC_NODISCARD static zc::Maybe<SortedTargetFeatureSet> decodeCanonical(CanonicalDecoder& decoder);
 
   /// \brief Creates an explicit owned duplicate of this move-only set.
   ZC_NODISCARD SortedTargetFeatureSet clone() const;

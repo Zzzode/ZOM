@@ -1,0 +1,5 @@
+section: "Chapter 03 array type forms"
+covers_rule: "postfixType"
+expected: "REJECT"
+notes:
+  - "Sized postfix array syntax is not part of the type grammar."

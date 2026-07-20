@@ -1,9 +1,0 @@
-// RUN: cd %corpus && ! %zomc compile --syntax-only 05-statements/type_mismatch_initializer_neg_03.zom > %t 2>&1
-// RUN: %FileCheck %s --input-file %t
-
-
-// CHECK-LITERAL: Error [ZOM4009]: Type mismatch: expected i32, got bool
-// CHECK-LITERAL:   --> 05-statements/type_mismatch_initializer_neg_03.zom:1:5
-// CHECK-LITERAL:   |
-// CHECK-LITERAL: 1 | let x: i32 = true;
-// CHECK-LITERAL:   |     ^

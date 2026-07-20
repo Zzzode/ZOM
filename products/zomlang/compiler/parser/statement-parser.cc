@@ -88,7 +88,7 @@ size_t Parser::Impl::findMatchingRightBracket(size_t openIndex, size_t limit) co
 
 size_t Parser::Impl::effectiveStatementStart(size_t start, size_t end) const {
   size_t head = skipOuterAttributePrefix(start, end);
-  while (head < end && isDeclarationModifier(kindAt(head))) { ++head; }
+  while (head < end && isNamedDeclarationModifier(kindAt(head))) { ++head; }
   return head < end ? head : start;
 }
 
@@ -406,7 +406,8 @@ ast::NodeId Parser::Impl::parseBlock(AstFactory& builder, size_t openBrace, size
                 ? parseFunctionDeclaration(builder, itemResult.boundary.nodeStart,
                                            itemResult.boundary.end, true)
                 : parseSourceElementOfKind(builder, itemResult.boundary.nodeStart,
-                                           itemResult.boundary.end, itemResult.boundary.kind);
+                                           itemResult.boundary.end, itemResult.boundary.kind,
+                                           SourceElementContext::Statement);
       }
     }
     const size_t statementEnd = itemResult.boundary.end;
@@ -432,7 +433,8 @@ ast::NodeId Parser::Impl::parseStatementBody(AstFactory& builder, size_t start, 
   if (boundary.nodeStart >= end || boundary.head >= end || boundary.end <= start) {
     return ast::NodeId();
   }
-  return parseSourceElementOfKind(builder, boundary.nodeStart, boundary.end, boundary.kind);
+  return parseSourceElementOfKind(builder, boundary.nodeStart, boundary.end, boundary.kind,
+                                  SourceElementContext::Statement);
 }
 
 ast::NodeId Parser::Impl::parseLetStatement(AstFactory& builder, size_t start, size_t end) const {
@@ -620,7 +622,8 @@ ast::NodeId Parser::Impl::parseForStatement(AstFactory& builder, size_t start, s
     TokenCursor cursor = tokenCursorAt(parts.headerStart);
     const size_t initEnd =
         parts.firstSemi < parts.headerEnd ? parts.firstSemi + 1 : parts.firstSemi;
-    const SourceElementParseResult init = parseSourceElement(builder, cursor, initEnd);
+    const SourceElementParseResult init =
+        parseSourceElement(builder, cursor, initEnd, SourceElementContext::Statement);
     initNode = init.node;
   }
   ast::NodeId cond;
@@ -804,8 +807,7 @@ ast::NodeId Parser::Impl::makeImplIfaceList(AstFactory& builder, size_t start, s
     return ast::NodeId();
   }
 
-  return builder.makeImplIfaceList(rangeFor(start, end), static_cast<uint8_t>(ifaces.size()),
-                                   builder.makeList(ifaces.asPtr()));
+  return builder.makeImplIfaceList(rangeFor(start, end), builder.makeList(ifaces.asPtr()));
 }
 
 ast::NodeId Parser::Impl::parseInterfaceHeritage(AstFactory& builder, size_t headerStart,

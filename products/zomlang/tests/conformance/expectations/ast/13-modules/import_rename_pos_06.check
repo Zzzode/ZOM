@@ -8,6 +8,6 @@
 // CHECK-NEXT:       item:
 // CHECK-NEXT:         ImportDeclaration #2 @1:1..1:22 alias="io"
 // CHECK-NEXT:           path:
-// CHECK-NEXT:             ModulePath #1 @1:8..1:15 segments=["std", "io"]
+// CHECK-NEXT:             ModulePath #1 @1:8..1:15 segments=["std", "io"] root=Relative
 // CHECK-NEXT:           specifiers: []
 // CHECK-NEXT:       attrs: null

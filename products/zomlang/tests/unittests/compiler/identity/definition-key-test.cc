@@ -16,7 +16,6 @@
 
 #include "zc/core/encoding.h"
 #include "zc/ztest/test.h"
-#include "zomlang/compiler/identity/source-snapshot.h"
 
 namespace zomlang::compiler::identity {
 namespace {
@@ -74,7 +73,7 @@ CanonicalTargetSpecificationKey targetSpec() {
 }
 
 CompilationConfigKey compilation() {
-  zc::Maybe<BuildScriptOutputKey> output = BuildScriptOutputKey::from(repeatedDigest(0x11));
+  zc::Maybe<BuildScriptProducerKey> output = BuildScriptProducerKey::from(repeatedDigest(0x11));
   auto value = CompilationConfigKey::from(
       CompilationDomain::Target, targetSpec(),
       SemanticCompilerOptionsKey::from(2026, true, false, false), zc::mv(output));
@@ -89,108 +88,399 @@ CrateKey crate() {
   ZC_FAIL_REQUIRE("invalid crate test input");
 }
 
-CanonicalRelativePath logicalPath() {
-  zc::Vector<CanonicalPathSegment> segments;
-  segments.add(requireScalar<CanonicalPathSegment>("g.zom"_zc));
-  return CanonicalRelativePath::from(zc::mv(segments));
-}
-
-SourceFileKey source(uint8_t contentByte = 0x22) {
-  auto origin = SourceOriginKey::generatedFile(BuildScriptOutputKey::from(repeatedDigest(0x11)),
-                                               logicalPath(), repeatedDigest(contentByte));
-  return SourceFileKey::from(crate(), zc::mv(origin));
-}
-
-ModuleKey module(uint8_t contentByte = 0x22) {
+ModuleKey module() {
   zc::Vector<ModulePathSegment> path;
   path.add(requireScalar<ModulePathSegment>("m"_zc));
-  zc::Maybe<SourceSpan> noAnchor;
-  auto value = ModuleKey::from(crate(), zc::mv(path), source(contentByte), zc::mv(noAnchor));
+  auto value = ModuleKey::from(crate(), zc::mv(path));
   ZC_IF_SOME(admitted, value) { return zc::mv(admitted); }
   ZC_FAIL_REQUIRE("invalid module test input");
 }
 
-SourceSpan span(uint8_t contentByte = 0x22) {
-  auto snapshot =
-      ImmutableSourceSnapshot::from(source(contentByte), zc::heapArray<uint8_t>(1, uint8_t{0}));
-  ZC_IF_SOME(admittedSnapshot, snapshot) {
-    auto value = admittedSnapshot.span(0, 1);
+DeclaredDefinitionName declaredName(zc::StringPtr text) {
+  return requireScalar<DeclaredDefinitionName>(text);
+}
+
+DefinitionKey rawDefinitionKey(uint8_t byte) {
+  uint8_t bytes[32];
+  for (auto& value : bytes) { value = byte; }
+  auto key = DefinitionKey::fromBytes(zc::arrayPtr(bytes));
+  ZC_IF_SOME(admitted, key) { return zc::mv(admitted); }
+  ZC_FAIL_REQUIRE("valid raw definition key was rejected");
+}
+
+ImplKey rawImplKey(uint8_t byte) {
+  uint8_t bytes[32];
+  for (auto& value : bytes) { value = byte; }
+  auto key = ImplKey::fromBytes(zc::arrayPtr(bytes));
+  ZC_IF_SOME(admitted, key) { return zc::mv(admitted); }
+  ZC_FAIL_REQUIRE("valid raw implementation key was rejected");
+}
+
+SemanticIdentifier identifier(zc::StringPtr text) {
+  return requireScalar<SemanticIdentifier>(text);
+}
+
+CanonicalNameReference name(CanonicalNameRoot&& root, zc::StringPtr text) {
+  zc::Vector<SemanticIdentifier> suffix;
+  suffix.add(identifier(text));
+  auto value = CanonicalNameReference::from(zc::mv(root), zc::mv(suffix));
+  ZC_IF_SOME(admitted, value) { return zc::mv(admitted); }
+  ZC_FAIL_REQUIRE("valid canonical name was rejected");
+}
+
+CanonicalHeaderTypeSyntax predefined(PredefinedTypeKind kind) {
+  auto value = CanonicalHeaderTypeSyntax::predefined(kind);
+  ZC_IF_SOME(admitted, value) { return zc::mv(admitted); }
+  ZC_FAIL_REQUIRE("valid predefined type was rejected");
+}
+
+CanonicalTraitReference trait(zc::StringPtr text) {
+  zc::Vector<CanonicalHeaderTypeSyntax> arguments;
+  auto value =
+      CanonicalTraitReference::from(name(CanonicalNameRoot::relative(), text), zc::mv(arguments));
+  ZC_IF_SOME(admitted, value) { return zc::mv(admitted); }
+  ZC_FAIL_REQUIRE("valid canonical trait was rejected");
+}
+
+CanonicalImplHeader implHeader(zc::StringPtr traitName = "Trait"_zc) {
+  zc::Vector<CanonicalGenericParameter> generics;
+  zc::Vector<CanonicalBoundObligation> obligations;
+  auto value = CanonicalImplHeader::from(zc::mv(generics), ImplPolarity::Positive, ImplSafety::Safe,
+                                         trait(traitName), predefined(PredefinedTypeKind::I32),
+                                         zc::mv(obligations));
+  ZC_IF_SOME(admitted, value) { return zc::mv(admitted); }
+  ZC_FAIL_REQUIRE("valid canonical implementation header was rejected");
+}
+
+CanonicalOverloadHeader overloadHeader(CallableHeaderKind kind, zc::StringPtr text) {
+  zc::Maybe<ReceiverShape> receiver;
+  if (kind == CallableHeaderKind::Method) { receiver = ReceiverShape::Shared; }
+  zc::Vector<CanonicalGenericParameter> generics;
+  zc::Vector<CanonicalBoundObligation> obligations;
+  zc::Vector<CanonicalCallableParameter> parameters;
+  auto result = kind == CallableHeaderKind::Constructor ? CanonicalCallableResult::constructorSelf()
+                                                        : CanonicalCallableResult::unit();
+  zc::Maybe<zc::Vector<CanonicalHeaderTypeSyntax>> raises;
+  zc::Maybe<ExternalAbi> externalAbi;
+  auto value = CanonicalOverloadHeader::from(
+      kind, declaredName(text), zc::mv(receiver), zc::mv(generics), zc::mv(obligations),
+      zc::mv(parameters), zc::mv(result), zc::mv(raises), zc::mv(externalAbi));
+  ZC_IF_SOME(admitted, value) { return zc::mv(admitted); }
+  ZC_FAIL_REQUIRE("valid canonical overload header was rejected");
+}
+
+DefinitionIdentityRecord definitionRecord(
+    DefinitionKind kind, zc::StringPtr text,
+    zc::Maybe<OverloadHeaderDigest>&& overloadHeader = zc::none,
+    zc::Vector<EnclosingStableOwnerKey>&& owners = {}) {
+  auto nameSpace = definitionNamespaceFor(kind);
+  ZC_IF_SOME(admittedNamespace, nameSpace) {
+    auto value = DefinitionIdentityRecord::from(module(), zc::mv(owners), kind, admittedNamespace,
+                                                declaredName(text), zc::mv(overloadHeader));
     ZC_IF_SOME(admitted, value) { return zc::mv(admitted); }
   }
-  ZC_FAIL_REQUIRE("invalid source span test input");
+  ZC_FAIL_REQUIRE("valid definition identity record was rejected");
 }
 
-DefinitionNameKey declaredName() {
-  return DefinitionNameKey::declared(requireScalar<DeclaredDefinitionName>("f"_zc));
+DefinitionIdentityRecord callableRecord(DefinitionKind kind, zc::StringPtr text,
+                                        const OverloadHeaderDigest& digest) {
+  zc::Maybe<OverloadHeaderDigest> overloadHeader = digest.clone();
+  return definitionRecord(kind, text, zc::mv(overloadHeader));
 }
 
-DefinitionPathSegment functionSegment(uint8_t contentByte = 0x22) {
-  auto value =
-      DefinitionPathSegment::from(DefinitionKind::Function, declaredName(), span(contentByte), 0);
+DefinitionIdentityAuthority definitionAuthority(DefinitionKind kind, CallableHeaderKind headerKind,
+                                                zc::StringPtr text) {
+  auto overload = OverloadHeaderAuthority::from(overloadHeader(headerKind, text));
+  auto record = callableRecord(kind, text, overload.digest());
+  zc::Maybe<OverloadHeaderAuthority> retained = zc::mv(overload);
+  auto value = DefinitionIdentityAuthority::from(zc::mv(record), zc::mv(retained));
   ZC_IF_SOME(admitted, value) { return zc::mv(admitted); }
-  ZC_FAIL_REQUIRE("invalid definition segment test input");
+  ZC_FAIL_REQUIRE("valid definition identity authority was rejected");
 }
 
-void expectDigest(zc::ArrayPtr<const uint8_t> bytes, zc::StringPtr expected) {
-  auto digest = sha256(bytes);
-  bool matched = false;
-  ZC_IF_SOME(value, digest) {
-    ZC_EXPECT(zc::encodeHex(value.bytes()) == expected);
-    matched = true;
+template <typename Key>
+void expectRawDigestLength() {
+  uint8_t bytes[33] = {};
+  for (size_t index = 0; index < 32; ++index) { bytes[index] = static_cast<uint8_t>(index); }
+  bytes[32] = 0xff;
+  ZC_EXPECT(Key::fromBytes(zc::arrayPtr(bytes, 31)) == zc::none);
+  ZC_EXPECT(Key::fromBytes(zc::arrayPtr(bytes, 33)) == zc::none);
+  auto admitted = Key::fromBytes(zc::arrayPtr(bytes, 32));
+  ZC_REQUIRE(admitted != zc::none);
+  ZC_IF_SOME(value, admitted) {
+    ZC_EXPECT(value.bytes().size() == 32);
+    ZC_EXPECT(value.encode().asPtr() == value.bytes());
+    ZC_EXPECT(value.clone() == value);
   }
-  ZC_EXPECT(matched);
 }
 
 }  // namespace
 
-ZC_TEST("DefinitionKey passes the fixed structural definition codec vector") {
-  zc::Vector<DefinitionPathComponent> path;
-  path.add(DefinitionPathComponent::definition(functionSegment()));
-  auto value = DefinitionKey::from(module(), zc::mv(path));
-  bool matched = false;
-  ZC_IF_SOME(key, value) {
-    auto encoded = key.encode();
-    ZC_EXPECT(encoded.size() == 692);
-    expectDigest(encoded.asPtr(),
-                 "3f9ea55ca0ce091341b59f3cd44b64962e9cf26f4c4e9c19815011a702432ca4"_zc);
-    matched = true;
+ZC_TEST("Definition kinds retain the closed stable namespace partition") {
+  struct StableKind final {
+    DefinitionKind kind;
+    DefinitionNamespace nameSpace;
+  };
+  StableKind stable[] = {
+      {DefinitionKind::ModuleAlias, DefinitionNamespace::Module},
+      {DefinitionKind::Function, DefinitionNamespace::Value},
+      {DefinitionKind::Method, DefinitionNamespace::Value},
+      {DefinitionKind::Constructor, DefinitionNamespace::Value},
+      {DefinitionKind::Destructor, DefinitionNamespace::Value},
+      {DefinitionKind::Class, DefinitionNamespace::Type},
+      {DefinitionKind::Struct, DefinitionNamespace::Type},
+      {DefinitionKind::Interface, DefinitionNamespace::Type},
+      {DefinitionKind::Enum, DefinitionNamespace::Type},
+      {DefinitionKind::Error, DefinitionNamespace::Type},
+      {DefinitionKind::TypeAlias, DefinitionNamespace::Type},
+      {DefinitionKind::AssociatedType, DefinitionNamespace::Type},
+      {DefinitionKind::Field, DefinitionNamespace::Value},
+      {DefinitionKind::EnumVariant, DefinitionNamespace::Value},
+      {DefinitionKind::Constant, DefinitionNamespace::Value},
+      {DefinitionKind::Static, DefinitionNamespace::Value},
+  };
+  for (const auto& entry : stable) {
+    ZC_EXPECT(isDefinitionKindValue(entry.kind));
+    ZC_EXPECT(isStableDefinitionKind(entry.kind));
+    ZC_EXPECT(definitionNamespaceFor(entry.kind) == entry.nameSpace);
   }
-  ZC_EXPECT(matched);
+
+  DefinitionKind subordinateOrLocal[] = {
+      DefinitionKind::Parameter,      DefinitionKind::TypeParameter, DefinitionKind::Local,
+      DefinitionKind::PatternBinding, DefinitionKind::Closure,
+  };
+  for (auto kind : subordinateOrLocal) {
+    ZC_EXPECT(isDefinitionKindValue(kind));
+    ZC_EXPECT(!isStableDefinitionKind(kind));
+    ZC_EXPECT(definitionNamespaceFor(kind) == zc::none);
+  }
+  ZC_EXPECT(!isDefinitionKindValue(static_cast<DefinitionKind>(0x00)));
+  ZC_EXPECT(!isDefinitionKindValue(static_cast<DefinitionKind>(0xff)));
+  ZC_EXPECT(!isStableDefinitionKind(static_cast<DefinitionKind>(0xff)));
 }
 
-ZC_TEST("ImplKey passes the fixed structural implementation codec vector") {
-  zc::Vector<DefinitionPathSegment> parentPath;
-  auto value = ImplKey::from(module(), zc::mv(parentPath), span(), 0);
-  bool matched = false;
-  ZC_IF_SOME(key, value) {
-    auto encoded = key.encode();
-    ZC_EXPECT(encoded.size() == 680);
-    expectDigest(encoded.asPtr(),
-                 "e71d00f88b11b9ee6bd0a5f2196f9c7506fbe28f341733df1e788cc192d23882"_zc);
-    matched = true;
-  }
-  ZC_EXPECT(matched);
+ZC_TEST("DefinitionIdentityRecord passes the complete owner and named-item vectors") {
+  zc::Vector<EnclosingStableOwnerKey> owners;
+  owners.add(EnclosingStableOwnerKey::definition(rawDefinitionKey(0x11)));
+  owners.add(EnclosingStableOwnerKey::implementation(rawImplKey(0x22)));
+  auto record = definitionRecord(DefinitionKind::Class, "C"_zc, zc::none, zc::mv(owners));
+  auto encoded = record.encode();
+  ZC_REQUIRE(module().encode().size() == 171);
+  ZC_EXPECT(encoded.size() == 257);
+  ZC_EXPECT(zc::encodeHex(encoded.asPtr().slice(171)) ==
+            "0000000000000002011111111111111111111111111111111111111111111111111111111111111111"
+            "0222222222222222222222222222222222222222222222222222222222222222220602"
+            "00000000000000014300"_zc);
+  auto key = DefinitionKey::compute(record);
+  ZC_EXPECT(zc::encodeHex(key.bytes()) ==
+            "15a71871a9f441980717fa1fbf37d49edcb5f5499d1a905134bc2dafb55ca9aa"_zc);
 }
 
-ZC_TEST("Definition keys reject malformed kinds paths and source ancestry") {
-  ZC_EXPECT(DefinitionPathSegment::from(static_cast<DefinitionKind>(0xff), declaredName(), span(),
-                                        0) == zc::none);
-  ZC_EXPECT(DefinitionNameKey::anonymous(static_cast<AnonymousDefinitionRole>(0xff)) == zc::none);
+ZC_TEST("ImplIdentityRecord passes the complete owner and implementation-header vectors") {
+  zc::Vector<EnclosingStableOwnerKey> owners;
+  owners.add(EnclosingStableOwnerKey::definition(rawDefinitionKey(0x33)));
+  auto record = ImplIdentityRecord::from(module(), zc::mv(owners), implHeader());
+  auto encoded = record.encode();
+  ZC_REQUIRE(module().encode().size() == 171);
+  ZC_EXPECT(encoded.size() == 262);
+  ZC_EXPECT(zc::encodeHex(encoded.asPtr().slice(171)) ==
+            "0000000000000001013333333333333333333333333333333333333333333333333333333333333333"
+            "0000000000000000010102000000000000000100000000000000055472616974"
+            "000000000000000002030000000000000000"_zc);
+  auto key = ImplKey::compute(record);
+  ZC_EXPECT(zc::encodeHex(key.bytes()) ==
+            "02244f880510deb2036cf2a99e2abddb2f07712804259e9adda063c5c4adfabf"_zc);
+}
 
-  zc::Vector<DefinitionPathComponent> empty;
-  ZC_EXPECT(DefinitionKey::from(module(), zc::mv(empty)) == zc::none);
+ZC_TEST("Stable owner keys encode one closed tag followed by one raw digest") {
+  auto definition = EnclosingStableOwnerKey::definition(rawDefinitionKey(0x44));
+  auto implementation = EnclosingStableOwnerKey::implementation(rawImplKey(0x55));
+  ZC_EXPECT(definition.encode().size() == 33);
+  ZC_EXPECT(implementation.encode().size() == 33);
+  ZC_EXPECT(zc::encodeHex(definition.encode().asPtr()) ==
+            "014444444444444444444444444444444444444444444444444444444444444444"_zc);
+  ZC_EXPECT(zc::encodeHex(implementation.encode().asPtr()) ==
+            "025555555555555555555555555555555555555555555555555555555555555555"_zc);
+  ZC_EXPECT(definition.kind() == EnclosingStableOwnerKind::Definition);
+  ZC_EXPECT(implementation.kind() == EnclosingStableOwnerKind::Implementation);
+  ZC_EXPECT(definition.definitionKey() != zc::none);
+  ZC_EXPECT(definition.implKey() == zc::none);
+  ZC_EXPECT(implementation.definitionKey() == zc::none);
+  ZC_EXPECT(implementation.implKey() != zc::none);
+}
 
-  zc::Vector<DefinitionPathComponent> endsInImpl;
-  endsInImpl.add(DefinitionPathComponent::impl(ImplPathSegment::from(span(), 0)));
-  ZC_EXPECT(DefinitionKey::from(module(), zc::mv(endsInImpl)) == zc::none);
+ZC_TEST("DefinitionIdentityRecord rejects unstable kinds namespace drift and overload drift") {
+  zc::Vector<EnclosingStableOwnerKey> noOwners;
+  zc::Maybe<OverloadHeaderDigest> noOverload;
+  ZC_EXPECT(DefinitionIdentityRecord::from(module(), zc::mv(noOwners), DefinitionKind::Class,
+                                           DefinitionNamespace::Value, declaredName("C"_zc),
+                                           zc::mv(noOverload)) == zc::none);
 
-  zc::Vector<DefinitionPathComponent> wrongSource;
-  wrongSource.add(DefinitionPathComponent::definition(functionSegment(0x33)));
-  ZC_EXPECT(DefinitionKey::from(module(), zc::mv(wrongSource)) == zc::none);
+  DefinitionKind unstable[] = {
+      DefinitionKind::Parameter,      DefinitionKind::TypeParameter, DefinitionKind::Local,
+      DefinitionKind::PatternBinding, DefinitionKind::Closure,
+  };
+  for (auto kind : unstable) {
+    zc::Vector<EnclosingStableOwnerKey> owners;
+    zc::Maybe<OverloadHeaderDigest> overload;
+    ZC_EXPECT(DefinitionIdentityRecord::from(module(), zc::mv(owners), kind,
+                                             DefinitionNamespace::Value, declaredName("x"_zc),
+                                             zc::mv(overload)) == zc::none);
+  }
 
-  zc::Vector<DefinitionPathSegment> wrongImplParent;
-  wrongImplParent.add(functionSegment(0x33));
-  ZC_EXPECT(ImplKey::from(module(), zc::mv(wrongImplParent), span(), 0) == zc::none);
+  auto overload =
+      OverloadHeaderAuthority::from(overloadHeader(CallableHeaderKind::Function, "f"_zc));
+  zc::Vector<EnclosingStableOwnerKey> callableOwners;
+  zc::Maybe<OverloadHeaderDigest> missingOverload;
+  ZC_EXPECT(DefinitionIdentityRecord::from(module(), zc::mv(callableOwners),
+                                           DefinitionKind::Function, DefinitionNamespace::Value,
+                                           declaredName("f"_zc),
+                                           zc::mv(missingOverload)) == zc::none);
+  zc::Vector<EnclosingStableOwnerKey> classOwners;
+  zc::Maybe<OverloadHeaderDigest> unexpectedOverload = overload.digest().clone();
+  ZC_EXPECT(DefinitionIdentityRecord::from(module(), zc::mv(classOwners), DefinitionKind::Class,
+                                           DefinitionNamespace::Type, declaredName("C"_zc),
+                                           zc::mv(unexpectedOverload)) == zc::none);
+}
+
+ZC_TEST("Definition identity authority retains the complete overload equality authority") {
+  auto authority =
+      definitionAuthority(DefinitionKind::Function, CallableHeaderKind::Function, "f"_zc);
+  auto cloned = authority.clone();
+  auto different =
+      definitionAuthority(DefinitionKind::Function, CallableHeaderKind::Function, "g"_zc);
+
+  ZC_EXPECT(authority.verify());
+  ZC_EXPECT(cloned.verify());
+  ZC_EXPECT(different.verify());
+  ZC_EXPECT(authority.key() == cloned.key());
+  ZC_EXPECT(authority.sameRecordAs(cloned));
+  ZC_EXPECT(!authority.sameRecordAs(different));
+  ZC_EXPECT(authority.overloadHeaderAuthority() != zc::none);
+  ZC_IF_SOME(overload, authority.overloadHeaderAuthority()) {
+    ZC_EXPECT(overload.header().name() == "f"_zc);
+    ZC_EXPECT(overload.header().callableKind() == CallableHeaderKind::Function);
+  }
+
+  auto nonCallableRecord = definitionRecord(DefinitionKind::Class, "C"_zc);
+  zc::Maybe<OverloadHeaderAuthority> noOverload;
+  auto nonCallable =
+      DefinitionIdentityAuthority::from(zc::mv(nonCallableRecord), zc::mv(noOverload));
+  ZC_REQUIRE(nonCallable != zc::none);
+  ZC_IF_SOME(value, nonCallable) {
+    ZC_EXPECT(value.verify());
+    ZC_EXPECT(value.overloadHeaderAuthority() == zc::none);
+  }
+}
+
+ZC_TEST("Definition identity authority rejects missing and mismatched overload authorities") {
+  auto function =
+      OverloadHeaderAuthority::from(overloadHeader(CallableHeaderKind::Function, "f"_zc));
+  auto functionDigest = function.digest().clone();
+
+  auto missingRecord = callableRecord(DefinitionKind::Function, "f"_zc, functionDigest);
+  zc::Maybe<OverloadHeaderAuthority> missing;
+  ZC_EXPECT(DefinitionIdentityAuthority::from(zc::mv(missingRecord), zc::mv(missing)) == zc::none);
+
+  auto nonCallableRecord = definitionRecord(DefinitionKind::Class, "C"_zc);
+  zc::Maybe<OverloadHeaderAuthority> unexpected = function.clone();
+  ZC_EXPECT(DefinitionIdentityAuthority::from(zc::mv(nonCallableRecord), zc::mv(unexpected)) ==
+            zc::none);
+
+  auto wrongDigestRecord = callableRecord(DefinitionKind::Function, "f"_zc, functionDigest);
+  zc::Maybe<OverloadHeaderAuthority> wrongDigest =
+      OverloadHeaderAuthority::from(overloadHeader(CallableHeaderKind::Function, "g"_zc));
+  ZC_EXPECT(DefinitionIdentityAuthority::from(zc::mv(wrongDigestRecord), zc::mv(wrongDigest)) ==
+            zc::none);
+
+  auto wrongNameRecord = callableRecord(DefinitionKind::Function, "g"_zc, functionDigest);
+  zc::Maybe<OverloadHeaderAuthority> wrongName = function.clone();
+  ZC_EXPECT(DefinitionIdentityAuthority::from(zc::mv(wrongNameRecord), zc::mv(wrongName)) ==
+            zc::none);
+
+  auto wrongKindRecord = callableRecord(DefinitionKind::Method, "f"_zc, functionDigest);
+  zc::Maybe<OverloadHeaderAuthority> wrongKind = function.clone();
+  ZC_EXPECT(DefinitionIdentityAuthority::from(zc::mv(wrongKindRecord), zc::mv(wrongKind)) ==
+            zc::none);
+}
+
+ZC_TEST("Generic parameter identities pass the exact subordinate record and digest vectors") {
+  auto record = GenericParameterIdentityRecord::type(
+      StableGenericParameterOwnerKey::definition(rawDefinitionKey(0x44)), 7);
+  ZC_EXPECT(record.kind() == GenericParameterKind::Type);
+  ZC_EXPECT(record.ordinal() == 7);
+  ZC_EXPECT(record.owner().kind() == StableGenericParameterOwnerKind::Definition);
+  ZC_EXPECT(record.encode().size() == 38);
+  ZC_EXPECT(zc::encodeHex(record.encode().asPtr()) ==
+            "0144444444444444444444444444444444444444444444444444444444444444440100000007"_zc);
+  auto key = GenericParameterKey::compute(record);
+  ZC_EXPECT(zc::encodeHex(key.bytes()) ==
+            "8c8a613fe2a771b2ab935f16f81ffa03cc4797928e4ac40680c7c21fe8dcb0a3"_zc);
+
+  auto authority = GenericParameterAuthority::from(zc::mv(record));
+  auto cloned = authority.clone();
+  auto different = GenericParameterAuthority::from(GenericParameterIdentityRecord::type(
+      StableGenericParameterOwnerKey::definition(rawDefinitionKey(0x44)), 8));
+  ZC_EXPECT(authority.verify());
+  ZC_EXPECT(cloned.verify());
+  ZC_EXPECT(authority.sameRecordAs(cloned));
+  ZC_EXPECT(!authority.sameRecordAs(different));
+}
+
+ZC_TEST("Callable parameter identities distinguish receiver from ordinary position vectors") {
+  auto receiver = CallableParameterIdentityRecord::from(rawDefinitionKey(0x66),
+                                                        CallableParameterPosition::receiver());
+  auto ordinary = CallableParameterIdentityRecord::from(rawDefinitionKey(0x66),
+                                                        CallableParameterPosition::ordinary(7));
+  ZC_EXPECT(receiver.position().kind() == CallableParameterPositionKind::Receiver);
+  ZC_EXPECT(receiver.position().ordinal() == zc::none);
+  ZC_EXPECT(ordinary.position().kind() == CallableParameterPositionKind::Ordinary);
+  ZC_EXPECT(ordinary.position().ordinal() == 7);
+  ZC_EXPECT(receiver.encode().size() == 33);
+  ZC_EXPECT(ordinary.encode().size() == 37);
+  ZC_EXPECT(zc::encodeHex(receiver.encode().asPtr()) ==
+            "666666666666666666666666666666666666666666666666666666666666666601"_zc);
+  ZC_EXPECT(zc::encodeHex(ordinary.encode().asPtr()) ==
+            "66666666666666666666666666666666666666666666666666666666666666660200000007"_zc);
+  auto receiverKey = CallableParameterKey::compute(receiver);
+  auto ordinaryKey = CallableParameterKey::compute(ordinary);
+  ZC_EXPECT(zc::encodeHex(receiverKey.bytes()) ==
+            "4593a2026b87a722bffc8420ae5ba5304aff5f1af98f33e70bb13278b79a7877"_zc);
+  ZC_EXPECT(zc::encodeHex(ordinaryKey.bytes()) ==
+            "733a7748739f9a60bf53bae5fa768c49fce28a04b86a2bd058219dfdbe08fb0d"_zc);
+  ZC_EXPECT(receiverKey != ordinaryKey);
+
+  auto authority = CallableParameterAuthority::from(zc::mv(receiver));
+  auto cloned = authority.clone();
+  auto different = CallableParameterAuthority::from(zc::mv(ordinary));
+  ZC_EXPECT(authority.verify());
+  ZC_EXPECT(cloned.verify());
+  ZC_EXPECT(authority.sameRecordAs(cloned));
+  ZC_EXPECT(!authority.sameRecordAs(different));
+}
+
+ZC_TEST("All RFC 0018 raw digest key families admit exactly thirty-two bytes") {
+  expectRawDigestLength<DefinitionKey>();
+  expectRawDigestLength<ImplKey>();
+  expectRawDigestLength<GenericParameterKey>();
+  expectRawDigestLength<CallableParameterKey>();
+}
+
+ZC_TEST("Implementation identity authority verifies clones and compares complete records") {
+  zc::Vector<EnclosingStableOwnerKey> owners;
+  auto authority = ImplIdentityAuthority::from(
+      ImplIdentityRecord::from(module(), zc::mv(owners), implHeader("Trait"_zc)));
+  auto cloned = authority.clone();
+  zc::Vector<EnclosingStableOwnerKey> differentOwners;
+  auto different = ImplIdentityAuthority::from(
+      ImplIdentityRecord::from(module(), zc::mv(differentOwners), implHeader("Other"_zc)));
+
+  ZC_EXPECT(authority.verify());
+  ZC_EXPECT(cloned.verify());
+  ZC_EXPECT(different.verify());
+  ZC_EXPECT(authority.key() == cloned.key());
+  ZC_EXPECT(authority.sameRecordAs(cloned));
+  ZC_EXPECT(!authority.sameRecordAs(different));
 }
 
 }  // namespace zomlang::compiler::identity

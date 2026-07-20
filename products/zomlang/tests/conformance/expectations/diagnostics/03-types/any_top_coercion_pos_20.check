@@ -1,5 +1,0 @@
-// RUN: cd %corpus && %zomc compile --syntax-only 03-types/any_top_coercion_pos_20.zom > %t 2>&1
-// RUN: %FileCheck %s --input-file %t
-
-
-// CHECK-LITERAL: Syntax check completed successfully.

@@ -1,5 +1,0 @@
-// RUN: cd %corpus && %zomc compile --syntax-only 04-expressions/operator_trait_add_pos_10.zom > %t 2>&1
-// RUN: %FileCheck %s --input-file %t
-
-
-// CHECK-LITERAL: Syntax check completed successfully.

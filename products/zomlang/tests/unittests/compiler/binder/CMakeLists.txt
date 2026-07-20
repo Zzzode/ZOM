@@ -1,14 +1,27 @@
-add_ztest_unit_test("binder-test" "binder-test.cc" LIBRARIES binder identity diagnostics symbol lexer ast source basic)
-add_ztest_unit_test("binding-diagnostic-adapter-test" "binding-diagnostic-adapter-test.cc" LIBRARIES binder identity diagnostics symbol lexer ast source basic)
-add_ztest_unit_test("binding-input-test" "binding-input-test.cc" LIBRARIES binder parser trace identity diagnostics symbol lexer ast source basic)
+add_ztest_unit_test("binding-diagnostic-adapter-test" "binding-diagnostic-adapter-test.cc" LIBRARIES binder identity diagnostics lexer ast source basic)
+add_ztest_unit_test("binding-input-test" "binding-input-test.cc" LIBRARIES driver query binder parser trace identity diagnostics lexer ast source basic)
+add_ztest_unit_test("canonical-definition-header-producer-test" "canonical-definition-header-producer-test.cc" LIBRARIES binder identity diagnostics lexer ast source basic)
+add_ztest_unit_test("canonical-header-type-producer-test" "canonical-header-type-producer-test.cc" LIBRARIES binder identity diagnostics lexer ast source basic)
+add_ztest_unit_test("canonical-impl-header-producer-test" "canonical-impl-header-producer-test.cc" LIBRARIES binder identity diagnostics lexer ast source basic)
+target_sources(binding-input-test PRIVATE
+  binding-closure-oracle.cc
+  binding-context-oracle.cc
+  binding-control-oracle.cc
+  binding-differential-oracle.cc
+  binding-explicit-capture-oracle.cc)
 add_test(NAME binder-architecture
-  COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/check-binder-architecture.py --check)
+  COMMAND "${Python3_EXECUTABLE}" ${CMAKE_SOURCE_DIR}/scripts/check-binder-architecture.py --check)
 set_tests_properties(binder-architecture PROPERTIES LABELS "binding;architecture")
 add_test(NAME binder-architecture-negative
-  COMMAND python3 ${CMAKE_SOURCE_DIR}/scripts/check-binder-architecture.py --self-test)
+  COMMAND "${Python3_EXECUTABLE}" ${CMAKE_SOURCE_DIR}/scripts/check-binder-architecture.py --self-test)
 set_tests_properties(binder-architecture-negative PROPERTIES LABELS "binding;architecture")
-add_ztest_unit_test("decl-collector-test" "decl-collector-test.cc" LIBRARIES binder identity diagnostics symbol lexer ast source basic)
-add_ztest_unit_test("definition-inventory-test" "definition-inventory-test.cc" LIBRARIES binder identity diagnostics symbol lexer ast source basic)
-add_ztest_unit_test("frozen-definition-inventory-test" "frozen-definition-inventory-test.cc" LIBRARIES binder parser trace identity diagnostics symbol lexer ast source basic)
-add_ztest_unit_test("name-resolver-test" "name-resolver-test.cc" LIBRARIES binder identity diagnostics symbol lexer ast source basic)
-add_ztest_unit_test("import-resolver-test" "import-resolver-test.cc" LIBRARIES binder identity diagnostics symbol lexer ast source basic)
+add_test(NAME binder-fact-schema
+  COMMAND "${Python3_EXECUTABLE}" ${CMAKE_SOURCE_DIR}/scripts/check-binder-fact-schema.py --check)
+set_tests_properties(binder-fact-schema PROPERTIES LABELS "binding;architecture")
+add_ztest_unit_test("definition-inventory-test" "definition-inventory-test.cc" LIBRARIES binder identity diagnostics lexer ast source basic)
+add_ztest_unit_test("frozen-definition-inventory-test" "frozen-definition-inventory-test.cc" LIBRARIES binder parser trace identity diagnostics lexer ast source basic)
+add_ztest_unit_test("import-binding-test" "import-binding-test.cc" LIBRARIES binder identity diagnostics lexer ast source basic)
+add_ztest_unit_test("identity-pre-admission-test" "identity-pre-admission-test.cc" LIBRARIES binder identity diagnostics lexer ast source basic)
+add_ztest_unit_test("local-identity-test" "local-identity-test.cc" LIBRARIES binder identity diagnostics lexer ast source basic)
+add_ztest_unit_test("module-dependency-requests-test" "module-dependency-requests-test.cc" LIBRARIES binder parser trace identity diagnostics lexer ast source basic)
+add_ztest_unit_test("module-body-syntax-test" "module-body-syntax-test.cc" LIBRARIES binder parser trace identity diagnostics lexer ast source basic)

@@ -15,28 +15,29 @@
 // IR emission diagnostics. ZOM6000-ZOM6999 are user-facing lowering and
 // backend capability diagnostics. ZOM9900-ZOM9999 are compiler invariants.
 
-DIAG(6001, IrUnsupportedSourceShape, kError,
-     "IR emission does not support this checked source shape", 0)
-DIAG(6002, IrUnsupportedExpression, kError, "IR emission does not support this checked expression",
-     0)
-DIAG(6003, IrUnknownTargetLayout, kError, "IR emission cannot determine the selected target layout",
-     0)
-DIAG(6004, IrCrossSourceCallUnsupported, kError,
-     "IR emission does not support a call target outside the current source", 0)
-DIAG(6005, IrSingleSourceRequired, kError, "IR emission currently requires exactly one source", 0)
 DIAG(6006, PanicUnwindUnsupported, kError,
      "The selected runtime and target do not support panic unwinding", 0)
 DIAG(6007, BinaryEmissionUnavailable, kError, "Binary emission is not implemented", 0)
 DIAG(6008, IrOutputCreationFailed, kError, "IR emission could not create its output stream", 0)
 DIAG(6009, TargetCapabilityUnavailable, kError,
      "The selected target does not support the required compiler operation", 0)
-DIAG(9901, IrLoweringInvariantViolation, kFatal,
-     "Internal IR lowering invariant violated (phase={0}, kind={1}, node={2})", 3)
-DIAG(9902, IrCheckedInputMissing, kFatal,
-     "IR emission did not receive the required checked compiler state", 0)
-DIAG(9903, IrDumpInvariantViolation, kFatal,
-     "Internal IR dump invariant violated (site={0}, kind={1}, definition={2}, block={3}, value={4}, "
-     "type={5}, index={6})",
-     7)
+DIAG(6010, RecursiveInstantiation, kError,
+     "Generic instantiation is recursively expanding", 0)
+DIAG(6011, InstantiationBudgetExceeded, kError,
+     "Generic instantiation exceeds the configured compiler limit", 0)
+DIAG(9942, CheckedModuleInvariant, kFatal,
+     "Internal checked-module invariant violated ({0} occurrence(s))", 1)
+DIAG(9943, HirInvariant, kFatal, "Internal HIR invariant violated ({0} occurrence(s))", 1)
+DIAG(9944, BuiltMirInvariant, kFatal,
+     "Internal Built MIR invariant violated ({0} occurrence(s))", 1)
+DIAG(9945, OwnershipProofInvariant, kFatal,
+     "Internal ownership proof invariant violated ({0} occurrence(s))", 1)
+DIAG(9946, ExecutableMirInvariant, kFatal,
+     "Internal executable MIR invariant violated ({0} occurrence(s))", 1)
 DIAG(9947, LirInvariant, kFatal, "Internal LIR invariant violated ({0} occurrence(s))", 1)
-DIAG(9949, IrCanonicalCodecMismatch, kFatal, "Canonical IR codec verification failed", 0)
+DIAG(9948, BackendInvariant, kFatal,
+     "Internal backend invariant violated ({0} occurrence(s))", 1)
+DIAG(9949, IrCanonicalCodecMismatch, kFatal,
+     "Internal IR canonical encoding is invalid ({0} occurrence(s))", 1)
+DIAG(9955, FeatureBoundaryInvariant, kFatal,
+     "Internal feature-boundary invariant violated ({0} occurrence(s))", 1)

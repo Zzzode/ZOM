@@ -1,9 +1,0 @@
-// RUN: cd %corpus && ! %zomc compile --syntax-only 03-types/dyn_duplicate_associated_type_binding_neg_31.zom > %t 2>&1
-// RUN: %FileCheck %s --input-file %t
-
-
-// CHECK-LITERAL: Error [ZOM4055]: Duplicate associated type binding 'Item' in dyn interface 'Iterator'
-// CHECK-LITERAL:   --> 03-types/dyn_duplicate_associated_type_binding_neg_31.zom:5:13
-// CHECK-LITERAL:   |
-// CHECK-LITERAL: 5 | let it: dyn Iterator<Item = u8, Item = str>;
-// CHECK-LITERAL:   |             ^

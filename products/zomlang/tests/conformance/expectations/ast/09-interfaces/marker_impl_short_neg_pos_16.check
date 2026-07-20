@@ -25,8 +25,6 @@
 // CHECK-NEXT:           for_ty:
 // CHECK-NEXT:             NamedTypeExpr #7 @5:18..5:21
 // CHECK-NEXT:               path:
-// CHECK-NEXT:                 ModulePath #6 @5:18..5:21 segments=["Box"]
+// CHECK-NEXT:                 ModulePath #6 @5:18..5:21 segments=["Box"] root=Relative
 // CHECK-NEXT:               args: []
-// CHECK-NEXT:           where_: null
-// CHECK-NEXT:           type_params_id: null
 // CHECK-NEXT:       attrs: null

@@ -1,0 +1,13 @@
+// RUN: ! %zomc compile --dump-ast %corpus/04-expressions/spaced_optional_index_reject_neg_64.zom 2>&1 | %FileCheck %s
+
+
+// CHECK-LITERAL: Error [ZOM2025]: Expected ':'
+// CHECK-LITERAL:   --> conformance/spaced_optional_index_reject_neg_64.zom:1:30
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 1 | let element = value ? [index];
+// CHECK-LITERAL:   |                              ^
+// CHECK-LITERAL: Error [ZOM2056]: Expression expected
+// CHECK-LITERAL:   --> conformance/spaced_optional_index_reject_neg_64.zom:1:15
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 1 | let element = value ? [index];
+// CHECK-LITERAL:   |               ^

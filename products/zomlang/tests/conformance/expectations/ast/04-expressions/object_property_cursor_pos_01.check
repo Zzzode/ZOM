@@ -56,7 +56,7 @@
 // CHECK-NEXT:                       ty:
 // CHECK-NEXT:                         NamedTypeExpr #20 @3:20..3:32
 // CHECK-NEXT:                           path:
-// CHECK-NEXT:                             ModulePath #19 @3:20..3:32 segments=["CursorObject"]
+// CHECK-NEXT:                             ModulePath #19 @3:20..3:32 segments=["CursorObject"] root=Relative
 // CHECK-NEXT:                           args: []
 // CHECK-NEXT:                       properties:
 // CHECK-NEXT:                         ObjectProperty #25 @4:3..4:20 name="first" short_form=false
@@ -74,7 +74,7 @@
 // CHECK-NEXT:                               ty:
 // CHECK-NEXT:                                 NamedTypeExpr #28 @5:11..5:16
 // CHECK-NEXT:                                   path:
-// CHECK-NEXT:                                     ModulePath #27 @5:11..5:16 segments=["Point"]
+// CHECK-NEXT:                                     ModulePath #27 @5:11..5:16 segments=["Point"] root=Relative
 // CHECK-NEXT:                                   args: []
 // CHECK-NEXT:                               properties:
 // CHECK-NEXT:                                 ObjectProperty #33 @6:5..6:18 name="x" short_form=false
@@ -94,11 +94,11 @@
 // CHECK-NEXT:                                       type_args:
 // CHECK-NEXT:                                         NamedTypeExpr #36 @7:13..7:14
 // CHECK-NEXT:                                           path:
-// CHECK-NEXT:                                             ModulePath #35 @7:13..7:14 segments=["A"]
+// CHECK-NEXT:                                             ModulePath #35 @7:13..7:14 segments=["A"] root=Relative
 // CHECK-NEXT:                                           args: []
 // CHECK-NEXT:                                         NamedTypeExpr #38 @7:16..7:17
 // CHECK-NEXT:                                           path:
-// CHECK-NEXT:                                             ModulePath #37 @7:16..7:17 segments=["B"]
+// CHECK-NEXT:                                             ModulePath #37 @7:16..7:17 segments=["B"] root=Relative
 // CHECK-NEXT:                                           args: []
 // CHECK-NEXT:                                       args:
 // CHECK-NEXT:                                         IdentExpr #39 @7:19..7:20 name="x"
@@ -111,11 +111,11 @@
 // CHECK-NEXT:                               type_args:
 // CHECK-NEXT:                                 NamedTypeExpr #47 @9:15..9:16
 // CHECK-NEXT:                                   path:
-// CHECK-NEXT:                                     ModulePath #46 @9:15..9:16 segments=["C"]
+// CHECK-NEXT:                                     ModulePath #46 @9:15..9:16 segments=["C"] root=Relative
 // CHECK-NEXT:                                   args: []
 // CHECK-NEXT:                                 NamedTypeExpr #49 @9:18..9:19
 // CHECK-NEXT:                                   path:
-// CHECK-NEXT:                                     ModulePath #48 @9:18..9:19 segments=["D"]
+// CHECK-NEXT:                                     ModulePath #48 @9:18..9:19 segments=["D"] root=Relative
 // CHECK-NEXT:                                   args: []
 // CHECK-NEXT:                               args:
 // CHECK-NEXT:                                 IdentExpr #50 @9:21..9:22 name="e"

@@ -2,12 +2,12 @@
 
 
 // CHECK-LITERAL: Error [ZOM2077]: Identifier expected
-// CHECK:   --> products {{(?:.*[/\\])?range_reject_neg_02\.zom:1:12$}}
+// CHECK-LITERAL:   --> conformance/range_reject_neg_02.zom:1:12
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 1 | let x = a ..< b;
 // CHECK-LITERAL:   |            ^
 // CHECK-LITERAL: Error [ZOM2056]: Expression expected
-// CHECK:   --> products {{(?:.*[/\\])?range_reject_neg_02\.zom:1:9$}}
+// CHECK-LITERAL:   --> conformance/range_reject_neg_02.zom:1:9
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 1 | let x = a ..< b;
 // CHECK-LITERAL:   |         ^

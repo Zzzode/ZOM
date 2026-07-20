@@ -15,6 +15,8 @@
 #include "zomlang/compiler/type/semantic-type-key.h"
 
 #include "zc/core/vector.h"
+#include "zomlang/compiler/identity/canonical-encoder.h"
+#include "zomlang/compiler/type/semantic-type-store.h"
 
 namespace zomlang::compiler::type::semantic {
 namespace {
@@ -45,22 +47,110 @@ bool validPresence(FieldPresence value) {
   return value == FieldPresence::Required || value == FieldPresence::Optional;
 }
 
-class Encoder final {
+enum class DefinitionRole : uint8_t { Nominal, Interface, AssociatedType };
+
+bool definitionKindMatches(identity::DefinitionKind kind, DefinitionRole role) {
+  switch (role) {
+    case DefinitionRole::Nominal:
+      return kind == identity::DefinitionKind::Class || kind == identity::DefinitionKind::Struct ||
+             kind == identity::DefinitionKind::Enum || kind == identity::DefinitionKind::Error;
+    case DefinitionRole::Interface:
+      return kind == identity::DefinitionKind::Interface;
+    case DefinitionRole::AssociatedType:
+      return kind == identity::DefinitionKind::AssociatedType;
+  }
+  ZC_UNREACHABLE
+}
+
+identity::IdentityInvariantKind invariantKind(identity::FrozenRegistryFailure failure) {
+  switch (failure) {
+    case identity::FrozenRegistryFailure::InvalidContext:
+    case identity::FrozenRegistryFailure::InvalidHandle:
+      return identity::IdentityInvariantKind::InvalidHandle;
+    case identity::FrozenRegistryFailure::ForeignContext:
+      return identity::IdentityInvariantKind::ForeignContext;
+    case identity::FrozenRegistryFailure::SlotOutOfRange:
+      return identity::IdentityInvariantKind::SlotOutOfRange;
+    case identity::FrozenRegistryFailure::DuplicateCanonicalKey:
+      return identity::IdentityInvariantKind::DuplicateCanonicalKey;
+    case identity::FrozenRegistryFailure::DigestCollision:
+      return identity::IdentityInvariantKind::DigestCollision;
+    case identity::FrozenRegistryFailure::InvalidAuthority:
+      return identity::IdentityInvariantKind::InvalidClosedValue;
+    case identity::FrozenRegistryFailure::PostFreezeMutation:
+      return identity::IdentityInvariantKind::PostFreezeMutation;
+    case identity::FrozenRegistryFailure::UnknownOwner:
+    case identity::FrozenRegistryFailure::OwnerModuleMismatch:
+    case identity::FrozenRegistryFailure::OwnerPrefixMismatch:
+    case identity::FrozenRegistryFailure::RepeatedOwner:
+    case identity::FrozenRegistryFailure::SelfOwner:
+    case identity::FrozenRegistryFailure::AncestorMismatch:
+    case identity::FrozenRegistryFailure::RegistryNotFrozen:
+      return identity::IdentityInvariantKind::AncestorMismatch;
+    case identity::FrozenRegistryFailure::None:
+      break;
+  }
+  ZC_UNREACHABLE
+}
+
+struct AdmissionFailure final {
+  identity::IdentityInvariantKind kind;
+  identity::IdentityAllocationPhase phase;
+};
+
+}  // namespace
+
+class StoreBoundTypeEncoder final {
 public:
-  explicit Encoder(const SemanticTypeKeyResolver& resolver) : resolver(resolver) {}
+  explicit StoreBoundTypeEncoder(const SemanticTypeStore& store) : store(store) {}
+
+  zc::Maybe<SemanticTypeKey> encodeKey(const TypeData& data) {
+    identity::CanonicalEncoder output;
+    append(output, "zom.semantic-type-key.v1"_zc.asBytes());
+    output.encodeUint8(0x00);
+    if (!encode(output, data)) return zc::none;
+    return SemanticTypeKey(output.finish());
+  }
+
+  AdmissionFailure rejection() const noexcept {
+    ZC_IF_SOME(value, failure) { return value; }
+    return AdmissionFailure{identity::IdentityInvariantKind::InvalidClosedValue,
+                            identity::IdentityAllocationPhase::SemanticType};
+  }
+
+private:
+  void reject(identity::IdentityInvariantKind kind, identity::IdentityAllocationPhase phase) {
+    if (failure == zc::none) { failure = AdmissionFailure{kind, phase}; }
+  }
+
+  void reject(identity::FrozenRegistryFailure value, identity::IdentityAllocationPhase phase) {
+    if (value != identity::FrozenRegistryFailure::None) { reject(invariantKind(value), phase); }
+  }
+
+  bool rejectClosedValue() {
+    reject(identity::IdentityInvariantKind::InvalidClosedValue,
+           identity::IdentityAllocationPhase::SemanticType);
+    return false;
+  }
+
+  bool rejectNonCanonical() {
+    reject(identity::IdentityInvariantKind::NonCanonicalEncoding,
+           identity::IdentityAllocationPhase::SemanticType);
+    return false;
+  }
 
   bool encode(identity::CanonicalEncoder& output, const TypeData& data) {
     output.encodeUint8(static_cast<uint8_t>(data.tag()));
     switch (data.tag()) {
       case TypeDataTag::Primitive: {
         const auto kind = data.get<PrimitiveTypeData>().kind;
-        if (!validPrimitive(kind)) return false;
+        if (!validPrimitive(kind)) return rejectClosedValue();
         output.encodeUint8(static_cast<uint8_t>(kind));
         return true;
       }
       case TypeDataTag::Tuple: {
         const auto& values = data.get<TupleTypeData>().elements;
-        return values.size() >= 2 && encodeTypes(output, values.asPtr());
+        return values.size() >= 2 ? encodeTypes(output, values.asPtr()) : rejectClosedValue();
       }
       case TypeDataTag::Object:
         return encodeObject(output, data.get<ObjectTypeData>());
@@ -78,11 +168,19 @@ public:
         return encodeFunction(output, data.get<FunctionTypeData>());
       case TypeDataTag::Nominal: {
         const auto& value = data.get<NominalTypeData>();
-        return encodeDefinition(output, value.definition) &&
+        return encodeDefinition(output, value.definition, DefinitionRole::Nominal) &&
                encodeTypes(output, value.arguments.asPtr());
       }
-      case TypeDataTag::TypeParameter:
-        return encodeDefinition(output, data.get<TypeParameterTypeData>().parameter);
+      case TypeDataTag::TypeParameter: {
+        const auto& parameter = data.get<TypeParameterTypeData>().parameter;
+        const auto validation = store.validateGenericParameterForAdmission(parameter);
+        if (validation != identity::FrozenRegistryFailure::None) {
+          reject(validation, identity::IdentityAllocationPhase::GenericParameter);
+          return false;
+        }
+        parameter.encode(output);
+        return true;
+      }
       case TypeDataTag::Union:
         return encodeSet(output, data.get<UnionTypeData>().alternatives.asPtr(), true);
       case TypeDataTag::Intersection:
@@ -100,23 +198,38 @@ public:
       case TypeDataTag::InterfaceBound:
         return encodeInterface(output, data.get<InterfaceBoundTypeData>().interface);
       case TypeDataTag::InterfaceSelf:
-        return encodeDefinition(output, data.get<InterfaceSelfTypeData>().interface);
+        return encodeDefinition(output, data.get<InterfaceSelfTypeData>().interface,
+                                DefinitionRole::Interface);
     }
-    return false;
+    return rejectClosedValue();
   }
 
-private:
-  zc::Maybe<zc::Array<uint8_t>> definitionBytes(identity::DefId id) const {
-    if (!id.isValid()) return zc::none;
-    identity::CanonicalEncoder output;
-    if (!resolver.encodeDefinition(output, id)) return zc::none;
-    auto bytes = output.finish();
-    if (bytes.size() == 0) return zc::none;
-    return bytes;
+  zc::Maybe<zc::Array<uint8_t>> definitionBytes(identity::DefId id, DefinitionRole role) {
+    const auto validation = store.validateDefinitionForAdmission(id);
+    if (validation != identity::FrozenRegistryFailure::None) {
+      reject(validation, identity::IdentityAllocationPhase::Definition);
+      return zc::none;
+    }
+    ZC_IF_SOME(record, store.definitionRecordForAdmission(id)) {
+      if (!definitionKindMatches(record.kind(), role)) {
+        reject(identity::IdentityInvariantKind::InvalidClosedValue,
+               identity::IdentityAllocationPhase::SemanticType);
+        return zc::none;
+      }
+      ZC_IF_SOME(key, store.definitionKeyForAdmission(id)) {
+        identity::CanonicalEncoder output;
+        key.encode(output);
+        return output.finish();
+      }
+    }
+    reject(identity::IdentityInvariantKind::InvalidHandle,
+           identity::IdentityAllocationPhase::Definition);
+    return zc::none;
   }
 
-  bool encodeDefinition(identity::CanonicalEncoder& output, identity::DefId id) const {
-    ZC_IF_SOME(bytes, definitionBytes(id)) {
+  bool encodeDefinition(identity::CanonicalEncoder& output, identity::DefId id,
+                        DefinitionRole role) {
+    ZC_IF_SOME(bytes, definitionBytes(id, role)) {
       append(output, bytes.asPtr());
       return true;
     }
@@ -124,16 +237,27 @@ private:
   }
 
   zc::Maybe<zc::Array<uint8_t>> typeBytes(identity::SemanticTypeId id) {
-    if (!id.isValid()) return zc::none;
-    for (const auto activeId : active) {
-      if (activeId == id) return zc::none;
+    const auto validation = store.validateTypeForAdmission(id);
+    if (validation != identity::FrozenRegistryFailure::None) {
+      reject(validation, identity::IdentityAllocationPhase::SemanticType);
+      return zc::none;
     }
-    ZC_IF_SOME(data, resolver.resolve(id)) {
+    for (const auto activeId : active) {
+      if (activeId == id) {
+        rejectNonCanonical();
+        return zc::none;
+      }
+    }
+    ZC_IF_SOME(data, store.typeDataForAdmission(id)) {
       active.add(id);
       identity::CanonicalEncoder output;
       const auto valid = encode(output, data);
       active.removeLast();
       if (valid) return output.finish();
+    }
+    if (failure == zc::none) {
+      reject(identity::IdentityInvariantKind::InvalidHandle,
+             identity::IdentityAllocationPhase::SemanticType);
     }
     return zc::none;
   }
@@ -157,31 +281,33 @@ private:
 
   bool encodeSet(identity::CanonicalEncoder& output,
                  zc::ArrayPtr<const identity::SemanticTypeId> values, bool isUnion) {
-    if (values.size() < 2) return false;
+    if (values.size() < 2) return rejectClosedValue();
     zc::Vector<zc::Array<uint8_t>> encoded;
     for (const auto id : values) {
-      ZC_IF_SOME(child, resolver.resolve(id)) {
+      ZC_IF_SOME(child, store.typeDataForAdmission(id)) {
         if ((isUnion && child.tag() == TypeDataTag::Union) ||
             (!isUnion && child.tag() == TypeDataTag::Intersection)) {
-          return false;
+          return rejectClosedValue();
         }
         if (child.tag() == TypeDataTag::Primitive) {
           const auto kind = child.get<PrimitiveTypeData>().kind;
-          if (!validPrimitive(kind) ||
-              (isUnion && (kind == PrimitiveKind::Never || kind == PrimitiveKind::Any)) ||
-              (!isUnion && (kind == PrimitiveKind::Never || kind == PrimitiveKind::Any))) {
-            return false;
+          if (!validPrimitive(kind) || kind == PrimitiveKind::Never || kind == PrimitiveKind::Any) {
+            return rejectClosedValue();
           }
         }
+      } else {
+        const auto validation = store.validateTypeForAdmission(id);
+        reject(validation, identity::IdentityAllocationPhase::SemanticType);
+        return false;
       }
-      else { return false; }
       ZC_IF_SOME(bytes, typeBytes(id)) {
         if (encoded.size() != 0 && compareBytes(encoded.back().asPtr(), bytes.asPtr()) >= 0) {
-          return false;
+          return rejectNonCanonical();
         }
         encoded.add(zc::mv(bytes));
+      } else {
+        return false;
       }
-      else { return false; }
     }
     output.encodeSequenceSize(encoded.size());
     for (const auto& bytes : encoded) { append(output, bytes.asPtr()); }
@@ -192,12 +318,14 @@ private:
     zc::Array<uint8_t> previousName;
     output.encodeSequenceSize(object.fields.size());
     for (const auto& field : object.fields) {
-      if (!validMutability(field.mutability) || !validPresence(field.presence)) return false;
+      if (!validMutability(field.mutability) || !validPresence(field.presence)) {
+        return rejectClosedValue();
+      }
       identity::CanonicalEncoder nameEncoder;
       field.name.encode(nameEncoder);
       auto name = nameEncoder.finish();
       if (previousName.size() != 0 && compareBytes(previousName.asPtr(), name.asPtr()) >= 0) {
-        return false;
+        return rejectNonCanonical();
       }
       previousName = zc::mv(name);
       append(output, previousName.asPtr());
@@ -223,25 +351,33 @@ private:
 
   bool encodeQualified(identity::CanonicalEncoder& output, Mutability mutability,
                        identity::SemanticTypeId type) {
-    if (!validMutability(mutability)) return false;
+    if (!validMutability(mutability)) return rejectClosedValue();
     output.encodeUint8(static_cast<uint8_t>(mutability));
     return encodeType(output, type);
   }
 
   bool encodeInterface(identity::CanonicalEncoder& output,
                        const InterfaceInstantiation& interface) {
-    return encodeDefinition(output, interface.interface) &&
+    return encodeDefinition(output, interface.interface, DefinitionRole::Interface) &&
            encodeTypes(output, interface.arguments.asPtr());
   }
 
   zc::Maybe<zc::Array<uint8_t>> existentialInterfaceBytes(
       const ExistentialInterfaceData& interface) {
     identity::CanonicalEncoder output;
-    if (!encodeDefinition(output, interface.definition) ||
+    if (!encodeDefinition(output, interface.definition, DefinitionRole::Interface) ||
         !encodeTypes(output, interface.arguments.asPtr())) {
       return zc::none;
     }
     return output.finish();
+  }
+
+  bool validateMarkerFacts(zc::ArrayPtr<const identity::DefId> markers) {
+    if (markers.size() == 0) return true;
+    for (const auto marker : markers) {
+      if (definitionBytes(marker, DefinitionRole::Interface) == zc::none) return false;
+    }
+    return rejectClosedValue();
   }
 
   bool encodeExistential(identity::CanonicalEncoder& output, const ExistentialTypeData& value) {
@@ -256,62 +392,72 @@ private:
       ZC_IF_SOME(bytes, existentialInterfaceBytes(interface)) {
         if (compareBytes(principal.asPtr(), bytes.asPtr()) == 0 ||
             (previous.size() != 0 && compareBytes(previous.asPtr(), bytes.asPtr()) >= 0)) {
-          return false;
+          return rejectNonCanonical();
         }
         previous = zc::mv(bytes);
         append(output, previous.asPtr());
+      } else {
+        return false;
       }
-      else { return false; }
     }
 
-    if (!encodeDefinitions(output, value.markers.asPtr())) return false;
+    if (!validateMarkerFacts(value.markers.asPtr())) return false;
+    output.encodeSequenceSize(0);
     output.encodeSequenceSize(value.associatedBindings.size());
     zc::Array<uint8_t> previousAssociated;
     for (const auto& binding : value.associatedBindings) {
-      ZC_IF_SOME(key, definitionBytes(binding.associated)) {
+      ZC_IF_SOME(key, definitionBytes(binding.associated, DefinitionRole::AssociatedType)) {
         if (previousAssociated.size() != 0 &&
             compareBytes(previousAssociated.asPtr(), key.asPtr()) >= 0) {
-          return false;
+          return rejectNonCanonical();
         }
         previousAssociated = zc::mv(key);
         append(output, previousAssociated.asPtr());
+      } else {
+        return false;
       }
-      else { return false; }
       if (!encodeType(output, binding.type)) return false;
     }
     return true;
   }
 
-  bool encodeDefinitions(identity::CanonicalEncoder& output,
-                         zc::ArrayPtr<const identity::DefId> values) const {
-    output.encodeSequenceSize(values.size());
-    zc::Array<uint8_t> previous;
-    for (const auto id : values) {
-      ZC_IF_SOME(bytes, definitionBytes(id)) {
-        if (previous.size() != 0 && compareBytes(previous.asPtr(), bytes.asPtr()) >= 0)
-          return false;
-        previous = zc::mv(bytes);
-        append(output, previous.asPtr());
-      }
-      else { return false; }
-    }
-    return true;
-  }
-
-  const SemanticTypeKeyResolver& resolver;
+  const SemanticTypeStore& store;
   zc::Vector<identity::SemanticTypeId> active;
+  zc::Maybe<AdmissionFailure> failure;
 };
+
+}  // namespace zomlang::compiler::type::semantic
+
+namespace zomlang::compiler::type {
+namespace {
+
+SemanticTypeAdmissionResult admissionInvariant(identity::IdentityInvariantKind kind,
+                                               identity::IdentityAllocationPhase phase) {
+  zc::Maybe<zc::Array<uint8_t>> noStructuralKey;
+  zc::Maybe<identity::UnbrandedSourceRange> noRange;
+  auto invariant =
+      identity::IdentityInvariant::from(kind, phase, zc::mv(noStructuralKey), zc::mv(noRange),
+                                        identity::IdentityApiSite::CanonicalEncode, 0);
+  ZC_IF_SOME(value, invariant) { return zc::mv(value); }
+  ZC_UNREACHABLE
+}
 
 }  // namespace
 
-zc::Maybe<SemanticTypeKey> encodeSemanticTypeKeyV1(const TypeData& data,
-                                                   const SemanticTypeKeyResolver& resolver) {
-  identity::CanonicalEncoder output;
-  append(output, "zom.semantic-type-key.v1"_zc.asBytes());
-  output.encodeUint8(0x00);
-  Encoder encoder(resolver);
-  if (!encoder.encode(output, data)) return zc::none;
-  return SemanticTypeKey(output.finish());
+SemanticTypeAdmissionResult SemanticTypeStore::canonicalizeClosed(semantic::TypeData&& data) const {
+  if (!registriesReadyForAdmission()) {
+    return admissionInvariant(identity::IdentityInvariantKind::AncestorMismatch,
+                              identity::IdentityAllocationPhase::Registry);
+  }
+
+  semantic::StoreBoundTypeEncoder encoder(*this);
+  auto key = encoder.encodeKey(data);
+  ZC_IF_SOME(value, key) {
+    return semantic::CanonicalTypeData(context(), zc::mv(data), zc::mv(value));
+  }
+
+  const auto rejection = encoder.rejection();
+  return admissionInvariant(rejection.kind, rejection.phase);
 }
 
-}  // namespace zomlang::compiler::type::semantic
+}  // namespace zomlang::compiler::type

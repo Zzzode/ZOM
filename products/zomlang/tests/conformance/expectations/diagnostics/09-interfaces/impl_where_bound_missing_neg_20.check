@@ -1,9 +1,0 @@
-// RUN: cd %corpus && ! %zomc compile --syntax-only 09-interfaces/impl_where_bound_missing_neg_20.zom > %t 2>&1
-// RUN: %FileCheck %s --input-file %t
-
-
-// CHECK-LITERAL: Error [ZOM4018]: 'Box<Plain>' does not implement 'Eq'
-// CHECK-LITERAL:   --> 09-interfaces/impl_where_bound_missing_neg_20.zom:13:1
-// CHECK-LITERAL:    |
-// CHECK-LITERAL: 13 | needs(value);
-// CHECK-LITERAL:    | ^

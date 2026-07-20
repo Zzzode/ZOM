@@ -1,7 +1,7 @@
 // RUN: %zomc compile --dump-ast %corpus/02-lexical/bigint_suffix_pos_01.zom | %FileCheck %s
 
 
-// CHECK: SourceFile #19 @1:1..4:1 file_name="bigint_suffix_pos_01.zom"
+// CHECK: SourceFile #55 @1:1..10:1 file_name="bigint_suffix_pos_01.zom"
 // CHECK-NEXT:   module: null
 // CHECK-NEXT:   statements:
 // CHECK-NEXT:     StatementListItem #6 @1:1..1:14
@@ -45,4 +45,88 @@
 // CHECK-NEXT:                   ty: null
 // CHECK-NEXT:                   init:
 // CHECK-NEXT:                     BigIntLiteral #14 @3:9..3:31 value="9007199254740993n"
+// CHECK-NEXT:       attrs: null
+// CHECK-NEXT:     StatementListItem #24 @4:1..4:22
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         LetStmt #23 @4:1..4:22 kind=Let
+// CHECK-NEXT:           declarations:
+// CHECK-NEXT:             VariableDeclaratorList #22 @4:5..4:21 n_decls=1
+// CHECK-NEXT:               decls:
+// CHECK-NEXT:                 VariableDeclarator #21 @4:5..4:21
+// CHECK-NEXT:                   pattern:
+// CHECK-NEXT:                     IdentifierPattern #19 @4:5..4:6 name="d"
+// CHECK-NEXT:                       ty: null
+// CHECK-NEXT:                   ty: null
+// CHECK-NEXT:                   init:
+// CHECK-NEXT:                     BigIntLiteral #20 @4:9..4:21 value="240n"
+// CHECK-NEXT:       attrs: null
+// CHECK-NEXT:     StatementListItem #30 @5:1..5:17
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         LetStmt #29 @5:1..5:17 kind=Let
+// CHECK-NEXT:           declarations:
+// CHECK-NEXT:             VariableDeclaratorList #28 @5:5..5:16 n_decls=1
+// CHECK-NEXT:               decls:
+// CHECK-NEXT:                 VariableDeclarator #27 @5:5..5:16
+// CHECK-NEXT:                   pattern:
+// CHECK-NEXT:                     IdentifierPattern #25 @5:5..5:6 name="e"
+// CHECK-NEXT:                       ty: null
+// CHECK-NEXT:                   ty: null
+// CHECK-NEXT:                   init:
+// CHECK-NEXT:                     BigIntLiteral #26 @5:9..5:16 value="10n"
+// CHECK-NEXT:       attrs: null
+// CHECK-NEXT:     StatementListItem #36 @6:1..6:16
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         LetStmt #35 @6:1..6:16 kind=Let
+// CHECK-NEXT:           declarations:
+// CHECK-NEXT:             VariableDeclaratorList #34 @6:5..6:15 n_decls=1
+// CHECK-NEXT:               decls:
+// CHECK-NEXT:                 VariableDeclarator #33 @6:5..6:15
+// CHECK-NEXT:                   pattern:
+// CHECK-NEXT:                     IdentifierPattern #31 @6:5..6:6 name="f"
+// CHECK-NEXT:                       ty: null
+// CHECK-NEXT:                   ty: null
+// CHECK-NEXT:                   init:
+// CHECK-NEXT:                     BigIntLiteral #32 @6:9..6:15 value="493n"
+// CHECK-NEXT:       attrs: null
+// CHECK-NEXT:     StatementListItem #42 @7:1..7:18
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         LetStmt #41 @7:1..7:18 kind=Let
+// CHECK-NEXT:           declarations:
+// CHECK-NEXT:             VariableDeclaratorList #40 @7:5..7:17 n_decls=1
+// CHECK-NEXT:               decls:
+// CHECK-NEXT:                 VariableDeclarator #39 @7:5..7:17
+// CHECK-NEXT:                   pattern:
+// CHECK-NEXT:                     IdentifierPattern #37 @7:5..7:6 name="g"
+// CHECK-NEXT:                       ty: null
+// CHECK-NEXT:                   ty: null
+// CHECK-NEXT:                   init:
+// CHECK-NEXT:                     BigIntLiteral #38 @7:9..7:17 value="668n"
+// CHECK-NEXT:       attrs: null
+// CHECK-NEXT:     StatementListItem #48 @8:1..8:22
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         LetStmt #47 @8:1..8:22 kind=Let
+// CHECK-NEXT:           declarations:
+// CHECK-NEXT:             VariableDeclaratorList #46 @8:5..8:21 n_decls=1
+// CHECK-NEXT:               decls:
+// CHECK-NEXT:                 VariableDeclarator #45 @8:5..8:21
+// CHECK-NEXT:                   pattern:
+// CHECK-NEXT:                     IdentifierPattern #43 @8:5..8:6 name="h"
+// CHECK-NEXT:                       ty: null
+// CHECK-NEXT:                   ty: null
+// CHECK-NEXT:                   init:
+// CHECK-NEXT:                     BigIntLiteral #44 @8:9..8:21 value="0xdeadbeefn"
+// CHECK-NEXT:       attrs: null
+// CHECK-NEXT:     StatementListItem #54 @9:1..9:18
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         LetStmt #53 @9:1..9:18 kind=Let
+// CHECK-NEXT:           declarations:
+// CHECK-NEXT:             VariableDeclaratorList #52 @9:5..9:17 n_decls=1
+// CHECK-NEXT:               decls:
+// CHECK-NEXT:                 VariableDeclarator #51 @9:5..9:17
+// CHECK-NEXT:                   pattern:
+// CHECK-NEXT:                     IdentifierPattern #49 @9:5..9:6 name="i"
+// CHECK-NEXT:                       ty: null
+// CHECK-NEXT:                   ty: null
+// CHECK-NEXT:                   init:
+// CHECK-NEXT:                     BigIntLiteral #50 @9:9..9:17 value="0xcafen"
 // CHECK-NEXT:       attrs: null

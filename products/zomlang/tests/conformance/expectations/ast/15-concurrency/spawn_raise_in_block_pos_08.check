@@ -15,7 +15,7 @@
 // CHECK-NEXT:           raises_ty:
 // CHECK-NEXT:             NamedTypeExpr #3 @1:23..1:30
 // CHECK-NEXT:               path:
-// CHECK-NEXT:                 ModulePath #2 @1:23..1:30 segments=["IoError"]
+// CHECK-NEXT:                 ModulePath #2 @1:23..1:30 segments=["IoError"] root=Relative
 // CHECK-NEXT:               args: []
 // CHECK-NEXT:           body:
 // CHECK-NEXT:             BlockStmt #16 @1:31..5:2
@@ -36,11 +36,11 @@
 // CHECK-NEXT:                                   body:
 // CHECK-NEXT:                                     BlockStmt #10 @2:19..4:6
 // CHECK-NEXT:                                       stmts:
-// CHECK-NEXT:                                         StatementListItem #9 @3:9..3:30
+// CHECK-NEXT:                                         StatementListItem #9 @3:9..3:24
 // CHECK-NEXT:                                           item:
-// CHECK-NEXT:                                             ExpressionStatement #8 @3:9..3:30
+// CHECK-NEXT:                                             ExpressionStatement #8 @3:9..3:24
 // CHECK-NEXT:                                               expression:
-// CHECK-NEXT:                                                 PostfixExpression #7 @3:9..3:29 op=ErrorPropagate
+// CHECK-NEXT:                                                 PostfixExpression #7 @3:9..3:23 op=ErrorPropagate
 // CHECK-NEXT:                                                   operand:
 // CHECK-NEXT:                                                     CallExpression #6 @3:9..3:21
 // CHECK-NEXT:                                                       callee:

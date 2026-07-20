@@ -45,12 +45,17 @@ the module export surface. Member modifiers apply only inside a type body.
 ```ebnf
 Modifier     ::= 'public' | 'private' | 'protected'
                | 'static' | 'readonly' | 'mutating' | 'override'
-               | 'abstract' | 'export'
+               | 'abstract'
 
 ModifierList ::= Modifier*
                  (* semantic predicate enforces valid combinations:
                     e.g. 'static mutating' and 'abstract static' are rejected *)
 ```
+
+The visibility spellings are exactly `public`, `private`, and `protected`.
+Identifier aliases such as `pub`, `priv`, and `internal` are not modifiers.
+`mut` is a mutable-binding or mutable-field declaration head; it is never a
+member of `ModifierList`.
 
 | Modifier | Applies To | Semantics |
 |---|---|---|
@@ -69,7 +74,10 @@ language does not reject member lookup from those facts and does not compute a
 subclass access context. Chapter 23 defines this boundary. Module visibility is
 controlled only by explicit `export` surfaces.
 
-Value declarations (`mut`, `let`, `const`) do **not** accept a `ModifierList` prefix. Visibility and attributes flow via the enclosing `moduleItem` / `StatementListItem` production.
+Module-scope value declarations (`mut`, `let`, `const`) do not accept a
+`ModifierList` prefix. A type-body field declaration has its own member
+modifier slot before the `mut`, `let`, or `const` declaration head. Module
+visibility is expressed only by `export`.
 
 ---
 
@@ -977,13 +985,15 @@ alias Person = {
 
 ## Impl Declarations
 
-Impl blocks attach interface implementations to types. There are two forms: **standalone impl** (for ordinary interface implementations) and **marker impl** (for marker trait evidence).
+An ordinary impl attaches one behavior interface implementation to one target
+type. A marker impl publishes one concrete marker fact for one closed target
+type.
 
 ```ebnf
 ImplDecl       ::= StandaloneImplDecl
                  | MarkerImplDecl
 
-StandaloneImplDecl ::= UnsafePrefix? 'impl' TypeParameters? InterfaceBoundList 'for' TypeExpr
+StandaloneImplDecl ::= UnsafePrefix? 'impl' TypeParameters? InterfaceBound 'for' TypeExpr
                        WhereClause? '{' ImplMember* '}'
     (* 'impl' is a SOFT keyword — recognized only at impl-head position *)
 
@@ -994,13 +1004,18 @@ ImplMember     ::= ModifierList 'fun' BindingIdent TypeParameters?
                  | 'let' VariableDeclList ';'
                  | 'const' ConstDeclList ';'
 
-MarkerImplDecl ::= UnsafePrefix? 'impl' TypeParameters? '!'? MarkerImplPath
-                   'for' TypeExpr WhereClause? ( ';' | '{' StructElement* '}' )
+MarkerImplDecl ::= PositiveMarkerImplDecl | NegativeMarkerImplDecl
+PositiveMarkerImplDecl ::= UnsafePrefix? 'impl' MarkerImplPath 'for' ClosedTypeExpr ';'
+NegativeMarkerImplDecl ::= 'impl' '!' MarkerImplPath 'for' ClosedTypeExpr ';'
 MarkerImplPath ::= AttrPath | BindingIdent
-    (* Marker impl: provides explicit marker trait evidence.
-       '!' negates the impl (negative impl).
-       'unsafe' prefix marks a marker impl with caller-proven invariants. *)
+ClosedTypeExpr ::= TypeExpr
+    (* ClosedTypeExpr contains no impl-owned or unresolved type parameter. *)
 ```
+
+Each ordinary declaration names exactly one interface and always has an impl
+body. Type parameters and a `where` clause belong only to ordinary impls.
+Marker declarations have no type parameters, `where` clause, associated
+bindings, members, or body.
 
 ### Standalone Interface Impl
 
@@ -1071,20 +1086,38 @@ impl<T> Iterator for VecIter<T> {
 ### Marker Impl
 
 ```zom
-// Positive marker impl
-impl std::marker::Sendable for MyType;
+// Positive marker assertion
+unsafe impl std::marker::Sendable for MyType;
 
-// Negative marker impl
+// Negative marker fact
 impl !std::marker::Shared for MyType;
 
-// Unsafe marker impl
-unsafe impl std::marker::Sendable for RawPointerWrapper;
-
-// Marker impl with body (for marker impls that need to prove invariants)
-impl std::marker::Linear for FileHandle {
-    // FileHandle must be consumed or explicitly closed
-}
+// Short marker paths use the same bodyless form
+unsafe impl Linear for FileHandle;
 ```
+
+A positive marker assertion requires `unsafe`, but the parser retains a
+positive candidate without that prefix so signature checking can classify the
+resolved interface before enforcing safety. A negative marker fact cannot use `unsafe`. For every
+short or qualified positive path, the final semicolon identifies a marker
+candidate and an opening implementation body identifies an ordinary impl. The
+checker then validates that the resolved interface has marker shape.
+
+The parser rejects source-shape violations with these diagnostics:
+
+| Source failure | Diagnostic |
+|---|---|
+| `+` after an ordinary impl interface | `ZOM2100 ImplRequiresSingleInterface` |
+| type parameters on a marker impl | `ZOM2101 MarkerImplCannotBeGeneric` |
+| a `where` clause on a marker impl | `ZOM2102 MarkerImplCannotHaveWhereClause` |
+| `unsafe` on a negative marker impl | `ZOM2103 NegativeMarkerImplCannotBeUnsafe` |
+| a body on a marker impl | `ZOM2104 MarkerImplCannotHaveBody` |
+
+A bodyless positive candidate targeting a behavior interface emits
+`ZOM4089 BehaviorInterfaceRequiresImplBody`. Only a candidate that resolves to
+a marker-only interface and lacks `unsafe` emits
+`ZOM4091 PositiveMarkerImplRequiresUnsafe`. A marker declaration whose target
+contains an impl-owned or unresolved type parameter publishes no marker fact.
 
 ---
 
@@ -1155,6 +1188,14 @@ See [Ch.13 Modules and Imports](13-modules-and-imports.md) for the full module s
 ## Declaration Order and Scoping
 
 - Declarations at module scope are hoisted within that module; the order of top-level declarations does not affect name resolution.
+- A named function declared directly in a block is hoisted within that immediate
+  block. Its name is visible from the start of the block through the end of the
+  block, including before the declaration. It is neither a module member nor an
+  export-surface entry.
+- A block-scoped named function is a callable boundary. Its body cannot capture
+  parameters, local values, or pattern bindings from an enclosing callable or
+  block; those values must be passed explicitly. Closure expressions provide
+  lexical capture.
 - Local value declarations (`mut`, `let`, `const`) inside block bodies follow lexical scoping and are not hoisted.
 - Forward references to functions, types, and classes at module scope are permitted.
 - Forward references to local `let`/`mut` bindings are not permitted; definite-assignment rules apply.

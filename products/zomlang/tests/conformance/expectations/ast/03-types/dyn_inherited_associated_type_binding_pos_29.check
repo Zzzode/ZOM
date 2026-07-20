@@ -1,7 +1,7 @@
 // RUN: %zomc compile --dump-ast %corpus/03-types/dyn_inherited_associated_type_binding_pos_29.zom | %FileCheck %s
 
 
-// CHECK: SourceFile #52 @1:1..17:1 file_name="dyn_inherited_associated_type_binding_pos_29.zom"
+// CHECK: SourceFile #49 @1:1..17:1 file_name="dyn_inherited_associated_type_binding_pos_29.zom"
 // CHECK-NEXT:   module: null
 // CHECK-NEXT:   statements:
 // CHECK-NEXT:     StatementListItem #4 @1:1..3:2
@@ -14,7 +14,7 @@
 // CHECK-NEXT:               members:
 // CHECK-NEXT:                 AssociatedTypeDecl #1 @2:5..2:15 name="Item"
 // CHECK-NEXT:                   type_params_id: null
-// CHECK-NEXT:                   bound: null
+// CHECK-NEXT:                   bounds_id: null
 // CHECK-NEXT:                   default_ty: null
 // CHECK-NEXT:       attrs: null
 // CHECK-NEXT:     StatementListItem #10 @5:1..5:31
@@ -22,11 +22,11 @@
 // CHECK-NEXT:         InterfaceDecl #9 @5:1..5:31 name="Child"
 // CHECK-NEXT:           type_params_id: null
 // CHECK-NEXT:           ifaces_id:
-// CHECK-NEXT:             ImplIfaceList #7 @5:19..5:27 n_ifaces=1
+// CHECK-NEXT:             ImplIfaceList #7 @5:19..5:27
 // CHECK-NEXT:               ifaces:
 // CHECK-NEXT:                 NamedTypeExpr #6 @5:19..5:27
 // CHECK-NEXT:                   path:
-// CHECK-NEXT:                     ModulePath #5 @5:19..5:27 segments=["Iterator"]
+// CHECK-NEXT:                     ModulePath #5 @5:19..5:27 segments=["Iterator"] root=Relative
 // CHECK-NEXT:                   args: []
 // CHECK-NEXT:           members_id:
 // CHECK-NEXT:             ClassMemberList #8 @5:28..5:31 nmembers=0
@@ -41,96 +41,90 @@
 // CHECK-NEXT:             ClassMemberList #11 @7:13..7:16 nmembers=0
 // CHECK-NEXT:               members: []
 // CHECK-NEXT:       attrs: null
-// CHECK-NEXT:     StatementListItem #23 @9:1..11:2
+// CHECK-NEXT:     StatementListItem #22 @9:1..11:2
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         StandaloneImplDecl #22 @9:1..11:2 is_unsafe=false
-// CHECK-NEXT:           ifaces_id:
-// CHECK-NEXT:             ImplIfaceList #16 @9:6..9:14 n_ifaces=1
-// CHECK-NEXT:               ifaces:
-// CHECK-NEXT:                 NamedTypeExpr #15 @9:6..9:14
-// CHECK-NEXT:                   path:
-// CHECK-NEXT:                     ModulePath #14 @9:6..9:14 segments=["Iterator"]
-// CHECK-NEXT:                   args: []
-// CHECK-NEXT:           for_ty:
-// CHECK-NEXT:             NamedTypeExpr #18 @9:19..9:24
+// CHECK-NEXT:         StandaloneImplDecl #21 @9:1..11:2 is_unsafe=false
+// CHECK-NEXT:           interface:
+// CHECK-NEXT:             NamedTypeExpr #15 @9:6..9:14
 // CHECK-NEXT:               path:
-// CHECK-NEXT:                 ModulePath #17 @9:19..9:24 segments=["Bytes"]
+// CHECK-NEXT:                 ModulePath #14 @9:6..9:14 segments=["Iterator"] root=Relative
+// CHECK-NEXT:               args: []
+// CHECK-NEXT:           for_ty:
+// CHECK-NEXT:             NamedTypeExpr #17 @9:19..9:24
+// CHECK-NEXT:               path:
+// CHECK-NEXT:                 ModulePath #16 @9:19..9:24 segments=["Bytes"] root=Relative
 // CHECK-NEXT:               args: []
 // CHECK-NEXT:           where_: null
 // CHECK-NEXT:           type_params_id: null
 // CHECK-NEXT:           members_id:
-// CHECK-NEXT:             ClassMemberList #21 @9:25..11:2 nmembers=1
+// CHECK-NEXT:             ClassMemberList #20 @9:25..11:2 nmembers=1
 // CHECK-NEXT:               members:
-// CHECK-NEXT:                 AssociatedTypeDecl #20 @10:5..10:20 name="Item"
+// CHECK-NEXT:                 AssociatedTypeDecl #19 @10:5..10:20 name="Item"
 // CHECK-NEXT:                   type_params_id: null
-// CHECK-NEXT:                   bound: null
+// CHECK-NEXT:                   bounds_id: null
 // CHECK-NEXT:                   default_ty:
-// CHECK-NEXT:                     PredefinedTypeExpr #19 @10:17..10:19 kind=U8
+// CHECK-NEXT:                     PredefinedTypeExpr #18 @10:17..10:19 kind=U8
 // CHECK-NEXT:       attrs: null
-// CHECK-NEXT:     StatementListItem #31 @13:1..13:25
+// CHECK-NEXT:     StatementListItem #29 @13:1..13:25
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         StandaloneImplDecl #30 @13:1..13:25 is_unsafe=false
-// CHECK-NEXT:           ifaces_id:
-// CHECK-NEXT:             ImplIfaceList #26 @13:6..13:11 n_ifaces=1
-// CHECK-NEXT:               ifaces:
-// CHECK-NEXT:                 NamedTypeExpr #25 @13:6..13:11
-// CHECK-NEXT:                   path:
-// CHECK-NEXT:                     ModulePath #24 @13:6..13:11 segments=["Child"]
-// CHECK-NEXT:                   args: []
-// CHECK-NEXT:           for_ty:
-// CHECK-NEXT:             NamedTypeExpr #28 @13:16..13:21
+// CHECK-NEXT:         StandaloneImplDecl #28 @13:1..13:25 is_unsafe=false
+// CHECK-NEXT:           interface:
+// CHECK-NEXT:             NamedTypeExpr #24 @13:6..13:11
 // CHECK-NEXT:               path:
-// CHECK-NEXT:                 ModulePath #27 @13:16..13:21 segments=["Bytes"]
+// CHECK-NEXT:                 ModulePath #23 @13:6..13:11 segments=["Child"] root=Relative
+// CHECK-NEXT:               args: []
+// CHECK-NEXT:           for_ty:
+// CHECK-NEXT:             NamedTypeExpr #26 @13:16..13:21
+// CHECK-NEXT:               path:
+// CHECK-NEXT:                 ModulePath #25 @13:16..13:21 segments=["Bytes"] root=Relative
 // CHECK-NEXT:               args: []
 // CHECK-NEXT:           where_: null
 // CHECK-NEXT:           type_params_id: null
 // CHECK-NEXT:           members_id:
-// CHECK-NEXT:             ClassMemberList #29 @13:22..13:25 nmembers=0
+// CHECK-NEXT:             ClassMemberList #27 @13:22..13:25 nmembers=0
 // CHECK-NEXT:               members: []
 // CHECK-NEXT:       attrs: null
-// CHECK-NEXT:     StatementListItem #38 @15:1..15:18
+// CHECK-NEXT:     StatementListItem #36 @15:1..15:18
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         LetStmt #37 @15:1..15:18 kind=Let
+// CHECK-NEXT:         LetStmt #35 @15:1..15:18 kind=Let
 // CHECK-NEXT:           declarations:
-// CHECK-NEXT:             VariableDeclaratorList #36 @15:5..15:17 n_decls=1
+// CHECK-NEXT:             VariableDeclaratorList #34 @15:5..15:17 n_decls=1
 // CHECK-NEXT:               decls:
-// CHECK-NEXT:                 VariableDeclarator #35 @15:5..15:17
+// CHECK-NEXT:                 VariableDeclarator #33 @15:5..15:17
 // CHECK-NEXT:                   pattern:
-// CHECK-NEXT:                     IdentifierPattern #32 @15:5..15:10 name="value"
+// CHECK-NEXT:                     IdentifierPattern #30 @15:5..15:10 name="value"
 // CHECK-NEXT:                       ty: null
 // CHECK-NEXT:                   ty:
-// CHECK-NEXT:                     NamedTypeExpr #34 @15:12..15:17
+// CHECK-NEXT:                     NamedTypeExpr #32 @15:12..15:17
 // CHECK-NEXT:                       path:
-// CHECK-NEXT:                         ModulePath #33 @15:12..15:17 segments=["Bytes"]
+// CHECK-NEXT:                         ModulePath #31 @15:12..15:17 segments=["Bytes"] root=Relative
 // CHECK-NEXT:                       args: []
 // CHECK-NEXT:                   init: null
 // CHECK-NEXT:       attrs: null
-// CHECK-NEXT:     StatementListItem #51 @16:1..16:41
+// CHECK-NEXT:     StatementListItem #48 @16:1..16:41
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         LetStmt #50 @16:1..16:41 kind=Let
+// CHECK-NEXT:         LetStmt #47 @16:1..16:41 kind=Let
 // CHECK-NEXT:           declarations:
-// CHECK-NEXT:             VariableDeclaratorList #49 @16:5..16:40 n_decls=1
+// CHECK-NEXT:             VariableDeclaratorList #46 @16:5..16:40 n_decls=1
 // CHECK-NEXT:               decls:
-// CHECK-NEXT:                 VariableDeclarator #48 @16:5..16:40
+// CHECK-NEXT:                 VariableDeclarator #45 @16:5..16:40
 // CHECK-NEXT:                   pattern:
-// CHECK-NEXT:                     IdentifierPattern #39 @16:5..16:10 name="child"
+// CHECK-NEXT:                     IdentifierPattern #37 @16:5..16:10 name="child"
 // CHECK-NEXT:                       ty: null
 // CHECK-NEXT:                   ty:
-// CHECK-NEXT:                     DynTypeExpr #46 @16:12..16:32 has_lifetime=false lifetime=null
-// CHECK-NEXT:                       ifaces_id:
-// CHECK-NEXT:                         DynTypeIfaceList #44 @16:16..16:32 n_ifaces=1
-// CHECK-NEXT:                           ifaces:
-// CHECK-NEXT:                             NamedTypeExpr #41 @16:16..16:21
-// CHECK-NEXT:                               path:
-// CHECK-NEXT:                                 ModulePath #40 @16:16..16:21 segments=["Child"]
-// CHECK-NEXT:                               args: []
+// CHECK-NEXT:                     DynTypeExpr #43 @16:12..16:32
+// CHECK-NEXT:                       principal:
+// CHECK-NEXT:                         NamedTypeExpr #39 @16:16..16:21
+// CHECK-NEXT:                           path:
+// CHECK-NEXT:                             ModulePath #38 @16:16..16:21 segments=["Child"] root=Relative
+// CHECK-NEXT:                           args: []
 // CHECK-NEXT:                       markers_id: null
 // CHECK-NEXT:                       assoc_bindings_id:
-// CHECK-NEXT:                         DynTypeAssocBindingList #45 @16:21..16:32 n_bindings=1
+// CHECK-NEXT:                         DynTypeAssocBindingList #42 @16:21..16:32 n_bindings=1
 // CHECK-NEXT:                           bindings:
-// CHECK-NEXT:                             DynTypeAssocBinding #43 @16:22..16:31 name="Item"
+// CHECK-NEXT:                             DynTypeAssocBinding #41 @16:22..16:31 name="Item"
 // CHECK-NEXT:                               ty:
-// CHECK-NEXT:                                 PredefinedTypeExpr #42 @16:29..16:31 kind=U8
+// CHECK-NEXT:                                 PredefinedTypeExpr #40 @16:29..16:31 kind=U8
 // CHECK-NEXT:                   init:
-// CHECK-NEXT:                     IdentExpr #47 @16:35..16:40 name="value"
+// CHECK-NEXT:                     IdentExpr #44 @16:35..16:40 name="value"
 // CHECK-NEXT:       attrs: null

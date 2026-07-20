@@ -2,12 +2,12 @@
 
 
 // CHECK-LITERAL: Error [ZOM2056]: Expression expected
-// CHECK:   --> products {{(?:.*[/\\])?reserved_await_neg_01\.zom:1:9$}}
+// CHECK-LITERAL:   --> conformance/reserved_await_neg_01.zom:1:9
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 1 | let x = await p;
 // CHECK-LITERAL:   |         ^
 // CHECK-LITERAL: Error [ZOM2076]: Unexpected token expected
-// CHECK:   --> products {{(?:.*[/\\])?reserved_await_neg_01\.zom:1:9$}}
+// CHECK-LITERAL:   --> conformance/reserved_await_neg_01.zom:1:9
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 1 | let x = await p;
 // CHECK-LITERAL:   |         ^

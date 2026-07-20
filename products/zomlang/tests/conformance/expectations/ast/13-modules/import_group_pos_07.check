@@ -8,7 +8,7 @@
 // CHECK-NEXT:       item:
 // CHECK-NEXT:         ImportDeclaration #5 @1:1..1:35 alias=null
 // CHECK-NEXT:           path:
-// CHECK-NEXT:             ModulePath #4 @1:8..1:11 segments=["std"]
+// CHECK-NEXT:             ModulePath #4 @1:8..1:11 segments=["std"] root=Relative
 // CHECK-NEXT:           specifiers:
 // CHECK-NEXT:             ImportSpecifier #1 @1:14..1:16 name="fs" alias=null
 // CHECK-NEXT:             ImportSpecifier #2 @1:18..1:27 name="path" alias="p"

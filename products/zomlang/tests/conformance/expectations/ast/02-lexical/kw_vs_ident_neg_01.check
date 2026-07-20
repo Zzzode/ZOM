@@ -2,7 +2,7 @@
 
 
 // CHECK-LITERAL: Error [ZOM2062]: Variable declaration expected
-// CHECK:   --> products {{(?:.*[/\\])?kw_vs_ident_neg_01\.zom:1:5$}}
+// CHECK-LITERAL:   --> conformance/kw_vs_ident_neg_01.zom:1:5
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 1 | let class = 5;
 // CHECK-LITERAL:   |     ^

@@ -1,0 +1,5 @@
+section: "Ch.06 Marker implementation diagnostic precedence"
+covers_rule: "markerImplRest"
+expected: "ACCEPT"
+notes:
+  - "A bodyless safe candidate targeting a behavior interface reaches signature checking."

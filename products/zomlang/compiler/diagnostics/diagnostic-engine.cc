@@ -28,8 +28,8 @@ namespace diagnostics {
 struct DiagnosticEngine::Impl {
   explicit Impl(source::SourceManager& sm) : sourceManager(sm) {}
 
-  struct EmittedDiagnosticKey {
-    DiagID id = DiagID::Common;
+  struct EmittedDiagnosticKey final {
+    DiagID id;
     source::SourceLoc loc;
   };
 
@@ -37,7 +37,6 @@ struct DiagnosticEngine::Impl {
   zc::Vector<zc::Own<DiagnosticConsumer>> consumers;
   DiagnosticState state;
   zc::Vector<EmittedDiagnosticKey> emittedDiagnostics;
-  size_t suppressionDepth = 0;
   size_t errorBudget = 100;
 
   bool hasEmitted(const Diagnostic& diagnostic) const {
@@ -61,10 +60,7 @@ void DiagnosticEngine::addConsumer(zc::Own<DiagnosticConsumer> consumer) {
 }
 
 void DiagnosticEngine::emit(const Diagnostic& diagnostic) {
-  if (impl->suppressionDepth > 0) { return; }
   if (impl->hasEmitted(diagnostic)) { return; }
-
-  // Check if this is an error-level diagnostic and update state
   const DiagnosticInfo& info = getDiagnosticInfo(diagnostic.getId());
   if (info.severity >= DiagSeverity::kError && impl->state.getErrorCount() >= impl->errorBudget) {
     return;
@@ -75,6 +71,10 @@ void DiagnosticEngine::emit(const Diagnostic& diagnostic) {
   for (auto& consumer : impl->consumers) {
     consumer->handleDiagnostic(impl->sourceManager, diagnostic);
   }
+}
+
+void DiagnosticEngine::emitDiagnostic(const Diagnostic& diagnostic, zc::SourceLocation) {
+  emit(diagnostic);
 }
 
 bool DiagnosticEngine::hasErrors() const { return impl->state.getHadAnyError(); }
@@ -143,14 +143,6 @@ void DiagnosticEngine::formatDiagnosticMessage(const source::SourceManager& sm,
   // Output the remaining text
   if (lastPos < format.size()) { out.write(format.slice(lastPos, format.size()).asBytes()); }
 }
-
-void DiagnosticEngine::suppress() { ++impl->suppressionDepth; }
-
-void DiagnosticEngine::unsuppress() {
-  if (impl->suppressionDepth > 0) { --impl->suppressionDepth; }
-}
-
-bool DiagnosticEngine::isSuppressed() const { return impl->suppressionDepth > 0; }
 
 }  // namespace diagnostics
 }  // namespace compiler

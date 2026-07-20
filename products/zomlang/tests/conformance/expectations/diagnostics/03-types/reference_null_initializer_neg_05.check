@@ -1,9 +1,0 @@
-// RUN: cd %corpus && ! %zomc compile --syntax-only 03-types/reference_null_initializer_neg_05.zom > %t 2>&1
-// RUN: %FileCheck %s --input-file %t
-
-
-// CHECK-LITERAL: Error [ZOM4009]: Type mismatch: expected &i32, got null
-// CHECK-LITERAL:   --> 03-types/reference_null_initializer_neg_05.zom:1:5
-// CHECK-LITERAL:   |
-// CHECK-LITERAL: 1 | let r: &i32 = null;
-// CHECK-LITERAL:   |     ^

@@ -2,17 +2,17 @@
 
 
 // CHECK-LITERAL: Error [ZOM2057]: Stray '#' with no attribute following; expected '[' after '#' to start an attribute.
-// CHECK:   --> products {{(?:.*[/\\])?hash_lbrack_split_reject_neg_01\.zom:1:1$}}
+// CHECK-LITERAL:   --> conformance/hash_lbrack_split_reject_neg_01.zom:1:1
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 1 | # [attr]
 // CHECK-LITERAL:   | ^
 // CHECK-LITERAL: Note [ZOM2058]: To start an attribute, write #[path::to::attribute].
-// CHECK:   --> products {{(?:.*[/\\])?hash_lbrack_split_reject_neg_01\.zom:1:1$}}
+// CHECK-LITERAL:   --> conformance/hash_lbrack_split_reject_neg_01.zom:1:1
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 1 | # [attr]
 // CHECK-LITERAL:   | ^
 // CHECK-LITERAL: Error [ZOM2076]: Unexpected token expected
-// CHECK:   --> products {{(?:.*[/\\])?hash_lbrack_split_reject_neg_01\.zom:1:1$}}
+// CHECK-LITERAL:   --> conformance/hash_lbrack_split_reject_neg_01.zom:1:1
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 1 | # [attr]
 // CHECK-LITERAL:   | ^

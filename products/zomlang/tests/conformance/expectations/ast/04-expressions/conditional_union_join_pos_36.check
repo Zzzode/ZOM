@@ -41,5 +41,5 @@
 // CHECK-NEXT:                       then_expr:
 // CHECK-NEXT:                         IntLiteral #13 @2:31..2:32 base=10 value="1"
 // CHECK-NEXT:                       else_expr:
-// CHECK-NEXT:                         StrLiteral #14 @2:35..2:45 value="fallback" is_raw=false prefix=None
+// CHECK-NEXT:                         StringLiteralExpr #14 @2:35..2:45 value="fallback"
 // CHECK-NEXT:       attrs: null

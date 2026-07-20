@@ -2,17 +2,17 @@
 
 
 // CHECK-LITERAL: Error [ZOM2012]: Missing semicolon before '<token>'
-// CHECK:   --> products {{(?:.*[/\\])?unbalanced_reject_neg_01\.zom:2:1$}}
+// CHECK-LITERAL:   --> conformance/unbalanced_reject_neg_01.zom:2:1
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 2 |
 // CHECK-LITERAL:   | ^
 // CHECK-LITERAL: Error [ZOM2025]: Expected ')'
-// CHECK:   --> products {{(?:.*[/\\])?unbalanced_reject_neg_01\.zom:1:9$}}
+// CHECK-LITERAL:   --> conformance/unbalanced_reject_neg_01.zom:1:9
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 1 | let x = (a + b;
 // CHECK-LITERAL:   |         ^
 // CHECK-LITERAL: Error [ZOM2056]: Expression expected
-// CHECK:   --> products {{(?:.*[/\\])?unbalanced_reject_neg_01\.zom:1:9$}}
+// CHECK-LITERAL:   --> conformance/unbalanced_reject_neg_01.zom:1:9
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 1 | let x = (a + b;
 // CHECK-LITERAL:   |         ^

@@ -182,7 +182,10 @@ Not all behavior contracts can live inside the `class` body that declares the ty
 
 ### 9.4.1 Syntax
 
-A standalone impl declaration uses the keyword `impl` followed by an interface bound list, the keyword `for`, and the target type. An optional `where`-clause constrains generic parameters.
+A standalone impl declaration uses the keyword `impl` followed by exactly one
+interface instantiation, the keyword `for`, and the target type. An optional
+`where` clause constrains generic parameters. The declaration always has an
+implementation body.
 
 ```zom
 impl Drawable for Button {
@@ -196,10 +199,12 @@ impl Drawable for Button {
 }
 ```
 
-Multiple interfaces and markers may be combined with `+`:
+Each interface conformance has its own declaration and coherence identity:
 
 ```zom
-impl Reader + Writer + Seekable for FileStream { }
+impl Reader for FileStream { }
+impl Writer for FileStream { }
+impl Seekable for FileStream { }
 ```
 
 An `impl` block may assign associated types:
@@ -265,10 +270,6 @@ Common legitimate use cases:
 The current module may contain at most one `impl I for T` for a nominal
 `(I, T)` pair. A duplicate emits `ZOM4017 ConflictingImpl`. RFC 0008 owns the
 cross-module coherence design.
-
-### 9.4.4 Marker Forwarding
-
-If the impl list includes markers (`+ Sendable`, `+ Shared`, etc.), the combined form is equivalent to writing separate `impl Sendable for T` declarations. The combined syntax is purely syntactic sugar — each marker in the list becomes a separate coherence entry.
 
 ## 9.5 Interface Inheritance & Diamond Resolution
 
@@ -497,7 +498,7 @@ fun draw_all<T: Drawable + Sendable>(items: T[]) {
 
 ### 9.7.2 Intersection Types vs. Bound Lists
 
-The intersection operator `&` used in type expressions such as `Drawable & Rounded` (Ch.03) is structural and produces a type. The `+` separator used in bound lists such as `T: Drawable + Rounded` is predicate-level conjunction and produces a proof obligation. A type satisfies `T: I1 + I2` precisely when it satisfies both bounds simultaneously; the type expression `I1 & I2` as a standalone type is sugar for `dyn (I1 & I2)`, the existential form combining multiple object-safe interfaces.
+The intersection operator `&` used in type expressions such as `Drawable & Rounded` (Ch.03) is structural and produces a type. The `+` separator used in bound lists such as `T: Drawable + Rounded` is predicate-level conjunction and produces a proof obligation. A type satisfies `T: I1 + I2` precisely when it satisfies both bounds simultaneously. `I1 & I2` remains a structural type; it is not a dynamic-interface principal. A dynamic interface type has one named principal followed by optional marker suffixes.
 
 ## 9.8 Grammar Reference (Informative)
 
@@ -527,7 +528,7 @@ MethodSignature   ::= PropertyName CallSignature
 CallSignature     ::= TypeParameters? FunctionSignature
 PropertySignature ::= PropertyName FunctionSignature
 
-StandaloneImplDecl ::= UnsafePrefix? 'impl' TypeParameters? InterfaceBoundList
+StandaloneImplDecl ::= UnsafePrefix? 'impl' TypeParameters? InterfaceBound
                        'for' TypeExpr WhereClause?
                        '{' ImplMember* '}'
 
@@ -549,6 +550,8 @@ ImplMember     ::= ModifierList 'fun' BindingIdent TypeParameters?
   interface or target type is local to the current module. `ZOM4054 OrphanImpl`
   rejects a fully foreign pair, and `ZOM4017 ConflictingImpl` rejects duplicate
   nominal pairs in the module.
+- Every ordinary impl names exactly one behavior interface. Marker facts use
+  the bodyless declarations defined in Chapter 16.
 - Multiple interface inheritance uses four conflict-resolution rules (IR-1..IR-4): redundant signatures warn, independent overloads coexist, incompatible return types error, and shared pure-method obligations converge.
 - Eight object-safety rules (OS-0..OS-7) govern whether an interface can be coerced to `dyn I` (Ch.03 §Existential Types), with dedicated diagnostics `ZOM4001` through `ZOM4008`.
 - Interface names and marker names participate in positive generic bound lists.

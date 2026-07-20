@@ -14,7 +14,7 @@
 // CHECK-NEXT:                   ty:
 // CHECK-NEXT:                     NamedTypeExpr #16 @1:16..1:17
 // CHECK-NEXT:                       path:
-// CHECK-NEXT:                         ModulePath #15 @1:16..1:17 segments=["T"]
+// CHECK-NEXT:                         ModulePath #15 @1:16..1:17 segments=["T"] root=Relative
 // CHECK-NEXT:                       args: []
 // CHECK-NEXT:                   default_: null
 // CHECK-NEXT:                   attrs: null
@@ -22,18 +22,18 @@
 // CHECK-NEXT:                   ty:
 // CHECK-NEXT:                     NamedTypeExpr #19 @1:22..1:23
 // CHECK-NEXT:                       path:
-// CHECK-NEXT:                         ModulePath #18 @1:22..1:23 segments=["U"]
+// CHECK-NEXT:                         ModulePath #18 @1:22..1:23 segments=["U"] root=Relative
 // CHECK-NEXT:                       args: []
 // CHECK-NEXT:                   default_: null
 // CHECK-NEXT:                   attrs: null
 // CHECK-NEXT:           type_params_id:
 // CHECK-NEXT:             GenericParams #25 @1:6..1:12 nparams=2
 // CHECK-NEXT:               params:
-// CHECK-NEXT:                 GenericTypeParam #23 @1:7..1:8 name="T" variance=Invariant
-// CHECK-NEXT:                   bound: null
+// CHECK-NEXT:                 GenericTypeParam #23 @1:7..1:8 name="T"
+// CHECK-NEXT:                   bounds_id: null
 // CHECK-NEXT:                   default_ty: null
-// CHECK-NEXT:                 GenericTypeParam #24 @1:10..1:11 name="U" variance=Invariant
-// CHECK-NEXT:                   bound: null
+// CHECK-NEXT:                 GenericTypeParam #24 @1:10..1:11 name="U"
+// CHECK-NEXT:                   bounds_id: null
 // CHECK-NEXT:                   default_ty: null
 // CHECK-NEXT:               where_:
 // CHECK-NEXT:                 WhereClause #14 @1:33..1:53
@@ -42,23 +42,23 @@
 // CHECK-NEXT:                       ty:
 // CHECK-NEXT:                         NamedTypeExpr #5 @1:39..1:40
 // CHECK-NEXT:                           path:
-// CHECK-NEXT:                             ModulePath #4 @1:39..1:40 segments=["T"]
+// CHECK-NEXT:                             ModulePath #4 @1:39..1:40 segments=["T"] root=Relative
 // CHECK-NEXT:                           args: []
 // CHECK-NEXT:                       bound:
 // CHECK-NEXT:                         NamedTypeExpr #7 @1:42..1:44
 // CHECK-NEXT:                           path:
-// CHECK-NEXT:                             ModulePath #6 @1:42..1:44 segments=["Eq"]
+// CHECK-NEXT:                             ModulePath #6 @1:42..1:44 segments=["Eq"] root=Relative
 // CHECK-NEXT:                           args: []
 // CHECK-NEXT:                     WherePred #13 @1:46..1:53 kind=Implements
 // CHECK-NEXT:                       ty:
 // CHECK-NEXT:                         NamedTypeExpr #10 @1:46..1:47
 // CHECK-NEXT:                           path:
-// CHECK-NEXT:                             ModulePath #9 @1:46..1:47 segments=["U"]
+// CHECK-NEXT:                             ModulePath #9 @1:46..1:47 segments=["U"] root=Relative
 // CHECK-NEXT:                           args: []
 // CHECK-NEXT:                       bound:
 // CHECK-NEXT:                         NamedTypeExpr #12 @1:49..1:53
 // CHECK-NEXT:                           path:
-// CHECK-NEXT:                             ModulePath #11 @1:49..1:53 segments=["Hash"]
+// CHECK-NEXT:                             ModulePath #11 @1:49..1:53 segments=["Hash"] root=Relative
 // CHECK-NEXT:                           args: []
 // CHECK-NEXT:           ret_ty:
 // CHECK-NEXT:             PredefinedTypeExpr #22 @1:28..1:32 kind=Unit

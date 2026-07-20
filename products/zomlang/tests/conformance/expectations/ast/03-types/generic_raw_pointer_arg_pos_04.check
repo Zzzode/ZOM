@@ -11,7 +11,7 @@
 // CHECK-NEXT:           target:
 // CHECK-NEXT:             NamedTypeExpr #4 @1:21..1:36
 // CHECK-NEXT:               path:
-// CHECK-NEXT:                 ModulePath #3 @1:21..1:24 segments=["Vec"]
+// CHECK-NEXT:                 ModulePath #3 @1:21..1:24 segments=["Vec"] root=Relative
 // CHECK-NEXT:               args:
 // CHECK-NEXT:                 RawPointerTypeExpr #2 @1:25..1:35 is_mut=false
 // CHECK-NEXT:                   elem:
@@ -24,7 +24,7 @@
 // CHECK-NEXT:           target:
 // CHECK-NEXT:             NamedTypeExpr #10 @2:19..2:32
 // CHECK-NEXT:               path:
-// CHECK-NEXT:                 ModulePath #9 @2:19..2:22 segments=["Vec"]
+// CHECK-NEXT:                 ModulePath #9 @2:19..2:22 segments=["Vec"] root=Relative
 // CHECK-NEXT:               args:
 // CHECK-NEXT:                 RawPointerTypeExpr #8 @2:23..2:31 is_mut=true
 // CHECK-NEXT:                   elem:

@@ -1,0 +1,5 @@
+section: "Ch.08 Separate interface implementations"
+covers_rule: "interfaceDeclaration, structDeclaration, standaloneImplDeclaration"
+expected: "ACCEPT"
+notes:
+  - "Covers one distinct implementation declaration for each implemented interface."

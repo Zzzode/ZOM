@@ -13,6 +13,8 @@
 // the License.
 
 DIAG(7001, PackageManifestInvalid, kError, "Package manifest is invalid ({0})", 1)
+// Reserved by RFC 0012 until resolver, registry, lock, and source materialization phases land.
+// Tracking: docs/rfc/tracking/0012-review-and-implementation.md
 DIAG(7002, PackageSourceUnavailable, kError, "Package source is unavailable ({0})", 1)
 DIAG(7003, PackageSignatureInvalid, kError, "Package release signature is invalid for {0} {1}", 2)
 DIAG(7004, PackageDigestMismatch, kError, "Package {0} digest does not match", 1)
@@ -33,6 +35,8 @@ DIAG(7015, PackageTargetSelectionInvalid, kError, "Package target selection is i
 DIAG(7016, PackageInvocationInvalid, kError, "Package invocation is invalid ({0})", 1)
 DIAG(7017, PackageVcsSelectorEquivocation, kError, "VCS selector resolved to conflicting revisions",
      0)
+// Reserved by RFC 0012 until dependency-graph diagnostics attach secondary requirement facts.
+// Tracking: docs/rfc/tracking/0012-review-and-implementation.md
 DIAG(7091, PackageRequirementIntroducedHere, kNote, "Dependency requirement introduced here", 0)
 DIAG(7092, PackageDependencyEdgeHere, kNote, "Dependency edge participates in this failure", 0)
 DIAG(7093, PreviousWorkspacePackageHere, kNote, "Previous workspace package with this name is here",

@@ -189,9 +189,11 @@ options {
         if (!text.equals("where")) return false;
         return true;
     }
-    static boolean checkIsDynKeyword(String text, Object parser) {
-        if (!text.equals("dyn")) return false;
-        return true;
+    /** Predicate-first soft-keyword check for the dyn existential type form. */
+    static boolean la1IsDynKeyword(Object parser) {
+        Token token = ((ZomParser) parser)._input.LT(1);
+        return token != null && token.getType() == ZomParser.IDENTIFIER
+            && token.getText().equals("dyn");
     }
     static boolean checkIsUnsafePrefix(String text, Object parser) {
 
@@ -381,382 +383,43 @@ options {
             "enum pattern must use '.' form (e.g. Color.Red), not '::' qualified: "
             + path + "::" + name);
     }
-    /** A12 (relaxed): compact >> / >>> generic close accepted for nested angle
-     // *  POS fixtures (generic_type_edge_01 Vec<Vec<i32>>, nested_angle_closure_edge_03
-     // *  HashMap<K, Vec<V>>) explicitly require >> compact-close to parse. The
-     // *  original strict "space-separated only" rule is deferred to the semantic
-     // *  pass (lint only); parser accepts both forms.
-     // */
-/* A12 (strict): reject compact >> / >>> generic close at PARAMETER declaration
- // * (genericParamClose). This ensures `fun f<T, U>>` (unbalanced over-close) is
- // * REJECTED cleanly. Compact close at type ARGUMENT instantiation (genericClose)
- // * is handled by splitCompactClose below — it breaks RSHIFT/URSHIFT into 2/3 GTs.
- // * Lint for "prefer spaced > >" is deferred to semantic pass.
- // */
+/* Reject compact >> / >>> at a generic parameter declaration boundary. */
 static boolean rejectCompactClose(String token, Object parser) {
     throw new ParseCancellationException("compact `" + token
         + "` not allowed in generic PARAMETER declaration; use space-separated `>`");
 }
 
-/* A12 ONE-TIME PRE-PROCESS (runs in sourceFile @init, BEFORE parsing): walk the
- // * entire TokenStream and rewrite every RSHIFT (>>) and URSHIFT (>>>) token into
- // * individual GT (>)-equivalent tokens, so that genericClose only ever matches
- // * plain GT tokens. This avoids race conditions with ALL(*) adaptive lookahead
- // * (which can re-invoke gated predicates arbitrarily many times during simulation
- // * and corrupt any mutation of shared state).
- // *
- // * Strategy (forward-walk, insert at index+1):
- // *   • Call TokenStream#fill() to ensure the entire input is buffered.
- // *   • Iterate tokens from i = 0..tokens.size()-1. Because insertions happen
- // *     AFTER i (at i+1) we never re-visit an inserted token on the same loop
- // *     step (the loop counter monotonically increases; we don't re-scan).
- // *   • RSHIFT at position i: mutate tokens[i] to GT (char 0 only) and insert a
- // *     second GT at i+1 (covering char 1). Loop i steps over the first GT; next
- // *     iteration (i+1) visits the just-inserted second GT which is GT (not
- // *     RSHIFT) and is therefore a no-op.
- // *   • URSHIFT at position i: mutate tokens[i] to GT (char 0 only) and insert
- // *     RSHIFT (chars 1..2) at i+1. Loop i increments to i+1 which now sees the
- // *     RSHIFT (from the 3-char step) and on the NEXT iteration splits that RSHIFT
- // *     into two GTs (via the RSHIFT rule above). So URSHIFT becomes GT + GT + GT
- // *     across two successive iterations.
- // *
- // * NOTE: For expression-level shift operators (e.g. `x >> 2`), we are replacing
- // *       RSHIFT/URSHIFT tokens with GT(s), which WILL break shift expressions
- // *       like `x >> 2` and `x >>> 3`. The ZOM spec deliberately requires
- // *       SPACE-SEPARATED `> >` / `> > >` spellings for expression-level shifts
- // *       is therefore implemented by the explicit spaced rules:
- // *         shiftExpr : shiftExpr GT GT additiveExpr            # exprShiftSpacedRshift
- // *                   | shiftExpr GT GT GT additiveExpr         # exprShiftSpacedUrshift
- // *                   | ... (LSHIFT_ASSIGN / RSHIFT_ASSIGN / URSHIFT_ASSIGN tokens) ...
- // *       So compact RSHIFT/URSHIFT at the EXPRESSION level are NOT valid grammar
- // *       anyway. This means pre-splitting them into individual GTs is strictly a
- // *       TYPE-level gain and has no correctness cost for expressions.
- // */
-static void preSplitAllCompactCloses(Object parser) {
-    try {
-        ZomParser p = (ZomParser) parser;
-        org.antlr.v4.runtime.TokenStream ts = p.getTokenStream();
-        if (!(ts instanceof org.antlr.v4.runtime.BufferedTokenStream)) return;
-        org.antlr.v4.runtime.BufferedTokenStream bts =
-            (org.antlr.v4.runtime.BufferedTokenStream) ts;
-        bts.fill();  // ensure all tokens buffered
-        java.lang.reflect.Field fTokens = org.antlr.v4.runtime.BufferedTokenStream
-            .class.getDeclaredField("tokens");
-        fTokens.setAccessible(true);
-        @SuppressWarnings("unchecked")
-        java.util.List<Token> tokens = (java.util.List<Token>) fTokens.get(bts);
+private int pendingGenericCloses = 0;
 
-        int splitRshift = 0, splitUrshift = 0;
-        // Forward pass. Insertions at i+1 don't affect back-edges; we skip inserted
-        // GTs automatically because they have ttype==GT (not RSHIFT/URSHIFT).
-        for (int i = 0; i < tokens.size(); i++) {
-            Token t = tokens.get(i);
-            if (t == null || !(t instanceof org.antlr.v4.runtime.CommonToken)) continue;
-            org.antlr.v4.runtime.CommonToken ct = (org.antlr.v4.runtime.CommonToken) t;
-            int s = t.getStartIndex();
-            int e = t.getStopIndex();
-            int line = t.getLine();
-            int col = t.getCharPositionInLine();
-            if (t.getType() == ZomParser.RSHIFT) {
-                // 2-char >>  ->  GT (first) + GT (second)
-                ct.setType(ZomParser.GT);
-                ct.setStartIndex(s);
-                ct.setStopIndex(s);
-                // Build second GT (at i+1)
-                org.antlr.v4.runtime.CommonToken gt2 =
-                    new org.antlr.v4.runtime.CommonToken(ZomParser.GT);
-                gt2.setChannel(t.getChannel());
-                gt2.setStartIndex(s + 1);
-                gt2.setStopIndex(e);
-                gt2.setLine(line);
-                try {
-                    java.lang.reflect.Field fCol = org.antlr.v4.runtime.CommonToken
-                        .class.getDeclaredField("column");
-                    fCol.setAccessible(true);
-                    fCol.setInt(gt2, col + 1);
-                } catch (Throwable ignored) {
-                    try { gt2.setCharPositionInLine(col + 1); }
-                    catch (Throwable ignored2) {}
-                }
-                tokens.add(i + 1, gt2);
-                splitRshift++;
-            } else if (t.getType() == ZomParser.URSHIFT) {
-                // 3-char >>>  ->  GT (first) + RSHIFT (remaining 2 chars)
-                // On NEXT iteration i+1 we encounter the just-inserted RSHIFT and
-                // split it again into two GTs, giving the effective 3 GT final form.
-                ct.setType(ZomParser.GT);
-                ct.setStartIndex(s);
-                ct.setStopIndex(s);
-                org.antlr.v4.runtime.CommonToken rs =
-                    new org.antlr.v4.runtime.CommonToken(ZomParser.RSHIFT);
-                rs.setChannel(t.getChannel());
-                rs.setStartIndex(s + 1);
-                rs.setStopIndex(e);
-                rs.setLine(line);
-                try {
-                    java.lang.reflect.Field fCol = org.antlr.v4.runtime.CommonToken
-                        .class.getDeclaredField("column");
-                    fCol.setAccessible(true);
-                    fCol.setInt(rs, col + 1);
-                } catch (Throwable ignored) {
-                    try { rs.setCharPositionInLine(col + 1); }
-                    catch (Throwable ignored2) {}
-                }
-                tokens.add(i + 1, rs);
-                splitUrshift++;
-            }
-            // else: leave alone (GT, EOF, punctuation, identifiers, etc.)
-        }
-    } catch (Throwable t) {
-        // Non-fatal: if the reflection chain breaks on a particular JVM/ANTLR build
-        // we fall back to "spaced > only" behavior. Tests that require compact-close
-        // will fail with the usual ANTLR syntax error; no PCE or NPE escapes.
+static boolean hasPendingGenericClose(Object parser) {
+    return ((ZomParser) parser).pendingGenericCloses > 0;
+}
+
+static boolean hasNoPendingGenericClose(Object parser) {
+    return !hasPendingGenericClose(parser);
+}
+
+static void consumePendingGenericClose(Object parser) {
+    ZomParser p = (ZomParser) parser;
+    if (p.pendingGenericCloses <= 0)
+        throw new IllegalStateException("generic-close debt underflow");
+    --p.pendingGenericCloses;
+}
+
+static void addPendingGenericCloses(int compactType, Object parser) {
+    ZomParser p = (ZomParser) parser;
+    if (compactType == ZomParser.RSHIFT) {
+        ++p.pendingGenericCloses;
+    } else if (compactType == ZomParser.URSHIFT) {
+        p.pendingGenericCloses += 2;
+    } else {
+        throw new IllegalArgumentException("invalid compact generic-close token");
     }
 }
 
-/* A12 compact-close: GATED PREDICATE that runs BEFORE the genericClose rule's GT
- // * terminal is matched (i.e. during prediction). Handles three cases:
- // *
- // *  - LA(1) == GT       : no split needed, return true → parser matches plain GT
- // *  - LA(1) == RSHIFT   : lexer produced a single ">>" (2-char) token for two `>`
- // *                        closers. We MUTATE the current token to make it look like
- // *                        a single GT (1 char, first >), and INJECT a synthetic
- // *                        second GT token into the BufferedTokenStream at position
- // *                        p+1 (so the *next* genericClose invocation will consume it).
- // *                        Returns true.
- // *  - LA(1) == URSHIFT  : same as RSHIFT, but ">>>" (3-char). Mutate to GT, inject
- // *                        RSHIFT (2 remaining chars) at p+1; the subsequent
- // *                        genericClose will trigger this predicate again and split
- // *                        the RSHIFT into two GTs.
- // *
- // * Because this is a GATED predicate positioned BEFORE the actual terminal, the
- // * parser's decision engine sees only a single GT alt, drastically simplifying
- // * SLL→ALL(*) lookahead. Works with reflection to reach BufferedTokenStream's
- // * protected backing list and cursor.
- // */
-static boolean splitAngleIfCompact(Object parser) {
-    try {
-        ZomParser p = (ZomParser) parser;
-        org.antlr.v4.runtime.TokenStream ts = p.getTokenStream();
-        // Use LA(1) — this works both during ALL(*) lookahead simulation and
-        // during real parsing, because LT(1) always points to the head of the
-        // input regardless of how deep the adaptive prediction has looked ahead.
-        Token cur = ts.LT(1);
-        if (cur == null) return false;
-        // IMPORTANT: gated predicates can be invoked many times during a single
-        // ALL(*) decision simulation (every alternative re-evaluation re-runs them).
-        // The token's own `type` field is therefore our IDEMPOTENCY marker:
-        //   • first call with RSHIFT/URSHIFT: split and mutate type → GT
-        //   • subsequent re-calls: type is now GT → short-circuit true
-        //   • never-split case (plain GT from start): short-circuit true
-        int ttype = cur.getType();
-        if (ttype == ZomParser.GT) return true;
-        if (!(cur instanceof org.antlr.v4.runtime.CommonToken)) return ttype == ZomParser.GT;
-        org.antlr.v4.runtime.CommonToken ccur = (org.antlr.v4.runtime.CommonToken) cur;
-        // Must also be able to inject into underlying BufferedTokenStream
-        if (!(ts instanceof org.antlr.v4.runtime.BufferedTokenStream)) return false;
-        org.antlr.v4.runtime.BufferedTokenStream bts =
-            (org.antlr.v4.runtime.BufferedTokenStream) ts;
-        java.lang.reflect.Field fTokens = org.antlr.v4.runtime.BufferedTokenStream
-            .class.getDeclaredField("tokens");
-        fTokens.setAccessible(true);
-        @SuppressWarnings("unchecked")
-        java.util.List<Token> tokens = (java.util.List<Token>) fTokens.get(bts);
-        // Find the index of `cur` in the tokens list. Because ALL(*) lookahead
-        // simulation doesn't advance `p` we can't rely on p. Walk from p to find
-        // cur by identity.
-        java.lang.reflect.Field fP = org.antlr.v4.runtime.BufferedTokenStream
-            .class.getDeclaredField("p");
-        fP.setAccessible(true);
-        int idx = fP.getInt(bts);
-        if (idx < 0) idx = 0;
-        // Linear search starting at p, up to current size, to find `cur` by
-        // object identity (safe since LT(1) returns the *same* Token object each
-        // call during a single decision, and tokens list rarely exceeds size ~200
-        // for fixture-level inputs).
-        int curIdx = -1;
-        for (int i = Math.min(idx, tokens.size() - 1);
-             i < tokens.size() && i < idx + 32; i++) {
-            if (tokens.get(i) == cur) { curIdx = i; break; }
-        }
-        if (curIdx == -1) {
-            // Identity search failed (unusual) — fall back to scan from idx=0
-            for (int i = 0; i < tokens.size(); i++) {
-                if (tokens.get(i) == cur) { curIdx = i; break; }
-            }
-        }
-        if (curIdx == -1) {
-            // Cur not in list yet — probably because ALL(*) hasn't buffered it.
-            // For GT case: still accept; for compact, let's fail rather than
-            // corrupt state.
-            return ttype == ZomParser.GT;
-        }
-        int s = cur.getStartIndex();
-        int e = cur.getStopIndex();
-        if (ttype == ZomParser.RSHIFT) {
-            // Mutate to GT (first char). Subsequent re-evaluations of the
-            // predicate will see GT and short-circuit true (idempotency!).
-            ccur.setType(ZomParser.GT);
-            ccur.setStopIndex(s);
-            // Inject second GT at position curIdx+1. NOTE: during ALL(*)
-            // simulation tokens may be re-traversed; but since we mutate
-            // `cur` in-place, and the newly-injected token sits AFTER cur,
-            // and we check identity of cur (not index), subsequent calls
-            // continue to see cur as GT and return immediately. The injected
-            // token becomes the LT(1) for the *next* rule (outer genericClose)
-            // only after we've fully consumed the mutated GT (cur).
-            org.antlr.v4.runtime.CommonToken ins =
-                new org.antlr.v4.runtime.CommonToken(ZomParser.GT);
-            ins.setChannel(cur.getChannel());
-            ins.setStartIndex(s + 1);
-            ins.setStopIndex(e);
-            ins.setLine(cur.getLine());
-            try {
-                java.lang.reflect.Field fCol = org.antlr.v4.runtime.CommonToken
-                    .class.getDeclaredField("column");
-                fCol.setAccessible(true);
-                int col = (int) fCol.get(ccur);
-                fCol.setInt(ins, col + 1);
-            } catch (Throwable ignored) {
-                try {
-                    java.lang.reflect.Method m = ccur.getClass().getMethod(
-                        "setCharPositionInLine", int.class);
-                    m.invoke(ins, ccur.getCharPositionInLine() + 1);
-                } catch (Throwable ignored2) {}
-            }
-            tokens.add(curIdx + 1, ins);
-            return true;
-        }
-        if (ttype == ZomParser.URSHIFT) {
-            ccur.setType(ZomParser.GT);
-            ccur.setStopIndex(s);
-            org.antlr.v4.runtime.CommonToken ins =
-                new org.antlr.v4.runtime.CommonToken(ZomParser.RSHIFT);
-            ins.setChannel(cur.getChannel());
-            ins.setStartIndex(s + 1);
-            ins.setStopIndex(e);
-            ins.setLine(cur.getLine());
-            try {
-                java.lang.reflect.Field fCol = org.antlr.v4.runtime.CommonToken
-                    .class.getDeclaredField("column");
-                fCol.setAccessible(true);
-                int col = (int) fCol.get(ccur);
-                fCol.setInt(ins, col + 1);
-            } catch (Throwable ignored) {
-                try {
-                    java.lang.reflect.Method m = ccur.getClass().getMethod(
-                        "setCharPositionInLine", int.class);
-                    m.invoke(ins, ccur.getCharPositionInLine() + 1);
-                } catch (Throwable ignored2) {}
-            }
-            tokens.add(curIdx + 1, ins);
-            return true;
-        }
-        // Any other token → predicate fails → genericClose can't match
-        // → ANTLR syntax error (correct behavior).
-        return false;
-    } catch (Throwable t) {
-        // Fail-safe: propagate via PCE so we at least SEE it in failures.
-        t.printStackTrace(System.err);
-        throw new ParseCancellationException("splitAngleIfCompact("
-            + t.getClass().getSimpleName() + "): " + t.getMessage());
-    }
-}
-
-/* A12 compact-close: insert synthetic "remaining" token(s) into the TokenStream
- // * AFTER the parser has consumed the current RSHIFT/URSHIFT.
- // *
- // * Context: the lexer performs longest-match and always turns consecutive >
- // * characters into RSHIFT (>>) or URSHIFT (>>>) tokens. But generic type
- // * arguments close one per > (e.g. Vec<Vec<i32>> needs two independent
- // * genericClose matches, one for Vec<i32> and one for outer Vec). When
- // * genericClose matches RSHIFT (covers 2 > chars), the outer close still
- // * needs a single > — we therefore inject the remainder back into the stream.
- // *
- // * Because this is a plain semantic action (not gated predicate), it runs
- // * AFTER the parser has successfully matched and CONSUMED the RSHIFT/URSHIFT
- // * terminal, so TokenStream.p has already advanced to the next slot. We
- // * INSERT the remainder token at index p — making it LT(1) for the next
- // * parser decision, which is exactly the outer genericClose context.
- // *
- // * For RSHIFT: insert GT (remaining 1 >). For URSHIFT: insert RSHIFT
- // * (remaining 2 >), which itself will recursively trigger this function
- // * again in the subsequent genericClose. Reflection is used to access
- // * BufferedTokenStream's protected fields (tokens list and pointer p).
- // */
-static void insertRemainingAngleTokens(int compactType, Object parser) {
-    try {
-        ZomParser p = (ZomParser) parser;
-        org.antlr.v4.runtime.TokenStream ts = p.getTokenStream();
-        if (!(ts instanceof org.antlr.v4.runtime.BufferedTokenStream)) {
-        }
-        org.antlr.v4.runtime.BufferedTokenStream bts =
-            (org.antlr.v4.runtime.BufferedTokenStream) ts;
-        java.lang.reflect.Field fTokens = org.antlr.v4.runtime.BufferedTokenStream
-            .class.getDeclaredField("tokens");
-        fTokens.setAccessible(true);
-        @SuppressWarnings("unchecked")
-        java.util.List<Token> tokens = (java.util.List<Token>) fTokens.get(bts);
-        java.lang.reflect.Field fP = org.antlr.v4.runtime.BufferedTokenStream
-            .class.getDeclaredField("p");
-        fP.setAccessible(true);
-        int idx = fP.getInt(bts);  // pointer after consume
-        Token consumed = null;
-        if (idx - 1 >= 0 && idx - 1 < tokens.size()) consumed = tokens.get(idx - 1);
-        int s = consumed.getStartIndex();
-        int e = consumed.getStopIndex();
-        // Determine what synthetic token to inject, and its char-span.
-        int newType;
-        int newStart, newStop;
-        if (compactType == ZomParser.RSHIFT) {
-            newType = ZomParser.GT;
-            newStart = s + 1;  // second char of ">>"
-            newStop = e;       // = s + 1
-        } else if (compactType == ZomParser.URSHIFT) {
-            newType = ZomParser.RSHIFT;
-            newStart = s + 1;  // last two chars of ">>>"
-            newStop = e;       // = s + 2
-        } else return;
-        // Build the synthetic token. No source pair needed because we only
-        // care about type + position; ZOM parser never re-reads token text.
-        org.antlr.v4.runtime.CommonToken ins =
-            new org.antlr.v4.runtime.CommonToken(newType);
-        ins.setChannel(consumed.getChannel());
-        ins.setStartIndex(newStart);
-        ins.setStopIndex(newStop);
-        ins.setLine(consumed.getLine());
-        try {
-            java.lang.reflect.Field fCol = org.antlr.v4.runtime.CommonToken
-                .class.getDeclaredField("column");
-            fCol.setAccessible(true);
-            int col = (int) fCol.get(consumed);
-            fCol.setInt(ins, col + 1);  // shifted into the compact token
-        } catch (Throwable ignored) {
-            // Fallback: public setter (exists on WritableToken impl)
-            try {
-                java.lang.reflect.Method m = org.antlr.v4.runtime.CommonToken
-                    .class.getMethod("setCharPositionInLine", int.class);
-                m.invoke(ins, consumed.getCharPositionInLine() + 1);
-            } catch (Throwable ignored2) {}
-        }
-        // Insert at position p (the next LT(1) slot). Because tokens list is
-        // ArrayList, insert at index p automatically shifts existing tokens
-        // right (including anything that was already beyond p, e.g. lookahead
-        // buffered by ALL(*)). BufferedTokenStream.p is not modified — it
-        // still points at the "new" index p which now holds our synthetic
-        // token. Perfect.
-        tokens.add(idx, ins);
-        // If ALL(*) already buffered lookahead tokens beyond idx the backing
-        // list is fine but the parser's ATN simulation may reference stale
-        // Token pointers. This is extremely unlikely here because
-        // genericClose is a simple 1-token alt with no nested decisions and
-        // the next decision (another genericClose) starts fresh with LT(1).
-    } catch (Throwable t) {
-        // Never fail the parse because of a token-injection bug. Silent
-        // no-op keeps parser running; user only sees "unexpected <token>"
-        // at a later position, which is still a failing test but not a
-        // confusing NPE or PCE from our reflection code.
-    }
+static void requireNoPendingGenericCloses(Object parser) {
+    if (hasPendingGenericClose(parser))
+        throw new ParseCancellationException("unmatched compact generic close");
 }
     /** A13-REJECT: bare single-segment identifier as import target. */
     static boolean rejectImportBareId(String name, Object parser) {
@@ -910,53 +573,40 @@ static void insertRemainingAngleTokens(int compactType, Object parser) {
         try { ts = ((ZomParser) parser).getTokenStream(); }
         catch (Exception ignore) { return false; }
         try {
-            if (ts.LA(offset) == LT) {
-                int depth = 0;
-                while (true) {
-                    int tokenType = ts.LA(offset);
-                    if (tokenType == EOF) return false;
-                    if (tokenType == LT) {
-                        ++depth;
-                    } else if (tokenType == GT) {
-                        --depth;
-                        if (depth == 0) {
-                            ++offset;
-                            break;
-                        }
-                    } else if (tokenType == RSHIFT) {
-                        depth -= 2;
-                        ++offset;
-                        if (depth <= 0) break;
-                        continue;
-                    } else if (tokenType == URSHIFT) {
-                        depth -= 3;
-                        ++offset;
-                        if (depth <= 0) break;
-                        continue;
-                    }
-                    ++offset;
-                }
-            }
-
             if (ts.LA(offset) == NOT) return true;
 
+            // Positive short names are syntactically ambiguous until the final
+            // declaration delimiter. A semicolon selects a marker declaration;
+            // an implementation body selects an ordinary interface declaration.
+            int parenDepth = 0;
+            int bracketDepth = 0;
+            int angleDepth = 0;
             int cursor = offset;
-            int segments = 0;
-            boolean sawMarkerSegment = false;
             while (true) {
-                org.antlr.v4.runtime.Token segment = ts.LT(cursor);
-                if (segment == null) return false;
-                int segmentType = segment.getType();
-                if (segmentType == EOF || segmentType == FOR) return false;
-
-                ++segments;
-                if ("marker".equals(segment.getText())) { sawMarkerSegment = true; }
-
-                if (ts.LA(cursor + 1) != COLONCOLON) { break; }
-                cursor += 2;
+                int tokenType = ts.LA(cursor);
+                if (tokenType == EOF) return false;
+                if (tokenType == LPAREN) {
+                    ++parenDepth;
+                } else if (tokenType == RPAREN && parenDepth > 0) {
+                    --parenDepth;
+                } else if (tokenType == LBRACK) {
+                    ++bracketDepth;
+                } else if (tokenType == RBRACK && bracketDepth > 0) {
+                    --bracketDepth;
+                } else if (tokenType == LT) {
+                    ++angleDepth;
+                } else if (tokenType == GT && angleDepth > 0) {
+                    --angleDepth;
+                } else if (tokenType == RSHIFT && angleDepth > 0) {
+                    angleDepth = Math.max(0, angleDepth - 2);
+                } else if (tokenType == URSHIFT && angleDepth > 0) {
+                    angleDepth = Math.max(0, angleDepth - 3);
+                } else if (parenDepth == 0 && bracketDepth == 0 && angleDepth == 0) {
+                    if (tokenType == SEMICOLON) return true;
+                    if (tokenType == LBRACE) return false;
+                }
+                ++cursor;
             }
-
-            return segments >= 2 && sawMarkerSegment && ts.LA(cursor + 1) == FOR;
         } catch (Exception ignore) {
             return false;
         }
@@ -1042,27 +692,7 @@ sourceFile
 
 
 
-    //
-    // @init: one-time TOKEN PRE-PROCESSING step. The ZomLexer longest-matches
-    // consecutive `>` characters into RSHIFT (>>) or URSHIFT (>>>) tokens. But
-    // nested generic type closes like `Vec<Vec<i32>>` need two independent
-    // single-GT closers. To avoid race conditions with gated predicates that
-    // run inside ALL(*) adaptive lookahead (which may re-evaluate predicates
-    // many times, breaking stream-mutating side effects), we pre-process the
-    // ENTIRE TokenStream ONCE before parsing begins:
-    //   • RSHIFT (>>) tokens  → replace with GT, insert another GT right after
-    //   • URSHIFT (>>>) tokens → replace with GT, insert an RSHIFT right after
-    //                            (the subsequent GT+GT split happens on next call,
-    //                             but we only process one level here for simplicity;
-    //                             better: replace URSHIFT with THREE GT tokens)
-    //
-    // After this pass, genericClose only ever needs to match plain GT tokens,
-    // and no predicates or stream mutations run during prediction. Simplifies
-    // everything.
-    @init {
-        preSplitAllCompactCloses(this);
-    }
-    : moduleDeclaration? moduleItem* EOF
+    : moduleDeclaration? moduleItem* EOF { requireNoPendingGenericCloses(this); }
     ;
 
 moduleDeclaration
@@ -1079,12 +709,18 @@ moduleAliasPath
     ;
 
 moduleItem
-    : outerAttributeList declaration
-        { rejectTopLevelVisibility($declaration.ctx); }                                    # moduleItemDeclaration
+    : outerAttributeList moduleItemDeclaration
+        { rejectTopLevelVisibility($moduleItemDeclaration.ctx); }                          # moduleItemDeclarationWithAttributes
 
     | attrs=outerAttributeList statement
         { checkAttributedStatementTarget($attrs.ctx, $statement.ctx, this) }? # moduleItemStatementAttributed
     | statement                                                                             # moduleItemStatement
+    ;
+
+moduleItemDeclaration
+    : IMPORT importBody SEMICOLON                                                           # importDeclaration
+    | EXPORT exportBody                                                                     # exportDeclaration
+    | declaration                                                                           # ordinaryModuleItemDeclaration
     ;
 
 // ============================================================================
@@ -1094,17 +730,14 @@ moduleItem
 
 
 
-//     impl Interface(+Marker)* for Type { ... }          (Standalone)
-//     unsafe? impl !? AttrPath for Type (body | ';')      (Marker)
+//     unsafe? impl TypeParameters? Interface for Type WhereClause? ImplBody
+//     unsafe impl MarkerPath for ClosedType ;
+//     impl ! MarkerPath for ClosedType ;
 // ============================================================================
 declaration
-    : IMPORT importBody SEMICOLON                                                            # importDeclaration
-    | EXPORT exportBody                                                                      # exportDeclaration
-
-
     // A class header has at most one superclass. Interface implementations use
     // standalone `impl Interface for Type {}` declarations.
-    | modifierList CLASS memberIdentifier
+    : modifierList CLASS memberIdentifier
       typeParameters?
       ( COLON typeExpr )?
       whereClause?
@@ -1155,18 +788,18 @@ declaration
 
     | { peekIsMarkerImplAfterOptionalUnsafe(this, true) }?
       unsafeTok=identifier { checkIsUnsafePrefix($unsafeTok.text, this) }?
-      markerImplRest                                                                        # markerImplUnsafe
+      positiveMarkerImplRest                                                                # markerImplUnsafe
 
     | { peekIsMarkerImplAfterOptionalUnsafe(this, false) }?
       markerImplRest                                                                        # markerImplPlain
 
 
-    // impl <GenericParams>? InterfaceName ('+' MarkerPath)* for Type { ImplMember* }
+    // unsafe? impl <GenericParams>? InterfaceName for Type WhereClause? ImplBody
     | { peekIsOrdinaryImplAfterOptionalUnsafe(this, true) }?
       unsafeTok=identifier { checkIsUnsafePrefix($unsafeTok.text, this) }?
       implTok=identifier   { checkIsImplKeyword($implTok.text, this) }?
       typeParameters?
-      interfaceBoundList
+      interfaceBound
       FOR typeExpr
       whereClause?
       implBody                                                                              # standaloneUnsafeImplDeclaration
@@ -1174,7 +807,7 @@ declaration
     | { peekIsOrdinaryImplAfterOptionalUnsafe(this, false) }?
       implTok=identifier   { checkIsImplKeyword($implTok.text, this) }?
       typeParameters?
-      interfaceBoundList
+      interfaceBound
       FOR typeExpr
       whereClause?
       implBody                                                                              # standaloneImplDeclaration
@@ -1188,40 +821,35 @@ declaration
 // ---------- MarkerImpl common stem (after optional unsafe prefix)
 markerImplRest
     : implTok=identifier   { checkIsImplKeyword($implTok.text, this) }?
-      typeParameters?
-      ( NOT )?
+      NOT?
       markerImplPath
       FOR typeExpr
-      whereClause?
-      ( SEMICOLON | structBody )
+      SEMICOLON
+    ;
+
+positiveMarkerImplRest
+    : implTok=identifier   { checkIsImplKeyword($implTok.text, this) }?
+      markerImplPath
+      FOR typeExpr
+      SEMICOLON
     ;
 
 markerImplPath
-    : pathSegment ( colonColon pathSegment )*
+    : identifier ( colonColon identifier )*
     ;
 
 // ---------- Interface-bound list (17-gr line 294)
-//   InterfaceBoundList = InterfaceName('<'GenericArgs'>')? ('+' MarkerPath)*
-// Industry convention (Rust / Swift) - strict separation of conjunctions
-// vs disjunctions:
-//   * PLUS  (+) = CONJUNCTION (AND) - "all bounds apply" at impl / generic-bound /
-//                                      interface-heritage / dyn existential positions.
+//   InterfaceBoundList = InterfaceBound ('+' InterfaceBound)*
+// PLUS is conjunction in generic-bound and interface-heritage positions.
 //   * BIT_OR (|) = DISJUNCTION (OR)  - ONLY valid at UnionType / TypeExpression level
 //                                     (a value is one of several possible types).
-// Preventing `|` at impl-bound position blocks nonsense such as
-//   `impl (Read | Write) for Foo` - which would semantically mean "either Read
-// or Write is implemented" but coherence requires the set of implemented
-// interfaces to be FIXED and exhaustive.
 //
-// Individual bound: identifier, optionally qualified downstream by :: in the
-// semantic pass, plus optional generic instantiation args (Foo<T>).
-// 1+ segment interface/marker path.
+// Individual bound: an optional crate-root anchor followed by one or more
+// identifier segments, plus optional generic instantiation args (Foo<T>).
 //   * 1-segment  -> local/imported interface name, e.g. `Serialize`, `Debug`
 //   * 2+ segment -> fully qualified marker/interface name, e.g. `core::marker::Send`
-//   Marker impls use `attributePath`; negative marker impls are syntactically
-//   disambiguated by `!`, while positive short marker names are resolved by S1.
 qualifiedPathOrIdent
-    : pathSegment ( colonColon pathSegment )*
+    : colonColon? identifier ( colonColon identifier )*
     ;
 interfaceBound
     : qualifiedPathOrIdent ( LT typeArgList genericClose )?
@@ -1273,13 +901,17 @@ importBody
 
 
 importQualifiedPath
-    : pathSegment ( colonColon pathSegment )*
+    : identifier ( colonColon identifier )*
+    ;
+
+qualifiedModulePath
+    : identifier colonColon identifier ( colonColon identifier )*
     ;
 
 importClause
     // Bare identifier is rejected at importBody top-level.
     : identifier
-    | attributePath
+    | qualifiedModulePath
     ;
 
 
@@ -1320,10 +952,17 @@ exportSpec
 
 
 
+visibilityModifier
+    : PUBLIC | PRIVATE | PROTECTED
+    ;
+
+behaviorModifier
+    : STATIC | READONLY | MUTATING | OVERRIDE | ABSTRACT
+    ;
+
 modifier
-    : PUBLIC    | PRIVATE   | PROTECTED | STATIC
-    | READONLY  | MUTATING  | OVERRIDE  | ABSTRACT
-    | EXPORT
+    : visibilityModifier
+    | behaviorModifier
     ;
 
 
@@ -1518,7 +1157,8 @@ typeParameters
     ;
 
 
-// Bounds are trait conjunctions (PLUS-chain), same as impl head / dyn existential.
+// Bounds are predicate conjunctions. They are distinct from structural
+// intersections and from marker suffixes on a single dyn principal.
 // Order: variance? NAME : Bound+ = Default
 // Examples:
 //   fun f<T, U: number = i32, V: Eq + Hash>(x: T) -> str { ... }
@@ -1545,29 +1185,27 @@ wherePredicate
 // Default is INVARIANT (neither 'in' nor 'out' specified).
 variance
     // A5: variance NOT supported per 24-truth table
-    : IN  { rejectVarianceIn(this) }?
-    | OUT { rejectVarianceOut(this) }?
+    : IN  { rejectVarianceIn(this); }
+    | OUT { rejectVarianceOut(this); }
     ;
 
 
-// compact RSHIFT (>>) / URSHIFT (>>>) tokens into individual GT tokens. The
-// parser therefore only ever sees a single plain `>` at type-argument close
-// points. This eliminates ALL(*) prediction-edge cases with compact-close
-// tokens completely.
-
-
-// (see sourceFile @init, `preSplitAllCompactCloses`) we pre-split every RSHIFT (>>)
-// and URSHIFT (>>>) into individual GT tokens, so genericClose only needs to
-// match a single plain `>`. This keeps ALL(*) prediction simple and avoids
-// state corruption from mutating the token stream during lookahead simulation.
-genericClose : GT ;
+// Pure predicates expose compact-close debt to prediction. State changes occur
+// only in parser actions, so shift tokens remain intact in the token stream.
+genericClose
+    : {hasPendingGenericClose(this)}? { consumePendingGenericClose(this); }
+    | {hasNoPendingGenericClose(this)}? GT
+    | {hasNoPendingGenericClose(this)}? RSHIFT  { addPendingGenericCloses(RSHIFT, this); }
+    | {hasNoPendingGenericClose(this)}? URSHIFT { addPendingGenericCloses(URSHIFT, this); }
+    ;
 
 
 // so `fun f<T, U>>` (unbalanced over-close, two `>`) is REJECTED.
 genericParamClose
-    : GT
-    | RSHIFT  { rejectCompactClose(">>", this) }?
-    | URSHIFT { rejectCompactClose(">>>", this) }?
+    : {hasPendingGenericClose(this)}? { consumePendingGenericClose(this); }
+    | {hasNoPendingGenericClose(this)}? GT
+    | {hasNoPendingGenericClose(this)}? RSHIFT  { rejectCompactClose(">>", this); }
+    | {hasNoPendingGenericClose(this)}? URSHIFT { rejectCompactClose(">>>", this); }
     ;
 
 // ============================================================================
@@ -1842,7 +1480,14 @@ blockBody : LBRACE statementList RBRACE ;
 
 spawnBlockBody : LBRACE statementList expression? RBRACE ;
 
-statementList : moduleItem* ;
+statementList : statementListItem* ;
+
+statementListItem
+    : outerAttributeList declaration                                                     # statementListItemDeclaration
+    | attrs=outerAttributeList statement
+        { checkAttributedStatementTarget($attrs.ctx, $statement.ctx, this) }?             # statementListItemAttributed
+    | statement                                                                           # statementListItemStatement
+    ;
 
 
 parenExpression : LPAREN expression RPAREN ;
@@ -1872,18 +1517,11 @@ assignmentExpr
     ;
 
 
-// NOTE: Spaced ">>>=" writes as "> > >="; the parser accepts both the lexer-level
-
 assignmentOp
     : ASSIGN | MUL_ASSIGN | DIV_ASSIGN | MOD_ASSIGN | PLUS_ASSIGN | MINUS_ASSIGN
     | LSHIFT_ASSIGN | RSHIFT_ASSIGN | URSHIFT_ASSIGN
     | BIT_AND_ASSIGN | BIT_XOR_ASSIGN | BIT_OR_ASSIGN
     | POW_ASSIGN | AND_ASSIGN | OR_ASSIGN | NULL_COALESCE_ASSIGN
-    // Spaced-form equivalents for fixtures that spell compound tokens with
-    //   whitespace between characters (readability aids in reference tests):
-    | GT GT GT ASSIGN    // ">>>=" written with spaces = URSHIFT_ASSIGN equivalent
-    | GT GT ASSIGN       // ">>=" written with spaces = RSHIFT_ASSIGN equivalent
-    | GT GT GTE          // "> > >=" spaced URSHIFT_ASSIGN where third GT+ASSIGN lexed as GTE
     ;
 
 // Level 19: Ternary cond ? expr : expr (right-associative)
@@ -1966,14 +1604,8 @@ relationalExpr
 
 // Level 9: Shift
 
-// NOTE: Spaced-form alternatives (`> >`, `> > >`, `< < < <reserved>` not used; instead
-//       lexer produces LSHIFT / RSHIFT / URSHIFT from the non-spaced text. For clarity,
-//       fixtures that write `> > > 2` (space-separated) are intentionally matched here via
-//       additional parser-level GT-GT-GT sequences as a single URSHIFT-like operation.
 shiftExpr
     : shiftExpr ( LSHIFT | RSHIFT | URSHIFT ) additiveExpr                                  # exprShift
-    | shiftExpr GT GT GT additiveExpr                                                        # exprShiftSpacedUrshift
-    | shiftExpr GT GT additiveExpr                                                           # exprShiftSpacedRshift
     | additiveExpr                                                                        # exprAdditiveSingle
     ;
 
@@ -2016,30 +1648,23 @@ preIncrementExpr
 
 
 postfixExpr
-    : postfixExpr RAISES QUESTION                                                           # exprPostfixRaisesProp
-    | postfixExpr ( PLUSPLUS | MINUSMINUS | ERROR_PROPAGATE | FORCE_UNWRAP )
+    : postfixExpr ( PLUSPLUS | MINUSMINUS | ERROR_PROPAGATE | FORCE_UNWRAP )
       { checkPostfixLValue($ctx, this) }?                             # exprPostfixOp
     | callExpr                                                                            # exprCallSingle
     ;
 
 // Level 2: Call / Member / Index / Optional chain
 
-// NOTE: Lexer produces a single OPTIONAL_CHAIN `?.` token from `?.` — so accept it
-//       directly. Continue to accept the QUESTION? PERIOD shape for whitespace-
-//       separated `?.` spellings (QUESTION + PERIOD).
-
-
-
 callExpr
     : callExpr LPAREN expressionList? RPAREN (RAISES typeExpr)?                           # exprCall
     | callExpr LT typeArgList genericClose LPAREN expressionList? RPAREN
       (RAISES typeExpr)?                                                                  # exprGenericCall
     | callExpr OPTIONAL_CHAIN LPAREN expressionList? RPAREN (RAISES typeExpr)?             # exprOptionalCall
-    | callExpr QUESTION? PERIOD declaredDefinitionName                                    # exprMember
+    | callExpr PERIOD declaredDefinitionName                                              # exprMember
     | callExpr colonColon declaredDefinitionName                                          # exprQualifiedMember
     | callExpr OPTIONAL_CHAIN declaredDefinitionName                                      # exprOptionalMember
     | callExpr OPTIONAL_CHAIN LBRACK expression RBRACK                                     # exprOptionalIndex
-    | callExpr QUESTION? LBRACK expression RBRACK                                         # exprIndex
+    | callExpr LBRACK expression RBRACK                                                   # exprIndex
     | primaryExpr                                                                         # exprPrimarySingle
     ;
 
@@ -2279,7 +1904,7 @@ atomType
     | MUL ( CONST | MUT )? typeExpr                                                       # typeRawPointer
     | dynType                                                                             # typeDyn
     | associatedTypeProjection                                                            # typeAssociatedProjection
-    | attributePath ( LT typeArgList genericClose )?                                     # typeQualified
+    | qualifiedTypePath ( LT typeArgList genericClose )?                                 # typeQualified
     | identifier ( LT typeArgList genericClose )?                                        # typeNamed
     | LPAREN RPAREN                                                                       # typeTupleEmpty
     | LPAREN typeExpr ( COMMA typeExpr )* COMMA? RPAREN
@@ -2291,7 +1916,7 @@ atomType
     ;
 
 dynType
-    : dynTok=identifier { checkIsDynKeyword($dynTok.text, this) }?
+    : { la1IsDynKeyword(this) }? identifier
       qualifiedPathOrIdent ( LT typeArgList genericClose )?
       dynAssocBindingArgs? ( PLUS markerPath )*
     ;
@@ -2306,6 +1931,11 @@ dynAssocBinding
 
 markerPath
     : qualifiedPathOrIdent
+    ;
+
+qualifiedTypePath
+    : colonColon identifier ( colonColon identifier )*
+    | identifier ( colonColon identifier )+
     ;
 
 associatedTypeProjection

@@ -1,5 +1,0 @@
-// RUN: cd %corpus && %zomc compile --syntax-only 09-interfaces/impl_where_bound_satisfied_pos_19.zom > %t 2>&1
-// RUN: %FileCheck %s --input-file %t
-
-
-// CHECK-LITERAL: Syntax check completed successfully.

@@ -19,6 +19,7 @@
 #include "zc/core/common.h"
 #include "zc/core/io.h"
 #include "zc/core/memory.h"
+#include "zomlang/compiler/diagnostics/diagnostic-emitter.h"
 #include "zomlang/compiler/diagnostics/diagnostic-ids.h"
 #include "zomlang/compiler/diagnostics/diagnostic-info.h"
 #include "zomlang/compiler/diagnostics/diagnostic.h"
@@ -43,7 +44,7 @@ class DiagnosticState;
 
 class InFlightDiagnostic;
 
-class DiagnosticEngine {
+class DiagnosticEngine final : public DiagnosticEmitter {
 public:
   explicit DiagnosticEngine(source::SourceManager& sourceManager);
   ~DiagnosticEngine();
@@ -52,6 +53,7 @@ public:
 
   void addConsumer(zc::Own<DiagnosticConsumer> consumer);
   void emit(const Diagnostic& diagnostic);
+  void emitDiagnostic(const Diagnostic& diagnostic, zc::SourceLocation emitter) override;
 
   ZC_NODISCARD bool hasErrors() const;
   ZC_NODISCARD size_t errorCount() const;
@@ -59,25 +61,6 @@ public:
   ZC_NODISCARD const DiagnosticState& getState() const;
 
   DiagnosticState& getState();
-
-  // Speculative parse support.
-  // suppress() prevents emit() from forwarding diagnostics to consumers or setting hadAnyError.
-  // unsuppress() restores normal emission. Nestable: suppression is active while depth > 0.
-  void suppress();
-  void unsuppress();
-  ZC_NODISCARD bool isSuppressed() const;
-
-  /// \brief Report a diagnostic at the given location.
-  /// \param loc The location of the diagnostic.
-  /// \param id The diagnostic ID.
-  /// \param args The diagnostic arguments.
-  /// \return The in-flight diagnostic.
-  template <DiagID ID, typename... Args>
-  InFlightDiagnostic diagnose(source::SourceLoc loc, Args&&... args) {
-    static_assert(sizeof...(args) == DiagnosticTraits<ID>::argCount,
-                  "Incorrect number of diagnostic arguments");
-    return InFlightDiagnostic(*this, Diagnostic(ID, loc, zc::fwd<Args>(args)...));
-  }
 
   static void formatDiagnosticMessage(const source::SourceManager& sm, zc::OutputStream& out,
                                       zc::StringPtr message,

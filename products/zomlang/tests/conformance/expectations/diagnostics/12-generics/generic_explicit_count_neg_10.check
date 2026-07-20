@@ -1,9 +1,0 @@
-// RUN: cd %corpus && ! %zomc compile --syntax-only 12-generics/generic_explicit_count_neg_10.zom > %t 2>&1
-// RUN: %FileCheck %s --input-file %t
-
-
-// CHECK-LITERAL: Error [ZOM4016]: Expected 1 explicit type argument(s), got 2
-// CHECK-LITERAL:   --> 12-generics/generic_explicit_count_neg_10.zom:5:1
-// CHECK-LITERAL:   |
-// CHECK-LITERAL: 5 | identity<i32, str>(42);
-// CHECK-LITERAL:   | ^

@@ -11,22 +11,22 @@
 // CHECK-NEXT:           target:
 // CHECK-NEXT:             NamedTypeExpr #10 @1:17..1:32
 // CHECK-NEXT:               path:
-// CHECK-NEXT:                 ModulePath #9 @1:17..1:18 segments=["A"]
+// CHECK-NEXT:                 ModulePath #9 @1:17..1:18 segments=["A"] root=Relative
 // CHECK-NEXT:               args:
 // CHECK-NEXT:                 NamedTypeExpr #8 @1:19..1:32
 // CHECK-NEXT:                   path:
-// CHECK-NEXT:                     ModulePath #7 @1:19..1:20 segments=["B"]
+// CHECK-NEXT:                     ModulePath #7 @1:19..1:20 segments=["B"] root=Relative
 // CHECK-NEXT:                   args:
 // CHECK-NEXT:                     NamedTypeExpr #6 @1:21..1:29
 // CHECK-NEXT:                       path:
-// CHECK-NEXT:                         ModulePath #5 @1:21..1:22 segments=["C"]
+// CHECK-NEXT:                         ModulePath #5 @1:21..1:22 segments=["C"] root=Relative
 // CHECK-NEXT:                       args:
 // CHECK-NEXT:                         NamedTypeExpr #4 @1:23..1:27
 // CHECK-NEXT:                           path:
-// CHECK-NEXT:                             ModulePath #3 @1:23..1:24 segments=["D"]
+// CHECK-NEXT:                             ModulePath #3 @1:23..1:24 segments=["D"] root=Relative
 // CHECK-NEXT:                           args:
 // CHECK-NEXT:                             NamedTypeExpr #2 @1:25..1:26
 // CHECK-NEXT:                               path:
-// CHECK-NEXT:                                 ModulePath #1 @1:25..1:26 segments=["T"]
+// CHECK-NEXT:                                 ModulePath #1 @1:25..1:26 segments=["T"] root=Relative
 // CHECK-NEXT:                               args: []
 // CHECK-NEXT:       attrs: null

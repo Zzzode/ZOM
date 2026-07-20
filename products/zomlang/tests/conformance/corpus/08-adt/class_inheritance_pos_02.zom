@@ -7,4 +7,5 @@ export class Sprite : Object {
     override fun draw() -> unit { }
     fun update(dt: f32) -> unit { self.x = self.x + dt; }
 }
-impl Drawable + Updatable for Sprite { }
+impl Drawable for Sprite { }
+impl Updatable for Sprite { }

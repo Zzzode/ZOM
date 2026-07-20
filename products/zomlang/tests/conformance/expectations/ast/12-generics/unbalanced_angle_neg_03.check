@@ -2,7 +2,7 @@
 
 
 // CHECK-LITERAL: Error [ZOM2025]: Expected '>'
-// CHECK:   --> products {{(?:.*[/\\])?unbalanced_angle_neg_03\.zom:1:6$}}
+// CHECK-LITERAL:   --> conformance/unbalanced_angle_neg_03.zom:1:6
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 1 | fun f<T, U>>(a: T, b: U) -> unit { return unit; }
 // CHECK-LITERAL:   |      ^

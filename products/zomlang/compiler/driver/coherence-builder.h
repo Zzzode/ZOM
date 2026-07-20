@@ -1,0 +1,29 @@
+// Copyright (c) 2026 Zode.Z. All rights reserved
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+
+#pragma once
+
+#include "zomlang/compiler/checker/coherence-facts.h"
+#include "zomlang/compiler/driver/module-interface.h"
+
+namespace zomlang::compiler::driver {
+
+/// \brief Verified-interface-only input for global coherence construction.
+struct CoherenceBuildInput final {
+  identity::SemanticContextBrand semanticContext;
+  const identity::SemanticContextFingerprint& contextFingerprint;
+  const checker::signature::VerifiedMarkerPolicyRegistry& markerPolicies;
+  zc::ArrayPtr<const VerifiedModuleInterface> interfaces;
+  const identity::SemanticIdentityRegistrySet& registries;
+};
+
+/// \brief Sole driver projection into the checker-neutral coherence verifier.
+class CoherenceBuilder final {
+public:
+  ZC_NODISCARD static checker::coherence::CoherenceBuildResult build(
+      const CoherenceBuildInput& input);
+};
+
+}  // namespace zomlang::compiler::driver

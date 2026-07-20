@@ -2,7 +2,7 @@
 
 
 // CHECK-LITERAL: Error [ZOM2083]: Duplicate declaration modifier 'public'
-// CHECK:   --> products {{(?:.*[/\\])?struct_full_neg_09\.zom:2:12$}}
+// CHECK-LITERAL:   --> conformance/struct_full_neg_09.zom:2:12
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 2 |     public public x: i32;
 // CHECK-LITERAL:   |            ^

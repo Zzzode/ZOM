@@ -1,9 +1,0 @@
-// RUN: cd %corpus && ! %zomc compile --syntax-only 03-types/recursive_alias_cycle_neg_12.zom > %t 2>&1
-// RUN: %FileCheck %s --input-file %t
-
-
-// CHECK-LITERAL: Error [ZOM4052]: Recursive type alias cycle
-// CHECK-LITERAL:   --> 03-types/recursive_alias_cycle_neg_12.zom:1:11
-// CHECK-LITERAL:   |
-// CHECK-LITERAL: 1 | alias A = A;
-// CHECK-LITERAL:   |           ^

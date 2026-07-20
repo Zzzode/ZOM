@@ -1,5 +1,23 @@
 # Parser coverage ownership map for docs/spec/chapters/17-grammar-reference.md.
 # This file maps grammar productions to the parser function that owns them.
+internal_parser_methods:
+  parseBinaryExpressionAt: precedence
+  parseCastExpression: precedence
+  parseCommaExpression: precedence
+  parseCommaExpressionAt: precedence
+  parseEnumVariantList: list
+  parseFunctionParameterNodeList: list
+  parseImplInterfaceBound: normalization
+  parseNamedType: normalization
+  parseNullCoalesceExpressionAt: precedence
+  parseParenthesizedOrTupleType: normalization
+  parseRequiredExpression: boundary
+  parseSourceElementOfKind: boundary
+  parseStatementBody: boundary
+  parseTemplateLiteralExpression: boundary
+  parseVariableDeclarator: normalization
+  parseVariableDeclaratorList: list
+
 productions:
   AccessorDeclaration: {status: inlined, parser: parseNamedTypeDeclaration, parent: ClassElement}
   AbiLiteral: {status: inlined, parser: parseExternAbi, parent: ExternBlockDeclaration}
@@ -11,10 +29,10 @@ productions:
   ArrayBindingPattern: {status: inlined, parser: parsePatternRange, parent: BindingPattern}
   ArrayLiteral: {status: direct, parser: parseExpressionList, ast: [ArrayLiteral]}
   ArrayPattern: {status: inlined, parser: parsePatternRange, parent: Pattern}
-  AssignmentExpression: {status: inlined, parser: parseExpressionRange, parent: Expression}
+  AssignmentExpression: {status: inlined, parser: parseAssignmentExpressionAt, parent: Expression}
   AssignmentOperator: {status: inlined, parser: parseExpressionRange, parent: Expression}
   AssociatedTypeAssignment: {status: inlined, parser: parseSourceElement, parent: Declaration}
-  AtomType: {status: inlined, parser: parseTypeRange, parent: TypeExpression}
+  AtomType: {status: inlined, parser: parseAtomType, parent: TypeExpression}
   BigIntLiteral: {status: lexical}
   BinaryDigits: {status: lexical}
   BinaryLiteral: {status: lexical}
@@ -29,6 +47,7 @@ productions:
   BitwiseXORExpression: {status: inlined, parser: parseExpressionRange, parent: Expression}
   BlockStatement: {status: direct, parser: parseBlock, ast: [BlockStmt]}
   BooleanLiteral: {status: lexical}
+  BehaviorModifier: {status: inlined, parser: parseSourceElement, parent: ModifierKeyword}
   BreakStatement: {status: direct, parser: parseBreakStatement, ast: [BreakStmt]}
   CallExpression: {status: inlined, parser: parsePostfixExpressionAt, ast: [CallExpression], parent: Expression}
   CallSignature: {status: inlined, parser: parseFunctionParameterList, parent: MethodSignature}
@@ -40,7 +59,7 @@ productions:
   ClassDeclaration: {status: direct, parser: parseNamedTypeDeclaration, ast: [ClassDecl]}
   ClassElement: {status: inlined, parser: parseNamedTypeDeclaration, parent: ClassDeclaration}
   CoalesceExpression: {status: inlined, parser: parseExpressionRange, parent: Expression}
-  ConditionalExpression: {status: inlined, parser: parseExpressionRange, parent: Expression}
+  ConditionalExpression: {status: inlined, parser: parseConditionalExpressionAt, parent: Expression}
   ConstDeclaration: {status: direct, parser: parseLetStatement, ast: [LetStmt]}
   ConstDeclarationItem: {status: inlined, parser: parseLetStatement, parent: LetDeclaration}
   ConstDeclarationList: {status: inlined, parser: parseLetStatement, parent: LetDeclaration}
@@ -52,10 +71,10 @@ productions:
   DecimalIntegerLiteral: {status: lexical}
   DecimalLiteral: {status: lexical}
   DeclaredDefinitionName: {status: inlined, parser: parsePostfixExpressionAt, parent: MemberExpression}
-  Declaration: {status: inlined, parser: parseSourceElement, parent: ModuleItem}
+  Declaration: {status: inlined, parser: parseSourceElement, parent: ModuleItemDeclaration}
   DefaultClause: {status: inlined, parser: parseMatchStatement, parent: MatchStatement}
   DeinitDeclaration: {status: inlined, parser: parseNamedTypeDeclaration, parent: ClassElement, ast: [DestructorDecl]}
-  DoWhileStatement: {status: direct, parser: parseDoWhileStatement, ast: [DoWhileStatement]}
+  DoWhileStatement: {status: direct, parser: parseDoWhileStatement, delegates: [parseDoWhileStatementParts], ast: [DoWhileStatement]}
   DoubleStringCharacter: {status: lexical}
   DynAssocBinding: {status: inlined, parser: parseDynType, parent: DynAssocBindingArgs}
   DynAssocBindingArgs: {status: inlined, parser: parseDynType, parent: DynType}
@@ -68,7 +87,7 @@ productions:
   EnumPattern: {status: inlined, parser: parsePatternRange, parent: Pattern}
   EqualityExpression: {status: inlined, parser: parseExpressionRange, parent: Expression}
   ErrorDeclaration: {status: direct, parser: parseErrorDeclaration, ast: [ErrorDecl]}
-  ErrorDefaultExpression: {status: inlined, parser: parseExpressionRange, parent: Expression}
+  ErrorDefaultExpression: {status: inlined, parser: parseErrorDefaultExpressionAt, parent: Expression}
   ErrorDefaultOperator: {status: inlined, parser: parseExpressionRange, parent: Expression}
   EscapeSequence: {status: lexical}
   ExponentPart: {status: lexical}
@@ -79,16 +98,16 @@ productions:
   ExternVariableDeclaration: {status: inlined, parser: parseExternVarDecl, parent: ExternItem, ast: [ExternVarDecl]}
   ExportClause: {status: inlined, parser: parseExportDeclaration, parent: ExportDeclaration}
   ExportDeclaration: {status: direct, parser: parseExportDeclaration, ast: [ExportDeclaration]}
-  ExportSpecifier: {status: inlined, parser: parseExportDeclaration, parent: ExportDeclaration}
-  ExportSpecifierList: {status: inlined, parser: parseExportDeclaration, parent: ExportDeclaration}
-  Expression: {status: direct, parser: parseExpressionRange}
+  ExportSpecifier: {status: inlined, parser: parseExportSpecifier, parent: ExportDeclaration}
+  ExportSpecifierList: {status: inlined, parser: parseExportSpecifierList, parent: ExportDeclaration}
+  Expression: {status: direct, parser: parseExpression, delegates: [parseExpressionAt, parseExpressionRange]}
   ExpressionList: {status: inlined, parser: parseExpressionList, parent: ForInit}
   ExpressionPattern: {status: inlined, parser: parsePatternRange, parent: Pattern}
-  ExpressionStatement: {status: direct, parser: parseExpressionStatement, ast: [ExpressionStatement]}
+  ExpressionStatement: {status: direct, parser: parseExpressionStatement, delegates: [parseExpressionStatementWithoutSemicolon], ast: [ExpressionStatement]}
   ExpressionWithTypeArguments: {status: inlined, parser: parseNamedTypeDeclaration, parent: ClassDeclaration}
   ForInStatement: {status: direct, parser: parseForInStatement, ast: [ForInStatement]}
   ForInit: {status: inlined, parser: parseForStatement, parent: ForStatement}
-  ForStatement: {status: direct, parser: parseForStatement, ast: [ForStmt]}
+  ForStatement: {status: direct, parser: parseForStatement, delegates: [parseForStatementParts], ast: [ForStmt]}
   ForUpdate: {status: inlined, parser: parseForStatement, parent: ForStatement}
   FieldTerminator: {status: inlined, parser: parseClassMemberList, parent: StructElement}
   FunctionDeclaration: {status: direct, parser: parseFunctionDeclaration, ast: [FunctionDecl]}
@@ -98,6 +117,7 @@ productions:
   FunctionType: {status: direct, parser: parseFunctionType, ast: [FunctionTypeExpr]}
   FunctionTypeParameterClause: {status: inlined, parser: parseFunctionTypeParameters, parent: FunctionType}
   FunctionTypeParameterList: {status: inlined, parser: parseFunctionTypeParameters, parent: FunctionType}
+  FixedArrayType: {status: inlined, parser: parseBracketedType, parent: AtomType, ast: [FixedArrayTypeExpr]}
   GenericArgs: {status: inlined, parser: parseTypeArguments, parent: TypeArguments}
   GuardClause: {status: inlined, parser: parseMatchStatement, parent: MatchStatement}
   HexDigits: {status: lexical}
@@ -107,12 +127,12 @@ productions:
   IdentifierPart: {status: lexical}
   IdentifierPattern: {status: inlined, parser: parsePatternRange, parent: Pattern}
   IdentifierStart: {status: lexical}
-  IfStatement: {status: direct, parser: parseIfStatement, ast: [IfStmt]}
+  IfStatement: {status: direct, parser: parseIfStatement, delegates: [parseIfStatementParts], ast: [IfStmt]}
   ImportCall: {status: direct, parser: parseImportCallExpression, ast: [ImportCallExpression]}
   ImportClause: {status: inlined, parser: parseImportDeclaration, parent: ImportDeclaration}
   ImportDeclaration: {status: direct, parser: parseImportDeclaration, ast: [ImportDeclaration]}
-  ImportSpecifier: {status: inlined, parser: parseImportDeclaration, parent: ImportDeclaration}
-  ImportSpecifierList: {status: inlined, parser: parseImportDeclaration, parent: ImportDeclaration}
+  ImportSpecifier: {status: inlined, parser: parseImportSpecifier, parent: ImportDeclaration}
+  ImportSpecifierList: {status: inlined, parser: parseImportSpecifierList, parent: ImportDeclaration}
   ImplMember: {status: inlined, parser: parseStandaloneImplDeclaration, parent: StandaloneImplDeclaration}
   InitDeclaration: {status: inlined, parser: parseNamedTypeDeclaration, parent: ClassElement, ast: [ConstructorDecl]}
   Initializer: {status: inlined, parser: parseLetStatement, parent: LetDeclaration}
@@ -121,10 +141,10 @@ productions:
   InterfaceBoundList: {status: inlined, parser: parseTypeRange, parent: DynType}
   InterfaceDeclaration: {status: direct, parser: parseNamedTypeDeclaration, ast: [InterfaceDecl]}
   InterfaceElement: {status: inlined, parser: parseNamedTypeDeclaration, parent: InterfaceBody}
-  InterfaceHeritage: {status: inlined, parser: parseNamedTypeDeclaration, parent: InterfaceDeclaration}
+  InterfaceHeritage: {status: inlined, parser: parseInterfaceHeritage, parent: InterfaceDeclaration}
   InterfaceType: {status: inlined, parser: parseTypeRange, parent: InterfaceTypeList}
   InterfaceTypeList: {status: inlined, parser: parseTypeRange, parent: InterfaceHeritage}
-  IntersectionType: {status: inlined, parser: parseTypeRange, parent: TypeExpression}
+  IntersectionType: {status: inlined, parser: parseIntersectionType, parent: TypeExpression}
   IsPattern: {status: inlined, parser: parsePatternRange, parent: Pattern}
   LabeledStatement: {status: direct, parser: parseLabeledStatement, ast: [LabeledStatement]}
   LabelTarget: {status: inlined, parser: parseLabeledStatement, parent: LabeledStatement}
@@ -133,6 +153,7 @@ productions:
   LetDeclaration: {status: direct, parser: parseLetStatement, ast: [LetStmt]}
   LineContinuation: {status: lexical}
   LineTerminator: {status: lexical}
+  LineTerminatorSequence: {status: lexical}
   LocalExportClause: {status: inlined, parser: parseExportDeclaration, parent: ExportDeclaration}
   LogicalANDExpression: {status: inlined, parser: parseExpressionRange, parent: Expression}
   LogicalORExpression: {status: inlined, parser: parseExpressionRange, parent: Expression}
@@ -141,7 +162,7 @@ productions:
   MarkerPath: {status: inlined, parser: parseSourceElement, parent: Declaration}
   MatchBlock: {status: inlined, parser: parseMatchStatement, parent: MatchStatement}
   MatchClause: {status: inlined, parser: parseMatchStatement, parent: MatchStatement}
-  MatchStatement: {status: direct, parser: parseMatchStatement, ast: [MatchStmt]}
+  MatchStatement: {status: direct, parser: parseMatchStatement, delegates: [parseMatchStatementParts], ast: [MatchStmt]}
   MemberExpression: {status: inlined, parser: parseExpressionRange, parent: Expression}
   MethodDeclaration: {status: inlined, parser: parseNamedTypeDeclaration, parent: ClassElement, ast: [MethodDecl]}
   MethodSignature: {status: inlined, parser: parseNamedTypeDeclaration, parent: InterfaceElement}
@@ -151,12 +172,15 @@ productions:
   ModuleAliasPath: {status: inlined, parser: parseModuleDeclaration, parent: ModuleDeclaration}
   ModuleImportClause: {status: inlined, parser: parseImportDeclaration, parent: ImportDeclaration}
   ModuleItem: {status: inlined, parser: parseSourceElement, parent: SourceFile}
+  ModuleItemDeclaration: {status: inlined, parser: parseSourceElement, parent: ModuleItem}
   MultiLineComment: {status: lexical}
   MultiplicativeExpression: {status: inlined, parser: parseExpressionRange, parent: Expression}
   MutDeclaration: {status: direct, parser: parseLetStatement, ast: [LetStmt]}
   NamedImportClause: {status: inlined, parser: parseImportDeclaration, parent: ImportDeclaration}
   GroupBasePath: {status: inlined, parser: parseImportDeclaration, parent: NamedImportClause}
   NewExpression: {status: direct, parser: parseNewExpression, ast: [NewExpression]}
+  NoSubstitutionTemplateLiteral: {status: lexical}
+  NonInterpolationDollar: {status: lexical}
   NullLiteral: {status: lexical}
   NumericLiteral: {status: lexical}
   NumericLiteralSeparator: {status: lexical}
@@ -194,10 +218,10 @@ productions:
   PostfixExpression: {status: inlined, parser: parseExpressionRange, parent: Expression}
   ReceiverParameter: {status: inlined, parser: parseFunctionParameter, parent: Parameter}
   PostfixSuffix: {status: inlined, parser: parseExpressionRange, parent: Expression}
-  PostfixType: {status: inlined, parser: parseTypeRange, parent: TypeExpression}
+  PostfixType: {status: inlined, parser: parsePostfixType, parent: TypeExpression}
   PostfixTypeSuffix: {status: inlined, parser: parseTypeRange, parent: TypeExpression}
   PredefinedType: {status: inlined, parser: parseTypeRange, parent: TypeExpression}
-  PrimaryExpression: {status: inlined, parser: parseExpressionRange, parent: Expression}
+  PrimaryExpression: {status: inlined, parser: parsePrimaryExpressionAt, parent: Expression}
   PrimaryPattern: {status: inlined, parser: parsePatternRange, parent: Pattern}
   Program: {status: direct, parser: parse}
   PropertyDefinition: {status: inlined, parser: parseObjectLiteralExpression, parent: ObjectLiteral}
@@ -220,6 +244,7 @@ productions:
   SingleLineComment: {status: lexical}
   CharacterLiteralCharacter: {status: lexical}
   SourceFile: {status: direct, parser: buildTree, ast: [SourceFile]}
+  SliceType: {status: inlined, parser: parseBracketedType, parent: AtomType, ast: [SliceArrayTypeExpr]}
   SpawnBlockStatement: {status: inlined, parser: parseBlock, parent: SpawnExpression}
   SpawnExpression: {status: direct, parser: parseSpawnExpression, ast: [SpawnExpression]}
   SpawnModifier: {status: inlined, parser: parseSpawnExpression, parent: SpawnExpression}
@@ -239,36 +264,42 @@ productions:
   StructurePattern: {status: inlined, parser: parsePatternRange, parent: Pattern}
   SuperCall: {status: inlined, parser: parsePostfixExpressionAt, parent: CallExpression}
   SuperProperty: {status: inlined, parser: parseExpressionRange, parent: MemberExpression}
+  TemplateElement: {status: lexical}
+  TemplateEscape: {status: lexical}
+  TemplateHead: {status: lexical}
   TemplateLiteral: {status: lexical}
+  TemplateMiddle: {status: lexical}
   TemplateSpan: {status: lexical}
+  TemplateTail: {status: lexical}
   TupleElementTypes: {status: inlined, parser: parseTupleTypeRange, parent: TupleType}
   TuplePattern: {status: inlined, parser: parsePatternRange, parent: Pattern}
   TupleType: {status: direct, parser: parseTupleTypeRange, ast: [TupleTypeExpr]}
   TypeAnnotation: {status: inlined, parser: parseTypeRange, parent: TypeExpression}
-  TypeArgumentList: {status: inlined, parser: parseTypeArguments, parent: TypeArguments}
+  TypeArgumentList: {status: inlined, parser: parseTypeArgumentList, parent: TypeArguments}
   TypeArguments: {status: direct, parser: parseTypeArguments}
   TypeBody: {status: inlined, parser: parseObjectTypeRange, parent: ObjectType}
-  TypeExpression: {status: direct, parser: parseTypeRange}
+  TypeExpression: {status: direct, parser: parseTypeExpression, delegates: [parseTypeExpressionAt, parseTypeRange]}
   TypeMember: {status: inlined, parser: parseObjectTypeRange, parent: ObjectType}
   TypeMemberList: {status: inlined, parser: parseObjectTypeRange, parent: ObjectType}
   TypeName: {status: inlined, parser: parseTypeRange, parent: TypeExpression}
   TypeParameter: {status: inlined, parser: parseFunctionType, parent: TypeParameterList}
-  TypeParameterBoundList: {status: inlined, parser: parseTypeRange, parent: TypeParameter}
+  TypeParameterBoundList: {status: inlined, parser: parseTypeParameterBoundList, delegates: [parseAssociatedTypeBoundList, parseBoundListMembers], parent: TypeParameter, ast: [TypeParameterBoundList, AssociatedTypeBoundList]}
   TypeParameterList: {status: inlined, parser: parseFunctionType, parent: TypeParameters}
-  TypeParameters: {status: inlined, parser: parseFunctionType, parent: FunctionType}
-  TypeQuery: {status: inlined, parser: parseTypeRange, parent: TypeExpression}
+  TypeParameters: {status: inlined, parser: parseTypeParameters, parent: FunctionType}
+  TypeQuery: {status: inlined, parser: parseTypeQuery, parent: TypeExpression}
   TypeQueryExpression: {status: inlined, parser: parseTypeRange, parent: TypeExpression}
   TypeReference: {status: inlined, parser: parseTypeRange, parent: TypeExpression}
-  UnaryExpression: {status: inlined, parser: parseExpressionRange, parent: Expression}
+  UnaryExpression: {status: inlined, parser: parseUnaryExpressionAt, parent: Expression}
   UnsafeBlockExpression: {status: direct, parser: parseUnsafeBlockExpression, ast: [UnsafeBlockExpr]}
   UnicodeEscapeSequence: {status: lexical}
-  UnionType: {status: inlined, parser: parseTypeRange, parent: TypeExpression}
+  UnionType: {status: inlined, parser: parseUnionType, parent: TypeExpression}
   UpdateExpression: {status: inlined, parser: parseExpressionRange, parent: Expression}
   VariableDeclaration: {status: inlined, parser: parseLetStatement, parent: LetDeclaration}
   VariableDeclarationList: {status: inlined, parser: parseLetStatement, parent: LetDeclaration}
   VariableStatement: {status: direct, parser: parseLetStatement, ast: [LetStmt]}
+  VisibilityModifier: {status: inlined, parser: parseSourceElement, parent: ModifierKeyword}
   WhereClause: {status: direct, parser: parseWhereClause, ast: [WhereClause]}
   WherePredicate: {status: direct, parser: parseWherePredicate, ast: [WherePred]}
-  WhileStatement: {status: direct, parser: parseWhileStatement, ast: [WhileStmt]}
+  WhileStatement: {status: direct, parser: parseWhileStatement, delegates: [parseWhileStatementParts], ast: [WhileStmt]}
   Whitespace: {status: lexical}
   WildcardPattern: {status: inlined, parser: parsePatternRange, parent: Pattern}

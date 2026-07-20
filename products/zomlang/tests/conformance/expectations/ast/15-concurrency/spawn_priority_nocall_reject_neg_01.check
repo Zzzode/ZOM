@@ -2,12 +2,12 @@
 
 
 // CHECK-LITERAL: Error [ZOM2025]: Expected '('
-// CHECK:   --> products {{(?:.*[/\\])?spawn_priority_nocall_reject_neg_01\.zom:2:28$}}
+// CHECK-LITERAL:   --> conformance/spawn_priority_nocall_reject_neg_01.zom:2:28
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 2 |     let t = spawn priority do_work();
 // CHECK-LITERAL:   |                            ^
 // CHECK-LITERAL: Error [ZOM2056]: Expression expected
-// CHECK:   --> products {{(?:.*[/\\])?spawn_priority_nocall_reject_neg_01\.zom:2:13$}}
+// CHECK-LITERAL:   --> conformance/spawn_priority_nocall_reject_neg_01.zom:2:13
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 2 |     let t = spawn priority do_work();
 // CHECK-LITERAL:   |             ^

@@ -9,24 +9,24 @@
 // CHECK-NEXT:         InterfaceDecl #15 @1:1..3:2 name="IOReader"
 // CHECK-NEXT:           type_params_id: null
 // CHECK-NEXT:           ifaces_id:
-// CHECK-NEXT:             ImplIfaceList #7 @1:22..1:54 n_ifaces=3
+// CHECK-NEXT:             ImplIfaceList #7 @1:22..1:54
 // CHECK-NEXT:               ifaces:
 // CHECK-NEXT:                 NamedTypeExpr #2 @1:22..1:30
 // CHECK-NEXT:                   path:
-// CHECK-NEXT:                     ModulePath #1 @1:22..1:30 segments=["Readable"]
+// CHECK-NEXT:                     ModulePath #1 @1:22..1:30 segments=["Readable"] root=Relative
 // CHECK-NEXT:                   args: []
 // CHECK-NEXT:                 NamedTypeExpr #4 @1:33..1:41
 // CHECK-NEXT:                   path:
-// CHECK-NEXT:                     ModulePath #3 @1:33..1:41 segments=["Closable"]
+// CHECK-NEXT:                     ModulePath #3 @1:33..1:41 segments=["Closable"] root=Relative
 // CHECK-NEXT:                   args: []
 // CHECK-NEXT:                 NamedTypeExpr #6 @1:44..1:54
 // CHECK-NEXT:                   path:
-// CHECK-NEXT:                     ModulePath #5 @1:44..1:54 segments=["Disposable"]
+// CHECK-NEXT:                     ModulePath #5 @1:44..1:54 segments=["Disposable"] root=Relative
 // CHECK-NEXT:                   args: []
 // CHECK-NEXT:           members_id:
 // CHECK-NEXT:             ClassMemberList #14 @1:55..3:2 nmembers=1
 // CHECK-NEXT:               members:
-// CHECK-NEXT:                 MethodDecl #13 @2:5..2:32 name="read" is_static=false visibility=Default
+// CHECK-NEXT:                 MethodDecl #13 @2:5..2:32 name="read" mode=Instance visibility=Default
 // CHECK-NEXT:                   params_id:
 // CHECK-NEXT:                     FunctionParameterList #11 @2:13..2:24 nparams=1
 // CHECK-NEXT:                       params:

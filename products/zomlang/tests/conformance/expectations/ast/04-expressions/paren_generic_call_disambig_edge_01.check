@@ -24,5 +24,5 @@
 // CHECK-NEXT:                         PredefinedTypeExpr #4 @1:19..1:22 kind=Str
 // CHECK-NEXT:                       args:
 // CHECK-NEXT:                         IntLiteral #5 @1:24..1:25 base=10 value="1"
-// CHECK-NEXT:                         StrLiteral #6 @1:27..1:30 value="s" is_raw=false prefix=None
+// CHECK-NEXT:                         StringLiteralExpr #6 @1:27..1:30 value="s"
 // CHECK-NEXT:       attrs: null

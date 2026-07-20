@@ -16,7 +16,7 @@
 // CHECK-NEXT:                       ty: null
 // CHECK-NEXT:                   ty: null
 // CHECK-NEXT:                   init:
-// CHECK-NEXT:                     StrLiteral #2 @1:15..1:19 value="\n" is_raw=false prefix=None
+// CHECK-NEXT:                     StringLiteralExpr #2 @1:15..1:19 value="\n"
 // CHECK-NEXT:       attrs: null
 // CHECK-NEXT:     StatementListItem #12 @2:1..2:16
 // CHECK-NEXT:       item:
@@ -30,7 +30,7 @@
 // CHECK-NEXT:                       ty: null
 // CHECK-NEXT:                   ty: null
 // CHECK-NEXT:                   init:
-// CHECK-NEXT:                     StrLiteral #8 @2:11..2:15 value="\t" is_raw=false prefix=None
+// CHECK-NEXT:                     StringLiteralExpr #8 @2:11..2:15 value="\t"
 // CHECK-NEXT:       attrs: null
 // CHECK-NEXT:     StatementListItem #18 @3:1..3:23
 // CHECK-NEXT:       item:
@@ -44,7 +44,7 @@
 // CHECK-NEXT:                       ty: null
 // CHECK-NEXT:                   ty: null
 // CHECK-NEXT:                   init:
-// CHECK-NEXT:                     StrLiteral #14 @3:18..3:22 value="\r" is_raw=false prefix=None
+// CHECK-NEXT:                     StringLiteralExpr #14 @3:18..3:22 value="\r"
 // CHECK-NEXT:       attrs: null
 // CHECK-NEXT:     StatementListItem #24 @4:1..4:24
 // CHECK-NEXT:       item:
@@ -58,7 +58,7 @@
 // CHECK-NEXT:                       ty: null
 // CHECK-NEXT:                   ty: null
 // CHECK-NEXT:                   init:
-// CHECK-NEXT:                     StrLiteral #20 @4:19..4:23 value="\"" is_raw=false prefix=None
+// CHECK-NEXT:                     StringLiteralExpr #20 @4:19..4:23 value="\""
 // CHECK-NEXT:       attrs: null
 // CHECK-NEXT:     StatementListItem #30 @5:1..5:24
 // CHECK-NEXT:       item:
@@ -72,7 +72,7 @@
 // CHECK-NEXT:                       ty: null
 // CHECK-NEXT:                   ty: null
 // CHECK-NEXT:                   init:
-// CHECK-NEXT:                     StrLiteral #26 @5:19..5:23 value="'" is_raw=false prefix=None
+// CHECK-NEXT:                     StringLiteralExpr #26 @5:19..5:23 value="'"
 // CHECK-NEXT:       attrs: null
 // CHECK-NEXT:     StatementListItem #36 @6:1..6:22
 // CHECK-NEXT:       item:
@@ -86,7 +86,7 @@
 // CHECK-NEXT:                       ty: null
 // CHECK-NEXT:                   ty: null
 // CHECK-NEXT:                   init:
-// CHECK-NEXT:                     StrLiteral #32 @6:17..6:21 value="\\" is_raw=false prefix=None
+// CHECK-NEXT:                     StringLiteralExpr #32 @6:17..6:21 value="\\"
 // CHECK-NEXT:       attrs: null
 // CHECK-NEXT:     StatementListItem #42 @7:1..7:24
 // CHECK-NEXT:       item:
@@ -100,7 +100,7 @@
 // CHECK-NEXT:                       ty: null
 // CHECK-NEXT:                   ty: null
 // CHECK-NEXT:                   init:
-// CHECK-NEXT:                     StrLiteral #38 @7:17..7:23 value="A" is_raw=false prefix=None
+// CHECK-NEXT:                     StringLiteralExpr #38 @7:17..7:23 value="A"
 // CHECK-NEXT:       attrs: null
 // CHECK-NEXT:     StatementListItem #48 @8:1..8:30
 // CHECK-NEXT:       item:
@@ -114,5 +114,5 @@
 // CHECK-NEXT:                       ty: null
 // CHECK-NEXT:                   ty: null
 // CHECK-NEXT:                   init:
-// CHECK-NEXT:                     StrLiteral #44 @8:21..8:29 value="A" is_raw=false prefix=None
+// CHECK-NEXT:                     StringLiteralExpr #44 @8:21..8:29 value="A"
 // CHECK-NEXT:       attrs: null

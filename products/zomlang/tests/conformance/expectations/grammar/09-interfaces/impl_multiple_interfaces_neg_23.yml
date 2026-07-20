@@ -1,0 +1,5 @@
+section: "Ch.09 Single-interface implementation head"
+covers_rule: "standaloneImplDeclaration"
+expected: "REJECT"
+notes:
+  - "One implementation declaration names exactly one interface."

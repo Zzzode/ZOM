@@ -2,7 +2,7 @@
 
 
 // CHECK-LITERAL: Error [ZOM2072]: Type expected
-// CHECK:   --> products {{(?:.*[/\\])?raises_empty_reject_neg_01\.zom:1:18$}}
+// CHECK-LITERAL:   --> conformance/raises_empty_reject_neg_01.zom:1:18
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 1 | fun bad() raises -> i32;
 // CHECK-LITERAL:   |                  ^

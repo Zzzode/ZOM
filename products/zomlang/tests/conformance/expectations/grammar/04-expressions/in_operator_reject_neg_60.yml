@@ -1,0 +1,5 @@
+section: "§4 Binary expression operators"
+covers_rule: "relationalExpr excludes IN"
+expected: "REJECT"
+notes:
+  - "`in` is reserved for for-loop headers and is not a binary expression operator."

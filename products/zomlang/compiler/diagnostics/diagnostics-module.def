@@ -17,10 +17,27 @@
 
 DIAG(3011, CircularImport, kError, "Circular import detected for module '{0}'", 1)
 DIAG(3012, ImportModuleNotFound, kError, "Cannot resolve module '{0}'", 1)
-DIAG(3013, ImportMemberNotFound, kError,
-     "Module '{0}' has no exported member '{1}'", 2)
+DIAG(3013, ImportMemberNotFound, kError, "Module '{0}' has no exported member '{1}'", 2)
 DIAG(3014, CircularReexport, kError, "Circular re-export detected for module '{0}'", 1)
-DIAG(3015, ReexportModuleNotFound, kError,
-     "Cannot resolve module '{0}' for re-export", 1)
+DIAG(3015, ReexportModuleNotFound, kError, "Cannot resolve module '{0}' for re-export", 1)
 DIAG(3016, ReexportMemberNotFound, kError,
      "Module '{0}' has no exported member '{1}' for re-export", 2)
+DIAG(3018, ImportTargetNotVisible, kError, "Import target is not visible from this module", 0)
+DIAG(3019, ReexportTargetNotVisible, kError,
+     "Re-export target is not visible from this module", 0)
+DIAG(3023, ImportModuleAmbiguous, kError, "Import path resolves to multiple modules", 0)
+DIAG(3024, ReexportModuleAmbiguous, kError, "Re-export path resolves to multiple modules", 0)
+DIAG(3026, ModuleDeclarationNameMismatch, kError,
+     "Module declaration '{0}' does not match selected module '{1}'", 2)
+
+// RFC 0008 verified module-interface publication invariants.
+DIAG(9950, ModuleInterfaceInputMismatch, kFatal,
+     "Internal module interface input is inconsistent ({0} occurrence(s))", 1)
+DIAG(9951, ModuleInterfaceMissingProjection, kFatal,
+     "Internal module interface projection is missing ({0} occurrence(s))", 1)
+DIAG(9952, ModuleInterfaceAdditionalProjection, kFatal,
+     "Internal module interface projection is not authorized ({0} occurrence(s))", 1)
+DIAG(9953, ModuleInterfaceInvalidProjection, kFatal,
+     "Internal module interface projection is invalid ({0} occurrence(s))", 1)
+DIAG(9954, ModuleInterfaceCanonicalCodecMismatch, kFatal,
+     "Internal module interface canonical encoding is invalid ({0} occurrence(s))", 1)

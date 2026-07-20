@@ -2,7 +2,7 @@
 
 
 // CHECK-LITERAL: Error [ZOM2060]: Method syntax is not allowed in object literals. Use a property with a function value instead
-// CHECK:   --> products {{(?:.*[/\\])?obj_method_reject_neg_01\.zom:1:12$}}
+// CHECK-LITERAL:   --> conformance/obj_method_reject_neg_01.zom:1:12
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 1 | let obj = {fun foo() { return 42; }};
 // CHECK-LITERAL:   |            ^

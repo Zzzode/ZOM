@@ -1,0 +1,8 @@
+// RUN: ! %zomc compile --dump-ast %corpus/03-types/plus_type_intersection_reject_neg_41.zom 2>&1 | %FileCheck %s
+
+
+// CHECK-LITERAL: Error [ZOM2076]: Unexpected token expected
+// CHECK-LITERAL:   --> conformance/plus_type_intersection_reject_neg_41.zom:1:38
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 1 | alias InvalidIntersection = Readable + Writable;
+// CHECK-LITERAL:   |                                      ^

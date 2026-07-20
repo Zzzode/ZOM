@@ -123,8 +123,13 @@ def main() -> int:
             polluted_invocation = polluted_invocation or any(invocation.glob(".zc-tmp.*"))
             time.sleep(0.001)
         output, _ = process.communicate(timeout=30)
-        if process.returncode != 0:
-            raise RuntimeError(f"source snapshot isolation compile failed:\n{output}")
+        normalized_output = ANSI.sub("", output)
+        expected_boundary = "[ZOM9928]: Internal checker required fact is missing"
+        if process.returncode == 0 or expected_boundary not in normalized_output:
+            raise RuntimeError(
+                "source snapshot isolation did not reach the fail-closed signature boundary:"
+                f"\n{normalized_output}"
+            )
         if polluted_invocation:
             raise RuntimeError("source snapshot staging polluted the invocation directory")
         if any(cwd.glob(".zc-tmp.*")):

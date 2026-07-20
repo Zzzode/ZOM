@@ -24,6 +24,6 @@
 // CHECK-NEXT:                 PredefinedTypeExpr #6 @2:20..2:24 kind=Unit
 // CHECK-NEXT:                 NamedTypeExpr #8 @2:27..2:32
 // CHECK-NEXT:                   path:
-// CHECK-NEXT:                     ModulePath #7 @2:27..2:32 segments=["Error"]
+// CHECK-NEXT:                     ModulePath #7 @2:27..2:32 segments=["Error"] root=Relative
 // CHECK-NEXT:                   args: []
 // CHECK-NEXT:       attrs: null

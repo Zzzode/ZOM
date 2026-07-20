@@ -41,7 +41,7 @@ function(check_include_prefixes)
   endforeach ()
 
   execute_process(
-    COMMAND python3 ${COMMAND_ARGS}
+    COMMAND "${Python3_EXECUTABLE}" ${COMMAND_ARGS}
     OUTPUT_VARIABLE INVALID_INCLUDES
     OUTPUT_STRIP_TRAILING_WHITESPACE
   )

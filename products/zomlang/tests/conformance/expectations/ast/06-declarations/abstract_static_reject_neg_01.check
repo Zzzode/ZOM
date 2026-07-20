@@ -2,7 +2,7 @@
 
 
 // CHECK-LITERAL: Error [ZOM2084]: Declaration modifiers 'abstract' and 'static' cannot be used together
-// CHECK:   --> products {{(?:.*[/\\])?abstract_static_reject_neg_01\.zom:1:10$}}
+// CHECK-LITERAL:   --> conformance/abstract_static_reject_neg_01.zom:1:10
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 1 | abstract static fun f() {}
 // CHECK-LITERAL:   |          ^

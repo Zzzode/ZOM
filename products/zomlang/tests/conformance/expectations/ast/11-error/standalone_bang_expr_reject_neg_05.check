@@ -2,12 +2,12 @@
 
 
 // CHECK-LITERAL: Error [ZOM2056]: Expression expected
-// CHECK:   --> products {{(?:.*[/\\])?standalone_bang_expr_reject_neg_05\.zom:1:13$}}
+// CHECK-LITERAL:   --> conformance/standalone_bang_expr_reject_neg_05.zom:1:13
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 1 | let bang = !;
 // CHECK-LITERAL:   |             ^
 // CHECK-LITERAL: Error [ZOM2056]: Expression expected
-// CHECK:   --> products {{(?:.*[/\\])?standalone_bang_expr_reject_neg_05\.zom:1:12$}}
+// CHECK-LITERAL:   --> conformance/standalone_bang_expr_reject_neg_05.zom:1:12
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 1 | let bang = !;
 // CHECK-LITERAL:   |            ^

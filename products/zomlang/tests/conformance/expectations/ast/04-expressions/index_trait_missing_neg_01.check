@@ -26,7 +26,7 @@
 // CHECK-NEXT:                   ty:
 // CHECK-NEXT:                     NamedTypeExpr #6 @3:10..3:13
 // CHECK-NEXT:                       path:
-// CHECK-NEXT:                         ModulePath #5 @3:10..3:13 segments=["Bag"]
+// CHECK-NEXT:                         ModulePath #5 @3:10..3:13 segments=["Bag"] root=Relative
 // CHECK-NEXT:                       args: []
 // CHECK-NEXT:                   init: null
 // CHECK-NEXT:       attrs: null

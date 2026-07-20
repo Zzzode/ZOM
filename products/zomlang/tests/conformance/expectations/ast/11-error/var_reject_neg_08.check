@@ -2,12 +2,12 @@
 
 
 // CHECK-LITERAL: Error [ZOM2056]: Expression expected
-// CHECK:   --> products {{(?:.*[/\\])?var_reject_neg_08\.zom:1:1$}}
+// CHECK-LITERAL:   --> conformance/var_reject_neg_08.zom:1:1
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 1 | var x: i32 = 5;
 // CHECK-LITERAL:   | ^
 // CHECK-LITERAL: Error [ZOM2076]: Unexpected token expected
-// CHECK:   --> products {{(?:.*[/\\])?var_reject_neg_08\.zom:1:1$}}
+// CHECK-LITERAL:   --> conformance/var_reject_neg_08.zom:1:1
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 1 | var x: i32 = 5;
 // CHECK-LITERAL:   | ^

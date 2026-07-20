@@ -2,7 +2,7 @@
 
 
 // CHECK-LITERAL: Error [ZOM2025]: Expected '('
-// CHECK:   --> products {{(?:.*[/\\])?if_paren_required_neg_01\.zom:2:8$}}
+// CHECK-LITERAL:   --> conformance/if_paren_required_neg_01.zom:2:8
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 2 |     if x { return; }
 // CHECK-LITERAL:   |        ^

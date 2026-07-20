@@ -43,11 +43,20 @@ public:
   ZC_NODISCARD FrozenRegistryFailure freezeSourceFiles();
   ZC_NODISCARD FrozenRegistryFailure collectModule(ModuleKey&& key, uint32_t traversalOrdinal = 0);
   ZC_NODISCARD FrozenRegistryFailure freezeModules();
-  ZC_NODISCARD FrozenRegistryFailure collectDefinition(DefinitionKey&& key,
-                                                       uint32_t traversalOrdinal = 0);
-  ZC_NODISCARD FrozenRegistryFailure freezeDefinitions();
-  ZC_NODISCARD FrozenRegistryFailure collectImpl(ImplKey&& key, uint32_t traversalOrdinal = 0);
-  ZC_NODISCARD FrozenRegistryFailure freezeImpls();
+  /// \brief Admits stable definition and implementation records outermost first.
+  ZC_NODISCARD FrozenRegistryFailure collectDefinition(
+      DefinitionIdentityRecord&& record,
+      zc::Maybe<OverloadHeaderAuthority>&& overloadHeaderAuthority, uint32_t traversalOrdinal = 0);
+  ZC_NODISCARD FrozenRegistryFailure collectImpl(ImplIdentityRecord&& record,
+                                                 uint32_t traversalOrdinal = 0);
+  /// \brief Freezes both halves of the mixed stable-owner authority catalog.
+  ZC_NODISCARD FrozenRegistryFailure freezeStableIdentities();
+  ZC_NODISCARD FrozenRegistryFailure
+  collectGenericParameter(GenericParameterIdentityRecord&& record, uint32_t traversalOrdinal = 0);
+  ZC_NODISCARD FrozenRegistryFailure
+  collectCallableParameter(CallableParameterIdentityRecord&& record, uint32_t traversalOrdinal = 0);
+  ZC_NODISCARD FrozenRegistryFailure freezeGenericParameters();
+  ZC_NODISCARD FrozenRegistryFailure freezeCallableParameters();
 
   ZC_NODISCARD const PackageRegistry& packages() const noexcept;
   ZC_NODISCARD const CrateRegistry& crates() const noexcept;
@@ -55,6 +64,10 @@ public:
   ZC_NODISCARD const ModuleRegistry& modules() const noexcept;
   ZC_NODISCARD const DefinitionRegistry& definitions() const noexcept;
   ZC_NODISCARD const ImplRegistry& impls() const noexcept;
+  ZC_NODISCARD const GenericParameterRegistry& genericParameters() const noexcept;
+  ZC_NODISCARD const CallableParameterRegistry& callableParameters() const noexcept;
+  /// \brief Returns the semantic context that owns this complete registry family.
+  ZC_NODISCARD SemanticContextBrand context() const noexcept;
   ZC_NODISCARD zc::Maybe<const ImmutableSourceSnapshot&> sourceSnapshot(SourceFileId source) const;
   ZC_NODISCARD zc::Maybe<SourceSpan> sourceSpan(SourceFileId source, uint64_t byteStart,
                                                 uint64_t byteEnd) const;
@@ -76,6 +89,8 @@ private:
   ModuleRegistry moduleRegistry;
   DefinitionRegistry definitionRegistry;
   ImplRegistry implRegistry;
+  GenericParameterRegistry genericParameterRegistry;
+  CallableParameterRegistry callableParameterRegistry;
   zc::Vector<ImmutableSourceSnapshot> sourceSnapshotValues;
   IdentityInvariantCollector invariantCollector;
 };

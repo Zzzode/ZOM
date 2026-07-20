@@ -11,11 +11,9 @@
 #include "zomlang/compiler/ast/kinds.h"
 #include "zomlang/compiler/source/manager.h"
 
-namespace zomlang::compiler::binder {
-class ParsedModuleVerifier;
-}
-
 namespace zomlang::compiler::parser {
+
+class CanonicalParsedSource;
 
 /// \brief Immutable parser-owned token boundary retained after successful parsing.
 struct ParsedTokenRange final {
@@ -44,7 +42,7 @@ private:
   source::BufferId buffer;
   zc::Array<ParsedTokenRange> tokenValues;
   friend class Parser;
-  friend class binder::ParsedModuleVerifier;
+  friend class CanonicalParsedSource;
 };
 
 }  // namespace zomlang::compiler::parser

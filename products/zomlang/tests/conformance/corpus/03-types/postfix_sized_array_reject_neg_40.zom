@@ -1,0 +1,1 @@
+alias InvalidSizedPostfix = i32[4];

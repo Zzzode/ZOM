@@ -39,7 +39,7 @@
 // CHECK-NEXT:                               ty:
 // CHECK-NEXT:                                 NamedTypeExpr #8 @4:16..4:21
 // CHECK-NEXT:                                   path:
-// CHECK-NEXT:                                     ModulePath #7 @4:16..4:21 segments=["Owner"]
+// CHECK-NEXT:                                     ModulePath #7 @4:16..4:21 segments=["Owner"] root=Relative
 // CHECK-NEXT:                                   args: []
 // CHECK-NEXT:                               init: null
 // CHECK-NEXT:                   attrs: null
@@ -72,7 +72,7 @@
 // CHECK-NEXT:                               ty:
 // CHECK-NEXT:                                 NamedTypeExpr #22 @6:15..6:20
 // CHECK-NEXT:                                   path:
-// CHECK-NEXT:                                     ModulePath #21 @6:15..6:20 segments=["Owner"]
+// CHECK-NEXT:                                     ModulePath #21 @6:15..6:20 segments=["Owner"] root=Relative
 // CHECK-NEXT:                                   args: []
 // CHECK-NEXT:                               init:
 // CHECK-NEXT:                                 IdentExpr #23 @6:23..6:28 name="owned"

@@ -2,12 +2,12 @@
 
 
 // CHECK-LITERAL: Error [ZOM2076]: Unexpected token expected
-// CHECK:   --> products {{(?:.*[/\\])?iface_ctor_reject_neg_01\.zom:2:5$}}
+// CHECK-LITERAL:   --> conformance/iface_ctor_reject_neg_01.zom:2:5
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 2 |     init() { }
 // CHECK-LITERAL:   |     ^
 // CHECK-LITERAL: Error [ZOM2092]: Interface bodies accept only methods, accessors, and associated type declarations
-// CHECK:   --> products {{(?:.*[/\\])?iface_ctor_reject_neg_01\.zom:2:5$}}
+// CHECK-LITERAL:   --> conformance/iface_ctor_reject_neg_01.zom:2:5
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 2 |     init() { }
 // CHECK-LITERAL:   |     ^

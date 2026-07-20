@@ -19,10 +19,10 @@
 // CHECK-NEXT:                   alts:
 // CHECK-NEXT:                     NamedTypeExpr #3 @1:33..1:40
 // CHECK-NEXT:                       path:
-// CHECK-NEXT:                         ModulePath #2 @1:33..1:40 segments=["IoError"]
+// CHECK-NEXT:                         ModulePath #2 @1:33..1:40 segments=["IoError"] root=Relative
 // CHECK-NEXT:                       args: []
 // CHECK-NEXT:                     NamedTypeExpr #5 @1:43..1:53
 // CHECK-NEXT:                       path:
-// CHECK-NEXT:                         ModulePath #4 @1:43..1:53 segments=["ParseError"]
+// CHECK-NEXT:                         ModulePath #4 @1:43..1:53 segments=["ParseError"] root=Relative
 // CHECK-NEXT:                       args: []
 // CHECK-NEXT:       attrs: null

@@ -2,17 +2,17 @@
 
 
 // CHECK-LITERAL: Error [ZOM2076]: Unexpected token expected
-// CHECK:   --> products {{(?:.*[/\\])?interface\-invalid\-member\-class\.zom:2:3$}}
+// CHECK-LITERAL:   --> conformance/interface-invalid-member-class.zom:2:3
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 2 |   class C {}
 // CHECK-LITERAL:   |   ^
 // CHECK-LITERAL: Error [ZOM2092]: Interface bodies accept only methods, accessors, and associated type declarations
-// CHECK:   --> products {{(?:.*[/\\])?interface\-invalid\-member\-class\.zom:2:3$}}
+// CHECK-LITERAL:   --> conformance/interface-invalid-member-class.zom:2:3
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 2 |   class C {}
 // CHECK-LITERAL:   |   ^
 // CHECK-LITERAL: Error [ZOM2052]: Property or signature expected
-// CHECK:   --> products {{(?:.*[/\\])?interface\-invalid\-member\-class\.zom:2:3$}}
+// CHECK-LITERAL:   --> conformance/interface-invalid-member-class.zom:2:3
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 2 |   class C {}
 // CHECK-LITERAL:   |   ^

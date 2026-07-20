@@ -1,9 +1,0 @@
-// RUN: cd %corpus && ! %zomc compile --syntax-only 04-expressions/binary_invalid_operands_neg_32.zom > %t 2>&1
-// RUN: %FileCheck %s --input-file %t
-
-
-// CHECK-LITERAL: Error [ZOM4028]: Invalid operands to binary expression
-// CHECK-LITERAL:   --> 04-expressions/binary_invalid_operands_neg_32.zom:1:9
-// CHECK-LITERAL:   |
-// CHECK-LITERAL: 1 | let y = true + false;
-// CHECK-LITERAL:   |         ^

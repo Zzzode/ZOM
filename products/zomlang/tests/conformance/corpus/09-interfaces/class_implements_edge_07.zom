@@ -2,4 +2,5 @@ struct Point {
     x: i32;
     y: i32;
 }
-impl Drawable + Hashable for Point { }
+impl Drawable for Point { }
+impl Hashable for Point { }

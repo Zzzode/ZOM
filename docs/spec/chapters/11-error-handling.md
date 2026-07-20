@@ -141,9 +141,7 @@ The conformance suite covers:
 - `?!` with a compatible raises effect;
 - `?!` outside a raises effect and on a non-union operand;
 - `!!` on union and non-union operands;
-- postfix AST precedence; and
-- the current checked IR snapshots for one-residual propagation and
-  forced-unwrap panic metadata.
+- postfix AST precedence.
 
 Claims about cleanup graphs, multi-layer IR, runtime panic entry points,
 unwinding, native code generation, and FFI boundaries require their own

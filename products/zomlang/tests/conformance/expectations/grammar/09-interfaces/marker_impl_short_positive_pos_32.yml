@@ -1,0 +1,5 @@
+section: "Ch.17 MarkerImplDeclaration"
+covers_rule: "positiveMarkerImplRest"
+expected: "ACCEPT"
+notes:
+  - "A positive short marker assertion uses the bodyless unsafe source form."

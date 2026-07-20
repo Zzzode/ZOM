@@ -2,7 +2,7 @@
 
 
 // CHECK-LITERAL: Error [ZOM2025]: Expected '>'
-// CHECK:   --> products {{(?:.*[/\\])?generic_type_neg_01\.zom:1:26$}}
+// CHECK-LITERAL:   --> conformance/generic_type_neg_01.zom:1:26
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 1 | alias MissClose = HashMap<i32, str;
 // CHECK-LITERAL:   |                          ^

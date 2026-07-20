@@ -2,7 +2,7 @@
 
 
 // CHECK-LITERAL: Error [ZOM2056]: Expression expected
-// CHECK:   --> products {{(?:.*[/\\])?underscore_expr_reject_neg_01\.zom:1:9$}}
+// CHECK-LITERAL:   --> conformance/underscore_expr_reject_neg_01.zom:1:9
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 1 | let x = _;
 // CHECK-LITERAL:   |         ^

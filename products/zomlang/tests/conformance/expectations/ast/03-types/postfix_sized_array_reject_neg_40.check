@@ -1,0 +1,8 @@
+// RUN: ! %zomc compile --dump-ast %corpus/03-types/postfix_sized_array_reject_neg_40.zom 2>&1 | %FileCheck %s
+
+
+// CHECK-LITERAL: Error [ZOM2076]: Unexpected token expected
+// CHECK-LITERAL:   --> conformance/postfix_sized_array_reject_neg_40.zom:1:33
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 1 | alias InvalidSizedPostfix = i32[4];
+// CHECK-LITERAL:   |                                 ^

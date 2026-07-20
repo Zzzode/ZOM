@@ -28,6 +28,7 @@
 
 namespace zomlang::compiler::identity {
 
+class CanonicalDecoder;
 class CanonicalEncoder;
 
 /// \brief Package-root-relative path in canonical declaration order.
@@ -38,6 +39,7 @@ public:
   ZC_DISALLOW_COPY(CanonicalRelativePath);
 
   ZC_NODISCARD static CanonicalRelativePath from(zc::Vector<CanonicalPathSegment>&& segments);
+  ZC_NODISCARD static zc::Maybe<CanonicalRelativePath> decodeCanonical(CanonicalDecoder& decoder);
   ZC_NODISCARD CanonicalRelativePath clone() const;
   /// \brief Clones this path into storage owned by `resource`.
   /// \param resource Resource that must outlive the returned path.
@@ -61,6 +63,8 @@ public:
 
   ZC_NODISCARD static CanonicalWorkspaceRelativePath from(
       uint32_t leadingParentCount, zc::Vector<CanonicalPathSegment>&& segments);
+  ZC_NODISCARD static zc::Maybe<CanonicalWorkspaceRelativePath> decodeCanonical(
+      CanonicalDecoder& decoder);
   ZC_NODISCARD CanonicalWorkspaceRelativePath clone() const;
   /// \brief Clones this workspace path into storage owned by `resource`.
   /// \param resource Resource that must outlive the returned path.
@@ -89,6 +93,7 @@ public:
 
   ZC_NODISCARD static zc::Maybe<VcsRevision> from(VcsRevisionAlgorithm algorithm,
                                                   zc::ArrayPtr<const uint8_t> digest);
+  ZC_NODISCARD static zc::Maybe<VcsRevision> decodeCanonical(CanonicalDecoder& decoder);
   ZC_NODISCARD VcsRevision clone() const;
   /// \brief Clones this revision into storage owned by `resource`.
   /// \param resource Resource that must outlive the returned revision.
@@ -114,6 +119,7 @@ public:
 
   ZC_NODISCARD static RegistryIdentity from(CanonicalUrl&& indexUrl,
                                             const Sha256Digest& trustDomain);
+  ZC_NODISCARD static zc::Maybe<RegistryIdentity> decodeCanonical(CanonicalDecoder& decoder);
   ZC_NODISCARD RegistryIdentity clone() const;
   /// \brief Clones this registry identity into storage owned by `resource`.
   /// \param resource Resource that must outlive the returned identity.
@@ -157,6 +163,7 @@ public:
   ZC_NODISCARD static CanonicalPackageSource vcs(CanonicalUrl&& repository, VcsRevision&& revision,
                                                  CanonicalRelativePath&& subdirectory);
   ZC_NODISCARD static CanonicalPackageSource localPath(CanonicalWorkspaceRelativePath&& value);
+  ZC_NODISCARD static zc::Maybe<CanonicalPackageSource> decodeCanonical(CanonicalDecoder& decoder);
   ZC_NODISCARD CanonicalPackageSource clone() const;
   /// \brief Clones this source into storage owned by `resource`.
   /// \param resource Resource that must outlive the returned source.
@@ -192,6 +199,7 @@ public:
 
   ZC_NODISCARD static PackageBaseKey from(CanonicalPackageSource&& source, PackageName&& name,
                                           ResolvedVersion&& version);
+  ZC_NODISCARD static zc::Maybe<PackageBaseKey> decodeCanonical(CanonicalDecoder& decoder);
   ZC_NODISCARD PackageBaseKey clone() const;
   /// \brief Clones this package coordinate into storage owned by `resource`.
   /// \param resource Resource that must outlive the returned coordinate.
@@ -222,6 +230,7 @@ public:
   ZC_NODISCARD static PackageKey from(CanonicalPackageSource&& source, PackageName&& name,
                                       ResolvedVersion&& version,
                                       SortedFeatureSet&& enabledFeatures);
+  ZC_NODISCARD static zc::Maybe<PackageKey> decodeCanonical(CanonicalDecoder& decoder);
   ZC_NODISCARD PackageKey clone() const;
   /// \brief Clones this package key into storage owned by `resource`.
   /// \param resource Resource that must outlive the returned key.
@@ -257,6 +266,8 @@ public:
                                                                DependencyAlias&& alias,
                                                                DependencyDomain domain,
                                                                PackageKey&& provider);
+  ZC_NODISCARD static zc::Maybe<PackageDependencyEdgeKey> decodeCanonical(
+      CanonicalDecoder& decoder);
   ZC_NODISCARD PackageDependencyEdgeKey clone() const;
   /// \brief Clones this dependency edge into storage owned by `resource`.
   /// \param resource Resource that must outlive the returned edge.

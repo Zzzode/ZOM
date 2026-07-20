@@ -1,9 +1,0 @@
-// RUN: cd %corpus && ! %zomc compile --syntax-only 04-expressions/comparison_invalid_operands_neg_33.zom > %t 2>&1
-// RUN: %FileCheck %s --input-file %t
-
-
-// CHECK-LITERAL: Error [ZOM4029]: Invalid operands to binary comparison
-// CHECK-LITERAL:   --> 04-expressions/comparison_invalid_operands_neg_33.zom:3:9
-// CHECK-LITERAL:   |
-// CHECK-LITERAL: 3 | let y = p < 1;
-// CHECK-LITERAL:   |         ^

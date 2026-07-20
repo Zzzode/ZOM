@@ -1,0 +1,5 @@
+section: "Ch.17 MarkerImplDeclaration"
+covers_rule: "markerImplRest"
+expected: "ACCEPT"
+notes:
+  - "A positive short marker candidate without unsafe is retained for signature checking."

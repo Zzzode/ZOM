@@ -2,12 +2,12 @@
 
 
 // CHECK-LITERAL: Error [ZOM2056]: Expression expected
-// CHECK:   --> products {{(?:.*[/\\])?single_q_error_prop_reject_neg_07\.zom:1:33$}}
+// CHECK-LITERAL:   --> conformance/single_q_error_prop_reject_neg_07.zom:1:33
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 1 | fun f() raises X { return foo()?; }
 // CHECK-LITERAL:   |                                 ^
 // CHECK-LITERAL: Error [ZOM2056]: Expression expected
-// CHECK:   --> products {{(?:.*[/\\])?single_q_error_prop_reject_neg_07\.zom:1:27$}}
+// CHECK-LITERAL:   --> conformance/single_q_error_prop_reject_neg_07.zom:1:27
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 1 | fun f() raises X { return foo()?; }
 // CHECK-LITERAL:   |                           ^

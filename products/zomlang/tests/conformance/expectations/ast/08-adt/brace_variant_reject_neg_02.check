@@ -2,7 +2,7 @@
 
 
 // CHECK-LITERAL: Error [ZOM2076]: Unexpected token expected
-// CHECK:   --> products {{(?:.*[/\\])?brace_variant_reject_neg_02\.zom:2:11$}}
+// CHECK-LITERAL:   --> conformance/brace_variant_reject_neg_02.zom:2:11
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 2 |     Point { x: i32, y: i32 },
 // CHECK-LITERAL:   |           ^

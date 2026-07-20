@@ -14,7 +14,7 @@
 // CHECK-NEXT:                   ty:
 // CHECK-NEXT:                     NamedTypeExpr #3 @2:20..2:25
 // CHECK-NEXT:                       path:
-// CHECK-NEXT:                         ModulePath #2 @2:20..2:25 segments=["usize"]
+// CHECK-NEXT:                         ModulePath #2 @2:20..2:25 segments=["usize"] root=Relative
 // CHECK-NEXT:                       args: []
 // CHECK-NEXT:                   default_: null
 // CHECK-NEXT:                   attrs: null
@@ -27,7 +27,7 @@
 // CHECK-NEXT:                   ty:
 // CHECK-NEXT:                     NamedTypeExpr #8 @3:19..3:24
 // CHECK-NEXT:                       path:
-// CHECK-NEXT:                         ModulePath #7 @3:19..3:24 segments=["usize"]
+// CHECK-NEXT:                         ModulePath #7 @3:19..3:24 segments=["usize"] root=Relative
 // CHECK-NEXT:                       args: []
 // CHECK-NEXT:                   default_: null
 // CHECK-NEXT:                   attrs: null
@@ -35,7 +35,7 @@
 // CHECK-NEXT:                   ty:
 // CHECK-NEXT:                     NamedTypeExpr #11 @3:30..3:35
 // CHECK-NEXT:                       path:
-// CHECK-NEXT:                         ModulePath #10 @3:30..3:35 segments=["usize"]
+// CHECK-NEXT:                         ModulePath #10 @3:30..3:35 segments=["usize"] root=Relative
 // CHECK-NEXT:                       args: []
 // CHECK-NEXT:                   default_: null
 // CHECK-NEXT:                   attrs: null
@@ -53,7 +53,7 @@
 // CHECK-NEXT:                   ty:
 // CHECK-NEXT:                     NamedTypeExpr #18 @4:29..4:34
 // CHECK-NEXT:                       path:
-// CHECK-NEXT:                         ModulePath #17 @4:29..4:34 segments=["usize"]
+// CHECK-NEXT:                         ModulePath #17 @4:29..4:34 segments=["usize"] root=Relative
 // CHECK-NEXT:                       args: []
 // CHECK-NEXT:                   default_: null
 // CHECK-NEXT:                   attrs: null

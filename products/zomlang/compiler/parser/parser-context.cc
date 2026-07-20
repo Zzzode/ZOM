@@ -15,25 +15,25 @@
 #include "zomlang/compiler/parser/parser-context.h"
 
 #include "zc/core/debug.h"
-#include "zomlang/compiler/diagnostics/diagnostic-engine.h"
+#include "zomlang/compiler/diagnostics/diagnostic-fact-buffer.h"
 
 namespace zomlang {
 namespace compiler {
 namespace parser {
 
 ParserContext::ParserContext(const source::SourceManager& sourceMgr,
-                             diagnostics::DiagnosticEngine& diagnosticEngine,
+                             diagnostics::DiagnosticFactBuffer& diagnosticFacts,
                              const source::BufferId& bufferId)
-    : sourceMgr(sourceMgr), diagnosticEngine(diagnosticEngine), bufferId(bufferId) {}
+    : sourceMgr(sourceMgr), diagnosticFacts(diagnosticFacts), bufferId(bufferId) {}
 
 ParserContext::ParserContext(const source::SourceManager& sourceMgr,
-                             diagnostics::DiagnosticEngine& diagnosticEngine,
+                             diagnostics::DiagnosticFactBuffer& diagnosticFacts,
                              const basic::LangOptions& langOpts, basic::StringPool& stringPool,
                              const source::BufferId& bufferId)
     : sourceMgr(sourceMgr),
-      diagnosticEngine(diagnosticEngine),
+      diagnosticFacts(diagnosticFacts),
       bufferId(bufferId),
-      stream(sourceMgr, diagnosticEngine, langOpts, stringPool, bufferId) {}
+      stream(sourceMgr, diagnosticFacts.lexerEmitter(), langOpts, stringPool, bufferId) {}
 
 void ParserContext::resetTokens(zc::ArrayPtr<const lexer::Token> tokens) { stream.reset(tokens); }
 
@@ -69,13 +69,15 @@ zc::StringPtr ParserContext::fileIdentifier() const {
   return sourceMgr.getIdentifierForBuffer(bufferId);
 }
 
-diagnostics::DiagnosticEngine& ParserContext::diagnostics() const { return diagnosticEngine; }
+diagnostics::DiagnosticEmitter& ParserContext::diagnostics() const {
+  return diagnosticFacts.parserEmitter();
+}
 
 const source::SourceManager& ParserContext::sourceManager() const { return sourceMgr; }
 
 const source::BufferId& ParserContext::sourceBuffer() const { return bufferId; }
 
-size_t ParserContext::errorCount() const { return diagnosticEngine.errorCount(); }
+size_t ParserContext::errorCount() const { return diagnosticFacts.errorCount(); }
 
 zc::Array<ParsedTokenRange> ParserContext::copyBufferedTokenRanges() const {
   return stream.copyBufferedTokenRanges();

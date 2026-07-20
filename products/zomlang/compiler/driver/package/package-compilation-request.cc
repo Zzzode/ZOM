@@ -14,6 +14,7 @@
 
 #include "zomlang/compiler/driver/package/package-compilation-request.h"
 
+#include "zomlang/compiler/driver/package/build-script-plan.h"
 #include "zomlang/compiler/driver/package/build-script-runtime.h"
 #include "zomlang/compiler/driver/package/feature-resolver.h"
 #include "zomlang/compiler/identity/canonical-encoder.h"
@@ -326,8 +327,9 @@ void RequestedTargetSelection::encode(identity::CanonicalEncoder& encoder) const
   ZC_IF_SOME(value, name) {
     encoder.encodeSome();
     value.encode(encoder);
+  } else {
+    encoder.encodeNone();
   }
-  else { encoder.encodeNone(); }
 }
 
 NormalizedPackageCompilationRequest::NormalizedPackageCompilationRequest(
@@ -566,20 +568,17 @@ PackageLockMode VerifiedPackageCompilationRequest::lockMode() const noexcept {
 }
 
 zc::Maybe<zc::Vector<FinalizedCompilationRoot>> VerifiedPackageCompilationRequest::finalizeRoots(
-    zc::Maybe<const VerifiedBuildScriptResultSet&> buildResults) const {
+    const VerifiedBuildScriptPlan& buildPlan) const {
   zc::Vector<FinalizedCompilationRoot> finalized(rootValues.size());
   for (const auto& root : rootValues) {
-    zc::Maybe<identity::BuildScriptOutputKey> buildOutput;
+    zc::Maybe<identity::BuildScriptProducerKey> buildProducer;
     if (root.requiresBuildScript()) {
-      if (buildResults == zc::none) { return zc::none; }
       size_t matches = 0;
-      ZC_IF_SOME(results, buildResults) {
-        for (const auto& result : results.results()) {
-          if (result.output().preparatoryKey().package().encode().asPtr() ==
-              root.packageKey().encode().asPtr()) {
-            buildOutput = result.output().outputKey();
-            ++matches;
-          }
+      for (const auto& node : buildPlan.nodes()) {
+        if (node.key().preparatory().package().encode().asPtr() ==
+            root.packageKey().encode().asPtr()) {
+          buildProducer = node.key().preparatory().producerKey();
+          ++matches;
         }
       }
       if (matches != 1) { return zc::none; }
@@ -590,7 +589,7 @@ zc::Maybe<zc::Vector<FinalizedCompilationRoot>> VerifiedPackageCompilationReques
         identity::SemanticCompilerOptionsKey::from(
             root.editionYear(), languageOptionValues.useUnicode,
             languageOptionValues.allowDollarIdentifiers, languageOptionValues.supportRegexLiterals),
-        zc::mv(buildOutput));
+        zc::mv(buildProducer));
     auto targetName = identity::TargetName::fromCanonical(root.targetName());
     if (compilation == zc::none || targetName == zc::none) { return zc::none; }
     ZC_IF_SOME(compilationValue, compilation) {

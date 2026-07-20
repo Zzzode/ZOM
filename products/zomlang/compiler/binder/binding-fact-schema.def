@@ -1,0 +1,76 @@
+// Copyright (c) 2026 Zode.Z. All rights reserved
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+//
+// Intentionally no include guard. Define ZOM_BINDING_FACT before including.
+//
+// Columns:
+//   id, record type, candidate member, accessor, publication, stable tag,
+//   domain, required mutation classes, executable mutation test.
+
+ZOM_BINDING_FACT(SourceFailure, BindingFailureRef, sourceFailures, sourceFailures, Internal, 0x01,
+                 Diagnostics, "missing|additional|reordered|field",
+                 "BindingVerifier.RejectsMalformedLabelDuplicateFailuresAndDeclarationBindings")
+ZOM_BINDING_FACT(NodeScope, NodeScopeFact, nodeScopes, nodeScopes, Published, 0x02, Scope,
+                 "missing|additional|duplicate|reordered|identity|relation",
+                 "BindingVerifier.RejectsMissingAndMalformedFunctionScopes")
+ZOM_BINDING_FACT(NodeBinding, BindingResolution, nodeBindings, nodeBindings, Published, 0x03,
+                 Resolution, "missing|additional|duplicate|reordered|identity|enum|relation",
+                 "BindingVerifier.RejectsMalformedBoundNameFieldsAndOrder")
+ZOM_BINDING_FACT(SelfType, BoundSelfType, selfTypes, selfTypes, Published, 0x04, Context,
+                 "missing|additional|reordered|identity|source|relation",
+                 "BindingVerifier.RejectsMalformedContextualSelfFacts")
+ZOM_BINDING_FACT(ThisBinding, BoundThis, thisBindings, thisBindings, Published, 0x05, Context,
+                 "missing|additional|reordered|identity|source|relation",
+                 "BindingVerifier.RejectsWrongThisExpressionReceiverTarget")
+ZOM_BINDING_FACT(Definition, DefinitionFact, definitions, definitions, Published, 0x06, Definition,
+                 "missing|additional|reordered|identity|source|enum|relation",
+                 "BindingVerifier.RejectsReorderedCombinedDefinitionFacts")
+ZOM_BINDING_FACT(Implementation, ImplBindingFact, impls, impls, Published, 0x07, Definition,
+                 "missing|additional|reordered|identity|source|relation",
+                 "BindingVerifier.RejectsMalformedImplFactsAndMemberOrder")
+ZOM_BINDING_FACT(Scope, ScopeRecord, scopes, scopes, Published, 0x08, Scope,
+                 "missing|additional|duplicate|reordered|identity|source|enum|relation",
+                 "BindingVerifier.ClassifiesAdditionalFactsAndWrongScopeKinds")
+ZOM_BINDING_FACT(ModuleAlias, ModuleAliasBindingFact, moduleAliases, moduleAliases, Published, 0x09,
+                 ImportExport, "missing|additional|reordered|identity|source|relation",
+                 "BindingVerifier.RejectsIncompleteCurrentSurface")
+ZOM_BINDING_FACT(Import, ImportBindingFact, imports, imports, Published, 0x0a, ImportExport,
+                 "missing|additional|reordered|identity|source|enum|relation",
+                 "BindingVerifier.RejectsMutatedAndMissingImportFacts")
+ZOM_BINDING_FACT(LocalExport, LocalExportFact, localExports, localExports, Published, 0x0b,
+                 ImportExport, "missing|additional|reordered|identity|source|relation",
+                 "BindingVerifier.RejectsIncompleteCurrentSurface")
+ZOM_BINDING_FACT(DeferredMember, DeferredMemberFact, deferredMembers, deferredMembers, Published,
+                 0x0c, Resolution, "missing|additional|reordered|identity|source|enum|relation",
+                 "BindingDifferentialOracle.RejectsMalformedDeferredMemberFacts")
+ZOM_BINDING_FACT(Label, LabelFact, labels, labels, Published, 0x0d, Control,
+                 "missing|additional|duplicate|reordered|identity|source|relation",
+                 "BindingVerifier.RejectsMissingAdditionalReorderedAndMutatedLabels")
+ZOM_BINDING_FACT(ControlTransfer, ControlTransferFact, controlTransfers, controlTransfers, Published,
+                 0x0e, Control, "missing|additional|duplicate|reordered|identity|source|enum|relation",
+                 "BindingVerifier.RejectsMissingAdditionalAndReorderedControlTransfers")
+ZOM_BINDING_FACT(ShadowTarget, ShadowTargetFact, shadowTargets, shadowTargets, Published, 0x0f,
+                 Resolution, "missing|additional|duplicate|reordered|identity|relation",
+                 "BindingDifferentialOracle.RejectsMalformedShadowFacts")
+ZOM_BINDING_FACT(ClosureFreeVariable, ClosureFreeVariableFact, closureFreeVariables,
+                 closureFreeVariables, Published, 0x10, Closure,
+                 "missing|additional|duplicate|reordered|identity|relation",
+                 "BindingDifferentialOracle.RejectsMalformedClosureFreeVariableFacts")
+ZOM_BINDING_FACT(ExplicitClosureCapture, ExplicitClosureCaptureFact, explicitClosureCaptures,
+                 explicitClosureCaptures, Published, 0x11, Closure,
+                 "missing|additional|duplicate|reordered|identity|source|relation",
+                 "BindingDifferentialOracle.RejectsMalformedExplicitClosureCaptureFacts")
+ZOM_BINDING_FACT(GenericParameter, GenericParameterFact, genericParameters, genericParameters,
+                 Published, 0x12, Definition,
+                 "missing|additional|reordered|identity|source|relation",
+                 "BindingVerifier.RejectsMalformedSubordinateBindingFacts")
+ZOM_BINDING_FACT(CallableParameter, CallableParameterFact, callableParameters,
+                 callableParameters, Published, 0x13, Definition,
+                 "missing|additional|reordered|identity|source|relation",
+                 "BindingVerifier.RejectsMalformedSubordinateBindingFacts")
+ZOM_BINDING_FACT(OwnerLocalBinding, OwnerLocalBindingFact, ownerLocalBindings,
+                 ownerLocalBindings, Published, 0x14, Definition,
+                 "missing|additional|reordered|identity|source|enum|relation",
+                 "BindingVerifier.RejectsMalformedOwnerLocalBindingFacts")

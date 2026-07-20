@@ -2,12 +2,12 @@
 
 
 // CHECK-LITERAL: Error [ZOM2025]: Expected ';'
-// CHECK:   --> products {{(?:.*[/\\])?channel_reject_neg_07\.zom:2:1$}}
+// CHECK-LITERAL:   --> conformance/channel_reject_neg_07.zom:2:1
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 2 |
 // CHECK-LITERAL:   | ^
 // CHECK-LITERAL: Error [ZOM2076]: Unexpected token expected
-// CHECK:   --> products {{(?:.*[/\\])?channel_reject_neg_07\.zom:1:1$}}
+// CHECK-LITERAL:   --> conformance/channel_reject_neg_07.zom:1:1
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 1 | channel C<i32>
 // CHECK-LITERAL:   | ^

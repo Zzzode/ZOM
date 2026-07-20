@@ -1,7 +1,7 @@
 // RUN: %zomc compile --dump-ast %corpus/09-interfaces/class_implements_pos_08.zom | %FileCheck %s
 
 
-// CHECK: SourceFile #26 @1:1..5:1 file_name="class_implements_pos_08.zom"
+// CHECK: SourceFile #35 @1:1..7:1 file_name="class_implements_pos_08.zom"
 // CHECK-NEXT:   module: null
 // CHECK-NEXT:   statements:
 // CHECK-NEXT:     StatementListItem #13 @1:1..3:2
@@ -12,7 +12,7 @@
 // CHECK-NEXT:           members_id:
 // CHECK-NEXT:             ClassMemberList #11 @1:18..3:2 nmembers=1
 // CHECK-NEXT:               members:
-// CHECK-NEXT:                 MethodDecl #10 @2:5..2:45 name="read" is_static=false visibility=Default
+// CHECK-NEXT:                 MethodDecl #10 @2:5..2:45 name="read" mode=Instance visibility=Default
 // CHECK-NEXT:                   params_id:
 // CHECK-NEXT:                     FunctionParameterList #4 @2:13..2:24 nparams=1
 // CHECK-NEXT:                       params:
@@ -37,32 +37,60 @@
 // CHECK-NEXT:                                 IntLiteral #6 @2:41..2:42 base=10 value="0"
 // CHECK-NEXT:                           attrs: null
 // CHECK-NEXT:       attrs: null
-// CHECK-NEXT:     StatementListItem #25 @4:1..4:51
+// CHECK-NEXT:     StatementListItem #20 @4:1..4:31
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         StandaloneImplDecl #24 @4:1..4:51 is_unsafe=false
-// CHECK-NEXT:           ifaces_id:
-// CHECK-NEXT:             ImplIfaceList #20 @4:6..4:32 n_ifaces=3
-// CHECK-NEXT:               ifaces:
-// CHECK-NEXT:                 NamedTypeExpr #15 @4:6..4:12
-// CHECK-NEXT:                   path:
-// CHECK-NEXT:                     ModulePath #14 @4:6..4:12 segments=["Reader"]
-// CHECK-NEXT:                   args: []
-// CHECK-NEXT:                 NamedTypeExpr #17 @4:15..4:21
-// CHECK-NEXT:                   path:
-// CHECK-NEXT:                     ModulePath #16 @4:15..4:21 segments=["Writer"]
-// CHECK-NEXT:                   args: []
-// CHECK-NEXT:                 NamedTypeExpr #19 @4:24..4:32
-// CHECK-NEXT:                   path:
-// CHECK-NEXT:                     ModulePath #18 @4:24..4:32 segments=["Seekable"]
-// CHECK-NEXT:                   args: []
-// CHECK-NEXT:           for_ty:
-// CHECK-NEXT:             NamedTypeExpr #22 @4:37..4:47
+// CHECK-NEXT:         StandaloneImplDecl #19 @4:1..4:31 is_unsafe=false
+// CHECK-NEXT:           interface:
+// CHECK-NEXT:             NamedTypeExpr #15 @4:6..4:12
 // CHECK-NEXT:               path:
-// CHECK-NEXT:                 ModulePath #21 @4:37..4:47 segments=["FileStream"]
+// CHECK-NEXT:                 ModulePath #14 @4:6..4:12 segments=["Reader"] root=Relative
+// CHECK-NEXT:               args: []
+// CHECK-NEXT:           for_ty:
+// CHECK-NEXT:             NamedTypeExpr #17 @4:17..4:27
+// CHECK-NEXT:               path:
+// CHECK-NEXT:                 ModulePath #16 @4:17..4:27 segments=["FileStream"] root=Relative
 // CHECK-NEXT:               args: []
 // CHECK-NEXT:           where_: null
 // CHECK-NEXT:           type_params_id: null
 // CHECK-NEXT:           members_id:
-// CHECK-NEXT:             ClassMemberList #23 @4:48..4:51 nmembers=0
+// CHECK-NEXT:             ClassMemberList #18 @4:28..4:31 nmembers=0
+// CHECK-NEXT:               members: []
+// CHECK-NEXT:       attrs: null
+// CHECK-NEXT:     StatementListItem #27 @5:1..5:31
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         StandaloneImplDecl #26 @5:1..5:31 is_unsafe=false
+// CHECK-NEXT:           interface:
+// CHECK-NEXT:             NamedTypeExpr #22 @5:6..5:12
+// CHECK-NEXT:               path:
+// CHECK-NEXT:                 ModulePath #21 @5:6..5:12 segments=["Writer"] root=Relative
+// CHECK-NEXT:               args: []
+// CHECK-NEXT:           for_ty:
+// CHECK-NEXT:             NamedTypeExpr #24 @5:17..5:27
+// CHECK-NEXT:               path:
+// CHECK-NEXT:                 ModulePath #23 @5:17..5:27 segments=["FileStream"] root=Relative
+// CHECK-NEXT:               args: []
+// CHECK-NEXT:           where_: null
+// CHECK-NEXT:           type_params_id: null
+// CHECK-NEXT:           members_id:
+// CHECK-NEXT:             ClassMemberList #25 @5:28..5:31 nmembers=0
+// CHECK-NEXT:               members: []
+// CHECK-NEXT:       attrs: null
+// CHECK-NEXT:     StatementListItem #34 @6:1..6:33
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         StandaloneImplDecl #33 @6:1..6:33 is_unsafe=false
+// CHECK-NEXT:           interface:
+// CHECK-NEXT:             NamedTypeExpr #29 @6:6..6:14
+// CHECK-NEXT:               path:
+// CHECK-NEXT:                 ModulePath #28 @6:6..6:14 segments=["Seekable"] root=Relative
+// CHECK-NEXT:               args: []
+// CHECK-NEXT:           for_ty:
+// CHECK-NEXT:             NamedTypeExpr #31 @6:19..6:29
+// CHECK-NEXT:               path:
+// CHECK-NEXT:                 ModulePath #30 @6:19..6:29 segments=["FileStream"] root=Relative
+// CHECK-NEXT:               args: []
+// CHECK-NEXT:           where_: null
+// CHECK-NEXT:           type_params_id: null
+// CHECK-NEXT:           members_id:
+// CHECK-NEXT:             ClassMemberList #32 @6:30..6:33 nmembers=0
 // CHECK-NEXT:               members: []
 // CHECK-NEXT:       attrs: null

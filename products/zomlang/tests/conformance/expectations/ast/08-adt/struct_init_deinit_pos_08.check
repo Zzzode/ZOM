@@ -23,7 +23,7 @@
 // CHECK-NEXT:                           ty:
 // CHECK-NEXT:                             NamedTypeExpr #4 @3:10..3:14
 // CHECK-NEXT:                               path:
-// CHECK-NEXT:                                 ModulePath #3 @3:10..3:14 segments=["Self"]
+// CHECK-NEXT:                                 ModulePath #3 @3:10..3:14 segments=["Self"] root=Relative
 // CHECK-NEXT:                               args: []
 // CHECK-NEXT:                           default_: null
 // CHECK-NEXT:                           attrs: null
@@ -35,7 +35,7 @@
 // CHECK-NEXT:                   raises_ty:
 // CHECK-NEXT:                     NamedTypeExpr #10 @3:34..3:41
 // CHECK-NEXT:                       path:
-// CHECK-NEXT:                         ModulePath #9 @3:34..3:41 segments=["IoError"]
+// CHECK-NEXT:                         ModulePath #9 @3:34..3:41 segments=["IoError"] root=Relative
 // CHECK-NEXT:                       args: []
 // CHECK-NEXT:                   body:
 // CHECK-NEXT:                     BlockStmt #17 @3:42..3:58
@@ -60,14 +60,14 @@
 // CHECK-NEXT:                           ty:
 // CHECK-NEXT:                             NamedTypeExpr #20 @4:12..4:16
 // CHECK-NEXT:                               path:
-// CHECK-NEXT:                                 ModulePath #19 @4:12..4:16 segments=["Self"]
+// CHECK-NEXT:                                 ModulePath #19 @4:12..4:16 segments=["Self"] root=Relative
 // CHECK-NEXT:                               args: []
 // CHECK-NEXT:                           default_: null
 // CHECK-NEXT:                           attrs: null
 // CHECK-NEXT:                   raises_ty:
 // CHECK-NEXT:                     NamedTypeExpr #24 @4:25..4:32
 // CHECK-NEXT:                       path:
-// CHECK-NEXT:                         ModulePath #23 @4:25..4:32 segments=["IoError"]
+// CHECK-NEXT:                         ModulePath #23 @4:25..4:32 segments=["IoError"] root=Relative
 // CHECK-NEXT:                       args: []
 // CHECK-NEXT:                   body:
 // CHECK-NEXT:                     BlockStmt #25 @4:33..4:36

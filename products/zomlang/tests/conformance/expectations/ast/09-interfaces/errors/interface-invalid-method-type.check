@@ -2,12 +2,12 @@
 
 
 // CHECK-LITERAL: Error [ZOM2092]: Interface bodies accept only methods, accessors, and associated type declarations
-// CHECK:   --> products {{(?:.*[/\\])?interface\-invalid\-method\-type\.zom:1:22$}}
+// CHECK-LITERAL:   --> conformance/interface-invalid-method-type.zom:1:22
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 1 | interface Drawable { draw(): unit; }
 // CHECK-LITERAL:   |                      ^
 // CHECK-LITERAL: Error [ZOM2052]: Property or signature expected
-// CHECK:   --> products {{(?:.*[/\\])?interface\-invalid\-method\-type\.zom:1:22$}}
+// CHECK-LITERAL:   --> conformance/interface-invalid-method-type.zom:1:22
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 1 | interface Drawable { draw(): unit; }
 // CHECK-LITERAL:   |                      ^

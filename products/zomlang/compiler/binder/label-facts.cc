@@ -138,10 +138,16 @@ LabelFactsBuildResult LabelBuilder::build(const VerifiedBindingInput& input,
     for (size_t traversed = 0; traversed < arena.scopes.size(); ++traversed) {
       if (scopeIndex >= arena.scopes.size()) { return zc::none; }
       const auto& scope = arena.scopes[scopeIndex];
-      if (scope.kind == ScopeKind::Function || scope.kind == ScopeKind::Closure) {
+      if (scope.kind == ScopeKind::Function) {
         const auto& owner = scope.owner.value();
         if (!owner.is<DefinitionScopeOwner>()) { return zc::none; }
         return LabelOwner::callable(owner.get<DefinitionScopeOwner>().definition);
+      }
+      if (scope.kind == ScopeKind::Closure) {
+        const auto& owner = scope.owner.value();
+        if (!owner.is<AnonymousScopeOwner>()) { return zc::none; }
+        return LabelOwner::anonymous(input.module(),
+                                     owner.get<AnonymousScopeOwner>().anonymous.clone());
       }
       if (scope.kind == ScopeKind::Module) {
         const auto& owner = scope.owner.value();
@@ -223,9 +229,10 @@ LabelFactsBuildResult LabelBuilder::build(const VerifiedBindingInput& input,
           }
           ZC_IF_SOME(indexValue, labelIndex) {
             ZC_IF_SOME(targetValue, target) {
-              const LabelId identity(ownerValue.clone(), indexValue);
-              candidate.labels.add(LabelFact{identity, zc::mv(nameValue), ownerValue.clone(),
-                                             statement, zc::mv(targetValue), zc::mv(sourceValue)});
+              LabelId identity(ownerValue.clone(), indexValue);
+              candidate.labels.add(LabelFact{zc::mv(identity), zc::mv(nameValue),
+                                             ownerValue.clone(), statement, zc::mv(targetValue),
+                                             zc::mv(sourceValue)});
               ++counters[counterIndex].nextIndex;
             }
           }
@@ -246,13 +253,29 @@ LabelFactsBuildResult LabelBuilder::build(const VerifiedBindingInput& input,
       order.add(LabelOrderEntry{index, 0x01, input.moduleKey().encode(), fact.identity.index()});
       continue;
     }
-    auto key = input.definitions().definitionKey(owner.get<CallableLabelOwner>().callable);
-    if (key == zc::none) {
-      return failure(input, BinderInvariantKind::MissingRequiredResolution, 0);
+    if (owner.is<CallableLabelOwner>()) {
+      auto key = input.definitions().definitionKey(owner.get<CallableLabelOwner>().callable);
+      if (key == zc::none) {
+        return failure(input, BinderInvariantKind::MissingRequiredResolution, 0);
+      }
+      ZC_IF_SOME(value, key) {
+        order.add(LabelOrderEntry{index, 0x02, value.encode(), fact.identity.index()});
+      }
+      continue;
     }
-    ZC_IF_SOME(value, key) {
-      order.add(LabelOrderEntry{index, 0x02, value.encode(), fact.identity.index()});
+    const auto& anonymous = owner.get<AnonymousLabelOwner>();
+    if (anonymous.module != input.module()) {
+      return failure(input, BinderInvariantKind::InvalidBindingFact, 0);
     }
+    bool found = false;
+    for (const auto& entry : input.definitions().anonymousEntities()) {
+      if (entry.key == anonymous.anonymous) {
+        found = true;
+        break;
+      }
+    }
+    if (!found) { return failure(input, BinderInvariantKind::MissingRequiredResolution, 0); }
+    order.add(LabelOrderEntry{index, 0x03, anonymous.anonymous.encode(), fact.identity.index()});
   }
   for (size_t index = 1; index < order.size(); ++index) {
     auto current = zc::mv(order[index]);

@@ -2,6 +2,8 @@ cmake_minimum_required(VERSION 3.25.0)
 
 project("ZOM" CXX)
 
+find_package(Python3 COMPONENTS Interpreter REQUIRED)
+
 set(VERSION 0.0.1-dev)
 
 set(CMAKE_CXX_STANDARD 23)

@@ -2,7 +2,7 @@
 
 
 // CHECK-LITERAL: Error [ZOM2056]: Expression expected
-// CHECK:   --> products {{(?:.*[/\\])?unary_prefix_edge_01\.zom:2:9$}}
+// CHECK-LITERAL:   --> conformance/unary_prefix_edge_01.zom:2:9
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 2 | let y = !!flag;
 // CHECK-LITERAL:   |         ^

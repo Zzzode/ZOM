@@ -2,7 +2,7 @@
 
 
 // CHECK-LITERAL: Error [ZOM2085]: Multi-character single-quoted literals are not allowed
-// CHECK:   --> products {{(?:.*[/\\])?literal_multichar_reject_neg_08\.zom:2:10$}}
+// CHECK-LITERAL:   --> conformance/literal_multichar_reject_neg_08.zom:2:10
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 2 |     when 'ab' => { print("multi"); }
 // CHECK-LITERAL:   |          ^~~~

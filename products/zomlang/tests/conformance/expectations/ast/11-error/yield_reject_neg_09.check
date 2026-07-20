@@ -2,7 +2,7 @@
 
 
 // CHECK-LITERAL: Error [ZOM2056]: Expression expected
-// CHECK:   --> products {{(?:.*[/\\])?yield_reject_neg_09\.zom:1:13$}}
+// CHECK-LITERAL:   --> conformance/yield_reject_neg_09.zom:1:13
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 1 | fun gen() { yield 1; }
 // CHECK-LITERAL:   |             ^

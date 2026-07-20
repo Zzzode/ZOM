@@ -11,6 +11,3 @@
 // WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
 // License for the specific language governing permissions and limitations under
 // the License.
-
-DIAG(1000, Common, kError, "Common diagnostic", 0)
-DIAG(1001, InvalidPath, kError, "Cannot open file path at '{0}', no such file or directory", 1)

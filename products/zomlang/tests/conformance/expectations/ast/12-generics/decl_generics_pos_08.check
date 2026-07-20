@@ -10,8 +10,8 @@
 // CHECK-NEXT:           type_params_id:
 // CHECK-NEXT:             GenericParams #2 @1:12..1:15 nparams=1
 // CHECK-NEXT:               params:
-// CHECK-NEXT:                 GenericTypeParam #1 @1:13..1:14 name="T" variance=Invariant
-// CHECK-NEXT:                   bound: null
+// CHECK-NEXT:                 GenericTypeParam #1 @1:13..1:14 name="T"
+// CHECK-NEXT:                   bounds_id: null
 // CHECK-NEXT:                   default_ty: null
 // CHECK-NEXT:               where_: null
 // CHECK-NEXT:           variants_id:
@@ -21,7 +21,7 @@
 // CHECK-NEXT:                   tys:
 // CHECK-NEXT:                     NamedTypeExpr #4 @1:23..1:24
 // CHECK-NEXT:                       path:
-// CHECK-NEXT:                         ModulePath #3 @1:23..1:24 segments=["T"]
+// CHECK-NEXT:                         ModulePath #3 @1:23..1:24 segments=["T"] root=Relative
 // CHECK-NEXT:                       args: []
 // CHECK-NEXT:                   discriminant: null
 // CHECK-NEXT:                 UnitVariant #6 @1:27..1:31 name="None"
@@ -33,18 +33,18 @@
 // CHECK-NEXT:           type_params_id:
 // CHECK-NEXT:             GenericParams #12 @2:19..2:25 nparams=2
 // CHECK-NEXT:               params:
-// CHECK-NEXT:                 GenericTypeParam #10 @2:20..2:21 name="K" variance=Invariant
-// CHECK-NEXT:                   bound: null
+// CHECK-NEXT:                 GenericTypeParam #10 @2:20..2:21 name="K"
+// CHECK-NEXT:                   bounds_id: null
 // CHECK-NEXT:                   default_ty: null
-// CHECK-NEXT:                 GenericTypeParam #11 @2:23..2:24 name="V" variance=Invariant
-// CHECK-NEXT:                   bound: null
+// CHECK-NEXT:                 GenericTypeParam #11 @2:23..2:24 name="V"
+// CHECK-NEXT:                   bounds_id: null
 // CHECK-NEXT:                   default_ty: null
 // CHECK-NEXT:               where_: null
 // CHECK-NEXT:           ifaces_id: null
 // CHECK-NEXT:           members_id:
 // CHECK-NEXT:             ClassMemberList #20 @2:26..2:49 nmembers=1
 // CHECK-NEXT:               members:
-// CHECK-NEXT:                 MethodDecl #19 @2:28..2:47 name="get" is_static=false visibility=Default
+// CHECK-NEXT:                 MethodDecl #19 @2:28..2:47 name="get" mode=Instance visibility=Default
 // CHECK-NEXT:                   params_id:
 // CHECK-NEXT:                     FunctionParameterList #16 @2:35..2:41 nparams=1
 // CHECK-NEXT:                       params:
@@ -52,7 +52,7 @@
 // CHECK-NEXT:                           ty:
 // CHECK-NEXT:                             NamedTypeExpr #14 @2:39..2:40
 // CHECK-NEXT:                               path:
-// CHECK-NEXT:                                 ModulePath #13 @2:39..2:40 segments=["K"]
+// CHECK-NEXT:                                 ModulePath #13 @2:39..2:40 segments=["K"] root=Relative
 // CHECK-NEXT:                               args: []
 // CHECK-NEXT:                           default_: null
 // CHECK-NEXT:                           attrs: null
@@ -60,7 +60,7 @@
 // CHECK-NEXT:                   ret_ty:
 // CHECK-NEXT:                     NamedTypeExpr #18 @2:45..2:46
 // CHECK-NEXT:                       path:
-// CHECK-NEXT:                         ModulePath #17 @2:45..2:46 segments=["V"]
+// CHECK-NEXT:                         ModulePath #17 @2:45..2:46 segments=["V"] root=Relative
 // CHECK-NEXT:                       args: []
 // CHECK-NEXT:                   raises_ty: null
 // CHECK-NEXT:                   body: null
@@ -72,15 +72,15 @@
 // CHECK-NEXT:           target:
 // CHECK-NEXT:             NamedTypeExpr #28 @3:20..3:33
 // CHECK-NEXT:               path:
-// CHECK-NEXT:                 ModulePath #27 @3:20..3:27 segments=["HashMap"]
+// CHECK-NEXT:                 ModulePath #27 @3:20..3:27 segments=["HashMap"] root=Relative
 // CHECK-NEXT:               args:
 // CHECK-NEXT:                 NamedTypeExpr #24 @3:28..3:29
 // CHECK-NEXT:                   path:
-// CHECK-NEXT:                     ModulePath #23 @3:28..3:29 segments=["K"]
+// CHECK-NEXT:                     ModulePath #23 @3:28..3:29 segments=["K"] root=Relative
 // CHECK-NEXT:                   args: []
 // CHECK-NEXT:                 NamedTypeExpr #26 @3:31..3:32
 // CHECK-NEXT:                   path:
-// CHECK-NEXT:                     ModulePath #25 @3:31..3:32 segments=["V"]
+// CHECK-NEXT:                     ModulePath #25 @3:31..3:32 segments=["V"] root=Relative
 // CHECK-NEXT:                   args: []
 // CHECK-NEXT:       attrs: null
 // CHECK-NEXT:     StatementListItem #42 @4:1..4:38
@@ -89,11 +89,11 @@
 // CHECK-NEXT:           type_params_id:
 // CHECK-NEXT:             GenericParams #33 @4:12..4:18 nparams=2
 // CHECK-NEXT:               params:
-// CHECK-NEXT:                 GenericTypeParam #31 @4:13..4:14 name="A" variance=Invariant
-// CHECK-NEXT:                   bound: null
+// CHECK-NEXT:                 GenericTypeParam #31 @4:13..4:14 name="A"
+// CHECK-NEXT:                   bounds_id: null
 // CHECK-NEXT:                   default_ty: null
-// CHECK-NEXT:                 GenericTypeParam #32 @4:16..4:17 name="B" variance=Invariant
-// CHECK-NEXT:                   bound: null
+// CHECK-NEXT:                 GenericTypeParam #32 @4:16..4:17 name="B"
+// CHECK-NEXT:                   bounds_id: null
 // CHECK-NEXT:                   default_ty: null
 // CHECK-NEXT:               where_: null
 // CHECK-NEXT:           members_id:
@@ -103,14 +103,14 @@
 // CHECK-NEXT:                   ty:
 // CHECK-NEXT:                     NamedTypeExpr #35 @4:26..4:27
 // CHECK-NEXT:                       path:
-// CHECK-NEXT:                         ModulePath #34 @4:26..4:27 segments=["A"]
+// CHECK-NEXT:                         ModulePath #34 @4:26..4:27 segments=["A"] root=Relative
 // CHECK-NEXT:                       args: []
 // CHECK-NEXT:                   init: null
 // CHECK-NEXT:                 FieldDecl #39 @4:29..4:36 name="snd" is_mut=false is_static=false visibility=Default
 // CHECK-NEXT:                   ty:
 // CHECK-NEXT:                     NamedTypeExpr #38 @4:34..4:35
 // CHECK-NEXT:                       path:
-// CHECK-NEXT:                         ModulePath #37 @4:34..4:35 segments=["B"]
+// CHECK-NEXT:                         ModulePath #37 @4:34..4:35 segments=["B"] root=Relative
 // CHECK-NEXT:                       args: []
 // CHECK-NEXT:                   init: null
 // CHECK-NEXT:       attrs: null

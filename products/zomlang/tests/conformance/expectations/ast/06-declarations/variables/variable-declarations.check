@@ -25,7 +25,7 @@
 // CHECK-NEXT:                   ty:
 // CHECK-NEXT:                     PredefinedTypeExpr #6 @1:20..1:23 kind=Str
 // CHECK-NEXT:                   init:
-// CHECK-NEXT:                     StrLiteral #7 @1:26..1:33 value="hello" is_raw=false prefix=None
+// CHECK-NEXT:                     StringLiteralExpr #7 @1:26..1:33 value="hello"
 // CHECK-NEXT:                 VariableDeclarator #12 @1:35..1:49
 // CHECK-NEXT:                   pattern:
 // CHECK-NEXT:                     IdentifierPattern #9 @1:35..1:36 name="c"

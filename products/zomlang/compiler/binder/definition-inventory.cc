@@ -19,6 +19,8 @@
 namespace zomlang::compiler::binder {
 namespace {
 
+enum class DefinitionPlacement : uint8_t { Lexical, ModuleItem };
+
 zc::Vector<StructuralIdentityParent> cloneParents(
     zc::ArrayPtr<const StructuralIdentityParent> parents) {
   zc::Vector<StructuralIdentityParent> result(parents.size());
@@ -31,67 +33,98 @@ zc::Vector<StructuralIdentityParent> cloneParents(
 struct DefinitionInventory::Impl final {
   zc::Vector<ModuleInventoryEntry> modules;
   zc::Vector<DefinitionInventoryEntry> definitions;
+  zc::Vector<DefinitionInventoryEntry> genericParameters;
+  zc::Vector<DefinitionInventoryEntry> callableParameters;
+  zc::Vector<DefinitionInventoryEntry> ownerLocalBindings;
+  zc::Vector<DefinitionInventoryEntry> anonymousEntities;
   zc::Vector<ImplInventoryEntry> impls;
 
-  const ast::Tree* tree = nullptr;
+  zc::Maybe<const ast::Tree&> tree;
   zc::Vector<StructuralIdentityParent> parents;
   ast::NodeId currentModule;
 
+  const ast::Tree& syntaxTree() const {
+    ZC_IF_SOME(value, tree) { return value; }
+    ZC_UNREACHABLE;
+  }
+
+  void addByDomain(DefinitionInventoryEntry&& entry) {
+    switch (entry.kind) {
+      case identity::DefinitionKind::TypeParameter:
+        genericParameters.add(zc::mv(entry));
+        return;
+      case identity::DefinitionKind::Parameter:
+        callableParameters.add(zc::mv(entry));
+        return;
+      case identity::DefinitionKind::Local:
+      case identity::DefinitionKind::PatternBinding:
+        ownerLocalBindings.add(zc::mv(entry));
+        return;
+      case identity::DefinitionKind::Closure:
+        anonymousEntities.add(zc::mv(entry));
+        return;
+      default:
+        if (identity::isStableDefinitionKind(entry.kind)) {
+          definitions.add(zc::mv(entry));
+          return;
+        }
+        ZC_UNREACHABLE
+    }
+  }
+
   void addDeclared(ast::NodeId node, identity::DefinitionKind kind, ast::IdentId name) {
-    const auto& syntax = tree->node(node);
-    definitions.add(DefinitionInventoryEntry{node, DefinitionSite::declaration(node), currentModule,
-                                             kind, InventoryDefinitionNameKind::Declared, name,
-                                             zc::none, syntax.range,
-                                             cloneParents(parents.asPtr())});
+    const auto& syntax = syntaxTree().node(node);
+    addByDomain(DefinitionInventoryEntry{node, DefinitionSite::declaration(node), currentModule,
+                                         kind, InventoryDefinitionNameKind::Declared, name,
+                                         zc::none, syntax.range, cloneParents(parents.asPtr())});
   }
 
   void addPatternBinding(ast::NodeId node, ast::NodeId introducer,
                          zc::ArrayPtr<const uint32_t> patternPath, identity::DefinitionKind kind,
                          ast::IdentId name) {
-    const auto& syntax = tree->node(node);
+    const auto& syntax = syntaxTree().node(node);
     zc::Vector<uint32_t> path(patternPath.size());
     path.addAll(patternPath);
-    definitions.add(
-        DefinitionInventoryEntry{node, DefinitionSite::pattern(introducer, zc::mv(path)),
-                                 currentModule, kind, InventoryDefinitionNameKind::Declared, name,
-                                 zc::none, syntax.range, cloneParents(parents.asPtr())});
+    addByDomain(DefinitionInventoryEntry{node, DefinitionSite::pattern(introducer, zc::mv(path)),
+                                         currentModule, kind, InventoryDefinitionNameKind::Declared,
+                                         name, zc::none, syntax.range,
+                                         cloneParents(parents.asPtr())});
   }
 
-  void addAnonymous(ast::NodeId node, identity::AnonymousDefinitionRole role) {
-    const auto& syntax = tree->node(node);
-    definitions.add(DefinitionInventoryEntry{node, DefinitionSite::declaration(node), currentModule,
-                                             identity::DefinitionKind::Closure,
-                                             InventoryDefinitionNameKind::Anonymous, ast::IdentId(),
-                                             zc::Maybe<identity::AnonymousDefinitionRole>(role),
-                                             syntax.range, cloneParents(parents.asPtr())});
+  void addAnonymous(ast::NodeId node, AnonymousSyntaxRole role) {
+    const auto& syntax = syntaxTree().node(node);
+    addByDomain(DefinitionInventoryEntry{
+        node, DefinitionSite::declaration(node), currentModule, identity::DefinitionKind::Closure,
+        InventoryDefinitionNameKind::Anonymous, ast::IdentId(),
+        zc::Maybe<AnonymousSyntaxRole>(role), syntax.range, cloneParents(parents.asPtr())});
   }
 
   void visitDefinition(ast::NodeId node, identity::DefinitionKind kind, ast::IdentId name) {
     addDeclared(node, kind, name);
     parents.add(StructuralIdentityParent{StructuralIdentityParentKind::Definition, node});
-    visitChildren(node, false);
+    visitChildren(node, DefinitionPlacement::Lexical);
     parents.removeLast();
   }
 
-  void visitClosure(ast::NodeId node, identity::AnonymousDefinitionRole role) {
+  void visitClosure(ast::NodeId node, AnonymousSyntaxRole role) {
     addAnonymous(node, role);
     parents.add(StructuralIdentityParent{StructuralIdentityParentKind::Definition, node});
-    visitChildren(node, false);
+    visitChildren(node, DefinitionPlacement::Lexical);
     parents.removeLast();
   }
 
   void visitImpl(ast::NodeId node) {
-    const auto& syntax = tree->node(node);
+    const auto& syntax = syntaxTree().node(node);
     impls.add(ImplInventoryEntry{node, currentModule, syntax.range, cloneParents(parents.asPtr())});
     parents.add(StructuralIdentityParent{StructuralIdentityParentKind::Impl, node});
-    visitChildren(node, false);
+    visitChildren(node, DefinitionPlacement::Lexical);
     parents.removeLast();
   }
 
   void collectPatternBindings(ast::NodeId node, ast::NodeId introducer, zc::Vector<uint32_t>& path,
                               identity::DefinitionKind kind) {
-    if (!tree->contains(node)) { return; }
-    const auto& syntax = tree->node(node);
+    if (!syntaxTree().contains(node)) { return; }
+    const auto& syntax = syntaxTree().node(node);
     switch (syntax.kind) {
       case ast::SyntaxKind::RestPattern: {
         ast::IdentId name(syntax.payload.words[ast::kRestPatternBindingWord]);
@@ -102,7 +135,7 @@ struct DefinitionInventory::Impl final {
         addPatternBinding(node, introducer, path.asPtr(), kind,
                           ast::IdentId(syntax.payload.words[ast::kBindingPatternNameWord]));
         const ast::NodeId sub(syntax.payload.words[ast::kBindingPatternSubWord]);
-        if (tree->contains(sub)) {
+        if (syntaxTree().contains(sub)) {
           path.add(3);
           collectPatternBindings(sub, introducer, path, kind);
           path.removeLast();
@@ -130,7 +163,7 @@ struct DefinitionInventory::Impl final {
         ast::NodeList elements{syntax.payload.words[ast::kTuplePatternPatsFirstWord],
                                syntax.payload.words[ast::kTuplePatternPatsSizeWord]};
         uint32_t index = 0;
-        for (ast::NodeId child : tree->list(elements)) {
+        for (ast::NodeId child : syntaxTree().list(elements)) {
           path.add(0);
           path.add(index++);
           collectPatternBindings(child, introducer, path, kind);
@@ -143,7 +176,7 @@ struct DefinitionInventory::Impl final {
         ast::NodeList fields{syntax.payload.words[ast::kStructPatternFieldsFirstWord],
                              syntax.payload.words[ast::kStructPatternFieldsSizeWord]};
         uint32_t index = 0;
-        for (ast::NodeId child : tree->list(fields)) {
+        for (ast::NodeId child : syntaxTree().list(fields)) {
           path.add(1);
           path.add(index++);
           collectPatternBindings(child, introducer, path, kind);
@@ -151,7 +184,7 @@ struct DefinitionInventory::Impl final {
           path.removeLast();
         }
         const ast::NodeId rest(syntax.payload.words[ast::kStructPatternRestWord]);
-        if (tree->contains(rest)) {
+        if (syntaxTree().contains(rest)) {
           path.add(2);
           collectPatternBindings(rest, introducer, path, kind);
           path.removeLast();
@@ -162,7 +195,7 @@ struct DefinitionInventory::Impl final {
         ast::NodeList elements{syntax.payload.words[ast::kArrayPatternPatsFirstWord],
                                syntax.payload.words[ast::kArrayPatternPatsSizeWord]};
         uint32_t index = 0;
-        for (ast::NodeId child : tree->list(elements)) {
+        for (ast::NodeId child : syntaxTree().list(elements)) {
           path.add(0);
           path.add(index++);
           collectPatternBindings(child, introducer, path, kind);
@@ -170,7 +203,7 @@ struct DefinitionInventory::Impl final {
           path.removeLast();
         }
         const ast::NodeId rest(syntax.payload.words[ast::kArrayPatternRestWord]);
-        if (tree->contains(rest)) {
+        if (syntaxTree().contains(rest)) {
           path.add(1);
           collectPatternBindings(rest, introducer, path, kind);
           path.removeLast();
@@ -181,7 +214,7 @@ struct DefinitionInventory::Impl final {
         ast::NodeList arguments{syntax.payload.words[ast::kEnumPatternArgsFirstWord],
                                 syntax.payload.words[ast::kEnumPatternArgsSizeWord]};
         uint32_t index = 0;
-        for (ast::NodeId child : tree->list(arguments)) {
+        for (ast::NodeId child : syntaxTree().list(arguments)) {
           path.add(1);
           path.add(index++);
           collectPatternBindings(child, introducer, path, kind);
@@ -195,79 +228,41 @@ struct DefinitionInventory::Impl final {
     }
   }
 
-  void visitLet(ast::NodeId node, bool moduleScope) {
-    const auto& syntax = tree->node(node);
+  void visitLet(ast::NodeId node, DefinitionPlacement placement) {
+    const auto& syntax = syntaxTree().node(node);
     const auto declarationKind =
         static_cast<ast::BindingDeclarationKind>(syntax.payload.words[ast::kLetStmtKindWord]);
     identity::DefinitionKind kind = identity::DefinitionKind::Local;
-    if (moduleScope) {
+    if (placement == DefinitionPlacement::ModuleItem) {
       kind = declarationKind == ast::BindingDeclarationKind::Const
                  ? identity::DefinitionKind::Constant
                  : identity::DefinitionKind::Static;
     }
 
     const ast::NodeId declarations(syntax.payload.words[ast::kLetStmtDeclarationsWord]);
-    if (tree->contains(declarations)) {
-      const auto& list = tree->node(declarations);
+    if (syntaxTree().contains(declarations)) {
+      const auto& list = syntaxTree().node(declarations);
       ast::NodeList declarators{list.payload.words[ast::kVariableDeclaratorListDeclsFirstWord],
                                 list.payload.words[ast::kVariableDeclaratorListDeclsSizeWord]};
-      for (ast::NodeId declarator : tree->list(declarators)) {
-        const auto& declaration = tree->node(declarator);
+      for (ast::NodeId declarator : syntaxTree().list(declarators)) {
+        const auto& declaration = syntaxTree().node(declarator);
         zc::Vector<uint32_t> path;
         collectPatternBindings(
             ast::NodeId(declaration.payload.words[ast::kVariableDeclaratorPatternWord]), declarator,
             path, kind);
       }
     }
-    visitChildren(node, moduleScope);
-  }
-
-  ast::IdentId lastModulePathSegment(ast::NodeId pathNode) const {
-    if (!tree->contains(pathNode)) { return ast::IdentId(); }
-    const auto& path = tree->node(pathNode);
-    if (path.kind != ast::SyntaxKind::ModulePath) { return ast::IdentId(); }
-    ast::IdentList segments{path.payload.words[ast::kModulePathSegmentsFirstWord],
-                            path.payload.words[ast::kModulePathSegmentsSizeWord]};
-    const auto values = tree->identList(segments);
-    return values.size() == 0 ? ast::IdentId() : values.back();
-  }
-
-  void visitImport(ast::NodeId node, bool moduleScope) {
-    const auto& syntax = tree->node(node);
-    ast::NodeList specifiers{syntax.payload.words[ast::kImportDeclarationSpecifiersFirstWord],
-                             syntax.payload.words[ast::kImportDeclarationSpecifiersSizeWord]};
-    if (specifiers.empty()) {
-      ast::IdentId name(syntax.payload.words[ast::kImportDeclarationAliasWord]);
-      if (!name) {
-        name = lastModulePathSegment(
-            ast::NodeId(syntax.payload.words[ast::kImportDeclarationPathWord]));
-      }
-      if (name) { addDeclared(node, identity::DefinitionKind::ImportAlias, name); }
-    }
-    visitChildren(node, moduleScope);
-  }
-
-  void visitExport(ast::NodeId node, bool moduleScope) {
-    const auto& syntax = tree->node(node);
-    const ast::NodeId declaration(syntax.payload.words[ast::kExportDeclarationDeclarationWord]);
-    ast::NodeList specifiers{syntax.payload.words[ast::kExportDeclarationSpecifiersFirstWord],
-                             syntax.payload.words[ast::kExportDeclarationSpecifiersSizeWord]};
-    const ast::NodeId path(syntax.payload.words[ast::kExportDeclarationPathWord]);
-    if (!tree->contains(declaration) && specifiers.empty() && tree->contains(path)) {
-      const ast::IdentId name = lastModulePathSegment(path);
-      if (name) { addDeclared(node, identity::DefinitionKind::ReexportAlias, name); }
-    }
-    visitChildren(node, moduleScope);
+    visitChildren(node, DefinitionPlacement::Lexical);
   }
 
   void visitModule(ast::NodeId node) {
-    const auto& syntax = tree->node(node);
+    const auto& syntax = syntaxTree().node(node);
     const auto form = static_cast<ast::ModuleDeclarationForm>(
         syntax.payload.words[ast::kModuleDeclarationFormWord]);
     const ast::IdentId name(syntax.payload.words[ast::kModuleDeclarationDeclaredNameWord]);
     if (form == ast::ModuleDeclarationForm::Alias) {
       addDeclared(node, identity::DefinitionKind::ModuleAlias, name);
-      visitChildren(node, true);
+      visitChildren(node, DefinitionPlacement::ModuleItem);
       return;
     }
 
@@ -276,20 +271,20 @@ struct DefinitionInventory::Impl final {
     auto savedParents = zc::mv(parents);
     parents = zc::Vector<StructuralIdentityParent>();
     currentModule = node;
-    visitChildren(node, true);
+    visitChildren(node, DefinitionPlacement::ModuleItem);
     currentModule = savedModule;
     parents = zc::mv(savedParents);
   }
 
   void visitSourceFile(ast::NodeId node) {
-    const auto& syntax = tree->node(node);
+    const auto& syntax = syntaxTree().node(node);
     const ast::NodeId module(syntax.payload.words[ast::kSourceFileModuleWord]);
     ast::NodeId sourceModule;
-    if (tree->contains(module)) {
-      const auto& moduleSyntax = tree->node(module);
+    if (syntaxTree().contains(module)) {
+      const auto& moduleSyntax = syntaxTree().node(module);
       const auto form = static_cast<ast::ModuleDeclarationForm>(
           moduleSyntax.payload.words[ast::kModuleDeclarationFormWord]);
-      visitNode(module, true);
+      visitNode(module, DefinitionPlacement::ModuleItem);
       if (form == ast::ModuleDeclarationForm::RootDeclaration) { sourceModule = module; }
     }
 
@@ -297,22 +292,26 @@ struct DefinitionInventory::Impl final {
     currentModule = sourceModule;
     ast::NodeList statements{syntax.payload.words[ast::kSourceFileStatementsFirstWord],
                              syntax.payload.words[ast::kSourceFileStatementsSizeWord]};
-    for (ast::NodeId statement : tree->list(statements)) { visitNode(statement, true); }
+    for (ast::NodeId statement : syntaxTree().list(statements)) {
+      visitNode(statement, DefinitionPlacement::ModuleItem);
+    }
     currentModule = savedModule;
   }
 
-  void visitChildren(ast::NodeId node, bool moduleScope) {
-    ast::visitChildNodeIds(*tree, tree->node(node), [this, moduleScope](ast::NodeId child) {
-      visitNode(child, moduleScope);
-    });
+  void visitChildren(ast::NodeId node, DefinitionPlacement placement) {
+    ast::visitChildNodeIds(syntaxTree(), syntaxTree().node(node),
+                           [this, placement](ast::NodeId child) { visitNode(child, placement); });
   }
 
-  void visitNode(ast::NodeId node, bool moduleScope) {
-    if (!tree->contains(node)) { return; }
-    const auto& syntax = tree->node(node);
+  void visitNode(ast::NodeId node, DefinitionPlacement placement) {
+    if (!syntaxTree().contains(node)) { return; }
+    const auto& syntax = syntaxTree().node(node);
     switch (syntax.kind) {
       case ast::SyntaxKind::SourceFile:
         visitSourceFile(node);
+        return;
+      case ast::SyntaxKind::StatementListItem:
+        visitChildren(node, placement);
         return;
       case ast::SyntaxKind::ModuleDeclaration:
         visitModule(node);
@@ -398,56 +397,44 @@ struct DefinitionInventory::Impl final {
         visitImpl(node);
         return;
       case ast::SyntaxKind::LetStmt:
-        visitLet(node, moduleScope);
+        visitLet(node, placement);
         return;
       case ast::SyntaxKind::ForInStatement: {
         zc::Vector<uint32_t> path;
         collectPatternBindings(ast::NodeId(syntax.payload.words[ast::kForInStatementBindingWord]),
                                node, path, identity::DefinitionKind::PatternBinding);
-        visitChildren(node, false);
+        visitChildren(node, DefinitionPlacement::Lexical);
         return;
       }
       case ast::SyntaxKind::MatchArmStmt: {
         zc::Vector<uint32_t> path;
         collectPatternBindings(ast::NodeId(syntax.payload.words[ast::kMatchArmStmtPatternWord]),
                                node, path, identity::DefinitionKind::PatternBinding);
-        visitChildren(node, false);
+        visitChildren(node, DefinitionPlacement::Lexical);
         return;
       }
       case ast::SyntaxKind::FunctionExpression:
-        visitClosure(node, identity::AnonymousDefinitionRole::FunctionExpression);
+        visitClosure(node, AnonymousSyntaxRole::FunctionExpression);
         return;
       case ast::SyntaxKind::LambdaExpression:
-        visitClosure(node, identity::AnonymousDefinitionRole::Lambda);
+        visitClosure(node, AnonymousSyntaxRole::Lambda);
         return;
       case ast::SyntaxKind::ImportDeclaration:
-        visitImport(node, moduleScope);
-        return;
-      case ast::SyntaxKind::ImportSpecifier: {
-        ast::IdentId name(syntax.payload.words[ast::kImportSpecifierAliasWord]);
-        if (!name) { name = ast::IdentId(syntax.payload.words[ast::kImportSpecifierNameWord]); }
-        visitDefinition(node, identity::DefinitionKind::ImportAlias, name);
-        return;
-      }
       case ast::SyntaxKind::ExportDeclaration:
-        visitExport(node, moduleScope);
+      case ast::SyntaxKind::ImportSpecifier:
+      case ast::SyntaxKind::ExportSpecifier:
+        visitChildren(node, placement);
         return;
-      case ast::SyntaxKind::ExportSpecifier: {
-        ast::IdentId name(syntax.payload.words[ast::kExportSpecifierAliasWord]);
-        if (!name) { name = ast::IdentId(syntax.payload.words[ast::kExportSpecifierNameWord]); }
-        visitDefinition(node, identity::DefinitionKind::ReexportAlias, name);
-        return;
-      }
       default:
-        visitChildren(node, moduleScope);
+        visitChildren(node, DefinitionPlacement::Lexical);
         return;
     }
   }
 
   void collect(const ast::Tree& input) {
-    tree = &input;
-    if (input.contains(input.root())) { visitNode(input.root(), true); }
-    tree = nullptr;
+    tree = input;
+    if (input.contains(input.root())) { visitNode(input.root(), DefinitionPlacement::ModuleItem); }
+    tree = zc::none;
   }
 };
 
@@ -471,12 +458,20 @@ DefinitionInventory DefinitionInventory::clone() const {
     result.impl->modules.add(ModuleInventoryEntry{module.node, module.parentModuleNode, module.form,
                                                   module.declaredName, module.source});
   }
-  for (const auto& definition : impl->definitions) {
-    result.impl->definitions.add(DefinitionInventoryEntry{
-        definition.node, definition.site.clone(), definition.moduleNode, definition.kind,
-        definition.nameKind, definition.declaredName, definition.anonymousRole, definition.source,
-        cloneParents(definition.parentPath.asPtr())});
-  }
+  const auto cloneEntries = [](zc::ArrayPtr<const DefinitionInventoryEntry> source,
+                               zc::Vector<DefinitionInventoryEntry>& destination) {
+    for (const auto& definition : source) {
+      destination.add(DefinitionInventoryEntry{
+          definition.node, definition.site.clone(), definition.moduleNode, definition.kind,
+          definition.nameKind, definition.declaredName, definition.anonymousRole, definition.source,
+          cloneParents(definition.parentPath.asPtr())});
+    }
+  };
+  cloneEntries(impl->definitions.asPtr(), result.impl->definitions);
+  cloneEntries(impl->genericParameters.asPtr(), result.impl->genericParameters);
+  cloneEntries(impl->callableParameters.asPtr(), result.impl->callableParameters);
+  cloneEntries(impl->ownerLocalBindings.asPtr(), result.impl->ownerLocalBindings);
+  cloneEntries(impl->anonymousEntities.asPtr(), result.impl->anonymousEntities);
   for (const auto& implementation : impl->impls) {
     result.impl->impls.add(ImplInventoryEntry{implementation.node, implementation.moduleNode,
                                               implementation.source,
@@ -491,6 +486,22 @@ zc::ArrayPtr<const ModuleInventoryEntry> DefinitionInventory::modules() const {
 
 zc::ArrayPtr<const DefinitionInventoryEntry> DefinitionInventory::definitions() const {
   return impl->definitions.asPtr();
+}
+
+zc::ArrayPtr<const DefinitionInventoryEntry> DefinitionInventory::genericParameters() const {
+  return impl->genericParameters.asPtr();
+}
+
+zc::ArrayPtr<const DefinitionInventoryEntry> DefinitionInventory::callableParameters() const {
+  return impl->callableParameters.asPtr();
+}
+
+zc::ArrayPtr<const DefinitionInventoryEntry> DefinitionInventory::ownerLocalBindings() const {
+  return impl->ownerLocalBindings.asPtr();
+}
+
+zc::ArrayPtr<const DefinitionInventoryEntry> DefinitionInventory::anonymousEntities() const {
+  return impl->anonymousEntities.asPtr();
 }
 
 zc::ArrayPtr<const ImplInventoryEntry> DefinitionInventory::impls() const {

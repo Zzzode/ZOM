@@ -2,12 +2,12 @@
 
 
 // CHECK-LITERAL: Error [ZOM2076]: Unexpected token expected
-// CHECK:   --> products {{(?:.*[/\\])?reserved_instanceof_neg_01\.zom:1:11$}}
+// CHECK-LITERAL:   --> conformance/reserved_instanceof_neg_01.zom:1:11
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 1 | let b = x instanceof Object;
 // CHECK-LITERAL:   |           ^
 // CHECK-LITERAL: Error [ZOM2056]: Expression expected
-// CHECK:   --> products {{(?:.*[/\\])?reserved_instanceof_neg_01\.zom:1:9$}}
+// CHECK-LITERAL:   --> conformance/reserved_instanceof_neg_01.zom:1:9
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 1 | let b = x instanceof Object;
 // CHECK-LITERAL:   |         ^

@@ -2,237 +2,667 @@
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and limitations under
-// the License.
 
 #include "zomlang/compiler/identity/definition-key.h"
 
+#include "zc/core/vector.h"
 #include "zomlang/compiler/identity/canonical-encoder.h"
 
 namespace zomlang::compiler::identity {
 namespace {
 
-bool isValid(DefinitionKind value) {
-  return value >= DefinitionKind::ModuleAlias && value <= DefinitionKind::ReexportAlias;
+constexpr auto kDefinitionDomain = "zom.named-item-header.v0"_zc;
+constexpr auto kImplDomain = "zom.impl-header.v0"_zc;
+constexpr auto kGenericParameterDomain = "zom.generic-parameter.v0"_zc;
+constexpr auto kCallableParameterDomain = "zom.callable-parameter.v0"_zc;
+
+template <typename Record>
+Sha256Digest digestRecord(zc::StringPtr domain, const Record& record) {
+  const auto encoded = record.encode();
+  zc::Vector<uint8_t> preimage(domain.size() + 1 + encoded.size());
+  preimage.addAll(domain.asBytes());
+  preimage.add(0x00);
+  preimage.addAll(encoded);
+  ZC_IF_SOME(digest, sha256(preimage.asPtr())) { return digest; }
+  ZC_UNREACHABLE
 }
 
-bool isValid(AnonymousDefinitionRole value) {
-  return value == AnonymousDefinitionRole::Lambda ||
-         value == AnonymousDefinitionRole::FunctionExpression;
+template <typename Value>
+void encodeSequence(CanonicalEncoder& encoder, zc::ArrayPtr<const Value> values) {
+  encoder.encodeSequenceSize(values.size());
+  for (const auto& value : values) { value.encode(encoder); }
+}
+
+bool sameBytes(zc::ArrayPtr<const uint8_t> left, zc::ArrayPtr<const uint8_t> right) noexcept {
+  return left == right;
 }
 
 }  // namespace
 
-DefinitionNameKey::DefinitionNameKey(DeclaredDefinitionNameKey&& name) noexcept
-    : value(zc::mv(name)) {}
+namespace definition_identity_detail {
 
-DefinitionNameKey::DefinitionNameKey(AnonymousDefinitionNameKey&& name) noexcept
-    : value(zc::mv(name)) {}
+struct DefinitionIdentityRecordData final {
+  ModuleKey module;
+  zc::Vector<EnclosingStableOwnerKey> owners;
+  DefinitionKind kind;
+  DefinitionNamespace nameSpace;
+  DeclaredDefinitionName name;
+  zc::Maybe<OverloadHeaderDigest> overloadHeader;
+};
 
-DefinitionNameKey DefinitionNameKey::declared(DeclaredDefinitionName&& name) {
-  return DefinitionNameKey(DeclaredDefinitionNameKey{zc::mv(name)});
+struct ImplIdentityRecordData final {
+  ModuleKey module;
+  zc::Vector<EnclosingStableOwnerKey> owners;
+  CanonicalImplHeader header;
+};
+
+struct DefinitionIdentityAuthorityData final {
+  DefinitionKey key;
+  DefinitionIdentityRecord record;
+  zc::Maybe<OverloadHeaderAuthority> overloadHeaderAuthority;
+};
+
+struct ImplIdentityAuthorityData final {
+  ImplKey key;
+  ImplIdentityRecord record;
+};
+
+struct GenericParameterIdentityRecordData final {
+  StableGenericParameterOwnerKey owner;
+  GenericParameterKind kind;
+  uint32_t ordinal;
+};
+
+struct GenericParameterAuthorityData final {
+  GenericParameterKey key;
+  GenericParameterIdentityRecord record;
+};
+
+struct CallableParameterIdentityRecordData final {
+  DefinitionKey owner;
+  CallableParameterPosition position;
+};
+
+struct CallableParameterAuthorityData final {
+  CallableParameterKey key;
+  CallableParameterIdentityRecord record;
+};
+
+}  // namespace definition_identity_detail
+
+bool isDefinitionKindValue(DefinitionKind value) noexcept {
+  return value >= DefinitionKind::ModuleAlias && value <= DefinitionKind::Closure;
 }
 
-zc::Maybe<DefinitionNameKey> DefinitionNameKey::anonymous(AnonymousDefinitionRole role) {
-  if (!isValid(role)) { return zc::none; }
-  return DefinitionNameKey(AnonymousDefinitionNameKey{role});
-}
-
-DefinitionNameKey DefinitionNameKey::clone() const {
-  ZC_SWITCH_ONEOF(value) {
-    ZC_CASE_ONEOF(name, DeclaredDefinitionNameKey) { return declared(name.name.clone()); }
-    ZC_CASE_ONEOF(name, AnonymousDefinitionNameKey) {
-      ZC_IF_SOME(result, anonymous(name.role)) { return zc::mv(result); }
-      ZC_UNREACHABLE
-    }
+zc::Maybe<DefinitionNamespace> definitionNamespaceFor(DefinitionKind value) noexcept {
+  switch (value) {
+    case DefinitionKind::Function:
+    case DefinitionKind::Method:
+    case DefinitionKind::Constructor:
+    case DefinitionKind::Destructor:
+    case DefinitionKind::Field:
+    case DefinitionKind::EnumVariant:
+    case DefinitionKind::Constant:
+    case DefinitionKind::Static:
+      return DefinitionNamespace::Value;
+    case DefinitionKind::Class:
+    case DefinitionKind::Struct:
+    case DefinitionKind::Interface:
+    case DefinitionKind::Enum:
+    case DefinitionKind::Error:
+    case DefinitionKind::TypeAlias:
+    case DefinitionKind::AssociatedType:
+      return DefinitionNamespace::Type;
+    case DefinitionKind::ModuleAlias:
+      return DefinitionNamespace::Module;
+    case DefinitionKind::Parameter:
+    case DefinitionKind::TypeParameter:
+    case DefinitionKind::Local:
+    case DefinitionKind::PatternBinding:
+    case DefinitionKind::Closure:
+      return zc::none;
   }
-  ZC_UNREACHABLE
+  return zc::none;
 }
 
-void DefinitionNameKey::encode(CanonicalEncoder& encoder) const {
-  if (value.is<DeclaredDefinitionNameKey>()) {
-    encoder.encodeUint8(static_cast<uint8_t>(DefinitionNameKind::Declared));
-    value.get<DeclaredDefinitionNameKey>().name.encode(encoder);
-  } else {
-    encoder.encodeUint8(static_cast<uint8_t>(DefinitionNameKind::Anonymous));
-    encoder.encodeUint8(static_cast<uint8_t>(value.get<AnonymousDefinitionNameKey>().role));
-  }
+bool isStableDefinitionKind(DefinitionKind value) noexcept {
+  return definitionNamespaceFor(value) != zc::none;
 }
 
-DefinitionPathSegment::DefinitionPathSegment(DefinitionKind kind, DefinitionNameKey&& name,
-                                             SourceSpan&& sourceAnchor,
-                                             uint32_t siblingOrdinal) noexcept
-    : kindValue(kind),
-      nameValue(zc::mv(name)),
-      sourceAnchorValue(zc::mv(sourceAnchor)),
-      siblingOrdinalValue(siblingOrdinal) {}
+DefinitionKey::DefinitionKey(const Sha256Digest& digest) noexcept : digestValue(digest) {}
 
-zc::Maybe<DefinitionPathSegment> DefinitionPathSegment::from(DefinitionKind kind,
-                                                             DefinitionNameKey&& name,
-                                                             SourceSpan&& sourceAnchor,
-                                                             uint32_t siblingOrdinal) {
-  if (!isValid(kind)) { return zc::none; }
-  return DefinitionPathSegment(kind, zc::mv(name), zc::mv(sourceAnchor), siblingOrdinal);
+DefinitionKey DefinitionKey::compute(const DefinitionIdentityRecord& record) {
+  return DefinitionKey(digestRecord(kDefinitionDomain, record));
 }
 
-DefinitionPathSegment DefinitionPathSegment::clone() const {
-  return DefinitionPathSegment(kindValue, nameValue.clone(), sourceAnchorValue.clone(),
-                               siblingOrdinalValue);
+zc::Maybe<DefinitionKey> DefinitionKey::fromBytes(zc::ArrayPtr<const uint8_t> bytes) {
+  ZC_IF_SOME(digest, Sha256Digest::fromBytes(bytes)) { return DefinitionKey(digest); }
+  return zc::none;
 }
 
-bool DefinitionPathSegment::belongsTo(const ModuleKey& module) const {
-  return module.contains(sourceAnchorValue);
-}
-
-void DefinitionPathSegment::encode(CanonicalEncoder& encoder) const {
-  encoder.encodeUint8(static_cast<uint8_t>(kindValue));
-  nameValue.encode(encoder);
-  sourceAnchorValue.encode(encoder);
-  encoder.encodeUint32(siblingOrdinalValue);
-}
-
-ImplPathSegment::ImplPathSegment(SourceSpan&& sourceAnchor, uint32_t siblingOrdinal) noexcept
-    : sourceAnchorValue(zc::mv(sourceAnchor)), siblingOrdinalValue(siblingOrdinal) {}
-
-ImplPathSegment ImplPathSegment::from(SourceSpan&& sourceAnchor, uint32_t siblingOrdinal) {
-  return ImplPathSegment(zc::mv(sourceAnchor), siblingOrdinal);
-}
-
-ImplPathSegment ImplPathSegment::clone() const {
-  return ImplPathSegment(sourceAnchorValue.clone(), siblingOrdinalValue);
-}
-
-bool ImplPathSegment::belongsTo(const ModuleKey& module) const {
-  return module.contains(sourceAnchorValue);
-}
-
-void ImplPathSegment::encode(CanonicalEncoder& encoder) const {
-  sourceAnchorValue.encode(encoder);
-  encoder.encodeUint32(siblingOrdinalValue);
-}
-
-DefinitionPathComponent::DefinitionPathComponent(
-    DefinitionPathDefinitionComponent&& component) noexcept
-    : value(zc::mv(component)) {}
-
-DefinitionPathComponent::DefinitionPathComponent(DefinitionPathImplComponent&& component) noexcept
-    : value(zc::mv(component)) {}
-
-DefinitionPathComponent DefinitionPathComponent::definition(DefinitionPathSegment&& segment) {
-  return DefinitionPathComponent(DefinitionPathDefinitionComponent{zc::mv(segment)});
-}
-
-DefinitionPathComponent DefinitionPathComponent::impl(ImplPathSegment&& segment) {
-  return DefinitionPathComponent(DefinitionPathImplComponent{zc::mv(segment)});
-}
-
-DefinitionPathComponent DefinitionPathComponent::clone() const {
-    ZC_SWITCH_ONEOF(value){ZC_CASE_ONEOF(component, DefinitionPathDefinitionComponent){
-        return definition(component.segment.clone());
-}  // namespace zomlang::compiler::identity
-ZC_CASE_ONEOF(component, DefinitionPathImplComponent) { return impl(component.segment.clone()); }
-}
-ZC_UNREACHABLE
-}
-
-DefinitionPathComponentKind DefinitionPathComponent::kind() const noexcept {
-  return value.is<DefinitionPathDefinitionComponent>() ? DefinitionPathComponentKind::Definition
-                                                       : DefinitionPathComponentKind::Impl;
-}
-
-bool DefinitionPathComponent::belongsTo(const ModuleKey& module) const {
-  if (value.is<DefinitionPathDefinitionComponent>()) {
-    return value.get<DefinitionPathDefinitionComponent>().segment.belongsTo(module);
-  }
-  return value.get<DefinitionPathImplComponent>().segment.belongsTo(module);
-}
-
-void DefinitionPathComponent::encode(CanonicalEncoder& encoder) const {
-  encoder.encodeUint8(static_cast<uint8_t>(kind()));
-  ZC_SWITCH_ONEOF(value) {
-    ZC_CASE_ONEOF(component, DefinitionPathDefinitionComponent) {
-      component.segment.encode(encoder);
-    }
-    ZC_CASE_ONEOF(component, DefinitionPathImplComponent) { component.segment.encode(encoder); }
-  }
-}
-
-DefinitionKey::DefinitionKey(ModuleKey&& module,
-                             zc::Vector<DefinitionPathComponent>&& path) noexcept
-    : moduleValue(zc::mv(module)), pathValue(zc::mv(path)) {}
-
-zc::Maybe<DefinitionKey> DefinitionKey::from(ModuleKey&& module,
-                                             zc::Vector<DefinitionPathComponent>&& path) {
-  if (path.size() == 0 || path.back().kind() != DefinitionPathComponentKind::Definition) {
-    return zc::none;
-  }
-  for (const auto& component : path) {
-    if (!component.belongsTo(module)) { return zc::none; }
-  }
-  return DefinitionKey(zc::mv(module), zc::mv(path));
-}
-
-DefinitionKey DefinitionKey::clone() const {
-  zc::Vector<DefinitionPathComponent> path(pathValue.size());
-  for (const auto& component : pathValue) { path.add(component.clone()); }
-  return DefinitionKey(moduleValue.clone(), zc::mv(path));
-}
-
-const ModuleKey& DefinitionKey::module() const noexcept { return moduleValue; }
-
-void DefinitionKey::encode(CanonicalEncoder& encoder) const {
-  moduleValue.encode(encoder);
-  encoder.encodeSequenceSize(pathValue.size());
-  for (const auto& component : pathValue) { component.encode(encoder); }
-}
-
+DefinitionKey DefinitionKey::clone() const noexcept { return DefinitionKey(digestValue); }
+zc::ArrayPtr<const uint8_t> DefinitionKey::bytes() const { return digestValue.bytes(); }
+void DefinitionKey::encode(CanonicalEncoder& encoder) const { encoder.encodeDigest(digestValue); }
 zc::Array<uint8_t> DefinitionKey::encode() const {
   CanonicalEncoder encoder;
   encode(encoder);
   return encoder.finish();
 }
-
-ImplKey::ImplKey(ModuleKey&& module, zc::Vector<DefinitionPathSegment>&& parentPath,
-                 SourceSpan&& source, uint32_t siblingOrdinal) noexcept
-    : moduleValue(zc::mv(module)),
-      parentPathValue(zc::mv(parentPath)),
-      sourceValue(zc::mv(source)),
-      siblingOrdinalValue(siblingOrdinal) {}
-
-zc::Maybe<ImplKey> ImplKey::from(ModuleKey&& module, zc::Vector<DefinitionPathSegment>&& parentPath,
-                                 SourceSpan&& source, uint32_t siblingOrdinal) {
-  if (!module.contains(source)) { return zc::none; }
-  for (const auto& segment : parentPath) {
-    if (!segment.belongsTo(module)) { return zc::none; }
-  }
-  return ImplKey(zc::mv(module), zc::mv(parentPath), zc::mv(source), siblingOrdinal);
+bool DefinitionKey::operator==(const DefinitionKey& other) const noexcept {
+  return digestValue == other.digestValue;
 }
 
-ImplKey ImplKey::clone() const {
-  zc::Vector<DefinitionPathSegment> path(parentPathValue.size());
-  for (const auto& segment : parentPathValue) { path.add(segment.clone()); }
-  return ImplKey(moduleValue.clone(), zc::mv(path), sourceValue.clone(), siblingOrdinalValue);
+ImplKey::ImplKey(const Sha256Digest& digest) noexcept : digestValue(digest) {}
+ImplKey ImplKey::compute(const ImplIdentityRecord& record) {
+  return ImplKey(digestRecord(kImplDomain, record));
 }
-
-void ImplKey::encode(CanonicalEncoder& encoder) const {
-  moduleValue.encode(encoder);
-  encoder.encodeSequenceSize(parentPathValue.size());
-  for (const auto& segment : parentPathValue) { segment.encode(encoder); }
-  sourceValue.encode(encoder);
-  encoder.encodeUint32(siblingOrdinalValue);
+zc::Maybe<ImplKey> ImplKey::fromBytes(zc::ArrayPtr<const uint8_t> bytes) {
+  ZC_IF_SOME(digest, Sha256Digest::fromBytes(bytes)) { return ImplKey(digest); }
+  return zc::none;
 }
-
+ImplKey ImplKey::clone() const noexcept { return ImplKey(digestValue); }
+zc::ArrayPtr<const uint8_t> ImplKey::bytes() const { return digestValue.bytes(); }
+void ImplKey::encode(CanonicalEncoder& encoder) const { encoder.encodeDigest(digestValue); }
 zc::Array<uint8_t> ImplKey::encode() const {
   CanonicalEncoder encoder;
   encode(encoder);
   return encoder.finish();
+}
+bool ImplKey::operator==(const ImplKey& other) const noexcept {
+  return digestValue == other.digestValue;
+}
+
+EnclosingStableOwnerKey::EnclosingStableOwnerKey(StableDefinitionOwner&& owner) noexcept
+    : value(zc::mv(owner)) {}
+EnclosingStableOwnerKey::EnclosingStableOwnerKey(StableImplementationOwner&& owner) noexcept
+    : value(zc::mv(owner)) {}
+EnclosingStableOwnerKey EnclosingStableOwnerKey::definition(DefinitionKey&& key) {
+  return EnclosingStableOwnerKey(StableDefinitionOwner{zc::mv(key)});
+}
+EnclosingStableOwnerKey EnclosingStableOwnerKey::implementation(ImplKey&& key) {
+  return EnclosingStableOwnerKey(StableImplementationOwner{zc::mv(key)});
+}
+EnclosingStableOwnerKey EnclosingStableOwnerKey::clone() const {
+  if (value.is<StableDefinitionOwner>()) {
+    return definition(value.get<StableDefinitionOwner>().key.clone());
+  }
+  return implementation(value.get<StableImplementationOwner>().key.clone());
+}
+EnclosingStableOwnerKind EnclosingStableOwnerKey::kind() const noexcept {
+  return value.is<StableDefinitionOwner>() ? EnclosingStableOwnerKind::Definition
+                                           : EnclosingStableOwnerKind::Implementation;
+}
+zc::Maybe<const DefinitionKey&> EnclosingStableOwnerKey::definitionKey() const noexcept {
+  ZC_IF_SOME(owner, value.tryGet<StableDefinitionOwner>()) { return owner.key; }
+  return zc::none;
+}
+zc::Maybe<const ImplKey&> EnclosingStableOwnerKey::implKey() const noexcept {
+  ZC_IF_SOME(owner, value.tryGet<StableImplementationOwner>()) { return owner.key; }
+  return zc::none;
+}
+void EnclosingStableOwnerKey::encode(CanonicalEncoder& encoder) const {
+  encoder.encodeUint8(static_cast<uint8_t>(kind()));
+  if (value.is<StableDefinitionOwner>()) {
+    value.get<StableDefinitionOwner>().key.encode(encoder);
+  } else {
+    value.get<StableImplementationOwner>().key.encode(encoder);
+  }
+}
+zc::Array<uint8_t> EnclosingStableOwnerKey::encode() const {
+  CanonicalEncoder encoder;
+  encode(encoder);
+  return encoder.finish();
+}
+
+DefinitionIdentityRecord::DefinitionIdentityRecord(
+    zc::Own<definition_identity_detail::DefinitionIdentityRecordData>&& value) noexcept
+    : impl(zc::mv(value)) {}
+DefinitionIdentityRecord::~DefinitionIdentityRecord() noexcept(false) = default;
+DefinitionIdentityRecord::DefinitionIdentityRecord(DefinitionIdentityRecord&&) noexcept = default;
+DefinitionIdentityRecord& DefinitionIdentityRecord::operator=(DefinitionIdentityRecord&&) noexcept =
+    default;
+
+zc::Maybe<DefinitionIdentityRecord> DefinitionIdentityRecord::from(
+    ModuleKey&& module, zc::Vector<EnclosingStableOwnerKey>&& owners, DefinitionKind kind,
+    DefinitionNamespace nameSpace, DeclaredDefinitionName&& name,
+    zc::Maybe<OverloadHeaderDigest>&& overloadHeader) {
+  auto expectedNamespace = definitionNamespaceFor(kind);
+  if (expectedNamespace == zc::none || expectedNamespace != nameSpace) { return zc::none; }
+  const bool callable = kind == DefinitionKind::Function || kind == DefinitionKind::Method ||
+                        kind == DefinitionKind::Constructor;
+  if (callable != (overloadHeader != zc::none)) { return zc::none; }
+  return DefinitionIdentityRecord(
+      zc::heap<definition_identity_detail::DefinitionIdentityRecordData>(
+          definition_identity_detail::DefinitionIdentityRecordData{zc::mv(module), zc::mv(owners),
+                                                                   kind, nameSpace, zc::mv(name),
+                                                                   zc::mv(overloadHeader)}));
+}
+
+DefinitionIdentityRecord DefinitionIdentityRecord::clone() const {
+  zc::Vector<EnclosingStableOwnerKey> owners(impl->owners.size());
+  for (const auto& owner : impl->owners) { owners.add(owner.clone()); }
+  zc::Maybe<OverloadHeaderDigest> overloadHeader;
+  ZC_IF_SOME(value, impl->overloadHeader) { overloadHeader = value.clone(); }
+  auto cloned = from(impl->module.clone(), zc::mv(owners), impl->kind, impl->nameSpace,
+                     impl->name.clone(), zc::mv(overloadHeader));
+  ZC_IF_SOME(value, cloned) { return zc::mv(value); }
+  ZC_UNREACHABLE
+}
+const ModuleKey& DefinitionIdentityRecord::module() const noexcept { return impl->module; }
+zc::ArrayPtr<const EnclosingStableOwnerKey> DefinitionIdentityRecord::owners() const noexcept {
+  return impl->owners.asPtr();
+}
+DefinitionKind DefinitionIdentityRecord::kind() const noexcept { return impl->kind; }
+DefinitionNamespace DefinitionIdentityRecord::nameSpace() const noexcept { return impl->nameSpace; }
+zc::StringPtr DefinitionIdentityRecord::name() const noexcept { return impl->name.text(); }
+zc::Maybe<const OverloadHeaderDigest&> DefinitionIdentityRecord::overloadHeader() const noexcept {
+  ZC_IF_SOME(value, impl->overloadHeader) { return value; }
+  return zc::none;
+}
+void DefinitionIdentityRecord::encode(CanonicalEncoder& encoder) const {
+  impl->module.encode(encoder);
+  encodeSequence(encoder, impl->owners.asPtr());
+  encoder.encodeUint8(static_cast<uint8_t>(impl->kind));
+  encoder.encodeUint8(static_cast<uint8_t>(impl->nameSpace));
+  impl->name.encode(encoder);
+  ZC_IF_SOME(value, impl->overloadHeader) {
+    encoder.encodeSome();
+    value.encode(encoder);
+  } else {
+    encoder.encodeNone();
+  }
+}
+zc::Array<uint8_t> DefinitionIdentityRecord::encode() const {
+  CanonicalEncoder encoder;
+  encode(encoder);
+  return encoder.finish();
+}
+
+ImplIdentityRecord::ImplIdentityRecord(
+    zc::Own<definition_identity_detail::ImplIdentityRecordData>&& value) noexcept
+    : impl(zc::mv(value)) {}
+ImplIdentityRecord::~ImplIdentityRecord() noexcept(false) = default;
+ImplIdentityRecord::ImplIdentityRecord(ImplIdentityRecord&&) noexcept = default;
+ImplIdentityRecord& ImplIdentityRecord::operator=(ImplIdentityRecord&&) noexcept = default;
+ImplIdentityRecord ImplIdentityRecord::from(ModuleKey&& module,
+                                            zc::Vector<EnclosingStableOwnerKey>&& owners,
+                                            CanonicalImplHeader&& header) {
+  return ImplIdentityRecord(zc::heap<definition_identity_detail::ImplIdentityRecordData>(
+      definition_identity_detail::ImplIdentityRecordData{zc::mv(module), zc::mv(owners),
+                                                         zc::mv(header)}));
+}
+ImplIdentityRecord ImplIdentityRecord::clone() const {
+  zc::Vector<EnclosingStableOwnerKey> owners(impl->owners.size());
+  for (const auto& owner : impl->owners) { owners.add(owner.clone()); }
+  return from(impl->module.clone(), zc::mv(owners), impl->header.clone());
+}
+const ModuleKey& ImplIdentityRecord::module() const noexcept { return impl->module; }
+zc::ArrayPtr<const EnclosingStableOwnerKey> ImplIdentityRecord::owners() const noexcept {
+  return impl->owners.asPtr();
+}
+const CanonicalImplHeader& ImplIdentityRecord::header() const noexcept { return impl->header; }
+void ImplIdentityRecord::encode(CanonicalEncoder& encoder) const {
+  impl->module.encode(encoder);
+  encodeSequence(encoder, impl->owners.asPtr());
+  impl->header.encode(encoder);
+}
+zc::Array<uint8_t> ImplIdentityRecord::encode() const {
+  CanonicalEncoder encoder;
+  encode(encoder);
+  return encoder.finish();
+}
+
+DefinitionIdentityAuthority::DefinitionIdentityAuthority(
+    zc::Own<definition_identity_detail::DefinitionIdentityAuthorityData>&& value) noexcept
+    : impl(zc::mv(value)) {}
+DefinitionIdentityAuthority::~DefinitionIdentityAuthority() noexcept(false) = default;
+DefinitionIdentityAuthority::DefinitionIdentityAuthority(DefinitionIdentityAuthority&&) noexcept =
+    default;
+DefinitionIdentityAuthority& DefinitionIdentityAuthority::operator=(
+    DefinitionIdentityAuthority&&) noexcept = default;
+zc::Maybe<DefinitionIdentityAuthority> DefinitionIdentityAuthority::from(
+    DefinitionIdentityRecord&& record,
+    zc::Maybe<OverloadHeaderAuthority>&& overloadHeaderAuthority) {
+  const auto expectedCallableKind = [&]() -> zc::Maybe<CallableHeaderKind> {
+    switch (record.kind()) {
+      case DefinitionKind::Function:
+        return CallableHeaderKind::Function;
+      case DefinitionKind::Method:
+        return CallableHeaderKind::Method;
+      case DefinitionKind::Constructor:
+        return CallableHeaderKind::Constructor;
+      default:
+        return zc::none;
+    }
+  }();
+  if ((record.overloadHeader() == zc::none) != (overloadHeaderAuthority == zc::none)) {
+    return zc::none;
+  }
+  ZC_IF_SOME(recordDigest, record.overloadHeader()) {
+    ZC_IF_SOME(authority, overloadHeaderAuthority) {
+      if (!authority.verify() || authority.digest() != recordDigest ||
+          expectedCallableKind == zc::none || authority.header().name() != record.name()) {
+        return zc::none;
+      }
+      ZC_IF_SOME(kind, expectedCallableKind) {
+        if (authority.header().callableKind() != kind) { return zc::none; }
+      }
+    }
+  }
+  auto key = DefinitionKey::compute(record);
+  return DefinitionIdentityAuthority(
+      zc::heap<definition_identity_detail::DefinitionIdentityAuthorityData>(
+          definition_identity_detail::DefinitionIdentityAuthorityData{
+              zc::mv(key), zc::mv(record), zc::mv(overloadHeaderAuthority)}));
+}
+DefinitionIdentityAuthority DefinitionIdentityAuthority::clone() const {
+  zc::Maybe<OverloadHeaderAuthority> overloadHeaderAuthority;
+  ZC_IF_SOME(value, impl->overloadHeaderAuthority) { overloadHeaderAuthority = value.clone(); }
+  return DefinitionIdentityAuthority(
+      zc::heap<definition_identity_detail::DefinitionIdentityAuthorityData>(
+          definition_identity_detail::DefinitionIdentityAuthorityData{
+              impl->key.clone(), impl->record.clone(), zc::mv(overloadHeaderAuthority)}));
+}
+const DefinitionKey& DefinitionIdentityAuthority::key() const noexcept { return impl->key; }
+const DefinitionIdentityRecord& DefinitionIdentityAuthority::record() const noexcept {
+  return impl->record;
+}
+zc::Maybe<const OverloadHeaderAuthority&> DefinitionIdentityAuthority::overloadHeaderAuthority()
+    const noexcept {
+  ZC_IF_SOME(value, impl->overloadHeaderAuthority) { return value; }
+  return zc::none;
+}
+bool DefinitionIdentityAuthority::verify() const {
+  if (DefinitionKey::compute(impl->record) != impl->key) { return false; }
+  if ((impl->record.overloadHeader() == zc::none) != (impl->overloadHeaderAuthority == zc::none)) {
+    return false;
+  }
+  ZC_IF_SOME(recordDigest, impl->record.overloadHeader()) {
+    ZC_IF_SOME(authority, impl->overloadHeaderAuthority) {
+      if (!authority.verify() || authority.digest() != recordDigest ||
+          authority.header().name() != impl->record.name()) {
+        return false;
+      }
+      switch (impl->record.kind()) {
+        case DefinitionKind::Function:
+          return authority.header().callableKind() == CallableHeaderKind::Function;
+        case DefinitionKind::Method:
+          return authority.header().callableKind() == CallableHeaderKind::Method;
+        case DefinitionKind::Constructor:
+          return authority.header().callableKind() == CallableHeaderKind::Constructor;
+        default:
+          return false;
+      }
+    }
+  }
+  return true;
+}
+bool DefinitionIdentityAuthority::sameRecordAs(const DefinitionIdentityAuthority& other) const {
+  const auto left = impl->record.encode();
+  const auto right = other.impl->record.encode();
+  if (!sameBytes(left.asPtr(), right.asPtr())) { return false; }
+  if ((impl->overloadHeaderAuthority == zc::none) !=
+      (other.impl->overloadHeaderAuthority == zc::none)) {
+    return false;
+  }
+  ZC_IF_SOME(leftAuthority, impl->overloadHeaderAuthority) {
+    ZC_IF_SOME(rightAuthority, other.impl->overloadHeaderAuthority) {
+      return leftAuthority.sameRecordAs(rightAuthority);
+    }
+  }
+  return true;
+}
+
+ImplIdentityAuthority::ImplIdentityAuthority(
+    zc::Own<definition_identity_detail::ImplIdentityAuthorityData>&& value) noexcept
+    : impl(zc::mv(value)) {}
+ImplIdentityAuthority::~ImplIdentityAuthority() noexcept(false) = default;
+ImplIdentityAuthority::ImplIdentityAuthority(ImplIdentityAuthority&&) noexcept = default;
+ImplIdentityAuthority& ImplIdentityAuthority::operator=(ImplIdentityAuthority&&) noexcept = default;
+ImplIdentityAuthority ImplIdentityAuthority::from(ImplIdentityRecord&& record) {
+  auto key = ImplKey::compute(record);
+  return ImplIdentityAuthority(zc::heap<definition_identity_detail::ImplIdentityAuthorityData>(
+      definition_identity_detail::ImplIdentityAuthorityData{zc::mv(key), zc::mv(record)}));
+}
+ImplIdentityAuthority ImplIdentityAuthority::clone() const {
+  return ImplIdentityAuthority(zc::heap<definition_identity_detail::ImplIdentityAuthorityData>(
+      definition_identity_detail::ImplIdentityAuthorityData{impl->key.clone(),
+                                                            impl->record.clone()}));
+}
+const ImplKey& ImplIdentityAuthority::key() const noexcept { return impl->key; }
+const ImplIdentityRecord& ImplIdentityAuthority::record() const noexcept { return impl->record; }
+bool ImplIdentityAuthority::verify() const { return ImplKey::compute(impl->record) == impl->key; }
+bool ImplIdentityAuthority::sameRecordAs(const ImplIdentityAuthority& other) const {
+  const auto left = impl->record.encode();
+  const auto right = other.impl->record.encode();
+  return sameBytes(left.asPtr(), right.asPtr());
+}
+
+StableGenericParameterOwnerKey::StableGenericParameterOwnerKey(
+    EnclosingStableOwnerKey&& value) noexcept
+    : owner(zc::mv(value)) {}
+StableGenericParameterOwnerKey StableGenericParameterOwnerKey::definition(DefinitionKey&& key) {
+  return StableGenericParameterOwnerKey(EnclosingStableOwnerKey::definition(zc::mv(key)));
+}
+StableGenericParameterOwnerKey StableGenericParameterOwnerKey::implementation(ImplKey&& key) {
+  return StableGenericParameterOwnerKey(EnclosingStableOwnerKey::implementation(zc::mv(key)));
+}
+StableGenericParameterOwnerKey StableGenericParameterOwnerKey::clone() const {
+  return StableGenericParameterOwnerKey(owner.clone());
+}
+StableGenericParameterOwnerKind StableGenericParameterOwnerKey::kind() const noexcept {
+  return owner.kind();
+}
+zc::Maybe<const DefinitionKey&> StableGenericParameterOwnerKey::definitionKey() const noexcept {
+  return owner.definitionKey();
+}
+zc::Maybe<const ImplKey&> StableGenericParameterOwnerKey::implKey() const noexcept {
+  return owner.implKey();
+}
+void StableGenericParameterOwnerKey::encode(CanonicalEncoder& encoder) const {
+  owner.encode(encoder);
+}
+
+GenericParameterKey::GenericParameterKey(const Sha256Digest& digest) noexcept
+    : digestValue(digest) {}
+GenericParameterKey GenericParameterKey::compute(const GenericParameterIdentityRecord& record) {
+  return GenericParameterKey(digestRecord(kGenericParameterDomain, record));
+}
+zc::Maybe<GenericParameterKey> GenericParameterKey::fromBytes(zc::ArrayPtr<const uint8_t> bytes) {
+  ZC_IF_SOME(digest, Sha256Digest::fromBytes(bytes)) { return GenericParameterKey(digest); }
+  return zc::none;
+}
+GenericParameterKey GenericParameterKey::clone() const noexcept {
+  return GenericParameterKey(digestValue);
+}
+zc::ArrayPtr<const uint8_t> GenericParameterKey::bytes() const { return digestValue.bytes(); }
+void GenericParameterKey::encode(CanonicalEncoder& encoder) const {
+  encoder.encodeDigest(digestValue);
+}
+zc::Array<uint8_t> GenericParameterKey::encode() const {
+  CanonicalEncoder encoder;
+  encode(encoder);
+  return encoder.finish();
+}
+bool GenericParameterKey::operator==(const GenericParameterKey& other) const noexcept {
+  return digestValue == other.digestValue;
+}
+
+GenericParameterIdentityRecord::GenericParameterIdentityRecord(
+    zc::Own<definition_identity_detail::GenericParameterIdentityRecordData>&& value) noexcept
+    : impl(zc::mv(value)) {}
+GenericParameterIdentityRecord::~GenericParameterIdentityRecord() noexcept(false) = default;
+GenericParameterIdentityRecord::GenericParameterIdentityRecord(
+    GenericParameterIdentityRecord&&) noexcept = default;
+GenericParameterIdentityRecord& GenericParameterIdentityRecord::operator=(
+    GenericParameterIdentityRecord&&) noexcept = default;
+GenericParameterIdentityRecord GenericParameterIdentityRecord::type(
+    StableGenericParameterOwnerKey&& owner, uint32_t ordinal) {
+  return GenericParameterIdentityRecord(
+      zc::heap<definition_identity_detail::GenericParameterIdentityRecordData>(
+          definition_identity_detail::GenericParameterIdentityRecordData{
+              zc::mv(owner), GenericParameterKind::Type, ordinal}));
+}
+GenericParameterIdentityRecord GenericParameterIdentityRecord::clone() const {
+  return type(impl->owner.clone(), impl->ordinal);
+}
+const StableGenericParameterOwnerKey& GenericParameterIdentityRecord::owner() const noexcept {
+  return impl->owner;
+}
+GenericParameterKind GenericParameterIdentityRecord::kind() const noexcept { return impl->kind; }
+uint32_t GenericParameterIdentityRecord::ordinal() const noexcept { return impl->ordinal; }
+void GenericParameterIdentityRecord::encode(CanonicalEncoder& encoder) const {
+  impl->owner.encode(encoder);
+  encoder.encodeUint8(static_cast<uint8_t>(impl->kind));
+  encoder.encodeUint32(impl->ordinal);
+}
+zc::Array<uint8_t> GenericParameterIdentityRecord::encode() const {
+  CanonicalEncoder encoder;
+  encode(encoder);
+  return encoder.finish();
+}
+
+GenericParameterAuthority::GenericParameterAuthority(
+    zc::Own<definition_identity_detail::GenericParameterAuthorityData>&& value) noexcept
+    : impl(zc::mv(value)) {}
+GenericParameterAuthority::~GenericParameterAuthority() noexcept(false) = default;
+GenericParameterAuthority::GenericParameterAuthority(GenericParameterAuthority&&) noexcept =
+    default;
+GenericParameterAuthority& GenericParameterAuthority::operator=(
+    GenericParameterAuthority&&) noexcept = default;
+GenericParameterAuthority GenericParameterAuthority::from(GenericParameterIdentityRecord&& record) {
+  auto key = GenericParameterKey::compute(record);
+  return GenericParameterAuthority(
+      zc::heap<definition_identity_detail::GenericParameterAuthorityData>(
+          definition_identity_detail::GenericParameterAuthorityData{zc::mv(key), zc::mv(record)}));
+}
+GenericParameterAuthority GenericParameterAuthority::clone() const {
+  return GenericParameterAuthority(
+      zc::heap<definition_identity_detail::GenericParameterAuthorityData>(
+          definition_identity_detail::GenericParameterAuthorityData{impl->key.clone(),
+                                                                    impl->record.clone()}));
+}
+const GenericParameterKey& GenericParameterAuthority::key() const noexcept { return impl->key; }
+const GenericParameterIdentityRecord& GenericParameterAuthority::record() const noexcept {
+  return impl->record;
+}
+bool GenericParameterAuthority::verify() const {
+  return GenericParameterKey::compute(impl->record) == impl->key;
+}
+bool GenericParameterAuthority::sameRecordAs(const GenericParameterAuthority& other) const {
+  const auto left = impl->record.encode();
+  const auto right = other.impl->record.encode();
+  return sameBytes(left.asPtr(), right.asPtr());
+}
+
+CallableParameterPosition::CallableParameterPosition(CallableParameterPositionKind kind,
+                                                     uint32_t ordinal) noexcept
+    : kindValue(kind), ordinalValue(ordinal) {}
+CallableParameterPosition CallableParameterPosition::receiver() noexcept {
+  return CallableParameterPosition(CallableParameterPositionKind::Receiver, 0);
+}
+CallableParameterPosition CallableParameterPosition::ordinary(uint32_t ordinal) noexcept {
+  return CallableParameterPosition(CallableParameterPositionKind::Ordinary, ordinal);
+}
+CallableParameterPositionKind CallableParameterPosition::kind() const noexcept { return kindValue; }
+zc::Maybe<uint32_t> CallableParameterPosition::ordinal() const noexcept {
+  return kindValue == CallableParameterPositionKind::Ordinary ? zc::Maybe<uint32_t>(ordinalValue)
+                                                              : zc::none;
+}
+void CallableParameterPosition::encode(CanonicalEncoder& encoder) const {
+  encoder.encodeUint8(static_cast<uint8_t>(kindValue));
+  if (kindValue == CallableParameterPositionKind::Ordinary) { encoder.encodeUint32(ordinalValue); }
+}
+
+CallableParameterKey::CallableParameterKey(const Sha256Digest& digest) noexcept
+    : digestValue(digest) {}
+CallableParameterKey CallableParameterKey::compute(const CallableParameterIdentityRecord& record) {
+  return CallableParameterKey(digestRecord(kCallableParameterDomain, record));
+}
+zc::Maybe<CallableParameterKey> CallableParameterKey::fromBytes(zc::ArrayPtr<const uint8_t> bytes) {
+  ZC_IF_SOME(digest, Sha256Digest::fromBytes(bytes)) { return CallableParameterKey(digest); }
+  return zc::none;
+}
+CallableParameterKey CallableParameterKey::clone() const noexcept {
+  return CallableParameterKey(digestValue);
+}
+zc::ArrayPtr<const uint8_t> CallableParameterKey::bytes() const { return digestValue.bytes(); }
+void CallableParameterKey::encode(CanonicalEncoder& encoder) const {
+  encoder.encodeDigest(digestValue);
+}
+zc::Array<uint8_t> CallableParameterKey::encode() const {
+  CanonicalEncoder encoder;
+  encode(encoder);
+  return encoder.finish();
+}
+bool CallableParameterKey::operator==(const CallableParameterKey& other) const noexcept {
+  return digestValue == other.digestValue;
+}
+
+CallableParameterIdentityRecord::CallableParameterIdentityRecord(
+    zc::Own<definition_identity_detail::CallableParameterIdentityRecordData>&& value) noexcept
+    : impl(zc::mv(value)) {}
+CallableParameterIdentityRecord::~CallableParameterIdentityRecord() noexcept(false) = default;
+CallableParameterIdentityRecord::CallableParameterIdentityRecord(
+    CallableParameterIdentityRecord&&) noexcept = default;
+CallableParameterIdentityRecord& CallableParameterIdentityRecord::operator=(
+    CallableParameterIdentityRecord&&) noexcept = default;
+CallableParameterIdentityRecord CallableParameterIdentityRecord::from(
+    DefinitionKey&& owner, CallableParameterPosition position) {
+  return CallableParameterIdentityRecord(
+      zc::heap<definition_identity_detail::CallableParameterIdentityRecordData>(
+          definition_identity_detail::CallableParameterIdentityRecordData{zc::mv(owner),
+                                                                          position}));
+}
+CallableParameterIdentityRecord CallableParameterIdentityRecord::clone() const {
+  return from(impl->owner.clone(), impl->position);
+}
+const DefinitionKey& CallableParameterIdentityRecord::owner() const noexcept { return impl->owner; }
+CallableParameterPosition CallableParameterIdentityRecord::position() const noexcept {
+  return impl->position;
+}
+void CallableParameterIdentityRecord::encode(CanonicalEncoder& encoder) const {
+  impl->owner.encode(encoder);
+  impl->position.encode(encoder);
+}
+zc::Array<uint8_t> CallableParameterIdentityRecord::encode() const {
+  CanonicalEncoder encoder;
+  encode(encoder);
+  return encoder.finish();
+}
+
+CallableParameterAuthority::CallableParameterAuthority(
+    zc::Own<definition_identity_detail::CallableParameterAuthorityData>&& value) noexcept
+    : impl(zc::mv(value)) {}
+CallableParameterAuthority::~CallableParameterAuthority() noexcept(false) = default;
+CallableParameterAuthority::CallableParameterAuthority(CallableParameterAuthority&&) noexcept =
+    default;
+CallableParameterAuthority& CallableParameterAuthority::operator=(
+    CallableParameterAuthority&&) noexcept = default;
+CallableParameterAuthority CallableParameterAuthority::from(
+    CallableParameterIdentityRecord&& record) {
+  auto key = CallableParameterKey::compute(record);
+  return CallableParameterAuthority(
+      zc::heap<definition_identity_detail::CallableParameterAuthorityData>(
+          definition_identity_detail::CallableParameterAuthorityData{zc::mv(key), zc::mv(record)}));
+}
+CallableParameterAuthority CallableParameterAuthority::clone() const {
+  return CallableParameterAuthority(
+      zc::heap<definition_identity_detail::CallableParameterAuthorityData>(
+          definition_identity_detail::CallableParameterAuthorityData{impl->key.clone(),
+                                                                     impl->record.clone()}));
+}
+const CallableParameterKey& CallableParameterAuthority::key() const noexcept { return impl->key; }
+const CallableParameterIdentityRecord& CallableParameterAuthority::record() const noexcept {
+  return impl->record;
+}
+bool CallableParameterAuthority::verify() const {
+  return CallableParameterKey::compute(impl->record) == impl->key;
+}
+bool CallableParameterAuthority::sameRecordAs(const CallableParameterAuthority& other) const {
+  const auto left = impl->record.encode();
+  const auto right = other.impl->record.encode();
+  return sameBytes(left.asPtr(), right.asPtr());
 }
 
 }  // namespace zomlang::compiler::identity

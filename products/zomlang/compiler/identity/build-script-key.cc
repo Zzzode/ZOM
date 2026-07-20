@@ -94,6 +94,14 @@ bool uniqueEnvironmentKeys(zc::ArrayPtr<const BuildScriptEnvironmentEntry> value
 
 }  // namespace
 
+ArtifactFingerprint::ArtifactFingerprint(const Sha256Digest& digest) noexcept : value(digest) {}
+
+ArtifactFingerprint ArtifactFingerprint::from(const Sha256Digest& digest) noexcept {
+  return ArtifactFingerprint(digest);
+}
+
+const Sha256Digest& ArtifactFingerprint::digest() const noexcept { return value; }
+
 BuildScriptDigestEntry::BuildScriptDigestEntry(CanonicalRelativePath&& path,
                                                const Sha256Digest& digest) noexcept
     : pathValue(zc::mv(path)), digestValue(digest) {}
@@ -177,6 +185,18 @@ zc::ArrayPtr<const PackageKey> PreparatoryBuildScriptKey::buildDependencies() co
   return buildDependencyValues;
 }
 
+BuildScriptProducerKey PreparatoryBuildScriptKey::producerKey() const {
+  constexpr auto domain = "zom.build-script-producer.v0"_zc;
+  auto preparatory = encode();
+  zc::Vector<uint8_t> preimage(domain.size() + 1 + preparatory.size());
+  preimage.addAll(domain.asBytes());
+  preimage.add(0);
+  preimage.addAll(preparatory);
+  auto digest = sha256(preimage);
+  ZC_IF_SOME(value, digest) { return BuildScriptProducerKey::from(value); }
+  ZC_UNREACHABLE;
+}
+
 void PreparatoryBuildScriptKey::encode(CanonicalEncoder& encoder) const {
   packageValue.encode(encoder);
   targetNameValue.encode(encoder);
@@ -193,18 +213,18 @@ zc::Array<uint8_t> PreparatoryBuildScriptKey::encode() const {
 }
 
 BuildScriptOutputRecord::BuildScriptOutputRecord(
-    PreparatoryBuildScriptKey&& preparatory, zc::Vector<BuildScriptDigestEntry>&& sourceDigests,
+    BuildScriptProducerKey producer, zc::Vector<BuildScriptDigestEntry>&& sourceDigests,
     zc::Vector<BuildScriptEnvironmentEntry>&& declaredEnvironment,
     zc::Vector<BuildScriptDigestEntry>&& generatedSources,
     zc::Vector<BuildScriptEnvironmentEntry>&& exportedSemanticEnvironment) noexcept
-    : preparatoryValue(zc::mv(preparatory)),
+    : producerValue(producer),
       sourceDigestValues(zc::mv(sourceDigests)),
       declaredEnvironmentValues(zc::mv(declaredEnvironment)),
       generatedSourceValues(zc::mv(generatedSources)),
       exportedEnvironmentValues(zc::mv(exportedSemanticEnvironment)) {}
 
 zc::Maybe<BuildScriptOutputRecord> BuildScriptOutputRecord::from(
-    PreparatoryBuildScriptKey&& preparatory, zc::Vector<BuildScriptDigestEntry>&& sourceDigests,
+    BuildScriptProducerKey producer, zc::Vector<BuildScriptDigestEntry>&& sourceDigests,
     zc::Vector<BuildScriptEnvironmentEntry>&& declaredEnvironment,
     zc::Vector<BuildScriptDigestEntry>&& generatedSources,
     zc::Vector<BuildScriptEnvironmentEntry>&& exportedSemanticEnvironment) {
@@ -216,9 +236,8 @@ zc::Maybe<BuildScriptOutputRecord> BuildScriptOutputRecord::from(
       !uniqueEnvironmentKeys(exportedSemanticEnvironment)) {
     return zc::none;
   }
-  return BuildScriptOutputRecord(zc::mv(preparatory), zc::mv(sourceDigests),
-                                 zc::mv(declaredEnvironment), zc::mv(generatedSources),
-                                 zc::mv(exportedSemanticEnvironment));
+  return BuildScriptOutputRecord(producer, zc::mv(sourceDigests), zc::mv(declaredEnvironment),
+                                 zc::mv(generatedSources), zc::mv(exportedSemanticEnvironment));
 }
 
 BuildScriptOutputRecord BuildScriptOutputRecord::clone() const {
@@ -230,12 +249,12 @@ BuildScriptOutputRecord BuildScriptOutputRecord::clone() const {
   for (const auto& value : generatedSourceValues) { generated.add(value.clone()); }
   zc::Vector<BuildScriptEnvironmentEntry> exported(exportedEnvironmentValues.size());
   for (const auto& value : exportedEnvironmentValues) { exported.add(value.clone()); }
-  return BuildScriptOutputRecord(preparatoryValue.clone(), zc::mv(sources), zc::mv(environment),
+  return BuildScriptOutputRecord(producerValue, zc::mv(sources), zc::mv(environment),
                                  zc::mv(generated), zc::mv(exported));
 }
 
-const PreparatoryBuildScriptKey& BuildScriptOutputRecord::preparatoryKey() const noexcept {
-  return preparatoryValue;
+BuildScriptProducerKey BuildScriptOutputRecord::producerKey() const noexcept {
+  return producerValue;
 }
 
 zc::ArrayPtr<const BuildScriptDigestEntry> BuildScriptOutputRecord::sourceDigests() const noexcept {
@@ -258,7 +277,7 @@ zc::ArrayPtr<const BuildScriptEnvironmentEntry> BuildScriptOutputRecord::exporte
 }
 
 void BuildScriptOutputRecord::encode(CanonicalEncoder& encoder) const {
-  preparatoryValue.encode(encoder);
+  producerValue.encode(encoder);
   encoder.encodeSequenceSize(sourceDigestValues.size());
   for (const auto& value : sourceDigestValues) { value.encode(encoder); }
   encoder.encodeSequenceSize(declaredEnvironmentValues.size());
@@ -275,7 +294,7 @@ zc::Array<uint8_t> BuildScriptOutputRecord::encode() const {
   return encoder.finish();
 }
 
-BuildScriptOutputKey BuildScriptOutputRecord::outputKey() const {
+ArtifactFingerprint BuildScriptOutputRecord::artifactFingerprint() const {
   constexpr auto domain = "zom.build-script-output.v0"_zc;
   auto record = encode();
   zc::Vector<uint8_t> preimage(domain.size() + 1 + record.size());
@@ -283,7 +302,7 @@ BuildScriptOutputKey BuildScriptOutputRecord::outputKey() const {
   preimage.add(0);
   preimage.addAll(record);
   auto digest = sha256(preimage);
-  ZC_IF_SOME(value, digest) { return BuildScriptOutputKey::from(value); }
+  ZC_IF_SOME(value, digest) { return ArtifactFingerprint::from(value); }
   ZC_UNREACHABLE;
 }
 

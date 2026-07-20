@@ -20,7 +20,7 @@
 #include "zomlang/compiler/driver/package/trusted-runtime-elf.h"
 #include "zomlang/compiler/driver/package/trusted-runtime-manifest.h"
 #include "zomlang/compiler/identity/canonical-encoder.h"
-#include "zomlang/compiler/irgen/target-registry.h"
+#include "zomlang/compiler/ir/target-registry.h"
 
 namespace zomlang::compiler::driver::package {
 namespace {
@@ -87,13 +87,13 @@ RegisteredTargetProfileName profileName() {
   ZC_FAIL_REQUIRE("profile name fixture was rejected");
 }
 
-irgen::CanonicalTargetSpec targetSpec() {
-  zc::Vector<irgen::CanonicalTargetFeature> features;
-  auto feature = irgen::CanonicalTargetFeature::from("sse2"_zc, irgen::TargetFeatureState::Enabled);
+ir::CanonicalTargetSpec targetSpec() {
+  zc::Vector<ir::CanonicalTargetFeature> features;
+  auto feature = ir::CanonicalTargetFeature::from("sse2"_zc, ir::TargetFeatureState::Enabled);
   ZC_IF_SOME(value, feature) { features.add(zc::mv(value)); }
-  auto result = irgen::CanonicalTargetSpec::from(
+  auto result = ir::CanonicalTargetSpec::from(
       "x86_64-zom-none"_zc, "e-p:64:64"_zc, "generic"_zc, zc::mv(features), "zom-v1"_zc,
-      irgen::BackendPanicStrategy::Unwind, irgen::ObjectFormat::Elf);
+      ir::BackendPanicStrategy::Unwind, ir::ObjectFormat::Elf);
   ZC_IF_SOME(value, result) { return zc::mv(value); }
   ZC_FAIL_REQUIRE("target specification fixture was rejected");
 }
@@ -101,14 +101,14 @@ irgen::CanonicalTargetSpec targetSpec() {
 RegisteredTargetSelection targetSelection() {
   zc::Vector<identity::TargetFeatureName> semanticFeatures;
   semanticFeatures.add(scalar<identity::TargetFeatureName>("sse2"_zc));
-  zc::Vector<irgen::CanonicalTargetSpec> specifications;
+  zc::Vector<ir::CanonicalTargetSpec> specifications;
   specifications.add(targetSpec());
-  auto profile = irgen::RegisteredTargetProfileRecord::from(
+  auto profile = ir::RegisteredTargetProfileRecord::from(
       profileName(), projection(), zc::mv(semanticFeatures), zc::mv(specifications));
   ZC_REQUIRE(profile != zc::none);
-  zc::Vector<irgen::RegisteredTargetProfileRecord> profiles;
+  zc::Vector<ir::RegisteredTargetProfileRecord> profiles;
   ZC_IF_SOME(value, profile) { profiles.add(zc::mv(value)); }
-  auto registry = irgen::TargetRegistrySnapshot::from(profileName(), zc::mv(profiles));
+  auto registry = ir::TargetRegistrySnapshot::from(profileName(), zc::mv(profiles));
   ZC_REQUIRE(registry != zc::none);
   ZC_IF_SOME(snapshot, registry) {
     auto service = snapshot.packageTargetService();
@@ -175,7 +175,7 @@ zc::Array<uint8_t> staticPie(const RegisteredTargetSelection& target) {
 }
 
 identity::CrateKey crate(zc::StringPtr packageName) {
-  zc::Maybe<identity::BuildScriptOutputKey> noOutput;
+  zc::Maybe<identity::BuildScriptProducerKey> noOutput;
   auto compilation = identity::CompilationConfigKey::from(
       identity::CompilationDomain::Host, projection(),
       identity::SemanticCompilerOptionsKey::from(2026, true, false, true), zc::mv(noOutput));
@@ -561,9 +561,9 @@ identity::BuildScriptOutputRecord mutateOutputRecord(
                            bytes("stale-exported"_zc))
                      : value.clone());
   }
-  auto output = identity::BuildScriptOutputRecord::from(source.preparatoryKey().clone(),
-                                                        zc::mv(sourceDigests), zc::mv(declared),
-                                                        zc::mv(generated), zc::mv(exported));
+  auto output = identity::BuildScriptOutputRecord::from(source.producerKey(), zc::mv(sourceDigests),
+                                                        zc::mv(declared), zc::mv(generated),
+                                                        zc::mv(exported));
   ZC_REQUIRE(output != zc::none);
   ZC_IF_SOME(value, output) { return zc::mv(value); }
   ZC_UNREACHABLE;
@@ -679,7 +679,7 @@ ZC_TEST("Build-script cache miss publishes one complete byte-identical output re
   ZC_REQUIRE(outputDigest != zc::none);
   ZC_IF_SOME(value, outputDigest) {
     ZC_EXPECT(zc::encodeHex(value.bytes()) ==
-              "d7e0bdb6b5a960cc8803f7f0f7191bc91bca8c259928c604dd09094d0598a5ff"_zc);
+              "1173c31a10a429a13004c375a7b84baab54f2237857c3e5aea0ae1675552e87e"_zc);
   }
 }
 

@@ -206,12 +206,6 @@ public:
     return static_cast<Derived*>(this)->makeTypedNode(SyntaxKind::EnumPattern, zc::mv(range), payload);
   }
 
-  NodeId makeTupleLiteral1(source::SourceRange range, NodeId elem) {
-    NodePayload payload;
-    payload.words[kTupleLiteral1ElemWord] = elem.value;
-    return static_cast<Derived*>(this)->makeTypedNode(SyntaxKind::TupleLiteral1, zc::mv(range), payload);
-  }
-
   NodeId makeErrorDefaultExpr(source::SourceRange range, NodeId primary, NodeId fallback) {
     NodePayload payload;
     payload.words[kErrorDefaultExprPrimaryWord] = primary.value;
@@ -264,12 +258,10 @@ public:
     return static_cast<Derived*>(this)->makeTypedNode(SyntaxKind::BigIntLiteral, zc::mv(range), payload);
   }
 
-  NodeId makeStrLiteral(source::SourceRange range, StringId value, bool is_raw, uint8_t prefix) {
+  NodeId makeStringLiteralExpr(source::SourceRange range, StringId value) {
     NodePayload payload;
-    payload.words[kStrLiteralValueWord] = value.value;
-    payload.words[kStrLiteralIsRawWord] = is_raw ? 1u : 0u;
-    payload.words[kStrLiteralPrefixWord] = static_cast<uint32_t>(prefix);
-    return static_cast<Derived*>(this)->makeTypedNode(SyntaxKind::StrLiteral, zc::mv(range), payload);
+    payload.words[kStringLiteralExprValueWord] = value.value;
+    return static_cast<Derived*>(this)->makeTypedNode(SyntaxKind::StringLiteralExpr, zc::mv(range), payload);
   }
 
   NodeId makeArrayLiteral(source::SourceRange range, NodeList elems) {
@@ -289,6 +281,18 @@ public:
   NodeId makeUnitLiteral(source::SourceRange range) {
     NodePayload payload;
     return static_cast<Derived*>(this)->makeTypedNode(SyntaxKind::UnitLiteral, zc::mv(range), payload);
+  }
+
+  NodeId makeCharacterLiteralExpr(source::SourceRange range, StringId value) {
+    NodePayload payload;
+    payload.words[kCharacterLiteralExprValueWord] = value.value;
+    return static_cast<Derived*>(this)->makeTypedNode(SyntaxKind::CharacterLiteralExpr, zc::mv(range), payload);
+  }
+
+  NodeId makeNoSubstitutionTemplateLiteralExpr(source::SourceRange range, StringId value) {
+    NodePayload payload;
+    payload.words[kNoSubstitutionTemplateLiteralExprValueWord] = value.value;
+    return static_cast<Derived*>(this)->makeTypedNode(SyntaxKind::NoSubstitutionTemplateLiteralExpr, zc::mv(range), payload);
   }
 
   NodeId makeWherePred(source::SourceRange range, WhereBoundKind kind, NodeId ty, NodeId bound) {
@@ -496,19 +500,12 @@ public:
     return static_cast<Derived*>(this)->makeTypedNode(SyntaxKind::CaptureList, zc::mv(range), payload);
   }
 
-  NodeId makeDynTypeExpr(source::SourceRange range, NodeId ifaces_id, NodeId markers_id, NodeId assoc_bindings_id, bool has_lifetime, IdentId lifetime) {
+  NodeId makeDynTypeExpr(source::SourceRange range, NodeId principal, NodeId markers_id, NodeId assoc_bindings_id) {
     NodePayload payload;
-    payload.words[kDynTypeExprIfacesIdWord] = ifaces_id.value;
+    payload.words[kDynTypeExprPrincipalWord] = principal.value;
     payload.words[kDynTypeExprMarkersIdWord] = markers_id.value;
     payload.words[kDynTypeExprAssocBindingsIdWord] = assoc_bindings_id.value;
-    payload.words[kDynTypeExprHasLifetimeWord] = has_lifetime ? 1u : 0u;
-    payload.words[kDynTypeExprLifetimeWord] = lifetime.value;
     return static_cast<Derived*>(this)->makeTypedNode(SyntaxKind::DynTypeExpr, zc::mv(range), payload);
-  }
-
-  NodeId makeBottomTypeExpr(source::SourceRange range) {
-    NodePayload payload;
-    return static_cast<Derived*>(this)->makeTypedNode(SyntaxKind::BottomTypeExpr, zc::mv(range), payload);
   }
 
   NodeId makeFixedArrayTypeExpr(source::SourceRange range, NodeId elem, NodeId len_expr) {
@@ -568,19 +565,10 @@ public:
     return static_cast<Derived*>(this)->makeTypedNode(SyntaxKind::IntersectionTypeExpr, zc::mv(range), payload);
   }
 
-  NodeId makeArrayTypeExpr(source::SourceRange range, NodeId elem, NodeId len_expr) {
+  NodeId makeArrayTypeExpr(source::SourceRange range, NodeId elem) {
     NodePayload payload;
     payload.words[kArrayTypeExprElemWord] = elem.value;
-    payload.words[kArrayTypeExprLenExprWord] = len_expr.value;
     return static_cast<Derived*>(this)->makeTypedNode(SyntaxKind::ArrayTypeExpr, zc::mv(range), payload);
-  }
-
-  NodeId makeDynTypeIfaceList(source::SourceRange range, uint8_t n_ifaces, NodeList ifaces) {
-    NodePayload payload;
-    payload.words[kDynTypeIfaceListNIfacesWord] = static_cast<uint32_t>(n_ifaces);
-    payload.words[kDynTypeIfaceListIfacesFirstWord] = ifaces.first;
-    payload.words[kDynTypeIfaceListIfacesSizeWord] = ifaces.size;
-    return static_cast<Derived*>(this)->makeTypedNode(SyntaxKind::DynTypeIfaceList, zc::mv(range), payload);
   }
 
   NodeId makeDynTypeMarkerList(source::SourceRange range, uint8_t n_markers, NodeList markers) {
@@ -654,12 +642,6 @@ public:
     payload.words[kSuspendStatementUntilCondWord] = until_cond.value;
     payload.words[kSuspendStatementOnTimeoutMsWord] = static_cast<uint32_t>(on_timeout_ms);
     return static_cast<Derived*>(this)->makeTypedNode(SyntaxKind::SuspendStatement, zc::mv(range), payload);
-  }
-
-  NodeId makeUntilClause(source::SourceRange range, NodeId cond) {
-    NodePayload payload;
-    payload.words[kUntilClauseCondWord] = cond.value;
-    return static_cast<Derived*>(this)->makeTypedNode(SyntaxKind::UntilClause, zc::mv(range), payload);
   }
 
   NodeId makeBlockStmt(source::SourceRange range, NodeList stmts) {
@@ -806,10 +788,10 @@ public:
     return static_cast<Derived*>(this)->makeTypedNode(SyntaxKind::VariableDeclarator, zc::mv(range), payload);
   }
 
-  NodeId makeStandaloneImplDecl(source::SourceRange range, bool is_unsafe, NodeId ifaces_id, NodeId for_ty, NodeId where_, NodeId type_params_id, NodeId members_id) {
+  NodeId makeStandaloneImplDecl(source::SourceRange range, bool is_unsafe, NodeId interface, NodeId for_ty, NodeId where_, NodeId type_params_id, NodeId members_id) {
     NodePayload payload;
     payload.words[kStandaloneImplDeclIsUnsafeWord] = is_unsafe ? 1u : 0u;
-    payload.words[kStandaloneImplDeclIfacesIdWord] = ifaces_id.value;
+    payload.words[kStandaloneImplDeclInterfaceWord] = interface.value;
     payload.words[kStandaloneImplDeclForTyWord] = for_ty.value;
     payload.words[kStandaloneImplDeclWhereWord] = where_.value;
     payload.words[kStandaloneImplDeclTypeParamsIdWord] = type_params_id.value;
@@ -817,14 +799,12 @@ public:
     return static_cast<Derived*>(this)->makeTypedNode(SyntaxKind::StandaloneImplDecl, zc::mv(range), payload);
   }
 
-  NodeId makeMarkerImpl(source::SourceRange range, bool is_unsafe, bool is_negated, NodeId marker_path, NodeId for_ty, NodeId where_, NodeId type_params_id) {
+  NodeId makeMarkerImpl(source::SourceRange range, bool is_unsafe, bool is_negated, NodeId marker_path, NodeId for_ty) {
     NodePayload payload;
     payload.words[kMarkerImplIsUnsafeWord] = is_unsafe ? 1u : 0u;
     payload.words[kMarkerImplIsNegatedWord] = is_negated ? 1u : 0u;
     payload.words[kMarkerImplMarkerPathWord] = marker_path.value;
     payload.words[kMarkerImplForTyWord] = for_ty.value;
-    payload.words[kMarkerImplWhereWord] = where_.value;
-    payload.words[kMarkerImplTypeParamsIdWord] = type_params_id.value;
     return static_cast<Derived*>(this)->makeTypedNode(SyntaxKind::MarkerImpl, zc::mv(range), payload);
   }
 
@@ -889,9 +869,8 @@ public:
     return static_cast<Derived*>(this)->makeTypedNode(SyntaxKind::FunctionParameterList, zc::mv(range), payload);
   }
 
-  NodeId makeImplIfaceList(source::SourceRange range, uint8_t n_ifaces, NodeList ifaces) {
+  NodeId makeImplIfaceList(source::SourceRange range, NodeList ifaces) {
     NodePayload payload;
-    payload.words[kImplIfaceListNIfacesWord] = static_cast<uint32_t>(n_ifaces);
     payload.words[kImplIfaceListIfacesFirstWord] = ifaces.first;
     payload.words[kImplIfaceListIfacesSizeWord] = ifaces.size;
     return static_cast<Derived*>(this)->makeTypedNode(SyntaxKind::ImplIfaceList, zc::mv(range), payload);
@@ -929,7 +908,7 @@ public:
     return static_cast<Derived*>(this)->makeTypedNode(SyntaxKind::AliasDecl, zc::mv(range), payload);
   }
 
-  NodeId makeMethodDecl(source::SourceRange range, IdentId name, NodeId params_id, NodeId type_params_id, NodeId ret_ty, NodeId raises_ty, NodeId body, bool is_static, uint8_t visibility) {
+  NodeId makeMethodDecl(source::SourceRange range, IdentId name, NodeId params_id, NodeId type_params_id, NodeId ret_ty, NodeId raises_ty, NodeId body, uint8_t mode, uint8_t visibility) {
     NodePayload payload;
     payload.words[kMethodDeclNameWord] = name.value;
     payload.words[kMethodDeclParamsIdWord] = params_id.value;
@@ -937,7 +916,7 @@ public:
     payload.words[kMethodDeclRetTyWord] = ret_ty.value;
     payload.words[kMethodDeclRaisesTyWord] = raises_ty.value;
     payload.words[kMethodDeclBodyWord] = body.value;
-    payload.words[kMethodDeclIsStaticWord] = is_static ? 1u : 0u;
+    payload.words[kMethodDeclModeWord] = static_cast<uint32_t>(mode);
     payload.words[kMethodDeclVisibilityWord] = static_cast<uint32_t>(visibility);
     return static_cast<Derived*>(this)->makeTypedNode(SyntaxKind::MethodDecl, zc::mv(range), payload);
   }
@@ -953,21 +932,20 @@ public:
     return static_cast<Derived*>(this)->makeTypedNode(SyntaxKind::FieldDecl, zc::mv(range), payload);
   }
 
-  NodeId makeAssociatedTypeDecl(source::SourceRange range, IdentId name, NodeId type_params_id, NodeId bound, NodeId default_ty) {
+  NodeId makeAssociatedTypeDecl(source::SourceRange range, IdentId name, NodeId type_params_id, NodeId bounds_id, NodeId default_ty) {
     NodePayload payload;
     payload.words[kAssociatedTypeDeclNameWord] = name.value;
     payload.words[kAssociatedTypeDeclTypeParamsIdWord] = type_params_id.value;
-    payload.words[kAssociatedTypeDeclBoundWord] = bound.value;
+    payload.words[kAssociatedTypeDeclBoundsIdWord] = bounds_id.value;
     payload.words[kAssociatedTypeDeclDefaultTyWord] = default_ty.value;
     return static_cast<Derived*>(this)->makeTypedNode(SyntaxKind::AssociatedTypeDecl, zc::mv(range), payload);
   }
 
-  NodeId makeGenericTypeParam(source::SourceRange range, IdentId name, NodeId bound, NodeId default_ty, uint8_t variance) {
+  NodeId makeGenericTypeParam(source::SourceRange range, IdentId name, NodeId bounds_id, NodeId default_ty) {
     NodePayload payload;
     payload.words[kGenericTypeParamNameWord] = name.value;
-    payload.words[kGenericTypeParamBoundWord] = bound.value;
+    payload.words[kGenericTypeParamBoundsIdWord] = bounds_id.value;
     payload.words[kGenericTypeParamDefaultTyWord] = default_ty.value;
-    payload.words[kGenericTypeParamVarianceWord] = static_cast<uint32_t>(variance);
     return static_cast<Derived*>(this)->makeTypedNode(SyntaxKind::GenericTypeParam, zc::mv(range), payload);
   }
 
@@ -1001,6 +979,20 @@ public:
     return static_cast<Derived*>(this)->makeTypedNode(SyntaxKind::ClassConstDecl, zc::mv(range), payload);
   }
 
+  NodeId makeTypeParameterBoundList(source::SourceRange range, NodeList bounds) {
+    NodePayload payload;
+    payload.words[kTypeParameterBoundListBoundsFirstWord] = bounds.first;
+    payload.words[kTypeParameterBoundListBoundsSizeWord] = bounds.size;
+    return static_cast<Derived*>(this)->makeTypedNode(SyntaxKind::TypeParameterBoundList, zc::mv(range), payload);
+  }
+
+  NodeId makeAssociatedTypeBoundList(source::SourceRange range, NodeList bounds) {
+    NodePayload payload;
+    payload.words[kAssociatedTypeBoundListBoundsFirstWord] = bounds.first;
+    payload.words[kAssociatedTypeBoundListBoundsSizeWord] = bounds.size;
+    return static_cast<Derived*>(this)->makeTypedNode(SyntaxKind::AssociatedTypeBoundList, zc::mv(range), payload);
+  }
+
   NodeId makeSourceFile(source::SourceRange range, StringId file_name, NodeId module, NodeList statements) {
     NodePayload payload;
     payload.words[kSourceFileFileNameWord] = file_name.value;
@@ -1010,10 +1002,11 @@ public:
     return static_cast<Derived*>(this)->makeTypedNode(SyntaxKind::SourceFile, zc::mv(range), payload);
   }
 
-  NodeId makeModulePath(source::SourceRange range, IdentList segments) {
+  NodeId makeModulePath(source::SourceRange range, IdentList segments, uint8_t root) {
     NodePayload payload;
     payload.words[kModulePathSegmentsFirstWord] = segments.first;
     payload.words[kModulePathSegmentsSizeWord] = segments.size;
+    payload.words[kModulePathRootWord] = static_cast<uint32_t>(root);
     return static_cast<Derived*>(this)->makeTypedNode(SyntaxKind::ModulePath, zc::mv(range), payload);
   }
 

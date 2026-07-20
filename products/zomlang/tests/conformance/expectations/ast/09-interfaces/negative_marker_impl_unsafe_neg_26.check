@@ -1,0 +1,8 @@
+// RUN: ! %zomc compile --dump-ast %corpus/09-interfaces/negative_marker_impl_unsafe_neg_26.zom 2>&1 | %FileCheck %s
+
+
+// CHECK-LITERAL: Error [ZOM2103]: A marker implementation cannot be unsafe
+// CHECK-LITERAL:   --> conformance/negative_marker_impl_unsafe_neg_26.zom:1:1
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 1 | unsafe impl !Sendable for Raw;
+// CHECK-LITERAL:   | ^

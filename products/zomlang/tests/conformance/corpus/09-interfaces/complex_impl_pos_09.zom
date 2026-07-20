@@ -1,4 +1,5 @@
 class HashMap<K, V> : MapBase {
     let items: [(K, V)];
 }
-impl Map<K, V> + Hashable for HashMap<K, V> { }
+impl<K, V> Map<K, V> for HashMap<K, V> { }
+impl<K, V> Hashable for HashMap<K, V> { }

@@ -2,7 +2,7 @@
 
 
 // CHECK-LITERAL: Error [ZOM2084]: Declaration modifiers 'abstract' and 'static' cannot be used together
-// CHECK:   --> products {{(?:.*[/\\])?iface_mod_abstract_static_neg_07\.zom:2:14$}}
+// CHECK-LITERAL:   --> conformance/iface_mod_abstract_static_neg_07.zom:2:14
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 2 |     abstract static fun bad() -> unit;
 // CHECK-LITERAL:   |              ^

@@ -7,7 +7,7 @@
 
 #include "zomlang/compiler/binder/binding-input.h"
 #include "zomlang/compiler/binder/binding-metadata.h"
-#include "zomlang/compiler/identity/identity-invariant.h"
+#include "zomlang/compiler/binder/binding-run.h"
 
 namespace zomlang::compiler::identity {
 class CanonicalEncoder;
@@ -41,23 +41,10 @@ struct BindingMetadataCandidate final {
   ZC_DISALLOW_COPY(BindingMetadataCandidate);
   identity::SemanticContextBrand semanticContext;
   identity::ModuleId module;
-  zc::Vector<BindingFailureRef> sourceFailures;
-  zc::Vector<NodeScopeFact> nodeScopes;
-  zc::Vector<BindingResolution> nodeBindings;
-  zc::Vector<BoundSelfType> selfTypes;
-  zc::Vector<BoundThis> thisBindings;
-  zc::Vector<DefinitionFact> definitions;
-  zc::Vector<ImplBindingFact> impls;
-  zc::Vector<ScopeRecord> scopes;
-  zc::Vector<ModuleAliasBindingFact> moduleAliases;
-  zc::Vector<ImportBindingFact> imports;
-  zc::Vector<LocalExportFact> localExports;
-  zc::Vector<DeferredMemberFact> deferredMembers;
-  zc::Vector<LabelFact> labels;
-  zc::Vector<ControlTransferFact> controlTransfers;
-  zc::Vector<ShadowTargetFact> shadowTargets;
-  zc::Vector<ClosureFreeVariableFact> closureFreeVariables;
-  zc::Vector<ExplicitClosureCaptureFact> explicitClosureCaptures;
+#define ZOM_BINDING_FACT(id, type, member, accessor, publication, tag, domain, mutations, test) \
+  zc::Vector<type> member;
+#include "zomlang/compiler/binder/binding-fact-schema.def"
+#undef ZOM_BINDING_FACT
   ExportSurfaceCandidate currentSurface;
 
 private:
@@ -69,55 +56,7 @@ private:
   friend class BindingBuilder;
 };
 
-struct VerifiedBindingOutput final {
-  VerifiedBindingOutput(VerifiedBindingMetadata&& metadata,
-                        VerifiedExportSurface&& surface) noexcept;
-  VerifiedBindingOutput(VerifiedBindingOutput&&) noexcept = default;
-  VerifiedBindingOutput& operator=(VerifiedBindingOutput&&) noexcept = default;
-  ZC_DISALLOW_COPY(VerifiedBindingOutput);
-  VerifiedBindingMetadata metadata;
-  VerifiedExportSurface surface;
-};
-
-class SourceRejected final {
-public:
-  SourceRejected(SourceRejected&&) noexcept = default;
-  SourceRejected& operator=(SourceRejected&&) noexcept = default;
-  ZC_DISALLOW_COPY(SourceRejected);
-  ZC_NODISCARD zc::ArrayPtr<const BindingFailureRef> failures() const noexcept;
-
-private:
-  explicit SourceRejected(zc::Vector<BindingFailureRef>&& failures) noexcept;
-  zc::Vector<BindingFailureRef> failureValues;
-  friend class BindingVerifier;
-};
-
-using BindingVerificationFailureValue = zc::OneOf<identity::IdentityInvariant, BinderInvariantFact>;
-
-struct BindingVerificationFailure final {
-  explicit BindingVerificationFailure(BindingVerificationFailureValue&& value) noexcept;
-  BindingVerificationFailure(BindingVerificationFailure&&) noexcept = default;
-  BindingVerificationFailure& operator=(BindingVerificationFailure&&) noexcept = default;
-  ZC_DISALLOW_COPY(BindingVerificationFailure);
-  BindingVerificationFailureValue value;
-};
-
-class InvariantRejected final {
-public:
-  InvariantRejected(InvariantRejected&&) noexcept = default;
-  InvariantRejected& operator=(InvariantRejected&&) noexcept = default;
-  ZC_DISALLOW_COPY(InvariantRejected);
-  ZC_NODISCARD static InvariantRejected single(BindingVerificationFailure&& failure);
-  ZC_NODISCARD zc::ArrayPtr<const BindingVerificationFailure> failures() const noexcept;
-
-private:
-  explicit InvariantRejected(zc::Vector<BindingVerificationFailure>&& failures) noexcept;
-  zc::Vector<BindingVerificationFailure> failureValues;
-};
-
 using BindingCandidateResult = zc::OneOf<BindingMetadataCandidate, BinderInvariantFact>;
-using BindingVerificationResult =
-    zc::OneOf<VerifiedBindingOutput, SourceRejected, InvariantRejected>;
 
 /// \brief Encodes production scope and label records using the RFC 0004 allocation codec.
 ZC_NODISCARD zc::Maybe<zc::Array<uint8_t>> encodeBindingAllocationDump(
@@ -138,11 +77,29 @@ public:
 private:
   ZC_NODISCARD static BindingCandidateResult buildCandidate(
       const VerifiedBindingInput& input, zc::Maybe<diagnostics::DiagnosticEngine&> diagnostics);
-  friend class BindingVerifier;
+  friend class BindingDifferentialOracle;
 };
 
 class BindingVerifier final {
 public:
+  /// \brief Verifies production invariants without recomputing binding semantics.
+  /// \param input Immutable source, identity, and dependency evidence.
+  /// \param candidate Complete metadata candidate produced by BindingBuilder.
+  /// \return Verified publication or one closed rejection variant.
+  ZC_NODISCARD static BindingVerificationResult verify(const VerifiedBindingInput& input,
+                                                       BindingMetadataCandidate&& candidate);
+
+private:
+  ZC_NODISCARD static VerifiedBindingOutput publishCandidate(BindingMetadataCandidate&& candidate);
+};
+
+/// \brief Runs test-only semantic mutations and differential candidate comparison.
+class BindingDifferentialOracle final {
+public:
+  /// \brief Applies domain checks before comparing a test-only production baseline.
+  /// \param input Immutable source, identity, and dependency evidence.
+  /// \param candidate Complete metadata candidate under differential test.
+  /// \return Verified publication or one closed rejection variant.
   ZC_NODISCARD static BindingVerificationResult verify(const VerifiedBindingInput& input,
                                                        BindingMetadataCandidate&& candidate);
 };

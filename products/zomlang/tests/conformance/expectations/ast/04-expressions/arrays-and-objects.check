@@ -2,17 +2,17 @@
 
 
 // CHECK-LITERAL: Error [ZOM2076]: Unexpected token expected
-// CHECK:   --> products {{(?:.*[/\\])?arrays\-and\-objects\.zom:1:18$}}
+// CHECK-LITERAL:   --> conformance/arrays-and-objects.zom:1:18
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 1 | let arr = [1, 2, ...xs, 3];
 // CHECK-LITERAL:   |                  ^
 // CHECK-LITERAL: Error [ZOM2011]: Identifier expected, found 'sb'
-// CHECK:   --> products {{(?:.*[/\\])?arrays\-and\-objects\.zom:2:23$}}
+// CHECK-LITERAL:   --> conformance/arrays-and-objects.zom:2:23
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 2 | let obj = { a, b = 1, "sb": 2, 3: 4, ...rest };
 // CHECK-LITERAL:   |                       ^
 // CHECK-LITERAL: Error [ZOM2011]: Identifier expected, found '3'
-// CHECK:   --> products {{(?:.*[/\\])?arrays\-and\-objects\.zom:2:32$}}
+// CHECK-LITERAL:   --> conformance/arrays-and-objects.zom:2:32
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 2 | let obj = { a, b = 1, "sb": 2, 3: 4, ...rest };
 // CHECK-LITERAL:   |                                ^

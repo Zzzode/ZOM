@@ -21,29 +21,20 @@ set(DIAGNOSTIC_EXPECTATION_ROOT
   ${CMAKE_SOURCE_DIR}/products/zomlang/tests/conformance/expectations/diagnostics
 )
 
-file(GLOB_RECURSE DIAGNOSTIC_EXPECTATION_FILES "${DIAGNOSTIC_EXPECTATION_ROOT}/*.check")
-foreach(DIAGNOSTIC_EXPECTATION_FILE ${DIAGNOSTIC_EXPECTATION_FILES})
-  file(RELATIVE_PATH REL_PATH "${DIAGNOSTIC_EXPECTATION_ROOT}" "${DIAGNOSTIC_EXPECTATION_FILE}")
-  string(REPLACE "/" "-" TEST_NAME "${REL_PATH}")
-  string(REPLACE ".check" "" TEST_NAME "${TEST_NAME}")
-  set(TEST_FULL_NAME "diagnostics-${TEST_NAME}")
+set(DIAGNOSTIC_TEST_ENV "CMAKE_BINARY_DIR=${CMAKE_BINARY_DIR}")
+if(ZOM_ENABLE_COVERAGE)
+  string(APPEND DIAGNOSTIC_TEST_ENV ";ZOM_ENABLE_COVERAGE=ON")
+endif()
 
-  add_test(
-    NAME ${TEST_FULL_NAME}
-    COMMAND ${LIT_EXECUTABLE} -v --timeout=20 ${DIAGNOSTIC_EXPECTATION_FILE}
-    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/products/zomlang/tests
-  )
+add_test(
+  NAME conformance-diagnostics
+  COMMAND ${LIT_EXECUTABLE} -v -j 3 --timeout=90 ${DIAGNOSTIC_EXPECTATION_ROOT}
+  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/products/zomlang/tests
+)
 
-  set(TEST_ENV "CMAKE_BINARY_DIR=${CMAKE_BINARY_DIR}")
-  if(ZOM_ENABLE_COVERAGE)
-    string(APPEND TEST_ENV
-      ";ZOM_ENABLE_COVERAGE=ON"
-    )
-  endif()
-
-  set_tests_properties(${TEST_FULL_NAME} PROPERTIES
-    LABELS "conformance;conformance-diagnostics;diagnostics;lit;filecheck;specification"
-    TIMEOUT 30
-    ENVIRONMENT "${TEST_ENV}"
-  )
-endforeach()
+set_tests_properties(conformance-diagnostics PROPERTIES
+  LABELS "conformance;conformance-diagnostics;diagnostics;lit;filecheck;specification"
+  TIMEOUT 300
+  PROCESSORS 3
+  ENVIRONMENT "${DIAGNOSTIC_TEST_ENV}"
+)

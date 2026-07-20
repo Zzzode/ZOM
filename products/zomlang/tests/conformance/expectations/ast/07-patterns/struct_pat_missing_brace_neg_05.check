@@ -2,7 +2,7 @@
 
 
 // CHECK-LITERAL: Fatal [ZOM2082]: Internal parser invariant violated: Required NodeId field pattern is empty on MatchArmStmt
-// CHECK:   --> products {{(?:.*[/\\])?struct_pat_missing_brace_neg_05\.zom:1:1$}}
+// CHECK-LITERAL:   --> conformance/struct_pat_missing_brace_neg_05.zom:1:1
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 1 | struct S { x: i32, y: i32 }
 // CHECK-LITERAL:   | ^

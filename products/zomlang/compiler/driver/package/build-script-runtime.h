@@ -347,7 +347,7 @@ enum class BuildResultIntegrityProducer : uint8_t {
 
 /// \brief Exact relation that failed while publishing a build result.
 enum class BuildResultIntegrityFact : uint8_t {
-  PreparatoryKey = 0x01,
+  ProducerKey = 0x01,
   SourceDigests = 0x02,
   DeclaredEnvironment = 0x03,
   GeneratedInventory = 0x04,

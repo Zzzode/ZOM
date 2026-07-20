@@ -11,7 +11,7 @@
 // CHECK-NEXT:           target:
 // CHECK-NEXT:             NamedTypeExpr #4 @1:11..1:28
 // CHECK-NEXT:               path:
-// CHECK-NEXT:                 ModulePath #3 @1:11..1:18 segments=["HashMap"]
+// CHECK-NEXT:                 ModulePath #3 @1:11..1:18 segments=["HashMap"] root=Relative
 // CHECK-NEXT:               args:
 // CHECK-NEXT:                 PredefinedTypeExpr #1 @1:19..1:22 kind=I32
 // CHECK-NEXT:                 PredefinedTypeExpr #2 @1:24..1:27 kind=Str

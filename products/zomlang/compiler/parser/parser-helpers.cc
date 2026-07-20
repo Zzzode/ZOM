@@ -145,6 +145,7 @@ int32_t binaryPrecedence(ast::SyntaxKind kind) {
     case ast::SyntaxKind::LessThanEquals:
     case ast::SyntaxKind::GreaterThan:
     case ast::SyntaxKind::GreaterThanEquals:
+    case ast::SyntaxKind::AsKeyword:
     case ast::SyntaxKind::IsKeyword:
       return 7;
     case ast::SyntaxKind::LessThanLessThan:
@@ -160,13 +161,10 @@ int32_t binaryPrecedence(ast::SyntaxKind kind) {
       return 10;
     case ast::SyntaxKind::AsteriskAsterisk:
       return 11;
-    // Level 12: Nullish coalescing ?? — handled by parseNullCoalesceExpressionAt,
+    // Nullish coalescing is handled by parseNullCoalesceExpressionAt,
     // not by parseBinaryExpressionAt (creates NullCoalesceExpr, not BinaryExpr).
     // Do NOT add QuestionQuestion here; returning -1 ensures parseBinaryExpressionAt
     // stops at ?? so the dedicated handler can build the correct node type.
-    // Level 14: Type test / cast as
-    case ast::SyntaxKind::AsKeyword:
-      return 14;
     default:
       return -1;
   }
@@ -482,13 +480,22 @@ bool canPrecedeTaggedTemplate(ast::SyntaxKind kind) {
 
 // --- Declaration modifier helpers ---
 
-bool isInterfaceModifier(ast::SyntaxKind kind) {
+bool isVisibilityModifier(ast::SyntaxKind kind) {
   switch (kind) {
-    case ast::SyntaxKind::AbstractKeyword:
-    case ast::SyntaxKind::OverrideKeyword:
     case ast::SyntaxKind::PrivateKeyword:
     case ast::SyntaxKind::ProtectedKeyword:
     case ast::SyntaxKind::PublicKeyword:
+      return true;
+    default:
+      return false;
+  }
+}
+
+bool isBehaviorModifier(ast::SyntaxKind kind) {
+  switch (kind) {
+    case ast::SyntaxKind::AbstractKeyword:
+    case ast::SyntaxKind::MutatingKeyword:
+    case ast::SyntaxKind::OverrideKeyword:
     case ast::SyntaxKind::ReadonlyKeyword:
     case ast::SyntaxKind::StaticKeyword:
       return true;
@@ -497,22 +504,15 @@ bool isInterfaceModifier(ast::SyntaxKind kind) {
   }
 }
 
-bool isDeclarationModifier(ast::SyntaxKind kind) {
-  switch (kind) {
-    case ast::SyntaxKind::AbstractKeyword:
-    case ast::SyntaxKind::MutKeyword:
-    case ast::SyntaxKind::MutatingKeyword:
-    case ast::SyntaxKind::OverrideKeyword:
-    case ast::SyntaxKind::PrivateKeyword:
-    case ast::SyntaxKind::ProtectedKeyword:
-    case ast::SyntaxKind::PublicKeyword:
-    case ast::SyntaxKind::ReadonlyKeyword:
-    case ast::SyntaxKind::StaticKeyword:
-      return true;
-    default:
-      return false;
-  }
+bool isNamedDeclarationModifier(ast::SyntaxKind kind) {
+  return isVisibilityModifier(kind) || isBehaviorModifier(kind);
 }
+
+bool isMemberModifier(ast::SyntaxKind kind) {
+  return isVisibilityModifier(kind) || isBehaviorModifier(kind);
+}
+
+bool isInterfaceModifier(ast::SyntaxKind kind) { return isMemberModifier(kind); }
 
 bool isDeclarationHead(ast::SyntaxKind kind) {
   switch (kind) {

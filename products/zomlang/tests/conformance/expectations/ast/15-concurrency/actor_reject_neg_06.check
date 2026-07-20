@@ -2,12 +2,12 @@
 
 
 // CHECK-LITERAL: Error [ZOM2025]: Expected ';'
-// CHECK:   --> products {{(?:.*[/\\])?actor_reject_neg_06\.zom:2:1$}}
+// CHECK-LITERAL:   --> conformance/actor_reject_neg_06.zom:2:1
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 2 |
 // CHECK-LITERAL:   | ^
 // CHECK-LITERAL: Error [ZOM2076]: Unexpected token expected
-// CHECK:   --> products {{(?:.*[/\\])?actor_reject_neg_06\.zom:1:1$}}
+// CHECK-LITERAL:   --> conformance/actor_reject_neg_06.zom:1:1
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 1 | actor A {}
 // CHECK-LITERAL:   | ^

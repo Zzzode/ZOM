@@ -28,7 +28,7 @@
 // CHECK-NEXT:                       alts:
 // CHECK-NEXT:                         NamedTypeExpr #6 @2:8..2:11
 // CHECK-NEXT:                           path:
-// CHECK-NEXT:                             ModulePath #5 @2:8..2:11 segments=["Box"]
+// CHECK-NEXT:                             ModulePath #5 @2:8..2:11 segments=["Box"] root=Relative
 // CHECK-NEXT:                           args: []
 // CHECK-NEXT:                         PredefinedTypeExpr #7 @2:14..2:18 kind=Null
 // CHECK-NEXT:                   init:

@@ -2,17 +2,17 @@
 
 
 // CHECK-LITERAL: Error [ZOM2002]: Invalid character
-// CHECK:   --> products {{(?:.*[/\\])?ident_unicode_escape_neg_01\.zom:1:5$}}
+// CHECK-LITERAL:   --> conformance/ident_unicode_escape_neg_01.zom:1:5
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 1 | let \u{110000} = "bad";
 // CHECK-LITERAL:   |     ^
 // CHECK-LITERAL: Error [ZOM2062]: Variable declaration expected
-// CHECK:   --> products {{(?:.*[/\\])?ident_unicode_escape_neg_01\.zom:1:5$}}
+// CHECK-LITERAL:   --> conformance/ident_unicode_escape_neg_01.zom:1:5
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 1 | let \u{110000} = "bad";
 // CHECK-LITERAL:   |     ^
 // CHECK-LITERAL: Error [ZOM2080]: Declaration or statement expected. This follows a block of statements, so if you intended to write a destructuring assignment, you might need to wrap the whole assignment in parentheses
-// CHECK:   --> products {{(?:.*[/\\])?ident_unicode_escape_neg_01\.zom:1:16$}}
+// CHECK-LITERAL:   --> conformance/ident_unicode_escape_neg_01.zom:1:16
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 1 | let \u{110000} = "bad";
 // CHECK-LITERAL:   |                ^

@@ -1,5 +1,0 @@
-// RUN: cd %corpus && %zomc compile --syntax-only 03-types/dyn_marker_erasure_pos_06.zom > %t 2>&1
-// RUN: %FileCheck %s --input-file %t
-
-
-// CHECK-LITERAL: Syntax check completed successfully.

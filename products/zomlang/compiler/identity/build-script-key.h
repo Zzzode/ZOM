@@ -23,6 +23,18 @@ namespace zomlang::compiler::identity {
 
 class CanonicalEncoder;
 
+/// \brief Content fingerprint for one immutable build-script output record.
+class ArtifactFingerprint final {
+public:
+  ZC_NODISCARD static ArtifactFingerprint from(const Sha256Digest& digest) noexcept;
+  ZC_NODISCARD const Sha256Digest& digest() const noexcept;
+
+private:
+  explicit ArtifactFingerprint(const Sha256Digest& digest) noexcept;
+
+  Sha256Digest value;
+};
+
 /// \brief One canonical path-to-content-digest map entry.
 class BuildScriptDigestEntry final {
 public:
@@ -77,6 +89,7 @@ public:
   ZC_NODISCARD const PackageKey& package() const noexcept;
   ZC_NODISCARD zc::StringPtr targetName() const noexcept;
   ZC_NODISCARD zc::ArrayPtr<const PackageKey> buildDependencies() const noexcept;
+  ZC_NODISCARD BuildScriptProducerKey producerKey() const;
   void encode(CanonicalEncoder& encoder) const;
   ZC_NODISCARD zc::Array<uint8_t> encode() const;
 
@@ -92,11 +105,11 @@ private:
   zc::Vector<PackageKey> buildDependencyValues;
 };
 
-/// \brief Complete deterministic build-script output identity record.
+/// \brief Complete deterministic build-script output record.
 class BuildScriptOutputRecord final {
 public:
   ZC_NODISCARD static zc::Maybe<BuildScriptOutputRecord> from(
-      PreparatoryBuildScriptKey&& preparatory, zc::Vector<BuildScriptDigestEntry>&& sourceDigests,
+      BuildScriptProducerKey producer, zc::Vector<BuildScriptDigestEntry>&& sourceDigests,
       zc::Vector<BuildScriptEnvironmentEntry>&& declaredEnvironment,
       zc::Vector<BuildScriptDigestEntry>&& generatedSources,
       zc::Vector<BuildScriptEnvironmentEntry>&& exportedSemanticEnvironment);
@@ -105,22 +118,22 @@ public:
   ZC_DISALLOW_COPY(BuildScriptOutputRecord);
 
   ZC_NODISCARD BuildScriptOutputRecord clone() const;
-  ZC_NODISCARD const PreparatoryBuildScriptKey& preparatoryKey() const noexcept;
+  ZC_NODISCARD BuildScriptProducerKey producerKey() const noexcept;
   ZC_NODISCARD zc::ArrayPtr<const BuildScriptDigestEntry> sourceDigests() const noexcept;
   ZC_NODISCARD zc::ArrayPtr<const BuildScriptEnvironmentEntry> declaredEnvironment() const noexcept;
   ZC_NODISCARD zc::ArrayPtr<const BuildScriptDigestEntry> generatedSources() const noexcept;
   ZC_NODISCARD zc::ArrayPtr<const BuildScriptEnvironmentEntry> exportedEnvironment() const noexcept;
   void encode(CanonicalEncoder& encoder) const;
   ZC_NODISCARD zc::Array<uint8_t> encode() const;
-  ZC_NODISCARD BuildScriptOutputKey outputKey() const;
+  ZC_NODISCARD ArtifactFingerprint artifactFingerprint() const;
 
 private:
   BuildScriptOutputRecord(
-      PreparatoryBuildScriptKey&& preparatory, zc::Vector<BuildScriptDigestEntry>&& sourceDigests,
+      BuildScriptProducerKey producer, zc::Vector<BuildScriptDigestEntry>&& sourceDigests,
       zc::Vector<BuildScriptEnvironmentEntry>&& declaredEnvironment,
       zc::Vector<BuildScriptDigestEntry>&& generatedSources,
       zc::Vector<BuildScriptEnvironmentEntry>&& exportedSemanticEnvironment) noexcept;
-  PreparatoryBuildScriptKey preparatoryValue;
+  BuildScriptProducerKey producerValue;
   zc::Vector<BuildScriptDigestEntry> sourceDigestValues;
   zc::Vector<BuildScriptEnvironmentEntry> declaredEnvironmentValues;
   zc::Vector<BuildScriptDigestEntry> generatedSourceValues;

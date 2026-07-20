@@ -30,7 +30,7 @@
 // CHECK-NEXT:                   ty:
 // CHECK-NEXT:                     NamedTypeExpr #9 @6:10..6:16
 // CHECK-NEXT:                       path:
-// CHECK-NEXT:                         ModulePath #8 @6:10..6:16 segments=["Result"]
+// CHECK-NEXT:                         ModulePath #8 @6:10..6:16 segments=["Result"] root=Relative
 // CHECK-NEXT:                       args: []
 // CHECK-NEXT:                   default_: null
 // CHECK-NEXT:                   attrs: null
@@ -51,7 +51,7 @@
 // CHECK-NEXT:                           pattern:
 // CHECK-NEXT:                             EnumPattern #15 @8:14..8:26
 // CHECK-NEXT:                               path:
-// CHECK-NEXT:                                 ModulePath #14 @8:14..8:23 segments=["Result", "Ok"]
+// CHECK-NEXT:                                 ModulePath #14 @8:14..8:23 segments=["Result", "Ok"] root=Relative
 // CHECK-NEXT:                               args:
 // CHECK-NEXT:                                 IdentifierPattern #13 @8:24..8:25 name="v"
 // CHECK-NEXT:                                   ty: null

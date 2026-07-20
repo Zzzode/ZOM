@@ -1,6 +1,0 @@
-// RUN: cd %corpus && %zomc compile --dump-dispatch 04-expressions/unary_not_trait_pos_12.zom > %t 2>&1
-// RUN: %FileCheck %s --input-file %t
-
-
-// CHECK-LITERAL: zom.dispatch.v0
-// CHECK: node={{[0-9]+}} target=OperatorMethod receiver=OperatorOperand interface=Not method=not impl={{[0-9]+}} args=[named(Operand)] result=bool

@@ -8,10 +8,9 @@
 
 #pragma once
 
+#include "zc/core/string.h"
 #include "zc/core/vector.h"
 #include "zc/ztest/test.h"
-#include "zomlang/compiler/binder/definition-identity-map.h"
-#include "zomlang/compiler/binder/definition-inventory.h"
 #include "zomlang/compiler/identity/semantic-identity-registry-set.h"
 
 namespace zomlang::compiler::tests {
@@ -65,7 +64,7 @@ inline identity::CanonicalTargetSpecificationKey target() {
 }
 
 inline identity::CrateKey crate() {
-  zc::Maybe<identity::BuildScriptOutputKey> noOutput;
+  zc::Maybe<identity::BuildScriptProducerKey> noOutput;
   auto compilation = identity::CompilationConfigKey::from(
       identity::CompilationDomain::Target, target(),
       identity::SemanticCompilerOptionsKey::from(2026, true, false, true), zc::mv(noOutput));
@@ -88,20 +87,9 @@ inline identity::SourceFileKey source() {
 inline identity::ModuleKey module() {
   zc::Vector<identity::ModulePathSegment> path;
   path.add(scalar<identity::ModulePathSegment>("test"_zc));
-  zc::Maybe<identity::SourceSpan> noAnchor;
-  auto result = identity::ModuleKey::from(crate(), zc::mv(path), source(), zc::mv(noAnchor));
+  auto result = identity::ModuleKey::from(crate(), zc::mv(path));
   ZC_IF_SOME(value, result) { return zc::mv(value); }
   ZC_FAIL_REQUIRE("invalid semantic identity test module");
-}
-
-inline identity::SourceSpan span() {
-  auto snapshot =
-      identity::ImmutableSourceSnapshot::from(source(), zc::heapArray<uint8_t>(1, uint8_t{0}));
-  ZC_IF_SOME(value, snapshot) {
-    auto result = value.span(0, 1);
-    ZC_IF_SOME(admitted, result) { return zc::mv(admitted); }
-  }
-  ZC_FAIL_REQUIRE("invalid semantic identity test span");
 }
 
 }  // namespace test_identity_detail
@@ -134,24 +122,27 @@ inline zc::Vector<identity::DefId> makeTestDefinitionIds(size_t count) {
     ZC_REQUIRE(values.collectModule(module()) == identity::FrozenRegistryFailure::None);
     ZC_REQUIRE(values.freezeModules() == identity::FrozenRegistryFailure::None);
     for (size_t index = 0; index < count; ++index) {
-      auto name = identity::DefinitionNameKey::declared(
-          scalar<identity::DeclaredDefinitionName>("definition"_zc));
-      auto segment = identity::DefinitionPathSegment::from(
-          identity::DefinitionKind::Function, zc::mv(name), span(), static_cast<uint32_t>(index));
-      ZC_REQUIRE(segment != zc::none);
-      zc::Vector<identity::DefinitionPathComponent> path;
-      ZC_IF_SOME(value, segment) {
-        path.add(identity::DefinitionPathComponent::definition(zc::mv(value)));
-      }
-      auto key = identity::DefinitionKey::from(module(), zc::mv(path));
-      ZC_REQUIRE(key != zc::none);
-      ZC_IF_SOME(value, key) {
-        retained.add(value.clone());
-        ZC_REQUIRE(values.collectDefinition(zc::mv(value), static_cast<uint32_t>(index)) ==
-                   identity::FrozenRegistryFailure::None);
+      auto text = zc::str("definition", static_cast<uint64_t>(index));
+      auto name = identity::DeclaredDefinitionName::fromCanonical(text);
+      ZC_REQUIRE(name != zc::none);
+      zc::Vector<identity::EnclosingStableOwnerKey> owners;
+      zc::Maybe<identity::OverloadHeaderDigest> noOverloadDigest;
+      ZC_IF_SOME(nameValue, name) {
+        auto record = identity::DefinitionIdentityRecord::from(
+            module(), zc::mv(owners), identity::DefinitionKind::Class,
+            identity::DefinitionNamespace::Type, zc::mv(nameValue), zc::mv(noOverloadDigest));
+        ZC_REQUIRE(record != zc::none);
+        ZC_IF_SOME(recordValue, record) {
+          retained.add(identity::DefinitionKey::compute(recordValue));
+          zc::Maybe<identity::OverloadHeaderAuthority> noOverloadAuthority;
+          ZC_REQUIRE(values.collectDefinition(recordValue.clone(), zc::mv(noOverloadAuthority)) ==
+                     identity::FrozenRegistryFailure::None);
+        }
       }
     }
-    ZC_REQUIRE(values.freezeDefinitions() == identity::FrozenRegistryFailure::None);
+    ZC_REQUIRE(values.freezeStableIdentities() == identity::FrozenRegistryFailure::None);
+    ZC_REQUIRE(values.freezeGenericParameters() == identity::FrozenRegistryFailure::None);
+    ZC_REQUIRE(values.freezeCallableParameters() == identity::FrozenRegistryFailure::None);
     zc::Vector<identity::DefId> result(count);
     for (const auto& key : retained) {
       auto handle = values.definitions().find(key);
@@ -166,16 +157,6 @@ inline zc::Vector<identity::DefId> makeTestDefinitionIds(size_t count) {
 inline identity::DefId testDefinition(uint32_t ordinal) {
   auto identities = makeTestDefinitionIds(static_cast<size_t>(ordinal) + 1);
   return identities[ordinal];
-}
-
-inline binder::DefinitionIdentityMap makeTestDefinitionIdentityMap(const ast::Tree& tree) {
-  auto inventory = binder::DefinitionInventory::collect(tree);
-  auto handles = makeTestDefinitionIds(inventory.definitions().size());
-  binder::DefinitionIdentityMap result;
-  for (size_t index = 0; index < inventory.definitions().size(); ++index) {
-    ZC_REQUIRE(result.insert(inventory.definitions()[index].node, handles[index]));
-  }
-  return result;
 }
 
 }  // namespace zomlang::compiler::tests

@@ -16,27 +16,18 @@
 
 #include "zc/core/array.h"
 #include "zc/core/common.h"
-#include "zomlang/compiler/identity/canonical-encoder.h"
+#include "zomlang/compiler/identity/brand.h"
 #include "zomlang/compiler/type/semantic-type-data.h"
+
+namespace zomlang::compiler::type {
+
+class SemanticTypeStore;
+
+}
 
 namespace zomlang::compiler::type::semantic {
 
-/// \brief Read-only expansion boundary required by the semantic type key encoder.
-class SemanticTypeKeyResolver {
-public:
-  virtual ~SemanticTypeKeyResolver() noexcept(false) = default;
-  ZC_DISALLOW_COPY_AND_MOVE(SemanticTypeKeyResolver);
-
-  /// \brief Resolves one semantic type handle to immutable closed type data.
-  ZC_NODISCARD virtual zc::Maybe<const TypeData&> resolve(identity::SemanticTypeId id) const = 0;
-
-  /// \brief Writes the canonical expanded definition key for one definition handle.
-  virtual bool encodeDefinition(identity::CanonicalEncoder& encoder,
-                                identity::DefId definition) const = 0;
-
-protected:
-  SemanticTypeKeyResolver() = default;
-};
+class StoreBoundTypeEncoder;
 
 /// \brief Move-only canonical semantic type v1 key bytes.
 class SemanticTypeKey final {
@@ -54,12 +45,27 @@ private:
 
   zc::Array<uint8_t> value;
 
-  friend zc::Maybe<SemanticTypeKey> encodeSemanticTypeKeyV1(
-      const TypeData& data, const SemanticTypeKeyResolver& resolver);
+  friend class StoreBoundTypeEncoder;
+  friend class ::zomlang::compiler::type::SemanticTypeStore;
 };
 
-/// \brief Validates and encodes one closed semantic type using the v1 key domain.
-ZC_NODISCARD zc::Maybe<SemanticTypeKey> encodeSemanticTypeKeyV1(
-    const TypeData& data, const SemanticTypeKeyResolver& resolver);
+/// \brief Move-only closed semantic type payload paired with its canonical v1 key.
+class CanonicalTypeData final {
+public:
+  CanonicalTypeData(CanonicalTypeData&&) noexcept = default;
+  CanonicalTypeData& operator=(CanonicalTypeData&&) noexcept = default;
+  ZC_DISALLOW_COPY(CanonicalTypeData);
+
+private:
+  CanonicalTypeData(identity::SemanticContextBrand admissionContext, TypeData&& data,
+                    SemanticTypeKey&& key) noexcept
+      : admissionContext(admissionContext), dataValue(zc::mv(data)), keyValue(zc::mv(key)) {}
+
+  identity::SemanticContextBrand admissionContext;
+  TypeData dataValue;
+  SemanticTypeKey keyValue;
+
+  friend class ::zomlang::compiler::type::SemanticTypeStore;
+};
 
 }  // namespace zomlang::compiler::type::semantic

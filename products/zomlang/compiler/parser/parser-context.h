@@ -26,8 +26,9 @@ namespace zomlang {
 namespace compiler {
 
 namespace diagnostics {
-class DiagnosticEngine;
-}
+class DiagnosticEmitter;
+class DiagnosticFactBuffer;
+}  // namespace diagnostics
 
 namespace basic {
 struct LangOptions;
@@ -40,10 +41,12 @@ namespace parser {
 class ParserContext {
 public:
   ParserContext(const source::SourceManager& sourceMgr,
-                diagnostics::DiagnosticEngine& diagnosticEngine, const source::BufferId& bufferId);
+                diagnostics::DiagnosticFactBuffer& diagnosticFacts,
+                const source::BufferId& bufferId);
   ParserContext(const source::SourceManager& sourceMgr,
-                diagnostics::DiagnosticEngine& diagnosticEngine, const basic::LangOptions& langOpts,
-                basic::StringPool& stringPool, const source::BufferId& bufferId);
+                diagnostics::DiagnosticFactBuffer& diagnosticFacts,
+                const basic::LangOptions& langOpts, basic::StringPool& stringPool,
+                const source::BufferId& bufferId);
 
   ZC_DISALLOW_COPY_AND_MOVE(ParserContext);
 
@@ -71,8 +74,8 @@ public:
   /// \brief Return the current source file identifier.
   ZC_NODISCARD zc::StringPtr fileIdentifier() const;
 
-  /// \brief Return the shared diagnostic engine.
-  ZC_NODISCARD diagnostics::DiagnosticEngine& diagnostics() const;
+  /// \brief Return the parser diagnostic emitter.
+  ZC_NODISCARD diagnostics::DiagnosticEmitter& diagnostics() const;
 
   /// \brief Return the shared source manager.
   ZC_NODISCARD const source::SourceManager& sourceManager() const;
@@ -88,7 +91,7 @@ public:
 
 private:
   const source::SourceManager& sourceMgr;
-  diagnostics::DiagnosticEngine& diagnosticEngine;
+  diagnostics::DiagnosticFactBuffer& diagnosticFacts;
   source::BufferId bufferId;
   mutable TokenStream stream;
 };

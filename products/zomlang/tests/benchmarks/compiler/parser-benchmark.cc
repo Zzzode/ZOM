@@ -22,6 +22,7 @@
 #include "zomlang/compiler/basic/zomlang-opts.h"
 #include "zomlang/compiler/diagnostics/diagnostic-consumer.h"
 #include "zomlang/compiler/diagnostics/diagnostic-engine.h"
+#include "zomlang/compiler/diagnostics/diagnostic-fact-buffer.h"
 #include "zomlang/compiler/lexer/lexer.h"
 #include "zomlang/compiler/parser/parser.h"
 #include "zomlang/compiler/source/manager.h"
@@ -144,7 +145,6 @@ static BenchmarkResult runLexerBenchmark(source::SourceManager& sourceMgr,
 }
 
 static BenchmarkResult runParserBenchmark(source::SourceManager& sourceMgr,
-                                          diagnostics::DiagnosticEngine& diagEngine,
                                           basic::StringPool& stringPool,
                                           const source::BufferId& bufferId,
                                           const basic::LangOptions& opts) {
@@ -152,7 +152,8 @@ static BenchmarkResult runParserBenchmark(source::SourceManager& sourceMgr,
   size_t successCount = 0;
 
   for (int iter = 0; iter < 50; ++iter) {
-    Parser parser(sourceMgr, diagEngine, opts, stringPool, bufferId);
+    diagnostics::DiagnosticFactBuffer diagnosticFacts(sourceMgr, bufferId);
+    Parser parser(sourceMgr, diagnosticFacts, opts, stringPool, bufferId);
     if (parser.parse()) { ++successCount; }
   }
 
@@ -184,7 +185,7 @@ int main(int argc, char* argv[]) {
   printf("[Lexer]  %.2f ms  (%zu tokens, %.0f tokens/ms)\n", lexResult.ms, lexResult.tokens,
          lexResult.ms > 0 ? lexResult.tokens / lexResult.ms : 0);
 
-  auto parseResult = runParserBenchmark(sourceMgr, diagEngine, stringPool, bufferId, opts);
+  auto parseResult = runParserBenchmark(sourceMgr, stringPool, bufferId, opts);
   printf("[Parser] %.2f ms  (%.0f%% success rate)\n", parseResult.ms,
          parseResult.lines > 0 ? parseResult.lines * 2.0 : 0);
 

@@ -24,7 +24,7 @@
 // CHECK-NEXT:                           ty:
 // CHECK-NEXT:                             NamedTypeExpr #4 @4:8..4:12
 // CHECK-NEXT:                               path:
-// CHECK-NEXT:                                 ModulePath #3 @4:8..4:12 segments=["Self"]
+// CHECK-NEXT:                                 ModulePath #3 @4:8..4:12 segments=["Self"] root=Relative
 // CHECK-NEXT:                               args: []
 // CHECK-NEXT:                           default_: null
 // CHECK-NEXT:                           attrs: null
@@ -49,7 +49,7 @@
 // CHECK-NEXT:                                   rhs:
 // CHECK-NEXT:                                     IdentExpr #11 @5:17..5:18 name="n"
 // CHECK-NEXT:                           attrs: null
-// CHECK-NEXT:                 MethodDecl #26 @8:3..10:4 name="makeSound" is_static=false visibility=Public
+// CHECK-NEXT:                 MethodDecl #26 @8:3..10:4 name="makeSound" mode=Instance visibility=Public
 // CHECK-NEXT:                   params_id:
 // CHECK-NEXT:                     FunctionParameterList #20 @8:23..8:29 nparams=1
 // CHECK-NEXT:                       params:
@@ -57,7 +57,7 @@
 // CHECK-NEXT:                           ty:
 // CHECK-NEXT:                             NamedTypeExpr #18 @8:24..8:28
 // CHECK-NEXT:                               path:
-// CHECK-NEXT:                                 ModulePath #17 @8:24..8:28 segments=["Self"]
+// CHECK-NEXT:                                 ModulePath #17 @8:24..8:28 segments=["Self"] root=Relative
 // CHECK-NEXT:                               args: []
 // CHECK-NEXT:                           default_: null
 // CHECK-NEXT:                           attrs: null
@@ -72,7 +72,7 @@
 // CHECK-NEXT:                           item:
 // CHECK-NEXT:                             ReturnStmt #23 @9:5..9:20
 // CHECK-NEXT:                               value:
-// CHECK-NEXT:                                 StrLiteral #22 @9:12..9:19 value="noise" is_raw=false prefix=None
+// CHECK-NEXT:                                 StringLiteralExpr #22 @9:12..9:19 value="noise"
 // CHECK-NEXT:                           attrs: null
 // CHECK-NEXT:       attrs: null
 // CHECK-NEXT:     StatementListItem #68 @13:1..24:2
@@ -82,7 +82,7 @@
 // CHECK-NEXT:           base_ty:
 // CHECK-NEXT:             NamedTypeExpr #31 @13:13..13:19
 // CHECK-NEXT:               path:
-// CHECK-NEXT:                 ModulePath #30 @13:13..13:19 segments=["Animal"]
+// CHECK-NEXT:                 ModulePath #30 @13:13..13:19 segments=["Animal"] root=Relative
 // CHECK-NEXT:               args: []
 // CHECK-NEXT:           members_id:
 // CHECK-NEXT:             ClassMemberList #66 @13:20..24:2 nmembers=3
@@ -99,7 +99,7 @@
 // CHECK-NEXT:                           ty:
 // CHECK-NEXT:                             NamedTypeExpr #35 @16:8..16:12
 // CHECK-NEXT:                               path:
-// CHECK-NEXT:                                 ModulePath #34 @16:8..16:12 segments=["Self"]
+// CHECK-NEXT:                                 ModulePath #34 @16:8..16:12 segments=["Self"] root=Relative
 // CHECK-NEXT:                               args: []
 // CHECK-NEXT:                           default_: null
 // CHECK-NEXT:                           attrs: null
@@ -142,7 +142,7 @@
 // CHECK-NEXT:                                   rhs:
 // CHECK-NEXT:                                     IdentExpr #50 @18:18..18:19 name="b"
 // CHECK-NEXT:                           attrs: null
-// CHECK-NEXT:                 MethodDecl #65 @21:3..23:4 name="makeSound" is_static=false visibility=Public
+// CHECK-NEXT:                 MethodDecl #65 @21:3..23:4 name="makeSound" mode=Instance visibility=Public
 // CHECK-NEXT:                   params_id:
 // CHECK-NEXT:                     FunctionParameterList #59 @21:23..21:29 nparams=1
 // CHECK-NEXT:                       params:
@@ -150,7 +150,7 @@
 // CHECK-NEXT:                           ty:
 // CHECK-NEXT:                             NamedTypeExpr #57 @21:24..21:28
 // CHECK-NEXT:                               path:
-// CHECK-NEXT:                                 ModulePath #56 @21:24..21:28 segments=["Self"]
+// CHECK-NEXT:                                 ModulePath #56 @21:24..21:28 segments=["Self"] root=Relative
 // CHECK-NEXT:                               args: []
 // CHECK-NEXT:                           default_: null
 // CHECK-NEXT:                           attrs: null
@@ -165,6 +165,6 @@
 // CHECK-NEXT:                           item:
 // CHECK-NEXT:                             ReturnStmt #62 @22:5..22:19
 // CHECK-NEXT:                               value:
-// CHECK-NEXT:                                 StrLiteral #61 @22:12..22:18 value="Woof" is_raw=false prefix=None
+// CHECK-NEXT:                                 StringLiteralExpr #61 @22:12..22:18 value="Woof"
 // CHECK-NEXT:                           attrs: null
 // CHECK-NEXT:       attrs: null

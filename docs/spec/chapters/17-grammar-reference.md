@@ -11,6 +11,7 @@ must remain aligned with these productions.
 (* Whitespace and Line Terminators *)
 Whitespace ::= [ \t\v\f\u0020\u00A0\uFEFF\u1680\u2000-\u200A\u202F\u205F\u3000]
 LineTerminator ::= [\n\r\u2028\u2029]
+LineTerminatorSequence ::= '\n' | '\r\n' | '\r' | '\u2028' | '\u2029'
 
 (* Comments *)
 SingleLineComment ::= '//' [^\n\r\u2028\u2029]*
@@ -28,9 +29,10 @@ BooleanLiteral ::= 'true' | 'false'
 (* Numeric Literals *)
 NumericLiteral ::= DecimalLiteral | BinaryLiteral | OctalLiteral | HexLiteral | BigIntLiteral
 
-DecimalLiteral ::= DecimalIntegerLiteral ('.' DecimalDigits?)? ExponentPart?
+DecimalLiteral ::= DecimalIntegerLiteral '.' DecimalDigits? ExponentPart?
+                 | DecimalIntegerLiteral ExponentPart
+                 | DecimalIntegerLiteral
                  | '.' DecimalDigits ExponentPart?
-                 | DecimalIntegerLiteral ExponentPart?
 
 DecimalIntegerLiteral ::= '0' | NON_ZERO_DIGIT (NumericLiteralSeparator? DECIMAL_DIGIT)*
 DecimalDigits ::= DECIMAL_DIGIT (NumericLiteralSeparator? DECIMAL_DIGIT)*
@@ -45,19 +47,30 @@ OctalDigits ::= OCTAL_DIGIT (NumericLiteralSeparator? OCTAL_DIGIT)*
 
 HexLiteral ::= '0' [xX] HexDigits
 HexDigits ::= HEX_DIGIT (NumericLiteralSeparator? HEX_DIGIT)*
-BigIntLiteral ::= DecimalDigits 'n'
+BigIntLiteral ::= DecimalIntegerLiteral 'n'
+                | '0' [bB] BinaryDigits 'n'
+                | '0' [oO] OctalDigits 'n'
+                | '0' [xX] HexDigits 'n'
 
 NumericLiteralSeparator ::= '_'
 
 (* String Literals *)
 StringLiteral ::= '"' DoubleStringCharacter* '"'
-DoubleStringCharacter ::= ~["\\\r\n\u2028\u2029] | LineTerminator | '\\' EscapeSequence | LineContinuation
+DoubleStringCharacter ::= ~["\\\r\n\u2028\u2029] | '\\' EscapeSequence | LineContinuation
 
 TemplateLiteral ::= NoSubstitutionTemplateLiteral | TemplateHead TemplateSpan+
 TemplateSpan ::= Expression (TemplateMiddle | TemplateTail)
+NoSubstitutionTemplateLiteral ::= '`' TemplateElement* '`'
+TemplateHead ::= '`' TemplateElement* '${'
+TemplateMiddle ::= '}' TemplateElement* '${'
+TemplateTail ::= '}' TemplateElement* '`'
+TemplateElement ::= ~[`\\$] | TemplateEscape | NonInterpolationDollar
+TemplateEscape ::= LineContinuation | '\\' [^\n\r\u2028\u2029]
+NonInterpolationDollar ::= '$' but not when followed by '{'
 
-EscapeSequence ::= CharacterEscapeSequence | '0' | HexEscapeSequence | UnicodeEscapeSequence
-CharacterEscapeSequence ::= '\\' ["\\bfnrtv]
+EscapeSequence ::= CharacterEscapeSequence | HexEscapeSequence | UnicodeEscapeSequence
+CharacterEscapeSequence ::= [\'"\\bfnrtv0]
+(* The `0` escape is not followed by a decimal digit. *)
 HexEscapeSequence ::= 'x' HEX_DIGIT HEX_DIGIT
 UnicodeEscapeSequence ::= 'u' HEX_DIGIT HEX_DIGIT HEX_DIGIT HEX_DIGIT | 'u{' HEX_DIGIT+ '}'
 LineContinuation ::= '\\' LineTerminatorSequence
@@ -104,14 +117,20 @@ AttributePath ::= IdentifierName ('::' IdentifierName)+
                 | BuiltinSingleSegmentAttribute
 BuiltinSingleSegmentAttribute ::= 'inline' | 'deprecated' | 'cold' | 'repr'
 ModifierList ::= ModifierKeyword*
-ModifierKeyword ::= 'public' | 'private' | 'protected' | 'static'
-                  | 'readonly' | 'mutating' | 'override' | 'abstract'
-                  | 'export'
+ModifierKeyword ::= VisibilityModifier | BehaviorModifier
+VisibilityModifier ::= 'public' | 'private' | 'protected'
+BehaviorModifier ::= 'static' | 'readonly' | 'mutating' | 'override' | 'abstract'
+(* 'mut' is a binding or field declaration head, not a ModifierKeyword. *)
 
 ModuleDeclaration ::= 'module' Identifier ';'
                     | 'module' Identifier '{' ModuleItem* '}'
                     | 'export'? 'module' Identifier '=' ModuleAliasPath ';'
-ModuleItem ::= StatementListItem
+ModuleItem ::= OuterAttributeList ModuleItemDeclaration
+             | OuterAttributeList Statement
+             | Statement
+ModuleItemDeclaration ::= ImportDeclaration
+                        | ExportDeclaration
+                        | Declaration
 ModuleAliasPath ::= Identifier ('::' Identifier)+
 QualifiedModulePath ::= Identifier ('::' Identifier)+
 GroupBasePath ::= Identifier ('::' Identifier)*
@@ -131,6 +150,10 @@ ReexportClause ::= GroupBasePath '::' '{' ExportSpecifierList? '}'
 ExportSpecifierList ::= ExportSpecifier (',' ExportSpecifier)* ','?
 ExportSpecifier ::= Identifier ('as' Identifier)?
 
+(* ImportDeclaration and ExportDeclaration are ModuleItemDeclaration forms.
+   They are not Declaration forms and therefore cannot appear in a block's
+   StatementListItem. *)
+
 PathPrefix    ::= 'crate::' | 'self::' | 'super::' | '::'
 QualifiedPath ::= PathPrefix? Identifier ( '::' Identifier )*
 
@@ -145,8 +168,6 @@ Declaration ::= MutDeclaration
               | EnumDeclaration
               | ErrorDeclaration
               | AliasDeclaration
-              | ExportDeclaration
-              | ImportDeclaration
               | StandaloneImplDeclaration
               | MarkerImplDeclaration
               | ExternBlockDeclaration
@@ -197,6 +218,9 @@ InterfaceElement ::= ModifierList 'fun' MethodSignature ';'
                    | ModifierList ('get' | 'set') PropertySignature ';'
                    | ModifierList 'type' Identifier TypeParameters?
                      (':' InterfaceBoundList)? ('=' TypeExpression)? ';'
+                      (* AssociatedTypeDecl stores an optional
+                         AssociatedTypeBoundList with one ordered TypeExpr
+                         child and source range per '+' member. *)
                       (* NOTE: Method bodies (BlockStatement) inside interface
                          declarations are not part of ZOM v1. The parser
                          rejects a block after an interface method signature.
@@ -248,30 +272,24 @@ MarkerPath        ::= Identifier | QualifiedMarkerPath
 QualifiedMarkerPath ::= Identifier ( '::' Identifier )+
 
 MarkerImplDeclaration
-    ::= 'unsafe'? 'impl' TypeParameters? '!'? MarkerImplPath
-        'for' TypeExpression WhereClause? ( '{' StructElement* '}' | ';' )
+    ::= 'unsafe'? 'impl' MarkerImplPath 'for' TypeExpression ';'
+      | 'impl' '!' MarkerImplPath 'for' TypeExpression ';'
 MarkerImplPath ::= Identifier ('::' Identifier)*
 
-(* ── impl-head disambiguation — MarkerImpl vs ordinary TraitImpl ─────────
-   After the keyword 'impl', parser attempts MarkerImplDeclaration FIRST,
-   using the following committed prefix:
-     (a) after optional impl TypeParameters, '!' present -> definitely marker impl.
-         The marker path may be a short prelude name or a qualified path.
-     (b) 'unsafe' TypeParameters? '!' -> definitely marker impl.
-     (c) otherwise, after optional impl TypeParameters, a path containing
-         the `marker` namespace segment (for example `std::marker::Shared`)
-         is parsed directly as a marker impl.
-     (d) Other positive impl heads fall back to ordinary TraitImplDeclaration
-         parsing and are resolved semantically by S1.
-   If S1 later finds that a positive impl head is ambiguous between an
-   interface and a marker, it emits ZOM0799 AmbiguousMarkerOrTraitImpl with a
-   note: "write the marker through its qualified marker namespace path to
-   disambiguate."
-   ────────────────────────────────────────────────────────────────────── *)
+(* Marker impl targets are closed types: no impl-owned or unresolved type
+   parameter may occur. Marker impls have no type parameters, WhereClause,
+   associated bindings, members, or body. A negative marker head is selected
+   by '!'. For every positive short or qualified path, ';' selects a marker
+   candidate and an opening implementation body selects
+   StandaloneImplDeclaration. The parser retains a positive candidate without
+   'unsafe'. Signature checking first rejects a bodyless behavior-interface
+   target with ZOM4089 BehaviorInterfaceRequiresImplBody. A successfully
+   classified marker-only target without 'unsafe' is rejected with ZOM4091
+   PositiveMarkerImplRequiresUnsafe. *)
 
 (* Standalone Interface Impl — Ch.09 §7 *)
 StandaloneImplDeclaration
-    ::= 'unsafe'? 'impl' TypeParameters? InterfaceBoundList 'for' TypeExpression
+    ::= 'unsafe'? 'impl' TypeParameters? InterfaceBound 'for' TypeExpression
         WhereClause? '{' ImplMember* '}'
 ImplMember ::= ModifierList 'fun' MethodDeclaration
              | AssociatedTypeAssignment
@@ -298,10 +316,12 @@ AtomType ::= ParenthesizedType
           | ReferenceType          (* &T / &mut T — Ch.03 §Reference Types *)
           | RawPointerType         (* *const T / *mut T — Ch.03 §Raw Pointer Types *)
           | DynType                (* existential type — Ch.03 §Existential Types *)
+          | SliceType
+          | FixedArrayType
 DynType ::= 'dyn' InterfaceType DynAssocBindingArgs? ( '+' MarkerPath )*
-    (* Parser AST stores the interface head in DynTypeIfaceList, associated
-       type bindings in DynTypeAssocBindingList, and marker suffixes in
-       DynTypeMarkerList. *)
+    (* Parser AST stores the named interface head directly in
+       DynTypeExpr.principal, associated type bindings in
+       DynTypeAssocBindingList, and marker suffixes in DynTypeMarkerList. *)
 DynAssocBindingArgs ::= '<' DynAssocBinding ( ',' DynAssocBinding )* ','? '>'
 DynAssocBinding ::= Identifier '=' TypeExpression
 
@@ -312,6 +332,11 @@ ReferenceType ::= '&' ('mut')? TypeExpression
 RawPointerType ::= '*' ('const' | 'mut')? TypeExpression
     (* Raw pointer for FFI and unsafe code. Sized = ptr_size.
        Dereference requires unsafe { }. See Ch.03 §Raw Pointer Types. *)
+
+SliceType ::= '[' TypeExpression ']'
+FixedArrayType ::= '[' TypeExpression ';' Expression ']'
+    (* Postfix [] produces an owned dynamic array. Bracketed [T] is a slice,
+       and [T; N] is a fixed array. A sized postfix T[N] is not admitted. *)
 
 InterfaceType ::= TypeName TypeArguments?
 GenericArgs ::= TypeArgumentList
@@ -367,6 +392,9 @@ TypeParameters ::= '<' TypeParameterList '>'
 TypeParameterList ::= TypeParameter (',' TypeParameter)* ','?
 TypeParameter ::= Identifier (':' TypeParameterBoundList)? ('=' TypeExpression)?
 TypeParameterBoundList ::= TypeExpression ('+' TypeExpression)*
+    (* AST note: GenericTypeParam stores an optional TypeParameterBoundList.
+       The list retains one ordered TypeExpr child and source range per bound;
+       it is not represented by IntersectionTypeExpr. *)
 
 TypeArguments ::= '<' TypeArgumentList '>'
 TypeArgumentList ::= TypeExpression (',' TypeExpression)* ','?
@@ -498,6 +526,11 @@ AdditiveExpression ::= MultiplicativeExpression (('+' | '-') MultiplicativeExpre
 MultiplicativeExpression ::= ExponentiationExpression (('*' | '/' | '%') ExponentiationExpression)*
 ExponentiationExpression ::= UnaryExpression ('**' ExponentiationExpression)?
 
+(* Assignment operators, conditional `?:`, and exponentiation are
+   right-associative because their recursive operand is on the right. Every
+   repeated infix tier above is left-associative. Postfix chains associate from
+   left to right. *)
+
 UnaryExpression ::= PostfixExpression
                  | UpdateExpression
                  | ('+' | '-' | '!' | '~' | '*' | 'typeof') UnaryExpression
@@ -562,7 +595,6 @@ UnsafeBlockExpression ::= 'unsafe' BlockStatement
 (* Statement forms are not alternatives of PrimaryExpression. *)
 
 ArrayLiteral ::= '[' (ElementList)? ']'
-ArrayLiteral ::= '[' (ElementList)? ']'
 ElementList ::= (AssignmentExpression | '...' AssignmentExpression)
               (',' (AssignmentExpression | '...' AssignmentExpression))* ','?
 
@@ -624,6 +656,16 @@ ModuleDeclaration ::=
   | 'module' Identifier '{' ModuleItem* '}'
   | 'export'? 'module' Identifier '=' ModuleAliasPath ';'
 
+ModuleItem ::=
+    OuterAttributeList ModuleItemDeclaration
+  | OuterAttributeList Statement
+  | Statement
+
+ModuleItemDeclaration ::=
+    ImportDeclaration
+  | ExportDeclaration
+  | Declaration
+
 ModuleAliasPath ::= Identifier ('::' Identifier)+
 QualifiedModulePath ::= Identifier ('::' Identifier)+
 GroupBasePath ::= Identifier ('::' Identifier)*
@@ -644,6 +686,10 @@ ExportDeclaration ::=
 ExportSpecifierList ::= ExportSpecifier (',' ExportSpecifier)* ','?
 ExportSpecifier ::= Identifier ('as' Identifier)?
 ```
+
+Import and export declarations are module items. A block statement list accepts
+ordinary declarations and statements, but it does not accept either module
+dependency declarations or module export-surface declarations.
 
 | Production | FIRST set |
 |---|---|

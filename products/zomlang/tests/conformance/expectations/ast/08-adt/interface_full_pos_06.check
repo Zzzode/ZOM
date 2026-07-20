@@ -12,30 +12,30 @@
 // CHECK-NEXT:               type_params_id:
 // CHECK-NEXT:                 GenericParams #2 @1:26..1:29 nparams=1
 // CHECK-NEXT:                   params:
-// CHECK-NEXT:                     GenericTypeParam #1 @1:27..1:28 name="T" variance=Invariant
-// CHECK-NEXT:                       bound: null
+// CHECK-NEXT:                     GenericTypeParam #1 @1:27..1:28 name="T"
+// CHECK-NEXT:                       bounds_id: null
 // CHECK-NEXT:                       default_ty: null
 // CHECK-NEXT:                   where_: null
 // CHECK-NEXT:               ifaces_id:
-// CHECK-NEXT:                 ImplIfaceList #5 @1:32..1:40 n_ifaces=1
+// CHECK-NEXT:                 ImplIfaceList #5 @1:32..1:40
 // CHECK-NEXT:                   ifaces:
 // CHECK-NEXT:                     NamedTypeExpr #4 @1:32..1:40
 // CHECK-NEXT:                       path:
-// CHECK-NEXT:                         ModulePath #3 @1:32..1:40 segments=["Iterable"]
+// CHECK-NEXT:                         ModulePath #3 @1:32..1:40 segments=["Iterable"] root=Relative
 // CHECK-NEXT:                       args: []
 // CHECK-NEXT:               members_id:
 // CHECK-NEXT:                 ClassMemberList #25 @1:41..6:2 nmembers=4
 // CHECK-NEXT:                   members:
 // CHECK-NEXT:                     AssociatedTypeDecl #6 @2:5..2:15 name="Item"
 // CHECK-NEXT:                       type_params_id: null
-// CHECK-NEXT:                       bound: null
+// CHECK-NEXT:                       bounds_id: null
 // CHECK-NEXT:                       default_ty: null
 // CHECK-NEXT:                     AssociatedTypeDecl #8 @3:5..3:22 name="Index"
 // CHECK-NEXT:                       type_params_id: null
-// CHECK-NEXT:                       bound: null
+// CHECK-NEXT:                       bounds_id: null
 // CHECK-NEXT:                       default_ty:
 // CHECK-NEXT:                         PredefinedTypeExpr #7 @3:18..3:21 kind=U64
-// CHECK-NEXT:                     MethodDecl #17 @4:5..4:41 name="next" is_static=false visibility=Default
+// CHECK-NEXT:                     MethodDecl #17 @4:5..4:41 name="next" mode=Instance visibility=Default
 // CHECK-NEXT:                       params_id:
 // CHECK-NEXT:                         FunctionParameterList #12 @4:13..4:19 nparams=1
 // CHECK-NEXT:                           params:
@@ -43,7 +43,7 @@
 // CHECK-NEXT:                               ty:
 // CHECK-NEXT:                                 NamedTypeExpr #10 @4:14..4:18
 // CHECK-NEXT:                                   path:
-// CHECK-NEXT:                                     ModulePath #9 @4:14..4:18 segments=["Self"]
+// CHECK-NEXT:                                     ModulePath #9 @4:14..4:18 segments=["Self"] root=Relative
 // CHECK-NEXT:                                   args: []
 // CHECK-NEXT:                               default_: null
 // CHECK-NEXT:                               attrs: null
@@ -51,15 +51,15 @@
 // CHECK-NEXT:                       ret_ty:
 // CHECK-NEXT:                         NamedTypeExpr #16 @4:23..4:40
 // CHECK-NEXT:                           path:
-// CHECK-NEXT:                             ModulePath #15 @4:23..4:29 segments=["Option"]
+// CHECK-NEXT:                             ModulePath #15 @4:23..4:29 segments=["Option"] root=Relative
 // CHECK-NEXT:                           args:
 // CHECK-NEXT:                             NamedTypeExpr #14 @4:30..4:39
 // CHECK-NEXT:                               path:
-// CHECK-NEXT:                                 ModulePath #13 @4:30..4:39 segments=["Self", "Item"]
+// CHECK-NEXT:                                 ModulePath #13 @4:30..4:39 segments=["Self", "Item"] root=Relative
 // CHECK-NEXT:                               args: []
 // CHECK-NEXT:                       raises_ty: null
 // CHECK-NEXT:                       body: null
-// CHECK-NEXT:                     MethodDecl #24 @5:5..5:36 name="current" is_static=false visibility=Default
+// CHECK-NEXT:                     MethodDecl #24 @5:5..5:36 name="current" mode=Instance visibility=Default
 // CHECK-NEXT:                       params_id:
 // CHECK-NEXT:                         FunctionParameterList #21 @5:16..5:22 nparams=1
 // CHECK-NEXT:                           params:
@@ -67,7 +67,7 @@
 // CHECK-NEXT:                               ty:
 // CHECK-NEXT:                                 NamedTypeExpr #19 @5:17..5:21
 // CHECK-NEXT:                                   path:
-// CHECK-NEXT:                                     ModulePath #18 @5:17..5:21 segments=["Self"]
+// CHECK-NEXT:                                     ModulePath #18 @5:17..5:21 segments=["Self"] root=Relative
 // CHECK-NEXT:                                   args: []
 // CHECK-NEXT:                               default_: null
 // CHECK-NEXT:                               attrs: null
@@ -75,7 +75,7 @@
 // CHECK-NEXT:                       ret_ty:
 // CHECK-NEXT:                         NamedTypeExpr #23 @5:26..5:35
 // CHECK-NEXT:                           path:
-// CHECK-NEXT:                             ModulePath #22 @5:26..5:35 segments=["Self", "Item"]
+// CHECK-NEXT:                             ModulePath #22 @5:26..5:35 segments=["Self", "Item"] root=Relative
 // CHECK-NEXT:                           args: []
 // CHECK-NEXT:                       raises_ty: null
 // CHECK-NEXT:                       body: null

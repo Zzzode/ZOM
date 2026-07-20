@@ -150,6 +150,13 @@ ZC_TEST("LexerNumericTest.ValidDecimalIntegers") {
   ZC_EXPECT(tokens[3].getValue() == "9876543210"_zc);
 }
 
+ZC_TEST("LexerNumericTest.PreservesIntegerTextBeyondSigned64Range") {
+  auto tokens = tokenize("18446744073709551616"_zc);
+  ZC_REQUIRE(tokens.size() == 2);
+  ZC_EXPECT(tokens[0].is(ast::SyntaxKind::IntegerLiteral));
+  ZC_EXPECT(tokens[0].getValue() == "18446744073709551616"_zc);
+}
+
 ZC_TEST("LexerNumericTest.DecimalWithSeparators") {
   auto tokens = tokenize("1_000 1_2_3"_zc);
   ZC_EXPECT(tokens.size() == 3);

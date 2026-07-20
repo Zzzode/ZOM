@@ -2,7 +2,7 @@
 
 
 // CHECK-LITERAL: Error [ZOM2076]: Unexpected token expected
-// CHECK:   --> products {{(?:.*[/\\])?abstract_method_block_neg_05\.zom:2:31$}}
+// CHECK-LITERAL:   --> conformance/abstract_method_block_neg_05.zom:2:31
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 2 |     abstract fun foo() -> i32 { return 0; }
 // CHECK-LITERAL:   |                               ^

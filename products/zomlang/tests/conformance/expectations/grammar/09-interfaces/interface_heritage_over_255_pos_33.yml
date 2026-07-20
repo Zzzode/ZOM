@@ -1,0 +1,5 @@
+section: "Ch.17 InterfaceBoundList"
+covers_rule: "interfaceDeclaration, interfaceBoundList"
+expected: "ACCEPT"
+notes:
+  - "An interface heritage list retains 300 ordered entries without count narrowing."

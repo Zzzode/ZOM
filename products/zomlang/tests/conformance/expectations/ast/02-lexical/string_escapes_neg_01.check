@@ -2,7 +2,7 @@
 
 
 // CHECK-LITERAL: Error [ZOM2038]: An extended Unicode escape value must be between 0x0 and 0x10FFFF inclusive
-// CHECK:   --> products {{(?:.*[/\\])?string_escapes_neg_01\.zom:1:13$}}
+// CHECK-LITERAL:   --> conformance/string_escapes_neg_01.zom:1:13
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 1 | let x = "\u{11FFFF}";
 // CHECK-LITERAL:   |             ^~~~~~

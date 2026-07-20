@@ -2,7 +2,7 @@
 
 
 // CHECK-LITERAL: Error [ZOM2025]: Expected '+'
-// CHECK:   --> products {{(?:.*[/\\])?implements_comma_reject_neg_06\.zom:2:13$}}
+// CHECK-LITERAL:   --> conformance/implements_comma_reject_neg_06.zom:2:13
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 2 | impl Reader | Writer for BadClass { }
 // CHECK-LITERAL:   |             ^

@@ -1,0 +1,9 @@
+// REGEN-SKIP: This checker diagnostic requires the full signature-facts pipeline.
+// RUN: cd %corpus && ! %zomc compile --emit=dispatch 09-interfaces/marker_impl_behavior_precedence_neg_31.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+
+// CHECK-LITERAL: Error [ZOM4089]: Behavior interfaces require an impl body
+// CHECK:   --> {{.*}}marker_impl_behavior_precedence_neg_31.zom:5:6
+// CHECK-NOT: ZOM4091
+// CHECK-NOT: ZOM9928

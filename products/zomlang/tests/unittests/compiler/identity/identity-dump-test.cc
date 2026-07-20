@@ -61,8 +61,9 @@ void freezeRemainingEmptyRegistries(SemanticIdentityRegistrySet& registries) {
   ZC_EXPECT(registries.freezeCrates() == FrozenRegistryFailure::None);
   ZC_EXPECT(registries.freezeSourceFiles() == FrozenRegistryFailure::None);
   ZC_EXPECT(registries.freezeModules() == FrozenRegistryFailure::None);
-  ZC_EXPECT(registries.freezeDefinitions() == FrozenRegistryFailure::None);
-  ZC_EXPECT(registries.freezeImpls() == FrozenRegistryFailure::None);
+  ZC_EXPECT(registries.freezeStableIdentities() == FrozenRegistryFailure::None);
+  ZC_EXPECT(registries.freezeGenericParameters() == FrozenRegistryFailure::None);
+  ZC_EXPECT(registries.freezeCallableParameters() == FrozenRegistryFailure::None);
 }
 
 }  // namespace

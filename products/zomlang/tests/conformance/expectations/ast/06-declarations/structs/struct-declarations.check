@@ -20,7 +20,7 @@
 // CHECK-NEXT:                     PredefinedTypeExpr #3 @3:20..3:23 kind=I32
 // CHECK-NEXT:                   init:
 // CHECK-NEXT:                     IntLiteral #4 @3:26..3:27 base=10 value="1"
-// CHECK-NEXT:                 MethodDecl #14 @4:3..6:4 name="hello" is_static=false visibility=Default
+// CHECK-NEXT:                 MethodDecl #14 @4:3..6:4 name="hello" mode=Instance visibility=Default
 // CHECK-NEXT:                   params_id:
 // CHECK-NEXT:                     FunctionParameterList #6 @4:12..4:14 nparams=0
 // CHECK-NEXT:                       params: []
@@ -40,7 +40,7 @@
 // CHECK-NEXT:                                     IdentExpr #8 @5:5..5:10 name="print"
 // CHECK-NEXT:                                   type_args: []
 // CHECK-NEXT:                                   args:
-// CHECK-NEXT:                                     StrLiteral #9 @5:11..5:18 value="hello" is_raw=false prefix=None
+// CHECK-NEXT:                                     StringLiteralExpr #9 @5:11..5:18 value="hello"
 // CHECK-NEXT:                           attrs: null
 // CHECK-NEXT:       attrs: null
 // CHECK-NEXT:     StatementListItem #28 @9:1..12:2
@@ -49,8 +49,8 @@
 // CHECK-NEXT:           type_params_id:
 // CHECK-NEXT:             GenericParams #19 @9:12..9:15 nparams=1
 // CHECK-NEXT:               params:
-// CHECK-NEXT:                 GenericTypeParam #18 @9:13..9:14 name="T" variance=Invariant
-// CHECK-NEXT:                   bound: null
+// CHECK-NEXT:                 GenericTypeParam #18 @9:13..9:14 name="T"
+// CHECK-NEXT:                   bounds_id: null
 // CHECK-NEXT:                   default_ty: null
 // CHECK-NEXT:               where_: null
 // CHECK-NEXT:           members_id:
@@ -60,14 +60,14 @@
 // CHECK-NEXT:                   ty:
 // CHECK-NEXT:                     NamedTypeExpr #21 @10:13..10:14
 // CHECK-NEXT:                       path:
-// CHECK-NEXT:                         ModulePath #20 @10:13..10:14 segments=["T"]
+// CHECK-NEXT:                         ModulePath #20 @10:13..10:14 segments=["T"] root=Relative
 // CHECK-NEXT:                       args: []
 // CHECK-NEXT:                   init: null
 // CHECK-NEXT:                 ClassConstDecl #25 @11:3..11:17 name="right" is_static=false visibility=Default
 // CHECK-NEXT:                   ty:
 // CHECK-NEXT:                     NamedTypeExpr #24 @11:16..11:17
 // CHECK-NEXT:                       path:
-// CHECK-NEXT:                         ModulePath #23 @11:16..11:17 segments=["T"]
+// CHECK-NEXT:                         ModulePath #23 @11:16..11:17 segments=["T"] root=Relative
 // CHECK-NEXT:                       args: []
 // CHECK-NEXT:                   init: null
 // CHECK-NEXT:       attrs: null

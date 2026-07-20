@@ -10,8 +10,8 @@
 // CHECK-NEXT:           type_params_id:
 // CHECK-NEXT:             GenericParams #2 @1:10..1:13 nparams=1
 // CHECK-NEXT:               params:
-// CHECK-NEXT:                 GenericTypeParam #1 @1:11..1:12 name="T" variance=Invariant
-// CHECK-NEXT:                   bound: null
+// CHECK-NEXT:                 GenericTypeParam #1 @1:11..1:12 name="T"
+// CHECK-NEXT:                   bounds_id: null
 // CHECK-NEXT:                   default_ty: null
 // CHECK-NEXT:               where_: null
 // CHECK-NEXT:           base_ty: null
@@ -29,7 +29,7 @@
 // CHECK-NEXT:           ret_ty:
 // CHECK-NEXT:             NamedTypeExpr #10 @3:24..3:37
 // CHECK-NEXT:               path:
-// CHECK-NEXT:                 ModulePath #9 @3:24..3:27 segments=["Vec"]
+// CHECK-NEXT:                 ModulePath #9 @3:24..3:27 segments=["Vec"] root=Relative
 // CHECK-NEXT:               args:
 // CHECK-NEXT:                 ReferenceTypeExpr #8 @3:28..3:36 is_mut=true
 // CHECK-NEXT:                   elem:
@@ -49,7 +49,7 @@
 // CHECK-NEXT:                   ty:
 // CHECK-NEXT:                     NamedTypeExpr #17 @5:19..5:28
 // CHECK-NEXT:                       path:
-// CHECK-NEXT:                         ModulePath #16 @5:19..5:22 segments=["Vec"]
+// CHECK-NEXT:                         ModulePath #16 @5:19..5:22 segments=["Vec"] root=Relative
 // CHECK-NEXT:                       args:
 // CHECK-NEXT:                         ReferenceTypeExpr #15 @5:23..5:27 is_mut=false
 // CHECK-NEXT:                           elem:

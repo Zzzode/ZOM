@@ -1,3 +1,0 @@
-// RUN: %zomc compile --syntax-only %corpus/11-error/error_unwrap_lowering_pos_18.zom 2>&1 | %FileCheck %s
-
-// CHECK-NOT: error:

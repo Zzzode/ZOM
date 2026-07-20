@@ -2,7 +2,7 @@
 
 
 // CHECK-LITERAL: Error [ZOM2056]: Expression expected
-// CHECK:   --> products {{(?:.*[/\\])?from_reject_neg_09\.zom:1:1$}}
+// CHECK-LITERAL:   --> conformance/from_reject_neg_09.zom:1:1
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 1 | from std::io import A;
 // CHECK-LITERAL:   | ^

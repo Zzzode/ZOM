@@ -73,6 +73,7 @@ diagnostics::DiagID identityDiagnosticId(IdentityInvariantKind kind) {
     case IdentityInvariantKind::DuplicateSingletonStore:
       return DiagID::IdentityDuplicateSingletonStore;
     case IdentityInvariantKind::NonCanonicalEncoding:
+    case IdentityInvariantKind::DigestCollision:
       return DiagID::IdentityNonCanonicalEncoding;
   }
   ZC_UNREACHABLE

@@ -2,7 +2,7 @@
 
 
 // CHECK-LITERAL: Error [ZOM2072]: Type expected
-// CHECK:   --> products {{(?:.*[/\\])?tuple_vs_paren_neg_01\.zom:1:18$}}
+// CHECK-LITERAL:   --> conformance/tuple_vs_paren_neg_01.zom:1:18
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 1 | alias OneT = (i32,);
 // CHECK-LITERAL:   |                  ^

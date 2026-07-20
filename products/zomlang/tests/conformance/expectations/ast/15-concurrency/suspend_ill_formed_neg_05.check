@@ -2,7 +2,7 @@
 
 
 // CHECK-LITERAL: Error [ZOM2025]: Expected ';'
-// CHECK:   --> products {{(?:.*[/\\])?suspend_ill_formed_neg_05\.zom:3:1$}}
+// CHECK-LITERAL:   --> conformance/suspend_ill_formed_neg_05.zom:3:1
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 3 | }
 // CHECK-LITERAL:   | ^

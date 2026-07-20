@@ -2,7 +2,7 @@
 
 
 // CHECK-LITERAL: Error [ZOM2076]: Unexpected token expected
-// CHECK:   --> products {{(?:.*[/\\])?impl_alias_reject_neg_22\.zom:10:5$}}
+// CHECK-LITERAL:   --> conformance/impl_alias_reject_neg_22.zom:10:5
 // CHECK-LITERAL:    |
 // CHECK-LITERAL: 10 |     alias Local = i32;
 // CHECK-LITERAL:    |     ^

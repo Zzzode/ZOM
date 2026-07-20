@@ -16,7 +16,7 @@
 // CHECK-NEXT:                       ty: null
 // CHECK-NEXT:                   ty: null
 // CHECK-NEXT:                   init:
-// CHECK-NEXT:                     StrLiteral #2 @1:9..1:11 value="<token>" is_raw=false prefix=None
+// CHECK-NEXT:                     StringLiteralExpr #2 @1:9..1:11 value="<token>"
 // CHECK-NEXT:       attrs: null
 // CHECK-NEXT:     StatementListItem #12 @2:1..2:13
 // CHECK-NEXT:       item:
@@ -30,7 +30,7 @@
 // CHECK-NEXT:                       ty: null
 // CHECK-NEXT:                   ty: null
 // CHECK-NEXT:                   init:
-// CHECK-NEXT:                     StrLiteral #8 @2:9..2:12 value="x" is_raw=false prefix=None
+// CHECK-NEXT:                     CharacterLiteralExpr #8 @2:9..2:12 value="x"
 // CHECK-NEXT:       attrs: null
 // CHECK-NEXT:     StatementListItem #18 @3:1..3:13
 // CHECK-NEXT:       item:
@@ -44,7 +44,7 @@
 // CHECK-NEXT:                       ty: null
 // CHECK-NEXT:                   ty: null
 // CHECK-NEXT:                   init:
-// CHECK-NEXT:                     StrLiteral #14 @3:9..3:12 value="a" is_raw=false prefix=None
+// CHECK-NEXT:                     StringLiteralExpr #14 @3:9..3:12 value="a"
 // CHECK-NEXT:       attrs: null
 // CHECK-NEXT:     StatementListItem #24 @4:1..4:13
 // CHECK-NEXT:       item:
@@ -58,5 +58,5 @@
 // CHECK-NEXT:                       ty: null
 // CHECK-NEXT:                   ty: null
 // CHECK-NEXT:                   init:
-// CHECK-NEXT:                     StrLiteral #20 @4:9..4:12 value="b" is_raw=false prefix=None
+// CHECK-NEXT:                     CharacterLiteralExpr #20 @4:9..4:12 value="b"
 // CHECK-NEXT:       attrs: null

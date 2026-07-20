@@ -2,12 +2,12 @@
 
 
 // CHECK-LITERAL: Error [ZOM2077]: Identifier expected
-// CHECK:   --> products {{(?:.*[/\\])?module_specifier_cursor_neg_01\.zom:1:18$}}
+// CHECK-LITERAL:   --> conformance/module_specifier_cursor_neg_01.zom:1:18
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 1 | import pkg::{a as, b as bb};
 // CHECK-LITERAL:   |                  ^
 // CHECK-LITERAL: Error [ZOM2077]: Identifier expected
-// CHECK:   --> products {{(?:.*[/\\])?module_specifier_cursor_neg_01\.zom:2:14$}}
+// CHECK-LITERAL:   --> conformance/module_specifier_cursor_neg_01.zom:2:14
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 2 | export { x as, y as yy };
 // CHECK-LITERAL:   |              ^

@@ -1,0 +1,8 @@
+// RUN: ! %zomc compile --dump-ast %corpus/09-interfaces/marker_impl_precedence_neg_28.zom 2>&1 | %FileCheck %s
+
+
+// CHECK-LITERAL: Error [ZOM2103]: A marker implementation cannot be unsafe
+// CHECK-LITERAL:   --> conformance/marker_impl_precedence_neg_28.zom:1:1
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 1 | unsafe impl<T> !Sendable for Box<T> where T: Sized { }
+// CHECK-LITERAL:   | ^

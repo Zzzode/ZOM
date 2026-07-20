@@ -21,13 +21,13 @@
 // CHECK-NEXT:                   ty:
 // CHECK-NEXT:                     PredefinedTypeExpr #4 @3:20..3:23 kind=Str
 // CHECK-NEXT:                   init:
-// CHECK-NEXT:                     StrLiteral #5 @3:26..3:29 value="s" is_raw=false prefix=None
+// CHECK-NEXT:                     StringLiteralExpr #5 @3:26..3:29 value="s"
 // CHECK-NEXT:                 FieldDecl #9 @4:3..4:32 name="c" is_mut=false is_static=false visibility=Protected
 // CHECK-NEXT:                   ty:
 // CHECK-NEXT:                     PredefinedTypeExpr #7 @4:20..4:24 kind=Bool
 // CHECK-NEXT:                   init:
 // CHECK-NEXT:                     BoolLiteral #8 @4:27..4:31 value=true
-// CHECK-NEXT:                 MethodDecl #12 @6:3..6:38 name="staticMethod" is_static=true visibility=Public
+// CHECK-NEXT:                 MethodDecl #12 @6:3..6:38 name="staticMethod" mode=Static visibility=Public
 // CHECK-NEXT:                   params_id:
 // CHECK-NEXT:                     FunctionParameterList #10 @6:33..6:35 nparams=0
 // CHECK-NEXT:                       params: []
@@ -37,7 +37,7 @@
 // CHECK-NEXT:                   body:
 // CHECK-NEXT:                     BlockStmt #11 @6:36..6:38
 // CHECK-NEXT:                       stmts: []
-// CHECK-NEXT:                 MethodDecl #15 @7:3..7:33 name="privateMethod" is_static=false visibility=Private
+// CHECK-NEXT:                 MethodDecl #15 @7:3..7:33 name="privateMethod" mode=Instance visibility=Private
 // CHECK-NEXT:                   params_id:
 // CHECK-NEXT:                     FunctionParameterList #13 @7:28..7:30 nparams=0
 // CHECK-NEXT:                       params: []
@@ -47,7 +47,7 @@
 // CHECK-NEXT:                   body:
 // CHECK-NEXT:                     BlockStmt #14 @7:31..7:33
 // CHECK-NEXT:                       stmts: []
-// CHECK-NEXT:                 MethodDecl #18 @8:3..8:37 name="protectedMethod" is_static=false visibility=Protected
+// CHECK-NEXT:                 MethodDecl #18 @8:3..8:37 name="protectedMethod" mode=Instance visibility=Protected
 // CHECK-NEXT:                   params_id:
 // CHECK-NEXT:                     FunctionParameterList #16 @8:32..8:34 nparams=0
 // CHECK-NEXT:                       params: []

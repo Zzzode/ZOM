@@ -57,6 +57,12 @@ DESIGN_DOC_BANNED_TERMS = [
 ]
 
 ALLOWED_STATUS = {"direct", "inlined", "lexical", "rejected"}
+ALLOWED_INTERNAL_METHOD_CATEGORIES = {
+    "boundary",
+    "list",
+    "normalization",
+    "precedence",
+}
 
 
 def rel(path: Path) -> str:
@@ -116,20 +122,35 @@ def load_yaml_document(path: Path) -> dict[str, object]:
 
     if path == COVERAGE:
         productions: dict[str, object] = {}
+        internal_parser_methods: dict[str, object] = {}
         in_productions = False
+        in_internal_methods = False
         for line in path.read_text(encoding="utf-8").splitlines():
             stripped = line.strip()
             if not stripped or stripped.startswith("#"):
                 continue
             if stripped == "productions:":
                 in_productions = True
+                in_internal_methods = False
+                continue
+            if stripped == "internal_parser_methods:":
+                in_productions = False
+                in_internal_methods = True
+                continue
+            if in_internal_methods:
+                match = re.match(r"^([A-Za-z][A-Za-z0-9_]*):\s*([A-Za-z][A-Za-z0-9_-]*)$", stripped)
+                if match:
+                    internal_parser_methods[match.group(1)] = match.group(2)
                 continue
             if not in_productions:
                 continue
             match = re.match(r"^([A-Za-z][A-Za-z0-9_]*):\s*(\{.*\})$", stripped)
             if match:
                 productions[match.group(1)] = parse_inline_yaml_mapping(match.group(2))
-        return {"productions": productions}
+        return {
+            "productions": productions,
+            "internal_parser_methods": internal_parser_methods,
+        }
 
     if path == SCHEMA:
         variants: list[dict[str, object]] = []
@@ -214,6 +235,27 @@ def load_coverage() -> dict[str, object]:
         fail(f"{rel(COVERAGE)} must define a 'productions' mapping")
         return {}
     return productions
+
+
+def load_internal_parser_methods() -> dict[str, str]:
+    data = load_yaml_document(COVERAGE)
+    methods = data.get("internal_parser_methods") if isinstance(data, dict) else None
+    if not isinstance(methods, dict):
+        fail(f"{rel(COVERAGE)} must define an 'internal_parser_methods' mapping")
+        return {}
+    result: dict[str, str] = {}
+    for method, category in methods.items():
+        if not isinstance(method, str) or not isinstance(category, str):
+            fail("internal_parser_methods entries must map method names to categories")
+            continue
+        if category not in ALLOWED_INTERNAL_METHOD_CATEGORIES:
+            fail(
+                f"{method}: internal parser method category must be one of "
+                f"{sorted(ALLOWED_INTERNAL_METHOD_CATEGORIES)}"
+            )
+            continue
+        result[method] = category
+    return result
 
 
 def parser_source_text() -> str:
@@ -332,10 +374,10 @@ def validate_parser_design_docs() -> None:
 
 def parser_functions() -> set[str]:
     text = parser_source_text()
-    functions = set(re.findall(r"\b(parse[A-Za-z0-9_]*)\s*\(", text))
+    functions = set(re.findall(r"\bParser::Impl::(parse[A-Za-z0-9_]*)\s*\(", text))
     if "Parser::parse(" in text:
         functions.add("parse")
-    if re.search(r"\bbuildTree\s*\(", text):
+    if "Parser::Impl::buildTree(" in text:
         functions.add("buildTree")
     return functions
 
@@ -398,6 +440,13 @@ def validate_entry(
         elif parser not in functions:
             fail(f"{name}: parser function '{parser}' is not present in parser sources")
 
+    delegates = as_string_list(entry.get("delegates"), "delegates", name)
+    if status not in {"direct", "inlined"} and delegates:
+        fail(f"{name}: only direct or inlined coverage entries may name delegates")
+    for delegate in delegates:
+        if delegate not in functions:
+            fail(f"{name}: delegate parser function '{delegate}' is not present in parser sources")
+
     parent = entry.get("parent")
     if status == "inlined":
         if not isinstance(parent, str) or not parent:
@@ -432,6 +481,7 @@ def main() -> int:
     validate_parser_design_docs()
     grammar = extract_productions()
     coverage = load_coverage()
+    internal_methods = load_internal_parser_methods()
     functions = parser_functions()
     schema_kinds = ast_kinds()
     constructed_kinds = parser_constructed_kinds()
@@ -454,6 +504,24 @@ def main() -> int:
             schema_kinds,
             constructed_kinds,
         )
+
+    production_methods: set[str] = set()
+    for entry in coverage.values():
+        if not isinstance(entry, dict):
+            continue
+        parser = entry.get("parser")
+        if isinstance(parser, str):
+            production_methods.add(parser)
+        delegates = entry.get("delegates")
+        if isinstance(delegates, list):
+            production_methods.update(item for item in delegates if isinstance(item, str))
+
+    for method in sorted(set(internal_methods) - functions):
+        fail(f"{method}: internal parser method is not present in parser sources")
+    for method in sorted(set(internal_methods) & production_methods):
+        fail(f"{method}: parser method cannot be both production-owned and internal")
+    for method in sorted(functions - production_methods - set(internal_methods)):
+        fail(f"{method}: parser method has no production owner or internal classification")
 
     if errors:
         print("Parser coverage check failed.", file=sys.stderr)

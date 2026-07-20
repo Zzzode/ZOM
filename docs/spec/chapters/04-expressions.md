@@ -324,10 +324,11 @@ let unsignedRightShift = a >>> b; // Unsigned right shift
 ### Type Check Operators
 
 ```zom
-let isString = value is str;           // Type check
-let hasProperty = "length" in object;  // Property existence check
-let isInstance = obj instanceof MyClass; // Instance check
+let isString = value is str;  // Type check
 ```
+
+`in` is reserved for `for` headers. `instanceof` is reserved. Neither token is
+a binary expression operator.
 
 ### Range Syntax Is Not Part Of V1
 
@@ -464,27 +465,30 @@ let identity = fun (x: i32) use [] -> i32 { return x; };
 
 ## Operator Precedence
 
-Operators are evaluated in the following order (highest to lowest precedence):
+Operators are evaluated in the following order, from highest to lowest
+precedence. Associativity applies when operators at the same level are chained.
 
-1. **Primary**: `()`, `[]`, `.`, `?.`
-2. **Postfix**: `++`, `--` (postfix), `?!` (try/propagate), `!!` (unwrap/panic)
-3. **Prefix**: `+`, `-`, `!`, `~`, `*`, `&`, `++`, `--` (prefix), `typeof`
-4. **Exponentiation**: `**`
-5. **Multiplicative**: `*`, `/`, `%`
-6. **Additive**: `+`, `-`
-7. **Shift**: `<<`, `>>`, `>>>`
-8. **Relational and cast**: `<`, `>`, `<=`, `>=`, `is`, `in`, `instanceof`,
-   `as`, `as?`, `as!`
-9. **Equality**: `==`, `!=`, `===`, `!==`
-10. **Bitwise AND**: `&`
-11. **Bitwise XOR**: `^`
-12. **Bitwise OR**: `|`
-13. **Logical AND**: `&&`
-14. **Logical OR**: `||`
-15. **Null Coalescing**: `??`
-16. **Error Elvis**: `?:`
-17. **Conditional**: `? :`
-18. **Assignment**: `=`, `+=`, `-=`, etc.
+| Level | Category | Operators | Associativity |
+|---:|---|---|---|
+| 1 | Primary | `()`, `[]`, `.`, `?.` | Left-to-right |
+| 2 | Postfix | `++`, `--`, `?!`, `!!` | Left-to-right |
+| 3 | Prefix | `+`, `-`, `!`, `~`, `*`, `&`, `++`, `--`, `typeof` | Right-to-left |
+| 4 | Exponentiation | `**` | Right-to-left |
+| 5 | Multiplicative | `*`, `/`, `%` | Left-to-right |
+| 6 | Additive | `+`, `-` | Left-to-right |
+| 7 | Shift | `<<`, `>>`, `>>>` | Left-to-right |
+| 8 | Relational and cast | `<`, `>`, `<=`, `>=`, `is`, `as`, `as?`, `as!` | Left-to-right |
+| 9 | Equality | `==`, `!=`, `===`, `!==` | Left-to-right |
+| 10 | Bitwise AND | `&` | Left-to-right |
+| 11 | Bitwise XOR | `^` | Left-to-right |
+| 12 | Bitwise OR | `\|` | Left-to-right |
+| 13 | Logical AND | `&&` | Left-to-right |
+| 14 | Logical OR | `\|\|` | Left-to-right |
+| 15 | Null coalescing | `??` | Right-to-left |
+| 16 | Error default | `?:` | Right-to-left |
+| 17 | Conditional | `? :` | Right-to-left |
+| 18 | Assignment | `=`, `+=`, `-=`, and the remaining compound assignments | Right-to-left |
+| 19 | Comma | `,` | Left-to-right |
 
 ## Postfix Error-Handling Operators: `?!` and `!!`
 

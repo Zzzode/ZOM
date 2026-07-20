@@ -81,7 +81,7 @@
 // CHECK-NEXT:                                   rhs:
 // CHECK-NEXT:                                     IdentExpr #28 @6:64..6:71 name="message"
 // CHECK-NEXT:                           attrs: null
-// CHECK-NEXT:                 MethodDecl #41 @8:5..8:51 name="describe" is_static=false visibility=Default
+// CHECK-NEXT:                 MethodDecl #41 @8:5..8:51 name="describe" mode=Instance visibility=Default
 // CHECK-NEXT:                   params_id:
 // CHECK-NEXT:                     FunctionParameterList #34 @8:17..8:19 nparams=0
 // CHECK-NEXT:                       params: []

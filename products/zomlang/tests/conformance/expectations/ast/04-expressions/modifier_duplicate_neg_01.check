@@ -2,12 +2,12 @@
 
 
 // CHECK-LITERAL: Error [ZOM2088]: Visibility modifier 'public' is valid only on a type member; use 'export' for a module-level API
-// CHECK:   --> products {{(?:.*[/\\])?modifier_duplicate_neg_01\.zom:1:1$}}
+// CHECK-LITERAL:   --> conformance/modifier_duplicate_neg_01.zom:1:1
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 1 | public public class Foo {}
 // CHECK-LITERAL:   | ^
 // CHECK-LITERAL: Error [ZOM2083]: Duplicate declaration modifier 'public'
-// CHECK:   --> products {{(?:.*[/\\])?modifier_duplicate_neg_01\.zom:1:8$}}
+// CHECK-LITERAL:   --> conformance/modifier_duplicate_neg_01.zom:1:8
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 1 | public public class Foo {}
 // CHECK-LITERAL:   |        ^

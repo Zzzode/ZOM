@@ -8,7 +8,7 @@
 // CHECK-NEXT:       item:
 // CHECK-NEXT:         ImportDeclaration #6 @1:1..1:38 alias=null
 // CHECK-NEXT:           path:
-// CHECK-NEXT:             ModulePath #5 @1:8..1:11 segments=["pkg"]
+// CHECK-NEXT:             ModulePath #5 @1:8..1:11 segments=["pkg"] root=Relative
 // CHECK-NEXT:           specifiers:
 // CHECK-NEXT:             ImportSpecifier #1 @1:14..1:15 name="a" alias=null
 // CHECK-NEXT:             ImportSpecifier #2 @1:17..1:24 name="b" alias="bb"

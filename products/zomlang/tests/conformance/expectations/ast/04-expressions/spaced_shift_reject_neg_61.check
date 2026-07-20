@@ -1,0 +1,13 @@
+// RUN: ! %zomc compile --dump-ast %corpus/04-expressions/spaced_shift_reject_neg_61.zom 2>&1 | %FileCheck %s
+
+
+// CHECK-LITERAL: Error [ZOM2056]: Expression expected
+// CHECK-LITERAL:   --> conformance/spaced_shift_reject_neg_61.zom:1:23
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 1 | let shifted = value > > 2;
+// CHECK-LITERAL:   |                       ^
+// CHECK-LITERAL: Error [ZOM2056]: Expression expected
+// CHECK-LITERAL:   --> conformance/spaced_shift_reject_neg_61.zom:1:15
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 1 | let shifted = value > > 2;
+// CHECK-LITERAL:   |               ^

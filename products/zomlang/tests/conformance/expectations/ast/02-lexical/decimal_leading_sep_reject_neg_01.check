@@ -2,7 +2,7 @@
 
 
 // CHECK-LITERAL: Error [ZOM2086]: Numeric literals cannot start with '_'
-// CHECK:   --> products {{(?:.*[/\\])?decimal_leading_sep_reject_neg_01\.zom:1:9$}}
+// CHECK-LITERAL:   --> conformance/decimal_leading_sep_reject_neg_01.zom:1:9
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 1 | let x = _123;
 // CHECK-LITERAL:   |         ^~~~

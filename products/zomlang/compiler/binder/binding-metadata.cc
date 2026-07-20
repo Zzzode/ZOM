@@ -70,29 +70,44 @@ LabelOwner LabelOwner::module(identity::ModuleId value) {
 LabelOwner LabelOwner::callable(identity::DefId value) {
   return LabelOwner(LabelOwnerValue(CallableLabelOwner{value}));
 }
+LabelOwner LabelOwner::anonymous(identity::ModuleId module, AnonymousOwnerLocalKey&& value) {
+  return LabelOwner(LabelOwnerValue(AnonymousLabelOwner{module, zc::mv(value)}));
+}
 LabelOwner LabelOwner::clone() const {
   if (valueValue.is<ModuleLabelOwner>()) {
     return module(valueValue.get<ModuleLabelOwner>().module);
   }
-  return callable(valueValue.get<CallableLabelOwner>().callable);
+  if (valueValue.is<CallableLabelOwner>()) {
+    return callable(valueValue.get<CallableLabelOwner>().callable);
+  }
+  const auto& owner = valueValue.get<AnonymousLabelOwner>();
+  return anonymous(owner.module, owner.anonymous.clone());
 }
 const LabelOwnerValue& LabelOwner::value() const noexcept { return valueValue; }
 bool LabelOwner::belongsTo(identity::SemanticContextBrand context) const noexcept {
   if (valueValue.is<ModuleLabelOwner>()) {
     return valueValue.get<ModuleLabelOwner>().module.belongsTo(context);
   }
-  return valueValue.get<CallableLabelOwner>().callable.belongsTo(context);
+  if (valueValue.is<CallableLabelOwner>()) {
+    return valueValue.get<CallableLabelOwner>().callable.belongsTo(context);
+  }
+  return valueValue.get<AnonymousLabelOwner>().module.belongsTo(context);
 }
 bool LabelOwner::operator==(const LabelOwner& other) const noexcept {
-  if (valueValue.is<ModuleLabelOwner>() != other.valueValue.is<ModuleLabelOwner>()) {
-    return false;
-  }
   if (valueValue.is<ModuleLabelOwner>()) {
-    return valueValue.get<ModuleLabelOwner>().module ==
-           other.valueValue.get<ModuleLabelOwner>().module;
+    return other.valueValue.is<ModuleLabelOwner>() &&
+           valueValue.get<ModuleLabelOwner>().module ==
+               other.valueValue.get<ModuleLabelOwner>().module;
   }
-  return valueValue.get<CallableLabelOwner>().callable ==
-         other.valueValue.get<CallableLabelOwner>().callable;
+  if (valueValue.is<CallableLabelOwner>()) {
+    return other.valueValue.is<CallableLabelOwner>() &&
+           valueValue.get<CallableLabelOwner>().callable ==
+               other.valueValue.get<CallableLabelOwner>().callable;
+  }
+  if (!other.valueValue.is<AnonymousLabelOwner>()) { return false; }
+  const auto& left = valueValue.get<AnonymousLabelOwner>();
+  const auto& right = other.valueValue.get<AnonymousLabelOwner>();
+  return left.module == right.module && left.anonymous == right.anonymous;
 }
 
 LabelId::LabelId(LabelOwner&& owner, uint32_t index) noexcept
@@ -143,8 +158,11 @@ ScopeOwner ScopeOwner::module(identity::ModuleId value) {
 ScopeOwner ScopeOwner::definition(identity::DefId value) {
   return ScopeOwner(ScopeOwnerValue(DefinitionScopeOwner{value}));
 }
-ScopeOwner ScopeOwner::implementation(identity::ImplId value) {
+ScopeOwner ScopeOwner::implementation(ImplOccurrenceId value) {
   return ScopeOwner(ScopeOwnerValue(ImplScopeOwner{value}));
+}
+ScopeOwner ScopeOwner::anonymous(AnonymousOwnerLocalKey&& value) {
+  return ScopeOwner(ScopeOwnerValue(AnonymousScopeOwner{zc::mv(value)}));
 }
 const ScopeOwnerValue& ScopeOwner::value() const noexcept { return valueValue; }
 
@@ -152,18 +170,49 @@ BindingTarget::BindingTarget(BindingTargetValue&& value) noexcept : valueValue(z
 BindingTarget BindingTarget::definition(identity::DefId value) {
   return BindingTarget(BindingTargetValue(DefinitionBindingTarget{value}));
 }
+BindingTarget BindingTarget::genericParameter(identity::GenericParameterId value) {
+  return BindingTarget(BindingTargetValue(GenericParameterBindingTarget{value}));
+}
+BindingTarget BindingTarget::callableParameter(identity::CallableParameterId value) {
+  return BindingTarget(BindingTargetValue(CallableParameterBindingTarget{value}));
+}
+BindingTarget BindingTarget::ownerLocal(OwnerLocalBindingId value) {
+  return BindingTarget(BindingTargetValue(OwnerLocalBindingTarget{value}));
+}
+BindingTarget BindingTarget::semanticImport(identity::SemanticImportBindingKey&& value) {
+  return BindingTarget(BindingTargetValue(SemanticImportBindingTarget{zc::mv(value)}));
+}
 BindingTarget BindingTarget::module(identity::ModuleId value) {
   return BindingTarget(BindingTargetValue(ModuleBindingTarget{value}));
 }
+BindingTarget BindingTarget::clone() const {
+  if (valueValue.is<DefinitionBindingTarget>()) {
+    return definition(valueValue.get<DefinitionBindingTarget>().definition);
+  }
+  if (valueValue.is<GenericParameterBindingTarget>()) {
+    return genericParameter(valueValue.get<GenericParameterBindingTarget>().parameter);
+  }
+  if (valueValue.is<CallableParameterBindingTarget>()) {
+    return callableParameter(valueValue.get<CallableParameterBindingTarget>().parameter);
+  }
+  if (valueValue.is<OwnerLocalBindingTarget>()) {
+    return ownerLocal(valueValue.get<OwnerLocalBindingTarget>().binding);
+  }
+  if (valueValue.is<SemanticImportBindingTarget>()) {
+    return semanticImport(valueValue.get<SemanticImportBindingTarget>().binding.clone());
+  }
+  return module(valueValue.get<ModuleBindingTarget>().module);
+}
 const BindingTargetValue& BindingTarget::value() const noexcept { return valueValue; }
 
-BindingNameKey::BindingNameKey(Namespace nameSpace, identity::SemanticIdentifier&& name) noexcept
+BindingNameKey::BindingNameKey(Namespace nameSpace,
+                               identity::DeclaredDefinitionName&& name) noexcept
     : namespaceValue(nameSpace), nameValue(zc::mv(name)) {}
 BindingNameKey BindingNameKey::clone() const {
   return BindingNameKey(namespaceValue, nameValue.clone());
 }
 Namespace BindingNameKey::nameSpace() const noexcept { return namespaceValue; }
-const identity::SemanticIdentifier& BindingNameKey::name() const noexcept { return nameValue; }
+const identity::DeclaredDefinitionName& BindingNameKey::name() const noexcept { return nameValue; }
 
 NameBinding::NameBinding(BindingTarget&& bindingIdentity, BindingTarget&& canonicalTarget,
                          Namespace nameSpace, BindingOrigin origin,
@@ -222,10 +271,11 @@ zc::Array<uint8_t> frameBindingExtensionSequences(
 }
 
 DefinitionFact::DefinitionFact(identity::DefId identity, DefinitionSite&& site,
-                               identity::DefinitionKind kind, identity::DefinitionNameKey&& name,
-                               Namespace nameSpace, ScopeId declaringScope,
-                               identity::SourceSpan&& source,
-                               DefinitionActivation activation) noexcept
+                               identity::DefinitionKind kind,
+                               identity::DeclaredDefinitionName&& name, Namespace nameSpace,
+                               ScopeId declaringScope, identity::SourceSpan&& source,
+                               DefinitionActivation activation,
+                               zc::Maybe<MemberVisibility>&& memberVisibility) noexcept
     : identity(identity),
       site(zc::mv(site)),
       kind(kind),
@@ -233,7 +283,8 @@ DefinitionFact::DefinitionFact(identity::DefId identity, DefinitionSite&& site,
       nameSpace(nameSpace),
       declaringScope(declaringScope),
       source(zc::mv(source)),
-      activation(activation) {}
+      activation(activation),
+      memberVisibility(zc::mv(memberVisibility)) {}
 
 VisibilityEnvelope::VisibilityEnvelope(VisibilityEnvelopeValue&& value) noexcept
     : valueValue(zc::mv(value)) {}
@@ -243,7 +294,18 @@ VisibilityEnvelope VisibilityEnvelope::module(identity::ModuleId value) {
 VisibilityEnvelope VisibilityEnvelope::external() {
   return VisibilityEnvelope(VisibilityEnvelopeValue(ExternalVisibility{}));
 }
+VisibilityEnvelope VisibilityEnvelope::clone() const {
+  if (valueValue.is<ModuleVisibility>()) {
+    return module(valueValue.get<ModuleVisibility>().module);
+  }
+  return external();
+}
 const VisibilityEnvelopeValue& VisibilityEnvelope::value() const noexcept { return valueValue; }
+
+ReexportProvenanceStep ReexportProvenanceStep::clone() const {
+  return ReexportProvenanceStep{module, bindingIdentity.clone(), canonicalTarget.clone(),
+                                exportSpan.clone()};
+}
 
 ExportSurfaceEntry::ExportSurfaceEntry(BindingNameKey&& name, BindingTarget&& bindingIdentity,
                                        BindingTarget&& canonicalTarget,
@@ -263,6 +325,19 @@ ExportSurfaceEntry::ExportSurfaceEntry(BindingNameKey&& name, BindingTarget&& bi
       aliasSpan(zc::mv(aliasSpan)),
       exportSpan(zc::mv(exportSpan)),
       reexportChain(zc::mv(reexportChain)) {}
+
+ExportSurfaceEntry ExportSurfaceEntry::clone() const {
+  zc::Maybe<identity::SourceSpan> clonedAliasSpan;
+  ZC_IF_SOME(value, aliasSpan) { clonedAliasSpan = value.clone(); }
+  zc::Maybe<identity::SourceSpan> clonedExportSpan;
+  ZC_IF_SOME(value, exportSpan) { clonedExportSpan = value.clone(); }
+  zc::Vector<ReexportProvenanceStep> clonedChain(reexportChain.size());
+  for (const auto& step : reexportChain) { clonedChain.add(step.clone()); }
+  return ExportSurfaceEntry(name.clone(), bindingIdentity.clone(), canonicalTarget.clone(),
+                            visibility.clone(), exported, bindingSpan.clone(),
+                            canonicalDeclarationSpan.clone(), zc::mv(clonedAliasSpan),
+                            zc::mv(clonedExportSpan), zc::mv(clonedChain));
+}
 
 ExportSurfaceRevision::ExportSurfaceRevision(const identity::Sha256Digest& digest) noexcept
     : value(digest) {}
@@ -328,8 +403,7 @@ zc::Maybe<zc::Vector<BinderInvariantDiagnosticGroup>> groupBinderInvariants(
     ZC_IF_SOME(range, facts[index].diagnosticRange) {
       hasRange.add(true);
       rangeBytes.add(range.encode());
-    }
-    else {
+    } else {
       hasRange.add(false);
       rangeBytes.add(zc::heapArray<uint8_t>(0));
     }

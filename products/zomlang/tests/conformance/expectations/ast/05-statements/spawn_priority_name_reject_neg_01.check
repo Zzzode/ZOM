@@ -2,12 +2,12 @@
 
 
 // CHECK-LITERAL: Error [ZOM2025]: Expected '('
-// CHECK:   --> products {{(?:.*[/\\])?spawn_priority_name_reject_neg_01\.zom:2:20$}}
+// CHECK-LITERAL:   --> conformance/spawn_priority_name_reject_neg_01.zom:2:20
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 2 |     spawn priority {};
 // CHECK-LITERAL:   |                    ^
 // CHECK-LITERAL: Error [ZOM2056]: Expression expected
-// CHECK:   --> products {{(?:.*[/\\])?spawn_priority_name_reject_neg_01\.zom:2:5$}}
+// CHECK-LITERAL:   --> conformance/spawn_priority_name_reject_neg_01.zom:2:5
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 2 |     spawn priority {};
 // CHECK-LITERAL:   |     ^

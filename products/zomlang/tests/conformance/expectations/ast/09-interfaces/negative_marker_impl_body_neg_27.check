@@ -1,0 +1,8 @@
+// RUN: ! %zomc compile --dump-ast %corpus/09-interfaces/negative_marker_impl_body_neg_27.zom 2>&1 | %FileCheck %s
+
+
+// CHECK-LITERAL: Error [ZOM2104]: A marker implementation cannot have a body
+// CHECK-LITERAL:   --> conformance/negative_marker_impl_body_neg_27.zom:1:24
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 1 | impl !Sendable for Raw { }
+// CHECK-LITERAL:   |                        ^

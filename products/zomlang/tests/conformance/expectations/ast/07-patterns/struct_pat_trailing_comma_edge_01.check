@@ -30,7 +30,7 @@
 // CHECK-NEXT:               pattern:
 // CHECK-NEXT:                 StructPattern #13 @3:10..3:27
 // CHECK-NEXT:                   ty_path:
-// CHECK-NEXT:                     ModulePath #8 @3:10..3:11 segments=["S"]
+// CHECK-NEXT:                     ModulePath #8 @3:10..3:11 segments=["S"] root=Relative
 // CHECK-NEXT:                   fields:
 // CHECK-NEXT:                     PatternProperty #10 @3:14..3:18 name="x" short_form=false
 // CHECK-NEXT:                       pat:

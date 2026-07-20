@@ -2,7 +2,7 @@
 
 
 // CHECK-LITERAL: Error [ZOM2025]: Expected ';'
-// CHECK:   --> products {{(?:.*[/\\])?iface_method_block_neg_02\.zom:2:22$}}
+// CHECK-LITERAL:   --> conformance/iface_method_block_neg_02.zom:2:22
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 2 |     fun bad() -> i32 { return 1; }
 // CHECK-LITERAL:   |                      ^

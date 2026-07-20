@@ -1,0 +1,18 @@
+// RUN: ! %zomc compile --dump-ast %corpus/02-lexical/decimal_duplicate_exponent_neg_01.zom 2>&1 | %FileCheck %s
+
+
+// CHECK-LITERAL: Error [ZOM2045]: An identifier or keyword cannot immediately follow a numeric literal
+// CHECK-LITERAL:   --> conformance/decimal_duplicate_exponent_neg_01.zom:1:18
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 1 | let value = 1.0e2e3;
+// CHECK-LITERAL:   |                  ^~
+// CHECK-LITERAL: Error [ZOM2076]: Unexpected token expected
+// CHECK-LITERAL:   --> conformance/decimal_duplicate_exponent_neg_01.zom:1:18
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 1 | let value = 1.0e2e3;
+// CHECK-LITERAL:   |                  ^
+// CHECK-LITERAL: Error [ZOM2056]: Expression expected
+// CHECK-LITERAL:   --> conformance/decimal_duplicate_exponent_neg_01.zom:1:13
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 1 | let value = 1.0e2e3;
+// CHECK-LITERAL:   |             ^

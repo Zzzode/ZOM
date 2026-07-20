@@ -1,0 +1,5 @@
+section: "Ch.09 Marker implementation restrictions"
+covers_rule: "markerImplRest, whereClause"
+expected: "REJECT"
+notes:
+  - "A marker implementation cannot carry a where clause."

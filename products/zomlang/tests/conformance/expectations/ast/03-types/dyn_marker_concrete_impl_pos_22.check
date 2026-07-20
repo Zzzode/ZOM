@@ -1,0 +1,130 @@
+// RUN: %zomc compile --dump-ast %corpus/03-types/dyn_marker_concrete_impl_pos_22.zom | %FileCheck %s
+
+
+// CHECK: SourceFile #51 @1:1..12:1 file_name="dyn_marker_concrete_impl_pos_22.zom"
+// CHECK-NEXT:   module: null
+// CHECK-NEXT:   statements:
+// CHECK-NEXT:     StatementListItem #3 @1:1..1:23
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         InterfaceDecl #2 @1:1..1:23 name="Drawable"
+// CHECK-NEXT:           type_params_id: null
+// CHECK-NEXT:           ifaces_id: null
+// CHECK-NEXT:           members_id:
+// CHECK-NEXT:             ClassMemberList #1 @1:20..1:23 nmembers=0
+// CHECK-NEXT:               members: []
+// CHECK-NEXT:       attrs: null
+// CHECK-NEXT:     StatementListItem #6 @3:1..3:15
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         ClassDecl #5 @3:1..3:15 name="Good"
+// CHECK-NEXT:           type_params_id: null
+// CHECK-NEXT:           base_ty: null
+// CHECK-NEXT:           members_id:
+// CHECK-NEXT:             ClassMemberList #4 @3:12..3:15 nmembers=0
+// CHECK-NEXT:               members: []
+// CHECK-NEXT:       attrs: null
+// CHECK-NEXT:     StatementListItem #14 @4:1..4:27
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         ClassDecl #13 @4:1..4:27 name="Box"
+// CHECK-NEXT:           type_params_id:
+// CHECK-NEXT:             GenericParams #8 @4:10..4:13 nparams=1
+// CHECK-NEXT:               params:
+// CHECK-NEXT:                 GenericTypeParam #7 @4:11..4:12 name="T"
+// CHECK-NEXT:                   bounds_id: null
+// CHECK-NEXT:                   default_ty: null
+// CHECK-NEXT:               where_: null
+// CHECK-NEXT:           base_ty: null
+// CHECK-NEXT:           members_id:
+// CHECK-NEXT:             ClassMemberList #12 @4:14..4:27 nmembers=1
+// CHECK-NEXT:               members:
+// CHECK-NEXT:                 FieldDecl #11 @4:16..4:25 name="value" is_mut=false is_static=false visibility=Default
+// CHECK-NEXT:                   ty:
+// CHECK-NEXT:                     NamedTypeExpr #10 @4:23..4:24
+// CHECK-NEXT:                       path:
+// CHECK-NEXT:                         ModulePath #9 @4:23..4:24 segments=["T"] root=Relative
+// CHECK-NEXT:                       args: []
+// CHECK-NEXT:                   init: null
+// CHECK-NEXT:       attrs: null
+// CHECK-NEXT:     StatementListItem #23 @6:1..6:32
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         StandaloneImplDecl #22 @6:1..6:32 is_unsafe=false
+// CHECK-NEXT:           interface:
+// CHECK-NEXT:             NamedTypeExpr #16 @6:6..6:14
+// CHECK-NEXT:               path:
+// CHECK-NEXT:                 ModulePath #15 @6:6..6:14 segments=["Drawable"] root=Relative
+// CHECK-NEXT:               args: []
+// CHECK-NEXT:           for_ty:
+// CHECK-NEXT:             NamedTypeExpr #20 @6:19..6:28
+// CHECK-NEXT:               path:
+// CHECK-NEXT:                 ModulePath #19 @6:19..6:22 segments=["Box"] root=Relative
+// CHECK-NEXT:               args:
+// CHECK-NEXT:                 NamedTypeExpr #18 @6:23..6:27
+// CHECK-NEXT:                   path:
+// CHECK-NEXT:                     ModulePath #17 @6:23..6:27 segments=["Good"] root=Relative
+// CHECK-NEXT:                   args: []
+// CHECK-NEXT:           where_: null
+// CHECK-NEXT:           type_params_id: null
+// CHECK-NEXT:           members_id:
+// CHECK-NEXT:             ClassMemberList #21 @6:29..6:32 nmembers=0
+// CHECK-NEXT:               members: []
+// CHECK-NEXT:       attrs: null
+// CHECK-NEXT:     StatementListItem #30 @8:1..8:49
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         MarkerImpl #29 @8:1..8:49 is_unsafe=true is_negated=false
+// CHECK-NEXT:           marker_path:
+// CHECK-NEXT:             AttributePath #28 @8:13..8:34 segments=["std", "marker", "Sendable"] leading=None
+// CHECK-NEXT:           for_ty:
+// CHECK-NEXT:             NamedTypeExpr #27 @8:39..8:48
+// CHECK-NEXT:               path:
+// CHECK-NEXT:                 ModulePath #26 @8:39..8:42 segments=["Box"] root=Relative
+// CHECK-NEXT:               args:
+// CHECK-NEXT:                 NamedTypeExpr #25 @8:43..8:47
+// CHECK-NEXT:                   path:
+// CHECK-NEXT:                     ModulePath #24 @8:43..8:47 segments=["Good"] root=Relative
+// CHECK-NEXT:                   args: []
+// CHECK-NEXT:       attrs: null
+// CHECK-NEXT:     StatementListItem #39 @10:1..10:22
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         LetStmt #38 @10:1..10:22 kind=Let
+// CHECK-NEXT:           declarations:
+// CHECK-NEXT:             VariableDeclaratorList #37 @10:5..10:21 n_decls=1
+// CHECK-NEXT:               decls:
+// CHECK-NEXT:                 VariableDeclarator #36 @10:5..10:21
+// CHECK-NEXT:                   pattern:
+// CHECK-NEXT:                     IdentifierPattern #31 @10:5..10:10 name="value"
+// CHECK-NEXT:                       ty: null
+// CHECK-NEXT:                   ty:
+// CHECK-NEXT:                     NamedTypeExpr #35 @10:12..10:21
+// CHECK-NEXT:                       path:
+// CHECK-NEXT:                         ModulePath #34 @10:12..10:15 segments=["Box"] root=Relative
+// CHECK-NEXT:                       args:
+// CHECK-NEXT:                         NamedTypeExpr #33 @10:16..10:20
+// CHECK-NEXT:                           path:
+// CHECK-NEXT:                             ModulePath #32 @10:16..10:20 segments=["Good"] root=Relative
+// CHECK-NEXT:                           args: []
+// CHECK-NEXT:                   init: null
+// CHECK-NEXT:       attrs: null
+// CHECK-NEXT:     StatementListItem #50 @11:1..11:45
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         LetStmt #49 @11:1..11:45 kind=Let
+// CHECK-NEXT:           declarations:
+// CHECK-NEXT:             VariableDeclaratorList #48 @11:5..11:44 n_decls=1
+// CHECK-NEXT:               decls:
+// CHECK-NEXT:                 VariableDeclarator #47 @11:5..11:44
+// CHECK-NEXT:                   pattern:
+// CHECK-NEXT:                     IdentifierPattern #40 @11:5..11:11 name="packed"
+// CHECK-NEXT:                       ty: null
+// CHECK-NEXT:                   ty:
+// CHECK-NEXT:                     DynTypeExpr #45 @11:13..11:36
+// CHECK-NEXT:                       principal:
+// CHECK-NEXT:                         NamedTypeExpr #42 @11:17..11:25
+// CHECK-NEXT:                           path:
+// CHECK-NEXT:                             ModulePath #41 @11:17..11:25 segments=["Drawable"] root=Relative
+// CHECK-NEXT:                           args: []
+// CHECK-NEXT:                       markers_id:
+// CHECK-NEXT:                         DynTypeMarkerList #44 @11:28..11:36 n_markers=1
+// CHECK-NEXT:                           markers:
+// CHECK-NEXT:                             AttributePath #43 @11:28..11:36 segments=["Sendable"] leading=None
+// CHECK-NEXT:                       assoc_bindings_id: null
+// CHECK-NEXT:                   init:
+// CHECK-NEXT:                     IdentExpr #46 @11:39..11:44 name="value"
+// CHECK-NEXT:       attrs: null

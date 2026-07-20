@@ -2,7 +2,7 @@
 
 
 // CHECK-LITERAL: Error [ZOM2056]: Expression expected
-// CHECK:   --> products {{(?:.*[/\\])?enum_discriminant_expr_neg_13\.zom:2:9$}}
+// CHECK-LITERAL:   --> conformance/enum_discriminant_expr_neg_13.zom:2:9
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 2 |     A = ,
 // CHECK-LITERAL:   |         ^

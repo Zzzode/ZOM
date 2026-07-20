@@ -21,6 +21,7 @@
 
 namespace zomlang::compiler::identity {
 
+class CanonicalDecoder;
 class CanonicalEncoder;
 
 /// \brief Closed validation domains for canonical identity text.
@@ -57,6 +58,9 @@ public:
   /// \param input Text that must already satisfy this scalar domain and Unicode NFC.
   ZC_NODISCARD static zc::Maybe<CanonicalScalar> fromCanonical(zc::MemoryResource& resource,
                                                                zc::StringPtr input);
+
+  /// \brief Decodes and validates one bounded canonical text value.
+  ZC_NODISCARD static zc::Maybe<CanonicalScalar> decodeCanonical(CanonicalDecoder& decoder);
 
   /// \brief Creates an explicit owned duplicate of this move-only scalar.
   ZC_NODISCARD CanonicalScalar clone() const;

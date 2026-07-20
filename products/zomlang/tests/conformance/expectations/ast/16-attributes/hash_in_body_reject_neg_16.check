@@ -2,12 +2,12 @@
 
 
 // CHECK-LITERAL: Error [ZOM2057]: Stray '#' with no attribute following; expected '[' after '#' to start an attribute.
-// CHECK:   --> products {{(?:.*[/\\])?hash_in_body_reject_neg_16\.zom:2:3$}}
+// CHECK-LITERAL:   --> conformance/hash_in_body_reject_neg_16.zom:2:3
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 2 |   #
 // CHECK-LITERAL:   |   ^
 // CHECK-LITERAL: Note [ZOM2058]: To start an attribute, write #[path::to::attribute].
-// CHECK:   --> products {{(?:.*[/\\])?hash_in_body_reject_neg_16\.zom:2:3$}}
+// CHECK-LITERAL:   --> conformance/hash_in_body_reject_neg_16.zom:2:3
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 2 |   #
 // CHECK-LITERAL:   |   ^

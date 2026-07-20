@@ -2,7 +2,7 @@
 
 
 // CHECK-LITERAL: Error [ZOM2076]: Unexpected token expected
-// CHECK:   --> products {{(?:.*[/\\])?positional_struct_reject_neg_01\.zom:1:11$}}
+// CHECK-LITERAL:   --> conformance/positional_struct_reject_neg_01.zom:1:11
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 1 | struct Foo(i32, i32);
 // CHECK-LITERAL:   |           ^

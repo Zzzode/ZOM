@@ -18,6 +18,8 @@ public:
   ZC_NODISCARD static ClosureFreeVariableBuildResult build(
       const VerifiedBindingInput& input, const ScopeArenaCandidate& arena,
       zc::ArrayPtr<const DefinitionFact> definitions,
+      zc::ArrayPtr<const CallableParameterFact> callableParameters,
+      zc::ArrayPtr<const OwnerLocalBindingFact> ownerLocalBindings,
       zc::ArrayPtr<const BindingResolution> nodeBindings,
       zc::ArrayPtr<const BoundThis> thisBindings);
 };

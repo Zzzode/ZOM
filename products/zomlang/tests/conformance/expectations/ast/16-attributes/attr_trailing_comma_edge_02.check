@@ -35,4 +35,4 @@
 // CHECK-NEXT:                   lhs:
 // CHECK-NEXT:                     IdentExpr #4 @1:27..1:33 name="endian"
 // CHECK-NEXT:                   rhs:
-// CHECK-NEXT:                     StrLiteral #5 @1:36..1:41 value="big" is_raw=false prefix=None
+// CHECK-NEXT:                     StringLiteralExpr #5 @1:36..1:41 value="big"

@@ -253,14 +253,6 @@ void visitEnumPatternChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
 }
 
 template <typename Fn>
-void visitTupleLiteral1ChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
-  {
-    const NodeId child(node.payload.words[kTupleLiteral1ElemWord]);
-    if (tree.contains(child)) { fn(child); }
-  }
-}
-
-template <typename Fn>
 void visitErrorDefaultExprChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
   {
     const NodeId child(node.payload.words[kErrorDefaultExprPrimaryWord]);
@@ -607,7 +599,7 @@ void visitCaptureListChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
 template <typename Fn>
 void visitDynTypeExprChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
   {
-    const NodeId child(node.payload.words[kDynTypeExprIfacesIdWord]);
+    const NodeId child(node.payload.words[kDynTypeExprPrincipalWord]);
     if (tree.contains(child)) { fn(child); }
   }
   {
@@ -706,20 +698,6 @@ void visitArrayTypeExprChildNodeIds(const Tree& tree, const Node& node, Fn&& fn)
     const NodeId child(node.payload.words[kArrayTypeExprElemWord]);
     if (tree.contains(child)) { fn(child); }
   }
-  {
-    const NodeId child(node.payload.words[kArrayTypeExprLenExprWord]);
-    if (tree.contains(child)) { fn(child); }
-  }
-}
-
-template <typename Fn>
-void visitDynTypeIfaceListChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
-  {
-    NodeList list;
-    list.first = node.payload.words[kDynTypeIfaceListIfacesFirstWord];
-    list.size = node.payload.words[kDynTypeIfaceListIfacesSizeWord];
-    for (NodeId child : tree.list(list)) { fn(child); }
-  }
 }
 
 template <typename Fn>
@@ -810,14 +788,6 @@ template <typename Fn>
 void visitSuspendStatementChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
   {
     const NodeId child(node.payload.words[kSuspendStatementUntilCondWord]);
-    if (tree.contains(child)) { fn(child); }
-  }
-}
-
-template <typename Fn>
-void visitUntilClauseChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
-  {
-    const NodeId child(node.payload.words[kUntilClauseCondWord]);
     if (tree.contains(child)) { fn(child); }
   }
 }
@@ -1025,7 +995,7 @@ void visitVariableDeclaratorChildNodeIds(const Tree& tree, const Node& node, Fn&
 template <typename Fn>
 void visitStandaloneImplDeclChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
   {
-    const NodeId child(node.payload.words[kStandaloneImplDeclIfacesIdWord]);
+    const NodeId child(node.payload.words[kStandaloneImplDeclInterfaceWord]);
     if (tree.contains(child)) { fn(child); }
   }
   {
@@ -1054,14 +1024,6 @@ void visitMarkerImplChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
   }
   {
     const NodeId child(node.payload.words[kMarkerImplForTyWord]);
-    if (tree.contains(child)) { fn(child); }
-  }
-  {
-    const NodeId child(node.payload.words[kMarkerImplWhereWord]);
-    if (tree.contains(child)) { fn(child); }
-  }
-  {
-    const NodeId child(node.payload.words[kMarkerImplTypeParamsIdWord]);
     if (tree.contains(child)) { fn(child); }
   }
 }
@@ -1267,7 +1229,7 @@ void visitAssociatedTypeDeclChildNodeIds(const Tree& tree, const Node& node, Fn&
     if (tree.contains(child)) { fn(child); }
   }
   {
-    const NodeId child(node.payload.words[kAssociatedTypeDeclBoundWord]);
+    const NodeId child(node.payload.words[kAssociatedTypeDeclBoundsIdWord]);
     if (tree.contains(child)) { fn(child); }
   }
   {
@@ -1279,7 +1241,7 @@ void visitAssociatedTypeDeclChildNodeIds(const Tree& tree, const Node& node, Fn&
 template <typename Fn>
 void visitGenericTypeParamChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
   {
-    const NodeId child(node.payload.words[kGenericTypeParamBoundWord]);
+    const NodeId child(node.payload.words[kGenericTypeParamBoundsIdWord]);
     if (tree.contains(child)) { fn(child); }
   }
   {
@@ -1329,6 +1291,26 @@ void visitClassConstDeclChildNodeIds(const Tree& tree, const Node& node, Fn&& fn
   {
     const NodeId child(node.payload.words[kClassConstDeclInitWord]);
     if (tree.contains(child)) { fn(child); }
+  }
+}
+
+template <typename Fn>
+void visitTypeParameterBoundListChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
+  {
+    NodeList list;
+    list.first = node.payload.words[kTypeParameterBoundListBoundsFirstWord];
+    list.size = node.payload.words[kTypeParameterBoundListBoundsSizeWord];
+    for (NodeId child : tree.list(list)) { fn(child); }
+  }
+}
+
+template <typename Fn>
+void visitAssociatedTypeBoundListChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
+  {
+    NodeList list;
+    list.first = node.payload.words[kAssociatedTypeBoundListBoundsFirstWord];
+    list.size = node.payload.words[kAssociatedTypeBoundListBoundsSizeWord];
+    for (NodeId child : tree.list(list)) { fn(child); }
   }
 }
 
@@ -1452,9 +1434,6 @@ void visitChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
     case SyntaxKind::EnumPattern:
       visitEnumPatternChildNodeIds(tree, node, fn);
       return;
-    case SyntaxKind::TupleLiteral1:
-      visitTupleLiteral1ChildNodeIds(tree, node, fn);
-      return;
     case SyntaxKind::ErrorDefaultExpr:
       visitErrorDefaultExprChildNodeIds(tree, node, fn);
       return;
@@ -1566,9 +1545,6 @@ void visitChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
     case SyntaxKind::ArrayTypeExpr:
       visitArrayTypeExprChildNodeIds(tree, node, fn);
       return;
-    case SyntaxKind::DynTypeIfaceList:
-      visitDynTypeIfaceListChildNodeIds(tree, node, fn);
-      return;
     case SyntaxKind::DynTypeMarkerList:
       visitDynTypeMarkerListChildNodeIds(tree, node, fn);
       return;
@@ -1598,9 +1574,6 @@ void visitChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
       return;
     case SyntaxKind::SuspendStatement:
       visitSuspendStatementChildNodeIds(tree, node, fn);
-      return;
-    case SyntaxKind::UntilClause:
-      visitUntilClauseChildNodeIds(tree, node, fn);
       return;
     case SyntaxKind::BlockStmt:
       visitBlockStmtChildNodeIds(tree, node, fn);
@@ -1712,6 +1685,12 @@ void visitChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
       return;
     case SyntaxKind::ClassConstDecl:
       visitClassConstDeclChildNodeIds(tree, node, fn);
+      return;
+    case SyntaxKind::TypeParameterBoundList:
+      visitTypeParameterBoundListChildNodeIds(tree, node, fn);
+      return;
+    case SyntaxKind::AssociatedTypeBoundList:
+      visitAssociatedTypeBoundListChildNodeIds(tree, node, fn);
       return;
     case SyntaxKind::SourceFile:
       visitSourceFileChildNodeIds(tree, node, fn);

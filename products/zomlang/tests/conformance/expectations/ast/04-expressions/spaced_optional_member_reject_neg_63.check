@@ -1,0 +1,13 @@
+// RUN: ! %zomc compile --dump-ast %corpus/04-expressions/spaced_optional_member_reject_neg_63.zom 2>&1 | %FileCheck %s
+
+
+// CHECK-LITERAL: Error [ZOM2056]: Expression expected
+// CHECK-LITERAL:   --> conformance/spaced_optional_member_reject_neg_63.zom:1:22
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 1 | let member = value ? . field;
+// CHECK-LITERAL:   |                      ^
+// CHECK-LITERAL: Error [ZOM2056]: Expression expected
+// CHECK-LITERAL:   --> conformance/spaced_optional_member_reject_neg_63.zom:1:14
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 1 | let member = value ? . field;
+// CHECK-LITERAL:   |              ^

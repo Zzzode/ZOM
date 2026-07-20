@@ -10,13 +10,14 @@
 namespace zomlang::compiler::binder {
 namespace {
 
-enum class OwnerKind : uint8_t { Module, Definition, Impl };
+enum class OwnerKind : uint8_t { Module, Definition, Impl, Anonymous };
 
 struct OwnerCursor final {
   OwnerKind kind;
   identity::ModuleId module;
   identity::DefId definition;
-  identity::ImplId implementation;
+  ImplOccurrenceId implementation;
+  ast::NodeId anonymous;
 };
 
 BinderInvariantFact failure(const VerifiedBindingInput& input, BinderInvariantKind kind,
@@ -25,7 +26,7 @@ BinderInvariantFact failure(const VerifiedBindingInput& input, BinderInvariantKi
                              ordinal};
 }
 
-ScopeOwner makeOwner(const OwnerCursor& owner) {
+ScopeOwner makeOwner(const VerifiedBindingInput& input, const OwnerCursor& owner) {
   switch (owner.kind) {
     case OwnerKind::Module:
       return ScopeOwner::module(owner.module);
@@ -33,11 +34,18 @@ ScopeOwner makeOwner(const OwnerCursor& owner) {
       return ScopeOwner::definition(owner.definition);
     case OwnerKind::Impl:
       return ScopeOwner::implementation(owner.implementation);
+    case OwnerKind::Anonymous:
+      ZC_IF_SOME(value, input.definitions().anonymousEntityAt(owner.anonymous)) {
+        return ScopeOwner::anonymous(value.key.clone());
+      }
+      ZC_UNREACHABLE;
   }
   ZC_UNREACHABLE;
 }
 
-zc::Maybe<ScopeKind> scopeKind(ast::SyntaxKind kind) {
+}  // namespace
+
+zc::Maybe<ScopeKind> scopeKindForSyntax(ast::SyntaxKind kind) {
   switch (kind) {
     case ast::SyntaxKind::FunctionDecl:
     case ast::SyntaxKind::ExternDecl:
@@ -75,6 +83,8 @@ zc::Maybe<ScopeKind> scopeKind(ast::SyntaxKind kind) {
   }
 }
 
+namespace {
+
 bool spanContainedBy(const identity::SourceSpan& parent, const identity::SourceSpan& child) {
   return parent.byteStart() <= child.byteStart() && child.byteEnd() <= parent.byteEnd();
 }
@@ -107,7 +117,7 @@ ScopeArenaBuildResult ScopeArenaBuilder::build(const VerifiedBindingInput& input
   uint32_t preorderOrdinal = 0;
   zc::Maybe<BinderInvariantFact> rejected;
   const OwnerCursor moduleOwner{OwnerKind::Module, input.module(), identity::DefId(),
-                                identity::ImplId()};
+                                ImplOccurrenceId(), ast::NodeId()};
 
   auto visit = [&](auto&& self, ast::NodeId node, ScopeId enclosingScope,
                    OwnerCursor owner) -> void {
@@ -125,7 +135,7 @@ ScopeArenaBuildResult ScopeArenaBuilder::build(const VerifiedBindingInput& input
 
     ScopeId currentScope = enclosingScope;
     OwnerCursor currentOwner = owner;
-    ZC_IF_SOME(kind, scopeKind(tree.node(node).kind)) {
+    ZC_IF_SOME(kind, scopeKindForSyntax(tree.node(node).kind)) {
       ++scopeNodeCount;
       auto index = checkedScopeIndex(nextScopeIndex);
       auto span = input.parsedModule().spanFor(tree.node(node).range);
@@ -133,16 +143,25 @@ ScopeArenaBuildResult ScopeArenaBuilder::build(const VerifiedBindingInput& input
         rejected = failure(input, BinderInvariantKind::InvalidBindingFact, ordinal);
         return;
       }
-      if (kind == ScopeKind::Function || kind == ScopeKind::Closure ||
-          kind == ScopeKind::TypeBody) {
+      if (kind == ScopeKind::Function || kind == ScopeKind::TypeBody) {
         auto definition = input.definitions().definitionAt(node);
         if (definition == zc::none) {
           rejected = failure(input, BinderInvariantKind::MissingRequiredResolution, ordinal);
           return;
         }
         ZC_IF_SOME(value, definition) {
-          currentOwner =
-              OwnerCursor{OwnerKind::Definition, input.module(), value, identity::ImplId()};
+          currentOwner = OwnerCursor{OwnerKind::Definition, input.module(), value,
+                                     ImplOccurrenceId(), ast::NodeId()};
+        }
+      } else if (kind == ScopeKind::Closure) {
+        auto anonymous = input.definitions().anonymousEntityAt(node);
+        if (anonymous == zc::none) {
+          rejected = failure(input, BinderInvariantKind::MissingRequiredResolution, ordinal);
+          return;
+        }
+        ZC_IF_SOME(value, anonymous) {
+          currentOwner = OwnerCursor{OwnerKind::Anonymous, input.module(), identity::DefId(),
+                                     ImplOccurrenceId(), value.node};
         }
       } else if (kind == ScopeKind::ImplBody) {
         auto implementation = input.definitions().implAt(node);
@@ -151,7 +170,8 @@ ScopeArenaBuildResult ScopeArenaBuilder::build(const VerifiedBindingInput& input
           return;
         }
         ZC_IF_SOME(value, implementation) {
-          currentOwner = OwnerCursor{OwnerKind::Impl, input.module(), identity::DefId(), value};
+          currentOwner =
+              OwnerCursor{OwnerKind::Impl, input.module(), identity::DefId(), value, ast::NodeId()};
         }
       }
       ZC_IF_SOME(indexValue, index) {
@@ -163,8 +183,9 @@ ScopeArenaBuildResult ScopeArenaBuilder::build(const VerifiedBindingInput& input
           currentScope = ScopeId(input.module(), indexValue);
           zc::Maybe<ScopeId> parent = enclosingScope;
           zc::Vector<ScopeBindingEntry> bindings;
-          candidate.scopes.add(ScopeRecord(currentScope, zc::mv(parent), makeOwner(currentOwner),
-                                           kind, zc::mv(bindings), zc::mv(spanValue)));
+          candidate.scopes.add(ScopeRecord(currentScope, zc::mv(parent),
+                                           makeOwner(input, currentOwner), kind, zc::mv(bindings),
+                                           zc::mv(spanValue)));
           ++nextScopeIndex;
         }
       }

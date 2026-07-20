@@ -2,12 +2,12 @@
 
 
 // CHECK-LITERAL: Error [ZOM2076]: Unexpected token expected
-// CHECK:   --> products {{(?:.*[/\\])?label_on_let_reject_neg_01\.zom:2:10$}}
+// CHECK-LITERAL:   --> conformance/label_on_let_reject_neg_01.zom:2:10
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 2 |     lab: let x = 1;
 // CHECK-LITERAL:   |          ^
 // CHECK-LITERAL: Error [ZOM2012]: Missing semicolon before 'x'
-// CHECK:   --> products {{(?:.*[/\\])?label_on_let_reject_neg_01\.zom:2:14$}}
+// CHECK-LITERAL:   --> conformance/label_on_let_reject_neg_01.zom:2:14
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 2 |     lab: let x = 1;
 // CHECK-LITERAL:   |              ^

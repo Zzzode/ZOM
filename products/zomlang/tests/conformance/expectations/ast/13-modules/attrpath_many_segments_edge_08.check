@@ -4,10 +4,10 @@
 // CHECK: SourceFile #4 @1:1..2:1 file_name="attrpath_many_segments_edge_08.zom"
 // CHECK-NEXT:   module: null
 // CHECK-NEXT:   statements:
-// CHECK-NEXT:     StatementListItem #3 @1:1..1:56
+// CHECK-NEXT:     StatementListItem #3 @1:1..1:61
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         ImportDeclaration #2 @1:1..1:56 alias="mod"
+// CHECK-NEXT:         ImportDeclaration #2 @1:1..1:61 alias="mod"
 // CHECK-NEXT:           path:
-// CHECK-NEXT:             ModulePath #1 @1:8..1:48 segments=["very", "deeply", "nested", "module", "path", "name"]
+// CHECK-NEXT:             ModulePath #1 @1:8..1:53 segments=["very", "deeply", "nested", "module_part", "path", "name"] root=Relative
 // CHECK-NEXT:           specifiers: []
 // CHECK-NEXT:       attrs: null

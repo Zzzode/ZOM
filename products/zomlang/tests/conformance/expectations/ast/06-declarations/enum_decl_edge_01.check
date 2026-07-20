@@ -10,8 +10,8 @@
 // CHECK-NEXT:           type_params_id:
 // CHECK-NEXT:             GenericParams #2 @1:12..1:15 nparams=1
 // CHECK-NEXT:               params:
-// CHECK-NEXT:                 GenericTypeParam #1 @1:13..1:14 name="T" variance=Invariant
-// CHECK-NEXT:                   bound: null
+// CHECK-NEXT:                 GenericTypeParam #1 @1:13..1:14 name="T"
+// CHECK-NEXT:                   bounds_id: null
 // CHECK-NEXT:                   default_ty: null
 // CHECK-NEXT:               where_: null
 // CHECK-NEXT:           variants_id:
@@ -23,7 +23,7 @@
 // CHECK-NEXT:                   tys:
 // CHECK-NEXT:                     NamedTypeExpr #5 @3:10..3:11
 // CHECK-NEXT:                       path:
-// CHECK-NEXT:                         ModulePath #4 @3:10..3:11 segments=["T"]
+// CHECK-NEXT:                         ModulePath #4 @3:10..3:11 segments=["T"] root=Relative
 // CHECK-NEXT:                       args: []
 // CHECK-NEXT:                   discriminant: null
 // CHECK-NEXT:       attrs: null

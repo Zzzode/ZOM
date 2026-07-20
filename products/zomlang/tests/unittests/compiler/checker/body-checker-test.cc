@@ -1,3790 +1,457 @@
-// Copyright (c) 2025 Zode.Z. All rights reserved
+// Copyright (c) 2026 Zode.Z. All rights reserved
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
-// You may obtain a copy of the License at
-//
-//     http://www.apache.org/licenses/LICENSE-2.0
-//
-// Unless required by applicable law or agreed to in writing, software
-// distributed under the License is distributed on an "AS IS" BASIS,
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-// See the License for the specific language governing permissions and limitations under
-// the License.
 
 #include "zomlang/compiler/checker/body-checker.h"
 
-#include "zc/core/vector.h"
 #include "zc/ztest/test.h"
+#include "zomlang/compiler/ast/generated/node-payload.h"
 #include "zomlang/compiler/ast/tree.h"
-#include "zomlang/compiler/binder/binder.h"
-#include "zomlang/compiler/binder/definition-identity-map.h"
-#include "zomlang/compiler/checker/decl-signature.h"
-#include "zomlang/compiler/diagnostics/diagnostic-consumer.h"
-#include "zomlang/compiler/diagnostics/diagnostic-engine.h"
-#include "zomlang/compiler/diagnostics/diagnostic.h"
-#include "zomlang/compiler/type/array-type.h"
-#include "zomlang/compiler/type/constraint-set.h"
-#include "zomlang/compiler/type/function-type.h"
-#include "zomlang/compiler/type/named-type.h"
-#include "zomlang/compiler/type/object-type.h"
-#include "zomlang/compiler/type/primitive-type.h"
-#include "zomlang/compiler/type/tuple-type.h"
-#include "zomlang/compiler/type/type-env.h"
-#include "zomlang/compiler/type/type.h"
-#include "zomlang/compiler/type/unification.h"
-#include "zomlang/compiler/type/union-type.h"
-#include "zomlang/tests/unittests/compiler/test-ast-builder.h"
+#include "zomlang/compiler/checker/checker-diagnostic-adapter.h"
+#include "zomlang/compiler/checker/scalar-literal-facts.h"
+#include "zomlang/compiler/type/semantic-type-data.h"
 #include "zomlang/tests/unittests/compiler/test-semantic-identities.h"
-#include "zomlang/tests/unittests/compiler/test-semantic-type-context.h"
 
-namespace zomlang {
-namespace compiler {
-namespace checker {
-
-using tests::TestFixture;
-
+namespace zomlang::compiler::checker::body {
 namespace {
 
-class CapturingDiagnosticConsumer final : public diagnostics::DiagnosticConsumer {
+using namespace tests::test_identity_detail;
+
+class BodyLiteralFixture final {
 public:
-  zc::Vector<diagnostics::DiagID> ids;
+  BodyLiteralFixture() {
+    auto issuedContext = factory.issue();
+    ZC_REQUIRE(issuedContext != zc::none);
+    ZC_IF_SOME(value, issuedContext) { context = value; }
 
-  void handleDiagnostic(const source::SourceManager&,
-                        const diagnostics::Diagnostic& diagnostic) override {
-    ids.add(diagnostic.getId());
+    auto createdRegistries = identity::SemanticIdentityRegistrySet::create(factory, context);
+    ZC_REQUIRE(createdRegistries != zc::none);
+    ZC_IF_SOME(value, createdRegistries) {
+      registries = zc::heap<identity::SemanticIdentityRegistrySet>(zc::mv(value));
+    }
+    auto token = factory.issueSemanticTypeStoreConstructionToken(context);
+    ZC_REQUIRE(token != zc::none);
+    ZC_IF_SOME(value, token) {
+      semanticTypes = zc::heap<type::SemanticTypeStore>(zc::mv(value), *registries);
+    }
+
+    ZC_REQUIRE(registries->collectPackage(package()) == identity::FrozenRegistryFailure::None);
+    ZC_REQUIRE(registries->freezePackages() == identity::FrozenRegistryFailure::None);
+    ZC_REQUIRE(registries->collectCrate(crate()) == identity::FrozenRegistryFailure::None);
+    ZC_REQUIRE(registries->freezeCrates() == identity::FrozenRegistryFailure::None);
+    auto snapshot = identity::ImmutableSourceSnapshot::from(tests::test_identity_detail::source(),
+                                                            zc::heapArray<uint8_t>(1, uint8_t{0}));
+    ZC_REQUIRE(snapshot != zc::none);
+    ZC_IF_SOME(value, snapshot) {
+      ZC_REQUIRE(registries->collectSourceFile(zc::mv(value)) ==
+                 identity::FrozenRegistryFailure::None);
+    }
+    ZC_REQUIRE(registries->freezeSourceFiles() == identity::FrozenRegistryFailure::None);
+    ZC_REQUIRE(registries->collectModule(module()) == identity::FrozenRegistryFailure::None);
+    ZC_REQUIRE(registries->freezeModules() == identity::FrozenRegistryFailure::None);
+    ZC_REQUIRE(registries->freezeStableIdentities() == identity::FrozenRegistryFailure::None);
+    ZC_REQUIRE(registries->freezeGenericParameters() == identity::FrozenRegistryFailure::None);
+    ZC_REQUIRE(registries->freezeCallableParameters() == identity::FrozenRegistryFailure::None);
+
+    auto handle = registries->modules().find(module());
+    ZC_REQUIRE(handle != zc::none);
+    ZC_IF_SOME(value, handle) { moduleId = value; }
   }
+
+  identity::SourceSpan sourceSpan() const {
+    auto result = registries->sourceSnapshots()[0].span(0, 1);
+    ZC_IF_SOME(value, result) { return zc::mv(value); }
+    ZC_FAIL_REQUIRE("invalid body-checker source span fixture");
+  }
+
+  ast::Tree literalTree(ast::SyntaxKind kind, ast::NodePayload payload = {}) const {
+    ast::TreeBuilder builder;
+    const auto literal = builder.makeNode(kind, source::SourceRange(), payload);
+    builder.setRoot(literal);
+    return builder.finish();
+  }
+
+  ast::Tree integerTree(ast::SyntaxKind kind, zc::StringPtr text, uint8_t base = 10) const {
+    ast::TreeBuilder builder;
+    ast::NodePayload payload;
+    const auto value = builder.internBigInt(text);
+    if (kind == ast::SyntaxKind::IntLiteral) {
+      payload.words[ast::kIntLiteralBaseWord] = base;
+      payload.words[ast::kIntLiteralValueWord] = value.value;
+    } else {
+      payload.words[ast::kBigIntLiteralValueWord] = value.value;
+    }
+    const auto literal = builder.makeNode(kind, source::SourceRange(), payload);
+    builder.setRoot(literal);
+    return builder.finish();
+  }
+
+  ast::Tree floatTree(zc::StringPtr text, uint8_t width) const {
+    ast::TreeBuilder builder;
+    ast::NodePayload payload;
+    payload.words[ast::kFloatLiteralExprWidthWord] = width;
+    payload.words[ast::kFloatLiteralExprValueWord] = builder.internFloat(text).value;
+    const auto literal =
+        builder.makeNode(ast::SyntaxKind::FloatLiteralExpr, source::SourceRange(), payload);
+    builder.setRoot(literal);
+    return builder.finish();
+  }
+
+  ast::Tree textTree(ast::SyntaxKind kind, zc::StringPtr text) const {
+    ast::TreeBuilder builder;
+    ast::NodePayload payload;
+    const uint32_t value = builder.internString(text).value;
+    if (kind == ast::SyntaxKind::StringLiteralExpr) {
+      payload.words[ast::kStringLiteralExprValueWord] = value;
+    } else if (kind == ast::SyntaxKind::CharacterLiteralExpr) {
+      payload.words[ast::kCharacterLiteralExprValueWord] = value;
+    } else {
+      payload.words[ast::kNoSubstitutionTemplateLiteralExprValueWord] = value;
+    }
+    const auto literal = builder.makeNode(kind, source::SourceRange(), payload);
+    builder.setRoot(literal);
+    return builder.finish();
+  }
+
+  ast::Tree stringTree(zc::StringPtr text) const {
+    return textTree(ast::SyntaxKind::StringLiteralExpr, text);
+  }
+
+  identity::SemanticContextFactory factory;
+  identity::SemanticContextBrand context;
+  zc::Own<identity::SemanticIdentityRegistrySet> registries;
+  zc::Own<type::SemanticTypeStore> semanticTypes;
+  identity::ModuleId moduleId;
 };
 
-bool containsDiagnosticId(const CapturingDiagnosticConsumer& consumer, diagnostics::DiagID id) {
-  for (auto emitted : consumer.ids) {
-    if (emitted == id) return true;
+bool sameBytes(zc::ArrayPtr<const uint8_t> left, zc::ArrayPtr<const uint8_t> right) {
+  if (left.size() != right.size()) return false;
+  for (size_t index = 0; index < left.size(); ++index) {
+    if (left[index] != right[index]) return false;
   }
-  return false;
+  return true;
 }
 
-zc::StringPtr binaryOperatorMethodName(zc::StringPtr ifaceName) {
-  if (ifaceName == "Add"_zc) return "add"_zc;
-  if (ifaceName == "Sub"_zc) return "sub"_zc;
-  if (ifaceName == "Mul"_zc) return "mul"_zc;
-  if (ifaceName == "Div"_zc) return "div"_zc;
-  if (ifaceName == "Rem"_zc) return "rem"_zc;
-  if (ifaceName == "Pow"_zc) return "pow"_zc;
-  return ""_zc;
-}
+void expectAccepted(BodyLiteralFixture& fixture, const ast::Tree& tree,
+                    signature::CanonicalConstValueTag expectedTag,
+                    type::semantic::PrimitiveKind expectedPrimitive,
+                    checked::CanonicalLiteral&& expectedLiteral) {
+  const auto literal = tree.root();
+  checked::CheckedNodeKey key{static_cast<uint32_t>(tree.node(literal).kind), 0,
+                              fixture.sourceSpan()};
+  auto result = scalar_literal::FactEmitter::emit(
+      scalar_literal::FactEmissionInput{fixture.context, fixture.moduleId, tree, literal, key,
+                                        fixture.registries->sourceSnapshots()[0].source(),
+                                        *fixture.registries, *fixture.semanticTypes});
+  ZC_REQUIRE(result.is<scalar_literal::EmittedFacts>());
+  auto facts = zc::mv(result).get<scalar_literal::EmittedFacts>();
+  ZC_EXPECT(facts.nodeType.key == literal);
+  ZC_EXPECT(facts.literal.key == literal);
+  ZC_EXPECT(facts.nodeType.value == facts.literal.value.type);
+  ZC_EXPECT(facts.literal.value.literal.tag() == expectedTag);
+  ZC_EXPECT(facts.nodeType.canonicalRecord.size() == 0);
+  ZC_EXPECT(facts.literal.canonicalRecord.size() == 0);
 
-zc::StringPtr unaryOperatorMethodName(zc::StringPtr ifaceName) {
-  if (ifaceName == "Neg"_zc) return "neg"_zc;
-  if (ifaceName == "Not"_zc) return "not"_zc;
-  return ""_zc;
-}
+  auto typeLookup = fixture.semanticTypes->get(facts.nodeType.value);
+  ZC_REQUIRE(typeLookup.is<type::SemanticTypeLookup>());
+  const auto& data = typeLookup.get<type::SemanticTypeLookup>().data();
+  ZC_REQUIRE(data.is<type::semantic::PrimitiveTypeData>());
+  ZC_EXPECT(data.get<type::semantic::PrimitiveTypeData>().kind == expectedPrimitive);
 
-// Helper: run full pipeline (Binder + DeclSignatureComputer + BodyChecker) and return
-// the TypeEnv for inspection.
-struct CheckResult {
-  bool success;
-  tests::TestTypeEnv typeEnv;
-  TestFixture& fix;
-  size_t constraintCount;
-};
-
-CheckResult runFullCheck(TestFixture& fix, zc::ArrayPtr<const ast::NodeId> decls) {
-  auto tree = fix.buildSourceFile("test"_zc, decls);
-
-  // Phase 1+2: Binder (DeclCollector + ImportResolver + NameResolver)
-  auto identities = tests::makeTestDefinitionIdentityMap(tree);
-  binder::Binder binder(fix.symbols(), fix.diagnostics(), tree, identities, fix.metadata());
-  if (!binder.bind()) { return {false, tests::TestTypeEnv(), fix, 0}; }
-
-  // Phase A: DeclSignatureComputer
-  tests::TestTypeEnv typeEnv;
-  DeclSignatureComputer sigComputer(typeEnv, fix.symbols(), tree, fix.metadata(),
-                                    fix.diagnostics());
-  sigComputer.computeSignatures();
-
-  // Phase B: BodyChecker
-  type::UnificationEngine unifier(typeEnv);
-  type::ConstraintSet constraints;
-  BodyChecker bodyChecker(typeEnv, unifier, constraints, fix.symbols(), tree, fix.metadata(),
-                          fix.diagnostics());
-  bool success = bodyChecker.checkBodies();
-  size_t constraintCount = bodyChecker.getConstraints().size();
-  ZC_EXPECT(typeEnv.isDispatchFrozen());
-
-  return {success, zc::mv(typeEnv), fix, constraintCount};
-}
-
-void expectUserTypeBinaryOperatorImpl(zc::StringPtr ifaceName, ast::BinaryOperatorKind op) {
-  TestFixture fix;
-  auto iface = fix.makeInterfaceDecl(ifaceName);
-  auto numberType = fix.makeClassDecl("Number"_zc);
-
-  zc::Vector<ast::NodeId> ifaceNodes;
-  ifaceNodes.add(fix.makeNamedTypeExpr(ifaceName));
-  auto ifaceList = fix.makeImplIfaceList(fix.makeNodeList(ifaceNodes.asPtr()));
-
-  zc::Vector<ast::NodeId> implParams;
-  implParams.add(fix.makeFunctionParamDecl("rhs"_zc, fix.makeNamedTypeExpr("Number"_zc)));
-  auto implParamList = fix.makeFunctionParamList(fix.makeNodeList(implParams.asPtr()));
-  auto implMethod = fix.makeMethodDecl(binaryOperatorMethodName(ifaceName), ast::NodeId(),
-                                       implParamList, fix.makeNamedTypeExpr("Number"_zc));
-  zc::Vector<ast::NodeId> implMembers;
-  implMembers.add(implMethod);
-  auto implDecl =
-      fix.makeStandaloneImplDecl(fix.makeNamedTypeExpr("Number"_zc), ifaceList,
-                                 fix.makeClassMemberList(fix.makeNodeList(implMembers.asPtr())));
-
-  auto xDecl = fix.makeVariableDeclarator(fix.makeBindingPattern("x"_zc),
-                                          fix.makeNamedTypeExpr("Number"_zc));
-  auto yDecl = fix.makeVariableDeclarator(fix.makeBindingPattern("y"_zc),
-                                          fix.makeNamedTypeExpr("Number"_zc));
-  zc::Vector<ast::NodeId> decls;
-  decls.add(xDecl);
-  decls.add(yDecl);
-  auto let = fix.makeLetStmt(fix.makeVariableDeclaratorList(fix.makeNodeList(decls.asPtr())));
-
-  auto binExpr = fix.makeBinaryExpr(op, fix.makeIdentExpr("x"_zc), fix.makeIdentExpr("y"_zc));
-
-  zc::Vector<ast::NodeId> topDecls;
-  topDecls.add(iface);
-  topDecls.add(numberType);
-  topDecls.add(implDecl);
-  topDecls.add(let);
-  topDecls.add(binExpr);
-  auto result = runFullCheck(fix, topDecls.asPtr());
-
-  ZC_EXPECT(result.success);
-  ZC_EXPECT(!fix.diagnostics().hasErrors());
-  ZC_EXPECT(result.typeEnv.hasType(binExpr));
-  auto& ty = result.typeEnv.getType(binExpr);
-  ZC_EXPECT(isNamed(ty));
-  if (isNamed(ty)) { ZC_EXPECT(static_cast<const type::NamedType&>(ty).getName() == "Number"_zc); }
-  ZC_EXPECT(result.typeEnv.hasDispatch(binExpr));
-  auto& dispatch = result.typeEnv.getDispatch(binExpr);
-  ZC_EXPECT(dispatch.targetKind == type::CallTargetKind::OperatorMethod);
-  ZC_EXPECT(dispatch.receiverMode == type::ReceiverMode::OperatorLeftHandSide);
-  ZC_EXPECT(dispatch.interfaceName.asPtr() == ifaceName);
-  ZC_EXPECT(dispatch.methodName.asPtr() == binaryOperatorMethodName(ifaceName));
-  ZC_EXPECT(dispatch.implNode == implDecl);
-  ZC_EXPECT(dispatch.argumentTypes.size() == 2);
-  ZC_EXPECT(dispatch.resultType == result.typeEnv.getSemanticTypeId(binExpr));
-}
-
-void expectUserTypeComparisonImpl(zc::StringPtr ifaceName, ast::BinaryOperatorKind op) {
-  TestFixture fix;
-  auto iface = fix.makeInterfaceDecl(ifaceName);
-  auto pointType = fix.makeClassDecl("Point"_zc);
-
-  zc::Vector<ast::NodeId> ifaceNodes;
-  ifaceNodes.add(fix.makeNamedTypeExpr(ifaceName));
-  auto ifaceList = fix.makeImplIfaceList(fix.makeNodeList(ifaceNodes.asPtr()));
-
-  zc::Vector<ast::NodeId> implParams;
-  implParams.add(fix.makeFunctionParamDecl("rhs"_zc, fix.makeNamedTypeExpr("Point"_zc)));
-  auto implParamList = fix.makeFunctionParamList(fix.makeNodeList(implParams.asPtr()));
-  const bool isEq = ifaceName == "Eq"_zc;
-  auto implMethod = fix.makeMethodDecl(isEq ? "eq"_zc : "cmp"_zc, ast::NodeId(), implParamList,
-                                       fix.makeNamedTypeExpr(isEq ? "bool"_zc : "i32"_zc));
-  zc::Vector<ast::NodeId> implMembers;
-  implMembers.add(implMethod);
-  auto implDecl =
-      fix.makeStandaloneImplDecl(fix.makeNamedTypeExpr("Point"_zc), ifaceList,
-                                 fix.makeClassMemberList(fix.makeNodeList(implMembers.asPtr())));
-
-  auto xDecl =
-      fix.makeVariableDeclarator(fix.makeBindingPattern("x"_zc), fix.makeNamedTypeExpr("Point"_zc));
-  auto yDecl =
-      fix.makeVariableDeclarator(fix.makeBindingPattern("y"_zc), fix.makeNamedTypeExpr("Point"_zc));
-  zc::Vector<ast::NodeId> decls;
-  decls.add(xDecl);
-  decls.add(yDecl);
-  auto let = fix.makeLetStmt(fix.makeVariableDeclaratorList(fix.makeNodeList(decls.asPtr())));
-
-  auto binExpr = fix.makeBinaryExpr(op, fix.makeIdentExpr("x"_zc), fix.makeIdentExpr("y"_zc));
-
-  zc::Vector<ast::NodeId> topDecls;
-  topDecls.add(iface);
-  topDecls.add(pointType);
-  topDecls.add(implDecl);
-  topDecls.add(let);
-  topDecls.add(binExpr);
-  auto result = runFullCheck(fix, topDecls.asPtr());
-
-  ZC_EXPECT(result.success);
-  ZC_EXPECT(!fix.diagnostics().hasErrors());
-  ZC_EXPECT(result.typeEnv.hasType(binExpr));
-  auto& ty = result.typeEnv.getType(binExpr);
-  ZC_EXPECT(isPrimitive(ty));
-  if (isPrimitive(ty)) {
-    ZC_EXPECT(static_cast<const type::PrimitiveType&>(ty).getPrimitiveKind() ==
-              type::PrimitiveKind::Bool);
-  }
-  ZC_EXPECT(result.typeEnv.hasDispatch(binExpr));
-  auto& dispatch = result.typeEnv.getDispatch(binExpr);
-  ZC_EXPECT(dispatch.targetKind == type::CallTargetKind::OperatorMethod);
-  ZC_EXPECT(dispatch.receiverMode == type::ReceiverMode::OperatorLeftHandSide);
-  ZC_EXPECT(dispatch.interfaceName.asPtr() == ifaceName);
-  ZC_EXPECT(dispatch.methodName.asPtr() == (isEq ? "eq"_zc : "cmp"_zc));
-  ZC_EXPECT(dispatch.implNode == implDecl);
-  ZC_EXPECT(dispatch.argumentTypes.size() == 2);
-  ZC_EXPECT(dispatch.resultType == result.typeEnv.getSemanticTypeId(binExpr));
-}
-
-void expectUserTypeComparisonWithoutImplFails(zc::StringPtr missingIfaceName,
-                                              ast::BinaryOperatorKind op) {
-  TestFixture fix;
-  auto consumer = zc::heap<CapturingDiagnosticConsumer>();
-  auto consumerPtr = consumer.get();
-  fix.diagnostics().addConsumer(zc::mv(consumer));
-
-  auto pointType = fix.makeClassDecl("Point"_zc);
-  auto xDecl =
-      fix.makeVariableDeclarator(fix.makeBindingPattern("x"_zc), fix.makeNamedTypeExpr("Point"_zc));
-  auto yDecl =
-      fix.makeVariableDeclarator(fix.makeBindingPattern("y"_zc), fix.makeNamedTypeExpr("Point"_zc));
-  zc::Vector<ast::NodeId> decls;
-  decls.add(xDecl);
-  decls.add(yDecl);
-  auto let = fix.makeLetStmt(fix.makeVariableDeclaratorList(fix.makeNodeList(decls.asPtr())));
-
-  auto binExpr = fix.makeBinaryExpr(op, fix.makeIdentExpr("x"_zc), fix.makeIdentExpr("y"_zc));
-
-  zc::Vector<ast::NodeId> topDecls;
-  topDecls.add(pointType);
-  topDecls.add(let);
-  topDecls.add(binExpr);
-  auto result = runFullCheck(fix, topDecls.asPtr());
-
-  ZC_EXPECT(!result.success);
-  ZC_EXPECT(fix.diagnostics().hasErrors());
-  ZC_EXPECT(containsDiagnosticId(*consumerPtr, diagnostics::DiagID::CheckerTraitNotImplemented));
-  ZC_EXPECT(result.typeEnv.hasType(binExpr));
-  ZC_EXPECT(isError(result.typeEnv.getType(binExpr)));
-  (void)missingIfaceName;
-}
-
-void expectUserTypeUnaryOperatorImpl(zc::StringPtr ifaceName, ast::UnaryOperatorKind op,
-                                     bool returnsOperandType) {
-  TestFixture fix;
-  auto iface = fix.makeInterfaceDecl(ifaceName);
-  auto operandType = fix.makeClassDecl("Operand"_zc);
-
-  zc::Vector<ast::NodeId> ifaceNodes;
-  ifaceNodes.add(fix.makeNamedTypeExpr(ifaceName));
-  auto ifaceList = fix.makeImplIfaceList(fix.makeNodeList(ifaceNodes.asPtr()));
-
-  auto implRetTy =
-      returnsOperandType ? fix.makeNamedTypeExpr("Operand"_zc) : fix.makeNamedTypeExpr("bool"_zc);
-  auto implMethod = fix.makeMethodDecl(unaryOperatorMethodName(ifaceName), ast::NodeId(),
-                                       ast::NodeId(), implRetTy);
-  zc::Vector<ast::NodeId> implMembers;
-  implMembers.add(implMethod);
-  auto implDecl =
-      fix.makeStandaloneImplDecl(fix.makeNamedTypeExpr("Operand"_zc), ifaceList,
-                                 fix.makeClassMemberList(fix.makeNodeList(implMembers.asPtr())));
-
-  auto valueDecl = fix.makeVariableDeclarator(fix.makeBindingPattern("value"_zc),
-                                              fix.makeNamedTypeExpr("Operand"_zc));
-  zc::Vector<ast::NodeId> decls;
-  decls.add(valueDecl);
-  auto let = fix.makeLetStmt(fix.makeVariableDeclaratorList(fix.makeNodeList(decls.asPtr())));
-  auto unary = fix.makeUnaryExpr(op, fix.makeIdentExpr("value"_zc));
-
-  zc::Vector<ast::NodeId> topDecls;
-  topDecls.add(iface);
-  topDecls.add(operandType);
-  topDecls.add(implDecl);
-  topDecls.add(let);
-  topDecls.add(unary);
-  auto result = runFullCheck(fix, topDecls.asPtr());
-
-  ZC_EXPECT(result.success);
-  ZC_EXPECT(!fix.diagnostics().hasErrors());
-  ZC_EXPECT(result.typeEnv.hasType(unary));
-  auto& ty = result.typeEnv.getType(unary);
-  if (returnsOperandType) {
-    ZC_EXPECT(isNamed(ty));
-    if (isNamed(ty)) {
-      ZC_EXPECT(static_cast<const type::NamedType&>(ty).getName() == "Operand"_zc);
-    }
-  } else {
-    ZC_EXPECT(isPrimitive(ty));
-    if (isPrimitive(ty)) {
-      ZC_EXPECT(static_cast<const type::PrimitiveType&>(ty).getPrimitiveKind() ==
-                type::PrimitiveKind::Bool);
+  auto actualEncoding = signature::SignatureFactsCanonicalCodec::encodeCanonicalConstValue(
+      facts.literal.value.literal, fixture.moduleId, *fixture.registries, *fixture.semanticTypes);
+  auto expectedEncoding = signature::SignatureFactsCanonicalCodec::encodeCanonicalConstValue(
+      expectedLiteral, fixture.moduleId, *fixture.registries, *fixture.semanticTypes);
+  ZC_REQUIRE(actualEncoding != zc::none);
+  ZC_REQUIRE(expectedEncoding != zc::none);
+  ZC_IF_SOME(actual, actualEncoding) {
+    ZC_IF_SOME(expected, expectedEncoding) {
+      ZC_EXPECT(sameBytes(actual.asPtr(), expected.asPtr()));
     }
   }
-  ZC_EXPECT(result.typeEnv.hasDispatch(unary));
-  auto& dispatch = result.typeEnv.getDispatch(unary);
-  ZC_EXPECT(dispatch.targetKind == type::CallTargetKind::OperatorMethod);
-  ZC_EXPECT(dispatch.receiverMode == type::ReceiverMode::OperatorOperand);
-  ZC_EXPECT(dispatch.interfaceName.asPtr() == ifaceName);
-  ZC_EXPECT(dispatch.methodName.asPtr() == unaryOperatorMethodName(ifaceName));
-  ZC_EXPECT(dispatch.implNode == implDecl);
-  ZC_EXPECT(dispatch.argumentTypes.size() == 1);
-  ZC_EXPECT(dispatch.resultType == result.typeEnv.getSemanticTypeId(unary));
 }
 
-void expectUserTypeUnaryWithoutImplFails(ast::UnaryOperatorKind op) {
-  TestFixture fix;
-  auto consumer = zc::heap<CapturingDiagnosticConsumer>();
-  auto consumerPtr = consumer.get();
-  fix.diagnostics().addConsumer(zc::mv(consumer));
-
-  auto operandType = fix.makeClassDecl("Operand"_zc);
-  auto valueDecl = fix.makeVariableDeclarator(fix.makeBindingPattern("value"_zc),
-                                              fix.makeNamedTypeExpr("Operand"_zc));
-  zc::Vector<ast::NodeId> decls;
-  decls.add(valueDecl);
-  auto let = fix.makeLetStmt(fix.makeVariableDeclaratorList(fix.makeNodeList(decls.asPtr())));
-  auto unary = fix.makeUnaryExpr(op, fix.makeIdentExpr("value"_zc));
-
-  zc::Vector<ast::NodeId> topDecls;
-  topDecls.add(operandType);
-  topDecls.add(let);
-  topDecls.add(unary);
-  auto result = runFullCheck(fix, topDecls.asPtr());
-
-  ZC_EXPECT(!result.success);
-  ZC_EXPECT(fix.diagnostics().hasErrors());
-  ZC_EXPECT(containsDiagnosticId(*consumerPtr, diagnostics::DiagID::CheckerTraitNotImplemented));
-  ZC_EXPECT(result.typeEnv.hasType(unary));
-  if (result.typeEnv.hasType(unary)) { ZC_EXPECT(isError(result.typeEnv.getType(unary))); }
+void expectInvariantRejectedWithoutPublication(BodyLiteralFixture& fixture, const ast::Tree& tree) {
+  const size_t sizeBefore = fixture.semanticTypes->size();
+  const auto literal = tree.root();
+  checked::CheckedNodeKey key{static_cast<uint32_t>(tree.node(literal).kind), 0,
+                              fixture.sourceSpan()};
+  auto result = scalar_literal::FactEmitter::emit(
+      scalar_literal::FactEmissionInput{fixture.context, fixture.moduleId, tree, literal, key,
+                                        fixture.registries->sourceSnapshots()[0].source(),
+                                        *fixture.registries, *fixture.semanticTypes});
+  ZC_REQUIRE(result.is<checked::CheckedFactsInvariantRejected>());
+  ZC_EXPECT(fixture.semanticTypes->size() == sizeBefore);
+  const auto& rejection = result.get<checked::CheckedFactsInvariantRejected>();
+  ZC_REQUIRE(rejection.failures.size() == 1);
+  const auto& failure = rejection.failures[0].variant();
+  ZC_REQUIRE(failure.is<signature::CheckerInvariantFact>());
+  ZC_EXPECT(failure.get<signature::CheckerInvariantFact>().kind ==
+            signature::CheckerInvariantKind::InvalidFact);
 }
 
-ast::NodeId makeAssociatedTypeDecl(TestFixture& fix, zc::StringPtr name, ast::NodeId defaultTy) {
-  ast::NodePayload payload;
-  auto nameId = fix.builder().internIdent(name);
-  payload.words[ast::kAssociatedTypeDeclNameWord] = nameId.value;
-  payload.words[ast::kAssociatedTypeDeclTypeParamsIdWord] = 0;
-  payload.words[ast::kAssociatedTypeDeclBoundWord] = 0;
-  payload.words[ast::kAssociatedTypeDeclDefaultTyWord] = defaultTy.value;
-  return fix.builder().makeNode(ast::SyntaxKind::AssociatedTypeDecl, source::SourceRange(),
-                                payload);
-}
-
-ast::NodeId makeStandaloneImplDecl(TestFixture& fix, ast::NodeId forTy, ast::NodeId ifaces,
-                                   ast::NodeId members) {
-  ast::NodePayload payload;
-  payload.words[ast::kStandaloneImplDeclIsUnsafeWord] = 0;
-  payload.words[ast::kStandaloneImplDeclIfacesIdWord] = ifaces.value;
-  payload.words[ast::kStandaloneImplDeclForTyWord] = forTy.value;
-  payload.words[ast::kStandaloneImplDeclWhereWord] = 0;
-  payload.words[ast::kStandaloneImplDeclTypeParamsIdWord] = 0;
-  payload.words[ast::kStandaloneImplDeclMembersIdWord] = members.value;
-  return fix.builder().makeNode(ast::SyntaxKind::StandaloneImplDecl, source::SourceRange(),
-                                payload);
+void expectSourceRejectedWithoutPublication(BodyLiteralFixture& fixture, const ast::Tree& tree,
+                                            type::semantic::PrimitiveKind expectedTarget,
+                                            zc::StringPtr expectedTargetText) {
+  const size_t sizeBefore = fixture.semanticTypes->size();
+  const auto literal = tree.root();
+  checked::CheckedNodeKey key{static_cast<uint32_t>(tree.node(literal).kind), 0,
+                              fixture.sourceSpan()};
+  auto result = scalar_literal::FactEmitter::emit(
+      scalar_literal::FactEmissionInput{fixture.context, fixture.moduleId, tree, literal, key,
+                                        fixture.registries->sourceSnapshots()[0].source(),
+                                        *fixture.registries, *fixture.semanticTypes});
+  ZC_REQUIRE(result.is<checked::CheckedFactsSourceRejected>());
+  ZC_EXPECT(fixture.semanticTypes->size() == sizeBefore);
+  const auto& rejection = result.get<checked::CheckedFactsSourceRejected>();
+  ZC_REQUIRE(rejection.failures.size() == 1);
+  ZC_EXPECT(rejection.failures[0].diagnostic == checked::CheckerErrorId::BodyLiteralOutOfRange());
+  ZC_EXPECT(rejection.failures[0].stage == checked::CheckerDiagnosticStage::Body);
+  ZC_EXPECT(rejection.failures[0].producer == checked::CheckerDiagnosticProducer::Constant);
+  ZC_EXPECT(rejection.failures[0].primaryNode == literal);
+  ZC_EXPECT(rejection.failures[0].arguments.size() == 2);
+  const auto& target = rejection.failures[0].arguments[1].variant();
+  ZC_REQUIRE(target.is<checked::PrimitiveTypeDisplayArg>());
+  ZC_EXPECT(target.get<checked::PrimitiveTypeDisplayArg>().kind == expectedTarget);
+  ZC_EXPECT(renderCheckerDisplayArgument(rejection.failures[0].arguments[1], *fixture.registries,
+                                         *fixture.semanticTypes) == expectedTargetText);
+  const auto& policy = rejection.failures[0].recoveryPolicy.variant();
+  ZC_REQUIRE(policy.is<checked::CreateRootRecoveryPolicy>());
+  ZC_EXPECT(policy.get<checked::CreateRootRecoveryPolicy>().recoveryClass ==
+            checked::CheckerRecoveryClass::FailedInference);
+  ZC_EXPECT(policy.get<checked::CreateRootRecoveryPolicy>().suppressIfChildRecovery);
+  ZC_EXPECT(rejection.failures[0].recovery == zc::none);
 }
 
 }  // namespace
 
-// ============================================================================
-// Literal type inference
-// ============================================================================
+ZC_TEST("ScalarLiteralBodyFactEmitter.EmitsCanonicalNullLiteral") {
+  BodyLiteralFixture fixture;
+  auto tree = fixture.literalTree(ast::SyntaxKind::NullLiteral);
+  expectAccepted(fixture, tree, signature::CanonicalConstValueTag::Null,
+                 type::semantic::PrimitiveKind::Null, checked::CanonicalLiteral::null());
+}
+
+ZC_TEST("ScalarLiteralBodyFactEmitter.RejectsMalformedNullPayload") {
+  BodyLiteralFixture fixture;
+  ast::NodePayload payload;
+  payload.words[0] = 1;
+  auto tree = fixture.literalTree(ast::SyntaxKind::NullLiteral, payload);
+  expectInvariantRejectedWithoutPublication(fixture, tree);
+}
+
+ZC_TEST("ScalarLiteralBodyFactEmitter.EmitsCanonicalBoolLiteral") {
+  BodyLiteralFixture fixture;
+  ast::NodePayload payload;
+  payload.words[ast::kBoolLiteralValueWord] = 1;
+  auto tree = fixture.literalTree(ast::SyntaxKind::BoolLiteral, payload);
+  expectAccepted(fixture, tree, signature::CanonicalConstValueTag::Bool,
+                 type::semantic::PrimitiveKind::Bool, checked::CanonicalLiteral::boolean(true));
+}
+
+ZC_TEST("ScalarLiteralBodyFactEmitter.RejectsMalformedBoolPayload") {
+  BodyLiteralFixture fixture;
+  ast::NodePayload payload;
+  payload.words[ast::kBoolLiteralValueWord] = 2;
+  auto tree = fixture.literalTree(ast::SyntaxKind::BoolLiteral, payload);
+  expectInvariantRejectedWithoutPublication(fixture, tree);
+}
+
+ZC_TEST("ScalarLiteralBodyFactEmitter.AppliesCanonicalIntegerDefaultLadder") {
+  BodyLiteralFixture fixture;
+  auto zeroTree = fixture.integerTree(ast::SyntaxKind::IntLiteral, "0"_zcc);
+  expectAccepted(fixture, zeroTree, signature::CanonicalConstValueTag::Integer,
+                 type::semantic::PrimitiveKind::I32,
+                 checked::CanonicalLiteral::integer(signature::CanonicalInteger{
+                     signature::IntegerSign::NonNegative, zc::heapArray<uint8_t>(0)}));
+
+  auto i32Tree = fixture.integerTree(ast::SyntaxKind::IntLiteral, "2147483647"_zcc);
+  uint8_t i32Bytes[] = {0x7f, 0xff, 0xff, 0xff};
+  expectAccepted(
+      fixture, i32Tree, signature::CanonicalConstValueTag::Integer,
+      type::semantic::PrimitiveKind::I32,
+      checked::CanonicalLiteral::integer(signature::CanonicalInteger{
+          signature::IntegerSign::NonNegative, zc::heapArray<uint8_t>(zc::arrayPtr(i32Bytes))}));
+
+  auto i64Tree = fixture.integerTree(ast::SyntaxKind::IntLiteral, "2147483648"_zcc);
+  uint8_t i64Bytes[] = {0x80, 0x00, 0x00, 0x00};
+  expectAccepted(
+      fixture, i64Tree, signature::CanonicalConstValueTag::Integer,
+      type::semantic::PrimitiveKind::I64,
+      checked::CanonicalLiteral::integer(signature::CanonicalInteger{
+          signature::IntegerSign::NonNegative, zc::heapArray<uint8_t>(zc::arrayPtr(i64Bytes))}));
+
+  auto u64Tree = fixture.integerTree(ast::SyntaxKind::IntLiteral, "9223372036854775808"_zcc);
+  uint8_t u64Bytes[] = {0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
+  expectAccepted(
+      fixture, u64Tree, signature::CanonicalConstValueTag::Integer,
+      type::semantic::PrimitiveKind::U64,
+      checked::CanonicalLiteral::integer(signature::CanonicalInteger{
+          signature::IntegerSign::NonNegative, zc::heapArray<uint8_t>(zc::arrayPtr(u64Bytes))}));
+}
+
+ZC_TEST("ScalarLiteralBodyFactEmitter.RejectsMalformedIntPayloadAndPoolHandle") {
+  BodyLiteralFixture fixture;
+  auto malformedText = fixture.integerTree(ast::SyntaxKind::IntLiteral, "12z"_zcc);
+  expectInvariantRejectedWithoutPublication(fixture, malformedText);
+
+  auto malformedBase = fixture.integerTree(ast::SyntaxKind::IntLiteral, "12"_zcc, 3);
+  expectInvariantRejectedWithoutPublication(fixture, malformedBase);
+
+  ast::NodePayload payload;
+  payload.words[ast::kIntLiteralBaseWord] = 10;
+  payload.words[ast::kIntLiteralValueWord] = 2;
+  auto invalidHandle = fixture.literalTree(ast::SyntaxKind::IntLiteral, payload);
+  expectInvariantRejectedWithoutPublication(fixture, invalidHandle);
+}
+
+ZC_TEST("ScalarLiteralBodyFactEmitter.RejectsOutOfRangeIntAsSourceFailure") {
+  BodyLiteralFixture fixture;
+  auto tree = fixture.integerTree(ast::SyntaxKind::IntLiteral, "18446744073709551616"_zcc);
+  expectSourceRejectedWithoutPublication(fixture, tree, type::semantic::PrimitiveKind::U64,
+                                         "u64"_zcc);
+}
+
+ZC_TEST("ScalarLiteralBodyFactEmitter.EmitsCanonicalFloatWidths") {
+  BodyLiteralFixture fixture;
+  auto f32Tree = fixture.floatTree("1.5"_zcc, 32);
+  expectAccepted(fixture, f32Tree, signature::CanonicalConstValueTag::Float,
+                 type::semantic::PrimitiveKind::F32,
+                 checked::CanonicalLiteral::float32(0x3fc00000));
+
+  auto f64Tree = fixture.floatTree("1.5"_zcc, 64);
+  expectAccepted(fixture, f64Tree, signature::CanonicalConstValueTag::Float,
+                 type::semantic::PrimitiveKind::F64,
+                 checked::CanonicalLiteral::float64(0x3ff8000000000000));
+}
+
+ZC_TEST("ScalarLiteralBodyFactEmitter.RejectsMalformedFloatPayload") {
+  BodyLiteralFixture fixture;
+  auto malformedWidth = fixture.floatTree("1.5"_zcc, 16);
+  expectInvariantRejectedWithoutPublication(fixture, malformedWidth);
 
-ZC_TEST("BodyChecker.InfersIntLiteralType") {
-  TestFixture fix;
-  auto lit = fix.makeIntLiteral(42);
-
-  zc::Vector<ast::NodeId> topDecls;
-  topDecls.add(lit);
-  auto result = runFullCheck(fix, topDecls.asPtr());
-
-  ZC_EXPECT(result.success);
-  ZC_EXPECT(result.typeEnv.hasType(lit));
-  auto& ty = result.typeEnv.getType(lit);
-  ZC_EXPECT(isPrimitive(ty));
-}
-
-ZC_TEST("BodyChecker.InfersFloatLiteralType") {
-  TestFixture fix;
-  auto lit = fix.makeFloatLiteral(3.14);
-
-  zc::Vector<ast::NodeId> topDecls;
-  topDecls.add(lit);
-  auto result = runFullCheck(fix, topDecls.asPtr());
-
-  ZC_EXPECT(result.success);
-  if (result.typeEnv.hasType(lit)) {
-    auto& ty = result.typeEnv.getType(lit);
-    ZC_EXPECT(isPrimitive(ty));
-  }
-}
-
-ZC_TEST("BodyChecker.InfersStringLiteralType") {
-  TestFixture fix;
-  auto lit = fix.makeStrLiteral("hello"_zc);
-
-  zc::Vector<ast::NodeId> topDecls;
-  topDecls.add(lit);
-  auto result = runFullCheck(fix, topDecls.asPtr());
-
-  ZC_EXPECT(result.success);
-  if (result.typeEnv.hasType(lit)) {
-    auto& ty = result.typeEnv.getType(lit);
-    ZC_EXPECT(isPrimitive(ty));
-  }
-}
-
-ZC_TEST("BodyChecker.InfersBoolLiteralType") {
-  TestFixture fix;
-  auto lit = fix.makeBoolLiteral(true);
-
-  zc::Vector<ast::NodeId> topDecls;
-  topDecls.add(lit);
-  auto result = runFullCheck(fix, topDecls.asPtr());
-
-  ZC_EXPECT(result.success);
-  if (result.typeEnv.hasType(lit)) {
-    auto& ty = result.typeEnv.getType(lit);
-    ZC_EXPECT(isPrimitive(ty));
-  }
-}
-
-ZC_TEST("BodyChecker.InfersNullLiteralType") {
-  TestFixture fix;
-  auto lit = fix.makeNullLiteral();
-
-  zc::Vector<ast::NodeId> topDecls;
-  topDecls.add(lit);
-  auto result = runFullCheck(fix, topDecls.asPtr());
-
-  ZC_EXPECT(result.success);
-  if (result.typeEnv.hasType(lit)) {
-    auto& ty = result.typeEnv.getType(lit);
-    ZC_EXPECT(isNull(ty));
-  }
-}
-
-ZC_TEST("BodyChecker.InfersUnitLiteralType") {
-  TestFixture fix;
-  auto lit = fix.makeUnitLiteral();
-
-  zc::Vector<ast::NodeId> topDecls;
-  topDecls.add(lit);
-  auto result = runFullCheck(fix, topDecls.asPtr());
-
-  ZC_EXPECT(result.success);
-  if (result.typeEnv.hasType(lit)) {
-    auto& ty = result.typeEnv.getType(lit);
-    ZC_EXPECT(isUnit(ty));
-  }
-}
-
-// ============================================================================
-// Binary expression type inference
-// ============================================================================
-
-ZC_TEST("BodyChecker.InfersBinaryArithExprType") {
-  TestFixture fix;
-  // 1 + 2
-  auto lhs = fix.makeIntLiteral(1);
-  auto rhs = fix.makeIntLiteral(2);
-  auto binExpr = fix.makeBinaryExpr(ast::BinaryOperatorKind::Add, lhs, rhs);
-
-  zc::Vector<ast::NodeId> topDecls;
-  topDecls.add(binExpr);
-  auto result = runFullCheck(fix, topDecls.asPtr());
-
-  ZC_EXPECT(result.success);
-  if (result.typeEnv.hasType(binExpr)) {
-    auto& ty = result.typeEnv.getType(binExpr);
-    ZC_EXPECT(isPrimitive(ty));
-  }
-  ZC_EXPECT(result.typeEnv.hasDispatch(binExpr));
-  auto& dispatch = result.typeEnv.getDispatch(binExpr);
-  ZC_EXPECT(dispatch.targetKind == type::CallTargetKind::PrimitiveOperator);
-  ZC_EXPECT(dispatch.receiverMode == type::ReceiverMode::OperatorLeftHandSide);
-  ZC_EXPECT(dispatch.argumentTypes.size() == 2);
-  ZC_EXPECT(dispatch.resultType == result.typeEnv.getSemanticTypeId(binExpr));
-}
-
-ZC_TEST("BodyChecker.BinaryArithmeticRejectsImplicitNumericWidening") {
-  TestFixture fix;
-  auto consumer = zc::heap<CapturingDiagnosticConsumer>();
-  auto consumerPtr = consumer.get();
-  fix.diagnostics().addConsumer(zc::mv(consumer));
-
-  auto lhs = fix.makeIntLiteral(1);
-  auto rhs = fix.makeFloatLiteral(2.0);
-  auto binExpr = fix.makeBinaryExpr(ast::BinaryOperatorKind::Add, lhs, rhs);
-
-  zc::Vector<ast::NodeId> topDecls;
-  topDecls.add(binExpr);
-  auto result = runFullCheck(fix, topDecls.asPtr());
-
-  ZC_EXPECT(!result.success);
-  ZC_EXPECT(fix.diagnostics().hasErrors());
-  ZC_EXPECT(containsDiagnosticId(*consumerPtr, diagnostics::DiagID::CannotUnifyTypes));
-  ZC_EXPECT(result.typeEnv.hasType(binExpr));
-  ZC_EXPECT(isError(result.typeEnv.getType(binExpr)));
-}
-
-ZC_TEST("BodyChecker.BinaryAddUsesUserTypeAddImpl") {
-  expectUserTypeBinaryOperatorImpl("Add"_zc, ast::BinaryOperatorKind::Add);
-}
-
-ZC_TEST("BodyChecker.BinaryAddRejectsWrongTraitMethodSignature") {
-  TestFixture fix;
-  auto consumer = zc::heap<CapturingDiagnosticConsumer>();
-  auto consumerPtr = consumer.get();
-  fix.diagnostics().addConsumer(zc::mv(consumer));
-
-  zc::Vector<ast::NodeId> ifaceParams;
-  ifaceParams.add(fix.makeFunctionParamDecl("rhs"_zc, fix.makeNamedTypeExpr("Number"_zc)));
-  auto ifaceParamList = fix.makeFunctionParamList(fix.makeNodeList(ifaceParams.asPtr()));
-  auto ifaceMethod = fix.makeMethodDecl("add"_zc, ast::NodeId(), ifaceParamList,
-                                        fix.makeNamedTypeExpr("Number"_zc));
-  zc::Vector<ast::NodeId> ifaceMembers;
-  ifaceMembers.add(ifaceMethod);
-  auto addIface = fix.makeInterfaceDecl(
-      "Add"_zc, fix.makeClassMemberList(fix.makeNodeList(ifaceMembers.asPtr())));
-
-  auto numberType = fix.makeClassDecl("Number"_zc);
-
-  zc::Vector<ast::NodeId> implIfaceNodes;
-  implIfaceNodes.add(fix.makeNamedTypeExpr("Add"_zc));
-  auto implIfaces = fix.makeImplIfaceList(fix.makeNodeList(implIfaceNodes.asPtr()));
-
-  zc::Vector<ast::NodeId> implParams;
-  implParams.add(fix.makeFunctionParamDecl("rhs"_zc, fix.makeNamedTypeExpr("bool"_zc)));
-  auto implParamList = fix.makeFunctionParamList(fix.makeNodeList(implParams.asPtr()));
-  auto implMethod =
-      fix.makeMethodDecl("add"_zc, ast::NodeId(), implParamList, fix.makeNamedTypeExpr("str"_zc));
-  zc::Vector<ast::NodeId> implMembers;
-  implMembers.add(implMethod);
-  auto implDecl =
-      makeStandaloneImplDecl(fix, fix.makeNamedTypeExpr("Number"_zc), implIfaces,
-                             fix.makeClassMemberList(fix.makeNodeList(implMembers.asPtr())));
-
-  auto xDecl = fix.makeVariableDeclarator(fix.makeBindingPattern("x"_zc),
-                                          fix.makeNamedTypeExpr("Number"_zc));
-  auto yDecl = fix.makeVariableDeclarator(fix.makeBindingPattern("y"_zc),
-                                          fix.makeNamedTypeExpr("Number"_zc));
-  zc::Vector<ast::NodeId> decls;
-  decls.add(xDecl);
-  decls.add(yDecl);
-  auto let = fix.makeLetStmt(fix.makeVariableDeclaratorList(fix.makeNodeList(decls.asPtr())));
-  auto binExpr = fix.makeBinaryExpr(ast::BinaryOperatorKind::Add, fix.makeIdentExpr("x"_zc),
-                                    fix.makeIdentExpr("y"_zc));
-
-  zc::Vector<ast::NodeId> topDecls;
-  topDecls.add(addIface);
-  topDecls.add(numberType);
-  topDecls.add(implDecl);
-  topDecls.add(let);
-  topDecls.add(binExpr);
-  auto result = runFullCheck(fix, topDecls.asPtr());
-
-  ZC_EXPECT(!result.success);
-  ZC_EXPECT(fix.diagnostics().hasErrors());
-  ZC_EXPECT(
-      containsDiagnosticId(*consumerPtr, diagnostics::DiagID::OperatorTraitSignatureMismatch));
-  ZC_EXPECT(result.typeEnv.hasType(binExpr));
-  if (result.typeEnv.hasType(binExpr)) { ZC_EXPECT(isError(result.typeEnv.getType(binExpr))); }
-}
-
-ZC_TEST("BodyChecker.BinarySubUsesUserTypeSubImpl") {
-  expectUserTypeBinaryOperatorImpl("Sub"_zc, ast::BinaryOperatorKind::Sub);
-}
-
-ZC_TEST("BodyChecker.BinaryMulUsesUserTypeMulImpl") {
-  expectUserTypeBinaryOperatorImpl("Mul"_zc, ast::BinaryOperatorKind::Mul);
-}
-
-ZC_TEST("BodyChecker.BinaryDivUsesUserTypeDivImpl") {
-  expectUserTypeBinaryOperatorImpl("Div"_zc, ast::BinaryOperatorKind::Div);
-}
-
-ZC_TEST("BodyChecker.BinaryModUsesUserTypeRemImpl") {
-  expectUserTypeBinaryOperatorImpl("Rem"_zc, ast::BinaryOperatorKind::Mod);
-}
-
-ZC_TEST("BodyChecker.BinaryPowUsesUserTypePowImpl") {
-  expectUserTypeBinaryOperatorImpl("Pow"_zc, ast::BinaryOperatorKind::Pow);
-}
-
-ZC_TEST("BodyChecker.InfersBinaryComparisonType") {
-  TestFixture fix;
-  // 1 == 2 -> bool
-  auto lhs = fix.makeIntLiteral(1);
-  auto rhs = fix.makeIntLiteral(2);
-  auto binExpr = fix.makeBinaryExpr(ast::BinaryOperatorKind::Eq, lhs, rhs);
-
-  zc::Vector<ast::NodeId> topDecls;
-  topDecls.add(binExpr);
-  auto result = runFullCheck(fix, topDecls.asPtr());
-
-  ZC_EXPECT(result.success);
-  if (result.typeEnv.hasType(binExpr)) {
-    auto& ty = result.typeEnv.getType(binExpr);
-    ZC_EXPECT(isPrimitive(ty));
-  }
-  ZC_EXPECT(result.typeEnv.hasDispatch(binExpr));
-  auto& dispatch = result.typeEnv.getDispatch(binExpr);
-  ZC_EXPECT(dispatch.targetKind == type::CallTargetKind::PrimitiveOperator);
-  ZC_EXPECT(dispatch.receiverMode == type::ReceiverMode::OperatorLeftHandSide);
-  ZC_EXPECT(dispatch.argumentTypes.size() == 2);
-  ZC_EXPECT(dispatch.resultType == result.typeEnv.getSemanticTypeId(binExpr));
-}
-
-ZC_TEST("BodyChecker.BinaryEqUsesUserTypeEqImpl") {
-  expectUserTypeComparisonImpl("Eq"_zc, ast::BinaryOperatorKind::Eq);
-}
-
-ZC_TEST("BodyChecker.BinaryNeUsesUserTypeEqImpl") {
-  expectUserTypeComparisonImpl("Eq"_zc, ast::BinaryOperatorKind::Ne);
-}
-
-ZC_TEST("BodyChecker.BinaryEqRejectsWrongTraitMethodSignature") {
-  TestFixture fix;
-  auto consumer = zc::heap<CapturingDiagnosticConsumer>();
-  auto consumerPtr = consumer.get();
-  fix.diagnostics().addConsumer(zc::mv(consumer));
-
-  zc::Vector<ast::NodeId> ifaceParams;
-  ifaceParams.add(fix.makeFunctionParamDecl("rhs"_zc, fix.makeNamedTypeExpr("Point"_zc)));
-  auto ifaceParamList = fix.makeFunctionParamList(fix.makeNodeList(ifaceParams.asPtr()));
-  auto ifaceMethod =
-      fix.makeMethodDecl("eq"_zc, ast::NodeId(), ifaceParamList, fix.makeNamedTypeExpr("bool"_zc));
-  zc::Vector<ast::NodeId> ifaceMembers;
-  ifaceMembers.add(ifaceMethod);
-  auto eqIface = fix.makeInterfaceDecl(
-      "Eq"_zc, fix.makeClassMemberList(fix.makeNodeList(ifaceMembers.asPtr())));
-
-  auto pointType = fix.makeClassDecl("Point"_zc);
-
-  zc::Vector<ast::NodeId> implIfaceNodes;
-  implIfaceNodes.add(fix.makeNamedTypeExpr("Eq"_zc));
-  auto implIfaces = fix.makeImplIfaceList(fix.makeNodeList(implIfaceNodes.asPtr()));
-
-  zc::Vector<ast::NodeId> implParams;
-  implParams.add(fix.makeFunctionParamDecl("rhs"_zc, fix.makeNamedTypeExpr("str"_zc)));
-  auto implParamList = fix.makeFunctionParamList(fix.makeNodeList(implParams.asPtr()));
-  auto implMethod =
-      fix.makeMethodDecl("eq"_zc, ast::NodeId(), implParamList, fix.makeNamedTypeExpr("Point"_zc));
-  zc::Vector<ast::NodeId> implMembers;
-  implMembers.add(implMethod);
-  auto implDecl =
-      makeStandaloneImplDecl(fix, fix.makeNamedTypeExpr("Point"_zc), implIfaces,
-                             fix.makeClassMemberList(fix.makeNodeList(implMembers.asPtr())));
-
-  auto xDecl =
-      fix.makeVariableDeclarator(fix.makeBindingPattern("x"_zc), fix.makeNamedTypeExpr("Point"_zc));
-  auto yDecl =
-      fix.makeVariableDeclarator(fix.makeBindingPattern("y"_zc), fix.makeNamedTypeExpr("Point"_zc));
-  zc::Vector<ast::NodeId> decls;
-  decls.add(xDecl);
-  decls.add(yDecl);
-  auto let = fix.makeLetStmt(fix.makeVariableDeclaratorList(fix.makeNodeList(decls.asPtr())));
-  auto binExpr = fix.makeBinaryExpr(ast::BinaryOperatorKind::Eq, fix.makeIdentExpr("x"_zc),
-                                    fix.makeIdentExpr("y"_zc));
-
-  zc::Vector<ast::NodeId> topDecls;
-  topDecls.add(eqIface);
-  topDecls.add(pointType);
-  topDecls.add(implDecl);
-  topDecls.add(let);
-  topDecls.add(binExpr);
-  auto result = runFullCheck(fix, topDecls.asPtr());
-
-  ZC_EXPECT(!result.success);
-  ZC_EXPECT(fix.diagnostics().hasErrors());
-  ZC_EXPECT(
-      containsDiagnosticId(*consumerPtr, diagnostics::DiagID::OperatorTraitSignatureMismatch));
-  ZC_EXPECT(result.typeEnv.hasType(binExpr));
-  if (result.typeEnv.hasType(binExpr)) { ZC_EXPECT(isError(result.typeEnv.getType(binExpr))); }
-}
-
-ZC_TEST("BodyChecker.BinaryEqRejectsUserTypeWithoutEqImpl") {
-  expectUserTypeComparisonWithoutImplFails("Eq"_zc, ast::BinaryOperatorKind::Eq);
-}
-
-ZC_TEST("BodyChecker.BinaryLtUsesUserTypeOrdImpl") {
-  expectUserTypeComparisonImpl("Ord"_zc, ast::BinaryOperatorKind::Lt);
-}
-
-ZC_TEST("BodyChecker.BinaryLeUsesUserTypeOrdImpl") {
-  expectUserTypeComparisonImpl("Ord"_zc, ast::BinaryOperatorKind::Le);
-}
-
-ZC_TEST("BodyChecker.BinaryGtUsesUserTypeOrdImpl") {
-  expectUserTypeComparisonImpl("Ord"_zc, ast::BinaryOperatorKind::Gt);
-}
-
-ZC_TEST("BodyChecker.BinaryGeUsesUserTypeOrdImpl") {
-  expectUserTypeComparisonImpl("Ord"_zc, ast::BinaryOperatorKind::Ge);
-}
-
-ZC_TEST("BodyChecker.BinaryOrdRejectsWrongTraitMethodSignature") {
-  TestFixture fix;
-  auto consumer = zc::heap<CapturingDiagnosticConsumer>();
-  auto consumerPtr = consumer.get();
-  fix.diagnostics().addConsumer(zc::mv(consumer));
-
-  zc::Vector<ast::NodeId> ifaceParams;
-  ifaceParams.add(fix.makeFunctionParamDecl("rhs"_zc, fix.makeNamedTypeExpr("Point"_zc)));
-  auto ifaceParamList = fix.makeFunctionParamList(fix.makeNodeList(ifaceParams.asPtr()));
-  auto ifaceMethod =
-      fix.makeMethodDecl("cmp"_zc, ast::NodeId(), ifaceParamList, fix.makeNamedTypeExpr("i32"_zc));
-  zc::Vector<ast::NodeId> ifaceMembers;
-  ifaceMembers.add(ifaceMethod);
-  auto ordIface = fix.makeInterfaceDecl(
-      "Ord"_zc, fix.makeClassMemberList(fix.makeNodeList(ifaceMembers.asPtr())));
-
-  auto pointType = fix.makeClassDecl("Point"_zc);
-
-  zc::Vector<ast::NodeId> implIfaceNodes;
-  implIfaceNodes.add(fix.makeNamedTypeExpr("Ord"_zc));
-  auto implIfaces = fix.makeImplIfaceList(fix.makeNodeList(implIfaceNodes.asPtr()));
-
-  zc::Vector<ast::NodeId> implParams;
-  implParams.add(fix.makeFunctionParamDecl("rhs"_zc, fix.makeNamedTypeExpr("Point"_zc)));
-  auto implParamList = fix.makeFunctionParamList(fix.makeNodeList(implParams.asPtr()));
-  auto implMethod =
-      fix.makeMethodDecl("cmp"_zc, ast::NodeId(), implParamList, fix.makeNamedTypeExpr("bool"_zc));
-  zc::Vector<ast::NodeId> implMembers;
-  implMembers.add(implMethod);
-  auto implDecl =
-      makeStandaloneImplDecl(fix, fix.makeNamedTypeExpr("Point"_zc), implIfaces,
-                             fix.makeClassMemberList(fix.makeNodeList(implMembers.asPtr())));
-
-  auto xDecl =
-      fix.makeVariableDeclarator(fix.makeBindingPattern("x"_zc), fix.makeNamedTypeExpr("Point"_zc));
-  auto yDecl =
-      fix.makeVariableDeclarator(fix.makeBindingPattern("y"_zc), fix.makeNamedTypeExpr("Point"_zc));
-  zc::Vector<ast::NodeId> decls;
-  decls.add(xDecl);
-  decls.add(yDecl);
-  auto let = fix.makeLetStmt(fix.makeVariableDeclaratorList(fix.makeNodeList(decls.asPtr())));
-  auto binExpr = fix.makeBinaryExpr(ast::BinaryOperatorKind::Ge, fix.makeIdentExpr("x"_zc),
-                                    fix.makeIdentExpr("y"_zc));
-
-  zc::Vector<ast::NodeId> topDecls;
-  topDecls.add(ordIface);
-  topDecls.add(pointType);
-  topDecls.add(implDecl);
-  topDecls.add(let);
-  topDecls.add(binExpr);
-  auto result = runFullCheck(fix, topDecls.asPtr());
-
-  ZC_EXPECT(!result.success);
-  ZC_EXPECT(fix.diagnostics().hasErrors());
-  ZC_EXPECT(
-      containsDiagnosticId(*consumerPtr, diagnostics::DiagID::OperatorTraitSignatureMismatch));
-  ZC_EXPECT(result.typeEnv.hasType(binExpr));
-  if (result.typeEnv.hasType(binExpr)) { ZC_EXPECT(isError(result.typeEnv.getType(binExpr))); }
-}
-
-ZC_TEST("BodyChecker.BinaryLtRejectsUserTypeWithoutOrdImpl") {
-  expectUserTypeComparisonWithoutImplFails("Ord"_zc, ast::BinaryOperatorKind::Lt);
-}
-
-ZC_TEST("BodyChecker.InfersBinaryLogicalType") {
-  TestFixture fix;
-  // true && false -> bool
-  auto lhs = fix.makeBoolLiteral(true);
-  auto rhs = fix.makeBoolLiteral(false);
-  auto binExpr = fix.makeBinaryExpr(ast::BinaryOperatorKind::LogAnd, lhs, rhs);
-
-  zc::Vector<ast::NodeId> topDecls;
-  topDecls.add(binExpr);
-  auto result = runFullCheck(fix, topDecls.asPtr());
-
-  ZC_EXPECT(result.success);
-  if (result.typeEnv.hasType(binExpr)) {
-    auto& ty = result.typeEnv.getType(binExpr);
-    ZC_EXPECT(isPrimitive(ty));
-  }
-}
-
-// ============================================================================
-// Identifier expression type inference
-// ============================================================================
-
-ZC_TEST("BodyChecker.InfersIdentExprType") {
-  TestFixture fix;
-  // let x = 42; x
-  auto pat = fix.makeBindingPattern("x"_zc);
-  auto init = fix.makeIntLiteral(42);
-  auto decl = fix.makeVariableDeclarator(pat, ast::NodeId(), init);
-  zc::Vector<ast::NodeId> declList;
-  declList.add(decl);
-  auto varList = fix.makeVariableDeclaratorList(fix.makeNodeList(declList.asPtr()));
-  auto let = fix.makeLetStmt(varList);
-
-  auto ident = fix.makeIdentExpr("x"_zc);
-
-  zc::Vector<ast::NodeId> topDecls;
-  topDecls.add(let);
-  topDecls.add(ident);
-  auto result = runFullCheck(fix, topDecls.asPtr());
-
-  ZC_EXPECT(result.success);
-  if (result.typeEnv.hasType(ident)) {
-    auto& ty = result.typeEnv.getType(ident);
-    ZC_EXPECT(isPrimitive(ty));
-  }
-}
-
-ZC_TEST("BodyChecker.UndefinedIdentReportsError") {
-  TestFixture fix;
-  auto ident = fix.makeIdentExpr("undefined"_zc);
-
-  zc::Vector<ast::NodeId> topDecls;
-  topDecls.add(ident);
-  auto result = runFullCheck(fix, topDecls.asPtr());
-
-  // Should report an error for undefined identifier
-  ZC_EXPECT(fix.diagnostics().hasErrors());
-}
-
-// ============================================================================
-// Function call type inference
-// ============================================================================
-
-ZC_TEST("BodyChecker.InfersCallExprReturnType") {
-  TestFixture fix;
-  // fun foo() -> i32 { return 42; }
-  // foo()
-  zc::Vector<ast::NodeId> bodyStmts;
-  bodyStmts.add(fix.makeReturnStmt(fix.makeIntLiteral(42)));
-  auto bodyBlock = fix.makeBlockStmt(fix.makeNodeList(bodyStmts.asPtr()));
-  auto fn = fix.makeFunctionDecl("foo"_zc, bodyBlock);
-
-  auto callee = fix.makeIdentExpr("foo"_zc);
-  zc::Vector<ast::NodeId> args;
-  auto call = fix.makeCallExpr(callee, fix.makeNodeList(args.asPtr()));
-
-  zc::Vector<ast::NodeId> topDecls;
-  topDecls.add(fn);
-  topDecls.add(call);
-  auto result = runFullCheck(fix, topDecls.asPtr());
-
-  ZC_EXPECT(result.success);
-  if (result.typeEnv.hasType(call)) {
-    auto& ty = result.typeEnv.getType(call);
-    ZC_EXPECT(isPrimitive(ty));
-  }
-  ZC_EXPECT(result.typeEnv.hasDispatch(call));
-  auto& dispatch = result.typeEnv.getDispatch(call);
-  ZC_EXPECT(dispatch.targetKind == type::CallTargetKind::FreeFunction);
-  ZC_EXPECT(dispatch.receiverMode == type::ReceiverMode::None);
-  ZC_EXPECT(dispatch.targetDefinition.isValid());
-  ZC_EXPECT(dispatch.argumentTypes.size() == 0);
-  ZC_EXPECT(dispatch.resultType == result.typeEnv.getSemanticTypeId(call));
-}
-
-ZC_TEST("BodyChecker.CallWithArgs") {
-  TestFixture fix;
-  // fun add(a: i32, b: i32) -> i32 { return a + b; }
-  // add(1, 2)
-  auto paramA = fix.makeFunctionParamDecl("a"_zc, fix.makeNamedTypeExpr("i32"_zc));
-  auto paramB = fix.makeFunctionParamDecl("b"_zc, fix.makeNamedTypeExpr("i32"_zc));
-  zc::Vector<ast::NodeId> paramNodes;
-  paramNodes.add(paramA);
-  paramNodes.add(paramB);
-  auto paramList = fix.makeFunctionParamList(fix.makeNodeList(paramNodes.asPtr()));
-
-  auto retExpr = fix.makeBinaryExpr(ast::BinaryOperatorKind::Add, fix.makeIdentExpr("a"_zc),
-                                    fix.makeIdentExpr("b"_zc));
-  zc::Vector<ast::NodeId> bodyStmts;
-  bodyStmts.add(fix.makeReturnStmt(retExpr));
-  auto bodyBlock = fix.makeBlockStmt(fix.makeNodeList(bodyStmts.asPtr()));
-  auto retTy = fix.makeNamedTypeExpr("i32"_zc);
-  auto fn = fix.makeFunctionDecl("add"_zc, bodyBlock, paramList, retTy);
-
-  auto callee = fix.makeIdentExpr("add"_zc);
-  zc::Vector<ast::NodeId> args;
-  args.add(fix.makeIntLiteral(1));
-  args.add(fix.makeIntLiteral(2));
-  auto call = fix.makeCallExpr(callee, fix.makeNodeList(args.asPtr()));
-
-  zc::Vector<ast::NodeId> topDecls;
-  topDecls.add(fn);
-  topDecls.add(call);
-  auto result = runFullCheck(fix, topDecls.asPtr());
-
-  ZC_EXPECT(result.success);
-  ZC_EXPECT(result.typeEnv.hasDispatch(call));
-  auto& dispatch = result.typeEnv.getDispatch(call);
-  ZC_EXPECT(dispatch.targetKind == type::CallTargetKind::FreeFunction);
-  ZC_EXPECT(dispatch.receiverMode == type::ReceiverMode::None);
-  ZC_EXPECT(dispatch.targetDefinition.isValid());
-  ZC_EXPECT(dispatch.argumentTypes.size() == 2);
-  ZC_EXPECT(dispatch.resultType == result.typeEnv.getSemanticTypeId(call));
-}
-
-ZC_TEST("BodyChecker.CallArgumentRecordsUnionInjectionCoercion") {
-  TestFixture fix;
-  auto paramTy =
-      fix.makeUnionTypeExpr(fix.makeNamedTypeExpr("i32"_zc), fix.makeNamedTypeExpr("str"_zc));
-  auto param = fix.makeFunctionParamDecl("value"_zc, paramTy);
-  zc::Vector<ast::NodeId> paramNodes;
-  paramNodes.add(param);
-  auto paramList = fix.makeFunctionParamList(fix.makeNodeList(paramNodes.asPtr()));
-  auto fn = fix.makeFunctionDecl("takes_union"_zc, fix.makeBlockStmt(ast::NodeList()), paramList,
-                                 fix.makeNamedTypeExpr("unit"_zc));
-
-  auto arg = fix.makeIntLiteral(1);
-  zc::Vector<ast::NodeId> args;
-  args.add(arg);
-  auto call = fix.makeCallExpr(fix.makeIdentExpr("takes_union"_zc), fix.makeNodeList(args.asPtr()));
-
-  zc::Vector<ast::NodeId> topDecls;
-  topDecls.add(fn);
-  topDecls.add(call);
-  auto result = runFullCheck(fix, topDecls.asPtr());
-
-  ZC_EXPECT(result.success);
-  ZC_EXPECT(!fix.diagnostics().hasErrors());
-  ZC_EXPECT(result.typeEnv.hasCoercion(arg));
-  ZC_EXPECT(result.typeEnv.getCoercion(arg) == type::CoercionKind::UnionInjection);
-}
-
-ZC_TEST("BodyChecker.LocalVariableInferenceFlowsFromCallArgument") {
-  TestFixture fix;
-  auto param = fix.makeFunctionParamDecl("value"_zc, fix.makeNamedTypeExpr("u64"_zc));
-  zc::Vector<ast::NodeId> paramNodes;
-  paramNodes.add(param);
-  auto paramList = fix.makeFunctionParamList(fix.makeNodeList(paramNodes.asPtr()));
-  auto bodyBlock = fix.makeBlockStmt(ast::NodeList());
-  auto retTy = fix.makeNamedTypeExpr("unit"_zc);
-  auto fn = fix.makeFunctionDecl("takes_u64"_zc, bodyBlock, paramList, retTy);
-
-  auto pat = fix.makeBindingPattern("x"_zc);
-  auto decl = fix.makeVariableDeclarator(pat, ast::NodeId(), fix.makeIntLiteral(5));
-  zc::Vector<ast::NodeId> declList;
-  declList.add(decl);
-  auto varList = fix.makeVariableDeclaratorList(fix.makeNodeList(declList.asPtr()));
-  auto let = fix.makeLetStmt(varList);
-
-  zc::Vector<ast::NodeId> args;
-  args.add(fix.makeIdentExpr("x"_zc));
-  auto call = fix.makeCallExpr(fix.makeIdentExpr("takes_u64"_zc), fix.makeNodeList(args.asPtr()));
-
-  zc::Vector<ast::NodeId> topDecls;
-  topDecls.add(fn);
-  topDecls.add(let);
-  topDecls.add(call);
-  auto result = runFullCheck(fix, topDecls.asPtr());
-
-  ZC_EXPECT(result.success);
-  ZC_EXPECT(!fix.diagnostics().hasErrors());
-  ZC_EXPECT(result.typeEnv.hasType(decl));
-  auto& declTy = result.typeEnv.getType(decl);
-  ZC_EXPECT(isPrimitive(declTy));
-  if (isPrimitive(declTy)) {
-    auto& primitive = static_cast<const type::PrimitiveType&>(declTy);
-    ZC_EXPECT(primitive.getPrimitiveKind() == type::PrimitiveKind::U64);
-  }
-}
-
-ZC_TEST("BodyChecker.GenericFunctionInfersTypeArgumentFromCall") {
-  TestFixture fix;
-  auto genericT = fix.makeGenericTypeParam("T"_zc);
-  zc::Vector<ast::NodeId> genericNodes;
-  genericNodes.add(genericT);
-  auto generics = fix.makeGenericParams(fix.makeNodeList(genericNodes.asPtr()));
-
-  auto tParamTy = fix.makeNamedTypeExpr("T"_zc);
-  auto tReturnTy = fix.makeNamedTypeExpr("T"_zc);
-  auto param = fix.makeFunctionParamDecl("value"_zc, tParamTy);
-  zc::Vector<ast::NodeId> paramNodes;
-  paramNodes.add(param);
-  auto paramList = fix.makeFunctionParamList(fix.makeNodeList(paramNodes.asPtr()));
-
-  zc::Vector<ast::NodeId> bodyStmts;
-  bodyStmts.add(fix.makeReturnStmt(fix.makeIdentExpr("value"_zc)));
-  auto bodyBlock = fix.makeBlockStmt(fix.makeNodeList(bodyStmts.asPtr()));
-  auto identity =
-      fix.makeFunctionDecl("identity"_zc, bodyBlock, paramList, tReturnTy, ast::NodeId(), generics);
-
-  zc::Vector<ast::NodeId> args;
-  args.add(fix.makeIntLiteral(42));
-  auto call = fix.makeCallExpr(fix.makeIdentExpr("identity"_zc), fix.makeNodeList(args.asPtr()));
-
-  zc::Vector<ast::NodeId> topDecls;
-  topDecls.add(identity);
-  topDecls.add(call);
-  auto result = runFullCheck(fix, topDecls.asPtr());
-
-  ZC_EXPECT(result.success);
-  ZC_EXPECT(!fix.diagnostics().hasErrors());
-  ZC_EXPECT(result.typeEnv.hasType(call));
-  auto& callTy = result.typeEnv.getType(call);
-  auto& resolvedCallTy = result.typeEnv.find(callTy);
-  ZC_EXPECT(isPrimitive(resolvedCallTy));
-  if (isPrimitive(resolvedCallTy)) {
-    auto& primitive = static_cast<const type::PrimitiveType&>(resolvedCallTy);
-    ZC_EXPECT(primitive.getPrimitiveKind() == type::PrimitiveKind::I32);
-  }
-}
-
-ZC_TEST("BodyChecker.GenericFunctionUsesExplicitTypeArgument") {
-  TestFixture fix;
-  auto genericT = fix.makeGenericTypeParam("T"_zc);
-  zc::Vector<ast::NodeId> genericNodes;
-  genericNodes.add(genericT);
-  auto generics = fix.makeGenericParams(fix.makeNodeList(genericNodes.asPtr()));
-
-  auto tParamTy = fix.makeNamedTypeExpr("T"_zc);
-  auto tReturnTy = fix.makeNamedTypeExpr("T"_zc);
-  auto param = fix.makeFunctionParamDecl("value"_zc, tParamTy);
-  zc::Vector<ast::NodeId> paramNodes;
-  paramNodes.add(param);
-  auto paramList = fix.makeFunctionParamList(fix.makeNodeList(paramNodes.asPtr()));
-  auto bodyBlock = fix.makeBlockStmt(ast::NodeList());
-  auto identity =
-      fix.makeFunctionDecl("identity"_zc, bodyBlock, paramList, tReturnTy, ast::NodeId(), generics);
-
-  zc::Vector<ast::NodeId> typeArgs;
-  typeArgs.add(fix.makeNamedTypeExpr("f64"_zc));
-  zc::Vector<ast::NodeId> args;
-  args.add(fix.makeFloatLiteral(42.0));
-  auto call = fix.makeCallExpr(fix.makeIdentExpr("identity"_zc), fix.makeNodeList(typeArgs.asPtr()),
-                               fix.makeNodeList(args.asPtr()));
-
-  zc::Vector<ast::NodeId> topDecls;
-  topDecls.add(identity);
-  topDecls.add(call);
-  auto result = runFullCheck(fix, topDecls.asPtr());
-
-  ZC_EXPECT(result.success);
-  ZC_EXPECT(!fix.diagnostics().hasErrors());
-  ZC_EXPECT(result.typeEnv.hasType(call));
-  auto& callTy = result.typeEnv.getType(call);
-  auto& resolvedCallTy = result.typeEnv.find(callTy);
-  ZC_EXPECT(isPrimitive(resolvedCallTy));
-  if (isPrimitive(resolvedCallTy)) {
-    auto& primitive = static_cast<const type::PrimitiveType&>(resolvedCallTy);
-    ZC_EXPECT(primitive.getPrimitiveKind() == type::PrimitiveKind::F64);
-  }
-}
-
-ZC_TEST("BodyChecker.GenericFunctionRejectsWrongExplicitTypeArgumentCount") {
-  TestFixture fix;
-  auto consumer = zc::heap<CapturingDiagnosticConsumer>();
-  auto consumerPtr = consumer.get();
-  fix.diagnostics().addConsumer(zc::mv(consumer));
-
-  auto genericT = fix.makeGenericTypeParam("T"_zc);
-  zc::Vector<ast::NodeId> genericNodes;
-  genericNodes.add(genericT);
-  auto generics = fix.makeGenericParams(fix.makeNodeList(genericNodes.asPtr()));
-
-  auto tParamTy = fix.makeNamedTypeExpr("T"_zc);
-  auto tReturnTy = fix.makeNamedTypeExpr("T"_zc);
-  auto param = fix.makeFunctionParamDecl("value"_zc, tParamTy);
-  zc::Vector<ast::NodeId> paramNodes;
-  paramNodes.add(param);
-  auto paramList = fix.makeFunctionParamList(fix.makeNodeList(paramNodes.asPtr()));
-  auto identity = fix.makeFunctionDecl("identity"_zc, fix.makeBlockStmt(ast::NodeList()), paramList,
-                                       tReturnTy, ast::NodeId(), generics);
-
-  zc::Vector<ast::NodeId> typeArgs;
-  typeArgs.add(fix.makeNamedTypeExpr("i32"_zc));
-  typeArgs.add(fix.makeNamedTypeExpr("str"_zc));
-  zc::Vector<ast::NodeId> args;
-  args.add(fix.makeIntLiteral(42));
-  auto call = fix.makeCallExpr(fix.makeIdentExpr("identity"_zc), fix.makeNodeList(typeArgs.asPtr()),
-                               fix.makeNodeList(args.asPtr()));
-
-  zc::Vector<ast::NodeId> topDecls;
-  topDecls.add(identity);
-  topDecls.add(call);
-  auto result = runFullCheck(fix, topDecls.asPtr());
-
-  ZC_EXPECT(!result.success);
-  ZC_EXPECT(fix.diagnostics().hasErrors());
-  ZC_EXPECT(
-      containsDiagnosticId(*consumerPtr, diagnostics::DiagID::ExplicitTypeArgumentCountMismatch));
-  ZC_EXPECT(result.typeEnv.hasType(call));
-  ZC_EXPECT(isError(result.typeEnv.getType(call)));
-}
-
-ZC_TEST("BodyChecker.GenericFunctionRejectsIncompatibleExplicitTypeArgument") {
-  TestFixture fix;
-  auto genericT = fix.makeGenericTypeParam("T"_zc);
-  zc::Vector<ast::NodeId> genericNodes;
-  genericNodes.add(genericT);
-  auto generics = fix.makeGenericParams(fix.makeNodeList(genericNodes.asPtr()));
-
-  auto tParamTy = fix.makeNamedTypeExpr("T"_zc);
-  auto tReturnTy = fix.makeNamedTypeExpr("T"_zc);
-  auto param = fix.makeFunctionParamDecl("value"_zc, tParamTy);
-  zc::Vector<ast::NodeId> paramNodes;
-  paramNodes.add(param);
-  auto paramList = fix.makeFunctionParamList(fix.makeNodeList(paramNodes.asPtr()));
-  auto identity = fix.makeFunctionDecl("identity"_zc, fix.makeBlockStmt(ast::NodeList()), paramList,
-                                       tReturnTy, ast::NodeId(), generics);
-
-  zc::Vector<ast::NodeId> typeArgs;
-  typeArgs.add(fix.makeNamedTypeExpr("str"_zc));
-  zc::Vector<ast::NodeId> args;
-  args.add(fix.makeIntLiteral(42));
-  auto call = fix.makeCallExpr(fix.makeIdentExpr("identity"_zc), fix.makeNodeList(typeArgs.asPtr()),
-                               fix.makeNodeList(args.asPtr()));
-
-  zc::Vector<ast::NodeId> topDecls;
-  topDecls.add(identity);
-  topDecls.add(call);
-  auto result = runFullCheck(fix, topDecls.asPtr());
-
-  ZC_EXPECT(!result.success);
-  ZC_EXPECT(fix.diagnostics().hasErrors());
-  ZC_EXPECT(result.typeEnv.hasType(call));
-  ZC_EXPECT(isError(result.typeEnv.getType(call)));
-}
-
-ZC_TEST("BodyChecker.GenericFunctionRejectsUnsolvedTypeParameter") {
-  TestFixture fix;
-  auto consumer = zc::heap<CapturingDiagnosticConsumer>();
-  auto consumerPtr = consumer.get();
-  fix.diagnostics().addConsumer(zc::mv(consumer));
-
-  auto genericT = fix.makeGenericTypeParam("T"_zc);
-  zc::Vector<ast::NodeId> genericNodes;
-  genericNodes.add(genericT);
-  auto generics = fix.makeGenericParams(fix.makeNodeList(genericNodes.asPtr()));
-  auto make = fix.makeFunctionDecl("make"_zc, fix.makeBlockStmt(ast::NodeList()), ast::NodeId(),
-                                   fix.makeNamedTypeExpr("T"_zc), ast::NodeId(), generics);
-  auto call = fix.makeCallExpr(fix.makeIdentExpr("make"_zc), ast::NodeList());
-
-  zc::Vector<ast::NodeId> topDecls;
-  topDecls.add(make);
-  topDecls.add(call);
-  auto result = runFullCheck(fix, topDecls.asPtr());
-
-  ZC_EXPECT(!result.success);
-  ZC_EXPECT(fix.diagnostics().hasErrors());
-  ZC_EXPECT(containsDiagnosticId(*consumerPtr, diagnostics::DiagID::CannotInferTypeParameter));
-  ZC_EXPECT(result.typeEnv.hasType(call));
-  ZC_EXPECT(isError(result.typeEnv.getType(call)));
-}
-
-ZC_TEST("BodyChecker.GenericFunctionRejectsUnsatisfiedInterfaceBound") {
-  TestFixture fix;
-  auto hashable = fix.makeInterfaceDecl("Hashable"_zc);
-  auto genericT = fix.makeGenericTypeParam("T"_zc, fix.makeNamedTypeExpr("Hashable"_zc));
-  zc::Vector<ast::NodeId> genericNodes;
-  genericNodes.add(genericT);
-  auto generics = fix.makeGenericParams(fix.makeNodeList(genericNodes.asPtr()));
-
-  auto tParamTy = fix.makeNamedTypeExpr("T"_zc);
-  auto param = fix.makeFunctionParamDecl("value"_zc, tParamTy);
-  zc::Vector<ast::NodeId> paramNodes;
-  paramNodes.add(param);
-  auto paramList = fix.makeFunctionParamList(fix.makeNodeList(paramNodes.asPtr()));
-  auto bodyBlock = fix.makeBlockStmt(ast::NodeList());
-  auto fn = fix.makeFunctionDecl("needs_hash"_zc, bodyBlock, paramList,
-                                 fix.makeNamedTypeExpr("unit"_zc), ast::NodeId(), generics);
-
-  zc::Vector<ast::NodeId> args;
-  args.add(fix.makeIntLiteral(42));
-  auto call = fix.makeCallExpr(fix.makeIdentExpr("needs_hash"_zc), fix.makeNodeList(args.asPtr()));
-
-  zc::Vector<ast::NodeId> topDecls;
-  topDecls.add(hashable);
-  topDecls.add(fn);
-  topDecls.add(call);
-  auto result = runFullCheck(fix, topDecls.asPtr());
-
-  ZC_EXPECT(!result.success);
-  ZC_EXPECT(fix.diagnostics().hasErrors());
-  ZC_EXPECT(result.typeEnv.hasType(call));
-  ZC_EXPECT(isError(result.typeEnv.getType(call)));
-}
-
-ZC_TEST("BodyChecker.GenericFunctionAcceptsSatisfiedInterfaceBound") {
-  TestFixture fix;
-  auto hashable = fix.makeInterfaceDecl("Hashable"_zc);
-
-  zc::Vector<ast::NodeId> ifaceNodes;
-  ifaceNodes.add(fix.makeNamedTypeExpr("Hashable"_zc));
-  auto ifaceList = fix.makeImplIfaceList(fix.makeNodeList(ifaceNodes.asPtr()));
-  auto implHashableI32 = fix.makeStandaloneImplDecl(fix.makeNamedTypeExpr("i32"_zc), ifaceList);
-
-  auto genericT = fix.makeGenericTypeParam("T"_zc, fix.makeNamedTypeExpr("Hashable"_zc));
-  zc::Vector<ast::NodeId> genericNodes;
-  genericNodes.add(genericT);
-  auto generics = fix.makeGenericParams(fix.makeNodeList(genericNodes.asPtr()));
-
-  auto tParamTy = fix.makeNamedTypeExpr("T"_zc);
-  auto param = fix.makeFunctionParamDecl("value"_zc, tParamTy);
-  zc::Vector<ast::NodeId> paramNodes;
-  paramNodes.add(param);
-  auto paramList = fix.makeFunctionParamList(fix.makeNodeList(paramNodes.asPtr()));
-  auto bodyBlock = fix.makeBlockStmt(ast::NodeList());
-  auto fn = fix.makeFunctionDecl("needs_hash"_zc, bodyBlock, paramList,
-                                 fix.makeNamedTypeExpr("unit"_zc), ast::NodeId(), generics);
-
-  zc::Vector<ast::NodeId> args;
-  args.add(fix.makeIntLiteral(42));
-  auto call = fix.makeCallExpr(fix.makeIdentExpr("needs_hash"_zc), fix.makeNodeList(args.asPtr()));
-
-  zc::Vector<ast::NodeId> topDecls;
-  topDecls.add(hashable);
-  topDecls.add(implHashableI32);
-  topDecls.add(fn);
-  topDecls.add(call);
-  auto result = runFullCheck(fix, topDecls.asPtr());
-
-  ZC_EXPECT(result.success);
-  ZC_EXPECT(!fix.diagnostics().hasErrors());
-  ZC_EXPECT(result.typeEnv.hasType(call));
-}
-
-// ============================================================================
-// Return statement checking
-// ============================================================================
-
-ZC_TEST("BodyChecker.ReturnMatchesFunctionType") {
-  TestFixture fix;
-  // fun foo(): i32 { return 42; }
-  zc::Vector<ast::NodeId> bodyStmts;
-  bodyStmts.add(fix.makeReturnStmt(fix.makeIntLiteral(42)));
-  auto bodyBlock = fix.makeBlockStmt(fix.makeNodeList(bodyStmts.asPtr()));
-  auto fn = fix.makeFunctionDecl("foo"_zc, bodyBlock);
-
-  zc::Vector<ast::NodeId> topDecls;
-  topDecls.add(fn);
-  auto result = runFullCheck(fix, topDecls.asPtr());
-
-  ZC_EXPECT(result.success);
-  ZC_EXPECT(!fix.diagnostics().hasErrors());
-}
-
-ZC_TEST("BodyChecker.ReturnRecordsUnionInjectionCoercion") {
-  TestFixture fix;
-  auto retValue = fix.makeIntLiteral(42);
-  auto returnStmt = fix.makeReturnStmt(retValue);
-  zc::Vector<ast::NodeId> bodyStmts;
-  bodyStmts.add(returnStmt);
-  auto bodyBlock = fix.makeBlockStmt(fix.makeNodeList(bodyStmts.asPtr()));
-  auto retTy =
-      fix.makeUnionTypeExpr(fix.makeNamedTypeExpr("i32"_zc), fix.makeNamedTypeExpr("str"_zc));
-  auto fn = fix.makeFunctionDecl("foo"_zc, bodyBlock, ast::NodeId(), retTy);
-
-  zc::Vector<ast::NodeId> topDecls;
-  topDecls.add(fn);
-  auto result = runFullCheck(fix, topDecls.asPtr());
-
-  ZC_EXPECT(result.success);
-  ZC_EXPECT(!fix.diagnostics().hasErrors());
-  ZC_EXPECT(result.typeEnv.hasCoercion(returnStmt));
-  ZC_EXPECT(result.typeEnv.getCoercion(returnStmt) == type::CoercionKind::UnionInjection);
-}
-
-ZC_TEST("BodyChecker.EmptyReturnInVoidFunction") {
-  TestFixture fix;
-  // fun foo() { return; }
-  zc::Vector<ast::NodeId> bodyStmts;
-  bodyStmts.add(fix.makeReturnStmt());
-  auto bodyBlock = fix.makeBlockStmt(fix.makeNodeList(bodyStmts.asPtr()));
-  auto fn = fix.makeFunctionDecl("foo"_zc, bodyBlock);
-
-  zc::Vector<ast::NodeId> topDecls;
-  topDecls.add(fn);
-  auto result = runFullCheck(fix, topDecls.asPtr());
-
-  // Should succeed (return without value in unit-returning function)
-  ZC_EXPECT(result.success);
-}
-
-// ============================================================================
-// Assignment checking
-// ============================================================================
-
-ZC_TEST("BodyChecker.SimpleAssignment") {
-  TestFixture fix;
-  // let mut x = 1; x = 2;
-  auto pat = fix.makeBindingPattern("x"_zc, true);
-  auto init = fix.makeIntLiteral(1);
-  auto decl = fix.makeVariableDeclarator(pat, ast::NodeId(), init);
-  zc::Vector<ast::NodeId> declList;
-  declList.add(decl);
-  auto varList = fix.makeVariableDeclaratorList(fix.makeNodeList(declList.asPtr()));
-  auto let = fix.makeLetStmt(varList);
-
-  auto lhs = fix.makeIdentExpr("x"_zc);
-  auto rhs = fix.makeIntLiteral(2);
-  auto assign = fix.makeAssignmentExpr(lhs, rhs);
-
-  zc::Vector<ast::NodeId> topDecls;
-  topDecls.add(let);
-  topDecls.add(assign);
-  auto result = runFullCheck(fix, topDecls.asPtr());
-
-  ZC_EXPECT(result.success);
-  ZC_EXPECT(result.typeEnv.hasType(assign));
-  ZC_EXPECT(result.constraintCount > 0);
-  auto& ty = result.typeEnv.getType(assign);
-  ZC_EXPECT(isPrimitive(ty));
-}
-
-ZC_TEST("BodyChecker.AssignmentRecordsUnionInjectionCoercion") {
-  TestFixture fix;
-  auto pat = fix.makeBindingPattern("x"_zc, true);
-  auto ty = fix.makeUnionTypeExpr(fix.makeNamedTypeExpr("i32"_zc), fix.makeNamedTypeExpr("str"_zc));
-  auto decl = fix.makeVariableDeclarator(pat, ty, fix.makeIntLiteral(1));
-  zc::Vector<ast::NodeId> declList;
-  declList.add(decl);
-  auto let = fix.makeLetStmt(fix.makeVariableDeclaratorList(fix.makeNodeList(declList.asPtr())));
-
-  auto rhs = fix.makeIntLiteral(2);
-  auto assign = fix.makeAssignmentExpr(fix.makeIdentExpr("x"_zc), rhs);
-
-  zc::Vector<ast::NodeId> topDecls;
-  topDecls.add(let);
-  topDecls.add(assign);
-  auto result = runFullCheck(fix, topDecls.asPtr());
-
-  ZC_EXPECT(result.success);
-  ZC_EXPECT(!fix.diagnostics().hasErrors());
-  ZC_EXPECT(result.typeEnv.hasCoercion(assign));
-  ZC_EXPECT(result.typeEnv.getCoercion(assign) == type::CoercionKind::UnionInjection);
-}
-
-ZC_TEST("BodyChecker.AssignmentRejectsImmutableBinding") {
-  TestFixture fix;
-  auto consumer = zc::heap<CapturingDiagnosticConsumer>();
-  auto consumerPtr = consumer.get();
-  fix.diagnostics().addConsumer(zc::mv(consumer));
-
-  auto pat = fix.makeBindingPattern("x"_zc);
-  auto init = fix.makeIntLiteral(1);
-  auto decl = fix.makeVariableDeclarator(pat, ast::NodeId(), init);
-  zc::Vector<ast::NodeId> declList;
-  declList.add(decl);
-  auto varList = fix.makeVariableDeclaratorList(fix.makeNodeList(declList.asPtr()));
-  auto let = fix.makeLetStmt(varList);
-
-  auto assign = fix.makeAssignmentExpr(fix.makeIdentExpr("x"_zc), fix.makeIntLiteral(2));
-
-  zc::Vector<ast::NodeId> topDecls;
-  topDecls.add(let);
-  topDecls.add(assign);
-  auto result = runFullCheck(fix, topDecls.asPtr());
-
-  ZC_EXPECT(!result.success);
-  ZC_EXPECT(fix.diagnostics().hasErrors());
-  ZC_EXPECT(containsDiagnosticId(*consumerPtr, diagnostics::DiagID::CannotMutateImmutableVariable));
-  ZC_EXPECT(result.typeEnv.hasType(assign));
-  ZC_EXPECT(isError(result.typeEnv.getType(assign)));
-}
-
-// ============================================================================
-// If statement checking
-// ============================================================================
-
-ZC_TEST("BodyChecker.IfStmtBoolCondition") {
-  TestFixture fix;
-  // if (true) { }
-  auto cond = fix.makeBoolLiteral(true);
-  auto thenBlock = fix.makeBlockStmt(ast::NodeList());
-  auto ifStmt = fix.makeIfStmt(cond, thenBlock);
-
-  zc::Vector<ast::NodeId> topDecls;
-  topDecls.add(ifStmt);
-  auto result = runFullCheck(fix, topDecls.asPtr());
-
-  ZC_EXPECT(result.success);
-}
-
-ZC_TEST("BodyChecker.IfStmtWithElse") {
-  TestFixture fix;
-  // if (true) { } else { }
-  auto cond = fix.makeBoolLiteral(true);
-  auto thenBlock = fix.makeBlockStmt(ast::NodeList());
-  auto elseBlock = fix.makeBlockStmt(ast::NodeList());
-  auto ifStmt = fix.makeIfStmt(cond, thenBlock, elseBlock);
-
-  zc::Vector<ast::NodeId> topDecls;
-  topDecls.add(ifStmt);
-  auto result = runFullCheck(fix, topDecls.asPtr());
-
-  ZC_EXPECT(result.success);
-}
-
-// ============================================================================
-// While statement checking
-// ============================================================================
-
-ZC_TEST("BodyChecker.WhileStmtBoolCondition") {
-  TestFixture fix;
-  auto cond = fix.makeBoolLiteral(true);
-  auto bodyBlock = fix.makeBlockStmt(ast::NodeList());
-  auto whileStmt = fix.makeWhileStmt(cond, bodyBlock);
-
-  zc::Vector<ast::NodeId> topDecls;
-  topDecls.add(whileStmt);
-  auto result = runFullCheck(fix, topDecls.asPtr());
-
-  ZC_EXPECT(result.success);
-}
-
-// ============================================================================
-// Conditional expression
-// ============================================================================
-
-ZC_TEST("BodyChecker.ConditionalExpr") {
-  TestFixture fix;
-  // true ? 1 : 2
-  auto cond = fix.makeBoolLiteral(true);
-  auto thenExpr = fix.makeIntLiteral(1);
-  auto elseExpr = fix.makeIntLiteral(2);
-  auto ternary = fix.makeConditionalExpr(cond, thenExpr, elseExpr);
-
-  zc::Vector<ast::NodeId> topDecls;
-  topDecls.add(ternary);
-  auto result = runFullCheck(fix, topDecls.asPtr());
-
-  ZC_EXPECT(result.success);
-  if (result.typeEnv.hasType(ternary)) {
-    auto& ty = result.typeEnv.getType(ternary);
-    ZC_EXPECT(isPrimitive(ty));
-  }
-}
-
-ZC_TEST("BodyChecker.ConditionalExprDifferentTypesProducesUnion") {
-  TestFixture fix;
-  auto cond = fix.makeBoolLiteral(true);
-  auto thenExpr = fix.makeIntLiteral(1);
-  auto elseExpr = fix.makeStrLiteral("two"_zc);
-  auto ternary = fix.makeConditionalExpr(cond, thenExpr, elseExpr);
-
-  zc::Vector<ast::NodeId> topDecls;
-  topDecls.add(ternary);
-  auto result = runFullCheck(fix, topDecls.asPtr());
-
-  ZC_EXPECT(result.success);
-  ZC_EXPECT(result.typeEnv.hasType(ternary));
-  auto& ty = result.typeEnv.getType(ternary);
-  ZC_EXPECT(isUnion(ty));
-  ZC_EXPECT(result.typeEnv.hasCoercion(thenExpr));
-  ZC_EXPECT(result.typeEnv.hasCoercion(elseExpr));
-  ZC_EXPECT(result.typeEnv.getCoercion(thenExpr) == type::CoercionKind::UnionInjection);
-  ZC_EXPECT(result.typeEnv.getCoercion(elseExpr) == type::CoercionKind::UnionInjection);
-}
-
-ZC_TEST("BodyChecker.NullCoalesceReturnsNonNullAlternative") {
-  TestFixture fix;
-  auto pat = fix.makeBindingPattern("x"_zc);
-  auto ty = fix.makeUnionTypeExpr(fix.makeNamedTypeExpr("i32"_zc), fix.makePredefinedTypeExpr(13));
-  auto init = fix.makeNullLiteral();
-  auto decl = fix.makeVariableDeclarator(pat, ty, init);
-  zc::Vector<ast::NodeId> declList;
-  declList.add(decl);
-  auto varList = fix.makeVariableDeclaratorList(fix.makeNodeList(declList.asPtr()));
-  auto let = fix.makeLetStmt(varList);
-
-  auto coalesce = fix.makeNullCoalesceExpr(fix.makeIdentExpr("x"_zc), fix.makeIntLiteral(7));
-
-  zc::Vector<ast::NodeId> topDecls;
-  topDecls.add(let);
-  topDecls.add(coalesce);
-  auto result = runFullCheck(fix, topDecls.asPtr());
-
-  ZC_EXPECT(result.success);
-  ZC_EXPECT(!fix.diagnostics().hasErrors());
-  ZC_EXPECT(result.typeEnv.hasType(coalesce));
-  auto& tyResult = result.typeEnv.getType(coalesce);
-  ZC_EXPECT(isPrimitive(tyResult));
-  if (isPrimitive(tyResult)) {
-    auto& primitive = static_cast<const type::PrimitiveType&>(tyResult);
-    ZC_EXPECT(primitive.getPrimitiveKind() == type::PrimitiveKind::I32);
-  }
-}
-
-// ============================================================================
-// Unary expression
-// ============================================================================
-
-ZC_TEST("BodyChecker.UnaryMinus") {
-  TestFixture fix;
-  // -1
-  auto operand = fix.makeIntLiteral(1);
-  auto unary = fix.makeUnaryExpr(ast::UnaryOperatorKind::Minus, operand);
-
-  zc::Vector<ast::NodeId> topDecls;
-  topDecls.add(unary);
-  auto result = runFullCheck(fix, topDecls.asPtr());
-
-  ZC_EXPECT(result.success);
-  ZC_EXPECT(result.typeEnv.hasType(unary));
-  if (result.typeEnv.hasType(unary)) {
-    auto& ty = result.typeEnv.getType(unary);
-    ZC_EXPECT(isPrimitive(ty));
-  }
-  ZC_EXPECT(result.typeEnv.hasDispatch(unary));
-  auto& dispatch = result.typeEnv.getDispatch(unary);
-  ZC_EXPECT(dispatch.targetKind == type::CallTargetKind::PrimitiveOperator);
-  ZC_EXPECT(dispatch.receiverMode == type::ReceiverMode::OperatorOperand);
-  ZC_EXPECT(dispatch.argumentTypes.size() == 1);
-  ZC_EXPECT(dispatch.resultType == result.typeEnv.getSemanticTypeId(unary));
-}
-
-ZC_TEST("BodyChecker.LogicalNot") {
-  TestFixture fix;
-  // !true
-  auto operand = fix.makeBoolLiteral(true);
-  auto unary = fix.makeUnaryExpr(ast::UnaryOperatorKind::LogicalNot, operand);
-
-  zc::Vector<ast::NodeId> topDecls;
-  topDecls.add(unary);
-  auto result = runFullCheck(fix, topDecls.asPtr());
-
-  ZC_EXPECT(result.success);
-  ZC_EXPECT(result.typeEnv.hasType(unary));
-  if (result.typeEnv.hasType(unary)) {
-    auto& ty = result.typeEnv.getType(unary);
-    ZC_EXPECT(isPrimitive(ty));
-  }
-  ZC_EXPECT(result.typeEnv.hasDispatch(unary));
-  auto& dispatch = result.typeEnv.getDispatch(unary);
-  ZC_EXPECT(dispatch.targetKind == type::CallTargetKind::PrimitiveOperator);
-  ZC_EXPECT(dispatch.receiverMode == type::ReceiverMode::OperatorOperand);
-  ZC_EXPECT(dispatch.argumentTypes.size() == 1);
-  ZC_EXPECT(dispatch.resultType == result.typeEnv.getSemanticTypeId(unary));
-}
-
-ZC_TEST("BodyChecker.UnaryMinusUsesUserTypeNegImpl") {
-  expectUserTypeUnaryOperatorImpl("Neg"_zc, ast::UnaryOperatorKind::Minus, true);
-}
-
-ZC_TEST("BodyChecker.UnaryMinusRejectsWrongTraitMethodSignature") {
-  TestFixture fix;
-  auto consumer = zc::heap<CapturingDiagnosticConsumer>();
-  auto consumerPtr = consumer.get();
-  fix.diagnostics().addConsumer(zc::mv(consumer));
-
-  auto negIface = fix.makeInterfaceDecl("Neg"_zc);
-  auto operandType = fix.makeClassDecl("Operand"_zc);
-
-  zc::Vector<ast::NodeId> implIfaceNodes;
-  implIfaceNodes.add(fix.makeNamedTypeExpr("Neg"_zc));
-  auto implIfaces = fix.makeImplIfaceList(fix.makeNodeList(implIfaceNodes.asPtr()));
-  auto implMethod =
-      fix.makeMethodDecl("neg"_zc, ast::NodeId(), ast::NodeId(), fix.makeNamedTypeExpr("bool"_zc));
-  zc::Vector<ast::NodeId> implMembers;
-  implMembers.add(implMethod);
-  auto implDecl =
-      makeStandaloneImplDecl(fix, fix.makeNamedTypeExpr("Operand"_zc), implIfaces,
-                             fix.makeClassMemberList(fix.makeNodeList(implMembers.asPtr())));
-
-  auto valueDecl = fix.makeVariableDeclarator(fix.makeBindingPattern("value"_zc),
-                                              fix.makeNamedTypeExpr("Operand"_zc));
-  zc::Vector<ast::NodeId> decls;
-  decls.add(valueDecl);
-  auto let = fix.makeLetStmt(fix.makeVariableDeclaratorList(fix.makeNodeList(decls.asPtr())));
-  auto unary = fix.makeUnaryExpr(ast::UnaryOperatorKind::Minus, fix.makeIdentExpr("value"_zc));
-
-  zc::Vector<ast::NodeId> topDecls;
-  topDecls.add(negIface);
-  topDecls.add(operandType);
-  topDecls.add(implDecl);
-  topDecls.add(let);
-  topDecls.add(unary);
-  auto result = runFullCheck(fix, topDecls.asPtr());
-
-  ZC_EXPECT(!result.success);
-  ZC_EXPECT(fix.diagnostics().hasErrors());
-  ZC_EXPECT(
-      containsDiagnosticId(*consumerPtr, diagnostics::DiagID::OperatorTraitSignatureMismatch));
-  ZC_EXPECT(result.typeEnv.hasType(unary));
-  if (result.typeEnv.hasType(unary)) { ZC_EXPECT(isError(result.typeEnv.getType(unary))); }
-}
-
-ZC_TEST("BodyChecker.UnaryMinusRejectsUserTypeWithoutNegImpl") {
-  expectUserTypeUnaryWithoutImplFails(ast::UnaryOperatorKind::Minus);
-}
-
-ZC_TEST("BodyChecker.LogicalNotUsesUserTypeNotImpl") {
-  expectUserTypeUnaryOperatorImpl("Not"_zc, ast::UnaryOperatorKind::LogicalNot, false);
-}
-
-ZC_TEST("BodyChecker.LogicalNotRejectsWrongTraitMethodSignature") {
-  TestFixture fix;
-  auto consumer = zc::heap<CapturingDiagnosticConsumer>();
-  auto consumerPtr = consumer.get();
-  fix.diagnostics().addConsumer(zc::mv(consumer));
-
-  auto notIface = fix.makeInterfaceDecl("Not"_zc);
-  auto operandType = fix.makeClassDecl("Operand"_zc);
-
-  zc::Vector<ast::NodeId> implIfaceNodes;
-  implIfaceNodes.add(fix.makeNamedTypeExpr("Not"_zc));
-  auto implIfaces = fix.makeImplIfaceList(fix.makeNodeList(implIfaceNodes.asPtr()));
-  auto implMethod = fix.makeMethodDecl("not"_zc, ast::NodeId(), ast::NodeId(),
-                                       fix.makeNamedTypeExpr("Operand"_zc));
-  zc::Vector<ast::NodeId> implMembers;
-  implMembers.add(implMethod);
-  auto implDecl =
-      makeStandaloneImplDecl(fix, fix.makeNamedTypeExpr("Operand"_zc), implIfaces,
-                             fix.makeClassMemberList(fix.makeNodeList(implMembers.asPtr())));
-
-  auto valueDecl = fix.makeVariableDeclarator(fix.makeBindingPattern("value"_zc),
-                                              fix.makeNamedTypeExpr("Operand"_zc));
-  zc::Vector<ast::NodeId> decls;
-  decls.add(valueDecl);
-  auto let = fix.makeLetStmt(fix.makeVariableDeclaratorList(fix.makeNodeList(decls.asPtr())));
-  auto unary = fix.makeUnaryExpr(ast::UnaryOperatorKind::LogicalNot, fix.makeIdentExpr("value"_zc));
-
-  zc::Vector<ast::NodeId> topDecls;
-  topDecls.add(notIface);
-  topDecls.add(operandType);
-  topDecls.add(implDecl);
-  topDecls.add(let);
-  topDecls.add(unary);
-  auto result = runFullCheck(fix, topDecls.asPtr());
-
-  ZC_EXPECT(!result.success);
-  ZC_EXPECT(fix.diagnostics().hasErrors());
-  ZC_EXPECT(
-      containsDiagnosticId(*consumerPtr, diagnostics::DiagID::OperatorTraitSignatureMismatch));
-  ZC_EXPECT(result.typeEnv.hasType(unary));
-  if (result.typeEnv.hasType(unary)) { ZC_EXPECT(isError(result.typeEnv.getType(unary))); }
-}
-
-ZC_TEST("BodyChecker.LogicalNotRejectsUserTypeWithoutNotImpl") {
-  expectUserTypeUnaryWithoutImplFails(ast::UnaryOperatorKind::LogicalNot);
-}
-
-ZC_TEST("BodyChecker.ErrorUnwrapRejectsNonUnionOperand") {
-  TestFixture fix;
-  auto consumer = zc::heap<CapturingDiagnosticConsumer>();
-  auto consumerPtr = consumer.get();
-  fix.diagnostics().addConsumer(zc::mv(consumer));
-  auto operand = fix.makeIntLiteral(1);
-  auto unwrap = fix.makePostfixExpr(ast::PostfixOperatorKind::ErrorUnwrap, operand);
-
-  zc::Vector<ast::NodeId> topDecls;
-  topDecls.add(unwrap);
-  auto result = runFullCheck(fix, topDecls.asPtr());
-
-  ZC_EXPECT(!result.success);
-  ZC_EXPECT(fix.diagnostics().hasErrors());
-  ZC_EXPECT(containsDiagnosticId(*consumerPtr, diagnostics::DiagID::ErrorUnwrapNonUnion));
-  ZC_EXPECT(result.typeEnv.hasType(unwrap));
-  ZC_EXPECT(isError(result.typeEnv.getType(unwrap)));
-}
-
-ZC_TEST("BodyChecker.ErrorPropagateRejectsNonUnionOperand") {
-  TestFixture fix;
-  auto operand = fix.makeIntLiteral(1);
-  auto propagate = fix.makePostfixExpr(ast::PostfixOperatorKind::ErrorPropagate, operand);
-
-  zc::Vector<ast::NodeId> topDecls;
-  topDecls.add(propagate);
-  auto result = runFullCheck(fix, topDecls.asPtr());
-
-  ZC_EXPECT(!result.success);
-  ZC_EXPECT(fix.diagnostics().hasErrors());
-  ZC_EXPECT(result.typeEnv.hasType(propagate));
-  ZC_EXPECT(isError(result.typeEnv.getType(propagate)));
-}
-
-ZC_TEST("BodyChecker.ErrorUnwrapReturnsFirstUnionAlternative") {
-  TestFixture fix;
-  auto cond = fix.makeBoolLiteral(true);
-  auto success = fix.makeIntLiteral(1);
-  auto failure = fix.makeStrLiteral("error"_zc);
-  auto unionExpr = fix.makeConditionalExpr(cond, success, failure);
-  auto unwrap = fix.makePostfixExpr(ast::PostfixOperatorKind::ErrorUnwrap, unionExpr);
-
-  zc::Vector<ast::NodeId> topDecls;
-  topDecls.add(unwrap);
-  auto result = runFullCheck(fix, topDecls.asPtr());
-
-  ZC_EXPECT(result.success);
-  ZC_EXPECT(result.typeEnv.hasType(unwrap));
-  auto& ty = result.typeEnv.getType(unwrap);
-  ZC_EXPECT(isPrimitive(ty));
-  if (isPrimitive(ty)) {
-    auto& primitive = static_cast<const type::PrimitiveType&>(ty);
-    ZC_EXPECT(primitive.getPrimitiveKind() == type::PrimitiveKind::I32);
-  }
-}
-
-ZC_TEST("BodyChecker.ErrorPropagateRequiresEnclosingRaises") {
-  TestFixture fix;
-  auto consumer = zc::heap<CapturingDiagnosticConsumer>();
-  auto consumerPtr = consumer.get();
-  fix.diagnostics().addConsumer(zc::mv(consumer));
-  auto cond = fix.makeBoolLiteral(true);
-  auto success = fix.makeIntLiteral(1);
-  auto failure = fix.makeStrLiteral("error"_zc);
-  auto unionExpr = fix.makeConditionalExpr(cond, success, failure);
-  auto propagate = fix.makePostfixExpr(ast::PostfixOperatorKind::ErrorPropagate, unionExpr);
-  auto returnStmt = fix.makeReturnStmt(propagate);
-
-  zc::Vector<ast::NodeId> bodyStmts;
-  bodyStmts.add(returnStmt);
-  auto bodyBlock = fix.makeBlockStmt(fix.makeNodeList(bodyStmts.asPtr()));
-  auto retTy = fix.makeNamedTypeExpr("i32"_zc);
-  auto fn = fix.makeFunctionDecl("f"_zc, bodyBlock, ast::NodeId(), retTy);
-
-  zc::Vector<ast::NodeId> topDecls;
-  topDecls.add(fn);
-  auto result = runFullCheck(fix, topDecls.asPtr());
-
-  ZC_EXPECT(!result.success);
-  ZC_EXPECT(fix.diagnostics().hasErrors());
-  ZC_EXPECT(containsDiagnosticId(*consumerPtr, diagnostics::DiagID::ErrorPropagateOutsideRaises));
-  ZC_EXPECT(result.typeEnv.hasType(propagate));
-  ZC_EXPECT(isError(result.typeEnv.getType(propagate)));
-}
-
-ZC_TEST("BodyChecker.ErrorPropagateAllowsMatchingRaises") {
-  TestFixture fix;
-  auto cond = fix.makeBoolLiteral(true);
-  auto success = fix.makeIntLiteral(1);
-  auto failure = fix.makeStrLiteral("error"_zc);
-  auto unionExpr = fix.makeConditionalExpr(cond, success, failure);
-  auto propagate = fix.makePostfixExpr(ast::PostfixOperatorKind::ErrorPropagate, unionExpr);
-  auto returnStmt = fix.makeReturnStmt(propagate);
-
-  zc::Vector<ast::NodeId> bodyStmts;
-  bodyStmts.add(returnStmt);
-  auto bodyBlock = fix.makeBlockStmt(fix.makeNodeList(bodyStmts.asPtr()));
-  auto retTy = fix.makeNamedTypeExpr("i32"_zc);
-  auto raisesTy = fix.makeNamedTypeExpr("str"_zc);
-  auto fn = fix.makeFunctionDecl("f"_zc, bodyBlock, ast::NodeId(), retTy, raisesTy);
-
-  zc::Vector<ast::NodeId> topDecls;
-  topDecls.add(fn);
-  auto result = runFullCheck(fix, topDecls.asPtr());
-
-  ZC_EXPECT(result.success);
-  ZC_EXPECT(!fix.diagnostics().hasErrors());
-  ZC_EXPECT(result.typeEnv.hasType(propagate));
-  auto& ty = result.typeEnv.getType(propagate);
-  ZC_EXPECT(isPrimitive(ty));
-}
-
-ZC_TEST("BodyChecker.ErrorPropagateAllowsRaisesUnionSubset") {
-  TestFixture fix;
-  auto cond = fix.makeBoolLiteral(true);
-  auto success = fix.makeIntLiteral(1);
-  auto failure = fix.makeStrLiteral("error"_zc);
-  auto unionExpr = fix.makeConditionalExpr(cond, success, failure);
-  auto propagate = fix.makePostfixExpr(ast::PostfixOperatorKind::ErrorPropagate, unionExpr);
-  auto returnStmt = fix.makeReturnStmt(propagate);
-
-  zc::Vector<ast::NodeId> bodyStmts;
-  bodyStmts.add(returnStmt);
-  auto bodyBlock = fix.makeBlockStmt(fix.makeNodeList(bodyStmts.asPtr()));
-  auto retTy = fix.makeNamedTypeExpr("i32"_zc);
-  auto raisesTy =
-      fix.makeUnionTypeExpr(fix.makeNamedTypeExpr("str"_zc), fix.makeNamedTypeExpr("bool"_zc));
-  auto fn = fix.makeFunctionDecl("f"_zc, bodyBlock, ast::NodeId(), retTy, raisesTy);
-
-  zc::Vector<ast::NodeId> topDecls;
-  topDecls.add(fn);
-  auto result = runFullCheck(fix, topDecls.asPtr());
-
-  ZC_EXPECT(result.success);
-  ZC_EXPECT(!fix.diagnostics().hasErrors());
-  ZC_EXPECT(result.typeEnv.hasType(propagate));
-  auto& ty = result.typeEnv.getType(propagate);
-  ZC_EXPECT(isPrimitive(ty));
-}
-
-ZC_TEST("BodyChecker.ErrorPropagateRejectsRaisingCallWithoutEnclosingRaises") {
-  TestFixture fix;
-  zc::Vector<ast::NodeId> fallibleBodyStmts;
-  fallibleBodyStmts.add(fix.makeReturnStmt(fix.makeIntLiteral(1)));
-  auto fallibleBody = fix.makeBlockStmt(fix.makeNodeList(fallibleBodyStmts.asPtr()));
-  auto retTy = fix.makeNamedTypeExpr("i32"_zc);
-  auto raisesTy = fix.makeNamedTypeExpr("str"_zc);
-  auto fallible = fix.makeFunctionDecl("fallible"_zc, fallibleBody, ast::NodeId(), retTy, raisesTy);
-
-  auto call = fix.makeCallExpr(fix.makeIdentExpr("fallible"_zc), ast::NodeList());
-  auto propagate = fix.makePostfixExpr(ast::PostfixOperatorKind::ErrorPropagate, call);
-  zc::Vector<ast::NodeId> callerBodyStmts;
-  callerBodyStmts.add(fix.makeReturnStmt(propagate));
-  auto callerBody = fix.makeBlockStmt(fix.makeNodeList(callerBodyStmts.asPtr()));
-  auto caller = fix.makeFunctionDecl("caller"_zc, callerBody, ast::NodeId(), retTy);
-
-  zc::Vector<ast::NodeId> topDecls;
-  topDecls.add(fallible);
-  topDecls.add(caller);
-  auto result = runFullCheck(fix, topDecls.asPtr());
-
-  ZC_EXPECT(!result.success);
-  ZC_EXPECT(fix.diagnostics().hasErrors());
-  ZC_EXPECT(result.typeEnv.hasType(propagate));
-  ZC_EXPECT(isError(result.typeEnv.getType(propagate)));
-}
-
-ZC_TEST("BodyChecker.ErrorPropagateAllowsRaisingCallWithMatchingRaises") {
-  TestFixture fix;
-  zc::Vector<ast::NodeId> fallibleBodyStmts;
-  fallibleBodyStmts.add(fix.makeReturnStmt(fix.makeIntLiteral(1)));
-  auto fallibleBody = fix.makeBlockStmt(fix.makeNodeList(fallibleBodyStmts.asPtr()));
-  auto retTy = fix.makeNamedTypeExpr("i32"_zc);
-  auto raisesTy = fix.makeNamedTypeExpr("str"_zc);
-  auto fallible = fix.makeFunctionDecl("fallible"_zc, fallibleBody, ast::NodeId(), retTy, raisesTy);
-
-  auto call = fix.makeCallExpr(fix.makeIdentExpr("fallible"_zc), ast::NodeList());
-  auto propagate = fix.makePostfixExpr(ast::PostfixOperatorKind::ErrorPropagate, call);
-  zc::Vector<ast::NodeId> callerBodyStmts;
-  callerBodyStmts.add(fix.makeReturnStmt(propagate));
-  auto callerBody = fix.makeBlockStmt(fix.makeNodeList(callerBodyStmts.asPtr()));
-  auto caller = fix.makeFunctionDecl("caller"_zc, callerBody, ast::NodeId(), retTy, raisesTy);
-
-  zc::Vector<ast::NodeId> topDecls;
-  topDecls.add(fallible);
-  topDecls.add(caller);
-  auto result = runFullCheck(fix, topDecls.asPtr());
-
-  ZC_EXPECT(result.success);
-  ZC_EXPECT(!fix.diagnostics().hasErrors());
-  ZC_EXPECT(result.typeEnv.hasType(propagate));
-  auto& ty = result.typeEnv.getType(propagate);
-  ZC_EXPECT(isPrimitive(ty));
-}
-
-// ============================================================================
-// Array literal
-// ============================================================================
-
-ZC_TEST("BodyChecker.ArrayLiteralInfersType") {
-  TestFixture fix;
-  // [1, 2, 3]
-  zc::Vector<ast::NodeId> elems;
-  elems.add(fix.makeIntLiteral(1));
-  elems.add(fix.makeIntLiteral(2));
-  elems.add(fix.makeIntLiteral(3));
-  auto arr = fix.makeArrayLiteral(fix.makeNodeList(elems.asPtr()));
-
-  zc::Vector<ast::NodeId> topDecls;
-  topDecls.add(arr);
-  auto result = runFullCheck(fix, topDecls.asPtr());
-
-  ZC_EXPECT(result.success);
-  ZC_EXPECT(result.typeEnv.hasType(arr));
-  auto& ty = result.typeEnv.getType(arr);
-  ZC_EXPECT(isArray(ty));
-  auto& arrTy = static_cast<const type::ArrayType&>(ty);
-  ZC_EXPECT(isPrimitive(arrTy.getElementType()));
-}
-
-ZC_TEST("BodyChecker.ArrayLiteralRejectsIncompatibleElementTypes") {
-  TestFixture fix;
-  zc::Vector<ast::NodeId> elems;
-  elems.add(fix.makeIntLiteral(1));
-  elems.add(fix.makeStrLiteral("two"_zc));
-  auto arr = fix.makeArrayLiteral(fix.makeNodeList(elems.asPtr()));
-
-  zc::Vector<ast::NodeId> topDecls;
-  topDecls.add(arr);
-  auto result = runFullCheck(fix, topDecls.asPtr());
-
-  ZC_EXPECT(!result.success);
-  ZC_EXPECT(fix.diagnostics().hasErrors());
-  ZC_EXPECT(result.typeEnv.hasType(arr));
-  ZC_EXPECT(isError(result.typeEnv.getType(arr)));
-}
-
-ZC_TEST("BodyChecker.DependentErrorExpressionEmitsOnlyOneDiagnostic") {
-  TestFixture fix;
-
-  auto bad = fix.makeBinaryExpr(ast::BinaryOperatorKind::Add, fix.makeIntLiteral(1),
-                                fix.makeStrLiteral("two"_zc));
-  zc::Vector<ast::NodeId> elems;
-  elems.add(bad);
-  elems.add(fix.makeIntLiteral(2));
-  auto arr = fix.makeArrayLiteral(fix.makeNodeList(elems.asPtr()));
-
-  zc::Vector<ast::NodeId> topDecls;
-  topDecls.add(arr);
-  auto result = runFullCheck(fix, topDecls.asPtr());
-
-  ZC_EXPECT(!result.success);
-  ZC_EXPECT(fix.diagnostics().errorCount() == 1);
-  ZC_EXPECT(result.typeEnv.hasType(bad));
-  ZC_EXPECT(isError(result.typeEnv.getType(bad)));
-  ZC_EXPECT(result.typeEnv.hasType(arr));
-  ZC_EXPECT(isError(result.typeEnv.getType(arr)));
-}
-
-ZC_TEST("BodyChecker.UndeclaredValueDiagnosticIsCheckerFallback") {
-  TestFixture fix;
-  auto consumer = zc::heap<CapturingDiagnosticConsumer>();
-  auto consumerPtr = consumer.get();
-  fix.diagnostics().addConsumer(zc::mv(consumer));
-
-  auto ident = fix.makeIdentExpr("missing"_zc);
-
-  zc::Vector<ast::NodeId> topDecls;
-  topDecls.add(ident);
-  auto tree = fix.buildSourceFile("test"_zc, topDecls.asPtr());
-
-  tests::TestTypeEnv typeEnv;
-  type::UnificationEngine unifier(typeEnv);
-  type::ConstraintSet constraints;
-  BodyChecker bodyChecker(typeEnv, unifier, constraints, fix.symbols(), tree, fix.metadata(),
-                          fix.diagnostics());
-  bool success = bodyChecker.checkBodies();
-
-  ZC_EXPECT(!success);
-  ZC_EXPECT(containsDiagnosticId(*consumerPtr, diagnostics::DiagID::UndeclaredValue));
-  ZC_EXPECT(typeEnv.hasType(ident));
-  ZC_EXPECT(isError(typeEnv.getType(ident)));
-}
-
-ZC_TEST("BodyChecker.EmptyUnionErrorOperatorDiagnosticIsCheckerFallback") {
-  TestFixture fix;
-  auto consumer = zc::heap<CapturingDiagnosticConsumer>();
-  auto consumerPtr = consumer.get();
-  fix.diagnostics().addConsumer(zc::mv(consumer));
-
-  auto operand = fix.makeIdentExpr("value"_zc);
-  auto propagate = fix.makePostfixExpr(ast::PostfixOperatorKind::ErrorPropagate, operand);
-
-  zc::Vector<ast::NodeId> topDecls;
-  topDecls.add(propagate);
-  auto tree = fix.buildSourceFile("test"_zc, topDecls.asPtr());
-
-  tests::TestTypeEnv typeEnv;
-  zc::Vector<zc::Own<type::Type>> alternatives;
-  typeEnv.setType(operand, zc::heap<type::UnionType>(zc::mv(alternatives)));
-  type::UnificationEngine unifier(typeEnv);
-  type::ConstraintSet constraints;
-  BodyChecker bodyChecker(typeEnv, unifier, constraints, fix.symbols(), tree, fix.metadata(),
-                          fix.diagnostics());
-  bool success = bodyChecker.checkBodies();
-
-  ZC_EXPECT(!success);
-  ZC_EXPECT(containsDiagnosticId(*consumerPtr, diagnostics::DiagID::ErrorUnionEmpty));
-  ZC_EXPECT(typeEnv.hasType(propagate));
-  ZC_EXPECT(isError(typeEnv.getType(propagate)));
-}
-
-ZC_TEST("BodyChecker.UnsupportedStructLiteralTargetDiagnosticIsCheckerFallback") {
-  TestFixture fix;
-  auto consumer = zc::heap<CapturingDiagnosticConsumer>();
-  auto consumerPtr = consumer.get();
-  fix.diagnostics().addConsumer(zc::mv(consumer));
-
-  zc::Vector<ast::NodeId> props;
-  props.add(fix.makeObjectProperty("value"_zc, fix.makeIntLiteral(1)));
-  auto lit = fix.makeStructLiteralExpr(ast::NodeId(), fix.makeNodeList(props.asPtr()));
-
-  zc::Vector<ast::NodeId> topDecls;
-  topDecls.add(lit);
-  auto tree = fix.buildSourceFile("test"_zc, topDecls.asPtr());
-
-  tests::TestTypeEnv typeEnv;
-  type::UnificationEngine unifier(typeEnv);
-  type::ConstraintSet constraints;
-  BodyChecker bodyChecker(typeEnv, unifier, constraints, fix.symbols(), tree, fix.metadata(),
-                          fix.diagnostics());
-  bool success = bodyChecker.checkBodies();
-
-  ZC_EXPECT(!success);
-  ZC_EXPECT(
-      containsDiagnosticId(*consumerPtr, diagnostics::DiagID::UnsupportedStructLiteralTarget));
-  ZC_EXPECT(typeEnv.hasType(lit));
-  ZC_EXPECT(isError(typeEnv.getType(lit)));
-}
-
-// ============================================================================
-// Tuple literal
-// ============================================================================
-
-ZC_TEST("BodyChecker.TupleLiteralInfersType") {
-  TestFixture fix;
-  // (1, "two")
-  zc::Vector<ast::NodeId> elems;
-  elems.add(fix.makeIntLiteral(1));
-  elems.add(fix.makeStrLiteral("two"_zc));
-  auto tuple = fix.makeTupleLiteral(fix.makeNodeList(elems.asPtr()));
-
-  zc::Vector<ast::NodeId> topDecls;
-  topDecls.add(tuple);
-  auto result = runFullCheck(fix, topDecls.asPtr());
-
-  ZC_EXPECT(result.success);
-  if (result.typeEnv.hasType(tuple)) {
-    auto& ty = result.typeEnv.getType(tuple);
-    ZC_EXPECT(isTuple(ty));
-    if (isTuple(ty)) {
-      auto& tupleTy = static_cast<const type::TupleType&>(ty);
-      ZC_EXPECT(tupleTy.getElementCount() == 2);
-      ZC_EXPECT(isPrimitive(tupleTy.getElementType(0)));
-      ZC_EXPECT(isPrimitive(tupleTy.getElementType(1)));
-      if (isPrimitive(tupleTy.getElementType(0)) && isPrimitive(tupleTy.getElementType(1))) {
-        auto& first = static_cast<const type::PrimitiveType&>(tupleTy.getElementType(0));
-        auto& second = static_cast<const type::PrimitiveType&>(tupleTy.getElementType(1));
-        ZC_EXPECT(first.getPrimitiveKind() == type::PrimitiveKind::I32);
-        ZC_EXPECT(second.getPrimitiveKind() == type::PrimitiveKind::Str);
-      }
-    }
-  }
-}
-
-// ============================================================================
-// Lambda expression
-// ============================================================================
-
-ZC_TEST("BodyChecker.LambdaExprInfersFunctionType") {
-  TestFixture fix;
-  // fun(x) { return x; }
-  auto body = fix.makeBlockStmt(ast::NodeList());
-  auto lambda = fix.makeLambdaExpr(body);
-
-  zc::Vector<ast::NodeId> topDecls;
-  topDecls.add(lambda);
-  auto result = runFullCheck(fix, topDecls.asPtr());
-
-  ZC_EXPECT(result.success);
-  if (result.typeEnv.hasType(lambda)) {
-    auto& ty = result.typeEnv.getType(lambda);
-    ZC_EXPECT(isFunction(ty));
-  }
-}
-
-ZC_TEST("BodyChecker.LambdaExprUsesAnnotatedSignature") {
-  TestFixture fix;
-  auto param = fix.makeFunctionParamDecl("x"_zc, fix.makeNamedTypeExpr("i32"_zc));
-  zc::Vector<ast::NodeId> paramNodes;
-  paramNodes.add(param);
-  auto params = fix.makeFunctionParamList(fix.makeNodeList(paramNodes.asPtr()));
-  auto body = fix.makeBlockStmt(ast::NodeList());
-  auto lambda = fix.makeLambdaExpr(body, params, fix.makeNamedTypeExpr("i32"_zc));
-
-  zc::Vector<ast::NodeId> topDecls;
-  topDecls.add(lambda);
-  auto result = runFullCheck(fix, topDecls.asPtr());
-
-  ZC_EXPECT(result.success);
-  ZC_EXPECT(!fix.diagnostics().hasErrors());
-  ZC_EXPECT(result.typeEnv.hasType(lambda));
-  auto& ty = result.typeEnv.getType(lambda);
-  ZC_EXPECT(isFunction(ty));
-  if (isFunction(ty)) {
-    auto& fn = static_cast<const type::FunctionType&>(ty);
-    ZC_EXPECT(fn.getParamCount() == 1);
-    ZC_EXPECT(isPrimitive(fn.getParamType(0)));
-    ZC_EXPECT(isPrimitive(fn.getReturnType()));
-  }
-}
-
-ZC_TEST("BodyChecker.FunctionExprUsesAnnotatedSignature") {
-  TestFixture fix;
-  auto param = fix.makeFunctionParamDecl("x"_zc, fix.makeNamedTypeExpr("i32"_zc));
-  zc::Vector<ast::NodeId> paramNodes;
-  paramNodes.add(param);
-  auto params = fix.makeFunctionParamList(fix.makeNodeList(paramNodes.asPtr()));
-  auto body = fix.makeBlockStmt(ast::NodeList());
-  auto fnExpr = fix.makeFunctionExpr(body, params, fix.makeNamedTypeExpr("i32"_zc));
-
-  zc::Vector<ast::NodeId> topDecls;
-  topDecls.add(fnExpr);
-  auto result = runFullCheck(fix, topDecls.asPtr());
-
-  ZC_EXPECT(result.success);
-  ZC_EXPECT(!fix.diagnostics().hasErrors());
-  ZC_EXPECT(result.typeEnv.hasType(fnExpr));
-  auto& ty = result.typeEnv.getType(fnExpr);
-  ZC_EXPECT(isFunction(ty));
-  if (isFunction(ty)) {
-    auto& fn = static_cast<const type::FunctionType&>(ty);
-    ZC_EXPECT(fn.getParamCount() == 1);
-    ZC_EXPECT(isPrimitive(fn.getParamType(0)));
-    ZC_EXPECT(isPrimitive(fn.getReturnType()));
-  }
-}
-
-ZC_TEST("BodyChecker.FunctionExprChecksAnnotatedReturnAgainstBody") {
-  TestFixture fix;
-  auto consumer = zc::heap<CapturingDiagnosticConsumer>();
-  auto consumerPtr = consumer.get();
-  fix.diagnostics().addConsumer(zc::mv(consumer));
-
-  auto body = fix.makeStrLiteral("bad"_zc);
-  auto fnExpr = fix.makeFunctionExpr(body, ast::NodeId(), fix.makeNamedTypeExpr("i32"_zc));
-
-  zc::Vector<ast::NodeId> topDecls;
-  topDecls.add(fnExpr);
-  auto result = runFullCheck(fix, topDecls.asPtr());
-
-  ZC_EXPECT(!result.success);
-  ZC_EXPECT(fix.diagnostics().hasErrors());
-  ZC_EXPECT(containsDiagnosticId(*consumerPtr, diagnostics::DiagID::TypeCheckerTypeMismatch));
-  ZC_EXPECT(result.typeEnv.hasType(fnExpr));
-  ZC_EXPECT(isError(result.typeEnv.getType(fnExpr)));
-}
-
-ZC_TEST("BodyChecker.LambdaExprChecksAnnotatedReturnAgainstBody") {
-  TestFixture fix;
-  auto consumer = zc::heap<CapturingDiagnosticConsumer>();
-  auto consumerPtr = consumer.get();
-  fix.diagnostics().addConsumer(zc::mv(consumer));
-
-  auto body = fix.makeStrLiteral("bad"_zc);
-  auto lambda = fix.makeLambdaExpr(body, ast::NodeId(), fix.makeNamedTypeExpr("i32"_zc));
-
-  zc::Vector<ast::NodeId> topDecls;
-  topDecls.add(lambda);
-  auto result = runFullCheck(fix, topDecls.asPtr());
-
-  ZC_EXPECT(!result.success);
-  ZC_EXPECT(fix.diagnostics().hasErrors());
-  ZC_EXPECT(containsDiagnosticId(*consumerPtr, diagnostics::DiagID::TypeCheckerTypeMismatch));
-  ZC_EXPECT(result.typeEnv.hasType(lambda));
-  ZC_EXPECT(isError(result.typeEnv.getType(lambda)));
-}
-
-// ============================================================================
-// Member access
-// ============================================================================
-
-ZC_TEST("BodyChecker.MemberAccess") {
-  TestFixture fix;
-  // { field: 1 }.field
-  zc::Vector<ast::NodeId> props;
-  props.add(fix.makeObjectProperty("field"_zc, fix.makeIntLiteral(1)));
-  auto objRef = fix.makeObjectLiteral(fix.makeNodeList(props.asPtr()));
-  auto member = fix.makeMemberExpr(objRef, "field"_zc);
-
-  zc::Vector<ast::NodeId> topDecls;
-  topDecls.add(member);
-  auto result = runFullCheck(fix, topDecls.asPtr());
-
-  ZC_EXPECT(result.success);
-  ZC_EXPECT(!fix.diagnostics().hasErrors());
-  ZC_EXPECT(result.typeEnv.hasType(member));
-  auto& ty = result.typeEnv.getType(member);
-  ZC_EXPECT(isPrimitive(ty));
-  if (isPrimitive(ty)) {
-    auto& primitive = static_cast<const type::PrimitiveType&>(ty);
-    ZC_EXPECT(primitive.getPrimitiveKind() == type::PrimitiveKind::I32);
-  }
-}
-
-ZC_TEST("BodyChecker.MemberCallRecordsInstanceMethodDispatch") {
-  TestFixture fix;
-  auto method =
-      fix.makeMethodDecl("value"_zc, ast::NodeId(), ast::NodeId(), fix.makeNamedTypeExpr("i32"_zc));
-  zc::Vector<ast::NodeId> members;
-  members.add(method);
-  auto cls = fix.makeClassDecl("Counter"_zc, ast::NodeId(),
-                               fix.makeClassMemberList(fix.makeNodeList(members.asPtr())));
-
-  auto counterDecl = fix.makeVariableDeclarator(fix.makeBindingPattern("counter"_zc),
-                                                fix.makeNamedTypeExpr("Counter"_zc));
-  zc::Vector<ast::NodeId> decls;
-  decls.add(counterDecl);
-  auto let = fix.makeLetStmt(fix.makeVariableDeclaratorList(fix.makeNodeList(decls.asPtr())));
-
-  auto callee = fix.makeMemberExpr(fix.makeIdentExpr("counter"_zc), "value"_zc);
-  auto call = fix.makeCallExpr(callee, ast::NodeList());
-
-  zc::Vector<ast::NodeId> topDecls;
-  topDecls.add(cls);
-  topDecls.add(let);
-  topDecls.add(call);
-  auto result = runFullCheck(fix, topDecls.asPtr());
-
-  ZC_EXPECT(result.success);
-  ZC_EXPECT(!fix.diagnostics().hasErrors());
-  ZC_EXPECT(result.typeEnv.hasType(call));
-  auto& ty = result.typeEnv.getType(call);
-  ZC_EXPECT(isPrimitive(ty));
-  if (isPrimitive(ty)) {
-    auto& primitive = static_cast<const type::PrimitiveType&>(ty);
-    ZC_EXPECT(primitive.getPrimitiveKind() == type::PrimitiveKind::I32);
-  }
-  ZC_EXPECT(result.typeEnv.hasDispatch(call));
-  auto& dispatch = result.typeEnv.getDispatch(call);
-  ZC_EXPECT(dispatch.targetKind == type::CallTargetKind::InstanceMethod);
-  ZC_EXPECT(dispatch.receiverMode == type::ReceiverMode::ImplicitSelf);
-  ZC_EXPECT(dispatch.targetDefinition.isValid());
-  ZC_EXPECT(dispatch.argumentTypes.size() == 1);
-  ZC_EXPECT(dispatch.resultType == result.typeEnv.getSemanticTypeId(call));
-}
-
-ZC_TEST("BodyChecker.StructMemberCallRecordsInstanceMethodDispatch") {
-  TestFixture fix;
-  auto method =
-      fix.makeMethodDecl("norm"_zc, ast::NodeId(), ast::NodeId(), fix.makeNamedTypeExpr("i32"_zc));
-  zc::Vector<ast::NodeId> members;
-  members.add(method);
-  auto point =
-      fix.makeStructDecl("Point"_zc, fix.makeClassMemberList(fix.makeNodeList(members.asPtr())));
-
-  auto pointDecl = fix.makeVariableDeclarator(fix.makeBindingPattern("point"_zc),
-                                              fix.makeNamedTypeExpr("Point"_zc));
-  zc::Vector<ast::NodeId> decls;
-  decls.add(pointDecl);
-  auto let = fix.makeLetStmt(fix.makeVariableDeclaratorList(fix.makeNodeList(decls.asPtr())));
-
-  auto callee = fix.makeMemberExpr(fix.makeIdentExpr("point"_zc), "norm"_zc);
-  auto call = fix.makeCallExpr(callee, ast::NodeList());
-
-  zc::Vector<ast::NodeId> topDecls;
-  topDecls.add(point);
-  topDecls.add(let);
-  topDecls.add(call);
-  auto result = runFullCheck(fix, topDecls.asPtr());
-
-  ZC_EXPECT(result.success);
-  ZC_EXPECT(!fix.diagnostics().hasErrors());
-  ZC_EXPECT(result.typeEnv.hasType(call));
-  auto& ty = result.typeEnv.getType(call);
-  ZC_EXPECT(isPrimitive(ty));
-  if (isPrimitive(ty)) {
-    auto& primitive = static_cast<const type::PrimitiveType&>(ty);
-    ZC_EXPECT(primitive.getPrimitiveKind() == type::PrimitiveKind::I32);
-  }
-  ZC_EXPECT(result.typeEnv.hasDispatch(call));
-  auto& dispatch = result.typeEnv.getDispatch(call);
-  ZC_EXPECT(dispatch.targetKind == type::CallTargetKind::InstanceMethod);
-  ZC_EXPECT(dispatch.receiverMode == type::ReceiverMode::ImplicitSelf);
-  ZC_EXPECT(dispatch.targetDefinition.isValid());
-  ZC_EXPECT(dispatch.argumentTypes.size() == 1);
-  ZC_EXPECT(dispatch.resultType == result.typeEnv.getSemanticTypeId(call));
-}
-
-ZC_TEST("BodyChecker.MemberCallRecordsStaticMethodDispatch") {
-  TestFixture fix;
-  auto method = fix.makeMethodDecl("make"_zc, ast::NodeId(), ast::NodeId(),
-                                   fix.makeNamedTypeExpr("Counter"_zc), true);
-  zc::Vector<ast::NodeId> members;
-  members.add(method);
-  auto cls = fix.makeClassDecl("Counter"_zc, ast::NodeId(),
-                               fix.makeClassMemberList(fix.makeNodeList(members.asPtr())));
-
-  auto callee = fix.makeMemberExpr(fix.makeIdentExpr("Counter"_zc), "make"_zc);
-  auto call = fix.makeCallExpr(callee, ast::NodeList());
-
-  zc::Vector<ast::NodeId> topDecls;
-  topDecls.add(cls);
-  topDecls.add(call);
-  auto result = runFullCheck(fix, topDecls.asPtr());
-
-  ZC_EXPECT(result.success);
-  ZC_EXPECT(!fix.diagnostics().hasErrors());
-  ZC_EXPECT(result.typeEnv.hasType(call));
-  auto& ty = result.typeEnv.getType(call);
-  ZC_EXPECT(isNamed(ty));
-  if (isNamed(ty)) { ZC_EXPECT(static_cast<const type::NamedType&>(ty).getName() == "Counter"_zc); }
-  ZC_EXPECT(result.typeEnv.hasDispatch(call));
-  auto& dispatch = result.typeEnv.getDispatch(call);
-  ZC_EXPECT(dispatch.targetKind == type::CallTargetKind::StaticMethod);
-  ZC_EXPECT(dispatch.receiverMode == type::ReceiverMode::None);
-  ZC_EXPECT(dispatch.targetDefinition.isValid());
-  ZC_EXPECT(dispatch.argumentTypes.size() == 0);
-  ZC_EXPECT(dispatch.resultType == result.typeEnv.getSemanticTypeId(call));
-}
-
-// ============================================================================
-// Cast expression
-// ============================================================================
-
-ZC_TEST("BodyChecker.CastExpr") {
-  TestFixture fix;
-  // 42 as i32
-  auto expr = fix.makeIntLiteral(42);
-  auto ty = fix.makeNamedTypeExpr("i32"_zc);
-  auto cast = fix.makeCastExpr(expr, ty);
-
-  zc::Vector<ast::NodeId> topDecls;
-  topDecls.add(cast);
-  auto result = runFullCheck(fix, topDecls.asPtr());
-
-  ZC_EXPECT(result.success);
-  if (result.typeEnv.hasType(cast)) {
-    auto& resultTy = result.typeEnv.getType(cast);
-    // Cast result should be the target type
-    ZC_EXPECT(resultTy.getKind() == type::TypeKind::Named || isPrimitive(resultTy));
-  }
-}
-
-ZC_TEST("BodyChecker.CastAllowsNumericConversion") {
-  TestFixture fix;
-  auto expr = fix.makeIntLiteral(42);
-  auto ty = fix.makeNamedTypeExpr("f64"_zc);
-  auto cast = fix.makeCastExpr(expr, ty);
-
-  zc::Vector<ast::NodeId> topDecls;
-  topDecls.add(cast);
-  auto result = runFullCheck(fix, topDecls.asPtr());
-
-  ZC_EXPECT(result.success);
-  ZC_EXPECT(!fix.diagnostics().hasErrors());
-  ZC_EXPECT(result.typeEnv.hasType(cast));
-  ZC_EXPECT(isPrimitive(result.typeEnv.getType(cast)));
-}
-
-ZC_TEST("BodyChecker.OptionalCheckedCastReturnsNullableTarget") {
-  TestFixture fix;
-  auto cast = fix.makeCastExpr(fix.makeIntLiteral(42), fix.makeNamedTypeExpr("i8"_zc), 1);
-
-  zc::Vector<ast::NodeId> topDecls;
-  topDecls.add(cast);
-  auto result = runFullCheck(fix, topDecls.asPtr());
-
-  ZC_EXPECT(result.success);
-  ZC_EXPECT(!fix.diagnostics().hasErrors());
-  ZC_EXPECT(result.typeEnv.hasType(cast));
-  ZC_EXPECT(isUnion(result.typeEnv.getType(cast)));
-  if (isUnion(result.typeEnv.getType(cast))) {
-    auto& unionType = static_cast<const type::UnionType&>(result.typeEnv.getType(cast));
-    ZC_EXPECT(unionType.isNullable());
-  }
-}
-
-ZC_TEST("BodyChecker.ForcedCheckedCastReturnsTarget") {
-  TestFixture fix;
-  auto cast = fix.makeCastExpr(fix.makeIntLiteral(42), fix.makeNamedTypeExpr("i8"_zc), 2);
-
-  zc::Vector<ast::NodeId> topDecls;
-  topDecls.add(cast);
-  auto result = runFullCheck(fix, topDecls.asPtr());
-
-  ZC_EXPECT(result.success);
-  ZC_EXPECT(!fix.diagnostics().hasErrors());
-  ZC_EXPECT(result.typeEnv.hasType(cast));
-  ZC_EXPECT(isPrimitive(result.typeEnv.getType(cast)));
-  ZC_IF_SOME(kind, type::primitiveKindOf(result.typeEnv.getType(cast))) {
-    ZC_EXPECT(kind == type::PrimitiveKind::I8);
-  }
-}
-
-ZC_TEST("BodyChecker.CastRejectsIntegerToBool") {
-  TestFixture fix;
-  auto consumer = zc::heap<CapturingDiagnosticConsumer>();
-  auto consumerPtr = consumer.get();
-  fix.diagnostics().addConsumer(zc::mv(consumer));
-
-  auto expr = fix.makeIntLiteral(42);
-  auto ty = fix.makeNamedTypeExpr("bool"_zc);
-  auto cast = fix.makeCastExpr(expr, ty);
-
-  zc::Vector<ast::NodeId> topDecls;
-  topDecls.add(cast);
-  auto result = runFullCheck(fix, topDecls.asPtr());
-
-  ZC_EXPECT(!result.success);
-  ZC_EXPECT(fix.diagnostics().hasErrors());
-  ZC_EXPECT(containsDiagnosticId(*consumerPtr, diagnostics::DiagID::CheckerInvalidCast));
-  ZC_EXPECT(result.typeEnv.hasType(cast));
-  ZC_EXPECT(isError(result.typeEnv.getType(cast)));
-}
-
-ZC_TEST("BodyChecker.CastRejectsRawPointerReinterpretOutsideUnsafe") {
-  TestFixture fix;
-  auto sourceTy = fix.makeRawPointerTypeExpr(fix.makeNamedTypeExpr("i32"_zc));
-  auto targetTy = fix.makeRawPointerTypeExpr(fix.makeNamedTypeExpr("f64"_zc));
-  auto pat = fix.makeBindingPattern("p"_zc);
-  auto decl = fix.makeVariableDeclarator(pat, sourceTy);
-  zc::Vector<ast::NodeId> declList;
-  declList.add(decl);
-  auto varList = fix.makeVariableDeclaratorList(fix.makeNodeList(declList.asPtr()));
-  auto let = fix.makeLetStmt(varList);
-  auto cast = fix.makeCastExpr(fix.makeIdentExpr("p"_zc), targetTy);
-
-  zc::Vector<ast::NodeId> topDecls;
-  topDecls.add(let);
-  topDecls.add(cast);
-  auto result = runFullCheck(fix, topDecls.asPtr());
-
-  ZC_EXPECT(!result.success);
-  ZC_EXPECT(fix.diagnostics().hasErrors());
-  ZC_EXPECT(result.typeEnv.hasType(cast));
-  ZC_EXPECT(isError(result.typeEnv.getType(cast)));
-}
-
-ZC_TEST("BodyChecker.CastAllowsRawPointerReinterpretInsideUnsafe") {
-  TestFixture fix;
-  auto sourceTy = fix.makeRawPointerTypeExpr(fix.makeNamedTypeExpr("i32"_zc));
-  auto targetTy = fix.makeRawPointerTypeExpr(fix.makeNamedTypeExpr("f64"_zc));
-  auto pat = fix.makeBindingPattern("p"_zc);
-  auto decl = fix.makeVariableDeclarator(pat, sourceTy);
-  zc::Vector<ast::NodeId> declList;
-  declList.add(decl);
-  auto varList = fix.makeVariableDeclaratorList(fix.makeNodeList(declList.asPtr()));
-  auto let = fix.makeLetStmt(varList);
-  auto cast = fix.makeCastExpr(fix.makeIdentExpr("p"_zc), targetTy);
-  zc::Vector<ast::NodeId> unsafeStmts;
-  unsafeStmts.add(fix.makeExpressionStatement(cast));
-  auto unsafeBody = fix.makeBlockStmt(fix.makeNodeList(unsafeStmts.asPtr()));
-  auto unsafeExpr = fix.makeUnsafeBlockExpr(unsafeBody);
-
-  zc::Vector<ast::NodeId> topDecls;
-  topDecls.add(let);
-  topDecls.add(unsafeExpr);
-  auto result = runFullCheck(fix, topDecls.asPtr());
-
-  ZC_EXPECT(result.success);
-  ZC_EXPECT(!fix.diagnostics().hasErrors());
-  ZC_EXPECT(result.typeEnv.hasType(cast));
-  ZC_EXPECT(isRawPointer(result.typeEnv.getType(cast)));
-}
-
-ZC_TEST("BodyChecker.RawPointerDerefProducesPointeeType") {
-  TestFixture fix;
-  auto ptrTy = fix.makeRawPointerTypeExpr(fix.makeNamedTypeExpr("i32"_zc));
-  auto pat = fix.makeBindingPattern("ptr"_zc);
-  auto decl = fix.makeVariableDeclarator(pat, ptrTy);
-  zc::Vector<ast::NodeId> declList;
-  declList.add(decl);
-  auto varList = fix.makeVariableDeclaratorList(fix.makeNodeList(declList.asPtr()));
-  auto let = fix.makeLetStmt(varList);
-  auto deref = fix.makeUnaryExpr(ast::UnaryOperatorKind::Deref, fix.makeIdentExpr("ptr"_zc));
-
-  zc::Vector<ast::NodeId> topDecls;
-  topDecls.add(let);
-  topDecls.add(deref);
-  auto result = runFullCheck(fix, topDecls.asPtr());
-
-  ZC_EXPECT(result.typeEnv.hasType(deref));
-  ZC_EXPECT(isPrimitive(result.typeEnv.getType(deref)));
-  ZC_IF_SOME(kind, type::primitiveKindOf(result.typeEnv.getType(deref))) {
-    ZC_EXPECT(kind == type::PrimitiveKind::I32);
-  }
-}
-
-ZC_TEST("BodyChecker.CastAllowsSharedReferenceToConstRawPointer") {
-  TestFixture fix;
-  auto sourceTy = fix.makeReferenceTypeExpr(fix.makeNamedTypeExpr("i32"_zc));
-  auto targetTy = fix.makeRawPointerTypeExpr(fix.makeNamedTypeExpr("i32"_zc));
-  auto pat = fix.makeBindingPattern("r"_zc);
-  auto decl = fix.makeVariableDeclarator(
-      pat, sourceTy, fix.makeUnaryExpr(ast::UnaryOperatorKind::Ref, fix.makeIntLiteral(1)));
-  zc::Vector<ast::NodeId> declList;
-  declList.add(decl);
-  auto let = fix.makeLetStmt(fix.makeVariableDeclaratorList(fix.makeNodeList(declList.asPtr())));
-  auto cast = fix.makeCastExpr(fix.makeIdentExpr("r"_zc), targetTy);
-
-  zc::Vector<ast::NodeId> topDecls;
-  topDecls.add(let);
-  topDecls.add(cast);
-  auto result = runFullCheck(fix, topDecls.asPtr());
-
-  ZC_EXPECT(result.success);
-  ZC_EXPECT(!fix.diagnostics().hasErrors());
-  ZC_EXPECT(result.typeEnv.hasType(cast));
-  ZC_EXPECT(isRawPointer(result.typeEnv.getType(cast)));
-}
-
-ZC_TEST("BodyChecker.CastAllowsMutableReferenceToMutableRawPointer") {
-  TestFixture fix;
-  auto sourceTy = fix.makeReferenceTypeExpr(fix.makeNamedTypeExpr("i32"_zc), true);
-  auto targetTy = fix.makeRawPointerTypeExpr(fix.makeNamedTypeExpr("i32"_zc), true);
-  auto pat = fix.makeBindingPattern("r"_zc);
-  auto decl = fix.makeVariableDeclarator(pat, sourceTy);
-  zc::Vector<ast::NodeId> declList;
-  declList.add(decl);
-  auto let = fix.makeLetStmt(fix.makeVariableDeclaratorList(fix.makeNodeList(declList.asPtr())));
-  auto cast = fix.makeCastExpr(fix.makeIdentExpr("r"_zc), targetTy);
-
-  zc::Vector<ast::NodeId> topDecls;
-  topDecls.add(let);
-  topDecls.add(cast);
-  auto result = runFullCheck(fix, topDecls.asPtr());
-
-  ZC_EXPECT(result.success);
-  ZC_EXPECT(!fix.diagnostics().hasErrors());
-  ZC_EXPECT(result.typeEnv.hasType(cast));
-  ZC_EXPECT(isRawPointer(result.typeEnv.getType(cast)));
-}
-
-ZC_TEST("BodyChecker.CastAllowsDynUpcast") {
-  TestFixture fix;
-  auto parentIface = fix.makeInterfaceDecl("Parent"_zc);
-  zc::Vector<ast::NodeId> childSuperIfaces;
-  childSuperIfaces.add(fix.makeNamedTypeExpr("Parent"_zc));
-  auto childIface = fix.makeInterfaceDecl(
-      "Child"_zc, ast::NodeId(), fix.makeImplIfaceList(fix.makeNodeList(childSuperIfaces.asPtr())));
-  auto concrete = fix.makeClassDecl("Concrete"_zc);
-
-  zc::Vector<ast::NodeId> ifaceNodes;
-  ifaceNodes.add(fix.makeNamedTypeExpr("Child"_zc));
-  auto ifaceList = fix.makeImplIfaceList(fix.makeNodeList(ifaceNodes.asPtr()));
-  auto childImpl = fix.makeStandaloneImplDecl(fix.makeNamedTypeExpr("Concrete"_zc), ifaceList);
-  auto concreteDecl = fix.makeVariableDeclarator(fix.makeBindingPattern("c"_zc),
-                                                 fix.makeNamedTypeExpr("Concrete"_zc));
-
-  auto sourceTy = fix.makeDynTypeExpr(fix.makeNamedTypeExpr("Child"_zc));
-  auto targetTy = fix.makeDynTypeExpr(fix.makeNamedTypeExpr("Parent"_zc));
-  auto pat = fix.makeBindingPattern("d"_zc);
-  auto decl = fix.makeVariableDeclarator(pat, sourceTy, fix.makeIdentExpr("c"_zc));
-  zc::Vector<ast::NodeId> declList;
-  declList.add(concreteDecl);
-  declList.add(decl);
-  auto let = fix.makeLetStmt(fix.makeVariableDeclaratorList(fix.makeNodeList(declList.asPtr())));
-  auto cast = fix.makeCastExpr(fix.makeIdentExpr("d"_zc), targetTy);
-
-  zc::Vector<ast::NodeId> topDecls;
-  topDecls.add(parentIface);
-  topDecls.add(childIface);
-  topDecls.add(concrete);
-  topDecls.add(childImpl);
-  topDecls.add(let);
-  topDecls.add(cast);
-  auto result = runFullCheck(fix, topDecls.asPtr());
-
-  ZC_EXPECT(result.success);
-  ZC_EXPECT(!fix.diagnostics().hasErrors());
-  ZC_EXPECT(result.typeEnv.hasType(cast));
-  ZC_EXPECT(isExistential(result.typeEnv.getType(cast)));
-}
-
-ZC_TEST("BodyChecker.CastRejectsUnrelatedDynUpcast") {
-  TestFixture fix;
-  auto consumer = zc::heap<CapturingDiagnosticConsumer>();
-  auto consumerPtr = consumer.get();
-  fix.diagnostics().addConsumer(zc::mv(consumer));
-
-  auto leftIface = fix.makeInterfaceDecl("Left"_zc);
-  auto rightIface = fix.makeInterfaceDecl("Right"_zc);
-  auto sourceTy = fix.makeDynTypeExpr(fix.makeNamedTypeExpr("Left"_zc));
-  auto decl = fix.makeVariableDeclarator(fix.makeBindingPattern("value"_zc), sourceTy);
-  zc::Vector<ast::NodeId> decls;
-  decls.add(decl);
-  auto let = fix.makeLetStmt(fix.makeVariableDeclaratorList(fix.makeNodeList(decls.asPtr())));
-  auto cast = fix.makeCastExpr(fix.makeIdentExpr("value"_zc),
-                               fix.makeDynTypeExpr(fix.makeNamedTypeExpr("Right"_zc)));
-
-  zc::Vector<ast::NodeId> topDecls;
-  topDecls.add(leftIface);
-  topDecls.add(rightIface);
-  topDecls.add(let);
-  topDecls.add(cast);
-  auto result = runFullCheck(fix, topDecls.asPtr());
-
-  ZC_EXPECT(!result.success);
-  ZC_EXPECT(fix.diagnostics().hasErrors());
-  ZC_EXPECT(containsDiagnosticId(*consumerPtr, diagnostics::DiagID::InvalidDynUpcast));
-  ZC_EXPECT(result.typeEnv.hasType(cast));
-  ZC_EXPECT(isError(result.typeEnv.getType(cast)));
-}
-
-// ============================================================================
-// Is expression
-// ============================================================================
-
-ZC_TEST("BodyChecker.IsExprReturnsBool") {
-  TestFixture fix;
-  // 42 is i32
-  auto expr = fix.makeIntLiteral(42);
-  auto ty = fix.makeNamedTypeExpr("i32"_zc);
-  auto isExpr = fix.makeIsExpr(expr, ty);
-
-  zc::Vector<ast::NodeId> topDecls;
-  topDecls.add(isExpr);
-  auto result = runFullCheck(fix, topDecls.asPtr());
-
-  ZC_EXPECT(result.success);
-  if (result.typeEnv.hasType(isExpr)) {
-    auto& resultTy = result.typeEnv.getType(isExpr);
-    ZC_EXPECT(isPrimitive(resultTy));
-  }
-}
-
-ZC_TEST("BodyChecker.IsExprChecksOperand") {
-  TestFixture fix;
-  auto ptrPattern = fix.makeBindingPattern("ptr"_zc);
-  auto ptrDecl = fix.makeVariableDeclarator(
-      ptrPattern, fix.makeRawPointerTypeExpr(fix.makeNamedTypeExpr("i32"_zc)));
-  zc::Vector<ast::NodeId> decls;
-  decls.add(ptrDecl);
-  auto letStmt = fix.makeLetStmt(fix.makeVariableDeclaratorList(fix.makeNodeList(decls.asPtr())));
-  auto ptrUse = fix.makeIdentExpr("ptr"_zc);
-  auto deref = fix.makeUnaryExpr(ast::UnaryOperatorKind::Deref, ptrUse);
-  auto isExpr = fix.makeIsExpr(deref, fix.makeNamedTypeExpr("i32"_zc));
-
-  zc::Vector<ast::NodeId> topDecls;
-  topDecls.add(letStmt);
-  topDecls.add(isExpr);
-  auto result = runFullCheck(fix, topDecls.asPtr());
-
-  ZC_EXPECT(result.success);
-  ZC_EXPECT(result.typeEnv.hasType(ptrUse));
-  ZC_EXPECT(result.typeEnv.hasType(deref));
-  ZC_EXPECT(result.typeEnv.hasType(isExpr));
-  if (result.typeEnv.hasType(deref)) {
-    auto& derefTy = result.typeEnv.getType(deref);
-    ZC_EXPECT(isPrimitive(derefTy));
-    if (isPrimitive(derefTy)) {
-      auto& primitive = static_cast<const type::PrimitiveType&>(derefTy);
-      ZC_EXPECT(primitive.getPrimitiveKind() == type::PrimitiveKind::I32);
-    }
-  }
-}
-
-// ============================================================================
-// This expression
-// ============================================================================
-
-ZC_TEST("BodyChecker.ThisExprOutsideClassGetsErrorType") {
-  TestFixture fix;
-  auto thisExpr = fix.makeThisExpr();
-
-  zc::Vector<ast::NodeId> topDecls;
-  topDecls.add(thisExpr);
-  auto result = runFullCheck(fix, topDecls.asPtr());
-
-  ZC_EXPECT(!result.success);
-  ZC_EXPECT(fix.diagnostics().hasErrors());
-  ZC_EXPECT(!result.typeEnv.hasType(thisExpr));
-}
-
-// ============================================================================
-// For statement
-// ============================================================================
-
-ZC_TEST("BodyChecker.ForStmt") {
-  TestFixture fix;
-  auto initPat = fix.makeBindingPattern("i"_zc);
-  auto initDecl = fix.makeVariableDeclarator(initPat, ast::NodeId(), fix.makeIntLiteral(0));
-  zc::Vector<ast::NodeId> initDeclList;
-  initDeclList.add(initDecl);
-  auto initVarList = fix.makeVariableDeclaratorList(fix.makeNodeList(initDeclList.asPtr()));
-  auto initLet = fix.makeLetStmt(initVarList);
-
-  auto cond = fix.makeBinaryExpr(ast::BinaryOperatorKind::Lt, fix.makeIdentExpr("i"_zc),
-                                 fix.makeIntLiteral(10));
-  auto update = fix.makeAssignmentExpr(fix.makeIdentExpr("i"_zc), fix.makeIntLiteral(1), 1);
-  auto bodyBlock = fix.makeBlockStmt(ast::NodeList());
-
-  auto forStmt = fix.makeForStmt(initLet, cond, update, bodyBlock);
-
-  zc::Vector<ast::NodeId> topDecls;
-  topDecls.add(forStmt);
-  auto result = runFullCheck(fix, topDecls.asPtr());
-
-  ZC_EXPECT(result.success);
-}
-
-// ============================================================================
-// Variable declaration type checking
-// ============================================================================
-
-ZC_TEST("BodyChecker.LetWithTypeAnnotation") {
-  TestFixture fix;
-  // let x: i32 = 42;
-  auto pat = fix.makeBindingPattern("x"_zc);
-  auto ty = fix.makeNamedTypeExpr("i32"_zc);
-  auto init = fix.makeIntLiteral(42);
-  auto decl = fix.makeVariableDeclarator(pat, ty, init);
-  zc::Vector<ast::NodeId> declList;
-  declList.add(decl);
-  auto varList = fix.makeVariableDeclaratorList(fix.makeNodeList(declList.asPtr()));
-  auto let = fix.makeLetStmt(varList);
-
-  zc::Vector<ast::NodeId> topDecls;
-  topDecls.add(let);
-  auto result = runFullCheck(fix, topDecls.asPtr());
-
-  ZC_EXPECT(result.success);
-}
-
-ZC_TEST("BodyChecker.LetWithTypeAnnotationRejectsWrongInitializer") {
-  TestFixture fix;
-  auto pat = fix.makeBindingPattern("x"_zc);
-  auto ty = fix.makeNamedTypeExpr("i32"_zc);
-  auto init = fix.makeStrLiteral("bad"_zc);
-  auto decl = fix.makeVariableDeclarator(pat, ty, init);
-  zc::Vector<ast::NodeId> declList;
-  declList.add(decl);
-  auto varList = fix.makeVariableDeclaratorList(fix.makeNodeList(declList.asPtr()));
-  auto let = fix.makeLetStmt(varList);
-
-  zc::Vector<ast::NodeId> topDecls;
-  topDecls.add(let);
-  auto result = runFullCheck(fix, topDecls.asPtr());
-
-  ZC_EXPECT(!result.success);
-  ZC_EXPECT(fix.diagnostics().hasErrors());
-  ZC_EXPECT(result.typeEnv.hasType(decl));
-  ZC_EXPECT(isError(result.typeEnv.getType(decl)));
-}
-
-ZC_TEST("BodyChecker.LetWithoutAnnotationRejectsNullInitializer") {
-  TestFixture fix;
-  auto consumer = zc::heap<CapturingDiagnosticConsumer>();
-  auto consumerPtr = consumer.get();
-  fix.diagnostics().addConsumer(zc::mv(consumer));
-
-  auto pat = fix.makeBindingPattern("x"_zc);
-  auto init = fix.makeNullLiteral();
-  auto decl = fix.makeVariableDeclarator(pat, ast::NodeId(), init);
-  zc::Vector<ast::NodeId> declList;
-  declList.add(decl);
-  auto varList = fix.makeVariableDeclaratorList(fix.makeNodeList(declList.asPtr()));
-  auto let = fix.makeLetStmt(varList);
-
-  zc::Vector<ast::NodeId> topDecls;
-  topDecls.add(let);
-  auto result = runFullCheck(fix, topDecls.asPtr());
-
-  ZC_EXPECT(!result.success);
-  ZC_EXPECT(fix.diagnostics().hasErrors());
-  ZC_EXPECT(containsDiagnosticId(*consumerPtr, diagnostics::DiagID::CannotInferNullInitializer));
-  ZC_EXPECT(result.typeEnv.hasType(decl));
-  ZC_EXPECT(isError(result.typeEnv.getType(decl)));
-}
-
-ZC_TEST("BodyChecker.LetWithNullableAnnotationAcceptsNullInitializer") {
-  TestFixture fix;
-  auto pat = fix.makeBindingPattern("x"_zc);
-  auto ty = fix.makeUnionTypeExpr(fix.makeNamedTypeExpr("i32"_zc), fix.makePredefinedTypeExpr(13));
-  auto init = fix.makeNullLiteral();
-  auto decl = fix.makeVariableDeclarator(pat, ty, init);
-  zc::Vector<ast::NodeId> declList;
-  declList.add(decl);
-  auto varList = fix.makeVariableDeclaratorList(fix.makeNodeList(declList.asPtr()));
-  auto let = fix.makeLetStmt(varList);
-
-  zc::Vector<ast::NodeId> topDecls;
-  topDecls.add(let);
-  auto result = runFullCheck(fix, topDecls.asPtr());
-
-  ZC_EXPECT(result.success);
-  ZC_EXPECT(!fix.diagnostics().hasErrors());
-  ZC_EXPECT(result.typeEnv.hasType(decl));
-  ZC_EXPECT(isUnion(result.typeEnv.getType(decl)));
-  ZC_EXPECT(result.typeEnv.hasCoercion(decl));
-  ZC_EXPECT(result.typeEnv.getCoercion(decl) == type::CoercionKind::NullToNullableUnion);
-}
-
-ZC_TEST("BodyChecker.LetWithReferenceAnnotationRejectsNullInitializer") {
-  TestFixture fix;
-  auto pat = fix.makeBindingPattern("r"_zc);
-  auto refTy = fix.makeReferenceTypeExpr(fix.makeNamedTypeExpr("i32"_zc));
-  auto decl = fix.makeVariableDeclarator(pat, refTy, fix.makeNullLiteral());
-  zc::Vector<ast::NodeId> declList;
-  declList.add(decl);
-  auto let = fix.makeLetStmt(fix.makeVariableDeclaratorList(fix.makeNodeList(declList.asPtr())));
-
-  zc::Vector<ast::NodeId> topDecls;
-  topDecls.add(let);
-  auto result = runFullCheck(fix, topDecls.asPtr());
-
-  ZC_EXPECT(!result.success);
-  ZC_EXPECT(fix.diagnostics().hasErrors());
-  ZC_EXPECT(result.typeEnv.hasType(decl));
-  ZC_EXPECT(isError(result.typeEnv.getType(decl)));
-}
-
-ZC_TEST("BodyChecker.LetWithNullableReferenceAnnotationAcceptsNullInitializer") {
-  TestFixture fix;
-  auto pat = fix.makeBindingPattern("r"_zc);
-  auto refTy = fix.makeReferenceTypeExpr(fix.makeNamedTypeExpr("i32"_zc));
-  auto nullableRefTy = fix.makeUnionTypeExpr(refTy, fix.makePredefinedTypeExpr(13));
-  auto decl = fix.makeVariableDeclarator(pat, nullableRefTy, fix.makeNullLiteral());
-  zc::Vector<ast::NodeId> declList;
-  declList.add(decl);
-  auto let = fix.makeLetStmt(fix.makeVariableDeclaratorList(fix.makeNodeList(declList.asPtr())));
-
-  zc::Vector<ast::NodeId> topDecls;
-  topDecls.add(let);
-  auto result = runFullCheck(fix, topDecls.asPtr());
-
-  ZC_EXPECT(result.success);
-  ZC_EXPECT(!fix.diagnostics().hasErrors());
-  ZC_EXPECT(result.typeEnv.hasType(decl));
-  ZC_EXPECT(isUnion(result.typeEnv.getType(decl)));
-}
-
-ZC_TEST("BodyChecker.LetWithDynAnnotationRecordsExistentialErasure") {
-  TestFixture fix;
-  auto addIface = fix.makeInterfaceDecl("Add"_zc);
-  auto numberType = fix.makeClassDecl("Number"_zc);
-
-  zc::Vector<ast::NodeId> ifaceNodes;
-  ifaceNodes.add(fix.makeNamedTypeExpr("Add"_zc));
-  auto ifaceList = fix.makeImplIfaceList(fix.makeNodeList(ifaceNodes.asPtr()));
-  auto addImpl = fix.makeStandaloneImplDecl(fix.makeNamedTypeExpr("Number"_zc), ifaceList);
-
-  auto xDecl = fix.makeVariableDeclarator(fix.makeBindingPattern("x"_zc),
-                                          fix.makeNamedTypeExpr("Number"_zc));
-  auto yDecl = fix.makeVariableDeclarator(fix.makeBindingPattern("y"_zc),
-                                          fix.makeDynTypeExpr(fix.makeNamedTypeExpr("Add"_zc)),
-                                          fix.makeIdentExpr("x"_zc));
-  zc::Vector<ast::NodeId> decls;
-  decls.add(xDecl);
-  decls.add(yDecl);
-  auto let = fix.makeLetStmt(fix.makeVariableDeclaratorList(fix.makeNodeList(decls.asPtr())));
-
-  zc::Vector<ast::NodeId> topDecls;
-  topDecls.add(addIface);
-  topDecls.add(numberType);
-  topDecls.add(addImpl);
-  topDecls.add(let);
-  auto result = runFullCheck(fix, topDecls.asPtr());
-
-  ZC_EXPECT(result.success);
-  ZC_EXPECT(!fix.diagnostics().hasErrors());
-  ZC_EXPECT(result.typeEnv.hasType(yDecl));
-  ZC_EXPECT(isExistential(result.typeEnv.getType(yDecl)));
-  ZC_EXPECT(result.typeEnv.hasCoercion(yDecl));
-  ZC_EXPECT(result.typeEnv.getCoercion(yDecl) == type::CoercionKind::ExistentialErasure);
-}
-
-ZC_TEST("BodyChecker.DynReceiverCallRecordsVTableDispatch") {
-  TestFixture fix;
-  auto drawMethod =
-      fix.makeMethodDecl("draw"_zc, ast::NodeId(), ast::NodeId(), fix.makeNamedTypeExpr("unit"_zc));
-  zc::Vector<ast::NodeId> ifaceMembers;
-  ifaceMembers.add(drawMethod);
-  auto drawableIface = fix.makeInterfaceDecl(
-      "Drawable"_zc, fix.makeClassMemberList(fix.makeNodeList(ifaceMembers.asPtr())));
-
-  auto spriteType = fix.makeClassDecl("Sprite"_zc);
-  zc::Vector<ast::NodeId> implIfaceNodes;
-  implIfaceNodes.add(fix.makeNamedTypeExpr("Drawable"_zc));
-  auto implIfaces = fix.makeImplIfaceList(fix.makeNodeList(implIfaceNodes.asPtr()));
-  auto drawableImpl = fix.makeStandaloneImplDecl(fix.makeNamedTypeExpr("Sprite"_zc), implIfaces);
-
-  auto spriteDecl = fix.makeVariableDeclarator(fix.makeBindingPattern("sprite"_zc),
-                                               fix.makeNamedTypeExpr("Sprite"_zc));
-  auto drawableDecl = fix.makeVariableDeclarator(
-      fix.makeBindingPattern("drawable"_zc),
-      fix.makeDynTypeExpr(fix.makeNamedTypeExpr("Drawable"_zc)), fix.makeIdentExpr("sprite"_zc));
-  zc::Vector<ast::NodeId> decls;
-  decls.add(spriteDecl);
-  decls.add(drawableDecl);
-  auto let = fix.makeLetStmt(fix.makeVariableDeclaratorList(fix.makeNodeList(decls.asPtr())));
-
-  auto callee = fix.makeMemberExpr(fix.makeIdentExpr("drawable"_zc), "draw"_zc);
-  auto call = fix.makeCallExpr(callee, ast::NodeList());
-
-  zc::Vector<ast::NodeId> topDecls;
-  topDecls.add(drawableIface);
-  topDecls.add(spriteType);
-  topDecls.add(drawableImpl);
-  topDecls.add(let);
-  topDecls.add(call);
-  auto result = runFullCheck(fix, topDecls.asPtr());
-
-  ZC_EXPECT(result.success);
-  ZC_EXPECT(!fix.diagnostics().hasErrors());
-  ZC_EXPECT(result.typeEnv.hasType(call));
-  auto& ty = result.typeEnv.getType(call);
-  ZC_EXPECT(isPrimitive(ty));
-  if (isPrimitive(ty)) {
-    auto& primitive = static_cast<const type::PrimitiveType&>(ty);
-    ZC_EXPECT(primitive.getPrimitiveKind() == type::PrimitiveKind::Unit);
-  }
-  ZC_EXPECT(result.typeEnv.hasDispatch(call));
-  auto& dispatch = result.typeEnv.getDispatch(call);
-  ZC_EXPECT(dispatch.targetKind == type::CallTargetKind::DynVTable);
-  ZC_EXPECT(dispatch.receiverMode == type::ReceiverMode::ImplicitSelf);
-  ZC_EXPECT(dispatch.interfaceName.asPtr() == "Drawable"_zc);
-  ZC_EXPECT(dispatch.methodName.asPtr() == "draw"_zc);
-  ZC_EXPECT(dispatch.vtableSlot == 0);
-  ZC_EXPECT(dispatch.argumentTypes.size() == 1);
-  ZC_EXPECT(dispatch.resultType == result.typeEnv.getSemanticTypeId(call));
-}
-
-ZC_TEST("BodyChecker.DynReceiverCallFindsInheritedVTableSlot") {
-  TestFixture fix;
-  auto pingMethod =
-      fix.makeMethodDecl("ping"_zc, ast::NodeId(), ast::NodeId(), fix.makeNamedTypeExpr("unit"_zc));
-  zc::Vector<ast::NodeId> baseMembers;
-  baseMembers.add(pingMethod);
-  auto baseIface = fix.makeInterfaceDecl(
-      "Base"_zc, fix.makeClassMemberList(fix.makeNodeList(baseMembers.asPtr())));
-
-  zc::Vector<ast::NodeId> childIfaces;
-  childIfaces.add(fix.makeNamedTypeExpr("Base"_zc));
-  auto childIfaceList = fix.makeImplIfaceList(fix.makeNodeList(childIfaces.asPtr()));
-  auto drawMethod =
-      fix.makeMethodDecl("draw"_zc, ast::NodeId(), ast::NodeId(), fix.makeNamedTypeExpr("unit"_zc));
-  zc::Vector<ast::NodeId> childMembers;
-  childMembers.add(drawMethod);
-  auto childIface = fix.makeInterfaceDecl(
-      "Child"_zc, fix.makeClassMemberList(fix.makeNodeList(childMembers.asPtr())), childIfaceList);
-
-  auto spriteType = fix.makeClassDecl("Sprite"_zc);
-  zc::Vector<ast::NodeId> baseImplIfaceNodes;
-  baseImplIfaceNodes.add(fix.makeNamedTypeExpr("Base"_zc));
-  auto baseImplIfaces = fix.makeImplIfaceList(fix.makeNodeList(baseImplIfaceNodes.asPtr()));
-  auto baseImpl = fix.makeStandaloneImplDecl(fix.makeNamedTypeExpr("Sprite"_zc), baseImplIfaces);
-  zc::Vector<ast::NodeId> childImplIfaceNodes;
-  childImplIfaceNodes.add(fix.makeNamedTypeExpr("Child"_zc));
-  auto childImplIfaces = fix.makeImplIfaceList(fix.makeNodeList(childImplIfaceNodes.asPtr()));
-  auto childImpl = fix.makeStandaloneImplDecl(fix.makeNamedTypeExpr("Sprite"_zc), childImplIfaces);
-
-  auto spriteDecl = fix.makeVariableDeclarator(fix.makeBindingPattern("sprite"_zc),
-                                               fix.makeNamedTypeExpr("Sprite"_zc));
-  auto childDecl = fix.makeVariableDeclarator(
-      fix.makeBindingPattern("child"_zc), fix.makeDynTypeExpr(fix.makeNamedTypeExpr("Child"_zc)),
-      fix.makeIdentExpr("sprite"_zc));
-  zc::Vector<ast::NodeId> decls;
-  decls.add(spriteDecl);
-  decls.add(childDecl);
-  auto let = fix.makeLetStmt(fix.makeVariableDeclaratorList(fix.makeNodeList(decls.asPtr())));
-
-  auto callee = fix.makeMemberExpr(fix.makeIdentExpr("child"_zc), "ping"_zc);
-  auto call = fix.makeCallExpr(callee, ast::NodeList());
-
-  zc::Vector<ast::NodeId> topDecls;
-  topDecls.add(baseIface);
-  topDecls.add(childIface);
-  topDecls.add(spriteType);
-  topDecls.add(baseImpl);
-  topDecls.add(childImpl);
-  topDecls.add(let);
-  topDecls.add(call);
-  auto result = runFullCheck(fix, topDecls.asPtr());
-
-  ZC_EXPECT(result.success);
-  ZC_EXPECT(!fix.diagnostics().hasErrors());
-  ZC_EXPECT(result.typeEnv.hasDispatch(call));
-  auto& dispatch = result.typeEnv.getDispatch(call);
-  ZC_EXPECT(dispatch.targetKind == type::CallTargetKind::DynVTable);
-  ZC_EXPECT(dispatch.interfaceName.asPtr() == "Base"_zc);
-  ZC_EXPECT(dispatch.methodName.asPtr() == "ping"_zc);
-  ZC_EXPECT(dispatch.vtableSlot == 0);
-  ZC_EXPECT(dispatch.argumentTypes.size() == 1);
-  ZC_EXPECT(dispatch.resultType == result.typeEnv.getSemanticTypeId(call));
-}
-
-ZC_TEST("BodyChecker.QualifiedInterfaceCallRecordsDispatch") {
-  TestFixture fix;
-  zc::Vector<ast::NodeId> params;
-  params.add(fix.makeFunctionParamDecl("value"_zc, fix.makeNamedTypeExpr("Sprite"_zc)));
-  auto paramList = fix.makeFunctionParamList(fix.makeNodeList(params.asPtr()));
-  auto drawMethod =
-      fix.makeMethodDecl("draw"_zc, ast::NodeId(), paramList, fix.makeNamedTypeExpr("unit"_zc));
-  zc::Vector<ast::NodeId> ifaceMembers;
-  ifaceMembers.add(drawMethod);
-  auto drawableIface = fix.makeInterfaceDecl(
-      "Drawable"_zc, fix.makeClassMemberList(fix.makeNodeList(ifaceMembers.asPtr())));
-
-  auto spriteType = fix.makeClassDecl("Sprite"_zc);
-  zc::Vector<ast::NodeId> implIfaceNodes;
-  implIfaceNodes.add(fix.makeNamedTypeExpr("Drawable"_zc));
-  auto implIfaces = fix.makeImplIfaceList(fix.makeNodeList(implIfaceNodes.asPtr()));
-  auto drawableImpl = fix.makeStandaloneImplDecl(fix.makeNamedTypeExpr("Sprite"_zc), implIfaces);
-
-  auto spriteDecl = fix.makeVariableDeclarator(fix.makeBindingPattern("sprite"_zc),
-                                               fix.makeNamedTypeExpr("Sprite"_zc));
-  zc::Vector<ast::NodeId> decls;
-  decls.add(spriteDecl);
-  auto let = fix.makeLetStmt(fix.makeVariableDeclaratorList(fix.makeNodeList(decls.asPtr())));
-
-  auto callee = fix.makeMemberExpr(fix.makeIdentExpr("Drawable"_zc), "draw"_zc);
-  zc::Vector<ast::NodeId> args;
-  args.add(fix.makeIdentExpr("sprite"_zc));
-  auto call = fix.makeCallExpr(callee, fix.makeNodeList(args.asPtr()));
-
-  zc::Vector<ast::NodeId> topDecls;
-  topDecls.add(drawableIface);
-  topDecls.add(spriteType);
-  topDecls.add(drawableImpl);
-  topDecls.add(let);
-  topDecls.add(call);
-  auto result = runFullCheck(fix, topDecls.asPtr());
-
-  ZC_EXPECT(result.success);
-  ZC_EXPECT(!fix.diagnostics().hasErrors());
-  ZC_EXPECT(result.typeEnv.hasType(call));
-  auto& ty = result.typeEnv.getType(call);
-  ZC_EXPECT(isPrimitive(ty));
-  if (isPrimitive(ty)) {
-    auto& primitive = static_cast<const type::PrimitiveType&>(ty);
-    ZC_EXPECT(primitive.getPrimitiveKind() == type::PrimitiveKind::Unit);
-  }
-  ZC_EXPECT(result.typeEnv.hasDispatch(call));
-  auto& dispatch = result.typeEnv.getDispatch(call);
-  ZC_EXPECT(dispatch.targetKind == type::CallTargetKind::QualifiedInterfaceMethod);
-  ZC_EXPECT(dispatch.receiverMode == type::ReceiverMode::ExplicitFirstArgument);
-  ZC_EXPECT(dispatch.interfaceName.asPtr() == "Drawable"_zc);
-  ZC_EXPECT(dispatch.methodName.asPtr() == "draw"_zc);
-  ZC_EXPECT(dispatch.argumentTypes.size() == 1);
-  ZC_EXPECT(dispatch.resultType == result.typeEnv.getSemanticTypeId(call));
-}
-
-ZC_TEST("BodyChecker.LetWithDynMarkerAnnotationRequiresMarker") {
-  TestFixture fix;
-  auto addIface = fix.makeInterfaceDecl("Add"_zc);
-  auto numberType = fix.makeClassDecl("Number"_zc);
-
-  zc::Vector<ast::NodeId> ifaceNodes;
-  ifaceNodes.add(fix.makeNamedTypeExpr("Add"_zc));
-  auto ifaceList = fix.makeImplIfaceList(fix.makeNodeList(ifaceNodes.asPtr()));
-  auto addImpl = fix.makeStandaloneImplDecl(fix.makeNamedTypeExpr("Number"_zc), ifaceList);
-
-  auto xDecl = fix.makeVariableDeclarator(fix.makeBindingPattern("x"_zc),
-                                          fix.makeNamedTypeExpr("Number"_zc));
-  auto yDecl = fix.makeVariableDeclarator(
-      fix.makeBindingPattern("y"_zc),
-      fix.makeDynTypeExpr(fix.makeNamedTypeExpr("Add"_zc), "Sendable"_zc),
-      fix.makeIdentExpr("x"_zc));
-  zc::Vector<ast::NodeId> decls;
-  decls.add(xDecl);
-  decls.add(yDecl);
-  auto let = fix.makeLetStmt(fix.makeVariableDeclaratorList(fix.makeNodeList(decls.asPtr())));
-
-  zc::Vector<ast::NodeId> topDecls;
-  topDecls.add(addIface);
-  topDecls.add(numberType);
-  topDecls.add(addImpl);
-  topDecls.add(let);
-  auto result = runFullCheck(fix, topDecls.asPtr());
-
-  ZC_EXPECT(result.success);
-  ZC_EXPECT(!fix.diagnostics().hasErrors());
-  ZC_EXPECT(result.typeEnv.hasType(yDecl));
-  ZC_EXPECT(isExistential(result.typeEnv.getType(yDecl)));
-  ZC_EXPECT(result.typeEnv.hasCoercion(yDecl));
-  ZC_EXPECT(result.typeEnv.getCoercion(yDecl) == type::CoercionKind::ExistentialErasure);
-}
-
-ZC_TEST("BodyChecker.PreservesGenericArgumentsInLocalAnnotations") {
-  TestFixture fix;
-  auto goodType = fix.makeClassDecl("Good"_zc);
-  auto boxType = fix.makeClassDecl("Box"_zc);
-
-  zc::Vector<ast::NodeId> arguments;
-  arguments.add(fix.makeNamedTypeExpr("Good"_zc));
-  auto annotatedType = fix.makeNamedTypeExpr("Box"_zc, fix.makeNodeList(arguments.asPtr()));
-  auto valueDecl = fix.makeVariableDeclarator(fix.makeBindingPattern("value"_zc), annotatedType);
-  zc::Vector<ast::NodeId> declarations;
-  declarations.add(valueDecl);
-  auto let =
-      fix.makeLetStmt(fix.makeVariableDeclaratorList(fix.makeNodeList(declarations.asPtr())));
-
-  zc::Vector<ast::NodeId> topDecls;
-  topDecls.add(goodType);
-  topDecls.add(boxType);
-  topDecls.add(let);
-  auto result = runFullCheck(fix, topDecls.asPtr());
-
-  ZC_EXPECT(result.success);
-  ZC_EXPECT(result.typeEnv.hasType(valueDecl));
-  const auto& valueType = result.typeEnv.getType(valueDecl);
-  ZC_EXPECT(isNamed(valueType));
-  if (!isNamed(valueType)) { return; }
-
-  const auto& named = static_cast<const type::NamedType&>(valueType);
-  ZC_EXPECT(named.getName() == "Box"_zc);
-  ZC_EXPECT(named.getTypeArgCount() == 1);
-  if (named.getTypeArgCount() == 1) {
-    ZC_EXPECT(named.getTypeArg(0).toString().asPtr() == "Good"_zc);
-  }
-}
-
-ZC_TEST("BodyChecker.RejectsMismatchedTupleAnnotation") {
-  TestFixture fix;
-  auto consumer = zc::heap<CapturingDiagnosticConsumer>();
-  auto consumerPtr = consumer.get();
-  fix.diagnostics().addConsumer(zc::mv(consumer));
-
-  zc::Vector<ast::NodeId> elements;
-  elements.add(fix.makeNamedTypeExpr("i32"_zc));
-  elements.add(fix.makeNamedTypeExpr("str"_zc));
-  auto tupleType = fix.makeTupleTypeExpr(fix.makeNodeList(elements.asPtr()));
-  auto valueDecl = fix.makeVariableDeclarator(fix.makeBindingPattern("value"_zc), tupleType,
-                                              fix.makeBoolLiteral(true));
-  zc::Vector<ast::NodeId> declarations;
-  declarations.add(valueDecl);
-  auto let =
-      fix.makeLetStmt(fix.makeVariableDeclaratorList(fix.makeNodeList(declarations.asPtr())));
-  zc::Vector<ast::NodeId> topDecls;
-  topDecls.add(let);
-
-  auto result = runFullCheck(fix, topDecls.asPtr());
-
-  ZC_EXPECT(!result.success);
-  ZC_EXPECT(containsDiagnosticId(*consumerPtr, diagnostics::DiagID::TypeCheckerTypeMismatch));
-}
-
-ZC_TEST("BodyChecker.LetWithDynMarkerAnnotationRejectsMissingMarker") {
-  TestFixture fix;
-  auto addIface = fix.makeInterfaceDecl("Add"_zc);
-  auto rawField =
-      fix.makeFieldDecl("ptr"_zc, fix.makeRawPointerTypeExpr(fix.makeNamedTypeExpr("i32"_zc)));
-  zc::Vector<ast::NodeId> members;
-  members.add(rawField);
-  auto numberType = fix.makeClassDecl("Number"_zc, ast::NodeId(),
-                                      fix.makeClassMemberList(fix.makeNodeList(members.asPtr())));
-
-  zc::Vector<ast::NodeId> ifaceNodes;
-  ifaceNodes.add(fix.makeNamedTypeExpr("Add"_zc));
-  auto ifaceList = fix.makeImplIfaceList(fix.makeNodeList(ifaceNodes.asPtr()));
-  auto addImpl = fix.makeStandaloneImplDecl(fix.makeNamedTypeExpr("Number"_zc), ifaceList);
-
-  auto xDecl = fix.makeVariableDeclarator(fix.makeBindingPattern("x"_zc),
-                                          fix.makeNamedTypeExpr("Number"_zc));
-  auto yDecl = fix.makeVariableDeclarator(
-      fix.makeBindingPattern("y"_zc),
-      fix.makeDynTypeExpr(fix.makeNamedTypeExpr("Add"_zc), "Sendable"_zc),
-      fix.makeIdentExpr("x"_zc));
-  zc::Vector<ast::NodeId> decls;
-  decls.add(xDecl);
-  decls.add(yDecl);
-  auto let = fix.makeLetStmt(fix.makeVariableDeclaratorList(fix.makeNodeList(decls.asPtr())));
-
-  zc::Vector<ast::NodeId> topDecls;
-  topDecls.add(addIface);
-  topDecls.add(numberType);
-  topDecls.add(addImpl);
-  topDecls.add(let);
-  auto result = runFullCheck(fix, topDecls.asPtr());
-
-  ZC_EXPECT(!result.success);
-  ZC_EXPECT(fix.diagnostics().hasErrors());
-  ZC_EXPECT(result.typeEnv.hasType(yDecl));
-  ZC_EXPECT(isError(result.typeEnv.getType(yDecl)));
-}
-
-ZC_TEST("BodyChecker.MatchStmtReportsNonExhaustiveEnum") {
-  TestFixture fix;
-  auto consumer = zc::heap<CapturingDiagnosticConsumer>();
-  auto consumerPtr = consumer.get();
-  fix.diagnostics().addConsumer(zc::mv(consumer));
-
-  zc::Vector<ast::NodeId> variants;
-  variants.add(fix.makeEnumVariant("Red"_zc));
-  variants.add(fix.makeEnumVariant("Blue"_zc));
-  auto color =
-      fix.makeEnumDecl("Color"_zc, fix.makeEnumVariantList(fix.makeNodeList(variants.asPtr())));
-
-  auto pat = fix.makeBindingPattern("c"_zc);
-  auto decl = fix.makeVariableDeclarator(pat, fix.makeNamedTypeExpr("Color"_zc));
-  zc::Vector<ast::NodeId> decls;
-  decls.add(decl);
-  auto let = fix.makeLetStmt(fix.makeVariableDeclaratorList(fix.makeNodeList(decls.asPtr())));
-
-  zc::Vector<ast::NodeId> arms;
-  arms.add(fix.makeMatchArmStmt(fix.makeEnumPattern("Red"_zc), fix.makeBlockStmt(ast::NodeList())));
-  auto match = fix.makeMatchStmt(fix.makeIdentExpr("c"_zc), fix.makeNodeList(arms.asPtr()));
-
-  zc::Vector<ast::NodeId> bodyStmts;
-  bodyStmts.add(let);
-  bodyStmts.add(match);
-  auto fn = fix.makeFunctionDecl("f"_zc, fix.makeBlockStmt(fix.makeNodeList(bodyStmts.asPtr())));
-
-  zc::Vector<ast::NodeId> topDecls;
-  topDecls.add(color);
-  topDecls.add(fn);
-  auto result = runFullCheck(fix, topDecls.asPtr());
-
-  ZC_EXPECT(!result.success);
-  ZC_EXPECT(fix.diagnostics().hasErrors());
-  ZC_EXPECT(containsDiagnosticId(*consumerPtr, diagnostics::DiagID::CheckerNonExhaustiveMatch));
-}
-
-ZC_TEST("BodyChecker.MatchStmtAcceptsExhaustiveTupleEnum") {
-  TestFixture fix;
-  auto consumer = zc::heap<CapturingDiagnosticConsumer>();
-  auto consumerPtr = consumer.get();
-  fix.diagnostics().addConsumer(zc::mv(consumer));
-
-  zc::Vector<ast::NodeId> okFields;
-  okFields.add(fix.makePredefinedTypeExpr(static_cast<uint8_t>(type::PrimitiveKind::I32)));
-  zc::Vector<ast::NodeId> errFields;
-  errFields.add(fix.makePredefinedTypeExpr(static_cast<uint8_t>(type::PrimitiveKind::Str)));
-  zc::Vector<ast::NodeId> variants;
-  variants.add(fix.makeTupleVariant("Ok"_zc, fix.makeNodeList(okFields.asPtr())));
-  variants.add(fix.makeTupleVariant("Err"_zc, fix.makeNodeList(errFields.asPtr())));
-  auto resultEnum =
-      fix.makeEnumDecl("Result"_zc, fix.makeEnumVariantList(fix.makeNodeList(variants.asPtr())));
-
-  zc::Vector<ast::NodeId> params;
-  params.add(fix.makeFunctionParamDecl("r"_zc, fix.makeNamedTypeExpr("Result"_zc)));
-  auto paramList = fix.makeFunctionParamList(fix.makeNodeList(params.asPtr()));
-
-  zc::Vector<ast::NodeId> okArgs;
-  okArgs.add(fix.makeIdentifierPattern("value"_zc));
-  zc::Vector<ast::NodeId> errArgs;
-  errArgs.add(fix.makeIdentifierPattern("message"_zc));
-  zc::Vector<ast::NodeId> arms;
-  arms.add(fix.makeMatchArmStmt(fix.makeEnumPattern("Ok"_zc, fix.makeNodeList(okArgs.asPtr())),
-                                fix.makeBlockStmt(ast::NodeList())));
-  arms.add(fix.makeMatchArmStmt(fix.makeEnumPattern("Err"_zc, fix.makeNodeList(errArgs.asPtr())),
-                                fix.makeBlockStmt(ast::NodeList())));
-  auto match = fix.makeMatchStmt(fix.makeIdentExpr("r"_zc), fix.makeNodeList(arms.asPtr()));
-
-  zc::Vector<ast::NodeId> bodyStmts;
-  bodyStmts.add(match);
-  auto fn = fix.makeFunctionDecl("f"_zc, fix.makeBlockStmt(fix.makeNodeList(bodyStmts.asPtr())),
-                                 paramList, fix.makeNamedTypeExpr("unit"_zc));
-
-  zc::Vector<ast::NodeId> topDecls;
-  topDecls.add(resultEnum);
-  topDecls.add(fn);
-  auto result = runFullCheck(fix, topDecls.asPtr());
-
-  ZC_EXPECT(result.success);
-  ZC_EXPECT(!fix.diagnostics().hasErrors());
-  ZC_EXPECT(!containsDiagnosticId(*consumerPtr, diagnostics::DiagID::CheckerNonExhaustiveMatch));
-}
-
-ZC_TEST("BodyChecker.MatchStmtReportsUnreachableArmAfterWildcard") {
-  TestFixture fix;
-  auto consumer = zc::heap<CapturingDiagnosticConsumer>();
-  auto consumerPtr = consumer.get();
-  fix.diagnostics().addConsumer(zc::mv(consumer));
-
-  zc::Vector<ast::NodeId> params;
-  params.add(fix.makeFunctionParamDecl("flag"_zc, fix.makeNamedTypeExpr("bool"_zc)));
-  auto paramList = fix.makeFunctionParamList(fix.makeNodeList(params.asPtr()));
-
-  zc::Vector<ast::NodeId> arms;
-  arms.add(fix.makeMatchArmStmt(fix.makeWildcardPattern(), fix.makeBlockStmt(ast::NodeList())));
-  arms.add(fix.makeMatchArmStmt(fix.makeLiteralPattern(fix.makeBoolLiteral(true)),
-                                fix.makeBlockStmt(ast::NodeList())));
-  auto match = fix.makeMatchStmt(fix.makeIdentExpr("flag"_zc), fix.makeNodeList(arms.asPtr()));
-
-  zc::Vector<ast::NodeId> bodyStmts;
-  bodyStmts.add(match);
-  auto fn = fix.makeFunctionDecl("f"_zc, fix.makeBlockStmt(fix.makeNodeList(bodyStmts.asPtr())),
-                                 paramList, fix.makeNamedTypeExpr("unit"_zc));
-
-  zc::Vector<ast::NodeId> topDecls;
-  topDecls.add(fn);
-  auto result = runFullCheck(fix, topDecls.asPtr());
-
-  ZC_EXPECT(result.success);
-  ZC_EXPECT(!fix.diagnostics().hasErrors());
-  ZC_EXPECT(containsDiagnosticId(*consumerPtr, diagnostics::DiagID::CheckerUnreachableMatchArm));
-}
-
-ZC_TEST("BodyChecker.LetWithoutInit") {
-  TestFixture fix;
-  // let x: i32;
-  auto pat = fix.makeBindingPattern("x"_zc);
-  auto ty = fix.makeNamedTypeExpr("i32"_zc);
-  auto decl = fix.makeVariableDeclarator(pat, ty);
-  zc::Vector<ast::NodeId> declList;
-  declList.add(decl);
-  auto varList = fix.makeVariableDeclaratorList(fix.makeNodeList(declList.asPtr()));
-  auto let = fix.makeLetStmt(varList);
-
-  zc::Vector<ast::NodeId> topDecls;
-  topDecls.add(let);
-  auto result = runFullCheck(fix, topDecls.asPtr());
-
-  ZC_EXPECT(result.success);
-}
-
-// ============================================================================
-// Function with parameters
-// ============================================================================
-
-ZC_TEST("BodyChecker.FunctionWithParams") {
-  TestFixture fix;
-  // fun add(a: i32, b: i32) -> i32 { return a + b; }
-  auto paramA = fix.makeFunctionParamDecl("a"_zc, fix.makeNamedTypeExpr("i32"_zc));
-  auto paramB = fix.makeFunctionParamDecl("b"_zc, fix.makeNamedTypeExpr("i32"_zc));
-  zc::Vector<ast::NodeId> paramNodes;
-  paramNodes.add(paramA);
-  paramNodes.add(paramB);
-  auto paramList = fix.makeFunctionParamList(fix.makeNodeList(paramNodes.asPtr()));
-
-  auto retExpr = fix.makeBinaryExpr(ast::BinaryOperatorKind::Add, fix.makeIdentExpr("a"_zc),
-                                    fix.makeIdentExpr("b"_zc));
-  zc::Vector<ast::NodeId> bodyStmts;
-  bodyStmts.add(fix.makeReturnStmt(retExpr));
-  auto bodyBlock = fix.makeBlockStmt(fix.makeNodeList(bodyStmts.asPtr()));
-  auto retTy = fix.makeNamedTypeExpr("i32"_zc);
-  auto fn = fix.makeFunctionDecl("add"_zc, bodyBlock, paramList, retTy);
-
-  zc::Vector<ast::NodeId> topDecls;
-  topDecls.add(fn);
-  auto result = runFullCheck(fix, topDecls.asPtr());
-
-  ZC_EXPECT(result.success);
-  ZC_EXPECT(!fix.diagnostics().hasErrors());
-}
-
-// ============================================================================
-// Nested blocks
-// ============================================================================
-
-ZC_TEST("BodyChecker.NestedBlocks") {
-  TestFixture fix;
-  // { { let x = 1; } }
-  auto innerPat = fix.makeBindingPattern("x"_zc);
-  auto innerDecl = fix.makeVariableDeclarator(innerPat, ast::NodeId(), fix.makeIntLiteral(1));
-  zc::Vector<ast::NodeId> innerDeclList;
-  innerDeclList.add(innerDecl);
-  auto innerVarList = fix.makeVariableDeclaratorList(fix.makeNodeList(innerDeclList.asPtr()));
-  auto innerLet = fix.makeLetStmt(innerVarList);
-
-  zc::Vector<ast::NodeId> innerStmts;
-  innerStmts.add(innerLet);
-  auto innerBlock = fix.makeBlockStmt(fix.makeNodeList(innerStmts.asPtr()));
-
-  zc::Vector<ast::NodeId> outerStmts;
-  outerStmts.add(innerBlock);
-  auto outerBlock = fix.makeBlockStmt(fix.makeNodeList(outerStmts.asPtr()));
-
-  zc::Vector<ast::NodeId> topDecls;
-  topDecls.add(outerBlock);
-  auto result = runFullCheck(fix, topDecls.asPtr());
-
-  ZC_EXPECT(result.success);
-}
-
-// ============================================================================
-// Multiple functions
-// ============================================================================
-
-ZC_TEST("BodyChecker.MultipleFunctions") {
-  TestFixture fix;
-  zc::Vector<ast::NodeId> body1;
-  body1.add(fix.makeReturnStmt(fix.makeIntLiteral(1)));
-  auto fn1 = fix.makeFunctionDecl("one"_zc, fix.makeBlockStmt(fix.makeNodeList(body1.asPtr())));
-
-  zc::Vector<ast::NodeId> body2;
-  body2.add(fix.makeReturnStmt(fix.makeIntLiteral(2)));
-  auto fn2 = fix.makeFunctionDecl("two"_zc, fix.makeBlockStmt(fix.makeNodeList(body2.asPtr())));
-
-  zc::Vector<ast::NodeId> topDecls;
-  topDecls.add(fn1);
-  topDecls.add(fn2);
-  auto result = runFullCheck(fix, topDecls.asPtr());
-
-  ZC_EXPECT(result.success);
-}
-
-// ============================================================================
-// Index expression
-// ============================================================================
-
-ZC_TEST("BodyChecker.IndexExpr") {
-  TestFixture fix;
-  // arr[0]
-  auto pat = fix.makeBindingPattern("arr"_zc);
-  zc::Vector<ast::NodeId> elems;
-  elems.add(fix.makeIntLiteral(1));
-  elems.add(fix.makeIntLiteral(2));
-  auto arrLit = fix.makeArrayLiteral(fix.makeNodeList(elems.asPtr()));
-  auto decl = fix.makeVariableDeclarator(pat, ast::NodeId(), arrLit);
-  zc::Vector<ast::NodeId> declList;
-  declList.add(decl);
-  auto varList = fix.makeVariableDeclaratorList(fix.makeNodeList(declList.asPtr()));
-  auto let = fix.makeLetStmt(varList);
-
-  auto arrRef = fix.makeIdentExpr("arr"_zc);
-  auto index = fix.makeIndexExpr(arrRef, fix.makeIntLiteral(0));
-
-  zc::Vector<ast::NodeId> topDecls;
-  topDecls.add(let);
-  topDecls.add(index);
-  auto result = runFullCheck(fix, topDecls.asPtr());
-
-  ZC_EXPECT(result.success);
-  ZC_EXPECT(result.typeEnv.hasType(index));
-  auto& ty = result.typeEnv.getType(index);
-  ZC_EXPECT(isPrimitive(ty));
-  ZC_EXPECT(result.typeEnv.hasDispatch(index));
-  auto& dispatch = result.typeEnv.getDispatch(index);
-  ZC_EXPECT(dispatch.targetKind == type::CallTargetKind::PrimitiveOperator);
-  ZC_EXPECT(dispatch.receiverMode == type::ReceiverMode::IndexBase);
-  ZC_EXPECT(dispatch.argumentTypes.size() == 2);
-  ZC_EXPECT(dispatch.resultType == result.typeEnv.getSemanticTypeId(index));
-}
-
-ZC_TEST("BodyChecker.TupleIndexExprReturnsElementType") {
-  TestFixture fix;
-  zc::Vector<ast::NodeId> elems;
-  elems.add(fix.makeIntLiteral(1));
-  elems.add(fix.makeStrLiteral("two"_zc));
-  auto tuple = fix.makeTupleLiteral(fix.makeNodeList(elems.asPtr()));
-  auto index = fix.makeIndexExpr(tuple, fix.makeIntLiteral(1));
-
-  zc::Vector<ast::NodeId> topDecls;
-  topDecls.add(index);
-  auto result = runFullCheck(fix, topDecls.asPtr());
-
-  ZC_EXPECT(result.success);
-  ZC_EXPECT(!fix.diagnostics().hasErrors());
-  ZC_EXPECT(result.typeEnv.hasType(index));
-  auto& ty = result.typeEnv.getType(index);
-  ZC_EXPECT(isPrimitive(ty));
-  if (isPrimitive(ty)) {
-    auto& primitive = static_cast<const type::PrimitiveType&>(ty);
-    ZC_EXPECT(primitive.getPrimitiveKind() == type::PrimitiveKind::Str);
-  }
-  ZC_EXPECT(result.typeEnv.hasDispatch(index));
-  auto& dispatch = result.typeEnv.getDispatch(index);
-  ZC_EXPECT(dispatch.targetKind == type::CallTargetKind::PrimitiveOperator);
-  ZC_EXPECT(dispatch.receiverMode == type::ReceiverMode::IndexBase);
-  ZC_EXPECT(dispatch.argumentTypes.size() == 2);
-  ZC_EXPECT(dispatch.resultType == result.typeEnv.getSemanticTypeId(index));
-}
-
-ZC_TEST("BodyChecker.UserIndexExprReturnsAssociatedOutput") {
-  TestFixture fix;
-
-  zc::Vector<ast::NodeId> ifaceMembers;
-  ifaceMembers.add(makeAssociatedTypeDecl(fix, "Output"_zc, ast::NodeId()));
-  auto indexIface = fix.makeInterfaceDecl(
-      "Index"_zc, fix.makeClassMemberList(fix.makeNodeList(ifaceMembers.asPtr())));
-  auto bagType = fix.makeClassDecl("Bag"_zc);
-
-  zc::Vector<ast::NodeId> implIfaceNodes;
-  implIfaceNodes.add(fix.makeNamedTypeExpr("Index"_zc));
-  auto implIfaces = fix.makeImplIfaceList(fix.makeNodeList(implIfaceNodes.asPtr()));
-
-  zc::Vector<ast::NodeId> indexParams;
-  indexParams.add(fix.makeFunctionParamDecl("idx"_zc, fix.makeNamedTypeExpr("i32"_zc)));
-  auto indexParamList = fix.makeFunctionParamList(fix.makeNodeList(indexParams.asPtr()));
-  auto indexMethod = fix.makeMethodDecl("index"_zc, ast::NodeId(), indexParamList,
-                                        fix.makeNamedTypeExpr("i32"_zc));
-  zc::Vector<ast::NodeId> implMembers;
-  implMembers.add(makeAssociatedTypeDecl(fix, "Output"_zc, fix.makeNamedTypeExpr("i32"_zc)));
-  implMembers.add(indexMethod);
-  auto implDecl =
-      makeStandaloneImplDecl(fix, fix.makeNamedTypeExpr("Bag"_zc), implIfaces,
-                             fix.makeClassMemberList(fix.makeNodeList(implMembers.asPtr())));
-
-  auto bagDecl =
-      fix.makeVariableDeclarator(fix.makeBindingPattern("bag"_zc), fix.makeNamedTypeExpr("Bag"_zc));
-  zc::Vector<ast::NodeId> decls;
-  decls.add(bagDecl);
-  auto let = fix.makeLetStmt(fix.makeVariableDeclaratorList(fix.makeNodeList(decls.asPtr())));
-  auto index = fix.makeIndexExpr(fix.makeIdentExpr("bag"_zc), fix.makeIntLiteral(0));
-
-  zc::Vector<ast::NodeId> topDecls;
-  topDecls.add(indexIface);
-  topDecls.add(bagType);
-  topDecls.add(implDecl);
-  topDecls.add(let);
-  topDecls.add(index);
-  auto result = runFullCheck(fix, topDecls.asPtr());
-
-  ZC_EXPECT(result.success);
-  ZC_EXPECT(!fix.diagnostics().hasErrors());
-  ZC_EXPECT(result.typeEnv.hasType(index));
-  auto& ty = result.typeEnv.getType(index);
-  ZC_EXPECT(isPrimitive(ty));
-  if (isPrimitive(ty)) {
-    auto& primitive = static_cast<const type::PrimitiveType&>(ty);
-    ZC_EXPECT(primitive.getPrimitiveKind() == type::PrimitiveKind::I32);
-  }
-  ZC_EXPECT(result.typeEnv.hasDispatch(index));
-  auto& dispatch = result.typeEnv.getDispatch(index);
-  ZC_EXPECT(dispatch.targetKind == type::CallTargetKind::IndexMethod);
-  ZC_EXPECT(dispatch.receiverMode == type::ReceiverMode::IndexBase);
-  ZC_EXPECT(dispatch.interfaceName.asPtr() == "Index"_zc);
-  ZC_EXPECT(dispatch.methodName.asPtr() == "index"_zc);
-  ZC_EXPECT(dispatch.implNode == implDecl);
-  ZC_EXPECT(dispatch.argumentTypes.size() == 2);
-  ZC_EXPECT(dispatch.resultType == result.typeEnv.getSemanticTypeId(index));
-}
-
-ZC_TEST("BodyChecker.UserIndexExprRejectsWrongTraitMethodSignature") {
-  TestFixture fix;
-  auto consumer = zc::heap<CapturingDiagnosticConsumer>();
-  auto consumerPtr = consumer.get();
-  fix.diagnostics().addConsumer(zc::mv(consumer));
-
-  zc::Vector<ast::NodeId> ifaceMembers;
-  ifaceMembers.add(makeAssociatedTypeDecl(fix, "Output"_zc, ast::NodeId()));
-  auto indexIface = fix.makeInterfaceDecl(
-      "Index"_zc, fix.makeClassMemberList(fix.makeNodeList(ifaceMembers.asPtr())));
-  auto bagType = fix.makeClassDecl("Bag"_zc);
-
-  zc::Vector<ast::NodeId> implIfaceNodes;
-  implIfaceNodes.add(fix.makeNamedTypeExpr("Index"_zc));
-  auto implIfaces = fix.makeImplIfaceList(fix.makeNodeList(implIfaceNodes.asPtr()));
-
-  zc::Vector<ast::NodeId> indexParams;
-  indexParams.add(fix.makeFunctionParamDecl("idx"_zc, fix.makeNamedTypeExpr("str"_zc)));
-  auto indexParamList = fix.makeFunctionParamList(fix.makeNodeList(indexParams.asPtr()));
-  auto indexMethod = fix.makeMethodDecl("index"_zc, ast::NodeId(), indexParamList,
-                                        fix.makeNamedTypeExpr("i32"_zc));
-  zc::Vector<ast::NodeId> implMembers;
-  implMembers.add(makeAssociatedTypeDecl(fix, "Output"_zc, fix.makeNamedTypeExpr("i32"_zc)));
-  implMembers.add(indexMethod);
-  auto implDecl =
-      makeStandaloneImplDecl(fix, fix.makeNamedTypeExpr("Bag"_zc), implIfaces,
-                             fix.makeClassMemberList(fix.makeNodeList(implMembers.asPtr())));
-
-  auto bagDecl =
-      fix.makeVariableDeclarator(fix.makeBindingPattern("bag"_zc), fix.makeNamedTypeExpr("Bag"_zc));
-  zc::Vector<ast::NodeId> decls;
-  decls.add(bagDecl);
-  auto let = fix.makeLetStmt(fix.makeVariableDeclaratorList(fix.makeNodeList(decls.asPtr())));
-  auto index = fix.makeIndexExpr(fix.makeIdentExpr("bag"_zc), fix.makeIntLiteral(0));
-
-  zc::Vector<ast::NodeId> topDecls;
-  topDecls.add(indexIface);
-  topDecls.add(bagType);
-  topDecls.add(implDecl);
-  topDecls.add(let);
-  topDecls.add(index);
-  auto result = runFullCheck(fix, topDecls.asPtr());
-
-  ZC_EXPECT(!result.success);
-  ZC_EXPECT(fix.diagnostics().hasErrors());
-  ZC_EXPECT(
-      containsDiagnosticId(*consumerPtr, diagnostics::DiagID::OperatorTraitSignatureMismatch));
-  ZC_EXPECT(result.typeEnv.hasType(index));
-  if (result.typeEnv.hasType(index)) { ZC_EXPECT(isError(result.typeEnv.getType(index))); }
-}
-
-ZC_TEST("BodyChecker.UserIndexExprRequiresIndexImpl") {
-  TestFixture fix;
-  auto consumer = zc::heap<CapturingDiagnosticConsumer>();
-  auto consumerPtr = consumer.get();
-  fix.diagnostics().addConsumer(zc::mv(consumer));
-
-  auto bagType = fix.makeClassDecl("Bag"_zc);
-  auto bagDecl =
-      fix.makeVariableDeclarator(fix.makeBindingPattern("bag"_zc), fix.makeNamedTypeExpr("Bag"_zc));
-  zc::Vector<ast::NodeId> decls;
-  decls.add(bagDecl);
-  auto let = fix.makeLetStmt(fix.makeVariableDeclaratorList(fix.makeNodeList(decls.asPtr())));
-  auto index = fix.makeIndexExpr(fix.makeIdentExpr("bag"_zc), fix.makeIntLiteral(0));
-
-  zc::Vector<ast::NodeId> topDecls;
-  topDecls.add(bagType);
-  topDecls.add(let);
-  topDecls.add(index);
-  auto result = runFullCheck(fix, topDecls.asPtr());
-
-  ZC_EXPECT(!result.success);
-  ZC_EXPECT(fix.diagnostics().hasErrors());
-  ZC_EXPECT(containsDiagnosticId(*consumerPtr, diagnostics::DiagID::CheckerTraitNotImplemented));
-  ZC_EXPECT(result.typeEnv.hasType(index));
-  if (result.typeEnv.hasType(index)) { ZC_EXPECT(isError(result.typeEnv.getType(index))); }
-}
-
-// ============================================================================
-// New expression
-// ============================================================================
-
-ZC_TEST("BodyChecker.NewExpr") {
-  TestFixture fix;
-  // new MyClass()
-  auto cls = fix.makeClassDecl("MyClass"_zc);
-  auto callee = fix.makeIdentExpr("MyClass"_zc);
-  zc::Vector<ast::NodeId> args;
-  auto newExpr = fix.makeNewExpr(callee, fix.makeNodeList(args.asPtr()));
-
-  zc::Vector<ast::NodeId> topDecls;
-  topDecls.add(cls);
-  topDecls.add(newExpr);
-  auto result = runFullCheck(fix, topDecls.asPtr());
-
-  ZC_EXPECT(result.success);
-}
-
-// ============================================================================
-// Object literal
-// ============================================================================
-
-ZC_TEST("BodyChecker.ObjectLiteral") {
-  TestFixture fix;
-  // { x: 1, y: 2 }
-  zc::Vector<ast::NodeId> props;
-  props.add(fix.makeObjectProperty("x"_zc, fix.makeIntLiteral(1)));
-  props.add(fix.makeObjectProperty("name"_zc, fix.makeStrLiteral("z"_zc)));
-  auto objLit = fix.makeObjectLiteral(fix.makeNodeList(props.asPtr()));
-
-  zc::Vector<ast::NodeId> topDecls;
-  topDecls.add(objLit);
-  auto result = runFullCheck(fix, topDecls.asPtr());
-
-  ZC_EXPECT(result.success);
-  if (result.typeEnv.hasType(objLit)) {
-    auto& ty = result.typeEnv.getType(objLit);
-    ZC_EXPECT(ty.getKind() == type::TypeKind::Object);
-    if (isObject(ty)) {
-      auto& objTy = static_cast<const type::ObjectType&>(ty);
-      ZC_EXPECT(objTy.getMemberCount() == 2);
-      auto members = objTy.getMembers();
-      ZC_EXPECT(members.size() == 2);
-      if (members.size() == 2) {
-        ZC_EXPECT(members[0].name == "x"_zc);
-        ZC_EXPECT(members[1].name == "name"_zc);
-      }
-      auto x = objTy.getMember("x"_zc);
-      auto name = objTy.getMember("name"_zc);
-      ZC_EXPECT(x != zc::none);
-      ZC_EXPECT(name != zc::none);
-      ZC_IF_SOME(xTy, x) { ZC_EXPECT(isPrimitive(xTy)); }
-      ZC_IF_SOME(nameTy, name) { ZC_EXPECT(isPrimitive(nameTy)); }
-    }
-  }
-}
-
-ZC_TEST("BodyChecker.StructLiteralReturnsNamedType") {
-  TestFixture fix;
-  auto fieldTy =
-      fix.makeUnionTypeExpr(fix.makeNamedTypeExpr("i32"_zc), fix.makeNamedTypeExpr("str"_zc));
-  auto field = fix.makeFieldDecl("x"_zc, fieldTy);
-  zc::Vector<ast::NodeId> members;
-  members.add(field);
-  auto point =
-      fix.makeStructDecl("Point"_zc, fix.makeClassMemberList(fix.makeNodeList(members.asPtr())));
-
-  auto fieldValue = fix.makeIntLiteral(1);
-  zc::Vector<ast::NodeId> props;
-  props.add(fix.makeObjectProperty("x"_zc, fieldValue));
-  auto lit =
-      fix.makeStructLiteralExpr(fix.makeNamedTypeExpr("Point"_zc), fix.makeNodeList(props.asPtr()));
-
-  zc::Vector<ast::NodeId> topDecls;
-  topDecls.add(point);
-  topDecls.add(lit);
-  auto result = runFullCheck(fix, topDecls.asPtr());
-
-  ZC_EXPECT(result.success);
-  ZC_EXPECT(!fix.diagnostics().hasErrors());
-  ZC_EXPECT(result.typeEnv.hasType(lit));
-  auto& ty = result.typeEnv.getType(lit);
-  ZC_EXPECT(isNamed(ty));
-  if (isNamed(ty)) { ZC_EXPECT(static_cast<const type::NamedType&>(ty).getName() == "Point"_zc); }
-  ZC_EXPECT(result.typeEnv.hasCoercion(fieldValue));
-  ZC_EXPECT(result.typeEnv.getCoercion(fieldValue) == type::CoercionKind::UnionInjection);
-}
-
-ZC_TEST("BodyChecker.StructLiteralRejectsUnknownField") {
-  TestFixture fix;
-  auto field = fix.makeFieldDecl("x"_zc, fix.makeNamedTypeExpr("i32"_zc));
-  zc::Vector<ast::NodeId> members;
-  members.add(field);
-  auto point =
-      fix.makeStructDecl("Point"_zc, fix.makeClassMemberList(fix.makeNodeList(members.asPtr())));
-
-  zc::Vector<ast::NodeId> props;
-  props.add(fix.makeObjectProperty("y"_zc, fix.makeIntLiteral(1)));
-  auto lit =
-      fix.makeStructLiteralExpr(fix.makeNamedTypeExpr("Point"_zc), fix.makeNodeList(props.asPtr()));
-
-  zc::Vector<ast::NodeId> topDecls;
-  topDecls.add(point);
-  topDecls.add(lit);
-  auto result = runFullCheck(fix, topDecls.asPtr());
-
-  ZC_EXPECT(!result.success);
-  ZC_EXPECT(fix.diagnostics().hasErrors());
-  ZC_EXPECT(result.typeEnv.hasType(lit));
-  ZC_EXPECT(isError(result.typeEnv.getType(lit)));
-}
-
-ZC_TEST("BodyChecker.StructLiteralRejectsMissingField") {
-  TestFixture fix;
-  auto xField = fix.makeFieldDecl("x"_zc, fix.makeNamedTypeExpr("i32"_zc));
-  auto yField = fix.makeFieldDecl("y"_zc, fix.makeNamedTypeExpr("i32"_zc));
-  zc::Vector<ast::NodeId> members;
-  members.add(xField);
-  members.add(yField);
-  auto point =
-      fix.makeStructDecl("Point"_zc, fix.makeClassMemberList(fix.makeNodeList(members.asPtr())));
-
-  zc::Vector<ast::NodeId> props;
-  props.add(fix.makeObjectProperty("x"_zc, fix.makeIntLiteral(1)));
-  auto lit =
-      fix.makeStructLiteralExpr(fix.makeNamedTypeExpr("Point"_zc), fix.makeNodeList(props.asPtr()));
-
-  zc::Vector<ast::NodeId> topDecls;
-  topDecls.add(point);
-  topDecls.add(lit);
-  auto result = runFullCheck(fix, topDecls.asPtr());
-
-  ZC_EXPECT(!result.success);
-  ZC_EXPECT(fix.diagnostics().hasErrors());
-  ZC_EXPECT(result.typeEnv.hasType(lit));
-  ZC_EXPECT(isError(result.typeEnv.getType(lit)));
-}
-
-ZC_TEST("BodyChecker.ReturnRecordsReborrowCoercion") {
-  TestFixture fix;
-  auto param = fix.makeFunctionParamDecl(
-      "x"_zc, fix.makeReferenceTypeExpr(fix.makeNamedTypeExpr("i32"_zc), true));
-  zc::Vector<ast::NodeId> params;
-  params.add(param);
-  auto paramList = fix.makeFunctionParamList(fix.makeNodeList(params.asPtr()));
-  auto returnStmt = fix.makeReturnStmt(fix.makeIdentExpr("x"_zc));
-  zc::Vector<ast::NodeId> stmts;
-  stmts.add(returnStmt);
-  auto body = fix.makeBlockStmt(fix.makeNodeList(stmts.asPtr()));
-  auto fn = fix.makeFunctionDecl("share"_zc, body, paramList,
-                                 fix.makeReferenceTypeExpr(fix.makeNamedTypeExpr("i32"_zc)));
-
-  zc::Vector<ast::NodeId> topDecls;
-  topDecls.add(fn);
-  auto result = runFullCheck(fix, topDecls.asPtr());
-
-  ZC_EXPECT(result.success);
-  ZC_EXPECT(!fix.diagnostics().hasErrors());
-  ZC_EXPECT(result.typeEnv.hasCoercion(returnStmt));
-  ZC_EXPECT(result.typeEnv.getCoercion(returnStmt) == type::CoercionKind::MutRefToSharedRef);
-}
-
-ZC_TEST("BodyChecker.AssignmentRecordsMutableRawToConstRawCoercion") {
-  TestFixture fix;
-  auto constPtrTy = fix.makeRawPointerTypeExpr(fix.makeNamedTypeExpr("i32"_zc));
-  auto mutPtrTy = fix.makeRawPointerTypeExpr(fix.makeNamedTypeExpr("i32"_zc), true);
-  auto lhsDecl = fix.makeVariableDeclarator(fix.makeBindingPattern("dst"_zc, true), constPtrTy);
-  auto rhsDecl = fix.makeVariableDeclarator(fix.makeBindingPattern("src"_zc), mutPtrTy);
-  zc::Vector<ast::NodeId> decls;
-  decls.add(lhsDecl);
-  decls.add(rhsDecl);
-  auto let = fix.makeLetStmt(fix.makeVariableDeclaratorList(fix.makeNodeList(decls.asPtr())),
-                             static_cast<uint8_t>(ast::BindingDeclarationKind::Mut));
-  auto assign = fix.makeAssignmentExpr(fix.makeIdentExpr("dst"_zc), fix.makeIdentExpr("src"_zc));
-
-  zc::Vector<ast::NodeId> topDecls;
-  topDecls.add(let);
-  topDecls.add(assign);
-  auto result = runFullCheck(fix, topDecls.asPtr());
-
-  ZC_EXPECT(result.success);
-  ZC_EXPECT(!fix.diagnostics().hasErrors());
-  ZC_EXPECT(result.typeEnv.hasCoercion(assign));
-  ZC_EXPECT(result.typeEnv.getCoercion(assign) == type::CoercionKind::MutRawToConstRaw);
-}
-
-// ============================================================================
-// Empty body check
-// ============================================================================
-
-ZC_TEST("BodyChecker.EmptyFunctionBody") {
-  TestFixture fix;
-  // fun foo() { }
-  auto bodyBlock = fix.makeBlockStmt(ast::NodeList());
-  auto fn = fix.makeFunctionDecl("foo"_zc, bodyBlock);
-
-  zc::Vector<ast::NodeId> topDecls;
-  topDecls.add(fn);
-  auto result = runFullCheck(fix, topDecls.asPtr());
-
-  ZC_EXPECT(result.success);
-}
-
-// ============================================================================
-// Class with methods
-// ============================================================================
-
-ZC_TEST("BodyChecker.ClassWithMethods") {
-  TestFixture fix;
-  // Build method body
-  zc::Vector<ast::NodeId> methodBody;
-  methodBody.add(fix.makeReturnStmt(fix.makeIntLiteral(42)));
-  auto methodBlock = fix.makeBlockStmt(fix.makeNodeList(methodBody.asPtr()));
-  auto method = fix.makeMethodDecl("getValue"_zc, methodBlock);
-
-  // For a proper test we'd need to build a ClassMemberList node.
-  // Since that requires specific node construction, let's just verify
-  // that the method declaration itself doesn't crash.
-  zc::Vector<ast::NodeId> topDecls;
-  topDecls.add(method);
-
-  // This may produce errors since method is not in a class,
-  // but should not crash
-  runFullCheck(fix, topDecls.asPtr());
-  ZC_EXPECT(true);
-}
-
-}  // namespace checker
-}  // namespace compiler
-}  // namespace zomlang
+  auto malformedText = fixture.floatTree("1.2.3"_zcc, 64);
+  expectInvariantRejectedWithoutPublication(fixture, malformedText);
+}
+
+ZC_TEST("ScalarLiteralBodyFactEmitter.RejectsOutOfRangeFloatAsSourceFailure") {
+  BodyLiteralFixture fixture;
+  auto overflow = fixture.floatTree("1e9999"_zcc, 64);
+  expectSourceRejectedWithoutPublication(fixture, overflow, type::semantic::PrimitiveKind::F64,
+                                         "f64"_zcc);
+}
+
+ZC_TEST("ScalarLiteralBodyFactEmitter.EmitsCanonicalBigIntLiteral") {
+  BodyLiteralFixture fixture;
+  auto tree = fixture.integerTree(ast::SyntaxKind::BigIntLiteral, "18446744073709551615n"_zcc);
+  uint8_t magnitude[] = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
+  expectAccepted(
+      fixture, tree, signature::CanonicalConstValueTag::Integer, type::semantic::PrimitiveKind::U64,
+      checked::CanonicalLiteral::integer(signature::CanonicalInteger{
+          signature::IntegerSign::NonNegative, zc::heapArray<uint8_t>(zc::arrayPtr(magnitude))}));
+
+  auto hexadecimal = fixture.integerTree(ast::SyntaxKind::BigIntLiteral, "0xffn"_zcc);
+  expectAccepted(
+      fixture, hexadecimal, signature::CanonicalConstValueTag::Integer,
+      type::semantic::PrimitiveKind::I32,
+      checked::CanonicalLiteral::integer(signature::CanonicalInteger{
+          signature::IntegerSign::NonNegative, zc::heapArray<uint8_t>(1, uint8_t{0xff})}));
+}
+
+ZC_TEST("ScalarLiteralBodyFactEmitter.RejectsMalformedBigIntPayload") {
+  BodyLiteralFixture fixture;
+  auto missingSuffix = fixture.integerTree(ast::SyntaxKind::BigIntLiteral, "42"_zcc);
+  expectInvariantRejectedWithoutPublication(fixture, missingSuffix);
+
+  auto malformedDigits = fixture.integerTree(ast::SyntaxKind::BigIntLiteral, "0xggn"_zcc);
+  expectInvariantRejectedWithoutPublication(fixture, malformedDigits);
+}
+
+ZC_TEST("ScalarLiteralBodyFactEmitter.RejectsOutOfRangeBigIntAsSourceFailure") {
+  BodyLiteralFixture fixture;
+  auto tree = fixture.integerTree(ast::SyntaxKind::BigIntLiteral, "18446744073709551616n"_zcc);
+  expectSourceRejectedWithoutPublication(fixture, tree, type::semantic::PrimitiveKind::U64,
+                                         "u64"_zcc);
+}
+
+ZC_TEST("ScalarLiteralBodyFactEmitter.EmitsCanonicalUtf8StringLiteral") {
+  BodyLiteralFixture fixture;
+  auto tree = fixture.stringTree("zom"_zcc);
+  uint8_t bytes[] = {'z', 'o', 'm'};
+  expectAccepted(fixture, tree, signature::CanonicalConstValueTag::String,
+                 type::semantic::PrimitiveKind::Str,
+                 checked::CanonicalLiteral::string(zc::heapArray<uint8_t>(zc::arrayPtr(bytes))));
+
+  auto emptyTree = fixture.stringTree(""_zcc);
+  expectAccepted(fixture, emptyTree, signature::CanonicalConstValueTag::String,
+                 type::semantic::PrimitiveKind::Str,
+                 checked::CanonicalLiteral::string(zc::heapArray<uint8_t>(0)));
+}
+
+ZC_TEST("ScalarLiteralBodyFactEmitter.RejectsMalformedStringPayload") {
+  BodyLiteralFixture fixture;
+  ast::NodePayload extraWordPayload;
+  extraWordPayload.words[ast::kStringLiteralExprValueWord] = 0;
+  extraWordPayload.words[ast::kStringLiteralExprPayloadWordCount] = 1;
+  auto extraWord = fixture.literalTree(ast::SyntaxKind::StringLiteralExpr, extraWordPayload);
+  expectInvariantRejectedWithoutPublication(fixture, extraWord);
+
+  const char invalidUtf8Bytes[] = {static_cast<char>(0xc0), static_cast<char>(0x80), '\0'};
+  auto invalidUtf8 = fixture.stringTree(zc::StringPtr(invalidUtf8Bytes, 2));
+  expectInvariantRejectedWithoutPublication(fixture, invalidUtf8);
+
+  ast::NodePayload invalidHandlePayload;
+  invalidHandlePayload.words[ast::kStringLiteralExprValueWord] = 2;
+  auto invalidHandle =
+      fixture.literalTree(ast::SyntaxKind::StringLiteralExpr, invalidHandlePayload);
+  expectInvariantRejectedWithoutPublication(fixture, invalidHandle);
+}
+
+ZC_TEST("ScalarLiteralBodyFactEmitter.EmitsCanonicalCharacterLiteral") {
+  BodyLiteralFixture fixture;
+  auto ascii = fixture.textTree(ast::SyntaxKind::CharacterLiteralExpr, "z"_zcc);
+  expectAccepted(fixture, ascii, signature::CanonicalConstValueTag::Char,
+                 type::semantic::PrimitiveKind::Char,
+                 checked::CanonicalLiteral::character(static_cast<uint32_t>('z')));
+
+  auto unicode = fixture.textTree(ast::SyntaxKind::CharacterLiteralExpr, "\xf0\x9f\x98\x80"_zcc);
+  expectAccepted(fixture, unicode, signature::CanonicalConstValueTag::Char,
+                 type::semantic::PrimitiveKind::Char,
+                 checked::CanonicalLiteral::character(0x1f600));
+}
+
+ZC_TEST("ScalarLiteralBodyFactEmitter.RejectsMalformedCharacterLiteral") {
+  BodyLiteralFixture fixture;
+  auto empty = fixture.textTree(ast::SyntaxKind::CharacterLiteralExpr, ""_zcc);
+  expectInvariantRejectedWithoutPublication(fixture, empty);
+
+  auto multiple = fixture.textTree(ast::SyntaxKind::CharacterLiteralExpr, "ab"_zcc);
+  expectInvariantRejectedWithoutPublication(fixture, multiple);
+}
+
+ZC_TEST("ScalarLiteralBodyFactEmitter.EmitsCanonicalNoSubstitutionTemplateLiteral") {
+  BodyLiteralFixture fixture;
+  auto tree = fixture.textTree(ast::SyntaxKind::NoSubstitutionTemplateLiteralExpr, "zom"_zcc);
+  uint8_t bytes[] = {'z', 'o', 'm'};
+  expectAccepted(fixture, tree, signature::CanonicalConstValueTag::String,
+                 type::semantic::PrimitiveKind::Str,
+                 checked::CanonicalLiteral::string(zc::heapArray<uint8_t>(zc::arrayPtr(bytes))));
+}
+
+ZC_TEST("ScalarLiteralBodyFactEmitter.EmitsCanonicalUnitLiteral") {
+  BodyLiteralFixture fixture;
+  auto tree = fixture.literalTree(ast::SyntaxKind::UnitLiteral);
+  expectAccepted(fixture, tree, signature::CanonicalConstValueTag::Unit,
+                 type::semantic::PrimitiveKind::Unit, checked::CanonicalLiteral::unit());
+}
+
+ZC_TEST("ScalarLiteralBodyFactEmitter.RejectsMalformedUnitPayload") {
+  BodyLiteralFixture fixture;
+  ast::NodePayload payload;
+  payload.words[0] = 1;
+  auto tree = fixture.literalTree(ast::SyntaxKind::UnitLiteral, payload);
+  expectInvariantRejectedWithoutPublication(fixture, tree);
+}
+
+}  // namespace zomlang::compiler::checker::body

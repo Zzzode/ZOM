@@ -10,7 +10,6 @@ lives under conformance/corpus with the same relative path and a .zom suffix.
 
 import os
 import platform
-import tempfile
 
 import lit.formats
 import lit.util
@@ -29,9 +28,11 @@ repo_root = os.path.abspath(os.path.join(conformance_root, "..", "..", "..", "..
 
 config.test_source_root = test_root
 
-base_test_exec_root = os.path.join(runner_root, "Output")
-os.makedirs(base_test_exec_root, exist_ok=True)
-config.test_exec_root = tempfile.mkdtemp(prefix="lit-", dir=base_test_exec_root)
+cmake_binary_dir = os.environ.get(
+    "CMAKE_BINARY_DIR", os.path.join(repo_root, "build-sanitizer")
+)
+config.test_exec_root = os.path.join(cmake_binary_dir, "lit-exec", "ast")
+os.makedirs(config.test_exec_root, exist_ok=True)
 
 config.excludes = ["CMakeLists.txt", "README.md", "Output", "lit.cfg.py"]
 config.available_features.add("zom-ast-tests")
@@ -86,7 +87,6 @@ zomc_command = f"python3 {package_runner_path} --zomc {zomc_path}"
 
 config.substitutions.append(("%zomc", zomc_command))
 config.substitutions.append(("%corpus", corpus_root))
-config.substitutions.append(("%t", os.path.join(config.test_exec_root, "temp")))
 config.substitutions.append(("%FileCheck", f"python3 {filecheck_path}"))
 
 config.environment["ZOMLANG_TEST_ROOT"] = conformance_root

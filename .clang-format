@@ -19,7 +19,19 @@ AllowShortIfStatementsOnASingleLine: WithoutElse
 AllowShortLoopsOnASingleLine: true
 
 # Spacing
-SpaceBeforeParens: ControlStatements
+SpaceBeforeParens: Custom
+SpaceBeforeParensOptions:
+  AfterControlStatements: true
+  AfterForeachMacros: true
+  AfterFunctionDefinitionName: false
+  AfterFunctionDeclarationName: false
+  AfterIfMacros: false
+  AfterNot: false
+  AfterOverloadedOperator: false
+  AfterPlacementOperator: true
+  AfterRequiresInClause: false
+  AfterRequiresInExpression: false
+  BeforeNonEmptyParentheses: false
 SpaceAfterCStyleCast: false
 SpaceAfterTemplateKeyword: true
 SpaceBeforeInheritanceColon: true
@@ -52,6 +64,14 @@ MaxEmptyLinesToKeep: 1
 PointerAlignment: Left
 SortIncludes: true
 SortUsingDeclarations: true
+
+# Control-flow macros
+IfMacros:
+  - KJ_IF_MAYBE
+  - ZC_CASE_ONEOF
+  - ZC_IF_MAYBE
+  - ZC_IF_SOME
+  - ZC_SWITCH_ONEOF
 
 # Naming conventions are not directly supported by clang-format,
 # but can be enforced through other tools or code reviews

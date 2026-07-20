@@ -2,12 +2,12 @@
 
 
 // CHECK-LITERAL: Error [ZOM2025]: Expected ':'
-// CHECK:   --> products {{(?:.*[/\\])?ternary_simple_neg_01\.zom:1:14$}}
+// CHECK-LITERAL:   --> conformance/ternary_simple_neg_01.zom:1:14
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 1 | let x = a ? b;
 // CHECK-LITERAL:   |              ^
 // CHECK-LITERAL: Error [ZOM2056]: Expression expected
-// CHECK:   --> products {{(?:.*[/\\])?ternary_simple_neg_01\.zom:1:9$}}
+// CHECK-LITERAL:   --> conformance/ternary_simple_neg_01.zom:1:9
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 1 | let x = a ? b;
 // CHECK-LITERAL:   |         ^

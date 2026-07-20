@@ -1,7 +1,7 @@
 // RUN: %zomc compile --dump-ast %corpus/04-expressions/ne_trait_pos_15.zom | %FileCheck %s
 
 
-// CHECK: SourceFile #50 @1:1..14:1 file_name="ne_trait_pos_15.zom"
+// CHECK: SourceFile #49 @1:1..14:1 file_name="ne_trait_pos_15.zom"
 // CHECK-NEXT:   module: null
 // CHECK-NEXT:   statements:
 // CHECK-NEXT:     StatementListItem #9 @1:1..3:2
@@ -12,7 +12,7 @@
 // CHECK-NEXT:           members_id:
 // CHECK-NEXT:             ClassMemberList #7 @1:14..3:2 nmembers=1
 // CHECK-NEXT:               members:
-// CHECK-NEXT:                 MethodDecl #6 @2:5..2:32 name="eq" is_static=false visibility=Default
+// CHECK-NEXT:                 MethodDecl #6 @2:5..2:32 name="eq" mode=Instance visibility=Default
 // CHECK-NEXT:                   params_id:
 // CHECK-NEXT:                     FunctionParameterList #4 @2:11..2:23 nparams=1
 // CHECK-NEXT:                       params:
@@ -20,7 +20,7 @@
 // CHECK-NEXT:                           ty:
 // CHECK-NEXT:                             NamedTypeExpr #2 @2:17..2:22
 // CHECK-NEXT:                               path:
-// CHECK-NEXT:                                 ModulePath #1 @2:17..2:22 segments=["Point"]
+// CHECK-NEXT:                                 ModulePath #1 @2:17..2:22 segments=["Point"] root=Relative
 // CHECK-NEXT:                               args: []
 // CHECK-NEXT:                           default_: null
 // CHECK-NEXT:                           attrs: null
@@ -39,94 +39,92 @@
 // CHECK-NEXT:             ClassMemberList #10 @5:13..5:16 nmembers=0
 // CHECK-NEXT:               members: []
 // CHECK-NEXT:       attrs: null
-// CHECK-NEXT:     StatementListItem #26 @7:1..9:2
+// CHECK-NEXT:     StatementListItem #25 @7:1..9:2
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         StandaloneImplDecl #25 @7:1..9:2 is_unsafe=false
-// CHECK-NEXT:           ifaces_id:
-// CHECK-NEXT:             ImplIfaceList #15 @7:6..7:8 n_ifaces=1
-// CHECK-NEXT:               ifaces:
-// CHECK-NEXT:                 NamedTypeExpr #14 @7:6..7:8
-// CHECK-NEXT:                   path:
-// CHECK-NEXT:                     ModulePath #13 @7:6..7:8 segments=["Eq"]
-// CHECK-NEXT:                   args: []
-// CHECK-NEXT:           for_ty:
-// CHECK-NEXT:             NamedTypeExpr #17 @7:13..7:18
+// CHECK-NEXT:         StandaloneImplDecl #24 @7:1..9:2 is_unsafe=false
+// CHECK-NEXT:           interface:
+// CHECK-NEXT:             NamedTypeExpr #14 @7:6..7:8
 // CHECK-NEXT:               path:
-// CHECK-NEXT:                 ModulePath #16 @7:13..7:18 segments=["Point"]
+// CHECK-NEXT:                 ModulePath #13 @7:6..7:8 segments=["Eq"] root=Relative
+// CHECK-NEXT:               args: []
+// CHECK-NEXT:           for_ty:
+// CHECK-NEXT:             NamedTypeExpr #16 @7:13..7:18
+// CHECK-NEXT:               path:
+// CHECK-NEXT:                 ModulePath #15 @7:13..7:18 segments=["Point"] root=Relative
 // CHECK-NEXT:               args: []
 // CHECK-NEXT:           where_: null
 // CHECK-NEXT:           type_params_id: null
 // CHECK-NEXT:           members_id:
-// CHECK-NEXT:             ClassMemberList #24 @7:19..9:2 nmembers=1
+// CHECK-NEXT:             ClassMemberList #23 @7:19..9:2 nmembers=1
 // CHECK-NEXT:               members:
-// CHECK-NEXT:                 MethodDecl #23 @8:5..8:32 name="eq" is_static=false visibility=Default
+// CHECK-NEXT:                 MethodDecl #22 @8:5..8:32 name="eq" mode=Instance visibility=Default
 // CHECK-NEXT:                   params_id:
-// CHECK-NEXT:                     FunctionParameterList #21 @8:11..8:23 nparams=1
+// CHECK-NEXT:                     FunctionParameterList #20 @8:11..8:23 nparams=1
 // CHECK-NEXT:                       params:
-// CHECK-NEXT:                         FunctionParameterDecl #20 @8:12..8:22 name="rhs"
+// CHECK-NEXT:                         FunctionParameterDecl #19 @8:12..8:22 name="rhs"
 // CHECK-NEXT:                           ty:
-// CHECK-NEXT:                             NamedTypeExpr #19 @8:17..8:22
+// CHECK-NEXT:                             NamedTypeExpr #18 @8:17..8:22
 // CHECK-NEXT:                               path:
-// CHECK-NEXT:                                 ModulePath #18 @8:17..8:22 segments=["Point"]
+// CHECK-NEXT:                                 ModulePath #17 @8:17..8:22 segments=["Point"] root=Relative
 // CHECK-NEXT:                               args: []
 // CHECK-NEXT:                           default_: null
 // CHECK-NEXT:                           attrs: null
 // CHECK-NEXT:                   type_params_id: null
 // CHECK-NEXT:                   ret_ty:
-// CHECK-NEXT:                     PredefinedTypeExpr #22 @8:27..8:31 kind=Bool
+// CHECK-NEXT:                     PredefinedTypeExpr #21 @8:27..8:31 kind=Bool
 // CHECK-NEXT:                   raises_ty: null
 // CHECK-NEXT:                   body: null
 // CHECK-NEXT:       attrs: null
-// CHECK-NEXT:     StatementListItem #33 @11:1..11:14
+// CHECK-NEXT:     StatementListItem #32 @11:1..11:14
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         LetStmt #32 @11:1..11:14 kind=Let
+// CHECK-NEXT:         LetStmt #31 @11:1..11:14 kind=Let
 // CHECK-NEXT:           declarations:
-// CHECK-NEXT:             VariableDeclaratorList #31 @11:5..11:13 n_decls=1
+// CHECK-NEXT:             VariableDeclaratorList #30 @11:5..11:13 n_decls=1
 // CHECK-NEXT:               decls:
-// CHECK-NEXT:                 VariableDeclarator #30 @11:5..11:13
+// CHECK-NEXT:                 VariableDeclarator #29 @11:5..11:13
 // CHECK-NEXT:                   pattern:
-// CHECK-NEXT:                     IdentifierPattern #27 @11:5..11:6 name="x"
+// CHECK-NEXT:                     IdentifierPattern #26 @11:5..11:6 name="x"
 // CHECK-NEXT:                       ty: null
 // CHECK-NEXT:                   ty:
-// CHECK-NEXT:                     NamedTypeExpr #29 @11:8..11:13
+// CHECK-NEXT:                     NamedTypeExpr #28 @11:8..11:13
 // CHECK-NEXT:                       path:
-// CHECK-NEXT:                         ModulePath #28 @11:8..11:13 segments=["Point"]
+// CHECK-NEXT:                         ModulePath #27 @11:8..11:13 segments=["Point"] root=Relative
 // CHECK-NEXT:                       args: []
 // CHECK-NEXT:                   init: null
 // CHECK-NEXT:       attrs: null
-// CHECK-NEXT:     StatementListItem #40 @12:1..12:14
+// CHECK-NEXT:     StatementListItem #39 @12:1..12:14
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         LetStmt #39 @12:1..12:14 kind=Let
+// CHECK-NEXT:         LetStmt #38 @12:1..12:14 kind=Let
 // CHECK-NEXT:           declarations:
-// CHECK-NEXT:             VariableDeclaratorList #38 @12:5..12:13 n_decls=1
+// CHECK-NEXT:             VariableDeclaratorList #37 @12:5..12:13 n_decls=1
 // CHECK-NEXT:               decls:
-// CHECK-NEXT:                 VariableDeclarator #37 @12:5..12:13
+// CHECK-NEXT:                 VariableDeclarator #36 @12:5..12:13
 // CHECK-NEXT:                   pattern:
-// CHECK-NEXT:                     IdentifierPattern #34 @12:5..12:6 name="y"
+// CHECK-NEXT:                     IdentifierPattern #33 @12:5..12:6 name="y"
 // CHECK-NEXT:                       ty: null
 // CHECK-NEXT:                   ty:
-// CHECK-NEXT:                     NamedTypeExpr #36 @12:8..12:13
+// CHECK-NEXT:                     NamedTypeExpr #35 @12:8..12:13
 // CHECK-NEXT:                       path:
-// CHECK-NEXT:                         ModulePath #35 @12:8..12:13 segments=["Point"]
+// CHECK-NEXT:                         ModulePath #34 @12:8..12:13 segments=["Point"] root=Relative
 // CHECK-NEXT:                       args: []
 // CHECK-NEXT:                   init: null
 // CHECK-NEXT:       attrs: null
-// CHECK-NEXT:     StatementListItem #49 @13:1..13:30
+// CHECK-NEXT:     StatementListItem #48 @13:1..13:30
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         LetStmt #48 @13:1..13:30 kind=Let
+// CHECK-NEXT:         LetStmt #47 @13:1..13:30 kind=Let
 // CHECK-NEXT:           declarations:
-// CHECK-NEXT:             VariableDeclaratorList #47 @13:5..13:29 n_decls=1
+// CHECK-NEXT:             VariableDeclaratorList #46 @13:5..13:29 n_decls=1
 // CHECK-NEXT:               decls:
-// CHECK-NEXT:                 VariableDeclarator #46 @13:5..13:29
+// CHECK-NEXT:                 VariableDeclarator #45 @13:5..13:29
 // CHECK-NEXT:                   pattern:
-// CHECK-NEXT:                     IdentifierPattern #41 @13:5..13:14 name="different"
+// CHECK-NEXT:                     IdentifierPattern #40 @13:5..13:14 name="different"
 // CHECK-NEXT:                       ty: null
 // CHECK-NEXT:                   ty:
-// CHECK-NEXT:                     PredefinedTypeExpr #42 @13:16..13:20 kind=Bool
+// CHECK-NEXT:                     PredefinedTypeExpr #41 @13:16..13:20 kind=Bool
 // CHECK-NEXT:                   init:
-// CHECK-NEXT:                     BinaryExpr #45 @13:23..13:29 op=Ne
+// CHECK-NEXT:                     BinaryExpr #44 @13:23..13:29 op=Ne
 // CHECK-NEXT:                       lhs:
-// CHECK-NEXT:                         IdentExpr #43 @13:23..13:24 name="x"
+// CHECK-NEXT:                         IdentExpr #42 @13:23..13:24 name="x"
 // CHECK-NEXT:                       rhs:
-// CHECK-NEXT:                         IdentExpr #44 @13:28..13:29 name="y"
+// CHECK-NEXT:                         IdentExpr #43 @13:28..13:29 name="y"
 // CHECK-NEXT:       attrs: null

@@ -1,0 +1,8 @@
+// RUN: ! %zomc compile --dump-ast %corpus/09-interfaces/marker_impl_generic_neg_24.zom 2>&1 | %FileCheck %s
+
+
+// CHECK-LITERAL: Error [ZOM2101]: A marker implementation cannot declare type parameters
+// CHECK-LITERAL:   --> conformance/marker_impl_generic_neg_24.zom:1:5
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 1 | impl<T> marker::Sendable for Box<T>;
+// CHECK-LITERAL:   |     ^

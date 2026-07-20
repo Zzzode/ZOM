@@ -27,7 +27,7 @@
 #include "zomlang/compiler/ast/schema-verifier.h"
 #include "zomlang/compiler/basic/string-pool.h"
 #include "zomlang/compiler/basic/zomlang-opts.h"
-#include "zomlang/compiler/diagnostics/diagnostic-engine.h"
+#include "zomlang/compiler/diagnostics/diagnostic-fact-buffer.h"
 #include "zomlang/compiler/diagnostics/diagnostic-ids.h"
 #include "zomlang/compiler/lexer/token.h"
 #include "zomlang/compiler/lexer/utils.h"
@@ -88,9 +88,15 @@ bool isTemplateLiteralToken(ast::SyntaxKind kind);
 
 bool canPrecedeTaggedTemplate(ast::SyntaxKind kind);
 
-bool isInterfaceModifier(ast::SyntaxKind kind);
+bool isVisibilityModifier(ast::SyntaxKind kind);
 
-bool isDeclarationModifier(ast::SyntaxKind kind);
+bool isBehaviorModifier(ast::SyntaxKind kind);
+
+bool isNamedDeclarationModifier(ast::SyntaxKind kind);
+
+bool isMemberModifier(ast::SyntaxKind kind);
+
+bool isInterfaceModifier(ast::SyntaxKind kind);
 
 bool isDeclarationHead(ast::SyntaxKind kind);
 
@@ -149,12 +155,13 @@ private:
 // --- Parser::Impl declarations ---
 
 struct Parser::Impl {
-  Impl(const source::SourceManager& sourceMgr, diagnostics::DiagnosticEngine& diagnosticEngine,
+  Impl(const source::SourceManager& sourceMgr, diagnostics::DiagnosticFactBuffer& diagnosticFacts,
        const basic::LangOptions& langOpts, basic::StringPool& stringPool,
        const source::BufferId& bufferId);
 
   const source::SourceManager& sourceMgr;
-  diagnostics::DiagnosticEngine& diagnosticEngine;
+  diagnostics::DiagnosticFactBuffer& diagnosticFacts;
+  diagnostics::DiagnosticEmitter& diagnosticEngine;
   source::BufferId bufferId;
   ParserContext context;
   bool parseAttempted = false;
@@ -168,6 +175,12 @@ struct Parser::Impl {
     Expression,
     Type,
     Pattern,
+  };
+
+  enum class SourceElementContext : uint8_t {
+    ModuleItem,
+    Statement,
+    ExportedDeclaration,
   };
 
   struct RecoveryFrame {
@@ -238,13 +251,11 @@ struct Parser::Impl {
 
   bool isSoftKeyword(size_t index, zc::StringPtr expected) const;
 
-  bool isSoftKeywordModifier(size_t index) const;
+  bool isUnsupportedVisibilityModifierSpelling(size_t index, size_t limit) const;
 
   bool isExternDeclarationStart(size_t index, size_t limit) const;
 
   bool isSoftDeclarationHead(size_t index, size_t limit) const;
-
-  bool attributePathContainsSegment(size_t start, size_t end, zc::StringPtr expected) const;
 
   bool isMarkerImplDeclarationStart(size_t index, size_t limit) const;
 
@@ -342,9 +353,6 @@ struct Parser::Impl {
 
   bool modifierGroupContains(size_t start, size_t end, ast::SyntaxKind needle, size_t& found) const;
 
-  bool modifierGroupContainsSoftKeyword(size_t start, size_t end, zc::StringPtr expected,
-                                        size_t& found) const;
-
   void diagnoseDeclarationModifierGroup(size_t start, size_t end) const;
 
   bool diagnoseUnsupportedVarianceInTypeParameters(size_t openAngle, size_t closeAngle) const;
@@ -437,6 +445,12 @@ struct Parser::Impl {
   TypeParseResult parseAtomType(AstFactory& builder, TokenCursor& cursor, size_t limit) const;
 
   ast::NodeId parseTypeRange(AstFactory& builder, size_t start, size_t end) const;
+
+  ast::NodeList parseBoundListMembers(AstFactory& builder, size_t start, size_t end) const;
+
+  ast::NodeId parseTypeParameterBoundList(AstFactory& builder, size_t start, size_t end) const;
+
+  ast::NodeId parseAssociatedTypeBoundList(AstFactory& builder, size_t start, size_t end) const;
 
   size_t consumeCommaDelimitedItem(TokenCursor& cursor, size_t end) const;
 
@@ -667,7 +681,8 @@ struct Parser::Impl {
   SourceElementBoundary consumeSourceElement(TokenCursor& cursor, size_t limit) const;
 
   SourceElementParseResult parseSourceElement(AstFactory& builder, TokenCursor& cursor,
-                                              size_t limit) const;
+                                              size_t limit,
+                                              SourceElementContext elementContext) const;
 
   ast::NodeId parseBlock(AstFactory& builder, size_t openBrace, size_t limit,
                          bool allowFinalExpression = false) const;
@@ -761,7 +776,8 @@ struct Parser::Impl {
   ast::NodeId parseSpawnStatement(AstFactory& builder, size_t start, size_t end) const;
 
   ast::NodeId parseSourceElementOfKind(AstFactory& builder, size_t start, size_t end,
-                                       ast::SyntaxKind kind) const;
+                                       ast::SyntaxKind kind,
+                                       SourceElementContext elementContext) const;
 
   bool canContinueLetInitializerBefore(size_t index) const;
 

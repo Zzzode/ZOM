@@ -1,11 +1,15 @@
 #!/usr/bin/env python3
 
+from __future__ import annotations
+
 import argparse
 import copy
 import functools
 import json
 import re
+import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 
@@ -13,14 +17,129 @@ ROOT = Path(__file__).resolve().parents[1]
 SCHEMA = Path("products/zomlang/compiler/ast/schema.yml")
 MANIFEST = Path("products/zomlang/compiler/identity/definition-producers.json")
 DEFINITION_KEY = Path("products/zomlang/compiler/identity/definition-key.h")
+DEFINITION_KEY_IMPLEMENTATION = Path("products/zomlang/compiler/identity/definition-key.cc")
+FROZEN_REGISTRY = Path("products/zomlang/compiler/identity/frozen-registry.h")
+SEMANTIC_IDENTITY_REGISTRY = Path(
+    "products/zomlang/compiler/identity/semantic-identity-registry-set.h"
+)
+BUILD_SCRIPT_KEY = Path("products/zomlang/compiler/identity/build-script-key.h")
+BUILD_SCRIPT_KEY_IMPLEMENTATION = Path("products/zomlang/compiler/identity/build-script-key.cc")
+CRATE_KEY = Path("products/zomlang/compiler/identity/crate-key.h")
+SOURCE_KEY = Path("products/zomlang/compiler/identity/source-key.h")
+SOURCE_KEY_IMPLEMENTATION = Path("products/zomlang/compiler/identity/source-key.cc")
+MODULE_RESOLUTION_KEY = Path("products/zomlang/compiler/identity/module-resolution-key.h")
+MODULE_RESOLUTION_KEY_IMPLEMENTATION = Path(
+    "products/zomlang/compiler/identity/module-resolution-key.cc"
+)
+SEMANTIC_IMPORT_BINDING_KEY = Path(
+    "products/zomlang/compiler/identity/semantic-import-binding-key.h"
+)
+SEMANTIC_IMPORT_BINDING_KEY_IMPLEMENTATION = Path(
+    "products/zomlang/compiler/identity/semantic-import-binding-key.cc"
+)
+IDENTITY_CMAKE = Path("products/zomlang/compiler/identity/CMakeLists.txt")
 INVENTORY = Path("products/zomlang/compiler/binder/definition-inventory.cc")
+INVENTORY_HEADER = Path("products/zomlang/compiler/binder/definition-inventory.h")
+BINDING_INPUT = Path("products/zomlang/compiler/binder/binding-input.h")
+MODULE_RESOLUTION = Path("products/zomlang/compiler/binder/module-resolution.h")
+MODULE_RESOLUTION_IMPLEMENTATION = Path(
+    "products/zomlang/compiler/binder/module-resolution.cc"
+)
 COMPILER_SESSION = Path("products/zomlang/compiler/driver/compiler-session.cc")
+CRATE_GRAPH = Path("products/zomlang/compiler/driver/crate-graph.h")
+CRATE_GRAPH_IMPLEMENTATION = Path("products/zomlang/compiler/driver/crate-graph.cc")
 PACKAGE_COMPILATION_REQUEST = Path(
     "products/zomlang/compiler/driver/package/package-compilation-request.h"
 )
+PACKAGE_COMPILATION_REQUEST_IMPLEMENTATION = Path(
+    "products/zomlang/compiler/driver/package/package-compilation-request.cc"
+)
 SEMANTIC_TYPE_STORE = Path("products/zomlang/compiler/type/semantic-type-store.h")
-TYPE_ENV = Path("products/zomlang/compiler/type/type-env.cc")
-IR_MODULE = Path("products/zomlang/compiler/irgen/ir.cc")
+SEMANTIC_TYPE_KEY = Path("products/zomlang/compiler/type/semantic-type-key.h")
+HEADER_SYNTAX_SCHEMA = Path(
+    "products/zomlang/compiler/identity/canonical-header-syntax-schema.yml"
+)
+HEADER_SYNTAX_DEFINITION = Path(
+    "products/zomlang/compiler/identity/canonical-header-syntax-schema.def"
+)
+HEADER_SYNTAX_GENERATOR = Path("scripts/generate-canonical-header-syntax-schema.py")
+CONFORMANCE_CMAKE = Path("products/zomlang/tests/conformance/CMakeLists.txt")
+CANONICAL_HEADER_TYPE = Path("products/zomlang/compiler/identity/canonical-header-type.h")
+CANONICAL_HEADER_TYPE_CORE = Path(
+    "products/zomlang/compiler/identity/canonical-header-type-core.cc"
+)
+CANONICAL_HEADER_TYPE_COMPOUND = Path(
+    "products/zomlang/compiler/identity/canonical-header-type-compound.cc"
+)
+CANONICAL_HEADER_TYPE_RECORDS = Path(
+    "products/zomlang/compiler/identity/canonical-header-type-records.cc"
+)
+CANONICAL_HEADER_TYPE_ENCODE = Path(
+    "products/zomlang/compiler/identity/canonical-header-type-encode.cc"
+)
+CANONICAL_HEADER_TYPE_TEST = Path(
+    "products/zomlang/tests/unittests/compiler/identity/canonical-header-type-test.cc"
+)
+CANONICAL_HEADER_TYPE_PRODUCER = Path(
+    "products/zomlang/compiler/binder/canonical-header-type-producer.h"
+)
+CANONICAL_HEADER_TYPE_PRODUCER_IMPLEMENTATION = Path(
+    "products/zomlang/compiler/binder/canonical-header-type-producer.cc"
+)
+CANONICAL_HEADER_TYPE_PRODUCER_TEST = Path(
+    "products/zomlang/tests/unittests/compiler/binder/canonical-header-type-producer-test.cc"
+)
+CANONICAL_DEFINITION_HEADER_PRODUCER = Path(
+    "products/zomlang/compiler/binder/canonical-definition-header-producer.h"
+)
+CANONICAL_DEFINITION_HEADER_PRODUCER_IMPLEMENTATION = Path(
+    "products/zomlang/compiler/binder/canonical-definition-header-producer.cc"
+)
+CANONICAL_DEFINITION_HEADER_PRODUCER_TEST = Path(
+    "products/zomlang/tests/unittests/compiler/binder/canonical-definition-header-producer-test.cc"
+)
+CANONICAL_IMPL_HEADER_PRODUCER = Path(
+    "products/zomlang/compiler/binder/canonical-impl-header-producer.h"
+)
+CANONICAL_IMPL_HEADER_PRODUCER_IMPLEMENTATION = Path(
+    "products/zomlang/compiler/binder/canonical-impl-header-producer.cc"
+)
+CANONICAL_IMPL_HEADER_PRODUCER_TEST = Path(
+    "products/zomlang/tests/unittests/compiler/binder/canonical-impl-header-producer-test.cc"
+)
+BINDER_CMAKE = Path("products/zomlang/compiler/binder/CMakeLists.txt")
+BINDER_TEST_CMAKE = Path("products/zomlang/tests/unittests/compiler/binder/CMakeLists.txt")
+BINDING_VERIFIER = Path("products/zomlang/compiler/binder/binding-verifier.cc")
+CANONICAL_OVERLOAD_HEADER = Path(
+    "products/zomlang/compiler/identity/canonical-overload-header.h"
+)
+CANONICAL_OVERLOAD_HEADER_IMPLEMENTATION = Path(
+    "products/zomlang/compiler/identity/canonical-overload-header.cc"
+)
+CANONICAL_OVERLOAD_HEADER_TEST = Path(
+    "products/zomlang/tests/unittests/compiler/identity/canonical-overload-header-test.cc"
+)
+OVERLOAD_HEADER_DIGEST = Path("products/zomlang/compiler/identity/overload-header-digest.h")
+OVERLOAD_HEADER_DIGEST_IMPLEMENTATION = Path(
+    "products/zomlang/compiler/identity/overload-header-digest.cc"
+)
+OVERLOAD_HEADER_DIGEST_TEST = Path(
+    "products/zomlang/tests/unittests/compiler/identity/overload-header-digest-test.cc"
+)
+CANONICAL_IMPL_HEADER = Path("products/zomlang/compiler/identity/canonical-impl-header.h")
+CANONICAL_IMPL_HEADER_IMPLEMENTATION = Path(
+    "products/zomlang/compiler/identity/canonical-impl-header.cc"
+)
+CANONICAL_IMPL_HEADER_TEST = Path(
+    "products/zomlang/tests/unittests/compiler/identity/canonical-impl-header-test.cc"
+)
+MODULE_RESOLUTION_KEY_TEST = Path(
+    "products/zomlang/tests/unittests/compiler/identity/module-resolution-key-test.cc"
+)
+SEMANTIC_IMPORT_BINDING_KEY_TEST = Path(
+    "products/zomlang/tests/unittests/compiler/identity/semantic-import-binding-key-test.cc"
+)
+IDENTITY_TEST_CMAKE = Path("products/zomlang/tests/unittests/compiler/identity/CMakeLists.txt")
 PARSER_ROOT = Path("products/zomlang/compiler/parser")
 COMPILER_ROOT = ROOT / "products" / "zomlang" / "compiler"
 
@@ -149,7 +268,9 @@ def check_live_producers(
     inventory_text = read_text(INVENTORY, overrides)
     definition_text = read_text(DEFINITION_KEY, overrides)
     definition_kinds = enum_members(definition_text, "DefinitionKind")
-    anonymous_roles = enum_members(definition_text, "AnonymousDefinitionRole")
+    anonymous_roles = enum_members(
+        read_text(INVENTORY_HEADER, overrides), "AnonymousSyntaxRole"
+    )
 
     for node, raw_rule in sorted(producers.items()):
         if not isinstance(raw_rule, dict):
@@ -239,6 +360,64 @@ def function_body(text: str, marker: str) -> str | None:
     return None
 
 
+def declaration_body(text: str, marker: str) -> str | None:
+    marker_offset = text.find(marker)
+    if marker_offset < 0:
+        return None
+    body_start = text.find("{", marker_offset + len(marker))
+    if body_start < 0:
+        return None
+
+    depth = 0
+    for offset in range(body_start, len(text)):
+        if text[offset] == "{":
+            depth += 1
+        elif text[offset] == "}":
+            depth -= 1
+            if depth == 0:
+                return text[body_start + 1 : offset]
+    return None
+
+
+def data_member_declarations(body: str) -> tuple[str, ...]:
+    declarations: list[str] = []
+    for match in re.finditer(r"^[ \t]+([^\n;{}()]+;)\s*$", body, re.MULTILINE):
+        declarations.append(" ".join(match.group(1).split()))
+    return tuple(declarations)
+
+
+def tagged_enum_members(text: str, enum_name: str) -> tuple[tuple[str, str], ...] | None:
+    match = re.search(rf"enum\s+class\s+{enum_name}\b[^{{]*\{{(.*?)\}};", text, re.DOTALL)
+    if match is None:
+        return None
+
+    members: list[tuple[str, str]] = []
+    for item in match.group(1).split(","):
+        normalized = " ".join(item.split())
+        if not normalized:
+            continue
+        member = re.fullmatch(r"([A-Za-z][A-Za-z0-9_]*)\s*=\s*(0x[0-9A-Fa-f]+|[0-9]+)", normalized)
+        if member is None:
+            return ()
+        members.append((member.group(1), member.group(2).lower()))
+    return tuple(members)
+
+
+def check_ordered_markers(
+    body: str,
+    ordered_markers: tuple[str, ...],
+    path: Path,
+    description: str,
+    errors: list[str],
+) -> None:
+    offsets = [body.find(marker) for marker in ordered_markers]
+    for marker, offset in zip(ordered_markers, offsets):
+        if offset < 0:
+            errors.append(f"{path}: {description} is missing {marker}")
+    if all(offset >= 0 for offset in offsets) and offsets != sorted(offsets):
+        errors.append(f"{path}: {description} must preserve canonical field order")
+
+
 def check_ordered_function_markers(
     text: str,
     function_marker: str,
@@ -294,14 +473,1708 @@ def check_phase_local_allowlists(
             errors.append(f"{MANIFEST}: stale {description} allowlist entry {path}")
 
 
+def check_header_wire_inventory(
+    overrides: dict[Path, str], errors: list[str]
+) -> None:
+    schema_text = read_text(HEADER_SYNTAX_SCHEMA, overrides)
+    definition_text = read_text(HEADER_SYNTAX_DEFINITION, overrides)
+    cmake_text = read_text(CONFORMANCE_CMAKE, overrides)
+
+    required_cmake_patterns = (
+        (
+            r"NAME canonical-header-syntax-schema\b.*?"
+            r"generate-canonical-header-syntax-schema\.py.*?--check",
+            "canonical header schema check",
+        ),
+        (
+            r"NAME canonical-header-syntax-schema-negative\b.*?"
+            r"generate-canonical-header-syntax-schema\.py.*?--self-test",
+            "canonical header schema self-test",
+        ),
+    )
+    for pattern, description in required_cmake_patterns:
+        if re.search(pattern, cmake_text, re.DOTALL) is None:
+            errors.append(f"{CONFORMANCE_CMAKE}: missing {description} registration")
+
+    with tempfile.TemporaryDirectory(prefix="zom-identity-header-schema-") as directory:
+        temporary_root = Path(directory)
+        schema_path = temporary_root / HEADER_SYNTAX_SCHEMA.name
+        generated_path = temporary_root / HEADER_SYNTAX_DEFINITION.name
+        schema_path.write_text(schema_text, encoding="utf-8")
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(ROOT / HEADER_SYNTAX_GENERATOR),
+                "--schema",
+                str(schema_path),
+                "--output",
+                str(generated_path),
+            ],
+            cwd=ROOT,
+            capture_output=True,
+            check=False,
+            text=True,
+        )
+        if result.returncode != 0:
+            detail = result.stderr.strip() or result.stdout.strip() or "unknown generator error"
+            errors.append(
+                f"{HEADER_SYNTAX_SCHEMA}: canonical header schema generation failed: {detail}"
+            )
+            return
+        generated_text = generated_path.read_text(encoding="utf-8")
+        if generated_text != definition_text:
+            errors.append(
+                f"{HEADER_SYNTAX_DEFINITION}: generated canonical header definition is stale"
+            )
+
+
+def check_canonical_header_type_inventory(
+    overrides: dict[Path, str], errors: list[str]
+) -> None:
+    header = read_text(CANONICAL_HEADER_TYPE, overrides)
+    core = read_text(CANONICAL_HEADER_TYPE_CORE, overrides)
+    compound = read_text(CANONICAL_HEADER_TYPE_COMPOUND, overrides)
+    records = read_text(CANONICAL_HEADER_TYPE_RECORDS, overrides)
+    encode = read_text(CANONICAL_HEADER_TYPE_ENCODE, overrides)
+    identity_cmake = read_text(IDENTITY_CMAKE, overrides)
+    test = read_text(CANONICAL_HEADER_TYPE_TEST, overrides)
+
+    for source in (
+        CANONICAL_HEADER_TYPE_COMPOUND,
+        CANONICAL_HEADER_TYPE_CORE,
+        CANONICAL_HEADER_TYPE_ENCODE,
+        CANONICAL_HEADER_TYPE_RECORDS,
+    ):
+        marker = f"${{CMAKE_CURRENT_SOURCE_DIR}}/{source.name}"
+        if marker not in identity_cmake:
+            errors.append(f"{IDENTITY_CMAKE}: missing canonical header type source {source.name}")
+
+    for marker in (
+        "enum class CanonicalHeaderTypeSyntaxKind : uint8_t",
+        "static zc::Maybe<CanonicalHeaderTypeSyntax> function(",
+        "static zc::Maybe<CanonicalHeaderTypeSyntax> unionOf(",
+        "static zc::Maybe<CanonicalHeaderTypeSyntax> intersectionOf(",
+        "static CanonicalHeaderTypeSyntax dynamicArray(",
+        "static CanonicalHeaderTypeSyntax slice(",
+        "static CanonicalHeaderTypeSyntax dynamic(",
+        "CanonicalHeaderTypeSyntax clone() const;",
+        "void encode(CanonicalEncoder& encoder) const;",
+        "zc::Array<uint8_t> encode() const;",
+    ):
+        if marker not in header:
+            errors.append(f"{CANONICAL_HEADER_TYPE}: missing public canonical type marker {marker}")
+
+    for marker in (
+        "appendFlattened(CanonicalHeaderTypeSyntaxKind::Union",
+        "appendFlattened(CanonicalHeaderTypeSyntaxKind::Intersection",
+        "if (normalized.size() == 1) { return zc::mv(normalized[0]); }",
+        "values = sortUnique(zc::mv(values));",
+    ):
+        if marker not in core:
+            errors.append(f"{CANONICAL_HEADER_TYPE_CORE}: missing normalization marker {marker}")
+
+    for marker in (
+        "if (depth != 0x01 && depth != 0x02) { return zc::none; }",
+        "detail::ObjectTypeData{sortUnique(zc::mv(members))}",
+        "sortUnique(zc::mv(markers))",
+        "sortUnique(zc::mv(associatedBindings))",
+    ):
+        if marker not in compound:
+            errors.append(f"{CANONICAL_HEADER_TYPE_COMPOUND}: missing compound marker {marker}")
+
+    for marker in (
+        "impl->name.encode(encoder);",
+        "encoder.encodeSequenceSize(impl->arguments.size());",
+        "impl->type.encode(encoder);",
+        "encoder.encodeBool(impl->isMutable);",
+        "encoder.encodeBool(impl->isOptional);",
+    ):
+        if marker not in records:
+            errors.append(f"{CANONICAL_HEADER_TYPE_RECORDS}: missing record codec marker {marker}")
+    if "encodeByteString" in records or "encodeByteString" in encode:
+        errors.append(
+            f"{CANONICAL_HEADER_TYPE_ENCODE}: nested canonical type records must encode inline"
+        )
+
+    if "encoder.encodeUint8(static_cast<uint8_t>(typeKind));" not in encode:
+        errors.append(f"{CANONICAL_HEADER_TYPE_ENCODE}: canonical type tag must encode first")
+    for variant in (
+        "Named",
+        "Predefined",
+        "Function",
+        "Union",
+        "Intersection",
+        "FixedArray",
+        "DynamicArray",
+        "Slice",
+        "Optional",
+        "Reference",
+        "RawPointer",
+        "TypeQuery",
+        "Object",
+        "Tuple",
+        "AssociatedProjection",
+        "Dynamic",
+    ):
+        marker = f"case CanonicalHeaderTypeSyntaxKind::{variant}:"
+        if marker not in encode:
+            errors.append(f"{CANONICAL_HEADER_TYPE_ENCODE}: missing {variant} codec case")
+    for marker in (
+        "encodeSequence(encoder, value.parameters.asPtr());",
+        "value.result.encode(encoder);",
+        "encoder.encodeSome();",
+        "encoder.encodeUint64(value.length);",
+        "encoder.encodeUint8(value.depth);",
+        "value.member.encode(encoder);",
+        "value.principal.encode(encoder);",
+        "encodeSequence(encoder, value.markers.asPtr());",
+        "encodeSequence(encoder, value.associatedBindings.asPtr());",
+    ):
+        if marker not in encode:
+            errors.append(f"{CANONICAL_HEADER_TYPE_ENCODE}: missing field codec marker {marker}")
+
+    for marker in (
+        'ZC_TEST("CanonicalHeaderTypeSyntax passes fixed vectors for all sixteen tags and fields")',
+        'ZC_TEST("CanonicalHeaderTypeSyntax rejects invalid enums depth empty sets and empty raises")',
+        'ZC_TEST("CanonicalHeaderTypeSyntax normalizes unions intersections objects and dynamic sets")',
+        'ZC_TEST("CanonicalHeaderTypeSyntax preserves ordered children clone accessors and array identity")',
+        'expectHex(value, "030000000000000000020f01000000000000000202010202"_zc);',
+        "ZC_REQUIRE(members.size() == 3);",
+        'expectHex(dynamicArray, "070201"_zc);',
+        'expectHex(slice, "080201"_zc);',
+    ):
+        if marker not in test:
+            errors.append(f"{CANONICAL_HEADER_TYPE_TEST}: missing canonical type test marker {marker}")
+
+
+def check_canonical_header_type_producer(
+    overrides: dict[Path, str], errors: list[str]
+) -> None:
+    header = read_text(CANONICAL_HEADER_TYPE_PRODUCER, overrides)
+    implementation = read_text(CANONICAL_HEADER_TYPE_PRODUCER_IMPLEMENTATION, overrides)
+    test = read_text(CANONICAL_HEADER_TYPE_PRODUCER_TEST, overrides)
+    binder_cmake = read_text(BINDER_CMAKE, overrides)
+    binder_test_cmake = read_text(BINDER_TEST_CMAKE, overrides)
+    verifier = read_text(BINDING_VERIFIER, overrides)
+
+    frame = declaration_body(header, "struct CanonicalGenericBinderFrame final")
+    if frame is None or data_member_declarations(frame) != ("ast::NodeId genericParameters;",):
+        errors.append(
+            f"{CANONICAL_HEADER_TYPE_PRODUCER}: generic binder frame must contain exactly one AST binder node"
+        )
+    for marker in (
+        "class CanonicalHeaderTypeProducer final",
+        "static zc::Maybe<CanonicalHeaderSyntaxFailure> validateBinderStack(",
+        "static CanonicalHeaderTypeProduction produceType(",
+        "zc::ArrayPtr<const CanonicalGenericBinderFrame> binders",
+    ):
+        if marker not in header:
+            errors.append(
+                f"{CANONICAL_HEADER_TYPE_PRODUCER}: missing canonical type producer marker {marker}"
+            )
+
+    variant_markers = (
+        "NamedTypeExpr",
+        "PredefinedTypeExpr",
+        "FunctionTypeExpr",
+        "UnionTypeExpr",
+        "IntersectionTypeExpr",
+        "FixedArrayTypeExpr",
+        "ArrayTypeExpr",
+        "SliceArrayTypeExpr",
+        "OptionalTypeExpr",
+        "ReferenceTypeExpr",
+        "RawPointerTypeExpr",
+        "TypeQueryExpr",
+        "ObjectTypeExpr",
+        "TupleTypeExpr",
+        "AssociatedTypeProjectionExpr",
+        "DynTypeExpr",
+    )
+    for variant in variant_markers:
+        if f"case ast::SyntaxKind::{variant}:" not in implementation:
+            errors.append(
+                f"{CANONICAL_HEADER_TYPE_PRODUCER_IMPLEMENTATION}: missing AST mapping for {variant}"
+            )
+
+    for marker, description in (
+        (
+            "for (size_t depth = 0; depth < binders.size(); ++depth)",
+            "search lexical generic binders by stable-owner depth",
+        ),
+        (
+            "CanonicalNameRoot::generic(static_cast<uint32_t>(depth),",
+            "encode generic depth and ordinal",
+        ),
+        ("if (rootTag == 0)", "restrict generic lookup to relative names"),
+        ("else if (rootTag != 1)", "reject unknown module-path roots"),
+        ("if (leading != 0)", "reject producerless attribute-path roots"),
+        (
+            "value > (UINT64_MAX - digit) / base",
+            "reject fixed-array length overflow",
+        ),
+        (
+            "appendRaises(alternative, result)",
+            "recursively flatten raises union syntax",
+        ),
+    ):
+        if marker not in implementation:
+            errors.append(
+                f"{CANONICAL_HEADER_TYPE_PRODUCER_IMPLEMENTATION}: producer must {description}"
+            )
+
+    if "${CMAKE_CURRENT_SOURCE_DIR}/canonical-header-type-producer.cc" not in binder_cmake:
+        errors.append(f"{BINDER_CMAKE}: missing canonical header type producer source")
+    if not re.search(
+        r'add_ztest_unit_test\("canonical-header-type-producer-test"\s+'
+        r'"canonical-header-type-producer-test\.cc"',
+        binder_test_cmake,
+    ):
+        errors.append(f"{BINDER_TEST_CMAKE}: missing canonical header type producer test target")
+
+    for marker in (
+        'ZC_TEST("CanonicalHeaderTypeProducer alpha-normalizes current generic binder names")',
+        'ZC_TEST("CanonicalHeaderTypeProducer reserves empty owner depth and preserves absolute roots")',
+        'ZC_TEST("CanonicalHeaderTypeProducer keeps dynamic arrays and slices unequal")',
+        'ZC_TEST("CanonicalHeaderTypeProducer covers every RFC 0018 type variant")',
+        'ZC_TEST("CanonicalHeaderTypeProducer evaluates fixed array lengths and rejects non-literals")',
+        'ZC_TEST("CanonicalHeaderTypeProducer flattens union members and function raises")',
+        'ZC_TEST("CanonicalHeaderTypeProducer resolves duplicate generic names to the first ordinal")',
+        '"0103000000000000000000000000000000000000000000000000"_zc',
+    ):
+        if marker not in test:
+            errors.append(
+                f"{CANONICAL_HEADER_TYPE_PRODUCER_TEST}: missing producer test marker {marker}"
+            )
+
+    if "CanonicalHeaderTypeProducer" in verifier:
+        errors.append(
+            f"{BINDING_VERIFIER}: independent verifier must not call the canonical type producer"
+        )
+
+
+def check_canonical_definition_header_producer(
+    overrides: dict[Path, str], errors: list[str]
+) -> None:
+    header = read_text(CANONICAL_DEFINITION_HEADER_PRODUCER, overrides)
+    implementation = read_text(CANONICAL_DEFINITION_HEADER_PRODUCER_IMPLEMENTATION, overrides)
+    test = read_text(CANONICAL_DEFINITION_HEADER_PRODUCER_TEST, overrides)
+    binder_cmake = read_text(BINDER_CMAKE, overrides)
+    binder_test_cmake = read_text(BINDER_TEST_CMAKE, overrides)
+    verifier = read_text(BINDING_VERIFIER, overrides)
+
+    for marker in (
+        "class CanonicalDefinitionHeaderProducer final",
+        "static CanonicalDefinitionHeaderProduction produce(",
+        "const DefinitionInventoryEntry& definition",
+        "zc::ArrayPtr<const CanonicalGenericBinderFrame> enclosingBinders",
+    ):
+        if marker not in header:
+            errors.append(
+                f"{CANONICAL_DEFINITION_HEADER_PRODUCER}: missing definition producer marker {marker}"
+            )
+
+    for variant in ("FunctionDecl", "ExternDecl", "MethodDecl", "ConstructorDecl"):
+        if f"case ast::SyntaxKind::{variant}:" not in implementation:
+            errors.append(
+                f"{CANONICAL_DEFINITION_HEADER_PRODUCER_IMPLEMENTATION}: missing callable mapping for {variant}"
+            )
+    for marker, description in (
+        (
+            "frames.add(CanonicalGenericBinderFrame{syntax.genericParameters});",
+            "reserve the callable binder at depth zero",
+        ),
+        (
+            "CanonicalHeaderTypeProducer::validateBinderStack(tree, frames.asPtr())",
+            "validate the complete callable binder stack independently of type use",
+        ),
+        (
+            "tree.ident(name) != tree.ident(definition.declaredName)",
+            "require inventory and header name equality",
+        ),
+        (
+            "definition.kind != identity::DefinitionKind::Function",
+            "validate function inventory kinds",
+        ),
+        (
+            "definition.kind != identity::DefinitionKind::Method",
+            "validate method inventory kinds",
+        ),
+        (
+            "definition.kind != identity::DefinitionKind::Constructor",
+            "validate constructor inventory kinds",
+        ),
+        (
+            "CanonicalBoundObligation::from(genericSubject(ordinal)",
+            "collect inline generic bounds",
+        ),
+        ("appendWhere(", "merge where-clause obligations"),
+        (
+            'tree.ident(names[2]) == "move"_zc',
+            "recognize the exact move-receiver attribute",
+        ),
+        ("methodMode == 1", "reject static receivers"),
+        ("methodMode == 2 && !foundReceiver", "reject receiverless mutating methods"),
+        (
+            "CanonicalOverloadHeader::from(",
+            "admit the complete canonical overload header",
+        ),
+        (
+            "OverloadHeaderAuthority::from(zc::mv(value))",
+            "retain the complete header authority",
+        ),
+    ):
+        if marker not in implementation:
+            errors.append(
+                f"{CANONICAL_DEFINITION_HEADER_PRODUCER_IMPLEMENTATION}: producer must {description}"
+            )
+
+    if "${CMAKE_CURRENT_SOURCE_DIR}/canonical-definition-header-producer.cc" not in binder_cmake:
+        errors.append(f"{BINDER_CMAKE}: missing canonical definition header producer source")
+    if not re.search(
+        r'add_ztest_unit_test\("canonical-definition-header-producer-test"\s+'
+        r'"canonical-definition-header-producer-test\.cc"',
+        binder_test_cmake,
+    ):
+        errors.append(
+            f"{BINDER_TEST_CMAKE}: missing canonical definition header producer test target"
+        )
+    for marker in (
+        'ZC_TEST("CanonicalDefinitionHeaderProducer alpha-normalizes callable generic names")',
+        'ZC_TEST("CanonicalDefinitionHeaderProducer merges inline and where obligations")',
+        'ZC_TEST("CanonicalDefinitionHeaderProducer normalizes receivers and removes them from parameters")',
+        'ZC_TEST("CanonicalDefinitionHeaderProducer admits exact move and mutable-reference receivers")',
+        'ZC_TEST("CanonicalDefinitionHeaderProducer preserves callable kind result and ABI contracts")',
+        'ZC_TEST("CanonicalDefinitionHeaderProducer rejects inventory kind and name mismatches")',
+        'ZC_TEST("CanonicalDefinitionHeaderProducer admits duplicate unused generic names")',
+    ):
+        if marker not in test:
+            errors.append(
+                f"{CANONICAL_DEFINITION_HEADER_PRODUCER_TEST}: missing definition producer test marker {marker}"
+            )
+
+    if "CanonicalDefinitionHeaderProducer" in verifier:
+        errors.append(
+            f"{BINDING_VERIFIER}: independent verifier must not call the canonical definition producer"
+        )
+
+
+def check_canonical_impl_header_producer(
+    overrides: dict[Path, str], errors: list[str]
+) -> None:
+    header = read_text(CANONICAL_IMPL_HEADER_PRODUCER, overrides)
+    implementation = read_text(CANONICAL_IMPL_HEADER_PRODUCER_IMPLEMENTATION, overrides)
+    test = read_text(CANONICAL_IMPL_HEADER_PRODUCER_TEST, overrides)
+    binder_cmake = read_text(BINDER_CMAKE, overrides)
+    binder_test_cmake = read_text(BINDER_TEST_CMAKE, overrides)
+    verifier = read_text(BINDING_VERIFIER, overrides)
+
+    for marker in (
+        "class CanonicalImplHeaderProducer final",
+        "static CanonicalImplHeaderProduction produce(",
+        "const ImplInventoryEntry& implementation",
+        "zc::ArrayPtr<const CanonicalGenericBinderFrame> enclosingBinders",
+    ):
+        if marker not in header:
+            errors.append(
+                f"{CANONICAL_IMPL_HEADER_PRODUCER}: missing impl producer marker {marker}"
+            )
+
+    for marker, description in (
+        ("syntax.kind == ast::SyntaxKind::StandaloneImplDecl", "map standalone impl syntax"),
+        ("syntax.kind == ast::SyntaxKind::MarkerImpl", "map marker impl syntax"),
+        (
+            "frames.add(CanonicalGenericBinderFrame{genericParameters});",
+            "reserve the implementation binder at depth zero",
+        ),
+        (
+            "CanonicalHeaderTypeProducer::validateBinderStack(tree, frames.asPtr())",
+            "validate the complete implementation binder stack independently of type use",
+        ),
+        (
+            "CanonicalTraitReference::from(named.name().clone(), zc::mv(arguments))",
+            "retain a pure canonical trait syntax reference",
+        ),
+        (
+            "polarity == ImplPolarity::Negative && safety == ImplSafety::Unsafe",
+            "reject only the parser-invalid negative unsafe marker combination",
+        ),
+        (
+            "CanonicalBoundObligation::from(genericSubject(ordinal)",
+            "collect inline generic bounds",
+        ),
+        ("appendWhere(", "merge generic and implementation where obligations"),
+        ("CanonicalImplHeader::from(", "admit the complete canonical impl header"),
+    ):
+        if marker not in implementation:
+            errors.append(
+                f"{CANONICAL_IMPL_HEADER_PRODUCER_IMPLEMENTATION}: producer must {description}"
+            )
+
+    if "${CMAKE_CURRENT_SOURCE_DIR}/canonical-impl-header-producer.cc" not in binder_cmake:
+        errors.append(f"{BINDER_CMAKE}: missing canonical impl header producer source")
+    if not re.search(
+        r'add_ztest_unit_test\("canonical-impl-header-producer-test"\s+'
+        r'"canonical-impl-header-producer-test\.cc"',
+        binder_test_cmake,
+    ):
+        errors.append(f"{BINDER_TEST_CMAKE}: missing canonical impl header producer test target")
+
+    for marker in (
+        'ZC_TEST("CanonicalImplHeaderProducer alpha-normalizes implementation generic names")',
+        'ZC_TEST("CanonicalImplHeaderProducer merges inline and where obligations")',
+        'ZC_TEST("CanonicalImplHeaderProducer admits positive safe marker paths and exact tags")',
+        'ZC_TEST("CanonicalImplHeaderProducer reserves an empty current binder depth")',
+        'ZC_TEST("CanonicalImplHeaderProducer rejects generic traits and admits duplicate binder names")',
+        "requireHeader(safeResult).safety() == identity::ImplSafety::Safe",
+        "requireHeader(qualifiedResult).trait().name().suffix().size() == 2",
+    ):
+        if marker not in test:
+            errors.append(
+                f"{CANONICAL_IMPL_HEADER_PRODUCER_TEST}: missing impl producer test marker {marker}"
+            )
+
+    if "CanonicalImplHeaderProducer" in verifier:
+        errors.append(
+            f"{BINDING_VERIFIER}: independent verifier must not call the canonical impl producer"
+        )
+
+
+def check_canonical_overload_header_inventory(
+    overrides: dict[Path, str], errors: list[str]
+) -> None:
+    header = read_text(CANONICAL_OVERLOAD_HEADER, overrides)
+    implementation = read_text(CANONICAL_OVERLOAD_HEADER_IMPLEMENTATION, overrides)
+    identity_cmake = read_text(IDENTITY_CMAKE, overrides)
+    test = read_text(CANONICAL_OVERLOAD_HEADER_TEST, overrides)
+
+    source_marker = (
+        f"${{CMAKE_CURRENT_SOURCE_DIR}}/{CANONICAL_OVERLOAD_HEADER_IMPLEMENTATION.name}"
+    )
+    if source_marker not in identity_cmake:
+        errors.append(
+            f"{IDENTITY_CMAKE}: missing canonical overload source "
+            f"{CANONICAL_OVERLOAD_HEADER_IMPLEMENTATION.name}"
+        )
+
+    for marker in (
+        "class CanonicalCallableResult final",
+        "class CanonicalGenericParameter final",
+        "class CanonicalBoundObligation final",
+        "class CanonicalCallableParameter final",
+        "class CanonicalOverloadHeader final",
+        "static CanonicalCallableResult type(CanonicalHeaderTypeSyntax&& type);",
+        "static zc::Maybe<CanonicalOverloadHeader> from(",
+        "CanonicalOverloadHeader clone() const;",
+        "zc::ArrayPtr<const CanonicalGenericParameter> genericParameters() const noexcept;",
+        "zc::ArrayPtr<const CanonicalBoundObligation> obligations() const noexcept;",
+        "zc::ArrayPtr<const CanonicalCallableParameter> parameters() const noexcept;",
+        "void encode(CanonicalEncoder& encoder) const;",
+    ):
+        if marker not in header:
+            errors.append(f"{CANONICAL_OVERLOAD_HEADER}: missing public overload marker {marker}")
+
+    type_factory = function_body(
+        implementation, "CanonicalCallableResult CanonicalCallableResult::type("
+    )
+    if type_factory is None:
+        errors.append(
+            f"{CANONICAL_OVERLOAD_HEADER_IMPLEMENTATION}: missing callable result type factory"
+        )
+    else:
+        for marker in (
+            "type.predefinedKind()",
+            "if (kind == PredefinedTypeKind::Unit) { return unit(); }",
+        ):
+            if marker not in type_factory:
+                errors.append(
+                    f"{CANONICAL_OVERLOAD_HEADER_IMPLEMENTATION}: explicit Unit result must "
+                    f"normalize to the unit variant via {marker}"
+                )
+
+    record_codecs = (
+        (
+            "void CanonicalCallableResult::encode(",
+            (
+                "encoder.encodeUint8(static_cast<uint8_t>(resultKind));",
+                "impl->value.get<detail::CallableResultTypeData>().type.encode(encoder);",
+            ),
+            "callable result codec",
+        ),
+        (
+            "void CanonicalGenericParameter::encode(",
+            ("encoder.encodeSome();", "value.encode(encoder);"),
+            "generic parameter codec",
+        ),
+        (
+            "void CanonicalBoundObligation::encode(",
+            ("impl->subject.encode(encoder);", "impl->bound.encode(encoder);"),
+            "bound obligation codec",
+        ),
+        (
+            "void CanonicalCallableParameter::encode(",
+            (
+                "impl->label.encode(encoder);",
+                "impl->type.encode(encoder);",
+                "encoder.encodeBool(impl->hasDefault);",
+            ),
+            "callable parameter codec",
+        ),
+    )
+    for function_marker, field_markers, description in record_codecs:
+        body = function_body(implementation, function_marker)
+        if body is None:
+            errors.append(
+                f"{CANONICAL_OVERLOAD_HEADER_IMPLEMENTATION}: missing {description} body"
+            )
+        else:
+            check_ordered_markers(
+                body,
+                field_markers,
+                CANONICAL_OVERLOAD_HEADER_IMPLEMENTATION,
+                description,
+                errors,
+            )
+
+    if "encodeByteString" in implementation:
+        errors.append(
+            f"{CANONICAL_OVERLOAD_HEADER_IMPLEMENTATION}: canonical overload records must "
+            "encode inline"
+        )
+
+    for marker in (
+        "if (values.size() == 0) { return zc::none; }",
+        "appendFlattenedUnion(zc::mv(value), flattened);",
+        "values = sortUnique(zc::mv(flattened));",
+        "obligations = sortUnique(zc::mv(obligations));",
+        "if (receiver != zc::none || constructorResult) { return zc::none; }",
+        "if (constructorResult || externalAbi != zc::none) { return zc::none; }",
+        "} else if (receiver != zc::none || externalAbi != zc::none || !constructorResult) {",
+    ):
+        if marker not in implementation:
+            errors.append(
+                f"{CANONICAL_OVERLOAD_HEADER_IMPLEMENTATION}: missing overload admission marker "
+                f"{marker}"
+            )
+
+    header_codec = function_body(implementation, "void CanonicalOverloadHeader::encode(")
+    if header_codec is None:
+        errors.append(
+            f"{CANONICAL_OVERLOAD_HEADER_IMPLEMENTATION}: missing canonical overload codec body"
+        )
+    else:
+        check_ordered_markers(
+            header_codec,
+            (
+                "encoder.encodeUint8(static_cast<uint8_t>(impl->callableKind));",
+                "impl->name.encode(encoder);",
+                "ZC_IF_SOME(value, impl->receiver)",
+                "encodeSequence(encoder, impl->genericParameters.asPtr());",
+                "encodeSequence(encoder, impl->obligations.asPtr());",
+                "encodeSequence(encoder, impl->parameters.asPtr());",
+                "impl->result.encode(encoder);",
+                "ZC_IF_SOME(values, impl->raises)",
+                "ZC_IF_SOME(value, impl->externalAbi)",
+            ),
+            CANONICAL_OVERLOAD_HEADER_IMPLEMENTATION,
+            "canonical overload nine-field codec",
+            errors,
+        )
+
+    for marker in (
+        'ZC_TEST("Canonical overload leaf records and callable results pass exact vectors")',
+        'ZC_TEST("Canonical overload header passes the complete nine-field vector clone and accessors")',
+        'ZC_TEST("Canonical overload header rejects invalid tags and cross-kind admission")',
+        'ZC_TEST("Canonical overload header rejects present-empty raises")',
+        'ZC_TEST("Canonical overload header recursively normalizes raises unions")',
+        'ZC_TEST("Canonical overload header sorts and deduplicates complete obligation bytes")',
+        'expectHex(explicitUnit.encode().asPtr(), "01"_zc);',
+        "ZC_EXPECT(explicitUnit.encode().asPtr() == unit.encode().asPtr());",
+        "ZC_EXPECT(explicitUnit.kind() == CanonicalCallableResultKind::Unit);",
+        "ZC_EXPECT(explicitUnit.type() == zc::none);",
+        'expectHex(typed.encode().asPtr(), "030201"_zc);',
+        '"0100000000000000016600000000000000000201020200000000000000000102010202000000000000000300000000000000017a02020000000000000000017a020200000000000000000161020101030201010000000000000002020102020101"_zc',
+        "ZC_REQUIRE(header.parameters().size() == 3);",
+        "ZC_REQUIRE(header.obligations().size() == 1);",
+        "ZC_EXPECT(hasKind(header.obligations()[0].subject(), PredefinedTypeKind::I8));",
+        "ZC_EXPECT(hasKind(header.obligations()[0].bound(), PredefinedTypeKind::I16));",
+        'ZC_EXPECT(header.parameters()[0].label() == "z"_zc);',
+        'ZC_EXPECT(header.parameters()[1].label() == "z"_zc);',
+        'ZC_EXPECT(header.parameters()[2].label() == "a"_zc);',
+    ):
+        if marker not in test:
+            errors.append(
+                f"{CANONICAL_OVERLOAD_HEADER_TEST}: missing canonical overload test marker {marker}"
+            )
+
+
+def check_overload_header_digest_inventory(
+    overrides: dict[Path, str], errors: list[str]
+) -> None:
+    header = read_text(OVERLOAD_HEADER_DIGEST, overrides)
+    implementation = read_text(OVERLOAD_HEADER_DIGEST_IMPLEMENTATION, overrides)
+    identity_cmake = read_text(IDENTITY_CMAKE, overrides)
+    test = read_text(OVERLOAD_HEADER_DIGEST_TEST, overrides)
+
+    source_marker = (
+        f"${{CMAKE_CURRENT_SOURCE_DIR}}/{OVERLOAD_HEADER_DIGEST_IMPLEMENTATION.name}"
+    )
+    if source_marker not in identity_cmake:
+        errors.append(
+            f"{IDENTITY_CMAKE}: missing overload digest source "
+            f"{OVERLOAD_HEADER_DIGEST_IMPLEMENTATION.name}"
+        )
+
+    for marker in (
+        "class OverloadHeaderDigest final",
+        "static OverloadHeaderDigest compute(const CanonicalOverloadHeader& header);",
+        "static zc::Maybe<OverloadHeaderDigest> fromBytes(",
+        "OverloadHeaderDigest clone() const noexcept;",
+        "void encode(CanonicalEncoder& encoder) const;",
+        "class OverloadHeaderAuthority final",
+        "static OverloadHeaderAuthority from(CanonicalOverloadHeader&& header);",
+        "OverloadHeaderAuthority clone() const;",
+        "bool verify() const;",
+        "bool sameRecordAs(const OverloadHeaderAuthority& other) const;",
+    ):
+        if marker not in header:
+            errors.append(f"{OVERLOAD_HEADER_DIGEST}: missing overload digest marker {marker}")
+
+    if 'constexpr auto kOverloadHeaderDomain = "zom.overload-header.v0"_zc;' not in (
+        implementation
+    ):
+        errors.append(
+            f"{OVERLOAD_HEADER_DIGEST_IMPLEMENTATION}: invalid overload header digest domain"
+        )
+
+    compute_body = function_body(
+        implementation, "OverloadHeaderDigest OverloadHeaderDigest::compute("
+    )
+    if compute_body is None:
+        errors.append(
+            f"{OVERLOAD_HEADER_DIGEST_IMPLEMENTATION}: missing overload header digest compute body"
+        )
+    else:
+        check_ordered_markers(
+            compute_body,
+            (
+                "const auto encodedHeader = header.encode();",
+                "preimage.addAll(kOverloadHeaderDomain.asBytes());",
+                "preimage.add(0x00);",
+                "preimage.addAll(encodedHeader);",
+                "sha256(preimage.asPtr())",
+            ),
+            OVERLOAD_HEADER_DIGEST_IMPLEMENTATION,
+            "overload header digest preimage",
+            errors,
+        )
+
+    if "Sha256Digest::fromBytes(bytes)" not in implementation:
+        errors.append(
+            f"{OVERLOAD_HEADER_DIGEST_IMPLEMENTATION}: digest admission must delegate exact "
+            "length validation to Sha256Digest"
+        )
+    digest_codec = function_body(implementation, "void OverloadHeaderDigest::encode(")
+    if digest_codec is None or "encoder.encodeDigest(digestValue);" not in digest_codec:
+        errors.append(
+            f"{OVERLOAD_HEADER_DIGEST_IMPLEMENTATION}: overload digest must encode as raw 32 bytes"
+        )
+    if "encodeByteString" in implementation:
+        errors.append(
+            f"{OVERLOAD_HEADER_DIGEST_IMPLEMENTATION}: overload digest must not encode a length "
+            "wrapper"
+        )
+
+    authority_data = declaration_body(implementation, "struct OverloadHeaderAuthorityData final")
+    expected_authority_data = (
+        "OverloadHeaderDigest digest;",
+        "CanonicalOverloadHeader header;",
+    )
+    if authority_data is None or data_member_declarations(authority_data) != expected_authority_data:
+        errors.append(
+            f"{OVERLOAD_HEADER_DIGEST_IMPLEMENTATION}: overload authority must retain exactly "
+            "digest and complete header"
+        )
+    verify_body = function_body(implementation, "bool OverloadHeaderAuthority::verify(")
+    if verify_body is None or (
+        "OverloadHeaderDigest::compute(impl->header) == impl->digest" not in verify_body
+    ):
+        errors.append(
+            f"{OVERLOAD_HEADER_DIGEST_IMPLEMENTATION}: overload authority must verify its "
+            "complete retained header"
+        )
+    comparison_body = function_body(
+        implementation, "bool OverloadHeaderAuthority::sameRecordAs("
+    )
+    if comparison_body is None:
+        errors.append(
+            f"{OVERLOAD_HEADER_DIGEST_IMPLEMENTATION}: missing complete overload record comparison"
+        )
+    else:
+        for marker in (
+            "impl->header.encode();",
+            "other.impl->header.encode();",
+            "left.asPtr() == right.asPtr();",
+        ):
+            if marker not in comparison_body:
+                errors.append(
+                    f"{OVERLOAD_HEADER_DIGEST_IMPLEMENTATION}: complete overload record "
+                    f"comparison is missing {marker}"
+                )
+        if "digest" in comparison_body:
+            errors.append(
+                f"{OVERLOAD_HEADER_DIGEST_IMPLEMENTATION}: complete overload record comparison "
+                "must not use digest equality"
+            )
+
+    for marker in (
+        'ZC_TEST("OverloadHeaderDigest passes the exact domain SHA and raw codec vector")',
+        '"1082ac5bcb087fbe0a9d323c92b35e9974e351e50c8e0ac207b69f614850dad4"_zc',
+        "ZC_EXPECT(value.encode().asPtr() == value.bytes());",
+        'ZC_TEST("OverloadHeaderDigest admits exactly thirty-two verified bytes")',
+        "OverloadHeaderDigest::fromBytes(zc::arrayPtr(bytes, 31))",
+        "OverloadHeaderDigest::fromBytes(zc::arrayPtr(bytes, 32))",
+        "OverloadHeaderDigest::fromBytes(zc::arrayPtr(bytes, 33))",
+        'ZC_TEST("OverloadHeaderAuthority retains verifies clones and compares complete headers")',
+        "ZC_EXPECT(authority.verify());",
+        "ZC_EXPECT(authority.sameRecordAs(cloned));",
+        "ZC_EXPECT(!authority.sameRecordAs(different));",
+        "authority.header().encode().asPtr() != different.header().encode().asPtr()",
+    ):
+        if marker not in test:
+            errors.append(
+                f"{OVERLOAD_HEADER_DIGEST_TEST}: missing overload digest test marker {marker}"
+            )
+
+
+def check_canonical_impl_header_inventory(
+    overrides: dict[Path, str], errors: list[str]
+) -> None:
+    header = read_text(CANONICAL_IMPL_HEADER, overrides)
+    implementation = read_text(CANONICAL_IMPL_HEADER_IMPLEMENTATION, overrides)
+    identity_cmake = read_text(IDENTITY_CMAKE, overrides)
+    test = read_text(CANONICAL_IMPL_HEADER_TEST, overrides)
+
+    source_marker = f"${{CMAKE_CURRENT_SOURCE_DIR}}/{CANONICAL_IMPL_HEADER_IMPLEMENTATION.name}"
+    if source_marker not in identity_cmake:
+        errors.append(
+            f"{IDENTITY_CMAKE}: missing canonical impl source "
+            f"{CANONICAL_IMPL_HEADER_IMPLEMENTATION.name}"
+        )
+
+    for enum_name, expected in (
+        ("ImplPolarity", (("Positive", "0x01"), ("Negative", "0x02"))),
+        ("ImplSafety", (("Safe", "0x01"), ("Unsafe", "0x02"))),
+    ):
+        if tagged_enum_members(header, enum_name) != expected:
+            errors.append(
+                f"{CANONICAL_IMPL_HEADER}: {enum_name} must retain its exact RFC 0018 tags"
+            )
+
+    for marker in (
+        "class CanonicalTraitReference final",
+        "static zc::Maybe<CanonicalTraitReference> from(",
+        "CanonicalTraitReference clone() const;",
+        "const CanonicalNameReference& name() const noexcept;",
+        "zc::ArrayPtr<const CanonicalHeaderTypeSyntax> arguments() const noexcept;",
+        "void encode(CanonicalEncoder& encoder) const;",
+    ):
+        if marker not in header:
+            errors.append(f"{CANONICAL_IMPL_HEADER}: missing canonical trait marker {marker}")
+
+    trait_data = declaration_body(implementation, "struct CanonicalTraitReferenceData final")
+    expected_trait_data = (
+        "CanonicalNameReference name;",
+        "zc::Vector<CanonicalHeaderTypeSyntax> arguments;",
+    )
+    if trait_data is None or data_member_declarations(trait_data) != expected_trait_data:
+        errors.append(
+            f"{CANONICAL_IMPL_HEADER_IMPLEMENTATION}: canonical trait reference must contain "
+            "exactly name and ordered arguments"
+        )
+
+    for forbidden in ("DefinitionKey", "SourceFileKey", "SourceSpan", "NodeId"):
+        if re.search(rf"\b{forbidden}\b", header + implementation):
+            errors.append(
+                f"{CANONICAL_IMPL_HEADER}: canonical trait reference must not contain {forbidden}"
+            )
+    if "encodeByteString" in implementation:
+        errors.append(
+            f"{CANONICAL_IMPL_HEADER_IMPLEMENTATION}: canonical trait fields must encode inline"
+        )
+
+    factory_body = function_body(
+        implementation, "zc::Maybe<CanonicalTraitReference> CanonicalTraitReference::from("
+    )
+    trait_root_rejection = re.compile(
+        r"if\s*\(\s*rootKind\s*!=\s*CanonicalNameRootKind::Absolute\s*&&\s*"
+        r"rootKind\s*!=\s*CanonicalNameRootKind::Relative\s*\)\s*\{\s*"
+        r"return\s+zc::none;\s*\}"
+    )
+    if factory_body is None or trait_root_rejection.search(factory_body) is None:
+        errors.append(
+            f"{CANONICAL_IMPL_HEADER_IMPLEMENTATION}: canonical trait root must admit only "
+            "absolute and relative names"
+        )
+
+    trait_codec = function_body(implementation, "void CanonicalTraitReference::encode(")
+    if trait_codec is None:
+        errors.append(
+            f"{CANONICAL_IMPL_HEADER_IMPLEMENTATION}: missing canonical trait codec body"
+        )
+    else:
+        check_ordered_markers(
+            trait_codec,
+            (
+                "impl->name.encode(encoder);",
+                "encoder.encodeSequenceSize(impl->arguments.size());",
+                "argument.encode(encoder);",
+            ),
+            CANONICAL_IMPL_HEADER_IMPLEMENTATION,
+            "canonical trait field codec",
+            errors,
+        )
+
+    for marker in (
+        "class CanonicalImplHeader final",
+        "static zc::Maybe<CanonicalImplHeader> from(",
+        "CanonicalImplHeader clone() const;",
+        "zc::ArrayPtr<const CanonicalGenericParameter> genericParameters() const noexcept;",
+        "const CanonicalTraitReference& trait() const noexcept;",
+        "const CanonicalHeaderTypeSyntax& selfType() const noexcept;",
+        "zc::ArrayPtr<const CanonicalBoundObligation> obligations() const noexcept;",
+        "void encode(CanonicalEncoder& encoder) const;",
+    ):
+        if marker not in header:
+            errors.append(f"{CANONICAL_IMPL_HEADER}: missing canonical impl header marker {marker}")
+
+    impl_data = declaration_body(implementation, "struct CanonicalImplHeaderData final")
+    expected_impl_data = (
+        "zc::Vector<CanonicalGenericParameter> genericParameters;",
+        "ImplPolarity polarity;",
+        "ImplSafety safety;",
+        "CanonicalTraitReference trait;",
+        "CanonicalHeaderTypeSyntax selfType;",
+        "zc::Vector<CanonicalBoundObligation> obligations;",
+    )
+    if impl_data is None or data_member_declarations(impl_data) != expected_impl_data:
+        errors.append(
+            f"{CANONICAL_IMPL_HEADER_IMPLEMENTATION}: canonical impl header must contain exactly "
+            "generics, polarity, safety, trait, self type, and obligations"
+        )
+
+    impl_factory = function_body(
+        implementation, "zc::Maybe<CanonicalImplHeader> CanonicalImplHeader::from("
+    )
+    if impl_factory is None:
+        errors.append(f"{CANONICAL_IMPL_HEADER_IMPLEMENTATION}: missing impl header admission")
+    else:
+        for marker in (
+            "!isCanonicalImplHeaderValue(polarity)",
+            "!isCanonicalImplHeaderValue(safety)",
+            "obligations = sortUnique(zc::mv(obligations));",
+        ):
+            if marker not in impl_factory:
+                errors.append(
+                    f"{CANONICAL_IMPL_HEADER_IMPLEMENTATION}: impl header admission is missing {marker}"
+                )
+
+    impl_codec = function_body(implementation, "void CanonicalImplHeader::encode(")
+    if impl_codec is None:
+        errors.append(f"{CANONICAL_IMPL_HEADER_IMPLEMENTATION}: missing impl header codec")
+    else:
+        check_ordered_markers(
+            impl_codec,
+            (
+                "encodeSequence(encoder, impl->genericParameters.asPtr());",
+                "encoder.encodeUint8(static_cast<uint8_t>(impl->polarity));",
+                "encoder.encodeUint8(static_cast<uint8_t>(impl->safety));",
+                "impl->trait.encode(encoder);",
+                "impl->selfType.encode(encoder);",
+                "encodeSequence(encoder, impl->obligations.asPtr());",
+            ),
+            CANONICAL_IMPL_HEADER_IMPLEMENTATION,
+            "canonical impl header field codec",
+            errors,
+        )
+
+    for marker in (
+        'ZC_TEST("Canonical impl polarity and safety retain exact closed tags")',
+        "static_cast<uint8_t>(ImplPolarity::Positive) == 0x01",
+        "static_cast<uint8_t>(ImplPolarity::Negative) == 0x02",
+        "static_cast<uint8_t>(ImplSafety::Safe) == 0x01",
+        "static_cast<uint8_t>(ImplSafety::Unsafe) == 0x02",
+        'ZC_TEST("CanonicalTraitReference admits absolute and relative roots but rejects generic roots")',
+        "ZC_EXPECT(generic == zc::none);",
+        'ZC_TEST("CanonicalTraitReference passes the exact fieldwise vector and preserves arguments")',
+        '"0100000000000000020000000000000003706b67000000000000000554726169740000000000000003020202010202"_zc',
+        "ZC_REQUIRE(value.arguments().size() == 3);",
+        "value.arguments()[0].predefinedKind() == PredefinedTypeKind::I16",
+        "value.arguments()[1].predefinedKind() == PredefinedTypeKind::I8",
+        "value.arguments()[2].predefinedKind() == PredefinedTypeKind::I16",
+        'ZC_TEST("CanonicalImplHeader passes the exact RFC 0018 fieldwise vector")',
+        '"0000000000000000010102000000000000000100000000000000055472616974"',
+        'ZC_TEST("CanonicalImplHeader retains generic order and sorts unique obligations")',
+        "ZC_REQUIRE(value.genericParameters().size() == 2);",
+        "ZC_REQUIRE(value.obligations().size() == 2);",
+        'ZC_TEST("CanonicalImplHeader rejects values outside the closed tag domains")',
+        "static_cast<ImplPolarity>(0xff)",
+        "static_cast<ImplSafety>(0xff)",
+    ):
+        if marker not in test:
+            errors.append(
+                f"{CANONICAL_IMPL_HEADER_TEST}: missing canonical trait test marker {marker}"
+            )
+
+
+def check_module_resolution_key_architecture(
+    overrides: dict[Path, str], errors: list[str]
+) -> None:
+    header = read_text(MODULE_RESOLUTION_KEY, overrides)
+    implementation = read_text(MODULE_RESOLUTION_KEY_IMPLEMENTATION, overrides)
+    identity_cmake = read_text(IDENTITY_CMAKE, overrides)
+    test = read_text(MODULE_RESOLUTION_KEY_TEST, overrides)
+    test_cmake = read_text(IDENTITY_TEST_CMAKE, overrides)
+
+    policy_enums = (
+        ("UnicodeNormalizationPolicy", (("Nfc", "0x01"),)),
+        ("CaseComparisonPolicy", (("CaseSensitive", "0x01"),)),
+        ("SymlinkHandlingPolicy", (("ResolveThenConfine", "0x01"),)),
+        ("ModuleContainmentPolicy", (("DeclaredRootsOnly", "0x01"),)),
+        (
+            "LocalModuleLookupPolicy",
+            (("RequesterAncestryAndCrateRoot", "0x01"),),
+        ),
+        ("DependencyAliasLookupPolicy", (("ExactFirstSegment", "0x01"),)),
+        ("PreludeLookupPolicy", (("ConfiguredCratePrelude", "0x01"),)),
+        (
+            "ModuleCandidateSelectionPolicy",
+            (("AllDistinctMatchesNoPrecedence", "0x01"),),
+        ),
+    )
+    for enum_name, expected_members in policy_enums:
+        if tagged_enum_members(header, enum_name) != expected_members:
+            errors.append(
+                f"{MODULE_RESOLUTION_KEY}: {enum_name} must retain its exact RFC 0018 tag"
+            )
+
+    dependency_members = (
+        ("Import", "0x01"),
+        ("ForeignReexport", "0x02"),
+        ("ModuleAlias", "0x03"),
+        ("Prelude", "0x04"),
+    )
+    if tagged_enum_members(header, "ModuleDependencyKind") != dependency_members:
+        errors.append(
+            f"{MODULE_RESOLUTION_KEY}: ModuleDependencyKind must retain its four exact tags"
+        )
+
+    dependency_kind_owners: list[Path] = []
+    dependency_kind_pattern = re.compile(r"\benum\s+class\s+ModuleDependencyKind\b")
+    for path in compiler_source_files():
+        dependency_kind_owners.extend(
+            path for _ in dependency_kind_pattern.finditer(read_text(path, overrides))
+        )
+    if dependency_kind_owners != [MODULE_RESOLUTION_KEY]:
+        owners = ", ".join(str(path) for path in dependency_kind_owners) or "none"
+        errors.append(
+            f"{MODULE_RESOLUTION_KEY}: ModuleDependencyKind must have one identity-layer owner; "
+            f"found {owners}"
+        )
+
+    bucket = declaration_body(header, "class ModuleCatalogPathBucketKey final")
+    expected_bucket_fields = (
+        "CrateKey crateValue;",
+        "zc::Vector<ModulePathSegment> pathValue;",
+    )
+    if bucket is None:
+        errors.append(f"{MODULE_RESOLUTION_KEY}: missing ModuleCatalogPathBucketKey declaration")
+    elif data_member_declarations(bucket) != expected_bucket_fields:
+        errors.append(
+            f"{MODULE_RESOLUTION_KEY}: ModuleCatalogPathBucketKey must contain exactly crate and path"
+        )
+
+    bucket_from = function_body(implementation, "ModuleCatalogPathBucketKey::from(")
+    if bucket_from is None or "if (path.size() == 0) { return zc::none; }" not in bucket_from:
+        errors.append(
+            f"{MODULE_RESOLUTION_KEY_IMPLEMENTATION}: catalog bucket must reject an empty path"
+        )
+    bucket_encode = function_body(implementation, "ModuleCatalogPathBucketKey::encode() const")
+    if bucket_encode is None:
+        errors.append(f"{MODULE_RESOLUTION_KEY_IMPLEMENTATION}: missing catalog bucket codec")
+    else:
+        check_ordered_markers(
+            bucket_encode,
+            (
+                "crateValue.encode(record);",
+                "record.encodeSequenceSize(pathValue.size());",
+                "for (const auto& segment : pathValue)",
+            ),
+            MODULE_RESOLUTION_KEY_IMPLEMENTATION,
+            "catalog bucket codec",
+            errors,
+        )
+        if 'constexpr auto domain = "zom.module-catalog-path-bucket.v0"_zc;' not in bucket_encode:
+            errors.append(
+                f"{MODULE_RESOLUTION_KEY_IMPLEMENTATION}: invalid catalog bucket domain"
+            )
+    bucket_decode = function_body(
+        implementation, "ModuleCatalogPathBucketKey::decodeCanonical("
+    )
+    if bucket_decode is None or any(
+        marker not in bucket_decode
+        for marker in (
+            "CrateKey::decodeCanonical(decoder)",
+            "decoder.decodeSequenceSize(kMaximumModulePathSegments)",
+            "!decoder.finished()",
+            "value.encode().asPtr() != bytes",
+        )
+    ):
+        errors.append(
+            f"{MODULE_RESOLUTION_KEY_IMPLEMENTATION}: catalog bucket decoder must be exact bounded and canonical"
+        )
+
+    ancestry = declaration_body(header, "class RequesterModuleAncestry final")
+    expected_ancestry_fields = (
+        "ModuleKey requesterValue;",
+        "zc::Vector<ModuleKey> ancestryValue;",
+    )
+    if ancestry is None:
+        errors.append(f"{MODULE_RESOLUTION_KEY}: missing RequesterModuleAncestry declaration")
+    elif data_member_declarations(ancestry) != expected_ancestry_fields:
+        errors.append(
+            f"{MODULE_RESOLUTION_KEY}: RequesterModuleAncestry must contain exactly requester and ancestry"
+        )
+
+    ancestry_from = function_body(implementation, "RequesterModuleAncestry::from(")
+    if ancestry_from is None:
+        errors.append(
+            f"{MODULE_RESOLUTION_KEY_IMPLEMENTATION}: missing requester ancestry admission"
+        )
+    else:
+        for marker, description in (
+            (
+                "ancestry.size() == 0 || !sameKey(requester, ancestry[0])",
+                "reject an empty or requester-mismatched chain",
+            ),
+            (
+                "child.path().size() != parent.path().size() + 1",
+                "require strict lexical parents",
+            ),
+            (
+                "child.path()[segment] != parent.path()[segment]",
+                "require exact lexical-parent prefixes",
+            ),
+        ):
+            if marker not in ancestry_from:
+                errors.append(
+                    f"{MODULE_RESOLUTION_KEY_IMPLEMENTATION}: requester ancestry must {description}"
+                )
+
+    ancestry_encode = function_body(implementation, "RequesterModuleAncestry::encode() const")
+    if ancestry_encode is None:
+        errors.append(f"{MODULE_RESOLUTION_KEY_IMPLEMENTATION}: missing requester ancestry codec")
+    else:
+        check_ordered_markers(
+            ancestry_encode,
+            (
+                "encoder.encodeSequenceSize(ancestryValue.size());",
+                "for (const auto& module : ancestryValue)",
+                "module.encode(encoder);",
+            ),
+            MODULE_RESOLUTION_KEY_IMPLEMENTATION,
+            "requester ancestry codec",
+            errors,
+        )
+        if "requesterValue.encode" in ancestry_encode:
+            errors.append(
+                f"{MODULE_RESOLUTION_KEY_IMPLEMENTATION}: requester ancestry value codec must not repeat the query key"
+            )
+    ancestry_decode = function_body(
+        implementation, "RequesterModuleAncestry::decodeCanonical("
+    )
+    if ancestry_decode is None or any(
+        marker not in ancestry_decode
+        for marker in (
+            "decoder.decodeSequenceSize(kMaximumModulePathSegments)",
+            "ModuleKey::decodeCanonical(decoder)",
+            "!decoder.finished()",
+            "from(zc::mv(requester), zc::mv(ancestry))",
+        )
+    ):
+        errors.append(
+            f"{MODULE_RESOLUTION_KEY_IMPLEMENTATION}: requester ancestry decoder must be exact bounded and structural"
+        )
+
+    bucket_value = declaration_body(header, "class ModuleCatalogPathBucket final")
+    expected_bucket_value_fields = (
+        "ModuleCatalogPathBucketKey keyValue;",
+        "zc::Maybe<ModuleKey> moduleValue;",
+    )
+    if bucket_value is None:
+        errors.append(f"{MODULE_RESOLUTION_KEY}: missing ModuleCatalogPathBucket declaration")
+    elif data_member_declarations(bucket_value) != expected_bucket_value_fields:
+        errors.append(
+            f"{MODULE_RESOLUTION_KEY}: ModuleCatalogPathBucket must contain exactly key and optional module"
+        )
+
+    bucket_present = function_body(implementation, "ModuleCatalogPathBucket::present(")
+    if bucket_present is None or (
+        "!sameCrate(key.crate(), module.crate()) || !samePath(key.path(), module.path())"
+        not in bucket_present
+    ):
+        errors.append(
+            f"{MODULE_RESOLUTION_KEY_IMPLEMENTATION}: present catalog bucket must require exact crate and path equality"
+        )
+
+    bucket_value_encode = function_body(implementation, "ModuleCatalogPathBucket::encode() const")
+    if bucket_value_encode is None:
+        errors.append(f"{MODULE_RESOLUTION_KEY_IMPLEMENTATION}: missing catalog bucket value codec")
+    else:
+        for marker in ("encoder.encodeSome();", "module.encode(encoder);", "encoder.encodeNone();"):
+            if marker not in bucket_value_encode:
+                errors.append(
+                    f"{MODULE_RESOLUTION_KEY_IMPLEMENTATION}: catalog bucket value codec is missing {marker}"
+                )
+        if "keyValue.encode" in bucket_value_encode:
+            errors.append(
+                f"{MODULE_RESOLUTION_KEY_IMPLEMENTATION}: catalog bucket value codec must not repeat the query key"
+            )
+    bucket_value_decode = function_body(
+        implementation, "ModuleCatalogPathBucket::decodeCanonical("
+    )
+    if bucket_value_decode is None or any(
+        marker not in bucket_value_decode
+        for marker in (
+            "decoder.decodeBool()",
+            "ModuleKey::decodeCanonical(decoder)",
+            "!decoder.finished()",
+            "present(zc::mv(key), zc::mv(value))",
+        )
+    ):
+        errors.append(
+            f"{MODULE_RESOLUTION_KEY_IMPLEMENTATION}: catalog bucket value decoder must validate exact optional membership"
+        )
+
+    policy = declaration_body(header, "class ModuleResolutionPolicyKey final")
+    expected_policy_fields = (
+        "UnicodeNormalizationPolicy unicodeNormalizationValue;",
+        "CaseComparisonPolicy caseComparisonValue;",
+        "SymlinkHandlingPolicy symlinkHandlingValue;",
+        "ModuleContainmentPolicy containmentValue;",
+        "LocalModuleLookupPolicy localLookupValue;",
+        "DependencyAliasLookupPolicy dependencyAliasLookupValue;",
+        "PreludeLookupPolicy preludeLookupValue;",
+        "ModuleCandidateSelectionPolicy candidateSelectionValue;",
+    )
+    if policy is None:
+        errors.append(f"{MODULE_RESOLUTION_KEY}: missing ModuleResolutionPolicyKey declaration")
+    elif data_member_declarations(policy) != expected_policy_fields:
+        errors.append(
+            f"{MODULE_RESOLUTION_KEY}: ModuleResolutionPolicyKey must contain exactly eight policy fields"
+        )
+
+    policy_encode = function_body(implementation, "ModuleResolutionPolicyKey::encode() const")
+    if policy_encode is None:
+        errors.append(f"{MODULE_RESOLUTION_KEY_IMPLEMENTATION}: missing resolution policy codec")
+    else:
+        check_ordered_markers(
+            policy_encode,
+            tuple(
+                f"record.add(static_cast<uint8_t>({field.split()[-1][:-1]}));"
+                for field in expected_policy_fields
+            ),
+            MODULE_RESOLUTION_KEY_IMPLEMENTATION,
+            "resolution policy codec",
+            errors,
+        )
+        if "zc::Vector<uint8_t> record(8);" not in policy_encode:
+            errors.append(
+                f"{MODULE_RESOLUTION_KEY_IMPLEMENTATION}: resolution policy codec must emit eight fields"
+            )
+        if 'constexpr auto domain = "zom.module-resolution-policy.v0"_zc;' not in policy_encode:
+            errors.append(
+                f"{MODULE_RESOLUTION_KEY_IMPLEMENTATION}: invalid resolution policy domain"
+            )
+    policy_decode = function_body(
+        implementation, "ModuleResolutionPolicyKey::decodeCanonical("
+    )
+    if policy_decode is None or any(
+        marker not in policy_decode
+        for marker in (
+            'constexpr auto domain = "zom.module-resolution-policy.v0"_zc;',
+            "decoder.decodeUint8()",
+            "!decoder.finished()",
+            "static_cast<ModuleCandidateSelectionPolicy>",
+        )
+    ):
+        errors.append(
+            f"{MODULE_RESOLUTION_KEY_IMPLEMENTATION}: resolution policy decoder must close all eight fields"
+        )
+
+    request = declaration_body(header, "class ModuleResolutionKey final")
+    expected_request_fields = (
+        "ModuleKey requesterValue;",
+        "ModuleDependencyKind kindValue;",
+        "zc::Maybe<zc::Vector<ModulePathSegment>> normalizedPathValue;",
+        "zc::Maybe<DependencyAlias> dependencyAliasValue;",
+        "ModuleResolutionPolicyKey policyValue;",
+    )
+    if request is None:
+        errors.append(f"{MODULE_RESOLUTION_KEY}: missing ModuleResolutionKey declaration")
+    else:
+        request_fields = data_member_declarations(request)
+        request_field_surface = "\n".join(request_fields)
+        if request_fields != expected_request_fields:
+            errors.append(
+                f"{MODULE_RESOLUTION_KEY}: ModuleResolutionKey must contain exactly five semantic fields"
+            )
+        if re.search(r"\b(?:SourceSpan|SourceFileKey|NodeId)\b", request_field_surface):
+            errors.append(
+                f"{MODULE_RESOLUTION_KEY}: ModuleResolutionKey provenance fields are forbidden"
+            )
+        if re.search(
+            r"\b(?:requestedTarget|resolvedTarget|targetModule|targetValue)\w*\b",
+            request_field_surface,
+        ):
+            errors.append(
+                f"{MODULE_RESOLUTION_KEY}: ModuleResolutionKey requested target fields are forbidden"
+            )
+        if re.search(
+            r"\b\w*(?:Environment|environment|Revision|revision)\w*\b",
+            request_field_surface,
+        ):
+            errors.append(
+                f"{MODULE_RESOLUTION_KEY}: ModuleResolutionKey environment or revision fields are forbidden"
+            )
+
+    request_encode = function_body(implementation, "ModuleResolutionKey::encode() const")
+    if request_encode is None:
+        errors.append(f"{MODULE_RESOLUTION_KEY_IMPLEMENTATION}: missing resolution request codec")
+    else:
+        check_ordered_markers(
+            request_encode,
+            (
+                "requesterValue.encode(record);",
+                "record.encodeUint8(static_cast<uint8_t>(kindValue));",
+                "ZC_IF_SOME(path, normalizedPathValue)",
+                "ZC_IF_SOME(alias, dependencyAliasValue)",
+                "const auto policyBytes = policyValue.encode();",
+            ),
+            MODULE_RESOLUTION_KEY_IMPLEMENTATION,
+            "resolution request codec",
+            errors,
+        )
+        if 'constexpr auto domain = "zom.module-resolution.v0"_zc;' not in request_encode:
+            errors.append(
+                f"{MODULE_RESOLUTION_KEY_IMPLEMENTATION}: invalid resolution request domain"
+            )
+    request_decode = function_body(implementation, "ModuleResolutionKey::decodeCanonical(")
+    if request_decode is None or any(
+        marker not in request_decode
+        for marker in (
+            'constexpr auto domain = "zom.module-resolution.v0"_zc;',
+            "ModuleKey::decodeCanonical(decoder)",
+            "decoder.decodeBool()",
+            "DependencyAlias::decodeCanonical(decoder)",
+            "ModuleResolutionPolicyKey::decodeCanonical(value)",
+            "!decoder.finished()",
+        )
+    ):
+        errors.append(
+            f"{MODULE_RESOLUTION_KEY_IMPLEMENTATION}: resolution request decoder must be exact bounded and compositional"
+        )
+
+    if "${CMAKE_CURRENT_SOURCE_DIR}/module-resolution-key.cc" not in identity_cmake:
+        errors.append(f"{IDENTITY_CMAKE}: missing module-resolution-key.cc registration")
+    for marker in (
+        '#include "zomlang/compiler/identity/module-resolution-key.h"',
+        'ZC_TEST("ModuleCatalogPathBucketKey passes the fixed canonical codec vector")',
+        'ZC_TEST("ModuleCatalogPathBucketKey rejects an empty canonical path")',
+        'ZC_TEST("ModuleCatalogPathBucketKey decoder is exact bounded and domain separated")',
+        'ZC_TEST("RequesterModuleAncestry admits the exact requester-first lexical chain")',
+        'ZC_TEST("RequesterModuleAncestry rejects empty mismatched and skipped chains")',
+        'ZC_TEST("RequesterModuleAncestry decoder rejects truncation trailing data and invalid chains")',
+        'ZC_TEST("ModuleCatalogPathBucket admits exact present and absent values")',
+        'ZC_TEST("ModuleCatalogPathBucket decoder validates its external key")',
+        'ZC_TEST("ModuleResolutionPolicyKey passes the exact fixed byte vector")',
+        'ZC_TEST("ModuleResolutionPolicyKey decoder closes the domain and record")',
+        'ZC_TEST("ModuleResolutionKey passes fixed import and prelude vectors")',
+        'ZC_TEST("ModuleResolutionKey encodes all dependency-kind tags")',
+        'ZC_TEST("ModuleResolutionKey rejects malformed enums and records")',
+        'ZC_TEST("ModuleResolutionKey decoder is exact and rejects closed-tag mutations")',
+    ):
+        if marker not in test:
+            errors.append(f"{MODULE_RESOLUTION_KEY_TEST}: missing RFC 0018 test marker {marker}")
+    if not re.search(
+        r"add_ztest_unit_tests_from_directory\s*\(\s*\$\{CMAKE_CURRENT_SOURCE_DIR\}"
+        r"\s+LIBRARIES\s+frontend\s*\)",
+        test_cmake,
+        re.DOTALL,
+    ):
+        errors.append(f"{IDENTITY_TEST_CMAKE}: missing identity unit-test discovery registration")
+
+    module_resolution_implementation = read_text(MODULE_RESOLUTION_IMPLEMENTATION, overrides)
+    obsolete_ancestry_owners = matching_files(
+        re.compile(r"\bModuleRequesterAncestry\b"), overrides
+    )
+    for path in sorted(obsolete_ancestry_owners):
+        errors.append(f"{path}: obsolete ModuleRequesterAncestry identity surface is forbidden")
+
+    resolver_impl = declaration_body(
+        module_resolution_implementation, "struct StructuralModuleResolver::Impl final"
+    )
+    for marker in (
+        "zc::Vector<identity::RequesterModuleAncestry> requesterAncestry;",
+        "zc::Vector<identity::ModuleCatalogPathBucket> catalogBuckets;",
+        "zc::TreeMap<zc::String, size_t> moduleSlots;",
+        "zc::TreeMap<zc::String, size_t> bucketSlots;",
+    ):
+        if resolver_impl is None or marker not in resolver_impl:
+            errors.append(
+                f"{MODULE_RESOLUTION_IMPLEMENTATION}: resolver must retain admitted exact input {marker}"
+            )
+
+    module_resolution_header = read_text(MODULE_RESOLUTION, overrides)
+    if "StructuralModuleResolver::resolve(" in module_resolution_implementation or re.search(
+        r"\bresolve\s*\(\s*ModuleDependencyRequest&&", module_resolution_header
+    ):
+        errors.append(
+            f"{MODULE_RESOLUTION}: batch structural resolution authority is forbidden"
+        )
+
+
+def check_semantic_import_binding_key_architecture(
+    overrides: dict[Path, str], errors: list[str]
+) -> None:
+    header = read_text(SEMANTIC_IMPORT_BINDING_KEY, overrides)
+    implementation = read_text(SEMANTIC_IMPORT_BINDING_KEY_IMPLEMENTATION, overrides)
+    identity_cmake = read_text(IDENTITY_CMAKE, overrides)
+    test = read_text(SEMANTIC_IMPORT_BINDING_KEY_TEST, overrides)
+
+    operation_tags = tagged_enum_members(header, "SemanticImportOperation")
+    expected_operation_tags = (("Import", "0x01"), ("ForeignReexport", "0x02"))
+    if operation_tags != expected_operation_tags:
+        errors.append(
+            f"{SEMANTIC_IMPORT_BINDING_KEY}: SemanticImportOperation must retain its two exact RFC 0017 tags"
+        )
+
+    key = declaration_body(header, "class SemanticImportBindingKey final")
+    expected_fields = (
+        "ModuleKey requesterValue;",
+        "ModuleResolutionKey resolutionValue;",
+        "SemanticImportOperation operationValue;",
+        "DefinitionNamespace sourceNamespaceValue;",
+        "DeclaredDefinitionName sourceNameValue;",
+        "DefinitionNamespace localNamespaceValue;",
+        "DeclaredDefinitionName localNameValue;",
+    )
+    if key is None:
+        errors.append(f"{SEMANTIC_IMPORT_BINDING_KEY}: missing SemanticImportBindingKey declaration")
+    else:
+        fields = data_member_declarations(key)
+        if fields != expected_fields:
+            errors.append(
+                f"{SEMANTIC_IMPORT_BINDING_KEY}: SemanticImportBindingKey must contain exactly seven semantic fields"
+            )
+        field_surface = "\n".join(fields)
+        if re.search(
+            r"\b(?:SourceSpan|SourceFileKey|NodeId|DefId)\b|"
+            r"\b\w*(?:Revision|revision|Site|site|Span|span)\w*\b",
+            field_surface,
+        ):
+            errors.append(
+                f"{SEMANTIC_IMPORT_BINDING_KEY}: provenance handles and revisions are forbidden"
+            )
+
+    admission = function_body(implementation, "SemanticImportBindingKey::from(")
+    if admission is None:
+        errors.append(
+            f"{SEMANTIC_IMPORT_BINDING_KEY_IMPLEMENTATION}: missing semantic import key admission"
+        )
+    else:
+        for marker in (
+            "!sameModule(requester, resolution.requester())",
+            "!operationMatchesResolution(operation, resolution.dependencyKind())",
+            "!isValid(sourceNamespace)",
+            "!isValid(localNamespace)",
+        ):
+            if marker not in admission:
+                errors.append(
+                    f"{SEMANTIC_IMPORT_BINDING_KEY_IMPLEMENTATION}: semantic import key admission is missing {marker}"
+                )
+
+    key_encode = function_body(implementation, "SemanticImportBindingKey::encode() const")
+    if key_encode is None:
+        errors.append(
+            f"{SEMANTIC_IMPORT_BINDING_KEY_IMPLEMENTATION}: missing semantic import key codec"
+        )
+    else:
+        check_ordered_markers(
+            key_encode,
+            (
+                "requesterValue.encode(record);",
+                "const auto resolutionBytes = resolutionValue.encode();",
+                "record.encodeByteString(resolutionBytes.asPtr());",
+                "record.encodeUint8(static_cast<uint8_t>(operationValue));",
+                "record.encodeUint8(static_cast<uint8_t>(sourceNamespaceValue));",
+                "sourceNameValue.encode(record);",
+                "record.encodeUint8(static_cast<uint8_t>(localNamespaceValue));",
+                "localNameValue.encode(record);",
+            ),
+            SEMANTIC_IMPORT_BINDING_KEY_IMPLEMENTATION,
+            "semantic import key codec",
+            errors,
+        )
+        if 'constexpr auto domain = "zom.semantic-import-binding.v0"_zc;' not in key_encode:
+            errors.append(
+                f"{SEMANTIC_IMPORT_BINDING_KEY_IMPLEMENTATION}: invalid semantic import key domain"
+            )
+
+    if "${CMAKE_CURRENT_SOURCE_DIR}/semantic-import-binding-key.cc" not in identity_cmake:
+        errors.append(f"{IDENTITY_CMAKE}: missing semantic-import-binding-key.cc registration")
+    for marker in (
+        '#include "zomlang/compiler/identity/semantic-import-binding-key.h"',
+        'ZC_TEST("SemanticImportBindingKey passes the fixed canonical codec vector")',
+        'ZC_TEST("SemanticImportBindingKey distinguishes every semantic field")',
+        'ZC_TEST("SemanticImportBindingKey rejects requester operation and namespace mismatches")',
+        'ZC_TEST("SemanticImportBindingKey canonicalizes source and local names to NFC")',
+    ):
+        if marker not in test:
+            errors.append(
+                f"{SEMANTIC_IMPORT_BINDING_KEY_TEST}: missing RFC 0017 test marker {marker}"
+            )
+
+
+def check_stable_identity_architecture(
+    overrides: dict[Path, str], errors: list[str]
+) -> None:
+    definition_key = read_text(DEFINITION_KEY, overrides)
+    definition_key_implementation = read_text(DEFINITION_KEY_IMPLEMENTATION, overrides)
+    frozen_registry = read_text(FROZEN_REGISTRY, overrides)
+    semantic_identity_registry = read_text(SEMANTIC_IDENTITY_REGISTRY, overrides)
+    build_script_key = read_text(BUILD_SCRIPT_KEY, overrides)
+    build_script_key_implementation = read_text(BUILD_SCRIPT_KEY_IMPLEMENTATION, overrides)
+    crate_key = read_text(CRATE_KEY, overrides)
+    source_key = read_text(SOURCE_KEY, overrides)
+    source_key_implementation = read_text(SOURCE_KEY_IMPLEMENTATION, overrides)
+    binding_input = read_text(BINDING_INPUT, overrides)
+    module_resolution = read_text(MODULE_RESOLUTION, overrides)
+    package_request = read_text(PACKAGE_COMPILATION_REQUEST, overrides)
+    package_request_implementation = read_text(
+        PACKAGE_COMPILATION_REQUEST_IMPLEMENTATION, overrides
+    )
+    crate_graph = read_text(CRATE_GRAPH, overrides)
+    crate_graph_implementation = read_text(CRATE_GRAPH_IMPLEMENTATION, overrides)
+    session = read_text(COMPILER_SESSION, overrides)
+
+    for marker in (
+        "class DefinitionIdentityRecord final",
+        "class ImplIdentityRecord final",
+        "class DefinitionIdentityAuthority final",
+        "class ImplIdentityAuthority final",
+        "class EnclosingStableOwnerKey final",
+        "class GenericParameterKey final",
+        "class CallableParameterKey final",
+        "Sha256Digest digestValue;",
+    ):
+        if marker not in definition_key:
+            errors.append(f"{DEFINITION_KEY}: missing RFC 0018 identity marker {marker}")
+    for marker in (
+        'constexpr auto kDefinitionDomain = "zom.named-item-header.v0"_zc;',
+        'constexpr auto kImplDomain = "zom.impl-header.v0"_zc;',
+        'constexpr auto kGenericParameterDomain = "zom.generic-parameter.v0"_zc;',
+        'constexpr auto kCallableParameterDomain = "zom.callable-parameter.v0"_zc;',
+        "encodeSequence(encoder, impl->owners.asPtr());",
+        "impl->header.encode(encoder);",
+    ):
+        if marker not in definition_key_implementation:
+            errors.append(
+                f"{DEFINITION_KEY_IMPLEMENTATION}: missing RFC 0018 codec marker {marker}"
+            )
+    for forbidden in (
+        "DefinitionNameKey",
+        "AnonymousDefinitionRole",
+        "DefinitionPathSegment",
+        "ImplPathSegment",
+        "DefinitionPathComponent",
+        "siblingOrdinal",
+    ):
+        if forbidden in definition_key:
+            errors.append(
+                f"{DEFINITION_KEY}: position-derived identity surface {forbidden} is forbidden"
+            )
+    definition_key_class = declaration_body(definition_key, "class DefinitionKey final")
+    impl_key_class = declaration_body(definition_key, "class ImplKey final")
+    for name, body in (("DefinitionKey", definition_key_class), ("ImplKey", impl_key_class)):
+        if body is None:
+            continue
+        for forbidden in ("ModuleKey", "SourceFileKey", "SourceSpan", " path(", " module("):
+            if forbidden in body:
+                errors.append(
+                    f"{DEFINITION_KEY}: {name} must be a raw branded digest without {forbidden.strip()}"
+                )
+
+    for marker in (
+        "class FrozenAuthorityRegistry final",
+        "FrozenRegistryFailure::DigestCollision",
+        "entry.authority.sameRecordAs(authority)",
+        "using GenericParameterRegistry =",
+        "using CallableParameterRegistry =",
+    ):
+        if marker not in frozen_registry:
+            errors.append(f"{FROZEN_REGISTRY}: missing complete-record authority marker {marker}")
+    if "FrozenContextRegistry<DefinitionKey" in frozen_registry or (
+        "FrozenContextRegistry<ImplKey" in frozen_registry
+    ):
+        errors.append(
+            f"{FROZEN_REGISTRY}: definition and implementation registries must retain authorities"
+        )
+    for marker in (
+        "DefinitionIdentityRecord&& record",
+        "ImplIdentityRecord&& record",
+        "freezeStableIdentities()",
+        "collectGenericParameter(",
+        "collectCallableParameter(",
+    ):
+        if marker not in semantic_identity_registry:
+            errors.append(
+                f"{SEMANTIC_IDENTITY_REGISTRY}: missing mixed authority admission marker {marker}"
+            )
+
+    output_identity_files = matching_files(re.compile(r"\bBuildScriptOutputKey\b"), overrides)
+    for path in sorted(output_identity_files):
+        errors.append(f"{path}: output-derived BuildScriptOutputKey identity is forbidden")
+
+    required_producer_markers = (
+        "class BuildScriptProducerKey final",
+        "zc::Maybe<BuildScriptProducerKey> buildScriptProducerValue;",
+    )
+    for marker in required_producer_markers:
+        if marker not in crate_key:
+            errors.append(f"{CRATE_KEY}: missing stable build producer marker {marker}")
+    if 'constexpr auto domain = "zom.build-script-producer.v0"_zc;' not in (
+        build_script_key_implementation
+    ):
+        errors.append(f"{BUILD_SCRIPT_KEY_IMPLEMENTATION}: invalid build producer domain")
+
+    required_artifact_markers = (
+        "class ArtifactFingerprint final",
+        "ArtifactFingerprint BuildScriptOutputRecord::artifactFingerprint() const",
+        'constexpr auto domain = "zom.build-script-output.v0"_zc;',
+    )
+    combined_artifact_surface = build_script_key + build_script_key_implementation
+    for marker in required_artifact_markers:
+        if marker not in combined_artifact_surface:
+            errors.append(f"{BUILD_SCRIPT_KEY}: missing artifact fingerprint marker {marker}")
+    output_record = declaration_body(build_script_key, "class BuildScriptOutputRecord final")
+    if output_record is None:
+        errors.append(f"{BUILD_SCRIPT_KEY}: missing BuildScriptOutputRecord declaration")
+    else:
+        for marker in (
+            "BuildScriptProducerKey producerKey() const noexcept;",
+            "BuildScriptProducerKey producerValue;",
+        ):
+            if marker not in output_record:
+                errors.append(f"{BUILD_SCRIPT_KEY}: build output record is missing {marker}")
+        if "PreparatoryBuildScriptKey" in output_record:
+            errors.append(
+                f"{BUILD_SCRIPT_KEY}: build output record must retain only producer identity"
+            )
+    if "producerValue.encode(encoder);" not in build_script_key_implementation:
+        errors.append(f"{BUILD_SCRIPT_KEY_IMPLEMENTATION}: output codec must encode producer key")
+
+    generated_origin = declaration_body(source_key, "struct GeneratedFileSourceOrigin final")
+    if generated_origin is None:
+        errors.append(f"{SOURCE_KEY}: missing GeneratedFileSourceOrigin declaration")
+    else:
+        for marker in (
+            "BuildScriptProducerKey producer;",
+            "CanonicalRelativePath logicalPath;",
+        ):
+            if marker not in generated_origin:
+                errors.append(f"{SOURCE_KEY}: generated source origin is missing {marker}")
+        if re.search(r"\b(?:Sha256Digest|ArtifactFingerprint)\b", generated_origin):
+            errors.append(f"{SOURCE_KEY}: generated source identity must not contain output content")
+    if "acceptsContentDigest" in source_key:
+        errors.append(f"{SOURCE_KEY}: source identity must not accept a content digest")
+    for marker in (
+        "return SourceOriginKey(GeneratedFileSourceOrigin{producer, zc::mv(logicalPath)});",
+        "source.producer.encode(encoder);",
+        "source.logicalPath.encode(encoder);",
+    ):
+        if marker not in source_key_implementation:
+            errors.append(f"{SOURCE_KEY_IMPLEMENTATION}: missing generated source codec marker {marker}")
+
+    module_key = declaration_body(source_key, "class ModuleKey final")
+    if module_key is None:
+        errors.append(f"{SOURCE_KEY}: missing ModuleKey declaration")
+    else:
+        for marker in ("CrateKey crateValue;", "zc::Vector<ModulePathSegment> pathValue;"):
+            if marker not in module_key:
+                errors.append(f"{SOURCE_KEY}: ModuleKey is missing stable field {marker}")
+        if re.search(r"\b(?:SourceFileKey|SourceSpan)\b|\b(?:source|contains)\s*\(", module_key):
+            errors.append(f"{SOURCE_KEY}: ModuleKey must contain only crate and canonical path")
+    module_encode = function_body(source_key_implementation, "void ModuleKey::encode(")
+    if module_encode is None:
+        errors.append(f"{SOURCE_KEY_IMPLEMENTATION}: missing ModuleKey codec")
+    elif "crateValue.encode(encoder);" not in module_encode or (
+        "for (const auto& segment : pathValue)" not in module_encode
+    ):
+        errors.append(f"{SOURCE_KEY_IMPLEMENTATION}: ModuleKey codec must encode crate and path")
+
+    for marker in (
+        "identity::SourceFileKey source;",
+        "zc::Maybe<const identity::SourceFileKey&> sourceFile(",
+    ):
+        combined_module_source_surface = module_resolution + binding_input
+        if marker not in combined_module_source_surface:
+            errors.append(f"{BINDING_INPUT}: missing revision-local module source marker {marker}")
+
+    if "const VerifiedBuildScriptPlan& buildPlan" not in package_request:
+        errors.append(
+            f"{PACKAGE_COMPILATION_REQUEST}: missing build-plan crate identity marker "
+            "const VerifiedBuildScriptPlan& buildPlan"
+        )
+    if "const package::VerifiedBuildScriptPlan& buildPlan" not in crate_graph:
+        errors.append(
+            f"{CRATE_GRAPH}: missing build-plan crate identity marker "
+            "const package::VerifiedBuildScriptPlan& buildPlan"
+        )
+    required_plan_markers = (
+        "buildProducerFor(",
+        "VerifiedCrateGraph::buildFinal(input.impl->request, input.impl->graph,",
+    )
+    combined_plan_surface = (
+        package_request
+        + package_request_implementation
+        + crate_graph
+        + crate_graph_implementation
+        + session
+    )
+    for marker in required_plan_markers:
+        if marker not in combined_plan_surface:
+            errors.append(f"{CRATE_GRAPH}: missing build-plan crate identity marker {marker}")
+
+    finalize_body = function_body(
+        package_request_implementation,
+        "VerifiedPackageCompilationRequest::finalizeRoots(",
+    )
+    if finalize_body is None:
+        errors.append(f"{PACKAGE_COMPILATION_REQUEST_IMPLEMENTATION}: missing finalizeRoots body")
+    elif re.search(r"\b(?:VerifiedBuildScriptResultSet|BuildScriptOutputRecord|ArtifactFingerprint)\b", finalize_body):
+        errors.append(
+            f"{PACKAGE_COMPILATION_REQUEST_IMPLEMENTATION}: final crate identity must not read build outputs"
+        )
+
+
 def check_semantic_type_store_architecture(
     overrides: dict[Path, str], errors: list[str]
 ) -> None:
     session = read_text(COMPILER_SESSION, overrides)
     package_request = read_text(PACKAGE_COMPILATION_REQUEST, overrides)
     store = read_text(SEMANTIC_TYPE_STORE, overrides)
-    type_env = read_text(TYPE_ENV, overrides)
-    ir_module = read_text(IR_MODULE, overrides)
+    type_key = read_text(SEMANTIC_TYPE_KEY, overrides)
 
     required_session_markers = (
         "issueSemanticTypeStoreConstructionToken(contextBrand)",
@@ -311,26 +2184,14 @@ def check_semantic_type_store_architecture(
         if marker not in session:
             errors.append(f"{COMPILER_SESSION}: missing semantic type store owner marker {marker}")
 
-    required_final_crate_markers = (
-        "bool requiresBuildScriptValue;",
-        "finalizeRoots(",
-        "VerifiedCrateGraph::buildFinal(",
-        "zc::Maybe<VerifiedCrateGraph> crateGraph;",
-    )
-    combined_final_crate_surface = package_request + session
-    for marker in required_final_crate_markers:
-        if marker not in combined_final_crate_surface:
-            errors.append(
-                f"{COMPILER_SESSION}: missing post-build crate finalization marker {marker}"
-            )
-
     freeze_markers = (
         "freezePackages()",
         "freezeCrates()",
         "freezeSourceFiles()",
         "freezeModules()",
-        "freezeDefinitions()",
-        "freezeImpls()",
+        "freezeStableIdentities()",
+        "freezeGenericParameters()",
+        "freezeCallableParameters()",
     )
     for marker in freeze_markers:
         if session.count(marker) != 1:
@@ -340,8 +2201,8 @@ def check_semantic_type_store_architecture(
 
     check_ordered_function_markers(
         session,
-        "bool freezePackageInputIdentities()",
-        ("freezePackages()", "freezeCrates()", "freezeSourceFiles()"),
+        "bool freezePackageAndCrateIdentities()",
+        ("freezePackages()", "freezeCrates()"),
         "final context identity freeze",
         errors,
     )
@@ -349,7 +2210,8 @@ def check_semantic_type_store_architecture(
         session,
         "CompilerSession::parseSources()",
         (
-            "freezePackageInputIdentities()",
+            "freezePackageAndCrateIdentities()",
+            "freezeSourceIdentities()",
             "freezeModuleIdentities()",
             "freezeDefinitionAndImplIdentities()",
         ),
@@ -359,17 +2221,27 @@ def check_semantic_type_store_architecture(
     check_ordered_function_markers(
         session,
         "bool freezeDefinitionAndImplIdentities()",
-        ("freezeDefinitions()", "freezeImpls()"),
-        "definition and impl freeze",
+        (
+            "freezeStableIdentities()",
+            "freezeGenericParameters()",
+            "freezeCallableParameters()",
+        ),
+        "stable and subordinate identity freeze",
         errors,
     )
 
     if "ZC_DISALLOW_COPY_AND_MOVE(SemanticTypeStore);" not in store:
         errors.append(f"{SEMANTIC_TYPE_STORE}: semantic type store must be pinned")
-    if "SemanticTypeStore& semanticTypes;" not in type_env:
-        errors.append(f"{TYPE_ENV}: TypeEnv must borrow the session semantic type store")
-    if "SemanticTypeStore& semanticTypes;" not in ir_module:
-        errors.append(f"{IR_MODULE}: IR module must borrow the session semantic type store")
+    required_admission_markers = (
+        "const identity::SemanticIdentityRegistrySet& registries",
+        "SemanticTypeAdmissionResult canonicalizeClosed(semantic::TypeData&& data) const",
+        "bool registriesReadyForAdmission() const noexcept",
+    )
+    for marker in required_admission_markers:
+        if marker not in store:
+            errors.append(f"{SEMANTIC_TYPE_STORE}: missing store-bound admission marker {marker}")
+    if "identity::SemanticContextBrand admissionContext;" not in type_key:
+        errors.append(f"{SEMANTIC_TYPE_KEY}: canonical type data must retain admission provenance")
 
 
 def analyze(
@@ -383,6 +2255,17 @@ def analyze(
     check_live_producers(manifest, active_overrides, errors)
     check_no_post_parse_expansion(manifest, active_overrides, errors)
     check_phase_local_allowlists(manifest, active_overrides, errors)
+    check_header_wire_inventory(active_overrides, errors)
+    check_canonical_header_type_inventory(active_overrides, errors)
+    check_canonical_header_type_producer(active_overrides, errors)
+    check_canonical_definition_header_producer(active_overrides, errors)
+    check_canonical_impl_header_producer(active_overrides, errors)
+    check_canonical_overload_header_inventory(active_overrides, errors)
+    check_overload_header_digest_inventory(active_overrides, errors)
+    check_canonical_impl_header_inventory(active_overrides, errors)
+    check_module_resolution_key_architecture(active_overrides, errors)
+    check_semantic_import_binding_key_architecture(active_overrides, errors)
+    check_stable_identity_architecture(active_overrides, errors)
     check_semantic_type_store_architecture(active_overrides, errors)
     return errors
 
@@ -490,15 +2373,103 @@ def run_self_test() -> int:
     package_request_text = (ROOT / PACKAGE_COMPILATION_REQUEST).read_text(encoding="utf-8")
     cases.append(
         (
-            "missing post-build crate finalization",
+            "missing build-plan crate finalization",
             copy.deepcopy(baseline),
             {
                 PACKAGE_COMPILATION_REQUEST: package_request_text.replace(
-                    "bool requiresBuildScriptValue;",
-                    "bool missingBuildScriptRequirement;",
+                    "const VerifiedBuildScriptPlan& buildPlan",
+                    "const MissingBuildScriptPlan& buildPlan",
                 )
             },
-            "missing post-build crate finalization marker",
+            "missing build-plan crate identity marker",
+        )
+    )
+
+    crate_key_text = (ROOT / CRATE_KEY).read_text(encoding="utf-8")
+    cases.append(
+        (
+            "output-derived build identity",
+            copy.deepcopy(baseline),
+            {CRATE_KEY: crate_key_text + "\nclass BuildScriptOutputKey;\n"},
+            "output-derived BuildScriptOutputKey identity is forbidden",
+        )
+    )
+
+    build_script_implementation_text = (ROOT / BUILD_SCRIPT_KEY_IMPLEMENTATION).read_text(
+        encoding="utf-8"
+    )
+    cases.append(
+        (
+            "mutated build producer domain",
+            copy.deepcopy(baseline),
+            {
+                BUILD_SCRIPT_KEY_IMPLEMENTATION: build_script_implementation_text.replace(
+                    '"zom.build-script-producer.v0"_zc',
+                    '"zom.build-script-producer.mutated"_zc',
+                )
+            },
+            "invalid build producer domain",
+        )
+    )
+
+    build_script_key_text = (ROOT / BUILD_SCRIPT_KEY).read_text(encoding="utf-8")
+    cases.append(
+        (
+            "preparatory key retained in output record",
+            copy.deepcopy(baseline),
+            {
+                BUILD_SCRIPT_KEY: build_script_key_text.replace(
+                    "BuildScriptProducerKey producerValue;",
+                    "BuildScriptProducerKey producerValue;\n"
+                    "  PreparatoryBuildScriptKey preparatoryValue;",
+                )
+            },
+            "build output record must retain only producer identity",
+        )
+    )
+
+    source_key_text = (ROOT / SOURCE_KEY).read_text(encoding="utf-8")
+    cases.append(
+        (
+            "generated source content identity",
+            copy.deepcopy(baseline),
+            {
+                SOURCE_KEY: source_key_text.replace(
+                    "BuildScriptProducerKey producer;",
+                    "BuildScriptProducerKey producer;\n  Sha256Digest contentDigest;",
+                    1,
+                )
+            },
+            "generated source identity must not contain output content",
+        )
+    )
+    cases.append(
+        (
+            "position-derived module identity",
+            copy.deepcopy(baseline),
+            {
+                SOURCE_KEY: source_key_text.replace(
+                    "CrateKey crateValue;\n  zc::Vector<ModulePathSegment> pathValue;",
+                    "CrateKey crateValue;\n  SourceSpan declarationSpan;\n"
+                    "  zc::Vector<ModulePathSegment> pathValue;",
+                )
+            },
+            "ModuleKey must contain only crate and canonical path",
+        )
+    )
+
+    binding_input_text = (ROOT / BINDING_INPUT).read_text(encoding="utf-8")
+    cases.append(
+        (
+            "missing module source projection",
+            copy.deepcopy(baseline),
+            {
+                BINDING_INPUT: binding_input_text.replace(
+                    "zc::Maybe<const identity::SourceFileKey&> sourceFile(",
+                    "zc::Maybe<const identity::SourceFileKey&> missingSourceFile(",
+                )
+            },
+            "missing revision-local module source marker",
         )
     )
 
@@ -509,14 +2480,1104 @@ def run_self_test() -> int:
             {
                 COMPILER_SESSION: session_text.replace(
                     "!impl->freezeModuleIdentities() ||\n"
+                    "      !impl->stageSelectedModuleSourceInputs("
+                    "ZC_ASSERT_NONNULL(impl->identityRegistries)) ||\n"
                     "      !impl->freezeSemanticContextFingerprint() || "
                     "!impl->freezeDefinitionAndImplIdentities()",
                     "!impl->freezeDefinitionAndImplIdentities() ||\n"
+                    "      !impl->stageSelectedModuleSourceInputs("
+                    "ZC_ASSERT_NONNULL(impl->identityRegistries)) ||\n"
                     "      !impl->freezeSemanticContextFingerprint() || "
                     "!impl->freezeModuleIdentities()",
                 )
             },
             "parseSources identity phase schedule must order",
+        )
+    )
+
+    module_resolution_key_text = (ROOT / MODULE_RESOLUTION_KEY).read_text(encoding="utf-8")
+    module_resolution_key_implementation_text = (
+        ROOT / MODULE_RESOLUTION_KEY_IMPLEMENTATION
+    ).read_text(encoding="utf-8")
+    semantic_import_binding_key_text = (ROOT / SEMANTIC_IMPORT_BINDING_KEY).read_text(
+        encoding="utf-8"
+    )
+    semantic_import_binding_key_implementation_text = (
+        ROOT / SEMANTIC_IMPORT_BINDING_KEY_IMPLEMENTATION
+    ).read_text(encoding="utf-8")
+    cases.append(
+        (
+            "semantic import operation tag drift",
+            copy.deepcopy(baseline),
+            {
+                SEMANTIC_IMPORT_BINDING_KEY: semantic_import_binding_key_text.replace(
+                    "ForeignReexport = 0x02", "ForeignReexport = 0x03"
+                )
+            },
+            "SemanticImportOperation must retain its two exact RFC 0017 tags",
+        )
+    )
+    cases.append(
+        (
+            "semantic import key field drift",
+            copy.deepcopy(baseline),
+            {
+                SEMANTIC_IMPORT_BINDING_KEY: semantic_import_binding_key_text.replace(
+                    "DeclaredDefinitionName localNameValue;",
+                    "DeclaredDefinitionName mutatedLocalNameValue;",
+                )
+            },
+            "SemanticImportBindingKey must contain exactly seven semantic fields",
+        )
+    )
+    cases.append(
+        (
+            "semantic import provenance field",
+            copy.deepcopy(baseline),
+            {
+                SEMANTIC_IMPORT_BINDING_KEY: semantic_import_binding_key_text.replace(
+                    "  DeclaredDefinitionName localNameValue;\n};",
+                    "  DeclaredDefinitionName localNameValue;\n  NodeId siteValue;\n};",
+                )
+            },
+            "provenance handles and revisions are forbidden",
+        )
+    )
+    cases.append(
+        (
+            "semantic import codec order drift",
+            copy.deepcopy(baseline),
+            {
+                SEMANTIC_IMPORT_BINDING_KEY_IMPLEMENTATION: (
+                    semantic_import_binding_key_implementation_text.replace(
+                        "  record.encodeUint8(static_cast<uint8_t>(sourceNamespaceValue));\n"
+                        "  sourceNameValue.encode(record);",
+                        "  sourceNameValue.encode(record);\n"
+                        "  record.encodeUint8(static_cast<uint8_t>(sourceNamespaceValue));",
+                    )
+                )
+            },
+            "semantic import key codec must preserve canonical field order",
+        )
+    )
+    cases.append(
+        (
+            "semantic import codec domain drift",
+            copy.deepcopy(baseline),
+            {
+                SEMANTIC_IMPORT_BINDING_KEY_IMPLEMENTATION: (
+                    semantic_import_binding_key_implementation_text.replace(
+                        '"zom.semantic-import-binding.v0"_zc',
+                        '"zom.semantic-import-binding.mutated"_zc',
+                    )
+                )
+            },
+            "invalid semantic import key domain",
+        )
+    )
+    cases.append(
+        (
+            "module resolution policy field drift",
+            copy.deepcopy(baseline),
+            {
+                MODULE_RESOLUTION_KEY: module_resolution_key_text.replace(
+                    "ModuleCandidateSelectionPolicy candidateSelectionValue;",
+                    "ModuleCandidateSelectionPolicy mutatedSelectionValue;",
+                )
+            },
+            "must contain exactly eight policy fields",
+        )
+    )
+    cases.append(
+        (
+            "module resolution request field drift",
+            copy.deepcopy(baseline),
+            {
+                MODULE_RESOLUTION_KEY: module_resolution_key_text.replace(
+                    "ModuleDependencyKind kindValue;",
+                    "ModuleDependencyKind mutatedKindValue;",
+                )
+            },
+            "must contain exactly five semantic fields",
+        )
+    )
+    cases.append(
+        (
+            "module resolution policy tag drift",
+            copy.deepcopy(baseline),
+            {
+                MODULE_RESOLUTION_KEY: module_resolution_key_text.replace(
+                    "enum class UnicodeNormalizationPolicy : uint8_t { Nfc = 0x01 };",
+                    "enum class UnicodeNormalizationPolicy : uint8_t { Nfc = 0x02 };",
+                )
+            },
+            "UnicodeNormalizationPolicy must retain its exact RFC 0018 tag",
+        )
+    )
+    cases.append(
+        (
+            "module dependency tag drift",
+            copy.deepcopy(baseline),
+            {
+                MODULE_RESOLUTION_KEY: module_resolution_key_text.replace(
+                    "Prelude = 0x04", "Prelude = 0x05"
+                )
+            },
+            "ModuleDependencyKind must retain its four exact tags",
+        )
+    )
+    cases.append(
+        (
+            "module catalog bucket domain drift",
+            copy.deepcopy(baseline),
+            {
+                MODULE_RESOLUTION_KEY_IMPLEMENTATION: (
+                    module_resolution_key_implementation_text.replace(
+                        '"zom.module-catalog-path-bucket.v0"_zc',
+                        '"zom.module-catalog-path-bucket.mutated"_zc',
+                    )
+                )
+            },
+            "invalid catalog bucket domain",
+        )
+    )
+    cases.append(
+        (
+            "module resolution policy domain drift",
+            copy.deepcopy(baseline),
+            {
+                MODULE_RESOLUTION_KEY_IMPLEMENTATION: (
+                    module_resolution_key_implementation_text.replace(
+                        '"zom.module-resolution-policy.v0"_zc',
+                        '"zom.module-resolution-policy.mutated"_zc',
+                    )
+                )
+            },
+            "invalid resolution policy domain",
+        )
+    )
+    cases.append(
+        (
+            "module resolution request domain drift",
+            copy.deepcopy(baseline),
+            {
+                MODULE_RESOLUTION_KEY_IMPLEMENTATION: (
+                    module_resolution_key_implementation_text.replace(
+                        '"zom.module-resolution.v0"_zc',
+                        '"zom.module-resolution.mutated"_zc',
+                    )
+                )
+            },
+            "invalid resolution request domain",
+        )
+    )
+    for name, signature, expected in (
+        (
+            "module catalog bucket decoder removed",
+            "ModuleCatalogPathBucketKey::decodeCanonical(",
+            "catalog bucket decoder must be exact bounded and canonical",
+        ),
+        (
+            "requester ancestry decoder removed",
+            "RequesterModuleAncestry::decodeCanonical(",
+            "requester ancestry decoder must be exact bounded and structural",
+        ),
+        (
+            "module catalog bucket value decoder removed",
+            "ModuleCatalogPathBucket::decodeCanonical(",
+            "catalog bucket value decoder must validate exact optional membership",
+        ),
+        (
+            "module resolution policy decoder removed",
+            "ModuleResolutionPolicyKey::decodeCanonical(",
+            "resolution policy decoder must close all eight fields",
+        ),
+        (
+            "module resolution request decoder removed",
+            "ModuleResolutionKey::decodeCanonical(",
+            "resolution request decoder must be exact bounded and compositional",
+        ),
+    ):
+        cases.append(
+            (
+                name,
+                copy.deepcopy(baseline),
+                {
+                    MODULE_RESOLUTION_KEY_IMPLEMENTATION: (
+                        module_resolution_key_implementation_text.replace(
+                            signature,
+                            signature.replace("::decodeCanonical(", "::removedDecodeCanonical("),
+                            1,
+                        )
+                    )
+                },
+                expected,
+            )
+        )
+    cases.append(
+        (
+            "module catalog empty path admitted",
+            copy.deepcopy(baseline),
+            {
+                MODULE_RESOLUTION_KEY_IMPLEMENTATION: (
+                    module_resolution_key_implementation_text.replace(
+                        "if (path.size() == 0) { return zc::none; }", "", 1
+                    )
+                )
+            },
+            "catalog bucket must reject an empty path",
+        )
+    )
+    cases.append(
+        (
+            "requester ancestry field drift",
+            copy.deepcopy(baseline),
+            {
+                MODULE_RESOLUTION_KEY: module_resolution_key_text.replace(
+                    "zc::Vector<ModuleKey> ancestryValue;",
+                    "zc::Vector<ModuleKey> mutatedAncestryValue;",
+                )
+            },
+            "RequesterModuleAncestry must contain exactly requester and ancestry",
+        )
+    )
+    cases.append(
+        (
+            "requester ancestry admits an empty chain",
+            copy.deepcopy(baseline),
+            {
+                MODULE_RESOLUTION_KEY_IMPLEMENTATION: (
+                    module_resolution_key_implementation_text.replace(
+                        "ancestry.size() == 0 || !sameKey(requester, ancestry[0])",
+                        "false",
+                        1,
+                    )
+                )
+            },
+            "requester ancestry must reject an empty or requester-mismatched chain",
+        )
+    )
+    cases.append(
+        (
+            "requester ancestry admits skipped parents",
+            copy.deepcopy(baseline),
+            {
+                MODULE_RESOLUTION_KEY_IMPLEMENTATION: (
+                    module_resolution_key_implementation_text.replace(
+                        "child.path().size() != parent.path().size() + 1",
+                        "false",
+                        1,
+                    )
+                )
+            },
+            "requester ancestry must require strict lexical parents",
+        )
+    )
+    cases.append(
+        (
+            "catalog bucket value field drift",
+            copy.deepcopy(baseline),
+            {
+                MODULE_RESOLUTION_KEY: module_resolution_key_text.replace(
+                    "zc::Maybe<ModuleKey> moduleValue;",
+                    "zc::Maybe<ModuleKey> mutatedModuleValue;",
+                )
+            },
+            "ModuleCatalogPathBucket must contain exactly key and optional module",
+        )
+    )
+    cases.append(
+        (
+            "catalog bucket admits a mismatched module",
+            copy.deepcopy(baseline),
+            {
+                MODULE_RESOLUTION_KEY_IMPLEMENTATION: (
+                    module_resolution_key_implementation_text.replace(
+                        "!sameCrate(key.crate(), module.crate()) || "
+                        "!samePath(key.path(), module.path())",
+                        "false",
+                        1,
+                    )
+                )
+            },
+            "present catalog bucket must require exact crate and path equality",
+        )
+    )
+
+    request_field_anchor = "  ModuleResolutionPolicyKey policyValue;\n};"
+    forbidden_request_fields = (
+        ("source span", "SourceSpan sourceSpanValue;", "provenance fields are forbidden"),
+        ("source file", "SourceFileKey sourceFileValue;", "provenance fields are forbidden"),
+        ("AST node", "NodeId syntaxNodeValue;", "provenance fields are forbidden"),
+        (
+            "requested target",
+            "ModuleKey requestedTargetValue;",
+            "requested target fields are forbidden",
+        ),
+        (
+            "environment",
+            "EnvironmentFingerprint environmentValue;",
+            "environment or revision fields are forbidden",
+        ),
+        (
+            "revision",
+            "uint64_t revisionValue;",
+            "environment or revision fields are forbidden",
+        ),
+    )
+    for field_name, field, expected in forbidden_request_fields:
+        cases.append(
+            (
+                f"module resolution request {field_name} exclusion",
+                copy.deepcopy(baseline),
+                {
+                    MODULE_RESOLUTION_KEY: module_resolution_key_text.replace(
+                        request_field_anchor,
+                        f"  ModuleResolutionPolicyKey policyValue;\n  {field}\n}};",
+                    )
+                },
+                expected,
+            )
+        )
+
+    module_resolution_text = (ROOT / MODULE_RESOLUTION).read_text(encoding="utf-8")
+    module_resolution_implementation_text = (
+        ROOT / MODULE_RESOLUTION_IMPLEMENTATION
+    ).read_text(encoding="utf-8")
+    cases.append(
+        (
+            "duplicate binder module dependency enum",
+            copy.deepcopy(baseline),
+            {
+                MODULE_RESOLUTION: module_resolution_text
+                + "\nenum class ModuleDependencyKind : uint8_t { Import = 0x01 };\n"
+            },
+            "ModuleDependencyKind must have one identity-layer owner",
+        )
+    )
+    cases.append(
+        (
+            "obsolete requester ancestry surface",
+            copy.deepcopy(baseline),
+            {
+                MODULE_RESOLUTION: module_resolution_text
+                + "\nclass ModuleRequesterAncestry final {};\n"
+            },
+            "obsolete ModuleRequesterAncestry identity surface is forbidden",
+        )
+    )
+    cases.append(
+        (
+            "resolver drops admitted catalog buckets",
+            copy.deepcopy(baseline),
+            {
+                MODULE_RESOLUTION_IMPLEMENTATION: module_resolution_implementation_text.replace(
+                    "  zc::Vector<identity::ModuleCatalogPathBucket> catalogBuckets;\n",
+                    "",
+                    1,
+                )
+            },
+            "resolver must retain admitted exact input",
+        )
+    )
+    cases.append(
+        (
+            "batch structural resolution authority",
+            copy.deepcopy(baseline),
+            {
+                MODULE_RESOLUTION: module_resolution_text.replace(
+                    "  /// \\brief Materializes a revision-local graph receipt",
+                    "  ZC_NODISCARD ModulePathResolution resolve(ModuleDependencyRequest&&);\n"
+                    "  /// \\brief Materializes a revision-local graph receipt",
+                    1,
+                )
+            },
+            "batch structural resolution authority is forbidden",
+        )
+    )
+
+    identity_cmake_text = (ROOT / IDENTITY_CMAKE).read_text(encoding="utf-8")
+    cases.append(
+        (
+            "missing canonical type encode source registration",
+            copy.deepcopy(baseline),
+            {
+                IDENTITY_CMAKE: identity_cmake_text.replace(
+                    "  ${CMAKE_CURRENT_SOURCE_DIR}/canonical-header-type-encode.cc\n", ""
+                )
+            },
+            "missing canonical header type source canonical-header-type-encode.cc",
+        )
+    )
+    canonical_type_encode_text = (ROOT / CANONICAL_HEADER_TYPE_ENCODE).read_text(
+        encoding="utf-8"
+    )
+    cases.append(
+        (
+            "missing canonical type tag encoding",
+            copy.deepcopy(baseline),
+            {
+                CANONICAL_HEADER_TYPE_ENCODE: canonical_type_encode_text.replace(
+                    "encoder.encodeUint8(static_cast<uint8_t>(typeKind));",
+                    "encoder.missingTypeTag(static_cast<uint8_t>(typeKind));",
+                )
+            },
+            "canonical type tag must encode first",
+        )
+    )
+    cases.append(
+        (
+            "missing canonical function result field encoding",
+            copy.deepcopy(baseline),
+            {
+                CANONICAL_HEADER_TYPE_ENCODE: canonical_type_encode_text.replace(
+                    "value.result.encode(encoder);", "value.result.missingEncode(encoder);"
+                )
+            },
+            "missing field codec marker value.result.encode(encoder);",
+        )
+    )
+    cases.append(
+        (
+            "length-wrapped canonical type record",
+            copy.deepcopy(baseline),
+            {
+                CANONICAL_HEADER_TYPE_ENCODE: canonical_type_encode_text.replace(
+                    "encoder.encodeUint8(static_cast<uint8_t>(typeKind));",
+                    "encoder.encodeUint8(static_cast<uint8_t>(typeKind));\n"
+                    "  encoder.encodeByteString(zc::ArrayPtr<const uint8_t>());",
+                )
+            },
+            "nested canonical type records must encode inline",
+        )
+    )
+    canonical_type_test_text = (ROOT / CANONICAL_HEADER_TYPE_TEST).read_text(encoding="utf-8")
+    cases.append(
+        (
+            "missing dynamic-array versus slice identity test",
+            copy.deepcopy(baseline),
+            {
+                CANONICAL_HEADER_TYPE_TEST: canonical_type_test_text.replace(
+                    'expectHex(dynamicArray, "070201"_zc);',
+                    'expectHex(dynamicArray, "080201"_zc);',
+                )
+            },
+            "missing canonical type test marker",
+        )
+    )
+
+    canonical_type_producer_text = (
+        ROOT / CANONICAL_HEADER_TYPE_PRODUCER_IMPLEMENTATION
+    ).read_text(encoding="utf-8")
+    canonical_type_producer_test_text = (
+        ROOT / CANONICAL_HEADER_TYPE_PRODUCER_TEST
+    ).read_text(encoding="utf-8")
+    cases.append(
+        (
+            "missing slice AST producer mapping",
+            copy.deepcopy(baseline),
+            {
+                CANONICAL_HEADER_TYPE_PRODUCER_IMPLEMENTATION: (
+                    canonical_type_producer_text.replace(
+                        "case ast::SyntaxKind::SliceArrayTypeExpr:",
+                        "case ast::SyntaxKind::ArrayTypeExpr:",
+                        1,
+                    )
+                )
+            },
+            "missing AST mapping for SliceArrayTypeExpr",
+        )
+    )
+    cases.append(
+        (
+            "generic binder depth search removed",
+            copy.deepcopy(baseline),
+            {
+                CANONICAL_HEADER_TYPE_PRODUCER_IMPLEMENTATION: (
+                    canonical_type_producer_text.replace(
+                        "for (size_t depth = 0; depth < binders.size(); ++depth)",
+                        "for (size_t depth = binders.size(); depth < binders.size(); ++depth)",
+                        1,
+                    )
+                )
+            },
+            "producer must search lexical generic binders by stable-owner depth",
+        )
+    )
+    cases.append(
+        (
+            "fixed array overflow check removed",
+            copy.deepcopy(baseline),
+            {
+                CANONICAL_HEADER_TYPE_PRODUCER_IMPLEMENTATION: (
+                    canonical_type_producer_text.replace(
+                        "value > (UINT64_MAX - digit) / base",
+                        "false",
+                        1,
+                    )
+                )
+            },
+            "producer must reject fixed-array length overflow",
+        )
+    )
+    cases.append(
+        (
+            "canonical type producer fixed vector drift",
+            copy.deepcopy(baseline),
+            {
+                CANONICAL_HEADER_TYPE_PRODUCER_TEST: canonical_type_producer_test_text.replace(
+                    '"0103000000000000000000000000000000000000000000000000"_zc',
+                    '"mutated"_zc',
+                    1,
+                )
+            },
+            "missing producer test marker",
+        )
+    )
+    cases.append(
+        (
+            "canonical type producer duplicate binder admission drift",
+            copy.deepcopy(baseline),
+            {
+                CANONICAL_HEADER_TYPE_PRODUCER_TEST: canonical_type_producer_test_text.replace(
+                    "CanonicalHeaderTypeProducer resolves duplicate generic names to the first ordinal",
+                    "CanonicalHeaderTypeProducer rejects duplicate generic names in one binder",
+                    1,
+                )
+            },
+            "missing producer test marker",
+        )
+    )
+    binding_verifier_text = (ROOT / BINDING_VERIFIER).read_text(encoding="utf-8")
+    cases.append(
+        (
+            "verifier reuses canonical type producer",
+            copy.deepcopy(baseline),
+            {
+                BINDING_VERIFIER: binding_verifier_text
+                + "\nvoid forbiddenCanonicalHeaderTypeProducerReuse() { "
+                + "(void)sizeof(CanonicalHeaderTypeProducer); }\n"
+            },
+            "independent verifier must not call the canonical type producer",
+        )
+    )
+
+    canonical_definition_producer_text = (
+        ROOT / CANONICAL_DEFINITION_HEADER_PRODUCER_IMPLEMENTATION
+    ).read_text(encoding="utf-8")
+    canonical_definition_producer_test_text = (
+        ROOT / CANONICAL_DEFINITION_HEADER_PRODUCER_TEST
+    ).read_text(encoding="utf-8")
+    cases.append(
+        (
+            "canonical definition producer duplicate binder admission drift",
+            copy.deepcopy(baseline),
+            {
+                CANONICAL_DEFINITION_HEADER_PRODUCER_TEST: canonical_definition_producer_test_text.replace(
+                    "CanonicalDefinitionHeaderProducer admits duplicate unused generic names",
+                    "CanonicalDefinitionHeaderProducer rejects duplicate unused generic names",
+                    1,
+                )
+            },
+            "missing definition producer test marker",
+        )
+    )
+    cases.append(
+        (
+            "missing extern callable producer mapping",
+            copy.deepcopy(baseline),
+            {
+                CANONICAL_DEFINITION_HEADER_PRODUCER_IMPLEMENTATION: (
+                    canonical_definition_producer_text.replace(
+                        "case ast::SyntaxKind::ExternDecl:",
+                        "case ast::SyntaxKind::FunctionDecl:",
+                        1,
+                    )
+                )
+            },
+            "missing callable mapping for ExternDecl",
+        )
+    )
+    cases.append(
+        (
+            "callable generic depth zero frame removed",
+            copy.deepcopy(baseline),
+            {
+                CANONICAL_DEFINITION_HEADER_PRODUCER_IMPLEMENTATION: (
+                    canonical_definition_producer_text.replace(
+                        "frames.add(CanonicalGenericBinderFrame{syntax.genericParameters});",
+                        "frames.addAll(enclosingBinders);",
+                        1,
+                    )
+                )
+            },
+            "producer must reserve the callable binder at depth zero",
+        )
+    )
+    cases.append(
+        (
+            "callable inventory name check removed",
+            copy.deepcopy(baseline),
+            {
+                CANONICAL_DEFINITION_HEADER_PRODUCER_IMPLEMENTATION: (
+                    canonical_definition_producer_text.replace(
+                        "tree.ident(name) != tree.ident(definition.declaredName)",
+                        "false",
+                        1,
+                    )
+                )
+            },
+            "producer must require inventory and header name equality",
+        )
+    )
+    cases.append(
+        (
+            "callable where obligation merge removed",
+            copy.deepcopy(baseline),
+            {
+                CANONICAL_DEFINITION_HEADER_PRODUCER_IMPLEMENTATION: (
+                    canonical_definition_producer_text.replace(
+                        "appendWhere(", "appendWhereMutated(", 2
+                    )
+                )
+            },
+            "producer must merge where-clause obligations",
+        )
+    )
+    cases.append(
+        (
+            "verifier reuses canonical definition producer",
+            copy.deepcopy(baseline),
+            {
+                BINDING_VERIFIER: binding_verifier_text
+                + "\nvoid forbiddenCanonicalDefinitionHeaderProducerReuse() { "
+                + "(void)sizeof(CanonicalDefinitionHeaderProducer); }\n"
+            },
+            "independent verifier must not call the canonical definition producer",
+        )
+    )
+
+    canonical_impl_producer_text = (
+        ROOT / CANONICAL_IMPL_HEADER_PRODUCER_IMPLEMENTATION
+    ).read_text(encoding="utf-8")
+    canonical_impl_producer_test_text = (
+        ROOT / CANONICAL_IMPL_HEADER_PRODUCER_TEST
+    ).read_text(encoding="utf-8")
+    cases.append(
+        (
+            "canonical impl producer duplicate binder admission drift",
+            copy.deepcopy(baseline),
+            {
+                CANONICAL_IMPL_HEADER_PRODUCER_TEST: canonical_impl_producer_test_text.replace(
+                    "CanonicalImplHeaderProducer rejects generic traits and admits duplicate binder names",
+                    "CanonicalImplHeaderProducer rejects generic traits and duplicate binder names",
+                    1,
+                )
+            },
+            "missing impl producer test marker",
+        )
+    )
+    cases.append(
+        (
+            "missing marker impl producer mapping",
+            copy.deepcopy(baseline),
+            {
+                CANONICAL_IMPL_HEADER_PRODUCER_IMPLEMENTATION: (
+                    canonical_impl_producer_text.replace(
+                        "syntax.kind == ast::SyntaxKind::MarkerImpl",
+                        "syntax.kind == ast::SyntaxKind::StandaloneImplDecl",
+                        1,
+                    )
+                )
+            },
+            "producer must map marker impl syntax",
+        )
+    )
+    cases.append(
+        (
+            "implementation generic depth zero frame removed",
+            copy.deepcopy(baseline),
+            {
+                CANONICAL_IMPL_HEADER_PRODUCER_IMPLEMENTATION: (
+                    canonical_impl_producer_text.replace(
+                        "frames.add(CanonicalGenericBinderFrame{genericParameters});",
+                        "frames.addAll(enclosingBinders);",
+                        1,
+                    )
+                )
+            },
+            "producer must reserve the implementation binder at depth zero",
+        )
+    )
+    cases.append(
+        (
+            "safe positive marker rejection drift",
+            copy.deepcopy(baseline),
+            {
+                CANONICAL_IMPL_HEADER_PRODUCER_IMPLEMENTATION: (
+                    canonical_impl_producer_text.replace(
+                        "polarity == ImplPolarity::Negative && safety == ImplSafety::Unsafe",
+                        "polarity == ImplPolarity::Positive && safety == ImplSafety::Safe",
+                        1,
+                    )
+                )
+            },
+            "producer must reject only the parser-invalid negative unsafe marker combination",
+        )
+    )
+    cases.append(
+        (
+            "positive safe marker producer test removed",
+            copy.deepcopy(baseline),
+            {
+                CANONICAL_IMPL_HEADER_PRODUCER_TEST: canonical_impl_producer_test_text.replace(
+                    "requireHeader(safeResult).safety() == identity::ImplSafety::Safe",
+                    "requireHeader(safeResult).safety() == identity::ImplSafety::Unsafe",
+                    1,
+                )
+            },
+            "missing impl producer test marker",
+        )
+    )
+    cases.append(
+        (
+            "verifier reuses canonical impl producer",
+            copy.deepcopy(baseline),
+            {
+                BINDING_VERIFIER: binding_verifier_text
+                + "\nvoid forbiddenCanonicalImplHeaderProducerReuse() { "
+                + "(void)sizeof(CanonicalImplHeaderProducer); }\n"
+            },
+            "independent verifier must not call the canonical impl producer",
+        )
+    )
+
+    canonical_overload_text = (ROOT / CANONICAL_OVERLOAD_HEADER_IMPLEMENTATION).read_text(
+        encoding="utf-8"
+    )
+    cases.append(
+        (
+            "missing canonical overload source registration",
+            copy.deepcopy(baseline),
+            {
+                IDENTITY_CMAKE: identity_cmake_text.replace(
+                    "  ${CMAKE_CURRENT_SOURCE_DIR}/canonical-overload-header.cc\n", ""
+                )
+            },
+            "missing canonical overload source canonical-overload-header.cc",
+        )
+    )
+    cases.append(
+        (
+            "explicit Unit callable result not normalized",
+            copy.deepcopy(baseline),
+            {
+                CANONICAL_OVERLOAD_HEADER_IMPLEMENTATION: canonical_overload_text.replace(
+                    "if (kind == PredefinedTypeKind::Unit) { return unit(); }",
+                    "if (false && kind == PredefinedTypeKind::Unit) { return unit(); }",
+                )
+            },
+            "explicit Unit result must normalize to the unit variant",
+        )
+    )
+    cases.append(
+        (
+            "misordered canonical overload fields",
+            copy.deepcopy(baseline),
+            {
+                CANONICAL_OVERLOAD_HEADER_IMPLEMENTATION: canonical_overload_text.replace(
+                    "  encodeSequence(encoder, impl->obligations.asPtr());\n"
+                    "  encodeSequence(encoder, impl->parameters.asPtr());",
+                    "  encodeSequence(encoder, impl->parameters.asPtr());\n"
+                    "  encodeSequence(encoder, impl->obligations.asPtr());",
+                )
+            },
+            "canonical overload nine-field codec must preserve canonical field order",
+        )
+    )
+    cases.append(
+        (
+            "length-wrapped canonical overload record",
+            copy.deepcopy(baseline),
+            {
+                CANONICAL_OVERLOAD_HEADER_IMPLEMENTATION: canonical_overload_text.replace(
+                    "  encoder.encodeUint8(static_cast<uint8_t>(impl->callableKind));",
+                    "  encoder.encodeUint8(static_cast<uint8_t>(impl->callableKind));\n"
+                    "  encoder.encodeByteString(zc::ArrayPtr<const uint8_t>());",
+                )
+            },
+            "canonical overload records must encode inline",
+        )
+    )
+    cases.append(
+        (
+            "missing constructor overload admission",
+            copy.deepcopy(baseline),
+            {
+                CANONICAL_OVERLOAD_HEADER_IMPLEMENTATION: canonical_overload_text.replace(
+                    "} else if (receiver != zc::none || externalAbi != zc::none || "
+                    "!constructorResult) {",
+                    "} else if (receiver != zc::none || externalAbi != zc::none) {",
+                )
+            },
+            "missing overload admission marker",
+        )
+    )
+    canonical_overload_test_text = (ROOT / CANONICAL_OVERLOAD_HEADER_TEST).read_text(
+        encoding="utf-8"
+    )
+    cases.append(
+        (
+            "missing explicit Unit byte-equivalence regression",
+            copy.deepcopy(baseline),
+            {
+                CANONICAL_OVERLOAD_HEADER_TEST: canonical_overload_test_text.replace(
+                    "ZC_EXPECT(explicitUnit.encode().asPtr() == unit.encode().asPtr());",
+                    "ZC_EXPECT(explicitUnit.encode().asPtr() != unit.encode().asPtr());",
+                )
+            },
+            "missing canonical overload test marker",
+        )
+    )
+
+    overload_digest_text = (ROOT / OVERLOAD_HEADER_DIGEST_IMPLEMENTATION).read_text(
+        encoding="utf-8"
+    )
+    cases.append(
+        (
+            "missing overload digest source registration",
+            copy.deepcopy(baseline),
+            {
+                IDENTITY_CMAKE: identity_cmake_text.replace(
+                    "  ${CMAKE_CURRENT_SOURCE_DIR}/overload-header-digest.cc\n", ""
+                )
+            },
+            "missing overload digest source overload-header-digest.cc",
+        )
+    )
+    cases.append(
+        (
+            "overload digest domain drift",
+            copy.deepcopy(baseline),
+            {
+                OVERLOAD_HEADER_DIGEST_IMPLEMENTATION: overload_digest_text.replace(
+                    '"zom.overload-header.v0"_zc', '"zom.overload-header.mutated"_zc'
+                )
+            },
+            "invalid overload header digest domain",
+        )
+    )
+    cases.append(
+        (
+            "overload digest separator drift",
+            copy.deepcopy(baseline),
+            {
+                OVERLOAD_HEADER_DIGEST_IMPLEMENTATION: overload_digest_text.replace(
+                    "preimage.add(0x00);", "preimage.add(0xff);"
+                )
+            },
+            "overload header digest preimage is missing preimage.add(0x00);",
+        )
+    )
+    cases.append(
+        (
+            "length-wrapped overload digest",
+            copy.deepcopy(baseline),
+            {
+                OVERLOAD_HEADER_DIGEST_IMPLEMENTATION: overload_digest_text.replace(
+                    "encoder.encodeDigest(digestValue);",
+                    "encoder.encodeByteString(digestValue.bytes());",
+                )
+            },
+            "overload digest must encode as raw 32 bytes",
+        )
+    )
+    cases.append(
+        (
+            "digest-only overload record comparison",
+            copy.deepcopy(baseline),
+            {
+                OVERLOAD_HEADER_DIGEST_IMPLEMENTATION: overload_digest_text.replace(
+                    "  const auto left = impl->header.encode();\n"
+                    "  const auto right = other.impl->header.encode();\n"
+                    "  return left.asPtr() == right.asPtr();",
+                    "  return impl->digest == other.impl->digest;",
+                )
+            },
+            "complete overload record comparison is missing impl->header.encode();",
+        )
+    )
+
+    canonical_impl_text = (ROOT / CANONICAL_IMPL_HEADER_IMPLEMENTATION).read_text(
+        encoding="utf-8"
+    )
+    canonical_impl_header_text = (ROOT / CANONICAL_IMPL_HEADER).read_text(encoding="utf-8")
+    canonical_impl_test_text = (ROOT / CANONICAL_IMPL_HEADER_TEST).read_text(encoding="utf-8")
+    cases.append(
+        (
+            "missing canonical impl source registration",
+            copy.deepcopy(baseline),
+            {
+                IDENTITY_CMAKE: identity_cmake_text.replace(
+                    "  ${CMAKE_CURRENT_SOURCE_DIR}/canonical-impl-header.cc\n", ""
+                )
+            },
+            "missing canonical impl source canonical-impl-header.cc",
+        )
+    )
+    cases.append(
+        (
+            "canonical impl polarity tag drift",
+            copy.deepcopy(baseline),
+            {
+                CANONICAL_IMPL_HEADER: canonical_impl_header_text.replace(
+                    "Positive = 0x01", "Positive = 0x03"
+                )
+            },
+            "ImplPolarity must retain its exact RFC 0018 tags",
+        )
+    )
+    cases.append(
+        (
+            "generic trait root admitted",
+            copy.deepcopy(baseline),
+            {
+                CANONICAL_IMPL_HEADER_IMPLEMENTATION: canonical_impl_text.replace(
+                    "rootKind != CanonicalNameRootKind::Absolute && "
+                    "rootKind != CanonicalNameRootKind::Relative",
+                    "rootKind != CanonicalNameRootKind::Absolute && "
+                    "rootKind != CanonicalNameRootKind::Relative && "
+                    "rootKind != CanonicalNameRootKind::Generic",
+                )
+            },
+            "canonical trait root must admit only absolute and relative names",
+        )
+    )
+    cases.append(
+        (
+            "misordered canonical trait fields",
+            copy.deepcopy(baseline),
+            {
+                CANONICAL_IMPL_HEADER_IMPLEMENTATION: canonical_impl_text.replace(
+                    "  impl->name.encode(encoder);\n"
+                    "  encoder.encodeSequenceSize(impl->arguments.size());",
+                    "  encoder.encodeSequenceSize(impl->arguments.size());\n"
+                    "  impl->name.encode(encoder);",
+                )
+            },
+            "canonical trait field codec must preserve canonical field order",
+        )
+    )
+    cases.append(
+        (
+            "resolved trait identity field",
+            copy.deepcopy(baseline),
+            {
+                CANONICAL_IMPL_HEADER_IMPLEMENTATION: canonical_impl_text.replace(
+                    "  CanonicalNameReference name;",
+                    "  CanonicalNameReference name;\n  DefinitionKey resolved;",
+                )
+            },
+            "canonical trait reference must contain exactly name and ordered arguments",
+        )
+    )
+    cases.append(
+        (
+            "misordered canonical impl header fields",
+            copy.deepcopy(baseline),
+            {
+                CANONICAL_IMPL_HEADER_IMPLEMENTATION: canonical_impl_text.replace(
+                    "  encoder.encodeUint8(static_cast<uint8_t>(impl->polarity));\n"
+                    "  encoder.encodeUint8(static_cast<uint8_t>(impl->safety));",
+                    "  encoder.encodeUint8(static_cast<uint8_t>(impl->safety));\n"
+                    "  encoder.encodeUint8(static_cast<uint8_t>(impl->polarity));",
+                    1,
+                )
+            },
+            "canonical impl header field codec must preserve canonical field order",
+        )
+    )
+    cases.append(
+        (
+            "impl obligation canonicalization removed",
+            copy.deepcopy(baseline),
+            {
+                CANONICAL_IMPL_HEADER_IMPLEMENTATION: canonical_impl_text.replace(
+                    "obligations = sortUnique(zc::mv(obligations));",
+                    "obligations = zc::mv(obligations);",
+                    1,
+                )
+            },
+            "impl header admission is missing obligations = sortUnique",
+        )
+    )
+    cases.append(
+        (
+            "canonical impl header fixed vector drift",
+            copy.deepcopy(baseline),
+            {
+                CANONICAL_IMPL_HEADER_TEST: canonical_impl_test_text.replace(
+                    '"0000000000000000010102000000000000000100000000000000055472616974"',
+                    '"mutated"',
+                    1,
+                )
+            },
+            "missing canonical trait test marker",
+        )
+    )
+
+    header_schema_text = (ROOT / HEADER_SYNTAX_SCHEMA).read_text(encoding="utf-8")
+    cases.append(
+        (
+            "canonical header tag drift",
+            copy.deepcopy(baseline),
+            {
+                HEADER_SYNTAX_SCHEMA: header_schema_text.replace(
+                    "- {name: Function, tag: 0x01}",
+                    "- {name: Function, tag: 0x04}",
+                    1,
+                )
+            },
+            "canonical header schema generation failed",
+        )
+    )
+    cases.append(
+        (
+            "canonical header field drift",
+            copy.deepcopy(baseline),
+            {
+                HEADER_SYNTAX_SCHEMA: header_schema_text.replace(
+                    "- {name: callableKind, type: CallableHeaderKind}",
+                    "- {name: sourceKind, type: CallableHeaderKind}",
+                    1,
+                )
+            },
+            "canonical header schema generation failed",
+        )
+    )
+    cases.append(
+        (
+            "canonical header AST id",
+            copy.deepcopy(baseline),
+            {
+                HEADER_SYNTAX_SCHEMA: header_schema_text.replace(
+                    "- {name: arguments, type: Sequence<CanonicalHeaderTypeSyntax>}",
+                    "- {name: arguments, type: Sequence<CanonicalHeaderTypeSyntax>}\n"
+                    "          - {name: syntax, type: NodeId}",
+                    1,
+                )
+            },
+            "AST or provenance value is forbidden",
+        )
+    )
+
+    header_definition_text = (ROOT / HEADER_SYNTAX_DEFINITION).read_text(encoding="utf-8")
+    cases.append(
+        (
+            "canonical header generated drift",
+            copy.deepcopy(baseline),
+            {HEADER_SYNTAX_DEFINITION: header_definition_text + "// drift\n"},
+            "generated canonical header definition is stale",
         )
     )
 
@@ -530,7 +3591,7 @@ def run_self_test() -> int:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Check RFC 0011 semantic identity architecture")
+    parser = argparse.ArgumentParser(description="Check semantic identity architecture")
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--check", action="store_true", help="check the live repository")
     mode.add_argument("--self-test", action="store_true", help="run negative fixtures")

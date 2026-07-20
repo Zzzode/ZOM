@@ -28,11 +28,11 @@
 // CHECK-NEXT:               alts:
 // CHECK-NEXT:                 NamedTypeExpr #8 @1:42..1:49
 // CHECK-NEXT:                   path:
-// CHECK-NEXT:                     ModulePath #7 @1:42..1:49 segments=["DivZero"]
+// CHECK-NEXT:                     ModulePath #7 @1:42..1:49 segments=["DivZero"] root=Relative
 // CHECK-NEXT:                   args: []
 // CHECK-NEXT:                 NamedTypeExpr #10 @1:52..1:60
 // CHECK-NEXT:                   path:
-// CHECK-NEXT:                     ModulePath #9 @1:52..1:60 segments=["Overflow"]
+// CHECK-NEXT:                     ModulePath #9 @1:52..1:60 segments=["Overflow"] root=Relative
 // CHECK-NEXT:                   args: []
 // CHECK-NEXT:           body:
 // CHECK-NEXT:             BlockStmt #17 @1:61..3:2

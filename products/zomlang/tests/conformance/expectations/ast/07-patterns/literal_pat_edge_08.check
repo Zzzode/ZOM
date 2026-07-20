@@ -14,7 +14,7 @@
 // CHECK-NEXT:               pattern:
 // CHECK-NEXT:                 LiteralPattern #2 @2:10..2:13
 // CHECK-NEXT:                   literal:
-// CHECK-NEXT:                     StrLiteral #1 @2:10..2:13 value="a" is_raw=false prefix=None
+// CHECK-NEXT:                     CharacterLiteralExpr #1 @2:10..2:13 value="a"
 // CHECK-NEXT:               guard: null
 // CHECK-NEXT:               body:
 // CHECK-NEXT:                 BlockStmt #8 @2:17..2:32
@@ -28,13 +28,13 @@
 // CHECK-NEXT:                                 IdentExpr #3 @2:19..2:24 name="print"
 // CHECK-NEXT:                               type_args: []
 // CHECK-NEXT:                               args:
-// CHECK-NEXT:                                 StrLiteral #4 @2:25..2:28 value="a" is_raw=false prefix=None
+// CHECK-NEXT:                                 StringLiteralExpr #4 @2:25..2:28 value="a"
 // CHECK-NEXT:                       attrs: null
 // CHECK-NEXT:             MatchArmStmt #18 @3:5..3:32
 // CHECK-NEXT:               pattern:
 // CHECK-NEXT:                 LiteralPattern #11 @3:10..3:13
 // CHECK-NEXT:                   literal:
-// CHECK-NEXT:                     StrLiteral #10 @3:10..3:13 value="z" is_raw=false prefix=None
+// CHECK-NEXT:                     CharacterLiteralExpr #10 @3:10..3:13 value="z"
 // CHECK-NEXT:               guard: null
 // CHECK-NEXT:               body:
 // CHECK-NEXT:                 BlockStmt #17 @3:17..3:32
@@ -48,6 +48,6 @@
 // CHECK-NEXT:                                 IdentExpr #12 @3:19..3:24 name="print"
 // CHECK-NEXT:                               type_args: []
 // CHECK-NEXT:                               args:
-// CHECK-NEXT:                                 StrLiteral #13 @3:25..3:28 value="z" is_raw=false prefix=None
+// CHECK-NEXT:                                 StringLiteralExpr #13 @3:25..3:28 value="z"
 // CHECK-NEXT:                       attrs: null
 // CHECK-NEXT:       attrs: null

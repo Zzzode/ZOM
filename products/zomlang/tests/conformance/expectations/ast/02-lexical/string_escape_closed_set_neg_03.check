@@ -1,0 +1,8 @@
+// RUN: ! %zomc compile --dump-ast %corpus/02-lexical/string_escape_closed_set_neg_03.zom 2>&1 | %FileCheck %s
+
+
+// CHECK-LITERAL: Error [ZOM2030]: Escape sequence '\q' is not allowed
+// CHECK-LITERAL:   --> conformance/string_escape_closed_set_neg_03.zom:1:13
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 1 | let value = "invalid: \q";
+// CHECK-LITERAL:   |             ^

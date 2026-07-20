@@ -2,12 +2,12 @@
 
 
 // CHECK-LITERAL: Error [ZOM2076]: Unexpected token expected
-// CHECK:   --> products {{(?:.*[/\\])?marker_decl_reject_neg_01\.zom:1:8$}}
+// CHECK-LITERAL:   --> conformance/marker_decl_reject_neg_01.zom:1:8
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 1 | marker Send;
 // CHECK-LITERAL:   |        ^
 // CHECK-LITERAL: Error [ZOM2056]: Expression expected
-// CHECK:   --> products {{(?:.*[/\\])?marker_decl_reject_neg_01\.zom:1:1$}}
+// CHECK-LITERAL:   --> conformance/marker_decl_reject_neg_01.zom:1:1
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 1 | marker Send;
 // CHECK-LITERAL:   | ^

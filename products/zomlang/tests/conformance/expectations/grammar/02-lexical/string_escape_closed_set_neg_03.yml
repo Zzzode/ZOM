@@ -1,0 +1,5 @@
+section: "Section 3.6.2 StringLiteral escapes"
+covers_rule: "STRING_ESCAPE_SEQUENCE"
+expected: "REJECT"
+notes:
+  - "String and character literals reject escapes outside the closed escape set."

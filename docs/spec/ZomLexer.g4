@@ -29,8 +29,49 @@ options {
     // Keep the default lexer prediction behavior.
 }
 
-// Java helper for CHAR_LITERAL semantic predicate.
+// Java helpers for literal validation and template substitution state.
 @lexer::members {
+    /** Brace depth for each active template substitution, including nested templates. */
+    private final java.util.ArrayDeque<Integer> templateBraceDepths =
+        new java.util.ArrayDeque<Integer>();
+
+    private boolean atTemplateBoundary() {
+        return !templateBraceDepths.isEmpty() && templateBraceDepths.peek() == 0;
+    }
+
+    private boolean nextInputIsNotDecimalDigit() {
+        int next = _input.LA(1);
+        return next < '0' || next > '9';
+    }
+
+    private void beginTemplateSubstitution() {
+        templateBraceDepths.push(0);
+    }
+
+    private void endTemplateSubstitution() {
+        if (templateBraceDepths.isEmpty()) {
+            throw new IllegalStateException("template tail without active substitution");
+        }
+        templateBraceDepths.pop();
+    }
+
+    private void enterTemplateBrace() {
+        if (templateBraceDepths.isEmpty()) return;
+        templateBraceDepths.push(templateBraceDepths.pop() + 1);
+    }
+
+    private void leaveTemplateBrace() {
+        if (templateBraceDepths.isEmpty() || templateBraceDepths.peek() == 0) return;
+        templateBraceDepths.push(templateBraceDepths.pop() - 1);
+    }
+
+    @Override
+    public org.antlr.v4.runtime.Token emit() {
+        if (_type == LBRACE) enterTemplateBrace();
+        if (_type == RBRACE) leaveTemplateBrace();
+        return super.emit();
+    }
+
     /**
      * Count Unicode scalar values in a string. Escapes like '\n' count as 1;
      * unescaped multi-byte UTF-16 surrogate pairs count as 1.
@@ -46,11 +87,15 @@ options {
         for (int i = 0; i < s.length();) {
             char c = s.charAt(i);
             if (c == '\\') {
-                // Any escape: backslash-x HH, backslash-u HHHH, backslash-u{H+}, newline, tab, etc.
-                n++;
                 i++;
                 if (i >= s.length()) break;
                 char e = s.charAt(i++);
+                if (e == '\r') {
+                    if (i < s.length() && s.charAt(i) == '\n') i++;
+                    continue;
+                }
+                if (e == '\n' || e == '\u2028' || e == '\u2029') continue;
+                n++;
                 if (e == 'x') { i += 2; }
                 else if (e == 'u') {
                     if (i < s.length() && s.charAt(i) == '{') {
@@ -70,6 +115,55 @@ options {
             }
         }
         return n;
+    }
+
+    /** Reject raw line terminators and keep ANTLR source positions exact for every sequence. */
+    private void validateAndAccountForLiteralLines(String text, String literalKind) {
+        int extraLines = 0;
+        int lastTerminatorEnd = -1;
+        boolean lastTerminatorNeedsColumnReset = false;
+
+        for (int i = 1; i + 1 < text.length();) {
+            char c = text.charAt(i);
+            if (c != '\\') {
+                if (c == '\r' || c == '\n' || c == '\u2028' || c == '\u2029') {
+                    throw new org.antlr.v4.runtime.misc.ParseCancellationException(
+                        literalKind + " must not contain an unescaped line terminator");
+                }
+                i++;
+                continue;
+            }
+
+            i++;
+            if (i + 1 < text.length() && text.charAt(i) == '\r'
+                && text.charAt(i + 1) == '\n') {
+                i += 2;
+                lastTerminatorEnd = i;
+                lastTerminatorNeedsColumnReset = false;
+                continue;
+            }
+            if (i < text.length() && text.charAt(i) == '\n') {
+                i++;
+                lastTerminatorEnd = i;
+                lastTerminatorNeedsColumnReset = false;
+                continue;
+            }
+            if (i < text.length()
+                && (text.charAt(i) == '\r' || text.charAt(i) == '\u2028'
+                    || text.charAt(i) == '\u2029')) {
+                i++;
+                extraLines++;
+                lastTerminatorEnd = i;
+                lastTerminatorNeedsColumnReset = true;
+                continue;
+            }
+            i++;
+        }
+
+        if (extraLines != 0) setLine(getLine() + extraLines);
+        if (lastTerminatorNeedsColumnReset) {
+            setCharPositionInLine(text.length() - lastTerminatorEnd);
+        }
     }
 
     /** Validate all backslash-u{...} escape sub-sequences in the last-matched token text. */
@@ -172,41 +266,26 @@ fragment UNICODE_ESCAPE
     : 'u' HEX_4_DIGITS
     | 'u{' HEX_DIGITS '}'
     ;
+fragment DECIMAL_INTEGER_LITERAL : '0' | NON_ZERO_DECIMAL_DIGITS;
+fragment EXPONENT_PART           : EXPONENT_INDICATOR SIGN? DECIMAL_DIGITS;
 
 // ----------------------------------------------------------------------------
 // §3.6.2 Numeric literals. The lexer emits one complete token.
 // ----------------------------------------------------------------------------
 BIGINT_LITERAL
-    : // §3.6.2 BigIntLiteral ::= DecimalDigits 'n'
-      // Separators cannot be first or last.
-      ( '0' | NON_ZERO_DECIMAL_DIGITS ) 'n'
+    : // §3.6.2 BigIntLiteral includes every integer radix.
+      DECIMAL_INTEGER_LITERAL 'n'
+    | '0' [bB] BINARY_DIGITS 'n'
+    | '0' [oO] OCTAL_DIGITS 'n'
+    | '0' [xX] HEX_LITERAL_DIGITS 'n'
     ;
 
 DECIMAL_LITERAL
-    : // §3.6.2 DecimalLiteral, with three mutually exclusive forms.
-      // A: . DecimalDigits ExponentPart?
-      // B: DecimalIntegerLiteral '.' DecimalDigits? ExponentPart?
-      // C: DecimalIntegerLiteral ExponentPart?
-      //
-      // DecimalIntegerLiteral = '0' | NON_ZERO_DECIMAL_DIGITS
-      // ANTLR longest-match behavior handles the mutually exclusive order.
-      (   '0'
-            ( '.' DECIMAL_DIGITS? (EXPONENT_INDICATOR SIGN? DECIMAL_DIGITS)? )?
-            ( EXPONENT_INDICATOR SIGN? DECIMAL_DIGITS )?
-        | NON_ZERO_DECIMAL_DIGITS
-            ( '.' DECIMAL_DIGITS? (EXPONENT_INDICATOR SIGN? DECIMAL_DIGITS)? )?
-            ( EXPONENT_INDICATOR SIGN? DECIMAL_DIGITS )?
-        | '.' DECIMAL_DIGITS (EXPONENT_INDICATOR SIGN? DECIMAL_DIGITS)?
-      )
-      {
-        // §3.6.2 NUM_SEP MUST NOT appear first or last
-        // Structural guard plus explicit defensive check.
-        String t = getText();
-        if (t.startsWith("_")) {
-            throw new org.antlr.v4.runtime.misc.ParseCancellationException(
-                "numeric literal must not start with separator: " + t);
-        }
-      }
+    : // Each alternative has exactly one exponent position.
+      DECIMAL_INTEGER_LITERAL '.' DECIMAL_DIGITS? EXPONENT_PART?
+    | DECIMAL_INTEGER_LITERAL EXPONENT_PART
+    | DECIMAL_INTEGER_LITERAL
+    | '.' DECIMAL_DIGITS EXPONENT_PART?
     ;
 
 BINARY_LITERAL
@@ -228,35 +307,45 @@ HEX_LITERAL
 //   §3.6.4  CharacterLiteral   MUST contain exactly one Unicode scalar value
 // ----------------------------------------------------------------------------
 fragment CHARACTER_ESCAPE
-    : '\\' (["\\bfnrtv0] | '\'')
+    : '\\'
+      (
+          '0' { nextInputIsNotDecimalDigit() }?
+        | '\''
+        | '"'
+        | '\\'
+        | [bfnrtv]
+      )
     ;
 
-fragment STRING_ESCAPE_SEQ
+fragment STRING_ESCAPE_SEQUENCE
     : CHARACTER_ESCAPE
     | '\\' HEX_ESCAPE
     | '\\' UNICODE_ESCAPE
-    | '\\' '\n'  | '\\' '\r'     // LineContinuation
-    | '\\' '\u2028'  | '\\' '\u2029'
+    ;
+
+fragment LINE_TERMINATOR_SEQUENCE
+    : '\r\n'
+    | '\n'
+    | '\r'
+    | '\u2028'
+    | '\u2029'
+    ;
+
+fragment LINE_CONTINUATION
+    : '\\' LINE_TERMINATOR_SEQUENCE
     ;
 
 DOUBLE_STRING_LITERAL
     : '"'
       (
           ~["\\\r\n\u2028\u2029]
-        | STRING_ESCAPE_SEQ
+        | STRING_ESCAPE_SEQUENCE
+        | LINE_CONTINUATION
       )*
       '"'
       {
           validateUnicodeEscapes(getText());
-          // A3-REJECT: string literals cannot contain unescaped line terminators.
-          String t = getText();
-          for (int i = 0; i < t.length(); i++) {
-              char c = t.charAt(i);
-              if (c == '\r' || c == '\n' || c == '\u2028' || c == '\u2029') {
-                  throw new org.antlr.v4.runtime.misc.ParseCancellationException(
-                      "string literal must not contain unescaped line terminator");
-              }
-          }
+          validateAndAccountForLiteralLines(getText(), "string literal");
       }
     ;
 
@@ -268,20 +357,14 @@ CHAR_LITERAL
     : '\''
       (
           ~['\\\r\n  ]
-        | STRING_ESCAPE_SEQ
+        | STRING_ESCAPE_SEQUENCE
+        | LINE_CONTINUATION
       )*
       '\''
       {
           validateUnicodeEscapes(getText());
           String raw = getText();
-          // A3-REJECT: line terminators must be escaped.
-          for (int i = 0; i < raw.length(); i++) {
-              char c = raw.charAt(i);
-              if (c == '\r' || c == '\n' || c == '\u2028' || c == '\u2029') {
-                  throw new org.antlr.v4.runtime.misc.ParseCancellationException(
-                      "single-quoted literal must not contain unescaped line terminator");
-              }
-          }
+          validateAndAccountForLiteralLines(raw, "single-quoted literal");
           String content = raw.substring(1, raw.length() - 1);
           int scalars = countUnicodeScalars(content);
           if (scalars != 1) {
@@ -304,22 +387,35 @@ CHAR_LITERAL
 //   TemplateChar    = ~ [`\$]
 //   TemplateEscape  =  \ SourceCharacter
 // ============================================================================
-TEMPLATE_ESCAPE : '\\' . ;
+fragment TEMPLATE_ESCAPE
+    : LINE_CONTINUATION
+    | '\\' ~[\r\n\u2028\u2029]
+    ;
+
+fragment TEMPLATE_NON_INTERPOLATION_DOLLAR
+    : '$' { _input.LA(1) != '{' }?
+    ;
+
+fragment TEMPLATE_ELEMENT
+    : ~[`\\$]
+    | TEMPLATE_ESCAPE
+    | TEMPLATE_NON_INTERPOLATION_DOLLAR
+    ;
 
 NO_SUBSTITUTION_TEMPLATE_LITERAL
-    : '`' ( ~[`\\$] | '\\' . | '$' ~[{] )* '`'
+    : '`' TEMPLATE_ELEMENT* '`'
     ;
 
 TEMPLATE_HEAD
-    : '`' ( ~[`\\$] | '\\' . | '$' ~[{] )* '${'
+    : '`' TEMPLATE_ELEMENT* '${' { beginTemplateSubstitution(); }
     ;
 
 TEMPLATE_MIDDLE
-    : '}' ( ~[`\\$] | '\\' . | '$' ~[{] )* '${'
+    : { atTemplateBoundary() }? '}' TEMPLATE_ELEMENT* '${'
     ;
 
 TEMPLATE_TAIL
-    : '}' ( ~[`\\] | '\\' . )* '`'
+    : { atTemplateBoundary() }? '}' TEMPLATE_ELEMENT* '`' { endTemplateSubstitution(); }
     ;
 
 // ============================================================================

@@ -2,7 +2,7 @@
 
 
 // CHECK-LITERAL: Error [ZOM2062]: Variable declaration expected
-// CHECK:   --> products {{(?:.*[/\\])?reserved\-words\.zom:1:5$}}
+// CHECK-LITERAL:   --> conformance/reserved-words.zom:1:5
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 1 | let if = 1;
 // CHECK-LITERAL:   |     ^

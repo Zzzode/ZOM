@@ -1,0 +1,5 @@
+section: "12-generics ordered type-parameter bound list"
+covers_rule: "typeParameterBoundList"
+expected: "ACCEPT"
+notes:
+  - "The recursive AST retains one ordered member node per plus-separated bound."

@@ -1,7 +1,7 @@
 // RUN: %zomc compile --dump-ast %corpus/09-interfaces/impl_where_clause_pos_13.zom | %FileCheck %s
 
 
-// CHECK: SourceFile #52 @1:1..12:1 file_name="impl_where_clause_pos_13.zom"
+// CHECK: SourceFile #49 @1:1..12:1 file_name="impl_where_clause_pos_13.zom"
 // CHECK-NEXT:   module: null
 // CHECK-NEXT:   statements:
 // CHECK-NEXT:     StatementListItem #12 @1:1..3:2
@@ -12,7 +12,7 @@
 // CHECK-NEXT:           members_id:
 // CHECK-NEXT:             ClassMemberList #10 @1:14..3:2 nmembers=1
 // CHECK-NEXT:               members:
-// CHECK-NEXT:                 MethodDecl #9 @2:5..2:37 name="eq" is_static=false visibility=Default
+// CHECK-NEXT:                 MethodDecl #9 @2:5..2:37 name="eq" mode=Instance visibility=Default
 // CHECK-NEXT:                   params_id:
 // CHECK-NEXT:                     FunctionParameterList #7 @2:11..2:28 nparams=2
 // CHECK-NEXT:                       params:
@@ -20,7 +20,7 @@
 // CHECK-NEXT:                           ty:
 // CHECK-NEXT:                             NamedTypeExpr #2 @2:12..2:16
 // CHECK-NEXT:                               path:
-// CHECK-NEXT:                                 ModulePath #1 @2:12..2:16 segments=["Self"]
+// CHECK-NEXT:                                 ModulePath #1 @2:12..2:16 segments=["Self"] root=Relative
 // CHECK-NEXT:                               args: []
 // CHECK-NEXT:                           default_: null
 // CHECK-NEXT:                           attrs: null
@@ -28,7 +28,7 @@
 // CHECK-NEXT:                           ty:
 // CHECK-NEXT:                             NamedTypeExpr #5 @2:23..2:27
 // CHECK-NEXT:                               path:
-// CHECK-NEXT:                                 ModulePath #4 @2:23..2:27 segments=["Self"]
+// CHECK-NEXT:                                 ModulePath #4 @2:23..2:27 segments=["Self"] root=Relative
 // CHECK-NEXT:                               args: []
 // CHECK-NEXT:                           default_: null
 // CHECK-NEXT:                           attrs: null
@@ -44,8 +44,8 @@
 // CHECK-NEXT:           type_params_id:
 // CHECK-NEXT:             GenericParams #14 @5:10..5:13 nparams=1
 // CHECK-NEXT:               params:
-// CHECK-NEXT:                 GenericTypeParam #13 @5:11..5:12 name="T" variance=Invariant
-// CHECK-NEXT:                   bound: null
+// CHECK-NEXT:                 GenericTypeParam #13 @5:11..5:12 name="T"
+// CHECK-NEXT:                   bounds_id: null
 // CHECK-NEXT:                   default_ty: null
 // CHECK-NEXT:               where_: null
 // CHECK-NEXT:           base_ty: null
@@ -56,28 +56,26 @@
 // CHECK-NEXT:                   ty:
 // CHECK-NEXT:                     NamedTypeExpr #16 @6:12..6:13
 // CHECK-NEXT:                       path:
-// CHECK-NEXT:                         ModulePath #15 @6:12..6:13 segments=["T"]
+// CHECK-NEXT:                         ModulePath #15 @6:12..6:13 segments=["T"] root=Relative
 // CHECK-NEXT:                       args: []
 // CHECK-NEXT:                   init: null
 // CHECK-NEXT:       attrs: null
-// CHECK-NEXT:     StatementListItem #51 @9:1..11:2
+// CHECK-NEXT:     StatementListItem #48 @9:1..11:2
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         StandaloneImplDecl #50 @9:1..11:2 is_unsafe=false
-// CHECK-NEXT:           ifaces_id:
-// CHECK-NEXT:             ImplIfaceList #33 @9:9..9:11 n_ifaces=1
-// CHECK-NEXT:               ifaces:
-// CHECK-NEXT:                 NamedTypeExpr #32 @9:9..9:11
-// CHECK-NEXT:                   path:
-// CHECK-NEXT:                     ModulePath #31 @9:9..9:11 segments=["Eq"]
-// CHECK-NEXT:                   args: []
-// CHECK-NEXT:           for_ty:
-// CHECK-NEXT:             NamedTypeExpr #37 @9:16..9:22
+// CHECK-NEXT:         StandaloneImplDecl #47 @9:1..11:2 is_unsafe=false
+// CHECK-NEXT:           interface:
+// CHECK-NEXT:             NamedTypeExpr #30 @9:9..9:11
 // CHECK-NEXT:               path:
-// CHECK-NEXT:                 ModulePath #36 @9:16..9:19 segments=["Box"]
+// CHECK-NEXT:                 ModulePath #29 @9:9..9:11 segments=["Eq"] root=Relative
+// CHECK-NEXT:               args: []
+// CHECK-NEXT:           for_ty:
+// CHECK-NEXT:             NamedTypeExpr #34 @9:16..9:22
+// CHECK-NEXT:               path:
+// CHECK-NEXT:                 ModulePath #33 @9:16..9:19 segments=["Box"] root=Relative
 // CHECK-NEXT:               args:
-// CHECK-NEXT:                 NamedTypeExpr #35 @9:20..9:21
+// CHECK-NEXT:                 NamedTypeExpr #32 @9:20..9:21
 // CHECK-NEXT:                   path:
-// CHECK-NEXT:                     ModulePath #34 @9:20..9:21 segments=["T"]
+// CHECK-NEXT:                     ModulePath #31 @9:20..9:21 segments=["T"] root=Relative
 // CHECK-NEXT:                   args: []
 // CHECK-NEXT:           where_:
 // CHECK-NEXT:             WhereClause #28 @9:23..9:34
@@ -86,63 +84,50 @@
 // CHECK-NEXT:                   ty:
 // CHECK-NEXT:                     NamedTypeExpr #24 @9:29..9:30
 // CHECK-NEXT:                       path:
-// CHECK-NEXT:                         ModulePath #23 @9:29..9:30 segments=["T"]
+// CHECK-NEXT:                         ModulePath #23 @9:29..9:30 segments=["T"] root=Relative
 // CHECK-NEXT:                       args: []
 // CHECK-NEXT:                   bound:
 // CHECK-NEXT:                     NamedTypeExpr #26 @9:32..9:34
 // CHECK-NEXT:                       path:
-// CHECK-NEXT:                         ModulePath #25 @9:32..9:34 segments=["Eq"]
+// CHECK-NEXT:                         ModulePath #25 @9:32..9:34 segments=["Eq"] root=Relative
 // CHECK-NEXT:                       args: []
 // CHECK-NEXT:           type_params_id:
-// CHECK-NEXT:             GenericParams #30 @9:5..9:8 nparams=1
+// CHECK-NEXT:             GenericParams #22 @9:5..9:8 nparams=1
 // CHECK-NEXT:               params:
-// CHECK-NEXT:                 GenericTypeParam #29 @9:6..9:7 name="T" variance=Invariant
-// CHECK-NEXT:                   bound: null
+// CHECK-NEXT:                 GenericTypeParam #21 @9:6..9:7 name="T"
+// CHECK-NEXT:                   bounds_id: null
 // CHECK-NEXT:                   default_ty: null
-// CHECK-NEXT:               where_:
-// CHECK-NEXT:                 WhereClause #28 @9:23..9:34
-// CHECK-NEXT:                   preds:
-// CHECK-NEXT:                     WherePred #27 @9:29..9:34 kind=Implements
-// CHECK-NEXT:                       ty:
-// CHECK-NEXT:                         NamedTypeExpr #24 @9:29..9:30
-// CHECK-NEXT:                           path:
-// CHECK-NEXT:                             ModulePath #23 @9:29..9:30 segments=["T"]
-// CHECK-NEXT:                           args: []
-// CHECK-NEXT:                       bound:
-// CHECK-NEXT:                         NamedTypeExpr #26 @9:32..9:34
-// CHECK-NEXT:                           path:
-// CHECK-NEXT:                             ModulePath #25 @9:32..9:34 segments=["Eq"]
-// CHECK-NEXT:                           args: []
+// CHECK-NEXT:               where_: null
 // CHECK-NEXT:           members_id:
-// CHECK-NEXT:             ClassMemberList #49 @9:35..11:2 nmembers=1
+// CHECK-NEXT:             ClassMemberList #46 @9:35..11:2 nmembers=1
 // CHECK-NEXT:               members:
-// CHECK-NEXT:                 MethodDecl #48 @10:5..10:39 name="eq" is_static=false visibility=Default
+// CHECK-NEXT:                 MethodDecl #45 @10:5..10:39 name="eq" mode=Instance visibility=Default
 // CHECK-NEXT:                   params_id:
-// CHECK-NEXT:                     FunctionParameterList #46 @10:11..10:30 nparams=2
+// CHECK-NEXT:                     FunctionParameterList #43 @10:11..10:30 nparams=2
 // CHECK-NEXT:                       params:
-// CHECK-NEXT:                         FunctionParameterDecl #40 @10:12..10:16 name="this"
+// CHECK-NEXT:                         FunctionParameterDecl #37 @10:12..10:16 name="this"
 // CHECK-NEXT:                           ty:
-// CHECK-NEXT:                             NamedTypeExpr #39 @10:12..10:16
+// CHECK-NEXT:                             NamedTypeExpr #36 @10:12..10:16
 // CHECK-NEXT:                               path:
-// CHECK-NEXT:                                 ModulePath #38 @10:12..10:16 segments=["Self"]
+// CHECK-NEXT:                                 ModulePath #35 @10:12..10:16 segments=["Self"] root=Relative
 // CHECK-NEXT:                               args: []
 // CHECK-NEXT:                           default_: null
 // CHECK-NEXT:                           attrs: null
-// CHECK-NEXT:                         FunctionParameterDecl #45 @10:18..10:29 name="rhs"
+// CHECK-NEXT:                         FunctionParameterDecl #42 @10:18..10:29 name="rhs"
 // CHECK-NEXT:                           ty:
-// CHECK-NEXT:                             NamedTypeExpr #44 @10:23..10:29
+// CHECK-NEXT:                             NamedTypeExpr #41 @10:23..10:29
 // CHECK-NEXT:                               path:
-// CHECK-NEXT:                                 ModulePath #43 @10:23..10:26 segments=["Box"]
+// CHECK-NEXT:                                 ModulePath #40 @10:23..10:26 segments=["Box"] root=Relative
 // CHECK-NEXT:                               args:
-// CHECK-NEXT:                                 NamedTypeExpr #42 @10:27..10:28
+// CHECK-NEXT:                                 NamedTypeExpr #39 @10:27..10:28
 // CHECK-NEXT:                                   path:
-// CHECK-NEXT:                                     ModulePath #41 @10:27..10:28 segments=["T"]
+// CHECK-NEXT:                                     ModulePath #38 @10:27..10:28 segments=["T"] root=Relative
 // CHECK-NEXT:                                   args: []
 // CHECK-NEXT:                           default_: null
 // CHECK-NEXT:                           attrs: null
 // CHECK-NEXT:                   type_params_id: null
 // CHECK-NEXT:                   ret_ty:
-// CHECK-NEXT:                     PredefinedTypeExpr #47 @10:34..10:38 kind=Bool
+// CHECK-NEXT:                     PredefinedTypeExpr #44 @10:34..10:38 kind=Bool
 // CHECK-NEXT:                   raises_ty: null
 // CHECK-NEXT:                   body: null
 // CHECK-NEXT:       attrs: null

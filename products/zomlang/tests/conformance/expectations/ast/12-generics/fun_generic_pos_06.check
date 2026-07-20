@@ -14,7 +14,7 @@
 // CHECK-NEXT:                   ty:
 // CHECK-NEXT:                     NamedTypeExpr #4 @1:16..1:17
 // CHECK-NEXT:                       path:
-// CHECK-NEXT:                         ModulePath #3 @1:16..1:17 segments=["T"]
+// CHECK-NEXT:                         ModulePath #3 @1:16..1:17 segments=["T"] root=Relative
 // CHECK-NEXT:                       args: []
 // CHECK-NEXT:                   default_: null
 // CHECK-NEXT:                   attrs: null
@@ -22,15 +22,15 @@
 // CHECK-NEXT:                   ty:
 // CHECK-NEXT:                     NamedTypeExpr #7 @1:22..1:23
 // CHECK-NEXT:                       path:
-// CHECK-NEXT:                         ModulePath #6 @1:22..1:23 segments=["T"]
+// CHECK-NEXT:                         ModulePath #6 @1:22..1:23 segments=["T"] root=Relative
 // CHECK-NEXT:                       args: []
 // CHECK-NEXT:                   default_: null
 // CHECK-NEXT:                   attrs: null
 // CHECK-NEXT:           type_params_id:
 // CHECK-NEXT:             GenericParams #2 @1:9..1:12 nparams=1
 // CHECK-NEXT:               params:
-// CHECK-NEXT:                 GenericTypeParam #1 @1:10..1:11 name="T" variance=Invariant
-// CHECK-NEXT:                   bound: null
+// CHECK-NEXT:                 GenericTypeParam #1 @1:10..1:11 name="T"
+// CHECK-NEXT:                   bounds_id: null
 // CHECK-NEXT:                   default_ty: null
 // CHECK-NEXT:               where_: null
 // CHECK-NEXT:           ret_ty:
@@ -38,11 +38,11 @@
 // CHECK-NEXT:               elems:
 // CHECK-NEXT:                 NamedTypeExpr #11 @1:29..1:30
 // CHECK-NEXT:                   path:
-// CHECK-NEXT:                     ModulePath #10 @1:29..1:30 segments=["T"]
+// CHECK-NEXT:                     ModulePath #10 @1:29..1:30 segments=["T"] root=Relative
 // CHECK-NEXT:                   args: []
 // CHECK-NEXT:                 NamedTypeExpr #13 @1:32..1:33
 // CHECK-NEXT:                   path:
-// CHECK-NEXT:                     ModulePath #12 @1:32..1:33 segments=["T"]
+// CHECK-NEXT:                     ModulePath #12 @1:32..1:33 segments=["T"] root=Relative
 // CHECK-NEXT:                   args: []
 // CHECK-NEXT:           raises_ty: null
 // CHECK-NEXT:           body:

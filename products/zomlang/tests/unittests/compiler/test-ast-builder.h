@@ -21,24 +21,20 @@
 #include "zomlang/compiler/ast/tree.h"
 #include "zomlang/compiler/diagnostics/diagnostic-engine.h"
 #include "zomlang/compiler/source/manager.h"
-#include "zomlang/compiler/symbol/symbol-table.h"
 
 namespace zomlang {
 namespace compiler {
 namespace tests {
 
-/// \brief Test fixture helper for building AST trees and binder/checker infrastructure.
+/// \brief Test fixture helper for building AST trees.
 ///
-/// Provides convenient factory methods for constructing AST nodes and
-/// setting up the compilation pipeline (SourceManager, DiagnosticEngine,
-/// SymbolTable, BindingMetadata) for testing.
+/// Provides convenient factory methods for constructing AST nodes and source-backed
+/// diagnostics used by parser and Binder tests.
 class TestFixture {
 public:
   TestFixture()
       : sourceManager_(zc::heap<source::SourceManager>()),
-        diagnostics_(zc::heap<diagnostics::DiagnosticEngine>(*sourceManager_)),
-        symbols_(),
-        metadata_() {}
+        diagnostics_(zc::heap<diagnostics::DiagnosticEngine>(*sourceManager_)) {}
 
   // ==========================================================================
   // Infrastructure accessors
@@ -46,9 +42,6 @@ public:
 
   source::SourceManager& sourceManager() { return *sourceManager_; }
   diagnostics::DiagnosticEngine& diagnostics() { return *diagnostics_; }
-  symbol::SymbolTable& symbols() { return symbols_; }
-  ast::BindingMetadata& metadata() { return metadata_; }
-  symbol::ScopeManager& scopes() { return symbols_.getScopeManager(); }
 
   // ==========================================================================
   // Tree builder helpers
@@ -56,11 +49,7 @@ public:
 
   ast::TreeBuilder& builder() { return builder_; }
 
-  ast::Tree finishTree() {
-    // Do NOT call metadata_.resizeFor() here — Binder/DeclCollector handle it.
-    // Calling it prematurely can cause issues with the traversal.
-    return builder_.finish();
-  }
+  ast::Tree finishTree() { return builder_.finish(); }
 
   ast::NodeId makeModulePath(zc::StringPtr path) {
     zc::Vector<ast::IdentId> segIds;
@@ -88,6 +77,7 @@ public:
     ast::NodePayload payload;
     payload.words[ast::kModulePathSegmentsFirstWord] = identList.first;
     payload.words[ast::kModulePathSegmentsSizeWord] = identList.size;
+    payload.words[ast::kModulePathRootWord] = 0;
     return builder_.makeNode(ast::SyntaxKind::ModulePath, source::SourceRange(), payload);
   }
 
@@ -292,14 +282,12 @@ public:
     return builder_.makeNode(ast::SyntaxKind::FloatLiteralExpr, source::SourceRange(), payload);
   }
 
-  /// \brief Create a StrLiteral.
-  ast::NodeId makeStrLiteral(zc::StringPtr value) {
+  /// \brief Create a StringLiteralExpr.
+  ast::NodeId makeStringLiteralExpr(zc::StringPtr value) {
     ast::NodePayload payload;
     auto valId = builder_.internString(value);
-    payload.words[ast::kStrLiteralValueWord] = valId.value;
-    payload.words[ast::kStrLiteralIsRawWord] = 0;
-    payload.words[ast::kStrLiteralPrefixWord] = 0;
-    return builder_.makeNode(ast::SyntaxKind::StrLiteral, source::SourceRange(), payload);
+    payload.words[ast::kStringLiteralExprValueWord] = valId.value;
+    return builder_.makeNode(ast::SyntaxKind::StringLiteralExpr, source::SourceRange(), payload);
   }
 
   /// \brief Create a BoolLiteral.
@@ -435,10 +423,6 @@ public:
   }
 
   /// \brief Create a NamedTypeExpr referencing a type by name.
-  ///
-  /// The path must be an IdentExpr node (not a raw IdentId), because
-  /// NameResolver::resolveNamedTypeExpr expects tree.contains(pathId) to be true
-  /// and then reads the node kind to dispatch.
   ast::NodeId makeNamedTypeExpr(zc::StringPtr name) {
     auto identExpr = makeIdentExpr(name);
     ast::NodePayload payload;
@@ -493,14 +477,22 @@ public:
   }
 
   /// \brief Create a GenericTypeParam.
-  ast::NodeId makeGenericTypeParam(zc::StringPtr name, ast::NodeId bound = ast::NodeId(),
-                                   ast::NodeId defaultTy = ast::NodeId(), uint8_t variance = 0) {
+  ast::NodeId makeGenericTypeParam(zc::StringPtr name, ast::NodeId bounds = ast::NodeId(),
+                                   ast::NodeId defaultTy = ast::NodeId()) {
     ast::NodePayload payload;
     payload.words[ast::kGenericTypeParamNameWord] = builder_.internIdent(name).value;
-    payload.words[ast::kGenericTypeParamBoundWord] = bound.value;
+    payload.words[ast::kGenericTypeParamBoundsIdWord] = bounds.value;
     payload.words[ast::kGenericTypeParamDefaultTyWord] = defaultTy.value;
-    payload.words[ast::kGenericTypeParamVarianceWord] = variance;
     return builder_.makeNode(ast::SyntaxKind::GenericTypeParam, source::SourceRange(), payload);
+  }
+
+  /// \brief Create an ordered TypeParameterBoundList.
+  ast::NodeId makeTypeParameterBoundList(ast::NodeList bounds) {
+    ast::NodePayload payload;
+    payload.words[ast::kTypeParameterBoundListBoundsFirstWord] = bounds.first;
+    payload.words[ast::kTypeParameterBoundListBoundsSizeWord] = bounds.size;
+    return builder_.makeNode(ast::SyntaxKind::TypeParameterBoundList, source::SourceRange(),
+                             payload);
   }
 
   /// \brief Create a GenericParams list.
@@ -544,7 +536,7 @@ public:
     payload.words[ast::kMethodDeclRetTyWord] = retTy.value;
     payload.words[ast::kMethodDeclRaisesTyWord] = raisesTy.value;
     payload.words[ast::kMethodDeclBodyWord] = body.value;
-    payload.words[ast::kMethodDeclIsStaticWord] = isStatic ? 1 : 0;
+    payload.words[ast::kMethodDeclModeWord] = isStatic ? 1 : 0;
     payload.words[ast::kMethodDeclVisibilityWord] = 0;
     return builder_.makeNode(ast::SyntaxKind::MethodDecl, source::SourceRange(), payload);
   }
@@ -748,11 +740,11 @@ public:
 
   /// \brief Create a StandaloneImplDecl.
   ast::NodeId makeStandaloneImplDecl(ast::NodeId forTy = ast::NodeId(),
-                                     ast::NodeId ifaces = ast::NodeId(),
+                                     ast::NodeId interface = ast::NodeId(),
                                      ast::NodeId members = ast::NodeId()) {
     ast::NodePayload payload;
     payload.words[ast::kStandaloneImplDeclIsUnsafeWord] = 0;
-    payload.words[ast::kStandaloneImplDeclIfacesIdWord] = ifaces.value;
+    payload.words[ast::kStandaloneImplDeclInterfaceWord] = interface.value;
     payload.words[ast::kStandaloneImplDeclForTyWord] = forTy.value;
     payload.words[ast::kStandaloneImplDeclWhereWord] = 0;
     payload.words[ast::kStandaloneImplDeclTypeParamsIdWord] = 0;
@@ -763,7 +755,6 @@ public:
   /// \brief Create an ImplIfaceList.
   ast::NodeId makeImplIfaceList(ast::NodeList ifaces) {
     ast::NodePayload payload;
-    payload.words[ast::kImplIfaceListNIfacesWord] = ifaces.size;
     payload.words[ast::kImplIfaceListIfacesFirstWord] = ifaces.first;
     payload.words[ast::kImplIfaceListIfacesSizeWord] = ifaces.size;
     return builder_.makeNode(ast::SyntaxKind::ImplIfaceList, source::SourceRange(), payload);
@@ -790,9 +781,9 @@ public:
     return makeLiteralPattern(lit);
   }
 
-  /// \brief Create a LiteralPattern wrapping a StrLiteral.
+  /// \brief Create a LiteralPattern wrapping a StringLiteralExpr.
   ast::NodeId makeStringLiteralPattern(zc::StringPtr value) {
-    auto lit = makeStrLiteral(value);
+    auto lit = makeStringLiteralExpr(value);
     return makeLiteralPattern(lit);
   }
 
@@ -872,7 +863,6 @@ public:
   ast::NodeId makeArrayTypeExpr(ast::NodeId elemTy) {
     ast::NodePayload payload;
     payload.words[ast::kArrayTypeExprElemWord] = elemTy.value;
-    payload.words[ast::kArrayTypeExprLenExprWord] = 0;
     return builder_.makeNode(ast::SyntaxKind::ArrayTypeExpr, source::SourceRange(), payload);
   }
 
@@ -941,37 +931,15 @@ public:
 
   /// \brief Create a DynTypeExpr (e.g. `dyn Drawable`).
   ast::NodeId makeDynTypeExpr(ast::NodeId ifaceTy) {
-    zc::Vector<ast::NodeId> ifaces;
-    ifaces.add(ifaceTy);
-    auto ifaceList = builder_.makeList(ifaces.asPtr());
-    ast::NodePayload ifaceListPayload;
-    ifaceListPayload.words[ast::kDynTypeIfaceListNIfacesWord] = ifaceList.size;
-    ifaceListPayload.words[ast::kDynTypeIfaceListIfacesFirstWord] = ifaceList.first;
-    ifaceListPayload.words[ast::kDynTypeIfaceListIfacesSizeWord] = ifaceList.size;
-    auto ifaceListNode = builder_.makeNode(ast::SyntaxKind::DynTypeIfaceList, source::SourceRange(),
-                                           ifaceListPayload);
-
     ast::NodePayload payload;
-    payload.words[ast::kDynTypeExprIfacesIdWord] = ifaceListNode.value;
+    payload.words[ast::kDynTypeExprPrincipalWord] = ifaceTy.value;
     payload.words[ast::kDynTypeExprMarkersIdWord] = 0;
     payload.words[ast::kDynTypeExprAssocBindingsIdWord] = 0;
-    payload.words[ast::kDynTypeExprHasLifetimeWord] = 0;
-    payload.words[ast::kDynTypeExprLifetimeWord] = 0;
     return builder_.makeNode(ast::SyntaxKind::DynTypeExpr, source::SourceRange(), payload);
   }
 
   /// \brief Create a DynTypeExpr with one marker bound.
   ast::NodeId makeDynTypeExpr(ast::NodeId ifaceTy, zc::StringPtr markerName) {
-    zc::Vector<ast::NodeId> ifaces;
-    ifaces.add(ifaceTy);
-    auto ifaceList = builder_.makeList(ifaces.asPtr());
-    ast::NodePayload ifaceListPayload;
-    ifaceListPayload.words[ast::kDynTypeIfaceListNIfacesWord] = ifaceList.size;
-    ifaceListPayload.words[ast::kDynTypeIfaceListIfacesFirstWord] = ifaceList.first;
-    ifaceListPayload.words[ast::kDynTypeIfaceListIfacesSizeWord] = ifaceList.size;
-    auto ifaceListNode = builder_.makeNode(ast::SyntaxKind::DynTypeIfaceList, source::SourceRange(),
-                                           ifaceListPayload);
-
     zc::Vector<ast::IdentId> markerSegments;
     markerSegments.add(builder_.internIdent(markerName));
     auto markerSegmentList = builder_.makeIdentList(markerSegments.asPtr());
@@ -993,11 +961,9 @@ public:
                                             source::SourceRange(), markerListPayload);
 
     ast::NodePayload payload;
-    payload.words[ast::kDynTypeExprIfacesIdWord] = ifaceListNode.value;
+    payload.words[ast::kDynTypeExprPrincipalWord] = ifaceTy.value;
     payload.words[ast::kDynTypeExprMarkersIdWord] = markerListNode.value;
     payload.words[ast::kDynTypeExprAssocBindingsIdWord] = 0;
-    payload.words[ast::kDynTypeExprHasLifetimeWord] = 0;
-    payload.words[ast::kDynTypeExprLifetimeWord] = 0;
     return builder_.makeNode(ast::SyntaxKind::DynTypeExpr, source::SourceRange(), payload);
   }
 
@@ -1038,11 +1004,6 @@ public:
     return builder_.makeNode(ast::SyntaxKind::ObjectTypeMember, source::SourceRange(), payload);
   }
 
-  /// \brief Create a BottomTypeExpr (e.g. `never`).
-  ast::NodeId makeBottomTypeExpr() {
-    return builder_.makeNode(ast::SyntaxKind::BottomTypeExpr, source::SourceRange());
-  }
-
   // ==========================================================================
   // Enum variant factory methods
   // ==========================================================================
@@ -1079,15 +1040,13 @@ public:
 
   /// \brief Helper: build a complete source file from a list of top-level declarations.
   ///
-  /// NOTE: We intentionally do NOT create a ModuleDeclaration node here.
-  /// Passing an invalid NodeId for the module avoids potential traversal cycles
-  /// that can cause stack overflow in DeclCollector. The Binder handles this
-  /// gracefully — it checks `tree.contains(moduleNode)` before visiting.
+  /// The module name is retained for call-site readability. Tests that need an explicit
+  /// module declaration construct it separately.
   ast::Tree buildSourceFile(zc::StringPtr moduleName, zc::ArrayPtr<const ast::NodeId> decls) {
+    static_cast<void>(moduleName);
     zc::Vector<ast::NodeId> items;
     for (size_t i = 0; i < decls.size(); i++) { items.add(makeStatementListItem(decls[i])); }
     ast::NodeList stmtList = builder_.makeList(items.asPtr());
-    // Pass invalid NodeId for module — matches the working binder-test.cc pattern
     makeSourceFile(ast::NodeId(), stmtList);
     return finishTree();
   }
@@ -1110,8 +1069,6 @@ private:
   zc::Own<source::SourceManager> sourceManager_;
   zc::Own<diagnostics::DiagnosticEngine> diagnostics_;
   zc::Maybe<ast::Tree> retainedTree_;
-  symbol::SymbolTable symbols_;
-  ast::BindingMetadata metadata_;
   ast::TreeBuilder builder_;
 };
 

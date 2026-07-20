@@ -83,7 +83,7 @@ class SnapshotRegenerator:
         return None
 
     def run_zomc(self, test_file: str, snapshot_kind: str) -> Tuple[int, str]:
-        """Run zomc compiler and get combined output."""
+        """Run zomc and return the stream consumed by the generated RUN line."""
         zomc = self.find_zomc()
         if not zomc:
             raise RuntimeError("Could not find zomc compiler")
@@ -113,11 +113,13 @@ class SnapshotRegenerator:
         result = subprocess.run(
             [*command_prefix, "compile", "--dump-ast", test_file],
             stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
+            stderr=subprocess.PIPE,
             text=True,
             check=False,
         )
-        return result.returncode, result.stdout
+        if result.returncode == 0:
+            return result.returncode, result.stdout
+        return result.returncode, result.stdout + result.stderr
 
     def format_json_for_check(self, json_str: str) -> List[str]:
         """Format JSON string as CHECK comments."""
@@ -315,18 +317,9 @@ class SnapshotRegenerator:
     def normalize_run_line(
         self, line: str, source_file: Path, returncode: int, snapshot_kind: str
     ) -> str:
-        """Keep existing RUN lines unless the source path or status changed."""
+        """Normalize RUN lines to the command whose output was regenerated."""
         expected = self.default_run_line(source_file, returncode, snapshot_kind)
-        if snapshot_kind == "diagnostics":
-            return line if line.strip() == expected else expected + "\n"
-
-        rel = source_file.relative_to(self.corpus_root).as_posix()
-        stripped = line.strip()
-        expects_failure = stripped.startswith("// RUN: !")
-        actual_failure = returncode != 0
-        if f"%corpus/{rel}" not in stripped or expects_failure != actual_failure:
-            return expected + "\n"
-        return line
+        return line if line.strip() == expected else expected + "\n"
 
     def read_lines(self, path: Path) -> List[str]:
         """Read a text file and return lines."""

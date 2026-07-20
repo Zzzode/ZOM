@@ -3,7 +3,7 @@
 
 
 // CHECK-LITERAL: Error [ZOM2076]: Unexpected token expected
-// CHECK-LITERAL:   --> 09-interfaces/iface_where_reject_neg_05.zom:1:23
+// CHECK:   --> {{.*}}09-interfaces/iface_where_reject_neg_05.zom:1:23
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 1 | interface BadIface<T> where T: Eq {
 // CHECK-LITERAL:   |                       ^

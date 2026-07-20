@@ -34,8 +34,14 @@ enum class FrozenRegistryFailure : uint8_t {
   ForeignContext,
   SlotOutOfRange,
   DuplicateCanonicalKey,
+  DigestCollision,
+  InvalidAuthority,
+  UnknownOwner,
+  OwnerModuleMismatch,
+  OwnerPrefixMismatch,
+  RepeatedOwner,
+  SelfOwner,
   AncestorMismatch,
-  SourceContentMismatch,
   PostFreezeMutation,
   RegistryNotFrozen
 };
@@ -225,12 +231,212 @@ private:
   friend class SemanticIdentityRegistrySet;
 };
 
+/// \brief Context-owned stable authority registry with complete-record collision checks.
+template <typename Key, typename Record, typename Authority, typename Tag>
+class FrozenAuthorityRegistry final {
+public:
+  using Handle = ContextHandle<Tag>;
+
+  class FrozenKeyIndex final {
+  public:
+    FrozenKeyIndex(FrozenKeyIndex&&) noexcept = default;
+    FrozenKeyIndex& operator=(FrozenKeyIndex&&) noexcept = default;
+    ZC_DISALLOW_COPY(FrozenKeyIndex);
+
+    ZC_NODISCARD zc::Maybe<const Key&> lookup(Handle handle) const {
+      if (!handle.belongsTo(owner) || handle.slot >= keys.size()) { return zc::none; }
+      return keys[handle.slot];
+    }
+
+  private:
+    FrozenKeyIndex(SemanticContextBrand owner, zc::Array<Key>&& keys) noexcept
+        : owner(owner), keys(zc::mv(keys)) {}
+
+    SemanticContextBrand owner;
+    zc::Array<Key> keys;
+
+    friend class FrozenAuthorityRegistry;
+  };
+
+  FrozenAuthorityRegistry(FrozenAuthorityRegistry&&) noexcept = default;
+  FrozenAuthorityRegistry& operator=(FrozenAuthorityRegistry&&) noexcept = default;
+  ZC_DISALLOW_COPY(FrozenAuthorityRegistry);
+
+  /// \brief Admits one verified authority or coalesces an equal complete authority.
+  ZC_NODISCARD FrozenRegistryFailure collect(Authority&& authority) {
+    if (!owner.isValid()) { return fail(FrozenRegistryFailure::InvalidContext); }
+    if (state != State::Collecting) { return fail(FrozenRegistryFailure::PostFreezeMutation); }
+    if (!authority.verify()) { return fail(FrozenRegistryFailure::InvalidAuthority); }
+
+    auto encodedKey = authority.key().encode();
+    for (const auto& entry : entries) {
+      if (!sameBytes(entry.encodedKey.asPtr(), encodedKey.asPtr())) { continue; }
+      if (entry.authority.sameRecordAs(authority)) { return FrozenRegistryFailure::None; }
+      failureStructuralKeyValue = zc::heapArray(encodedKey.asPtr());
+      return fail(FrozenRegistryFailure::DigestCollision);
+    }
+
+    entries.add(Entry(zc::mv(authority), zc::mv(encodedKey)));
+    return FrozenRegistryFailure::None;
+  }
+
+  /// \brief Assigns deterministic handles after all complete authorities are admitted.
+  ZC_NODISCARD FrozenRegistryFailure freeze() {
+    if (!owner.isValid()) { return fail(FrozenRegistryFailure::InvalidContext); }
+    if (state != State::Collecting) { return fail(FrozenRegistryFailure::PostFreezeMutation); }
+    if (entries.size() > static_cast<uint64_t>(0xffffffffu)) {
+      return fail(FrozenRegistryFailure::SlotOutOfRange);
+    }
+    sortEntries();
+    state = State::Frozen;
+    return FrozenRegistryFailure::None;
+  }
+
+  ZC_NODISCARD bool isCollecting() const noexcept { return state == State::Collecting; }
+  ZC_NODISCARD bool isFrozen() const noexcept { return state == State::Frozen; }
+  ZC_NODISCARD FrozenRegistryFailure terminalFailure() const noexcept { return failure; }
+  ZC_NODISCARD size_t size() const noexcept { return entries.size(); }
+
+  ZC_NODISCARD zc::Maybe<zc::ArrayPtr<const uint8_t>> failureStructuralKey() const {
+    ZC_IF_SOME(value, failureStructuralKeyValue) { return value.asPtr(); }
+    return zc::none;
+  }
+
+  /// \brief Finds an already-admitted owner before or after deterministic handle freeze.
+  ZC_NODISCARD zc::Maybe<const Authority&> admittedAuthority(const Key& key) const {
+    if (state == State::Invalid) { return zc::none; }
+    const auto encoded = key.encode();
+    for (const auto& entry : entries) {
+      if (sameBytes(entry.encodedKey.asPtr(), encoded.asPtr())) { return entry.authority; }
+    }
+    return zc::none;
+  }
+
+  ZC_NODISCARD zc::Maybe<FrozenKeyIndex> snapshotKeys() const {
+    if (!isFrozen()) { return zc::none; }
+    zc::Vector<Key> keys;
+    keys.reserve(entries.size());
+    for (const auto& entry : entries) { keys.add(entry.authority.key().clone()); }
+    return FrozenKeyIndex(owner, keys.releaseAsArray());
+  }
+
+  ZC_NODISCARD zc::Maybe<const Key&> keyAt(size_t slot) const {
+    if (!isFrozen() || slot >= entries.size()) { return zc::none; }
+    return entries[slot].authority.key();
+  }
+
+  ZC_NODISCARD zc::Maybe<const Record&> recordAt(size_t slot) const {
+    if (!isFrozen() || slot >= entries.size()) { return zc::none; }
+    return entries[slot].authority.record();
+  }
+
+  ZC_NODISCARD zc::Maybe<const Authority&> authorityAt(size_t slot) const {
+    if (!isFrozen() || slot >= entries.size()) { return zc::none; }
+    return entries[slot].authority;
+  }
+
+  ZC_NODISCARD zc::Maybe<Handle> find(const Key& key) const {
+    if (!isFrozen()) { return zc::none; }
+    const auto encoded = key.encode();
+    for (size_t slot = 0; slot < entries.size(); ++slot) {
+      if (sameBytes(entries[slot].encodedKey.asPtr(), encoded.asPtr())) {
+        return Handle(owner, static_cast<uint32_t>(slot));
+      }
+    }
+    return zc::none;
+  }
+
+  ZC_NODISCARD FrozenRegistryFailure validate(Handle handle) const noexcept {
+    if (!isFrozen()) { return FrozenRegistryFailure::RegistryNotFrozen; }
+    if (!handle.isValid()) { return FrozenRegistryFailure::InvalidHandle; }
+    if (handle.context != owner) { return FrozenRegistryFailure::ForeignContext; }
+    if (handle.slot >= entries.size()) { return FrozenRegistryFailure::SlotOutOfRange; }
+    return FrozenRegistryFailure::None;
+  }
+
+  ZC_NODISCARD zc::Maybe<const Key&> lookup(Handle handle) const {
+    if (validate(handle) != FrozenRegistryFailure::None) { return zc::none; }
+    return entries[handle.slot].authority.key();
+  }
+
+  ZC_NODISCARD zc::Maybe<const Record&> lookupRecord(Handle handle) const {
+    if (validate(handle) != FrozenRegistryFailure::None) { return zc::none; }
+    return entries[handle.slot].authority.record();
+  }
+
+  ZC_NODISCARD zc::Maybe<const Authority&> lookupAuthority(Handle handle) const {
+    if (validate(handle) != FrozenRegistryFailure::None) { return zc::none; }
+    return entries[handle.slot].authority;
+  }
+
+private:
+  explicit FrozenAuthorityRegistry(SemanticContextBrand context) noexcept : owner(context) {}
+
+  enum class State : uint8_t { Collecting, Frozen, Invalid };
+
+  struct Entry final {
+    Entry(Authority&& authority, zc::Array<uint8_t>&& encodedKey)
+        : authority(zc::mv(authority)), encodedKey(zc::mv(encodedKey)) {}
+    Entry(Entry&&) noexcept = default;
+    Entry& operator=(Entry&&) noexcept = default;
+    ZC_DISALLOW_COPY(Entry);
+
+    Authority authority;
+    zc::Array<uint8_t> encodedKey;
+  };
+
+  static bool lessBytes(zc::ArrayPtr<const uint8_t> left,
+                        zc::ArrayPtr<const uint8_t> right) noexcept {
+    const size_t sharedSize = left.size() < right.size() ? left.size() : right.size();
+    for (size_t index = 0; index < sharedSize; ++index) {
+      if (left[index] != right[index]) { return left[index] < right[index]; }
+    }
+    return left.size() < right.size();
+  }
+
+  static bool sameBytes(zc::ArrayPtr<const uint8_t> left,
+                        zc::ArrayPtr<const uint8_t> right) noexcept {
+    return left == right;
+  }
+
+  void sortEntries() {
+    for (size_t index = 1; index < entries.size(); ++index) {
+      auto current = zc::mv(entries[index]);
+      size_t insertion = index;
+      while (insertion > 0 &&
+             lessBytes(current.encodedKey.asPtr(), entries[insertion - 1].encodedKey.asPtr())) {
+        entries[insertion] = zc::mv(entries[insertion - 1]);
+        --insertion;
+      }
+      entries[insertion] = zc::mv(current);
+    }
+  }
+
+  FrozenRegistryFailure fail(FrozenRegistryFailure value) noexcept {
+    if (state != State::Invalid) {
+      state = State::Invalid;
+      failure = value;
+    }
+    return value;
+  }
+
+  SemanticContextBrand owner;
+  State state = State::Collecting;
+  FrozenRegistryFailure failure = FrozenRegistryFailure::None;
+  zc::Maybe<zc::Array<uint8_t>> failureStructuralKeyValue;
+  zc::Vector<Entry> entries;
+
+  friend class SemanticIdentityRegistrySet;
+};
+
 struct PackageIdentityTag final {};
 struct CrateIdentityTag final {};
 struct SourceFileIdentityTag final {};
 struct ModuleIdentityTag final {};
 struct DefinitionIdentityTag final {};
 struct ImplIdentityTag final {};
+struct GenericParameterIdentityTag final {};
+struct CallableParameterIdentityTag final {};
 
 using PackageId = ContextHandle<PackageIdentityTag>;
 using CrateId = ContextHandle<CrateIdentityTag>;
@@ -238,12 +444,23 @@ using SourceFileId = ContextHandle<SourceFileIdentityTag>;
 using ModuleId = ContextHandle<ModuleIdentityTag>;
 using DefId = ContextHandle<DefinitionIdentityTag>;
 using ImplId = ContextHandle<ImplIdentityTag>;
+using GenericParameterId = ContextHandle<GenericParameterIdentityTag>;
+using CallableParameterId = ContextHandle<CallableParameterIdentityTag>;
 
 using PackageRegistry = FrozenContextRegistry<PackageKey, PackageIdentityTag>;
 using CrateRegistry = FrozenContextRegistry<CrateKey, CrateIdentityTag>;
 using SourceFileRegistry = FrozenContextRegistry<SourceFileKey, SourceFileIdentityTag>;
 using ModuleRegistry = FrozenContextRegistry<ModuleKey, ModuleIdentityTag>;
-using DefinitionRegistry = FrozenContextRegistry<DefinitionKey, DefinitionIdentityTag>;
-using ImplRegistry = FrozenContextRegistry<ImplKey, ImplIdentityTag>;
+using DefinitionRegistry =
+    FrozenAuthorityRegistry<DefinitionKey, DefinitionIdentityRecord, DefinitionIdentityAuthority,
+                            DefinitionIdentityTag>;
+using ImplRegistry =
+    FrozenAuthorityRegistry<ImplKey, ImplIdentityRecord, ImplIdentityAuthority, ImplIdentityTag>;
+using GenericParameterRegistry =
+    FrozenAuthorityRegistry<GenericParameterKey, GenericParameterIdentityRecord,
+                            GenericParameterAuthority, GenericParameterIdentityTag>;
+using CallableParameterRegistry =
+    FrozenAuthorityRegistry<CallableParameterKey, CallableParameterIdentityRecord,
+                            CallableParameterAuthority, CallableParameterIdentityTag>;
 
 }  // namespace zomlang::compiler::identity

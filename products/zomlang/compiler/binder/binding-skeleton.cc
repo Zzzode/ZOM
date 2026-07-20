@@ -54,11 +54,10 @@ SkeletonEligibility eligibility(identity::DefinitionKind kind) {
       return SkeletonEligibility::Parameter;
     case DefinitionKind::ModuleAlias:
     case DefinitionKind::Local:
-    case DefinitionKind::ImportAlias:
-    case DefinitionKind::ReexportAlias:
       return SkeletonEligibility::Deferred;
+    default:
+      ZC_UNREACHABLE;
   }
-  ZC_UNREACHABLE;
 }
 
 zc::Maybe<ast::NodeId> parameterListNode(const ast::Node& syntax) {
@@ -131,8 +130,6 @@ zc::Maybe<ast::NodeId> genericParamsNode(const ast::Node& syntax) {
       return ast::NodeId(syntax.payload.words[ast::kFunctionExpressionTypeParamsIdWord]);
     case ast::SyntaxKind::StandaloneImplDecl:
       return ast::NodeId(syntax.payload.words[ast::kStandaloneImplDeclTypeParamsIdWord]);
-    case ast::SyntaxKind::MarkerImpl:
-      return ast::NodeId(syntax.payload.words[ast::kMarkerImplTypeParamsIdWord]);
     case ast::SyntaxKind::FunctionDecl:
       return ast::NodeId(syntax.payload.words[ast::kFunctionDeclTypeParamsIdWord]);
     case ast::SyntaxKind::ClassDecl:
@@ -198,11 +195,61 @@ bool ownsScope(identity::DefinitionKind kind) {
     case DefinitionKind::Static:
     case DefinitionKind::Local:
     case DefinitionKind::PatternBinding:
-    case DefinitionKind::ImportAlias:
-    case DefinitionKind::ReexportAlias:
       return false;
+    default:
+      ZC_UNREACHABLE;
   }
-  ZC_UNREACHABLE;
+}
+
+bool isInterfaceOwner(const VerifiedBindingInput& input, const ScopeRecord& scope) {
+  if (scope.kind != ScopeKind::TypeBody || !scope.owner.value().is<DefinitionScopeOwner>()) {
+    return false;
+  }
+  const auto owner = scope.owner.value().get<DefinitionScopeOwner>().definition;
+  for (const auto& definition : input.definitions().definitions()) {
+    if (definition.definition == owner) {
+      return definition.record.kind() == identity::DefinitionKind::Interface;
+    }
+  }
+  return false;
+}
+
+zc::Maybe<MemberVisibility> memberVisibility(const VerifiedBindingInput& input,
+                                             const ScopeRecord& scope, const ast::Node& syntax,
+                                             bool& invalid) {
+  uint32_t encoded = 0;
+  switch (syntax.kind) {
+    case ast::SyntaxKind::MethodDecl:
+      encoded = syntax.payload.words[ast::kMethodDeclVisibilityWord];
+      break;
+    case ast::SyntaxKind::FieldDecl:
+      encoded = syntax.payload.words[ast::kFieldDeclVisibilityWord];
+      break;
+    case ast::SyntaxKind::ConstructorDecl:
+      encoded = syntax.payload.words[ast::kConstructorDeclVisibilityWord];
+      break;
+    case ast::SyntaxKind::DestructorDecl:
+      encoded = syntax.payload.words[ast::kDestructorDeclVisibilityWord];
+      break;
+    case ast::SyntaxKind::ClassConstDecl:
+      encoded = syntax.payload.words[ast::kClassConstDeclVisibilityWord];
+      break;
+    default:
+      return zc::none;
+  }
+  switch (encoded) {
+    case 0:
+      return isInterfaceOwner(input, scope) ? MemberVisibility::Public : MemberVisibility::Private;
+    case 1:
+      return MemberVisibility::Public;
+    case 2:
+      return MemberVisibility::Private;
+    case 3:
+      return MemberVisibility::Protected;
+    default:
+      invalid = true;
+      return zc::none;
+  }
 }
 
 bool hasLexicalBinding(SkeletonEligibility classification) {
@@ -211,8 +258,8 @@ bool hasLexicalBinding(SkeletonEligibility classification) {
 }
 
 bool isReceiverParameter(const VerifiedBindingInput& input,
-                         const FrozenDefinitionEntry& definition) {
-  return definition.kind == identity::DefinitionKind::Parameter &&
+                         const FrozenCallableParameterEntry& definition) {
+  return definition.record.position().kind() == identity::CallableParameterPositionKind::Receiver &&
          input.tree().contains(definition.node) &&
          input.tree().node(definition.node).kind == ast::SyntaxKind::FunctionParameterDecl &&
          input.parsedModule().functionParameterNameSpan(definition.node,
@@ -221,7 +268,7 @@ bool isReceiverParameter(const VerifiedBindingInput& input,
 
 struct ReceiverCandidate final {
   ScopeId scope;
-  identity::DefId definition;
+  identity::CallableParameterId parameter;
   ast::NodeId node;
   identity::SourceSpan source;
 };
@@ -334,23 +381,10 @@ void sortSurfaceSeeds(zc::Vector<ModuleSkeletonSurfaceSeed>& seeds) {
   }
 }
 
-zc::Maybe<identity::DefId> definitionTarget(const ScopeBindingEntry& binding) {
-  const auto& target = binding.binding.bindingIdentity.value();
-  if (!target.is<DefinitionBindingTarget>()) { return zc::none; }
-  return target.get<DefinitionBindingTarget>().definition;
-}
-
 zc::Maybe<const DefinitionFact&> definitionFact(const DefinitionSkeletonCandidate& candidate,
                                                 identity::DefId identity) {
   for (const auto& fact : candidate.definitions) {
     if (fact.identity == identity) { return fact; }
-  }
-  return zc::none;
-}
-
-zc::Maybe<ast::NodeId> definitionNode(const VerifiedBindingInput& input, identity::DefId identity) {
-  for (const auto& entry : input.definitions().definitions()) {
-    if (entry.definition == identity) { return entry.node; }
   }
   return zc::none;
 }
@@ -385,18 +419,70 @@ zc::Maybe<BinderDiagnosticCode> redeclarationCode(identity::DefinitionKind kind)
     case DefinitionKind::Error:
     case DefinitionKind::EnumVariant:
     case DefinitionKind::TypeParameter:
-    case DefinitionKind::ImportAlias:
-    case DefinitionKind::ReexportAlias:
       return BinderDiagnosticCode::DuplicateIdentifier;
     case DefinitionKind::Closure:
       return zc::none;
+    default:
+      ZC_UNREACHABLE;
   }
-  ZC_UNREACHABLE;
+}
+
+zc::Maybe<BinderDiagnosticCode> redeclarationCode(const DefinitionSkeletonCandidate& candidate,
+                                                  const BindingTarget& target) {
+  const auto& value = target.value();
+  if (value.is<DefinitionBindingTarget>()) {
+    auto fact = definitionFact(candidate, value.get<DefinitionBindingTarget>().definition);
+    ZC_IF_SOME(definition, fact) { return redeclarationCode(definition.kind); }
+    return zc::none;
+  }
+  if (value.is<GenericParameterBindingTarget>()) {
+    const auto parameter = value.get<GenericParameterBindingTarget>().parameter;
+    for (const auto& fact : candidate.genericParameters) {
+      if (fact.identity == parameter) { return BinderDiagnosticCode::DuplicateIdentifier; }
+    }
+    return zc::none;
+  }
+  if (value.is<CallableParameterBindingTarget>()) {
+    const auto parameter = value.get<CallableParameterBindingTarget>().parameter;
+    for (const auto& fact : candidate.callableParameters) {
+      if (fact.identity == parameter) { return BinderDiagnosticCode::RedeclareParameter; }
+    }
+  }
+  return zc::none;
+}
+
+zc::Maybe<ast::NodeId> bindingNode(const VerifiedBindingInput& input, const BindingTarget& target) {
+  const auto& value = target.value();
+  if (value.is<DefinitionBindingTarget>()) {
+    const auto definition = value.get<DefinitionBindingTarget>().definition;
+    for (const auto& entry : input.definitions().definitions()) {
+      if (entry.definition == definition) { return entry.node; }
+    }
+    return zc::none;
+  }
+  if (value.is<GenericParameterBindingTarget>()) {
+    const auto parameter = value.get<GenericParameterBindingTarget>().parameter;
+    for (const auto& entry : input.definitions().genericParameters()) {
+      if (entry.parameter == parameter) { return entry.node; }
+    }
+    return zc::none;
+  }
+  if (value.is<CallableParameterBindingTarget>()) {
+    const auto parameter = value.get<CallableParameterBindingTarget>().parameter;
+    for (const auto& entry : input.definitions().callableParameters()) {
+      if (entry.parameter == parameter) { return entry.node; }
+    }
+  }
+  return zc::none;
 }
 
 bool isRejected(const DefinitionSkeletonCandidate& candidate, identity::DefId identity) {
   for (const auto& duplicate : candidate.duplicates) {
-    if (duplicate.rejected == identity) { return true; }
+    const auto& target = duplicate.rejected.value();
+    if (target.is<DefinitionBindingTarget>() &&
+        target.get<DefinitionBindingTarget>().definition == identity) {
+      return true;
+    }
   }
   return false;
 }
@@ -458,16 +544,12 @@ DefinitionSkeletonBuildResult BindingSkeletonBuilder::build(const VerifiedBindin
   zc::Vector<ReceiverCandidate> receivers;
   for (const size_t index : order) {
     const auto& definition = inventory[index];
-    const auto classification = eligibility(definition.kind);
-    if (classification == SkeletonEligibility::Deferred) {
-      if (definition.kind == identity::DefinitionKind::Local) { continue; }
-      return failure(input, BinderInvariantKind::MissingRequiredResolution, definition.node);
-    }
-    const bool receiver = isReceiverParameter(input, definition);
-    const bool lexicalBinding = hasLexicalBinding(classification) && !receiver;
-    if ((lexicalBinding && definition.bindingName == zc::none) ||
-        (!lexicalBinding && definition.bindingName != zc::none) ||
-        !input.tree().contains(definition.node)) {
+    const auto definitionKind = definition.record.kind();
+    const auto classification = eligibility(definitionKind);
+    if (classification == SkeletonEligibility::Deferred) { continue; }
+    const bool receiver = false;
+    const bool lexicalBinding = hasLexicalBinding(classification);
+    if (definition.bindingName == zc::none || !input.tree().contains(definition.node)) {
       return failure(input, BinderInvariantKind::InvalidBindingFact, definition.node);
     }
     auto syntaxSpan = input.parsedModule().spanFor(input.tree().node(definition.node).range);
@@ -481,7 +563,7 @@ DefinitionSkeletonBuildResult BindingSkeletonBuilder::build(const VerifiedBindin
       if (scope.index() >= arena.scopes.size() || arena.scopes[scope.index()].id != scope) {
         return failure(input, BinderInvariantKind::MalformedScopeGraph, definition.node);
       }
-      if (ownsScope(definition.kind)) {
+      if (ownsScope(definitionKind)) {
         const auto& owned = arena.scopes[scope.index()];
         const auto& owner = owned.owner.value();
         if (!owner.is<DefinitionScopeOwner>() ||
@@ -538,9 +620,10 @@ DefinitionSkeletonBuildResult BindingSkeletonBuilder::build(const VerifiedBindin
       const bool genericScope =
           record.kind == ScopeKind::Function || record.kind == ScopeKind::Closure ||
           record.kind == ScopeKind::TypeBody || record.kind == ScopeKind::ImplBody;
-      const bool skeletonScope = record.kind == ScopeKind::Module ||
-                                 record.kind == ScopeKind::TypeBody ||
-                                 record.kind == ScopeKind::ImplBody;
+      const bool skeletonScope =
+          record.kind == ScopeKind::Module || record.kind == ScopeKind::TypeBody ||
+          record.kind == ScopeKind::ImplBody ||
+          (record.kind == ScopeKind::Block && definitionKind == identity::DefinitionKind::Function);
       const bool specialCallableScope =
           record.kind == ScopeKind::TypeBody || record.kind == ScopeKind::ImplBody;
       const bool patternScope = (patternActivationValue == DefinitionActivation::LoopPattern &&
@@ -588,9 +671,16 @@ DefinitionSkeletonBuildResult BindingSkeletonBuilder::build(const VerifiedBindin
                                           nameSpace, BindingOrigin::LocalDeclaration,
                                           definition.source.clone(), zc::mv(noAlias))));
       }
-      result.definitions.add(DefinitionFact(definition.definition, definition.site.clone(),
-                                            definition.kind, definition.name.clone(), nameSpace,
-                                            scope, definition.source.clone(), activation));
+      bool invalidVisibility = false;
+      auto visibility =
+          memberVisibility(input, record, input.tree().node(definition.node), invalidVisibility);
+      if (invalidVisibility) {
+        return failure(input, BinderInvariantKind::InvalidBindingFact, definition.node);
+      }
+      result.definitions.add(
+          DefinitionFact(definition.definition, definition.site.clone(), definitionKind,
+                         ZC_ASSERT_NONNULL(definition.bindingName).clone(), nameSpace, scope,
+                         definition.source.clone(), activation, zc::mv(visibility)));
       if (receiver) {
         auto source = input.parsedModule().functionParameterNameSpan(definition.node,
                                                                      ast::SyntaxKind::ThisKeyword);
@@ -598,8 +688,8 @@ DefinitionSkeletonBuildResult BindingSkeletonBuilder::build(const VerifiedBindin
           return failure(input, BinderInvariantKind::InvalidBindingFact, definition.node);
         }
         ZC_IF_SOME(value, source) {
-          receivers.add(
-              ReceiverCandidate{scope, definition.definition, definition.node, zc::mv(value)});
+          receivers.add(ReceiverCandidate{scope, identity::CallableParameterId(), definition.node,
+                                          zc::mv(value)});
         }
       }
       if (lexicalBinding && classification != SkeletonEligibility::Generic &&
@@ -620,6 +710,127 @@ DefinitionSkeletonBuildResult BindingSkeletonBuilder::build(const VerifiedBindin
         result.moduleSurfaceSeeds.add(ModuleSkeletonSurfaceSeed(
             BindingNameKey(nameSpace, name.clone()), definition.definition,
             definition.source.clone(), exportNode != zc::none, zc::mv(exportSpan)));
+      }
+    }
+  }
+
+  const auto genericParameters = input.definitions().genericParameters();
+  zc::Vector<size_t> genericOrder;
+  for (size_t index = 0; index < genericParameters.size(); ++index) { genericOrder.add(index); }
+  for (size_t index = 1; index < genericOrder.size(); ++index) {
+    const size_t current = genericOrder[index];
+    const auto currentKey = genericParameters[current].key.encode();
+    size_t insertion = index;
+    while (insertion > 0) {
+      const auto previousKey = genericParameters[genericOrder[insertion - 1]].key.encode();
+      if (compareBytes(currentKey.asPtr(), previousKey.asPtr()) >= 0) { break; }
+      genericOrder[insertion] = genericOrder[insertion - 1];
+      --insertion;
+    }
+    genericOrder[insertion] = current;
+  }
+  for (const size_t index : genericOrder) {
+    const auto& parameter = genericParameters[index];
+    auto scope = scopeForNode(arena, parameter.node);
+    bool ambiguousOwner = false;
+    auto owner = genericOwner(input.tree(), parameter.node, ambiguousOwner);
+    if (scope == zc::none || owner == zc::none || ambiguousOwner ||
+        !sameSpan(parameter.source, ZC_ASSERT_NONNULL(input.parsedModule().spanFor(
+                                        input.tree().node(parameter.node).range)))) {
+      return failure(input, BinderInvariantKind::MissingRequiredResolution, parameter.node);
+    }
+    ZC_IF_SOME(ownerNode, owner) {
+      if (scopeForNode(arena, ownerNode) != scope) {
+        return failure(input, BinderInvariantKind::MalformedScopeGraph, parameter.node);
+      }
+    }
+    ZC_IF_SOME(scopeValue, scope) {
+      if (scopeValue.index() >= arena.scopes.size() ||
+          arena.scopes[scopeValue.index()].id != scopeValue) {
+        return failure(input, BinderInvariantKind::MalformedScopeGraph, parameter.node);
+      }
+      auto& record = arena.scopes[scopeValue.index()];
+      if (record.kind != ScopeKind::Function && record.kind != ScopeKind::Closure &&
+          record.kind != ScopeKind::TypeBody && record.kind != ScopeKind::ImplBody) {
+        return failure(input, BinderInvariantKind::MissingRequiredResolution, parameter.node);
+      }
+      zc::Maybe<identity::SourceSpan> noAlias;
+      record.bindings.add(ScopeBindingEntry(
+          BindingNameKey(Namespace::Type, parameter.bindingName.clone()),
+          NameBinding(BindingTarget::genericParameter(parameter.parameter),
+                      BindingTarget::genericParameter(parameter.parameter), Namespace::Type,
+                      BindingOrigin::LocalDeclaration, parameter.source.clone(), zc::mv(noAlias))));
+      result.genericParameters.add(GenericParameterFact{parameter.parameter, parameter.site.clone(),
+                                                        parameter.bindingName.clone(), scopeValue,
+                                                        parameter.source.clone()});
+    }
+  }
+
+  const auto callableParameters = input.definitions().callableParameters();
+  zc::Vector<size_t> callableOrder;
+  for (size_t index = 0; index < callableParameters.size(); ++index) { callableOrder.add(index); }
+  for (size_t index = 1; index < callableOrder.size(); ++index) {
+    const size_t current = callableOrder[index];
+    const auto currentKey = callableParameters[current].key.encode();
+    size_t insertion = index;
+    while (insertion > 0) {
+      const auto previousKey = callableParameters[callableOrder[insertion - 1]].key.encode();
+      if (compareBytes(currentKey.asPtr(), previousKey.asPtr()) >= 0) { break; }
+      callableOrder[insertion] = callableOrder[insertion - 1];
+      --insertion;
+    }
+    callableOrder[insertion] = current;
+  }
+  for (const size_t index : callableOrder) {
+    const auto& parameter = callableParameters[index];
+    auto scope = scopeForNode(arena, parameter.node);
+    bool ambiguousOwner = false;
+    auto owner = parameterOwner(input.tree(), parameter.node, ambiguousOwner);
+    const bool receiver = isReceiverParameter(input, parameter);
+    if (scope == zc::none || owner == zc::none || ambiguousOwner ||
+        (receiver && parameter.bindingName != zc::none) ||
+        (!receiver && parameter.bindingName == zc::none)) {
+      return failure(input, BinderInvariantKind::MissingRequiredResolution, parameter.node);
+    }
+    ZC_IF_SOME(ownerNode, owner) {
+      if (scopeForNode(arena, ownerNode) != scope) {
+        return failure(input, BinderInvariantKind::MalformedScopeGraph, parameter.node);
+      }
+    }
+    ZC_IF_SOME(scopeValue, scope) {
+      if (scopeValue.index() >= arena.scopes.size() ||
+          arena.scopes[scopeValue.index()].id != scopeValue) {
+        return failure(input, BinderInvariantKind::MalformedScopeGraph, parameter.node);
+      }
+      auto& record = arena.scopes[scopeValue.index()];
+      if (record.kind != ScopeKind::Function && record.kind != ScopeKind::Closure) {
+        return failure(input, BinderInvariantKind::MissingRequiredResolution, parameter.node);
+      }
+      if (!receiver) {
+        const auto& name = ZC_ASSERT_NONNULL(parameter.bindingName);
+        zc::Maybe<identity::SourceSpan> noAlias;
+        record.bindings.add(
+            ScopeBindingEntry(BindingNameKey(Namespace::Value, name.clone()),
+                              NameBinding(BindingTarget::callableParameter(parameter.parameter),
+                                          BindingTarget::callableParameter(parameter.parameter),
+                                          Namespace::Value, BindingOrigin::LocalDeclaration,
+                                          parameter.source.clone(), zc::mv(noAlias))));
+      }
+      zc::Maybe<identity::DeclaredDefinitionName> factName;
+      ZC_IF_SOME(name, parameter.bindingName) { factName = name.clone(); }
+      result.callableParameters.add(
+          CallableParameterFact{parameter.parameter, parameter.site.clone(), zc::mv(factName),
+                                scopeValue, parameter.source.clone(), receiver});
+      if (receiver) {
+        auto source = input.parsedModule().functionParameterNameSpan(parameter.node,
+                                                                     ast::SyntaxKind::ThisKeyword);
+        if (source == zc::none) {
+          return failure(input, BinderInvariantKind::InvalidBindingFact, parameter.node);
+        }
+        ZC_IF_SOME(value, source) {
+          receivers.add(
+              ReceiverCandidate{scopeValue, parameter.parameter, parameter.node, zc::mv(value)});
+        }
       }
     }
   }
@@ -645,8 +856,8 @@ DefinitionSkeletonBuildResult BindingSkeletonBuilder::build(const VerifiedBindin
       ZC_IF_SOME(nameValue, name) {
         result.duplicates.add(BindingDuplicateFact{
             BinderDiagnosticCode::RedeclareParameter, BinderEmitterSite::ModuleSkeleton,
-            zc::mv(nameValue), rejected.definition, rejected.node, previous.node,
-            rejected.source.clone(), previous.source.clone()});
+            zc::mv(nameValue), BindingTarget::callableParameter(rejected.parameter), rejected.node,
+            previous.node, rejected.source.clone(), previous.source.clone()});
       }
     }
   }
@@ -681,7 +892,7 @@ DefinitionSkeletonBuildResult BindingSkeletonBuilder::build(const VerifiedBindin
       const auto& record = arena.scopes[scopeValue.index()];
       const auto& owner = record.owner.value();
       if (record.kind != ScopeKind::ImplBody || !owner.is<ImplScopeOwner>() ||
-          owner.get<ImplScopeOwner>().implementation != implementation.implementation ||
+          owner.get<ImplScopeOwner>().occurrence != implementation.occurrence ||
           !sameSpan(record.source, implementation.source)) {
         return failure(input, BinderInvariantKind::MalformedScopeGraph, implementation.node);
       }
@@ -697,8 +908,9 @@ DefinitionSkeletonBuildResult BindingSkeletonBuilder::build(const VerifiedBindin
           members.add(definition.identity);
         }
       }
-      result.impls.add(ImplBindingFact{implementation.implementation, implementation.node,
-                                       scopeValue, zc::mv(members), implementation.source.clone()});
+      result.impls.add(ImplBindingFact{implementation.occurrence, implementation.authority,
+                                       implementation.node, scopeValue, zc::mv(members),
+                                       implementation.source.clone()});
     }
   }
 
@@ -707,42 +919,27 @@ DefinitionSkeletonBuildResult BindingSkeletonBuilder::build(const VerifiedBindin
     zc::Vector<ScopeBindingEntry> unique;
     for (auto& binding : scope.bindings) {
       if (!unique.empty() && sameBindingName(unique.back(), binding)) {
-        auto rejected = definitionTarget(binding);
-        auto previous = definitionTarget(unique.back());
-        if (rejected == zc::none || previous == zc::none) {
+        const auto& rejected = binding.binding.bindingIdentity;
+        const auto& previous = unique.back().binding.bindingIdentity;
+        auto primaryNode = bindingNode(input, rejected);
+        auto previousNode = bindingNode(input, previous);
+        auto code = redeclarationCode(result, rejected);
+        if (primaryNode == zc::none || previousNode == zc::none || code == zc::none) {
           return failure(input, BinderInvariantKind::InvalidBindingFact, input.tree().root());
         }
-        ZC_IF_SOME(rejectedValue, rejected) {
-          auto fact = definitionFact(result, rejectedValue);
-          auto primaryNode = definitionNode(input, rejectedValue);
-          ZC_IF_SOME(previousValue, previous) {
-            auto previousNode = definitionNode(input, previousValue);
-            if (fact == zc::none || primaryNode == zc::none || previousNode == zc::none) {
-              return failure(input, BinderInvariantKind::InvalidBindingFact, input.tree().root());
-            }
-            ZC_IF_SOME(factValue, fact) {
-              auto code = redeclarationCode(factValue.kind);
-              if (code == zc::none) {
-                return failure(input, BinderInvariantKind::InvalidBindingFact, input.tree().root());
-              }
-              ZC_IF_SOME(codeValue, code) {
-                ZC_IF_SOME(primaryNodeValue, primaryNode) {
-                  ZC_IF_SOME(previousNodeValue, previousNode) {
-                    auto name =
-                        identity::DeclaredDefinitionName::fromCanonical(binding.name.name().text());
-                    if (name == zc::none) {
-                      return failure(input, BinderInvariantKind::InvalidBindingFact,
-                                     primaryNodeValue);
-                    }
-                    ZC_IF_SOME(nameValue, name) {
-                      result.duplicates.add(BindingDuplicateFact{
-                          codeValue, BinderEmitterSite::ModuleSkeleton, zc::mv(nameValue),
-                          rejectedValue, primaryNodeValue, previousNodeValue,
-                          binding.binding.declarationSpan.clone(),
-                          unique.back().binding.declarationSpan.clone()});
-                    }
-                  }
-                }
+        ZC_IF_SOME(primaryNodeValue, primaryNode) {
+          auto name = identity::DeclaredDefinitionName::fromCanonical(binding.name.name().text());
+          if (name == zc::none) {
+            return failure(input, BinderInvariantKind::InvalidBindingFact, primaryNodeValue);
+          }
+          ZC_IF_SOME(previousNodeValue, previousNode) {
+            ZC_IF_SOME(codeValue, code) {
+              ZC_IF_SOME(nameValue, name) {
+                result.duplicates.add(
+                    BindingDuplicateFact{codeValue, BinderEmitterSite::ModuleSkeleton,
+                                         zc::mv(nameValue), rejected.clone(), primaryNodeValue,
+                                         previousNodeValue, binding.binding.declarationSpan.clone(),
+                                         unique.back().binding.declarationSpan.clone()});
               }
             }
           }

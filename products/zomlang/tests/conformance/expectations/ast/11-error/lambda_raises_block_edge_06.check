@@ -32,15 +32,15 @@
 // CHECK-NEXT:                           alts:
 // CHECK-NEXT:                             NamedTypeExpr #7 @1:32..1:34
 // CHECK-NEXT:                               path:
-// CHECK-NEXT:                                 ModulePath #6 @1:32..1:34 segments=["E1"]
+// CHECK-NEXT:                                 ModulePath #6 @1:32..1:34 segments=["E1"] root=Relative
 // CHECK-NEXT:                               args: []
 // CHECK-NEXT:                             NamedTypeExpr #9 @1:37..1:39
 // CHECK-NEXT:                               path:
-// CHECK-NEXT:                                 ModulePath #8 @1:37..1:39 segments=["E2"]
+// CHECK-NEXT:                                 ModulePath #8 @1:37..1:39 segments=["E2"] root=Relative
 // CHECK-NEXT:                               args: []
 // CHECK-NEXT:                             NamedTypeExpr #11 @1:42..1:44
 // CHECK-NEXT:                               path:
-// CHECK-NEXT:                                 ModulePath #10 @1:42..1:44 segments=["E3"]
+// CHECK-NEXT:                                 ModulePath #10 @1:42..1:44 segments=["E3"] root=Relative
 // CHECK-NEXT:                               args: []
 // CHECK-NEXT:                       body:
 // CHECK-NEXT:                         BlockStmt #18 @1:48..1:65

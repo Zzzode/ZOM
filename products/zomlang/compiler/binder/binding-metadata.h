@@ -12,8 +12,11 @@
 #include "zc/core/vector.h"
 #include "zomlang/compiler/ast/tree.h"
 #include "zomlang/compiler/binder/definition-site.h"
+#include "zomlang/compiler/binder/local-identity.h"
 #include "zomlang/compiler/identity/canonical-scalar.h"
 #include "zomlang/compiler/identity/definition-key.h"
+#include "zomlang/compiler/identity/frozen-registry.h"
+#include "zomlang/compiler/identity/semantic-import-binding-key.h"
 #include "zomlang/compiler/identity/source-snapshot.h"
 
 namespace zomlang::compiler::diagnostics {
@@ -91,15 +94,20 @@ struct DefinitionScopeOwner final {
   identity::DefId definition;
 };
 struct ImplScopeOwner final {
-  identity::ImplId implementation;
+  ImplOccurrenceId occurrence;
 };
-using ScopeOwnerValue = zc::OneOf<ModuleScopeOwner, DefinitionScopeOwner, ImplScopeOwner>;
+struct AnonymousScopeOwner final {
+  AnonymousOwnerLocalKey anonymous;
+};
+using ScopeOwnerValue =
+    zc::OneOf<ModuleScopeOwner, DefinitionScopeOwner, ImplScopeOwner, AnonymousScopeOwner>;
 
 class ScopeOwner final {
 public:
   ZC_NODISCARD static ScopeOwner module(identity::ModuleId value);
   ZC_NODISCARD static ScopeOwner definition(identity::DefId value);
-  ZC_NODISCARD static ScopeOwner implementation(identity::ImplId value);
+  ZC_NODISCARD static ScopeOwner implementation(ImplOccurrenceId value);
+  ZC_NODISCARD static ScopeOwner anonymous(AnonymousOwnerLocalKey&& value);
   ZC_NODISCARD const ScopeOwnerValue& value() const noexcept;
 
 private:
@@ -110,15 +118,37 @@ private:
 struct DefinitionBindingTarget final {
   identity::DefId definition;
 };
+struct GenericParameterBindingTarget final {
+  identity::GenericParameterId parameter;
+};
+struct CallableParameterBindingTarget final {
+  identity::CallableParameterId parameter;
+};
+struct OwnerLocalBindingTarget final {
+  OwnerLocalBindingId binding;
+};
+struct SemanticImportBindingTarget final {
+  identity::SemanticImportBindingKey binding;
+};
 struct ModuleBindingTarget final {
   identity::ModuleId module;
 };
-using BindingTargetValue = zc::OneOf<DefinitionBindingTarget, ModuleBindingTarget>;
+using BindingTargetValue = zc::OneOf<DefinitionBindingTarget, GenericParameterBindingTarget,
+                                     CallableParameterBindingTarget, OwnerLocalBindingTarget,
+                                     SemanticImportBindingTarget, ModuleBindingTarget>;
 
 class BindingTarget final {
 public:
+  BindingTarget(BindingTarget&&) noexcept = default;
+  BindingTarget& operator=(BindingTarget&&) noexcept = default;
+  ZC_DISALLOW_COPY(BindingTarget);
   ZC_NODISCARD static BindingTarget definition(identity::DefId value);
+  ZC_NODISCARD static BindingTarget genericParameter(identity::GenericParameterId value);
+  ZC_NODISCARD static BindingTarget callableParameter(identity::CallableParameterId value);
+  ZC_NODISCARD static BindingTarget ownerLocal(OwnerLocalBindingId value);
+  ZC_NODISCARD static BindingTarget semanticImport(identity::SemanticImportBindingKey&& value);
   ZC_NODISCARD static BindingTarget module(identity::ModuleId value);
+  ZC_NODISCARD BindingTarget clone() const;
   ZC_NODISCARD const BindingTargetValue& value() const noexcept;
 
 private:
@@ -133,15 +163,16 @@ public:
   ZC_DISALLOW_COPY(BindingNameKey);
   ZC_NODISCARD BindingNameKey clone() const;
   ZC_NODISCARD Namespace nameSpace() const noexcept;
-  ZC_NODISCARD const identity::SemanticIdentifier& name() const noexcept;
+  ZC_NODISCARD const identity::DeclaredDefinitionName& name() const noexcept;
 
 private:
-  BindingNameKey(Namespace nameSpace, identity::SemanticIdentifier&& name) noexcept;
+  BindingNameKey(Namespace nameSpace, identity::DeclaredDefinitionName&& name) noexcept;
   Namespace namespaceValue;
-  identity::SemanticIdentifier nameValue;
+  identity::DeclaredDefinitionName nameValue;
   friend class BodyBindingCursor;
   friend class BodyBindingBuilder;
   friend class BindingBuilder;
+  friend class BindingInputVerifier;
   friend class BindingSkeletonBuilder;
   friend class BindingVerifier;
 };
@@ -184,6 +215,9 @@ struct ScopeRecord final {
   identity::SourceSpan source;
 };
 
+/// \brief Closed retained access level for declarations that support member visibility.
+enum class MemberVisibility : uint8_t { Public = 0x01, Private = 0x02, Protected = 0x03 };
+
 /// \brief Frames already-canonical scope and label records for the allocation oracle.
 ZC_NODISCARD zc::Array<uint8_t> frameBindingAllocationDump(
     zc::ArrayPtr<const zc::ArrayPtr<const uint8_t>> scopeRecords,
@@ -196,15 +230,49 @@ ZC_NODISCARD zc::Array<uint8_t> frameBindingExtensionSequences(
 
 struct DefinitionFact final {
   DefinitionFact(identity::DefId identity, DefinitionSite&& site, identity::DefinitionKind kind,
-                 identity::DefinitionNameKey&& name, Namespace nameSpace, ScopeId declaringScope,
-                 identity::SourceSpan&& source, DefinitionActivation activation) noexcept;
+                 identity::DeclaredDefinitionName&& name, Namespace nameSpace,
+                 ScopeId declaringScope, identity::SourceSpan&& source,
+                 DefinitionActivation activation,
+                 zc::Maybe<MemberVisibility>&& memberVisibility) noexcept;
   DefinitionFact(DefinitionFact&&) noexcept = default;
   DefinitionFact& operator=(DefinitionFact&&) noexcept = default;
   ZC_DISALLOW_COPY(DefinitionFact);
   identity::DefId identity;
   DefinitionSite site;
   identity::DefinitionKind kind;
-  identity::DefinitionNameKey name;
+  identity::DeclaredDefinitionName name;
+  Namespace nameSpace;
+  ScopeId declaringScope;
+  identity::SourceSpan source;
+  DefinitionActivation activation;
+  zc::Maybe<MemberVisibility> memberVisibility;
+};
+
+/// \brief Stable generic-parameter binding fact outside the definition registry.
+struct GenericParameterFact final {
+  identity::GenericParameterId identity;
+  DefinitionSite site;
+  identity::DeclaredDefinitionName name;
+  ScopeId declaringScope;
+  identity::SourceSpan source;
+};
+
+/// \brief Stable callable-parameter binding fact outside the definition registry.
+struct CallableParameterFact final {
+  identity::CallableParameterId identity;
+  DefinitionSite site;
+  zc::Maybe<identity::DeclaredDefinitionName> name;
+  ScopeId declaringScope;
+  identity::SourceSpan source;
+  bool receiver;
+};
+
+/// \brief Revision-local owner-body binding fact outside every global identity registry.
+struct OwnerLocalBindingFact final {
+  OwnerLocalBindingId identity;
+  DefinitionSite site;
+  OwnerLocalBindingKind kind;
+  identity::DeclaredDefinitionName name;
   Namespace nameSpace;
   ScopeId declaringScope;
   identity::SourceSpan source;
@@ -221,6 +289,7 @@ class VisibilityEnvelope final {
 public:
   ZC_NODISCARD static VisibilityEnvelope module(identity::ModuleId value);
   ZC_NODISCARD static VisibilityEnvelope external();
+  ZC_NODISCARD VisibilityEnvelope clone() const;
   ZC_NODISCARD const VisibilityEnvelopeValue& value() const noexcept;
 
 private:
@@ -229,8 +298,9 @@ private:
 };
 
 struct ReexportProvenanceStep final {
+  ZC_NODISCARD ReexportProvenanceStep clone() const;
   identity::ModuleId module;
-  identity::DefId alias;
+  BindingTarget bindingIdentity;
   BindingTarget canonicalTarget;
   identity::SourceSpan exportSpan;
 };
@@ -246,6 +316,7 @@ struct ExportSurfaceEntry final {
   ExportSurfaceEntry(ExportSurfaceEntry&&) noexcept = default;
   ExportSurfaceEntry& operator=(ExportSurfaceEntry&&) noexcept = default;
   ZC_DISALLOW_COPY(ExportSurfaceEntry);
+  ZC_NODISCARD ExportSurfaceEntry clone() const;
   BindingNameKey name;
   BindingTarget bindingIdentity;
   BindingTarget canonicalTarget;
@@ -315,11 +386,19 @@ struct ModuleLabelOwner final {
 struct CallableLabelOwner final {
   identity::DefId callable;
 };
-using LabelOwnerValue = zc::OneOf<ModuleLabelOwner, CallableLabelOwner>;
+struct AnonymousLabelOwner final {
+  identity::ModuleId module;
+  AnonymousOwnerLocalKey anonymous;
+};
+using LabelOwnerValue = zc::OneOf<ModuleLabelOwner, CallableLabelOwner, AnonymousLabelOwner>;
 
 /// \brief Sealed context-checked owner of one flat label namespace.
 class LabelOwner final {
 public:
+  LabelOwner(LabelOwner&&) noexcept = default;
+  LabelOwner& operator=(LabelOwner&&) noexcept = default;
+  ZC_DISALLOW_COPY(LabelOwner);
+
   ZC_NODISCARD const LabelOwnerValue& value() const noexcept;
   ZC_NODISCARD bool belongsTo(identity::SemanticContextBrand context) const noexcept;
   bool operator==(const LabelOwner& other) const noexcept;
@@ -329,6 +408,8 @@ private:
   explicit LabelOwner(LabelOwnerValue&& value) noexcept;
   ZC_NODISCARD static LabelOwner module(identity::ModuleId value);
   ZC_NODISCARD static LabelOwner callable(identity::DefId value);
+  ZC_NODISCARD static LabelOwner anonymous(identity::ModuleId module,
+                                           AnonymousOwnerLocalKey&& value);
   ZC_NODISCARD LabelOwner clone() const;
   LabelOwnerValue valueValue;
   friend class LabelId;
@@ -338,6 +419,10 @@ private:
 /// \brief Sealed owner-local label identity.
 class LabelId final {
 public:
+  LabelId(LabelId&&) noexcept = default;
+  LabelId& operator=(LabelId&&) noexcept = default;
+  ZC_DISALLOW_COPY(LabelId);
+
   ZC_NODISCARD const LabelOwner& owner() const noexcept;
   ZC_NODISCARD uint32_t index() const noexcept;
   ZC_NODISCARD bool belongsTo(identity::SemanticContextBrand context) const noexcept;
@@ -431,7 +516,7 @@ struct InterfaceSelfOwner final {
 
 /// \brief Contextual Self owned by an implementation declaration.
 struct ImplSelfOwner final {
-  identity::ImplId implementation;
+  ImplOccurrenceId occurrence;
 };
 
 using SelfOwner = zc::OneOf<NominalSelfOwner, InterfaceSelfOwner, ImplSelfOwner>;
@@ -445,7 +530,7 @@ struct BoundSelfType final {
 
 /// \brief Receiver parameter selected by a successful this expression binding.
 struct ThisBinding final {
-  identity::DefId receiverParameter;
+  identity::CallableParameterId receiverParameter;
 };
 
 /// \brief One this expression resolved in the receiver-only binding domain.
@@ -456,7 +541,8 @@ struct BoundThis final {
 };
 
 struct ImplBindingFact final {
-  identity::ImplId identity;
+  ImplOccurrenceId occurrence;
+  identity::ImplId authority;
   ast::NodeId node;
   ScopeId scope;
   zc::Vector<identity::DefId> members;
@@ -475,7 +561,7 @@ struct ModuleAliasBindingFact final {
 enum class ImportBindingKind : uint8_t { Import = 0x01, ForeignReexport = 0x02 };
 struct ImportBindingFact final {
   ast::NodeId node;
-  identity::DefId alias;
+  identity::SemanticImportBindingKey binding;
   BindingTarget canonicalTarget;
   identity::ModuleId sourceModule;
   ExportSurfaceRevision sourceRevision;
@@ -487,7 +573,6 @@ struct ImportBindingFact final {
 
 struct LocalExportFact final {
   ast::NodeId node;
-  identity::DefId alias;
   BindingTarget sourceBinding;
   BindingTarget canonicalTarget;
   identity::SourceSpan bindingSpan;
@@ -515,28 +600,28 @@ struct ControlTransferFact final {
 };
 
 struct ShadowTargetFact final {
-  identity::DefId definition;
+  BindingTarget binding;
   BindingTarget target;
 };
 struct FreeVariableFact final {
-  identity::DefId target;
+  BindingTarget target;
   zc::Vector<ast::NodeId> referenceSites;
 };
 struct ClosureFreeVariableFact final {
-  identity::DefId closure;
+  AnonymousOwnerLocalKey closure;
   zc::Vector<FreeVariableFact> variables;
 };
 
 /// \brief One syntax capture bound to enclosing runtime storage.
 struct ExplicitCaptureBindingFact final {
   ast::NodeId item;
-  identity::DefId target;
+  BindingTarget target;
   identity::SourceSpan source;
 };
 
 /// \brief Source-ordered explicit capture bindings for one function expression.
 struct ExplicitClosureCaptureFact final {
-  identity::DefId closure;
+  AnonymousOwnerLocalKey closure;
   ast::NodeId captureList;
   identity::SourceSpan source;
   zc::Vector<ExplicitCaptureBindingFact> captures;
@@ -611,22 +696,15 @@ public:
   ZC_DISALLOW_COPY(VerifiedBindingMetadata);
   ZC_NODISCARD identity::SemanticContextBrand semanticContext() const noexcept;
   ZC_NODISCARD identity::ModuleId module() const noexcept;
-  ZC_NODISCARD zc::ArrayPtr<const NodeScopeFact> nodeScopes() const;
-  ZC_NODISCARD zc::ArrayPtr<const BindingResolution> nodeBindings() const;
-  ZC_NODISCARD zc::ArrayPtr<const BoundSelfType> selfTypes() const;
-  ZC_NODISCARD zc::ArrayPtr<const BoundThis> thisBindings() const;
-  ZC_NODISCARD zc::ArrayPtr<const ScopeRecord> scopes() const;
-  ZC_NODISCARD zc::ArrayPtr<const DefinitionFact> definitions() const;
-  ZC_NODISCARD zc::ArrayPtr<const ImplBindingFact> impls() const;
-  ZC_NODISCARD zc::ArrayPtr<const ModuleAliasBindingFact> moduleAliases() const;
-  ZC_NODISCARD zc::ArrayPtr<const ImportBindingFact> imports() const;
-  ZC_NODISCARD zc::ArrayPtr<const LocalExportFact> localExports() const;
-  ZC_NODISCARD zc::ArrayPtr<const DeferredMemberFact> deferredMembers() const;
-  ZC_NODISCARD zc::ArrayPtr<const LabelFact> labels() const;
-  ZC_NODISCARD zc::ArrayPtr<const ControlTransferFact> controlTransfers() const;
-  ZC_NODISCARD zc::ArrayPtr<const ShadowTargetFact> shadowTargets() const;
-  ZC_NODISCARD zc::ArrayPtr<const ClosureFreeVariableFact> closureFreeVariables() const;
-  ZC_NODISCARD zc::ArrayPtr<const ExplicitClosureCaptureFact> explicitClosureCaptures() const;
+#define ZOM_BINDING_ACCESSOR_Internal(type, accessor)
+#define ZOM_BINDING_ACCESSOR_Published(type, accessor) \
+  ZC_NODISCARD zc::ArrayPtr<const type> accessor() const;
+#define ZOM_BINDING_FACT(id, type, member, accessor, publication, tag, domain, mutations, test) \
+  ZOM_BINDING_ACCESSOR_##publication(type, accessor)
+#include "zomlang/compiler/binder/binding-fact-schema.def"
+#undef ZOM_BINDING_FACT
+#undef ZOM_BINDING_ACCESSOR_Published
+#undef ZOM_BINDING_ACCESSOR_Internal
 
 private:
   struct Impl;
@@ -641,6 +719,7 @@ public:
   VerifiedExportSurface(VerifiedExportSurface&&) noexcept;
   VerifiedExportSurface& operator=(VerifiedExportSurface&&) noexcept;
   ZC_DISALLOW_COPY(VerifiedExportSurface);
+  ZC_NODISCARD VerifiedExportSurface clone() const;
   ZC_NODISCARD identity::ModuleId sourceModule() const noexcept;
   ZC_NODISCARD identity::PackageId sourcePackage() const noexcept;
   ZC_NODISCARD const ExportSurfaceRevision& revision() const noexcept;

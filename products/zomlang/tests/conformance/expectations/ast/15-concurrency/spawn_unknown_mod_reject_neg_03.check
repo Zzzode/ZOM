@@ -2,17 +2,17 @@
 
 
 // CHECK-LITERAL: Error [ZOM2076]: Unexpected token expected
-// CHECK:   --> products {{(?:.*[/\\])?spawn_unknown_mod_reject_neg_03\.zom:2:27$}}
+// CHECK-LITERAL:   --> conformance/spawn_unknown_mod_reject_neg_03.zom:2:27
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 2 |     let t = spawn magical do_work();
 // CHECK-LITERAL:   |                           ^
 // CHECK-LITERAL: Error [ZOM2056]: Expression expected
-// CHECK:   --> products {{(?:.*[/\\])?spawn_unknown_mod_reject_neg_03\.zom:2:19$}}
+// CHECK-LITERAL:   --> conformance/spawn_unknown_mod_reject_neg_03.zom:2:19
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 2 |     let t = spawn magical do_work();
 // CHECK-LITERAL:   |                   ^
 // CHECK-LITERAL: Error [ZOM2056]: Expression expected
-// CHECK:   --> products {{(?:.*[/\\])?spawn_unknown_mod_reject_neg_03\.zom:2:13$}}
+// CHECK-LITERAL:   --> conformance/spawn_unknown_mod_reject_neg_03.zom:2:13
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 2 |     let t = spawn magical do_work();
 // CHECK-LITERAL:   |             ^

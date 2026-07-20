@@ -1,0 +1,4 @@
+section: "§6.1 ModifierList"
+covers_rule: "Modifier"
+expected: "REJECT"
+notes: []

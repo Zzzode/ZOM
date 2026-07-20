@@ -30,7 +30,7 @@
 // CHECK-NEXT:                       raises_ty:
 // CHECK-NEXT:                         NamedTypeExpr #7 @1:32..1:37
 // CHECK-NEXT:                           path:
-// CHECK-NEXT:                             ModulePath #6 @1:32..1:37 segments=["Error"]
+// CHECK-NEXT:                             ModulePath #6 @1:32..1:37 segments=["Error"] root=Relative
 // CHECK-NEXT:                           args: []
 // CHECK-NEXT:                       body: null
 // CHECK-NEXT:                       expr_body:

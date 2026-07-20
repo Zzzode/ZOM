@@ -21,7 +21,7 @@
 // CHECK-NEXT:                   ty:
 // CHECK-NEXT:                     PredefinedTypeExpr #4 @3:20..3:23 kind=Str
 // CHECK-NEXT:                   init:
-// CHECK-NEXT:                     StrLiteral #5 @3:26..3:29 value="s" is_raw=false prefix=None
+// CHECK-NEXT:                     StringLiteralExpr #5 @3:26..3:29 value="s"
 // CHECK-NEXT:                 ConstructorDecl #13 @5:3..5:27 name="init" visibility=Default
 // CHECK-NEXT:                   params_id:
 // CHECK-NEXT:                     FunctionParameterList #9 @5:7..5:15 nparams=1
@@ -52,7 +52,7 @@
 // CHECK-NEXT:                           item:
 // CHECK-NEXT:                             EmptyStatement #15 @6:14..6:15
 // CHECK-NEXT:                           attrs: null
-// CHECK-NEXT:                 MethodDecl #25 @8:3..8:35 name="value" is_static=false visibility=Default
+// CHECK-NEXT:                 MethodDecl #25 @8:3..8:35 name="value" mode=Instance visibility=Default
 // CHECK-NEXT:                   params_id:
 // CHECK-NEXT:                     FunctionParameterList #19 @8:12..8:14 nparams=0
 // CHECK-NEXT:                       params: []
@@ -69,7 +69,7 @@
 // CHECK-NEXT:                               value:
 // CHECK-NEXT:                                 IdentExpr #21 @8:31..8:32 name="x"
 // CHECK-NEXT:                           attrs: null
-// CHECK-NEXT:                 MethodDecl #32 @9:3..9:32 name="value" is_static=false visibility=Default
+// CHECK-NEXT:                 MethodDecl #32 @9:3..9:32 name="value" mode=Instance visibility=Default
 // CHECK-NEXT:                   params_id:
 // CHECK-NEXT:                     FunctionParameterList #28 @9:12..9:20 nparams=1
 // CHECK-NEXT:                       params:

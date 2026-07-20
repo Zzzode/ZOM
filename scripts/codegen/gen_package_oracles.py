@@ -26,7 +26,7 @@ RUNTIME_PRODUCERS = {
     "package-resolver-test": ROOT
     / "products/zomlang/tests/unittests/compiler/driver/package-resolver-test.cc",
     "target-registry-test": ROOT
-    / "products/zomlang/tests/unittests/compiler/irgen/target-registry-test.cc",
+    / "products/zomlang/tests/unittests/compiler/ir/target-registry-test.cc",
     "build-script-execution-key-test": ROOT
     / "products/zomlang/tests/unittests/compiler/driver/build-script-execution-key-test.cc",
     "source-record-test": ROOT
@@ -555,7 +555,7 @@ def catalog(outputs: dict[Path, bytes]) -> bytes:
                 "artifact": "build script output record",
                 "producer": "build-script-execution-key-test",
                 "test": "Build-script cache miss publishes one complete byte-identical output record",
-                "sha256": "d7e0bdb6b5a960cc8803f7f0f7191bc91bca8c259928c604dd09094d0598a5ff",
+                "sha256": "1173c31a10a429a13004c375a7b84baab54f2237857c3e5aea0ae1675552e87e",
             },
             {
                 "artifact": "registry signed release and source snapshot records",

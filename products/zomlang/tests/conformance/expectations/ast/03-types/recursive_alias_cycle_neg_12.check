@@ -11,7 +11,7 @@
 // CHECK-NEXT:           target:
 // CHECK-NEXT:             NamedTypeExpr #2 @1:11..1:12
 // CHECK-NEXT:               path:
-// CHECK-NEXT:                 ModulePath #1 @1:11..1:12 segments=["A"]
+// CHECK-NEXT:                 ModulePath #1 @1:11..1:12 segments=["A"] root=Relative
 // CHECK-NEXT:               args: []
 // CHECK-NEXT:       attrs: null
 // CHECK-NEXT:     StatementListItem #11 @2:1..2:10
@@ -27,7 +27,7 @@
 // CHECK-NEXT:                   ty:
 // CHECK-NEXT:                     NamedTypeExpr #7 @2:8..2:9
 // CHECK-NEXT:                       path:
-// CHECK-NEXT:                         ModulePath #6 @2:8..2:9 segments=["A"]
+// CHECK-NEXT:                         ModulePath #6 @2:8..2:9 segments=["A"] root=Relative
 // CHECK-NEXT:                       args: []
 // CHECK-NEXT:                   init: null
 // CHECK-NEXT:       attrs: null

@@ -29,7 +29,7 @@ struct BindingDuplicateFact final {
   BinderDiagnosticCode diagnostic;
   BinderEmitterSite emitterSite;
   identity::DeclaredDefinitionName name;
-  identity::DefId rejected;
+  BindingTarget rejected;
   ast::NodeId primaryNode;
   ast::NodeId previousNode;
   identity::SourceSpan primary;
@@ -38,6 +38,9 @@ struct BindingDuplicateFact final {
 
 struct DefinitionSkeletonCandidate final {
   zc::Vector<DefinitionFact> definitions;
+  zc::Vector<GenericParameterFact> genericParameters;
+  zc::Vector<CallableParameterFact> callableParameters;
+  zc::Vector<OwnerLocalBindingFact> ownerLocalBindings;
   zc::Vector<ImplBindingFact> impls;
   zc::Vector<BindingDuplicateFact> duplicates;
   zc::Vector<ModuleSkeletonSurfaceSeed> moduleSurfaceSeeds;

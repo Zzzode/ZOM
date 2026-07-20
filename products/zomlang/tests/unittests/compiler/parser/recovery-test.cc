@@ -29,7 +29,7 @@
 #include "zomlang/compiler/ast/tree.h"
 #include "zomlang/compiler/basic/string-pool.h"
 #include "zomlang/compiler/basic/zomlang-opts.h"
-#include "zomlang/compiler/diagnostics/diagnostic-engine.h"
+#include "zomlang/compiler/diagnostics/diagnostic-fact-buffer.h"
 #include "zomlang/compiler/parser/parser.h"
 #include "zomlang/compiler/source/manager.h"
 
@@ -61,17 +61,17 @@ struct ParseOutcome {
 
 ParseOutcome parseSource(zc::StringPtr source) {
   auto sourceManager = zc::heap<source::SourceManager>();
-  auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(*sourceManager);
   basic::LangOptions langOpts;
   basic::StringPool stringPool;
 
   auto bufferId = sourceManager->addMemBufferCopy(source.asBytes(), "recovery-test.zom");
-  Parser parser(*sourceManager, *diagnosticEngine, langOpts, stringPool, bufferId);
+  diagnostics::DiagnosticFactBuffer diagnosticFacts(*sourceManager, bufferId);
+  Parser parser(*sourceManager, diagnosticFacts, langOpts, stringPool, bufferId);
 
   ParseOutcome outcome;
   outcome.result = parser.parse();
-  outcome.hadErrors = diagnosticEngine->hasErrors();
-  outcome.errorCount = diagnosticEngine->errorCount();
+  outcome.hadErrors = diagnosticFacts.hasErrors();
+  outcome.errorCount = diagnosticFacts.errorCount();
   return outcome;
 }
 

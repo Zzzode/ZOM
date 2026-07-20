@@ -11,7 +11,7 @@
 #include "zomlang/compiler/ast/tree.h"
 #include "zomlang/compiler/identity/semantic-identity-registry-set.h"
 #include "zomlang/compiler/identity/source-snapshot.h"
-#include "zomlang/compiler/parser/token-snapshot.h"
+#include "zomlang/compiler/parser/canonical-parsed-source.h"
 #include "zomlang/compiler/source/manager.h"
 
 namespace zomlang::compiler::binder {
@@ -22,13 +22,30 @@ enum class ParsedModuleInvariantKind : uint8_t {
   InvalidSourceRange,
   InvalidTokenProvenance,
   ReceiptMismatch,
-  RegistryMismatch
+  RegistryMismatch,
+  SyntaxDiagnosticsPresent
 };
 
-/// \brief Closed failure published before a parsed module can enter binding.
+/// \brief Closed failure published before query-owned syntax can enter binding.
 struct ParsedModuleInvariantFact final {
   ParsedModuleInvariantKind kind;
   uint32_t occurrence;
+};
+
+/// \brief Read-only AST paired with the source manager that owns its locations.
+class SourceBackedSyntaxView final {
+public:
+  ZC_NODISCARD const ast::Tree& tree() const noexcept { return syntaxTree; }
+  ZC_NODISCARD const source::SourceManager& sourceManager() const noexcept { return syntaxSources; }
+
+private:
+  SourceBackedSyntaxView(const ast::Tree& tree, const source::SourceManager& sources) noexcept
+      : syntaxTree(tree), syntaxSources(sources) {}
+
+  const ast::Tree& syntaxTree;
+  const source::SourceManager& syntaxSources;
+
+  friend class VerifiedParsedModule;
 };
 
 /// \brief Domain-separated receipt for one immutable parser result.
@@ -47,25 +64,41 @@ private:
   identity::Sha256Digest value;
 };
 
-/// \brief Move-only parser result structurally bound to one immutable source snapshot.
-class UnbrandedParsedModule final {
+/// \brief Self-owned query parser value admitted into Binder syntax algorithms.
+class CanonicalParsedModule final {
 public:
-  ~UnbrandedParsedModule() noexcept(false);
-  UnbrandedParsedModule(UnbrandedParsedModule&&) noexcept;
-  UnbrandedParsedModule& operator=(UnbrandedParsedModule&&) noexcept;
-  ZC_DISALLOW_COPY(UnbrandedParsedModule);
+  ~CanonicalParsedModule() noexcept(false);
+  CanonicalParsedModule(CanonicalParsedModule&&) noexcept;
+  CanonicalParsedModule& operator=(CanonicalParsedModule&&) noexcept;
+  ZC_DISALLOW_COPY(CanonicalParsedModule);
 
-  ZC_NODISCARD const ParsedModuleReceipt& receipt() const noexcept;
+  /// \brief Admits one exact ParseSource value without consulting mutable session state.
+  ZC_NODISCARD static zc::Maybe<CanonicalParsedModule> fromQueryResult(
+      parser::CanonicalParsedSource&& parsedSource);
+  ZC_NODISCARD CanonicalParsedModule clone() const;
+  ZC_NODISCARD const identity::SourceFileKey& source() const noexcept;
+  ZC_NODISCARD const identity::Sha256Digest& contentDigest() const noexcept;
+  ZC_NODISCARD uint64_t byteLength() const noexcept;
+  ZC_NODISCARD const ast::Tree& tree() const noexcept;
+  ZC_NODISCARD zc::Maybe<identity::SourceSpan> spanFor(source::SourceRange range) const;
+  ZC_NODISCARD zc::Maybe<identity::SourceSpan> retainedTokenSpan(
+      ast::NodeId owner, uint32_t tokenOrdinal, ast::SyntaxKind expectedKind) const;
+  ZC_NODISCARD zc::Maybe<identity::SourceSpan> functionParameterNameSpan(
+      ast::NodeId parameter, ast::SyntaxKind expectedKind) const;
+  ZC_NODISCARD bool functionParameterHasImplicitSelfType(ast::NodeId parameter) const;
 
 private:
   struct Impl;
-  explicit UnbrandedParsedModule(zc::Own<Impl>&& impl) noexcept;
+  explicit CanonicalParsedModule(zc::Own<Impl>&& impl) noexcept;
   zc::Own<Impl> impl;
 
+  ZC_NODISCARD const parser::CanonicalParsedSource& queryResult() const noexcept;
+
   friend class ParsedModuleVerifier;
+  friend class VerifiedParsedModule;
 };
 
-/// \brief Immutable parser result promoted only after source-registry freeze.
+/// \brief Query-owned parsed source verified against the frozen source registry.
 class VerifiedParsedModule final {
 public:
   ~VerifiedParsedModule() noexcept(false);
@@ -74,21 +107,20 @@ public:
   ZC_DISALLOW_COPY(VerifiedParsedModule);
 
   ZC_NODISCARD identity::SourceFileId sourceFile() const noexcept;
+  ZC_NODISCARD const identity::SourceFileKey& source() const noexcept;
   ZC_NODISCARD const identity::Sha256Digest& contentDigest() const noexcept;
   ZC_NODISCARD uint64_t byteLength() const noexcept;
   ZC_NODISCARD const ast::Tree& tree() const noexcept;
+  ZC_NODISCARD SourceBackedSyntaxView sourceBackedSyntax() const noexcept;
+  ZC_NODISCARD const CanonicalParsedModule& syntax() const noexcept;
   ZC_NODISCARD const ParsedModuleReceipt& receipt() const noexcept;
   ZC_NODISCARD identity::SourceSpan rootSpan() const;
   ZC_NODISCARD zc::Maybe<identity::SourceSpan> spanFor(source::SourceRange range) const;
-  /// \brief Return one parser-retained token when ordinal, kind, and ownership match.
   ZC_NODISCARD zc::Maybe<identity::SourceSpan> retainedTokenSpan(
       ast::NodeId owner, uint32_t tokenOrdinal, ast::SyntaxKind expectedKind) const;
-  /// \brief Return the parser-retained name token of one function parameter.
   ZC_NODISCARD zc::Maybe<identity::SourceSpan> functionParameterNameSpan(
       ast::NodeId parameter, ast::SyntaxKind expectedKind) const;
-  /// \brief Return whether a receiver parameter omits its source type annotation.
   ZC_NODISCARD bool functionParameterHasImplicitSelfType(ast::NodeId parameter) const;
-  /// \brief Resolve the start of a checked source span back to its parser source location.
   ZC_NODISCARD zc::Maybe<source::SourceLoc> sourceLocFor(const identity::SourceSpan& span) const;
 
 private:
@@ -99,20 +131,17 @@ private:
   friend class ParsedModuleVerifier;
 };
 
-using ParsedModuleAdmissionResult = zc::OneOf<UnbrandedParsedModule, ParsedModuleInvariantFact>;
-using ParsedModulePromotionResult = zc::OneOf<VerifiedParsedModule, ParsedModuleInvariantFact>;
+using ParsedModuleVerificationResult = zc::OneOf<VerifiedParsedModule, ParsedModuleInvariantFact>;
 
-/// \brief Admits parser output and promotes it after frozen source identity verification.
+/// \brief Verifies a ParseSource value against the frozen source identity authority.
 class ParsedModuleVerifier final {
 public:
-  ZC_NODISCARD static ParsedModuleAdmissionResult admit(
-      const identity::ImmutableSourceSnapshot& snapshot, const source::SourceManager& sources,
-      const source::BufferId& buffer, parser::ParsedTokenSnapshot&& tokens, ast::Tree&& tree);
-
-  ZC_NODISCARD static ParsedModulePromotionResult promote(
+  ZC_NODISCARD static ParsedModuleVerificationResult verifyQueryResult(
       identity::SemanticContextBrand context,
       const identity::SemanticIdentityRegistrySet& registries,
-      UnbrandedParsedModule&& parsedModule);
+      const identity::SourceFileKey& materializedSource,
+      const source::SourceManager& materializedSources, const source::BufferId& materializedBuffer,
+      parser::CanonicalParsedSource&& parsedSource);
 };
 
 }  // namespace zomlang::compiler::binder

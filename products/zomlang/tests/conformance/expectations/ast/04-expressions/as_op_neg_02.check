@@ -2,17 +2,17 @@
 
 
 // CHECK-LITERAL: Error [ZOM2072]: Type expected
-// CHECK:   --> products {{(?:.*[/\\])?as_op_neg_02\.zom:1:17$}}
+// CHECK-LITERAL:   --> conformance/as_op_neg_02.zom:1:17
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 1 | let x = v as dyn;
 // CHECK-LITERAL:   |                 ^
 // CHECK-LITERAL: Error [ZOM2072]: Type expected
-// CHECK:   --> products {{(?:.*[/\\])?as_op_neg_02\.zom:1:14$}}
+// CHECK-LITERAL:   --> conformance/as_op_neg_02.zom:1:14
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 1 | let x = v as dyn;
 // CHECK-LITERAL:   |              ^
 // CHECK-LITERAL: Error [ZOM2056]: Expression expected
-// CHECK:   --> products {{(?:.*[/\\])?as_op_neg_02\.zom:1:9$}}
+// CHECK-LITERAL:   --> conformance/as_op_neg_02.zom:1:9
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 1 | let x = v as dyn;
 // CHECK-LITERAL:   |         ^

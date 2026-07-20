@@ -1,0 +1,4 @@
+section: "§4 Assignment operators"
+covers_rule: "assignmentOp requires a compound shift-assignment token"
+expected: "REJECT"
+notes: []

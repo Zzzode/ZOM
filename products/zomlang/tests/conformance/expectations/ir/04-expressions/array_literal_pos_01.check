@@ -1,4 +1,0 @@
-// RUN: not %zomc compile --emit ir %corpus/04-expressions/array_literal_pos_01.zom 2>&1 | %FileCheck %s
-
-// CHECK: Error [ZOM6001]: IR emission does not support this checked source shape
-// CHECK-NOT: IR lowering failed:

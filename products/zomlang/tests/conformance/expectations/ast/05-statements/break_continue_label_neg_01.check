@@ -2,7 +2,7 @@
 
 
 // CHECK-LITERAL: Error [ZOM2025]: Expected ';'
-// CHECK:   --> products {{(?:.*[/\\])?break_continue_label_neg_01\.zom:2:26$}}
+// CHECK-LITERAL:   --> conformance/break_continue_label_neg_01.zom:2:26
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 2 |     while (true) { break }
 // CHECK-LITERAL:   |                          ^

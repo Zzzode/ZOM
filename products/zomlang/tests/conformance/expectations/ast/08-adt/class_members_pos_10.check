@@ -52,7 +52,7 @@
 // CHECK-NEXT:                                   rhs:
 // CHECK-NEXT:                                     IdentExpr #15 @5:40..5:47 name="initial"
 // CHECK-NEXT:                           attrs: null
-// CHECK-NEXT:                 MethodDecl #33 @6:5..6:57 name="inc" is_static=false visibility=Default
+// CHECK-NEXT:                 MethodDecl #33 @6:5..6:57 name="inc" mode=Instance visibility=Default
 // CHECK-NEXT:                   params_id:
 // CHECK-NEXT:                     FunctionParameterList #21 @6:12..6:14 nparams=0
 // CHECK-NEXT:                       params: []
@@ -81,7 +81,7 @@
 // CHECK-NEXT:                                       rhs:
 // CHECK-NEXT:                                         IntLiteral #27 @6:53..6:54 base=10 value="1"
 // CHECK-NEXT:                           attrs: null
-// CHECK-NEXT:                 MethodDecl #41 @7:5..7:50 name="getValue" is_static=false visibility=Default
+// CHECK-NEXT:                 MethodDecl #41 @7:5..7:50 name="getValue" mode=Instance visibility=Default
 // CHECK-NEXT:                   params_id:
 // CHECK-NEXT:                     FunctionParameterList #34 @7:17..7:19 nparams=0
 // CHECK-NEXT:                       params: []

@@ -20,14 +20,14 @@
 // CHECK-NEXT:                   ty:
 // CHECK-NEXT:                     PredefinedTypeExpr #4 @3:12..3:15 kind=Str
 // CHECK-NEXT:                   init:
-// CHECK-NEXT:                     StrLiteral #5 @3:18..3:20 value="<token>" is_raw=false prefix=None
+// CHECK-NEXT:                     StringLiteralExpr #5 @3:18..3:20 value="<token>"
 // CHECK-NEXT:                 FieldDecl #11 @4:5..4:27 name="children" is_mut=false is_static=false visibility=Default
 // CHECK-NEXT:                   ty:
 // CHECK-NEXT:                     SliceArrayTypeExpr #9 @4:15..4:21
 // CHECK-NEXT:                       elem:
 // CHECK-NEXT:                         NamedTypeExpr #8 @4:16..4:20
 // CHECK-NEXT:                           path:
-// CHECK-NEXT:                             ModulePath #7 @4:16..4:20 segments=["Node"]
+// CHECK-NEXT:                             ModulePath #7 @4:16..4:20 segments=["Node"] root=Relative
 // CHECK-NEXT:                           args: []
 // CHECK-NEXT:                   init:
 // CHECK-NEXT:                     ArrayLiteral #10 @4:25..4:26

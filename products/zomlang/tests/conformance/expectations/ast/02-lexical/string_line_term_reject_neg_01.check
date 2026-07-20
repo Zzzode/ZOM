@@ -2,22 +2,22 @@
 
 
 // CHECK-LITERAL: Error [ZOM2003]: Unterminated string literal
-// CHECK:   --> products {{(?:.*[/\\])?string_line_term_reject_neg_01\.zom:1:9$}}
+// CHECK-LITERAL:   --> conformance/string_line_term_reject_neg_01.zom:1:9
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 1 | let x = "hello
 // CHECK-LITERAL:   |         ^
 // CHECK-LITERAL: Error [ZOM2003]: Unterminated string literal
-// CHECK:   --> products {{(?:.*[/\\])?string_line_term_reject_neg_01\.zom:2:6$}}
+// CHECK-LITERAL:   --> conformance/string_line_term_reject_neg_01.zom:2:6
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 2 | world";
 // CHECK-LITERAL:   |      ^
 // CHECK-LITERAL: Error [ZOM2012]: Missing semicolon before '<token>'
-// CHECK:   --> products {{(?:.*[/\\])?string_line_term_reject_neg_01\.zom:3:1$}}
+// CHECK-LITERAL:   --> conformance/string_line_term_reject_neg_01.zom:3:1
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 3 |
 // CHECK-LITERAL:   | ^
 // CHECK-LITERAL: Error [ZOM2025]: Expected ';'
-// CHECK:   --> products {{(?:.*[/\\])?string_line_term_reject_neg_01\.zom:3:1$}}
+// CHECK-LITERAL:   --> conformance/string_line_term_reject_neg_01.zom:3:1
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 3 |
 // CHECK-LITERAL:   | ^

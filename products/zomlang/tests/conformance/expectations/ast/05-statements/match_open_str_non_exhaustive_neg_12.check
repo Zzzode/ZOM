@@ -32,7 +32,7 @@
 // CHECK-NEXT:                           pattern:
 // CHECK-NEXT:                             LiteralPattern #6 @3:14..3:21
 // CHECK-NEXT:                               literal:
-// CHECK-NEXT:                                 StrLiteral #5 @3:14..3:21 value="hello" is_raw=false prefix=None
+// CHECK-NEXT:                                 StringLiteralExpr #5 @3:14..3:21 value="hello"
 // CHECK-NEXT:                           guard: null
 // CHECK-NEXT:                           body:
 // CHECK-NEXT:                             BlockStmt #7 @3:25..3:28

@@ -2,7 +2,7 @@
 
 
 // CHECK-LITERAL: Error [ZOM2025]: Expected ';'
-// CHECK:   --> products {{(?:.*[/\\])?for_forms_neg_01\.zom:2:19$}}
+// CHECK-LITERAL:   --> conformance/for_forms_neg_01.zom:2:19
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 2 |     for (let x arr) {}
 // CHECK-LITERAL:   |                   ^

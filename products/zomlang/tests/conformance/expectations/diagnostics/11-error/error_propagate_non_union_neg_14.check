@@ -1,9 +1,0 @@
-// RUN: cd %corpus && ! %zomc compile --syntax-only 11-error/error_propagate_non_union_neg_14.zom > %t 2>&1
-// RUN: %FileCheck %s --input-file %t
-
-
-// CHECK-LITERAL: Error [ZOM4032]: Postfix error operator requires error-union operand, got 'i32'
-// CHECK-LITERAL:   --> 11-error/error_propagate_non_union_neg_14.zom:2:12
-// CHECK-LITERAL:   |
-// CHECK-LITERAL: 2 |     return x?!;
-// CHECK-LITERAL:   |            ^

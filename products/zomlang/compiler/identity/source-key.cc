@@ -14,9 +14,16 @@
 
 #include "zomlang/compiler/identity/source-key.h"
 
+#include "zomlang/compiler/identity/canonical-decoder.h"
 #include "zomlang/compiler/identity/canonical-encoder.h"
 
 namespace zomlang::compiler::identity {
+namespace {
+
+constexpr uint64_t kMaximumModulePathSegments = 256;
+constexpr uint64_t kMaximumModuleKeyBytes = 16 * 1024;
+
+}  // namespace
 
 SourceOriginKey::SourceOriginKey(LocalFileSourceOrigin&& source) noexcept : value(zc::mv(source)) {}
 
@@ -40,28 +47,76 @@ SourceOriginKey SourceOriginKey::vcsFile(PackageKey&& package, CanonicalRelative
   return SourceOriginKey(VcsFileSourceOrigin{zc::mv(package), zc::mv(path)});
 }
 
-SourceOriginKey SourceOriginKey::generatedFile(BuildScriptOutputKey buildScriptOutput,
-                                               CanonicalRelativePath&& logicalPath,
-                                               const Sha256Digest& contentDigest) {
-  return SourceOriginKey(
-      GeneratedFileSourceOrigin{buildScriptOutput, zc::mv(logicalPath), contentDigest});
+SourceOriginKey SourceOriginKey::generatedFile(BuildScriptProducerKey producer,
+                                               CanonicalRelativePath&& logicalPath) {
+  return SourceOriginKey(GeneratedFileSourceOrigin{producer, zc::mv(logicalPath)});
 }
 
-SourceOriginKey SourceOriginKey::clone() const {ZC_SWITCH_ONEOF(value){
-    ZC_CASE_ONEOF(source, LocalFileSourceOrigin){return localFile(source.canonicalPath.clone());
-}  // namespace zomlang::compiler::identity
-ZC_CASE_ONEOF(source, RegistryFileSourceOrigin) {
-  return registryFile(source.package.clone(), source.path.clone());
+zc::Maybe<SourceOriginKey> SourceOriginKey::decodeCanonical(CanonicalDecoder& decoder) {
+  auto kind = decoder.decodeUint8();
+  ZC_IF_SOME(tag, kind) {
+    switch (static_cast<SourceOriginKind>(tag)) {
+      case SourceOriginKind::LocalFile: {
+        auto path = CanonicalWorkspaceRelativePath::decodeCanonical(decoder);
+        ZC_IF_SOME(value, path) { return SourceOriginKey::localFile(zc::mv(value)); }
+        return zc::none;
+      }
+      case SourceOriginKind::RegistryFile: {
+        auto package = PackageKey::decodeCanonical(decoder);
+        if (package == zc::none) { return zc::none; }
+        auto path = CanonicalRelativePath::decodeCanonical(decoder);
+        if (path == zc::none) { return zc::none; }
+        ZC_IF_SOME(packageValue, package) {
+          ZC_IF_SOME(pathValue, path) {
+            return SourceOriginKey::registryFile(zc::mv(packageValue), zc::mv(pathValue));
+          }
+        }
+        return zc::none;
+      }
+      case SourceOriginKind::VcsFile: {
+        auto package = PackageKey::decodeCanonical(decoder);
+        if (package == zc::none) { return zc::none; }
+        auto path = CanonicalRelativePath::decodeCanonical(decoder);
+        if (path == zc::none) { return zc::none; }
+        ZC_IF_SOME(packageValue, package) {
+          ZC_IF_SOME(pathValue, path) {
+            return SourceOriginKey::vcsFile(zc::mv(packageValue), zc::mv(pathValue));
+          }
+        }
+        return zc::none;
+      }
+      case SourceOriginKind::GeneratedFile: {
+        auto producer = BuildScriptProducerKey::decodeCanonical(decoder);
+        if (producer == zc::none) { return zc::none; }
+        auto logicalPath = CanonicalRelativePath::decodeCanonical(decoder);
+        if (logicalPath == zc::none) { return zc::none; }
+        ZC_IF_SOME(producerValue, producer) {
+          ZC_IF_SOME(pathValue, logicalPath) {
+            return SourceOriginKey::generatedFile(producerValue, zc::mv(pathValue));
+          }
+        }
+        return zc::none;
+      }
+    }
+  }
+  return zc::none;
 }
-ZC_CASE_ONEOF(source, VcsFileSourceOrigin) {
-  return vcsFile(source.package.clone(), source.path.clone());
-}
-ZC_CASE_ONEOF(source, GeneratedFileSourceOrigin) {
-  return generatedFile(BuildScriptOutputKey::from(source.buildScriptOutput.digest()),
-                       source.logicalPath.clone(), source.contentDigest);
-}
-}
-ZC_UNREACHABLE
+
+SourceOriginKey SourceOriginKey::clone() const {
+  ZC_SWITCH_ONEOF(value) {
+    ZC_CASE_ONEOF(source, LocalFileSourceOrigin) { return localFile(source.canonicalPath.clone()); }
+    ZC_CASE_ONEOF(source, RegistryFileSourceOrigin) {
+      return registryFile(source.package.clone(), source.path.clone());
+    }
+    ZC_CASE_ONEOF(source, VcsFileSourceOrigin) {
+      return vcsFile(source.package.clone(), source.path.clone());
+    }
+    ZC_CASE_ONEOF(source, GeneratedFileSourceOrigin) {
+      return generatedFile(BuildScriptProducerKey::from(source.producer.digest()),
+                           source.logicalPath.clone());
+    }
+  }
+  ZC_UNREACHABLE
 }
 
 SourceOriginKind SourceOriginKey::kind() const noexcept {
@@ -71,11 +126,16 @@ SourceOriginKind SourceOriginKey::kind() const noexcept {
   return SourceOriginKind::GeneratedFile;
 }
 
-bool SourceOriginKey::acceptsContentDigest(const Sha256Digest& contentDigest) const noexcept {
-  ZC_IF_SOME(source, value.tryGet<GeneratedFileSourceOrigin>()) {
-    return source.contentDigest == contentDigest;
+zc::Maybe<zc::String> SourceOriginKey::logicalFileName() const {
+  zc::ArrayPtr<const CanonicalPathSegment> segments;
+  ZC_SWITCH_ONEOF(value) {
+    ZC_CASE_ONEOF(source, LocalFileSourceOrigin) { segments = source.canonicalPath.segments(); }
+    ZC_CASE_ONEOF(source, RegistryFileSourceOrigin) { segments = source.path.segments(); }
+    ZC_CASE_ONEOF(source, VcsFileSourceOrigin) { segments = source.path.segments(); }
+    ZC_CASE_ONEOF(source, GeneratedFileSourceOrigin) { segments = source.logicalPath.segments(); }
   }
-  return true;
+  if (segments.size() == 0) { return zc::none; }
+  return zc::str(segments.back().text());
 }
 
 void SourceOriginKey::encode(CanonicalEncoder& encoder) const {
@@ -91,9 +151,8 @@ void SourceOriginKey::encode(CanonicalEncoder& encoder) const {
       source.path.encode(encoder);
     }
     ZC_CASE_ONEOF(source, GeneratedFileSourceOrigin) {
-      source.buildScriptOutput.encode(encoder);
+      source.producer.encode(encoder);
       source.logicalPath.encode(encoder);
-      encoder.encodeDigest(source.contentDigest);
     }
   }
 }
@@ -105,11 +164,28 @@ SourceFileKey SourceFileKey::from(CrateKey&& crate, SourceOriginKey&& origin) {
   return SourceFileKey(zc::mv(crate), zc::mv(origin));
 }
 
+zc::Maybe<SourceFileKey> SourceFileKey::decodeCanonical(CanonicalDecoder& decoder) {
+  auto crate = CrateKey::decodeCanonical(decoder);
+  if (crate == zc::none) { return zc::none; }
+  auto origin = SourceOriginKey::decodeCanonical(decoder);
+  if (origin == zc::none) { return zc::none; }
+  ZC_IF_SOME(crateValue, crate) {
+    ZC_IF_SOME(originValue, origin) {
+      return SourceFileKey(zc::mv(crateValue), zc::mv(originValue));
+    }
+  }
+  return zc::none;
+}
+
 SourceFileKey SourceFileKey::clone() const {
   return SourceFileKey(crateValue.clone(), originValue.clone());
 }
 
 const CrateKey& SourceFileKey::crate() const noexcept { return crateValue; }
+
+zc::Maybe<zc::String> SourceFileKey::logicalFileName() const {
+  return originValue.logicalFileName();
+}
 
 bool SourceFileKey::sameAs(const SourceFileKey& other) const {
   auto left = encode();
@@ -121,10 +197,6 @@ bool SourceFileKey::belongsTo(const CrateKey& crate) const {
   auto owner = crateValue.encode();
   auto candidate = crate.encode();
   return owner.asPtr() == candidate.asPtr();
-}
-
-bool SourceFileKey::acceptsContentDigest(const Sha256Digest& contentDigest) const noexcept {
-  return originValue.acceptsContentDigest(contentDigest);
 }
 
 void SourceFileKey::encode(CanonicalEncoder& encoder) const {
@@ -145,6 +217,8 @@ SourceSpan SourceSpan::clone() const {
   return SourceSpan(sourceValue.clone(), startValue, endValue);
 }
 
+const SourceFileKey& SourceSpan::source() const noexcept { return sourceValue; }
+
 bool SourceSpan::belongsTo(const SourceFileKey& source) const { return sourceValue.sameAs(source); }
 
 uint64_t SourceSpan::byteStart() const noexcept { return startValue; }
@@ -157,48 +231,55 @@ void SourceSpan::encode(CanonicalEncoder& encoder) const {
   encoder.encodeUint64(endValue);
 }
 
-ModuleKey::ModuleKey(CrateKey&& crate, zc::Vector<ModulePathSegment>&& canonicalPath,
-                     SourceFileKey&& source, zc::Maybe<SourceSpan>&& declarationAnchor) noexcept
-    : crateValue(zc::mv(crate)),
-      pathValue(zc::mv(canonicalPath)),
-      sourceValue(zc::mv(source)),
-      declarationAnchorValue(zc::mv(declarationAnchor)) {}
+ModuleKey::ModuleKey(CrateKey&& crate, zc::Vector<ModulePathSegment>&& canonicalPath) noexcept
+    : crateValue(zc::mv(crate)), pathValue(zc::mv(canonicalPath)) {}
 
 zc::Maybe<ModuleKey> ModuleKey::from(CrateKey&& crate,
-                                     zc::Vector<ModulePathSegment>&& canonicalPath,
-                                     SourceFileKey&& source,
-                                     zc::Maybe<SourceSpan>&& declarationAnchor) {
-  if (canonicalPath.size() == 0 || !source.belongsTo(crate)) { return zc::none; }
-  ZC_IF_SOME(anchor, declarationAnchor) {
-    if (!anchor.belongsTo(source)) { return zc::none; }
+                                     zc::Vector<ModulePathSegment>&& canonicalPath) {
+  if (canonicalPath.size() == 0 || canonicalPath.size() > kMaximumModulePathSegments) {
+    return zc::none;
   }
-  return ModuleKey(zc::mv(crate), zc::mv(canonicalPath), zc::mv(source), zc::mv(declarationAnchor));
+  ModuleKey candidate(zc::mv(crate), zc::mv(canonicalPath));
+  if (candidate.encode().size() > kMaximumModuleKeyBytes) { return zc::none; }
+  return zc::mv(candidate);
+}
+
+zc::Maybe<ModuleKey> ModuleKey::decodeCanonical(CanonicalDecoder& decoder) {
+  const uint64_t initialRemaining = decoder.remaining();
+  auto crate = CrateKey::decodeCanonical(decoder);
+  if (crate == zc::none) { return zc::none; }
+  auto pathSize = decoder.decodeSequenceSize(kMaximumModulePathSegments);
+  if (pathSize == zc::none) { return zc::none; }
+  ZC_IF_SOME(crateValue, crate) {
+    ZC_IF_SOME(size, pathSize) {
+      if (size == 0) { return zc::none; }
+      zc::Vector<ModulePathSegment> path(static_cast<size_t>(size));
+      for (uint64_t index = 0; index < size; ++index) {
+        auto segment = ModulePathSegment::decodeCanonical(decoder);
+        if (segment == zc::none) { return zc::none; }
+        ZC_IF_SOME(value, segment) { path.add(zc::mv(value)); }
+      }
+      if (initialRemaining - decoder.remaining() > kMaximumModuleKeyBytes) { return zc::none; }
+      return ModuleKey(zc::mv(crateValue), zc::mv(path));
+    }
+  }
+  return zc::none;
 }
 
 ModuleKey ModuleKey::clone() const {
   zc::Vector<ModulePathSegment> path(pathValue.size());
   for (const auto& segment : pathValue) { path.add(segment.clone()); }
-  zc::Maybe<SourceSpan> anchor;
-  ZC_IF_SOME(value, declarationAnchorValue) { anchor = value.clone(); }
-  return ModuleKey(crateValue.clone(), zc::mv(path), sourceValue.clone(), zc::mv(anchor));
+  return ModuleKey(crateValue.clone(), zc::mv(path));
 }
 
 const CrateKey& ModuleKey::crate() const noexcept { return crateValue; }
 
-const SourceFileKey& ModuleKey::source() const noexcept { return sourceValue; }
-
-bool ModuleKey::contains(const SourceSpan& span) const { return span.belongsTo(sourceValue); }
+zc::ArrayPtr<const ModulePathSegment> ModuleKey::path() const noexcept { return pathValue.asPtr(); }
 
 void ModuleKey::encode(CanonicalEncoder& encoder) const {
   crateValue.encode(encoder);
   encoder.encodeSequenceSize(pathValue.size());
   for (const auto& segment : pathValue) { segment.encode(encoder); }
-  sourceValue.encode(encoder);
-  ZC_IF_SOME(anchor, declarationAnchorValue) {
-    encoder.encodeSome();
-    anchor.encode(encoder);
-  }
-  else { encoder.encodeNone(); }
 }
 
 zc::Array<uint8_t> ModuleKey::encode() const {

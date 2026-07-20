@@ -2,7 +2,7 @@
 
 
 // CHECK-LITERAL: Error [ZOM2085]: Multi-character single-quoted literals are not allowed
-// CHECK:   --> products {{(?:.*[/\\])?char_literal_neg_01\.zom:1:9$}}
+// CHECK-LITERAL:   --> conformance/char_literal_neg_01.zom:1:9
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 1 | let c = 'ab';
 // CHECK-LITERAL:   |         ^~~~

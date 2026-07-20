@@ -2,12 +2,12 @@
 
 
 // CHECK-LITERAL: Error [ZOM2002]: Invalid character
-// CHECK:   --> products {{(?:.*[/\\])?inner_attr_reject_neg_01\.zom:1:1$}}
+// CHECK-LITERAL:   --> conformance/inner_attr_reject_neg_01.zom:1:1
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 1 | #![allow::dead_code]
 // CHECK-LITERAL:   | ^~
 // CHECK-LITERAL: Error [ZOM2056]: Expression expected
-// CHECK:   --> products {{(?:.*[/\\])?inner_attr_reject_neg_01\.zom:1:1$}}
+// CHECK-LITERAL:   --> conformance/inner_attr_reject_neg_01.zom:1:1
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 1 | #![allow::dead_code]
 // CHECK-LITERAL:   | ^

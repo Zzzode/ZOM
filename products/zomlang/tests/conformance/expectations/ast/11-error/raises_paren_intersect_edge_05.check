@@ -14,7 +14,7 @@
 // CHECK-NEXT:           ret_ty:
 // CHECK-NEXT:             NamedTypeExpr #3 @1:12..1:16
 // CHECK-NEXT:               path:
-// CHECK-NEXT:                 ModulePath #2 @1:12..1:16 segments=["void"]
+// CHECK-NEXT:                 ModulePath #2 @1:12..1:16 segments=["void"] root=Relative
 // CHECK-NEXT:               args: []
 // CHECK-NEXT:           raises_ty:
 // CHECK-NEXT:             IntersectionTypeExpr #11 @1:24..1:38
@@ -23,15 +23,15 @@
 // CHECK-NEXT:                   alts:
 // CHECK-NEXT:                     NamedTypeExpr #5 @1:25..1:27
 // CHECK-NEXT:                       path:
-// CHECK-NEXT:                         ModulePath #4 @1:25..1:27 segments=["E1"]
+// CHECK-NEXT:                         ModulePath #4 @1:25..1:27 segments=["E1"] root=Relative
 // CHECK-NEXT:                       args: []
 // CHECK-NEXT:                     NamedTypeExpr #7 @1:30..1:32
 // CHECK-NEXT:                       path:
-// CHECK-NEXT:                         ModulePath #6 @1:30..1:32 segments=["E2"]
+// CHECK-NEXT:                         ModulePath #6 @1:30..1:32 segments=["E2"] root=Relative
 // CHECK-NEXT:                       args: []
 // CHECK-NEXT:                 NamedTypeExpr #10 @1:36..1:38
 // CHECK-NEXT:                   path:
-// CHECK-NEXT:                     ModulePath #9 @1:36..1:38 segments=["E3"]
+// CHECK-NEXT:                     ModulePath #9 @1:36..1:38 segments=["E3"] root=Relative
 // CHECK-NEXT:                   args: []
 // CHECK-NEXT:           body:
 // CHECK-NEXT:             BlockStmt #12 @1:38..1:39

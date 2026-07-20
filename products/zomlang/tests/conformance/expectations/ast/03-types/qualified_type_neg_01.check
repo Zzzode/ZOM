@@ -2,7 +2,7 @@
 
 
 // CHECK-LITERAL: Error [ZOM2076]: Unexpected token expected
-// CHECK:   --> products {{(?:.*[/\\])?qualified_type_neg_01\.zom:1:3$}}
+// CHECK-LITERAL:   --> conformance/qualified_type_neg_01.zom:1:3
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 1 | #[test]
 // CHECK-LITERAL:   |   ^

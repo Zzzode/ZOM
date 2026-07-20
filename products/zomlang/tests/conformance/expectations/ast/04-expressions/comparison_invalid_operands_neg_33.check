@@ -29,7 +29,7 @@
 // CHECK-NEXT:                   ty:
 // CHECK-NEXT:                     NamedTypeExpr #8 @2:8..2:13
 // CHECK-NEXT:                       path:
-// CHECK-NEXT:                         ModulePath #7 @2:8..2:13 segments=["Point"]
+// CHECK-NEXT:                         ModulePath #7 @2:8..2:13 segments=["Point"] root=Relative
 // CHECK-NEXT:                       args: []
 // CHECK-NEXT:                   init: null
 // CHECK-NEXT:       attrs: null

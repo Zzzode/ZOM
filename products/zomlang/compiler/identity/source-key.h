@@ -19,11 +19,13 @@
 #include "zc/core/array.h"
 #include "zc/core/common.h"
 #include "zc/core/one-of.h"
+#include "zc/core/string.h"
 #include "zc/core/vector.h"
 #include "zomlang/compiler/identity/crate-key.h"
 
 namespace zomlang::compiler::identity {
 
+class CanonicalDecoder;
 class CanonicalEncoder;
 class ImmutableSourceSnapshot;
 
@@ -42,9 +44,8 @@ struct VcsFileSourceOrigin final {
 };
 
 struct GeneratedFileSourceOrigin final {
-  BuildScriptOutputKey buildScriptOutput;
+  BuildScriptProducerKey producer;
   CanonicalRelativePath logicalPath;
-  Sha256Digest contentDigest;
 };
 
 enum class SourceOriginKind : uint8_t {
@@ -65,12 +66,12 @@ public:
   ZC_NODISCARD static SourceOriginKey registryFile(PackageKey&& package,
                                                    CanonicalRelativePath&& path);
   ZC_NODISCARD static SourceOriginKey vcsFile(PackageKey&& package, CanonicalRelativePath&& path);
-  ZC_NODISCARD static SourceOriginKey generatedFile(BuildScriptOutputKey buildScriptOutput,
-                                                    CanonicalRelativePath&& logicalPath,
-                                                    const Sha256Digest& contentDigest);
+  ZC_NODISCARD static SourceOriginKey generatedFile(BuildScriptProducerKey producer,
+                                                    CanonicalRelativePath&& logicalPath);
+  ZC_NODISCARD static zc::Maybe<SourceOriginKey> decodeCanonical(CanonicalDecoder& decoder);
   ZC_NODISCARD SourceOriginKey clone() const;
   ZC_NODISCARD SourceOriginKind kind() const noexcept;
-  ZC_NODISCARD bool acceptsContentDigest(const Sha256Digest& contentDigest) const noexcept;
+  ZC_NODISCARD zc::Maybe<zc::String> logicalFileName() const;
   void encode(CanonicalEncoder& encoder) const;
 
 private:
@@ -92,11 +93,12 @@ public:
   ZC_DISALLOW_COPY(SourceFileKey);
 
   ZC_NODISCARD static SourceFileKey from(CrateKey&& crate, SourceOriginKey&& origin);
+  ZC_NODISCARD static zc::Maybe<SourceFileKey> decodeCanonical(CanonicalDecoder& decoder);
   ZC_NODISCARD SourceFileKey clone() const;
   ZC_NODISCARD const CrateKey& crate() const noexcept;
+  ZC_NODISCARD zc::Maybe<zc::String> logicalFileName() const;
   ZC_NODISCARD bool sameAs(const SourceFileKey& other) const;
   ZC_NODISCARD bool belongsTo(const CrateKey& crate) const;
-  ZC_NODISCARD bool acceptsContentDigest(const Sha256Digest& contentDigest) const noexcept;
   void encode(CanonicalEncoder& encoder) const;
   ZC_NODISCARD zc::Array<uint8_t> encode() const;
 
@@ -115,6 +117,7 @@ public:
   ZC_DISALLOW_COPY(SourceSpan);
 
   ZC_NODISCARD SourceSpan clone() const;
+  ZC_NODISCARD const SourceFileKey& source() const noexcept;
   ZC_NODISCARD bool belongsTo(const SourceFileKey& source) const;
   ZC_NODISCARD uint64_t byteStart() const noexcept;
   ZC_NODISCARD uint64_t byteEnd() const noexcept;
@@ -130,7 +133,7 @@ private:
   friend class ImmutableSourceSnapshot;
 };
 
-/// \brief Frozen canonical module identity expanded through crate and source keys.
+/// \brief Edit-stable canonical module identity under one crate.
 class ModuleKey final {
 public:
   ModuleKey(ModuleKey&&) noexcept = default;
@@ -138,24 +141,21 @@ public:
   ZC_DISALLOW_COPY(ModuleKey);
 
   ZC_NODISCARD static zc::Maybe<ModuleKey> from(CrateKey&& crate,
-                                                zc::Vector<ModulePathSegment>&& canonicalPath,
-                                                SourceFileKey&& source,
-                                                zc::Maybe<SourceSpan>&& declarationAnchor);
+                                                zc::Vector<ModulePathSegment>&& canonicalPath);
+  /// \brief Decodes one bounded canonical module key without consuming outer framing bytes.
+  ZC_NODISCARD static zc::Maybe<ModuleKey> decodeCanonical(CanonicalDecoder& decoder);
   ZC_NODISCARD ModuleKey clone() const;
   ZC_NODISCARD const CrateKey& crate() const noexcept;
-  ZC_NODISCARD const SourceFileKey& source() const noexcept;
-  ZC_NODISCARD bool contains(const SourceSpan& span) const;
+  /// \brief Returns the immutable canonical module path.
+  ZC_NODISCARD zc::ArrayPtr<const ModulePathSegment> path() const noexcept;
   void encode(CanonicalEncoder& encoder) const;
   ZC_NODISCARD zc::Array<uint8_t> encode() const;
 
 private:
-  ModuleKey(CrateKey&& crate, zc::Vector<ModulePathSegment>&& canonicalPath, SourceFileKey&& source,
-            zc::Maybe<SourceSpan>&& declarationAnchor) noexcept;
+  ModuleKey(CrateKey&& crate, zc::Vector<ModulePathSegment>&& canonicalPath) noexcept;
 
   CrateKey crateValue;
   zc::Vector<ModulePathSegment> pathValue;
-  SourceFileKey sourceValue;
-  zc::Maybe<SourceSpan> declarationAnchorValue;
 };
 
 }  // namespace zomlang::compiler::identity

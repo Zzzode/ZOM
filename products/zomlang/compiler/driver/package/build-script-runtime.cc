@@ -427,8 +427,11 @@ zc::OneOf<BuildScriptRequestFrame, BuildScriptIssue> BuildScriptRequestFrame::en
       return BuildScriptIssue::EnvironmentValueLimit;
     }
     auto name = identity::SemanticEnvironmentName::fromCanonical(value.name());
-    ZC_IF_SOME(nameValue, name) { nameValue.encode(encoder); }
-    else { ZC_UNREACHABLE; }
+    ZC_IF_SOME(nameValue, name) {
+      nameValue.encode(encoder);
+    } else {
+      ZC_UNREACHABLE;
+    }
     encoder.encodeByteString(value.value());
   }
   encoder.encodeSequenceSize(outputs.size());
@@ -719,10 +722,11 @@ zc::Maybe<identity::BuildScriptOutputRecord> buildOutputRecord(
     ZC_IF_SOME(nameValue, name) {
       exported.add(
           identity::BuildScriptEnvironmentEntry::from(zc::mv(nameValue), copyBytes(value.value())));
+    } else {
+      ZC_UNREACHABLE;
     }
-    else { ZC_UNREACHABLE; }
   }
-  return identity::BuildScriptOutputRecord::from(executionKey.preparatory().clone(),
+  return identity::BuildScriptOutputRecord::from(executionKey.preparatory().producerKey(),
                                                  zc::mv(sources), zc::mv(environment),
                                                  zc::mv(generated), zc::mv(exported));
 }
@@ -750,8 +754,8 @@ BuildScriptResultPublication VerifiedBuildScriptResult::publish(
     return BuildResultIntegrityViolation(producer, BuildResultIntegrityFact::GeneratedBytes);
   }
   ZC_IF_SOME(expectedValue, expected) {
-    if (output.preparatoryKey().encode().asPtr() != executionKey.preparatory().encode().asPtr()) {
-      return BuildResultIntegrityViolation(producer, BuildResultIntegrityFact::PreparatoryKey);
+    if (output.producerKey().digest() != executionKey.preparatory().producerKey().digest()) {
+      return BuildResultIntegrityViolation(producer, BuildResultIntegrityFact::ProducerKey);
     }
     if (!samePublicationSequence(output.sourceDigests(), executionKey.inputDigests())) {
       return BuildResultIntegrityViolation(producer, BuildResultIntegrityFact::SourceDigests);
@@ -820,8 +824,9 @@ BuildScriptExecutionResult BuildScriptDeterminismExecutor::executeCacheMiss(
       }
       return zc::mv(publication.get<VerifiedBuildScriptResult>());
     }
+  } else {
+    return BuildScriptIssue::NondeterministicOutput;
   }
-  else { return BuildScriptIssue::NondeterministicOutput; }
   ZC_UNREACHABLE;
 }
 
@@ -894,8 +899,8 @@ zc::OneOf<BuildScriptResponse, BuildScriptIssue> revalidateCacheCandidate(
   const auto expectedOutputRecord = candidate.output().encode();
   if (candidate.executionKeyBytes() != expectedExecutionKey.asPtr() ||
       candidate.outputRecordBytes() != expectedOutputRecord.asPtr() ||
-      candidate.output().preparatoryKey().encode().asPtr() !=
-          executionKey.preparatory().encode().asPtr() ||
+      candidate.output().producerKey().digest() !=
+          executionKey.preparatory().producerKey().digest() ||
       !sameEncodedSequence(candidate.output().sourceDigests(), executionKey.inputDigests()) ||
       !sameEncodedSequence(candidate.output().declaredEnvironment(),
                            executionKey.declaredEnvironment())) {
@@ -998,9 +1003,10 @@ namespace {
 void sortPlanKeys(zc::Vector<identity::PreparatoryBuildScriptKey>& keys) {
   for (size_t index = 1; index < keys.size(); ++index) {
     auto current = zc::mv(keys[index]);
-    const auto currentBytes = current.encode();
+    const auto currentProducer = current.producerKey();
+    const auto currentBytes = currentProducer.digest().bytes();
     size_t insertion = index;
-    while (insertion != 0 && currentBytes.asPtr() < keys[insertion - 1].encode().asPtr()) {
+    while (insertion != 0 && currentBytes < keys[insertion - 1].producerKey().digest().bytes()) {
       keys[insertion] = zc::mv(keys[insertion - 1]);
       --insertion;
     }
@@ -1011,11 +1017,11 @@ void sortPlanKeys(zc::Vector<identity::PreparatoryBuildScriptKey>& keys) {
 void sortBuildResults(zc::Vector<VerifiedBuildScriptResult>& results) {
   for (size_t index = 1; index < results.size(); ++index) {
     auto current = zc::mv(results[index]);
-    const auto currentBytes = current.output().preparatoryKey().encode();
+    const auto currentProducer = current.output().producerKey();
+    const auto currentBytes = currentProducer.digest().bytes();
     size_t insertion = index;
     while (insertion != 0 &&
-           currentBytes.asPtr() <
-               results[insertion - 1].output().preparatoryKey().encode().asPtr()) {
+           currentBytes < results[insertion - 1].output().producerKey().digest().bytes()) {
       results[insertion] = zc::mv(results[insertion - 1]);
       --insertion;
     }
@@ -1053,9 +1059,9 @@ VerifiedBuildScriptResultSet::from(zc::Vector<identity::PreparatoryBuildScriptKe
                                          BuildResultIntegrityFact::PlanAssociation);
   }
   for (size_t index = 0; index < planKeys.size(); ++index) {
-    const auto keyBytes = planKeys[index].encode();
-    if ((index != 0 && keyBytes.asPtr() == planKeys[index - 1].encode().asPtr()) ||
-        keyBytes.asPtr() != results[index].output().preparatoryKey().encode().asPtr()) {
+    const auto producer = planKeys[index].producerKey();
+    if ((index != 0 && producer.digest() == planKeys[index - 1].producerKey().digest()) ||
+        producer.digest() != results[index].output().producerKey().digest()) {
       return BuildResultIntegrityViolation(BuildResultIntegrityProducer::FinalSessionPublication,
                                            BuildResultIntegrityFact::PlanAssociation);
     }

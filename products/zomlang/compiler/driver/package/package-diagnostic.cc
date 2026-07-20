@@ -25,81 +25,6 @@
 namespace zomlang::compiler::driver::package {
 namespace {
 
-struct DecodedScalar final {
-  uint32_t value;
-  uint8_t length;
-};
-
-bool isContinuation(uint8_t value) { return (value & 0xc0U) == 0x80U; }
-
-zc::Maybe<DecodedScalar> decodeScalar(zc::ArrayPtr<const zc::byte> source, size_t offset) {
-  const auto first = static_cast<uint8_t>(source[offset]);
-  if (first < 0x80U) { return DecodedScalar{first, 1}; }
-  if (first >= 0xc2U && first <= 0xdfU && offset + 1 < source.size()) {
-    const auto second = static_cast<uint8_t>(source[offset + 1]);
-    if (isContinuation(second)) {
-      return DecodedScalar{static_cast<uint32_t>(((first & 0x1fU) << 6U) | (second & 0x3fU)), 2};
-    }
-  }
-  if (first >= 0xe0U && first <= 0xefU && offset + 2 < source.size()) {
-    const auto second = static_cast<uint8_t>(source[offset + 1]);
-    const auto third = static_cast<uint8_t>(source[offset + 2]);
-    const bool secondValid = isContinuation(second) && (first != 0xe0U || second >= 0xa0U) &&
-                             (first != 0xedU || second <= 0x9fU);
-    if (secondValid && isContinuation(third)) {
-      return DecodedScalar{static_cast<uint32_t>(((first & 0x0fU) << 12U) |
-                                                 ((second & 0x3fU) << 6U) | (third & 0x3fU)),
-                           3};
-    }
-  }
-  if (first >= 0xf0U && first <= 0xf4U && offset + 3 < source.size()) {
-    const auto second = static_cast<uint8_t>(source[offset + 1]);
-    const auto third = static_cast<uint8_t>(source[offset + 2]);
-    const auto fourth = static_cast<uint8_t>(source[offset + 3]);
-    const bool secondValid = isContinuation(second) && (first != 0xf0U || second >= 0x90U) &&
-                             (first != 0xf4U || second <= 0x8fU);
-    if (secondValid && isContinuation(third) && isContinuation(fourth)) {
-      return DecodedScalar{
-          static_cast<uint32_t>(((first & 0x07U) << 18U) | ((second & 0x3fU) << 12U) |
-                                ((third & 0x3fU) << 6U) | (fourth & 0x3fU)),
-          4};
-    }
-  }
-  return zc::none;
-}
-
-char upperHex(uint8_t value) {
-  return value < 10 ? static_cast<char>('0' + value) : static_cast<char>('A' + value - 10);
-}
-
-void appendByteEscape(zc::Vector<char>& output, uint8_t value) {
-  output.addAll("\\x"_zc);
-  output.add(upperHex(static_cast<uint8_t>(value >> 4U)));
-  output.add(upperHex(static_cast<uint8_t>(value & 0x0fU)));
-}
-
-void appendScalarEscape(zc::Vector<char>& output, uint32_t value) {
-  output.addAll("\\u{"_zc);
-  char digits[6];
-  size_t count = 0;
-  do {
-    digits[count++] = upperHex(static_cast<uint8_t>(value & 0x0fU));
-    value >>= 4U;
-  } while (value != 0);
-  while (count != 0) { output.add(digits[--count]); }
-  output.add('}');
-}
-
-void appendEscapedScalar(zc::Vector<char>& output, uint32_t value) {
-  if (value >= 0x20U && value <= 0x7eU) {
-    const auto character = static_cast<char>(value);
-    if (character == '\\') { output.add('\\'); }
-    output.add(character);
-    return;
-  }
-  appendScalarEscape(output, value);
-}
-
 zc::String escapePath(zc::ArrayPtr<const identity::CanonicalPathSegment> segments,
                       uint32_t leadingParents) {
   zc::Vector<char> output;
@@ -107,8 +32,8 @@ zc::String escapePath(zc::ArrayPtr<const identity::CanonicalPathSegment> segment
   bool needsSeparator = false;
   for (const auto& segment : segments) {
     if (needsSeparator) { output.add('/'); }
-    const auto escaped = DiagnosticEscapedText::fromBytes(segment.text().asBytes());
-    output.addAll(escaped.text());
+    const auto escaped = diagnostics::escapeDiagnosticText(segment.text().asBytes());
+    output.addAll(escaped);
     needsSeparator = true;
   }
   return zc::str(output.releaseAsArray());
@@ -152,25 +77,7 @@ zc::Maybe<ResolvedSpan> resolveSpan(source::SourceManager& sourceManager,
 
 }  // namespace
 
-DiagnosticEscapedText::DiagnosticEscapedText(zc::String&& value) noexcept : value(zc::mv(value)) {}
-
-DiagnosticEscapedText DiagnosticEscapedText::fromBytes(zc::ArrayPtr<const zc::byte> bytes) {
-  zc::Vector<char> output;
-  size_t offset = 0;
-  while (offset < bytes.size()) {
-    ZC_IF_SOME(decoded, decodeScalar(bytes, offset)) {
-      appendEscapedScalar(output, decoded.value);
-      offset += decoded.length;
-      continue;
-    }
-    appendByteEscape(output, static_cast<uint8_t>(bytes[offset++]));
-  }
-  return DiagnosticEscapedText(zc::str(output.releaseAsArray()));
-}
-
-zc::StringPtr DiagnosticEscapedText::text() const noexcept { return value; }
-
-SanitizedSourceView::SanitizedSourceView(DiagnosticEscapedText&& source,
+SanitizedSourceView::SanitizedSourceView(zc::String&& source,
                                          zc::Vector<uint64_t>&& offsets) noexcept
     : sourceValue(zc::mv(source)), escapedOffsets(zc::mv(offsets)) {}
 
@@ -181,21 +88,21 @@ SanitizedSourceView SanitizedSourceView::from(zc::ArrayPtr<const zc::byte> sourc
   size_t offset = 0;
   while (offset < source.size()) {
     const auto escapedStart = static_cast<uint64_t>(output.size());
-    ZC_IF_SOME(decoded, decodeScalar(source, offset)) {
-      appendEscapedScalar(output, decoded.value);
+    ZC_IF_SOME(decoded, diagnostics::decodeDiagnosticScalar(source, offset)) {
+      diagnostics::appendDiagnosticScalar(output, decoded.value,
+                                          diagnostics::DiagnosticQuote::None);
       for (uint8_t index = 1; index < decoded.length; ++index) { offsets.add(escapedStart); }
       offset += decoded.length;
       offsets.add(static_cast<uint64_t>(output.size()));
       continue;
     }
-    appendByteEscape(output, static_cast<uint8_t>(source[offset++]));
+    diagnostics::appendDiagnosticByteEscape(output, static_cast<uint8_t>(source[offset++]));
     offsets.add(static_cast<uint64_t>(output.size()));
   }
-  return SanitizedSourceView(DiagnosticEscapedText(zc::str(output.releaseAsArray())),
-                             zc::mv(offsets));
+  return SanitizedSourceView(zc::str(output.releaseAsArray()), zc::mv(offsets));
 }
 
-zc::StringPtr SanitizedSourceView::escapedSource() const noexcept { return sourceValue.text(); }
+zc::StringPtr SanitizedSourceView::escapedSource() const noexcept { return sourceValue; }
 
 uint64_t SanitizedSourceView::escapedOffset(uint64_t originalOffset) const {
   ZC_IREQUIRE(originalOffset < escapedOffsets.size(), "Original source offset is out of range.");

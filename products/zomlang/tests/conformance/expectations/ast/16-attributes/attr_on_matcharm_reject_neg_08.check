@@ -2,7 +2,7 @@
 
 
 // CHECK-LITERAL: Error [ZOM2025]: Expected 'when'
-// CHECK:   --> products {{(?:.*[/\\])?attr_on_matcharm_reject_neg_08\.zom:3:5$}}
+// CHECK-LITERAL:   --> conformance/attr_on_matcharm_reject_neg_08.zom:3:5
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 3 |     #[cfg::feature]
 // CHECK-LITERAL:   |     ^

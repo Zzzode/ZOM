@@ -16,7 +16,7 @@
 // CHECK-NEXT:                       ty: null
 // CHECK-NEXT:                   ty: null
 // CHECK-NEXT:                   init:
-// CHECK-NEXT:                     StrLiteral #2 @1:17..1:41 value="deseret_capital_long_i" is_raw=false prefix=None
+// CHECK-NEXT:                     StringLiteralExpr #2 @1:17..1:41 value="deseret_capital_long_i"
 // CHECK-NEXT:       attrs: null
 // CHECK-NEXT:     StatementListItem #12 @2:1..2:28
 // CHECK-NEXT:       item:
@@ -30,5 +30,5 @@
 // CHECK-NEXT:                       ty: null
 // CHECK-NEXT:                   ty: null
 // CHECK-NEXT:                   init:
-// CHECK-NEXT:                     StrLiteral #8 @2:16..2:27 value="capital_A" is_raw=false prefix=None
+// CHECK-NEXT:                     StringLiteralExpr #8 @2:16..2:27 value="capital_A"
 // CHECK-NEXT:       attrs: null

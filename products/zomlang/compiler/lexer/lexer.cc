@@ -23,9 +23,8 @@
 #include "zc/core/string.h"
 #include "zc/core/vector.h"
 #include "zomlang/compiler/ast/kinds.h"
-#include "zomlang/compiler/basic/frontend.h"
 #include "zomlang/compiler/basic/zomlang-opts.h"
-#include "zomlang/compiler/diagnostics/diagnostic-engine.h"
+#include "zomlang/compiler/diagnostics/diagnostic-emitter.h"
 #include "zomlang/compiler/diagnostics/diagnostic-ids.h"
 #include "zomlang/compiler/diagnostics/in-flight-diagnostic.h"
 #include "zomlang/compiler/lexer/bigint.h"
@@ -120,8 +119,8 @@ struct Lexer::Impl {
 
   /// Reference members
   const source::SourceManager& sourceMgr;
-  /// Diagnostic engine for reporting errors
-  diagnostics::DiagnosticEngine& diagnosticEngine;
+  /// Query-local diagnostic emitter for reporting lexical facts.
+  diagnostics::DiagnosticEmitter& diagnosticEngine;
   /// Language options
   const basic::LangOptions& langOpts;
   /// String pool for interning strings
@@ -144,7 +143,7 @@ struct Lexer::Impl {
   /// Collected comment directives
   zc::Vector<CommentDirective> commentDirectives;
 
-  Impl(const source::SourceManager& sourceMgr, diagnostics::DiagnosticEngine& diagnosticEngine,
+  Impl(const source::SourceManager& sourceMgr, diagnostics::DiagnosticEmitter& diagnosticEngine,
        const basic::LangOptions& options, basic::StringPool& stringPool,
        const source::BufferId& bufferId);
 
@@ -280,7 +279,7 @@ struct Lexer::Impl {
 };
 
 Lexer::Impl::Impl(const source::SourceManager& sourceMgr,
-                  diagnostics::DiagnosticEngine& diagnosticEngine,
+                  diagnostics::DiagnosticEmitter& diagnosticEngine,
                   const basic::LangOptions& options, basic::StringPool& stringPool,
                   const source::BufferId& bufferId)
     : sourceMgr(sourceMgr),
@@ -1161,17 +1160,11 @@ ast::SyntaxKind Lexer::Impl::lexBigIntSuffix(zc::StringPtr& tokenValue) {
     return ast::SyntaxKind::BigIntLiteralToken;
   }
 
-  // Parse integer value to normalize it (e.g. remove leading zeros)
-  // Only if not already processed above (BinaryOrOctalSpecifier)
-  int64_t intValue = hasFlag(state.tokenFlags, TokenFlags::BinarySpecifier)
-                         ? strtoll(tokenValue.slice(2).cStr(), nullptr, 2)
-                     : hasFlag(state.tokenFlags, TokenFlags::OctalSpecifier)
-                         ? strtoll(tokenValue.slice(2).cStr(), nullptr, 8)
-                     : hasFlag(state.tokenFlags, TokenFlags::HexSpecifier)
-                         ? strtoll(tokenValue.slice(2).cStr(), nullptr, 16)
-                         : tokenValue.parseAs<int64_t>();
-
-  tokenValue = stringPool.intern(intValue);
+  // Preserve arbitrary-precision spelling when the value exceeds the normalization range.
+  // Semantic literal analysis owns range selection and diagnostics.
+  ZC_IF_SOME(intValue, tokenValue.tryParseAs<int64_t>()) {
+    tokenValue = stringPool.intern(intValue);
+  }
   return ast::SyntaxKind::IntegerLiteral;
 }
 
@@ -1297,13 +1290,14 @@ zc::StringPtr Lexer::Impl::lexString() {
       start = state.curPtr;
       continue;
     }
-    if ((c == '\n' || c == '\r')) {
+    const auto [code, size] = charWithSize();
+    if (isLineBreak(code)) {
       result.addAll(zc::arrayPtr(start, state.curPtr).asChars());
       state.tokenFlags |= TokenFlags::Unterminated;
       error<diagnostics::DiagID::UnterminatedString>();
       break;
     }
-    state.curPtr++;
+    state.curPtr += size;
   }
   zc::StringPtr text = stringPool.intern(result.releaseAsArray());
   if (quoteChar == '\'' && !hasFlag(state.tokenFlags, TokenFlags::Unterminated) &&
@@ -1322,8 +1316,14 @@ zc::StringPtr Lexer::Impl::lexEscapeSequence(EscapeSequenceScanningFlags flags) 
     return ""_zc;
   }
 
-  zc::byte c = ch();
-  state.curPtr++;
+  const auto [escapedCode, escapedSize] = charWithSize();
+  if (isLineBreak(escapedCode)) {
+    state.curPtr += escapedSize;
+    if (escapedCode == '\r' && state.curPtr < bufferEnd && ch() == '\n') { state.curPtr++; }
+    return ""_zc;
+  }
+  const zc::byte c = ch();
+  state.curPtr += escapedSize;
   switch (c) {
     case '0':
       if (state.curPtr >= bufferEnd || !isdigit(ch())) { return "\0"_zc; }
@@ -1383,6 +1383,8 @@ zc::StringPtr Lexer::Impl::lexEscapeSequence(EscapeSequenceScanningFlags flags) 
       return stringPool.intern('\f');
     case 'r':
       return stringPool.intern('\r');
+    case '\\':
+      return stringPool.intern('\\');
     case '\'':
       return stringPool.intern('\'');
     case '"':
@@ -1417,18 +1419,21 @@ zc::StringPtr Lexer::Impl::lexEscapeSequence(EscapeSequenceScanningFlags flags) 
       code = (hexVal(h1) << 4) | hexVal(h2);
       return stringPool.intern(static_cast<char>(code));
     }
-    case '\r':
-      if (state.curPtr < bufferEnd && ch() == '\n') { state.curPtr++; }
-      ZC_FALLTHROUGH;
-    case '\n':
-      return ""_zc;
     default:
+      if (hasFlag(flags, EscapeSequenceScanningFlags::String)) {
+        state.tokenFlags |= TokenFlags::ContainsInvalidEscape;
+        if (hasFlag(flags, EscapeSequenceScanningFlags::ReportInvalidEscapeErrors)) {
+          error<diagnostics::DiagID::EscapeSequenceNotAllowed>(
+              stringPool.intern(start, state.curPtr));
+        }
+        return stringPool.intern(encodeUtf8(escapedCode));
+      }
       if (hasFlag(flags, EscapeSequenceScanningFlags::AnyUnicodeMode) ||
           hasFlag(flags, EscapeSequenceScanningFlags::RegularExpression) ||
-          (hasFlag(flags, EscapeSequenceScanningFlags::AnnexB) && isIdentifierPart(c))) {
+          (hasFlag(flags, EscapeSequenceScanningFlags::AnnexB) && isIdentifierPart(escapedCode))) {
         error<diagnostics::DiagID::ThisCharCannotBeEscapedInARegularExpression>();
       }
-      return stringPool.intern(encodeUtf8(c));
+      return stringPool.intern(encodeUtf8(escapedCode));
   }
 }
 
@@ -1501,7 +1506,7 @@ void Lexer::Impl::error(Args&&... args) {
 }
 
 Lexer::Lexer(const source::SourceManager& sourceMgr,
-             diagnostics::DiagnosticEngine& diagnosticEngine, const basic::LangOptions& options,
+             diagnostics::DiagnosticEmitter& diagnosticEngine, const basic::LangOptions& options,
              basic::StringPool& stringPool, const source::BufferId& bufferId)
     : impl(zc::heap<Impl>(sourceMgr, diagnosticEngine, options, stringPool, bufferId)) {}
 

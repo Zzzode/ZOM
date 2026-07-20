@@ -1,6 +1,0 @@
-// RUN: cd %corpus && %zomc compile --dump-dispatch 03-types/qualified_interface_call_pos_14.zom > %t 2>&1
-// RUN: %FileCheck %s --input-file %t
-
-
-// CHECK-LITERAL: zom.dispatch.v0
-// CHECK: node={{[0-9]+}} target=QualifiedInterfaceMethod receiver=ExplicitFirstArgument interface=Drawable method=draw args=[named(Sprite)] result=unit

@@ -14,10 +14,16 @@
 
 #include "zomlang/compiler/identity/package-key.h"
 
+#include "zomlang/compiler/identity/canonical-decoder.h"
 #include "zomlang/compiler/identity/canonical-encoder.h"
 
 namespace zomlang::compiler::identity {
 namespace {
+
+constexpr uint64_t kMaximumCanonicalUrlBytes = 4096;
+constexpr uint64_t kMaximumResolvedVersionBytes = 256;
+constexpr uint64_t kMaximumPathSegments = 256;
+constexpr uint32_t kMaximumLeadingParentCount = 256;
 
 zc::Vector<CanonicalPathSegment> cloneSegments(zc::ArrayPtr<const CanonicalPathSegment> input) {
   zc::Vector<CanonicalPathSegment> result(input.size());
@@ -43,6 +49,24 @@ void encodeSegments(CanonicalEncoder& encoder, zc::ArrayPtr<const CanonicalPathS
   for (const auto& segment : input) { segment.encode(encoder); }
 }
 
+zc::Maybe<CanonicalUrl> decodeCanonicalUrl(CanonicalDecoder& decoder) {
+  auto bytes = decoder.decodeByteString(kMaximumCanonicalUrlBytes);
+  ZC_IF_SOME(value, bytes) {
+    auto text = zc::str(value.asChars());
+    return CanonicalUrl::fromCanonical(text);
+  }
+  return zc::none;
+}
+
+zc::Maybe<ResolvedVersion> decodeResolvedVersion(CanonicalDecoder& decoder) {
+  auto bytes = decoder.decodeByteString(kMaximumResolvedVersionBytes);
+  ZC_IF_SOME(value, bytes) {
+    auto text = zc::str(value.asChars());
+    return ResolvedVersion::fromCanonical(text);
+  }
+  return zc::none;
+}
+
 }  // namespace
 
 CanonicalRelativePath::CanonicalRelativePath(zc::Vector<CanonicalPathSegment>&& canonical) noexcept
@@ -50,6 +74,21 @@ CanonicalRelativePath::CanonicalRelativePath(zc::Vector<CanonicalPathSegment>&& 
 
 CanonicalRelativePath CanonicalRelativePath::from(zc::Vector<CanonicalPathSegment>&& segments) {
   return CanonicalRelativePath(zc::mv(segments));
+}
+
+zc::Maybe<CanonicalRelativePath> CanonicalRelativePath::decodeCanonical(CanonicalDecoder& decoder) {
+  auto count = decoder.decodeSequenceSize(kMaximumPathSegments);
+  if (count == zc::none) { return zc::none; }
+  ZC_IF_SOME(size, count) {
+    zc::Vector<CanonicalPathSegment> segments(static_cast<size_t>(size));
+    for (uint64_t index = 0; index < size; ++index) {
+      auto segment = CanonicalPathSegment::decodeCanonical(decoder);
+      if (segment == zc::none) { return zc::none; }
+      ZC_IF_SOME(value, segment) { segments.add(zc::mv(value)); }
+    }
+    return CanonicalRelativePath(zc::mv(segments));
+  }
+  return zc::none;
 }
 
 CanonicalRelativePath CanonicalRelativePath::clone() const {
@@ -75,6 +114,22 @@ CanonicalWorkspaceRelativePath::CanonicalWorkspaceRelativePath(
 CanonicalWorkspaceRelativePath CanonicalWorkspaceRelativePath::from(
     uint32_t leadingParentCount, zc::Vector<CanonicalPathSegment>&& segments) {
   return CanonicalWorkspaceRelativePath(leadingParentCount, zc::mv(segments));
+}
+
+zc::Maybe<CanonicalWorkspaceRelativePath> CanonicalWorkspaceRelativePath::decodeCanonical(
+    CanonicalDecoder& decoder) {
+  auto leadingParents = decoder.decodeUint32();
+  if (leadingParents == zc::none) { return zc::none; }
+  ZC_IF_SOME(parentCount, leadingParents) {
+    if (parentCount > kMaximumLeadingParentCount) { return zc::none; }
+    auto path = CanonicalRelativePath::decodeCanonical(decoder);
+    ZC_IF_SOME(value, path) {
+      zc::Vector<CanonicalPathSegment> segments(value.segments().size());
+      for (const auto& segment : value.segments()) { segments.add(segment.clone()); }
+      return CanonicalWorkspaceRelativePath(parentCount, zc::mv(segments));
+    }
+  }
+  return zc::none;
 }
 
 CanonicalWorkspaceRelativePath CanonicalWorkspaceRelativePath::clone() const {
@@ -116,6 +171,25 @@ zc::Maybe<VcsRevision> VcsRevision::from(VcsRevisionAlgorithm algorithm,
   return VcsRevision(algorithm, zc::heapArray(digest));
 }
 
+zc::Maybe<VcsRevision> VcsRevision::decodeCanonical(CanonicalDecoder& decoder) {
+  auto algorithm = decoder.decodeUint8();
+  ZC_IF_SOME(tag, algorithm) {
+    size_t digestBytes = 0;
+    if (tag == static_cast<uint8_t>(VcsRevisionAlgorithm::Sha1)) {
+      digestBytes = 20;
+    } else if (tag == static_cast<uint8_t>(VcsRevisionAlgorithm::Sha256)) {
+      digestBytes = 32;
+    } else {
+      return zc::none;
+    }
+    auto digest = decoder.decodeBytes(digestBytes);
+    ZC_IF_SOME(value, digest) {
+      return VcsRevision::from(static_cast<VcsRevisionAlgorithm>(tag), value.asPtr());
+    }
+  }
+  return zc::none;
+}
+
 VcsRevision VcsRevision::clone() const {
   return VcsRevision(algorithmValue, zc::heapArray(digestValue.asPtr()));
 }
@@ -139,6 +213,17 @@ RegistryIdentity::RegistryIdentity(CanonicalUrl&& indexUrl,
 
 RegistryIdentity RegistryIdentity::from(CanonicalUrl&& indexUrl, const Sha256Digest& trustDomain) {
   return RegistryIdentity(zc::mv(indexUrl), trustDomain);
+}
+
+zc::Maybe<RegistryIdentity> RegistryIdentity::decodeCanonical(CanonicalDecoder& decoder) {
+  auto indexUrl = decodeCanonicalUrl(decoder);
+  if (indexUrl == zc::none) { return zc::none; }
+  auto trustDomain = decoder.decodeDigest();
+  if (trustDomain == zc::none) { return zc::none; }
+  ZC_IF_SOME(url, indexUrl) {
+    ZC_IF_SOME(digest, trustDomain) { return RegistryIdentity(zc::mv(url), digest); }
+  }
+  return zc::none;
 }
 
 RegistryIdentity RegistryIdentity::clone() const { return RegistryIdentity(url.clone(), trust); }
@@ -177,30 +262,71 @@ CanonicalPackageSource CanonicalPackageSource::localPath(CanonicalWorkspaceRelat
   return CanonicalPackageSource(LocalPathPackageSource{zc::mv(value)});
 }
 
-CanonicalPackageSource CanonicalPackageSource::clone() const {ZC_SWITCH_ONEOF(value){
-    ZC_CASE_ONEOF(source, RegistryPackageSource){return registry(source.registry.clone());
-}  // namespace zomlang::compiler::identity
-ZC_CASE_ONEOF(source, VcsPackageSource) {
-  return vcs(source.repository.clone(), source.revision.clone(), source.subdirectory.clone());
+zc::Maybe<CanonicalPackageSource> CanonicalPackageSource::decodeCanonical(
+    CanonicalDecoder& decoder) {
+  auto kind = decoder.decodeUint8();
+  ZC_IF_SOME(tag, kind) {
+    switch (static_cast<PackageSourceKind>(tag)) {
+      case PackageSourceKind::Registry: {
+        auto registry = RegistryIdentity::decodeCanonical(decoder);
+        ZC_IF_SOME(value, registry) { return CanonicalPackageSource::registry(zc::mv(value)); }
+        return zc::none;
+      }
+      case PackageSourceKind::Vcs: {
+        auto repository = decodeCanonicalUrl(decoder);
+        if (repository == zc::none) { return zc::none; }
+        auto revision = VcsRevision::decodeCanonical(decoder);
+        if (revision == zc::none) { return zc::none; }
+        auto subdirectory = CanonicalRelativePath::decodeCanonical(decoder);
+        if (subdirectory == zc::none) { return zc::none; }
+        ZC_IF_SOME(url, repository) {
+          ZC_IF_SOME(revisionValue, revision) {
+            ZC_IF_SOME(path, subdirectory) {
+              return CanonicalPackageSource::vcs(zc::mv(url), zc::mv(revisionValue), zc::mv(path));
+            }
+          }
+        }
+        return zc::none;
+      }
+      case PackageSourceKind::LocalPath: {
+        auto path = CanonicalWorkspaceRelativePath::decodeCanonical(decoder);
+        ZC_IF_SOME(value, path) { return CanonicalPackageSource::localPath(zc::mv(value)); }
+        return zc::none;
+      }
+    }
+  }
+  return zc::none;
 }
-ZC_CASE_ONEOF(source, LocalPathPackageSource) { return localPath(source.canonicalPath.clone()); }
-}
-ZC_UNREACHABLE
+
+CanonicalPackageSource CanonicalPackageSource::clone() const {
+  ZC_SWITCH_ONEOF(value) {
+    ZC_CASE_ONEOF(source, RegistryPackageSource) {
+      return registry(source.registry.clone());
+    }  // namespace zomlang::compiler::identity
+    ZC_CASE_ONEOF(source, VcsPackageSource) {
+      return vcs(source.repository.clone(), source.revision.clone(), source.subdirectory.clone());
+    }
+    ZC_CASE_ONEOF(source, LocalPathPackageSource) {
+      return localPath(source.canonicalPath.clone());
+    }
+  }
+  ZC_UNREACHABLE
 }
 
 CanonicalPackageSource CanonicalPackageSource::clone(zc::MemoryResource& resource) const {
-    ZC_SWITCH_ONEOF(value){ZC_CASE_ONEOF(source, RegistryPackageSource){
-        return registry(source.registry.clone(resource));
-}
-ZC_CASE_ONEOF(source, VcsPackageSource) {
-  return vcs(source.repository.clone(resource), source.revision.clone(resource),
-             source.subdirectory.clone(resource));
-}
-ZC_CASE_ONEOF(source, LocalPathPackageSource) {
-  return localPath(source.canonicalPath.clone(resource));
-}
-}
-ZC_UNREACHABLE
+  ZC_SWITCH_ONEOF(value) {
+    ZC_CASE_ONEOF(source, RegistryPackageSource) {
+      return registry(source.registry.clone(resource));
+    }
+    ZC_CASE_ONEOF(source, VcsPackageSource) {
+      return vcs(source.repository.clone(resource), source.revision.clone(resource),
+                 source.subdirectory.clone(resource));
+    }
+    ZC_CASE_ONEOF(source, LocalPathPackageSource) {
+      return localPath(source.canonicalPath.clone(resource));
+    }
+  }
+  ZC_UNREACHABLE
 }
 
 PackageSourceKind CanonicalPackageSource::kind() const noexcept {
@@ -247,6 +373,23 @@ PackageBaseKey PackageBaseKey::from(CanonicalPackageSource&& source, PackageName
   return PackageBaseKey(zc::mv(source), zc::mv(name), zc::mv(version));
 }
 
+zc::Maybe<PackageBaseKey> PackageBaseKey::decodeCanonical(CanonicalDecoder& decoder) {
+  auto source = CanonicalPackageSource::decodeCanonical(decoder);
+  if (source == zc::none) { return zc::none; }
+  auto name = PackageName::decodeCanonical(decoder);
+  if (name == zc::none) { return zc::none; }
+  auto version = decodeResolvedVersion(decoder);
+  if (version == zc::none) { return zc::none; }
+  ZC_IF_SOME(sourceValue, source) {
+    ZC_IF_SOME(nameValue, name) {
+      ZC_IF_SOME(versionValue, version) {
+        return PackageBaseKey(zc::mv(sourceValue), zc::mv(nameValue), zc::mv(versionValue));
+      }
+    }
+  }
+  return zc::none;
+}
+
 PackageBaseKey PackageBaseKey::clone() const {
   return PackageBaseKey(sourceValue.clone(), nameValue.clone(), versionValue.clone());
 }
@@ -282,6 +425,28 @@ PackageKey::PackageKey(CanonicalPackageSource&& source, PackageName&& name,
 PackageKey PackageKey::from(CanonicalPackageSource&& source, PackageName&& name,
                             ResolvedVersion&& version, SortedFeatureSet&& enabledFeatures) {
   return PackageKey(zc::mv(source), zc::mv(name), zc::mv(version), zc::mv(enabledFeatures));
+}
+
+zc::Maybe<PackageKey> PackageKey::decodeCanonical(CanonicalDecoder& decoder) {
+  auto source = CanonicalPackageSource::decodeCanonical(decoder);
+  if (source == zc::none) { return zc::none; }
+  auto name = PackageName::decodeCanonical(decoder);
+  if (name == zc::none) { return zc::none; }
+  auto version = decodeResolvedVersion(decoder);
+  if (version == zc::none) { return zc::none; }
+  auto features = SortedFeatureSet::decodeCanonical(decoder);
+  if (features == zc::none) { return zc::none; }
+  ZC_IF_SOME(sourceValue, source) {
+    ZC_IF_SOME(nameValue, name) {
+      ZC_IF_SOME(versionValue, version) {
+        ZC_IF_SOME(featureValues, features) {
+          return PackageKey(zc::mv(sourceValue), zc::mv(nameValue), zc::mv(versionValue),
+                            zc::mv(featureValues));
+        }
+      }
+    }
+  }
+  return zc::none;
 }
 
 PackageKey PackageKey::clone() const {
@@ -329,6 +494,36 @@ zc::Maybe<PackageDependencyEdgeKey> PackageDependencyEdgeKey::from(PackageKey&& 
     return zc::none;
   }
   return PackageDependencyEdgeKey(zc::mv(consumer), zc::mv(alias), domain, zc::mv(provider));
+}
+
+zc::Maybe<PackageDependencyEdgeKey> PackageDependencyEdgeKey::decodeCanonical(
+    CanonicalDecoder& decoder) {
+  auto consumer = PackageKey::decodeCanonical(decoder);
+  if (consumer == zc::none) { return zc::none; }
+  auto alias = DependencyAlias::decodeCanonical(decoder);
+  if (alias == zc::none) { return zc::none; }
+  auto domain = decoder.decodeUint8();
+  if (domain == zc::none) { return zc::none; }
+  ZC_IF_SOME(value, domain) {
+    if (value != static_cast<uint8_t>(DependencyDomain::Target) &&
+        value != static_cast<uint8_t>(DependencyDomain::Development) &&
+        value != static_cast<uint8_t>(DependencyDomain::Build)) {
+      return zc::none;
+    }
+  }
+  auto provider = PackageKey::decodeCanonical(decoder);
+  if (provider == zc::none) { return zc::none; }
+  ZC_IF_SOME(consumerValue, consumer) {
+    ZC_IF_SOME(aliasValue, alias) {
+      ZC_IF_SOME(domainValue, domain) {
+        ZC_IF_SOME(providerValue, provider) {
+          return from(zc::mv(consumerValue), zc::mv(aliasValue),
+                      static_cast<DependencyDomain>(domainValue), zc::mv(providerValue));
+        }
+      }
+    }
+  }
+  return zc::none;
 }
 
 PackageDependencyEdgeKey PackageDependencyEdgeKey::clone() const {

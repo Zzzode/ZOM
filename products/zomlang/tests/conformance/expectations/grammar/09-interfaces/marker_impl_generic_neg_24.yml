@@ -1,0 +1,5 @@
+section: "Ch.09 Marker implementation restrictions"
+covers_rule: "markerImplRest"
+expected: "REJECT"
+notes:
+  - "A marker implementation cannot declare type parameters."

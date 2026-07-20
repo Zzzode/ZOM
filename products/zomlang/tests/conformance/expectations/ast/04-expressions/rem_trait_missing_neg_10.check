@@ -26,7 +26,7 @@
 // CHECK-NEXT:                   ty:
 // CHECK-NEXT:                     NamedTypeExpr #6 @3:8..3:14
 // CHECK-NEXT:                       path:
-// CHECK-NEXT:                         ModulePath #5 @3:8..3:14 segments=["Number"]
+// CHECK-NEXT:                         ModulePath #5 @3:8..3:14 segments=["Number"] root=Relative
 // CHECK-NEXT:                       args: []
 // CHECK-NEXT:                   init: null
 // CHECK-NEXT:       attrs: null
@@ -43,7 +43,7 @@
 // CHECK-NEXT:                   ty:
 // CHECK-NEXT:                     NamedTypeExpr #13 @4:8..4:14
 // CHECK-NEXT:                       path:
-// CHECK-NEXT:                         ModulePath #12 @4:8..4:14 segments=["Number"]
+// CHECK-NEXT:                         ModulePath #12 @4:8..4:14 segments=["Number"] root=Relative
 // CHECK-NEXT:                       args: []
 // CHECK-NEXT:                   init: null
 // CHECK-NEXT:       attrs: null

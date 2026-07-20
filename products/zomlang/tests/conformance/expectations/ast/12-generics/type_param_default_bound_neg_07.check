@@ -2,7 +2,7 @@
 
 
 // CHECK-LITERAL: Error [ZOM2072]: Type expected
-// CHECK:   --> products {{(?:.*[/\\])?type_param_default_bound_neg_07\.zom:1:14$}}
+// CHECK-LITERAL:   --> conformance/type_param_default_bound_neg_07.zom:1:14
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 1 | fun f<T: A + + B>(x: T) -> T { return x; }
 // CHECK-LITERAL:   |              ^

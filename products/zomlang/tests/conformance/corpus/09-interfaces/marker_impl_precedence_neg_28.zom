@@ -1,0 +1,1 @@
+unsafe impl<T> !Sendable for Box<T> where T: Sized { }

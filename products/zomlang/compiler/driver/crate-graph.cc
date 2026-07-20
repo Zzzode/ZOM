@@ -38,6 +38,30 @@ bool hasDuplicate(const zc::Vector<Value>& values) {
   return false;
 }
 
+void canonicalSortRoots(zc::Vector<package::FinalizedCompilationRoot>& roots) {
+  for (size_t index = 1; index < roots.size(); ++index) {
+    auto current = zc::mv(roots[index]);
+    const auto currentBytes = current.crateKey().encode();
+    size_t insertion = index;
+    while (insertion != 0 &&
+           currentBytes.asPtr() < roots[insertion - 1].crateKey().encode().asPtr()) {
+      roots[insertion] = zc::mv(roots[insertion - 1]);
+      --insertion;
+    }
+    roots[insertion] = zc::mv(current);
+  }
+}
+
+bool hasDuplicateRoots(const zc::Vector<package::FinalizedCompilationRoot>& roots) {
+  for (size_t index = 1; index < roots.size(); ++index) {
+    if (sameBytes(roots[index - 1].crateKey().encode().asPtr(),
+                  roots[index].crateKey().encode().asPtr())) {
+      return true;
+    }
+  }
+  return false;
+}
+
 zc::Maybe<size_t> findPackage(const package::ResolutionOutput& resolution,
                               const identity::PackageKey& key) {
   const auto expected = key.encode();
@@ -60,43 +84,37 @@ zc::Maybe<size_t> findPackage(const package::ResolutionOutput& resolution,
   return zc::none;
 }
 
-zc::Maybe<identity::BuildScriptOutputKey> buildOutputFor(
-    const package::ResolvedPackageRecord& record,
-    zc::Maybe<const package::VerifiedBuildScriptResultSet&> buildResults, CrateGraphIssue& issue) {
+zc::Maybe<identity::BuildScriptProducerKey> buildProducerFor(
+    const package::ResolvedPackageRecord& record, const package::VerifiedBuildScriptPlan& buildPlan,
+    CrateGraphIssue& issue) {
   if (!record.manifest().hasBuildScript()) { return zc::none; }
-  if (buildResults == zc::none) {
-    issue = CrateGraphIssue::BuildResultsRequired;
-    return zc::none;
-  }
   size_t matches = 0;
-  zc::Maybe<identity::BuildScriptOutputKey> output;
-  ZC_IF_SOME(results, buildResults) {
-    for (const auto& result : results.results()) {
-      if (sameBytes(result.output().preparatoryKey().package().encode().asPtr(),
-                    record.key().encode().asPtr())) {
-        output = result.output().outputKey();
-        ++matches;
-      }
+  zc::Maybe<identity::BuildScriptProducerKey> producer;
+  for (const auto& node : buildPlan.nodes()) {
+    if (sameBytes(node.key().preparatory().package().encode().asPtr(),
+                  record.key().encode().asPtr())) {
+      producer = node.key().preparatory().producerKey();
+      ++matches;
     }
   }
   if (matches != 1) {
-    issue = CrateGraphIssue::InvalidBuildResults;
+    issue = CrateGraphIssue::InvalidCrateIdentity;
     return zc::none;
   }
-  return output;
+  return producer;
 }
 
 zc::OneOf<identity::CrateKey, CrateGraphIssue> makeProviderLibrary(
     const package::VerifiedPackageCompilationRequest& request,
     const package::ResolvedPackageRecord& provider,
-    zc::Maybe<const package::VerifiedBuildScriptResultSet&> buildResults) {
+    const package::VerifiedBuildScriptPlan& buildPlan) {
   auto library = provider.libraryTarget();
   auto packageManifest = provider.manifest().package();
   if (library == zc::none) { return CrateGraphIssue::MissingProviderLibrary; }
   if (packageManifest == zc::none) { return CrateGraphIssue::InvalidCrateIdentity; }
-  CrateGraphIssue outputIssue = CrateGraphIssue::InvalidBuildResults;
-  auto buildOutput = buildOutputFor(provider, buildResults, outputIssue);
-  if (provider.manifest().hasBuildScript() && buildOutput == zc::none) { return outputIssue; }
+  CrateGraphIssue outputIssue = CrateGraphIssue::InvalidCrateIdentity;
+  auto buildProducer = buildProducerFor(provider, buildPlan, outputIssue);
+  if (provider.manifest().hasBuildScript() && buildProducer == zc::none) { return outputIssue; }
   ZC_IF_SOME(manifest, packageManifest) {
     auto compilation = identity::CompilationConfigKey::from(
         identity::CompilationDomain::Target, request.target().semanticProjection().clone(),
@@ -104,7 +122,7 @@ zc::OneOf<identity::CrateKey, CrateGraphIssue> makeProviderLibrary(
                                                    request.languageOptions().useUnicode,
                                                    request.languageOptions().allowDollarIdentifiers,
                                                    request.languageOptions().supportRegexLiterals),
-        zc::mv(buildOutput));
+        zc::mv(buildProducer));
     if (compilation == zc::none) { return CrateGraphIssue::InvalidCrateIdentity; }
     ZC_IF_SOME(target, library) {
       ZC_IF_SOME(config, compilation) {
@@ -118,26 +136,59 @@ zc::OneOf<identity::CrateKey, CrateGraphIssue> makeProviderLibrary(
   return CrateGraphIssue::InvalidCrateIdentity;
 }
 
-zc::Maybe<identity::BuildScriptOutputKey> completedBuildOutputFor(
-    const package::ResolvedPackageRecord& record,
+zc::Maybe<package::FinalizedCompilationRoot> makeProviderCompilationRoot(
+    const package::ResolvedPackageRecord& provider, const identity::CrateKey& crate) {
+  if (crate.targetKind() != identity::CrateTargetKind::Library ||
+      !sameBytes(provider.key().encode().asPtr(), crate.package().encode().asPtr())) {
+    return zc::none;
+  }
+  auto libraryTarget = provider.libraryTarget();
+  auto libraryManifest = provider.manifest().library();
+  if (libraryTarget == zc::none || libraryManifest == zc::none) { return zc::none; }
+  ZC_IF_SOME(target, libraryTarget) {
+    ZC_IF_SOME(manifest, libraryManifest) {
+      if (manifest.kind() != identity::CrateTargetKind::Library ||
+          manifest.name() != target.text() || manifest.name() != crate.targetName()) {
+        return zc::none;
+      }
+      return package::FinalizedCompilationRoot::from(provider.key().clone(), crate.clone(),
+                                                     manifest.path().clone());
+    }
+  }
+  return zc::none;
+}
+
+zc::Maybe<identity::BuildScriptProducerKey> completedBuildProducerFor(
+    const package::ResolvedPackageRecord& record, const package::VerifiedBuildScriptPlan& plan,
     zc::ArrayPtr<const package::VerifiedBuildScriptResult> completedResults,
     CrateGraphIssue& issue) {
   if (!record.manifest().hasBuildScript()) { return zc::none; }
-  size_t matches = 0;
-  zc::Maybe<identity::BuildScriptOutputKey> output;
+  size_t planMatches = 0;
+  zc::Maybe<identity::BuildScriptProducerKey> expectedProducer;
+  for (const auto& node : plan.nodes()) {
+    if (!sameBytes(node.key().preparatory().package().encode().asPtr(),
+                   record.key().encode().asPtr())) {
+      continue;
+    }
+    expectedProducer = node.key().preparatory().producerKey();
+    ++planMatches;
+  }
+  if (planMatches != 1) {
+    issue = CrateGraphIssue::InvalidBuildResults;
+    return zc::none;
+  }
+  size_t resultMatches = 0;
   for (const auto& result : completedResults) {
-    if (sameBytes(result.output().preparatoryKey().package().encode().asPtr(),
-                  record.key().encode().asPtr())) {
-      output = result.output().outputKey();
-      ++matches;
+    ZC_IF_SOME(producer, expectedProducer) {
+      if (result.output().producerKey().digest() == producer.digest()) { ++resultMatches; }
     }
   }
-  if (matches != 1) {
+  if (resultMatches != 1) {
     issue = completedResults.size() == 0 ? CrateGraphIssue::BuildResultsRequired
                                          : CrateGraphIssue::InvalidBuildResults;
     return zc::none;
   }
-  return output;
+  return expectedProducer;
 }
 
 identity::SemanticCompilerOptionsKey semanticOptions(
@@ -150,19 +201,19 @@ identity::SemanticCompilerOptionsKey semanticOptions(
 
 zc::OneOf<identity::CrateKey, CrateGraphIssue> makeHostLibrary(
     const package::VerifiedPackageCompilationRequest& request,
-    const package::ResolvedPackageRecord& provider,
+    const package::ResolvedPackageRecord& provider, const package::VerifiedBuildScriptPlan& plan,
     zc::ArrayPtr<const package::VerifiedBuildScriptResult> completedResults) {
   auto library = provider.libraryTarget();
   auto packageManifest = provider.manifest().package();
   if (library == zc::none) { return CrateGraphIssue::MissingProviderLibrary; }
   if (packageManifest == zc::none) { return CrateGraphIssue::InvalidCrateIdentity; }
   CrateGraphIssue outputIssue = CrateGraphIssue::InvalidBuildResults;
-  auto buildOutput = completedBuildOutputFor(provider, completedResults, outputIssue);
-  if (provider.manifest().hasBuildScript() && buildOutput == zc::none) { return outputIssue; }
+  auto buildProducer = completedBuildProducerFor(provider, plan, completedResults, outputIssue);
+  if (provider.manifest().hasBuildScript() && buildProducer == zc::none) { return outputIssue; }
   ZC_IF_SOME(manifest, packageManifest) {
     auto compilation = identity::CompilationConfigKey::from(
         identity::CompilationDomain::Host, request.hostTarget().semanticProjection().clone(),
-        semanticOptions(request, manifest.editionYear()), zc::mv(buildOutput));
+        semanticOptions(request, manifest.editionYear()), zc::mv(buildProducer));
     if (compilation == zc::none) { return CrateGraphIssue::InvalidCrateIdentity; }
     ZC_IF_SOME(target, library) {
       ZC_IF_SOME(config, compilation) {
@@ -351,16 +402,9 @@ VerifiedCrateGraph& VerifiedCrateGraph::operator=(VerifiedCrateGraph&&) noexcept
 CrateGraphBuildResult VerifiedCrateGraph::buildFinal(
     const package::VerifiedPackageCompilationRequest& request,
     const package::ResolutionOutput& resolution,
-    zc::Maybe<const package::VerifiedBuildScriptResultSet&> buildResults) {
-  bool requiresBuildResults = false;
-  for (const auto& root : request.roots()) {
-    requiresBuildResults = requiresBuildResults || root.requiresBuildScript();
-  }
-  if (requiresBuildResults && buildResults == zc::none) {
-    return CrateGraphIssue::BuildResultsRequired;
-  }
-  auto finalized = request.finalizeRoots(buildResults);
-  if (finalized == zc::none) { return CrateGraphIssue::InvalidBuildResults; }
+    const package::VerifiedBuildScriptPlan& buildPlan) {
+  auto finalized = request.finalizeRoots(buildPlan);
+  if (finalized == zc::none) { return CrateGraphIssue::InvalidCrateIdentity; }
 
   zc::Vector<package::FinalizedCompilationRoot> roots;
   ZC_IF_SOME(values, finalized) { roots = zc::mv(values); }
@@ -387,7 +431,7 @@ CrateGraphBuildResult VerifiedCrateGraph::buildFinal(
       }
       if (matchingRequests != 1 ||
           requestRequiresBuildScript != resolution.packages()[index].manifest().hasBuildScript()) {
-        return CrateGraphIssue::InvalidBuildResults;
+        return CrateGraphIssue::InvalidCrateIdentity;
       }
       crates.add(root.crateKey().clone());
       cratePackages.add(index);
@@ -409,9 +453,14 @@ CrateGraphBuildResult VerifiedCrateGraph::buildFinal(
       if (providerIndex == zc::none) { return CrateGraphIssue::MissingProviderLibrary; }
       ZC_IF_SOME(index, providerIndex) {
         if (!includedLibraries[index]) {
-          auto provider = makeProviderLibrary(request, resolution.packages()[index], buildResults);
+          auto provider = makeProviderLibrary(request, resolution.packages()[index], buildPlan);
           if (provider.is<CrateGraphIssue>()) { return provider.get<CrateGraphIssue>(); }
-          crates.add(zc::mv(provider.get<identity::CrateKey>()));
+          auto providerCrate = zc::mv(provider.get<identity::CrateKey>());
+          auto providerRoot =
+              makeProviderCompilationRoot(resolution.packages()[index], providerCrate);
+          if (providerRoot == zc::none) { return CrateGraphIssue::InvalidCrateIdentity; }
+          ZC_IF_SOME(root, providerRoot) { roots.add(zc::mv(root)); }
+          crates.add(zc::mv(providerCrate));
           cratePackages.add(index);
           includedLibraries[index] = true;
         }
@@ -426,16 +475,27 @@ CrateGraphBuildResult VerifiedCrateGraph::buildFinal(
           }
         }
         if (!foundProvider) { return CrateGraphIssue::InvalidCrateIdentity; }
-        edges.add(identity::CrateDependencyEdgeKey::from(
-            packageEdge.clone(), crates[cursor].clone(), crates[providerCrateIndex].clone()));
+        auto edge = identity::CrateDependencyEdgeKey::from(
+            packageEdge.clone(), crates[cursor].clone(), crates[providerCrateIndex].clone());
+        if (edge == zc::none) { return CrateGraphIssue::InvalidCrateIdentity; }
+        ZC_IF_SOME(value, edge) { edges.add(zc::mv(value)); }
       }
     }
   }
 
   canonicalSort(crates);
   canonicalSort(edges);
+  canonicalSortRoots(roots);
   if (hasDuplicate(crates)) { return CrateGraphIssue::DuplicateCrate; }
   if (hasDuplicate(edges)) { return CrateGraphIssue::DuplicateEdge; }
+  if (hasDuplicateRoots(roots) || roots.size() != crates.size()) {
+    return CrateGraphIssue::InvalidCrateIdentity;
+  }
+  for (size_t index = 0; index < roots.size(); ++index) {
+    if (!sameBytes(roots[index].crateKey().encode().asPtr(), crates[index].encode().asPtr())) {
+      return CrateGraphIssue::InvalidCrateIdentity;
+    }
+  }
   if (hasCycle(crates.asPtr(), edges.asPtr())) { return CrateGraphIssue::DependencyCycle; }
   zc::Vector<identity::PackageDependencyEdgeKey> packageEdges;
   for (const auto& edge : edges) { packageEdges.add(edge.packageEdge().clone()); }
@@ -638,6 +698,7 @@ BuildScriptPlanBuildResult VerifiedPreparatoryCrateGraph::buildPlan(
 PreparatoryCrateGraphBuildResult VerifiedPreparatoryCrateGraph::build(
     const package::VerifiedPackageCompilationRequest& request,
     const package::BuildScriptPlanNode& node, const package::ResolutionOutput& resolution,
+    const package::VerifiedBuildScriptPlan& plan,
     zc::ArrayPtr<const package::VerifiedBuildScriptResult> completedResults) {
   auto rootPackageIndex = findPackage(resolution, node.key().preparatory().package());
   if (rootPackageIndex == zc::none) { return CrateGraphIssue::RootOutsideResolution; }
@@ -685,7 +746,7 @@ PreparatoryCrateGraphBuildResult VerifiedPreparatoryCrateGraph::build(
             return CrateGraphIssue::InvalidCrateIdentity;
           }
         }
-        zc::Maybe<identity::BuildScriptOutputKey> noBuildOutput;
+        zc::Maybe<identity::BuildScriptProducerKey> noBuildOutput;
         auto compilation = identity::CompilationConfigKey::from(
             identity::CompilationDomain::Host, request.hostTarget().semanticProjection().clone(),
             semanticOptions(request, manifest.editionYear()), zc::mv(noBuildOutput));
@@ -719,7 +780,7 @@ PreparatoryCrateGraphBuildResult VerifiedPreparatoryCrateGraph::build(
                 ZC_IF_SOME(providerPackage, providerIndex) {
                   if (!includedLibraries[providerPackage]) {
                     auto provider = makeHostLibrary(request, resolution.packages()[providerPackage],
-                                                    completedResults);
+                                                    plan, completedResults);
                     if (provider.is<CrateGraphIssue>()) { return provider.get<CrateGraphIssue>(); }
                     crates.add(zc::mv(provider.get<identity::CrateKey>()));
                     cratePackages.add(providerPackage);
@@ -736,9 +797,11 @@ PreparatoryCrateGraphBuildResult VerifiedPreparatoryCrateGraph::build(
                     }
                   }
                   if (!foundProvider) { return CrateGraphIssue::InvalidCrateIdentity; }
-                  edges.add(identity::CrateDependencyEdgeKey::from(
+                  auto edge = identity::CrateDependencyEdgeKey::from(
                       packageEdge.clone(), crates[cursor].clone(),
-                      crates[providerCrateIndex].clone()));
+                      crates[providerCrateIndex].clone());
+                  if (edge == zc::none) { return CrateGraphIssue::InvalidCrateIdentity; }
+                  ZC_IF_SOME(value, edge) { edges.add(zc::mv(value)); }
                 }
               }
             }

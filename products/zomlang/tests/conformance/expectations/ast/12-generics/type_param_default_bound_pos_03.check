@@ -14,22 +14,22 @@
 // CHECK-NEXT:                   ty:
 // CHECK-NEXT:                     NamedTypeExpr #5 @1:18..1:19
 // CHECK-NEXT:                       path:
-// CHECK-NEXT:                         ModulePath #4 @1:18..1:19 segments=["T"]
+// CHECK-NEXT:                         ModulePath #4 @1:18..1:19 segments=["T"] root=Relative
 // CHECK-NEXT:                       args: []
 // CHECK-NEXT:                   default_: null
 // CHECK-NEXT:                   attrs: null
 // CHECK-NEXT:           type_params_id:
 // CHECK-NEXT:             GenericParams #3 @1:6..1:14 nparams=1
 // CHECK-NEXT:               params:
-// CHECK-NEXT:                 GenericTypeParam #2 @1:7..1:13 name="T" variance=Invariant
-// CHECK-NEXT:                   bound: null
+// CHECK-NEXT:                 GenericTypeParam #2 @1:7..1:13 name="T"
+// CHECK-NEXT:                   bounds_id: null
 // CHECK-NEXT:                   default_ty:
 // CHECK-NEXT:                     PredefinedTypeExpr #1 @1:9..1:13 kind=Unit
 // CHECK-NEXT:               where_: null
 // CHECK-NEXT:           ret_ty:
 // CHECK-NEXT:             NamedTypeExpr #9 @1:24..1:25
 // CHECK-NEXT:               path:
-// CHECK-NEXT:                 ModulePath #8 @1:24..1:25 segments=["T"]
+// CHECK-NEXT:                 ModulePath #8 @1:24..1:25 segments=["T"] root=Relative
 // CHECK-NEXT:               args: []
 // CHECK-NEXT:           raises_ty: null
 // CHECK-NEXT:           body:

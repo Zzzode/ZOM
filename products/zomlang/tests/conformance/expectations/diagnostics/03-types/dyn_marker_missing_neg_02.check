@@ -1,9 +1,0 @@
-// RUN: cd %corpus && ! %zomc compile --syntax-only 03-types/dyn_marker_missing_neg_02.zom > %t 2>&1
-// RUN: %FileCheck %s --input-file %t
-
-
-// CHECK-LITERAL: Error [ZOM4018]: 'Number' does not implement 'Sendable'
-// CHECK-LITERAL:   --> 03-types/dyn_marker_missing_neg_02.zom:10:5
-// CHECK-LITERAL:    |
-// CHECK-LITERAL: 10 | let y: dyn Add + Sendable = x;
-// CHECK-LITERAL:    |     ^

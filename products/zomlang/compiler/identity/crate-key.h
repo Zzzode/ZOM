@@ -24,6 +24,7 @@
 
 namespace zomlang::compiler::identity {
 
+class CanonicalDecoder;
 class CanonicalEncoder;
 
 enum class Endianness : uint8_t { Little = 0x01, Big = 0x02 };
@@ -40,6 +41,8 @@ public:
       TargetComponentName&& operatingSystem, TargetComponentName&& environment,
       TargetComponentName&& abi, uint32_t pointerWidth, Endianness endianness,
       SortedTargetFeatureSet&& semanticFeatures);
+  ZC_NODISCARD static zc::Maybe<CanonicalTargetSpecificationKey> decodeCanonical(
+      CanonicalDecoder& decoder);
   ZC_NODISCARD CanonicalTargetSpecificationKey clone() const;
   /// \brief Returns the canonical target architecture component.
   ZC_NODISCARD zc::StringPtr architecture() const noexcept;
@@ -72,6 +75,8 @@ public:
   ZC_NODISCARD static SemanticCompilerOptionsKey from(uint32_t editionYear, bool useUnicode,
                                                       bool allowDollarIdentifiers,
                                                       bool supportRegexLiterals) noexcept;
+  ZC_NODISCARD static zc::Maybe<SemanticCompilerOptionsKey> decodeCanonical(
+      CanonicalDecoder& decoder);
   void encode(CanonicalEncoder& encoder) const;
 
 private:
@@ -84,15 +89,16 @@ private:
   bool supportRegexLiteralsValue;
 };
 
-/// \brief Distinct build-script output content digest.
-class BuildScriptOutputKey final {
+/// \brief Stable identity of one configured build-script producer plan.
+class BuildScriptProducerKey final {
 public:
-  ZC_NODISCARD static BuildScriptOutputKey from(const Sha256Digest& digest) noexcept;
+  ZC_NODISCARD static BuildScriptProducerKey from(const Sha256Digest& digest) noexcept;
+  ZC_NODISCARD static zc::Maybe<BuildScriptProducerKey> decodeCanonical(CanonicalDecoder& decoder);
   ZC_NODISCARD const Sha256Digest& digest() const noexcept;
   void encode(CanonicalEncoder& encoder) const;
 
 private:
-  explicit BuildScriptOutputKey(const Sha256Digest& digest) noexcept;
+  explicit BuildScriptProducerKey(const Sha256Digest& digest) noexcept;
 
   Sha256Digest value;
 };
@@ -109,19 +115,21 @@ public:
   ZC_NODISCARD static zc::Maybe<CompilationConfigKey> from(
       CompilationDomain domain, CanonicalTargetSpecificationKey&& target,
       SemanticCompilerOptionsKey semanticOptions,
-      zc::Maybe<BuildScriptOutputKey>&& buildScriptOutput);
+      zc::Maybe<BuildScriptProducerKey>&& buildScriptProducer);
+  ZC_NODISCARD static zc::Maybe<CompilationConfigKey> decodeCanonical(CanonicalDecoder& decoder);
   ZC_NODISCARD CompilationConfigKey clone() const;
+  ZC_NODISCARD const SemanticCompilerOptionsKey& semanticOptions() const noexcept;
   void encode(CanonicalEncoder& encoder) const;
 
 private:
   CompilationConfigKey(CompilationDomain domain, CanonicalTargetSpecificationKey&& target,
                        SemanticCompilerOptionsKey semanticOptions,
-                       zc::Maybe<BuildScriptOutputKey>&& buildScriptOutput) noexcept;
+                       zc::Maybe<BuildScriptProducerKey>&& buildScriptProducer) noexcept;
 
   CompilationDomain domainValue;
   CanonicalTargetSpecificationKey targetValue;
   SemanticCompilerOptionsKey semanticOptionsValue;
-  zc::Maybe<BuildScriptOutputKey> buildScriptOutputValue;
+  zc::Maybe<BuildScriptProducerKey> buildScriptProducerValue;
 };
 
 enum class CrateTargetKind : uint8_t {
@@ -143,10 +151,12 @@ public:
   ZC_NODISCARD static zc::Maybe<CrateKey> from(PackageKey&& package, CrateTargetKind kind,
                                                TargetName&& targetName,
                                                CompilationConfigKey&& compilation);
+  ZC_NODISCARD static zc::Maybe<CrateKey> decodeCanonical(CanonicalDecoder& decoder);
   ZC_NODISCARD CrateKey clone() const;
   ZC_NODISCARD const PackageKey& package() const noexcept;
   ZC_NODISCARD CrateTargetKind targetKind() const noexcept;
   ZC_NODISCARD zc::StringPtr targetName() const noexcept;
+  ZC_NODISCARD const SemanticCompilerOptionsKey& semanticOptions() const noexcept;
   void encode(CanonicalEncoder& encoder) const;
   ZC_NODISCARD zc::Array<uint8_t> encode() const;
 
@@ -167,8 +177,10 @@ public:
   CrateDependencyEdgeKey& operator=(CrateDependencyEdgeKey&&) noexcept = default;
   ZC_DISALLOW_COPY(CrateDependencyEdgeKey);
 
-  ZC_NODISCARD static CrateDependencyEdgeKey from(PackageDependencyEdgeKey&& packageEdge,
-                                                  CrateKey&& consumer, CrateKey&& provider);
+  ZC_NODISCARD static zc::Maybe<CrateDependencyEdgeKey> from(PackageDependencyEdgeKey&& packageEdge,
+                                                             CrateKey&& consumer,
+                                                             CrateKey&& provider);
+  ZC_NODISCARD static zc::Maybe<CrateDependencyEdgeKey> decodeCanonical(CanonicalDecoder& decoder);
   ZC_NODISCARD CrateDependencyEdgeKey clone() const;
   ZC_NODISCARD const PackageDependencyEdgeKey& packageEdge() const noexcept;
   ZC_NODISCARD const CrateKey& consumer() const noexcept;

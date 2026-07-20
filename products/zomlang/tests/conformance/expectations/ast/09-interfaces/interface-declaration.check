@@ -12,7 +12,7 @@
 // CHECK-NEXT:           members_id:
 // CHECK-NEXT:             ClassMemberList #4 @1:20..3:2 nmembers=1
 // CHECK-NEXT:               members:
-// CHECK-NEXT:                 MethodDecl #3 @2:3..2:21 name="run" is_static=false visibility=Default
+// CHECK-NEXT:                 MethodDecl #3 @2:3..2:21 name="run" mode=Instance visibility=Default
 // CHECK-NEXT:                   params_id:
 // CHECK-NEXT:                     FunctionParameterList #1 @2:10..2:12 nparams=0
 // CHECK-NEXT:                       params: []
@@ -28,15 +28,15 @@
 // CHECK-NEXT:           type_params_id:
 // CHECK-NEXT:             GenericParams #8 @5:21..5:24 nparams=1
 // CHECK-NEXT:               params:
-// CHECK-NEXT:                 GenericTypeParam #7 @5:22..5:23 name="T" variance=Invariant
-// CHECK-NEXT:                   bound: null
+// CHECK-NEXT:                 GenericTypeParam #7 @5:22..5:23 name="T"
+// CHECK-NEXT:                   bounds_id: null
 // CHECK-NEXT:                   default_ty: null
 // CHECK-NEXT:               where_: null
 // CHECK-NEXT:           ifaces_id: null
 // CHECK-NEXT:           members_id:
 // CHECK-NEXT:             ClassMemberList #15 @5:25..7:2 nmembers=1
 // CHECK-NEXT:               members:
-// CHECK-NEXT:                 MethodDecl #14 @6:3..6:34 name="compareTo" is_static=false visibility=Default
+// CHECK-NEXT:                 MethodDecl #14 @6:3..6:34 name="compareTo" mode=Instance visibility=Default
 // CHECK-NEXT:                   params_id:
 // CHECK-NEXT:                     FunctionParameterList #12 @6:16..6:26 nparams=1
 // CHECK-NEXT:                       params:
@@ -44,7 +44,7 @@
 // CHECK-NEXT:                           ty:
 // CHECK-NEXT:                             NamedTypeExpr #10 @6:24..6:25
 // CHECK-NEXT:                               path:
-// CHECK-NEXT:                                 ModulePath #9 @6:24..6:25 segments=["T"]
+// CHECK-NEXT:                                 ModulePath #9 @6:24..6:25 segments=["T"] root=Relative
 // CHECK-NEXT:                               args: []
 // CHECK-NEXT:                           default_: null
 // CHECK-NEXT:                           attrs: null
@@ -62,7 +62,7 @@
 // CHECK-NEXT:           members_id:
 // CHECK-NEXT:             ClassMemberList #21 @9:17..11:2 nmembers=1
 // CHECK-NEXT:               members:
-// CHECK-NEXT:                 MethodDecl #20 @10:3..10:30 name="name" is_static=false visibility=Default
+// CHECK-NEXT:                 MethodDecl #20 @10:3..10:30 name="name" mode=Instance visibility=Default
 // CHECK-NEXT:                   params_id:
 // CHECK-NEXT:                     FunctionParameterList #18 @10:20..10:22 nparams=0
 // CHECK-NEXT:                       params: []

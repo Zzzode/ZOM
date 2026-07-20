@@ -33,7 +33,9 @@ enum class IdentityAllocationPhase : uint8_t {
   Module = 0x07,
   Definition = 0x08,
   Impl = 0x09,
-  SemanticType = 0x0a
+  GenericParameter = 0x0a,
+  CallableParameter = 0x0b,
+  SemanticType = 0x0c
 };
 
 enum class IdentityInvariantKind : uint8_t {
@@ -48,7 +50,8 @@ enum class IdentityInvariantKind : uint8_t {
   PostFreezeMutation = 0x09,
   BrandExhausted = 0x0a,
   DuplicateSingletonStore = 0x0b,
-  NonCanonicalEncoding = 0x0c
+  NonCanonicalEncoding = 0x0c,
+  DigestCollision = 0x0d
 };
 
 enum class IdentityApiSite : uint8_t {
@@ -63,7 +66,9 @@ enum class IdentityApiSite : uint8_t {
   ImplFreeze = 0x09,
   SemanticTypeStoreCreate = 0x0a,
   HandleLookup = 0x0b,
-  RegistryMutation = 0x0c
+  RegistryMutation = 0x0c,
+  GenericParameterFreeze = 0x0d,
+  CallableParameterFreeze = 0x0e
 };
 
 /// \brief One complete structured RFC 0011 invariant fact.

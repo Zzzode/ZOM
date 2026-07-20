@@ -1,0 +1,5 @@
+section: "Ch.03 Named types"
+covers_rule: "qualifiedTypePath with an absolute path prefix"
+expected: "ACCEPT"
+notes:
+  - "Covers a crate-root-qualified named type and preserves the leading absolute path anchor."

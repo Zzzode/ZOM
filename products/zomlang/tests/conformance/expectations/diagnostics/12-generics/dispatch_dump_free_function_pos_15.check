@@ -1,6 +1,0 @@
-// RUN: cd %corpus && %zomc compile --dump-dispatch 12-generics/generic_infer_identity_pos_11.zom > %t 2>&1
-// RUN: %FileCheck %s --input-file %t
-
-
-// CHECK-LITERAL: zom.dispatch.v0
-// CHECK: node={{[0-9]+}} target=FreeFunction receiver=None definition=resolved args=[i32] result=i32

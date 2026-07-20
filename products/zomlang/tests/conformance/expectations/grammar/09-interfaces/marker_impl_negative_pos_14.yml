@@ -1,0 +1,5 @@
+section: "Ch.09 Negative marker implementation"
+covers_rule: "markerImplRest"
+expected: "ACCEPT"
+notes:
+  - "Covers the bodyless negative marker implementation form."

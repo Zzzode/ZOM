@@ -2,12 +2,12 @@
 
 
 // CHECK-LITERAL: Error [ZOM2076]: Unexpected token expected
-// CHECK:   --> products {{(?:.*[/\\])?attrpath_require_coloncol_neg_02\.zom:1:8$}}
+// CHECK-LITERAL:   --> conformance/attrpath_require_coloncol_neg_02.zom:1:8
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 1 | #[serde.rename]
 // CHECK-LITERAL:   |        ^
 // CHECK-LITERAL: Error [ZOM2076]: Unexpected token expected
-// CHECK:   --> products {{(?:.*[/\\])?attrpath_require_coloncol_neg_02\.zom:1:3$}}
+// CHECK-LITERAL:   --> conformance/attrpath_require_coloncol_neg_02.zom:1:3
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 1 | #[serde.rename]
 // CHECK-LITERAL:   |   ^

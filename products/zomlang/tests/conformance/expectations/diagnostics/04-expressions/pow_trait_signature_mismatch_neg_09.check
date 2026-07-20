@@ -1,9 +1,0 @@
-// RUN: cd %corpus && ! %zomc compile --syntax-only 04-expressions/pow_trait_signature_mismatch_neg_09.zom > %t 2>&1
-// RUN: %FileCheck %s --input-file %t
-
-
-// CHECK-LITERAL: Error [ZOM4019]: Operator trait 'Pow' for type 'Number' must define 'pow(Number) -> Number'
-// CHECK-LITERAL:   --> 04-expressions/pow_trait_signature_mismatch_neg_09.zom:14:1
-// CHECK-LITERAL:    |
-// CHECK-LITERAL: 14 | x ** y;
-// CHECK-LITERAL:    | ^

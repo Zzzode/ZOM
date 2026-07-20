@@ -1,5 +1,0 @@
-section: "Ch.17 MarkerImplDeclaration"
-covers_rule: "markerImplRest, whereClause"
-expected: "ACCEPT"
-notes:
-  - "Qualified marker impl with generic parameters and a where clause must parse as marker evidence."

@@ -10,11 +10,11 @@
 // CHECK-NEXT:           type_params_id:
 // CHECK-NEXT:             GenericParams #3 @1:14..1:20 nparams=2
 // CHECK-NEXT:               params:
-// CHECK-NEXT:                 GenericTypeParam #1 @1:15..1:16 name="K" variance=Invariant
-// CHECK-NEXT:                   bound: null
+// CHECK-NEXT:                 GenericTypeParam #1 @1:15..1:16 name="K"
+// CHECK-NEXT:                   bounds_id: null
 // CHECK-NEXT:                   default_ty: null
-// CHECK-NEXT:                 GenericTypeParam #2 @1:18..1:19 name="V" variance=Invariant
-// CHECK-NEXT:                   bound: null
+// CHECK-NEXT:                 GenericTypeParam #2 @1:18..1:19 name="V"
+// CHECK-NEXT:                   bounds_id: null
 // CHECK-NEXT:                   default_ty: null
 // CHECK-NEXT:               where_: null
 // CHECK-NEXT:           base_ty: null
@@ -28,8 +28,8 @@
 // CHECK-NEXT:           type_params_id:
 // CHECK-NEXT:             GenericParams #8 @2:10..2:13 nparams=1
 // CHECK-NEXT:               params:
-// CHECK-NEXT:                 GenericTypeParam #7 @2:11..2:12 name="T" variance=Invariant
-// CHECK-NEXT:                   bound: null
+// CHECK-NEXT:                 GenericTypeParam #7 @2:11..2:12 name="T"
+// CHECK-NEXT:                   bounds_id: null
 // CHECK-NEXT:                   default_ty: null
 // CHECK-NEXT:               where_: null
 // CHECK-NEXT:           base_ty: null
@@ -44,18 +44,18 @@
 // CHECK-NEXT:           target:
 // CHECK-NEXT:             NamedTypeExpr #19 @3:16..3:34
 // CHECK-NEXT:               path:
-// CHECK-NEXT:                 ModulePath #18 @3:16..3:23 segments=["HashMap"]
+// CHECK-NEXT:                 ModulePath #18 @3:16..3:23 segments=["HashMap"] root=Relative
 // CHECK-NEXT:               args:
 // CHECK-NEXT:                 NamedTypeExpr #13 @3:24..3:25
 // CHECK-NEXT:                   path:
-// CHECK-NEXT:                     ModulePath #12 @3:24..3:25 segments=["K"]
+// CHECK-NEXT:                     ModulePath #12 @3:24..3:25 segments=["K"] root=Relative
 // CHECK-NEXT:                   args: []
 // CHECK-NEXT:                 NamedTypeExpr #17 @3:27..3:34
 // CHECK-NEXT:                   path:
-// CHECK-NEXT:                     ModulePath #16 @3:27..3:30 segments=["Vec"]
+// CHECK-NEXT:                     ModulePath #16 @3:27..3:30 segments=["Vec"] root=Relative
 // CHECK-NEXT:                   args:
 // CHECK-NEXT:                     NamedTypeExpr #15 @3:31..3:32
 // CHECK-NEXT:                       path:
-// CHECK-NEXT:                         ModulePath #14 @3:31..3:32 segments=["V"]
+// CHECK-NEXT:                         ModulePath #14 @3:31..3:32 segments=["V"] root=Relative
 // CHECK-NEXT:                       args: []
 // CHECK-NEXT:       attrs: null

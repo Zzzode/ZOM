@@ -2,7 +2,7 @@
 
 
 // CHECK-LITERAL: Error [ZOM2072]: Type expected
-// CHECK:   --> products {{(?:.*[/\\])?hash_in_type_reject_neg_15\.zom:1:8$}}
+// CHECK-LITERAL:   --> conformance/hash_in_type_reject_neg_15.zom:1:8
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 1 | let x: # i32;
 // CHECK-LITERAL:   |        ^

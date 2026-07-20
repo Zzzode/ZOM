@@ -1,0 +1,9 @@
+// REGEN-SKIP: This checker diagnostic requires the full signature-facts pipeline.
+// RUN: cd %corpus && ! %zomc compile --emit=dispatch 09-interfaces/marker_impl_qualified_requires_unsafe_neg_30.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+
+// CHECK-LITERAL: Error [ZOM4091]: A positive marker implementation requires unsafe
+// CHECK:   --> {{.*}}marker_impl_qualified_requires_unsafe_neg_30.zom:3:1
+// CHECK-NOT: ZOM4089
+// CHECK-NOT: ZOM9928

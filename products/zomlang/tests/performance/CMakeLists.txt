@@ -12,8 +12,6 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
-find_package(Python3 COMPONENTS Interpreter REQUIRED)
-
 set(PACKAGE_RESOLVER_EDGE_FIXTURE
     "${CMAKE_BINARY_DIR}/generated/package-resolver-performance-edges.bin")
 

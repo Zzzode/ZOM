@@ -23,8 +23,8 @@ ZC_TEST("DiagState IgnoreDiagnostic") {
 
 ZC_TEST("DiagState IgnoreOutOfBounds") {
   DiagnosticState state;
-  state.ignoreDiagnostic(DiagID::InvalidPath);  // Test with a valid DiagID
-  ZC_EXPECT(state.isDiagnosticIgnored(DiagID::InvalidPath));
+  state.ignoreDiagnostic(DiagID::InvalidCharacter);
+  ZC_EXPECT(state.isDiagnosticIgnored(DiagID::InvalidCharacter));
 }
 
 ZC_TEST("DiagState MultipleIgnores") {
@@ -36,7 +36,7 @@ ZC_TEST("DiagState MultipleIgnores") {
   ZC_EXPECT(state.isDiagnosticIgnored(DiagID::InvalidCharacter));
   ZC_EXPECT(state.isDiagnosticIgnored(DiagID::UnterminatedString));
   ZC_EXPECT(state.isDiagnosticIgnored(DiagID::TypeCheckerTypeMismatch));
-  ZC_EXPECT(!state.isDiagnosticIgnored(DiagID::InvalidPath));
+  ZC_EXPECT(!state.isDiagnosticIgnored(DiagID::MissingSemicolon));
 }
 
 }  // namespace diagnostics

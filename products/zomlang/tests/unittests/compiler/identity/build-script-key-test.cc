@@ -89,18 +89,20 @@ PreparatoryBuildScriptKey preparatory(bool reverse = false) {
   ZC_FAIL_REQUIRE("preparatory key fixture was rejected");
 }
 
-BuildScriptOutputRecord outputRecord(bool reverse = false) {
+BuildScriptOutputRecord outputRecord(bool reverse = false, bool changedContents = false) {
   zc::Vector<BuildScriptDigestEntry> sources;
   zc::Vector<BuildScriptEnvironmentEntry> environment;
   zc::Vector<BuildScriptDigestEntry> generated;
   zc::Vector<BuildScriptEnvironmentEntry> exported;
   if (reverse) {
     sources.add(BuildScriptDigestEntry::from(path("z.zom"_zc), digest("z"_zc)));
-    sources.add(BuildScriptDigestEntry::from(path("a.zom"_zc), digest("a"_zc)));
+    sources.add(BuildScriptDigestEntry::from(path("a.zom"_zc),
+                                             digest(changedContents ? "changed"_zc : "a"_zc)));
     generated.add(BuildScriptDigestEntry::from(path("out-z.zom"_zc), digest("oz"_zc)));
     generated.add(BuildScriptDigestEntry::from(path("out-a.zom"_zc), digest("oa"_zc)));
   } else {
-    sources.add(BuildScriptDigestEntry::from(path("a.zom"_zc), digest("a"_zc)));
+    sources.add(BuildScriptDigestEntry::from(path("a.zom"_zc),
+                                             digest(changedContents ? "changed"_zc : "a"_zc)));
     sources.add(BuildScriptDigestEntry::from(path("z.zom"_zc), digest("z"_zc)));
     generated.add(BuildScriptDigestEntry::from(path("out-a.zom"_zc), digest("oa"_zc)));
     generated.add(BuildScriptDigestEntry::from(path("out-z.zom"_zc), digest("oz"_zc)));
@@ -109,9 +111,9 @@ BuildScriptOutputRecord outputRecord(bool reverse = false) {
                                                     bytes("host"_zc)));
   exported.add(BuildScriptEnvironmentEntry::from(scalar<SemanticEnvironmentName>("MODE"_zc),
                                                  bytes("fast"_zc)));
-  auto result =
-      BuildScriptOutputRecord::from(preparatory(reverse), zc::mv(sources), zc::mv(environment),
-                                    zc::mv(generated), zc::mv(exported));
+  auto producer = preparatory(reverse).producerKey();
+  auto result = BuildScriptOutputRecord::from(producer, zc::mv(sources), zc::mv(environment),
+                                              zc::mv(generated), zc::mv(exported));
   ZC_IF_SOME(value, result) { return zc::mv(value); }
   ZC_FAIL_REQUIRE("output record fixture was rejected");
 }
@@ -119,7 +121,16 @@ BuildScriptOutputRecord outputRecord(bool reverse = false) {
 }  // namespace
 
 ZC_TEST("PreparatoryBuildScriptKey canonicalizes dependencies and rejects duplicates") {
-  ZC_EXPECT(preparatory(false).encode().asPtr() == preparatory(true).encode().asPtr());
+  auto first = preparatory(false);
+  auto second = preparatory(true);
+  ZC_EXPECT(first.encode().asPtr() == second.encode().asPtr());
+  ZC_EXPECT(first.producerKey().digest() == second.producerKey().digest());
+  ZC_EXPECT(zc::encodeHex(first.producerKey().digest().bytes()) ==
+            "95fdf60a815f20e321ef6ed7d3dc4962744155b22128328403e44199f36f6800"_zc);
+
+  auto rawDigest = sha256(first.encode());
+  ZC_REQUIRE(rawDigest != zc::none);
+  ZC_IF_SOME(value, rawDigest) { ZC_EXPECT(value != first.producerKey().digest()); }
 
   zc::Vector<PackageKey> duplicates;
   duplicates.add(package("dep"_zc));
@@ -130,16 +141,23 @@ ZC_TEST("PreparatoryBuildScriptKey canonicalizes dependencies and rejects duplic
   ZC_EXPECT(result == zc::none);
 }
 
-ZC_TEST("BuildScriptOutputRecord canonicalizes maps and domain-separates its output key") {
+ZC_TEST("Build-script output changes preserve producer identity") {
+  auto first = outputRecord(false, false);
+  auto second = outputRecord(false, true);
+  ZC_EXPECT(first.producerKey().digest() == second.producerKey().digest());
+  ZC_EXPECT(first.artifactFingerprint().digest() != second.artifactFingerprint().digest());
+}
+
+ZC_TEST("BuildScriptOutputRecord canonicalizes maps and domain-separates its fingerprint") {
   auto first = outputRecord(false);
   auto second = outputRecord(true);
   ZC_EXPECT(first.encode().asPtr() == second.encode().asPtr());
-  ZC_EXPECT(first.outputKey().digest() == second.outputKey().digest());
+  ZC_EXPECT(first.artifactFingerprint().digest() == second.artifactFingerprint().digest());
 
   auto encoded = first.encode();
   auto rawDigest = sha256(encoded);
   ZC_REQUIRE(rawDigest != zc::none);
-  ZC_IF_SOME(value, rawDigest) { ZC_EXPECT(value != first.outputKey().digest()); }
+  ZC_IF_SOME(value, rawDigest) { ZC_EXPECT(value != first.artifactFingerprint().digest()); }
 }
 
 ZC_TEST("BuildScriptOutputRecord rejects duplicate map keys") {
@@ -149,8 +167,9 @@ ZC_TEST("BuildScriptOutputRecord rejects duplicate map keys") {
   zc::Vector<BuildScriptEnvironmentEntry> environment;
   zc::Vector<BuildScriptDigestEntry> generated;
   zc::Vector<BuildScriptEnvironmentEntry> exported;
-  auto result = BuildScriptOutputRecord::from(preparatory(), zc::mv(sources), zc::mv(environment),
-                                              zc::mv(generated), zc::mv(exported));
+  auto result =
+      BuildScriptOutputRecord::from(preparatory().producerKey(), zc::mv(sources),
+                                    zc::mv(environment), zc::mv(generated), zc::mv(exported));
   ZC_EXPECT(result == zc::none);
 }
 

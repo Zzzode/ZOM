@@ -1,0 +1,4 @@
+section: "§4 Optional indexing"
+covers_rule: "callExpr requires OPTIONAL_CHAIN"
+expected: "REJECT"
+notes: []

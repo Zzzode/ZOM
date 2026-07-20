@@ -19,7 +19,7 @@
 // CHECK-NEXT:                   raises_ty:
 // CHECK-NEXT:                     NamedTypeExpr #3 @2:21..2:33
 // CHECK-NEXT:                       path:
-// CHECK-NEXT:                         ModulePath #2 @2:21..2:33 segments=["CleanupError"]
+// CHECK-NEXT:                         ModulePath #2 @2:21..2:33 segments=["CleanupError"] root=Relative
 // CHECK-NEXT:                       args: []
 // CHECK-NEXT:                   body:
 // CHECK-NEXT:                     BlockStmt #8 @2:34..2:48

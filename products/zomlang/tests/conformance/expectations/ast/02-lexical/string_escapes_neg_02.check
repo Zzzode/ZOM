@@ -2,7 +2,7 @@
 
 
 // CHECK-LITERAL: Error [ZOM2032]: Hexadecimal digit expected
-// CHECK:   --> products {{(?:.*[/\\])?string_escapes_neg_02\.zom:1:9$}}
+// CHECK-LITERAL:   --> conformance/string_escapes_neg_02.zom:1:9
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 1 | let x = "\u{ZZZZ}";
 // CHECK-LITERAL:   |         ^

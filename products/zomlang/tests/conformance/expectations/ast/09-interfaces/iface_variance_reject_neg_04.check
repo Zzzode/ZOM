@@ -2,7 +2,7 @@
 
 
 // CHECK-LITERAL: Error [ZOM2076]: Unexpected token expected
-// CHECK:   --> products {{(?:.*[/\\])?iface_variance_reject_neg_04\.zom:1:20$}}
+// CHECK-LITERAL:   --> conformance/iface_variance_reject_neg_04.zom:1:20
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 1 | interface BadIface<in T> {
 // CHECK-LITERAL:   |                    ^

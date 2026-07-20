@@ -16,44 +16,65 @@
 
 #include "zc/core/common.h"
 #include "zc/core/memory.h"
-#include "zc/core/string.h"
+#include "zc/core/one-of.h"
 #include "zomlang/compiler/identity/brand.h"
+#include "zomlang/compiler/identity/identity-invariant.h"
+#include "zomlang/compiler/identity/semantic-identity-registry-set.h"
 #include "zomlang/compiler/identity/semantic-type-id.h"
+#include "zomlang/compiler/type/semantic-type-key.h"
 
 namespace zomlang::compiler::type {
 
-class Type;
 using SemanticTypeId = identity::SemanticTypeId;
 
-/// \brief Immutable semantic type lookup view backed by address-stable store payload.
-struct SemanticTypeLookup final {
-  const Type& data;
-  zc::StringPtr canonicalKey;
+/// \brief Successful canonical semantic type interning result.
+struct SemanticTypeInterned final {
+  identity::SemanticTypeId id;
 };
+
+using SemanticTypeInternResult = zc::OneOf<SemanticTypeInterned, identity::IdentityInvariant>;
+
+using SemanticTypeAdmissionResult =
+    zc::OneOf<semantic::CanonicalTypeData, identity::IdentityInvariant>;
+
+/// \brief Immutable lookup view backed by address-stable store payload.
+class SemanticTypeLookup final {
+public:
+  /// \brief Returns the closed semantic type payload.
+  ZC_NODISCARD const semantic::TypeData& data() const;
+
+  /// \brief Returns the canonical semantic type v1 key.
+  ZC_NODISCARD const semantic::SemanticTypeKey& key() const;
+
+private:
+  SemanticTypeLookup(const semantic::TypeData& data, const semantic::SemanticTypeKey& key) noexcept;
+
+  zc::Maybe<const semantic::TypeData&> dataValue;
+  zc::Maybe<const semantic::SemanticTypeKey&> keyValue;
+
+  friend class SemanticTypeStore;
+};
+
+using SemanticTypeLookupResult = zc::OneOf<SemanticTypeLookup, identity::IdentityInvariant>;
 
 /// \brief Context-global append-only canonical semantic type store.
 class SemanticTypeStore final {
 public:
-  explicit SemanticTypeStore(identity::SemanticTypeStoreConstructionToken&& token);
+  SemanticTypeStore(identity::SemanticTypeStoreConstructionToken&& token,
+                    const identity::SemanticIdentityRegistrySet& registries);
   ~SemanticTypeStore() noexcept(false);
   ZC_DISALLOW_COPY_AND_MOVE(SemanticTypeStore);
 
-  /// \brief Canonicalizes and interns one type tree.
-  /// \param type Type tree whose structural identity is required.
-  /// \return The context-branded semantic type identity.
-  ZC_NODISCARD identity::SemanticTypeId intern(const Type& type);
+  /// \brief Validates and canonicalizes one closed payload against this store and registry family.
+  ZC_NODISCARD SemanticTypeAdmissionResult canonicalizeClosed(semantic::TypeData&& data) const;
 
-  /// \brief Canonicalizes and interns a flattened union of two type trees.
-  ZC_NODISCARD identity::SemanticTypeId internUnion(const Type& first, const Type& second);
+  /// \brief Interns one validated canonical semantic type payload.
+  /// \param canonical Payload admitted by the type canonicalizer.
+  /// \return An existing or newly-issued identity, or a structured identity invariant.
+  ZC_NODISCARD SemanticTypeInternResult intern(semantic::CanonicalTypeData&& canonical);
 
-  /// \brief Returns true when an identity belongs to this store and is in range.
-  ZC_NODISCARD bool contains(identity::SemanticTypeId id) const;
-
-  /// \brief Looks up immutable type data after context and slot validation.
-  ZC_NODISCARD zc::Maybe<SemanticTypeLookup> get(identity::SemanticTypeId id) const;
-
-  /// \brief Returns the canonical key for a valid semantic type identity.
-  ZC_NODISCARD zc::StringPtr getCanonicalKey(identity::SemanticTypeId id) const;
+  /// \brief Looks up immutable data and key after context and slot validation.
+  ZC_NODISCARD SemanticTypeLookupResult get(identity::SemanticTypeId id) const;
 
   /// \brief Returns the number of unique canonical semantic types.
   ZC_NODISCARD size_t size() const;
@@ -62,8 +83,24 @@ public:
   ZC_NODISCARD identity::SemanticContextBrand context() const noexcept;
 
 private:
+  ZC_NODISCARD bool registriesReadyForAdmission() const noexcept;
+  ZC_NODISCARD identity::FrozenRegistryFailure validateTypeForAdmission(
+      identity::SemanticTypeId id) const;
+  ZC_NODISCARD zc::Maybe<const semantic::TypeData&> typeDataForAdmission(
+      identity::SemanticTypeId id) const;
+  ZC_NODISCARD identity::FrozenRegistryFailure validateDefinitionForAdmission(
+      identity::DefId id) const;
+  ZC_NODISCARD zc::Maybe<const identity::DefinitionKey&> definitionKeyForAdmission(
+      identity::DefId id) const;
+  ZC_NODISCARD zc::Maybe<const identity::DefinitionIdentityRecord&> definitionRecordForAdmission(
+      identity::DefId id) const;
+  ZC_NODISCARD identity::FrozenRegistryFailure validateGenericParameterForAdmission(
+      const identity::GenericParameterKey& key) const;
+
   struct Impl;
   zc::Own<Impl> impl;
+
+  friend class semantic::StoreBoundTypeEncoder;
 };
 
 }  // namespace zomlang::compiler::type

@@ -57,7 +57,7 @@
 // CHECK-NEXT:                               ty:
 // CHECK-NEXT:                                 NamedTypeExpr #18 @5:12..5:15
 // CHECK-NEXT:                                   path:
-// CHECK-NEXT:                                     ModulePath #17 @5:12..5:15 segments=["Box"]
+// CHECK-NEXT:                                     ModulePath #17 @5:12..5:15 segments=["Box"] root=Relative
 // CHECK-NEXT:                                   args: []
 // CHECK-NEXT:                               properties:
 // CHECK-NEXT:                                 ObjectProperty #21 @5:18..5:32 name="item" short_form=false

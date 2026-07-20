@@ -14,25 +14,36 @@
 
 #pragma once
 
-#include "zc/core/map.h"
 #include "zc/core/memory.h"
-#include "zc/core/mutex.h"
 #include "zc/core/string.h"
 #include "zomlang/compiler/ast/tree.h"
 #include "zomlang/compiler/basic/compiler-opts.h"
 #include "zomlang/compiler/basic/zomlang-opts.h"
-#include "zomlang/compiler/binder/definition-inventory.h"
+#include "zomlang/compiler/binder/binding-input.h"
+#include "zomlang/compiler/binder/binding-run.h"
+#include "zomlang/compiler/binder/parsed-module.h"
+#include "zomlang/compiler/binder/verified-bound-module-input.h"
+#include "zomlang/compiler/checker/checked-facts-repository.h"
+#include "zomlang/compiler/checker/coherence-facts.h"
+#include "zomlang/compiler/checker/cross-module-facts.h"
+#include "zomlang/compiler/checker/dispatch-facts.h"
+#include "zomlang/compiler/checker/marker-proof.h"
+#include "zomlang/compiler/checker/signature-facts.h"
+#include "zomlang/compiler/driver/borrow-evidence.h"
 #include "zomlang/compiler/driver/crate-graph.h"
+#include "zomlang/compiler/driver/module-interface.h"
 #include "zomlang/compiler/driver/package/build-script-plan.h"
 #include "zomlang/compiler/driver/package/build-script-runtime.h"
 #include "zomlang/compiler/driver/package/package-compilation-request.h"
 #include "zomlang/compiler/driver/package/package-resolver.h"
 #include "zomlang/compiler/driver/package/source-snapshot.h"
+#include "zomlang/compiler/hir/hir-module.h"
 #include "zomlang/compiler/identity/brand.h"
 #include "zomlang/compiler/identity/semantic-identity-registry-set.h"
-#include "zomlang/compiler/irgen/target-registry.h"
+#include "zomlang/compiler/ir/ir-diagnostic-adapter.h"
+#include "zomlang/compiler/ir/target-registry.h"
+#include "zomlang/compiler/mir/built-mir.h"
 #include "zomlang/compiler/type/semantic-type-store.h"
-#include "zomlang/compiler/type/type-env.h"
 
 namespace zomlang {
 namespace compiler {
@@ -46,22 +57,36 @@ namespace diagnostics {
 class DiagnosticEngine;
 }  // namespace diagnostics
 
-namespace symbol {
-class SymbolTable;
-}
-
 namespace basic {
 class StringPool;
 }  // namespace basic
 
 namespace driver {
 
+/// \brief Canonically retained production parser result and its source-manager handle.
+class ParsedModuleRecord final {
+public:
+  ParsedModuleRecord(ParsedModuleRecord&&) noexcept = default;
+  ParsedModuleRecord& operator=(ParsedModuleRecord&&) noexcept = default;
+  ZC_DISALLOW_COPY(ParsedModuleRecord);
+
+  ZC_NODISCARD const source::BufferId& buffer() const noexcept;
+  ZC_NODISCARD const binder::VerifiedParsedModule& parsedModule() const noexcept;
+
+private:
+  ParsedModuleRecord(const source::BufferId& buffer,
+                     binder::VerifiedParsedModule&& parsedModule) noexcept;
+  source::BufferId bufferValue;
+  binder::VerifiedParsedModule parsedModuleValue;
+  friend class CompilerSession;
+};
+
 /// \brief Atomic package-session input validated before session state changes.
 class VerifiedPackageSessionInput final {
 public:
   ZC_NODISCARD static zc::Maybe<VerifiedPackageSessionInput> from(
       package::VerifiedPackageCompilationRequest&& request,
-      irgen::VerifiedTargetSelection&& hostTarget, irgen::VerifiedTargetSelection&& target,
+      ir::VerifiedTargetSelection&& hostTarget, ir::VerifiedTargetSelection&& target,
       package::ResolutionOutput&& graph,
       zc::Vector<package::ResolvedPackageSourceSnapshot>&& snapshots);
 
@@ -75,8 +100,8 @@ private:
   zc::Own<Impl> impl;
 
   VerifiedPackageSessionInput(package::VerifiedPackageCompilationRequest&& request,
-                              irgen::VerifiedTargetSelection&& hostTarget,
-                              irgen::VerifiedTargetSelection&& target,
+                              ir::VerifiedTargetSelection&& hostTarget,
+                              ir::VerifiedTargetSelection&& target,
                               package::ResolutionOutput&& graph,
                               package::VerifiedBuildScriptPlan&& buildScriptPlan,
                               zc::Vector<package::ResolvedPackageSourceSnapshot>&& snapshots);
@@ -90,15 +115,9 @@ public:
   ~CompilerSession() noexcept(false);
   ZC_DISALLOW_COPY_AND_MOVE(CompilerSession);
 
-  /// Add a source file to the compiler.
-  /// \param file The path to the source file to add
-  /// \return The buffer ID of the added file, or none if the file could not be added
-  zc::Maybe<source::BufferId> addSourceFile(zc::StringPtr file);
-
-  /// \brief Adds a verified package source with a host-path-free diagnostic identifier.
-  zc::Maybe<source::BufferId> addPackageSourceFile(zc::StringPtr file,
-                                                   zc::StringPtr displayIdentifier,
-                                                   const package::FinalizedCompilationRoot& root);
+  /// \brief Admits one finalized root exclusively from the installed verified snapshot.
+  ZC_NODISCARD zc::Maybe<source::BufferId> addVerifiedPackageRoot(
+      const package::FinalizedCompilationRoot& root);
 
   /// Get the diagnostic engine used by the compiler.
   /// \return A reference to the diagnostic engine
@@ -117,28 +136,57 @@ public:
   /// \return True if checking succeeded without fatal errors, false otherwise.
   bool checkSources();
 
-  /// Get the parsed syntax trees.
-  /// \return A reference to the map of buffer IDs to syntax trees.
-  const zc::HashMap<source::BufferId, ast::Tree>& getASTs() const;
+  /// \brief Returns parser results in canonical source-identity order.
+  ZC_NODISCARD zc::ArrayPtr<const ParsedModuleRecord> getParsedModules() const noexcept;
+  /// \brief Returns whether all discovered sources published immutable parser results.
+  ZC_NODISCARD bool hasVerifiedParsedSyntax() const noexcept;
 
-  /// Get binder metadata keyed by buffer ID.
-  /// \return A reference to the map of buffer IDs to binder metadata.
-  const zc::HashMap<source::BufferId, ast::BindingMetadata>& getBindingMetadata() const;
-
-  /// Return the number of parsed source buffers with a prebinding inventory.
-  size_t getDefinitionInventoryCount() const;
-
-  /// Return an owning snapshot of one source buffer's prebinding inventory.
-  zc::Maybe<binder::DefinitionInventory> getDefinitionInventory(
-      const source::BufferId& buffer) const;
-
-  /// Get type environments keyed by buffer ID.
-  /// \return A reference to the map of buffer IDs to type environments.
-  const zc::HashMap<source::BufferId, type::TypeEnv>& getTypeEnvs() const;
-
-  /// Get the symbol table used by the compiler.
-  /// \return A reference to the symbol table
-  const symbol::SymbolTable& getSymbolTable() const;
+  /// \brief Returns dependency-ordered verified binder publications.
+  ZC_NODISCARD zc::ArrayPtr<const binder::VerifiedBindingOutput> getVerifiedBindingOutputs()
+      const noexcept;
+  /// \brief Returns sealed checker handoffs in dependency order after binding completes.
+  ZC_NODISCARD zc::ArrayPtr<const binder::VerifiedBoundModuleInput> getVerifiedBoundModules()
+      const noexcept;
+  /// \brief Returns the closed invariant rejection from the most recent Checker run.
+  ZC_NODISCARD zc::ArrayPtr<const checker::signature::CheckerVerificationFailure>
+  getCheckerInvariantFailures() const noexcept;
+  /// \brief Returns verified local signature publications in dependency order.
+  ZC_NODISCARD zc::ArrayPtr<const checker::signature::VerifiedSignatureFacts>
+  getVerifiedSignatureFacts() const noexcept;
+  /// \brief Returns exact requester-filtered imported views in dependency order.
+  ZC_NODISCARD zc::ArrayPtr<const checker::cross_module::ImportedSignatureView>
+  getImportedSignatureViews() const noexcept;
+  /// \brief Returns immutable verified module interfaces in dependency order.
+  ZC_NODISCARD zc::ArrayPtr<const VerifiedModuleInterface> getVerifiedModuleInterfaces()
+      const noexcept;
+  /// \brief Returns the context-complete coherence authority after successful checking.
+  ZC_NODISCARD zc::Maybe<const checker::coherence::FrozenCoherenceView&> getFrozenCoherenceView()
+      const noexcept;
+  /// \brief Resolves one demand-driven marker query through the verified session authority.
+  ZC_NODISCARD zc::Maybe<checker::marker::MarkerProofResult> proveMarker(
+      identity::ModuleId requester, identity::DefId marker, identity::SemanticTypeId subject);
+  /// \brief Returns the append-only checked-evidence repository after successful checking.
+  ZC_NODISCARD zc::Maybe<const checker::checked::CheckedFactsRepository&>
+  getCheckedFactsRepository() const noexcept;
+  /// \brief Returns one opaque evidence lease per dependency-ordered module.
+  ZC_NODISCARD zc::ArrayPtr<const checker::checked::CheckedEvidenceLease> getCheckedEvidenceLeases()
+      const noexcept;
+  /// \brief Returns verified dispatch publications in dependency order.
+  ZC_NODISCARD zc::ArrayPtr<const checker::dispatch::VerifiedDispatchFacts>
+  getVerifiedDispatchFacts() const noexcept;
+  /// \brief Returns the session-owned append-only RFC 0013 borrow-evidence authority.
+  ZC_NODISCARD zc::Maybe<const borrow_evidence::BorrowEvidenceRepository&>
+  getBorrowEvidenceRepository() const noexcept;
+  /// \brief Returns immutable verified HIR modules in dependency order.
+  ZC_NODISCARD zc::ArrayPtr<const hir::VerifiedHirModule> getVerifiedHirModules() const noexcept;
+  /// \brief Returns immutable revision-checked Built MIR modules in dependency order.
+  ZC_NODISCARD zc::ArrayPtr<const mir::VerifiedBuiltMir> getVerifiedBuiltMirModules()
+      const noexcept;
+  /// \brief Returns complete grouped IR failures retained after rejected lowering.
+  ZC_NODISCARD zc::ArrayPtr<const ir::IrDiagnosticGroup> getIrFailureGroups() const noexcept;
+  /// \brief Returns complete identity failures retained from rejected IR operations.
+  ZC_NODISCARD zc::ArrayPtr<const identity::IdentityInvariant> getIrIdentityInvariantFailures()
+      const noexcept;
 
   /// Get the string pool used by the compiler.
   /// \return A reference to the string pool
@@ -181,10 +229,12 @@ public:
       const noexcept;
   ZC_NODISCARD zc::Maybe<const identity::SemanticContextFingerprint&>
   getSemanticContextFingerprint() const noexcept;
-
-  ZC_NODISCARD zc::Maybe<const irgen::VerifiedTargetSelection&> getVerifiedHostTarget()
+  /// \brief Returns the complete verified semantic module graph after parse/discovery freeze.
+  ZC_NODISCARD zc::Maybe<const binder::VerifiedModuleGraph&> getVerifiedModuleGraph()
       const noexcept;
-  ZC_NODISCARD zc::Maybe<const irgen::VerifiedTargetSelection&> getVerifiedTarget() const noexcept;
+
+  ZC_NODISCARD zc::Maybe<const ir::VerifiedTargetSelection&> getVerifiedHostTarget() const noexcept;
+  ZC_NODISCARD zc::Maybe<const ir::VerifiedTargetSelection&> getVerifiedTarget() const noexcept;
 
   ZC_NODISCARD zc::Maybe<const package::ResolutionOutput&> getResolvedPackageGraph() const noexcept;
   ZC_NODISCARD zc::ArrayPtr<const package::ResolvedPackageSourceSnapshot>

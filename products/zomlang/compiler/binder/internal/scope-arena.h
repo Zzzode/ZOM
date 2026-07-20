@@ -25,6 +25,11 @@ using ScopeArenaBuildResult = zc::OneOf<ScopeArenaCandidate, BinderInvariantFact
 /// \brief Returns a scope index only when the allocation cannot truncate or wrap.
 ZC_NODISCARD zc::Maybe<uint32_t> checkedScopeIndex(uint64_t value);
 
+/// \brief Returns the structural scope kind introduced by one syntax kind.
+/// \param kind Syntax kind inspected without rebuilding the scope arena.
+/// \return The introduced scope kind, or none for non-scope syntax.
+ZC_NODISCARD zc::Maybe<ScopeKind> scopeKindForSyntax(ast::SyntaxKind kind);
+
 /// \brief Sole authority for module-local scope identity and structural allocation.
 class ScopeArenaBuilder final {
 public:

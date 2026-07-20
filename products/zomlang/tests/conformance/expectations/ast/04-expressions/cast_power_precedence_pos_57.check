@@ -1,4 +1,4 @@
-// RUN: %zomc compile --dump-ast %corpus/04-expressions/cast_power_precedence_pos_57.zom 2>&1 | %FileCheck %s
+// RUN: %zomc compile --dump-ast %corpus/04-expressions/cast_power_precedence_pos_57.zom | %FileCheck %s
 
 
 // CHECK: SourceFile #23 @1:1..4:1 file_name="cast_power_precedence_pos_57.zom"

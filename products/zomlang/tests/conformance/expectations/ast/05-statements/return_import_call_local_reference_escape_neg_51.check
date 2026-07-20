@@ -39,7 +39,7 @@
 // CHECK-NEXT:                       value:
 // CHECK-NEXT:                         ImportCallExpression #13 @3:12..3:31
 // CHECK-NEXT:                           args:
-// CHECK-NEXT:                             StrLiteral #10 @3:19..3:22 value="x" is_raw=false prefix=None
+// CHECK-NEXT:                             StringLiteralExpr #10 @3:19..3:22 value="x"
 // CHECK-NEXT:                             UnaryExpression #12 @3:24..3:30 op=Ref
 // CHECK-NEXT:                               operand:
 // CHECK-NEXT:                                 IdentExpr #11 @3:25..3:30 name="value"

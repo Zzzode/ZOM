@@ -2,52 +2,52 @@
 
 
 // CHECK-LITERAL: Error [ZOM2076]: Unexpected token expected
-// CHECK:   --> products {{(?:.*[/\\])?extern_type_alias_reject_neg_13\.zom:2:5$}}
+// CHECK-LITERAL:   --> conformance/extern_type_alias_reject_neg_13.zom:2:5
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 2 |     type FILE = opaque FILE_IMPL;
 // CHECK-LITERAL:   |     ^
 // CHECK-LITERAL: Error [ZOM2076]: Unexpected token expected
-// CHECK:   --> products {{(?:.*[/\\])?extern_type_alias_reject_neg_13\.zom:2:10$}}
+// CHECK-LITERAL:   --> conformance/extern_type_alias_reject_neg_13.zom:2:10
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 2 |     type FILE = opaque FILE_IMPL;
 // CHECK-LITERAL:   |          ^
 // CHECK-LITERAL: Error [ZOM2076]: Unexpected token expected
-// CHECK:   --> products {{(?:.*[/\\])?extern_type_alias_reject_neg_13\.zom:2:15$}}
+// CHECK-LITERAL:   --> conformance/extern_type_alias_reject_neg_13.zom:2:15
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 2 |     type FILE = opaque FILE_IMPL;
 // CHECK-LITERAL:   |               ^
 // CHECK-LITERAL: Error [ZOM2076]: Unexpected token expected
-// CHECK:   --> products {{(?:.*[/\\])?extern_type_alias_reject_neg_13\.zom:2:17$}}
+// CHECK-LITERAL:   --> conformance/extern_type_alias_reject_neg_13.zom:2:17
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 2 |     type FILE = opaque FILE_IMPL;
 // CHECK-LITERAL:   |                 ^
 // CHECK-LITERAL: Error [ZOM2076]: Unexpected token expected
-// CHECK:   --> products {{(?:.*[/\\])?extern_type_alias_reject_neg_13\.zom:2:24$}}
+// CHECK-LITERAL:   --> conformance/extern_type_alias_reject_neg_13.zom:2:24
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 2 |     type FILE = opaque FILE_IMPL;
 // CHECK-LITERAL:   |                        ^
 // CHECK-LITERAL: Error [ZOM2076]: Unexpected token expected
-// CHECK:   --> products {{(?:.*[/\\])?extern_type_alias_reject_neg_13\.zom:3:5$}}
+// CHECK-LITERAL:   --> conformance/extern_type_alias_reject_neg_13.zom:3:5
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 3 |     type DIR  = opaque DIR_IMPL;
 // CHECK-LITERAL:   |     ^
 // CHECK-LITERAL: Error [ZOM2076]: Unexpected token expected
-// CHECK:   --> products {{(?:.*[/\\])?extern_type_alias_reject_neg_13\.zom:3:10$}}
+// CHECK-LITERAL:   --> conformance/extern_type_alias_reject_neg_13.zom:3:10
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 3 |     type DIR  = opaque DIR_IMPL;
 // CHECK-LITERAL:   |          ^
 // CHECK-LITERAL: Error [ZOM2076]: Unexpected token expected
-// CHECK:   --> products {{(?:.*[/\\])?extern_type_alias_reject_neg_13\.zom:3:15$}}
+// CHECK-LITERAL:   --> conformance/extern_type_alias_reject_neg_13.zom:3:15
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 3 |     type DIR  = opaque DIR_IMPL;
 // CHECK-LITERAL:   |               ^
 // CHECK-LITERAL: Error [ZOM2076]: Unexpected token expected
-// CHECK:   --> products {{(?:.*[/\\])?extern_type_alias_reject_neg_13\.zom:3:17$}}
+// CHECK-LITERAL:   --> conformance/extern_type_alias_reject_neg_13.zom:3:17
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 3 |     type DIR  = opaque DIR_IMPL;
 // CHECK-LITERAL:   |                 ^
 // CHECK-LITERAL: Error [ZOM2076]: Unexpected token expected
-// CHECK:   --> products {{(?:.*[/\\])?extern_type_alias_reject_neg_13\.zom:3:24$}}
+// CHECK-LITERAL:   --> conformance/extern_type_alias_reject_neg_13.zom:3:24
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 3 |     type DIR  = opaque DIR_IMPL;
 // CHECK-LITERAL:   |                        ^

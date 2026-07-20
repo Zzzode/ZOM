@@ -2,7 +2,7 @@
 
 
 // CHECK-LITERAL: Error [ZOM2076]: Unexpected token expected
-// CHECK:   --> products {{(?:.*[/\\])?error\-declarations\.zom:5:18$}}
+// CHECK-LITERAL:   --> conformance/error-declarations.zom:5:18
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 5 |   Named(code: i32, text: str)
 // CHECK-LITERAL:   |                  ^

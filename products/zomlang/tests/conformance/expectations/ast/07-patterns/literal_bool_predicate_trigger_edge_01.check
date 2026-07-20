@@ -28,7 +28,7 @@
 // CHECK-NEXT:                                 IdentExpr #3 @2:20..2:25 name="print"
 // CHECK-NEXT:                               type_args: []
 // CHECK-NEXT:                               args:
-// CHECK-NEXT:                                 StrLiteral #4 @2:26..2:29 value="T" is_raw=false prefix=None
+// CHECK-NEXT:                                 StringLiteralExpr #4 @2:26..2:29 value="T"
 // CHECK-NEXT:                       attrs: null
 // CHECK-NEXT:             MatchArmStmt #18 @3:5..3:34
 // CHECK-NEXT:               pattern:
@@ -48,6 +48,6 @@
 // CHECK-NEXT:                                 IdentExpr #12 @3:21..3:26 name="print"
 // CHECK-NEXT:                               type_args: []
 // CHECK-NEXT:                               args:
-// CHECK-NEXT:                                 StrLiteral #13 @3:27..3:30 value="F" is_raw=false prefix=None
+// CHECK-NEXT:                                 StringLiteralExpr #13 @3:27..3:30 value="F"
 // CHECK-NEXT:                       attrs: null
 // CHECK-NEXT:       attrs: null

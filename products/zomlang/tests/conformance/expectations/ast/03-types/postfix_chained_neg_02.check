@@ -2,7 +2,7 @@
 
 
 // CHECK-LITERAL: Error [ZOM2072]: Type expected
-// CHECK:   --> products {{(?:.*[/\\])?postfix_chained_neg_02\.zom:1:16$}}
+// CHECK-LITERAL:   --> conformance/postfix_chained_neg_02.zom:1:16
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 1 | alias NoBase = ?;
 // CHECK-LITERAL:   |                ^

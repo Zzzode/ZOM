@@ -2,7 +2,7 @@
 
 
 // CHECK-LITERAL: Error [ZOM2076]: Unexpected token expected
-// CHECK:   --> products {{(?:.*[/\\])?reserved_8_groups_neg_07\.zom:1:1$}}
+// CHECK-LITERAL:   --> conformance/reserved_8_groups_neg_07.zom:1:1
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 1 | type A = i32;
 // CHECK-LITERAL:   | ^

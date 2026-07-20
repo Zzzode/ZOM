@@ -1,0 +1,5 @@
+section: "Ch.04 Integer literal range diagnostics"
+covers_rule: "integerLiteral, letDeclaration"
+expected: "ACCEPT"
+notes:
+  - "The token and expression syntax are valid; semantic checking reports the range error."

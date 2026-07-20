@@ -48,7 +48,7 @@ public:
   ZC_NODISCARD static CrateGraphBuildResult buildFinal(
       const package::VerifiedPackageCompilationRequest& request,
       const package::ResolutionOutput& resolution,
-      zc::Maybe<const package::VerifiedBuildScriptResultSet&> buildResults);
+      const package::VerifiedBuildScriptPlan& buildPlan);
 
   ZC_NODISCARD zc::ArrayPtr<const package::FinalizedCompilationRoot> roots() const noexcept;
   ZC_NODISCARD zc::ArrayPtr<const identity::PackageDependencyEdgeKey> packageEdges() const noexcept;
@@ -78,6 +78,7 @@ public:
   ZC_NODISCARD static PreparatoryCrateGraphBuildResult build(
       const package::VerifiedPackageCompilationRequest& request,
       const package::BuildScriptPlanNode& node, const package::ResolutionOutput& resolution,
+      const package::VerifiedBuildScriptPlan& plan,
       zc::ArrayPtr<const package::VerifiedBuildScriptResult> completedResults);
 
   ZC_NODISCARD const identity::CrateKey& root() const noexcept;

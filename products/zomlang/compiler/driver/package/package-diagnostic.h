@@ -20,6 +20,7 @@
 #include "zc/core/common.h"
 #include "zc/core/string.h"
 #include "zc/core/vector.h"
+#include "zomlang/compiler/diagnostics/diagnostic-text.h"
 #include "zomlang/compiler/driver/package/build-script-runtime.h"
 #include "zomlang/compiler/driver/package/manifest-parser.h"
 #include "zomlang/compiler/driver/package/materialization-issue.h"
@@ -30,25 +31,6 @@ class DiagnosticEngine;
 }
 
 namespace zomlang::compiler::driver::package {
-
-/// \brief Text admitted to package diagnostics after deterministic escaping.
-class DiagnosticEscapedText final {
-public:
-  ZC_NODISCARD static DiagnosticEscapedText fromBytes(zc::ArrayPtr<const zc::byte> bytes);
-
-  DiagnosticEscapedText(DiagnosticEscapedText&&) noexcept = default;
-  DiagnosticEscapedText& operator=(DiagnosticEscapedText&&) noexcept = default;
-  ZC_DISALLOW_COPY(DiagnosticEscapedText);
-
-  ZC_NODISCARD zc::StringPtr text() const noexcept;
-
-private:
-  friend class SanitizedSourceView;
-
-  explicit DiagnosticEscapedText(zc::String&& value) noexcept;
-
-  zc::String value;
-};
 
 /// \brief Escaped diagnostic source with an original-byte offset projection.
 class SanitizedSourceView final {
@@ -65,9 +47,9 @@ public:
   ZC_NODISCARD uint64_t originalSize() const noexcept;
 
 private:
-  SanitizedSourceView(DiagnosticEscapedText&& source, zc::Vector<uint64_t>&& offsets) noexcept;
+  SanitizedSourceView(zc::String&& source, zc::Vector<uint64_t>&& offsets) noexcept;
 
-  DiagnosticEscapedText sourceValue;
+  zc::String sourceValue;
   zc::Vector<uint64_t> escapedOffsets;
 };
 

@@ -2,7 +2,7 @@
 
 
 // CHECK-LITERAL: Error [ZOM2076]: Unexpected token expected
-// CHECK:   --> products {{(?:.*[/\\])?attrpath_single_component_reject_neg_03\.zom:1:8$}}
+// CHECK-LITERAL:   --> conformance/attrpath_single_component_reject_neg_03.zom:1:8
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 1 | import std;
 // CHECK-LITERAL:   |        ^

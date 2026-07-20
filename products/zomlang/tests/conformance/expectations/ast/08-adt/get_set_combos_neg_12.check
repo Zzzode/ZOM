@@ -2,7 +2,7 @@
 
 
 // CHECK-LITERAL: Error [ZOM2076]: Unexpected token expected
-// CHECK:   --> products {{(?:.*[/\\])?get_set_combos_neg_12\.zom:3:5$}}
+// CHECK-LITERAL:   --> conformance/get_set_combos_neg_12.zom:3:5
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 3 |     set value(v: i32) -> unit { self._v = v; }
 // CHECK-LITERAL:   |     ^

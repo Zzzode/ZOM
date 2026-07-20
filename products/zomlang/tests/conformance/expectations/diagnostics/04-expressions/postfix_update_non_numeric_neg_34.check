@@ -1,9 +1,0 @@
-// RUN: cd %corpus && ! %zomc compile --syntax-only 04-expressions/postfix_update_non_numeric_neg_34.zom > %t 2>&1
-// RUN: %FileCheck %s --input-file %t
-
-
-// CHECK-LITERAL: Error [ZOM4031]: Postfix update requires numeric operand
-// CHECK-LITERAL:   --> 04-expressions/postfix_update_non_numeric_neg_34.zom:2:5
-// CHECK-LITERAL:   |
-// CHECK-LITERAL: 2 |     flag++;
-// CHECK-LITERAL:   |     ^

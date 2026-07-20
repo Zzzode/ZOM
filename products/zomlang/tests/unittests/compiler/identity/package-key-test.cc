@@ -16,6 +16,8 @@
 
 #include "zc/core/encoding.h"
 #include "zc/ztest/test.h"
+#include "zomlang/compiler/identity/canonical-decoder.h"
+#include "zomlang/compiler/identity/canonical-encoder.h"
 
 namespace zomlang::compiler::identity {
 namespace {
@@ -38,6 +40,19 @@ ResolvedVersion requireVersion(zc::StringPtr text) {
   ZC_FAIL_REQUIRE("invalid version test input");
 }
 
+template <typename Scalar>
+Scalar requireScalar(zc::StringPtr text) {
+  auto value = Scalar::fromCanonical(text);
+  ZC_IF_SOME(admitted, value) { return zc::mv(admitted); }
+  ZC_FAIL_REQUIRE("invalid canonical scalar test input");
+}
+
+CanonicalUrl requireUrl(zc::StringPtr text) {
+  auto value = CanonicalUrl::fromCanonical(text);
+  ZC_IF_SOME(admitted, value) { return zc::mv(admitted); }
+  ZC_FAIL_REQUIRE("invalid canonical URL test input");
+}
+
 SortedFeatureSet emptyFeatures() {
   zc::Vector<FeatureName> features;
   auto value = SortedFeatureSet::from(zc::mv(features));
@@ -53,6 +68,22 @@ PackageKey localPackage(zc::StringPtr name) {
                           emptyFeatures());
 }
 
+Sha256Digest repeatedDigest(uint8_t byte) {
+  uint8_t bytes[32];
+  for (auto& value : bytes) { value = byte; }
+  auto digest = Sha256Digest::fromBytes(zc::arrayPtr(bytes));
+  ZC_IF_SOME(value, digest) { return value; }
+  ZC_FAIL_REQUIRE("invalid digest test input");
+}
+
+void encodeLocalPackagePrefix(CanonicalEncoder& encoder) {
+  zc::Vector<CanonicalPathSegment> segments;
+  auto path = CanonicalWorkspaceRelativePath::from(0, zc::mv(segments));
+  CanonicalPackageSource::localPath(zc::mv(path)).encode(encoder);
+  requirePackageName("a"_zc).encode(encoder);
+  requireVersion("0.0.0"_zc).encode(encoder);
+}
+
 void expectDigest(zc::ArrayPtr<const uint8_t> bytes, zc::StringPtr expected) {
   auto digest = sha256(bytes);
   bool matched = false;
@@ -61,6 +92,20 @@ void expectDigest(zc::ArrayPtr<const uint8_t> bytes, zc::StringPtr expected) {
     matched = true;
   }
   ZC_EXPECT(matched);
+}
+
+void expectDependencyEdgeRoundTrip(DependencyDomain domain) {
+  auto admitted = PackageDependencyEdgeKey::from(
+      localPackage("a"_zc), requireDependencyAlias("dep"_zc), domain, localPackage("b"_zc));
+  ZC_REQUIRE(admitted != zc::none);
+  ZC_IF_SOME(edge, admitted) {
+    auto encoded = edge.encode();
+    CanonicalDecoder decoder(encoded);
+    auto decoded = PackageDependencyEdgeKey::decodeCanonical(decoder);
+    ZC_REQUIRE(decoded != zc::none);
+    ZC_IF_SOME(value, decoded) { ZC_EXPECT(value.encode().asPtr() == encoded.asPtr()); }
+    ZC_EXPECT(decoder.finished());
+  }
 }
 
 }  // namespace
@@ -76,6 +121,89 @@ ZC_TEST("PackageKey passes the fixed local package codec vector") {
   ZC_EXPECT(encoded.asPtr() == zc::arrayPtr(expected));
   expectDigest(encoded.asPtr(),
                "b0c7b4f55c7faf6d4522b3a6f81e979347436c782d29ad2eeaa09985479d40a6"_zc);
+}
+
+ZC_TEST("PackageKey canonical decoder composes all package source variants") {
+  auto local = localPackage("a"_zc);
+  auto localBytes = local.encode();
+  CanonicalDecoder localDecoder(localBytes);
+  auto decodedLocal = PackageKey::decodeCanonical(localDecoder);
+  ZC_REQUIRE(decodedLocal != zc::none);
+  ZC_IF_SOME(value, decodedLocal) { ZC_EXPECT(value.encode().asPtr() == localBytes.asPtr()); }
+  ZC_EXPECT(localDecoder.finished());
+
+  auto registrySource = CanonicalPackageSource::registry(
+      RegistryIdentity::from(requireUrl("https://example.com/index"_zc), repeatedDigest(0x22)));
+  auto registry = PackageKey::from(zc::mv(registrySource), requirePackageName("registry"_zc),
+                                   requireVersion("1.2.3"_zc), emptyFeatures());
+  auto registryBytes = registry.encode();
+  CanonicalDecoder registryDecoder(registryBytes);
+  auto decodedRegistry = PackageKey::decodeCanonical(registryDecoder);
+  ZC_REQUIRE(decodedRegistry != zc::none);
+  ZC_IF_SOME(value, decodedRegistry) { ZC_EXPECT(value.encode().asPtr() == registryBytes.asPtr()); }
+  ZC_EXPECT(registryDecoder.finished());
+
+  uint8_t revisionBytes[20] = {};
+  auto revision = VcsRevision::from(VcsRevisionAlgorithm::Sha1, zc::arrayPtr(revisionBytes));
+  ZC_REQUIRE(revision != zc::none);
+  ZC_IF_SOME(revisionValue, revision) {
+    zc::Vector<CanonicalPathSegment> segments;
+    segments.add(requireScalar<CanonicalPathSegment>("compiler"_zc));
+    auto source = CanonicalPackageSource::vcs(requireUrl("ssh://example.com/repository"_zc),
+                                              zc::mv(revisionValue),
+                                              CanonicalRelativePath::from(zc::mv(segments)));
+    auto vcs = PackageKey::from(zc::mv(source), requirePackageName("checkout"_zc),
+                                requireVersion("2.0.0"_zc), emptyFeatures());
+    auto vcsBytes = vcs.encode();
+    CanonicalDecoder vcsDecoder(vcsBytes);
+    auto decodedVcs = PackageKey::decodeCanonical(vcsDecoder);
+    ZC_REQUIRE(decodedVcs != zc::none);
+    ZC_IF_SOME(value, decodedVcs) { ZC_EXPECT(value.encode().asPtr() == vcsBytes.asPtr()); }
+    ZC_EXPECT(vcsDecoder.finished());
+  }
+}
+
+ZC_TEST("PackageKey canonical decoder rejects malformed unions paths and feature sets") {
+  const uint8_t invalidSource[] = {0xff};
+  CanonicalDecoder invalidSourceDecoder(zc::arrayPtr(invalidSource));
+  ZC_EXPECT(PackageKey::decodeCanonical(invalidSourceDecoder) == zc::none);
+
+  CanonicalEncoder invalidRevisionEncoder;
+  invalidRevisionEncoder.encodeUint8(0xff);
+  auto invalidRevisionBytes = invalidRevisionEncoder.finish();
+  CanonicalDecoder invalidRevisionDecoder(invalidRevisionBytes);
+  ZC_EXPECT(VcsRevision::decodeCanonical(invalidRevisionDecoder) == zc::none);
+
+  CanonicalEncoder excessivePathEncoder;
+  excessivePathEncoder.encodeSequenceSize(UINT64_MAX);
+  auto excessivePathBytes = excessivePathEncoder.finish();
+  CanonicalDecoder excessivePathDecoder(excessivePathBytes);
+  ZC_EXPECT(CanonicalRelativePath::decodeCanonical(excessivePathDecoder) == zc::none);
+
+  CanonicalEncoder unsortedEncoder;
+  encodeLocalPackagePrefix(unsortedEncoder);
+  unsortedEncoder.encodeSequenceSize(2);
+  requireScalar<FeatureName>("alpha"_zc).encode(unsortedEncoder);
+  requireScalar<FeatureName>("beta"_zc).encode(unsortedEncoder);
+  auto unsortedBytes = unsortedEncoder.finish();
+  CanonicalDecoder unsortedDecoder(unsortedBytes);
+  ZC_EXPECT(PackageKey::decodeCanonical(unsortedDecoder) == zc::none);
+
+  CanonicalEncoder duplicateEncoder;
+  encodeLocalPackagePrefix(duplicateEncoder);
+  duplicateEncoder.encodeSequenceSize(2);
+  requireScalar<FeatureName>("same"_zc).encode(duplicateEncoder);
+  requireScalar<FeatureName>("same"_zc).encode(duplicateEncoder);
+  auto duplicateBytes = duplicateEncoder.finish();
+  CanonicalDecoder duplicateDecoder(duplicateBytes);
+  ZC_EXPECT(PackageKey::decodeCanonical(duplicateDecoder) == zc::none);
+
+  CanonicalEncoder excessiveFeaturesEncoder;
+  encodeLocalPackagePrefix(excessiveFeaturesEncoder);
+  excessiveFeaturesEncoder.encodeSequenceSize(UINT64_MAX);
+  auto excessiveFeaturesBytes = excessiveFeaturesEncoder.finish();
+  CanonicalDecoder excessiveFeaturesDecoder(excessiveFeaturesBytes);
+  ZC_EXPECT(PackageKey::decodeCanonical(excessiveFeaturesDecoder) == zc::none);
 }
 
 ZC_TEST("PackageBaseKey omits feature activation from the coordinate codec") {
@@ -106,6 +234,31 @@ ZC_TEST("PackageDependencyEdgeKey passes the fixed target edge codec vector") {
   ZC_EXPECT(PackageDependencyEdgeKey::from(localPackage("a"_zc), requireDependencyAlias("dep"_zc),
                                            static_cast<DependencyDomain>(0xff),
                                            localPackage("b"_zc)) == zc::none);
+}
+
+ZC_TEST("PackageDependencyEdgeKey canonical decoder is compositional and fail closed") {
+  expectDependencyEdgeRoundTrip(DependencyDomain::Target);
+  expectDependencyEdgeRoundTrip(DependencyDomain::Development);
+  expectDependencyEdgeRoundTrip(DependencyDomain::Build);
+
+  auto admitted =
+      PackageDependencyEdgeKey::from(localPackage("a"_zc), requireDependencyAlias("dep"_zc),
+                                     DependencyDomain::Target, localPackage("b"_zc));
+  ZC_REQUIRE(admitted != zc::none);
+  ZC_IF_SOME(edge, admitted) {
+    auto encoded = edge.encode();
+    CanonicalDecoder truncatedDecoder(encoded.asPtr().first(encoded.size() - 1));
+    ZC_EXPECT(PackageDependencyEdgeKey::decodeCanonical(truncatedDecoder) == zc::none);
+  }
+
+  CanonicalEncoder invalidDomainEncoder;
+  localPackage("a"_zc).encode(invalidDomainEncoder);
+  requireDependencyAlias("dep"_zc).encode(invalidDomainEncoder);
+  invalidDomainEncoder.encodeUint8(0xff);
+  localPackage("b"_zc).encode(invalidDomainEncoder);
+  auto invalidDomainBytes = invalidDomainEncoder.finish();
+  CanonicalDecoder invalidDomainDecoder(invalidDomainBytes);
+  ZC_EXPECT(PackageDependencyEdgeKey::decodeCanonical(invalidDomainDecoder) == zc::none);
 }
 
 ZC_TEST("Canonical package paths preserve strong normalized segments") {

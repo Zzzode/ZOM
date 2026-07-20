@@ -16,9 +16,7 @@
 
 #include "zc/core/memory.h"
 #include "zc/ztest/test.h"
-#include "zomlang/compiler/type/primitive-type.h"
 #include "zomlang/compiler/type/semantic-type-store.h"
-#include "zomlang/compiler/type/type-env.h"
 
 namespace zomlang::compiler::tests {
 
@@ -29,10 +27,21 @@ public:
     auto issuedContext = factory.issue();
     ZC_REQUIRE(issuedContext != zc::none);
     ZC_IF_SOME(value, issuedContext) { context = value; }
+    auto issuedRegistries = identity::SemanticIdentityRegistrySet::create(factory, context);
+    ZC_REQUIRE(issuedRegistries != zc::none);
+    ZC_IF_SOME(value, issuedRegistries) {
+      registries = zc::heap<identity::SemanticIdentityRegistrySet>(zc::mv(value));
+    }
+    ZC_REQUIRE(registries->freezePackages() == identity::FrozenRegistryFailure::None);
+    ZC_REQUIRE(registries->freezeCrates() == identity::FrozenRegistryFailure::None);
+    ZC_REQUIRE(registries->freezeSourceFiles() == identity::FrozenRegistryFailure::None);
+    ZC_REQUIRE(registries->freezeModules() == identity::FrozenRegistryFailure::None);
+    ZC_REQUIRE(registries->freezeDefinitions() == identity::FrozenRegistryFailure::None);
+    ZC_REQUIRE(registries->freezeImpls() == identity::FrozenRegistryFailure::None);
     auto issuedToken = factory.issueSemanticTypeStoreConstructionToken(context);
     ZC_REQUIRE(issuedToken != zc::none);
     ZC_IF_SOME(token, issuedToken) {
-      semanticTypeStore = zc::heap<type::SemanticTypeStore>(zc::mv(token));
+      semanticTypeStore = zc::heap<type::SemanticTypeStore>(zc::mv(token), *registries);
     }
   }
 
@@ -47,34 +56,35 @@ public:
   /// \brief Returns the context brand that owns the test store.
   identity::SemanticContextBrand brand() const noexcept { return context; }
 
+  /// \brief Interns one closed primitive payload through the production admission boundary.
+  identity::SemanticTypeId internPrimitive(type::semantic::PrimitiveKind kind) {
+    auto canonical = semanticTypeStore->canonicalizeClosed(
+        type::semantic::TypeData(type::semantic::PrimitiveTypeData{kind}));
+    ZC_REQUIRE(canonical.is<type::semantic::CanonicalTypeData>());
+    auto result =
+        semanticTypeStore->intern(zc::mv(canonical).get<type::semantic::CanonicalTypeData>());
+    ZC_REQUIRE(result.is<type::SemanticTypeInterned>());
+    return result.get<type::SemanticTypeInterned>().id;
+  }
+
 private:
   identity::SemanticContextFactory factory;
   identity::SemanticContextBrand context;
+  zc::Own<identity::SemanticIdentityRegistrySet> registries;
   zc::Own<type::SemanticTypeStore> semanticTypeStore;
-};
-
-/// \brief Type environment whose semantic store is owned by an earlier base subobject.
-class TestTypeEnv final : private TestSemanticTypeContext, public type::TypeEnv {
-public:
-  TestTypeEnv() : type::TypeEnv(TestSemanticTypeContext::semanticTypes()) {}
-
-  ZC_DISALLOW_COPY(TestTypeEnv);
-  TestTypeEnv(TestTypeEnv&&) noexcept = default;
-  TestTypeEnv& operator=(TestTypeEnv&&) noexcept = default;
-
-  identity::SemanticContextBrand semanticContextBrand() const noexcept {
-    return TestSemanticTypeContext::brand();
-  }
 };
 
 /// \brief Issues one real semantic type identity for tests that only retain the handle value.
 inline type::SemanticTypeId testSemanticType(uint32_t ordinal = 0) {
   TestSemanticTypeContext context;
   type::SemanticTypeId result;
-  constexpr uint32_t primitiveCount = static_cast<uint32_t>(type::PrimitiveKind::Any) + 1;
+  constexpr uint32_t firstPrimitive = static_cast<uint32_t>(type::semantic::PrimitiveKind::I8);
+  constexpr uint32_t primitiveCount =
+      static_cast<uint32_t>(type::semantic::PrimitiveKind::Null) - firstPrimitive + 1;
   for (uint32_t index = 0; index <= ordinal; ++index) {
-    type::PrimitiveType primitive(static_cast<type::PrimitiveKind>(index % primitiveCount));
-    result = context.semanticTypes().intern(primitive);
+    const auto kind =
+        static_cast<type::semantic::PrimitiveKind>(firstPrimitive + index % primitiveCount);
+    result = context.internPrimitive(kind);
   }
   return result;
 }

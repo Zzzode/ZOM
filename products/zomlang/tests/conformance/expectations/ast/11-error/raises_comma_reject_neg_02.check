@@ -2,7 +2,7 @@
 
 
 // CHECK-LITERAL: Error [ZOM2076]: Unexpected token expected
-// CHECK:   --> products {{(?:.*[/\\])?raises_comma_reject_neg_02\.zom:1:27$}}
+// CHECK-LITERAL:   --> conformance/raises_comma_reject_neg_02.zom:1:27
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 1 | fun bad() -> void raises A, B, C;
 // CHECK-LITERAL:   |                           ^

@@ -2,22 +2,22 @@
 
 
 // CHECK-LITERAL: Error [ZOM2077]: Identifier expected
-// CHECK:   --> products {{(?:.*[/\\])?type\-forms\-error\.zom:2:27$}}
+// CHECK-LITERAL:   --> conformance/type-forms-error.zom:2:27
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 2 | let f: { x: i32, y?: str, "k": u8, 1: bool } = obj;
 // CHECK-LITERAL:   |                           ^
 // CHECK-LITERAL: Error [ZOM2072]: Type expected
-// CHECK:   --> products {{(?:.*[/\\])?type\-forms\-error\.zom:2:8$}}
+// CHECK-LITERAL:   --> conformance/type-forms-error.zom:2:8
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 2 | let f: { x: i32, y?: str, "k": u8, 1: bool } = obj;
 // CHECK-LITERAL:   |        ^
 // CHECK-LITERAL: Error [ZOM2011]: Identifier expected, found 'k'
-// CHECK:   --> products {{(?:.*[/\\])?type\-forms\-error\.zom:2:27$}}
+// CHECK-LITERAL:   --> conformance/type-forms-error.zom:2:27
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 2 | let f: { x: i32, y?: str, "k": u8, 1: bool } = obj;
 // CHECK-LITERAL:   |                           ^
 // CHECK-LITERAL: Error [ZOM2011]: Identifier expected, found '1'
-// CHECK:   --> products {{(?:.*[/\\])?type\-forms\-error\.zom:2:36$}}
+// CHECK-LITERAL:   --> conformance/type-forms-error.zom:2:36
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 2 | let f: { x: i32, y?: str, "k": u8, 1: bool } = obj;
 // CHECK-LITERAL:   |                                    ^

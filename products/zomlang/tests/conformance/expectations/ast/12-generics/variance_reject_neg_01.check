@@ -2,12 +2,12 @@
 
 
 // CHECK-LITERAL: Error [ZOM2076]: Unexpected token expected
-// CHECK:   --> products {{(?:.*[/\\])?variance_reject_neg_01\.zom:1:7$}}
+// CHECK-LITERAL:   --> conformance/variance_reject_neg_01.zom:1:7
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 1 | fun f<in T, out U>(a: T, b: U) -> unit { return unit; }
 // CHECK-LITERAL:   |       ^
 // CHECK-LITERAL: Error [ZOM2076]: Unexpected token expected
-// CHECK:   --> products {{(?:.*[/\\])?variance_reject_neg_01\.zom:1:13$}}
+// CHECK-LITERAL:   --> conformance/variance_reject_neg_01.zom:1:13
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 1 | fun f<in T, out U>(a: T, b: U) -> unit { return unit; }
 // CHECK-LITERAL:   |             ^

@@ -2,12 +2,12 @@
 
 
 // CHECK-LITERAL: Error [ZOM2076]: Unexpected token expected
-// CHECK:   --> products {{(?:.*[/\\])?unsafe_on_non_function_neg_03\.zom:1:16$}}
+// CHECK-LITERAL:   --> conformance/unsafe_on_non_function_neg_03.zom:1:16
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 1 | let x = unsafe 42;
 // CHECK-LITERAL:   |                ^
 // CHECK-LITERAL: Error [ZOM2056]: Expression expected
-// CHECK:   --> products {{(?:.*[/\\])?unsafe_on_non_function_neg_03\.zom:1:9$}}
+// CHECK-LITERAL:   --> conformance/unsafe_on_non_function_neg_03.zom:1:9
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 1 | let x = unsafe 42;
 // CHECK-LITERAL:   |         ^

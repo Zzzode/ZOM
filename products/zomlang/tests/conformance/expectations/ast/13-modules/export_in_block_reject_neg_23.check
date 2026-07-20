@@ -1,0 +1,8 @@
+// RUN: ! %zomc compile --dump-ast %corpus/13-modules/export_in_block_reject_neg_23.zom 2>&1 | %FileCheck %s
+
+
+// CHECK-LITERAL: Error [ZOM2096]: Import and export declarations are valid only as module items
+// CHECK-LITERAL:   --> conformance/export_in_block_reject_neg_23.zom:2:5
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 2 |     export { value };
+// CHECK-LITERAL:   |     ^

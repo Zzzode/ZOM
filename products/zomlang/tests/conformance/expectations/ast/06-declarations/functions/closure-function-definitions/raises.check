@@ -27,7 +27,7 @@
 // CHECK-NEXT:                       raises_ty:
 // CHECK-NEXT:                         NamedTypeExpr #5 @2:43..2:48
 // CHECK-NEXT:                           path:
-// CHECK-NEXT:                             ModulePath #4 @2:43..2:48 segments=["Error"]
+// CHECK-NEXT:                             ModulePath #4 @2:43..2:48 segments=["Error"] root=Relative
 // CHECK-NEXT:                           args: []
 // CHECK-NEXT:                       body:
 // CHECK-NEXT:                         BlockStmt #8 @2:49..4:2

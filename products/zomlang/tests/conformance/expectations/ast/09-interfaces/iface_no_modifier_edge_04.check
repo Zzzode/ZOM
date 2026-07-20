@@ -12,7 +12,7 @@
 // CHECK-NEXT:           members_id:
 // CHECK-NEXT:             ClassMemberList #13 @1:23..6:2 nmembers=4
 // CHECK-NEXT:               members:
-// CHECK-NEXT:                 MethodDecl #3 @2:5..2:24 name="bare" is_static=false visibility=Default
+// CHECK-NEXT:                 MethodDecl #3 @2:5..2:24 name="bare" mode=Instance visibility=Default
 // CHECK-NEXT:                   params_id:
 // CHECK-NEXT:                     FunctionParameterList #1 @2:13..2:15 nparams=0
 // CHECK-NEXT:                       params: []
@@ -21,7 +21,7 @@
 // CHECK-NEXT:                     PredefinedTypeExpr #2 @2:19..2:23 kind=Unit
 // CHECK-NEXT:                   raises_ty: null
 // CHECK-NEXT:                   body: null
-// CHECK-NEXT:                 MethodDecl #6 @3:5..3:20 name="x" is_static=false visibility=Default
+// CHECK-NEXT:                 MethodDecl #6 @3:5..3:20 name="x" mode=Instance visibility=Default
 // CHECK-NEXT:                   params_id:
 // CHECK-NEXT:                     FunctionParameterList #4 @3:10..3:12 nparams=0
 // CHECK-NEXT:                       params: []
@@ -30,7 +30,7 @@
 // CHECK-NEXT:                     PredefinedTypeExpr #5 @3:16..3:19 kind=I32
 // CHECK-NEXT:                   raises_ty: null
 // CHECK-NEXT:                   body: null
-// CHECK-NEXT:                 MethodDecl #11 @4:5..4:27 name="x" is_static=false visibility=Default
+// CHECK-NEXT:                 MethodDecl #11 @4:5..4:27 name="x" mode=Instance visibility=Default
 // CHECK-NEXT:                   params_id:
 // CHECK-NEXT:                     FunctionParameterList #9 @4:10..4:18 nparams=1
 // CHECK-NEXT:                       params:
@@ -46,6 +46,6 @@
 // CHECK-NEXT:                   body: null
 // CHECK-NEXT:                 AssociatedTypeDecl #12 @5:5..5:12 name="T"
 // CHECK-NEXT:                   type_params_id: null
-// CHECK-NEXT:                   bound: null
+// CHECK-NEXT:                   bounds_id: null
 // CHECK-NEXT:                   default_ty: null
 // CHECK-NEXT:       attrs: null

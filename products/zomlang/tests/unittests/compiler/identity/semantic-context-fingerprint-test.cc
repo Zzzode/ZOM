@@ -106,7 +106,7 @@ CanonicalTargetSpecificationKey targetSpec() {
 }
 
 CompilationConfigKey targetCompilation() {
-  zc::Maybe<BuildScriptOutputKey> output = BuildScriptOutputKey::from(repeatedDigest(0x11));
+  zc::Maybe<BuildScriptProducerKey> output = BuildScriptProducerKey::from(repeatedDigest(0x11));
   auto value = CompilationConfigKey::from(
       CompilationDomain::Target, targetSpec(),
       SemanticCompilerOptionsKey::from(2026, true, false, false), zc::mv(output));

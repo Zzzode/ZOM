@@ -1,1 +1,1 @@
-import very::deeply::nested::module::path::name as mod;
+import very::deeply::nested::module_part::path::name as mod;

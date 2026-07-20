@@ -11,11 +11,11 @@
 // CHECK-NEXT:           target:
 // CHECK-NEXT:             NamedTypeExpr #5 @1:16..1:29
 // CHECK-NEXT:               path:
-// CHECK-NEXT:                 ModulePath #4 @1:16..1:19 segments=["Vec"]
+// CHECK-NEXT:                 ModulePath #4 @1:16..1:19 segments=["Vec"] root=Relative
 // CHECK-NEXT:               args:
 // CHECK-NEXT:                 NamedTypeExpr #3 @1:20..1:29
 // CHECK-NEXT:                   path:
-// CHECK-NEXT:                     ModulePath #2 @1:20..1:23 segments=["Vec"]
+// CHECK-NEXT:                     ModulePath #2 @1:20..1:23 segments=["Vec"] root=Relative
 // CHECK-NEXT:                   args:
 // CHECK-NEXT:                     PredefinedTypeExpr #1 @1:24..1:27 kind=I32
 // CHECK-NEXT:       attrs: null

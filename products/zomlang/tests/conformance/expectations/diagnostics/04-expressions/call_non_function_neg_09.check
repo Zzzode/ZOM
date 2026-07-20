@@ -1,9 +1,0 @@
-// RUN: cd %corpus && ! %zomc compile --syntax-only 04-expressions/call_non_function_neg_09.zom > %t 2>&1
-// RUN: %FileCheck %s --input-file %t
-
-
-// CHECK-LITERAL: Error [ZOM4012]: Cannot call non-function type 'i32'
-// CHECK-LITERAL:   --> 04-expressions/call_non_function_neg_09.zom:2:1
-// CHECK-LITERAL:   |
-// CHECK-LITERAL: 2 | f();
-// CHECK-LITERAL:   | ^

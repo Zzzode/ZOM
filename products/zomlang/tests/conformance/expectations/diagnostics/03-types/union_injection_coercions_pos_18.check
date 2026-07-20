@@ -1,5 +1,0 @@
-// RUN: cd %corpus && %zomc compile --syntax-only 03-types/union_injection_coercions_pos_18.zom > %t 2>&1
-// RUN: %FileCheck %s --input-file %t
-
-
-// CHECK-LITERAL: Syntax check completed successfully.

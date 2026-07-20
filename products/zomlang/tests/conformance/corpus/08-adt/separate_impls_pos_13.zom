@@ -1,0 +1,11 @@
+interface A { fun a() -> unit; }
+interface B { fun b() -> unit; }
+interface C { fun c() -> unit; }
+struct S {
+    fun a() -> unit { }
+    fun b() -> unit { }
+    fun c() -> unit { }
+}
+impl A for S { }
+impl B for S { }
+impl C for S { }

@@ -37,6 +37,13 @@ identity::SemanticIdentifier identifier(zc::StringPtr text) {
   ZC_UNREACHABLE;
 }
 
+identity::GenericParameterKey genericParameterKey(uint8_t byte) {
+  auto admitted = identity::GenericParameterKey::fromBytes(zc::heapArray<uint8_t>(32, byte));
+  ZC_IREQUIRE(admitted != zc::none, "test generic parameter key must be a digest");
+  ZC_IF_SOME(value, admitted) { return zc::mv(value); }
+  ZC_UNREACHABLE;
+}
+
 template <typename Branch>
 void expectBranch(Branch&& branch, TypeDataTag expectedTag) {
   TypeData data(zc::fwd<Branch>(branch));
@@ -126,7 +133,7 @@ ZC_TEST("SemanticTypeData.CoversEveryClosedBranch") {
   zc::Vector<identity::SemanticTypeId> nominalArguments;
   nominalArguments.add(typeId);
   expectBranch(NominalTypeData{definition, zc::mv(nominalArguments)}, TypeDataTag::Nominal);
-  expectBranch(TypeParameterTypeData{definition}, TypeDataTag::TypeParameter);
+  expectBranch(TypeParameterTypeData{genericParameterKey(0x01)}, TypeDataTag::TypeParameter);
 
   zc::Vector<identity::SemanticTypeId> alternatives;
   alternatives.add(typeId);

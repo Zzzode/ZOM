@@ -1,0 +1,13 @@
+// RUN: ! %zomc compile --dump-ast %corpus/04-expressions/in_operator_reject_neg_60.zom 2>&1 | %FileCheck %s
+
+
+// CHECK-LITERAL: Error [ZOM2076]: Unexpected token expected
+// CHECK-LITERAL:   --> conformance/in_operator_reject_neg_60.zom:1:20
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 1 | let result = value in collection;
+// CHECK-LITERAL:   |                    ^
+// CHECK-LITERAL: Error [ZOM2056]: Expression expected
+// CHECK-LITERAL:   --> conformance/in_operator_reject_neg_60.zom:1:14
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 1 | let result = value in collection;
+// CHECK-LITERAL:   |              ^

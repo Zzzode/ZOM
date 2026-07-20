@@ -2,7 +2,7 @@
 
 
 // CHECK-LITERAL: Error [ZOM2025]: Expected 'for'
-// CHECK:   --> products {{(?:.*[/\\])?impl_reject_neg_01\.zom:1:6$}}
+// CHECK-LITERAL:   --> conformance/impl_reject_neg_01.zom:1:6
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 1 | impl { x: i32 }
 // CHECK-LITERAL:   |      ^

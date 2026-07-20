@@ -29,7 +29,7 @@
 // CHECK-NEXT:                   ty:
 // CHECK-NEXT:                     NamedTypeExpr #7 @6:16..6:21
 // CHECK-NEXT:                       path:
-// CHECK-NEXT:                         ModulePath #6 @6:16..6:21 segments=["Child"]
+// CHECK-NEXT:                         ModulePath #6 @6:16..6:21 segments=["Child"] root=Relative
 // CHECK-NEXT:                       args: []
 // CHECK-NEXT:                   init: null
 // CHECK-NEXT:       attrs: null
@@ -61,7 +61,7 @@
 // CHECK-NEXT:                               ty:
 // CHECK-NEXT:                                 NamedTypeExpr #17 @10:14..10:19
 // CHECK-NEXT:                                   path:
-// CHECK-NEXT:                                     ModulePath #16 @10:14..10:19 segments=["Owner"]
+// CHECK-NEXT:                                     ModulePath #16 @10:14..10:19 segments=["Owner"] root=Relative
 // CHECK-NEXT:                                   args: []
 // CHECK-NEXT:                               init: null
 // CHECK-NEXT:                   attrs: null

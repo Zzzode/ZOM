@@ -17,7 +17,7 @@
 #include "zc/core/string.h"
 #include "zc/core/vector.h"
 #include "zc/ztest/test.h"
-#include "zomlang/compiler/diagnostics/diagnostic-engine.h"
+#include "zomlang/compiler/diagnostics/diagnostic-fact-buffer.h"
 #include "zomlang/compiler/source/manager.h"
 
 namespace zomlang {
@@ -48,8 +48,8 @@ zc::Vector<lexer::Token> makeTokenStream(source::SourceLoc base) {
 ZC_TEST("ParserContextTest.TokenAccessAndFileIdentifier") {
   auto sourceManager = zc::heap<source::SourceManager>();
   auto bufferId = sourceManager->addMemBufferCopy(zc::str("let value = 1;").asBytes(), "test.zom");
-  diagnostics::DiagnosticEngine diagnosticEngine(*sourceManager);
-  ParserContext context(*sourceManager, diagnosticEngine, bufferId);
+  diagnostics::DiagnosticFactBuffer diagnosticFacts(*sourceManager, bufferId);
+  ParserContext context(*sourceManager, diagnosticFacts, bufferId);
 
   auto tokens = makeTokenStream(sourceManager->getLocForBufferStart(bufferId));
   context.resetTokens(tokens.asPtr());
@@ -63,8 +63,8 @@ ZC_TEST("ParserContextTest.TokenAccessAndFileIdentifier") {
 ZC_TEST("ParserContextTest.RangeAndDiagnosticLocationsClampToEof") {
   auto sourceManager = zc::heap<source::SourceManager>();
   auto bufferId = sourceManager->addMemBufferCopy(zc::str("let value = 1;").asBytes(), "test.zom");
-  diagnostics::DiagnosticEngine diagnosticEngine(*sourceManager);
-  ParserContext context(*sourceManager, diagnosticEngine, bufferId);
+  diagnostics::DiagnosticFactBuffer diagnosticFacts(*sourceManager, bufferId);
+  ParserContext context(*sourceManager, diagnosticFacts, bufferId);
 
   const source::SourceLoc base = sourceManager->getLocForBufferStart(bufferId);
   auto tokens = makeTokenStream(base);
@@ -81,8 +81,8 @@ ZC_TEST("ParserContextTest.RangeAndDiagnosticLocationsClampToEof") {
 ZC_TEST("ParserContextTest.EmptyTokenRangeUsesBufferStart") {
   auto sourceManager = zc::heap<source::SourceManager>();
   auto bufferId = sourceManager->addMemBufferCopy(zc::str("let value = 1;").asBytes(), "test.zom");
-  diagnostics::DiagnosticEngine diagnosticEngine(*sourceManager);
-  ParserContext context(*sourceManager, diagnosticEngine, bufferId);
+  diagnostics::DiagnosticFactBuffer diagnosticFacts(*sourceManager, bufferId);
+  ParserContext context(*sourceManager, diagnosticFacts, bufferId);
 
   const source::SourceLoc base = sourceManager->getLocForBufferStart(bufferId);
   const source::SourceRange range = context.rangeFor(0, 0);

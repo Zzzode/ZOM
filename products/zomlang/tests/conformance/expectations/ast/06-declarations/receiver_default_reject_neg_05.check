@@ -2,12 +2,12 @@
 
 
 // CHECK-LITERAL: Error [ZOM2094]: The 'this' receiver cannot have a default value
-// CHECK-LITERAL:   --> receiver_default_reject_neg_05.zom:2:23
+// CHECK-LITERAL:   --> conformance/receiver_default_reject_neg_05.zom:2:23
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 2 |     fun inferred(this = value) {}
 // CHECK-LITERAL:   |                       ^
 // CHECK-LITERAL: Error [ZOM2094]: The 'this' receiver cannot have a default value
-// CHECK-LITERAL:   --> receiver_default_reject_neg_05.zom:3:25
+// CHECK-LITERAL:   --> conformance/receiver_default_reject_neg_05.zom:3:25
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 3 |     fun typed(this: i32 = 0) {}
 // CHECK-LITERAL:   |                         ^

@@ -14,34 +14,34 @@
 // CHECK-NEXT:                   ty:
 // CHECK-NEXT:                     NamedTypeExpr #15 @2:10..2:41
 // CHECK-NEXT:                       path:
-// CHECK-NEXT:                         ModulePath #14 @2:10..2:14 segments=["Pair"]
+// CHECK-NEXT:                         ModulePath #14 @2:10..2:14 segments=["Pair"] root=Relative
 // CHECK-NEXT:                       args:
 // CHECK-NEXT:                         NamedTypeExpr #6 @2:15..2:24
 // CHECK-NEXT:                           path:
-// CHECK-NEXT:                             ModulePath #5 @2:15..2:18 segments=["Box"]
+// CHECK-NEXT:                             ModulePath #5 @2:15..2:18 segments=["Box"] root=Relative
 // CHECK-NEXT:                           args:
 // CHECK-NEXT:                             NamedTypeExpr #2 @2:19..2:20
 // CHECK-NEXT:                               path:
-// CHECK-NEXT:                                 ModulePath #1 @2:19..2:20 segments=["A"]
+// CHECK-NEXT:                                 ModulePath #1 @2:19..2:20 segments=["A"] root=Relative
 // CHECK-NEXT:                               args: []
 // CHECK-NEXT:                             NamedTypeExpr #4 @2:22..2:23
 // CHECK-NEXT:                               path:
-// CHECK-NEXT:                                 ModulePath #3 @2:22..2:23 segments=["B"]
+// CHECK-NEXT:                                 ModulePath #3 @2:22..2:23 segments=["B"] root=Relative
 // CHECK-NEXT:                               args: []
 // CHECK-NEXT:                         FunctionTypeExpr #13 @2:26..2:40
 // CHECK-NEXT:                           params:
 // CHECK-NEXT:                             NamedTypeExpr #10 @2:30..2:31
 // CHECK-NEXT:                               path:
-// CHECK-NEXT:                                 ModulePath #9 @2:30..2:31 segments=["C"]
+// CHECK-NEXT:                                 ModulePath #9 @2:30..2:31 segments=["C"] root=Relative
 // CHECK-NEXT:                               args: []
 // CHECK-NEXT:                             NamedTypeExpr #12 @2:33..2:34
 // CHECK-NEXT:                               path:
-// CHECK-NEXT:                                 ModulePath #11 @2:33..2:34 segments=["D"]
+// CHECK-NEXT:                                 ModulePath #11 @2:33..2:34 segments=["D"] root=Relative
 // CHECK-NEXT:                               args: []
 // CHECK-NEXT:                           ret_ty:
 // CHECK-NEXT:                             NamedTypeExpr #8 @2:39..2:40
 // CHECK-NEXT:                               path:
-// CHECK-NEXT:                                 ModulePath #7 @2:39..2:40 segments=["E"]
+// CHECK-NEXT:                                 ModulePath #7 @2:39..2:40 segments=["E"] root=Relative
 // CHECK-NEXT:                               args: []
 // CHECK-NEXT:                           raises: null
 // CHECK-NEXT:                   default_:
@@ -51,15 +51,15 @@
 // CHECK-NEXT:                       type_args:
 // CHECK-NEXT:                         NamedTypeExpr #22 @2:49..2:60
 // CHECK-NEXT:                           path:
-// CHECK-NEXT:                             ModulePath #21 @2:49..2:53 segments=["Pair"]
+// CHECK-NEXT:                             ModulePath #21 @2:49..2:53 segments=["Pair"] root=Relative
 // CHECK-NEXT:                           args:
 // CHECK-NEXT:                             NamedTypeExpr #18 @2:54..2:55
 // CHECK-NEXT:                               path:
-// CHECK-NEXT:                                 ModulePath #17 @2:54..2:55 segments=["A"]
+// CHECK-NEXT:                                 ModulePath #17 @2:54..2:55 segments=["A"] root=Relative
 // CHECK-NEXT:                               args: []
 // CHECK-NEXT:                             NamedTypeExpr #20 @2:57..2:58
 // CHECK-NEXT:                               path:
-// CHECK-NEXT:                                 ModulePath #19 @2:57..2:58 segments=["B"]
+// CHECK-NEXT:                                 ModulePath #19 @2:57..2:58 segments=["B"] root=Relative
 // CHECK-NEXT:                               args: []
 // CHECK-NEXT:                       args:
 // CHECK-NEXT:                         IdentExpr #23 @2:61..2:62 name="a"

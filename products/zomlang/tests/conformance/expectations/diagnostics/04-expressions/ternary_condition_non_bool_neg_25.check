@@ -1,8 +1,0 @@
-// RUN: cd %corpus && ! %zomc compile --syntax-only 04-expressions/ternary_condition_non_bool_neg_25.zom > %t 2>&1
-// RUN: %FileCheck %s --input-file %t
-
-
-// CHECK-LITERAL: Error [ZOM4045]: Condition must be of type 'bool'
-// CHECK-LITERAL:   --> 04-expressions/ternary_condition_non_bool_neg_25.zom:1:9
-// CHECK-LITERAL: 1 | let x = 1 ? 2 : 3;
-// CHECK-LITERAL:   |         ^

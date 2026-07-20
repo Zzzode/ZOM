@@ -16,7 +16,8 @@
 
 #include "zc/core/encoding.h"
 #include "zc/ztest/test.h"
-#include "zomlang/compiler/irgen/target-registry.h"
+#include "zomlang/compiler/driver/package/build-script-plan.h"
+#include "zomlang/compiler/ir/target-registry.h"
 
 namespace zomlang::compiler::driver::package {
 namespace {
@@ -55,24 +56,24 @@ RegisteredTargetProfileName profileName(zc::StringPtr text) {
 }
 
 RegisteredTargetService targetService() {
-  zc::Vector<irgen::CanonicalTargetFeature> backendFeatures;
-  auto feature = irgen::CanonicalTargetFeature::from("sse2"_zc, irgen::TargetFeatureState::Enabled);
+  zc::Vector<ir::CanonicalTargetFeature> backendFeatures;
+  auto feature = ir::CanonicalTargetFeature::from("sse2"_zc, ir::TargetFeatureState::Enabled);
   ZC_IF_SOME(value, feature) { backendFeatures.add(zc::mv(value)); }
-  auto spec = irgen::CanonicalTargetSpec::from(
+  auto spec = ir::CanonicalTargetSpec::from(
       "x86_64-zom-none"_zc, "e-p:64:64"_zc, "generic"_zc, zc::mv(backendFeatures), "zom-v1"_zc,
-      irgen::BackendPanicStrategy::Unwind, irgen::ObjectFormat::Elf);
+      ir::BackendPanicStrategy::Unwind, ir::ObjectFormat::Elf);
   ZC_IF_SOME(specValue, spec) {
     zc::Vector<identity::TargetFeatureName> semanticFeatures;
     semanticFeatures.add(scalar<identity::TargetFeatureName>("sse2"_zc));
-    zc::Vector<irgen::CanonicalTargetSpec> specifications;
+    zc::Vector<ir::CanonicalTargetSpec> specifications;
     specifications.add(zc::mv(specValue));
-    auto profile = irgen::RegisteredTargetProfileRecord::from(
-        profileName("host"_zc), targetProjection(), zc::mv(semanticFeatures),
-        zc::mv(specifications));
+    auto profile =
+        ir::RegisteredTargetProfileRecord::from(profileName("host"_zc), targetProjection(),
+                                                zc::mv(semanticFeatures), zc::mv(specifications));
     ZC_IF_SOME(profileValue, profile) {
-      zc::Vector<irgen::RegisteredTargetProfileRecord> profiles;
+      zc::Vector<ir::RegisteredTargetProfileRecord> profiles;
       profiles.add(zc::mv(profileValue));
-      auto registry = irgen::TargetRegistrySnapshot::from(profileName("host"_zc), zc::mv(profiles));
+      auto registry = ir::TargetRegistrySnapshot::from(profileName("host"_zc), zc::mv(profiles));
       ZC_IF_SOME(registryValue, registry) {
         auto result = registryValue.packageTargetService();
         ZC_IF_SOME(value, result) { return zc::mv(value); }
@@ -293,7 +294,11 @@ ZC_TEST("Workspace verification finalizes complete package and crate keys") {
   const auto& request = verified.get<VerifiedPackageCompilationRequest>();
   ZC_REQUIRE(request.roots().size() == 2);
   ZC_EXPECT(request.roots()[0].packageKey().features().size() == 2);
-  auto finalized = request.finalizeRoots(zc::none);
+  zc::Vector<BuildScriptPlanNode> noNodes;
+  auto plan = VerifiedBuildScriptPlan::from(zc::mv(noNodes));
+  ZC_REQUIRE(plan != zc::none);
+  zc::Maybe<zc::Vector<FinalizedCompilationRoot>> finalized;
+  ZC_IF_SOME(value, plan) { finalized = request.finalizeRoots(value); }
   ZC_REQUIRE(finalized != zc::none);
   ZC_IF_SOME(roots, finalized) {
     ZC_REQUIRE(roots.size() == 2);

@@ -160,6 +160,44 @@ ZC_TEST("LexerLiteralTest.MultiCharacterSingleQuotedLiteralReportsError") {
   ZC_EXPECT(diagnosticEngine->hasErrors());
 }
 
+ZC_TEST("LexerLiteralTest.RejectsUnknownStringEscape") {
+  class CaptureConsumer final : public diagnostics::DiagnosticConsumer {
+  public:
+    void handleDiagnostic(const source::SourceManager&,
+                          const diagnostics::Diagnostic& diagnostic) override {
+      if (diagnostic.getId() == diagnostics::DiagID::EscapeSequenceNotAllowed) { observed = true; }
+    }
+
+    bool observed = false;
+  };
+
+  auto& sourceManager = getSourceManager();
+  auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(sourceManager);
+  auto consumer = zc::heap<CaptureConsumer>();
+  const auto& retainedConsumer = *consumer;
+  diagnosticEngine->addConsumer(zc::mv(consumer));
+
+  auto tokens = tokenize("\"\\q\""_zc, *diagnosticEngine);
+  ZC_REQUIRE(tokens.size() == 2);
+  ZC_EXPECT(tokens[0].is(ast::SyntaxKind::StringLiteral));
+  ZC_EXPECT(tokens[0].hasFlag(TokenFlags::ContainsInvalidEscape));
+  ZC_EXPECT(retainedConsumer.observed);
+}
+
+ZC_TEST("LexerLiteralTest.AcceptsEveryLineContinuation") {
+  const zc::StringPtr sources[] = {
+      "\"left\\\nright\""_zc,           "\"left\\\r\nright\""_zc,         "\"left\\\rright\""_zc,
+      "\"left\\\xE2\x80\xA8right\""_zc, "\"left\\\xE2\x80\xA9right\""_zc,
+  };
+  for (const auto source : sources) {
+    auto tokens = tokenize(source);
+    ZC_REQUIRE(tokens.size() == 2);
+    ZC_EXPECT(tokens[0].is(ast::SyntaxKind::StringLiteral));
+    ZC_EXPECT(tokens[0].getValue() == "leftright"_zc);
+    ZC_EXPECT(!tokens[0].hasFlag(TokenFlags::ContainsInvalidEscape));
+  }
+}
+
 ZC_TEST("LexerLiteralTest.OctalEscapeSequence") {
   auto& sourceManager = getSourceManager();
   auto diagnosticEngine = zc::heap<diagnostics::DiagnosticEngine>(sourceManager);

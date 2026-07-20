@@ -86,14 +86,16 @@ BoundList ::= TypeExpression ( '+' TypeExpression )*
 #### Short Form vs. Where Clause
 
 ZOM offers two equivalent syntactic surfaces on declarations that accept a
-`where` clause: functions, classes, structs, standalone interface `impl` blocks,
-and standalone marker `impl` blocks. The inline short form is preferred for
+`where` clause: functions, classes, structs, and standalone interface `impl`
+blocks. The inline short form is preferred for
 simple cases; the `where` clause is preferred when type parameters each carry
 different, lengthy bound sets, or when bounds reference associated types.
 Interface declarations do not accept a `where` clause at the parser level;
 constraints on interface type parameters are expressed directly in the type
 parameter list. A source form such as `interface I<T> where T: Eq { ... }` is a
 syntax error, not a delayed type-checker rule.
+Marker implementations have neither type parameters nor a `where` clause and
+therefore have no generic constraint surface.
 
 ```zom
 // Short form (single type param, two bounds)
@@ -153,7 +155,7 @@ where
    | Bound conjunction    | `T: Drawable + Sendable`   | Generic head   | "For the single concrete T, prove BOTH properties"       |
    | Type intersection    | `Drawable & Movable`       | Type position  | "One value that simultaneously IS both types"            |
 
-   Type intersections `A & B` at type position are independent from the bound conjunction above. They are enforced structurally by the type checker as true sub-typing relationships, not as proof obligations on generic parameters. To name an intersection as an existential, write `dyn (Drawable & Movable)` (requires object-safe interfaces).
+   Type intersections `A & B` at type position are independent from the bound conjunction above. They are enforced structurally by the type checker as true sub-typing relationships, not as proof obligations on generic parameters. They are not dynamic-interface principals; a `dyn` type names one interface principal and may add marker suffixes.
 
 2. **Conjunction.** The expression `M1 + M2 + M3` in a type-parameter bound list requires all three bounds. A `where` predicate carries one right-hand type, so multiple obligations for the same subject are written as repeated predicates. Interface and marker bounds share the same source syntax and canonical ordering.
 

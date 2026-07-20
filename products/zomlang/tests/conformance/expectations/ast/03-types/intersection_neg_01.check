@@ -2,7 +2,7 @@
 
 
 // CHECK-LITERAL: Error [ZOM2076]: Unexpected token expected
-// CHECK:   --> products {{(?:.*[/\\])?intersection_neg_01\.zom:1:17$}}
+// CHECK-LITERAL:   --> conformance/intersection_neg_01.zom:1:17
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 1 | alias AndOp = A && B;
 // CHECK-LITERAL:   |                 ^

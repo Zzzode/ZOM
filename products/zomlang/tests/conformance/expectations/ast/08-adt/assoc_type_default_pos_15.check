@@ -1,33 +1,35 @@
 // RUN: %zomc compile --dump-ast %corpus/08-adt/assoc_type_default_pos_15.zom | %FileCheck %s
 
 
-// CHECK: SourceFile #11 @1:1..6:1 file_name="assoc_type_default_pos_15.zom"
+// CHECK: SourceFile #12 @1:1..6:1 file_name="assoc_type_default_pos_15.zom"
 // CHECK-NEXT:   module: null
 // CHECK-NEXT:   statements:
-// CHECK-NEXT:     StatementListItem #10 @1:1..5:2
+// CHECK-NEXT:     StatementListItem #11 @1:1..5:2
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         InterfaceDecl #9 @1:1..5:2 name="Container"
+// CHECK-NEXT:         InterfaceDecl #10 @1:1..5:2 name="Container"
 // CHECK-NEXT:           type_params_id: null
 // CHECK-NEXT:           ifaces_id: null
 // CHECK-NEXT:           members_id:
-// CHECK-NEXT:             ClassMemberList #8 @1:21..5:2 nmembers=3
+// CHECK-NEXT:             ClassMemberList #9 @1:21..5:2 nmembers=3
 // CHECK-NEXT:               members:
 // CHECK-NEXT:                 AssociatedTypeDecl #1 @2:5..2:18 name="Element"
 // CHECK-NEXT:                   type_params_id: null
-// CHECK-NEXT:                   bound: null
+// CHECK-NEXT:                   bounds_id: null
 // CHECK-NEXT:                   default_ty: null
 // CHECK-NEXT:                 AssociatedTypeDecl #3 @3:5..3:21 name="Size"
 // CHECK-NEXT:                   type_params_id: null
-// CHECK-NEXT:                   bound: null
+// CHECK-NEXT:                   bounds_id: null
 // CHECK-NEXT:                   default_ty:
 // CHECK-NEXT:                     PredefinedTypeExpr #2 @3:17..3:20 kind=U64
-// CHECK-NEXT:                 AssociatedTypeDecl #7 @4:5..4:27 name="Key"
+// CHECK-NEXT:                 AssociatedTypeDecl #8 @4:5..4:27 name="Key"
 // CHECK-NEXT:                   type_params_id: null
-// CHECK-NEXT:                   bound:
-// CHECK-NEXT:                     NamedTypeExpr #5 @4:16..4:20
-// CHECK-NEXT:                       path:
-// CHECK-NEXT:                         ModulePath #4 @4:16..4:20 segments=["Hash"]
-// CHECK-NEXT:                       args: []
+// CHECK-NEXT:                   bounds_id:
+// CHECK-NEXT:                     AssociatedTypeBoundList #6 @4:16..4:20
+// CHECK-NEXT:                       bounds:
+// CHECK-NEXT:                         NamedTypeExpr #5 @4:16..4:20
+// CHECK-NEXT:                           path:
+// CHECK-NEXT:                             ModulePath #4 @4:16..4:20 segments=["Hash"] root=Relative
+// CHECK-NEXT:                           args: []
 // CHECK-NEXT:                   default_ty:
-// CHECK-NEXT:                     PredefinedTypeExpr #6 @4:23..4:26 kind=Str
+// CHECK-NEXT:                     PredefinedTypeExpr #7 @4:23..4:26 kind=Str
 // CHECK-NEXT:       attrs: null

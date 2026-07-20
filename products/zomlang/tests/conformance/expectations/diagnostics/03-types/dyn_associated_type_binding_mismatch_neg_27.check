@@ -1,9 +1,0 @@
-// RUN: cd %corpus && ! %zomc compile --syntax-only 03-types/dyn_associated_type_binding_mismatch_neg_27.zom > %t 2>&1
-// RUN: %FileCheck %s --input-file %t
-
-
-// CHECK-LITERAL: Error [ZOM4009]: Type mismatch: expected u8, got str
-// CHECK-LITERAL:   --> 03-types/dyn_associated_type_binding_mismatch_neg_27.zom:12:5
-// CHECK-LITERAL:    |
-// CHECK-LITERAL: 12 | let it: dyn Iterator<Item = u8> = value;
-// CHECK-LITERAL:    |     ^

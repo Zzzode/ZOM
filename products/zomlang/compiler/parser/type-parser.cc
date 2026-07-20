@@ -491,8 +491,7 @@ Parser::Impl::TypeParseResult Parser::Impl::parseIntersectionType(AstFactory& bu
   if (!first.node) { return first; }
   alts.add(first.node);
 
-  while (cursor.position() < limit &&
-         (cursor.peek() == ast::SyntaxKind::Ampersand || cursor.peek() == ast::SyntaxKind::Plus)) {
+  while (cursor.position() < limit && cursor.peek() == ast::SyntaxKind::Ampersand) {
     const size_t op = cursor.position();
     cursor.advance();
     TypeParseResult next = parsePostfixType(builder, cursor, limit);
@@ -538,13 +537,12 @@ Parser::Impl::TypeParseResult Parser::Impl::parsePostfixType(AstFactory& builder
         return TypeParseResult();
       }
 
-      ast::NodeId lenExpr;
       if (openBracket + 1 < closeBracket) {
-        lenExpr = parseExpressionRange(builder, openBracket + 1, closeBracket);
-        if (!lenExpr) { return TypeParseResult(); }
+        diagnosticEngine.diagnose<diagnostics::DiagID::UnexpectedTokenExpected>(
+            diagnosticLoc(openBracket + 1));
+        return TypeParseResult();
       }
-      result.node =
-          builder.makeArrayTypeExpr(rangeFor(start, closeBracket + 1), result.node, lenExpr);
+      result.node = builder.makeArrayTypeExpr(rangeFor(start, closeBracket + 1), result.node);
       cursor.moveTo(closeBracket + 1);
       result.next = cursor.position();
       continue;
@@ -598,7 +596,6 @@ Parser::Impl::TypeParseResult Parser::Impl::parseDynType(AstFactory& builder, To
   if (start >= limit || !isIdentifierText(start, "dyn"_zc)) { return TypeParseResult(); }
   cursor.advance();
 
-  zc::Vector<ast::NodeId> ifaces;
   zc::Vector<ast::NodeId> markers;
   zc::Vector<ast::NodeId> assocBindings;
 
@@ -630,8 +627,6 @@ Parser::Impl::TypeParseResult Parser::Impl::parseDynType(AstFactory& builder, To
     diagnosticEngine.diagnose<diagnostics::DiagID::TypeExpected>(diagnosticLoc(ifaceStart));
     return TypeParseResult();
   }
-  ifaces.add(iface.node);
-
   size_t assocBindingsStart = cursor.position();
   if (cursor.position() < limit && cursor.peek() == ast::SyntaxKind::LessThan) {
     const size_t openAngle = cursor.position();
@@ -703,9 +698,6 @@ Parser::Impl::TypeParseResult Parser::Impl::parseDynType(AstFactory& builder, To
     cursor.moveTo(markerEnd);
   }
 
-  ast::NodeId ifaceList = builder.makeDynTypeIfaceList(rangeFor(start + 1, iface.next),
-                                                       static_cast<uint8_t>(ifaces.size()),
-                                                       builder.makeList(ifaces.asPtr()));
   ast::NodeId markerList;
   if (!markers.empty()) {
     markerList = builder.makeDynTypeMarkerList(rangeFor(iface.next + 1, cursor.position()),
@@ -719,10 +711,9 @@ Parser::Impl::TypeParseResult Parser::Impl::parseDynType(AstFactory& builder, To
         builder.makeList(assocBindings.asPtr()));
   }
 
-  return TypeParseResult{
-      builder.makeDynTypeExpr(rangeFor(start, cursor.position()), ifaceList, markerList,
-                              assocBindingList, false, ast::IdentId()),
-      cursor.position()};
+  return TypeParseResult{builder.makeDynTypeExpr(rangeFor(start, cursor.position()), iface.node,
+                                                 markerList, assocBindingList),
+                         cursor.position()};
 }
 
 Parser::Impl::TypeParseResult Parser::Impl::parseAssociatedTypeProjection(AstFactory& builder,
@@ -1089,6 +1080,52 @@ ast::NodeId Parser::Impl::parseTypeRange(AstFactory& builder, size_t start, size
   return parsed.node;
 }
 
+ast::NodeList Parser::Impl::parseBoundListMembers(AstFactory& builder, size_t start,
+                                                  size_t end) const {
+  zc::Vector<ast::NodeId> bounds;
+  size_t cursor = start;
+  while (cursor < end) {
+    TypeParseResult bound = parseTypeExpressionAt(builder, cursor, end);
+    if (!bound.node || bound.next <= cursor) {
+      diagnosticEngine.diagnose<diagnostics::DiagID::TypeExpected>(diagnosticLoc(cursor));
+      return ast::NodeList();
+    }
+    bounds.add(bound.node);
+    cursor = bound.next;
+    if (cursor == end) { break; }
+    if (kindAt(cursor) != ast::SyntaxKind::Plus) {
+      diagnosticEngine.diagnose<diagnostics::DiagID::UnexpectedTokenExpected>(
+          diagnosticLoc(cursor));
+      return ast::NodeList();
+    }
+    ++cursor;
+    if (cursor == end) {
+      diagnosticEngine.diagnose<diagnostics::DiagID::TypeExpected>(diagnosticLoc(cursor));
+      return ast::NodeList();
+    }
+  }
+
+  if (bounds.empty()) {
+    diagnosticEngine.diagnose<diagnostics::DiagID::TypeExpected>(diagnosticLoc(start));
+    return ast::NodeList();
+  }
+  return builder.makeList(bounds.asPtr());
+}
+
+ast::NodeId Parser::Impl::parseTypeParameterBoundList(AstFactory& builder, size_t start,
+                                                      size_t end) const {
+  const ast::NodeList bounds = parseBoundListMembers(builder, start, end);
+  if (bounds.empty()) { return ast::NodeId(); }
+  return builder.makeTypeParameterBoundList(rangeFor(start, end), bounds);
+}
+
+ast::NodeId Parser::Impl::parseAssociatedTypeBoundList(AstFactory& builder, size_t start,
+                                                       size_t end) const {
+  const ast::NodeList bounds = parseBoundListMembers(builder, start, end);
+  if (bounds.empty()) { return ast::NodeId(); }
+  return builder.makeAssociatedTypeBoundList(rangeFor(start, end), bounds);
+}
+
 ast::NodeList Parser::Impl::parseTypeArguments(AstFactory& builder, size_t start,
                                                size_t end) const {
   zc::Vector<ast::NodeId> args;
@@ -1242,13 +1279,11 @@ ast::NodeId Parser::Impl::parseTypeParameters(AstFactory& builder, size_t start,
     while (cursor < closeAngle && kindAt(cursor) == ast::SyntaxKind::Comma) { ++cursor; }
     if (cursor >= closeAngle) { break; }
 
-    // Detect variance annotation.
-    uint8_t variance = 0;  // Invariant
+    // Preserve recovery after the registered unsupported-variance diagnostic,
+    // but do not materialize rejected syntax in the semantic AST.
     if (kindAt(cursor) == ast::SyntaxKind::InKeyword) {
-      variance = 2;  // Contravariant
       ++cursor;
     } else if (kindAt(cursor) == ast::SyntaxKind::OutKeyword) {
-      variance = 1;  // Covariant
       ++cursor;
     }
 
@@ -1303,7 +1338,7 @@ ast::NodeId Parser::Impl::parseTypeParameters(AstFactory& builder, size_t start,
     }
 
     // Parse optional bound (`: Type`) and optional default (`= Type`).
-    ast::NodeId bound;
+    ast::NodeId bounds;
     ast::NodeId defaultTy;
 
     // Search for colon and equals at depth 0 within this param.
@@ -1361,7 +1396,7 @@ ast::NodeId Parser::Impl::parseTypeParameters(AstFactory& builder, size_t start,
           typeLimit = closeAngle + 1;
         }
       }
-      bound = parseTypeRange(builder, colonPos + 1, typeLimit);
+      bounds = parseTypeParameterBoundList(builder, colonPos + 1, typeLimit);
     }
     if (equalsPos < paramEnd) {
       size_t typeLimit = paramEnd;
@@ -1376,8 +1411,7 @@ ast::NodeId Parser::Impl::parseTypeParameters(AstFactory& builder, size_t start,
     }
 
     params.add(builder.makeGenericTypeParam(rangeFor(nameIndex, paramEnd),
-                                            internIdent(builder, nameIndex), bound, defaultTy,
-                                            variance));
+                                            internIdent(builder, nameIndex), bounds, defaultTy));
 
     cursor = paramEnd;
     if (cursor < closeAngle && kindAt(cursor) == ast::SyntaxKind::Comma) { ++cursor; }

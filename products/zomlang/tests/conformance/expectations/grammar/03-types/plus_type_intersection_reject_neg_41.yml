@@ -1,0 +1,5 @@
+section: "03-types structural intersection operator"
+covers_rule: "intersectionType"
+expected: "REJECT"
+notes:
+  - "Plus is a bound-list conjunction and is not accepted in an ordinary type expression."

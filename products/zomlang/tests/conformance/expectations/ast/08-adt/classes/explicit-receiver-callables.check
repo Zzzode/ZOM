@@ -20,7 +20,7 @@
 // CHECK-NEXT:                           ty:
 // CHECK-NEXT:                             NamedTypeExpr #2 @2:8..2:12
 // CHECK-NEXT:                               path:
-// CHECK-NEXT:                                 ModulePath #1 @2:8..2:12 segments=["Self"]
+// CHECK-NEXT:                                 ModulePath #1 @2:8..2:12 segments=["Self"] root=Relative
 // CHECK-NEXT:                               args: []
 // CHECK-NEXT:                           default_: null
 // CHECK-NEXT:                           attrs: null
@@ -46,7 +46,7 @@
 // CHECK-NEXT:                           ty:
 // CHECK-NEXT:                             NamedTypeExpr #12 @3:10..3:14
 // CHECK-NEXT:                               path:
-// CHECK-NEXT:                                 ModulePath #11 @3:10..3:14 segments=["Self"]
+// CHECK-NEXT:                                 ModulePath #11 @3:10..3:14 segments=["Self"] root=Relative
 // CHECK-NEXT:                               args: []
 // CHECK-NEXT:                           default_: null
 // CHECK-NEXT:                           attrs: null
@@ -54,7 +54,7 @@
 // CHECK-NEXT:                   body:
 // CHECK-NEXT:                     BlockStmt #15 @3:16..3:18
 // CHECK-NEXT:                       stmts: []
-// CHECK-NEXT:                 MethodDecl #26 @5:3..5:39 name="value" is_static=false visibility=Default
+// CHECK-NEXT:                 MethodDecl #26 @5:3..5:39 name="value" mode=Instance visibility=Default
 // CHECK-NEXT:                   params_id:
 // CHECK-NEXT:                     FunctionParameterList #20 @5:12..5:18 nparams=1
 // CHECK-NEXT:                       params:
@@ -62,7 +62,7 @@
 // CHECK-NEXT:                           ty:
 // CHECK-NEXT:                             NamedTypeExpr #18 @5:13..5:17
 // CHECK-NEXT:                               path:
-// CHECK-NEXT:                                 ModulePath #17 @5:13..5:17 segments=["Self"]
+// CHECK-NEXT:                                 ModulePath #17 @5:13..5:17 segments=["Self"] root=Relative
 // CHECK-NEXT:                               args: []
 // CHECK-NEXT:                           default_: null
 // CHECK-NEXT:                           attrs: null
@@ -79,7 +79,7 @@
 // CHECK-NEXT:                               value:
 // CHECK-NEXT:                                 IntLiteral #22 @5:35..5:36 base=10 value="0"
 // CHECK-NEXT:                           attrs: null
-// CHECK-NEXT:                 MethodDecl #36 @6:3..6:42 name="value" is_static=false visibility=Default
+// CHECK-NEXT:                 MethodDecl #36 @6:3..6:42 name="value" mode=Instance visibility=Default
 // CHECK-NEXT:                   params_id:
 // CHECK-NEXT:                     FunctionParameterList #32 @6:12..6:30 nparams=2
 // CHECK-NEXT:                       params:
@@ -87,7 +87,7 @@
 // CHECK-NEXT:                           ty:
 // CHECK-NEXT:                             NamedTypeExpr #28 @6:13..6:17
 // CHECK-NEXT:                               path:
-// CHECK-NEXT:                                 ModulePath #27 @6:13..6:17 segments=["Self"]
+// CHECK-NEXT:                                 ModulePath #27 @6:13..6:17 segments=["Self"] root=Relative
 // CHECK-NEXT:                               args: []
 // CHECK-NEXT:                           default_: null
 // CHECK-NEXT:                           attrs: null
@@ -107,7 +107,7 @@
 // CHECK-NEXT:                             ReturnStmt #33 @6:33..6:40
 // CHECK-NEXT:                               value: null
 // CHECK-NEXT:                           attrs: null
-// CHECK-NEXT:                 MethodDecl #40 @8:3..8:33 name="create" is_static=true visibility=Default
+// CHECK-NEXT:                 MethodDecl #40 @8:3..8:33 name="create" mode=Static visibility=Default
 // CHECK-NEXT:                   params_id:
 // CHECK-NEXT:                     FunctionParameterList #37 @8:20..8:22 nparams=0
 // CHECK-NEXT:                       params: []

@@ -1,0 +1,5 @@
+section: "Ch.09 Negative marker implementation restrictions"
+covers_rule: "positiveMarkerImplRest"
+expected: "REJECT"
+notes:
+  - "A negative marker implementation cannot use the unsafe modifier."

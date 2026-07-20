@@ -28,6 +28,6 @@
 // CHECK-NEXT:                                 IdentExpr #3 @2:21..2:26 name="print"
 // CHECK-NEXT:                               type_args: []
 // CHECK-NEXT:                               args:
-// CHECK-NEXT:                                 StrLiteral #4 @2:27..2:38 value="rest only" is_raw=false prefix=None
+// CHECK-NEXT:                                 StringLiteralExpr #4 @2:27..2:38 value="rest only"
 // CHECK-NEXT:                       attrs: null
 // CHECK-NEXT:       attrs: null

@@ -1,0 +1,5 @@
+section: "Ch.09 Marker implementation rejection precedence"
+covers_rule: "positiveMarkerImplRest, markerImplRest"
+expected: "REJECT"
+notes:
+  - "The unsafe marker restriction takes precedence over the remaining invalid clauses."

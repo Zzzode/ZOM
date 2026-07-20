@@ -37,7 +37,10 @@ export module geometry = math::geometry;
 ```
 
 Module declarations do not nest. A file cannot contain two module
-declarations. The declaration is optional.
+declarations. The declaration is optional. When a package target or an import
+selects a source module path, a semicolon or block declaration must match that
+path's final segment exactly. A mismatch produces `ZOM3026` and the source does
+not receive a module identity.
 
 ## 13.3 Module Paths
 
@@ -59,6 +62,11 @@ export { Point, metric as distance };
 export math::geometry::{Point};
 ```
 
+Import and export declarations are module items. They may appear directly in a
+source file or in an inline module body. They cannot appear in a function body,
+block statement, loop body, match arm, or any other statement list. This keeps
+module dependencies and the exported interface independent of control flow.
+
 `.` is member-access syntax and is not a module-path separator in an import or
 re-export clause.
 
@@ -78,11 +86,16 @@ binder diagnostics relevant to the current import/export implementation are:
 | `ZOM3014` | `CircularReexport` | A re-export dependency forms a cycle |
 | `ZOM3015` | `ReexportModuleNotFound` | A re-export target module cannot be resolved |
 | `ZOM3016` | `ReexportMemberNotFound` | A selected re-export is absent from the target export scope |
+| `ZOM3023` | `ImportModuleAmbiguous` | An import or module alias resolves to multiple modules |
+| `ZOM3024` | `ReexportModuleAmbiguous` | A re-export resolves to multiple modules |
+| `ZOM3026` | `ModuleDeclarationNameMismatch` | A source declaration differs from its selected module path |
 
-Parser failures use registered `ZOM20xx` diagnostics. This chapter does not
-reserve numeric bands or define codes that are absent from the registry. New
-module diagnostics require a registry definition, typed emission, and a
-conformance test in the same change.
+The parser emits `ZOM2096`
+(`ImportOrExportDeclarationRequiresModuleScope`) when an import or export
+declaration appears in statement context. This chapter does not reserve numeric
+bands or define codes that are absent from the registry. New module diagnostics
+require a registry definition, typed emission, and a conformance test in the
+same change.
 
 ## 13.10 Grammar
 
@@ -91,6 +104,16 @@ ModuleDeclaration ::=
     'module' Identifier ';'
   | 'module' Identifier '{' ModuleItem* '}'
   | 'export'? 'module' Identifier '=' ModuleAliasPath ';'
+
+ModuleItem ::=
+    OuterAttributeList ModuleItemDeclaration
+  | OuterAttributeList Statement
+  | Statement
+
+ModuleItemDeclaration ::=
+    ImportDeclaration
+  | ExportDeclaration
+  | Declaration
 
 ModuleAliasPath ::= Identifier ('::' Identifier)+
 QualifiedModulePath ::= Identifier ('::' Identifier)+

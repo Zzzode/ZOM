@@ -2,7 +2,7 @@
 
 
 // CHECK-LITERAL: Error [ZOM2076]: Unexpected token expected
-// CHECK:   --> products {{(?:.*[/\\])?union_comma_reject_neg_01\.zom:1:14$}}
+// CHECK-LITERAL:   --> conformance/union_comma_reject_neg_01.zom:1:14
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 1 | alias U = i32, str;
 // CHECK-LITERAL:   |              ^

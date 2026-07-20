@@ -1,0 +1,3 @@
+class C {
+    pub value: i32;
+}

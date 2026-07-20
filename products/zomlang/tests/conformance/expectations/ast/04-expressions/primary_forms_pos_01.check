@@ -72,7 +72,7 @@
 // CHECK-NEXT:                       ty: null
 // CHECK-NEXT:                   ty: null
 // CHECK-NEXT:                   init:
-// CHECK-NEXT:                     StrLiteral #26 @5:9..5:16 value="hello" is_raw=false prefix=None
+// CHECK-NEXT:                     StringLiteralExpr #26 @5:9..5:16 value="hello"
 // CHECK-NEXT:       attrs: null
 // CHECK-NEXT:     StatementListItem #36 @6:1..6:13
 // CHECK-NEXT:       item:
@@ -86,7 +86,7 @@
 // CHECK-NEXT:                       ty: null
 // CHECK-NEXT:                   ty: null
 // CHECK-NEXT:                   init:
-// CHECK-NEXT:                     StrLiteral #32 @6:9..6:12 value="x" is_raw=false prefix=None
+// CHECK-NEXT:                     CharacterLiteralExpr #32 @6:9..6:12 value="x"
 // CHECK-NEXT:       attrs: null
 // CHECK-NEXT:     StatementListItem #42 @7:1..7:14
 // CHECK-NEXT:       item:

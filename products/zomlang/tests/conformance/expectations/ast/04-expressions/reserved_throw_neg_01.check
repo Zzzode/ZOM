@@ -2,12 +2,12 @@
 
 
 // CHECK-LITERAL: Error [ZOM2056]: Expression expected
-// CHECK:   --> products {{(?:.*[/\\])?reserved_throw_neg_01\.zom:2:3$}}
+// CHECK-LITERAL:   --> conformance/reserved_throw_neg_01.zom:2:3
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 2 |   throw err;
 // CHECK-LITERAL:   |   ^
 // CHECK-LITERAL: Error [ZOM2076]: Unexpected token expected
-// CHECK:   --> products {{(?:.*[/\\])?reserved_throw_neg_01\.zom:2:3$}}
+// CHECK-LITERAL:   --> conformance/reserved_throw_neg_01.zom:2:3
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 2 |   throw err;
 // CHECK-LITERAL:   |   ^

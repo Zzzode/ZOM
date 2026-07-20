@@ -2,12 +2,12 @@
 
 
 // CHECK-LITERAL: Error [ZOM2077]: Identifier expected
-// CHECK:   --> products {{(?:.*[/\\])?export_reserved_reject_neg_14\.zom:1:10$}}
+// CHECK-LITERAL:   --> conformance/export_reserved_reject_neg_14.zom:1:10
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 1 | export { static, async };
 // CHECK-LITERAL:   |          ^
 // CHECK-LITERAL: Error [ZOM2077]: Identifier expected
-// CHECK:   --> products {{(?:.*[/\\])?export_reserved_reject_neg_14\.zom:1:18$}}
+// CHECK-LITERAL:   --> conformance/export_reserved_reject_neg_14.zom:1:18
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 1 | export { static, async };
 // CHECK-LITERAL:   |                  ^

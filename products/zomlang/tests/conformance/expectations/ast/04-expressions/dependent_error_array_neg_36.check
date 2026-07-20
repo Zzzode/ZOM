@@ -22,6 +22,6 @@
 // CHECK-NEXT:                           lhs:
 // CHECK-NEXT:                             IntLiteral #2 @1:11..1:12 base=10 value="1"
 // CHECK-NEXT:                           rhs:
-// CHECK-NEXT:                             StrLiteral #3 @1:15..1:20 value="two" is_raw=false prefix=None
+// CHECK-NEXT:                             StringLiteralExpr #3 @1:15..1:20 value="two"
 // CHECK-NEXT:                         IntLiteral #5 @1:22..1:23 base=10 value="2"
 // CHECK-NEXT:       attrs: null

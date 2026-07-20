@@ -35,6 +35,8 @@ struct StructuralIdentityParent final {
 
 enum class InventoryDefinitionNameKind : uint8_t { Declared = 0x01, Anonymous = 0x02 };
 
+enum class AnonymousSyntaxRole : uint8_t { Lambda = 0x01, FunctionExpression = 0x02 };
+
 /// \brief Prebinding description of one semantic definition producer.
 struct DefinitionInventoryEntry final {
   ast::NodeId node;
@@ -43,7 +45,7 @@ struct DefinitionInventoryEntry final {
   identity::DefinitionKind kind;
   InventoryDefinitionNameKind nameKind;
   ast::IdentId declaredName;
-  zc::Maybe<identity::AnonymousDefinitionRole> anonymousRole;
+  zc::Maybe<AnonymousSyntaxRole> anonymousRole;
   source::SourceRange source;
   zc::Vector<StructuralIdentityParent> parentPath;
 };
@@ -65,7 +67,7 @@ struct ModuleInventoryEntry final {
   source::SourceRange source;
 };
 
-/// \brief Exhaustive prebinding inventory of module, definition, and impl producers.
+/// \brief Exhaustive prebinding inventory split by stable and revision-local identity domain.
 class DefinitionInventory final {
 public:
   DefinitionInventory() noexcept;
@@ -82,7 +84,12 @@ public:
   ZC_NODISCARD DefinitionInventory clone() const;
 
   ZC_NODISCARD zc::ArrayPtr<const ModuleInventoryEntry> modules() const;
+  /// \brief Stable named definitions eligible for DefinitionKey admission.
   ZC_NODISCARD zc::ArrayPtr<const DefinitionInventoryEntry> definitions() const;
+  ZC_NODISCARD zc::ArrayPtr<const DefinitionInventoryEntry> genericParameters() const;
+  ZC_NODISCARD zc::ArrayPtr<const DefinitionInventoryEntry> callableParameters() const;
+  ZC_NODISCARD zc::ArrayPtr<const DefinitionInventoryEntry> ownerLocalBindings() const;
+  ZC_NODISCARD zc::ArrayPtr<const DefinitionInventoryEntry> anonymousEntities() const;
   ZC_NODISCARD zc::ArrayPtr<const ImplInventoryEntry> impls() const;
 
 private:

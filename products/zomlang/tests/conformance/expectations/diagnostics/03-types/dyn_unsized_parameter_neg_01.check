@@ -1,9 +1,0 @@
-// RUN: cd %corpus && ! %zomc compile --syntax-only 03-types/dyn_unsized_parameter_neg_01.zom > %t 2>&1
-// RUN: %FileCheck %s --input-file %t
-
-
-// CHECK-LITERAL: Error [ZOM4007]: Interface 'Writer' has method 'write' with unsized type 'parameter' and cannot be used as dyn
-// CHECK-LITERAL:   --> 03-types/dyn_unsized_parameter_neg_01.zom:5:12
-// CHECK-LITERAL:   |
-// CHECK-LITERAL: 5 | let x: dyn Writer;
-// CHECK-LITERAL:   |            ^

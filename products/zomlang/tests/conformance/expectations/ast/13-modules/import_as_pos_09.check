@@ -8,6 +8,6 @@
 // CHECK-NEXT:       item:
 // CHECK-NEXT:         ImportDeclaration #2 @1:1..1:32 alias="hc"
 // CHECK-NEXT:           path:
-// CHECK-NEXT:             ModulePath #1 @1:8..1:25 segments=["net", "http", "client"]
+// CHECK-NEXT:             ModulePath #1 @1:8..1:25 segments=["net", "http", "client"] root=Relative
 // CHECK-NEXT:           specifiers: []
 // CHECK-NEXT:       attrs: null

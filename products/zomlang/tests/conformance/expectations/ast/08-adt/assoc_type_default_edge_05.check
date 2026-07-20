@@ -14,13 +14,13 @@
 // CHECK-NEXT:               members:
 // CHECK-NEXT:                 AssociatedTypeDecl #1 @2:5..2:17 name="Output"
 // CHECK-NEXT:                   type_params_id: null
-// CHECK-NEXT:                   bound: null
+// CHECK-NEXT:                   bounds_id: null
 // CHECK-NEXT:                   default_ty: null
 // CHECK-NEXT:                 AssociatedTypeDecl #2 @3:5..3:16 name="Error"
 // CHECK-NEXT:                   type_params_id: null
-// CHECK-NEXT:                   bound: null
+// CHECK-NEXT:                   bounds_id: null
 // CHECK-NEXT:                   default_ty: null
-// CHECK-NEXT:                 MethodDecl #10 @4:5..4:52 name="build" is_static=false visibility=Default
+// CHECK-NEXT:                 MethodDecl #10 @4:5..4:52 name="build" mode=Instance visibility=Default
 // CHECK-NEXT:                   params_id:
 // CHECK-NEXT:                     FunctionParameterList #3 @4:14..4:16 nparams=0
 // CHECK-NEXT:                       params: []
@@ -28,15 +28,15 @@
 // CHECK-NEXT:                   ret_ty:
 // CHECK-NEXT:                     NamedTypeExpr #9 @4:20..4:51
 // CHECK-NEXT:                       path:
-// CHECK-NEXT:                         ModulePath #8 @4:20..4:26 segments=["Result"]
+// CHECK-NEXT:                         ModulePath #8 @4:20..4:26 segments=["Result"] root=Relative
 // CHECK-NEXT:                       args:
 // CHECK-NEXT:                         NamedTypeExpr #5 @4:27..4:38
 // CHECK-NEXT:                           path:
-// CHECK-NEXT:                             ModulePath #4 @4:27..4:38 segments=["Self", "Output"]
+// CHECK-NEXT:                             ModulePath #4 @4:27..4:38 segments=["Self", "Output"] root=Relative
 // CHECK-NEXT:                           args: []
 // CHECK-NEXT:                         NamedTypeExpr #7 @4:40..4:50
 // CHECK-NEXT:                           path:
-// CHECK-NEXT:                             ModulePath #6 @4:40..4:50 segments=["Self", "Error"]
+// CHECK-NEXT:                             ModulePath #6 @4:40..4:50 segments=["Self", "Error"] root=Relative
 // CHECK-NEXT:                           args: []
 // CHECK-NEXT:                   raises_ty: null
 // CHECK-NEXT:                   body: null

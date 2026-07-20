@@ -12,7 +12,7 @@
 // CHECK-NEXT:           members_id:
 // CHECK-NEXT:             ClassMemberList #14 @1:23..6:2 nmembers=4
 // CHECK-NEXT:               members:
-// CHECK-NEXT:                 MethodDecl #3 @2:5..2:36 name="helper" is_static=false visibility=Protected
+// CHECK-NEXT:                 MethodDecl #3 @2:5..2:36 name="helper" mode=Instance visibility=Protected
 // CHECK-NEXT:                   params_id:
 // CHECK-NEXT:                     FunctionParameterList #1 @2:25..2:27 nparams=0
 // CHECK-NEXT:                       params: []
@@ -21,7 +21,7 @@
 // CHECK-NEXT:                     PredefinedTypeExpr #2 @2:31..2:35 kind=Unit
 // CHECK-NEXT:                   raises_ty: null
 // CHECK-NEXT:                   body: null
-// CHECK-NEXT:                 MethodDecl #7 @3:5..3:36 name="ctx" is_static=false visibility=Protected
+// CHECK-NEXT:                 MethodDecl #7 @3:5..3:36 name="ctx" mode=Instance visibility=Protected
 // CHECK-NEXT:                   params_id:
 // CHECK-NEXT:                     FunctionParameterList #4 @3:22..3:24 nparams=0
 // CHECK-NEXT:                       params: []
@@ -29,11 +29,11 @@
 // CHECK-NEXT:                   ret_ty:
 // CHECK-NEXT:                     NamedTypeExpr #6 @3:28..3:35
 // CHECK-NEXT:                       path:
-// CHECK-NEXT:                         ModulePath #5 @3:28..3:35 segments=["Context"]
+// CHECK-NEXT:                         ModulePath #5 @3:28..3:35 segments=["Context"] root=Relative
 // CHECK-NEXT:                       args: []
 // CHECK-NEXT:                   raises_ty: null
 // CHECK-NEXT:                   body: null
-// CHECK-NEXT:                 MethodDecl #10 @4:5..4:28 name="publicOp" is_static=false visibility=Default
+// CHECK-NEXT:                 MethodDecl #10 @4:5..4:28 name="publicOp" mode=Instance visibility=Default
 // CHECK-NEXT:                   params_id:
 // CHECK-NEXT:                     FunctionParameterList #8 @4:17..4:19 nparams=0
 // CHECK-NEXT:                       params: []
@@ -42,7 +42,7 @@
 // CHECK-NEXT:                     PredefinedTypeExpr #9 @4:23..4:27 kind=Unit
 // CHECK-NEXT:                   raises_ty: null
 // CHECK-NEXT:                   body: null
-// CHECK-NEXT:                 MethodDecl #13 @5:5..5:21 name="id" is_static=false visibility=Default
+// CHECK-NEXT:                 MethodDecl #13 @5:5..5:21 name="id" mode=Instance visibility=Default
 // CHECK-NEXT:                   params_id:
 // CHECK-NEXT:                     FunctionParameterList #11 @5:11..5:13 nparams=0
 // CHECK-NEXT:                       params: []

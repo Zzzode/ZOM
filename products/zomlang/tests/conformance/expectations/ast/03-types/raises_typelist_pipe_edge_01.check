@@ -16,6 +16,6 @@
 // CHECK-NEXT:               raises:
 // CHECK-NEXT:                 NamedTypeExpr #3 @1:31..1:38
 // CHECK-NEXT:                   path:
-// CHECK-NEXT:                     ModulePath #2 @1:31..1:38 segments=["IoError"]
+// CHECK-NEXT:                     ModulePath #2 @1:31..1:38 segments=["IoError"] root=Relative
 // CHECK-NEXT:                   args: []
 // CHECK-NEXT:       attrs: null

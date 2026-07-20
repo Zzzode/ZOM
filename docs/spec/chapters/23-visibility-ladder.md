@@ -4,7 +4,8 @@
 
 This chapter defines the current source syntax and compiler facts for
 module-level exports and type-member visibility. The compiler retains these
-facts, but it does not yet enforce cross-module or member-access permissions.
+facts and enforces module export visibility during verified Binder projection.
+It does not yet enforce typed member-access permissions.
 
 ## 23.2 Module-Level Export Syntax
 
@@ -23,16 +24,21 @@ export { run as execute };
 ```
 
 The parser represents declaration-site export and export-clause forms
-explicitly. The binder records `Export` and `Public` flags for successfully
-resolved exported bindings and aliases.
+explicitly. Verified binding metadata retains local and re-export identities,
+while verified export surfaces retain their visibility envelopes and complete
+provenance.
 
 `public`, `private`, and `protected` are not module-level declaration
 modifiers. Their use before a module-level or local declaration emits
 `ZOM2088 VisibilityModifierRequiresMemberContext`.
 
-The current compiler has no `CompilerSession` or published cross-file module
-interface. Export flags therefore do not constitute a complete cross-module
-access-control implementation.
+`CompilerSession` builds a verified module graph and projects imports and
+re-exports only from dependency `VerifiedExportSurface` values. Private module
+bindings cannot be selected as external imports. After signature verification,
+the session publishes one `VerifiedModuleInterface` per module and one
+`ImportedSignatureView` per consumer module. Checked-fact verification is bound
+to those immutable interface revisions. Typed member-access authorization is
+the remaining visibility boundary that is not yet enforced.
 
 ## 23.3 Member Visibility Syntax
 
@@ -52,9 +58,10 @@ class Session {
 ```
 
 The AST stores the spelling as `Public`, `Private`, `Protected`, or `Default`.
-The binder converts it to the corresponding symbol flag. Unqualified members
-in an interface receive a public binder fact; unqualified members in other
-supported type bodies receive a private binder fact.
+Verified `DefinitionFact` records retain the closed semantic value `Public`,
+`Private`, or `Protected`. Unqualified members in an interface receive a public
+fact; unqualified members in other supported type bodies receive a private
+fact.
 
 These are retained semantic facts only. Member lookup currently does not
 reject a reference because it crosses a private or protected boundary, and the

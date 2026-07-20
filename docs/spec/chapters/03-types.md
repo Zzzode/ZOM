@@ -261,16 +261,20 @@ Two object types are structurally equal when they have the same field names with
 
 ### Array Types
 
-Array types represent ordered, homogeneous collections.
+ZOM has three distinct ordered homogeneous collection types:
 
 ```ebnf
-ArrayType ::= '[' TypeExpr ']'
+DynamicArrayType ::= TypeExpr '[' ']'
+SliceType ::= '[' TypeExpr ']'
+FixedArrayType ::= '[' TypeExpr ';' Expression ']'
 ```
 
 ```zom
 let numbers: i32[] = [1, 2, 3, 4, 5];
 let strings: str[] = ["hello", "world"];
 let matrix: i32[][] = [[1, 2], [3, 4]];
+let view: [i32] = numbers[..];
+let lanes: [i32; 4] = [1, 2, 3, 4];
 
 // Array operations
 let first = numbers[0];
@@ -278,11 +282,19 @@ let length = numbers.length;
 numbers.push(6);
 ```
 
-The element type of an array is its type parameter. `[T]` denotes a dynamically-sized array; `[T; N]` denotes a fixed-size array of N elements (where N is a compile-time constant).
+`T[]` is an owned dynamically sized array, `[T]` is a non-owning dynamically
+sized slice, and `[T; N]` is a fixed-size array of `N` elements where `N` is a
+compile-time unsigned integer constant. These three types are distinct and are
+never aliases. A sized postfix form such as `T[N]` is not part of the grammar.
 
 ### Named Types
 
 Named types are types declared via `class`, `struct`, `enum`, or `interface` declarations. They are identified by their declaration symbol.
+
+A leading `::` anchors a named-type path at the crate root. Paths without that
+prefix are resolved relative to the current module. The AST preserves this
+absolute-versus-relative distinction so name resolution does not depend on
+source spelling reconstruction.
 
 ```zom
 struct Point { x: f64, y: f64 }
@@ -292,6 +304,7 @@ enum Color { Red, Green, Blue }
 let p: Point = Point { x: 1.0, y: 2.0 };
 let c: Circle = Circle { radius: 5.0 };
 let col: Color = Color::Red;
+let canonical: ::core::Value;
 ```
 
 Named types with type arguments form generic instantiations:
@@ -369,6 +382,9 @@ let person: Person = {
 ```
 
 `T & !` normalizes to `!`. Intersection types are most commonly used with interface bounds to express "a type that implements both I and J".
+The `+` token is not a type-level intersection operator. It is accepted only
+by bound-list and interface-heritage productions described in Chapters 09 and
+12.
 
 ### Optional Types
 
@@ -495,13 +511,13 @@ let b: dyn Iterator<Item = T> = vec.iter();
 let c: dyn Read + Sendable + Shared = open_file();
 ```
 
-The parser represents the first item after `dyn` as the object-safe interface
-head in `DynTypeIfaceList`, every `Item = T` associated type binding in
+The parser stores the first item after `dyn` directly as the object-safe
+`DynTypeExpr.principal`, every `Item = T` associated type binding in
 `DynTypeAssocBindingList`, and every `+ MarkerPath` suffix as marker bounds in
-`DynTypeMarkerList`. Semantic analysis resolves the interface head as the
+`DynTypeMarkerList`. Semantic analysis resolves the named principal as the
 dispatch contract, treats associated type bindings as the dyn head's vtable
 shape constraints, and resolves marker paths as marker-only bounds. Keeping
-these lists distinct prevents object-safety checks from mistaking marker bounds
+the principal and the two suffix lists distinct prevents object-safety checks from mistaking marker bounds
 or associated type bindings for callable interface requirements while preserving
 the compact source forms `dyn I<Item = T>` and `dyn I + Sendable + Shared`.
 
@@ -729,7 +745,7 @@ takes_u64(x);       // unifies ?X with u64
 | Unary `op` | Infer operand type, check `op` validity. `-` result = operand type. `!` result = `bool`. `*` result = dereferenced type. `&` result = reference type. |
 | Call `callee(args)` | Infer callee type (must be function type). If generic, infer type args from arg types. Emit a directional coercion constraint from each argument type to the parameter type. A non-raising call has the declared success type. A call with success type `T` and raises type `E` has canonical expression type `T \| E` plus checked success/residual role metadata. |
 | Member `obj.member` | Infer `obj` type. Look up `member` in the type's fields/methods. Result = field/method type. |
-| Index `arr[idx]` | Infer `arr` type (must be `[T]` or `[T; N]`). Infer `idx` type (must be `usize` or `isize`). Result = `T`. |
+| Index `arr[idx]` | Infer `arr` type (must be `T[]`, `[T]`, or `[T; N]`). Infer `idx` type (must be `usize` or `isize`). Result = `T`. |
 | Conditional `cond ? then : else` | `cond` must unify with `bool`. Infer `then` and `else` types, choose a join type, and emit directional coercions from each arm to the join. Result = join type. |
 | Block `{ stmts; last }` | Type of last expression (or `unit` if empty). |
 | `return value` statement | Emit a directional coercion constraint from `value` to the enclosing function's return type. Control does not fall through. |
@@ -912,9 +928,10 @@ Marker types (interfaces with no methods, such as `Sendable`, `Shared`, `Linear`
 
 `Linear` and `TaskBound` are **never** auto-derived; they require explicit opt-in.
 
-Users may override auto-derivation:
-- `impl !Sendable for MyType { }` — negative impl, pins marker to "does not hold".
-- `unsafe impl Sendable for MyType { }` — explicit assertion, overrides auto-derivation.
+Users may publish explicit marker facts:
+
+- `impl !Sendable for MyType;` publishes negative evidence.
+- `unsafe impl Sendable for MyType;` publishes a positive unsafe assertion.
 
 See [Chapter 16](16-attributes-and-annotations.md) for the full marker system and [Chapter 15](15-concurrency.md) for concurrency-related markers.
 

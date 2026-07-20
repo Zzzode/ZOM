@@ -2,7 +2,7 @@
 
 
 // CHECK-LITERAL: Error [ZOM2056]: Expression expected
-// CHECK:   --> products {{(?:.*[/\\])?reserved_async_neg_01\.zom:1:9$}}
+// CHECK-LITERAL:   --> conformance/reserved_async_neg_01.zom:1:9
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 1 | let x = async { 1 };
 // CHECK-LITERAL:   |         ^

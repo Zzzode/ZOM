@@ -16,6 +16,7 @@
 
 #include "zc/core/common.h"
 #include "zc/core/memory.h"
+#include "zc/core/source-location.h"
 
 namespace zomlang {
 namespace compiler {
@@ -28,11 +29,12 @@ namespace diagnostics {
 struct FixIt;
 
 class Diagnostic;
-class DiagnosticEngine;
+class DiagnosticEmitter;
 
 class InFlightDiagnostic {
 public:
-  InFlightDiagnostic(DiagnosticEngine& engine, Diagnostic&& diag);
+  InFlightDiagnostic(DiagnosticEmitter& emitter, Diagnostic&& diag,
+                     zc::SourceLocation emitterLocation);
   ~InFlightDiagnostic();
 
   InFlightDiagnostic(InFlightDiagnostic&& other) noexcept;

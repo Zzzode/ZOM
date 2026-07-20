@@ -2,12 +2,12 @@
 
 
 // CHECK-LITERAL: Error [ZOM2092]: Interface bodies accept only methods, accessors, and associated type declarations
-// CHECK:   --> products {{(?:.*[/\\])?interface\-property\-missing\-name\.zom:2:3$}}
+// CHECK-LITERAL:   --> conformance/interface-property-missing-name.zom:2:3
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 2 |   let : i32;
 // CHECK-LITERAL:   |   ^
 // CHECK-LITERAL: Error [ZOM2077]: Identifier expected
-// CHECK:   --> products {{(?:.*[/\\])?interface\-property\-missing\-name\.zom:2:7$}}
+// CHECK-LITERAL:   --> conformance/interface-property-missing-name.zom:2:7
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 2 |   let : i32;
 // CHECK-LITERAL:   |       ^

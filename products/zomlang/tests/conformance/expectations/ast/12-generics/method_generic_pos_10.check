@@ -10,15 +10,15 @@
 // CHECK-NEXT:           type_params_id:
 // CHECK-NEXT:             GenericParams #2 @1:8..1:11 nparams=1
 // CHECK-NEXT:               params:
-// CHECK-NEXT:                 GenericTypeParam #1 @1:9..1:10 name="T" variance=Invariant
-// CHECK-NEXT:                   bound: null
+// CHECK-NEXT:                 GenericTypeParam #1 @1:9..1:10 name="T"
+// CHECK-NEXT:                   bounds_id: null
 // CHECK-NEXT:                   default_ty: null
 // CHECK-NEXT:               where_: null
 // CHECK-NEXT:           base_ty: null
 // CHECK-NEXT:           members_id:
 // CHECK-NEXT:             ClassMemberList #22 @1:12..3:2 nmembers=1
 // CHECK-NEXT:               members:
-// CHECK-NEXT:                 MethodDecl #21 @2:5..2:52 name="map" is_static=false visibility=Default
+// CHECK-NEXT:                 MethodDecl #21 @2:5..2:52 name="map" mode=Instance visibility=Default
 // CHECK-NEXT:                   params_id:
 // CHECK-NEXT:                     FunctionParameterList #11 @2:15..2:31 nparams=1
 // CHECK-NEXT:                       params:
@@ -28,12 +28,12 @@
 // CHECK-NEXT:                               params:
 // CHECK-NEXT:                                 NamedTypeExpr #8 @2:23..2:24
 // CHECK-NEXT:                                   path:
-// CHECK-NEXT:                                     ModulePath #7 @2:23..2:24 segments=["T"]
+// CHECK-NEXT:                                     ModulePath #7 @2:23..2:24 segments=["T"] root=Relative
 // CHECK-NEXT:                                   args: []
 // CHECK-NEXT:                               ret_ty:
 // CHECK-NEXT:                                 NamedTypeExpr #6 @2:29..2:30
 // CHECK-NEXT:                                   path:
-// CHECK-NEXT:                                     ModulePath #5 @2:29..2:30 segments=["U"]
+// CHECK-NEXT:                                     ModulePath #5 @2:29..2:30 segments=["U"] root=Relative
 // CHECK-NEXT:                                   args: []
 // CHECK-NEXT:                               raises: null
 // CHECK-NEXT:                           default_: null
@@ -41,18 +41,18 @@
 // CHECK-NEXT:                   type_params_id:
 // CHECK-NEXT:                     GenericParams #4 @2:12..2:15 nparams=1
 // CHECK-NEXT:                       params:
-// CHECK-NEXT:                         GenericTypeParam #3 @2:13..2:14 name="U" variance=Invariant
-// CHECK-NEXT:                           bound: null
+// CHECK-NEXT:                         GenericTypeParam #3 @2:13..2:14 name="U"
+// CHECK-NEXT:                           bounds_id: null
 // CHECK-NEXT:                           default_ty: null
 // CHECK-NEXT:                       where_: null
 // CHECK-NEXT:                   ret_ty:
 // CHECK-NEXT:                     NamedTypeExpr #15 @2:35..2:39
 // CHECK-NEXT:                       path:
-// CHECK-NEXT:                         ModulePath #14 @2:35..2:36 segments=["C"]
+// CHECK-NEXT:                         ModulePath #14 @2:35..2:36 segments=["C"] root=Relative
 // CHECK-NEXT:                       args:
 // CHECK-NEXT:                         NamedTypeExpr #13 @2:37..2:38
 // CHECK-NEXT:                           path:
-// CHECK-NEXT:                             ModulePath #12 @2:37..2:38 segments=["U"]
+// CHECK-NEXT:                             ModulePath #12 @2:37..2:38 segments=["U"] root=Relative
 // CHECK-NEXT:                           args: []
 // CHECK-NEXT:                   raises_ty: null
 // CHECK-NEXT:                   body:

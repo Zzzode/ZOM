@@ -2,7 +2,7 @@
 
 
 // CHECK-LITERAL: Error [ZOM2025]: Expected '('
-// CHECK:   --> products {{(?:.*[/\\])?loop_forms_neg_01\.zom:2:11$}}
+// CHECK-LITERAL:   --> conformance/loop_forms_neg_01.zom:2:11
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 2 |     while true { break; }
 // CHECK-LITERAL:   |           ^

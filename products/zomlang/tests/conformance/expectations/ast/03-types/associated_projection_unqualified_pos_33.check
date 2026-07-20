@@ -11,6 +11,6 @@
 // CHECK-NEXT:           target:
 // CHECK-NEXT:             NamedTypeExpr #2 @1:17..1:24
 // CHECK-NEXT:               path:
-// CHECK-NEXT:                 ModulePath #1 @1:17..1:24 segments=["T", "Item"]
+// CHECK-NEXT:                 ModulePath #1 @1:17..1:24 segments=["T", "Item"] root=Relative
 // CHECK-NEXT:               args: []
 // CHECK-NEXT:       attrs: null

@@ -2,7 +2,7 @@
 
 
 // CHECK-LITERAL: Error [ZOM2084]: Declaration modifiers 'static' and 'mutating' cannot be used together
-// CHECK:   --> products {{(?:.*[/\\])?static_mutating_reject_neg_01\.zom:1:8$}}
+// CHECK-LITERAL:   --> conformance/static_mutating_reject_neg_01.zom:1:8
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 1 | static mutating fun f() {}
 // CHECK-LITERAL:   |        ^

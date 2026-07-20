@@ -2,7 +2,7 @@
 
 
 // CHECK-LITERAL: Error [ZOM2025]: Expected '=>'
-// CHECK:   --> products {{(?:.*[/\\])?array_pat_unbalanced_neg_06\.zom:2:10$}}
+// CHECK-LITERAL:   --> conformance/array_pat_unbalanced_neg_06.zom:2:10
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 2 |     when [a, b, c => { print(a); }
 // CHECK-LITERAL:   |          ^

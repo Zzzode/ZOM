@@ -2,12 +2,12 @@
 
 
 // CHECK-LITERAL: Error [ZOM2077]: Identifier expected
-// CHECK:   --> products {{(?:.*[/\\])?string_import_reject_neg_13\.zom:1:8$}}
+// CHECK-LITERAL:   --> conformance/string_import_reject_neg_13.zom:1:8
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 1 | import "./path/to/file";
 // CHECK-LITERAL:   |        ^
 // CHECK-LITERAL: Error [ZOM2076]: Unexpected token expected
-// CHECK:   --> products {{(?:.*[/\\])?string_import_reject_neg_13\.zom:1:8$}}
+// CHECK-LITERAL:   --> conformance/string_import_reject_neg_13.zom:1:8
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 1 | import "./path/to/file";
 // CHECK-LITERAL:   |        ^

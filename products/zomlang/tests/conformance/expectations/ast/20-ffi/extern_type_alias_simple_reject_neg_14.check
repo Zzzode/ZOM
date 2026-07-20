@@ -2,22 +2,22 @@
 
 
 // CHECK-LITERAL: Error [ZOM2076]: Unexpected token expected
-// CHECK:   --> products {{(?:.*[/\\])?extern_type_alias_simple_reject_neg_14\.zom:2:5$}}
+// CHECK-LITERAL:   --> conformance/extern_type_alias_simple_reject_neg_14.zom:2:5
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 2 |     type Foo = Bar;
 // CHECK-LITERAL:   |     ^
 // CHECK-LITERAL: Error [ZOM2076]: Unexpected token expected
-// CHECK:   --> products {{(?:.*[/\\])?extern_type_alias_simple_reject_neg_14\.zom:2:10$}}
+// CHECK-LITERAL:   --> conformance/extern_type_alias_simple_reject_neg_14.zom:2:10
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 2 |     type Foo = Bar;
 // CHECK-LITERAL:   |          ^
 // CHECK-LITERAL: Error [ZOM2076]: Unexpected token expected
-// CHECK:   --> products {{(?:.*[/\\])?extern_type_alias_simple_reject_neg_14\.zom:2:14$}}
+// CHECK-LITERAL:   --> conformance/extern_type_alias_simple_reject_neg_14.zom:2:14
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 2 |     type Foo = Bar;
 // CHECK-LITERAL:   |              ^
 // CHECK-LITERAL: Error [ZOM2076]: Unexpected token expected
-// CHECK:   --> products {{(?:.*[/\\])?extern_type_alias_simple_reject_neg_14\.zom:2:16$}}
+// CHECK-LITERAL:   --> conformance/extern_type_alias_simple_reject_neg_14.zom:2:16
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 2 |     type Foo = Bar;
 // CHECK-LITERAL:   |                ^

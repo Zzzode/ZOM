@@ -1,5 +1,5 @@
 fun fallible() raises IoError {
     let t = spawn {
-        maybe_fail() raises?;
+        maybe_fail()?!;
     };
 }

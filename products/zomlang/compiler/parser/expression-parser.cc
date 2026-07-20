@@ -767,9 +767,7 @@ Parser::Impl::ExpressionParseResult Parser::Impl::parseBinaryExpressionAt(
   size_t cursor = lhs.next;
   while (cursor < limit) {
     const ast::SyntaxKind kind = kindAt(cursor);
-    const int32_t precedence = kind == ast::SyntaxKind::AsKeyword
-                                   ? binaryPrecedence(ast::SyntaxKind::IsKeyword)
-                                   : binaryPrecedence(kind);
+    const int32_t precedence = binaryPrecedence(kind);
     if (precedence < minPrecedence) { break; }
 
     if (kind == ast::SyntaxKind::AsKeyword) {
@@ -886,16 +884,6 @@ Parser::Impl::ExpressionParseResult Parser::Impl::parsePostfixExpressionAt(AstFa
                      rangeFor(start, cursor + 1),
                      static_cast<ast::PostfixOperatorKind>(postfixOpCode(kind)), current.node),
                  cursor + 1};
-      cursor = current.next;
-      continue;
-    }
-
-    if (kind == ast::SyntaxKind::RaisesKeyword && cursor + 1 < limit &&
-        kindAt(cursor + 1) == ast::SyntaxKind::Question) {
-      current = {
-          builder.makePostfixExpression(rangeFor(start, cursor + 2),
-                                        ast::PostfixOperatorKind::ErrorPropagate, current.node),
-          cursor + 2};
       cursor = current.next;
       continue;
     }
@@ -1171,10 +1159,16 @@ Parser::Impl::ExpressionParseResult Parser::Impl::parsePrimaryExpressionAt(AstFa
                                              builder.internFloat(tokenAt(start).getValue())),
                 start + 1};
       case ast::SyntaxKind::StringLiteral:
+        return {
+            builder.makeStringLiteralExpr(rangeFor(start, start + 1), internString(builder, start)),
+            start + 1};
       case ast::SyntaxKind::CharacterLiteral:
+        return {builder.makeCharacterLiteralExpr(rangeFor(start, start + 1),
+                                                 internString(builder, start)),
+                start + 1};
       case ast::SyntaxKind::NoSubstitutionTemplateLiteral:
-        return {builder.makeStrLiteral(rangeFor(start, start + 1), internString(builder, start),
-                                       false, 0),
+        return {builder.makeNoSubstitutionTemplateLiteralExpr(rangeFor(start, start + 1),
+                                                              internString(builder, start)),
                 start + 1};
       case ast::SyntaxKind::Hash:
         if (!shouldSuppressDiagnostic(start)) {

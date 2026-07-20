@@ -2,7 +2,7 @@
 
 
 // CHECK-LITERAL: Error [ZOM2077]: Identifier expected
-// CHECK:   --> products {{(?:.*[/\\])?import_wildcard_group_reject_neg_17\.zom:1:14$}}
+// CHECK-LITERAL:   --> conformance/import_wildcard_group_reject_neg_17.zom:1:14
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 1 | import std::{*};
 // CHECK-LITERAL:   |              ^

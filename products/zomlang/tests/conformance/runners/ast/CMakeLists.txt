@@ -23,7 +23,7 @@ set(AST_EXPECTATION_ROOT
 
 add_test(
   NAME conformance-ast-coverage
-  COMMAND python3
+  COMMAND "${Python3_EXECUTABLE}"
           ${CMAKE_SOURCE_DIR}/products/zomlang/tests/conformance/tools/check-ast-coverage.py
   WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
 )
@@ -33,29 +33,20 @@ set_tests_properties(conformance-ast-coverage PROPERTIES
   TIMEOUT 120
 )
 
-file(GLOB_RECURSE AST_EXPECTATION_FILES "${AST_EXPECTATION_ROOT}/*.check")
-foreach(AST_EXPECTATION_FILE ${AST_EXPECTATION_FILES})
-  file(RELATIVE_PATH REL_PATH "${AST_EXPECTATION_ROOT}" "${AST_EXPECTATION_FILE}")
-  string(REPLACE "/" "-" TEST_NAME "${REL_PATH}")
-  string(REPLACE ".check" "" TEST_NAME "${TEST_NAME}")
-  set(TEST_FULL_NAME "lit-${TEST_NAME}")
+set(AST_TEST_ENV "CMAKE_BINARY_DIR=${CMAKE_BINARY_DIR}")
+if(ZOM_ENABLE_COVERAGE)
+  string(APPEND AST_TEST_ENV ";ZOM_ENABLE_COVERAGE=ON")
+endif()
 
-  add_test(
-    NAME ${TEST_FULL_NAME}
-    COMMAND ${LIT_EXECUTABLE} -v --timeout=20 ${AST_EXPECTATION_FILE}
-    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/products/zomlang/tests
-  )
+add_test(
+  NAME conformance-ast
+  COMMAND ${LIT_EXECUTABLE} -v -j 8 --timeout=90 ${AST_EXPECTATION_ROOT}
+  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/products/zomlang/tests
+)
 
-  set(TEST_ENV "CMAKE_BINARY_DIR=${CMAKE_BINARY_DIR}")
-  if(ZOM_ENABLE_COVERAGE)
-    string(APPEND TEST_ENV
-      ";ZOM_ENABLE_COVERAGE=ON"
-    )
-  endif()
-
-  set_tests_properties(${TEST_FULL_NAME} PROPERTIES
-    LABELS "conformance;conformance-ast;ast;lit;filecheck;specification"
-    TIMEOUT 30
-    ENVIRONMENT "${TEST_ENV}"
-  )
-endforeach()
+set_tests_properties(conformance-ast PROPERTIES
+  LABELS "conformance;conformance-ast;ast;lit;filecheck;specification"
+  TIMEOUT 900
+  PROCESSORS 8
+  ENVIRONMENT "${AST_TEST_ENV}"
+)

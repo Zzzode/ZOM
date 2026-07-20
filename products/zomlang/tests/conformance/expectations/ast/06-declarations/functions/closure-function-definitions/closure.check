@@ -42,6 +42,6 @@
 // CHECK-NEXT:                               item:
 // CHECK-NEXT:                                 ReturnStmt #9 @3:3..3:17
 // CHECK-NEXT:                                   value:
-// CHECK-NEXT:                                     StrLiteral #8 @3:10..3:16 value="1234" is_raw=false prefix=None
+// CHECK-NEXT:                                     StringLiteralExpr #8 @3:10..3:16 value="1234"
 // CHECK-NEXT:                               attrs: null
 // CHECK-NEXT:       attrs: null

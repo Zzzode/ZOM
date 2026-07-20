@@ -1,9 +1,0 @@
-// RUN: cd %corpus && ! %zomc compile --syntax-only 12-generics/generic_bound_missing_neg_01.zom > %t 2>&1
-// RUN: %FileCheck %s --input-file %t
-
-
-// CHECK-LITERAL: Error [ZOM4018]: 'Box' does not implement 'Hashable'
-// CHECK-LITERAL:   --> 12-generics/generic_bound_missing_neg_01.zom:10:1
-// CHECK-LITERAL:    |
-// CHECK-LITERAL: 10 | needs(b);
-// CHECK-LITERAL:    | ^

@@ -1,0 +1,5 @@
+section: "Ch.03 Dynamic interface marker composition"
+covers_rule: "dynType, standaloneImplDeclaration"
+expected: "ACCEPT"
+notes:
+  - "Syntax is valid; semantic checking rejects the concrete marker composition."

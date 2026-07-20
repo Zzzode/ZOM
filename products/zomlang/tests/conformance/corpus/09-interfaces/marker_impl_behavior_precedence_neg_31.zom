@@ -1,0 +1,5 @@
+interface Behavior {
+  fun act();
+}
+
+impl Behavior for i32;

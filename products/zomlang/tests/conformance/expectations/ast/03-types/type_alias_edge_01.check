@@ -13,18 +13,18 @@
 // CHECK-NEXT:               elems:
 // CHECK-NEXT:                 NamedTypeExpr #2 @1:28..1:29
 // CHECK-NEXT:                   path:
-// CHECK-NEXT:                     ModulePath #1 @1:28..1:29 segments=["A"]
+// CHECK-NEXT:                     ModulePath #1 @1:28..1:29 segments=["A"] root=Relative
 // CHECK-NEXT:                   args: []
 // CHECK-NEXT:                 NamedTypeExpr #4 @1:31..1:32
 // CHECK-NEXT:                   path:
-// CHECK-NEXT:                     ModulePath #3 @1:31..1:32 segments=["B"]
+// CHECK-NEXT:                     ModulePath #3 @1:31..1:32 segments=["B"] root=Relative
 // CHECK-NEXT:                   args: []
 // CHECK-NEXT:                 NamedTypeExpr #6 @1:34..1:35
 // CHECK-NEXT:                   path:
-// CHECK-NEXT:                     ModulePath #5 @1:34..1:35 segments=["C"]
+// CHECK-NEXT:                     ModulePath #5 @1:34..1:35 segments=["C"] root=Relative
 // CHECK-NEXT:                   args: []
 // CHECK-NEXT:                 NamedTypeExpr #8 @1:37..1:38
 // CHECK-NEXT:                   path:
-// CHECK-NEXT:                     ModulePath #7 @1:37..1:38 segments=["D"]
+// CHECK-NEXT:                     ModulePath #7 @1:37..1:38 segments=["D"] root=Relative
 // CHECK-NEXT:                   args: []
 // CHECK-NEXT:       attrs: null

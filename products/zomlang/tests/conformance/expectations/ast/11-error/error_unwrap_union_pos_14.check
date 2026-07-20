@@ -25,5 +25,5 @@
 // CHECK-NEXT:                           then_expr:
 // CHECK-NEXT:                             IntLiteral #4 @1:30..1:31 base=10 value="1"
 // CHECK-NEXT:                           else_expr:
-// CHECK-NEXT:                             StrLiteral #5 @1:34..1:41 value="error" is_raw=false prefix=None
+// CHECK-NEXT:                             StringLiteralExpr #5 @1:34..1:41 value="error"
 // CHECK-NEXT:       attrs: null

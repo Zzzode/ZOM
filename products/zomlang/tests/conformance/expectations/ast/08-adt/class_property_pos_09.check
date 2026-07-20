@@ -16,7 +16,7 @@
 // CHECK-NEXT:                   ty:
 // CHECK-NEXT:                     PredefinedTypeExpr #1 @2:24..2:27 kind=Str
 // CHECK-NEXT:                   init: null
-// CHECK-NEXT:                 MethodDecl #10 @3:5..3:52 name="name" is_static=false visibility=Public
+// CHECK-NEXT:                 MethodDecl #10 @3:5..3:52 name="name" mode=Instance visibility=Public
 // CHECK-NEXT:                   params_id:
 // CHECK-NEXT:                     FunctionParameterList #3 @3:20..3:22 nparams=0
 // CHECK-NEXT:                       params: []
@@ -35,7 +35,7 @@
 // CHECK-NEXT:                                   object:
 // CHECK-NEXT:                                     IdentExpr #5 @3:39..3:43 name="self"
 // CHECK-NEXT:                           attrs: null
-// CHECK-NEXT:                 MethodDecl #22 @4:5..4:56 name="name" is_static=false visibility=Public
+// CHECK-NEXT:                 MethodDecl #22 @4:5..4:56 name="name" mode=Instance visibility=Public
 // CHECK-NEXT:                   params_id:
 // CHECK-NEXT:                     FunctionParameterList #13 @4:20..4:28 nparams=1
 // CHECK-NEXT:                       params:

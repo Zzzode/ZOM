@@ -1,9 +1,0 @@
-// RUN: cd %corpus && ! %zomc compile --syntax-only 04-expressions/member_call_missing_neg_19.zom > %t 2>&1
-// RUN: %FileCheck %s --input-file %t
-
-
-// CHECK-LITERAL: Error [ZOM4037]: No member named 'missing' in type 'Counter'
-// CHECK-LITERAL:   --> 04-expressions/member_call_missing_neg_19.zom:6:1
-// CHECK-LITERAL: 6 | counter.missing();
-// CHECK-LITERAL:   | ^
-// CHECK-NOT: ZOM4012

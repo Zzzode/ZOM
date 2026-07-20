@@ -12,7 +12,7 @@
 // CHECK-NEXT:           members_id:
 // CHECK-NEXT:             ClassMemberList #14 @1:25..5:2 nmembers=3
 // CHECK-NEXT:               members:
-// CHECK-NEXT:                 MethodDecl #3 @2:5..2:33 name="pure" is_static=false visibility=Default
+// CHECK-NEXT:                 MethodDecl #3 @2:5..2:33 name="pure" mode=Instance visibility=Default
 // CHECK-NEXT:                   params_id:
 // CHECK-NEXT:                     FunctionParameterList #1 @2:22..2:24 nparams=0
 // CHECK-NEXT:                       params: []
@@ -23,19 +23,19 @@
 // CHECK-NEXT:                   body: null
 // CHECK-NEXT:                 AssociatedTypeDecl #9 @3:5..3:42 name="Key"
 // CHECK-NEXT:                   type_params_id: null
-// CHECK-NEXT:                   bound:
-// CHECK-NEXT:                     IntersectionTypeExpr #8 @3:32..3:41
-// CHECK-NEXT:                       alts:
+// CHECK-NEXT:                   bounds_id:
+// CHECK-NEXT:                     AssociatedTypeBoundList #8 @3:32..3:41
+// CHECK-NEXT:                       bounds:
 // CHECK-NEXT:                         NamedTypeExpr #5 @3:32..3:36
 // CHECK-NEXT:                           path:
-// CHECK-NEXT:                             ModulePath #4 @3:32..3:36 segments=["Hash"]
+// CHECK-NEXT:                             ModulePath #4 @3:32..3:36 segments=["Hash"] root=Relative
 // CHECK-NEXT:                           args: []
 // CHECK-NEXT:                         NamedTypeExpr #7 @3:39..3:41
 // CHECK-NEXT:                           path:
-// CHECK-NEXT:                             ModulePath #6 @3:39..3:41 segments=["Eq"]
+// CHECK-NEXT:                             ModulePath #6 @3:39..3:41 segments=["Eq"] root=Relative
 // CHECK-NEXT:                           args: []
 // CHECK-NEXT:                   default_ty: null
-// CHECK-NEXT:                 MethodDecl #13 @4:5..4:33 name="create" is_static=true visibility=Default
+// CHECK-NEXT:                 MethodDecl #13 @4:5..4:33 name="create" mode=Static visibility=Default
 // CHECK-NEXT:                   params_id:
 // CHECK-NEXT:                     FunctionParameterList #10 @4:22..4:24 nparams=0
 // CHECK-NEXT:                       params: []
@@ -43,7 +43,7 @@
 // CHECK-NEXT:                   ret_ty:
 // CHECK-NEXT:                     NamedTypeExpr #12 @4:28..4:32
 // CHECK-NEXT:                       path:
-// CHECK-NEXT:                         ModulePath #11 @4:28..4:32 segments=["Self"]
+// CHECK-NEXT:                         ModulePath #11 @4:28..4:32 segments=["Self"] root=Relative
 // CHECK-NEXT:                       args: []
 // CHECK-NEXT:                   raises_ty: null
 // CHECK-NEXT:                   body: null

@@ -4,7 +4,6 @@ add_ztest_unit_tests_from_directory(
   LIBRARIES frontend
 )
 
-find_package(Python3 COMPONENTS Interpreter REQUIRED)
 add_test(
   NAME pubgrub-scenarios-oracle
   COMMAND

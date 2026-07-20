@@ -2,3 +2,6 @@ let a = "hello\nworld";
 let b = '\t';
 let c = "\u{1F600}";
 let d = "\x41";
+let e = "\0";
+let f = "\'";
+let g = '\'';

@@ -33,14 +33,14 @@
 // CHECK-NEXT:                   ty:
 // CHECK-NEXT:                     NamedTypeExpr #10 @2:8..2:9
 // CHECK-NEXT:                       path:
-// CHECK-NEXT:                         ModulePath #9 @2:8..2:9 segments=["S"]
+// CHECK-NEXT:                         ModulePath #9 @2:8..2:9 segments=["S"] root=Relative
 // CHECK-NEXT:                       args: []
 // CHECK-NEXT:                   init:
 // CHECK-NEXT:                     StructLiteralExpr #18 @2:12..2:28
 // CHECK-NEXT:                       ty:
 // CHECK-NEXT:                         NamedTypeExpr #13 @2:12..2:13
 // CHECK-NEXT:                           path:
-// CHECK-NEXT:                             ModulePath #12 @2:12..2:13 segments=["S"]
+// CHECK-NEXT:                             ModulePath #12 @2:12..2:13 segments=["S"] root=Relative
 // CHECK-NEXT:                           args: []
 // CHECK-NEXT:                       properties:
 // CHECK-NEXT:                         ObjectProperty #15 @2:16..2:20 name="x" short_form=false

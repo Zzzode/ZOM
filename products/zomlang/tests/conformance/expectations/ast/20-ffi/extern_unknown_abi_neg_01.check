@@ -2,7 +2,7 @@
 
 
 // CHECK-LITERAL: Error [ZOM2091]: Unknown extern ABI 'Rust'; expected one of 'C', 'Cdecl', 'system', or 'zom-cdecl'
-// CHECK:   --> products {{(?:.*[/\\])?extern_unknown_abi_neg_01\.zom:1:8$}}
+// CHECK-LITERAL:   --> conformance/extern_unknown_abi_neg_01.zom:1:8
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 1 | extern "Rust" {
 // CHECK-LITERAL:   |        ^

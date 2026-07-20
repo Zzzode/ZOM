@@ -2,12 +2,12 @@
 
 
 // CHECK-LITERAL: Error [ZOM2072]: Type expected
-// CHECK:   --> products {{(?:.*[/\\])?is_pat_missing_type_neg_07\.zom:2:13$}}
+// CHECK-LITERAL:   --> conformance/is_pat_missing_type_neg_07.zom:2:13
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 2 |     when is => { print("nothing"); }
 // CHECK-LITERAL:   |             ^
 // CHECK-LITERAL: Fatal [ZOM2082]: Internal parser invariant violated: Required NodeId field pattern is empty on MatchArmStmt
-// CHECK:   --> products {{(?:.*[/\\])?is_pat_missing_type_neg_07\.zom:1:1$}}
+// CHECK-LITERAL:   --> conformance/is_pat_missing_type_neg_07.zom:1:1
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 1 | match (v) {
 // CHECK-LITERAL:   | ^

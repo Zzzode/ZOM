@@ -2,7 +2,7 @@
 
 
 // CHECK-LITERAL: Error [ZOM2056]: Expression expected
-// CHECK:   --> products {{(?:.*[/\\])?reserved_8_groups_neg_02\.zom:2:5$}}
+// CHECK-LITERAL:   --> conformance/reserved_8_groups_neg_02.zom:2:5
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 2 |     async { return; };
 // CHECK-LITERAL:   |     ^

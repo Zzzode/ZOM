@@ -1,6 +1,0 @@
-// RUN: cd %corpus && %zomc compile --dump-dispatch 05-statements/if_variants_pos_01.zom > %t 2>&1
-// RUN: %FileCheck %s --input-file %t
-
-
-// CHECK-LITERAL: zom.dispatch.v0
-// CHECK: node={{[0-9]+}} target=PrimitiveOperator receiver=OperatorLeftHandSide args=[i32,i32] result=bool

@@ -2,7 +2,7 @@
 
 
 // CHECK-LITERAL: Error [ZOM2076]: Unexpected token expected
-// CHECK:   --> products {{(?:.*[/\\])?suspend_not_until_reject_neg_01\.zom:2:13$}}
+// CHECK-LITERAL:   --> conformance/suspend_not_until_reject_neg_01.zom:2:13
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 2 |     suspend while x;
 // CHECK-LITERAL:   |             ^

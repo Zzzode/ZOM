@@ -2,7 +2,7 @@
 
 
 // CHECK-LITERAL: Error [ZOM2076]: Unexpected token expected
-// CHECK:   --> products {{(?:.*[/\\])?nested_class_reject_neg_04\.zom:2:5$}}
+// CHECK-LITERAL:   --> conformance/nested_class_reject_neg_04.zom:2:5
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 2 |     class Inner {
 // CHECK-LITERAL:   |     ^

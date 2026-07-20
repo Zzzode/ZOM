@@ -12,8 +12,8 @@
 // CHECK-NEXT:               type_params_id:
 // CHECK-NEXT:                 GenericParams #5 @2:18..2:21 nparams=1
 // CHECK-NEXT:                   params:
-// CHECK-NEXT:                     GenericTypeParam #4 @2:19..2:20 name="T" variance=Invariant
-// CHECK-NEXT:                       bound: null
+// CHECK-NEXT:                     GenericTypeParam #4 @2:19..2:20 name="T"
+// CHECK-NEXT:                       bounds_id: null
 // CHECK-NEXT:                       default_ty: null
 // CHECK-NEXT:                   where_: null
 // CHECK-NEXT:               variants_id:

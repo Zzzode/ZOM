@@ -2,7 +2,7 @@
 
 
 // CHECK-LITERAL: Error [ZOM2072]: Type expected
-// CHECK:   --> products {{(?:.*[/\\])?bottom_neg_01\.zom:1:8$}}
+// CHECK-LITERAL:   --> conformance/bottom_neg_01.zom:1:8
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 1 | let x: ! = panic();
 // CHECK-LITERAL:   |        ^

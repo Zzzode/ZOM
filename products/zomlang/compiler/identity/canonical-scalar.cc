@@ -14,6 +14,7 @@
 
 #include "zomlang/compiler/identity/canonical-scalar.h"
 
+#include "zomlang/compiler/identity/canonical-decoder.h"
 #include "zomlang/compiler/identity/canonical-encoder.h"
 #include "zomlang/compiler/identity/unicode-normalization.h"
 #include "zomlang/compiler/lexer/utils.h"
@@ -107,8 +108,29 @@ bool validate(CanonicalScalarDomain domain, zc::StringPtr value) {
   return false;
 }
 
+uint64_t maximumCanonicalBytes(CanonicalScalarDomain domain) {
+  switch (domain) {
+    case CanonicalScalarDomain::PackageName:
+    case CanonicalScalarDomain::TargetName:
+    case CanonicalScalarDomain::DependencyAlias:
+    case CanonicalScalarDomain::FeatureName:
+    case CanonicalScalarDomain::TargetComponentName:
+    case CanonicalScalarDomain::TargetFeatureName:
+      return 64;
+    case CanonicalScalarDomain::SemanticEnvironmentName:
+      return 128;
+    case CanonicalScalarDomain::PathSegment:
+    case CanonicalScalarDomain::SemanticIdentifier:
+    case CanonicalScalarDomain::ModulePathSegment:
+    case CanonicalScalarDomain::DeclaredDefinitionName:
+      return 4096;
+  }
+  ZC_UNREACHABLE
+}
+
 zc::Maybe<zc::String> admit(CanonicalScalarDomain domain, zc::StringPtr input,
                             bool requireCanonical) {
+  if (input.size() > maximumCanonicalBytes(domain)) { return zc::none; }
   auto normalized = normalizeNfc(input);
   ZC_IF_SOME(value, normalized) {
     if (requireCanonical && value != input) { return zc::none; }
@@ -139,9 +161,21 @@ zc::Maybe<CanonicalScalar<Domain>> CanonicalScalar<Domain>::fromCanonical(zc::St
 template <CanonicalScalarDomain Domain>
 zc::Maybe<CanonicalScalar<Domain>> CanonicalScalar<Domain>::fromCanonical(
     zc::MemoryResource& resource, zc::StringPtr input) {
+  if (input.size() > maximumCanonicalBytes(Domain)) { return zc::none; }
   ZC_IF_SOME(canonical, normalizeNfc(resource, input)) {
     if (canonical != input || !validate(Domain, canonical)) { return zc::none; }
     return CanonicalScalar(zc::mv(canonical));
+  }
+  return zc::none;
+}
+
+template <CanonicalScalarDomain Domain>
+zc::Maybe<CanonicalScalar<Domain>> CanonicalScalar<Domain>::decodeCanonical(
+    CanonicalDecoder& decoder) {
+  auto bytes = decoder.decodeByteString(maximumCanonicalBytes(Domain));
+  ZC_IF_SOME(value, bytes) {
+    auto text = zc::str(value.asChars());
+    return fromCanonical(text);
   }
   return zc::none;
 }

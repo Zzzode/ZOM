@@ -12,7 +12,7 @@
 // CHECK-NEXT:           members_id:
 // CHECK-NEXT:             ClassMemberList #17 @1:22..6:2 nmembers=4
 // CHECK-NEXT:               members:
-// CHECK-NEXT:                 MethodDecl #3 @2:5..2:21 name="id" is_static=false visibility=Default
+// CHECK-NEXT:                 MethodDecl #3 @2:5..2:21 name="id" mode=Instance visibility=Default
 // CHECK-NEXT:                   params_id:
 // CHECK-NEXT:                     FunctionParameterList #1 @2:11..2:13 nparams=0
 // CHECK-NEXT:                       params: []
@@ -21,7 +21,7 @@
 // CHECK-NEXT:                     PredefinedTypeExpr #2 @2:17..2:20 kind=U64
 // CHECK-NEXT:                   raises_ty: null
 // CHECK-NEXT:                   body: null
-// CHECK-NEXT:                 MethodDecl #6 @3:5..3:23 name="name" is_static=false visibility=Default
+// CHECK-NEXT:                 MethodDecl #6 @3:5..3:23 name="name" mode=Instance visibility=Default
 // CHECK-NEXT:                   params_id:
 // CHECK-NEXT:                     FunctionParameterList #4 @3:13..3:15 nparams=0
 // CHECK-NEXT:                       params: []
@@ -30,7 +30,7 @@
 // CHECK-NEXT:                     PredefinedTypeExpr #5 @3:19..3:22 kind=Str
 // CHECK-NEXT:                   raises_ty: null
 // CHECK-NEXT:                   body: null
-// CHECK-NEXT:                 MethodDecl #11 @4:5..4:30 name="name" is_static=false visibility=Default
+// CHECK-NEXT:                 MethodDecl #11 @4:5..4:30 name="name" mode=Instance visibility=Default
 // CHECK-NEXT:                   params_id:
 // CHECK-NEXT:                     FunctionParameterList #9 @4:13..4:21 nparams=1
 // CHECK-NEXT:                       params:
@@ -44,7 +44,7 @@
 // CHECK-NEXT:                     PredefinedTypeExpr #10 @4:25..4:29 kind=Unit
 // CHECK-NEXT:                   raises_ty: null
 // CHECK-NEXT:                   body: null
-// CHECK-NEXT:                 MethodDecl #16 @5:5..5:31 name="email" is_static=false visibility=Default
+// CHECK-NEXT:                 MethodDecl #16 @5:5..5:31 name="email" mode=Instance visibility=Default
 // CHECK-NEXT:                   params_id:
 // CHECK-NEXT:                     FunctionParameterList #14 @5:14..5:22 nparams=1
 // CHECK-NEXT:                       params:

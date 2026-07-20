@@ -12,7 +12,7 @@
 // CHECK-NEXT:           members_id:
 // CHECK-NEXT:             ClassMemberList #4 @1:16..3:2 nmembers=1
 // CHECK-NEXT:               members:
-// CHECK-NEXT:                 MethodDecl #3 @2:5..2:48 name="adjust" is_static=false visibility=Protected
+// CHECK-NEXT:                 MethodDecl #3 @2:5..2:48 name="adjust" mode=Mutating visibility=Protected
 // CHECK-NEXT:                   params_id:
 // CHECK-NEXT:                     FunctionParameterList #1 @2:43..2:45 nparams=0
 // CHECK-NEXT:                       params: []

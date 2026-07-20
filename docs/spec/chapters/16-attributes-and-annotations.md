@@ -223,35 +223,41 @@ let object: dyn Drawable + std::marker::Sendable;
 
 ## 16.8 Marker Impl Declarations
 
-A negative marker impl has an explicit `!` and may use a short or qualified
-path:
+A marker impl publishes one bodyless fact for one closed target type. A
+positive fact is an explicit unsafe assertion. A negative fact uses `!` and
+cannot use `unsafe`.
 
 ```ebnf
-NegativeMarkerImpl ::= 'unsafe'? 'impl' TypeParameters? '!'
-                       MarkerImplPath 'for' TypeExpression
-                       WhereClause? (';' | StructBody)
+MarkerImpl ::= PositiveMarkerImpl | NegativeMarkerImpl
+PositiveMarkerImpl ::= UnsafePrefix? 'impl' MarkerImplPath
+                       'for' ClosedTypeExpression ';'
+NegativeMarkerImpl ::= 'impl' '!' MarkerImplPath
+                       'for' ClosedTypeExpression ';'
+MarkerImplPath ::= Identifier ('::' Identifier)*
+ClosedTypeExpression ::= TypeExpression
 ```
 
-A positive marker impl is selected syntactically only when its qualified path
-contains the segment `marker`:
-
-```ebnf
-QualifiedMarkerImpl ::= 'unsafe'? 'impl' TypeParameters?
-                        QualifiedMarkerPath 'for' TypeExpression
-                        WhereClause? (';' | StructBody)
-```
-
-Other positive impl heads use the standalone interface-impl grammar from
-Chapter 9. The semantic resolver determines their interface meaning.
+`ClosedTypeExpression` contains no impl-owned or unresolved type parameter.
+Marker impls have no type parameters, `where` clause, associated bindings,
+members, or body.
 
 ```zom
 impl !Shared for Buffer;
 unsafe impl std::marker::Sendable for DeviceHandle;
+unsafe impl Linear for FileHandle;
 ```
 
-There is no source form that declares a new marker. Marker identities are
-resolved from compiler and standard-library definitions already present in the
-semantic context.
+The parser uses the final declaration delimiter to classify an ambiguous
+positive short path. A semicolon selects a marker candidate; an opening body
+selects an ordinary interface impl. The optional prefix admits a candidate for
+semantic classification; the checker requires the candidate to resolve to a
+closed marker-shaped interface and requires positive evidence to carry
+`unsafe`.
+
+Marker identity comes from an interface whose verified declaration and parent
+closure contain no behavior requirements and whose type-parameter sequence is
+empty. Marker paths resolve through the same semantic context as interface
+paths.
 
 ## 16.9 Diagnostics and Conformance
 
@@ -270,7 +276,8 @@ Conformance covers:
 - rejection on expression statements, match arms, type members, enum variants,
   module declarations, types, patterns, and expression operands;
 - `zom::param::move` checker consumption; and
-- negative and qualified marker impl disambiguation.
+- short and qualified marker impl disambiguation by polarity and final
+  delimiter.
 
 Every attribute or marker semantic added to the compiler requires parser or AST
 coverage, a registered diagnostic contract, checker tests, and `.zom`

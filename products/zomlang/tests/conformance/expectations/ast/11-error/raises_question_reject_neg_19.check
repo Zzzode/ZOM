@@ -1,0 +1,13 @@
+// RUN: ! %zomc compile --dump-ast %corpus/11-error/raises_question_reject_neg_19.zom 2>&1 | %FileCheck %s
+
+
+// CHECK-LITERAL: Error [ZOM2076]: Unexpected token expected
+// CHECK-LITERAL:   --> conformance/raises_question_reject_neg_19.zom:2:24
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 2 |     return operation() raises?;
+// CHECK-LITERAL:   |                        ^
+// CHECK-LITERAL: Error [ZOM2056]: Expression expected
+// CHECK-LITERAL:   --> conformance/raises_question_reject_neg_19.zom:2:12
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 2 |     return operation() raises?;
+// CHECK-LITERAL:   |            ^

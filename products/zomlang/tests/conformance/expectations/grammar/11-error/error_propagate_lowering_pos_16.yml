@@ -2,4 +2,4 @@ section: "Ch.11 Error propagation lowering"
 covers_rule: "functionDeclaration, raisesClause, postfix error propagation"
 expected: "ACCEPT"
 notes:
-  - "The IR runner verifies residual tag remapping and the shared cleanup-return block."
+  - "This fixture covers the error-propagation postfix source form."

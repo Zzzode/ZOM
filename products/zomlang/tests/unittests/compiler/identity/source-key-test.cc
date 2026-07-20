@@ -14,6 +14,8 @@
 
 #include "zc/core/encoding.h"
 #include "zc/ztest/test.h"
+#include "zomlang/compiler/identity/canonical-decoder.h"
+#include "zomlang/compiler/identity/canonical-encoder.h"
 #include "zomlang/compiler/identity/source-manager-identity-resolver.h"
 #include "zomlang/compiler/identity/source-snapshot.h"
 
@@ -73,7 +75,7 @@ Sha256Digest repeatedDigest(uint8_t byte) {
 }
 
 CompilationConfigKey targetCompilation() {
-  zc::Maybe<BuildScriptOutputKey> output = BuildScriptOutputKey::from(repeatedDigest(0x11));
+  zc::Maybe<BuildScriptProducerKey> output = BuildScriptProducerKey::from(repeatedDigest(0x11));
   auto value = CompilationConfigKey::from(
       CompilationDomain::Target, targetSpec(),
       SemanticCompilerOptionsKey::from(2026, true, false, false), zc::mv(output));
@@ -94,9 +96,9 @@ CanonicalRelativePath logicalPath() {
   return CanonicalRelativePath::from(zc::mv(segments));
 }
 
-SourceFileKey source(zc::StringPtr packageName = "a"_zc, uint8_t contentByte = 0x22) {
-  auto origin = SourceOriginKey::generatedFile(BuildScriptOutputKey::from(repeatedDigest(0x11)),
-                                               logicalPath(), repeatedDigest(contentByte));
+SourceFileKey source(zc::StringPtr packageName = "a"_zc, uint8_t producerByte = 0x11) {
+  auto origin = SourceOriginKey::generatedFile(
+      BuildScriptProducerKey::from(repeatedDigest(producerByte)), logicalPath());
   return SourceFileKey::from(crate(packageName), zc::mv(origin));
 }
 
@@ -107,11 +109,29 @@ SourceFileKey localSource() {
   return SourceFileKey::from(crate("a"_zc), SourceOriginKey::localFile(zc::mv(path)));
 }
 
+SourceFileKey registrySource() {
+  return SourceFileKey::from(
+      crate("a"_zc), SourceOriginKey::registryFile(localPackage("registry"_zc), logicalPath()));
+}
+
+SourceFileKey vcsSource() {
+  return SourceFileKey::from(crate("a"_zc),
+                             SourceOriginKey::vcsFile(localPackage("checkout"_zc), logicalPath()));
+}
+
+void expectSourceRoundTrip(SourceFileKey&& key) {
+  auto encoded = key.encode();
+  CanonicalDecoder decoder(encoded);
+  auto decoded = SourceFileKey::decodeCanonical(decoder);
+  ZC_REQUIRE(decoded != zc::none);
+  ZC_IF_SOME(value, decoded) { ZC_EXPECT(value.encode().asPtr() == encoded.asPtr()); }
+  ZC_EXPECT(decoder.finished());
+}
+
 ModuleKey module() {
   zc::Vector<ModulePathSegment> path;
   path.add(requireScalar<ModulePathSegment>("m"_zc));
-  zc::Maybe<SourceSpan> noAnchor;
-  auto value = ModuleKey::from(crate("a"_zc), zc::mv(path), source(), zc::mv(noAnchor));
+  auto value = ModuleKey::from(crate("a"_zc), zc::mv(path));
   ZC_IF_SOME(admitted, value) { return zc::mv(admitted); }
   ZC_FAIL_REQUIRE("invalid module test input");
 }
@@ -138,20 +158,166 @@ void expectDigest(zc::ArrayPtr<const uint8_t> bytes, zc::StringPtr expected) {
 ZC_TEST("SourceFileKey passes the fixed generated-source codec vector") {
   auto key = source();
   auto encoded = key.encode();
-  ZC_EXPECT(encoded.size() == 240);
+  ZC_EXPECT(encoded.size() == 208);
   expectDigest(encoded.asPtr(),
-               "f4198087783111e14911a0f550962f5c010ea2609edfdca47152907d74969102"_zc);
+               "95be7a2e0ce404eafff8efe4fa84b37b680520b5461092d2d7d23d273927df77"_zc);
 }
 
-ZC_TEST("ModuleKey passes the fixed expanded source codec vector") {
+ZC_TEST("SourceFileKey remains stable when generated contents change") {
+  auto key = source();
+  auto first = snapshot(key.clone(), 1);
+  auto second = snapshot(key.clone(), 2);
+  ZC_EXPECT(first.source().encode().asPtr() == second.source().encode().asPtr());
+  ZC_EXPECT(first.contentDigest() != second.contentDigest());
+}
+
+ZC_TEST("SourceFileKey canonical decoder round trips every source-origin variant") {
+  expectSourceRoundTrip(localSource());
+  expectSourceRoundTrip(registrySource());
+  expectSourceRoundTrip(vcsSource());
+  expectSourceRoundTrip(source());
+}
+
+ZC_TEST("SourceFileKey reports the canonical logical file name for every origin") {
+  ZC_EXPECT(ZC_REQUIRE_NONNULL(localSource().logicalFileName()) == "main.zom"_zc);
+  ZC_EXPECT(ZC_REQUIRE_NONNULL(registrySource().logicalFileName()) == "g.zom"_zc);
+  ZC_EXPECT(ZC_REQUIRE_NONNULL(vcsSource().logicalFileName()) == "g.zom"_zc);
+  ZC_EXPECT(ZC_REQUIRE_NONNULL(source().logicalFileName()) == "g.zom"_zc);
+}
+
+ZC_TEST("SourceFileKey canonical decoder rejects unknown truncation and leaves outer framing") {
+  CanonicalEncoder unknownOriginEncoder;
+  crate("a"_zc).encode(unknownOriginEncoder);
+  unknownOriginEncoder.encodeUint8(0xff);
+  auto unknownOriginBytes = unknownOriginEncoder.finish();
+  CanonicalDecoder unknownOriginDecoder(unknownOriginBytes);
+  ZC_EXPECT(SourceFileKey::decodeCanonical(unknownOriginDecoder) == zc::none);
+
+  auto encoded = source().encode();
+  CanonicalDecoder truncatedDecoder(encoded.asPtr().first(encoded.size() - 1));
+  ZC_EXPECT(SourceFileKey::decodeCanonical(truncatedDecoder) == zc::none);
+
+  zc::Vector<uint8_t> framed(encoded.size() + 1);
+  framed.addAll(encoded);
+  framed.add(0xa5);
+  CanonicalDecoder framedDecoder(framed.asPtr());
+  ZC_EXPECT(SourceFileKey::decodeCanonical(framedDecoder) != zc::none);
+  ZC_EXPECT(!framedDecoder.finished());
+  ZC_EXPECT(framedDecoder.remaining() == 1);
+  ZC_EXPECT(framedDecoder.decodeUint8() == 0xa5);
+  ZC_EXPECT(framedDecoder.finished());
+}
+
+ZC_TEST("ModuleKey passes the fixed stable module codec vector") {
+  const uint8_t expected[] = {
+      0x03, 0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,
+      0,    0,    0,    0,    0,    1,    'a',  0,    0,    0,    0,    0,    0,    0,    5,
+      '0',  '.',  '0',  '.',  '0',  0,    0,    0,    0,    0,    0,    0,    0,    0x01, 0,
+      0,    0,    0,    0,    0,    0,    3,    'l',  'i',  'b',  0x02, 0,    0,    0,    0,
+      0,    0,    0,    1,    'x',  0,    0,    0,    0,    0,    0,    0,    1,    'v',  0,
+      0,    0,    0,    0,    0,    0,    1,    'o',  0,    0,    0,    0,    0,    0,    0,
+      1,    'e',  0,    0,    0,    0,    0,    0,    0,    1,    'a',  0,    0,    0,    64,
+      0x01, 0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0x07, 0xea, 0x01, 0x00,
+      0x00, 0x01, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11,
+      0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11,
+      0x11, 0x11, 0x11, 0x11, 0,    0,    0,    0,    0,    0,    0,    1,    0,    0,    0,
+      0,    0,    0,    0,    1,    'm',
+  };
   auto key = module();
   auto encoded = key.encode();
-  ZC_EXPECT(encoded.size() == 412);
+  ZC_EXPECT(encoded.size() == 171);
+  ZC_EXPECT(encoded.asPtr() == zc::arrayPtr(expected));
   expectDigest(encoded.asPtr(),
-               "8ef9b8baabd646bf1a4640a8bd70af16e93bbe979229c21342cbebd0c429b91b"_zc);
+               "d8b9d3128d5997bdefb764dbaa9f1ad91674f7c3e8dd9dbf9e3bf7874beeee03"_zc);
+
+  CanonicalDecoder decoder(zc::arrayPtr(expected));
+  auto decoded = ModuleKey::decodeCanonical(decoder);
+  ZC_REQUIRE(decoded != zc::none);
+  ZC_IF_SOME(value, decoded) { ZC_EXPECT(value.encode().asPtr() == zc::arrayPtr(expected)); }
+  ZC_EXPECT(decoder.finished());
 }
 
-ZC_TEST("SourceSpan and ModuleKey reject malformed ancestry") {
+ZC_TEST("ModuleKey canonical decoder enforces path bounds canonical text and exact consumption") {
+  auto key = module();
+  auto encoded = key.encode();
+
+  CanonicalDecoder truncatedDecoder(encoded.asPtr().first(encoded.size() - 1));
+  ZC_EXPECT(ModuleKey::decodeCanonical(truncatedDecoder) == zc::none);
+
+  CanonicalEncoder emptyPathEncoder;
+  key.crate().encode(emptyPathEncoder);
+  emptyPathEncoder.encodeSequenceSize(0);
+  auto emptyPathBytes = emptyPathEncoder.finish();
+  CanonicalDecoder emptyPathDecoder(emptyPathBytes);
+  ZC_EXPECT(ModuleKey::decodeCanonical(emptyPathDecoder) == zc::none);
+
+  CanonicalEncoder excessivePathEncoder;
+  key.crate().encode(excessivePathEncoder);
+  excessivePathEncoder.encodeSequenceSize(UINT64_MAX);
+  auto excessivePathBytes = excessivePathEncoder.finish();
+  CanonicalDecoder excessivePathDecoder(excessivePathBytes);
+  ZC_EXPECT(ModuleKey::decodeCanonical(excessivePathDecoder) == zc::none);
+
+  zc::Vector<ModulePathSegment> excessiveProducerPath;
+  for (size_t index = 0; index < 257; ++index) {
+    excessiveProducerPath.add(requireScalar<ModulePathSegment>("m"_zc));
+  }
+  ZC_EXPECT(ModuleKey::from(crate("a"_zc), zc::mv(excessiveProducerPath)) == zc::none);
+
+  CanonicalEncoder nonCanonicalPathEncoder;
+  key.crate().encode(nonCanonicalPathEncoder);
+  nonCanonicalPathEncoder.encodeSequenceSize(1);
+  nonCanonicalPathEncoder.encodeByteString("caf\x65\xCC\x81"_zc.asBytes());
+  auto nonCanonicalPathBytes = nonCanonicalPathEncoder.finish();
+  CanonicalDecoder nonCanonicalPathDecoder(nonCanonicalPathBytes);
+  ZC_EXPECT(ModuleKey::decodeCanonical(nonCanonicalPathDecoder) == zc::none);
+
+  auto maximumSegmentText = zc::heapString(4096);
+  for (size_t index = 0; index < maximumSegmentText.size(); ++index) {
+    maximumSegmentText[index] = 'a';
+  }
+  CanonicalEncoder oversizedKeyEncoder;
+  key.crate().encode(oversizedKeyEncoder);
+  oversizedKeyEncoder.encodeSequenceSize(4);
+  for (size_t index = 0; index < 4; ++index) {
+    requireScalar<ModulePathSegment>(maximumSegmentText).encode(oversizedKeyEncoder);
+  }
+  auto oversizedKeyBytes = oversizedKeyEncoder.finish();
+  CanonicalDecoder oversizedKeyDecoder(oversizedKeyBytes);
+  ZC_EXPECT(ModuleKey::decodeCanonical(oversizedKeyDecoder) == zc::none);
+
+  zc::Vector<ModulePathSegment> oversizedProducerKeyPath;
+  for (size_t index = 0; index < 4; ++index) {
+    oversizedProducerKeyPath.add(requireScalar<ModulePathSegment>(maximumSegmentText));
+  }
+  ZC_EXPECT(ModuleKey::from(crate("a"_zc), zc::mv(oversizedProducerKeyPath)) == zc::none);
+
+  zc::Vector<uint8_t> framed(encoded.size() + 1);
+  framed.addAll(encoded);
+  framed.add(0xa5);
+  CanonicalDecoder framedDecoder(framed.asPtr());
+  ZC_EXPECT(ModuleKey::decodeCanonical(framedDecoder) != zc::none);
+  ZC_EXPECT(!framedDecoder.finished());
+  ZC_EXPECT(framedDecoder.remaining() == 1);
+  ZC_EXPECT(framedDecoder.decodeUint8() == 0xa5);
+  ZC_EXPECT(framedDecoder.finished());
+}
+
+ZC_TEST("ModuleKey exposes its immutable canonical path") {
+  zc::Vector<ModulePathSegment> path;
+  path.add(requireScalar<ModulePathSegment>("graphics"_zc));
+  path.add(requireScalar<ModulePathSegment>("shapes"_zc));
+  auto value = ModuleKey::from(crate("a"_zc), zc::mv(path));
+  ZC_REQUIRE(value != zc::none);
+  ZC_IF_SOME(key, value) {
+    const auto canonicalPath = key.path();
+    ZC_REQUIRE(canonicalPath.size() == 2);
+    ZC_EXPECT(canonicalPath[0].text() == "graphics"_zc);
+    ZC_EXPECT(canonicalPath[1].text() == "shapes"_zc);
+  }
+}
+
+ZC_TEST("SourceSpan and ModuleKey reject malformed values") {
   auto validSnapshot = snapshot(source());
   ZC_EXPECT(validSnapshot.span(2, 1) == zc::none);
   ZC_EXPECT(validSnapshot.span(0, 2) == zc::none);
@@ -160,22 +326,7 @@ ZC_TEST("SourceSpan and ModuleKey reject malformed ancestry") {
   ZC_EXPECT(validSnapshot.unbrandedRange(0, 1) != zc::none);
 
   zc::Vector<ModulePathSegment> emptyPath;
-  zc::Maybe<SourceSpan> noAnchor;
-  ZC_EXPECT(ModuleKey::from(crate("a"_zc), zc::mv(emptyPath), source(), zc::mv(noAnchor)) ==
-            zc::none);
-
-  zc::Vector<ModulePathSegment> wrongCratePath;
-  wrongCratePath.add(requireScalar<ModulePathSegment>("m"_zc));
-  zc::Maybe<SourceSpan> noWrongCrateAnchor;
-  ZC_EXPECT(ModuleKey::from(crate("b"_zc), zc::mv(wrongCratePath), source(),
-                            zc::mv(noWrongCrateAnchor)) == zc::none);
-
-  auto wrongSnapshot = snapshot(source("a"_zc, 0x33));
-  auto wrongAnchor = wrongSnapshot.span(0, 1);
-  zc::Vector<ModulePathSegment> path;
-  path.add(requireScalar<ModulePathSegment>("m"_zc));
-  ZC_EXPECT(ModuleKey::from(crate("a"_zc), zc::mv(path), source(), zc::mv(wrongAnchor)) ==
-            zc::none);
+  ZC_EXPECT(ModuleKey::from(crate("a"_zc), zc::mv(emptyPath)) == zc::none);
 }
 
 ZC_TEST("Source manager resolver binds only byte-identical immutable snapshots") {

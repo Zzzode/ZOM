@@ -2,12 +2,12 @@
 
 
 // CHECK-LITERAL: Error [ZOM2077]: Identifier expected
-// CHECK-LITERAL:   --> member_reserved_keyword_neg_59.zom:1:28
+// CHECK-LITERAL:   --> conformance/member_reserved_keyword_neg_59.zom:1:28
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 1 | let invalid_member = value.match;
 // CHECK-LITERAL:   |                            ^
 // CHECK-LITERAL: Error [ZOM2056]: Expression expected
-// CHECK-LITERAL:   --> member_reserved_keyword_neg_59.zom:1:22
+// CHECK-LITERAL:   --> conformance/member_reserved_keyword_neg_59.zom:1:22
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 1 | let invalid_member = value.match;
 // CHECK-LITERAL:   |                      ^

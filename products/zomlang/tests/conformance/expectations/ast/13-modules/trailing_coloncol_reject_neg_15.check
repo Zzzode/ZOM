@@ -2,7 +2,7 @@
 
 
 // CHECK-LITERAL: Error [ZOM2076]: Unexpected token expected
-// CHECK:   --> products {{(?:.*[/\\])?trailing_coloncol_reject_neg_15\.zom:1:15$}}
+// CHECK-LITERAL:   --> conformance/trailing_coloncol_reject_neg_15.zom:1:15
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 1 | import std::io::;
 // CHECK-LITERAL:   |               ^

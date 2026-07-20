@@ -23,7 +23,7 @@
 #include "zomlang/compiler/driver/package/linux-native-sandbox.h"
 #include "zomlang/compiler/driver/package/linux-sandbox-policy.h"
 #include "zomlang/compiler/identity/canonical-encoder.h"
-#include "zomlang/compiler/irgen/target-registry.h"
+#include "zomlang/compiler/ir/target-registry.h"
 
 namespace zomlang::compiler::driver::package {
 namespace {
@@ -79,21 +79,20 @@ identity::CanonicalTargetSpecificationKey semanticProjection() {
 }
 
 RegisteredTargetSelection targetSelection() {
-  zc::Vector<irgen::CanonicalTargetFeature> targetFeatures;
-  auto targetSpec = irgen::CanonicalTargetSpec::from(
+  zc::Vector<ir::CanonicalTargetFeature> targetFeatures;
+  auto targetSpec = ir::CanonicalTargetSpec::from(
       zc::str(hostArchitectureName(), "-zom-none"_zc), "e-p:64:64"_zc, "generic"_zc,
-      zc::mv(targetFeatures), "zom-v1"_zc, irgen::BackendPanicStrategy::Unwind,
-      irgen::ObjectFormat::Elf);
+      zc::mv(targetFeatures), "zom-v1"_zc, ir::BackendPanicStrategy::Unwind, ir::ObjectFormat::Elf);
   ZC_REQUIRE(targetSpec != zc::none);
   zc::Vector<identity::TargetFeatureName> semanticFeatures;
-  zc::Vector<irgen::CanonicalTargetSpec> specifications;
+  zc::Vector<ir::CanonicalTargetSpec> specifications;
   ZC_IF_SOME(value, targetSpec) { specifications.add(zc::mv(value)); }
-  auto profile = irgen::RegisteredTargetProfileRecord::from(
+  auto profile = ir::RegisteredTargetProfileRecord::from(
       profileName(), semanticProjection(), zc::mv(semanticFeatures), zc::mv(specifications));
   ZC_REQUIRE(profile != zc::none);
-  zc::Vector<irgen::RegisteredTargetProfileRecord> profiles;
+  zc::Vector<ir::RegisteredTargetProfileRecord> profiles;
   ZC_IF_SOME(value, profile) { profiles.add(zc::mv(value)); }
-  auto registry = irgen::TargetRegistrySnapshot::from(profileName(), zc::mv(profiles));
+  auto registry = ir::TargetRegistrySnapshot::from(profileName(), zc::mv(profiles));
   ZC_REQUIRE(registry != zc::none);
   ZC_IF_SOME(snapshot, registry) {
     auto service = snapshot.packageTargetService();
@@ -378,8 +377,7 @@ void runScenario(const zc::Directory& testRoot, const zc::Directory& sandboxPare
   ZC_IF_SOME(issue, expectedIssue) {
     ZC_REQUIRE(result.is<BuildScriptIssue>());
     ZC_EXPECT(result.get<BuildScriptIssue>() == issue);
-  }
-  else {
+  } else {
     if (result.is<BuildScriptIssue>()) {
       ZC_FAIL_REQUIRE("production Linux sandbox returned issue ",
                       static_cast<uint32_t>(result.get<BuildScriptIssue>()));

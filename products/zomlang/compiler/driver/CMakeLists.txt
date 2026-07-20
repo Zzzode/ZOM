@@ -1,11 +1,16 @@
-set(DRIVER_SRC compiler-session.cc crate-graph.cc)
+set(DRIVER_SRC borrow-evidence.cc coherence-builder.cc compiler-session.cc crate-graph.cc
+               imported-signature-view-projector.cc incremental-binding-query-adapter.cc
+               incremental-module-resolution-query.cc
+               incremental-package-graph-query-input.cc
+               module-discovery.cc module-interface.cc module-interface-diagnostic-adapter.cc
+               named-identity-inventory-query.cc)
 
 enable_language(C)
 add_subdirectory(package/vendor)
 
 add_custom_target(
   check-vendored-dependencies
-  COMMAND python3
+  COMMAND "${Python3_EXECUTABLE}"
           ${CMAKE_SOURCE_DIR}/products/zomlang/tests/tools/check-vendored-dependencies.py
           --check
   WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}

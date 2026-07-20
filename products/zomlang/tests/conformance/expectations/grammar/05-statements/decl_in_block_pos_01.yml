@@ -1,4 +1,5 @@
-section: "§4.5 Declarations inside block (let/const/fun)"
+section: "§6 Declaration order and block-scoped named-function hoisting"
 covers_rule: "declaration (as statement)"
 expected: "ACCEPT"
-notes: []
+notes:
+  - "The named function is callable before and after its declaration within the immediate block."

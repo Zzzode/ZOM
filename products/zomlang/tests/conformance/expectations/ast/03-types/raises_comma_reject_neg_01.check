@@ -2,7 +2,7 @@
 
 
 // CHECK-LITERAL: Error [ZOM2076]: Unexpected token expected
-// CHECK:   --> products {{(?:.*[/\\])?raises_comma_reject_neg_01\.zom:1:30$}}
+// CHECK-LITERAL:   --> conformance/raises_comma_reject_neg_01.zom:1:30
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 1 | fun f() -> i32 raises IoError, ParseError;
 // CHECK-LITERAL:   |                              ^

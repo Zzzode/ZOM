@@ -1,0 +1,4 @@
+section: "§3 Qualified type names"
+covers_rule: "qualifiedTypePath uses identifier segments"
+expected: "REJECT"
+notes: []

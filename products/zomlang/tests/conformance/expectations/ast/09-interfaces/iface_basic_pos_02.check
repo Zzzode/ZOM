@@ -12,21 +12,21 @@
 // CHECK-NEXT:               type_params_id:
 // CHECK-NEXT:                 GenericParams #2 @1:27..1:30 nparams=1
 // CHECK-NEXT:                   params:
-// CHECK-NEXT:                     GenericTypeParam #1 @1:28..1:29 name="T" variance=Invariant
-// CHECK-NEXT:                       bound: null
+// CHECK-NEXT:                     GenericTypeParam #1 @1:28..1:29 name="T"
+// CHECK-NEXT:                       bounds_id: null
 // CHECK-NEXT:                       default_ty: null
 // CHECK-NEXT:                   where_: null
 // CHECK-NEXT:               ifaces_id:
-// CHECK-NEXT:                 ImplIfaceList #5 @1:33..1:41 n_ifaces=1
+// CHECK-NEXT:                 ImplIfaceList #5 @1:33..1:41
 // CHECK-NEXT:                   ifaces:
 // CHECK-NEXT:                     NamedTypeExpr #4 @1:33..1:41
 // CHECK-NEXT:                       path:
-// CHECK-NEXT:                         ModulePath #3 @1:33..1:41 segments=["Iterable"]
+// CHECK-NEXT:                         ModulePath #3 @1:33..1:41 segments=["Iterable"] root=Relative
 // CHECK-NEXT:                       args: []
 // CHECK-NEXT:               members_id:
 // CHECK-NEXT:                 ClassMemberList #9 @1:42..3:2 nmembers=1
 // CHECK-NEXT:                   members:
-// CHECK-NEXT:                     MethodDecl #8 @2:5..2:23 name="size" is_static=false visibility=Default
+// CHECK-NEXT:                     MethodDecl #8 @2:5..2:23 name="size" mode=Instance visibility=Default
 // CHECK-NEXT:                       params_id:
 // CHECK-NEXT:                         FunctionParameterList #6 @2:13..2:15 nparams=0
 // CHECK-NEXT:                           params: []

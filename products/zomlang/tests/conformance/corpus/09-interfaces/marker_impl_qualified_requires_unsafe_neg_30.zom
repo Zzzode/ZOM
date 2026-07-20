@@ -1,0 +1,3 @@
+interface QualifiedMarker {}
+
+impl conformance::QualifiedMarker for i32;

@@ -2,12 +2,12 @@
 
 
 // CHECK-LITERAL: Error [ZOM2076]: Unexpected token expected
-// CHECK:   --> products {{(?:.*[/\\])?enum\-declarations\.zom:5:9$}}
+// CHECK-LITERAL:   --> conformance/enum-declarations.zom:5:9
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 5 |   D(name: str, age: i32)
 // CHECK-LITERAL:   |         ^
 // CHECK-LITERAL: Error [ZOM2076]: Unexpected token expected
-// CHECK:   --> products {{(?:.*[/\\])?enum\-declarations\.zom:5:19$}}
+// CHECK-LITERAL:   --> conformance/enum-declarations.zom:5:19
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 5 |   D(name: str, age: i32)
 // CHECK-LITERAL:   |                   ^

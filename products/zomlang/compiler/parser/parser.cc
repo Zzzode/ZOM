@@ -14,6 +14,7 @@
 
 #include "zomlang/compiler/parser/parser.h"
 
+#include "zomlang/compiler/diagnostics/diagnostic-fact-buffer.h"
 #include "zomlang/compiler/parser/parser-impl.h"
 
 namespace zomlang {
@@ -21,13 +22,14 @@ namespace compiler {
 namespace parser {
 
 Parser::Impl::Impl(const source::SourceManager& sourceMgr,
-                   diagnostics::DiagnosticEngine& diagnosticEngine,
+                   diagnostics::DiagnosticFactBuffer& diagnosticFacts,
                    const basic::LangOptions& langOpts, basic::StringPool& stringPool,
                    const source::BufferId& bufferId)
     : sourceMgr(sourceMgr),
-      diagnosticEngine(diagnosticEngine),
+      diagnosticFacts(diagnosticFacts),
+      diagnosticEngine(diagnosticFacts.parserEmitter()),
       bufferId(bufferId),
-      context(sourceMgr, diagnosticEngine, langOpts, stringPool, bufferId) {}
+      context(sourceMgr, diagnosticFacts, langOpts, stringPool, bufferId) {}
 
 const lexer::Token& Parser::Impl::tokenAt(size_t index) const { return context.tokenAt(index); }
 
@@ -108,8 +110,8 @@ ast::Tree Parser::Impl::buildTree() {
   TokenCursor cursor = tokenCursorAt(0);
   while (!cursor.isAtEnd()) {
     const size_t index = cursor.position();
-    const SourceElementParseResult elementResult =
-        parseSourceElement(builder, cursor, static_cast<size_t>(-1));
+    const SourceElementParseResult elementResult = parseSourceElement(
+        builder, cursor, static_cast<size_t>(-1), SourceElementContext::ModuleItem);
     const size_t end = elementResult.boundary.end;
     const size_t elementStart = elementResult.boundary.head;
     const ast::SyntaxKind first = kindAt(elementStart);
@@ -142,9 +144,10 @@ ast::Tree Parser::Impl::buildTree() {
 }
 
 Parser::Parser(const source::SourceManager& sourceMgr,
-               diagnostics::DiagnosticEngine& diagnosticEngine, const basic::LangOptions& langOpts,
-               basic::StringPool& stringPool, const source::BufferId& bufferId)
-    : impl(zc::heap<Impl>(sourceMgr, diagnosticEngine, langOpts, stringPool, bufferId)) {}
+               diagnostics::DiagnosticFactBuffer& diagnosticFacts,
+               const basic::LangOptions& langOpts, basic::StringPool& stringPool,
+               const source::BufferId& bufferId)
+    : impl(zc::heap<Impl>(sourceMgr, diagnosticFacts, langOpts, stringPool, bufferId)) {}
 
 Parser::~Parser() noexcept(false) = default;
 
@@ -158,10 +161,10 @@ zc::Maybe<ast::Tree> Parser::parse() {
   ast::Tree tree = impl->buildTree();
   impl->diagnoseTokenPatterns();
   ZC_IF_SOME(schemaFailure, ast::verifySchemaFailure(tree)) {
-    impl->diagnosticEngine.diagnose<diagnostics::DiagID::ParserInvariantViolation>(
-        impl->diagnosticLoc(0), zc::mv(schemaFailure));
+    impl->diagnosticFacts.reportInvariant(zc::mv(schemaFailure));
   }
-  if (impl->context.errorCount() != initialErrorCount) {
+  if (impl->diagnosticFacts.hasInvariantViolation() ||
+      impl->context.errorCount() != initialErrorCount) {
     trace::traceEvent(trace::TraceCategory::kParser, "Parse failed");
     return zc::none;
   }

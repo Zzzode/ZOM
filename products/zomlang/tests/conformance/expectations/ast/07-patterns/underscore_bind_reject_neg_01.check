@@ -2,7 +2,7 @@
 
 
 // CHECK-LITERAL: Error [ZOM2062]: Variable declaration expected
-// CHECK:   --> products {{(?:.*[/\\])?underscore_bind_reject_neg_01\.zom:1:5$}}
+// CHECK-LITERAL:   --> conformance/underscore_bind_reject_neg_01.zom:1:5
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 1 | let _ @ p = 5;
 // CHECK-LITERAL:   |     ^

@@ -1,0 +1,8 @@
+// RUN: ! %zomc compile --dump-ast %corpus/03-types/keyword_qualified_type_reject_neg_39.zom 2>&1 | %FileCheck %s
+
+
+// CHECK-LITERAL: Error [ZOM2072]: Type expected
+// CHECK-LITERAL:   --> conformance/keyword_qualified_type_reject_neg_39.zom:1:12
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 1 | let value: public::Widget;
+// CHECK-LITERAL:   |            ^

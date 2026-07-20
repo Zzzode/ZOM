@@ -13,11 +13,11 @@
 // CHECK-NEXT:               base_ty:
 // CHECK-NEXT:                 NamedTypeExpr #2 @1:18..1:19
 // CHECK-NEXT:                   path:
-// CHECK-NEXT:                     ModulePath #1 @1:18..1:19 segments=["T"]
+// CHECK-NEXT:                     ModulePath #1 @1:18..1:19 segments=["T"] root=Relative
 // CHECK-NEXT:                   args: []
 // CHECK-NEXT:               iface_ty:
 // CHECK-NEXT:                 NamedTypeExpr #4 @1:23..1:31
 // CHECK-NEXT:                   path:
-// CHECK-NEXT:                     ModulePath #3 @1:23..1:31 segments=["Iterator"]
+// CHECK-NEXT:                     ModulePath #3 @1:23..1:31 segments=["Iterator"] root=Relative
 // CHECK-NEXT:                   args: []
 // CHECK-NEXT:       attrs: null

@@ -2,12 +2,12 @@
 
 
 // CHECK-LITERAL: Error [ZOM2012]: Missing semicolon before 'y'
-// CHECK:   --> products {{(?:.*[/\\])?struct_field_no_semi_reject_neg_03\.zom:3:5$}}
+// CHECK-LITERAL:   --> conformance/struct_field_no_semi_reject_neg_03.zom:3:5
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 3 |     y: i32;
 // CHECK-LITERAL:   |     ^
 // CHECK-LITERAL: Error [ZOM2076]: Unexpected token expected
-// CHECK:   --> products {{(?:.*[/\\])?struct_field_no_semi_reject_neg_03\.zom:3:5$}}
+// CHECK-LITERAL:   --> conformance/struct_field_no_semi_reject_neg_03.zom:3:5
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 3 |     y: i32;
 // CHECK-LITERAL:   |     ^

@@ -22,25 +22,23 @@
 // CHECK-NEXT:             ClassMemberList #4 @3:11..3:14 nmembers=0
 // CHECK-NEXT:               members: []
 // CHECK-NEXT:       attrs: null
-// CHECK-NEXT:     StatementListItem #14 @5:1..5:26
+// CHECK-NEXT:     StatementListItem #13 @5:1..5:26
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         StandaloneImplDecl #13 @5:1..5:26 is_unsafe=false
-// CHECK-NEXT:           ifaces_id:
-// CHECK-NEXT:             ImplIfaceList #9 @5:6..5:14 n_ifaces=1
-// CHECK-NEXT:               ifaces:
-// CHECK-NEXT:                 NamedTypeExpr #8 @5:6..5:14
-// CHECK-NEXT:                   path:
-// CHECK-NEXT:                     ModulePath #7 @5:6..5:14 segments=["Hashable"]
-// CHECK-NEXT:                   args: []
-// CHECK-NEXT:           for_ty:
-// CHECK-NEXT:             NamedTypeExpr #11 @5:19..5:22
+// CHECK-NEXT:         StandaloneImplDecl #12 @5:1..5:26 is_unsafe=false
+// CHECK-NEXT:           interface:
+// CHECK-NEXT:             NamedTypeExpr #8 @5:6..5:14
 // CHECK-NEXT:               path:
-// CHECK-NEXT:                 ModulePath #10 @5:19..5:22 segments=["Box"]
+// CHECK-NEXT:                 ModulePath #7 @5:6..5:14 segments=["Hashable"] root=Relative
+// CHECK-NEXT:               args: []
+// CHECK-NEXT:           for_ty:
+// CHECK-NEXT:             NamedTypeExpr #10 @5:19..5:22
+// CHECK-NEXT:               path:
+// CHECK-NEXT:                 ModulePath #9 @5:19..5:22 segments=["Box"] root=Relative
 // CHECK-NEXT:               args: []
 // CHECK-NEXT:           where_: null
 // CHECK-NEXT:           type_params_id: null
 // CHECK-NEXT:           members_id:
-// CHECK-NEXT:             ClassMemberList #12 @5:23..5:26 nmembers=0
+// CHECK-NEXT:             ClassMemberList #11 @5:23..5:26 nmembers=0
 // CHECK-NEXT:               members: []
 // CHECK-NEXT:       attrs: null
 // CHECK-NEXT:     StatementListItem #28 @7:1..9:2
@@ -53,19 +51,21 @@
 // CHECK-NEXT:                   ty:
 // CHECK-NEXT:                     NamedTypeExpr #20 @7:27..7:28
 // CHECK-NEXT:                       path:
-// CHECK-NEXT:                         ModulePath #19 @7:27..7:28 segments=["T"]
+// CHECK-NEXT:                         ModulePath #19 @7:27..7:28 segments=["T"] root=Relative
 // CHECK-NEXT:                       args: []
 // CHECK-NEXT:                   default_: null
 // CHECK-NEXT:                   attrs: null
 // CHECK-NEXT:           type_params_id:
 // CHECK-NEXT:             GenericParams #18 @7:10..7:23 nparams=1
 // CHECK-NEXT:               params:
-// CHECK-NEXT:                 GenericTypeParam #17 @7:11..7:22 name="T" variance=Invariant
-// CHECK-NEXT:                   bound:
-// CHECK-NEXT:                     NamedTypeExpr #16 @7:14..7:22
-// CHECK-NEXT:                       path:
-// CHECK-NEXT:                         ModulePath #15 @7:14..7:22 segments=["Hashable"]
-// CHECK-NEXT:                       args: []
+// CHECK-NEXT:                 GenericTypeParam #17 @7:11..7:22 name="T"
+// CHECK-NEXT:                   bounds_id:
+// CHECK-NEXT:                     TypeParameterBoundList #16 @7:14..7:22
+// CHECK-NEXT:                       bounds:
+// CHECK-NEXT:                         NamedTypeExpr #15 @7:14..7:22
+// CHECK-NEXT:                           path:
+// CHECK-NEXT:                             ModulePath #14 @7:14..7:22 segments=["Hashable"] root=Relative
+// CHECK-NEXT:                           args: []
 // CHECK-NEXT:                   default_ty: null
 // CHECK-NEXT:               where_: null
 // CHECK-NEXT:           ret_ty:
@@ -93,7 +93,7 @@
 // CHECK-NEXT:                   ty:
 // CHECK-NEXT:                     NamedTypeExpr #31 @11:8..11:11
 // CHECK-NEXT:                       path:
-// CHECK-NEXT:                         ModulePath #30 @11:8..11:11 segments=["Box"]
+// CHECK-NEXT:                         ModulePath #30 @11:8..11:11 segments=["Box"] root=Relative
 // CHECK-NEXT:                       args: []
 // CHECK-NEXT:                   init: null
 // CHECK-NEXT:       attrs: null

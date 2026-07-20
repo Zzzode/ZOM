@@ -1,5 +1,7 @@
 fun f() {
+    g();
     let x = 1;
     const Y = 2;
     fun g() {}
+    g();
 }

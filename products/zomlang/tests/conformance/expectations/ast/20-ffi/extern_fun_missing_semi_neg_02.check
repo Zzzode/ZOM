@@ -2,7 +2,7 @@
 
 
 // CHECK-LITERAL: Error [ZOM2025]: Expected ';'
-// CHECK:   --> products {{(?:.*[/\\])?extern_fun_missing_semi_neg_02\.zom:3:1$}}
+// CHECK-LITERAL:   --> conformance/extern_fun_missing_semi_neg_02.zom:3:1
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 3 | }
 // CHECK-LITERAL:   | ^

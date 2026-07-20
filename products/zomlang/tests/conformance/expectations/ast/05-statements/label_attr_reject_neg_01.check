@@ -2,7 +2,7 @@
 
 
 // CHECK-LITERAL: Error [ZOM2076]: Unexpected token expected
-// CHECK:   --> products {{(?:.*[/\\])?label_attr_reject_neg_01\.zom:2:10$}}
+// CHECK-LITERAL:   --> conformance/label_attr_reject_neg_01.zom:2:10
 // CHECK-LITERAL:   |
 // CHECK-LITERAL: 2 |     lab: #[inline] { x = 1; }
 // CHECK-LITERAL:   |          ^

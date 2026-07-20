@@ -1,7 +1,7 @@
 // RUN: %zomc compile --dump-ast %corpus/04-expressions/index_trait_pos_07.zom | %FileCheck %s
 
 
-// CHECK: SourceFile #45 @1:1..15:1 file_name="index_trait_pos_07.zom"
+// CHECK: SourceFile #44 @1:1..15:1 file_name="index_trait_pos_07.zom"
 // CHECK-NEXT:   module: null
 // CHECK-NEXT:   statements:
 // CHECK-NEXT:     StatementListItem #10 @1:1..4:2
@@ -14,9 +14,9 @@
 // CHECK-NEXT:               members:
 // CHECK-NEXT:                 AssociatedTypeDecl #1 @2:5..2:17 name="Output"
 // CHECK-NEXT:                   type_params_id: null
-// CHECK-NEXT:                   bound: null
+// CHECK-NEXT:                   bounds_id: null
 // CHECK-NEXT:                   default_ty: null
-// CHECK-NEXT:                 MethodDecl #7 @3:5..3:40 name="index" is_static=false visibility=Default
+// CHECK-NEXT:                 MethodDecl #7 @3:5..3:40 name="index" mode=Instance visibility=Default
 // CHECK-NEXT:                   params_id:
 // CHECK-NEXT:                     FunctionParameterList #4 @3:14..3:24 nparams=1
 // CHECK-NEXT:                       params:
@@ -29,7 +29,7 @@
 // CHECK-NEXT:                   ret_ty:
 // CHECK-NEXT:                     NamedTypeExpr #6 @3:28..3:39
 // CHECK-NEXT:                       path:
-// CHECK-NEXT:                         ModulePath #5 @3:28..3:39 segments=["Self", "Output"]
+// CHECK-NEXT:                         ModulePath #5 @3:28..3:39 segments=["Self", "Output"] root=Relative
 // CHECK-NEXT:                       args: []
 // CHECK-NEXT:                   raises_ty: null
 // CHECK-NEXT:                   body: null
@@ -43,79 +43,77 @@
 // CHECK-NEXT:             ClassMemberList #11 @6:11..6:14 nmembers=0
 // CHECK-NEXT:               members: []
 // CHECK-NEXT:       attrs: null
-// CHECK-NEXT:     StatementListItem #28 @8:1..11:2
+// CHECK-NEXT:     StatementListItem #27 @8:1..11:2
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         StandaloneImplDecl #27 @8:1..11:2 is_unsafe=false
-// CHECK-NEXT:           ifaces_id:
-// CHECK-NEXT:             ImplIfaceList #16 @8:6..8:11 n_ifaces=1
-// CHECK-NEXT:               ifaces:
-// CHECK-NEXT:                 NamedTypeExpr #15 @8:6..8:11
-// CHECK-NEXT:                   path:
-// CHECK-NEXT:                     ModulePath #14 @8:6..8:11 segments=["Index"]
-// CHECK-NEXT:                   args: []
-// CHECK-NEXT:           for_ty:
-// CHECK-NEXT:             NamedTypeExpr #18 @8:16..8:19
+// CHECK-NEXT:         StandaloneImplDecl #26 @8:1..11:2 is_unsafe=false
+// CHECK-NEXT:           interface:
+// CHECK-NEXT:             NamedTypeExpr #15 @8:6..8:11
 // CHECK-NEXT:               path:
-// CHECK-NEXT:                 ModulePath #17 @8:16..8:19 segments=["Bag"]
+// CHECK-NEXT:                 ModulePath #14 @8:6..8:11 segments=["Index"] root=Relative
+// CHECK-NEXT:               args: []
+// CHECK-NEXT:           for_ty:
+// CHECK-NEXT:             NamedTypeExpr #17 @8:16..8:19
+// CHECK-NEXT:               path:
+// CHECK-NEXT:                 ModulePath #16 @8:16..8:19 segments=["Bag"] root=Relative
 // CHECK-NEXT:               args: []
 // CHECK-NEXT:           where_: null
 // CHECK-NEXT:           type_params_id: null
 // CHECK-NEXT:           members_id:
-// CHECK-NEXT:             ClassMemberList #26 @8:20..11:2 nmembers=2
+// CHECK-NEXT:             ClassMemberList #25 @8:20..11:2 nmembers=2
 // CHECK-NEXT:               members:
-// CHECK-NEXT:                 AssociatedTypeDecl #20 @9:5..9:23 name="Output"
+// CHECK-NEXT:                 AssociatedTypeDecl #19 @9:5..9:23 name="Output"
 // CHECK-NEXT:                   type_params_id: null
-// CHECK-NEXT:                   bound: null
+// CHECK-NEXT:                   bounds_id: null
 // CHECK-NEXT:                   default_ty:
-// CHECK-NEXT:                     PredefinedTypeExpr #19 @9:19..9:22 kind=I32
-// CHECK-NEXT:                 MethodDecl #25 @10:5..10:32 name="index" is_static=false visibility=Default
+// CHECK-NEXT:                     PredefinedTypeExpr #18 @9:19..9:22 kind=I32
+// CHECK-NEXT:                 MethodDecl #24 @10:5..10:32 name="index" mode=Instance visibility=Default
 // CHECK-NEXT:                   params_id:
-// CHECK-NEXT:                     FunctionParameterList #23 @10:14..10:24 nparams=1
+// CHECK-NEXT:                     FunctionParameterList #22 @10:14..10:24 nparams=1
 // CHECK-NEXT:                       params:
-// CHECK-NEXT:                         FunctionParameterDecl #22 @10:15..10:23 name="idx"
+// CHECK-NEXT:                         FunctionParameterDecl #21 @10:15..10:23 name="idx"
 // CHECK-NEXT:                           ty:
-// CHECK-NEXT:                             PredefinedTypeExpr #21 @10:20..10:23 kind=I32
+// CHECK-NEXT:                             PredefinedTypeExpr #20 @10:20..10:23 kind=I32
 // CHECK-NEXT:                           default_: null
 // CHECK-NEXT:                           attrs: null
 // CHECK-NEXT:                   type_params_id: null
 // CHECK-NEXT:                   ret_ty:
-// CHECK-NEXT:                     PredefinedTypeExpr #24 @10:28..10:31 kind=I32
+// CHECK-NEXT:                     PredefinedTypeExpr #23 @10:28..10:31 kind=I32
 // CHECK-NEXT:                   raises_ty: null
 // CHECK-NEXT:                   body: null
 // CHECK-NEXT:       attrs: null
-// CHECK-NEXT:     StatementListItem #35 @13:1..13:14
+// CHECK-NEXT:     StatementListItem #34 @13:1..13:14
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         LetStmt #34 @13:1..13:14 kind=Let
+// CHECK-NEXT:         LetStmt #33 @13:1..13:14 kind=Let
 // CHECK-NEXT:           declarations:
-// CHECK-NEXT:             VariableDeclaratorList #33 @13:5..13:13 n_decls=1
+// CHECK-NEXT:             VariableDeclaratorList #32 @13:5..13:13 n_decls=1
 // CHECK-NEXT:               decls:
-// CHECK-NEXT:                 VariableDeclarator #32 @13:5..13:13
+// CHECK-NEXT:                 VariableDeclarator #31 @13:5..13:13
 // CHECK-NEXT:                   pattern:
-// CHECK-NEXT:                     IdentifierPattern #29 @13:5..13:8 name="bag"
+// CHECK-NEXT:                     IdentifierPattern #28 @13:5..13:8 name="bag"
 // CHECK-NEXT:                       ty: null
 // CHECK-NEXT:                   ty:
-// CHECK-NEXT:                     NamedTypeExpr #31 @13:10..13:13
+// CHECK-NEXT:                     NamedTypeExpr #30 @13:10..13:13
 // CHECK-NEXT:                       path:
-// CHECK-NEXT:                         ModulePath #30 @13:10..13:13 segments=["Bag"]
+// CHECK-NEXT:                         ModulePath #29 @13:10..13:13 segments=["Bag"] root=Relative
 // CHECK-NEXT:                       args: []
 // CHECK-NEXT:                   init: null
 // CHECK-NEXT:       attrs: null
-// CHECK-NEXT:     StatementListItem #44 @14:1..14:25
+// CHECK-NEXT:     StatementListItem #43 @14:1..14:25
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         LetStmt #43 @14:1..14:25 kind=Let
+// CHECK-NEXT:         LetStmt #42 @14:1..14:25 kind=Let
 // CHECK-NEXT:           declarations:
-// CHECK-NEXT:             VariableDeclaratorList #42 @14:5..14:24 n_decls=1
+// CHECK-NEXT:             VariableDeclaratorList #41 @14:5..14:24 n_decls=1
 // CHECK-NEXT:               decls:
-// CHECK-NEXT:                 VariableDeclarator #41 @14:5..14:24
+// CHECK-NEXT:                 VariableDeclarator #40 @14:5..14:24
 // CHECK-NEXT:                   pattern:
-// CHECK-NEXT:                     IdentifierPattern #36 @14:5..14:10 name="value"
+// CHECK-NEXT:                     IdentifierPattern #35 @14:5..14:10 name="value"
 // CHECK-NEXT:                       ty: null
 // CHECK-NEXT:                   ty:
-// CHECK-NEXT:                     PredefinedTypeExpr #37 @14:12..14:15 kind=I32
+// CHECK-NEXT:                     PredefinedTypeExpr #36 @14:12..14:15 kind=I32
 // CHECK-NEXT:                   init:
-// CHECK-NEXT:                     IndexExpression #40 @14:18..14:24
+// CHECK-NEXT:                     IndexExpression #39 @14:18..14:24
 // CHECK-NEXT:                       object:
-// CHECK-NEXT:                         IdentExpr #38 @14:18..14:21 name="bag"
+// CHECK-NEXT:                         IdentExpr #37 @14:18..14:21 name="bag"
 // CHECK-NEXT:                       index:
-// CHECK-NEXT:                         IntLiteral #39 @14:22..14:23 base=10 value="0"
+// CHECK-NEXT:                         IntLiteral #38 @14:22..14:23 base=10 value="0"
 // CHECK-NEXT:       attrs: null

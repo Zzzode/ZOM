@@ -20,6 +20,7 @@
 #include "zc/core/one-of.h"
 #include "zc/core/vector.h"
 #include "zomlang/compiler/identity/canonical-scalar.h"
+#include "zomlang/compiler/identity/definition-key.h"
 #include "zomlang/compiler/identity/frozen-registry.h"
 #include "zomlang/compiler/identity/semantic-type-id.h"
 
@@ -154,7 +155,7 @@ struct NominalTypeData final {
 
 /// \brief Canonical generic type-parameter branch payload.
 struct TypeParameterTypeData final {
-  identity::DefId parameter;
+  identity::GenericParameterKey parameter;
 };
 
 /// \brief Canonical union type branch payload.
@@ -232,6 +233,12 @@ public:
     if (value.is<InterfaceBoundTypeData>()) return TypeDataTag::InterfaceBound;
     ZC_IREQUIRE(value.is<InterfaceSelfTypeData>(), "TypeData contains no semantic branch");
     return TypeDataTag::InterfaceSelf;
+  }
+
+  /// \brief Returns the primitive discriminator only for the primitive branch.
+  ZC_NODISCARD zc::Maybe<PrimitiveKind> primitiveKind() const noexcept {
+    if (!value.is<PrimitiveTypeData>()) return zc::none;
+    return value.get<PrimitiveTypeData>().kind;
   }
 
   template <typename Branch>

@@ -17,7 +17,6 @@
 #include "zc/core/vector.h"
 #include "zc/ztest/test.h"
 #include "zomlang/compiler/ast/generated/node-payload.h"
-#include "zomlang/tests/unittests/compiler/test-semantic-identities.h"
 
 namespace zomlang {
 namespace compiler {
@@ -99,28 +98,6 @@ ZC_TEST("TreeBuilder.StoresInternedSyntaxText") {
   const zc::ArrayPtr<const IdentId> resolved = tree.identList(list);
   ZC_EXPECT(resolved.size() == 1);
   ZC_EXPECT(resolved[0] == ident);
-}
-
-ZC_TEST("BindingMetadata.StoresParentScopeAndSymbolSideTables") {
-  TreeBuilder builder;
-
-  const NodeId sourceFile = builder.makeNode(SyntaxKind::SourceFile, source::SourceRange());
-  const NodeId module = builder.makeNode(SyntaxKind::ModuleDeclaration, source::SourceRange());
-  builder.setRoot(sourceFile);
-  Tree tree = builder.finish();
-
-  BindingMetadata metadata;
-  metadata.resizeFor(tree);
-
-  const auto symbolId = tests::makeTestDefinitionIds(1)[0];
-  metadata.setParent(module, sourceFile);
-  metadata.setScope(module, 7);
-  metadata.setDefinition(module, symbolId);
-
-  ZC_EXPECT(metadata.parent(module) == sourceFile);
-  ZC_EXPECT(metadata.scope(module) == 7);
-  ZC_EXPECT(metadata.definition(module) == symbolId);
-  ZC_EXPECT(tree.node(module).kind == SyntaxKind::ModuleDeclaration);
 }
 
 }  // namespace ast

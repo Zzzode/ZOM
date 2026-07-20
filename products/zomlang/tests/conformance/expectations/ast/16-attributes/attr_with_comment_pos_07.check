@@ -23,4 +23,4 @@
 // CHECK-NEXT:               path:
 // CHECK-NEXT:                 AttributePath #2 @1:33..1:43 segments=["doc", "alias"] leading=None
 // CHECK-NEXT:               args:
-// CHECK-NEXT:                 StrLiteral #1 @1:44..1:50 value="help" is_raw=false prefix=None
+// CHECK-NEXT:                 StringLiteralExpr #1 @1:44..1:50 value="help"
