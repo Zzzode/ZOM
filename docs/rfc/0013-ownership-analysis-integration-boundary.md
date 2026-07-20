@@ -2,20 +2,20 @@
 rfc: 13
 title: Ownership Analysis Integration Boundary
 type: compiler
-status: ACCEPTED
+status: IMPLEMENTING
 author: ZOM Compiler Team
 review-manager: rfc
 required-owners: [task-router, rfc, binder-checker, module-system, error-system, concurrency, ir-backend, runtime-memory, spec-audit, verification]
 approvers: [task-router, rfc, binder-checker, module-system, error-system, concurrency, ir-backend, runtime-memory, spec-audit, verification]
 created: 2026-07-11
-updated: 2026-07-11
+updated: 2026-07-17
 area: compiler
 requires: [5, 8, 10, 11]
 supersedes: []
 superseded-by: []
 discussion: docs/rfc/tracking/0013-review-and-implementation.md#discussion-record
 decision: docs/rfc/tracking/0013-review-and-implementation.md#decision-record
-implementation: TBD
+implementation: docs/rfc/tracking/0013-review-and-implementation.md#implementation-tracker
 tracking-issue: docs/rfc/tracking/0013-review-and-implementation.md#implementation-tracker
 ---
 
@@ -1060,3 +1060,4 @@ None
 | 2026-07-11 | DRAFT | Replaced the unsound structural-leaf draft with a conservative root-only overlay, exact accepted-base hashes, complete module-interface v1 codec, typed signature failures, foreign-summary reuse, and revision-bound frontend evidence. |
 | 2026-07-11 | REVIEW | Entered formal owner review after exact-hash governance, semantic, and invariant entry reviews approved the root-only contract, branded evidence repository, module-interface v1, MIR revision v2, staged failure precedence, and transitive re-export proof selection. |
 | 2026-07-11 | ACCEPTED | All ten required owners approved the same exact REVIEW snapshot with no objections. The accepted design remains unimplemented until an explicit `ACCEPTED -> IMPLEMENTING` transition. |
+| 2026-07-17 | IMPLEMENTING | Started the direct ownership-integration replacement series with the accepted borrow-interface surface, branded BorrowEvidence repository, checked-module and HIR evidence lineage, MIR revision v2, and ownership-result seam. No predecessor or compatibility rail is permitted. |

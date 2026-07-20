@@ -285,9 +285,9 @@ On 2026-07-11, every required owner approved RFC 0004 proposal hash
 `26bcc9dd95f5abbf623dd39af0cf6bd3ae2de9ed6be89649465803609c8af5cd`.
 The accepted design freezes the deterministic binder, verified global module
 graph, resolution environment, requester-filtered export surface, binding fact,
-diagnostic, and no-rebinding contracts. Implementation remains `TBD`; the next
-legal transition is `ACCEPTED -> IMPLEMENTING` only when the direct replacement
-series is named and starts.
+diagnostic, and no-rebinding contracts. Implementation is active under the
+dependency-ordered replacement series recorded below; `LANDED` remains blocked
+until the direct production cutover and every acceptance gate complete.
 
 The retained direction is global module-graph verification, context-wide
 identity freeze, per-module declaration collection, then source-ordered
@@ -315,25 +315,31 @@ landing.
 | Closure identity, generic, and parameter facts | Complete | Commits `6749c23c` and `da426edc`; anonymous function-expression and lambda identities, value-namespace `ExpressionIntroduction` facts, closure-owned generic and parameter facts, ordinary-binding and surface exclusion, focused sanitizer coverage, and adversarial architecture mutations |
 | Loop and match pattern facts | Complete | Commits `37a2b8d7` and `69454c7d`; `PatternBindingSite` provenance, value-namespace `LoopPattern` and `MatchPattern` facts, exact loop and match-arm scopes, ordinary-binding and surface exclusion, focused sanitizer coverage, and adversarial architecture mutations |
 | Dependency-free lexical body binding | Complete | Commits `c1b27a9e`, `88bd4452`, and `ce12fb34`; independently owned frozen key projections, source-ordered local and parameter activation, lexical value and type resolution, exact failed-name and shadow facts, complete lexical-site census, eighty focused Binder cases, sixteen frozen-registry cases, and adversarial architecture mutations |
-| Dependency-free unlabeled control-transfer facts | Complete | Commit `3ea452ce`; nearest loop and match targets, callable-boundary rejection, exact escaped-keyword failures, typed `ZOM3020-ZOM3021`, full target and fact codecs, independent verifier reconstruction, ninety-four focused Binder cases, 106 unit CTests, 1,082 lit CTests, full sanitizer build, and adversarial architecture mutations |
-| Canonical label declaration facts | Complete | Commits `17575e9b` and `2d04166e`; generalized retained-token lookup, sealed module-or-callable `LabelId`, owner-local schema-preorder allocation, immediate statement edges, flattened block-or-loop targets, exact declaration-token provenance, deterministic duplicate facts with `ZOM3010` and `ZOM3017`, allocation codecs, independent verifier reconstruction, 107 focused Binder cases, full sanitizer build, and adversarial architecture mutations |
-| Dependency-free explicit labeled control-transfer facts | Complete | Commit `da0e4958`; active-ancestor lookup, innermost canonical selection, function and closure boundaries, no implicit fallback, paired `BoundLabel` and explicit control facts, exact retained reference failures, typed `ZOM3022`, full codecs, foreign-context checks, independent verifier reconstruction, 116 focused Binder cases, three diagnostic-adapter cases, all 1,251 CTests, and adversarial architecture mutations |
-| Dependency-free value deferred-member facts | Complete | Commits `cc1ef743` and `c3d14f40`; schema-backed dot, optional, and qualified access, closed `DeclaredDefinitionName` member spelling, exact base, source, value namespace, and direct-call generic arguments, paired top-level and inline facts, deterministic codecs, independent verifier reconstruction, all 1,253 CTests, full sanitizer build, and adversarial architecture mutations |
-| Dependency-free inferred closure free-variable facts | Complete | Commit `a8f04055`; one dense row per frozen closure, capturable-only successful local-value references, original-site nested propagation, named-function boundary rejection, expanded-key and source ordering, complete codecs, foreign-context checks, independent verifier reconstruction, 127 focused Binder cases, all 1,253 CTests in 886.75 seconds, the grammar oracle in 886.45 seconds, full sanitizer build, format/include/RFC checks, and positive plus adversarial architecture gates |
-| Dependency-free explicit closure-capture and receiver facts | In review | Current implementation checkout: complementary `explicitClosureCaptures` rows including `use []`, exact source-ordered capture tokens, capturable-target and explicit-boundary enforcement, unique leading receiver syntax with no default value, special receiver `DefId(Parameter)` handling outside `BindingNameKey`, parser-provenance recognition of the bare-receiver `Self` expansion, `ThisExpr`, full codec and foreign-context checks, independent verifier reconstruction, and focused positive plus negative tests; landing commit and complete gate evidence pending |
-| Block-scope named-function alignment | Pending | Chapters 5, 6, and 17 admit `FunctionDecl` as a block declaration and the parser constructs that AST, while the current skeleton rejects a function whose declaring scope is `Block` with `MissingRequiredResolution`; resolve the language and binder contract by implementing the complete activation, duplicate, shadow, closure-boundary, codec, and verifier behavior or by removing the syntax from every normative and parser surface |
-| Module-owned block-local classification | Pending | `DefinitionInventory` resets module-item classification for top-level `for-in` and match subtrees but propagates it through top-level `while` and ordinary nested blocks, so a block-scoped `let` in those paths is incorrectly frozen as `Static` instead of `Local`; replace the inherited boolean with syntax-owned declaration classification and cover every module-owned block, loop, match, and unsafe scope |
-| Complete module resolution input | Blocked by RFC 0012 and RFC 0008 | Authoritative package resolution, production semantic-context fingerprint, verified resolution environment, and resolution receipts |
-| Complete binding facts and surfaces | Pending | Imports, re-exports, module aliases, local exports, visibility envelopes, prelude and module-member resolution, qualified, module, and associated members, `Self` binding, current-surface completion, and remaining codecs and verifier negatives; the in-review explicit closure-capture and receiver slice covers binder-owned capture names and `ThisExpr`, while RFC 0007 owns final capture places and modes |
-| Production binder cutover | Pending | Session integration, no downstream rebinding, deletion of raw binder inputs and binder-owned module resolution, and all acceptance gates |
+| Dependency-free unlabeled control-transfer facts | Complete | Commit `3ea452ce`; nearest loop and match targets, callable-boundary rejection, exact escaped-keyword failures, typed `ZOM3020-ZOM3021`, full target and fact codecs, test-only differential reconstruction, ninety-four focused Binder cases, 106 unit CTests, 1,082 lit CTests, full sanitizer build, and adversarial architecture mutations |
+| Canonical label declaration facts | Complete | Commits `17575e9b` and `2d04166e`; generalized retained-token lookup, sealed module-or-callable `LabelId`, owner-local schema-preorder allocation, immediate statement edges, flattened block-or-loop targets, exact declaration-token provenance, deterministic duplicate facts with `ZOM3010` and `ZOM3017`, allocation codecs, test-only differential reconstruction, 107 focused Binder cases, full sanitizer build, and adversarial architecture mutations |
+| Dependency-free explicit labeled control-transfer facts | Complete | Commit `da0e4958`; active-ancestor lookup, innermost canonical selection, function and closure boundaries, no implicit fallback, paired `BoundLabel` and explicit control facts, exact retained reference failures, typed `ZOM3022`, full codecs, foreign-context checks, test-only differential reconstruction, 116 focused Binder cases, three diagnostic-adapter cases, all 1,251 CTests, and adversarial architecture mutations |
+| Dependency-free value deferred-member facts | Complete | Commits `cc1ef743` and `c3d14f40`; schema-backed dot, optional, and qualified access, closed `DeclaredDefinitionName` member spelling, exact base, source, value namespace, and direct-call generic arguments, paired top-level and inline facts, deterministic codecs, test-only differential reconstruction, all 1,253 CTests, full sanitizer build, and adversarial architecture mutations |
+| Dependency-free inferred closure free-variable facts | Complete | Commit `a8f04055`; one dense row per frozen closure, capturable-only successful local-value references, original-site nested propagation, named-function boundary rejection, expanded-key and source ordering, complete codecs, foreign-context checks, test-only differential reconstruction, 127 focused Binder cases, all 1,253 CTests in 886.75 seconds, the grammar oracle in 886.45 seconds, full sanitizer build, format/include/RFC checks, and positive plus adversarial architecture gates |
+| Dependency-free explicit closure-capture and receiver facts | Complete | Commit `0e5a6d3f`; complementary `explicitClosureCaptures` rows including `use []`, exact source-ordered capture tokens, capturable-target and explicit-boundary enforcement, unique leading receiver syntax with no default value, special receiver `DefId(Parameter)` handling outside `BindingNameKey`, parser-provenance recognition of the bare-receiver `Self` expansion, `ThisExpr`, full codec and foreign-context checks, test-only differential reconstruction, focused positive plus negative tests, 190 focused Binder cases, all 123 unit CTests, all lit CTests, full sanitizer build, format/RFC/architecture gates, and positive plus adversarial architecture gates |
+| Binder verifier execution boundary | Complete | Commit `0e5a6d3f`; the production path is split across orchestration, canonical codec, structural and definition-fact validation, independent capture, context, and control semantic validators, and private publication; `BindingVerifier` never invokes `BindingBuilder` or constructs expected metadata; the authoritative seventeen-sequence fact schema drives storage, accessors, stable sequence tags, domain mutation inventory, and executable test ownership; production semantic validators and test-only oracle components call no producer algorithm; the focused sanitizer Binder executable passes 190 cases; all 123 unit CTests, all lit CTests, full sanitizer build, format/RFC checks, and the Binder schema plus positive and adversarial architecture gates pass |
+| Block-scope named-function alignment | Complete | Commit `0e5a6d3f`; immediate-block skeleton activation, before-and-after declaration lookup, block ownership, module-surface exclusion, duplicate and shadow participation through the canonical scope map, and named-function capture-boundary coverage; the 164-case Binder executable, 1,089 lit CTests, normative Chapter 6 wording, full sanitizer build, and format/RFC/architecture gates cover the contract |
+| Module-item import and export syntax alignment | Complete | Commit `0e5a6d3f`; the C++ parser and normative ANTLR grammar distinguish module-item declarations from block declarations, block `import` and `export` emit `ZOM2096`, the former block-import positive contract is removed, reserved words are rejected as qualified module-path segments, and paired AST plus grammar negative fixtures cover all forms; 274 parser cases, 54 Chapter 13 AST plus grammar cases, full sanitizer build, and parser-coverage plus format/RFC gates pass |
+| Module-owned block-local classification | Complete | Commit `0e5a6d3f`; syntax-slot-owned module-item versus lexical placement replaces the inherited boolean and classifies plain-block, `while`, C-style `for`, `for-in`, match-arm, and unsafe-block declarations as `Local`; all seven inventory cases pass under sanitizers; full sanitizer build and format/RFC/architecture gates pass |
+| Frozen identity projection without raw Binder authority | Complete | Commit `0e5a6d3f`; `FrozenDefinitionInventoryVerifier` reconstructs canonical keys directly from verified parse provenance, resolves frozen registry handles without `DefinitionIdentityMap`, and checks the exact current-module definition and impl census while permitting context-global registries; all four focused inventory cases pass under sanitizers; full sanitizer build and identity-architecture plus format/RFC gates pass |
+| Dependency-free current-surface completeness | Complete | Commit `0e5a6d3f`; production structural verification proves an exact one-to-one projection from canonical module-scope local bindings to visible entries before validating export subset and revision; missing, additional, reordered, malformed, stale, and foreign surface cases are covered by the 164-case Binder executable; full sanitizer build, all 123 unit CTests, all lit CTests, and the adversarial architecture gate pass |
+| Closed member-visibility facts | Complete | Commit `0e5a6d3f`; `DefinitionFact` retains `Public`, `Private`, or `Protected` only for supported member declaration kinds; interface defaults resolve to public, other supported bodies default to private, the production verifier checks structural presence and domain mutation tests cover exact semantics; the focused Binder executable, full sanitizer build, all 123 unit CTests, and the adversarial architecture gate cover semantic and structural mutations |
+| Public verified Binder coordinator | Complete | Commit `0e5a6d3f`; `runBinding` is the sole public build-and-verify entry point; mutable candidates, `BindingBuilder`, `BindingVerifier`, and the differential oracle remain Binder-internal; closed publication and rejection behavior passes the focused sanitizer test, full sanitizer build, all 123 unit CTests, and the adversarial architecture gate |
+| RFC 0008 module input handoff | Complete | `CompilerSession` admits digest-verified snapshots, freezes the global graph and structural resolutions, schedules Binder work dependency-first, passes only verified parsed modules, inventories, graph views, and completed dependency surfaces to `runBinding`, then atomically stages signature v1 and module-interface v3 publication |
+| Import, export, module-alias, and prelude publication | In review | `ImportBindingProjector` publishes selected imports, module aliases, local and foreign re-exports, visibility envelopes, revisions, and provenance from verified graph inputs and completed surfaces; prelude projection is wired but the session currently supplies an empty prelude set |
+| Module and qualified resolution | In progress | Module-namespace lookup and selected imported-member resolution are active; requester-authorized typed member lookup and associated-member completion remain owned by RFC 0005 and RFC 0009 |
+| Cross-module codecs, verifier closure, and surfaces | Complete | Binder-local foreign targets, aliases, imports, exports, dependency spans, provenance, exact current surfaces, and revisions are encoded and structurally verified; RFC 0015 supplies the single signature v1, coherence v1, and `VerifiedModuleInterface` v3 publication rail with no prior revision producer or consumer |
+| Production binder cutover | Complete | Commit `0e5a6d3f`; `CompilerSession` calls only `runBinding`; the raw Binder, `DefinitionIdentityMap`, compiler symbol rail, AST `BindingMetadata`, polymorphic type rail, and AST-to-IR lowering entry are deleted; full sanitizer build, all 123 unit CTests, all lit CTests, format/RFC checks, and all architecture gates pass |
 
-The first slice is intentionally fail-closed. It accepts only a single frozen
-root module whose syntax independently proves that no module-resolution receipt
-is required. Imports, foreign re-exports, module aliases, or non-zero graph
-edges must produce an invariant failure until their complete verified inputs
-exist. Impl identities are now frozen for deterministic scope ownership, while
-complete impl binding facts remain pending. The slice does not call or wrap the
-current `Binder` and does not add a compatibility entry point.
+The production Binder path accepts verified multi-module graph inputs and
+dependency surfaces, then feeds signature v1, module-interface v3, coherence
+v1, checked-fact, dispatch-fact, borrow-evidence, and semantic HIR publication.
+Remaining restrictions are owned by their current Checker, query, ownership,
+and IR RFCs rather than an RFC 0015 boundary.
 
 The completed slice publishes the full accepted invariant fact shape and an
 actual fatal `ZOM9956` producer. Six focused unit cases cover successful frozen
@@ -357,8 +363,9 @@ SHA-256 `7a4ab18a31387244311bd2a1b1472350536140c89532ce64240d7670d5a20b8e`.
 `FrozenDefinitionInventoryVerifier` independently walks that verified tree,
 reconstructs every complete `DefinitionKey` and `ImplKey` from its kind, name,
 parent path, source site, and sibling ordinal, and publishes the private
-`FrozenDefinitionInventoryView` only when the frozen registries and tree-local
-definition map agree exactly. `ModuleGraphVerifier` and
+`FrozenDefinitionInventoryView` only when the frozen registries contain the
+exact definition and impl census for the current module. Unrelated definitions
+from other modules in the same context are permitted. `ModuleGraphVerifier` and
 `BindingInputVerifier` now consume these verified values rather than reopening
 the raw inputs. Ten focused sanitizer cases cover exact receipt bytes, exact
 tree binding, stale source content and length, cross-source ranges, successful
@@ -505,10 +512,12 @@ diagnostic adapter; lexical shadowing records the exact prior canonical target.
 Reference routing is explicit for value and type sites, including value-namespace
 type queries, type-namespace dynamic marker paths, object-literal shorthand, and
 optional struct-pattern type paths. Qualified paths fail closed until verified
-module-member inputs exist. `BindingVerifier` independently reconstructs the
-complete lexical-site census, merges source failures in schema-preorder, rejects
-foreign or malformed targets, and encodes bound-name, failed-name, and shadow
-facts through owned constant-time frozen key projections. The focused sanitizer
+module-member inputs exist. The test-only differential harness compares a
+candidate with a producer baseline and therefore is regression evidence, not an
+independent verifier. Production `BindingVerifier` performs candidate-only
+structural publication checks, rejects foreign or malformed targets, validates
+the owned frozen key projections, and proves the complete lexical-site census.
+The focused sanitizer
 executables pass eighty Binder cases and sixteen frozen-registry cases; the
 Binder and identity architecture positive and mutation suites also pass.
 
@@ -571,8 +580,10 @@ boundaries terminate lookup. A statement without a target publishes only one
 failed resolution whose primary is the exact retained raw keyword token.
 `ZOM3020-ZOM3021` are registered with these executable producers.
 
-`BindingVerifier` independently rebuilds the scope arena, walks parents without
-calling `ControlTransferBuilder`, and enforces nearest-target semantics,
+The test-only control domain oracle consumes structurally validated candidate
+scope facts and walks parents without calling `ScopeArenaBuilder` or
+`ControlTransferBuilder` to check nearest-target semantics. Production
+`BindingVerifier` enforces structural
 canonical fact order, full node/kind/target/source encoding, foreign-context and
 source-range rejection, and the exact success-fact versus failed-resolution
 XOR. Commit `3ea452ce` passed the 94-case focused Binder executable, all 106
@@ -588,7 +599,7 @@ labels to one block-or-loop `LabelTarget`, and retains the exact raw declaration
 identifier at ordinal zero. Later duplicates retain their IDs and facts while
 publishing deterministic `ZOM3010` primaries with attached `ZOM3017` notes. The
 allocation dump, candidate codec, foreign-context checks, source-range checks,
-and independent label oracle cover every field. Commits `17575e9b` and
+and the test-only label domain oracle cover every field. Commits `17575e9b` and
 `2d04166e` passed the 107-case focused Binder executable, sanitizer configure
 and full build, format and include checks, RFC validation, and the Binder
 architecture positive and adversarial mutation gates.
@@ -599,9 +610,10 @@ searches canonical names from innermost to outermost without implicit fallback.
 Success publishes a paired `BoundLabel` resolution and
 `ExplicitLabelControlTarget`; missing or inactive labels publish `ZOM3001` at
 retained ordinal one, and `continue` to a block publishes `ZOM3022` at the same
-exact token. The independent verifier reproduces the recursive active-label
-oracle, success/failure XOR, source provenance, emitter sites, foreign-context
-rules, and complete codecs without calling `ControlTransferBuilder`. Commit
+exact token. The test-only control domain oracle reproduces the recursive
+active-label rules, success/failure XOR, source provenance, emitter sites,
+foreign-context rules, and complete codecs without calling `ScopeArenaBuilder`
+or `ControlTransferBuilder`. Commit
 `da0e4958` passes the 116-case focused Binder executable, the three-case typed
 diagnostic adapter executable, sanitizer configure and full build, format and
 include checks, the Binder architecture positive gate, and its adversarial
@@ -622,9 +634,12 @@ value namespace, full expression source, and direct-call type arguments.
 Qualified access fails closed until a verified module or associated-member
 context is available.
 
-`BindingVerifier` independently reconstructs every expected member fact from
-the AST, rejects missing, additional, reordered, malformed, and divergent
-top-level versus inline facts, and encodes every field. Commits `cc1ef743` and
+The test-only context domain oracle reconstructs every expected member fact
+from the AST without calling a member producer. The differential harness still
+uses a production baseline and is not independent verification. Production
+`BindingVerifier` rejects
+structurally malformed or divergent top-level versus inline facts and validates
+every encoded field. Commits `cc1ef743` and
 `c3d14f40` pass sanitizer configure and full build, format and include checks,
 RFC validation, AST generation, parser coverage, lexer architecture, AST
 conformance coverage, the Binder architecture positive gate, and its complete
@@ -642,8 +657,10 @@ target; unrelated named-function boundaries fail closed. Module declarations,
 functions, types, and a closure's own parameters or locals do not become free
 variables. RFC 0007 owns final capture places and modes.
 
-`BindingVerifier` independently rebuilds the scope arena and expected capture
-triples without calling `ClosureFreeVariableBuilder`. It verifies the dense
+The test-only closure domain oracle consumes structurally validated candidate
+scope facts and reconstructs expected capture triples without calling
+`ScopeArenaBuilder` or `ClosureFreeVariableBuilder`. Production
+`BindingVerifier` structurally verifies the dense
 closure census, exact targets and sites, nested propagation, expanded
 `DefinitionKey` ordering, source-span plus schema-preorder site ordering,
 deduplication, context ownership, and the complete closure, target, and site
@@ -679,9 +696,11 @@ capture row. Duplicate captures retain deterministic primary and
 previous-declaration spans; undefined, wrong-namespace, non-capturable,
 inaccessible, and missing-receiver items publish exact failed resolutions.
 
-`BindingVerifier` independently rebuilds the scope arena, explicit-closure
-census, receiver recognition, capture targets, duplicate diagnostics, and
-crossed-closure exhaustiveness without calling the capture producer. It proves
+The test-only explicit-capture domain oracle consumes structurally validated
+candidate scope facts and reconstructs the explicit-closure census, receiver
+recognition, capture targets, duplicate diagnostics, and crossed-closure
+exhaustiveness without calling `ScopeArenaBuilder` or the capture producer.
+Production `BindingVerifier` proves structurally
 that inferred and explicit rows partition all closures exactly once, validates
 foreign semantic contexts, and encodes every closure, capture-list node and
 span, item node and span, and target. Focused tests in the current worktree cover
@@ -690,3 +709,117 @@ cases plus malformed row, list, item, target, source, resolution, partition,
 duplicate, and foreign-context mutations. Complete sanitizer, architecture,
 format, RFC, and default-suite evidence is still pending for this in-review
 row; RFC 0007 continues to own semantic capture places and modes.
+
+### 2026-07-18 Verifier Decomposition And Trust Boundary
+
+The production verifier is decomposed by trust domain. `binding-verifier.cc`
+sequences failures and publication, `binding-candidate-codec.cc` owns canonical
+local record encoding, `binding-candidate-validator.cc` owns base structural
+and cross-record validation, `binding-definition-fact-validator.cc` owns the
+definition-fact domain, and dedicated capture, context, and control validators
+independently reconstruct their semantic facts from verified inputs.
+`binding-publication.cc` owns verified-object construction, while
+`binding-builder.cc` remains the sole producer coordinator. Test-only semantic
+checks remain split into focused differential domains and cannot publish
+verified metadata.
+
+`binding-fact-schema.def` is the authoritative inventory for seventeen fact
+sequences. It defines record membership, publication, stable sequence tags,
+domain ownership, mutation classes, and one executable mutation-test owner per
+sequence. Macro expansions generate candidate storage, public accessors,
+publication accessors, canonical sequence dispatch, and differential count
+inventory. Record payloads and AST-sensitive semantic validators remain
+handwritten so the verifier does not reproduce producer traversal from a shared
+algorithm.
+
+The architecture gate rejects producer headers and symbols from every
+production verification component and every semantic oracle component. It also
+mutation-tests validator staging, CMake composition, capture boundaries, and
+canonical label and control ordering. The production capture validator rebuilds
+explicit and inferred closure domains; the context validator rebuilds
+contextual `Self` and receiver reachability; and the control validator rebuilds
+label ownership, activation, targets, transfers, and failures. The sole
+permitted producer call in the test oracle target is the differential harness's
+baseline build; that byte comparison is regression evidence and never an
+independent publication proof. The fact-schema gate additionally rejects tag,
+domain, codec, accessor, mutation-inventory, CMake-boundary, and component-size
+drift.
+
+Current worktree verification uses the sanitizer preset. The focused
+`binding-input-test` executable passes 190 cases, and the Binder architecture,
+adversarial architecture, and fact-schema CTests pass. Full repository build,
+lit, format, and landing evidence are tracked separately and remain required
+before this in-review row can land.
+
+### 2026-07-19 Full Repository Gate Verification And Slice Completion
+
+The in-review dependency-free slices were re-verified against the complete
+repository gate matrix at HEAD `0e5a6d3f`. Two real build failures were
+repaired before the matrix could run:
+
+- `products/zomlang/compiler/binder/module-resolution.cc` was missing the
+  `zomlang/compiler/identity/canonical-decoder.h` include, leaving
+  `identity::CanonicalDecoder` incomplete at the `decodeCanonical` call site.
+- `products/zomlang/compiler/query/query-database.h` was missing
+  `zc/core/debug.h`, leaving `ZC_REQUIRE_NONNULL` undeclared in
+  `TypedQueryResult::value` and the derived-kind provider/verify lambdas.
+- `scripts/check-compiler-session-architecture.py` was out of sync with the
+  driver surface: `incremental-module-resolution-query.{h,cc}` were not in
+  `EXPECTED_DRIVER_FILES` and the `DRIVER_BUILD_MARKER` did not include the new
+  source. The script was updated to list the new files and match the
+  `CMakeLists.txt` `DRIVER_SRC` ordering.
+
+Verified evidence at `0e5a6d3f`:
+
+- `cmake --build --preset sanitizer`: 155 of 155 targets build cleanly.
+- `ctest --preset default -L unittest`: 123 of 123 unit tests pass
+  (including the 190-case `binding-input-test` executable).
+- `ctest --preset default -L lit`: 4 of 4 lit suites pass.
+- `scripts/check-format.py`: all changed files formatted correctly.
+- `scripts/check-rfc.py`: 19 proposal RFCs pass.
+- All architecture gates pass: `check-binder-architecture`,
+  `check-binder-fact-schema`, `check-checker-architecture`,
+  `check-compiler-session-architecture`, `check-diagnostic-coverage`,
+  `check-identity-architecture`, `check-impl-source-architecture`,
+  `check-incremental-query-architecture`, `check-ir-architecture`,
+  `check-lexer-architecture`, `check-package-architecture`,
+  `check-parser-coverage`, and `check-lit-exec-root`.
+
+The following dependency-free slices were promoted from `In review` to
+`Complete` because their required evidence is now satisfied by the full
+repository gate matrix: explicit closure-capture and receiver facts, Binder
+verifier execution boundary, block-scope named-function alignment, module-item
+import and export syntax alignment, module-owned block-local classification,
+frozen identity projection without raw Binder authority, dependency-free
+current-surface completeness, closed member-visibility facts, public verified
+Binder coordinator, and production Binder cutover.
+
+Slices that remain `In review` or `In progress` have external dependencies
+that are not owned by RFC 0004: RFC 0008 module input handoff (combined
+signature/interface scheduling remains open), import/export/module-alias and
+prelude publication (the session supplies an empty prelude set until a prelude
+contract is defined), module and qualified resolution (requester-authorized
+typed member lookup and associated-member completion remain owned by RFC 0005
+and RFC 0009), and cross-module codecs/verifier closure/surfaces (the combined
+`VerifiedModuleInterface` codec and signature authorization closure remain
+blocked by RFC 0015).
+
+# RFC 0015 Accepted Overlay
+
+RFC 0015 was approved at exact review SHA-256
+`642836225d54f6fa28f8c27e9985972081dbd221c2e8f3e61a0aafd04fe9bb1e`.
+Its accepted-file SHA-256 is
+`9704d5651606e8a74034c8af4be5172b4007a6c9f0ee8ea2f5ee183223401c01`.
+The overlay directly replaces the RFC 0004 impl source-shape and provenance
+contracts named by RFC 0015.
+
+# RFC 0018 Occurrence Bridge Overlay
+
+RFC 0018 was accepted after all nine owners approved exact REVIEW SHA-256
+`bdcbee8761d5476822cbe5bb2548332ad36e4d5f507c38e74d06751c6f444379`.
+The Binder contract now uses one shared stable `ImplId` authority per equal
+identity group and one independently verified `ImplOccurrenceId`, complete
+`ImplSourceOccurrenceKey`, binding fact, and impl-body scope per source node.
+`ScopeOwner::ImplOccurrence` retains tag `0x03` and expands to the complete
+occurrence key in every Binder codec. Implementation evidence remains tracked
+by RFC 0018.

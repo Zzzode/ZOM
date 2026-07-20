@@ -8,7 +8,7 @@ review-manager: rfc
 required-owners: [rfc, lexer-parser, binder-checker, error-system, module-system, ir-backend, runtime-memory, concurrency, spec-audit, verification]
 approvers: [rfc, lexer-parser, binder-checker, error-system, module-system, ir-backend, runtime-memory, concurrency, spec-audit, verification]
 created: 2026-07-05
-updated: 2026-07-16
+updated: 2026-07-18
 area: compiler
 requires: [1, 2, 3, 4, 11]
 supersedes: []
@@ -183,6 +183,17 @@ Compound assignment is checked through the operator trait assigned by RFC
 0009. `value += rhs` cannot bypass `Add` lookup or its signature rules.
 
 ## Reference-Level Design
+
+RFC 0015 remains authoritative for the canonical impl-pattern, impl-head,
+marker-evidence, signature, and coherence codecs. RFC 0018 is authoritative for
+their source-publication bridge: every implementation source occurrence has an
+independently verified occurrence key, Binder fact, and impl-body scope under
+one shared stable `ImplId` authority per equal identity group. Source
+occurrences are reconstructed and classified independently. Only a unique
+ordinary survivor publishes an `ImplHead`, and only a unique marker survivor
+publishes explicit marker evidence. A survivor-conflict group publishes neither
+semantic fact. Occurrence handles and dense slots never enter semantic type,
+signature, module-interface, coherence, substitution, or witness identity.
 
 ### Pipeline Boundary
 
@@ -1467,10 +1478,14 @@ Its SHA-256 is
 Integration oracles replace every one-byte component with a complete real
 record and prove module/revision association and authorization closure.
 
-The coherence builder receives only frozen module interfaces. It validates
-orphan legality, canonical impl and marker records, exact module/revision
-association, and overlap before publishing a view. Overlap emits `ZOM4017` in
-the `Coherence` stage and selects `SourceRejected`; no body checking starts.
+The coherence builder receives only frozen module interfaces containing unique
+RFC 0015 survivor publications. Occurrence-specific exact-identity and marker
+conflicts are resolved before interface publication, with one `ZOM4017` per
+later surviving occurrence and one `ZOM4071` at the first survivor. The global
+builder validates orphan legality, canonical impl and marker records, exact
+module/revision association, and overlap before publishing a view. Global
+overlap emits `ZOM4017` in the `Coherence` stage and selects `SourceRejected`;
+no body checking starts.
 Malformed identities, revisions, records, or candidate ordering select
 `InvariantRejected`. A frozen view is the only successful result and contains
 no failure or recovery handle.
@@ -2762,6 +2777,10 @@ unmeasured thresholds.
     `.zom` conformance matrices cover every closed variant and negative branch.
 29. RFC, format, sanitizer, focused checker/type, deterministic permutation,
     and default CTest gates pass.
+30. Every source implementation occurrence is independently reconstructed and
+    classified under one shared stable authority per identity group. Only
+    unique survivors enter impl-head or explicit-marker maps; occurrence
+    handles and occurrence-owned Binder state never enter coherence identity.
 
 ## Implementation Plan
 
@@ -2776,8 +2795,9 @@ unmeasured thresholds.
    signature verifier, revision codec, and diagnostic facts.
 5. Integrate RFC 0008 requester signature views and module-interface projection;
    freeze every module signature before constructing global coherence.
-6. Implement canonical impl patterns, overlap checking, marker facts,
-   `FrozenCoherenceView`, and its revision.
+6. Reconstruct and classify occurrence-owned source impls, publish only unique
+   survivors, then implement canonical impl patterns, overlap checking, marker
+   facts, `FrozenCoherenceView`, and its revision.
 7. Implement body coercion, cast, substitution, witness, call, operator,
    literal, constant, aggregate, compound-assignment, place, member, index,
    pattern, exhaustiveness, observed-operation, capture, unsafe, projection,
@@ -2891,3 +2911,4 @@ None
 | 2026-07-11 | REVIEW | Entered formal review after exact-hash governance, semantic, and invariant reviewers approved the coordinated RFC 0005, 0006, 0008, 0009, and 0010 design set. Approvers and decision remain open. |
 | 2026-07-11 | ACCEPTED | All ten required owners approved proposal hash `31e8ff83dc535f3af5a91c00122277a108af41540233d4f6a06b0a2a4c9fb25c` after raw-pointer cast, checked-facts v3, runtime-memory routing, diagnostic, evidence, codec, and verifier review. Implementation has not started. |
 | 2026-07-16 | IMPLEMENTING | Started the Canonical Semantic Foundation Direct Replacement Series with the closed semantic type value algebra. |
+| 2026-07-18 | IMPLEMENTING | Synchronized the accepted RFC 0018 later overlay for occurrence-owned source reconstruction, post-classification survivor publication, and occurrence-free semantic coherence identity. No implementation completion is inferred. |

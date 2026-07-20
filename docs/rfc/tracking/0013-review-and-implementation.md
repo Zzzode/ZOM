@@ -124,11 +124,35 @@ approval-recorded proposal
 and tracker
 `e16f87e10be7836cf10c4ebe7896d2d99d6ee9fb2005baf5d09700194bac59a0`.
 
-RFC 0013 is `ACCEPTED`. `implementation: TBD` remains authoritative. RFC 0007
-remains `RETURNED` and requires a separate transition and fresh exact-hash
-review before implementation.
+RFC 0013 was accepted by this decision and entered `IMPLEMENTING` through the
+direct replacement series below on 2026-07-17. RFC 0007 remains independently
+governed and requires its own accepted transition before ownership analysis may
+publish production facts.
 
 ## Implementation Tracker
 
-Implementation has not started. `implementation: TBD` remains required until an
-accepted decision and explicit `ACCEPTED -> IMPLEMENTING` transition.
+The direct replacement series started on 2026-07-17. It contains no interface
+`v0` decoder, AST ownership fallback, unbranded evidence lookup, optional
+lineage, or parallel MIR revision.
+
+| Slice | State | Required evidence |
+|---|---|---|
+| Borrow signature surface | Implemented | Closed direct-root summaries, source rejection, canonical codec, verified module-interface publication, and focused sanitizer tests |
+| BorrowEvidence authority | Implemented | `borrow-evidence-test` passes complete local/imported reconstruction, the exact 176-byte empty oracle, independent verification, branded repository leases, and deterministic missing/additional/duplicate/order/codec/stale/swap mutations |
+| Checked-module and HIR lineage | Implemented | `hir-module-test` and `compiler-session-package-test` pass exact retained checked and borrow leases, repository re-resolution, deterministic lineage dumps, and all-or-nothing session publication |
+| Built MIR revision v2 | Implemented | `built-mir-test` passes the exact non-empty `c3d07750...bdb6c8` and empty `f72b2caf...e2b65` oracles; direct HIR lowering, the independent verifier, atomic session adoption, and all 21 IR architecture mutations pass |
+| Ownership result seam | Pending | Closed source, identity, capability, and IR-invariant branches at OwnershipProofValidation with successor suppression |
+| Production cutover | Pending | RFC 0007 implementation prerequisites, full sanitizer/default CTest, determinism, spec alignment, architecture, format, and diff-hygiene evidence |
+
+The series may publish no production ownership result until the RFC 0007
+proposal independently reaches `IMPLEMENTING`. RFC 0013 implementation may
+establish only the accepted evidence and transport prerequisites before that
+gate.
+# RFC 0015 Accepted Overlay
+
+RFC 0015 was approved at exact review SHA-256
+`642836225d54f6fa28f8c27e9985972081dbd221c2e8f3e61a0aafd04fe9bb1e`.
+Its accepted-file SHA-256 is
+`9704d5651606e8a74034c8af4be5172b4007a6c9f0ee8ea2f5ee183223401c01`.
+The overlay directly replaces the RFC 0013 marker-proof and
+body-checking-input lineage contracts named by RFC 0015.

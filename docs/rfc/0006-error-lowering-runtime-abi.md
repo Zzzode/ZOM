@@ -2,20 +2,20 @@
 rfc: 6
 title: Error Lowering And Runtime ABI
 type: compiler
-status: ACCEPTED
+status: IMPLEMENTING
 author: ZOM Compiler Team
 review-manager: rfc
 required-owners: [rfc, binder-checker, error-system, module-system, ir-backend, runtime-memory, spec-audit, verification]
 approvers: [rfc, binder-checker, error-system, module-system, ir-backend, runtime-memory, spec-audit, verification]
 created: 2026-07-08
-updated: 2026-07-11
+updated: 2026-07-17
 area: compiler
 requires: [3, 5, 8, 9, 10, 11]
 supersedes: []
 superseded-by: []
 discussion: docs/rfc/tracking/0006-review-and-implementation.md#discussion-record
 decision: docs/rfc/tracking/0006-review-and-implementation.md#decision-record
-implementation: TBD
+implementation: docs/rfc/tracking/0006-review-and-implementation.md#implementation-tracker
 tracking-issue: docs/rfc/tracking/0006-review-and-implementation.md
 ---
 
@@ -1002,3 +1002,4 @@ None
 | 2026-07-11 | DRAFT | Re-entered drafting with a closed role-bearing descriptor codec and oracle, RFC 0010 operation results and diagnostic mapping, RFC 0008 publication ownership, layer-specific runners, and governance-first implementation ordering. |
 | 2026-07-11 | REVIEW | Entered formal review after exact-hash governance, semantic, and invariant reviewers approved the acyclic target-selection gate, descriptor and FFI codecs, diagnostic ownership, and RFC 0010 handoff. Approvers and decision remain open. |
 | 2026-07-11 | ACCEPTED | All eight required owners approved proposal hash `0b8915df3a7d5a49a52b3980bd8063edff7b24c4d0bc08a18697048e567d9ebc` after error-role, lowering, cleanup, panic lifetime, target artifact, FFI, diagnostic, codec, and verifier review. Implementation has not started. |
+| 2026-07-17 | IMPLEMENTING | Started the single RFC 0010-based direct replacement series for error-union descriptors, Built MIR control flow, cleanup and drop elaboration, target layout, LIR, backend artifacts, runtime boundaries, and CLI publication. The removed mixed `irgen` prototype is not an implementation path. |

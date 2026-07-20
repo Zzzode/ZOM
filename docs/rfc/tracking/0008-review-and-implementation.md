@@ -529,22 +529,66 @@ changes:
   compatibility alias, a wrapper class, a second scheduler, missing registry
   ownership, a second context factory, and a raw session assertion; both
   architecture CTest targets pass;
-- the complete sanitizer build and all 70 unit-test targets pass after the
-  cutover.
+- finalized compilation roots are admitted only from session-owned
+  `DigestVerifiedSourceSnapshot` bytes; package path rereads, direct-source
+  installation, and the resolution-to-compilation TOCTOU boundary are absent;
+- the sole frontend scheduler directly runs `Parser`, retains its single-use
+  token snapshot, and publishes canonically ordered `VerifiedParsedModule`
+  records through `ParsedModuleVerifier`; `performParse`, raw AST storage, and
+  `getASTs` are absent;
+- positive and negative session and package architecture tests reject package
+  filesystem rereads, raw AST maps, and parse wrappers; focused sanitizer tests
+  cover verified source identity, parser receipt publication, and package
+  snapshot byte admission;
+- the session now runs structural dependency discovery to a deterministic fixed
+  point before freezing source identities, admits provider-library roots from
+  the verified crate closure, and never rereads a package path;
+- selected source-module paths, exact declaration-name validation, canonical
+  module, definition, and impl identity freeze, and one retained frozen
+  definition inventory per parsed module precede graph publication;
+- the production `StructuralModuleResolver` and `ModuleGraphVerifier` now
+  publish the frozen global graph from exact package edges, crate edges,
+  dependency aliases, verified source revisions, target-relative search roots,
+  and complete structural requester ancestry, including parents without an
+  intermediate source file;
+- `ZOM3026 ModuleDeclarationNameMismatch` is emitted at the complete module
+  declaration range without degrading to an identity invariant, while verified
+  parser results remain available to AST tooling after later semantic failure;
+- focused sanitizer tests cover provider-root admission, imported-source fixed
+  points, missing intermediate source modules, declaration mismatch, and exact
+  graph edges; the compiler-session, package, and binder architecture gates
+  pass with the fixed-point scheduler;
+- the session executes Binder modules in dependency order, projects imports,
+  module aliases, local and foreign re-exports from completed verified export
+  surfaces, and publishes only `VerifiedBindingOutput` values;
+- the raw Binder, compiler symbol rail, AST `BindingMetadata`, polymorphic type
+  rail, old Checker passes, and AST-to-IR lowering entry are absent, with
+  positive and negative architecture gates preventing reintroduction; and
+- the current sanitizer configure and complete build pass after the direct
+  replacement; complete repository test evidence is still required.
 
 The following RFC 0008 implementation surfaces remain open:
 
-- verified module discovery and frozen `ModuleGraph` publication;
-- deterministic dependency-phase scheduling owned solely by the session;
+- signature, interface, coherence, and body phases after dependency-ordered
+  Binder scheduling;
 - immutable `VerifiedModuleInterface` publication and requester views;
 - the context-checked `SignatureStore` and checked-facts repository;
 - session-global impl coherence construction;
-- migration from `BufferId`, `NodeId`, and table-local `SymbolId` at semantic
-  boundaries to RFC 0011 identities;
+- production construction of RFC 0005 signatures and checked facts, blocked by
+  RFC 0015 while its canonical operator and impl-pattern codecs remain under
+  unapproved `REVIEW`;
 - extend the architecture gate when module stores exist so negative fixtures
   also reject mutable foreign type environments, direct foreign AST reads,
   and bypasses around `SignatureStore` or `CheckedFactsRepository`;
-- multi-module, same-package multi-target, worker-permutation, and interface
-  codec conformance;
+- same-package multi-target, worker-permutation, interface codec, signature
+  authorization, and global coherence conformance;
 - sanitizer build, complete test matrix, format, RFC, and architecture gates
   after the full implementation.
+# RFC 0015 Accepted Overlay
+
+RFC 0015 was approved at exact review SHA-256
+`642836225d54f6fa28f8c27e9985972081dbd221c2e8f3e61a0aafd04fe9bb1e`.
+Its accepted-file SHA-256 is
+`9704d5651606e8a74034c8af4be5172b4007a6c9f0ee8ea2f5ee183223401c01`.
+The overlay directly replaces the RFC 0008 impl, explicit-marker,
+coherence-input, and module-interface contracts named by RFC 0015.

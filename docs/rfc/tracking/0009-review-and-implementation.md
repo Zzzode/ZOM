@@ -473,14 +473,33 @@ RFC 0004, RFC 0005, RFC 0008, and RFC 0011 were accepted. The accepted design
 freezes RFC 0005 semantic selection ownership, RFC 0009 final logical dispatch
 ownership, RFC 0010 target-lowering ownership, complete receiver/argument and
 raises facts, exact dispatch revision framing, opaque checked-evidence
-lifetime, diagnostics, and no-repeat-resolution boundaries. Implementation
-remains `TBD`; the next legal transition is `ACCEPTED -> IMPLEMENTING` only
-when the direct replacement series is named and starts. RFC 0010 may now
-advance through its own gate.
+lifetime, diagnostics, and no-repeat-resolution boundaries. The proposal
+entered `IMPLEMENTING` through the direct replacement series below on
+2026-07-17. RFC 0010 remains independently governed by its own tracker.
 
 ## Implementation Tracker
 
-Implementation under the replacement architecture has not started. Existing
-`TypeEnv` dispatch records and dumps are disposable prototype evidence, not
-proof of this RFC. Implementation begins only after a recorded acceptance
-decision and an `ACCEPTED -> IMPLEMENTING` transition.
+The direct replacement series started on 2026-07-17. Deleted `TypeEnv`
+dispatch records, name-based targets, AST impl nodes, error placeholders, and
+early ABI slots are not accepted inputs or compatibility rails.
+
+| Slice | State | Required evidence |
+|---|---|---|
+| Dispatch requirement inventory | Implemented | Complete body-site census, canonical ordering, duplicate/missing rejection, and focused sanitizer tests |
+| Verified logical dispatch facts | In progress | Closed target and receiver algebras, candidate codec, independent verifier, exact revision lineage, complete deterministic failure retention, and mutation matrix |
+| Cross-module evidence | In progress | Checked-evidence lease, authorized imported signature/interface surfaces, canonical provenance, and stale/swap rejection |
+| Semantic HIR consumption | Pending | One-to-one call, operator, index, and compound-assignment nodes with no repeated lookup or source-name recovery |
+| MIR and target lowering | Pending | Single evaluation, success/residual transforms, dyn slot assignment at target lowering, ABI verification, and layer snapshots |
+| Production cutover | Pending | Full call/operator language surface, sanitizer/default CTest, determinism, conformance, architecture, format, and diff-hygiene evidence |
+
+No implementation slice may consult mutable checker tables or repeat lexical,
+member, trait, impl, witness, or dyn-target resolution after dispatch-facts
+verification.
+# RFC 0015 Accepted Overlay
+
+RFC 0015 was approved at exact review SHA-256
+`642836225d54f6fa28f8c27e9985972081dbd221c2e8f3e61a0aafd04fe9bb1e`.
+Its accepted-file SHA-256 is
+`9704d5651606e8a74034c8af4be5172b4007a6c9f0ee8ea2f5ee183223401c01`.
+The overlay directly replaces the RFC 0009 checker diagnostic argument and
+operator rendering contracts named by RFC 0015.

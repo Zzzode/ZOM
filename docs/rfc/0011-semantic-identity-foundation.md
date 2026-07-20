@@ -8,7 +8,7 @@ review-manager: rfc
 required-owners: [task-router, rfc, lexer-parser, module-system, binder-checker, error-system, ir-backend, spec-audit, verification]
 approvers: [task-router, rfc, lexer-parser, module-system, binder-checker, error-system, ir-backend, spec-audit, verification]
 created: 2026-07-10
-updated: 2026-07-12
+updated: 2026-07-18
 area: compiler
 requires: []
 supersedes: []
@@ -680,78 +680,85 @@ is a checked fact on an `Interface` definition, not a separate definition kind.
 Primitive semantic types are owned by the RFC 0005 `SemanticTypeStore`; they do
 not receive a source-backed `DefId`.
 
-```text
-DefinitionNameKey =
-  Declared { name: DeclaredDefinitionName }
-  Anonymous { role: AnonymousDefinitionRole }
-
-AnonymousDefinitionRole =
-  Lambda | FunctionExpression
-```
-
-`DefinitionNameKey` tags are `Declared = 0x01` and `Anonymous = 0x02`.
-Anonymous-role tags are `0x01` and `0x02` in declaration order. Empty strings,
-generated display spellings, AST node numbers, and source addresses are never
-canonical names.
-
-`DefinitionPathSegment` contains:
+`DefinitionKey` and `ImplKey` are raw 32-byte SHA-256 digests of complete
+canonical identity records. The registry retains each digest with its complete
+record; equal digest bytes with unequal records are an invariant collision
+before handle admission.
 
 ```text
-DefinitionPathSegment {
+EnclosingStableOwnerKey =
+  DefinitionOwner(DefinitionKey) = 0x01
+  | ImplementationOwner(ImplKey) = 0x02
+
+DefinitionIdentityRecord {
+  module: ModuleKey,
+  owners: Sequence<EnclosingStableOwnerKey>,
   kind: DefinitionKind,
-  name: DefinitionNameKey,
-  sourceAnchor: SourceSpan,
-  siblingOrdinal: uint32,
+  namespace: Value | Type | Module,
+  name: NfcDeclaredName,
+  overloadHeader: Maybe<OverloadHeaderDigest>,
+}
+
+ImplIdentityRecord {
+  module: ModuleKey,
+  owners: Sequence<EnclosingStableOwnerKey>,
+  genericParameters: Sequence<CanonicalGenericParameter>,
+  polarity: Positive | Negative,
+  safety: Safe | Unsafe,
+  interface: CanonicalTraitReference,
+  selfType: CanonicalHeaderTypeSyntax,
+  obligations: SortedUniqueSequence<CanonicalBoundObligation>,
 }
 ```
 
-An impl is also a structural parent for definitions declared in its body:
+An owner element encodes as its one-byte tag followed by the referenced key's
+raw 32-byte digest. Owner sequences run from outermost to innermost and are
+validated against retained records for the same stable `ModuleKey`; skipped
+prefixes, unknown or repeated owners, unequal collision records, self-owners,
+and cycles are invariants. A named member declared directly inside an
+implementation appends `ImplementationOwner(theImplKey)` to that
+implementation's owner sequence.
+
+`DefinitionIdentityRecord` admits NFC-declared stable names only. Value
+definitions are `Function`, `Method`, `Constructor`, `Destructor`, `Field`,
+`EnumVariant`, `Constant`, and `Static`; type definitions are `Class`, `Struct`,
+`Interface`, `Enum`, `Error`, `TypeAlias`, and `AssociatedType`; the module
+namespace admits `ModuleAlias`. `Parameter`, `TypeParameter`, `Local`,
+`PatternBinding`, `Closure`, `ImportAlias`, and `ReexportAlias` never enter a
+`DefinitionIdentityRecord`. RFC 0018 subordinate parameter keys and RFC 0017
+semantic import binding keys provide their stable semantic identities where
+applicable. Owner-local and anonymous syntax remains revision-local within the
+nearest stable named-item query.
+
+`DefinitionKey` is exactly:
 
 ```text
-ImplPathSegment {
-  sourceAnchor: SourceSpan,
-  siblingOrdinal: uint32,
-}
-
-DefinitionPathComponent =
-  Definition { segment: DefinitionPathSegment }
-  Impl { segment: ImplPathSegment }
+SHA-256(
+  ASCII("zom.named-item-header.v0")
+  || 0x00
+  || Encode(DefinitionIdentityRecord)
+)
 ```
 
-The component tags are `Definition = 0x01` and `Impl = 0x02`.
-`DefinitionKey` contains its `ModuleId` and a non-empty sequence of
-`DefinitionPathComponent` values from the module root to the declaration. The
-final component must be `Definition`. A method, associated type, field, or local
-inside an impl has that impl's structural component before its own definition
-component; no `ImplId` is needed while keys are collected. User definitions use
-source byte order and a sibling ordinal among definitions with the same
-structural parent, span, kind, and name key. An implementation cannot derive
-identity from a parent handle, object address, generated spelling, or traversal
-race while keys are being collected.
-
-`DefId` is assigned after a prebinding definition-inventory pass walks every
-declaration-bearing AST node, then sorts all `DefinitionKey` values. A nested
-definition records its structural parent path; the registry derives and
-validates the parent `DefId` only after all handles exist.
-
-`ImplKey` has the exact shape:
+`ImplKey` is exactly:
 
 ```text
-ImplKey {
-  module: ModuleId,
-  parentPath: [DefinitionPathSegment],
-  source: SourceSpan,
-  siblingOrdinal: uint32,
-}
+SHA-256(
+  ASCII("zom.impl-header.v0")
+  || 0x00
+  || Encode(ImplIdentityRecord)
+)
 ```
 
-It identifies the impl declaration by module, enclosing definition path, source
-span, and sibling ordinal. Its corresponding `ImplPathSegment` is structurally
-identical to the final two fields. It deliberately
-does not contain a resolved interface `DefId`, semantic type head, or coherence
-key: those are RFC 0005 checked facts and would reintroduce a type-system
-dependency into this foundation. `ImplId` is assigned by the same deterministic
-freeze rule after the prebinding inventory pass.
+RFC 0018 defines the complete overload-header, structural type, generic,
+obligation, polarity, safety, and trait-reference schemas used by these records.
+Bodies, source provenance, parser handles, traversal order, current resolution
+results, and presentation text never encode. A definition collision group gives
+only its first canonical source occurrence a `DefId`. Every byte-identical
+implementation record group admits one shared `ImplId` authority and assigns a
+revision-local `ImplOccurrenceId` to every source occurrence. Source conflict
+is decided only among successfully classified RFC 0015 ordinary or marker
+survivors.
 
 Only semantic definitions that participate in binding, type identity, or
 interface publication receive `DefId` or `ImplId`. IR blocks, temporaries,
@@ -784,19 +791,18 @@ The declaration inventory is exhaustive over the current AST schema:
 | `AssociatedTypeDecl` | `DefId(AssociatedType, Declared)` |
 | `FieldDecl` | `DefId(Field, Declared)` |
 | `ClassConstDecl` | `DefId(Constant, Declared)` |
-| `FunctionParameterDecl` | `DefId(Parameter, Declared)`; the declaration grammar requires an identifier or explicit `this` receiver |
-| `GenericTypeParam` | `DefId(TypeParameter, Declared)` |
+| `FunctionParameterDecl` | RFC 0018 `CallableParameterKey`; no named `DefinitionKey` |
+| `GenericTypeParam` | RFC 0018 `GenericParameterKey`; no named `DefinitionKey` |
 | `ExternVarDecl` | `DefId(Static, Declared)` |
 | `VariableDeclarator` container | No identity; each introduced binding owns one `DefId` |
 | binding under module-scope `LetStmt(Const)` | `DefId(Constant, Declared)` per introduced name |
 | binding under module-scope `LetStmt(Let | Mut)` | `DefId(Static, Declared)` per introduced name |
-| binding under block-scope `LetStmt(Let | Mut | Const)` | `DefId(Local, Declared)` per introduced name |
-| binding pattern introduced by match, loop, or another pattern-only scope | `DefId(PatternBinding, Declared)` per introduced name |
-| `FunctionExpression` | `DefId(Closure, Anonymous(FunctionExpression))` |
-| `LambdaExpression` | `DefId(Closure, Anonymous(Lambda))` |
-| `ImportDeclaration` namespace binding or `ImportSpecifier` | `DefId(ImportAlias, Declared)` |
-| re-exporting `ExportDeclaration` or `ExportSpecifier` | `DefId(ReexportAlias, Declared)` |
-| `StandaloneImplDecl`, `MarkerImpl` | `ImplId`; no `DefId` for the impl block |
+| binding under block-scope `LetStmt(Let | Mut | Const)` | RFC 0017 owner-local binding key; no stable `DefinitionKey` |
+| binding pattern introduced by match, loop, or another pattern-only scope | RFC 0017 owner-local binding key; no stable `DefinitionKey` |
+| `FunctionExpression`, `LambdaExpression` | RFC 0017 owner-local syntax identity; no stable `DefinitionKey` |
+| `ImportDeclaration` namespace binding or `ImportSpecifier` | RFC 0017 `SemanticImportBindingKey`; no named `DefinitionKey` |
+| re-exporting `ExportDeclaration` or `ExportSpecifier` | RFC 0017 `SemanticImportBindingKey`; no named `DefinitionKey` |
+| `StandaloneImplDecl`, `MarkerImpl` | one shared `ImplId` authority per equal identity group and one `ImplOccurrenceId` per source occurrence; no `DefId` for the impl block |
 | `ExternBlock`, declaration-list containers, attributes | No semantic identity; consumers may not treat them as definitions |
 
 Unnamed types in a structural function type, such as `(i32, str) -> i32`, are
@@ -810,10 +816,6 @@ import, re-export, module declaration, source origin, package edge, crate
 target, definition, or impl must first extend this closed inventory and finish
 before the owning registry freezes. Post-freeze normalization is structurally
 incapable of producing those entities.
-
-For a fixed structural parent, declaration ordinals follow source byte start,
-then AST schema preorder, then `DefinitionKind` ordinal. Duplicate recovery uses
-the same order and never hash iteration or completion time.
 
 ### Source Identity And Provenance
 
@@ -879,11 +881,11 @@ The canonical field order is normative:
 | `SourceFileKey` | expanded `CrateKey`, then `SourceOriginKey` |
 | `SourceSpan` | expanded `SourceFileKey`, `byteStart`, `byteEnd` |
 | `ModuleKey` | expanded `CrateKey`, path sequence, expanded `SourceFileKey`, optional expanded declaration span |
-| `DefinitionPathSegment` | definition-kind tag, definition-name key, expanded source span, sibling ordinal |
-| `ImplPathSegment` | expanded source span, sibling ordinal |
-| `DefinitionPathComponent` | component tag followed by the selected segment encoding |
-| `DefinitionKey` | expanded `ModuleKey`, non-empty path-component sequence whose final component is `Definition` |
-| `ImplKey` | expanded `ModuleKey`, parent path sequence, expanded source span, sibling ordinal |
+| `EnclosingStableOwnerKey` | one-byte owner tag, referenced raw 32-byte digest |
+| `DefinitionIdentityRecord` | expanded stable `ModuleKey`, owner sequence, definition-kind tag, namespace tag, NFC declared name, optional overload-header digest |
+| `ImplIdentityRecord` | expanded stable `ModuleKey`, owner sequence, generic parameters, polarity, safety, canonical trait reference, self-type syntax, sorted-unique obligations |
+| `DefinitionKey` | SHA-256 of `zom.named-item-header.v0`, NUL, and the complete definition record |
+| `ImplKey` | SHA-256 of `zom.impl-header.v0`, NUL, and the complete implementation record |
 
 These fixed codec vectors are independent implementation oracles:
 
@@ -911,10 +913,8 @@ The full composite-key fixture extends package `a` as follows:
 - `SourceFileKey`: `GeneratedFile`, the same output digest, logical path
   `g.zom`, and a content digest of 32 bytes of `0x22`;
 - `ModuleKey`: path `m` and no declaration anchor;
-- `DefinitionKey`: one `Definition` component for declared function `f`, source
-  span `[0, 1)`, and sibling ordinal zero;
-- `ImplKey`: empty enclosing definition path, the same source span, sibling
-  ordinal zero.
+- `DefinitionKey` and `ImplKey` vectors are the RFC 0018 canonical record and
+  digest fixtures; they do not reuse the source-bearing composite fixture.
 
 The stage byte lengths and SHA-256 values are normative independent oracles:
 
@@ -925,8 +925,6 @@ The stage byte lengths and SHA-256 values are normative independent oracles:
 | `CrateDependencyEdgeKey` | 406 | `64fcca3d969d5d52c170d40a8a8db32005853856b61087719d003799c2c387a5` |
 | `SourceFileKey` | 240 | `f4198087783111e14911a0f550962f5c010ea2609edfdca47152907d74969102` |
 | `ModuleKey` | 412 | `8ef9b8baabd646bf1a4640a8bd70af16e93bbe979229c21342cbebd0c429b91b` |
-| `DefinitionKey` | 692 | `3f9ea55ca0ce091341b59f3cd44b64962e9cf26f4c4e9c19815011a702432ca4` |
-| `ImplKey` | 680 | `e71d00f88b11b9ee6bd0a5f2196f9c7506fbe28f341733df1e788cc192d23882` |
 
 The crate-edge fixture expands the package edge `a --dep/Target--> b` from the
 earlier table, uses the composite `CrateKey` above as its consumer, and uses the
@@ -951,8 +949,10 @@ Identity allocation is staged so consumers never observe insertion-order IDs:
    followed by `ModuleKey`; canonical module source origins expand frozen
    `SourceFileKey` values rather than local slots.
 5. Prebinding syntax normalization finishes, then a definition inventory walks
-   every declaration-bearing AST node and collects
-   and freezes every `DefinitionKey` and `ImplKey`.
+   every declaration-bearing AST node, retains complete identity records,
+   validates digest collisions and owner prefixes, groups equal records, and
+   freezes every stable `DefinitionKey` and `ImplKey`. Implementation grouping
+   admits one authority and then allocates every revision-local occurrence.
 6. Binding, checking, module interfaces, and IR consume only frozen handles.
 
 Adding a package, crate, module, definition, or impl after its registry freezes
@@ -966,11 +966,12 @@ shared across them.
 
 ### Deterministic Ordering
 
-Canonical encodings define a total bytewise order for every key. A child key
-encodes its parent canonical key, never the parent's local numeric slot. Lists
-and dumps use semantic keys plus source span and closed-kind ordinal as tie
-breakers. Re-export aliases have their own `DefId`; their canonical target is a
-separate field and never substitutes as the ordering key.
+Canonical encodings define a total bytewise order for every key. A child record
+encodes its owner's stable digest, never the owner's local numeric slot. Lists
+and dumps use semantic keys followed by complete revision-local source site keys
+only where occurrence ordering is required. Semantic import and re-export
+binding slots retain their own stable keys; their canonical target is a
+separate value and never substitutes as the ordering key.
 
 Post-freeze semantic diagnostics sort by expanded package key, crate key,
 module key, primary source span, diagnostic ID, and deterministic emitter
@@ -1214,20 +1215,21 @@ is accepted.
 9. RFC 0008 supplies a complete selected module-input set before source and
    module registries freeze; module identity is crate-qualified and
    deterministic by canonical path and source origin.
-10. Definition and impl identity includes a structural parent path, closed kind,
-    source span, sibling ordinal, and a closed declared-or-anonymous name key;
-    key construction never requires a not-yet-issued parent handle or semantic
-    type fact.
-11. `DefinitionKind`, `AnonymousDefinitionRole`, `SourceOriginKey`, and
-    `ImplKey` are closed and cover every current producing phase; the accepted
-    design contains no producerless synthetic or builtin definition variant.
+10. `DefinitionKey` and `ImplKey` are domain-separated SHA-256 digests of their
+    complete retained RFC 0018 identity records. Stable owner digests, semantic
+    header fields, and closed tags encode; source spans, sibling or traversal
+    ordinals, parser handles, bodies, and current resolution results do not.
+11. Stable named-definition admission, owner-local exclusion, subordinate
+    parameter identity, and implementation occurrence grouping cover every
+    current producer without a producerless definition variant.
 12. Source keys freeze before module keys; source spans are
     source-file-qualified, half-open, bounds-checked, and canonically encoded by
     expanding `SourceFileKey` rather than a local slot.
-13. Re-export aliases have distinct definition identity and separate canonical
-    target identity.
+13. Import and re-export slots have distinct RFC 0017 semantic binding identity
+    and a separate canonical target value.
 14. Package, crate, module, source, definition, and impl registries freeze in
-    the specified order and reject post-freeze mutation.
+    the specified order, validate complete retained records before handle
+    admission, and reject post-freeze mutation.
 15. Dumps and ordering use canonical keys, never brands or local slots; the
     canonical byte encoding and SHA-256 fingerprint input are fully specified.
 16. Diagnostic order has a deterministic emitter ordinal and no wall-clock or
@@ -1242,7 +1244,8 @@ is accepted.
 20. Tests cover same-name and same-slot entities across contexts, packages,
     crate targets, modules, definitions, and impls.
 21. Registration order and worker count do not change canonical keys, frozen
-    package/crate/source/module/definition/impl IDs, dumps, or diagnostics.
+    package/crate/source/module/definition/impl authorities, occurrence groups,
+    dumps, or diagnostics.
     Online `SemanticTypeId` slots are excluded; canonical type keys and all
     observable semantic results remain deterministic.
 22. Repository search finds no table-local `SymbolId`, pointer identity, or
@@ -1278,8 +1281,8 @@ is accepted.
     observing its online slot order.
 33. Package and crate dependency edges participate in the semantic context
     fingerprint, and fixed package and dependency-edge codec vectors pass.
-34. Impl members use an explicit `ImplPathSegment` in their structural
-    `DefinitionKey`; key collection never needs a pre-issued `ImplId`.
+34. A stable named impl member appends `ImplementationOwner(ImplKey)` to its
+    enclosing owner sequence; key collection never needs a pre-issued `ImplId`.
 35. The identity dump has the exact UTF-8/LF/spacing/hex/final-newline grammar
     defined above.
 
@@ -1294,8 +1297,9 @@ is accepted.
 4. Preserve every module declaration form in the AST and expose unbranded
    structural records to RFC 0008 discovery.
 5. Add package, crate, source, module, definition, and impl registries with
-   canonical parent/source-key expansion, one context-global order per tag, and
-   the specified freeze schedule.
+   canonical parent expansion, retained digest-authority records, implementation
+   occurrence groups, one context-global order per semantic tag, and the
+   specified freeze schedule.
 6. Add the schema-and-live-producer declaration inventory gate and deterministic
    `zom.identity.v0` dump.
 7. Add validation facts, bug-bundle retention, deterministic grouping, fatal
@@ -1365,3 +1369,4 @@ None
 | 2026-07-11 | ACCEPTED | All nine required owners independently approved the repaired final design after scalar, URL, producer, grammar, diagnostic, dependency, codec, inventory, and full-suite verification. Implementation has not started. |
 | 2026-07-11 | IMPLEMENTING | Started the coordinated direct-replacement series with compiler build wiring, process-root semantic and registry brand issuance, private-construction context/store handle primitives, SHA-256, and the fixed-width canonical byte primitives. Canonical text and composite keys, registries, consumer migration, and the architecture gate remain open. |
 | 2026-07-12 | LANDED | Completed the six-registry session lifecycle, post-build crate finalization, exhaustive definition inventory, context-branded semantic type store migration, old identity deletion gates, registered failure boundaries, Linux native sandbox integration, and all architecture and repository hygiene gates. The final sanitizer matrix passes 1,238/1,238 tests. |
+| 2026-07-18 | LANDED | Synchronized the accepted RFC 0018 later overlay for digest-based stable definition and implementation records, stable-owner digests, owner-local exclusion, subordinate parameter identity, and one-authority implementation occurrence grouping. Implementation evidence remains owned by RFC 0018. |

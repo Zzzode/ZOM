@@ -8,7 +8,7 @@ review-manager: rfc
 required-owners: [rfc, module-system, binder-checker, error-system, ir-backend, spec-audit, verification]
 approvers: [rfc, module-system, binder-checker, error-system, ir-backend, spec-audit, verification]
 created: 2026-07-08
-updated: 2026-07-11
+updated: 2026-07-18
 area: compiler
 requires: [2, 3, 4, 5, 11, 12]
 supersedes: []
@@ -242,35 +242,55 @@ without a second source classification. An implicit prelude edge uses RFC 0004
 `Prelude` provenance with no invented AST node or source span. The first
 implementation has no signature-only cycle exception.
 
-Discovery runs before `ModuleId` issuance and memoizes structural keys:
+Module discovery and resolution use the RFC 0018 semantic request contract:
 
 ```text
-StructuralModuleResolutionKey {
-  crate: CrateKey,
-  requesterPath: ModulePath,
-  requesterSource: SourceOriginKey,
-  normalizedPath: ModulePath,
-  environment: RFC0004::ModuleResolutionEnvironmentFingerprint,
+ModuleResolutionPolicyKey {
+  unicodeNormalization: Nfc,
+  caseComparison: CaseSensitive,
+  symlinkHandling: ResolveThenConfine,
+  containment: DeclaredRootsOnly,
+  localLookup: RequesterAncestryAndCrateRoot,
+  dependencyAliasLookup: ExactFirstSegment,
+  preludeLookup: ConfiguredCratePrelude,
+  candidateSelection: AllDistinctMatchesNoPrecedence,
+}
+
+ModuleResolutionKey {
+  requester: ModuleKey,
+  kind: Import | ForeignReexport | ModuleAlias | Prelude,
+  normalizedPath: Maybe<CanonicalModulePath>,
+  dependencyAlias: Maybe<DependencyAlias>,
+  policy: ModuleResolutionPolicyKey,
 }
 ```
 
-The fingerprint is exclusively the RFC 0004 SHA-256 revision of the canonical
-`ModuleResolutionEnvironmentRecord`. Its exact domain, field order, union tags,
-43-byte framing oracle, search roots, source snapshot/content revisions,
-generated-source revisions, dependency-alias roots, requester ancestry, and
-path policy are not redefined by the session. These inputs are immutable for
-one discovery fixed point. After RFC 0011 freezes identities, the session maps
-structural records to `ModuleId` and may use an equivalent handle-keyed lookup
-cache. A path-segment tuple without crate, requester, and environment context
-is never a valid cache key.
+`ModuleResolutionKey` uses domain `zom.module-resolution.v0`, one zero byte,
+expanded requester, dependency-kind tag, optional normalized path, optional
+alias, and the complete length-prefixed policy bytes. Dependency-kind tags are
+`0x01` through `0x04` in declaration order. Import, foreign re-export, and
+module-alias requests require a non-empty path. Prelude requests have no path
+or alias. Import sites, source ranges, parser nodes, schema ordinals, selected
+targets, source or generated revisions, and whole-environment fingerprints do
+not encode.
 
-The session's `StructuralModuleResolver` freezes those complete inputs into the
-RFC 0004 private-constructor `VerifiedModuleResolutionEnvironment`. Every
-zero/one/many candidate lookup publishes an exact
-`VerifiedStructuralResolutionReceipt` whose request key, candidate set, issuer,
-environment revision, and 68-byte framing contract are verified again by
-`ModuleGraphVerifier`. The graph candidate cannot redirect a request to another
-existing module or invent an ambiguity by supplying its own candidate set.
+Resolution reads `RequesterModuleAncestry(requester)` and exactly one
+`ModuleCatalogPathBucket(crate, path)` for every deduplicated local, ancestor,
+crate-root, or alias candidate path. The ancestry input is requester first,
+strict lexical ancestors from inner to outer, and the declared crate root;
+every adjacent pair removes exactly one path segment in the same crate. A path
+bucket is absent or contains exactly the active `ModuleKey` for that crate and
+canonical path. Both are independently verified Semantic input queries with
+`Low` durability, pinned retention, no provider, and no cycle policy.
+
+Alias requests additionally read only the exact `DependencyAliasRoot`; prelude
+requests read only `ConfiguredPrelude`; generated roots read their exact
+`ModuleSearchRoots` projection. The selected alias or prelude target is a
+tracked value, not request identity. All matching modules form one distinct set
+sorted by complete key bytes, and lookup order selects no winner. A verified
+resolution receipt repeats the semantic key and exact candidate set derived
+from those narrow inputs. The graph candidate cannot redirect a request or
+invent an ambiguity.
 
 One discovery run receives a canonical crate key, the immutable RFC 0012
 package graph, one selected target root, an ordered search-root set, an ordered
@@ -290,6 +310,11 @@ The three preserved `ParsedModuleDeclaration` forms map exactly as follows:
 | `module name;` | `name` must equal the final segment of the selected source module path. The source items belong to that module. `SelectedModuleIdentityInput.declarationAnchor` is the declaration's complete unbranded source range. A mismatch is a module-discovery failure and no `ModuleId` is issued for that selected record. |
 | `module name { items }` | `name` has the same exact-match rule. `items` are the current source module's complete module-item sequence; the form creates no child module or containment edge. The declaration's complete range is the selected input anchor. |
 | `module name = target;` and `export module name = target;` | The current source module path remains the candidate-derived path and its selected input has no declaration anchor from this alias. The alias receives one RFC 0011 `DefId(ModuleAlias)` under the current module, resolves `target` as a semantic dependency, and creates no `ModuleId`, source module, or containment edge. The export form adds that alias `DefId` to the module export surface. |
+
+A semicolon or block declaration mismatch is `ZOM3026 ModuleDeclarationNameMismatch` at the
+complete declaration range, with the
+declared and selected final-segment names as its two arguments. It is a source
+failure and never degrades to an RFC 0011 identity invariant.
 
 An alias target is resolved using the same ancestry, crate-root, and dependency-
 alias candidate set as an import. Alias resolution records the canonical target
@@ -450,6 +475,15 @@ impl safety, complete patterns, and associated bindings are exactly the RFC
 0005 definitions; RFC 0008 declares no second form. `EncodeSortedRecords(records)` means one RFC 0011
 sequence whose elements are each complete record encodings sorted by unsigned
 bytewise comparison; duplicate encodings are invalid.
+
+The impl-head and marker maps contain only RFC 0015 unique survivors after
+per-occurrence reconstruction, interface-kind classification, safety,
+builtin-conflict, orphan, and local survivor-conflict checks. Each semantic
+record is keyed by its shared `ImplId` authority and retains the publishing
+survivor's verified provenance. `ImplOccurrenceId`, occurrence-local binding
+facts, impl-body scopes, source nodes, and dense handle slots never enter a
+module interface or global coherence view. A rejected occurrence or local
+survivor-conflict group authorizes no semantic projection.
 
 `binding_surface` is exactly the verifier-only RFC 0004 value, including its
 `ExportSurfaceRevision`, requester-independent visibility envelopes, canonical
@@ -790,6 +824,12 @@ index. Identity, revision, codec, or membership corruption produces
 implementation builds dependency entries from source modules loaded into the
 same session; no on-disk metadata loader exists.
 
+Equal implementation identity records within one module share one semantic
+authority and are resolved by RFC 0015's occurrence-specific survivor stage
+before interface publication. Global coherence therefore consumes only unique
+published impl heads and explicit marker facts; it never reconstructs or
+collapses source occurrences.
+
 ### Failure Model
 
 If parsing fails for a module, dependent modules that import it receive a single
@@ -987,6 +1027,13 @@ that runs the same crate repeatedly with different worker counts.
 18. `python3 scripts/check-rfc.py` passes.
 19. `python3 scripts/check-format.py` passes after implementation changes.
 20. `ctest --preset default --output-on-failure` passes before `LANDED`.
+21. Module resolution keys contain only requester, dependency kind, normalized
+    path, optional alias, and the complete policy key. Resolution tracks exact
+    requester ancestry and per-path catalog buckets, so an unrelated module
+    path edit does not execute the provider.
+22. Module interfaces and global coherence contain only unique RFC 0015
+    survivors under shared semantic authorities; occurrence handles, binding
+    facts, scopes, source nodes, and dense slots remain revision-local.
 
 ## Implementation Plan
 
@@ -995,16 +1042,18 @@ that runs the same crate repeatedly with different worker counts.
    `ImportEdge`, and `ExportScope` on the implementation branch.
 2. Implement `CompilerSession` as the only source, diagnostic, package, crate,
    module, signature, and coherence owner.
-3. Implement structural module discovery from roots, imports, module blocks, and manifest
-   search paths.
+3. Implement semantic module requests, requester-ancestry and catalog-path
+   bucket inputs, then drive module discovery from roots, imports, module
+   blocks, and manifest search paths.
 4. Reject import SCCs and self-imports before binding dependent bodies.
 5. Verify RFC 0005 signature facts, then implement the closed module-interface
    publication result, invariant verifier, `ZOM9950-ZOM9954` adapter, generated
    injection, and verified module interfaces.
 6. Route cross-module lookup through `SignatureStore` and requester-filtered
    verified visibility surfaces.
-7. Run the RFC 0005 coherence builder over exact module/revision entries and
-   construct `CoherenceIndex` only from its frozen view.
+7. Project only unique RFC 0015 occurrence survivors, run the RFC 0005
+   coherence builder over exact module/revision entries, and construct
+   `CoherenceIndex` only from its frozen view.
 8. Adopt verified checked facts into `CheckedFactsRepository` and thread exact
    evidence leases through RFC 0010.
 9. Consume deterministic RFC 0011 identities and add interface ordering and
@@ -1078,3 +1127,4 @@ None
 | 2026-07-11 | REVIEW | Entered formal review after exact-hash governance, semantic, and invariant reviewers approved the coordinated module, type, dispatch, error-lowering, and IR contracts. Approvers and decision remain open. |
 | 2026-07-11 | ACCEPTED | All seven required owners approved proposal hash `4a299be3aa1c89d61bfeb679edcf96636e506d0d752997f0853040e4a9a0a67a` after module-graph, resolution-environment, session, interface, opaque evidence-lease, diagnostic, codec, and verifier review. Implementation has not started. |
 | 2026-07-11 | IMPLEMENTING | Started the direct replacement series: `CompilerSession` is the sole compiler root and owns one process-unique semantic context brand plus its sole RFC 0011 identity registry family. Module graph discovery, verified interface publication, signature storage, dependency scheduling, coherence, and consumer migration remain open. |
+| 2026-07-18 | IMPLEMENTING | Synchronized the accepted RFC 0018 later overlay for semantic module-resolution keys, narrow requester-ancestry and catalog-path inputs, and occurrence-survivor-only module-interface and coherence publication. No implementation completion is inferred. |

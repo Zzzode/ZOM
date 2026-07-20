@@ -8,7 +8,7 @@ review-manager: rfc
 required-owners: [rfc, binder-checker, error-system, module-system, ir-backend, spec-audit, verification]
 approvers: [rfc, binder-checker, error-system, module-system, ir-backend, spec-audit, verification]
 created: 2026-07-05
-updated: 2026-07-15
+updated: 2026-07-18
 area: compiler
 requires: [1, 2, 3, 11]
 supersedes: []
@@ -107,12 +107,18 @@ defines a session-shaped binding input and the complete output consumed by RFC
 Rust assigns crate-relative definition identities and records name-resolution
 results before type checking. ZOM should copy the separation between lexical
 resolution and type-dependent method resolution, plus the rule that stable
-definition identity is not a symbol-table pointer.
+definition identity is not a symbol-table pointer. Rust block items are visible
+throughout their enclosing block, while a nested item does not implicitly
+capture the dynamic environment. ZOM adopts that activation and capture
+boundary for block-scoped named functions.
 
 References:
 
 - <https://rustc-dev-guide.rust-lang.org/name-resolution.html>
 - <https://rustc-dev-guide.rust-lang.org/ty.html#the-key-types>
+- <https://doc.rust-lang.org/reference/items.html>
+- <https://doc.rust-lang.org/reference/names/scopes.html>
+- <https://doc.rust-lang.org/reference/statements.html>
 
 ### Swift Declaration Contexts
 
@@ -130,6 +136,22 @@ additional declarations or aliases that refer to it.
 
 Reference: <https://clang.llvm.org/docs/InternalsManual.html>
 
+### MLIR Declarative Records And Verification
+
+MLIR Operation Definition Specification keeps repetitive record mechanics in a
+declarative schema, generates local structural checks, and leaves cross-field
+semantic invariants in handwritten verifiers. ZOM copies that division: one
+Binder fact schema owns membership, stable tags, publication, domains, and
+mutation obligations, while C++ record payloads and AST-sensitive validation
+remain explicit. ZOM uses an in-tree C++ definition file instead of adding a
+second compiler or a general-purpose schema language.
+
+References:
+
+- <https://mlir.llvm.org/docs/DefiningDialects/Operations/>
+- <https://mlir.llvm.org/docs/DefiningDialects/>
+- <https://llvm.org/docs/TableGen/>
+
 ### Go Scopes
 
 Go binds package declarations independently from source-ordered block
@@ -137,6 +159,18 @@ declarations. ZOM should copy the explicit distinction between package/module
 visibility and local lexical activation.
 
 Reference: <https://go.dev/ref/spec#Declarations_and_scope>
+
+### Retained Access Facts
+
+Rust and Swift attach access control to declarations and apply permission rules
+at use sites. ZOM copies that separation: the Binder retains one closed member-
+visibility fact, while the checker owns later access-context enforcement. The
+Binder never encodes access control as an open-ended flag set.
+
+References:
+
+- <https://doc.rust-lang.org/reference/visibility-and-privacy.html>
+- <https://docs.swift.org/swift-book/documentation/the-swift-programming-language/accesscontrol/>
 
 ### Explicit Receiver Parameters
 
@@ -332,9 +366,33 @@ FrozenDefinitionInventoryView {
   module: ModuleId,
   modules: SortedMap<NodeId, ModuleId>,
   definitions: SortedMap<DefinitionSite, DefId>,
-  impls: SortedMap<NodeId, ImplId>,
+  impls: SortedMap<NodeId, ImplOccurrenceId>,
+  implOccurrences: SortedSequence<FrozenImplOccurrenceEntry>,
 }
 ```
+
+RFC 0018 defines the implementation occurrence bridge used here:
+
+```text
+FrozenImplOccurrenceEntry {
+  occurrence: ImplOccurrenceId,
+  key: ImplSourceOccurrenceKey,
+  authority: ImplId,
+  node: NodeId,
+}
+```
+
+Implementation candidates group by their complete retained
+`ImplIdentityRecord` before handle admission. Every group admits one shared
+`ImplId` authority, and every source occurrence receives one context- and
+module-branded `ImplOccurrenceId`. Occurrence handles are dense within one
+frozen module in canonical `IdentitySyntaxSiteKey` source order. `impls` is a
+bijection between implementation syntax nodes and occurrence handles;
+`implOccurrences` is the dense, sorted, duplicate-free entry inventory. Every
+entry repeats the shared authority and complete `ImplSourceOccurrenceKey` for
+its source node. The occurrence handle is a revision-local materialization
+handle, not a semantic identity, persistence key, provider root, or field of a
+stable codec.
 
 `Declaration` covers every RFC 0011 inventory row that assigns one `DefId` to
 one syntax node, including import and re-export specifiers. `PatternBinding`
@@ -347,7 +405,8 @@ to multiple `DefId` values without inventing container identity.
 
 Root and inline `ModuleDeclaration` nodes occur only in `modules` and receive no
 `DefId`. Alias module declarations occur in `definitions`. Standalone impl and
-marker impl nodes occur only in `impls`. `VariableDeclarator`, `ExternBlock`,
+marker impl nodes occur only in `impls` and `implOccurrences`.
+`VariableDeclarator`, `ExternBlock`,
 declaration-list containers, attributes, and every other RFC 0011 no-identity
 row occur in none of the three maps. The collector's schema gate requires every
 identity-producing syntax node or pattern leaf in exactly one applicable map and
@@ -854,9 +913,11 @@ the fixed zero values described here and uses checked increment only. Attempting
 to allocate after `UINT32_MAX` is an `InvalidBindingFact` and emits source-less
 `ZOM9925`; no wrapped or truncated handle is constructed.
 
-Only the RFC 0011 registries issue `DefId` and `ImplId`. Scope and label indices
-follow the closed allocation algorithm below. Parallel scheduling, source
-registration, recovery span ties, and hash-map iteration cannot affect them.
+Only the RFC 0011 registries issue `DefId` and `ImplId`. The frozen per-module
+inventory issues `ImplOccurrenceId` values only after implementation identity
+grouping. Scope and label indices follow the closed allocation algorithm below.
+Parallel scheduling, source registration, recovery span ties, and hash-map
+iteration cannot affect them.
 
 A handle contains or is checked against `SemanticContextBrand`. Handles from
 different contexts are rejected by verifier and lookup APIs even when their
@@ -907,7 +968,8 @@ ControlTarget = ExplicitLabel(LabelId) | LoopScope(ScopeId) | MatchScope(ScopeId
 `ScopeKind` tags are `Module = 0x01`, `Function = 0x02`, `Closure = 0x03`,
 `TypeBody = 0x04`, `ImplBody = 0x05`, `Block = 0x06`, `Loop = 0x07`,
 `Match = 0x08`, `MatchArm = 0x09`, and `UnsafeBlock = 0x0a`.
-`ScopeOwner` uses `Module = 0x01`, `Definition = 0x02`, and `Impl = 0x03`.
+`ScopeOwner` uses `Module = 0x01`, `Definition = 0x02`, and
+`ImplOccurrence = 0x03`.
 `LabelTarget` uses `BlockScope = 0x01` and `LoopScope = 0x02`.
 `ControlTarget` uses `ExplicitLabel = 0x01`, `LoopScope = 0x02`, and
 `MatchScope = 0x03`.
@@ -966,9 +1028,12 @@ permutations must reproduce byte-identical output.
 The allocation dump encodes the domain
 `ASCII("zom.binding-allocation-dump.v0")`, one zero byte, one RFC 0011 sequence
 of scope-record byte strings, then one sequence of label-record byte strings.
-Scope records sort by expanded module key then unsigned index and encode expanded
-module key, `uint32be(index)`, optional parent index, `ScopeOwner`, expanded
-owner key, `ScopeKind`, and expanded source span. Label records sort by
+Scope records sort by expanded module key then unsigned index and encode
+expanded module key, `uint32be(index)`, optional parent index, `ScopeOwner`,
+expanded owner key, `ScopeKind`, and expanded source span. An
+`ImplOccurrence` owner expands its handle to the complete
+`ImplSourceOccurrenceKey`; the dense occurrence slot is never encoded. Label
+records sort by
 `LabelOwner` tag, expanded owner key, then unsigned index and encode
 `LabelOwner`, expanded owner key,
 `uint32be(index)`, `SemanticIdentifier`, `LabelTarget`, target scope index, and
@@ -976,7 +1041,8 @@ expanded source span. The ByteString wrapper around each complete record makes
 variable-length key and identifier encodings unambiguous.
 
 The independent framing fixture supplies one-byte already-canonical component
-bytes (`a1` module, `b1-b3` definitions, `c4` impl, `d0-da` spans, `e1-e2`
+bytes (`a1` module, `b1-b3` definitions, `c4` implementation occurrence,
+`d0-da` spans, `e1-e2`
 identifiers, and `f0-f1` label spans). Its ordered scope-record bytes are:
 
 ```text
@@ -1007,7 +1073,8 @@ framing hash independently.
 Each scope records:
 
 ```text
-ScopeOwner = Module(ModuleId) | Definition(DefId) | Impl(ImplId)
+ScopeOwner = Module(ModuleId) | Definition(DefId) |
+             ImplOccurrence(ImplOccurrenceId)
 
 ScopeRecord {
   id: ScopeId,
@@ -1070,11 +1137,14 @@ declarator activation remains governed by the separate source-order rule.
 match, match arm, closure, and unsafe block. The module scope has no parent and
 owner `Module(currentModule)`. Every other scope's parent is the nearest
 enclosing produced scope in schema preorder, with the module scope as fallback.
-Function, type-body, and closure scopes are owned by the producer's own `DefId`;
-impl-body scopes are owned by the producer's own `ImplId`. Block, loop, match,
-match-arm, and unsafe-block scopes inherit the nearest enclosing
-`Module`/`Definition`/`Impl` semantic owner. Scope ownership and parentage use
-IDs, never raw pointers.
+Function, type-body, and closure scopes are owned by the producer's own `DefId`.
+Every implementation source occurrence owns one independently allocated
+`ImplBody` scope through its `ImplOccurrenceId`; a bodyless marker occurrence
+owns an empty scope. Block, loop, match, match-arm, and unsafe-block scopes
+inherit the nearest enclosing `Module`, `Definition`, or `ImplOccurrence`
+owner. Every impl fact, direct owner, and inherited owner expands the occurrence
+handle to the same complete `ImplSourceOccurrenceKey`. Scope ownership and
+parentage use IDs, never raw pointers.
 The module scope at index zero always uses the exact half-open range of the
 `VerifiedParsedModule` `SourceFile` root as `sourceSpan`, whether or not the
 source contains a root module declaration. Every other scope uses its producing
@@ -1104,12 +1174,17 @@ attribute namespaces distinct even when their normalized spelling is equal.
 
 Binding follows this exhaustive activation table:
 
+Import and export declarations are module items only. They never participate
+in a block statement list, local activation, capture, or control-flow-dependent
+surface construction.
+
 | Introduction | Identity | Activation point |
 |---|---|---|
 | Root or inline module declaration | `ModuleId` | Session-selected module entry; never a `DefId` |
 | Alias module declaration | `DefId(ModuleAlias)` targeting `ModuleId` | Module skeleton freeze |
 | Named module item, including function, type, field/member, module-scope `let`, `mut`, or `const` binding | RFC 0011 `DefId` kind | Module, owning type, or owning impl skeleton freeze before any body or initializer resolution |
-| Standalone or marker impl | `ImplId` only | Impl inventory freeze; it creates no name binding |
+| Named function declared directly in a block | `DefId(Function)` | The immediate block skeleton freezes before any statement or expression in that block is resolved; the function is visible throughout only that block and creates a non-capturing callable boundary |
+| Standalone or marker impl occurrence | Shared `ImplId` authority plus one `ImplOccurrenceId` | Impl occurrence inventory freeze; it creates no name binding |
 | Import alias | `DefId(ImportAlias)` targeting `DefId` or `ModuleId` | After the complete verified import surface is attached, before module body binding |
 | Re-export alias | `DefId(ReexportAlias)` targeting `DefId` or `ModuleId` | After the complete verified export surface is attached, before module body binding |
 | Callable, type, standalone-impl, or marker-impl generic parameter list | one `DefId(TypeParameter)` per parameter | The complete list activates before any bound, default, signature type, impl interface/self type, where constraint, member, or body in that owner is bound |
@@ -1130,6 +1205,8 @@ reference before activation is unresolved; no recovery binding is published.
 `GenericList = 0x04`, `ParameterList = 0x05`,
 `ExpressionIntroduction = 0x06`, `AfterInitializer = 0x07`,
 `MatchPattern = 0x08`, and `LoopPattern = 0x09`.
+`ModuleSkeleton` denotes named-item skeleton activation at module, type, impl,
+or block scope; it does not imply membership in a module export surface.
 
 Duplicate declarations in one namespace and scope produce one primary
 diagnostic at the later declaration. The primary is the applicable
@@ -1314,11 +1391,13 @@ DefinitionFact {
   activation: ModuleSkeleton | ImportSurface | ReexportSurface |
               GenericList | ParameterList | ExpressionIntroduction |
               AfterInitializer |
-              MatchPattern | LoopPattern
+              MatchPattern | LoopPattern,
+  memberVisibility: Maybe<Public | Private | Protected>
 }
 
-ImplBindingFact {
-  identity: ImplId,
+ImplOccurrenceBindingFact {
+  occurrence: ImplOccurrenceId,
+  authority: ImplId,
   node: NodeId,
   scope: ScopeId,
   members: SortedSequence<DefId>,
@@ -1461,7 +1540,7 @@ BindingMetadataCandidate {
   nodeScopes: NodeId -> ScopeId,
   nodeBindings: NodeId -> BindingResolution,
   definitions: DefId -> DefinitionFact,
-  impls: ImplId -> ImplBindingFact,
+  impls: ImplOccurrenceId -> ImplOccurrenceBindingFact,
   scopes: ScopeId -> ScopeRecord,
   moduleAliases: NodeId -> ModuleAliasBindingFact,
   imports: NodeId -> ImportBindingFact,
@@ -1493,32 +1572,46 @@ checker and checked-module builder but never crosses into MIR or LIR.
 
 ### Binding Verifier
 
-Only `BindingVerifier` can construct `VerifiedBindingMetadata`. It checks:
+Only `BindingVerifier` can construct `VerifiedBindingMetadata`. `BindingBuilder`
+is the single production owner of name-resolution semantics. The production
+verifier validates that the candidate is a closed, locally well-formed
+publication; it does not rerun binding, reconstruct lexical lookup, or compare
+the candidate with a second compiler result.
+
+The production verifier checks:
 
 - `VerifiedParsedModule` receipt, source digest, byte length, tree identity, and
   every node range still match the immutable parser result;
 - every handle belongs to the input semantic context and module;
-- the module, definition-site, pattern-path, and impl maps equal the frozen
-  inventory exactly, including every no-identity exclusion;
+- the module, definition-site, pattern-path, implementation occurrence map, and
+  dense occurrence-entry inventory equal the frozen inventory exactly,
+  including every no-identity exclusion;
 - every definition has one matching `DefId`, kind, name key, namespace,
-  declaring scope, source span, activation class, and definition fact;
+  declaring scope, source span, activation class, closed member-visibility fact
+  where the declaration kind supports one, and definition fact;
   target-dependent import and re-export namespaces equal their resolved target
   namespace, and every scope-owning definition has exactly one `ScopeRecord`
   whose owner is that definition;
-- every impl has one matching `ImplId`, impl-owned scope, ordered member set, and
-  source span;
+- every implementation source node has one matching `ImplOccurrenceId`,
+  complete `ImplSourceOccurrenceKey`, shared `ImplId` authority,
+  occurrence-owned scope, ordered member set, and source span;
+- implementation nodes, occurrence entries, binding facts, and impl-body scopes
+  form one bijection; the verifier independently recomputes every occurrence
+  key and rejects missing, additional, reused, swapped, cross-node, cross-site,
+  cross-module, or inconsistently expanded rows; equal retained identity
+  records have exactly one active authority, and two occurrence facts cannot
+  share a scope or exchange their node, source, owner, or authority;
 - every module-alias declaration has one exact `ResolvedModuleAlias` input and
   `ModuleAliasBindingFact` output with its frozen `DefId(ModuleAlias)`, canonical
   target module, target surface revision, and source provenance;
-- every required identifier, module member, import, and re-export node has
-  exactly one `BoundName`, `DeferredMember`, or `Failed` resolution; every
-  successfully resolved explicit label reference has exactly one `BoundLabel`,
-  and every failed label reference or control transfer has exactly one `Failed`
-  resolution;
+- every required lexical node has exactly one structurally valid resolution and
+  every `Failed` resolution references an in-range source-failure record;
 - scope parents are acyclic and all bindings belong to their recorded scope;
-- scope and label IDs reproduce the closed schema-preorder allocation oracle;
-- every activation reproduces the exhaustive activation table and local
-  bindings are never visible before activation;
+- scope IDs are dense in schema-preorder, node-to-scope facts are complete, and
+  every produced scope has the required kind, owner, source, and parent shape;
+- definitions and implementation occurrences are complete against frozen
+  identity inventories, canonically ordered, and reference existing declaring
+  scopes;
 - import and re-export canonical targets exist in verified interfaces and are
   visible at the use site;
 - every locally produced scope, definition, binding, import, deferred-member,
@@ -1529,16 +1622,12 @@ Only `BindingVerifier` can construct `VerifiedBindingMetadata`. It checks:
   source module and verified source snapshot; every re-export step's span and
   alias ancestry match its recorded step module;
 - alias chains terminate and retain provenance;
-- every deferred member has a bound base and complete syntax provenance;
-- label and control-transfer targets obey block, loop, match, label, callable,
-  and closure boundaries, and `continue` never targets a match or block;
-- closure free-variable facts reproduce the dense closure census, successful
-  local-value filter, callable-boundary propagation, sorting, and deduplication
-  algorithm;
-- explicit closure-capture facts reproduce every capture-list row, exact list
-  and token source, source-ordered item, capturable target, receiver binding,
-  duplicate diagnostic, body-reference exhaustiveness rule, and the exact
-  inferred-versus-explicit closure partition;
+- all published targets exist in the verified input context, ordered sequences
+  are canonical, source ranges are valid, and foreign-context identities are
+  absent;
+- source failures have valid unique emitter ordinals, deterministic source
+  order, registered note shapes, and valid failed-resolution indices;
+- shadow facts reference existing distinct targets and are canonically ordered;
 - the current surface contains every local module-private binding and
   every explicit export, its exports are exactly the external subset, ordinary
   imports are absent, and every target is visible and canonically terminated;
@@ -1547,45 +1636,54 @@ Only `BindingVerifier` can construct `VerifiedBindingMetadata`. It checks:
 - no semantic type, inference variable, receiver adjustment, overload
   candidate, witness, capture mode, layout, or ABI payload occurs.
 
-For control transfer, the verifier independently rebuilds the scope arena from
-`VerifiedBindingInput` without invoking `ControlTransferBuilder`. It recursively
-walks the AST with its own active-label stack, pushes only the label whose
-immediate statement subtree is being visited, clears and restores that stack at
-function and closure boundaries, and performs its own innermost-first canonical
-name lookup. For unlabeled statements it independently walks scope parents and
-recomputes the nearest legal loop or match target. For explicit statements it
-requires the selected `LabelId`, flattened `LabelTarget`, full statement span,
-retained ordinal-one failure span, diagnostic, emitter site, schema ordinal, and
-local ordinal to match. Every statement must satisfy exactly one legal outcome:
-one successful fact, plus `BoundLabel` only for explicit success; or one
-`Failed` resolution and its exact source failure, with no control fact.
+Production verification is a one-way, phase-owned pipeline:
 
-For closure free-variable facts, the verifier independently rebuilds the scope
-arena and dense frozen-closure census without invoking
-`ClosureFreeVariableBuilder`. It derives capturable targets from the frozen
-inventory, derives each reference scope from canonical node-scope facts, walks
-callable boundaries independently, and reconstructs the exact canonical
-`(closure, target, referenceSite)` triples. It then compares every row, target,
-site, context-owned identity, and codec field. A missing closure row, target, or
-site yields `MissingRequiredResolution`; an additional, duplicate, reordered,
-or otherwise malformed fact yields `InvalidBindingFact`. A foreign-context
-closure or target is rejected earlier as RFC 0011 `ForeignContext`.
+```mermaid
+flowchart LR
+  C[BindingMetadataCandidate] --> I[Context and source integrity]
+  I --> E[Schema-driven record envelope]
+  E --> S[Handwritten cross-record and AST validation]
+  S --> P[Private verified publication]
+  F[binding-fact-schema.def] -. record membership and stable tags .-> E
+  F -. candidate storage and public accessors .-> C
+  F -. domain mutation inventory .-> T[Binder mutation tests]
+```
 
-For explicit closure-capture facts, the verifier independently rebuilds the
-scope arena and frozen-closure census without invoking the body-binding capture
-producer. It enumerates every
-function-expression `CaptureList`, reproduces expanded-`DefinitionKey` row
-ordering and AST item ordering, and validates the exact list span, retained
-item token, `BoundName`, target kind, spelling, and receiver classification,
-duplicate primary/note pair, and every crossed explicit-closure requirement. It
-also proves that every frozen closure occurs exactly once across the inferred
-and explicit sequences.
-The canonical metadata codec encodes the explicit sequence size and every
-closure, list node, list span, target, item node, and item span. Missing facts
-yield `MissingRequiredResolution`; additional, overlapping, reordered, or
-malformed facts yield `InvalidBindingFact`; malformed callable ancestry yields
-`MalformedScopeGraph`; and foreign closure or target identities are rejected
-through RFC 0011 context checks.
+- `binding-verifier.cc` only sequences rejection precedence and publication.
+- `binding-candidate-codec.cc` owns canonical record codecs, sequence framing,
+  and local record-envelope validation.
+- `binding-candidate-validator.cc` owns handwritten context, source, cross-record,
+  ordering, and AST-coverage invariants.
+- `binding-publication.cc` alone constructs the immutable verified objects.
+- `binding-fact-schema.def` is the authoritative inventory for all seventeen
+  candidate fact sequences. It declares each record type, candidate member,
+  published accessor, stable codec tag, fact domain, required mutation classes,
+  and executable mutation test. Its expansions generate candidate storage,
+  public accessors, publication accessors, canonical sequence dispatch, and the
+  differential fact census.
+
+Record payload types and cross-record validators remain handwritten. Generating
+those semantic rules from producer traversal would couple both sides to one
+algorithm and turn verification into a repeated assertion. The architecture and
+fact-schema gates reject producer headers or producer symbols in every
+production verification component.
+
+`BindingDifferentialOracle` is a test-only regression harness. It invokes
+`BindingBuilder::buildCandidate` to obtain a production baseline, runs
+domain-specific semantic mutation checks, compares allocation and canonical
+metadata encodings, and then invokes the production structural verifier. The
+baseline comparison is not independent verification and is never accepted as
+publication evidence by itself. The domain checks consume already-validated
+candidate scope facts and reconstruct label, control-transfer, deferred-member,
+contextual-`Self`, closure-free-variable, and explicit-capture semantics without
+calling the corresponding producer algorithms. The architecture gate permits
+producer access only in the differential harness and keeps every oracle source
+out of the production Binder target.
+
+Missing exact facts yield `MissingRequiredResolution`; additional, reordered,
+or semantically altered facts yield `InvalidBindingFact`; malformed ancestry
+yields `MalformedScopeGraph`; and foreign identities remain production context
+failures.
 
 Verification failure is a closed result:
 
@@ -1603,8 +1701,8 @@ BindingVerificationResult =
   }
 ```
 
-The verifier first validates structure and invariants without trusting any
-candidate `BindingFailureRef`. `sourceFailures` contains exactly one record for
+The verifier first validates closed structure before accepting any candidate
+`BindingFailureRef`. `sourceFailures` contains exactly one record for
 every binder-produced primary source diagnostic, including declaration and
 label duplicates that do not require a failed reference node. Attached notes,
 including `ZOM3017`, occur only in the owning primary's `notes` sequence and do
@@ -1613,8 +1711,10 @@ record in `sourceFailures`, but a source failure need not have a failed
 resolution. If an invariant failure exists, the verifier returns
 `InvariantRejected`; candidate source failures cannot hide or replace it. If no
 invariant fails but `sourceFailures` is non-empty, it verifies every record
-against one already-emitted registered source diagnostic and returns
-`SourceRejected` in diagnostic order without emitting a new diagnostic. Only a
+    against one already-emitted registered source diagnostic and returns
+`SourceRejected` in diagnostic order without emitting a new diagnostic. Exact
+    diagnostic-to-AST semantic correspondence is covered by domain mutation and
+    producer tests. Only a
 candidate with no invariant and an empty `sourceFailures` can return `Verified`.
 
 The rejection mapping is exhaustive:
@@ -1634,10 +1734,12 @@ The rejection mapping is exhaustive:
 | Scope/label allocation overflows or a label/control target violates its closed algebra | `InvalidBindingFact` / `ZOM9925` |
 | Emitter site, schema ordinal, local ordinal, or packed ordinal is invalid or overflows | `InvalidEmitterOrdinal` / `ZOM9926` |
 
-Each verifier negative test starts from one valid complete candidate, mutates
-exactly one listed condition, and asserts the exact failure variant, invariant
-kind, registered diagnostic ID and anchor, deterministic sorted position, and
-absence of both verified outputs. Pairwise tests cover conditions whose
+Each structural-verifier negative test mutates one closed publication invariant.
+The fact schema maps every sequence to missing, additional, reordered, and
+domain-specific mutation obligations. Each semantic mutation test passes one
+mutation through the test-only differential harness. Both matrices assert the exact failure variant,
+invariant kind, registered diagnostic ID and anchor, deterministic sorted
+position, and absence of both verified outputs. Pairwise tests cover conditions whose
 suppression or grouping can interact. No rejection branch may return a boolean,
 free-form text, or an unclassified error.
 
@@ -1731,7 +1833,7 @@ Redeclaration primary selection covers every RFC 0011 definition kind:
 | `Parameter` | `ZOM3004 RedeclareParameter` |
 | `Field`, `Constant`, `Static`, `Local`, `PatternBinding` | `ZOM3003 RedeclareVariable` |
 | `Closure` | No redeclaration code; anonymous closure names cannot enter a name map |
-| `ImplId` | No binder redeclaration code; RFC 0005 coherence owns semantic impl overlap |
+| Implementation occurrence under a shared `ImplId` authority | No binder redeclaration code; RFC 0015 post-classification survivor grouping owns implementation conflicts |
 
 For every duplicate, the later source-order binding receives the primary and
 the first receives `ZOM3017 PreviousDeclarationHere` with severity `Note`,
@@ -1983,58 +2085,70 @@ temporary immutable verified inputs.
 10. Type-directed members remain deferred and contain enough syntax provenance
     for RFC 0005 and RFC 0009 to finish resolution without repeating binding.
 11. `BindingVerifier` is the only constructor of
-    `VerifiedBindingMetadata`.
-12. Failed binding publishes no verified metadata.
-13. Foreign-context identities, malformed scope graphs, incomplete facts, and
+    `VerifiedBindingMetadata`; its production path performs structural
+    validation only and never invokes `BindingBuilder`, constructs an expected
+    candidate, or compares complete candidate byte streams.
+12. `BindingDifferentialOracle` is confined to Binder tests and is classified as
+    a producer-baseline regression harness, while its domain mutation components
+    call no Binder producer algorithm before delegating publication to
+    `BindingVerifier`.
+13. Failed binding publishes no verified metadata.
+14. Foreign-context identities, malformed scope graphs, incomplete facts, and
     alias cycles fail through structured invariant diagnostics.
-14. Same-name definitions in distinct modules, crates, and packages never
+15. Same-name definitions in distinct modules, crates, and packages never
     compare equal.
-15. Source registration order and worker count do not affect identities,
+16. Source registration order and worker count do not affect identities,
     bindings, dumps, or diagnostic order.
-16. Tests assert real import, re-export, label, capture, shadow, and deferred
+17. Tests assert real import, re-export, label, capture, shadow, and deferred
     member targets; non-asserting placeholder tests are absent.
-17. Repository search finds no old `SymbolId`, pointer-derived scope ID,
+18. Repository search finds no old `SymbolId`, pointer-derived scope ID,
     placeholder binder type, binder-owned module loader, or compatibility alias.
-18. `python3 scripts/check-rfc.py` and `python3 scripts/check-format.py` pass.
-19. Sanitizer configure/build and focused binder, symbol, checker, and module
+19. `python3 scripts/check-rfc.py` and `python3 scripts/check-format.py` pass.
+20. Sanitizer configure/build and focused binder, symbol, checker, and module
     tests pass.
-20. `ctest --preset default --output-on-failure` passes before `LANDED`.
-21. NFC-equivalent declaration spellings produce the ordinary kind-specific
+21. `ctest --preset default --output-on-failure` passes before `LANDED`.
+22. NFC-equivalent declaration spellings produce the ordinary kind-specific
    `ZOM30xx` redeclaration primary at the later declaration and `ZOM3017` at
    the first declaration in deterministic source order; no `ZOM99xx` identity
    invariant is emitted.
-22. The prebinding collector walks every selected parsed module once in expanded
+23. The prebinding collector walks every selected parsed module once in expanded
     `ModuleKey` order and performs exactly one context-global definition freeze
     and one impl freeze before publishing any per-module inventory view.
-23. Scope and label allocation exactly reproduces the complete producer table
+24. Scope and label allocation exactly reproduces the complete producer table
     and byte-identical schema-preorder oracle, including recovery ties and the
     source-root range for module scope zero.
-24. Every definition and pattern leaf reproduces the exhaustive activation
+25. Every definition and pattern leaf reproduces the exhaustive activation
     table; missing, additional, early, or late activation prevents publication.
-25. The verified current surface contains every module-private local
+26. The verified current surface contains every module-private local
     module-level binding and every explicit external export, with exports equal
     to the external subset and no ordinary import alias.
-26. Source receipts and verifier checks reject a swapped tree, stale digest,
+27. Source receipts and verifier checks reject a swapped tree, stale digest,
     out-of-bounds range, cross-source range, dependency-span ancestry mismatch,
     or re-export-chain discontinuity.
-27. Every `ZOM3001-ZOM3024` producer, redeclaration-kind mapping,
+28. Every `ZOM3001-ZOM3024` producer, redeclaration-kind mapping,
     `ZOM9922-ZOM9926` and `ZOM9956` invariant, typed diagnostic argument, and deterministic
     emitter ordinal has executable positive and negative coverage.
-28. Checker, checked-module, HIR, MIR, LIR, backend, and disposable `irgen` code
+29. Checker, checked-module, HIR, MIR, LIR, backend, and disposable `irgen` code
     obey the exact dependency matrix. No downstream layer gains binding or
     module-resolution authority. HIR may lower immutable AST/source structure
     and frozen checked facts only through `VerifiedCheckedModule`; each later
     layer consumes only its verified predecessor and its explicitly owned target
     inputs.
-29. Binder, symbol, identity, and diagnostic line coverage does not regress from
+30. Binder, symbol, identity, and diagnostic line coverage does not regress from
     the checked-in baseline; every new source file is at least 70% line covered
     unless an exact unreachable/FFI exemption is recorded in that baseline.
+31. Every implementation syntax node has one occurrence entry, binding fact,
+    and impl-body scope under exactly one shared stable authority. Occurrence
+    handles expand to the same complete `ImplSourceOccurrenceKey` in every
+    Binder codec, and missing, reused, swapped, or cross-site joins fail
+    verification.
 
 ## Implementation Plan
 
 1. Accept RFC 0011 and freeze the shared semantic identity contract.
 2. Implement `VerifiedParsedModule`, the context-global
-   `PrebindingIdentityCollector`, and exact per-module frozen inventory views.
+   `PrebindingIdentityCollector`, exact per-module frozen inventory views, and
+   the implementation occurrence bridge.
 3. Implement the global `ModuleGraphVerifier`, deterministic mixed-cycle and
    ambiguity classification, then `BindingInputVerifier`, requester-filtered
    surfaces, exact module alias/import/re-export facts, revisions, and
@@ -2062,23 +2176,33 @@ temporary immutable verified inputs.
 - Build: `cmake --preset sanitizer` and
   `cmake --build --preset sanitizer`.
 - Focused unit command:
-  `ctest --preset default --output-on-failure -R '^(binder|decl-collector|name-resolver|import-resolver|scope|symbol-table|diagnostic)-test$'`.
+  `ctest --preset default --no-tests=error --output-on-failure -R '^(binding-input-test|binding-diagnostic-adapter-test|definition-inventory-test|frozen-definition-inventory-test|parser-test|compiler-session-test|compiler-session-package-test)$'`.
   It covers every RFC 0011 identity-producing and no-identity schema row,
   multi-binding pattern paths, context-global freeze under reversed module
   order, every scope and label producer, source-root module scope, every
   activation-table row, target-dependent namespaces, block/loop/match label and
   control targets, shadows, capturable-only nested closure propagation, global
   and import non-captures, every fact-sum rejection, and foreign contexts.
-- Verifier negative matrix: one mutation and one exact oracle for every row in
-  the rejection table, including missing/additional/stale/wrong-owner/
+- Production-verifier negative matrix: one local structural mutation for every
+  publication invariant, including missing/additional/stale/wrong-owner/
   wrong-context records, each parser-receipt component, same-source-but-outside-
   owner spans, cross-source spans, wrong chain terminals, forbidden payloads,
   exact invariant ID/anchor/order, and proof that neither verified output exists.
+- Differential-oracle matrix: one exact semantic mutation for each label,
+  control-transfer, deferred-member, contextual-`Self`, closure-free-variable,
+  explicit-capture, diagnostic, shadow, and canonical-codec field. The
+  architecture gate proves this oracle is unreachable outside Binder tests.
   A separate matrix covers every `SourceRejected` diagnostic family, exact
   retained `BindingFailureRef` order, absence of `ZOM99xx`, and invariant
   precedence when a source failure and structural mutation coexist. It includes
   duplicate declaration, NFC-equivalent duplicate, and duplicate-label
   primaries with attached `ZOM3017` and no required failed reference node.
+- Fact-schema gate:
+  `python3 scripts/check-binder-fact-schema.py --check`. It rejects duplicate or
+  unstable tags, unknown domains or mutation classes, absent record codecs,
+  missing executable mutation tests, disconnected generated consumers,
+  producer reuse in production verification, target leakage, and component size
+  regressions.
 - Unlabeled control-transfer matrix: missing, additional, and reordered facts;
   wrong transfer kind, nearest target, target variant, and statement source;
   foreign target scopes; `continue` targeting a match; missing or malformed
@@ -2101,7 +2225,7 @@ temporary immutable verified inputs.
   named-function rejection; exact target and source-site ordering and
   deduplication; missing, additional, reordered, wrong, duplicate, and
   foreign-context rows, targets, and sites; complete codec mutation coverage;
-  and an independent verifier oracle that does not call the producer.
+  and a test-only domain oracle that does not call the closure producer.
 - Explicit closure-capture matrix: one expanded-`DefinitionKey`-ordered row per
   function expression with a capture clause; `use []`; source-ordered by-value,
   by-reference, and `this` items with exact retained token spans; only
@@ -2113,10 +2237,10 @@ temporary immutable verified inputs.
   exhaustiveness across every explicit closure; inferred-versus-explicit
   partition and nested propagation; missing, additional, reordered, wrong,
   overlapping, and foreign-context rows, lists, items, targets, sources, and
-  resolutions; every codec field; and an independent verifier oracle that does
+  resolutions; every codec field; and a test-only differential oracle that does
   not call the capture producer.
 - Focused lit command:
-  `ctest --preset default --output-on-failure -R '^lit-(05-statements|06-declarations|13-modules|23-visibility)-'`.
+  `ctest --preset default --no-tests=error --output-on-failure -R '^(lit|diagnostics|binder)-(05-statements|06-declarations|13-modules|23-visibility)-'`.
   Fixtures cover current Chapter 13 import forms, aliases, re-exports, missing and
   private targets, duplicate declarations, unresolved names, label boundaries,
   and local use-before-declaration with exact codes and source spans. The fixed
@@ -2169,7 +2293,8 @@ temporary immutable verified inputs.
   orphan checks in the same target set before landing.
 - Architecture commands:
   `python3 scripts/check-binder-architecture.py --check` and
-  `ctest --preset default --output-on-failure -R '^binder-architecture-negative-test$'`.
+  `python3 scripts/check-binder-fact-schema.py --check`, plus
+  `ctest --preset default --no-tests=error --output-on-failure -R '^binder-architecture-negative$'`.
 - Coverage commands: `cmake --preset coverage`,
   `cmake --build --preset coverage`, `ctest --preset coverageTests`,
   `cmake --build --preset coverage --target coverage`, then
@@ -2199,10 +2324,13 @@ None
 | 2026-07-13 | IMPLEMENTING | Activated anonymous closure expression facts and closure-owned generic and parameter facts without creating a lexical or surface binding. |
 | 2026-07-13 | IMPLEMENTING | Activated for-in and match-arm pattern leaves in their exact lexical scopes while keeping source-ordered block declarators separate. |
 | 2026-07-13 | IMPLEMENTING | Added dependency-free lexical body binding with source-ordered local activation, sequential parameter-default visibility, role-routed type-query, marker, shorthand, and optional struct-pattern references, deterministic bound and failed name facts, lexical shadow targets, and verifier and codec coverage. |
-| 2026-07-13 | IMPLEMENTING | Completed dependency-free unlabeled `break` and `continue` binding with nearest loop or match targets, exact retained keyword failures, an independent verifier oracle, canonical encoding, and typed `ZOM3020-ZOM3021`; explicit labels and `ZOM3022` remain pending. |
-| 2026-07-13 | IMPLEMENTING | Completed canonical label declaration facts with module-or-callable owner-local identities, immediate statement edges, flattened block-or-loop targets, exact retained declaration tokens, deterministic duplicate facts and diagnostics, canonical allocation encoding, and an independent verifier oracle. |
-| 2026-07-13 | IMPLEMENTING | Completed explicit labeled `break` and `continue` binding with active-ancestor lookup, function and closure boundaries, no implicit fallback, paired `BoundLabel` and explicit control facts, exact retained reference failures, typed `ZOM3022`, canonical codecs, independent verification, and adversarial boundary coverage. |
-| 2026-07-13 | IMPLEMENTING | Completed dependency-free value member deferral for dot and optional access with a canonical `DeclaredDefinitionName`, direct-call type arguments, full syntax provenance, deterministic codecs, independent verification, and fail-closed qualified access. |
-| 2026-07-14 | IMPLEMENTING | Added dependency-free inferred closure free-variable facts with dense inferred rows, capturable local-value filtering, original-site nested propagation, named-function boundaries, deterministic ordering, complete codecs, and independent verification while reserving explicit clauses for their own fact sequence. |
-| 2026-07-14 | IMPLEMENTING | Added explicit closure-capture binding and receiver resolution in the active implementation checkout: exact capture-token facts, dense `use []` rows, exhaustive explicit boundaries, special receiver `DefId(Parameter)` handling, `ThisExpr`, complementary inferred/explicit closure rows, complete codecs, and an independent oracle. Landing commit and complete verification evidence remain pending in the implementation tracker. |
+| 2026-07-13 | IMPLEMENTING | Completed dependency-free unlabeled `break` and `continue` binding with nearest loop or match targets, exact retained keyword failures, test-only control-domain mutation coverage, canonical encoding, and typed `ZOM3020-ZOM3021`; explicit labels and `ZOM3022` remain pending. |
+| 2026-07-13 | IMPLEMENTING | Completed canonical label declaration facts with module-or-callable owner-local identities, immediate statement edges, flattened block-or-loop targets, exact retained declaration tokens, deterministic duplicate facts and diagnostics, canonical allocation encoding, and test-only label-domain mutation coverage. |
+| 2026-07-13 | IMPLEMENTING | Completed explicit labeled `break` and `continue` binding with active-ancestor lookup, function and closure boundaries, no implicit fallback, paired `BoundLabel` and explicit control facts, exact retained reference failures, typed `ZOM3022`, canonical codecs, domain mutation coverage, and adversarial boundary coverage. |
+| 2026-07-13 | IMPLEMENTING | Completed dependency-free value member deferral for dot and optional access with a canonical `DeclaredDefinitionName`, direct-call type arguments, full syntax provenance, deterministic codecs, domain mutation coverage, and fail-closed qualified access. |
+| 2026-07-14 | IMPLEMENTING | Added dependency-free inferred closure free-variable facts with dense inferred rows, capturable local-value filtering, original-site nested propagation, named-function boundaries, deterministic ordering, complete codecs, and domain mutation coverage while reserving explicit clauses for their own fact sequence. |
+| 2026-07-14 | IMPLEMENTING | Added explicit closure-capture binding and receiver resolution in the active implementation checkout: exact capture-token facts, dense `use []` rows, exhaustive explicit boundaries, special receiver `DefId(Parameter)` handling, `ThisExpr`, complementary inferred/explicit closure rows, complete codecs, and domain mutation coverage. Landing commit and complete verification evidence remain pending in the implementation tracker. |
 | 2026-07-15 | IMPLEMENTING | Required the explicit receiver to be unique and first, rejected receiver default values with parser diagnostics, and classified the parser-generated bare-receiver `Self` node as a non-lexical default expansion while preserving explicit source type binding. |
+| 2026-07-16 | IMPLEMENTING | Established one production Binder execution path: `BindingVerifier` now performs candidate-only structural publication checks, while exact semantic reconstruction and canonical candidate comparison are confined to the test-only `BindingDifferentialOracle` and enforced by the Binder architecture gate. |
+| 2026-07-18 | IMPLEMENTING | Decomposed the production verifier into orchestration, canonical codec, handwritten structural validation, and private publication components; added the authoritative seventeen-sequence fact schema and mutation inventory; isolated domain mutation oracles in the test target; prohibited producer reuse in production verification and semantic oracle components; and reclassified the producer-baseline differential path as regression evidence rather than independent verification. |
+| 2026-07-18 | IMPLEMENTING | Synchronized the accepted RFC 0018 implementation occurrence bridge: one shared stable authority per identity group, one revision-local occurrence entry, binding fact, and impl-body scope per source node, and complete occurrence-key expansion in owner codecs. |

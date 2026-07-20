@@ -386,17 +386,29 @@ were ACCEPTED. The accepted design freezes role-bearing error-union lowering,
 `?!`, `!!`, and `as!` control flow, cleanup and drop ordering, target-specific
 layout and artifact identity, abort/unwind panic lifetime, FFI and main
 containment, registered diagnostics, exact codecs, and rejection
-classification. Implementation remains `TBD`; the next legal transition is
-`ACCEPTED -> IMPLEMENTING` only when the direct replacement series is named
-and starts. RFC 0007 may now advance through its own gate.
+classification. The proposal entered `IMPLEMENTING` through the direct
+replacement series below on 2026-07-17. RFC 0007 may advance only through its
+own independent gate.
 
 ## Implementation Tracker
 
-The current `compiler/irgen`, runtime panic, CLI emission, and conformance work
-is a disposable pre-acceptance experiment. Accepted implementation work must
-not begin until a recorded `ACCEPTED -> IMPLEMENTING` transition. At that time
-this section will link the implementation change series and track every
-acceptance criterion.
+The direct replacement series started on 2026-07-17. The removed mixed
+`compiler/irgen` prototype, AST/TypeEnv lowering, fake `--emit=ir`, and every
+`v1` MIR path are forbidden predecessors, not compatibility inputs.
+
+| Slice | State | Required evidence |
+|---|---|---|
+| Verified frontend handoff | In progress | Canonical checked facts, dispatch facts, module interfaces, borrow evidence, Semantic HIR, and exact revision lineage |
+| Error-role descriptors | Pending | Closed role-bearing descriptor codec, independent verifier, exact oracle, cross-module publication, and mutation matrix |
+| Built MIR control flow | Pending | RFC 0013 MIR v2, `?!`, `!!`, and `as!` terminators, all residual variants, calls, and source-to-MIR conformance |
+| Cleanup and drop elaboration | Pending | Path-complete drops on every normal, residual, panic, and unwind exit with certificate verification |
+| Target layout and LIR | Pending | Verified target selection, complete layout records, ABI lowering, capability rejection, and deterministic snapshots |
+| Backend artifacts | Pending | LLVM/object emission, artifact codec, symbol and relocation verification, FFI containment, and executable publication |
+| Runtime and CLI cutover | Pending | Abort and supported unwind boundaries, panic metadata lifetime, main containment, real output modes, and no fake emission |
+| Production cutover | Pending | Full sanitizer/default CTest, layer runners, conformance, determinism, architecture, format, RFC, and diff-hygiene evidence |
+
+No slice may reconstruct semantics from AST nodes, mutable type tables, source
+names, or the deleted `irgen` prototype.
 
 ## Verification Evidence
 

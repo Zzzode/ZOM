@@ -747,6 +747,26 @@ evidence and is not proof of the accepted canonical contract.
 |---|---|---|
 | Closed semantic type value algebra | Implemented | Exact `0x01-0x10` branch tags, primitive and field tags, complete value payload coverage, move-only semantics, and focused unit tests |
 | Semantic type v1 key codec | Implemented | RFC 0014 fixed vectors, recursive v1 union oracle, complete branch encoding, canonical ordering validation, and malformed-input rejection |
-| Canonical semantic type store | Pending | Closed results, linearizable interning, stable reads, and context validation |
-| Signature facts and verifier | Pending | Complete candidate, independent census, revision, and typed diagnostics |
-| Body facts and production cutover | Pending | Complete verifier, downstream handoff, deletion of the polymorphic type path, and full gates |
+| Canonical semantic type store | In review | Closed admission capability, context-owned singleton construction, canonical key lookup, linearizable interning, stable reads, malformed and foreign-context rejection, focused sanitizer tests, and architecture gates are implemented; complete repository evidence remains pending |
+| Signature facts and verifier scaffold | In review | Closed candidate, canonical fact algebra, revision, typed invariant failures, diagnostic adapter, and focused verifier tests exist; production signature construction and publication remain blocked by RFC 0015 |
+| Direct checker rail replacement | In review | The polymorphic type tree, mutable `TypeEnv`, old Checker passes, AST `BindingMetadata`, compiler symbol rail, and AST-to-IR lowering entry are deleted; `CompilerSession` emits a typed fatal `MissingRequiredFact` at the signature stage instead of publishing partial checked facts |
+| Formal signature, coherence, and body checking | Blocked by RFC 0015 acceptance | Implement the accepted phase order and complete codecs only after the operator and impl-pattern algebras are approved; then publish `VerifiedSignatureFacts`, module interfaces, frozen coherence, and `VerifiedCheckedFacts` without an intermediate production shape |
+| Downstream checked-facts handoff | Blocked by formal checker | Replace the current checked-input rejection with verified dispatch and IR inputs, then run the complete sanitizer, conformance, determinism, and architecture matrix |
+# RFC 0015 Accepted Overlay
+
+RFC 0015 was approved at exact review SHA-256
+`642836225d54f6fa28f8c27e9985972081dbd221c2e8f3e61a0aafd04fe9bb1e`.
+Its accepted-file SHA-256 is
+`9704d5651606e8a74034c8af4be5172b4007a6c9f0ee8ea2f5ee183223401c01`.
+The overlay directly replaces the RFC 0005 impl-pattern, marker-evidence,
+signature, coherence, and diagnostic codec contracts named by RFC 0015.
+
+# RFC 0018 Occurrence Bridge Overlay
+
+RFC 0018 was accepted after all nine owners approved exact REVIEW SHA-256
+`bdcbee8761d5476822cbe5bb2548332ad36e4d5f507c38e74d06751c6f444379`.
+The type-system contract now reconstructs and classifies every source impl
+occurrence independently under one shared stable authority. Only unique RFC
+0015 ordinary and marker survivors publish semantic facts; occurrence handles,
+facts, scopes, nodes, and dense slots remain outside signature and coherence
+identity. This record changes no implementation slice state or evidence.

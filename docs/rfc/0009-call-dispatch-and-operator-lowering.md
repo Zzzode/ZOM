@@ -2,20 +2,20 @@
 rfc: 9
 title: Call Dispatch And Operator Lowering
 type: compiler
-status: ACCEPTED
+status: IMPLEMENTING
 author: ZOM Compiler Team
 review-manager: rfc
 required-owners: [rfc, binder-checker, module-system, error-system, ir-backend, spec-audit, verification]
 approvers: [rfc, binder-checker, module-system, error-system, ir-backend, spec-audit, verification]
 created: 2026-07-08
-updated: 2026-07-11
+updated: 2026-07-17
 area: compiler
 requires: [4, 5, 8, 11]
 supersedes: []
 superseded-by: []
 discussion: docs/rfc/tracking/0009-review-and-implementation.md#discussion-record
 decision: docs/rfc/tracking/0009-review-and-implementation.md#decision-record
-implementation: TBD
+implementation: docs/rfc/tracking/0009-review-and-implementation.md#implementation-tracker
 tracking-issue: docs/rfc/tracking/0009-review-and-implementation.md#implementation-tracker
 ---
 
@@ -711,3 +711,4 @@ None
 | 2026-07-11 | DRAFT | Responded to spec-audit re-review by copying distinct success, canonical result, raises, and error-union-shape facts from RFC 0005, limiting result transforms to successful payloads, and adding Chapter 3 plus the exact primitive-only operator inventory to the documentation contract. |
 | 2026-07-11 | REVIEW | Entered formal review after exact-hash governance, semantic, and invariant reviewers approved the coordinated type, module, dispatch, error-lowering, and IR contracts. Approvers and decision remain open. |
 | 2026-07-11 | ACCEPTED | All seven required owners approved proposal hash `c4b9206b117fe4ecd40f1b58a7f79126c4a5bf416051807a99e9ff31db814c10` after semantic selection, logical dispatch, revision framing, evidence lifetime, diagnostic, codec, and verifier review. Implementation has not started. |
+| 2026-07-17 | IMPLEMENTING | Started the direct immutable dispatch-facts series over canonical checked facts, independent inventory and candidate verification, exact checked-evidence lineage, Semantic HIR consumption, and RFC 0010 target lowering. No TypeEnv dispatch table or repeated lookup path is retained. |

@@ -519,3 +519,11 @@ arm64 sanitizer environment with delegated CPU, memory, and process cgroup
 controllers. Repository hygiene finds no CJK text, workspace-absolute paths,
 credential markers, temporary files, or generated user presets in the complete
 change set. RFC 0011 is therefore `LANDED`.
+# RFC 0015 Accepted Overlay
+
+RFC 0015 was approved at exact review SHA-256
+`642836225d54f6fa28f8c27e9985972081dbd221c2e8f3e61a0aafd04fe9bb1e`.
+Its accepted-file SHA-256 is
+`9704d5651606e8a74034c8af4be5172b4007a6c9f0ee8ea2f5ee183223401c01`.
+The overlay directly replaces the RFC 0011 impl-pattern sequence-width and
+canonicalization contracts named by RFC 0015.

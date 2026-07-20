@@ -215,3 +215,20 @@ production checker path:
 Receiver normalization must land in that signature cutover. Patching the
 current `DeclSignatureComputer` or adding a parallel receiver side table is not
 an accepted implementation path.
+# RFC 0015 Accepted Overlay
+
+RFC 0015 was approved at exact review SHA-256
+`642836225d54f6fa28f8c27e9985972081dbd221c2e8f3e61a0aafd04fe9bb1e`.
+Its accepted-file SHA-256 is
+`9704d5651606e8a74034c8af4be5172b4007a6c9f0ee8ea2f5ee183223401c01`.
+The overlay directly replaces the RFC 0014 impl-owner, contextual `Self`, and
+projection-consumer contracts named by RFC 0015.
+
+# RFC 0018 Occurrence Bridge Overlay
+
+RFC 0018 was accepted after all nine owners approved exact REVIEW SHA-256
+`bdcbee8761d5476822cbe5bb2548332ad36e4d5f507c38e74d06751c6f444379`.
+The contextual-`Self` contract now carries the ordinary source occurrence in
+`SelfOwner::Impl`, retains tag `0x03`, and expands that handle to the complete
+`ImplSourceOccurrenceKey`. Bodyless marker occurrences publish no impl
+`SelfOwner`. Implementation evidence remains tracked by RFC 0018.

@@ -8,7 +8,7 @@ review-manager: rfc
 required-owners: [rfc, lexer-parser, binder-checker, module-system, error-system, runtime-memory, ir-backend, spec-audit, verification]
 approvers: [rfc, lexer-parser, binder-checker, module-system, error-system, runtime-memory, ir-backend, spec-audit, verification]
 created: 2026-07-15
-updated: 2026-07-15
+updated: 2026-07-18
 area: language
 requires: [4, 5, 9, 10, 11, 13]
 supersedes: []
@@ -213,7 +213,7 @@ Review must restart if any bound file changes before this RFC reaches
 SelfOwner =
   Nominal(owner: DefId)
   | Interface(owner: DefId)
-  | Impl(owner: ImplId)
+  | Impl(owner: ImplOccurrenceId)
 
 BoundSelfType {
   syntax: NodeId,
@@ -223,8 +223,10 @@ BoundSelfType {
 ```
 
 `SelfOwner` tags are `Nominal = 0x01`, `Interface = 0x02`, and `Impl =
-0x03`. The payload is the RFC 0011 expanded `DefId` or `ImplId`. The binding
-candidate and verified metadata each add
+0x03`. A nominal or interface payload expands its RFC 0011 `DefId`. An impl
+payload expands the occurrence handle through the frozen RFC 0018 occurrence
+entry to its complete `ImplSourceOccurrenceKey`; the dense handle slot is never
+encoded. The binding candidate and verified metadata each add
 `selfTypes: SortedMap<NodeId, BoundSelfType>`. Records sort by unsigned
 `NodeId` and encode `uint32be(syntax)`, the owner tag and expanded owner key,
 then the expanded source span.
@@ -243,6 +245,9 @@ active only after its interface path, target type, generic parameters, and
 where clause have verified binding facts. It applies to direct member
 signatures and bodies, including nested closures and nested ordinary callables.
 Nominal and interface owners likewise begin at their body, not their header.
+Only a successfully classified ordinary braced occurrence may become an impl
+`SelfOwner`. A bodyless marker occurrence owns an empty impl-body scope but
+publishes no contextual `Self` owner.
 
 It publishes no `BindingNameKey`, `ScopeBindingEntry`, ordinary `BoundName`, or
 fabricated definition for that path. The owner is the nearest enclosing type,
@@ -259,7 +264,7 @@ Signature checking materializes `Self` as follows:
 |---|---|
 | `Nominal(definition)` | the nominal type identified by `definition`, instantiated with the owner's active generic parameters |
 | `Interface(definition)` | `TypeData::InterfaceSelf { interface: definition }` |
-| `Impl(implementation)` | the verified canonical impl target after substitution |
+| `Impl(occurrence)` | the verified canonical impl target reconstructed from that source occurrence and published under its shared authority |
 
 `InterfaceSelf` is a canonical semantic type, not a name or an inference
 variable. It may appear only in a signature owned by its interface or while
@@ -340,8 +345,9 @@ no unresolved projection enters a successful semantic type.
 
 RFC 0013 classifies `InterfaceSelf` as `ParametricRegion`. Its receiver-owner
 invariant is replaced: a receiver callable is valid when its verified semantic
-owner is a nominal/interface `DefId`, or an `ImplId` whose verified impl
-signature supplies one canonical `ImplHead.selfType`. The receiver region uses
+owner is a nominal/interface `DefId`, or an `ImplOccurrenceId` whose
+independently reconstructed source header supplies one canonical impl target
+under the occurrence entry's shared `ImplId` authority. The receiver region uses
 the stage-appropriate canonical self type described above. Module-interface v2
 inherits RFC 0013 v1's complete field order and encoding, changes only the
 domain to `ASCII("zom.module-interface-revision.v2")`, and expands semantic
@@ -858,6 +864,9 @@ flag, compatibility mode, or fallback path is permitted.
     preimages and SHA-256 values reproduce exactly.
 12. Receiver and contextual-`Self` spec, binder, checker, sanitizer, format, and
     determinism gates pass without compatibility code.
+13. Every impl `SelfOwner` carries the ordinary source occurrence handle, keeps
+    tag `0x03`, and expands to the complete `ImplSourceOccurrenceKey`; bodyless
+    marker occurrences publish no impl `SelfOwner`.
 
 ## Implementation Plan
 
@@ -915,3 +924,4 @@ None
 | 2026-07-15 | REVIEW | Entered formal owner review after task routing, binder-checker, and spec-audit entry reviews closed contextual identity, generic interface substitution, receiver census, lifecycle grammar, diagnostic, codec staging, and phase-boundary blockers. |
 | 2026-07-15 | ACCEPTED | All nine required owners approved the same exact REVIEW snapshot with no objections; lifecycle implementation remains separately blocked by RFC 0007 and the required RFC 0010 HIR lifecycle-place overlay. |
 | 2026-07-15 | IMPLEMENTING | Began the accepted receiver and contextual-Self slices under the local implementation tracker; lifecycle remains blocked by its accepted prerequisites. |
+| 2026-07-18 | IMPLEMENTING | Synchronized the accepted RFC 0018 occurrence owner payload: ordinary impl contextual `Self` is source-occurrence-owned, retains tag `0x03`, and expands to the complete occurrence key. |

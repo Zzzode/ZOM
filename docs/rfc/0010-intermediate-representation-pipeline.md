@@ -2,20 +2,20 @@
 rfc: 10
 title: Intermediate Representation Pipeline Architecture
 type: compiler
-status: ACCEPTED
+status: IMPLEMENTING
 author: ZOM Compiler Team
 review-manager: rfc
 required-owners: [task-router, rfc, binder-checker, module-system, error-system, concurrency, ir-backend, runtime-memory, spec-audit, verification]
 approvers: [task-router, rfc, binder-checker, module-system, error-system, concurrency, ir-backend, runtime-memory, spec-audit, verification]
 created: 2026-07-10
-updated: 2026-07-11
+updated: 2026-07-16
 area: compiler
 requires: [4, 5, 8, 9, 11, 12]
 supersedes: []
 superseded-by: []
 discussion: docs/rfc/tracking/0010-review-and-implementation.md#discussion-record
 decision: docs/rfc/tracking/0010-review-and-implementation.md#decision-record
-implementation: TBD
+implementation: docs/rfc/tracking/0010-review-and-implementation.md#canonical-ir-direct-replacement-series
 tracking-issue: docs/rfc/tracking/0010-review-and-implementation.md#implementation-tracker
 ---
 
@@ -1837,3 +1837,4 @@ None
 | 2026-07-11 | DRAFT | Added `DispatchFactsRevision` to every MIR revision input and wrapper lineage, advanced the codec domain to v1 with 146-byte and 137-byte oracles, and added the target-selection failure phase required by capability validation. |
 | 2026-07-11 | REVIEW | Entered formal review after exact-hash governance, semantic, and invariant reviewers approved the coordinated frontend handoff, MIR lineage, target-selection, diagnostics, and error-lowering boundaries. Approvers and decision remain open. |
 | 2026-07-11 | ACCEPTED | All ten required owners approved proposal hash `715ae992a29e7ff83e4abf6e6c91d979bffccf7cae55ded450d80dfc730d70fe` after HIR/MIR/LIR, target, cast, error, ownership, concurrency, runtime, diagnostic, codec, and verifier review. Implementation has not started. |
+| 2026-07-16 | IMPLEMENTING | Started the Canonical IR Direct Replacement Series with target-selection extraction and complete removal of the mixed `irgen` prototype before HIR, MIR, LIR, and backend construction. |

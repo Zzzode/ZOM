@@ -611,25 +611,35 @@ The accepted design freezes semantic HIR, target-independent MIR,
 target-dependent LIR, verified evidence and proof lineage, target selection,
 cast and error lowering, ownership/drop/coroutine ordering, runtime and ABI
 boundaries, typed internal failure facts, exhaustive registered diagnostic
-mapping, deterministic codecs, and backend cutover. Implementation remains
-`TBD`; the next legal transition is `ACCEPTED -> IMPLEMENTING` only when the
-direct replacement series is named and starts. RFC 0006 and RFC 0007 may now
-advance through their own gates.
+mapping, deterministic codecs, and backend cutover. The Canonical IR Direct
+Replacement Series started on 2026-07-16. RFC 0010 therefore advanced from
+`ACCEPTED` to `IMPLEMENTING` without changing the accepted semantic contract.
+RFC 0006 and RFC 0007 may advance through their own gates.
 
 ## Implementation Tracker
 
-Implementation must not begin under the accepted architecture until RFC 0010
-has a recorded decision and status `ACCEPTED`. At that point this section will
-link the implementation branch or change series and track:
+### Canonical IR Direct Replacement Series
 
-1. canonical definition, type, instance, source, and target identities;
-2. verified checked-module handoff;
-3. semantic HIR;
-4. Built MIR, ownership facts, executable MIR, and coroutine elaboration;
-5. target LIR, ABI lowering, and monomorphization plan;
-6. LLVM translation and native artifacts;
-7. direct main-branch cutover and deletion of `compiler/irgen`;
-8. layer-specific diagnostics, dumps, conformance, and architecture docs.
+This series replaces the mixed `compiler/irgen` prototype with the accepted
+three-layer pipeline. It introduces no adapter, compatibility decoder, second
+lowering entry point, or source-visible placeholder mode. RFC 0013's MIR
+revision v2 and ownership-evidence clauses apply together with RFC 0010.
+
+| Slice | State | Required evidence |
+|---|---|---|
+| Extract canonical target registry and verified selection into `compiler/ir` | In progress | Context-bound selection, exact target codecs, complete negative matrix, and deterministic target oracles |
+| Remove the mixed `compiler/irgen` prototype and non-producing IR CLI surface | In progress | No `zom.ir.v0`, `OutputType::IR`, `--emit=ir`, empty IR conformance target, or prototype diagnostic remains |
+| Publish the verified checked-module handoff | Pending RFC 0005 and RFC 0008 checked-fact closure | Exact input leases, revisions, identities, and failure algebra |
+| Implement semantic HIR and verifier | Pending checked-module handoff | Complete field projection, deterministic revision, mutation matrix, and dump coverage |
+| Implement Built MIR and RFC 0013 ownership integration | Pending HIR | MIR revision v2, complete exits, ownership facts, drop and coroutine lineage, and permutation evidence |
+| Implement target LIR, ABI lowering, and monomorphization | Pending executable MIR | Target legality, layout, ABI, instance identity, worklist, verifier, and deterministic artifacts |
+| Implement LLVM translation and native artifacts | Pending verified LIR | Total translation, runtime and FFI boundaries, object and link outputs, and registered failures |
+| Complete repository cutover | Pending all production layers | Layer diagnostics, conformance, architecture gates, documentation, sanitizer, and full default suite |
+
+The first two slices form one removal-first cut: target selection moves to its
+canonical owner before the complete `compiler/irgen` directory and every
+non-producing consumer are deleted. No HIR or MIR placeholder is permitted to
+stand in for unavailable checked facts.
 
 ## Verification Evidence
 
