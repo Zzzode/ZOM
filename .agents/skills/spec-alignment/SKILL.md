@@ -13,26 +13,15 @@ The automated enforcer of `.agents/rules/spec-alignment.md`. Invoke it
 
 ## The Five Artifacts Under Lockstep
 
-```
-┌─────────────────────────┐     ┌─────────────────────────┐
-│ 02-lexical-structure.md │────▶│     ZomLexer.g4         │
-│ (keyword + op tables)   │     │ (canonical token spec)  │
-└────────────┬────────────┘     └────────────┬────────────┘
-             │                               │
-             ▼                               ▼
-┌─────────────────────────┐     ┌─────────────────────────┐
-│ 17-grammar-reference.md │◀───▶│  04-expressions.md      │
-│ (EBNF, all productions) │     │ (precedence table)      │
-└────────────┬────────────┘     └────────────┬────────────┘
-             │                               │
-             └───────────────┬───────────────┘
-                             ▼
-                 ┌───────────────────────┐
-                 │ compiler C++ sources: │
-                 │ lexer/*.cc  kinds.h   │
-                 │ parser/*.cc token.cc  │
-                 │ binder/*.cc modifier │
-                 └───────────────────────┘
+```mermaid
+flowchart TD
+    L["02 lexical structure: keywords and operators"] <--> G["ZomLexer.g4: canonical token grammar"]
+    L <--> R["17 grammar reference: complete EBNF"]
+    G <--> R
+    R <--> E["04 expressions: precedence and associativity"]
+    E <--> C["C++ lexer, parser, AST, binder, and checker sources"]
+    L <--> C
+    G <--> C
 ```
 
 For every construct the five artifacts must **agree**. If any two disagree,
@@ -56,8 +45,10 @@ Build two lists:
    - Every `Xxx ::= ...` EBNF in `17-grammar-reference.md`.
    - Every `parseXxx(...)` method in `parser.cc`.
    - Every `SyntaxKind` node between `FirstNode..LastNode` in `kinds.h`.
-   - Every modifier listed in `isModifier()` switch,
-     `Modifier ::=` EBNF, and the modifier table in `02-lexical-structure.md`.
+   - Every visibility and behavior modifier accepted by
+     `isVisibilityModifier()` and `isBehaviorModifier()`, the
+     `VisibilityModifier` and `BehaviorModifier` grammar productions, and the
+     declaration tables in chapters 06 and 17.
 
 ---
 
@@ -74,10 +65,9 @@ Compute these set differences. Every non-empty set → one finding.
 | `02 keywords \ parser acceptance paths` | Reserved keyword with no grammar rule and no "reserved for v2" note | 🟡 Medium → **delete** per Rule #4 |
 | `EBNF productions \ parser entry points` | Grammar production with no recursive-descent path | 🟠 High |
 | `parseXxx methods \ EBNF productions` | Parser parses something the spec doesn't describe | 🟠 High |
-| `precedence table (04) Δ getBinaryOperatorPrecedence()` | Row-level mismatch for any operator | 🔴 Critical |
-| `PostfixSuffix EBNF \ parseUpdateExpression postfix loop` | Postfix op (e.g. `?!`) parsed at wrong precedence | 🔴 Critical |
-| `isModifier switch Δ Modifier ::= Δ modifier-table-in-02` | Three-way set mismatch | 🟠 High per leg |
-| `SymbolFlags defined \ symbol-flags write sites` | Dead flag (like MOD-007: Export zero-setters) | 🟡 Medium → **delete** per Rule #4 |
+| `precedence table (04) Δ binaryPrecedence()` | Row-level mismatch for any operator | 🔴 Critical |
+| `PostfixSuffix EBNF \ parsePostfixExpressionAt suffix loop` | Postfix op (e.g. `?!`) parsed at wrong precedence | 🔴 Critical |
+| `visibility and behavior modifier sets Δ grammar Δ declaration tables` | Three-way set mismatch | 🟠 High per leg |
 
 ---
 
@@ -87,10 +77,11 @@ For every binary operator in `04-expressions.md` § Operator Precedence and
 Associativity:
 
 1. Confirm the operator exists in `ZomLexer.g4` and `kinds.h`.
-2. Confirm `getBinaryOperatorPrecedence()` returns the exact numeric value
+2. Confirm `binaryPrecedence()` returns the exact numeric value
    implied by the table.
 3. Confirm associativity (left vs right) is coded correctly in
-   `parseBinaryExpressionRhs` (right-assoc: `<` strict comparison, etc.).
+   `parseBinaryExpressionAt` by checking the recursive minimum precedence for
+   the operator's declared associativity.
 4. Confirm a lit test exists that asserts the expected parse tree for an
    ambiguous expression that *would* nest differently under the wrong
    precedence (e.g. `a + b * c` vs `(a + b) * c`).
@@ -109,13 +100,12 @@ For each symbol in `PostfixSuffix ::=` in the EBNF:
 1. Is the token defined in `ZomLexer.g4` + `kinds.h`? (if no → error)
 2. Is the token **actually produced** by the lexer for the right characters?
    (feed the operator into the lexer in a ztest and assert the token kind)
-3. Is the case present in `parseUpdateExpression`'s postfix `while (true)`
+3. Is the case present in `parsePostfixExpressionAt`'s suffix loop
    body that loops over postfix suffixes? (if no → precedence error)
 4. Does a lit test exist that verifies the correct precedence nesting
    against a hypothetical binary-operator-of-similar-priority?
 
-Drift in this deep check → 🔴 Critical. The current `?!` / `!!` gaps from
-the 2026-06-24 audits fall squarely into this check.
+Drift in this deep check → 🔴 Critical.
 
 ---
 

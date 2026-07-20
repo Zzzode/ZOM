@@ -27,6 +27,9 @@ subagents:
       - ".agents/subagents/manifest.yaml"
       - ".agents/subagents/task-router.md"
       - ".agents/subagents/ir-backend.md"
+      - ".agents/subagents/module-system.md"
+      - ".agents/subagents/spec-audit.md"
+      - ".agents/subagents/verification.md"
       - "AGENTS.md"
     triggers: [ "route", "assign", "split", "owner", "delegate", "task split", "workflow", "forced cast", "as!" ]
     required-skills: [ build-ci ]
@@ -75,12 +78,13 @@ subagents:
     name: Module System & Visibility
     owns:
       - "products/zomlang/compiler/identity/**"
+      - "products/zomlang/compiler/query/**"
       - "products/zomlang/compiler/source/**"
-      - "products/zomlang/compiler/symbol/**"
+      - "products/zomlang/compiler/binder/module-*"
       - "products/zomlang/compiler/driver/**"
       - "docs/spec/chapters/13-modules-and-imports.md"
       - "docs/spec/chapters/23-visibility-ladder.md"
-    triggers: [ "identity", "brand", "source provenance", "SourceFileId", "ModuleId", "DefId", "module", "import", "export", "visibility", "package", "session", "CompilerSession", "cross-module" ]
+    triggers: [ "identity", "brand", "source provenance", "SourceFileId", "ModuleId", "DefId", "module", "import", "export", "visibility", "package", "session", "CompilerSession", "cross-module", "query", "incremental", "red-green", "memo", "demand-driven" ]
     required-skills: [ build-ci, lit-testing, spec-alignment ]
     escalation-to: [ spec-audit ]
 
@@ -114,10 +118,13 @@ subagents:
       - "products/zomlang/compiler/ir/**"
       - "products/zomlang/compiler/mir/**"
       - "products/zomlang/compiler/lir/**"
-      - "products/zomlang/compiler/irgen/**"
       - "products/zomlang/compiler/backend/**"
       - "products/zomlang/compiler/basic/compiler-opts.h"
+      - "CMakeLists.txt"
+      - "CMakePresets.json"
       - "products/zomlang/compiler/CMakeLists.txt"
+      - "products/zomlang/compiler/basic/CMakeLists.txt"
+      - "products/zomlang/compiler/trace/CMakeLists.txt"
       - "products/zomlang/utils/zomc/**"
     triggers: [ "IR", "HIR", "MIR", "LIR", "SSA", "CFG", "lowering", "codegen", "backend", "LLVM", "ABI", "object file", "forced cast", "as!" ]
     required-skills: [ build-ci, zc-library, lit-testing ]
@@ -153,8 +160,21 @@ subagents:
     owns:
       - "products/zomlang/tests/**"
       - "examples/**"
+      - ".github/workflows/**"
+      - "README.md"
       - "docs/reports/*coverage*"
       - "scripts/check-identity-architecture.py"
-    triggers: [ "test", "coverage", "lit", "FileCheck", "ztest", "fuzz", "XFAIL", "regen", "verify", "prove", "cast", "as!" ]
+      - "scripts/check-ir-architecture.py"
+      - "scripts/check-incremental-query-architecture.py"
+      - "scripts/generate-canonical-header-syntax-schema.py"
+      - "scripts/run-incremental-query-benchmarks.py"
+      - "scripts/run-rfc0016-coverage.py"
+      - "scripts/check-rfc0016-coverage.py"
+      - "products/zomlang/tests/performance/incremental-query-corpus.json"
+      - "products/zomlang/tests/performance/incremental-query-baseline.json"
+      - "cmake/utils/common.cmake"
+      - "cmake/utils/coverage.cmake"
+      - "cmake/utils/unittests.cmake"
+    triggers: [ "test", "coverage", "lit", "FileCheck", "ztest", "fuzz", "XFAIL", "regen", "verify", "prove", "cast", "as!", "incremental query gate", "query benchmark", "projection shielding" ]
     required-skills: [ build-ci, lit-testing ]
     escalation-to: [ spec-audit ]

@@ -46,11 +46,12 @@ docs/spec/ZomLexer.g4
 - [ ] `17-grammar-reference.md` has an EBNF production for every
       `parseXxx(...)` method in the parser, and vice versa.
 - [ ] `04-expressions.md` precedence table matches
-      `getBinaryOperatorPrecedence()` row-by-row, including associativity.
+      `binaryPrecedence()` row-by-row, including associativity.
 - [ ] Every entry in the `PostfixSuffix ::=` EBNF has a case in the
-      `parseUpdateExpression` postfix loop.
-- [ ] Modifier keywords are aligned across the 02-chapter table,
-      `Modifier ::=` EBNF, and the `isModifier()` C++ switch.
+      `parsePostfixExpressionAt` suffix loop.
+- [ ] Visibility and behavior modifiers are aligned across chapters 06 and 17,
+      the grammar productions, and `isVisibilityModifier()` /
+      `isBehaviorModifier()`.
 - [ ] Reserved keywords with no grammar rule have an explicit
       "reserved for v2" note in chapter 02; any that don't are deleted
       per design principle #4.

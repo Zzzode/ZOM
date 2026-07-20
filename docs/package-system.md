@@ -157,7 +157,7 @@ must select exactly one workspace package and at least one target:
 
 ```sh
 zomc compile --package app --lib --emit=ast
-zomc compile --package app --bin app --features fast,logging --emit=ir
+zomc compile --package app --bin app --features fast,logging --emit=dispatch
 zomc compile --manifest-path ./Zom.toml --package app --test smoke --syntax-only
 ```
 
@@ -176,8 +176,10 @@ selections, resolved package graph, and digest-verified local snapshots into one
 records rather than command spelling, host paths, pointer values, or table-local
 handles.
 
-The current compiler can run its frontend and mixed IR emission for selected
-package roots. This document does not define target LIR or native binary output.
+The current compiler can publish verified frontend facts, semantic HIR, and
+Built MIR v2 for the supported source subset. CLI output is limited to AST and
+checked dispatch records; target LIR and native binary output are not
+implemented.
 
 ## Lock Modes
 

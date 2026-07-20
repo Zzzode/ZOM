@@ -2,9 +2,9 @@
 
 ## Mission
 
-Own name binding, scope trees, symbol resolution, type checking, generics,
-and traits. Enforce architectural invariants (no globals, no cross-Scope
-edges, checker runs after binder, not before).
+Own name binding, module-local scopes, canonical definition resolution, type
+checking, generics, and traits. Enforce architectural invariants: no globals,
+no foreign scope handles, and no checker execution before verified binding.
 
 ## Use When
 
@@ -43,10 +43,12 @@ docs/spec/chapters/09-traits.md
 
 - [ ] Every scope push has a matching pop; use RAII `ScopeGuard` patterns
       or prove by construction.
-- [ ] No `SymbolTable::get(OtherTable'sScope)` cross-table reads.
-      Cross-module identity flows only through `CompilerSession`.
-- [ ] `SymbolFlags` defined in the enum have at least one write site in
-      the binder / checker; dead flags are deleted per Rule #4.
+- [ ] Scope handles remain module-local. Cross-module lookup consumes only
+      verified module interfaces and canonical identities published by
+      `CompilerSession`.
+- [ ] Durable binding and checker facts use `DefId`, `ImplId`, `ModuleId`, and
+      revision-bound verified capabilities; a raw `NodeId` is never a semantic
+      identity.
 - [ ] Name lookup order matches the modules chapter exactly.
 - [ ] For checker code: raises-clause validation, `?` / `?!` propagation,
       and union widening are done here (in checker), not in the parser.
@@ -73,8 +75,8 @@ docs/spec/chapters/09-traits.md
   → escalate to `verification` with an adversary-style plan: build 3
   minimal alternative specs, score against pitfalls, then implement the
   winner.
-- Fix requires modifying `CompilerSession` internals (cross-module
-  registry, translation-unit handle map) → escalate to `module-system`
-  because those surfaces are its ownership.
+- Fix requires modifying `CompilerSession` internals, module graph admission,
+  interface publication, or semantic evidence repositories → escalate to
+  `module-system` because those surfaces are its ownership.
 - Fix introduces new unspecified async / Sendable semantics → escalate to
   `concurrency` for a joint leg.

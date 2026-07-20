@@ -19,6 +19,8 @@ Route here when **any** of these are true:
   regress / doesn't open a new bug."
 - Writing a stress / fuzz / adversarial reducer against the lexer,
   parser, or binder.
+- Adding or changing the incremental-query architecture gate, edit corpus,
+  cache adversaries, projection execution assertions, or benchmark baseline.
 - Requesting the user-facing report of "this is safe to ship."
 - Verifying every cast mode and its parser, checker, MIR, panic, and negative
   invariant matrix, including `as!` failure behavior.
@@ -33,8 +35,23 @@ Do **not** route here when:
 ```
 products/zomlang/tests/**
 examples/**
+.github/workflows/**
+README.md
 docs/reports/*coverage*
 scripts/check-identity-architecture.py
+scripts/check-ir-architecture.py
+scripts/check-incremental-query-architecture.py
+scripts/run-incremental-query-benchmarks.py
+scripts/check-diagnostic-coverage.py
+scripts/check-lit-exec-root.py
+products/zomlang/tests/coverage/diagnostic-reservations.json
+scripts/run-rfc0016-coverage.py
+scripts/check-rfc0016-coverage.py
+products/zomlang/tests/performance/incremental-query-corpus.json
+products/zomlang/tests/performance/incremental-query-baseline.json
+cmake/utils/common.cmake
+cmake/utils/coverage.cmake
+cmake/utils/unittests.cmake
 ```
 
 ## Review Checklist (applies to every PR this subagent touches)
@@ -50,12 +67,29 @@ scripts/check-identity-architecture.py
 - [ ] Regenerated lit tests have been eyeballed by a human diff.
 - [ ] New compiler source files have ≥ 70% line coverage or an explicit
       "FFI boundary / unreachable" exemption.
+- [ ] Every defined diagnostic is either emitted or bound to an active RFC
+      tracker, every production emission is defined, and every emitted
+      diagnostic is asserted by a test; both diagnostic coverage gate modes
+      pass.
 - [ ] No `Thread.sleep`-style wall-clock waits. Use explicit sync
       primitives or bounded poll loops.
+- [ ] Lit execution roots are stable build-local paths. No runner creates
+      per-invocation directories under the source tree or overrides lit's
+      test-unique `%t` substitution.
+- [ ] Incremental-query changes pass from-scratch equivalence, exact provider
+      execution-set assertions, worker permutations, cache adversaries, and the
+      reviewed benchmark protocol.
 
 ## Required Evidence Before Closing
 
 - [ ] `ctest --preset default` passes with zero unexpected failures.
+- [ ] `python3 scripts/check-diagnostic-coverage.py --check` and
+      `python3 scripts/check-diagnostic-coverage.py --self-test` pass.
+- [ ] `python3 scripts/check-lit-exec-root.py --check` and
+      `python3 scripts/check-lit-exec-root.py --self-test` pass.
+- [ ] `python3 scripts/check-incremental-query-architecture.py --check` and
+      `python3 scripts/check-incremental-query-architecture.py --self-test`
+      pass.
 - [ ] Coverage report (when the task is coverage-gated) confirms no
       regressions vs. the last baseline.
 - [ ] For bug fixes: regression test fails on `HEAD^`, passes on HEAD.

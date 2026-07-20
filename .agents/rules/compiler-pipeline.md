@@ -5,21 +5,23 @@ paths:
 
 # Compiler Pipeline Rules
 
-> Applies to `lexer/`, `parser/`, `ast/`, `binder/`, `checker/`, `symbol/`,
-> `diagnostic/`, `driver/`.  See `.agents/skills/spec-alignment/SKILL.md` for
+> Applies to `lexer/`, `parser/`, `ast/`, `binder/`, `checker/`, `type/`,
+> `identity/`, `hir/`, `mir/`, `ir/`, `diagnostics/`, and `driver/`. See
+> `.agents/skills/spec-alignment/SKILL.md` for
 > the five-way consistency check between spec and implementation.
 
 ---
 
 ## Pipeline Contract
 
-```
- lexer  ──► parser  ──► binder  ──► checker  ──► … downstream
-  ▲          ▲           ▲           ▲
-  │          │           │           │
- ZomLexer.g4 grammar-  scope docs  type-system
- chapter 02 reference   chapters    chapters
- (spec)    (spec)      (spec)      (spec)
+```mermaid
+flowchart LR
+    L[Lexer] --> P[Parser]
+    P --> B[Verified Binder]
+    B --> C[Checker]
+    C --> CM[CheckedModule]
+    CM --> H[HIR]
+    H --> M[Built MIR v2]
 ```
 
 **Each phase's output is the single source of truth for the next phase.**
@@ -38,10 +40,7 @@ coordination happens via well-defined types.
    and the lexical-structure chapter.
 2. Multi-character operators are dispatched from the first character's branch.
    Symmetric rule: for each two-character operator, the handler lives inside the
-   `case <first-char>` branch and consumes **exactly** the right number of bytes.
-   - Example: `!!` lives in `case '!'` and advances 2;
-     `?!` must live in `case '?'` and advance 2 (currently missing as of 2026-06-24
-     per audit finding ERR-001).
+     `case <first-char>` branch and consumes **exactly** the right number of bytes.
 3. All keywords live in `ast/kinds.h` between `FirstKeyword` and `LastKeyword`.
    Never hard-code string comparisons in `lexer.cc` — use the centralized lookup.
 4. Lexer never produces a partial token or falls back to `Identifier` for a
@@ -66,14 +65,15 @@ coordination happens via well-defined types.
    The parser in `parser.cc` is a hand-written recursive descent implementation
    of *that* EBNF. Parser changes require spec changes in the same commit.
 2. Operator precedence table lives in `docs/spec/chapters/04-expressions.md`.
-   The `getBinaryOperatorPrecedence()` switch in `parser.cc` must match it row by
+   The `binaryPrecedence()` switch in `parser-helpers.cc` must match it row by
    row. Any discrepancy is a P0 bug.
 3. Postfix suffixes (EBNF `PostfixSuffix ::= '?!' | '!!' | '++' | '--'`) are
-   handled in `parseUpdateExpression`'s postfix loop. Every new postfix operator
+   handled in `parsePostfixExpressionAt`'s postfix loop. Every new postfix operator
    is added there, not sprinkled into outer levels.
-4. The `isModifier()` switch + `Modifier ::=` EBNF production +
-   `02-lexical-structure.md § Modifier Keywords` table are a **three-way set**.
-   If they differ, fix whichever is wrong in the same commit.
+4. `isVisibilityModifier()` and `isBehaviorModifier()` + the
+   `VisibilityModifier` and `BehaviorModifier` EBNF productions + the lexical
+   keyword table are a **three-way set**. `mut` is a declaration head and must
+   never enter a modifier list.
 5. Parser errors emit a `ZOMxxxx` diagnostic code, never a generic string.
    Diagnostic codes live in a centralized list; never invent ad-hoc string
    messages.
@@ -85,7 +85,7 @@ coordination happens via well-defined types.
 - [ ] The precedence array in `parser.cc` and the precedence table in
       chapter 04 produce identical orderings for every operator.
 - [ ] Postfix operators defined in `PostfixSuffix` are all consumed in the
-      `parseUpdateExpression` loop. No postfix operator is handled at a
+      `parsePostfixExpressionAt` loop. No postfix operator is handled at a
       different (higher/lower) precedence level.
 - [ ] Every `XFAIL` test under `tests/conformance/expectations/ast/**` has a ticket or tracking
       note. An `XFAIL` test whose root cause has been fixed must be upgraded
@@ -113,43 +113,41 @@ coordination happens via well-defined types.
 
 ---
 
-## Binder (`binder/`) + Symbol (`symbol/`)
+## Binder (`binder/`) + Semantic Identity (`identity/`)
 
 ### Rules
 
-1. **Scope tree is a pure tree, never a DAG with cross edges.** No direct access
-   to another `SymbolTable`'s scope. Cross-module identity flows through a
-   `CompilerSession` / whole-program registry **only**.
-2. `SymbolFlags` defined in `symbol-flags.h` must actually be written by someone.
-   Any flag whose setter (`addFlag`, `setFlag`) is never invoked across the
-   compiler → **delete the flag** per Rule #4.
+1. **Scope trees are module-local.** Cross-module identity and visibility flow
+   only through `VerifiedModuleGraph`, verified imports, immutable module
+   interfaces, and branded canonical handles owned by `CompilerSession`.
+2. Binder output is `VerifiedBoundModule` plus frozen inventories and typed
+   metadata. Checker/HIR/MIR must not recover meaning from raw AST `NodeId`
+   maps or construct a second lookup rail.
 3. Name lookup order is documented in the modules chapter. Any deviation between
    the documented order and the implementation is a P0 bug.
-4. Export / `pub(...)` visibility flags must match the spec chapters exactly.
-   Today (2026-06-24): the `Export` flag is defined but never set (audit finding
-   MOD-007) — this must be fixed before the module system ships.
+4. Module export and member visibility facts must match Chapters 13 and 23
+   exactly and be published through verified interfaces.
 
 ---
 
 ## Type Checker (`checker/`)
 
-> **CURRENTLY EMPTY / STUB as of 2026-06-24.** When implementing, read this list
-> first and build the architecture around it, because every wrong choice here
-> causes years of cascading breakage (see Rust/Swift/Kotlin/Go type-system retrofits).
+The checker consumes only verified binder input and the session-owned
+`SemanticTypeStore`. It publishes immutable, revisioned facts and never exposes
+mutable inference state to downstream phases.
 
 ### Non-Negotiable Architectural Constraints
 
 1. **`CompilerSession`-scoped, never global.** No `static TypeStore` anywhere.
-2. **Traits / interfaces are a core type-system primitive on day one.** Do not
-   retrofit them after struct-only typing. `Send` / `Sync` / `Sendable` /
-   `Drop` / `Clone` / `Eq` / `Hash` are the bedrock of memory safety, concurrency
-   safety, error handling, and the standard library — they cannot be late additions.
+2. **Semantic identity is canonical.** Types, definitions, substitutions,
+   witnesses, dispatch targets, and interfaces use branded IDs and canonical
+   revisions rather than names, pointers, or table slots.
 3. **Raises clauses flow through checker, not parser.** The parser accepts the
    annotation; the checker validates the actual error union, widening, and
    compatibility with `?` / `?!` propagation.
-4. **Generics are a core feature, not a post-1.0 nice-to-have.** Without generics
-   there is no `Result<T, E>`, no `Vector<T>`, no `Future<T>` — the language is
-   dead on arrival. Implement parametric polymorphism before specializing on it.
+4. **Every fact family has a verifier and canonical codec.** Missing,
+   additional, malformed, foreign-context, stale, or non-canonical facts fail
+   closed before publication.
 5. **Type errors use diagnostic codes.** A single "type mismatch" message is not
    enough. Each mismatch kind gets its own ZOM code + an auto-suggestion when
    feasible.
@@ -164,10 +162,11 @@ coordination happens via well-defined types.
    (`parse` → `bind` → `parse again`), no skipping phases based on heuristics
    like "the source file has no generic so we can skip checker".
 2. `CompilerSession` is the single owner of `SourceManager`, `DiagnosticEngine`,
-   the cross-module symbol registry, and the list of `TranslationUnit` handles.
-   No phase constructs these on its own.
+   semantic identity registries, `SemanticTypeStore`, checked/borrow evidence
+   repositories, verified module graph, and staged phase outputs. No phase
+   constructs a competing authority.
 3. Every phase is independently testable with a ztest:
-   `ParserTest`, `BinderTest`, `TypeCheckerTest` all run against a minimal
+   parser, binder, checker, HIR, and MIR tests all run against a minimal
    `CompilerSession` fixture without invoking the driver binary.
 4. The driver must report how many `ZOMxxxx` errors were emitted for each
    category (lex / parse / bind / type) and exit with a distinct non-zero code

@@ -32,6 +32,7 @@ Do **not** route here when:
 
 ```
 docs/spec/**
+docs/design/**
 docs/reports/*spec-alignment*
 ```
 

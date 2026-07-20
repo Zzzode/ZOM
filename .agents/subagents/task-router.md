@@ -27,8 +27,12 @@ Do **not** route here when:
 ## Owns
 
 ```
-(owns no source files directly — delegates exclusively)
+routing governance documents only; owns no product, build, or CI source files
 ```
+
+The router may review changes to its governance documents, but it delegates
+implementation of product, build, CI, test, and repository-gate paths to the
+owner declared by `manifest.yaml`.
 
 ## Review Checklist (applies to every routed plan)
 
@@ -37,6 +41,9 @@ Do **not** route here when:
 - [ ] Each sub-task references the correct subagent id from `manifest.yaml`.
 - [ ] No sub-task is larger than ~400 lines of changed source (split if bigger).
 - [ ] The plan lists the exact files each subagent is expected to touch.
+- [ ] Query runtime, memo, red-green, and incremental identity work routes to
+      `module-system`; query gates, adversaries, corpora, and benchmarks route
+      to `verification`.
 - [ ] No "TODO later" items in the plan without a ticket.
 - [ ] Dead-code deletions are explicit tasks, not buried inside other tasks.
 

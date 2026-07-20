@@ -62,13 +62,15 @@ ZOM is a modern systems programming language.
 | `products/zomlang/compiler/lexer/` | Lazy tokenization |
 | `products/zomlang/compiler/parser/` | Recursive-descent parsing |
 | `products/zomlang/compiler/ast/` | Immutable schema-backed AST |
-| `products/zomlang/compiler/binder/` | Scope construction and name resolution |
-| `products/zomlang/compiler/checker/` | Type, trait, exhaustiveness, and partial ownership checking |
-| `products/zomlang/compiler/type/` | Type representations, interning, unification, coercion, and side tables |
-| `products/zomlang/compiler/symbol/` | Symbols, scopes, flags, and stable identifiers |
+| `products/zomlang/compiler/binder/` | Module dependency requests, scope construction, name resolution, and verified bound-module publication |
+| `products/zomlang/compiler/checker/` | Signature, inference, dispatch, coherence, borrow-surface, and checked-fact validation |
+| `products/zomlang/compiler/type/` | Canonical immutable semantic type data and the session-owned semantic type store |
 | `products/zomlang/compiler/diagnostics/` | Diagnostic codes, records, and rendering |
-| `products/zomlang/compiler/driver/` | Per-source compiler orchestration |
-| `products/zomlang/compiler/irgen/` | Early mixed IR prototype; RFC 0010 proposes a replacement |
+| `products/zomlang/compiler/driver/` | Cross-module `CompilerSession`, module discovery, interface publication, and package orchestration |
+| `products/zomlang/compiler/identity/` | Branded canonical package, crate, module, definition, source, and revision identities |
+| `products/zomlang/compiler/hir/` | Checked-module assembly and semantic HIR |
+| `products/zomlang/compiler/mir/` | Evidence-bound Built MIR revision v2 |
+| `products/zomlang/compiler/ir/` | Shared IR identity, failure algebra, diagnostics, and target registry |
 | `products/zomlang/runtime/` | Language runtime and panic/concurrency primitives |
 | `products/zomlang/tests/` | ztest unit tests and LLVM lit conformance runners |
 | `docs/spec/` | Normative language specification and grammar artifacts |
@@ -152,52 +154,44 @@ flowchart TD
     L --> T[Retained TokenStream]
     T --> P[Recursive-descent Parser]
     P --> A[Immutable ast::Tree]
-    A --> B[Binder]
-    B --> BM[BindingMetadata and symbols]
-    BM --> C[Checker]
-    A --> C
-    C --> TE[Frozen TypeEnv and semantic facts]
-    TE --> IR[Early mixed irgen prototype]
-    A --> IR
-    BM --> IR
-    IR -. RFC 0010 proposed replacement .-> H[Semantic HIR]
-    H -. planned .-> M[Control-flow MIR]
-    M -. planned .-> R[Target LIR]
-    R -. planned .-> LLVM[LLVM IR and native artifacts]
+    A --> B[Verified Binder]
+    B --> VB[VerifiedBoundModule and FrozenDefinitionInventory]
+    VB --> C[Checker]
+    C --> CF[CheckedFacts and SemanticTypeStore]
+    CF --> BE[Verified BorrowEvidence]
+    VB --> CM[CheckedModule]
+    CF --> CM
+    BE --> CM
+    CM --> H[Verified semantic HIR]
+    H --> M[Verified Built MIR v2]
+    M -. not implemented .-> R[Target LIR]
+    R -. not implemented .-> LLVM[LLVM IR and native artifacts]
     L --> D[DiagnosticEngine]
     P --> D
     B --> D
     C --> D
+    M --> D
 ```
 
-**CRITICAL KNOWN GAPS (as of 2026-07-10)** that are tracked by audit findings
+**CRITICAL KNOWN GAPS (as of 2026-07-17)** that are tracked by audit findings
 and must be handled with principle #4 (delete or implement, no drift):
 
-1. **RFC 0004 and RFC 0005 are revised DRAFT proposals.** Dependency reviews
-   returned both proposals for canonical identity, verified-handoff,
-   spec-alignment, implementation-evidence, and test blockers. They now depend
-   on RFC 0011, but owner re-review, approvers, and decisions remain open.
-2. **Type representation is not canonical.** `TypeEnv` owns concrete `Type`
-   trees and `TypeId` values simultaneously, and nominal identity is still
-   partially name-based. The active audit requires an immutable
-   direct `SemanticTypeId -> TypeData` replacement proposed by RFC 0005.
-3. **Borrow checking is partial.** Current analysis relies on bounded AST
-   tracing for several region and lifetime cases. Path-sensitive MIR dataflow,
-   complete reborrow restoration, Copy/Linear facts, and scoped-task checking
-   remain open under RFC 0007.
-4. **No cross-module `CompilerSession` exists.** The driver still owns
-   per-source AST, binding metadata, and type environments without RFC 0008's
-   module graph, immutable interfaces, signature store, or global coherence.
-5. **The IR pipeline is not separated.** `compiler/irgen` combines logical
-   error control flow with concrete target layout. RFC 0010 proposes an
-   HIR/MIR/LIR replacement and is `DRAFT` after adding collision-free package,
-   crate, and module identities; coordinated owner re-review remains pending.
-6. **There is no native backend.** `compiler/backend` and LLVM/object emission
+1. **RFC 0007 remains a reviewed DRAFT.** The frontend publishes verified
+   borrow contracts and evidence, but production ownership facts remain
+   fail-closed until the exact ownership-event, dataflow, unsafe-boundary, and
+   concurrency contracts complete governance and enter implementation.
+2. **RFC 0013 is implementing, not complete.** BorrowEvidence, CheckedModule,
+   HIR lineage, and Built MIR v2 are implemented; OwnershipProofValidation and
+   production ownership-result publication remain gated on RFC 0007.
+3. **RFC 0010 has no target LIR or backend implementation.** Semantic HIR and
+   evidence-bound Built MIR v2 are present, while target legalization, ABI
+   lowering, LLVM IR, object emission, and linking are absent.
+4. **There is no native backend.** `compiler/backend` and LLVM/object emission
    are absent; binary emission is not implemented.
-7. **RFC 0006 is partial.** The worktree has target layout, limited `?!` and
-   `!!` lowering, panic metadata, and abort-only gating, but lacks real drop
-   cleanup, general calls, multi-residual lowering, target/runtime capability
-   integration, native emission, and FFI conformance.
+5. **RFC 0006 is partial.** Source contracts and target selection are present,
+   but real drop cleanup, general calls, multi-residual lowering,
+   target/runtime capability integration, native emission, and FFI conformance
+   remain open.
 
 ---
 
@@ -227,14 +221,14 @@ the trigger matrix in `.agents/subagents/README.md`.
 | `task-router` | Gate selection + escalation | Default entry for all non-trivial changes |
 | `rfc` | RFC process, templates, proposal review, prior-art gates | RFCs, proposals, accepted designs, governance changes |
 | `lexer-parser` | Tokenization, grammar, AST, operator precedence | lexer/**, parser/**, ast/**, spec grammar |
-| `binder-checker` | Scopes, symbols, traits, generics, type rules | binder/**, checker/**, symbol/**, traits, ADT |
-| `module-system` | Import/export, packages, visibility, dependency topology | modules, `docs/spec/chapters/13-*`, symbol export flags |
+| `binder-checker` | Scopes, canonical definitions, traits, generics, type rules | binder/**, checker/**, type/**, traits, ADT |
+| `module-system` | Query database, identity, import/export, packages, visibility, dependency topology | query/**, identity/**, driver module graph and interfaces, `docs/spec/chapters/13-*` |
 | `error-system` | Result/Option, ?! / !! / ?: , raises clauses, panic boundaries | Diagnostic codes, error chapters, error operators in parser/lexer |
 | `concurrency` | async/await, Future, nursery, cancel, Sendable, memory model, primitives | runtime concurrency, spec 15-concurrency, channel/mutex, `Send/Sync`/`Sendable` |
-| `ir-backend` | HIR, MIR, LIR, lowering, target ABI, LLVM, native artifacts | compiler/hir, compiler/mir, compiler/lir, compiler/irgen replacement, compiler/backend |
-| `spec-audit` | Spec ↔ implementation 1:1 alignment | Any change to docs/spec/** or any compiler frontend file |
+| `ir-backend` | HIR, MIR, LIR, lowering, target ABI, LLVM, native artifacts | compiler IR/backend and CLI, top-level/compiler/basic/trace CMake, CMake presets |
+| `spec-audit` | Spec ↔ implementation 1:1 alignment | `docs/spec/**`, `docs/design/**`, and compiler/spec drift |
 | `runtime-memory` | Ownership, zc types, RAII, memory model, unsafe boundaries | libraries/zc/**, runtime/**, FFI |
-| `verification` | Build + sanitizer + tests + format, evidence-gating | Runs last; required for all merge-ready changes |
+| `verification` | Build + sanitizer + tests + format, evidence-gating | tests, CI workflows, README build contract, RFC 0016 coverage, incremental-query gates and benchmarks, and identity/IR architecture gates; runs last |
 
 ---
 

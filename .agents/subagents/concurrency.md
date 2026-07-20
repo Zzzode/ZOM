@@ -18,7 +18,7 @@ Route here when **any** of these are true:
   (Pin / async-trait Box / tokio vs async-std / blocking-in-async /
   extern-C default Send / unstructured goroutines / channel close
   semantics / actor reentrance / MainActor pollution / GlobalScope
-  legacy / RxJava flow duplication / virtual-thread pinning / missing
+  global task scope / RxJava flow duplication / virtual-thread pinning / missing
   CancellationToken / manual C++ coro handle / Zig suspend mental load
   / zombie tasks / etc.)
 - Adding scheduler, work-stealing, executor, or runtime-internal state.

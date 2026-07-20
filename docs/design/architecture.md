@@ -1,264 +1,262 @@
 <!-- @dsCard group="Design Documents" name="ARCHITECTURE" -->
 # ZOM Compiler Architecture - Current Implementation
 
-Updated: 2026-07-11
+Updated: 2026-07-17
 
-This document describes code that exists in the current repository. RFC 0008
-is implementing the cross-module `CompilerSession`, and RFC 0010 defines the
-HIR, MIR, LIR, LLVM, and native backend boundaries. Only the implementation
-slices identified below are available to compiler consumers.
+This document describes executable code in the repository. RFC status and
+future contracts are tracked under `docs/rfc`; a contract is listed here only
+when a production path constructs and verifies it.
 
-## 1. Scope And Current Status
+## 1. Production Status
 
-The repository implements a C++20 frontend and a limited checked IR debug
-prototype:
+The compiler currently provides:
 
-- lazy lexing and recursive-descent parsing;
-- an immutable schema-backed AST;
-- per-source binding into one process-owned symbol table;
-- type, trait, exhaustiveness, coercion, dispatch, and partial borrow checking;
-- deterministic AST and call-dispatch dumps;
-- a limited single-source `zom.ir.v0` dump for selected raising functions;
-- runtime panic entry points with abort support.
+- verified package, target-selection, source-snapshot, crate-graph, and
+  build-script-plan admission, plus a session API for build-script execution;
+- lazy lexing, recursive-descent parsing, immutable ASTs, and retained parser
+  token snapshots;
+- fixed-point structural module discovery;
+- one session-owned semantic context, frozen identity registries, and one
+  canonical semantic type store;
+- a complete verified module graph before binding starts;
+- dependency-ordered module binding with immutable binding metadata and export
+  surfaces;
+- canonical signature, coherence, module-interface, checked, dispatch, and
+  borrow-evidence publication for the supported source subset;
+- checked-module assembly, semantic HIR, and evidence-bound Built MIR revision
+  v2, committed atomically by `CompilerSession`; and
+- deterministic structured diagnostics and architecture gates.
 
-The repository does not implement:
+The production path does not yet provide:
 
-- RFC 0008's module graph, immutable module interfaces, signature store, or
-  global cross-module coherence;
-- RFC 0010's semantic HIR, place-based MIR, target LIR, or layer verifiers;
-- an LLVM translator, object writer, linker driver, or native backend;
-- binary emission from `zomc`.
+- production ownership analysis and ownership-proof publication;
+- complete language-wide body checking and exhaustiveness beyond the admitted
+  checker fact inventory; or
+- executable MIR, target LIR, LLVM IR, object files, linking, or binaries.
+
+`CompilerSession::checkSources()` stages every checker, evidence, CheckedModule,
+HIR, and Built MIR publication before mutating session state. A missing required
+fact or any source, identity, codec, or IR invariant rejects the entire stage.
 
 ## 2. Live Module Inventory
 
-| Path | Current responsibility | Current output |
+| Path | Responsibility | Published result |
 |---|---|---|
-| `compiler/source` | Own source buffers and map locations | `BufferId`, `SourceLoc`, line/column queries |
-| `compiler/lexer` | Produce tokens lazily | `Token` values consumed by `TokenStream` |
-| `compiler/parser` | Parse one source buffer | immutable `ast::Tree` |
-| `compiler/ast` | Own schema-backed syntax nodes and source ranges | `Tree`, `NodeId`, generated accessors |
-| `compiler/binder` | Build scopes and resolve identifiers | `BindingMetadata` and `SymbolTable` updates |
-| `compiler/symbol` | Own symbols, scopes, flags, and local stable IDs | `SymbolId`, scope and symbol queries |
-| `compiler/type` | Own current type trees, interning handles, coercions, and dispatch side tables | per-source `TypeEnv` |
-| `compiler/checker` | Check declarations, bodies, traits, exhaustiveness, and partial ownership rules | diagnostics and populated `TypeEnv` |
-| `compiler/diagnostics` | Register and render structured frontend diagnostics | `DiagnosticEngine` output |
-| `compiler/driver` | Sequence parse, bind, and check for registered sources | maps keyed by `BufferId` |
-| `compiler/irgen` | Lower a narrow checked subset while also computing target layout | move-only `irgen::Module` and `zom.ir.v0` dump |
-| `utils/zomc` | Parse CLI options and select AST, dispatch, IR, or binary output | stdout/file dumps or command failure |
-| `runtime` | Provide panic ABI entry points and current abort behavior | static runtime library symbols |
+| `compiler/source` | Own source buffers and source locations | `BufferId`, `SourceLoc`, source text views |
+| `compiler/lexer` | Produce tokens on demand | parser-consumed tokens |
+| `compiler/parser` | Parse one retained source snapshot | `ast::Tree` and `ParsedTokenSnapshot` |
+| `compiler/ast` | Own immutable schema-backed syntax | `Tree`, `NodeId`, schema verification, deterministic dumps |
+| `compiler/identity` | Define and freeze canonical semantic identities | context-branded package, crate, source, module, definition, impl, and type handles |
+| `compiler/driver/package` | Resolve packages, targets, source snapshots, and build scripts | verified package-session inputs and finalized compilation roots |
+| `compiler/driver` | Own the session, discover source candidates, and sequence graph, parse, bind, check, evidence, HIR, and MIR boundaries | `VerifiedCrateGraph`, `VerifiedModuleGraph`, interfaces, evidence repositories, and atomic stage publications |
+| `compiler/binder` | Admit parsed modules, derive and resolve canonical dependencies, verify graph and binder input, construct scopes, resolve names, and publish export surfaces | `VerifiedParsedModule`, `VerifiedModuleGraph`, `VerifiedBindingOutput` |
+| `compiler/type` | Canonicalize and intern closed semantic type payloads | `SemanticTypeId` and immutable lookup views |
+| `compiler/checker` | Produce and verify signatures, coherence, inference, body facts, dispatch, borrow surfaces, and checked facts | revision-bound verified fact families and repository leases |
+| `compiler/hir` | Assemble checked modules and lower semantic declarations and scalar facts | `VerifiedCheckedModule`, `VerifiedHirModule` |
+| `compiler/mir` | Lower and independently verify evidence-bound Built MIR v2 | `VerifiedBuiltMir` |
+| `compiler/ir` | Own target selections, canonical IR identity, and the shared closed IR failure algebra | `VerifiedTargetSelection`, typed IR failures and diagnostics |
+| `compiler/diagnostics` | Register, sort, and render source and invariant diagnostics | `DiagnosticEngine` output |
+| `utils/zomc` | Admit a workspace and invoke the production session | AST output, syntax-only binding success, or explicit stage failure |
+| `runtime` | Provide runtime support symbols | runtime libraries; no compiler backend consumer yet |
 
-## 3. Frontend Pipeline
+Binder identities are `DefId`, `ImplId`, `ModuleId`, and module-local
+`ScopeId`; semantic types enter through `SemanticTypeStore`.
+
+## 3. Session Pipeline
 
 ```mermaid
 flowchart TD
-    S[Source file] --> SM[SourceManager buffer]
-    SM --> L[Lexer]
-    L --> TS[Lazy retained TokenStream]
-    TS --> P[Parser]
-    P --> A[Immutable ast::Tree]
-    A --> B[Binder]
-    B --> ST[Shared process SymbolTable]
-    B --> BM[Per-buffer BindingMetadata]
-    A --> C[Checker]
-    ST --> C
-    BM --> C
-    C --> TE[Per-buffer TypeEnv]
-    A --> AO[AST dump]
-    TE --> DO[Dispatch dump]
-    A --> IG[Limited irgen lowering]
-    BM --> IG
-    TE --> IG
-    IG --> IO[zom.ir.v0 debug dump]
-    L --> D[DiagnosticEngine]
-    P --> D
-    B --> D
-    C --> D
+    W["Workspace and invocation"] --> P["Verified package request"]
+    P --> T["Verified host and target selections"]
+    P --> R["Resolved package graph and source snapshots"]
+    R --> B["Verified build plan and available finalized roots"]
+    T --> S["CompilerSession"]
+    B --> S
+    S --> D["Fixed-point parse and structural discovery"]
+    D --> U["Unbranded parsed modules"]
+    U --> SI["Freeze source identities"]
+    SI --> PS["VerifiedParsedModule sequence"]
+    PS --> MI["Freeze module identities"]
+    MI --> F["SemanticContextFingerprint"]
+    F --> DI["Freeze definition and impl identities"]
+    DI --> G["VerifiedModuleGraph"]
+    PS --> G
+    G --> O["Dependency-order binder scheduling"]
+    O --> VI["VerifiedBindingInput per module"]
+    VI --> VO["VerifiedBindingOutput per module"]
+    VO --> VBM["VerifiedBoundModuleInput"]
+    VBM --> C["Verified checker fact families"]
+    C --> BE["Verified BorrowEvidence"]
+    C --> CM["VerifiedCheckedModule"]
+    BE --> CM
+    CM --> H["Verified semantic HIR"]
+    H --> M["Verified Built MIR v2"]
+    T --> TR["TargetRegistrySnapshot"]
+    TR --> VT["VerifiedTargetSelection"]
 ```
 
-`CompilerSession::parseSources()` creates a `ThreadPool`, schedules one parse
-task per registered `BufferId`, and stores successful trees in a guarded map.
+### Parse and discovery
+
+`parseSources()` starts from finalized crate roots. It repeatedly processes the
+canonically ordered set of unparsed source identities, parses each source,
+retains the token snapshot, verifies the parser result against an immutable
+source snapshot, derives structural module dependency requests, and admits any
+newly discovered source. The loop ends only when no source remains.
+
+The session then freezes source identities, promotes every parser result to a
+context-branded `VerifiedParsedModule`, freezes module identities, computes the
+semantic context fingerprint, freezes definition and impl identities, verifies
+one frozen definition inventory per module, resolves structural module paths,
+and publishes the complete `VerifiedModuleGraph`.
+
 `Lexer::lex(Token&)` feeds a Lazy TokenStream on demand. `TokenCursor` provides
-bounded lookahead and rewind without forcing end of file. `Parser::parse()`
-returns `zc::none` after any error-level lexical or syntax diagnostic.
-`bindSources()` and `checkSources()` then iterate the stored trees. The session
-owns one `StringPool`, `SourceManager`, `DiagnosticEngine`, and `SymbolTable`,
-one process-unique `SemanticContextBrand`, one RFC 0011 identity registry
-family, and guarded maps for ASTs, binding metadata, and type environments.
+bounded lookahead and rewind while retaining parser-visible tokens for the
+verified snapshot. `Parser::parse()` returns `zc::none` after an error-level
+lexical or syntax diagnostic, so no failed parser result can be promoted.
 
-The CLI runs parse, optional AST emission, bind, check, optional dispatch
-emission, panic-strategy validation, and final output selection in that order.
-`--emit=ir` invokes the limited prototype. Binary output returns an explicit
-not-implemented failure.
+### Binding
 
-## 4. Data Ownership And Stage Boundaries
+`bindSources()` selects only modules whose graph dependencies already have a
+verified binding publication. For each module it constructs a requester-owned
+graph view, imports only verified dependency export surfaces, verifies the
+complete `BindingInputCandidate`, and calls `runBinding()`.
 
-| Data | Owner | Mutation boundary | Current consumers |
-|---|---|---|---|
-| Source bytes | `SourceManager` | immutable after registration | lexer, diagnostics, panic source metadata |
-| Token buffer | parser-owned `TokenStream` | grows during parsing | parser only |
-| `ast::Tree` | session map entry | immutable after parse | binder, checker, dumps, current irgen |
-| `BindingMetadata` | session map entry | populated during bind | checker, current irgen |
-| `SymbolTable` | `CompilerSession` | updated during per-source binding/checking | binder, checker |
-| `TypeEnv` | session map entry | populated during check; dispatch table is frozen | checker dumps, current irgen |
-| `irgen::Module` | lowering result | built inside `lowerCheckedTree()` | IR dumper only |
+Successful binding publishes one atomic `VerifiedBindingOutput`:
 
-The current `TypeEnv` stores owned concrete `Type` trees and canonical-looking
-`TypeId` handles at the same time. `TypeInterner` IDs and `SymbolId` values are
-local to their owning store. They are not yet the session-canonical semantic
-identities proposed by RFC 0011 and consumed by RFC 0004, RFC 0005, RFC 0008,
-and RFC 0010.
+```mermaid
+flowchart LR
+    I["VerifiedBindingInput"] --> B["Scope and name binding"]
+    B --> M["VerifiedBindingMetadata"]
+    B --> E["VerifiedExportSurface"]
+    M --> O["VerifiedBindingOutput"]
+    E --> O
+```
 
-The session accessors return const references to internal maps. Callers must not
-assume that this API is a cross-thread snapshot or an incremental compilation
-interface.
+Source rejection publishes diagnostics but no output. An identity or binder
+invariant publishes a closed invariant group and no partial metadata or export
+surface.
 
-## 5. Checker And Semantic Facts
+### Checking and emission
 
-The checker is implemented and runs after successful binding. Its main current
-phases include declaration signature computation, body checking, trait and impl
-validation, exhaustiveness checks, dispatch recording, and the partial borrow
-checker described by RFC 0007 evidence.
+`checkSources()` consumes sealed `VerifiedBoundModuleInput` values and stages
+canonical signature facts, coherence, module interfaces, checked facts,
+dispatch facts, and borrow evidence. It then assembles `VerifiedCheckedModule`,
+lowers `VerifiedHirModule`, builds and independently verifies Built MIR v2, and
+commits all staged repositories and vectors together. Unsupported or incomplete
+source facts fail closed with typed source or invariant diagnostics and publish
+nothing from the stage.
 
-Semantic information remains in side tables keyed by AST `NodeId`:
+AST emission is available after verified parsing. `--syntax-only` completes
+after verified binding. Dispatch emission consumes only verified dispatch facts
+after a successful check. Binary selection reaches the registered `ZOM6007`
+terminal because target LIR and native emission are not implemented.
 
-- expression and declaration types;
-- coercion kinds;
-- call target and receiver records;
-- selected symbol IDs and impl-node references;
-- borrow reports inferred by the current checker pipeline.
+`CompilerSession::executeBuildScripts()` can verify and install build results,
+but `zomc` does not call it. A package that requires build-script results cannot
+reach finalized roots through the CLI and fails closed during package-session
+preparation. Packages with directly available roots do not require that API.
 
-Only dispatch records have an explicit freeze operation. There is no
-`VerifiedCheckedModule` handoff and no complete immutable semantic snapshot.
-Downstream code must therefore treat missing or inconsistent facts as an
-invariant failure, not repeat semantic resolution.
+## 4. Ownership And Freeze Boundaries
 
-The current borrow checker contains useful place, CFG, move, loan, region,
-linear, task-capture, and raw-pointer fact types, but several source facts are
-still inferred by bounded AST traversal. It is not the path-sensitive MIR
-ownership analysis proposed by RFC 0007 and RFC 0010.
-
-## 6. Current IR Prototype
-
-`products/zomlang/compiler/irgen` currently defines:
-
-- `Module`, `Function`, `BasicBlock`, `ValueId`, and `BlockId`;
-- integer constants and symbolic same-source raising calls;
-- error-union construction and payload moves;
-- return, jump, error-union branch, and forced-unwrap panic terminators;
-- explicit ILP32/LP64 test layouts and error-union layout descriptors;
-- deterministic `zom.ir.v0` text output.
-
-This is one mixed prototype, not multiple IR layers. It combines logical error
-control flow with concrete target tags, payload offsets, ABI return types, and
-pointer layout. It is not a general HIR, ownership MIR, target LIR, or LLVM IR.
-
-The checked subset is intentionally narrow. Current lowering requires one
-source file and raising functions with restricted shapes. The `?!` and `!!`
-slices support same-source, zero-argument free-function calls with one concrete
-residual alternative. Locals, general expressions, multiple residuals, real
-drop cleanup, cross-module calls, native runtime calls, and object emission are
-not complete.
-
-The prototype now has a narrow structured diagnostic boundary.
-`LoweringFailure` stores a closed failure kind, lowering phase, and AST node.
-`zomc` maps capability limits to registered `ZOM6001-ZOM6008` diagnostics and
-maps missing checked state or lowering invariant failures to
-`ZOM9901-ZOM9903`; arbitrary lowering display strings are not part of the
-interface. Target profiles and scalar widths are closed types, layout-table
-access returns checked results, and IR dumping preflights every interned type,
-layout, function symbol, block, SSA value, instruction, terminator, and panic
-metadata reference before writing output. Lowering rejects mismatched binding
-metadata capacity and source ranges outside the selected source buffer before
-accessing those side tables. This does not provide HIR, MIR, or LIR
-verification and therefore does not satisfy the full RFC 0010 contract.
-
-RFC 0010 is accepted and requires a direct replacement with semantic HIR,
-Built and executable MIR, and target LIR. Its implementation has not started,
-so none of those accepted layer contracts is a current compiler output.
-
-## 7. CompilerSession And Cross-Module Status
-
-`CompilerSession` is the root compiler entry point. It owns source,
-diagnostic, symbol, AST, binding, and type-environment storage together with a
-process-unique `SemanticContextBrand` and the sole RFC 0011 identity registry
-family for that context. The identity registries provide stable package,
-crate, source, module, definition, and impl identities.
-
-The session does not yet build RFC 0008's verified `ModuleGraph`, publish
-immutable module interfaces, provide a `SignatureStore`, schedule dependency
-phases, or construct the global impl coherence index. Its frontend maps remain
-keyed by `BufferId`, so the cross-module handoff is incomplete.
-
-The current import resolver creates and links symbols inside the present
-binder/symbol infrastructure. This does not prove separate compilation or
-cross-module type and ABI identity. RFC 0008 is `IMPLEMENTING`; the root-owner
-cutover is active, while module discovery, verified publication, and
-cross-module semantic consumers remain open.
-
-## 8. Diagnostic Numbering Plan
-
-The authoritative diagnostic registry is the set of non-empty
-`products/zomlang/compiler/diagnostics/diagnostics-*.def` files included by
-`diagnostic-ids.h`. Current registered ranges are:
-
-| Range | Registry | Current purpose |
+| Data | Owner | Publication rule |
 |---|---|---|
-| `ZOM1000-ZOM1001` | `diagnostics-common.def` | common driver/source diagnostics |
-| `ZOM2001-ZOM2090` | `diagnostics-parse.def` | lexical, parser, and parser invariant diagnostics |
-| `ZOM3001-ZOM3016` | `diagnostics-binder.def` | binding and name-resolution diagnostics |
-| `ZOM4001-ZOM4070` | `diagnostics-checker.def` | type, trait, exhaustiveness, coercion, and ownership diagnostics |
-| `ZOM6001-ZOM6008` | `diagnostics-lowering.def` | current IR and backend capability diagnostics |
-| `ZOM9901-ZOM9903` | `diagnostics-lowering.def` | current IR invariant diagnostics |
-| `ZOM9910-ZOM9921` | `diagnostics-identity.def` | semantic identity invariant diagnostics |
+| Package resolution memory, request, graph, snapshots, build plan, and results | `CompilerSession` | installed atomically before parsing; snapshots explicitly finalized |
+| Source bytes | `SourceManager` | immutable source snapshots bind bytes, length, and digest before parser promotion |
+| Parser tokens and AST | `VerifiedParsedModule` | receipt-verified and immutable after source-registry freeze |
+| Semantic context and identity registries | `CompilerSession` | one brand and one registry family; handles are context and slot checked |
+| Semantic types | `SemanticTypeStore` | one append-only store; only store-bound `canonicalizeClosed()` may create an internable payload |
+| Module dependencies | `VerifiedModuleGraph` | one complete immutable graph and requester-filtered views |
+| Binding facts | `VerifiedBindingOutput` | metadata and export surface publish together after independent verification |
+| Checker facts and interfaces | checked-fact repository and `CompilerSession` | independently verified canonical revisions staged for all modules, then committed together |
+| Borrow evidence | borrow-evidence repository | verified complete local/imported inventory and branded lease; committed with checked results |
+| CheckedModule, HIR, and Built MIR | `CompilerSession` | exact lineage to binder/checker/evidence revisions; no partial publication on failure |
+| Target facts | `TargetRegistrySnapshot` and verified package input | target selection is verified before session installation |
 
-RFC 0010 requires the current typed boundary to expand with each verified IR
-layer; the three current invariant codes do not imply that all layer verifiers
-exist.
+Semantic type admission requires the package, crate, source-file, module,
+definition, and impl registries to be frozen. It validates every child
+`SemanticTypeId` and `DefId` against the store context, slot, and definition
+kind before computing canonical bytes. `SemanticTypeStore::intern()` accepts
+only a `CanonicalTypeData` capability created for that store and registry
+family.
 
-Documentation must not allocate a diagnostic by prose alone. A code exists
-only when its `.def` entry, enum inclusion, emitter, and test exist together.
+## 5. Determinism And Concurrency
 
-## 9. Compiler Concurrency
+The production session is deterministic and phase-ordered:
 
-Current compiler concurrency is limited to the parse scheduling implemented in
-`CompilerSession::parseSources()` and the in-tree `ThreadPool`. Binding and
-checking iterate session-owned maps after parsing. The repository does not
-implement the task graph, sharded canonical type store, parallel IR cache, or
-per-module LLVM contexts described by earlier drafts of this document.
+- parse/discovery worklists sort complete canonical source keys;
+- identity registries freeze canonical keys before public handles are used;
+- module graph records and edges use canonical encodings and revisions;
+- binding runs in dependency order and consumes immutable dependency surfaces;
+- binder source failures are constructed deterministically, and identity and
+  binder invariant facts are ordered and grouped before rendering; and
+- canonical type storage and evidence repositories are append-only; and
+- checked facts, interfaces, HIR, and Built MIR use canonical revisions and
+  atomically ordered module vectors.
 
-Guarded map storage does not by itself define an incremental snapshot contract.
-RFC 0008 must define scheduling and publication before cross-module consumers
-rely on concurrent access.
+The current `CompilerSession` executes parse/discovery and binding scheduling
+sequentially. `basic::ThreadPool` exists as a utility but is not the session's
+stage scheduler. No API promises parallel module execution, incremental
+snapshots, or concurrent mutation of session publications.
 
-## 10. Extensibility Status
+## 6. IR And Backend Boundary
 
-The current compiler does not expose the documented `LexerPlugin`,
-`TypeCheckerPlugin`, `BackendTier`, or LLVM backend interfaces that appeared in
-the previous architecture draft. They are not supported extension points.
+`compiler/ir` owns the immutable target registry plus common IR identity,
+failure, and diagnostic contracts:
 
-New compiler-wide plugin, pass-manager, or backend interfaces require an RFC,
-live implementation, ownership rules, and executable tests before this design
-document may list them.
+- canonical target features;
+- canonical target specifications and target-spec digests;
+- registered target profiles and registry revisions; and
+- verified host and target selections used by package-session admission;
+- closed source, identity, capability, and invariant failure branches; and
+- deterministic registered-diagnostic projection.
 
-## 11. Testing And Verification
+`zomc` currently constructs one host/abort profile. A
+`VerifiedTargetSelection` is bound to the registry revision and semantic
+projection but not yet to the session `SemanticContextFingerprint`.
 
-Current authoritative gates include:
+Semantic HIR and Built MIR v2 are production, session-published internal
+representations with independent verifiers and exact codec oracles. Built MIR
+is not executable and has no stable user-facing text format. No target LIR,
+LLVM lowering, or native backend is built.
+
+## 7. Diagnostics
+
+The `.def` registries are authoritative. The registered families are:
+
+| Family | Codes | Purpose |
+|---|---|---|
+| Parse | sparse `ZOM2001-ZOM2105` | lexer, parser, grammar, modifier, and module-scope syntax |
+| Binder and module | `ZOM3001-ZOM3026` | names, scopes, imports, exports, visibility, and module paths |
+| Checker | sparse `ZOM4001-ZOM4092` | semantic, constant, borrow-surface, and marker-interface diagnostics |
+| IR and backend capability | `ZOM6006`, `ZOM6007`, `ZOM6009` | panic, binary, and target capability failures |
+| Package | `ZOM7001-ZOM7017`, `ZOM7091-ZOM7093` | manifests, resolution, materialization, build scripts, and notes |
+| Compiler invariants | sparse `ZOM9905-ZOM9956` | package, identity, binder, checker, dispatch, IR, interface, and module-graph invariants |
+
+The executable diagnostic coverage gate currently proves 249 definitions, 212
+production emissions with test assertions, and 37 non-emitted definitions
+bound to active RFC trackers. It rejects undefined emissions, untracked dead
+definitions, stale reservations, and unasserted production emissions.
+
+## 8. Verification
+
+The merge-ready verification set is:
 
 - `cmake --preset sanitizer`;
 - `cmake --build --preset sanitizer`;
 - `ctest --preset default --output-on-failure`;
 - `python3 scripts/check-format.py`;
 - `python3 scripts/check-rfc.py`;
-- parser, lexer, AST coverage, and conformance checks documented by their
-  owning skills and CMake targets;
+- `python3 scripts/check-binder-architecture.py --check`;
+- `python3 scripts/check-checker-architecture.py --check`;
+- `python3 scripts/check-compiler-session-architecture.py --check`;
+- `python3 scripts/check-identity-architecture.py --check`;
+- `python3 scripts/check-ir-architecture.py --check`;
+- `python3 scripts/check-diagnostic-coverage.py --check` and `--self-test`;
+- `python3 scripts/check-package-architecture.py --check`;
+- relevant architecture self-tests and negative fixtures; and
 - `git diff --check`.
 
-The current IR prototype has unit tests under
-`products/zomlang/tests/unittests/compiler/irgen/` and FileCheck snapshots under
-`products/zomlang/tests/conformance/expectations/ir/`. Those tests prove only
-the named prototype slices. They do not prove native execution, LLVM verifier
-success, object emission, cross-module ABI compatibility, or RFC 0010
-completion.
-
-When RFC 0008 or RFC 0010 moves beyond review, update this document only after
-the corresponding implementation and executable gates exist.
+Passing this set proves the implemented boundaries named above. It does not
+prove ownership analysis, executable MIR, target LIR, LLVM, object emission,
+linking, or native execution until those publications and their executable
+gates exist.

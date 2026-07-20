@@ -170,7 +170,7 @@ does not reconstruct roles from runtime tags. Chapter 11 and RFCs 0005, 0006,
 | **CR-5 Trap-Matrix Honesty** | P10 changed from L1 → L2 (lexical + runtime scope_stack); public numbers from 18/1/1 → 16/3/1, first CHANGELOG entry. |
 | **CR-6 Negative-Impl Propagation Diagnostic Chain** | Full-chain negative impl: `*mut u8` → `Foo { p: *mut u8 }` → `Bar { f: Foo }`; diagnostic MUST output field-level expansion: `↓ because Bar.f:Foo ↓ because Foo.p:*mut u8`. |
 | **CR-7 NoSuspendHazard Liveness** | Deprecate lexical scope (false positives); adopt flow-sensitive analysis (correct implementation). `drop(guard); suspend;` does NOT raise an error. |
-| Implementation Cost | 7 subsystems: trait solver / auto-trait propagation / negative impl conflict / closure capture classification / flow-sensitive liveness / Linear use-def / HRTB subset. Total 8~11 months. The TypeChecker skeleton (D7 S-3) is a prerequisite. |
+| Implementation Cost | 7 subsystems: trait solver / auto-trait propagation / negative impl conflict / closure capture classification / flow-sensitive liveness / Linear use-def / HRTB subset. Total 8~11 months. Each pass must publish revision-bound facts through the verified Checker pipeline. |
 | Rejected | Pure Go runtime+TSan route (violates NP-10); deferral to 1.5 (ecosystem breaking after formation); drop Shared (forces Arc-degradation UX); Linear demoted to must_use (TaskHandle leak unsolvable); 100% same-name Rust Send/Sync compatibility (Pin/Unpin baggage brought in). |
 
 [Unified Marker Form Declaration]
@@ -207,7 +207,7 @@ See Ch.16 §16.9.0 (Unified Tier-1 Marker Form) for details.
 |---|---|
 | Recommended | **Option C (Hybrid): default zero-color + statically inferable + explicitly annotatable + FFI/Drop forcibly explicit** |
 | Rejected | Option A strict zero-color (B.1 bare-thread UB cannot be sound); Option B strict explicit signatures (violates NP-1, 5000 lines of C++ + 40% spec rewrite, delays 3~6 months) |
-| Implementation | One caller-location lint pass in TypeChecker, 300~500 lines + 150 lines of runtime scope hooks; SuspendCapability propagation and type inference reuse unification; R4 shares the same flow-sensitive analysis as Linear/ZOM8006 |
+| Implementation | One caller-location Checker pass, 300~500 lines + 150 lines of runtime scope hooks; SuspendCapability propagation uses canonical inference facts; R4 shares the same flow-sensitive analysis as Linear/ZOM8006 |
 | Risks | Falls back to dynamic when HRTB is unimplemented; annotation under-reporting → 100% public API AST scan automated tests; `stability-manifest` explicitly records "Concurrency 1.0 frozen as Option C" |
 
 ### D6 · Attribute & marker system (canonical frozen)
@@ -322,7 +322,7 @@ declaration block and §10.2 `09-interfaces.md` manifest entry.
 | Item | Content |
 |---|---|
 | Recommended | **Option C: three-system decoupled layering + four-phase incremental rollout** |
-| Phase 0 (1.5 person-months prereq) | TypeChecker skeleton + Driver refactoring + 45 cross-module/concurrency/error dedicated diagnostic codes (25 error + 12 module + 8 concurrency). Closes: Module Critical 5 Export/Topology + Error Critical 2. |
+| Phase 0 (implemented foundation) | Verified module graph, immutable interfaces, canonical binding identities, revision-bound Checker facts, atomic `CompilerSession` publication, and tracked diagnostic coverage. |
 | Phase 1 (4 person-months) | Error-system raises normalization (T? → T\|null flatten, union normalization, raises subset checking); module-system package/scope/visibility; concurrency-system marker interface + core types + spawn/suspend syntax in place |
 | Phase 2 (3 person-months) | Error × Concurrency: cancellation propagation + supervisor strategies; Error × Module: cross-module raises subtyping; Concurrency × Module: cross-crate Sendable consistency |
 | Phase 3 (1.5 person-months) | Unified three-system closure: compilation parallel scheduling utilizes concurrency runtime; Diagnostic Engine concurrent task isolation; full green bar of compliance tests |
@@ -703,7 +703,7 @@ fun <T> Receiver<T>.recv(self) -> T raises Cancelled | ScopeAbandoned;
 | P04 | Worker executes blocking I/O / syscall (starvation) | `spawn blocking` modifier | ⚠️L2 (Budget exhaustion + blocking detection) + L3 (san) | ZOM8011 | Upon detecting a block, hand work-steal rights to a replacement worker |
 | P05 | double-panic triggers resource double-free or leak | DoublePanic error + Linear cleanup | ⚠️L2 (written to LeakReport) | ZOM9008 | Linear-only-cleanup path |
 | P06 | Stack overflow crashes the entire process (no per-task ownership) | Segmented stacks + guard pages + SIGSEGV handler | ⚠️L2 (handler `in_switch` atomic detection delayed by 1 tick) | — |  |
-| P07 | Worker infinite loop at 100% CPU (missing cooperative preemption) | Budget + Epoch + yield injection | ⚠️L2 (cfg back-edge checkpoint) | ZOM8017 | N runtime budget checks while Checker is unimplemented |
+| P07 | Worker infinite loop at 100% CPU (missing cooperative preemption) | Budget + Epoch + yield injection | ⚠️L2 (cfg back-edge checkpoint) | ZOM8017 | Runtime budget checks remain until the dedicated Checker fact and MIR instrumentation are implemented |
 | P08 | Non-thread-safe set on SuspendContract triggers wake-up loss | All implementations enforce SeqCst atomics + double-check | ✓L1 (implementation-specification enforced) | — |  |
 | P09 | spawn detached captures a non-static reference | `'static` check + `#[zom::concurrency::detached]` requirement | ⚠️L2 (compile under lexical; runtime across functions) | ZOM8010 | ZOM8010-UNSAFE warning in unsafe |
 | P10 | spawn_scope closure borrow escapes to external storage | Built-in limited HRTB + scope_stack | ⚠️L2 (lexical L1 + cross-function L3) | ZOM8003 | **B.8 correction: from L1 changed to L2**; public figure 16/3/1 |
@@ -901,7 +901,7 @@ See §11 of `runtime-ffi-examples`:
 ```zom
 // Maturity:
 //   [L0] spawn / spawn_scope / ?! syntax  → ✓ (Level-0 parsable)
-//   [L1] raises enters symbol → ✓ (Level-1)
+//   [L1] raises enters verified signature facts → ✓ (Level-1)
 //   [L2] Sendable capture check / Linear one-shot / NoSuspendHazard flow-sensitive → unimplemented
 //        → fallback: debug-mode runtime assertions + lint WARNING(ZOM8001~ZOM8006)
 ```
@@ -937,7 +937,7 @@ The complete list is maintained by the roadmap tables in this section. Top-10 mo
 | Level | Timeline | Deliverables | Acceptance Green-Bar | Impact on Concurrency Spec |
 |---|---|---|---|---|
 | **0 — Syntax Freeze** | T+1 week | suspend/spawn land in lexer+parser; `?!`/`!!` syntax-chain fix; 2 AST interfaces + 9 concrete nodes (ModifierList/Outer/Inner/AttrPath/PosArg/NamedArg/TokenTree/MarkerDecl/MarkerImpl/MarkerBound + ColonColon(::) + @ parameter-sugar) into parser + kinds.h; §4 EBNF synchronized with 17-chapter; 16-chapter attribute specification rewritten from an 11-line placeholder to 1812 production-grade lines; dead RaisesClause/ErrorTypeList removed from kinds.h | L01~L08 all pass; FAIL outputs correct diagnostic codes (line/col/snippet); ZOM0600–ZOM0617 attribute-specific error-code coverage | Concurrency syntax + attribute-system AST: dual minimal closure |
-| **1 — Binder / Symbol Layer** | T+2 ~ T+4 weeks | FunctionTypeSymbol::errorTypes field + API; Binder `visit(ReturnTypeNode)` flatten+lookup; 6 core `std::marker::*` markers injected + 9 R0–R9 lattice edges; Binder S0 attribute-name resolution three paths (zom::*/std::marker::*/dep::<crate>::*) + LegacyBareWhitelist W7105 + WhereClause negative-bound parsing; Module scope + Export flag + import-binding minimal closure (fixes MOD-03/MOD-05) | L09~L15; cross-module imports do not raise UndefinedIdentifier; raises-subset L1 validation prototype usable; MarkerBound and MarkerImplDecl parse correctly | Error/module/concurrency/attribute symbol-layer four-way cross-contract ready |
+| **1 — Verified Binding and Checking** | Implemented foundation | `CompilerSession` verifies the module graph, publishes immutable module interfaces, runs canonical `DefId` binding, and admits revision-bound checked facts; concurrency marker and effect semantics extend those verified capabilities | Cross-module imports resolve only through verified interfaces; signature success and raises facts remain distinct; all publications are atomic | Error/module/concurrency/attribute facts share the verified Binder and Checker contract |
 | **2 — Checker Static Safety** | T+1 ~ T+6 months | Sendable/Shared capture (ZOM8001/2/3) + Linear one-shot (ZOM8004/5) + NoSuspendHazard flow-sensitive (ZOM8006) + lock-order lint (ZOM8007) + spawn detached (ZOM8008/10) + raises-subset checking + L1 implementation of 11 overclaims | L16~L22 pass; 80% green bar of audit Top-40; remaining 20% have runtime-fallback lint; trap-matrix L1 pledges ≥ 10/20 | L1 pledges publishable; §5.4 overclaim corrections upgraded to a public statement |
 | **3 — Runtime + FFI + Observability** | T+3 ~ T+12 months, split M1/M2/M3 | M1 (Eager Task + Scope + SuspendContract minimum → run 11.1); M2 (Channel + Mutex + Reactor → 11.2/11.3); M3 (Supervisor + FFI + TSan + det_sched → 11.4) | Z01~Z26 pass rates: M1 ≥ 40%, M2 ≥ 75%, M3 ≥ 95%; SIGUSR1 taskdump available; Cooperative TSan capture rate ≥ 90% of known traps | Feature complete, ready to enter the 1.0 release cycle |
 
@@ -984,11 +984,11 @@ Adversarial audit B sampled 35 high+/critical directly related to concurrency ou
 | Finding | Title | Directly | Section |
 |---|---|---|---|
 | MOD-001~005 (5 Critical) | Module system Import/Export/Scope/Cycle/Package all blank | ✅ (D7 Phase 0/1 deliverables + releaseBlockers #8 Appendix C adversarial audit) | §3 D7; §7.3 Level-1 |
-| DES-001 | TypeChecker completely unimplemented (empty shell, driver has no checkSources stage) | ✅ (D7 Phase 0 #1 priority; releaseBlockers #12 requires parallel progress) | §3 D7; §9 #12 |
-| DES-002 | Type-inference unification algorithm completely unimplemented (let x = 42 has no type) | ✅ (D7 Phase 0 Checker skeleton S-3 deliverable; marker solver reuses unification) | §3 D7; D2 implCost |
+| DES-001 | Concurrency-specific checker facts require completion on the verified Checker rail | ✅ The driver already sequences verified binding, checking, borrow evidence, HIR, and Built MIR; marker and concurrency facts must extend that rail | §3 D7; §9 #12 |
+| DES-002 | General inference and marker-constraint solving remain incomplete | ✅ Add inference facts and marker closure to the canonical semantic type store and checked-facts repository | §3 D7; D2 implCost |
 | DES-018 | Nullable, union, raising-call, and `Result` identities must remain distinct | ✅ `T?` normalizes to `T \| null`; raising signatures preserve success and raises separately; calls publish checked success/residual roles; `Result<T, E>` is nominal | §3 D1; Chapter 6; Chapter 11 |
 | ERR-001 | `?!` double-character-chain lexer token missing + parser without consume | ✅ (D6 G8 unified as Postfix; D1 S-4 semantic formalization) | §3 D6; §4.1 G8 |
-| ERR-00C | FunctionTypeSymbol no errorTypes field + Binder ignores RaisesClause | ✅ (D1 S-2 freeze item) | §3 D1; §7.3 Level-1 |
+| ERR-00C | Concurrency effects require distinct checked success and raises facts | ✅ Signature facts preserve the two roles and concurrency checking extends that verified contract | §3 D1; §7.3 Level-1 |
 | CON-H05 | No unsafe escape hatch; concurrency-unsafe APIs cannot be gated | ✅ (D8 Tier-0 `zom::lang::unsafe_block` + `zom::ffi::unsafe_function` attributes; TopUnaddressed #9) | §3 D8; §11 Open Problems |
 | CON-H07 | Language-level memory model completely undefined (DRF-SC undecided) | ✅ (D2 DS-2 SeqCst subset; §6.1 atomic release-acquire pairs; releaseBlockers TopUnaddressed #6) | §3 D2; §6.1 |
 | DES-017 | Pattern match exhaustiveness checking completely missing | ✅ (D1 S-3 Checker canonicalize + SetType exhaust; TopUnaddressed #4) | §3 D1; §7.3 Level-2 |
@@ -1011,22 +1011,21 @@ Release Blockers are 12 items identified by Adversarial Audit B that **must be r
 9. **Add new spec chapter "Pledge Grading"**: extend §2 L1/L2/L3 definition to an independent chapter; all safety/semantics pledges across the spec cite it uniformly; avoid reader ambiguity on the ✓ symbol. Each pledge lint diagnostic ZOM80xx appends a "Boundary Conditions / Failure Scenarios" subsection.
 10. **Failure list appended to all compile-time pledge lint diagnostics**: ZOM8001~ZOM8018 each individually list 2–3 uncovered scenarios (unsafe/cross-function/FFI/type-erasure/reflection etc.).
 11. **Follow-up milestones**: Re-run Appendix B 10-item code-level re-audit before 1.0.0-rc2 freeze; complete full-project grading revision of compile-time pledges at Alpha phase; complete Appendix C (module-system) adversarial audit at Pre-1.0 phase.
-12. **TypeChecker implementation schedule advances in parallel with Appendix B fixes**: without a landed checker, B.8 overclaim corrections are only document revisions with no practically enforced gates. TypeChecker skeleton (D7 Phase 0) must enter CI before rc2 release.
+12. **Concurrency Checker extensions advance in parallel with Appendix B fixes**: each L1 pledge requires an executable fact producer, verifier, repository publication, and conformance gate on the current Checker rail before rc2 release.
 
 ---
 
 ## 10. File Change Manifest
 
-### 10.1 Documents Produced by This Workflow (7 files, 220,359 words · 16-chapter rewrite added)
+### 10.1 Authoritative Files
 
 | Path | Size | Notes |
 |---|---|---|
-| **`docs/concurrency/zom-async-canonical-design.md` (this file)** | ≈ 93K | **Final deliverable**: single entry point, 12-chapter complete structure (§3 D8 Canonical freeze ruling added / Adversarial Audit summary / 12 blockers) |
-| `docs/spec/chapters/16-attributes-and-markers.md` (**Canonical rewrite in this pass — original 11-line placeholder → production-grade spec**) | ≈ 67K / 1812 lines | **Official attributes + marker spec**: original file was an 11-line placeholder at rc1-draft stage ("this chapter reserved for a future attribute-system design"). After completion of the 2026-06-24 Canonical Judge Design process, **no longer treated as "reserved for the future"**, rewritten to production-grade spec. Covers: (1) Lexer rules (ColonColon / Shebang / At / Hash single-char tokens — 0 compound tokens); (2) Parser LL(2) EBNF (Outer/Inner Attribute / attributeEntry 3 forms / attributePath ≥ 2 segment hard rule / ModifierList / markerDeclaration / markerImplDeclaration / BoundForm / WhereClause extensions — all strictly LL(1), Hash disambiguation is LL(2)); (3) AST 9 concrete nodes + 2 interface nodes delta (ModifierList/Outer/Inner/AttributePath/PositionalAttrArg/NamedAttrArg/AttrTokenTree/AttributeMarkerDecl/MarkerImplDecl/MarkerBound, X-macro visitor zero-change + serializer + factory totaling ≈ 490 LOC); (4) Binder S0 name resolution 3 paths (zom::* / std::marker::* / dep::<crate>::*) + DocParamSynthesisPass + 9 diagnostics ZOM0601–ZOM0617; (5) Checker S1–S5 6-stage pipeline (WFF/Tier/Lattice/Closure/Usage/Lowering) + 200 diagnostics (ZOM0600–ZOM0699 attribute-system / ZOM0700–ZOM0799 marker-related / concurrency gates); (6) 9 R0–R9 lattice propagation rules (Shared≤Sendable, TaskBound≤¬Sendable, Copy≤¬Linear, Pod≤ZeroInit+NoUninit+Copy, StableAbi≤Pod, Discriminant≤Sized, NoSuspendHazard≤SuspendSafe, Linear⇒¬Copy, NoInteriorMuta⇒Shared default) + 5 negative-impl semantic rules + orphan rule + justification check; (7) 10 Tier-0 zom::* subspaces + 15 Tier-1 std::marker::* + Pod family marker list; (8) @ parameter-sugar (ParameterDecl position only) + LegacyBareWhitelist 3 items; (9) Implementation estimate 16,305 ±12% LOC breakdown (AST 500 / Binder 900 / Checker 4600 / Lexer 75 / LSP 260 / Macro 2000 / Parser 1350 / Rustdoc 220 / Test 6400); (10) 9-modal Kripke semantics + Soundness proof skeleton over 3-world reachability. This file is the **official normative spec**; mutually complementary to the D8 ruling. Downstream implementations must treat the 16-chapter + `CANONICAL-JUDGE-ATTRIBUTE-SYSTEM.json` as the dual sources of truth. |
+| **`docs/concurrency/zom-async-canonical-design.md` (this file)** | Design | Concurrency semantics, safety requirements, runtime contracts, and implementation milestones; normative syntax remains in `docs/spec/` |
+| `docs/spec/chapters/16-attributes-and-annotations.md` | Normative | Attribute and annotation syntax and semantics |
 | `docs/spec/chapters/17-grammar-reference.md` | Normative | Language EBNF aligned with the lexer, recursive parser, ANTLR grammar, and AST schema |
-| `docs/design/runtime-ffi-examples.md` | 17,098 B / 397 lines | Runtime architecture diagrams / pseudocode / edge-semantics 6-step / C ABI header / 4 complete examples |
-| This file, sections 7-9 | In-tree summary | Open problems / compliance test suite / four-phase roadmap / credibility audit closure table |
-| `CANONICAL-JUDGE-ATTRIBUTE-SYSTEM.json` (**new formal ruling file**) | ≈ 38K / 7 modules | Machine-readable ruling output of Canonical Judge Design: finalAST / finalCheckerStages / finalEBNF / finalLexerRules / finalMarkerSyntax / finalNamespaces / finalNegativeImplSyntax / finalImplementationEstimate / finalRetention / finalSoundnessSketch — 10 submodules, forming "one document + one JSON" dual truth-source with the 16-chapter |
+| `docs/design/runtime-ffi-examples.md` | Design | Runtime architecture, edge semantics, C ABI examples, and complete usage examples |
+| This file, sections 7-9 | Design | Assurance plan, conformance targets, and release blockers |
 
 ### 10.2 Recommended Changes to Existing Files (**downstream code-level work**, not directly modified in this workflow)
 
@@ -1042,7 +1041,7 @@ Release Blockers are 12 items identified by Adversarial Audit B that **must be r
 | `products/zomlang/compiler/ast/kinds.h` L315-317 | Delete dead code RaisesClause / ErrorTypeList / ErrorReturnClause SyntaxKind | High | D1 R3 |
 | `products/zomlang/compiler/parser/parser.cc` + ZomLexer.g4 | Attribute parsing: add ColonColon (`::`) token; OuterAttribute / InnerAttribute / AttrEntry 3 forms / ModifierList / MarkerDecl / MarkerImplDecl unified into AST; `@` at ParameterDecl position only, parser lowers directly to `#[zom::param::name]`; suspend/spawn parsing wired in | High | §3 D8; §4.0 finalEBNF |
 | `products/zomlang/compiler/ast/{schema.yml, tree.h, tree.cc, generated/}` + `products/zomlang/compiler/parser/{parser.cc, parser.h}` | Add schema payloads and builder integration for AttributeNode / AttrArgumentNode equivalents plus ModifierList / OuterAttribute / InnerAttribute / AttributePath / PositionalAttrArg / NamedAttrArg / AttrTokenTree / AttributeMarkerDecl / MarkerImplDecl / MarkerBound; Diagnostic Engine adds ZOM0600-ZOM0699 and ZOM0700-ZOM0799 two diagnostic ranges | Critical | §3 D8; finalAST; finalCheckerStages |
-| `products/zomlang/compiler/checker/checker.cc` (skeleton + 6-stage pipeline) | S0 Binder name resolution 3 paths + DocParamSynthesisPass; S1 WFF Tier/Arity/Orphan/Justification; S2 Lattice R0–R9 edge registration + user marker closure; S3 Modal closure + negative impl exclusion + coherence ZOM0710; S4 Usage 6 concurrency gates G1–G6 + lint gating; S5 Lowering MarkerSet (u64 bitset) + FFI/layout/hint metadata writing | Blocker #12 | §3 D8 finalCheckerStages; §5.4 6 gates G1-G6 |
+| `products/zomlang/compiler/checker/` and `products/zomlang/compiler/driver/compiler-session.cc` | Extend verified signature, coherence, inference, body, dispatch, and borrow fact families with marker WFF, lattice closure, negative-impl coherence, concurrency usage gates, and lowering metadata; preserve revision binding and atomic publication | Blocker #12 | §3 D8 finalCheckerStages; §5.4 6 gates G1-G6 |
 | `docs/spec/chapters/09-interfaces.md` | Add § Canonical Marker System: `marker M = B1+B2 … ;` declaration, `impl !? std::marker::M for T where …` positive/negative impl, `#[std::marker::M(auto=…)]` Surface 1 full semantics for the three syntactic surfaces (D8 frozen); the four independent `#[lang::*]` marker-related attributes are superseded per D8 ruling §Forbidden | Critical | D2 CR-1 + §3 D8 |
 | `products/zomlang/stdlib/prelude.zom` (create if missing) | 6 core markers (Sendable/Shared/Linear/NoSuspendHazard/SuspendSafe/TaskBound) declared + 9 R0–R9 propagation rule registrations + `impl !std::marker::Shared for UnsafeCell<T>` negative impl + `unsafe impl<T> std::marker::Shared for Mutex<T>` override + L03-bis test literature baseline | Critical | D2 CR-2 + §5.2 |
 | `docs/spec/chapters/14-memory-management.md` + `15-concurrency.md` | Write DRF-SC subset pledge + spawn atomic release-acquire pairs (D2 DS-2) + D8 negative impl justification check and memory-model interaction axioms | High | CON-H07 |
@@ -1072,9 +1071,9 @@ Release Blockers are 12 items identified by Adversarial Audit B that **must be r
 
 | # | Source | Issue | Blocks Concurrency at | Forward Recommendation |
 |---|---|---|---|---|
-| 1 | DES-001 | TypeChecker is an empty shell, driver has no checkSources phase | **Critical — blocks all L1 pledges from materializing** | D7 Phase 0 item #1; releaseBlocker #12 |
-| 2 | DES-002 | Type-inference unification algorithm completely unimplemented | Critical (marker solving depends on full inference) | Ship in the same PR as the TypeChecker skeleton; S-3 deliverable |
-| 3 | MOD-001~005 (5 Critical) | Import parsing / symbols / module boundaries / cycle detection / package system | High (cross-module Sendable negative impl consistency depends on it) | D7 Phase 1; Appendix C adversarial audit (RB #8) |
+| 1 | DES-001 | Concurrency-specific checked facts and gates are not yet published by the verified Checker pipeline | **Critical — blocks concurrency L1 pledges from materializing** | Extend the current checked-facts repository and preserve atomic `CompilerSession` publication |
+| 2 | DES-002 | General inference and marker-constraint solving are incomplete | Critical (marker solving depends on full inference) | Add canonical inference and marker-closure facts to the current Checker rail |
+| 3 | MOD-001~005 (5 Critical) | Concurrency marker coherence across verified module interfaces needs dedicated conformance coverage | High (cross-module Sendable negative impl consistency depends on it) | Add Appendix C scenarios against `VerifiedModuleGraph` and immutable module interfaces |
 | 4 | DES-017 | Pattern-match exhaustiveness checking missing | High (Linear cancel-propagation exhaustiveness is an L1 prerequisite) | D1 S-3; same PR as SetType |
 | 5 | ERR-001/#2/#5 | panic unwind / Linear cleanup / raises effect-system not closed | High (basis for traps P02/P05) | D1 S-2 + D2 CR-3 + §6.5 |
 | 6 | CON-H07 | Language-level memory model undefined (DRF-SC / default atomics ordering) | Medium-High (D2 DS-2 SeqCst subset requires general rules) | §6.1 + standalone §14 chapter; suggest a dedicated spec RFC |
@@ -1087,8 +1086,8 @@ Release Blockers are 12 items identified by Adversarial Audit B that **must be r
 
 | Node | Timeline (from rc1 release date) | Deliverables | Document Status Upgrade |
 |---|---|---|---|
-| 1.0.0-rc2 | +2 weeks | §10.2 top 5 spec-level modifications landed; §5.4/§7 tables revised per RB #1/#2/#3/#4/#5/#6; TypeChecker skeleton passes CI; L01~L15 green | rc1 → rc2: 5 Critical spec issues resolved |
-| 1.0.0-beta | +3 months | Level-2 Checker first version runnable; trap-matrix L1 ≥ 10/20; L16~L22 passing; Appendix B 10-item code-level re-audit closed ≥ 7/10; RB #1~#8 all complete | rc2 → beta: L1 pledges take effect |
+| 1.0.0-rc2 | +2 weeks | §10.2 top 5 spec-level modifications landed; §5.4/§7 tables revised per RB #1/#2/#3/#4/#5/#6; concurrency Checker fact extensions pass CI; L01~L15 green | rc1 → rc2: 5 Critical spec issues resolved |
+| 1.0.0-beta | +3 months | Level-2 concurrency Checker passes are runnable; trap-matrix L1 ≥ 10/20; L16~L22 passing; Appendix B 10-item code-level re-audit closed ≥ 7/10; RB #1~#8 all complete | rc2 → beta: L1 pledges take effect |
 | 1.0.0-stable | +12 months | Level-3 M1/M2/M3 full scope; Z01~Z26 ≥ 95%; Appendix C module-system adversarial audit closed; all Top-10 Unaddressed have at least a beta-level implementation | beta → stable: concurrency design production-ready |
 
 ---
@@ -1096,4 +1095,4 @@ Release Blockers are 12 items identified by Adversarial Audit B that **must be r
 > — End of Document —
 >
 > One-sentence conclusion:
-> **The core of this concurrency design is not "yet another async syntax", but a foundation — using ZOM's real grammar, honest pledge grading, and clear cross-contracts with the three infrastructure pillars (errors / modules / types) — that will not be overthrown by syntax mid-flight as ZOM progresses from 0% checker to 100% concurrency-safe over the long engineering road ahead.**
+> **The core of this concurrency design is a verified semantic and runtime contract: it builds on ZOM's canonical grammar, Binder identities, Checker facts, module interfaces, HIR, and Built MIR while making every remaining concurrency-safety obligation explicit and executable.**

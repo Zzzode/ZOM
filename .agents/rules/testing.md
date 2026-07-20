@@ -28,7 +28,7 @@ existing coverage is already sufficient.
 // ✓ Good — descriptive, says what behavior is being tested
 ParserTest.ParseErrorDefaultExpressionOperator
 LexerTest.ErrorPropagateTokenMatchesEbnf
-SymbolTableTest.ImportedNameDoesNotLeakAcrossScopes
+BindingVerifierTest.ForeignModulePrivateDefinitionIsRejected
 
 // ❌ Bad — generic or terse
 TestParser.Test1
@@ -130,8 +130,9 @@ make coverage
 
 ### Policy
 
-- Coverage for `lexer/`, `parser/`, `ast/`, `binder/`, `symbol/` must never
-  regress below the baseline recorded in the most recent coverage report.
+- Coverage for `lexer/`, `parser/`, `ast/`, `binder/`, `checker/`, `type/`,
+  `identity/`, `hir/`, `mir/`, and `ir/` must never regress below the baseline
+  recorded in the most recent coverage report.
 - New compiler source files without >70% line coverage are rejected on review
   unless the code is a pure FFI boundary (tested elsewhere) or infrastructure
   glue whose failure modes are inherently unreachable without mocking.

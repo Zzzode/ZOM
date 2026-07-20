@@ -105,9 +105,9 @@ make coverage
 ```
 
 Report the per-module coverage percentages. If `lexer/`, `parser/`, `ast/`,
-`binder/`, or `symbol/` dropped below the baseline recorded in the last
-coverage summary, **block the commit** until the regression is explained or
-tests are added.
+`binder/`, `checker/`, `type/`, `identity/`, `hir/`, `mir/`, or `ir/` dropped
+below the baseline recorded in the last coverage summary, **block the commit**
+until the regression is explained or tests are added.
 
 ---
 

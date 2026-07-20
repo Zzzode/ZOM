@@ -11,7 +11,7 @@ of ZOM. Each run produces a standalone Markdown report in
 
 **Use this skill when:**
 
-- A critical subsystem (`lexer`, `parser`, `binder`, `checker`, `symbol`,
+- A critical subsystem (`lexer`, `parser`, `binder`, `checker`, `identity`,
   `error system`, `concurrency`, `runtime`) has just been refactored or
   landed for the first time.
 - The user asks "audit X", "check for bugs in Y", "are there gaps in Z?".
@@ -33,7 +33,7 @@ each area has its own specialized finders.
 |---|---|---|
 | `lexer` | Tokenizer, keyword/operator tables, `ZomLexer.g4` alignment | Lexer correctness, reserved-keyword drift, multi-char operator dispatch, literal parsing |
 | `parser` | Grammar, precedence, postfix operators, `17-grammar-reference.md` EBNF alignment | Acceptance of valid input, rejection of invalid input, precedence drift, visitor exhaustiveness |
-| `binder-checker` | `binder/`, `symbol/`, future `checker/` | Scope leaks, `Export` flag writes, name-lookup ordering, trait-system correctness |
+| `binder-checker` | `binder/`, `checker/`, `type/`, and identity consumers | Scope capability leaks, non-canonical identities, name-lookup ordering, fact verification, trait-system correctness |
 | `error-system` | `?!`/`!!` lexing, raising clauses, `diagnostic/`, ZOMxxxx code inventory | ERR-001 style drift, code reuse, diagnostic wording contract, parser ↔ checker raising handoff |
 | `module-system` | Imports, paths, re-exports, visibility, cross-session registry | MOD-001 … MOD-008 style findings, CompilerSession cross-module identity |
 | `concurrency` | Runtime task graph, Sendable, actors, futures, cancellation | 20-classic-pitfall radar, memory model, drop semantics in async context |

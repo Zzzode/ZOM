@@ -47,7 +47,7 @@ Forcing trivia into the compiler AST would:
 | Ordinary whitespace | Spaces, tabs, blank lines | Not emitted as tokens by the lexer |
 | Non-doc comments | `// ...` and `/* ... */` | Skipped by the lexer; not in token stream |
 | Formatting trivia | Indentation, alignment, line length | No representation in AST |
-| Comment body text (non-doc) | `// TODO: fix this` | Discarded; use doc comments for semantic metadata |
+| Comment body text (non-doc) | `// TODO: fix this` | Not retained; use doc comments for semantic metadata |
 
 ## Token Shape (L2P-04)
 

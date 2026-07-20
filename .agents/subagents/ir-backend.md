@@ -2,11 +2,10 @@
 
 ## Mission
 
-Own the existing `irgen` prototype and review RFC 0010's proposed contracts for
-lowering checked ZOM semantics through HIR, MIR, target LIR, LLVM IR, and native
-artifacts. If RFC 0010 is accepted, own its implementation without repeating
-frontend semantic analysis or leaking target ABI decisions into
-target-independent IR.
+Own the accepted RFC 0010 implementation boundary for lowering checked ZOM
+semantics through verified HIR and Built MIR v2, and the future target LIR,
+LLVM IR, and native artifacts. Do not repeat frontend semantic analysis or leak
+target ABI decisions into target-independent IR.
 
 ## Use When
 
@@ -37,29 +36,20 @@ products/zomlang/compiler/hir/**
 products/zomlang/compiler/ir/**
 products/zomlang/compiler/mir/**
 products/zomlang/compiler/lir/**
-products/zomlang/compiler/irgen/**
 products/zomlang/compiler/backend/**
 products/zomlang/compiler/basic/compiler-opts.h
+CMakeLists.txt
+CMakePresets.json
 products/zomlang/compiler/CMakeLists.txt
+products/zomlang/compiler/basic/CMakeLists.txt
+products/zomlang/compiler/trace/CMakeLists.txt
 products/zomlang/utils/zomc/**
 ```
 
-`products/zomlang/compiler/irgen/**` is the current implementation surface. RFC
-0010 proposes its direct replacement. If that proposal is accepted, the
-cutover must not retain a compatibility facade.
+`compiler/hir`, `compiler/mir`, and `compiler/ir` are the only production IR
+rail. Parallel IR models and compatibility facades are blockers.
 
 ## Review Checklist (applies to every PR this subagent touches)
-
-For the current mixed `irgen` prototype:
-
-- [ ] The accepted source subset is explicit, fail-closed, and covered by an
-      executable CLI or unit test.
-- [ ] Valid-source capability failures and compiler invariants are represented
-      as typed facts and mapped to registered diagnostics, not raw strings.
-- [ ] A change does not present the mixed prototype as an accepted general IR
-      architecture or broaden its cross-layer contract without an RFC.
-
-For implementation after RFC 0010 or another IR architecture is accepted:
 
 - [ ] Every instruction belongs to exactly one accepted IR layer.
 - [ ] Any accepted HIR contains canonical semantic identities and no target
@@ -77,14 +67,14 @@ For implementation after RFC 0010 or another IR architecture is accepted:
       format unless a separate RFC says otherwise.
 - [ ] `zc` ownership rules are followed and no raw pointer crosses a compiler
       layer boundary.
-- [ ] Removed IR surfaces are deleted with every caller in the same change.
+- [ ] IR replacement work removes every superseded caller in the same change.
 
 ## Required Evidence Before Closing
 
 - [ ] `cmake --preset sanitizer` passes.
 - [ ] `cmake --build --preset sanitizer` passes.
-- [ ] Current prototype lowering tests, or accepted layer verifier and lowering
-      tests as applicable, pass.
+- [ ] HIR, Built MIR v2, shared IR failure, target registry, verifier, codec
+      oracle, and lowering tests pass as applicable.
 - [ ] Relevant lit/FileCheck snapshots pass.
 - [ ] `python3 scripts/check-format.py` passes.
 - [ ] `git diff --check` passes.

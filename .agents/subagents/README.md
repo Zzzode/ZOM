@@ -10,18 +10,18 @@ subagent based on keywords and path ownership.
 
 ```mermaid
 flowchart TD
-    U[User request] --> TR[task-router<br/>keyword + paths analysis]
+    U[User request] --> TR[task-router<br/>keyword paths and AGENTS governance analysis]
 
     TR --> RF[rfc<br/>docs/rfc process proposals prior art]
     TR --> LP[lexer-parser<br/>lexer/ parser/ ast schema and kinds spec ch.02/04/17]
     TR --> BC[binder-checker<br/>binder/ checker/ types/ generics/ traits]
-    TR --> MS[module-system<br/>identity/ source/ symbol/ driver/ modules visibility]
+    TR --> MS[module-system<br/>query/ identity/ source/ driver/ module graph interfaces visibility]
     TR --> ES[error-system<br/>diagnostics/ raises ZOMxxxx ?! !!]
     TR --> CN[concurrency<br/>runtime async/actor/channel scheduler]
-    TR --> IB[ir-backend<br/>HIR/MIR/LIR lowering LLVM native artifacts]
-    TR --> SA[spec-audit<br/>docs/spec/** drift & five-way]
+    TR --> IB[ir-backend<br/>HIR/MIR/LIR lowering LLVM build and native artifacts]
+    TR --> SA[spec-audit<br/>docs/spec/** docs/design/** drift and five-way]
     TR --> RM[runtime-memory<br/>zc/ runtime core FFI ownership]
-    TR --> VR[verification<br/>tests architecture gates coverage lit ztest fuzz]
+    TR --> VR[verification<br/>tests CI workflows query gates benchmarks coverage]
 
     %% Escalation edges
     RF --> SA
@@ -60,6 +60,7 @@ surface; `↗` means it escalates to another subagent after doing its part.
 | Type mismatch message | ✅ route → | ↗ if language rule changes | | ✅ | | ↗ owns codes | | | ✅ | | ↗ add test |
 | `import` resolution bug | ✅ route → | ↗ if module contract changes | | ↗ binder | ✅ | | | ↗ imported identity | ✅ | | ↗ add test |
 | Semantic identity or source provenance | ✅ route → | ↗ if contract changes | ✅ parsed origin and AST producer inventory | ↗ identity consumer | ✅ identity/source owner | ↗ invariant codes | | ↗ IR handles and build wiring | ✅ | ↗ lifetime boundary | ✅ architecture gate and permutation tests |
+| Incremental query runtime, red-green reuse, or projection shielding | ✅ route → | ↗ if contract changes | ↗ parse provider | ↗ semantic provider | ✅ query database and identity owner | ↗ diagnostic facts | ↗ cancellation interaction | ↗ CMake direction | ✅ architecture drift | ↗ lifetime boundary | ✅ gates, adversaries, and benchmarks |
 | `?!` operator missing | ✅ route → | ↗ if semantics change | ✅ lex+parse | | | ✅ error semantics | | ✅ lowering | ✅ | ↗ panic ABI | ↗ lit test |
 | Forced cast `as!` | ✅ route → | ↗ if contract changes | ✅ syntax + AST mode | ✅ `ForcedChecked` fact | | ✅ panic mapping | ↗ task/suspend boundary | ✅ check-once + failure edge | ✅ five-way | ✅ panic ABI | ✅ mode + lowering matrix |
 | New trait (`Sendable`) | ✅ route → | ✅ design intake | | ✅ core owner | | | ↗ concurrency layer | ↗ erase/lower | ✅ | | ↗ add test |
@@ -67,10 +68,15 @@ surface; `↗` means it escalates to another subagent after doing its part.
 | Ownership, drop, or Chapter 14 | ✅ route → | ↗ if contract changes | | ↗ type legality | | ↗ panic/error boundary | ↗ task interaction | ↗ MIR/LIR lowering | ✅ | ✅ primary owner | ↗ tests |
 | HIR/MIR/LIR change | ✅ route → | ↗ if contract changes | | ↗ semantic facts | ↗ module identity | ↗ error ops | ↗ async ops | ✅ | ↗ spec claims | ↗ ABI/runtime | ↗ verifier/tests |
 | LLVM/object emission | ✅ route → | ↗ if contract changes | | | ↗ module artifacts | | | ✅ | | ↗ ABI/runtime | ↗ artifact tests |
+| LLVM build and CI contract | ✅ route → | ↗ if contract changes | | | | | | ✅ CMake and link inventory | | | ✅ workflows and negative configure gates |
+| Developer build documentation | ✅ `AGENTS.md` governance | ↗ if contract changes | | | | | | ↗ supplies LLVM contract | | | ✅ `README.md` and executable commands |
+| Compiler architecture documentation | ✅ route → | ↗ if contract changes | | | | | | ↗ IR/backend architecture | ✅ `docs/design/**` owner | | ↗ validates evidence |
 | Raw pointer in zc | ✅ route → | ↗ if policy changes | | | | | | ↗ lowered pointer | | ✅ | |
 | Spec drift found | ✅ route → | | | | | | | | ✅ | | |
 | Lit test XFAIL expired | ✅ route → | | | | | | | | | | ✅ |
 | Coverage regression | ✅ route → | | | | | | | | | | ✅ |
+| RFC 0016 coverage CMake plumbing, runner, checker, inputs, and reports | ✅ route → | ↗ if contract changes | | | | | | ↗ supplies compiler path census | | | ✅ primary owner |
+| RFC 0017 incremental-query gate, corpus, runner, and baseline | ✅ route → | ↗ if contract changes | | ↗ supplies Binder facts | ↗ supplies query contracts | ↗ supplies diagnostic facts | ↗ stress interaction | ↗ supplies CMake DAG | ↗ design audit | | ✅ primary owner |
 
 ---
 

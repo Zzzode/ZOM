@@ -15,18 +15,19 @@ CMake target named `ast`, and uses the namespace
 
 ## Pipeline Contract
 
-The parser returns an owning immutable `ast::Tree`. The binder, checker, dumps,
-serializers, tests, and later compiler stages consume that same tree API. Syntax
-storage is separated from semantic metadata.
+The parser returns an owning immutable `ast::Tree`. The parser-result verifier
+binds that tree to an immutable source snapshot before the binder may consume
+it. Syntax storage is separated from semantic identity and checked facts.
 
 ```mermaid
 flowchart LR
   Source["Source buffer"] --> Lexer["Lexer"]
   Lexer --> Parser["Parser"]
   Parser --> Tree["ast::Tree"]
-  Tree --> Binder["Binder"]
-  Binder --> Meta["ast::BindingMetadata<br/>NodeId to parent / scope / symbol"]
-  Binder --> Symbols["SymbolTable<br/>DeclarationRef = BufferId + NodeId"]
+  Tree --> Parsed["VerifiedParsedModule"]
+  Parsed --> Binder["Verified Binder"]
+  Binder --> Meta["VerifiedBindingMetadata<br/>NodeId to ScopeId / DefId / ModuleId"]
+  Meta --> Checked["Verified checked facts"]
   Tree --> Dumps["AST dump and serialization"]
 ```
 
@@ -147,30 +148,18 @@ payload.words[kSourceFileStatementsSizeWord]
 
 ## Semantic Metadata
 
-Syntax nodes never store symbols, scopes, types, denotations, or checker state.
-The binder writes semantic state into side tables keyed by `NodeId`.
+Syntax nodes never store definitions, scopes, semantic types, dispatch targets,
+or checker state. During binding, module-local syntax references are projected
+into independently verified fact sequences. `VerifiedBindingMetadata` publishes
+`NodeScopeFact`, `BindingResolution`, `DefinitionFact`, import/export, label,
+control-transfer, and closure facts. Semantic definitions use context-branded
+`DefId`; modules use `ModuleId`; scopes use context-checked module-local
+`ScopeId`.
 
-```cpp
-class BindingMetadata final {
-public:
-  void resizeFor(const Tree& tree);
-  void setParent(NodeId node, NodeId parent);
-  NodeId parent(NodeId node) const;
-  void setScope(NodeId node, uint32_t scopeId);
-  uint32_t scope(NodeId node) const;
-  void setSymbol(NodeId node, symbol::SymbolId symbolId);
-  symbol::SymbolId symbol(NodeId node) const;
-};
-```
-
-Symbols store durable declaration locations as a source buffer id plus node id:
-
-```cpp
-struct DeclarationRef final {
-  source::BufferId buffer;
-  ast::NodeId node;
-};
-```
+`NodeId` remains valid only with its owning tree and may appear in verified
+frontend facts that explicitly retain that tree. Cross-module and downstream
+semantic identity never uses a raw `BufferId + NodeId`, pointer, name, or table
+slot.
 
 ## Schema And Generation
 
@@ -229,15 +218,21 @@ statements are represented by the `SourceFile.statements` `NodeList`.
 
 ## Binder Contract
 
-The binder walks `Tree` by `NodeId`, reads node payloads through schema-defined
-layout, and writes parent, scope, and symbol ids into `BindingMetadata`.
+The binder accepts only `VerifiedBindingInput`. It walks the retained tree by
+`NodeId`, reads payloads through generated schema accessors, constructs
+module-local scopes and canonical definition/module resolutions, then publishes
+`VerifiedBindingMetadata` and `VerifiedExportSurface` atomically as one
+`VerifiedBindingOutput`. `VerifiedBoundModuleInput` is the sealed handoff to the
+checker.
 
 ```mermaid
 flowchart TD
   Root["Tree::root()"] --> SourceFile["SourceFile"]
   SourceFile --> Statements["NodeList statements"]
   Statements --> Node["Statement / Declaration NodeId"]
-  Node --> Metadata["BindingMetadata side tables"]
+  Node --> Metadata["VerifiedBindingMetadata facts"]
+  Metadata --> Definition["DefId / ModuleId / ScopeId"]
+  Metadata --> Bound["VerifiedBoundModuleInput"]
 ```
 
 ## Verification Gates
