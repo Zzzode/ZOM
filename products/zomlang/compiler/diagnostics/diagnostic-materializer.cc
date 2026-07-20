@@ -21,8 +21,7 @@ source::SourceLoc sourceLoc(source::SourceManager& sources, const source::Buffer
   return sources.getLocForOffset(buffer, static_cast<unsigned>(offset));
 }
 
-source::CharSourceRange sourceRange(source::SourceManager& sources,
-                                    const source::BufferId& buffer,
+source::CharSourceRange sourceRange(source::SourceManager& sources, const source::BufferId& buffer,
                                     const DiagnosticFactRange& range) {
   return source::CharSourceRange(sourceLoc(sources, buffer, range.byteStart),
                                  sourceLoc(sources, buffer, range.byteEnd), range.isTokenRange);
@@ -37,8 +36,9 @@ zc::Vector<DiagnosticArgument> materializeArguments(zc::ArrayPtr<const zc::Strin
 zc::Own<Diagnostic> materializeSecondary(const SecondaryDiagnosticFact& fact,
                                          source::SourceManager& sources,
                                          const source::BufferId& buffer) {
-  auto diagnostic = zc::heap<Diagnostic>(fact.code, sourceLoc(sources, buffer, fact.primaryByteOffset),
-                                         materializeArguments(fact.arguments.asPtr()));
+  auto diagnostic =
+      zc::heap<Diagnostic>(fact.code, sourceLoc(sources, buffer, fact.primaryByteOffset),
+                           materializeArguments(fact.arguments.asPtr()));
   for (const auto& range : fact.ranges) {
     diagnostic->addRange(sourceRange(sources, buffer, range));
   }
@@ -52,7 +52,7 @@ void materializeDiagnosticFacts(zc::ArrayPtr<const DiagnosticFact> facts,
                                 DiagnosticEngine& engine) {
   ZC_IREQUIRE(&engine.getSourceManager() == &sources,
               "diagnostic materialization requires the engine source manager");
-  const uint64_t sourceByteLength = sources.getEntireTextForBuffer(buffer).size();
+  const uint64_t sourceByteLength ZC_UNUSED = sources.getEntireTextForBuffer(buffer).size();
   for (const auto& fact : facts) {
     ZC_IREQUIRE(fact.primaryByteOffset <= sourceByteLength,
                 "diagnostic primary location is outside the source buffer");
