@@ -1,0 +1,173 @@
+{
+  "aggregate": {
+    "elapsed_median_nanoseconds": 361396000,
+    "peak_rss_median_bytes": 7897088
+  },
+  "metadata": {
+    "build": {
+      "cmake_cache": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_CXX_COMPILER": "/usr/bin/c++",
+        "CMAKE_CXX_FLAGS": "",
+        "CMAKE_CXX_FLAGS-ADVANCED": "1",
+        "CMAKE_CXX_FLAGS_DEBUG": "-g",
+        "CMAKE_CXX_FLAGS_DEBUG-ADVANCED": "1",
+        "CMAKE_CXX_FLAGS_MINSIZEREL": "-Os -DNDEBUG",
+        "CMAKE_CXX_FLAGS_MINSIZEREL-ADVANCED": "1",
+        "CMAKE_CXX_FLAGS_RELEASE": "-O3 -DNDEBUG",
+        "CMAKE_CXX_FLAGS_RELEASE-ADVANCED": "1",
+        "CMAKE_CXX_FLAGS_RELWITHDEBINFO": "-O2 -g -DNDEBUG",
+        "CMAKE_CXX_FLAGS_RELWITHDEBINFO-ADVANCED": "1",
+        "ZOM_ENABLE_ADDRESS_SANITIZER": "OFF",
+        "ZOM_ENABLE_BENCHMARKS": "OFF",
+        "ZOM_ENABLE_COVERAGE": "OFF",
+        "ZOM_ENABLE_FUZZING": "OFF",
+        "ZOM_ENABLE_PRIVILEGED_LINUX_SANDBOX_TESTS": "OFF",
+        "ZOM_ENABLE_UNDEFINED_SANITIZER": "OFF",
+        "ZOM_ENABLE_UNITTESTS": "ON",
+        "ZOM_ENABLE_WALL": "ON",
+        "ZOM_ENABLE_WERROR": "ON"
+      },
+      "preset": "release"
+    },
+    "compiler": {
+      "path": "/usr/bin/c++",
+      "sha256": "179301dcb41ea78accc3fa0048a7e6f6710d891945a751a34addd622020c1818",
+      "version": "Apple clang version 21.0.0 (clang-2100.1.1.101)"
+    },
+    "corpus": {
+      "combined_sha256": "2ecf4328a1d6dd48a2c7595e944b900386b40285c4f8e5f95d222937f913d6a9",
+      "manifest_sha256": "d88257b16c8dc6beb8e3eedf404b53aa5795eb91518a724f16161c72bf909969",
+      "source_sha256": {
+        "products/zomlang/tests/unittests/compiler/driver/incremental-binding-query-adapter-test.cc": "8221b5455136fbb0aa5850b7ae2bd19b6abb7c06a7fa7d62c35870a9c23e2a86",
+        "products/zomlang/tests/unittests/compiler/driver/incremental-module-resolution-query-test.cc": "09575de3389f94bc338d7040c8db2416b048f3fedd84baacb904e097f941b28b"
+      }
+    },
+    "machine": {
+      "architecture": "arm64",
+      "cpu_model": "Apple M1 Max",
+      "logical_cores": 10,
+      "operating_system": "Darwin",
+      "operating_system_release": "25.5.0",
+      "physical_memory_bytes": 68719476736
+    },
+    "repository_revision": "76e73196f3f9682bb1e5a6f88e7d77c00258a82f",
+    "worker_count": 8
+  },
+  "protocol": {
+    "maximum_elapsed_mad_ratio": 0.03,
+    "maximum_elapsed_ratio": 1.05,
+    "maximum_peak_rss_ratio": 1.15,
+    "measured_runs": 21,
+    "warmup_runs": 5
+  },
+  "results": {
+    "binder-incremental-projections": {
+      "cold_invocations_per_sample": 16,
+      "elapsed_mad_nanoseconds": 4778000,
+      "elapsed_mad_ratio": 0.014352356664173479,
+      "elapsed_median_nanoseconds": 332907000,
+      "elapsed_samples_nanoseconds": [
+        317184000,
+        353044000,
+        340066000,
+        332907000,
+        331932000,
+        327035000,
+        333026000,
+        351412000,
+        325579000,
+        333961000,
+        339128000,
+        329810000,
+        329575000,
+        326385000,
+        337608000,
+        324590000,
+        332096000,
+        346821000,
+        335980000,
+        330760000,
+        337685000
+      ],
+      "peak_rss_median_bytes": 5029888,
+      "peak_rss_samples_bytes": [
+        5029888,
+        5029888,
+        5029888,
+        5029888,
+        5079040,
+        5029888,
+        5046272,
+        5079040,
+        5046272,
+        5029888,
+        5029888,
+        5046272,
+        5029888,
+        5046272,
+        5029888,
+        5029888,
+        5079040,
+        5029888,
+        5029888,
+        5029888,
+        5029888
+      ]
+    },
+    "module-resolution-projection-shielding": {
+      "cold_invocations_per_sample": 16,
+      "elapsed_mad_nanoseconds": 619000,
+      "elapsed_mad_ratio": 0.021727684369405736,
+      "elapsed_median_nanoseconds": 28489000,
+      "elapsed_samples_nanoseconds": [
+        28553000,
+        35950000,
+        26264000,
+        28569000,
+        29689000,
+        28249000,
+        27357000,
+        29144000,
+        63182000,
+        38428000,
+        28474000,
+        28143000,
+        26891000,
+        27431000,
+        27870000,
+        28827000,
+        29000000,
+        28188000,
+        29085000,
+        27827000,
+        28489000
+      ],
+      "peak_rss_median_bytes": 2867200,
+      "peak_rss_samples_bytes": [
+        2867200,
+        2867200,
+        2850816,
+        2867200,
+        2867200,
+        2867200,
+        2867200,
+        2899968,
+        2883584,
+        2867200,
+        2867200,
+        2867200,
+        2867200,
+        2867200,
+        2867200,
+        2867200,
+        2883584,
+        2867200,
+        2850816,
+        2883584,
+        2867200
+      ]
+    }
+  },
+  "schema_version": 1
+}
