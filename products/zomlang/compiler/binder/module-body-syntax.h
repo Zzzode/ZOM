@@ -145,6 +145,53 @@ private:
   friend class ModuleBodySyntaxVerifier;
 };
 
+/// \brief Semantic detached syntax for one active named definition.
+class NamedItemSyntax final {
+public:
+  NamedItemSyntax(NamedItemSyntax&&) noexcept = default;
+  NamedItemSyntax& operator=(NamedItemSyntax&&) noexcept = default;
+  ZC_DISALLOW_COPY(NamedItemSyntax);
+
+  ZC_NODISCARD static zc::Maybe<NamedItemSyntax> from(identity::ModuleKey&& owningModule,
+                                                      ModuleBodySyntax&& syntax);
+  ZC_NODISCARD static zc::Maybe<NamedItemSyntax> decodeCanonical(
+      zc::ArrayPtr<const uint8_t> encoded);
+  ZC_NODISCARD NamedItemSyntax clone() const;
+  ZC_NODISCARD const identity::ModuleKey& owningModule() const noexcept;
+  ZC_NODISCARD const ModuleBodySyntax& detachedSyntax() const noexcept;
+  ZC_NODISCARD zc::Array<uint8_t> encodeCanonical() const;
+  bool operator==(const NamedItemSyntax& other) const noexcept;
+  bool operator!=(const NamedItemSyntax& other) const noexcept { return !(*this == other); }
+
+private:
+  NamedItemSyntax(identity::ModuleKey&& owningModule, ModuleBodySyntax&& syntax) noexcept;
+
+  identity::ModuleKey owningModuleField;
+  ModuleBodySyntax syntaxField;
+};
+
+/// \brief Revision-local total path map for one active named definition.
+class NamedItemProvenance final {
+public:
+  NamedItemProvenance(NamedItemProvenance&&) noexcept = default;
+  NamedItemProvenance& operator=(NamedItemProvenance&&) noexcept = default;
+  ZC_DISALLOW_COPY(NamedItemProvenance);
+
+  ZC_NODISCARD static zc::Maybe<NamedItemProvenance> from(ModuleBodyProvenance&& provenance);
+  ZC_NODISCARD static zc::Maybe<NamedItemProvenance> decodeCanonical(
+      zc::ArrayPtr<const uint8_t> encoded);
+  ZC_NODISCARD NamedItemProvenance clone() const;
+  ZC_NODISCARD const ModuleBodyProvenance& detachedProvenance() const noexcept;
+  ZC_NODISCARD zc::Array<uint8_t> encodeCanonical() const;
+  bool operator==(const NamedItemProvenance& other) const;
+  bool operator!=(const NamedItemProvenance& other) const { return !(*this == other); }
+
+private:
+  explicit NamedItemProvenance(ModuleBodyProvenance&& provenance) noexcept;
+
+  ModuleBodyProvenance provenanceField;
+};
+
 /// \brief Current stable definition site consumed while pruning module-owned syntax.
 struct ModuleBodyDefinitionBoundaryInput final {
   ast::NodeId node;
@@ -188,6 +235,12 @@ public:
       const CanonicalParsedModule& parsedModule, const identity::ModuleKey& module,
       ast::NodeId moduleNode, zc::ArrayPtr<const ModuleBodyDefinitionBoundaryInput> definitions,
       zc::ArrayPtr<const ModuleBodyImplementationBoundaryInput> implementations);
+
+  ZC_NODISCARD static ModuleBodySyntaxProjectionResult produceNamedItem(
+      const CanonicalParsedModule& parsedModule, const identity::ModuleKey& module,
+      ast::NodeId moduleNode, ast::NodeId definitionNode, const identity::DefinitionKey& definition,
+      zc::ArrayPtr<const ModuleBodyDefinitionBoundaryInput> definitions,
+      zc::ArrayPtr<const ModuleBodyImplementationBoundaryInput> implementations);
 };
 
 /// \brief Independently reconstructs pruning, canonical syntax, and total provenance coverage.
@@ -196,6 +249,12 @@ public:
   ZC_NODISCARD static ModuleBodySyntaxProjectionResult reconstruct(
       const CanonicalParsedModule& parsedModule, const identity::ModuleKey& module,
       ast::NodeId moduleNode, zc::ArrayPtr<const ModuleBodyDefinitionBoundaryInput> definitions,
+      zc::ArrayPtr<const ModuleBodyImplementationBoundaryInput> implementations);
+
+  ZC_NODISCARD static ModuleBodySyntaxProjectionResult reconstructNamedItem(
+      const CanonicalParsedModule& parsedModule, const identity::ModuleKey& module,
+      ast::NodeId moduleNode, ast::NodeId definitionNode, const identity::DefinitionKey& definition,
+      zc::ArrayPtr<const ModuleBodyDefinitionBoundaryInput> definitions,
       zc::ArrayPtr<const ModuleBodyImplementationBoundaryInput> implementations);
 
   ZC_NODISCARD static ModuleBodySyntaxFailureKind verify(

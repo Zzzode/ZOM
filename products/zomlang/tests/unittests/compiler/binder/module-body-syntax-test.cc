@@ -5,6 +5,7 @@
 
 #include "zomlang/compiler/binder/module-body-syntax.h"
 
+#include "parsed-module-query-test-fixture.h"
 #include "zc/core/debug.h"
 #include "zc/core/vector.h"
 #include "zc/ztest/test.h"
@@ -12,10 +13,10 @@
 #include "zomlang/compiler/basic/string-pool.h"
 #include "zomlang/compiler/basic/zomlang-opts.h"
 #include "zomlang/compiler/binder/definition-inventory.h"
+#include "zomlang/compiler/binder/owner-body-syntax.h"
 #include "zomlang/compiler/diagnostics/diagnostic-fact-buffer.h"
 #include "zomlang/compiler/parser/parser.h"
 #include "zomlang/compiler/source/manager.h"
-#include "parsed-module-query-test-fixture.h"
 
 namespace zomlang::compiler::binder {
 namespace {
@@ -98,6 +99,14 @@ identity::ModuleKey moduleKey() {
   auto value = identity::ModuleKey::from(crateKey(), zc::mv(path));
   ZC_IF_SOME(admitted, value) { return zc::mv(admitted); }
   ZC_FAIL_REQUIRE("invalid module-body module");
+}
+
+identity::ModuleKey otherModuleKey() {
+  zc::Vector<identity::ModulePathSegment> path;
+  path.add(scalar<identity::ModulePathSegment>("other"_zc));
+  auto value = identity::ModuleKey::from(crateKey(), zc::mv(path));
+  ZC_IF_SOME(admitted, value) { return zc::mv(admitted); }
+  ZC_FAIL_REQUIRE("invalid alternate module-body module");
 }
 
 identity::SemanticContextBrand requireContext(identity::SemanticContextFactory& factory) {
@@ -188,9 +197,9 @@ struct ModuleBodyFixture final {
       implementationNodes.add(implementation.node);
     }
 
-    parsed = test::requireVerifiedParsedSource(
-        context, registries, ZC_ASSERT_NONNULL(snapshot), *sources, buffer,
-        zc::mv(ZC_ASSERT_NONNULL(tokens)), zc::mv(ZC_ASSERT_NONNULL(parsedTree)));
+    parsed = test::requireVerifiedParsedSource(context, registries, ZC_ASSERT_NONNULL(snapshot),
+                                               *sources, buffer, zc::mv(ZC_ASSERT_NONNULL(tokens)),
+                                               zc::mv(ZC_ASSERT_NONNULL(parsedTree)));
   }
 
   identity::SemanticIdentityRegistrySet createRegistries() {
@@ -201,8 +210,8 @@ struct ModuleBodyFixture final {
 
   ModuleBodySyntaxProjection project() const {
     auto result =
-        ModuleBodySyntaxProducer::produce(ZC_ASSERT_NONNULL(parsed).syntax(), moduleKey(), moduleNode,
-                                          definitions.asPtr(), implementations.asPtr());
+        ModuleBodySyntaxProducer::produce(ZC_ASSERT_NONNULL(parsed).syntax(), moduleKey(),
+                                          moduleNode, definitions.asPtr(), implementations.asPtr());
     ZC_REQUIRE(result.is<ModuleBodySyntaxProjection>());
     return zc::mv(result.get<ModuleBodySyntaxProjection>());
   }
@@ -265,10 +274,10 @@ ZC_TEST("Module body syntax prunes stable boundaries and excludes their provenan
   for (const auto node : fixture.implementationNodes) {
     ZC_EXPECT(!containsProvenanceNode(projection.provenance, node));
   }
-  ZC_EXPECT(ModuleBodySyntaxVerifier::verify(ZC_ASSERT_NONNULL(fixture.parsed).syntax(), moduleKey(),
-                                             fixture.moduleNode, fixture.definitions.asPtr(),
-                                             fixture.implementations.asPtr(),
-                                             projection) == ModuleBodySyntaxFailureKind::None);
+  ZC_EXPECT(ModuleBodySyntaxVerifier::verify(
+                ZC_ASSERT_NONNULL(fixture.parsed).syntax(), moduleKey(), fixture.moduleNode,
+                fixture.definitions.asPtr(), fixture.implementations.asPtr(),
+                projection) == ModuleBodySyntaxFailureKind::None);
 }
 
 ZC_TEST("Module body syntax backdates across range-only source edits") {
@@ -306,9 +315,9 @@ ZC_TEST("Module body producer and verifier reject incomplete boundary inventorie
   ModuleBodyFixture fixture(zc::str("module root;\n", kBodyItems));
   auto projection = fixture.project();
   zc::ArrayPtr<const ModuleBodyDefinitionBoundaryInput> noDefinitions;
-  auto produced = ModuleBodySyntaxProducer::produce(
-      ZC_ASSERT_NONNULL(fixture.parsed).syntax(), moduleKey(), fixture.moduleNode, noDefinitions,
-      fixture.implementations.asPtr());
+  auto produced = ModuleBodySyntaxProducer::produce(ZC_ASSERT_NONNULL(fixture.parsed).syntax(),
+                                                    moduleKey(), fixture.moduleNode, noDefinitions,
+                                                    fixture.implementations.asPtr());
   ZC_REQUIRE(produced.is<ModuleBodySyntaxFailure>());
   ZC_EXPECT(produced.get<ModuleBodySyntaxFailure>().kind ==
             ModuleBodySyntaxFailureKind::InvalidBoundaryInventory);
@@ -316,6 +325,82 @@ ZC_TEST("Module body producer and verifier reject incomplete boundary inventorie
                                              moduleKey(), fixture.moduleNode, noDefinitions,
                                              fixture.implementations.asPtr(), projection) ==
             ModuleBodySyntaxFailureKind::InvalidBoundaryInventory);
+}
+
+ZC_TEST("Owner body codecs preserve canonical records and reject malformed inventories") {
+  ModuleBodyFixture fixture(zc::str("module root;\n", kBodyItems));
+  auto moduleProjection = fixture.project();
+  ZC_REQUIRE(fixture.definitions.size() == 1);
+  ZC_REQUIRE(fixture.definitionNodes.size() == 1);
+  auto namedProjection = ModuleBodySyntaxProducer::produceNamedItem(
+      ZC_ASSERT_NONNULL(fixture.parsed).syntax(), moduleKey(), fixture.moduleNode,
+      fixture.definitionNodes[0], fixture.definitions[0].key, fixture.definitions.asPtr(),
+      fixture.implementations.asPtr());
+  ZC_REQUIRE(namedProjection.is<ModuleBodySyntaxProjection>());
+
+  zc::Vector<StableBodyOwnerKey> ownerValues;
+  ownerValues.add(StableBodyOwnerKey::module(moduleKey()));
+  ownerValues.add(StableBodyOwnerKey::definition(fixture.definitions[0].key.clone()));
+  auto owners = ModuleBodyOwners::from(moduleKey(), zc::mv(ownerValues));
+  ZC_REQUIRE(owners != zc::none);
+  auto ownersBytes = ZC_REQUIRE_NONNULL(owners).encodeCanonical();
+  auto decodedOwners = ModuleBodyOwners::decodeCanonical(ownersBytes.asPtr());
+  ZC_REQUIRE(decodedOwners != zc::none);
+  ZC_EXPECT(ZC_REQUIRE_NONNULL(decodedOwners) == ZC_REQUIRE_NONNULL(owners));
+  zc::Vector<uint8_t> trailingOwners(ownersBytes.size() + 1);
+  trailingOwners.addAll(ownersBytes);
+  trailingOwners.add(0);
+  ZC_EXPECT(ModuleBodyOwners::decodeCanonical(trailingOwners.asPtr()) == zc::none);
+
+  zc::Vector<StableBodyOwnerKey> duplicateModule;
+  duplicateModule.add(StableBodyOwnerKey::module(moduleKey()));
+  duplicateModule.add(StableBodyOwnerKey::module(moduleKey()));
+  ZC_EXPECT(ModuleBodyOwners::from(moduleKey(), zc::mv(duplicateModule)) == zc::none);
+  zc::Vector<StableBodyOwnerKey> missingModule;
+  missingModule.add(StableBodyOwnerKey::definition(fixture.definitions[0].key.clone()));
+  ZC_EXPECT(ModuleBodyOwners::from(moduleKey(), zc::mv(missingModule)) == zc::none);
+  zc::Vector<StableBodyOwnerKey> foreignModule;
+  foreignModule.add(StableBodyOwnerKey::module(otherModuleKey()));
+  ZC_EXPECT(ModuleBodyOwners::from(moduleKey(), zc::mv(foreignModule)) == zc::none);
+
+  auto moduleOwner = StableBodyOwnerKey::module(moduleKey());
+  auto syntax =
+      OwnerBodySyntax::from(moduleOwner.clone(), moduleKey(), moduleProjection.syntax.clone());
+  ZC_REQUIRE(syntax != zc::none);
+  auto syntaxBytes = ZC_REQUIRE_NONNULL(syntax).encodeCanonical();
+  auto decodedSyntax = OwnerBodySyntax::decodeCanonical(syntaxBytes.asPtr());
+  ZC_REQUIRE(decodedSyntax != zc::none);
+  ZC_EXPECT(ZC_REQUIRE_NONNULL(decodedSyntax) == ZC_REQUIRE_NONNULL(syntax));
+  zc::Vector<uint8_t> trailingSyntax(syntaxBytes.size() + 1);
+  trailingSyntax.addAll(syntaxBytes);
+  trailingSyntax.add(0);
+  ZC_EXPECT(OwnerBodySyntax::decodeCanonical(trailingSyntax.asPtr()) == zc::none);
+  ZC_EXPECT(OwnerBodySyntax::from(moduleOwner.clone(), otherModuleKey(),
+                                  moduleProjection.syntax.clone()) == zc::none);
+
+  auto provenance =
+      OwnerBodyProvenance::from(moduleOwner.clone(), moduleProjection.provenance.clone());
+  ZC_REQUIRE(provenance != zc::none);
+  auto provenanceBytes = ZC_REQUIRE_NONNULL(provenance).encodeCanonical();
+  auto decodedProvenance = OwnerBodyProvenance::decodeCanonical(provenanceBytes.asPtr());
+  ZC_REQUIRE(decodedProvenance != zc::none);
+  ZC_EXPECT(ZC_REQUIRE_NONNULL(decodedProvenance) == ZC_REQUIRE_NONNULL(provenance));
+  zc::Vector<uint8_t> trailingProvenance(provenanceBytes.size() + 1);
+  trailingProvenance.addAll(provenanceBytes);
+  trailingProvenance.add(0);
+  ZC_EXPECT(OwnerBodyProvenance::decodeCanonical(trailingProvenance.asPtr()) == zc::none);
+
+  auto definitionOwner = StableBodyOwnerKey::definition(fixture.definitions[0].key.clone());
+  auto definitionSyntax =
+      OwnerBodySyntax::from(definitionOwner.clone(), moduleKey(),
+                            namedProjection.get<ModuleBodySyntaxProjection>().syntax.clone());
+  auto definitionProvenance = OwnerBodyProvenance::from(
+      definitionOwner.clone(),
+      namedProjection.get<ModuleBodySyntaxProjection>().provenance.clone());
+  ZC_REQUIRE(definitionSyntax != zc::none);
+  ZC_REQUIRE(definitionProvenance != zc::none);
+  ZC_EXPECT(ZC_REQUIRE_NONNULL(definitionSyntax).owner() == definitionOwner);
+  ZC_EXPECT(ZC_REQUIRE_NONNULL(definitionProvenance).owner() == definitionOwner);
 }
 
 }  // namespace zomlang::compiler::binder

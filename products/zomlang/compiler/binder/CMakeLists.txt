@@ -36,6 +36,7 @@ set(BINDER_SRC
   ${CMAKE_CURRENT_SOURCE_DIR}/module-graph-diagnostic-adapter.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/module-resolution.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/named-identity-inventory.cc
+  ${CMAKE_CURRENT_SOURCE_DIR}/owner-body-syntax.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/parsed-module.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/revision-local-identity-sites.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/scope-arena.cc

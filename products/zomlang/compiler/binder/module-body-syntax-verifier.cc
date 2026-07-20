@@ -219,8 +219,7 @@ zc::Maybe<zc::Array<uint8_t>> independentlyEncodeFields(const ast::Tree& tree,
 }
 
 bool independentlyValidateInventory(
-    const CanonicalParsedModule& parsed, const identity::ModuleKey& module,
-    ast::NodeId moduleNode,
+    const CanonicalParsedModule& parsed, const identity::ModuleKey& module, ast::NodeId moduleNode,
     zc::ArrayPtr<const ModuleBodyDefinitionBoundaryInput> definitions,
     zc::ArrayPtr<const ModuleBodyImplementationBoundaryInput> implementations) {
   const auto& tree = parsed.tree();
@@ -271,20 +270,26 @@ class IndependentWalker final {
 public:
   IndependentWalker(const CanonicalParsedModule& parsed,
                     zc::ArrayPtr<const ModuleBodyDefinitionBoundaryInput> definitions,
-                    zc::ArrayPtr<const ModuleBodyImplementationBoundaryInput> implementations)
-      : parsed(parsed), definitions(definitions), implementations(implementations) {}
+                    zc::ArrayPtr<const ModuleBodyImplementationBoundaryInput> implementations,
+                    ast::NodeId unprunedRoot)
+      : parsed(parsed),
+        definitions(definitions),
+        implementations(implementations),
+        unprunedRoot(unprunedRoot) {}
 
   bool walk(ast::NodeId node, zc::Vector<uint32_t>& path) {
-    for (const auto& definition : definitions) {
-      if (definition.node == node) {
-        nodes.add(DetachedModuleBodyNode::definitionBoundary(definition.key));
-        return true;
+    if (node != unprunedRoot) {
+      for (const auto& definition : definitions) {
+        if (definition.node == node) {
+          nodes.add(DetachedModuleBodyNode::definitionBoundary(definition.key));
+          return true;
+        }
       }
-    }
-    for (const auto& implementation : implementations) {
-      if (implementation.node == node) {
-        nodes.add(DetachedModuleBodyNode::implementationBoundary(implementation.key));
-        return true;
+      for (const auto& implementation : implementations) {
+        if (implementation.node == node) {
+          nodes.add(DetachedModuleBodyNode::implementationBoundary(implementation.key));
+          return true;
+        }
       }
     }
 
@@ -329,6 +334,7 @@ private:
   const CanonicalParsedModule& parsed;
   zc::ArrayPtr<const ModuleBodyDefinitionBoundaryInput> definitions;
   zc::ArrayPtr<const ModuleBodyImplementationBoundaryInput> implementations;
+  ast::NodeId unprunedRoot;
 };
 
 }  // namespace
@@ -350,7 +356,7 @@ ModuleBodySyntaxProjectionResult ModuleBodySyntaxVerifier::reconstruct(
                                    ast::NodeId()};
   }
 
-  IndependentWalker walker(parsedModule, definitions, implementations);
+  IndependentWalker walker(parsedModule, definitions, implementations, ast::NodeId());
   uint32_t rootCount = 0;
   ZC_IF_SOME(values, items) {
     for (const auto item : values) {
@@ -365,8 +371,51 @@ ModuleBodySyntaxProjectionResult ModuleBodySyntaxVerifier::reconstruct(
   auto expectedProvenance =
       ModuleBodyProvenance::from(parsedModule.source().clone(), zc::mv(walker.provenance));
   if (expectedSyntax == zc::none || expectedProvenance == zc::none) {
-    return ModuleBodySyntaxFailure{ModuleBodySyntaxFailureKind::ProjectionMismatch,
-                                   ast::NodeId()};
+    return ModuleBodySyntaxFailure{ModuleBodySyntaxFailureKind::ProjectionMismatch, ast::NodeId()};
+  }
+  return ModuleBodySyntaxProjection{zc::mv(ZC_ASSERT_NONNULL(expectedSyntax)),
+                                    zc::mv(ZC_ASSERT_NONNULL(expectedProvenance))};
+}
+
+ModuleBodySyntaxProjectionResult ModuleBodySyntaxVerifier::reconstructNamedItem(
+    const CanonicalParsedModule& parsedModule, const identity::ModuleKey& module,
+    ast::NodeId moduleNode, ast::NodeId definitionNode, const identity::DefinitionKey& definition,
+    zc::ArrayPtr<const ModuleBodyDefinitionBoundaryInput> definitions,
+    zc::ArrayPtr<const ModuleBodyImplementationBoundaryInput> implementations) {
+  if (!parsedModule.source().belongsTo(module.crate())) {
+    return ModuleBodySyntaxFailure{ModuleBodySyntaxFailureKind::InvalidSource, ast::NodeId()};
+  }
+  if (!parsedModule.tree().contains(definitionNode) ||
+      !independentlyValidateInventory(parsedModule, module, moduleNode, definitions,
+                                      implementations)) {
+    return ModuleBodySyntaxFailure{ModuleBodySyntaxFailureKind::InvalidBoundaryInventory,
+                                   definitionNode};
+  }
+  size_t rootOccurrences = 0;
+  for (const auto& candidate : definitions) {
+    if (candidate.node != definitionNode) { continue; }
+    ++rootOccurrences;
+    if (candidate.key != definition) {
+      return ModuleBodySyntaxFailure{ModuleBodySyntaxFailureKind::InvalidBoundaryInventory,
+                                     definitionNode};
+    }
+  }
+  if (rootOccurrences > 1) {
+    return ModuleBodySyntaxFailure{ModuleBodySyntaxFailureKind::InvalidBoundaryInventory,
+                                   definitionNode};
+  }
+
+  IndependentWalker walker(parsedModule, definitions, implementations, definitionNode);
+  zc::Vector<uint32_t> path;
+  path.add(0);
+  if (!walker.walk(definitionNode, path)) {
+    return ModuleBodySyntaxFailure{ModuleBodySyntaxFailureKind::ProjectionMismatch, definitionNode};
+  }
+  auto expectedSyntax = ModuleBodySyntax::from(1, zc::mv(walker.nodes));
+  auto expectedProvenance =
+      ModuleBodyProvenance::from(parsedModule.source().clone(), zc::mv(walker.provenance));
+  if (expectedSyntax == zc::none || expectedProvenance == zc::none) {
+    return ModuleBodySyntaxFailure{ModuleBodySyntaxFailureKind::ProjectionMismatch, definitionNode};
   }
   return ModuleBodySyntaxProjection{zc::mv(ZC_ASSERT_NONNULL(expectedSyntax)),
                                     zc::mv(ZC_ASSERT_NONNULL(expectedProvenance))};

@@ -5,7 +5,9 @@
 
 #include "zomlang/compiler/identity/definition-key.h"
 
+#include "zc/core/debug.h"
 #include "zc/core/vector.h"
+#include "zomlang/compiler/identity/canonical-decoder.h"
 #include "zomlang/compiler/identity/canonical-encoder.h"
 
 namespace zomlang::compiler::identity {
@@ -15,6 +17,8 @@ constexpr auto kDefinitionDomain = "zom.named-item-header.v0"_zc;
 constexpr auto kImplDomain = "zom.impl-header.v0"_zc;
 constexpr auto kGenericParameterDomain = "zom.generic-parameter.v0"_zc;
 constexpr auto kCallableParameterDomain = "zom.callable-parameter.v0"_zc;
+constexpr uint64_t kMaximumDefinitionIdentityRecordBytes = 4 * 1024 * 1024;
+constexpr uint64_t kMaximumDefinitionOwnerCount = kMaximumDefinitionIdentityRecordBytes / 33;
 
 template <typename Record>
 Sha256Digest digestRecord(zc::StringPtr domain, const Record& record) {
@@ -35,6 +39,26 @@ void encodeSequence(CanonicalEncoder& encoder, zc::ArrayPtr<const Value> values)
 
 bool sameBytes(zc::ArrayPtr<const uint8_t> left, zc::ArrayPtr<const uint8_t> right) noexcept {
   return left == right;
+}
+
+zc::Maybe<EnclosingStableOwnerKey> decodeStableOwner(CanonicalDecoder& decoder) {
+  auto kind = decoder.decodeUint8();
+  auto digest = decoder.decodeDigest();
+  if (kind == zc::none || digest == zc::none) { return zc::none; }
+  const auto bytes = ZC_ASSERT_NONNULL(digest).bytes();
+  switch (static_cast<EnclosingStableOwnerKind>(ZC_ASSERT_NONNULL(kind))) {
+    case EnclosingStableOwnerKind::Definition: {
+      auto key = DefinitionKey::fromBytes(bytes);
+      ZC_IF_SOME(value, key) { return EnclosingStableOwnerKey::definition(zc::mv(value)); }
+      return zc::none;
+    }
+    case EnclosingStableOwnerKind::Implementation: {
+      auto key = ImplKey::fromBytes(bytes);
+      ZC_IF_SOME(value, key) { return EnclosingStableOwnerKey::implementation(zc::mv(value)); }
+      return zc::none;
+    }
+  }
+  return zc::none;
 }
 
 }  // namespace
@@ -236,6 +260,54 @@ zc::Maybe<DefinitionIdentityRecord> DefinitionIdentityRecord::from(
           definition_identity_detail::DefinitionIdentityRecordData{zc::mv(module), zc::mv(owners),
                                                                    kind, nameSpace, zc::mv(name),
                                                                    zc::mv(overloadHeader)}));
+}
+
+zc::Maybe<DefinitionIdentityRecord> DefinitionIdentityRecord::decodeCanonical(
+    zc::ArrayPtr<const uint8_t> bytes) {
+  if (bytes.size() == 0 || bytes.size() > kMaximumDefinitionIdentityRecordBytes) {
+    return zc::none;
+  }
+  CanonicalDecoder decoder(bytes);
+  auto module = ModuleKey::decodeCanonical(decoder);
+  auto ownerCount = decoder.decodeSequenceSize(kMaximumDefinitionOwnerCount);
+  if (module == zc::none || ownerCount == zc::none) { return zc::none; }
+  zc::Vector<EnclosingStableOwnerKey> owners(static_cast<size_t>(ZC_ASSERT_NONNULL(ownerCount)));
+  for (uint64_t index = 0; index < ZC_ASSERT_NONNULL(ownerCount); ++index) {
+    auto owner = decodeStableOwner(decoder);
+    if (owner == zc::none) { return zc::none; }
+    ZC_IF_SOME(value, owner) { owners.add(zc::mv(value)); }
+  }
+  auto kind = decoder.decodeUint8();
+  auto nameSpace = decoder.decodeUint8();
+  auto name = DeclaredDefinitionName::decodeCanonical(decoder);
+  auto overloadPresence = decoder.decodeUint8();
+  if (kind == zc::none || nameSpace == zc::none || name == zc::none ||
+      overloadPresence == zc::none) {
+    return zc::none;
+  }
+  zc::Maybe<OverloadHeaderDigest> overloadHeader;
+  switch (ZC_ASSERT_NONNULL(overloadPresence)) {
+    case 0x00:
+      break;
+    case 0x01: {
+      auto digest = decoder.decodeDigest();
+      if (digest == zc::none) { return zc::none; }
+      overloadHeader = OverloadHeaderDigest::fromBytes(ZC_ASSERT_NONNULL(digest).bytes());
+      if (overloadHeader == zc::none) { return zc::none; }
+      break;
+    }
+    default:
+      return zc::none;
+  }
+  if (!decoder.finished()) { return zc::none; }
+  auto record = from(zc::mv(ZC_ASSERT_NONNULL(module)), zc::mv(owners),
+                     static_cast<DefinitionKind>(ZC_ASSERT_NONNULL(kind)),
+                     static_cast<DefinitionNamespace>(ZC_ASSERT_NONNULL(nameSpace)),
+                     zc::mv(ZC_ASSERT_NONNULL(name)), zc::mv(overloadHeader));
+  if (record == zc::none || ZC_ASSERT_NONNULL(record).encode().asPtr() != bytes) {
+    return zc::none;
+  }
+  return zc::mv(record);
 }
 
 DefinitionIdentityRecord DefinitionIdentityRecord::clone() const {

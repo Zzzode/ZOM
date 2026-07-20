@@ -33,6 +33,18 @@ MODULE_INTERFACE_DIAGNOSTIC_SOURCE = Path(
 )
 BORROW_EVIDENCE_HEADER = Path("products/zomlang/compiler/driver/borrow-evidence.h")
 BORROW_EVIDENCE_SOURCE = Path("products/zomlang/compiler/driver/borrow-evidence.cc")
+ACTIVE_DEFINITION_AUTHORITY_QUERY_HEADER = Path(
+    "products/zomlang/compiler/driver/active-definition-authority-query.h"
+)
+ACTIVE_DEFINITION_AUTHORITY_QUERY_SOURCE = Path(
+    "products/zomlang/compiler/driver/active-definition-authority-query.cc"
+)
+ACTIVE_DEFINITION_AUTHORITY_SESSION_HEADER = Path(
+    "products/zomlang/compiler/driver/active-definition-authority-session.h"
+)
+ACTIVE_DEFINITION_AUTHORITY_SESSION_SOURCE = Path(
+    "products/zomlang/compiler/driver/active-definition-authority-session.cc"
+)
 INCREMENTAL_BINDING_QUERY_ADAPTER_HEADER = Path(
     "products/zomlang/compiler/driver/incremental-binding-query-adapter.h"
 )
@@ -57,6 +69,10 @@ NAMED_IDENTITY_INVENTORY_QUERY_HEADER = Path(
 NAMED_IDENTITY_INVENTORY_QUERY_SOURCE = Path(
     "products/zomlang/compiler/driver/named-identity-inventory-query.cc"
 )
+NAMED_ITEM_QUERY_HEADER = Path("products/zomlang/compiler/driver/named-item-query.h")
+NAMED_ITEM_QUERY_SOURCE = Path("products/zomlang/compiler/driver/named-item-query.cc")
+OWNER_BODY_QUERY_HEADER = Path("products/zomlang/compiler/driver/owner-body-query.h")
+OWNER_BODY_QUERY_SOURCE = Path("products/zomlang/compiler/driver/owner-body-query.cc")
 QUERY_DATABASE_HEADER = Path("products/zomlang/compiler/query/query-database.h")
 QUERY_DATABASE_SOURCE = Path("products/zomlang/compiler/query/query-database.cc")
 DRIVER_CMAKE = Path("products/zomlang/compiler/driver/CMakeLists.txt")
@@ -89,6 +105,10 @@ EXPECTED_DRIVER_FILES = {
     MODULE_INTERFACE_DIAGNOSTIC_SOURCE,
     BORROW_EVIDENCE_HEADER,
     BORROW_EVIDENCE_SOURCE,
+    ACTIVE_DEFINITION_AUTHORITY_QUERY_HEADER,
+    ACTIVE_DEFINITION_AUTHORITY_QUERY_SOURCE,
+    ACTIVE_DEFINITION_AUTHORITY_SESSION_HEADER,
+    ACTIVE_DEFINITION_AUTHORITY_SESSION_SOURCE,
     INCREMENTAL_BINDING_QUERY_ADAPTER_HEADER,
     INCREMENTAL_BINDING_QUERY_ADAPTER_SOURCE,
     INCREMENTAL_PACKAGE_GRAPH_INPUT_HEADER,
@@ -97,15 +117,20 @@ EXPECTED_DRIVER_FILES = {
     INCREMENTAL_MODULE_RESOLUTION_QUERY_SOURCE,
     NAMED_IDENTITY_INVENTORY_QUERY_HEADER,
     NAMED_IDENTITY_INVENTORY_QUERY_SOURCE,
+    NAMED_ITEM_QUERY_HEADER,
+    NAMED_ITEM_QUERY_SOURCE,
+    OWNER_BODY_QUERY_HEADER,
+    OWNER_BODY_QUERY_SOURCE,
 }
 
 DRIVER_BUILD_MARKER = (
-    "set(DRIVER_SRC borrow-evidence.cc coherence-builder.cc compiler-session.cc crate-graph.cc\n"
+    "set(DRIVER_SRC active-definition-authority-query.cc active-definition-authority-session.cc\n"
+    "               borrow-evidence.cc coherence-builder.cc compiler-session.cc crate-graph.cc\n"
     "               imported-signature-view-projector.cc incremental-binding-query-adapter.cc\n"
     "               incremental-module-resolution-query.cc\n"
     "               incremental-package-graph-query-input.cc\n"
     "               module-discovery.cc module-interface.cc module-interface-diagnostic-adapter.cc\n"
-    "               named-identity-inventory-query.cc)"
+    "               named-identity-inventory-query.cc named-item-query.cc owner-body-query.cc)"
 )
 
 SESSION_HEADER_MARKERS = (
@@ -150,6 +175,11 @@ SESSION_SOURCE_MARKERS = (
     "incremental_binding_query::ModuleBodySyntaxQuery",
     "incremental_binding_query::ModuleBodyProvenanceQuery",
     "zc::Vector<ModuleBodyQueryBinding> moduleBodyQueryBindings;",
+    "ActiveDefinitionAuthorityProjectionState",
+    "activeDefinitionAuthority.refresh(",
+    "incremental_binding_query::NamedItemSyntaxQuery",
+    "incremental_binding_query::NamedItemProvenanceQuery",
+    "zc::Vector<NamedItemQueryBinding> namedItemQueryBindings;",
     "!impl->freezeSourceIdentities()",
     "binder::DefinitionInventory::collect(tree);",
     "diagnostics::DiagID::IdentityBrandExhausted",

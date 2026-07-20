@@ -44,6 +44,8 @@
 #include "zomlang/compiler/diagnostics/diagnostic-ids.h"
 #include "zomlang/compiler/diagnostics/diagnostic-materializer.h"
 #include "zomlang/compiler/diagnostics/diagnostic.h"
+#include "zomlang/compiler/driver/active-definition-authority-query.h"
+#include "zomlang/compiler/driver/active-definition-authority-session.h"
 #include "zomlang/compiler/driver/coherence-builder.h"
 #include "zomlang/compiler/driver/imported-signature-view-projector.h"
 #include "zomlang/compiler/driver/incremental-binding-query-adapter.h"
@@ -52,6 +54,7 @@
 #include "zomlang/compiler/driver/module-discovery.h"
 #include "zomlang/compiler/driver/module-interface-diagnostic-adapter.h"
 #include "zomlang/compiler/driver/named-identity-inventory-query.h"
+#include "zomlang/compiler/driver/named-item-query.h"
 #include "zomlang/compiler/driver/package/package-diagnostic.h"
 #include "zomlang/compiler/identity/canonical-encoder.h"
 #include "zomlang/compiler/identity/identity-diagnostic-adapter.h"
@@ -839,6 +842,8 @@ struct CompilerSession::Impl {
   basic::ThreadPool queryScheduler;
   /// Sole session-owned RFC 0017 input, memo, dependency, and flight authority.
   query::QueryDatabase queryDatabase;
+  /// Session-owned readiness barrier and exact active-definition input ledger.
+  incremental_binding_query::ActiveDefinitionAuthorityProjectionState activeDefinitionAuthority;
   /// Stable module dependency-input keys retained to replace the complete topology root.
   zc::Vector<incremental_binding_query::StableModuleQueryKey> stagedTopologyModules;
   /// Stable selected-source keys retained independently of later topology inputs.
@@ -931,6 +936,19 @@ struct CompilerSession::Impl {
   };
   /// Verified RFC 0019 module-body query values retained for owner-body demand.
   zc::Vector<ModuleBodyQueryBinding> moduleBodyQueryBindings;
+  struct NamedItemQueryBinding final {
+    NamedItemQueryBinding(identity::DefinitionKey&& definition, binder::NamedItemSyntax&& syntax,
+                          binder::NamedItemProvenance&& provenance) noexcept
+        : definition(zc::mv(definition)), syntax(zc::mv(syntax)), provenance(zc::mv(provenance)) {}
+    NamedItemQueryBinding(NamedItemQueryBinding&&) noexcept = default;
+    NamedItemQueryBinding& operator=(NamedItemQueryBinding&&) noexcept = default;
+    ZC_DISALLOW_COPY(NamedItemQueryBinding);
+    identity::DefinitionKey definition;
+    binder::NamedItemSyntax syntax;
+    binder::NamedItemProvenance provenance;
+  };
+  /// Ready-snapshot named-item values retained as the definition-owner syntax authority.
+  zc::Vector<NamedItemQueryBinding> namedItemQueryBindings;
   /// String pool to manage interned strings.
   zc::Own<basic::StringPool> stringPool;
   /// Source manager to manage source files.
@@ -960,6 +978,32 @@ struct CompilerSession::Impl {
   bool verifiedCheckedSources = false;
   /// Closed Checker invariant rejection retained when no complete publication exists.
   zc::Vector<checker::signature::CheckerVerificationFailure> checkerFailures;
+
+  bool demandNamedItemQueries() {
+    if (!namedItemQueryBindings.empty()) { return false; }
+    zc::Vector<NamedItemQueryBinding> staged(activeDefinitionAuthority.keyLedger().size());
+    auto readySnapshot = queryDatabase.snapshot();
+    auto readiness =
+        readySnapshot.get<incremental_binding_query::ActiveDefinitionAuthorityReadyInput>(
+            source_query::CompilationUnitQueryKey::fixed());
+    if (readiness.isRuntimeFailure() || readiness.kind() != query::QueryValueKind::Value) {
+      return false;
+    }
+    for (const auto& definition : activeDefinitionAuthority.keyLedger()) {
+      auto syntax = readySnapshot.get<incremental_binding_query::NamedItemSyntaxQuery>(definition);
+      auto provenance =
+          readySnapshot.get<incremental_binding_query::NamedItemProvenanceQuery>(definition);
+      if (syntax.isRuntimeFailure() || provenance.isRuntimeFailure() ||
+          syntax.kind() != query::QueryValueKind::Value ||
+          provenance.kind() != query::QueryValueKind::Value) {
+        return false;
+      }
+      staged.add(NamedItemQueryBinding(definition.clone(), syntax.value().clone(),
+                                       provenance.value().clone()));
+    }
+    namedItemQueryBindings = zc::mv(staged);
+    return true;
+  }
 
   bool stageParseSourceInputs() {
     if (packageRequest == zc::none || pendingSourceIdentities.size() == 0) { return false; }
@@ -996,7 +1040,7 @@ struct CompilerSession::Impl {
                                            zc::mv(ZC_ASSERT_NONNULL(canonicalSnapshot))));
     }
 
-    auto pending = queryDatabase.beginInputTransaction();
+    auto pending = activeDefinitionAuthority.beginBaseMutation(queryDatabase);
     if (pending == zc::none) { return false; }
     ZC_IF_SOME(transaction, pending) {
       for (const auto& prior : stagedSourceSnapshots) {
@@ -1066,7 +1110,7 @@ struct CompilerSession::Impl {
       return false;
     }
 
-    auto pending = queryDatabase.beginInputTransaction();
+    auto pending = activeDefinitionAuthority.beginBaseMutation(queryDatabase);
     if (pending == zc::none) { return false; }
     ZC_IF_SOME(transaction, pending) {
       for (const auto& prior : stagedSelectedModules) {
@@ -1491,7 +1535,7 @@ struct CompilerSession::Impl {
       return false;
     }
 
-    auto pending = queryDatabase.beginInputTransaction();
+    auto pending = activeDefinitionAuthority.beginBaseMutation(queryDatabase);
     if (pending == zc::none) { return false; }
     ZC_IF_SOME(transaction, pending) {
       for (const auto& prior : stagedTopologyModules) {
@@ -2678,7 +2722,7 @@ struct CompilerSession::Impl {
         auto derivedRequests = zc::mv(derived.get<zc::Vector<binder::ModuleDependencyRequest>>());
         for (auto& request : derivedRequests) { requests.add(zc::mv(request)); }
       }
-      auto pendingResolutionInputs = queryDatabase.beginInputTransaction();
+      auto pendingResolutionInputs = activeDefinitionAuthority.beginBaseMutation(queryDatabase);
       if (pendingResolutionInputs == zc::none) { return rejectInvariant(); }
       ZC_IF_SOME(transaction, pendingResolutionInputs) {
         if (!incremental_module_resolution_query::stageModuleResolutionQueryInputs(
@@ -3150,6 +3194,15 @@ bool CompilerSession::bindSources() {
           ZC_ASSERT_NONNULL(impl->stagedPackageRoots));
       if (bindingOrder.isRuntimeFailure() || bindingOrder.kind() != query::QueryValueKind::Value ||
           bindingOrder.value().modules().size() != graph.modules().size()) {
+        binder::emitModuleGraphInvariant(
+            *impl->diagnosticEngine,
+            binder::ModuleGraphInvariantFact{binder::ModuleGraphInvariantKind::InvalidEdge,
+                                             zc::none, zc::Vector<uint32_t>(), 1});
+        return false;
+      }
+      if (!impl->activeDefinitionAuthority.refresh(impl->queryDatabase,
+                                                   ZC_ASSERT_NONNULL(impl->stagedPackageRoots)) ||
+          !impl->demandNamedItemQueries()) {
         binder::emitModuleGraphInvariant(
             *impl->diagnosticEngine,
             binder::ModuleGraphInvariantFact{binder::ModuleGraphInvariantKind::InvalidEdge,

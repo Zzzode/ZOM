@@ -1,9 +1,10 @@
-set(DRIVER_SRC borrow-evidence.cc coherence-builder.cc compiler-session.cc crate-graph.cc
+set(DRIVER_SRC active-definition-authority-query.cc active-definition-authority-session.cc
+               borrow-evidence.cc coherence-builder.cc compiler-session.cc crate-graph.cc
                imported-signature-view-projector.cc incremental-binding-query-adapter.cc
                incremental-module-resolution-query.cc
                incremental-package-graph-query-input.cc
                module-discovery.cc module-interface.cc module-interface-diagnostic-adapter.cc
-               named-identity-inventory-query.cc)
+               named-identity-inventory-query.cc named-item-query.cc owner-body-query.cc)
 
 enable_language(C)
 add_subdirectory(package/vendor)

@@ -157,6 +157,9 @@ public:
       ModuleKey&& module, zc::Vector<EnclosingStableOwnerKey>&& owners, DefinitionKind kind,
       DefinitionNamespace nameSpace, DeclaredDefinitionName&& name,
       zc::Maybe<OverloadHeaderDigest>&& overloadHeader);
+  /// \brief Decodes one exact canonical record within the 4 MiB authority bound.
+  ZC_NODISCARD static zc::Maybe<DefinitionIdentityRecord> decodeCanonical(
+      zc::ArrayPtr<const uint8_t> bytes);
   ZC_NODISCARD DefinitionIdentityRecord clone() const;
   ZC_NODISCARD const ModuleKey& module() const noexcept;
   ZC_NODISCARD zc::ArrayPtr<const EnclosingStableOwnerKey> owners() const noexcept;

@@ -274,6 +274,54 @@ ZC_TEST("DefinitionIdentityRecord passes the complete owner and named-item vecto
   auto key = DefinitionKey::compute(record);
   ZC_EXPECT(zc::encodeHex(key.bytes()) ==
             "15a71871a9f441980717fa1fbf37d49edcb5f5499d1a905134bc2dafb55ca9aa"_zc);
+  auto decoded = DefinitionIdentityRecord::decodeCanonical(encoded.asPtr());
+  ZC_REQUIRE(decoded != zc::none);
+  ZC_EXPECT(ZC_REQUIRE_NONNULL(decoded).encode().asPtr() == encoded.asPtr());
+  ZC_EXPECT(DefinitionKey::compute(ZC_REQUIRE_NONNULL(decoded)) == key);
+}
+
+ZC_TEST("DefinitionIdentityRecord decoder is exact bounded and closed") {
+  zc::Vector<EnclosingStableOwnerKey> owners;
+  owners.add(EnclosingStableOwnerKey::definition(rawDefinitionKey(0x11)));
+  owners.add(EnclosingStableOwnerKey::implementation(rawImplKey(0x22)));
+  auto record = definitionRecord(DefinitionKind::Class, "C"_zc, zc::none, zc::mv(owners));
+  auto encoded = record.encode();
+
+  for (size_t size = 0; size < encoded.size(); ++size) {
+    ZC_EXPECT(DefinitionIdentityRecord::decodeCanonical(encoded.asPtr().first(size)) == zc::none);
+  }
+
+  auto trailing = zc::heapArray<uint8_t>(encoded.size() + 1);
+  trailing.first(encoded.size()).copyFrom(encoded.asPtr());
+  trailing.back() = 0;
+  ZC_EXPECT(DefinitionIdentityRecord::decodeCanonical(trailing.asPtr()) == zc::none);
+
+  const size_t ownerCountOffset = module().encode().size();
+  auto oversizedOwnerCount = zc::heapArray<uint8_t>(encoded.asPtr());
+  for (size_t index = 0; index < 8; ++index) {
+    oversizedOwnerCount[ownerCountOffset + index] = 0xff;
+  }
+  ZC_EXPECT(DefinitionIdentityRecord::decodeCanonical(oversizedOwnerCount.asPtr()) == zc::none);
+
+  auto unknownOwner = zc::heapArray<uint8_t>(encoded.asPtr());
+  unknownOwner[ownerCountOffset + 8] = 0xff;
+  ZC_EXPECT(DefinitionIdentityRecord::decodeCanonical(unknownOwner.asPtr()) == zc::none);
+
+  const size_t kindOffset = ownerCountOffset + 8 + 2 * 33;
+  auto unknownKind = zc::heapArray<uint8_t>(encoded.asPtr());
+  unknownKind[kindOffset] = 0xff;
+  ZC_EXPECT(DefinitionIdentityRecord::decodeCanonical(unknownKind.asPtr()) == zc::none);
+
+  auto unknownNamespace = zc::heapArray<uint8_t>(encoded.asPtr());
+  unknownNamespace[kindOffset + 1] = 0xff;
+  ZC_EXPECT(DefinitionIdentityRecord::decodeCanonical(unknownNamespace.asPtr()) == zc::none);
+
+  auto unknownPresence = zc::heapArray<uint8_t>(encoded.asPtr());
+  unknownPresence.back() = 0xff;
+  ZC_EXPECT(DefinitionIdentityRecord::decodeCanonical(unknownPresence.asPtr()) == zc::none);
+
+  auto oversized = zc::heapArray<uint8_t>(4 * 1024 * 1024 + 1);
+  ZC_EXPECT(DefinitionIdentityRecord::decodeCanonical(oversized.asPtr()) == zc::none);
 }
 
 ZC_TEST("ImplIdentityRecord passes the complete owner and implementation-header vectors") {

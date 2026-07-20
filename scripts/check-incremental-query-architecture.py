@@ -19,7 +19,11 @@ QUERY_DATABASE_HEADER = QUERY_ROOT / "query-database.h"
 QUERY_DATABASE_SOURCE = QUERY_ROOT / "query-database.cc"
 DRIVER_SESSION = COMPILER_ROOT / "driver/compiler-session.cc"
 DRIVER_TOPOLOGY_ADAPTER = COMPILER_ROOT / "driver/incremental-binding-query-adapter.cc"
+DRIVER_AUTHORITY_QUERY = COMPILER_ROOT / "driver/active-definition-authority-query.cc"
+DRIVER_AUTHORITY_SESSION = COMPILER_ROOT / "driver/active-definition-authority-session.cc"
 DRIVER_NAMED_IDENTITY_QUERY = COMPILER_ROOT / "driver/named-identity-inventory-query.cc"
+DRIVER_NAMED_ITEM_QUERY = COMPILER_ROOT / "driver/named-item-query.cc"
+DRIVER_OWNER_BODY_QUERY = COMPILER_ROOT / "driver/owner-body-query.cc"
 DRIVER_MODULE_RESOLUTION_QUERY = COMPILER_ROOT / "driver/incremental-module-resolution-query.cc"
 DRIVER_PACKAGE_GRAPH_INPUT = COMPILER_ROOT / "driver/incremental-package-graph-query-input.cc"
 IDENTITY_SOURCE_QUERY_INPUT = COMPILER_ROOT / "identity/source-query-input.cc"
@@ -33,6 +37,22 @@ DRIVER_SESSION_TEST = Path(
 )
 DRIVER_MODULE_RESOLUTION_QUERY_TEST = Path(
     "products/zomlang/tests/unittests/compiler/driver/incremental-module-resolution-query-test.cc"
+)
+QUERY_DATABASE_TEST = Path(
+    "products/zomlang/tests/unittests/compiler/query/query-database-test.cc"
+)
+DRIVER_AUTHORITY_SESSION_TEST = Path(
+    "products/zomlang/tests/unittests/compiler/driver/active-definition-authority-session-test.cc"
+)
+BINDER_MODULE_BODY_SYNTAX_TEST = Path(
+    "products/zomlang/tests/unittests/compiler/binder/module-body-syntax-test.cc"
+)
+PERFORMANCE_RUNNER = Path("scripts/run-incremental-query-benchmarks.py")
+PERFORMANCE_CORPUS = Path(
+    "products/zomlang/tests/performance/incremental-query-corpus.json"
+)
+PERFORMANCE_BASELINE = Path(
+    "products/zomlang/tests/performance/incremental-query-baseline.json"
 )
 MANIFEST = Path(".agents/subagents/manifest.yaml")
 ROUTING = Path(".agents/subagents/README.md")
@@ -98,6 +118,9 @@ def source_files() -> dict[Path, str]:
         DRIVER_TOPOLOGY_ADAPTER_TEST,
         DRIVER_SESSION_TEST,
         DRIVER_MODULE_RESOLUTION_QUERY_TEST,
+        QUERY_DATABASE_TEST,
+        DRIVER_AUTHORITY_SESSION_TEST,
+        BINDER_MODULE_BODY_SYNTAX_TEST,
     ):
         absolute = ROOT / path
         if absolute.exists():
@@ -169,6 +192,9 @@ def check_routing(files: dict[Path, str], errors: list[str]) -> None:
         "repository query owner summary",
         errors,
     )
+    for path in (PERFORMANCE_RUNNER, PERFORMANCE_CORPUS, PERFORMANCE_BASELINE):
+        if not (ROOT / path).is_file():
+            errors.append(f"{path}: missing RFC 0017 performance infrastructure")
 
 
 def query_sources(files: dict[Path, str]) -> list[tuple[Path, str]]:
@@ -208,6 +234,67 @@ def check_query_leaf(files: dict[Path, str], errors: list[str]) -> None:
             errors.append(f"{COMPILER_CMAKE}: query must be configured before semantic providers")
 
 
+def check_input_probe_contract(files: dict[Path, str], errors: list[str]) -> None:
+    query_header = files.get(QUERY_DATABASE_HEADER, "")
+    query_source = files.get(QUERY_DATABASE_SOURCE, "")
+    query_types = files.get(QUERY_ROOT / "query-types.h", "")
+    query_test = files.get(QUERY_DATABASE_TEST, "")
+    for text, path, marker, description in (
+        (
+            query_types,
+            QUERY_ROOT / "query-types.h",
+            "enum class InputProbeObservation",
+            "closed input probe observation",
+        ),
+        (
+            query_types,
+            QUERY_ROOT / "query-types.h",
+            "inputProbeObservation() const noexcept",
+            "inspectable probe dependency metadata",
+        ),
+        (
+            query_header,
+            QUERY_DATABASE_HEADER,
+            "TypedQueryResult<typename Spec::Value> probeInput",
+            "typed input probe API",
+        ),
+        (
+            query_source,
+            QUERY_DATABASE_SOURCE,
+            "dependency.inputProbeObservation()",
+            "presence-aware dependency validation",
+        ),
+        (
+            query_source,
+            QUERY_DATABASE_SOURCE,
+            "currentObservation != observation",
+            "presence transition invalidation",
+        ),
+        (
+            query_source,
+            QUERY_DATABASE_SOURCE,
+            "descriptor.contract.inputDurability()",
+            "absent probe durability",
+        ),
+        (
+            query_test,
+            QUERY_DATABASE_TEST,
+            "InputProbeTracksPresenceWithoutTombstonesOrContextPoisoning",
+            "native input probe regression",
+        ),
+        (
+            query_test,
+            QUERY_DATABASE_TEST,
+            "QueryRuntimeFailure::InvalidKeyEncoding",
+            "malformed probe key regression",
+        ),
+    ):
+        if marker not in text:
+            errors.append(f"{path}: missing {description}: {marker}")
+    if "probeInputParallel" in query_header or "probeInputParallel" in query_source:
+        errors.append(f"{QUERY_DATABASE_HEADER}: parallel optional input probing is forbidden")
+
+
 def check_materialization_capability(files: dict[Path, str], errors: list[str]) -> None:
     for path, text in sorted(files.items()):
         if path.suffix not in {".cc", ".h"}:
@@ -226,6 +313,401 @@ def check_provider_registration(files: dict[Path, str], errors: list[str]) -> No
         allowed = path.parent == Path("products/zomlang/compiler/driver") or "query-adapter" in path.name
         if not allowed:
             errors.append(f"{path}: query provider registration must live in driver or an owner adapter")
+
+
+def check_active_definition_authority(files: dict[Path, str], errors: list[str]) -> None:
+    authority = files.get(DRIVER_AUTHORITY_QUERY, "")
+    session = files.get(DRIVER_AUTHORITY_SESSION, "")
+    named_item = files.get(DRIVER_NAMED_ITEM_QUERY, "")
+    compiler_session = files.get(DRIVER_SESSION, "")
+    test = files.get(DRIVER_AUTHORITY_SESSION_TEST, "")
+    for text, path, marker, description in (
+        (
+            authority,
+            DRIVER_AUTHORITY_QUERY,
+            'return "zom.query.active-definition-authority.v1"_zc;',
+            "definition authority input domain",
+        ),
+        (
+            authority,
+            DRIVER_AUTHORITY_QUERY,
+            'return "zom.query.active-definition-authority-ready.v1"_zc;',
+            "authority readiness input domain",
+        ),
+        (
+            authority,
+            DRIVER_AUTHORITY_QUERY,
+            "DefinitionIdentityRecord::decodeCanonical(bytes)",
+            "complete authority record decoding",
+        ),
+        (
+            authority,
+            DRIVER_AUTHORITY_QUERY,
+            "query::Durability::Low",
+            "low authority durability",
+        ),
+        (
+            authority,
+            DRIVER_AUTHORITY_QUERY,
+            "registerInputKind<ActiveDefinitionAuthorityReadyInput>()",
+            "readiness input registration",
+        ),
+        (
+            session,
+            DRIVER_AUTHORITY_SESSION,
+            "probeInput<ActiveDefinitionAuthorityReadyInput>",
+            "readiness probe before base mutation",
+        ),
+        (
+            session,
+            DRIVER_AUTHORITY_SESSION,
+            "transaction.erase<ActiveDefinitionAuthorityReadyInput>",
+            "readiness removal in the first base transaction",
+        ),
+        (
+            session,
+            DRIVER_AUTHORITY_SESSION,
+            "snapshot.get<ActiveCratesInput>",
+            "active crate reconstruction",
+        ),
+        (
+            session,
+            DRIVER_AUTHORITY_SESSION,
+            "snapshot.get<ActiveModulesInput>",
+            "per-crate active module reconstruction",
+        ),
+        (
+            session,
+            DRIVER_AUTHORITY_SESSION,
+            "snapshot.get<ModuleBindingOrderQuery>",
+            "binding-order closure comparison",
+        ),
+        (
+            session,
+            DRIVER_AUTHORITY_SESSION,
+            "snapshot.get<NamedDefinitionInventoryQuery>",
+            "complete named inventory demand",
+        ),
+        (
+            session,
+            DRIVER_AUTHORITY_SESSION,
+            "transaction.erase<ActiveDefinitionAuthorityInput>",
+            "stale authority erasure",
+        ),
+        (
+            session,
+            DRIVER_AUTHORITY_SESSION,
+            "transaction.set<ActiveDefinitionAuthorityReadyInput>",
+            "atomic readiness restoration",
+        ),
+        (
+            session,
+            DRIVER_AUTHORITY_SESSION,
+            "keyLedgerField = zc::mv(nextKeyLedger);",
+            "non-failing post-commit ledger publication",
+        ),
+        (
+            named_item,
+            DRIVER_NAMED_ITEM_QUERY,
+            'return "zom.query.named-item-syntax.v1"_zc;',
+            "named-item syntax query domain",
+        ),
+        (
+            named_item,
+            DRIVER_NAMED_ITEM_QUERY,
+            'return "zom.query.named-item-provenance.v1"_zc;',
+            "named-item provenance query domain",
+        ),
+        (
+            named_item,
+            DRIVER_NAMED_ITEM_QUERY,
+            "probeInput<ActiveDefinitionAuthorityInput>",
+            "tracked definition authority recovery",
+        ),
+        (
+            named_item,
+            DRIVER_NAMED_ITEM_QUERY,
+            "containsAuthority",
+            "exact owning inventory membership",
+        ),
+        (
+            named_item,
+            DRIVER_NAMED_ITEM_QUERY,
+            "providerRoot",
+            "provider source-order authority occurrence selection",
+        ),
+        (
+            named_item,
+            DRIVER_NAMED_ITEM_QUERY,
+            "verifierRoot",
+            "independent source-order authority occurrence selection",
+        ),
+        (
+            named_item,
+            DRIVER_NAMED_ITEM_QUERY,
+            "ModuleBodySyntaxVerifier::reconstructNamedItem",
+            "independent named-item reconstruction",
+        ),
+        (
+            compiler_session,
+            DRIVER_SESSION,
+            "activeDefinitionAuthority.beginBaseMutation(queryDatabase)",
+            "authority-invalidating base transactions",
+        ),
+        (
+            compiler_session,
+            DRIVER_SESSION,
+            "activeDefinitionAuthority.refresh(",
+            "production authority refresh",
+        ),
+        (
+            compiler_session,
+            DRIVER_SESSION,
+            "demandNamedItemQueries()",
+            "ready-snapshot named-item demand",
+        ),
+        (
+            test,
+            DRIVER_AUTHORITY_SESSION_TEST,
+            "invalidates and atomically refreshes readiness",
+            "atomic refresh regression",
+        ),
+        (
+            test,
+            DRIVER_AUTHORITY_SESSION_TEST,
+            "fails closed and erases stale keys on retry",
+            "failed refresh and stale-ledger retry regression",
+        ),
+        (
+            test,
+            DRIVER_AUTHORITY_SESSION_TEST,
+            "readinessReads == 0",
+            "conditional positive-path readiness regression",
+        ),
+        (
+            test,
+            DRIVER_AUTHORITY_SESSION_TEST,
+            "differential edits are deterministic across workers",
+            "worker-count differential regression",
+        ),
+        (
+            test,
+            DRIVER_AUTHORITY_SESSION_TEST,
+            "for (const auto workerCount : {uint32_t{1}, uint32_t{2}, uint32_t{8}})",
+            "required differential worker matrix",
+        ),
+        (
+            test,
+            DRIVER_AUTHORITY_SESSION_TEST,
+            "isolates modules shrinks sets and tracks moves",
+            "cross-module shrink and move regression",
+        ),
+    ):
+        if marker not in text:
+            errors.append(f"{path}: missing {description}: {marker}")
+    for path, text in ((DRIVER_AUTHORITY_SESSION, session), (DRIVER_NAMED_ITEM_QUERY, named_item)):
+        for forbidden in ("identityRegistries", "CompilerSession", "moduleGraph"):
+            if forbidden in text:
+                errors.append(f"{path}: tracked authority path must not read {forbidden}")
+    if named_item.count("probeInput<ActiveDefinitionAuthorityReadyInput>") != 4:
+        errors.append(
+            f"{DRIVER_NAMED_ITEM_QUERY}: readiness must be read only by absent or contradictory "
+            "provider and verifier branches"
+        )
+    worker_matrix = "for (const auto workerCount : {uint32_t{1}, uint32_t{2}, uint32_t{8}})"
+    if test.count(worker_matrix) != 2:
+        errors.append(
+            f"{DRIVER_AUTHORITY_SESSION_TEST}: must retain both required differential worker matrices"
+        )
+
+
+def check_owner_body_projection(files: dict[Path, str], errors: list[str]) -> None:
+    owner_query = files.get(DRIVER_OWNER_BODY_QUERY, "")
+    adapter = files.get(DRIVER_TOPOLOGY_ADAPTER, "")
+    query_test = files.get(DRIVER_AUTHORITY_SESSION_TEST, "")
+    codec_test = files.get(BINDER_MODULE_BODY_SYNTAX_TEST, "")
+    for text, path, marker, description in (
+        (
+            owner_query,
+            DRIVER_OWNER_BODY_QUERY,
+            'return "zom.query.module-body-owners.v1"_zc;',
+            "module-body owner inventory query domain",
+        ),
+        (
+            owner_query,
+            DRIVER_OWNER_BODY_QUERY,
+            'return "zom.query.owner-body-syntax.v1"_zc;',
+            "owner-body syntax query domain",
+        ),
+        (
+            owner_query,
+            DRIVER_OWNER_BODY_QUERY,
+            'return "zom.query.owner-body-provenance.v1"_zc;',
+            "owner-body provenance query domain",
+        ),
+        (
+            owner_query,
+            DRIVER_OWNER_BODY_QUERY,
+            "context.get<NamedDefinitionInventoryQuery>(key)",
+            "owner inventory dependency",
+        ),
+        (
+            owner_query,
+            DRIVER_OWNER_BODY_QUERY,
+            "context.getParallel<NamedItemSyntaxQuery>",
+            "canonical parallel named-item dependency group",
+        ),
+        (
+            owner_query,
+            DRIVER_OWNER_BODY_QUERY,
+            "context.get<ModuleBodySyntaxQuery>",
+            "module-owner syntax alternative",
+        ),
+        (
+            owner_query,
+            DRIVER_OWNER_BODY_QUERY,
+            "context.get<NamedItemSyntaxQuery>",
+            "definition-owner syntax alternative",
+        ),
+        (
+            owner_query,
+            DRIVER_OWNER_BODY_QUERY,
+            "context.get<OwnerBodySyntaxQuery>(key)",
+            "provenance syntax closure dependency",
+        ),
+        (
+            owner_query,
+            DRIVER_OWNER_BODY_QUERY,
+            "context.get<ModuleBodyProvenanceQuery>",
+            "module-owner provenance alternative",
+        ),
+        (
+            owner_query,
+            DRIVER_OWNER_BODY_QUERY,
+            "context.get<NamedItemProvenanceQuery>",
+            "definition-owner provenance alternative",
+        ),
+        (
+            owner_query,
+            DRIVER_OWNER_BODY_QUERY,
+            "providerExecutableRoot",
+            "provider executable-root selection",
+        ),
+        (
+            owner_query,
+            DRIVER_OWNER_BODY_QUERY,
+            "verifierExecutableRoot",
+            "independent verifier executable-root selection",
+        ),
+        (
+            owner_query,
+            DRIVER_OWNER_BODY_QUERY,
+            "providerProvenanceMatches",
+            "provider provenance coverage reconstruction",
+        ),
+        (
+            owner_query,
+            DRIVER_OWNER_BODY_QUERY,
+            "verifierProvenanceMatches",
+            "independent verifier provenance coverage reconstruction",
+        ),
+        (
+            owner_query,
+            DRIVER_OWNER_BODY_QUERY,
+            "return retainedSemanticContract(domain());",
+            "retained semantic owner inventory contract",
+        ),
+        (
+            owner_query,
+            DRIVER_OWNER_BODY_QUERY,
+            "return evictableSemanticContract(domain());",
+            "evictable semantic owner syntax contract",
+        ),
+        (
+            owner_query,
+            DRIVER_OWNER_BODY_QUERY,
+            "return revisionLocalContract(domain());",
+            "revision-local owner provenance contract",
+        ),
+        (
+            adapter,
+            DRIVER_TOPOLOGY_ADAPTER,
+            "registerDerivedKind<ModuleBodyOwnersQuery>()",
+            "module-body owners registration",
+        ),
+        (
+            adapter,
+            DRIVER_TOPOLOGY_ADAPTER,
+            "registerDerivedKind<OwnerBodySyntaxQuery>()",
+            "owner-body syntax registration",
+        ),
+        (
+            adapter,
+            DRIVER_TOPOLOGY_ADAPTER,
+            "registerDerivedKind<OwnerBodyProvenanceQuery>()",
+            "owner-body provenance registration",
+        ),
+        (
+            query_test,
+            DRIVER_AUTHORITY_SESSION_TEST,
+            "Owner body projection records exact alternative dependencies",
+            "exact owner projection dependency regression",
+        ),
+        (
+            query_test,
+            DRIVER_AUTHORITY_SESSION_TEST,
+            "Owner body projections are deterministic across workers",
+            "owner projection worker determinism regression",
+        ),
+        (
+            query_test,
+            DRIVER_AUTHORITY_SESSION_TEST,
+            "parallelNamedItemGroups == 2",
+            "provider and verifier parallel dependency regression",
+        ),
+        (
+            codec_test,
+            BINDER_MODULE_BODY_SYNTAX_TEST,
+            "Owner body codecs preserve canonical records and reject malformed inventories",
+            "owner projection codec adversaries",
+        ),
+        (
+            codec_test,
+            BINDER_MODULE_BODY_SYNTAX_TEST,
+            "duplicateModule",
+            "duplicate module-owner rejection",
+        ),
+        (
+            codec_test,
+            BINDER_MODULE_BODY_SYNTAX_TEST,
+            "missingModule",
+            "missing module-owner rejection",
+        ),
+        (
+            codec_test,
+            BINDER_MODULE_BODY_SYNTAX_TEST,
+            "foreignModule",
+            "foreign module-owner rejection",
+        ),
+    ):
+        if marker not in text:
+            errors.append(f"{path}: missing {description}: {marker}")
+    if owner_query.count("context.getParallel<NamedItemSyntaxQuery>") != 2:
+        errors.append(
+            f"{DRIVER_OWNER_BODY_QUERY}: provider and verifier must each demand one parallel "
+            "named-item group"
+        )
+    for forbidden in (
+        "ParseSourceQuery",
+        "SelectedModuleSourceInput",
+        "ActiveSourcesInput",
+        "CompilerSession",
+        "identityRegistries",
+        "moduleGraph",
+        "materializeActive(",
+    ):
+        if forbidden in owner_query:
+            errors.append(f"{DRIVER_OWNER_BODY_QUERY}: owner projection must not read {forbidden}")
 
 
 def check_production_topology_integration(files: dict[Path, str], errors: list[str]) -> None:
@@ -250,7 +732,10 @@ def check_production_topology_integration(files: dict[Path, str], errors: list[s
             "registerIncrementalBindingQueryAdapter(queryDatabase)",
             "production query registration",
         ),
-        ("beginInputTransaction()", "atomic topology input transaction"),
+        (
+            "activeDefinitionAuthority.beginBaseMutation(queryDatabase)",
+            "atomic authority-invalidating topology input transaction",
+        ),
         (
             "transaction.set<incremental::SelectedModuleSourceInput>",
             "selected-source authority staging",
@@ -490,7 +975,7 @@ def check_production_topology_integration(files: dict[Path, str], errors: list[s
         if verification_position < 0:
             return False
         transaction_position = session.find(
-            "auto pending = queryDatabase.beginInputTransaction()", verification_position
+            "activeDefinitionAuthority.beginBaseMutation(queryDatabase)", verification_position
         )
         return transaction_position >= 0
 
@@ -652,8 +1137,11 @@ def check_files(files: dict[Path, str]) -> list[str]:
     errors: list[str] = []
     check_routing(files, errors)
     check_query_leaf(files, errors)
+    check_input_probe_contract(files, errors)
     check_materialization_capability(files, errors)
     check_provider_registration(files, errors)
+    check_active_definition_authority(files, errors)
+    check_owner_body_projection(files, errors)
     check_production_topology_integration(files, errors)
     return errors
 
@@ -695,6 +1183,111 @@ def self_test() -> list[str]:
     mutation = dict(base)
     mutation[QUERY_CMAKE] = "add_library(query STATIC query-runtime.cc)\ntarget_link_libraries(query PUBLIC zc basic driver)\n"
     expect_failure(mutation, "must not link semantic target driver", failures)
+
+    mutation = dict(base)
+    mutation[QUERY_DATABASE_HEADER] = mutation[QUERY_DATABASE_HEADER].replace(
+        "TypedQueryResult<typename Spec::Value> probeInput",
+        "TypedQueryResult<typename Spec::Value> removedInputProbe",
+    )
+    expect_failure(mutation, "typed input probe API", failures)
+
+    mutation = dict(base)
+    mutation[QUERY_DATABASE_HEADER] += "\nvoid probeInputParallel();\n"
+    expect_failure(mutation, "parallel optional input probing is forbidden", failures)
+
+    mutation = dict(base)
+    mutation[DRIVER_AUTHORITY_SESSION] = mutation[DRIVER_AUTHORITY_SESSION].replace(
+        "transaction.erase<ActiveDefinitionAuthorityReadyInput>",
+        "transaction.erase<RemovedAuthorityReadinessInput>",
+        1,
+    )
+    expect_failure(mutation, "readiness removal in the first base transaction", failures)
+
+    mutation = dict(base)
+    mutation[DRIVER_NAMED_ITEM_QUERY] = mutation[DRIVER_NAMED_ITEM_QUERY].replace(
+        "ModuleBodySyntaxVerifier::reconstructNamedItem",
+        "ModuleBodySyntaxProducer::produceNamedItem",
+    )
+    expect_failure(mutation, "independent named-item reconstruction", failures)
+
+    mutation = dict(base)
+    mutation[DRIVER_NAMED_ITEM_QUERY] += "\nvoid forbidden() { identityRegistries.size(); }\n"
+    expect_failure(mutation, "must not read identityRegistries", failures)
+
+    mutation = dict(base)
+    mutation[DRIVER_AUTHORITY_SESSION_TEST] = mutation[
+        DRIVER_AUTHORITY_SESSION_TEST
+    ].replace(
+        "for (const auto workerCount : {uint32_t{1}, uint32_t{2}, uint32_t{8}})",
+        "for (const auto workerCount : {uint32_t{1}})",
+        1,
+    )
+    expect_failure(mutation, "both required differential worker matrices", failures)
+
+    mutation = dict(base)
+    mutation[DRIVER_AUTHORITY_SESSION_TEST] = mutation[
+        DRIVER_AUTHORITY_SESSION_TEST
+    ].replace(
+        "isolates modules shrinks sets and tracks moves",
+        "removed cross-module shrink and move regression",
+        1,
+    )
+    expect_failure(mutation, "cross-module shrink and move regression", failures)
+
+    mutation = dict(base)
+    mutation[DRIVER_OWNER_BODY_QUERY] = mutation[DRIVER_OWNER_BODY_QUERY].replace(
+        "context.getParallel<NamedItemSyntaxQuery>",
+        "context.getSequentially<NamedItemSyntaxQuery>",
+        1,
+    )
+    expect_failure(mutation, "provider and verifier must each demand one parallel", failures)
+
+    mutation = dict(base)
+    mutation[DRIVER_OWNER_BODY_QUERY] = mutation[DRIVER_OWNER_BODY_QUERY].replace(
+        "verifierExecutableRoot", "providerExecutableRoot"
+    )
+    expect_failure(mutation, "independent verifier executable-root selection", failures)
+
+    mutation = dict(base)
+    mutation[DRIVER_OWNER_BODY_QUERY] = mutation[DRIVER_OWNER_BODY_QUERY].replace(
+        "verifierProvenanceMatches", "providerProvenanceMatches"
+    )
+    expect_failure(mutation, "independent verifier provenance coverage reconstruction", failures)
+
+    mutation = dict(base)
+    mutation[DRIVER_OWNER_BODY_QUERY] = mutation[DRIVER_OWNER_BODY_QUERY].replace(
+        "return retainedSemanticContract(domain());",
+        "return evictableSemanticContract(domain());",
+        1,
+    )
+    expect_failure(mutation, "retained semantic owner inventory contract", failures)
+
+    mutation = dict(base)
+    mutation[DRIVER_TOPOLOGY_ADAPTER] = mutation[DRIVER_TOPOLOGY_ADAPTER].replace(
+        "registerDerivedKind<OwnerBodyProvenanceQuery>()",
+        "registerDerivedKind<RemovedOwnerBodyProvenanceQuery>()",
+        1,
+    )
+    expect_failure(mutation, "owner-body provenance registration", failures)
+
+    mutation = dict(base)
+    mutation[DRIVER_OWNER_BODY_QUERY] += "\nvoid forbidden_owner_read() { ParseSourceQuery(); }\n"
+    expect_failure(mutation, "owner projection must not read ParseSourceQuery", failures)
+
+    mutation = dict(base)
+    mutation[DRIVER_AUTHORITY_SESSION_TEST] = mutation[
+        DRIVER_AUTHORITY_SESSION_TEST
+    ].replace(
+        "for (const auto workerCount : {uint32_t{1}, uint32_t{2}, uint32_t{8}})",
+        "for (const auto workerCount : {uint32_t{1}})",
+    )
+    expect_failure(mutation, "both required differential worker matrices", failures)
+
+    mutation = dict(base)
+    mutation[BINDER_MODULE_BODY_SYNTAX_TEST] = mutation[BINDER_MODULE_BODY_SYNTAX_TEST].replace(
+        "duplicateModule", "removedDuplicateModule"
+    )
+    expect_failure(mutation, "duplicate module-owner rejection", failures)
 
     mutation = dict(base)
     mutation[DRIVER_SESSION] = mutation[DRIVER_SESSION].replace(

@@ -185,11 +185,13 @@ class ProjectionBuilder final {
 public:
   ProjectionBuilder(const CanonicalParsedModule& parsedModule,
                     zc::ArrayPtr<const ModuleBodyDefinitionBoundaryInput> definitions,
-                    zc::ArrayPtr<const ModuleBodyImplementationBoundaryInput> implementations)
+                    zc::ArrayPtr<const ModuleBodyImplementationBoundaryInput> implementations,
+                    ast::NodeId unprunedRoot)
       : parsedModule(parsedModule),
         tree(parsedModule.tree()),
         definitions(definitions),
-        implementations(implementations) {}
+        implementations(implementations),
+        unprunedRoot(unprunedRoot) {}
 
   bool visit(ast::NodeId node, zc::Vector<uint32_t>& path) {
     zc::Maybe<const ModuleBodyDefinitionBoundaryInput&> definition;
@@ -205,13 +207,15 @@ public:
       implementation = candidate;
     }
     if (definition != zc::none && implementation != zc::none) { return false; }
-    ZC_IF_SOME(value, definition) {
-      nodes.add(DetachedModuleBodyNode::definitionBoundary(value.key));
-      return true;
-    }
-    ZC_IF_SOME(value, implementation) {
-      nodes.add(DetachedModuleBodyNode::implementationBoundary(value.key));
-      return true;
+    if (node != unprunedRoot) {
+      ZC_IF_SOME(value, definition) {
+        nodes.add(DetachedModuleBodyNode::definitionBoundary(value.key));
+        return true;
+      }
+      ZC_IF_SOME(value, implementation) {
+        nodes.add(DetachedModuleBodyNode::implementationBoundary(value.key));
+        return true;
+      }
     }
 
     const auto& syntax = tree.node(node);
@@ -256,6 +260,7 @@ private:
   const ast::Tree& tree;
   zc::ArrayPtr<const ModuleBodyDefinitionBoundaryInput> definitions;
   zc::ArrayPtr<const ModuleBodyImplementationBoundaryInput> implementations;
+  ast::NodeId unprunedRoot;
 };
 
 bool validateBoundaryInventory(
@@ -347,7 +352,7 @@ ModuleBodySyntaxProjectionResult ModuleBodySyntaxProducer::produce(
     return failure(ModuleBodySyntaxFailureKind::InvalidBoundaryInventory);
   }
 
-  ProjectionBuilder builder(parsedModule, definitions, implementations);
+  ProjectionBuilder builder(parsedModule, definitions, implementations, ast::NodeId());
   ZC_IF_SOME(moduleItemsValue, items) {
     uint32_t rootIndex = 0;
     for (const auto item : moduleItemsValue) {
@@ -369,6 +374,51 @@ ModuleBodySyntaxProjectionResult ModuleBodySyntaxProducer::produce(
     }
   }
   return failure(ModuleBodySyntaxFailureKind::InvalidDetachedSyntax);
+}
+
+ModuleBodySyntaxProjectionResult ModuleBodySyntaxProducer::produceNamedItem(
+    const CanonicalParsedModule& parsedModule, const identity::ModuleKey& module,
+    ast::NodeId moduleNode, ast::NodeId definitionNode, const identity::DefinitionKey& definition,
+    zc::ArrayPtr<const ModuleBodyDefinitionBoundaryInput> definitions,
+    zc::ArrayPtr<const ModuleBodyImplementationBoundaryInput> implementations) {
+  if (!parsedModule.source().belongsTo(module.crate())) {
+    return failure(ModuleBodySyntaxFailureKind::InvalidSource);
+  }
+  if (!parsedModule.tree().contains(definitionNode)) {
+    return failure(ModuleBodySyntaxFailureKind::InvalidDetachedSyntax, definitionNode);
+  }
+  if (!validateBoundaryInventory(parsedModule, module, moduleNode, definitions, implementations)) {
+    return failure(ModuleBodySyntaxFailureKind::InvalidBoundaryInventory);
+  }
+  size_t rootOccurrences = 0;
+  for (const auto& candidate : definitions) {
+    if (candidate.node != definitionNode) { continue; }
+    ++rootOccurrences;
+    if (candidate.key != definition) {
+      return failure(ModuleBodySyntaxFailureKind::InvalidBoundaryInventory, definitionNode);
+    }
+  }
+  if (rootOccurrences > 1) {
+    return failure(ModuleBodySyntaxFailureKind::InvalidBoundaryInventory, definitionNode);
+  }
+
+  ProjectionBuilder builder(parsedModule, definitions, implementations, definitionNode);
+  zc::Vector<uint32_t> path;
+  path.add(0);
+  if (!builder.visit(definitionNode, path)) {
+    return failure(ModuleBodySyntaxFailureKind::InvalidDetachedSyntax, definitionNode);
+  }
+  auto syntax = ModuleBodySyntax::from(1, zc::mv(builder.nodes));
+  auto provenance =
+      ModuleBodyProvenance::from(parsedModule.source().clone(), zc::mv(builder.provenance));
+  if (syntax == zc::none) {
+    return failure(ModuleBodySyntaxFailureKind::InvalidDetachedSyntax, definitionNode);
+  }
+  if (provenance == zc::none) {
+    return failure(ModuleBodySyntaxFailureKind::InvalidProvenance, definitionNode);
+  }
+  return ModuleBodySyntaxProjection{zc::mv(ZC_ASSERT_NONNULL(syntax)),
+                                    zc::mv(ZC_ASSERT_NONNULL(provenance))};
 }
 
 }  // namespace zomlang::compiler::binder

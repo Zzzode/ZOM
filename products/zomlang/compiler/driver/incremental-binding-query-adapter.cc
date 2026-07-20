@@ -5,9 +5,12 @@
 
 #include "zomlang/compiler/driver/incremental-binding-query-adapter.h"
 
+#include "zomlang/compiler/driver/active-definition-authority-query.h"
 #include "zomlang/compiler/driver/incremental-module-resolution-query.h"
 #include "zomlang/compiler/driver/incremental-package-graph-query-input.h"
 #include "zomlang/compiler/driver/named-identity-inventory-query.h"
+#include "zomlang/compiler/driver/named-item-query.h"
+#include "zomlang/compiler/driver/owner-body-query.h"
 #include "zomlang/compiler/identity/canonical-decoder.h"
 #include "zomlang/compiler/identity/canonical-encoder.h"
 #include "zomlang/compiler/parser/parse-source-query.h"
@@ -576,7 +579,8 @@ CanonicalSourceSet CanonicalSourceSet::clone() const {
   return CanonicalSourceSet(zc::mv(sources));
 }
 
-zc::ArrayPtr<const identity::source_query::StableSourceQueryKey> CanonicalSourceSet::sources() const {
+zc::ArrayPtr<const identity::source_query::StableSourceQueryKey> CanonicalSourceSet::sources()
+    const {
   return sourceFields.asPtr();
 }
 
@@ -1078,9 +1082,9 @@ zc::Maybe<SelectedModuleSourceInput::Value> SelectedModuleSourceInput::decodeVal
   return SelectedModuleSource::decodeBounded(bytes);
 }
 
-bool verifySelectedSourceSnapshotClosure(zc::ArrayPtr<const SelectedModuleSource> selectedSources,
-                                         zc::ArrayPtr<const identity::source_query::StableSourceQueryKey>
-                                             snapshotSources) {
+bool verifySelectedSourceSnapshotClosure(
+    zc::ArrayPtr<const SelectedModuleSource> selectedSources,
+    zc::ArrayPtr<const identity::source_query::StableSourceQueryKey> snapshotSources) {
   for (const auto& selected : selectedSources) {
     size_t occurrences = 0;
     for (const auto& snapshot : snapshotSources) {
@@ -1251,6 +1255,7 @@ bool registerIncrementalBindingQueryAdapter(query::QueryDatabase& database) {
   if (database.registerInputKind<ActiveCratesInput>() == zc::none) { return false; }
   if (database.registerInputKind<ModuleDependenciesInput>() == zc::none) { return false; }
   if (database.registerInputKind<SelectedModuleSourceInput>() == zc::none) { return false; }
+  if (!registerActiveDefinitionAuthorityInputs(database)) { return false; }
   if (database.registerDerivedKind<NamedDefinitionInventoryQuery>() == zc::none) { return false; }
   if (database.registerDerivedKind<NamedImplementationInventoryQuery>() == zc::none) {
     return false;
@@ -1261,8 +1266,13 @@ bool registerIncrementalBindingQueryAdapter(query::QueryDatabase& database) {
   if (database.registerDerivedKind<RevisionLocalImplementationSitesQuery>() == zc::none) {
     return false;
   }
+  if (database.registerDerivedKind<NamedItemSyntaxQuery>() == zc::none) { return false; }
+  if (database.registerDerivedKind<NamedItemProvenanceQuery>() == zc::none) { return false; }
   if (database.registerDerivedKind<ModuleBodySyntaxQuery>() == zc::none) { return false; }
   if (database.registerDerivedKind<ModuleBodyProvenanceQuery>() == zc::none) { return false; }
+  if (database.registerDerivedKind<ModuleBodyOwnersQuery>() == zc::none) { return false; }
+  if (database.registerDerivedKind<OwnerBodySyntaxQuery>() == zc::none) { return false; }
+  if (database.registerDerivedKind<OwnerBodyProvenanceQuery>() == zc::none) { return false; }
   return database.registerDerivedKind<ModuleBindingOrderQuery>() != zc::none;
 }
 

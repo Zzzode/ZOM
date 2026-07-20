@@ -39,6 +39,8 @@ namespace {
 
 constexpr zc::StringPtr kModuleBodySyntaxDomain = "zom.module-body-syntax.v1"_zc;
 constexpr zc::StringPtr kModuleBodyProvenanceDomain = "zom.module-body-provenance.v1"_zc;
+constexpr zc::StringPtr kNamedItemSyntaxDomain = "zom.named-item-syntax.v1"_zc;
+constexpr zc::StringPtr kNamedItemProvenanceDomain = "zom.named-item-provenance.v1"_zc;
 constexpr uint64_t kMaximumDetachedNodes = 1024 * 1024;
 constexpr uint64_t kMaximumDetachedPayloadBytes = 64 * 1024 * 1024;
 constexpr uint64_t kMaximumTextBytes = 64 * 1024 * 1024;
@@ -46,9 +48,14 @@ constexpr uint64_t kMaximumIdentifierBytes = 4096;
 constexpr uint64_t kMaximumIdentifierList = 65536;
 constexpr uint64_t kMaximumSourceKeyBytes = 64 * 1024;
 constexpr uint64_t kMaximumPathBytes = 16 * 1024;
+constexpr uint64_t kMaximumNamedItemValueBytes = 128 * 1024 * 1024;
 
 bool sameDomain(zc::ArrayPtr<const uint8_t> actual, zc::StringPtr expected) {
   return actual == expected.asBytes();
+}
+
+bool sameModule(const identity::ModuleKey& left, const identity::ModuleKey& right) {
+  return left.encode().asPtr() == right.encode().asPtr();
 }
 
 int comparePaths(const LocalSyntaxPath& left, const LocalSyntaxPath& right) noexcept {
@@ -491,6 +498,99 @@ bool ModuleBodyProvenance::operator==(const ModuleBodyProvenance& other) const {
     }
   }
   return true;
+}
+
+NamedItemSyntax::NamedItemSyntax(identity::ModuleKey&& owningModule,
+                                 ModuleBodySyntax&& syntax) noexcept
+    : owningModuleField(zc::mv(owningModule)), syntaxField(zc::mv(syntax)) {}
+
+zc::Maybe<NamedItemSyntax> NamedItemSyntax::from(identity::ModuleKey&& owningModule,
+                                                 ModuleBodySyntax&& syntax) {
+  if (syntax.rootCount() != 1 || syntax.nodes().size() == 0) { return zc::none; }
+  return NamedItemSyntax(zc::mv(owningModule), zc::mv(syntax));
+}
+
+zc::Maybe<NamedItemSyntax> NamedItemSyntax::decodeCanonical(zc::ArrayPtr<const uint8_t> encoded) {
+  if (encoded.size() == 0 || encoded.size() > kMaximumNamedItemValueBytes) { return zc::none; }
+  identity::CanonicalDecoder decoder(encoded);
+  auto domain = decoder.decodeByteString(kNamedItemSyntaxDomain.size());
+  auto owningModule = identity::ModuleKey::decodeCanonical(decoder);
+  auto syntaxBytes = decoder.decodeByteString(kMaximumNamedItemValueBytes);
+  if (domain == zc::none || owningModule == zc::none || syntaxBytes == zc::none ||
+      !decoder.finished() ||
+      ZC_ASSERT_NONNULL(domain).asPtr() != kNamedItemSyntaxDomain.asBytes()) {
+    return zc::none;
+  }
+  auto syntax = ModuleBodySyntax::decodeCanonical(ZC_ASSERT_NONNULL(syntaxBytes).asPtr());
+  if (syntax == zc::none) { return zc::none; }
+  return from(zc::mv(ZC_ASSERT_NONNULL(owningModule)), zc::mv(ZC_ASSERT_NONNULL(syntax)));
+}
+
+NamedItemSyntax NamedItemSyntax::clone() const {
+  return NamedItemSyntax(owningModuleField.clone(), syntaxField.clone());
+}
+
+const identity::ModuleKey& NamedItemSyntax::owningModule() const noexcept {
+  return owningModuleField;
+}
+
+const ModuleBodySyntax& NamedItemSyntax::detachedSyntax() const noexcept { return syntaxField; }
+
+zc::Array<uint8_t> NamedItemSyntax::encodeCanonical() const {
+  identity::CanonicalEncoder encoder;
+  encoder.encodeByteString(kNamedItemSyntaxDomain.asBytes());
+  owningModuleField.encode(encoder);
+  auto syntax = syntaxField.encodeCanonical();
+  encoder.encodeByteString(syntax.asPtr());
+  return encoder.finish();
+}
+
+bool NamedItemSyntax::operator==(const NamedItemSyntax& other) const noexcept {
+  return sameModule(owningModuleField, other.owningModuleField) && syntaxField == other.syntaxField;
+}
+
+NamedItemProvenance::NamedItemProvenance(ModuleBodyProvenance&& provenance) noexcept
+    : provenanceField(zc::mv(provenance)) {}
+
+zc::Maybe<NamedItemProvenance> NamedItemProvenance::from(ModuleBodyProvenance&& provenance) {
+  if (provenance.entries().size() == 0) { return zc::none; }
+  return NamedItemProvenance(zc::mv(provenance));
+}
+
+zc::Maybe<NamedItemProvenance> NamedItemProvenance::decodeCanonical(
+    zc::ArrayPtr<const uint8_t> encoded) {
+  if (encoded.size() == 0 || encoded.size() > kMaximumNamedItemValueBytes) { return zc::none; }
+  identity::CanonicalDecoder decoder(encoded);
+  auto domain = decoder.decodeByteString(kNamedItemProvenanceDomain.size());
+  auto provenanceBytes = decoder.decodeByteString(kMaximumNamedItemValueBytes);
+  if (domain == zc::none || provenanceBytes == zc::none || !decoder.finished() ||
+      ZC_ASSERT_NONNULL(domain).asPtr() != kNamedItemProvenanceDomain.asBytes()) {
+    return zc::none;
+  }
+  auto provenance =
+      ModuleBodyProvenance::decodeCanonical(ZC_ASSERT_NONNULL(provenanceBytes).asPtr());
+  if (provenance == zc::none) { return zc::none; }
+  return from(zc::mv(ZC_ASSERT_NONNULL(provenance)));
+}
+
+NamedItemProvenance NamedItemProvenance::clone() const {
+  return NamedItemProvenance(provenanceField.clone());
+}
+
+const ModuleBodyProvenance& NamedItemProvenance::detachedProvenance() const noexcept {
+  return provenanceField;
+}
+
+zc::Array<uint8_t> NamedItemProvenance::encodeCanonical() const {
+  identity::CanonicalEncoder encoder;
+  encoder.encodeByteString(kNamedItemProvenanceDomain.asBytes());
+  auto provenance = provenanceField.encodeCanonical();
+  encoder.encodeByteString(provenance.asPtr());
+  return encoder.finish();
+}
+
+bool NamedItemProvenance::operator==(const NamedItemProvenance& other) const {
+  return provenanceField == other.provenanceField;
 }
 
 }  // namespace zomlang::compiler::binder
