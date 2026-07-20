@@ -175,6 +175,10 @@ public:
   template <typename Spec>
   ZC_NODISCARD TypedQueryResult<typename Spec::Value> get(const typename Spec::Key& key);
 
+  /// \brief Reads one registered input and tracks its present or absent state.
+  template <typename Spec>
+  ZC_NODISCARD TypedQueryResult<typename Spec::Value> probeInput(const typename Spec::Key& key);
+
   /// \brief Demands one canonical dependency group concurrently.
   ///
   /// Providers reached from this group may issue sequential reads but cannot
@@ -189,6 +193,8 @@ private:
   struct Impl;
   explicit QueryContext(zc::Own<Impl>&& impl) noexcept;
   ZC_NODISCARD QueryRequestResult getEncoded(zc::StringPtr domain, zc::Array<uint8_t>&& keyBytes);
+  ZC_NODISCARD QueryRequestResult probeInputEncoded(zc::StringPtr domain,
+                                                    zc::Array<uint8_t>&& keyBytes);
   ZC_NODISCARD zc::Vector<QueryRequestResult> getParallelEncoded(
       zc::StringPtr domain, zc::Vector<zc::Array<uint8_t>>&& keyBytes);
 
@@ -214,6 +220,15 @@ public:
   template <typename Spec>
   ZC_NODISCARD TypedQueryResult<typename Spec::Value> get(const typename Spec::Key& key) const;
 
+  /// \brief Inspects one registered input without creating a caller dependency.
+  template <typename Spec>
+  ZC_NODISCARD TypedQueryResult<typename Spec::Value> probeInput(
+      const typename Spec::Key& key, const CancellationSource::Token& cancellation) const;
+
+  template <typename Spec>
+  ZC_NODISCARD TypedQueryResult<typename Spec::Value> probeInput(
+      const typename Spec::Key& key) const;
+
   template <typename Spec>
   ZC_NODISCARD zc::Maybe<MemoMetadata> metadata(const typename Spec::Key& key) const;
 
@@ -238,6 +253,9 @@ private:
   explicit QuerySnapshot(zc::Own<Impl>&& impl) noexcept;
   ZC_NODISCARD QueryRequestResult getEncoded(zc::StringPtr domain, zc::Array<uint8_t>&& keyBytes,
                                              const CancellationSource::Token& cancellation) const;
+  ZC_NODISCARD QueryRequestResult
+  probeInputEncoded(zc::StringPtr domain, zc::Array<uint8_t>&& keyBytes,
+                    const CancellationSource::Token& cancellation) const;
   ZC_NODISCARD zc::Maybe<MemoMetadata> metadataEncoded(zc::StringPtr domain,
                                                        zc::Array<uint8_t>&& keyBytes) const;
   ZC_NODISCARD zc::Vector<DependencyGroup> dependenciesEncoded(zc::StringPtr domain,
@@ -285,6 +303,7 @@ private:
 /// \brief Session-owned typed query registry, input root, memo graph, and flight authority.
 class QueryDatabase final {
 public:
+  using ErasedKeyValidator = bool (*)(zc::ArrayPtr<const uint8_t>);
   using ErasedProvider =
       zc::Function<QueryRequestResult(QueryContext&, zc::ArrayPtr<const uint8_t>)>;
   using ErasedVerifier =
@@ -311,8 +330,10 @@ public:
 
 private:
   struct Impl;
-  ZC_NODISCARD zc::Maybe<QueryKindId> installInput(QueryKindContract&& contract);
+  ZC_NODISCARD zc::Maybe<QueryKindId> installInput(QueryKindContract&& contract,
+                                                   ErasedKeyValidator&& keyValidator);
   ZC_NODISCARD zc::Maybe<QueryKindId> installDerived(QueryKindContract&& contract,
+                                                     ErasedKeyValidator&& keyValidator,
                                                      ErasedProvider&& provider,
                                                      ErasedVerifier&& verifier);
 
@@ -388,6 +409,11 @@ TypedQueryResult<typename Spec::Value> QueryContext::get(const typename Spec::Ke
 }
 
 template <typename Spec>
+TypedQueryResult<typename Spec::Value> QueryContext::probeInput(const typename Spec::Key& key) {
+  return _query_detail::decodeResult<Spec>(probeInputEncoded(Spec::domain(), Spec::encodeKey(key)));
+}
+
+template <typename Spec>
 zc::Vector<TypedQueryResult<typename Spec::Value>> QueryContext::getParallel(
     zc::ArrayPtr<const typename Spec::Key> keys) {
   zc::Vector<zc::Array<uint8_t>> encoded;
@@ -409,6 +435,20 @@ template <typename Spec>
 TypedQueryResult<typename Spec::Value> QuerySnapshot::get(const typename Spec::Key& key) const {
   CancellationSource cancellation;
   return get<Spec>(key, cancellation.token());
+}
+
+template <typename Spec>
+TypedQueryResult<typename Spec::Value> QuerySnapshot::probeInput(
+    const typename Spec::Key& key, const CancellationSource::Token& cancellation) const {
+  return _query_detail::decodeResult<Spec>(
+      probeInputEncoded(Spec::domain(), Spec::encodeKey(key), cancellation));
+}
+
+template <typename Spec>
+TypedQueryResult<typename Spec::Value> QuerySnapshot::probeInput(
+    const typename Spec::Key& key) const {
+  CancellationSource cancellation;
+  return probeInput<Spec>(key, cancellation.token());
 }
 
 template <typename Spec>
@@ -449,11 +489,17 @@ bool InputTransaction::erase(const typename Spec::Key& key) {
 
 template <typename Spec>
 zc::Maybe<QueryKindId> QueryDatabase::registerInputKind() {
-  return installInput(Spec::contract());
+  ErasedKeyValidator keyValidator = [](zc::ArrayPtr<const uint8_t> keyBytes) {
+    return Spec::decodeKey(keyBytes) != zc::none;
+  };
+  return installInput(Spec::contract(), zc::mv(keyValidator));
 }
 
 template <typename Spec>
 zc::Maybe<QueryKindId> QueryDatabase::registerDerivedKind() {
+  ErasedKeyValidator keyValidator = [](zc::ArrayPtr<const uint8_t> keyBytes) {
+    return Spec::decodeKey(keyBytes) != zc::none;
+  };
   ErasedProvider provider = [](QueryContext& context, zc::ArrayPtr<const uint8_t> keyBytes) {
     auto key = Spec::decodeKey(keyBytes);
     if (key == zc::none) {
@@ -469,7 +515,7 @@ zc::Maybe<QueryKindId> QueryDatabase::registerDerivedKind() {
     if (decoded.isRuntimeFailure()) { return false; }
     return Spec::verify(context, ZC_REQUIRE_NONNULL(key), decoded);
   };
-  return installDerived(Spec::contract(), zc::mv(provider), zc::mv(verifier));
+  return installDerived(Spec::contract(), zc::mv(keyValidator), zc::mv(provider), zc::mv(verifier));
 }
 
 }  // namespace zomlang::compiler::query

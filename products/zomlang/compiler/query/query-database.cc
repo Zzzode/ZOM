@@ -283,10 +283,12 @@ public:
 
 struct RegisteredKind final {
   RegisteredKind(QueryKindId id, QueryKindContract&& contract,
+                 QueryDatabase::ErasedKeyValidator&& keyValidator,
                  zc::Maybe<QueryDatabase::ErasedProvider>&& provider,
                  zc::Maybe<QueryDatabase::ErasedVerifier>&& verifier) noexcept
       : id(id),
         contract(zc::mv(contract)),
+        keyValidator(zc::mv(keyValidator)),
         provider(zc::mv(provider)),
         verifier(zc::mv(verifier)) {}
   RegisteredKind(RegisteredKind&&) noexcept = default;
@@ -295,6 +297,7 @@ struct RegisteredKind final {
 
   QueryKindId id;
   QueryKindContract contract;
+  QueryDatabase::ErasedKeyValidator keyValidator;
   zc::Maybe<QueryDatabase::ErasedProvider> provider;
   zc::Maybe<QueryDatabase::ErasedVerifier> verifier;
 };
@@ -538,11 +541,21 @@ bool CancellationSource::Token::isCancelled() const { return *impl->state->cance
 struct QueryDatabase::Impl final {
   explicit Impl(basic::ThreadPool& scheduler) noexcept : scheduler(scheduler) {}
 
+  enum class KeyAdmission : uint8_t { Trusted, Validate };
+
   zc::MutexGuarded<DatabaseData> data;
   basic::ThreadPool& scheduler;
 
-  zc::Maybe<CanonicalQueryKey> makeKey(zc::StringPtr domain, zc::Array<uint8_t>&& keyBytes) const {
-    if (keyBytes.size() > UINT32_MAX) { return zc::none; }
+  zc::Maybe<CanonicalQueryKey> makeKeyInternal(zc::StringPtr domain, zc::Array<uint8_t>&& keyBytes,
+                                               QueryRuntimeFailure& failure,
+                                               KeyAdmission admission) const {
+    failure = QueryRuntimeFailure::UnregisteredKind;
+    if (keyBytes.size() > UINT32_MAX) {
+      if (admission == KeyAdmission::Validate) {
+        failure = QueryRuntimeFailure::InvalidKeyEncoding;
+      }
+      return zc::none;
+    }
     auto locked = data.lockShared();
     const RegisteredKind* kind = nullptr;
     for (const auto& candidate : locked->kinds) {
@@ -552,6 +565,10 @@ struct QueryDatabase::Impl final {
       }
     }
     if (kind == nullptr) { return zc::none; }
+    if (admission == KeyAdmission::Validate && !kind->keyValidator(keyBytes.asPtr())) {
+      failure = QueryRuntimeFailure::InvalidKeyEncoding;
+      return zc::none;
+    }
 
     static constexpr zc::StringPtr fingerprintDomain = "zom.query-key.v0"_zc;
     zc::Vector<uint8_t> preimage;
@@ -564,6 +581,16 @@ struct QueryDatabase::Impl final {
     for (uint8_t value : keyBytes) { preimage.add(value); }
     auto fingerprintBytes = vectorToArray(zc::mv(preimage));
     return CanonicalQueryKey(kind->id, sha256(fingerprintBytes.asPtr()), zc::mv(keyBytes));
+  }
+
+  zc::Maybe<CanonicalQueryKey> makeKey(zc::StringPtr domain, zc::Array<uint8_t>&& keyBytes,
+                                       QueryRuntimeFailure& failure) const {
+    return makeKeyInternal(domain, zc::mv(keyBytes), failure, KeyAdmission::Trusted);
+  }
+
+  zc::Maybe<CanonicalQueryKey> makeValidatedKey(zc::StringPtr domain, zc::Array<uint8_t>&& keyBytes,
+                                                QueryRuntimeFailure& failure) const {
+    return makeKeyInternal(domain, zc::mv(keyBytes), failure, KeyAdmission::Validate);
   }
 
   RegisteredKind& kind(QueryKindId id) {
@@ -581,6 +608,9 @@ struct QueryDatabase::Impl final {
   DetailedDemand demand(zc::Arc<SnapshotState> snapshot, CanonicalQueryKey&& key,
                         zc::Vector<CanonicalQueryKey>&& activeChain,
                         const CancellationSource::Token& cancellation, bool allowParallelGroups);
+
+  DetailedDemand probeInput(zc::Arc<SnapshotState> snapshot, CanonicalQueryKey&& key,
+                            const CancellationSource::Token& cancellation);
 
   zc::Vector<DetailedDemand> demandParallel(zc::Arc<SnapshotState> snapshot,
                                             zc::ArrayPtr<const CanonicalQueryKey> keys,
@@ -679,10 +709,11 @@ zc::Vector<DetailedDemand> QueryDatabase::Impl::demandParallel(
 }
 
 QueryRequestResult QueryContext::getEncoded(zc::StringPtr domain, zc::Array<uint8_t>&& keyBytes) {
-  auto key = impl->database.makeKey(domain, zc::mv(keyBytes));
+  QueryRuntimeFailure keyFailure;
+  auto key = impl->database.makeKey(domain, zc::mv(keyBytes), keyFailure);
   if (key == zc::none) {
-    impl->failure = QueryRuntimeFailure::UnregisteredKind;
-    return QueryRequestResult::failed(QueryRuntimeFailure::UnregisteredKind);
+    impl->failure = keyFailure;
+    return QueryRequestResult::failed(keyFailure);
   }
   auto demandedKey = ZC_REQUIRE_NONNULL(key).clone();
   zc::Vector<CanonicalQueryKey> chain;
@@ -699,6 +730,31 @@ QueryRequestResult QueryContext::getEncoded(zc::StringPtr domain, zc::Array<uint
   return zc::mv(demand.result);
 }
 
+QueryRequestResult QueryContext::probeInputEncoded(zc::StringPtr domain,
+                                                   zc::Array<uint8_t>&& keyBytes) {
+  QueryRuntimeFailure keyFailure;
+  auto key = impl->database.makeValidatedKey(domain, zc::mv(keyBytes), keyFailure);
+  if (key == zc::none) {
+    impl->failure = keyFailure;
+    return QueryRequestResult::failed(keyFailure);
+  }
+  auto demandedKey = ZC_REQUIRE_NONNULL(key).clone();
+  auto cancellation = impl->flight->cancellationToken();
+  auto demand = impl->database.probeInput(impl->snapshot.addRef(), zc::mv(ZC_REQUIRE_NONNULL(key)),
+                                          cancellation);
+  if (!demand.result.isCompleted()) {
+    impl->failure = demand.result.failure();
+    return zc::mv(demand.result);
+  }
+  const auto observation = demand.result.value().kind() == QueryValueKind::Absence
+                               ? InputProbeObservation::Absent
+                               : InputProbeObservation::Present;
+  impl->dependencies.add(DependencyGroup::sequential(
+      DependencyRecord(zc::mv(demandedKey), demand.metadata.changedAt(),
+                       demand.metadata.minimumDurability(), observation)));
+  return zc::mv(demand.result);
+}
+
 zc::Vector<QueryRequestResult> QueryContext::getParallelEncoded(
     zc::StringPtr domain, zc::Vector<zc::Array<uint8_t>>&& keyBytes) {
   if (!impl->allowParallelGroups) {
@@ -711,11 +767,12 @@ zc::Vector<QueryRequestResult> QueryContext::getParallelEncoded(
   zc::Vector<CanonicalQueryKey> keys;
   zc::Vector<size_t> resultPositions;
   for (auto& bytes : keyBytes) {
-    auto key = impl->database.makeKey(domain, zc::mv(bytes));
+    QueryRuntimeFailure keyFailure;
+    auto key = impl->database.makeKey(domain, zc::mv(bytes), keyFailure);
     if (key == zc::none) {
-      impl->failure = QueryRuntimeFailure::UnregisteredKind;
+      impl->failure = keyFailure;
       zc::Vector<QueryRequestResult> failed;
-      failed.add(QueryRequestResult::failed(QueryRuntimeFailure::UnregisteredKind));
+      failed.add(QueryRequestResult::failed(keyFailure));
       return failed;
     }
     resultPositions.add(resultPositions.size());
@@ -773,17 +830,30 @@ DatabaseRevision QuerySnapshot::revision() const noexcept { return impl->snapsho
 
 QueryRequestResult QuerySnapshot::getEncoded(zc::StringPtr domain, zc::Array<uint8_t>&& keyBytes,
                                              const CancellationSource::Token& cancellation) const {
-  auto key = impl->database.makeKey(domain, zc::mv(keyBytes));
-  if (key == zc::none) { return QueryRequestResult::failed(QueryRuntimeFailure::UnregisteredKind); }
+  QueryRuntimeFailure keyFailure;
+  auto key = impl->database.makeKey(domain, zc::mv(keyBytes), keyFailure);
+  if (key == zc::none) { return QueryRequestResult::failed(keyFailure); }
   zc::Vector<CanonicalQueryKey> chain;
   auto demand = impl->database.demand(impl->snapshot.addRef(), zc::mv(ZC_REQUIRE_NONNULL(key)),
                                       zc::mv(chain), cancellation, true);
   return zc::mv(demand.result);
 }
 
+QueryRequestResult QuerySnapshot::probeInputEncoded(
+    zc::StringPtr domain, zc::Array<uint8_t>&& keyBytes,
+    const CancellationSource::Token& cancellation) const {
+  QueryRuntimeFailure keyFailure;
+  auto key = impl->database.makeValidatedKey(domain, zc::mv(keyBytes), keyFailure);
+  if (key == zc::none) { return QueryRequestResult::failed(keyFailure); }
+  auto demand = impl->database.probeInput(impl->snapshot.addRef(), zc::mv(ZC_REQUIRE_NONNULL(key)),
+                                          cancellation);
+  return zc::mv(demand.result);
+}
+
 zc::Maybe<MemoMetadata> QuerySnapshot::metadataEncoded(zc::StringPtr domain,
                                                        zc::Array<uint8_t>&& keyBytes) const {
-  auto key = impl->database.makeKey(domain, zc::mv(keyBytes));
+  QueryRuntimeFailure keyFailure;
+  auto key = impl->database.makeKey(domain, zc::mv(keyBytes), keyFailure);
   if (key == zc::none) { return zc::none; }
   auto locked = impl->snapshot->runtime.lockShared();
   bool collision = false;
@@ -800,7 +870,8 @@ zc::Maybe<MemoMetadata> QuerySnapshot::metadataEncoded(zc::StringPtr domain,
 zc::Vector<DependencyGroup> QuerySnapshot::dependenciesEncoded(
     zc::StringPtr domain, zc::Array<uint8_t>&& keyBytes) const {
   zc::Vector<DependencyGroup> result;
-  auto key = impl->database.makeKey(domain, zc::mv(keyBytes));
+  QueryRuntimeFailure keyFailure;
+  auto key = impl->database.makeKey(domain, zc::mv(keyBytes), keyFailure);
   if (key == zc::none) { return result; }
   auto locked = impl->snapshot->runtime.lockShared();
   bool collision = false;
@@ -811,7 +882,8 @@ zc::Vector<DependencyGroup> QuerySnapshot::dependenciesEncoded(
 }
 
 bool QuerySnapshot::evictValueEncoded(zc::StringPtr domain, zc::Array<uint8_t>&& keyBytes) const {
-  auto key = impl->database.makeKey(domain, zc::mv(keyBytes));
+  QueryRuntimeFailure keyFailure;
+  auto key = impl->database.makeKey(domain, zc::mv(keyBytes), keyFailure);
   if (key == zc::none) { return false; }
   const auto& canonicalKey = ZC_REQUIRE_NONNULL(key);
   const auto& descriptor = impl->database.kind(canonicalKey.kind());
@@ -835,7 +907,8 @@ bool QuerySnapshot::evictValueEncoded(zc::StringPtr domain, zc::Array<uint8_t>&&
 
 bool QuerySnapshot::hasRetainedValueEncoded(zc::StringPtr domain,
                                             zc::Array<uint8_t>&& keyBytes) const {
-  auto key = impl->database.makeKey(domain, zc::mv(keyBytes));
+  QueryRuntimeFailure keyFailure;
+  auto key = impl->database.makeKey(domain, zc::mv(keyBytes), keyFailure);
   if (key == zc::none) { return false; }
   const auto& canonicalKey = ZC_REQUIRE_NONNULL(key);
   auto locked = impl->snapshot->runtime.lockShared();
@@ -853,7 +926,8 @@ bool QuerySnapshot::hasRetainedValueEncoded(zc::StringPtr domain,
 
 zc::Maybe<QueryKeyFingerprint> QuerySnapshot::keyFingerprintEncoded(
     zc::StringPtr domain, zc::Array<uint8_t>&& keyBytes) const {
-  auto key = impl->database.makeKey(domain, zc::mv(keyBytes));
+  QueryRuntimeFailure keyFailure;
+  auto key = impl->database.makeKey(domain, zc::mv(keyBytes), keyFailure);
   if (key == zc::none) { return zc::none; }
   return ZC_REQUIRE_NONNULL(key).fingerprint();
 }
@@ -887,7 +961,8 @@ InputTransaction::~InputTransaction() noexcept(false) {
 bool InputTransaction::stageEncoded(zc::StringPtr domain, zc::Array<uint8_t>&& keyBytes,
                                     QueryValue&& value) {
   if (impl->closed) { return false; }
-  auto key = impl->database.makeKey(domain, zc::mv(keyBytes));
+  QueryRuntimeFailure keyFailure;
+  auto key = impl->database.makeValidatedKey(domain, zc::mv(keyBytes), keyFailure);
   if (key == zc::none) { return false; }
   RegisteredKind& kind = impl->database.kind(ZC_REQUIRE_NONNULL(key).kind());
   if (!kind.contract.isInput()) { return false; }
@@ -914,7 +989,8 @@ bool InputTransaction::stageEncoded(zc::StringPtr domain, zc::Array<uint8_t>&& k
 
 bool InputTransaction::eraseEncoded(zc::StringPtr domain, zc::Array<uint8_t>&& keyBytes) {
   if (impl->closed) { return false; }
-  auto key = impl->database.makeKey(domain, zc::mv(keyBytes));
+  QueryRuntimeFailure keyFailure;
+  auto key = impl->database.makeValidatedKey(domain, zc::mv(keyBytes), keyFailure);
   if (key == zc::none) { return false; }
   RegisteredKind& kind = impl->database.kind(ZC_REQUIRE_NONNULL(key).kind());
   if (!kind.contract.isInput() || kind.contract.inputDurability() == Durability::Frozen) {
@@ -986,7 +1062,8 @@ QueryDatabase::~QueryDatabase() noexcept(false) = default;
 QueryDatabase::QueryDatabase(QueryDatabase&&) noexcept = default;
 QueryDatabase& QueryDatabase::operator=(QueryDatabase&&) noexcept = default;
 
-zc::Maybe<QueryKindId> QueryDatabase::installInput(QueryKindContract&& contract) {
+zc::Maybe<QueryKindId> QueryDatabase::installInput(QueryKindContract&& contract,
+                                                   ErasedKeyValidator&& keyValidator) {
   if (!contract.isInput()) { return zc::none; }
   auto locked = impl->data.lockExclusive();
   if (locked->registrySealed || locked->kinds.size() >= UINT32_MAX) { return zc::none; }
@@ -996,11 +1073,13 @@ zc::Maybe<QueryKindId> QueryDatabase::installInput(QueryKindContract&& contract)
   const QueryKindId id(static_cast<uint32_t>(locked->kinds.size()));
   zc::Maybe<ErasedProvider> noProvider;
   zc::Maybe<ErasedVerifier> noVerifier;
-  locked->kinds.add(RegisteredKind(id, zc::mv(contract), zc::mv(noProvider), zc::mv(noVerifier)));
+  locked->kinds.add(RegisteredKind(id, zc::mv(contract), zc::mv(keyValidator), zc::mv(noProvider),
+                                   zc::mv(noVerifier)));
   return id;
 }
 
 zc::Maybe<QueryKindId> QueryDatabase::installDerived(QueryKindContract&& contract,
+                                                     ErasedKeyValidator&& keyValidator,
                                                      ErasedProvider&& provider,
                                                      ErasedVerifier&& verifier) {
   if (contract.isInput()) { return zc::none; }
@@ -1012,8 +1091,8 @@ zc::Maybe<QueryKindId> QueryDatabase::installDerived(QueryKindContract&& contrac
   const QueryKindId id(static_cast<uint32_t>(locked->kinds.size()));
   zc::Maybe<ErasedProvider> retainedProvider(zc::mv(provider));
   zc::Maybe<ErasedVerifier> retainedVerifier(zc::mv(verifier));
-  locked->kinds.add(
-      RegisteredKind(id, zc::mv(contract), zc::mv(retainedProvider), zc::mv(retainedVerifier)));
+  locked->kinds.add(RegisteredKind(id, zc::mv(contract), zc::mv(keyValidator),
+                                   zc::mv(retainedProvider), zc::mv(retainedVerifier)));
   return id;
 }
 
@@ -1170,6 +1249,39 @@ DetailedDemand QueryDatabase::Impl::demand(zc::Arc<SnapshotState> snapshot, Cano
   return outcome;
 }
 
+DetailedDemand QueryDatabase::Impl::probeInput(zc::Arc<SnapshotState> snapshot,
+                                               CanonicalQueryKey&& key,
+                                               const CancellationSource::Token& cancellation) {
+  if (cancellation.isCancelled()) {
+    appendEvent(*snapshot.get(), key, QueryEventKind::Cancelled);
+    return DetailedDemand(QueryRequestResult::failed(QueryRuntimeFailure::Cancelled),
+                          MemoMetadata());
+  }
+  RegisteredKind& descriptor = kind(key.kind());
+  if (!descriptor.contract.isInput()) {
+    return DetailedDemand(QueryRequestResult::failed(QueryRuntimeFailure::InvariantViolation),
+                          MemoMetadata());
+  }
+  auto locked = snapshot->runtime.lockShared();
+  bool collision = false;
+  ZC_IF_SOME(index, exactInputIndex(*locked, key, collision)) {
+    const auto& input = locked->inputs[index];
+    if (input.value.kind() != QueryValueKind::Value) {
+      return DetailedDemand(QueryRequestResult::failed(QueryRuntimeFailure::InvariantViolation),
+                            MemoMetadata());
+    }
+    return DetailedDemand(QueryRequestResult::completed(input.value.clone()),
+                          MemoMetadata(snapshot->revision, input.changedAt, input.durability));
+  }
+  if (collision) {
+    return DetailedDemand(QueryRequestResult::failed(QueryRuntimeFailure::FingerprintCollision),
+                          MemoMetadata());
+  }
+  return DetailedDemand(
+      QueryRequestResult::completed(QueryValue::absence()),
+      MemoMetadata(snapshot->revision, DatabaseRevision(), descriptor.contract.inputDurability()));
+}
+
 DetailedDemand QueryDatabase::Impl::execute(zc::Arc<SnapshotState> snapshot,
                                             RegisteredKind& descriptor, CanonicalQueryKey&& key,
                                             zc::Maybe<Memo>&& prior,
@@ -1183,6 +1295,16 @@ DetailedDemand QueryDatabase::Impl::execute(zc::Arc<SnapshotState> snapshot,
       if (!green) {
         green = true;
         for (const auto& group : oldMemo.dependencies) {
+          if (group.kind() == DependencyGroup::Kind::Parallel) {
+            for (const auto& dependency : group.dependencies()) {
+              if (dependency.inputProbeObservation() != zc::none) {
+                appendEvent(*snapshot.get(), key, QueryEventKind::RuntimeFailed);
+                return DetailedDemand(
+                    QueryRequestResult::failed(QueryRuntimeFailure::InvariantViolation),
+                    MemoMetadata());
+              }
+            }
+          }
           if (group.kind() == DependencyGroup::Kind::Parallel && allowParallelGroups &&
               group.dependencies().size() > 1) {
             zc::Vector<CanonicalQueryKey> dependencyKeys;
@@ -1210,6 +1332,24 @@ DetailedDemand QueryDatabase::Impl::execute(zc::Arc<SnapshotState> snapshot,
             for (const auto& active : activeChain) { validationChain.add(active.clone()); }
             validationChain.add(key.clone());
             auto validationCancellation = flight->cancellationToken();
+            ZC_IF_SOME(observation, dependency.inputProbeObservation()) {
+              auto validated =
+                  probeInput(snapshot.addRef(), dependency.key().clone(), validationCancellation);
+              if (!validated.result.isCompleted()) {
+                appendEvent(*snapshot.get(), key, failureEvent(validated.result.failure()));
+                return DetailedDemand(zc::mv(validated.result), MemoMetadata());
+              }
+              const auto currentObservation =
+                  validated.result.value().kind() == QueryValueKind::Absence
+                      ? InputProbeObservation::Absent
+                      : InputProbeObservation::Present;
+              if (currentObservation != observation ||
+                  (observation == InputProbeObservation::Present &&
+                   validated.metadata.changedAt() > oldMemo.metadata.verifiedAt())) {
+                green = false;
+              }
+              continue;
+            }
             auto validated =
                 demand(snapshot.addRef(), dependency.key().clone(), zc::mv(validationChain),
                        validationCancellation, allowParallelGroups);

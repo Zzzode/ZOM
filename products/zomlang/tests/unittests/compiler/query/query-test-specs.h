@@ -82,6 +82,10 @@ struct FrozenInput final : LowInput {
   static QueryKindContract contract() { return inputContract(domain(), Durability::Frozen); }
 };
 
+struct MalformedLowInputKey final : LowInput {
+  static zc::Array<uint8_t> encodeKey(const Key&) { return zc::heapArray<uint8_t>(3); }
+};
+
 struct AddTenQuery {
   using Key = uint32_t;
   using Value = uint32_t;
@@ -311,6 +315,38 @@ struct HighOnlyQuery final : AddTenQuery {
   }
 };
 
+struct OptionalLowInputQuery final : AddTenQuery {
+  static zc::StringPtr domain() { return "test.query.optional-low-input"_zc; }
+  static QueryKindContract contract() {
+    return derivedContract(domain(), ReuseClass::Semantic, RetentionClass::Evictable);
+  }
+  static TypedQueryResult<Value> provide(QueryContext& context, const Key& key) {
+    auto optional = context.probeInput<LowInput>(key);
+    if (optional.isRuntimeFailure()) {
+      return TypedQueryResult<Value>::runtimeFailure(optional.runtimeFailure());
+    }
+    auto fallback = context.get<HighInput>(100);
+    if (fallback.isRuntimeFailure()) {
+      return TypedQueryResult<Value>::runtimeFailure(fallback.runtimeFailure());
+    }
+    return TypedQueryResult<Value>::value(optional.kind() == QueryValueKind::Absence
+                                              ? fallback.value()
+                                              : optional.value() + fallback.value());
+  }
+};
+
+struct InvalidDerivedInputProbeQuery final : AddTenQuery {
+  static zc::StringPtr domain() { return "test.query.invalid-derived-input-probe"_zc; }
+  static QueryKindContract contract() { return derivedContract(domain()); }
+  static TypedQueryResult<Value> provide(QueryContext& context, const Key& key) {
+    auto invalid = context.probeInput<AddTenQuery>(key);
+    if (invalid.isRuntimeFailure()) {
+      return TypedQueryResult<Value>::runtimeFailure(invalid.runtimeFailure());
+    }
+    return TypedQueryResult<Value>::value(invalid.value());
+  }
+};
+
 struct DurabilitySwitchQuery final : AddTenQuery {
   static zc::StringPtr domain() { return "test.query.durability-switch"_zc; }
   static QueryKindContract contract() { return derivedContract(domain()); }
@@ -443,6 +479,10 @@ inline void registerCoreKinds(QueryDatabase& database) {
               "failed to register VerifiedQuery");
   ZC_IREQUIRE(database.registerDerivedKind<HighOnlyQuery>() != zc::none,
               "failed to register HighOnlyQuery");
+  ZC_IREQUIRE(database.registerDerivedKind<OptionalLowInputQuery>() != zc::none,
+              "failed to register OptionalLowInputQuery");
+  ZC_IREQUIRE(database.registerDerivedKind<InvalidDerivedInputProbeQuery>() != zc::none,
+              "failed to register InvalidDerivedInputProbeQuery");
   ZC_IREQUIRE(database.registerDerivedKind<DurabilitySwitchQuery>() != zc::none,
               "failed to register DurabilitySwitchQuery");
   ZC_IREQUIRE(database.registerDerivedKind<SlowQuery>() != zc::none,

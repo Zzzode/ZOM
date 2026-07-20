@@ -168,4 +168,110 @@ ZC_TEST("QueryDatabaseTest.InputTransactionUsesLastOperationAndAbandonPreservesT
   ZC_EXPECT(removed.get<LowInput>(2).runtimeFailure() == QueryRuntimeFailure::MissingInput);
 }
 
+ZC_TEST("QueryDatabaseTest.InputProbeTracksPresenceWithoutTombstonesOrContextPoisoning") {
+  QueryDatabase database(queryTestScheduler());
+  registerCoreKinds(database);
+  auto initialWrite = beginTransaction(database);
+  ZC_REQUIRE(initialWrite.set<HighInput>(100, 40));
+  ZC_REQUIRE(initialWrite.commit() != zc::none);
+
+  auto absent = database.snapshot();
+  auto absentRootProbe = absent.probeInput<LowInput>(5);
+  ZC_REQUIRE(!absentRootProbe.isRuntimeFailure());
+  ZC_EXPECT(absentRootProbe.kind() == QueryValueKind::Absence);
+  ZC_EXPECT(absent.get<LowInput>(5).runtimeFailure() == QueryRuntimeFailure::MissingInput);
+  ZC_EXPECT(!absent.hasRetainedValue<LowInput>(5));
+  ZC_EXPECT(absent.metadata<LowInput>(5) == zc::none);
+
+  auto absentValue = absent.get<OptionalLowInputQuery>(5);
+  ZC_REQUIRE(!absentValue.isRuntimeFailure());
+  ZC_EXPECT(absentValue.value() == 40);
+  auto absentDependencies = absent.dependencies<OptionalLowInputQuery>(5);
+  ZC_REQUIRE(absentDependencies.size() == 2);
+  ZC_REQUIRE(absentDependencies[0].dependencies().size() == 1);
+  const auto absentObservation = absentDependencies[0].dependencies()[0].inputProbeObservation();
+  ZC_REQUIRE(absentObservation != zc::none);
+  ZC_EXPECT(ZC_REQUIRE_NONNULL(absentObservation) == InputProbeObservation::Absent);
+  ZC_EXPECT(absentDependencies[1].dependencies()[0].inputProbeObservation() == zc::none);
+  auto clonedProbeGroup = absentDependencies[0].clone();
+  const auto clonedObservation = clonedProbeGroup.dependencies()[0].inputProbeObservation();
+  ZC_REQUIRE(clonedObservation != zc::none);
+  ZC_EXPECT(ZC_REQUIRE_NONNULL(clonedObservation) == InputProbeObservation::Absent);
+  auto absentMetadata = absent.metadata<OptionalLowInputQuery>(5);
+  ZC_REQUIRE(absentMetadata != zc::none);
+  ZC_EXPECT(ZC_REQUIRE_NONNULL(absentMetadata).minimumDurability() == Durability::Low);
+
+  auto unrelatedWrite = beginTransaction(database);
+  ZC_REQUIRE(unrelatedWrite.set<LowInput>(99, 1));
+  ZC_REQUIRE(unrelatedWrite.commit() != zc::none);
+  auto unrelated = database.snapshot();
+  ZC_EXPECT(unrelated.get<OptionalLowInputQuery>(5).value() == 40);
+  ZC_EXPECT(hasEvent(unrelated.events().asPtr(), QueryEventKind::GreenReused));
+
+  auto presentWrite = beginTransaction(database);
+  ZC_REQUIRE(presentWrite.set<LowInput>(5, 2));
+  ZC_REQUIRE(presentWrite.commit() != zc::none);
+  auto present = database.snapshot();
+  auto presentRootProbe = present.probeInput<LowInput>(5);
+  ZC_REQUIRE(!presentRootProbe.isRuntimeFailure());
+  ZC_EXPECT(presentRootProbe.value() == 2);
+  ZC_EXPECT(present.get<OptionalLowInputQuery>(5).value() == 42);
+  auto presentDependencies = present.dependencies<OptionalLowInputQuery>(5);
+  ZC_REQUIRE(presentDependencies.size() == 2);
+  const auto presentObservation = presentDependencies[0].dependencies()[0].inputProbeObservation();
+  ZC_REQUIRE(presentObservation != zc::none);
+  ZC_EXPECT(ZC_REQUIRE_NONNULL(presentObservation) == InputProbeObservation::Present);
+
+  auto equalPresentWrite = beginTransaction(database);
+  ZC_REQUIRE(equalPresentWrite.set<LowInput>(5, 2));
+  ZC_REQUIRE(equalPresentWrite.commit() != zc::none);
+  auto equalPresent = database.snapshot();
+  ZC_EXPECT(equalPresent.get<OptionalLowInputQuery>(5).value() == 42);
+  ZC_EXPECT(hasEvent(equalPresent.events().asPtr(), QueryEventKind::GreenReused));
+
+  auto changedWrite = beginTransaction(database);
+  ZC_REQUIRE(changedWrite.set<LowInput>(5, 3));
+  ZC_REQUIRE(changedWrite.commit() != zc::none);
+  auto changed = database.snapshot();
+  ZC_EXPECT(changed.get<OptionalLowInputQuery>(5).value() == 43);
+
+  auto removedWrite = beginTransaction(database);
+  ZC_REQUIRE(removedWrite.erase<LowInput>(5));
+  ZC_REQUIRE(removedWrite.commit() != zc::none);
+  auto removed = database.snapshot();
+  ZC_EXPECT(removed.get<OptionalLowInputQuery>(5).value() == 40);
+  ZC_EXPECT(!removed.hasRetainedValue<LowInput>(5));
+
+  auto invalidRootProbe = removed.probeInput<AddTenQuery>(5);
+  ZC_REQUIRE(invalidRootProbe.isRuntimeFailure());
+  ZC_EXPECT(invalidRootProbe.runtimeFailure() == QueryRuntimeFailure::InvariantViolation);
+  auto invalidProviderProbe = removed.get<InvalidDerivedInputProbeQuery>(5);
+  ZC_REQUIRE(invalidProviderProbe.isRuntimeFailure());
+  ZC_EXPECT(invalidProviderProbe.runtimeFailure() == QueryRuntimeFailure::InvariantViolation);
+
+  auto malformedProbe = removed.probeInput<MalformedLowInputKey>(5);
+  ZC_REQUIRE(malformedProbe.isRuntimeFailure());
+  ZC_EXPECT(malformedProbe.runtimeFailure() == QueryRuntimeFailure::InvalidKeyEncoding);
+  auto malformedRequiredRead = removed.get<MalformedLowInputKey>(5);
+  ZC_REQUIRE(malformedRequiredRead.isRuntimeFailure());
+  ZC_EXPECT(malformedRequiredRead.runtimeFailure() == QueryRuntimeFailure::MissingInput);
+  auto malformedWrite = beginTransaction(database);
+  ZC_EXPECT(!malformedWrite.set<MalformedLowInputKey>(5, 3));
+  malformedWrite.abandon();
+
+  CancellationSource cancelled;
+  cancelled.cancel();
+  auto cancelledProbe = removed.probeInput<LowInput>(5, cancelled.token());
+  ZC_REQUIRE(cancelledProbe.isRuntimeFailure());
+  ZC_EXPECT(cancelledProbe.runtimeFailure() == QueryRuntimeFailure::Cancelled);
+
+  ZC_REQUIRE(removed.evictValue<OptionalLowInputQuery>(5));
+  ZC_EXPECT(!removed.hasRetainedValue<OptionalLowInputQuery>(5));
+  auto evictedDependencies = removed.dependencies<OptionalLowInputQuery>(5);
+  ZC_REQUIRE(evictedDependencies.size() == 2);
+  const auto evictedObservation = evictedDependencies[0].dependencies()[0].inputProbeObservation();
+  ZC_REQUIRE(evictedObservation != zc::none);
+  ZC_EXPECT(ZC_REQUIRE_NONNULL(evictedObservation) == InputProbeObservation::Absent);
+}
+
 }  // namespace zomlang::compiler::query::test

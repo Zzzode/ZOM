@@ -111,11 +111,16 @@ const QueryValue& QueryRequestResult::value() const {
 }
 
 DependencyRecord::DependencyRecord(CanonicalQueryKey&& key, DatabaseRevision changedAt,
-                                   Durability durability) noexcept
-    : keyField(zc::mv(key)), changedAtField(changedAt), durabilityField(durability) {}
+                                   Durability durability,
+                                   zc::Maybe<InputProbeObservation> inputProbeObservation) noexcept
+    : keyField(zc::mv(key)),
+      changedAtField(changedAt),
+      durabilityField(durability),
+      inputProbeObservationField(inputProbeObservation) {}
 
 DependencyRecord DependencyRecord::clone() const {
-  return DependencyRecord(keyField.clone(), changedAtField, durabilityField);
+  return DependencyRecord(keyField.clone(), changedAtField, durabilityField,
+                          inputProbeObservationField);
 }
 
 DependencyGroup::DependencyGroup(Kind kind, zc::Vector<DependencyRecord>&& dependencies) noexcept

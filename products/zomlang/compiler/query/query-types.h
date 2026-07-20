@@ -135,6 +135,9 @@ private:
 /// \brief Deterministic semantic result alternatives that can be memoized.
 enum class QueryValueKind : uint8_t { Value = 0, Absence = 1, SemanticFailure = 2 };
 
+/// \brief Presence state observed by one tracked optional input read.
+enum class InputProbeObservation : uint8_t { Present = 0, Absent = 1 };
+
 /// \brief Immutable canonical payload of one deterministic query completion.
 class QueryValue final {
 public:
@@ -200,8 +203,8 @@ private:
 /// \brief One actual dependency read and its observed semantic metadata.
 class DependencyRecord final {
 public:
-  DependencyRecord(CanonicalQueryKey&& key, DatabaseRevision changedAt,
-                   Durability durability) noexcept;
+  DependencyRecord(CanonicalQueryKey&& key, DatabaseRevision changedAt, Durability durability,
+                   zc::Maybe<InputProbeObservation> inputProbeObservation = zc::none) noexcept;
   DependencyRecord(DependencyRecord&&) noexcept = default;
   DependencyRecord& operator=(DependencyRecord&&) noexcept = default;
   ZC_DISALLOW_COPY(DependencyRecord);
@@ -210,11 +213,15 @@ public:
   ZC_NODISCARD const CanonicalQueryKey& key() const ZC_LIFETIMEBOUND { return keyField; }
   ZC_NODISCARD DatabaseRevision changedAt() const noexcept { return changedAtField; }
   ZC_NODISCARD Durability durability() const noexcept { return durabilityField; }
+  ZC_NODISCARD zc::Maybe<InputProbeObservation> inputProbeObservation() const noexcept {
+    return inputProbeObservationField;
+  }
 
 private:
   CanonicalQueryKey keyField;
   DatabaseRevision changedAtField;
   Durability durabilityField;
+  zc::Maybe<InputProbeObservation> inputProbeObservationField;
 };
 
 /// \brief Deterministic sequential or explicitly parallel dependency execution group.
