@@ -83,6 +83,107 @@ zc::Maybe<identity::DefId> initializerOwner(const binder::VerifiedBoundModuleInp
   return zc::none;
 }
 
+bool subtreeContains(const ast::Tree& tree, ast::NodeId root, ast::NodeId target) {
+  bool contains = false;
+  ast::visitTreePreOrder(tree, root, [&](ast::NodeId node, const ast::Node&) {
+    if (node == target) contains = true;
+  });
+  return contains;
+}
+
+zc::Maybe<identity::DefId> returnValueOwner(const binder::VerifiedBoundModuleInput& boundModule,
+                                            ast::NodeId value) {
+  const auto& tree = boundModule.tree();
+  bool isReturnValue = false;
+  ast::visitTreePreOrder(tree, tree.root(), [&](ast::NodeId, const ast::Node& syntax) {
+    if (syntax.kind == ast::SyntaxKind::ReturnStmt &&
+        ast::NodeId(syntax.payload.words[ast::kReturnStmtValueWord]) == value) {
+      isReturnValue = true;
+    }
+  });
+  if (!isReturnValue) return zc::none;
+
+  zc::Maybe<identity::DefId> result;
+  size_t bestDepth = 0;
+  for (const auto& definition : boundModule.definitions().definitions()) {
+    if (definition.record.kind() != identity::DefinitionKind::Function ||
+        !subtreeContains(tree, definition.node, value)) {
+      continue;
+    }
+    const size_t depth = definition.record.owners().size();
+    if (result == zc::none || depth > bestDepth) {
+      result = definition.definition;
+      bestDepth = depth;
+    } else if (depth == bestDepth) {
+      return zc::none;
+    }
+  }
+  return result;
+}
+
+zc::Maybe<identity::SemanticTypeId> callableSuccess(const signature::VerifiedSignatureFacts& facts,
+                                                    identity::DefId callable) {
+  zc::Maybe<identity::SemanticTypeId> result;
+  for (const auto& semanticSignature : facts.signatures()) {
+    if (semanticSignature.definition != callable) continue;
+    if (result != zc::none ||
+        !semanticSignature.payload.variant().is<signature::CallableSignature>()) {
+      return zc::none;
+    }
+    result = semanticSignature.payload.variant().get<signature::CallableSignature>().success;
+  }
+  return result;
+}
+
+zc::Maybe<uint32_t> definitionPreorder(const binder::VerifiedBoundModuleInput& boundModule,
+                                       identity::DefId definition) {
+  ast::NodeId declaration;
+  bool foundDefinition = false;
+  for (const auto& candidate : boundModule.definitions().definitions()) {
+    if (candidate.definition != definition) continue;
+    if (foundDefinition) return zc::none;
+    declaration = candidate.node;
+    foundDefinition = true;
+  }
+  if (!foundDefinition) return zc::none;
+  uint32_t preorder = 0;
+  zc::Maybe<uint32_t> result;
+  ast::visitTreePreOrder(boundModule.tree(), boundModule.tree().root(),
+                         [&](ast::NodeId node, const ast::Node&) {
+                           if (node == declaration) result = preorder;
+                           ++preorder;
+                         });
+  return result;
+}
+
+checked::CheckedFactsSourceRejected rejectReturnTypeMismatch(const BodyProductionSite& site,
+                                                             uint32_t ownerPreorder,
+                                                             identity::SemanticTypeId expected,
+                                                             identity::SemanticTypeId actual) {
+  zc::Maybe<identity::SemanticIdentifier> noExpectedAlias;
+  zc::Maybe<identity::SemanticIdentifier> noActualAlias;
+  zc::Vector<checked::CheckerDisplayArgument> arguments;
+  arguments.add(
+      checked::CheckerDisplayArgument(checked::TypeDisplayArg{expected, zc::mv(noExpectedAlias)}));
+  arguments.add(
+      checked::CheckerDisplayArgument(checked::TypeDisplayArg{actual, zc::mv(noActualAlias)}));
+  zc::Vector<checked::CheckerNoteRef> notes;
+  zc::Maybe<checked::TypeErrorId> noRecovery;
+  zc::Vector<checked::CheckerFailureRef> failures;
+  failures.add(checked::CheckerFailureRef{
+      checked::CheckerErrorId::TypeCheckerTypeMismatch(), checked::CheckerDiagnosticStage::Body,
+      site.node, site.key.sourceSpan.clone(), zc::mv(arguments), zc::mv(notes),
+      checked::CheckerDiagnosticProducer::Inference,
+      checked::CheckerRecoveryPolicy(
+          checked::CreateRootRecoveryPolicy{checked::CheckerRecoveryClass::TypeMismatch, true}),
+      checked::CheckerEmitterOrdinal{static_cast<uint8_t>(checked::CheckerDiagnosticStage::Body),
+                                     ownerPreorder, site.key.schemaPreorder, 0},
+      zc::mv(noRecovery)});
+  return checked::CheckedFactsSourceRejected{zc::mv(failures),
+                                             zc::Vector<checked::CheckerAdvisoryRef>(),
+                                             zc::Vector<checked::FrozenRecoveryLedger>()};
+}
+
 zc::OneOf<checked::CheckedFactsSourceRejected, checked::CheckedFactsInvariantRejected>
 attachRecoveryLedger(checked::CheckedFactsSourceRejected&& rejection,
                      const BodyCheckingInput& input,
@@ -92,20 +193,26 @@ attachRecoveryLedger(checked::CheckedFactsSourceRejected&& rejection,
                            input.boundModule.module(), 0);
   }
   auto& failure = rejection.failures[0];
-  auto owner = initializerOwner(input.boundModule, failure.primaryNode);
-  if (owner == zc::none ||
+  auto initializer = initializerOwner(input.boundModule, failure.primaryNode);
+  auto callable = returnValueOwner(input.boundModule, failure.primaryNode);
+  if ((initializer == zc::none) == (callable == zc::none) ||
       !failure.recoveryPolicy.variant().is<checked::CreateRootRecoveryPolicy>()) {
     return rejectInvariant(signature::CheckerInvariantKind::InferenceLifecycle,
                            input.boundModule.module(), failure.emitterOrdinal.siteSchemaPreorder,
                            zc::none, failure.primaryNode, failure.primarySpan.clone());
   }
 
-  zc::Maybe<identity::DefId> ownerValue = owner;
-  identity::DefId definition;
-  ZC_IF_SOME(value, ownerValue) { definition = value; }
+  identity::DefId ownerDefinition;
+  bool initializerOwnerKind = false;
+  ZC_IF_SOME(definition, initializer) {
+    ownerDefinition = definition;
+    initializerOwnerKind = true;
+  }
+  ZC_IF_SOME(definition, callable) { ownerDefinition = definition; }
   auto created = inference::InferenceRecoveryContext::create(
       input.registries, factStoreBrands, input.boundModule.parsedModule().source(),
-      inference::InferenceOwner::initializer(definition));
+      initializerOwnerKind ? inference::InferenceOwner::initializer(ownerDefinition)
+                           : inference::InferenceOwner::callableBody(ownerDefinition));
   if (created.is<inference::InferenceRecoveryRejected>()) {
     return rejectRecoveryInvariant(zc::mv(created).get<inference::InferenceRecoveryRejected>());
   }
@@ -710,6 +817,25 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
                                   factStoreBrands);
     }
     auto facts = zc::mv(emitted).get<scalar_literal::EmittedFacts>();
+    auto callable = returnValueOwner(input.boundModule, site.node);
+    ZC_IF_SOME(owner, callable) {
+      auto expected = callableSuccess(input.signatureFacts, owner);
+      auto ownerPreorder = definitionPreorder(input.boundModule, owner);
+      if (expected == zc::none || ownerPreorder == zc::none) {
+        return rejectInvariant(signature::CheckerInvariantKind::MissingRequiredFact, module,
+                               site.key.schemaPreorder, owner, site.node,
+                               site.key.sourceSpan.clone(), factPath(CheckedFactGroup::NodeType));
+      }
+      ZC_IF_SOME(expectedType, expected) {
+        ZC_IF_SOME(ownerOrdinal, ownerPreorder) {
+          if (facts.nodeType.value != expectedType) {
+            return attachRecoveryLedger(
+                rejectReturnTypeMismatch(site, ownerOrdinal, expectedType, facts.nodeType.value),
+                input, factStoreBrands);
+          }
+        }
+      }
+    }
     nodeTypes.add(zc::mv(facts.nodeType));
     literals.add(zc::mv(facts.literal));
   }

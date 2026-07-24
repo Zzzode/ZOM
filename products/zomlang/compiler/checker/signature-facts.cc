@@ -993,18 +993,18 @@ zc::Maybe<identity::DefId> directAssociatedType(const binder::VerifiedBindingMet
 }
 
 bool isSimpleCallableDeclaration(const ast::Tree& tree, ast::NodeId declaration,
-                                 identity::DefinitionKind definitionKind) {
+                                 identity::DefinitionKind definitionKind, ast::NodeId& returnType) {
   if (!tree.contains(declaration)) { return false; }
   const auto& syntax = tree.node(declaration);
   ast::NodeId parameters;
   if (definitionKind == identity::DefinitionKind::Function &&
       syntax.kind == ast::SyntaxKind::FunctionDecl) {
     if (tree.contains(ast::NodeId(syntax.payload.words[ast::kFunctionDeclTypeParamsIdWord])) ||
-        tree.contains(ast::NodeId(syntax.payload.words[ast::kFunctionDeclRetTyWord])) ||
         tree.contains(ast::NodeId(syntax.payload.words[ast::kFunctionDeclRaisesTyWord]))) {
       return false;
     }
     parameters = ast::NodeId(syntax.payload.words[ast::kFunctionDeclParamsIdWord]);
+    returnType = ast::NodeId(syntax.payload.words[ast::kFunctionDeclRetTyWord]);
   } else if (definitionKind == identity::DefinitionKind::Method &&
              syntax.kind == ast::SyntaxKind::MethodDecl) {
     if (tree.contains(ast::NodeId(syntax.payload.words[ast::kMethodDeclTypeParamsIdWord])) ||
@@ -6425,26 +6425,41 @@ SignatureFactsBuildResult SignatureFactsBuilder::build(const SignatureFactsBuild
         }
         continue;
       }
+      ast::NodeId returnType;
       if ((definitionKind != identity::DefinitionKind::Function &&
            definitionKind != identity::DefinitionKind::Method) ||
-          !isSimpleCallableDeclaration(tree, definition.node, definitionKind)) {
+          !isSimpleCallableDeclaration(tree, definition.node, definitionKind, returnType)) {
         return buildReject(checkerInvariant(CheckerInvariantKind::MissingRequiredFact, module,
                                             definition.node.value));
       }
-      if (unitType == zc::none) {
-        auto admitted = input.semanticTypes.canonicalizeClosed(type::semantic::TypeData(
-            type::semantic::PrimitiveTypeData{type::semantic::PrimitiveKind::Unit}));
-        if (admitted.is<identity::IdentityInvariant>()) {
-          return buildReject(zc::mv(admitted.get<identity::IdentityInvariant>()));
+      zc::Maybe<identity::SemanticTypeId> returnSemanticType;
+      if (tree.contains(returnType)) {
+        zc::Vector<identity::GenericParameterId> noGenericParameters;
+        SourceTypeBuilder typeBuilder(input.boundModule, input.registries, input.semanticTypes,
+                                      noGenericParameters.asPtr());
+        auto builtReturn = typeBuilder.build(returnType);
+        if (builtReturn == zc::none) {
+          return buildReject(checkerInvariant(CheckerInvariantKind::MissingRequiredFact, module,
+                                              returnType.value));
         }
-        auto interned =
-            input.semanticTypes.intern(zc::mv(admitted.get<type::semantic::CanonicalTypeData>()));
-        if (interned.is<identity::IdentityInvariant>()) {
-          return buildReject(zc::mv(interned.get<identity::IdentityInvariant>()));
+        ZC_IF_SOME(value, builtReturn) { returnSemanticType = value.type; }
+      } else {
+        if (unitType == zc::none) {
+          auto admitted = input.semanticTypes.canonicalizeClosed(type::semantic::TypeData(
+              type::semantic::PrimitiveTypeData{type::semantic::PrimitiveKind::Unit}));
+          if (admitted.is<identity::IdentityInvariant>()) {
+            return buildReject(zc::mv(admitted.get<identity::IdentityInvariant>()));
+          }
+          auto interned =
+              input.semanticTypes.intern(zc::mv(admitted.get<type::semantic::CanonicalTypeData>()));
+          if (interned.is<identity::IdentityInvariant>()) {
+            return buildReject(zc::mv(interned.get<identity::IdentityInvariant>()));
+          }
+          unitType = interned.get<type::SemanticTypeInterned>().id;
         }
-        unitType = interned.get<type::SemanticTypeInterned>().id;
+        ZC_IF_SOME(value, unitType) { returnSemanticType = value; }
       }
-      ZC_IF_SOME(success, unitType) {
+      ZC_IF_SOME(success, returnSemanticType) {
         ZC_IF_SOME(signatureScopeValue, scope) {
           zc::Maybe<ReceiverSignature> noReceiver;
           zc::Maybe<identity::SemanticTypeId> noRaises;

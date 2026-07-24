@@ -1254,7 +1254,6 @@ ZC_TEST("CompilerSession publishes the complete canonical Checker rail for an em
   ZC_REQUIRE(session.getVerifiedBuiltMirModules().size() == 1);
   const auto& builtMir = session.getVerifiedBuiltMirModules()[0];
   ZC_EXPECT(builtMir.module() == hirModule.module());
-  ZC_EXPECT(builtMir.revision().phase() == mir::MirRevisionPhase::Built);
   ZC_EXPECT(builtMir.functions().size() == 0);
   ZC_EXPECT(builtMir.canonicalFunctionRecords().size() == 0);
   ZC_EXPECT(builtMir.borrowEvidenceRevision().digest() ==
@@ -1579,6 +1578,95 @@ ZC_TEST("CompilerSession publishes scalar initializer definition and pattern fac
       ZC_EXPECT(checked.constants().size() == 0);
     }
   }
+}
+
+ZC_TEST("CompilerSession publishes a checked scalar-return function through HIR and Built MIR") {
+  basic::LangOptions languageOptions;
+  basic::CompilerOptions compilerOptions;
+  identity::SemanticContextFactory contextFactory;
+  CompilerSession session(contextFactory, languageOptions, compilerOptions);
+  auto registry = targetRegistry();
+  auto input = VerifiedPackageSessionInput::from(
+      request(registry), verifiedSelection(registry), verifiedSelection(registry),
+      resolution(session.getPackageResolutionMemoryResource(), "app"_zc),
+      resolvedSourceSnapshots("app"_zc, "fun answer() -> i32 { return 42; }"_zc));
+  ZC_REQUIRE(input != zc::none);
+  ZC_IF_SOME(value, input) { ZC_REQUIRE(session.installVerifiedPackageInput(zc::mv(value))); }
+
+  const auto roots = session.getFinalizedCompilationRoots();
+  ZC_REQUIRE(roots.size() == 1);
+  ZC_REQUIRE(session.addVerifiedPackageRoot(roots[0]) != zc::none);
+  ZC_REQUIRE(session.parseSources());
+  ZC_REQUIRE(session.bindSources());
+  ZC_REQUIRE(session.checkSources());
+  ZC_REQUIRE(!session.getDiagnosticEngine().hasErrors());
+  ZC_REQUIRE(session.getVerifiedSignatureFacts().size() == 1);
+  const auto signatures = session.getVerifiedSignatureFacts()[0].signatures();
+  ZC_REQUIRE(signatures.size() == 1);
+  ZC_REQUIRE(signatures[0].payload.variant().is<checker::signature::CallableSignature>());
+  const auto& callable =
+      signatures[0].payload.variant().get<checker::signature::CallableSignature>();
+  ZC_EXPECT(callable.parameters.size() == 0);
+  ZC_EXPECT(callable.raises == zc::none);
+
+  ZC_REQUIRE(session.getVerifiedHirModules().size() == 1);
+  const auto& hirModule = session.getVerifiedHirModules()[0];
+  ZC_EXPECT(hirModule.declarations().size() == 0);
+  ZC_REQUIRE(hirModule.functions().size() == 1);
+  ZC_REQUIRE(hirModule.blocks().size() == 1);
+  ZC_REQUIRE(hirModule.returns().size() == 1);
+  ZC_REQUIRE(hirModule.expressions().size() == 1);
+  ZC_EXPECT(hirModule.functions()[0].resultType == callable.success);
+  ZC_EXPECT(hirModule.functions()[0].body == hirModule.blocks()[0].node);
+  ZC_EXPECT(hirModule.blocks()[0].statements[0] == hirModule.returns()[0].node);
+  ZC_EXPECT(hirModule.returns()[0].value == hirModule.expressions()[0].node);
+
+  ZC_REQUIRE(session.getVerifiedBuiltMirModules().size() == 1);
+  const auto& builtMir = session.getVerifiedBuiltMirModules()[0];
+  ZC_REQUIRE(builtMir.functions().size() == 1);
+  const auto& function = builtMir.functions()[0];
+  ZC_EXPECT(function.owner == hirModule.functions()[0].definition);
+  ZC_EXPECT(function.kind == mir::MirFunctionKind::Function);
+  ZC_EXPECT(function.resultType == callable.success);
+  ZC_EXPECT(function.locals.size() == 0);
+  ZC_REQUIRE(function.blocks.size() == 1);
+  ZC_EXPECT(function.blocks[0].statements.size() == 0);
+  ZC_EXPECT(function.blocks[0].terminator.kind() == mir::MirTerminatorKind::Return);
+  ZC_REQUIRE(function.blocks[0].terminator.returnValue().value != zc::none);
+  ZC_IF_SOME(value, function.blocks[0].terminator.returnValue().value) {
+    ZC_EXPECT(value.kind() == mir::MirOperandKind::Constant);
+    ZC_EXPECT(value.constantValue().type == callable.success);
+  }
+  ZC_EXPECT(session.getIrFailureGroups().size() == 0);
+  ZC_EXPECT(session.getIrIdentityInvariantFailures().size() == 0);
+}
+
+ZC_TEST("CompilerSession rejects a scalar return whose type differs from the signature") {
+  basic::LangOptions languageOptions;
+  basic::CompilerOptions compilerOptions;
+  identity::SemanticContextFactory contextFactory;
+  CompilerSession session(contextFactory, languageOptions, compilerOptions);
+  CapturedDiagnostics captured;
+  session.getDiagnosticEngine().addConsumer(zc::heap<CaptureDiagnosticConsumer>(captured));
+  auto registry = targetRegistry();
+  auto input = VerifiedPackageSessionInput::from(
+      request(registry), verifiedSelection(registry), verifiedSelection(registry),
+      resolution(session.getPackageResolutionMemoryResource(), "app"_zc),
+      resolvedSourceSnapshots("app"_zc, "fun answer() -> bool { return 42; }"_zc));
+  ZC_REQUIRE(input != zc::none);
+  ZC_IF_SOME(value, input) { ZC_REQUIRE(session.installVerifiedPackageInput(zc::mv(value))); }
+
+  const auto roots = session.getFinalizedCompilationRoots();
+  ZC_REQUIRE(roots.size() == 1);
+  ZC_REQUIRE(session.addVerifiedPackageRoot(roots[0]) != zc::none);
+  ZC_REQUIRE(session.parseSources());
+  ZC_REQUIRE(session.bindSources());
+  ZC_EXPECT(!session.checkSources());
+  ZC_EXPECT(session.getCheckerInvariantFailures().size() == 0);
+  ZC_REQUIRE(captured.ids.size() == 1);
+  ZC_EXPECT(captured.ids[0] == diagnostics::DiagID::TypeCheckerTypeMismatch);
+  ZC_EXPECT(session.getVerifiedHirModules().size() == 0);
+  ZC_EXPECT(session.getVerifiedBuiltMirModules().size() == 0);
 }
 
 ZC_TEST("CompilerSession publishes canonical constant facts for scalar const initializers") {

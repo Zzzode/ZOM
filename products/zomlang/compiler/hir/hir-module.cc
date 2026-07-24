@@ -188,6 +188,21 @@ zc::Maybe<HirLinkage> linkage(const checker::signature::ValueSignature& signatur
   return zc::none;
 }
 
+zc::Maybe<HirLinkage> linkage(const checker::signature::CallableSignature& signature) {
+  if (signature.abi == zc::none) return HirLinkage::Internal;
+  ZC_IF_SOME(abi, signature.abi) {
+    switch (abi) {
+      case checker::signature::ExternAbi::Cdecl:
+        return HirLinkage::ExternalCdecl;
+      case checker::signature::ExternAbi::Stdcall:
+        return HirLinkage::ExternalStdcall;
+      case checker::signature::ExternAbi::ZomNative:
+        return HirLinkage::ExternalZomNative;
+    }
+  }
+  return zc::none;
+}
+
 zc::Maybe<HirVisibility> visibility(const binder::VisibilityEnvelope& source) {
   if (source.value().is<binder::ModuleVisibility>()) {
     return HirVisibility::module(source.value().get<binder::ModuleVisibility>().module);
@@ -224,6 +239,19 @@ struct PendingValueDeclaration final {
   zc::Array<uint8_t> orderingKey;
 };
 
+struct PendingFunctionDeclaration final {
+  identity::DefId definition;
+  identity::SemanticTypeId resultType;
+  HirVisibility visibility;
+  HirLinkage linkage;
+  identity::SourceSpan declarationSpan;
+  identity::SourceSpan bodySpan;
+  identity::SourceSpan returnSpan;
+  identity::SourceSpan valueSpan;
+  checker::checked::CanonicalConstValue value;
+  zc::Array<uint8_t> orderingKey;
+};
+
 void sortPendingDeclarations(zc::Vector<PendingValueDeclaration>& values) {
   for (size_t index = 1; index < values.size(); ++index) {
     auto current = zc::mv(values[index]);
@@ -240,6 +268,46 @@ void sortPendingDeclarations(zc::Vector<PendingValueDeclaration>& values) {
     }
     values[insertion] = zc::mv(current);
   }
+}
+
+void sortPendingFunctions(zc::Vector<PendingFunctionDeclaration>& values) {
+  for (size_t index = 1; index < values.size(); ++index) {
+    auto current = zc::mv(values[index]);
+    size_t insertion = index;
+    while (insertion != 0) {
+      const auto& previous = values[insertion - 1];
+      const bool less =
+          current.declarationSpan.byteStart() < previous.declarationSpan.byteStart() ||
+          (current.declarationSpan.byteStart() == previous.declarationSpan.byteStart() &&
+           lessBytes(current.orderingKey.asPtr(), previous.orderingKey.asPtr()));
+      if (!less) break;
+      values[insertion] = zc::mv(values[insertion - 1]);
+      --insertion;
+    }
+    values[insertion] = zc::mv(current);
+  }
+}
+
+zc::Maybe<ast::NodeId> scalarFunctionReturnValue(const ast::Tree& tree, const ast::Node& function,
+                                                 ast::NodeId& body, ast::NodeId& returnStatement) {
+  if (function.kind != ast::SyntaxKind::FunctionDecl) return zc::none;
+  body = ast::NodeId(function.payload.words[ast::kFunctionDeclBodyWord]);
+  if (!tree.contains(body) || tree.node(body).kind != ast::SyntaxKind::BlockStmt) return zc::none;
+  const auto& block = tree.node(body);
+  const ast::NodeList statements{block.payload.words[ast::kBlockStmtStmtsFirstWord],
+                                 block.payload.words[ast::kBlockStmtStmtsSizeWord]};
+  if (!tree.contains(statements) || statements.size != 1) return zc::none;
+  auto statement = tree.list(statements)[0];
+  if (tree.node(statement).kind == ast::SyntaxKind::StatementListItem) {
+    statement = ast::NodeId(tree.node(statement).payload.words[ast::kStatementListItemItemWord]);
+  }
+  if (!tree.contains(statement) || tree.node(statement).kind != ast::SyntaxKind::ReturnStmt) {
+    return zc::none;
+  }
+  returnStatement = statement;
+  const ast::NodeId value(tree.node(statement).payload.words[ast::kReturnStmtValueWord]);
+  if (!tree.contains(value) || !isScalarLiteral(tree.node(value).kind)) return zc::none;
+  return value;
 }
 
 bool noUnsupportedFacts(const checker::checked::VerifiedCheckedFacts& facts) {
@@ -328,15 +396,22 @@ zc::Maybe<identity::ModuleId> HirVisibility::visibleModule() const noexcept {
 
 struct HirModuleCandidate::Impl final {
   Impl(VerifiedCheckedModule&& checkedModule, zc::Vector<HirValueDeclaration>&& declarations,
-       zc::Vector<HirBindingPattern>&& patterns,
+       zc::Vector<HirFunctionDeclaration>&& functions, zc::Vector<HirBlockStatement>&& blocks,
+       zc::Vector<HirReturnStatement>&& returns, zc::Vector<HirBindingPattern>&& patterns,
        zc::Vector<HirScalarLiteralExpression>&& expressions) noexcept
       : checkedModule(zc::mv(checkedModule)),
         declarations(zc::mv(declarations)),
+        functions(zc::mv(functions)),
+        blocks(zc::mv(blocks)),
+        returns(zc::mv(returns)),
         patterns(zc::mv(patterns)),
         expressions(zc::mv(expressions)) {}
 
   VerifiedCheckedModule checkedModule;
   zc::Vector<HirValueDeclaration> declarations;
+  zc::Vector<HirFunctionDeclaration> functions;
+  zc::Vector<HirBlockStatement> blocks;
+  zc::Vector<HirReturnStatement> returns;
   zc::Vector<HirBindingPattern> patterns;
   zc::Vector<HirScalarLiteralExpression> expressions;
 };
@@ -363,7 +438,8 @@ struct VerifiedHirModule::Impl final {
        const driver::borrow_evidence::BorrowEvidenceRepository& borrowEvidenceRepository,
        const identity::SemanticIdentityRegistrySet& registries,
        const type::SemanticTypeStore& semanticTypes, zc::Vector<HirValueDeclaration>&& declarations,
-       zc::Vector<HirBindingPattern>&& patterns,
+       zc::Vector<HirFunctionDeclaration>&& functions, zc::Vector<HirBlockStatement>&& blocks,
+       zc::Vector<HirReturnStatement>&& returns, zc::Vector<HirBindingPattern>&& patterns,
        zc::Vector<HirScalarLiteralExpression>&& expressions) noexcept
       : semanticContext(semanticContext),
         contextFingerprint(zc::mv(contextFingerprint)),
@@ -384,6 +460,9 @@ struct VerifiedHirModule::Impl final {
         registries(registries),
         semanticTypes(semanticTypes),
         declarations(zc::mv(declarations)),
+        functions(zc::mv(functions)),
+        blocks(zc::mv(blocks)),
+        returns(zc::mv(returns)),
         patterns(zc::mv(patterns)),
         expressions(zc::mv(expressions)) {}
 
@@ -406,6 +485,9 @@ struct VerifiedHirModule::Impl final {
   const identity::SemanticIdentityRegistrySet& registries;
   const type::SemanticTypeStore& semanticTypes;
   zc::Vector<HirValueDeclaration> declarations;
+  zc::Vector<HirFunctionDeclaration> functions;
+  zc::Vector<HirBlockStatement> blocks;
+  zc::Vector<HirReturnStatement> returns;
   zc::Vector<HirBindingPattern> patterns;
   zc::Vector<HirScalarLiteralExpression> expressions;
 };
@@ -486,6 +568,18 @@ zc::ArrayPtr<const HirValueDeclaration> VerifiedHirModule::declarations() const 
   return impl->declarations.asPtr();
 }
 
+zc::ArrayPtr<const HirFunctionDeclaration> VerifiedHirModule::functions() const noexcept {
+  return impl->functions.asPtr();
+}
+
+zc::ArrayPtr<const HirBlockStatement> VerifiedHirModule::blocks() const noexcept {
+  return impl->blocks.asPtr();
+}
+
+zc::ArrayPtr<const HirReturnStatement> VerifiedHirModule::returns() const noexcept {
+  return impl->returns.asPtr();
+}
+
 zc::ArrayPtr<const HirBindingPattern> VerifiedHirModule::patterns() const noexcept {
   return impl->patterns.asPtr();
 }
@@ -557,6 +651,36 @@ zc::Maybe<zc::String> VerifiedHirModule::dump() const {
     ZC_IF_SOME(key, definition) { append(output, zc::encodeHex(key.encode().asPtr())); }
     append(output, "\n"_zc);
   }
+  for (const auto& function : impl->functions) {
+    auto definition = impl->registries.definitions().lookup(function.definition);
+    auto resultType = impl->semanticTypes.get(function.resultType);
+    if (definition == zc::none || !resultType.is<type::SemanticTypeLookup>()) return zc::none;
+    append(output, "function h"_zc);
+    append(output, zc::str(function.node.ordinal()));
+    append(output, " def="_zc);
+    ZC_IF_SOME(key, definition) { append(output, zc::encodeHex(key.encode().asPtr())); }
+    append(output, " result="_zc);
+    append(output, zc::encodeHex(resultType.get<type::SemanticTypeLookup>().key().bytes()));
+    append(output, " body=h"_zc);
+    append(output, zc::str(function.body.ordinal()));
+    append(output, "\n"_zc);
+  }
+  for (const auto& block : impl->blocks) {
+    append(output, "block h"_zc);
+    append(output, zc::str(block.node.ordinal()));
+    for (const auto statement : block.statements) {
+      append(output, " statement=h"_zc);
+      append(output, zc::str(statement.ordinal()));
+    }
+    append(output, "\n"_zc);
+  }
+  for (const auto& statement : impl->returns) {
+    append(output, "return h"_zc);
+    append(output, zc::str(statement.node.ordinal()));
+    append(output, " value=h"_zc);
+    append(output, zc::str(statement.value.ordinal()));
+    append(output, "\n"_zc);
+  }
   for (const auto& expression : impl->expressions) {
     append(output, "literal h"_zc);
     append(output, zc::str(expression.node.ordinal()));
@@ -589,16 +713,114 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(VerifiedCheckedModul
   }
 
   const auto definitions = bound.definitions().definitions();
-  if (definitions.size() > UINT32_MAX / 3) {
+  if (definitions.size() > UINT32_MAX / 4) {
     return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
                                          ir::IrFailureKind::InvalidFact, module, registries, 1);
   }
   zc::Vector<PendingValueDeclaration> pending;
+  zc::Vector<PendingFunctionDeclaration> pendingFunctions;
   const auto& ownInterface = checkedModule.ownModuleInterface();
   const auto& signatures = ownInterface.signatures();
   for (size_t definitionIndex = 0; definitionIndex < definitions.size(); ++definitionIndex) {
     const auto ordinal = static_cast<uint32_t>(definitionIndex);
     const auto& definition = definitions[ordinal];
+    if (definition.record.kind() == identity::DefinitionKind::Function) {
+      const auto& tree = bound.tree();
+      if (!tree.contains(definition.node) ||
+          tree.node(definition.node).kind != ast::SyntaxKind::FunctionDecl ||
+          !definition.site.value().is<binder::DeclarationDefinitionSite>()) {
+        return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                             ir::IrFailureKind::InvalidFact, module, registries,
+                                             ordinal + 2);
+      }
+      ast::NodeId body;
+      ast::NodeId returnStatement;
+      auto returnValue =
+          scalarFunctionReturnValue(tree, tree.node(definition.node), body, returnStatement);
+      auto signaturePosition =
+          signatureIndex(signatures.definitions.asPtr(), definition.definition);
+      auto rootPosition = signatureRootIndex(signatures.roots.asPtr(), definition.definition);
+      if (returnValue == zc::none || signaturePosition == zc::none || rootPosition == zc::none) {
+        return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                             ir::IrFailureKind::MissingRequiredFact, module,
+                                             registries, ordinal + 2);
+      }
+      ast::NodeId value;
+      size_t signatureSlot = 0;
+      size_t rootSlot = 0;
+      ZC_IF_SOME(node, returnValue) { value = node; }
+      ZC_IF_SOME(index, signaturePosition) { signatureSlot = index; }
+      ZC_IF_SOME(index, rootPosition) { rootSlot = index; }
+      auto nodeTypeIndex = factIndex(facts.nodeTypes(), value);
+      auto literalIndex = factIndex(facts.literals(), value);
+      auto bodySpan = bound.parsedModule().spanFor(tree.node(body).range);
+      auto returnSpan = bound.parsedModule().spanFor(tree.node(returnStatement).range);
+      auto valueSpan = bound.parsedModule().spanFor(tree.node(value).range);
+      if (nodeTypeIndex == zc::none || literalIndex == zc::none || bodySpan == zc::none ||
+          returnSpan == zc::none || valueSpan == zc::none) {
+        return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                             ir::IrFailureKind::MissingRequiredFact, module,
+                                             registries, ordinal + 2);
+      }
+      size_t nodeTypeSlot = 0;
+      size_t literalSlot = 0;
+      ZC_IF_SOME(index, nodeTypeIndex) { nodeTypeSlot = index; }
+      ZC_IF_SOME(index, literalIndex) { literalSlot = index; }
+      const auto& signature = signatures.definitions[signatureSlot];
+      const auto& root = signatures.roots[rootSlot];
+      const auto& nodeType = facts.nodeTypes().entries()[nodeTypeSlot];
+      const auto& literal = facts.literals().entries()[literalSlot].value;
+      if (!signature.payload.variant().is<checker::signature::CallableSignature>() ||
+          !signature.scope.variant().is<checker::signature::ModuleDefinitionSignatureScope>()) {
+        return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                             ir::IrFailureKind::InvalidFact, module, registries,
+                                             ordinal + 2);
+      }
+      const auto& callable =
+          signature.payload.variant().get<checker::signature::CallableSignature>();
+      auto functionVisibility = visibility(root.visibility);
+      auto functionLinkage = linkage(callable);
+      if (functionVisibility == zc::none || functionLinkage == zc::none ||
+          signature.definitionKind != identity::DefinitionKind::Function ||
+          root.sourceModule != module || root.canonicalDefinition != definition.definition ||
+          callable.genericParameters.size() != 0 || callable.receiver != zc::none ||
+          callable.parameters.size() != 0 || callable.raises != zc::none ||
+          callable.success != nodeType.value || literal.type != nodeType.value ||
+          !sameSpan(signature.declarationSpan, definition.source)) {
+        return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                             ir::IrFailureKind::InvalidFact, module, registries,
+                                             ordinal + 2);
+      }
+      auto definitionKey = registries.definitions().lookup(definition.definition);
+      if (definitionKey == zc::none ||
+          !typeExists(callable.success, checkedModule.semanticTypes())) {
+        return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                             ir::IrFailureKind::InvalidFact, module, registries,
+                                             ordinal + 2);
+      }
+      HirVisibility visibilityValue = HirVisibility::external();
+      HirLinkage linkageValue = HirLinkage::Internal;
+      identity::SourceSpan bodySpanValue = definition.source.clone();
+      identity::SourceSpan returnSpanValue = definition.source.clone();
+      identity::SourceSpan valueSpanValue = literal.sourceSpan.clone();
+      zc::Array<uint8_t> orderingKey;
+      ZC_IF_SOME(value, functionVisibility) { visibilityValue = zc::mv(value); }
+      ZC_IF_SOME(value, functionLinkage) { linkageValue = value; }
+      ZC_IF_SOME(value, bodySpan) { bodySpanValue = value.clone(); }
+      ZC_IF_SOME(value, returnSpan) { returnSpanValue = value.clone(); }
+      ZC_IF_SOME(value, valueSpan) { valueSpanValue = value.clone(); }
+      ZC_IF_SOME(key, definitionKey) { orderingKey = key.encode(); }
+      if (!sameSpan(valueSpanValue, literal.sourceSpan)) {
+        return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                             ir::IrFailureKind::InvalidFact, module, registries,
+                                             ordinal + 2);
+      }
+      pendingFunctions.add(PendingFunctionDeclaration{
+          definition.definition, callable.success, zc::mv(visibilityValue), linkageValue,
+          definition.source.clone(), bodySpanValue.clone(), returnSpanValue.clone(),
+          valueSpanValue.clone(), literal.literal.clone(), zc::mv(orderingKey)});
+      continue;
+    }
     if (definition.record.kind() != identity::DefinitionKind::Static &&
         definition.record.kind() != identity::DefinitionKind::Constant) {
       return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
@@ -751,9 +973,10 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(VerifiedCheckedModul
         literal.literal.clone(), zc::mv(constant), zc::mv(orderingKey)});
   }
 
-  if (facts.nodeTypes().size() != pending.size() ||
+  if (facts.nodeTypes().size() != pending.size() + pendingFunctions.size() ||
       facts.definitionTypes().size() != pending.size() ||
-      facts.literals().size() != pending.size() || facts.patterns().size() != pending.size()) {
+      facts.literals().size() != pending.size() + pendingFunctions.size() ||
+      facts.patterns().size() != pending.size()) {
     return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
                                          ir::IrFailureKind::AdditionalFact, module, registries, 1);
   }
@@ -767,7 +990,11 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(VerifiedCheckedModul
   }
 
   sortPendingDeclarations(pending);
+  sortPendingFunctions(pendingFunctions);
   zc::Vector<HirValueDeclaration> declarations;
+  zc::Vector<HirFunctionDeclaration> functions;
+  zc::Vector<HirBlockStatement> blocks;
+  zc::Vector<HirReturnStatement> returns;
   zc::Vector<HirBindingPattern> patterns;
   zc::Vector<HirScalarLiteralExpression> expressions;
   uint32_t next = 1;
@@ -787,8 +1014,24 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(VerifiedCheckedModul
                                                value.literal.clone(), HirValueCategory::Value,
                                                value.initializerSpan.clone()});
   }
+  for (auto& value : pendingFunctions) {
+    const auto functionId = hirId(next++);
+    const auto bodyId = hirId(next++);
+    const auto returnId = hirId(next++);
+    const auto valueId = hirId(next++);
+    functions.add(HirFunctionDeclaration{functionId, value.definition, value.resultType,
+                                         value.visibility.clone(), value.linkage,
+                                         value.declarationSpan.clone(), bodyId});
+    zc::Vector<HirNodeId> statements;
+    statements.add(returnId);
+    blocks.add(HirBlockStatement{bodyId, zc::mv(statements), value.bodySpan.clone()});
+    returns.add(HirReturnStatement{returnId, value.resultType, valueId, value.returnSpan.clone()});
+    expressions.add(HirScalarLiteralExpression{valueId, value.resultType, value.value.clone(),
+                                               HirValueCategory::Value, value.valueSpan.clone()});
+  }
 
   auto impl = zc::heap<HirModuleCandidate::Impl>(zc::mv(checkedModule), zc::mv(declarations),
+                                                 zc::mv(functions), zc::mv(blocks), zc::mv(returns),
                                                  zc::mv(patterns), zc::mv(expressions));
   return ir::IrOperationResult<HirModuleCandidate>::verified(HirModuleCandidate(zc::mv(impl)));
 }
@@ -801,6 +1044,7 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
   const auto& definitions = candidate.impl->checkedModule.boundModule().definitions();
   const auto& signatures = candidate.impl->checkedModule.ownModuleInterface().signatures();
   const auto declarationCount = candidate.impl->declarations.size();
+  const auto functionCount = candidate.impl->functions.size();
   const auto borrowEvidence = candidate.impl->checkedModule.borrowEvidenceRepository().lookup(
       candidate.impl->checkedModule.borrowEvidenceLease());
   if (candidate.impl->checkedModule.checkedRepository().lookup(
@@ -812,10 +1056,13 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
           candidate.impl->checkedModule.borrowEvidenceRevision().digest() ||
       candidate.impl->checkedModule.dispatchFacts().facts().size() != 0 ||
       !noUnsupportedFacts(facts) || candidate.impl->patterns.size() != declarationCount ||
-      candidate.impl->expressions.size() != declarationCount ||
-      definitions.definitions().size() != declarationCount ||
+      candidate.impl->blocks.size() != functionCount ||
+      candidate.impl->returns.size() != functionCount ||
+      candidate.impl->expressions.size() != declarationCount + functionCount ||
+      definitions.definitions().size() != declarationCount + functionCount ||
       facts.definitionTypes().size() != declarationCount ||
-      facts.nodeTypes().size() != declarationCount || facts.literals().size() != declarationCount ||
+      facts.nodeTypes().size() != declarationCount + functionCount ||
+      facts.literals().size() != declarationCount + functionCount ||
       facts.patterns().size() != declarationCount) {
     return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                         ir::IrFailureKind::InputRevisionMismatch, module,
@@ -1008,6 +1255,130 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
     }
   }
 
+  for (size_t sourceIndex = 0; sourceIndex < functionCount; ++sourceIndex) {
+    const auto index = static_cast<uint32_t>(sourceIndex);
+    const auto expressionIndex = declarationCount + sourceIndex;
+    const auto& function = candidate.impl->functions[index];
+    const auto& block = candidate.impl->blocks[index];
+    const auto& returnStatement = candidate.impl->returns[index];
+    const auto& expression = candidate.impl->expressions[expressionIndex];
+    const uint32_t expectedFunction =
+        static_cast<uint32_t>(declarationCount * 3 + sourceIndex * 4 + 1);
+    if (function.node.ordinal() != expectedFunction ||
+        block.node.ordinal() != expectedFunction + 1 ||
+        returnStatement.node.ordinal() != expectedFunction + 2 ||
+        expression.node.ordinal() != expectedFunction + 3 || function.body != block.node ||
+        block.statements.size() != 1 || block.statements[0] != returnStatement.node ||
+        returnStatement.value != expression.node ||
+        function.resultType != returnStatement.resultType ||
+        returnStatement.resultType != expression.type ||
+        expression.category != HirValueCategory::Value ||
+        !definitionBelongsToModule(function.definition, module, registries) ||
+        !typeExists(function.resultType, semanticTypes)) {
+      return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                          ir::IrFailureKind::InvalidFact, module, registries,
+                                          index + 1);
+    }
+
+    auto sourceDefinitionIndex = definitionIndex(definitions, function.definition);
+    auto signaturePosition = signatureIndex(signatures.definitions.asPtr(), function.definition);
+    auto rootPosition = signatureRootIndex(signatures.roots.asPtr(), function.definition);
+    if (sourceDefinitionIndex == zc::none || signaturePosition == zc::none ||
+        rootPosition == zc::none) {
+      return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                          ir::IrFailureKind::MissingRequiredFact, module,
+                                          registries, index + 1);
+    }
+    size_t definitionSlot = 0;
+    size_t signatureSlot = 0;
+    size_t rootSlot = 0;
+    ZC_IF_SOME(value, sourceDefinitionIndex) { definitionSlot = value; }
+    ZC_IF_SOME(value, signaturePosition) { signatureSlot = value; }
+    ZC_IF_SOME(value, rootPosition) { rootSlot = value; }
+    const auto& sourceDefinition = definitions.definitions()[definitionSlot];
+    const auto& tree = candidate.impl->checkedModule.boundModule().tree();
+    if (sourceDefinition.record.kind() != identity::DefinitionKind::Function ||
+        !sourceDefinition.site.value().is<binder::DeclarationDefinitionSite>() ||
+        !tree.contains(sourceDefinition.node) ||
+        tree.node(sourceDefinition.node).kind != ast::SyntaxKind::FunctionDecl) {
+      return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                          ir::IrFailureKind::InvalidFact, module, registries,
+                                          index + 1);
+    }
+    ast::NodeId sourceBody;
+    ast::NodeId sourceReturn;
+    auto sourceValue =
+        scalarFunctionReturnValue(tree, tree.node(sourceDefinition.node), sourceBody, sourceReturn);
+    if (sourceValue == zc::none) {
+      return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                          ir::IrFailureKind::MissingRequiredFact, module,
+                                          registries, index + 1);
+    }
+    ast::NodeId valueNode;
+    ZC_IF_SOME(value, sourceValue) { valueNode = value; }
+    auto nodeTypeIndex = factIndex(facts.nodeTypes(), valueNode);
+    auto literalIndex = factIndex(facts.literals(), valueNode);
+    auto bodySpan = candidate.impl->checkedModule.boundModule().parsedModule().spanFor(
+        tree.node(sourceBody).range);
+    auto returnSpan = candidate.impl->checkedModule.boundModule().parsedModule().spanFor(
+        tree.node(sourceReturn).range);
+    auto valueSpan = candidate.impl->checkedModule.boundModule().parsedModule().spanFor(
+        tree.node(valueNode).range);
+    if (nodeTypeIndex == zc::none || literalIndex == zc::none || bodySpan == zc::none ||
+        returnSpan == zc::none || valueSpan == zc::none) {
+      return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                          ir::IrFailureKind::MissingRequiredFact, module,
+                                          registries, index + 1);
+    }
+    size_t nodeTypeSlot = 0;
+    size_t literalSlot = 0;
+    ZC_IF_SOME(value, nodeTypeIndex) { nodeTypeSlot = value; }
+    ZC_IF_SOME(value, literalIndex) { literalSlot = value; }
+    const auto& signature = signatures.definitions[signatureSlot];
+    const auto& root = signatures.roots[rootSlot];
+    if (!signature.payload.variant().is<checker::signature::CallableSignature>() ||
+        !signature.scope.variant().is<checker::signature::ModuleDefinitionSignatureScope>()) {
+      return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                          ir::IrFailureKind::InvalidFact, module, registries,
+                                          index + 1);
+    }
+    const auto& callable = signature.payload.variant().get<checker::signature::CallableSignature>();
+    const auto& nodeType = facts.nodeTypes().entries()[nodeTypeSlot].value;
+    const auto& literal = facts.literals().entries()[literalSlot].value;
+    auto expectedVisibility = visibility(root.visibility);
+    auto expectedLinkage = linkage(callable);
+    bool visibilityMatches = false;
+    bool linkageMatches = false;
+    bool bodySpanMatches = false;
+    bool returnSpanMatches = false;
+    bool valueSpanMatches = false;
+    ZC_IF_SOME(value, expectedVisibility) {
+      visibilityMatches = sameVisibility(function.visibility, value);
+    }
+    ZC_IF_SOME(value, expectedLinkage) { linkageMatches = function.linkage == value; }
+    ZC_IF_SOME(value, bodySpan) { bodySpanMatches = sameSpan(block.sourceSpan, value); }
+    ZC_IF_SOME(value, returnSpan) {
+      returnSpanMatches = sameSpan(returnStatement.sourceSpan, value);
+    }
+    ZC_IF_SOME(value, valueSpan) { valueSpanMatches = sameSpan(expression.sourceSpan, value); }
+    if (signature.definition != function.definition ||
+        signature.definitionKind != identity::DefinitionKind::Function ||
+        root.canonicalDefinition != function.definition || root.sourceModule != module ||
+        callable.genericParameters.size() != 0 || callable.receiver != zc::none ||
+        callable.parameters.size() != 0 || callable.raises != zc::none ||
+        callable.success != function.resultType || nodeType != function.resultType ||
+        literal.type != function.resultType ||
+        !sameConstant(expression.value, literal.literal, module, registries, semanticTypes) ||
+        !sameSpan(expression.sourceSpan, literal.sourceSpan) ||
+        !sameSpan(function.sourceSpan, sourceDefinition.source) ||
+        !sameSpan(signature.declarationSpan, sourceDefinition.source) || !visibilityMatches ||
+        !linkageMatches || !bodySpanMatches || !returnSpanMatches || !valueSpanMatches) {
+      return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                          ir::IrFailureKind::InvalidFact, module, registries,
+                                          index + 1);
+    }
+  }
+
   auto& checked = candidate.impl->checkedModule;
   zc::Vector<ModuleInterfaceLineage> imported;
   for (const auto& interface : checked.visibleImportedInterfaces()) {
@@ -1024,7 +1395,9 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
       checked.releaseCheckedEvidenceLease(), checked.releaseBorrowEvidenceLease(),
       checked.checkedRepository(), checked.borrowEvidenceRepository(), checked.registries(),
       checked.semanticTypes(), zc::mv(candidate.impl->declarations),
-      zc::mv(candidate.impl->patterns), zc::mv(candidate.impl->expressions));
+      zc::mv(candidate.impl->functions), zc::mv(candidate.impl->blocks),
+      zc::mv(candidate.impl->returns), zc::mv(candidate.impl->patterns),
+      zc::mv(candidate.impl->expressions));
   return ir::IrOperationResult<VerifiedHirModule>::verified(VerifiedHirModule(zc::mv(impl)));
 }
 

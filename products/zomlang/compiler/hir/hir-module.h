@@ -75,6 +75,32 @@ struct HirScalarLiteralExpression final {
   identity::SourceSpan sourceSpan;
 };
 
+/// \brief One scalar return statement in immutable semantic HIR.
+struct HirReturnStatement final {
+  HirNodeId node;
+  identity::SemanticTypeId resultType;
+  HirNodeId value;
+  identity::SourceSpan sourceSpan;
+};
+
+/// \brief One closed lexical block in immutable semantic HIR.
+struct HirBlockStatement final {
+  HirNodeId node;
+  zc::Vector<HirNodeId> statements;
+  identity::SourceSpan sourceSpan;
+};
+
+/// \brief One module-scope function with a verified scalar return body.
+struct HirFunctionDeclaration final {
+  HirNodeId node;
+  identity::DefId definition;
+  identity::SemanticTypeId resultType;
+  HirVisibility visibility;
+  HirLinkage linkage;
+  identity::SourceSpan sourceSpan;
+  HirNodeId body;
+};
+
 /// \brief One module-scope let, mut, or const declaration in semantic HIR.
 struct HirValueDeclaration final {
   HirNodeId node;
@@ -135,6 +161,9 @@ public:
   ZC_NODISCARD const driver::borrow_evidence::VerifiedBorrowEvidenceLease& borrowEvidenceLease()
       const noexcept;
   ZC_NODISCARD zc::ArrayPtr<const HirValueDeclaration> declarations() const noexcept;
+  ZC_NODISCARD zc::ArrayPtr<const HirFunctionDeclaration> functions() const noexcept;
+  ZC_NODISCARD zc::ArrayPtr<const HirBlockStatement> blocks() const noexcept;
+  ZC_NODISCARD zc::ArrayPtr<const HirReturnStatement> returns() const noexcept;
   ZC_NODISCARD zc::ArrayPtr<const HirBindingPattern> patterns() const noexcept;
   ZC_NODISCARD zc::ArrayPtr<const HirScalarLiteralExpression> expressions() const noexcept;
   ZC_NODISCARD zc::Maybe<zc::String> dump() const;
