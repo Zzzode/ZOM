@@ -133,8 +133,6 @@ ZC_TEST("DiagnosticTest.TypeCheckerDiagnosticIdsAreStable") {
   ZC_EXPECT(static_cast<uint32_t>(DiagID::LinearInitializedHere) == 4064);
   ZC_EXPECT(static_cast<uint32_t>(DiagID::LinearConsumedTwice) == 4065);
   ZC_EXPECT(static_cast<uint32_t>(DiagID::LinearFirstConsumedHere) == 4066);
-  ZC_EXPECT(static_cast<uint32_t>(DiagID::ScopedTaskBorrowEscapes) == 4067);
-  ZC_EXPECT(static_cast<uint32_t>(DiagID::ScopedTaskReferentHere) == 4068);
   ZC_EXPECT(static_cast<uint32_t>(DiagID::RawPointerBoundaryRequiresUnsafe) == 4069);
   ZC_EXPECT(static_cast<uint32_t>(DiagID::MoveOutOfBorrow) == 4070);
   ZC_EXPECT(static_cast<uint32_t>(DiagID::PreviousImplHere) == 4071);
@@ -153,6 +151,9 @@ ZC_TEST("DiagnosticTest.TypeCheckerDiagnosticIdsAreStable") {
   ZC_EXPECT(static_cast<uint32_t>(DiagID::GenericMarkerInterfaceNotAllowed) == 4090);
   ZC_EXPECT(static_cast<uint32_t>(DiagID::PositiveMarkerImplRequiresUnsafe) == 4091);
   ZC_EXPECT(static_cast<uint32_t>(DiagID::ExplicitImplConflictsWithBuiltinMarker) == 4092);
+  ZC_EXPECT(static_cast<uint32_t>(DiagID::UninitializedPlaceUse) == 4093);
+  ZC_EXPECT(static_cast<uint32_t>(DiagID::PlaceBecameUnavailableHere) == 4094);
+  ZC_EXPECT(static_cast<uint32_t>(DiagID::ConcurrencySemanticsUnavailable) == 4095);
 }
 
 ZC_TEST("DiagnosticTest.ReceiverParserDiagnosticIdsAreStable") {

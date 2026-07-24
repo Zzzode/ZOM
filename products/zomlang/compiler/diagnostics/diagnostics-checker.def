@@ -100,9 +100,6 @@ DIAG(4063, LinearNotConsumed, kError, "Linear value is not consumed on all norma
 DIAG(4064, LinearInitializedHere, kNote, "Linear value is initialized here", 0)
 DIAG(4065, LinearConsumedTwice, kError, "Linear value is consumed more than once", 0)
 DIAG(4066, LinearFirstConsumedHere, kNote, "Linear value was first consumed here", 0)
-DIAG(4067, ScopedTaskBorrowEscapes, kError,
-     "Scoped task captures a reference that may outlive its referent", 0)
-DIAG(4068, ScopedTaskReferentHere, kNote, "Captured referent is created here", 0)
 DIAG(4069, RawPointerBoundaryRequiresUnsafe, kError,
      "Raw pointer safe boundary requires unsafe acknowledgement", 0)
 DIAG(4070, MoveOutOfBorrow, kError, "Cannot move a value while it is borrowed", 0)
@@ -142,6 +139,14 @@ DIAG(4091, PositiveMarkerImplRequiresUnsafe, kError,
      "A positive marker implementation requires unsafe", 0)
 DIAG(4092, ExplicitImplConflictsWithBuiltinMarker, kError,
      "Builtin marker evidence cannot be replaced by an explicit implementation", 0)
+
+// RFC 0007 ownership diagnostics.
+// Tracking: docs/rfc/tracking/0007-review-and-implementation.md
+DIAG(4093, UninitializedPlaceUse, kError,
+     "Use of uninitialized or deinitialized place", 0)
+DIAG(4094, PlaceBecameUnavailableHere, kNote, "Place became unavailable here", 0)
+DIAG(4095, ConcurrencySemanticsUnavailable, kError,
+     "Concurrency syntax has no admitted semantic contract", 0)
 
 DIAG(9927, CheckerInputReceiptMismatch, kFatal,
      "Internal checker input receipt is inconsistent ({0} occurrence(s))", 1)
