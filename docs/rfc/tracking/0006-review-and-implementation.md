@@ -393,14 +393,14 @@ own independent gate.
 ## Implementation Tracker
 
 The direct replacement series started on 2026-07-17. The removed mixed
-`compiler/irgen` prototype, AST/TypeEnv lowering, fake `--emit=ir`, and every
-`v1` MIR path are forbidden predecessors, not compatibility inputs.
+`compiler/irgen` prototype, AST/TypeEnv lowering, and fake `--emit=ir` are not
+part of the compiler architecture.
 
 | Slice | State | Required evidence |
 |---|---|---|
 | Verified frontend handoff | In progress | Canonical checked facts, dispatch facts, module interfaces, borrow evidence, Semantic HIR, and exact revision lineage |
 | Error-role descriptors | Pending | Closed role-bearing descriptor codec, independent verifier, exact oracle, cross-module publication, and mutation matrix |
-| Built MIR control flow | Pending | RFC 0013 MIR v2, `?!`, `!!`, and `as!` terminators, all residual variants, calls, and source-to-MIR conformance |
+| Built MIR control flow | Pending | RFC 0013 MIR, `?!`, `!!`, and `as!` terminators, all residual variants, calls, and source-to-MIR conformance |
 | Cleanup and drop elaboration | Pending | Path-complete drops on every normal, residual, panic, and unwind exit with certificate verification |
 | Target layout and LIR | Pending | Verified target selection, complete layout records, ABI lowering, capability rejection, and deterministic snapshots |
 | Backend artifacts | Pending | LLVM/object emission, artifact codec, symbol and relocation verification, FFI containment, and executable publication |

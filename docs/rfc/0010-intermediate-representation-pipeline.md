@@ -8,7 +8,7 @@ review-manager: rfc
 required-owners: [task-router, rfc, binder-checker, module-system, error-system, concurrency, ir-backend, runtime-memory, spec-audit, verification]
 approvers: [task-router, rfc, binder-checker, module-system, error-system, concurrency, ir-backend, runtime-memory, spec-audit, verification]
 created: 2026-07-10
-updated: 2026-07-16
+updated: 2026-07-24
 area: compiler
 requires: [4, 5, 8, 9, 11, 12]
 supersedes: []
@@ -233,15 +233,15 @@ flowchart TD
     HB --> HV[HIR verifier]
     HV --> HM[VerifiedHirModule]
     HM --> MB[MirBuilder]
-    MB --> MV1[Built MIR verifier]
-    MV1 --> BMIR[VerifiedBuiltMir]
+    MB --> BMV[Built MIR verifier]
+    BMV --> BMIR[VerifiedBuiltMir]
     BMIR --> BC[Borrow and ownership analysis]
     BC --> OF[VerifiedOwnershipFacts]
     BMIR --> DE[Drop and cleanup elaboration]
     OF --> DE
     DE --> CE[Coroutine elaboration]
-    CE --> MV2[Executable MIR verifier]
-    MV2 --> EMIR[VerifiedExecutableMir]
+    CE --> EMV[Executable MIR verifier]
+    EMV --> EMIR[VerifiedExecutableMir]
     EMIR --> MP[Monomorphization plan]
     EMIR --> TS[Target selection]
     CTS[CanonicalTargetSpec] --> TS
@@ -476,33 +476,22 @@ or set revision. Target lowering requires the matching
 overload that accepts bare `VerifiedExecutableMir` plus an unchecked target
 profile.
 
-Every MIR module has a closed, recomputable `MirRevisionId`:
+Every Built MIR module has one closed, recomputable `MirRevisionId`:
 
 ```text
-MirRevisionPhase = Built | DropElaborated | CoroutineElaborated | Executable
-
 MirRevisionInput {
-  phase: MirRevisionPhase,
   contextFingerprint: SemanticContextFingerprint,
   module: ModuleId,
   checkedFactsRevision: CheckedFactsRevision,
   dispatchFactsRevision: DispatchFactsRevision,
-  originatingBuiltRevision: Maybe<MirRevisionId>,
-  dropCertificateDigest: Maybe<Sha256Digest>,
-  coroutineCertificateDigest: Maybe<Sha256Digest>,
+  borrowEvidenceRevision: BorrowEvidenceRevision,
   functions: SortedSequence<CanonicalMirFunctionRecord>,
 }
 
 MirRevisionId {
-  phase: MirRevisionPhase,
   digest: Sha256Digest,
 }
 ```
-
-Phase tags are `Built = 0x01`, `DropElaborated = 0x02`,
-`CoroutineElaborated = 0x03`, and `Executable = 0x04`. `MirRevisionId` encodes
-as its phase tag followed by its 32-byte digest. `Maybe` uses `None = 0x00` and
-`Some = 0x01`; records and variant payloads encode in declaration order.
 
 `CanonicalMirFunctionRecord` is the complete non-textual canonical encoding of
 one concrete `MirFunction`: expanded owning `DefId`, canonical signature and
@@ -516,104 +505,67 @@ order beginning at `0x01`. Semantic types, definitions, constants,
 substitutions, witnesses, and spans expand through RFCs 0005, 0008, and 0011.
 Numeric store slots, object addresses, hash iteration order, debug names, and
 textual dumps never enter the encoding. Adding or reordering a MIR field or
-variant changes the domain suffix and replaces the golden data; no compatibility
-decoder remains.
-
-Built input requires all three optional lineage fields to be `None`.
-Drop-elaborated input requires one `Some(Built revision)`, one drop-certificate
-digest, and no coroutine digest. Coroutine-elaborated and executable input
-require the same originating Built revision plus both certificate digests; a
-module with no suspend point still carries the canonical empty coroutine
-certificate. A phase/option mismatch is `InvalidFact` before digest comparison.
+variant directly replaces this canonical framing and every golden oracle in the
+same accepted change. The repository contains one MIR codec and no alternate
+decoder.
 
 The digest is SHA-256 over this exact framing:
 
 ```text
-ASCII("zom.mir-revision.v1")
+ASCII("zom.mir-revision")
 0x00
-Encode(phase)
 SemanticContextFingerprint
 Frame(Encode(expanded ModuleKey))
 Encode(checkedFactsRevision)
 Encode(dispatchFactsRevision)
-Encode(originatingBuiltRevision)
-Encode(dropCertificateDigest)
-Encode(coroutineCertificateDigest)
+Encode(borrowEvidenceRevision)
 EncodeFramedSequence(functions)
 ```
 
 `Frame(bytes)` is an unsigned 64-bit big-endian byte length followed by the
 bytes. `EncodeFramedSequence` is an unsigned 64-bit big-endian element count,
-then one `Frame` per element. The Built-phase independent oracle uses phase
-`0x01`, a zero context fingerprint, module bytes `a1`, 32 checked-revision
-bytes `22`, 32 dispatch-revision bytes `33`, three `None` option tags, and one
-already-canonical function record `b3`. Its complete 146-byte preimage is:
+then one `Frame` per element. The independent oracle uses a zero context
+fingerprint, module bytes `a1`, 32 checked-revision bytes `22`, 32
+dispatch-revision bytes `33`, 32 borrow-evidence bytes `44`, and one
+already-canonical function record `b3`. Its complete 171-byte preimage is:
 
 ```text
-7a6f6d2e6d69722d7265766973696f6e2e7631000100000000000000000000000000000000000000000000000000000000000000000000000000000001a12222222222222222222222222222222222222222222222222222222222222222333333333333333333333333333333333333333333333333333333333333333300000000000000000000010000000000000001b3
+7a6f6d2e6d69722d7265766973696f6e0000000000000000000000000000000000000000000000000000000000000000000000000000000001a122222222222222222222222222222222222222222222222222222222222222223333333333333333333333333333333333333333333333333333333333333333444444444444444444444444444444444444444444444444444444444444444400000000000000010000000000000001b3
 ```
 
 Its SHA-256 is
-`cecdd3bfce167f991ab8fcb578622c880bed542dca03a8ff50b35e3688ac4c5f`.
+`9f8de0ad0794e63ee7ed8d8ab777683956d5d9ca9bf151987bd0a60dbaad7985`.
 Integration oracles replace `b3` with every real MIR record and prove that a
-field, edge, order, certificate, origin, phase, context, module, or checked
-or dispatch revision mutation changes or rejects the revision as specified.
+field, edge, order, context, module, checked, dispatch, or borrow-evidence
+revision mutation changes or rejects the revision as specified.
 
 A module with no functions is valid and encodes an empty framed sequence. The
-Built-phase empty-module oracle has this complete 137-byte preimage:
+empty-module oracle has this complete 162-byte preimage:
 
 ```text
-7a6f6d2e6d69722d7265766973696f6e2e7631000100000000000000000000000000000000000000000000000000000000000000000000000000000001a1222222222222222222222222222222222222222222222222222222222222222233333333333333333333333333333333333333333333333333333333333333330000000000000000000000
+7a6f6d2e6d69722d7265766973696f6e0000000000000000000000000000000000000000000000000000000000000000000000000000000001a12222222222222222222222222222222222222222222222222222222222222222333333333333333333333333333333333333333333333333333333333333333344444444444444444444444444444444444444444444444444444444444444440000000000000000
 ```
 
 Its SHA-256 is
-`2cc34de23dd6b5e97fe118fbbffa57201b95fdd497ca0f628eaa971a8b564f5e`.
+`b9a8988df033e7ce07c6708a6e2ce42e6bac1067231c8c86128e494b3238cbc9`.
 
-`VerifiedBuiltMir` stores the recomputed Built revision.
-`VerifiedOwnershipFacts` records the exact Built MIR revision it proves. The
-transformation chain uses distinct proof-carrying wrappers:
+`VerifiedBuiltMir` stores the recomputed revision and the exact borrow-evidence
+lineage used to construct it:
 
 ```text
 VerifiedBuiltMir {
   module: MirModule,
   revision: MirRevisionId,
-}
-OwnershipCheckedMir {
-  builtRevision: MirRevisionId,
-  builtMir: VerifiedBuiltMir,
-  ownershipFacts: VerifiedOwnershipFacts,
-}
-DropElaboratedMir {
-  module: MirModule,
-  revision: MirRevisionId,
-  originatingBuiltRevision: MirRevisionId,
-  dropCertificate: DropCertificate,
-}
-CoroutineElaboratedMir {
-  module: MirModule,
-  revision: MirRevisionId,
-  originatingBuiltRevision: MirRevisionId,
-  dropCertificate: DropCertificate,
-  coroutineCertificate: CoroutineCertificate,
-}
-VerifiedExecutableMir {
-  module: MirModule,
-  revision: MirRevisionId,
-  originatingBuiltRevision: MirRevisionId,
-  dropCertificate: DropCertificate,
-  coroutineCertificate: CoroutineCertificate,
+  borrowEvidenceRevision: BorrowEvidenceRevision,
+  borrowEvidenceLease: VerifiedBorrowEvidenceLease,
 }
 ```
 
-Drop elaboration consumes matching Built MIR and ownership facts. Coroutine
-elaboration consumes and transforms `DropElaboratedMir.module`, then owns the
-replacement in `CoroutineElaboratedMir.module`. The executable verifier
-recomputes the revision from `CoroutineElaboratedMir.module` and transfers that
-same module into `VerifiedExecutableMir` only after verification. It
-checks the complete lineage back to the ownership-checked Built MIR and rejects
-stale, mixed, swapped, foreign-context, wrong-phase, or reconstructed proof
-tokens. Each verifier recomputes the complete input revision before trusting a
-certificate or publishing a successor.
+`VerifiedOwnershipFacts` records the exact Built MIR revision it proves.
+Ownership, cleanup, coroutine, and executable-MIR artifacts require their own
+implemented builders, verifiers, canonical codecs, and exact lineage when those
+stages enter production. Built MIR reserves no phase tags, optional certificate
+slots, or fields for those absent stages.
 
 ### Canonical Identity
 
@@ -1394,15 +1346,14 @@ The dump headers are layer-specific:
 
 ```text
 zom.hir.v0
-zom.mir.v0
+zom.mir
 zom.lir.v0
 ```
 
-The version identifies a debug grammar for tests; it does not promise
-cross-version compatibility. Dumps must be deterministic for identical source,
-module graph, compiler options, and target. Ordering uses canonical identity or
-source order as specified by each layer, never hash-map iteration or process
-addresses.
+Dump headers identify their layer-specific debug grammar. Dumps must be
+deterministic for identical source, module graph, compiler options, and target.
+Ordering uses canonical identity or source order as specified by each layer,
+never hash-map iteration or process addresses.
 
 The ambiguous `--emit ir` option and `zom.ir.v0` header are removed when HIR,
 MIR, and LIR emission lands. All repository callers and snapshots are updated
@@ -1603,8 +1554,8 @@ and reproducible builds.
    raw pointer as semantic identity.
 6. MIR has concrete place, projection, local, block, statement, rvalue, and
    terminator types plus a verifier, deterministic dump, and the exact
-   recomputable `MirRevisionId` codec, 146-byte non-empty framing oracle, and
-   137-byte empty-module framing oracle.
+   recomputable `MirRevisionId` codec, 171-byte non-empty framing oracle, and
+   162-byte empty-module framing oracle.
 7. RFC 0007 ownership analysis runs over MIR CFG facts rather than bounded AST
    tracing and covers path-sensitive regions, reborrows, temporaries, closures,
    stores, Copy/Linear facts, scoped tasks, and translated corpus cases.
@@ -1654,11 +1605,11 @@ and reproducible builds.
     invariants to `ZOM9942-ZOM9949` or the registered feature-boundary
     `ZOM9955`, retains full bug context, and exposes no raw lowering error
     string on any CLI path.
-22. Built MIR, ownership facts, and executable MIR use revision-checked
-    verified typestate, and ownership sees every semantic exit edge. Verifiers
-    recompute the complete Built, drop-elaborated, coroutine-elaborated, and
-    executable revisions and reject stale, foreign, swapped, wrong-phase,
+22. Built MIR and every later verified artifact use revision-checked typestate,
+    and ownership sees every semantic exit edge. Each verifier recomputes its
+    complete artifact revision and rejects stale, foreign, swapped,
     wrong-origin, or wrong-certificate facts before publishing a successor.
+    MIR itself has one canonical revision identity with no phase discriminator.
 23. Monomorphization uses deterministic `InstanceId` keys and never repeats
     semantic resolution. Type-expanding recursion and instance/substitution-node
     budget exhaustion retain typed root and expansion chains and emit exactly
@@ -1750,21 +1701,19 @@ and reproducible builds.
 - Unit tests: HIR, MIR, ownership, drop elaboration, LIR, target layout, LLVM
   translation, checked-evidence lease lifetime and mismatch, and every layer
   verifier.
-- MIR revision tests: reproduce the exact 146-byte Built framing preimage and
-  `cecdd3bfce167f991ab8fcb578622c880bed542dca03a8ff50b35e3688ac4c5f`;
-  reproduce the 137-byte empty-module preimage and
-  `2cc34de23dd6b5e97fe118fbbffa57201b95fdd497ca0f628eaa971a8b564f5e`;
+- MIR revision tests: reproduce the exact 171-byte Built framing preimage and
+  `9f8de0ad0794e63ee7ed8d8ab777683956d5d9ca9bf151987bd0a60dbaad7985`;
+  reproduce the 162-byte empty-module preimage and
+  `b9a8988df033e7ce07c6708a6e2ce42e6bac1067231c8c86128e494b3238cbc9`;
   integrate every real function/local/scope/block/statement/rvalue/place/
-  terminator/edge record; cover all four phases and empty coroutine
-  certificates; and mutate context, module, checked revision, dispatch
-  revision, phase, origin,
-  certificate, field, edge, order, and framing length independently.
-- Proof-lineage negative matrix: start from one valid Built MIR, ownership
-  proof, drop certificate, coroutine certificate, and executable MIR; then
-  substitute a stale, foreign-context, foreign-module, swapped-function,
-  wrong-phase, wrong-Built-origin, wrong-drop-certificate, or wrong-coroutine-
-  certificate revision and assert the exact invariant, sort key, diagnostic,
-  and absence of every successor wrapper.
+  terminator/edge record; and mutate context, module, checked revision,
+  dispatch revision, borrow-evidence revision, field, edge, order, and framing
+  length independently.
+- Proof-lineage negative matrix: start from one valid Built MIR and each
+  available successor proof; then substitute a stale, foreign-context,
+  foreign-module, swapped-function, wrong-Built-origin, or wrong-certificate
+  revision and assert the exact invariant, sort key, diagnostic, and absence
+  of every successor wrapper.
 - Lit tests: layer-specific `hir`, `mir`, `lir`, and `llvm-ir` runners with
   positive snapshots and malformed-input verifier fixtures where applicable.
 - Conformance: error propagation, forced unwrap, all three cast modes, cleanup,
@@ -1822,7 +1771,7 @@ None
 |---|---|---|
 | 2026-07-10 | DRAFT | Created the three-layer HIR, MIR, and LIR architecture after the first mixed IR lowering slice exposed missing ownership and target-boundary contracts. |
 | 2026-07-10 | REVIEW | Entered review with explicit layer legality, verifier, canonical identity, ownership, CLI, rollout, and acceptance contracts; approval and decision metadata remain open. |
-| 2026-07-10 | RETURNED | Governance, IR backend, and spec reviews found blocking gaps in tracking, ownership, identity, MIR phase order, LIR detail, monomorphization, and current-document alignment. |
+| 2026-07-10 | RETURNED | Governance, IR backend, and spec reviews found blocking gaps in tracking, ownership, identity, LIR detail, monomorphization, and current-document alignment. |
 | 2026-07-10 | DRAFT | Added a real review tracker, corrected path ownership, recorded dependency order, and revised the implementation governance sequence. |
 | 2026-07-10 | REVIEW | Resubmitted the proposal for technical revision review; approvers and decision remain empty until every blocking item is resolved. |
 | 2026-07-10 | REVIEW | Resolved the initial governance and IR architecture blockers with a verified checked-module handoff, package-qualified identities, closed call-target algebra, complete Built MIR exit edges, proof-carrying MIR revisions, coroutine elaboration, concrete LIR and ABI inventories, deterministic monomorphization, total LLVM translation, structured diagnostics, and atomic cutover. RFC and IR owners confirm this is implementable review input; dependency acceptance and remaining owner approvals stay open. |
@@ -1831,10 +1780,8 @@ None
 | 2026-07-11 | DRAFT | Synchronized the frontend handoff with RFC 0005 typed semantic selections and RFC 0009 verified dispatch facts, removed duplicate call-target and intrinsic algebras, and required every layer failure to carry a module, definition, or instance owner before registered diagnostic mapping. |
 | 2026-07-11 | DRAFT | Responded to diagnostic, checker, module, and IR re-review by closing the IR failure algebra and registered mapping, making per-definition and per-instance ownership mandatory, threading RFC 0008 checked-evidence leases through every verified layer and backend request, and adding exhaustive generated invariant-injection gates. |
 | 2026-07-11 | DRAFT | Added a closed operation-result algebra and unified identity/IR failure ordering, registered typed recursive-instantiation and budget failures with retained expansion chains, and defined deterministic occurrence aggregation for every lowering and backend failure. |
-| 2026-07-11 | DRAFT | Responded to verification review with a byte-exact four-phase `MirRevisionId`, lineage and certificate rules, a 114-byte framing oracle, exhaustive stale/foreign/swapped proof mutations, explicit same-package multi-target fixtures, and worker/input-order determinism gates. |
 | 2026-07-11 | DRAFT | Responded to spec-audit re-review by carrying RFC 0005 success and residual role facts through dispatch and HIR/MIR, and by fixing the ownership representation to affine copy/move/borrow/drop with no retain, release, weak-reference, or implicit ARC operation. |
-| 2026-07-11 | DRAFT | Responded to verification re-review by making every MIR phase wrapper own the transformed module required for revision recomputation and by defining a valid zero-function module with an executable 105-byte revision oracle. |
-| 2026-07-11 | DRAFT | Added `DispatchFactsRevision` to every MIR revision input and wrapper lineage, advanced the codec domain to v1 with 146-byte and 137-byte oracles, and added the target-selection failure phase required by capability validation. |
+| 2026-07-11 | DRAFT | Added exact checker, dispatch, and borrow-evidence lineage to the canonical MIR revision input and added the target-selection failure phase required by capability validation. |
 | 2026-07-11 | REVIEW | Entered formal review after exact-hash governance, semantic, and invariant reviewers approved the coordinated frontend handoff, MIR lineage, target-selection, diagnostics, and error-lowering boundaries. Approvers and decision remain open. |
 | 2026-07-11 | ACCEPTED | All ten required owners approved proposal hash `715ae992a29e7ff83e4abf6e6c91d979bffccf7cae55ded450d80dfc730d70fe` after HIR/MIR/LIR, target, cast, error, ownership, concurrency, runtime, diagnostic, codec, and verifier review. Implementation has not started. |
 | 2026-07-16 | IMPLEMENTING | Started the Canonical IR Direct Replacement Series with target-selection extraction and complete removal of the mixed `irgen` prototype before HIR, MIR, LIR, and backend construction. |

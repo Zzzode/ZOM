@@ -8,6 +8,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 COMPILER_ROOT = ROOT / "products" / "zomlang" / "compiler"
+DOCS_ROOT = ROOT / "docs"
 IR_ROOT = Path("products/zomlang/compiler/ir")
 IRGEN_ROOT = Path("products/zomlang/compiler/irgen")
 MIR_ROOT = Path("products/zomlang/compiler/mir")
@@ -124,10 +125,13 @@ RETIRED_PROTOTYPE_MARKERS = (
     "zom.ir.v0",
 )
 
-FORBIDDEN_MIR_V1_MARKERS = (
-    "zom.mir-revision.v1",
-    "computeBuiltV1",
-    "MirRevisionV1",
+FORBIDDEN_ALTERNATE_MIR_DOMAIN_MARKER = "zom.mir-revision."
+FORBIDDEN_VERSIONED_MIR_SYMBOL = re.compile(
+    r"\b(?:BuiltMir|MirRevision|computeBuilt)V[0-9]+\b"
+)
+FORBIDDEN_VERSIONED_MIR_TEXT = re.compile(
+    r"\b(?:Built MIR v[0-9]+|MIR[- ]v[0-9]+|zom\.mir(?:-revision)?\.v[0-9]+)\b",
+    re.IGNORECASE,
 )
 
 FORBIDDEN_TARGET_DEPENDENCIES = (
@@ -180,6 +184,9 @@ def load_files() -> dict[Path, str]:
     for suffix in ("*.h", "*.cc"):
         for path in COMPILER_ROOT.rglob(suffix):
             files[relative(path)] = path.read_text(encoding="utf-8")
+    for path in DOCS_ROOT.rglob("*.md"):
+        files[relative(path)] = path.read_text(encoding="utf-8")
+    files[Path("AGENTS.md")] = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
     for path in (
         COMPILER_CMAKE,
         IR_CMAKE,
@@ -203,15 +210,12 @@ def check_removed_prototype(files: dict[Path, str], errors: list[str]) -> None:
             errors.append(f"{path}: compiler/irgen dependency is forbidden")
 
 
-def check_removed_mir_v1(files: dict[Path, str], errors: list[str]) -> None:
+def check_canonical_mir_domain(files: dict[Path, str], errors: list[str]) -> None:
     for path, text in sorted(files.items()):
-        if path.suffix not in {".h", ".cc"}:
-            continue
-        for marker in FORBIDDEN_MIR_V1_MARKERS:
-            if marker in text:
-                errors.append(
-                    f"{path}: RFC 0013 removed MIR revision v1 marker is forbidden: {marker}"
-                )
+        if FORBIDDEN_ALTERNATE_MIR_DOMAIN_MARKER in text:
+            errors.append(f"{path}: alternate MIR revision domain is forbidden")
+        if FORBIDDEN_VERSIONED_MIR_SYMBOL.search(text) or FORBIDDEN_VERSIONED_MIR_TEXT.search(text):
+            errors.append(f"{path}: versioned MIR symbol is forbidden")
 
 
 def check_target_registry(files: dict[Path, str], errors: list[str]) -> None:
@@ -234,8 +238,8 @@ def check_built_mir(files: dict[Path, str], errors: list[str]) -> None:
     for marker in REQUIRED_BUILT_MIR_MARKERS:
         if marker not in header:
             errors.append(f"{MIR_HEADER}: missing direct Built MIR marker {marker}")
-    if 'constexpr char domain[] = "zom.mir-revision.v2"' not in source:
-        errors.append(f"{MIR_SOURCE}: missing exact RFC 0013 MIR revision v2 domain")
+    if 'constexpr char domain[] = "zom.mir-revision"' not in source:
+        errors.append(f"{MIR_SOURCE}: missing canonical MIR revision domain")
     if '#include "zomlang/compiler/mir/built-mir.h"' not in source:
         errors.append(f"{MIR_SOURCE}: implementation must include its canonical owner header")
     if "built-mir.cc" not in cmake:
@@ -389,7 +393,7 @@ def check_diagnostics(files: dict[Path, str], errors: list[str]) -> None:
 def analyze(files: dict[Path, str]) -> list[str]:
     errors: list[str] = []
     check_removed_prototype(files, errors)
-    check_removed_mir_v1(files, errors)
+    check_canonical_mir_domain(files, errors)
     check_target_registry(files, errors)
     check_built_mir(files, errors)
     check_failure_contract(files, errors)
@@ -448,11 +452,20 @@ def run_self_test() -> int:
     )
     failures += expect_rejection(
         baseline,
-        "MIR revision v1 restored",
+        "alternate MIR revision domain added",
         lambda files: files.__setitem__(
-            MIR_ROOT / "injected-v1.cc", 'const char* domain = "zom.mir-revision.v1";\n'
+            MIR_ROOT / "injected-alternate.cc",
+            'const char* domain = "zom.mir-revision.alternate";\n',
         ),
-        "removed MIR revision v1 marker is forbidden",
+        "alternate MIR revision domain is forbidden",
+    )
+    failures += expect_rejection(
+        baseline,
+        "versioned MIR documentation added",
+        lambda files: append_source(
+            files, Path("docs/design/architecture.md"), "\nBuilt MIR " + "v7\n"
+        ),
+        "versioned MIR symbol is forbidden",
     )
     failures += expect_rejection(
         baseline,
@@ -462,9 +475,9 @@ def run_self_test() -> int:
     )
     failures += expect_rejection(
         baseline,
-        "Built MIR v2 domain removed",
-        lambda files: remove_once(files, MIR_SOURCE, 'constexpr char domain[] = "zom.mir-revision.v2"'),
-        "missing exact RFC 0013 MIR revision v2 domain",
+        "canonical MIR domain removed",
+        lambda files: remove_once(files, MIR_SOURCE, 'constexpr char domain[] = "zom.mir-revision"'),
+        "missing canonical MIR revision domain",
     )
     failures += expect_rejection(
         baseline,
@@ -599,7 +612,7 @@ def run_self_test() -> int:
         for failure in failures:
             print(f"  - {failure}", file=sys.stderr)
         return 1
-    print("IR architecture negative fixtures passed (21/21).")
+    print("IR architecture negative fixtures passed (22/22).")
     return 0
 
 

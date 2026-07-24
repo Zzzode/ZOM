@@ -8,7 +8,7 @@ review-manager: rfc
 required-owners: [task-router, rfc, binder-checker, module-system, error-system, concurrency, ir-backend, runtime-memory, spec-audit, verification]
 approvers: [task-router, rfc, binder-checker, module-system, error-system, concurrency, ir-backend, runtime-memory, spec-audit, verification]
 created: 2026-07-11
-updated: 2026-07-17
+updated: 2026-07-24
 area: compiler
 requires: [5, 8, 10, 11]
 supersedes: []
@@ -92,7 +92,7 @@ does not add explicit lifetime syntax in this RFC.
 
 Swift distinguishes source exclusivity failures from SIL verifier failures.
 ZOM applies the same source-error versus compiler-invariant distinction at one
-typed ownership phase.
+typed ownership operation.
 
 ML module systems publish complete typed interfaces instead of requiring a
 caller to inspect another module body. ZOM similarly publishes the direct
@@ -151,21 +151,12 @@ MIR.
 
 ## Reference-Level Design
 
-### Normative Overlay And Base Hashes
+### Normative Dependencies
 
-RFC 0013 is an additive normative overlay. It does not mutate or supersede the
-accepted proposal bytes. It binds these exact accepted bases:
-
-| Base | Accepted proposal SHA-256 |
-|---|---|
-| RFC 0005 | `5c61e7a993867385f9a895054d25e4a9fe6f891b1c26d55fd1a4dfb3b3bb7d35` |
-| RFC 0008 | `eb0173bb6d69b6425bfc2379e8eb2b70c841c96acb07e12342ff03b85c91cf9c` |
-| RFC 0010 | `c244a3ebae5b35e974a4b19331d218d0a1c6a1b9814729407d9afad1dd806124` |
-| RFC 0011 | `c699bee455adc2c2bafcfaef24edc20ee87d6a4c6f86756ae50ec2e87c565ade` |
-
-The combined contract is each base plus this RFC. This RFC has precedence only
-for the exact replacement clauses listed below; every other base clause remains
-unchanged. A base hash mismatch invalidates the overlay and requires a new RFC.
+RFC 0013 consumes the current canonical contracts in RFCs 0005, 0008, 0010,
+and 0011. RFC 0010 owns the sole MIR revision codec and RFC 0013 owns the
+borrow-evidence and ownership-result additions listed below. No versioned MIR
+base, compatibility decoder, or hash-bound predecessor remains normative.
 
 For RFC 0005, this RFC replaces only the body diagnostic registry and
 production matrix to add `ZOM4085` for a borrow-bearing body-local closure that
@@ -186,19 +177,14 @@ For RFC 0010, this RFC replaces only:
   source-rejecting IR extension;
 - the `OwnershipProofValidation` legality row and generated constructors;
 - the `VerifiedCheckedModule` borrow-evidence handoff;
-- `MirRevisionInput`, its domain, framing, Built empty/non-empty oracles, and
-  the direct replacement of revision `v1` by `v2`;
-- the complete `VerifiedBuiltMir`, `OwnershipCheckedMir`,
-  `DropElaboratedMir`, `CoroutineElaboratedMir`, and
-  `VerifiedExecutableMir` evidence lineage and field order;
+- ownership-result validation against the canonical Built MIR and
+  borrow-evidence lineage;
 - the ownership-fact Built/evidence revision lineage; and
 - Acceptance Criterion 26's all-operations `IrOperationResult` claim.
 
-The replacement text in this RFC is complete for those clauses. Acceptance
-must append the accepted RFC 0013 proposal hash to the RFC 0005, RFC 0008, and
-RFC 0010 tracking decision records. Those tracker entries are evidence links
-only and do not alter any base proposal. No in-place accepted-proposal edit is
-authorized.
+The replacement text in this RFC is complete for those clauses. The RFC 0005,
+RFC 0008, and RFC 0010 trackers record implementation evidence only and do not
+create runtime dependencies.
 
 ### Total Borrow Shape Classification
 
@@ -713,33 +699,12 @@ summary is `MissingRequiredFact` or `AdditionalFact`; a stale revision is
 `InputRevisionMismatch`; unauthorized provenance, byte disagreement, or target
 mismatch is `InvalidFact`; malformed bytes are `CanonicalCodecMismatch`.
 
-### MIR Revision And Evidence Lineage
+### MIR Evidence Lineage
 
-RFC 0010 `MirRevisionInput` is replaced by `v2`. It adds
-`BorrowEvidenceRevision` immediately after `DispatchFactsRevision`; every
-other field and framing rule remains in the accepted `v1` order. The revision
-domain becomes `zom.mir-revision.v2`, with no `v1` decoder.
-
-The Built non-empty oracle uses borrow-evidence bytes `44` and the accepted
-function byte `b3`. Its complete 178-byte preimage is:
-
-```text
-7a6f6d2e6d69722d7265766973696f6e2e7632000100000000000000000000000000000000000000000000000000000000000000000000000000000001a122222222222222222222222222222222222222222222222222222222222222223333333333333333333333333333333333333333333333333333333333333333444444444444444444444444444444444444444444444444444444444444444400000000000000000000010000000000000001b3
-```
-
-Its SHA-256 is
-`c3d07750a04a9d7d12f10187640890826998f53c7a7a02023b83536cf7bdb6c8`.
-The empty Built oracle is the corresponding 169-byte preimage:
-
-```text
-7a6f6d2e6d69722d7265766973696f6e2e7632000100000000000000000000000000000000000000000000000000000000000000000000000000000001a12222222222222222222222222222222222222222222222222222222222222222333333333333333333333333333333333333333333333333333333333333333344444444444444444444444444444444444444444444444444444444444444440000000000000000000000
-```
-
-Its SHA-256 is
-`f72b2caf42b0565a5380fa3cb79ed58d3154cf098d87dc5c2d42a59eb77e2b65`.
-
-The RFC 0010 wrappers are replaced by these complete evidence fields while
-retaining all accepted module and certificate fields:
+RFC 0010 owns the single canonical `MirRevisionInput`, the
+`zom.mir-revision` domain, and the Built empty and non-empty oracles.
+`BorrowEvidenceRevision` follows `DispatchFactsRevision` in that framing. This
+RFC requires the verified Built capability to retain the matching lease:
 
 ```text
 VerifiedBuiltMir {
@@ -748,57 +713,14 @@ VerifiedBuiltMir {
   borrowEvidenceRevision: BorrowEvidenceRevision,
   borrowEvidenceLease: VerifiedBorrowEvidenceLease,
 }
-
-OwnershipCheckedMir {
-  builtRevision: MirRevisionId,
-  borrowEvidenceRevision: BorrowEvidenceRevision,
-  builtMir: VerifiedBuiltMir,
-  ownershipFacts: VerifiedOwnershipFacts,
-}
-
-DropElaboratedMir {
-  module: MirModule,
-  revision: MirRevisionId,
-  originatingBuiltRevision: MirRevisionId,
-  borrowEvidenceRevision: BorrowEvidenceRevision,
-  borrowEvidenceLease: VerifiedBorrowEvidenceLease,
-  dropCertificate: DropCertificate,
-}
-
-CoroutineElaboratedMir {
-  module: MirModule,
-  revision: MirRevisionId,
-  originatingBuiltRevision: MirRevisionId,
-  borrowEvidenceRevision: BorrowEvidenceRevision,
-  borrowEvidenceLease: VerifiedBorrowEvidenceLease,
-  dropCertificate: DropCertificate,
-  coroutineCertificate: CoroutineCertificate,
-}
-
-VerifiedExecutableMir {
-  module: MirModule,
-  revision: MirRevisionId,
-  originatingBuiltRevision: MirRevisionId,
-  borrowEvidenceRevision: BorrowEvidenceRevision,
-  borrowEvidenceLease: VerifiedBorrowEvidenceLease,
-  dropCertificate: DropCertificate,
-  coroutineCertificate: CoroutineCertificate,
-}
 ```
-
-The two new fields follow `originatingBuiltRevision` and precede each wrapper's
-certificates. Their MIR revision uses `v2` and therefore commits the same
-evidence revision. Private
-constructors accept only the predecessor wrapper, copy the lease, recompute the
-revision, resolve the lease, and compare all three revision occurrences before
-publishing the successor. A stale or swapped lease is
-`InputRevisionMismatch`; malformed evidence is `CanonicalCodecMismatch`.
 
 Ownership facts record the exact Built `MirRevisionId` and
 `BorrowEvidenceRevision`. `OwnershipCheckedMir` can be constructed only when
 both match the embedded verified Built MIR and the resolved lease. HIR carries
 the same lease from `VerifiedCheckedModule`; MIR construction rejects a swap
-before computing `v2`.
+before computing the revision. Built MIR contains no reserved phase tags,
+successor certificate slots, or alternate codec.
 
 ### Ownership Source-Rejection Seam
 
@@ -832,8 +754,8 @@ operation can move to implementation.
 The operation and ownership proof verifier are one
 `OwnershipProofValidation` phase. The exact precedence is:
 
-1. validate context, identities, Built phase, Built revision, evidence lease,
-   and evidence revision;
+1. validate context, identities, the canonical Built MIR artifact and revision,
+   evidence lease, and evidence revision;
 2. select identity failures before dereferencing invalid handles;
 3. select `InputRevisionMismatch`, then `CanonicalCodecMismatch`, then the
    remaining legal RFC 0010 input invariants;
@@ -944,18 +866,13 @@ and validated declaration spans.
 
 ## Compatibility And Rollout
 
-This is a direct replacement with no compatibility path:
-
 1. add RFC 0013 to RFC 0007's dependencies before RFC 0007 returns to DRAFT;
-2. accept this overlay against the exact base hashes;
-3. record the accepted overlay hash in RFC 0005, RFC 0008, and RFC 0010
-   trackers;
-4. implement borrow signature source failures and root-only summaries;
-5. replace every module interface producer and consumer with `v1`;
-6. retain verified borrow evidence through checked module, HIR, and Built MIR;
-7. implement the fixed ownership result with RFC 0007's accepted failure
+2. implement borrow signature source failures and root-only summaries;
+3. replace every module interface producer and consumer with `v1`;
+4. retain verified borrow evidence through checked module, HIR, and Built MIR;
+5. implement the fixed ownership result with RFC 0007's accepted failure
    algebra; and
-8. delete module-interface `v0`, incomplete constructors, AST ownership paths,
+6. delete module-interface `v0`, incomplete constructors, AST ownership paths,
    and any foreign-summary reconstruction in the same change.
 
 Rollback before landing reverts the complete overlay implementation. There is
@@ -1013,8 +930,8 @@ seed permutations, reversed source order, aliases, and re-exports.
     at the ownership seam.
 15. Worker and input permutations produce byte-identical summaries, revisions,
     diagnostics, and dumps.
-16. The accepted overlay hash is appended to RFC 0005, RFC 0008, and RFC 0010
-    tracking decision records before implementation begins.
+16. RFC 0005, RFC 0008, and RFC 0010 trackers record executable evidence for
+    the current canonical contract before implementation begins.
 17. `python3 scripts/check-rfc.py`, `python3 scripts/check-format.py`, default
     CTest, spec alignment, and `git diff --check` pass before `LANDED`.
 
@@ -1057,7 +974,7 @@ None
 | Date | Status | Notes |
 |---|---|---|
 | 2026-07-11 | DRAFT | Created the ownership source-rejection seam and verified cross-module borrow-signature surface required before RFC 0007 can be redesigned over Built MIR. |
-| 2026-07-11 | DRAFT | Replaced the unsound structural-leaf draft with a conservative root-only overlay, exact accepted-base hashes, complete module-interface v1 codec, typed signature failures, foreign-summary reuse, and revision-bound frontend evidence. |
-| 2026-07-11 | REVIEW | Entered formal owner review after exact-hash governance, semantic, and invariant entry reviews approved the root-only contract, branded evidence repository, module-interface v1, MIR revision v2, staged failure precedence, and transitive re-export proof selection. |
+| 2026-07-11 | DRAFT | Defined the conservative root-only contract, complete module-interface v1 codec, typed signature failures, foreign-summary reuse, and revision-bound frontend evidence. |
+| 2026-07-11 | REVIEW | Entered formal owner review after semantic and invariant entry reviews approved the root-only contract, branded evidence repository, canonical module interface, canonical MIR revision, staged failure precedence, and transitive re-export proof selection. |
 | 2026-07-11 | ACCEPTED | All ten required owners approved the same exact REVIEW snapshot with no objections. The accepted design remains unimplemented until an explicit `ACCEPTED -> IMPLEMENTING` transition. |
-| 2026-07-17 | IMPLEMENTING | Started the direct ownership-integration replacement series with the accepted borrow-interface surface, branded BorrowEvidence repository, checked-module and HIR evidence lineage, MIR revision v2, and ownership-result seam. No predecessor or compatibility rail is permitted. |
+| 2026-07-17 | IMPLEMENTING | Started the direct ownership-integration replacement series with the accepted borrow-interface surface, branded BorrowEvidence repository, checked-module and HIR evidence lineage, MIR revision, and ownership-result seam. No predecessor or compatibility rail is permitted. |

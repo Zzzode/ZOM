@@ -423,8 +423,9 @@ ir::IrOperationResult<VerifiedValue> rejectMir(
 }
 
 zc::Maybe<identity::DefId> firstDefinition(const hir::VerifiedHirModule& module) {
-  if (module.declarations().size() == 0) return zc::none;
-  return module.declarations()[0].definition;
+  if (module.declarations().size() != 0) return module.declarations()[0].definition;
+  if (module.functions().size() != 0) return module.functions()[0].definition;
+  return zc::none;
 }
 
 MirLocalId localId(uint32_t ordinal) {
@@ -663,6 +664,28 @@ zc::Maybe<const hir::HirScalarLiteralExpression&> expressionFor(
   return result;
 }
 
+zc::Maybe<const hir::HirBlockStatement&> blockFor(const hir::VerifiedHirModule& module,
+                                                  hir::HirNodeId node) {
+  zc::Maybe<const hir::HirBlockStatement&> result;
+  for (const auto& block : module.blocks()) {
+    if (block.node != node) continue;
+    if (result != zc::none) return zc::none;
+    result = block;
+  }
+  return result;
+}
+
+zc::Maybe<const hir::HirReturnStatement&> returnFor(const hir::VerifiedHirModule& module,
+                                                    hir::HirNodeId node) {
+  zc::Maybe<const hir::HirReturnStatement&> result;
+  for (const auto& statement : module.returns()) {
+    if (statement.node != node) continue;
+    if (result != zc::none) return zc::none;
+    result = statement;
+  }
+  return result;
+}
+
 bool sameConstant(const checker::checked::CanonicalConstValue& left,
                   const checker::checked::CanonicalConstValue& right, identity::ModuleId module,
                   const identity::SemanticIdentityRegistrySet& registries,
@@ -729,18 +752,48 @@ bool validScalarFunction(const MirFunction& function, const hir::HirValueDeclara
   return validReturn;
 }
 
+bool validScalarReturnFunction(const MirFunction& function,
+                               const hir::HirFunctionDeclaration& declaration,
+                               const hir::HirBlockStatement& sourceBlock,
+                               const hir::HirReturnStatement& sourceReturn,
+                               const hir::HirScalarLiteralExpression& expression,
+                               identity::ModuleId module,
+                               const identity::SemanticIdentityRegistrySet& registries,
+                               const type::SemanticTypeStore& semanticTypes) {
+  if (function.owner != declaration.definition || function.kind != MirFunctionKind::Function ||
+      function.sourceDefinitionKind != identity::DefinitionKind::Function ||
+      function.resultType != declaration.resultType ||
+      !sameSpan(function.sourceSpan, declaration.sourceSpan) || function.sourceScopes.size() != 1 ||
+      function.locals.size() != 0 || function.blocks.size() != 1 ||
+      declaration.body != sourceBlock.node || sourceBlock.statements.size() != 1 ||
+      sourceBlock.statements[0] != sourceReturn.node || sourceReturn.value != expression.node ||
+      sourceReturn.resultType != declaration.resultType ||
+      expression.type != declaration.resultType) {
+    return false;
+  }
+  const auto& scope = function.sourceScopes[0];
+  const auto& block = function.blocks[0];
+  if (scope.id != scopeId(1) || scope.parent != zc::none ||
+      !sameSpan(scope.sourceSpan, declaration.sourceSpan) || block.id != blockId(1) ||
+      block.sourceScope != scope.id || block.statements.size() != 0 ||
+      block.terminator.kind() != MirTerminatorKind::Return ||
+      block.terminator.returnValue().value == zc::none) {
+    return false;
+  }
+  bool validReturn = false;
+  ZC_IF_SOME(value, block.terminator.returnValue().value) {
+    validReturn = value.kind() == MirOperandKind::Constant &&
+                  value.constantValue().type == expression.type &&
+                  sameConstant(value.constantValue().value, expression.value, module, registries,
+                               semanticTypes);
+  }
+  return validReturn;
+}
+
 }  // namespace
 
-zc::Maybe<MirRevisionId> MirRevisionId::fromDigest(MirRevisionPhase phase,
-                                                   const identity::Sha256Digest& digest) noexcept {
-  switch (phase) {
-    case MirRevisionPhase::Built:
-    case MirRevisionPhase::DropElaborated:
-    case MirRevisionPhase::CoroutineElaborated:
-    case MirRevisionPhase::Executable:
-      return MirRevisionId(phase, digest);
-  }
-  return zc::none;
+MirRevisionId MirRevisionId::fromDigest(const identity::Sha256Digest& digest) noexcept {
+  return MirRevisionId(digest);
 }
 
 zc::Maybe<zc::Array<uint8_t>> MirRevisionCodec::encodeBuiltFramed(
@@ -751,20 +804,16 @@ zc::Maybe<zc::Array<uint8_t>> MirRevisionCodec::encodeBuiltFramed(
     zc::ArrayPtr<const zc::Array<uint8_t>> canonicalFunctions) {
   if (expandedModuleKey.size() == 0) return zc::none;
   identity::CanonicalEncoder encoder;
-  constexpr char domain[] = "zom.mir-revision.v2";
+  constexpr char domain[] = "zom.mir-revision";
   for (size_t index = 0; index + 1 < sizeof(domain); ++index) {
     encoder.encodeUint8(static_cast<uint8_t>(domain[index]));
   }
   encoder.encodeUint8(0x00);
-  encoder.encodeUint8(static_cast<uint8_t>(MirRevisionPhase::Built));
   encoder.encodeDigest(contextFingerprint);
   encoder.encodeByteString(expandedModuleKey);
   encoder.encodeDigest(checkedFactsRevision);
   encoder.encodeDigest(dispatchFactsRevision);
   encoder.encodeDigest(borrowEvidenceRevision);
-  encoder.encodeNone();
-  encoder.encodeNone();
-  encoder.encodeNone();
   encoder.encodeSequenceSize(canonicalFunctions.size());
   for (const auto& function : canonicalFunctions) {
     if (function.size() == 0) return zc::none;
@@ -797,7 +846,7 @@ zc::Maybe<MirRevisionId> MirRevisionCodec::computeBuilt(
   if (bytes == zc::none) return zc::none;
   ZC_IF_SOME(value, bytes) {
     auto digest = identity::sha256(value.asPtr());
-    ZC_IF_SOME(hash, digest) { return MirRevisionId::fromDigest(MirRevisionPhase::Built, hash); }
+    ZC_IF_SOME(hash, digest) { return MirRevisionId::fromDigest(hash); }
   }
   return zc::none;
 }
@@ -909,7 +958,10 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(
       evidence.evidence().revision().digest() != hirModule.borrowEvidenceRevision().digest() ||
       hirModule.borrowEvidenceLease().key().revision.digest() !=
           hirModule.borrowEvidenceRevision().digest() ||
-      hirModule.declarations().size() != hirModule.expressions().size()) {
+      hirModule.declarations().size() + hirModule.functions().size() !=
+          hirModule.expressions().size() ||
+      hirModule.functions().size() != hirModule.blocks().size() ||
+      hirModule.functions().size() != hirModule.returns().size()) {
     return rejectMir<BuiltMirCandidate>(ir::IrFailurePhase::MirConstruction,
                                         ir::IrFailureKind::InputRevisionMismatch, module,
                                         firstDefinition(hirModule), registries, 0);
@@ -952,6 +1004,56 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(
                            MirFunctionKind::ModuleInitializer,
                            declaration.definitionKind,
                            declaration.inferredType,
+                           declaration.sourceSpan.clone(),
+                           zc::mv(scopes),
+                           zc::mv(locals),
+                           zc::mv(blocks)};
+      zc::Array<uint8_t> ownerKey;
+      ZC_IF_SOME(key, definition) { ownerKey = key.encode(); }
+      pending.add(PendingMirFunction{zc::mv(function), zc::mv(ownerKey)});
+      continue;
+    }
+    ZC_UNREACHABLE
+  }
+  for (const auto& declaration : hirModule.functions()) {
+    auto sourceBlock = blockFor(hirModule, declaration.body);
+    if (sourceBlock == zc::none) {
+      return rejectMir<BuiltMirCandidate>(
+          ir::IrFailurePhase::MirConstruction, ir::IrFailureKind::MissingRequiredFact, module,
+          declaration.definition, registries, static_cast<uint32_t>(pending.size() + 1));
+    }
+    hir::HirNodeId returnNode;
+    ZC_IF_SOME(value, sourceBlock) {
+      if (value.statements.size() == 1) returnNode = value.statements[0];
+    }
+    auto sourceReturn = returnFor(hirModule, returnNode);
+    hir::HirNodeId expressionNode;
+    ZC_IF_SOME(value, sourceReturn) { expressionNode = value.value; }
+    auto expression = expressionFor(hirModule, expressionNode);
+    auto definition = registries.definitions().lookup(declaration.definition);
+    auto semanticType = semanticTypes.get(declaration.resultType);
+    if (sourceReturn == zc::none || expression == zc::none || definition == zc::none ||
+        !semanticType.is<type::SemanticTypeLookup>() ||
+        !declaration.definition.belongsTo(hirModule.semanticContext()) ||
+        !declaration.resultType.belongsTo(hirModule.semanticContext())) {
+      return rejectMir<BuiltMirCandidate>(
+          ir::IrFailurePhase::MirConstruction, ir::IrFailureKind::MissingRequiredFact, module,
+          declaration.definition, registries, static_cast<uint32_t>(pending.size() + 1));
+    }
+    ZC_IF_SOME(literal, expression) {
+      zc::Vector<MirSourceScope> scopes;
+      zc::Maybe<MirSourceScopeId> noParent;
+      scopes.add(MirSourceScope{scopeId(1), zc::mv(noParent), declaration.sourceSpan.clone()});
+      zc::Vector<MirLocalDeclaration> locals;
+      zc::Vector<MirStatement> statements;
+      auto returnOperand = MirOperand::constant(declaration.resultType, literal.value.clone());
+      zc::Vector<MirBasicBlock> blocks;
+      blocks.add(MirBasicBlock{blockId(1), scopeId(1), zc::mv(statements),
+                               MirTerminator::returnValue(zc::mv(returnOperand))});
+      MirFunction function{declaration.definition,
+                           MirFunctionKind::Function,
+                           identity::DefinitionKind::Function,
+                           declaration.resultType,
                            declaration.sourceSpan.clone(),
                            zc::mv(scopes),
                            zc::mv(locals),
@@ -1012,8 +1114,8 @@ ir::IrOperationResult<VerifiedBuiltMir> BuiltMirVerifier::verify(BuiltMirCandida
       hirModule.borrowEvidenceRepository().lookup(hirModule.borrowEvidenceLease());
   if (!evidence.isResolved() ||
       evidence.evidence().revision().digest() != hirModule.borrowEvidenceRevision().digest() ||
-      candidate.revision.phase() != MirRevisionPhase::Built ||
-      candidate.functions.size() != hirModule.declarations().size() ||
+      candidate.functions.size() !=
+          hirModule.declarations().size() + hirModule.functions().size() ||
       candidate.canonicalFunctions.size() != candidate.functions.size()) {
     return rejectMir<VerifiedBuiltMir>(ir::IrFailurePhase::BuiltMirVerification,
                                        ir::IrFailureKind::InputRevisionMismatch, module,
@@ -1034,7 +1136,17 @@ ir::IrOperationResult<VerifiedBuiltMir> BuiltMirVerifier::verify(BuiltMirCandida
       }
       declaration = value;
     }
-    if (declaration == zc::none) {
+    zc::Maybe<const hir::HirFunctionDeclaration&> sourceFunction;
+    for (const auto& value : hirModule.functions()) {
+      if (value.definition != function.owner) continue;
+      if (sourceFunction != zc::none) {
+        return rejectMir<VerifiedBuiltMir>(
+            ir::IrFailurePhase::BuiltMirVerification, ir::IrFailureKind::AdditionalFact, module,
+            function.owner, registries, static_cast<uint32_t>(index + 1));
+      }
+      sourceFunction = value;
+    }
+    if ((declaration == zc::none) == (sourceFunction == zc::none)) {
       return rejectMir<VerifiedBuiltMir>(ir::IrFailurePhase::BuiltMirVerification,
                                          ir::IrFailureKind::AdditionalFact, module, function.owner,
                                          registries, static_cast<uint32_t>(index + 1));
@@ -1079,6 +1191,60 @@ ir::IrOperationResult<VerifiedBuiltMir> BuiltMirVerifier::verify(BuiltMirCandida
         continue;
       }
     }
+    ZC_IF_SOME(sourceDeclaration, sourceFunction) {
+      auto sourceBlock = blockFor(hirModule, sourceDeclaration.body);
+      hir::HirNodeId returnNode;
+      ZC_IF_SOME(value, sourceBlock) {
+        if (value.statements.size() == 1) returnNode = value.statements[0];
+      }
+      auto sourceReturn = returnFor(hirModule, returnNode);
+      hir::HirNodeId expressionNode;
+      ZC_IF_SOME(value, sourceReturn) { expressionNode = value.value; }
+      auto expression = expressionFor(hirModule, expressionNode);
+      if (sourceBlock == zc::none || sourceReturn == zc::none || expression == zc::none) {
+        return rejectMir<VerifiedBuiltMir>(
+            ir::IrFailurePhase::BuiltMirVerification, ir::IrFailureKind::MissingRequiredFact,
+            module, function.owner, registries, static_cast<uint32_t>(index + 1));
+      }
+      bool valid = false;
+      ZC_IF_SOME(block, sourceBlock) {
+        ZC_IF_SOME(returnStatement, sourceReturn) {
+          ZC_IF_SOME(sourceExpression, expression) {
+            valid = validScalarReturnFunction(function, sourceDeclaration, block, returnStatement,
+                                              sourceExpression, module, registries, semanticTypes);
+          }
+        }
+      }
+      if (!valid) {
+        return rejectMir<VerifiedBuiltMir>(ir::IrFailurePhase::BuiltMirVerification,
+                                           ir::IrFailureKind::InvalidFact, module, function.owner,
+                                           registries, static_cast<uint32_t>(index + 1));
+      }
+      auto owner = registries.definitions().lookup(function.owner);
+      auto record = encodeFunction(function, module, registries, semanticTypes);
+      if (owner == zc::none || record == zc::none) {
+        return rejectMir<VerifiedBuiltMir>(
+            ir::IrFailurePhase::BuiltMirVerification, ir::IrFailureKind::CanonicalCodecMismatch,
+            module, function.owner, registries, static_cast<uint32_t>(index + 1));
+      }
+      zc::Array<uint8_t> ownerBytes;
+      ZC_IF_SOME(value, owner) { ownerBytes = value.encode(); }
+      if (index != 0 && !lessBytes(previousOwner.asPtr(), ownerBytes.asPtr())) {
+        return rejectMir<VerifiedBuiltMir>(ir::IrFailurePhase::BuiltMirVerification,
+                                           ir::IrFailureKind::InvalidFact, module, function.owner,
+                                           registries, static_cast<uint32_t>(index + 1));
+      }
+      previousOwner = zc::mv(ownerBytes);
+      ZC_IF_SOME(value, record) {
+        if (value.asPtr() != candidate.canonicalFunctions[index].asPtr()) {
+          return rejectMir<VerifiedBuiltMir>(
+              ir::IrFailurePhase::BuiltMirVerification, ir::IrFailureKind::CanonicalCodecMismatch,
+              module, function.owner, registries, static_cast<uint32_t>(index + 1));
+        }
+        recomputedFunctions.add(zc::mv(value));
+      }
+      continue;
+    }
     ZC_UNREACHABLE
   }
 
@@ -1100,8 +1266,7 @@ ir::IrOperationResult<VerifiedBuiltMir> BuiltMirVerifier::verify(BuiltMirCandida
   }
   bool revisionMatches = false;
   ZC_IF_SOME(value, recomputedRevision) {
-    revisionMatches = value.phase() == candidate.revision.phase() &&
-                      value.digest() == candidate.revision.digest();
+    revisionMatches = value.digest() == candidate.revision.digest();
   }
   if (!revisionMatches) {
     return rejectMir<VerifiedBuiltMir>(ir::IrFailurePhase::BuiltMirVerification,

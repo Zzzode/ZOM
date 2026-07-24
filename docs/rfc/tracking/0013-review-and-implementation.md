@@ -50,8 +50,8 @@ failure anchor, sorting, and callable-local precedence incomplete.
 
 The next draft rejects borrow-bearing body-local closures through the checked
 body source result, embeds foreign verified surfaces in a session-owned branded
-repository, defines the 176-byte evidence oracle, replaces MIR revision `v1`
-with `v2`, and closes source-failure selection and ordering.
+repository, defines the 176-byte evidence oracle, binds borrow evidence into the
+single canonical MIR revision, and closes source-failure selection and ordering.
 
 ### 2026-07-11 Evidence-Lineage Draft Review Return
 
@@ -61,14 +61,14 @@ and tracker
 `0ed00c864c4ca8a450eeaaedc83ea8fa074ec4bafffc21fd4394d323aac95380`
 received semantic approval. Invariant review returned transitive re-export
 origin selection and source-versus-invariant phase precedence. Governance
-returned the incomplete RFC 0010 MIR-v2 replacement enumeration, missing RFC
+returned the incomplete RFC 0010 MIR replacement enumeration, missing RFC
 0005 tracker transaction, and stale owner/path routing.
 
 The next draft requires byte-identical summaries across every authorized
 import/re-export surface and selects a canonical proof source, validates all
 identity/revision/codec/input invariants before source classification, lists
-every MIR-v2 replacement clause, and records the accepted overlay in RFC 0005,
-RFC 0008, and RFC 0010 trackers.
+every canonical MIR ownership clause, and records implementation evidence in
+RFC 0005, RFC 0008, and RFC 0010 trackers.
 
 ### 2026-07-11 Formal Owner Approval
 
@@ -83,7 +83,7 @@ and tracker
   approved root-shape semantics, transitive re-export proof selection,
   concurrency non-implication, and storage/extern safety.
 - `error-system`, `ir-backend`, `spec-audit`, and `verification` approved the
-  diagnostic paths, staged precedence, MIR revision v2 lineage, cross-RFC
+  diagnostic paths, staged precedence, MIR revision lineage, cross-RFC
   consistency, nine byte oracles, and negative/determinism gates.
 
 No owner recorded a blocking or non-blocking objection.
@@ -98,7 +98,7 @@ No owner recorded a blocking or non-blocking objection.
 | `module-system` | Approved | Borrow surface, module interface v1, transitive re-export proof selection, and cross-module consumption |
 | `error-system` | Approved | `ZOM4082-ZOM4085`, checked-body and interface source paths, invariants, and staged precedence |
 | `concurrency` | Approved | Proof that task and suspension semantics are not implied |
-| `ir-backend` | Approved | Ownership result seam, MIR revision v2 and oracles, Built MIR phase legality, and successor suppression |
+| `ir-backend` | Approved | Ownership result seam, canonical MIR revision and oracles, Built MIR artifact legality, and successor suppression |
 | `runtime-memory` | Approved | Reference/storage lifetime safety and Chapter 14 boundary |
 | `spec-audit` | Approved | Type, module, memory, and compiler-contract alignment |
 | `verification` | Approved | Nine codec oracles, staged negative matrices, determinism, and architecture gates |
@@ -140,7 +140,7 @@ lineage, or parallel MIR revision.
 | Borrow signature surface | Implemented | Closed direct-root summaries, source rejection, canonical codec, verified module-interface publication, and focused sanitizer tests |
 | BorrowEvidence authority | Implemented | `borrow-evidence-test` passes complete local/imported reconstruction, the exact 176-byte empty oracle, independent verification, branded repository leases, and deterministic missing/additional/duplicate/order/codec/stale/swap mutations |
 | Checked-module and HIR lineage | Implemented | `hir-module-test` and `compiler-session-package-test` pass exact retained checked and borrow leases, repository re-resolution, deterministic lineage dumps, and all-or-nothing session publication |
-| Built MIR revision v2 | Implemented | `built-mir-test` passes the exact non-empty `c3d07750...bdb6c8` and empty `f72b2caf...e2b65` oracles; direct HIR lowering, the independent verifier, atomic session adoption, and all 21 IR architecture mutations pass |
+| Built MIR revision | Implemented | `built-mir-test` passes the exact non-empty `9f8de0ad...ad7985` and empty `b9a8988d...38cbc9` oracles; direct HIR lowering, the independent verifier, atomic session adoption, and all 21 IR architecture mutations pass |
 | Ownership result seam | Pending | Closed source, identity, capability, and IR-invariant branches at OwnershipProofValidation with successor suppression |
 | Production cutover | Pending | RFC 0007 implementation prerequisites, full sanitizer/default CTest, determinism, spec alignment, architecture, format, and diff-hygiene evidence |
 

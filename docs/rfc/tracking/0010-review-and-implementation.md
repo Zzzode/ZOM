@@ -200,37 +200,6 @@ monomorphization rejections, registered `.def` mapping, and deterministic
 aggregation. This is not an acceptance decision; task-router, `rfc`,
 concurrency, runtime-memory, spec-audit, and verification reviews remain open.
 
-### 2026-07-11 Verification And Ownership-Spec Return Response
-
-Verification returned the preceding proposal because the four-phase MIR
-revision lacked an executable byte oracle, stale/foreign/swapped proof lineage
-mutations were incomplete, and worker/input permutations plus same-package
-multi-target identity were not explicit. Spec review additionally found that
-raising-call success/residual roles vanished at the checked-module handoff and
-Chapter 14 claimed ARC, weak references, and manual allocation while RFC 0007
-and the MIR design require affine ownership.
-
-RFC 0010 is resubmitted at
-`aa383df086896793af8d87fae0fe41aa345c02f4ccd699c001d71fd7ee30cda5`.
-Its coordinated hashes are RFC 0005
-`ac6b518d4c900daf3e1d64c2abc5e26475b24aa5bda5fe1da3573f65cd4d13bb`,
-RFC 0008
-`8f0aa6c1ad3f223c71247523cf2d5031b348c3d9d5a7c8e3110510f1429ad1f2`,
-and RFC 0009
-`6bebc5a230e498d799176cbe89c3862461cbeea5a9b4e1fddb25b3442d0291be`.
-
-The response defines the four `MirRevisionPhase` values, canonical revision
-inputs and proof lineage, the executable 114-byte Built-MIR oracle, and the
-complete stale, foreign-context, foreign-module, swapped-function,
-wrong-phase, wrong-origin, and wrong-certificate negative matrix. The checked
-handoff and HIR/MIR now preserve RFC 0005 success, canonical result, residual,
-and error-union-shape facts. Chapter 14 and MIR use only copy, move, borrow,
-logical drop, and drop-and-replace; no retain, release, weak-reference, or
-implicit ARC operation exists.
-
-This response records no approval. Task routing, governance, concurrency,
-runtime-memory, spec, and verification owners must review the new exact hash.
-
 ### 2026-07-11 Governance And MIR Wrapper Response
 
 Governance review returned the preceding response because stale exact-hash
@@ -564,7 +533,7 @@ Semantic review approved task routing, binder/checker, module-system,
 error-system, concurrency, IR/backend, runtime-memory, and spec-audit surfaces.
 Invariant review approved target, feature-gate, MIR lineage, evidence,
 diagnostic mapping, deterministic codec, and verification surfaces. The 111-,
-52-, 49-, 146-, and 137-byte oracles recompute exactly. Internal IR failure
+52-, 49-, 171-, and 162-byte oracles recompute exactly. Internal IR failure
 facts remain closed typed algebras and map exhaustively to registered `.def`
 diagnostics; no raw failure string is a public diagnostic path.
 `scripts/check-rfc.py` and `git diff --check` pass.
@@ -631,7 +600,7 @@ revision v2 and ownership-evidence clauses apply together with RFC 0010.
 | Remove the mixed `compiler/irgen` prototype and non-producing IR CLI surface | In progress | No `zom.ir.v0`, `OutputType::IR`, `--emit=ir`, empty IR conformance target, or prototype diagnostic remains |
 | Publish the verified checked-module handoff | Pending RFC 0005 and RFC 0008 checked-fact closure | Exact input leases, revisions, identities, and failure algebra |
 | Implement semantic HIR and verifier | Pending checked-module handoff | Complete field projection, deterministic revision, mutation matrix, and dump coverage |
-| Implement Built MIR and RFC 0013 ownership integration | Pending HIR | MIR revision v2, complete exits, ownership facts, drop and coroutine lineage, and permutation evidence |
+| Implement Built MIR and RFC 0013 ownership integration | Pending HIR | MIR revision, complete exits, ownership facts, drop and coroutine lineage, and permutation evidence |
 | Implement target LIR, ABI lowering, and monomorphization | Pending executable MIR | Target legality, layout, ABI, instance identity, worklist, verifier, and deterministic artifacts |
 | Implement LLVM translation and native artifacts | Pending verified LIR | Total translation, runtime and FFI boundaries, object and link outputs, and registered failures |
 | Complete repository cutover | Pending all production layers | Layer diagnostics, conformance, architecture gates, documentation, sanitizer, and full default suite |

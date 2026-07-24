@@ -16,7 +16,7 @@ verification strategy.
 ### 2026-07-11 Integration Dependency
 
 RFC 0013 was added as the required integration boundary. It defines the fixed
-`OwnershipAnalysisResult`, `VerifiedBorrowEvidenceLease`, MIR revision v2, and
+`OwnershipAnalysisResult`, `VerifiedBorrowEvidenceLease`, MIR revision, and
 successor evidence lineage. RFC 0007 remained `RETURNED` until that dependency
 was accepted and a complete proposal could be submitted.
 
@@ -151,7 +151,7 @@ proposal or tracker hash.
 The repaired draft directly closes all findings:
 
 - a canonical `MirEventKey` and closed slot/role projection distinguish every
-  operand and operation while remaining derived from MIR revision-v2 bytes;
+  operand and operation while remaining derived from MIR revision bytes;
 - `Storage`, `LocalValue`, `ClosureValue`, and `ScopedChild` regions plus
   `ReferencePointFact` encode exact reaching definitions, root/active origins,
   copy/move/overwrite/join/call/reborrow transfer, and last-use NLL;
@@ -300,7 +300,7 @@ It received no approval. The review found five remaining blockers:
    cast-owned carrier, failure-edge logical drop, partial-initialization rule,
    or linked linear transfer;
 2. `unsafeOccurrences` was simultaneously claimed to be absent from and
-   encoded in MIR revision v2, leaving no accepted field, revision, verifier,
+   encoded in MIR revision, leaving no accepted field, revision, verifier,
    or codec oracle for `UnsafeBoundaryKey`;
 3. Chapter 15 rejection incorrectly reused RFC 0010
    `FeatureBoundaryVerification` after executable MIR instead of defining a
@@ -310,40 +310,6 @@ It received no approval. The review found five remaining blockers:
 5. `StorageDead` could erase initialized non-`Copy` or `Linear` values without
    a proven logical drop, and open drop, obligation discharge, partial
    initialization, and mutation transfers were incomplete.
-
-### 2026-07-17 Event Overlay, Cast Carrier, And Drop Repair
-
-The repaired draft closes those contracts directly:
-
-- every checked cast owns one explicit MIR-local carrier identified by
-  `CastCarrierFact`; the source initializes it once, success transfers it, and
-  optional or forced failure logically drops it, including panic/unwind,
-  partial-initialization rejection, drop-obligation transfer, and linked
-  `Linear` consumption;
-- RFC 0007 owns `zom.ownership-event-overlay.v1` without altering MIR revision
-  v2. The overlay fixes exact slot and unsafe-occurrence fields, the
-  checked-fact/HIR/Built association verifier, complete canonical encoding, and
-  independent 145-byte empty, 178-byte empty-function, and 485-byte two-
-  occurrence collision oracles;
-- `OwnershipSurfaceAdmissionResult` rejects every `spawn` and `suspend`
-  immediately after checked-module assembly, emits only registered `ZOM4067
-  ConcurrencySemanticsUnavailable`, and constructs no HIR or successor;
-- the enablement transaction replaces the stale `ZOM4067` row, deletes
-  `ZOM4068` and every scoped-task producer, and leaves no ownership task fact;
-- drop obligations now share complete relational alternatives with linear
-  obligations and cast-carrier phases; closed/open drop covers uninitialized, initialized, and maybe-
-  initialized states, exact reverse component order, overwrite and mutation,
-  while `StorageDead` rejects any remaining nontrivial obligation; and
-- the changed fact schema uses `zom.ownership-facts.v5`, binds the event-overlay
-  revision, and has exact 169-byte empty, 298-byte function-framing, and
-  390-byte non-empty point-state oracles.
-
-The proposal remains `DRAFT` with `approvers: []`, `decision: TBD`, and no
-status transition. The repaired DRAFT proposal SHA-256 is
-`cf1fe8c08b49706aaeb554f2ae195bce9186f3b8a2a91a8cc73176cf524a41ea`.
-It has no owner approval. The tracker hash is reported with the validation
-result because a document cannot contain its own digest. A fresh exact-hash
-review is required from every owner.
 
 ### 2026-07-17 Exact-Owner Re-review Return
 
@@ -380,7 +346,7 @@ The repaired draft closes those blockers directly:
   a one-to-one transfer;
 - unsafe occurrence ordinals, source association, acknowledgement association,
   and occurrence spans live only in `zom.ownership-event-overlay.v1`;
-  `MirUnsafeScopeBoundary` enter and exit statements remain ordinary MIR v2
+  `MirUnsafeScopeBoundary` enter and exit statements remain ordinary MIR
   operations with exact event projection, dominance, nesting, and complete
   exit-cut validation;
 - ownership-surface admission now consumes `VerifiedBoundModuleInput` before
@@ -398,69 +364,6 @@ repair changes validation and source contracts without changing their encoded
 component records. The proposal remains `DRAFT` with `approvers: []`,
 `decision: TBD`, and no status transition. Its repaired proposal SHA-256 is
 `93f042edee388609082f629bc11a956ee651aaf468617faffcbfe66f7f99bed6`.
-It requires a fresh exact-hash owner review.
-
-### 2026-07-17 Independent Resource And MIR Encoding Re-review Return
-
-Independent re-review returned proposal
-`93f042edee388609082f629bc11a956ee651aaf468617faffcbfe66f7f99bed6`
-and tracker
-`775e0a6e135440f7064b9075c179f68588905b2159645c50e1471dbd42c6f874`.
-It received no approval. The review found two remaining blockers:
-
-1. type-changing consuming casts depended on a result drop plan that ownership
-   analysis was expected to derive after the admitted checked module and its
-   semantic authority had been destroyed; no authoritative encodable resource
-   subject, logical-drop plan, cast route, or independent projection contract
-   existed; and
-2. unsafe-scope enter and exit had no unique direct-replacement Built MIR
-   statement algebra: the outer tag, inner payload framing, verifier rules,
-   exact `MirRevisionId` bytes, and non-empty revision oracle remained
-   ambiguous.
-
-### 2026-07-17 Authoritative Resource Plan And Unsafe-Scope Encoding Repair
-
-The repaired draft closes both blockers directly:
-
-- `zom.ownership-event-overlay.v2` adds one authoritative
-  `LogicalDropPlan` for every initialization and one
-  `VerifiedCastResourcePlanFact` for every checked cast. The checker-side
-  producer and independent overlay verifier derive those facts while the
-  admitted checked module, semantic type store, canonical definition inventory,
-  marker proofs, impls, and witnesses remain alive; ownership analysis cannot
-  reopen or invent that semantic authority;
-- the plan codec fixes optional declared, builtin, and dynamic drop actions,
-  exact Copy and Linear proofs, canonical component traversal, cast-route proof
-  tags, complete carrier/result bijection, and key/value equality. The facts-v6
-  schema adds canonical `DropResourceSubject` generations that moves and
-  verified cast routes preserve even when a current type or drop action changes;
-- action-free affine and `Linear` resources are explicit rather than forced
-  into a nonexistent deinitializer: `DropRequirement` distinguishes
-  `Logical`, `Linear`, and `LinearLogical`, and every invalid action/marker
-  combination is rejected before ownership analysis;
-- Built MIR has one outer `MirStatementKind::UnsafeScopeBoundary = 0x07` tag.
-  Its payload is exactly one inner enter/exit byte plus
-  `uint32be(scope.ordinal)`, for a six-byte statement. Separate outer enter/exit
-  tags have no compatibility decoder, and the verifier checks scope ownership,
-  nesting, dominance, exact exit cuts, and byte-identical re-encoding. This
-  pre-enablement completion directly replaces RFC 0010's generic suffix rule
-  for the one new tag; after enablement, another statement change requires
-  MIR-v3; and
-- the unchanged `zom.mir-revision.v2` domain has a new exact 290-byte
-  unsafe-scope framing oracle with SHA-256
-  `bd99e5eaa91c7994ea521890ebee6945e2a1ccaff6c6bb09759a911fa946fd40`.
-  Overlay-v2 exact oracles are 145, 194, and 501 bytes with hashes
-  `05a872bebbd346b2b2e16c65021b77ae2d55700276b864187458ac219e8a7408`,
-  `6be731e8298becec6df54a43260a663213282e8571129cdafaa0128cdce2ec20`,
-  and `8c15709b2e25076248f286a7c6fb6e43b552fac78a7f00c928eef1bc66fd6c1b`.
-  Facts-v6 exact oracles are 169, 298, and 390 bytes with hashes
-  `61bbf9daf4073e84f63f245e9ab7e2def12be018d9b573f66b5a717d9499365a`,
-  `98bc7b5114a35df94b1e880d8beb7e8bc9897d4bb11ea571ed309a2fd55b01a3`,
-  and `99cd90da6ac35ac1f22cb2e85c6d60fd2ad81b74e5e161d6624728e5aeb24046`.
-
-The proposal remains `DRAFT` with `approvers: []`, `decision: TBD`, and no
-status transition. Its repaired proposal SHA-256 is
-`13a3289001a24ad7c525ea8caafcd022f7d5a5ac7f7540b0802595415f705ce8`.
 It requires a fresh exact-hash owner review.
 
 ### 2026-07-17 Marker Decision And Handoff Re-review Return
@@ -649,9 +552,8 @@ The repaired `REVIEW` proposal closes all four blockers directly:
   component; action panic enters RFC 0006's terminal abort path. Unwind,
   cleanup-resuming panic, remaining-cleanup, partial-discharge, and premature-
   commit successors are rejected; and
-- the direct-replacement overlay-v3 non-empty oracles are now 210 and 517 bytes,
-  while facts-v6 non-empty oracles are 290 and 382 bytes. Zero-function vectors
-  and MIR-v2 remain byte-identical, and no compatibility decoder is introduced.
+- the overlay-v3 non-empty oracles are 210 and 517 bytes, while facts-v6
+  non-empty oracles are 290 and 382 bytes.
 
 The repaired proposal remains `REVIEW` with `approvers: []`, `decision: TBD`,
 and `implementation: TBD`. Its exact SHA-256 is
@@ -723,10 +625,10 @@ constructed.
 | `module-system` | Approved | Explicit RFC 0013 repository capability, exact lease resolution, teardown rejection, capability-bearing successors, and atomic publication with no ownership repository |
 | `error-system` | Approved | Closed source algebra, retained ownership codes, deletion without reassignment of `ZOM4067-ZOM4068`, fresh `ZOM4093-ZOM4095`, all-cause notes, suppression, precedence, and invariant routing |
 | `concurrency` | Approved | Chapter 15 pre-checker bound-module admission, exact fresh `ZOM4095` producer and successor suppression, no task/suspension ownership producer, and no concurrency runtime implementation impact |
-| `ir-backend` | Approved | RFC 0007 overlay-v3 activation/resource codec and independent checker-time verifier, complete descendant marker-use query set, postorder maximal-component fold and cleanup selection, resource plans, cast carriers, one outer `UnsafeScopeBoundary = 0x07` MIR-v2 statement codec and oracle, canonical `MirStatement::BorrowCreation`, one-CFG rule, event cutpoints, facts without duplicate activation authority, typestate, and cleanup handoff |
+| `ir-backend` | Approved | RFC 0007 overlay-v3 activation/resource codec and independent checker-time verifier, complete descendant marker-use query set, postorder maximal-component fold and cleanup selection, resource plans, cast carriers, one outer `UnsafeScopeBoundary = 0x07` MIR statement codec and oracle, canonical `MirStatement::BorrowCreation`, one-CFG rule, event cutpoints, facts without duplicate activation authority, typestate, and cleanup handoff |
 | `runtime-memory` | Approved | Affine move/drop, canonical `DropResourceSubject`, all three drop-requirement forms, open/closed abort-only component drop, fail-closed `StorageDead`, type-changing cast verified-plan and subject preservation, NLL references, reborrow, cyclic raw provenance, raw-to-reference rejection, relational Linear state, panic, Chapter 14 safety, and exact runtime exclusions |
 | `spec-audit` | Approved | Chapters 3, 4, 5, 6, 14, and 15 alignment with the proposed compiler contract |
-| `verification` | Approved | Independent MIR-v2 unsafe-scope, overlay-v3 activation/resource, and facts-v6 exact oracles, marker-capability lineage/lifetime and producer-verifier isolation, raw-to-reference and abort-only component-drop negatives, descendant-query/postorder/resource-plan/cast/drop/event/cutpoint/NLL/loop mutation matrix, symbolic-budget differential solver, translated corpus, determinism, architecture, and fail-hard 70-percent per-file coverage gates |
+| `verification` | Approved | Independent MIR unsafe-scope, overlay-v3 activation/resource, and facts-v6 exact oracles, marker-capability lineage/lifetime and producer-verifier isolation, raw-to-reference and abort-only component-drop negatives, descendant-query/postorder/resource-plan/cast/drop/event/cutpoint/NLL/loop mutation matrix, symbolic-budget differential solver, translated corpus, determinism, architecture, and fail-hard 70-percent per-file coverage gates |
 
 Approval is recorded only in RFC 0007 frontmatter after every required owner
 approves the same exact `REVIEW` proposal hash. This table is a routing aid and
@@ -818,8 +720,8 @@ does not grant approval.
 - [x] Input, source, candidate, codec, and identity precedence is explicit.
 - [x] Ownership facts are keyed by structural MIR identities and have an exact
       revision codec bound to the separate event-overlay revision.
-- [x] Independent MIR-v2 290-byte unsafe-scope, overlay-v3 145/210/517-byte,
-      and facts-v6 169/290/382-byte exact oracles are specified.
+- [x] Independent MIR 283-byte unsafe-scope, overlay-v3 145/210/517-byte,
+      and facts-v6 168/289/381-byte exact oracles are specified.
 - [x] Producer and verifier independence is normative for both marker queries
       and ownership facts; neither verifier reads producer memo, traversal,
       query selection, fold decision, transfer function, cache, or record
@@ -881,12 +783,12 @@ The ordered series after that transaction is:
 
 | Slice | State | Required Evidence |
 |---|---|---|
-| Built MIR and ownership event overlay | RFC 0013 prerequisite in progress; RFC 0007 blocked | MIR-v2 input plus RFC 0007 overlay-v3 slots/cutpoints and sole checker-time deferred-activation map, explicit call-duration RFC 0015 marker-proof input, separate producer/verifier query contexts and memos, complete descendant marker-use inventory, query-first/postorder logical-drop plans, cast-resource plans, canonical `MirStatement::BorrowCreation`, total cast-carrier resource projection, collision-free overlay-only unsafe occurrences, exact outer-`0x07` unsafe-scope statement framing and 290-byte oracle, pre-checker Chapter 15 rejection, explicit repository capability, independent verifier, dumps, malformed inputs, and complete admissible exits |
+| Built MIR and ownership event overlay | RFC 0013 prerequisite in progress; RFC 0007 blocked | MIR input plus RFC 0007 overlay-v3 slots/cutpoints and sole checker-time deferred-activation map, explicit call-duration RFC 0015 marker-proof input, separate producer/verifier query contexts and memos, complete descendant marker-use inventory, query-first/postorder logical-drop plans, cast-resource plans, canonical `MirStatement::BorrowCreation`, total cast-carrier resource projection, collision-free overlay-only unsafe occurrences, exact outer-`0x07` unsafe-scope statement framing and 283-byte oracle, pre-checker Chapter 15 rejection, explicit repository capability, independent verifier, dumps, malformed inputs, and complete admissible exits |
 | Closed ownership diagnostics | Blocked by enablement transaction | Ownership source variants, deletion without reassignment of `ZOM4067-ZOM4068`, fresh pre-checker `ZOM4095`, proposed `ZOM4093-ZOM4094`, exact primary/all-cause note mapping, suppression, ordering, and retained payloads |
 | Move paths, initialization, and drop | Blocked by enablement transaction | Implicit reflexive conflict, exact distinct-pair inventory, three-bit lattice, complete loss causes, canonical `DropResourceSubject`, all three drop requirements, open/closed component drop with pre-consumption and abort-only action panic, partial initialization/mutation, checked-cast verified-plan and subject preservation, fail-closed `StorageDead`, overwrite, and differential oracle |
 | Loans, references, and regions | Blocked by enablement transaction | Complete before/after point phases, issue/activation/commit timing, exact checker-time overlay `DeferredActivationFact`, independent reconstruction while checker authority lives, ownership-side overlay bijection with no checker lookup, `Storage` and event-granular NLL value regions, reaching reference definitions, root/active multi-origin transfer, reborrow restoration, exact outlives closure, call evidence, escape, and differential oracle |
 | Marker, linear, unsafe, and capture boundaries | Blocked by enablement transaction | RFC 0015 marker-input construction, lifetime, lineage validation, producer/verifier isolation, full descendant Copy/Linear query tree, postorder component fold, cast-carrier drop/linear transfer, multi-predecessor linear SCCs, stable pending backedges, collision-free unsafe ordinals, four-class raw-origin universe, strict raw-to-reference rejection, least raw SCC closure, and complete admissible escape records |
-| Verified ownership facts and typestate | Blocked by enablement transaction | Independent overlay-v3 and facts-v6 codecs, exact 145/210/517 and 169/290/382-byte oracles plus the MIR-v2 290-byte unsafe-scope oracle, no duplicate activation or marker inventory in facts, complete marker-capability/descendant-query/postorder/resource-plan/cast/drop/event/cutpoint/NLL/loop mutations, symbolic budget checks, and private constructors |
+| Verified ownership facts and typestate | Blocked by enablement transaction | Independent overlay-v3 and facts-v6 codecs, exact 145/210/517 and 168/289/381-byte oracles plus the MIR 283-byte unsafe-scope oracle, no duplicate activation or marker inventory in facts, complete marker-capability/descendant-query/postorder/resource-plan/cast/drop/event/cutpoint/NLL/loop mutations, symbolic budget checks, and private constructors |
 | Session and cleanup integration | RFC 0006 prerequisite in progress; RFC 0007 blocked | Atomic publication, exact borrowed Built/overlay/evidence analysis inputs, moved Built/overlay/facts finalization and successor inputs, embedded lease plus explicit live capability resolution, value-owned facts without an ownership repository, cleanup consumption, and no predecessor or successor on rejection |
 | Repository completion gates | Blocked by task-router grant | Exact architecture and coverage scripts, coverage checker self-test, per-file 70-percent line floor, aggregate baseline non-regression, sanitizer, default CTest, lit, conformance, corpus, determinism, spec, format, CJK, and diff hygiene |
 
@@ -896,9 +798,9 @@ only one RFC does not unblock any slice.
 
 ## Verification Evidence
 
-- `zom.mir-revision.v2` unsafe-scope framing was independently recomputed: the
-  290-byte preimage has SHA-256
-  `bd99e5eaa91c7994ea521890ebee6945e2a1ccaff6c6bb09759a911fa946fd40`.
+- `zom.mir-revision` unsafe-scope framing was independently recomputed: the
+  283-byte preimage has SHA-256
+  `c49976b9fc841ecf6cd2e2d62af3442d36a22571b52291a0601e60ea92f71aa0`.
 - `zom.ownership-event-overlay.v3` oracle preimages were independently
   recomputed: 145-byte empty SHA-256
   `7ef3a04c7017bf3a03102e13f04f366ce02606937a518b0e613f36c46c024d29`,
@@ -907,21 +809,20 @@ only one RFC does not unblock any slice.
   and 517-byte two-occurrence collision SHA-256
   `e634aa57f31fa556d214ae5975febd41390fdafa60818ccac870cd51591f7259`.
 - `zom.ownership-facts.v6` oracle preimages were independently recomputed:
-  169-byte empty-function SHA-256
-  `61bbf9daf4073e84f63f245e9ab7e2def12be018d9b573f66b5a717d9499365a`,
-  290-byte function-framing SHA-256
-  `c6aebb6b9ab5ce6d7adeaabe13d691c767d6318c9c2afa275a3024aaa4f13e99`,
-  and 382-byte non-empty point-state SHA-256
-  `297b5e5f6598937e1ff1654c767842ac5c6b86b464346f24f483f889163f467a`.
+  168-byte empty-function SHA-256
+  `c77f393872d1d1e53192e9fd567057774bbc5ec5997de58d5e245c670db4425f`,
+  289-byte function-framing SHA-256
+  `748a1efbf73c7a452c7ad9092812b89c3a9eebfb7d04ed706862880391a217a6`,
+  and 381-byte non-empty point-state SHA-256
+  `ed570b0abdf30f56b24eb1f5ca43843ccaaabdd0d41f9f8228a4540fd4cb9161`.
 - Facts-v6 remains an opaque overlay-revision consumer; the normative
   lineage-composition oracle now requires every overlay-v3 activation, marker-
   decision, or lineage mutation to change both revisions without adding a
   duplicate activation or marker inventory to `OwnershipFunctionFacts`.
 - The marker capability and two-phase resource-projection authority remains
   call-duration only. The deferred-activation repair directly replaces the
-  unaccepted overlay-v3 and facts-v6 non-empty framing with no compatibility
-  decoder; zero-function vectors and MIR-v2 remain byte-identical. Non-empty
-  fixture oracles require complete
+  overlay-v3 and facts-v6 non-empty framing. Non-empty fixture oracles require
+  complete
   descendant marker-use rows before postorder folding and cover missing,
   additional, reordered, and mutated queries; distinct explicit-negative and
   unsatisfied field outcomes; invalid immediate-field `Copy + Linear`;

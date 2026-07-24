@@ -280,7 +280,7 @@ private:
 };
 
 enum class MirLocalKind : uint8_t { ModuleInitializerResult = 0x01, Temporary = 0x02 };
-enum class MirFunctionKind : uint8_t { ModuleInitializer = 0x01 };
+enum class MirFunctionKind : uint8_t { ModuleInitializer = 0x01, Function = 0x02 };
 
 struct MirSourceScope final {
   MirSourceScopeId id;
@@ -315,36 +315,21 @@ struct MirFunction final {
   zc::Vector<MirBasicBlock> blocks;
 };
 
-enum class MirRevisionPhase : uint8_t {
-  Built = 0x01,
-  DropElaborated = 0x02,
-  CoroutineElaborated = 0x03,
-  Executable = 0x04,
-};
-
 /// \brief Domain-separated immutable revision of one complete MIR module.
 class MirRevisionId final {
 public:
   constexpr MirRevisionId() noexcept = default;
 
-  ZC_NODISCARD static zc::Maybe<MirRevisionId> fromDigest(
-      MirRevisionPhase phase, const identity::Sha256Digest& digest) noexcept;
-  ZC_NODISCARD constexpr MirRevisionPhase phase() const noexcept { return phaseValue; }
+  ZC_NODISCARD static MirRevisionId fromDigest(const identity::Sha256Digest& digest) noexcept;
   ZC_NODISCARD const identity::Sha256Digest& digest() const noexcept { return digestValue; }
-  ZC_NODISCARD constexpr bool isValid() const noexcept {
-    return static_cast<uint8_t>(phaseValue) >= static_cast<uint8_t>(MirRevisionPhase::Built) &&
-           static_cast<uint8_t>(phaseValue) <= static_cast<uint8_t>(MirRevisionPhase::Executable);
-  }
 
 private:
-  MirRevisionId(MirRevisionPhase phase, const identity::Sha256Digest& digest) noexcept
-      : phaseValue(phase), digestValue(digest) {}
+  explicit MirRevisionId(const identity::Sha256Digest& digest) noexcept : digestValue(digest) {}
 
-  MirRevisionPhase phaseValue = MirRevisionPhase::Built;
   identity::Sha256Digest digestValue;
 };
 
-/// \brief Exact RFC 0013 MIR revision v2 framing codec.
+/// \brief Exact canonical MIR revision framing codec.
 class MirRevisionCodec final {
 public:
   ZC_NODISCARD static zc::Maybe<zc::Array<uint8_t>> encodeBuiltFramed(
