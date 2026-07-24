@@ -273,14 +273,12 @@ enum class CastKind : uint8_t {
   ReferenceToRawConst = 0x05,
   ReferenceToRawMutable = 0x06,
   RawMutToConst = 0x07,
-  RawConstToReferenceChecked = 0x08,
-  RawMutableToReferenceChecked = 0x09,
-  AnyDowncastChecked = 0x0a,
-  ErrorUnionExtractChecked = 0x0b,
-  DynErase = 0x0c,
-  DynUpcast = 0x0d,
-  UnionInject = 0x0e,
-  RawPointerReinterpret = 0x0f
+  AnyDowncastChecked = 0x08,
+  ErrorUnionExtractChecked = 0x09,
+  DynErase = 0x0a,
+  DynUpcast = 0x0b,
+  UnionInject = 0x0c,
+  RawPointerReinterpret = 0x0d
 };
 
 struct CheckedCastFact final {

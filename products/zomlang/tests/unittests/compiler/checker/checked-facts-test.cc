@@ -844,7 +844,7 @@ ZC_TEST("CheckedFactsCanonicalCodec.RecomputesConstantEvaluationRevision") {
 ZC_TEST("CheckedFactsAlgebra.UsesNormativeClosedTags") {
   ZC_EXPECT(static_cast<uint8_t>(PrimitiveOperation::NullCoalesce) == 0x25);
   ZC_EXPECT(static_cast<uint8_t>(CompoundAssignmentOperation::NullCoalesceAssign) == 0x0f);
-  ZC_EXPECT(static_cast<uint8_t>(CastKind::RawPointerReinterpret) == 0x0f);
+  ZC_EXPECT(static_cast<uint8_t>(CastKind::RawPointerReinterpret) == 0x0d);
   ZC_EXPECT(static_cast<uint8_t>(UnsafeOperation::PackedFieldAccess) == 0x05);
   ZC_EXPECT(static_cast<uint8_t>(ErrorOperatorKind::ForcedUnwrap) == 0x02);
 }

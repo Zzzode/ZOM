@@ -958,7 +958,6 @@ CastKind =
   IntegerWiden | IntegerNarrowChecked
   | FloatWiden | FloatNarrowChecked
   | ReferenceToRawConst | ReferenceToRawMutable | RawMutToConst
-  | RawConstToReferenceChecked | RawMutableToReferenceChecked
   | AnyDowncastChecked | ErrorUnionExtractChecked
   | DynErase | DynUpcast | UnionInject | RawPointerReinterpret
 
