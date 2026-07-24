@@ -14,6 +14,7 @@ add_subdirectory(type)
 add_subdirectory(ir)
 add_subdirectory(hir)
 add_subdirectory(mir)
+add_subdirectory(ownership)
 
 add_library(
   frontend STATIC
@@ -28,6 +29,7 @@ add_library(
   $<TARGET_OBJECTS:ir>
   $<TARGET_OBJECTS:lexer>
   $<TARGET_OBJECTS:mir>
+  $<TARGET_OBJECTS:ownership>
   $<TARGET_OBJECTS:parser>
   $<TARGET_OBJECTS:source>
   $<TARGET_OBJECTS:trace>
@@ -54,6 +56,7 @@ set_target_include_directories(
   ir
   lexer
   mir
+  ownership
   parser
   query
   source
