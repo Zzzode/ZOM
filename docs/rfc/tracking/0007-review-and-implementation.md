@@ -769,28 +769,28 @@ transition plus the coordinated enablement transaction below.
 
 ## Implementation Tracker
 
-Implementation has not started under this RFC. RFC 0005, RFC 0013, and RFC 0006
-have entered `IMPLEMENTING` for their tracker-owned slices, but those
-transitions do not authorize the RFC 0005 raw-to-reference replacement or RFC
-0007. Every RFC 0007 slice remains blocked until its tracker records an
-explicit `ACCEPTED -> IMPLEMENTING` transition and task-router grants the exact architecture,
-coverage-runner, and coverage-checker paths to `verification` in the manifest,
-and RFC 0005's proposal/tracker name the atomic raw-to-reference cast deletion
-and checked-fact codec replacement, completing the named `RFC0007 Ownership
-Rail Enablement Transaction`.
+The `RFC0007 Ownership Rail Enablement Transaction` completed on 2026-07-24:
 
-The ordered series after that transaction is:
+- RFC 0005 deleted `RawConstToReferenceChecked` and `RawMutableToReferenceChecked`
+  and retagged the remaining `CastKind` cases contiguously from `0x01` through
+  `0x0d` (commit `c89b1f2f`).
+- task-router granted `verification` ownership of the RFC 0007 architecture and
+  coverage paths in `.agents/subagents/manifest.yaml`.
+- RFC 0007 frontmatter transitioned `ACCEPTED -> IMPLEMENTING` with an
+  implementation pointer and a matching Status History row.
+
+The ordered implementation series is now authorized:
 
 | Slice | State | Required Evidence |
 |---|---|---|
-| Built MIR and ownership event overlay | RFC 0013 prerequisite in progress; RFC 0007 blocked | MIR input plus RFC 0007 overlay-v3 slots/cutpoints and sole checker-time deferred-activation map, explicit call-duration RFC 0015 marker-proof input, separate producer/verifier query contexts and memos, complete descendant marker-use inventory, query-first/postorder logical-drop plans, cast-resource plans, canonical `MirStatement::BorrowCreation`, total cast-carrier resource projection, collision-free overlay-only unsafe occurrences, exact outer-`0x07` unsafe-scope statement framing and 283-byte oracle, pre-checker Chapter 15 rejection, explicit repository capability, independent verifier, dumps, malformed inputs, and complete admissible exits |
-| Closed ownership diagnostics | Blocked by enablement transaction | Ownership source variants, deletion without reassignment of `ZOM4067-ZOM4068`, fresh pre-checker `ZOM4095`, proposed `ZOM4093-ZOM4094`, exact primary/all-cause note mapping, suppression, ordering, and retained payloads |
-| Move paths, initialization, and drop | Blocked by enablement transaction | Implicit reflexive conflict, exact distinct-pair inventory, three-bit lattice, complete loss causes, canonical `DropResourceSubject`, all three drop requirements, open/closed component drop with pre-consumption and abort-only action panic, partial initialization/mutation, checked-cast verified-plan and subject preservation, fail-closed `StorageDead`, overwrite, and differential oracle |
-| Loans, references, and regions | Blocked by enablement transaction | Complete before/after point phases, issue/activation/commit timing, exact checker-time overlay `DeferredActivationFact`, independent reconstruction while checker authority lives, ownership-side overlay bijection with no checker lookup, `Storage` and event-granular NLL value regions, reaching reference definitions, root/active multi-origin transfer, reborrow restoration, exact outlives closure, call evidence, escape, and differential oracle |
-| Marker, linear, unsafe, and capture boundaries | Blocked by enablement transaction | RFC 0015 marker-input construction, lifetime, lineage validation, producer/verifier isolation, full descendant Copy/Linear query tree, postorder component fold, cast-carrier drop/linear transfer, multi-predecessor linear SCCs, stable pending backedges, collision-free unsafe ordinals, four-class raw-origin universe, strict raw-to-reference rejection, least raw SCC closure, and complete admissible escape records |
-| Verified ownership facts and typestate | Blocked by enablement transaction | Independent overlay-v3 and facts-v6 codecs, exact 145/210/517 and 168/289/381-byte oracles plus the MIR 283-byte unsafe-scope oracle, no duplicate activation or marker inventory in facts, complete marker-capability/descendant-query/postorder/resource-plan/cast/drop/event/cutpoint/NLL/loop mutations, symbolic budget checks, and private constructors |
-| Session and cleanup integration | RFC 0006 prerequisite in progress; RFC 0007 blocked | Atomic publication, exact borrowed Built/overlay/evidence analysis inputs, moved Built/overlay/facts finalization and successor inputs, embedded lease plus explicit live capability resolution, value-owned facts without an ownership repository, cleanup consumption, and no predecessor or successor on rejection |
-| Repository completion gates | Blocked by task-router grant | Exact architecture and coverage scripts, coverage checker self-test, per-file 70-percent line floor, aggregate baseline non-regression, sanitizer, default CTest, lit, conformance, corpus, determinism, spec, format, CJK, and diff hygiene |
+| Built MIR and ownership event overlay | Authorized | MIR input plus RFC 0007 overlay-v3 slots/cutpoints and sole checker-time deferred-activation map, explicit call-duration RFC 0015 marker-proof input, separate producer/verifier query contexts and memos, complete descendant marker-use inventory, query-first/postorder logical-drop plans, cast-resource plans, canonical `MirStatement::BorrowCreation`, total cast-carrier resource projection, collision-free overlay-only unsafe occurrences, exact outer-`0x07` unsafe-scope statement framing and 283-byte oracle, pre-checker Chapter 15 rejection, explicit repository capability, independent verifier, dumps, malformed inputs, and complete admissible exits |
+| Closed ownership diagnostics | Authorized | Ownership source variants, deletion without reassignment of `ZOM4067-ZOM4068`, fresh pre-checker `ZOM4095`, proposed `ZOM4093-ZOM4094`, exact primary/all-cause note mapping, suppression, ordering, and retained payloads |
+| Move paths, initialization, and drop | Authorized | Implicit reflexive conflict, exact distinct-pair inventory, three-bit lattice, complete loss causes, canonical `DropResourceSubject`, all three drop requirements, open/closed component drop with pre-consumption and abort-only action panic, partial initialization/mutation, checked-cast verified-plan and subject preservation, fail-closed `StorageDead`, overwrite, and differential oracle |
+| Loans, references, and regions | Authorized | Complete before/after point phases, issue/activation/commit timing, exact checker-time overlay `DeferredActivationFact`, independent reconstruction while checker authority lives, ownership-side overlay bijection with no checker lookup, `Storage` and event-granular NLL value regions, reaching reference definitions, root/active multi-origin transfer, reborrow restoration, exact outlives closure, call evidence, escape, and differential oracle |
+| Marker, linear, unsafe, and capture boundaries | Authorized | RFC 0015 marker-input construction, lifetime, lineage validation, producer/verifier isolation, full descendant Copy/Linear query tree, postorder component fold, cast-carrier drop/linear transfer, multi-predecessor linear SCCs, stable pending backedges, collision-free unsafe ordinals, four-class raw-origin universe, strict raw-to-reference rejection, least raw SCC closure, and complete admissible escape records |
+| Verified ownership facts and typestate | Authorized | Independent overlay-v3 and facts-v6 codecs, exact 145/210/517 and 168/289/381-byte oracles plus the MIR 283-byte unsafe-scope oracle, no duplicate activation or marker inventory in facts, complete marker-capability/descendant-query/postorder/resource-plan/cast/drop/event/cutpoint/NLL/loop mutations, symbolic budget checks, and private constructors |
+| Session and cleanup integration | Authorized (RFC 0006 prerequisite in progress) | Atomic publication, exact borrowed Built/overlay/evidence analysis inputs, moved Built/overlay/facts finalization and successor inputs, embedded lease plus explicit live capability resolution, value-owned facts without an ownership repository, cleanup consumption, and no predecessor or successor on rejection |
+| Repository completion gates | Authorized | Exact architecture and coverage scripts, coverage checker self-test, per-file 70-percent line floor, aggregate baseline non-regression, sanitizer, default CTest, lit, conformance, corpus, determinism, spec, format, CJK, and diff hygiene |
 
 The implementation tracker must be updated with executable evidence only after
 all five coordinated governance records exist. A transition or implementation link in

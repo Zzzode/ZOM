@@ -2,7 +2,7 @@
 rfc: 7
 title: Borrow Lifetime And Ownership Checker
 type: compiler
-status: ACCEPTED
+status: IMPLEMENTING
 author: ZOM Compiler Team
 review-manager: rfc
 required-owners: [task-router, rfc, binder-checker, module-system, error-system, concurrency, ir-backend, runtime-memory, spec-audit, verification]
@@ -15,7 +15,7 @@ supersedes: []
 superseded-by: []
 discussion: docs/rfc/tracking/0007-review-and-implementation.md#discussion-record
 decision: docs/rfc/tracking/0007-review-and-implementation.md#decision-record
-implementation: TBD
+implementation: docs/rfc/tracking/0007-review-and-implementation.md#implementation-tracker
 tracking-issue: docs/rfc/tracking/0007-review-and-implementation.md
 ---
 
@@ -4037,3 +4037,4 @@ None
 | 2026-07-18 | REVIEW | Independent exact-hash review accepted proposal `c7fb9d9ef4665371c07ddc79d3ad4c3bcad2e7061565ea70801e65081964f405` with no technical blockers; entered unanimous required-owner review. |
 | 2026-07-18 | REVIEW | Closed formal re-review blockers by moving deferred activation into the authoritative checker-time overlay, rejecting every raw-to-reference path, defining abort-only per-component logical-drop execution, refreshing codecs and oracles, and correcting current REVIEW state text; fresh exact-hash owner review remains required. |
 | 2026-07-18 | ACCEPTED | All ten required owners approved the same exact REVIEW proposal and tracker snapshots with no objections; implementation remains blocked until an explicit `ACCEPTED -> IMPLEMENTING` transition and the coordinated enablement transaction. |
+| 2026-07-24 | IMPLEMENTING | Enablement transaction recorded: RFC 0005 deleted `RawConstToReferenceChecked`/`RawMutableToReferenceChecked` and retagged `CastKind` 0x01-0x0d; task-router granted verification ownership of the RFC 0007 architecture and coverage paths; implementation tracker now authorizes the ordered slices. |
