@@ -408,22 +408,6 @@ ir::IrOperationResult<OwnershipEventOverlayCandidate> OwnershipEventOverlayBuild
   ZC_UNREACHABLE
 }
 
-namespace {
-
-zc::Maybe<zc::Vector<zc::Array<uint8_t>>> recomputeFunctionRecords(
-    const OwnershipEventOverlayCandidate& candidate,
-    const identity::SemanticIdentityRegistrySet& registries) {
-  zc::Vector<zc::Array<uint8_t>> records;
-  for (const auto& function : candidate.functions) {
-    auto encoded = encodeFunctionOverlay(function, registries);
-    if (encoded == zc::none) return zc::none;
-    ZC_IF_SOME(record, encoded) { records.add(zc::mv(record)); }
-  }
-  return records;
-}
-
-}  // namespace
-
 ir::IrOperationResult<VerifiedOwnershipEventOverlay> OwnershipEventOverlayVerifier::verify(
     OwnershipEventOverlayCandidate&& candidate, const mir::VerifiedBuiltMir& builtMir,
     const identity::SemanticIdentityRegistrySet& registries) {
@@ -438,6 +422,46 @@ ir::IrOperationResult<VerifiedOwnershipEventOverlay> OwnershipEventOverlayVerifi
         ir::IrFailurePhase::OwnershipProofValidation, ir::IrFailureKind::InputRevisionMismatch,
         module, firstFunctionDefinition(builtMir), registries, 0);
   }
+  auto expectedFunctions = buildFunctions(builtMir, registries);
+  if (expectedFunctions == zc::none) {
+    return rejectOwnership<VerifiedOwnershipEventOverlay>(
+        ir::IrFailurePhase::OwnershipProofValidation, ir::IrFailureKind::InvalidOwnershipProof,
+        module, firstFunctionDefinition(builtMir), registries, 0);
+  }
+  zc::Vector<zc::Array<uint8_t>> recomputedRecords;
+  ZC_IF_SOME(expected, expectedFunctions) {
+    if (expected.size() != candidate.functions.size()) {
+      return rejectOwnership<VerifiedOwnershipEventOverlay>(
+          ir::IrFailurePhase::OwnershipProofValidation, ir::IrFailureKind::AdditionalFact, module,
+          firstFunctionDefinition(builtMir), registries, 0);
+    }
+    for (size_t index = 0; index < expected.size(); ++index) {
+      const auto& expectedFunction = expected[index];
+      const auto& candidateFunction = candidate.functions[index];
+      if (expectedFunction.owner != candidateFunction.owner) {
+        return rejectOwnership<VerifiedOwnershipEventOverlay>(
+            ir::IrFailurePhase::OwnershipProofValidation, ir::IrFailureKind::InvalidFact, module,
+            expectedFunction.owner, registries, static_cast<uint32_t>(index + 1));
+      }
+      auto expectedEncoded = encodeFunctionOverlay(expectedFunction, registries);
+      auto candidateEncoded = encodeFunctionOverlay(candidateFunction, registries);
+      if (expectedEncoded == zc::none || candidateEncoded == zc::none) {
+        return rejectOwnership<VerifiedOwnershipEventOverlay>(
+            ir::IrFailurePhase::OwnershipProofValidation, ir::IrFailureKind::CanonicalCodecMismatch,
+            module, expectedFunction.owner, registries, static_cast<uint32_t>(index + 1));
+      }
+      zc::Array<uint8_t> expectedBytes;
+      zc::Array<uint8_t> candidateBytes;
+      ZC_IF_SOME(value, expectedEncoded) { expectedBytes = zc::mv(value); }
+      ZC_IF_SOME(value, candidateEncoded) { candidateBytes = zc::mv(value); }
+      if (expectedBytes.asPtr() != candidateBytes.asPtr()) {
+        return rejectOwnership<VerifiedOwnershipEventOverlay>(
+            ir::IrFailurePhase::OwnershipProofValidation, ir::IrFailureKind::CanonicalCodecMismatch,
+            module, expectedFunction.owner, registries, static_cast<uint32_t>(index + 1));
+      }
+      recomputedRecords.add(zc::mv(expectedBytes));
+    }
+  }
   auto moduleKey = registries.modules().lookup(builtMir.module());
   if (moduleKey == zc::none) {
     return rejectOwnership<VerifiedOwnershipEventOverlay>(
@@ -446,18 +470,9 @@ ir::IrOperationResult<VerifiedOwnershipEventOverlay> OwnershipEventOverlayVerifi
   }
   zc::Array<uint8_t> expandedModuleKey;
   ZC_IF_SOME(key, moduleKey) { expandedModuleKey = key.encode(); }
-  auto records = recomputeFunctionRecords(candidate, registries);
-  if (records == zc::none) {
-    return rejectOwnership<VerifiedOwnershipEventOverlay>(
-        ir::IrFailurePhase::OwnershipProofValidation, ir::IrFailureKind::CanonicalCodecMismatch,
-        module, firstFunctionDefinition(builtMir), registries, 0);
-  }
-  zc::Maybe<OwnershipEventOverlayRevision> revision;
-  ZC_IF_SOME(value, records) {
-    revision = OwnershipEventOverlayCodec::compute(
-        candidate.contextFingerprint, expandedModuleKey.asPtr(), candidate.checkedFactsRevision,
-        candidate.builtRevision, value.asPtr());
-  }
+  zc::Maybe<OwnershipEventOverlayRevision> revision = OwnershipEventOverlayCodec::compute(
+      candidate.contextFingerprint, expandedModuleKey.asPtr(), candidate.checkedFactsRevision,
+      candidate.builtRevision, recomputedRecords.asPtr());
   if (revision == zc::none) {
     return rejectOwnership<VerifiedOwnershipEventOverlay>(
         ir::IrFailurePhase::OwnershipProofValidation, ir::IrFailureKind::CanonicalCodecMismatch,

@@ -327,5 +327,29 @@ ZC_TEST("Ownership event overlay revision is deterministic across two builds") {
   ZC_EXPECT(firstOverlay.revision().digest() == secondOverlay.revision().digest());
 }
 
+ZC_TEST("Ownership event overlay verifier rejects a tampered slot role") {
+  OwnershipPipelineFixture fixture("let value = 0;"_zc);
+  const auto& builtMir = fixture.builtMir();
+  const auto& registries = fixture.registries();
+
+  auto candidateResult = OwnershipEventOverlayBuilder::build(builtMir, registries);
+  ZC_REQUIRE(candidateResult.isVerified());
+  auto candidate = zc::mv(candidateResult).takeVerified();
+  ZC_REQUIRE(candidate.functions.size() == 1);
+  ZC_REQUIRE(candidate.functions[0].slots.size() != 0);
+  ZC_REQUIRE(candidate.functions[0].slots[0].roles.size() != 0);
+  auto originalRole = candidate.functions[0].slots[0].roles[0];
+  auto newRole = originalRole == OwnershipEventRole::Operation ? OwnershipEventRole::StorageLive
+                                                               : OwnershipEventRole::Operation;
+  candidate.functions[0].slots[0].roles[0] = newRole;
+
+  auto verifiedResult =
+      OwnershipEventOverlayVerifier::verify(zc::mv(candidate), builtMir, registries);
+  ZC_REQUIRE(verifiedResult.isIrInvariantRejected());
+  ZC_EXPECT(verifiedResult.invariantFailures().facts().size() == 1);
+  ZC_EXPECT(verifiedResult.invariantFailures().facts()[0].kind() ==
+            ir::IrFailureKind::CanonicalCodecMismatch);
+}
+
 }  // namespace
 }  // namespace zomlang::compiler::ownership
