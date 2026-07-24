@@ -69,7 +69,7 @@ ZOM is a modern systems programming language.
 | `products/zomlang/compiler/driver/` | Cross-module `CompilerSession`, module discovery, interface publication, and package orchestration |
 | `products/zomlang/compiler/identity/` | Branded canonical package, crate, module, definition, source, and revision identities |
 | `products/zomlang/compiler/hir/` | Checked-module assembly and semantic HIR |
-| `products/zomlang/compiler/mir/` | Evidence-bound Built MIR revision v2 |
+| `products/zomlang/compiler/mir/` | Evidence-bound Built MIR |
 | `products/zomlang/compiler/ir/` | Shared IR identity, failure algebra, diagnostics, and target registry |
 | `products/zomlang/runtime/` | Language runtime and panic/concurrency primitives |
 | `products/zomlang/tests/` | ztest unit tests and LLVM lit conformance runners |
@@ -163,7 +163,7 @@ flowchart TD
     CF --> CM
     BE --> CM
     CM --> H[Verified semantic HIR]
-    H --> M[Verified Built MIR v2]
+    H --> M[Verified Built MIR]
     M -. not implemented .-> R[Target LIR]
     R -. not implemented .-> LLVM[LLVM IR and native artifacts]
     L --> D[DiagnosticEngine]
@@ -182,10 +182,10 @@ and must be handled with principle #4 (delete or implement, no drift):
    and concurrency contracts enter implementation through the recorded
    enablement transaction.
 2. **RFC 0013 is implementing, not complete.** BorrowEvidence, CheckedModule,
-   HIR lineage, and Built MIR v2 are implemented; OwnershipProofValidation and
+   HIR lineage, and Built MIR are implemented; OwnershipProofValidation and
    production ownership-result publication remain gated on RFC 0007.
 3. **RFC 0010 has no target LIR or backend implementation.** Semantic HIR and
-   evidence-bound Built MIR v2 are present, while target legalization, ABI
+   evidence-bound Built MIR are present, while target legalization, ABI
    lowering, LLVM IR, object emission, and linking are absent.
 4. **There is no native backend.** `compiler/backend` and LLVM/object emission
    are absent; binary emission is not implemented.
@@ -227,6 +227,7 @@ the trigger matrix in `.agents/subagents/README.md`.
 | `error-system` | Result/Option, ?! / !! / ?: , raises clauses, panic boundaries | Diagnostic codes, error chapters, error operators in parser/lexer |
 | `concurrency` | async/await, Future, nursery, cancel, Sendable, memory model, primitives | runtime concurrency, spec 15-concurrency, channel/mutex, `Send/Sync`/`Sendable` |
 | `ir-backend` | HIR, MIR, LIR, lowering, target ABI, LLVM, native artifacts | compiler IR/backend and CLI, top-level/compiler/basic/trace CMake, CMake presets |
+| `tooling-lsp` | IDE semantic facade, LSP transport, document versions, cancellation, stale-response suppression | `products/zomlang/tools/ide/**`, `products/zomlang/tools/lsp/**`, `editors/**`, `docs/design/tooling/**` |
 | `spec-audit` | Spec ↔ implementation 1:1 alignment | `docs/spec/**`, `docs/design/**`, and compiler/spec drift |
 | `runtime-memory` | Ownership, zc types, RAII, memory model, unsafe boundaries | libraries/zc/**, runtime/**, FFI |
 | `verification` | Build + sanitizer + tests + format, evidence-gating | tests, CI workflows, README build contract, RFC 0016 coverage, incremental-query gates and benchmarks, and identity/IR architecture gates; runs last |
@@ -270,6 +271,22 @@ the trigger matrix in `.agents/subagents/README.md`.
 - No Chinese anywhere in docs. The only tolerated Chinese text in the entire
   repository is the rule above (Attention §5) — and that one sentence is
   explicitly exempt because it *states* the English-only rule.
+- Language design notes live under `docs/design/language/` and follow
+  `docs/design/language/README.md`. They are non-normative explanations of the
+  current language model: normative behavior belongs in `docs/spec`, decisions
+  and unimplemented contracts belong in `docs/rfc`, and implementation claims
+  require live production-path and project-native verification evidence. Every
+  note must distinguish implemented behavior, accepted but unimplemented
+  contracts, and unresolved gaps; it must never present a planned contract as
+  current behavior.
+- Compiler IR design notes live under `docs/design/ir/` and follow
+  `docs/design/ir/README.md`. They describe only current production artifacts
+  and boundaries. Every note must identify the live builder, independent
+  verifier, session publisher, consumers, and project-native tests, and must
+  distinguish representable operations from operations emitted by production
+  lowering. An RFC, public type, enum alternative, codec tag, or failure phase
+  does not establish an implemented IR stage. Keep ownership, executable MIR,
+  LIR, LLVM, and backend contracts in RFCs until their production paths exist.
 - Spec chapters (`docs/spec/chapters/*.md`) **must match the parser and lexer exactly.**
   If the spec says X and parser accepts Y, either fix the spec or fix the parser — no drift.
   Use the `spec-alignment` skill before landing any spec or parser change.
