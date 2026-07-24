@@ -234,11 +234,8 @@ zc::Maybe<zc::Vector<OwnershipFunctionEventOverlay>> buildFunctions(
     for (const auto& block : function.blocks) {
       uint32_t statementIndex = 0;
       for (const auto& statement : block.statements) {
-        zc::Vector<OwnershipEventRole> roles;
-        roles.add(OwnershipEventRole::Operation);
         switch (statement.kind()) {
           case mir::MirStatementKind::Assign: {
-            roles.add(OwnershipEventRole::DestinationWrite);
             const auto& operand = statement.assignmentValue().value.useValue().operand;
             zc::Vector<OwnershipEventRole> operandRoles;
             switch (operand.kind()) {
@@ -254,31 +251,73 @@ zc::Maybe<zc::Vector<OwnershipFunctionEventOverlay>> buildFunctions(
             }
             addSlot(slots, block.id, statementIndex, 1, OwnershipEventStage::Source,
                     zc::mv(operandRoles));
+            zc::Vector<OwnershipEventRole> effectRoles;
+            effectRoles.add(OwnershipEventRole::Operation);
+            addSlot(slots, block.id, statementIndex, 0, OwnershipEventStage::Effect,
+                    zc::mv(effectRoles));
+            zc::Vector<OwnershipEventRole> commitRoles;
+            commitRoles.add(OwnershipEventRole::DestinationWrite);
+            addSlot(slots, block.id, statementIndex, 2, OwnershipEventStage::Commit,
+                    zc::mv(commitRoles));
             break;
           }
-          case mir::MirStatementKind::StorageLive:
-            roles.add(OwnershipEventRole::StorageLive);
+          case mir::MirStatementKind::StorageLive: {
+            zc::Vector<OwnershipEventRole> effectRoles;
+            effectRoles.add(OwnershipEventRole::Operation);
+            effectRoles.add(OwnershipEventRole::StorageLive);
+            addSlot(slots, block.id, statementIndex, 0, OwnershipEventStage::Effect,
+                    zc::mv(effectRoles));
             break;
-          case mir::MirStatementKind::StorageDead:
-            roles.add(OwnershipEventRole::StorageDead);
+          }
+          case mir::MirStatementKind::StorageDead: {
+            zc::Vector<OwnershipEventRole> effectRoles;
+            effectRoles.add(OwnershipEventRole::Operation);
+            effectRoles.add(OwnershipEventRole::StorageDead);
+            addSlot(slots, block.id, statementIndex, 0, OwnershipEventStage::Effect,
+                    zc::mv(effectRoles));
             break;
-          case mir::MirStatementKind::BorrowCreation:
-            roles.add(OwnershipEventRole::BorrowIssue);
-            roles.add(OwnershipEventRole::BorrowActivation);
+          }
+          case mir::MirStatementKind::BorrowCreation: {
+            zc::Vector<OwnershipEventRole> sourceRoles;
+            sourceRoles.add(OwnershipEventRole::OperandRead);
+            addSlot(slots, block.id, statementIndex, 1, OwnershipEventStage::Source,
+                    zc::mv(sourceRoles));
+            zc::Vector<OwnershipEventRole> effectRoles;
+            effectRoles.add(OwnershipEventRole::Operation);
+            effectRoles.add(OwnershipEventRole::BorrowIssue);
+            addSlot(slots, block.id, statementIndex, 0, OwnershipEventStage::Effect,
+                    zc::mv(effectRoles));
+            zc::Vector<OwnershipEventRole> commitRoles;
+            commitRoles.add(OwnershipEventRole::DestinationWrite);
+            addSlot(slots, block.id, statementIndex, 2, OwnershipEventStage::Commit,
+                    zc::mv(commitRoles));
             break;
-          case mir::MirStatementKind::SetDiscriminant:
-            roles.add(OwnershipEventRole::SetDiscriminant);
-            roles.add(OwnershipEventRole::DestinationWrite);
+          }
+          case mir::MirStatementKind::SetDiscriminant: {
+            zc::Vector<OwnershipEventRole> effectRoles;
+            effectRoles.add(OwnershipEventRole::Operation);
+            addSlot(slots, block.id, statementIndex, 0, OwnershipEventStage::Effect,
+                    zc::mv(effectRoles));
+            zc::Vector<OwnershipEventRole> commitRoles;
+            commitRoles.add(OwnershipEventRole::DestinationWrite);
+            commitRoles.add(OwnershipEventRole::SetDiscriminant);
+            addSlot(slots, block.id, statementIndex, 1, OwnershipEventStage::Commit,
+                    zc::mv(commitRoles));
             break;
-          case mir::MirStatementKind::Deinitialize:
-            roles.add(OwnershipEventRole::Deinitialize);
+          }
+          case mir::MirStatementKind::Deinitialize: {
+            zc::Vector<OwnershipEventRole> effectRoles;
+            effectRoles.add(OwnershipEventRole::Operation);
+            effectRoles.add(OwnershipEventRole::Deinitialize);
+            addSlot(slots, block.id, statementIndex, 0, OwnershipEventStage::Effect,
+                    zc::mv(effectRoles));
             break;
+          }
         }
-        addSlot(slots, block.id, statementIndex, 0, OwnershipEventStage::Effect, zc::mv(roles));
         ++statementIndex;
       }
-      zc::Vector<OwnershipEventRole> termRoles;
-      termRoles.add(OwnershipEventRole::Operation);
+      zc::Vector<OwnershipEventRole> termEffectRoles;
+      termEffectRoles.add(OwnershipEventRole::Operation);
       if (block.terminator.kind() == mir::MirTerminatorKind::Return) {
         ZC_IF_SOME(value, block.terminator.returnValue().value) {
           zc::Vector<OwnershipEventRole> operandRoles;
@@ -297,7 +336,8 @@ zc::Maybe<zc::Vector<OwnershipFunctionEventOverlay>> buildFunctions(
                   zc::mv(operandRoles));
         }
       }
-      addSlot(slots, block.id, statementIndex, 0, OwnershipEventStage::Commit, zc::mv(termRoles));
+      addSlot(slots, block.id, statementIndex, 0, OwnershipEventStage::Effect,
+              zc::mv(termEffectRoles));
     }
     sortSlots(slots);
     functions.add(OwnershipFunctionEventOverlay{function.owner, zc::mv(slots)});

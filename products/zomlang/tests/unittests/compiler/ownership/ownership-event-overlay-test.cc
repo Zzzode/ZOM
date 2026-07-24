@@ -261,17 +261,26 @@ ZC_TEST("Ownership event overlay builder and verifier accept one scalar initiali
   bool foundStorageLive = false;
   bool foundAssign = false;
   bool foundReturn = false;
+  bool foundSourceStage = false;
+  bool foundEffectStage = false;
+  bool foundCommitStage = false;
   for (const auto& slot : slots) {
+    if (slot.stage == OwnershipEventStage::Source) foundSourceStage = true;
+    if (slot.stage == OwnershipEventStage::Effect) foundEffectStage = true;
+    if (slot.stage == OwnershipEventStage::Commit) foundCommitStage = true;
     for (auto role : slot.roles) {
       if (role == OwnershipEventRole::StorageLive) foundStorageLive = true;
       if (role == OwnershipEventRole::DestinationWrite) foundAssign = true;
-      if (role == OwnershipEventRole::Operation && slot.stage == OwnershipEventStage::Commit)
+      if (role == OwnershipEventRole::Operation && slot.stage == OwnershipEventStage::Effect)
         foundReturn = true;
     }
   }
   ZC_EXPECT(foundStorageLive);
   ZC_EXPECT(foundAssign);
   ZC_EXPECT(foundReturn);
+  ZC_EXPECT(foundSourceStage);
+  ZC_EXPECT(foundEffectStage);
+  ZC_EXPECT(foundCommitStage);
 }
 
 ZC_TEST("Ownership event overlay verifier rejects a tampered function slot count") {
