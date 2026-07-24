@@ -1,6 +1,6 @@
 # ZOM Subagents
 
-This directory contains 11 specialized subagents used by ZOM's AI prompt system.
+This directory contains 12 specialized subagents used by ZOM's AI prompt system.
 They are registered in `manifest.yaml` and routed to by the `task-router`
 subagent based on keywords and path ownership.
 
@@ -22,6 +22,7 @@ flowchart TD
     TR --> SA[spec-audit<br/>docs/spec/** docs/design/** drift and five-way]
     TR --> RM[runtime-memory<br/>zc/ runtime core FFI ownership]
     TR --> VR[verification<br/>tests CI workflows query gates benchmarks coverage]
+    TR --> TL[tooling-lsp<br/>IDE semantics LSP protocol document revisions]
 
     %% Escalation edges
     RF --> SA
@@ -40,6 +41,11 @@ flowchart TD
     IB --> VR
     IB --> SA
     RM --> VR
+    TL --> LP
+    TL --> BC
+    TL --> MS
+    TL --> ES
+    TL --> VR
     VR --> SA
     TR --> SA
 ```
@@ -52,31 +58,32 @@ Use this table when routing manually, or when checking whether `task-router`
 made the right choice. A `✅` means the subagent *explicitly owns* this
 surface; `↗` means it escalates to another subagent after doing its part.
 
-| Topic \ Subagent | task-router | rfc | lexer-parser | binder-checker | module-system | error-system | concurrency | ir-backend | spec-audit | runtime-memory | verification |
-|---|---|---|---|---|---|---|---|---|---|---|---|
-| RFC or proposal | ✅ route → | ✅ | ↗ if syntax/AST | ↗ if semantics | ↗ if modules | ↗ if errors | ↗ if async | ↗ if IR/backend | ↗ if spec | ↗ if runtime | ↗ test plan |
-| Grammar change | ✅ route → | ↗ if design needed | ✅ | | | ↗ touches diagnostics | | | ✅ audit drift | | ↗ regen tests |
-| Token not lexed | ✅ route → | | ✅ | | | ↗ ZOMxxxx codes | | | ✅ | | |
-| Type mismatch message | ✅ route → | ↗ if language rule changes | | ✅ | | ↗ owns codes | | | ✅ | | ↗ add test |
-| `import` resolution bug | ✅ route → | ↗ if module contract changes | | ↗ binder | ✅ | | | ↗ imported identity | ✅ | | ↗ add test |
-| Semantic identity or source provenance | ✅ route → | ↗ if contract changes | ✅ parsed origin and AST producer inventory | ↗ identity consumer | ✅ identity/source owner | ↗ invariant codes | | ↗ IR handles and build wiring | ✅ | ↗ lifetime boundary | ✅ architecture gate and permutation tests |
-| Incremental query runtime, red-green reuse, or projection shielding | ✅ route → | ↗ if contract changes | ↗ parse provider | ↗ semantic provider | ✅ query database and identity owner | ↗ diagnostic facts | ↗ cancellation interaction | ↗ CMake direction | ✅ architecture drift | ↗ lifetime boundary | ✅ gates, adversaries, and benchmarks |
-| `?!` operator missing | ✅ route → | ↗ if semantics change | ✅ lex+parse | | | ✅ error semantics | | ✅ lowering | ✅ | ↗ panic ABI | ↗ lit test |
-| Forced cast `as!` | ✅ route → | ↗ if contract changes | ✅ syntax + AST mode | ✅ `ForcedChecked` fact | | ✅ panic mapping | ↗ task/suspend boundary | ✅ check-once + failure edge | ✅ five-way | ✅ panic ABI | ✅ mode + lowering matrix |
-| New trait (`Sendable`) | ✅ route → | ✅ design intake | | ✅ core owner | | | ↗ concurrency layer | ↗ erase/lower | ✅ | | ↗ add test |
-| Async task graph | ✅ route → | ✅ design intake | | | | ↗ task errors | ✅ | ✅ state lowering | ✅ | ↗ memory layer | ↗ tests |
-| Ownership, drop, or Chapter 14 | ✅ route → | ↗ if contract changes | | ↗ type legality | | ↗ panic/error boundary | ↗ task interaction | ↗ MIR/LIR lowering | ✅ | ✅ primary owner | ↗ tests |
-| HIR/MIR/LIR change | ✅ route → | ↗ if contract changes | | ↗ semantic facts | ↗ module identity | ↗ error ops | ↗ async ops | ✅ | ↗ spec claims | ↗ ABI/runtime | ↗ verifier/tests |
-| LLVM/object emission | ✅ route → | ↗ if contract changes | | | ↗ module artifacts | | | ✅ | | ↗ ABI/runtime | ↗ artifact tests |
-| LLVM build and CI contract | ✅ route → | ↗ if contract changes | | | | | | ✅ CMake and link inventory | | | ✅ workflows and negative configure gates |
-| Developer build documentation | ✅ `AGENTS.md` governance | ↗ if contract changes | | | | | | ↗ supplies LLVM contract | | | ✅ `README.md` and executable commands |
-| Compiler architecture documentation | ✅ route → | ↗ if contract changes | | | | | | ↗ IR/backend architecture | ✅ `docs/design/**` owner | | ↗ validates evidence |
-| Raw pointer in zc | ✅ route → | ↗ if policy changes | | | | | | ↗ lowered pointer | | ✅ | |
-| Spec drift found | ✅ route → | | | | | | | | ✅ | | |
-| Lit test XFAIL expired | ✅ route → | | | | | | | | | | ✅ |
-| Coverage regression | ✅ route → | | | | | | | | | | ✅ |
-| RFC 0016 coverage CMake plumbing, runner, checker, inputs, and reports | ✅ route → | ↗ if contract changes | | | | | | ↗ supplies compiler path census | | | ✅ primary owner |
-| RFC 0017 incremental-query gate, corpus, runner, and baseline | ✅ route → | ↗ if contract changes | | ↗ supplies Binder facts | ↗ supplies query contracts | ↗ supplies diagnostic facts | ↗ stress interaction | ↗ supplies CMake DAG | ↗ design audit | | ✅ primary owner |
+| Topic \ Subagent | task-router | rfc | lexer-parser | binder-checker | module-system | error-system | concurrency | ir-backend | spec-audit | runtime-memory | verification | tooling-lsp |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| RFC or proposal | ✅ route → | ✅ | ↗ if syntax/AST | ↗ if semantics | ↗ if modules | ↗ if errors | ↗ if async | ↗ if IR/backend | ↗ if spec | ↗ if runtime | ↗ test plan | ↗ if tooling |
+| Grammar change | ✅ route → | ↗ if design needed | ✅ | | | ↗ touches diagnostics | | | ✅ audit drift | | ↗ regen tests | ↗ if recovery syntax |
+| Token not lexed | ✅ route → | | ✅ | | | ↗ ZOMxxxx codes | | | ✅ | | | |
+| Type mismatch message | ✅ route → | ↗ if language rule changes | | ✅ | | ↗ owns codes | | | ✅ | | ↗ add test | ↗ hover and IDE diagnostics |
+| `import` resolution bug | ✅ route → | ↗ if module contract changes | | ↗ binder | ✅ | | | ↗ imported identity | ✅ | | ↗ add test | ↗ navigation |
+| Semantic identity or source provenance | ✅ route → | ↗ if contract changes | ✅ parsed origin and AST producer inventory | ↗ identity consumer | ✅ identity/source owner | ↗ invariant codes | | ↗ IR handles and build wiring | ✅ | ↗ lifetime boundary | ✅ architecture gate and permutation tests | ↗ editor source mapping |
+| Incremental query runtime, red-green reuse, or projection shielding | ✅ route → | ↗ if contract changes | ↗ parse provider | ↗ semantic provider | ✅ query database and identity owner | ↗ diagnostic facts | ↗ cancellation interaction | ↗ CMake direction | ✅ architecture drift | ↗ lifetime boundary | ✅ gates, adversaries, and benchmarks | ↗ request snapshots |
+| `?!` operator missing | ✅ route → | ↗ if semantics change | ✅ lex+parse | | | ✅ error semantics | | ✅ lowering | ✅ | ↗ panic ABI | ↗ lit test | |
+| Forced cast `as!` | ✅ route → | ↗ if contract changes | ✅ syntax + AST mode | ✅ `ForcedChecked` fact | | ✅ panic mapping | ↗ task/suspend boundary | ✅ check-once + failure edge | ✅ five-way | ✅ panic ABI | ✅ mode + lowering matrix | ↗ hover and diagnostics |
+| New trait (`Sendable`) | ✅ route → | ✅ design intake | | ✅ core owner | | | ↗ concurrency layer | ↗ erase/lower | ✅ | | ↗ add test | ↗ completion and hover |
+| Async task graph | ✅ route → | ✅ design intake | | | | ↗ task errors | ✅ | ✅ state lowering | ✅ | ↗ memory layer | ↗ tests | ↗ IDE semantics |
+| Ownership, drop, or Chapter 14 | ✅ route → | ↗ if contract changes | | ↗ type legality | | ↗ panic/error boundary | ↗ task interaction | ↗ MIR/LIR lowering | ✅ | ✅ primary owner | ↗ tests | ↗ diagnostics and hover |
+| HIR/MIR/LIR change | ✅ route → | ↗ if contract changes | | ↗ semantic facts | ↗ module identity | ↗ error ops | ↗ async ops | ✅ | ↗ spec claims | ↗ ABI/runtime | ↗ verifier/tests | |
+| LLVM/object emission | ✅ route → | ↗ if contract changes | | | ↗ module artifacts | | | ✅ | | ↗ ABI/runtime | ↗ artifact tests | |
+| LLVM build and CI contract | ✅ route → | ↗ if contract changes | | | | | | ✅ CMake and link inventory | | | ✅ workflows and negative configure gates | |
+| Developer build documentation | ✅ `AGENTS.md` governance | ↗ if contract changes | | | | | | ↗ supplies LLVM contract | | | ✅ `README.md` and executable commands | |
+| Compiler architecture documentation | ✅ route → | ↗ if contract changes | | | | | | ↗ IR/backend architecture | ✅ `docs/design/**` owner | | ↗ validates evidence | ↗ tooling architecture |
+| Raw pointer in zc | ✅ route → | ↗ if policy changes | | | | | | ↗ lowered pointer | | ✅ | | |
+| Spec drift found | ✅ route → | | | | | | | | ✅ | | | |
+| Lit test XFAIL expired | ✅ route → | | | | | | | | | | ✅ | |
+| Coverage regression | ✅ route → | | | | | | | | | | ✅ | |
+| RFC 0016 coverage CMake plumbing, runner, checker, inputs, and reports | ✅ route → | ↗ if contract changes | | | | | | ↗ supplies compiler path census | | | ✅ primary owner | |
+| RFC 0017 incremental-query gate, corpus, runner, and baseline | ✅ route → | ↗ if contract changes | | ↗ supplies Binder facts | ↗ supplies query contracts | ↗ supplies diagnostic facts | ↗ stress interaction | ↗ supplies CMake DAG | ↗ design audit | | ✅ primary owner | ↗ snapshot consumers |
+| LSP or IDE feature | ✅ route → | ↗ if contract changes | ↗ recovery syntax | ↗ semantic facts | ↗ query snapshots | ↗ diagnostics | ↗ cancellation semantics | | ↗ tooling design | | ↗ protocol and fixture gates | ✅ |
 
 ---
 

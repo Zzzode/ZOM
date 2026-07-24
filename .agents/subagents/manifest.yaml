@@ -28,6 +28,7 @@ subagents:
       - ".agents/subagents/task-router.md"
       - ".agents/subagents/ir-backend.md"
       - ".agents/subagents/module-system.md"
+      - ".agents/subagents/tooling-lsp.md"
       - ".agents/subagents/spec-audit.md"
       - ".agents/subagents/verification.md"
       - "AGENTS.md"
@@ -154,6 +155,17 @@ subagents:
     triggers: [ "zc::", "Own<", "ArrayPtr", "Vector", "String", "Maybe", "memory", "heap", "stack", "drop", "free", "FFI", "Pimpl", "ownership", "panic", "forced cast", "as!" ]
     required-skills: [ zc-library, build-ci ]
     escalation-to: [ verification ]
+
+  - id: tooling-lsp
+    name: IDE Semantics & Language Server
+    owns:
+      - "products/zomlang/tools/ide/**"
+      - "products/zomlang/tools/lsp/**"
+      - "editors/**"
+      - "docs/design/tooling/**"
+    triggers: [ "LSP", "language server", "IDE", "hover", "completion", "signature help", "go to definition", "references", "rename", "semantic tokens", "inlay hints", "code action", "document version", "stale response" ]
+    required-skills: [ build-ci, zc-library ]
+    escalation-to: [ lexer-parser, binder-checker, module-system, error-system, verification ]
 
   - id: verification
     name: Formal-ish Verification & Test Coverage
