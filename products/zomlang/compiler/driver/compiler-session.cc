@@ -973,6 +973,7 @@ struct CompilerSession::Impl {
   zc::Vector<checker::dispatch::VerifiedDispatchFacts> dispatchFacts;
   zc::Vector<hir::VerifiedHirModule> hirModules;
   zc::Vector<mir::VerifiedBuiltMir> builtMirModules;
+  zc::Vector<ownership::VerifiedOwnershipEventOverlay> ownershipEventOverlays;
   zc::Vector<ir::IrDiagnosticGroup> irFailureGroups;
   zc::Vector<identity::IdentityInvariant> irIdentityInvariantFailures;
   bool verifiedCheckedSources = false;
@@ -2976,6 +2977,11 @@ zc::ArrayPtr<const mir::VerifiedBuiltMir> CompilerSession::getVerifiedBuiltMirMo
   return impl->builtMirModules;
 }
 
+zc::ArrayPtr<const ownership::VerifiedOwnershipEventOverlay>
+CompilerSession::getVerifiedOwnershipEventOverlays() const noexcept {
+  return impl->ownershipEventOverlays;
+}
+
 zc::ArrayPtr<const ir::IrDiagnosticGroup> CompilerSession::getIrFailureGroups() const noexcept {
   return impl->irFailureGroups;
 }
@@ -3548,6 +3554,7 @@ bool CompilerSession::checkSources() {
   zc::Own<borrow_evidence::BorrowEvidenceRepository> stagedBorrowEvidenceRepository;
   zc::Vector<hir::VerifiedHirModule> stagedHirModules;
   zc::Vector<mir::VerifiedBuiltMir> stagedBuiltMirModules;
+  zc::Vector<ownership::VerifiedOwnershipEventOverlay> stagedOwnershipEventOverlays;
 
   ZC_IF_SOME(registries, impl->identityRegistries) {
     ZC_IF_SOME(fingerprint, impl->semanticContextFingerprint) {
@@ -4010,10 +4017,36 @@ bool CompilerSession::checkSources() {
         return rejectIrInvariant(verifiedMir.invariantFailures());
       }
       stagedBuiltMirModules.add(zc::mv(verifiedMir).takeVerified());
+
+      auto ownershipCandidate = ownership::OwnershipEventOverlayBuilder::build(
+          stagedBuiltMirModules[stagedBuiltMirModules.size() - 1], registries);
+      if (ownershipCandidate.isCapabilityRejected()) {
+        return rejectIrCapability(ownershipCandidate.capabilityFailures());
+      }
+      if (ownershipCandidate.isIdentityInvariantRejected()) {
+        return rejectIrIdentity(ownershipCandidate.identityFailures());
+      }
+      if (ownershipCandidate.isIrInvariantRejected()) {
+        return rejectIrInvariant(ownershipCandidate.invariantFailures());
+      }
+      auto verifiedOwnership = ownership::OwnershipEventOverlayVerifier::verify(
+          zc::mv(ownershipCandidate).takeVerified(),
+          stagedBuiltMirModules[stagedBuiltMirModules.size() - 1], registries);
+      if (verifiedOwnership.isCapabilityRejected()) {
+        return rejectIrCapability(verifiedOwnership.capabilityFailures());
+      }
+      if (verifiedOwnership.isIdentityInvariantRejected()) {
+        return rejectIrIdentity(verifiedOwnership.identityFailures());
+      }
+      if (verifiedOwnership.isIrInvariantRejected()) {
+        return rejectIrInvariant(verifiedOwnership.invariantFailures());
+      }
+      stagedOwnershipEventOverlays.add(zc::mv(verifiedOwnership).takeVerified());
     }
   }
   if (stagedHirModules.size() != impl->boundModules.size() ||
       stagedBuiltMirModules.size() != impl->boundModules.size() ||
+      stagedOwnershipEventOverlays.size() != impl->boundModules.size() ||
       impl->diagnosticEngine->hasErrors()) {
     return false;
   }
@@ -4029,6 +4062,7 @@ bool CompilerSession::checkSources() {
   impl->borrowEvidenceRepository = zc::mv(stagedBorrowEvidenceRepository);
   impl->hirModules = zc::mv(stagedHirModules);
   impl->builtMirModules = zc::mv(stagedBuiltMirModules);
+  impl->ownershipEventOverlays = zc::mv(stagedOwnershipEventOverlays);
   impl->verifiedCheckedSources = true;
   return true;
 }

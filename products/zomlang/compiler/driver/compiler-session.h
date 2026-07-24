@@ -43,6 +43,7 @@
 #include "zomlang/compiler/ir/ir-diagnostic-adapter.h"
 #include "zomlang/compiler/ir/target-registry.h"
 #include "zomlang/compiler/mir/built-mir.h"
+#include "zomlang/compiler/ownership/ownership-event-overlay.h"
 #include "zomlang/compiler/type/semantic-type-store.h"
 
 namespace zomlang {
@@ -182,6 +183,10 @@ public:
   /// \brief Returns immutable revision-checked Built MIR modules in dependency order.
   ZC_NODISCARD zc::ArrayPtr<const mir::VerifiedBuiltMir> getVerifiedBuiltMirModules()
       const noexcept;
+  /// rief Returns immutable revision-checked RFC 0007 ownership event overlays in dependency
+  /// order.
+  ZC_NODISCARD zc::ArrayPtr<const ownership::VerifiedOwnershipEventOverlay>
+  getVerifiedOwnershipEventOverlays() const noexcept;
   /// \brief Returns complete grouped IR failures retained after rejected lowering.
   ZC_NODISCARD zc::ArrayPtr<const ir::IrDiagnosticGroup> getIrFailureGroups() const noexcept;
   /// \brief Returns complete identity failures retained from rejected IR operations.

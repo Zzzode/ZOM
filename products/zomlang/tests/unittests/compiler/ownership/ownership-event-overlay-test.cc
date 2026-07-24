@@ -220,6 +220,8 @@ public:
 
   const mir::VerifiedBuiltMir& builtMir() const { return session.getVerifiedBuiltMirModules()[0]; }
 
+  driver::CompilerSession& compilerSession() noexcept { return session; }
+
   const identity::SemanticIdentityRegistrySet& registries() const {
     auto result = session.getIdentityRegistries();
     ZC_REQUIRE(result != zc::none);
@@ -349,6 +351,21 @@ ZC_TEST("Ownership event overlay verifier rejects a tampered slot role") {
   ZC_EXPECT(verifiedResult.invariantFailures().facts().size() == 1);
   ZC_EXPECT(verifiedResult.invariantFailures().facts()[0].kind() ==
             ir::IrFailureKind::CanonicalCodecMismatch);
+}
+
+ZC_TEST("CompilerSession publishes verified ownership event overlays") {
+  OwnershipPipelineFixture fixture("let value = 0;"_zc);
+  const auto& session = fixture.compilerSession();
+  ZC_REQUIRE(session.getVerifiedBuiltMirModules().size() == 1);
+  ZC_REQUIRE(session.getVerifiedOwnershipEventOverlays().size() == 1);
+  const auto& overlay = session.getVerifiedOwnershipEventOverlays()[0];
+  const auto& builtMir = session.getVerifiedBuiltMirModules()[0];
+  ZC_EXPECT(overlay.module() == builtMir.module());
+  ZC_EXPECT(overlay.builtRevision().digest() == builtMir.revision().digest());
+  ZC_EXPECT(overlay.functions().size() == 1);
+  ZC_EXPECT(overlay.functions()[0].owner == builtMir.functions()[0].owner);
+  ZC_EXPECT(session.getIrFailureGroups().size() == 0);
+  ZC_EXPECT(session.getIrIdentityInvariantFailures().size() == 0);
 }
 
 }  // namespace
