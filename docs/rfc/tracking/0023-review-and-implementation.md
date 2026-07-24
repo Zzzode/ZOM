@@ -137,3 +137,30 @@ tooling projection dependency is rechecked.
   documentation was reviewed on 2026-07-24.
 - Live repository inspection confirmed the absence of an LSP product and the
   presence of RFC 0017 snapshot, cancellation, and provenance foundations.
+
+## Technical Closure Audit (2026-07-24)
+
+Independent repository inspection confirmed the proposal's live dependencies:
+
+- `CanonicalQueryKey` exists in
+  `products/zomlang/compiler/query/query-database.cc` and `query-types.h`,
+  providing the RFC 0017 dependency-record foundation the proposal builds
+  its transitive input-frontier collection on.
+- RFC 0017's atomic transactions, immutable snapshots, cancellation,
+  diagnostic facts, and provenance revisions are present in the query
+  database; RFC 0023 extends them with revision-local recovery and IDE
+  query descriptors rather than redefining them.
+- No ZOM LSP or editor semantic product currently exists, so the proposal
+  defines a new surface without conflicting with production code.
+- `zomc --syntax-only` is a batch boundary after verified parsing and
+  binding; the proposal correctly does not treat it as a language-server
+  completion path.
+- The recoverable lossless CST, `RecoveryLocalBindingKey`,
+  `VerifiedFlowToolingProjection`, and the ten IDE query descriptors are
+  new constructs defined by this RFC; they do not require pre-existing
+  production code.
+- `python3 scripts/check-rfc.py` passed for all 23 proposal RFCs.
+
+Acceptance remains blocked on RFC 0022 reaching `ACCEPTED` and the exact
+tooling projection dependency being rechecked. No independent technical
+gaps found beyond that dependency.
