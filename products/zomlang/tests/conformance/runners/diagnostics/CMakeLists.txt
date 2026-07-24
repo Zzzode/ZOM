@@ -12,11 +12,6 @@
 # License for the specific language governing permissions and limitations under
 # the License.
 
-find_program(LIT_EXECUTABLE NAMES lit)
-if(NOT LIT_EXECUTABLE)
-  message(FATAL_ERROR "LLVM lit executable not found. Please install lit first")
-endif()
-
 set(DIAGNOSTIC_EXPECTATION_ROOT
   ${CMAKE_SOURCE_DIR}/products/zomlang/tests/conformance/expectations/diagnostics
 )
@@ -28,7 +23,7 @@ endif()
 
 add_test(
   NAME conformance-diagnostics
-  COMMAND ${LIT_EXECUTABLE} -v -j 3 --timeout=90 ${DIAGNOSTIC_EXPECTATION_ROOT}
+  COMMAND ${ZOM_LIT_COMMAND} -v -j 3 --timeout=90 ${DIAGNOSTIC_EXPECTATION_ROOT}
   WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/products/zomlang/tests
 )
 

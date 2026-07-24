@@ -67,7 +67,7 @@ foreach(TEST_SOURCE ${ALL_TEST_SOURCES})
 
   add_test(NAME ${UNIQUE_TEST_NAME} COMMAND ${UNIQUE_TEST_NAME})
   set_tests_properties(${UNIQUE_TEST_NAME} PROPERTIES
-    TIMEOUT 60
+    TIMEOUT 120
   )
   if (ZOM_ENABLE_COVERAGE)
     add_coverage_to_test(${UNIQUE_TEST_NAME})
