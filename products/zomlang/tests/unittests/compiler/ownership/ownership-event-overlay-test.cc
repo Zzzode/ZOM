@@ -296,5 +296,27 @@ ZC_TEST("Ownership event overlay verifier rejects a tampered function slot count
             ir::IrFailureKind::CanonicalCodecMismatch);
 }
 
+ZC_TEST("Ownership event overlay revision is deterministic across two builds") {
+  OwnershipPipelineFixture first("let value = 0;"_zc);
+  auto firstResult = OwnershipEventOverlayBuilder::build(first.builtMir(), first.registries());
+  ZC_REQUIRE(firstResult.isVerified());
+  auto firstCandidate = zc::mv(firstResult).takeVerified();
+  auto firstVerified = OwnershipEventOverlayVerifier::verify(zc::mv(firstCandidate),
+                                                             first.builtMir(), first.registries());
+  ZC_REQUIRE(firstVerified.isVerified());
+  auto firstOverlay = zc::mv(firstVerified).takeVerified();
+
+  OwnershipPipelineFixture second("let value = 0;"_zc);
+  auto secondResult = OwnershipEventOverlayBuilder::build(second.builtMir(), second.registries());
+  ZC_REQUIRE(secondResult.isVerified());
+  auto secondCandidate = zc::mv(secondResult).takeVerified();
+  auto secondVerified = OwnershipEventOverlayVerifier::verify(
+      zc::mv(secondCandidate), second.builtMir(), second.registries());
+  ZC_REQUIRE(secondVerified.isVerified());
+  auto secondOverlay = zc::mv(secondVerified).takeVerified();
+
+  ZC_EXPECT(firstOverlay.revision().digest() == secondOverlay.revision().digest());
+}
+
 }  // namespace
 }  // namespace zomlang::compiler::ownership

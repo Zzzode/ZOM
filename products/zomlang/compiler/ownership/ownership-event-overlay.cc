@@ -153,6 +153,70 @@ zc::Maybe<identity::DefId> firstFunctionDefinition(const mir::VerifiedBuiltMir& 
   return zc::none;
 }
 
+bool lessBytes(zc::ArrayPtr<const uint8_t> left, zc::ArrayPtr<const uint8_t> right) noexcept {
+  const size_t shared = left.size() < right.size() ? left.size() : right.size();
+  for (size_t index = 0; index < shared; ++index) {
+    if (left[index] != right[index]) return left[index] < right[index];
+  }
+  return left.size() < right.size();
+}
+
+bool lessEventKey(const MirEventKey& left, const MirEventKey& right) noexcept {
+  if (left.location.block.ordinal() != right.location.block.ordinal())
+    return left.location.block.ordinal() < right.location.block.ordinal();
+  if (left.location.statementIndex != right.location.statementIndex)
+    return left.location.statementIndex < right.location.statementIndex;
+  return left.operandOrdinal < right.operandOrdinal;
+}
+
+void sortRoles(zc::Vector<OwnershipEventRole>& roles) {
+  for (size_t index = 1; index < roles.size(); ++index) {
+    auto current = roles[index];
+    size_t insertion = index;
+    while (insertion > 0 &&
+           static_cast<uint8_t>(current) < static_cast<uint8_t>(roles[insertion - 1])) {
+      roles[insertion] = roles[insertion - 1];
+      --insertion;
+    }
+    roles[insertion] = current;
+  }
+}
+
+void sortSlots(zc::Vector<MirEventSlot>& slots) {
+  for (auto& slot : slots) { sortRoles(slot.roles); }
+  for (size_t index = 1; index < slots.size(); ++index) {
+    auto current = zc::mv(slots[index]);
+    size_t insertion = index;
+    while (insertion > 0 && lessEventKey(current.key, slots[insertion - 1].key)) {
+      slots[insertion] = zc::mv(slots[insertion - 1]);
+      --insertion;
+    }
+    slots[insertion] = zc::mv(current);
+  }
+}
+
+void sortFunctions(zc::Vector<OwnershipFunctionEventOverlay>& functions,
+                   const identity::SemanticIdentityRegistrySet& registries) {
+  zc::Vector<zc::Array<uint8_t>> keys;
+  for (const auto& function : functions) {
+    auto key = registries.definitions().lookup(function.owner);
+    if (key == zc::none) return;
+    ZC_IF_SOME(value, key) { keys.add(value.encode()); }
+  }
+  for (size_t index = 1; index < functions.size(); ++index) {
+    auto currentFunction = zc::mv(functions[index]);
+    auto currentKey = zc::mv(keys[index]);
+    size_t insertion = index;
+    while (insertion > 0 && lessBytes(currentKey.asPtr(), keys[insertion - 1].asPtr())) {
+      functions[insertion] = zc::mv(functions[insertion - 1]);
+      keys[insertion] = zc::mv(keys[insertion - 1]);
+      --insertion;
+    }
+    functions[insertion] = zc::mv(currentFunction);
+    keys[insertion] = zc::mv(currentKey);
+  }
+}
+
 void addSlot(zc::Vector<MirEventSlot>& slots, mir::MirBlockId block, uint32_t statementIndex,
              uint32_t operandOrdinal, OwnershipEventStage stage,
              zc::Vector<OwnershipEventRole>&& roles) {
@@ -162,7 +226,8 @@ void addSlot(zc::Vector<MirEventSlot>& slots, mir::MirBlockId block, uint32_t st
 }
 
 zc::Maybe<zc::Vector<OwnershipFunctionEventOverlay>> buildFunctions(
-    const mir::VerifiedBuiltMir& builtMir) {
+    const mir::VerifiedBuiltMir& builtMir,
+    const identity::SemanticIdentityRegistrySet& registries) {
   zc::Vector<OwnershipFunctionEventOverlay> functions;
   for (const auto& function : builtMir.functions()) {
     zc::Vector<MirEventSlot> slots;
@@ -234,8 +299,10 @@ zc::Maybe<zc::Vector<OwnershipFunctionEventOverlay>> buildFunctions(
       }
       addSlot(slots, block.id, statementIndex, 0, OwnershipEventStage::Commit, zc::mv(termRoles));
     }
+    sortSlots(slots);
     functions.add(OwnershipFunctionEventOverlay{function.owner, zc::mv(slots)});
   }
+  sortFunctions(functions, registries);
   return functions;
 }
 
@@ -286,7 +353,7 @@ ir::IrOperationResult<OwnershipEventOverlayCandidate> OwnershipEventOverlayBuild
     const mir::VerifiedBuiltMir& builtMir,
     const identity::SemanticIdentityRegistrySet& registries) {
   const auto module = builtMir.module();
-  auto functions = buildFunctions(builtMir);
+  auto functions = buildFunctions(builtMir, registries);
   if (functions == zc::none) {
     return rejectOwnership<OwnershipEventOverlayCandidate>(
         ir::IrFailurePhase::OwnershipProofValidation, ir::IrFailureKind::InvalidOwnershipProof,
