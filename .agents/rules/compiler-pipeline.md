@@ -21,7 +21,7 @@ flowchart LR
     B --> C[Checker]
     C --> CM[CheckedModule]
     CM --> H[HIR]
-    H --> M[Built MIR v2]
+    H --> M[Built MIR]
 ```
 
 **Each phase's output is the single source of truth for the next phase.**

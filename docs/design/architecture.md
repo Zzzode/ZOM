@@ -28,8 +28,8 @@ The compiler currently provides:
   surfaces;
 - canonical signature, coherence, module-interface, checked, dispatch, and
   borrow-evidence publication for the supported source subset;
-- checked-module assembly, semantic HIR, and evidence-bound Built MIR revision
-  v2, committed atomically by `CompilerSession`; and
+- checked-module assembly, semantic HIR, and evidence-bound Built MIR,
+  committed atomically by `CompilerSession`; and
 - deterministic structured diagnostics and architecture gates.
 
 The production path does not yet provide:
@@ -61,7 +61,7 @@ fact or any source, identity, codec, or IR invariant rejects the entire stage.
 | `compiler/type` | Canonicalize and intern closed semantic type payloads | `SemanticTypeId` and immutable lookup views |
 | `compiler/checker` | Produce and verify signatures, coherence, inference, body facts, dispatch, borrow surfaces, and checked facts | revision-bound verified fact families and repository leases |
 | `compiler/hir` | Assemble checked modules and lower semantic declarations and scalar facts | `VerifiedCheckedModule`, `VerifiedHirModule` |
-| `compiler/mir` | Lower and independently verify evidence-bound Built MIR v2 | `VerifiedBuiltMir` |
+| `compiler/mir` | Lower and independently verify evidence-bound Built MIR | `VerifiedBuiltMir` |
 | `compiler/ir` | Own target selections, canonical IR identity, and the shared closed IR failure algebra | `VerifiedTargetSelection`, typed IR failures and diagnostics |
 | `compiler/diagnostics` | Register, sort, and render source and invariant diagnostics | `DiagnosticEngine` output |
 | `utils/zomc` | Admit a workspace and invoke the production session | AST output, syntax-only binding success, or explicit stage failure |
@@ -105,7 +105,7 @@ flowchart TD
     C --> CM["VerifiedCheckedModule"]
     BE --> CM
     CM --> H["Verified semantic HIR"]
-    H --> M["Verified Built MIR v2"]
+    H --> M["Verified Built MIR"]
     T --> TR["TargetRegistrySnapshot"]
     TR --> VT["VerifiedTargetSelection"]
 ```
@@ -169,7 +169,7 @@ surface.
 `checkSources()` consumes sealed `VerifiedBoundModuleInput` values and stages
 canonical signature facts, coherence, module interfaces, checked facts,
 dispatch facts, and borrow evidence. It then assembles `VerifiedCheckedModule`,
-lowers `VerifiedHirModule`, builds and independently verifies Built MIR v2, and
+lowers `VerifiedHirModule`, builds and independently verifies Built MIR, and
 commits all staged repositories and vectors together. Unsupported or incomplete
 source facts fail closed with typed source or invariant diagnostics and publish
 nothing from the stage.
@@ -249,7 +249,7 @@ failure, and diagnostic contracts:
 `VerifiedTargetSelection` is bound to the registry revision and semantic
 projection but not yet to the session `SemanticContextFingerprint`.
 
-Semantic HIR and Built MIR v2 are production, session-published internal
+Semantic HIR and Built MIR are production, session-published internal
 representations with independent verifiers and exact codec oracles. Built MIR
 is not executable and has no stable user-facing text format. No target LIR,
 LLVM lowering, or native backend is built.

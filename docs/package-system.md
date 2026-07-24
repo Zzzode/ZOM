@@ -177,7 +177,7 @@ records rather than command spelling, host paths, pointer values, or table-local
 handles.
 
 The current compiler can publish verified frontend facts, semantic HIR, and
-Built MIR v2 for the supported source subset. CLI output is limited to AST and
+Built MIR for the supported source subset. CLI output is limited to AST and
 checked dispatch records; target LIR and native binary output are not
 implemented.
 

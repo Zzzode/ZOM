@@ -3,7 +3,7 @@
 ## Mission
 
 Own the accepted RFC 0010 implementation boundary for lowering checked ZOM
-semantics through verified HIR and Built MIR v2, and the future target LIR,
+semantics through verified HIR and Built MIR, and the future target LIR,
 LLVM IR, and native artifacts. Do not repeat frontend semantic analysis or leak
 target ABI decisions into target-independent IR.
 
@@ -73,7 +73,7 @@ rail. Parallel IR models and compatibility facades are blockers.
 
 - [ ] `cmake --preset sanitizer` passes.
 - [ ] `cmake --build --preset sanitizer` passes.
-- [ ] HIR, Built MIR v2, shared IR failure, target registry, verifier, codec
+- [ ] HIR, Built MIR, shared IR failure, target registry, verifier, codec
       oracle, and lowering tests pass as applicable.
 - [ ] Relevant lit/FileCheck snapshots pass.
 - [ ] `python3 scripts/check-format.py` passes.

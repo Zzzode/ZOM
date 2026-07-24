@@ -12,7 +12,7 @@ production-ready only when the named capability is constructed, independently
 verified, consumed through the production path, and covered by an executable
 gate.
 
-The current verified pipeline publishes Built MIR v2 for the supported source
+The current verified pipeline publishes Built MIR for the supported source
 subset:
 
 ```mermaid
@@ -27,7 +27,7 @@ flowchart LR
     C --> M["VerifiedCheckedModule"]
     E --> M
     M --> H["VerifiedHirModule"]
-    H --> R["VerifiedBuiltMir v2"]
+    H --> R["VerifiedBuiltMir"]
 ```
 
 Every checker, interface, evidence, CheckedModule, HIR, and Built MIR result is
@@ -358,7 +358,7 @@ session retains both selections.
 
 `zomc` constructs one host profile with abort panic. Target selections are not
 yet bound to `SemanticContextFingerprint`. Semantic HIR and evidence-bound
-Built MIR v2 are internal verified session publications with exact codec
+Built MIR are internal verified session publications with exact codec
 oracles. Built MIR is not executable; no target LIR, LLVM, object, or native
 artifact is a compiler output.
 
