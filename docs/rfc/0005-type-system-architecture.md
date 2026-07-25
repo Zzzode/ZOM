@@ -8,7 +8,7 @@ review-manager: rfc
 required-owners: [rfc, lexer-parser, binder-checker, error-system, module-system, ir-backend, runtime-memory, concurrency, spec-audit, verification]
 approvers: [rfc, lexer-parser, binder-checker, error-system, module-system, ir-backend, runtime-memory, concurrency, spec-audit, verification]
 created: 2026-07-05
-updated: 2026-07-18
+updated: 2026-07-25
 area: compiler
 requires: [1, 2, 3, 4, 11]
 supersedes: []
@@ -95,8 +95,7 @@ checked-fact contract consumed by RFC 0008 module interfaces and RFC 0010.
   consume paths; RFC 0007 and RFC 0010 own those operations.
 - This RFC does not define target layout, ABI, monomorphization, or native code
   generation.
-- This RFC does not keep the existing polymorphic `Type` hierarchy or local
-  `TypeId` as a compatibility layer.
+- The canonical semantic store is the sole semantic-type authority.
 - This RFC does not introduce implicit let-polymorphism.
 
 ## Prior Art
@@ -234,6 +233,9 @@ SignatureCheckingInput {
   boundModule: const VerifiedBoundModuleInput,
   semanticTypes: const SemanticTypeStore,
   importedSignatures: const ImportedSignatureView,
+  markerShapes: const RFC0015::VerifiedMarkerShapeInventory,
+  markerPolicies: const RFC0015::VerifiedMarkerPolicyRegistry,
+  standardMarkers: const RFC0024::VerifiedStandardMarkerAuthority,
   semanticOptions: SemanticCompilerOptionsKey,
 }
 
@@ -243,18 +245,22 @@ BodyCheckingInput {
   localSignatures: const VerifiedSignatureFacts,
   importedSignatures: const ImportedSignatureView,
   coherence: const FrozenCoherenceView,
+  markerPolicies: const RFC0015::VerifiedMarkerPolicyRegistry,
+  standardMarkers: const RFC0024::VerifiedStandardMarkerAuthority,
   semanticOptions: SemanticCompilerOptionsKey,
 }
 
 CoherenceBuildingInput {
   semanticContext: SemanticContextBrand,
   contextFingerprint: SemanticContextFingerprint,
+  markerPolicies: const RFC0015::VerifiedMarkerPolicyRegistry,
   modules: SortedNonEmptySequence<CoherenceModuleInput>,
 }
 
 CoherenceModuleInput {
   module: ModuleId,
   interfaceRevision: ModuleInterfaceRevision,
+  markerPolicyRegistryRevision: MarkerPolicyRegistryRevision,
   implHeads: SortedMap<ImplId, ImplHead>,
   markerFacts: SortedMap<MarkerFactKey, MarkerFact>,
 }
@@ -1172,6 +1178,8 @@ MarkerComponentStep =
   | ObjectField(name: SemanticIdentifier)
   | ArrayElement
   | NominalField(field: DefId)
+  | ReferenceReferent
+  | EnumVariantPayload(variant: DefId, index: uint32)
 
 MarkerComponentEvidence {
   path: NonEmptySequence<MarkerComponentStep>,
@@ -1184,10 +1192,16 @@ MarkerFactKey {
   subject: SemanticTypeId,
 }
 
+PolicySubjectKind =
+    SharedReference
+  | ConstRawPointer
+  | MutableRawPointer
+
 MarkerEvidence =
   Explicit { impl: ImplId }
   | Structural { components: SortedUniqueSequence<MarkerComponentEvidence> }
   | Builtin { primitive: PrimitiveKind }
+  | PolicySubject { subject: PolicySubjectKind }
 
 MarkerFact {
   key: MarkerFactKey,
@@ -1208,10 +1222,14 @@ mutates the canonical signature.
 The enum tags in this subsection are `0x01` upward in declaration order.
 `SemanticSignaturePayload` tags are `0x01` through `0x08` and
 `ObjectSafetyCause` tags are `0x01` through `0x07`, `MarkerComponentStep` tags
-are `0x01` through `0x04`, and `MarkerEvidence` tags are `0x01` through
-`0x03`. Record fields encode in declaration order. Generic parameter order is
-source declaration order; every other `SortedUniqueSequence` sorts complete
-canonical encodings and rejects duplicates.
+are `0x01` through `0x06`, `MarkerEvidence` tags are `0x01` through `0x04`,
+and `PolicySubjectKind` tags are `SharedReference = 0x01`,
+`ConstRawPointer = 0x02`, and `MutableRawPointer = 0x03`. Record fields encode
+in declaration order. Generic parameter order is source declaration order;
+every other `SortedUniqueSequence` sorts complete canonical encodings and
+rejects duplicates. `PolicySubject` is valid only for an ephemeral positive
+proof authorized by the exact RFC 0015 policy; it has no declaration span and
+never enters signature facts, module interfaces, coherence views, or caches.
 
 `definitionKind` and payload must agree: functions, methods, constructors,
 destructors, and extern callables use `Callable`; classes, structs, enums, and
@@ -1268,26 +1286,38 @@ intrinsic interface cause.
 
 Marker identity is always an interface `DefId` whose `InterfaceSignature` has
 `markerOnly = true`. Standard markers arrive through a real verified prelude
-module. `Copy`, `Linear`, `Sendable`, and other marker results use the same
-`MarkerFact`; RFC 0007 consumes verified facts and never infers marker identity
-from spelling. `Linear` and other non-derivable markers cannot use structural
-evidence. Structural evidence records every immediate component path, type,
-and supporting marker fact. Supporting facts form a canonical acyclic graph:
-they must precede the referencing fact by complete `MarkerFactKey` and
-cannot refer to themselves. Paths distinguish repeated tuple elements, object
-fields, array elements, and nominal fields, so anonymous or nested aggregates
-never collapse to a set of declaration IDs.
+module. RFC 0024's verified authority selects the exact `Copy` and `Linear`
+definitions; RFC 0007 never infers either role from spelling. Automatic proof
+exists only when the exact RFC 0015 policy registry contains an entry for the
+requested marker. The standard `Copy` entry authorizes the exact primitive,
+structural, shared-reference, and raw-pointer subjects in RFC 0024. `Linear`
+has no policy entry and is explicit-only.
 
-`MarkerFactKey` is the sole marker-fact identity. Exactly one fact may exist for
-one `(marker, subject)` key; polarity, evidence, and span are payload and cannot
-create another fact. Positive and negative explicit impls that match one key
-conflict during coherence. Builtin evidence is legal only for the closed
-primitive-marker table and excludes an explicit impl for that key. Structural
-evidence is legal only for a marker classified as derivable and is produced
-only when no explicit positive or negative impl matches. Negative facts require
-explicit evidence. A duplicate key, conflicting polarity, illegal evidence
-class, dangling support edge, or support cycle rejects coherence. Marker maps
+Structural proof records every immediate component path, type, and supporting
+marker key. Paths distinguish repeated tuple elements, object fields, array
+elements, nominal fields, enum payload elements, and a reference referent.
+Demand-driven proof uses one invocation-local active stack; re-entry returns
+`Unsatisfied` and never establishes a recursive proof. Builtin, structural, and
+policy-subject evidence is ephemeral and never enters signature facts, module
+interfaces, coherence views, or caches.
+
+`MarkerFactKey` is the sole persisted explicit-fact identity. Exactly one
+explicit fact may exist for one `(marker, subject)` key; polarity, evidence, and
+span are payload and cannot create another fact. Positive and negative explicit
+impls that match one key conflict during coherence. Negative facts require
+explicit evidence. A duplicate key, conflicting polarity, non-explicit
+persisted evidence, or key/payload disagreement rejects coherence. Marker maps
 sort by complete key bytes and the stored fact must repeat that exact key.
+
+Before automatic proof for a nominal struct or enum, producer and verifier
+independently inspect verified signatures for a direct owned
+`DefinitionKind::Destructor`; its presence returns `Unsatisfied`. A positive
+source implementation of RFC 0024's exact standard `Copy` definition for such
+a subject emits `ZOM4099 CopyImplConflictsWithLogicalDrop` with headline
+`A type with a deinitializer cannot implement Copy`, zero arguments, no notes,
+`None` recovery, and no marker publication. RFC 0015 owns its exact
+`IdentitySyntaxSite` provenance, `CheckerEmitterOrdinal`, and suppression
+contract.
 
 The candidate and verified value are:
 
@@ -1299,6 +1329,7 @@ SignatureFactsCandidate {
   sourceContentDigest: Sha256Digest,
   parsedModuleReceipt: ParsedModuleReceipt,
   bindingSurfaceRevision: ExportSurfaceRevision,
+  markerPolicyRegistryRevision: MarkerPolicyRegistryRevision,
   signatures: SortedMap<DefId, SemanticSignature>,
   implHeads: SortedMap<ImplId, ImplHead>,
   markerFacts: SortedMap<MarkerFactKey, MarkerFact>,
@@ -1332,6 +1363,7 @@ SemanticContextFingerprint
 EncodeByteString(expanded owning ModuleKey)
 sourceContentDigest
 bindingSurfaceRevision
+MarkerPolicyRegistryRevision
 EncodeSortedRecordBytes(signatures)
 EncodeSortedRecordBytes(implHeads)
 EncodeSortedRecordBytes(markerFacts)
@@ -1345,15 +1377,16 @@ spelling, AST IDs, and presentation text are excluded.
 
 The independent non-empty framing oracle uses a zero context fingerprint,
 expanded module bytes `a1`, 32 source-digest bytes `22`, 32 surface-revision
-bytes `33`, one already-canonical three-byte signature record `b20103`, and no
-impl or marker records. The complete 169-byte preimage is:
+bytes `33`, 32 marker-policy registry revision bytes `77`, one
+already-canonical three-byte signature record `b20103`, and no impl or marker
+records. The complete 201-byte preimage is:
 
 ```text
-7a6f6d2e7369676e61747572652d66616374732d7265766973696f6e0000000000000000000000000000000000000000000000000000000000000000000000000000000001a12222222222222222222222222222222222222222222222222222222222222222333333333333333333333333333333333333333333333333333333333333333300000000000000010000000000000003b2010300000000000000000000000000000000
+7a6f6d2e7369676e61747572652d66616374732d7265766973696f6e0000000000000000000000000000000000000000000000000000000000000000000000000000000001a122222222222222222222222222222222222222222222222222222222222222223333333333333333333333333333333333333333333333333333333333333333777777777777777777777777777777777777777777777777777777777777777700000000000000010000000000000003b2010300000000000000000000000000000000
 ```
 
 Its SHA-256 is
-`051e70adfcc1ce7c3d82696cae323cacaac86c93ed016f8851509a3f22ad0633`.
+`df372823d5f51543118268c3ebf4345fcfefee34104389bb269d0ba17771d39d`.
 Integration oracles encode real non-empty callable, nominal, interface, alias,
 impl, and marker records rather than substituting component bytes.
 
@@ -1393,6 +1426,7 @@ ModuleInterfaceRevisionEntry {
 FrozenCoherenceView {
   semanticContext: SemanticContextBrand,
   contextFingerprint: SemanticContextFingerprint,
+  markerPolicyRegistryRevision: MarkerPolicyRegistryRevision,
   revision: CoherenceViewRevision,
   moduleInterfaceRevisions:
       SortedNonEmptySequence<ModuleInterfaceRevisionEntry>,
@@ -1403,6 +1437,7 @@ FrozenCoherenceView {
 CoherenceCandidate {
   semanticContext: SemanticContextBrand,
   contextFingerprint: SemanticContextFingerprint,
+  markerPolicyRegistryRevision: MarkerPolicyRegistryRevision,
   moduleInterfaceRevisions:
       SortedNonEmptySequence<ModuleInterfaceRevisionEntry>,
   implHeads: SortedMap<ImplId, ImplHead>,
@@ -1449,11 +1484,11 @@ explicit exports; the verified prelude is an ordinary source module tagged
 `zom.imported-signature-view`, NUL, context fingerprint, expanded requester
 `ModuleKey`, and canonically sorted complete module records.
 `CoherenceViewRevision` is SHA-256 over the domain
-`zom.coherence-view`, NUL, context fingerprint, sorted module-interface
-revision entries, sorted impl-head records, and sorted marker-fact records. Both use
-the RFC 0011 encoder and byte-string record framing defined above. Changing any
-tag or field-order change replaces the canonical domain, codec, fixtures, and
-oracles together.
+`zom.coherence-view`, NUL, context fingerprint, marker-policy registry
+revision, sorted module-interface revision entries, sorted impl-head records,
+and sorted marker-fact records. Both use the RFC 0011 encoder and byte-string
+record framing defined above. Changing any tag or field-order change replaces
+the canonical domain, codec, fixtures, and oracles together.
 
 The imported-view framing oracle uses a zero context fingerprint, expanded
 requester bytes `a1`, and one already-canonical module record `b2`. Its complete
@@ -1465,16 +1500,17 @@ requester bytes `a1`, and one already-canonical module record `b2`. Its complete
 
 Its SHA-256 is
 `16c9b731c156061752980de67bd85d410e3cc1aaed336ad592a0fc842bf1cb86`.
-The coherence-view framing oracle uses a zero context fingerprint, one module
-revision-entry record `c3`, one impl-head record `d4`, and one marker-fact
-record `e5`. Its complete 102-byte preimage is:
+The coherence-view framing oracle uses a zero context fingerprint, 32
+marker-policy registry revision bytes `77`, one module revision-entry record
+`c3`, one impl-head record `d4`, and one marker-fact record `e5`. Its complete
+134-byte preimage is:
 
 ```text
-7a6f6d2e636f686572656e63652d7669657700000000000000000000000000000000000000000000000000000000000000000000000000000000010000000000000001c300000000000000010000000000000001d400000000000000010000000000000001e5
+7a6f6d2e636f686572656e63652d76696577000000000000000000000000000000000000000000000000000000000000000000777777777777777777777777777777777777777777777777777777777777777700000000000000010000000000000001c300000000000000010000000000000001d400000000000000010000000000000001e5
 ```
 
 Its SHA-256 is
-`2832e367c00eec6c1af671ed2ba4a296bf2d7cd879ae325c80a123222e557b2c`.
+`3a10103a288cbe53af9bc6c02366309ed7c123805b9e7611affa17f8bd922c63`.
 Integration oracles replace every one-byte component with a complete real
 record and prove module/revision association and authorization closure.
 
@@ -2635,21 +2671,13 @@ runtime and MIR phases may trust only the verified result.
 
 ## Compatibility And Rollout
 
-The implementation is a direct replacement:
-
 1. RFC 0011 and RFC 0004 must be accepted first.
 2. Implement the branded semantic store, separate inference context, semantic
    algebra, constraints, adjustments, checked facts, and verifier on the
    implementation branch.
-3. Migrate trait, interface, operator, pattern, marker, borrow-input, module,
-   and current IR consumers.
-4. Cut the main branch to the new store and facts in one change.
-5. Delete the polymorphic type tree, old `TypeId`, duplicated node type storage,
-   string-keyed impl/coherence tables, overwrite APIs, implicit
-   generalization, and every compatibility alias.
-
-Rollback before landing is a source-control revert. No dual type system or
-compatibility flag exists.
+3. Connect trait, interface, operator, pattern, marker, borrow-input, module,
+   and IR consumers to the verified store and facts.
+4. Publish the verified store and facts as one atomic change.
 
 ## Documentation And Teaching Plan
 
@@ -2770,9 +2798,8 @@ unmeasured thresholds.
     inputs and contains no `lookupRecursive`, mutable scope walk, import
     traversal, textual lookup, AST impl target, early vtable slot, or target ABI
     selection.
-27. Repository search finds no old `TypeId`, polymorphic owned type tree,
-    rendered-string semantic key, overwrite API, implicit `TypeScheme`,
-    compatibility alias, or parallel type-system path.
+27. Repository search proves the canonical semantic store, canonical keys, and
+    verified facts are the sole type-system path.
 28. The source diagnostic, invariant, canonical-codec, fact-requirement, and
     `.zom` conformance matrices cover every closed variant and negative branch.
 29. RFC, format, sanitizer, focused checker/type, deterministic permutation,
@@ -2880,10 +2907,10 @@ unmeasured thresholds.
 - Generated files: semantic-type, signature, imported-view, coherence, checked-
   fact, and dispatch dumps; AST-kind fact-requirement table; codec golden files;
   and orphan checks.
-- Architecture gates: reject old IDs, type pointers, rendered-string identity,
+- Architecture gates: reject non-canonical IDs, type pointers, rendered-string identity,
   `lookupRecursive` or binder mutation from checker code, foreign AST nodes,
   AST impl targets, early vtable slots, target layout, overwrite APIs,
-  unsupported checker diagnostics, and compatibility aliases.
+  and unsupported checker diagnostics.
 - RFC: `python3 scripts/check-rfc.py`.
 - Format: `python3 scripts/check-format.py` and `git diff --check`.
 - Full suite: `ctest --preset default --output-on-failure`.
@@ -2912,3 +2939,4 @@ None
 | 2026-07-11 | ACCEPTED | All ten required owners approved proposal hash `31e8ff83dc535f3af5a91c00122277a108af41540233d4f6a06b0a2a4c9fb25c` after raw-pointer cast, checked-facts canonical, runtime-memory routing, diagnostic, evidence, codec, and verifier review. Implementation has not started. |
 | 2026-07-16 | IMPLEMENTING | Started the Canonical Semantic Foundation Direct Replacement Series with the closed semantic type value algebra. |
 | 2026-07-18 | IMPLEMENTING | Synchronized the accepted RFC 0018 later overlay for occurrence-owned source reconstruction, post-classification survivor publication, and occurrence-free semantic coherence identity. No implementation completion is inferred. |
+| 2026-07-25 | IMPLEMENTING | Synchronized RFC 0024 standard-marker authority in signature and body inputs and added the policy-subject evidence variant required by the complete Copy policy. |

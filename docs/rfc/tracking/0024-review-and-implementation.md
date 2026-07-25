@@ -1,0 +1,136 @@
+# RFC 0024 Review And Implementation Tracker
+
+## Discussion Record
+
+### 2026-07-25 Production Authority Audit
+
+The audit traced package discovery through `CompilerSession::checkSources()`,
+`BodyCheckingInput`, `MarkerProofInput`, Built MIR, and the ownership overlay.
+It confirmed:
+
+- module graph construction supplies an empty configured-prelude inventory;
+- checker startup constructs `MarkerPolicyConfiguration::explicitOnly()`;
+- marker proof validates policy lineage but cannot name the semantic roles
+  `Copy` and `Linear`;
+- RFC 0007 requires those roles from checked input and forbids spelling or
+  prelude-name discovery; and
+- the overlay lacks checked, HIR, policy, coherence, and marker authority.
+
+Move, initialization, logical-drop, and linear-obligation work would therefore
+publish incorrect facts if implemented first. RFC 0024 proposes one
+distribution role configuration, real configured-prelude injection, one
+verified authority, one complete body input, and fresh producer and verifier
+proof contexts.
+
+The first owner-review candidate,
+`bf8c23d0f42e7d6d11934c2ca1c875d65083c33509acb2612269a61a6ac1241d`,
+was rejected. Review found incomplete distribution bootstrap, configuration
+codec, independent promotion, canonical-oracle, revision-domain,
+specification-alignment, path-ownership, and native-gate contracts. No
+approval from that candidate is retained.
+
+The proposal now defines the source-backed distribution path, atomic resolver
+injection, post-identity role construction, exact codecs and oracles,
+independent candidate verification, separate resolver and policy revisions,
+mandatory Chapters 3 and 14 alignment, exact native tests, and a registered
+RFC 0007 architecture gate. It does not authorize implementation until an
+exact revised candidate is accepted.
+
+The second candidate,
+`f048c7ae034b8def37b91f5abd3e3b9ae81f89bc466eb38e98d3e88319a59606`,
+was also rejected. Review found that standard `Copy` semantics were still
+implementation-defined, module-graph verification trusted candidate-carried
+expectations, RFC 0005 failure precedence was not preserved, the RFC 0004
+normative replacement was not part of acceptance, standard-library path
+ownership was ambiguous, semantic corpus files had no runner, and stable
+manifest plus build/install discovery identities were incomplete. The revised
+proposal closes those findings with an exact `Copy` policy and RFC 0015 schema
+replacement, verified compiler-marker input, exhaustive failure precedence,
+atomic normative synchronization, split path ownership, native session tests,
+and one executable-relative distribution layout. The binder-checker and
+module-system approvals for the rejected hash are not retained.
+
+The third candidate,
+`d5160ff41ff30cc4721605522eacc70e695262b0c94e2df172dab13f77c1a6b1`,
+was rejected. Review found that compiler-marker configuration lacked a
+complete candidate promotion boundary, the policy admitted unconditional
+mutable references without matching evidence, the configuration object field
+count was misstated, the checker failure order diverged from RFC 0005,
+`ZOM4099` lacked complete node, provenance, ordinal, and suppression
+contracts, and the routing and top-level CMake impact were incomplete.
+Runtime-memory and spec-audit approvals for that hash are not retained because
+the normative proposal changed. The next candidate directly rejects the
+unrepresentable mutable rule, defines independent compiler-configuration
+promotion, restores exact failure precedence, closes the diagnostic contract,
+and makes path ownership exhaustive.
+
+The fourth candidate,
+`9d31763ce8081fb8c5279cbc07cb5c8d096b5ebbfdd043679da6eeda06586702`,
+was rejected. Review found imprecise and undefined configuration-input types,
+an invalid use of checker failures before a checker `ModuleId` exists, no
+explicit diagnostics lit pair for `ZOM4099`, and omission of RFC 0007's
+normative overlay API from the pre-acceptance synchronization transaction. No
+approval is retained. The next candidate uses borrowed production types, a
+closed pre-checker failure algebra, an exact registered lit corpus and
+expectation pair, and mandatory RFC 0007 normative synchronization.
+
+The fifth candidate,
+`56a51ba59cd8f761ee2a6260d14ae9dc4ab9310b6565645e3439126a3d575f3d`,
+was approved without objection by all nine required owners. The acceptance
+transaction synchronized RFC 0004's module-graph input, RFC 0005's checker and
+evidence inputs, RFC 0007's ownership-overlay API, and RFC 0015's policy,
+proof, diagnostic, and canonical-vector contracts before changing RFC 0024's
+status.
+
+## Owner Review Matrix
+
+| Owner | State | Review Surface |
+|---|---|---|
+| `rfc` | Approved | Governance, status, scope, prior art, rollout, and exact-hash review |
+| `task-router` | Approved | Standard-prelude path ownership and gate routing |
+| `binder-checker` | Approved | Configuration, shape and policy validation, body input, proof capability, and failures |
+| `module-system` | Approved | Distribution input, configured prelude, graph/query provenance, lifetime, and publication |
+| `error-system` | Approved | `ZOM4099` registry, source precedence, anchor, suppression, and publication failure |
+| `ir-backend` | Approved | Build-tree and installed executable/resource layout |
+| `runtime-memory` | Approved | Copy/Linear roles, overlay boundary, independent proof contexts, and fail-closed behavior |
+| `spec-audit` | Approved | RFC 0005/0007/0015 alignment and normative specification drift |
+| `verification` | Approved | Native fixtures, oracles, mutation coverage, gates, and full validation |
+
+Every approval must identify the exact RFC SHA-256. Normative edits invalidate
+earlier approvals.
+
+## Decision Record
+
+Decision: Accepted.
+
+RFC 0024 is `ACCEPTED`. Implementation is authorized only in the dependency
+order below and must preserve the exact accepted contract as the sole internal
+path.
+
+## Implementation Tracker
+
+| Slice | State | Required Evidence |
+|---|---|---|
+| RFC contract and owner review | Complete | Exact-hash approval from every required owner |
+| Standard prelude source | Pending | Parsed, bound, exported, shape-classified `Copy` and `Linear` |
+| Distribution configuration | Pending standard prelude | Mandatory prelude target, policy, role keys, codec, and independent oracle |
+| Configured-prelude path | Pending distribution configuration | Incremental transaction, query resolution, graph verification, no self-edge |
+| Verified marker authority | Pending configured prelude | Context, shape, policy, owner, role, revision, and mutation evidence |
+| Complete body and proof input | Pending marker authority | One aggregate authority and stale-lineage rejection |
+| Ownership overlay integration | Pending complete body input | Checked/HIR/MIR/body input, separate engines, atomic failure |
+| Marker uses and logical drops | Pending overlay integration | Exact queries, canonical records, independent verifier and codec oracles |
+| Production gates and docs | Pending prior slices | Sanitizer, CTest, lit, architecture, format, RFC, policy, trackers, and design docs |
+
+## Verification Evidence
+
+- Live inspection on 2026-07-25 confirmed empty configured-prelude and marker-
+  policy production paths.
+- RFC 0005, RFC 0007, and RFC 0015 were checked for exact prelude, policy,
+  proof-input, and overlay lineage requirements.
+- Rust language items and Swift known protocols were reviewed as primary prior
+  art for compiler-known roles backed by real library declarations.
+
+## Blocking Dependencies
+
+- A source-backed prelude admitted through package and module verification.
+- The accepted production configuration as the sole compiler path.

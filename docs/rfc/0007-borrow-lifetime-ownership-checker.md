@@ -8,7 +8,7 @@ review-manager: rfc
 required-owners: [task-router, rfc, binder-checker, module-system, error-system, concurrency, ir-backend, runtime-memory, spec-audit, verification]
 approvers: [task-router, rfc, binder-checker, module-system, error-system, concurrency, ir-backend, runtime-memory, spec-audit, verification]
 created: 2026-07-08
-updated: 2026-07-24
+updated: 2026-07-25
 area: compiler
 requires: [5, 6, 10, 11, 13, 15]
 supersedes: []
@@ -446,28 +446,37 @@ VerifiedOwnershipEventOverlay {
   revision: OwnershipEventOverlayRevision,
 }
 
+OwnershipEventOverlayInput {
+  checked: const OwnershipAdmittedCheckedModule,
+  hir: const RFC0010::VerifiedHirModule,
+  built: const RFC0013::VerifiedBuiltMir,
+  body: const RFC0005::BodyCheckingInput,
+}
+
 buildOwnershipEventOverlay(
-  checked: Borrowed<const OwnershipAdmittedCheckedModule>,
-  hir: Borrowed<const RFC0010::VerifiedHirModule>,
-  built: Borrowed<const RFC0013::VerifiedBuiltMir>,
-  markers: Borrowed<RFC0015::MarkerProofInput>,
+  input: Borrowed<const OwnershipEventOverlayInput>,
+) -> RFC0010::IrOperationResult<OwnershipEventOverlayCandidate>
+
+verifyOwnershipEventOverlay(
+  candidate: Borrowed<const OwnershipEventOverlayCandidate>,
+  input: Borrowed<const OwnershipEventOverlayInput>,
 ) -> RFC0010::IrOperationResult<VerifiedOwnershipEventOverlay>
 ```
 
 The checker/session invokes `buildOwnershipEventOverlay` after Built MIR
 verification and before ownership analysis, while the admitted checked module
 and its exact RFC 0005 `BodyCheckingInput` are still alive. Immediately before
-the call, the private checker/session constructs `markers` through RFC 0015's
-sole `MarkerProofInput` constructor from that body-checking input and the exact
-policy registry used by its verified signatures and frozen coherence view.
-`markers` is a non-owning call-duration borrow: it becomes live at call entry,
-remains live through candidate construction and independent verification, and
-is destroyed before the admitted checked wrapper or body-checking input may be
-destroyed. No caller may reconstruct it from revision digests or individual
-store, signature, policy, coherence, or interner references.
+the call, the private checker/session constructs one
+`OwnershipEventOverlayInput` from those exact live capabilities. The producer
+and verifier each call RFC 0015's sole
+`MarkerProofInput::from(const BodyCheckingInput&)` constructor independently.
+Each proof input is a non-owning pass-duration borrow and is destroyed before
+the admitted checked wrapper or body input may be destroyed. No caller may
+reconstruct it from revision digests or individual store, signature, role,
+policy, coherence, or interner references.
 
-The producer and verifier create distinct RFC 0015 query contexts over this
-one explicit input. Each starts with an empty private active-key stack and an
+The producer and verifier create distinct RFC 0015 proof inputs and query
+contexts from the same body input. Each starts with an empty private active-key stack and an
 empty private optional memo, performs its own complete ordered marker queries,
 and destroys both after its pass. The verifier never reads a producer memo,
 query result cache, traversal plan, or candidate decision to choose its query
@@ -479,10 +488,11 @@ repository entry, serialized capability, or memo that outlives this call is
 forbidden.
 
 Before either pass reads a function body or performs a marker query, the
-operation requires `markers.semanticContext`, `contextFingerprint`, semantic-
-type store identity, policy revision, local-signature parent, imported-
-signature view revision, and frozen-coherence revision to equal the admitted
-checked module and checked-facts lineage exactly. An invalid canonical identity
+operation validates the pass-local RFC 0015 `MarkerProofInput` constructed from
+`input.body`. Its semantic context, context fingerprint, semantic-type store
+identity, policy revision, standard-marker authority, local-signature parent,
+imported-signature view revision, and frozen-coherence revision must equal
+`input.checked` and its checked-facts lineage exactly. An invalid canonical identity
 selects RFC 0010 `IdentityInvariantRejected`. A valid identity with a foreign,
 missing, stale, swapped, or post-teardown lineage selects
 `IrInvariantRejected(InputRevisionMismatch, OwnershipProofValidation)`. An RFC
@@ -502,8 +512,10 @@ one complete deferred-activation projection for every eligible mutable receiver
 borrow, one logical drop plan for every initialization event, and one cast
 resource route plan for every `MirCheckedCast` while the frozen
 checked module, semantic type store, canonical definition inventory, explicit
-call-duration RFC 0015 marker-proof input, and selected impl and witness facts
-are still available.
+RFC 0015 marker-proof authority, and selected impl and witness facts are still
+available. The producer and verifier each derive a distinct call-duration
+`MarkerProofInput` from `input.body`, validate its lineage independently, use
+it only for that pass, and destroy it before the pass returns.
 Every RFC 0015 query required by the ownership handoff is recorded in the
 same function overlay as one revision-bound `OwnershipMarkerUse`. This is
 an RFC 0007-owned checker projection; RFC 0005 does not publish or encode a
@@ -2083,9 +2095,10 @@ incomplete-point-set, foreign-carrier, or proof-incompatible row as
 ### Copy And Linear Marker Decisions
 
 Ownership analysis does not query a marker by text and does not rerun RFC
-0015's marker proof engine. Instead, `buildOwnershipEventOverlay` receives the
-explicit call-duration `markers` argument, performs the complete query set, and
-publishes the authoritative `markerUses` map. The query set contains exactly
+0015's marker proof engine. Instead, each event-overlay pass constructs a fresh
+proof input from `OwnershipEventOverlayInput.body`, performs the complete query
+set, and publishes or independently verifies the authoritative `markerUses`
+map. The query set contains exactly
 one canonical key for every `Copy` operand and both the `Copy` and `Linear`
 keys for every phase-one resource-projection node. This includes every
 descendant below an action-free `Positive` `Linear` aggregate and every
@@ -2101,8 +2114,8 @@ RFC 0015 `DefId` selected by the checked input for the semantic role; source
 spelling, a prelude name, an interface ordinal, and a local handle are never
 marker identity. The subject is the exact canonical semantic type queried at
 that event. The key carries the exact policy-registry and frozen-coherence
-revisions from the same explicit `MarkerProofInput`; both must match the
-admitted checked module and its checked-facts lineage. The input itself, its
+revisions from the same body-derived proof input; both must match the admitted
+checked module and its checked-facts lineage. The proof input itself, its
 interning capability, active stacks, and memo are not fields of
 `OwnershipMarkerUse`, the overlay, ownership facts, or any repository.
 
@@ -2123,15 +2136,17 @@ be converted to `Unsatisfied` or persisted in a partial overlay.
 
 The independent overlay verifier reconstructs the complete phase-one query
 tree and phase-two postorder fold without reading the candidate's query set or
-plans. It reruns each query through the same explicit call-duration RFC 0015
-input using a fresh verifier query context, active stack, and memo that share
-no state with the producer. For `Positive`,
+plans. It constructs its own RFC 0015 proof input from the shared live body
+input and reruns each query using a fresh verifier query context, active stack,
+and memo that share no state with the producer. For `Positive`,
 an explicit proof must be the exact same-key positive fact in the frozen
-coherence view; a structural or builtin proof is reconstructed independently.
+coherence view; a structural, builtin, or policy-subject proof is reconstructed
+independently.
+
 For `ExplicitNegative`, `explicitFact.key` must equal `(key.marker,
 key.subject)`, its polarity must be `Negative`, its evidence must be
 `Explicit`, and every byte must equal the same-key verified coherence fact.
-Structural and builtin negative facts are impossible. For `Unsatisfied`, the
+Structural, builtin, and policy-subject negative facts are impossible. For `Unsatisfied`, the
 record contains only tag `0x03`; the verifier repeats RFC 0015's ordered
 resolution and proves that the result is exactly `Unsatisfied`. A foreign,
 stale, swapped, malformed, missing, additional, or differently ordered use is
@@ -2399,12 +2414,14 @@ even when two projections or a projection plus its enclosing checked cast
 require unsafe acknowledgement; distinct unsafe ordinals prevent key collision
 without inventing another value transfer.
 
-No HIR or Built MIR field named `unsafeOccurrences` is accepted. During the
-single `buildOwnershipEventOverlay` transaction, the verifier simultaneously
-walks the admitted checked facts, immutable HIR, and Built MIR. For each RFC
-0005 `UnsafeScopeFact` it validates the exact operation kind, requirement,
-acknowledgement scope, source span, HIR operation, Built operation, and derived
-event; it then emits one `MirUnsafeOccurrence` into the RFC 0007 overlay. The
+No HIR or Built MIR field named `unsafeOccurrences` is accepted. The builder
+walks the admitted checked facts, immutable HIR, and Built MIR and emits one
+candidate `MirUnsafeOccurrence` for each RFC 0005 `UnsafeScopeFact`. The
+separate verifier walks the same immutable inputs independently, reconstructs
+the exact operation kind, requirement, acknowledgement scope, source span, HIR
+operation, Built operation, and derived event for every expected occurrence,
+and compares the complete candidate inventory without reading a producer
+association table. The
 overlay codec, not `zom.mir-revision`, fixes and hashes these fields. A
 missing, additional, reordered, duplicated, gapped, wrong-span,
 wrong-acknowledgement, or source-incompatible occurrence selects RFC 0010
@@ -2523,10 +2540,11 @@ The component source key is intentionally minimal; semantic fixtures use a
 registry-valid expanded RFC 0011 key. Independent production and test encoders
 must reproduce all three byte strings and hashes. Resource-plan component
 oracles additionally encode every action, all three marker-decision tags,
-positive explicit/structural/builtin proofs, explicit negative facts,
-payload-free unsatisfied decisions, policy and coherence lineage, plan key,
-route, key/value disagreement, and all four positive/not-positive Copy/Linear
-combinations. Separate fixtures substitute `ExplicitNegative` and
+positive explicit, structural, builtin, and policy-subject proofs, including
+`SharedReference`, `ConstRawPointer`, and `MutableRawPointer`, explicit negative
+facts, payload-free unsatisfied decisions, policy and coherence lineage, plan
+key, route, key/value disagreement, and all four positive/not-positive
+Copy/Linear combinations. Separate fixtures substitute `ExplicitNegative` and
 `Unsatisfied` in every not-positive position and require distinct bytes while
 preserving the same plan-presence predicate. No fixture manufactures a negative
 `MarkerFact` for `Unsatisfied`. Mutation oracles change each
@@ -2534,9 +2552,10 @@ unsafe ordinal, occurrence order, operation, requirement, acknowledgement,
 span endpoint, stage, and role independently and require revision inequality
 or verifier rejection.
 
-`MarkerProofInput`, its producer and verifier query contexts, their active
-stacks and completed-result memos, and the private phase-one projection tree
-are call-duration authority and are never encoded. The authoritative deferred-
+The two body-derived `MarkerProofInput` values, their producer and verifier
+query contexts, their active stacks and completed-result memos, and the private
+phase-one projection tree are pass-duration authority and are never encoded.
+The authoritative deferred-
 activation projection adds one event-overlay map and removes its duplicate
 ownership-facts map. The vectors below fix the canonical schemas. Non-empty
 resource-plan
@@ -3038,18 +3057,18 @@ The fixed `55` vectors isolate ownership facts framing and therefore remain exac
 
 The producer and verifier are separate implementations:
 
-- the event-overlay producer and verifier receive the same explicit call-
-  duration RFC 0015 `MarkerProofInput` while the exact RFC 0005
-  `BodyCheckingInput` and admitted checked module remain live. Each constructs
-  a distinct RFC 0015 query context with an empty private active stack and
+- the event-overlay producer and verifier receive the same
+  `OwnershipEventOverlayInput` while its exact RFC 0005 `BodyCheckingInput` and
+  admitted checked module remain live. Each constructs a distinct RFC 0015
+  `MarkerProofInput` and query context with an empty private active stack and
   completed-result memo, independently derives the complete phase-one resource
   projection tree, marker-use query inventory, and checked receiver activation
   projection, then independently performs the phase-two postorder fold. Neither
   reads the other's memo, in-flight
   state, traversal, query set, candidate plan, or fold decisions. They may
-  share only the immutable authoritative marker input, RFC 0015's linearizable
-  semantic interner, immutable checked facts, generated algebra definitions,
-  canonical primitive encoders, and SHA-256;
+  share only the immutable authoritative `BodyCheckingInput`, RFC 0015's
+  linearizable semantic interner, immutable checked facts, generated algebra
+  definitions, canonical primitive encoders, and SHA-256;
 - the producer computes candidates using the optimized bitset worklist;
 - the verifier reconstructs the closed causal event-slot inventory, every
   source/effect/commit stage and CFG/before-event/after-event cutpoint, move
@@ -3357,7 +3376,8 @@ mutate:
   and closure copy/move/overwrite;
 - marker role, subject, decision tag, marker-policy revision, coherence
   revision, positive-proof key/polarity/evidence, explicit-negative-fact
-  key/polarity/explicit evidence, forbidden structural or builtin negative,
+  key/polarity/explicit evidence, forbidden structural, builtin, or
+  policy-subject negative,
   forbidden fact payload on `Unsatisfied`, `ExplicitNegative`/`Unsatisfied`
   collapse, omitted or additional canonical query, copy use, linear
   introduction, carrier key, carrier-to-obligation mapping, incoming
@@ -3632,10 +3652,11 @@ RFC 0010 or RFC 0011 invariant facts.
    collision-free unsafe occurrences, one complete revision-bound marker-use
    inventory, one authoritative logical drop plan per
    initialization, and one verified cast-resource plan per cast.
-   `buildOwnershipEventOverlay` receives the exact call-duration RFC 0015
-   `MarkerProofInput` while its RFC 0005 `BodyCheckingInput` is live; the input,
-   query contexts, active stacks, and memos are never stored in the overlay,
-   facts, wrapper, repository, singleton, or global lookup.
+   `buildOwnershipEventOverlay` and `verifyOwnershipEventOverlay` receive the
+   same exact `OwnershipEventOverlayInput` while its RFC 0005
+   `BodyCheckingInput` is live; each pass constructs its own RFC 0015 proof
+   input, query context, active stack, and memo, none of which is stored in the
+   overlay, facts, wrapper, repository, singleton, or global lookup.
    Together they cover
    constants, canonical `MirStatement::BorrowCreation`, discriminant update and
    switch, borrowed panic payload,
@@ -3740,10 +3761,10 @@ RFC 0010 or RFC 0011 invariant facts.
     only the canonical domain and unsafe-scope outer tag are accepted.
 15. The independent overlay verifier recomputes the causal event projection,
     every deferred-activation row, authoritative marker-use query, logical-drop
-    plan, and cast-resource plan
-    through the same explicit call-duration `MarkerProofInput` while the
-    admitted checked module and exact `BodyCheckingInput` are live. Producer and
-    verifier use distinct empty active stacks and memos; the verifier derives
+    plan, and cast-resource plan through its own proof input constructed from
+    the shared `OwnershipEventOverlayInput.body` while the admitted checked
+    module and exact `BodyCheckingInput` are live. Producer and verifier use
+    distinct proof inputs, empty active stacks, and memos; the verifier derives
     its own complete phase-one query tree and phase-two postorder fold without
     reading producer query selection, traversal, candidate decisions, transfer
     functions, worklists, caches, or canonical record writer. It also
@@ -3812,12 +3833,13 @@ RFC 0010 or RFC 0011 invariant facts.
    evidence consumption.
 6. Implement return, storage, closure, checked-cast, raw-provenance, strict raw-
    to-reference rejection, and unsafe-boundary checks.
-7. Thread the call-duration RFC 0015 `MarkerProofInput` explicitly into the
-   checker-time event-overlay handoff. Build the authoritative Copy and Linear
-   inventory by completing the full descendant query tree before a postorder
-   logical-drop-plan fold; give producer and verifier separate query contexts,
-   active stacks, and memos; and implement linear obligations without storing
-   marker authority in HIR, Built MIR, overlays, wrappers, or repositories.
+7. Thread the complete `OwnershipEventOverlayInput` through the checker-time
+   handoff. Build the authoritative Copy and Linear inventory by completing the
+   full descendant query tree before a postorder logical-drop-plan fold; make
+   producer and verifier construct separate body-derived proof inputs, query
+   contexts, active stacks, and memos; and implement linear obligations without
+   storing marker authority in HIR, Built MIR, overlays, wrappers, or
+   repositories.
 8. Add the complete immutable ownership-facts schema, canonical codec,
    revision, producer, independent verifier, resource-plan component vectors,
    and mutation injection.
@@ -3886,11 +3908,13 @@ RFC 0010 or RFC 0011 invariant facts.
   and `suspend` emits fresh `ZOM4095`, constructs no signature facts, checked
   module, or HIR, and emits neither `ZOM4067` nor `ZOM4068`; forged concurrency
   MIR selects `InvalidFact` and publishes no ownership value.
-- Marker tests: positive explicit/structural/builtin, explicit negative,
-  unsatisfied, invariant-rejected, missing/foreign/mismatched Copy and Linear
-  decision, policy and coherence revision mismatch, not-positive predicate,
-  forbidden negative fact synthesis, and explicit call-duration
-  `MarkerProofInput` identity, lifetime, and teardown. Fixtures reject a
+- Marker tests: positive explicit, structural, builtin, and policy-subject
+  evidence, including `SharedReference`, `ConstRawPointer`, and
+  `MutableRawPointer`, explicit negative, unsatisfied, invariant-rejected,
+  missing/foreign/mismatched Copy and Linear decision, policy and coherence
+  revision mismatch, not-positive predicate, forbidden negative fact
+  synthesis, and body-derived `MarkerProofInput` identity, lifetime, and
+  teardown. Fixtures reject a
   missing, foreign, stale, swapped, reconstructed, stored, post-teardown, or
   hidden-singleton input and prove the exact identity-versus-IR failure mapping.
   A poisoned producer memo, producer in-flight sentinel, or deliberately
@@ -3954,9 +3978,10 @@ RFC 0010 or RFC 0011 invariant facts.
   inner kind, scope payload, sequence count, and frame-length mutations; every
   tag/count/length/order/duplicate mutation; independently
   recomputed digest, and no production codec call from the test oracle. The
-  marker capability remains call-duration only and must not add a query context,
-  query tree, memo, tag, domain, or decoder. The deferred-activation authority
-  must exist only in the overlay map, never as a duplicate facts field;
+  pass-local marker proof inputs remain call-duration only and must not add a
+  query context, query tree, memo, tag, domain, or decoder. The
+  deferred-activation authority must exist only in the overlay map, never as a
+  duplicate facts field;
   non-empty plan oracles include descendant marker-use rows before one folded
   parent component, and every descendant-query, decision, order, fold, and
   cleanup-selection mutation is rejected or changes both the overlay revision
@@ -3968,13 +3993,13 @@ RFC 0010 or RFC 0011 invariant facts.
   plus-invariant precedence fixtures; reject an ownership-fact repository,
   ownership lease, lease-only lookup, stored marker-proof authority, hidden
   global or singleton lookup, or successor construction without an explicit
-  live capability. Assert that the marker input is constructed only from the
-  exact live RFC 0005 `BodyCheckingInput`, borrowed only for the overlay build,
-  destroyed before checked-module teardown, and never stored in any output.
-  Assert distinct producer/verifier query contexts and memo state, the exact
-  borrowed analysis inputs, moved finalize/successor inputs, result branches,
-  consumed-input destruction, and no-predecessor-on-rejection ownership
-  contract.
+  live capability. Assert that producer and verifier each construct a distinct
+  marker input only from the exact live RFC 0005 `BodyCheckingInput`, validate
+  its lineage independently, borrow it only for that pass, destroy it when that
+  pass returns, and never store it in any output. Assert distinct
+  producer/verifier query contexts and memo state, the exact borrowed analysis
+  inputs, moved finalize/successor inputs, result branches, consumed-input
+  destruction, and no-predecessor-on-rejection ownership contract.
 - Differential tests: generate bounded typed MIR CFGs, enumerate reachable
   reference, linear, raw, and ownership states independently, and compare with
   producer and verifier. Separately exercise symbolic `K` values above every
@@ -4035,3 +4060,4 @@ None
 | 2026-07-18 | REVIEW | Closed formal re-review blockers by moving deferred activation into the authoritative checker-time overlay, rejecting every raw-to-reference path, defining abort-only per-component logical-drop execution, refreshing codecs and oracles, and correcting current REVIEW state text; fresh exact-hash owner review remains required. |
 | 2026-07-18 | ACCEPTED | All ten required owners approved the same exact REVIEW proposal and tracker snapshots with no objections; implementation remains blocked until an explicit `ACCEPTED -> IMPLEMENTING` transition and the coordinated enablement transaction. |
 | 2026-07-24 | IMPLEMENTING | Enablement transaction recorded: RFC 0005 deleted `RawConstToReferenceChecked`/`RawMutableToReferenceChecked` and retagged `CastKind` 0x01-0x0d; task-router granted verification ownership of the RFC 0007 architecture and coverage paths; implementation tracker now authorizes the ordered slices. |
+| 2026-07-25 | IMPLEMENTING | Synchronized RFC 0024's complete body-owned event-overlay input and independent producer and verifier proof-input construction. |

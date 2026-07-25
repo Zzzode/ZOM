@@ -739,19 +739,19 @@ semantic contract.
 
 This series replaces the polymorphic type trees, rendered-string keys, mutable
 `TypeEnv` facts, and partial checker publication described by the accepted
-implementation plan. It introduces no adapter, compatibility alias, second
-store, or receiver-only side table. Existing checker behavior remains partial
-evidence and is not proof of the accepted canonical contract.
+implementation plan. The canonical store and verified facts are the sole
+semantic path. Existing checker behavior remains partial evidence and is not
+proof of the accepted canonical contract.
 
 | Slice | State | Required evidence |
 |---|---|---|
 | Closed semantic type value algebra | Implemented | Exact `0x01-0x10` branch tags, primitive and field tags, complete value payload coverage, move-only semantics, and focused unit tests |
 | Semantic type canonical key codec | Implemented | RFC 0014 fixed vectors, recursive canonical union oracle, complete branch encoding, canonical ordering validation, and malformed-input rejection |
 | Canonical semantic type store | In review | Closed admission capability, context-owned singleton construction, canonical key lookup, linearizable interning, stable reads, malformed and foreign-context rejection, focused sanitizer tests, and architecture gates are implemented; complete repository evidence remains pending |
-| Signature facts and verifier scaffold | In review | Closed candidate, canonical fact algebra, revision, typed invariant failures, diagnostic adapter, and focused verifier tests exist; production signature construction and publication remain blocked by RFC 0015 |
+| Signature facts and verifier scaffold | Implemented | Closed candidate, canonical fact algebra, revision, typed invariant failures, diagnostic adapter, verified production construction, and native verifier tests are live |
 | Direct checker rail replacement | In review | The polymorphic type tree, mutable `TypeEnv`, old Checker passes, AST `BindingMetadata`, compiler symbol rail, and AST-to-IR lowering entry are deleted; `CompilerSession` emits a typed fatal `MissingRequiredFact` at the signature stage instead of publishing partial checked facts |
-| Formal signature, coherence, and body checking | Blocked by RFC 0015 acceptance | Implement the accepted phase order and complete codecs only after the operator and impl-pattern algebras are approved; then publish `VerifiedSignatureFacts`, module interfaces, frozen coherence, and `VerifiedCheckedFacts` without an intermediate production shape |
-| Downstream checked-facts handoff | Blocked by formal checker | Replace the current checked-input rejection with verified dispatch and IR inputs, then run the complete sanitizer, conformance, determinism, and architecture matrix |
+| Formal signature, coherence, and body checking | Implemented | The RFC 0015 phase order, codecs, `VerifiedSignatureFacts`, module interfaces, frozen coherence, and verified checked facts are live; standard `Copy` and `Linear` role publication is tracked separately by RFC 0024 |
+| Downstream checked-facts handoff | Implemented | `CompilerSession` publishes verified checked facts, checked modules, semantic HIR, and Built MIR; standard marker authority and ownership overlay completion remain tracked by RFC 0024 and RFC 0007 |
 # RFC 0015 Accepted Overlay
 
 RFC 0015 was approved at exact review SHA-256

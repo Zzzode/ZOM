@@ -8,7 +8,7 @@ review-manager: rfc
 required-owners: [rfc, binder-checker, error-system, module-system, ir-backend, spec-audit, verification]
 approvers: [rfc, binder-checker, error-system, module-system, ir-backend, spec-audit, verification]
 created: 2026-07-05
-updated: 2026-07-18
+updated: 2026-07-25
 area: compiler
 requires: [1, 2, 3, 11]
 supersedes: []
@@ -98,7 +98,7 @@ defines a session-shaped binding input and the complete output consumed by RFC
   0007 owns those facts.
 - This RFC does not define new import, export, module, declaration, or label
   syntax.
-- This RFC does not retain a `SymbolId` compatibility surface.
+- Binder consumers receive only canonical branded identities.
 
 ## Prior Art
 
@@ -528,13 +528,20 @@ ModulePathResolution =
               candidates: SortedDistinctAtLeastTwoSequence<ModuleKey>,
               receipt: VerifiedStructuralResolutionReceipt }
 
-ModuleGraphCandidate {
+ModuleGraphInput {
   semanticContext: SemanticContextBrand,
   semanticContextFingerprint: SemanticContextFingerprint,
   resolutionEnvironment: const VerifiedModuleResolutionEnvironment,
-  modules: SortedMap<ModuleKey, ModuleId>,
   parsedModules: SortedMap<ModuleId, VerifiedParsedModule>,
-  configuredPreludes: SortedSequence<ModuleDependencyRequest>,
+  compilerMarkers: const RFC0024::VerifiedCompilerMarkerConfiguration,
+}
+
+ModuleGraphCandidate {
+  semanticContext: SemanticContextBrand,
+  semanticContextFingerprint: SemanticContextFingerprint,
+  resolutionEnvironmentRevision: Sha256Digest,
+  modules: SortedMap<ModuleKey, ModuleId>,
+  requests: SortedSequence<ModuleDependencyRequest>,
   resolutions: SortedSequence<ModulePathResolution>,
 }
 
@@ -619,10 +626,14 @@ one `Syntax` site, a present normalized path, and one nonzero resolution-
 environment revision; `requestedTarget` is absent. Its derived `Source` provenance repeats the expanded
 source key, normalized path, environment revision, range, and schema-preorder
 ordinal exactly. A prelude request has no normalized path, uses `Prelude` kind
-and site, and has `environmentRevision == site.configurationRevision`; its
-`requestedTarget` is present. Its successful edge must equal that structural
-target, uses the same prelude provenance, and has no `NodeId` or source span.
-Every other combination is invalid.
+and site, and has a present `requestedTarget`. Its `environmentRevision` equals
+the exact structural resolver environment revision, while
+`site.configurationRevision` equals the exact RFC 0024 marker-policy
+configuration revision. These digests have separate canonical domains and
+equality between them is not required. Its successful edge must equal the RFC
+0024 verified prelude target, uses the same prelude provenance, and has no
+`NodeId` or source span. `ModuleGraphVerifier` validates both revisions
+independently from `ModuleGraphInput`; every other combination is invalid.
 
 `StructuralModuleResolver` is the sole issuer of
 `ModuleResolutionEnvironmentBrand` and the sole private constructor of
@@ -677,19 +688,26 @@ stream. The independent oracle uses request bytes `a1` and candidates `b2` and
 and its SHA-256 is
 `aaec1ed1bb20e124f32b07b756713c6624644665984f7582d433f562903534ba`.
 `ModuleGraphVerifier` requires every receipt issuer and environment revision to
-match `resolutionEnvironment`, recomputes the request key and receipt revision,
+match `ModuleGraphInput.resolutionEnvironment`, recomputes the request key and
+receipt revision,
 and requires `Missing`, `Resolved`, and `Ambiguous` to contain respectively zero,
 one, and at least two receipt candidates. Resolved target and ambiguous
 candidate sets must equal the receipt exactly. A wrong target, omitted or
 invented candidate, swapped issuer, or stale environment is an invariant and
 publishes no graph.
 
-`ModuleGraphCandidate` contains exactly one resolution result for every
-source-backed module path in `parsedModules` and every exact request in
-`configuredPreludes`. The verifier independently walks every parsed module,
-derives the complete syntax request inventory, and compares it with the result
-set; missing, additional, duplicate, wrong-path, or wrong-environment results
-are `IncompleteResolution`. Missing and ambiguous source results are
+`ModuleGraphCandidate.requests` contains exactly the observed request for every
+source-backed module path and every configured prelude. The verifier
+independently walks every module in `ModuleGraphInput.parsedModules` to derive
+the complete syntax request inventory. It independently obtains the expected
+prelude target and marker-policy configuration revision from
+`ModuleGraphInput.compilerMarkers`, constructs one expected prelude request for
+every ordinary module and none for that target, and compares the combined
+inventory with the candidate requests and resolution set. A candidate contains
+no expected prelude target, policy configuration revision, parsed-module
+authority, or resolution environment. Missing, additional, duplicate,
+wrong-path, or wrong-environment results are `IncompleteResolution`. Missing
+and ambiguous source results are
 constructible before a successful edge exists and retain their requester-owned
 syntax anchor. A missing or ambiguous prelude request is `InvalidPrelude`, not a
 source failure, and needs no invented AST site. For source syntax, `Missing` maps to `ZOM3015` for
@@ -2334,3 +2352,4 @@ None
 | 2026-07-16 | IMPLEMENTING | Established one production Binder execution path: `BindingVerifier` now performs candidate-only structural publication checks, while exact semantic reconstruction and canonical candidate comparison are confined to the test-only `BindingDifferentialOracle` and enforced by the Binder architecture gate. |
 | 2026-07-18 | IMPLEMENTING | Decomposed the production verifier into orchestration, canonical codec, handwritten structural validation, and private publication components; added the authoritative seventeen-sequence fact schema and mutation inventory; isolated domain mutation oracles in the test target; prohibited producer reuse in production verification and semantic oracle components; and reclassified the producer-baseline differential path as regression evidence rather than independent verification. |
 | 2026-07-18 | IMPLEMENTING | Synchronized the accepted RFC 0018 implementation occurrence bridge: one shared stable authority per identity group, one revision-local occurrence entry, binding fact, and impl-body scope per source node, and complete occurrence-key expansion in owner codecs. |
+| 2026-07-25 | IMPLEMENTING | Synchronized the RFC 0024 verified compiler-marker input, candidate-owned observed request inventory, and independent resolver versus marker-policy revision checks. |

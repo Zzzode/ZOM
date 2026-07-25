@@ -799,6 +799,10 @@ the event identity and slot codec:
 - production `Move` operands publish `OperandRead` and `OperandMove`; `Copy`
   is covered only by the canonical codec oracle because production Built MIR
   has no `Copy` lowering caller;
+- marker-use and logical-drop publication is blocked on RFC 0024 because the
+  checked input has no verified semantic-role authority for canonical `Copy`
+  and `Linear` definitions and the production graph supplies no configured
+  prelude;
 - the producer and verifier independently derive the slot sequence from Built
   MIR, while the codec frames the sorted event map and every non-empty role
   sequence;
@@ -812,7 +816,8 @@ This evidence does not complete the six-inventory
 codec coverage, while `deferredActivations`, `unsafeOccurrences`, `markerUses`,
 `logicalDropPlans`, and `castResourcePlans` remain unimplemented. In
 particular, no executable producer or verifier yet constructs
-`logicalDropPlans`. The Built MIR and ownership event overlay row therefore
+`logicalDropPlans`. RFC 0024 review and acceptance is a prerequisite for those
+two inventories. The Built MIR and ownership event overlay row therefore
 remains `In Progress` and must not be reported as `Implemented`.
 
 The implementation tracker must be updated with executable evidence only after

@@ -8,7 +8,7 @@ review-manager: rfc
 required-owners: [rfc, lexer-parser, binder-checker, module-system, error-system, spec-audit, verification]
 approvers: [rfc, lexer-parser, binder-checker, module-system, error-system, spec-audit, verification]
 created: 2026-07-16
-updated: 2026-07-20
+updated: 2026-07-25
 area: language
 requires: [4, 5, 8, 9, 11, 13, 14]
 supersedes: []
@@ -97,7 +97,7 @@ modules.
 - Adding specialization, negative reasoning from where-constraints, or a new
   coherence algorithm.
 - Adding a semantic type variant or changing `SemanticTypeKey`.
-- Defining an AST-to-semantic compatibility layer.
+- Extending semantic authority outside verified checker inputs.
 - Implementing compiler code before this RFC is accepted.
 - Preserving decoders or constructors for replaced revision domains.
 - Defining generic or conditional marker-impl selection before a canonical
@@ -124,12 +124,14 @@ critical markers such as `Sendable` and ordinary markers in one fact algebra
 without a per-marker safety classifier. ZOM therefore uses the conservative
 closed rule in this RFC: every source-authored positive marker fact is an
 `unsafe` assertion, while a negative marker fact is safe and cannot use
-`unsafe`. Structural and builtin positive evidence remain compiler-proven.
+`unsafe`. Structural, builtin, and policy-subject positive evidence remain
+compiler-proven.
 
 Rust also makes reference evidence conditional across marker identities:
 `&T: Send` requires `T: Sync`, while raw pointers have explicit negative
-`Send` impls. This is the baseline for ZOM's per-mutability map from a result
-marker to the required referent marker and for failing raw pointers closed.
+`Send` impls. This is the baseline for ZOM's per-mutability reference rules
+and for requiring every raw-pointer result to be authorized explicitly by the
+selected marker policy.
 Swift models callable sendability as the distinct `@Sendable` function-type
 capability and validates captures. ZOM therefore does not infer any marker from
 bare `FunctionTypeData`, which has no capture or callable-capability field.
@@ -240,12 +242,13 @@ rather than an ordinary dispatchable impl head.
 
 Only source-authored marker assertions are frozen into coherence maps. When a
 checker asks whether an arbitrary semantic type satisfies a marker, one
-context-bound proof engine first consults that explicit map, then the builtin
-policy, then the type's structural components. This works for types created
-after signature publication and avoids pretending that the compiler can
-pre-enumerate every tuple, array length, or inferred aggregate type. Proofs are
-recomputed from immutable semantic types and signatures and are not added to a
-second global fact map.
+context-bound proof engine first consults that explicit map, then evaluates the
+complete marker policy for builtin subjects and policy-controlled reference or
+raw-pointer subjects, then traverses the type's structural components. This
+works for types created after signature publication and avoids pretending that
+the compiler can pre-enumerate every tuple, array length, reference form, raw
+pointer, or inferred aggregate type. Proofs are recomputed from immutable
+semantic types and signatures and are not added to a second global fact map.
 
 ## Reference-Level Design
 
@@ -302,15 +305,15 @@ for every unaffected clause.
   table are replaced by the context-bound `VerifiedMarkerPolicyRegistry`
   below. The registry revision is a direct parent field of signature facts,
   the module interface, and the coherence view. `MarkerComponentStep` appends
-  exact reference-referent and enum-variant-payload forms; every other marker
-  evidence tag remains as stated below. RFC 0005 eager structural and builtin
-  publication, finite marker-fact coverage, key-precedence support validation,
+  exact reference-referent and enum-variant-payload forms; `MarkerEvidence`
+  includes the policy-subject form stated below. RFC 0005 eager structural and
+  builtin publication, finite marker-fact coverage, key-precedence support validation,
   dangling-support rejection, and support-cycle rejection are replaced in full
   by the demand-driven `MarkerProofEngine` below. Persisted signature,
   module-interface, coherence-input, and frozen-coherence marker maps contain
-  explicit evidence only. Builtin and structural `MarkerFact` values are
-  ephemeral verified query proofs and never enter a revision preimage, cache
-  artifact, or cross-module projection.
+  explicit evidence only. Builtin, structural, and policy-subject `MarkerFact`
+  values are ephemeral verified query proofs and never enter a revision
+  preimage, cache artifact, or cross-module projection.
 - RFC 0005 cross-module coherence-only `CheckerFailureRef` collections and the
   `CheckerEmitterOrdinal` requirement for cross-module `ZOM4017` and ordinary
   impl `ZOM4054` are replaced by the span-addressed `CoherenceFailureRef`
@@ -760,10 +763,28 @@ VerifiedMarkerShapeInventory {
 MarkerStructuralSubject =
   Tuple | Object | FixedArray | NominalStruct | NominalEnum
 
+MarkerReferenceRule =
+    Unconditional
+  | Requires { marker: DefId }
+
+MarkerReferenceConfigurationRule =
+    Unconditional
+  | Requires { marker: DefinitionKey }
+
 MarkerPolicy {
   structuralSubjects: SortedUniqueSequence<MarkerStructuralSubject>,
   builtinPrimitives: SortedUniqueSequence<PrimitiveKind>,
-  referenceRequirements: SortedMap<Mutability, DefId>,
+  referenceRules: SortedMap<Mutability, MarkerReferenceRule>,
+  rawPointerMutabilities: SortedUniqueSequence<Mutability>,
+}
+
+MarkerPolicyConfigurationEntry {
+  marker: DefinitionKey,
+  structuralSubjects: SortedUniqueSequence<MarkerStructuralSubject>,
+  builtinPrimitives: SortedUniqueSequence<PrimitiveKind>,
+  referenceRules:
+      SortedMap<Mutability, MarkerReferenceConfigurationRule>,
+  rawPointerMutabilities: SortedUniqueSequence<Mutability>,
 }
 
 VerifiedMarkerPolicyRegistry {
@@ -780,11 +801,18 @@ VerifiedMarkerPolicyRegistry {
 `GenericMarkerShape = 0x02`, and `ClosedMarker = 0x03`.
 `MarkerStructuralSubject` tags are `Tuple = 0x01`, `Object = 0x02`,
 `FixedArray = 0x03`, `NominalStruct = 0x04`, and `NominalEnum = 0x05`.
-Record fields encode in declaration order. An absent registry entry is exactly
-three empty collections and therefore permits explicit evidence only. A map
-entry does not repeat its marker key in the payload. This permits explicit
-marker assertions for a local marker-shaped interface without making source
-spelling or the accidental absence of members an auto-derivation switch.
+`MarkerReferenceRule` and `MarkerReferenceConfigurationRule` tags are
+`Unconditional = 0x01` and `Requires = 0x02`. A reference-rule record is
+`Encode(Mutability) || Encode(rule tag) || optional Encode(marker)`.
+`rawPointerMutabilities` follows `referenceRules` in each policy record.
+Sequences use RFC 0011 `uint64be` counts, ascending canonical order, and
+duplicate rejection. `Unconditional` is valid only for `Mutability::Const`;
+configuration construction, canonical decoding, registry construction,
+production proof, and independent proof verification reject
+`Mutable -> Unconditional`. `Mutable -> Requires(marker)` remains valid and
+uses `ReferenceReferent` evidence. An absent registry entry is exactly four
+empty collections and therefore permits explicit evidence only. A registry
+map entry does not repeat its marker key in the payload.
 
 After identities, binding inputs, and the acyclic interface-parent closure are
 verified, the session constructs `VerifiedMarkerShapeInventory` from every
@@ -818,13 +846,11 @@ expanding interface `a1` as `ClosedMarker`. Its complete 77-byte preimage is:
 Its SHA-256 is
 `1e1aa7ddd2c702f9febc3d07f3353849a697b377c9589fe68536d30fe465d7f9`.
 
-The compiler distribution supplies a canonical `MarkerPolicyConfiguration`
-beside the RFC 0004 configured-prelude requests. Configuration entries identify
-markers and reference-rule requirements by complete expanded RFC 0011
-`DefinitionKey`, never by identifier text, path text, ordinal, or store slot.
-Its entry shape is one expanded marker `DefinitionKey` followed by
-`MarkerPolicy`, with every reference requirement's `DefId` replaced by its
-expanded `DefinitionKey`. `configurationRevision` is SHA-256 over:
+The compiler distribution supplies one canonical
+`MarkerPolicyConfiguration` through RFC 0024 verified compiler-marker
+configuration. Entries identify markers and required reference markers by
+complete expanded RFC 0011 `DefinitionKey`, never by identifier text, path
+text, ordinal, or store slot. `configurationRevision` is SHA-256 over:
 
 ```text
 ASCII("zom.marker-policy-configuration")
@@ -832,17 +858,31 @@ ASCII("zom.marker-policy-configuration")
 EncodeSortedRecordBytes(configuration entries)
 ```
 
-The 30-byte configuration entry used by the registry oracle expands marker
-`a1`, structural subjects `Tuple` and `NominalStruct`, builtin primitive `I32`,
-and one shared-reference requirement for marker `b2`. It produces this complete
-78-byte preimage:
+The exact RFC 0024 standard `Copy` policy contains structural subjects
+`Tuple`, `Object`, `FixedArray`, `NominalStruct`, and `NominalEnum`; builtin
+primitives `I8`, `I16`, `I32`, `I64`, `U8`, `U16`, `U32`, `U64`, `Isize`,
+`Usize`, `F32`, `F64`, `Bool`, `Char`, `Str`, `Unit`, `Never`, and `Null`;
+`Const -> Unconditional` as its only reference rule; and both `Const` and
+`Mutable` raw-pointer mutabilities. `Linear` has no policy entry and is
+explicit-only.
+
+The standalone standard policy is 59 bytes:
 
 ```text
-7a6f6d2e6d61726b65722d706f6c6963792d636f6e66696775726174696f6e000000000000000001000000000000001ea100000000000000020104000000000000000103000000000000000101b2
+0000000000000005010203040500000000000000120102030405060708090a0b0c0d0e0f1011130000000000000001010100000000000000020102
 ```
 
 Its SHA-256 is
-`ed919118cfc0e2082f4caa852a6ac158ba6d2bcfe2c014967653d4d0edbc9aa0`.
+`fe87a9f15c561769c1527069f4121d2fd8f597d9a0308a61fa2a302284ad740b`.
+The independent configuration oracle uses marker key 32 times `0x11`. Its
+complete 139-byte preimage is:
+
+```text
+7a6f6d2e6d61726b65722d706f6c6963792d636f6e66696775726174696f6e000000000000000001000000000000005b11111111111111111111111111111111111111111111111111111111111111110000000000000005010203040500000000000000120102030405060708090a0b0c0d0e0f1011130000000000000001010100000000000000020102
+```
+
+Its SHA-256 is
+`a6513b8f9aa35e211a8c4ef9043ec1786caf3493adeaa3cb696ef7a23132f229`.
 Every configured-prelude request must use this exact configuration revision in
 its RFC 0004 `Prelude` site and provenance. After RFC 0011 freezes identities
 and the marker-shape inventory freezes, the session resolves every configured
@@ -867,40 +907,28 @@ MarkerShapeInventoryRevision
 EncodeSortedRecordBytes(entries)
 ```
 
-The independent non-empty oracle uses a zero context fingerprint, the exact
-configuration and marker-shape inventory revisions above, and the same 30-byte
-entry. Its complete 169-byte preimage is:
+The independent registry oracle uses zero context, the standard configuration
+revision, a shape revision of 32 `0x33` bytes, and marker handle payload `a1`.
+Its complete 199-byte preimage is:
 
 ```text
-7a6f6d2e6d61726b65722d706f6c6963792d72656769737472790000000000000000000000000000000000000000000000000000000000000000007b17b923e4931f81d8fc06e17db18786d8e665623e83c87093aeba9493fc1dba1594af0c3d3f1cd1c3d5e58ce672673855b6924ceced83e78bf4306c77dc7e7b0000000000000001000000000000001ea100000000000000020104000000000000000103000000000000000101b2
+7a6f6d2e6d61726b65722d706f6c6963792d7265676973747279000000000000000000000000000000000000000000000000000000000000000000a6513b8f9aa35e211a8c4ef9043ec1786caf3493adeaa3cb696ef7a23132f22933333333333333333333333333333333333333333333333333333333333333330000000000000001000000000000003ca10000000000000005010203040500000000000000120102030405060708090a0b0c0d0e0f1011130000000000000001010100000000000000020102
 ```
 
 Its SHA-256 is
-`6fc49ce2840cfc9c0408b09eac225a32c0bc9728a7779d12838fb8cb386c2aec`.
+`068486e5a60e53943b0344ffd644d00110b726d247ad5b558e0b8546c48e90bc`.
 Mutation tests cover every tag, field order, key, required marker, set order,
 duplicate, context, configuration revision, and prelude-ownership edge.
 
-The standalone policy and component records have these exact vectors. The
-hash is SHA-256 over the displayed record bytes without another envelope:
-
-| Fixture | Bytes | SHA-256 |
-|---|---|---|
-| Empty policy, therefore explicit-only | `000000000000000000000000000000000000000000000000` | `9d908ecfb6b256def8b49a7c504e6c889c4b0e41fe6ce3e01863dd7b61a20aa0` |
-| Primitive `I32` builtin policy | `00000000000000000000000000000001030000000000000000` | `b9847e699ac4b297893d2e911fd333e33840cbdd474879379670908e89f5256b` |
-| Cross-marker shared-reference policy requiring `b2` | `00000000000000000000000000000000000000000000000101b2` | `d05c3fb4dd99fc019c4fe3c26505f7efd951a26ad7070174cd479856c9378ed7` |
-| Nominal-enum structural policy | `00000000000000010500000000000000000000000000000000` | `e161c3bd9c0f40a111b9a9f035aa233ab64d9098c9ca1813ae3e30a8e341507c` |
-| Cross-marker reference component over `Primitive(I32)` | `0000000000000001050103b20103` | `ab165f9a332ccdbcdcf8ce4173475f7cf96aed692d541af24d199ba451df9444` |
-| Enum variant `a1` payload index two over `Primitive(I32)` | `000000000000000106a1000000020103b20103` | `ea293fa9a7782c78e3fdf138e370f7316e85d18a3f08f01195185050be6f03f6` |
-
 RFC 0005 `MarkerComponentStep` appends `ReferenceReferent = 0x05` and
 `EnumVariantPayload(variant: DefId, index: uint32) = 0x06`.
-`MarkerEvidence::Builtin { primitive: PrimitiveKind }` remains unchanged. A
-builtin proof is valid exactly when its subject is the same primitive kind and
-that kind occurs in the marker's policy entry. Its polarity is positive and
-its declaration span is absent. Structural and builtin facts retain their
-canonical record encodings so independently recomputed proofs can be compared
-byte-for-byte, but they are ephemeral query results rather than persisted
-marker-map entries.
+`MarkerEvidence::PolicySubject` has tag `0x04`; its subject tags are
+`SharedReference = 0x01`, `ConstRawPointer = 0x02`, and
+`MutableRawPointer = 0x03`. It is valid only for a positive ephemeral proof
+whose normalized subject has the exact encoded form and whose policy contains
+the corresponding unconditional rule. Builtin, structural, and policy-subject
+proofs have positive polarity, no declaration span, and remain ephemeral query
+results rather than persisted marker-map entries.
 
 `TupleElement.index` and `EnumVariantPayload.index` remain `uint32`. The
 authoritative tuple-element and enum-variant-payload sequences retain RFC
@@ -920,43 +948,42 @@ declared field exactly once through `NominalField`; and a nominal enum has every
 variant payload element exactly once through `EnumVariantPayload`, using the
 verified variant `DefId` and declaration-order payload index. Empty products
 and sums have an empty component sequence. Every component query must resolve
-positively for the same marker. A reference structural proof is authorized
-only by the one `referenceRequirements` map entry matching its mutability; it
-has exactly one
-`ReferenceReferent` component whose positive supporting fact uses
-the entry's marker and the normalized referent type. Reference lifetime and
-borrow legality remain RFC 0007 obligations and are never inferred from marker
-support. Function values acquire no
-marker fact because `FunctionTypeData` carries neither capture identity nor a
-verified capture-capability summary. Raw pointers, union, intersection,
-dynamic array, slice, nominal class, error type, existential, interface-bound,
-type-parameter, and unresolved subjects likewise acquire no structural or
-builtin proof. The demand-driven proof algorithm below never treats a cycle as
-proof; a recursive support cycle therefore requires explicit unsafe evidence.
-Negative facts remain explicit only.
-These fail-closed rules replace every RFC 0005 reference to an undefined closed
-primitive-marker table or derivability classifier. A later function-capability,
-raw-pointer, aliased-container, class, or error marker design requires its own
-semantic data and accepted codec revision; it cannot be inferred from a bare
-shape.
+positively for the same marker. A `Requires(marker)` reference rule has exactly
+one `ReferenceReferent` component whose positive supporting fact uses the
+required marker and normalized referent type. An unconditional const-reference
+rule emits `PolicySubject(SharedReference)` and does not query the referent.
+An authorized raw pointer emits `PolicySubject(ConstRawPointer)` or
+`PolicySubject(MutableRawPointer)` according to its mutability. Reference
+lifetime and borrow legality remain RFC 0007 obligations; raw-pointer safety
+remains an unsafe-boundary obligation.
+
+Before nominal-struct or nominal-enum recursion, both proof passes
+independently inspect the frozen definition registry plus local and imported
+verified signatures for a direct owned `DefinitionKind::Destructor`. Its
+presence makes structural proof `Unsatisfied`. Function, union, intersection,
+dynamic-array, slice, nominal-class, error, existential, interface-bound,
+type-parameter, unresolved, and every other policy-omitted subject has no
+automatic proof. The demand-driven proof algorithm never treats a cycle as
+proof. Negative facts remain explicit only.
 
 `SignatureCheckingInput` receives the same
 `const VerifiedMarkerShapeInventory` and
-`const VerifiedMarkerPolicyRegistry`. `CoherenceBuildingInput` receives the
+`const VerifiedMarkerPolicyRegistry` plus RFC 0024
+`const VerifiedStandardMarkerAuthority`. `CoherenceBuildingInput` receives the
 registry to validate exact policy lineage but no semantic-type store, AST, or
 nominal-signature inventory. It accepts each `CoherenceModuleInput` only as the
 exact projection of one already verified `VerifiedModuleInterface`, never as
 caller-assembled records. Persisted marker maps at both boundaries contain
 only verified explicit facts.
 
-One demand-driven checker service is the sole builtin and structural proof
-authority:
+One demand-driven checker service is the sole automatic proof authority:
 
 ```text
 MarkerProofInput {
   semanticContext: SemanticContextBrand,
   contextFingerprint: SemanticContextFingerprint,
   policy: const VerifiedMarkerPolicyRegistry,
+  standardMarkers: const RFC0024::VerifiedStandardMarkerAuthority,
   semanticTypes: const SemanticTypeStore,
   componentInterner: SemanticTypeInterningCapability,
   localSignatures: const VerifiedSignatureFacts,
@@ -973,10 +1000,11 @@ MarkerProofResult =
 }
 ```
 
-`MarkerProofInput` is an unforgeable non-owning capability constructed only
-from one already verified RFC 0005 `BodyCheckingInput` plus the exact policy
-registry whose revision is carried by its local signatures and frozen
-coherence view. `SemanticTypeInterningCapability` is a non-copyable,
+`MarkerProofInput::from(const RFC0005::BodyCheckingInput&)` is the sole proof
+input constructor. It borrows the exact policy registry and standard-marker
+authority already carried by that verified body input. No overload accepts a
+separate role map, policy, registry, store, signature view, or coherence view.
+`SemanticTypeInterningCapability` is a non-copyable,
 non-storable session borrow of that input's exact semantic store. It accepts
 only RFC 0005 `CanonicalTypeData`, delegates to the store's linearizable
 `intern`, and exposes no second store, registry, signature lookup, or unchecked
@@ -997,10 +1025,12 @@ Resolution order is exact:
 
 1. An exact explicit fact in `FrozenCoherenceView.markerFacts` wins. Positive
    explicit evidence returns `Positive`; negative explicit evidence returns
-   `Negative` and suppresses builtin or structural proof.
+   `Negative` and suppresses automatic proof.
 2. Otherwise, a primitive authorized by the marker's `builtinPrimitives`
    returns a positive ephemeral builtin proof.
-3. Otherwise, the engine reads the subject from `SemanticTypeStore`, reads
+3. Otherwise, an unconditional const-reference rule or authorized raw-pointer
+   mutability returns the exact positive `PolicySubject` evidence above.
+4. Otherwise, the engine reads the subject from `SemanticTypeStore`, reads
    nominal struct fields or enum variants and payloads only from the exact
    authorized local or imported signature, checks the marker policy, constructs
    the complete canonical component sequence, and recursively resolves every
@@ -1019,10 +1049,10 @@ Resolution order is exact:
    `InterfaceSelf` are invariants. A reference component queries the exact
    required marker selected by its mutability. The result is a positive
    ephemeral structural proof only when every recursive result is `Positive`.
-4. An absent policy, unsupported outer form, negative or unsatisfied component,
+5. An absent policy, unsupported outer form, negative or unsatisfied component,
    or unrepresentable component ordinal returns `Unsatisfied`. A component type
    that is not already interned never selects `Unsatisfied`; the engine creates
-   its canonical identity as part of step 3. Malformed inputs, foreign
+   its canonical identity as part of step 4. Malformed inputs, foreign
    identities, incomplete or inconsistent nominal signatures, substitution or
    interning failure, wrong proof reconstruction, or non-canonical records
    return `InvariantRejected`.
@@ -1092,8 +1122,8 @@ CoherenceModuleInput {
 Every `marker_facts` or `markerFacts` field in persisted signature,
 module-interface, coherence-input, coherence-candidate, and frozen-coherence
 records is an explicit-only `SortedMap`. Its key is unique after tree-local and
-cross-module conflict processing. A `Structural` or `Builtin` evidence tag in
-one of those maps is `InvalidFact` before interface freezing and
+cross-module conflict processing. A `Structural`, `Builtin`, or
+`PolicySubject` evidence tag in one of those maps is `InvalidFact` before interface freezing and
 `InvalidProjection` at a frozen boundary. The demand-driven proof result is not
 inserted back into any of these maps.
 
@@ -1109,8 +1139,8 @@ Source reconstruction and classification operate independently on every RFC
 0018 implementation occurrence. A failed interface signature, an ordinary
 braced occurrence targeting a marker-only interface (`ZOM4088`), a bodyless
 occurrence targeting a behavior interface (`ZOM4089`), or a marker occurrence
-rejected by `ZOM4091` or `ZOM4092` emits only its earlier source diagnostic and
-is removed. Each successfully classified ordinary occurrence enters the
+rejected by `ZOM4091`, `ZOM4092`, or `ZOM4099` emits only its earlier source
+diagnostic and is removed. Each successfully classified ordinary occurrence enters the
 ordinary temporary header sequence; each successfully classified marker
 occurrence enters the marker temporary header sequence. One occurrence in both
 sequences is an invariant failure.
@@ -1130,18 +1160,19 @@ dynamic array, slice, existential, interface-bound, type-parameter, unresolved,
 or blanket outer head is non-local even when a nested component is local.
 Aliases are normalized before this test; nested local arguments, constraints,
 and presentation text confer no locality. Positive and negative explicit
-marker candidates use the same predicate. Structural and builtin candidates
-are not persisted; their ephemeral compiler proofs never undergo an orphan
-test.
+marker candidates use the same predicate. Compiler-generated builtin,
+structural, and policy-subject proofs are not persisted and never undergo an
+orphan test.
 
 Within signature verification, input lineage and source reconstruction run
 first, followed by interface-kind classification, `ZOM4091`, `ZOM4092`,
-explicit-marker `ZOM4054`, and local survivor conflicts in that order. Only
+`ZOM4099`, explicit-marker `ZOM4054`, and local survivor conflicts in that
+order. Only
 unique survivors construct candidate impl heads, the candidate marker map, and
 verified signature facts. Module-interface verification follows. Global coherence
 then validates frozen projection lineage, performs cross-module same-key
 explicit conflicts, ordinary orphan checking, and ordinary overlap. The later
-demand-driven proof engine owns builtin and structural evidence precedence.
+demand-driven proof engine owns all automatic evidence precedence.
 `ZOM4054 OrphanImpl` for an explicit marker uses the marker definition and
 normalized subject as its two display arguments and the exact source
 declaration span through a tree-local `CheckerFailureRef`. An orphan candidate
@@ -1175,6 +1206,26 @@ to the `MarkerImpl` declaration, primary span equal to its complete source
 span, and `itemOrdinal = 0`. It publishes no marker fact. `CheckerErrorId`
 appends `ZOM4092` after `ZOM4091`.
 
+A positive source implementation of RFC 0024's verified standard `Copy`
+definition for a nominal subject with a direct owned
+`DefinitionKind::Destructor` emits `ZOM4099
+CopyImplConflictsWithLogicalDrop`, with message
+`A type with a deinitializer cannot implement Copy`. It has error severity,
+signature stage, `SignatureClassification` producer, zero display arguments,
+no notes, `None` recovery, and `itemOrdinal = 0`. Its primary node is the exact
+`MarkerImpl` declaration from the independently reconstructed RFC 0018
+occurrence; its primary span is that declaration's exact `impl` token.
+Primary provenance is `IdentitySyntaxSite(source.site)`. Its RFC 0017
+occurrence uses the module diagnostic root, signature stage `0x01`,
+`ImplementationOwner(source.implementation)`,
+`SignatureClassification = 0x15`, and the complete `source.site`. Both emitter
+schema-preorder fields equal the independently verified index of that
+`MarkerImpl` declaration. The rejected occurrence publishes no marker fact,
+module-interface marker entry, or coherence input. A local interface named
+`Copy` does not trigger this rule.
+`CheckerErrorId` appends `ZOM4099` after the RFC 0022-reserved
+`ZOM4096-ZOM4098` range.
+
 RFC 0005 `CheckerDiagnosticProducer` appends
 `SignatureClassification = 0x15` after RFC 0014
 `ReceiverNormalization = 0x14`. The exact checker registry rows are:
@@ -1186,8 +1237,9 @@ RFC 0005 `CheckerDiagnosticProducer` appends
 | `ZOM4090 GenericMarkerInterfaceNotAllowed` | `Signature`, `SignatureClassification` | first generic-parameter node and its complete source span | `None`; no notes |
 | `ZOM4091 PositiveMarkerImplRequiresUnsafe` | `Signature`, `SignatureClassification` | complete source occurrence and its `impl` token span | `None`; no notes |
 | `ZOM4092 ExplicitImplConflictsWithBuiltinMarker` | `Signature`, `SignatureClassification` | `MarkerImpl` declaration node and its complete source span | `None`; no notes |
+| `ZOM4099 CopyImplConflictsWithLogicalDrop` | `Signature`, `SignatureClassification` | `MarkerImpl` declaration node through `IdentitySyntaxSite(source.site)` and its exact `impl` token span | `None`; no notes |
 
-All five have error severity, no display arguments, and `itemOrdinal = 0`.
+All six have error severity, no display arguments, and `itemOrdinal = 0`.
 `ZOM4091` uses the complete RFC 0017 occurrence and provenance contract above.
 The other rows use `CheckerEmitterOrdinal` with signature stage tag `0x01`; the
 owning ordinary impl, marker impl, or interface declaration's verified
@@ -1197,10 +1249,14 @@ schema-preorder index is `siteSchemaPreorder`; and `itemOrdinal` is zero.
 Parser rejection suppresses every checker row for that declaration. A failed
 interface signature, including `ZOM4090`, suppresses all dependent impl rows.
 For an admitted interface signature, `ZOM4088` or `ZOM4089` interface-kind
-classification precedes `ZOM4091`; `ZOM4091` precedes `ZOM4092`; `ZOM4092`
-precedes `ZOM4054` orphan checking and `ZOM4017` conflict checking. A
-mismatched stage, producer, node, span, ordinal, recovery handle, note list, or
-precedence result is an invalid checked fact.
+classification precedes and suppresses `ZOM4091`, `ZOM4092`, and `ZOM4099`;
+`ZOM4091` precedes and suppresses `ZOM4092` and `ZOM4099`; `ZOM4092`
+precedes and suppresses `ZOM4099`; and `ZOM4099` precedes and suppresses
+`ZOM4054` orphan checking and `ZOM4017` conflict checking. A failed
+deinitializer signature does not establish a direct declared deinitializer and
+suppresses dependent publication. A mismatched stage, producer, node, span,
+provenance, ordinal, recovery handle, note list, precedence result, or retained
+publication is an invalid checked fact.
 
 The signature verifier derives expected impl facts from one exact RFC 0005
 `SignatureCheckingInput`. Candidate fields are never source authority. It
@@ -1308,8 +1364,8 @@ never a substitute.
 Marker headers remain a canonically sorted temporary sequence until the final
 tree-local admission substage completes. They sort by complete `MarkerFactKey`,
 expanded `ImplKey`, and canonical source order of the complete
-`IdentitySyntaxSiteKey`. That substage applies `ZOM4092`, then the marker orphan
-predicate, and removes every rejected header. Every remaining same-key group
+`IdentitySyntaxSiteKey`. That substage applies `ZOM4092`, then `ZOM4099`, then
+the marker orphan predicate, and removes every rejected header. Every remaining same-key group
 with more than one survivor emits `ZOM4017` for every occurrence after the
 first, with exactly one `ZOM4071` note at the first survivor, and publishes no
 `MarkerFact`. This rule covers positive/positive, negative/negative, and
@@ -1332,14 +1388,14 @@ Every explicit projection is already marker-orphan-legal by the final
 tree-local signature admission substage and exact module-interface projection;
 global coherence does not re-run a subject-shape test. Within one key group,
 multiple explicit records use the source conflict rule above. A unique explicit
-record enters the frozen map unchanged. A `Structural` or `Builtin` record at
-this boundary is `InvalidProjection`; there is no competing-evidence stream,
+record enters the frozen map unchanged. A `Structural`, `Builtin`, or
+`PolicySubject` record at this boundary is `InvalidProjection`; there is no competing-evidence stream,
 eager support graph, or finite structural-candidate coverage obligation.
 
 The proof engine applies evidence precedence later for each requested key:
-explicit positive or negative first, then builtin, then structural. Because
-only one exact explicit record can survive coherence, the unique-key map can
-represent every persisted input required by that query. The engine reconstructs
+explicit positive or negative first, then builtin, then policy subject, then
+structural. Because only one exact explicit record can survive coherence, the
+unique-key map can represent every persisted input required by that query. The engine reconstructs
 the requested subject directly from its context-bound semantic type and
 signatures, so omitting an unrequested or not-yet-created type cannot change a
 future query result.
@@ -1408,17 +1464,18 @@ Every singleton ordinary survivor group requires exactly one entry under its
 shared authority in `SortedMap<ImplId, ImplHead>`. An ordinary occurrence
 removed by source classification or belonging to a survivor-conflict group
 authorizes no entry. Every marker header that survives the complete final
-tree-local admission sequence -- `ZOM4092`, marker `ZOM4054`, and local
-same-key `ZOM4017` -- and is the unique remaining header for its key requires
+tree-local admission sequence -- `ZOM4092`, `ZOM4099`, marker `ZOM4054`, and
+local same-key `ZOM4017` -- and is the unique remaining header for its key
+requires
 exactly one entry under its shared authority in the independently filtered
 `MarkerEvidence::Explicit` projection of
 `SortedMap<MarkerFactKey, MarkerFact>`. The verifier compares that explicit
 projection and the impl-head map with the independently reconstructed survivor
 maps and then compares every field. A header rejected by any admission step
 authorizes no entry, including when its key also occurred in a rejected
-conflict group. A
-`Structural` or `Builtin` record in this persisted
-map is `InvalidFact`; those evidence classes exist only as proof-engine results.
+conflict group. A `Structural`, `Builtin`, or `PolicySubject` record in this
+persisted map is `InvalidFact`; those evidence classes exist only as
+proof-engine results.
 A missing final-survivor key is `MissingRequiredFact`; a fact for a rejected
 header or any other additional explicit key is `AdditionalFact`; a field
 mutation is `InvalidFact` or
@@ -1431,9 +1488,9 @@ producer-selected candidate universe and no missing or additional query-fact
 classification. For `Positive`, the proof verifier branches on the evidence
 tag. An explicit-positive proof must be the exact same-key positive fact in
 `FrozenCoherenceView.markerFacts`, with every field and canonical byte equal. A
-builtin or structural proof is independently reconstructed from the requested
-key and immutable input capabilities and compared field by field and
-byte-for-byte. For a generic nominal proof the verifier independently rebuilds
+builtin, policy-subject, or structural proof is independently reconstructed
+from the requested key and immutable input capabilities and compared field by
+field and byte-for-byte. For a generic nominal proof the verifier independently rebuilds
 the parameter-to-argument substitution, recursively canonicalizes every field
 or payload type, and interns it through the same-store capability before
 comparing the resulting component identity; the producer's `componentType` is
@@ -1751,7 +1808,7 @@ subject node, polarity token, evidence `ImplId`, and declaration span.
 `ASCII("zom.coherence-view")`, NUL. It encodes
 `SemanticContextFingerprint`, `MarkerPolicyRegistryRevision`, then the remaining
 RFC 0005 fields. The independent fixture uses 32 policy revision bytes of `77`
-and is 137 bytes:
+and is 134 bytes:
 
 ```text
 7a6f6d2e636f686572656e63652d76696577000000000000000000000000000000000000000000000000000000000000000000777777777777777777777777777777777777777777777777777777777777777700000000000000010000000000000001c300000000000000010000000000000001d400000000000000010000000000000001e5
@@ -1905,13 +1962,15 @@ Explicit positive marker evidence is caller-proven and requires the visible
 `unsafe` source acknowledgement because the shared marker algebra does not yet
 classify which markers can affect memory, ownership, or concurrency safety.
 Negative evidence cannot grant a capability and rejects `unsafe`.
-Compiler-proven structural and builtin query results retain independent
-reconstruction and policy-registry verification. Only compiler-distribution configuration reached
+Compiler-proven structural, builtin, and policy-subject query results retain
+independent reconstruction and policy-registry verification. Only
+compiler-distribution configuration reached
 through verified prelude provenance can authorize implicit evidence; package
 content cannot register policy or redirect an entry by spelling. The single
-marker-shape inventory prevents producer/verifier classifier drift. Function,
-raw-pointer, aliased-container, class, and recursive-cycle cases fail closed
-until their proof data is represented. A future safe explicit marker form requires a
+marker-shape inventory prevents producer/verifier classifier drift. The
+standard `Copy` policy authorizes shared-reference and both raw-pointer
+subjects explicitly; function, aliased-container, class, and recursive-cycle
+cases remain unsatisfied. A future safe explicit marker form requires a
 separate accepted classifier and proof rule; it cannot weaken this default.
 
 ## Drawbacks And Risks
@@ -2096,13 +2155,14 @@ signature publication or accept an unbound policy revision from a package.
 9. Marker shape comes only from one verified inventory; structural subjects,
    builtin primitives, and reference propagation come only from one
    context-bound, revisioned, prelude-authorized policy registry. The 77-byte
-   inventory, 78-byte configuration, 169-byte registry, standalone policy and
-   component vectors, 335-byte `InterfaceSelf` vector, and end-to-end
+   inventory, 59-byte policy, 139-byte configuration, 199-byte registry,
+   335-byte `InterfaceSelf` vector, and end-to-end
    revision chain reproduce exactly. The same policy revision is a direct
    parent of signature, module-interface, and coherence revisions. Persisted
    marker maps contain explicit evidence only. One demand-driven proof engine
-   resolves any requested semantic type with exact explicit, builtin, then
-   structural precedence, independently verifies its result, and rejects
+   resolves any requested semantic type with exact explicit, builtin,
+   policy-subject, then structural precedence, independently verifies its
+   result, and rejects
    cycles without requiring a finite candidate universe. Generic nominal
    components use verified parameter-to-argument substitution and same-store
    linearizable canonical interning, so proof does not depend on prior type
@@ -2139,7 +2199,8 @@ signature publication or accept an unbound policy revision from a package.
 5. Add the single marker-shape inventory plus immutable marker-policy
    configuration and registry, bind their lineage into every direct consumer,
    retain only explicit facts in persisted maps, and add the demand-driven
-   builtin and structural proof engine with reference propagation.
+   builtin, policy-subject, and structural proof engine with complete reference
+   and raw-pointer rules.
 6. Publish signature facts and coherence views atomically.
 7. Publish the combined module interface atomically.
 8. Regenerate fixtures and cached artifacts.
@@ -2200,9 +2261,11 @@ signature publication or accept an unbound policy revision from a package.
   subjects directly; independently reconstruct every complete component path;
   and reject a wrong outer form, incomplete component sequence, wrong enum
   variant or payload index, wrong reference mutability or required marker, and
-  structural or builtin negative proof. Prove that dynamic arrays, slices,
-  classes, functions, raw pointers, unavailable supports, and unseeded cycles
-  are `Unsatisfied`. Clear memoization, reverse configuration and signature
+  structural, builtin, or policy-subject negative proof. For the exact standard
+  `Copy` policy, require a shared reference and both raw-pointer mutabilities to
+  be positive, a mutable reference to be `Unsatisfied`, and `Any`, dynamic
+  arrays, slices, classes, functions, unavailable supports, and unseeded cycles
+  to be `Unsatisfied`. Clear memoization, reverse configuration and signature
   order, and require byte-identical results. Mutate each lineage parent
   independently and require `InvariantRejected` before evidence lookup.
 - Marker-query-universe tests: freeze coherence with explicit facts only, then
@@ -2252,9 +2315,9 @@ signature publication or accept an unbound policy revision from a package.
   every explicit-marker orphan decision, reject orphan candidates before
   same-key conflict grouping, construct the marker map only from surviving
   unique facts, publish only that map through frozen module interfaces, and
-  prove that structural and builtin facts never undergo an orphan test. Omit
+  prove that compiler-generated proof facts never undergo an orphan test. Omit
   one final survivor and require `MissingRequiredFact`; publish a fact for a
-  `ZOM4092`, marker-orphan, or local-conflict rejection and require
+  `ZOM4092`, `ZOM4099`, marker-orphan, or local-conflict rejection and require
   `AdditionalFact`, including a whole rejected same-key group. Replace both a
   survivor key and payload and require rejection against the independently
   reconstructed survivor map.
@@ -2263,14 +2326,15 @@ signature publication or accept an unbound policy revision from a package.
   `ZOM4017` per later complete occurrence key and one `ZOM4071` at the first
   survivor; reject the same three cross-module collisions in
   both module and import orders before `CoherenceCandidate.markerFacts` exists.
-  Reject every persisted `Structural` or `Builtin` record as `InvalidFact` or
-  `InvalidProjection`. For a key eligible for structural proof, require an
+  Reject every persisted `Structural`, `Builtin`, or `PolicySubject` record as
+  `InvalidFact` or `InvalidProjection`. For a key eligible for structural proof, require an
   explicit positive fact to win and an explicit negative fact to return
   `Negative`; for an authorized primitive require `ZOM4092` before explicit
   publication and builtin proof only when no explicit fact exists. Mutate an
   explicit-positive result's key, polarity, payload, span, or canonical bytes,
-  and mutate an ephemeral builtin or structural proof's key, outer shape,
-  component, enum, reference, support, or index. Require proof-verifier
+  and mutate an ephemeral builtin, policy-subject, or structural proof's key,
+  outer shape, component, enum, reference, raw-pointer, policy subject,
+  support, or index. Require proof-verifier
   rejection without mutating the frozen explicit map.
 - Marker-component-width tests: use tuple and enum-payload sequences with
   ordinals `0xffffffff` and `0x0000000100000000`; admit the former query, return
@@ -2316,7 +2380,7 @@ signature publication or accept an unbound policy revision from a package.
   both candidate insertion orders.
 - Lit tests: exact structured messages for `ZOM4019`, `ZOM4028`, `ZOM4029`,
   and `ZOM4081` without source-string payloads; exact primary spans and
-  messages for `ZOM2100-ZOM2104` and `ZOM4088-ZOM4092`; and the combined-invalid
+  messages for `ZOM2100-ZOM2104`, `ZOM4088-ZOM4092`, and `ZOM4099`; and the combined-invalid
   marker declaration proving earliest-source parser precedence.
 - AST conformance: positive ordinary, valid unsafe positive short and qualified
   marker, and negative marker dumps prove the singular generated fields; a
@@ -2383,3 +2447,4 @@ None
 | 2026-07-17 | IMPLEMENTING | Began implementation of the accepted checker-codec contract through the implementation tracker. |
 | 2026-07-18 | IMPLEMENTING | Synchronized the accepted RFC 0018 occurrence bridge, per-occurrence mixed-form classification, post-classification ordinary and marker survivor streams, and occurrence-specific diagnostic lineage. |
 | 2026-07-20 | LANDED | The implementation, RFC records, architecture guidance, and complete verification evidence landed on `develop` through commits `0bba7e34`, `f86b5660`, and `76e73196`. |
+| 2026-07-25 | LANDED | Synchronized RFC 0024's accepted marker reference and raw-pointer policy, policy-subject evidence, standard configuration vectors, deinitializer exclusion, ZOM4099, and body-only proof-input authority; production implementation remains tracked by RFC 0024. |
