@@ -850,20 +850,20 @@ dynamic selection is recorded through ordinary `QueryContext` dependencies.
 Domain strings are respectively:
 
 ```text
-zom.ide.recoverable-parse.v0
-zom.ide.document-skeleton.v0
-zom.ide.stable-body-syntax.v0
-zom.ide.stable-body-provenance.v0
-zom.ide.verified-body-types.v0
-zom.ide.bind-stable-body.v0
-zom.ide.analyze-stable-body.v0
-zom.ide.bind-recovery-body.v0
-zom.ide.analyze-recovery-body.v0
-zom.ide.document-diagnostics.v0
+zom.ide.recoverable-parse
+zom.ide.document-skeleton
+zom.ide.stable-body-syntax
+zom.ide.stable-body-provenance
+zom.ide.verified-body-types
+zom.ide.bind-stable-body
+zom.ide.analyze-stable-body
+zom.ide.bind-recovery-body
+zom.ide.analyze-recovery-body
+zom.ide.document-diagnostics
 ```
 
-Every descriptor has key schema `0` and value schema `0`, `Computed`
-durability, `Reject` cycle policy, no disk codec, and bounded-LRU retention.
+Every descriptor has `Computed` durability, `Reject` cycle policy, no disk
+codec, and bounded-LRU retention.
 `Semantic` values contain only stable keys, normalized lexemes, structural
 paths, closed semantic states, and path-addressed diagnostic facts. Any source
 range, document identity, version, content digest, recovery-local key, or

@@ -273,7 +273,7 @@ ZC_TEST("DefinitionIdentityRecord passes the complete owner and named-item vecto
             "00000000000000014300"_zc);
   auto key = DefinitionKey::compute(record);
   ZC_EXPECT(zc::encodeHex(key.bytes()) ==
-            "15a71871a9f441980717fa1fbf37d49edcb5f5499d1a905134bc2dafb55ca9aa"_zc);
+            "30d213a08ef2cc511b0f66e867d621dfcc7a8d95a121fabcf680d4045aa11c23"_zc);
   auto decoded = DefinitionIdentityRecord::decodeCanonical(encoded.asPtr());
   ZC_REQUIRE(decoded != zc::none);
   ZC_EXPECT(ZC_REQUIRE_NONNULL(decoded).encode().asPtr() == encoded.asPtr());
@@ -337,7 +337,7 @@ ZC_TEST("ImplIdentityRecord passes the complete owner and implementation-header 
             "000000000000000002030000000000000000"_zc);
   auto key = ImplKey::compute(record);
   ZC_EXPECT(zc::encodeHex(key.bytes()) ==
-            "02244f880510deb2036cf2a99e2abddb2f07712804259e9adda063c5c4adfabf"_zc);
+            "3df449eebe11ec6aff1ad2955045c2d76a60490ccdb6b3fd4610a64d3efe330b"_zc);
 }
 
 ZC_TEST("Stable owner keys encode one closed tag followed by one raw digest") {
@@ -463,7 +463,7 @@ ZC_TEST("Generic parameter identities pass the exact subordinate record and dige
             "0144444444444444444444444444444444444444444444444444444444444444440100000007"_zc);
   auto key = GenericParameterKey::compute(record);
   ZC_EXPECT(zc::encodeHex(key.bytes()) ==
-            "8c8a613fe2a771b2ab935f16f81ffa03cc4797928e4ac40680c7c21fe8dcb0a3"_zc);
+            "491f5a3aa3da6f5e3643975fc1dc85aa775a5cfc0d645cd34b9b2bffae982afc"_zc);
 
   auto authority = GenericParameterAuthority::from(zc::mv(record));
   auto cloned = authority.clone();
@@ -493,9 +493,9 @@ ZC_TEST("Callable parameter identities distinguish receiver from ordinary positi
   auto receiverKey = CallableParameterKey::compute(receiver);
   auto ordinaryKey = CallableParameterKey::compute(ordinary);
   ZC_EXPECT(zc::encodeHex(receiverKey.bytes()) ==
-            "4593a2026b87a722bffc8420ae5ba5304aff5f1af98f33e70bb13278b79a7877"_zc);
+            "1bb0709d06cbff633cc0985471dfa19605a3e823f5ac4eeb39e7778f751c9fdf"_zc);
   ZC_EXPECT(zc::encodeHex(ordinaryKey.bytes()) ==
-            "733a7748739f9a60bf53bae5fa768c49fce28a04b86a2bd058219dfdbe08fb0d"_zc);
+            "456ff0c1e10b707c7801d6f40054be5e29188aa27d8bef70a51e8883f9cdbe35"_zc);
   ZC_EXPECT(receiverKey != ordinaryKey);
 
   auto authority = CallableParameterAuthority::from(zc::mv(receiver));

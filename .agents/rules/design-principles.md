@@ -53,6 +53,10 @@ Rewrites are the default. Technical debt is paid immediately, not scheduled.
    deleted and replaced. The only immutable thing is the project's core goals.
 5. Never introduce an intermediate `V2` type or `FooCompat` shim alongside the
    old one. Replace, delete the old, move on.
+6. Internal names describe the one current contract. Do not append `V0`, `V1`,
+   `V2`, `.v0`, `.v1`, or similar revision markers to internal types, enum
+   cases, canonical domains, schema names, fixture names, or generated
+   artifacts.
 
 ---
 
@@ -71,6 +75,11 @@ We are pre-1.0. Breaking changes are the default, not an exception.
 | Renaming but keeping the old name as a `using` alias | Aliases accumulate. | Direct rename, fix all references. |
 | `// Kept for forward compatibility with future module system` | "Future" never arrives. Build what we need today. | Delete the unused path, write it when the feature actually ships. |
 | Old AST kind preserved with a comment `// for 0.1.x compat` | AST kinds are internal. | Remove from `kinds.h`, regenerate all builders. |
+| Internal names such as `FooV2`, `zom.foo.v2`, or `foo-v2.json` | Invents compatibility generations for an unreleased contract. | Use `Foo`, `zom.foo`, and `foo.json`; replace every producer, consumer, fixture, and oracle together. |
+
+External identifiers keep the spelling assigned by their owner. RFC numbers,
+user-authored SemVer values, and standards such as C++23, ANTLR 4, and Linux
+cgroup v2 are not internal schema revisions and are unaffected by this rule.
 
 ### Acceptable Change Pattern
 
@@ -93,9 +102,6 @@ One commit. No migration epoch.
 1. A type, function, field, enum variant, flag, keyword, grammar production,
    spec chapter, or source file that has **zero call sites or zero references**.
 2. A reserved keyword with **no grammar rule** in the current parser.
-   - Exception: the keyword has a dedicated spec subsection that explicitly says
-     "reserved for v2" and its semantic direction is fully written. Without that,
-     the reservation creates ambiguity for users and audit tools.
 3. A spec section describing a construct the parser does not accept and for which
    no active implementation exists. Spec drift = spec bug.
 4. Any flag defined in an enum but never written (grep the repository for the

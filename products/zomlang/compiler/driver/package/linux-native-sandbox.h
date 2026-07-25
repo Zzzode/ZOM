@@ -76,29 +76,29 @@ using LinuxNativeSandboxCreateResult =
     zc::OneOf<zc::Own<BuildScriptSandboxAdapter>, BuildScriptIssue>;
 
 /// \brief Move-only Linux sandbox with explicit idempotent resource teardown.
-class LinuxNativeSandboxV1 final : public BuildScriptSandboxAdapter {
+class LinuxNativeSandbox final : public BuildScriptSandboxAdapter {
 private:
   struct Impl;
 
 public:
   ZC_NODISCARD static LinuxNativeSandboxCreateResult create(
       zc::Own<LinuxNativeSandboxPlatform>&& platform, const BuildScriptLimitKey& limits);
-  ~LinuxNativeSandboxV1() noexcept override;
-  LinuxNativeSandboxV1(LinuxNativeSandboxV1&&) noexcept;
-  LinuxNativeSandboxV1& operator=(LinuxNativeSandboxV1&&) noexcept;
-  ZC_DISALLOW_COPY(LinuxNativeSandboxV1);
+  ~LinuxNativeSandbox() noexcept override;
+  LinuxNativeSandbox(LinuxNativeSandbox&&) noexcept;
+  LinuxNativeSandbox& operator=(LinuxNativeSandbox&&) noexcept;
+  ZC_DISALLOW_COPY(LinuxNativeSandbox);
 
   ZC_NODISCARD BuildScriptRunResult execute(const BuildScriptRequestFrame& request) override;
   ZC_NODISCARD zc::Maybe<BuildScriptIssue> finish() override;
   ZC_NODISCARD LinuxNativeSandboxState state() const noexcept;
 
-  explicit LinuxNativeSandboxV1(zc::Own<Impl>&& impl) noexcept;
+  explicit LinuxNativeSandbox(zc::Own<Impl>&& impl) noexcept;
 
 private:
   zc::Own<Impl> impl;
 };
 
-/// \brief Returns whether the current build host can ever admit LinuxNativeSandboxV1.
+/// \brief Returns whether the current build host can ever admit LinuxNativeSandbox.
 ZC_NODISCARD bool linuxNativeSandboxHostSupported() noexcept;
 /// \brief Verifies every required host-kernel primitive without acquiring sandbox resources.
 ZC_NODISCARD zc::Maybe<BuildScriptIssue> preflightLinuxNativeSandboxHost() noexcept;

@@ -32,7 +32,7 @@ struct LinuxSandboxBpfInstruction final {
   uint32_t operand;
 };
 
-/// \brief Generates the exact default-trap LinuxNativeSandboxV1 seccomp program.
+/// \brief Generates the exact default-trap LinuxNativeSandbox seccomp program.
 ZC_NODISCARD zc::Array<LinuxSandboxBpfInstruction> generateLinuxSandboxFilter(
     LinuxSandboxArchitecture architecture, LinuxSandboxFilterPhase phase);
 

@@ -1,6 +1,6 @@
 Design Dimension 3: Concurrency Semantics -- Runtime Architecture / Edge Semantics / FFI Interop / Examples.
 
-The following organizes the four sub-dimensions of **Design Dimension 3: Concurrency Semantics** -- Runtime Architecture / Edge Semantics / FFI Interop / Examples. All content is anchored to `docs/concurrency/zom-async-canonical-design.md` (v1.0.0-rc1).
+The following organizes the four sub-dimensions of **Design Dimension 3: Concurrency Semantics** -- Runtime Architecture / Edge Semantics / FFI Interop / Examples. All content is anchored to the current `docs/concurrency/zom-async-canonical-design.md`.
 
 ---
 

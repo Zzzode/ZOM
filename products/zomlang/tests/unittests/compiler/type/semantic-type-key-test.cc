@@ -166,7 +166,7 @@ private:
 
 }  // namespace
 
-ZC_TEST("SemanticTypeKeyV1.EncodesGenericParameterKeyAsRawDigest") {
+ZC_TEST("SemanticTypeKey.EncodesGenericParameterKeyAsRawDigest") {
   RegistryStoreFixture fixture;
   const auto& parameter = fixture.parameter();
   auto canonical =
@@ -181,10 +181,10 @@ ZC_TEST("SemanticTypeKeyV1.EncodesGenericParameterKeyAsRawDigest") {
   const auto& stored = lookup.get<type::SemanticTypeLookup>();
   ZC_EXPECT(stored.data().tag() == TypeDataTag::TypeParameter);
   ZC_EXPECT(stored.data().get<TypeParameterTypeData>().parameter == parameter);
-  ZC_REQUIRE(stored.key().bytes().size() == 58);
-  ZC_EXPECT(zc::encodeHex(stored.key().bytes().slice(0, 26)) ==
-            "7a6f6d2e73656d616e7469632d747970652d6b65792e76310009"_zc);
-  ZC_EXPECT(stored.key().bytes().slice(26) == parameter.bytes());
+  ZC_REQUIRE(stored.key().bytes().size() == 55);
+  ZC_EXPECT(zc::encodeHex(stored.key().bytes().slice(0, 23)) ==
+            "7a6f6d2e73656d616e7469632d747970652d6b65790009"_zc);
+  ZC_EXPECT(stored.key().bytes().slice(23) == parameter.bytes());
 }
 
 ZC_TEST("SemanticTypeData.PreservesGenericParameterKeyCloneAndEquality") {
@@ -197,7 +197,7 @@ ZC_TEST("SemanticTypeData.PreservesGenericParameterKeyCloneAndEquality") {
   ZC_EXPECT(data.get<TypeParameterTypeData>().parameter.bytes() == parameter.bytes());
 }
 
-ZC_TEST("SemanticTypeKeyV1.RejectsUnretainedGenericParameterKey") {
+ZC_TEST("SemanticTypeKey.RejectsUnretainedGenericParameterKey") {
   RegistryStoreFixture fixture;
   auto unretained =
       identity::GenericParameterKey::fromBytes(zc::heapArray<uint8_t>(32, uint8_t{0xff}));

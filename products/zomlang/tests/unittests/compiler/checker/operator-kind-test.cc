@@ -48,17 +48,17 @@ void expectRendering(zc::Maybe<OperatorKind> (*map)(Syntax), Syntax syntax,
 
 ZC_TEST("OperatorKind.MatchesNormativeOracleVectors") {
   expectOracle(OperatorKind(PrimitiveOperation::StrictNe),
-               zc::StringPtr("7a6f6d2e636865636b65722d6f70657261746f722d6b696e642e763000011d"),
-               zc::StringPtr("4db7a174e931636649fbd2048307af559227fcca76633fbef1c886fab5d2c15c"));
+               zc::StringPtr("7a6f6d2e636865636b65722d6f70657261746f722d6b696e6400011d"),
+               zc::StringPtr("d5f8705504de8ddc1fa9c162c0aa7ed45a51525c35d022665f51c7d59bfbe27e"));
   expectOracle(OperatorKind(CompoundAssignmentOperation::NullCoalesceAssign),
-               zc::StringPtr("7a6f6d2e636865636b65722d6f70657261746f722d6b696e642e763000020f"),
-               zc::StringPtr("36bab6dd63d2441ea47135f4770dda334eb1194ad110100c4f98a19f1b226d8e"));
+               zc::StringPtr("7a6f6d2e636865636b65722d6f70657261746f722d6b696e6400020f"),
+               zc::StringPtr("56bbf860601f317e6df86b2215daaa0d57bd0493fa7aeea8c4447e6abd3201c6"));
   expectOracle(OperatorKind(AssignmentOperator{}),
-               zc::StringPtr("7a6f6d2e636865636b65722d6f70657261746f722d6b696e642e76300003"),
-               zc::StringPtr("6d835cdc1c147b13b4c563647489c8e35aae1dd0dcb14c3bc303d9fb48482578"));
+               zc::StringPtr("7a6f6d2e636865636b65722d6f70657261746f722d6b696e640003"),
+               zc::StringPtr("b64344ce42585099d4bdb2c8358d4a994689f5bb683a7c4be478d8ea802806e9"));
   expectOracle(OperatorKind(ErrorOperatorKind::Propagate),
-               zc::StringPtr("7a6f6d2e636865636b65722d6f70657261746f722d6b696e642e7630000401"),
-               zc::StringPtr("a6025127e0e9d9ad368360cc5421f9f3d1e7694824925654ef6ceef8b91061e2"));
+               zc::StringPtr("7a6f6d2e636865636b65722d6f70657261746f722d6b696e64000401"),
+               zc::StringPtr("bbfd75c73052181aa904dd07679afa60ada8491537ddc0d14ca64fc156915f72"));
 }
 
 ZC_TEST("OperatorKind.SymbolicallyMapsEveryAstOperatorFamily") {

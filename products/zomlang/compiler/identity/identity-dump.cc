@@ -44,7 +44,7 @@ zc::Maybe<zc::String> dumpIdentityRegistries(const SemanticIdentityRegistrySet& 
   }
 
   zc::Vector<char> output;
-  append(output, "zom.identity.v0\n[packages]\n"_zc);
+  append(output, "zom.identity\n[packages]\n"_zc);
   appendRegistry(output, "package"_zc, registries.packages());
   append(output, "[crates]\n"_zc);
   appendRegistry(output, "crate"_zc, registries.crates());

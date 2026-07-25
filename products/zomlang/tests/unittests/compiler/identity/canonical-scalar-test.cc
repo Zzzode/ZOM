@@ -80,9 +80,9 @@ ZC_TEST("Canonical manifest names enforce their exact ASCII domains") {
   expectRejected<TargetName>("async"_zc);
   expectRejected<DependencyAlias>("class"_zc);
 
-  expectSource<FeatureName>("simd-v2"_zc, "simd-v2"_zc);
+  expectSource<FeatureName>("simd-wide"_zc, "simd-wide"_zc);
   expectRejected<FeatureName>("Simd"_zc);
-  expectSource<TargetComponentName>("x86_64-v3.elf"_zc, "x86_64-v3.elf"_zc);
+  expectSource<TargetComponentName>("x86_64-modern.elf"_zc, "x86_64-modern.elf"_zc);
   expectSource<TargetFeatureName>("avx2.0-fast"_zc, "avx2.0-fast"_zc);
   expectRejected<TargetComponentName>("X86_64"_zc);
   expectRejected<TargetFeatureName>("_avx"_zc);

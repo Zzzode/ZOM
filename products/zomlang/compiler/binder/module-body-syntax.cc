@@ -37,10 +37,10 @@ struct ModuleBodyProvenanceData final {
 namespace detail = module_body_syntax_detail;
 namespace {
 
-constexpr zc::StringPtr kModuleBodySyntaxDomain = "zom.module-body-syntax.v1"_zc;
-constexpr zc::StringPtr kModuleBodyProvenanceDomain = "zom.module-body-provenance.v1"_zc;
-constexpr zc::StringPtr kNamedItemSyntaxDomain = "zom.named-item-syntax.v1"_zc;
-constexpr zc::StringPtr kNamedItemProvenanceDomain = "zom.named-item-provenance.v1"_zc;
+constexpr zc::StringPtr kModuleBodySyntaxDomain = "zom.module-body-syntax"_zc;
+constexpr zc::StringPtr kModuleBodyProvenanceDomain = "zom.module-body-provenance"_zc;
+constexpr zc::StringPtr kNamedItemSyntaxDomain = "zom.named-item-syntax"_zc;
+constexpr zc::StringPtr kNamedItemProvenanceDomain = "zom.named-item-provenance"_zc;
 constexpr uint64_t kMaximumDetachedNodes = 1024 * 1024;
 constexpr uint64_t kMaximumDetachedPayloadBytes = 64 * 1024 * 1024;
 constexpr uint64_t kMaximumTextBytes = 64 * 1024 * 1024;

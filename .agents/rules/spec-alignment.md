@@ -50,7 +50,7 @@ The spec is **not a design wishlist or a product roadmap.**
 | Chapter describes an `async fn` feature whose grammar produces a parse error. | Chapter says "Concurrency syntax is reserved for a future version; today the parser rejects `async`." Explicit, honest, no ambiguity. |
 | Precedence table says `?!` is priority 17 while EBNF says postfix. | Fix whichever is wrong; no drift. |
 | Modifier Keywords table includes 15 words but EBNF `Modifier` has 7. | Either shrink the table or expand the grammar; pick one and justify. |
-| A reserved keyword has no grammar rule and no "reserved for v2" note. | Delete the keyword from the reservation list per Rule #4. |
+| A reserved keyword has no grammar rule. | Delete the keyword from the reservation list per Rule #4. |
 
 ### Hard Rule for Wishful Spec
 

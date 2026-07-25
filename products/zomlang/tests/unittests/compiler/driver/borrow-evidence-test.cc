@@ -100,7 +100,7 @@ identity::CanonicalTargetSpecificationKey targetProjection() {
         scalar<identity::TargetComponentName>("zom"_zc),
         scalar<identity::TargetComponentName>("none"_zc),
         scalar<identity::TargetComponentName>("unknown"_zc),
-        scalar<identity::TargetComponentName>("zom-v1"_zc), 64, identity::Endianness::Little,
+        scalar<identity::TargetComponentName>("zom"_zc), 64, identity::Endianness::Little,
         zc::mv(values));
     ZC_IF_SOME(value, result) { return zc::mv(value); }
   }
@@ -116,7 +116,7 @@ package::RegisteredTargetProfileName targetProfileName() {
 ir::TargetRegistrySnapshot targetRegistry() {
   zc::Vector<ir::CanonicalTargetFeature> targetFeatures;
   auto targetSpec = ir::CanonicalTargetSpec::from(
-      "x86_64-zom-none"_zc, "e-p:64:64"_zc, "generic"_zc, zc::mv(targetFeatures), "zom-v1"_zc,
+      "x86_64-zom-none"_zc, "e-p:64:64"_zc, "generic"_zc, zc::mv(targetFeatures), "zom"_zc,
       ir::BackendPanicStrategy::Unwind, ir::ObjectFormat::Elf);
   ZC_REQUIRE(targetSpec != zc::none);
   zc::Vector<identity::TargetFeatureName> semanticFeatures;

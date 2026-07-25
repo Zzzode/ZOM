@@ -1,1 +1,1 @@
-alias V2<out T> = T;
+alias CovariantAlias<out T> = T;

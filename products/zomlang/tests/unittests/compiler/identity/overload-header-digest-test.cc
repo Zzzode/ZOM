@@ -46,7 +46,7 @@ CanonicalOverloadHeader header(zc::StringPtr name) {
 ZC_TEST("OverloadHeaderDigest passes the exact domain SHA and raw codec vector") {
   auto value = OverloadHeaderDigest::compute(header("f"_zc));
   ZC_EXPECT(zc::encodeHex(value.bytes()) ==
-            "1082ac5bcb087fbe0a9d323c92b35e9974e351e50c8e0ac207b69f614850dad4"_zc);
+            "311a7707c91317c488448e3f407308246bc6ad8f627e73a019a9303a83ff1f2d"_zc);
   ZC_EXPECT(value.bytes().size() == 32);
   ZC_EXPECT(value.encode().asPtr() == value.bytes());
   ZC_EXPECT(value.clone() == value);

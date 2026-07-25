@@ -332,7 +332,7 @@ zc::Maybe<zc::Array<uint8_t>> encodeOperatorKindOracle(const OperatorKind& value
   auto encoded = encodeOperatorKind(value);
   if (encoded == zc::none) return zc::none;
   zc::Vector<uint8_t> result;
-  result.addAll(zc::StringPtr("zom.checker-operator-kind.v0").asBytes());
+  result.addAll(zc::StringPtr("zom.checker-operator-kind").asBytes());
   result.add(0x00);
   ZC_IF_SOME(bytes, encoded) { result.addAll(bytes.asPtr()); }
   return result.releaseAsArray();

@@ -1,6 +1,6 @@
 <!-- @dsCard group="Design Documents" name="ADT" -->
 # ZOM Algebraic Data Type System — Canonical Design
-*Version 2026-06-25 — Canonical Draft v1.0.0*
+*Current canonical design, updated 2026-06-25*
 
 ## Table of Contents
 1. Core Definitions
@@ -21,7 +21,11 @@
 
 An **algebraic data type (ADT)** is a composite type built from two closed primitives: **products** (AND-types) and **sums** (OR-types), combined under a nominal type system. Every ADT declaration introduces a fresh, distinct type identity — two structurally-identical ADTs declared at different source sites are incompatible types, not aliases. ZOM does not expose structural ADTs at the surface language.
 
-Generalized Algebraic Data Types (GADTs) and inductive families are explicitly out of scope for v1.0. The type parameter of a sum is universally quantified over every variant; there is no per-variant refinement of the form `Variant(T) : X<String>`. Users who need a similar effect build it with a single variant holding a type-erased inner payload plus an out-of-band witness.
+Generalized Algebraic Data Types (GADTs) and inductive families are not part of
+the language. The type parameter of a sum is universally quantified over every
+variant; there is no per-variant refinement of the form
+`Variant(T) : X<String>`. Users who need a similar effect build it with a
+single variant holding a type-erased inner payload plus an out-of-band witness.
 
 ### 1.1 Terminology
 
@@ -29,7 +33,7 @@ Generalized Algebraic Data Types (GADTs) and inductive families are explicitly o
 |---|---|---|---|
 | `struct Name { f: T, … }` | Named product | Nominal, opaque-equality | Public-by-default; no methods, no `private` keyword |
 | `class Name { … }` | Nominal product with encapsulation | Nominal | Fields default private; methods, init/deinit, accessors permitted |
-| `enum Name { V1, V2(T), V3 { f: U } }` | Tagged disjoint sum | Nominal | Variants are value-constructors, not types |
+| `enum Name { Empty, Tuple(T), Record { f: U } }` | Tagged disjoint sum | Nominal | Variants are value-constructors, not types |
 | `struct Name(T)` (single unnamed field) | Newtype wrapper | Nominal, distinct from inner `T` | Single unnamed field, zero-sized overhead |
 
 ### 1.2 EBNF — ADT Surface Syntax (snippet 1 of 6)

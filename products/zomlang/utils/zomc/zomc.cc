@@ -333,7 +333,7 @@ public:
           requireScalar<identity::TargetComponentName>(vendor),
           requireScalar<identity::TargetComponentName>(operatingSystem),
           requireScalar<identity::TargetComponentName>("unknown"_zc),
-          requireScalar<identity::TargetComponentName>("zom-v1"_zc),
+          requireScalar<identity::TargetComponentName>("zom"_zc),
           static_cast<uint32_t>(sizeof(void*) * 8), identity::Endianness::Little,
           zc::mv(featureValues));
       ZC_IF_SOME(value, projection) { return zc::mv(value); }
@@ -366,7 +366,7 @@ public:
     zc::Vector<ir::CanonicalTargetFeature> backendFeatures;
     auto specification =
         ir::CanonicalTargetSpec::from(triple, dataLayout, "generic"_zc, zc::mv(backendFeatures),
-                                      "zom-v1"_zc, ir::BackendPanicStrategy::Abort, objectFormat);
+                                      "zom"_zc, ir::BackendPanicStrategy::Abort, objectFormat);
     auto name = package::RegisteredTargetProfileName::from("host"_zc);
     ZC_IF_SOME(profileName, name) {
       ZC_IF_SOME(specificationValue, specification) {

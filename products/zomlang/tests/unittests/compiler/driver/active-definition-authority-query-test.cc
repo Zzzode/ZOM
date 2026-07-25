@@ -46,7 +46,7 @@ identity::CanonicalTargetSpecificationKey target() {
       scalar<identity::TargetComponentName>("zom"_zc),
       scalar<identity::TargetComponentName>("none"_zc),
       scalar<identity::TargetComponentName>("unknown"_zc),
-      scalar<identity::TargetComponentName>("zom-v1"_zc), 64, identity::Endianness::Little,
+      scalar<identity::TargetComponentName>("zom"_zc), 64, identity::Endianness::Little,
       targetFeatures());
   return zc::mv(ZC_REQUIRE_NONNULL(result));
 }
@@ -133,10 +133,9 @@ ZC_TEST("Active definition authority inputs use strict low durability codecs") {
   ZC_EXPECT(readinessContract.isInput());
   ZC_EXPECT(authorityContract.inputDurability() == query::Durability::Low);
   ZC_EXPECT(readinessContract.inputDurability() == query::Durability::Low);
-  ZC_EXPECT(ActiveDefinitionAuthorityInput::domain() ==
-            "zom.query.active-definition-authority.v1"_zc);
+  ZC_EXPECT(ActiveDefinitionAuthorityInput::domain() == "zom.query.active-definition-authority"_zc);
   ZC_EXPECT(ActiveDefinitionAuthorityReadyInput::domain() ==
-            "zom.query.active-definition-authority-ready.v1"_zc);
+            "zom.query.active-definition-authority-ready"_zc);
 }
 
 ZC_TEST("Active definition authority projection is canonical and fingerprinted") {
@@ -156,7 +155,7 @@ ZC_TEST("Active definition authority projection is canonical and fingerprinted")
   ZC_EXPECT(ZC_REQUIRE_NONNULL(second).records().size() == 2);
   ZC_EXPECT(ZC_REQUIRE_NONNULL(first).fingerprint() == ZC_REQUIRE_NONNULL(second).fingerprint());
   ZC_EXPECT(zc::encodeHex(ZC_REQUIRE_NONNULL(first).fingerprint().bytes()) ==
-            "947428334e1596fcc6203d5c703f5aa51a95de691384548bc812e648120bb115"_zc);
+            "0501041a765437e465fd342302b3d81d8924f660f24676a1a4140faf2af0029b"_zc);
 
   zc::Vector<ActiveDefinitionAuthorityRecord> changedRecords;
   changedRecords.add(authorityRecord("Alpha"_zc));

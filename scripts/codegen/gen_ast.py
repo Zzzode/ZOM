@@ -357,7 +357,6 @@ def validate_schema(schema: dict[str, Any]) -> None:
 
 def schema_fingerprint(schema: dict[str, Any]) -> str:
     payload = {
-        "version": schema.get("version"),
         "storage": schema.get("storage", {}),
         "categories": schema.get("categories", {}),
         "variants": [
@@ -373,8 +372,8 @@ def schema_fingerprint(schema: dict[str, Any]) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
-def generated_notice(schema: dict[str, Any]) -> str:
-    return f"// Schema version: {schema.get('version', 'unknown')}\n"
+def generated_notice() -> str:
+    return "// Generated from the canonical AST schema.\n"
 
 
 def generate_node_kind_inc(schema: dict[str, Any]) -> str:
@@ -392,7 +391,7 @@ def generate_node_layout_h(schema: dict[str, Any]) -> str:
     capacity = payload_word_capacity(schema)
     lines = [
         HEADER,
-        generated_notice(schema),
+        generated_notice(),
         "#include <cstdint>",
         "",
         NAMESPACE_OPEN,
@@ -424,7 +423,7 @@ def generate_node_payload_h(schema: dict[str, Any]) -> str:
 
     lines = [
         HEADER,
-        generated_notice(schema),
+        generated_notice(),
         '#include <cstdint>',
         "",
         '#include "zomlang/compiler/ast/tree.h"',
@@ -460,7 +459,7 @@ def generate_node_payload_h(schema: dict[str, Any]) -> str:
 def generate_node_accessors_h(schema: dict[str, Any]) -> str:
     lines = [
         HEADER,
-        generated_notice(schema),
+        generated_notice(),
         '#include "zomlang/compiler/ast/generated/node-payload.h"',
         "",
         NAMESPACE_OPEN,
@@ -610,7 +609,7 @@ def payload_write_lines(schema: dict[str, Any], variant_name: str, field: dict[s
 def generate_node_factory_h(schema: dict[str, Any]) -> str:
     lines = [
         HEADER,
-        generated_notice(schema),
+        generated_notice(),
         '#include <cstdint>',
         "",
         '#include "zc/core/common.h"',
@@ -651,10 +650,9 @@ def generate_node_factory_h(schema: dict[str, Any]) -> str:
 
 def generate_node_schema_h(schema: dict[str, Any]) -> str:
     fingerprint = schema_fingerprint(schema)
-    version = str(schema.get("version", "unknown"))
     lines = [
         HEADER,
-        generated_notice(schema),
+        generated_notice(),
         '#include <cstdint>',
         "",
         '#include "zomlang/compiler/ast/kinds.h"',
@@ -702,7 +700,6 @@ def generate_node_schema_h(schema: dict[str, Any]) -> str:
         "};",
         "",
         "constexpr uint8_t kNodeSchemaNoWord = 0xff;",
-        f'constexpr const char* kAstSchemaVersion = "{version}";',
         f'constexpr const char* kAstSchemaFingerprint = "{fingerprint}";',
         f"constexpr uint32_t kAstSchemaVariantCount = {len(variants(schema))};",
         "",

@@ -311,7 +311,7 @@ contained by that node. `sourceLocFor` converts only a same-source, in-bounds
 span start back to the admitted parser buffer.
 
 `ParsedModuleReceipt` is SHA-256 over
-`ASCII("zom.parsed-module.v0")`, one zero byte, the expanded `SourceFileKey`,
+`ASCII("zom.parsed-module")`, one zero byte, the expanded `SourceFileKey`,
 exact source content digest, byte length, parser schema digest, and deterministic
 AST schema dump bytes. Every fixed-width integer uses unsigned big-endian
 encoding. Digests contribute their 32 raw bytes, the expanded `SourceFileKey`
@@ -321,12 +321,12 @@ verifies every node belongs to this tree and every valid half-open node range is
 bounded by the same source snapshot. No caller can pair an arbitrary tree with
 a source ID or promote a different tree under a retained receipt. Retained token
 records are derived from the same immutable source by the successful parser
-capability and are not an additional field in the `v0` receipt preimage.
+capability and are not an additional field in the canonical receipt preimage.
 
 The independent receipt oracle uses expanded source-file bytes `a1`, content
 digest as 32 bytes of `22`, byte length `3`, parser-schema digest as 32 bytes of
 `33`, and AST schema dump bytes `xyz`. Its complete 105-byte preimage is
-`7a6f6d2e7061727365642d6d6f64756c652e763000a1222222222222222222222222222222222222222222222222222222222222222200000000000000033333333333333333333333333333333333333333333333333333333333333333000000000000000378797a`
+`7a6f6d2e7061727365642d6d6f64756c6500a1222222222222222222222222222222222222222222222222222222222222222200000000000000033333333333333333333333333333333333333333333333333333333333333333000000000000000378797a`
 and its SHA-256 is
 `7a4ab18a31387244311bd2a1b1472350536140c89532ce64240d7670d5a20b8e`.
 Changing component framing, omitting the dump length, or hashing a local
@@ -646,7 +646,7 @@ encode as `0x01`; any other value is invalid rather than an extension point.
 `ModuleResolutionEnvironmentFingerprint` is SHA-256 over this exact stream:
 
 ```text
-ASCII("zom.module-resolution-environment.v0")
+ASCII("zom.module-resolution-environment")
 0x00
 Encode(searchRoots)
 Encode(sourceSnapshots)
@@ -659,7 +659,7 @@ Encode(pathPolicy)
 `Encode` is the RFC 0011 canonical encoder. The independent framing oracle
 supplies already-canonical one-byte field encodings `a1`, `b2`, `c3`, `d4`,
 `e5`, and `f6` in declaration order. Its complete 43-byte preimage is
-`7a6f6d2e6d6f64756c652d7265736f6c7574696f6e2d656e7669726f6e6d656e742e763000a1b2c3d4e5f6`
+`7a6f6d2e6d6f64756c652d7265736f6c7574696f6e2d656e7669726f6e6d656e7400a1b2c3d4e5f6`
 and its SHA-256 is
 `954d2eb8bf74b70c0a1fa329a098b364c0bd19ffb0de5945538d0976fbf1b8de`.
 The environment verifier reconstructs the complete record from the immutable
@@ -668,12 +668,12 @@ reordered, stale, cross-crate, or policy-mismatched field before issuing the
 brand. No resolver-defined serialization is permitted.
 
 `ModuleResolutionReceiptRevision` is SHA-256 over
-`ASCII("zom.module-resolution-receipt.v0")`, one zero byte, one byte-framed
+`ASCII("zom.module-resolution-receipt")`, one zero byte, one byte-framed
 encoded `ModuleResolutionRequestKey`, `uint64be(candidateCount)`, then each
 expanded candidate key as a byte-framed value. Issuer brands do not enter the
 stream. The independent oracle uses request bytes `a1` and candidates `b2` and
 `c3`. Its complete 68-byte preimage is
-`7a6f6d2e6d6f64756c652d7265736f6c7574696f6e2d726563656970742e7630000000000000000001a100000000000000020000000000000001b20000000000000001c3`
+`7a6f6d2e6d6f64756c652d7265736f6c7574696f6e2d72656365697074000000000000000001a100000000000000020000000000000001b20000000000000001c3`
 and its SHA-256 is
 `aaec1ed1bb20e124f32b07b756713c6624644665984f7582d433f562903534ba`.
 `ModuleGraphVerifier` requires every receipt issuer and environment revision to
@@ -724,7 +724,7 @@ membership checks apply before graph revision or SCC construction.
 `ModuleGraphRevision` is SHA-256 over this exact stream:
 
 ```text
-ASCII("zom.module-dependency-graph.v0")
+ASCII("zom.module-dependency-graph")
 0x00
 SemanticContextFingerprint
 uint64be(moduleCount)
@@ -740,7 +740,7 @@ for each edge sorted by encoded ModuleDependencyEdgeKey bytes:
 The independent framing oracle uses a zero context fingerprint, one expanded
 module key `a1`, and one already-encoded edge key `b2`. Its complete 97-byte
 preimage is
-`7a6f6d2e6d6f64756c652d646570656e64656e63792d67726170682e763000000000000000000000000000000000000000000000000000000000000000000000000000000000010000000000000001a100000000000000010000000000000001b2`
+`7a6f6d2e6d6f64756c652d646570656e64656e63792d677261706800000000000000000000000000000000000000000000000000000000000000000000000000000000010000000000000001a100000000000000010000000000000001b2`
 and its SHA-256 is
 `179943234aaad49c3936cba28a8c49e085706baa8c99b0c93d9a55b720ce6678`.
 `ModuleGraphVerifier` recomputes this revision before publication. Every
@@ -827,7 +827,7 @@ spelling or source location.
 `ExportSurfaceRevision` is a 32-byte SHA-256 digest over:
 
 ```text
-ASCII("zom.binding-export-surface.v0")
+ASCII("zom.binding-export-surface")
 0x00
 SemanticContextFingerprint
 Encode(expanded source ModuleKey)
@@ -847,7 +847,7 @@ The independent framing oracle supplies already-canonical component bytes to
 separate revision framing from RFC 0011 key encoding: context fingerprint is 32
 zero bytes, expanded module bytes are `a1`, expanded package bytes are `b2`, and
 both maps are empty (`uint64be(0)`). The complete 80-byte preimage is
-`7a6f6d2e62696e64696e672d6578706f72742d737572666163652e7630000000000000000000000000000000000000000000000000000000000000000000a1b200000000000000000000000000000000`
+`7a6f6d2e62696e64696e672d6578706f72742d73757266616365000000000000000000000000000000000000000000000000000000000000000000a1b200000000000000000000000000000000`
 and its SHA-256 is
 `54283a8bbfd0e89237271ac1162646118a16bbb59b776c011ce69c2bf30a5ed0`.
 Implementation tests also compose the framing function with RFC 0011's full
@@ -1026,7 +1026,7 @@ labels, and implicit loop targets; reverse source registration and worker-count
 permutations must reproduce byte-identical output.
 
 The allocation dump encodes the domain
-`ASCII("zom.binding-allocation-dump.v0")`, one zero byte, one RFC 0011 sequence
+`ASCII("zom.binding-allocation-dump")`, one zero byte, one RFC 0011 sequence
 of scope-record byte strings, then one sequence of label-record byte strings.
 Scope records sort by expanded module key then unsigned index and encode
 expanded module key, `uint32be(index)`, optional parent index, `ScopeOwner`,

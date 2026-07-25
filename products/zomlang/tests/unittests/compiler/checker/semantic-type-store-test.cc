@@ -161,7 +161,7 @@ ZC_TEST("SemanticTypeStore.StablePrimitiveIdentity") {
   ZC_EXPECT(found.data().tag() == semantic::TypeDataTag::Primitive);
   ZC_EXPECT(found.data().get<semantic::PrimitiveTypeData>().kind == semantic::PrimitiveKind::I32);
   ZC_EXPECT(zc::encodeHex(found.key().bytes()) ==
-            "7a6f6d2e73656d616e7469632d747970652d6b65792e7631000103"_zc);
+            "7a6f6d2e73656d616e7469632d747970652d6b6579000103"_zc);
   ZC_EXPECT(fixture.store->size() == 1);
 }
 
@@ -271,7 +271,7 @@ ZC_TEST("SemanticTypeStore.RetainsStableLookupReferencesDuringGrowth") {
   }
 
   ZC_EXPECT(zc::encodeHex(found.key().bytes()) ==
-            "7a6f6d2e73656d616e7469632d747970652d6b65792e7631000103"_zc);
+            "7a6f6d2e73656d616e7469632d747970652d6b6579000103"_zc);
   ZC_EXPECT(fixture.store->size() == 257);
 }
 

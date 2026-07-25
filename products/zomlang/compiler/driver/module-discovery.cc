@@ -159,7 +159,7 @@ zc::Maybe<zc::Vector<identity::ModulePathSegment>> normalizeModulePath(const ast
 
 zc::String encodeStructuralRequestKey(const StructuralModuleDependencyRequest& request) {
   identity::CanonicalEncoder encoder;
-  encoder.encodeByteString(zc::StringPtr("zom.structural-module-dependency-request.v0").asBytes());
+  encoder.encodeByteString(zc::StringPtr("zom.structural-module-dependency-request").asBytes());
   encoder.encodeUint8(static_cast<uint8_t>(request.kind()));
   encoder.encodeSequenceSize(request.normalizedPath().size());
   for (const auto& segment : request.normalizedPath()) { segment.encode(encoder); }

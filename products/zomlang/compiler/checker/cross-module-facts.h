@@ -34,7 +34,7 @@ private:
   identity::Sha256Digest value;
 };
 
-/// \brief Domain-separated revision of one RFC 0015 v1 frozen coherence view.
+/// \brief Domain-separated revision of one RFC 0015 frozen coherence view.
 class CoherenceViewRevision final {
 public:
   ZC_NODISCARD const identity::Sha256Digest& digest() const noexcept;

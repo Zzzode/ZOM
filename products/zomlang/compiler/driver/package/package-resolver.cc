@@ -26,8 +26,11 @@ zc::Array<uint8_t> coordinateBytes(zc::MemoryResource& resource,
   identity::CanonicalEncoder encoder(resource);
   base.source().encode(encoder);
   auto name = identity::PackageName::fromCanonical(resource, base.name());
-  ZC_IF_SOME(value, name) { value.encode(encoder); }
-  else { ZC_UNREACHABLE }
+  ZC_IF_SOME(value, name) {
+    value.encode(encoder);
+  } else {
+    ZC_UNREACHABLE
+  }
   return encoder.finish();
 }
 
@@ -314,8 +317,11 @@ zc::Array<uint8_t> releaseLookupBytes(zc::MemoryResource& resource,
   identity::CanonicalEncoder encoder(resource);
   release.acceptedSource().encode(encoder);
   auto name = identity::PackageName::fromCanonical(resource, release.base().name());
-  ZC_IF_SOME(value, name) { value.encode(encoder); }
-  else { ZC_UNREACHABLE }
+  ZC_IF_SOME(value, name) {
+    value.encode(encoder);
+  } else {
+    ZC_UNREACHABLE
+  }
   return encoder.finish();
 }
 
@@ -324,8 +330,11 @@ zc::Array<uint8_t> requirementLookupBytes(zc::MemoryResource& resource,
   identity::CanonicalEncoder encoder(resource);
   requirement.source().encode(encoder);
   auto name = identity::PackageName::fromCanonical(resource, requirement.requiredPackage());
-  ZC_IF_SOME(value, name) { value.encode(encoder); }
-  else { ZC_UNREACHABLE }
+  ZC_IF_SOME(value, name) {
+    value.encode(encoder);
+  } else {
+    ZC_UNREACHABLE
+  }
   return encoder.finish();
 }
 
@@ -417,7 +426,7 @@ PackageResolverFailure failure(zc::MemoryResource& resource, ResolverIssue issue
 
 identity::Sha256Digest incompatibilityId(zc::ArrayPtr<const uint8_t> record) {
   identity::Sha256Hasher hasher;
-  if (!hasher.update("zom.incompatibility.v0"_zc.asBytes())) { ZC_UNREACHABLE }
+  if (!hasher.update("zom.incompatibility"_zc.asBytes())) { ZC_UNREACHABLE }
   const uint8_t separator = 0;
   if (!hasher.update(zc::arrayPtr(separator)) || !hasher.update(record)) { ZC_UNREACHABLE }
   auto digest = hasher.finish();
@@ -554,8 +563,7 @@ AnalysisResult analyze(zc::MemoryResource& resource, zc::ArrayPtr<const Resolver
   ZC_IF_SOME(value, previous) {
     analysis = zc::mv(value);
     previous = zc::none;
-  }
-  else {
+  } else {
     for (const auto& root : roots) {
       const auto coordinate = coordinateBytes(resource, root.base());
       const size_t selectionIndex = findSelection(selections, coordinate);
@@ -1036,7 +1044,7 @@ ResolverRelease ResolverRelease::fromRegistry(const VerifiedRegistryReleaseRecor
               identity::CanonicalPackageSource::registry(release.registry().clone()),
               zc::mv(nameValue), zc::mv(versionValue)),
           release.manifest().clone(), release.manifestDigest(), release.sourceTreeDigest(),
-          ArchiveFormat::TarZstdV1, release.archiveDigest(),
+          ArchiveFormat::TarZstd, release.archiveDigest(),
           SigningKeyId::fromDigest(release.signingKey().digest()), release.yanked());
     }
   }
@@ -1054,7 +1062,7 @@ ResolverRelease ResolverRelease::fromRegistry(zc::MemoryResource& resource,
               identity::CanonicalPackageSource::registry(release.registry().clone(resource)),
               zc::mv(nameValue), zc::mv(versionValue)),
           release.manifest().clone(resource), release.manifestDigest(), release.sourceTreeDigest(),
-          ArchiveFormat::TarZstdV1, release.archiveDigest(),
+          ArchiveFormat::TarZstd, release.archiveDigest(),
           SigningKeyId::fromDigest(release.signingKey().digest()), release.yanked());
     }
   }
@@ -1292,8 +1300,9 @@ void PackageResolverFailure::encode(identity::CanonicalEncoder& encoder) const {
   ZC_IF_SOME(graph, graphValue) {
     encoder.encodeSome();
     graph.encode(encoder);
+  } else {
+    encoder.encodeNone();
   }
-  else { encoder.encodeNone(); }
 }
 zc::Array<uint8_t> PackageResolverFailure::encode() const {
   identity::CanonicalEncoder encoder;
@@ -1354,7 +1363,7 @@ zc::Maybe<ResolvedPackageRecord> ResolvedPackageRecord::from(
   identity::CanonicalEncoder manifestEncoder(resource);
   manifest.encode(manifestEncoder);
   const auto manifestBytes = manifestEncoder.finish();
-  if (!hasher.update("zom.normalized-manifest.v0"_zc.asBytes()) ||
+  if (!hasher.update("zom.normalized-manifest"_zc.asBytes()) ||
       !hasher.update(zc::arrayPtr(separator)) || !hasher.update(manifestBytes.asPtr())) {
     return zc::none;
   }
@@ -1388,7 +1397,7 @@ zc::Maybe<ResolvedPackageRecord> ResolvedPackageRecord::from(
   identity::Sha256Hasher hasher;
   const uint8_t separator = 0;
   const auto manifestBytes = manifest.encode();
-  if (!hasher.update("zom.normalized-manifest.v0"_zc.asBytes()) ||
+  if (!hasher.update("zom.normalized-manifest"_zc.asBytes()) ||
       !hasher.update(zc::arrayPtr(separator)) || !hasher.update(manifestBytes.asPtr())) {
     return zc::none;
   }
@@ -1448,8 +1457,9 @@ void ResolvedPackageRecord::encode(identity::CanonicalEncoder& encoder) const {
   ZC_IF_SOME(target, libraryTargetValue) {
     encoder.encodeSome();
     target.encode(encoder);
+  } else {
+    encoder.encodeNone();
   }
-  else { encoder.encodeNone(); }
 }
 
 ResolvedFeatureSet::ResolvedFeatureSet(identity::PackageBaseKey&& base,
@@ -1611,7 +1621,7 @@ zc::ArrayPtr<const ResolvedFeatureSet> ResolutionOutput::featureSets() const noe
 }
 const VerifiedLockGraph& ResolutionOutput::lockGraph() const noexcept { return lockGraphValue; }
 void ResolutionOutput::encode(identity::CanonicalEncoder& encoder) const {
-  for (uint8_t value : "zom.resolution-output.v0"_zc.asBytes()) { encoder.encodeUint8(value); }
+  for (uint8_t value : "zom.resolution-output"_zc.asBytes()) { encoder.encodeUint8(value); }
   encoder.encodeUint8(0);
   encoder.encodeSequenceSize(packageValues.size());
   for (const auto& package : packageValues) { package.encode(encoder); }

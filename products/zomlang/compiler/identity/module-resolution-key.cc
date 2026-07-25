@@ -121,7 +121,7 @@ zc::Maybe<ModuleCatalogPathBucketKey> ModuleCatalogPathBucketKey::from(
 
 zc::Maybe<ModuleCatalogPathBucketKey> ModuleCatalogPathBucketKey::decodeCanonical(
     zc::ArrayPtr<const uint8_t> bytes) {
-  constexpr auto domain = "zom.module-catalog-path-bucket.v0"_zc;
+  constexpr auto domain = "zom.module-catalog-path-bucket"_zc;
   if (bytes.size() > kMaximumModuleResolutionKeyBytes || !hasDomain(bytes, domain)) {
     return zc::none;
   }
@@ -164,7 +164,7 @@ zc::Array<uint8_t> ModuleCatalogPathBucketKey::encode() const {
   record.encodeSequenceSize(pathValue.size());
   for (const auto& segment : pathValue) { segment.encode(record); }
 
-  constexpr auto domain = "zom.module-catalog-path-bucket.v0"_zc;
+  constexpr auto domain = "zom.module-catalog-path-bucket"_zc;
   const auto recordBytes = record.finish();
   return domainSeparated(domain, recordBytes.asPtr());
 }
@@ -333,7 +333,7 @@ zc::Maybe<ModuleResolutionPolicyKey> ModuleResolutionPolicyKey::from(
 
 zc::Maybe<ModuleResolutionPolicyKey> ModuleResolutionPolicyKey::decodeCanonical(
     zc::ArrayPtr<const uint8_t> bytes) {
-  constexpr auto domain = "zom.module-resolution-policy.v0"_zc;
+  constexpr auto domain = "zom.module-resolution-policy"_zc;
   if (bytes.size() > kMaximumPolicyBytes || !hasDomain(bytes, domain)) { return zc::none; }
   CanonicalDecoder decoder(bytes.slice(domain.size() + 1, bytes.size()));
   auto unicode = decoder.decodeUint8();
@@ -403,7 +403,7 @@ ModuleCandidateSelectionPolicy ModuleResolutionPolicyKey::candidateSelection() c
 }
 
 zc::Array<uint8_t> ModuleResolutionPolicyKey::encode() const {
-  constexpr auto domain = "zom.module-resolution-policy.v0"_zc;
+  constexpr auto domain = "zom.module-resolution-policy"_zc;
   zc::Vector<uint8_t> record(8);
   record.add(static_cast<uint8_t>(unicodeNormalizationValue));
   record.add(static_cast<uint8_t>(caseComparisonValue));
@@ -458,7 +458,7 @@ zc::Maybe<ModuleResolutionKey> ModuleResolutionKey::from(
 
 zc::Maybe<ModuleResolutionKey> ModuleResolutionKey::decodeCanonical(
     zc::ArrayPtr<const uint8_t> bytes) {
-  constexpr auto domain = "zom.module-resolution.v0"_zc;
+  constexpr auto domain = "zom.module-resolution"_zc;
   if (bytes.size() > kMaximumModuleResolutionKeyBytes || !hasDomain(bytes, domain)) {
     return zc::none;
   }
@@ -567,7 +567,7 @@ zc::Array<uint8_t> ModuleResolutionKey::encode() const {
   const auto policyBytes = policyValue.encode();
   record.encodeByteString(policyBytes.asPtr());
 
-  constexpr auto domain = "zom.module-resolution.v0"_zc;
+  constexpr auto domain = "zom.module-resolution"_zc;
   const auto recordBytes = record.finish();
   return domainSeparated(domain, recordBytes.asPtr());
 }

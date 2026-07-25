@@ -86,6 +86,8 @@ or drift repair when the intended contract is already written.
 - [ ] `Open Questions` is `None` before acceptance, unless each item is marked
       non-blocking and assigned to follow-up tracking.
 - [ ] The RFC does not add compatibility shims or unused placeholders.
+- [ ] Internal types, canonical domains, schemas, fixtures, and generated
+      artifacts use unversioned names and define only the current contract.
 
 ## Status Changes
 

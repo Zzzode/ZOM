@@ -67,7 +67,7 @@ package/target/options/build-output/source keys, normative tag and field order,
 fixed codec vectors, selected-versus-rejected module records, an exhaustive
 declaration producer matrix, anonymous definition names, typed
 `IdentityInvariant` facts mapped to `ZOM9910-ZOM9921`, and a byte-exact
-versioned identity dump. The RFC now requires a schema-and-live-producer
+canonical identity dump. The RFC now requires a schema-and-live-producer
 architecture gate during implementation; that script does not exist yet and is
 not recorded as current evidence. Cross-RFC and normative-document alignment
 remain required before re-review.
@@ -388,7 +388,7 @@ kind, API-site, structural-key, optional validated range, and traversal-ordinal
 fields. Sorting and adjacent diagnostic grouping follow the RFC order. The
 registered fatal diagnostics `ZOM9910` through `ZOM9921` live in
 `diagnostics-identity.def`; the adapter emits their occurrence counts without
-inventing a source location. The exact `zom.identity.v0` dump grammar is
+inventing a source location. The exact `zom.identity` dump grammar is
 implemented with canonical key order, all six always-present sections,
 lowercase hex, and one final LF. The sanitizer build, format, RFC, and diff gates
 pass, all 70 unit targets pass, and the exact-current-byte default sanitizer
@@ -500,15 +500,13 @@ evidence rather than the implementation narrative:
 | 9-14, 25-27, 34 | `definition-inventory-test`, `compiler-session-test`, `compiler-session-package-test`, `definition-key-test`, and both architecture gates prove source-before-module freezing, the complete global module registry, exhaustive live definition producers, structural definition and impl ancestry, re-export identity, and the exact package, crate, source, module, definition, impl schedule. |
 | 15-16, 21, 28, 31, 35 | `canonical-encoder-test`, `canonical-values-test`, `semantic-context-fingerprint-test`, `identity-dump-test`, and `identity-invariant-test` prove fixed encodings and hashes, canonical ordering, explicit traversal ordinals, registered fatal diagnostics, deterministic dumps, and exact line grammar. |
 | 20 | Same-slot and same-name tests in `handle-test`, `frozen-registry-test`, `package-key-test`, `crate-key-test`, and `definition-key-test` cover distinct contexts, packages, targets, modules, definitions, and impls. |
-| 22 | `check-identity-architecture.py --check` and all ten negative fixtures prove that `SymbolId`, the old type identity, pointer-derived identity, compatibility aliases, and their allowlist entries are absent. |
+| 22 | `check-identity-architecture.py --check` and all ten negative fixtures prove that identity construction uses only the canonical key and registry contracts. |
 | 23 | The sanitizer build passes; all 102 unit targets pass; the final default matrix passes 1,238/1,238 in 707.45 seconds; RFC, format, diff, compiler-session, IR diagnostic, identity, vendored-dependency, and repository hygiene gates pass. |
 | 29-30 | `canonical-scalar-test`, `canonical-url-test`, `unicode-normalization-test`, and the pinned Unicode generator checks prove every scalar domain, duplicate and normalization policy, and the closed credential-free URL model. |
 | 32 | `semantic-type-store-test`, `semantic-type-canonicalization-test`, type-environment, checker, borrow, dispatch, and IR tests prove one session-owned store and context-branded `SemanticTypeId` use across all consumers. |
 
-The deletion audit also confirms that `symbol-id.h`, `symbol-id-test.cc`,
-`type-interner.h`, `type-interner.cc`, and `type-interner-test.cc` are deleted;
-all three identity allowlists are empty; and no old compatibility entry point
-remains. Constructor, destructor, and keyword-named method regressions prove
+The architecture audit confirms that all three identity allowlists are empty.
+Constructor, destructor, and keyword-named method regressions prove
 that every parser-admitted declared name can construct a canonical definition
 key. Materialization failures now use the registered package diagnostic path,
 and explicit snapshot completion leaves neither corpus-local nor system staging

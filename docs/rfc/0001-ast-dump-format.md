@@ -144,7 +144,6 @@ prints deterministic JSON using node names and schema field names:
 ```json
 {
   "format": "zom.ast.json",
-  "schema": "2.0",
   "fingerprint": "ab1d550bd82aa7653f886bf156e2057a2c15b1a67549935ecada558b32f36032",
   "root": 17,
   "nodes": [
@@ -204,7 +203,6 @@ from `products/zomlang/compiler/ast/schema.yml`.
 
 `generated/node-schema.h` must expose enough metadata for generic dumping:
 
-- schema version
 - schema fingerprint
 - node kind
 - node name
@@ -280,7 +278,6 @@ JSON format is a single object with this top-level shape:
 ```json
 {
   "format": "zom.ast.json",
-  "schema": "2.0",
   "fingerprint": "...",
   "root": 1,
   "nodes": []

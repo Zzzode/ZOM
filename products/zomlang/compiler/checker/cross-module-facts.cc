@@ -99,7 +99,7 @@ zc::Maybe<ImportedSignatureViewRevision> ImportedSignatureViewRevision::computeF
     zc::ArrayPtr<const zc::ArrayPtr<const uint8_t>> moduleRecords) {
   if (expandedRequesterModule.size() == 0) { return zc::none; }
   zc::Vector<uint8_t> preimage;
-  appendDomain(preimage, "zom.imported-signature-view.v0"_zc);
+  appendDomain(preimage, "zom.imported-signature-view"_zc);
   append(preimage, contextFingerprint.bytes());
   appendByteString(preimage, expandedRequesterModule);
   if (!appendSortedRecords(preimage, moduleRecords)) { return zc::none; }
@@ -121,7 +121,7 @@ zc::Maybe<CoherenceViewRevision> CoherenceViewRevision::computeFramed(
     zc::ArrayPtr<const zc::ArrayPtr<const uint8_t>> implHeadRecords,
     zc::ArrayPtr<const zc::ArrayPtr<const uint8_t>> markerFactRecords) {
   zc::Vector<uint8_t> preimage;
-  appendDomain(preimage, "zom.coherence-view.v1"_zc);
+  appendDomain(preimage, "zom.coherence-view"_zc);
   append(preimage, contextFingerprint.bytes());
   append(preimage, markerPolicyRegistryRevision.bytes());
   if (!appendSortedRecords(preimage, moduleInterfaceRevisionRecords) ||

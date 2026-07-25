@@ -121,7 +121,7 @@ private:
 /// \brief Encodes the exact unframed RFC 0015 operator record.
 ZC_NODISCARD zc::Maybe<zc::Array<uint8_t>> encodeOperatorKind(const OperatorKind& value);
 
-/// \brief Encodes the independent `zom.checker-operator-kind.v0` oracle envelope.
+/// \brief Encodes the independent `zom.checker-operator-kind` oracle envelope.
 ZC_NODISCARD zc::Maybe<zc::Array<uint8_t>> encodeOperatorKindOracle(const OperatorKind& value);
 
 /// \brief Returns the deterministic source spelling for a validated operator.

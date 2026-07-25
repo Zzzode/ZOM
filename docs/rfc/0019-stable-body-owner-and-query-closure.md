@@ -71,7 +71,7 @@ freeze around the narrower key.
   family that preserves RFC 0017 red-green and materialization boundaries.
 - Define deterministic syntax roots for module and definition owners under the
   existing one-selected-source-per-module admission contract.
-- Close the corresponding scope, closure, diagnostic, verifier, schema-version,
+- Close the corresponding scope, closure, diagnostic, verifier, schema,
   and rollout contracts without a compatibility path.
 
 ## Non-Goals
@@ -377,7 +377,7 @@ OwnerLocalBindingKey {
 Its canonical bytes are exactly:
 
 ```text
-ASCII("zom.owner-local-binding.v1")
+ASCII("zom.owner-local-binding")
 || 0x00
 || Encode(owner)
 || Encode(definingPath)
@@ -399,7 +399,7 @@ AnonymousOwnerLocalKey {
 Its canonical bytes are exactly:
 
 ```text
-ASCII("zom.anonymous-owner-local.v1")
+ASCII("zom.anonymous-owner-local")
 || 0x00
 || Encode(owner)
 || Encode(syntaxPath)
@@ -428,9 +428,8 @@ forbidden as public query keys. Labels and control targets use the same
 whose path resolves outside its owner, to a different syntax kind, or through
 a stable item boundary is invalid.
 
-The ASCII domains and `v1` schema are mandatory. A decoder for these record
-types accepts no domain or version other than the bytes above. There is no
-definition-only decoder branch.
+The ASCII domains and canonical schema are mandatory. A decoder for these
+record types accepts only the domains and bytes above.
 
 ### Anonymous callable subordinate identity
 
@@ -506,8 +505,8 @@ SelectedModuleSource(ModuleKey) -> SourceFileKey | deterministic absence
 ```
 
 `SelectedModuleSource` has query domain
-`zom.query.selected-module-source.v1`, key schema `1`, value schema `1`,
-`Semantic` reuse, `Low` input durability, retained/pinned equality state, no
+`zom.query.selected-module-source`, `Semantic` reuse, `Low` input durability,
+retained/pinned equality state, no
 provider, no cycle policy, and constant cost. Equality is complete canonical
 `SourceFileKey` equality or the exact absence alternative. The verified module
 graph staging transaction publishes it atomically with `ActiveModules`,
@@ -524,16 +523,16 @@ actual provider and verifier reads; it is not a declared durability level.
 `Reject` means a same-thread or cross-thread query cycle is a runtime failure
 with no memo publication.
 
-| Query | Domain; key/value schema | Reuse; input durability | Equality | Complete tracked dependencies | Verifier | Retention; cycle; cost |
+| Query | Domain | Reuse; input durability | Equality | Complete tracked dependencies | Verifier | Retention; cycle; cost |
 |---|---|---|---|---|---|---|
-| `ModuleBodySyntax(ModuleKey)` | `zom.query.module-body-syntax.v1`; `1/1` | `Semantic`; Computed | complete detached tree and boundary records | `SelectedModuleSource(m)`; on value `s`, exactly `ParseSource(s)`, `NamedDefinitionInventory(m)`, `NamedImplementationInventory(m)`, and their current site projections | independently rebuilds selected-source cardinality, pruned syntax, boundary census, and canonical child order | evictable bounded LRU; Reject; linear in selected source syntax |
-| `ModuleBodyProvenance(ModuleKey)` | `zom.query.module-body-provenance.v1`; `1/1` | `RevisionLocal`; Computed | exact current path-to-source/node/range map; never backdated | `SelectedModuleSource(m)`, `ParseSource(s)`, `ModuleBodySyntax(m)`, and current definition/implementation site projections | independently reconstructs total current path coverage and rejects stale, extra, duplicate, or boundary-crossing maps | evictable; Reject; linear in module-owner syntax |
-| `OwnerBodySyntax(StableBodyOwnerKey)` | `zom.query.owner-body-syntax.v1`; `1/1` | `Semantic`; Computed | complete owner, owning module, pruned detached tree, and boundary records | module alternative: only `ModuleBodySyntax(m)`; definition alternative: only `NamedItemSyntax(d)` after its RFC 0019 boundary-schema replacement | independently validates owner admission, closed executable root, owning module, pruning, paths, and boundary census | evictable bounded LRU; Reject; linear in owner syntax |
-| `OwnerBodyProvenance(StableBodyOwnerKey)` | `zom.query.owner-body-provenance.v1`; `1/1` | `RevisionLocal`; Computed | exact current legal-path map; never backdated | module alternative: `OwnerBodySyntax(owner)` and `ModuleBodyProvenance(m)`; definition alternative: `OwnerBodySyntax(owner)` and `NamedItemProvenance(d)` | filters against the pruned owner tree and rejects missing or extra paths, foreign nodes, and every mapping at or below `StableItemBoundary` | evictable; Reject; linear in owner syntax |
-| `ModuleBodyOwners(ModuleKey)` | `zom.query.module-body-owners.v1`; `1/1` | `Semantic`; Computed | complete canonical owner sequence | `NamedDefinitionInventory(m)` followed by one canonical parallel dependency group of `NamedItemSyntax(d)` for every active definition in that inventory | independently derives the executable-root subset and canonical owner order | retained/pinned; Reject; linear in named inventory |
-| `BindOwnerBody(StableBodyOwnerKey)` | `zom.query.bind-owner-body.v1`; `1/1` | `Semantic`; Computed | generated complete fact equality | `OwnerBodySyntax(owner)`, `BindModuleSkeleton(owningModule)`, and only the exact stable scope/name/import projections demanded through `QueryContext` | independent scope, activation, resolution, control, closure, capture, ordering, and aggregate fact reconstruction | evictable bounded LRU; Reject; expensive linear body analysis |
-| `MaterializeOwnerBody(StableBodyOwnerKey)` | `zom.query.materialize-owner-body.v1`; `1/1` | `RevisionLocal`; Computed | exact current handles and provenance; never backdated | exactly `BindOwnerBody(owner)`, `OwnerBodyProvenance(owner)`, and active-handle materializers for stable keys present in that body result | checks total one-to-one handle/provenance materialization and forbids semantic handles in memoized semantic facts | evictable; Reject; linear in published body facts |
-| `ClosureEnvironmentMap(StableBodyOwnerKey)` | `zom.query.closure-environment-map.v1`; `1/1` | `Semantic`; Computed | complete canonical closure-key/capture sequence | only `BindOwnerBody(owner)` | independent total projection and canonical ordering check | retained/pinned; Reject; linear in closure facts |
+| `ModuleBodySyntax(ModuleKey)` | `zom.query.module-body-syntax` | `Semantic`; Computed | complete detached tree and boundary records | `SelectedModuleSource(m)`; on value `s`, exactly `ParseSource(s)`, `NamedDefinitionInventory(m)`, `NamedImplementationInventory(m)`, and their current site projections | independently rebuilds selected-source cardinality, pruned syntax, boundary census, and canonical child order | evictable bounded LRU; Reject; linear in selected source syntax |
+| `ModuleBodyProvenance(ModuleKey)` | `zom.query.module-body-provenance` | `RevisionLocal`; Computed | exact current path-to-source/node/range map; never backdated | `SelectedModuleSource(m)`, `ParseSource(s)`, `ModuleBodySyntax(m)`, and current definition/implementation site projections | independently reconstructs total current path coverage and rejects stale, extra, duplicate, or boundary-crossing maps | evictable; Reject; linear in module-owner syntax |
+| `OwnerBodySyntax(StableBodyOwnerKey)` | `zom.query.owner-body-syntax` | `Semantic`; Computed | complete owner, owning module, pruned detached tree, and boundary records | module alternative: only `ModuleBodySyntax(m)`; definition alternative: only `NamedItemSyntax(d)` after its RFC 0019 boundary-schema replacement | independently validates owner admission, closed executable root, owning module, pruning, paths, and boundary census | evictable bounded LRU; Reject; linear in owner syntax |
+| `OwnerBodyProvenance(StableBodyOwnerKey)` | `zom.query.owner-body-provenance` | `RevisionLocal`; Computed | exact current legal-path map; never backdated | module alternative: `OwnerBodySyntax(owner)` and `ModuleBodyProvenance(m)`; definition alternative: `OwnerBodySyntax(owner)` and `NamedItemProvenance(d)` | filters against the pruned owner tree and rejects missing or extra paths, foreign nodes, and every mapping at or below `StableItemBoundary` | evictable; Reject; linear in owner syntax |
+| `ModuleBodyOwners(ModuleKey)` | `zom.query.module-body-owners` | `Semantic`; Computed | complete canonical owner sequence | `NamedDefinitionInventory(m)` followed by one canonical parallel dependency group of `NamedItemSyntax(d)` for every active definition in that inventory | independently derives the executable-root subset and canonical owner order | retained/pinned; Reject; linear in named inventory |
+| `BindOwnerBody(StableBodyOwnerKey)` | `zom.query.bind-owner-body` | `Semantic`; Computed | generated complete fact equality | `OwnerBodySyntax(owner)`, `BindModuleSkeleton(owningModule)`, and only the exact stable scope/name/import projections demanded through `QueryContext` | independent scope, activation, resolution, control, closure, capture, ordering, and aggregate fact reconstruction | evictable bounded LRU; Reject; expensive linear body analysis |
+| `MaterializeOwnerBody(StableBodyOwnerKey)` | `zom.query.materialize-owner-body` | `RevisionLocal`; Computed | exact current handles and provenance; never backdated | exactly `BindOwnerBody(owner)`, `OwnerBodyProvenance(owner)`, and active-handle materializers for stable keys present in that body result | checks total one-to-one handle/provenance materialization and forbids semantic handles in memoized semantic facts | evictable; Reject; linear in published body facts |
+| `ClosureEnvironmentMap(StableBodyOwnerKey)` | `zom.query.closure-environment-map` | `Semantic`; Computed | complete canonical closure-key/capture sequence | only `BindOwnerBody(owner)` | independent total projection and canonical ordering check | retained/pinned; Reject; linear in closure facts |
 
 The RFC 0019 replacement schema for `NamedItemSyntax(d)` preserves the owning
 declaration root but replaces every strict descendant stable definition or
@@ -694,7 +693,7 @@ capabilities, sandboxing, or external data exposure.
 It strengthens compiler integrity. A body fact cannot claim a foreign module
 or definition, a revision-local node cannot authorize a semantic owner, and a
 path cannot cross into a separately owned stable body. Bounded canonical
-decoding rejects unknown tags, domains, versions, impossible counts, trailing
+decoding rejects unknown tags, domains, impossible counts, trailing
 bytes, and inactive keys before allocation or publication. Failed validation
 publishes no memo value, handle, diagnostic fact, or dependency record.
 
@@ -786,13 +785,9 @@ owner-local inventory; no syntax node is published in both. No alias, overload,
 feature flag, environment variable, schema fallback, or dual query
 registration remains.
 
-The canonical record domains move to the exact `v1` encodings in this RFC. The
-query registry and all semantic values containing body owners receive new
-schema revisions. Entries from any preceding in-memory catalog are not
-reused. RFC 0017 has not enabled these values for persistent storage; if a
-development cache contains an experimental entry, catalog or schema mismatch
-makes it an ordinary cache miss and the entry is eligible for pruning. There
-is no data migration and no decoder for the replaced bytes.
+The canonical record domains and codecs in this RFC directly replace their
+producers, consumers, fixtures, and oracles. Existing in-memory entries are not
+reused. RFC 0017 has not enabled these values for persistent storage.
 
 Generated canonical fixtures, Binder fact snapshots, diagnostic provenance
 fixtures, query traces, and architecture-gate inventories change in one
@@ -874,8 +869,8 @@ maintenance is introduced.
 
 - Every executable syntax node is assigned exactly one independently verified
   `StableBodyOwnerKey` by the normative selection rule.
-- Fixed canonical vectors cover both owner alternatives and both `v1`
-  owner-local record domains; an independent codec reproduces the bytes.
+- Fixed canonical vectors cover both owner alternatives and both owner-local
+  record domains; an independent codec reproduces the bytes.
 - Module-owned loop patterns, match patterns, nested block locals, labels, and
   anonymous callables publish owner-local facts without a synthetic
   `DefinitionKey`.
@@ -914,7 +909,7 @@ maintenance is introduced.
 ## Implementation Plan
 
 1. Generate `StableBodyOwnerKey`, the expanded closed
-   `OwnerLocalBindingKind`, and the two `v1` owner-local codecs; replace
+   `OwnerLocalBindingKind`, and the two owner-local codecs; replace
    definition-only local APIs and all consumers in one compiling slice.
 2. Add `ModuleBodySyntax`, the RFC 0008 selected-source admission check, stable
    item boundaries, and independent revision-local provenance construction.
@@ -955,7 +950,7 @@ maintenance is introduced.
   - cover selected-source cardinality, stale or foreign source rejection,
     module-item path roots, and current provenance;
   - mutate owner tag, owner module, owner definition, path root, selected
-    source, stable boundary, record domain, schema version, ordering,
+    source, stable boundary, record domain, ordering,
     duplicate coverage, and trailing bytes;
   - mutate anonymous parameter owner kind, namespace, nearest callable,
     parameter-list membership, receiver form, activation, target variant,

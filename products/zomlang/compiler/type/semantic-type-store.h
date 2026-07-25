@@ -43,7 +43,7 @@ public:
   /// \brief Returns the closed semantic type payload.
   ZC_NODISCARD const semantic::TypeData& data() const;
 
-  /// \brief Returns the canonical semantic type v1 key.
+  /// \brief Returns the canonical semantic type key.
   ZC_NODISCARD const semantic::SemanticTypeKey& key() const;
 
 private:

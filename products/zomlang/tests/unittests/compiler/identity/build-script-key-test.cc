@@ -49,7 +49,7 @@ CanonicalTargetSpecificationKey hostTarget() {
     auto result = CanonicalTargetSpecificationKey::from(
         scalar<TargetComponentName>("x86_64"_zc), scalar<TargetComponentName>("zom"_zc),
         scalar<TargetComponentName>("linux"_zc), scalar<TargetComponentName>("gnu"_zc),
-        scalar<TargetComponentName>("zom-v1"_zc), 64, Endianness::Little, zc::mv(featureSet));
+        scalar<TargetComponentName>("zom"_zc), 64, Endianness::Little, zc::mv(featureSet));
     ZC_IF_SOME(value, result) { return zc::mv(value); }
   }
   ZC_FAIL_REQUIRE("host target fixture was rejected");
@@ -126,7 +126,7 @@ ZC_TEST("PreparatoryBuildScriptKey canonicalizes dependencies and rejects duplic
   ZC_EXPECT(first.encode().asPtr() == second.encode().asPtr());
   ZC_EXPECT(first.producerKey().digest() == second.producerKey().digest());
   ZC_EXPECT(zc::encodeHex(first.producerKey().digest().bytes()) ==
-            "95fdf60a815f20e321ef6ed7d3dc4962744155b22128328403e44199f36f6800"_zc);
+            "3c115d43e2b2fc2e30ddd324e9164a12ad9f3e89167d770ea41c6608d1215731"_zc);
 
   auto rawDigest = sha256(first.encode());
   ZC_REQUIRE(rawDigest != zc::none);

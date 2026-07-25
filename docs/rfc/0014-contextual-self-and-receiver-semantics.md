@@ -76,7 +76,7 @@ and RFC 0013 receiver regions.
   the RFC 0007 redesign and RFC 0010.
 - Constructor overload resolution, initializer delegation, or inheritance
   ordering.
-- A compatibility mode for receiver-bearing lifecycle declarations.
+- Receiver-bearing lifecycle declarations.
 
 ## Prior Art
 
@@ -278,7 +278,7 @@ expanded interface `DefId`. A non-interface definition, foreign semantic
 context, or interface-self value outside its permitted signature context is a
 verified-fact invariant failure.
 
-The interner key domain changes to `ASCII("zom.semantic-type-key.v1")` and
+The interner key domain changes to `ASCII("zom.semantic-type-key")` and
 encodes tag `0x10` followed by the expanded interface `DefId`. Equality,
 ordering, and hashing use those bytes. Two `InterfaceSelf` values unify only
 when their interface definitions are identical. They have no implicit
@@ -286,7 +286,7 @@ coercion, cast, or normalization to a nominal type. Impl conformance first
 substitutes the matching interface's `InterfaceSelf` with the canonical
 `ImplHead.selfType`; selected-call substitution then applies the call's
 `CanonicalSubstitutionId`. No `InterfaceSelf` may reach executable HIR or MIR.
-The semantic-type v1 codec has these independent golden vectors. The nominal
+The canonical semantic-type codec has these independent golden vectors. The nominal
 and interface fixtures use the already-canonical expanded definition bytes
 `a1`; the nominal fixture has no type arguments. The final row proves recursive
 expansion of `InterfaceSelf` under a reference without inventing an unresolved
@@ -294,10 +294,10 @@ projection `TypeData` variant.
 
 | Input | Complete preimage hex | SHA-256 |
 |---|---|---|
-| `Primitive(I32)` | `7a6f6d2e73656d616e7469632d747970652d6b65792e7631000103` | `7d44a0782e137c5c320aa10b8617f6fff79be234324f0c4d6ddfd8f226e1e24e` |
-| `Nominal(a1, [])` | `7a6f6d2e73656d616e7469632d747970652d6b65792e76310008a10000000000000000` | `7a915bd1f590e12c3fe8b1223bf18683ed0c276ab3acc8b9624f5db8a8f941dc` |
-| `InterfaceSelf(a1)` | `7a6f6d2e73656d616e7469632d747970652d6b65792e76310010a1` | `5d8a126f0375fdf0d060b31911a5da72643d7b5e4707df835d815a67d5ad1dee` |
-| `Reference(Const, InterfaceSelf(a1))` | `7a6f6d2e73656d616e7469632d747970652d6b65792e7631000c0110a1` | `6c63b061e1bbaf122ce155c6b2799bcf0291899496661d42be830666c99309cf` |
+| `Primitive(I32)` | `7a6f6d2e73656d616e7469632d747970652d6b6579000103` | `edbd50f06b02d4d14baeb6b1f07fcf941d14b594724b927f96b3fae528fec5ed` |
+| `Nominal(a1, [])` | `7a6f6d2e73656d616e7469632d747970652d6b65790008a10000000000000000` | `811b765a1ed0b02f8d0758fa323a8a15ef1fe0fce006a2f56d2b3b289f4744ff` |
+| `InterfaceSelf(a1)` | `7a6f6d2e73656d616e7469632d747970652d6b65790010a1` | `0534cda2f6356c991fb390bff9f42d3abcfbdd436ec89e34c7688a76cc68def3` |
+| `Reference(Const, InterfaceSelf(a1))` | `7a6f6d2e73656d616e7469632d747970652d6b6579000c0110a1` | `6a95d8f3fdfe8908639f5ed7a009ce363998a7ed14773d7b345b1ced06c313bb` |
 
 During impl signature checking, contextual `Self` materializes as the
 canonical `ImplHead.selfType` containing the impl type-parameter `DefId` values.
@@ -348,32 +348,32 @@ invariant is replaced: a receiver callable is valid when its verified semantic
 owner is a nominal/interface `DefId`, or an `ImplOccurrenceId` whose
 independently reconstructed source header supplies one canonical impl target
 under the occurrence entry's shared `ImplId` authority. The receiver region uses
-the stage-appropriate canonical self type described above. Module-interface v2
-inherits RFC 0013 v1's complete field order and encoding, changes only the
-domain to `ASCII("zom.module-interface-revision.v2")`, and expands semantic
-types through the v1 semantic-type key. No v1 decoder remains after cutover.
+the stage-appropriate canonical self type described above. Module-interface canonical
+inherits RFC 0013 canonical's complete field order and encoding, changes only the
+domain to `ASCII("zom.module-interface-revision")`, and expands semantic
+types through the canonical semantic-type key. No canonical decoder remains after cutover.
 
 The independent empty-sequence oracle reuses RFC 0013's component fixture. Its
-complete 282-byte preimage is:
+complete 279-byte preimage is:
 
 ```text
-7a6f6d2e6d6f64756c652d696e746572666163652d7265766973696f6e2e7632000000000000000000000000000000000000000000000000000000000000000000a1222222222222222222222222222222222222222222222222222222222222222233333333333333333333333333333333333333333333333333333333333333334444444444444444444444444444444444444444444444444444444444444444555555555555555555555555555555555555555555555555555555555555555566666666666666666666666666666666666666666666666666666666666666660000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+7a6f6d2e6d6f64756c652d696e746572666163652d7265766973696f6e000000000000000000000000000000000000000000000000000000000000000000a1222222222222222222222222222222222222222222222222222222222222222233333333333333333333333333333333333333333333333333333333333333334444444444444444444444444444444444444444444444444444444444444444555555555555555555555555555555555555555555555555555555555555555566666666666666666666666666666666666666666666666666666666666666660000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 ```
 
 Its SHA-256 is
-`572e98b96325c45e1773afbc96945f767f15e7489d4e27d9f063fa77789b9e72`.
+`180fa61d71c6419dc0476128c90e40b55e805d6aeb57871d4f41d445f7b18585`.
 
 The one-record framing oracle replaces the empty `signatures.definitions`
 sequence with one already-canonical component whose bytes are the
 `InterfaceSelf(a1)` semantic-type key above. This isolates module sequence
-framing from semantic-signature validity. Its complete 309-byte preimage is:
+framing from semantic-signature validity. Its complete 303-byte preimage is:
 
 ```text
-7a6f6d2e6d6f64756c652d696e746572666163652d7265766973696f6e2e7632000000000000000000000000000000000000000000000000000000000000000000a122222222222222222222222222222222222222222222222222222222222222223333333333333333333333333333333333333333333333333333333333333333444444444444444444444444444444444444444444444444444444444444444455555555555555555555555555555555555555555555555555555555555555556666666666666666666666666666666666666666666666666666666666666666000000000000000000000000000000017a6f6d2e73656d616e7469632d747970652d6b65792e76310010a100000000000000000000000000000000000000000000000000000000000000000000000000000000
+7a6f6d2e6d6f64756c652d696e746572666163652d7265766973696f6e000000000000000000000000000000000000000000000000000000000000000000a122222222222222222222222222222222222222222222222222222222222222223333333333333333333333333333333333333333333333333333333333333333444444444444444444444444444444444444444444444444444444444444444455555555555555555555555555555555555555555555555555555555555555556666666666666666666666666666666666666666666666666666666666666666000000000000000000000000000000017a6f6d2e73656d616e7469632d747970652d6b65790010a100000000000000000000000000000000000000000000000000000000000000000000000000000000
 ```
 
 Its SHA-256 is
-`7bd5dcf765b62be11249b1635d3c52ff145914743865c3f0c75040204222c4b2`.
+`5399dfc03737f4633203748d7b3fc93cc077c7fbb65357a3e6834a31a1ad3d7d`.
 Implementation tests additionally compose a valid exported interface
 signature containing `InterfaceSelf`; the framing oracle does not replace that
 semantic integration test.
@@ -835,8 +835,8 @@ tests change in one landing sequence.
 
 CI must verify parser/spec alignment, binder fact integrity, signature codec
 revision, HIR-to-MIR lifecycle-place transport, ownership analysis over Built
-MIR, lifecycle cleanup lowering, and deterministic diagnostics. No runtime
-flag, compatibility mode, or fallback path is permitted.
+MIR, lifecycle cleanup lowering, and deterministic diagnostics. All producers
+and consumers use this contract.
 
 ## Acceptance Criteria
 

@@ -325,13 +325,13 @@ def check_active_definition_authority(files: dict[Path, str], errors: list[str])
         (
             authority,
             DRIVER_AUTHORITY_QUERY,
-            'return "zom.query.active-definition-authority.v1"_zc;',
+            'return "zom.query.active-definition-authority"_zc;',
             "definition authority input domain",
         ),
         (
             authority,
             DRIVER_AUTHORITY_QUERY,
-            'return "zom.query.active-definition-authority-ready.v1"_zc;',
+            'return "zom.query.active-definition-authority-ready"_zc;',
             "authority readiness input domain",
         ),
         (
@@ -409,13 +409,13 @@ def check_active_definition_authority(files: dict[Path, str], errors: list[str])
         (
             named_item,
             DRIVER_NAMED_ITEM_QUERY,
-            'return "zom.query.named-item-syntax.v1"_zc;',
+            'return "zom.query.named-item-syntax"_zc;',
             "named-item syntax query domain",
         ),
         (
             named_item,
             DRIVER_NAMED_ITEM_QUERY,
-            'return "zom.query.named-item-provenance.v1"_zc;',
+            'return "zom.query.named-item-provenance"_zc;',
             "named-item provenance query domain",
         ),
         (
@@ -530,19 +530,19 @@ def check_owner_body_projection(files: dict[Path, str], errors: list[str]) -> No
         (
             owner_query,
             DRIVER_OWNER_BODY_QUERY,
-            'return "zom.query.module-body-owners.v1"_zc;',
+            'return "zom.query.module-body-owners"_zc;',
             "module-body owner inventory query domain",
         ),
         (
             owner_query,
             DRIVER_OWNER_BODY_QUERY,
-            'return "zom.query.owner-body-syntax.v1"_zc;',
+            'return "zom.query.owner-body-syntax"_zc;',
             "owner-body syntax query domain",
         ),
         (
             owner_query,
             DRIVER_OWNER_BODY_QUERY,
-            'return "zom.query.owner-body-provenance.v1"_zc;',
+            'return "zom.query.owner-body-provenance"_zc;',
             "owner-body provenance query domain",
         ),
         (
@@ -853,14 +853,14 @@ def check_production_topology_integration(files: dict[Path, str], errors: list[s
         errors.append(f"{DRIVER_TOPOLOGY_ADAPTER}: obsolete global active-module domain remains")
     for marker, description in (
         (
-            'return "zom.query.requester-module-ancestry.v1"_zc;',
+            'return "zom.query.requester-module-ancestry"_zc;',
             "requester ancestry input domain",
         ),
         (
-            'return "zom.query.module-catalog-path-bucket.v1"_zc;',
+            'return "zom.query.module-catalog-path-bucket"_zc;',
             "catalog bucket input domain",
         ),
-        ('return "zom.query.resolve-module-request.v1"_zc;', "module request query domain"),
+        ('return "zom.query.resolve-module-request"_zc;', "module request query domain"),
         ("context.getParallel<ModuleCatalogPathBucketInput>", "parallel exact bucket demand"),
         ("stageModuleResolutionQueryInputs(", "verified input closure staging"),
         ("transaction.set<RequesterModuleAncestryInput>", "requester ancestry staging"),
@@ -875,8 +875,8 @@ def check_production_topology_integration(files: dict[Path, str], errors: list[s
             )
     for marker, description in (
         (
-            'return "zom.query.selected-module-source.v1"_zc;',
-            "versioned selected-source input domain",
+            'return "zom.query.selected-module-source"_zc;',
+            "selected-source input domain",
         ),
         (
             "registerInputKind<SelectedModuleSourceInput>()",
@@ -884,10 +884,10 @@ def check_production_topology_integration(files: dict[Path, str], errors: list[s
         ),
         ("source.belongsTo(module.crate())", "selected-source crate verification"),
         ("occurrences != 1", "exact selected-source snapshot closure"),
-        ('return "zom.query.active-crates.v1"_zc;', "versioned active crate input domain"),
+        ('return "zom.query.active-crates"_zc;', "active crate input domain"),
         ("registerInputKind<ActiveCratesInput>()", "active crate input registration"),
-        ('return "zom.query.active-sources.v1"_zc;', "versioned active source domain"),
-        ('return "zom.query.active-modules.v1"_zc;', "versioned active module domain"),
+        ('return "zom.query.active-sources"_zc;', "active source domain"),
+        ('return "zom.query.active-modules"_zc;', "active module domain"),
         ("registerInputKind<ActiveSourcesInput>()", "active source input registration"),
         ("registerInputKind<ActiveModulesInput>()", "active module input registration"),
         ("return CanonicalSourceSet::decodeCanonical(bytes);", "canonical active-source set"),
@@ -926,14 +926,14 @@ def check_production_topology_integration(files: dict[Path, str], errors: list[s
         if marker not in adapter:
             errors.append(f"{DRIVER_TOPOLOGY_ADAPTER}: missing {description}: {marker}")
     for marker, description in (
-        ('return "zom.query.source-snapshot.v1"_zc;', "versioned source snapshot input domain"),
+        ('return "zom.query.source-snapshot"_zc;', "source snapshot input domain"),
         ("registerInputKind<SourceSnapshotInput>()", "source snapshot input registration"),
         ("kMaximumSourceSnapshotBytes = 64 * 1024 * 1024", "bounded source snapshot bytes"),
         ("auto computed = sha256(", "decoded source digest recomputation"),
         ("ZC_ASSERT_NONNULL(computed) != ZC_ASSERT_NONNULL(digest)", "source digest mismatch rejection"),
         (
-            'return "zom.query.compilation-options.v1"_zc;',
-            "versioned compilation options input domain",
+            'return "zom.query.compilation-options"_zc;',
+            "compilation options input domain",
         ),
         ("registerInputKind<CompilationOptionsInput>()", "compilation options input registration"),
         (
@@ -996,7 +996,7 @@ def check_production_topology_integration(files: dict[Path, str], errors: list[s
     if not verifies_before_transaction("verifyPackageGraphInput"):
         errors.append(f"{DRIVER_SESSION}: package graph must verify before transaction staging")
     for marker, description in (
-        ('return "zom.query.parse-source.v1"_zc;', "versioned ParseSource domain"),
+        ('return "zom.query.parse-source"_zc;', "ParseSource domain"),
         ("CanonicalParsedSource::fromParsed", "query-safe parsed value admission"),
     ):
         if marker not in parse_source_query:
@@ -1006,10 +1006,10 @@ def check_production_topology_integration(files: dict[Path, str], errors: list[s
             f"{PARSER_PARSE_SOURCE_QUERY_VERIFIER}: missing independent ParseSource verification"
         )
     for marker, description in (
-        ('return "zom.query.named-definition-inventory.v1"_zc;', "named definition query domain"),
-        ('return "zom.query.named-implementation-inventory.v1"_zc;', "named implementation query domain"),
-        ('return "zom.query.module-body-syntax.v1"_zc;', "module-body syntax query domain"),
-        ('return "zom.query.module-body-provenance.v1"_zc;', "module-body provenance query domain"),
+        ('return "zom.query.named-definition-inventory"_zc;', "named definition query domain"),
+        ('return "zom.query.named-implementation-inventory"_zc;', "named implementation query domain"),
+        ('return "zom.query.module-body-syntax"_zc;', "module-body syntax query domain"),
+        ('return "zom.query.module-body-provenance"_zc;', "module-body provenance query domain"),
         ("StableIdentityCandidateVerifier::reconstruct", "independent stable identity reconstruction"),
         ("ModuleBodySyntaxVerifier::reconstruct", "independent module-body reconstruction"),
     ):
@@ -1024,7 +1024,7 @@ def check_production_topology_integration(files: dict[Path, str], errors: list[s
         if marker not in adapter:
             errors.append(f"{DRIVER_TOPOLOGY_ADAPTER}: missing {description}: {marker}")
     for marker, description in (
-        ('return "zom.query.package-graph.v1"_zc;', "versioned package graph domain"),
+        ('return "zom.query.package-graph"_zc;', "package graph domain"),
         ("registerInputKind<PackageGraphInput>()", "package graph input registration"),
         (
             "query::Durability::Medium",

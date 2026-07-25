@@ -224,9 +224,7 @@ The closed production input inventory gains this descriptor:
 | Field | Contract |
 |---|---|
 | Query | `ActiveDefinitionAuthorityInput(DefinitionKey)` |
-| Domain | `zom.query.active-definition-authority.v1` |
-| Key schema | `1` |
-| Value schema | `1` |
+| Domain | `zom.query.active-definition-authority` |
 | Value | Complete `DefinitionIdentityRecord` |
 | Reuse class | `Semantic` |
 | Input durability | `Low` |
@@ -241,8 +239,7 @@ The companion readiness input has this descriptor:
 | Field | Contract |
 |---|---|
 | Query | `ActiveDefinitionAuthorityReadyInput(CompilationUnitQueryKey::fixed())` |
-| Domain | `zom.query.active-definition-authority-ready.v1` |
-| Key/value schema | `1/1` |
+| Domain | `zom.query.active-definition-authority-ready` |
 | Value | `ActiveDefinitionAuthoritySetFingerprint` |
 | Reuse class | `Semantic` |
 | Input durability | `Low` |
@@ -254,7 +251,7 @@ The fingerprint is exactly:
 
 ```text
 SHA-256(
-  ASCII("zom.active-definition-authority-set.v1")
+  ASCII("zom.active-definition-authority-set")
   || 0x00
   || EncodeSequence(sorted (DefinitionKey, DefinitionIdentityRecord) pairs)
 )
@@ -368,10 +365,10 @@ The two named-item queries use these complete descriptors. `Computed` input
 durability is the minimum durability of actual provider and verifier reads.
 `Reject` means any cycle is a runtime failure with no memo publication.
 
-| Query | Domain; key/value schema | Reuse; input durability | Equality | Complete tracked dependencies | Verifier | Retention; cycle; cost |
+| Query | Domain | Reuse; input durability | Equality | Complete tracked dependencies | Verifier | Retention; cycle; cost |
 |---|---|---|---|---|---|---|
-| `NamedItemSyntax(DefinitionKey)` | `zom.query.named-item-syntax.v1`; `1/1` | `Semantic`; Computed | complete detached named-item tree with the RFC 0019 stable-boundary census and no revision-local state | probe `ActiveDefinitionAuthorityInput(d)`; on record with module `m`, `NamedDefinitionInventory(m)`, `SelectedModuleSource(m)`; on selected source `s`, `ParseSource(s)`, `NamedImplementationInventory(m)`, `RevisionLocalDefinitionSites(m)`, and `RevisionLocalImplementationSites(m)`; only on absent or contradictory authority, probe `ActiveDefinitionAuthorityReadyInput(fixed)` | independently repeats authority mapping and exact inventory membership, selects the RFC 0018 authority occurrence, and rebuilds the detached tree and stable-boundary census without calling the producer | evictable bounded LRU; Reject; linear in the selected named-item syntax |
-| `NamedItemProvenance(DefinitionKey)` | `zom.query.named-item-provenance.v1`; `1/1` | `RevisionLocal`; Computed | exact current source, legal-path, AST-node, and range map; never backdated | probe `ActiveDefinitionAuthorityInput(d)`; on record with module `m`, `NamedDefinitionInventory(m)`, `SelectedModuleSource(m)`; on selected source `s`, `ParseSource(s)`, `NamedItemSyntax(d)`, `RevisionLocalDefinitionSites(m)`, and `RevisionLocalImplementationSites(m)`; only on absent or contradictory authority, probe `ActiveDefinitionAuthorityReadyInput(fixed)` | independently repeats authority mapping and exact membership, selects the RFC 0018 authority occurrence, then reconstructs total current legal-path coverage against the retained semantic tree | evictable; Reject; linear in the selected named-item syntax |
+| `NamedItemSyntax(DefinitionKey)` | `zom.query.named-item-syntax` | `Semantic`; Computed | complete detached named-item tree with the RFC 0019 stable-boundary census and no revision-local state | probe `ActiveDefinitionAuthorityInput(d)`; on record with module `m`, `NamedDefinitionInventory(m)`, `SelectedModuleSource(m)`; on selected source `s`, `ParseSource(s)`, `NamedImplementationInventory(m)`, `RevisionLocalDefinitionSites(m)`, and `RevisionLocalImplementationSites(m)`; only on absent or contradictory authority, probe `ActiveDefinitionAuthorityReadyInput(fixed)` | independently repeats authority mapping and exact inventory membership, selects the RFC 0018 authority occurrence, and rebuilds the detached tree and stable-boundary census without calling the producer | evictable bounded LRU; Reject; linear in the selected named-item syntax |
+| `NamedItemProvenance(DefinitionKey)` | `zom.query.named-item-provenance` | `RevisionLocal`; Computed | exact current source, legal-path, AST-node, and range map; never backdated | probe `ActiveDefinitionAuthorityInput(d)`; on record with module `m`, `NamedDefinitionInventory(m)`, `SelectedModuleSource(m)`; on selected source `s`, `ParseSource(s)`, `NamedItemSyntax(d)`, `RevisionLocalDefinitionSites(m)`, and `RevisionLocalImplementationSites(m)`; only on absent or contradictory authority, probe `ActiveDefinitionAuthorityReadyInput(fixed)` | independently repeats authority mapping and exact membership, selects the RFC 0018 authority occurrence, then reconstructs total current legal-path coverage against the retained semantic tree | evictable; Reject; linear in the selected named-item syntax |
 
 Both providers begin with this required module-recovery prefix:
 
@@ -537,8 +534,7 @@ key erasure.
 
 ## Compatibility And Rollout
 
-This is a direct architecture repair for unreleased compiler internals. There
-is no compatibility period and no old query path remains.
+This is the compiler's sole active-definition authority projection.
 
 Rollout order is:
 

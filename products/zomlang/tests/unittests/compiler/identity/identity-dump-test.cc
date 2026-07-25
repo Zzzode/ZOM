@@ -77,7 +77,7 @@ ZC_TEST("Identity dump preserves exact empty sections and final LF") {
   auto dump = dumpIdentityRegistries(registries);
   ZC_IF_SOME(text, dump) {
     ZC_EXPECT(text ==
-              "zom.identity.v0\n[packages]\n[crates]\n[sources]\n[modules]\n"
+              "zom.identity\n[packages]\n[crates]\n[sources]\n[modules]\n"
               "[definitions]\n[impls]\n"_zc);
   }
 }
@@ -92,7 +92,7 @@ ZC_TEST("Identity dump uses canonical key order without slots or brands") {
   ZC_EXPECT(registries.freezePackages() == FrozenRegistryFailure::None);
   freezeRemainingEmptyRegistries(registries);
 
-  auto expected = zc::str("zom.identity.v0\n[packages]\npackage ", zc::encodeHex(first.asPtr()),
+  auto expected = zc::str("zom.identity\n[packages]\npackage ", zc::encodeHex(first.asPtr()),
                           "\npackage ", zc::encodeHex(second.asPtr()),
                           "\n[crates]\n[sources]\n[modules]\n[definitions]\n[impls]\n");
   auto dump = dumpIdentityRegistries(registries);

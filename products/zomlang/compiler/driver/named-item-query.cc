@@ -16,7 +16,7 @@
 namespace zomlang::compiler::driver::incremental_binding_query {
 namespace {
 
-constexpr zc::StringPtr kFailureDomain = "zom.named-item-query-failure.v1"_zc;
+constexpr zc::StringPtr kFailureDomain = "zom.named-item-query-failure"_zc;
 
 enum class NamedItemFailureKind : uint8_t {
   InactiveOwner = 0x01,
@@ -51,13 +51,13 @@ struct LoadedNamedItemSource final {
 };
 
 query::QueryKindContract semanticContract(zc::StringPtr domain) {
-  auto contract = query::QueryKindContract::derived(domain, 1, 1, query::ReuseClass::Semantic,
+  auto contract = query::QueryKindContract::derived(domain, query::ReuseClass::Semantic,
                                                     query::RetentionClass::Evictable);
   return zc::mv(ZC_REQUIRE_NONNULL(contract));
 }
 
 query::QueryKindContract provenanceContract(zc::StringPtr domain) {
-  auto contract = query::QueryKindContract::derived(domain, 1, 1, query::ReuseClass::RevisionLocal,
+  auto contract = query::QueryKindContract::derived(domain, query::ReuseClass::RevisionLocal,
                                                     query::RetentionClass::Evictable);
   return zc::mv(ZC_REQUIRE_NONNULL(contract));
 }
@@ -480,7 +480,7 @@ bool sameFailure(const query::TypedQueryResult<ExpectedValue>& expected,
 
 }  // namespace
 
-zc::StringPtr NamedItemSyntaxQuery::domain() { return "zom.query.named-item-syntax.v1"_zc; }
+zc::StringPtr NamedItemSyntaxQuery::domain() { return "zom.query.named-item-syntax"_zc; }
 
 query::QueryKindContract NamedItemSyntaxQuery::contract() { return semanticContract(domain()); }
 
@@ -606,7 +606,7 @@ bool NamedItemSyntaxQuery::verify(query::QueryContext& context, const Key& key,
   return syntax != zc::none && ZC_ASSERT_NONNULL(syntax) == result.value();
 }
 
-zc::StringPtr NamedItemProvenanceQuery::domain() { return "zom.query.named-item-provenance.v1"_zc; }
+zc::StringPtr NamedItemProvenanceQuery::domain() { return "zom.query.named-item-provenance"_zc; }
 
 query::QueryKindContract NamedItemProvenanceQuery::contract() {
   return provenanceContract(domain());

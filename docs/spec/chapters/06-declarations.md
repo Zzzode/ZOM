@@ -184,7 +184,12 @@ const CONFIG = {
 const AREA = PI * RADIUS * RADIUS;
 ```
 
-`const` declarations require an initializer and bind identifiers only. Destructuring `const` declarations are not part of v1. Runtime calls, allocation, I/O, non-deterministic operations, and ordinary function calls are rejected unless the callee is explicitly admitted to const evaluation by a future const-function design. A `const` has no stable storage address; it is a named compile-time value that may be substituted at use sites. Storage-backed global objects are intentionally separate from `const`.
+`const` declarations require an initializer and bind identifiers only. The
+parser rejects destructuring `const` declarations. Runtime calls, allocation,
+I/O, non-deterministic operations, and ordinary function calls are rejected by
+const evaluation. A `const` has no stable storage address; it is a named
+compile-time value that may be substituted at use sites. Storage-backed global
+objects are intentionally separate from `const`.
 
 ### Rejected `var`
 

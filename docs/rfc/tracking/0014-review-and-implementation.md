@@ -42,8 +42,8 @@ The binder-checker review returned the draft for receiver signature census,
 interface-Self inheritance and projection semantics, staged codec cutover, and
 exact canonical tags. The revision now nests receiver identity in
 `ReceiverSignature`, defines transitive interface rebasing and `Self::Item`
-projection selection, separates binding metadata v1 receiver cutover from v2
-lifecycle cutover, and fixes receiver, semantic-type, and module-interface
+projection selection, separates binding metadata receiver handling from
+lifecycle handling, and fixes receiver, semantic-type, and module-interface
 codec contracts.
 
 The spec-audit review returned the draft for owner-complete lifecycle grammar,
@@ -114,7 +114,7 @@ No owner recorded a blocking or non-blocking objection.
 | `rfc` | Approved | Governance, owner coverage, acceptance readiness, and transition |
 | `lexer-parser` | Approved | Lifecycle grammar, receiver forms, and total parser precedence |
 | `binder-checker` | Approved | Contextual identity, substitution, projections, census, and fact framing |
-| `module-system` | Approved | Impl/interface identity, module-interface v2, and driver publication |
+| `module-system` | Approved | Impl/interface identity, canonical module interface, and driver publication |
 | `error-system` | Approved | Closed display, registry, checker diagnostic algebra, and precedence |
 | `runtime-memory` | Approved | Lifecycle non-permission boundary and implementation blockers |
 | `ir-backend` | Approved | Checked-module, Semantic HIR, Built MIR, and cleanup boundaries |

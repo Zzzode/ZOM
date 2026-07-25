@@ -1,5 +1,4 @@
 {
-  "version": 1,
   "producers": {
     "ModuleDeclaration": {"identities": ["Module", "ModuleAlias"], "parser": "declaration-parser.cc"},
     "ExternDecl": {"identities": ["Function"], "parser": "declaration-parser.cc"},
@@ -52,7 +51,5 @@
     "Attribute": "semantic metadata rather than a definition"
   },
   "expansion_producers": [],
-  "legacy_symbol_id_allowlist": [],
-  "legacy_type_identity_allowlist": [],
   "pointer_identity_allowlist": []
 }

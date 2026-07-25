@@ -51,9 +51,8 @@ coordination happens via well-defined types.
 - [ ] Every `ERROR_*` / `KEYWORD_*` / `OP_*` in `ZomLexer.g4` has a matching
       case in `lexer.cc` and a matching entry in `ast/kinds.h` and `token.cc`.
 - [ ] Every reserved keyword listed in `02-lexical-structure.md` § Keywords is
-      either in the grammar switch or explicitly marked "reserved for v2" there.
-      A keyword with no grammar rule and no v2 marker must be **deleted** from
-      the reservation list per Rule #4 of design principles.
+      accepted by a current grammar path. A keyword with no grammar rule must be
+      **deleted** from the reservation list per Rule #4 of design principles.
 
 ---
 

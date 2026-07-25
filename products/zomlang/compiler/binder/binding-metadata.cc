@@ -15,8 +15,8 @@
 namespace zomlang::compiler::binder {
 namespace {
 
-constexpr char kSurfaceDomain[] = "zom.binding-export-surface.v0";
-constexpr char kAllocationDumpDomain[] = "zom.binding-allocation-dump.v0";
+constexpr char kSurfaceDomain[] = "zom.binding-export-surface";
+constexpr char kAllocationDumpDomain[] = "zom.binding-allocation-dump";
 
 void appendUint64(zc::Vector<uint8_t>& bytes, uint64_t value) {
   for (uint32_t shift = 56;; shift -= 8) {

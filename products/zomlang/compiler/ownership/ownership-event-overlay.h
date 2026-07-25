@@ -163,9 +163,15 @@ private:
   friend class OwnershipEventOverlayVerifier;
 };
 
-/// \brief Exact canonical overlay-v3 framing codec.
+/// \brief Exact canonical ownership event overlay framing codec.
 class OwnershipEventOverlayCodec final {
 public:
+  ZC_NODISCARD static zc::Maybe<zc::Array<uint8_t>> encodeFramed(
+      const identity::Sha256Digest& contextFingerprint,
+      zc::ArrayPtr<const uint8_t> expandedModuleKey,
+      const identity::Sha256Digest& checkedFactsRevision,
+      const identity::Sha256Digest& builtRevisionDigest,
+      zc::ArrayPtr<const zc::Array<uint8_t>> canonicalFunctions);
   ZC_NODISCARD static zc::Maybe<zc::Array<uint8_t>> encode(
       const identity::SemanticContextFingerprint& contextFingerprint,
       zc::ArrayPtr<const uint8_t> expandedModuleKey,

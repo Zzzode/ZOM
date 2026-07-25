@@ -348,29 +348,38 @@ zc::Maybe<zc::Vector<OwnershipFunctionEventOverlay>> buildFunctions(
 
 }  // namespace
 
-zc::Maybe<zc::Array<uint8_t>> OwnershipEventOverlayCodec::encode(
-    const identity::SemanticContextFingerprint& contextFingerprint,
-    zc::ArrayPtr<const uint8_t> expandedModuleKey,
-    const checker::checked::CheckedFactsRevision& checkedFactsRevision,
-    const mir::MirRevisionId& builtRevision,
+zc::Maybe<zc::Array<uint8_t>> OwnershipEventOverlayCodec::encodeFramed(
+    const identity::Sha256Digest& contextFingerprint, zc::ArrayPtr<const uint8_t> expandedModuleKey,
+    const identity::Sha256Digest& checkedFactsRevision,
+    const identity::Sha256Digest& builtRevisionDigest,
     zc::ArrayPtr<const zc::Array<uint8_t>> canonicalFunctions) {
   if (expandedModuleKey.size() == 0) return zc::none;
   identity::CanonicalEncoder encoder;
-  constexpr char domain[] = "zom.ownership-event-overlay.v3";
+  constexpr char domain[] = "zom.ownership-event-overlay";
   for (size_t index = 0; index + 1 < sizeof(domain); ++index) {
     encoder.encodeUint8(static_cast<uint8_t>(domain[index]));
   }
   encoder.encodeUint8(0x00);
-  encoder.encodeDigest(contextFingerprint.digest());
+  encoder.encodeDigest(contextFingerprint);
   encoder.encodeByteString(expandedModuleKey);
-  encoder.encodeDigest(checkedFactsRevision.digest());
-  encoder.encodeDigest(builtRevision.digest());
+  encoder.encodeDigest(checkedFactsRevision);
+  encoder.encodeDigest(builtRevisionDigest);
   encoder.encodeSequenceSize(canonicalFunctions.size());
   for (const auto& function : canonicalFunctions) {
     if (function.size() == 0) return zc::none;
     encoder.encodeByteString(function.asPtr());
   }
   return encoder.finish();
+}
+
+zc::Maybe<zc::Array<uint8_t>> OwnershipEventOverlayCodec::encode(
+    const identity::SemanticContextFingerprint& contextFingerprint,
+    zc::ArrayPtr<const uint8_t> expandedModuleKey,
+    const checker::checked::CheckedFactsRevision& checkedFactsRevision,
+    const mir::MirRevisionId& builtRevision,
+    zc::ArrayPtr<const zc::Array<uint8_t>> canonicalFunctions) {
+  return encodeFramed(contextFingerprint.digest(), expandedModuleKey, checkedFactsRevision.digest(),
+                      builtRevision.digest(), canonicalFunctions);
 }
 
 zc::Maybe<OwnershipEventOverlayRevision> OwnershipEventOverlayCodec::compute(

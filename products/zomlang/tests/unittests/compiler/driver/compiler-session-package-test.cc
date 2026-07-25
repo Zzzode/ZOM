@@ -93,7 +93,7 @@ identity::PackageKey packageKey(zc::StringPtr name) {
                                     scalar<identity::ResolvedVersion>("1.0.0"_zc), emptyFeatures());
 }
 
-identity::CanonicalTargetSpecificationKey projection(zc::StringPtr abiProfile = "zom-v1"_zc) {
+identity::CanonicalTargetSpecificationKey projection(zc::StringPtr abiProfile = "zom"_zc) {
   zc::Vector<identity::TargetFeatureName> features;
   auto sorted = identity::SortedTargetFeatureSet::from(zc::mv(features));
   ZC_REQUIRE(sorted != zc::none);
@@ -116,7 +116,7 @@ package::RegisteredTargetProfileName profileName() {
   ZC_FAIL_REQUIRE("package-session profile name was rejected");
 }
 
-ir::TargetRegistrySnapshot targetRegistry(zc::StringPtr abiProfile = "zom-v1"_zc) {
+ir::TargetRegistrySnapshot targetRegistry(zc::StringPtr abiProfile = "zom"_zc) {
   zc::Vector<ir::CanonicalTargetFeature> targetFeatures;
   auto targetSpec = ir::CanonicalTargetSpec::from(
       "x86_64-zom-none"_zc, "e-p:64:64"_zc, "generic"_zc, zc::mv(targetFeatures), abiProfile,
@@ -673,7 +673,7 @@ package::TrustedBuildRuntimeKey trustedRuntime() {
       observed.get<package::TrustedRuntimeManifestSet>());
   ZC_REQUIRE(evidence.is<package::TrustedRuntimeVerificationEvidence>());
   auto result = package::TrustedBuildRuntimeKey::verifyEvidence(
-      "zom-v1"_zc, "zom-v1"_zc, zc::mv(objects),
+      "zom"_zc, "zom"_zc, zc::mv(objects),
       zc::mv(evidence.get<package::TrustedRuntimeVerificationEvidence>()));
   ZC_REQUIRE(result.is<package::TrustedBuildRuntimeKey>());
   return zc::mv(result.get<package::TrustedBuildRuntimeKey>());
@@ -781,7 +781,7 @@ ZC_TEST("Verified package input rejects a request root outside the resolved grap
 ZC_TEST("Verified package input rejects target selections from another registry revision") {
   zc::MemoryResource resource;
   auto registry = targetRegistry();
-  auto otherRegistry = targetRegistry("zom-v2"_zc);
+  auto otherRegistry = targetRegistry("zom-alternate"_zc);
   auto input = VerifiedPackageSessionInput::from(
       request(registry), verifiedSelection(registry), verifiedSelection(otherRegistry),
       resolution(resource, "app"_zc), resolvedSnapshots("app"_zc));

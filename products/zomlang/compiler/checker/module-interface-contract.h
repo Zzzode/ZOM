@@ -15,12 +15,12 @@
 
 namespace zomlang::compiler::module_interface {
 
-/// \brief Domain-separated revision of one RFC 0015 v3 verified module interface.
+/// \brief Domain-separated revision of one RFC 0015 verified module interface.
 class ModuleInterfaceRevision final {
 public:
   ZC_NODISCARD const identity::Sha256Digest& digest() const noexcept;
 
-  /// \brief Frame already-canonical interface components in the normative v3 order.
+  /// \brief Frame already-canonical interface components in the normative order.
   ZC_NODISCARD static zc::Maybe<ModuleInterfaceRevision> computeFramed(
       const identity::Sha256Digest& contextFingerprint,
       zc::ArrayPtr<const uint8_t> expandedOwningModule,

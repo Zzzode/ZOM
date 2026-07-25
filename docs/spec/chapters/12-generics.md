@@ -179,7 +179,7 @@ Bound satisfaction is also checked *inside* the generic body (prior to monomorph
 
 ### Variance of Generic Parameters
 
-User-defined generic named types are invariant in all type parameters in v1.
+User-defined generic named types are invariant in all type parameters.
 This conservative rule prevents mutable containers from accidentally lifting a
 reference coercion through the container boundary.
 

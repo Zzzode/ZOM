@@ -123,7 +123,7 @@ zc::Maybe<zc::Array<uint8_t>> BorrowSignatureCanonicalCodec::encodeFramed(
   }
 
   zc::Vector<uint8_t> output;
-  appendDomain(output, "zom.borrow-signature-summary.v0"_zc);
+  appendDomain(output, "zom.borrow-signature-summary"_zc);
   appendByteString(output, expandedCallableKey);
   appendUint64(output, summary.directInputs.size());
   for (const auto& input : summary.directInputs) { appendInput(output, input); }
@@ -157,7 +157,7 @@ zc::Maybe<BorrowInterfaceRevision> BorrowInterfaceRevision::computeFramed(
     zc::ArrayPtr<const zc::ArrayPtr<const uint8_t>> summaryRecords) {
   if (expandedModuleKey.size() == 0) { return zc::none; }
   zc::Vector<uint8_t> output;
-  appendDomain(output, "zom.borrow-interface.v0"_zc);
+  appendDomain(output, "zom.borrow-interface"_zc);
   append(output, contextFingerprint.bytes());
   appendByteString(output, expandedModuleKey);
   append(output, signatureFactsRevision.bytes());

@@ -205,7 +205,7 @@ def generated_manifest() -> dict[str, object]:
             "enabled_headers": enabled_headers,
             "files": files,
         }
-    return {"version": 1, "dependencies": dependencies}
+    return {"dependencies": dependencies}
 
 
 def canonical_json(value: dict[str, object]) -> str:

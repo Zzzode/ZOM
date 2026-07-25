@@ -33,7 +33,7 @@ public:
   OverloadHeaderDigest& operator=(OverloadHeaderDigest&&) noexcept = default;
   ZC_DISALLOW_COPY(OverloadHeaderDigest);
 
-  /// \brief Computes SHA-256("zom.overload-header.v0" || 0x00 || Encode(header)).
+  /// \brief Computes SHA-256("zom.overload-header" || 0x00 || Encode(header)).
   ZC_NODISCARD static OverloadHeaderDigest compute(const CanonicalOverloadHeader& header);
   /// \brief Admits exactly 32 already-verified digest bytes.
   ZC_NODISCARD static zc::Maybe<OverloadHeaderDigest> fromBytes(zc::ArrayPtr<const uint8_t> bytes);

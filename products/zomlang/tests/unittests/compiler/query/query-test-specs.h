@@ -43,14 +43,14 @@ inline zc::Maybe<uint32_t> decodeUint32(zc::ArrayPtr<const uint8_t> bytes) {
 }
 
 inline QueryKindContract inputContract(zc::StringPtr domain, Durability durability) {
-  auto contract = QueryKindContract::input(domain, 1, 1, durability);
+  auto contract = QueryKindContract::input(domain, durability);
   return zc::mv(ZC_REQUIRE_NONNULL(contract));
 }
 
 inline QueryKindContract derivedContract(zc::StringPtr domain,
                                          ReuseClass reuse = ReuseClass::Semantic,
                                          RetentionClass retention = RetentionClass::Retained) {
-  auto contract = QueryKindContract::derived(domain, 1, 1, reuse, retention);
+  auto contract = QueryKindContract::derived(domain, reuse, retention);
   return zc::mv(ZC_REQUIRE_NONNULL(contract));
 }
 

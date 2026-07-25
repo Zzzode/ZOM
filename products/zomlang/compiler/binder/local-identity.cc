@@ -12,8 +12,8 @@
 namespace zomlang::compiler::binder {
 namespace {
 
-constexpr char kOwnerLocalBindingDomain[] = "zom.owner-local-binding.v1";
-constexpr char kAnonymousOwnerLocalDomain[] = "zom.anonymous-owner-local.v1";
+constexpr char kOwnerLocalBindingDomain[] = "zom.owner-local-binding";
+constexpr char kAnonymousOwnerLocalDomain[] = "zom.anonymous-owner-local";
 constexpr uint64_t kMaximumLocalIdentityBytes = 64 * 1024;
 constexpr uint64_t kMaximumLocalSyntaxPathComponents = 4096;
 

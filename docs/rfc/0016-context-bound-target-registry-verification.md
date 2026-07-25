@@ -147,8 +147,8 @@ References:
 Rust target specifications bind the LLVM target, data layout, pointer width,
 and target options as one version-sensitive compiler input. The rustc
 documentation warns that target specifications are compiler-version specific
-and exposes a schema from the running compiler. ZOM similarly treats the
-registry snapshot and its exact bytes as versioned compiler input rather than
+and exposes a schema from the running compiler. ZOM treats the registry
+snapshot and its exact bytes as one canonical compiler input rather than
 ambient strings.
 
 References:
@@ -355,10 +355,10 @@ RuntimeAbiContractRegistryRevision = RFC0011::Sha256Digest
 TargetAuthorityBundleRevision = RFC0011::Sha256Digest
 
 TargetAbiClassifierId =
-  ZomInternalV1
-  | SysVX8664V1
-  | Aapcs64V1
-  | Win64V1
+  ZomInternal
+  | SysVX8664
+  | Aapcs64
+  | Win64
 
 TargetExceptionModel = None | Itanium
 
@@ -502,7 +502,7 @@ RuntimeAbiTypeDeclaration =
       fields: Sequence<RuntimeAbiTypeRef>,
     }
 
-RuntimeCallingConvention = ZomRuntimeV1
+RuntimeCallingConvention = ZomRuntime
 
 RuntimeFunctionSignature {
   callingConvention: RuntimeCallingConvention,
@@ -975,7 +975,7 @@ capability manifest defined below. `RuntimeCapability` tags begin with
 numeric cast is legal.
 
 `RuntimeAbiProfileId` is a closed generated enum whose initial and only value
-is `ZomV1 = 0x01`. Registry construction is the sole operation that maps an
+is `Zom = 0x01`. Registry construction is the sole operation that maps an
 RFC 0011 `TargetComponentName` runtime-ABI field to this enum; an unknown or
 duplicate mapping is `InvalidFact`.
 
@@ -991,7 +991,7 @@ RuntimeCapability) const`; it reads the snapshot's immutable verified
 records and therefore cannot be called without the exact non-forgeable
 snapshot. No free function, runtime-symbol query, `ZomPanicStrategy` overload,
 raw ABI string overload, or snapshot-unbound query exists. The initial registry
-contains exactly `zom-v1 -> {PanicAbort}`. `PanicUnwind` and `CatchUnwind`
+contains exactly `zom -> {PanicAbort}`. `PanicUnwind` and `CatchUnwind`
 entries are forbidden until the same change implements and verifies the RFC
 0006 unwinder, cleanup integration, catch boundary, FFI containment, and target
 matrix. Allocation and deallocation entries require their runtime
@@ -1022,7 +1022,7 @@ An admitted specification may contain a panic strategy that the runtime does
 not support. That unsupported pair remains a valid target codec and is rejected
 as a capability only if selected. The private brand, revision, and typed
 association sequence do not enter or alter the existing target, profile, or
-`zom.target-registry.v0` codec preimages.
+`zom.target-registry` codec preimages.
 
 `VerifiedTargetBuildPreparationInput` owns one exact RFC 0012
 `VerifiedBuildPreparationInput` and the complete target-authority bundle by
@@ -1509,13 +1509,13 @@ capability digest domain so a deterministic capability set and its live brand
 must agree without contaminating semantic-context, target, or registry
 identity.
 
-- `zom.semantic-context.v0` remains unchanged and does not absorb target or
+- `zom.semantic-context` remains unchanged and does not absorb target or
   registry bytes.
-- `zom.target-spec.v1` remains unchanged and includes the exact stored LLVM
+- `zom.target-spec` remains unchanged and includes the exact stored LLVM
   data-layout bytes and RFC 0010 backend panic tag.
-- `zom.target-registry.v0` remains unchanged and contains recomputed target
+- `zom.target-registry` remains unchanged and contains recomputed target
   IDs.
-- `zom.runtime-capabilities.v0` contains the complete sorted runtime ABI and
+- `zom.runtime-capabilities` contains the complete sorted runtime ABI and
   capability manifest and produces `RuntimeCapabilityRevision`.
 - RFC 0012 `RegisteredTargetSelection` encoding remains unchanged.
 - The seven-field `VerifiedTargetSelection` is an in-memory proof tuple with no
@@ -1524,7 +1524,7 @@ identity.
 The runtime capability preimage is:
 
 ```text
-ASCII("zom.runtime-capabilities.v0")
+ASCII("zom.runtime-capabilities")
 0x00
 EncodeUint64(entryCount)
 for each entry sorted by runtime ABI bytes:
@@ -1534,26 +1534,26 @@ for each entry sorted by runtime ABI bytes:
     EncodeUint8(capabilityTag)
 ```
 
-The initial `{ zom-v1 -> {PanicAbort} }` manifest has this exact 59-byte
+The initial `{ zom -> {PanicAbort} }` manifest has this exact 56-byte
 preimage:
 
 ```text
-7a6f6d2e72756e74696d652d6361706162696c69746965732e763000000000000000000100000000000000067a6f6d2d7631000000000000000101
+7a6f6d2e72756e74696d652d6361706162696c697469657300000000000000000100000000000000067a6f6d2d7631000000000000000101
 ```
 
 Its `RuntimeCapabilityRevision` is SHA-256
-`329ee4445e2a6e4fa84ac05c481d7643759a7b37dea4b306d7b075b0d6284739`.
+`69405a91bd7dead95a783941e6a0da363366b6a4fe5f1c5339d54bb62328146b`.
 The production encoder and a structurally independent verifier must reproduce
 the bytes, length, and digest before issuing a capability brand.
 
-The exact RFC 0010 111-byte value remains the independent target-codec oracle:
+The exact RFC 0010 108-byte value remains the independent target-codec oracle:
 
 ```text
-7a6f6d2e7461726765742d737065632e763100000000000000000f7838365f36342d7a6f6d2d6e6f6e650000000000000009652d703a36343a3634000000000000000767656e6572696300000000000000010000000000000004737365320100000000000000067a6f6d2d76310101
+7a6f6d2e7461726765742d7370656300000000000000000f7838365f36342d7a6f6d2d6e6f6e650000000000000009652d703a36343a3634000000000000000767656e6572696300000000000000010000000000000004737365320100000000000000067a6f6d2d76310101
 ```
 
 Its SHA-256 is
-`6d72a26055117cb6e84c3cc3a72fd4c1e42caf861138d8f84f5bf34f2f244d37`.
+`d972a7d918fc7d64c002b4245b8e6f5151d3c3c8507ae26e1ca1cbd1a026c90b`.
 Its minimal `e-p:64:64` layout is not structurally compatible with LLVM 22.1.8's
 X86 `TargetMachine`, so this vector verifies the unchanged codec only and is
 not admitted into a production `TargetRegistrySnapshot`.
@@ -1562,37 +1562,37 @@ The LLVM-22-admitted integration pair uses the same fields except for the exact
 87-byte layout
 `e-m:e-p:64:64-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128`.
 The explicit `p:` entry preserves the RFC 0011 AS0 proof while the parsed layout
-is structurally compatible with LLVM 22.1.8 X86. The complete 189-byte `Unwind`
+is structurally compatible with LLVM 22.1.8 X86. The complete 186-byte `Unwind`
 preimage is:
 
 ```text
-7a6f6d2e7461726765742d737065632e763100000000000000000f7838365f36342d7a6f6d2d6e6f6e650000000000000057652d6d3a652d703a36343a36342d703237303a33323a33322d703237313a33323a33322d703237323a36343a36342d6936343a36342d693132383a3132382d6638303a3132382d6e383a31363a33323a36342d53313238000000000000000767656e6572696300000000000000010000000000000004737365320100000000000000067a6f6d2d76310101
+7a6f6d2e7461726765742d7370656300000000000000000f7838365f36342d7a6f6d2d6e6f6e650000000000000057652d6d3a652d703a36343a36342d703237303a33323a33322d703237313a33323a33322d703237323a36343a36342d6936343a36342d693132383a3132382d6638303a3132382d6e383a31363a33323a36342d53313238000000000000000767656e6572696300000000000000010000000000000004737365320100000000000000067a6f6d2d76310101
 ```
 
 Its SHA-256 is
-`49e8bb1633a0c9363db11d5a09b760e6a7a5a96b0669468cccf492c209bce569`.
-The complete 189-byte `Abort` companion changes only the backend panic tag:
+`29fef3fa59a2166a285c371e02f4c28d0d25aa98e401ca2d0a9c2b3b5a390540`.
+The complete 186-byte `Abort` companion changes only the backend panic tag:
 
 ```text
-7a6f6d2e7461726765742d737065632e763100000000000000000f7838365f36342d7a6f6d2d6e6f6e650000000000000057652d6d3a652d703a36343a36342d703237303a33323a33322d703237313a33323a33322d703237323a36343a36342d6936343a36342d693132383a3132382d6638303a3132382d6e383a31363a33323a36342d53313238000000000000000767656e6572696300000000000000010000000000000004737365320100000000000000067a6f6d2d76310201
+7a6f6d2e7461726765742d7370656300000000000000000f7838365f36342d7a6f6d2d6e6f6e650000000000000057652d6d3a652d703a36343a36342d703237303a33323a33322d703237313a33323a33322d703237323a36343a36342d6936343a36342d693132383a3132382d6638303a3132382d6e383a31363a33323a36342d53313238000000000000000767656e6572696300000000000000010000000000000004737365320100000000000000067a6f6d2d76310201
 ```
 
 Its SHA-256 is
-`5185b41d5f91b8b5f218440ba6c0b2e410582d350d9976ce67bb3a0e3d381cfc`.
+`5a7710feedc3b1c63870b4c493676466952b0929730f0f97f41124b224bde54b`.
 
-The RFC 0010 52-byte value remains the independent outer-registry-framing
+The RFC 0010 49-byte value is the independent outer-registry-framing
 oracle. Its one-byte `a1` payload is intentionally an already-encoded profile
 record and therefore is not the complete registry oracle:
 
 ```text
-7a6f6d2e7461726765742d72656769737472792e7630000000000000000004686f737400000000000000010000000000000001a1
+7a6f6d2e7461726765742d7265676973747279000000000000000004686f737400000000000000010000000000000001a1
 ```
 
 Its SHA-256 is
-`f0d22e55137466eaeac0852b11262f85865d01232d52128a49d0003e77f3c9ba`.
+`f25c636ba9240f1454cb006c39a7fce3443b7f2871de97923e01757e5048e272`.
 
 The complete integration oracle contains host profile `host`, the RFC 0011
-projection `{ x86_64, zom, none, unknown, zom-v1, 64, Little, {sse2} }`, one
+projection `{ x86_64, zom, none, unknown, zom, 64, Little, {sse2} }`, one
 semantic feature `sse2`, and the `Unwind` and `Abort` target IDs above. Its
 complete profile revision record is this 197-byte value:
 
@@ -1602,16 +1602,16 @@ complete profile revision record is this 197-byte value:
 
 Its SHA-256 is
 `a5d3e5b0806c3bf8b73d3e1bb6d3c76f6575f63da6a980a68ca0441c3e6b87df`.
-The complete `zom.target-registry.v0` preimage is this 248-byte value:
+The complete `zom.target-registry` preimage is this 245-byte value:
 
 ```text
-7a6f6d2e7461726765742d72656769737472792e7630000000000000000004686f7374000000000000000100000000000000c50000000000000004686f737400000000000000067838365f363400000000000000037a6f6d00000000000000046e6f6e650000000000000007756e6b6e6f776e00000000000000067a6f6d2d763100000040010000000000000001000000000000000473736532000000000000000100000000000000047373653200000000000000020149e8bb1633a0c9363db11d5a09b760e6a7a5a96b0669468cccf492c209bce569025185b41d5f91b8b5f218440ba6c0b2e410582d350d9976ce67bb3a0e3d381cfc
+7a6f6d2e7461726765742d7265676973747279000000000000000004686f7374000000000000000100000000000000c50000000000000004686f737400000000000000067838365f363400000000000000037a6f6d00000000000000046e6f6e650000000000000007756e6b6e6f776e00000000000000067a6f6d2d763100000040010000000000000001000000000000000473736532000000000000000100000000000000047373653200000000000000020149e8bb1633a0c9363db11d5a09b760e6a7a5a96b0669468cccf492c209bce569025185b41d5f91b8b5f218440ba6c0b2e410582d350d9976ce67bb3a0e3d381cfc
 ```
 
 Its SHA-256 registry revision is
-`a6382e96c364113b0527d197b6c4484bfb5c1bc083b68c438b3fa5cf58c6398c`.
+`b519c204011b1d9d337d47a747d99c1f22bf47c4f09547e2fecee2c049eecbef`.
 The production encoder and a structurally independent test oracle must both
-reproduce the two target preimages, the 197-byte profile record, the 248-byte
+reproduce the two target preimages, the 197-byte profile record, the 245-byte
 registry preimage, and all four target, profile, and registry digests exactly.
 
 The registry verifier recomputes every `TargetSpecId` from the selected
@@ -1621,7 +1621,7 @@ the complete registry revision before snapshot publication. No algorithm
 computes an ID from a token under construction.
 
 One integration fixture binds the existing valid RFC 0011 semantic-context
-fixture and initial runtime capability fixture to the admitted 189-byte
+fixture and initial runtime capability fixture to the admitted 186-byte
 `Abort` target fixture. It verifies byte-exact retention of the context brand,
 context fingerprint, runtime capability brand, runtime capability revision,
 package selection, target specification, and target ID in memory. A second
@@ -1636,7 +1636,7 @@ This RFC adds five deterministic authority domains:
 ```text
 CodegenCapabilitySetRevision =
   SHA256(
-    ASCII("zom.codegen-capability-set.v1")
+    ASCII("zom.codegen-capability-set")
     0x00
     TargetSpecId
     Encode(LlvmBaseline)
@@ -1651,7 +1651,7 @@ CodegenCapabilitySetRevision =
 
 CodegenCapabilityRegistryRevision =
   SHA256(
-    ASCII("zom.codegen-capability-registry.v1")
+    ASCII("zom.codegen-capability-registry")
     0x00
     Encode(LlvmBaseline)
     EncodeFramedMap(targetSpecId, completeCapabilitySet)
@@ -1659,7 +1659,7 @@ CodegenCapabilityRegistryRevision =
 
 RuntimeAbiContractRevision =
   SHA256(
-    ASCII("zom.runtime-abi-contract.v1")
+    ASCII("zom.runtime-abi-contract")
     0x00
     Encode(runtimeAbi)
     EncodeFramedMap(runtimeOpaqueTypeId, completeTypeDeclaration)
@@ -1669,7 +1669,7 @@ RuntimeAbiContractRevision =
 
 RuntimeAbiContractRegistryRevision =
   SHA256(
-    ASCII("zom.runtime-abi-contract-registry.v1")
+    ASCII("zom.runtime-abi-contract-registry")
     0x00
     RuntimeCapabilityRevision
     EncodeFramedMap(runtimeAbi, completeContract)
@@ -1677,7 +1677,7 @@ RuntimeAbiContractRegistryRevision =
 
 TargetAuthorityBundleRevision =
   SHA256(
-    ASCII("zom.target-authority-bundle.v1")
+    ASCII("zom.target-authority-bundle")
     0x00
     RuntimeCapabilityRevision
     TargetRegistryRevision
@@ -1714,7 +1714,7 @@ No process-local brand enters any deterministic preimage.
 The runtime ABI contract registry includes the deterministic runtime capability
 revision while retaining the matching live capability brand separately.
 
-The generated `ZomV1` runtime ABI contract initially assigns stable symbol IDs
+The generated `Zom` runtime ABI contract initially assigns stable symbol IDs
 in this order:
 
 | ID | Symbol | Capability predicate |
@@ -1732,7 +1732,7 @@ The initial callback table contains exactly one entry:
 RuntimeCallbackSignature {
   id: 1,
   signature: {
-    callingConvention: ZomRuntimeV1,
+    callingConvention: ZomRuntime,
     parameters: [
       OpaquePointer {
         pointee: PanicThunkContextTypeId,
@@ -2082,9 +2082,9 @@ Repository gates reject:
 - a preparation-host proof accepted by a final consumer, either final proof
   accepted by preparation work, a final-host proof accepted by target work, or
   a final-target proof accepted by host work;
-- runtime, target, profile, or registry hashing without the 59-byte runtime
+- runtime, target, profile, or registry hashing without the 56-byte runtime
   capability preimage, both target preimages, the 197-byte profile preimage,
-  the full 248-byte registry integration preimage, and independent oracles;
+  the full 245-byte registry integration preimage, and independent oracles;
 - LLVM discovery without the canonical requested directory,
   `NO_DEFAULT_PATH`, exact requested/resolved/`LLVM_CMAKE_DIR` equality,
   canonical install and tools directories, exact

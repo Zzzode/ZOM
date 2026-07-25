@@ -195,9 +195,9 @@ zomc compile --dump-ast --ast-format=raw path/to/file.zom
 names, `NodeId` handles, one-based source spans, decoded scalar fields, and
 expanded child lists.
 
-`json` is the tool-facing named format. It includes the schema version,
-fingerprint, source spans, node names, and schema field names. It does not
-expose payload words.
+`json` is the tool-facing named format. It includes the schema fingerprint,
+source spans, node names, and schema field names. It does not expose payload
+words.
 
 `raw` is compiler-debug-only output for compact storage layout inspection. It is
 not a conformance snapshot format.

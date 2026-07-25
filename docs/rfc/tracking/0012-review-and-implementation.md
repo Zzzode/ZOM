@@ -158,7 +158,7 @@ hash.
 The package layer now publishes only an immutable
 `RegisteredTargetSelection` containing registry revision, profile name,
 RFC 0011 semantic projection, and recognized panic strategy. RFC 0010 alone
-maps that selection to `CanonicalTargetSpec`, owns the v1 codec and
+maps that selection to `CanonicalTargetSpec`, owns the canonical codec and
 `TargetSpecId`, and produces `ZOM6009`, `ZOM9947`, or `ZOM9949` without package
 wrapping. A normalized invocation request is distinct from the manifest-verified
 package request; missing and duplicate selections exist only in
@@ -496,7 +496,7 @@ than an iterator trace. The release performance gate generates the exact RFC
 edge fixture and resolves 10,000 packages, 40,000 candidate releases, and
 50,000 edges in 7.26 seconds; its wrapper enforces the 1 GiB peak-RSS limit and
 the executable enforces the 40,000-decision limit. The checked-in
-`pubgrub-scenarios-v1.json` corpus covers greatest-version selection,
+`pubgrub-scenarios.json` corpus covers greatest-version selection,
 content-addressed no-version derivation, backtracking, yanked releases, and
 separate activation domains; an independent schema/hash oracle binds its exact
 SHA-256 outputs to the C++ replay tests. The P4 dependency and feature resolver
@@ -558,7 +558,7 @@ internal-invariant diagnostic display algebra are executable.
 Every cache miss runs through two independently created sandbox adapters. Each
 run is contract-verified and converted into a complete RFC 0011 output record;
 publication requires byte-identical output records and re-read generated file
-bytes. The `LinuxNativeSandboxV1` ownership state machine covers partial setup,
+bytes. The `LinuxNativeSandbox` ownership state machine covers partial setup,
 running, exited, and finished states, retains only failed teardown owners, and
 has fault injection at every setup and teardown boundary. The checked-in
 x86-64 and AArch64 bootstrap/runtime seccomp generators bind the audit

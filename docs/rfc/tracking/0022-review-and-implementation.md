@@ -59,7 +59,7 @@ The revised proposal re-enters `REVIEW` with:
   ownership or executable-IR evidence;
 - exact `narrow`, `exclude`, `join`, assignment, and match-guard rules,
   including conservative `any` behavior;
-- a direct checked-facts `v4` replacement with a 663-byte framing oracle;
+- a direct canonical checked-facts replacement with a framing oracle;
 - complete `ZOM4096-ZOM4098` producer, recovery, ordinal, note-selection, and
   association rules;
 - exact one-to-one `HirRefinementUse` and `MirRefinementView` source lineage;
@@ -157,7 +157,7 @@ and non-conflicts:
   family is `ZOM4095` (RFC 0007); `ZOM4091`/`ZOM4092` are used by RFC 0018
   and the marker-impl conformance suite. `ZOM4096-ZOM4098` are free.
 - `PreFlowCaptureInventory`, `BodyShapeFacts`, `FlowStabilityInventory`,
-  `BodyFlowTypeBasis`, `CheckedFlowRefinementFact`, and the `v4` codec
+  `BodyFlowTypeBasis`, `CheckedFlowRefinementFact`, and the canonical codec
   oracle are new checker-local constructs defined by this RFC; they do not
   require pre-existing production code.
 - The phase order (pre-flow -> flow-solver -> post-flow-checking ->

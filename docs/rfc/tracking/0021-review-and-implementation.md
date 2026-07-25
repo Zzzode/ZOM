@@ -32,7 +32,7 @@ target/runtime/translator revisions, non-circular backend-attribute proofs,
 structural block-origin ordering, target ABI coercion shapes, mechanical
 multi-carrier LLVM packing, an Itanium-only initial EH algebra, allocation-site
 provenance, exact atomic payloads and ordering matrix, closed failure rows,
-verified object publication, and a replacement 549-byte revision oracle.
+verified object publication and the canonical 546-byte revision oracle.
 
 Product linking and executable publication were removed from RFC 0021 because
 they require their own link-plan, runtime-closure, and artifact-manifest
@@ -119,8 +119,8 @@ The RFC remains `DRAFT`. No implementation is authorized by this tracker.
 - `python3 scripts/check-format.py`: passed using the Xcode toolchain
   `clang-format`; the executable was not available on the default `PATH`.
 - `git diff --check`: passed on 2026-07-23.
-- The independent 549-byte empty LIR preimage recomputed
-  `3177052f0c634e0c314bf21f8cbafb68d91dd3d7dada6e212d36448687f50216`
+- The independent 546-byte empty LIR preimage recomputed
+  `f1789aa2f43d75da9446cea8a9321157deab13b0540a516f91f08eba2c8da0ad`
   with a second SHA-256 invocation.
 - The executable-MIR-set and LIR-algebra codec oracles independently
   recomputed their documented 75-byte and 62-byte preimages and SHA-256

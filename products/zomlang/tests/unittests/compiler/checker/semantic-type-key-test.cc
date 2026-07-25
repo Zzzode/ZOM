@@ -217,8 +217,8 @@ void expectExact(TypeData&& data, StoreFixture& fixture, zc::StringPtr expectedH
 void expectTag(TypeData&& data, StoreFixture& fixture, TypeDataTag tag) {
   const auto id = fixture.intern(zc::mv(data));
   const auto& key = keyFor(fixture, id);
-  ZC_REQUIRE(key.bytes().size() > 25);
-  ZC_EXPECT(key.bytes()[25] == static_cast<uint8_t>(tag));
+  ZC_REQUIRE(key.bytes().size() > 22);
+  ZC_EXPECT(key.bytes()[22] == static_cast<uint8_t>(tag));
 }
 
 void expectRejected(TypeData&& data, StoreFixture& fixture, identity::IdentityInvariantKind kind) {
@@ -229,20 +229,20 @@ void expectRejected(TypeData&& data, StoreFixture& fixture, identity::IdentityIn
 
 }  // namespace
 
-ZC_TEST("SemanticTypeKeyV1.MatchesNormativeGoldenVectors") {
+ZC_TEST("SemanticTypeKey.MatchesNormativeGoldenVectors") {
   StoreFixture fixture;
   expectExact(TypeData(PrimitiveTypeData{PrimitiveKind::I32}), fixture,
-              "7a6f6d2e73656d616e7469632d747970652d6b65792e7631000103"_zc,
-              "7d44a0782e137c5c320aa10b8617f6fff79be234324f0c4d6ddfd8f226e1e24e"_zc);
+              "7a6f6d2e73656d616e7469632d747970652d6b6579000103"_zc,
+              "edbd50f06b02d4d14baeb6b1f07fcf941d14b594724b927f96b3fae528fec5ed"_zc);
 
   const auto i32 = fixture.intern(TypeData(PrimitiveTypeData{PrimitiveKind::I32}));
   const auto null = fixture.intern(TypeData(PrimitiveTypeData{PrimitiveKind::Null}));
   expectExact(TypeData(UnionTypeData{typeIds(i32, null)}), fixture,
-              "7a6f6d2e73656d616e7469632d747970652d6b65792e7631000a000000000000000201030113"_zc,
-              "1445b160d83d787c1eced0adb65aafe14e4ab218a8538c0e5886c1a2340505b5"_zc);
+              "7a6f6d2e73656d616e7469632d747970652d6b6579000a000000000000000201030113"_zc,
+              "95145d7b4eefcf1afa1074973dc414f8d268b3a79d86cbb7be2b761a3f40c844"_zc);
 }
 
-ZC_TEST("SemanticTypeKeyV1.CoversEveryClosedBranch") {
+ZC_TEST("SemanticTypeKey.CoversEveryClosedBranch") {
   StoreFixture fixture;
   const auto nominal = fixture.definition(identity::DefinitionKind::Class);
   const auto& parameter = fixture.parameter();
@@ -294,7 +294,7 @@ ZC_TEST("SemanticTypeKeyV1.CoversEveryClosedBranch") {
   expectTag(TypeData(InterfaceSelfTypeData{interface}), fixture, TypeDataTag::InterfaceSelf);
 }
 
-ZC_TEST("SemanticTypeKeyV1.RejectsInvalidTagsAndDegenerateShapes") {
+ZC_TEST("SemanticTypeKey.RejectsInvalidTagsAndDegenerateShapes") {
   StoreFixture fixture;
   const auto i32 = fixture.intern(TypeData(PrimitiveTypeData{PrimitiveKind::I32}));
   expectRejected(TypeData(PrimitiveTypeData{static_cast<PrimitiveKind>(0)}), fixture,
@@ -321,7 +321,7 @@ ZC_TEST("SemanticTypeKeyV1.RejectsInvalidTagsAndDegenerateShapes") {
                  identity::IdentityInvariantKind::InvalidClosedValue);
 }
 
-ZC_TEST("SemanticTypeKeyV1.RejectsNonCanonicalOrderingAndDuplicates") {
+ZC_TEST("SemanticTypeKey.RejectsNonCanonicalOrderingAndDuplicates") {
   StoreFixture fixture;
   const auto i32 = fixture.intern(TypeData(PrimitiveTypeData{PrimitiveKind::I32}));
   const auto null = fixture.intern(TypeData(PrimitiveTypeData{PrimitiveKind::Null}));
@@ -351,7 +351,7 @@ ZC_TEST("SemanticTypeKeyV1.RejectsNonCanonicalOrderingAndDuplicates") {
                  identity::IdentityInvariantKind::NonCanonicalEncoding);
 }
 
-ZC_TEST("SemanticTypeKeyV1.RejectsNonCanonicalExistentialInputs") {
+ZC_TEST("SemanticTypeKey.RejectsNonCanonicalExistentialInputs") {
   StoreFixture fixture;
   const auto interfaces = fixture.orderedDefinitions(identity::DefinitionKind::Interface);
   const auto associated = fixture.orderedDefinitions(identity::DefinitionKind::AssociatedType);
@@ -397,7 +397,7 @@ ZC_TEST("SemanticTypeKeyV1.RejectsNonCanonicalExistentialInputs") {
       fixture, identity::IdentityInvariantKind::NonCanonicalEncoding);
 }
 
-ZC_TEST("SemanticTypeKeyV1.RejectsForeignHandles") {
+ZC_TEST("SemanticTypeKey.RejectsForeignHandles") {
   StoreFixture local;
   StoreFixture foreign;
   const auto foreignType = foreign.intern(TypeData(PrimitiveTypeData{PrimitiveKind::I32}));
@@ -408,7 +408,7 @@ ZC_TEST("SemanticTypeKeyV1.RejectsForeignHandles") {
       local, identity::IdentityInvariantKind::ForeignContext);
 }
 
-ZC_TEST("SemanticTypeKeyV1.RejectsWrongDefinitionKindsAndUnknownGenericParameter") {
+ZC_TEST("SemanticTypeKey.RejectsWrongDefinitionKindsAndUnknownGenericParameter") {
   StoreFixture fixture;
   const auto wrongNominal = fixture.definition(identity::DefinitionKind::AssociatedType);
   const auto wrongInterface = fixture.definition(identity::DefinitionKind::Class);
@@ -441,7 +441,7 @@ ZC_TEST("SemanticTypeKeyV1.RejectsWrongDefinitionKindsAndUnknownGenericParameter
                  fixture, identity::IdentityInvariantKind::InvalidClosedValue);
 }
 
-ZC_TEST("SemanticTypeKeyV1.AcceptsSharedAcyclicSubgraphs") {
+ZC_TEST("SemanticTypeKey.AcceptsSharedAcyclicSubgraphs") {
   StoreFixture fixture;
   const auto child = fixture.intern(TypeData(PrimitiveTypeData{PrimitiveKind::I32}));
   const auto left = fixture.intern(TypeData(ReferenceTypeData{Mutability::Const, child}));

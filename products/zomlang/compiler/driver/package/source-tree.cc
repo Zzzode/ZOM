@@ -38,7 +38,7 @@ zc::Maybe<identity::Sha256Digest> computeTreeDigest(zc::ArrayPtr<const SourceTre
 
   identity::Sha256Hasher hasher;
   const uint8_t separator = 0;
-  if (!hasher.update("zom.source-tree.v0"_zc.asBytes()) ||
+  if (!hasher.update("zom.source-tree"_zc.asBytes()) ||
       !hasher.update(zc::arrayPtr(&separator, 1)) || !hasher.update(encoded.asPtr())) {
     return zc::none;
   }

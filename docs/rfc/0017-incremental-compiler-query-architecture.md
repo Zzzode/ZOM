@@ -398,10 +398,10 @@ key and value type. A key must be immutable, totally comparable, and either:
   or
 - a canonical semantic key with deterministic encoding.
 
-Persistent query kinds require a canonical key encoding. Query domain tags,
-key schema versions, and value schema versions are included in the local cache
-envelope and may change before 1.0 by invalidating the cache. Tags are not a
-user-visible ABI.
+Persistent query kinds require canonical key and value encodings. Query domain
+tags are included in the local cache envelope and are not a user-visible ABI.
+Any encoding change invalidates the cache and replaces every producer,
+consumer, fixture, and oracle directly.
 
 Raw pointers, registry slots, `BufferId`, `NodeId`, arena indices, traversal
 ordinals, worker order, and source byte offsets are forbidden in persistent
@@ -439,7 +439,7 @@ The replacement rules are:
   persistent query roots and cannot enter a public projection key.
 
 `BuildScriptProducerKey` is a 32-byte SHA-256 digest over ASCII domain
-`zom.build-script-producer.v0`, one zero byte, and the RFC 0011 canonical
+`zom.build-script-producer`, one zero byte, and the RFC 0011 canonical
 encoding of `PreparatoryBuildScriptKey`. That record retains package,
 `TargetName`, host target, semantic options, and sorted build dependencies. It
 identifies the configured producer plan, not one execution result. A change to
@@ -452,16 +452,14 @@ under the same plan do not.
 position. Its exact encoding is compilation-domain tag, canonical target key,
 semantic compiler options, optional-presence tag, and, when present, the
 32 producer-key bytes. `CrateKey` encodes expanded `PackageKey`, target-kind
-tag, `TargetName`, and that replacement compilation record in order. Query and
-fixture schema versions advance to v1; the content-derived form has no decoder
-or alias.
+tag, `TargetName`, and that replacement compilation record in order. The
+content-derived form has no decoder or alias.
 
 `SourceOriginKey::GeneratedFile` directly becomes
 `{ producer: BuildScriptProducerKey, logicalPath: CanonicalRelativePath }`.
-`SourceFileKey` still encodes expanded replacement `CrateKey` followed by the
-origin tag `0x04`, the 32 producer-key bytes, and the canonical logical path.
-The output key and content digest are absent, the source-key schema version
-advances to v1, and no prior form remains.
+`SourceFileKey` encodes expanded replacement `CrateKey` followed by the origin
+tag `0x04`, the 32 producer-key bytes, and the canonical logical path. The
+output key and content digest are absent.
 
 `BuildScriptOutputRecord(BuildScriptProducerKey)` is an explicit immutable
 input containing the current source digests, declared environment, generated
@@ -483,10 +481,10 @@ encoding. The ASCII domain string and one zero byte precede every preimage.
 
 RFC 0018 is the complete stable identity wire contract used by this query
 architecture. `DefinitionKey` is the SHA-256 digest of domain
-`zom.named-item-header.v0`, one zero byte, and the complete
+`zom.named-item-header`, one zero byte, and the complete
 `DefinitionIdentityRecord`: stable module, compact stable-owner digest sequence,
 kind, namespace, NFC declared name, and optional overload-header digest.
-`ImplKey` is the SHA-256 digest of domain `zom.impl-header.v0`, one zero byte,
+`ImplKey` is the SHA-256 digest of domain `zom.impl-header`, one zero byte,
 and the complete `ImplIdentityRecord`: stable module, compact owner sequence,
 generic parameters, polarity, safety, canonical trait reference, self-type
 syntax, and sorted-unique obligations. The identity inventory retains each
@@ -508,7 +506,7 @@ is admitted, every source occurrence receives a revision-local
 Only classified survivors collide or publish. Source order and schema preorder
 never alter stable identity.
 
-`ModuleResolutionKey` uses RFC 0018 domain `zom.module-resolution.v0` and
+`ModuleResolutionKey` uses RFC 0018 domain `zom.module-resolution` and
 contains only stable requester module, dependency kind, optional normalized
 path, optional dependency alias, and the complete fixed
 `ModuleResolutionPolicyKey`. It excludes import sites, source ranges, parser
@@ -1137,7 +1135,6 @@ not eligible.
 
 Each entry envelope contains:
 
-- cache format and query schema versions;
 - compiler build identity;
 - query kind and canonical key bytes;
 - target, language, package, prelude, and semantic-option projections actually
@@ -1517,7 +1514,7 @@ and does not depend on wall-clock noise.
 - Failed, cancelled, cyclic, or invariant-rejected queries publish no value or
   dependency record and do not poison the next demand.
 - Local persistence remains disabled until all in-memory criteria pass; when
-  enabled, version mismatch, truncation, corruption, hostile lengths, unknown
+  enabled, domain mismatch, truncation, corruption, hostile lengths, unknown
   tags, current-dependency mismatch, verifier rejection, path or symlink escape,
   partial I/O, concurrent maintenance, and bounded-decoder fuzz cases all
   behave as cache misses or disabled writes without changing compilation.

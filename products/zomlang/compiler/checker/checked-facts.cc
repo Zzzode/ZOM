@@ -125,7 +125,7 @@ public:
 
   zc::Maybe<identity::Sha256Digest> constantRevision(const ConstantEvaluationFact& fact) const {
     identity::CanonicalEncoder encoder;
-    encodeAscii(encoder, "zom.constant-evaluation.v0"_zcc);
+    encodeAscii(encoder, "zom.constant-evaluation"_zcc);
     encoder.encodeUint8(0);
     encoder.encodeDigest(input.contextFingerprint.digest());
     if (!encodeDefinition(encoder, fact.definition) || !encodeType(encoder, fact.type) ||
@@ -416,7 +416,7 @@ private:
     auto lookup = input.semanticTypes.get(semanticType);
     if (!lookup.is<type::SemanticTypeLookup>()) return false;
     const auto bytes = lookup.get<type::SemanticTypeLookup>().key().bytes();
-    constexpr zc::StringPtr domain = "zom.semantic-type-key.v1\0"_zcc;
+    constexpr zc::StringPtr domain = "zom.semantic-type-key\0"_zcc;
     if (bytes.size() <= domain.size()) return false;
     for (size_t index = 0; index < domain.size(); ++index) {
       if (bytes[index] != static_cast<uint8_t>(domain[index])) return false;
@@ -1557,7 +1557,7 @@ bool encodeDisplayType(identity::CanonicalEncoder& encoder, identity::SemanticTy
   auto lookup = semanticTypes.get(semanticType);
   if (!lookup.is<type::SemanticTypeLookup>()) return false;
   const auto bytes = lookup.get<type::SemanticTypeLookup>().key().bytes();
-  constexpr zc::StringPtr domain = "zom.semantic-type-key.v1\0"_zcc;
+  constexpr zc::StringPtr domain = "zom.semantic-type-key\0"_zcc;
   if (bytes.size() <= domain.size()) return false;
   for (size_t index = 0; index < domain.size(); ++index) {
     if (bytes[index] != static_cast<uint8_t>(domain[index])) return false;
@@ -1641,7 +1641,7 @@ zc::Maybe<zc::Array<uint8_t>> encodeDisplayArgumentRecord(
     return zc::none;
   }
   identity::CanonicalEncoder encoder;
-  encodeAscii(encoder, "zom.checker-display-argument.v1"_zcc);
+  encodeAscii(encoder, "zom.checker-display-argument"_zcc);
   encoder.encodeUint8(0);
   const auto& value = argument.variant();
   if (value.is<TypeDisplayArg>()) {
@@ -2292,7 +2292,7 @@ zc::Maybe<CheckedFactsRevision> CheckedFactsRevision::computeFramed(
     const CheckedFactsCanonicalGroups& groups) {
   if (expandedOwningModule.size() == 0) return zc::none;
   identity::CanonicalEncoder encoder;
-  encodeAscii(encoder, "zom.checked-facts-revision.v3"_zcc);
+  encodeAscii(encoder, "zom.checked-facts-revision"_zcc);
   encoder.encodeUint8(0);
   encoder.encodeDigest(contextFingerprint);
   encoder.encodeByteString(expandedOwningModule);

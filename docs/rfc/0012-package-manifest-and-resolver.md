@@ -209,7 +209,7 @@ URL or cache location. The content digest covers the exact original UTF-8
 bytes. No form contains an absolute host path.
 
 The package `sourceDigest` is SHA-256 over
-`ASCII("zom.diagnostic-package-source.v0")`, one zero byte, and the RFC 0011
+`ASCII("zom.diagnostic-package-source")`, one zero byte, and the RFC 0011
 encoding of `CanonicalPackageSource`. It is a diagnostic path component only;
 it never replaces the package source in semantic identity.
 
@@ -479,9 +479,7 @@ output artifact container does not create another crate identity.
 
 ### Package CLI Contract
 
-The package implementation replaces the direct-source `zomc compile` command;
-there is no compatibility mode accepting positional `.zom` files. The complete
-package invocation is:
+The complete package invocation is:
 
 ```text
 zomc compile
@@ -757,16 +755,16 @@ VerifiedRegistryReleaseRecord {
 ```
 
 An Ed25519 public key is exactly 32 bytes and a signature is exactly 64 bytes.
-`ArchiveFormat` has one accepted variant, `TarZstdV1`; it is a POSIX ustar
+`ArchiveFormat` has one accepted variant, `TarZstd`; it is a POSIX ustar
 archive compressed as one Zstandard frame. Concatenated frames and trailing
 bytes are rejected. Additional archive formats require an RFC revision.
-`SigningKeyId` is SHA-256 over `ASCII("zom.ed25519-key.v0")`, one zero byte,
+`SigningKeyId` is SHA-256 over `ASCII("zom.ed25519-key")`, one zero byte,
 and the raw public-key bytes. `RegistryIdentity.trustDomain` is SHA-256 over
-`ASCII("zom.registry-trust.v0")`, one zero byte, and the RFC 0011 encoding of
+`ASCII("zom.registry-trust")`, one zero byte, and the RFC 0011 encoding of
 the sorted key map. Key addition, removal, or revocation therefore creates a
 new trust domain and cannot silently change an existing package source.
 
-The signed message is `ASCII("zom.registry-release.v0")`, one zero byte, and
+The signed message is `ASCII("zom.registry-release")`, one zero byte, and
 the RFC 0011 encoding of every release-record field in declaration order except
 `signature`. A verifier requires the signing key in the exact trust
 configuration whose digest equals the record's registry trust domain.
@@ -783,7 +781,7 @@ admitted.
 `CanonicalManifestRecord` is `NormalizedManifest` with `document`, every
 `ManifestSpan`, and all other diagnostic provenance removed; dependency
 requirements use `DependencyRequirementWithoutOrigin`. `manifestDigest` is
-SHA-256 over `ASCII("zom.normalized-manifest.v0")`, one zero byte, and the
+SHA-256 over `ASCII("zom.normalized-manifest")`, one zero byte, and the
 canonical encoding of that record. `archiveDigest` is SHA-256 over the exact
 downloaded archive bytes. `sourceTreeDigest` is defined below.
 
@@ -818,7 +816,7 @@ LocalPackageRecord {
 
 The VCS base contains the RFC 0011 canonical URL, immutable revision, and
 canonical subdirectory. `selectorDigest` is SHA-256 over
-`ASCII("zom.vcs-selector.v0")`, one zero byte, the selector-kind tag, and one RFC
+`ASCII("zom.vcs-selector")`, one zero byte, the selector-kind tag, and one RFC
 0011 byte string containing the exact tag or branch bytes. An unlocked tag or
 branch requirement must match exactly one `ResolvedVcsSelectorRecord`; the
 fetch boundary creates that record from one remote-ref response and verifies
@@ -1017,7 +1015,7 @@ fields encode in declaration order with RFC 0011 tags. Sequences sort by their
 complete encoded element bytes. `ResolutionOutput` canonical bytes are:
 
 ```text
-ASCII("zom.resolution-output.v0")
+ASCII("zom.resolution-output")
 0x00
 EncodeSequence(packages)
 EncodeSequence(edges)
@@ -1067,7 +1065,7 @@ IncompatibilityRecord {
 }
 
 IncompatibilityId = SHA256(
-  ASCII("zom.incompatibility.v0"), 0x00, Encode(IncompatibilityRecord))
+  ASCII("zom.incompatibility"), 0x00, Encode(IncompatibilityRecord))
 
 IncompatibilityGraph {
   root: IncompatibilityId,
@@ -1082,7 +1080,7 @@ container traversal order enters diagnostics.
 
 The implementation is a C++20 translation of Dart Pub's documented PubGrub
 incompatibility algorithm behind a provider interface over the records above.
-ZOM owns a checked-in `pubgrub-scenarios-v1.json` corpus with the exact input,
+ZOM owns a checked-in `pubgrub-scenarios.json` corpus with the exact input,
 selected graph or incompatibility derivation, and canonical output bytes. A
 change to algorithm semantics requires changing that corpus through a new RFC;
 an implementation-library upgrade cannot change the oracle.
@@ -1094,7 +1092,7 @@ handles after the result freezes.
 
 Permutation seed `s` in `0..255` reorders each independently permutable input
 sequence by sorting elements on
-`SHA256(ASCII("zom.permutation.v0"), 0x00, uint64be(s), Encode(element))`, then
+`SHA256(ASCII("zom.permutation"), 0x00, uint64be(s), Encode(element))`, then
 on `Encode(element)` as the collision tie-breaker. TOML fixture generators use
 the same key for table and key order only in valid-manifest success fixtures;
 those runs compare semantic output and lock bytes, not source-positioned
@@ -1106,11 +1104,9 @@ in the determinism suite and requires no host PRNG.
 ### Lock Graph
 
 `Zom.lock` is a generated canonical TOML 1.0 encoding of
-`VerifiedLockGraph`. Its closed schema is:
+`VerifiedLockGraph`. Its closed fields are:
 
 ```toml
-schema = "zom-lock-1"
-
 [[package]]
 key = "<lowercase hex RFC 0011 PackageKey encoding>"
 source-kind = "registry|vcs|local"
@@ -1120,7 +1116,7 @@ version = "<canonical SemVer>"
 features = ["<sorted feature>"]
 manifest-sha256 = "<64 lowercase hex>"
 source-tree-sha256 = "<64 lowercase hex>"
-archive-format = "tar-zstd-v1 or absent"
+archive-format = "tar-zstd or absent"
 archive-sha256 = "<64 lowercase hex or absent>"
 signing-key = "<canonical signing key id or absent>"
 
@@ -1171,7 +1167,7 @@ SourceTreeFile {
 }
 
 SourceTreeDigest = SHA256(
-  ASCII("zom.source-tree.v0"), 0x00,
+  ASCII("zom.source-tree"), 0x00,
   EncodeSequence(sortByEncodedPath(SourceTreeFile)))
 ```
 
@@ -1365,7 +1361,7 @@ and reject duplicates; its symbol manifest lists every defined/undefined symbol,
 visibility, size, and owning object; its relocation manifest lists every source
 object/section/offset, relocation kind, and target symbol; and its operation
 manifest lists the admitted allocator, IPC, path-validation, file, and exit
-operations. Each manifest uses a versioned canonical record and the stored field
+operations. Each manifest uses one canonical record and the stored field
 is SHA-256 over its exact bytes. The runtime ABI profile must equal the selected
 registered target's runtime profile after RFC 0010 verification. Empty object
 sets, duplicate digests, unmanifested symbols or relocations, weak fallbacks,
@@ -1388,9 +1384,9 @@ tags do not apply. Operation tags follow declaration order starting at `0x01`.
 
 The independent symbol-name codec oracle uses `Named(ByteString("x"))`. Prefixing
 its exact tagged encoding `02000000000000000178` with
-`ASCII("zom.build-runtime-symbol-name.v0")` and one zero byte produces this
+`ASCII("zom.build-runtime-symbol-name")` and one zero byte produces this
 complete 43-byte test preimage:
-`7a6f6d2e6275696c642d72756e74696d652d73796d626f6c2d6e616d652e76300002000000000000000178`.
+`7a6f6d2e6275696c642d72756e74696d652d73796d626f6c2d6e616d650002000000000000000178`.
 Its SHA-256 is
 `52cc6eb4b5c6726138df5588464cd683d7279fac0cfb8ff344128627c5aa0774`.
 The test mutates `Unnamed`, `Named`, the byte-string length, and the payload
@@ -1441,9 +1437,9 @@ absent, or one symbol assigned to multiple operations is
 Each manifest digest uses the same framing algorithm: its domain, one zero byte,
 `uint64be(recordCount)`, then for each sorted record
 `uint64be(encodedRecordByteLength)` and the declaration-order encoded record.
-The domains are exactly `zom.build-runtime-symbols.v0`,
-`zom.build-runtime-relocations.v0`, and
-`zom.build-runtime-operations.v0`. Independent one-record framing oracles use
+The domains are exactly `zom.build-runtime-symbols`,
+`zom.build-runtime-relocations`, and
+`zom.build-runtime-operations`. Independent one-record framing oracles use
 already-encoded record bytes `a1`:
 
 | Manifest | Preimage bytes | SHA-256 |
@@ -1453,10 +1449,10 @@ already-encoded record bytes `a1`:
 | Operations | 49 | `6469e53c101bf30c27c3275dc722df44e1b7f189b279ca6bb33859a98e6e9ad0` |
 
 The exact oracle preimages are respectively
-`7a6f6d2e6275696c642d72756e74696d652d73796d626f6c732e76300000000000000000010000000000000001a1`,
-`7a6f6d2e6275696c642d72756e74696d652d72656c6f636174696f6e732e76300000000000000000010000000000000001a1`,
+`7a6f6d2e6275696c642d72756e74696d652d73796d626f6c730000000000000000010000000000000001a1`,
+`7a6f6d2e6275696c642d72756e74696d652d72656c6f636174696f6e730000000000000000010000000000000001a1`,
 and
-`7a6f6d2e6275696c642d72756e74696d652d6f7065726174696f6e732e76300000000000000000010000000000000001a1`.
+`7a6f6d2e6275696c642d72756e74696d652d6f7065726174696f6e730000000000000000010000000000000001a1`.
 The runtime-key verifier independently decodes actual object files, reconstructs
 all three manifests, recomputes every digest, and compares the complete records
 before authorizing the key.
@@ -1475,7 +1471,7 @@ generated inventory, or generated digest is `BuildResultIntegrityViolation`;
 no sandbox execution or cache publication follows that failure. CI additionally
 exercises forced misses and intentional nondeterminism fixtures.
 
-The initial closed adapter set contains only `LinuxNativeSandboxV1` on Linux
+The initial closed adapter set contains only `LinuxNativeSandbox` on Linux
 x86-64 and AArch64. A package without a build script remains portable; a build
 script on any other host reports `SandboxUnavailable`. The adapter requires
 unprivileged user, mount, PID, and network namespaces, `no_new_privs`, seccomp
@@ -1679,7 +1675,7 @@ only choose a value inside these ranges and relations. An invalid key produces
 one closed `BuildScriptLimitInvariantIssue` before resource acquisition, maps to
 fatal `ZOM9905 BuildScriptLimitInvariantViolation`, retains the rejected
 structural key in the compiler bug bundle, and never becomes a package or child
-failure. `LinuxNativeSandboxV1` accepts a positive
+failure. `LinuxNativeSandbox` accepts a positive
 CPU limit only when it is an exact multiple of 1000. Before exec it divides by
 1000 without rounding, sets `RLIMIT_CPU.rlim_cur` to that second count, and sets
 `rlim_max` to the overflow-checked value `rlim_cur + 1`. Verified build-script
@@ -1789,7 +1785,7 @@ DependencyCycleRecord {
 `RegistryRecordAnchor.fieldPath` indexes declaration-order fields and sorted
 sequence entries in the signed canonical manifest; it never points into
 presentation text. A present `requestDigest` is SHA-256 over
-`ASCII("zom.package-invocation-request.v0")`, one zero byte, and the RFC 0011
+`ASCII("zom.package-invocation-request")`, one zero byte, and the RFC 0011
 encoding of `PackageInvocationRequest` in declaration order. The key's
 `operation` must equal the encoded request operation. It is `none` until one
 complete `NormalizedPackageCompilationRequest` exists; therefore a missing or
@@ -1801,7 +1797,7 @@ working-directory spelling, credentials, output paths, environment values, and
 rejected command text.
 
 `RejectedSourcePath.rawDigest` hashes the exact rejected entry-name bytes with
-domain `zom.rejected-source-path.v0`. `canonicalPath` is present only after the
+domain `zom.rejected-source-path`. `canonicalPath` is present only after the
 complete path validator succeeds. The materialization failure path is present
 only when one archive or source-tree entry caused the failure; archive-level,
 snapshot-level, resource-limit, and cleanup failures use `none` and never
@@ -2202,7 +2198,7 @@ The package performance fixture is generated without randomness. It creates
 packages `p00000` through `p09999`, four releases `1.0.0` through `1.3.0` for
 each package, the chain edges `pNNNNN -> p(NNNNN+1)`, then the first additional
 distinct `consumer < provider` pairs sorted by
-`SHA256(ASCII("zom.performance-edge.v0"), 0x00, uint32be(consumer),
+`SHA256(ASCII("zom.performance-edge"), 0x00, uint32be(consumer),
 uint32be(provider))` until the graph has exactly 50,000 edges. Every requirement
 is `^1.0.0`, every package has one library, and `p00000` is the root. The locked
 fixture selects `1.3.0` everywhere.
@@ -2248,7 +2244,7 @@ ctest --test-dir build-release -R '^performance-package-resolver$' --output-on-f
     equality through RFC 0010 LIR publication.
 15. Every build-script denial, resource limit, cache-miss double execution,
     teardown path, and nondeterminism failure is exercised on
-    `LinuxNativeSandboxV1`; unsupported hosts fail closed.
+    `LinuxNativeSandbox`; unsupported hosts fail closed.
 16. Source admission enforces compressed, decoder, header, metadata, file, and
     total limits and publishes only owning digest-verified snapshots.
 17. Normative documentation is added only after matching implementation and
@@ -2275,7 +2271,7 @@ ctest --test-dir build-release -R '^performance-package-resolver$' --output-on-f
    resolve RFC 0010 backend profiles, and produce RFC 0011 package/crate keys.
 7. Implement owning digest-verified source snapshots and the bounded streaming
    Zstandard/ustar admission pipeline with RAII C-library wrappers.
-8. Implement `LinuxNativeSandboxV1`, executable identity, cache-miss double
+8. Implement `LinuxNativeSandbox`, executable identity, cache-miss double
    execution, output verification, and the frozen node-to-result map.
 9. Feed the immutable graph, target specifications, snapshots, and build results
    into RFC 0008 `CompilerSession` and RFC 0010 LIR target verification.
@@ -2357,7 +2353,7 @@ ctest --test-dir build-release -R '^performance-package-resolver$' --output-on-f
   input/environment/export/output, seccomp and output-tree policy bypasses,
   malformed IPC, invalid executable identity, invalid generated source, forced
   cache miss mismatch, and every partial-setup teardown path on
-  `LinuxNativeSandboxV1`. Repeat the capability negatives from a transitive
+  `LinuxNativeSandbox`. Repeat the capability negatives from a transitive
   build dependency and generated shim; inject unsafe, raw-pointer,
   unchecked-memory, indirect-control-flow, weak-symbol, relocation, and
   unverified archive-member attempts and prove the final linked-closure verifier
@@ -2414,7 +2410,7 @@ ctest --test-dir build-release -R '^performance-package-resolver$' --output-on-f
   external-local packages; signed-record, source-tree, `ResolutionOutput`, and
   registered-target-selection/build-execution records, the vendored dependency manifest,
   architecture-specific seccomp allowlists and BPF digests, and
-  `pubgrub-scenarios-v1.json` golden bytes.
+  `pubgrub-scenarios.json` golden bytes.
 - Performance: run the exact release configure, build, and CTest commands in
   Operational Readiness and assert allocator and decision counters.
 - Default CTest: `ctest --preset default --output-on-failure`.

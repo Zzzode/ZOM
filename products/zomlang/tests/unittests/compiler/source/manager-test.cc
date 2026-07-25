@@ -130,11 +130,11 @@ ZC_TEST("SourceManager: Virtual File Interactions") {
   auto loc1 = manager.getLocForBufferStart(bufferId);
   auto loc2 = manager.getLocForOffset(bufferId, 8);
 
-  manager.createVirtualFile(loc1, "v1.txt", 5, 7);
-  manager.createVirtualFile(loc2, "v2.txt", 10, 3);
+  manager.createVirtualFile(loc1, "first.txt", 5, 7);
+  manager.createVirtualFile(loc2, "second.txt", 10, 3);
 
-  ZC_IF_SOME(vf1, manager.getVirtualFile(loc1)) { ZC_EXPECT(vf1.name == "v1.txt"); }
-  ZC_IF_SOME(vf2, manager.getVirtualFile(loc2)) { ZC_EXPECT(vf2.name == "v2.txt"); }
+  ZC_IF_SOME(vf1, manager.getVirtualFile(loc1)) { ZC_EXPECT(vf1.name == "first.txt"); }
+  ZC_IF_SOME(vf2, manager.getVirtualFile(loc2)) { ZC_EXPECT(vf2.name == "second.txt"); }
 }
 
 ZC_TEST("SourceManager: Line Column Operations") {

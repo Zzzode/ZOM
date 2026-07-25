@@ -447,7 +447,7 @@ struct ImplPattern final {
   ZC_NODISCARD ImplPattern clone() const;
 };
 
-/// \brief Canonical framed `zom.type-key-pattern.v1` key.
+/// \brief Canonical framed `zom.type-key-pattern` key.
 class TypeKeyPatternKey final {
 public:
   ZC_NODISCARD zc::ArrayPtr<const uint8_t> bytes() const noexcept;
@@ -460,7 +460,7 @@ private:
   friend class SignatureFactsCanonicalCodec;
 };
 
-/// \brief Canonical framed `zom.impl-pattern.v1` key.
+/// \brief Canonical framed `zom.impl-pattern` key.
 class ImplPatternKey final {
 public:
   ZC_NODISCARD zc::ArrayPtr<const uint8_t> bytes() const noexcept;
@@ -835,7 +835,7 @@ class SignatureFactsRevision final {
 public:
   ZC_NODISCARD const identity::Sha256Digest& digest() const noexcept;
 
-  /// \brief Computes the normative v1 frame from already-canonical record bytes.
+  /// \brief Computes the normative frame from already-canonical record bytes.
   ZC_NODISCARD static zc::Maybe<SignatureFactsRevision> computeFramed(
       const identity::Sha256Digest& contextFingerprint,
       zc::ArrayPtr<const uint8_t> expandedOwningModule,
@@ -1046,7 +1046,7 @@ struct SignatureFactsSourceRejected final {
 using SignatureFactsVerificationResult =
     zc::OneOf<VerifiedSignatureFacts, SignatureFactsInvariantRejected>;
 
-/// \brief Independently verifies the canonical RFC 0015 v1 fact candidate.
+/// \brief Independently verifies the canonical RFC 0015 fact candidate.
 class SignatureFactsVerifier final {
 public:
   ZC_NODISCARD static SignatureFactsVerificationResult verify(

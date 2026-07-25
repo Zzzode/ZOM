@@ -474,8 +474,11 @@ zc::Maybe<identity::SortedFeatureSet> parseFeatures(zc::StringPtr line) {
       if (cursor == body.size()) { return zc::none; }
       auto featureText = zc::heapString(body.slice(start, cursor));
       auto feature = identity::FeatureName::fromCanonical(featureText);
-      ZC_IF_SOME(value, feature) { features.add(zc::mv(value)); }
-      else { return zc::none; }
+      ZC_IF_SOME(value, feature) {
+        features.add(zc::mv(value));
+      } else {
+        return zc::none;
+      }
       ++cursor;
       if (cursor == body.size()) { break; }
       if (cursor + 2 > body.size() || body.slice(cursor, cursor + 2) != ", "_zc) {
@@ -741,9 +744,8 @@ zc::OneOf<VerifiedLockGraph, LockIssue> LockedReplayVerifier::replay(
 
 zc::String LockfileCodec::write(const VerifiedLockGraph& graph) {
   zc::Vector<char> output;
-  appendField(output, "schema"_zc, "zom-lock-1"_zc);
   for (const auto& package : graph.packages()) {
-    output.add('\n');
+    if (output.size() != 0) { output.add('\n'); }
     append(output, "[[package]]\n"_zc);
     appendField(output, "key"_zc, zc::encodeHex(package.key().encode()));
     appendField(output, "source-kind"_zc, sourceKindName(package.key().source().kind()));
@@ -756,7 +758,7 @@ zc::String LockfileCodec::write(const VerifiedLockGraph& graph) {
     appendField(output, "manifest-sha256"_zc, zc::encodeHex(package.manifestDigest().bytes()));
     appendField(output, "source-tree-sha256"_zc, zc::encodeHex(package.sourceTreeDigest().bytes()));
     if (package.hasArchive()) {
-      appendField(output, "archive-format"_zc, "tar-zstd-v1"_zc);
+      appendField(output, "archive-format"_zc, "tar-zstd"_zc);
       appendField(output, "archive-sha256"_zc, zc::encodeHex(package.archiveDigest().bytes()));
       appendField(output, "signing-key"_zc, zc::encodeHex(package.signingKey().digest().bytes()));
     }
@@ -774,9 +776,12 @@ zc::String LockfileCodec::write(const VerifiedLockGraph& graph) {
 }
 
 LockParseResult LockfileCodec::parse(zc::ArrayPtr<const zc::byte> source) {
-  if (source.size() == 0 || source.back() != static_cast<zc::byte>('\n')) {
-    return LockIssue::NonCanonicalEncoding;
+  if (source.size() == 0) {
+    zc::Vector<LockPackageRecord> packages;
+    zc::Vector<identity::PackageDependencyEdgeKey> edges;
+    return VerifiedLockGraph::from(zc::mv(packages), zc::mv(edges));
   }
+  if (source.back() != static_cast<zc::byte>('\n')) { return LockIssue::NonCanonicalEncoding; }
   auto validated = zc::encodeUtf32(source.asChars());
   if (validated == zc::none) { return LockIssue::InvalidUtf8; }
   for (zc::byte byte : source) {
@@ -784,11 +789,7 @@ LockParseResult LockfileCodec::parse(zc::ArrayPtr<const zc::byte> source) {
   }
   const auto sourceText = zc::heapString(source.asChars());
   const auto lines = splitLines(sourceText);
-  if (lines.size() == 0) { return LockIssue::TomlSyntax; }
-  if (lines[0] != "schema = \"zom-lock-1\""_zc) {
-    if (lines[0].startsWith("schema = "_zc)) { return LockIssue::UnsupportedSchema; }
-    return LockIssue::MissingField;
-  }
+  if (lines.size() == 0 || lines[0] != "[[package]]"_zc) { return LockIssue::TomlSyntax; }
   const zc::StringPtr allowedFields[] = {
       "key = "_zc,
       "source-kind = "_zc,
@@ -805,7 +806,7 @@ LockParseResult LockfileCodec::parse(zc::ArrayPtr<const zc::byte> source) {
       "alias = "_zc,
       "target-key = "_zc,
   };
-  for (size_t index = 1; index < lines.size(); ++index) {
+  for (size_t index = 0; index < lines.size(); ++index) {
     if (lines[index].size() == 0 || lines[index] == "[[package]]"_zc ||
         lines[index] == "[[package.dependency]]"_zc) {
       continue;
@@ -828,9 +829,9 @@ LockParseResult LockfileCodec::parse(zc::ArrayPtr<const zc::byte> source) {
   };
   zc::Vector<LockPackageRecord> packages;
   zc::Vector<PendingEdge> pendingEdges;
-  size_t cursor = 1;
+  size_t cursor = 0;
   while (cursor < lines.size()) {
-    if (lines[cursor++] != ""_zc) { return LockIssue::NonCanonicalEncoding; }
+    if (cursor != 0 && lines[cursor++] != ""_zc) { return LockIssue::NonCanonicalEncoding; }
     if (cursor == lines.size() || lines[cursor++] != "[[package]]"_zc) {
       return LockIssue::TomlSyntax;
     }
@@ -902,10 +903,10 @@ LockParseResult LockfileCodec::parse(zc::ArrayPtr<const zc::byte> source) {
       auto archiveDigestText = takeField("archive-sha256"_zc);
       auto signingKeyText = takeField("signing-key"_zc);
       if (archiveFormatText == zc::none || archiveDigestText == zc::none ||
-          signingKeyText == zc::none || requireMaybe(archiveFormatText) != "tar-zstd-v1"_zc) {
+          signingKeyText == zc::none || requireMaybe(archiveFormatText) != "tar-zstd"_zc) {
         return LockIssue::SourceFieldMismatch;
       }
-      archiveFormat = ArchiveFormat::TarZstdV1;
+      archiveFormat = ArchiveFormat::TarZstd;
       archiveDigest = parseDigest(requireMaybe(archiveDigestText));
       auto signingDigest = parseDigest(requireMaybe(signingKeyText));
       ZC_IF_SOME(value, signingDigest) { signingKey = SigningKeyId::fromDigest(value); }

@@ -98,7 +98,7 @@ ZC_TEST("ImportedSignatureViewRevision.ReproducesRfc0005FramingOracle") {
   ZC_REQUIRE(revision != zc::none);
   ZC_IF_SOME(value, revision) {
     ZC_EXPECT(zc::encodeHex(value.digest().bytes()) ==
-              "e8632559fd0e8fcbc78435f7ad142d48a58ec306111deee20e8c2f722bd6e218"_zc);
+              "16c9b731c156061752980de67bd85d410e3cc1aaed336ad592a0fc842bf1cb86"_zc);
   }
 }
 
@@ -130,7 +130,7 @@ ZC_TEST("ImportedSignatureModuleCanonicalCodec.RejectsNonCanonicalRecords") {
                 emptyRecords) == zc::none);
 }
 
-ZC_TEST("CoherenceViewRevision.ReproducesRfc0015V1FramingOracle") {
+ZC_TEST("CoherenceViewRevision.ReproducesRfc0015FramingOracle") {
   const uint8_t module[] = {0xc3};
   const uint8_t impl[] = {0xd4};
   const uint8_t marker[] = {0xe5};
@@ -142,14 +142,14 @@ ZC_TEST("CoherenceViewRevision.ReproducesRfc0015V1FramingOracle") {
   ZC_REQUIRE(revision != zc::none);
   ZC_IF_SOME(value, revision) {
     ZC_EXPECT(zc::encodeHex(value.digest().bytes()) ==
-              "f14947d682f1992fc62eb0f4688265013138a8749015202e2fbe46817a2d2975"_zc);
+              "3a10103a288cbe53af9bc6c02366309ed7c123805b9e7611affa17f8bd922c63"_zc);
   }
 }
 
 ZC_TEST("CoherenceViewRevision.ReproducesRfc0015ImplIntegrationOracle") {
   const uint8_t module[] = {0xc3};
   auto impl = decoded(
-      "a100000000000000317a6f6d2e696d706c2d7061747465726e2e763100a100000000000000"
+      "a1000000000000002e7a6f6d2e696d706c2d7061747465726e00a100000000000000"
       "01110000000008b20000000000000001110000000008b2000000000000000109c309b20000"
       "000000000001c30000000000000000010000000000000000d4"_zc);
   const zc::ArrayPtr<const uint8_t> modules[] = {module};
@@ -160,7 +160,7 @@ ZC_TEST("CoherenceViewRevision.ReproducesRfc0015ImplIntegrationOracle") {
   ZC_REQUIRE(revision != zc::none);
   ZC_IF_SOME(value, revision) {
     ZC_EXPECT(zc::encodeHex(value.digest().bytes()) ==
-              "f71392f504dd043ee1fd476fec8ae1885fe122b1563d91f2c99e27877256cea3"_zc);
+              "d348a593580f2309175fd0aefc773babc432559d00a25310cde2bccee1564283"_zc);
   }
 }
 
@@ -176,11 +176,11 @@ ZC_TEST("CoherenceViewRevision.ReproducesEndToEndPolicyLineageOracle") {
   ZC_REQUIRE(revision != zc::none);
   ZC_IF_SOME(value, revision) {
     ZC_EXPECT(zc::encodeHex(value.digest().bytes()) ==
-              "7a76db8d220726a014782b28ced02e9bd5ea64724829798e3e83c6679858d1f5"_zc);
+              "35177411cd1ae5d74ae1fc0ff0fc98c83e9e564809341460fbf960c3655b507b"_zc);
   }
 }
 
-ZC_TEST("CoherenceViewRevision.BindsEveryV1ParentAndProjection") {
+ZC_TEST("CoherenceViewRevision.BindsEveryParentAndProjection") {
   const uint8_t module[] = {0xc3};
   const uint8_t impl[] = {0xd4};
   const uint8_t marker[] = {0xe5};

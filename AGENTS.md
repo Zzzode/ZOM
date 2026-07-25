@@ -45,6 +45,12 @@ Project-wide guidance for AI coding agents working on the ZOM language repositor
    below and `.agents/rules/design-principles.md` § Radical Refactoring.
 8. If a tool call fails with a syntax error, read the tool definition and retry
    with the correct shape. Do not silently skip the step.
+9. **Internal contracts are unversioned.** Do not use `V0`, `V1`, `V2`, `.v0`,
+   `.v1`, `-v1`, or equivalent revision suffixes in internal types, enum cases,
+   canonical domains, schemas, fixtures, or generated artifact names. Replace
+   the current contract and every producer, consumer, oracle, and gate in one
+   change. RFC numbers, user SemVer, and externally assigned standard or
+   protocol names retain their official spelling.
 
 Additional path-scoped rules live in `.agents/rules/*.md`. Skills loadable via
 `/skill` live in `.agents/skills/*/SKILL.md`. Subagent gate specs live in
@@ -324,8 +330,8 @@ produce an rc=2 diagnostic **must** follow these placement rules:
   silently coerces the predicate to `false`, so the diagnostic is
   lost and the grammar appears to accept illegal input.
 
-Failure to honour this rule was the direct cause of the full V1–V4
-regression cycle for `attrItem : attrZomCfg`: `{ throw PCE }` lived on a
+Failure to honour this rule was the direct cause of four full regression
+cycles for `attrItem : attrZomCfg`: `{ throw PCE }` lived on a
 prediction-reachable path → simulator poisoned the entire alt → gated
 predicate `{peekIsZomCfgParen}?` could never rescue it at runtime → NVA
 on every `#[zom::cfg(...)]` attribute.

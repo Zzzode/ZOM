@@ -248,9 +248,9 @@ impl<T> Debug for Vec<T> where T: Debug {
 }
 ```
 
-Interface declarations themselves do not accept a trailing `where`-clause in
-v1. Generic constraints for an interface are expressed in the type parameter
-list or on standalone impl declarations. A declaration such as
+Interface declarations do not accept a trailing `where`-clause. Generic
+constraints for an interface are expressed in the type parameter list or on
+standalone impl declarations. A declaration such as
 `interface BadIface<T> where T: Eq { ... }` is rejected by the parser, matching the conformance fixture
 `09-interfaces/iface_where_reject_neg_05.zom`.
 

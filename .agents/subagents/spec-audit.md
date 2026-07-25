@@ -43,10 +43,8 @@ docs/reports/*spec-alignment*
 - [ ] Precedence table & associativity row-by-row match (Steps 3+4).
 - [ ] Diagnostic inventory (Step 5) is empty or each remaining drift has
       a ticket link.
-- [ ] No spec section describes a feature the parser cannot actually
-      accept today without a "reserved for v2" note.
-- [ ] Reserved keywords with no grammar rule and no "reserved for v2"
-      note are deleted per Rule #4.
+- [ ] No spec section describes a feature the parser cannot actually accept.
+- [ ] Reserved keywords with no grammar rule are deleted per Rule #4.
 - [ ] Output report includes file + line for every finding so downstream
       subagents can apply fixes mechanically.
 

@@ -10,7 +10,7 @@ add_test(
     ${Python3_EXECUTABLE}
     "${ZOM_ROOT}/products/zomlang/tests/tools/check-pubgrub-scenarios.py"
     --corpus
-    "${ZOM_ROOT}/products/zomlang/tests/fixtures/pubgrub-scenarios-v1.json"
+    "${ZOM_ROOT}/products/zomlang/tests/fixtures/pubgrub-scenarios.json"
     --replay-source
     "${CMAKE_CURRENT_SOURCE_DIR}/package-resolver-test.cc")
 set_tests_properties(pubgrub-scenarios-oracle

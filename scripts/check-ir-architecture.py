@@ -122,7 +122,6 @@ RETIRED_PROTOTYPE_MARKERS = (
     "IrSingleSourceRequired",
     "IrCheckedInputMissing",
     "IrDumpInvariantViolation",
-    "zom.ir.v0",
 )
 
 FORBIDDEN_ALTERNATE_MIR_DOMAIN_MARKER = "zom.mir-revision."
@@ -463,7 +462,7 @@ def run_self_test() -> int:
         baseline,
         "versioned MIR documentation added",
         lambda files: append_source(
-            files, Path("docs/design/architecture.md"), "\nBuilt MIR " + "v7\n"
+            files, Path("docs/design/architecture.md"), "\nBuilt MIR v" + "7\n"
         ),
         "versioned MIR symbol is forbidden",
     )

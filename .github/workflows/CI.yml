@@ -14,6 +14,21 @@ env:
   ANTLRJAR: /tmp/antlr-4.13.2-complete.jar
 
 jobs:
+  check-internal-versioning:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v3
+        with:
+          python-version: "3.10"
+
+      - name: Check internal contracts are unversioned
+        run: |
+          python3 scripts/check-no-internal-versioning.py --self-test
+          python3 scripts/check-no-internal-versioning.py --check
+
   check-rfc:
     runs-on: ubuntu-latest
 

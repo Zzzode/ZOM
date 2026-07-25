@@ -11,7 +11,7 @@
 namespace zomlang::compiler::driver::incremental_binding_query {
 namespace {
 
-constexpr zc::StringPtr kFailureDomain = "zom.owner-body-query-failure.v1"_zc;
+constexpr zc::StringPtr kFailureDomain = "zom.owner-body-query-failure"_zc;
 constexpr uint64_t kMaximumDetachedNodes = 1024 * 1024;
 constexpr uint64_t kMaximumScalarBytes = 64 * 1024 * 1024;
 constexpr uint64_t kMaximumIdentifierList = 65536;
@@ -37,19 +37,19 @@ struct DetachedFieldProjection final {
 };
 
 query::QueryKindContract retainedSemanticContract(zc::StringPtr domain) {
-  auto contract = query::QueryKindContract::derived(domain, 1, 1, query::ReuseClass::Semantic,
+  auto contract = query::QueryKindContract::derived(domain, query::ReuseClass::Semantic,
                                                     query::RetentionClass::Retained);
   return zc::mv(ZC_REQUIRE_NONNULL(contract));
 }
 
 query::QueryKindContract evictableSemanticContract(zc::StringPtr domain) {
-  auto contract = query::QueryKindContract::derived(domain, 1, 1, query::ReuseClass::Semantic,
+  auto contract = query::QueryKindContract::derived(domain, query::ReuseClass::Semantic,
                                                     query::RetentionClass::Evictable);
   return zc::mv(ZC_REQUIRE_NONNULL(contract));
 }
 
 query::QueryKindContract revisionLocalContract(zc::StringPtr domain) {
-  auto contract = query::QueryKindContract::derived(domain, 1, 1, query::ReuseClass::RevisionLocal,
+  auto contract = query::QueryKindContract::derived(domain, query::ReuseClass::RevisionLocal,
                                                     query::RetentionClass::Evictable);
   return zc::mv(ZC_REQUIRE_NONNULL(contract));
 }
@@ -579,7 +579,7 @@ bool verifierModuleOwners(query::QueryContext& context, const StableModuleQueryK
 
 }  // namespace
 
-zc::StringPtr ModuleBodyOwnersQuery::domain() { return "zom.query.module-body-owners.v1"_zc; }
+zc::StringPtr ModuleBodyOwnersQuery::domain() { return "zom.query.module-body-owners"_zc; }
 
 query::QueryKindContract ModuleBodyOwnersQuery::contract() {
   return retainedSemanticContract(domain());
@@ -613,7 +613,7 @@ bool ModuleBodyOwnersQuery::verify(query::QueryContext& context, const Key& key,
   return verifierModuleOwners(context, key, result);
 }
 
-zc::StringPtr OwnerBodySyntaxQuery::domain() { return "zom.query.owner-body-syntax.v1"_zc; }
+zc::StringPtr OwnerBodySyntaxQuery::domain() { return "zom.query.owner-body-syntax"_zc; }
 
 query::QueryKindContract OwnerBodySyntaxQuery::contract() {
   return evictableSemanticContract(domain());
@@ -721,7 +721,7 @@ bool OwnerBodySyntaxQuery::verify(query::QueryContext& context, const Key& key,
          ZC_ASSERT_NONNULL(expected) == result.value();
 }
 
-zc::StringPtr OwnerBodyProvenanceQuery::domain() { return "zom.query.owner-body-provenance.v1"_zc; }
+zc::StringPtr OwnerBodyProvenanceQuery::domain() { return "zom.query.owner-body-provenance"_zc; }
 
 query::QueryKindContract OwnerBodyProvenanceQuery::contract() {
   return revisionLocalContract(domain());

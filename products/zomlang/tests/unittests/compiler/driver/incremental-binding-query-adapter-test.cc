@@ -62,7 +62,7 @@ identity::CanonicalTargetSpecificationKey target() {
       scalar<identity::TargetComponentName>("zom"_zc),
       scalar<identity::TargetComponentName>("none"_zc),
       scalar<identity::TargetComponentName>("unknown"_zc),
-      scalar<identity::TargetComponentName>("zom-v1"_zc), 64, identity::Endianness::Little,
+      scalar<identity::TargetComponentName>("zom"_zc), 64, identity::Endianness::Little,
       targetFeatures());
   ZC_IF_SOME(value, result) { return zc::mv(value); }
   ZC_FAIL_REQUIRE("invalid target fixture");
@@ -76,7 +76,7 @@ package::RegisteredTargetProfileName profileName() {
 ir::TargetRegistrySnapshot targetRegistry() {
   zc::Vector<ir::CanonicalTargetFeature> backendFeatures;
   auto targetSpec = ir::CanonicalTargetSpec::from(
-      "x86_64-zom-none"_zc, "e-p:64:64"_zc, "generic"_zc, zc::mv(backendFeatures), "zom-v1"_zc,
+      "x86_64-zom-none"_zc, "e-p:64:64"_zc, "generic"_zc, zc::mv(backendFeatures), "zom"_zc,
       ir::BackendPanicStrategy::Unwind, ir::ObjectFormat::Elf);
   ZC_REQUIRE(targetSpec != zc::none);
   zc::Vector<identity::TargetFeatureName> semanticFeatures;
@@ -460,11 +460,9 @@ ZC_TEST("Incremental binding query tracks the exact selected source per module")
 
 ZC_TEST("Incremental binding query registers low durability source snapshot inputs") {
   auto contract = SourceSnapshotInput::contract();
-  ZC_EXPECT(contract.domain() == "zom.query.source-snapshot.v1"_zc);
+  ZC_EXPECT(contract.domain() == "zom.query.source-snapshot"_zc);
   ZC_EXPECT(contract.isInput());
   ZC_EXPECT(contract.inputDurability() == query::Durability::Low);
-  ZC_EXPECT(contract.keySchemaVersion() == 1);
-  ZC_EXPECT(contract.valueSchemaVersion() == 1);
 
   query::QueryDatabase database(queryTestScheduler());
   ZC_REQUIRE(registerIncrementalBindingQueryAdapter(database));
@@ -473,11 +471,9 @@ ZC_TEST("Incremental binding query registers low durability source snapshot inpu
 
 ZC_TEST("Incremental binding query registers medium durability compilation options") {
   auto contract = CompilationOptionsInput::contract();
-  ZC_EXPECT(contract.domain() == "zom.query.compilation-options.v1"_zc);
+  ZC_EXPECT(contract.domain() == "zom.query.compilation-options"_zc);
   ZC_EXPECT(contract.isInput());
   ZC_EXPECT(contract.inputDurability() == query::Durability::Medium);
-  ZC_EXPECT(contract.keySchemaVersion() == 1);
-  ZC_EXPECT(contract.valueSchemaVersion() == 1);
 
   query::QueryDatabase database(queryTestScheduler());
   ZC_REQUIRE(registerIncrementalBindingQueryAdapter(database));
@@ -486,12 +482,10 @@ ZC_TEST("Incremental binding query registers medium durability compilation optio
 
 ZC_TEST("Incremental binding query registers revision local evictable source parsing") {
   auto contract = parser::ParseSourceQuery::contract();
-  ZC_EXPECT(contract.domain() == "zom.query.parse-source.v1"_zc);
+  ZC_EXPECT(contract.domain() == "zom.query.parse-source"_zc);
   ZC_EXPECT(!contract.isInput());
   ZC_EXPECT(contract.reuseClass() == query::ReuseClass::RevisionLocal);
   ZC_EXPECT(contract.retention() == query::RetentionClass::Evictable);
-  ZC_EXPECT(contract.keySchemaVersion() == 1);
-  ZC_EXPECT(contract.valueSchemaVersion() == 1);
 
   query::QueryDatabase database(queryTestScheduler());
   ZC_REQUIRE(registerIncrementalBindingQueryAdapter(database));
@@ -535,8 +529,8 @@ ZC_TEST("Incremental binding query parses one source from its exact tracked inpu
   ZC_EXPECT(parser::CanonicalParsedSource::decodeCanonical(trailing.asPtr()) == zc::none);
 
   auto sourceFingerprint = snapshot.keyFingerprint<SourceSnapshotInput>(sourceKey);
-  auto optionsFingerprint = snapshot.keyFingerprint<CompilationOptionsInput>(
-      CompilationUnitQueryKey::fixed());
+  auto optionsFingerprint =
+      snapshot.keyFingerprint<CompilationOptionsInput>(CompilationUnitQueryKey::fixed());
   ZC_REQUIRE(sourceFingerprint != zc::none);
   ZC_REQUIRE(optionsFingerprint != zc::none);
   auto groups = snapshot.dependencies<parser::ParseSourceQuery>(sourceKey);
@@ -574,8 +568,8 @@ ZC_TEST("Incremental binding query publishes strict deterministic parse rejectio
   auto sourceValue =
       sourceSnapshotValue("parse-rejected.zom"_zc, zc::heapArray("let value = ;"_zcb));
   auto registry = targetRegistry();
-  auto options = compilationOptionsValue(
-      registry, package::SelectedLanguageOptions{false, true, false});
+  auto options =
+      compilationOptionsValue(registry, package::SelectedLanguageOptions{false, true, false});
   auto write = transaction(database);
   ZC_REQUIRE(write.set<SourceSnapshotInput>(sourceKey, sourceValue));
   ZC_REQUIRE(write.set<CompilationOptionsInput>(CompilationUnitQueryKey::fixed(), options));
@@ -611,8 +605,7 @@ ZC_TEST("Incremental binding query publishes verified stable named inventories")
   auto sourceKey = sourceQueryKey("root.zom"_zc);
   auto sourceValue = sourceSnapshotValue(
       "root.zom"_zc,
-      zc::heapArray(
-          "module root;\nclass Alpha {}\nstruct Beta {}\nimpl Trait for i32 {}\n"_zcb));
+      zc::heapArray("module root;\nclass Alpha {}\nstruct Beta {}\nimpl Trait for i32 {}\n"_zcb));
   auto registry = targetRegistry();
   auto options = compilationOptionsValue(registry);
   auto write = transaction(database);
@@ -679,8 +672,7 @@ ZC_TEST("Incremental binding query publishes verified stable named inventories")
   auto decodedImplementationSites =
       binder::RevisionLocalImplementationSites::decodeCanonical(implementationSiteBytes.asPtr());
   ZC_REQUIRE(decodedImplementationSites != zc::none);
-  ZC_EXPECT(
-      ZC_ASSERT_NONNULL(decodedImplementationSites).sameAs(implementationSites.value()));
+  ZC_EXPECT(ZC_ASSERT_NONNULL(decodedImplementationSites).sameAs(implementationSites.value()));
   auto moduleBodySyntaxBytes = moduleBodySyntax.value().encodeCanonical();
   auto decodedModuleBodySyntax =
       binder::ModuleBodySyntax::decodeCanonical(moduleBodySyntaxBytes.asPtr());
@@ -698,22 +690,20 @@ ZC_TEST("Incremental binding query publishes verified stable named inventories")
       binder::ModuleBodyProvenance::decodeCanonical(moduleBodyProvenanceBytes.asPtr());
   ZC_REQUIRE(decodedModuleBodyProvenance != zc::none);
   ZC_EXPECT(ZC_ASSERT_NONNULL(decodedModuleBodyProvenance) == moduleBodyProvenance.value());
-  auto trailingModuleBodyProvenance =
-      zc::heapArray<uint8_t>(moduleBodyProvenanceBytes.size() + 1);
+  auto trailingModuleBodyProvenance = zc::heapArray<uint8_t>(moduleBodyProvenanceBytes.size() + 1);
   for (size_t index = 0; index < moduleBodyProvenanceBytes.size(); ++index) {
     trailingModuleBodyProvenance[index] = moduleBodyProvenanceBytes[index];
   }
   trailingModuleBodyProvenance.back() = 0;
-  ZC_EXPECT(binder::ModuleBodyProvenance::decodeCanonical(
-                trailingModuleBodyProvenance.asPtr()) == zc::none);
+  ZC_EXPECT(binder::ModuleBodyProvenance::decodeCanonical(trailingModuleBodyProvenance.asPtr()) ==
+            zc::none);
 
   auto selectedFingerprint = snapshot.keyFingerprint<SelectedModuleSourceInput>(moduleKey);
   auto parseFingerprint = snapshot.keyFingerprint<parser::ParseSourceQuery>(sourceKey);
   ZC_REQUIRE(selectedFingerprint != zc::none);
   ZC_REQUIRE(parseFingerprint != zc::none);
-  for (const auto& groups :
-       {snapshot.dependencies<NamedDefinitionInventoryQuery>(moduleKey),
-        snapshot.dependencies<NamedImplementationInventoryQuery>(moduleKey)}) {
+  for (const auto& groups : {snapshot.dependencies<NamedDefinitionInventoryQuery>(moduleKey),
+                             snapshot.dependencies<NamedImplementationInventoryQuery>(moduleKey)}) {
     size_t selectedReads = 0;
     size_t parseReads = 0;
     for (const auto& group : groups) {
@@ -815,8 +805,8 @@ ZC_TEST("Incremental binding query keeps module item let syntax in the module bo
   auto moduleKey = module("root"_zc);
   auto selected = selectedSource("root"_zc, "module-body-let.zom"_zc);
   auto sourceKey = sourceQueryKey("module-body-let.zom"_zc);
-  auto sourceValue = sourceSnapshotValue(
-      "module-body-let.zom"_zc, zc::heapArray("let root = 0;"_zcb));
+  auto sourceValue =
+      sourceSnapshotValue("module-body-let.zom"_zc, zc::heapArray("let root = 0;"_zcb));
   auto registry = targetRegistry();
   auto options = compilationOptionsValue(registry);
   auto write = transaction(database);
@@ -851,8 +841,8 @@ ZC_TEST("Incremental binding query backdates range-only named inventory edits") 
   auto sourceKey = sourceQueryKey("backdate.zom"_zc);
   auto registry = targetRegistry();
   auto options = compilationOptionsValue(registry);
-  auto firstSource = sourceSnapshotValue(
-      "backdate.zom"_zc, zc::heapArray("module root;\nclass Alpha {}\n"_zcb));
+  auto firstSource =
+      sourceSnapshotValue("backdate.zom"_zc, zc::heapArray("module root;\nclass Alpha {}\n"_zcb));
   auto firstWrite = transaction(database);
   ZC_REQUIRE(firstWrite.set<SelectedModuleSourceInput>(moduleKey, selected));
   ZC_REQUIRE(firstWrite.set<SourceSnapshotInput>(sourceKey, firstSource));
@@ -872,8 +862,8 @@ ZC_TEST("Incremental binding query backdates range-only named inventory edits") 
   auto firstBodySyntaxMetadata = first.metadata<ModuleBodySyntaxQuery>(moduleKey);
   ZC_REQUIRE(firstBodySyntaxMetadata != zc::none);
 
-  auto shiftedSource = sourceSnapshotValue(
-      "backdate.zom"_zc, zc::heapArray("module root;\n\n\nclass Alpha {}\n"_zcb));
+  auto shiftedSource = sourceSnapshotValue("backdate.zom"_zc,
+                                           zc::heapArray("module root;\n\n\nclass Alpha {}\n"_zcb));
   auto shiftedWrite = transaction(database);
   ZC_REQUIRE(shiftedWrite.set<SourceSnapshotInput>(sourceKey, shiftedSource));
   ZC_REQUIRE(shiftedWrite.commit() != zc::none);
@@ -994,11 +984,9 @@ ZC_TEST("Incremental binding query compilation options backdate equals and repla
 
 ZC_TEST("Incremental binding query active crates use a canonical package root set") {
   auto contract = ActiveCratesInput::contract();
-  ZC_EXPECT(contract.domain() == "zom.query.active-crates.v1"_zc);
+  ZC_EXPECT(contract.domain() == "zom.query.active-crates"_zc);
   ZC_EXPECT(contract.isInput());
   ZC_EXPECT(contract.inputDurability() == query::Durability::Medium);
-  ZC_EXPECT(contract.keySchemaVersion() == 1);
-  ZC_EXPECT(contract.valueSchemaVersion() == 1);
 
   query::QueryDatabase database(queryTestScheduler());
   ZC_REQUIRE(registerIncrementalBindingQueryAdapter(database));
@@ -1086,7 +1074,7 @@ ZC_TEST("Incremental binding query active crates backdate equals and replace cha
 
 ZC_TEST("Incremental package graph input admits only a closed canonical graph") {
   auto contract = PackageGraphInput::contract();
-  ZC_EXPECT(contract.domain() == "zom.query.package-graph.v1"_zc);
+  ZC_EXPECT(contract.domain() == "zom.query.package-graph"_zc);
   ZC_EXPECT(contract.isInput());
   ZC_EXPECT(contract.inputDurability() == query::Durability::Medium);
 
@@ -1298,11 +1286,11 @@ ZC_TEST("Incremental binding query source snapshot codec is fixed bounded and se
 
 ZC_TEST("Incremental binding query per crate source and module roots are strict and replaceable") {
   auto sourceContract = ActiveSourcesInput::contract();
-  ZC_EXPECT(sourceContract.domain() == "zom.query.active-sources.v1"_zc);
+  ZC_EXPECT(sourceContract.domain() == "zom.query.active-sources"_zc);
   ZC_EXPECT(sourceContract.isInput());
   ZC_EXPECT(sourceContract.inputDurability() == query::Durability::Low);
   auto moduleContract = ActiveModulesInput::contract();
-  ZC_EXPECT(moduleContract.domain() == "zom.query.active-modules.v1"_zc);
+  ZC_EXPECT(moduleContract.domain() == "zom.query.active-modules"_zc);
   ZC_EXPECT(moduleContract.isInput());
   ZC_EXPECT(moduleContract.inputDurability() == query::Durability::Low);
 

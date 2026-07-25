@@ -352,7 +352,7 @@ private:
     auto lookup = semanticTypes.get(semanticType);
     if (!lookup.is<type::SemanticTypeLookup>()) return false;
     const auto bytes = lookup.get<type::SemanticTypeLookup>().key().bytes();
-    constexpr zc::StringPtr domain = "zom.semantic-type-key.v1\0"_zcc;
+    constexpr zc::StringPtr domain = "zom.semantic-type-key\0"_zcc;
     if (bytes.size() <= domain.size()) return false;
     for (size_t index = 0; index < domain.size(); ++index) {
       if (bytes[index] != static_cast<uint8_t>(domain[index])) return false;
@@ -1342,7 +1342,7 @@ zc::Maybe<DispatchFactsRevision> DispatchFactsRevision::computeFramedDigest(
   }
 
   zc::Vector<uint8_t> preimage;
-  constexpr zc::StringPtr domain = "zom.dispatch-facts-revision.v1"_zcc;
+  constexpr zc::StringPtr domain = "zom.dispatch-facts-revision"_zcc;
   for (const auto character : domain) preimage.add(static_cast<uint8_t>(character));
   preimage.add(0);
   append(preimage, contextFingerprint.bytes());

@@ -8,16 +8,14 @@
 namespace zomlang::compiler::binder {
 namespace {
 
-constexpr zc::StringPtr kDefinitionInventoryDomain = "zom.named-definition-inventory.v1"_zc;
-constexpr zc::StringPtr kImplementationInventoryDomain =
-    "zom.named-implementation-inventory.v1"_zc;
-constexpr zc::StringPtr kDefinitionKeyDomain = "zom.named-item-header.v0"_zc;
+constexpr zc::StringPtr kDefinitionInventoryDomain = "zom.named-definition-inventory"_zc;
+constexpr zc::StringPtr kImplementationInventoryDomain = "zom.named-implementation-inventory"_zc;
+constexpr zc::StringPtr kDefinitionKeyDomain = "zom.named-item-header"_zc;
 constexpr uint64_t kMaximumInventoryEntries = 1024 * 1024;
 constexpr uint64_t kMaximumDefinitionRecordBytes = 4 * 1024 * 1024;
 constexpr uint64_t kMaximumInventoryBytes = 64 * 1024 * 1024;
 
-int compareBytes(zc::ArrayPtr<const uint8_t> left,
-                 zc::ArrayPtr<const uint8_t> right) noexcept {
+int compareBytes(zc::ArrayPtr<const uint8_t> left, zc::ArrayPtr<const uint8_t> right) noexcept {
   const size_t shared = left.size() < right.size() ? left.size() : right.size();
   for (size_t index = 0; index < shared; ++index) {
     if (left[index] < right[index]) return -1;
@@ -36,8 +34,8 @@ bool definitionRecordMatchesKey(const identity::DefinitionKey& key,
                                 zc::ArrayPtr<const uint8_t> record) {
   identity::Sha256Hasher hasher;
   const uint8_t separator = 0;
-  if (!hasher.update(kDefinitionKeyDomain.asBytes()) ||
-      !hasher.update(zc::arrayPtr(separator)) || !hasher.update(record)) {
+  if (!hasher.update(kDefinitionKeyDomain.asBytes()) || !hasher.update(zc::arrayPtr(separator)) ||
+      !hasher.update(record)) {
     return false;
   }
   auto digest = hasher.finish();
@@ -113,8 +111,8 @@ zc::Maybe<NamedDefinitionInventory> NamedDefinitionInventory::fromVerified(
       if (!sorted[index - 1].sameRecordAs(authority)) { return zc::none; }
       continue;
     }
-    entries.add(NamedDefinitionInventoryEntry(authority.key().clone(),
-                                              authority.record().encode()));
+    entries.add(
+        NamedDefinitionInventoryEntry(authority.key().clone(), authority.record().encode()));
   }
   NamedDefinitionInventory result(zc::mv(entries));
   if (result.encodeCanonical().size() > kMaximumInventoryBytes) { return zc::none; }
@@ -131,16 +129,14 @@ zc::Maybe<NamedDefinitionInventory> NamedDefinitionInventory::decodeCanonical(
       ZC_ASSERT_NONNULL(domain).asPtr() != kDefinitionInventoryDomain.asBytes()) {
     return zc::none;
   }
-  zc::Vector<NamedDefinitionInventoryEntry> entries(
-      static_cast<size_t>(ZC_ASSERT_NONNULL(count)));
+  zc::Vector<NamedDefinitionInventoryEntry> entries(static_cast<size_t>(ZC_ASSERT_NONNULL(count)));
   for (uint64_t index = 0; index < ZC_ASSERT_NONNULL(count); ++index) {
     auto digest = decoder.decodeDigest();
     auto record = decoder.decodeByteString(kMaximumDefinitionRecordBytes);
     if (digest == zc::none || record == zc::none) { return zc::none; }
     auto key = identity::DefinitionKey::fromBytes(ZC_ASSERT_NONNULL(digest).bytes());
     if (key == zc::none ||
-        !definitionRecordMatchesKey(ZC_ASSERT_NONNULL(key),
-                                    ZC_ASSERT_NONNULL(record).asPtr())) {
+        !definitionRecordMatchesKey(ZC_ASSERT_NONNULL(key), ZC_ASSERT_NONNULL(record).asPtr())) {
       return zc::none;
     }
     ZC_IF_SOME(keyValue, key) {
@@ -148,8 +144,8 @@ zc::Maybe<NamedDefinitionInventory> NamedDefinitionInventory::decodeCanonical(
           compareBytes(entries.back().key().bytes(), keyValue.bytes()) >= 0) {
         return zc::none;
       }
-      entries.add(NamedDefinitionInventoryEntry(zc::mv(keyValue),
-                                                zc::mv(ZC_ASSERT_NONNULL(record))));
+      entries.add(
+          NamedDefinitionInventoryEntry(zc::mv(keyValue), zc::mv(ZC_ASSERT_NONNULL(record))));
     }
   }
   if (!decoder.finished()) { return zc::none; }

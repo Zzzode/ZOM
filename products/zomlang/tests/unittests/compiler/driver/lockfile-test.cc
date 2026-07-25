@@ -112,7 +112,7 @@ LockPackageRecord registryPackage() {
       packageKey(identity::CanonicalPackageSource::registry(
                      identity::RegistryIdentity::from(url("https://example.com/index"_zc), trust)),
                  "codec"_zc, "2.0.0"_zc),
-      digest("registry manifest"_zc), digest("registry tree"_zc), ArchiveFormat::TarZstdV1,
+      digest("registry manifest"_zc), digest("registry tree"_zc), ArchiveFormat::TarZstd,
       digest("archive"_zc), SigningKeyId::from(publicKey()));
   ZC_IF_SOME(value, result) { return zc::mv(value); }
   ZC_UNREACHABLE
@@ -207,7 +207,7 @@ ZC_TEST("LockfileTest.CanonicalGraphAndWriterIgnoreInputOrder") {
   const auto firstText = LockfileCodec::write(first);
   const auto secondText = LockfileCodec::write(second);
   ZC_EXPECT(firstText == secondText);
-  ZC_EXPECT(firstText.startsWith("schema = \"zom-lock-1\"\n\n[[package]]\n"_zc));
+  ZC_EXPECT(firstText.startsWith("[[package]]\n"_zc));
   ZC_EXPECT(firstText.endsWith("\n"_zc));
   ZC_EXPECT(firstText.contains("source-kind = \"local\""_zc));
   ZC_EXPECT(firstText.contains("source-kind = \"vcs\""_zc));
@@ -216,8 +216,24 @@ ZC_TEST("LockfileTest.CanonicalGraphAndWriterIgnoreInputOrder") {
   auto outputDigest = identity::sha256(firstText.asBytes());
   ZC_IF_SOME(value, outputDigest) {
     ZC_EXPECT(zc::encodeHex(value.bytes()) ==
-              "f87025b6c542149a01d5788f17307a44198de3caa5f71c2ecd129cd0c301b32f"_zc);
+              "1c740af8208dbabe4683b1d4e8581aaca95f4112151c210b8424f50592a5f8c7"_zc);
   }
+}
+
+ZC_TEST("LockfileTest.EmptyGraphRoundTripsAsEmptyBytes") {
+  zc::Vector<LockPackageRecord> packages;
+  zc::Vector<identity::PackageDependencyEdgeKey> edges;
+  auto empty = VerifiedLockGraph::from(zc::mv(packages), zc::mv(edges));
+  ZC_REQUIRE(empty.is<VerifiedLockGraph>());
+
+  const auto encoded = LockfileCodec::write(empty.get<VerifiedLockGraph>());
+  ZC_EXPECT(encoded.size() == 0);
+
+  auto parsed = LockfileCodec::parse(encoded.asBytes());
+  ZC_REQUIRE(parsed.is<VerifiedLockGraph>());
+  ZC_EXPECT(parsed.get<VerifiedLockGraph>().packages().size() == 0);
+  ZC_EXPECT(parsed.get<VerifiedLockGraph>().edges().size() == 0);
+  ZC_EXPECT(LockfileCodec::write(parsed.get<VerifiedLockGraph>()).size() == 0);
 }
 
 ZC_TEST("LockfileTest.ResourceGraphRetainsEverySourceAndCanonicalByte") {
@@ -374,12 +390,6 @@ ZC_TEST("LockfileTest.RejectsCorruptAndNonCanonicalDocuments") {
   auto missingLineFeed = LockfileCodec::parse(noFinalLineFeed.asBytes());
   ZC_REQUIRE(missingLineFeed.is<LockIssue>());
   ZC_EXPECT(missingLineFeed.get<LockIssue>() == LockIssue::NonCanonicalEncoding);
-
-  auto unsupported = zc::heapString(golden);
-  unsupported[19] = '2';
-  auto unsupportedResult = LockfileCodec::parse(unsupported.asBytes());
-  ZC_REQUIRE(unsupportedResult.is<LockIssue>());
-  ZC_EXPECT(unsupportedResult.get<LockIssue>() == LockIssue::UnsupportedSchema);
 
   auto invalidHex = zc::heapString(golden);
   const auto keyOffset = invalidHex.find("key = \""_zc);

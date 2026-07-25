@@ -63,7 +63,7 @@ identity::Sha256Digest computeTargetSpecId(zc::StringPtr triple, zc::StringPtr d
                                            zc::StringPtr runtimeAbi, BackendPanicStrategy panic,
                                            ObjectFormat object) {
   zc::Vector<uint8_t> preimage;
-  append(preimage, "zom.target-spec.v1"_zc);
+  append(preimage, "zom.target-spec"_zc);
   preimage.add(0);
   appendFramed(preimage, triple);
   appendFramed(preimage, dataLayout);
@@ -361,7 +361,7 @@ zc::Maybe<TargetRegistrySnapshot> TargetRegistrySnapshot::from(
   });
   bool foundHost = false;
   zc::Vector<uint8_t> preimage;
-  append(preimage, "zom.target-registry.v0"_zc);
+  append(preimage, "zom.target-registry"_zc);
   preimage.add(0);
   appendFramed(preimage, hostProfile.text());
   appendUint64(preimage, profiles.size());

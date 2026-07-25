@@ -31,20 +31,19 @@ enum class LockIssue : uint8_t {
   ReadFailed = 0x01,
   InvalidUtf8 = 0x02,
   TomlSyntax = 0x03,
-  UnsupportedSchema = 0x04,
-  UnknownField = 0x05,
-  MissingField = 0x06,
-  WrongValueType = 0x07,
-  NonCanonicalEncoding = 0x08,
-  DuplicatePackageKey = 0x09,
-  DuplicateEdge = 0x0a,
-  PackageKeyMismatch = 0x0b,
-  SourceKeyMismatch = 0x0c,
-  DanglingEdge = 0x0d,
-  InvalidDigest = 0x0e,
-  SourceFieldMismatch = 0x0f,
-  TrustDomainMismatch = 0x10,
-  CurrentInputMismatch = 0x11
+  UnknownField = 0x04,
+  MissingField = 0x05,
+  WrongValueType = 0x06,
+  NonCanonicalEncoding = 0x07,
+  DuplicatePackageKey = 0x08,
+  DuplicateEdge = 0x09,
+  PackageKeyMismatch = 0x0a,
+  SourceKeyMismatch = 0x0b,
+  DanglingEdge = 0x0c,
+  InvalidDigest = 0x0d,
+  SourceFieldMismatch = 0x0e,
+  TrustDomainMismatch = 0x0f,
+  CurrentInputMismatch = 0x10
 };
 
 enum class LockWriteStage : uint8_t {

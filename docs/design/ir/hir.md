@@ -130,7 +130,7 @@ HIR currently has no independent canonical revision or reversible codec.
 ## Inspection And Native Verification
 
 `VerifiedHirModule::dump()` returns a deterministic diagnostic rendering that
-starts with `zom.hir.v0`. It includes lineage digests, imported interfaces,
+starts with `zom.hir`. It includes lineage digests, imported interfaces,
 declarations, patterns, functions, blocks, returns, and canonical literals. It
 first confirms that retained evidence is still resolvable.
 

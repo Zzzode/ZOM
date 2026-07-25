@@ -63,7 +63,7 @@ CanonicalWorkspaceRelativePath workspacePath(uint32_t parents, zc::StringPtr fir
 
 SortedFeatureSet features() {
   zc::Vector<FeatureName> values;
-  values.add(requireScalar<FeatureName>("simd-v2"_zc));
+  values.add(requireScalar<FeatureName>("simd-wide"_zc));
   values.add(requireScalar<FeatureName>("alloc"_zc));
   auto result = SortedFeatureSet::from(zc::mv(values));
   ZC_IF_SOME(admitted, result) { return zc::mv(admitted); }
@@ -102,8 +102,8 @@ ZC_TEST("Canonical identity leaves clone through an explicit memory resource") {
     expectScalarClone<PackageName>(resource, "package"_zc);
     expectScalarClone<TargetName>(resource, "target"_zc);
     expectScalarClone<DependencyAlias>(resource, "dependency"_zc);
-    expectScalarClone<FeatureName>(resource, "feature-v2"_zc);
-    expectScalarClone<TargetComponentName>(resource, "x86_64-v3"_zc);
+    expectScalarClone<FeatureName>(resource, "feature-secondary"_zc);
+    expectScalarClone<TargetComponentName>(resource, "x86_64-modern"_zc);
     expectScalarClone<TargetFeatureName>(resource, "avx2.0"_zc);
     expectScalarClone<SemanticEnvironmentName>(resource, "ZOM_TARGET"_zc);
     expectScalarClone<SemanticIdentifier>(resource, "semanticValue"_zc);
@@ -126,13 +126,13 @@ ZC_TEST("Canonical identity admission owns accepted bytes through the explicit r
   zc::CountingMemoryResource resource(upstream);
   {
     auto package = PackageName::fromCanonical(resource, "package_01"_zc);
-    auto feature = FeatureName::fromCanonical(resource, "simd-v2"_zc);
+    auto feature = FeatureName::fromCanonical(resource, "simd-wide"_zc);
     auto version = ResolvedVersion::fromCanonical(resource, "2.3.4-rc.1+build.7"_zc);
     ZC_REQUIRE(package != zc::none);
     ZC_REQUIRE(feature != zc::none);
     ZC_REQUIRE(version != zc::none);
     ZC_IF_SOME(value, package) { ZC_EXPECT(value.text() == "package_01"_zc); }
-    ZC_IF_SOME(value, feature) { ZC_EXPECT(value.text() == "simd-v2"_zc); }
+    ZC_IF_SOME(value, feature) { ZC_EXPECT(value.text() == "simd-wide"_zc); }
     ZC_IF_SOME(value, version) { ZC_EXPECT(value.text() == "2.3.4-rc.1+build.7"_zc); }
     ZC_EXPECT(resource.currentAllocatedBytes() > 0);
   }
@@ -193,8 +193,9 @@ ZC_TEST("Package identity composites clone every source variant through one reso
       ZC_EXPECT(moved.consumer().features().size() == 2);
       ZC_EXPECT(moved.provider().source().vcsSubdirectory().segments().size() == 2);
       ZC_EXPECT(resource.currentAllocatedBytes() > 0);
+    } else {
+      ZC_FAIL_REQUIRE("valid resource-clone package edge was rejected");
     }
-    else { ZC_FAIL_REQUIRE("valid resource-clone package edge was rejected"); }
   }
   ZC_EXPECT(resource.peakAllocatedBytes() > 0);
   ZC_EXPECT(resource.currentAllocatedBytes() == 0);

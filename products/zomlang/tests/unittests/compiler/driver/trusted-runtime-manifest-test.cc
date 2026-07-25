@@ -99,15 +99,15 @@ ZC_TEST("Trusted runtime manifest framing passes all three RFC fixed oracles") {
   ZC_EXPECT(
       zc::encodeHex(digestTrustedRuntimeManifestFrames(TrustedRuntimeManifestKind::Symbols, records)
                         .bytes()) ==
-      "25e137c5e8a37a0c7173c3bd08592eedbc446003ae4519a5793d57aba2b8cba8"_zc);
+      "bfe1388a645337e27c7698f417ab1dee2b84085cf4d5ec43d3b28fc32a6a4cb5"_zc);
   ZC_EXPECT(zc::encodeHex(
                 digestTrustedRuntimeManifestFrames(TrustedRuntimeManifestKind::Relocations, records)
                     .bytes()) ==
-            "cfb3042480d8d384620325e7c9afe3d6902c5f4889ccf4393c31596c9ee77412"_zc);
+            "c97176c784c39a9851ea3182d74016fe013cb5768cd3b4ad8d2f33be9232a339"_zc);
   ZC_EXPECT(zc::encodeHex(
                 digestTrustedRuntimeManifestFrames(TrustedRuntimeManifestKind::Operations, records)
                     .bytes()) ==
-            "6469e53c101bf30c27c3275dc722df44e1b7f189b279ca6bb33859a98e6e9ad0"_zc);
+            "62ed17f52434b97d173457e33fb4484f87520882d62f1bd08eecd11d83b5df00"_zc);
 }
 
 ZC_TEST("Trusted runtime symbol name codec passes the independent RFC oracle") {
@@ -119,7 +119,7 @@ ZC_TEST("Trusted runtime symbol name codec passes the independent RFC oracle") {
       digestTrustedRuntimeSymbolName(TrustedRuntimeSymbolNameTag::Named, bytes("x"_zc));
   ZC_REQUIRE(namedDigest.is<identity::Sha256Digest>());
   ZC_EXPECT(zc::encodeHex(namedDigest.get<identity::Sha256Digest>().bytes()) ==
-            "52cc6eb4b5c6726138df5588464cd683d7279fac0cfb8ff344128627c5aa0774"_zc);
+            "8c5ba799f877152eaf4207d8606e986a59ccd38739305e1943f9426b2b3c201e"_zc);
 
   zc::Vector<uint8_t> empty;
   auto unnamed = encodeTrustedRuntimeSymbolName(TrustedRuntimeSymbolNameTag::Unnamed, empty);
@@ -593,15 +593,15 @@ ZC_TEST("Trusted build runtime key requires exact declared object bytes") {
   {
     zc::Vector<zc::Array<uint8_t>> objects;
     objects.add(bytes("object"_zc));
-    auto result = TrustedBuildRuntimeKey::verifyEvidence("zom-v1"_zc, "zom-v1"_zc, zc::mv(objects),
-                                                         evidence());
+    auto result =
+        TrustedBuildRuntimeKey::verifyEvidence("zom"_zc, "zom"_zc, zc::mv(objects), evidence());
     ZC_EXPECT(result.is<TrustedBuildRuntimeKey>());
   }
   {
     zc::Vector<zc::Array<uint8_t>> objects;
     objects.add(bytes("changed"_zc));
-    auto result = TrustedBuildRuntimeKey::verifyEvidence("zom-v1"_zc, "zom-v1"_zc, zc::mv(objects),
-                                                         evidence());
+    auto result =
+        TrustedBuildRuntimeKey::verifyEvidence("zom"_zc, "zom"_zc, zc::mv(objects), evidence());
     ZC_REQUIRE(result.is<TrustedRuntimeInvariantIssue>());
     ZC_EXPECT(result.get<TrustedRuntimeInvariantIssue>() ==
               TrustedRuntimeInvariantIssue::ObjectDigestMismatch);
@@ -609,8 +609,8 @@ ZC_TEST("Trusted build runtime key requires exact declared object bytes") {
   {
     zc::Vector<zc::Array<uint8_t>> objects;
     objects.add(bytes("object"_zc));
-    auto result = TrustedBuildRuntimeKey::verifyEvidence("zom-v1"_zc, "zom-v2"_zc, zc::mv(objects),
-                                                         evidence());
+    auto result = TrustedBuildRuntimeKey::verifyEvidence("zom"_zc, "zom-alternate"_zc,
+                                                         zc::mv(objects), evidence());
     ZC_REQUIRE(result.is<TrustedRuntimeInvariantIssue>());
     ZC_EXPECT(result.get<TrustedRuntimeInvariantIssue>() ==
               TrustedRuntimeInvariantIssue::RuntimeAbiMismatch);

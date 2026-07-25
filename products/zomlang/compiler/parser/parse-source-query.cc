@@ -19,7 +19,7 @@
 namespace zomlang::compiler::parser {
 namespace {
 
-constexpr zc::StringPtr kParseRejectedDomain = "zom.parse-rejected.v1"_zc;
+constexpr zc::StringPtr kParseRejectedDomain = "zom.parse-rejected"_zc;
 constexpr uint64_t kMaximumSourceKeyBytes = 64 * 1024;
 constexpr uint64_t kMaximumSourceBytes = 64 * 1024 * 1024;
 constexpr uint64_t kMaximumFactBytes = 64 * 1024 * 1024;
@@ -52,8 +52,7 @@ basic::LangOptions languageOptions(
   return result;
 }
 
-zc::Maybe<zc::String> logicalSourceName(
-    const identity::source_query::StableSourceQueryKey& key) {
+zc::Maybe<zc::String> logicalSourceName(const identity::source_query::StableSourceQueryKey& key) {
   identity::CanonicalDecoder decoder(key.canonicalSourceBytes());
   auto source = identity::SourceFileKey::decodeCanonical(decoder);
   if (source == zc::none || !decoder.finished()) { return zc::none; }
@@ -63,8 +62,8 @@ zc::Maybe<zc::String> logicalSourceName(
 }  // namespace
 
 ParseRejected::ParseRejected(zc::Array<uint8_t>&& canonicalBytes, zc::Array<uint8_t>&& sourceKey,
-                             const identity::Sha256Digest& contentDigest,
-                             uint64_t sourceByteLength, CanonicalParserOptions options,
+                             const identity::Sha256Digest& contentDigest, uint64_t sourceByteLength,
+                             CanonicalParserOptions options,
                              zc::Vector<diagnostics::DiagnosticFact>&& facts) noexcept
     : canonicalBytesField(zc::mv(canonicalBytes)),
       sourceKeyField(zc::mv(sourceKey)),
@@ -73,10 +72,11 @@ ParseRejected::ParseRejected(zc::Array<uint8_t>&& canonicalBytes, zc::Array<uint
       optionsField(options),
       factsField(zc::mv(facts)) {}
 
-zc::Maybe<ParseRejected> ParseRejected::fromFacts(
-    zc::ArrayPtr<const uint8_t> canonicalSourceKey,
-    const identity::Sha256Digest& contentDigest, uint64_t sourceByteLength,
-    CanonicalParserOptions options, zc::Vector<diagnostics::DiagnosticFact>&& facts) {
+zc::Maybe<ParseRejected> ParseRejected::fromFacts(zc::ArrayPtr<const uint8_t> canonicalSourceKey,
+                                                  const identity::Sha256Digest& contentDigest,
+                                                  uint64_t sourceByteLength,
+                                                  CanonicalParserOptions options,
+                                                  zc::Vector<diagnostics::DiagnosticFact>&& facts) {
   if (!validSourceKey(canonicalSourceKey) || sourceByteLength > kMaximumSourceBytes) {
     return zc::none;
   }
@@ -126,13 +126,12 @@ zc::Maybe<ParseRejected> ParseRejected::decodeCanonical(zc::ArrayPtr<const uint8
       !containsError(ZC_ASSERT_NONNULL(facts).asPtr())) {
     return zc::none;
   }
-  return ParseRejected(
-      zc::heapArray<uint8_t>(bytes), zc::mv(ZC_ASSERT_NONNULL(sourceKey)),
-      ZC_ASSERT_NONNULL(contentDigest), ZC_ASSERT_NONNULL(sourceByteLength),
-      CanonicalParserOptions{ZC_ASSERT_NONNULL(useUnicode),
-                             ZC_ASSERT_NONNULL(allowDollarIdentifiers),
-                             ZC_ASSERT_NONNULL(supportRegexLiterals)},
-      zc::mv(ZC_ASSERT_NONNULL(facts)));
+  return ParseRejected(zc::heapArray<uint8_t>(bytes), zc::mv(ZC_ASSERT_NONNULL(sourceKey)),
+                       ZC_ASSERT_NONNULL(contentDigest), ZC_ASSERT_NONNULL(sourceByteLength),
+                       CanonicalParserOptions{ZC_ASSERT_NONNULL(useUnicode),
+                                              ZC_ASSERT_NONNULL(allowDollarIdentifiers),
+                                              ZC_ASSERT_NONNULL(supportRegexLiterals)},
+                       zc::mv(ZC_ASSERT_NONNULL(facts)));
 }
 
 zc::Array<uint8_t> ParseRejected::encodeCanonical() const {
@@ -150,11 +149,10 @@ zc::ArrayPtr<const diagnostics::DiagnosticFact> ParseRejected::facts() const {
   return factsField.asPtr();
 }
 
-zc::StringPtr ParseSourceQuery::domain() { return "zom.query.parse-source.v1"_zc; }
+zc::StringPtr ParseSourceQuery::domain() { return "zom.query.parse-source"_zc; }
 
 query::QueryKindContract ParseSourceQuery::contract() {
-  auto contract = query::QueryKindContract::derived(domain(), 1, 1,
-                                                    query::ReuseClass::RevisionLocal,
+  auto contract = query::QueryKindContract::derived(domain(), query::ReuseClass::RevisionLocal,
                                                     query::RetentionClass::Evictable);
   return zc::mv(ZC_REQUIRE_NONNULL(contract));
 }
@@ -218,9 +216,9 @@ query::TypedQueryResult<ParseSourceQuery::Value> ParseSourceQuery::provide(
   const bool hasSyntaxErrors = diagnosticFacts.hasErrors();
   auto facts = diagnosticFacts.takeFactsCanonical();
   if (tree == zc::none || hasSyntaxErrors) {
-    auto failure = ParseRejected::fromFacts(key.canonicalSourceBytes(), source.contentDigest(),
-                                            source.bytes().size(), parserOptions(options),
-                                            zc::mv(facts));
+    auto failure =
+        ParseRejected::fromFacts(key.canonicalSourceBytes(), source.contentDigest(),
+                                 source.bytes().size(), parserOptions(options), zc::mv(facts));
     if (failure == zc::none) {
       return query::TypedQueryResult<Value>::runtimeFailure(
           query::QueryRuntimeFailure::InvariantViolation);

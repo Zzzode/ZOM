@@ -122,7 +122,7 @@ ZC_TEST("CanonicalEncoder passes the fixed empty-sequence vector") {
 }
 
 ZC_TEST("CanonicalEncoder passes the fixed empty fingerprint-domain vector") {
-  constexpr char domain[] = "zom.semantic-context.v0";
+  constexpr char domain[] = "zom.semantic-context";
   CanonicalEncoder encoder;
   for (size_t index = 0; index < sizeof(domain) - 1; ++index) {
     encoder.encodeUint8(static_cast<uint8_t>(domain[index]));
@@ -131,9 +131,9 @@ ZC_TEST("CanonicalEncoder passes the fixed empty fingerprint-domain vector") {
   for (size_t index = 0; index < 6; ++index) { encoder.encodeSequenceSize(0); }
   auto encoded = encoder.finish();
 
-  ZC_EXPECT(encoded.size() == 72);
+  ZC_EXPECT(encoded.size() == 69);
   expectDigest(requireDigest(encoded.asPtr()),
-               "aa36edfdf536f061cd028efd3cfe5003474aee9aa3ab39f294d3b42a95eaae5e");
+               "b0284a2767bcaa8ba0d0c5c9ea1475b9377ef2c4341bbca97d424d088517ba23");
 }
 
 ZC_TEST("CanonicalEncoder explicit resource preserves every encoded field") {

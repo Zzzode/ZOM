@@ -35,6 +35,5 @@
     "maximum_peak_rss_ratio": 1.15,
     "measured_runs": 21,
     "warmup_runs": 5
-  },
-  "schema_version": 1
+  }
 }

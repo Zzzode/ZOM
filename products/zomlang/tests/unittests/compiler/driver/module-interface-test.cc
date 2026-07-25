@@ -94,7 +94,7 @@ binder::ExportSurfaceRevision surfaceRevision() {
 
 }  // namespace
 
-ZC_TEST("ModuleInterfaceRevision.ReproducesRfc0015V3FramingOracle") {
+ZC_TEST("ModuleInterfaceRevision.ReproducesRfc0015FramingOracle") {
   const uint8_t moduleBytes[] = {0xa1};
   const zc::ArrayPtr<const zc::ArrayPtr<const uint8_t>> emptyRecords;
   auto revision = module_interface::ModuleInterfaceRevision::computeFramed(
@@ -106,7 +106,7 @@ ZC_TEST("ModuleInterfaceRevision.ReproducesRfc0015V3FramingOracle") {
   ZC_REQUIRE(revision != zc::none);
   ZC_IF_SOME(value, revision) {
     ZC_EXPECT(zc::encodeHex(value.digest().bytes()) ==
-              "177d6def235eaa6d88c17aef910af44fb2dded53e83559ae5741c232bbfd9f7e"_zc);
+              "3fc2e4ca1feccee881fb66622afcba7a0ba725c1aded5e4355e90fd56afb44b3"_zc);
   }
 }
 
@@ -140,10 +140,10 @@ ZC_TEST("ModuleInterfaceRevision.RejectsEmptyOwnerAndNonCanonicalRecords") {
   ZC_EXPECT(emptyProjection == zc::none);
 }
 
-ZC_TEST("ModuleInterfaceRevision.ReproducesRfc0015V3ImplIntegrationOracle") {
+ZC_TEST("ModuleInterfaceRevision.ReproducesRfc0015ImplIntegrationOracle") {
   const uint8_t moduleBytes[] = {0xa1};
   auto implementation = decoded(
-      "a100000000000000317a6f6d2e696d706c2d7061747465726e2e763100a100000000000000"
+      "a1000000000000002e7a6f6d2e696d706c2d7061747465726e00a100000000000000"
       "01110000000008b20000000000000001110000000008b2000000000000000109c309b20000"
       "000000000001c30000000000000000010000000000000000d4"_zc);
   const zc::ArrayPtr<const uint8_t> implementations[] = {implementation.asPtr()};
@@ -156,13 +156,13 @@ ZC_TEST("ModuleInterfaceRevision.ReproducesRfc0015V3ImplIntegrationOracle") {
   ZC_REQUIRE(revision != zc::none);
   ZC_IF_SOME(value, revision) {
     ZC_EXPECT(zc::encodeHex(value.digest().bytes()) ==
-              "f13c5bb0cc30c9a82963ccd09f90f8b3e45813322a03db8202d14134cc987ef4"_zc);
+              "74f1e27a55111c32ee12fb7507e8fb04774ce4bf594d16d1f00202f643c20fed"_zc);
   }
 }
 
 ZC_TEST("ModuleInterfaceRevision.ReproducesRfc0015InterfaceSelfOracle") {
   const uint8_t moduleBytes[] = {0xa1};
-  auto definition = decoded("7a6f6d2e73656d616e7469632d747970652d6b65792e76310010a1"_zc);
+  auto definition = decoded("7a6f6d2e73656d616e7469632d747970652d6b65790010a1"_zc);
   const zc::ArrayPtr<const uint8_t> definitions[] = {definition.asPtr()};
   const zc::ArrayPtr<const zc::ArrayPtr<const uint8_t>> emptyRecords;
   auto revision = module_interface::ModuleInterfaceRevision::computeFramed(
@@ -173,7 +173,7 @@ ZC_TEST("ModuleInterfaceRevision.ReproducesRfc0015InterfaceSelfOracle") {
   ZC_REQUIRE(revision != zc::none);
   ZC_IF_SOME(value, revision) {
     ZC_EXPECT(zc::encodeHex(value.digest().bytes()) ==
-              "1bf456d1f0b1b5a29f1d918b08a0f10fa78b3170e4592f6db0a570fb72466347"_zc);
+              "85e77363ec5b543e8a2bb5eb2d86028ab5a31fd53a2829a522568f02bcdc2395"_zc);
   }
 }
 
@@ -189,11 +189,11 @@ ZC_TEST("ModuleInterfaceRevision.ReproducesEndToEndPolicyLineageOracle") {
   ZC_REQUIRE(revision != zc::none);
   ZC_IF_SOME(value, revision) {
     ZC_EXPECT(zc::encodeHex(value.digest().bytes()) ==
-              "701f41323c3e469b94012bfb98191c9b2b68bdd7be4f52697d2178227c37dd9f"_zc);
+              "55ae783a09d8cd6de1c317071a61e3263972440d35614c8f283295fc6b6f83ce"_zc);
   }
 }
 
-ZC_TEST("ModuleInterfaceRevision.CoversEveryV3ProjectionSequence") {
+ZC_TEST("ModuleInterfaceRevision.CoversEveryProjectionSequence") {
   const uint8_t moduleBytes[] = {0xa1};
   const uint8_t root[] = {0xb1};
   const uint8_t definition[] = {0xb2};
@@ -216,7 +216,7 @@ ZC_TEST("ModuleInterfaceRevision.CoversEveryV3ProjectionSequence") {
   ZC_REQUIRE(revision != zc::none);
   ZC_IF_SOME(value, revision) {
     ZC_EXPECT(zc::encodeHex(value.digest().bytes()) ==
-              "d95518c6256730b0b72cb559d53de408d66d2336e68865666bf7121f47b447cd"_zc);
+              "a3f7cea452648db7086c42a42c72d6172c3f42fd9ae3538d884b350305800f39"_zc);
     auto recomputed = module_interface::ModuleInterfaceRevision::computeFramed(
         repeatedDigest(0x00), moduleBytes, repeatedDigest(0x22), repeatedDigest(0x33),
         repeatedDigest(0x44), repeatedDigest(0x77), repeatedDigest(0x55), repeatedDigest(0x66),

@@ -40,9 +40,9 @@ struct OwnerBodyProvenanceData final {
 namespace detail = owner_body_syntax_detail;
 namespace {
 
-constexpr zc::StringPtr kModuleBodyOwnersDomain = "zom.module-body-owners.v1"_zc;
-constexpr zc::StringPtr kOwnerBodySyntaxDomain = "zom.owner-body-syntax.v1"_zc;
-constexpr zc::StringPtr kOwnerBodyProvenanceDomain = "zom.owner-body-provenance.v1"_zc;
+constexpr zc::StringPtr kModuleBodyOwnersDomain = "zom.module-body-owners"_zc;
+constexpr zc::StringPtr kOwnerBodySyntaxDomain = "zom.owner-body-syntax"_zc;
+constexpr zc::StringPtr kOwnerBodyProvenanceDomain = "zom.owner-body-provenance"_zc;
 constexpr uint64_t kMaximumOwnerCount = 1024 * 1024;
 constexpr uint64_t kMaximumOwnerKeyBytes = 64 * 1024;
 constexpr uint64_t kMaximumModuleBodyOwnersBytes = 64 * 1024 * 1024;

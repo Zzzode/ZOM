@@ -26,7 +26,7 @@ tracking-issue: docs/rfc/tracking/0007-review-and-implementation.md
 This RFC defines the ownership analysis that consumes RFC 0013 Built MIR with
 the `zom.mir-revision` lineage and its exact
 `VerifiedBorrowEvidenceLease` through one live repository capability, plus the
-separately versioned RFC 0007 ownership event overlay. The
+RFC 0007 ownership event overlay. The
 analysis proves initialization, moves, loans, non-lexical regions, reborrows,
 reference escape, `Copy` and `Linear` marker obligations, checked-cast causal
 transfer, and unsafe boundaries over one verified target-independent CFG.
@@ -263,9 +263,8 @@ it names. This RFC defines the repository-capability ownership operation and
 successor-constructor signatures below. It also defines the RFC 0005
 checked-cast algebra without `RawConstToReferenceChecked` and
 `RawMutableToReferenceChecked`. The remaining `CastKind` cases retain
-declaration order and are retagged contiguously from `0x01` through `0x0d`; no
-reserved tag, compatibility decoder, or checked fact for either deleted case
-exists. The checker rejects both source/target shapes with `ZOM4013
+declaration order and are tagged contiguously from `0x01` through `0x0d`.
+The checker rejects both source/target shapes with `ZOM4013
 CheckerInvalidCast` before publishing `CheckedCastFact` or `UnsafeScopeFact`.
 The coordinated enablement transaction updates RFC 0005's checked-fact codec,
 revision, oracles, implementation, and tests atomically before RFC 0007 input is
@@ -275,8 +274,8 @@ and Built MIR: those nodes fail at the bound-module admission gate defined
 below because Chapter 15 publishes no checked semantic contract for them. The
 result algebra, lease encoding, MIR domain, framing, and lineage fields do
 not change; RFC 0007 completes the closed MIR statement tag set with the
-direct-replacement unsafe-scope variant defined below and adds its separately
-versioned event overlay to the ownership wrapper and fact lineage. It also
+direct-replacement unsafe-scope variant defined below and adds its event
+overlay to the ownership wrapper and fact lineage. It also
 supplies the qualified `RFC0007::OwnershipSourceFailure`,
 ownership facts, algorithms, and proof construction required by those clauses.
 
@@ -1176,7 +1175,7 @@ encoded by `zom.mir-revision`; unsafe occurrence multiplicity and the
 set-valued role are the separately encoded checked-fact association defined by
 this RFC. Neither category changes `MirRevisionId`. If any required ordinary
 event, stage, or non-unsafe role cannot be derived from MIR bytes, Built MIR
-is incomplete and overlay construction fails; the v2 preimage is never
+is incomplete and overlay construction fails. The canonical preimage is never
 silently extended.
 
 Every place is typed at each projection:
@@ -2475,7 +2474,7 @@ missing row, or out-of-order key without normalization.
 `OwnershipEventOverlayRevision` is SHA-256 over:
 
 ```text
-ASCII("zom.ownership-event-overlay.v3")
+ASCII("zom.ownership-event-overlay")
 0x00
 SemanticContextFingerprint
 Frame(Encode(expanded owning ModuleKey))
@@ -2484,42 +2483,42 @@ Encode(MirRevisionId digest)
 EncodeFramedSequence(OwnershipFunctionEventOverlay in expanded DefId order)
 ```
 
-The only accepted domain is `zom.ownership-event-overlay.v3`. This RFC is
-`ACCEPTED`, but no overlay-v3 artifact is implemented. The accepted schema has
-no parallel domain or decoder, and any future schema change requires a new
-domain suffix and vectors. The empty oracle
-uses zero fingerprint bytes, module bytes `a1`, checked-facts bytes `44`, Built
-phase `01` with digest bytes `22`, and no functions. Its 145-byte preimage is:
+The canonical domain is `zom.ownership-event-overlay`. This RFC is
+`IMPLEMENTING`; the complete event-overlay artifact remains gated. The schema
+has one domain and decoder. A schema change directly replaces this contract,
+its producers, consumers, verifier, and vectors. The empty oracle
+uses zero fingerprint bytes, module bytes `a1`, checked-facts bytes `44`, MIR
+digest bytes `22`, and no functions. Its 141-byte preimage is:
 
 ```text
-7a6f6d2e6f776e6572736869702d6576656e742d6f7665726c61792e76330000000000000000000000000000000000000000000000000000000000000000000000000000000001a144444444444444444444444444444444444444444444444444444444444444440122222222222222222222222222222222222222222222222222222222222222220000000000000000
+7a6f6d2e6f776e6572736869702d6576656e742d6f7665726c61790000000000000000000000000000000000000000000000000000000000000000000000000000000001a1444444444444444444444444444444444444444444444444444444444444444422222222222222222222222222222222222222222222222222222222222222220000000000000000
 ```
 
 Its SHA-256 is
-`7ef3a04c7017bf3a03102e13f04f366ce02606937a518b0e613f36c46c024d29`.
+`9e673e954367c3f2783cef1a9ca46e4d7e89040f2d4285ac6e42c2137bbed1d2`.
 The empty-function oracle adds owner bytes `b1` and six empty maps. Its
-210-byte preimage is:
+206-byte preimage is:
 
 ```text
-7a6f6d2e6f776e6572736869702d6576656e742d6f7665726c61792e76330000000000000000000000000000000000000000000000000000000000000000000000000000000001a14444444444444444444444444444444444444444444444444444444444444444012222222222222222222222222222222222222222222222222222222222222222000000000000000100000000000000390000000000000001b1000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+7a6f6d2e6f776e6572736869702d6576656e742d6f7665726c61790000000000000000000000000000000000000000000000000000000000000000000000000000000001a144444444444444444444444444444444444444444444444444444444444444442222222222222222222222222222222222222222222222222222222222222222000000000000000100000000000000390000000000000001b1000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 ```
 
 Its SHA-256 is
-`b2f449c4cc18080be4f4584063190f0b6405e3e7613b67ddf4270ab00ff1b5a3`.
+`5e36e3dd6068992f4e3b99ea9eb7df4e3836f9f8c40eb9821238a3c6090d724c`.
 
 The unsafe-collision oracle uses owner `b1`, one effect slot at
 `BeforeStatement(block=1, ordinal=0)` with roles `Operation` and
 `UnsafeOperation`, then `RawDereference` and `RawCast` occurrences at ordinals
 zero and one. Both require `RawPointerBoundary` and acknowledgement at the same
 event; component-test expanded source-key bytes `c1` carry spans `[0, 1)` and
-`[1, 2)`. Its deferred-activation map is empty and its 517-byte preimage is:
+`[1, 2)`. Its deferred-activation map is empty and its 513-byte preimage is:
 
 ```text
-7a6f6d2e6f776e6572736869702d6576656e742d6f7665726c61792e76330000000000000000000000000000000000000000000000000000000000000000000000000000000001a144444444444444444444444444444444444444444444444444444444444444440122222222222222222222222222222222222222222222222222222222222222220000000000000001000000000000016c0000000000000001b1000000000000000100000000000000160000000000000001b10200000001000000000000000000000000000000310000000000000001b10200000001000000000000000002000000000000000200000000000000010100000000000000011400000000000000000000000000000002000000000000001a0000000000000001b1020000000100000000000000000000000000000000000000440000000000000001b102000000010000000000000000000000000102010000000000000001b102000000010000000000000000c100000000000000000000000000000001000000000000001a0000000000000001b1020000000100000000000000000000000100000000000000440000000000000001b102000000010000000000000000000000010202010000000000000001b102000000010000000000000000c100000000000000010000000000000002000000000000000000000000000000000000000000000000
+7a6f6d2e6f776e6572736869702d6576656e742d6f7665726c61790000000000000000000000000000000000000000000000000000000000000000000000000000000001a1444444444444444444444444444444444444444444444444444444444444444422222222222222222222222222222222222222222222222222222222222222220000000000000001000000000000016c0000000000000001b1000000000000000100000000000000160000000000000001b10200000001000000000000000000000000000000310000000000000001b10200000001000000000000000002000000000000000200000000000000010100000000000000011400000000000000000000000000000002000000000000001a0000000000000001b1020000000100000000000000000000000000000000000000440000000000000001b102000000010000000000000000000000000102010000000000000001b102000000010000000000000000c100000000000000000000000000000001000000000000001a0000000000000001b1020000000100000000000000000000000100000000000000440000000000000001b102000000010000000000000000000000010202010000000000000001b102000000010000000000000000c100000000000000010000000000000002000000000000000000000000000000000000000000000000
 ```
 
 Its SHA-256 is
-`e634aa57f31fa556d214ae5975febd41390fdafa60818ccac870cd51591f7259`.
+`bb0547e574d4e5929b0c23807103b8566895fe9df68de0e9cfff01d3a9679f85`.
 The component source key is intentionally minimal; semantic fixtures use a
 registry-valid expanded RFC 0011 key. Independent production and test encoders
 must reproduce all three byte strings and hashes. Resource-plan component
@@ -2538,10 +2537,9 @@ or verifier rejection.
 `MarkerProofInput`, its producer and verifier query contexts, their active
 stacks and completed-result memos, and the private phase-one projection tree
 are call-duration authority and are never encoded. The authoritative deferred-
-activation projection adds one overlay-v3 map and removes its duplicate facts-v6
-map without changing either unaccepted review domain or adding a compatibility
-decoder. The zero-function vectors remain byte-identical; the non-empty framing
-vectors below fix the replacement schemas. Non-empty resource-plan
+activation projection adds one event-overlay map and removes its duplicate
+ownership-facts map. The vectors below fix the canonical schemas. Non-empty
+resource-plan
 oracles additionally require both marker-use rows for every phase-one node,
 including descendants suppressed by a folded parent. They exercise a direct-
 action boundary; an action-free positive `Linear` and positive `Copy` parent
@@ -2554,14 +2552,14 @@ query; changes either marker decision; changes canonical field order; applies
 preorder instead of postorder; selects the wrong parent action; retains a
 subsumed child; or emits a parent omitted by the fold. Each mutation must be
 rejected or change the overlay revision and, when embedded, the enclosing
-facts-v6 revision.
+ownership facts revision.
 
 Deferred-activation codec fixtures encode every receiver mode, source and
 destination type, adjustment-step tag and payload, issue, receiver-source, and
 activation event. Mutations independently remove or add a row, swap its call,
 change a field or map key, reorder adjustment steps, classify an explicit
 borrow, or substitute an immediate loan. Each mutation is rejected or changes
-the overlay revision and therefore changes any enclosing facts-v6 revision.
+the overlay revision and therefore changes any enclosing ownership facts revision.
 
 The function's `RawOriginUniverse` is closed and finite. It is exactly the
 sorted union of these root classes and no others:
@@ -2964,7 +2962,7 @@ EncodeSortedMap(unsafeBoundaries)
 `OwnershipFactsRevision` is SHA-256 over:
 
 ```text
-ASCII("zom.ownership-facts.v6")
+ASCII("zom.ownership-facts")
 0x00
 SemanticContextFingerprint
 Frame(Encode(expanded owning ModuleKey))
@@ -2974,39 +2972,38 @@ BorrowEvidenceRevision
 EncodeFramedSequence(OwnershipFunctionFacts in expanded DefId order)
 ```
 
-The only accepted domain is `zom.ownership-facts.v6`; every other suffix is
-rejected. This RFC is `ACCEPTED`, but no facts-v6 artifact is implemented. The
-accepted schema contains no duplicate activation map. Every type named in the
-facts schema has its tags, field order, and sort order fixed in the section
-that defines it; changing any one of them requires a new domain suffix and new
-independent vectors.
+The canonical domain is `zom.ownership-facts`. This RFC is `IMPLEMENTING`; the
+complete ownership-facts artifact remains gated. The schema contains no
+duplicate activation map. Every type named in the facts schema has
+its tags, field order, and sort order fixed in the section that defines it. A
+schema change directly replaces this contract and its independent vectors.
 
 The empty-function oracle uses a zero context fingerprint, module bytes `a1`,
 32 MIR revision digest bytes `22`, event-overlay bytes `55`,
-borrow-evidence bytes `33`, and zero functions. Its complete 168-byte preimage
+borrow-evidence bytes `33`, and zero functions. Its complete 165-byte preimage
 is shown below. The `55` bytes represent an
 `OwnershipEventOverlayRevision` computed under the required
-`zom.ownership-event-overlay.v3` domain; the facts-v6 field width and bytes are
+`zom.ownership-event-overlay` domain; the ownership facts field width and bytes are
 otherwise unchanged because this codec binds the overlay revision as an opaque
 digest rather than duplicating overlay inventories.
 
 ```text
-7a6f6d2e6f776e6572736869702d66616374732e76360000000000000000000000000000000000000000000000000000000000000000000000000000000001a12222222222222222222222222222222222222222222222222222222222222222555555555555555555555555555555555555555555555555555555555555555533333333333333333333333333333333333333333333333333333333333333330000000000000000
+7a6f6d2e6f776e6572736869702d66616374730000000000000000000000000000000000000000000000000000000000000000000000000000000001a12222222222222222222222222222222222222222222222222222222222222222555555555555555555555555555555555555555555555555555555555555555533333333333333333333333333333333333333333333333333333333333333330000000000000000
 ```
 
 Its SHA-256 is
-`c77f393872d1d1e53192e9fd567057774bbc5ec5997de58d5e245c670db4425f`.
+`3fc9636b5e668ec6b10fac4ce2c76b0a20d87f9b25dd51b7729141ed33296b93`.
 
 The function-framing oracle uses the same parents and one 113-byte function
 record with owner bytes `b1` and thirteen empty record groups in the exact
-order above. Its complete 289-byte preimage is:
+order above. Its complete 286-byte preimage is:
 
 ```text
-7a6f6d2e6f776e6572736869702d66616374732e76360000000000000000000000000000000000000000000000000000000000000000000000000000000001a1222222222222222222222222222222222222222222222222222222222222222255555555555555555555555555555555555555555555555555555555555555553333333333333333333333333333333333333333333333333333333333333333000000000000000100000000000000710000000000000001b10000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+7a6f6d2e6f776e6572736869702d66616374730000000000000000000000000000000000000000000000000000000000000000000000000000000001a1222222222222222222222222222222222222222222222222222222222222222255555555555555555555555555555555555555555555555555555555555555553333333333333333333333333333333333333333333333333333333333333333000000000000000100000000000000710000000000000001b10000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 ```
 
 Its SHA-256 is
-`748a1efbf73c7a452c7ad9092812b89c3a9eebfb7d04ed706862880391a217a6`.
+`b2d0e68fd7a597ddabb36e3d2c78cf96a596561921fb965e856fdd26363bfba2`.
 
 The exact non-empty point-state oracle uses the same parents and owner. It
 encodes one `pointStates` map entry whose key and value point are
@@ -3015,14 +3012,14 @@ reference, loan, and raw-carrier maps, and one `OwnershipResourceStateAlternativ
 empty drop-obligation, linear-obligation, and cast-carrier state maps. All other function
 groups are empty. This is a codec-valid component oracle; the semantic proof
 verifier independently requires the complete point inventory for its Built MIR
-fixture. Its complete 381-byte preimage is:
+fixture. Its complete 378-byte preimage is:
 
 ```text
-7a6f6d2e6f776e6572736869702d66616374732e76360000000000000000000000000000000000000000000000000000000000000000000000000000000001a1222222222222222222222222222222222222222222222222222222222222222255555555555555555555555555555555555555555555555555555555555555553333333333333333333333333333333333333333333333333333333333333333000000000000000100000000000000cd0000000000000001b100000000000000000000000000000000000000000000000100000000000000020101000000000000004a01010000000000000000000000000000000000000000000000000000000000000001000000000000001800000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+7a6f6d2e6f776e6572736869702d66616374730000000000000000000000000000000000000000000000000000000000000000000000000000000001a1222222222222222222222222222222222222222222222222222222222222222255555555555555555555555555555555555555555555555555555555555555553333333333333333333333333333333333333333333333333333333333333333000000000000000100000000000000cd0000000000000001b100000000000000000000000000000000000000000000000100000000000000020101000000000000004a01010000000000000000000000000000000000000000000000000000000000000001000000000000001800000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 ```
 
 Its SHA-256 is
-`ed570b0abdf30f56b24eb1f5ca43843ccaaabdd0d41f9f8228a4540fd4cb9161`.
+`f5acb38c2474aea982f75216e69997d0aa8d2634eebdabc7fc6d59e01a2d6577`.
 
 Additional non-empty semantic fixtures encode every ownership-point tag, event stage and
 role, unsafe-scope enter/exit operation and scope payload, causal cutpoint state,
@@ -3031,11 +3028,11 @@ multi-predecessor linear-carrier transition, raw-origin-universe, raw-carrier
 SCC closure, escape-origin, and unsafe record.
 A test-owned encoder reproduces all three exact vectors above without calling
 the production codec. A lineage composition oracle separately computes the
-actual overlay-v3 revision for each marker-decision fixture, places that digest
+actual event overlay revision for each marker-decision fixture, places that digest
 in `eventOverlayRevision`, and proves that changing a decision tag, proof,
 explicit negative fact, unsatisfied state, marker key, or policy/coherence
 lineage changes both the overlay revision and the enclosing facts revision.
-The fixed `55` vectors isolate facts-v6 framing and therefore remain exact.
+The fixed `55` vectors isolate ownership facts framing and therefore remain exact.
 
 ### Independent Proof Oracle
 
@@ -3629,8 +3626,8 @@ RFC 0010 or RFC 0011 invariant facts.
    `BorrowEvidenceRepositoryCapability` borrowed references and implements
    exactly the four RFC 0013 result branches without a global or lease-only
    lookup.
-4. Built MIR contains complete typed places and CFG; the separately versioned
-   RFC 0007 event overlay contains causally staged unified `MirEventKey`
+4. Built MIR contains complete typed places and CFG; the RFC 0007 event overlay
+   contains causally staged unified `MirEventKey`
    identities, one authoritative checker-time deferred-activation map,
    collision-free unsafe occurrences, one complete revision-bound marker-use
    inventory, one authoritative logical drop plan per
@@ -3662,7 +3659,7 @@ RFC 0010 or RFC 0011 invariant facts.
    reinitialization, overwrite, drop-and-replace, and all exit kinds.
 7. Loans cover shared, mutable, effect-stage issue, deferred effect-stage
    activation, exact independent checker-time `DeferredActivationFact`
-   projection from RFC 0005 and RFC 0009 checked receiver facts into overlay-v3,
+   projection from RFC 0005 and RFC 0009 checked receiver facts into event overlay,
    ownership-side overlay-to-loan bijection with no checker re-resolution,
    before/after cutpoint transitions, invalidation, complete
    multi-origin and multi-parent reborrow relations, parent suspension,
@@ -3732,15 +3729,15 @@ RFC 0010 or RFC 0011 invariant facts.
     Built/event-overlay/evidence revisions, and contains no AST,
     binder, HIR, target, object-address, local-store-slot identity, or duplicate
     deferred-activation or marker-use inventory.
-14. The `zom.ownership-event-overlay.v3` codec reproduces the exact 145-byte,
-    210-byte, and unsafe-collision 517-byte oracles. The `zom.ownership-facts.v6`
-    production codec and independent test encoder reproduce the exact 168-byte
-    empty, 289-byte function-framing, and 381-byte non-empty point-state
+14. The `zom.ownership-event-overlay` codec reproduces the exact 141-byte,
+    206-byte, and unsafe-collision 513-byte oracles. The `zom.ownership-facts`
+    production codec and independent test encoder reproduce the exact 165-byte
+    empty, 286-byte function-framing, and 378-byte non-empty point-state
     oracles plus every non-empty component vector. The unchanged
     `zom.mir-revision` codec reproduces the exact 283-byte unsafe-scope
     framing oracle with revision
     `c49976b9fc841ecf6cd2e2d62af3442d36a22571b52291a0601e60ea92f71aa0`;
-    no other domain suffix or unsafe-scope outer tag is accepted.
+    only the canonical domain and unsafe-scope outer tag are accepted.
 15. The independent overlay verifier recomputes the causal event projection,
     every deferred-activation row, authoritative marker-use query, logical-drop
     plan, and cast-resource plan
@@ -3792,7 +3789,7 @@ RFC 0010 or RFC 0011 invariant facts.
    Transaction` across RFC 0005, RFC 0007, RFC 0013, RFC 0006, and the task-
    router manifest. No following step may begin before it completes.
 2. Complete the RFC 0013 direct replacement with explicit repository
-   capability plumbing and the RFC 0007-owned versioned event overlay and
+   capability plumbing and the RFC 0007-owned event overlay and
    cutpoint view, authoritative revision-bound marker-use inventory, canonical
    `MirStatement::BorrowCreation`, total cast-carrier
    resource projection, authoritative checker-time deferred-activation map,
@@ -3944,10 +3941,10 @@ RFC 0010 or RFC 0011 invariant facts.
   fixture carriers, self-copy and cyclic assignment, copy/move/reinterpret
   propagation, universe/root equality, exact least-closure mutations, and
   `Araw * Araw` plus `Araw * U` termination counters.
-- Codec tests: exact `zom.ownership-event-overlay.v3` 145-byte empty, 210-byte
-  empty-function, and 517-byte unsafe-collision vectors; exact
-  `zom.ownership-facts.v6` 168-byte empty, 289-byte function-framing, and
-  381-byte non-empty point-state vectors; non-empty component vectors including
+- Codec tests: exact `zom.ownership-event-overlay` 141-byte empty, 206-byte
+  empty-function, and 513-byte unsafe-collision vectors; exact
+  `zom.ownership-facts` 165-byte empty, 286-byte function-framing, and
+  378-byte non-empty point-state vectors; non-empty component vectors including
   `OwnershipPoint`, deferred activation, drop obligations, cast carriers,
   cast result resource plans, `DropResourceSubject`, all marker-decision tags,
   positive evidence forms, explicit negative fact, payload-free unsatisfied
@@ -4023,15 +4020,15 @@ None
 | 2026-07-11 | RETURNED | Added RFC 0013 as a required dependency while its ownership integration boundary awaited acceptance. |
 | 2026-07-17 | DRAFT | Re-entered drafting after RFC 0013 and RFC 0015 acceptance with a complete Built MIR ownership model, source algebra, canonical facts, independent verifier, and evidence-lineage gates. |
 | 2026-07-17 | DRAFT | Required-owner matrix review returned the checked-cast, unsafe-occurrence identity, deferred-activation evidence, wrapper API ownership, concurrency boundary, runtime exclusion, codec-oracle, and coverage contracts for repair. |
-| 2026-07-17 | DRAFT | Closed the owner-matrix blockers with total checked-cast projection, collision-free unsafe ordinals, checked-fact-derived activation, exact moved successor APIs, Chapter 15 fail-closed input, manifest-aligned runtime exclusions, v4 non-empty codec evidence, and fail-hard 70-percent per-file coverage. |
+| 2026-07-17 | DRAFT | Closed the owner-matrix blockers with total checked-cast projection, collision-free unsafe ordinals, checked-fact-derived activation, exact moved successor APIs, Chapter 15 fail-closed input, manifest-aligned runtime exclusions, non-empty codec evidence, and fail-hard 70-percent per-file coverage. |
 | 2026-07-17 | DRAFT | Exact-owner review returned consuming checked-cast ownership, MIR unsafe-occurrence encoding, pre-HIR concurrency admission, stale task diagnostics, and incomplete drop/StorageDead transfer for repair. |
-| 2026-07-17 | DRAFT | Closed the exact-owner blockers with a cast-owned carrier, overlay-v1 unsafe identity, pre-HIR ZOM4067 admission, ZOM4068 deletion, joint drop/linear/cast alternatives, facts-v5 oracles, and fail-closed StorageDead. |
+| 2026-07-17 | DRAFT | Closed the exact-owner blockers with a cast-owned carrier, canonical unsafe identity, pre-HIR ZOM4067 admission, ZOM4068 deletion, joint drop/linear/cast alternatives, ownership-facts oracles, and fail-closed StorageDead. |
 | 2026-07-17 | DRAFT | Exact-owner re-review returned type-changing cast resource lineage, unsafe boundary projection, pre-checker admission reachability, diagnostic-code reassignment, and stale borrow-form baseline text for repair. |
 | 2026-07-17 | DRAFT | Closed the re-review blockers with exact cast resource-plan preservation, overlay-only unsafe occurrences plus Built boundary events, bound-module admission, fresh ZOM4095 allocation with ZOM4067-ZOM4068 deletion, and canonical MirStatement::BorrowCreation terminology. |
 | 2026-07-17 | DRAFT | Independent review returned missing post-checker resource authority and ambiguous unsafe-scope statement framing. |
-| 2026-07-17 | DRAFT | Closed the independent-review blockers with authoritative logical-drop and cast-resource overlay facts, canonical DropResourceSubject generations, overlay-v2 and facts-v6 codecs, one outer unsafe-scope tag, and an exact MIR framing oracle. |
+| 2026-07-17 | DRAFT | Closed the independent-review blockers with authoritative logical-drop and cast-resource overlay facts, canonical DropResourceSubject generations, ownership codecs, one outer unsafe-scope tag, and an exact MIR framing oracle. |
 | 2026-07-17 | DRAFT | Independent re-review returned the unclosed marker-result algebra and missing revision-bound marker-use handoff inventory. |
-| 2026-07-17 | DRAFT | Closed the marker blockers with exact Positive, ExplicitNegative, and Unsatisfied decisions, invariant fail-closed handling, authoritative overlay-v3 marker uses, decision-referenced resource plans, and overlay/facts lineage oracles. |
+| 2026-07-17 | DRAFT | Closed the marker blockers with exact Positive, ExplicitNegative, and Unsatisfied decisions, invariant fail-closed handling, authoritative event overlay marker uses, decision-referenced resource plans, and overlay/facts lineage oracles. |
 | 2026-07-18 | DRAFT | Exact re-review returned the missing explicit RFC 0015 marker-query capability flow and a contradictory positive-Linear resource traversal rule in proposal `f1e19ad2c85c0d6c4f114f4ac1a5af7b343b72e22aa77ebadf284057bf3a90e4`. |
 | 2026-07-18 | DRAFT | Closed both blockers with a call-duration `MarkerProofInput`, independent producer/verifier query contexts, exact lineage failure mapping, and one query-first then postorder resource-plan algorithm. |
 | 2026-07-18 | REVIEW | Independent exact-hash review accepted proposal `c7fb9d9ef4665371c07ddc79d3ad4c3bcad2e7061565ea70801e65081964f405` with no technical blockers; entered unanimous required-owner review. |

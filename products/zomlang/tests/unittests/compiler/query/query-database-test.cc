@@ -18,7 +18,7 @@
 namespace zomlang::compiler::query::test {
 
 ZC_TEST("QueryDatabaseTest.TypedRegistryRejectsDuplicateKindsAndSeals") {
-  ZC_EXPECT(QueryKindContract::input("Invalid Domain"_zc, 1, 1, Durability::Low) == zc::none);
+  ZC_EXPECT(QueryKindContract::input("Invalid Domain"_zc, Durability::Low) == zc::none);
   QueryDatabase database(queryTestScheduler());
   ZC_EXPECT(database.registerInputKind<LowInput>() != zc::none);
   ZC_EXPECT(database.registerInputKind<LowInput>() == zc::none);
@@ -47,9 +47,9 @@ ZC_TEST("QueryDatabaseTest.CanonicalFingerprintIsStableAndDomainSeparated") {
   ZC_EXPECT(ZC_REQUIRE_NONNULL(low) == ZC_REQUIRE_NONNULL(same));
   ZC_EXPECT(ZC_REQUIRE_NONNULL(low) != ZC_REQUIRE_NONNULL(high));
 
-  const uint8_t expected[] = {0x3b, 0x8c, 0x64, 0x54, 0xbb, 0x84, 0xc6, 0x92, 0x50, 0x99, 0x10,
-                              0x9c, 0xdd, 0x61, 0x33, 0x79, 0xe5, 0x25, 0x4c, 0x0c, 0x06, 0xc5,
-                              0x68, 0x12, 0x3d, 0x03, 0x39, 0xc9, 0x0e, 0x13, 0xc9, 0xaa};
+  const uint8_t expected[] = {0x88, 0xd3, 0x4b, 0xf7, 0x11, 0xe5, 0x29, 0xf7, 0x3c, 0x08, 0xa9,
+                              0xcf, 0xc6, 0x9e, 0xd7, 0x1e, 0xed, 0xc6, 0x85, 0x48, 0x01, 0xc9,
+                              0x33, 0x18, 0x94, 0x28, 0x2d, 0x65, 0xe1, 0xbc, 0x20, 0x9a};
   ZC_EXPECT(ZC_REQUIRE_NONNULL(low).bytes() == zc::arrayPtr(expected));
 }
 

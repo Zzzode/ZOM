@@ -53,7 +53,7 @@ identity::CanonicalTargetSpecificationKey target() {
       scalar<identity::TargetComponentName>("zom"_zc),
       scalar<identity::TargetComponentName>("none"_zc),
       scalar<identity::TargetComponentName>("unknown"_zc),
-      scalar<identity::TargetComponentName>("zom-v1"_zc), 64, identity::Endianness::Little,
+      scalar<identity::TargetComponentName>("zom"_zc), 64, identity::Endianness::Little,
       targetFeatures());
   return zc::mv(ZC_REQUIRE_NONNULL(result));
 }

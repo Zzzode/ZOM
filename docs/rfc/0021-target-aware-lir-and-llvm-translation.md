@@ -111,7 +111,7 @@ semantics, and close enough to LLVM that translation is mechanical.
   concurrency semantics.
 - Repeating borrow checking, drop elaboration, coroutine elaboration, trait
   solving, overload resolution, or call dispatch in LIR.
-- Defining a stable public LIR serialization or compatibility decoder.
+- Defining a stable public LIR serialization.
 - Adding an extensible dialect system or accepting unregistered operations.
 - Selecting a backend other than LLVM.
 - Defining vector source types, scalable vectors, garbage-collected references,
@@ -224,8 +224,8 @@ References:
 
 LLVM IR and `DataLayout` do not classify source-language aggregates for a C
 ABI. ZOM therefore treats the System V AMD64 psABI, Arm AAPCS64, and Microsoft
-x64 calling convention as versioned classifier inputs rather than translator
-heuristics. Each admitted classifier revision is generated from a checked-in
+x64 calling convention as canonical classifier inputs rather than translator
+heuristics. Each admitted classifier is generated from a checked-in
 closed rule table, revalidated independently by the LIR verifier, and covered
 by cross-toolchain ABI fixtures.
 
@@ -428,7 +428,7 @@ other module. Each proof set must carry that module's exact executable MIR
 revision, the same context fingerprint, target ID, and registry revision.
 `FeatureBoundarySetRevision` hashes the complete canonical RFC 0010 proof set.
 `FeatureBoundaryCollectionRevision` hashes
-`ASCII("zom.feature-boundary-collection.v1")`, NUL, context fingerprint,
+`ASCII("zom.feature-boundary-collection")`, NUL, context fingerprint,
 expanded crate key, target ID, registry revision, and the framed sequence of
 expanded module key plus set revision. The live context brand is verified but
 excluded from the preimage.
@@ -605,8 +605,8 @@ contract's LLVM baseline must equal the selected RFC 0016 code-generation
 capability set. Neither LIR lowering nor translation queries ambient LLVM state
 to discover a capability.
 
-The classifier registry contains exactly `ZomInternalV1`, `SysVX8664V1`,
-`Aapcs64V1`, and `Win64V1`. Each contract is a complete deterministic decision
+The classifier registry contains exactly `ZomInternal`, `SysVX8664`,
+`Aapcs64`, and `Win64`. Each contract is a complete deterministic decision
 program over the canonical semantic signature and verified target layout; it
 produces the complete `FnAbi` algebra defined below. Predicate bytecode has no
 ambient query, recursion, default branch, or implementation callback. The
@@ -625,7 +625,7 @@ records for every conformance vector.
 
 ```text
 SHA256(
-  ASCII("zom.abi-classifier.v1")
+  ASCII("zom.abi-classifier")
   0x00
   Encode(classifierId)
   Frame(Encode(completeRuleDomain))
@@ -634,14 +634,14 @@ SHA256(
 ```
 
 `AbiClassifierRegistryRevision` hashes
-`ASCII("zom.abi-classifier-registry.v1")`, NUL, and the framed map from
+`ASCII("zom.abi-classifier-registry")`, NUL, and the framed map from
 classifier ID to complete contract. Contract and registry construction
 recompute every revision and reject a missing, additional, duplicate,
 non-exhaustive, overlapping, or malformed rule as `InvalidFact`. The selected
 contract ID must equal the RFC 0016 code-generation capability row's
 `abiClassifier`; no digest-only or caller-selected classifier is legal.
 
-### Versioned LIR Algebra Registry
+### LIR Algebra Registry
 
 The translator contract retains the complete lowering algebra, not only its
 digest:
@@ -754,7 +754,7 @@ change.
 `LirAlgebraRevision` is SHA-256 over:
 
 ```text
-ASCII("zom.lir-algebra.v1")
+ASCII("zom.lir-algebra")
 0x00
 Frame(sourceMirRevisionDomain)
 EncodeFramedSequence(canonicalRecipes)
@@ -764,11 +764,11 @@ EncodeFramedSequence(canonicalGeneratedRecipes)
 The empty-registry codec oracle is 59 bytes:
 
 ```text
-7a6f6d2e6c69722d616c67656272612e76310000000000000000107a6f6d2e6d69722d7265766973696f6e00000000000000000000000000000000
+7a6f6d2e6c69722d616c67656272610000000000000000107a6f6d2e6d69722d7265766973696f6e00000000000000000000000000000000
 ```
 
 Its SHA-256 is
-`6ab498d3012b5435c98242515dbb1e58329afce6a28ce44dbdaf15ea6721f2d9`.
+`03106c3451b5e1adab5310b8643c8d59657e0635f804b5be8fc9b9754199e1c8`.
 Production verification rejects the empty registry and requires the exact
 initial records above. Builder and verifier use separate generated matchers
 whose inputs both bind this retained registry and revision.
@@ -777,7 +777,7 @@ whose inputs both bind this retained registry and revision.
 
 ```text
 SHA256(
-  ASCII("zom.llvm-translator-contract.v1")
+  ASCII("zom.llvm-translator-contract")
   0x00
   Encode(LlvmBaseline)
   LirAlgebraRevision
@@ -840,7 +840,7 @@ RequestedMonomorphizationRoot =
 ```
 
 `MonomorphizationRequestRevision` hashes the domain
-`zom.monomorphization-request.v1`, context fingerprint, expanded crate key,
+`zom.monomorphization-request`, context fingerprint, expanded crate key,
 executable-MIR-set revision, and complete sorted root records. It excludes the
 live context brand.
 
@@ -946,7 +946,7 @@ cannot supply or retain an unverified root key.
 `MonomorphizationPlanRevision` is SHA-256 over:
 
 ```text
-ASCII("zom.monomorphization-plan.v1")
+ASCII("zom.monomorphization-plan")
 0x00
 SemanticContextFingerprint
 Frame(Encode(expanded CrateKey))
@@ -2492,7 +2492,7 @@ each declared signature through the selected code-generation capability set
 and publishes one immutable physical manifest:
 
 ```text
-RuntimeCallingConvention::ZomRuntimeV1
+RuntimeCallingConvention::ZomRuntime
   -> CallingConvention::Runtime
 
 RuntimeUnwindContract::CannotUnwind
@@ -2573,7 +2573,7 @@ type participates in reconstruction. Its revision is:
 
 ```text
 SHA256(
-  ASCII("zom.runtime-abi-manifest.v1")
+  ASCII("zom.runtime-abi-manifest")
   0x00
   SemanticContextFingerprint
   TargetSpecId
@@ -2703,7 +2703,7 @@ module, or output artifact.
 `LirRevisionId` is SHA-256 over:
 
 ```text
-ASCII("zom.lir-revision.v1")
+ASCII("zom.lir-revision")
 0x00
 SemanticContextFingerprint
 Frame(Encode(expanded CrateKey))
@@ -2758,11 +2758,11 @@ feature-boundary-registry bytes `77`,
 feature-boundary-set bytes `88`, code-generation-capability bytes `99`,
 code-generation-capability-registry bytes `9a`, target-authority-bundle bytes
 `9b`, LLVM-translator-contract bytes `aa`, and nine empty sequences. Its
-complete 549-byte preimage is the concatenation of these hex lines without
+complete 546-byte preimage is the concatenation of these hex lines without
 whitespace:
 
 ```text
-7a6f6d2e6c69722d7265766973696f6e2e763100
+7a6f6d2e6c69722d7265766973696f6e00
 0000000000000000000000000000000000000000000000000000000000000000
 0000000000000001a1
 1111111111111111111111111111111111111111111111111111111111111111
@@ -2790,12 +2790,12 @@ aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 ```
 
 Its SHA-256 is
-`3177052f0c634e0c314bf21f8cbafb68d91dd3d7dada6e212d36448687f50216`.
+`f1789aa2f43d75da9446cea8a9321157deab13b0540a516f91f08eba2c8da0ad`.
 
 Changing any semantic field, order, target, runtime, feature proof, input
 revision, layout, ABI, symbol, source location, or operation changes or rejects
-the revision. A codec change replaces the domain suffix and every oracle
-without retaining a decoder.
+the revision. A codec change directly replaces the canonical domain, codec,
+and every oracle.
 
 The backend artifact configuration key is separate from `LirRevisionId`. It
 binds the exact LLVM version, target-machine code model, relocation model,
@@ -2958,7 +2958,7 @@ before candidate publication. Invariant failures use the existing registered
 ### Debug Dump And CLI
 
 `--emit=lir` becomes available only after successful `VerifiedLirModule`
-publication. It writes deterministic `zom.lir.v1` text to stdout or `.zlir`
+publication. It writes deterministic `zom.lir` text to stdout or `.zlir`
 when an output path without an extension is provided.
 
 The dump contains expanded canonical identities, target and input revisions,
@@ -3052,9 +3052,8 @@ verifier can establish complete lowering legality.
 MLIR provides excellent conversion and verification infrastructure. ZOM needs
 one closed target LIR and one LLVM backend, not an open dialect ecosystem,
 TableGen-generated operation framework, bytecode contract, or multi-dialect
-pass manager. Adopting the framework would increase build, ownership, and
-versioning surface without removing the need to define the contracts in this
-RFC.
+pass manager. Adopting the framework would increase the build and ownership
+surface without removing the need to define the contracts in this RFC.
 
 ### Use PHI Nodes
 
@@ -3089,9 +3088,8 @@ translation.
 
 ZOM is pre-1.0 and has no released LIR or backend artifact contract. The
 implementation directly creates the new `compiler/lir` and
-`compiler/backend/llvm` surfaces. No `LirV0`, alternate ABI store, PHI-based
-form, generic backend facade, forwarding header, compatibility decoder, or
-parallel lowering entry is permitted.
+`compiler/backend/llvm` surfaces. The only admitted design is the specified
+LIR, ABI store, block-parameter form, LLVM translator, and lowering entry.
 
 The rollout is:
 

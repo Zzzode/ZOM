@@ -5,11 +5,14 @@
 
 #include "zomlang/compiler/ownership/ownership-event-overlay.h"
 
+#include "zc/core/encoding.h"
 #include "zc/core/time.h"
 #include "zc/ztest/test.h"
 #include "zomlang/compiler/driver/compiler-session.h"
 #include "zomlang/compiler/driver/package/manifest-parser.h"
 #include "zomlang/compiler/driver/package/source-record.h"
+#include "zomlang/compiler/identity/canonical-encoder.h"
+#include "zomlang/compiler/identity/sha256.h"
 #include "zomlang/compiler/ir/target-registry.h"
 #include "zomlang/compiler/mir/built-mir.h"
 
@@ -66,7 +69,7 @@ identity::CanonicalTargetSpecificationKey targetProjection() {
         scalar<identity::TargetComponentName>("zom"_zc),
         scalar<identity::TargetComponentName>("none"_zc),
         scalar<identity::TargetComponentName>("unknown"_zc),
-        scalar<identity::TargetComponentName>("zom-v1"_zc), 64, identity::Endianness::Little,
+        scalar<identity::TargetComponentName>("zom"_zc), 64, identity::Endianness::Little,
         zc::mv(values));
     ZC_IF_SOME(value, result) { return zc::mv(value); }
   }
@@ -82,7 +85,7 @@ package::RegisteredTargetProfileName targetProfileName() {
 ir::TargetRegistrySnapshot targetRegistry() {
   zc::Vector<ir::CanonicalTargetFeature> targetFeatures;
   auto targetSpec = ir::CanonicalTargetSpec::from(
-      "x86_64-zom-none"_zc, "e-p:64:64"_zc, "generic"_zc, zc::mv(targetFeatures), "zom-v1"_zc,
+      "x86_64-zom-none"_zc, "e-p:64:64"_zc, "generic"_zc, zc::mv(targetFeatures), "zom"_zc,
       ir::BackendPanicStrategy::Unwind, ir::ObjectFormat::Elf);
   ZC_REQUIRE(targetSpec != zc::none);
   zc::Vector<identity::TargetFeatureName> semanticFeatures;
@@ -366,6 +369,49 @@ ZC_TEST("CompilerSession publishes verified ownership event overlays") {
   ZC_EXPECT(overlay.functions()[0].owner == builtMir.functions()[0].owner);
   ZC_EXPECT(session.getIrFailureGroups().size() == 0);
   ZC_EXPECT(session.getIrIdentityInvariantFailures().size() == 0);
+}
+
+identity::Sha256Digest repeatedDigest(uint8_t byte) {
+  uint8_t bytes[32];
+  for (auto& value : bytes) value = byte;
+  ZC_IF_SOME(digest, identity::Sha256Digest::fromBytes(zc::arrayPtr(bytes))) { return digest; }
+  ZC_FAIL_REQUIRE("invalid ownership digest fixture");
+}
+
+void expectOverlayOracle(zc::Vector<zc::Array<uint8_t>>&& functions, zc::StringPtr expectedPreimage,
+                         zc::StringPtr expectedDigest) {
+  const uint8_t module[] = {0xa1};
+  auto encoded = OwnershipEventOverlayCodec::encodeFramed(
+      repeatedDigest(0x00), zc::arrayPtr(module), repeatedDigest(0x44), repeatedDigest(0x22),
+      functions.asPtr());
+  ZC_REQUIRE(encoded != zc::none);
+  ZC_IF_SOME(bytes, encoded) {
+    ZC_EXPECT(zc::encodeHex(bytes.asPtr()) == expectedPreimage);
+    auto digest = identity::sha256(bytes.asPtr());
+    ZC_REQUIRE(digest != zc::none);
+    ZC_IF_SOME(value, digest) { ZC_EXPECT(zc::encodeHex(value.bytes()) == expectedDigest); }
+  }
+}
+
+ZC_TEST("Ownership event overlay codec matches the RFC 0007 empty oracle") {
+  zc::Vector<zc::Array<uint8_t>> functions;
+  expectOverlayOracle(
+      zc::mv(functions),
+      "7a6f6d2e6f776e6572736869702d6576656e742d6f7665726c61790000000000000000000000000000000000000000000000000000000000000000000000000000000001a1444444444444444444444444444444444444444444444444444444444444444422222222222222222222222222222222222222222222222222222222222222220000000000000000"_zc,
+      "9e673e954367c3f2783cef1a9ca46e4d7e89040f2d4285ac6e42c2137bbed1d2"_zc);
+}
+
+ZC_TEST("Ownership event overlay codec matches the RFC 0007 empty-function oracle") {
+  const uint8_t owner[] = {0xb1};
+  identity::CanonicalEncoder functionEncoder;
+  functionEncoder.encodeByteString(zc::arrayPtr(owner));
+  for (int index = 0; index < 6; ++index) functionEncoder.encodeSequenceSize(0);
+  zc::Vector<zc::Array<uint8_t>> functions;
+  functions.add(functionEncoder.finish());
+  expectOverlayOracle(
+      zc::mv(functions),
+      "7a6f6d2e6f776e6572736869702d6576656e742d6f7665726c61790000000000000000000000000000000000000000000000000000000000000000000000000000000001a144444444444444444444444444444444444444444444444444444444444444442222222222222222222222222222222222222222222222222222222222222222000000000000000100000000000000390000000000000001b1000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"_zc,
+      "5e36e3dd6068992f4e3b99ea9eb7df4e3836f9f8c40eb9821238a3c6090d724c"_zc);
 }
 
 }  // namespace

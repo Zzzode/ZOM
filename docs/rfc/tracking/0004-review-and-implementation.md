@@ -329,15 +329,15 @@ landing.
 | Dependency-free current-surface completeness | Complete | Commit `0e5a6d3f`; production structural verification proves an exact one-to-one projection from canonical module-scope local bindings to visible entries before validating export subset and revision; missing, additional, reordered, malformed, stale, and foreign surface cases are covered by the 164-case Binder executable; full sanitizer build, all 123 unit CTests, all lit CTests, and the adversarial architecture gate pass |
 | Closed member-visibility facts | Complete | Commit `0e5a6d3f`; `DefinitionFact` retains `Public`, `Private`, or `Protected` only for supported member declaration kinds; interface defaults resolve to public, other supported bodies default to private, the production verifier checks structural presence and domain mutation tests cover exact semantics; the focused Binder executable, full sanitizer build, all 123 unit CTests, and the adversarial architecture gate cover semantic and structural mutations |
 | Public verified Binder coordinator | Complete | Commit `0e5a6d3f`; `runBinding` is the sole public build-and-verify entry point; mutable candidates, `BindingBuilder`, `BindingVerifier`, and the differential oracle remain Binder-internal; closed publication and rejection behavior passes the focused sanitizer test, full sanitizer build, all 123 unit CTests, and the adversarial architecture gate |
-| RFC 0008 module input handoff | Complete | `CompilerSession` admits digest-verified snapshots, freezes the global graph and structural resolutions, schedules Binder work dependency-first, passes only verified parsed modules, inventories, graph views, and completed dependency surfaces to `runBinding`, then atomically stages signature v1 and module-interface v3 publication |
+| RFC 0008 module input handoff | Complete | `CompilerSession` admits digest-verified snapshots, freezes the global graph and structural resolutions, schedules Binder work dependency-first, passes only verified parsed modules, inventories, graph views, and completed dependency surfaces to `runBinding`, then atomically stages canonical signature and canonical module interface publication |
 | Import, export, module-alias, and prelude publication | In review | `ImportBindingProjector` publishes selected imports, module aliases, local and foreign re-exports, visibility envelopes, revisions, and provenance from verified graph inputs and completed surfaces; prelude projection is wired but the session currently supplies an empty prelude set |
 | Module and qualified resolution | In progress | Module-namespace lookup and selected imported-member resolution are active; requester-authorized typed member lookup and associated-member completion remain owned by RFC 0005 and RFC 0009 |
-| Cross-module codecs, verifier closure, and surfaces | Complete | Binder-local foreign targets, aliases, imports, exports, dependency spans, provenance, exact current surfaces, and revisions are encoded and structurally verified; RFC 0015 supplies the single signature v1, coherence v1, and `VerifiedModuleInterface` v3 publication rail with no prior revision producer or consumer |
+| Cross-module codecs, verifier closure, and surfaces | Complete | Binder-local foreign targets, aliases, imports, exports, dependency spans, provenance, exact current surfaces, and revisions are encoded and structurally verified; RFC 0015 supplies the single canonical signature, canonical coherence, and `VerifiedModuleInterface` canonical publication rail with no prior revision producer or consumer |
 | Production binder cutover | Complete | Commit `0e5a6d3f`; `CompilerSession` calls only `runBinding`; the raw Binder, `DefinitionIdentityMap`, compiler symbol rail, AST `BindingMetadata`, polymorphic type rail, and AST-to-IR lowering entry are deleted; full sanitizer build, all 123 unit CTests, all lit CTests, format/RFC checks, and all architecture gates pass |
 
 The production Binder path accepts verified multi-module graph inputs and
-dependency surfaces, then feeds signature v1, module-interface v3, coherence
-v1, checked-fact, dispatch-fact, borrow-evidence, and semantic HIR publication.
+dependency surfaces, then feeds canonical signature, canonical module interface, coherence
+canonical, checked-fact, dispatch-fact, borrow-evidence, and semantic HIR publication.
 Remaining restrictions are owned by their current Checker, query, ownership,
 and IR RFCs rather than an RFC 0015 boundary.
 
@@ -384,7 +384,7 @@ complete token sequence, and stores owned canonical text with exact raw ranges.
 Focused evidence covers escaped-at-start `break`, escaped-in-middle `break`,
 escaped `continue`, identifier-prefix rejection, wrong-kind lookup, source and
 range rejection, and the single-use capability. The normative
-`ParsedModuleReceipt v0` preimage remains unchanged because the retained token
+`ParsedModuleReceipt canonical` preimage remains unchanged because the retained token
 table is derived from the receipt-bound immutable source by the private
 successful-parser capability.
 

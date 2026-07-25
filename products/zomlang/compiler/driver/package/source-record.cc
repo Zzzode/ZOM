@@ -31,7 +31,7 @@ zc::Maybe<identity::Sha256Digest> domainDigest(zc::StringPtr domain,
 }
 
 zc::Maybe<identity::Sha256Digest> computeManifestDigest(const CanonicalManifestRecord& manifest) {
-  return domainDigest("zom.normalized-manifest.v0"_zc, manifest.encode().asPtr());
+  return domainDigest("zom.normalized-manifest"_zc, manifest.encode().asPtr());
 }
 
 }  // namespace
@@ -49,7 +49,7 @@ zc::Maybe<VcsSelectorIdentity> VcsSelectorIdentity::from(identity::CanonicalUrl&
   identity::CanonicalEncoder encoder;
   encoder.encodeUint8(static_cast<uint8_t>(kind));
   encoder.encodeByteString(selector);
-  ZC_IF_SOME(digest, domainDigest("zom.vcs-selector.v0"_zc, encoder.finish().asPtr())) {
+  ZC_IF_SOME(digest, domainDigest("zom.vcs-selector"_zc, encoder.finish().asPtr())) {
     return VcsSelectorIdentity(zc::mv(repository), kind, digest);
   }
   return zc::none;

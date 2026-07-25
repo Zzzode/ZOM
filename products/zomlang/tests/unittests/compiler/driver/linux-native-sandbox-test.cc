@@ -113,7 +113,7 @@ BuildScriptLimitKey limits() {
 LinuxNativeSandboxCreateResult create(PlatformTrace& trace) {
   zc::Own<LinuxNativeSandboxPlatform> platform = zc::heap<FakeLinuxPlatform>(trace);
   auto buildLimits = limits();
-  return LinuxNativeSandboxV1::create(zc::mv(platform), buildLimits);
+  return LinuxNativeSandbox::create(zc::mv(platform), buildLimits);
 }
 
 BuildScriptRequestFrame request() {
@@ -131,7 +131,7 @@ BuildScriptRequestFrame request() {
 
 }  // namespace
 
-ZC_TEST("LinuxNativeSandboxV1 fails closed on unsupported build hosts") {
+ZC_TEST("LinuxNativeSandbox fails closed on unsupported build hosts") {
 #if defined(__linux__) && (defined(__x86_64__) || defined(__aarch64__))
   ZC_EXPECT(linuxNativeSandboxHostSupported());
 #else
@@ -140,7 +140,7 @@ ZC_TEST("LinuxNativeSandboxV1 fails closed on unsupported build hosts") {
 #endif
 }
 
-ZC_TEST("LinuxNativeSandboxV1 derives exact rlimit and cgroup values") {
+ZC_TEST("LinuxNativeSandbox derives exact rlimit and cgroup values") {
   auto buildLimits = limits();
   const auto plan = linuxSandboxResourcePlan(buildLimits);
   ZC_EXPECT(plan.cpuSoftSeconds == 60);
@@ -151,7 +151,7 @@ ZC_TEST("LinuxNativeSandboxV1 derives exact rlimit and cgroup values") {
   ZC_EXPECT(plan.processCount == 1);
 }
 
-ZC_TEST("LinuxNativeSandboxV1 classifies post-reap evidence in fixed priority order") {
+ZC_TEST("LinuxNativeSandbox classifies post-reap evidence in fixed priority order") {
   LinuxSandboxExitObservation observation;
   observation.wallTimerReadable = true;
   observation.cgroupMemoryEvent = true;
@@ -173,7 +173,7 @@ ZC_TEST("LinuxNativeSandboxV1 classifies post-reap evidence in fixed priority or
   ZC_EXPECT(classifyLinuxSandboxExit(observation) == zc::none);
 }
 
-ZC_TEST("LinuxNativeSandboxV1 cleans every completed partial setup boundary") {
+ZC_TEST("LinuxNativeSandbox cleans every completed partial setup boundary") {
   const FaultStep faults[] = {FaultStep::Namespace, FaultStep::Trees, FaultStep::Cgroup,
                               FaultStep::Limits, FaultStep::Spawn};
   for (const auto fault : faults) {
@@ -191,7 +191,7 @@ ZC_TEST("LinuxNativeSandboxV1 cleans every completed partial setup boundary") {
   }
 }
 
-ZC_TEST("LinuxNativeSandboxV1 retries only the owner that failed at every teardown boundary") {
+ZC_TEST("LinuxNativeSandbox retries only the owner that failed at every teardown boundary") {
   const FaultStep faults[] = {FaultStep::Kill, FaultStep::Descriptors, FaultStep::RemoveCgroup,
                               FaultStep::RemoveTrees};
   for (const auto fault : faults) {
@@ -223,7 +223,7 @@ ZC_TEST("LinuxNativeSandboxV1 retries only the owner that failed at every teardo
   }
 }
 
-ZC_TEST("LinuxNativeSandboxV1 records an exited child before resource teardown") {
+ZC_TEST("LinuxNativeSandbox records an exited child before resource teardown") {
   PlatformTrace trace;
   auto result = create(trace);
   ZC_REQUIRE(result.is<zc::Own<BuildScriptSandboxAdapter>>());

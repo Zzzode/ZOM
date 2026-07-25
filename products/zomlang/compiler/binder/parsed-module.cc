@@ -23,7 +23,7 @@
 namespace zomlang::compiler::binder {
 namespace {
 
-constexpr char kReceiptDomain[] = "zom.parsed-module.v0";
+constexpr char kReceiptDomain[] = "zom.parsed-module";
 
 ParsedModuleInvariantFact failure(ParsedModuleInvariantKind kind) { return {kind, 1}; }
 

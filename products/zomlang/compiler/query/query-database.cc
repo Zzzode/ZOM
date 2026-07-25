@@ -470,40 +470,30 @@ QueryEventKind failureEvent(QueryRuntimeFailure failure) {
 
 }  // namespace
 
-QueryKindContract::QueryKindContract(zc::String&& domain, uint32_t keySchemaVersion,
-                                     uint32_t valueSchemaVersion, ReuseClass reuseClass,
+QueryKindContract::QueryKindContract(zc::String&& domain, ReuseClass reuseClass,
                                      RetentionClass retention, bool isInput,
                                      Durability inputDurability) noexcept
     : domainField(zc::mv(domain)),
-      keySchemaVersionField(keySchemaVersion),
-      valueSchemaVersionField(valueSchemaVersion),
       reuseClassField(reuseClass),
       retentionField(retention),
       isInputField(isInput),
       inputDurabilityField(inputDurability) {}
 
-zc::Maybe<QueryKindContract> QueryKindContract::input(zc::StringPtr domain,
-                                                      uint32_t keySchemaVersion,
-                                                      uint32_t valueSchemaVersion,
-                                                      Durability durability) {
+zc::Maybe<QueryKindContract> QueryKindContract::input(zc::StringPtr domain, Durability durability) {
   if (!isCanonicalDomain(domain)) { return zc::none; }
-  return QueryKindContract(zc::str(domain), keySchemaVersion, valueSchemaVersion,
-                           ReuseClass::Semantic, RetentionClass::Retained, true, durability);
+  return QueryKindContract(zc::str(domain), ReuseClass::Semantic, RetentionClass::Retained, true,
+                           durability);
 }
 
-zc::Maybe<QueryKindContract> QueryKindContract::derived(zc::StringPtr domain,
-                                                        uint32_t keySchemaVersion,
-                                                        uint32_t valueSchemaVersion,
-                                                        ReuseClass reuseClass,
+zc::Maybe<QueryKindContract> QueryKindContract::derived(zc::StringPtr domain, ReuseClass reuseClass,
                                                         RetentionClass retention) {
   if (!isCanonicalDomain(domain)) { return zc::none; }
-  return QueryKindContract(zc::str(domain), keySchemaVersion, valueSchemaVersion, reuseClass,
-                           retention, false, Durability::Frozen);
+  return QueryKindContract(zc::str(domain), reuseClass, retention, false, Durability::Frozen);
 }
 
 QueryKindContract QueryKindContract::clone() const {
-  return QueryKindContract(zc::str(domainField), keySchemaVersionField, valueSchemaVersionField,
-                           reuseClassField, retentionField, isInputField, inputDurabilityField);
+  return QueryKindContract(zc::str(domainField), reuseClassField, retentionField, isInputField,
+                           inputDurabilityField);
 }
 
 struct CancellationSource::Impl final {
@@ -570,13 +560,12 @@ struct QueryDatabase::Impl final {
       return zc::none;
     }
 
-    static constexpr zc::StringPtr fingerprintDomain = "zom.query-key.v0"_zc;
+    static constexpr zc::StringPtr fingerprintDomain = "zom.query-key"_zc;
     zc::Vector<uint8_t> preimage;
     for (char value : fingerprintDomain) { preimage.add(static_cast<uint8_t>(value)); }
     preimage.add(0);
     appendUint32(preimage, static_cast<uint32_t>(domain.size()));
     for (char value : domain) { preimage.add(static_cast<uint8_t>(value)); }
-    appendUint32(preimage, kind->contract.keySchemaVersion());
     appendUint32(preimage, static_cast<uint32_t>(keyBytes.size()));
     for (uint8_t value : keyBytes) { preimage.add(value); }
     auto fingerprintBytes = vectorToArray(zc::mv(preimage));

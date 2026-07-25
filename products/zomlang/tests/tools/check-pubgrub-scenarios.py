@@ -25,7 +25,7 @@ def main() -> None:
     arguments = parser.parse_args()
 
     document = json.loads(arguments.corpus.read_text(encoding="utf-8"))
-    if document.get("schema") != "zom.pubgrub-scenarios.v1":
+    if document.get("schema") != "zom.pubgrub-scenarios":
         raise SystemExit("invalid PubGrub scenario schema")
     scenarios = document.get("scenarios")
     if not isinstance(scenarios, list):

@@ -12,7 +12,7 @@
 namespace zomlang::compiler::driver::incremental_binding_query {
 namespace {
 
-constexpr zc::StringPtr kAuthoritySetDomain = "zom.active-definition-authority-set.v1"_zc;
+constexpr zc::StringPtr kAuthoritySetDomain = "zom.active-definition-authority-set"_zc;
 constexpr uint8_t kCompilationUnitKeyTag = 0x01;
 
 int compareBytes(zc::ArrayPtr<const uint8_t> left, zc::ArrayPtr<const uint8_t> right) noexcept {
@@ -27,7 +27,7 @@ int compareBytes(zc::ArrayPtr<const uint8_t> left, zc::ArrayPtr<const uint8_t> r
 }
 
 query::QueryKindContract inputContract(zc::StringPtr domain) {
-  auto contract = query::QueryKindContract::input(domain, 1, 1, query::Durability::Low);
+  auto contract = query::QueryKindContract::input(domain, query::Durability::Low);
   return zc::mv(ZC_REQUIRE_NONNULL(contract));
 }
 
@@ -157,7 +157,7 @@ const ActiveDefinitionAuthoritySetFingerprint& ActiveDefinitionAuthorityProjecti
 }
 
 zc::StringPtr ActiveDefinitionAuthorityInput::domain() {
-  return "zom.query.active-definition-authority.v1"_zc;
+  return "zom.query.active-definition-authority"_zc;
 }
 
 query::QueryKindContract ActiveDefinitionAuthorityInput::contract() {
@@ -183,7 +183,7 @@ zc::Maybe<ActiveDefinitionAuthorityInput::Value> ActiveDefinitionAuthorityInput:
 }
 
 zc::StringPtr ActiveDefinitionAuthorityReadyInput::domain() {
-  return "zom.query.active-definition-authority-ready.v1"_zc;
+  return "zom.query.active-definition-authority-ready"_zc;
 }
 
 query::QueryKindContract ActiveDefinitionAuthorityReadyInput::contract() {

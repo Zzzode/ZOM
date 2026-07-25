@@ -74,7 +74,7 @@ identity::CanonicalTargetSpecificationKey projection() {
         scalar<identity::TargetComponentName>("zom"_zc),
         scalar<identity::TargetComponentName>("none"_zc),
         scalar<identity::TargetComponentName>("unknown"_zc),
-        scalar<identity::TargetComponentName>("zom-v1"_zc), 64, identity::Endianness::Little,
+        scalar<identity::TargetComponentName>("zom"_zc), 64, identity::Endianness::Little,
         zc::mv(featureSet));
     ZC_IF_SOME(value, result) { return zc::mv(value); }
   }
@@ -92,7 +92,7 @@ ir::CanonicalTargetSpec targetSpec() {
   auto feature = ir::CanonicalTargetFeature::from("sse2"_zc, ir::TargetFeatureState::Enabled);
   ZC_IF_SOME(value, feature) { features.add(zc::mv(value)); }
   auto result = ir::CanonicalTargetSpec::from(
-      "x86_64-zom-none"_zc, "e-p:64:64"_zc, "generic"_zc, zc::mv(features), "zom-v1"_zc,
+      "x86_64-zom-none"_zc, "e-p:64:64"_zc, "generic"_zc, zc::mv(features), "zom"_zc,
       ir::BackendPanicStrategy::Unwind, ir::ObjectFormat::Elf);
   ZC_IF_SOME(value, result) { return zc::mv(value); }
   ZC_FAIL_REQUIRE("target specification fixture was rejected");
@@ -296,7 +296,7 @@ TrustedBuildRuntimeKey runtime() {
       observed.get<TrustedRuntimeManifestSet>());
   ZC_REQUIRE(evidence.is<TrustedRuntimeVerificationEvidence>());
   auto result = TrustedBuildRuntimeKey::verifyEvidence(
-      "zom-v1"_zc, "zom-v1"_zc, zc::mv(objects),
+      "zom"_zc, "zom"_zc, zc::mv(objects),
       zc::mv(evidence.get<TrustedRuntimeVerificationEvidence>()));
   if (result.is<TrustedBuildRuntimeKey>()) { return zc::mv(result.get<TrustedBuildRuntimeKey>()); }
   ZC_FAIL_REQUIRE("trusted runtime fixture was rejected");
@@ -597,7 +597,7 @@ ZC_TEST("BuildScriptExecutionKey canonicalizes the complete host closure") {
   ZC_REQUIRE(oracleDigest != zc::none);
   ZC_IF_SOME(value, oracleDigest) {
     ZC_EXPECT(zc::encodeHex(value.bytes()) ==
-              "a4afe01afa0cfef1f85f0835d4801de5c1648410e218a469c2823b33f7e0f12f"_zc);
+              "f95a5204f19b1f9e7fa02109f15884b3d01323574c26b2cf190adc7a6bc516e4"_zc);
   }
 }
 
@@ -679,7 +679,7 @@ ZC_TEST("Build-script cache miss publishes one complete byte-identical output re
   ZC_REQUIRE(outputDigest != zc::none);
   ZC_IF_SOME(value, outputDigest) {
     ZC_EXPECT(zc::encodeHex(value.bytes()) ==
-              "1173c31a10a429a13004c375a7b84baab54f2237857c3e5aea0ae1675552e87e"_zc);
+              "07bb991bb4c5d57e573c2de43ea6612ffe5003f247420a9239cb8e454c614f96"_zc);
   }
 }
 

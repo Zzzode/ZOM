@@ -223,14 +223,10 @@ def enum_members(text: str, enum_name: str) -> set[str]:
 
 
 def check_manifest_shape(manifest: dict[str, object], errors: list[str]) -> None:
-    if manifest.get("version") != 1:
-        errors.append(f"{MANIFEST}: version must be 1")
     for key in (
         "producers",
         "no_identity",
         "expansion_producers",
-        "legacy_symbol_id_allowlist",
-        "legacy_type_identity_allowlist",
         "pointer_identity_allowlist",
     ):
         if key not in manifest:
@@ -440,37 +436,20 @@ def check_ordered_function_markers(
         )
 
 
-def check_phase_local_allowlists(
+def check_pointer_identity_allowlist(
     manifest: dict[str, object], overrides: dict[Path, str], errors: list[str]
 ) -> None:
-    checks = (
-        (
-            "legacy_symbol_id_allowlist",
-            re.compile(r"\bSymbolId\b"),
-            "legacy SymbolId surface",
-        ),
-        (
-            "legacy_type_identity_allowlist",
-            re.compile(r"\b(?:TypeId|TypeInterner)\b"),
-            "legacy semantic type identity surface",
-        ),
-        (
-            "pointer_identity_allowlist",
-            POINTER_IDENTITY_PATTERN,
-            "pointer-derived identity surface",
-        ),
-    )
-    for key, pattern, description in checks:
-        configured = manifest.get(key, [])
-        if not isinstance(configured, list) or not all(isinstance(item, str) for item in configured):
-            errors.append(f"{MANIFEST}: {key} must be a string list")
-            continue
-        expected = set(configured)
-        actual = matching_files(pattern, overrides)
-        for path in sorted(actual - expected):
-            errors.append(f"{path}: unallowlisted {description}")
-        for path in sorted(expected - actual):
-            errors.append(f"{MANIFEST}: stale {description} allowlist entry {path}")
+    key = "pointer_identity_allowlist"
+    configured = manifest.get(key, [])
+    if not isinstance(configured, list) or not all(isinstance(item, str) for item in configured):
+        errors.append(f"{MANIFEST}: {key} must be a string list")
+        return
+    expected = set(configured)
+    actual = matching_files(POINTER_IDENTITY_PATTERN, overrides)
+    for path in sorted(actual - expected):
+        errors.append(f"{path}: unallowlisted pointer-derived identity surface")
+    for path in sorted(expected - actual):
+        errors.append(f"{MANIFEST}: stale pointer-derived identity surface allowlist entry {path}")
 
 
 def check_header_wire_inventory(
@@ -1140,7 +1119,7 @@ def check_overload_header_digest_inventory(
         if marker not in header:
             errors.append(f"{OVERLOAD_HEADER_DIGEST}: missing overload digest marker {marker}")
 
-    if 'constexpr auto kOverloadHeaderDomain = "zom.overload-header.v0"_zc;' not in (
+    if 'constexpr auto kOverloadHeaderDomain = "zom.overload-header"_zc;' not in (
         implementation
     ):
         errors.append(
@@ -1229,7 +1208,7 @@ def check_overload_header_digest_inventory(
 
     for marker in (
         'ZC_TEST("OverloadHeaderDigest passes the exact domain SHA and raw codec vector")',
-        '"1082ac5bcb087fbe0a9d323c92b35e9974e351e50c8e0ac207b69f614850dad4"_zc',
+        '"311a7707c91317c488448e3f407308246bc6ad8f627e73a019a9303a83ff1f2d"_zc',
         "ZC_EXPECT(value.encode().asPtr() == value.bytes());",
         'ZC_TEST("OverloadHeaderDigest admits exactly thirty-two verified bytes")',
         "OverloadHeaderDigest::fromBytes(zc::arrayPtr(bytes, 31))",
@@ -1514,7 +1493,7 @@ def check_module_resolution_key_architecture(
             "catalog bucket codec",
             errors,
         )
-        if 'constexpr auto domain = "zom.module-catalog-path-bucket.v0"_zc;' not in bucket_encode:
+        if 'constexpr auto domain = "zom.module-catalog-path-bucket"_zc;' not in bucket_encode:
             errors.append(
                 f"{MODULE_RESOLUTION_KEY_IMPLEMENTATION}: invalid catalog bucket domain"
             )
@@ -1692,7 +1671,7 @@ def check_module_resolution_key_architecture(
             errors.append(
                 f"{MODULE_RESOLUTION_KEY_IMPLEMENTATION}: resolution policy codec must emit eight fields"
             )
-        if 'constexpr auto domain = "zom.module-resolution-policy.v0"_zc;' not in policy_encode:
+        if 'constexpr auto domain = "zom.module-resolution-policy"_zc;' not in policy_encode:
             errors.append(
                 f"{MODULE_RESOLUTION_KEY_IMPLEMENTATION}: invalid resolution policy domain"
             )
@@ -1702,7 +1681,7 @@ def check_module_resolution_key_architecture(
     if policy_decode is None or any(
         marker not in policy_decode
         for marker in (
-            'constexpr auto domain = "zom.module-resolution-policy.v0"_zc;',
+            'constexpr auto domain = "zom.module-resolution-policy"_zc;',
             "decoder.decodeUint8()",
             "!decoder.finished()",
             "static_cast<ModuleCandidateSelectionPolicy>",
@@ -1765,7 +1744,7 @@ def check_module_resolution_key_architecture(
             "resolution request codec",
             errors,
         )
-        if 'constexpr auto domain = "zom.module-resolution.v0"_zc;' not in request_encode:
+        if 'constexpr auto domain = "zom.module-resolution"_zc;' not in request_encode:
             errors.append(
                 f"{MODULE_RESOLUTION_KEY_IMPLEMENTATION}: invalid resolution request domain"
             )
@@ -1773,7 +1752,7 @@ def check_module_resolution_key_architecture(
     if request_decode is None or any(
         marker not in request_decode
         for marker in (
-            'constexpr auto domain = "zom.module-resolution.v0"_zc;',
+            'constexpr auto domain = "zom.module-resolution"_zc;',
             "ModuleKey::decodeCanonical(decoder)",
             "decoder.decodeBool()",
             "DependencyAlias::decodeCanonical(decoder)",
@@ -1926,7 +1905,7 @@ def check_semantic_import_binding_key_architecture(
             "semantic import key codec",
             errors,
         )
-        if 'constexpr auto domain = "zom.semantic-import-binding.v0"_zc;' not in key_encode:
+        if 'constexpr auto domain = "zom.semantic-import-binding"_zc;' not in key_encode:
             errors.append(
                 f"{SEMANTIC_IMPORT_BINDING_KEY_IMPLEMENTATION}: invalid semantic import key domain"
             )
@@ -1981,10 +1960,10 @@ def check_stable_identity_architecture(
         if marker not in definition_key:
             errors.append(f"{DEFINITION_KEY}: missing RFC 0018 identity marker {marker}")
     for marker in (
-        'constexpr auto kDefinitionDomain = "zom.named-item-header.v0"_zc;',
-        'constexpr auto kImplDomain = "zom.impl-header.v0"_zc;',
-        'constexpr auto kGenericParameterDomain = "zom.generic-parameter.v0"_zc;',
-        'constexpr auto kCallableParameterDomain = "zom.callable-parameter.v0"_zc;',
+        'constexpr auto kDefinitionDomain = "zom.named-item-header"_zc;',
+        'constexpr auto kImplDomain = "zom.impl-header"_zc;',
+        'constexpr auto kGenericParameterDomain = "zom.generic-parameter"_zc;',
+        'constexpr auto kCallableParameterDomain = "zom.callable-parameter"_zc;',
         "encodeSequence(encoder, impl->owners.asPtr());",
         "impl->header.encode(encoder);",
     ):
@@ -2053,7 +2032,7 @@ def check_stable_identity_architecture(
     for marker in required_producer_markers:
         if marker not in crate_key:
             errors.append(f"{CRATE_KEY}: missing stable build producer marker {marker}")
-    if 'constexpr auto domain = "zom.build-script-producer.v0"_zc;' not in (
+    if 'constexpr auto domain = "zom.build-script-producer"_zc;' not in (
         build_script_key_implementation
     ):
         errors.append(f"{BUILD_SCRIPT_KEY_IMPLEMENTATION}: invalid build producer domain")
@@ -2061,7 +2040,7 @@ def check_stable_identity_architecture(
     required_artifact_markers = (
         "class ArtifactFingerprint final",
         "ArtifactFingerprint BuildScriptOutputRecord::artifactFingerprint() const",
-        'constexpr auto domain = "zom.build-script-output.v0"_zc;',
+        'constexpr auto domain = "zom.build-script-output"_zc;',
     )
     combined_artifact_surface = build_script_key + build_script_key_implementation
     for marker in required_artifact_markers:
@@ -2254,7 +2233,7 @@ def analyze(
     check_schema_coverage(manifest, variants, errors)
     check_live_producers(manifest, active_overrides, errors)
     check_no_post_parse_expansion(manifest, active_overrides, errors)
-    check_phase_local_allowlists(manifest, active_overrides, errors)
+    check_pointer_identity_allowlist(manifest, active_overrides, errors)
     check_header_wire_inventory(active_overrides, errors)
     check_canonical_header_type_inventory(active_overrides, errors)
     check_canonical_header_type_producer(active_overrides, errors)
@@ -2321,27 +2300,6 @@ def run_self_test() -> int:
         )
     )
 
-    missing_allowlist = copy.deepcopy(baseline)
-    tree_header = Path("products/zomlang/compiler/ast/tree.h")
-    tree_text = (ROOT / tree_header).read_text(encoding="utf-8")
-    cases.append(
-        (
-            "unallowlisted legacy identity",
-            missing_allowlist,
-            {tree_header: tree_text + "\nclass SymbolId;\n"},
-            "unallowlisted legacy SymbolId",
-        )
-    )
-
-    cases.append(
-        (
-            "unallowlisted legacy type identity",
-            copy.deepcopy(baseline),
-            {tree_header: tree_text + "\nclass TypeId;\n"},
-            "unallowlisted legacy semantic type identity",
-        )
-    )
-
     session_text = (ROOT / COMPILER_SESSION).read_text(encoding="utf-8")
     cases.append(
         (
@@ -2404,7 +2362,7 @@ def run_self_test() -> int:
             copy.deepcopy(baseline),
             {
                 BUILD_SCRIPT_KEY_IMPLEMENTATION: build_script_implementation_text.replace(
-                    '"zom.build-script-producer.v0"_zc',
+                    '"zom.build-script-producer"_zc',
                     '"zom.build-script-producer.mutated"_zc',
                 )
             },
@@ -2567,7 +2525,7 @@ def run_self_test() -> int:
             {
                 SEMANTIC_IMPORT_BINDING_KEY_IMPLEMENTATION: (
                     semantic_import_binding_key_implementation_text.replace(
-                        '"zom.semantic-import-binding.v0"_zc',
+                        '"zom.semantic-import-binding"_zc',
                         '"zom.semantic-import-binding.mutated"_zc',
                     )
                 )
@@ -2633,7 +2591,7 @@ def run_self_test() -> int:
             {
                 MODULE_RESOLUTION_KEY_IMPLEMENTATION: (
                     module_resolution_key_implementation_text.replace(
-                        '"zom.module-catalog-path-bucket.v0"_zc',
+                        '"zom.module-catalog-path-bucket"_zc',
                         '"zom.module-catalog-path-bucket.mutated"_zc',
                     )
                 )
@@ -2648,7 +2606,7 @@ def run_self_test() -> int:
             {
                 MODULE_RESOLUTION_KEY_IMPLEMENTATION: (
                     module_resolution_key_implementation_text.replace(
-                        '"zom.module-resolution-policy.v0"_zc',
+                        '"zom.module-resolution-policy"_zc',
                         '"zom.module-resolution-policy.mutated"_zc',
                     )
                 )
@@ -2663,7 +2621,7 @@ def run_self_test() -> int:
             {
                 MODULE_RESOLUTION_KEY_IMPLEMENTATION: (
                     module_resolution_key_implementation_text.replace(
-                        '"zom.module-resolution.v0"_zc',
+                        '"zom.module-resolution"_zc',
                         '"zom.module-resolution.mutated"_zc',
                     )
                 )
@@ -3361,7 +3319,7 @@ def run_self_test() -> int:
             copy.deepcopy(baseline),
             {
                 OVERLOAD_HEADER_DIGEST_IMPLEMENTATION: overload_digest_text.replace(
-                    '"zom.overload-header.v0"_zc', '"zom.overload-header.mutated"_zc'
+                    '"zom.overload-header"_zc', '"zom.overload-header.mutated"_zc'
                 )
             },
             "invalid overload header digest domain",

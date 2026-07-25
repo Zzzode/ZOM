@@ -19,7 +19,7 @@
 
 namespace zomlang::compiler::identity {
 
-/// \brief Produces the exact deterministic `zom.identity.v0` registry dump.
+/// \brief Produces the exact deterministic `zom.identity` registry dump.
 ZC_NODISCARD zc::Maybe<zc::String> dumpIdentityRegistries(
     const SemanticIdentityRegistrySet& registries);
 

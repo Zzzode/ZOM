@@ -432,7 +432,7 @@ ZC_TEST("DispatchFactsRevision.ReproducesIndependentNonEmptyOracle") {
   ZC_REQUIRE(revision != zc::none);
   ZC_IF_SOME(value, revision) {
     ZC_EXPECT(zc::encodeHex(value.digest().bytes()) ==
-              "25ca384dcdb9cd5225d8ec8abfb25c68865c2c6ca4518c8f30ffdc359a51835c"_zc);
+              "b50df7fb9f580a517707e385c6a90d91860031cd018bf9a2057a8a5be3f038bf"_zc);
   }
 }
 

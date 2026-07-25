@@ -172,13 +172,13 @@ identity::Sha256Digest digestTrustedRuntimeManifestFrames(
   zc::StringPtr domain;
   switch (kind) {
     case TrustedRuntimeManifestKind::Symbols:
-      domain = "zom.build-runtime-symbols.v0"_zc;
+      domain = "zom.build-runtime-symbols"_zc;
       break;
     case TrustedRuntimeManifestKind::Relocations:
-      domain = "zom.build-runtime-relocations.v0"_zc;
+      domain = "zom.build-runtime-relocations"_zc;
       break;
     case TrustedRuntimeManifestKind::Operations:
-      domain = "zom.build-runtime-operations.v0"_zc;
+      domain = "zom.build-runtime-operations"_zc;
       break;
   }
   identity::CanonicalEncoder encoder;
@@ -207,7 +207,7 @@ zc::OneOf<identity::Sha256Digest, TrustedRuntimeInvariantIssue> digestTrustedRun
   if (encoded.is<TrustedRuntimeInvariantIssue>()) {
     return encoded.get<TrustedRuntimeInvariantIssue>();
   }
-  constexpr auto domain = "zom.build-runtime-symbol-name.v0"_zc;
+  constexpr auto domain = "zom.build-runtime-symbol-name"_zc;
   const auto& tagged = encoded.get<zc::Array<uint8_t>>();
   zc::Vector<uint8_t> preimage(domain.size() + 1 + tagged.size());
   preimage.addAll(domain.asBytes());

@@ -186,7 +186,7 @@ zc::ArrayPtr<const PackageKey> PreparatoryBuildScriptKey::buildDependencies() co
 }
 
 BuildScriptProducerKey PreparatoryBuildScriptKey::producerKey() const {
-  constexpr auto domain = "zom.build-script-producer.v0"_zc;
+  constexpr auto domain = "zom.build-script-producer"_zc;
   auto preparatory = encode();
   zc::Vector<uint8_t> preimage(domain.size() + 1 + preparatory.size());
   preimage.addAll(domain.asBytes());
@@ -295,7 +295,7 @@ zc::Array<uint8_t> BuildScriptOutputRecord::encode() const {
 }
 
 ArtifactFingerprint BuildScriptOutputRecord::artifactFingerprint() const {
-  constexpr auto domain = "zom.build-script-output.v0"_zc;
+  constexpr auto domain = "zom.build-script-output"_zc;
   auto record = encode();
   zc::Vector<uint8_t> preimage(domain.size() + 1 + record.size());
   preimage.addAll(domain.asBytes());

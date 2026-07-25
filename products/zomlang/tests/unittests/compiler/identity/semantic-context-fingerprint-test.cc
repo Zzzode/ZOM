@@ -173,7 +173,7 @@ ZC_TEST("Semantic context fingerprint passes the empty codec fixture") {
   zc::Vector<PackageKey> packages;
   zc::Vector<PackageDependencyEdgeKey> packageEdges;
   auto result = fingerprint(packages, packageEdges);
-  expectFingerprint(result, "aa36edfdf536f061cd028efd3cfe5003474aee9aa3ab39f294d3b42a95eaae5e"_zc);
+  expectFingerprint(result, "b0284a2767bcaa8ba0d0c5c9ea1475b9377ef2c4341bbca97d424d088517ba23"_zc);
 }
 
 ZC_TEST("Semantic context fingerprint passes the sorted package graph fixture") {
@@ -183,7 +183,7 @@ ZC_TEST("Semantic context fingerprint passes the sorted package graph fixture") 
   zc::Vector<PackageDependencyEdgeKey> packageEdges;
   packageEdges.add(packageEdge());
   auto result = fingerprint(packages, packageEdges);
-  expectFingerprint(result, "20d2a8ab26a6a17066de900f472dab2e6222c949c6b01da507753822bc116eac"_zc);
+  expectFingerprint(result, "12487f84af23915e05b21cdb4899e1f458c438e425521e7d0659fdde1ac11bf8"_zc);
 
   zc::Vector<PackageKey> permutedPackages;
   permutedPackages.add(localPackage("a"_zc));
@@ -192,7 +192,7 @@ ZC_TEST("Semantic context fingerprint passes the sorted package graph fixture") 
   permutedEdges.add(packageEdge());
   auto permuted = fingerprint(permutedPackages, permutedEdges);
   expectFingerprint(permuted,
-                    "20d2a8ab26a6a17066de900f472dab2e6222c949c6b01da507753822bc116eac"_zc);
+                    "12487f84af23915e05b21cdb4899e1f458c438e425521e7d0659fdde1ac11bf8"_zc);
 }
 
 ZC_TEST("Semantic context fingerprint rejects duplicate canonical inputs") {
@@ -227,7 +227,7 @@ ZC_TEST("Semantic context fingerprint consumes only frozen context registries") 
   ZC_EXPECT(registries.freezeModules() == FrozenRegistryFailure::None);
   auto result =
       SemanticContextFingerprint::compute(registries, packageEdges.asPtr(), crateEdges.asPtr());
-  expectFingerprint(result, "20d2a8ab26a6a17066de900f472dab2e6222c949c6b01da507753822bc116eac"_zc);
+  expectFingerprint(result, "12487f84af23915e05b21cdb4899e1f458c438e425521e7d0659fdde1ac11bf8"_zc);
 }
 
 }  // namespace zomlang::compiler::identity

@@ -52,7 +52,7 @@ identity::CanonicalTargetSpecificationKey projection() {
         scalar<identity::TargetComponentName>("zom"_zc),
         scalar<identity::TargetComponentName>("none"_zc),
         scalar<identity::TargetComponentName>("unknown"_zc),
-        scalar<identity::TargetComponentName>("zom-v1"_zc), 64, identity::Endianness::Little,
+        scalar<identity::TargetComponentName>("zom"_zc), 64, identity::Endianness::Little,
         zc::mv(values));
     ZC_IF_SOME(value, result) { return zc::mv(value); }
   }

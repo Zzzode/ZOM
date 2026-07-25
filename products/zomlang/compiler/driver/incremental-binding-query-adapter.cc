@@ -51,7 +51,7 @@ zc::Maybe<StableModuleQueryKey> decodeModuleKey(identity::CanonicalDecoder& deco
 }
 
 query::QueryKindContract inputContract(zc::StringPtr domain, query::Durability durability) {
-  auto contract = query::QueryKindContract::input(domain, 1, 1, durability);
+  auto contract = query::QueryKindContract::input(domain, durability);
   return zc::mv(ZC_REQUIRE_NONNULL(contract));
 }
 
@@ -71,7 +71,7 @@ bool moduleBelongsToCrate(const StableModuleQueryKey& module, const StableCrateQ
 }
 
 query::QueryKindContract derivedContract(zc::StringPtr domain) {
-  auto contract = query::QueryKindContract::derived(domain, 1, 1, query::ReuseClass::Semantic,
+  auto contract = query::QueryKindContract::derived(domain, query::ReuseClass::Semantic,
                                                     query::RetentionClass::Retained);
   return zc::mv(ZC_REQUIRE_NONNULL(contract));
 }
@@ -961,7 +961,7 @@ bool ModuleBindingOrderFailure::sameAs(const ModuleBindingOrderFailure& other) c
   return encode().asPtr() == other.encode().asPtr();
 }
 
-zc::StringPtr ActiveModulesInput::domain() { return "zom.query.active-modules.v1"_zc; }
+zc::StringPtr ActiveModulesInput::domain() { return "zom.query.active-modules"_zc; }
 
 query::QueryKindContract ActiveModulesInput::contract() {
   return lowDurabilityInputContract(domain());
@@ -987,7 +987,7 @@ zc::Maybe<ActiveModulesInput::Value> ActiveModulesInput::decodeValue(
   return zc::mv(ZC_ASSERT_NONNULL(modules));
 }
 
-zc::StringPtr ActiveSourcesInput::domain() { return "zom.query.active-sources.v1"_zc; }
+zc::StringPtr ActiveSourcesInput::domain() { return "zom.query.active-sources"_zc; }
 
 query::QueryKindContract ActiveSourcesInput::contract() {
   return lowDurabilityInputContract(domain());
@@ -1011,7 +1011,7 @@ zc::Maybe<ActiveSourcesInput::Value> ActiveSourcesInput::decodeValue(
   return CanonicalSourceSet::decodeCanonical(bytes);
 }
 
-zc::StringPtr ActiveCratesInput::domain() { return "zom.query.active-crates.v1"_zc; }
+zc::StringPtr ActiveCratesInput::domain() { return "zom.query.active-crates"_zc; }
 
 query::QueryKindContract ActiveCratesInput::contract() {
   return inputContract(domain(), query::Durability::Medium);
@@ -1056,9 +1056,7 @@ zc::Maybe<ModuleDependenciesInput::Value> ModuleDependenciesInput::decodeValue(
   return ModuleDependencySet::decodeCanonical(bytes);
 }
 
-zc::StringPtr SelectedModuleSourceInput::domain() {
-  return "zom.query.selected-module-source.v1"_zc;
-}
+zc::StringPtr SelectedModuleSourceInput::domain() { return "zom.query.selected-module-source"_zc; }
 
 query::QueryKindContract SelectedModuleSourceInput::contract() {
   return lowDurabilityInputContract(domain());

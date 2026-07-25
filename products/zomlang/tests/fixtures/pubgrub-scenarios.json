@@ -1,5 +1,5 @@
 {
-  "schema": "zom.pubgrub-scenarios.v1",
+  "schema": "zom.pubgrub-scenarios",
   "scenarios": [
     {
       "id": "greatest-eligible-release",
@@ -18,7 +18,7 @@
           "math@1.3.0[target,fast]"
         ],
         "edgeCount": 1,
-        "resolutionSha256": "21640c513f23e7b7e9c51c02d8303ee8d035a0ca6840f05b4428c1351327f9f8"
+        "resolutionSha256": "53522dd5c07d5622473fc856cbe89bceb4ac05164e970d73589359d199b07e99"
       }
     },
     {
@@ -34,7 +34,7 @@
       "expected": {
         "issue": "NoVersionSatisfiesConstraints",
         "incompatibilityRecordCount": 3,
-        "incompatibilityGraphSha256": "f9baa53243bb4c42f9700484b2af10593b2e8ea609213d9b01618ba8882d2a35"
+        "incompatibilityGraphSha256": "2d4ed0e00ea662d12de217d317136647ad67e4a4c6630ed85b4893bad3a1e78e"
       }
     },
     {

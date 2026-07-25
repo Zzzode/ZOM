@@ -4,5 +4,5 @@
 // CHECK-LITERAL: Error [ZOM2076]: Unexpected token expected
 // CHECK-LITERAL:   --> conformance/variance_reject_neg_02.zom:1:10
 // CHECK-LITERAL:   |
-// CHECK-LITERAL: 1 | alias V2<out T> = T;
+// CHECK-LITERAL: 1 | alias CovariantAlias<out T> = T;
 // CHECK-LITERAL:   |          ^

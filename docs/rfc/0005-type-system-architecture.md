@@ -663,7 +663,7 @@ canonical integers, so negative and values wider than `uint64` are preserved
 until the enum representation RFC selects and checks a storage type.
 
 `ConstantEvaluationRevision` is SHA-256 over
-`ASCII("zom.constant-evaluation.v0")`, NUL, the context fingerprint, expanded
+`ASCII("zom.constant-evaluation")`, NUL, the context fingerprint, expanded
 constant `DefinitionKey`, expanded semantic type key, complete
 `CanonicalConstValue`, and the sorted expanded dependency definition keys.
 Source spelling, AST node number, host integer width, evaluator address, and
@@ -679,7 +679,7 @@ RFC 0011 `DefinitionKey`; text uses the RFC 0011 strong scalar encoding.
 Sequences use RFC 0011 sequence framing. `SemanticTypeKey` is exactly:
 
 ```text
-ASCII("zom.semantic-type-key.v0")
+ASCII("zom.semantic-type-key")
 0x00
 Encode(TypeKeyNode)
 ```
@@ -708,14 +708,14 @@ Canonicalization rules include:
   definition kind, invalid type-parameter ancestry, or recursive alias or
   structural payload without nominal indirection before interning.
 
-The non-empty golden vector is `i32 | null`. Its complete 38-byte key is:
+The non-empty golden vector is `i32 | null`. Its complete 35-byte key is:
 
 ```text
-7a6f6d2e73656d616e7469632d747970652d6b65792e7630000a000000000000000201030113
+7a6f6d2e73656d616e7469632d747970652d6b6579000a000000000000000201030113
 ```
 
 Its SHA-256 is
-`671b2ce31dd6935951dd8b347968187f617fad70639d0e7a85592fe7919ecdbb`.
+`95145d7b4eefcf1afa1074973dc414f8d268b3a79d86cbb7be2b761a3f40c844`.
 The bytes are the domain and NUL, `Union = 0x0a`, a two-element sequence,
 `Primitive(I32) = 0x01 0x03`, and `Primitive(Null) = 0x01 0x13`.
 
@@ -1326,7 +1326,7 @@ imported view revision; their local alias binding identities become separate
 `SignatureFactsRevision` is SHA-256 over:
 
 ```text
-ASCII("zom.signature-facts-revision.v0")
+ASCII("zom.signature-facts-revision")
 0x00
 SemanticContextFingerprint
 EncodeByteString(expanded owning ModuleKey)
@@ -1346,14 +1346,14 @@ spelling, AST IDs, and presentation text are excluded.
 The independent non-empty framing oracle uses a zero context fingerprint,
 expanded module bytes `a1`, 32 source-digest bytes `22`, 32 surface-revision
 bytes `33`, one already-canonical three-byte signature record `b20103`, and no
-impl or marker records. The complete 172-byte preimage is:
+impl or marker records. The complete 169-byte preimage is:
 
 ```text
-7a6f6d2e7369676e61747572652d66616374732d7265766973696f6e2e76300000000000000000000000000000000000000000000000000000000000000000000000000000000001a12222222222222222222222222222222222222222222222222222222222222222333333333333333333333333333333333333333333333333333333333333333300000000000000010000000000000003b2010300000000000000000000000000000000
+7a6f6d2e7369676e61747572652d66616374732d7265766973696f6e0000000000000000000000000000000000000000000000000000000000000000000000000000000001a12222222222222222222222222222222222222222222222222222222222222222333333333333333333333333333333333333333333333333333333333333333300000000000000010000000000000003b2010300000000000000000000000000000000
 ```
 
 Its SHA-256 is
-`8864211924d35718f5d68a85135fd7c5263e215d49baf1cbe6509edee9d779ee`.
+`051e70adfcc1ce7c3d82696cae323cacaac86c93ed016f8851509a3f22ad0633`.
 Integration oracles encode real non-empty callable, nominal, interface, alias,
 impl, and marker records rather than substituting component bytes.
 
@@ -1446,34 +1446,35 @@ explicit exports; the verified prelude is an ordinary source module tagged
 `Prelude` and has no source-less definitions.
 
 `ImportedSignatureViewRevision` is SHA-256 over the domain
-`zom.imported-signature-view.v0`, NUL, context fingerprint, expanded requester
+`zom.imported-signature-view`, NUL, context fingerprint, expanded requester
 `ModuleKey`, and canonically sorted complete module records.
 `CoherenceViewRevision` is SHA-256 over the domain
-`zom.coherence-view.v0`, NUL, context fingerprint, sorted module-interface
+`zom.coherence-view`, NUL, context fingerprint, sorted module-interface
 revision entries, sorted impl-head records, and sorted marker-fact records. Both use
 the RFC 0011 encoder and byte-string record framing defined above. Changing any
-tag or field order increments the domain suffix and retains no decoder.
+tag or field-order change replaces the canonical domain, codec, fixtures, and
+oracles together.
 
 The imported-view framing oracle uses a zero context fingerprint, expanded
 requester bytes `a1`, and one already-canonical module record `b2`. Its complete
-89-byte preimage is:
+86-byte preimage is:
 
 ```text
-7a6f6d2e696d706f727465642d7369676e61747572652d766965772e76300000000000000000000000000000000000000000000000000000000000000000000000000000000001a100000000000000010000000000000001b2
+7a6f6d2e696d706f727465642d7369676e61747572652d766965770000000000000000000000000000000000000000000000000000000000000000000000000000000001a100000000000000010000000000000001b2
 ```
 
 Its SHA-256 is
-`e8632559fd0e8fcbc78435f7ad142d48a58ec306111deee20e8c2f722bd6e218`.
+`16c9b731c156061752980de67bd85d410e3cc1aaed336ad592a0fc842bf1cb86`.
 The coherence-view framing oracle uses a zero context fingerprint, one module
 revision-entry record `c3`, one impl-head record `d4`, and one marker-fact
-record `e5`. Its complete 105-byte preimage is:
+record `e5`. Its complete 102-byte preimage is:
 
 ```text
-7a6f6d2e636f686572656e63652d766965772e763000000000000000000000000000000000000000000000000000000000000000000000000000000000010000000000000001c300000000000000010000000000000001d400000000000000010000000000000001e5
+7a6f6d2e636f686572656e63652d7669657700000000000000000000000000000000000000000000000000000000000000000000000000000000010000000000000001c300000000000000010000000000000001d400000000000000010000000000000001e5
 ```
 
 Its SHA-256 is
-`7301fc731664ccbabbe7a6a3a85302f5775cba05f3c2f46fdb7bbf1443f0d670`.
+`2832e367c00eec6c1af671ed2ba4a296bf2d7cd879ae325c80a123222e557b2c`.
 Integration oracles replace every one-byte component with a complete real
 record and prove module/revision association and authorization closure.
 
@@ -2004,7 +2005,7 @@ the RFC 0005 codec above.
 `CheckedFactsRevision` is SHA-256 over this exact RFC 0011 encoding:
 
 ```text
-ASCII("zom.checked-facts-revision.v3")
+ASCII("zom.checked-facts-revision")
 0x00
 SemanticContextFingerprint
 EncodeByteString(expanded owning ModuleKey)
@@ -2040,8 +2041,8 @@ EncodeSortedRecordBytes(errorUnionShapes)
 EncodeSortedRecordBytes(errorOperators)
 ```
 
-Changing any constituent codec or group order increments the domain suffix and
-retains no decoder. Diagnostics and advisories are excluded because they do not
+Changing any constituent codec or group order replaces the canonical domain,
+codec, fixtures, and oracles together. Diagnostics and advisories are excluded because they do not
 exist in a successful candidate; source provenance already participates in fact
 records and the parsed receipt.
 
@@ -2050,14 +2051,14 @@ expanded module bytes `a1`, source, parsed, signature, imported-view, and
 coherence revisions filled respectively with bytes `22`, `33`, `44`, `55`, and
 `66`, semantic options `{2026, true, false, true}`, and one one-byte canonical
 record in every record group, in the exact order above, from `b0` through `c7`.
-Its complete 646-byte preimage is:
+Its complete 643-byte preimage is:
 
 ```text
-7a6f6d2e636865636b65642d66616374732d7265766973696f6e2e76330000000000000000000000000000000000000000000000000000000000000000000000000000000001a122222222222222222222222222222222222222222222222222222222222222223333333333333333333333333333333333333333333333333333333333333333444444444444444444444444444444444444444444444444444444444444444455555555555555555555555555555555555555555555555555555555555555556666666666666666666666666666666666666666666666666666666666666666000007ea01000100000000000000010000000000000001b000000000000000010000000000000001b100000000000000010000000000000001b200000000000000010000000000000001b300000000000000010000000000000001b400000000000000010000000000000001b500000000000000010000000000000001b600000000000000010000000000000001b700000000000000010000000000000001b800000000000000010000000000000001b900000000000000010000000000000001ba00000000000000010000000000000001bb00000000000000010000000000000001bc00000000000000010000000000000001bd00000000000000010000000000000001be00000000000000010000000000000001bf00000000000000010000000000000001c000000000000000010000000000000001c100000000000000010000000000000001c200000000000000010000000000000001c300000000000000010000000000000001c400000000000000010000000000000001c500000000000000010000000000000001c600000000000000010000000000000001c7
+7a6f6d2e636865636b65642d66616374732d7265766973696f6e0000000000000000000000000000000000000000000000000000000000000000000000000000000001a122222222222222222222222222222222222222222222222222222222222222223333333333333333333333333333333333333333333333333333333333333333444444444444444444444444444444444444444444444444444444444444444455555555555555555555555555555555555555555555555555555555555555556666666666666666666666666666666666666666666666666666666666666666000007ea01000100000000000000010000000000000001b000000000000000010000000000000001b100000000000000010000000000000001b200000000000000010000000000000001b300000000000000010000000000000001b400000000000000010000000000000001b500000000000000010000000000000001b600000000000000010000000000000001b700000000000000010000000000000001b800000000000000010000000000000001b900000000000000010000000000000001ba00000000000000010000000000000001bb00000000000000010000000000000001bc00000000000000010000000000000001bd00000000000000010000000000000001be00000000000000010000000000000001bf00000000000000010000000000000001c000000000000000010000000000000001c100000000000000010000000000000001c200000000000000010000000000000001c300000000000000010000000000000001c400000000000000010000000000000001c500000000000000010000000000000001c600000000000000010000000000000001c7
 ```
 
 Its SHA-256 is
-`d84b9e14321450d0ece19b11cce30d80337eb4c741e092e222317acb91292416`.
+`09e8335be64649f47e44e18672852ec1e9a1669f9d142a806d6a58fceb7c1b62`.
 Per-group integration oracles replace each byte with one complete real record
 and prove that swapping any two group encodings changes the revision.
 
@@ -2908,6 +2909,6 @@ None
 | 2026-07-11 | DRAFT | Responded to spec-audit re-review by separating function success from raising-call value type, adding verified error-union role facts instead of inferring roles from canonical union order, and aligning imported member records with Chapter 23's retained-but-unenforced visibility contract. |
 | 2026-07-11 | DRAFT | Fixed the remaining error-model drift by defining `Result<T, E>` only as a nominal enum and excluding it from raising-call role inference. |
 | 2026-07-11 | REVIEW | Entered formal review after exact-hash governance, semantic, and invariant reviewers approved the coordinated RFC 0005, 0006, 0008, 0009, and 0010 design set. Approvers and decision remain open. |
-| 2026-07-11 | ACCEPTED | All ten required owners approved proposal hash `31e8ff83dc535f3af5a91c00122277a108af41540233d4f6a06b0a2a4c9fb25c` after raw-pointer cast, checked-facts v3, runtime-memory routing, diagnostic, evidence, codec, and verifier review. Implementation has not started. |
+| 2026-07-11 | ACCEPTED | All ten required owners approved proposal hash `31e8ff83dc535f3af5a91c00122277a108af41540233d4f6a06b0a2a4c9fb25c` after raw-pointer cast, checked-facts canonical, runtime-memory routing, diagnostic, evidence, codec, and verifier review. Implementation has not started. |
 | 2026-07-16 | IMPLEMENTING | Started the Canonical Semantic Foundation Direct Replacement Series with the closed semantic type value algebra. |
 | 2026-07-18 | IMPLEMENTING | Synchronized the accepted RFC 0018 later overlay for occurrence-owned source reconstruction, post-classification survivor publication, and occurrence-free semantic coherence identity. No implementation completion is inferred. |

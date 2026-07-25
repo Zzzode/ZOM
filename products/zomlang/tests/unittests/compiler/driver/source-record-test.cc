@@ -193,9 +193,10 @@ ZC_TEST("SourceRecordTest.VcsSelectorDigestDoesNotRetainRawSelector") {
   ZC_IF_SOME(value, selector) {
     ZC_EXPECT(value.kind() == VcsSelectorKind::Tag);
     ZC_EXPECT(zc::encodeHex(value.selectorDigest().bytes()) ==
-              "7d09318699d16db389bcd69426b4cad2b8c4a63d09f2537cd5fca8d0de0ff8ee"_zc);
+              "8f550c72e7160174baea7a9d2d636e79c6dff611eceb5b0a9c80191d71c39160"_zc);
+  } else {
+    ZC_FAIL_EXPECT("valid VCS selector was rejected");
   }
-  else { ZC_FAIL_EXPECT("valid VCS selector was rejected"); }
   ZC_EXPECT(VcsSelectorIdentity::from(url(), VcsSelectorKind::Revision, "immutable"_zc.asBytes()) ==
             zc::none);
   ZC_EXPECT(VcsSelectorIdentity::from(url(), VcsSelectorKind::Branch,
@@ -220,7 +221,7 @@ ZC_TEST("SourceRecordTest.RegistryTrustRejectsDuplicateSigningKey") {
 
   auto key = publicKey(0);
   ZC_EXPECT(zc::encodeHex(SigningKeyId::from(key).digest().bytes()) ==
-            "534ad34a0e0643f0f44f35e62f8d2b57e956b73cbf962e16aa8d190a7e5f64ec"_zc);
+            "b02a8fbdb2b48499849681986a2f4e34b854a59149266a5a7d253477ad168b7e"_zc);
 }
 
 ZC_TEST("SourceRecordTest.BindsLocalAndVcsRecordsToVerifiedSnapshot") {
@@ -278,7 +279,7 @@ ZC_TEST("SourceRecordTest.VerifiesCompleteRegistryReleaseSignature") {
       ZC_REQUIRE(oracleDigest != zc::none);
       ZC_IF_SOME(digestValue, oracleDigest) {
         ZC_EXPECT(zc::encodeHex(digestValue.bytes()) ==
-                  "ed5b5ab7ea48e60b2f236a3010a967c441eccce9327b9c003a974b57a62b9103"_zc);
+                  "9bdffe9b4d599f8da53af4a974bf59bba1bd5a1290d994c06a0e5a01999d53b0"_zc);
       }
       verifiedRelease = true;
     }

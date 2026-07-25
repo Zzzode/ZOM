@@ -13,7 +13,7 @@
 namespace zomlang::compiler::driver::incremental_binding_query {
 namespace {
 
-constexpr zc::StringPtr kRejectedDomain = "zom.named-identity-inventory-rejected.v1"_zc;
+constexpr zc::StringPtr kRejectedDomain = "zom.named-identity-inventory-rejected"_zc;
 constexpr uint64_t kMaximumParseFailureBytes = 64 * 1024 * 1024;
 
 enum class RejectedKind : uint8_t {
@@ -29,14 +29,13 @@ struct LoadedIdentitySource final {
 };
 
 query::QueryKindContract inventoryContract(zc::StringPtr domain) {
-  auto contract = query::QueryKindContract::derived(domain, 1, 1, query::ReuseClass::Semantic,
+  auto contract = query::QueryKindContract::derived(domain, query::ReuseClass::Semantic,
                                                     query::RetentionClass::Retained);
   return zc::mv(ZC_REQUIRE_NONNULL(contract));
 }
 
 query::QueryKindContract siteContract(zc::StringPtr domain) {
-  auto contract = query::QueryKindContract::derived(domain, 1, 1,
-                                                    query::ReuseClass::RevisionLocal,
+  auto contract = query::QueryKindContract::derived(domain, query::ReuseClass::RevisionLocal,
                                                     query::RetentionClass::Evictable);
   return zc::mv(ZC_REQUIRE_NONNULL(contract));
 }
@@ -48,10 +47,9 @@ zc::Maybe<identity::ModuleKey> decodeModule(const StableModuleQueryKey& key) {
   return zc::mv(ZC_ASSERT_NONNULL(module));
 }
 
-zc::Maybe<ast::NodeId> selectModuleNode(const ast::Tree& tree,
-                                        const identity::ModuleKey& module) {
-  if (!tree.contains(tree.root()) ||
-      tree.node(tree.root()).kind != ast::SyntaxKind::SourceFile || module.path().size() == 0) {
+zc::Maybe<ast::NodeId> selectModuleNode(const ast::Tree& tree, const identity::ModuleKey& module) {
+  if (!tree.contains(tree.root()) || tree.node(tree.root()).kind != ast::SyntaxKind::SourceFile ||
+      module.path().size() == 0) {
     return zc::none;
   }
   const auto& source = tree.node(tree.root());
@@ -104,8 +102,7 @@ zc::Maybe<zc::Array<uint8_t>> decodeRejected(zc::ArrayPtr<const uint8_t> bytes) 
   return zc::heapArray<uint8_t>(bytes);
 }
 
-zc::Array<uint8_t> encodeRejected(
-    const binder::StableIdentityCandidateSourceFailure& failure) {
+zc::Array<uint8_t> encodeRejected(const binder::StableIdentityCandidateSourceFailure& failure) {
   switch (failure.kind) {
     case binder::StableIdentityCandidateSourceFailureKind::ConstantExpressionNotAllowed:
       return encodeRejected(RejectedKind::ConstantExpressionNotAllowed);
@@ -124,8 +121,7 @@ query::TypedQueryResult<LoadedIdentitySource> loadIdentitySource(query::QueryCon
   }
   auto selected = context.get<SelectedModuleSourceInput>(key);
   if (selected.isRuntimeFailure()) {
-    return query::TypedQueryResult<LoadedIdentitySource>::runtimeFailure(
-        selected.runtimeFailure());
+    return query::TypedQueryResult<LoadedIdentitySource>::runtimeFailure(selected.runtimeFailure());
   }
   if (selected.kind() == query::QueryValueKind::Absence) {
     return query::TypedQueryResult<LoadedIdentitySource>::absence();
@@ -157,21 +153,19 @@ query::TypedQueryResult<LoadedIdentitySource> loadIdentitySource(query::QueryCon
     return query::TypedQueryResult<LoadedIdentitySource>::runtimeFailure(
         query::QueryRuntimeFailure::InvariantViolation);
   }
-  auto moduleNode = selectModuleNode(ZC_ASSERT_NONNULL(canonical).tree(),
-                                     ZC_ASSERT_NONNULL(module));
+  auto moduleNode =
+      selectModuleNode(ZC_ASSERT_NONNULL(canonical).tree(), ZC_ASSERT_NONNULL(module));
   if (moduleNode == zc::none) {
     return query::TypedQueryResult<LoadedIdentitySource>::runtimeFailure(
         query::QueryRuntimeFailure::ProviderRejected);
   }
   return query::TypedQueryResult<LoadedIdentitySource>::value(
-      LoadedIdentitySource{zc::mv(ZC_ASSERT_NONNULL(module)),
-                           zc::mv(ZC_ASSERT_NONNULL(canonical)),
+      LoadedIdentitySource{zc::mv(ZC_ASSERT_NONNULL(module)), zc::mv(ZC_ASSERT_NONNULL(canonical)),
                            ZC_ASSERT_NONNULL(moduleNode)});
 }
 
 zc::Maybe<binder::NamedDefinitionInventory> producedDefinitionInventory(
-    const identity::ModuleKey& module,
-    const binder::StableIdentityCandidateInventory& production) {
+    const identity::ModuleKey& module, const binder::StableIdentityCandidateInventory& production) {
   zc::Vector<identity::DefinitionIdentityAuthority> authorities;
   for (const auto& candidate : production.candidates()) {
     if (candidate.kind() != binder::PreAdmissionIdentityKind::Definition) { continue; }
@@ -180,8 +174,7 @@ zc::Maybe<binder::NamedDefinitionInventory> producedDefinitionInventory(
     zc::Maybe<identity::OverloadHeaderAuthority> overload;
     ZC_IF_SOME(value, candidate.overloadHeader()) { overload = value.clone(); }
     ZC_IF_SOME(value, record) {
-      auto authority =
-          identity::DefinitionIdentityAuthority::from(value.clone(), zc::mv(overload));
+      auto authority = identity::DefinitionIdentityAuthority::from(value.clone(), zc::mv(overload));
       if (authority == zc::none) { return zc::none; }
       authorities.add(zc::mv(ZC_ASSERT_NONNULL(authority)));
     }
@@ -190,8 +183,7 @@ zc::Maybe<binder::NamedDefinitionInventory> producedDefinitionInventory(
 }
 
 zc::Maybe<binder::NamedImplementationInventory> producedImplementationInventory(
-    const identity::ModuleKey& module,
-    const binder::StableIdentityCandidateInventory& production) {
+    const identity::ModuleKey& module, const binder::StableIdentityCandidateInventory& production) {
   zc::Vector<identity::ImplIdentityAuthority> authorities;
   for (const auto& candidate : production.candidates()) {
     if (candidate.kind() != binder::PreAdmissionIdentityKind::Implementation) { continue; }
@@ -207,8 +199,7 @@ zc::Maybe<binder::NamedImplementationInventory> producedImplementationInventory(
 zc::Maybe<binder::NamedDefinitionInventory> reconstructedDefinitionInventory(
     const identity::ModuleKey& module,
     const binder::VerifiedStableIdentityCandidateInventory& reconstruction) {
-  zc::Vector<identity::DefinitionIdentityAuthority> authorities(
-      reconstruction.definitions.size());
+  zc::Vector<identity::DefinitionIdentityAuthority> authorities(reconstruction.definitions.size());
   for (const auto& candidate : reconstruction.definitions) {
     authorities.add(candidate.authority.clone());
   }
@@ -218,8 +209,7 @@ zc::Maybe<binder::NamedDefinitionInventory> reconstructedDefinitionInventory(
 zc::Maybe<binder::NamedImplementationInventory> reconstructedImplementationInventory(
     const identity::ModuleKey& module,
     const binder::VerifiedStableIdentityCandidateInventory& reconstruction) {
-  zc::Vector<identity::ImplIdentityAuthority> authorities(
-      reconstruction.implementations.size());
+  zc::Vector<identity::ImplIdentityAuthority> authorities(reconstruction.implementations.size());
   for (const auto& candidate : reconstruction.implementations) {
     authorities.add(candidate.authority.clone());
   }
@@ -239,7 +229,7 @@ zc::Maybe<binder::RevisionLocalDefinitionSites> producedDefinitionSites(
     sites.add(zc::mv(ZC_ASSERT_NONNULL(site)));
   }
   return binder::RevisionLocalDefinitionSites::fromVerified(module, source, inventory,
-                                                             zc::mv(sites));
+                                                            zc::mv(sites));
 }
 
 zc::Maybe<binder::RevisionLocalImplementationSites> producedImplementationSites(
@@ -258,7 +248,7 @@ zc::Maybe<binder::RevisionLocalImplementationSites> producedImplementationSites(
     sites.add(zc::mv(ZC_ASSERT_NONNULL(site)));
   }
   return binder::RevisionLocalImplementationSites::fromVerified(module, source, inventory,
-                                                                 zc::mv(sites));
+                                                                zc::mv(sites));
 }
 
 zc::Maybe<binder::RevisionLocalDefinitionSites> reconstructedDefinitionSites(
@@ -274,15 +264,14 @@ zc::Maybe<binder::RevisionLocalDefinitionSites> reconstructedDefinitionSites(
     sites.add(zc::mv(ZC_ASSERT_NONNULL(site)));
   }
   return binder::RevisionLocalDefinitionSites::fromVerified(module, source, inventory,
-                                                             zc::mv(sites));
+                                                            zc::mv(sites));
 }
 
 zc::Maybe<binder::RevisionLocalImplementationSites> reconstructedImplementationSites(
     const identity::ModuleKey& module, const identity::SourceFileKey& source,
     const binder::NamedImplementationInventory& inventory,
     const binder::VerifiedStableIdentityCandidateInventory& reconstruction) {
-  zc::Vector<binder::RevisionLocalImplementationSite> sites(
-      reconstruction.implementations.size());
+  zc::Vector<binder::RevisionLocalImplementationSite> sites(reconstruction.implementations.size());
   for (const auto& implementation : reconstruction.implementations) {
     auto site = binder::RevisionLocalImplementationSite::from(
         implementation.node,
@@ -293,7 +282,7 @@ zc::Maybe<binder::RevisionLocalImplementationSites> reconstructedImplementationS
     sites.add(zc::mv(ZC_ASSERT_NONNULL(site)));
   }
   return binder::RevisionLocalImplementationSites::fromVerified(module, source, inventory,
-                                                                 zc::mv(sites));
+                                                                zc::mv(sites));
 }
 
 template <typename Value>
@@ -331,7 +320,7 @@ bool verifyLoadFailure(const query::TypedQueryResult<LoadedIdentitySource>& load
 }  // namespace
 
 zc::StringPtr NamedDefinitionInventoryQuery::domain() {
-  return "zom.query.named-definition-inventory.v1"_zc;
+  return "zom.query.named-definition-inventory"_zc;
 }
 
 query::QueryKindContract NamedDefinitionInventoryQuery::contract() {
@@ -369,8 +358,8 @@ NamedDefinitionInventoryQuery::provide(query::QueryContext& context, const Key& 
     return propagateLoadFailure<Value>(loaded);
   }
   const auto& source = loaded.value();
-  auto production = binder::StableIdentityCandidateProducer::produce(
-      source.parsed, source.module, source.moduleNode);
+  auto production = binder::StableIdentityCandidateProducer::produce(source.parsed, source.module,
+                                                                     source.moduleNode);
   auto verification = binder::StableIdentityCandidateVerifier::verify(
       source.parsed, source.module, source.moduleNode, production);
   if (verification.is<binder::StableIdentityCandidateSourceFailure>()) {
@@ -402,10 +391,9 @@ bool NamedDefinitionInventoryQuery::verify(query::QueryContext& context, const K
       source.parsed, source.module, source.moduleNode);
   if (reconstruction.is<binder::StableIdentityCandidateSourceFailure>()) {
     return result.kind() == query::QueryValueKind::SemanticFailure &&
-           result.semanticFailureBytes() == encodeRejected(
-                                                reconstruction.get<
-                                                    binder::StableIdentityCandidateSourceFailure>())
-                                                .asPtr();
+           result.semanticFailureBytes() ==
+               encodeRejected(reconstruction.get<binder::StableIdentityCandidateSourceFailure>())
+                   .asPtr();
   }
   if (result.kind() != query::QueryValueKind::Value ||
       !reconstruction.is<binder::VerifiedStableIdentityCandidateInventory>()) {
@@ -417,7 +405,7 @@ bool NamedDefinitionInventoryQuery::verify(query::QueryContext& context, const K
 }
 
 zc::StringPtr NamedImplementationInventoryQuery::domain() {
-  return "zom.query.named-implementation-inventory.v1"_zc;
+  return "zom.query.named-implementation-inventory"_zc;
 }
 
 query::QueryKindContract NamedImplementationInventoryQuery::contract() {
@@ -449,8 +437,8 @@ NamedImplementationInventoryQuery::provide(query::QueryContext& context, const K
     return propagateLoadFailure<Value>(loaded);
   }
   const auto& source = loaded.value();
-  auto production = binder::StableIdentityCandidateProducer::produce(
-      source.parsed, source.module, source.moduleNode);
+  auto production = binder::StableIdentityCandidateProducer::produce(source.parsed, source.module,
+                                                                     source.moduleNode);
   auto verification = binder::StableIdentityCandidateVerifier::verify(
       source.parsed, source.module, source.moduleNode, production);
   if (verification.is<binder::StableIdentityCandidateSourceFailure>()) {
@@ -482,10 +470,9 @@ bool NamedImplementationInventoryQuery::verify(query::QueryContext& context, con
       source.parsed, source.module, source.moduleNode);
   if (reconstruction.is<binder::StableIdentityCandidateSourceFailure>()) {
     return result.kind() == query::QueryValueKind::SemanticFailure &&
-           result.semanticFailureBytes() == encodeRejected(
-                                                reconstruction.get<
-                                                    binder::StableIdentityCandidateSourceFailure>())
-                                                .asPtr();
+           result.semanticFailureBytes() ==
+               encodeRejected(reconstruction.get<binder::StableIdentityCandidateSourceFailure>())
+                   .asPtr();
   }
   if (result.kind() != query::QueryValueKind::Value ||
       !reconstruction.is<binder::VerifiedStableIdentityCandidateInventory>()) {
@@ -497,7 +484,7 @@ bool NamedImplementationInventoryQuery::verify(query::QueryContext& context, con
 }
 
 zc::StringPtr RevisionLocalDefinitionSitesQuery::domain() {
-  return "zom.query.revision-local-definition-sites.v1"_zc;
+  return "zom.query.revision-local-definition-sites"_zc;
 }
 
 query::QueryKindContract RevisionLocalDefinitionSitesQuery::contract() {
@@ -541,8 +528,8 @@ RevisionLocalDefinitionSitesQuery::provide(query::QueryContext& context, const K
         query::QueryRuntimeFailure::InvariantViolation);
   }
   const auto& source = loaded.value();
-  auto production = binder::StableIdentityCandidateProducer::produce(
-      source.parsed, source.module, source.moduleNode);
+  auto production = binder::StableIdentityCandidateProducer::produce(source.parsed, source.module,
+                                                                     source.moduleNode);
   auto verification = binder::StableIdentityCandidateVerifier::verify(
       source.parsed, source.module, source.moduleNode, production);
   if (verification.is<binder::StableIdentityCandidateSourceFailure>()) {
@@ -554,9 +541,8 @@ RevisionLocalDefinitionSitesQuery::provide(query::QueryContext& context, const K
     return query::TypedQueryResult<Value>::runtimeFailure(
         query::QueryRuntimeFailure::InvariantViolation);
   }
-  auto sites = producedDefinitionSites(
-      source.module, source.parsed.source(), named.value(),
-      production.get<binder::StableIdentityCandidateInventory>());
+  auto sites = producedDefinitionSites(source.module, source.parsed.source(), named.value(),
+                                       production.get<binder::StableIdentityCandidateInventory>());
   if (sites == zc::none) {
     return query::TypedQueryResult<Value>::runtimeFailure(
         query::QueryRuntimeFailure::InvariantViolation);
@@ -582,10 +568,9 @@ bool RevisionLocalDefinitionSitesQuery::verify(query::QueryContext& context, con
       source.parsed, source.module, source.moduleNode);
   if (reconstruction.is<binder::StableIdentityCandidateSourceFailure>()) {
     return result.kind() == query::QueryValueKind::SemanticFailure &&
-           result.semanticFailureBytes() == encodeRejected(
-                                                reconstruction.get<
-                                                    binder::StableIdentityCandidateSourceFailure>())
-                                                .asPtr();
+           result.semanticFailureBytes() ==
+               encodeRejected(reconstruction.get<binder::StableIdentityCandidateSourceFailure>())
+                   .asPtr();
   }
   if (result.kind() != query::QueryValueKind::Value ||
       !reconstruction.is<binder::VerifiedStableIdentityCandidateInventory>()) {
@@ -598,7 +583,7 @@ bool RevisionLocalDefinitionSitesQuery::verify(query::QueryContext& context, con
 }
 
 zc::StringPtr RevisionLocalImplementationSitesQuery::domain() {
-  return "zom.query.revision-local-implementation-sites.v1"_zc;
+  return "zom.query.revision-local-implementation-sites"_zc;
 }
 
 query::QueryKindContract RevisionLocalImplementationSitesQuery::contract() {
@@ -642,8 +627,8 @@ RevisionLocalImplementationSitesQuery::provide(query::QueryContext& context, con
         query::QueryRuntimeFailure::InvariantViolation);
   }
   const auto& source = loaded.value();
-  auto production = binder::StableIdentityCandidateProducer::produce(
-      source.parsed, source.module, source.moduleNode);
+  auto production = binder::StableIdentityCandidateProducer::produce(source.parsed, source.module,
+                                                                     source.moduleNode);
   auto verification = binder::StableIdentityCandidateVerifier::verify(
       source.parsed, source.module, source.moduleNode, production);
   if (verification.is<binder::StableIdentityCandidateSourceFailure>()) {
@@ -655,9 +640,9 @@ RevisionLocalImplementationSitesQuery::provide(query::QueryContext& context, con
     return query::TypedQueryResult<Value>::runtimeFailure(
         query::QueryRuntimeFailure::InvariantViolation);
   }
-  auto sites = producedImplementationSites(
-      source.module, source.parsed.source(), named.value(),
-      production.get<binder::StableIdentityCandidateInventory>());
+  auto sites =
+      producedImplementationSites(source.module, source.parsed.source(), named.value(),
+                                  production.get<binder::StableIdentityCandidateInventory>());
   if (sites == zc::none) {
     return query::TypedQueryResult<Value>::runtimeFailure(
         query::QueryRuntimeFailure::InvariantViolation);
@@ -683,10 +668,9 @@ bool RevisionLocalImplementationSitesQuery::verify(query::QueryContext& context,
       source.parsed, source.module, source.moduleNode);
   if (reconstruction.is<binder::StableIdentityCandidateSourceFailure>()) {
     return result.kind() == query::QueryValueKind::SemanticFailure &&
-           result.semanticFailureBytes() == encodeRejected(
-                                                reconstruction.get<
-                                                    binder::StableIdentityCandidateSourceFailure>())
-                                                .asPtr();
+           result.semanticFailureBytes() ==
+               encodeRejected(reconstruction.get<binder::StableIdentityCandidateSourceFailure>())
+                   .asPtr();
   }
   if (result.kind() != query::QueryValueKind::Value ||
       !reconstruction.is<binder::VerifiedStableIdentityCandidateInventory>()) {
@@ -724,17 +708,16 @@ zc::Vector<binder::ModuleBodyImplementationBoundaryInput> implementationBoundari
     const binder::RevisionLocalImplementationSites& sites) {
   zc::Vector<binder::ModuleBodyImplementationBoundaryInput> result(sites.entries().size());
   for (const auto& site : sites.entries()) {
-    result.add(binder::ModuleBodyImplementationBoundaryInput{site.node(),
-                                                             site.occurrence().clone()});
+    result.add(
+        binder::ModuleBodyImplementationBoundaryInput{site.node(), site.occurrence().clone()});
   }
   return result;
 }
 
-zc::StringPtr ModuleBodySyntaxQuery::domain() { return "zom.query.module-body-syntax.v1"_zc; }
+zc::StringPtr ModuleBodySyntaxQuery::domain() { return "zom.query.module-body-syntax"_zc; }
 
 query::QueryKindContract ModuleBodySyntaxQuery::contract() {
-  auto contract = query::QueryKindContract::derived(domain(), 1, 1,
-                                                    query::ReuseClass::Semantic,
+  auto contract = query::QueryKindContract::derived(domain(), query::ReuseClass::Semantic,
                                                     query::RetentionClass::Evictable);
   return zc::mv(ZC_REQUIRE_NONNULL(contract));
 }
@@ -769,13 +752,11 @@ query::TypedQueryResult<ModuleBodySyntaxQuery::Value> ModuleBodySyntaxQuery::pro
   auto implementationSites = context.get<RevisionLocalImplementationSitesQuery>(key);
   if (definitions.isRuntimeFailure() || implementations.isRuntimeFailure() ||
       definitionSites.isRuntimeFailure() || implementationSites.isRuntimeFailure()) {
-    const auto failure = definitions.isRuntimeFailure()
-                             ? definitions.runtimeFailure()
-                             : implementations.isRuntimeFailure()
-                                   ? implementations.runtimeFailure()
-                                   : definitionSites.isRuntimeFailure()
-                                         ? definitionSites.runtimeFailure()
-                                         : implementationSites.runtimeFailure();
+    const auto failure = definitions.isRuntimeFailure()       ? definitions.runtimeFailure()
+                         : implementations.isRuntimeFailure() ? implementations.runtimeFailure()
+                         : definitionSites.isRuntimeFailure()
+                             ? definitionSites.runtimeFailure()
+                             : implementationSites.runtimeFailure();
     return query::TypedQueryResult<Value>::runtimeFailure(failure);
   }
   if (definitions.kind() == query::QueryValueKind::SemanticFailure) {
@@ -830,10 +811,9 @@ bool ModuleBodySyntaxQuery::verify(query::QueryContext& context, const Key& key,
       definitionSites.isRuntimeFailure() || implementationSites.isRuntimeFailure()) {
     return false;
   }
-  for (const auto failure : {definitions.semanticFailureBytes(),
-                             implementations.semanticFailureBytes(),
-                             definitionSites.semanticFailureBytes(),
-                             implementationSites.semanticFailureBytes()}) {
+  for (const auto failure :
+       {definitions.semanticFailureBytes(), implementations.semanticFailureBytes(),
+        definitionSites.semanticFailureBytes(), implementationSites.semanticFailureBytes()}) {
     if (failure.size() != 0) {
       return result.kind() == query::QueryValueKind::SemanticFailure &&
              result.semanticFailureBytes() == failure;
@@ -857,13 +837,9 @@ bool ModuleBodySyntaxQuery::verify(query::QueryContext& context, const Key& key,
          expected.get<binder::ModuleBodySyntaxProjection>().syntax == result.value();
 }
 
-zc::StringPtr ModuleBodyProvenanceQuery::domain() {
-  return "zom.query.module-body-provenance.v1"_zc;
-}
+zc::StringPtr ModuleBodyProvenanceQuery::domain() { return "zom.query.module-body-provenance"_zc; }
 
-query::QueryKindContract ModuleBodyProvenanceQuery::contract() {
-  return siteContract(domain());
-}
+query::QueryKindContract ModuleBodyProvenanceQuery::contract() { return siteContract(domain()); }
 
 zc::Array<uint8_t> ModuleBodyProvenanceQuery::encodeKey(const Key& key) {
   return NamedDefinitionInventoryQuery::encodeKey(key);
@@ -894,11 +870,10 @@ query::TypedQueryResult<ModuleBodyProvenanceQuery::Value> ModuleBodyProvenanceQu
   auto implementationSites = context.get<RevisionLocalImplementationSitesQuery>(key);
   if (syntax.isRuntimeFailure() || definitionSites.isRuntimeFailure() ||
       implementationSites.isRuntimeFailure()) {
-    const auto failure = syntax.isRuntimeFailure()
-                             ? syntax.runtimeFailure()
-                             : definitionSites.isRuntimeFailure()
-                                   ? definitionSites.runtimeFailure()
-                                   : implementationSites.runtimeFailure();
+    const auto failure = syntax.isRuntimeFailure() ? syntax.runtimeFailure()
+                         : definitionSites.isRuntimeFailure()
+                             ? definitionSites.runtimeFailure()
+                             : implementationSites.runtimeFailure();
     return query::TypedQueryResult<Value>::runtimeFailure(failure);
   }
   if (syntax.kind() == query::QueryValueKind::SemanticFailure) {

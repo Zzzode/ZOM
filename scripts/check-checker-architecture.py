@@ -633,7 +633,7 @@ def check_operator_closure(files: dict[Path, str], errors: list[str]) -> None:
             )
 
     required = (
-        "zom.checker-operator-kind.v0",
+        "zom.checker-operator-kind",
         "result.add(0x01)",
         "result.add(0x02)",
         "result.add(0x03)",
@@ -750,8 +750,8 @@ def check_type_key_pattern_closure(files: dict[Path, str], errors: list[str]) ->
             )
 
     required_source = (
-        "zom.type-key-pattern.v1",
-        "zom.impl-pattern.v1",
+        "zom.type-key-pattern",
+        "zom.impl-pattern",
         "TypeKeyPatternKey::TypeKeyPatternKey",
         "SignatureFactsCanonicalCodec::makeTypeKeyPatternKey",
         "SignatureFactsCanonicalCodec::decodeTypeKeyPatternKey",
@@ -780,8 +780,8 @@ def check_type_key_pattern_closure(files: dict[Path, str], errors: list[str]) ->
     if "implPatternParametersAreBound" in header or "implPatternParametersAreBound" in source:
         errors.append("removed implPatternParametersAreBound compatibility API remains")
     domain_counts = {
-        "zom.type-key-pattern.v1": 2,
-        "zom.impl-pattern.v1": 3,
+        "zom.type-key-pattern": 2,
+        "zom.impl-pattern": 3,
     }
     for domain, expected_count in domain_counts.items():
         if source.count(domain) != expected_count:
@@ -843,11 +843,11 @@ def check_type_key_pattern_closure(files: dict[Path, str], errors: list[str]) ->
     domain_owners = [
         path
         for path, text in files.items()
-        if path.suffix == ".cc" and "zom.type-key-pattern.v1" in text
+        if path.suffix == ".cc" and "zom.type-key-pattern" in text
     ]
     if domain_owners != [SIGNATURE_FACTS_SOURCE]:
         errors.append(
-            "type-key pattern v1 domain must have exactly one production codec owner"
+            "type-key pattern domain must have exactly one production codec owner"
         )
 
 
@@ -1056,22 +1056,10 @@ def check_wiring(files: dict[Path, str], errors: list[str]) -> None:
 def check_rfc0015_interface_cutover(
     files: dict[Path, str], errors: list[str]
 ) -> None:
-    old_domains = (
-        "zom.signature-facts-revision.v0",
-        "zom.coherence-view.v0",
-        "zom.module-interface-revision.v2",
-    )
-    for path, source in files.items():
-        if path.suffix not in {".h", ".cc"}:
-            continue
-        for domain in old_domains:
-            if domain in source:
-                errors.append(f"{path}: removed RFC 0015 revision domain remains: {domain}")
-
     exact_domains = (
-        (SIGNATURE_FACTS_SOURCE, "zom.signature-facts-revision.v1"),
-        (CROSS_MODULE_FACTS_SOURCE, "zom.coherence-view.v1"),
-        (MODULE_INTERFACE_CONTRACT_SOURCE, "zom.module-interface-revision.v3"),
+        (SIGNATURE_FACTS_SOURCE, "zom.signature-facts-revision"),
+        (CROSS_MODULE_FACTS_SOURCE, "zom.coherence-view"),
+        (MODULE_INTERFACE_CONTRACT_SOURCE, "zom.module-interface-revision"),
     )
     for path, domain in exact_domains:
         count = files.get(path, "").count(domain)
@@ -1293,9 +1281,9 @@ def run_self_test() -> int:
         baseline,
         "type-key pattern domain removed",
         lambda files: remove_once(
-            files, SIGNATURE_FACTS_SOURCE, "zom.type-key-pattern.v1"
+            files, SIGNATURE_FACTS_SOURCE, "zom.type-key-pattern"
         ),
-        "zom.type-key-pattern.v1 must have exactly 2 canonical owner references",
+        "zom.type-key-pattern must have exactly 2 canonical owner references",
     )
     failures += expect_rejection(
         baseline,
@@ -1723,14 +1711,6 @@ def run_self_test() -> int:
         "negative gate disconnected",
         lambda files: remove_once(files, TEST_CMAKE, "check-checker-architecture.py --self-test"),
         "missing Checker architecture wiring marker",
-    )
-    failures += expect_rejection(
-        baseline,
-        "coherence v0 domain restored",
-        lambda files: append_source(
-            files, CROSS_MODULE_FACTS_SOURCE, '\nconst char* old = "zom.coherence-view.v0";\n'
-        ),
-        "removed RFC 0015 revision domain remains",
     )
     failures += expect_rejection(
         baseline,

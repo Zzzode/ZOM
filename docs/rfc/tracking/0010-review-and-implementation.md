@@ -322,9 +322,9 @@ Formal verification returned RFC 0006 because its FFI oracle encoded only the
 digest portion of `MirRevisionId`, and returned RFC 0010 because
 `TargetSpecId` and the feature-gate registry lacked canonical codecs and a
 verifiable completeness snapshot. The response adds the executable MIR phase
-tag to the FFI proof, defines the complete target-spec codec and 111-byte
+tag to the FFI proof, defines the complete target-spec codec and 108-byte
 oracle, defines non-zero numeric gate IDs and the registry snapshot codec with
-a 49-byte oracle, binds every proof to context, module, executable MIR, target,
+a 46-byte oracle, binds every proof to context, module, executable MIR, target,
 and registry revision, and fixes deterministic multi-gate rejection ordering.
 The coordinated formal-review hashes are RFC 0005
 `2e25177ce1d38cfe9fc5d83508ac449cea57b69ff394537462d7fb1324aafe69`,
@@ -345,8 +345,7 @@ Formal verification found that RFC 0006 maintained target-profile strings and
 panic/object tags separately from RFC 0010 `TargetSpecId`. The response
 deletes that second identity codec. Error-union descriptors and target-artifact
 manifests now carry only RFC 0010's 32-byte `TargetSpecId`; layout construction
-uses the matching `VerifiedTargetSelection`. The descriptor domain advances
-to v2 with a 423-byte oracle. The coordinated formal-review hashes are RFC 0005
+uses the matching `VerifiedTargetSelection`. The descriptor uses the canonical domain with a 405-byte oracle. The coordinated formal-review hashes are RFC 0005
 `2e25177ce1d38cfe9fc5d83508ac449cea57b69ff394537462d7fb1324aafe69`,
 RFC 0006
 `e294b9706636863788f2dcf8a72b1bbbde116f2f09464f9f8990121a0700e29f`,
@@ -428,7 +427,7 @@ decision is recorded by this response.
 
 ### 2026-07-11 Forced Cast Dependency Reopen
 
-RFC 0005 restores `ForcedChecked` and advances the checked-facts codec to v2.
+RFC 0005 restores `ForcedChecked` and uses the canonical checked-facts codec.
 RFC 0010 now requires Built MIR to execute the recorded check once and branch
 to a logical `ForcedCast` panic terminator without fabricating a residual
 payload. The coordinated proposal hashes are RFC 0005
@@ -476,7 +475,7 @@ All approvals on the returned hash are superseded.
 Formal RFC 0012 review found a second incompatible target codec in the package
 proposal. The repair deletes backend target reconstruction from RFC 0012 and
 publishes only `RegisteredTargetSelection`. RFC 0010 is now the sole owner of
-`CanonicalTargetSpec`, its v1 codec, `TargetSpecId`, target capability failures,
+`CanonicalTargetSpec`, its canonical codec, `TargetSpecId`, target capability failures,
 and target invariants. `VerifiedTargetSelection` consumes the exact package
 selection, verifies registry revision, profile, semantic projection, and panic
 strategy, then publishes the canonical backend profile and target ID. RFC 0010
@@ -489,7 +488,7 @@ all approvals on `857ce83...` are superseded.
 Fresh RFC 0005 semantic review found that its closed cast fact could not encode
 the source language's unsafe raw-pointer reinterpret operation. RFC 0005 now
 defines `RawPointerReinterpret`, the exact pointer mutability matrix,
-`Guaranteed` mode, `RawPointerBoundary`, and checked-facts codec v3. RFC 0010
+`Guaranteed` mode, `RawPointerBoundary`, and canonical checked-facts codec. RFC 0010
 now preserves this kind and unsafe requirement through HIR and MIR, lowers it
 without a failure continuation, forbids downstream pointee/mutability
 reclassification, and requires complete matrix fixtures.
@@ -532,8 +531,8 @@ with tracker hash
 Semantic review approved task routing, binder/checker, module-system,
 error-system, concurrency, IR/backend, runtime-memory, and spec-audit surfaces.
 Invariant review approved target, feature-gate, MIR lineage, evidence,
-diagnostic mapping, deterministic codec, and verification surfaces. The 111-,
-52-, 49-, 171-, and 162-byte oracles recompute exactly. Internal IR failure
+diagnostic mapping, deterministic codec, and verification surfaces. The 108-,
+49-, 46-, 171-, and 162-byte oracles recompute exactly. Internal IR failure
 facts remain closed typed algebras and map exhaustively to registered `.def`
 diagnostics; no raw failure string is a public diagnostic path.
 `scripts/check-rfc.py` and `git diff --check` pass.
@@ -570,7 +569,7 @@ Decision: ACCEPTED.
 RFC 0013 was accepted on 2026-07-11 at proposal SHA-256
 `e3909d5caad48a1c0255ee57d2a8fcc327e046945f20a586e0c6bf0115a237c3`.
 It supplies the ownership source-rejection seam, borrow-evidence handoff, MIR
-revision `v2`, and complete successor evidence-lineage replacement clauses;
+canonical revision, and complete successor evidence-lineage replacement clauses;
 this accepted RFC 0010 proposal remains byte-identical.
 
 On 2026-07-11, all ten required owners approved RFC 0010 proposal hash
@@ -589,15 +588,14 @@ RFC 0006 and RFC 0007 may advance through their own gates.
 
 ### Canonical IR Direct Replacement Series
 
-This series replaces the mixed `compiler/irgen` prototype with the accepted
-three-layer pipeline. It introduces no adapter, compatibility decoder, second
-lowering entry point, or source-visible placeholder mode. RFC 0013's MIR
-revision v2 and ownership-evidence clauses apply together with RFC 0010.
+The accepted three-layer pipeline has one lowering entry point and no
+source-visible placeholder mode. RFC 0013's canonical MIR
+revision and ownership-evidence clauses apply together with RFC 0010.
 
 | Slice | State | Required evidence |
 |---|---|---|
 | Extract canonical target registry and verified selection into `compiler/ir` | In progress | Context-bound selection, exact target codecs, complete negative matrix, and deterministic target oracles |
-| Remove the mixed `compiler/irgen` prototype and non-producing IR CLI surface | In progress | No `zom.ir.v0`, `OutputType::IR`, `--emit=ir`, empty IR conformance target, or prototype diagnostic remains |
+| Remove the mixed `compiler/irgen` prototype and non-producing IR CLI surface | In progress | No `zom.ir`, `OutputType::IR`, `--emit=ir`, empty IR conformance target, or prototype diagnostic remains |
 | Publish the verified checked-module handoff | Pending RFC 0005 and RFC 0008 checked-fact closure | Exact input leases, revisions, identities, and failure algebra |
 | Implement semantic HIR and verifier | Pending checked-module handoff | Complete field projection, deterministic revision, mutation matrix, and dump coverage |
 | Implement Built MIR and RFC 0013 ownership integration | Pending HIR | MIR revision, complete exits, ownership facts, drop and coroutine lineage, and permutation evidence |

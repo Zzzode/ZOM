@@ -46,11 +46,11 @@ bool sameRegistry(const identity::RegistryIdentity& left, const identity::Regist
 
 SigningKeyId::SigningKeyId(const identity::Sha256Digest& digest) noexcept : digestValue(digest) {}
 
-SigningKeyId SigningKeyId::from(const Ed25519PublicKey& publicKey){
-    ZC_IF_SOME(digest, domainDigest("zom.ed25519-key.v0"_zc, publicKey.bytes())){
-        return SigningKeyId(digest);
-}  // namespace zomlang::compiler::driver::package
-ZC_UNREACHABLE
+SigningKeyId SigningKeyId::from(const Ed25519PublicKey& publicKey) {
+  ZC_IF_SOME(digest, domainDigest("zom.ed25519-key"_zc, publicKey.bytes())) {
+    return SigningKeyId(digest);
+  }
+  ZC_UNREACHABLE
 }
 SigningKeyId SigningKeyId::fromDigest(const identity::Sha256Digest& digest) {
   return SigningKeyId(digest);
@@ -99,7 +99,7 @@ zc::Maybe<RegistryTrustConfiguration> RegistryTrustConfiguration::from(
   identity::CanonicalEncoder encoder;
   encoder.encodeSequenceSize(trustedKeys.size());
   for (const auto& key : trustedKeys) { key.encode(encoder); }
-  ZC_IF_SOME(trustDomain, domainDigest("zom.registry-trust.v0"_zc, encoder.finish().asPtr())) {
+  ZC_IF_SOME(trustDomain, domainDigest("zom.registry-trust"_zc, encoder.finish().asPtr())) {
     return RegistryTrustConfiguration(
         identity::RegistryIdentity::from(zc::mv(indexUrl), trustDomain), zc::mv(trustedKeys));
   }
@@ -139,7 +139,7 @@ zc::Maybe<RegistryReleaseCandidate> RegistryReleaseCandidate::from(
     identity::ResolvedVersion&& version, CanonicalManifestRecord&& manifest,
     const identity::Sha256Digest& archiveDigest, const DigestVerifiedSourceSnapshot& sourceSnapshot,
     bool yanked, const SigningKeyId& signingKey) {
-  ZC_IF_SOME(digest, domainDigest("zom.normalized-manifest.v0"_zc, manifest.encode().asPtr())) {
+  ZC_IF_SOME(digest, domainDigest("zom.normalized-manifest"_zc, manifest.encode().asPtr())) {
     return RegistryReleaseCandidate(trust.identity().clone(), zc::mv(package), zc::mv(version),
                                     zc::mv(manifest), digest, archiveDigest,
                                     sourceSnapshot.record().digest(), yanked, signingKey);
@@ -152,7 +152,7 @@ zc::Array<uint8_t> RegistryReleaseCandidate::signedMessage() const {
   encodeFields(fields);
   auto encoded = fields.finish();
   zc::Vector<uint8_t> message;
-  message.addAll("zom.registry-release.v0"_zc.asBytes());
+  message.addAll("zom.registry-release"_zc.asBytes());
   message.add(0);
   message.addAll(encoded);
   return message.releaseAsArray();
@@ -164,7 +164,7 @@ void RegistryReleaseCandidate::encodeFields(identity::CanonicalEncoder& fields) 
   versionValue.encode(fields);
   manifestValue.encode(fields);
   fields.encodeDigest(manifestDigestValue);
-  fields.encodeUint8(static_cast<uint8_t>(ArchiveFormat::TarZstdV1));
+  fields.encodeUint8(static_cast<uint8_t>(ArchiveFormat::TarZstd));
   fields.encodeDigest(archiveDigestValue);
   fields.encodeDigest(sourceTreeDigestValue);
   fields.encodeBool(yankedValue);

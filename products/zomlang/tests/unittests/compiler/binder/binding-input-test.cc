@@ -2040,7 +2040,7 @@ ZC_TEST("ParsedModuleReceipt.MatchesNormativeRFC0004Oracle") {
                                                   schemaValue, zc::arrayPtr(dump));
       ZC_IF_SOME(value, receipt) {
         ZC_EXPECT(zc::encodeHex(value.digest().bytes()) ==
-                  "7a4ab18a31387244311bd2a1b1472350536140c89532ce64240d7670d5a20b8e"_zc);
+                  "56c0a5afb5b2e90e2acca2850b829b99ed6dd8dfb6812ac4ad81001eb0e96bfd"_zc);
         return;
       }
     }
@@ -2519,7 +2519,7 @@ ZC_TEST("ExportSurfaceRevision.MatchesNormativeEmptyMapOracle") {
       zc::arrayPtr(emptyMap), zc::arrayPtr(emptyMap));
   ZC_IF_SOME(value, revision) {
     ZC_EXPECT(zc::encodeHex(value.digest().bytes()) ==
-              "54283a8bbfd0e89237271ac1162646118a16bbb59b776c011ce69c2bf30a5ed0"_zc);
+              "c14457c2e7687474842773a1e68d30e1054679567dbe340ea9d8f5125c4b7c19"_zc);
     return;
   }
   ZC_EXPECT(false);
@@ -2548,10 +2548,10 @@ ZC_TEST("BindingAllocationDump.MatchesNormativeRFC0004Oracle") {
   for (const auto& value : labelStorage) { labels.add(value.asPtr()); }
 
   const auto dump = frameBindingAllocationDump(scopes.asPtr(), labels.asPtr());
-  ZC_EXPECT(dump.size() == 327);
+  ZC_EXPECT(dump.size() == 324);
   ZC_IF_SOME(digest, identity::sha256(dump.asPtr())) {
     ZC_EXPECT(zc::encodeHex(digest.bytes()) ==
-              "0212bdaf38dc3f7d85f4afc2d7413e27777c3dfe139be4d7c18896a839d4b7f8"_zc);
+              "f51085fd79a7078bdee37c5dc38c547e37041daac0a2a8590949b2971ac61202"_zc);
     return;
   }
   ZC_EXPECT(false);
@@ -2672,13 +2672,13 @@ ZC_TEST("BindingVerifier.PublishesCompletePrivateFunctionFactsAndSurface") {
   ZC_EXPECT(!output.surface.visibleEntries()[0].exported);
   ZC_EXPECT(output.surface.visibleEntries()[0].visibility.value().is<ModuleVisibility>());
   ZC_EXPECT(zc::encodeHex(output.surface.revision().digest().bytes()) ==
-            "3156064f68ba313459657cdc8aa11fafcabef60ca2a3ef7cad25e2ca5c6791d4"_zc);
+            "55b8869dbbfd5fc9ebd2bc410889a1d890fcadd7c0d80a2afcce1fdaf5d38d38"_zc);
   ZC_IF_SOME(dump, encodeBindingAllocationDump(input, output.metadata.scopes(),
                                                output.metadata.labels())) {
-    ZC_EXPECT(dump.size() == 1429);
+    ZC_EXPECT(dump.size() == 1426);
     ZC_IF_SOME(digest, identity::sha256(dump.asPtr())) {
       ZC_EXPECT(zc::encodeHex(digest.bytes()) ==
-                "cf11e13b32723c5ef6bf1a9fcab55f0ee2dd7da4908deb8e14b1bf155900df48"_zc);
+                "440212368bbec70fd40c4f81bfc5ef0adc955c0a56241696901059b5f464ea88"_zc);
     }
   }
 }
@@ -2858,11 +2858,11 @@ ZC_TEST("LabelFacts.SortsCallableOwnersByCanonicalDefinitionKey") {
     ZC_IF_SOME(alfaKeyValue, alfaKey) {
       const auto zuluBytes = zuluKeyValue.encode();
       const auto alfaBytes = alfaKeyValue.encode();
-      ZC_EXPECT(encodedBytesLess(alfaBytes.asPtr(), zuluBytes.asPtr()));
+      ZC_EXPECT(encodedBytesLess(zuluBytes.asPtr(), alfaBytes.asPtr()));
     }
   }
-  ZC_EXPECT(value.labels[0].name.text() == "alfa_label"_zc);
-  ZC_EXPECT(value.labels[1].name.text() == "zulu_label"_zc);
+  ZC_EXPECT(value.labels[0].name.text() == "zulu_label"_zc);
+  ZC_EXPECT(value.labels[1].name.text() == "alfa_label"_zc);
   ZC_EXPECT(value.labels[0].identity.index() == 0);
   ZC_EXPECT(value.labels[1].identity.index() == 0);
 
@@ -2947,7 +2947,7 @@ ZC_TEST("BindingAllocationDump.EncodesSchemaBackedLabelRecords") {
     }
     ZC_IF_SOME(digest, identity::sha256(completeValue.asPtr())) {
       ZC_EXPECT(zc::encodeHex(digest.bytes()) ==
-                "2b48d84a395da64c995c945e7cc39ed9846e2df3789b9c90154d9f19b9ea5e9b"_zc);
+                "619cb6d284133984a727a8d191fb5eb6d788f7358c6c77a3ea24cfd9b403fbc7"_zc);
     }
   }
   auto verification = BindingVerifier::verify(input, zc::mv(value));
@@ -9432,7 +9432,7 @@ ZC_TEST("ModuleGraphRevision.IsDeterministicForEquivalentSingleModuleGraphs") {
     ZC_IF_SOME(secondGraph, second.graph) {
       ZC_EXPECT(firstGraph.revision().digest() == secondGraph.revision().digest());
       ZC_EXPECT(zc::encodeHex(firstGraph.revision().digest().bytes()) ==
-                "5d1d8200accde549d586cc851db1162ea0b11b88db5bc9601113afaf8aba9cdb"_zc);
+                "38bfc215078d7bf2119548f8d95cee15e0c6feca7363a8443463084ff6c951d1"_zc);
       return;
     }
   }

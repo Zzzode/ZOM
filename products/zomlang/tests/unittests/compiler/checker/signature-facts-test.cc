@@ -562,7 +562,7 @@ ZC_TEST("SignatureFactsRevision.MatchesNormativeNonEmptyFramingOracle") {
   ZC_REQUIRE(revision != zc::none);
   ZC_IF_SOME(value, revision) {
     ZC_EXPECT(zc::encodeHex(value.digest().bytes()) ==
-              "dac5b3c2ce95be20cf3c42028d5a05a042c504dc8d37a4d45f7ec97b7955b4a4"_zc);
+              "df372823d5f51543118268c3ebf4345fcfefee34104389bb269d0ba17771d39d"_zc);
   }
 }
 
@@ -576,7 +576,7 @@ ZC_TEST("MarkerShapeInventoryRevision.MatchesNormativeNonEmptyFramingOracle") {
   ZC_REQUIRE(revision != zc::none);
   ZC_IF_SOME(value, revision) {
     ZC_EXPECT(zc::encodeHex(value.digest().bytes()) ==
-              "1594af0c3d3f1cd1c3d5e58ce672673855b6924ceced83e78bf4306c77dc7e7b"_zc);
+              "1e1aa7ddd2c702f9febc3d07f3353849a697b377c9589fe68536d30fe465d7f9"_zc);
   }
 }
 
@@ -598,7 +598,7 @@ ZC_TEST("MarkerPolicyRegistryRevision.MatchesNormativeNonEmptyFramingOracle") {
     ZC_REQUIRE(revision != zc::none);
     ZC_IF_SOME(value, revision) {
       ZC_EXPECT(zc::encodeHex(value.digest().bytes()) ==
-                "15329853e2faae147a2f5ca73c85a58c4084c70faa3d1faef278c856fd75067b"_zc);
+                "5cb8da449247154b7dee5d3b6269f5a30dab11f1b1f032561590d590e24c2475"_zc);
     }
   }
 }
@@ -715,25 +715,24 @@ ZC_TEST("SignatureFactsVerifier.PreservesExactSemanticTypeIdentityInvariant") {
 ZC_TEST("SignatureFactsCanonicalCodec.MatchesIdentityFreePatternGoldenVectors") {
   SignatureFixture fixture;
   expectTypeKeyPatternOracle(TypeKeyPattern::parameter(0), *fixture.registries,
-                             "7a6f6d2e747970652d6b65792d7061747465726e2e7631001100000000"_zc,
-                             "0c9d8c3a3d5ccff890dbed8dad7b7270cf580bee6a024e610107aa99dfb5a022"_zc);
+                             "7a6f6d2e747970652d6b65792d7061747465726e001100000000"_zc,
+                             "96bd577588d6b8551392c23a61a2135ddf7f29b564d37c2b7e5ede52fafe8581"_zc);
   expectTypeKeyPatternOracle(
       TypeKeyPattern::reference(Mutability::Const, TypeKeyPattern::parameter(0)),
-      *fixture.registries, "7a6f6d2e747970652d6b65792d7061747465726e2e7631000c011100000000"_zc,
-      "71cd89aa34ed4343c7f092700dba2b313f817348b542acbd33db33c4c880fdcd"_zc);
+      *fixture.registries, "7a6f6d2e747970652d6b65792d7061747465726e000c011100000000"_zc,
+      "bbd2d487bb1eef06c4a0177a71fbccb6a296d22a002e3fa8b296d121f36e0b19"_zc);
 }
 
 ZC_TEST("SignatureFactsCanonicalCodec.MatchesRemainingNormativeRawPatternVectors") {
-  expectRawOracle("7a6f6d2e747970652d6b65792d7061747465726e2e76310010a1"_zc,
-                  "2386a3fdf91952907a4e8a486bca5763fda467aa4d4fd52bd50fe2c20ffc4fc5"_zc);
+  expectRawOracle("7a6f6d2e747970652d6b65792d7061747465726e0010a1"_zc,
+                  "0f5e0bc5f6db8f233e6c5e9428718ac9538513fc5e9bc22338b1bfaed0a92f1c"_zc);
+  expectRawOracle("7a6f6d2e747970652d6b65792d7061747465726e0008a100000000000000011100000000"_zc,
+                  "9f347b5d6fa3d7faa247f06754e7992c7cc4fb2af8a475cb20c53152f3377a26"_zc);
+  expectRawOracle("7a6f6d2e696d706c2d7061747465726e00a100000000000000001100000000"_zc,
+                  "b203dbd1a3fae2885b4eef6963584363e134690f50b3f8f396100a8e7f319443"_zc);
   expectRawOracle(
-      "7a6f6d2e747970652d6b65792d7061747465726e2e76310008a100000000000000011100000000"_zc,
-      "c4951246c3831b62b19f245d604801351fc2545a6abb4a0136a8551ee1963e18"_zc);
-  expectRawOracle("7a6f6d2e696d706c2d7061747465726e2e763100a100000000000000001100000000"_zc,
-                  "f81b1b7dbbb67d1c9bb9209864d4cf36166ffdf2ce3e0b83fb4033d92dae4703"_zc);
-  expectRawOracle(
-      "7a6f6d2e696d706c2d7061747465726e2e763100a10000000000000001110000000008b200000000000000011100000000"_zc,
-      "89cd999fa5df60dc6bd7a811213b5c2f954fef780624ec82e0e94059a138107e"_zc);
+      "7a6f6d2e696d706c2d7061747465726e00a10000000000000001110000000008b200000000000000011100000000"_zc,
+      "4801c959691fe5a8ef7f7bf667205df514df9d792fa2cebf4c940447af11f9b2"_zc);
 }
 
 ZC_TEST("SignatureFactsCanonicalCodec.EncodesNonEmptyRecursivePatternFamilies") {
@@ -804,7 +803,7 @@ ZC_TEST("SignatureFactsCanonicalCodec.EncodesNonEmptyRecursivePatternFamilies") 
 
 ZC_TEST("SignatureFactsCanonicalCodec.RejectsMalformedEncodedPatternKeys") {
   SignatureFixture fixture;
-  const auto payloadOffset = zc::StringPtr("zom.type-key-pattern.v1").size() + 1;
+  const auto payloadOffset = zc::StringPtr("zom.type-key-pattern").size() + 1;
 
   auto parameter = SignatureFactsCanonicalCodec::makeTypeKeyPatternKey(TypeKeyPattern::parameter(0),
                                                                        *fixture.registries);
@@ -973,7 +972,7 @@ ZC_TEST("SignatureFactsCanonicalCodec.RejectsMalformedEncodedImplPatternKeys") {
   auto key = SignatureFactsCanonicalCodec::makeImplPatternKey(pattern, *fixture.registries);
   ZC_REQUIRE(key != zc::none);
   ZC_IF_SOME(value, key) {
-    const auto payloadOffset = zc::StringPtr("zom.impl-pattern.v1").size() + 1;
+    const auto payloadOffset = zc::StringPtr("zom.impl-pattern").size() + 1;
 
     auto wrongDomain = zc::heapArray<uint8_t>(value.bytes());
     wrongDomain[0] ^= 0x01;

@@ -17,7 +17,7 @@
 namespace zomlang::compiler::parser {
 namespace {
 
-constexpr zc::StringPtr kParsedSourceDomain = "zom.canonical-parsed-source.v1"_zc;
+constexpr zc::StringPtr kParsedSourceDomain = "zom.canonical-parsed-source"_zc;
 constexpr uint64_t kMaximumSourceKeyBytes = 64 * 1024;
 constexpr uint64_t kMaximumSourceBytes = 64 * 1024 * 1024;
 constexpr uint64_t kMaximumLogicalNameBytes = 64 * 1024;
@@ -35,8 +35,8 @@ bool validSourceKey(zc::ArrayPtr<const uint8_t> bytes) {
   return ZC_ASSERT_NONNULL(source).encode().asPtr() == bytes;
 }
 
-zc::Maybe<uint64_t> offsetFor(const source::SourceManager& sources,
-                              const source::BufferId& buffer, source::SourceLoc location) {
+zc::Maybe<uint64_t> offsetFor(const source::SourceManager& sources, const source::BufferId& buffer,
+                              source::SourceLoc location) {
   if (location.isInvalid()) { return zc::none; }
   const auto sourceRange = sources.getRangeForBuffer(buffer);
   if (location < sourceRange.getStart() || location > sourceRange.getEnd()) { return zc::none; }
@@ -112,11 +112,10 @@ zc::Maybe<zc::Vector<CanonicalParsedToken>> decodeTokens(identity::CanonicalDeco
 }
 
 zc::Maybe<zc::Array<uint8_t>> encodeBody(
-    zc::ArrayPtr<const uint8_t> canonicalSourceKey,
-    const identity::Sha256Digest& contentDigest, zc::ArrayPtr<const uint8_t> sourceBytes,
-    zc::StringPtr logicalName, CanonicalParserOptions options, const ast::Tree& tree,
-    const source::SourceManager& sources, const source::BufferId& buffer,
-    zc::ArrayPtr<const CanonicalParsedToken> tokens,
+    zc::ArrayPtr<const uint8_t> canonicalSourceKey, const identity::Sha256Digest& contentDigest,
+    zc::ArrayPtr<const uint8_t> sourceBytes, zc::StringPtr logicalName,
+    CanonicalParserOptions options, const ast::Tree& tree, const source::SourceManager& sources,
+    const source::BufferId& buffer, zc::ArrayPtr<const CanonicalParsedToken> tokens,
     zc::ArrayPtr<const diagnostics::DiagnosticFact> facts) {
   auto astBytes = ast::encodeCanonicalTree(tree, sources, buffer);
   if (astBytes == zc::none) { return zc::none; }
@@ -151,8 +150,7 @@ struct CanonicalParsedSource::Impl final {
   Impl(zc::Array<uint8_t>&& canonicalBytes, zc::Array<uint8_t>&& sourceKey,
        const identity::Sha256Digest& contentDigest, zc::Array<uint8_t>&& sourceBytes,
        zc::String&& logicalName, CanonicalParserOptions options, ast::Tree&& tree,
-       zc::Vector<CanonicalParsedToken>&& tokens,
-       zc::Vector<diagnostics::DiagnosticFact>&& facts)
+       zc::Vector<CanonicalParsedToken>&& tokens, zc::Vector<diagnostics::DiagnosticFact>&& facts)
       : canonicalBytes(zc::mv(canonicalBytes)),
         sourceKey(zc::mv(sourceKey)),
         contentDigest(contentDigest),
@@ -194,11 +192,10 @@ CanonicalParsedSource::CanonicalParsedSource(CanonicalParsedSource&&) noexcept =
 CanonicalParsedSource& CanonicalParsedSource::operator=(CanonicalParsedSource&&) noexcept = default;
 
 zc::Maybe<CanonicalParsedSource> CanonicalParsedSource::fromParsed(
-    zc::ArrayPtr<const uint8_t> canonicalSourceKey,
-    const identity::Sha256Digest& contentDigest, zc::ArrayPtr<const uint8_t> sourceBytes,
-    zc::StringPtr logicalName, CanonicalParserOptions options,
-    const source::SourceManager& parsedSources, const source::BufferId& parsedBuffer,
-    ast::Tree&& tree, ParsedTokenSnapshot&& tokens,
+    zc::ArrayPtr<const uint8_t> canonicalSourceKey, const identity::Sha256Digest& contentDigest,
+    zc::ArrayPtr<const uint8_t> sourceBytes, zc::StringPtr logicalName,
+    CanonicalParserOptions options, const source::SourceManager& parsedSources,
+    const source::BufferId& parsedBuffer, ast::Tree&& tree, ParsedTokenSnapshot&& tokens,
     zc::Vector<diagnostics::DiagnosticFact>&& facts) {
   auto computedDigest = identity::sha256(sourceBytes);
   if (!validSourceKey(canonicalSourceKey) || sourceBytes.size() > kMaximumSourceBytes ||
@@ -228,9 +225,8 @@ zc::Maybe<CanonicalParsedSource> CanonicalParsedSource::decodeCanonical(
   auto domain = outer.decodeByteString(kParsedSourceDomain.size());
   auto body = outer.decodeByteString(kMaximumValueBodyBytes);
   auto fingerprint = outer.decodeDigest();
-  auto computedFingerprint =
-      body == zc::none ? zc::Maybe<identity::Sha256Digest>()
-                       : identity::sha256(ZC_ASSERT_NONNULL(body).asPtr());
+  auto computedFingerprint = body == zc::none ? zc::Maybe<identity::Sha256Digest>()
+                                              : identity::sha256(ZC_ASSERT_NONNULL(body).asPtr());
   if (domain == zc::none || body == zc::none || fingerprint == zc::none || !outer.finished() ||
       ZC_ASSERT_NONNULL(domain).asPtr() != kParsedSourceDomain.asBytes() ||
       computedFingerprint == zc::none ||
@@ -248,9 +244,9 @@ zc::Maybe<CanonicalParsedSource> CanonicalParsedSource::decodeCanonical(
   auto supportRegexLiterals = decoder.decodeBool();
   auto schema = decoder.decodeByteString(zc::StringPtr(ast::kAstSchemaFingerprint).size());
   auto astBytes = decoder.decodeByteString(kMaximumAstBytes);
-  auto computedContent =
-      sourceBytes == zc::none ? zc::Maybe<identity::Sha256Digest>()
-                              : identity::sha256(ZC_ASSERT_NONNULL(sourceBytes).asPtr());
+  auto computedContent = sourceBytes == zc::none
+                             ? zc::Maybe<identity::Sha256Digest>()
+                             : identity::sha256(ZC_ASSERT_NONNULL(sourceBytes).asPtr());
   if (sourceKey == zc::none || contentDigest == zc::none || sourceBytes == zc::none ||
       logicalName == zc::none || useUnicode == zc::none || allowDollarIdentifiers == zc::none ||
       supportRegexLiterals == zc::none || schema == zc::none || astBytes == zc::none ||
@@ -293,12 +289,11 @@ zc::Maybe<CanonicalParsedSource> CanonicalParsedSource::decodeCanonical(
                               CanonicalParserOptions{ZC_ASSERT_NONNULL(useUnicode),
                                                      ZC_ASSERT_NONNULL(allowDollarIdentifiers),
                                                      ZC_ASSERT_NONNULL(supportRegexLiterals)},
-                              zc::mv(retainedTree), zc::mv(retainedTokens),
-                              zc::mv(retainedFacts));
+                              zc::mv(retainedTree), zc::mv(retainedTokens), zc::mv(retainedFacts));
 
-  auto rehydratedTree = ast::decodeCanonicalTree(
-      ZC_ASSERT_NONNULL(astBytes).asPtr(), owned->sourceManager, owned->buffer,
-      owned->sourceBytes.size());
+  auto rehydratedTree =
+      ast::decodeCanonicalTree(ZC_ASSERT_NONNULL(astBytes).asPtr(), owned->sourceManager,
+                               owned->buffer, owned->sourceBytes.size());
   if (rehydratedTree == zc::none) { return zc::none; }
   owned->tree = zc::mv(ZC_ASSERT_NONNULL(rehydratedTree));
   return CanonicalParsedSource(zc::mv(owned));

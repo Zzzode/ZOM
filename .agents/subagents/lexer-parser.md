@@ -52,9 +52,8 @@ docs/spec/ZomLexer.g4
 - [ ] Visibility and behavior modifiers are aligned across chapters 06 and 17,
       the grammar productions, and `isVisibilityModifier()` /
       `isBehaviorModifier()`.
-- [ ] Reserved keywords with no grammar rule have an explicit
-      "reserved for v2" note in chapter 02; any that don't are deleted
-      per design principle #4.
+- [ ] Reserved keywords with no grammar rule are deleted from chapter 02 per
+      design principle #4.
 - [ ] Diagnostics raised by the parser use `ZOMxxxx` codes from the
       central registry, never ad-hoc strings.
 

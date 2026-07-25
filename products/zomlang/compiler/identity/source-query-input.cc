@@ -33,7 +33,7 @@ int compareBytes(zc::ArrayPtr<const uint8_t> left, zc::ArrayPtr<const uint8_t> r
 }
 
 query::QueryKindContract inputContract(zc::StringPtr domain, query::Durability durability) {
-  auto contract = query::QueryKindContract::input(domain, 1, 1, durability);
+  auto contract = query::QueryKindContract::input(domain, durability);
   return zc::mv(ZC_REQUIRE_NONNULL(contract));
 }
 
@@ -62,10 +62,8 @@ zc::Maybe<Sha256Digest> validateTargetSelection(zc::ArrayPtr<const uint8_t> byte
   auto profile = decoder.decodeByteString(255);
   auto target = CanonicalTargetSpecificationKey::decodeCanonical(decoder);
   auto panic = decoder.decodeUint8();
-  const auto abortPanic =
-      static_cast<uint8_t>(driver::package::PackagePanicStrategy::Abort);
-  const auto unwindPanic =
-      static_cast<uint8_t>(driver::package::PackagePanicStrategy::Unwind);
+  const auto abortPanic = static_cast<uint8_t>(driver::package::PackagePanicStrategy::Abort);
+  const auto unwindPanic = static_cast<uint8_t>(driver::package::PackagePanicStrategy::Unwind);
   if (registryRevision == zc::none || profile == zc::none || target == zc::none ||
       panic == zc::none || !decoder.finished() ||
       !isValidTargetProfile(ZC_ASSERT_NONNULL(profile).asPtr()) ||
@@ -158,9 +156,11 @@ CompilationUnitQueryKey CompilationUnitQueryKey::fixed() noexcept {
   return CompilationUnitQueryKey();
 }
 
-CanonicalCompilationOptions::CanonicalCompilationOptions(
-    zc::Array<uint8_t>&& hostTarget, zc::Array<uint8_t>&& target, bool useUnicode,
-    bool allowDollarIdentifiers, bool supportRegexLiterals) noexcept
+CanonicalCompilationOptions::CanonicalCompilationOptions(zc::Array<uint8_t>&& hostTarget,
+                                                         zc::Array<uint8_t>&& target,
+                                                         bool useUnicode,
+                                                         bool allowDollarIdentifiers,
+                                                         bool supportRegexLiterals) noexcept
     : hostTargetField(zc::mv(hostTarget)),
       targetField(zc::mv(target)),
       useUnicodeField(useUnicode),
@@ -241,14 +241,13 @@ zc::Maybe<CanonicalCompilationOptions> CanonicalCompilationOptions::decodeCanoni
       ZC_ASSERT_NONNULL(hostRevision) != ZC_ASSERT_NONNULL(targetRevision)) {
     return zc::none;
   }
-  return CanonicalCompilationOptions(zc::mv(ZC_ASSERT_NONNULL(host)),
-                                     zc::mv(ZC_ASSERT_NONNULL(target)),
-                                     ZC_ASSERT_NONNULL(useUnicode),
-                                     ZC_ASSERT_NONNULL(allowDollarIdentifiers),
-                                     ZC_ASSERT_NONNULL(supportRegexLiterals));
+  return CanonicalCompilationOptions(
+      zc::mv(ZC_ASSERT_NONNULL(host)), zc::mv(ZC_ASSERT_NONNULL(target)),
+      ZC_ASSERT_NONNULL(useUnicode), ZC_ASSERT_NONNULL(allowDollarIdentifiers),
+      ZC_ASSERT_NONNULL(supportRegexLiterals));
 }
 
-zc::StringPtr CompilationOptionsInput::domain() { return "zom.query.compilation-options.v1"_zc; }
+zc::StringPtr CompilationOptionsInput::domain() { return "zom.query.compilation-options"_zc; }
 query::QueryKindContract CompilationOptionsInput::contract() {
   return inputContract(domain(), query::Durability::Medium);
 }
@@ -270,7 +269,7 @@ zc::Maybe<CompilationOptionsInput::Value> CompilationOptionsInput::decodeValue(
   return CanonicalCompilationOptions::decodeCanonical(bytes);
 }
 
-zc::StringPtr SourceSnapshotInput::domain() { return "zom.query.source-snapshot.v1"_zc; }
+zc::StringPtr SourceSnapshotInput::domain() { return "zom.query.source-snapshot"_zc; }
 query::QueryKindContract SourceSnapshotInput::contract() {
   return inputContract(domain(), query::Durability::Low);
 }

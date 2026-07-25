@@ -221,10 +221,8 @@ InterfaceElement ::= ModifierList 'fun' MethodSignature ';'
                       (* AssociatedTypeDecl stores an optional
                          AssociatedTypeBoundList with one ordered TypeExpr
                          child and source range per '+' member. *)
-                      (* NOTE: Method bodies (BlockStatement) inside interface
-                         declarations are not part of ZOM v1. The parser
-                         rejects a block after an interface method signature.
-                         See Ch.09 §9.3.1. *)
+                      (* NOTE: The parser rejects a block after an interface
+                         method signature. See Ch.09 §9.3.1. *)
 PropertySignature ::= PropertyName MemberFunctionSignature
 MethodSignature ::= PropertyName TypeParameters? MemberFunctionSignature
 PropertyStorage ::= 'mut' | 'let'

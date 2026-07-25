@@ -135,7 +135,7 @@ zc::Vector<ResolverRelease> permute(uint64_t seed, zc::ArrayPtr<const ResolverRe
   zc::Vector<PermutationEntry> order;
   for (size_t index = 0; index < releases.size(); ++index) {
     identity::Sha256Hasher hasher;
-    ZC_REQUIRE(hasher.update("zom.permutation.v0"_zc.asBytes()));
+    ZC_REQUIRE(hasher.update("zom.permutation"_zc.asBytes()));
     const uint8_t separator = 0;
     ZC_REQUIRE(hasher.update(zc::arrayPtr(separator)));
     uint8_t seedBytes[8];
@@ -224,7 +224,7 @@ ZC_TEST("PackageResolverTest.SelectsGreatestEligibleReleaseAndEmitsGraph") {
   ZC_EXPECT(resolution.lockGraph().packages().size() == resolution.packages().size());
   ZC_EXPECT(resolution.edges().size() == 1);
   const auto encoded = resolution.encode();
-  const auto domain = "zom.resolution-output.v0"_zc.asBytes();
+  const auto domain = "zom.resolution-output"_zc.asBytes();
   ZC_REQUIRE(encoded.size() > domain.size());
   for (size_t index = 0; index < domain.size(); ++index) {
     ZC_EXPECT(encoded[index] == domain[index]);
@@ -233,7 +233,7 @@ ZC_TEST("PackageResolverTest.SelectsGreatestEligibleReleaseAndEmitsGraph") {
   auto outputDigest = identity::sha256(encoded);
   ZC_IF_SOME(value, outputDigest) {
     ZC_EXPECT(zc::encodeHex(value.bytes()) ==
-              "21640c513f23e7b7e9c51c02d8303ee8d035a0ca6840f05b4428c1351327f9f8"_zc);
+              "53522dd5c07d5622473fc856cbe89bceb4ac05164e970d73589359d199b07e99"_zc);
   }
 }
 
@@ -308,7 +308,7 @@ math = { path = "../math", version = ">=2.0.0" }
   auto graphDigest = identity::sha256(failed.incompatibilityGraph().encode());
   ZC_IF_SOME(value, graphDigest) {
     ZC_EXPECT(zc::encodeHex(value.bytes()) ==
-              "f9baa53243bb4c42f9700484b2af10593b2e8ea609213d9b01618ba8882d2a35"_zc);
+              "2d4ed0e00ea662d12de217d317136647ad67e4a4c6630ed85b4893bad3a1e78e"_zc);
   }
   ZC_EXPECT(failed.encode().size() != 0);
 }

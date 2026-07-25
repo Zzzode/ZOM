@@ -186,7 +186,7 @@ of that snapshot.
 | Projection firewalls | Blocked by Binder aggregate query | Export, name, header, signature, visibility, import, closure, and diagnostic projections with mutation tests |
 | Item-level Binder split | Blocked by projections | Immutable skeleton and named-item body providers plus independent domain verification |
 | Production cutover | Blocked by item-level split | No batch authority, dual publication path, compatibility selector, unstable key, or aggregate downstream read |
-| Local persistence | Blocked by every in-memory gate | Versioned envelope, bounded decoder, atomic writes, allowlist, corruption-as-miss, pruning, and verifier tests |
+| Local persistence | Blocked by every in-memory gate | Canonical envelope, bounded decoder, atomic writes, allowlist, corruption-as-miss, pruning, and verifier tests |
 | Landing | Blocked by all prior slices | Sanitizer, full tests, deterministic differential corpus, architecture gates, format, and performance budgets |
 
 ### 2026-07-18 Routing And Architecture Gate Evidence

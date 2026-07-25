@@ -134,12 +134,12 @@ void expectDigest(zc::ArrayPtr<const uint8_t> bytes, zc::StringPtr expected) {
 ZC_TEST("SemanticImportBindingKey passes the fixed canonical codec vector") {
   auto key = importKey();
   const auto encoded = key.encode();
-  constexpr auto domain = "zom.semantic-import-binding.v0"_zc;
+  constexpr auto domain = "zom.semantic-import-binding"_zc;
   ZC_REQUIRE(encoded.size() > domain.size());
   ZC_EXPECT(encoded.slice(0, domain.size()).asChars() == domain);
   ZC_EXPECT(encoded[domain.size()] == 0x00);
   expectDigest(encoded.asPtr(),
-               "0d9e88fef6bcaebaf76f8bb5ab9e9df856b2d994fd9e220229fa5b26241158bf"_zc);
+               "422f9ff6b6c81ba4378abf0a3adeea6c588da99c0da0e62f99e1a4e1ebdc122b"_zc);
   ZC_EXPECT(key.clone().encode().asPtr() == encoded.asPtr());
   ZC_EXPECT(key.requester().encode().asPtr() == module("app"_zc).encode().asPtr());
   ZC_EXPECT(key.resolution().dependencyKind() == ModuleDependencyKind::Import);

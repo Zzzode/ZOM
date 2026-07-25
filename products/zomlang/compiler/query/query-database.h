@@ -38,31 +38,24 @@ public:
 
   /// \brief Constructs an explicit input query contract.
   ZC_NODISCARD static zc::Maybe<QueryKindContract> input(zc::StringPtr domain,
-                                                         uint32_t keySchemaVersion,
-                                                         uint32_t valueSchemaVersion,
                                                          Durability durability);
   /// \brief Constructs a derived query contract.
   ZC_NODISCARD static zc::Maybe<QueryKindContract> derived(
-      zc::StringPtr domain, uint32_t keySchemaVersion, uint32_t valueSchemaVersion,
-      ReuseClass reuseClass, RetentionClass retention = RetentionClass::Retained);
+      zc::StringPtr domain, ReuseClass reuseClass,
+      RetentionClass retention = RetentionClass::Retained);
 
   ZC_NODISCARD QueryKindContract clone() const;
   ZC_NODISCARD zc::StringPtr domain() const ZC_LIFETIMEBOUND { return domainField; }
-  ZC_NODISCARD uint32_t keySchemaVersion() const noexcept { return keySchemaVersionField; }
-  ZC_NODISCARD uint32_t valueSchemaVersion() const noexcept { return valueSchemaVersionField; }
   ZC_NODISCARD ReuseClass reuseClass() const noexcept { return reuseClassField; }
   ZC_NODISCARD RetentionClass retention() const noexcept { return retentionField; }
   ZC_NODISCARD bool isInput() const noexcept { return isInputField; }
   ZC_NODISCARD Durability inputDurability() const noexcept { return inputDurabilityField; }
 
 private:
-  QueryKindContract(zc::String&& domain, uint32_t keySchemaVersion, uint32_t valueSchemaVersion,
-                    ReuseClass reuseClass, RetentionClass retention, bool isInput,
-                    Durability inputDurability) noexcept;
+  QueryKindContract(zc::String&& domain, ReuseClass reuseClass, RetentionClass retention,
+                    bool isInput, Durability inputDurability) noexcept;
 
   zc::String domainField;
-  uint32_t keySchemaVersionField;
-  uint32_t valueSchemaVersionField;
   ReuseClass reuseClassField;
   RetentionClass retentionField;
   bool isInputField;

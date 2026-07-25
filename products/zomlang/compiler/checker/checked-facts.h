@@ -970,7 +970,7 @@ struct CheckedNodeKey final {
   identity::SourceSpan sourceSpan;
 };
 
-/// \brief Exact ordered canonical record groups for RFC 0005 checked-facts v3 framing.
+/// \brief Exact ordered canonical record groups for RFC 0005 checked-facts framing.
 struct CheckedFactsCanonicalGroups final {
   zc::ArrayPtr<const zc::ArrayPtr<const uint8_t>> substitutions;
   zc::ArrayPtr<const zc::ArrayPtr<const uint8_t>> witnesses;
@@ -1191,7 +1191,7 @@ public:
       CheckedFactsSourceRejected&& rejection, const CheckedFactsVerificationInput& input);
 };
 
-/// \brief Verifies exact lineage, fact inventory, immutable records, and v3 revision framing.
+/// \brief Verifies exact lineage, fact inventory, immutable records, and revision framing.
 class CheckedFactsVerifier final {
 public:
   ZC_NODISCARD static CheckedFactsVerificationResult verify(

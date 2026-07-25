@@ -243,7 +243,7 @@ lacks a concrete target layout. A descriptor is reusable only when every field,
 including both input revisions and `targetSpecId`, is equal.
 
 `ErrorUnionLayoutRevision` is SHA-256 over
-`ASCII("zom.error-union-layout.v2")`, NUL, then the RFC 0011 encoding of
+`ASCII("zom.error-union-layout")`, NUL, then the RFC 0011 encoding of
 `ErrorUnionLayoutDescriptor`. `SemanticTypeKey` values are byte-framed;
 sequences use `uint64` count framing; digests contribute 32 raw bytes;
 `TargetSpecId` contributes its 32 raw digest bytes; all integers use RFC 0011
@@ -253,14 +253,14 @@ The executable oracle uses value type `i32 | str`, success `i32`, residual
 `str`, checked revision bytes `0x11`, dispatch revision bytes `0x22`, target-
 spec digest bytes `0x33`, `U8`, outer layout `(offset=0, payloadOffset=8,
 payloadSize=16, payloadAlign=8, size=24, align=8)`, and two alternatives with
-payload layouts `(4,4)` and `(16,8)`. Its complete 423-byte preimage is:
+payload layouts `(4,4)` and `(16,8)`. Its complete 405-byte preimage is:
 
 ```text
-7a6f6d2e6572726f722d756e696f6e2d6c61796f75742e76320000000000000000267a6f6d2e73656d616e7469632d747970652d6b65792e7630000a00000000000000020103010f000000000000001b7a6f6d2e73656d616e7469632d747970652d6b65792e76300001030000000000000001000000000000001b7a6f6d2e73656d616e7469632d747970652d6b65792e763000010f1111111111111111111111111111111111111111111111111111111111111111222222222222222222222222222222222222222222222222222222222222222233333333333333333333333333333333333333333333333333333333333333330100000000000000000000000000000008000000000000001000000000000000080000000000000018000000000000000800000000000000020000000000000000000000000000001b7a6f6d2e73656d616e7469632d747970652d6b65792e763000010301000000000000000400000000000000040000000000000001000000000000001b7a6f6d2e73656d616e7469632d747970652d6b65792e763000010f0200000000000000100000000000000008
+7a6f6d2e6572726f722d756e696f6e2d6c61796f75740000000000000000267a6f6d2e73656d616e7469632d747970652d6b6579000a00000000000000020103010f000000000000001b7a6f6d2e73656d616e7469632d747970652d6b65790001030000000000000001000000000000001b7a6f6d2e73656d616e7469632d747970652d6b657900010f1111111111111111111111111111111111111111111111111111111111111111222222222222222222222222222222222222222222222222222222222222222233333333333333333333333333333333333333333333333333333333333333330100000000000000000000000000000008000000000000001000000000000000080000000000000018000000000000000800000000000000020000000000000000000000000000001b7a6f6d2e73656d616e7469632d747970652d6b657900010301000000000000000400000000000000040000000000000001000000000000001b7a6f6d2e73656d616e7469632d747970652d6b657900010f0200000000000000100000000000000008
 ```
 
 Its SHA-256 is
-`0960aace205395c9ec049c04e7e1509d6945c72f128fce221771a23adbf98fdb`.
+`a135f785825394ebf59424190fb0fd14c8f2157063bcc463123b7160318eefd9`.
 
 Cross-module target artifacts use a separate manifest:
 
@@ -279,7 +279,7 @@ sequence, then layout revision and reject duplicate complete role keys.
 `TargetArtifactAbiRevision` is SHA-256 over this exact stream:
 
 ```text
-ASCII("zom.target-artifact-abi.v1")
+ASCII("zom.target-artifact-abi")
 0x00
 uint64be(expandedModuleKeyByteLength)
 expandedModuleKeyBytes
@@ -306,14 +306,14 @@ manifest or artifact.
 
 The independent framing oracle uses module bytes `a1`, interface-revision bytes
 `11`, target-spec bytes `22`, one already-encoded descriptor `b2`, and layout-
-revision bytes `33`. Its complete 149-byte preimage is:
+revision bytes `33`. Its complete 146-byte preimage is:
 
 ```text
-7a6f6d2e7461726765742d61727469666163742d6162692e7631000000000000000001a11111111111111111111111111111111111111111111111111111111111111111222222222222222222222222222222222222222222222222222222222222222200000000000000010000000000000001b23333333333333333333333333333333333333333333333333333333333333333
+7a6f6d2e7461726765742d61727469666163742d616269000000000000000001a11111111111111111111111111111111111111111111111111111111111111111222222222222222222222222222222222222222222222222222222222222222200000000000000010000000000000001b23333333333333333333333333333333333333333333333333333333333333333
 ```
 
 Its SHA-256 is
-`42700473dc56112c4c8c31f2c528d3305d0115c5c52df26fc9f45b0808369ec2`.
+`290d95e132c99dba891dd3519927363c33800346b055e1dcbca340f45183f9b9`.
 This manifest is emitted and consumed by
 RFC 0010 LIR/backend artifact code. It is not stored in
 `VerifiedModuleInterface`, does not participate in `ModuleInterfaceRevision`,
@@ -614,7 +614,7 @@ or an RFC 0010 feature-boundary proof.
 The FFI facts revision is SHA-256 over this exact stream:
 
 ```text
-ASCII("zom.ffi-boundary-facts.v2")
+ASCII("zom.ffi-boundary-facts")
 0x00
 SemanticContextFingerprint
 uint64be(expandedModuleKeyByteLength)
@@ -637,14 +637,14 @@ any malformed encoded length is `CanonicalCodecMismatch`. The first two map to
 no facts or proof. The independent oracle uses a zero fingerprint, module bytes
 `a1`, checked revision bytes `22`, executable
 `MirRevisionId { phase: 0x04, digest: 0x33 * 32 }`, target-spec bytes `44`, and
-one definition record `b3`. Its complete 181-byte preimage is:
+one definition record `b3`. Its complete 178-byte preimage is:
 
 ```text
-7a6f6d2e6666692d626f756e646172792d66616374732e76320000000000000000000000000000000000000000000000000000000000000000000000000000000001a12222222222222222222222222222222222222222222222222222222222222222043333333333333333333333333333333333333333333333333333333333333333444444444444444444444444444444444444444444444444444444444444444400000000000000010000000000000001b3
+7a6f6d2e6666692d626f756e646172792d66616374730000000000000000000000000000000000000000000000000000000000000000000000000000000001a12222222222222222222222222222222222222222222222222222222222222222043333333333333333333333333333333333333333333333333333333333333333444444444444444444444444444444444444444444444444444444444444444400000000000000010000000000000001b3
 ```
 
 Its SHA-256 is
-`9f5ac18311f9aba4af2e66107a55d80f9444ac66714ac8d9fb127d1735637b35`.
+`d3185bbb040dd55891ee20be06e9e6128a5a054e4984ae0382a1c364adf57954`.
 
 The direct replacement deletes prototype diagnostics `ZOM6001-ZOM6007` and
 `ZOM9901-ZOM9903`. Unsupported unwind migrates from `ZOM6006` to RFC 0010's
@@ -764,7 +764,7 @@ alternatives by canonical key, and rejects unknown payload layouts before IR
 emission. Function error layouts derive canonical union identity without an
 owning polymorphic vector. The first typed lowering slice materializes a checked
 integer constant, constructs tag-zero success values for tagged error unions,
-passes through direct-success layouts, and emits deterministic `zom.ir.v0` text
+passes through direct-success layouts, and emits deterministic `zom.ir` text
 through `zomc --emit ir`.
 
 This experiment does not consume RFC 0005 `ErrorUnionShapeFact`, RFC 0009's
@@ -799,7 +799,7 @@ The runtime reports abort support and unwind non-support. Its
 `__zom_begin_panic_unwind` symbol currently delegates to abort. The compiler
 option defaults to abort, accepts `--panic abort`, and recognizes
 `--panic unwind` only to reject it after checking and before final emission.
-The IR conformance test proves the rejected command emits no `zom.ir.v0`
+The IR conformance test proves the rejected command emits no `zom.ir`
 header. Future target capability plumbing must preserve this rejection until a
 runtime and target advertise the complete unwind contract together.
 
@@ -868,7 +868,7 @@ enough output for tests after stripping absolute paths and backtrace addresses.
 16. `python3 scripts/check-rfc.py` passes.
 17. `python3 scripts/check-format.py` passes after implementation changes.
 18. `ctest --preset default --output-on-failure` passes before `LANDED`.
-19. The 423-byte descriptor oracle and every tag-width boundary reproduce the
+19. The 405-byte descriptor oracle and every tag-width boundary reproduce the
     exact `ErrorUnionLayoutRevision`; any schema change changes the domain.
 20. Every public operation returns RFC 0010 `IrOperationResult`, except the
     source-rejecting FFI gate specialization of
@@ -879,14 +879,14 @@ enough output for tests after stripping absolute paths and backtrace addresses.
     remain target-specific backend artifacts. Same-package cross-crate and
     cross-package calls consume identical descriptor bytes under worker and
     input permutations without adding target facts to the semantic interface.
-    The 149-byte artifact oracle and zero/one/two-layout fixtures cover role-key
+    The 146-byte artifact oracle and zero/one/two-layout fixtures cover role-key
     order, duplicate roles, descriptor framing, descriptor/revision swaps,
     interface and target mutations, direct concatenation, and ordinary sequence
     framing. Each mutation asserts its exact `InputRevisionMismatch`,
     `AdditionalFact`, `InvalidFact`, or `CanonicalCodecMismatch` classification,
     `ZOM9948` or `ZOM9949`, stable sort position, and absence of a manifest and
     artifact.
-22. The FFI boundary verifier reproduces the 181-byte facts oracle, binds the
+22. The FFI boundary verifier reproduces the 178-byte facts oracle, binds the
     exact executable MIR revision and `TargetSpecId`, emits exactly `ZOM6101`
     or `ZOM6102` for its two source failures, maps every invariant to RFC 0011
     identity diagnostics, `ZOM9949`, or `ZOM9955`, and publishes no verified
@@ -937,7 +937,7 @@ evidence.
    and FFI conformance tests.
 8. Enable unwind for a runtime/target pair only in the same change that adds
    unwinder, cleanup, catch, FFI containment, and target test support.
-9. Delete `compiler/irgen`, `zom.ir.v0`, `--emit ir`, prototype diagnostics,
+9. Delete `compiler/irgen`, `zom.ir`, `--emit ir`, prototype diagnostics,
    and the old IR runner in the direct RFC 0010 cutover.
 10. Update Chapter 11 and backend design docs, run every acceptance gate, and
     enter `LANDED` only after implementation evidence is complete.
@@ -956,7 +956,7 @@ evidence.
   `--emit=llvm-ir`. MIR expectations own logical `?!`, `!!`, cleanup, and panic
   metadata; LIR expectations own tags, payload layout, runtime targets, and ABI;
   LLVM IR expectations own translated control flow and calls. The replacement
-  deletes `products/zomlang/tests/conformance/runners/ir/` and the `zom.ir.v0`
+  deletes `products/zomlang/tests/conformance/runners/ir/` and the `zom.ir`
   expectations.
 - Conformance: diagnostics and AST tests continue to cover checker legality for
   `ZOM4025` and `ZOM4026`; the IR runner proves that unsupported unwind fails

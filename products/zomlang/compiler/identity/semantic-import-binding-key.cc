@@ -123,7 +123,7 @@ zc::Array<uint8_t> SemanticImportBindingKey::encode() const {
   record.encodeUint8(static_cast<uint8_t>(localNamespaceValue));
   localNameValue.encode(record);
 
-  constexpr auto domain = "zom.semantic-import-binding.v0"_zc;
+  constexpr auto domain = "zom.semantic-import-binding"_zc;
   const auto recordBytes = record.finish();
   return domainSeparated(domain, recordBytes.asPtr());
 }

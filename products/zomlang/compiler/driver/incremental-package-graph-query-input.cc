@@ -589,10 +589,10 @@ zc::Maybe<CanonicalPackageGraph> CanonicalPackageGraph::decodeCanonical(
                                zc::mv(crates), zc::mv(crateEdges));
 }
 
-zc::StringPtr PackageGraphInput::domain() { return "zom.query.package-graph.v1"_zc; }
+zc::StringPtr PackageGraphInput::domain() { return "zom.query.package-graph"_zc; }
 
 query::QueryKindContract PackageGraphInput::contract() {
-  auto contract = query::QueryKindContract::input(domain(), 1, 1, query::Durability::Medium);
+  auto contract = query::QueryKindContract::input(domain(), query::Durability::Medium);
   return zc::mv(ZC_REQUIRE_NONNULL(contract));
 }
 

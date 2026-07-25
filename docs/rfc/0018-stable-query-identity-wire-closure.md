@@ -72,7 +72,7 @@ can be implemented.
 - This RFC does not approve implementation of the query runtime before the
   stable identity replacement is complete.
 - This RFC does not retain superseded identity decoders, aliases, registries, or
-  compatibility constructors.
+  alternate constructors.
 
 ## Prior Art
 
@@ -83,9 +83,9 @@ not spans or allocation order, determine persistent identity.
 
 Clang USRs and Swift symbol identity encode declaration context and semantic
 signature information while keeping source locations out of ordinary named
-symbol identity. ZOM adopts their context-plus-header shape but uses a closed
-canonical record with explicit versioned domains so producer and verifier can
-reject incomplete encodings.
+symbol identity. ZOM adopts their context-plus-header shape but uses closed
+canonical records and semantic domains so producer and verifier can reject
+incomplete encodings.
 
 Salsa, rustc queries, and Skyframe distinguish a computation key from the
 tracked inputs read while computing it. ZOM applies that separation to module
@@ -133,8 +133,8 @@ stable-identity text is less specific.
 The acceptance change synchronizes those seven RFC documents and the RFC 0005,
 RFC 0014, RFC 0015, RFC 0017, and RFC 0018 trackers in the same documentation
 series. A producer, verifier, or test may not select between the
-position-bearing and semantic records, and no prior decoder or schema tag
-remains after implementation starts.
+position-bearing and semantic records. Every implementation path uses the
+canonical semantic records and tags defined here.
 
 ### Enclosing Stable Owners
 
@@ -177,7 +177,7 @@ present, the raw 32-byte `OverloadHeaderDigest`. `DefinitionKey` is exactly:
 
 ```text
 SHA-256(
-  ASCII("zom.named-item-header.v0")
+  ASCII("zom.named-item-header")
   || 0x00
   || Encode(DefinitionIdentityRecord)
 )
@@ -229,7 +229,7 @@ parameter-mode field because reference shape is already represented by
 `CanonicalHeaderTypeSyntax` and the current language has no ordinary
 move-parameter producer. External ABI tags are the current frontend set
 `Cdecl = 0x01`, `Stdcall = 0x02`, and `ZomNative = 0x03`. Variadicness and
-backend calling conventions are not ABI variants and are not admitted by v0.
+backend calling conventions are not ABI variants and are not admitted by canonical.
 
 `CanonicalOverloadHeader` encodes these fields in order:
 
@@ -285,9 +285,8 @@ A non-external callable has absent `externalAbi`; every `ExternDecl` has a
 present ABI. An omitted ABI, `"C"`, and `"Cdecl"` normalize to `Cdecl`;
 `"system"` normalizes to `Stdcall`; and `"zom-cdecl"` normalizes to
 `ZomNative`. Every other spelling is rejected by the parser and cannot enter a
-header. V0 has no ordinary callable `async` or `unsafe` producer, so neither
-field exists; admitting either semantic qualifier requires a new identity
-domain.
+header. The canonical contract has no ordinary callable `async` or `unsafe`
+producer, so neither field exists.
 
 Inline generic bounds and where-clause bounds normalize into the single
 `obligations` set. Before creating obligations, producer and verifier each
@@ -411,7 +410,7 @@ CanonicalAssociatedBinding {
 
 Union and intersection normalization recursively flattens the same variant,
 sorts members by complete canonical bytes, removes duplicate bytes, and
-collapses a singleton to its member. Dynamic v0 has exactly one named
+collapses a singleton to its member. Dynamic canonical has exactly one named
 principal, including its generic arguments, and no lifetime field because
 those are the only current parser semantics. A non-named principal is an
 invalid record and has no producer. Dynamic markers, associated bindings, and
@@ -420,7 +419,7 @@ Ordered tuple, function-parameter, path-suffix, and type-argument children
 retain source order. `FixedArrayTypeExpr` normalizes to `FixedArray`,
 `ArrayTypeExpr` to `DynamicArray`, and `SliceArrayTypeExpr` to `Slice`.
 `DynamicArray` and `Slice` are never aliases and must remain unequal in
-overload identity. A fixed-array length is admitted only when the current v0
+overload identity. A fixed-array length is admitted only when the current canonical
 constant evaluator accepts the syntax as an unsigned 64-bit integer. The
 normalized integer is encoded directly; expression syntax never enters the
 identity record. Failure to evaluate the length rejects the candidate with the
@@ -486,7 +485,7 @@ parser or arena identity.
 
 ```text
 SHA-256(
-  ASCII("zom.overload-header.v0")
+  ASCII("zom.overload-header")
   || 0x00
   || Encode(CanonicalOverloadHeader)
 )
@@ -516,7 +515,7 @@ is exactly:
 
 ```text
 SHA-256(
-  ASCII("zom.impl-header.v0")
+  ASCII("zom.impl-header")
   || 0x00
   || Encode(ImplIdentityRecord)
 )
@@ -613,7 +612,7 @@ ordinal, in that order. `GenericParameterKey` is exactly:
 
 ```text
 SHA-256(
-  ASCII("zom.generic-parameter.v0")
+  ASCII("zom.generic-parameter")
   || 0x00
   || Encode(GenericParameterIdentityRecord)
 )
@@ -630,7 +629,7 @@ position. The receiver never consumes an ordinary ordinal.
 
 ```text
 SHA-256(
-  ASCII("zom.callable-parameter.v0")
+  ASCII("zom.callable-parameter")
   || 0x00
   || Encode(CallableParameterIdentityRecord)
 )
@@ -694,7 +693,7 @@ Each currently admitted enum value has tag `0x01`; every other tag is invalid.
 Its canonical bytes are:
 
 ```text
-ASCII("zom.module-resolution-policy.v0")
+ASCII("zom.module-resolution-policy")
 0x00
 0x01
 0x01
@@ -757,7 +756,7 @@ ModuleCatalogPathBucket {
 `CanonicalModulePath` is a non-empty RFC 0011 sequence of
 `ModulePathSegment`, with the same segment normalization and encoding used by
 `ModuleKey.path`. `ModuleCatalogPathBucketKey` has domain
-`zom.module-catalog-path-bucket.v0`, one zero byte, expanded `CrateKey`, then
+`zom.module-catalog-path-bucket`, one zero byte, expanded `CrateKey`, then
 that complete path sequence. It contains no source, root, target, or revision
 field.
 
@@ -792,7 +791,7 @@ but cannot execute a resolution provider whose demanded buckets remain equal.
 
 ### Semantic Module Resolution Key
 
-`ModuleResolutionKey` uses domain `zom.module-resolution.v0`, one zero byte,
+`ModuleResolutionKey` uses domain `zom.module-resolution`, one zero byte,
 and these fields in order: expanded requester `ModuleKey`, one-byte
 `ModuleDependencyKind`, optional non-empty normalized module path, optional
 `DependencyAlias`, and the complete `ModuleResolutionPolicyKey` canonical bytes
@@ -959,9 +958,8 @@ The replaced RFC 0004 `ScopeOwner` alternative retains tag `0x03` and expands
 its occurrence handle to the complete `ImplSourceOccurrenceKey` payload. The
 replaced RFC 0014 `SelfOwner::Impl` alternative likewise retains tag `0x03` but
 expands its occurrence handle to that complete key instead of an `ImplKey`.
-Module and definition owner tags and payloads are unchanged. These are direct
-codec replacements; no second occurrence-owner tag or compatibility decoder
-is retained.
+Module and definition owner tags and payloads use the canonical
+occurrence-owner codec.
 
 Occurrence handles are issued independently within each frozen module after
 identity grouping, in the canonical source order already defined for
@@ -1177,10 +1175,9 @@ explicit.
 
 ## Compatibility And Rollout
 
-The definition, implementation, and module-request key models are replaced in
-one series. Every producer, verifier, registry, diagnostic, fixture, canonical
-vector, and caller migrates together. No superseded decoder, alias, dual
-registry, compatibility constructor, or selector remains.
+The definition, implementation, and module-request key models form one
+coherent contract. Every producer, verifier, registry, diagnostic, fixture,
+canonical vector, and caller uses that contract.
 
 RFC 0017 implementation remains blocked at stable identity until this RFC is
 accepted and the replacement tests pass. If implementation must be rolled
@@ -1237,7 +1234,7 @@ different Python environments.
   materialization.
 - Generic renaming is alpha-equivalent by binder depth and ordinal; header
   schema tags, field order, collection normalization, and ABI tags match the
-  dedicated v0 inventory.
+  dedicated canonical inventory.
 - Dynamic arrays and slices have distinct header-schema variants, canonical
   vectors, semantic types, and overload identities.
 - Parser, AST, and specification expose exactly `T[]` as dynamic array, `[T]`
@@ -1323,7 +1320,7 @@ different Python environments.
    and grammar-reference contracts. Positive marker implementations without
    `unsafe` must remain AST candidates for the checker-owned `ZOM4091`
    diagnostic for both short and qualified paths. Complete this closure before
-   generating the dedicated header-syntax v0 wire inventory.
+   generating the dedicated header-syntax canonical wire inventory.
 2. Add canonical structural syntax, overload-header, owner-sum, subordinate
    parameter, policy, module-resolution record types, and the two narrow module
    resolution dependency queries with fixed vectors.

@@ -16,8 +16,8 @@
 namespace zomlang::compiler::binder {
 namespace {
 
-constexpr zc::StringPtr kEnvironmentDomain = "zom.module-resolution-environment.v0"_zc;
-constexpr zc::StringPtr kReceiptDomain = "zom.module-resolution-receipt.v0"_zc;
+constexpr zc::StringPtr kEnvironmentDomain = "zom.module-resolution-environment"_zc;
+constexpr zc::StringPtr kReceiptDomain = "zom.module-resolution-receipt"_zc;
 constinit std::atomic<uint64_t> gNextEnvironmentIssuer{1};
 
 zc::Maybe<uint64_t> issueEnvironmentIssuer() {

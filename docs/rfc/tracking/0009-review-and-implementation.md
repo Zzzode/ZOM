@@ -128,9 +128,9 @@ only to the successful payload and cannot modify or reconstruct residuals.
 Chapter 3 is part of the documentation contract and contains the same selected
 interface forms, primitive-only forms, and `IndexMut -> &mut Output` place
 contract. The field addition increments the revision domain to
-`zom.dispatch-facts-revision.v1`; the corrected executable 121-byte oracle
+`zom.dispatch-facts-revision`; the executable 118-byte oracle
 hashes to
-`25ca384dcdb9cd5225d8ec8abfb25c68865c2c6ca4518c8f30ffdc359a51835c`.
+`b50df7fb9f580a517707e385c6a90d91860031cd018bf9a2057a8a5be3f038bf`.
 
 All earlier entry verdicts are stale; no approval or status transition is
 recorded.
@@ -268,9 +268,9 @@ Formal verification returned RFC 0006 because its FFI oracle encoded only the
 digest portion of `MirRevisionId`, and returned RFC 0010 because
 `TargetSpecId` and the feature-gate registry lacked canonical codecs and a
 verifiable completeness snapshot. The response adds the executable MIR phase
-tag to the FFI proof, defines the complete target-spec codec and 111-byte
+tag to the FFI proof, defines the complete target-spec codec and 108-byte
 oracle, defines non-zero numeric gate IDs and the registry snapshot codec with
-a 49-byte oracle, binds every proof to context, module, executable MIR, target,
+a 46-byte oracle, binds every proof to context, module, executable MIR, target,
 and registry revision, and fixes deterministic multi-gate rejection ordering.
 The coordinated formal-review hashes are RFC 0005
 `2e25177ce1d38cfe9fc5d83508ac449cea57b69ff394537462d7fb1324aafe69`,
@@ -291,8 +291,7 @@ Formal verification found that RFC 0006 maintained target-profile strings and
 panic/object tags separately from RFC 0010 `TargetSpecId`. The response
 deletes that second identity codec. Error-union descriptors and target-artifact
 manifests now carry only RFC 0010's 32-byte `TargetSpecId`; layout construction
-uses the matching `VerifiedTargetSelection`. The descriptor domain advances
-to v2 with a 423-byte oracle. The coordinated formal-review hashes are RFC 0005
+uses the matching `VerifiedTargetSelection`. The descriptor uses the canonical domain with a 405-byte oracle. The coordinated formal-review hashes are RFC 0005
 `2e25177ce1d38cfe9fc5d83508ac449cea57b69ff394537462d7fb1324aafe69`,
 RFC 0006
 `e294b9706636863788f2dcf8a72b1bbbde116f2f09464f9f8990121a0700e29f`,
@@ -374,7 +373,7 @@ decision is recorded by this response.
 
 ### 2026-07-11 Forced Cast Dependency Reopen
 
-RFC 0005 restores `ForcedChecked` and advances the checked-facts codec to v2;
+RFC 0005 restores `ForcedChecked` and uses the canonical checked-facts codec;
 RFC 0006 and RFC 0010 now carry the corresponding cast-or-panic contract. The
 coordinated proposal hashes are RFC 0005
 `f382b82aaa055fb3676a1578fcf73e1ba1ca030671b96e97294bbc55db8c19c1`,
@@ -405,7 +404,7 @@ Fresh exact-hash review returned RFC 0009 proposal hash
 `b51775967f3df96b692b4620ad083125a4dab21e14ce2a2b652c8bd1f72a5d9d`.
 The dispatch-revision oracle contained a count and per-record length but the
 normative text had not defined the multi-record framing or duplicate rules.
-The tracker also retained obsolete checked-facts v2 language, stale dependency
+The tracker also retained obsolete checked-facts canonical language, stale dependency
 state, and cast/panic ownership that belongs to RFC 0005 and RFC 0010 rather
 than logical dispatch.
 
@@ -438,7 +437,7 @@ with tracker hash
 Semantic review approved the binder/checker, module-system, error-system,
 IR/backend, and spec-audit surfaces. Invariant review approved the dispatch
 revision framing, evidence lifetime, deterministic ordering, and verification
-surfaces. The 121-byte oracle recomputes exactly, and zero/one/two-record,
+surfaces. The 118-byte oracle recomputes exactly, and zero/one/two-record,
 duplicate, illegal-framing, selection, residual, and permutation matrices are
 closed. `scripts/check-rfc.py`, parser coverage, lexer architecture, and
 `git diff --check` pass.

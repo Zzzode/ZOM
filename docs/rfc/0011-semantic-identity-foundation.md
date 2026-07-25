@@ -214,7 +214,7 @@ APIs distinguish them by type. No conversion from fingerprint to brand exists.
 The fingerprint byte stream is exactly:
 
 ```text
-ASCII("zom.semantic-context.v0")
+ASCII("zom.semantic-context")
 0x00
 EncodeSequence(sorted PackageKey values)
 EncodeSequence(sorted PackageDependencyEdgeKey values)
@@ -225,9 +225,8 @@ EncodeSequence(sorted ModuleKey values)
 ```
 
 The fingerprint is SHA-256 over that stream. Changing any canonical key shape,
-tag allocation, field order, or semantic option requires changing the domain
-suffix and directly invalidating old fingerprints. No compatibility decoder is
-retained.
+tag allocation, field order, or semantic option replaces the domain, codec,
+fixtures, and fingerprints together.
 
 `CanonicalEncoder` is owned by this RFC and has one encoding rule per value:
 
@@ -557,7 +556,7 @@ BuildScriptOutputRecord {
 }
 ```
 
-The key is SHA-256 over `ASCII("zom.build-script-output.v0")`, one zero byte,
+The key is SHA-256 over `ASCII("zom.build-script-output")`, one zero byte,
 and the canonical encoding of `BuildScriptOutputRecord`. The build-script crate
 itself uses `buildScriptOutput = none`; final ordinary crate keys contain the
 matching output key when the package declares a build script. No partial
@@ -734,7 +733,7 @@ nearest stable named-item query.
 
 ```text
 SHA-256(
-  ASCII("zom.named-item-header.v0")
+  ASCII("zom.named-item-header")
   || 0x00
   || Encode(DefinitionIdentityRecord)
 )
@@ -744,7 +743,7 @@ SHA-256(
 
 ```text
 SHA-256(
-  ASCII("zom.impl-header.v0")
+  ASCII("zom.impl-header")
   || 0x00
   || Encode(ImplIdentityRecord)
 )
@@ -884,8 +883,8 @@ The canonical field order is normative:
 | `EnclosingStableOwnerKey` | one-byte owner tag, referenced raw 32-byte digest |
 | `DefinitionIdentityRecord` | expanded stable `ModuleKey`, owner sequence, definition-kind tag, namespace tag, NFC declared name, optional overload-header digest |
 | `ImplIdentityRecord` | expanded stable `ModuleKey`, owner sequence, generic parameters, polarity, safety, canonical trait reference, self-type syntax, sorted-unique obligations |
-| `DefinitionKey` | SHA-256 of `zom.named-item-header.v0`, NUL, and the complete definition record |
-| `ImplKey` | SHA-256 of `zom.impl-header.v0`, NUL, and the complete implementation record |
+| `DefinitionKey` | SHA-256 of `zom.named-item-header`, NUL, and the complete definition record |
+| `ImplKey` | SHA-256 of `zom.impl-header`, NUL, and the complete implementation record |
 
 These fixed codec vectors are independent implementation oracles:
 
@@ -895,7 +894,7 @@ These fixed codec vectors are independent implementation oracles:
 | empty sequence | `0000000000000000` | `af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc` |
 | local package `a@0.0.0` at workspace root with no features | `030000000000000000000000000000000000000001610000000000000005302e302e300000000000000000` | `b0c7b4f55c7faf6d4522b3a6f81e979347436c782d29ad2eeaa09985479d40a6` |
 | target dependency edge from that package through alias `dep` to the same key with package name `b` | `030000000000000000000000000000000000000001610000000000000005302e302e300000000000000000000000000000000364657001030000000000000000000000000000000000000001620000000000000005302e302e300000000000000000` | `b4a6fdda29af9e3c0b0d6a21b062aa94be3315bc47bde3f432d46e85766b2751` |
-| fingerprint domain plus six empty sequences | ASCII `zom.semantic-context.v0`, `00`, then 48 zero bytes | `aa36edfdf536f061cd028efd3cfe5003474aee9aa3ab39f294d3b42a95eaae5e` |
+| fingerprint domain plus six empty sequences | ASCII `zom.semantic-context`, `00`, then 48 zero bytes | `aa36edfdf536f061cd028efd3cfe5003474aee9aa3ab39f294d3b42a95eaae5e` |
 
 The final row is a codec fixture, not a valid empty compilation context. A
 second fingerprint fixture contains the sorted packages `a` and `b` from the
@@ -1078,7 +1077,7 @@ unsanitized URLs, or raw canonical byte strings.
 Identity registries expose one deterministic debug dump:
 
 ```text
-zom.identity.v0
+zom.identity
 [packages]
 package <lowercase canonical-key hex>
 [crates]
@@ -1100,7 +1099,7 @@ The encoding is UTF-8 with LF line endings. Every header or entry occupies
 exactly one line, every entry has the single ASCII spaces shown above, hex is
 lowercase with two digits per byte and no prefix, there are no blank lines or
 trailing spaces, and the file ends with one LF. Changing the grammar replaces
-`v0` directly and regenerates every snapshot.
+the dump contract and regenerates every snapshot.
 
 The implementation must add `scripts/check-identity-architecture.py` as the
 executable architecture gate. It must compare both the generated AST schema and
@@ -1301,7 +1300,7 @@ is accepted.
    occurrence groups, one context-global order per semantic tag, and the
    specified freeze schedule.
 6. Add the schema-and-live-producer declaration inventory gate and deterministic
-   `zom.identity.v0` dump.
+   `zom.identity` dump.
 7. Add validation facts, bug-bundle retention, deterministic grouping, fatal
    context termination, and the exact `ZOM9910-ZOM9921` diagnostic mapping.
 8. Migrate source and module ownership, then binder definitions and impl
@@ -1346,7 +1345,7 @@ is accepted.
   distinct output keys, and changed output/content digests. Every gating
   permutation compares canonical keys, fingerprints, dumps, diagnostics, and
   context-success/failure status byte-for-byte.
-- Generated files: deterministic `zom.identity.v0` expectations, declaration
+- Generated files: deterministic `zom.identity` expectations, declaration
   inventory, and orphan checks.
 - Architecture gate after implementation:
   `python3 scripts/check-identity-architecture.py` with the explicit

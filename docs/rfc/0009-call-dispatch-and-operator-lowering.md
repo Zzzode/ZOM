@@ -406,7 +406,7 @@ for sorting.
 `DispatchFactsRevision` is SHA-256 over this exact stream:
 
 ```text
-ASCII("zom.dispatch-facts-revision.v1")
+ASCII("zom.dispatch-facts-revision")
 0x00
 SemanticContextFingerprint
 uint64be(expandedModuleKeyByteLength)
@@ -427,15 +427,15 @@ byte-framed; direct concatenation and RFC 0011 ordinary sequence framing are
 invalid for this revision domain.
 
 The independent oracle uses a zero fingerprint, module bytes `a1`, 32 checked-
-revision bytes `22`, and one canonical record `b3`. Its complete 121-byte
+revision bytes `22`, and one canonical record `b3`. Its complete 118-byte
 preimage is:
 
 ```text
-7a6f6d2e64697370617463682d66616374732d7265766973696f6e2e76310000000000000000000000000000000000000000000000000000000000000000000000000000000001a1222222222222222222222222222222222222222222222222222222222222222200000000000000010000000000000001b3
+7a6f6d2e64697370617463682d66616374732d7265766973696f6e0000000000000000000000000000000000000000000000000000000000000000000000000000000001a1222222222222222222222222222222222222222222222222222222222222222200000000000000010000000000000001b3
 ```
 
 Its SHA-256 is
-`25ca384dcdb9cd5225d8ec8abfb25c68865c2c6ca4518c8f30ffdc359a51835c`.
+`b50df7fb9f580a517707e385c6a90d91860031cd018bf9a2057a8a5be3f038bf`.
 
 ### Diagnostics
 
@@ -530,7 +530,7 @@ vtable calls.
 
 ### C++-Style Overload Sets
 
-Rejected. ZOM has no implicit overload ranking in v1. Overload-like behavior is
+Rejected. ZOM has no implicit overload ranking in canonical. Overload-like behavior is
 expressed through named interfaces and explicit generic bounds.
 
 ### Treat Operators As Syntax-Only Builtins
@@ -652,7 +652,7 @@ consumer to verified dispatch facts; no adapter or compatibility target remains.
 - Verifier tests: exact missing/additional/wrong-kind/stale/foreign/duplicate
   mutations from a complete candidate and exact `ZOM9937-ZOM9941` results.
 - Codec tests: every tag and field order, numeric-slot independence, the
-  121-byte non-empty oracle, zero/one/two-record framing, record-order reversal,
+  118-byte non-empty oracle, zero/one/two-record framing, record-order reversal,
   duplicate expanded keys, duplicate complete records, direct concatenation,
   ordinary sequence framing, real composite records, and worker permutations.
 - Lit and conformance: successful ordinary, member, qualified-interface,
@@ -685,7 +685,7 @@ None
 | 2026-07-09 | REVIEW | Added static class method dispatch records for `Counter.make()`-style calls, preserving `ReceiverMode::None` and omitting implicit receiver arguments. |
 | 2026-07-09 | REVIEW | Added struct instance method dispatch coverage for `Point.norm()`-style calls, including ztest dispatch assertions and CLI conformance coverage. |
 | 2026-07-09 | REVIEW | Added missing concrete member-call diagnostics conformance coverage and suppressed the cascading non-function-call diagnostic after a member lookup failure. |
-| 2026-07-09 | REVIEW | Clarified that ambiguous concrete method dispatch is not a v1 checker target because duplicate same-scope methods are binder errors; imported method dispatch remains blocked on RFC 0008 module signature publication. |
+| 2026-07-09 | REVIEW | Clarified that ambiguous concrete method dispatch is not a canonical checker target because duplicate same-scope methods are binder errors; imported method dispatch remains blocked on RFC 0008 module signature publication. |
 | 2026-07-09 | REVIEW | Added direct-interface `dyn` receiver method lookup and `DynVTable` dispatch records for calls such as `drawable.draw()`, with unit and CLI conformance coverage. |
 | 2026-07-09 | REVIEW | Added parser/spec support and checker dispatch records for qualified interface calls such as `Drawable::draw(sprite)`, with unit and CLI conformance coverage. |
 | 2026-07-09 | REVIEW | Added an explicit checker-completion freeze boundary for dispatch records so later phases cannot mutate checked dispatch metadata. |

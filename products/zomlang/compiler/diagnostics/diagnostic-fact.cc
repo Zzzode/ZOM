@@ -13,7 +13,7 @@
 namespace zomlang::compiler::diagnostics {
 namespace {
 
-constexpr zc::StringPtr kDiagnosticFactsDomain = "zom.source-diagnostic-facts.v1"_zc;
+constexpr zc::StringPtr kDiagnosticFactsDomain = "zom.source-diagnostic-facts"_zc;
 constexpr uint64_t kMaximumFacts = 4096;
 constexpr uint64_t kMaximumArguments = 3;
 constexpr uint64_t kMaximumRanges = 64;
@@ -104,8 +104,7 @@ int compareFactBase(const DiagnosticFact& left, const DiagnosticFact& right) {
   if (comparison != 0) { return comparison; }
   comparison = compareScalar(left.emitterColumn, right.emitterColumn);
   if (comparison != 0) { return comparison; }
-  comparison =
-      compareScalar(static_cast<uint32_t>(left.code), static_cast<uint32_t>(right.code));
+  comparison = compareScalar(static_cast<uint32_t>(left.code), static_cast<uint32_t>(right.code));
   if (comparison != 0) { return comparison; }
   comparison = compareStrings(left.arguments.asPtr(), right.arguments.asPtr());
   if (comparison != 0) { return comparison; }
@@ -231,8 +230,8 @@ bool DiagnosticFact::operator==(const DiagnosticFact& other) const noexcept {
 
 bool isSourceSyntaxDiagnostic(DiagID code) noexcept {
   switch (code) {
-#define DIAG(Code, Name, ...)       \
-  case DiagID::Name:                \
+#define DIAG(Code, Name, ...) \
+  case DiagID::Name:          \
     return true;
 #include "zomlang/compiler/diagnostics/diagnostics-parse.def"
 #undef DIAG
@@ -293,8 +292,8 @@ zc::Array<uint8_t> encodeDiagnosticFacts(zc::ArrayPtr<const DiagnosticFact> fact
   return encoder.finish();
 }
 
-zc::Maybe<zc::Vector<DiagnosticFact>> decodeDiagnosticFacts(
-    zc::ArrayPtr<const uint8_t> encoded, uint64_t sourceByteLength) {
+zc::Maybe<zc::Vector<DiagnosticFact>> decodeDiagnosticFacts(zc::ArrayPtr<const uint8_t> encoded,
+                                                            uint64_t sourceByteLength) {
   identity::CanonicalDecoder decoder(encoded);
   auto domain = decoder.decodeByteString(kDiagnosticFactsDomain.size());
   auto count = decoder.decodeSequenceSize(kMaximumFacts);
@@ -339,7 +338,7 @@ zc::Maybe<zc::Vector<DiagnosticFact>> decodeDiagnosticFacts(
       auto replacement = decoder.decodeByteString(kMaximumTextBytes);
       if (range == zc::none || replacement == zc::none) { return zc::none; }
       fixIts.add(DiagnosticFixItFact{ZC_ASSERT_NONNULL(range),
-                                    zc::str(ZC_ASSERT_NONNULL(replacement).asChars())});
+                                     zc::str(ZC_ASSERT_NONNULL(replacement).asChars())});
     }
 
     auto secondaryCount = decoder.decodeSequenceSize(kMaximumSecondary);
@@ -360,8 +359,8 @@ zc::Maybe<zc::Vector<DiagnosticFact>> decodeDiagnosticFacts(
         return zc::none;
       }
       secondary.add(SecondaryDiagnosticFact{childCode, ZC_ASSERT_NONNULL(childPrimary),
-                                             zc::mv(ZC_ASSERT_NONNULL(childArguments)),
-                                             zc::mv(ZC_ASSERT_NONNULL(childRanges))});
+                                            zc::mv(ZC_ASSERT_NONNULL(childArguments)),
+                                            zc::mv(ZC_ASSERT_NONNULL(childRanges))});
     }
 
     DiagnosticFact fact{decodedPhase,
@@ -380,8 +379,7 @@ zc::Maybe<zc::Vector<DiagnosticFact>> decodeDiagnosticFacts(
       const auto& previous = facts.back();
       const int baseComparison = compareFactBase(previous, fact);
       if (baseComparison > 0) { return zc::none; }
-      const uint32_t expectedOrdinal =
-          baseComparison == 0 ? previous.occurrenceOrdinal + 1 : 0;
+      const uint32_t expectedOrdinal = baseComparison == 0 ? previous.occurrenceOrdinal + 1 : 0;
       if (fact.occurrenceOrdinal != expectedOrdinal) { return zc::none; }
     } else if (fact.occurrenceOrdinal != 0) {
       return zc::none;

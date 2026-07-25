@@ -59,7 +59,7 @@ RFC 0005 also says `TypeKeyPattern` mirrors `TypeKeyNode`, but it does not
 enumerate variants, child records, tags, framing, or the exact parameter
 replacement algorithm. RFC 0014 later added `InterfaceSelf = 0x10` to the
 semantic type algebra. The prose mirror is now observably incomplete, and the
-impl overlap and orphan algorithms have no versioned canonical input.
+impl overlap and orphan algorithms have no complete canonical input.
 
 RFC 0005 stores the implemented interface as a semantic instantiation but
 describes overlap only over the self pattern. Generic parameters can occur in
@@ -86,7 +86,7 @@ modules.
   pattern stable under substitution and semantic-type normalization.
 - Define one source impl identity per behavior conformance, with independent
   bodyless marker evidence and an exact source-to-fact provenance proof.
-- Version every revision that directly embeds the changed impl-head codec.
+- Replace every dependent revision when the impl-head codec changes.
 - Provide independently reproducible byte and SHA-256 oracles.
 - Preserve accepted-proposal bytes through an additive overlay and a local
   review tracker.
@@ -96,7 +96,7 @@ modules.
 - Changing expression precedence, operator dispatch, or overload semantics.
 - Adding specialization, negative reasoning from where-constraints, or a new
   coherence algorithm.
-- Adding a semantic type variant or changing `SemanticTypeKey` v1.
+- Adding a semantic type variant or changing `SemanticTypeKey`.
 - Defining an AST-to-semantic compatibility layer.
 - Implementing compiler code before this RFC is accepted.
 - Preserving decoders or constructors for replaced revision domains.
@@ -156,10 +156,9 @@ Reference:
 ### Swift ABI mangling
 
 Swift's official ABI mangling grammar assigns explicit productions to generic
-parameters, associated types, and constrained existential forms. The grammar
-is versioned and structural rather than derived from presentation text. ZOM
-adopts explicit generic-parameter positions and a structural recursive codec;
-it does not reuse Swift's textual mangling.
+parameters, associated types, and constrained existential forms. ZOM adopts
+explicit generic-parameter positions and a structural recursive codec without
+reusing Swift's textual mangling.
 
 Reference:
 
@@ -180,11 +179,9 @@ References:
 
 ### LLVM bitcode evolution
 
-LLVM bitcode uses explicit block and record codes, version records, and stable
-numeric assignments. LLVM's bitcode declarations treat assigned numeric values
-as durable and append new values rather than renumbering existing ones. ZOM
-adopts explicit permanent tags, domain-version changes for codec changes, and
-golden byte vectors.
+LLVM bitcode uses explicit block and record codes and stable numeric
+assignments. ZOM adopts explicit permanent tags and golden byte vectors. A
+codec change replaces its domain, producers, consumers, and vectors together.
 
 References:
 
@@ -299,12 +296,12 @@ for every unaffected clause.
   publishes at most one behavior conformance under its shared authority.
 - RFC 0005 `OperatorKind` and operator display-rendering clauses are replaced
   by the complete diagnostic operator contract below.
-- RFC 0005 `SignatureFactsRevision` v0 and `CoherenceViewRevision` v0 are
-  replaced by the v1 domains and oracles below.
+- Signature facts and coherence views use the canonical domains and oracles
+  below.
 - RFC 0005's undefined derivable-marker classification and primitive-marker
   table are replaced by the context-bound `VerifiedMarkerPolicyRegistry`
   below. The registry revision is a direct parent field of signature facts,
-  module-interface v3, and coherence-view v1. `MarkerComponentStep` appends
+  the module interface, and the coherence view. `MarkerComponentStep` appends
   exact reference-referent and enum-variant-payload forms; every other marker
   evidence tag remains as stated below. RFC 0005 eager structural and builtin
   publication, finite marker-fact coverage, key-precedence support validation,
@@ -319,17 +316,17 @@ for every unaffected clause.
   impl `ZOM4054` are replaced by the span-addressed `CoherenceFailureRef`
   contract below. The per-module explicit-marker orphan phase, signature, and
   body failures retain tree-local nodes unchanged.
-- RFC 0008 module-interface projection and verification consume only the
-  combined module-interface v3 contract below. Its coherence input, frozen
+- RFC 0008 module-interface projection and verification consume the canonical
+  combined module-interface contract below. Its coherence input, frozen
   view, interface projection, and derived index consume the singular
   source-matched `ImplHead` and complete reconstructed `ImplPattern`; bucket
   entries remain verified `ImplId` map keys.
-- RFC 0014 module-interface v2 is replaced by module-interface v3. Its impl
-  owner `Self::Item` rule consumes the exact independently reconstructed
+- The module-interface impl owner `Self::Item` rule consumes the exact
+  independently reconstructed
   implemented-interface instantiation for the singular ordinary impl, not the
   removed `ImplHead.interface` field. Marker impls have no body and never
-  create contextual `Self`. All other RFC 0013 v1 and RFC 0014 semantic-type
-  v1 fields and ordering remain exact.
+  create contextual `Self`. All RFC 0013 and RFC 0014 semantic-type fields and
+  ordering remain exact.
 
 RFC 0009 remains authoritative for operator semantics and dispatch. RFC 0011
 remains authoritative for strong scalars, expanded identities, byte strings,
@@ -439,7 +436,7 @@ codec and never participates in identity.
 The independent operator oracle envelope is:
 
 ```text
-ASCII("zom.checker-operator-kind.v0")
+ASCII("zom.checker-operator-kind")
 0x00
 Encode(OperatorKind)
 ```
@@ -448,10 +445,10 @@ It is a test envelope, not a second product identity. Its vectors are:
 
 | Input | Complete preimage hex | SHA-256 |
 |---|---|---|
-| `Primitive(StrictNe)` | `7a6f6d2e636865636b65722d6f70657261746f722d6b696e642e763000011d` | `4db7a174e931636649fbd2048307af559227fcca76633fbef1c886fab5d2c15c` |
-| `CompoundAssignment(NullCoalesceAssign)` | `7a6f6d2e636865636b65722d6f70657261746f722d6b696e642e763000020f` | `36bab6dd63d2441ea47135f4770dda334eb1194ad110100c4f98a19f1b226d8e` |
-| `Assignment` | `7a6f6d2e636865636b65722d6f70657261746f722d6b696e642e76300003` | `6d835cdc1c147b13b4c563647489c8e35aae1dd0dcb14c3bc303d9fb48482578` |
-| `Error(Propagate)` | `7a6f6d2e636865636b65722d6f70657261746f722d6b696e642e7630000401` | `a6025127e0e9d9ad368360cc5421f9f3d1e7694824925654ef6ceef8b91061e2` |
+| `Primitive(StrictNe)` | `7a6f6d2e636865636b65722d6f70657261746f722d6b696e6400011d` | `d5f8705504de8ddc1fa9c162c0aa7ed45a51525c35d022665f51c7d59bfbe27e` |
+| `CompoundAssignment(NullCoalesceAssign)` | `7a6f6d2e636865636b65722d6f70657261746f722d6b696e6400020f` | `56bbf860601f317e6df86b2215daaa0d57bd0493fa7aeea8c4447e6abd3201c6` |
+| `Assignment` | `7a6f6d2e636865636b65722d6f70657261746f722d6b696e640003` | `b64344ce42585099d4bdb2c8358d4a994689f5bb683a7c4be478d8ea802806e9` |
+| `Error(Propagate)` | `7a6f6d2e636865636b65722d6f70657261746f722d6b696e64000401` | `bbfd75c73052181aa904dd07679afa60ada8491537ddc0d14ca64fc156915f72` |
 
 The diagnostic verifier reconstructs the exact operator from the verified
 primary syntax node and the semantic operation fact:
@@ -573,7 +570,7 @@ same `Parameter` indices. No wrapper variant tag remains.
 The standalone canonical key is:
 
 ```text
-ASCII("zom.type-key-pattern.v1")
+ASCII("zom.type-key-pattern")
 0x00
 Encode(TypeKeyPattern)
 ```
@@ -582,7 +579,7 @@ A `TypeKeyPatternKey` is an RFC 0011 byte string wherever a standalone child
 pattern key is required. The complete impl pattern key is:
 
 ```text
-ASCII("zom.impl-pattern.v1")
+ASCII("zom.impl-pattern")
 0x00
 Encode(ImplPattern.interface)
 Encode(ImplPattern.self)
@@ -603,16 +600,15 @@ RFC 0005 tag, field order, sequence framing, sorting, and expanded identity
 rules. Omitting, moving, or encoding `pattern` inline is
 `CanonicalCodecMismatch`.
 
-The pattern domain is v1 because it closes the combined semantic-type v1
-algebra. Tag `0x11` is reserved only for `Parameter` in this domain. A future
-semantic-type variant cannot silently reuse it: adding a semantic type requires
-a later overlay and a new pattern domain.
+The pattern domain closes the combined semantic-type algebra. Tag `0x11` is
+assigned only to `Parameter` in this domain. Adding a semantic type must update
+the complete algebra, domain contract, fixtures, and oracles together.
 
 ### Pattern Construction And Validation
 
 Pattern construction receives exactly one independently reconstructed source
 interface, one independently reconstructed semantic self
-`TypeKeyNode` v1, and the impl's source-verified unique ordered
+`TypeKeyNode`, and the impl's source-verified unique ordered
 `genericParameters` definition keys. It performs these steps:
 
 1. Expand the complete semantic interface instantiation, self node, and every
@@ -806,21 +802,21 @@ uses the local generic-parameter node only as the already-classified
 `MarkerShapeInventoryRevision` is SHA-256 over:
 
 ```text
-ASCII("zom.marker-shape-inventory.v0")
+ASCII("zom.marker-shape-inventory")
 0x00
 SemanticContextFingerprint
 EncodeSortedRecordBytes(shapes)
 ```
 
 The non-empty oracle uses a zero context fingerprint and one two-byte record
-expanding interface `a1` as `ClosedMarker`. Its complete 80-byte preimage is:
+expanding interface `a1` as `ClosedMarker`. Its complete 77-byte preimage is:
 
 ```text
-7a6f6d2e6d61726b65722d73686170652d696e76656e746f72792e763000000000000000000000000000000000000000000000000000000000000000000000000000000000010000000000000002a103
+7a6f6d2e6d61726b65722d73686170652d696e76656e746f727900000000000000000000000000000000000000000000000000000000000000000000000000000000010000000000000002a103
 ```
 
 Its SHA-256 is
-`1594af0c3d3f1cd1c3d5e58ce672673855b6924ceced83e78bf4306c77dc7e7b`.
+`1e1aa7ddd2c702f9febc3d07f3353849a697b377c9589fe68536d30fe465d7f9`.
 
 The compiler distribution supplies a canonical `MarkerPolicyConfiguration`
 beside the RFC 0004 configured-prelude requests. Configuration entries identify
@@ -831,7 +827,7 @@ Its entry shape is one expanded marker `DefinitionKey` followed by
 expanded `DefinitionKey`. `configurationRevision` is SHA-256 over:
 
 ```text
-ASCII("zom.marker-policy-configuration.v0")
+ASCII("zom.marker-policy-configuration")
 0x00
 EncodeSortedRecordBytes(configuration entries)
 ```
@@ -839,14 +835,14 @@ EncodeSortedRecordBytes(configuration entries)
 The 30-byte configuration entry used by the registry oracle expands marker
 `a1`, structural subjects `Tuple` and `NominalStruct`, builtin primitive `I32`,
 and one shared-reference requirement for marker `b2`. It produces this complete
-81-byte preimage:
+78-byte preimage:
 
 ```text
-7a6f6d2e6d61726b65722d706f6c6963792d636f6e66696775726174696f6e2e7630000000000000000001000000000000001ea100000000000000020104000000000000000103000000000000000101b2
+7a6f6d2e6d61726b65722d706f6c6963792d636f6e66696775726174696f6e000000000000000001000000000000001ea100000000000000020104000000000000000103000000000000000101b2
 ```
 
 Its SHA-256 is
-`7b17b923e4931f81d8fc06e17db18786d8e665623e83c87093aeba9493fc1dba`.
+`ed919118cfc0e2082f4caa852a6ac158ba6d2bcfe2c014967653d4d0edbc9aa0`.
 Every configured-prelude request must use this exact configuration revision in
 its RFC 0004 `Prelude` site and provenance. After RFC 0011 freezes identities
 and the marker-shape inventory freezes, the session resolves every configured
@@ -863,7 +859,7 @@ inventory and registry are both frozen.
 `MarkerPolicyRegistryRevision` is SHA-256 over this exact RFC 0011 stream:
 
 ```text
-ASCII("zom.marker-policy-registry.v0")
+ASCII("zom.marker-policy-registry")
 0x00
 SemanticContextFingerprint
 configurationRevision
@@ -873,14 +869,14 @@ EncodeSortedRecordBytes(entries)
 
 The independent non-empty oracle uses a zero context fingerprint, the exact
 configuration and marker-shape inventory revisions above, and the same 30-byte
-entry. Its complete 172-byte preimage is:
+entry. Its complete 169-byte preimage is:
 
 ```text
-7a6f6d2e6d61726b65722d706f6c6963792d72656769737472792e76300000000000000000000000000000000000000000000000000000000000000000007b17b923e4931f81d8fc06e17db18786d8e665623e83c87093aeba9493fc1dba1594af0c3d3f1cd1c3d5e58ce672673855b6924ceced83e78bf4306c77dc7e7b0000000000000001000000000000001ea100000000000000020104000000000000000103000000000000000101b2
+7a6f6d2e6d61726b65722d706f6c6963792d72656769737472790000000000000000000000000000000000000000000000000000000000000000007b17b923e4931f81d8fc06e17db18786d8e665623e83c87093aeba9493fc1dba1594af0c3d3f1cd1c3d5e58ce672673855b6924ceced83e78bf4306c77dc7e7b0000000000000001000000000000001ea100000000000000020104000000000000000103000000000000000101b2
 ```
 
 Its SHA-256 is
-`15329853e2faae147a2f5ca73c85a58c4084c70faa3d1faef278c856fd75067b`.
+`6fc49ce2840cfc9c0408b09eac225a32c0bc9728a7779d12838fb8cb386c2aec`.
 Mutation tests cover every tag, field order, key, required marker, set order,
 duplicate, context, configuration revision, and prelude-ownership edge.
 
@@ -1101,10 +1097,10 @@ one of those maps is `InvalidFact` before interface freezing and
 `InvalidProjection` at a frozen boundary. The demand-driven proof result is not
 inserted back into any of these maps.
 
-Module-interface v3 encodes the policy revision immediately after
+The module interface encodes the policy revision immediately after
 `signature_facts_revision`. `CoherenceCandidate` and
 `FrozenCoherenceView` add it immediately after `contextFingerprint`, and
-coherence-view v1 encodes it in that position. Every module submitted to one
+the coherence view encodes it in that position. Every module submitted to one
 coherence build must carry and project the exact same revision as the registry
 and root candidate. Missing, stale, or mixed policy lineage is an input
 invariant before evidence, orphan, overlap, or diagnostic processing.
@@ -1463,7 +1459,7 @@ reconstruction, and before orphan or overlap processing:
 1. Validate `impl`, `selfType`, every generic-parameter `DefId`, every identity
    nested in constraints and associated bindings, and `declarationSpan` against
    the candidate context and frozen registries.
-2. Decode `pattern` as exactly one `ImplPatternKey`, require the v1 domain,
+2. Decode `pattern` as exactly one `ImplPatternKey`, require the canonical domain,
    reject trailing bytes, and reproduce byte-identical key bytes from the
    decoded value.
    If its outer self is `Tuple`, `Function`, `Union`, or `Intersection`, inspect
@@ -1635,10 +1631,10 @@ bytes `a1`, matching RFC 0014's semantic-type oracle convention.
 
 | Input | Complete preimage hex | SHA-256 |
 |---|---|---|
-| `Parameter(0)` | `7a6f6d2e747970652d6b65792d7061747465726e2e7631001100000000` | `0c9d8c3a3d5ccff890dbed8dad7b7270cf580bee6a024e610107aa99dfb5a022` |
-| `InterfaceSelf(a1)` | `7a6f6d2e747970652d6b65792d7061747465726e2e76310010a1` | `2386a3fdf91952907a4e8a486bca5763fda467aa4d4fd52bd50fe2c20ffc4fc5` |
-| `Reference(Const, Parameter(0))` | `7a6f6d2e747970652d6b65792d7061747465726e2e7631000c011100000000` | `71cd89aa34ed4343c7f092700dba2b313f817348b542acbd33db33c4c880fdcd` |
-| `Nominal(a1, [Parameter(0)])` | `7a6f6d2e747970652d6b65792d7061747465726e2e76310008a100000000000000011100000000` | `c4951246c3831b62b19f245d604801351fc2545a6abb4a0136a8551ee1963e18` |
+| `Parameter(0)` | `7a6f6d2e747970652d6b65792d7061747465726e001100000000` | `96bd577588d6b8551392c23a61a2135ddf7f29b564d37c2b7e5ede52fafe8581` |
+| `InterfaceSelf(a1)` | `7a6f6d2e747970652d6b65792d7061747465726e0010a1` | `0f5e0bc5f6db8f233e6c5e9428718ac9538513fc5e9bc22338b1bfaed0a92f1c` |
+| `Reference(Const, Parameter(0))` | `7a6f6d2e747970652d6b65792d7061747465726e000c011100000000` | `bbd2d487bb1eef06c4a0177a71fbccb6a296d22a002e3fa8b296d121f36e0b19` |
+| `Nominal(a1, [Parameter(0)])` | `7a6f6d2e747970652d6b65792d7061747465726e0008a100000000000000011100000000` | `9f347b5d6fa3d7faa247f06754e7992c7cc4fb2af8a475cb20c53152f3377a26` |
 
 Implementation tests must add non-empty object, function, existential,
 interface-bound, union, and intersection fixtures. They must mutate every tag,
@@ -1653,8 +1649,8 @@ that one parameter index is shared by interface arguments and self.
 
 | Input | Complete preimage hex | SHA-256 |
 |---|---|---|
-| `ImplPattern(I<>, Parameter(0))` | `7a6f6d2e696d706c2d7061747465726e2e763100a100000000000000001100000000` | `f81b1b7dbbb67d1c9bb9209864d4cf36166ffdf2ce3e0b83fb4033d92dae4703` |
-| `ImplPattern(I<Parameter(0)>, Nominal(b2, [Parameter(0)]))` | `7a6f6d2e696d706c2d7061747465726e2e763100a10000000000000001110000000008b200000000000000011100000000` | `89cd999fa5df60dc6bd7a811213b5c2f954fef780624ec82e0e94059a138107e` |
+| `ImplPattern(I<>, Parameter(0))` | `7a6f6d2e696d706c2d7061747465726e00a100000000000000001100000000` | `b203dbd1a3fae2885b4eef6963584363e134690f50b3f8f396100a8e7f319443` |
+| `ImplPattern(I<Parameter(0)>, Nominal(b2, [Parameter(0)]))` | `7a6f6d2e696d706c2d7061747465726e00a10000000000000001110000000008b200000000000000011100000000` | `4801c959691fe5a8ef7f7bf667205df514df9d792fa2cebf4c940447af11f9b2` |
 
 Implementation tests must independently mutate the interface definition,
 interface argument count and order, shared parameter index, self tag, and all
@@ -1666,7 +1662,7 @@ impl pattern until the complete publication validator succeeds.
 The standalone impl-head test envelope is:
 
 ```text
-ASCII("zom.impl-head.v1")
+ASCII("zom.impl-head")
 0x00
 Encode(ImplHead)
 ```
@@ -1675,21 +1671,21 @@ It is a test envelope, not an additional field inside signature or module
 records. The fixture uses expanded impl bytes `a1`, the second impl-pattern
 vector above, self `Nominal(b2, [TypeParameter(c3)])`, head `Nominal(b2)`, one
 generic parameter `c3`, empty where-constraints and associated bindings,
-`Safe`, and expanded declaration-span bytes `d4`. The exact 99-byte
+`Safe`, and expanded declaration-span bytes `d4`. The exact 96-byte
 `ImplHead` record is:
 
 ```text
-a100000000000000317a6f6d2e696d706c2d7061747465726e2e763100a10000000000000001110000000008b20000000000000001110000000008b2000000000000000109c309b20000000000000001c30000000000000000010000000000000000d4
+a100000000000000317a6f6d2e696d706c2d7061747465726e00a10000000000000001110000000008b20000000000000001110000000008b2000000000000000109c309b20000000000000001c30000000000000000010000000000000000d4
 ```
 
-The complete 116-byte envelope preimage is:
+The complete 110-byte envelope preimage is:
 
 ```text
-7a6f6d2e696d706c2d686561642e763100a100000000000000317a6f6d2e696d706c2d7061747465726e2e763100a10000000000000001110000000008b20000000000000001110000000008b2000000000000000109c309b20000000000000001c30000000000000000010000000000000000d4
+7a6f6d2e696d706c2d6865616400a100000000000000317a6f6d2e696d706c2d7061747465726e00a10000000000000001110000000008b20000000000000001110000000008b2000000000000000109c309b20000000000000001c30000000000000000010000000000000000d4
 ```
 
 Its SHA-256 is
-`9b223c2528e292b03af2fabc463afb61a281b62ff40f82944376b421b916064e`.
+`6bddf6dbf69d1dcdfad09365fc82edacd33bef88375a7bf15fe1377ef2caf180`.
 Mutation tests move `pattern` before and after every adjacent field, encode it
 inline, omit it, replace its framing length, mismatch `selfType`, alter generic
 ownership or arity, and require the exact codec or fact invariant.
@@ -1697,148 +1693,146 @@ ownership or arity, and require the exact codec or fact invariant.
 ### Revision Cutover
 
 The exact type-key and impl-pattern codecs change every revision that directly
-embeds `ImplHead`. `SemanticTypeKey` remains v1.
+embeds `ImplHead`. `SemanticTypeKey` remains canonical.
 
-`SignatureFactsRevision` replaces v0 with the exact RFC 0005 field order and
-framing under:
+`SignatureFactsRevision` uses the exact field order and framing below:
 
 ```text
-ASCII("zom.signature-facts-revision.v1")
+ASCII("zom.signature-facts-revision")
 0x00
 SemanticContextFingerprint
 EncodeByteString(expanded owning ModuleKey)
 sourceContentDigest
 bindingSurfaceRevision
 MarkerPolicyRegistryRevision
-... remaining RFC 0005 record groups with v1 ImplHead encoding ...
+... remaining RFC 0005 record groups with canonical ImplHead encoding ...
 ```
 
 The RFC 0005 one-signature fixture contains no impl head. It uses 32 policy
-registry revision bytes of `77`; its complete 204-byte preimage is:
+registry revision bytes of `77`; its complete 201-byte preimage is:
 
 ```text
-7a6f6d2e7369676e61747572652d66616374732d7265766973696f6e2e76310000000000000000000000000000000000000000000000000000000000000000000000000000000001a122222222222222222222222222222222222222222222222222222222222222223333333333333333333333333333333333333333333333333333333333333333777777777777777777777777777777777777777777777777777777777777777700000000000000010000000000000003b2010300000000000000000000000000000000
+7a6f6d2e7369676e61747572652d66616374732d7265766973696f6e0000000000000000000000000000000000000000000000000000000000000000000000000000000001a122222222222222222222222222222222222222222222222222222222222222223333333333333333333333333333333333333333333333333333333333333333777777777777777777777777777777777777777777777777777777777777777700000000000000010000000000000003b2010300000000000000000000000000000000
 ```
 
 Its SHA-256 is
-`dac5b3c2ce95be20cf3c42028d5a05a042c504dc8d37a4d45f7ec97b7955b4a4`.
+`df372823d5f51543118268c3ebf4345fcfefee34104389bb269d0ba17771d39d`.
 
 The non-empty impl-head integration fixture uses zero context fingerprint,
 expanded module bytes `a1`, source digest bytes `22`, binding-surface revision
-bytes `33`, no signature records, the complete 99-byte impl-head record above,
-and no marker records. Its complete 300-byte preimage is:
+bytes `33`, no signature records, the complete 96-byte impl-head record above,
+and no marker records. Its complete 294-byte preimage is:
 
 ```text
-7a6f6d2e7369676e61747572652d66616374732d7265766973696f6e2e76310000000000000000000000000000000000000000000000000000000000000000000000000000000001a1222222222222222222222222222222222222222222222222222222222222222233333333333333333333333333333333333333333333333333333333333333337777777777777777777777777777777777777777777777777777777777777777000000000000000000000000000000010000000000000063a100000000000000317a6f6d2e696d706c2d7061747465726e2e763100a10000000000000001110000000008b20000000000000001110000000008b2000000000000000109c309b20000000000000001c30000000000000000010000000000000000d40000000000000000
+7a6f6d2e7369676e61747572652d66616374732d7265766973696f6e0000000000000000000000000000000000000000000000000000000000000000000000000000000001a1222222222222222222222222222222222222222222222222222222222222222233333333333333333333333333333333333333333333333333333333333333337777777777777777777777777777777777777777777777777777777777777777000000000000000000000000000000010000000000000063a100000000000000317a6f6d2e696d706c2d7061747465726e00a10000000000000001110000000008b20000000000000001110000000008b2000000000000000109c309b20000000000000001c30000000000000000010000000000000000d40000000000000000
 ```
 
 Its SHA-256 is
-`9c61c46865ef039be32944a276c95c6b30858429f177d6421ba9ef6a15aa018c`.
+`a6b56362560d1195d2e302b4126cc6bf6871fbe685eb001134e078a0945590fb`.
 
 The explicit-marker integration fixture uses the same context, module, source
 digest, and binding-surface bytes, no signature or impl-head records, and one
 marker record. The record expands marker `a1`, subject `Primitive(I32)` as
 `0103`, `Positive`, `Explicit` evidence with impl `c3`, and present declaration
-span `d4`; its exact bytes are `a101030101c301d4`. The complete 201-byte
+span `d4`; its exact bytes are `a101030101c301d4`. The complete 198-byte
 preimage is:
 
 ```text
-7a6f6d2e7369676e61747572652d66616374732d7265766973696f6e2e7631000000000000000000000000000000000000000000000000000000000000000000a12222222222222222222222222222222222222222222222222222222222222222333333333333333333333333333333333333333333333333333333333333333377777777777777777777777777777777777777777777777777777777777777770000000000000000000000000000000000000000000000010000000000000008a101030101c301d4
+7a6f6d2e7369676e61747572652d66616374732d7265766973696f6e000000000000000000000000000000000000000000000000000000000000000000a12222222222222222222222222222222222222222222222222222222222222222333333333333333333333333333333333333333333333333333333333333333377777777777777777777777777777777777777777777777777777777777777770000000000000000000000000000000000000000000000010000000000000008a101030101c301d4
 ```
 
 Its SHA-256 is
-`44a3bcf4d52bd7d78375815a323ae8d6faa07240e4c028e2be745c0c3722e214`.
+`55e493623434ee6868eb4a6c70ebd156ccf1b4edfe9145e8e555e1fa84b33a91`.
 The source-provenance oracle pairs this candidate with one exact positive
 `unsafe` bodyless marker declaration and requires mutation tests for the marker node,
 subject node, polarity token, evidence `ImplId`, and declaration span.
 
-`CoherenceViewRevision` replaces v0 with the exact RFC 0005 field order and
-framing under `ASCII("zom.coherence-view.v1")`, NUL. It encodes
+`CoherenceViewRevision` uses the exact RFC 0005 field order and framing under
+`ASCII("zom.coherence-view")`, NUL. It encodes
 `SemanticContextFingerprint`, `MarkerPolicyRegistryRevision`, then the remaining
 RFC 0005 fields. The independent fixture uses 32 policy revision bytes of `77`
 and is 137 bytes:
 
 ```text
-7a6f6d2e636f686572656e63652d766965772e7631000000000000000000000000000000000000000000000000000000000000000000777777777777777777777777777777777777777777777777777777777777777700000000000000010000000000000001c300000000000000010000000000000001d400000000000000010000000000000001e5
+7a6f6d2e636f686572656e63652d76696577000000000000000000000000000000000000000000000000000000000000000000777777777777777777777777777777777777777777777777777777777777777700000000000000010000000000000001c300000000000000010000000000000001d400000000000000010000000000000001e5
 ```
 
 Its SHA-256 is
-`f14947d682f1992fc62eb0f4688265013138a8749015202e2fbe46817a2d2975`.
+`3a10103a288cbe53af9bc6c02366309ed7c123805b9e7611affa17f8bd922c63`.
 
 The coherence integration fixture uses zero context fingerprint, one
 already-canonical module-interface revision-entry record `c3`, the complete
-99-byte impl-head record, and no marker facts. Its complete 226-byte preimage
+96-byte impl-head record, and no marker facts. Its complete 220-byte preimage
 is:
 
 ```text
-7a6f6d2e636f686572656e63652d766965772e7631000000000000000000000000000000000000000000000000000000000000000000777777777777777777777777777777777777777777777777777777777777777700000000000000010000000000000001c300000000000000010000000000000063a100000000000000317a6f6d2e696d706c2d7061747465726e2e763100a10000000000000001110000000008b20000000000000001110000000008b2000000000000000109c309b20000000000000001c30000000000000000010000000000000000d40000000000000000
+7a6f6d2e636f686572656e63652d76696577000000000000000000000000000000000000000000000000000000000000000000777777777777777777777777777777777777777777777777777777777777777700000000000000010000000000000001c300000000000000010000000000000063a100000000000000317a6f6d2e696d706c2d7061747465726e00a10000000000000001110000000008b20000000000000001110000000008b2000000000000000109c309b20000000000000001c30000000000000000010000000000000000d40000000000000000
 ```
 
 Its SHA-256 is
-`f71392f504dd043ee1fd476fec8ae1885fe122b1563d91f2c99e27877256cea3`.
+`51ecc936edb20440fa1ed277db0a89c565e6a0d232f724e3fb98ba4fddb3349f`.
 
-The combined module interface replaces v2 with v3. It inherits RFC 0013 v1's
-complete field order and RFC 0014's semantic-type v1 expansion, uses the new
-signature and impl-head codec, and changes the root domain to
-`ASCII("zom.module-interface-revision.v3")`. It adds
+The combined module interface uses RFC 0013's complete field order and RFC
+0014's semantic-type expansion, plus the canonical signature and impl-head
+codec, under the root domain
+`ASCII("zom.module-interface-revision")`. It adds
 `MarkerPolicyRegistryRevision` immediately after the signature-facts revision. The
 independent fixture uses 32 policy revision bytes of `77` and is this complete
-314-byte preimage:
+311-byte preimage:
 
 ```text
-7a6f6d2e6d6f64756c652d696e746572666163652d7265766973696f6e2e7633000000000000000000000000000000000000000000000000000000000000000000a12222222222222222222222222222222222222222222222222222222222222222333333333333333333333333333333333333333333333333333333333333333344444444444444444444444444444444444444444444444444444444444444447777777777777777777777777777777777777777777777777777777777777777555555555555555555555555555555555555555555555555555555555555555566666666666666666666666666666666666666666666666666666666666666660000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+7a6f6d2e6d6f64756c652d696e746572666163652d7265766973696f6e000000000000000000000000000000000000000000000000000000000000000000a12222222222222222222222222222222222222222222222222222222222222222333333333333333333333333333333333333333333333333333333333333333344444444444444444444444444444444444444444444444444444444444444447777777777777777777777777777777777777777777777777777777777777777555555555555555555555555555555555555555555555555555555555555555566666666666666666666666666666666666666666666666666666666666666660000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 ```
 
 Its SHA-256 is
-`177d6def235eaa6d88c17aef910af44fb2dded53e83559ae5741c232bbfd9f7e`.
+`3fc2e4ca1feccee881fb66622afcba7a0ba725c1aded5e4355e90fd56afb44b3`.
 
-RFC 0014's 309-byte `InterfaceSelf(a1)` module-interface v2 vector is replaced,
-not retained. The v3 vector inserts the same policy revision bytes after the
-signature revision and has this complete 341-byte preimage:
+The `InterfaceSelf(a1)` module-interface vector includes the policy revision
+bytes after the signature revision and has this complete 335-byte preimage:
 
 ```text
-7a6f6d2e6d6f64756c652d696e746572666163652d7265766973696f6e2e7633000000000000000000000000000000000000000000000000000000000000000000a1222222222222222222222222222222222222222222222222222222222222222233333333333333333333333333333333333333333333333333333333333333334444444444444444444444444444444444444444444444444444444444444444777777777777777777777777777777777777777777777777777777777777777755555555555555555555555555555555555555555555555555555555555555556666666666666666666666666666666666666666666666666666666666666666000000000000000000000000000000017a6f6d2e73656d616e7469632d747970652d6b65792e76310010a100000000000000000000000000000000000000000000000000000000000000000000000000000000
+7a6f6d2e6d6f64756c652d696e746572666163652d7265766973696f6e000000000000000000000000000000000000000000000000000000000000000000a1222222222222222222222222222222222222222222222222222222222222222233333333333333333333333333333333333333333333333333333333333333334444444444444444444444444444444444444444444444444444444444444444777777777777777777777777777777777777777777777777777777777777777755555555555555555555555555555555555555555555555555555555555555556666666666666666666666666666666666666666666666666666666666666666000000000000000000000000000000017a6f6d2e73656d616e7469632d747970652d6b65790010a100000000000000000000000000000000000000000000000000000000000000000000000000000000
 ```
 
 Its SHA-256 is
-`1bf456d1f0b1b5a29f1d918b08a0f10fa78b3170e4592f6db0a570fb72466347`.
+`85e77363ec5b543e8a2bb5eb2d86028ab5a31fd53a2829a522568f02bcdc2395`.
 
 The module-interface integration fixture uses the same component bytes as the
 empty fixture, leaves roots, definitions, support definitions, visible
-bindings, and exported bindings empty, inserts the complete 99-byte impl-head
+bindings, and exported bindings empty, inserts the complete 96-byte impl-head
 record into `coherence_impl_heads`, and leaves marker facts empty. Its complete
-421-byte preimage is:
+415-byte preimage is:
 
 ```text
-7a6f6d2e6d6f64756c652d696e746572666163652d7265766973696f6e2e7633000000000000000000000000000000000000000000000000000000000000000000a12222222222222222222222222222222222222222222222222222222222222222333333333333333333333333333333333333333333333333333333333333333344444444444444444444444444444444444444444444444444444444444444447777777777777777777777777777777777777777777777777777777777777777555555555555555555555555555555555555555555555555555555555555555566666666666666666666666666666666666666666666666666666666666666660000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000010000000000000063a100000000000000317a6f6d2e696d706c2d7061747465726e2e763100a10000000000000001110000000008b20000000000000001110000000008b2000000000000000109c309b20000000000000001c30000000000000000010000000000000000d40000000000000000
+7a6f6d2e6d6f64756c652d696e746572666163652d7265766973696f6e000000000000000000000000000000000000000000000000000000000000000000a12222222222222222222222222222222222222222222222222222222222222222333333333333333333333333333333333333333333333333333333333333333344444444444444444444444444444444444444444444444444444444444444447777777777777777777777777777777777777777777777777777777777777777555555555555555555555555555555555555555555555555555555555555555566666666666666666666666666666666666666666666666666666666666666660000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000010000000000000063a100000000000000317a6f6d2e696d706c2d7061747465726e00a10000000000000001110000000008b20000000000000001110000000008b2000000000000000109c309b20000000000000001c30000000000000000010000000000000000d40000000000000000
 ```
 
 Its SHA-256 is
-`f13c5bb0cc30c9a82963ccd09f90f8b3e45813322a03db8202d14134cc987ef4`.
+`b850d53708a940612597555709c97f0308147ac925ba67820a97b514a4633000`.
 
 The end-to-end lineage oracle replaces synthetic policy bytes with the actual
 registry revision above. Its signature preimage is 204 bytes and hashes to
 `c665ba5bf2be40edc425a063842bee3ce7a6774efbbe64acb8d3824ecf4ec85b`:
 
 ```text
-7a6f6d2e7369676e61747572652d66616374732d7265766973696f6e2e76310000000000000000000000000000000000000000000000000000000000000000000000000000000001a12222222222222222222222222222222222222222222222222222222222222222333333333333333333333333333333333333333333333333333333333333333315329853e2faae147a2f5ca73c85a58c4084c70faa3d1faef278c856fd75067b00000000000000010000000000000003b2010300000000000000000000000000000000
+7a6f6d2e7369676e61747572652d66616374732d7265766973696f6e0000000000000000000000000000000000000000000000000000000000000000000000000000000001a12222222222222222222222222222222222222222222222222222222222222222333333333333333333333333333333333333333333333333333333333333333315329853e2faae147a2f5ca73c85a58c4084c70faa3d1faef278c856fd75067b00000000000000010000000000000003b2010300000000000000000000000000000000
 ```
 
 The module preimage replaces its signature and policy parents with that
 signature revision and the actual registry revision. It is 314 bytes and hashes
-to `701f41323c3e469b94012bfb98191c9b2b68bdd7be4f52697d2178227c37dd9f`:
+to `32e3d167460af8977467101807e45e73be00dea0da87e35abc58228937dba607`:
 
 ```text
-7a6f6d2e6d6f64756c652d696e746572666163652d7265766973696f6e2e7633000000000000000000000000000000000000000000000000000000000000000000a122222222222222222222222222222222222222222222222222222222222222223333333333333333333333333333333333333333333333333333333333333333c665ba5bf2be40edc425a063842bee3ce7a6774efbbe64acb8d3824ecf4ec85b15329853e2faae147a2f5ca73c85a58c4084c70faa3d1faef278c856fd75067b555555555555555555555555555555555555555555555555555555555555555566666666666666666666666666666666666666666666666666666666666666660000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+7a6f6d2e6d6f64756c652d696e746572666163652d7265766973696f6e000000000000000000000000000000000000000000000000000000000000000000a122222222222222222222222222222222222222222222222222222222222222223333333333333333333333333333333333333333333333333333333333333333c665ba5bf2be40edc425a063842bee3ce7a6774efbbe64acb8d3824ecf4ec85b15329853e2faae147a2f5ca73c85a58c4084c70faa3d1faef278c856fd75067b555555555555555555555555555555555555555555555555555555555555555566666666666666666666666666666666666666666666666666666666666666660000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 ```
 
 The coherence preimage uses one exact module-interface revision entry whose
 expanded module key is `a1` and whose revision is that module hash. Impl and
 marker maps are empty. It is 151 bytes and hashes to
-`7a76db8d220726a014782b28ced02e9bd5ea64724829798e3e83c6679858d1f5`:
+`55ae783a09d8cd6de1c317071a61e3263972440d35614c8f283295fc6b6f83ce`:
 
 ```text
-7a6f6d2e636f686572656e63652d766965772e763100000000000000000000000000000000000000000000000000000000000000000015329853e2faae147a2f5ca73c85a58c4084c70faa3d1faef278c856fd75067b00000000000000010000000000000021a1701f41323c3e469b94012bfb98191c9b2b68bdd7be4f52697d2178227c37dd9f00000000000000000000000000000000
+7a6f6d2e636f686572656e63652d7669657700000000000000000000000000000000000000000000000000000000000000000015329853e2faae147a2f5ca73c85a58c4084c70faa3d1faef278c856fd75067b00000000000000010000000000000021a1701f41323c3e469b94012bfb98191c9b2b68bdd7be4f52697d2178227c37dd9f00000000000000000000000000000000
 ```
 
 Mutating the configuration, shape inventory, registry, signature, module, or
@@ -1891,7 +1885,7 @@ set, or module interface.
 | RFC overlay, review, and accepted-base tracking | `docs/rfc/**` | `rfc` |
 | Singular ordinary impl and bodyless marker grammar, AST shape, and parser diagnostics | `docs/spec/ZomParser.g4`, `products/zomlang/compiler/lexer/**`, `products/zomlang/compiler/parser/**`, `products/zomlang/compiler/ast/**` | `lexer-parser` |
 | Impl binding facts, pattern algebra, impl heads, overlap, signature revisions, and diagnostic fact verification | `products/zomlang/compiler/binder/**`, `products/zomlang/compiler/checker/**`, `products/zomlang/compiler/type/**` | `binder-checker` |
-| Module-interface v3 publication and consumption | `products/zomlang/compiler/driver/**` | `module-system` |
+| Module-interface canonical publication and consumption | `products/zomlang/compiler/driver/**` | `module-system` |
 | Closed operator arguments and invariant diagnostics | `products/zomlang/compiler/diagnostics/**` | `error-system` |
 | Cross-RFC and specification consistency evidence | `docs/design/**`, `docs/spec/**`, `docs/reports/**` | `spec-audit` |
 | Codec, negative, determinism, architecture, and repository gates | `products/zomlang/tests/**`, `scripts/**` | `verification` |
@@ -1945,7 +1939,7 @@ separate accepted classifier and proof rule; it cannot weaken this default.
 ### Keep the prose mirror
 
 A prose rule cannot assign stable tags, prove recursive field coverage, define
-versioning, or force `InterfaceSelf` handling. It is insufficient for a
+canonical evolution, or force `InterfaceSelf` handling. It is insufficient for a
 canonical codec.
 
 ### Derive tags from AST enums
@@ -2007,15 +2001,14 @@ the marker selector cannot soundly instantiate. A distinct closed bodyless
 marker declaration keeps the admitted model complete. Generic marker impls
 require a later pattern-based marker coherence RFC.
 
-### Edit RFC 0005 and RFC 0014 in place
+### Governance Location
 
-Both proposals have advanced beyond draft design. Silent edits would invalidate
-hash-bound approvals and hide a material codec change from owners. The additive
-overlay preserves the governance record.
+This RFC owns the canonical checker codec closure and records the complete
+contract reviewed by affected owners.
 
 ## Compatibility And Rollout
 
-This is a direct replacement with no compatibility path:
+The implementation lands atomically:
 
 1. approve RFC 0015 against the exact bound hashes;
 2. append its accepted proposal hash to affected base tracking records;
@@ -2024,15 +2017,11 @@ This is a direct replacement with no compatibility path:
 4. implement `TypeKeyPatternKey`, `ImplPatternKey`, construction, head
    derivation, unification, and independent verification before producing any
    impl head;
-5. replace every signature producer and consumer with v1;
-6. replace every coherence producer and consumer with v1;
-7. replace every combined module-interface producer and consumer with v3; and
-8. delete v0/v2 constructors, decoders, test helpers, fixtures, and cached
-   artifacts in the same cutover.
-
-There is no dual schema, compatibility decoder, feature flag, adapter, or
-fallback. Rollback before landing reverts the complete implementation series.
-Rollback after publication requires another accepted overlay and new domains.
+5. replace every signature producer and consumer with the canonical contract;
+6. replace every coherence producer and consumer with the canonical contract;
+7. replace every combined module-interface producer and consumer with the
+   canonical contract; and
+8. regenerate test helpers, fixtures, and cached artifacts in the same change.
 
 ## Documentation And Teaching Plan
 
@@ -2048,12 +2037,11 @@ Rollback after publication requires another accepted overlay and new domains.
 ## Operational Readiness
 
 CI must run exhaustive codec, oracle, negative, determinism, and architecture
-gates. Cache and interface artifact version mismatches must fail closed and
+gates. Cache and interface artifact contract mismatches must fail closed and
 identify the invariant family without rendering unvalidated payloads. Release
-artifacts cannot contain signature v0, coherence v0, or combined module
-interface v2 after the cutover. They also cannot synthesize a marker shape or
-policy registry after signature publication or accept an unbound policy
-revision from a package.
+artifacts contain only the canonical signature, coherence, and module-interface
+records. They cannot synthesize a marker shape or policy registry after
+signature publication or accept an unbound policy revision from a package.
 
 ## Acceptance Criteria
 
@@ -2107,9 +2095,9 @@ revision from a package.
    collection, or private clause index remains in a production consumer.
 9. Marker shape comes only from one verified inventory; structural subjects,
    builtin primitives, and reference propagation come only from one
-   context-bound, revisioned, prelude-authorized policy registry. The 80-byte
-   inventory, 81-byte configuration, 172-byte registry, standalone policy and
-   component vectors, 341-byte `InterfaceSelf` replacement, and end-to-end
+   context-bound, revisioned, prelude-authorized policy registry. The 77-byte
+   inventory, 78-byte configuration, 169-byte registry, standalone policy and
+   component vectors, 335-byte `InterfaceSelf` vector, and end-to-end
    revision chain reproduce exactly. The same policy revision is a direct
    parent of signature, module-interface, and coherence revisions. Persisted
    marker maps contain explicit evidence only. One demand-driven proof engine
@@ -2125,10 +2113,10 @@ revision from a package.
    and the same failure order is reproduced when imported ASTs are unavailable.
    Explicit-marker `ZOM4054` remains in the final tree-local signature
    admission substage.
-11. Signature v1, coherence v1, and module-interface v3 reproduce the exact
+11. Signature, coherence, and module-interface codecs reproduce the exact
    preimage lengths and SHA-256 values in this RFC.
-12. Every replaced constructor and decoder is absent after implementation; repository
-   search proves no dual revision path remains.
+12. Repository search proves that every producer and consumer uses the
+   canonical contract.
 13. Generated or exhaustive gates fail when a semantic type or operator is
    added without updating its canonical closure.
 14. Owner review records exact snapshot hashes. No approval is inferred from
@@ -2152,10 +2140,9 @@ revision from a package.
    configuration and registry, bind their lineage into every direct consumer,
    retain only explicit facts in persisted maps, and add the demand-driven
    builtin and structural proof engine with reference propagation.
-6. Cut signature facts and coherence views to v1 atomically.
-7. Cut the combined module interface to v3 atomically.
-8. Remove all replaced constructors, decoders, fixtures, and cached
-   artifacts.
+6. Publish signature facts and coherence views atomically.
+7. Publish the combined module interface atomically.
+8. Regenerate fixtures and cached artifacts.
 9. Run the full sanitizer, lit, unit, determinism, format, RFC, link, and
    architecture gates and attach evidence to the tracker.
 
@@ -2393,6 +2380,6 @@ None
 | 2026-07-17 | DRAFT | Defined the explicit marker map as a bijection with headers surviving builtin conflict, marker orphan, and local same-key conflict admission. |
 | 2026-07-17 | REVIEW | Re-entered exact-hash formal review after three locked draft audits approved the final-survivor marker projection bijection. |
 | 2026-07-17 | ACCEPTED | All required owners approved exact review SHA-256 `642836225d54f6fa28f8c27e9985972081dbd221c2e8f3e61a0aafd04fe9bb1e`: `rfc`, `lexer-parser`, `binder-checker`, `module-system`, `error-system`, `spec-audit`, and `verification`. |
-| 2026-07-17 | IMPLEMENTING | Began the accepted direct checker-codec cutover through the implementation tracker. The transition changes status metadata only and preserves the approved design; no prior codec producer or consumer may remain. |
+| 2026-07-17 | IMPLEMENTING | Began implementation of the accepted checker-codec contract through the implementation tracker. |
 | 2026-07-18 | IMPLEMENTING | Synchronized the accepted RFC 0018 occurrence bridge, per-occurrence mixed-form classification, post-classification ordinary and marker survivor streams, and occurrence-specific diagnostic lineage. |
-| 2026-07-20 | LANDED | The direct implementation, RFC records, architecture guidance, and complete verification evidence landed on `develop` through commits `0bba7e34`, `f86b5660`, and `76e73196`; no replaced codec producer or consumer remains. |
+| 2026-07-20 | LANDED | The implementation, RFC records, architecture guidance, and complete verification evidence landed on `develop` through commits `0bba7e34`, `f86b5660`, and `76e73196`. |

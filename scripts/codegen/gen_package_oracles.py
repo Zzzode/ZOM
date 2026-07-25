@@ -18,8 +18,8 @@ ROOT = Path(__file__).resolve().parents[2]
 FIXTURES = ROOT / "products/zomlang/tests/fixtures"
 ORACLE_ROOT = FIXTURES / "package-oracles"
 LOCK_PATH = FIXTURES / "Zom.lock.golden"
-PUBGRUB_PATH = FIXTURES / "pubgrub-scenarios-v1.json"
-CATALOG_PATH = ORACLE_ROOT / "package-generated-oracles-v1.json"
+PUBGRUB_PATH = FIXTURES / "pubgrub-scenarios.json"
+CATALOG_PATH = ORACLE_ROOT / "package-generated-oracles.json"
 VENDOR_CHECKER = ROOT / "products/zomlang/tests/tools/check-vendored-dependencies.py"
 PUBGRUB_CHECKER = ROOT / "products/zomlang/tests/tools/check-pubgrub-scenarios.py"
 RUNTIME_PRODUCERS = {
@@ -108,10 +108,9 @@ def generated_lock() -> bytes:
     registry_key = package_key(registry, "codec", "2.0.0")
     vcs_key = package_key(vcs, "math", "1.2.3")
     local_key = package_key(local, "app", "1.0.0", "fast")
-    signing_key = domain_digest("zom.ed25519-key.v0", bytes([0x2A]) * 32)
+    signing_key = domain_digest("zom.ed25519-key", bytes([0x2A]) * 32)
 
     sections = [
-        "schema = \"zom-lock-1\"\n",
         "\n".join(
             [
                 "[[package]]",
@@ -123,7 +122,7 @@ def generated_lock() -> bytes:
                 "features = []",
                 f'manifest-sha256 = "{sha256(b"registry manifest")}"',
                 f'source-tree-sha256 = "{sha256(b"registry tree")}"',
-                'archive-format = "tar-zstd-v1"',
+                'archive-format = "tar-zstd"',
                 f'archive-sha256 = "{sha256(b"archive")}"',
                 f'signing-key = "{signing_key}"',
             ]
@@ -165,12 +164,12 @@ def generated_lock() -> bytes:
             ]
         ),
     ]
-    return (sections[0] + "\n" + "\n\n".join(sections[1:]) + "\n").encode("utf-8")
+    return ("\n\n".join(sections) + "\n").encode("utf-8")
 
 
 def pubgrub_document() -> dict[str, object]:
     return {
-        "schema": "zom.pubgrub-scenarios.v1",
+        "schema": "zom.pubgrub-scenarios",
         "scenarios": [
             {
                 "id": "greatest-eligible-release",
@@ -180,7 +179,7 @@ def pubgrub_document() -> dict[str, object]:
                 "expected": {
                     "packages": ["app@1.0.0[target]", "math@1.3.0[target,fast]"],
                     "edgeCount": 1,
-                    "resolutionSha256": "21640c513f23e7b7e9c51c02d8303ee8d035a0ca6840f05b4428c1351327f9f8",
+                    "resolutionSha256": "53522dd5c07d5622473fc856cbe89bceb4ac05164e970d73589359d199b07e99",
                 },
             },
             {
@@ -191,7 +190,7 @@ def pubgrub_document() -> dict[str, object]:
                 "expected": {
                     "issue": "NoVersionSatisfiesConstraints",
                     "incompatibilityRecordCount": 3,
-                    "incompatibilityGraphSha256": "f9baa53243bb4c42f9700484b2af10593b2e8ea609213d9b01618ba8882d2a35",
+                    "incompatibilityGraphSha256": "2d4ed0e00ea662d12de217d317136647ad67e4a4c6630ed85b4893bad3a1e78e",
                 },
             },
             {
@@ -399,7 +398,7 @@ def source_tree_digest() -> tuple[bytes, str]:
     ]
     records = [path + u64(len(content)) + hashlib.sha256(content).digest() for path, content in files]
     framing = sequence(records)
-    return framing, domain_digest("zom.source-tree.v0", framing)
+    return framing, domain_digest("zom.source-tree", framing)
 
 
 def codec_oracles() -> dict[str, object]:
@@ -442,7 +441,7 @@ def codec_oracles() -> dict[str, object]:
         ("dependency-requirement", dependency, None),
         ("minimal-canonical-manifest", minimal_manifest, None),
         ("source-tree-framing", source_framing, source_digest),
-        ("trusted-runtime-symbol-name", named_symbol, domain_digest("zom.build-runtime-symbol-name.v0", named_symbol)),
+        ("trusted-runtime-symbol-name", named_symbol, domain_digest("zom.build-runtime-symbol-name", named_symbol)),
     ]
     result: dict[str, object] = {
         name: {
@@ -454,9 +453,9 @@ def codec_oracles() -> dict[str, object]:
         for name, value, domain_hash in values
     }
     for kind, domain in [
-        ("symbols", "zom.build-runtime-symbols.v0"),
-        ("relocations", "zom.build-runtime-relocations.v0"),
-        ("operations", "zom.build-runtime-operations.v0"),
+        ("symbols", "zom.build-runtime-symbols"),
+        ("relocations", "zom.build-runtime-relocations"),
+        ("operations", "zom.build-runtime-operations"),
     ]:
         result[f"trusted-runtime-{kind}"] = {
             "framingHex": records.hex(),
@@ -464,13 +463,13 @@ def codec_oracles() -> dict[str, object]:
         }
     result["vcs-selector-tag"] = {
         "framingHex": (u8(2) + byte_string("release-1")).hex(),
-        "domainSha256": domain_digest("zom.vcs-selector.v0", u8(2) + byte_string("release-1")),
+        "domainSha256": domain_digest("zom.vcs-selector", u8(2) + byte_string("release-1")),
     }
     result["ed25519-signing-key-zero"] = {
         "publicKeyHex": bytes(32).hex(),
-        "domainSha256": domain_digest("zom.ed25519-key.v0", bytes(32)),
+        "domainSha256": domain_digest("zom.ed25519-key", bytes(32)),
     }
-    return {"schema": "zom.package-codec-oracles.v1", "oracles": result}
+    return {"schema": "zom.package-codec-oracles", "oracles": result}
 
 
 def json_bytes(document: object) -> bytes:
@@ -481,7 +480,7 @@ def generated_outputs() -> dict[Path, bytes]:
     outputs: dict[Path, bytes] = {
         LOCK_PATH: generated_lock(),
         PUBGRUB_PATH: json_bytes(pubgrub_document()),
-        ORACLE_ROOT / "package-codec-oracles-v1.json": json_bytes(codec_oracles()),
+        ORACLE_ROOT / "package-codec-oracles.json": json_bytes(codec_oracles()),
     }
     for architecture in ["x86_64", "aarch64"]:
         for phase in ["bootstrap", "runtime"]:
@@ -502,7 +501,7 @@ def catalog(outputs: dict[Path, bytes]) -> bytes:
         for path, value in sorted(outputs.items(), key=lambda item: str(item[0]))
     ]
     document = {
-        "schema": "zom.package-generated-oracles.v1",
+        "schema": "zom.package-generated-oracles",
         "managed": managed,
         "delegated": [
             {
@@ -531,43 +530,43 @@ def catalog(outputs: dict[Path, bytes]) -> bytes:
                 "artifact": "ResolutionOutput canonical bytes",
                 "producer": "package-resolver-test",
                 "test": "PackageResolverTest.SelectsGreatestEligibleReleaseAndEmitsGraph",
-                "sha256": "21640c513f23e7b7e9c51c02d8303ee8d035a0ca6840f05b4428c1351327f9f8",
+                "sha256": "53522dd5c07d5622473fc856cbe89bceb4ac05164e970d73589359d199b07e99",
             },
             {
                 "artifact": "resolver incompatibility derivation graph",
                 "producer": "package-resolver-test",
                 "test": "PackageResolverTest.ProducesCanonicalConflictExplanation",
-                "sha256": "f9baa53243bb4c42f9700484b2af10593b2e8ea609213d9b01618ba8882d2a35",
+                "sha256": "2d4ed0e00ea662d12de217d317136647ad67e4a4c6630ed85b4893bad3a1e78e",
             },
             {
                 "artifact": "registered target selection and registry revision",
                 "producer": "target-registry-test",
                 "test": "Target registry issues and verifies one revision-bound package selection",
-                "sha256": "ee53bebededb1c6020619cc95979fe960814b4ef732afcba82cb96157546febc",
+                "sha256": "c469c35f6f5a8258d48e965149c189c9a859201f6e4db6d80e230b47a8891f28",
             },
             {
                 "artifact": "build execution key",
                 "producer": "build-script-execution-key-test",
                 "test": "BuildScriptExecutionKey canonicalizes the complete host closure",
-                "sha256": "a4afe01afa0cfef1f85f0835d4801de5c1648410e218a469c2823b33f7e0f12f",
+                "sha256": "f95a5204f19b1f9e7fa02109f15884b3d01323574c26b2cf190adc7a6bc516e4",
             },
             {
                 "artifact": "build script output record",
                 "producer": "build-script-execution-key-test",
                 "test": "Build-script cache miss publishes one complete byte-identical output record",
-                "sha256": "1173c31a10a429a13004c375a7b84baab54f2237857c3e5aea0ae1675552e87e",
+                "sha256": "07bb991bb4c5d57e573c2de43ea6612ffe5003f247420a9239cb8e454c614f96",
             },
             {
                 "artifact": "registry signed release and source snapshot records",
                 "producer": "source-record-test",
                 "test": "SourceRecordTest.VerifiesCompleteRegistryReleaseSignature",
-                "sha256": "ed5b5ab7ea48e60b2f236a3010a967c441eccce9327b9c003a974b57a62b9103",
+                "sha256": "9bdffe9b4d599f8da53af4a974bf59bba1bd5a1290d994c06a0e5a01999d53b0",
             },
             {
                 "artifact": "source tree framing and digest",
                 "producer": "source-tree-test",
                 "test": "SourceTreeTest.SortsInventoryAndProducesPermutationInvariantDigest",
-                "sha256": "0668fd1bb87e8db7be9ef51c47573f47aa854f0493b05d72872b4398dcc17574",
+                "sha256": "d9561490cd6762984ced6d62ec14b571808135bf8ac786bac1aeae0b2375e717",
             },
         ],
     }

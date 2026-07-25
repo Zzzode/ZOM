@@ -310,8 +310,8 @@ from raising-call value type, and introduces verified `ErrorUnionShapeFact`
 records for raising calls, unambiguous binding flow, identical joins, and
 component-preserving coercions. Error operators now consume those facts and
 never assign roles by union alternative order. The checked-facts codec is
-`zom.checked-facts-revision.v1`; its executable 646-byte oracle hashes to
-`f5790090cce2c1520d9d9f3ecffc89b2f643f05737cf0bbe127c3c58fc5e9afe`.
+`zom.checked-facts-revision`; its executable 643-byte oracle hashes to
+`09e8335be64649f47e44e18672852ec1e9a1669f9d142a806d6a58fceb7c1b62`.
 
 This response invalidates every earlier exact-hash entry verdict. All required
 owners must review the new coordinated set before any status transition.
@@ -473,9 +473,9 @@ Formal verification returned RFC 0006 because its FFI oracle encoded only the
 digest portion of `MirRevisionId`, and returned RFC 0010 because
 `TargetSpecId` and the feature-gate registry lacked canonical codecs and a
 verifiable completeness snapshot. The response adds the executable MIR phase
-tag to the FFI proof, defines the complete target-spec codec and 111-byte
+tag to the FFI proof, defines the complete target-spec codec and 108-byte
 oracle, defines non-zero numeric gate IDs and the registry snapshot codec with
-a 49-byte oracle, binds every proof to context, module, executable MIR, target,
+a 46-byte oracle, binds every proof to context, module, executable MIR, target,
 and registry revision, and fixes deterministic multi-gate rejection ordering.
 The coordinated formal-review hashes are RFC 0005
 `2e25177ce1d38cfe9fc5d83508ac449cea57b69ff394537462d7fb1324aafe69`,
@@ -496,8 +496,7 @@ Formal verification found that RFC 0006 maintained target-profile strings and
 panic/object tags separately from RFC 0010 `TargetSpecId`. The response
 deletes that second identity codec. Error-union descriptors and target-artifact
 manifests now carry only RFC 0010's 32-byte `TargetSpecId`; layout construction
-uses the matching `VerifiedTargetSelection`. The descriptor domain advances
-to v2 with a 423-byte oracle. The coordinated formal-review hashes are RFC 0005
+uses the matching `VerifiedTargetSelection`. The descriptor uses the canonical domain with a 405-byte oracle. The coordinated formal-review hashes are RFC 0005
 `2e25177ce1d38cfe9fc5d83508ac449cea57b69ff394537462d7fb1324aafe69`,
 RFC 0006
 `e294b9706636863788f2dcf8a72b1bbbde116f2f09464f9f8990121a0700e29f`,
@@ -587,9 +586,9 @@ the prior normative cast semantics establish the three-mode contract.
 RFC 0005 now defines `Guaranteed`, `OptionalChecked`, and `ForcedChecked` cast
 modes. The parser, ANTLR grammar, generated AST schema, checker result typing,
 specification, and positive conformance fixture expose the same three modes.
-The checked-facts codec domain is `zom.checked-facts-revision.v2`; its 646-byte
+The checked-facts codec domain is `zom.checked-facts-revision`; its 643-byte
 framing oracle hashes to
-`1980c0080fa04e0dce3cef0fd869f37b2ce9621c6ff8b75e3579bd02622b03fc`.
+`09e8335be64649f47e44e18672852ec1e9a1669f9d142a806d6a58fceb7c1b62`.
 The resubmitted RFC 0005 proposal SHA-256 is
 `f382b82aaa055fb3676a1578fcf73e1ba1ca030671b96e97294bbc55db8c19c1`.
 The coordinated dependency-review hashes are RFC 0006
@@ -642,9 +641,10 @@ required by RFC 0005 and RFC 0010.
 
 The response adds `RawPointerReinterpret`, an exact const/mutability matrix,
 `Guaranteed` mode, `RawPointerBoundary`, and the rule that `*const -> *mut`
-remains invalid. The checked-facts codec advances directly to v3; its 646-byte
+remains invalid. The checked-facts codec uses the canonical contract; its
+643-byte
 oracle hashes to
-`d84b9e14321450d0ece19b11cce30d80337eb4c741e092e222317acb91292416`.
+`09e8335be64649f47e44e18672852ec1e9a1669f9d142a806d6a58fceb7c1b62`.
 RFC 0010 preserves this kind and unsafe requirement through HIR and MIR without
 reclassifying pointee or mutability facts and requires complete lowering and
 negative fixtures.
@@ -682,7 +682,7 @@ The coordinated RFC 0010 consumer hash is
 Semantic review approved the lexer/parser, binder/checker, error-system,
 module-system, runtime-memory, concurrency, and spec-audit surfaces. Invariant
 review approved the IR/backend, runtime-memory, and verification surfaces. The
-reviews independently recomputed the 646-byte checked-facts v3 oracle and
+reviews independently recomputed the 643-byte checked-facts canonical oracle and
 confirmed all three cast modes, the closed raw-pointer matrix,
 `RawPointerReinterpret`, `ZOM4013` versus `ZOM4069` ownership, evidence leases,
 HIR/MIR preservation, deterministic ordering, and no downstream
@@ -706,7 +706,7 @@ implementation until governance approves the tracker and atomic transition.
 | `runtime-memory` | APPROVED at `31e8ff83...` | Raw-pointer reinterpret, const-correctness, unsafe acknowledgement, and memory-safety boundary |
 | `concurrency` | APPROVED at `31e8ff83...` | Error-role, unsafe fact, and forced-cast panic preservation across task boundaries |
 | `spec-audit` | APPROVED at `31e8ff83...` | Positional tuples, cast matrix, error-union roles, and operator alignment |
-| `verification` | APPROVED at `31e8ff83...` | Store, verifier, v3 codec, cast matrix, parser, and cross-module gates |
+| `verification` | APPROVED at `31e8ff83...` | Store, verifier, canonical codec, cast matrix, parser, and cross-module gates |
 
 All required owner approvals are current at the exact proposal hash. The
 dependency and governance decision gates are satisfied.
@@ -746,7 +746,7 @@ evidence and is not proof of the accepted canonical contract.
 | Slice | State | Required evidence |
 |---|---|---|
 | Closed semantic type value algebra | Implemented | Exact `0x01-0x10` branch tags, primitive and field tags, complete value payload coverage, move-only semantics, and focused unit tests |
-| Semantic type v1 key codec | Implemented | RFC 0014 fixed vectors, recursive v1 union oracle, complete branch encoding, canonical ordering validation, and malformed-input rejection |
+| Semantic type canonical key codec | Implemented | RFC 0014 fixed vectors, recursive canonical union oracle, complete branch encoding, canonical ordering validation, and malformed-input rejection |
 | Canonical semantic type store | In review | Closed admission capability, context-owned singleton construction, canonical key lookup, linearizable interning, stable reads, malformed and foreign-context rejection, focused sanitizer tests, and architecture gates are implemented; complete repository evidence remains pending |
 | Signature facts and verifier scaffold | In review | Closed candidate, canonical fact algebra, revision, typed invariant failures, diagnostic adapter, and focused verifier tests exist; production signature construction and publication remain blocked by RFC 0015 |
 | Direct checker rail replacement | In review | The polymorphic type tree, mutable `TypeEnv`, old Checker passes, AST `BindingMetadata`, compiler symbol rail, and AST-to-IR lowering entry are deleted; `CompilerSession` emits a typed fatal `MissingRequiredFact` at the signature stage instead of publishing partial checked facts |

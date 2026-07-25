@@ -90,7 +90,7 @@ pipeline contract before more lowering is added.
   lowering.
 - This RFC does not define error, borrow, module, call-dispatch, or concurrency
   semantics already owned by RFCs 0006 through 0009 and the language spec.
-- This RFC does not preserve `zom.ir.v0`, `--emit ir`, or the `irgen` C++ API.
+- This RFC does not preserve `zom.ir`, `--emit ir`, or the `irgen` C++ API.
 
 ## Prior Art
 
@@ -342,7 +342,7 @@ VerifiedFeatureBoundarySet {
 }
 ```
 
-`TargetSpecId` is SHA-256 over `ASCII("zom.target-spec.v1")`, NUL, then, in
+`TargetSpecId` is SHA-256 over `ASCII("zom.target-spec")`, NUL, then, in
 field order, the byte-framed triple, LLVM data-layout string, CPU, the `uint64`
 feature count, every feature's byte-framed name and state tag, the byte-framed
 runtime ABI profile, panic-strategy tag, and object-format tag. Byte framing is
@@ -354,15 +354,15 @@ object-format tags are `Elf = 0x01`, `MachO = 0x02`, `Coff = 0x03`, and `Wasm =
 
 The independent target oracle uses triple `x86_64-zom-none`, LLVM data layout
 `e-p:64:64`, CPU `generic`, one enabled feature `sse2`, runtime ABI profile
-`zom-v1`, unwind panic strategy, and ELF object format. Its complete 111-byte
+`zom`, unwind panic strategy, and ELF object format. Its complete 108-byte
 preimage is:
 
 ```text
-7a6f6d2e7461726765742d737065632e763100000000000000000f7838365f36342d7a6f6d2d6e6f6e650000000000000009652d703a36343a3634000000000000000767656e6572696300000000000000010000000000000004737365320100000000000000067a6f6d2d76310101
+7a6f6d2e7461726765742d7370656300000000000000000f7838365f36342d7a6f6d2d6e6f6e650000000000000009652d703a36343a3634000000000000000767656e6572696300000000000000010000000000000004737365320100000000000000067a6f6d2d76310101
 ```
 
 Its SHA-256 is
-`6d72a26055117cb6e84c3cc3a72fd4c1e42caf861138d8f84f5bf34f2f244d37`.
+`d972a7d918fc7d64c002b4245b8e6f5151d3c3c8507ae26e1ca1cbd1a026c90b`.
 
 Each registry profile contains at most one specification per panic strategy.
 Every contained specification must reproduce its `TargetSpecId`, project to the
@@ -394,8 +394,8 @@ exist.
 Failure in steps 1-5 is `IrInvariantRejected(InvalidFact, TargetSelection,
 Session)` and maps to `ZOM9947`; a non-canonical encoded registry or target
 record is `CanonicalCodecMismatch` and maps to `ZOM9949`. The independent
-positive projection vector uses the 111-byte target oracle: architecture
-`x86_64`, vendor `zom`, OS `none`, environment `unknown`, ABI `zom-v1`, pointer
+positive projection vector uses the 108-byte target oracle: architecture
+`x86_64`, vendor `zom`, OS `none`, environment `unknown`, ABI `zom`, pointer
 width `64`, little endian, and semantic feature set `{sse2}`. Negative vectors
 cover a non-canonical triple, malformed component spelling, a noncanonical or
 address-space-only data layout, pointer-width and endian mismatch, an invalid
@@ -407,7 +407,7 @@ snapshot publication.
 `TargetRegistryRevision` is SHA-256 over this exact stream:
 
 ```text
-ASCII("zom.target-registry.v0")
+ASCII("zom.target-registry")
 0x00
 uint64be(hostProfileByteLength)
 hostProfileBytes
@@ -424,7 +424,7 @@ semantic-feature-name set, a `uint64be` strategy count, then each panic tag and
 It contains no object address, registry slot, compiler invocation path, or
 presentation string. The independent framing oracle uses host name `host` and
 one already-encoded profile record `a1`. Its complete 52-byte preimage is
-`7a6f6d2e7461726765742d72656769737472792e7630000000000000000004686f737400000000000000010000000000000001a1`
+`7a6f6d2e7461726765742d7265676973747279000000000000000004686f737400000000000000010000000000000001a1`
 and its SHA-256 is
 `f0d22e55137466eaeac0852b11262f85865d01232d52128a49d0003e77f3c9ba`.
 The registry verifier recomputes every target ID and this revision before
@@ -447,17 +447,17 @@ The gate registry is generated from
 `products/zomlang/compiler/ir/feature-boundary-gates.def`. A gate ID is a
 non-zero fixed-width `uint32`, encodes big-endian, and is unique in one
 snapshot. Entries sort by numeric gate ID. The registry revision is SHA-256
-over `ASCII("zom.feature-boundary-registry.v1")`, NUL, a big-endian `uint64`
+over `ASCII("zom.feature-boundary-registry")`, NUL, a big-endian `uint64`
 entry count, then each gate ID and owner RFC as big-endian `uint32` values.
 The independent one-entry oracle uses gate `1` owned by RFC `6`. Its complete
-49-byte preimage is:
+46-byte preimage is:
 
 ```text
-7a6f6d2e666561747572652d626f756e646172792d72656769737472792e76310000000000000000010000000100000006
+7a6f6d2e666561747572652d626f756e646172792d72656769737472790000000000000000010000000100000006
 ```
 
 Its SHA-256 is
-`7a71e0d8b4b07a804e7aa46ac05ace15ac96d88b6b6d536b61b5814e496a9b13`.
+`374b122260c23a73d6fba979495c1fa89a2e8df6976145fb84813c2f4d9933e8`.
 Generation fails on zero or duplicate IDs, a missing owner RFC, a registry
 entry without an accepted owner contract, or an accepted gate contract without
 an entry. The verified snapshot is immutable for one compilation.
@@ -1345,9 +1345,9 @@ never affect output.
 The dump headers are layer-specific:
 
 ```text
-zom.hir.v0
+zom.hir
 zom.mir
-zom.lir.v0
+zom.lir
 ```
 
 Dump headers identify their layer-specific debug grammar. Dumps must be
@@ -1355,7 +1355,7 @@ deterministic for identical source, module graph, compiler options, and target.
 Ordering uses canonical identity or source order as specified by each layer,
 never hash-map iteration or process addresses.
 
-The ambiguous `--emit ir` option and `zom.ir.v0` header are removed when HIR,
+The ambiguous `--emit ir` option and `zom.ir` header are removed when HIR,
 MIR, and LIR emission lands. All repository callers and snapshots are updated
 in the same change.
 
@@ -1388,8 +1388,9 @@ as HIR only in the compilation unit that owns them. MIR and LIR use
 module-qualified identities and never infer identity from source spelling.
 
 HIR/MIR/LIR debug dumps are not module interface artifacts. Any persisted body
-format for incremental compilation requires explicit schema versioning,
-dependency fingerprints, target identity where applicable, and a separate RFC.
+format for incremental compilation requires one canonical schema, dependency
+fingerprints, target identity where applicable, and a separate RFC. A schema
+change directly replaces the unreleased format and invalidates its cache.
 
 ### Threading And Ownership
 
@@ -1445,7 +1446,7 @@ IR dumps.
   requires coordinated RFC 0006 test rewrites.
 - Incorrect ownership of an operation can still create layer leakage unless
   legality inventories and include-boundary checks are automated.
-- Persisting any layer later will require a separate versioned artifact design;
+- Persisting any layer later will require a separate canonical artifact design;
   the debug dumps are intentionally insufficient for that use.
 
 ## Alternatives Considered
@@ -1503,7 +1504,7 @@ The ordered rollout is:
    SSA.
 7. Add LLVM translation and native artifact smoke tests.
 8. Cut over the main branch by wiring the verified pipeline and deleting
-   `compiler/irgen`, `zom.ir.v0`, and `--emit ir` in the same change.
+   `compiler/irgen`, `zom.ir`, and `--emit ir` in the same change.
 
 The rollback boundary before `LANDED` is the complete RFC 0010 replacement
 change. The repository must not retain both IR pipelines. Generated snapshots
@@ -1589,7 +1590,7 @@ and reproducible builds.
     no feature-boundary proof and fail before LIR construction.
 16. `zomc` exposes `--emit=hir`, `--emit=mir`, `--emit=lir`, and
     `--emit=llvm-ir` with executable FileCheck coverage.
-17. `--emit ir`, `zom.ir.v0`, `compiler/irgen`, and every old caller are deleted
+17. `--emit ir`, `zom.ir`, `compiler/irgen`, and every old caller are deleted
     in the replacement change.
 18. Include and ownership checks prevent frontend modules from depending on LIR
     or backend headers and prevent LLVM translation from depending on checker
@@ -1642,9 +1643,9 @@ and reproducible builds.
     and registry revision, recomputes the ID from the token's immutable
     `CanonicalTargetSpec`, and proves semantic projection and panic strategy;
     all target-profile reads use that verified value.
-28. Target selection reproduces the 111-byte `TargetSpecId` oracle, the target
-    registry reproduces the 52-byte revision oracle, and the gate registry
-    reproduces the 49-byte snapshot oracle. Generated tests reject
+28. Target selection reproduces the 108-byte `TargetSpecId` oracle, the target
+    registry reproduces the 49-byte revision oracle, and the gate registry
+    reproduces the 46-byte snapshot oracle. Generated tests reject
     zero or duplicate gate IDs, missing or additional accepted contracts,
     foreign registry revisions, and every mismatched proof field. Reversing
     registration and input order or using worker counts `1, 2, 4, 8` preserves
@@ -1740,8 +1741,8 @@ and reproducible builds.
   `IrOperationResult` branch; unified identity/IR sorting; exhaustive registered
   mapping; classification precedence; generated field-path rejection; and
   production-build absence of invariant injection.
-- Target and gate-registry unit tests: reproduce the 111-byte target, 52-byte
-  target-registry, and 49-byte gate-registry oracles; mutate every framed field,
+- Target and gate-registry unit tests: reproduce the 108-byte target, 49-byte
+  target-registry, and 46-byte gate-registry oracles; mutate every framed field,
   host profile, profile name, semantic projection, semantic feature set,
   panic-strategy map, target ID, feature state, enum tag, count, gate ID, owner
   RFC, registry revision, common proof binding, and proof revision independently;

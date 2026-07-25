@@ -268,9 +268,9 @@ ZC_TEST("Owner-local binding keys retain the exact body-value record") {
   ZC_REQUIRE(value != zc::none);
   ZC_IF_SOME(admitted, value) {
     zc::Vector<uint8_t> expected;
-    const uint8_t prefix[] = {0x7a, 0x6f, 0x6d, 0x2e, 0x6f, 0x77, 0x6e, 0x65, 0x72, 0x2d,
-                              0x6c, 0x6f, 0x63, 0x61, 0x6c, 0x2d, 0x62, 0x69, 0x6e, 0x64,
-                              0x69, 0x6e, 0x67, 0x2e, 0x76, 0x31, 0x00, 0x02};
+    const uint8_t prefix[] = {0x7a, 0x6f, 0x6d, 0x2e, 0x6f, 0x77, 0x6e, 0x65, 0x72,
+                              0x2d, 0x6c, 0x6f, 0x63, 0x61, 0x6c, 0x2d, 0x62, 0x69,
+                              0x6e, 0x64, 0x69, 0x6e, 0x67, 0x00, 0x02};
     expected.addAll(zc::arrayPtr(prefix));
     for (size_t index = 0; index < 32; ++index) { expected.add(0x11); }
     const uint8_t suffix[] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00,
@@ -312,7 +312,7 @@ ZC_TEST("Owner-local binding keys retain the exact body-value record") {
   ZC_REQUIRE(moduleBinding != zc::none);
   ZC_IF_SOME(admitted, moduleBinding) {
     auto expected = zc::decodeHex(
-        "7a6f6d2e6f776e65722d6c6f63616c2d62696e64696e672e763100010300000000000000000000000000"
+        "7a6f6d2e6f776e65722d6c6f63616c2d62696e64696e6700010300000000000000000000000000"
         "0000000000000e6c6f63616c5f6964656e746974790000000000000005302e302e300000000000000000"
         "01000000000000000e6c6f63616c5f6964656e7469747902000000000000000178000000000000000176"
         "00000000000000016f000000000000000165000000000000000161000000400100000000000000000000"
@@ -367,9 +367,9 @@ ZC_TEST("Anonymous owner-local keys retain role without admitting stable identit
   ZC_REQUIRE(value != zc::none);
   ZC_IF_SOME(admitted, value) {
     zc::Vector<uint8_t> expected;
-    const uint8_t prefix[] = {0x7a, 0x6f, 0x6d, 0x2e, 0x61, 0x6e, 0x6f, 0x6e, 0x79, 0x6d,
-                              0x6f, 0x75, 0x73, 0x2d, 0x6f, 0x77, 0x6e, 0x65, 0x72, 0x2d,
-                              0x6c, 0x6f, 0x63, 0x61, 0x6c, 0x2e, 0x76, 0x31, 0x00, 0x02};
+    const uint8_t prefix[] = {0x7a, 0x6f, 0x6d, 0x2e, 0x61, 0x6e, 0x6f, 0x6e, 0x79,
+                              0x6d, 0x6f, 0x75, 0x73, 0x2d, 0x6f, 0x77, 0x6e, 0x65,
+                              0x72, 0x2d, 0x6c, 0x6f, 0x63, 0x61, 0x6c, 0x00, 0x02};
     expected.addAll(zc::arrayPtr(prefix));
     for (size_t index = 0; index < 32; ++index) { expected.add(0x22); }
     const uint8_t suffix[] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0x00,
@@ -395,7 +395,7 @@ ZC_TEST("Anonymous owner-local keys retain role without admitting stable identit
   ZC_REQUIRE(moduleValue != zc::none);
   ZC_IF_SOME(admitted, moduleValue) {
     auto expected = zc::decodeHex(
-        "7a6f6d2e616e6f6e796d6f75732d6f776e65722d6c6f63616c2e7631000103000000000000000000000000"
+        "7a6f6d2e616e6f6e796d6f75732d6f776e65722d6c6f63616c000103000000000000000000000000"
         "000000000000000e6c6f63616c5f6964656e746974790000000000000005302e302e300000000000000000"
         "01000000000000000e6c6f63616c5f6964656e746974790200000000000000017800000000000000017600"
         "000000000000016f00000000000000016500000000000000016100000040010000000000000000000007ea"
@@ -420,44 +420,40 @@ ZC_TEST("Owner-local binding decoder rejects every non-canonical record boundary
     wrongDomain[0] = static_cast<uint8_t>('x');
     ZC_EXPECT(OwnerLocalBindingKey::decodeCanonical(wrongDomain.asPtr()) == zc::none);
 
-    auto wrongVersion = copyBytes(canonical.asPtr());
-    wrongVersion[25] = static_cast<uint8_t>('2');
-    ZC_EXPECT(OwnerLocalBindingKey::decodeCanonical(wrongVersion.asPtr()) == zc::none);
-
     auto missingDomainTerminator = copyBytes(canonical.asPtr());
-    missingDomainTerminator[26] = 0x01;
+    missingDomainTerminator[23] = 0x01;
     ZC_EXPECT(OwnerLocalBindingKey::decodeCanonical(missingDomainTerminator.asPtr()) == zc::none);
 
     auto unknownOwnerTag = copyBytes(canonical.asPtr());
-    unknownOwnerTag[27] = 0xff;
+    unknownOwnerTag[24] = 0xff;
     ZC_EXPECT(OwnerLocalBindingKey::decodeCanonical(unknownOwnerTag.asPtr()) == zc::none);
 
     auto emptyPath = copyBytes(canonical.asPtr());
-    emptyPath[67] = 0x00;
+    emptyPath[64] = 0x00;
     ZC_EXPECT(OwnerLocalBindingKey::decodeCanonical(emptyPath.asPtr()) == zc::none);
 
     auto oversizedPath = copyBytes(canonical.asPtr());
-    oversizedPath[66] = 0x10;
-    oversizedPath[67] = 0x01;
+    oversizedPath[63] = 0x10;
+    oversizedPath[64] = 0x01;
     ZC_EXPECT(OwnerLocalBindingKey::decodeCanonical(oversizedPath.asPtr()) == zc::none);
 
-    auto truncatedPathComponent = zc::heapArray<uint8_t>(canonical.slice(0, 71));
+    auto truncatedPathComponent = zc::heapArray<uint8_t>(canonical.slice(0, 68));
     ZC_EXPECT(OwnerLocalBindingKey::decodeCanonical(truncatedPathComponent.asPtr()) == zc::none);
 
     auto unknownNamespace = copyBytes(canonical.asPtr());
-    unknownNamespace[76] = 0xff;
+    unknownNamespace[73] = 0xff;
     ZC_EXPECT(OwnerLocalBindingKey::decodeCanonical(unknownNamespace.asPtr()) == zc::none);
 
     auto unknownKind = copyBytes(canonical.asPtr());
-    unknownKind[77] = 0xff;
+    unknownKind[74] = 0xff;
     ZC_EXPECT(OwnerLocalBindingKey::decodeCanonical(unknownKind.asPtr()) == zc::none);
 
     auto invalidMatrix = copyBytes(canonical.asPtr());
-    invalidMatrix[76] = static_cast<uint8_t>(OwnerLocalBindingNamespace::Type);
+    invalidMatrix[73] = static_cast<uint8_t>(OwnerLocalBindingNamespace::Type);
     ZC_EXPECT(OwnerLocalBindingKey::decodeCanonical(invalidMatrix.asPtr()) == zc::none);
 
     zc::Vector<uint8_t> nonCanonicalName;
-    nonCanonicalName.addAll(canonical.slice(0, 78));
+    nonCanonicalName.addAll(canonical.slice(0, 75));
     const uint8_t decomposedName[] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
                                       0x00, 0x03, 0x65, 0xcc, 0x81};
     nonCanonicalName.addAll(zc::arrayPtr(decomposedName));
@@ -484,16 +480,12 @@ ZC_TEST("Anonymous owner-local decoder rejects invalid domains roles and framing
     wrongDomain[0] = static_cast<uint8_t>('x');
     ZC_EXPECT(AnonymousOwnerLocalKey::decodeCanonical(wrongDomain.asPtr()) == zc::none);
 
-    auto wrongVersion = copyBytes(canonical.asPtr());
-    wrongVersion[27] = static_cast<uint8_t>('2');
-    ZC_EXPECT(AnonymousOwnerLocalKey::decodeCanonical(wrongVersion.asPtr()) == zc::none);
-
     auto missingDomainTerminator = copyBytes(canonical.asPtr());
-    missingDomainTerminator[28] = 0x01;
+    missingDomainTerminator[25] = 0x01;
     ZC_EXPECT(AnonymousOwnerLocalKey::decodeCanonical(missingDomainTerminator.asPtr()) == zc::none);
 
     auto invalidRole = copyBytes(canonical.asPtr());
-    invalidRole[78] = 0xff;
+    invalidRole[75] = 0xff;
     ZC_EXPECT(AnonymousOwnerLocalKey::decodeCanonical(invalidRole.asPtr()) == zc::none);
 
     auto truncated = withoutLastByte(canonical.asPtr());

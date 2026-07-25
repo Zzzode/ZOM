@@ -394,7 +394,6 @@ zc::Maybe<zc::String> dumpJson(zc::OutputStream& output, const Tree& tree,
                                const source::SourceManager& sourceManager) {
   output.write("{\n"_zcb);
   output.write("  \"format\": \"zom.ast.json\",\n"_zcb);
-  output.write(zc::str("  \"schema\": \"", kAstSchemaVersion, "\",\n").asBytes());
   output.write(zc::str("  \"fingerprint\": \"", kAstSchemaFingerprint, "\",\n").asBytes());
   output.write(zc::str("  \"root\": ", static_cast<uint64_t>(tree.root().value), ",\n").asBytes());
   output.write("  \"nodes\": [\n"_zcb);

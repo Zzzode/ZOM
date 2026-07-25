@@ -71,7 +71,7 @@ identity::CanonicalTargetSpecificationKey semanticProjection() {
         scalar<identity::TargetComponentName>("zom"_zc),
         scalar<identity::TargetComponentName>("none"_zc),
         scalar<identity::TargetComponentName>("unknown"_zc),
-        scalar<identity::TargetComponentName>("zom-v1"_zc), 64, identity::Endianness::Little,
+        scalar<identity::TargetComponentName>("zom"_zc), 64, identity::Endianness::Little,
         zc::mv(featureSet));
     ZC_IF_SOME(value, result) { return zc::mv(value); }
   }
@@ -82,7 +82,7 @@ RegisteredTargetSelection targetSelection() {
   zc::Vector<ir::CanonicalTargetFeature> targetFeatures;
   auto targetSpec = ir::CanonicalTargetSpec::from(
       zc::str(hostArchitectureName(), "-zom-none"_zc), "e-p:64:64"_zc, "generic"_zc,
-      zc::mv(targetFeatures), "zom-v1"_zc, ir::BackendPanicStrategy::Unwind, ir::ObjectFormat::Elf);
+      zc::mv(targetFeatures), "zom"_zc, ir::BackendPanicStrategy::Unwind, ir::ObjectFormat::Elf);
   ZC_REQUIRE(targetSpec != zc::none);
   zc::Vector<identity::TargetFeatureName> semanticFeatures;
   zc::Vector<ir::CanonicalTargetSpec> specifications;
@@ -369,7 +369,7 @@ void runScenario(const zc::Directory& testRoot, const zc::Directory& sandboxPare
       zc::mv(sandboxName), cgroupParent, zc::mv(outputFactory));
   ZC_REQUIRE(platform.is<zc::Own<LinuxNativeSandboxPlatform>>());
   auto buildLimits = limits(scenario);
-  auto sandbox = LinuxNativeSandboxV1::create(
+  auto sandbox = LinuxNativeSandbox::create(
       zc::mv(platform.get<zc::Own<LinuxNativeSandboxPlatform>>()), buildLimits);
   ZC_REQUIRE(sandbox.is<zc::Own<BuildScriptSandboxAdapter>>());
   auto adapter = zc::mv(sandbox.get<zc::Own<BuildScriptSandboxAdapter>>());
@@ -398,7 +398,7 @@ void runScenario(const zc::Directory& testRoot, const zc::Directory& sandboxPare
 
 }  // namespace
 
-ZC_TEST("Production LinuxNativeSandboxV1 enforces runtime policy and deterministic teardown") {
+ZC_TEST("Production LinuxNativeSandbox enforces runtime policy and deterministic teardown") {
   const char* cgroupParent = getenv("ZOM_LINUX_SANDBOX_CGROUP_PARENT");
   ZC_REQUIRE(cgroupParent != nullptr && cgroupParent[0] == '/');
   auto filesystem = zc::newDiskFilesystem();

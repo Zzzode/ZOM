@@ -338,7 +338,7 @@ ZC_TEST("Trusted runtime ELF verifier constructs keys only from exact object and
   zc::Vector<zc::Array<uint8_t>> actualObjects;
   actualObjects.add(elf());
   auto verified = TrustedRuntimeElfDecoder::verifyKey(
-      "zom-v1"_zc, "zom-v1"_zc, zc::mv(actualObjects), zc::mv(declaredDigests),
+      "zom"_zc, "zom"_zc, zc::mv(actualObjects), zc::mv(declaredDigests),
       zc::mv(declared.get<TrustedRuntimeManifestSet>()), operations(), requiredOperations());
   ZC_EXPECT(verified.is<TrustedBuildRuntimeKey>());
 
@@ -354,7 +354,7 @@ ZC_TEST("Trusted runtime ELF verifier constructs keys only from exact object and
   zc::Vector<identity::Sha256Digest> unchangedDigests;
   unchangedDigests.add(digest(declaredObject));
   auto rejected = TrustedRuntimeElfDecoder::verifyKey(
-      "zom-v1"_zc, "zom-v1"_zc, zc::mv(changedObjects), zc::mv(unchangedDigests),
+      "zom"_zc, "zom"_zc, zc::mv(changedObjects), zc::mv(unchangedDigests),
       zc::mv(changedDeclared.get<TrustedRuntimeManifestSet>()), operations(), requiredOperations());
   ZC_REQUIRE(rejected.is<TrustedRuntimeInvariantIssue>());
   ZC_EXPECT(rejected.get<TrustedRuntimeInvariantIssue>() ==

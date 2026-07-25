@@ -19,7 +19,7 @@
 namespace zomlang::compiler::binder {
 namespace {
 
-constexpr char kGraphDomain[] = "zom.module-dependency-graph.v0";
+constexpr char kGraphDomain[] = "zom.module-dependency-graph";
 
 void appendUint64(zc::Vector<uint8_t>& bytes, uint64_t value) {
   for (uint32_t index = 0; index < 8; ++index) {

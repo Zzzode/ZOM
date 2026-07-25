@@ -520,8 +520,8 @@ overlays, not by asking the lexer to reinterpret already emitted source bytes.
 
 ## Compatibility And Rollout
 
-ZOM is pre-stability, so lexical drift is fixed in place. There is no
-compatibility mode.
+ZOM is pre-stability, so lexical changes replace the lexer, grammar, fixtures,
+and specification together.
 
 Rollout order:
 

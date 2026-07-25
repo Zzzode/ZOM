@@ -24,7 +24,7 @@ If that evidence cannot be recovered, no dump is returned.
 A successful dump starts with:
 
 ```text
-zom.hir.v0
+zom.hir
 ```
 
 The rendering includes:

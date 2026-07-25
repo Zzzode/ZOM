@@ -30,7 +30,7 @@ evidence into Built MIR.
 
 The replacement draft is a hash-bound additive overlay. It adopts a
 conservative direct-root relation, rejects unexpressible and unverified extern
-contracts, defines the complete RFC 0008 `v1` replacement, and binds verified
+contracts, defines the complete canonical RFC 0008 replacement, and binds verified
 borrow evidence through the RFC 0010 frontend handoff.
 
 ### 2026-07-11 Root-Only Draft Review Return
@@ -50,7 +50,7 @@ failure anchor, sorting, and callable-local precedence incomplete.
 
 The next draft rejects borrow-bearing body-local closures through the checked
 body source result, embeds foreign verified surfaces in a session-owned branded
-repository, defines the 176-byte evidence oracle, binds borrow evidence into the
+repository, defines the 173-byte evidence oracle, binds borrow evidence into the
 single canonical MIR revision, and closes source-failure selection and ordering.
 
 ### 2026-07-11 Evidence-Lineage Draft Review Return
@@ -95,7 +95,7 @@ No owner recorded a blocking or non-blocking objection.
 | `task-router` | Approved | Amendment routing and RFC 0007 dependency escalation |
 | `rfc` | Approved | Governance, accepted-RFC amendment, dependencies, and transition |
 | `binder-checker` | Approved | Total root-shape classification, elision, signature facts, and body-local closure rejection |
-| `module-system` | Approved | Borrow surface, module interface v1, transitive re-export proof selection, and cross-module consumption |
+| `module-system` | Approved | Borrow surface, module interface canonical, transitive re-export proof selection, and cross-module consumption |
 | `error-system` | Approved | `ZOM4082-ZOM4085`, checked-body and interface source paths, invariants, and staged precedence |
 | `concurrency` | Approved | Proof that task and suspension semantics are not implied |
 | `ir-backend` | Approved | Ownership result seam, canonical MIR revision and oracles, Built MIR artifact legality, and successor suppression |
@@ -131,14 +131,14 @@ publish production facts.
 
 ## Implementation Tracker
 
-The direct replacement series started on 2026-07-17. It contains no interface
-`v0` decoder, AST ownership fallback, unbranded evidence lookup, optional
+The direct replacement series started on 2026-07-17. It contains no parallel
+interface decoder, AST ownership fallback, unbranded evidence lookup, optional
 lineage, or parallel MIR revision.
 
 | Slice | State | Required evidence |
 |---|---|---|
 | Borrow signature surface | Implemented | Closed direct-root summaries, source rejection, canonical codec, verified module-interface publication, and focused sanitizer tests |
-| BorrowEvidence authority | Implemented | `borrow-evidence-test` passes complete local/imported reconstruction, the exact 176-byte empty oracle, independent verification, branded repository leases, and deterministic missing/additional/duplicate/order/codec/stale/swap mutations |
+| BorrowEvidence authority | Implemented | `borrow-evidence-test` passes complete local/imported reconstruction, the exact 173-byte empty oracle, independent verification, branded repository leases, and deterministic missing/additional/duplicate/order/codec/stale/swap mutations |
 | Checked-module and HIR lineage | Implemented | `hir-module-test` and `compiler-session-package-test` pass exact retained checked and borrow leases, repository re-resolution, deterministic lineage dumps, and all-or-nothing session publication |
 | Built MIR revision | Implemented | `built-mir-test` passes the exact non-empty `9f8de0ad...ad7985` and empty `b9a8988d...38cbc9` oracles; direct HIR lowering, the independent verifier, atomic session adoption, and all 21 IR architecture mutations pass |
 | Ownership result seam | Pending | Closed source, identity, capability, and IR-invariant branches at OwnershipProofValidation with successor suppression |

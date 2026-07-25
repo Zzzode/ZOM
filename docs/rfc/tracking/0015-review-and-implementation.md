@@ -43,9 +43,8 @@ The six bound base proposal hashes were reproduced from the current repository
 and match the exact values in the proposal. `python3 scripts/check-rfc.py`
 passes for all fifteen proposal RFCs. Every cited official Rust, Swift, Zig,
 and LLVM prior-art link was retrieved successfully. Independent shell
-reproduction matched all four operator vectors, all four type-key pattern
-vectors, and the 172-byte signature v1, 105-byte coherence v1, and 282-byte
-module-interface v3 SHA-256 oracles. No compiler implementation is authorized
+reproduction matched all operator, type-key pattern, signature, coherence, and
+module-interface SHA-256 oracles. No compiler implementation is authorized
 until every
 required owner approves this exact snapshot and the RFC moves to `ACCEPTED`.
 
@@ -117,8 +116,8 @@ framed `ImplPatternKey` byte string. The independent verifier decodes and
 reproduces that key, validates interface kind and arity, replaces shared pattern
 parameters with the declaration-ordered generic `DefId` values, canonicalizes
 the result, and requires structural equality with `selfType` before recomputing
-the self head. One 117-byte standalone impl-head oracle and non-empty 269-byte
-signature, 195-byte coherence, and 390-byte module-interface integration
+the self head. The 110-byte standalone impl-head oracle and non-empty 294-byte
+signature, 220-byte coherence, and 415-byte module-interface integration
 oracles were independently reproduced from their listed preimages.
 
 ### 2026-07-16 Canonical Pattern Round-Trip Repair
@@ -158,14 +157,14 @@ verification, exact self reconstruction, width-safe head derivation, and the
 metadata and produced the exact review snapshot above.
 
 Independent reproduction matched the complete operator and pattern vectors,
-the 100-byte impl-head record, the 117-byte impl-head envelope with SHA-256
-`a504e3a755a6951b4d3b09a71e5de17751452cd8549f314fd49ca90f654a1e19`,
-the 269-byte signature integration envelope with SHA-256
-`d4f64e0e3b4f1916abfb1eea5856bacb1e5f00f6b5ede1d9906a61e6c498e420`,
-the 195-byte coherence integration envelope with SHA-256
-`191ea6d0307def473535056bb9fc23b760c3e73ebddcb158e8814193e24c551e`,
-and the 390-byte module-interface integration envelope with SHA-256
-`040e3cc2bf2f076f38310a966eb455890e8b5e6816210ef12a7da4d9270f8882`.
+the 96-byte impl-head record, the 110-byte impl-head envelope with SHA-256
+`6bddf6dbf69d1dcdfad09365fc82edacd33bef88375a7bf15fe1377ef2caf180`,
+the 294-byte signature integration envelope with SHA-256
+`a6b56362560d1195d2e302b4126cc6bf6871fbe685eb001134e078a0945590fb`,
+the 220-byte coherence integration envelope with SHA-256
+`51ecc936edb20440fa1ed277db0a89c565e6a0d232f724e3fb98ba4fddb3349f`,
+and the 415-byte module-interface integration envelope with SHA-256
+`b850d53708a940612597555709c97f0308147ac925ba67820a97b514a4633000`.
 `python3 scripts/check-rfc.py` and `git diff --check` pass. No implementation
 is authorized until all six required owners approve this exact review
 snapshot.
@@ -239,14 +238,14 @@ owner, removes `ImplHead.polarity`, retains every `implHeads` field as
 prevents marker impls from entering RFC 0014 `ImplSelfOwner`, removes the
 redundant `ImplIfaceList.n_ifaces` field, and defines exact parser and checker
 diagnostics for every source-shape mismatch. Independent recomputation produced
-the 99-byte impl-head record, 116-byte impl-head envelope with SHA-256
-`9b223c2528e292b03af2fabc463afb61a281b62ff40f82944376b421b916064e`,
-268-byte signature integration envelope with SHA-256
-`79abfad1573526c4994a967b8abb863a64b717d09739796488bab32567d77e32`,
-194-byte coherence integration envelope with SHA-256
-`f93f7bf3fedaed249cc4c9598840b05a3f871323f584eecd45f37b775776de02`,
-and 389-byte module-interface integration envelope with SHA-256
-`1a9616a65e070d7a592648f89f599b12267ce87d3b91a3d8c7be6e4c1ec5b04a`.
+the 96-byte impl-head record, 110-byte impl-head envelope with SHA-256
+`6bddf6dbf69d1dcdfad09365fc82edacd33bef88375a7bf15fe1377ef2caf180`,
+294-byte signature integration envelope with SHA-256
+`a6b56362560d1195d2e302b4126cc6bf6871fbe685eb001134e078a0945590fb`,
+220-byte coherence integration envelope with SHA-256
+`51ecc936edb20440fa1ed277db0a89c565e6a0d232f724e3fb98ba4fddb3349f`,
+and 415-byte module-interface integration envelope with SHA-256
+`b850d53708a940612597555709c97f0308147ac925ba67820a97b514a4633000`.
 The repaired proposal remains `DRAFT` at exact SHA-256
 `1c5d491009c70abc060e16d68f748be62b71b6995012e5ff42938cc5fc34a443`.
 
@@ -300,13 +299,13 @@ provenance authorizes exact structural subject classes, primitive builtin
 facts, and one required marker per reference mutability. Function, raw pointer,
 dynamic array, slice, class, and recursive support cycles fail closed. Exact
 component steps cover references and enum payloads. The policy revision is a
-direct parent of signature facts, complete module-interface v3, every
-`CoherenceModuleInput`, and coherence view v1.
+direct parent of signature facts, the complete canonical module interface,
+every `CoherenceModuleInput`, and the canonical coherence view.
 
-Independent recomputation matched the 80-byte shape inventory, 81-byte policy
-configuration, 172-byte registry, standalone policy/component records,
-204/300/201-byte signature vectors, 137/226-byte coherence vectors,
-314/341/421-byte module-interface vectors, and the actual
+Independent recomputation matched the 77-byte shape inventory, 78-byte policy
+configuration, 169-byte registry, standalone policy/component records,
+201/294/198-byte signature vectors, 137/220-byte coherence vectors,
+311/335/415-byte module-interface vectors, and the actual
 configuration-to-coherence revision chain. `python3 scripts/check-rfc.py` and
 `git diff --check` pass. The exact draft snapshot submitted for locked final
 pre-review audit is
@@ -373,8 +372,8 @@ positive, negative, or unsatisfied result. Query types need not appear in a
 module signature or any pre-registration inventory.
 
 Structural and builtin `MarkerFact` encodings remain byte-comparable ephemeral
-proof records but never enter a revision preimage or cache artifact. Therefore
-the v1/v3 record shapes and existing golden vectors remain unchanged while the
+proof records but never enter a revision preimage or cache artifact. The
+canonical record shapes and golden vectors remain unchanged while the
 invalid finite coverage and same-key transport requirements disappear.
 `python3 scripts/check-rfc.py` and `git diff --check` pass. The exact repaired
 draft snapshot submitted for a fresh locked audit is SHA-256
@@ -486,8 +485,8 @@ declared vectors, lengths, and SHA-256 values. The metadata-only transition to
 |---|---|---|
 | `rfc` | Approved at `64283622...` | Exact base hashes, overlay legality, owner completeness, and internally consistent status |
 | `lexer-parser` | Approved at `64283622...` | Singular ordinary impl grammar, bodyless marker grammar, AST field removal, diagnostics, and conformance cutover |
-| `binder-checker` | Approved at `64283622...` | Final-survivor provenance, complete ImplHead order, marker proof queries, publication restrictions, unification, signature v1, and coherence v1 |
-| `module-system` | Approved at `64283622...` | Module-interface v3 field inheritance, explicit-only marker projection, cutover, source-header provenance, and publication validation |
+| `binder-checker` | Approved at `64283622...` | Final-survivor provenance, complete ImplHead order, marker proof queries, publication restrictions, unification, canonical signature, and canonical coherence |
+| `module-system` | Approved at `64283622...` | Module-interface canonical field inheritance, explicit-only marker projection, cutover, source-header provenance, and publication validation |
 | `error-system` | Approved at `64283622...` | Operator tags, diagnostic subsets, rendering, and invariant precedence |
 | `spec-audit` | Approved at `64283622...` | Operator spelling, semantic-type closure, and cross-RFC consumer closure |
 | `verification` | Approved at `64283622...` | Independent reproduction of all base hashes, 31 preimages and hashes, provenance mutations, and the complete gate plan |
@@ -504,11 +503,11 @@ The decision authorizes the direct RFC 0015 cutover for canonical impl heads,
 structured operator diagnostic facts, explicit marker facts, demand-driven
 marker proofs, signature publication, coherence publication, and combined
 module-interface publication. It authorizes no compatibility path, partial
-schema cutover, or preserved v0/v2 producer or consumer.
+schema cutover, or preserved parallel producer or consumer.
 
 On 2026-07-17 the proposal moved mechanically from `ACCEPTED` to
 `IMPLEMENTING` and began the direct cutover recorded below. The transition did
-not alter the accepted technical contract or revive any superseded codec.
+not alter the accepted technical contract.
 
 ## Implementation Tracker
 
@@ -516,11 +515,11 @@ not alter the accepted technical contract or revive any superseded codec.
 |---|---|---|
 | Singular ordinary and marker source forms | Complete | The parser, AST schema, Binder inventory, and specification expose one ordinary behavior interface per impl and one bodyless marker assertion per marker impl. Focused parser coverage, grammar expectations, AST snapshots, source-shape diagnostics, the 20-fixture impl-source architecture negative gate, and the complete conformance AST and grammar runners pass. |
 | Operator algebra and renderer | Complete | `operator-kind.{h,cc}` defines all exact tags, symbolic AST mappings, encodings, and spellings; four normative oracle hashes (`4db7a174...`, `36bab6dd...`, `6d835cdc...`, `a6025127...`), shared-spelling identity tests, diagnostic-subset validation for all four `OperatorDiagnostic` kinds, the full AST-to-semantic operator alignment gate in `check-checker-architecture.py::check_operator_closure`, sanitizer build, focused CTest (4 cases), and 60-fixture Checker architecture negative gate pass. |
-| Type-key pattern algebra and codec | Complete | The complete seventeen-variant recursive algebra, symbolic tags, canonical v1 key construction, full raw decoder, re-encoding verification, identity-free and identity-bearing vectors, both impl-pattern vectors, framing and trailing-byte mutations, malformed child records, order and duplicate rejection, and complete signature-record replacement coverage pass in the 19-case signature facts suite. |
+| Type-key pattern algebra and codec | Complete | The complete seventeen-variant recursive algebra, symbolic tags, canonical key construction, full raw decoder, re-encoding verification, identity-free and identity-bearing vectors, both impl-pattern vectors, framing and trailing-byte mutations, malformed child records, order and duplicate rejection, and complete signature-record replacement coverage pass in the 19-case signature facts suite. |
 | Pattern construction and unification | Complete | Interface arguments and self share one parameter space. Publication validates generic ownership and substitution-stable heads; coherence performs alpha-renamed unification with fixed-point dereferencing, occurs checks, blanket comparison in both directions, canonical ordering, and deterministic rejection. |
 | Marker shape, policy, and proof authority | Complete | One verified shape inventory and one prelude-authorized policy registry feed explicit-only persisted marker maps. `BodyCheckingInput` issues the proof capability, and a private semantic-type interning capability supports generic nominal substitution. Production source-to-signature tests cover generic struct and enum reconstruction, builtin and structural proof, self and mutual cycles, precedence, and fail-closed unsupported forms. |
-| Signature v1 and coherence v1 cutover | Complete | Signature publication uses only revision v1 with complete canonical requirement records and an independent source census. Coherence uses only revision v1, consumes verified module-interface projections, carries policy lineage, and publishes structured failures. The focused cross-module suite passes 9 cases. No v0 production domain or producer/consumer remains. |
-| Module-interface v3 cutover | Complete | Module publication, import reconstruction, coherence projection, and framing use only module-interface revision v3. The focused module-interface suite passes 8 cases. No v2 production domain or producer/consumer remains. |
+| Canonical signature and coherence publication | Complete | Signature publication uses the canonical revision with complete requirement records and an independent source census. Coherence consumes verified module-interface projections, carries policy lineage, and publishes structured failures. The focused cross-module suite passes 9 cases. |
+| Canonical module-interface publication | Complete | Module publication, import reconstruction, coherence projection, and framing use the canonical module-interface revision. The focused module-interface suite passes 8 cases. |
 | Documentation and repository gates | Complete | The sanitizer build passes. All 202 distinct CTest targets have passing evidence after regenerating and rerunning the one missing marker AST expectation; this includes 124 unit targets, all lit runners, and 27 architecture targets. Checker architecture passes with 100 negative fixtures, RFC validation passes, format and diff gates pass, and no compatibility rail is retained. |
 
 Implementation is authorized by the accepted decision. States advance only
@@ -531,9 +530,9 @@ evidence.
 
 Commits `0bba7e34`, `f86b5660`, and `76e73196` landed every RFC 0015
 implementation slice, its governance records, and its current architecture
-guidance on `develop` with one production rail. Signature facts use revision
-v1, coherence uses revision v1, and module interfaces use revision v3.
-Imported signature view revision v0 is an independent projection protocol and
+guidance on `develop` with one production rail. Signature facts, coherence, and
+module interfaces use their canonical revisions. Imported signature view is an
+independent projection protocol and
 is not an alternate signature-facts, coherence, or module-interface producer.
 
 The final marker-proof integration removes the manual verified-signature test

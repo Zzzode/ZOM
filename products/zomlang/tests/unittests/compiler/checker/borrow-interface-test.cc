@@ -334,10 +334,10 @@ ZC_TEST("BorrowSignatureCanonicalCodec.ReproducesNonEmptyOracle") {
   auto encoded = BorrowSignatureCanonicalCodec::encodeFramed(summary, callable);
   ZC_REQUIRE(encoded != zc::none);
   ZC_IF_SOME(bytes, encoded) {
-    ZC_EXPECT(bytes.size() == 61);
+    ZC_EXPECT(bytes.size() == 58);
     ZC_IF_SOME(digest, identity::sha256(bytes.asPtr())) {
       ZC_EXPECT(zc::encodeHex(digest.bytes()) ==
-                "bda5523f367e5abb71aaabf0e3a8b5dbe920c3dbe73d5d1051fbc6739db7dc30"_zc);
+                "fcaee879534108f89aa47013f72b6f17f6dd783def9ccd46029d76eb752ce603"_zc);
     }
   }
 }
@@ -350,7 +350,7 @@ ZC_TEST("BorrowInterfaceRevision.ReproducesEmptySurfaceOracle") {
   ZC_REQUIRE(revision != zc::none);
   ZC_IF_SOME(value, revision) {
     ZC_EXPECT(zc::encodeHex(value.digest().bytes()) ==
-              "409eb28bdc0218f92eebcf9411687d24fbe7eb70ee527910110804a3f23fe81c"_zc);
+              "799e2fed5be5220c268a5413afd2713520add15a0505105d61c9850c4256737a"_zc);
   }
 }
 

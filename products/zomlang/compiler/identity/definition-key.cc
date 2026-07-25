@@ -13,10 +13,10 @@
 namespace zomlang::compiler::identity {
 namespace {
 
-constexpr auto kDefinitionDomain = "zom.named-item-header.v0"_zc;
-constexpr auto kImplDomain = "zom.impl-header.v0"_zc;
-constexpr auto kGenericParameterDomain = "zom.generic-parameter.v0"_zc;
-constexpr auto kCallableParameterDomain = "zom.callable-parameter.v0"_zc;
+constexpr auto kDefinitionDomain = "zom.named-item-header"_zc;
+constexpr auto kImplDomain = "zom.impl-header"_zc;
+constexpr auto kGenericParameterDomain = "zom.generic-parameter"_zc;
+constexpr auto kCallableParameterDomain = "zom.callable-parameter"_zc;
 constexpr uint64_t kMaximumDefinitionIdentityRecordBytes = 4 * 1024 * 1024;
 constexpr uint64_t kMaximumDefinitionOwnerCount = kMaximumDefinitionIdentityRecordBytes / 33;
 

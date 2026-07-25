@@ -11,7 +11,7 @@ import struct
 from pathlib import Path
 
 
-DOMAIN = b"zom.performance-edge.v0\0"
+DOMAIN = b"zom.performance-edge\0"
 
 
 def edge_key(consumer: int, provider: int) -> tuple[int, int]:

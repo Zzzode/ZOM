@@ -59,7 +59,7 @@ public:
   DefinitionKey& operator=(DefinitionKey&&) noexcept = default;
   ZC_DISALLOW_COPY(DefinitionKey);
 
-  /// \brief Computes SHA-256("zom.named-item-header.v0" || 0x00 || Encode(record)).
+  /// \brief Computes SHA-256("zom.named-item-header" || 0x00 || Encode(record)).
   ZC_NODISCARD static DefinitionKey compute(const DefinitionIdentityRecord& record);
   /// \brief Admits exactly 32 already-verified digest bytes.
   ZC_NODISCARD static zc::Maybe<DefinitionKey> fromBytes(zc::ArrayPtr<const uint8_t> bytes);
@@ -83,7 +83,7 @@ public:
   ImplKey& operator=(ImplKey&&) noexcept = default;
   ZC_DISALLOW_COPY(ImplKey);
 
-  /// \brief Computes SHA-256("zom.impl-header.v0" || 0x00 || Encode(record)).
+  /// \brief Computes SHA-256("zom.impl-header" || 0x00 || Encode(record)).
   ZC_NODISCARD static ImplKey compute(const ImplIdentityRecord& record);
   /// \brief Admits exactly 32 already-verified digest bytes.
   ZC_NODISCARD static zc::Maybe<ImplKey> fromBytes(zc::ArrayPtr<const uint8_t> bytes);

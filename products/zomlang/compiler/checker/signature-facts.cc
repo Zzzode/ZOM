@@ -1892,7 +1892,7 @@ zc::Maybe<identity::Sha256Digest> markerShapeRevisionDigest(
     const identity::Sha256Digest& fingerprint,
     zc::ArrayPtr<const zc::ArrayPtr<const uint8_t>> records) {
   identity::CanonicalEncoder encoder;
-  encodeAscii(encoder, "zom.marker-shape-inventory.v0"_zcc);
+  encodeAscii(encoder, "zom.marker-shape-inventory"_zcc);
   encoder.encodeUint8(0);
   encoder.encodeDigest(fingerprint);
   if (!encodeSortedRecordBytes(encoder, records)) return zc::none;
@@ -1902,7 +1902,7 @@ zc::Maybe<identity::Sha256Digest> markerShapeRevisionDigest(
 zc::Maybe<identity::Sha256Digest> markerPolicyConfigurationDigest(
     zc::ArrayPtr<const zc::ArrayPtr<const uint8_t>> records) {
   identity::CanonicalEncoder encoder;
-  encodeAscii(encoder, "zom.marker-policy-configuration.v0"_zcc);
+  encodeAscii(encoder, "zom.marker-policy-configuration"_zcc);
   encoder.encodeUint8(0);
   if (!encodeSortedRecordBytes(encoder, records)) return zc::none;
   return identity::sha256(encoder.finish().asPtr());
@@ -1913,7 +1913,7 @@ zc::Maybe<identity::Sha256Digest> markerPolicyRegistryDigest(
     const MarkerShapeInventoryRevision& inventoryRevision,
     zc::ArrayPtr<const zc::ArrayPtr<const uint8_t>> records) {
   identity::CanonicalEncoder encoder;
-  encodeAscii(encoder, "zom.marker-policy-registry.v0"_zcc);
+  encodeAscii(encoder, "zom.marker-policy-registry"_zcc);
   encoder.encodeUint8(0);
   encoder.encodeDigest(fingerprint);
   encoder.encodeDigest(configurationRevision);
@@ -2704,7 +2704,7 @@ public:
 
   RecordEncodingResult encode(const ImplHead& head, uint32_t ordinal) {
     identity::CanonicalEncoder encoder;
-    constexpr zc::StringPtr patternDomain = "zom.impl-pattern.v1\0"_zcc;
+    constexpr zc::StringPtr patternDomain = "zom.impl-pattern\0"_zcc;
     auto patternHead = SignatureFactsCanonicalCodec::implPatternHead(head.pattern);
     auto semanticHead =
         SignatureFactsCanonicalCodec::canonicalTypeHead(head.selfType, semanticTypes);
@@ -3022,7 +3022,7 @@ private:
       return false;
     }
     const auto bytes = result.get<type::SemanticTypeLookup>().key().bytes();
-    constexpr zc::StringPtr domain = "zom.semantic-type-key.v1\0"_zcc;
+    constexpr zc::StringPtr domain = "zom.semantic-type-key\0"_zcc;
     if (bytes.size() <= domain.size()) { return false; }
     for (size_t index = 0; index < domain.size(); ++index) {
       if (bytes[index] != static_cast<uint8_t>(domain[index])) { return false; }
@@ -3856,7 +3856,7 @@ bool SignatureFactsCanonicalCodec::encodePattern(
 zc::Maybe<TypeKeyPatternKey> SignatureFactsCanonicalCodec::makeTypeKeyPatternKey(
     const TypeKeyPattern& pattern, const identity::SemanticIdentityRegistrySet& registries) {
   identity::CanonicalEncoder encoder;
-  encodeAscii(encoder, "zom.type-key-pattern.v1"_zcc);
+  encodeAscii(encoder, "zom.type-key-pattern"_zcc);
   encoder.encodeUint8(0);
   if (!encodePattern(encoder, pattern, registries)) { return zc::none; }
   return TypeKeyPatternKey(encoder.finish(), pattern.clone());
@@ -3865,7 +3865,7 @@ zc::Maybe<TypeKeyPatternKey> SignatureFactsCanonicalCodec::makeTypeKeyPatternKey
 zc::Maybe<TypeKeyPatternKey> SignatureFactsCanonicalCodec::decodeTypeKeyPatternKey(
     zc::ArrayPtr<const uint8_t> bytes, const identity::SemanticIdentityRegistrySet& registries) {
   identity::CanonicalDecoder decoder(bytes);
-  if (!decodeAscii(decoder, "zom.type-key-pattern.v1"_zcc)) return zc::none;
+  if (!decodeAscii(decoder, "zom.type-key-pattern"_zcc)) return zc::none;
   auto delimiter = decoder.decodeUint8();
   if (delimiter == zc::none) return zc::none;
   ZC_IF_SOME(value, delimiter) {
@@ -3895,7 +3895,7 @@ bool SignatureFactsCanonicalCodec::typeKeyPatternKeyIsCanonical(
 zc::Maybe<ImplPatternKey> SignatureFactsCanonicalCodec::makeImplPatternKey(
     const ImplPattern& pattern, const identity::SemanticIdentityRegistrySet& registries) {
   identity::CanonicalEncoder encoder;
-  encodeAscii(encoder, "zom.impl-pattern.v1"_zcc);
+  encodeAscii(encoder, "zom.impl-pattern"_zcc);
   encoder.encodeUint8(0);
   if (!encodePatternInterface(encoder, pattern.interface, registries) ||
       !encodePattern(encoder, pattern.self, registries)) {
@@ -3907,7 +3907,7 @@ zc::Maybe<ImplPatternKey> SignatureFactsCanonicalCodec::makeImplPatternKey(
 zc::Maybe<ImplPatternKey> SignatureFactsCanonicalCodec::decodeImplPatternKey(
     zc::ArrayPtr<const uint8_t> bytes, const identity::SemanticIdentityRegistrySet& registries) {
   identity::CanonicalDecoder decoder(bytes);
-  if (!decodeAscii(decoder, "zom.impl-pattern.v1"_zcc)) return zc::none;
+  if (!decodeAscii(decoder, "zom.impl-pattern"_zcc)) return zc::none;
   auto delimiter = decoder.decodeUint8();
   if (delimiter == zc::none) return zc::none;
   ZC_IF_SOME(value, delimiter) {
@@ -5172,7 +5172,7 @@ zc::Maybe<SignatureFactsRevision> SignatureFactsRevision::computeFramed(
     zc::ArrayPtr<const zc::ArrayPtr<const uint8_t>> implHeadRecords,
     zc::ArrayPtr<const zc::ArrayPtr<const uint8_t>> markerFactRecords) {
   identity::CanonicalEncoder encoder;
-  encodeAscii(encoder, "zom.signature-facts-revision.v1"_zcc);
+  encodeAscii(encoder, "zom.signature-facts-revision"_zcc);
   encoder.encodeUint8(0);
   encoder.encodeDigest(contextFingerprint);
   encoder.encodeByteString(expandedOwningModule);

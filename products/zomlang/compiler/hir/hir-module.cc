@@ -599,7 +599,7 @@ zc::Maybe<zc::String> VerifiedHirModule::dump() const {
     return zc::none;
   }
   zc::Vector<char> output;
-  append(output, "zom.hir.v0\nmodule "_zc);
+  append(output, "zom.hir\nmodule "_zc);
   ZC_IF_SOME(key, moduleKey) { append(output, zc::encodeHex(key.encode().asPtr())); }
   append(output, "\ncontext "_zc);
   appendDigest(output, impl->contextFingerprint.digest());

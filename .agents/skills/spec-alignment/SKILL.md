@@ -62,7 +62,7 @@ Compute these set differences. Every non-empty set → one finding.
 | `ast/kinds.h tokens \ ZomLexer.g4` | Dead SyntaxKind / undocumented token | 🟡 Medium |
 | `ZomLexer.g4 tokens \ lexer.cc cases` | Token not lexed (like ERR-001: `?!`) | 🔴 Critical when semantic depends on it; 🟠 High otherwise |
 | `lexer.cc string compares ∉ kinds.h` | Keyword hard-coded in lexer, not in centralized enum | 🟠 High |
-| `02 keywords \ parser acceptance paths` | Reserved keyword with no grammar rule and no "reserved for v2" note | 🟡 Medium → **delete** per Rule #4 |
+| `02 keywords \ parser acceptance paths` | Reserved keyword with no grammar rule | 🟡 Medium → **delete** per Rule #4 |
 | `EBNF productions \ parser entry points` | Grammar production with no recursive-descent path | 🟠 High |
 | `parseXxx methods \ EBNF productions` | Parser parses something the spec doesn't describe | 🟠 High |
 | `precedence table (04) Δ binaryPrecedence()` | Row-level mismatch for any operator | 🔴 Critical |

@@ -16,7 +16,7 @@
 // clang-format off
 #pragma once
 
-// Schema version: 2.0
+// Generated from the canonical AST schema.
 
 #include <cstdint>
 
@@ -67,8 +67,7 @@ struct NodeSchemaEntry final {
 };
 
 constexpr uint8_t kNodeSchemaNoWord = 0xff;
-constexpr const char* kAstSchemaVersion = "2.0";
-constexpr const char* kAstSchemaFingerprint = "0ea649320b0f7c7ad7811ca2d1b441202f9e6fb36500c50a2d5b1aace7d5143b";
+constexpr const char* kAstSchemaFingerprint = "7abe3be1ea6e255c7d3ac6e04365ee6682e6be76d1cf3623516f3f2be8a0dd2f";
 constexpr uint32_t kAstSchemaVariantCount = 134;
 
 constexpr NodeSchemaEnumValue kAttributePathLeadingEnumValues[] = {

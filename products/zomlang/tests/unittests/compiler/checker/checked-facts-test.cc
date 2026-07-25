@@ -478,7 +478,7 @@ CheckerFailureRef literalOutOfRangeFailure(const CheckedFactsCodecFixture& fixtu
 
 }  // namespace
 
-ZC_TEST("CheckedFactsRevision.ReproducesIndependentV3Oracle") {
+ZC_TEST("CheckedFactsRevision.ReproducesIndependentOracle") {
   const uint8_t module[] = {0xa1};
   SingleRecordGroup b0(0xb0);
   SingleRecordGroup b1(0xb1);
@@ -516,7 +516,7 @@ ZC_TEST("CheckedFactsRevision.ReproducesIndependentV3Oracle") {
   ZC_REQUIRE(revision != zc::none);
   ZC_IF_SOME(value, revision) {
     ZC_EXPECT(zc::encodeHex(value.digest().bytes()) ==
-              "d84b9e14321450d0ece19b11cce30d80337eb4c741e092e222317acb91292416"_zc);
+              "09e8335be64649f47e44e18672852ec1e9a1669f9d142a806d6a58fceb7c1b62"_zc);
   }
 }
 

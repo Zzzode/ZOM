@@ -16,7 +16,7 @@
 // clang-format off
 #pragma once
 
-// Schema version: 2.0
+// Generated from the canonical AST schema.
 
 #include <cstdint>
 

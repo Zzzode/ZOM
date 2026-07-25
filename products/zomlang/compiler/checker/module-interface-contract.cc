@@ -10,7 +10,7 @@
 namespace zomlang::compiler::module_interface {
 namespace {
 
-constexpr char kModuleInterfaceRevisionDomain[] = "zom.module-interface-revision.v3";
+constexpr char kModuleInterfaceRevisionDomain[] = "zom.module-interface-revision";
 
 void append(zc::Vector<uint8_t>& output, zc::ArrayPtr<const uint8_t> bytes) {
   output.addAll(bytes);

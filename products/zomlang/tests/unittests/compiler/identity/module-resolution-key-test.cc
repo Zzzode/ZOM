@@ -155,9 +155,9 @@ ZC_TEST("ModuleCatalogPathBucketKey passes the fixed canonical codec vector") {
   ZC_REQUIRE(value != zc::none);
   ZC_IF_SOME(key, value) {
     auto encoded = key.encode();
-    ZC_EXPECT(encoded.size() == 190);
+    ZC_EXPECT(encoded.size() == 187);
     expectDigest(encoded.asPtr(),
-                 "960b37b6e951a701f73b194f98122460910d0c8a3498669993097fe903046c1f"_zc);
+                 "0be911f4ef7549e0d4e0eb7080baf715ea583b566ba1a57d412e204007054e98"_zc);
     ZC_EXPECT(key.clone().encode().asPtr() == encoded.asPtr());
     ZC_EXPECT(key.crate().encode().asPtr() == crate().encode().asPtr());
     ZC_REQUIRE(key.path().size() == 2);
@@ -309,7 +309,7 @@ ZC_TEST("ModuleCatalogPathBucket decoder validates its external key") {
 ZC_TEST("ModuleResolutionPolicyKey passes the exact fixed byte vector") {
   auto encoded = policy().encode();
   ZC_EXPECT(zc::encodeHex(encoded.asPtr()) ==
-            "7a6f6d2e6d6f64756c652d7265736f6c7574696f6e2d706f6c6963792e7630000101010101010101"_zc);
+            "7a6f6d2e6d6f64756c652d7265736f6c7574696f6e2d706f6c696379000101010101010101"_zc);
 }
 
 ZC_TEST("ModuleResolutionPolicyKey rejects every unknown field tag") {
@@ -403,9 +403,9 @@ ZC_TEST("ModuleResolutionKey passes fixed import and prelude vectors") {
   ZC_REQUIRE(importValue != zc::none);
   ZC_IF_SOME(importKey, importValue) {
     auto encoded = importKey.encode();
-    ZC_EXPECT(encoded.size() == 262);
+    ZC_EXPECT(encoded.size() == 256);
     expectDigest(encoded.asPtr(),
-                 "d687937e945b71e166af344e903016bece3d2a60cdcfb321896282766a6c5159"_zc);
+                 "f44d1608a2f2363cf8172b625b22d02142dac1fc8226df2ac5e0a298eaf56cba"_zc);
     ZC_EXPECT(importKey.clone().encode().asPtr() == encoded.asPtr());
   }
 
@@ -413,14 +413,14 @@ ZC_TEST("ModuleResolutionKey passes fixed import and prelude vectors") {
   ZC_REQUIRE(preludeValue != zc::none);
   ZC_IF_SOME(preludeKey, preludeValue) {
     auto encoded = preludeKey.encode();
-    ZC_EXPECT(encoded.size() == 220);
+    ZC_EXPECT(encoded.size() == 214);
     expectDigest(encoded.asPtr(),
-                 "91734bcd549f9a0c70d410de768a90a0d51842d013635fd0d0ad1e064fcc2f1c"_zc);
+                 "822fb9f69752a17d1cc5e6005e7deaf9c6f9b79661e10d7666b21aa30dbb5caa"_zc);
   }
 }
 
 ZC_TEST("ModuleResolutionKey encodes all dependency-kind tags") {
-  constexpr auto domainSize = "zom.module-resolution.v0"_zc.size() + 1;
+  constexpr auto domainSize = "zom.module-resolution"_zc.size() + 1;
   auto requesterBytes = requester().encode();
   const size_t kindOffset = domainSize + requesterBytes.size();
 
@@ -462,7 +462,7 @@ ZC_TEST("ModuleResolutionKey decoder is exact and rejects closed-tag mutations")
     auto truncated = zc::heapArray(encoded.asPtr().slice(0, encoded.size() - 1));
     ZC_EXPECT(ModuleResolutionKey::decodeCanonical(truncated.asPtr()) == zc::none);
     auto unknownKind = zc::heapArray(encoded.asPtr());
-    constexpr auto domainSize = "zom.module-resolution.v0"_zc.size() + 1;
+    constexpr auto domainSize = "zom.module-resolution"_zc.size() + 1;
     unknownKind[domainSize + requester().encode().size()] = 0xff;
     ZC_EXPECT(ModuleResolutionKey::decodeCanonical(unknownKind.asPtr()) == zc::none);
     zc::Vector<uint8_t> trailing(encoded.size() + 1);

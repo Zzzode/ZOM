@@ -20,7 +20,7 @@
 namespace zomlang::compiler::identity {
 namespace {
 
-constexpr char kFingerprintDomain[] = "zom.semantic-context.v0";
+constexpr char kFingerprintDomain[] = "zom.semantic-context";
 
 struct EncodedValue final {
   explicit EncodedValue(zc::Array<uint8_t>&& bytes) noexcept : value(zc::mv(bytes)) {}

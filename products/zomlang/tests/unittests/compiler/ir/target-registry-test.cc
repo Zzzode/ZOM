@@ -46,7 +46,7 @@ identity::CanonicalTargetSpecificationKey projection(zc::StringPtr architecture 
         scalar<identity::TargetComponentName>("zom"_zc),
         scalar<identity::TargetComponentName>("none"_zc),
         scalar<identity::TargetComponentName>("unknown"_zc),
-        scalar<identity::TargetComponentName>("zom-v1"_zc), 64, identity::Endianness::Little,
+        scalar<identity::TargetComponentName>("zom"_zc), 64, identity::Endianness::Little,
         zc::mv(featureValues));
     ZC_IF_SOME(value, result) { return zc::mv(value); }
   }
@@ -58,7 +58,7 @@ CanonicalTargetSpec oracleSpec(BackendPanicStrategy panic = BackendPanicStrategy
   auto feature = CanonicalTargetFeature::from("sse2"_zc, TargetFeatureState::Enabled);
   ZC_IF_SOME(value, feature) { features.add(zc::mv(value)); }
   auto result = CanonicalTargetSpec::from("x86_64-zom-none"_zc, "e-p:64:64"_zc, "generic"_zc,
-                                          zc::mv(features), "zom-v1"_zc, panic, ObjectFormat::Elf);
+                                          zc::mv(features), "zom"_zc, panic, ObjectFormat::Elf);
   ZC_IF_SOME(value, result) { return zc::mv(value); }
   ZC_FAIL_REQUIRE("invalid target specification fixture");
 }
@@ -88,7 +88,7 @@ TargetRegistrySnapshot snapshot(bool includeAbort = false) {
 ZC_TEST("Canonical target specification matches the RFC 0010 fixed oracle") {
   auto spec = oracleSpec();
   ZC_EXPECT(zc::encodeHex(spec.targetSpecId().bytes()) ==
-            "6d72a26055117cb6e84c3cc3a72fd4c1e42caf861138d8f84f5bf34f2f244d37"_zc);
+            "b5171e0d457c8ddac8eec7df5625c5edcec1b4b20d1f42945053ce95300c4c0b"_zc);
 }
 
 ZC_TEST("Target registry issues and verifies one revision-bound package selection") {
@@ -105,7 +105,7 @@ ZC_TEST("Target registry issues and verifies one revision-bound package selectio
       ZC_REQUIRE(oracleDigest != zc::none);
       ZC_IF_SOME(value, oracleDigest) {
         ZC_EXPECT(zc::encodeHex(value.bytes()) ==
-                  "ee53bebededb1c6020619cc95979fe960814b4ef732afcba82cb96157546febc"_zc);
+                  "c469c35f6f5a8258d48e965149c189c9a859201f6e4db6d80e230b47a8891f28"_zc);
       }
       auto verified = registry.verify(selection);
       ZC_REQUIRE(verified.is<VerifiedTargetSelection>());

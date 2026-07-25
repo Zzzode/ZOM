@@ -29,7 +29,7 @@ namespace zomlang::compiler::type::semantic {
 
 class StoreBoundTypeEncoder;
 
-/// \brief Move-only canonical semantic type v1 key bytes.
+/// \brief Move-only canonical semantic type key bytes.
 class SemanticTypeKey final {
 public:
   SemanticTypeKey(SemanticTypeKey&&) noexcept = default;
@@ -49,7 +49,7 @@ private:
   friend class ::zomlang::compiler::type::SemanticTypeStore;
 };
 
-/// \brief Move-only closed semantic type payload paired with its canonical v1 key.
+/// \brief Move-only closed semantic type payload paired with its canonical key.
 class CanonicalTypeData final {
 public:
   CanonicalTypeData(CanonicalTypeData&&) noexcept = default;

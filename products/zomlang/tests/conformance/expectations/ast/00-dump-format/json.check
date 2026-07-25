@@ -2,7 +2,6 @@
 // RUN: %zomc compile --dump-ast --ast-format=json %corpus/04-expressions/binary-operators.zom | %FileCheck %s
 
 // CHECK: "format": "zom.ast.json"
-// CHECK: "schema": "2.0"
 // CHECK: "root":
 // CHECK: "kind": "BinaryExpr"
 // CHECK: "op": "Add"

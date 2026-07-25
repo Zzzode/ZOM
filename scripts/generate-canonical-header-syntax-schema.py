@@ -252,8 +252,7 @@ class SchemaError(ValueError):
 
 def expected_schema() -> dict[str, object]:
     return {
-        "version": 1,
-        "domain": "zom.canonical-header-syntax.v0",
+        "domain": "zom.canonical-header-syntax",
         "enums": [
             {
                 "name": name,

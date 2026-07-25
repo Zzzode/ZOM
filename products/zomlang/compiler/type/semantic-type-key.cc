@@ -106,7 +106,7 @@ public:
 
   zc::Maybe<SemanticTypeKey> encodeKey(const TypeData& data) {
     identity::CanonicalEncoder output;
-    append(output, "zom.semantic-type-key.v1"_zc.asBytes());
+    append(output, "zom.semantic-type-key"_zc.asBytes());
     output.encodeUint8(0x00);
     if (!encode(output, data)) return zc::none;
     return SemanticTypeKey(output.finish());

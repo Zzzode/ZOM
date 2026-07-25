@@ -65,7 +65,7 @@ region relations require a later language RFC.
 - Define a closed, deterministic direct-reference signature summary.
 - Reject every reference result that the first summary revision cannot prove.
 - Publish exact local, imported, re-exported, abstract, and dyn-call evidence.
-- Replace the RFC 0008 module-interface codec with one complete `v1` codec.
+- Publish one complete canonical RFC 0008 module-interface codec.
 - Define exact diagnostics, precedence, codecs, oracles, and negative matrices.
 - Make RFC 0007 depend on this RFC before returning to review.
 
@@ -81,7 +81,6 @@ region relations require a later language RFC.
 - This RFC does not add scoped-task, detached-task, cancellation, or suspension
   semantics.
 - This RFC does not persist MIR, borrow summaries, or ownership facts.
-- This RFC does not preserve the RFC 0008 module-interface `v0` codec.
 
 ## Prior Art
 
@@ -155,8 +154,8 @@ MIR.
 
 RFC 0013 consumes the current canonical contracts in RFCs 0005, 0008, 0010,
 and 0011. RFC 0010 owns the sole MIR revision codec and RFC 0013 owns the
-borrow-evidence and ownership-result additions listed below. No versioned MIR
-base, compatibility decoder, or hash-bound predecessor remains normative.
+borrow-evidence and ownership-result additions listed below. No alternate MIR
+base or compatibility path is normative.
 
 For RFC 0005, this RFC replaces only the body diagnostic registry and
 production matrix to add `ZOM4085` for a borrow-bearing body-local closure that
@@ -278,7 +277,7 @@ The result rule is exhaustive:
 4. With several direct inputs, a direct receiver selects `Receiver`.
 5. Every other direct result is ambiguous and rejects.
 6. `NestedRegion`, `ParametricRegion`, and `OpaqueRegion` results reject as not
-   expressible in revision `v0`.
+   expressible in the canonical revision.
 
 Substitution cannot change an accepted outer `Reference` shell or its parameter
 index. An unshielded type parameter, including `T -> T`, is
@@ -471,10 +470,10 @@ match before summary validation. Missing, additional, invalid, and
 non-canonical summaries use RFC 0008 `ZOM9951-ZOM9954`; input lineage mismatch
 uses `ZOM9950`. No partial interface is published.
 
-`ModuleInterfaceRevision` replaces `v0` with SHA-256 over:
+`ModuleInterfaceRevision` is SHA-256 over:
 
 ```text
-ASCII("zom.module-interface-revision.v1")
+ASCII("zom.module-interface-revision")
 0x00
 SemanticContextFingerprint
 Encode(expanded owning ModuleKey)
@@ -492,23 +491,21 @@ EncodeSortedRecords(coherence_impl_heads)
 EncodeSortedRecords(marker_facts)
 ```
 
-The independent empty-sequence oracle uses the RFC 0008 `v0` fixture plus 32
-borrow-revision bytes of `66`. Its complete 282-byte preimage is:
+The independent empty-sequence oracle uses the canonical RFC 0008 fixture plus
+32 borrow-revision bytes of `66`. Its complete 279-byte preimage is:
 
 ```text
-7a6f6d2e6d6f64756c652d696e746572666163652d7265766973696f6e2e7631000000000000000000000000000000000000000000000000000000000000000000a1222222222222222222222222222222222222222222222222222222222222222233333333333333333333333333333333333333333333333333333333333333334444444444444444444444444444444444444444444444444444444444444444555555555555555555555555555555555555555555555555555555555555555566666666666666666666666666666666666666666666666666666666666666660000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+7a6f6d2e6d6f64756c652d696e746572666163652d7265766973696f6e000000000000000000000000000000000000000000000000000000000000000000a1222222222222222222222222222222222222222222222222222222222222222233333333333333333333333333333333333333333333333333333333333333334444444444444444444444444444444444444444444444444444444444444444555555555555555555555555555555555555555555555555555555555555555566666666666666666666666666666666666666666666666666666666666666660000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 ```
 
 Its SHA-256 is
-`0e92b710f9c04e1b92e000a1fe03e2563d6df201dfbd654273642cfb91955629`.
-The `v0` decoder and constructor are deleted in the same replacement change.
-
+`180fa61d71c6419dc0476128c90e40b55e805d6aeb57871d4f41d445f7b18585`.
 ### Summary And Surface Codecs
 
 `BorrowSignatureSummary` uses this exact stream:
 
 ```text
-ASCII("zom.borrow-signature-summary.v0")
+ASCII("zom.borrow-signature-summary")
 0x00
 uint64be(expandedCallableKeyByteLength)
 expandedCallableKeyBytes
@@ -518,29 +515,29 @@ encoded BorrowReturnRelation
 ```
 
 The non-empty oracle uses callable key `a1`, inputs `Receiver` and
-`Parameter(2)`, and result `DirectRoot(Parameter(2))`. Its complete 61-byte
+`Parameter(2)`, and result `DirectRoot(Parameter(2))`. Its complete 58-byte
 preimage is:
 
 ```text
-7a6f6d2e626f72726f772d7369676e61747572652d73756d6d6172792e7630000000000000000001a10000000000000002010200000002020200000002
+7a6f6d2e626f72726f772d7369676e61747572652d73756d6d617279000000000000000001a10000000000000002010200000002020200000002
 ```
 
 Its SHA-256 is
-`bda5523f367e5abb71aaabf0e3a8b5dbe920c3dbe73d5d1051fbc6739db7dc30`.
+`fcaee879534108f89aa47013f72b6f17f6dd783def9ccd46029d76eb752ce603`.
 
-The empty summary for callable `a1` has this complete 50-byte preimage:
+The empty summary for callable `a1` has this complete 47-byte preimage:
 
 ```text
-7a6f6d2e626f72726f772d7369676e61747572652d73756d6d6172792e7630000000000000000001a1000000000000000001
+7a6f6d2e626f72726f772d7369676e61747572652d73756d6d617279000000000000000001a1000000000000000001
 ```
 
 Its SHA-256 is
-`c3cc2f87fa8eec494a95b66a40a20fb647a017a985d619dc4c95085d12f0d490`.
+`cc571fedb7f910f31e1458668303e52ed5e7c1d71ca523a113ad68ca623aeca5`.
 
 `BorrowInterfaceRevision` is SHA-256 over:
 
 ```text
-ASCII("zom.borrow-interface.v0")
+ASCII("zom.borrow-interface")
 0x00
 SemanticContextFingerprint
 uint64be(expandedModuleKeyByteLength)
@@ -554,34 +551,34 @@ for each summary in expanded callable DefId order:
 ```
 
 The empty-surface oracle uses a zero fingerprint, module `a1`, signature bytes
-`22`, and imported-view bytes `33`. Its 137-byte preimage is:
+`22`, and imported-view bytes `33`. Its 134-byte preimage is:
 
 ```text
-7a6f6d2e626f72726f772d696e746572666163652e76300000000000000000000000000000000000000000000000000000000000000000000000000000000001a1222222222222222222222222222222222222222222222222222222222222222233333333333333333333333333333333333333333333333333333333333333330000000000000000
+7a6f6d2e626f72726f772d696e746572666163650000000000000000000000000000000000000000000000000000000000000000000000000000000001a1222222222222222222222222222222222222222222222222222222222222222233333333333333333333333333333333333333333333333333333333333333330000000000000000
 ```
 
 Its SHA-256 is
-`409eb28bdc0218f92eebcf9411687d24fbe7eb70ee527910110804a3f23fe81c`.
+`799e2fed5be5220c268a5413afd2713520add15a0505105d61c9850c4256737a`.
 
-The one-summary oracle embeds the complete 61-byte summary above. Its 206-byte
+The one-summary oracle embeds the complete 58-byte summary above. Its 200-byte
 preimage is:
 
 ```text
-7a6f6d2e626f72726f772d696e746572666163652e76300000000000000000000000000000000000000000000000000000000000000000000000000000000001a1222222222222222222222222222222222222222222222222222222222222222233333333333333333333333333333333333333333333333333333333333333330000000000000001000000000000003d7a6f6d2e626f72726f772d7369676e61747572652d73756d6d6172792e7630000000000000000001a10000000000000002010200000002020200000002
+7a6f6d2e626f72726f772d696e746572666163650000000000000000000000000000000000000000000000000000000000000000000000000000000001a1222222222222222222222222222222222222222222222222222222222222222233333333333333333333333333333333333333333333333333333333333333330000000000000001000000000000003d7a6f6d2e626f72726f772d7369676e61747572652d73756d6d617279000000000000000001a10000000000000002010200000002020200000002
 ```
 
 Its SHA-256 is
-`22b013574c74c5c10e65bbbaa57deaec2aae013ca8a1290e3793459c2addfb77`.
+`f9aa6a886615cbd3b5d0307d426cfa198ba656bdb320f7f17d6e3a8fd86dc799`.
 
 The two-summary ordering fixture appends an empty callable `a2` summary after
-the `a1` summary. Its complete 264-byte preimage is:
+the `a1` summary. Its complete 255-byte preimage is:
 
 ```text
-7a6f6d2e626f72726f772d696e746572666163652e76300000000000000000000000000000000000000000000000000000000000000000000000000000000001a1222222222222222222222222222222222222222222222222222222222222222233333333333333333333333333333333333333333333333333333333333333330000000000000002000000000000003d7a6f6d2e626f72726f772d7369676e61747572652d73756d6d6172792e7630000000000000000001a1000000000000000201020000000202020000000200000000000000327a6f6d2e626f72726f772d7369676e61747572652d73756d6d6172792e7630000000000000000001a2000000000000000001
+7a6f6d2e626f72726f772d696e746572666163650000000000000000000000000000000000000000000000000000000000000000000000000000000001a1222222222222222222222222222222222222222222222222222222222222222233333333333333333333333333333333333333333333333333333333333333330000000000000002000000000000003d7a6f6d2e626f72726f772d7369676e61747572652d73756d6d617279000000000000000001a1000000000000000201020000000202020000000200000000000000327a6f6d2e626f72726f772d7369676e61747572652d73756d6d617279000000000000000001a2000000000000000001
 ```
 
 Its SHA-256 is
-`893c79426ec4e57613e7c6c50f5e47e4913858145a6dfc0b6e30411850f677cb`.
+`fbfa576a7b98b9d14e3293703257c54b9e71f9f773c71e713a58a3859606b20e`.
 
 Bad tags, counts, lengths, order, duplicate inputs, duplicate callables, local
 handle bytes, alias keys, stale source revisions, and hash mismatch are
@@ -632,7 +629,7 @@ context, and requester-visible imported-signature record must agree exactly.
 `BorrowEvidenceRevision` is SHA-256 over this exact stream:
 
 ```text
-ASCII("zom.borrow-evidence.v0")
+ASCII("zom.borrow-evidence")
 0x00
 SemanticContextFingerprint
 uint64be(expandedModuleKeyByteLength)
@@ -661,14 +658,14 @@ a stale revision is `InputRevisionMismatch`; and invalid framing or digest is
 
 The empty fixture uses a zero fingerprint, module `a1`, signature bytes `22`,
 no local summaries, own interface bytes `33`, own borrow bytes `44`, and no
-imports. Its complete 176-byte preimage is:
+imports. Its complete 173-byte preimage is:
 
 ```text
-7a6f6d2e626f72726f772d65766964656e63652e76300000000000000000000000000000000000000000000000000000000000000000000000000000000001a122222222222222222222222222222222222222222222222222222222222222220000000000000000333333333333333333333333333333333333333333333333333333333333333344444444444444444444444444444444444444444444444444444444444444440000000000000000
+7a6f6d2e626f72726f772d65766964656e63650000000000000000000000000000000000000000000000000000000000000000000000000000000001a122222222222222222222222222222222222222222222222222222222222222220000000000000000333333333333333333333333333333333333333333333333333333333333333344444444444444444444444444444444444444444444444444444444444444440000000000000000
 ```
 
 Its SHA-256 is
-`a4b1178e2b47c87d5805e76aec3b2949ce24b08df62430da439a2feedfe61242`.
+`82563cc1e964ee20cc8b2db144bce5b5a21a1728471cbc592ab0fca8f337aea6`.
 Non-empty fixtures encode one local summary and one imported surface, then
 mutate every count, length, key, revision, order, duplicate, and embedded
 surface field independently and in precedence pairs.
@@ -802,7 +799,7 @@ RFC. It cannot infer scoped-task safety from API names.
 flowchart LR
   S[Verified signature facts] --> B[Direct borrow summary verifier]
   B --> I[Verified borrow interface surface]
-  I --> M[Module interface revision v1]
+  I --> M[Canonical module interface revision]
   M --> C[Verified checked module and borrow evidence]
   C --> H[HIR then Built MIR with evidence lease]
   H --> O[Ownership analysis result]
@@ -818,7 +815,7 @@ flowchart LR
 | Task routing and cross-RFC escalation | `.agents/subagents/**` | `task-router` |
 | RFC overlay governance and RFC 0007 dependency | `docs/rfc/0005-type-system-architecture.md`, `docs/rfc/0007-borrow-lifetime-ownership-checker.md`, `docs/rfc/0008-compiler-session-cross-module.md`, `docs/rfc/0010-intermediate-representation-pipeline.md`, `docs/rfc/0013-ownership-analysis-integration-boundary.md`, `docs/rfc/tracking/0005-review-and-implementation.md`, `docs/rfc/tracking/0007-review-and-implementation.md`, `docs/rfc/tracking/0008-review-and-implementation.md`, `docs/rfc/tracking/0010-review-and-implementation.md`, `docs/rfc/tracking/0013-review-and-implementation.md`, `docs/rfc/README.md` | `rfc` |
 | Borrow shape, receiver/parameter validation, and signature facts | `products/zomlang/compiler/checker/**`, `products/zomlang/compiler/type/**` | `binder-checker` |
-| Borrow surface, module interface v1, aliases, and re-exports | `products/zomlang/compiler/driver/**`, `products/zomlang/compiler/symbol/**` | `module-system` |
+| Borrow surface, canonical module interface, aliases, and re-exports | `products/zomlang/compiler/driver/**`, `products/zomlang/compiler/symbol/**` | `module-system` |
 | `ZOM4082-ZOM4085`, interface invariants, and result mapping | `products/zomlang/compiler/diagnostics/**` | `error-system` |
 | Suspension non-implication audit | `docs/spec/chapters/15-concurrency.md`, `docs/concurrency/**` | `concurrency` |
 | MIR proof result seam, evidence lease, and typestate | `products/zomlang/compiler/mir/**`, `products/zomlang/compiler/hir/**` | `ir-backend` |
@@ -845,7 +842,8 @@ and validated declaration spans.
 - Input borrows cannot escape through mutable storage, even when safe under a
   richer explicit region system.
 - Borrow-bearing extern functions remain unavailable without a trusted RFC.
-- Module-interface `v1` changes every interface producer and consumer.
+- The canonical module-interface contract changes every producer and consumer
+  together.
 - A second specialized IR result algebra increases generated matrix coverage.
 
 ## Alternatives Considered
@@ -868,12 +866,13 @@ and validated declaration spans.
 
 1. add RFC 0013 to RFC 0007's dependencies before RFC 0007 returns to DRAFT;
 2. implement borrow signature source failures and root-only summaries;
-3. replace every module interface producer and consumer with `v1`;
+3. replace every module interface producer and consumer with the canonical
+   contract;
 4. retain verified borrow evidence through checked module, HIR, and Built MIR;
 5. implement the fixed ownership result with RFC 0007's accepted failure
    algebra; and
-6. delete module-interface `v0`, incomplete constructors, AST ownership paths,
-   and any foreign-summary reconstruction in the same change.
+6. delete incomplete constructors, AST ownership paths, and any foreign-summary
+   reconstruction in the same change.
 
 Rollback before landing reverts the complete overlay implementation. There is
 no dual schema, optional surface, decoder, shim, feature flag, or fallback.
@@ -890,8 +889,8 @@ no dual schema, optional surface, decoder, shim, feature flag, or fallback.
 ## Operational Readiness
 
 CI rejects any ownership source result outside `OwnershipProofValidation`, any
-module interface without a complete borrow surface, any `v0` constructor or
-decoder, and any consumer that reconstructs foreign summaries. Revisions and
+module interface without a complete borrow surface, and any consumer that
+reconstructs foreign summaries. Revisions and
 diagnostics must be byte-identical under worker counts `1, 2, 4, 8`, fixed map
 seed permutations, reversed source order, aliases, and re-exports.
 
@@ -910,7 +909,7 @@ seed permutations, reversed source order, aliases, and re-exports.
    identity and exact source revisions.
 7. Empty, one-summary, and two-summary summary/surface oracles reproduce their
    exact lengths and SHA-256 values.
-8. Module-interface `v1` reproduces the 282-byte oracle and deletes `v0`.
+8. The canonical module-interface codec reproduces the 279-byte oracle.
 9. RFC 0008 publication uses the exact source/invariant precedence and no
    rejected branch publishes a partial interface.
 10. Verified borrow evidence reaches Built MIR through a branded immutable
@@ -939,12 +938,13 @@ seed permutations, reversed source order, aliases, and re-exports.
 
 1. Add total borrow shape classification and typed signature source failures.
 2. Add canonical summaries, source-summary reuse, and codec oracles.
-3. Replace RFC 0008 interface publication and revision with `v1`.
+3. Replace RFC 0008 interface publication and revision with the canonical
+   contract.
 4. Add verified local/imported borrow evidence to checked-module assembly.
 5. Retain the evidence lease through HIR and Built MIR.
 6. Rewrite RFC 0007 over Built MIR and provide its closed source algebra.
 7. Implement the fixed ownership result and ownership-fact verification.
-8. Delete AST ownership analysis, interface `v0`, and incomplete constructors.
+8. Delete AST ownership analysis and incomplete constructors.
 9. Run the complete architecture, determinism, sanitizer, and conformance
    matrix before `LANDED`.
 
@@ -974,7 +974,7 @@ None
 | Date | Status | Notes |
 |---|---|---|
 | 2026-07-11 | DRAFT | Created the ownership source-rejection seam and verified cross-module borrow-signature surface required before RFC 0007 can be redesigned over Built MIR. |
-| 2026-07-11 | DRAFT | Defined the conservative root-only contract, complete module-interface v1 codec, typed signature failures, foreign-summary reuse, and revision-bound frontend evidence. |
+| 2026-07-11 | DRAFT | Defined the conservative root-only contract, complete canonical module-interface codec, typed signature failures, foreign-summary reuse, and revision-bound frontend evidence. |
 | 2026-07-11 | REVIEW | Entered formal owner review after semantic and invariant entry reviews approved the root-only contract, branded evidence repository, canonical module interface, canonical MIR revision, staged failure precedence, and transitive re-export proof selection. |
 | 2026-07-11 | ACCEPTED | All ten required owners approved the same exact REVIEW snapshot with no objections. The accepted design remains unimplemented until an explicit `ACCEPTED -> IMPLEMENTING` transition. |
 | 2026-07-17 | IMPLEMENTING | Started the direct ownership-integration replacement series with the accepted borrow-interface surface, branded BorrowEvidence repository, checked-module and HIR evidence lineage, MIR revision, and ownership-result seam. No predecessor or compatibility rail is permitted. |

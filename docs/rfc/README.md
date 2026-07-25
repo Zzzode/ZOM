@@ -260,6 +260,8 @@ Reviewers must block on:
   is ready to accept.
 - Repository artifacts written in a language other than English.
 - New compatibility surfaces that keep two long-lived behaviors alive.
+- Internal types, canonical domains, schemas, fixtures, or generated artifacts
+  named with revision suffixes such as `V2`, `.v2`, or `-v2`.
 
 ## Automated Checks
 

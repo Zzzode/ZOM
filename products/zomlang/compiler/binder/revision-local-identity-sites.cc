@@ -7,15 +7,13 @@
 namespace zomlang::compiler::binder {
 namespace {
 
-constexpr zc::StringPtr kDefinitionSitesDomain = "zom.revision-local-definition-sites.v1"_zc;
-constexpr zc::StringPtr kImplementationSitesDomain =
-    "zom.revision-local-implementation-sites.v1"_zc;
+constexpr zc::StringPtr kDefinitionSitesDomain = "zom.revision-local-definition-sites"_zc;
+constexpr zc::StringPtr kImplementationSitesDomain = "zom.revision-local-implementation-sites"_zc;
 constexpr uint64_t kMaximumSites = 1024 * 1024;
 constexpr uint64_t kMaximumOccurrenceBytes = 128 * 1024;
 constexpr uint64_t kMaximumEncodedBytes = 64 * 1024 * 1024;
 
-int compareBytes(zc::ArrayPtr<const uint8_t> left,
-                 zc::ArrayPtr<const uint8_t> right) noexcept {
+int compareBytes(zc::ArrayPtr<const uint8_t> left, zc::ArrayPtr<const uint8_t> right) noexcept {
   const size_t shared = left.size() < right.size() ? left.size() : right.size();
   for (size_t index = 0; index < shared; ++index) {
     if (left[index] < right[index]) return -1;
@@ -60,8 +58,7 @@ void sortSites(zc::Vector<Site>& sites, KeyBytes&& keyBytes) {
   }
 }
 
-bool validDefinitionSites(const identity::ModuleKey& module,
-                          const identity::SourceFileKey& source,
+bool validDefinitionSites(const identity::ModuleKey& module, const identity::SourceFileKey& source,
                           const NamedDefinitionInventory& inventory,
                           zc::ArrayPtr<const RevisionLocalDefinitionSite> sites) {
   for (size_t index = 0; index < sites.size(); ++index) {
@@ -109,9 +106,11 @@ bool validImplementationSites(const identity::ModuleKey& module,
 
 }  // namespace
 
-RevisionLocalDefinitionSite::RevisionLocalDefinitionSite(
-    ast::NodeId node, identity::DefinitionKey&& definition, IdentitySyntaxSiteKey&& site,
-    uint64_t byteStart, uint64_t byteEnd) noexcept
+RevisionLocalDefinitionSite::RevisionLocalDefinitionSite(ast::NodeId node,
+                                                         identity::DefinitionKey&& definition,
+                                                         IdentitySyntaxSiteKey&& site,
+                                                         uint64_t byteStart,
+                                                         uint64_t byteEnd) noexcept
     : nodeField(node),
       definitionField(zc::mv(definition)),
       siteField(zc::mv(site)),
@@ -147,8 +146,7 @@ RevisionLocalDefinitionSites::RevisionLocalDefinitionSites(
 
 zc::Maybe<RevisionLocalDefinitionSites> RevisionLocalDefinitionSites::fromVerified(
     const identity::ModuleKey& module, const identity::SourceFileKey& source,
-    const NamedDefinitionInventory& inventory,
-    zc::Vector<RevisionLocalDefinitionSite>&& sites) {
+    const NamedDefinitionInventory& inventory, zc::Vector<RevisionLocalDefinitionSite>&& sites) {
   if (sites.size() > kMaximumSites) { return zc::none; }
   sortSites(sites, [](const RevisionLocalDefinitionSite& site) { return site.site().encode(); });
   if (!validDefinitionSites(module, source, inventory, sites.asPtr())) { return zc::none; }
@@ -182,8 +180,7 @@ zc::Maybe<RevisionLocalDefinitionSites> RevisionLocalDefinitionSites::decodeCano
     if (key == zc::none) { return zc::none; }
     auto entry = RevisionLocalDefinitionSite::from(
         ast::NodeId(ZC_ASSERT_NONNULL(node)), zc::mv(ZC_ASSERT_NONNULL(key)),
-        zc::mv(ZC_ASSERT_NONNULL(site)), ZC_ASSERT_NONNULL(byteStart),
-        ZC_ASSERT_NONNULL(byteEnd));
+        zc::mv(ZC_ASSERT_NONNULL(site)), ZC_ASSERT_NONNULL(byteStart), ZC_ASSERT_NONNULL(byteEnd));
     if (entry == zc::none) { return zc::none; }
     ZC_IF_SOME(value, entry) {
       if (sites.size() != 0) {
@@ -235,8 +232,7 @@ RevisionLocalImplementationSite::RevisionLocalImplementationSite(
       byteEndField(byteEnd) {}
 
 zc::Maybe<RevisionLocalImplementationSite> RevisionLocalImplementationSite::from(
-    ast::NodeId node, ImplSourceOccurrenceKey&& occurrence, uint64_t byteStart,
-    uint64_t byteEnd) {
+    ast::NodeId node, ImplSourceOccurrenceKey&& occurrence, uint64_t byteStart, uint64_t byteEnd) {
   if (!node || byteStart > byteEnd) { return zc::none; }
   return RevisionLocalImplementationSite(node, zc::mv(occurrence), byteStart, byteEnd);
 }
@@ -280,8 +276,7 @@ zc::Maybe<RevisionLocalImplementationSites> RevisionLocalImplementationSites::de
       ZC_ASSERT_NONNULL(domain).asPtr() != kImplementationSitesDomain.asBytes()) {
     return zc::none;
   }
-  zc::Vector<RevisionLocalImplementationSite> sites(
-      static_cast<size_t>(ZC_ASSERT_NONNULL(count)));
+  zc::Vector<RevisionLocalImplementationSite> sites(static_cast<size_t>(ZC_ASSERT_NONNULL(count)));
   for (uint64_t index = 0; index < ZC_ASSERT_NONNULL(count); ++index) {
     auto node = decoder.decodeUint32();
     auto occurrenceBytes = decoder.decodeByteString(kMaximumOccurrenceBytes);
@@ -319,8 +314,8 @@ RevisionLocalImplementationSites RevisionLocalImplementationSites::clone() const
   for (const auto& site : siteFields) { sites.add(site.clone()); }
   return RevisionLocalImplementationSites(zc::mv(sites));
 }
-zc::ArrayPtr<const RevisionLocalImplementationSite>
-RevisionLocalImplementationSites::entries() const {
+zc::ArrayPtr<const RevisionLocalImplementationSite> RevisionLocalImplementationSites::entries()
+    const {
   return siteFields.asPtr();
 }
 zc::Array<uint8_t> RevisionLocalImplementationSites::encodeCanonical() const {
@@ -335,8 +330,7 @@ zc::Array<uint8_t> RevisionLocalImplementationSites::encodeCanonical() const {
   }
   return encoder.finish();
 }
-bool RevisionLocalImplementationSites::sameAs(
-    const RevisionLocalImplementationSites& other) const {
+bool RevisionLocalImplementationSites::sameAs(const RevisionLocalImplementationSites& other) const {
   return encodeCanonical().asPtr() == other.encodeCanonical().asPtr();
 }
 

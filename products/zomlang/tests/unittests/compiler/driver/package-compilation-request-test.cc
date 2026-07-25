@@ -43,7 +43,7 @@ identity::CanonicalTargetSpecificationKey targetProjection() {
       scalar<identity::TargetComponentName>("zom"_zc),
       scalar<identity::TargetComponentName>("none"_zc),
       scalar<identity::TargetComponentName>("unknown"_zc),
-      scalar<identity::TargetComponentName>("zom-v1"_zc), 64, identity::Endianness::Little,
+      scalar<identity::TargetComponentName>("zom"_zc), 64, identity::Endianness::Little,
       targetFeatures());
   ZC_IF_SOME(value, result) { return zc::mv(value); }
   ZC_FAIL_REQUIRE("invalid target projection test input");
@@ -60,7 +60,7 @@ RegisteredTargetService targetService() {
   auto feature = ir::CanonicalTargetFeature::from("sse2"_zc, ir::TargetFeatureState::Enabled);
   ZC_IF_SOME(value, feature) { backendFeatures.add(zc::mv(value)); }
   auto spec = ir::CanonicalTargetSpec::from(
-      "x86_64-zom-none"_zc, "e-p:64:64"_zc, "generic"_zc, zc::mv(backendFeatures), "zom-v1"_zc,
+      "x86_64-zom-none"_zc, "e-p:64:64"_zc, "generic"_zc, zc::mv(backendFeatures), "zom"_zc,
       ir::BackendPanicStrategy::Unwind, ir::ObjectFormat::Elf);
   ZC_IF_SOME(specValue, spec) {
     zc::Vector<identity::TargetFeatureName> semanticFeatures;
@@ -181,7 +181,7 @@ InvocationIssue failure(RawPackageCompilationRequest&& raw) {
 }  // namespace
 
 ZC_TEST("Registered target profile names enforce the closed syntax") {
-  ZC_EXPECT(RegisteredTargetProfileName::from("linux-x86_64.v1"_zc) != zc::none);
+  ZC_EXPECT(RegisteredTargetProfileName::from("linux-x86_64"_zc) != zc::none);
   ZC_EXPECT(RegisteredTargetProfileName::from(""_zc) == zc::none);
   ZC_EXPECT(RegisteredTargetProfileName::from("Upper"_zc) == zc::none);
   ZC_EXPECT(RegisteredTargetProfileName::from("bad/profile"_zc) == zc::none);

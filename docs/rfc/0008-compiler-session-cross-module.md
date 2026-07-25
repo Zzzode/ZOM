@@ -265,7 +265,7 @@ ModuleResolutionKey {
 }
 ```
 
-`ModuleResolutionKey` uses domain `zom.module-resolution.v0`, one zero byte,
+`ModuleResolutionKey` uses domain `zom.module-resolution`, one zero byte,
 expanded requester, dependency-kind tag, optional normalized path, optional
 alias, and the complete length-prefixed policy bytes. Dependency-kind tags are
 `0x01` through `0x04` in declaration order. Import, foreign re-export, and
@@ -653,7 +653,7 @@ and absence of a verified interface.
 the RFC 0011 `CanonicalEncoder`:
 
 ```text
-ASCII("zom.module-interface-revision.v0")
+ASCII("zom.module-interface-revision")
 0x00
 SemanticContextFingerprint
 Encode(expanded owning ModuleKey)
@@ -683,7 +683,7 @@ canonical codec cannot be published in a verified interface.
 The revision is a deterministic in-memory proof identity inside one session,
 not a persisted metadata format. Changing any constituent record, field order,
 tag allocation, or canonical key shape requires incrementing the revision
-domain suffix; no compatibility decoder is retained.
+canonical domain and every producer, consumer, fixture, and oracle together.
 
 The independent framing oracle supplies already-canonical component bytes:
 context fingerprint is 32 zero bytes, expanded module bytes are `a1`, source
@@ -691,7 +691,7 @@ content digest is 32 bytes of `22`, binding-surface revision is 32 bytes of
 `33`, signature-facts revision is 32 bytes of `44`, imported-signature-view
 revision is 32 bytes of `55`, and all seven record sequences are empty.
 The complete 250-byte preimage is
-`7a6f6d2e6d6f64756c652d696e746572666163652d7265766973696f6e2e7630000000000000000000000000000000000000000000000000000000000000000000a122222222222222222222222222222222222222222222222222222222222222223333333333333333333333333333333333333333333333333333333333333333444444444444444444444444444444444444444444444444444444444444444455555555555555555555555555555555555555555555555555555555555555550000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000`
+`7a6f6d2e6d6f64756c652d696e746572666163652d7265766973696f6e000000000000000000000000000000000000000000000000000000000000000000a122222222222222222222222222222222222222222222222222222222222222223333333333333333333333333333333333333333333333333333333333333333444444444444444444444444444444444444444444444444444444444444444455555555555555555555555555555555555555555555555555555555555555550000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000`
 and its SHA-256 is
 `c01992f0270c24786e3fe06e953e91053299d731cac573f2e6688971aa3dc73f`.
 Integration tests compose this framing function with RFC 0011's full composite

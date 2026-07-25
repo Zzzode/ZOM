@@ -59,8 +59,9 @@ ZC_TEST("SourceTreeTest.IncrementalSha256MatchesStandardVector") {
   ZC_IF_SOME(value, digest) {
     ZC_EXPECT(zc::encodeHex(value.bytes()) ==
               "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"_zc);
+  } else {
+    ZC_FAIL_EXPECT("incremental SHA-256 did not finish");
   }
-  else { ZC_FAIL_EXPECT("incremental SHA-256 did not finish"); }
   ZC_EXPECT(hasher.finish() == zc::none);
 }
 
@@ -82,7 +83,7 @@ ZC_TEST("SourceTreeTest.SortsInventoryAndProducesPermutationInvariantDigest") {
   ZC_EXPECT(forward.files()[1].path().segments()[0].text() == "src"_zc);
   ZC_EXPECT(forward.digest() == reverse.digest());
   ZC_EXPECT(zc::encodeHex(forward.digest().bytes()) ==
-            "0668fd1bb87e8db7be9ef51c47573f47aa854f0493b05d72872b4398dcc17574"_zc);
+            "d9561490cd6762984ced6d62ec14b571808135bf8ac786bac1aeae0b2375e717"_zc);
 }
 
 ZC_TEST("SourceTreeTest.RejectsInvalidPathsBeforeReadingContent") {

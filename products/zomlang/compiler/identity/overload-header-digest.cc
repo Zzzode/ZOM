@@ -20,7 +20,7 @@
 namespace zomlang::compiler::identity {
 namespace {
 
-constexpr auto kOverloadHeaderDomain = "zom.overload-header.v0"_zc;
+constexpr auto kOverloadHeaderDomain = "zom.overload-header"_zc;
 
 }  // namespace
 

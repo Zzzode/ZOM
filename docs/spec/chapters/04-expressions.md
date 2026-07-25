@@ -330,12 +330,12 @@ let isString = value is str;  // Type check
 `in` is reserved for `for` headers. `instanceof` is reserved. Neither token is
 a binary expression operator.
 
-### Range Syntax Is Not Part Of V1
+### Range Syntax
 
-ZOM v1 does not define range-expression syntax. Sequence ranges are library
-values constructed through ordinary functions and methods. The parser rejects
+ZOM has no range-expression syntax. Sequence ranges are library values
+constructed through ordinary functions and methods. The parser rejects
 `a .. b`, `a ..< b`, and `a ... b` in expression position; the `...` token is
-reserved for spread and rest syntax.
+used only for spread and rest syntax.
 
 ## Conditional Expressions
 

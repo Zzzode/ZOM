@@ -104,8 +104,6 @@ def require_within(path: Path, root: Path, description: str) -> Path:
 
 def load_corpus(path: Path) -> dict[str, Any]:
     corpus = load_json(path)
-    if corpus.get("schema_version") != 1:
-        raise BenchmarkError(f"{path}: schema_version must be 1")
     if corpus.get("protocol") != EXPECTED_PROTOCOL:
         raise BenchmarkError(f"{path}: protocol must exactly match RFC 0017")
     cases = corpus.get("cases")
@@ -419,8 +417,6 @@ def comparable_metadata(metadata: dict[str, Any]) -> dict[str, Any]:
 
 
 def compare_results(current: dict[str, Any], baseline: dict[str, Any]) -> None:
-    if baseline.get("schema_version") != 1:
-        raise BenchmarkError("baseline schema_version must be 1")
     if baseline.get("protocol") != EXPECTED_PROTOCOL:
         raise BenchmarkError("baseline protocol does not match RFC 0017")
     if comparable_metadata(current["metadata"]) != comparable_metadata(baseline["metadata"]):
@@ -482,7 +478,6 @@ def main() -> int:
         for case in corpus["cases"]
     }
     report = {
-        "schema_version": 1,
         "protocol": EXPECTED_PROTOCOL,
         "metadata": metadata,
         "results": results,

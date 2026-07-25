@@ -1,5 +1,5 @@
-section: "§4 Range syntax is not part of v1"
+section: "§4 Range syntax is not part of ZOM"
 covers_rule: "shiftExpr / additiveExpr"
 expected: "REJECT"
 notes:
-  - "`..` is not a ZOM v1 expression operator."
+  - "`..` is not a ZOM expression operator."

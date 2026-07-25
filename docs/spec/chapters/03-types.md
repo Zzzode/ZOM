@@ -97,7 +97,7 @@ fun doSomething() -> unit {
 
 The **never type** (written `never`, pronounced "never" or "bottom") is the type with no values at all. A function whose declared return type is `never` is guaranteed to never return normally.
 
-**Formation.** The never type is written as the predefined type `never` in type position. It has no parameters, no qualifiers, and no user-extensible surface. The `!` token is not a ZOM v1 type spelling.
+**Formation.** The never type is written as the predefined type `never` in type position. It has no parameters, no qualifiers, and no user-extensible surface. The `!` token is not a ZOM type spelling.
 
 **Subtyping.** `never` is a **subtype of every other type** (the unique bottom element of the ZOM type lattice). Whenever a value of type `T` is expected, a value of type `never` is accepted as `T` without further conversion.
 
@@ -434,7 +434,7 @@ read_only(mref);  // OK: &mut i32 coerces to &i32
 
 The reverse (`&T` to `&mut T`) is **never** permitted.
 
-**Borrowing rules (v1):**
+**Borrowing rules:**
 
 1. At most one `&mut T` to the same place may be live at any point.
 2. `&T` and `&mut T` to the same place may not coexist.
@@ -680,7 +680,7 @@ The checker records inserted coercions for lowering. Union injection and existen
 
 ### Variance
 
-Variance controls whether a subtype relation may pass through a type constructor. ZOM v1 uses a conservative variance table:
+Variance controls whether a subtype relation may pass through a type constructor. ZOM uses the following variance table:
 
 | Constructor | Variance |
 |---|---|
@@ -692,10 +692,12 @@ Variance controls whether a subtype relation may pass through a type constructor
 | Tuple and immutable object fields | Covariant |
 | Mutable object fields | Invariant |
 | Array/vector-like mutable containers | Invariant |
-| User-defined generic named types | Invariant in all parameters in v1 |
-| `dyn I<Args>` | Invariant in all interface arguments in v1 |
+| User-defined generic named types | Invariant in all parameters |
+| `dyn I<Args>` | Invariant in all interface arguments |
 
-Because user-defined generic types are invariant in v1, `Vec<&mut i32>` does not coerce to `Vec<&i32>`. Any future variance annotation requires a separate RFC and a variance checker before the parser accepts it.
+Because user-defined generic types are invariant, `Vec<&mut i32>` does not
+coerce to `Vec<&i32>`. The language has no variance-annotation syntax, and the
+parser rejects attempts to declare one.
 
 ## Type Inference
 
@@ -858,7 +860,7 @@ Pointer casts between unrelated pointer types (`*mut T` to `*mut U`) require an 
 
 | Source | Target | Reason |
 |--------|--------|--------|
-| `dyn I` | concrete `T` | v1 does not support downcast. Use `as_any() -> any` pattern. |
+| `dyn I` | concrete `T` | Downcasts are unsupported. Use the `as_any() -> any` pattern. |
 | `&T` | `&mut T` | Violates exclusive-mutability guarantee. |
 | `*const T` | `*mut T` | Violates const-correctness contract. |
 | `i32` | `bool` | No implicit boolean interpretation of integers. |

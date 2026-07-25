@@ -154,9 +154,9 @@ Formal verification returned RFC 0006 because its FFI oracle encoded only the
 digest portion of `MirRevisionId`, and returned RFC 0010 because
 `TargetSpecId` and the feature-gate registry lacked canonical codecs and a
 verifiable completeness snapshot. The response adds the executable MIR phase
-tag to the FFI proof, defines the complete target-spec codec and 111-byte
+tag to the FFI proof, defines the complete target-spec codec and 108-byte
 oracle, defines non-zero numeric gate IDs and the registry snapshot codec with
-a 49-byte oracle, binds every proof to context, module, executable MIR, target,
+a 46-byte oracle, binds every proof to context, module, executable MIR, target,
 and registry revision, and fixes deterministic multi-gate rejection ordering.
 The coordinated formal-review hashes are RFC 0005
 `2e25177ce1d38cfe9fc5d83508ac449cea57b69ff394537462d7fb1324aafe69`,
@@ -177,8 +177,7 @@ Formal verification found that RFC 0006 maintained target-profile strings and
 panic/object tags separately from RFC 0010 `TargetSpecId`. The response
 deletes that second identity codec. Error-union descriptors and target-artifact
 manifests now carry only RFC 0010's 32-byte `TargetSpecId`; layout construction
-uses the matching `VerifiedTargetSelection`. The descriptor domain advances
-to v2 with a 423-byte oracle. The coordinated formal-review hashes are RFC 0005
+uses the matching `VerifiedTargetSelection`. The descriptor uses the canonical domain with a 405-byte oracle. The coordinated formal-review hashes are RFC 0005
 `2e25177ce1d38cfe9fc5d83508ac449cea57b69ff394537462d7fb1324aafe69`,
 RFC 0006
 `e294b9706636863788f2dcf8a72b1bbbde116f2f09464f9f8990121a0700e29f`,
@@ -261,7 +260,7 @@ decision is recorded by this response.
 ### 2026-07-11 Forced Cast Dependency Reopen
 
 RFC 0005 restores `ForcedChecked` as the semantic mode for `as! T` and advances
-the checked-facts codec to v2. RFC 0006 now defines the corresponding logical
+the checked-facts codec to canonical. RFC 0006 now defines the corresponding logical
 cast-or-panic control flow, `ForcedCast` panic metadata, absence of a residual
 payload, and cleanup behavior. The coordinated proposal hashes are RFC 0005
 `f382b82aaa055fb3676a1578fcf73e1ba1ca030671b96e97294bbc55db8c19c1`,
@@ -293,14 +292,15 @@ Fresh exact-hash review returned RFC 0006 proposal hash
 The target-artifact ABI revision had no exact multi-layout stream or oracle,
 the FFI facts revision left definition count and per-key framing implicit, and
 Chapter 4 incorrectly inferred error success from the first canonical union
-alternative. The tracker also retained checked-facts v2 and obsolete dependency
+alternative. The tracker also retained checked-facts canonical and obsolete dependency
 state after declaring the preceding coordinated approvals superseded.
 
 The proposal now defines count-plus-length framing, canonical order, duplicate
 rejection, and illegal-framing matrices for both artifact layouts and FFI
-definitions. The new 149-byte target-artifact oracle hashes to
-`42700473dc56112c4c8c31f2c528d3305d0115c5c52df26fc9f45b0808369ec2`;
-the existing 423-byte descriptor and 181-byte FFI oracles remain unchanged.
+definitions. The 146-byte target-artifact oracle hashes to
+`290d95e132c99dba891dd3519927363c33800346b055e1dcbca340f45183f9b9`;
+the 405-byte descriptor and 178-byte FFI oracles reproduce their canonical
+vectors.
 Chapter 4 now requires the same verified error-union role fact as Chapter 11,
 uses `shape.successType` and `shape.residualType`, and never assigns roles from
 canonical union order.
@@ -350,7 +350,7 @@ with tracker hash
 Semantic review approved binder/checker, error-system, module-system,
 IR/backend, runtime-memory, and spec-audit surfaces. Invariant review approved
 descriptor, artifact, FFI, panic-lifetime, failure-classification, and
-verification surfaces. The 423-, 149-, and 181-byte oracles recompute exactly;
+verification surfaces. The 405-, 146-, and 178-byte oracles recompute exactly;
 Chapter 4 and Chapter 11 use the same verified error-role facts. RFC, parser,
 lexer, and diff checks pass.
 

@@ -651,8 +651,8 @@ def check_module_body_syntax(files: dict[Path, str], errors: list[str]) -> None:
         if marker not in header:
             errors.append(f"{MODULE_BODY_HEADER}: module-body value contract is incomplete: {marker}")
     for marker in (
-        'kModuleBodySyntaxDomain = "zom.module-body-syntax.v1"',
-        'kModuleBodyProvenanceDomain = "zom.module-body-provenance.v1"',
+        'kModuleBodySyntaxDomain = "zom.module-body-syntax"',
+        'kModuleBodyProvenanceDomain = "zom.module-body-provenance"',
         "kAstSchemaFingerprint",
         "validateCanonicalFields(",
         "validPreorder(",

@@ -1,5 +1,5 @@
 {
-  "schema": "zom.package-codec-oracles.v1",
+  "schema": "zom.package-codec-oracles",
   "oracles": {
     "package-manifest": {
       "byteLength": 26,
@@ -45,33 +45,33 @@
       "byteLength": 147,
       "hex": "0000000000000002000000000000000100000000000000085a6f6d2e746f6d6c000000000000000805b3abf2579a5eb66403cd78be557fd860633a1fe2103c7642030defe32c657f0000000000000002000000000000000373726300000000000000086d61696e2e7a6f6d00000000000000040d6e4079e36703ebd37c00722f5891d28b0e2811dc114b129215123adcce3605",
       "sha256": "9154d6db66131c5fe12ca58da5e06db7955bf84b2bf22abf04d8d0e9f5ca9fe8",
-      "domainSha256": "0668fd1bb87e8db7be9ef51c47573f47aa854f0493b05d72872b4398dcc17574"
+      "domainSha256": "d9561490cd6762984ced6d62ec14b571808135bf8ac786bac1aeae0b2375e717"
     },
     "trusted-runtime-symbol-name": {
       "byteLength": 10,
       "hex": "02000000000000000178",
       "sha256": "b265a0990414a29d989cec99ba9e6a7ca4135a1eb8ef91d664d6be3f3a3daa75",
-      "domainSha256": "52cc6eb4b5c6726138df5588464cd683d7279fac0cfb8ff344128627c5aa0774"
+      "domainSha256": "8c5ba799f877152eaf4207d8606e986a59ccd38739305e1943f9426b2b3c201e"
     },
     "trusted-runtime-symbols": {
       "framingHex": "00000000000000010000000000000001a1",
-      "domainSha256": "25e137c5e8a37a0c7173c3bd08592eedbc446003ae4519a5793d57aba2b8cba8"
+      "domainSha256": "bfe1388a645337e27c7698f417ab1dee2b84085cf4d5ec43d3b28fc32a6a4cb5"
     },
     "trusted-runtime-relocations": {
       "framingHex": "00000000000000010000000000000001a1",
-      "domainSha256": "cfb3042480d8d384620325e7c9afe3d6902c5f4889ccf4393c31596c9ee77412"
+      "domainSha256": "c97176c784c39a9851ea3182d74016fe013cb5768cd3b4ad8d2f33be9232a339"
     },
     "trusted-runtime-operations": {
       "framingHex": "00000000000000010000000000000001a1",
-      "domainSha256": "6469e53c101bf30c27c3275dc722df44e1b7f189b279ca6bb33859a98e6e9ad0"
+      "domainSha256": "62ed17f52434b97d173457e33fb4484f87520882d62f1bd08eecd11d83b5df00"
     },
     "vcs-selector-tag": {
       "framingHex": "02000000000000000972656c656173652d31",
-      "domainSha256": "7d09318699d16db389bcd69426b4cad2b8c4a63d09f2537cd5fca8d0de0ff8ee"
+      "domainSha256": "8f550c72e7160174baea7a9d2d636e79c6dff611eceb5b0a9c80191d71c39160"
     },
     "ed25519-signing-key-zero": {
       "publicKeyHex": "0000000000000000000000000000000000000000000000000000000000000000",
-      "domainSha256": "534ad34a0e0643f0f44f35e62f8d2b57e956b73cbf962e16aa8d190a7e5f64ec"
+      "domainSha256": "b02a8fbdb2b48499849681986a2f4e34b854a59149266a5a7d253477ad168b7e"
     }
   }
 }

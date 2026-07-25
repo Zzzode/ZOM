@@ -25,7 +25,7 @@
 
 namespace zomlang::compiler::driver::package {
 
-enum class ArchiveFormat : uint8_t { TarZstdV1 = 0x01 };
+enum class ArchiveFormat : uint8_t { TarZstd = 0x01 };
 
 /// \brief Domain-separated identity of one Ed25519 public key.
 class SigningKeyId final {

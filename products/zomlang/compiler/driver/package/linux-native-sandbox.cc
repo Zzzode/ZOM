@@ -52,7 +52,7 @@ zc::Maybe<BuildScriptIssue> classifyLinuxSandboxExit(
   return zc::none;
 }
 
-struct LinuxNativeSandboxV1::Impl final {
+struct LinuxNativeSandbox::Impl final {
   explicit Impl(zc::Own<LinuxNativeSandboxPlatform>&& platform) noexcept
       : platform(zc::mv(platform)) {}
   ~Impl() noexcept { finish(false); }
@@ -95,9 +95,9 @@ struct LinuxNativeSandboxV1::Impl final {
   }
 };
 
-LinuxNativeSandboxV1::LinuxNativeSandboxV1(zc::Own<Impl>&& impl) noexcept : impl(zc::mv(impl)) {}
+LinuxNativeSandbox::LinuxNativeSandbox(zc::Own<Impl>&& impl) noexcept : impl(zc::mv(impl)) {}
 
-LinuxNativeSandboxCreateResult LinuxNativeSandboxV1::create(
+LinuxNativeSandboxCreateResult LinuxNativeSandbox::create(
     zc::Own<LinuxNativeSandboxPlatform>&& platform, const BuildScriptLimitKey& limits) {
   auto state = zc::heap<Impl>(zc::mv(platform));
   ZC_IF_SOME(issue, state->platform->preflight()) { return issue; }
@@ -119,18 +119,18 @@ LinuxNativeSandboxCreateResult LinuxNativeSandboxV1::create(
   }
   state->childOwned = true;
   state->state = LinuxNativeSandboxState::Running;
-  zc::Own<BuildScriptSandboxAdapter> result = zc::heap<LinuxNativeSandboxV1>(zc::mv(state));
+  zc::Own<BuildScriptSandboxAdapter> result = zc::heap<LinuxNativeSandbox>(zc::mv(state));
   return zc::mv(result);
 }
 
-LinuxNativeSandboxV1::~LinuxNativeSandboxV1() noexcept {
+LinuxNativeSandbox::~LinuxNativeSandbox() noexcept {
   if (impl.get() != nullptr) { impl->finish(false); }
 }
 
-LinuxNativeSandboxV1::LinuxNativeSandboxV1(LinuxNativeSandboxV1&&) noexcept = default;
-LinuxNativeSandboxV1& LinuxNativeSandboxV1::operator=(LinuxNativeSandboxV1&&) noexcept = default;
+LinuxNativeSandbox::LinuxNativeSandbox(LinuxNativeSandbox&&) noexcept = default;
+LinuxNativeSandbox& LinuxNativeSandbox::operator=(LinuxNativeSandbox&&) noexcept = default;
 
-BuildScriptRunResult LinuxNativeSandboxV1::execute(const BuildScriptRequestFrame& request) {
+BuildScriptRunResult LinuxNativeSandbox::execute(const BuildScriptRequestFrame& request) {
   if (impl->state != LinuxNativeSandboxState::Running || !impl->childOwned) {
     return BuildScriptIssue::ExecutionFailed;
   }
@@ -140,9 +140,9 @@ BuildScriptRunResult LinuxNativeSandboxV1::execute(const BuildScriptRequestFrame
   return result;
 }
 
-zc::Maybe<BuildScriptIssue> LinuxNativeSandboxV1::finish() { return impl->finish(true); }
+zc::Maybe<BuildScriptIssue> LinuxNativeSandbox::finish() { return impl->finish(true); }
 
-LinuxNativeSandboxState LinuxNativeSandboxV1::state() const noexcept { return impl->state; }
+LinuxNativeSandboxState LinuxNativeSandbox::state() const noexcept { return impl->state; }
 
 bool linuxNativeSandboxHostSupported() noexcept {
 #if defined(__linux__) && (defined(__x86_64__) || defined(__aarch64__))

@@ -102,7 +102,7 @@ struct ExportedBinding final {
   ZC_NODISCARD ExportedBinding clone() const;
 };
 
-/// \brief Canonical encoders for records embedded by the v3 interface revision.
+/// \brief Canonical encoders for records embedded by the interface revision.
 class ModuleInterfaceCanonicalCodec final {
 public:
   ZC_NODISCARD static zc::Maybe<zc::Array<uint8_t>> encodeSignatureRoot(
@@ -116,7 +116,7 @@ public:
       const type::SemanticTypeStore& semanticTypes);
 };
 
-/// \brief Immutable complete RFC 0015 v3 module interface published by one verifier.
+/// \brief Immutable complete RFC 0015 module interface published by one verifier.
 class VerifiedModuleInterface final {
 public:
   ~VerifiedModuleInterface() noexcept(false);
@@ -145,7 +145,7 @@ public:
   ZC_NODISCARD zc::ArrayPtr<const checker::signature::ImplHead> coherenceImplHeads() const noexcept;
   ZC_NODISCARD zc::ArrayPtr<const checker::signature::MarkerFact> markerFacts() const noexcept;
 
-  /// \brief Project the exact frozen facts and canonical records accepted by coherence v1.
+  /// \brief Project the exact frozen facts and canonical records accepted by coherence.
   ZC_NODISCARD checker::coherence::CoherenceModuleInput projectCoherenceInput() const;
 
   /// \brief Project one requester-authorized imported-signature module capability.
@@ -183,7 +183,7 @@ struct ModuleInterfaceInvariantRejected final {
 using ModuleInterfaceBuildResult =
     zc::OneOf<VerifiedModuleInterface, ModuleInterfaceInvariantRejected>;
 
-/// \brief Sole producer of complete RFC 0015 v3 verified module interfaces.
+/// \brief Sole producer of complete RFC 0015 verified module interfaces.
 class ModuleInterfaceVerifier final {
 public:
   ZC_NODISCARD static ModuleInterfaceBuildResult build(ModuleInterfaceBuildInput&& input);
