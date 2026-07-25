@@ -127,11 +127,24 @@ exact review hash
 that every required owner must cite. No implementation is authorized by this
 tracker.
 
+### 2026-07-25 RFC Owner Exact-Hash Approval
+
+The `rfc` owner independently reviewed
+`a9d15b034cf646bc46f2bfed01c4ec1d133afc5fb3edc7c405bb93422457a35c`
+and returned `APPROVE` with no `BLOCKER`, `MAJOR`, or `MINOR` findings.
+The review covered RFC governance, scope, prior art, status discipline,
+acceptance boundaries, and the atomic replacement contract. The native RFC and
+internal-versioning checks passed, the final hash matched, and the worktree
+remained clean.
+
+This approval covers only the `rfc` owner. It does not approve any other
+required owner, move the proposal to `ACCEPTED`, or authorize implementation.
+
 ## Owner Review Matrix
 
 | Owner | State | Review Surface |
 |---|---|---|
-| `rfc` | Pending | Governance, scope, prior art, status, and exact-hash review |
+| `rfc` | Approved: `a9d15b034cf646bc46f2bfed01c4ec1d133afc5fb3edc7c405bb93422457a35c` | Governance, scope, prior art, status, and exact-hash review |
 | `task-router` | Pending | Core path ownership and mandatory gate routing |
 | `lexer-parser` | Pending | Removal of the unused intrinsic token and grammar-facing inventory alignment |
 | `binder-checker` | Pending | Bootstrap signatures, role authority, body checking, and language/core boundary |
