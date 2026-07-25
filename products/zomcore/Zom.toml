@@ -1,0 +1,8 @@
+[package]
+name = "zomcore"
+version = "0.0.0"
+edition = "2026"
+
+[lib]
+name = "core"
+path = "src/prelude.zom"

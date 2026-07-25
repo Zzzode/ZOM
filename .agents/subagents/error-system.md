@@ -12,6 +12,7 @@ of diagnostic codes plus their one-line headlines.
 Route here when **any** of these are true:
 
 - Adding, removing, or renaming a `ZOMxxxx` diagnostic code.
+- Adding or changing a checker source diagnostic registry entry.
 - Changing the wording, severity, or auto-suggestion behavior of a
   diagnostic.
 - Adding a new `?` / `?!` / `!!` / raises-clause semantic rule.
@@ -33,6 +34,7 @@ Do **not** route here when:
 
 ```
 products/zomlang/compiler/diagnostics/**
+products/zomlang/compiler/checker/checker-source-diagnostics.def
 docs/spec/chapters/11-error-handling.md
 ```
 

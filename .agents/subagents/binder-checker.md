@@ -32,6 +32,7 @@ Do **not** route here when:
 ```
 products/zomlang/compiler/binder/**
 products/zomlang/compiler/checker/**
+!products/zomlang/compiler/checker/checker-source-diagnostics.def
 products/zomlang/compiler/ast/ast-visitor*
 docs/spec/chapters/06-declarations.md
 docs/spec/chapters/07-types.md

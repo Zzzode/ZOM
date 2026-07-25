@@ -92,7 +92,7 @@ not reused.
 | [RFC 0021](0021-target-aware-lir-and-llvm-translation.md) | Target-Aware LIR And LLVM Translation Contract | DRAFT | compiler | compiler | rfc | [Review Tracker](tracking/0021-review-and-implementation.md) | TBD |
 | [RFC 0022](0022-flow-sensitive-type-refinement-and-null-safety.md) | Flow-Sensitive Type Refinement And Null Safety | REVIEW | language | language | rfc | [Review Tracker](tracking/0022-review-and-implementation.md) | TBD |
 | [RFC 0023](0023-ide-semantic-snapshots-and-language-server-architecture.md) | IDE Semantic Snapshots And Language Server Architecture | REVIEW | tooling | compiler | rfc | [Review Tracker](tracking/0023-review-and-implementation.md) | TBD |
-| [RFC 0024](0024-standard-marker-authority.md) | Standard Marker Authority | ACCEPTED | compiler | compiler | rfc | [Review Tracker](tracking/0024-review-and-implementation.md) | [Implementation Tracker](tracking/0024-review-and-implementation.md#implementation-tracker) |
+| [RFC 0024](0024-standard-marker-authority.md) | Standard Marker Authority | IMPLEMENTING | compiler | compiler | rfc | [Review Tracker](tracking/0024-review-and-implementation.md) | [Implementation Tracker](tracking/0024-review-and-implementation.md#implementation-tracker) |
 
 ## Status Values
 

@@ -16,6 +16,7 @@ Route here when any of these are true:
 - A pass performs drop elaboration, monomorphization, ABI legalization, or
   target-specific layout.
 - LLVM IR, object files, assembly, link steps, or backend verification change.
+- The standard prelude build-tree or install-tree layout changes.
 - An IR dump, verifier, pass pipeline, or lowering boundary changes.
 - A checked cast such as `as!` needs check-once control flow, a target check,
   or a panic failure continuation.
@@ -44,6 +45,7 @@ products/zomlang/compiler/CMakeLists.txt
 products/zomlang/compiler/basic/CMakeLists.txt
 products/zomlang/compiler/trace/CMakeLists.txt
 products/zomlang/utils/zomc/**
+products/zomcore/CMakeLists.txt
 ```
 
 `compiler/hir`, `compiler/mir`, and `compiler/ir` are the only production IR

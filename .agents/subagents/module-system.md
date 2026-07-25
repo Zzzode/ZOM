@@ -12,6 +12,8 @@ publication.
 Route here when **any** of these are true:
 
 - Import, export, or package-path resolution is wrong.
+- The standard prelude manifest, distribution admission, or configured prelude
+  graph edge changes.
 - Context brands, canonical identity keys, source provenance, or semantic
   handle ancestry changes.
 - Module export, member visibility modifiers, or re-exports change.
@@ -35,6 +37,7 @@ products/zomlang/compiler/driver/**
 products/zomlang/compiler/identity/**
 products/zomlang/compiler/query/**
 products/zomlang/compiler/source/**
+products/zomcore/Zom.toml
 docs/spec/chapters/13-modules-and-imports.md
 docs/spec/chapters/23-visibility-ladder.md
 ```

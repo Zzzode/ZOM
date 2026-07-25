@@ -72,7 +72,7 @@ function(add_regression_test TEST_NAME SOURCE_FILE ISSUE_NUMBER)
 
   add_test(
     NAME ${TEST_FULL_NAME}
-    COMMAND ${CMAKE_BINARY_DIR}/products/zomlang/utils/zomc/zomc compile --dump-ast ${SOURCE_FILE}
+    COMMAND $<TARGET_FILE:zomc> compile --dump-ast ${SOURCE_FILE}
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
   )
 

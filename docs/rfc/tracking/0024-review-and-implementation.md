@@ -103,17 +103,16 @@ earlier approvals.
 
 Decision: Accepted.
 
-RFC 0024 is `ACCEPTED`. Implementation is authorized only in the dependency
-order below and must preserve the exact accepted contract as the sole internal
-path.
+RFC 0024 is `IMPLEMENTING`. Implementation follows the dependency order below
+and preserves the exact accepted contract as the sole internal path.
 
 ## Implementation Tracker
 
 | Slice | State | Required Evidence |
 |---|---|---|
 | RFC contract and owner review | Complete | Exact-hash approval from every required owner |
-| Standard prelude source | Pending | Parsed, bound, exported, shape-classified `Copy` and `Linear` |
-| Distribution configuration | Pending standard prelude | Mandatory prelude target, policy, role keys, codec, and independent oracle |
+| Standard prelude source | In progress | Exact source and manifest bytes are packaged and parse/bind as an ordinary package; configured-prelude export and shape-classification evidence remains pending |
+| Distribution configuration | In progress | Build/install layout is verified; mandatory prelude target, policy, role keys, codec, and independent oracle remain pending |
 | Configured-prelude path | Pending distribution configuration | Incremental transaction, query resolution, graph verification, no self-edge |
 | Verified marker authority | Pending configured prelude | Context, shape, policy, owner, role, revision, and mutation evidence |
 | Complete body and proof input | Pending marker authority | One aggregate authority and stale-lineage rejection |
@@ -129,8 +128,23 @@ path.
   proof-input, and overlay lineage requirements.
 - Rust language items and Swift known protocols were reviewed as primary prior
   art for compiler-known roles backed by real library declarations.
+- `products/zomcore/Zom.toml` is exactly 108 bytes with SHA-256
+  `3ec3417bca606a7cfbb588b7e177202ade5dcdec48cdff13ba6aea474000ab74`;
+  `products/zomcore/src/prelude.zom` is exactly 52 bytes with SHA-256
+  `a05fc153f772f0075ed4c8dd9d8affeecb3f01ea674786047e31778f439833a3`.
+- `cmake --preset sanitizer` and
+  `cmake --build --preset sanitizer --target zomc` verify configuration and
+  target materialization.
+- `ctest --preset default -R '^standard-prelude-install-layout$' --output-on-failure`
+  verifies the exact installed file set and bytes.
+- `build-sanitizer/bin/zomc compile --manifest-path products/zomcore/Zom.toml --package zomcore --lib --syntax-only`
+  verifies parsing and binding of the source-backed package through the package
+  CLI.
+- The sanitizer build and complete `ctest --preset default --output-on-failure`
+  matrix pass all 208 tests.
 
 ## Blocking Dependencies
 
-- A source-backed prelude admitted through package and module verification.
-- The accepted production configuration as the sole compiler path.
+- Production distribution admission through package and module verification.
+- The accepted compiler marker configuration and authority as the sole
+  semantic path.

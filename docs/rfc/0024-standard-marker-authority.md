@@ -2,7 +2,7 @@
 rfc: 24
 title: Standard Marker Authority
 type: compiler
-status: ACCEPTED
+status: IMPLEMENTING
 author: ZOM Compiler Team
 review-manager: rfc
 required-owners: [rfc, task-router, binder-checker, module-system, error-system, ir-backend, runtime-memory, spec-audit, verification]
@@ -15,7 +15,7 @@ supersedes: []
 superseded-by: []
 discussion: docs/rfc/tracking/0024-review-and-implementation.md#discussion-record
 decision: docs/rfc/tracking/0024-review-and-implementation.md#decision-record
-implementation: TBD
+implementation: docs/rfc/tracking/0024-review-and-implementation.md#implementation-tracker
 tracking-issue: docs/rfc/tracking/0024-review-and-implementation.md#implementation-tracker
 ---
 
@@ -1195,3 +1195,4 @@ None
 | 2026-07-25 | DRAFT | Defined the configured-prelude and standard-marker authority boundary. |
 | 2026-07-25 | REVIEW | Closed schema, lineage, failure, rollout, and verification contracts for owner review. |
 | 2026-07-25 | ACCEPTED | All nine required owners approved exact REVIEW SHA-256 `56a51ba59cd8f761ee2a6260d14ae9dc4ab9310b6565645e3439126a3d575f3d`; RFC 0004, RFC 0005, RFC 0007, and RFC 0015 were synchronized in the same acceptance transaction. |
+| 2026-07-25 | IMPLEMENTING | Began the dependency-ordered implementation with the exact standard prelude source and relocatable build/install distribution layout; production admission and marker authority remain pending. |

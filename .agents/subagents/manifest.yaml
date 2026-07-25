@@ -65,6 +65,7 @@ subagents:
     owns:
       - "products/zomlang/compiler/binder/**"
       - "products/zomlang/compiler/checker/**"
+      - "!products/zomlang/compiler/checker/checker-source-diagnostics.def"
       - "products/zomlang/compiler/type/**"
       - "products/zomlang/compiler/ast/ast-visitor*"
       - "docs/spec/chapters/06-declarations.md"
@@ -83,6 +84,7 @@ subagents:
       - "products/zomlang/compiler/source/**"
       - "products/zomlang/compiler/binder/module-*"
       - "products/zomlang/compiler/driver/**"
+      - "products/zomcore/Zom.toml"
       - "docs/spec/chapters/13-modules-and-imports.md"
       - "docs/spec/chapters/23-visibility-ladder.md"
     triggers: [ "identity", "brand", "source provenance", "SourceFileId", "ModuleId", "DefId", "module", "import", "export", "visibility", "package", "session", "CompilerSession", "cross-module", "query", "incremental", "red-green", "memo", "demand-driven" ]
@@ -93,6 +95,7 @@ subagents:
     name: Error System & Diagnostics
     owns:
       - "products/zomlang/compiler/diagnostics/**"
+      - "products/zomlang/compiler/checker/checker-source-diagnostics.def"
       - "docs/spec/chapters/11-error-handling.md"
     triggers: [ "error", "diagnostic", "raises", "try", "exception", "panic", "cast", "as!", "ZOM", "?!", "!!", "propagat" ]
     required-skills: [ build-ci, lit-testing, spec-alignment ]
@@ -127,6 +130,7 @@ subagents:
       - "products/zomlang/compiler/basic/CMakeLists.txt"
       - "products/zomlang/compiler/trace/CMakeLists.txt"
       - "products/zomlang/utils/zomc/**"
+      - "products/zomcore/CMakeLists.txt"
     triggers: [ "IR", "HIR", "MIR", "LIR", "SSA", "CFG", "lowering", "codegen", "backend", "LLVM", "ABI", "object file", "forced cast", "as!" ]
     required-skills: [ build-ci, zc-library, lit-testing ]
     escalation-to: [ binder-checker, module-system, error-system, concurrency, runtime-memory, verification, spec-audit ]
@@ -151,6 +155,7 @@ subagents:
       - "!products/zomlang/runtime/**/actor*"
       - "!products/zomlang/runtime/**/channel*"
       - "!products/zomlang/runtime/**/scheduler*"
+      - "products/zomcore/src/**"
       - "docs/spec/chapters/14-memory-management.md"
     triggers: [ "zc::", "Own<", "ArrayPtr", "Vector", "String", "Maybe", "memory", "heap", "stack", "drop", "free", "FFI", "Pimpl", "ownership", "panic", "forced cast", "as!" ]
     required-skills: [ zc-library, build-ci ]

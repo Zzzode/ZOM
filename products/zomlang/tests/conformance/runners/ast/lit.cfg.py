@@ -48,28 +48,13 @@ zomc_path = lit.util.which("zomc")
 if not zomc_path:
     cmake_binary_dir = os.environ.get("CMAKE_BINARY_DIR", "")
     if cmake_binary_dir:
-        potential_path = os.path.join(
-            cmake_binary_dir,
-            "products",
-            "zomlang",
-            "utils",
-            "zomc",
-            "zomc",
-        )
+        potential_path = os.path.join(cmake_binary_dir, "bin", "zomc")
         if os.path.exists(potential_path):
             zomc_path = potential_path
 
     if not zomc_path:
         for build_dir in ["build-sanitizer", "build", "build-debug", "build-release"]:
-            potential_path = os.path.join(
-                repo_root,
-                build_dir,
-                "products",
-                "zomlang",
-                "utils",
-                "zomc",
-                "zomc",
-            )
+            potential_path = os.path.join(repo_root, build_dir, "bin", "zomc")
             if os.path.exists(potential_path):
                 zomc_path = potential_path
                 break

@@ -65,6 +65,7 @@ surface; `↗` means it escalates to another subagent after doing its part.
 | Token not lexed | ✅ route → | | ✅ | | | ↗ ZOMxxxx codes | | | ✅ | | | |
 | Type mismatch message | ✅ route → | ↗ if language rule changes | | ✅ | | ↗ owns codes | | | ✅ | | ↗ add test | ↗ hover and IDE diagnostics |
 | `import` resolution bug | ✅ route → | ↗ if module contract changes | | ↗ binder | ✅ | | | ↗ imported identity | ✅ | | ↗ add test | ↗ navigation |
+| Standard prelude distribution and marker authority | ✅ route → | ✅ status and tracker | | ↗ shape and policy | ✅ manifest, admission, and session | ↗ diagnostic registry | | ✅ CMake, install, and zomc layout | ✅ spec alignment | ✅ source declarations and memory roles | ✅ native tests and gates | |
 | Semantic identity or source provenance | ✅ route → | ↗ if contract changes | ✅ parsed origin and AST producer inventory | ↗ identity consumer | ✅ identity/source owner | ↗ invariant codes | | ↗ IR handles and build wiring | ✅ | ↗ lifetime boundary | ✅ architecture gate and permutation tests | ↗ editor source mapping |
 | Incremental query runtime, red-green reuse, or projection shielding | ✅ route → | ↗ if contract changes | ↗ parse provider | ↗ semantic provider | ✅ query database and identity owner | ↗ diagnostic facts | ↗ cancellation interaction | ↗ CMake direction | ✅ architecture drift | ↗ lifetime boundary | ✅ gates, adversaries, and benchmarks | ↗ request snapshots |
 | `?!` operator missing | ✅ route → | ↗ if semantics change | ✅ lex+parse | | | ✅ error semantics | | ✅ lowering | ✅ | ↗ panic ABI | ↗ lit test | |

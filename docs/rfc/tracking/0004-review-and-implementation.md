@@ -797,12 +797,12 @@ Binder coordinator, and production Binder cutover.
 Slices that remain `In review` or `In progress` have external dependencies
 that are not owned by RFC 0004: RFC 0008 module input handoff (combined
 signature/interface scheduling remains open), import/export/module-alias and
-prelude publication (the session supplies an empty prelude set until a prelude
-contract is defined), module and qualified resolution (requester-authorized
-typed member lookup and associated-member completion remain owned by RFC 0005
-and RFC 0009), and cross-module codecs/verifier closure/surfaces (the combined
-`VerifiedModuleInterface` codec and signature authorization closure remain
-blocked by RFC 0015).
+prelude publication (the session supplies an empty prelude set until RFC 0024
+configured-prelude integration lands), module and qualified resolution
+(requester-authorized typed member lookup and associated-member completion
+remain owned by RFC 0005 and RFC 0009), and cross-module codecs/verifier
+closure/surfaces (the combined `VerifiedModuleInterface` codec and signature
+authorization closure remain blocked by RFC 0015).
 
 # RFC 0015 Accepted Overlay
 

@@ -18,6 +18,7 @@ Route here when **any** of these are true:
 - Reviewing a type that crosses thread / await boundaries for
   ownership correctness (in coordination with `concurrency`).
 - Any question about destructor order, move semantics, copy ban, RAII.
+- The standard prelude source declares compiler-recognized ownership markers.
 - A forced cast or other compiler operation enters the runtime panic ABI,
   especially across unwind, catch, FFI, or task boundaries.
 
@@ -38,6 +39,7 @@ products/zomlang/runtime/**
 !products/zomlang/runtime/**/actor*
 !products/zomlang/runtime/**/channel*
 !products/zomlang/runtime/**/scheduler*
+products/zomcore/src/**
 docs/spec/chapters/14-memory-management.md
 ```
 
