@@ -19,6 +19,7 @@
 #include "zc/core/array.h"
 #include "zc/core/common.h"
 #include "zc/core/memory.h"
+#include "zc/core/one-of.h"
 #include "zc/core/vector.h"
 #include "zomlang/compiler/identity/brand.h"
 #include "zomlang/compiler/identity/canonical-encoder.h"
@@ -52,15 +53,93 @@ private:
   identity::Sha256Digest value;
 };
 
-/// \brief One deterministic location inside one MIR function body.
-struct MirEventLocation final {
+/// \brief Closed kind algebra for canonical MIR control-flow points.
+enum class MirPointKind : uint8_t {
+  Entry = 0x01,
+  BeforeStatement = 0x02,
+  AfterStatement = 0x03,
+  BeforeTerminator = 0x04,
+  Edge = 0x05,
+  Exit = 0x06,
+};
+
+/// \brief Closed kind algebra for canonical MIR function exits.
+enum class MirExitKind : uint8_t {
+  Return = 0x01,
+  ResidualReturn = 0x02,
+  Break = 0x03,
+  Continue = 0x04,
+  Panic = 0x05,
+  Unwind = 0x06,
+  Cancellation = 0x07,
+  Unreachable = 0x08,
+};
+
+struct MirEntryPoint final {};
+struct MirBeforeStatementPoint final {
   mir::MirBlockId block;
-  uint32_t statementIndex;
+  uint32_t ordinal;
+};
+struct MirAfterStatementPoint final {
+  mir::MirBlockId block;
+  uint32_t ordinal;
+};
+struct MirBeforeTerminatorPoint final {
+  mir::MirBlockId block;
+};
+struct MirEdgePoint final {
+  mir::MirBlockId from;
+  uint32_t edgeOrdinal;
+  mir::MirBlockId to;
+};
+struct MirExitPoint final {
+  mir::MirBlockId block;
+  MirExitKind kind;
+};
+
+/// \brief Closed discriminated union of canonical MIR control-flow points.
+class MirPoint final {
+public:
+  MirPoint(MirPoint&&) noexcept = default;
+  MirPoint& operator=(MirPoint&&) noexcept = default;
+  MirPoint(const MirPoint&) = default;
+  MirPoint& operator=(const MirPoint&) = default;
+
+  ZC_NODISCARD static MirPoint entry() noexcept;
+  ZC_NODISCARD static MirPoint beforeStatement(mir::MirBlockId block, uint32_t ordinal) noexcept;
+  ZC_NODISCARD static MirPoint afterStatement(mir::MirBlockId block, uint32_t ordinal) noexcept;
+  ZC_NODISCARD static MirPoint beforeTerminator(mir::MirBlockId block) noexcept;
+  ZC_NODISCARD static MirPoint edge(mir::MirBlockId from, uint32_t edgeOrdinal,
+                                    mir::MirBlockId to) noexcept;
+  ZC_NODISCARD static MirPoint exit(mir::MirBlockId block, MirExitKind kind) noexcept;
+  ZC_NODISCARD MirPointKind kind() const noexcept;
+  ZC_NODISCARD const MirBeforeStatementPoint& beforeStatementValue() const;
+  ZC_NODISCARD const MirAfterStatementPoint& afterStatementValue() const;
+  ZC_NODISCARD const MirBeforeTerminatorPoint& beforeTerminatorValue() const;
+  ZC_NODISCARD const MirEdgePoint& edgeValue() const;
+  ZC_NODISCARD const MirExitPoint& exitValue() const;
+
+private:
+  explicit MirPoint(MirEntryPoint value) noexcept;
+  explicit MirPoint(MirBeforeStatementPoint value) noexcept;
+  explicit MirPoint(MirAfterStatementPoint value) noexcept;
+  explicit MirPoint(MirBeforeTerminatorPoint value) noexcept;
+  explicit MirPoint(MirEdgePoint value) noexcept;
+  explicit MirPoint(MirExitPoint value) noexcept;
+  zc::OneOf<MirEntryPoint, MirBeforeStatementPoint, MirAfterStatementPoint,
+            MirBeforeTerminatorPoint, MirEdgePoint, MirExitPoint>
+      value;
+};
+
+/// \brief Owner-bound deterministic location inside one MIR function body.
+struct MirLocation final {
+  identity::DefId owner;
+  MirPoint point;
 };
 
 /// \brief Canonical key of one MIR event: its location plus operand ordinal.
 struct MirEventKey final {
-  MirEventLocation location;
+  MirLocation location;
   uint32_t operandOrdinal;
 };
 

@@ -777,7 +777,7 @@ The ordered implementation series is now authorized:
 
 | Slice | State | Required Evidence |
 |---|---|---|
-| Built MIR and ownership event overlay | Authorized | MIR input plus RFC 0007 event overlay slots/cutpoints and sole checker-time deferred-activation map, explicit call-duration RFC 0015 marker-proof input, separate producer/verifier query contexts and memos, complete descendant marker-use inventory, query-first/postorder logical-drop plans, cast-resource plans, canonical `MirStatement::BorrowCreation`, total cast-carrier resource projection, collision-free overlay-only unsafe occurrences, exact outer-`0x07` unsafe-scope statement framing and 283-byte oracle, pre-checker Chapter 15 rejection, explicit repository capability, independent verifier, dumps, malformed inputs, and complete admissible exits |
+| Built MIR and ownership event overlay | In Progress (event identity and slot codec only) | Executable evidence covers owner-bound `MirLocation`, all six `MirPoint` branches, causal operand ordinals, `Move` as `OperandRead` plus `OperandMove`, separate producer and verifier implementations, framed sorted-map slots with non-empty role sequences, independently encoded published revisions, and foreign owner/point/ordinal/role mutations. The complete six-inventory overlay contract is not implemented. |
 | Closed ownership diagnostics | Authorized | Ownership source variants, deletion without reassignment of `ZOM4067-ZOM4068`, fresh pre-checker `ZOM4095`, proposed `ZOM4093-ZOM4094`, exact primary/all-cause note mapping, suppression, ordering, and retained payloads |
 | Move paths, initialization, and drop | Authorized | Implicit reflexive conflict, exact distinct-pair inventory, three-bit lattice, complete loss causes, canonical `DropResourceSubject`, all three drop requirements, open/closed component drop with pre-consumption and abort-only action panic, partial initialization/mutation, checked-cast verified-plan and subject preservation, fail-closed `StorageDead`, overwrite, and differential oracle |
 | Loans, references, and regions | Authorized | Complete before/after point phases, issue/activation/commit timing, exact checker-time overlay `DeferredActivationFact`, independent reconstruction while checker authority lives, ownership-side overlay bijection with no checker lookup, `Storage` and event-granular NLL value regions, reaching reference definitions, root/active multi-origin transfer, reborrow restoration, exact outlives closure, call evidence, escape, and differential oracle |
@@ -785,6 +785,35 @@ The ordered implementation series is now authorized:
 | Verified ownership facts and typestate | Authorized | Independent event overlay and ownership facts codecs, exact 141/206/513 and 165/286/378-byte oracles plus the MIR 283-byte unsafe-scope oracle, no duplicate activation or marker inventory in facts, complete marker-capability/descendant-query/postorder/resource-plan/cast/drop/event/cutpoint/NLL/loop mutations, symbolic budget checks, and private constructors |
 | Session and cleanup integration | Authorized (RFC 0006 prerequisite in progress) | Atomic publication, exact borrowed Built/overlay/evidence analysis inputs, moved Built/overlay/facts finalization and successor inputs, embedded lease plus explicit live capability resolution, value-owned facts without an ownership repository, cleanup consumption, and no predecessor or successor on rejection |
 | Repository completion gates | Authorized | Exact architecture and coverage scripts, coverage checker self-test, per-file 70-percent line floor, aggregate baseline non-regression, sanitizer, default CTest, lit, conformance, corpus, determinism, spec, format, CJK, and diff hygiene |
+
+### Event Identity And Slot Codec Executable Evidence
+
+The current implementation slice constructs and independently verifies only
+the event identity and slot codec:
+
+- `MirLocation` binds every event point to its function owner, and `MirPoint`
+  covers `Entry`, `BeforeStatement`, `AfterStatement`, `BeforeTerminator`,
+  `Edge`, and `Exit`;
+- a causal operand ordinal distinguishes source, effect, and commit events at
+  the same MIR location;
+- production `Move` operands publish `OperandRead` and `OperandMove`; `Copy`
+  is covered only by the canonical codec oracle because production Built MIR
+  has no `Copy` lowering caller;
+- the producer and verifier independently derive the slot sequence from Built
+  MIR, while the codec frames the sorted event map and every non-empty role
+  sequence;
+- the published overlay revision is checked against a structurally independent
+  oracle; and
+- negative tests mutate a foreign owner, point branch, causal ordinal, and
+  role, and require verification failure.
+
+This evidence does not complete the six-inventory
+`OwnershipFunctionEventOverlay` contract: `slots` has executable identity and
+codec coverage, while `deferredActivations`, `unsafeOccurrences`, `markerUses`,
+`logicalDropPlans`, and `castResourcePlans` remain unimplemented. In
+particular, no executable producer or verifier yet constructs
+`logicalDropPlans`. The Built MIR and ownership event overlay row therefore
+remains `In Progress` and must not be reported as `Implemented`.
 
 The implementation tracker must be updated with executable evidence only after
 all five coordinated governance records exist. A transition or implementation link in

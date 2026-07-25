@@ -248,8 +248,52 @@ ZC_TEST("Ownership event overlay builder and verifier accept one scalar initiali
   auto candidateResult = OwnershipEventOverlayBuilder::build(builtMir, registries);
   ZC_REQUIRE(candidateResult.isVerified());
   auto candidate = zc::mv(candidateResult).takeVerified();
-  ZC_EXPECT(candidate.functions.size() == 1);
-  ZC_REQUIRE(candidate.functions[0].slots.size() != 0);
+  ZC_REQUIRE(candidate.functions.size() == 1);
+  ZC_REQUIRE(candidate.functions[0].slots.size() == 6);
+  const auto owner = candidate.functions[0].owner;
+  const auto block = builtMir.functions()[0].blocks[0].id;
+  const auto& candidateSlots = candidate.functions[0].slots;
+
+  ZC_EXPECT(candidateSlots[0].key.location.owner == owner);
+  ZC_EXPECT(candidateSlots[0].key.location.point.kind() == MirPointKind::BeforeStatement);
+  ZC_EXPECT(candidateSlots[0].key.location.point.beforeStatementValue().block == block);
+  ZC_EXPECT(candidateSlots[0].key.location.point.beforeStatementValue().ordinal == 0);
+  ZC_EXPECT(candidateSlots[0].key.operandOrdinal == 0);
+  ZC_EXPECT(candidateSlots[0].stage == OwnershipEventStage::Effect);
+  ZC_REQUIRE(candidateSlots[0].roles.size() == 2);
+  ZC_EXPECT(candidateSlots[0].roles[0] == OwnershipEventRole::Operation);
+  ZC_EXPECT(candidateSlots[0].roles[1] == OwnershipEventRole::StorageLive);
+
+  for (size_t index = 1; index <= 3; ++index) {
+    ZC_EXPECT(candidateSlots[index].key.location.owner == owner);
+    ZC_EXPECT(candidateSlots[index].key.location.point.kind() == MirPointKind::BeforeStatement);
+    ZC_EXPECT(candidateSlots[index].key.location.point.beforeStatementValue().block == block);
+    ZC_EXPECT(candidateSlots[index].key.location.point.beforeStatementValue().ordinal == 1);
+    ZC_EXPECT(candidateSlots[index].key.operandOrdinal == index - 1);
+  }
+  ZC_EXPECT(candidateSlots[1].stage == OwnershipEventStage::Source);
+  ZC_REQUIRE(candidateSlots[1].roles.size() == 1);
+  ZC_EXPECT(candidateSlots[1].roles[0] == OwnershipEventRole::ConstantOperand);
+  ZC_EXPECT(candidateSlots[2].stage == OwnershipEventStage::Effect);
+  ZC_REQUIRE(candidateSlots[2].roles.size() == 1);
+  ZC_EXPECT(candidateSlots[2].roles[0] == OwnershipEventRole::Operation);
+  ZC_EXPECT(candidateSlots[3].stage == OwnershipEventStage::Commit);
+  ZC_REQUIRE(candidateSlots[3].roles.size() == 1);
+  ZC_EXPECT(candidateSlots[3].roles[0] == OwnershipEventRole::DestinationWrite);
+
+  for (size_t index = 4; index <= 5; ++index) {
+    ZC_EXPECT(candidateSlots[index].key.location.owner == owner);
+    ZC_EXPECT(candidateSlots[index].key.location.point.kind() == MirPointKind::BeforeTerminator);
+    ZC_EXPECT(candidateSlots[index].key.location.point.beforeTerminatorValue().block == block);
+    ZC_EXPECT(candidateSlots[index].key.operandOrdinal == index - 4);
+  }
+  ZC_EXPECT(candidateSlots[4].stage == OwnershipEventStage::Source);
+  ZC_REQUIRE(candidateSlots[4].roles.size() == 2);
+  ZC_EXPECT(candidateSlots[4].roles[0] == OwnershipEventRole::OperandRead);
+  ZC_EXPECT(candidateSlots[4].roles[1] == OwnershipEventRole::OperandMove);
+  ZC_EXPECT(candidateSlots[5].stage == OwnershipEventStage::Effect);
+  ZC_REQUIRE(candidateSlots[5].roles.size() == 1);
+  ZC_EXPECT(candidateSlots[5].roles[0] == OwnershipEventRole::Operation);
 
   auto verifiedResult =
       OwnershipEventOverlayVerifier::verify(zc::mv(candidate), builtMir, registries);
@@ -260,32 +304,7 @@ ZC_TEST("Ownership event overlay builder and verifier accept one scalar initiali
   ZC_EXPECT(overlay.builtRevision().digest() == builtMir.revision().digest());
   ZC_EXPECT(overlay.functions().size() == 1);
   ZC_EXPECT(overlay.functions()[0].owner == builtMir.functions()[0].owner);
-  ZC_EXPECT(overlay.functions()[0].slots.size() != 0);
-
-  const auto& slots = overlay.functions()[0].slots;
-  bool foundStorageLive = false;
-  bool foundAssign = false;
-  bool foundReturn = false;
-  bool foundSourceStage = false;
-  bool foundEffectStage = false;
-  bool foundCommitStage = false;
-  for (const auto& slot : slots) {
-    if (slot.stage == OwnershipEventStage::Source) foundSourceStage = true;
-    if (slot.stage == OwnershipEventStage::Effect) foundEffectStage = true;
-    if (slot.stage == OwnershipEventStage::Commit) foundCommitStage = true;
-    for (auto role : slot.roles) {
-      if (role == OwnershipEventRole::StorageLive) foundStorageLive = true;
-      if (role == OwnershipEventRole::DestinationWrite) foundAssign = true;
-      if (role == OwnershipEventRole::Operation && slot.stage == OwnershipEventStage::Effect)
-        foundReturn = true;
-    }
-  }
-  ZC_EXPECT(foundStorageLive);
-  ZC_EXPECT(foundAssign);
-  ZC_EXPECT(foundReturn);
-  ZC_EXPECT(foundSourceStage);
-  ZC_EXPECT(foundEffectStage);
-  ZC_EXPECT(foundCommitStage);
+  ZC_EXPECT(overlay.functions()[0].slots.size() == 6);
 }
 
 ZC_TEST("Ownership event overlay verifier rejects a tampered function slot count") {
@@ -297,8 +316,10 @@ ZC_TEST("Ownership event overlay verifier rejects a tampered function slot count
   ZC_REQUIRE(candidateResult.isVerified());
   auto candidate = zc::mv(candidateResult).takeVerified();
   ZC_REQUIRE(candidate.functions.size() == 1);
-  MirEventSlot extra{MirEventKey{MirEventLocation{mir::MirBlockId{}, 999}, 0},
-                     OwnershipEventStage::Effect, zc::Vector<OwnershipEventRole>{}};
+  const auto& first = candidate.functions[0].slots[0];
+  MirEventSlot extra{
+      MirEventKey{MirLocation{candidate.functions[0].owner, first.key.location.point}, 999},
+      OwnershipEventStage::Effect, zc::Vector<OwnershipEventRole>{}};
   extra.roles.add(OwnershipEventRole::Operation);
   candidate.functions[0].slots.add(zc::mv(extra));
 
@@ -356,6 +377,60 @@ ZC_TEST("Ownership event overlay verifier rejects a tampered slot role") {
             ir::IrFailureKind::CanonicalCodecMismatch);
 }
 
+ZC_TEST("Ownership event overlay verifier rejects a foreign event owner") {
+  OwnershipPipelineFixture fixture("let value = 0; let other = 1;"_zc);
+  const auto& builtMir = fixture.builtMir();
+  const auto& registries = fixture.registries();
+
+  auto candidateResult = OwnershipEventOverlayBuilder::build(builtMir, registries);
+  ZC_REQUIRE(candidateResult.isVerified());
+  auto candidate = zc::mv(candidateResult).takeVerified();
+  ZC_REQUIRE(candidate.functions.size() == 2);
+  ZC_REQUIRE(candidate.functions[0].slots.size() != 0);
+  ZC_REQUIRE(candidate.functions[0].owner != candidate.functions[1].owner);
+  candidate.functions[0].slots[0].key.location.owner = candidate.functions[1].owner;
+
+  auto verifiedResult =
+      OwnershipEventOverlayVerifier::verify(zc::mv(candidate), builtMir, registries);
+  ZC_EXPECT(!verifiedResult.isVerified());
+}
+
+ZC_TEST("Ownership event overlay verifier rejects a statement event at the terminator point") {
+  OwnershipPipelineFixture fixture("let value = 0;"_zc);
+  const auto& builtMir = fixture.builtMir();
+  const auto& registries = fixture.registries();
+
+  auto candidateResult = OwnershipEventOverlayBuilder::build(builtMir, registries);
+  ZC_REQUIRE(candidateResult.isVerified());
+  auto candidate = zc::mv(candidateResult).takeVerified();
+  ZC_REQUIRE(candidate.functions.size() == 1);
+  ZC_REQUIRE(candidate.functions[0].slots.size() != 0);
+  const auto block =
+      candidate.functions[0].slots[0].key.location.point.beforeStatementValue().block;
+  candidate.functions[0].slots[0].key.location.point = MirPoint::beforeTerminator(block);
+
+  auto verifiedResult =
+      OwnershipEventOverlayVerifier::verify(zc::mv(candidate), builtMir, registries);
+  ZC_EXPECT(!verifiedResult.isVerified());
+}
+
+ZC_TEST("Ownership event overlay verifier rejects a gapped causal ordinal") {
+  OwnershipPipelineFixture fixture("let value = 0;"_zc);
+  const auto& builtMir = fixture.builtMir();
+  const auto& registries = fixture.registries();
+
+  auto candidateResult = OwnershipEventOverlayBuilder::build(builtMir, registries);
+  ZC_REQUIRE(candidateResult.isVerified());
+  auto candidate = zc::mv(candidateResult).takeVerified();
+  ZC_REQUIRE(candidate.functions.size() == 1);
+  ZC_REQUIRE(candidate.functions[0].slots.size() != 0);
+  candidate.functions[0].slots[0].key.operandOrdinal = 1;
+
+  auto verifiedResult =
+      OwnershipEventOverlayVerifier::verify(zc::mv(candidate), builtMir, registries);
+  ZC_EXPECT(!verifiedResult.isVerified());
+}
+
 ZC_TEST("CompilerSession publishes verified ownership event overlays") {
   OwnershipPipelineFixture fixture("let value = 0;"_zc);
   const auto& session = fixture.compilerSession();
@@ -378,22 +453,162 @@ identity::Sha256Digest repeatedDigest(uint8_t byte) {
   ZC_FAIL_REQUIRE("invalid ownership digest fixture");
 }
 
+zc::Array<uint8_t> encodeOverlayOracle(const identity::Sha256Digest& contextFingerprint,
+                                       zc::ArrayPtr<const uint8_t> expandedModuleKey,
+                                       const identity::Sha256Digest& checkedFactsRevision,
+                                       const identity::Sha256Digest& builtRevision,
+                                       zc::ArrayPtr<const zc::Array<uint8_t>> functions) {
+  identity::CanonicalEncoder encoder;
+  constexpr char domain[] = "zom.ownership-event-overlay";
+  for (size_t index = 0; index + 1 < sizeof(domain); ++index) {
+    encoder.encodeUint8(static_cast<uint8_t>(domain[index]));
+  }
+  encoder.encodeUint8(0);
+  encoder.encodeDigest(contextFingerprint);
+  encoder.encodeByteString(expandedModuleKey);
+  encoder.encodeDigest(checkedFactsRevision);
+  encoder.encodeDigest(builtRevision);
+  encoder.encodeSequenceSize(functions.size());
+  for (const auto& function : functions) { encoder.encodeByteString(function.asPtr()); }
+  return encoder.finish();
+}
+
+zc::Array<uint8_t> encodeFixedOverlayOracle(zc::ArrayPtr<const zc::Array<uint8_t>> functions) {
+  const uint8_t module[] = {0xa1};
+  return encodeOverlayOracle(repeatedDigest(0x00), zc::arrayPtr(module), repeatedDigest(0x44),
+                             repeatedDigest(0x22), functions);
+}
+
+zc::Array<uint8_t> encodeStatementEventKeyOracle(zc::ArrayPtr<const uint8_t> owner, uint32_t block,
+                                                 uint32_t statement, uint32_t operandOrdinal) {
+  identity::CanonicalEncoder encoder;
+  encoder.encodeByteString(owner);
+  encoder.encodeUint8(0x02);
+  encoder.encodeUint32(block);
+  encoder.encodeUint32(statement);
+  encoder.encodeUint32(operandOrdinal);
+  return encoder.finish();
+}
+
+zc::Array<uint8_t> encodeTerminatorEventKeyOracle(zc::ArrayPtr<const uint8_t> owner, uint32_t block,
+                                                  uint32_t operandOrdinal) {
+  identity::CanonicalEncoder encoder;
+  encoder.encodeByteString(owner);
+  encoder.encodeUint8(0x04);
+  encoder.encodeUint32(block);
+  encoder.encodeUint32(operandOrdinal);
+  return encoder.finish();
+}
+
+zc::Array<uint8_t> encodeEventSlotOracle(zc::ArrayPtr<const uint8_t> key, uint8_t stage,
+                                         zc::ArrayPtr<const uint8_t> roles) {
+  identity::CanonicalEncoder encoder;
+  for (uint8_t value : key) { encoder.encodeUint8(value); }
+  encoder.encodeUint8(stage);
+  encoder.encodeSequenceSize(roles.size());
+  for (uint8_t role : roles) {
+    const uint8_t encodedRole[] = {role};
+    encoder.encodeByteString(zc::arrayPtr(encodedRole));
+  }
+  return encoder.finish();
+}
+
+zc::Array<uint8_t> twoPointFunctionOracle() {
+  const uint8_t owner[] = {0xb1};
+  const uint8_t statementRoles[] = {0x03, 0x04};
+  const uint8_t terminatorRoles[] = {0x03, 0x05};
+  auto statementKey = encodeStatementEventKeyOracle(zc::arrayPtr(owner), 1, 0, 0);
+  auto statementSlot =
+      encodeEventSlotOracle(statementKey.asPtr(), 0x01, zc::arrayPtr(statementRoles));
+  auto terminatorKey = encodeTerminatorEventKeyOracle(zc::arrayPtr(owner), 1, 0);
+  auto terminatorSlot =
+      encodeEventSlotOracle(terminatorKey.asPtr(), 0x01, zc::arrayPtr(terminatorRoles));
+
+  identity::CanonicalEncoder encoder;
+  encoder.encodeByteString(zc::arrayPtr(owner));
+  encoder.encodeSequenceSize(2);
+  encoder.encodeByteString(statementKey.asPtr());
+  encoder.encodeByteString(statementSlot.asPtr());
+  encoder.encodeByteString(terminatorKey.asPtr());
+  encoder.encodeByteString(terminatorSlot.asPtr());
+  for (int index = 0; index < 5; ++index) { encoder.encodeSequenceSize(0); }
+  return encoder.finish();
+}
+
+zc::Array<uint8_t> scalarInitializerFunctionOracle(zc::ArrayPtr<const uint8_t> owner,
+                                                   uint32_t block) {
+  const uint8_t storageLiveRoles[] = {0x01, 0x0a};
+  const uint8_t constantRoles[] = {0x06};
+  const uint8_t operationRoles[] = {0x01};
+  const uint8_t destinationRoles[] = {0x07};
+  const uint8_t moveRoles[] = {0x03, 0x05};
+
+  identity::CanonicalEncoder encoder;
+  encoder.encodeByteString(owner);
+  encoder.encodeSequenceSize(6);
+  auto append = [&](zc::Array<uint8_t>&& key, uint8_t stage, zc::ArrayPtr<const uint8_t> roles) {
+    auto slot = encodeEventSlotOracle(key.asPtr(), stage, roles);
+    encoder.encodeByteString(key.asPtr());
+    encoder.encodeByteString(slot.asPtr());
+  };
+  append(encodeStatementEventKeyOracle(owner, block, 0, 0), 0x02, zc::arrayPtr(storageLiveRoles));
+  append(encodeStatementEventKeyOracle(owner, block, 1, 0), 0x01, zc::arrayPtr(constantRoles));
+  append(encodeStatementEventKeyOracle(owner, block, 1, 1), 0x02, zc::arrayPtr(operationRoles));
+  append(encodeStatementEventKeyOracle(owner, block, 1, 2), 0x03, zc::arrayPtr(destinationRoles));
+  append(encodeTerminatorEventKeyOracle(owner, block, 0), 0x01, zc::arrayPtr(moveRoles));
+  append(encodeTerminatorEventKeyOracle(owner, block, 1), 0x02, zc::arrayPtr(operationRoles));
+  for (int index = 0; index < 5; ++index) { encoder.encodeSequenceSize(0); }
+  return encoder.finish();
+}
+
 void expectOverlayOracle(zc::Vector<zc::Array<uint8_t>>&& functions, zc::StringPtr expectedPreimage,
                          zc::StringPtr expectedDigest) {
-  const uint8_t module[] = {0xa1};
-  auto encoded = OwnershipEventOverlayCodec::encodeFramed(
-      repeatedDigest(0x00), zc::arrayPtr(module), repeatedDigest(0x44), repeatedDigest(0x22),
-      functions.asPtr());
-  ZC_REQUIRE(encoded != zc::none);
-  ZC_IF_SOME(bytes, encoded) {
-    ZC_EXPECT(zc::encodeHex(bytes.asPtr()) == expectedPreimage);
-    auto digest = identity::sha256(bytes.asPtr());
-    ZC_REQUIRE(digest != zc::none);
-    ZC_IF_SOME(value, digest) { ZC_EXPECT(zc::encodeHex(value.bytes()) == expectedDigest); }
+  auto bytes = encodeFixedOverlayOracle(functions.asPtr());
+  ZC_EXPECT(zc::encodeHex(bytes.asPtr()) == expectedPreimage);
+  auto digest = identity::sha256(bytes.asPtr());
+  ZC_REQUIRE(digest != zc::none);
+  ZC_IF_SOME(value, digest) { ZC_EXPECT(zc::encodeHex(value.bytes()) == expectedDigest); }
+}
+
+ZC_TEST("Ownership event overlay production revision matches the independent function oracle") {
+  OwnershipPipelineFixture fixture("let value = 0;"_zc);
+  const auto& builtMir = fixture.builtMir();
+  const auto& registries = fixture.registries();
+  auto candidateResult = OwnershipEventOverlayBuilder::build(builtMir, registries);
+  ZC_REQUIRE(candidateResult.isVerified());
+  auto candidate = zc::mv(candidateResult).takeVerified();
+  auto verifiedResult =
+      OwnershipEventOverlayVerifier::verify(zc::mv(candidate), builtMir, registries);
+  ZC_REQUIRE(verifiedResult.isVerified());
+  auto overlay = zc::mv(verifiedResult).takeVerified();
+  ZC_REQUIRE(overlay.functions().size() == 1);
+  ZC_REQUIRE(overlay.functions()[0].slots.size() == 6);
+  ZC_REQUIRE(builtMir.functions().size() == 1);
+  ZC_REQUIRE(builtMir.functions()[0].blocks.size() == 1);
+
+  auto ownerKey = registries.definitions().lookup(overlay.functions()[0].owner);
+  auto moduleKey = registries.modules().lookup(overlay.module());
+  ZC_REQUIRE(ownerKey != zc::none);
+  ZC_REQUIRE(moduleKey != zc::none);
+  ZC_IF_SOME(owner, ownerKey) {
+    ZC_IF_SOME(module, moduleKey) {
+      auto expandedOwner = owner.encode();
+      auto expandedModule = module.encode();
+      zc::Vector<zc::Array<uint8_t>> functions;
+      functions.add(scalarInitializerFunctionOracle(
+          expandedOwner.asPtr(), builtMir.functions()[0].blocks[0].id.ordinal()));
+      auto preimage =
+          encodeOverlayOracle(overlay.contextFingerprint().digest(), expandedModule.asPtr(),
+                              overlay.checkedFactsRevision().digest(),
+                              overlay.builtRevision().digest(), functions.asPtr());
+      auto revision = identity::sha256(preimage.asPtr());
+      ZC_REQUIRE(revision != zc::none);
+      ZC_IF_SOME(value, revision) { ZC_EXPECT(value == overlay.revision().digest()); }
+    }
   }
 }
 
-ZC_TEST("Ownership event overlay codec matches the RFC 0007 empty oracle") {
+ZC_TEST("Ownership event overlay test encoder matches the RFC 0007 empty oracle") {
   zc::Vector<zc::Array<uint8_t>> functions;
   expectOverlayOracle(
       zc::mv(functions),
@@ -401,7 +616,7 @@ ZC_TEST("Ownership event overlay codec matches the RFC 0007 empty oracle") {
       "9e673e954367c3f2783cef1a9ca46e4d7e89040f2d4285ac6e42c2137bbed1d2"_zc);
 }
 
-ZC_TEST("Ownership event overlay codec matches the RFC 0007 empty-function oracle") {
+ZC_TEST("Ownership event overlay test encoder matches the RFC 0007 empty-function oracle") {
   const uint8_t owner[] = {0xb1};
   identity::CanonicalEncoder functionEncoder;
   functionEncoder.encodeByteString(zc::arrayPtr(owner));
@@ -412,6 +627,24 @@ ZC_TEST("Ownership event overlay codec matches the RFC 0007 empty-function oracl
       zc::mv(functions),
       "7a6f6d2e6f776e6572736869702d6576656e742d6f7665726c61790000000000000000000000000000000000000000000000000000000000000000000000000000000001a144444444444444444444444444444444444444444444444444444444444444442222222222222222222222222222222222222222222222222222222222222222000000000000000100000000000000390000000000000001b1000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"_zc,
       "5e36e3dd6068992f4e3b99ea9eb7df4e3836f9f8c40eb9821238a3c6090d724c"_zc);
+}
+
+ZC_TEST("Ownership event overlay oracle binds copy and move reads to complete MIR points") {
+  zc::Vector<zc::Array<uint8_t>> functions;
+  functions.add(twoPointFunctionOracle());
+  expectOverlayOracle(
+      zc::mv(functions),
+      "7a6f6d2e6f776e6572736869702d6576656e742d6f7665726c617900000000000000000000000000"
+      "00000000000000000000000000000000000000000000000000000001a14444444444444444444444"
+      "44444444444444444444444444444444444444444422222222222222222222222222222222222222"
+      "22222222222222222222222222000000000000000100000000000000df0000000000000001b10000"
+      "00000000000200000000000000160000000000000001b10200000001000000000000000000000000"
+      "000000310000000000000001b1020000000100000000000000000100000000000000020000000000"
+      "0000010300000000000000010400000000000000120000000000000001b104000000010000000000"
+      "0000000000002d0000000000000001b1040000000100000000010000000000000002000000000000"
+      "00010300000000000000010500000000000000000000000000000000000000000000000000000000"
+      "000000000000000000000000"_zc,
+      "2a05a2df34387dc8b31426748a62d9eb4c84a9c3148f401a171ef1092779d3eb"_zc);
 }
 
 }  // namespace
