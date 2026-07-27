@@ -1,0 +1,9 @@
+// RUN: cd %corpus && ! %zomc compile --syntax-only 13-modules/toolchain_core_root_reserved_reject_neg.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// CHECK-LITERAL: Error [ZOM3027]: Module root 'core' is reserved by the compiler toolchain
+// CHECK-LITERAL:   --> conformance/13-modules/toolchain_core_root_reserved_reject_neg.zom:1:8
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 1 | module core;
+// CHECK-LITERAL:   |        ^~~~
+// CHECK-NOT: ZOM3026

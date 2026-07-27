@@ -319,17 +319,6 @@ BindingCandidateResult BindingBuilder::buildCandidate(
           NameBinding(entry.bindingIdentity.clone(), entry.canonicalTarget.clone(),
                       entry.name.nameSpace(), BindingOrigin::Prelude,
                       input.parsedModule().rootSpan().clone(), zc::mv(noAlias))));
-
-      zc::Maybe<identity::SourceSpan> noSurfaceAlias;
-      zc::Maybe<identity::SourceSpan> noExportSpan;
-      zc::Vector<ReexportProvenanceStep> chain;
-      for (const auto& step : entry.reexportChain) { chain.add(step.clone()); }
-      projection.surfaceSeeds.add(ImportSurfaceSeed(
-          ImportBindingNameProjection(entry.name.nameSpace(), entry.name.name().clone()),
-          entry.bindingIdentity.clone(), entry.canonicalTarget.clone(),
-          VisibilityEnvelope::module(input.module()), false,
-          input.parsedModule().rootSpan().clone(), entry.canonicalDeclarationSpan.clone(),
-          zc::mv(noSurfaceAlias), zc::mv(noExportSpan), zc::mv(chain)));
     }
   }
 
@@ -685,12 +674,12 @@ BindingCandidateResult BindingBuilder::buildCandidate(
   ZC_IF_SOME(visible, encodedVisible) {
     ZC_IF_SOME(external, encodedExports) {
       const auto moduleBytes = input.moduleKey().encode();
-      const auto packageBytes = input.packageKey().encode();
+      const auto compilationUnitBytes = input.compilationUnitKey().encode();
       auto revision = ExportSurfaceRevision::computeFramed(
-          input.semanticFingerprint().digest(), moduleBytes.asPtr(), packageBytes.asPtr(),
+          input.semanticFingerprint().digest(), moduleBytes.asPtr(), compilationUnitBytes.asPtr(),
           visible.asPtr(), external.asPtr());
       ZC_IF_SOME(revisionValue, revision) {
-        ExportSurfaceCandidate surface(input.module(), input.package(), revisionValue,
+        ExportSurfaceCandidate surface(input.module(), input.compilationUnit(), revisionValue,
                                        zc::mv(visibleEntries), zc::mv(exports));
         BindingMetadataCandidate candidate(input.semanticContext(), input.module(),
                                            zc::mv(arena.nodeScopes), zc::mv(skeleton.definitions),

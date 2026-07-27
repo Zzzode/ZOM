@@ -11,9 +11,11 @@
 #include "zomlang/compiler/diagnostics/diagnostic-engine.h"
 #include "zomlang/compiler/driver/coherence-builder.h"
 #include "zomlang/compiler/driver/compiler-session.h"
+#include "zomlang/compiler/driver/imported-signature-view-projector.h"
 #include "zomlang/compiler/driver/module-interface.h"
 #include "zomlang/compiler/driver/package/manifest-parser.h"
 #include "zomlang/compiler/driver/package/source-record.h"
+#include "zomlang/tests/unittests/compiler/driver/core-library-test-fixture.h"
 
 namespace zomlang::compiler::checker::marker {
 namespace {
@@ -220,16 +222,19 @@ public:
         resolvedSnapshots(sourceText));
     ZC_REQUIRE(input != zc::none);
     ZC_IF_SOME(value, input) { ZC_REQUIRE(session.installVerifiedPackageInput(zc::mv(value))); }
+    driver::core_library_test::installCoreDistribution(session);
     const auto roots = session.getFinalizedCompilationRoots();
     ZC_REQUIRE(roots.size() == 1);
     ZC_REQUIRE(session.addVerifiedPackageRoot(roots[0]) != zc::none);
     ZC_REQUIRE(session.parseSources());
     ZC_REQUIRE(session.bindSources());
     ZC_REQUIRE(!session.getDiagnosticEngine().hasErrors());
-    ZC_REQUIRE(session.getVerifiedBoundModules().size() == 1);
+    ZC_REQUIRE(driver::core_library_test::userBoundModuleCount(session, registries()) == 1);
 
     zc::Vector<signature::MarkerShapeModuleInput> shapeInputs;
-    shapeInputs.add(signature::MarkerShapeModuleInput{boundModule()});
+    for (const auto& candidate : session.getVerifiedBoundModules()) {
+      shapeInputs.add(signature::MarkerShapeModuleInput{candidate});
+    }
     auto shapeResult = signature::MarkerShapeInventoryBuilder::build(
         session.getSemanticContextBrand(), contextFingerprint(), shapeInputs.asPtr(), registries());
     ZC_REQUIRE(shapeResult.is<signature::VerifiedMarkerShapeInventory>());
@@ -261,37 +266,52 @@ public:
       }
     }
 
-    auto signatureResult = signature::SignatureFactsBuilder::build(
-        signature::SignatureFactsBuildInput{boundModule(), registries(), semanticTypes(),
-                                            markerShapeInventory(), markerPolicyRegistry()});
-    ZC_REQUIRE(signatureResult.is<signature::VerifiedSignatureFacts>());
-    signatureFacts = zc::mv(signatureResult).get<signature::VerifiedSignatureFacts>();
-
-    zc::Vector<cross_module::ImportedSignatureModule> noImportedModules;
-    auto importedResult = cross_module::ImportedSignatureViewBuilder::build(
-        session.getSemanticContextBrand(), contextFingerprint(), boundModule().module(),
-        zc::mv(noImportedModules), registries());
-    ZC_REQUIRE(importedResult != zc::none);
-    ZC_IF_SOME(value, importedResult) { importedSignatures = zc::mv(value); }
-
-    auto borrowResult = borrow::BorrowInterfaceBuilder::build(borrow::BorrowInterfaceBuildInput{
-        session.getSemanticContextBrand(), contextFingerprint(), boundModule().module(),
-        verifiedSignatureFacts().revision(), importedSignatureView().revision(),
-        verifiedSignatureFacts().signatures(), zc::ArrayPtr<const signature::SemanticSignature>(),
-        registries(), semanticTypes()});
-    ZC_REQUIRE(borrowResult.is<borrow::VerifiedBorrowInterfaceSurface>());
-    auto interfaceResult = driver::ModuleInterfaceVerifier::build(driver::ModuleInterfaceBuildInput{
-        boundModule(), verifiedSignatureFacts(), importedSignatureView(), markerPolicyRegistry(),
-        zc::mv(borrowResult).get<borrow::VerifiedBorrowInterfaceSurface>(), registries(),
-        semanticTypes()});
-    ZC_REQUIRE(interfaceResult.is<driver::VerifiedModuleInterface>());
+    zc::Vector<signature::VerifiedSignatureFacts> moduleSignatures;
+    zc::Vector<cross_module::ImportedSignatureView> moduleImportedViews;
     zc::Vector<driver::VerifiedModuleInterface> interfaces;
-    interfaces.add(zc::mv(interfaceResult).get<driver::VerifiedModuleInterface>());
+    zc::Maybe<size_t> userModuleIndex;
+    for (const auto& candidate : session.getVerifiedBoundModules()) {
+      auto signatureResult = signature::SignatureFactsBuilder::build(
+          signature::SignatureFactsBuildInput{candidate, registries(), semanticTypes(),
+                                              markerShapeInventory(), markerPolicyRegistry()});
+      ZC_REQUIRE(signatureResult.is<signature::VerifiedSignatureFacts>());
+      moduleSignatures.add(zc::mv(signatureResult).get<signature::VerifiedSignatureFacts>());
+
+      auto importedResult = driver::ImportedSignatureViewProjector::build(
+          candidate, interfaces.asPtr(), registries(), semanticTypes());
+      ZC_REQUIRE(importedResult != zc::none);
+      ZC_IF_SOME(value, importedResult) { moduleImportedViews.add(zc::mv(value)); }
+
+      const auto& signatures = moduleSignatures.back();
+      const auto& imported = moduleImportedViews.back();
+      auto borrowResult = borrow::BorrowInterfaceBuilder::build(borrow::BorrowInterfaceBuildInput{
+          session.getSemanticContextBrand(), contextFingerprint(), candidate.module(),
+          signatures.revision(), imported.revision(), signatures.signatures(),
+          zc::ArrayPtr<const signature::SemanticSignature>(), registries(), semanticTypes()});
+      ZC_REQUIRE(borrowResult.is<borrow::VerifiedBorrowInterfaceSurface>());
+      auto interfaceResult =
+          driver::ModuleInterfaceVerifier::build(driver::ModuleInterfaceBuildInput{
+              candidate, signatures, imported, markerPolicyRegistry(),
+              zc::mv(borrowResult).get<borrow::VerifiedBorrowInterfaceSurface>(), registries(),
+              semanticTypes()});
+      ZC_REQUIRE(interfaceResult.is<driver::VerifiedModuleInterface>());
+      interfaces.add(zc::mv(interfaceResult).get<driver::VerifiedModuleInterface>());
+      if (candidate.module() == boundModule().module()) {
+        ZC_REQUIRE(userModuleIndex == zc::none);
+        userModuleIndex = interfaces.size() - 1;
+      }
+    }
+    ZC_REQUIRE(interfaces.size() == registries().modules().size());
+    ZC_REQUIRE(userModuleIndex != zc::none);
     auto coherenceResult = driver::CoherenceBuilder::build(
         driver::CoherenceBuildInput{session.getSemanticContextBrand(), contextFingerprint(),
                                     markerPolicyRegistry(), interfaces.asPtr(), registries()});
     ZC_REQUIRE(coherenceResult.is<coherence::CoherenceFrozen>());
     coherenceFacts = zc::mv(coherenceResult).get<coherence::CoherenceFrozen>();
+    ZC_IF_SOME(index, userModuleIndex) {
+      signatureFacts = zc::mv(moduleSignatures[index]);
+      importedSignatures = zc::mv(moduleImportedViews[index]);
+    }
 
     auto inventoryResult = body::BodyFactRequirementInventoryBuilder::build(boundModule());
     ZC_REQUIRE(inventoryResult.is<body::VerifiedBodyFactRequirementInventory>());
@@ -353,7 +373,7 @@ public:
 
 private:
   const binder::VerifiedBoundModuleInput& boundModule() const {
-    return session.getVerifiedBoundModules()[0];
+    return driver::core_library_test::soleUserBoundModule(session, registries());
   }
 
   const identity::SemanticIdentityRegistrySet& registries() const {

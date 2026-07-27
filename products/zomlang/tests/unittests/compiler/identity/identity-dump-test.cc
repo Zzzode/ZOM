@@ -57,6 +57,14 @@ PackageKey package(zc::StringPtr name) {
                           version(), features());
 }
 
+CompilationUnitIdentity userCompilationUnit(zc::StringPtr name) {
+  return CompilationUnitIdentity::userPackage(package(name));
+}
+
+CompilationUnitIdentity coreCompilationUnit() {
+  return CompilationUnitIdentity::toolchain(ToolchainUnitKey::core());
+}
+
 void freezeRemainingEmptyRegistries(SemanticIdentityRegistrySet& registries) {
   ZC_EXPECT(registries.freezeCrates() == FrozenRegistryFailure::None);
   ZC_EXPECT(registries.freezeSourceFiles() == FrozenRegistryFailure::None);
@@ -72,29 +80,35 @@ ZC_TEST("Identity dump preserves exact empty sections and final LF") {
   SemanticContextFactory factory;
   auto registries = registrySet(factory);
   ZC_EXPECT(dumpIdentityRegistries(registries) == zc::none);
-  ZC_EXPECT(registries.freezePackages() == FrozenRegistryFailure::None);
+  ZC_EXPECT(registries.freezeCompilationUnits() == FrozenRegistryFailure::None);
   freezeRemainingEmptyRegistries(registries);
   auto dump = dumpIdentityRegistries(registries);
   ZC_IF_SOME(text, dump) {
     ZC_EXPECT(text ==
-              "zom.identity\n[packages]\n[crates]\n[sources]\n[modules]\n"
+              "zom.identity\n[compilation-units]\n[crates]\n[sources]\n[modules]\n"
               "[definitions]\n[impls]\n"_zc);
   }
 }
 
-ZC_TEST("Identity dump uses canonical key order without slots or brands") {
+ZC_TEST("Identity dump uses mixed compilation-unit order without slots or brands") {
   SemanticContextFactory factory;
   auto registries = registrySet(factory);
-  auto first = package("a"_zc).encode();
-  auto second = package("b"_zc).encode();
-  ZC_EXPECT(registries.collectPackage(package("b"_zc)) == FrozenRegistryFailure::None);
-  ZC_EXPECT(registries.collectPackage(package("a"_zc)) == FrozenRegistryFailure::None);
-  ZC_EXPECT(registries.freezePackages() == FrozenRegistryFailure::None);
+  auto firstUnit = userCompilationUnit("a"_zc);
+  auto secondUnit = userCompilationUnit("b"_zc);
+  auto coreUnit = coreCompilationUnit();
+  auto first = firstUnit.encode();
+  auto second = secondUnit.encode();
+  auto core = coreUnit.encode();
+  ZC_EXPECT(registries.collectCompilationUnit(zc::mv(coreUnit)) == FrozenRegistryFailure::None);
+  ZC_EXPECT(registries.collectCompilationUnit(zc::mv(secondUnit)) == FrozenRegistryFailure::None);
+  ZC_EXPECT(registries.collectCompilationUnit(zc::mv(firstUnit)) == FrozenRegistryFailure::None);
+  ZC_EXPECT(registries.freezeCompilationUnits() == FrozenRegistryFailure::None);
   freezeRemainingEmptyRegistries(registries);
 
-  auto expected = zc::str("zom.identity\n[packages]\npackage ", zc::encodeHex(first.asPtr()),
-                          "\npackage ", zc::encodeHex(second.asPtr()),
-                          "\n[crates]\n[sources]\n[modules]\n[definitions]\n[impls]\n");
+  auto expected = zc::str(
+      "zom.identity\n[compilation-units]\ncompilation-unit ", zc::encodeHex(first.asPtr()),
+      "\ncompilation-unit ", zc::encodeHex(second.asPtr()), "\ncompilation-unit ",
+      zc::encodeHex(core.asPtr()), "\n[crates]\n[sources]\n[modules]\n[definitions]\n[impls]\n");
   auto dump = dumpIdentityRegistries(registries);
   ZC_IF_SOME(text, dump) { ZC_EXPECT(text == expected); }
 }

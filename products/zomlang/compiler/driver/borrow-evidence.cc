@@ -304,8 +304,8 @@ zc::Maybe<zc::Array<uint8_t>> BorrowEvidenceCanonicalCodec::encodeFramed(
     }
   }
   identity::CanonicalEncoder encoder;
-  static constexpr uint8_t domain[] = {'z', 'o', 'm', '.', 'b', 'o', 'r', 'r', 'o', 'w', '-',
-                                       'e', 'v', 'i', 'd', 'e', 'n', 'c', 'e', '.', 'v', '0'};
+  static constexpr uint8_t domain[] = {'z', 'o', 'm', '.', 'b', 'o', 'r', 'r', 'o', 'w',
+                                       '-', 'e', 'v', 'i', 'd', 'e', 'n', 'c', 'e'};
   for (const auto byte : domain) encoder.encodeUint8(byte);
   encoder.encodeUint8(0);
   encoder.encodeDigest(contextFingerprint);
@@ -426,6 +426,23 @@ struct VerifiedBorrowEvidence::Impl final {
     }
   }
 
+  Impl(identity::SemanticContextBrand semanticContext,
+       identity::SemanticContextFingerprint&& contextFingerprint, identity::ModuleId module,
+       checker::signature::SignatureFactsRevision signatureRevision,
+       zc::Vector<checker::borrow::BorrowSignatureSummary>&& localSummaries,
+       module_interface::ModuleInterfaceRevision ownInterfaceRevision,
+       checker::borrow::BorrowInterfaceRevision ownBorrowRevision,
+       zc::Vector<ImportedBorrowSurface>&& importedSurfaces, BorrowEvidenceRevision revision)
+      : semanticContext(semanticContext),
+        contextFingerprint(zc::mv(contextFingerprint)),
+        module(module),
+        signatureRevision(signatureRevision),
+        localSummaries(zc::mv(localSummaries)),
+        ownInterfaceRevision(ownInterfaceRevision),
+        ownBorrowRevision(ownBorrowRevision),
+        importedSurfaces(zc::mv(importedSurfaces)),
+        revision(revision) {}
+
   identity::SemanticContextBrand semanticContext;
   identity::SemanticContextFingerprint contextFingerprint;
   identity::ModuleId module;
@@ -443,6 +460,16 @@ VerifiedBorrowEvidence::~VerifiedBorrowEvidence() noexcept(false) = default;
 VerifiedBorrowEvidence::VerifiedBorrowEvidence(VerifiedBorrowEvidence&&) noexcept = default;
 VerifiedBorrowEvidence& VerifiedBorrowEvidence::operator=(VerifiedBorrowEvidence&&) noexcept =
     default;
+VerifiedBorrowEvidence VerifiedBorrowEvidence::clone() const {
+  zc::Vector<checker::borrow::BorrowSignatureSummary> localSummaries(impl->localSummaries.size());
+  for (const auto& summary : impl->localSummaries) { localSummaries.add(summary.clone()); }
+  zc::Vector<ImportedBorrowSurface> importedSurfaces(impl->importedSurfaces.size());
+  for (const auto& surface : impl->importedSurfaces) { importedSurfaces.add(surface.clone()); }
+  return VerifiedBorrowEvidence(
+      zc::heap<Impl>(impl->semanticContext, impl->contextFingerprint.clone(), impl->module,
+                     impl->signatureRevision, zc::mv(localSummaries), impl->ownInterfaceRevision,
+                     impl->ownBorrowRevision, zc::mv(importedSurfaces), impl->revision));
+}
 identity::SemanticContextBrand VerifiedBorrowEvidence::semanticContext() const noexcept {
   return impl->semanticContext;
 }

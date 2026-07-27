@@ -81,7 +81,7 @@ struct ImportedModuleTarget final {
 /// \brief Exact requester binding to verified source-interface definition binding.
 struct ImportedDefinitionBindingSelection final {
   binder::BindingTarget requesterBinding;
-  identity::DefId sourceBinding;
+  binder::BindingTarget sourceBinding;
   SignatureViewOrigin authorizationOrigin;
 
   ZC_NODISCARD ImportedDefinitionBindingSelection clone() const;

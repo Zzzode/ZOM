@@ -1,0 +1,9 @@
+// RUN: %zomc compile --dump-ast %corpus/13-modules/toolchain_core_root_reserved_reject_neg.zom | %FileCheck %s
+
+
+// CHECK: SourceFile #2 @1:1..2:1 file_name="toolchain_core_root_reserved_reject_neg.zom"
+// CHECK-NEXT:   module:
+// CHECK-NEXT:     ModuleDeclaration #1 @1:1..1:13 form=RootDeclaration declared_name="core" exported_alias=false
+// CHECK-NEXT:       alias_target: null
+// CHECK-NEXT:       inline_items: []
+// CHECK-NEXT:   statements: []

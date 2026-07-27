@@ -18,6 +18,7 @@
 #include "zc/ztest/test.h"
 #include "zomlang/compiler/identity/canonical-decoder.h"
 #include "zomlang/compiler/identity/canonical-encoder.h"
+#include "zomlang/compiler/identity/compilation-unit-key.h"
 
 namespace zomlang::compiler::identity {
 namespace {
@@ -121,6 +122,92 @@ ZC_TEST("PackageKey passes the fixed local package codec vector") {
   ZC_EXPECT(encoded.asPtr() == zc::arrayPtr(expected));
   expectDigest(encoded.asPtr(),
                "b0c7b4f55c7faf6d4522b3a6f81e979347436c782d29ad2eeaa09985479d40a6"_zc);
+}
+
+ZC_TEST("CompilationUnitIdentity passes fixed user and toolchain codec vectors") {
+  const uint8_t expectedUser[] = {
+      0x01, 0x03, 0, 0, 0, 0, 0, 0, 0, 0,   0,   0,   0,   0,   0, 0, 0, 0, 0, 0, 0, 1,
+      'a',  0,    0, 0, 0, 0, 0, 0, 5, '0', '.', '0', '.', '0', 0, 0, 0, 0, 0, 0, 0, 0,
+  };
+  const uint8_t expectedToolchain[] = {0x02, 0x01};
+
+  auto user = CompilationUnitIdentity::userPackage(localPackage("a"_zc));
+  auto userBytes = user.encode();
+  ZC_EXPECT(user.kind() == CompilationUnitKind::UserPackage);
+  ZC_EXPECT(user.userPackage().name() == "a"_zc);
+  ZC_EXPECT(userBytes.asPtr() == zc::arrayPtr(expectedUser));
+
+  auto toolchain = CompilationUnitIdentity::toolchain(ToolchainUnitKey::core());
+  auto toolchainBytes = toolchain.encode();
+  ZC_EXPECT(toolchain.kind() == CompilationUnitKind::Toolchain);
+  ZC_EXPECT(toolchain.toolchain().component() == ToolchainComponent::Core);
+  ZC_EXPECT(toolchainBytes.asPtr() == zc::arrayPtr(expectedToolchain));
+}
+
+ZC_TEST("ToolchainUnitKey uses an exact domain-separated standalone codec") {
+  const uint8_t expected[] = {'z', 'o', 'm', '.', 't', 'o', 'o', 'l', 'c', 'h', 'a',  'i',
+                              'n', '-', 'c', 'o', 'r', 'e', '-', 'k', 'e', 'y', 0x00, 0x01};
+  auto encoded = ToolchainUnitKey::core().encode();
+  ZC_EXPECT(encoded.asPtr() == zc::arrayPtr(expected));
+
+  auto decoded = ToolchainUnitKey::decode(encoded);
+  ZC_REQUIRE(decoded != zc::none);
+  ZC_IF_SOME(key, decoded) { ZC_EXPECT(key.component() == ToolchainComponent::Core); }
+
+  const uint8_t missingComponent[] = {'z', 'o', 'm', '.', 't', 'o', 'o', 'l', 'c', 'h', 'a', 'i',
+                                      'n', '-', 'c', 'o', 'r', 'e', '-', 'k', 'e', 'y', 0x00};
+  const uint8_t unknownComponent[] = {'z', 'o', 'm', '.', 't', 'o', 'o', 'l', 'c', 'h', 'a',  'i',
+                                      'n', '-', 'c', 'o', 'r', 'e', '-', 'k', 'e', 'y', 0x00, 0xff};
+  const uint8_t wrongDomain[] = {'z', 'o', 'm', '.', 'u', 's', 'e', 'r', 0x00, 0x01};
+  const uint8_t trailing[] = {'z', 'o', 'm', '.', 't', 'o', 'o', 'l', 'c', 'h',  'a',  'i', 'n',
+                              '-', 'c', 'o', 'r', 'e', '-', 'k', 'e', 'y', 0x00, 0x01, 0xa5};
+  ZC_EXPECT(ToolchainUnitKey::decode(zc::arrayPtr(missingComponent)) == zc::none);
+  ZC_EXPECT(ToolchainUnitKey::decode(zc::arrayPtr(unknownComponent)) == zc::none);
+  ZC_EXPECT(ToolchainUnitKey::decode(zc::arrayPtr(wrongDomain)) == zc::none);
+  ZC_EXPECT(ToolchainUnitKey::decode(zc::arrayPtr(trailing)) == zc::none);
+}
+
+ZC_TEST("CompilationUnitIdentity canonical decoder is exhaustive and compositional") {
+  auto userBytes = CompilationUnitIdentity::userPackage(localPackage("a"_zc)).encode();
+  CanonicalDecoder userDecoder(userBytes);
+  auto user = CompilationUnitIdentity::decodeCanonical(userDecoder);
+  ZC_REQUIRE(user != zc::none);
+  ZC_IF_SOME(unit, user) {
+    ZC_EXPECT(unit.kind() == CompilationUnitKind::UserPackage);
+    ZC_EXPECT(unit.userPackage().name() == "a"_zc);
+  }
+  ZC_EXPECT(userDecoder.finished());
+
+  const uint8_t coreRecord[] = {0x02, 0x01};
+  CanonicalDecoder coreDecoder(zc::arrayPtr(coreRecord));
+  auto core = CompilationUnitIdentity::decodeCanonical(coreDecoder);
+  ZC_REQUIRE(core != zc::none);
+  ZC_IF_SOME(unit, core) {
+    ZC_EXPECT(unit.kind() == CompilationUnitKind::Toolchain);
+    ZC_EXPECT(unit.toolchain().component() == ToolchainComponent::Core);
+  }
+  ZC_EXPECT(coreDecoder.finished());
+
+  const uint8_t unknownKind[] = {0xff};
+  const uint8_t missingUser[] = {0x01};
+  const uint8_t missingToolchain[] = {0x02};
+  const uint8_t unknownToolchain[] = {0x02, 0xff};
+  CanonicalDecoder unknownKindDecoder(zc::arrayPtr(unknownKind));
+  CanonicalDecoder missingUserDecoder(zc::arrayPtr(missingUser));
+  CanonicalDecoder missingToolchainDecoder(zc::arrayPtr(missingToolchain));
+  CanonicalDecoder unknownToolchainDecoder(zc::arrayPtr(unknownToolchain));
+  ZC_EXPECT(CompilationUnitIdentity::decodeCanonical(unknownKindDecoder) == zc::none);
+  ZC_EXPECT(CompilationUnitIdentity::decodeCanonical(missingUserDecoder) == zc::none);
+  ZC_EXPECT(CompilationUnitIdentity::decodeCanonical(missingToolchainDecoder) == zc::none);
+  ZC_EXPECT(CompilationUnitIdentity::decodeCanonical(unknownToolchainDecoder) == zc::none);
+}
+
+ZC_TEST("A user package named core is distinct from the toolchain core") {
+  auto user = CompilationUnitIdentity::userPackage(localPackage("core"_zc));
+  auto toolchain = CompilationUnitIdentity::toolchain(ToolchainUnitKey::core());
+  ZC_EXPECT(user.kind() == CompilationUnitKind::UserPackage);
+  ZC_EXPECT(user.userPackage().name() == "core"_zc);
+  ZC_EXPECT(user.encode().asPtr() != toolchain.encode().asPtr());
 }
 
 ZC_TEST("PackageKey canonical decoder composes all package source variants") {

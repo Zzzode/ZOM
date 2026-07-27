@@ -106,6 +106,13 @@ private:
 
 using SourceSnapshotResult = zc::OneOf<DigestVerifiedSourceSnapshot, MaterializationIssue>;
 
+/// \brief Enumerates and hashes one source directory without materializing or publishing it.
+/// \param source Read-only directory root scanned without following symbolic links.
+/// \param limits Exact bounded admission limits applied during the scan.
+/// \return One immutable canonical tree record, or the first materialization issue.
+ZC_NODISCARD SourceTreeBuildResult inspectSourceDirectory(const zc::ReadableDirectory& source,
+                                                          SourceAdmissionLimits limits = {});
+
 class SourceMaterializationObserver;
 
 /// \brief Extracts one admitted compressed archive into a fresh verified snapshot.

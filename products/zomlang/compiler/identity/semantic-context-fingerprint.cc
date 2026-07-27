@@ -21,6 +21,7 @@ namespace zomlang::compiler::identity {
 namespace {
 
 constexpr char kFingerprintDomain[] = "zom.semantic-context";
+constexpr char kCoreFingerprintDomain[] = "zom.core-semantic-context";
 
 struct EncodedValue final {
   explicit EncodedValue(zc::Array<uint8_t>&& bytes) noexcept : value(zc::mv(bytes)) {}
@@ -96,11 +97,85 @@ zc::Array<uint8_t> SourceContentIdentity::encode() const {
   return encoder.finish();
 }
 
+ToolchainSemanticContextInput::ToolchainSemanticContextInput(
+    ToolchainUnitKey toolchain, const Sha256Digest& distributionDigest,
+    const Sha256Digest& policyTemplateRevision) noexcept
+    : toolchainValue(toolchain),
+      distributionDigestValue(distributionDigest),
+      policyTemplateRevisionValue(policyTemplateRevision) {}
+
+ToolchainSemanticContextInput ToolchainSemanticContextInput::from(
+    ToolchainUnitKey toolchain, const Sha256Digest& distributionDigest,
+    const Sha256Digest& policyTemplateRevision) noexcept {
+  return ToolchainSemanticContextInput(toolchain, distributionDigest, policyTemplateRevision);
+}
+
+ToolchainSemanticContextInput ToolchainSemanticContextInput::clone() const noexcept {
+  return ToolchainSemanticContextInput(toolchainValue, distributionDigestValue,
+                                       policyTemplateRevisionValue);
+}
+
+const ToolchainUnitKey& ToolchainSemanticContextInput::toolchain() const noexcept {
+  return toolchainValue;
+}
+
+const Sha256Digest& ToolchainSemanticContextInput::distributionDigest() const noexcept {
+  return distributionDigestValue;
+}
+
+const Sha256Digest& ToolchainSemanticContextInput::policyTemplateRevision() const noexcept {
+  return policyTemplateRevisionValue;
+}
+
+zc::Array<uint8_t> ToolchainSemanticContextInput::encode() const {
+  CanonicalEncoder encoder;
+  toolchainValue.encode(encoder);
+  encoder.encodeDigest(distributionDigestValue);
+  encoder.encodeDigest(policyTemplateRevisionValue);
+  return encoder.finish();
+}
+
+CoreSemanticContextFingerprint::CoreSemanticContextFingerprint(const Sha256Digest& digest) noexcept
+    : value(digest) {}
+
+zc::Maybe<CoreSemanticContextFingerprint> CoreSemanticContextFingerprint::compute(
+    const CrateKey& projectedCoreCrate) {
+  if (projectedCoreCrate.unit().kind() != CompilationUnitKind::Toolchain ||
+      projectedCoreCrate.unit().toolchain().component() != ToolchainComponent::Core ||
+      projectedCoreCrate.targetKind() != CrateTargetKind::Library ||
+      projectedCoreCrate.targetName() != "core"_zc ||
+      projectedCoreCrate.compilation().hasBuildScriptProducer() ||
+      projectedCoreCrate.semanticOptions().editionYear() != 2026) {
+    return zc::none;
+  }
+  const auto crate = projectedCoreCrate.encode();
+  zc::Vector<uint8_t> bytes(sizeof(kCoreFingerprintDomain) + crate.size());
+  for (size_t index = 0; index < sizeof(kCoreFingerprintDomain) - 1; ++index) {
+    bytes.add(static_cast<uint8_t>(kCoreFingerprintDomain[index]));
+  }
+  bytes.add(0);
+  bytes.addAll(crate.asPtr());
+  auto digest = sha256(bytes.asPtr());
+  ZC_IF_SOME(value, digest) { return CoreSemanticContextFingerprint(value); }
+  return zc::none;
+}
+
+CoreSemanticContextFingerprint CoreSemanticContextFingerprint::clone() const noexcept {
+  return CoreSemanticContextFingerprint(value);
+}
+
+const Sha256Digest& CoreSemanticContextFingerprint::digest() const noexcept { return value; }
+
+void CoreSemanticContextFingerprint::encode(CanonicalEncoder& encoder) const {
+  encoder.encodeDigest(value);
+}
+
 SemanticContextFingerprint::SemanticContextFingerprint(const Sha256Digest& digest) noexcept
     : value(digest) {}
 
 zc::Maybe<SemanticContextFingerprint> SemanticContextFingerprint::compute(
-    zc::ArrayPtr<const PackageKey> packages,
+    zc::ArrayPtr<const CompilationUnitIdentity> compilationUnits,
+    zc::ArrayPtr<const ToolchainSemanticContextInput> toolchainInputs,
     zc::ArrayPtr<const PackageDependencyEdgeKey> packageEdges, zc::ArrayPtr<const CrateKey> crates,
     zc::ArrayPtr<const CrateDependencyEdgeKey> crateEdges,
     zc::ArrayPtr<const SourceContentIdentity> sourceContents,
@@ -110,13 +185,32 @@ zc::Maybe<SemanticContextFingerprint> SemanticContextFingerprint::compute(
       if (sourceContents[left].sameSourceAs(sourceContents[right])) { return zc::none; }
     }
   }
+  for (const auto& unit : compilationUnits) {
+    if (unit.kind() != CompilationUnitKind::Toolchain) { continue; }
+    size_t matches = 0;
+    for (const auto& input : toolchainInputs) {
+      if (input.toolchain().component() == unit.toolchain().component()) { ++matches; }
+    }
+    if (matches != 1) { return zc::none; }
+  }
+  for (const auto& input : toolchainInputs) {
+    size_t matches = 0;
+    for (const auto& unit : compilationUnits) {
+      if (unit.kind() == CompilationUnitKind::Toolchain &&
+          unit.toolchain().component() == input.toolchain().component()) {
+        ++matches;
+      }
+    }
+    if (matches != 1) { return zc::none; }
+  }
 
   zc::Vector<uint8_t> bytes;
   for (size_t index = 0; index < sizeof(kFingerprintDomain) - 1; ++index) {
     bytes.add(static_cast<uint8_t>(kFingerprintDomain[index]));
   }
   bytes.add(0x00);
-  if (!appendSortedSequence(bytes, packages) || !appendSortedSequence(bytes, packageEdges) ||
+  if (!appendSortedSequence(bytes, compilationUnits) ||
+      !appendSortedSequence(bytes, toolchainInputs) || !appendSortedSequence(bytes, packageEdges) ||
       !appendSortedSequence(bytes, crates) || !appendSortedSequence(bytes, crateEdges) ||
       !appendSortedSequence(bytes, sourceContents) || !appendSortedSequence(bytes, modules)) {
     return zc::none;
@@ -129,16 +223,19 @@ zc::Maybe<SemanticContextFingerprint> SemanticContextFingerprint::compute(
 
 zc::Maybe<SemanticContextFingerprint> SemanticContextFingerprint::compute(
     const SemanticIdentityRegistrySet& registries,
+    zc::ArrayPtr<const ToolchainSemanticContextInput> toolchainInputs,
     zc::ArrayPtr<const PackageDependencyEdgeKey> packageEdges,
     zc::ArrayPtr<const CrateDependencyEdgeKey> crateEdges) {
-  if (!registries.packages().isFrozen() || !registries.crates().isFrozen() ||
+  if (!registries.compilationUnits().isFrozen() || !registries.crates().isFrozen() ||
       !registries.sourceFiles().isFrozen() || !registries.modules().isFrozen()) {
     return zc::none;
   }
 
-  zc::Vector<PackageKey> packages(registries.packages().size());
-  for (size_t index = 0; index < registries.packages().size(); ++index) {
-    ZC_IF_SOME(key, registries.packages().keyAt(index)) { packages.add(key.clone()); }
+  zc::Vector<CompilationUnitIdentity> compilationUnits(registries.compilationUnits().size());
+  for (size_t index = 0; index < registries.compilationUnits().size(); ++index) {
+    ZC_IF_SOME(key, registries.compilationUnits().keyAt(index)) {
+      compilationUnits.add(key.clone());
+    }
   }
   zc::Vector<CrateKey> crates(registries.crates().size());
   for (size_t index = 0; index < registries.crates().size(); ++index) {
@@ -153,8 +250,8 @@ zc::Maybe<SemanticContextFingerprint> SemanticContextFingerprint::compute(
     ZC_IF_SOME(key, registries.modules().keyAt(index)) { modules.add(key.clone()); }
   }
 
-  return compute(packages.asPtr(), packageEdges, crates.asPtr(), crateEdges, sourceContents.asPtr(),
-                 modules.asPtr());
+  return compute(compilationUnits.asPtr(), toolchainInputs, packageEdges, crates.asPtr(),
+                 crateEdges, sourceContents.asPtr(), modules.asPtr());
 }
 
 const Sha256Digest& SemanticContextFingerprint::digest() const noexcept { return value; }

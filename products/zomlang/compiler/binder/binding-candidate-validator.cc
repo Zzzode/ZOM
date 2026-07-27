@@ -85,9 +85,9 @@ bool hasForeignContext(const VerifiedBindingInput& input,
   if (candidate.semanticContext != input.semanticContext() || candidate.module != input.module() ||
       !candidate.module.belongsTo(input.semanticContext()) ||
       candidate.currentSurface.sourceModule != input.module() ||
-      candidate.currentSurface.sourcePackage != input.package() ||
+      candidate.currentSurface.sourceCompilationUnit != input.compilationUnit() ||
       !candidate.currentSurface.sourceModule.belongsTo(input.semanticContext()) ||
-      !candidate.currentSurface.sourcePackage.belongsTo(input.semanticContext())) {
+      !candidate.currentSurface.sourceCompilationUnit.belongsTo(input.semanticContext())) {
     return true;
   }
   for (const auto& fact : candidate.nodeScopes) {
@@ -744,6 +744,13 @@ bool targetExists(const VerifiedBindingInput& input, const BindingTarget& target
   }
   for (const auto& surface : input.dependencySurfaces()) {
     for (const auto& entry : surface.visibleEntries()) {
+      if (sameTarget(target, entry.bindingIdentity) || sameTarget(target, entry.canonicalTarget)) {
+        return true;
+      }
+    }
+  }
+  ZC_IF_SOME(prelude, input.preludeSurface()) {
+    for (const auto& entry : prelude.visibleEntries()) {
       if (sameTarget(target, entry.bindingIdentity) || sameTarget(target, entry.canonicalTarget)) {
         return true;
       }
@@ -1599,7 +1606,10 @@ CandidateStructureResult verifyCandidateStructure(const VerifiedBindingInput& in
 
   size_t expectedSurfaceSize = 0;
   for (const auto& binding : moduleBindings) {
-    if (binding.binding.origin != BindingOrigin::ImportAlias) { ++expectedSurfaceSize; }
+    if (binding.binding.origin != BindingOrigin::ImportAlias &&
+        binding.binding.origin != BindingOrigin::Prelude) {
+      ++expectedSurfaceSize;
+    }
   }
   if (candidate.currentSurface.visibleEntries.size() < expectedSurfaceSize) {
     return CandidateStructureResult::MissingRequiredResolution;
@@ -1609,7 +1619,10 @@ CandidateStructureResult verifyCandidateStructure(const VerifiedBindingInput& in
   }
   size_t surfaceIndex = 0;
   for (const auto& binding : moduleBindings) {
-    if (binding.binding.origin == BindingOrigin::ImportAlias) { continue; }
+    if (binding.binding.origin == BindingOrigin::ImportAlias ||
+        binding.binding.origin == BindingOrigin::Prelude) {
+      continue;
+    }
     const auto& entry = candidate.currentSurface.visibleEntries[surfaceIndex++];
     if (binding.name.nameSpace() != entry.name.nameSpace() ||
         binding.name.name() != entry.name.name() ||
@@ -1675,29 +1688,6 @@ CandidateStructureResult verifyCandidateStructure(const VerifiedBindingInput& in
         break;
       }
     }
-    if (binding.binding.origin == BindingOrigin::Prelude) {
-      const auto prelude = input.preludeSurface();
-      if (prelude == zc::none || entry.exported || entry.aliasSpan != zc::none ||
-          entry.exportSpan != zc::none) {
-        return CandidateStructureResult::InvalidBindingFact;
-      }
-      bool matched = false;
-      ZC_IF_SOME(surface, prelude) {
-        for (const auto& source : surface.visibleEntries()) {
-          if (binding.name.nameSpace() == source.name.nameSpace() &&
-              binding.name.name() == source.name.name() &&
-              sameTarget(binding.binding.bindingIdentity, source.bindingIdentity) &&
-              sameTarget(binding.binding.canonicalTarget, source.canonicalTarget) &&
-              sameSpan(entry.canonicalDeclarationSpan, source.canonicalDeclarationSpan) &&
-              sameReexportChain(entry.reexportChain.asPtr(), source.reexportChain.asPtr())) {
-            matched = true;
-            break;
-          }
-        }
-      }
-      if (!matched) { return CandidateStructureResult::InvalidBindingFact; }
-      continue;
-    }
     if (!moduleAlias &&
         (!sameSpan(binding.binding.declarationSpan, entry.canonicalDeclarationSpan) ||
          entry.aliasSpan != zc::none || !entry.reexportChain.empty())) {
@@ -1728,9 +1718,9 @@ CandidateStructureResult verifyCandidateStructure(const VerifiedBindingInput& in
   ZC_IF_SOME(visibleBytes, visible) {
     ZC_IF_SOME(exportBytes, exports) {
       const auto moduleBytes = input.moduleKey().encode();
-      const auto packageBytes = input.packageKey().encode();
+      const auto compilationUnitBytes = input.compilationUnitKey().encode();
       auto revision = ExportSurfaceRevision::computeFramed(
-          input.semanticFingerprint().digest(), moduleBytes.asPtr(), packageBytes.asPtr(),
+          input.semanticFingerprint().digest(), moduleBytes.asPtr(), compilationUnitBytes.asPtr(),
           visibleBytes.asPtr(), exportBytes.asPtr());
       if (revision == zc::none) { return CandidateStructureResult::InvalidBindingFact; }
       ZC_IF_SOME(value, revision) {

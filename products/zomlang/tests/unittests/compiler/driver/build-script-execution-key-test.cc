@@ -181,9 +181,10 @@ identity::CrateKey crate(zc::StringPtr packageName) {
       identity::SemanticCompilerOptionsKey::from(2026, true, false, true), zc::mv(noOutput));
   ZC_REQUIRE(compilation != zc::none);
   ZC_IF_SOME(config, compilation) {
-    auto result =
-        identity::CrateKey::from(package(packageName), identity::CrateTargetKind::BuildScript,
-                                 scalar<identity::TargetName>("build"_zc), zc::mv(config));
+    auto result = identity::CrateKey::from(
+        identity::CompilationUnitIdentity::userPackage(package(packageName)),
+        identity::CrateTargetKind::BuildScript, scalar<identity::TargetName>("build"_zc),
+        zc::mv(config));
     ZC_IF_SOME(value, result) { return zc::mv(value); }
   }
   ZC_FAIL_REQUIRE("crate fixture was rejected");
@@ -200,14 +201,15 @@ identity::PreparatoryBuildScriptKey preparatory() {
 }
 
 identity::SemanticContextFingerprint fingerprint() {
-  zc::Vector<identity::PackageKey> packages;
+  zc::Vector<identity::CompilationUnitIdentity> compilationUnits;
+  zc::Vector<identity::ToolchainSemanticContextInput> toolchainInputs;
   zc::Vector<identity::PackageDependencyEdgeKey> packageEdges;
   zc::Vector<identity::CrateKey> crates;
   zc::Vector<identity::CrateDependencyEdgeKey> crateEdges;
   zc::Vector<identity::SourceContentIdentity> sources;
   zc::Vector<identity::ModuleKey> modules;
-  auto result = identity::SemanticContextFingerprint::compute(packages, packageEdges, crates,
-                                                              crateEdges, sources, modules);
+  auto result = identity::SemanticContextFingerprint::compute(
+      compilationUnits, toolchainInputs, packageEdges, crates, crateEdges, sources, modules);
   ZC_IF_SOME(value, result) { return zc::mv(value); }
   ZC_FAIL_REQUIRE("semantic context fingerprint fixture was rejected");
 }
@@ -597,7 +599,7 @@ ZC_TEST("BuildScriptExecutionKey canonicalizes the complete host closure") {
   ZC_REQUIRE(oracleDigest != zc::none);
   ZC_IF_SOME(value, oracleDigest) {
     ZC_EXPECT(zc::encodeHex(value.bytes()) ==
-              "f95a5204f19b1f9e7fa02109f15884b3d01323574c26b2cf190adc7a6bc516e4"_zc);
+              "be3bd2d50289ca57e89c6cef56378ee97595261fd63101fe2f87c9dba2722a36"_zc);
   }
 }
 

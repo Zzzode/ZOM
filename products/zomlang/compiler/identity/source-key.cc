@@ -35,6 +35,8 @@ SourceOriginKey::SourceOriginKey(VcsFileSourceOrigin&& source) noexcept : value(
 SourceOriginKey::SourceOriginKey(GeneratedFileSourceOrigin&& source) noexcept
     : value(zc::mv(source)) {}
 
+SourceOriginKey::SourceOriginKey(CoreFileSourceOrigin&& source) noexcept : value(zc::mv(source)) {}
+
 SourceOriginKey SourceOriginKey::localFile(CanonicalWorkspaceRelativePath&& path) {
   return SourceOriginKey(LocalFileSourceOrigin{zc::mv(path)});
 }
@@ -50,6 +52,11 @@ SourceOriginKey SourceOriginKey::vcsFile(PackageKey&& package, CanonicalRelative
 SourceOriginKey SourceOriginKey::generatedFile(BuildScriptProducerKey producer,
                                                CanonicalRelativePath&& logicalPath) {
   return SourceOriginKey(GeneratedFileSourceOrigin{producer, zc::mv(logicalPath)});
+}
+
+SourceOriginKey SourceOriginKey::coreFile(ToolchainUnitKey toolchain,
+                                          CanonicalRelativePath&& path) {
+  return SourceOriginKey(CoreFileSourceOrigin{toolchain, zc::mv(path)});
 }
 
 zc::Maybe<SourceOriginKey> SourceOriginKey::decodeCanonical(CanonicalDecoder& decoder) {
@@ -97,6 +104,18 @@ zc::Maybe<SourceOriginKey> SourceOriginKey::decodeCanonical(CanonicalDecoder& de
         }
         return zc::none;
       }
+      case SourceOriginKind::CoreFile: {
+        auto toolchain = ToolchainUnitKey::decodeCanonical(decoder);
+        if (toolchain == zc::none) { return zc::none; }
+        auto path = CanonicalRelativePath::decodeCanonical(decoder);
+        if (path == zc::none) { return zc::none; }
+        ZC_IF_SOME(toolchainValue, toolchain) {
+          ZC_IF_SOME(pathValue, path) {
+            return SourceOriginKey::coreFile(toolchainValue, zc::mv(pathValue));
+          }
+        }
+        return zc::none;
+      }
     }
   }
   return zc::none;
@@ -115,6 +134,9 @@ SourceOriginKey SourceOriginKey::clone() const {
       return generatedFile(BuildScriptProducerKey::from(source.producer.digest()),
                            source.logicalPath.clone());
     }
+    ZC_CASE_ONEOF(source, CoreFileSourceOrigin) {
+      return coreFile(ToolchainUnitKey::core(), source.path.clone());
+    }
   }
   ZC_UNREACHABLE
 }
@@ -123,7 +145,8 @@ SourceOriginKind SourceOriginKey::kind() const noexcept {
   if (value.is<LocalFileSourceOrigin>()) { return SourceOriginKind::LocalFile; }
   if (value.is<RegistryFileSourceOrigin>()) { return SourceOriginKind::RegistryFile; }
   if (value.is<VcsFileSourceOrigin>()) { return SourceOriginKind::VcsFile; }
-  return SourceOriginKind::GeneratedFile;
+  if (value.is<GeneratedFileSourceOrigin>()) { return SourceOriginKind::GeneratedFile; }
+  return SourceOriginKind::CoreFile;
 }
 
 zc::Maybe<zc::String> SourceOriginKey::logicalFileName() const {
@@ -133,6 +156,7 @@ zc::Maybe<zc::String> SourceOriginKey::logicalFileName() const {
     ZC_CASE_ONEOF(source, RegistryFileSourceOrigin) { segments = source.path.segments(); }
     ZC_CASE_ONEOF(source, VcsFileSourceOrigin) { segments = source.path.segments(); }
     ZC_CASE_ONEOF(source, GeneratedFileSourceOrigin) { segments = source.logicalPath.segments(); }
+    ZC_CASE_ONEOF(source, CoreFileSourceOrigin) { segments = source.path.segments(); }
   }
   if (segments.size() == 0) { return zc::none; }
   return zc::str(segments.back().text());
@@ -153,6 +177,10 @@ void SourceOriginKey::encode(CanonicalEncoder& encoder) const {
     ZC_CASE_ONEOF(source, GeneratedFileSourceOrigin) {
       source.producer.encode(encoder);
       source.logicalPath.encode(encoder);
+    }
+    ZC_CASE_ONEOF(source, CoreFileSourceOrigin) {
+      source.toolchain.encode(encoder);
+      source.path.encode(encoder);
     }
   }
 }
@@ -182,6 +210,7 @@ SourceFileKey SourceFileKey::clone() const {
 }
 
 const CrateKey& SourceFileKey::crate() const noexcept { return crateValue; }
+const SourceOriginKey& SourceFileKey::origin() const noexcept { return originValue; }
 
 zc::Maybe<zc::String> SourceFileKey::logicalFileName() const {
   return originValue.logicalFileName();

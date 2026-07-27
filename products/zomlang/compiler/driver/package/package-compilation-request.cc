@@ -130,6 +130,101 @@ zc::Maybe<const TargetManifest&> findTarget(const NormalizedManifest& manifest,
   return zc::none;
 }
 
+zc::StringPtr targetFieldRoot(identity::CrateTargetKind kind) {
+  switch (kind) {
+    case identity::CrateTargetKind::Library:
+      return "lib"_zc;
+    case identity::CrateTargetKind::Binary:
+      return "bin"_zc;
+    case identity::CrateTargetKind::Test:
+      return "test"_zc;
+    case identity::CrateTargetKind::Benchmark:
+      return "bench"_zc;
+    case identity::CrateTargetKind::Example:
+      return "example"_zc;
+    case identity::CrateTargetKind::BuildScript:
+      return "build"_zc;
+  }
+  ZC_UNREACHABLE;
+}
+
+zc::StringPtr dependencyFieldRoot(identity::DependencyDomain domain) {
+  switch (domain) {
+    case identity::DependencyDomain::Target:
+      return "dependencies"_zc;
+    case identity::DependencyDomain::Development:
+      return "dev-dependencies"_zc;
+    case identity::DependencyDomain::Build:
+      return "build-dependencies"_zc;
+  }
+  ZC_UNREACHABLE;
+}
+
+identity::CanonicalPathSegment fieldName(zc::StringPtr text) {
+  auto admitted = identity::CanonicalPathSegment::fromCanonical(text);
+  ZC_IF_SOME(value, admitted) { return zc::mv(value); }
+  ZC_IREQUIRE(false, "normalized manifest field name must remain canonical");
+  ZC_UNREACHABLE;
+}
+
+zc::Maybe<diagnostics::ToolchainModuleRootArgument> toolchainRootArgument(
+    zc::StringPtr canonicalRoot) {
+  auto segment = identity::ModulePathSegment::fromCanonical(canonicalRoot);
+  if (segment == zc::none) { return zc::none; }
+  zc::Vector<identity::ModulePathSegment> path;
+  ZC_IF_SOME(value, segment) { path.add(zc::mv(value)); }
+  return diagnostics::ToolchainModuleRootArgument::fromCanonicalPath(zc::mv(path));
+}
+
+zc::Maybe<DiagnosticProvenance> singleOriginProvenance(const DiagnosticAnchor& origin) {
+  zc::Vector<DiagnosticAnchor> related;
+  return DiagnosticProvenance::from(origin.clone(), zc::mv(related));
+}
+
+bool sameProvenance(const DiagnosticProvenance& left, const DiagnosticAnchor& expected) {
+  auto expectedValue = singleOriginProvenance(expected);
+  if (expectedValue == zc::none) { return false; }
+  identity::CanonicalEncoder leftEncoder;
+  identity::CanonicalEncoder expectedEncoder;
+  left.encode(leftEncoder);
+  ZC_IF_SOME(value, expectedValue) { value.encode(expectedEncoder); }
+  return leftEncoder.finish().asPtr() == expectedEncoder.finish().asPtr();
+}
+
+bool fieldPathMatches(const PackageToolchainModuleRootFieldPath& path, zc::StringPtr first,
+                      zc::StringPtr second) {
+  return path.components().size() == 2 && path.components()[0].text() == first &&
+         path.components()[1].text() == second;
+}
+
+bool packageMatches(const identity::PackageKey& left, const identity::PackageKey& right) {
+  return left.encode().asPtr() == right.encode().asPtr();
+}
+
+zc::Maybe<const DependencyRequirement&> firstReservedAliasForBuilder(
+    const NormalizedManifest& manifest) {
+  zc::Maybe<const DependencyRequirement&> selected;
+  const auto consider = [&](zc::ArrayPtr<const DependencyRequirement> dependencies) {
+    for (const auto& dependency : dependencies) {
+      if (dependency.withoutOrigin().alias() != "core"_zc) { continue; }
+      ZC_IF_SOME(current, selected) {
+        const auto candidateRecord = dependency.withoutOrigin().encode();
+        const auto currentRecord = current.withoutOrigin().encode();
+        if (currentRecord.asPtr() < candidateRecord.asPtr()) { continue; }
+        if (candidateRecord.asPtr() == currentRecord.asPtr() &&
+            !(dependency.origin().encode().asPtr() < current.origin().encode().asPtr())) {
+          continue;
+        }
+      }
+      selected = dependency;
+    }
+  };
+  consider(manifest.targetDependencies());
+  consider(manifest.developmentDependencies());
+  consider(manifest.buildDependencies());
+  return selected;
+}
+
 identity::SortedFeatureSet featureSet(zc::ArrayPtr<const identity::FeatureName> values) {
   zc::Vector<identity::FeatureName> copied(values.size());
   for (const auto& value : values) { copied.add(value.clone()); }
@@ -399,6 +494,150 @@ zc::Array<uint8_t> NormalizedPackageCompilationRequest::encode() const {
   return encoder.finish();
 }
 
+PackageToolchainModuleRootFieldPath::PackageToolchainModuleRootFieldPath(
+    zc::Vector<identity::CanonicalPathSegment>&& components) noexcept
+    : componentValues(zc::mv(components)) {}
+
+PackageToolchainModuleRootFieldPath PackageToolchainModuleRootFieldPath::clone() const {
+  zc::Vector<identity::CanonicalPathSegment> components(componentValues.size());
+  for (const auto& component : componentValues) { components.add(component.clone()); }
+  return PackageToolchainModuleRootFieldPath(zc::mv(components));
+}
+
+zc::ArrayPtr<const identity::CanonicalPathSegment> PackageToolchainModuleRootFieldPath::components()
+    const noexcept {
+  return componentValues.asPtr();
+}
+
+void PackageToolchainModuleRootFieldPath::encode(identity::CanonicalEncoder& encoder) const {
+  encoder.encodeSequenceSize(componentValues.size());
+  for (const auto& component : componentValues) { component.encode(encoder); }
+}
+
+bool PackageToolchainModuleRootFieldPath::operator==(
+    const PackageToolchainModuleRootFieldPath& other) const noexcept {
+  return componentValues == other.componentValues;
+}
+
+PackageToolchainModuleRootFailure::PackageToolchainModuleRootFailure(
+    PackageToolchainModuleRootProducer producer, DiagnosticProvenance&& provenance,
+    identity::PackageKey&& package, PackageToolchainModuleRootFieldPath&& fieldPath,
+    diagnostics::ToolchainModuleRootArgument&& argument) noexcept
+    : producerValue(producer),
+      provenanceValue(zc::mv(provenance)),
+      packageValue(zc::mv(package)),
+      fieldPathValue(zc::mv(fieldPath)),
+      argumentValue(zc::mv(argument)) {}
+
+zc::Maybe<PackageToolchainModuleRootFailure> PackageToolchainModuleRootFailure::userTargetRoot(
+    const TargetManifest& target, identity::PackageKey&& package) {
+  auto argument = toolchainRootArgument(target.name());
+  auto provenance = singleOriginProvenance(target.origin());
+  if (argument == zc::none || provenance == zc::none) { return zc::none; }
+  zc::Vector<identity::CanonicalPathSegment> components;
+  components.add(fieldName(targetFieldRoot(target.kind())));
+  components.add(fieldName(target.name()));
+  ZC_IF_SOME(provenanceValue, provenance) {
+    ZC_IF_SOME(argumentValue, argument) {
+      return PackageToolchainModuleRootFailure(
+          PackageToolchainModuleRootProducer::UserTargetRoot, zc::mv(provenanceValue),
+          zc::mv(package), PackageToolchainModuleRootFieldPath(zc::mv(components)),
+          zc::mv(argumentValue));
+    }
+  }
+  ZC_UNREACHABLE;
+}
+
+zc::Maybe<PackageToolchainModuleRootFailure> PackageToolchainModuleRootFailure::dependencyAlias(
+    const DependencyRequirement& dependency, identity::PackageKey&& package) {
+  const auto& record = dependency.withoutOrigin();
+  auto argument = toolchainRootArgument(record.alias());
+  auto provenance = singleOriginProvenance(dependency.origin());
+  if (argument == zc::none || provenance == zc::none) { return zc::none; }
+  zc::Vector<identity::CanonicalPathSegment> components;
+  components.add(fieldName(dependencyFieldRoot(record.domain())));
+  components.add(fieldName(record.alias()));
+  ZC_IF_SOME(provenanceValue, provenance) {
+    ZC_IF_SOME(argumentValue, argument) {
+      return PackageToolchainModuleRootFailure(
+          PackageToolchainModuleRootProducer::DependencyAlias, zc::mv(provenanceValue),
+          zc::mv(package), PackageToolchainModuleRootFieldPath(zc::mv(components)),
+          zc::mv(argumentValue));
+    }
+  }
+  ZC_UNREACHABLE;
+}
+
+PackageToolchainModuleRootProducer PackageToolchainModuleRootFailure::producer() const noexcept {
+  return producerValue;
+}
+
+const DiagnosticProvenance& PackageToolchainModuleRootFailure::provenance() const noexcept {
+  return provenanceValue;
+}
+
+const identity::PackageKey& PackageToolchainModuleRootFailure::package() const noexcept {
+  return packageValue;
+}
+
+const PackageToolchainModuleRootFieldPath& PackageToolchainModuleRootFailure::fieldPath()
+    const noexcept {
+  return fieldPathValue;
+}
+
+const diagnostics::ToolchainModuleRootArgument& PackageToolchainModuleRootFailure::argument()
+    const noexcept {
+  return argumentValue;
+}
+
+bool PackageToolchainModuleRootFailureVerifier::verify(
+    const PackageToolchainModuleRootFailure& failure,
+    const NormalizedPackageCompilationRequest& request, const NormalizedManifest& manifest,
+    const identity::PackageKey& package) {
+  if (!packageMatches(failure.package(), package) || failure.provenance().related().size() != 0 ||
+      failure.argument().path().size() != 1 || failure.argument().path()[0].text() != "core"_zc) {
+    return false;
+  }
+  for (const auto& requested : request.requestedTargets()) {
+    auto target = findTarget(manifest, requested);
+    if (target == zc::none) { return false; }
+    ZC_IF_SOME(value, target) {
+      if (value.name() != "core"_zc) { continue; }
+      return failure.producer() == PackageToolchainModuleRootProducer::UserTargetRoot &&
+             sameProvenance(failure.provenance(), value.origin()) &&
+             fieldPathMatches(failure.fieldPath(), targetFieldRoot(value.kind()), value.name());
+    }
+  }
+  zc::Maybe<const DependencyRequirement&> dependency;
+  const auto consider = [&](zc::ArrayPtr<const DependencyRequirement> dependencies) {
+    for (const auto& candidate : dependencies) {
+      if (candidate.withoutOrigin().alias() != "core"_zc) { continue; }
+      ZC_IF_SOME(current, dependency) {
+        const auto candidateRecord = candidate.withoutOrigin().encode();
+        const auto currentRecord = current.withoutOrigin().encode();
+        if (currentRecord.asPtr() < candidateRecord.asPtr()) { continue; }
+        if (candidateRecord.asPtr() == currentRecord.asPtr() &&
+            !(candidate.origin().encode().asPtr() < current.origin().encode().asPtr())) {
+          continue;
+        }
+      }
+      dependency = candidate;
+    }
+  };
+  consider(manifest.targetDependencies());
+  consider(manifest.developmentDependencies());
+  consider(manifest.buildDependencies());
+  if (dependency == zc::none) { return false; }
+  ZC_IF_SOME(value, dependency) {
+    return failure.producer() == PackageToolchainModuleRootProducer::DependencyAlias &&
+           sameProvenance(failure.provenance(), value.origin()) &&
+           fieldPathMatches(failure.fieldPath(),
+                            dependencyFieldRoot(value.withoutOrigin().domain()),
+                            value.withoutOrigin().alias());
+  }
+  ZC_UNREACHABLE;
+}
+
 PackageCompilationNormalizationResult normalizePackageCompilationRequest(
     RawPackageCompilationRequest&& raw, const RegisteredTargetService& targets) {
   if (raw.positionalArguments.size() != 0) { return InvocationIssue::PositionalSourceArgument; }
@@ -504,7 +743,10 @@ FinalizedCompilationRoot::FinalizedCompilationRoot(
 zc::Maybe<FinalizedCompilationRoot> FinalizedCompilationRoot::from(
     identity::PackageKey&& package, identity::CrateKey&& crate,
     identity::CanonicalRelativePath&& sourcePath) {
-  if (package.encode().asPtr() != crate.package().encode().asPtr()) { return zc::none; }
+  if (crate.unit().kind() != identity::CompilationUnitKind::UserPackage ||
+      package.encode().asPtr() != crate.unit().userPackage().encode().asPtr()) {
+    return zc::none;
+  }
   return FinalizedCompilationRoot(zc::mv(package), zc::mv(crate), zc::mv(sourcePath));
 }
 
@@ -594,8 +836,9 @@ zc::Maybe<zc::Vector<FinalizedCompilationRoot>> VerifiedPackageCompilationReques
     if (compilation == zc::none || targetName == zc::none) { return zc::none; }
     ZC_IF_SOME(compilationValue, compilation) {
       ZC_IF_SOME(targetNameValue, targetName) {
-        auto crate = identity::CrateKey::from(root.packageKey().clone(), root.targetKind(),
-                                              zc::mv(targetNameValue), zc::mv(compilationValue));
+        auto crate = identity::CrateKey::from(
+            identity::CompilationUnitIdentity::userPackage(root.packageKey().clone()),
+            root.targetKind(), zc::mv(targetNameValue), zc::mv(compilationValue));
         if (crate == zc::none) { return zc::none; }
         ZC_IF_SOME(crateValue, crate) {
           auto finalizedRoot = FinalizedCompilationRoot::from(
@@ -635,31 +878,60 @@ PackageCompilationVerificationResult verifyPackageCompilationRequest(
     if (packageName == zc::none || version == zc::none) { ZC_UNREACHABLE; }
     auto source =
         identity::CanonicalPackageSource::localPath(packageDirectory(workspace, request.package()));
-    zc::Vector<VerifiedCompilationRoot> roots(request.requestedTargets().size());
-    for (const auto& requested : request.requestedTargets()) {
-      auto selectedTarget = findTarget(manifest, requested);
-      if (selectedTarget == zc::none) { return TargetSelectionIssue::UnknownTarget; }
-      ZC_IF_SOME(target, selectedTarget) {
-        auto targetName = identity::TargetName::fromCanonical(target.name());
-        if (targetName == zc::none) { ZC_UNREACHABLE; }
-        ZC_IF_SOME(packageNameValue, packageName) {
-          ZC_IF_SOME(versionValue, version) {
-            auto packageKey = identity::PackageKey::from(source.clone(), packageNameValue.clone(),
-                                                         versionValue.clone(),
-                                                         featureSet(expanded.activeFeatures()));
+    ZC_IF_SOME(packageNameValue, packageName) {
+      ZC_IF_SOME(versionValue, version) {
+        auto packageKey =
+            identity::PackageKey::from(zc::mv(source), zc::mv(packageNameValue),
+                                       zc::mv(versionValue), featureSet(expanded.activeFeatures()));
+        zc::Vector<VerifiedCompilationRoot> roots(request.requestedTargets().size());
+        zc::Maybe<const TargetManifest&> reservedTarget;
+        for (const auto& requested : request.requestedTargets()) {
+          auto selectedTarget = findTarget(manifest, requested);
+          if (selectedTarget == zc::none) { return TargetSelectionIssue::UnknownTarget; }
+          ZC_IF_SOME(target, selectedTarget) {
+            auto targetName = identity::TargetName::fromCanonical(target.name());
+            if (targetName == zc::none) { ZC_UNREACHABLE; }
+            if (target.name() == "core"_zc && reservedTarget == zc::none) {
+              reservedTarget = target;
+            }
             ZC_IF_SOME(targetNameValue, targetName) {
               roots.add(VerifiedCompilationRoot::from(
-                  zc::mv(packageKey), target.kind(), zc::mv(targetNameValue),
+                  packageKey.clone(), target.kind(), zc::mv(targetNameValue),
                   manifest.editionYear(), manifest.hasBuildScript(), target.path().clone()));
             }
           }
         }
+        ZC_IF_SOME(target, reservedTarget) {
+          auto failure =
+              PackageToolchainModuleRootFailure::userTargetRoot(target, packageKey.clone());
+          ZC_IREQUIRE(failure != zc::none,
+                      "selected reserved target must build a typed package failure");
+          ZC_IF_SOME(value, failure) {
+            ZC_IREQUIRE(PackageToolchainModuleRootFailureVerifier::verify(value, request, manifest,
+                                                                          packageKey),
+                        "reserved target package failure must verify independently");
+            return zc::mv(value);
+          }
+        }
+        auto dependency = firstReservedAliasForBuilder(manifest);
+        ZC_IF_SOME(value, dependency) {
+          auto failure =
+              PackageToolchainModuleRootFailure::dependencyAlias(value, packageKey.clone());
+          ZC_IREQUIRE(failure != zc::none,
+                      "reserved dependency alias must build a typed package failure");
+          ZC_IF_SOME(failureValue, failure) {
+            ZC_IREQUIRE(PackageToolchainModuleRootFailureVerifier::verify(failureValue, request,
+                                                                          manifest, packageKey),
+                        "reserved dependency package failure must verify independently");
+            return zc::mv(failureValue);
+          }
+        }
+        auto verified = VerifiedPackageCompilationRequest::from(
+            zc::mv(roots), request.hostTarget().clone(), request.target().clone(),
+            request.languageOptions(), request.lockMode());
+        ZC_IF_SOME(value, verified) { return zc::mv(value); }
       }
     }
-    auto verified = VerifiedPackageCompilationRequest::from(
-        zc::mv(roots), request.hostTarget().clone(), request.target().clone(),
-        request.languageOptions(), request.lockMode());
-    ZC_IF_SOME(value, verified) { return zc::mv(value); }
     ZC_UNREACHABLE;
   }
   ZC_UNREACHABLE;

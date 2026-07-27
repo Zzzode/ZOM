@@ -13,15 +13,38 @@
 #include "zc/core/vector.h"
 #include "zomlang/compiler/binder/binding-metadata.h"
 #include "zomlang/compiler/binder/frozen-definition-inventory.h"
+#include "zomlang/compiler/binder/local-identity.h"
 #include "zomlang/compiler/binder/module-resolution.h"
 #include "zomlang/compiler/binder/parsed-module.h"
+#include "zomlang/compiler/diagnostics/toolchain-module-root-argument.h"
 #include "zomlang/compiler/identity/semantic-context-fingerprint.h"
 
 namespace zomlang::compiler::diagnostics {
 class DiagnosticEngine;
 }
 
+namespace zomlang::compiler::driver::core_library_query {
+class VerifiedCoreDistributionInputTransaction;
+}
+
+namespace zomlang::compiler::driver::module_graph_query {
+class ModuleGraphRecord;
+class ModuleGraphSccRecord;
+}  // namespace zomlang::compiler::driver::module_graph_query
+
+namespace zomlang::compiler::driver::package {
+class VerifiedPackageCompilationRequest;
+}
+
+namespace zomlang::compiler::query {
+class QuerySnapshot;
+}
+
 namespace zomlang::compiler::binder {
+
+namespace test {
+class VerifiedModuleGraphFixture;
+}
 
 enum class ModuleGraphInvariantKind : uint8_t {
   InputMismatch,
@@ -50,11 +73,10 @@ private:
   explicit ModuleGraphRevision(const identity::Sha256Digest& digest) noexcept;
   identity::Sha256Digest value;
 
-  friend class ModuleGraphVerifier;
   friend class BindingInputVerifier;
-  friend zc::Maybe<ModuleGraphRevision> computeModuleGraphRevision(
-      const identity::SemanticContextFingerprint&, zc::ArrayPtr<const identity::ModuleKey>,
-      zc::ArrayPtr<const VerifiedModuleDependencyEdge>);
+  friend class VerifiedModuleGraphBuilder;
+  friend class VerifiedModuleGraphVerifier;
+  friend class test::VerifiedModuleGraphFixture;
 };
 
 /// \brief One canonical module endpoint supplied to the global graph verifier.
@@ -79,20 +101,6 @@ struct ParsedModuleGraphInput final {
   const VerifiedParsedModule& parsedModule;
 };
 
-/// \brief Complete untrusted global graph input for one frozen semantic context.
-struct ModuleGraphCandidate final {
-  identity::SemanticContextBrand semanticContext;
-  const identity::SemanticContextFingerprint& semanticContextFingerprint;
-  const identity::SemanticIdentityRegistrySet& registries;
-  zc::ArrayPtr<const identity::PackageDependencyEdgeKey> packageEdges;
-  zc::ArrayPtr<const identity::CrateDependencyEdgeKey> crateEdges;
-  const StructuralModuleResolver& resolver;
-  zc::ArrayPtr<const ModuleGraphModule> modules;
-  zc::ArrayPtr<const ParsedModuleGraphInput> parsedModules;
-  zc::ArrayPtr<const ModuleDependencyRequest> configuredPreludes;
-  zc::ArrayPtr<const ModulePathResolution> resolutions;
-};
-
 class VerifiedModuleGraph;
 
 /// \brief Dependency edge published only after request, receipt, and endpoints verify.
@@ -115,48 +123,46 @@ private:
   zc::Array<uint8_t> encodedKeyValue;
 
   friend class VerifiedModuleGraph;
-  friend class ModuleGraphVerifier;
-};
-
-enum class ModuleGraphDiagnostic : uint16_t {
-  CircularImport = 3011,
-  ImportModuleNotFound = 3012,
-  CircularReexport = 3014,
-  ReexportModuleNotFound = 3015,
-  ImportModuleAmbiguous = 3023,
-  ReexportModuleAmbiguous = 3024
+  friend class VerifiedModuleGraphBuilder;
+  friend class VerifiedModuleGraphVerifier;
+  friend class test::VerifiedModuleGraphFixture;
 };
 
 /// \brief One canonically anchored source failure that prevents graph publication.
 class ModuleGraphSourceFailure final {
 public:
-  ModuleGraphSourceFailure(ModuleGraphSourceFailure&&) noexcept = default;
-  ModuleGraphSourceFailure& operator=(ModuleGraphSourceFailure&&) noexcept = default;
+  ~ModuleGraphSourceFailure() noexcept(false);
+  ModuleGraphSourceFailure(ModuleGraphSourceFailure&&) noexcept;
+  ModuleGraphSourceFailure& operator=(ModuleGraphSourceFailure&&) noexcept;
   ZC_DISALLOW_COPY(ModuleGraphSourceFailure);
 
-  ZC_NODISCARD ModuleGraphDiagnostic diagnostic() const noexcept;
-  ZC_NODISCARD const ModuleDependencyRequest& request() const noexcept;
-  ZC_NODISCARD zc::ArrayPtr<const identity::ModuleKey> candidates() const noexcept;
+  ZC_NODISCARD const identity::ModuleKey& module() const noexcept;
+  ZC_NODISCARD const identity::SourceFileKey& source() const noexcept;
+  /// \brief Returns the source-root path to the declaration that owns the declared-name token.
+  ZC_NODISCARD const LocalSyntaxPath& declaredNamePath() const noexcept;
+  ZC_NODISCARD uint32_t schemaPreorderOrdinal() const noexcept;
+  ZC_NODISCARD const diagnostics::ToolchainModuleRootArgument& argument() const noexcept;
 
 private:
-  ModuleGraphSourceFailure(ModuleGraphDiagnostic diagnostic, ModuleDependencyRequest&& request,
-                           zc::Vector<identity::ModuleKey>&& candidates) noexcept;
+  ModuleGraphSourceFailure(identity::ModuleKey&& module, identity::SourceFileKey&& source,
+                           LocalSyntaxPath&& declaredNamePath, uint32_t schemaPreorderOrdinal,
+                           diagnostics::ToolchainModuleRootArgument&& argument) noexcept;
 
-  ModuleGraphDiagnostic diagnosticValue;
-  ModuleDependencyRequest requestValue;
-  zc::Vector<identity::ModuleKey> candidateValues;
+  struct Impl;
+  zc::Own<Impl> impl;
 
-  friend class ModuleGraphVerifier;
+  friend class ModuleGraphSourceFailureBuilder;
 };
 
-/// \brief Sorted non-empty source rejection that publishes no graph or requester view.
-class ModuleGraphSourceRejected final {
+/// \brief Builds candidate source-root reservation failures from verified parser input.
+class ModuleGraphSourceFailureBuilder final {
 public:
-  explicit ModuleGraphSourceRejected(zc::Vector<ModuleGraphSourceFailure>&& failures) noexcept;
-  ZC_NODISCARD zc::ArrayPtr<const ModuleGraphSourceFailure> failures() const noexcept;
-
-private:
-  zc::Vector<ModuleGraphSourceFailure> failureValues;
+  /// \brief Reconstructs the reserved-root failure for one selected source module.
+  /// \param module Selected stable module identity and branded handle.
+  /// \param parsed Verified immutable parser result assigned to the module.
+  /// \return The complete failure when the root declaration is `core`, otherwise none.
+  ZC_NODISCARD static zc::Maybe<ModuleGraphSourceFailure> buildToolchainModuleRootReserved(
+      const ModuleGraphModule& module, const ParsedModuleGraphInput& parsed);
 };
 
 /// \brief Private-publication view of a complete verified module graph.
@@ -182,7 +188,6 @@ private:
   zc::Own<Impl> impl;
 
   friend class VerifiedModuleGraph;
-  friend class ModuleGraphVerifier;
   friend class BindingInputVerifier;
 };
 
@@ -198,10 +203,6 @@ public:
   ZC_NODISCARD const ModuleGraphRevision& revision() const noexcept;
   ZC_NODISCARD zc::ArrayPtr<const identity::ModuleKey> modules() const noexcept;
   ZC_NODISCARD zc::ArrayPtr<const VerifiedModuleDependencyEdge> edges() const noexcept;
-  ZC_NODISCARD zc::ArrayPtr<const identity::RequesterModuleAncestry> requesterAncestryInputs()
-      const noexcept;
-  ZC_NODISCARD zc::ArrayPtr<const identity::ModuleCatalogPathBucket> catalogPathBucketInputs()
-      const noexcept;
   /// \brief Returns the verified selected source without cloning a requester graph view.
   ZC_NODISCARD zc::Maybe<const identity::SourceFileKey&> sourceFile(
       identity::ModuleId module) const noexcept;
@@ -212,16 +213,60 @@ private:
   explicit VerifiedModuleGraph(zc::Own<Impl>&& impl) noexcept;
   zc::Own<Impl> impl;
 
-  friend class ModuleGraphVerifier;
+  friend class VerifiedModuleGraphVerifier;
+  friend class test::VerifiedModuleGraphFixture;
 };
 
-using ModuleGraphVerificationResult =
-    zc::OneOf<VerifiedModuleGraph, ModuleGraphSourceRejected, ModuleGraphInvariantFact>;
+/// \brief Complete final-snapshot inputs for revision-local Binder graph materialization.
+struct ModuleGraphMaterializationInput final {
+  const driver::package::VerifiedPackageCompilationRequest& packageRequest;
+  const driver::core_library_query::VerifiedCoreDistributionInputTransaction& coreInputs;
+  identity::SemanticContextBrand semanticContext;
+  const identity::SemanticContextFingerprint& semanticContextFingerprint;
+  const driver::module_graph_query::ModuleGraphRecord& stableGraph;
+  const driver::module_graph_query::ModuleGraphSccRecord& stableScc;
+  const identity::SemanticIdentityRegistrySet& registries;
+  zc::ArrayPtr<const identity::ToolchainSemanticContextInput> toolchainInputs;
+  zc::ArrayPtr<const identity::PackageDependencyEdgeKey> packageEdges;
+  zc::ArrayPtr<const identity::CrateDependencyEdgeKey> crateEdges;
+  zc::ArrayPtr<const ParsedModuleGraphInput> parsedModules;
+  const query::QuerySnapshot& finalSnapshot;
+};
 
-/// \brief Verifies and publishes the complete frozen module graph for one context.
-class ModuleGraphVerifier final {
+/// \brief Untrusted handleful graph candidate built from one complete final snapshot.
+class BinderModuleGraphCandidate final {
 public:
-  ZC_NODISCARD static ModuleGraphVerificationResult verify(const ModuleGraphCandidate& candidate);
+  ~BinderModuleGraphCandidate() noexcept(false);
+  BinderModuleGraphCandidate(BinderModuleGraphCandidate&&) noexcept;
+  BinderModuleGraphCandidate& operator=(BinderModuleGraphCandidate&&) noexcept;
+  ZC_DISALLOW_COPY(BinderModuleGraphCandidate);
+
+private:
+  struct Impl;
+  explicit BinderModuleGraphCandidate(zc::Own<Impl>&& impl) noexcept;
+  zc::Own<Impl> impl;
+
+  friend class VerifiedModuleGraphBuilder;
+  friend class VerifiedModuleGraphVerifier;
+};
+
+using ModuleGraphCandidateResult = zc::OneOf<BinderModuleGraphCandidate, ModuleGraphInvariantFact>;
+using ModuleGraphMaterializationResult = zc::OneOf<VerifiedModuleGraph, ModuleGraphInvariantFact>;
+
+/// \brief Builds an untrusted handleful graph from complete final-snapshot authorities.
+class VerifiedModuleGraphBuilder final {
+public:
+  ZC_NODISCARD static ModuleGraphCandidateResult produce(
+      const ModuleGraphMaterializationInput& input);
+  ZC_NODISCARD static ModuleGraphMaterializationResult build(
+      const ModuleGraphMaterializationInput& input);
+};
+
+/// \brief Independently verifies and publishes a handleful Binder module graph.
+class VerifiedModuleGraphVerifier final {
+public:
+  ZC_NODISCARD static ModuleGraphMaterializationResult verify(
+      const ModuleGraphMaterializationInput& input, const BinderModuleGraphCandidate& candidate);
 };
 
 /// \brief Emits the fatal ZOM9956 diagnostic for a rejected graph or binding handoff.
@@ -427,7 +472,7 @@ private:
 /// \brief Untrusted inputs checked before the binder can observe semantic state.
 struct BindingInputCandidate final {
   identity::SemanticContextBrand semanticContext;
-  identity::PackageId package;
+  identity::CompilationUnitId compilationUnit;
   identity::CrateId crate;
   identity::ModuleId module;
   const identity::SemanticIdentityRegistrySet& registries;
@@ -447,8 +492,8 @@ public:
   ZC_DISALLOW_COPY(VerifiedBindingInput);
 
   ZC_NODISCARD identity::SemanticContextBrand semanticContext() const noexcept;
-  ZC_NODISCARD identity::PackageId package() const noexcept;
-  ZC_NODISCARD const identity::PackageKey& packageKey() const noexcept;
+  ZC_NODISCARD identity::CompilationUnitId compilationUnit() const noexcept;
+  ZC_NODISCARD const identity::CompilationUnitIdentity& compilationUnitKey() const noexcept;
   ZC_NODISCARD identity::CrateId crate() const noexcept;
   ZC_NODISCARD const identity::CrateKey& crateKey() const noexcept;
   ZC_NODISCARD identity::ModuleId module() const noexcept;

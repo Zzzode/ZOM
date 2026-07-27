@@ -444,4 +444,26 @@ bool PackageDiagnosticAdapter::emitManifestFailure(
   return false;
 }
 
+bool PackageDiagnosticAdapter::emitToolchainModuleRootFailure(
+    diagnostics::DiagnosticEngine& diagnostics,
+    zc::ArrayPtr<const PackageDiagnosticDocument> documents,
+    const PackageToolchainModuleRootFailure& failure) {
+  const auto& primaryAnchor = failure.provenance().primary();
+  if (primaryAnchor.kind() != DiagnosticAnchorKind::Manifest ||
+      failure.provenance().related().size() != 0 || failure.argument().path().size() != 1) {
+    return false;
+  }
+  auto primary =
+      resolveSpan(diagnostics.getSourceManager(), documents, primaryAnchor.manifestSpan());
+  ZC_IF_SOME(primaryValue, primary) {
+    auto diagnostic = diagnostics.diagnose<diagnostics::DiagID::ToolchainModuleRootReserved>(
+        primaryValue.start, zc::str(failure.argument().path()[0].text()));
+    diagnostic.addRange(
+        source::CharSourceRange::getCharRange(primaryValue.start, primaryValue.end));
+    diagnostic.emit();
+    return true;
+  }
+  return false;
+}
+
 }  // namespace zomlang::compiler::driver::package

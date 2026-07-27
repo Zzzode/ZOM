@@ -37,15 +37,15 @@ void appendRegistry(zc::Vector<char>& output, zc::StringPtr label, const Registr
 }  // namespace
 
 zc::Maybe<zc::String> dumpIdentityRegistries(const SemanticIdentityRegistrySet& registries) {
-  if (!registries.packages().isFrozen() || !registries.crates().isFrozen() ||
+  if (!registries.compilationUnits().isFrozen() || !registries.crates().isFrozen() ||
       !registries.sourceFiles().isFrozen() || !registries.modules().isFrozen() ||
       !registries.definitions().isFrozen() || !registries.impls().isFrozen()) {
     return zc::none;
   }
 
   zc::Vector<char> output;
-  append(output, "zom.identity\n[packages]\n"_zc);
-  appendRegistry(output, "package"_zc, registries.packages());
+  append(output, "zom.identity\n[compilation-units]\n"_zc);
+  appendRegistry(output, "compilation-unit"_zc, registries.compilationUnits());
   append(output, "[crates]\n"_zc);
   appendRegistry(output, "crate"_zc, registries.crates());
   append(output, "[sources]\n"_zc);

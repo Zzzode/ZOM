@@ -170,6 +170,8 @@ public:
 
   ZC_NODISCARD DependencyRequirement clone() const;
   ZC_NODISCARD const DependencyRequirementWithoutOrigin& withoutOrigin() const noexcept;
+  /// \brief Returns the retained manifest span of the dependency alias key.
+  ZC_NODISCARD const DiagnosticAnchor& origin() const noexcept;
   void encode(identity::CanonicalEncoder& encoder) const;
 
 private:

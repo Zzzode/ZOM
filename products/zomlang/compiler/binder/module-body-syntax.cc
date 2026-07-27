@@ -79,6 +79,11 @@ bool validEnumValue(const ast::NodeSchemaFieldEntry& field, uint32_t value) {
   return false;
 }
 
+bool validCanonicalIdentifier(zc::StringPtr text) {
+  return identity::SemanticIdentifier::fromCanonical(text) != zc::none ||
+         identity::DeclaredDefinitionName::fromCanonical(text) != zc::none;
+}
+
 bool validateCanonicalFields(ast::SyntaxKind kind, zc::ArrayPtr<const uint8_t> encoded,
                              uint32_t expectedChildren) {
   zc::Maybe<const ast::NodeSchemaEntry&> schema = ast::lookupNodeSchema(kind);
@@ -122,10 +127,7 @@ bool validateCanonicalFields(ast::SyntaxKind kind, zc::ArrayPtr<const uint8_t> e
             auto text = decoder.decodeByteString(kMaximumIdentifierBytes);
             if (text == zc::none) { return false; }
             ZC_IF_SOME(bytes, text) {
-              if (identity::SemanticIdentifier::fromCanonical(zc::str(bytes.asChars())) ==
-                  zc::none) {
-                return false;
-              }
+              if (!validCanonicalIdentifier(zc::str(bytes.asChars()))) { return false; }
             }
           }
         }
@@ -147,10 +149,7 @@ bool validateCanonicalFields(ast::SyntaxKind kind, zc::ArrayPtr<const uint8_t> e
           if (text == zc::none) { return false; }
           if (field.storage == ast::NodeSchemaFieldStorage::IdentId) {
             ZC_IF_SOME(bytes, text) {
-              if (identity::SemanticIdentifier::fromCanonical(zc::str(bytes.asChars())) ==
-                  zc::none) {
-                return false;
-              }
+              if (!validCanonicalIdentifier(zc::str(bytes.asChars()))) { return false; }
             }
           }
         }

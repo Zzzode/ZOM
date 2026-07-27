@@ -316,8 +316,8 @@ const identity::SemanticContextFingerprint& VerifiedCheckedModule::contextFinger
   return impl->boundModuleValue.semanticFingerprint();
 }
 
-identity::PackageId VerifiedCheckedModule::package() const noexcept {
-  return impl->boundModuleValue.package();
+identity::CompilationUnitId VerifiedCheckedModule::compilationUnit() const noexcept {
+  return impl->boundModuleValue.compilationUnit();
 }
 
 identity::CrateId VerifiedCheckedModule::crate() const noexcept {
@@ -436,10 +436,11 @@ ir::IrOperationResult<VerifiedCheckedModule> CheckedModuleBuilder::build(
           input.importedSignatures.revision().digest() ||
       ownInterface.signatureFactsRevision().digest() !=
           input.localSignatureFacts.revision().digest() ||
-      ownInterface.package() != input.boundModule.package() ||
+      ownInterface.compilationUnit() != input.boundModule.compilationUnit() ||
       ownInterface.crate() != input.boundModule.crate() || ownInterface.module() != module ||
       ownInterface.bindingSurface().sourceModule() != module ||
-      ownInterface.bindingSurface().sourcePackage() != input.boundModule.package() ||
+      ownInterface.bindingSurface().sourceCompilationUnit() !=
+          input.boundModule.compilationUnit() ||
       ownInterface.bindingSurface().revision().digest() !=
           input.boundModule.bindingSurface().revision().digest() ||
       ownInterface.sourceContentDigest() != parsedModule.contentDigest() ||

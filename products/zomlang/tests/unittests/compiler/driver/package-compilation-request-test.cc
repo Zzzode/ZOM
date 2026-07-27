@@ -140,9 +140,9 @@ identity::CrateKey crateKey(zc::StringPtr packageName) {
   ZC_REQUIRE(targetName != zc::none);
   ZC_IF_SOME(compilationValue, compilation) {
     ZC_IF_SOME(targetNameValue, targetName) {
-      auto result =
-          identity::CrateKey::from(packageKey(packageName), identity::CrateTargetKind::Binary,
-                                   zc::mv(targetNameValue), zc::mv(compilationValue));
+      auto result = identity::CrateKey::from(
+          identity::CompilationUnitIdentity::userPackage(packageKey(packageName)),
+          identity::CrateTargetKind::Binary, zc::mv(targetNameValue), zc::mv(compilationValue));
       ZC_IF_SOME(value, result) { return zc::mv(value); }
     }
   }
@@ -169,6 +169,47 @@ fast = []
     if (result.is<NormalizedWorkspace>()) { return zc::mv(result.get<NormalizedWorkspace>()); }
   }
   ZC_FAIL_REQUIRE("valid workspace test input was rejected");
+}
+
+identity::CanonicalRelativePath sourcePath(zc::StringPtr text) {
+  zc::Vector<identity::CanonicalPathSegment> segments;
+  size_t start = 0;
+  for (size_t index = 0; index <= text.size(); ++index) {
+    if (index < text.size() && text[index] != '/') { continue; }
+    const auto segmentText = zc::heapString(text.slice(start, index));
+    segments.add(scalar<identity::CanonicalPathSegment>(segmentText));
+    start = index + 1;
+  }
+  return identity::CanonicalRelativePath::from(zc::mv(segments));
+}
+
+NormalizedWorkspace workspaceFrom(zc::StringPtr source,
+                                  zc::ArrayPtr<const zc::StringPtr> sourcePaths) {
+  zc::Vector<identity::CanonicalRelativePath> files;
+  for (const auto path : sourcePaths) { files.add(sourcePath(path)); }
+  auto inventory = PackageSourceInventory::from(zc::mv(files));
+  ZC_REQUIRE(inventory != zc::none);
+  ZC_IF_SOME(inventoryValue, inventory) {
+    zc::Vector<WorkspaceMemberInput> members;
+    auto result = normalizeWorkspace(source, inventoryValue, zc::mv(members));
+    if (result.is<NormalizedWorkspace>()) { return zc::mv(result.get<NormalizedWorkspace>()); }
+  }
+  ZC_FAIL_REQUIRE("valid reservation workspace test input was rejected");
+}
+
+NormalizedPackageCompilationRequest normalize(RawPackageCompilationRequest&& raw) {
+  auto service = targetService();
+  auto result = normalizePackageCompilationRequest(zc::mv(raw), service);
+  ZC_REQUIRE(result.is<NormalizedPackageCompilationRequest>());
+  return zc::mv(result.get<NormalizedPackageCompilationRequest>());
+}
+
+size_t offsetOf(zc::StringPtr source, zc::StringPtr needle, size_t start = 0) {
+  ZC_REQUIRE(needle.size() != 0 && needle.size() <= source.size());
+  for (size_t offset = start; offset + needle.size() <= source.size(); ++offset) {
+    if (source.slice(offset, offset + needle.size()) == needle) { return offset; }
+  }
+  ZC_FAIL_REQUIRE("expected reservation fixture text was not found");
 }
 
 InvocationIssue failure(RawPackageCompilationRequest&& raw) {
@@ -350,6 +391,129 @@ ZC_TEST("Workspace verification rejects unknown packages targets and root featur
       normalizedFeature.get<NormalizedPackageCompilationRequest>(), input);
   ZC_REQUIRE(featureResult.is<TargetSelectionIssue>());
   ZC_EXPECT(featureResult.get<TargetSelectionIssue>() == TargetSelectionIssue::UnknownRootFeature);
+}
+
+ZC_TEST("Package reservation follows selection and retains the expanded package key") {
+  const auto source = R"toml([package]
+name = "app"
+version = "1.0.0"
+edition = "2026"
+
+[[bin]]
+name = "core"
+path = "src/bin/core.zom"
+
+[dependencies]
+core = { package = "provider", path = "../provider" }
+
+[features]
+default = ["fast"]
+fast = []
+)toml"_zc;
+  const zc::StringPtr files[] = {"src/lib.zom"_zc, "src/bin/core.zom"_zc};
+  auto input = workspaceFrom(source, zc::arrayPtr(files));
+
+  auto unknownFeature = validRaw();
+  unknownFeature.targetSelections.clear();
+  unknownFeature.targetSelections.add(namedTarget(identity::CrateTargetKind::Binary, "core"_zc));
+  unknownFeature.featureLists.add(zc::str("missing"));
+  auto unknownFeatureRequest = normalize(zc::mv(unknownFeature));
+  auto unknownFeatureResult = verifyPackageCompilationRequest(unknownFeatureRequest, input);
+  ZC_REQUIRE(unknownFeatureResult.is<TargetSelectionIssue>());
+  ZC_EXPECT(unknownFeatureResult.get<TargetSelectionIssue>() ==
+            TargetSelectionIssue::UnknownRootFeature);
+
+  auto unknownTarget = validRaw();
+  unknownTarget.targetSelections.clear();
+  unknownTarget.targetSelections.add(namedTarget(identity::CrateTargetKind::Binary, "missing"_zc));
+  auto unknownTargetRequest = normalize(zc::mv(unknownTarget));
+  auto unknownTargetResult = verifyPackageCompilationRequest(unknownTargetRequest, input);
+  ZC_REQUIRE(unknownTargetResult.is<TargetSelectionIssue>());
+  ZC_EXPECT(unknownTargetResult.get<TargetSelectionIssue>() == TargetSelectionIssue::UnknownTarget);
+
+  auto raw = validRaw();
+  raw.targetSelections.clear();
+  raw.targetSelections.add(namedTarget(identity::CrateTargetKind::Binary, "core"_zc));
+  auto request = normalize(zc::mv(raw));
+  auto result = verifyPackageCompilationRequest(request, input);
+  ZC_REQUIRE(result.is<PackageToolchainModuleRootFailure>());
+  const auto& failure = result.get<PackageToolchainModuleRootFailure>();
+  ZC_EXPECT(failure.producer() == PackageToolchainModuleRootProducer::UserTargetRoot);
+  ZC_REQUIRE(failure.package().features().size() == 2);
+  bool hasDefault = false;
+  bool hasFast = false;
+  for (const auto& feature : failure.package().features()) {
+    hasDefault = hasDefault || feature.text() == "default"_zc;
+    hasFast = hasFast || feature.text() == "fast"_zc;
+  }
+  ZC_EXPECT(hasDefault);
+  ZC_EXPECT(hasFast);
+  ZC_REQUIRE(failure.fieldPath().components().size() == 2);
+  ZC_EXPECT(failure.fieldPath().components()[0].text() == "bin"_zc);
+  ZC_EXPECT(failure.fieldPath().components()[1].text() == "core"_zc);
+  ZC_REQUIRE(failure.argument().path().size() == 1);
+  ZC_EXPECT(failure.argument().path()[0].text() == "core"_zc);
+  ZC_EXPECT(PackageToolchainModuleRootFailureVerifier::verify(failure, request, input.root(),
+                                                              failure.package()));
+
+  auto wrongPackageFailure = PackageToolchainModuleRootFailure::userTargetRoot(
+      input.root().binaries()[0], packageKey("other"_zc));
+  ZC_REQUIRE(wrongPackageFailure != zc::none);
+  ZC_IF_SOME(value, wrongPackageFailure) {
+    ZC_EXPECT(!PackageToolchainModuleRootFailureVerifier::verify(value, request, input.root(),
+                                                                 failure.package()));
+  }
+
+  auto wrongProducerFailure = PackageToolchainModuleRootFailure::dependencyAlias(
+      input.root().targetDependencies()[0], failure.package().clone());
+  ZC_REQUIRE(wrongProducerFailure != zc::none);
+  ZC_IF_SOME(value, wrongProducerFailure) {
+    ZC_EXPECT(!PackageToolchainModuleRootFailureVerifier::verify(value, request, input.root(),
+                                                                 failure.package()));
+  }
+  ZC_EXPECT(PackageToolchainModuleRootFailure::userTargetRoot(
+                input.root().library(), failure.package().clone()) == zc::none);
+}
+
+ZC_TEST("Package reservation orders aliases by origin-free record before provenance") {
+  const auto source = R"toml([package]
+name = "app"
+version = "1.0.0"
+edition = "2026"
+
+[build-dependencies]
+core = { package = "zzzz", path = "../zzzz" }
+
+[dependencies]
+core = { package = "aaaa", path = "../aaaa" }
+
+[dev-dependencies]
+core = { package = "bbbb", path = "../bbbb" }
+)toml"_zc;
+  const zc::StringPtr files[] = {"src/lib.zom"_zc};
+  auto input = workspaceFrom(source, zc::arrayPtr(files));
+  auto raw = validRaw();
+  auto request = normalize(zc::mv(raw));
+  auto result = verifyPackageCompilationRequest(request, input);
+  ZC_REQUIRE(result.is<PackageToolchainModuleRootFailure>());
+  const auto& failure = result.get<PackageToolchainModuleRootFailure>();
+  ZC_EXPECT(failure.producer() == PackageToolchainModuleRootProducer::DependencyAlias);
+  ZC_REQUIRE(failure.fieldPath().components().size() == 2);
+  ZC_EXPECT(failure.fieldPath().components()[0].text() == "dependencies"_zc);
+  ZC_EXPECT(failure.fieldPath().components()[1].text() == "core"_zc);
+  const auto firstAlias = offsetOf(source, "core = { package"_zc);
+  const auto selectedAlias = offsetOf(source, "core = { package"_zc, firstAlias + 1);
+  ZC_EXPECT(failure.provenance().primary().manifestSpan().byteStart() == selectedAlias);
+  ZC_EXPECT(PackageToolchainModuleRootFailureVerifier::verify(failure, request, input.root(),
+                                                              failure.package()));
+
+  auto nonWinningFailure = PackageToolchainModuleRootFailure::dependencyAlias(
+      input.root().buildDependencies()[0], failure.package().clone());
+  ZC_REQUIRE(nonWinningFailure != zc::none);
+  ZC_IF_SOME(value, nonWinningFailure) {
+    ZC_EXPECT(!PackageToolchainModuleRootFailureVerifier::verify(value, request, input.root(),
+                                                                 failure.package()));
+  }
 }
 
 }  // namespace zomlang::compiler::driver::package

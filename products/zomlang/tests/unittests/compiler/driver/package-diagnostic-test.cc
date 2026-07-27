@@ -95,10 +95,55 @@ PackageDiagnosticDocument document(zc::StringPtr path, zc::ArrayPtr<const zc::by
   ZC_FAIL_REQUIRE("package diagnostic document admission failed");
 }
 
+template <typename Scalar>
+Scalar scalar(zc::StringPtr text) {
+  auto result = Scalar::fromCanonical(text);
+  ZC_IF_SOME(value, result) { return zc::mv(value); }
+  ZC_FAIL_REQUIRE("invalid scalar diagnostic fixture");
+}
+
+identity::CanonicalRelativePath sourcePath(zc::StringPtr first, zc::StringPtr second,
+                                           zc::StringPtr third) {
+  zc::Vector<identity::CanonicalPathSegment> segments;
+  segments.add(scalar<identity::CanonicalPathSegment>(first));
+  segments.add(scalar<identity::CanonicalPathSegment>(second));
+  segments.add(scalar<identity::CanonicalPathSegment>(third));
+  return identity::CanonicalRelativePath::from(zc::mv(segments));
+}
+
+NormalizedManifest reservationManifest(zc::StringPtr source) {
+  zc::Vector<identity::CanonicalRelativePath> files;
+  files.add(sourcePath("src"_zc, "bin"_zc, "core.zom"_zc));
+  auto inventory = PackageSourceInventory::from(zc::mv(files));
+  ZC_REQUIRE(inventory != zc::none);
+  ZC_IF_SOME(value, inventory) {
+    ManifestParser parser;
+    auto parsed = parser.parseWorkspaceManifest(workspacePath(0, "Zom.toml"_zc), source, value);
+    if (parsed.is<NormalizedManifest>()) { return zc::mv(parsed.get<NormalizedManifest>()); }
+  }
+  ZC_FAIL_REQUIRE("valid reservation diagnostic manifest was rejected");
+}
+
+identity::PackageKey reservationPackageKey() {
+  zc::Vector<identity::CanonicalPathSegment> sourceSegments;
+  zc::Vector<identity::FeatureName> features;
+  auto sortedFeatures = identity::SortedFeatureSet::from(zc::mv(features));
+  ZC_REQUIRE(sortedFeatures != zc::none);
+  ZC_IF_SOME(featureValue, sortedFeatures) {
+    return identity::PackageKey::from(
+        identity::CanonicalPackageSource::localPath(
+            identity::CanonicalWorkspaceRelativePath::from(0, zc::mv(sourceSegments))),
+        scalar<identity::PackageName>("app"_zc), scalar<identity::ResolvedVersion>("1.0.0"_zc),
+        zc::mv(featureValue));
+  }
+  ZC_UNREACHABLE;
+}
+
 struct CaptureState final {
   zc::Vector<uint32_t> primaryIds;
   zc::Vector<uint32_t> childIds;
   zc::Vector<zc::String> displayNames;
+  zc::Vector<zc::String> toolchainRootArguments;
 };
 
 class CaptureConsumer final : public diagnostics::DiagnosticConsumer {
@@ -110,6 +155,10 @@ public:
     state.primaryIds.add(static_cast<uint32_t>(diagnostic.getId()));
     if (diagnostic.getLoc().isValid()) {
       state.displayNames.add(zc::str(sourceManager.getDisplayNameForLoc(diagnostic.getLoc())));
+    }
+    if (diagnostic.getId() == diagnostics::DiagID::ToolchainModuleRootReserved &&
+        diagnostic.getArgs().size() == 1 && diagnostic.getArgs()[0].is<zc::String>()) {
+      state.toolchainRootArguments.add(zc::heapString(diagnostic.getArgs()[0].get<zc::String>()));
     }
     for (const auto& child : diagnostic.getChildDiagnostics()) {
       state.childIds.add(static_cast<uint32_t>(child->getId()));
@@ -141,8 +190,11 @@ ZC_TEST("PackageDiagnosticTest.SanitizesSourceAndProjectsOriginalOffsets") {
 ZC_TEST("PackageDiagnosticTest.VerifiesDigestAndUsesHostPathFreeDisplayName") {
   const auto source = "[package]"_zc.asBytes();
   auto admitted = PackageDiagnosticDocument::from(documentKey("Zom.toml"_zc, source), source);
-  ZC_IF_SOME(documentValue, admitted) { ZC_EXPECT(documentValue.displayName() == "Zom.toml"_zc); }
-  else { ZC_FAIL_EXPECT("valid diagnostic document was rejected"); }
+  ZC_IF_SOME(documentValue, admitted) {
+    ZC_EXPECT(documentValue.displayName() == "Zom.toml"_zc);
+  } else {
+    ZC_FAIL_EXPECT("valid diagnostic document was rejected");
+  }
 
   auto wrongKey = documentKey("Zom.toml"_zc, "different"_zc.asBytes());
   ZC_EXPECT(PackageDiagnosticDocument::from(zc::mv(wrongKey), source) == zc::none);
@@ -189,6 +241,48 @@ ZC_TEST("PackageDiagnosticTest.EmitsPreviousWorkspacePackageAsRelatedNote") {
   ZC_EXPECT(capture.childIds[0] == 7093);
   ZC_EXPECT(capture.displayNames[0] == "second.toml"_zc);
   ZC_EXPECT(capture.displayNames[1] == "first.toml"_zc);
+}
+
+ZC_TEST("PackageDiagnosticTest.EmitsTypedToolchainRootAndRejectsWrongDocuments") {
+  const auto source = R"toml([package]
+name = "app"
+version = "1.0.0"
+edition = "2026"
+
+[[bin]]
+name = "core"
+path = "src/bin/core.zom"
+)toml"_zc;
+  auto manifest = reservationManifest(source);
+  ZC_REQUIRE(manifest.binaries().size() == 1);
+  auto failure = PackageToolchainModuleRootFailure::userTargetRoot(manifest.binaries()[0],
+                                                                   reservationPackageKey());
+  ZC_REQUIRE(failure != zc::none);
+
+  zc::Vector<PackageDiagnosticDocument> documents;
+  documents.add(document("Zom.toml"_zc, source.asBytes()));
+  CaptureState capture;
+  source::SourceManager sourceManager;
+  diagnostics::DiagnosticEngine engine(sourceManager);
+  engine.addConsumer(zc::heap<CaptureConsumer>(capture));
+  ZC_IF_SOME(value, failure) {
+    ZC_EXPECT(PackageDiagnosticAdapter::emitToolchainModuleRootFailure(engine, documents, value));
+    ZC_REQUIRE(capture.primaryIds.size() == 1);
+    ZC_EXPECT(capture.primaryIds[0] == 3027);
+    ZC_REQUIRE(capture.toolchainRootArguments.size() == 1);
+    ZC_EXPECT(capture.toolchainRootArguments[0] == "core"_zc);
+    ZC_REQUIRE(capture.displayNames.size() == 1);
+    ZC_EXPECT(capture.displayNames[0] == "Zom.toml"_zc);
+
+    zc::Vector<PackageDiagnosticDocument> noDocuments;
+    ZC_EXPECT(
+        !PackageDiagnosticAdapter::emitToolchainModuleRootFailure(engine, noDocuments, value));
+    zc::Vector<PackageDiagnosticDocument> wrongDocuments;
+    wrongDocuments.add(document("other.toml"_zc, source.asBytes()));
+    ZC_EXPECT(
+        !PackageDiagnosticAdapter::emitToolchainModuleRootFailure(engine, wrongDocuments, value));
+    ZC_EXPECT(capture.primaryIds.size() == 1);
+  }
 }
 
 ZC_TEST("PackageDiagnosticTest.EmitsEveryInvocationIssueThroughZOM7016") {

@@ -104,9 +104,9 @@ identity::CompilationConfigKey compilation() {
 }
 
 identity::CrateKey crate() {
-  auto value =
-      identity::CrateKey::from(package(), identity::CrateTargetKind::Library,
-                               scalar<identity::TargetName>("local_identity"_zc), compilation());
+  auto value = identity::CrateKey::from(
+      identity::CompilationUnitIdentity::userPackage(package()), identity::CrateTargetKind::Library,
+      scalar<identity::TargetName>("local_identity"_zc), compilation());
   ZC_IF_SOME(admitted, value) { return zc::mv(admitted); }
   ZC_FAIL_REQUIRE("valid local-identity test crate was rejected");
 }
@@ -145,8 +145,9 @@ zc::Array<identity::ModuleId> issueModules(identity::SemanticContextFactory& fac
   auto created = identity::SemanticIdentityRegistrySet::create(factory, context);
   ZC_REQUIRE(created != zc::none);
   ZC_IF_SOME(registries, created) {
-    ZC_REQUIRE(registries.collectPackage(package()) == identity::FrozenRegistryFailure::None);
-    ZC_REQUIRE(registries.freezePackages() == identity::FrozenRegistryFailure::None);
+    ZC_REQUIRE(registries.collectCompilationUnit(identity::CompilationUnitIdentity::userPackage(
+                   package())) == identity::FrozenRegistryFailure::None);
+    ZC_REQUIRE(registries.freezeCompilationUnits() == identity::FrozenRegistryFailure::None);
     ZC_REQUIRE(registries.collectCrate(crate()) == identity::FrozenRegistryFailure::None);
     ZC_REQUIRE(registries.freezeCrates() == identity::FrozenRegistryFailure::None);
     ZC_REQUIRE(registries.collectSourceFile(snapshot()) == identity::FrozenRegistryFailure::None);
@@ -207,7 +208,8 @@ ZC_TEST("Local syntax paths reject empty input and use exact structural encoding
   auto value = path();
   const uint8_t expected[] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02,
                               0x00, 0x00, 0x00, 0x00, 0x01, 0x02, 0x03, 0x04};
-  ZC_EXPECT(value.encode().asPtr() == zc::arrayPtr(expected));
+  auto encodedValue = value.encode();
+  ZC_EXPECT(encodedValue.asPtr() == zc::arrayPtr(expected));
   ZC_EXPECT(value == value.clone());
   ZC_EXPECT(value != path(1, 0x01020304u));
 }
@@ -217,7 +219,8 @@ ZC_TEST("Stable body owner keys form one exact module-or-definition canonical su
   zc::Vector<uint8_t> expectedDefinition;
   expectedDefinition.add(0x02);
   for (size_t index = 0; index < 32; ++index) { expectedDefinition.add(0x44); }
-  ZC_EXPECT(definition.encode().asPtr() == expectedDefinition.asPtr());
+  auto encodedDefinition = definition.encode();
+  ZC_EXPECT(encodedDefinition.asPtr() == expectedDefinition.asPtr());
   ZC_EXPECT(definition.kind() == StableBodyOwnerKind::Definition);
   ZC_EXPECT(definition.moduleKey() == zc::none);
   ZC_REQUIRE(definition.definitionKey() != zc::none);
@@ -232,18 +235,20 @@ ZC_TEST("Stable body owner keys form one exact module-or-definition canonical su
   auto encodedModule = moduleKey.encode();
   auto moduleOwner = StableBodyOwnerKey::module(moduleKey.clone());
   auto expectedModule = zc::decodeHex(
-      "0103000000000000000000000000000000000000000e6c6f63616c5f6964656e746974790000000000"
+      "010103000000000000000000000000000000000000000e6c6f63616c5f6964656e746974790000000000"
       "000005302e302e30000000000000000001000000000000000e6c6f63616c5f6964656e746974790200"
       "000000000000017800000000000000017600000000000000016f000000000000000165000000000000"
       "00016100000040010000000000000000000007ea010000000000000000000001000000000000000472"
       "6f6f74");
   ZC_REQUIRE(expectedModule != zc::none);
-  ZC_EXPECT(moduleOwner.encode().asPtr() == expectedModule.asPtr());
+  auto encodedModuleOwner = moduleOwner.encode();
+  ZC_EXPECT(encodedModuleOwner.asPtr() == expectedModule.asPtr());
   ZC_EXPECT(moduleOwner.kind() == StableBodyOwnerKind::Module);
   ZC_EXPECT(moduleOwner.definitionKey() == zc::none);
   ZC_REQUIRE(moduleOwner.moduleKey() != zc::none);
   ZC_IF_SOME(key, moduleOwner.moduleKey()) {
-    ZC_EXPECT(key.encode().asPtr() == encodedModule.asPtr());
+    auto encodedKey = key.encode();
+    ZC_EXPECT(encodedKey.asPtr() == encodedModule.asPtr());
   }
   ZC_EXPECT(moduleOwner == moduleOwner.clone());
   ZC_EXPECT(moduleOwner != StableBodyOwnerKey::module(module("other"_zc)));
@@ -278,7 +283,8 @@ ZC_TEST("Owner-local binding keys retain the exact body-value record") {
                               0x00, 0x00, 0x00, 0x05, 0x76, 0x61, 0x6c, 0x75, 0x65};
     expected.addAll(zc::arrayPtr(suffix));
 
-    ZC_EXPECT(admitted.encode().asPtr() == expected.asPtr());
+    auto encoded = admitted.encode();
+    ZC_EXPECT(encoded.asPtr() == expected.asPtr());
     ZC_EXPECT(admitted == admitted.clone());
     ZC_EXPECT(admitted.owner().kind() == StableBodyOwnerKind::Definition);
     ZC_REQUIRE(admitted.owner().definitionKey() != zc::none);
@@ -312,18 +318,21 @@ ZC_TEST("Owner-local binding keys retain the exact body-value record") {
   ZC_REQUIRE(moduleBinding != zc::none);
   ZC_IF_SOME(admitted, moduleBinding) {
     auto expected = zc::decodeHex(
-        "7a6f6d2e6f776e65722d6c6f63616c2d62696e64696e6700010300000000000000000000000000"
+        "7a6f6d2e6f776e65722d6c6f63616c2d62696e64696e670001010300000000000000000000000000"
         "0000000000000e6c6f63616c5f6964656e746974790000000000000005302e302e300000000000000000"
         "01000000000000000e6c6f63616c5f6964656e7469747902000000000000000178000000000000000176"
         "00000000000000016f000000000000000165000000000000000161000000400100000000000000000000"
         "07ea0100000000000000000000010000000000000004726f6f7400000000000000020000000001020304"
         "0113000000000000000576616c7565");
     ZC_REQUIRE(expected != zc::none);
-    ZC_EXPECT(admitted.encode().asPtr() == expected.asPtr());
+    auto encoded = admitted.encode();
+    ZC_EXPECT(encoded.asPtr() == expected.asPtr());
     ZC_EXPECT(admitted.owner().kind() == StableBodyOwnerKind::Module);
     ZC_REQUIRE(admitted.owner().moduleKey() != zc::none);
     ZC_IF_SOME(owner, admitted.owner().moduleKey()) {
-      ZC_EXPECT(owner.encode().asPtr() == moduleKey.encode().asPtr());
+      auto encodedOwner = owner.encode();
+      auto encodedModule = moduleKey.encode();
+      ZC_EXPECT(encodedOwner.asPtr() == encodedModule.asPtr());
     }
     auto decoded = OwnerLocalBindingKey::decodeCanonical(expected.asPtr());
     ZC_REQUIRE(decoded != zc::none);
@@ -376,7 +385,8 @@ ZC_TEST("Anonymous owner-local keys retain role without admitting stable identit
                               0x00, 0x00, 0x00, 0x01, 0x02, 0x03, 0x04, 0x02};
     expected.addAll(zc::arrayPtr(suffix));
 
-    ZC_EXPECT(admitted.encode().asPtr() == expected.asPtr());
+    auto encoded = admitted.encode();
+    ZC_EXPECT(encoded.asPtr() == expected.asPtr());
     ZC_EXPECT(admitted == admitted.clone());
     ZC_EXPECT(admitted.owner().kind() == StableBodyOwnerKind::Definition);
     ZC_EXPECT(admitted.role() == AnonymousOwnerLocalRole::FunctionExpression);
@@ -395,13 +405,14 @@ ZC_TEST("Anonymous owner-local keys retain role without admitting stable identit
   ZC_REQUIRE(moduleValue != zc::none);
   ZC_IF_SOME(admitted, moduleValue) {
     auto expected = zc::decodeHex(
-        "7a6f6d2e616e6f6e796d6f75732d6f776e65722d6c6f63616c000103000000000000000000000000"
+        "7a6f6d2e616e6f6e796d6f75732d6f776e65722d6c6f63616c00010103000000000000000000000000"
         "000000000000000e6c6f63616c5f6964656e746974790000000000000005302e302e300000000000000000"
         "01000000000000000e6c6f63616c5f6964656e746974790200000000000000017800000000000000017600"
         "000000000000016f00000000000000016500000000000000016100000040010000000000000000000007ea"
         "0100000000000000000000010000000000000004726f6f740000000000000002000000000102030401");
     ZC_REQUIRE(expected != zc::none);
-    ZC_EXPECT(admitted.encode().asPtr() == expected.asPtr());
+    auto encoded = admitted.encode();
+    ZC_EXPECT(encoded.asPtr() == expected.asPtr());
     auto decoded = AnonymousOwnerLocalKey::decodeCanonical(expected.asPtr());
     ZC_REQUIRE(decoded != zc::none);
     ZC_IF_SOME(decodedValue, decoded) { ZC_EXPECT(decodedValue == admitted); }

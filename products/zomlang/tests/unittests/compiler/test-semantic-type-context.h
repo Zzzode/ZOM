@@ -32,7 +32,7 @@ public:
     ZC_IF_SOME(value, issuedRegistries) {
       registries = zc::heap<identity::SemanticIdentityRegistrySet>(zc::mv(value));
     }
-    ZC_REQUIRE(registries->freezePackages() == identity::FrozenRegistryFailure::None);
+    ZC_REQUIRE(registries->freezeCompilationUnits() == identity::FrozenRegistryFailure::None);
     ZC_REQUIRE(registries->freezeCrates() == identity::FrozenRegistryFailure::None);
     ZC_REQUIRE(registries->freezeSourceFiles() == identity::FrozenRegistryFailure::None);
     ZC_REQUIRE(registries->freezeModules() == identity::FrozenRegistryFailure::None);

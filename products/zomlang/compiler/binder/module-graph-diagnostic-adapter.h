@@ -27,4 +27,10 @@ ZC_NODISCARD bool emitModuleGraphSourceFailure(diagnostics::DiagnosticEngine& di
                                                const VerifiedParsedModule& parsedModule,
                                                const ModuleGraphSourceFailure& failure);
 
+/// \brief Emits one stable query resolution failure from verified revision-local request sites.
+ZC_NODISCARD bool emitModuleDependencyResolutionFailure(diagnostics::DiagnosticEngine& diagnostics,
+                                                        const VerifiedParsedModule& parsedModule,
+                                                        const ModuleDependencyRequest& request,
+                                                        bool ambiguous);
+
 }  // namespace zomlang::compiler::binder

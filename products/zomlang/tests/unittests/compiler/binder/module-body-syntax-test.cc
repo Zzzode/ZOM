@@ -79,7 +79,8 @@ identity::CompilationConfigKey compilation() {
 
 identity::CrateKey crateKey() {
   auto value =
-      identity::CrateKey::from(packageKey(), identity::CrateTargetKind::Library,
+      identity::CrateKey::from(identity::CompilationUnitIdentity::userPackage(packageKey()),
+                               identity::CrateTargetKind::Library,
                                scalar<identity::TargetName>("module_body"_zc), compilation());
   ZC_IF_SOME(admitted, value) { return zc::mv(admitted); }
   ZC_FAIL_REQUIRE("invalid module-body crate");
@@ -165,8 +166,9 @@ struct ModuleBodyFixture final {
     auto snapshot = identity::ImmutableSourceSnapshot::from(
         sourceKey(), zc::heapArray(sources->getEntireTextForBuffer(buffer)));
     ZC_REQUIRE(snapshot != zc::none);
-    ZC_REQUIRE(registries.collectPackage(packageKey()) == identity::FrozenRegistryFailure::None);
-    ZC_REQUIRE(registries.freezePackages() == identity::FrozenRegistryFailure::None);
+    ZC_REQUIRE(registries.collectCompilationUnit(identity::CompilationUnitIdentity::userPackage(
+                   packageKey())) == identity::FrozenRegistryFailure::None);
+    ZC_REQUIRE(registries.freezeCompilationUnits() == identity::FrozenRegistryFailure::None);
     ZC_REQUIRE(registries.collectCrate(crateKey()) == identity::FrozenRegistryFailure::None);
     ZC_REQUIRE(registries.freezeCrates() == identity::FrozenRegistryFailure::None);
     ZC_REQUIRE(registries.collectSourceFile(ZC_ASSERT_NONNULL(snapshot).clone()) ==
@@ -287,6 +289,38 @@ ZC_TEST("Module body syntax backdates across range-only source edits") {
   auto shiftedProjection = shifted.project();
   ZC_EXPECT(firstProjection.syntax == shiftedProjection.syntax);
   ZC_EXPECT(firstProjection.provenance != shiftedProjection.provenance);
+}
+
+ZC_TEST("Named item syntax admits contextual callable declaration names") {
+  ModuleBodyFixture fixture(
+      "interface Collection {\n"
+      "  fun set(index: u64, value: u64) -> unit;\n"
+      "}\n"_zc);
+  zc::Maybe<size_t> methodIndex;
+  const auto& tree = ZC_ASSERT_NONNULL(fixture.parsed).tree();
+  for (size_t index = 0; index < fixture.definitionNodes.size(); ++index) {
+    const auto& node = tree.node(fixture.definitionNodes[index]);
+    if (node.kind != ast::SyntaxKind::MethodDecl ||
+        tree.ident(ast::IdentId(node.payload.words[ast::kMethodDeclNameWord])) != "set"_zc) {
+      continue;
+    }
+    ZC_REQUIRE(methodIndex == zc::none);
+    methodIndex = index;
+  }
+  ZC_REQUIRE(methodIndex != zc::none);
+  ZC_IF_SOME(index, methodIndex) {
+    auto projection = ModuleBodySyntaxProducer::produceNamedItem(
+        ZC_ASSERT_NONNULL(fixture.parsed).syntax(), moduleKey(), fixture.moduleNode,
+        fixture.definitionNodes[index], fixture.definitions[index].key, fixture.definitions.asPtr(),
+        fixture.implementations.asPtr());
+    ZC_REQUIRE(projection.is<ModuleBodySyntaxProjection>());
+    const auto& syntax = projection.get<ModuleBodySyntaxProjection>().syntax;
+    ZC_REQUIRE(syntax.nodes().size() != 0);
+    ZC_REQUIRE(syntax.nodes()[0].syntaxKind() != zc::none);
+    ZC_EXPECT(ZC_ASSERT_NONNULL(syntax.nodes()[0].syntaxKind()) == ast::SyntaxKind::MethodDecl);
+    const auto encoded = syntax.encodeCanonical();
+    ZC_EXPECT(ModuleBodySyntax::decodeCanonical(encoded.asPtr()) != zc::none);
+  }
 }
 
 ZC_TEST("Module body codecs reject trailing data and preserve exact values") {

@@ -6,40 +6,11 @@
 #include "zomlang/compiler/driver/active-definition-authority-session.h"
 
 #include "zomlang/compiler/driver/active-definition-authority-query.h"
+#include "zomlang/compiler/driver/module-graph-query.h"
 #include "zomlang/compiler/driver/named-identity-inventory-query.h"
-#include "zomlang/compiler/identity/canonical-decoder.h"
 
 namespace zomlang::compiler::driver::incremental_binding_query {
 namespace {
-
-zc::Maybe<identity::CrateKey> decodeCrate(const StableCrateQueryKey& key) {
-  identity::CanonicalDecoder decoder(key.canonicalCrateBytes());
-  auto crate = identity::CrateKey::decodeCanonical(decoder);
-  if (crate == zc::none || !decoder.finished() ||
-      ZC_ASSERT_NONNULL(crate).encode().asPtr() != key.canonicalCrateBytes()) {
-    return zc::none;
-  }
-  return zc::mv(ZC_ASSERT_NONNULL(crate));
-}
-
-zc::Maybe<identity::ModuleKey> decodeModule(const StableModuleQueryKey& key) {
-  identity::CanonicalDecoder decoder(key.canonicalModuleBytes());
-  auto module = identity::ModuleKey::decodeCanonical(decoder);
-  if (module == zc::none || !decoder.finished() ||
-      ZC_ASSERT_NONNULL(module).encode().asPtr() != key.canonicalModuleBytes()) {
-    return zc::none;
-  }
-  return zc::mv(ZC_ASSERT_NONNULL(module));
-}
-
-bool moduleBelongsToCrate(const StableModuleQueryKey& moduleKey,
-                          const StableCrateQueryKey& crateKey) {
-  auto module = decodeModule(moduleKey);
-  auto crate = decodeCrate(crateKey);
-  return module != zc::none && crate != zc::none &&
-         ZC_ASSERT_NONNULL(module).crate().encode().asPtr() ==
-             ZC_ASSERT_NONNULL(crate).encode().asPtr();
-}
 
 bool isValue(const query::TypedQueryResult<ActiveDefinitionAuthorityReadyInput::Value>& result) {
   return !result.isRuntimeFailure() && result.kind() == query::QueryValueKind::Value;
@@ -49,75 +20,53 @@ bool isValue(const query::TypedQueryResult<ActiveDefinitionAuthorityReadyInput::
 
 zc::Maybe<query::InputTransaction> ActiveDefinitionAuthorityProjectionState::beginBaseMutation(
     query::QueryDatabase& database) {
-  auto snapshot = database.snapshot();
-  auto readiness = snapshot.probeInput<ActiveDefinitionAuthorityReadyInput>(
-      identity::source_query::CompilationUnitQueryKey::fixed());
-  if (readiness.isRuntimeFailure() || (readiness.kind() != query::QueryValueKind::Value &&
-                                       readiness.kind() != query::QueryValueKind::Absence)) {
-    return zc::none;
+  bool removeReadiness = false;
+  ZC_IF_SOME(contextRoots, contextRootsField) {
+    auto snapshot = database.snapshot();
+    auto readiness = snapshot.probeInput<ActiveDefinitionAuthorityReadyInput>(contextRoots);
+    if (readiness.isRuntimeFailure() || (readiness.kind() != query::QueryValueKind::Value &&
+                                         readiness.kind() != query::QueryValueKind::Absence)) {
+      return zc::none;
+    }
+    removeReadiness = isValue(readiness);
   }
-  const bool removeReadiness = isValue(readiness);
   auto pending = database.beginInputTransaction();
   if (pending == zc::none) { return zc::none; }
   ZC_IF_SOME(transaction, pending) {
-    if (removeReadiness && !transaction.erase<ActiveDefinitionAuthorityReadyInput>(
-                               identity::source_query::CompilationUnitQueryKey::fixed())) {
-      return zc::none;
+    if (removeReadiness) {
+      ZC_IF_SOME(contextRoots, contextRootsField) {
+        if (!transaction.erase<ActiveDefinitionAuthorityReadyInput>(contextRoots)) {
+          return zc::none;
+        }
+      }
     }
     return zc::mv(transaction);
   }
   return zc::none;
 }
 
-bool ActiveDefinitionAuthorityProjectionState::refresh(query::QueryDatabase& database,
-                                                       const PackageRootSetQueryKey& packageRoots) {
+bool ActiveDefinitionAuthorityProjectionState::refresh(
+    query::QueryDatabase& database, const CompilationRootSetQueryKey& contextRoots) {
   auto snapshot = database.snapshot();
-  auto readiness = snapshot.probeInput<ActiveDefinitionAuthorityReadyInput>(
-      identity::source_query::CompilationUnitQueryKey::fixed());
+  auto readiness = snapshot.probeInput<ActiveDefinitionAuthorityReadyInput>(contextRoots);
   if (readiness.isRuntimeFailure() || readiness.kind() != query::QueryValueKind::Absence) {
     return false;
   }
 
-  auto activeCrates = snapshot.get<ActiveCratesInput>(packageRoots);
-  if (activeCrates.isRuntimeFailure() || activeCrates.kind() != query::QueryValueKind::Value ||
-      activeCrates.value().crates().size() == 0) {
+  auto graph = snapshot.get<module_graph_query::ModuleGraphQuery>(contextRoots);
+  auto scc = snapshot.get<module_graph_query::ModuleGraphSccQuery>(contextRoots);
+  if (graph.isRuntimeFailure() || scc.isRuntimeFailure() ||
+      graph.kind() != query::QueryValueKind::Value || scc.kind() != query::QueryValueKind::Value ||
+      graph.value().modules().size() == 0 || scc.value().hasCycle(graph.value())) {
     return false;
-  }
-
-  size_t moduleCount = 0;
-  zc::Vector<StableModuleQueryKey> modules;
-  for (const auto& crate : activeCrates.value().crates()) {
-    if (decodeCrate(crate) == zc::none) { return false; }
-    auto activeModules = snapshot.get<ActiveModulesInput>(crate);
-    if (activeModules.isRuntimeFailure() || activeModules.kind() != query::QueryValueKind::Value ||
-        activeModules.value().modules().size() == 0) {
-      return false;
-    }
-    moduleCount += activeModules.value().modules().size();
-    for (const auto& module : activeModules.value().modules()) {
-      if (!moduleBelongsToCrate(module, crate)) { return false; }
-      modules.add(module.clone());
-    }
-  }
-  auto canonicalModules = CanonicalModuleSet::from(zc::mv(modules));
-  if (canonicalModules == zc::none ||
-      ZC_ASSERT_NONNULL(canonicalModules).modules().size() != moduleCount) {
-    return false;
-  }
-
-  auto bindingOrder = snapshot.get<ModuleBindingOrderQuery>(packageRoots);
-  if (bindingOrder.isRuntimeFailure() || bindingOrder.kind() != query::QueryValueKind::Value ||
-      bindingOrder.value().modules().size() != moduleCount) {
-    return false;
-  }
-  for (const auto& module : bindingOrder.value().modules()) {
-    if (!ZC_ASSERT_NONNULL(canonicalModules).contains(module)) { return false; }
   }
 
   size_t authorityCount = 0;
   zc::Vector<ActiveDefinitionAuthorityRecord> authorityRecords;
-  for (const auto& module : ZC_ASSERT_NONNULL(canonicalModules).modules()) {
-    auto inventory = snapshot.get<NamedDefinitionInventoryQuery>(module);
+  for (const auto& module : graph.value().modules()) {
+    auto stableModule = StableModuleQueryKey::fromVerified(module);
+    if (stableModule == zc::none) { return false; }
+    auto inventory = snapshot.get<NamedDefinitionInventoryQuery>(ZC_ASSERT_NONNULL(stableModule));
     if (inventory.isRuntimeFailure() || inventory.kind() != query::QueryValueKind::Value) {
       return false;
     }
@@ -125,7 +74,7 @@ bool ActiveDefinitionAuthorityProjectionState::refresh(query::QueryDatabase& dat
     for (const auto& entry : inventory.value().entries()) {
       auto record = identity::DefinitionIdentityRecord::decodeCanonical(entry.canonicalRecord());
       if (record == zc::none ||
-          ZC_ASSERT_NONNULL(record).module().encode().asPtr() != module.canonicalModuleBytes()) {
+          ZC_ASSERT_NONNULL(record).module().encode().asPtr() != module.encode().asPtr()) {
         return false;
       }
       auto authority = ActiveDefinitionAuthorityRecord::from(entry.key().clone(),
@@ -135,7 +84,8 @@ bool ActiveDefinitionAuthorityProjectionState::refresh(query::QueryDatabase& dat
     }
   }
 
-  auto projection = ActiveDefinitionAuthorityProjection::from(zc::mv(authorityRecords));
+  auto projection =
+      ActiveDefinitionAuthorityProjection::from(contextRoots, zc::mv(authorityRecords));
   if (projection == zc::none || ZC_ASSERT_NONNULL(projection).records().size() != authorityCount) {
     return false;
   }
@@ -147,21 +97,25 @@ bool ActiveDefinitionAuthorityProjectionState::refresh(query::QueryDatabase& dat
   auto pending = database.beginInputTransaction();
   if (pending == zc::none) { return false; }
   ZC_IF_SOME(transaction, pending) {
-    for (const auto& prior : keyLedgerField) {
-      if (!transaction.erase<ActiveDefinitionAuthorityInput>(prior)) { return false; }
+    ZC_IF_SOME(priorContext, contextRootsField) {
+      for (const auto& prior : keyLedgerField) {
+        auto key = ContextualDefinitionKey::from(priorContext.clone(), prior.clone());
+        if (!transaction.erase<ActiveDefinitionAuthorityInput>(key)) { return false; }
+      }
     }
     for (const auto& authority : ZC_ASSERT_NONNULL(projection).records()) {
-      if (!transaction.set<ActiveDefinitionAuthorityInput>(authority.key(), authority.record())) {
+      auto key = ContextualDefinitionKey::from(contextRoots.clone(), authority.key().clone());
+      if (!transaction.set<ActiveDefinitionAuthorityInput>(key, authority.record())) {
         return false;
       }
     }
     if (!transaction.set<ActiveDefinitionAuthorityReadyInput>(
-            identity::source_query::CompilationUnitQueryKey::fixed(),
-            ZC_ASSERT_NONNULL(projection).fingerprint()) ||
+            contextRoots, ZC_ASSERT_NONNULL(projection).fingerprint()) ||
         transaction.commit() == zc::none) {
       return false;
     }
     keyLedgerField = zc::mv(nextKeyLedger);
+    contextRootsField = contextRoots.clone();
     return true;
   }
   return false;

@@ -6,6 +6,7 @@
 #include "zomlang/compiler/driver/incremental-binding-query-adapter.h"
 
 #include "zomlang/compiler/driver/active-definition-authority-query.h"
+#include "zomlang/compiler/driver/core-library-query-provider.h"
 #include "zomlang/compiler/driver/incremental-module-resolution-query.h"
 #include "zomlang/compiler/driver/incremental-package-graph-query-input.h"
 #include "zomlang/compiler/driver/named-identity-inventory-query.h"
@@ -22,11 +23,12 @@ constexpr uint64_t kMaximumModuleKeyBytes = 16 * 1024;
 constexpr uint64_t kMaximumSourceKeyBytes = 64 * 1024;
 constexpr uint64_t kMaximumPackageOrCrateKeyBytes = 2 * 1024 * 1024;
 constexpr uint64_t kMaximumPackageRoots = 4096;
+constexpr uint64_t kMaximumCompilationRoots = 8192;
 constexpr uint64_t kMaximumActiveCrates = 4096;
 constexpr uint64_t kMaximumEncodedPackageOrCrateSetBytes = 64 * 1024 * 1024;
 constexpr uint64_t kMaximumActiveSources = 65536;
-constexpr uint64_t kMaximumActiveModules = 4096;
 constexpr uint64_t kMaximumEncodedModuleSetBytes = 64 * 1024 * 1024;
+constexpr zc::StringPtr kCompilationRootSetDomain = "zom.query.compilation-root-set"_zc;
 
 int compareBytes(zc::ArrayPtr<const uint8_t> left, zc::ArrayPtr<const uint8_t> right) noexcept {
   const size_t common = left.size() < right.size() ? left.size() : right.size();
@@ -39,17 +41,6 @@ int compareBytes(zc::ArrayPtr<const uint8_t> left, zc::ArrayPtr<const uint8_t> r
   return 0;
 }
 
-void encodeModuleKey(identity::CanonicalEncoder& encoder, const StableModuleQueryKey& key) {
-  encoder.encodeByteString(key.canonicalModuleBytes());
-}
-
-zc::Maybe<StableModuleQueryKey> decodeModuleKey(identity::CanonicalDecoder& decoder) {
-  auto bytes = decoder.decodeByteString(kMaximumModuleKeyBytes);
-  if (bytes == zc::none) { return zc::none; }
-  ZC_IF_SOME(value, bytes) { return ModuleDependenciesInput::decodeKey(value.asPtr()); }
-  return zc::none;
-}
-
 query::QueryKindContract inputContract(zc::StringPtr domain, query::Durability durability) {
   auto contract = query::QueryKindContract::input(domain, durability);
   return zc::mv(ZC_REQUIRE_NONNULL(contract));
@@ -59,214 +50,10 @@ query::QueryKindContract lowDurabilityInputContract(zc::StringPtr domain) {
   return inputContract(domain, query::Durability::Low);
 }
 
-bool moduleBelongsToCrate(const StableModuleQueryKey& module, const StableCrateQueryKey& crate) {
-  identity::CanonicalDecoder decoder(module.canonicalModuleBytes());
-  auto decoded = identity::ModuleKey::decodeCanonical(decoder);
-  if (decoded == zc::none || !decoder.finished()) { return false; }
-  ZC_IF_SOME(value, decoded) {
-    auto owner = value.crate().encode();
-    return owner.asPtr() == crate.canonicalCrateBytes();
-  }
-  return false;
-}
-
 query::QueryKindContract derivedContract(zc::StringPtr domain) {
   auto contract = query::QueryKindContract::derived(domain, query::ReuseClass::Semantic,
                                                     query::RetentionClass::Retained);
   return zc::mv(ZC_REQUIRE_NONNULL(contract));
-}
-
-struct TopologyNode final {
-  StableModuleQueryKey module;
-  ModuleDependencySet dependencyInput;
-};
-
-zc::Maybe<size_t> providerModuleIndex(zc::ArrayPtr<const TopologyNode> topology,
-                                      const StableModuleQueryKey& module) {
-  for (size_t index = 0; index < topology.size(); ++index) {
-    if (topology[index].module == module) { return index; }
-  }
-  return zc::none;
-}
-
-bool providerDependenciesReady(const TopologyNode& node, zc::ArrayPtr<const TopologyNode> topology,
-                               zc::ArrayPtr<const uint8_t> emitted) {
-  ZC_IF_SOME(dependencies, node.dependencyInput.dependencies()) {
-    for (const auto& dependency : dependencies.modules()) {
-      auto index = providerModuleIndex(topology, dependency);
-      if (index == zc::none) { return false; }
-      ZC_IF_SOME(value, index) {
-        if (value >= emitted.size() || emitted[value] == 0) { return false; }
-      }
-    }
-    return true;
-  }
-  return false;
-}
-
-zc::Maybe<ModuleBindingOrderFailure> providerStructuralFailure(
-    zc::ArrayPtr<const TopologyNode> topology, const CanonicalModuleSet& active) {
-  for (const auto& node : topology) {
-    if (node.dependencyInput.isMissing()) {
-      return ModuleBindingOrderFailure::missingDependencies(node.module);
-    }
-  }
-  for (const auto& node : topology) {
-    ZC_IF_SOME(dependencies, node.dependencyInput.dependencies()) {
-      for (const auto& dependency : dependencies.modules()) {
-        if (dependency == node.module) {
-          return ModuleBindingOrderFailure::selfDependency(node.module);
-        }
-        if (!active.contains(dependency)) {
-          return ModuleBindingOrderFailure::dependencyOutsideActiveSet(node.module, dependency);
-        }
-      }
-    }
-  }
-  return zc::none;
-}
-
-query::TypedQueryResult<ModuleBindingOrder> providerOrder(
-    zc::ArrayPtr<const TopologyNode> topology) {
-  zc::Vector<uint8_t> emitted;
-  emitted.resize(topology.size());
-  for (auto& value : emitted) { value = 0; }
-  zc::Vector<StableModuleQueryKey> order(topology.size());
-  for (size_t output = 0; output < topology.size(); ++output) {
-    size_t ready = topology.size();
-    for (size_t candidate = 0; candidate < topology.size(); ++candidate) {
-      if (emitted[candidate] == 0 &&
-          providerDependenciesReady(topology[candidate], topology, emitted.asPtr())) {
-        ready = candidate;
-        break;
-      }
-    }
-    if (ready == topology.size()) {
-      for (size_t candidate = 0; candidate < topology.size(); ++candidate) {
-        if (emitted[candidate] == 0) {
-          return query::TypedQueryResult<ModuleBindingOrder>::semanticFailure(
-              ModuleBindingOrderFailure::cycle(topology[candidate].module).encode());
-        }
-      }
-      return query::TypedQueryResult<ModuleBindingOrder>::runtimeFailure(
-          query::QueryRuntimeFailure::ProviderRejected);
-    }
-    emitted[ready] = 1;
-    order.add(topology[ready].module.clone());
-  }
-  auto admitted = ModuleBindingOrder::fromUnique(zc::mv(order));
-  if (admitted == zc::none) {
-    return query::TypedQueryResult<ModuleBindingOrder>::runtimeFailure(
-        query::QueryRuntimeFailure::ProviderRejected);
-  }
-  ZC_IF_SOME(value, admitted) {
-    return query::TypedQueryResult<ModuleBindingOrder>::value(zc::mv(value));
-  }
-  return query::TypedQueryResult<ModuleBindingOrder>::runtimeFailure(
-      query::QueryRuntimeFailure::ProviderRejected);
-}
-
-zc::Maybe<size_t> verifierModuleIndex(zc::ArrayPtr<const TopologyNode> topology,
-                                      const StableModuleQueryKey& module) {
-  size_t lower = 0;
-  size_t upper = topology.size();
-  while (lower < upper) {
-    const size_t middle = lower + ((upper - lower) / 2);
-    if (topology[middle].module < module) {
-      lower = middle + 1;
-    } else {
-      upper = middle;
-    }
-  }
-  if (lower < topology.size() && topology[lower].module == module) { return lower; }
-  return zc::none;
-}
-
-bool verifierReady(const TopologyNode& node, zc::ArrayPtr<const TopologyNode> topology,
-                   zc::ArrayPtr<const uint8_t> placed) {
-  auto dependencies = node.dependencyInput.dependencies();
-  if (dependencies == zc::none) { return false; }
-  ZC_IF_SOME(values, dependencies) {
-    for (const auto& dependency : values.modules()) {
-      auto index = verifierModuleIndex(topology, dependency);
-      if (index == zc::none) { return false; }
-      ZC_IF_SOME(value, index) {
-        if (value >= placed.size() || placed[value] == 0) { return false; }
-      }
-    }
-  }
-  return true;
-}
-
-zc::Maybe<ModuleBindingOrderFailure> verifierExpectedFailure(
-    zc::ArrayPtr<const TopologyNode> topology) {
-  for (size_t requester = 0; requester < topology.size(); ++requester) {
-    if (topology[requester].dependencyInput.dependencies() == zc::none) {
-      return ModuleBindingOrderFailure::missingDependencies(topology[requester].module);
-    }
-  }
-  for (size_t requester = 0; requester < topology.size(); ++requester) {
-    ZC_IF_SOME(dependencies, topology[requester].dependencyInput.dependencies()) {
-      for (const auto& dependency : dependencies.modules()) {
-        if (dependency == topology[requester].module) {
-          return ModuleBindingOrderFailure::selfDependency(topology[requester].module);
-        }
-        if (verifierModuleIndex(topology, dependency) == zc::none) {
-          return ModuleBindingOrderFailure::dependencyOutsideActiveSet(topology[requester].module,
-                                                                       dependency);
-        }
-      }
-    }
-  }
-
-  zc::Vector<uint8_t> placed;
-  placed.resize(topology.size());
-  for (auto& value : placed) { value = 0; }
-  for (size_t count = 0; count < topology.size(); ++count) {
-    size_t next = topology.size();
-    for (size_t candidate = 0; candidate < topology.size(); ++candidate) {
-      if (placed[candidate] == 0 && verifierReady(topology[candidate], topology, placed.asPtr())) {
-        next = candidate;
-        break;
-      }
-    }
-    if (next == topology.size()) {
-      for (size_t candidate = 0; candidate < topology.size(); ++candidate) {
-        if (placed[candidate] == 0) {
-          return ModuleBindingOrderFailure::cycle(topology[candidate].module);
-        }
-      }
-      return zc::none;
-    }
-    placed[next] = 1;
-  }
-  return zc::none;
-}
-
-bool verifierAcceptsOrder(zc::ArrayPtr<const TopologyNode> topology,
-                          const ModuleBindingOrder& order) {
-  if (order.modules().size() != topology.size()) { return false; }
-  zc::Vector<uint8_t> placed;
-  placed.resize(topology.size());
-  for (auto& value : placed) { value = 0; }
-  for (const auto& current : order.modules()) {
-    auto currentIndex = verifierModuleIndex(topology, current);
-    if (currentIndex == zc::none) { return false; }
-    ZC_IF_SOME(index, currentIndex) {
-      if (placed[index] != 0) { return false; }
-      size_t canonicalReady = topology.size();
-      for (size_t candidate = 0; candidate < topology.size(); ++candidate) {
-        if (placed[candidate] == 0 &&
-            verifierReady(topology[candidate], topology, placed.asPtr())) {
-          canonicalReady = candidate;
-          break;
-        }
-      }
-      if (canonicalReady != index) { return false; }
-      placed[index] = 1;
-    }
-  }
-  return true;
 }
 
 }  // namespace
@@ -308,11 +95,10 @@ bool StablePackageQueryKey::operator<(const StablePackageQueryKey& other) const 
   return compareBytes(canonicalPackageBytes(), other.canonicalPackageBytes()) < 0;
 }
 
-PackageRootSetQueryKey::PackageRootSetQueryKey(
-    zc::Vector<StablePackageQueryKey>&& packages) noexcept
+PackageRootSetKey::PackageRootSetKey(zc::Vector<StablePackageQueryKey>&& packages) noexcept
     : packageFields(zc::mv(packages)) {}
 
-zc::Maybe<PackageRootSetQueryKey> PackageRootSetQueryKey::fromVerified(
+zc::Maybe<PackageRootSetKey> PackageRootSetKey::fromVerified(
     const package::VerifiedPackageCompilationRequest& request) {
   zc::Vector<StablePackageQueryKey> packages(request.roots().size());
   for (const auto& root : request.roots()) {
@@ -323,8 +109,7 @@ zc::Maybe<PackageRootSetQueryKey> PackageRootSetQueryKey::fromVerified(
   return from(zc::mv(packages));
 }
 
-zc::Maybe<PackageRootSetQueryKey> PackageRootSetQueryKey::from(
-    zc::Vector<StablePackageQueryKey>&& packages) {
+zc::Maybe<PackageRootSetKey> PackageRootSetKey::from(zc::Vector<StablePackageQueryKey>&& packages) {
   if (packages.size() == 0 || packages.size() > kMaximumPackageRoots) { return zc::none; }
   for (size_t index = 1; index < packages.size(); ++index) {
     auto current = zc::mv(packages[index]);
@@ -339,22 +124,22 @@ zc::Maybe<PackageRootSetQueryKey> PackageRootSetQueryKey::from(
   for (auto& package : packages) {
     if (unique.size() == 0 || unique.back() != package) { unique.add(zc::mv(package)); }
   }
-  PackageRootSetQueryKey result(zc::mv(unique));
+  PackageRootSetKey result(zc::mv(unique));
   if (result.encodeCanonical().size() > kMaximumEncodedPackageOrCrateSetBytes) { return zc::none; }
   return zc::mv(result);
 }
 
-PackageRootSetQueryKey PackageRootSetQueryKey::clone() const {
+PackageRootSetKey PackageRootSetKey::clone() const {
   zc::Vector<StablePackageQueryKey> packages(packageFields.size());
   for (const auto& package : packageFields) { packages.add(package.clone()); }
-  return PackageRootSetQueryKey(zc::mv(packages));
+  return PackageRootSetKey(zc::mv(packages));
 }
 
-zc::ArrayPtr<const StablePackageQueryKey> PackageRootSetQueryKey::packages() const {
+zc::ArrayPtr<const StablePackageQueryKey> PackageRootSetKey::packages() const {
   return packageFields.asPtr();
 }
 
-bool PackageRootSetQueryKey::operator==(const PackageRootSetQueryKey& other) const noexcept {
+bool PackageRootSetKey::operator==(const PackageRootSetKey& other) const noexcept {
   if (packageFields.size() != other.packageFields.size()) { return false; }
   for (size_t index = 0; index < packageFields.size(); ++index) {
     if (packageFields[index] != other.packageFields[index]) { return false; }
@@ -362,7 +147,7 @@ bool PackageRootSetQueryKey::operator==(const PackageRootSetQueryKey& other) con
   return true;
 }
 
-zc::Array<uint8_t> PackageRootSetQueryKey::encodeCanonical() const {
+zc::Array<uint8_t> PackageRootSetKey::encodeCanonical() const {
   identity::CanonicalEncoder encoder;
   encoder.encodeSequenceSize(packageFields.size());
   for (const auto& package : packageFields) {
@@ -371,8 +156,7 @@ zc::Array<uint8_t> PackageRootSetQueryKey::encodeCanonical() const {
   return encoder.finish();
 }
 
-zc::Maybe<PackageRootSetQueryKey> PackageRootSetQueryKey::decodeCanonical(
-    zc::ArrayPtr<const uint8_t> bytes) {
+zc::Maybe<PackageRootSetKey> PackageRootSetKey::decodeCanonical(zc::ArrayPtr<const uint8_t> bytes) {
   if (bytes.size() == 0 || bytes.size() > kMaximumEncodedPackageOrCrateSetBytes) {
     return zc::none;
   }
@@ -393,7 +177,7 @@ zc::Maybe<PackageRootSetQueryKey> PackageRootSetQueryKey::decodeCanonical(
     }
   }
   if (!decoder.finished()) { return zc::none; }
-  return PackageRootSetQueryKey(zc::mv(packages));
+  return PackageRootSetKey(zc::mv(packages));
 }
 
 StableCrateQueryKey::StableCrateQueryKey(zc::Array<uint8_t>&& canonicalCrateBytes) noexcept
@@ -430,6 +214,232 @@ bool StableCrateQueryKey::operator==(const StableCrateQueryKey& other) const noe
 
 bool StableCrateQueryKey::operator<(const StableCrateQueryKey& other) const noexcept {
   return compareBytes(canonicalCrateBytes(), other.canonicalCrateBytes()) < 0;
+}
+
+CompilationRootKey::CompilationRootKey(UserPackageCompilationRoot&& root) noexcept
+    : value(zc::mv(root)) {}
+
+CompilationRootKey::CompilationRootKey(ToolchainCoreCompilationRoot&& root) noexcept
+    : value(zc::mv(root)) {}
+
+zc::Maybe<CompilationRootKey> CompilationRootKey::userPackage(const identity::PackageKey& package) {
+  auto stable = StablePackageQueryKey::fromVerified(package);
+  if (stable == zc::none) { return zc::none; }
+  return CompilationRootKey(UserPackageCompilationRoot{zc::mv(ZC_ASSERT_NONNULL(stable))});
+}
+
+zc::Maybe<CompilationRootKey> CompilationRootKey::toolchainCore(const identity::CrateKey& crate) {
+  if (crate.unit().kind() != identity::CompilationUnitKind::Toolchain ||
+      crate.unit().toolchain().component() != identity::ToolchainComponent::Core ||
+      crate.targetKind() != identity::CrateTargetKind::Library || crate.targetName() != "core"_zc ||
+      crate.compilation().hasBuildScriptProducer() ||
+      crate.semanticOptions().editionYear() != 2026) {
+    return zc::none;
+  }
+  auto stable = StableCrateQueryKey::fromVerified(crate);
+  if (stable == zc::none) { return zc::none; }
+  return CompilationRootKey(ToolchainCoreCompilationRoot{zc::mv(ZC_ASSERT_NONNULL(stable))});
+}
+
+CompilationRootKey CompilationRootKey::clone() const {
+  ZC_SWITCH_ONEOF(value) {
+    ZC_CASE_ONEOF(root, UserPackageCompilationRoot) {
+      return CompilationRootKey(UserPackageCompilationRoot{root.package.clone()});
+    }
+    ZC_CASE_ONEOF(root, ToolchainCoreCompilationRoot) {
+      return CompilationRootKey(ToolchainCoreCompilationRoot{root.crate.clone()});
+    }
+  }
+  ZC_UNREACHABLE
+}
+
+CompilationRootKind CompilationRootKey::kind() const noexcept {
+  if (value.is<UserPackageCompilationRoot>()) { return CompilationRootKind::UserPackage; }
+  return CompilationRootKind::ToolchainCore;
+}
+
+const StablePackageQueryKey& CompilationRootKey::userPackage() const {
+  return value.get<UserPackageCompilationRoot>().package;
+}
+
+const StableCrateQueryKey& CompilationRootKey::toolchainCore() const {
+  return value.get<ToolchainCoreCompilationRoot>().crate;
+}
+
+zc::Array<uint8_t> CompilationRootKey::encodeCanonical() const {
+  zc::ArrayPtr<const uint8_t> payload;
+  ZC_SWITCH_ONEOF(value) {
+    ZC_CASE_ONEOF(root, UserPackageCompilationRoot) {
+      payload = root.package.canonicalPackageBytes();
+    }
+    ZC_CASE_ONEOF(root, ToolchainCoreCompilationRoot) {
+      payload = root.crate.canonicalCrateBytes();
+    }
+  }
+  auto encoded = zc::heapArray<uint8_t>(1 + payload.size());
+  encoded[0] = static_cast<uint8_t>(kind());
+  for (size_t index = 0; index < payload.size(); ++index) { encoded[index + 1] = payload[index]; }
+  return encoded;
+}
+
+zc::Maybe<CompilationRootKey> CompilationRootKey::decodeCanonical(
+    zc::ArrayPtr<const uint8_t> bytes) {
+  if (bytes.size() < 2 || bytes.size() > 1 + kMaximumPackageOrCrateKeyBytes) { return zc::none; }
+  const auto payload = bytes.slice(1, bytes.size());
+  switch (static_cast<CompilationRootKind>(bytes[0])) {
+    case CompilationRootKind::UserPackage: {
+      identity::CanonicalDecoder decoder(payload);
+      auto package = identity::PackageKey::decodeCanonical(decoder);
+      if (package == zc::none || !decoder.finished() ||
+          ZC_ASSERT_NONNULL(package).encode().asPtr() != payload) {
+        return zc::none;
+      }
+      return userPackage(ZC_ASSERT_NONNULL(package));
+    }
+    case CompilationRootKind::ToolchainCore: {
+      identity::CanonicalDecoder decoder(payload);
+      auto crate = identity::CrateKey::decodeCanonical(decoder);
+      if (crate == zc::none || !decoder.finished() ||
+          ZC_ASSERT_NONNULL(crate).encode().asPtr() != payload) {
+        return zc::none;
+      }
+      return toolchainCore(ZC_ASSERT_NONNULL(crate));
+    }
+  }
+  return zc::none;
+}
+
+bool CompilationRootKey::operator==(const CompilationRootKey& other) const noexcept {
+  return encodeCanonical().asPtr() == other.encodeCanonical().asPtr();
+}
+
+bool CompilationRootKey::operator<(const CompilationRootKey& other) const noexcept {
+  const auto left = encodeCanonical();
+  const auto right = other.encodeCanonical();
+  return compareBytes(left.asPtr(), right.asPtr()) < 0;
+}
+
+CompilationRootSetQueryKey::CompilationRootSetQueryKey(
+    zc::Vector<CompilationRootKey>&& roots) noexcept
+    : rootFields(zc::mv(roots)) {}
+
+zc::Maybe<CompilationRootSetQueryKey> CompilationRootSetQueryKey::fromVerified(
+    const package::VerifiedPackageCompilationRequest& request) {
+  return fromVerified(request, {});
+}
+
+zc::Maybe<CompilationRootSetQueryKey> CompilationRootSetQueryKey::fromVerified(
+    const package::VerifiedPackageCompilationRequest& request,
+    zc::ArrayPtr<const identity::CrateKey> projectedCoreCrates) {
+  zc::Vector<CompilationRootKey> roots(request.roots().size() + projectedCoreCrates.size());
+  for (const auto& root : request.roots()) {
+    auto projected = CompilationRootKey::userPackage(root.packageKey());
+    if (projected == zc::none) { return zc::none; }
+    ZC_IF_SOME(value, projected) {
+      bool present = false;
+      for (const auto& existing : roots) {
+        if (existing == value) {
+          present = true;
+          break;
+        }
+      }
+      if (!present) { roots.add(zc::mv(value)); }
+    }
+  }
+  for (const auto& crate : projectedCoreCrates) {
+    auto projected = CompilationRootKey::toolchainCore(crate);
+    if (projected == zc::none) { return zc::none; }
+    ZC_IF_SOME(value, projected) { roots.add(zc::mv(value)); }
+  }
+  return from(zc::mv(roots));
+}
+
+zc::Maybe<CompilationRootSetQueryKey> CompilationRootSetQueryKey::singletonToolchainCore(
+    const identity::CrateKey& crate) {
+  auto projected = CompilationRootKey::toolchainCore(crate);
+  if (projected == zc::none) { return zc::none; }
+  zc::Vector<CompilationRootKey> roots;
+  roots.add(zc::mv(ZC_ASSERT_NONNULL(projected)));
+  return from(zc::mv(roots));
+}
+
+zc::Maybe<CompilationRootSetQueryKey> CompilationRootSetQueryKey::from(
+    zc::Vector<CompilationRootKey>&& roots) {
+  if (roots.size() == 0 || roots.size() > kMaximumCompilationRoots) { return zc::none; }
+  for (size_t index = 1; index < roots.size(); ++index) {
+    auto current = zc::mv(roots[index]);
+    size_t insertion = index;
+    while (insertion != 0 && current < roots[insertion - 1]) {
+      roots[insertion] = zc::mv(roots[insertion - 1]);
+      --insertion;
+    }
+    roots[insertion] = zc::mv(current);
+  }
+  for (size_t index = 1; index < roots.size(); ++index) {
+    if (roots[index - 1] == roots[index]) { return zc::none; }
+  }
+  CompilationRootSetQueryKey result(zc::mv(roots));
+  if (result.encodeCanonical().size() > kMaximumEncodedPackageOrCrateSetBytes) { return zc::none; }
+  return zc::mv(result);
+}
+
+CompilationRootSetQueryKey CompilationRootSetQueryKey::clone() const {
+  zc::Vector<CompilationRootKey> roots(rootFields.size());
+  for (const auto& root : rootFields) { roots.add(root.clone()); }
+  return CompilationRootSetQueryKey(zc::mv(roots));
+}
+
+zc::ArrayPtr<const CompilationRootKey> CompilationRootSetQueryKey::roots() const {
+  return rootFields.asPtr();
+}
+
+zc::Array<uint8_t> CompilationRootSetQueryKey::encodeCanonical() const {
+  identity::CanonicalEncoder tailEncoder;
+  tailEncoder.encodeSequenceSize(rootFields.size());
+  for (const auto& root : rootFields) {
+    const auto encoded = root.encodeCanonical();
+    tailEncoder.encodeByteString(encoded.asPtr());
+  }
+  const auto tail = tailEncoder.finish();
+  auto encoded = zc::heapArray<uint8_t>(kCompilationRootSetDomain.size() + 1 + tail.size());
+  size_t cursor = 0;
+  for (const auto byte : kCompilationRootSetDomain.asBytes()) { encoded[cursor++] = byte; }
+  encoded[cursor++] = 0;
+  for (const auto byte : tail) { encoded[cursor++] = byte; }
+  return encoded;
+}
+
+zc::Maybe<CompilationRootSetQueryKey> CompilationRootSetQueryKey::decodeCanonical(
+    zc::ArrayPtr<const uint8_t> bytes) {
+  const size_t prefixSize = kCompilationRootSetDomain.size() + 1;
+  if (bytes.size() <= prefixSize || bytes.size() > kMaximumEncodedPackageOrCrateSetBytes ||
+      bytes.slice(0, kCompilationRootSetDomain.size()) != kCompilationRootSetDomain.asBytes() ||
+      bytes[kCompilationRootSetDomain.size()] != 0) {
+    return zc::none;
+  }
+  identity::CanonicalDecoder decoder(bytes.slice(prefixSize, bytes.size()));
+  auto count = decoder.decodeSequenceSize(kMaximumCompilationRoots);
+  if (count == zc::none || ZC_ASSERT_NONNULL(count) == 0) { return zc::none; }
+  zc::Vector<CompilationRootKey> roots(static_cast<size_t>(ZC_ASSERT_NONNULL(count)));
+  for (uint64_t index = 0; index < ZC_ASSERT_NONNULL(count); ++index) {
+    auto encoded = decoder.decodeByteString(1 + kMaximumPackageOrCrateKeyBytes);
+    if (encoded == zc::none) { return zc::none; }
+    auto root = CompilationRootKey::decodeCanonical(ZC_ASSERT_NONNULL(encoded).asPtr());
+    if (root == zc::none) { return zc::none; }
+    if (roots.size() != 0 && !(roots.back() < ZC_ASSERT_NONNULL(root))) { return zc::none; }
+    roots.add(zc::mv(ZC_ASSERT_NONNULL(root)));
+  }
+  if (!decoder.finished()) { return zc::none; }
+  return CompilationRootSetQueryKey(zc::mv(roots));
+}
+
+bool CompilationRootSetQueryKey::operator==(
+    const CompilationRootSetQueryKey& other) const noexcept {
+  if (rootFields.size() != other.rootFields.size()) { return false; }
+  for (size_t index = 0; index < rootFields.size(); ++index) {
+    if (rootFields[index] != other.rootFields[index]) { return false; }
+  }
+  return true;
 }
 
 CanonicalCrateSet::CanonicalCrateSet(zc::Vector<StableCrateQueryKey>&& crates) noexcept
@@ -633,612 +643,310 @@ zc::Maybe<CanonicalSourceSet> CanonicalSourceSet::decodeCanonical(
   return CanonicalSourceSet(zc::mv(sources));
 }
 
-SelectedModuleSource::SelectedModuleSource(zc::Array<uint8_t>&& canonicalSourceBytes) noexcept
-    : canonicalSourceBytesField(zc::mv(canonicalSourceBytes)) {}
-
-zc::Maybe<SelectedModuleSource> SelectedModuleSource::fromVerified(
-    const identity::ModuleKey& module, const identity::SourceFileKey& source) {
-  if (!source.belongsTo(module.crate())) { return zc::none; }
-  return decodeBounded(source.encode().asPtr());
+zc::StringPtr UserPackageActiveSourcesInput::domain() {
+  return "zom.query.user-package-active-sources"_zc;
 }
 
-zc::Maybe<SelectedModuleSource> SelectedModuleSource::decodeBounded(
-    zc::ArrayPtr<const uint8_t> bytes) {
-  if (bytes.size() == 0 || bytes.size() > kMaximumSourceKeyBytes) { return zc::none; }
-  identity::CanonicalDecoder decoder(bytes);
-  auto source = identity::SourceFileKey::decodeCanonical(decoder);
-  if (source == zc::none || !decoder.finished()) { return zc::none; }
-  ZC_IF_SOME(value, source) {
-    auto canonical = value.encode();
-    if (canonical.asPtr() != bytes) { return zc::none; }
-  }
-  return SelectedModuleSource(zc::heapArray<uint8_t>(bytes));
-}
-
-SelectedModuleSource SelectedModuleSource::clone() const {
-  return SelectedModuleSource(zc::heapArray<uint8_t>(canonicalSourceBytesField.asPtr()));
-}
-
-zc::ArrayPtr<const uint8_t> SelectedModuleSource::canonicalSourceBytes() const {
-  return canonicalSourceBytesField.asPtr();
-}
-
-bool SelectedModuleSource::operator==(const SelectedModuleSource& other) const noexcept {
-  return canonicalSourceBytes() == other.canonicalSourceBytes();
-}
-
-CanonicalModuleSet::CanonicalModuleSet(zc::Vector<StableModuleQueryKey>&& modules) noexcept
-    : moduleFields(zc::mv(modules)) {}
-
-zc::Maybe<CanonicalModuleSet> CanonicalModuleSet::from(zc::Vector<StableModuleQueryKey>&& modules) {
-  if (modules.size() > kMaximumActiveModules) { return zc::none; }
-  for (size_t index = 1; index < modules.size(); ++index) {
-    auto current = zc::mv(modules[index]);
-    size_t insertion = index;
-    while (insertion != 0 && current < modules[insertion - 1]) {
-      modules[insertion] = zc::mv(modules[insertion - 1]);
-      --insertion;
-    }
-    modules[insertion] = zc::mv(current);
-  }
-  zc::Vector<StableModuleQueryKey> unique(modules.size());
-  for (auto& module : modules) {
-    if (unique.size() == 0 || unique.back() != module) { unique.add(zc::mv(module)); }
-  }
-  return CanonicalModuleSet(zc::mv(unique));
-}
-
-CanonicalModuleSet CanonicalModuleSet::clone() const {
-  zc::Vector<StableModuleQueryKey> modules(moduleFields.size());
-  for (const auto& module : moduleFields) { modules.add(module.clone()); }
-  return CanonicalModuleSet(zc::mv(modules));
-}
-
-zc::ArrayPtr<const StableModuleQueryKey> CanonicalModuleSet::modules() const {
-  return moduleFields.asPtr();
-}
-
-bool CanonicalModuleSet::contains(const StableModuleQueryKey& module) const noexcept {
-  size_t lower = 0;
-  size_t upper = moduleFields.size();
-  while (lower < upper) {
-    const size_t middle = lower + ((upper - lower) / 2);
-    if (moduleFields[middle] < module) {
-      lower = middle + 1;
-    } else {
-      upper = middle;
-    }
-  }
-  return lower < moduleFields.size() && moduleFields[lower] == module;
-}
-
-zc::Array<uint8_t> CanonicalModuleSet::encodeCanonical() const {
-  identity::CanonicalEncoder encoder;
-  encoder.encodeSequenceSize(moduleFields.size());
-  for (const auto& module : moduleFields) { encodeModuleKey(encoder, module); }
-  return encoder.finish();
-}
-
-zc::Maybe<CanonicalModuleSet> CanonicalModuleSet::decodeCanonical(
-    zc::ArrayPtr<const uint8_t> bytes) {
-  identity::CanonicalDecoder decoder(bytes);
-  auto count = decoder.decodeSequenceSize(kMaximumActiveModules);
-  if (count == zc::none) { return zc::none; }
-  zc::Vector<StableModuleQueryKey> modules(ZC_REQUIRE_NONNULL(count));
-  ZC_IF_SOME(value, count) {
-    for (uint64_t index = 0; index < value; ++index) {
-      auto module = decodeModuleKey(decoder);
-      if (module == zc::none) { return zc::none; }
-      ZC_IF_SOME(moduleValue, module) {
-        if (modules.size() != 0 && !(modules.back() < moduleValue)) { return zc::none; }
-        modules.add(zc::mv(moduleValue));
-      }
-    }
-  }
-  if (!decoder.finished()) { return zc::none; }
-  return CanonicalModuleSet(zc::mv(modules));
-}
-
-ModuleDependencySet::ModuleDependencySet(zc::Maybe<CanonicalModuleSet>&& dependencies) noexcept
-    : dependencyFields(zc::mv(dependencies)) {}
-
-ModuleDependencySet ModuleDependencySet::missing() {
-  zc::Maybe<CanonicalModuleSet> noDependencies;
-  return ModuleDependencySet(zc::mv(noDependencies));
-}
-
-ModuleDependencySet ModuleDependencySet::present(CanonicalModuleSet&& dependencies) {
-  zc::Maybe<CanonicalModuleSet> retained(zc::mv(dependencies));
-  return ModuleDependencySet(zc::mv(retained));
-}
-
-ModuleDependencySet ModuleDependencySet::clone() const {
-  zc::Maybe<CanonicalModuleSet> dependencies;
-  ZC_IF_SOME(value, dependencyFields) { dependencies = value.clone(); }
-  return ModuleDependencySet(zc::mv(dependencies));
-}
-
-bool ModuleDependencySet::isMissing() const noexcept { return dependencyFields == zc::none; }
-
-zc::Maybe<const CanonicalModuleSet&> ModuleDependencySet::dependencies() const noexcept {
-  ZC_IF_SOME(value, dependencyFields) { return value; }
-  return zc::none;
-}
-
-zc::Array<uint8_t> ModuleDependencySet::encodeCanonical() const {
-  identity::CanonicalEncoder encoder;
-  ZC_IF_SOME(value, dependencyFields) {
-    encoder.encodeSome();
-    encoder.encodeByteString(value.encodeCanonical().asPtr());
-  } else {
-    encoder.encodeNone();
-  }
-  return encoder.finish();
-}
-
-zc::Maybe<ModuleDependencySet> ModuleDependencySet::decodeCanonical(
-    zc::ArrayPtr<const uint8_t> bytes) {
-  identity::CanonicalDecoder decoder(bytes);
-  auto presence = decoder.decodeBool();
-  if (presence == zc::none) { return zc::none; }
-  ZC_IF_SOME(value, presence) {
-    if (!value) {
-      if (!decoder.finished()) { return zc::none; }
-      return missing();
-    }
-    auto encodedSet = decoder.decodeByteString(kMaximumEncodedModuleSetBytes);
-    if (encodedSet == zc::none || !decoder.finished()) { return zc::none; }
-    ZC_IF_SOME(encoded, encodedSet) {
-      auto dependencies = CanonicalModuleSet::decodeCanonical(encoded.asPtr());
-      if (dependencies == zc::none) { return zc::none; }
-      ZC_IF_SOME(dependencyValue, dependencies) { return present(zc::mv(dependencyValue)); }
-    }
-  }
-  return zc::none;
-}
-
-ModuleBindingOrder::ModuleBindingOrder(zc::Vector<StableModuleQueryKey>&& modules) noexcept
-    : moduleFields(zc::mv(modules)) {}
-
-zc::Maybe<ModuleBindingOrder> ModuleBindingOrder::fromUnique(
-    zc::Vector<StableModuleQueryKey>&& modules) {
-  if (modules.size() > kMaximumActiveModules) { return zc::none; }
-  for (size_t index = 0; index < modules.size(); ++index) {
-    for (size_t prior = 0; prior < index; ++prior) {
-      if (modules[index] == modules[prior]) { return zc::none; }
-    }
-  }
-  return ModuleBindingOrder(zc::mv(modules));
-}
-
-ModuleBindingOrder ModuleBindingOrder::clone() const {
-  zc::Vector<StableModuleQueryKey> modules(moduleFields.size());
-  for (const auto& module : moduleFields) { modules.add(module.clone()); }
-  return ModuleBindingOrder(zc::mv(modules));
-}
-
-zc::ArrayPtr<const StableModuleQueryKey> ModuleBindingOrder::modules() const {
-  return moduleFields.asPtr();
-}
-
-zc::Array<uint8_t> ModuleBindingOrder::encodeCanonical() const {
-  identity::CanonicalEncoder encoder;
-  encoder.encodeSequenceSize(moduleFields.size());
-  for (const auto& module : moduleFields) { encodeModuleKey(encoder, module); }
-  return encoder.finish();
-}
-
-zc::Maybe<ModuleBindingOrder> ModuleBindingOrder::decodeCanonical(
-    zc::ArrayPtr<const uint8_t> bytes) {
-  identity::CanonicalDecoder decoder(bytes);
-  auto count = decoder.decodeSequenceSize(kMaximumActiveModules);
-  if (count == zc::none) { return zc::none; }
-  zc::Vector<StableModuleQueryKey> modules(ZC_REQUIRE_NONNULL(count));
-  ZC_IF_SOME(value, count) {
-    for (uint64_t index = 0; index < value; ++index) {
-      auto module = decodeModuleKey(decoder);
-      if (module == zc::none) { return zc::none; }
-      ZC_IF_SOME(moduleValue, module) { modules.add(zc::mv(moduleValue)); }
-    }
-  }
-  if (!decoder.finished()) { return zc::none; }
-  return fromUnique(zc::mv(modules));
-}
-
-ModuleBindingOrderFailure::ModuleBindingOrderFailure(
-    ModuleBindingOrderFailureKind kind, StableModuleQueryKey&& requester,
-    zc::Maybe<StableModuleQueryKey>&& dependency) noexcept
-    : kindField(kind), requesterField(zc::mv(requester)), dependencyField(zc::mv(dependency)) {}
-
-ModuleBindingOrderFailure ModuleBindingOrderFailure::withoutDependency(
-    ModuleBindingOrderFailureKind kind, const StableModuleQueryKey& requester) {
-  zc::Maybe<StableModuleQueryKey> noDependency;
-  return ModuleBindingOrderFailure(kind, requester.clone(), zc::mv(noDependency));
-}
-
-ModuleBindingOrderFailure ModuleBindingOrderFailure::withDependency(
-    ModuleBindingOrderFailureKind kind, const StableModuleQueryKey& requester,
-    const StableModuleQueryKey& dependency) {
-  zc::Maybe<StableModuleQueryKey> retained(dependency.clone());
-  return ModuleBindingOrderFailure(kind, requester.clone(), zc::mv(retained));
-}
-
-ModuleBindingOrderFailure ModuleBindingOrderFailure::missingDependencies(
-    const StableModuleQueryKey& requester) {
-  return withoutDependency(ModuleBindingOrderFailureKind::MissingDependencies, requester);
-}
-
-ModuleBindingOrderFailure ModuleBindingOrderFailure::dependencyOutsideActiveSet(
-    const StableModuleQueryKey& requester, const StableModuleQueryKey& dependency) {
-  return withDependency(ModuleBindingOrderFailureKind::DependencyOutsideActiveSet, requester,
-                        dependency);
-}
-
-ModuleBindingOrderFailure ModuleBindingOrderFailure::selfDependency(
-    const StableModuleQueryKey& requester) {
-  return withDependency(ModuleBindingOrderFailureKind::SelfDependency, requester, requester);
-}
-
-ModuleBindingOrderFailure ModuleBindingOrderFailure::cycle(const StableModuleQueryKey& requester) {
-  return withoutDependency(ModuleBindingOrderFailureKind::Cycle, requester);
-}
-
-ModuleBindingOrderFailure ModuleBindingOrderFailure::clone() const {
-  zc::Maybe<StableModuleQueryKey> dependency;
-  ZC_IF_SOME(value, dependencyField) { dependency = value.clone(); }
-  return ModuleBindingOrderFailure(kindField, requesterField.clone(), zc::mv(dependency));
-}
-
-ModuleBindingOrderFailureKind ModuleBindingOrderFailure::kind() const noexcept { return kindField; }
-
-const StableModuleQueryKey& ModuleBindingOrderFailure::requester() const noexcept {
-  return requesterField;
-}
-
-zc::Maybe<const StableModuleQueryKey&> ModuleBindingOrderFailure::dependency() const noexcept {
-  ZC_IF_SOME(value, dependencyField) { return value; }
-  return zc::none;
-}
-
-zc::Array<uint8_t> ModuleBindingOrderFailure::encode() const {
-  identity::CanonicalEncoder encoder;
-  encoder.encodeUint8(static_cast<uint8_t>(kindField));
-  encodeModuleKey(encoder, requesterField);
-  ZC_IF_SOME(value, dependencyField) {
-    encoder.encodeSome();
-    encodeModuleKey(encoder, value);
-  } else {
-    encoder.encodeNone();
-  }
-  return encoder.finish();
-}
-
-zc::Maybe<ModuleBindingOrderFailure> ModuleBindingOrderFailure::decode(
-    zc::ArrayPtr<const uint8_t> bytes) {
-  identity::CanonicalDecoder decoder(bytes);
-  auto tag = decoder.decodeUint8();
-  auto requester = decodeModuleKey(decoder);
-  auto hasDependency = decoder.decodeBool();
-  if (tag == zc::none || requester == zc::none || hasDependency == zc::none) { return zc::none; }
-  zc::Maybe<StableModuleQueryKey> dependency;
-  ZC_IF_SOME(present, hasDependency) {
-    if (present) {
-      auto value = decodeModuleKey(decoder);
-      if (value == zc::none) { return zc::none; }
-      ZC_IF_SOME(decoded, value) { dependency = zc::mv(decoded); }
-    }
-  }
-  if (!decoder.finished()) { return zc::none; }
-  ZC_IF_SOME(tagValue, tag) {
-    const auto kind = static_cast<ModuleBindingOrderFailureKind>(tagValue);
-    const bool needsDependency =
-        kind == ModuleBindingOrderFailureKind::DependencyOutsideActiveSet ||
-        kind == ModuleBindingOrderFailureKind::SelfDependency;
-    if ((kind != ModuleBindingOrderFailureKind::MissingDependencies &&
-         kind != ModuleBindingOrderFailureKind::DependencyOutsideActiveSet &&
-         kind != ModuleBindingOrderFailureKind::SelfDependency &&
-         kind != ModuleBindingOrderFailureKind::Cycle) ||
-        needsDependency != (dependency != zc::none)) {
-      return zc::none;
-    }
-    ZC_IF_SOME(requesterValue, requester) {
-      if (kind == ModuleBindingOrderFailureKind::SelfDependency) {
-        ZC_IF_SOME(dependencyValue, dependency) {
-          if (requesterValue != dependencyValue) { return zc::none; }
-        }
-      } else if (kind == ModuleBindingOrderFailureKind::DependencyOutsideActiveSet) {
-        ZC_IF_SOME(dependencyValue, dependency) {
-          if (requesterValue == dependencyValue) { return zc::none; }
-        }
-      }
-      return ModuleBindingOrderFailure(kind, zc::mv(requesterValue), zc::mv(dependency));
-    }
-  }
-  return zc::none;
-}
-
-bool ModuleBindingOrderFailure::sameAs(const ModuleBindingOrderFailure& other) const {
-  return encode().asPtr() == other.encode().asPtr();
-}
-
-zc::StringPtr ActiveModulesInput::domain() { return "zom.query.active-modules"_zc; }
-
-query::QueryKindContract ActiveModulesInput::contract() {
+query::QueryKindContract UserPackageActiveSourcesInput::contract() {
   return lowDurabilityInputContract(domain());
 }
 
-zc::Array<uint8_t> ActiveModulesInput::encodeKey(const Key& key) {
+zc::Array<uint8_t> UserPackageActiveSourcesInput::encodeKey(const Key& key) {
   return zc::heapArray<uint8_t>(key.canonicalCrateBytes());
 }
 
-zc::Maybe<ActiveModulesInput::Key> ActiveModulesInput::decodeKey(
+zc::Maybe<UserPackageActiveSourcesInput::Key> UserPackageActiveSourcesInput::decodeKey(
     zc::ArrayPtr<const uint8_t> bytes) {
   return StableCrateQueryKey::decodeBounded(bytes);
 }
 
-zc::Array<uint8_t> ActiveModulesInput::encodeValue(const Value& value) {
+zc::Array<uint8_t> UserPackageActiveSourcesInput::encodeValue(const Value& value) {
   return value.encodeCanonical();
 }
 
-zc::Maybe<ActiveModulesInput::Value> ActiveModulesInput::decodeValue(
-    zc::ArrayPtr<const uint8_t> bytes) {
-  auto modules = CanonicalModuleSet::decodeCanonical(bytes);
-  if (modules == zc::none || ZC_ASSERT_NONNULL(modules).modules().size() == 0) { return zc::none; }
-  return zc::mv(ZC_ASSERT_NONNULL(modules));
-}
-
-zc::StringPtr ActiveSourcesInput::domain() { return "zom.query.active-sources"_zc; }
-
-query::QueryKindContract ActiveSourcesInput::contract() {
-  return lowDurabilityInputContract(domain());
-}
-
-zc::Array<uint8_t> ActiveSourcesInput::encodeKey(const Key& key) {
-  return zc::heapArray<uint8_t>(key.canonicalCrateBytes());
-}
-
-zc::Maybe<ActiveSourcesInput::Key> ActiveSourcesInput::decodeKey(
-    zc::ArrayPtr<const uint8_t> bytes) {
-  return StableCrateQueryKey::decodeBounded(bytes);
-}
-
-zc::Array<uint8_t> ActiveSourcesInput::encodeValue(const Value& value) {
-  return value.encodeCanonical();
-}
-
-zc::Maybe<ActiveSourcesInput::Value> ActiveSourcesInput::decodeValue(
+zc::Maybe<UserPackageActiveSourcesInput::Value> UserPackageActiveSourcesInput::decodeValue(
     zc::ArrayPtr<const uint8_t> bytes) {
   return CanonicalSourceSet::decodeCanonical(bytes);
 }
 
-zc::StringPtr ActiveCratesInput::domain() { return "zom.query.active-crates"_zc; }
+zc::StringPtr ActiveSourcesQuery::domain() { return "zom.query.active-sources"_zc; }
 
-query::QueryKindContract ActiveCratesInput::contract() {
-  return inputContract(domain(), query::Durability::Medium);
+query::QueryKindContract ActiveSourcesQuery::contract() { return derivedContract(domain()); }
+
+zc::Array<uint8_t> ActiveSourcesQuery::encodeKey(const Key& key) {
+  return zc::heapArray<uint8_t>(key.canonicalCrateBytes());
 }
 
-zc::Array<uint8_t> ActiveCratesInput::encodeKey(const Key& key) { return key.encodeCanonical(); }
-
-zc::Maybe<ActiveCratesInput::Key> ActiveCratesInput::decodeKey(zc::ArrayPtr<const uint8_t> bytes) {
-  return PackageRootSetQueryKey::decodeCanonical(bytes);
+zc::Maybe<ActiveSourcesQuery::Key> ActiveSourcesQuery::decodeKey(
+    zc::ArrayPtr<const uint8_t> bytes) {
+  return StableCrateQueryKey::decodeBounded(bytes);
 }
 
-zc::Array<uint8_t> ActiveCratesInput::encodeValue(const Value& value) {
+zc::Array<uint8_t> ActiveSourcesQuery::encodeValue(const Value& value) {
   return value.encodeCanonical();
 }
 
-zc::Maybe<ActiveCratesInput::Value> ActiveCratesInput::decodeValue(
+zc::Maybe<ActiveSourcesQuery::Value> ActiveSourcesQuery::decodeValue(
+    zc::ArrayPtr<const uint8_t> bytes) {
+  return CanonicalSourceSet::decodeCanonical(bytes);
+}
+
+query::TypedQueryResult<ActiveSourcesQuery::Value> ActiveSourcesQuery::provide(
+    query::QueryContext& context, const Key& key) {
+  identity::CanonicalDecoder decoder(key.canonicalCrateBytes());
+  auto crate = identity::CrateKey::decodeCanonical(decoder);
+  if (crate == zc::none || !decoder.finished()) {
+    return query::TypedQueryResult<Value>::runtimeFailure(
+        query::QueryRuntimeFailure::ProviderRejected);
+  }
+  if (ZC_ASSERT_NONNULL(crate).unit().kind() == identity::CompilationUnitKind::UserPackage) {
+    auto explicitSources = context.get<UserPackageActiveSourcesInput>(key);
+    if (explicitSources.isRuntimeFailure()) {
+      return query::TypedQueryResult<Value>::runtimeFailure(explicitSources.runtimeFailure());
+    }
+    if (explicitSources.kind() != query::QueryValueKind::Value) {
+      return query::TypedQueryResult<Value>::runtimeFailure(
+          query::QueryRuntimeFailure::ProviderRejected);
+    }
+    return query::TypedQueryResult<Value>::value(explicitSources.value().clone());
+  }
+  if (ZC_ASSERT_NONNULL(crate).unit().kind() != identity::CompilationUnitKind::Toolchain ||
+      ZC_ASSERT_NONNULL(crate).unit().toolchain().component() !=
+          identity::ToolchainComponent::Core) {
+    return query::TypedQueryResult<Value>::runtimeFailure(
+        query::QueryRuntimeFailure::ProviderRejected);
+  }
+
+  auto distribution =
+      context.get<core_library_query::CoreDistributionInput>(identity::ToolchainUnitKey::core());
+  if (distribution.isRuntimeFailure()) {
+    return query::TypedQueryResult<Value>::runtimeFailure(distribution.runtimeFailure());
+  }
+  if (distribution.kind() != query::QueryValueKind::Value ||
+      ZC_ASSERT_NONNULL(crate).semanticOptions().editionYear() !=
+          distribution.value().record().editionYear()) {
+    return query::TypedQueryResult<Value>::runtimeFailure(
+        query::QueryRuntimeFailure::ProviderRejected);
+  }
+
+  zc::Vector<identity::source_query::StableSourceQueryKey> sources;
+  for (const auto& file : distribution.value().record().files()) {
+    auto source =
+        identity::SourceFileKey::from(ZC_ASSERT_NONNULL(crate).clone(),
+                                      identity::SourceOriginKey::coreFile(
+                                          identity::ToolchainUnitKey::core(), file.path().clone()));
+    auto stable = identity::source_query::StableSourceQueryKey::fromVerified(source);
+    if (stable == zc::none) {
+      return query::TypedQueryResult<Value>::runtimeFailure(
+          query::QueryRuntimeFailure::ProviderRejected);
+    }
+    sources.add(zc::mv(ZC_ASSERT_NONNULL(stable)));
+  }
+  auto snapshots =
+      context.getParallel<identity::source_query::SourceSnapshotInput>(sources.asPtr());
+  if (snapshots.size() != sources.size()) {
+    return query::TypedQueryResult<Value>::runtimeFailure(
+        query::QueryRuntimeFailure::ProviderRejected);
+  }
+  for (size_t index = 0; index < snapshots.size(); ++index) {
+    if (snapshots[index].isRuntimeFailure()) {
+      return query::TypedQueryResult<Value>::runtimeFailure(snapshots[index].runtimeFailure());
+    }
+    if (snapshots[index].kind() != query::QueryValueKind::Value ||
+        snapshots[index].value().contentDigest() !=
+            distribution.value().record().files()[index].digest()) {
+      return query::TypedQueryResult<Value>::runtimeFailure(
+          query::QueryRuntimeFailure::ProviderRejected);
+    }
+  }
+  auto result = CanonicalSourceSet::from(zc::mv(sources));
+  if (result == zc::none) {
+    return query::TypedQueryResult<Value>::runtimeFailure(
+        query::QueryRuntimeFailure::ProviderRejected);
+  }
+  return query::TypedQueryResult<Value>::value(zc::mv(ZC_ASSERT_NONNULL(result)));
+}
+
+bool ActiveSourcesQuery::verify(query::QueryContext& context, const Key& key,
+                                const query::TypedQueryResult<Value>& result) {
+  if (result.isRuntimeFailure() || result.kind() != query::QueryValueKind::Value) { return false; }
+  identity::CanonicalDecoder decoder(key.canonicalCrateBytes());
+  auto crate = identity::CrateKey::decodeCanonical(decoder);
+  if (crate == zc::none || !decoder.finished()) { return false; }
+  if (ZC_ASSERT_NONNULL(crate).unit().kind() == identity::CompilationUnitKind::UserPackage) {
+    auto explicitSources = context.get<UserPackageActiveSourcesInput>(key);
+    return !explicitSources.isRuntimeFailure() &&
+           explicitSources.kind() == query::QueryValueKind::Value &&
+           explicitSources.value() == result.value();
+  }
+  if (ZC_ASSERT_NONNULL(crate).unit().kind() != identity::CompilationUnitKind::Toolchain ||
+      ZC_ASSERT_NONNULL(crate).unit().toolchain().component() !=
+          identity::ToolchainComponent::Core) {
+    return false;
+  }
+
+  auto distribution =
+      context.get<core_library_query::CoreDistributionInput>(identity::ToolchainUnitKey::core());
+  if (distribution.isRuntimeFailure() || distribution.kind() != query::QueryValueKind::Value ||
+      ZC_ASSERT_NONNULL(crate).semanticOptions().editionYear() !=
+          distribution.value().record().editionYear()) {
+    return false;
+  }
+  zc::Vector<identity::source_query::StableSourceQueryKey> sources;
+  for (const auto& file : distribution.value().record().files()) {
+    auto source =
+        identity::SourceFileKey::from(ZC_ASSERT_NONNULL(crate).clone(),
+                                      identity::SourceOriginKey::coreFile(
+                                          identity::ToolchainUnitKey::core(), file.path().clone()));
+    auto stable = identity::source_query::StableSourceQueryKey::fromVerified(source);
+    if (stable == zc::none) { return false; }
+    sources.add(zc::mv(ZC_ASSERT_NONNULL(stable)));
+  }
+  auto snapshots =
+      context.getParallel<identity::source_query::SourceSnapshotInput>(sources.asPtr());
+  if (snapshots.size() != sources.size()) { return false; }
+  for (size_t index = 0; index < snapshots.size(); ++index) {
+    if (snapshots[index].isRuntimeFailure() ||
+        snapshots[index].kind() != query::QueryValueKind::Value ||
+        snapshots[index].value().contentDigest() !=
+            distribution.value().record().files()[index].digest()) {
+      return false;
+    }
+  }
+  auto expected = CanonicalSourceSet::from(zc::mv(sources));
+  return expected != zc::none && ZC_ASSERT_NONNULL(expected) == result.value();
+}
+
+zc::StringPtr ActiveCratesQuery::domain() { return "zom.query.active-crates"_zc; }
+
+query::QueryKindContract ActiveCratesQuery::contract() { return derivedContract(domain()); }
+
+zc::Array<uint8_t> ActiveCratesQuery::encodeKey(const Key& key) { return key.encodeCanonical(); }
+
+zc::Maybe<ActiveCratesQuery::Key> ActiveCratesQuery::decodeKey(zc::ArrayPtr<const uint8_t> bytes) {
+  return CompilationRootSetQueryKey::decodeCanonical(bytes);
+}
+
+zc::Array<uint8_t> ActiveCratesQuery::encodeValue(const Value& value) {
+  return value.encodeCanonical();
+}
+
+zc::Maybe<ActiveCratesQuery::Value> ActiveCratesQuery::decodeValue(
     zc::ArrayPtr<const uint8_t> bytes) {
   return CanonicalCrateSet::decodeCanonical(bytes);
 }
 
-zc::StringPtr ModuleDependenciesInput::domain() { return "zom.driver.module-dependencies"_zc; }
-
-query::QueryKindContract ModuleDependenciesInput::contract() {
-  return lowDurabilityInputContract(domain());
-}
-
-zc::Array<uint8_t> ModuleDependenciesInput::encodeKey(const Key& key) {
-  return zc::heapArray<uint8_t>(key.canonicalModuleBytes());
-}
-
-zc::Maybe<ModuleDependenciesInput::Key> ModuleDependenciesInput::decodeKey(
-    zc::ArrayPtr<const uint8_t> bytes) {
-  return StableModuleQueryKey::decodeBounded(bytes);
-}
-
-zc::Array<uint8_t> ModuleDependenciesInput::encodeValue(const Value& value) {
-  return value.encodeCanonical();
-}
-
-zc::Maybe<ModuleDependenciesInput::Value> ModuleDependenciesInput::decodeValue(
-    zc::ArrayPtr<const uint8_t> bytes) {
-  return ModuleDependencySet::decodeCanonical(bytes);
-}
-
-zc::StringPtr SelectedModuleSourceInput::domain() { return "zom.query.selected-module-source"_zc; }
-
-query::QueryKindContract SelectedModuleSourceInput::contract() {
-  return lowDurabilityInputContract(domain());
-}
-
-zc::Array<uint8_t> SelectedModuleSourceInput::encodeKey(const Key& key) {
-  return zc::heapArray<uint8_t>(key.canonicalModuleBytes());
-}
-
-zc::Maybe<SelectedModuleSourceInput::Key> SelectedModuleSourceInput::decodeKey(
-    zc::ArrayPtr<const uint8_t> bytes) {
-  return StableModuleQueryKey::decodeBounded(bytes);
-}
-
-zc::Array<uint8_t> SelectedModuleSourceInput::encodeValue(const Value& value) {
-  return zc::heapArray<uint8_t>(value.canonicalSourceBytes());
-}
-
-zc::Maybe<SelectedModuleSourceInput::Value> SelectedModuleSourceInput::decodeValue(
-    zc::ArrayPtr<const uint8_t> bytes) {
-  return SelectedModuleSource::decodeBounded(bytes);
-}
-
-bool verifySelectedSourceSnapshotClosure(
-    zc::ArrayPtr<const SelectedModuleSource> selectedSources,
-    zc::ArrayPtr<const identity::source_query::StableSourceQueryKey> snapshotSources) {
-  for (const auto& selected : selectedSources) {
-    size_t occurrences = 0;
-    for (const auto& snapshot : snapshotSources) {
-      if (selected.canonicalSourceBytes() == snapshot.canonicalSourceBytes()) { ++occurrences; }
-    }
-    if (occurrences != 1) { return false; }
-  }
-  return true;
-}
-
-zc::StringPtr ModuleBindingOrderQuery::domain() { return "zom.driver.module-binding-order"_zc; }
-
-query::QueryKindContract ModuleBindingOrderQuery::contract() { return derivedContract(domain()); }
-
-zc::Array<uint8_t> ModuleBindingOrderQuery::encodeKey(const Key& key) {
-  return key.encodeCanonical();
-}
-
-zc::Maybe<ModuleBindingOrderQuery::Key> ModuleBindingOrderQuery::decodeKey(
-    zc::ArrayPtr<const uint8_t> bytes) {
-  return PackageRootSetQueryKey::decodeCanonical(bytes);
-}
-
-zc::Array<uint8_t> ModuleBindingOrderQuery::encodeValue(const Value& value) {
-  return value.encodeCanonical();
-}
-
-zc::Maybe<ModuleBindingOrderQuery::Value> ModuleBindingOrderQuery::decodeValue(
-    zc::ArrayPtr<const uint8_t> bytes) {
-  return ModuleBindingOrder::decodeCanonical(bytes);
-}
-
-query::TypedQueryResult<ModuleBindingOrderQuery::Value> ModuleBindingOrderQuery::provide(
+query::TypedQueryResult<ActiveCratesQuery::Value> ActiveCratesQuery::provide(
     query::QueryContext& context, const Key& key) {
-  auto activeCratesResult = context.get<ActiveCratesInput>(key);
-  if (activeCratesResult.isRuntimeFailure()) {
-    return query::TypedQueryResult<Value>::runtimeFailure(activeCratesResult.runtimeFailure());
-  }
-  if (activeCratesResult.kind() != query::QueryValueKind::Value) {
-    return query::TypedQueryResult<Value>::runtimeFailure(
-        query::QueryRuntimeFailure::ProviderRejected);
-  }
-  const auto& activeCrates = activeCratesResult.value();
-  auto moduleSetResults = context.getParallel<ActiveModulesInput>(activeCrates.crates());
-  if (moduleSetResults.size() != activeCrates.crates().size()) {
-    return query::TypedQueryResult<Value>::runtimeFailure(
-        query::QueryRuntimeFailure::ProviderRejected);
-  }
-  size_t moduleCount = 0;
-  for (const auto& result : moduleSetResults) {
-    if (result.isRuntimeFailure()) {
-      return query::TypedQueryResult<Value>::runtimeFailure(result.runtimeFailure());
+  zc::Vector<StablePackageQueryKey> packageRoots;
+  zc::Vector<StableCrateQueryKey> crates;
+  zc::Vector<StableCrateQueryKey> coreCrates;
+  for (const auto& root : key.roots()) {
+    switch (root.kind()) {
+      case CompilationRootKind::UserPackage:
+        packageRoots.add(root.userPackage().clone());
+        break;
+      case CompilationRootKind::ToolchainCore:
+        coreCrates.add(root.toolchainCore().clone());
+        break;
     }
-    if (result.kind() != query::QueryValueKind::Value) {
+  }
+
+  if (!packageRoots.empty()) {
+    auto packageKey = PackageRootSetKey::from(zc::mv(packageRoots));
+    if (packageKey == zc::none) {
       return query::TypedQueryResult<Value>::runtimeFailure(
           query::QueryRuntimeFailure::ProviderRejected);
     }
-    moduleCount += result.value().modules().size();
+    auto packageGraph = context.get<PackageGraphInput>(ZC_ASSERT_NONNULL(packageKey));
+    if (packageGraph.isRuntimeFailure()) {
+      return query::TypedQueryResult<Value>::runtimeFailure(packageGraph.runtimeFailure());
+    }
+    if (packageGraph.kind() != query::QueryValueKind::Value) {
+      return query::TypedQueryResult<Value>::runtimeFailure(
+          query::QueryRuntimeFailure::ProviderRejected);
+    }
+    for (const auto& crate : packageGraph.value().crates()) { crates.add(crate.clone()); }
   }
-  zc::Vector<StableModuleQueryKey> activeModuleValues(moduleCount);
-  for (size_t crateIndex = 0; crateIndex < activeCrates.crates().size(); ++crateIndex) {
-    for (const auto& module : moduleSetResults[crateIndex].value().modules()) {
-      if (!moduleBelongsToCrate(module, activeCrates.crates()[crateIndex])) {
+
+  if (!coreCrates.empty()) {
+    auto distribution =
+        context.get<core_library_query::CoreDistributionInput>(identity::ToolchainUnitKey::core());
+    if (distribution.isRuntimeFailure()) {
+      return query::TypedQueryResult<Value>::runtimeFailure(distribution.runtimeFailure());
+    }
+    if (distribution.kind() != query::QueryValueKind::Value) {
+      return query::TypedQueryResult<Value>::runtimeFailure(
+          query::QueryRuntimeFailure::ProviderRejected);
+    }
+    for (const auto& stable : coreCrates) {
+      identity::CanonicalDecoder decoder(stable.canonicalCrateBytes());
+      auto crate = identity::CrateKey::decodeCanonical(decoder);
+      if (crate == zc::none || !decoder.finished() ||
+          ZC_ASSERT_NONNULL(crate).semanticOptions().editionYear() !=
+              distribution.value().record().editionYear()) {
         return query::TypedQueryResult<Value>::runtimeFailure(
             query::QueryRuntimeFailure::ProviderRejected);
       }
-      activeModuleValues.add(module.clone());
+      crates.add(stable.clone());
     }
   }
-  auto canonicalActive = CanonicalModuleSet::from(zc::mv(activeModuleValues));
-  if (canonicalActive == zc::none ||
-      ZC_ASSERT_NONNULL(canonicalActive).modules().size() != moduleCount) {
+
+  auto result = CanonicalCrateSet::from(zc::mv(crates));
+  if (result == zc::none) {
     return query::TypedQueryResult<Value>::runtimeFailure(
         query::QueryRuntimeFailure::ProviderRejected);
   }
-  const auto& active = ZC_ASSERT_NONNULL(canonicalActive);
-  auto dependencyResults = context.getParallel<ModuleDependenciesInput>(active.modules());
-  if (dependencyResults.size() != active.modules().size()) {
-    return query::TypedQueryResult<Value>::runtimeFailure(
-        query::QueryRuntimeFailure::ProviderRejected);
-  }
-  for (const auto& result : dependencyResults) {
-    if (result.isRuntimeFailure()) {
-      return query::TypedQueryResult<Value>::runtimeFailure(result.runtimeFailure());
-    }
-    if (result.kind() != query::QueryValueKind::Value) {
-      return query::TypedQueryResult<Value>::runtimeFailure(
-          query::QueryRuntimeFailure::ProviderRejected);
-    }
-  }
-  zc::Vector<TopologyNode> topology(active.modules().size());
-  for (size_t index = 0; index < active.modules().size(); ++index) {
-    topology.add(
-        TopologyNode{active.modules()[index].clone(), dependencyResults[index].value().clone()});
-  }
-  ZC_IF_SOME(failure, providerStructuralFailure(topology.asPtr(), active)) {
-    return query::TypedQueryResult<Value>::semanticFailure(failure.encode());
-  }
-  return providerOrder(topology.asPtr());
+  return query::TypedQueryResult<Value>::value(zc::mv(ZC_ASSERT_NONNULL(result)));
 }
 
-bool ModuleBindingOrderQuery::verify(query::QueryContext& context, const Key& key,
-                                     const query::TypedQueryResult<Value>& result) {
-  auto activeCratesResult = context.get<ActiveCratesInput>(key);
-  if (activeCratesResult.isRuntimeFailure() ||
-      activeCratesResult.kind() != query::QueryValueKind::Value) {
-    return false;
-  }
-  const auto& activeCrates = activeCratesResult.value();
-  auto moduleSetResults = context.getParallel<ActiveModulesInput>(activeCrates.crates());
-  if (moduleSetResults.size() != activeCrates.crates().size()) { return false; }
-  size_t moduleCount = 0;
-  zc::Vector<StableModuleQueryKey> activeModuleValues;
-  for (size_t crateIndex = 0; crateIndex < activeCrates.crates().size(); ++crateIndex) {
-    const auto& moduleSet = moduleSetResults[crateIndex];
-    if (moduleSet.isRuntimeFailure() || moduleSet.kind() != query::QueryValueKind::Value) {
+bool ActiveCratesQuery::verify(query::QueryContext& context, const Key& key,
+                               const query::TypedQueryResult<Value>& result) {
+  if (result.isRuntimeFailure() || result.kind() != query::QueryValueKind::Value) { return false; }
+
+  zc::Vector<StablePackageQueryKey> packageRoots;
+  zc::Vector<StableCrateQueryKey> expectedCrates;
+  zc::Vector<StableCrateQueryKey> coreCrates;
+  for (const auto& root : key.roots()) {
+    if (root.kind() == CompilationRootKind::UserPackage) {
+      packageRoots.add(root.userPackage().clone());
+    } else if (root.kind() == CompilationRootKind::ToolchainCore) {
+      coreCrates.add(root.toolchainCore().clone());
+    } else {
       return false;
     }
-    moduleCount += moduleSet.value().modules().size();
-    for (const auto& module : moduleSet.value().modules()) {
-      if (!moduleBelongsToCrate(module, activeCrates.crates()[crateIndex])) { return false; }
-      for (const auto& prior : activeModuleValues) {
-        if (prior == module) { return false; }
-      }
-      activeModuleValues.add(module.clone());
-    }
-  }
-  if (activeModuleValues.size() != moduleCount) { return false; }
-  auto canonicalActive = CanonicalModuleSet::from(zc::mv(activeModuleValues));
-  if (canonicalActive == zc::none) { return false; }
-  const auto& active = ZC_ASSERT_NONNULL(canonicalActive);
-  auto dependencyResults = context.getParallel<ModuleDependenciesInput>(active.modules());
-  if (dependencyResults.size() != active.modules().size()) { return false; }
-  for (const auto& result : dependencyResults) {
-    if (result.isRuntimeFailure() || result.kind() != query::QueryValueKind::Value) {
-      return false;
-    }
-  }
-  zc::Vector<TopologyNode> topology(active.modules().size());
-  for (size_t index = 0; index < active.modules().size(); ++index) {
-    topology.add(
-        TopologyNode{active.modules()[index].clone(), dependencyResults[index].value().clone()});
   }
 
-  auto expectedFailure = verifierExpectedFailure(topology.asPtr());
-  if (expectedFailure != zc::none) {
-    if (result.kind() != query::QueryValueKind::SemanticFailure) { return false; }
-    auto retainedFailure = ModuleBindingOrderFailure::decode(result.semanticFailureBytes());
-    if (retainedFailure == zc::none) { return false; }
-    ZC_IF_SOME(expected, expectedFailure) {
-      ZC_IF_SOME(retained, retainedFailure) { return expected.sameAs(retained); }
+  if (!packageRoots.empty()) {
+    auto packageKey = PackageRootSetKey::from(zc::mv(packageRoots));
+    if (packageKey == zc::none) { return false; }
+    auto packageGraph = context.get<PackageGraphInput>(ZC_ASSERT_NONNULL(packageKey));
+    if (packageGraph.isRuntimeFailure() || packageGraph.kind() != query::QueryValueKind::Value) {
+      return false;
     }
-    return false;
+    for (const auto& crate : packageGraph.value().crates()) { expectedCrates.add(crate.clone()); }
   }
-  return result.kind() == query::QueryValueKind::Value &&
-         verifierAcceptsOrder(topology.asPtr(), result.value());
+
+  if (!coreCrates.empty()) {
+    auto distribution =
+        context.get<core_library_query::CoreDistributionInput>(identity::ToolchainUnitKey::core());
+    if (distribution.isRuntimeFailure() || distribution.kind() != query::QueryValueKind::Value) {
+      return false;
+    }
+    for (const auto& stable : coreCrates) {
+      identity::CanonicalDecoder decoder(stable.canonicalCrateBytes());
+      auto crate = identity::CrateKey::decodeCanonical(decoder);
+      if (crate == zc::none || !decoder.finished() ||
+          ZC_ASSERT_NONNULL(crate).semanticOptions().editionYear() !=
+              distribution.value().record().editionYear()) {
+        return false;
+      }
+      expectedCrates.add(stable.clone());
+    }
+  }
+
+  auto expected = CanonicalCrateSet::from(zc::mv(expectedCrates));
+  return expected != zc::none && ZC_ASSERT_NONNULL(expected) == result.value();
 }
 
 bool registerIncrementalBindingQueryAdapter(query::QueryDatabase& database) {
@@ -1246,32 +954,38 @@ bool registerIncrementalBindingQueryAdapter(query::QueryDatabase& database) {
   if (!incremental_module_resolution_query::registerIncrementalModuleResolutionQueries(database)) {
     return false;
   }
-  if (database.registerInputKind<ActiveModulesInput>() == zc::none) { return false; }
-  if (database.registerInputKind<ActiveSourcesInput>() == zc::none) { return false; }
+  if (database.registerInputKind<UserPackageActiveSourcesInput>() == zc::none) { return false; }
+  if (database.registerDerivedKind<ActiveSourcesQuery>() == zc::none) { return false; }
   if (!identity::source_query::registerSourceQueryInputs(database)) { return false; }
   if (!parser::registerParseSourceQuery(database)) { return false; }
-  if (database.registerInputKind<ActiveCratesInput>() == zc::none) { return false; }
-  if (database.registerInputKind<ModuleDependenciesInput>() == zc::none) { return false; }
-  if (database.registerInputKind<SelectedModuleSourceInput>() == zc::none) { return false; }
+  if (database.registerDerivedKind<ActiveCratesQuery>() == zc::none) { return false; }
   if (!registerActiveDefinitionAuthorityInputs(database)) { return false; }
   if (database.registerDerivedKind<NamedDefinitionInventoryQuery>() == zc::none) { return false; }
   if (database.registerDerivedKind<NamedImplementationInventoryQuery>() == zc::none) {
     return false;
   }
-  if (database.registerDerivedKind<RevisionLocalDefinitionSitesQuery>() == zc::none) {
+  if (database.registerRevisionLocalCapabilityKind<RevisionLocalDefinitionSitesQuery>() ==
+      zc::none) {
     return false;
   }
-  if (database.registerDerivedKind<RevisionLocalImplementationSitesQuery>() == zc::none) {
+  if (database.registerRevisionLocalCapabilityKind<RevisionLocalImplementationSitesQuery>() ==
+      zc::none) {
     return false;
   }
   if (database.registerDerivedKind<NamedItemSyntaxQuery>() == zc::none) { return false; }
-  if (database.registerDerivedKind<NamedItemProvenanceQuery>() == zc::none) { return false; }
+  if (database.registerRevisionLocalCapabilityKind<NamedItemProvenanceQuery>() == zc::none) {
+    return false;
+  }
   if (database.registerDerivedKind<ModuleBodySyntaxQuery>() == zc::none) { return false; }
-  if (database.registerDerivedKind<ModuleBodyProvenanceQuery>() == zc::none) { return false; }
+  if (database.registerRevisionLocalCapabilityKind<ModuleBodyProvenanceQuery>() == zc::none) {
+    return false;
+  }
   if (database.registerDerivedKind<ModuleBodyOwnersQuery>() == zc::none) { return false; }
   if (database.registerDerivedKind<OwnerBodySyntaxQuery>() == zc::none) { return false; }
-  if (database.registerDerivedKind<OwnerBodyProvenanceQuery>() == zc::none) { return false; }
-  return database.registerDerivedKind<ModuleBindingOrderQuery>() != zc::none;
+  if (database.registerRevisionLocalCapabilityKind<OwnerBodyProvenanceQuery>() == zc::none) {
+    return false;
+  }
+  return true;
 }
 
 }  // namespace zomlang::compiler::driver::incremental_binding_query

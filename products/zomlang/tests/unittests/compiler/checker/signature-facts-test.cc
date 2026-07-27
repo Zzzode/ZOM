@@ -112,10 +112,11 @@ void expectImplKeyDecodeRejected(zc::Array<uint8_t>&& bytes,
 
 identity::SemanticContextFingerprint fingerprint(
     const identity::SemanticIdentityRegistrySet& registries) {
+  zc::Vector<identity::ToolchainSemanticContextInput> toolchainInputs;
   zc::Vector<identity::PackageDependencyEdgeKey> packageEdges;
   zc::Vector<identity::CrateDependencyEdgeKey> crateEdges;
-  auto result = identity::SemanticContextFingerprint::compute(registries, packageEdges.asPtr(),
-                                                              crateEdges.asPtr());
+  auto result = identity::SemanticContextFingerprint::compute(
+      registries, toolchainInputs.asPtr(), packageEdges.asPtr(), crateEdges.asPtr());
   ZC_IF_SOME(value, result) { return zc::mv(value); }
   ZC_FAIL_REQUIRE("invalid signature-facts fingerprint fixture");
 }
@@ -134,10 +135,10 @@ binder::ParsedModuleReceipt parsedReceipt(const identity::SemanticIdentityRegist
 
 binder::ExportSurfaceRevision surfaceRevision(const identity::SemanticContextFingerprint& context) {
   const auto moduleBytes = module().encode();
-  const auto packageBytes = package().encode();
+  const auto compilationUnitBytes = userUnit().encode();
   const uint8_t emptyMap[] = {0, 0, 0, 0, 0, 0, 0, 0};
   auto result = binder::ExportSurfaceRevision::computeFramed(
-      context.digest(), moduleBytes.asPtr(), packageBytes.asPtr(), emptyMap, emptyMap);
+      context.digest(), moduleBytes.asPtr(), compilationUnitBytes.asPtr(), emptyMap, emptyMap);
   ZC_IF_SOME(value, result) { return value; }
   ZC_FAIL_REQUIRE("invalid signature-facts surface revision fixture");
 }
@@ -219,8 +220,9 @@ public:
       semanticTypes = zc::heap<type::SemanticTypeStore>(zc::mv(value), *registries);
     }
 
-    ZC_REQUIRE(registries->collectPackage(package()) == identity::FrozenRegistryFailure::None);
-    ZC_REQUIRE(registries->freezePackages() == identity::FrozenRegistryFailure::None);
+    ZC_REQUIRE(registries->collectCompilationUnit(userUnit()) ==
+               identity::FrozenRegistryFailure::None);
+    ZC_REQUIRE(registries->freezeCompilationUnits() == identity::FrozenRegistryFailure::None);
     ZC_REQUIRE(registries->collectCrate(crate()) == identity::FrozenRegistryFailure::None);
     ZC_REQUIRE(registries->freezeCrates() == identity::FrozenRegistryFailure::None);
     auto snapshot = identity::ImmutableSourceSnapshot::from(tests::test_identity_detail::source(),

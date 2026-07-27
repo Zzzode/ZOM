@@ -15,6 +15,7 @@
 #include "zomlang/compiler/identity/sha256.h"
 #include "zomlang/compiler/ir/target-registry.h"
 #include "zomlang/compiler/mir/built-mir.h"
+#include "zomlang/tests/unittests/compiler/driver/core-library-test-fixture.h"
 
 namespace zomlang::compiler::ownership {
 namespace {
@@ -211,6 +212,7 @@ public:
         resolvedSnapshots(sourceText));
     ZC_REQUIRE(input != zc::none);
     ZC_IF_SOME(value, input) { ZC_REQUIRE(session.installVerifiedPackageInput(zc::mv(value))); }
+    driver::core_library_test::installCoreDistribution(session);
     const auto roots = session.getFinalizedCompilationRoots();
     ZC_REQUIRE(roots.size() == 1);
     ZC_REQUIRE(session.addVerifiedPackageRoot(roots[0]) != zc::none);

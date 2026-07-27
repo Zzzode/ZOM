@@ -11,6 +11,7 @@
 #include "zomlang/compiler/driver/compiler-session.h"
 #include "zomlang/compiler/driver/package/manifest-parser.h"
 #include "zomlang/compiler/driver/package/source-record.h"
+#include "zomlang/tests/unittests/compiler/driver/core-library-test-fixture.h"
 
 namespace zomlang::compiler::hir {
 namespace {
@@ -206,6 +207,7 @@ public:
         resolvedSnapshots(sourceText));
     ZC_REQUIRE(input != zc::none);
     ZC_IF_SOME(value, input) { ZC_REQUIRE(session.installVerifiedPackageInput(zc::mv(value))); }
+    driver::core_library_test::installCoreDistribution(session);
     const auto roots = session.getFinalizedCompilationRoots();
     ZC_REQUIRE(roots.size() == 1);
     ZC_REQUIRE(session.addVerifiedPackageRoot(roots[0]) != zc::none);
@@ -213,7 +215,9 @@ public:
     ZC_REQUIRE(session.bindSources());
     ZC_REQUIRE(session.checkSources());
     ZC_REQUIRE(!session.getDiagnosticEngine().hasErrors());
-    ZC_REQUIRE(session.getVerifiedBoundModules().size() == 1);
+    ZC_IF_SOME(registries, session.getIdentityRegistries()) {
+      ZC_REQUIRE(driver::core_library_test::userBoundModuleCount(session, registries) == 1);
+    }
     ZC_REQUIRE(session.getVerifiedModuleInterfaces().size() == 1);
     ZC_REQUIRE(session.getCheckedEvidenceLeases().size() == 1);
     ZC_REQUIRE(session.getBorrowEvidenceRepository() != zc::none);
@@ -234,11 +238,11 @@ private:
 ZC_TEST("HIR pipeline publishes an exact empty module") {
   HirPipelineFixture fixture(""_zc);
   const auto& module = fixture.hirModule();
-  const auto& bound = fixture.compilerSession().getVerifiedBoundModules()[0];
+  const auto& bound = driver::core_library_test::soleUserBoundModule(fixture.compilerSession());
   const auto& interface = fixture.compilerSession().getVerifiedModuleInterfaces()[0];
   ZC_EXPECT(module.semanticContext() == bound.semanticContext());
   ZC_EXPECT(module.contextFingerprint().digest() == bound.semanticFingerprint().digest());
-  ZC_EXPECT(module.package() == bound.package());
+  ZC_EXPECT(module.compilationUnit() == bound.compilationUnit());
   ZC_EXPECT(module.crate() == bound.crate());
   ZC_EXPECT(module.module() == bound.module());
   ZC_EXPECT(module.sourceContentDigest() == bound.parsedModule().contentDigest());
@@ -260,7 +264,10 @@ ZC_TEST("HIR pipeline publishes an exact empty module") {
     ZC_REQUIRE(evidence.isResolved());
     ZC_EXPECT(evidence.evidence().revision().digest() == module.borrowEvidenceRevision().digest());
   }
-  ZC_EXPECT(module.visibleImportedInterfaces().size() == 0);
+  ZC_REQUIRE(module.visibleImportedInterfaces().size() == 1);
+  ZC_IF_SOME(prelude, bound.preludeSurface()) {
+    ZC_EXPECT(module.visibleImportedInterfaces()[0].module == prelude.sourceModule());
+  }
   ZC_EXPECT(module.declarations().size() == 0);
   ZC_EXPECT(module.patterns().size() == 0);
   ZC_EXPECT(module.expressions().size() == 0);
@@ -331,7 +338,11 @@ ZC_TEST("HIR pipeline is deterministic across equivalent semantic contexts") {
 
 ZC_TEST("Checked-module assembly ignores interfaces outside the exact imported view") {
   HirPipelineFixture fixture(""_zc);
-  ZC_EXPECT(fixture.hirModule().visibleImportedInterfaces().size() == 0);
+  const auto& bound = driver::core_library_test::soleUserBoundModule(fixture.compilerSession());
+  ZC_REQUIRE(fixture.hirModule().visibleImportedInterfaces().size() == 1);
+  ZC_IF_SOME(prelude, bound.preludeSurface()) {
+    ZC_EXPECT(fixture.hirModule().visibleImportedInterfaces()[0].module == prelude.sourceModule());
+  }
 }
 
 }  // namespace

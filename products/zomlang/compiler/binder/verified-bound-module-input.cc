@@ -142,7 +142,7 @@ zc::Maybe<VerifiedBoundModuleInput> VerifiedBoundModuleInput::from(
       input.semanticContext() != output.metadata.semanticContext() ||
       input.module() != output.metadata.module() ||
       input.module() != output.surface.sourceModule() ||
-      input.package() != output.surface.sourcePackage() ||
+      input.compilationUnit() != output.surface.sourceCompilationUnit() ||
       !exactDefinitionInventory(input, output)) {
     return zc::none;
   }
@@ -152,8 +152,8 @@ zc::Maybe<VerifiedBoundModuleInput> VerifiedBoundModuleInput::from(
 identity::SemanticContextBrand VerifiedBoundModuleInput::semanticContext() const noexcept {
   return impl->input.semanticContext();
 }
-identity::PackageId VerifiedBoundModuleInput::package() const noexcept {
-  return impl->input.package();
+identity::CompilationUnitId VerifiedBoundModuleInput::compilationUnit() const noexcept {
+  return impl->input.compilationUnit();
 }
 identity::CrateId VerifiedBoundModuleInput::crate() const noexcept { return impl->input.crate(); }
 identity::ModuleId VerifiedBoundModuleInput::module() const noexcept {

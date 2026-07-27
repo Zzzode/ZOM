@@ -60,9 +60,9 @@ identity::CompilationConfigKey compilation() {
 }
 
 identity::CrateKey crate() {
-  auto result =
-      identity::CrateKey::from(package(), identity::CrateTargetKind::Library,
-                               scalar<identity::TargetName>("authority"_zc), compilation());
+  auto result = identity::CrateKey::from(
+      identity::CompilationUnitIdentity::userPackage(package()), identity::CrateTargetKind::Library,
+      scalar<identity::TargetName>("authority"_zc), compilation());
   return zc::mv(ZC_REQUIRE_NONNULL(result));
 }
 
@@ -95,15 +95,28 @@ basic::ThreadPool& scheduler() {
   return value;
 }
 
+CompilationRootSetQueryKey contextRoots() {
+  zc::Vector<CompilationRootKey> roots;
+  auto root = CompilationRootKey::userPackage(package());
+  roots.add(zc::mv(ZC_REQUIRE_NONNULL(root)));
+  auto result = CompilationRootSetQueryKey::from(zc::mv(roots));
+  return zc::mv(ZC_REQUIRE_NONNULL(result));
+}
+
+ContextualDefinitionKey contextualDefinition(const identity::DefinitionKey& definition) {
+  return ContextualDefinitionKey::from(contextRoots(), definition.clone());
+}
+
 }  // namespace
 
 ZC_TEST("Active definition authority inputs use strict low durability codecs") {
   auto record = definitionRecord("Alpha"_zc);
   auto key = identity::DefinitionKey::compute(record);
-  auto encodedKey = ActiveDefinitionAuthorityInput::encodeKey(key);
+  auto contextualKey = contextualDefinition(key);
+  auto encodedKey = ActiveDefinitionAuthorityInput::encodeKey(contextualKey);
   auto decodedKey = ActiveDefinitionAuthorityInput::decodeKey(encodedKey.asPtr());
   ZC_REQUIRE(decodedKey != zc::none);
-  ZC_EXPECT(ZC_REQUIRE_NONNULL(decodedKey) == key);
+  ZC_EXPECT(ZC_REQUIRE_NONNULL(decodedKey) == contextualKey);
   ZC_EXPECT(ActiveDefinitionAuthorityInput::decodeKey(encodedKey.asPtr().first(31)) == zc::none);
   auto oversizedKey = zc::heapArray<uint8_t>(encodedKey.size() + 1);
   oversizedKey.first(encodedKey.size()).copyFrom(encodedKey.asPtr());
@@ -142,40 +155,42 @@ ZC_TEST("Active definition authority projection is canonical and fingerprinted")
   zc::Vector<ActiveDefinitionAuthorityRecord> forward;
   forward.add(authorityRecord("Alpha"_zc));
   forward.add(authorityRecord("Beta"_zc));
-  auto first = ActiveDefinitionAuthorityProjection::from(zc::mv(forward));
+  auto roots = contextRoots();
+  auto first = ActiveDefinitionAuthorityProjection::from(roots, zc::mv(forward));
   ZC_REQUIRE(first != zc::none);
 
   zc::Vector<ActiveDefinitionAuthorityRecord> reverse;
   reverse.add(authorityRecord("Beta"_zc));
   reverse.add(authorityRecord("Alpha"_zc));
   reverse.add(authorityRecord("Alpha"_zc));
-  auto second = ActiveDefinitionAuthorityProjection::from(zc::mv(reverse));
+  auto second = ActiveDefinitionAuthorityProjection::from(roots, zc::mv(reverse));
   ZC_REQUIRE(second != zc::none);
   ZC_EXPECT(ZC_REQUIRE_NONNULL(first).records().size() == 2);
   ZC_EXPECT(ZC_REQUIRE_NONNULL(second).records().size() == 2);
   ZC_EXPECT(ZC_REQUIRE_NONNULL(first).fingerprint() == ZC_REQUIRE_NONNULL(second).fingerprint());
   ZC_EXPECT(zc::encodeHex(ZC_REQUIRE_NONNULL(first).fingerprint().bytes()) ==
-            "0501041a765437e465fd342302b3d81d8924f660f24676a1a4140faf2af0029b"_zc);
+            "13b5ff2fd2c8712b1102a1a08c88d8c179c5a7099475ecbe6dfaa2e3c1ad7456"_zc);
 
   zc::Vector<ActiveDefinitionAuthorityRecord> changedRecords;
   changedRecords.add(authorityRecord("Alpha"_zc));
   changedRecords.add(authorityRecord("Gamma"_zc));
-  auto changed = ActiveDefinitionAuthorityProjection::from(zc::mv(changedRecords));
+  auto changed = ActiveDefinitionAuthorityProjection::from(roots, zc::mv(changedRecords));
   ZC_REQUIRE(changed != zc::none);
   ZC_EXPECT(ZC_REQUIRE_NONNULL(first).fingerprint() != ZC_REQUIRE_NONNULL(changed).fingerprint());
 
-  auto readinessKey = identity::source_query::CompilationUnitQueryKey::fixed();
+  auto readinessKey = contextRoots();
   auto encodedReadinessKey = ActiveDefinitionAuthorityReadyInput::encodeKey(readinessKey);
   ZC_EXPECT(ActiveDefinitionAuthorityReadyInput::decodeKey(encodedReadinessKey.asPtr()) !=
             zc::none);
   ZC_EXPECT(ActiveDefinitionAuthorityReadyInput::decodeKey(encodedReadinessKey.asPtr().first(0)) ==
             zc::none);
-  auto malformedReadinessKey = zc::heapArray<uint8_t>(1);
-  malformedReadinessKey[0] = 0x02;
+  auto malformedReadinessKey = zc::heapArray<uint8_t>(encodedReadinessKey.asPtr());
+  malformedReadinessKey[0] ^= 0x01;
   ZC_EXPECT(ActiveDefinitionAuthorityReadyInput::decodeKey(malformedReadinessKey.asPtr()) ==
             zc::none);
-  auto oversizedReadinessKey = zc::heapArray<uint8_t>(2);
-  oversizedReadinessKey.asPtr().fill(0x01);
+  auto oversizedReadinessKey = zc::heapArray<uint8_t>(encodedReadinessKey.size() + 1);
+  oversizedReadinessKey.first(encodedReadinessKey.size()).copyFrom(encodedReadinessKey.asPtr());
+  oversizedReadinessKey.back() = 0;
   ZC_EXPECT(ActiveDefinitionAuthorityReadyInput::decodeKey(oversizedReadinessKey.asPtr()) ==
             zc::none);
   auto encodedFingerprint =
@@ -198,29 +213,29 @@ ZC_TEST("Active definition authority inputs round trip through QueryDatabase") {
   ZC_REQUIRE(registerActiveDefinitionAuthorityInputs(database));
   auto projectionRecords = zc::Vector<ActiveDefinitionAuthorityRecord>();
   projectionRecords.add(authorityRecord("Alpha"_zc));
-  auto projection = ActiveDefinitionAuthorityProjection::from(zc::mv(projectionRecords));
+  auto roots = contextRoots();
+  auto projection = ActiveDefinitionAuthorityProjection::from(roots, zc::mv(projectionRecords));
   ZC_REQUIRE(projection != zc::none);
   const auto& authority = ZC_REQUIRE_NONNULL(projection).records()[0];
 
   auto transaction = database.beginInputTransaction();
   ZC_REQUIRE(transaction != zc::none);
+  auto authorityKey = contextualDefinition(authority.key());
   ZC_REQUIRE(ZC_REQUIRE_NONNULL(transaction)
-                 .set<ActiveDefinitionAuthorityInput>(authority.key(), authority.record()));
+                 .set<ActiveDefinitionAuthorityInput>(authorityKey, authority.record()));
   ZC_REQUIRE(ZC_REQUIRE_NONNULL(transaction)
                  .set<ActiveDefinitionAuthorityReadyInput>(
-                     identity::source_query::CompilationUnitQueryKey::fixed(),
-                     ZC_REQUIRE_NONNULL(projection).fingerprint()));
+                     roots, ZC_REQUIRE_NONNULL(projection).fingerprint()));
   ZC_REQUIRE(ZC_REQUIRE_NONNULL(transaction).commit() != zc::none);
 
   auto snapshot = database.snapshot();
-  auto retained = snapshot.get<ActiveDefinitionAuthorityInput>(authority.key());
+  auto retained = snapshot.get<ActiveDefinitionAuthorityInput>(authorityKey);
   ZC_REQUIRE(!retained.isRuntimeFailure());
   ZC_EXPECT(retained.value().encode().asPtr() == authority.record().encode().asPtr());
-  auto readiness = snapshot.get<ActiveDefinitionAuthorityReadyInput>(
-      identity::source_query::CompilationUnitQueryKey::fixed());
+  auto readiness = snapshot.get<ActiveDefinitionAuthorityReadyInput>(roots);
   ZC_REQUIRE(!readiness.isRuntimeFailure());
   ZC_EXPECT(readiness.value() == ZC_REQUIRE_NONNULL(projection).fingerprint());
-  auto metadata = snapshot.metadata<ActiveDefinitionAuthorityInput>(authority.key());
+  auto metadata = snapshot.metadata<ActiveDefinitionAuthorityInput>(authorityKey);
   ZC_REQUIRE(metadata != zc::none);
   ZC_EXPECT(ZC_REQUIRE_NONNULL(metadata).minimumDurability() == query::Durability::Low);
 }

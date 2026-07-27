@@ -1037,7 +1037,7 @@ DependencyRequirement parseDependency(const toml::key& aliasKey, const toml::nod
           parseRequestedFeatures(dependency), useDefaultFeatures, optional);
       ZC_IF_SOME(admitted, value) {
         return DependencyRequirement::from(zc::mv(admitted),
-                                           manifestOrigin(document, source, node.source()));
+                                           manifestOrigin(document, source, aliasKey.source()));
       }
     }
   }
@@ -1273,8 +1273,9 @@ void encodeOptional(identity::CanonicalEncoder& encoder, const zc::Maybe<Value>&
   ZC_IF_SOME(admitted, value) {
     encoder.encodeSome();
     admitted.encode(encoder);
+  } else {
+    encoder.encodeNone();
   }
-  else { encoder.encodeNone(); }
 }
 
 zc::Maybe<PackageManifest> clonePackage(const zc::Maybe<PackageManifest>& value) {

@@ -22,12 +22,11 @@ public:
   /// \brief Derive stable requests for imports, foreign re-exports, and module aliases.
   /// \param requester Module that owns `parsedModule`.
   /// \param parsedModule Immutable parser result to traverse in generated-schema preorder.
-  /// \param environmentRevision Exact frozen structural-resolution environment revision.
   /// \param resolver Frozen catalog used only to expand the requester key for canonical sorting.
   /// \return Sorted requests, or a closed invariant fact when derivation is not exact.
   ZC_NODISCARD static ModuleDependencyRequestDerivationResult derive(
       identity::ModuleId requester, const VerifiedParsedModule& parsedModule,
-      const identity::Sha256Digest& environmentRevision, const StructuralModuleResolver& resolver);
+      const StructuralModuleResolver& resolver);
 };
 
 }  // namespace zomlang::compiler::binder

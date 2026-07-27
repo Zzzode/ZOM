@@ -75,8 +75,9 @@ CompilationConfigKey targetCompilation() {
 }
 
 CrateKey crate() {
-  auto value = CrateKey::from(localPackage(), CrateTargetKind::Library,
-                              requireScalar<TargetName>("lib"_zc), targetCompilation());
+  auto value =
+      CrateKey::from(CompilationUnitIdentity::userPackage(localPackage()), CrateTargetKind::Library,
+                     requireScalar<TargetName>("lib"_zc), targetCompilation());
   ZC_IF_SOME(admitted, value) { return zc::mv(admitted); }
   ZC_FAIL_REQUIRE("invalid crate test input");
 }
@@ -155,9 +156,9 @@ ZC_TEST("ModuleCatalogPathBucketKey passes the fixed canonical codec vector") {
   ZC_REQUIRE(value != zc::none);
   ZC_IF_SOME(key, value) {
     auto encoded = key.encode();
-    ZC_EXPECT(encoded.size() == 187);
+    ZC_EXPECT(encoded.size() == 188);
     expectDigest(encoded.asPtr(),
-                 "0be911f4ef7549e0d4e0eb7080baf715ea583b566ba1a57d412e204007054e98"_zc);
+                 "32d74951e2df81599d02a8a2fdcf92570828f64aa37e628f2db756c253f5c428"_zc);
     ZC_EXPECT(key.clone().encode().asPtr() == encoded.asPtr());
     ZC_EXPECT(key.crate().encode().asPtr() == crate().encode().asPtr());
     ZC_REQUIRE(key.path().size() == 2);
@@ -198,11 +199,11 @@ ZC_TEST("RequesterModuleAncestry admits the exact requester-first lexical chain"
   ZC_IF_SOME(ancestry, value) {
     const auto encoded = ancestry.encode();
     const auto digest = sha256(encoded.asPtr());
-    ZC_EXPECT(encoded.size() == 309);
+    ZC_EXPECT(encoded.size() == 311);
     ZC_REQUIRE(digest != zc::none);
     ZC_IF_SOME(actual, digest) {
       const auto hex = zc::encodeHex(actual.bytes());
-      ZC_EXPECT(hex == "8e3fc6f925d1072411d2ce7a064f8616ac060d875089244c562a86da41ea3cc6"_zc);
+      ZC_EXPECT(hex == "2ba786ea65f9871a3e497d76a06d15521ed521b24b092434fb35eda641279e83"_zc);
     }
     ZC_EXPECT(ancestry.requester().encode().asPtr() ==
               module("app"_zc, "inner"_zc).encode().asPtr());
@@ -265,11 +266,11 @@ ZC_TEST("ModuleCatalogPathBucket admits exact present and absent values") {
   ZC_IF_SOME(bucket, present) {
     const auto encoded = bucket.encode();
     const auto digest = sha256(encoded.asPtr());
-    ZC_EXPECT(encoded.size() == 157);
+    ZC_EXPECT(encoded.size() == 158);
     ZC_REQUIRE(digest != zc::none);
     ZC_IF_SOME(actual, digest) {
       const auto hex = zc::encodeHex(actual.bytes());
-      ZC_EXPECT(hex == "fe5c087376553d8ceaec44339f203f73f1f39debd3a569b1052625c879e8442a"_zc);
+      ZC_EXPECT(hex == "102b6bbd4f4758fddf5ed32582690a35bb8fba3b8d83404ccfc49864e2138659"_zc);
     }
     ZC_REQUIRE(bucket.module() != zc::none);
     ZC_IF_SOME(value, bucket.module()) {
@@ -403,9 +404,9 @@ ZC_TEST("ModuleResolutionKey passes fixed import and prelude vectors") {
   ZC_REQUIRE(importValue != zc::none);
   ZC_IF_SOME(importKey, importValue) {
     auto encoded = importKey.encode();
-    ZC_EXPECT(encoded.size() == 256);
+    ZC_EXPECT(encoded.size() == 257);
     expectDigest(encoded.asPtr(),
-                 "f44d1608a2f2363cf8172b625b22d02142dac1fc8226df2ac5e0a298eaf56cba"_zc);
+                 "a119f48511ee8280e620d5106c2442e1a0062b323d01a0cb369b937ee42ecb21"_zc);
     ZC_EXPECT(importKey.clone().encode().asPtr() == encoded.asPtr());
   }
 
@@ -413,9 +414,9 @@ ZC_TEST("ModuleResolutionKey passes fixed import and prelude vectors") {
   ZC_REQUIRE(preludeValue != zc::none);
   ZC_IF_SOME(preludeKey, preludeValue) {
     auto encoded = preludeKey.encode();
-    ZC_EXPECT(encoded.size() == 214);
+    ZC_EXPECT(encoded.size() == 215);
     expectDigest(encoded.asPtr(),
-                 "822fb9f69752a17d1cc5e6005e7deaf9c6f9b79661e10d7666b21aa30dbb5caa"_zc);
+                 "cd54c2ad33afbfb8ad56a64efbfda32bfa92be87edc0d15de17e96522ad3ab60"_zc);
   }
 }
 

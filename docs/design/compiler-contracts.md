@@ -240,10 +240,13 @@ mutation of published payloads.
 
 ### MG-01 Complete graph before binding
 
-`ModuleGraphVerifier::verify()` receives the semantic context fingerprint,
-frozen registries, package and crate dependency edges, structural resolver,
-complete module set, verified parsed modules, configured preludes, and path
-resolutions. Success publishes one immutable `VerifiedModuleGraph`.
+`VerifiedModuleGraphBuilder::build()` receives the final query snapshot, the
+stable graph and SCC records, the complete semantic-context fingerprint
+inputs, frozen registries, verified package and core root authorities, and the
+verified parsed modules. `VerifiedModuleGraphVerifier::verify()` independently
+reconstructs the roots, active-module union, source sites, resolved request
+edges, stable edge projection, and graph revision before it publishes one
+immutable `VerifiedModuleGraph`.
 
 ### MG-02 Exact requester views
 
@@ -253,15 +256,17 @@ binder input cannot select a graph view for another requester.
 
 ### MG-03 Closed rejection
 
-Unresolved, ambiguous, or cyclic source dependencies produce a sorted source
-rejection. Receipt, endpoint, revision, or edge inconsistency produces
-`ModuleGraphInvariantFact`. Neither result publishes a graph or requester view.
+Unresolved, ambiguous, or cyclic source dependencies produce deterministic
+typed query failures. Root, source, endpoint, revision, or edge inconsistency
+produces `ModuleGraphInvariantFact`. Neither result publishes a graph or
+requester view.
 
 ### MG-04 Prelude status
 
-The live session passes an empty configured-prelude request sequence into the
-module graph. A prelude becomes a binder input only when the verified graph
-contains one explicit `Prelude` edge.
+The structural input transaction publishes one explicit configured-prelude
+value for every active crate. Non-core crates select their exact projected
+`core::prelude` module; core crates publish explicit absence and therefore
+cannot acquire a prelude self-edge.
 
 ## 7. Binder Contract
 

@@ -5,14 +5,16 @@
 
 #include "zomlang/compiler/binder/module-dependency-requests.h"
 
+#include "parsed-module-query-test-fixture.h"
 #include "zc/core/vector.h"
 #include "zc/ztest/test.h"
 #include "zomlang/compiler/basic/string-pool.h"
 #include "zomlang/compiler/basic/zomlang-opts.h"
 #include "zomlang/compiler/diagnostics/diagnostic-fact-buffer.h"
+#include "zomlang/compiler/identity/canonical-decoder.h"
+#include "zomlang/compiler/identity/canonical-encoder.h"
 #include "zomlang/compiler/parser/parser.h"
 #include "zomlang/compiler/source/manager.h"
-#include "parsed-module-query-test-fixture.h"
 
 namespace zomlang::compiler::binder {
 namespace {
@@ -57,14 +59,43 @@ identity::CrateKey crateKey() {
           identity::CompilationDomain::Target, zc::mv(targetValue),
           identity::SemanticCompilerOptionsKey::from(2026, true, false, false), zc::mv(noOutput));
       ZC_IF_SOME(configValue, config) {
-        auto crate = identity::CrateKey::from(packageKey(), identity::CrateTargetKind::Library,
-                                              requireScalar<identity::TargetName>("requests"_zc),
-                                              zc::mv(configValue));
+        auto crate = identity::CrateKey::from(
+            identity::CompilationUnitIdentity::userPackage(packageKey()),
+            identity::CrateTargetKind::Library, requireScalar<identity::TargetName>("requests"_zc),
+            zc::mv(configValue));
         ZC_IF_SOME(value, crate) { return zc::mv(value); }
       }
     }
   }
   ZC_FAIL_REQUIRE("invalid crate request-derivation fixture");
+}
+
+identity::CrateKey coreCrateKey() {
+  zc::Vector<identity::TargetFeatureName> features;
+  auto featureSet = identity::SortedTargetFeatureSet::from(zc::mv(features));
+  ZC_IF_SOME(featuresValue, featureSet) {
+    auto target = identity::CanonicalTargetSpecificationKey::from(
+        requireScalar<identity::TargetComponentName>("aarch64"_zc),
+        requireScalar<identity::TargetComponentName>("apple"_zc),
+        requireScalar<identity::TargetComponentName>("darwin"_zc),
+        requireScalar<identity::TargetComponentName>("none"_zc),
+        requireScalar<identity::TargetComponentName>("zom"_zc), 64, identity::Endianness::Little,
+        zc::mv(featuresValue));
+    ZC_IF_SOME(targetValue, target) {
+      zc::Maybe<identity::BuildScriptProducerKey> noOutput;
+      auto config = identity::CompilationConfigKey::from(
+          identity::CompilationDomain::Target, zc::mv(targetValue),
+          identity::SemanticCompilerOptionsKey::from(2026, true, false, false), zc::mv(noOutput));
+      ZC_IF_SOME(configValue, config) {
+        auto crate = identity::CrateKey::from(
+            identity::CompilationUnitIdentity::toolchain(identity::ToolchainUnitKey::core()),
+            identity::CrateTargetKind::Library, requireScalar<identity::TargetName>("core"_zc),
+            zc::mv(configValue));
+        ZC_IF_SOME(value, crate) { return zc::mv(value); }
+      }
+    }
+  }
+  ZC_FAIL_REQUIRE("invalid core crate request-derivation fixture");
 }
 
 identity::SourceFileKey sourceKey() {
@@ -141,8 +172,9 @@ struct DerivationFixture final {
   explicit DerivationFixture(ParsedSource& sourceFixture, bool withDependencyAlias = false)
       : context(requireContext(factory)), registries(createRegistries()) {
     auto snapshot = sourceFixture.snapshot();
-    ZC_REQUIRE(registries.collectPackage(packageKey()) == identity::FrozenRegistryFailure::None);
-    ZC_REQUIRE(registries.freezePackages() == identity::FrozenRegistryFailure::None);
+    ZC_REQUIRE(registries.collectCompilationUnit(identity::CompilationUnitIdentity::userPackage(
+                   packageKey())) == identity::FrozenRegistryFailure::None);
+    ZC_REQUIRE(registries.freezeCompilationUnits() == identity::FrozenRegistryFailure::None);
     ZC_REQUIRE(registries.collectCrate(crateKey()) == identity::FrozenRegistryFailure::None);
     ZC_REQUIRE(registries.freezeCrates() == identity::FrozenRegistryFailure::None);
     ZC_REQUIRE(registries.collectSourceFile(snapshot.clone()) ==
@@ -227,8 +259,7 @@ ZC_TEST("ModuleDependencyRequestDeriver.DerivesImportsAndReexportsInCanonicalOrd
   ZC_REQUIRE(fixture.resolver != zc::none);
   ZC_IF_SOME(parsedModule, fixture.parsedModule) {
     ZC_IF_SOME(resolver, fixture.resolver) {
-      auto result = ModuleDependencyRequestDeriver::derive(
-          fixture.module, parsedModule, resolver.environmentRevision(), resolver);
+      auto result = ModuleDependencyRequestDeriver::derive(fixture.module, parsedModule, resolver);
       ZC_REQUIRE(result.is<zc::Vector<ModuleDependencyRequest>>());
       auto& requests = result.get<zc::Vector<ModuleDependencyRequest>>();
       ZC_REQUIRE(requests.size() == 2);
@@ -242,7 +273,6 @@ ZC_TEST("ModuleDependencyRequestDeriver.DerivesImportsAndReexportsInCanonicalOrd
       for (size_t index = 0; index < requests.size(); ++index) {
         const auto& request = requests[index];
         ZC_EXPECT(request.requester() == fixture.module);
-        ZC_EXPECT(request.environmentRevision() == resolver.environmentRevision());
         ZC_REQUIRE(request.syntaxSites().size() == 1);
         ZC_EXPECT(request.syntaxSite().span.byteStart() < request.syntaxSite().span.byteEnd());
         if (index != 0) { ZC_EXPECT(previousOrdinal < request.syntaxSite().schemaPreorderOrdinal); }
@@ -264,8 +294,7 @@ ZC_TEST("ModuleDependencyRequestDeriver.DeduplicatesSemanticKeyAndRetainsEverySi
   ZC_REQUIRE(fixture.resolver != zc::none);
   ZC_IF_SOME(parsedModule, fixture.parsedModule) {
     ZC_IF_SOME(resolver, fixture.resolver) {
-      auto result = ModuleDependencyRequestDeriver::derive(
-          fixture.module, parsedModule, resolver.environmentRevision(), resolver);
+      auto result = ModuleDependencyRequestDeriver::derive(fixture.module, parsedModule, resolver);
       ZC_REQUIRE(result.is<zc::Vector<ModuleDependencyRequest>>());
       auto& requests = result.get<zc::Vector<ModuleDependencyRequest>>();
       ZC_REQUIRE(requests.size() == 1);
@@ -292,8 +321,8 @@ ZC_TEST("ModuleDependencyRequestDeriver.SiteEditsDoNotReplaceSemanticKey") {
   ZC_REQUIRE(secondFixture.resolver != zc::none);
   ZC_IF_SOME(firstParsed, firstFixture.parsedModule) {
     ZC_IF_SOME(firstResolver, firstFixture.resolver) {
-      auto firstResult = ModuleDependencyRequestDeriver::derive(
-          firstFixture.module, firstParsed, firstResolver.environmentRevision(), firstResolver);
+      auto firstResult =
+          ModuleDependencyRequestDeriver::derive(firstFixture.module, firstParsed, firstResolver);
       ZC_REQUIRE(firstResult.is<zc::Vector<ModuleDependencyRequest>>());
       auto& firstRequests = firstResult.get<zc::Vector<ModuleDependencyRequest>>();
       ZC_REQUIRE(firstRequests.size() == 1);
@@ -302,15 +331,13 @@ ZC_TEST("ModuleDependencyRequestDeriver.SiteEditsDoNotReplaceSemanticKey") {
 
       ZC_IF_SOME(secondParsed, secondFixture.parsedModule) {
         ZC_IF_SOME(secondResolver, secondFixture.resolver) {
-          auto secondResult = ModuleDependencyRequestDeriver::derive(
-              secondFixture.module, secondParsed, secondResolver.environmentRevision(),
-              secondResolver);
+          auto secondResult = ModuleDependencyRequestDeriver::derive(secondFixture.module,
+                                                                     secondParsed, secondResolver);
           ZC_REQUIRE(secondResult.is<zc::Vector<ModuleDependencyRequest>>());
           auto& secondRequests = secondResult.get<zc::Vector<ModuleDependencyRequest>>();
           ZC_REQUIRE(secondRequests.size() == 1);
           ZC_EXPECT(firstKey.asPtr() == secondRequests[0].key().encode().asPtr());
           ZC_EXPECT(firstSiteStart != secondRequests[0].syntaxSite().span.byteStart());
-          ZC_EXPECT(firstResolver.environmentRevision() != secondResolver.environmentRevision());
           return;
         }
       }
@@ -331,8 +358,7 @@ ZC_TEST("ModuleDependencyRequestDeriver.ExactAliasPresenceChangesSemanticKey") {
   ZC_IF_SOME(withoutAliasParsed, withoutAliasFixture.parsedModule) {
     ZC_IF_SOME(withoutAliasResolver, withoutAliasFixture.resolver) {
       auto withoutAliasResult = ModuleDependencyRequestDeriver::derive(
-          withoutAliasFixture.module, withoutAliasParsed,
-          withoutAliasResolver.environmentRevision(), withoutAliasResolver);
+          withoutAliasFixture.module, withoutAliasParsed, withoutAliasResolver);
       ZC_REQUIRE(withoutAliasResult.is<zc::Vector<ModuleDependencyRequest>>());
       auto& withoutAliasRequests = withoutAliasResult.get<zc::Vector<ModuleDependencyRequest>>();
       ZC_REQUIRE(withoutAliasRequests.size() == 1);
@@ -341,8 +367,7 @@ ZC_TEST("ModuleDependencyRequestDeriver.ExactAliasPresenceChangesSemanticKey") {
       ZC_IF_SOME(withAliasParsed, withAliasFixture.parsedModule) {
         ZC_IF_SOME(withAliasResolver, withAliasFixture.resolver) {
           auto withAliasResult = ModuleDependencyRequestDeriver::derive(
-              withAliasFixture.module, withAliasParsed, withAliasResolver.environmentRevision(),
-              withAliasResolver);
+              withAliasFixture.module, withAliasParsed, withAliasResolver);
           ZC_REQUIRE(withAliasResult.is<zc::Vector<ModuleDependencyRequest>>());
           auto& withAliasRequests = withAliasResult.get<zc::Vector<ModuleDependencyRequest>>();
           ZC_REQUIRE(withAliasRequests.size() == 1);
@@ -369,8 +394,7 @@ ZC_TEST("ModuleDependencyRequestDeriver.DerivesModuleAlias") {
   ZC_REQUIRE(fixture.resolver != zc::none);
   ZC_IF_SOME(parsedModule, fixture.parsedModule) {
     ZC_IF_SOME(resolver, fixture.resolver) {
-      auto result = ModuleDependencyRequestDeriver::derive(
-          fixture.module, parsedModule, resolver.environmentRevision(), resolver);
+      auto result = ModuleDependencyRequestDeriver::derive(fixture.module, parsedModule, resolver);
       ZC_REQUIRE(result.is<zc::Vector<ModuleDependencyRequest>>());
       auto& requests = result.get<zc::Vector<ModuleDependencyRequest>>();
       ZC_REQUIRE(requests.size() == 1);
@@ -379,24 +403,6 @@ ZC_TEST("ModuleDependencyRequestDeriver.DerivesModuleAlias") {
       ZC_EXPECT(requests[0].normalizedPath()[0].text() == "alpha"_zc);
       ZC_EXPECT(requests[0].normalizedPath()[1].text() == "beta"_zc);
       ZC_EXPECT(requests[0].normalizedPath()[2].text() == "target"_zc);
-      return;
-    }
-  }
-  ZC_EXPECT(false);
-}
-
-ZC_TEST("ModuleDependencyRequestDeriver.RejectsMismatchedEnvironmentRevision") {
-  ParsedSource sourceFixture("module root;\nimport alpha::value;\n"_zc);
-  DerivationFixture fixture(sourceFixture);
-  ZC_REQUIRE(fixture.parsedModule != zc::none);
-  ZC_REQUIRE(fixture.resolver != zc::none);
-  ZC_IF_SOME(parsedModule, fixture.parsedModule) {
-    ZC_IF_SOME(resolver, fixture.resolver) {
-      auto result = ModuleDependencyRequestDeriver::derive(fixture.module, parsedModule,
-                                                           identity::Sha256Digest(), resolver);
-      ZC_REQUIRE(result.is<ModuleResolutionInvariantFact>());
-      ZC_EXPECT(result.get<ModuleResolutionInvariantFact>().kind ==
-                ModuleResolutionInvariantKind::InvalidRequest);
       return;
     }
   }
@@ -437,6 +443,39 @@ identity::BuildScriptProducerKey generatedProducer(zc::StringPtr seed) {
   auto value = identity::sha256(seed.asBytes());
   ZC_IF_SOME(digest, value) { return identity::BuildScriptProducerKey::from(digest); }
   ZC_FAIL_REQUIRE("generated producer digest fixture failed");
+}
+
+ZC_TEST("ModuleSearchRoot admits only an exact unversioned toolchain core root") {
+  auto digest = identity::sha256("core-distribution"_zc.asBytes());
+  ZC_REQUIRE(digest != zc::none);
+  auto root = ModuleSearchRoot::toolchainCore(coreCrateKey(), ZC_REQUIRE_NONNULL(digest));
+  ZC_REQUIRE(root != zc::none);
+  ZC_EXPECT(ZC_REQUIRE_NONNULL(root).kind() == ModuleSearchRootKind::ToolchainCore);
+  ZC_EXPECT(ZC_REQUIRE_NONNULL(root).crate().unit().kind() ==
+            identity::CompilationUnitKind::Toolchain);
+  ZC_EXPECT(ZC_REQUIRE_NONNULL(root).toolchainCoreDistributionDigest() ==
+            ZC_REQUIRE_NONNULL(digest));
+
+  identity::CanonicalEncoder encoder;
+  ZC_REQUIRE_NONNULL(root).encode(encoder);
+  auto encoded = encoder.finish();
+  ZC_EXPECT(encoded[0] == static_cast<uint8_t>(ModuleSearchRootKind::ToolchainCore));
+  identity::CanonicalDecoder decoder(encoded.asPtr());
+  auto decoded = ModuleSearchRoot::decodeCanonical(decoder);
+  ZC_REQUIRE(decoded != zc::none);
+  ZC_EXPECT(decoder.finished());
+  ZC_EXPECT(ZC_REQUIRE_NONNULL(decoded).kind() == ModuleSearchRootKind::ToolchainCore);
+  ZC_EXPECT(ZC_REQUIRE_NONNULL(decoded).crate().encode().asPtr() ==
+            ZC_REQUIRE_NONNULL(root).crate().encode().asPtr());
+  ZC_EXPECT(ZC_REQUIRE_NONNULL(decoded).toolchainCoreDistributionDigest() ==
+            ZC_REQUIRE_NONNULL(digest));
+
+  ZC_EXPECT(ModuleSearchRoot::toolchainCore(crateKey(), ZC_REQUIRE_NONNULL(digest)) == zc::none);
+  ZC_EXPECT(ModuleSearchRoot::toolchainCore(coreCrateKey(), identity::Sha256Digest()) == zc::none);
+  auto unknownTag = zc::heapArray<uint8_t>(encoded.asPtr());
+  unknownTag[0] = 0xff;
+  identity::CanonicalDecoder unknownDecoder(unknownTag.asPtr());
+  ZC_EXPECT(ModuleSearchRoot::decodeCanonical(unknownDecoder) == zc::none);
 }
 
 ZC_TEST("StructuralModuleResolver.RejectsUnverifiedDiscoveryEnvironmentInputs") {
@@ -511,8 +550,9 @@ ZC_TEST("StructuralModuleResolver.RejectsAncestryEndingAtInactiveRoot") {
   auto registriesResult = identity::SemanticIdentityRegistrySet::create(factory, context);
   ZC_REQUIRE(registriesResult != zc::none);
   ZC_IF_SOME(registries, registriesResult) {
-    ZC_REQUIRE(registries.collectPackage(packageKey()) == identity::FrozenRegistryFailure::None);
-    ZC_REQUIRE(registries.freezePackages() == identity::FrozenRegistryFailure::None);
+    ZC_REQUIRE(registries.collectCompilationUnit(identity::CompilationUnitIdentity::userPackage(
+                   packageKey())) == identity::FrozenRegistryFailure::None);
+    ZC_REQUIRE(registries.freezeCompilationUnits() == identity::FrozenRegistryFailure::None);
     ZC_REQUIRE(registries.collectCrate(crateKey()) == identity::FrozenRegistryFailure::None);
     ZC_REQUIRE(registries.freezeCrates() == identity::FrozenRegistryFailure::None);
     ZC_REQUIRE(registries.collectSourceFile(snapshot.clone()) ==

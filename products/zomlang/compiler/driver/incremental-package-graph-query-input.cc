@@ -187,7 +187,10 @@ bool validateGraphClosure(zc::ArrayPtr<const StablePackageQueryKey> resolvedPack
     auto crate = identity::CrateKey::decodeCanonical(decoder);
     if (crate == zc::none || !decoder.finished()) { return false; }
     ZC_IF_SOME(value, crate) {
-      if (!containsPackage(resolvedPackages, value.package())) { return false; }
+      if (value.unit().kind() != identity::CompilationUnitKind::UserPackage ||
+          !containsPackage(resolvedPackages, value.unit().userPackage())) {
+        return false;
+      }
     }
   }
 
@@ -198,7 +201,8 @@ bool validateGraphClosure(zc::ArrayPtr<const StablePackageQueryKey> resolvedPack
     auto edge = decodeCrateEdge(encoded);
     if (edge == zc::none) { return false; }
     ZC_IF_SOME(value, edge) {
-      if (!containsPackageEdge(selectedEdges, value.packageEdge()) ||
+      if (value.origin().kind() != identity::CrateDependencyOriginKind::UserPackage ||
+          !containsPackageEdge(selectedEdges, value.origin().userPackageEdge()) ||
           !containsCrate(crates, value.consumer()) || !containsCrate(crates, value.provider())) {
         return false;
       }
@@ -210,7 +214,8 @@ bool validateGraphClosure(zc::ArrayPtr<const StablePackageQueryKey> resolvedPack
       }
       consumers.add(ZC_ASSERT_NONNULL(consumer));
       providers.add(ZC_ASSERT_NONNULL(provider));
-      auto projected = StablePackageDependencyQueryKey::fromVerified(value.packageEdge());
+      auto projected =
+          StablePackageDependencyQueryKey::fromVerified(value.origin().userPackageEdge());
       if (projected == zc::none) { return false; }
       ZC_IF_SOME(projectedValue, projected) { projectedPackageEdges.add(zc::mv(projectedValue)); }
     }
@@ -599,7 +604,7 @@ query::QueryKindContract PackageGraphInput::contract() {
 zc::Array<uint8_t> PackageGraphInput::encodeKey(const Key& key) { return key.encodeCanonical(); }
 
 zc::Maybe<PackageGraphInput::Key> PackageGraphInput::decodeKey(zc::ArrayPtr<const uint8_t> bytes) {
-  return PackageRootSetQueryKey::decodeCanonical(bytes);
+  return PackageRootSetKey::decodeCanonical(bytes);
 }
 
 zc::Array<uint8_t> PackageGraphInput::encodeValue(const Value& value) {

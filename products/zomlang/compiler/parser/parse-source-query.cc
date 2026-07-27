@@ -59,6 +59,13 @@ zc::Maybe<zc::String> logicalSourceName(const identity::source_query::StableSour
   return ZC_ASSERT_NONNULL(source).logicalFileName();
 }
 
+zc::Maybe<identity::CrateKey> sourceCrate(const identity::source_query::StableSourceQueryKey& key) {
+  identity::CanonicalDecoder decoder(key.canonicalSourceBytes());
+  auto source = identity::SourceFileKey::decodeCanonical(decoder);
+  if (source == zc::none || !decoder.finished()) { return zc::none; }
+  return ZC_ASSERT_NONNULL(source).crate().clone();
+}
+
 }  // namespace
 
 ParseRejected::ParseRejected(zc::Array<uint8_t>&& canonicalBytes, zc::Array<uint8_t>&& sourceKey,
@@ -153,7 +160,7 @@ zc::StringPtr ParseSourceQuery::domain() { return "zom.query.parse-source"_zc; }
 
 query::QueryKindContract ParseSourceQuery::contract() {
   auto contract = query::QueryKindContract::derived(domain(), query::ReuseClass::RevisionLocal,
-                                                    query::RetentionClass::Evictable);
+                                                    query::RetentionClass::Retained);
   return zc::mv(ZC_REQUIRE_NONNULL(contract));
 }
 
@@ -165,32 +172,30 @@ zc::Maybe<ParseSourceQuery::Key> ParseSourceQuery::decodeKey(zc::ArrayPtr<const 
   return identity::source_query::StableSourceQueryKey::decodeBounded(bytes);
 }
 
-zc::Array<uint8_t> ParseSourceQuery::encodeValue(const Value& value) {
-  return value.encodeCanonical();
-}
-
-zc::Maybe<ParseSourceQuery::Value> ParseSourceQuery::decodeValue(
-    zc::ArrayPtr<const uint8_t> bytes) {
-  return CanonicalParsedSource::decodeCanonical(bytes);
-}
-
-query::TypedQueryResult<ParseSourceQuery::Value> ParseSourceQuery::provide(
-    query::QueryContext& context, const Key& key) {
+query::CapabilityProviderResult<ParseSourceQuery::Capability> ParseSourceQuery::provide(
+    query::CapabilityQueryContext& context, const Key& key) {
   auto sourceResult = context.get<identity::source_query::SourceSnapshotInput>(key);
   if (sourceResult.isRuntimeFailure()) {
-    return query::TypedQueryResult<Value>::runtimeFailure(sourceResult.runtimeFailure());
+    return query::CapabilityProviderResult<Capability>::runtimeFailure(
+        sourceResult.runtimeFailure());
   }
   if (sourceResult.kind() != query::QueryValueKind::Value) {
-    return query::TypedQueryResult<Value>::runtimeFailure(
+    return query::CapabilityProviderResult<Capability>::runtimeFailure(
         query::QueryRuntimeFailure::ProviderRejected);
   }
-  auto optionsResult = context.get<identity::source_query::CompilationOptionsInput>(
-      identity::source_query::CompilationUnitQueryKey::fixed());
+  auto crate = sourceCrate(key);
+  if (crate == zc::none) {
+    return query::CapabilityProviderResult<Capability>::runtimeFailure(
+        query::QueryRuntimeFailure::InvariantViolation);
+  }
+  auto optionsResult =
+      context.get<identity::source_query::CompilationOptionsInput>(ZC_ASSERT_NONNULL(crate));
   if (optionsResult.isRuntimeFailure()) {
-    return query::TypedQueryResult<Value>::runtimeFailure(optionsResult.runtimeFailure());
+    return query::CapabilityProviderResult<Capability>::runtimeFailure(
+        optionsResult.runtimeFailure());
   }
   if (optionsResult.kind() != query::QueryValueKind::Value) {
-    return query::TypedQueryResult<Value>::runtimeFailure(
+    return query::CapabilityProviderResult<Capability>::runtimeFailure(
         query::QueryRuntimeFailure::ProviderRejected);
   }
 
@@ -198,7 +203,7 @@ query::TypedQueryResult<ParseSourceQuery::Value> ParseSourceQuery::provide(
   const auto& options = optionsResult.value();
   auto maybeLogicalName = logicalSourceName(key);
   if (maybeLogicalName == zc::none) {
-    return query::TypedQueryResult<Value>::runtimeFailure(
+    return query::CapabilityProviderResult<Capability>::runtimeFailure(
         query::QueryRuntimeFailure::InvariantViolation);
   }
   auto logicalName = zc::mv(ZC_ASSERT_NONNULL(maybeLogicalName));
@@ -210,7 +215,7 @@ query::TypedQueryResult<ParseSourceQuery::Value> ParseSourceQuery::provide(
   Parser sourceParser(sourceManager, diagnosticFacts, langOptions, stringPool, buffer);
   auto tree = sourceParser.parse();
   if (diagnosticFacts.hasInvariantViolation()) {
-    return query::TypedQueryResult<Value>::runtimeFailure(
+    return query::CapabilityProviderResult<Capability>::runtimeFailure(
         query::QueryRuntimeFailure::InvariantViolation);
   }
   const bool hasSyntaxErrors = diagnosticFacts.hasErrors();
@@ -220,15 +225,15 @@ query::TypedQueryResult<ParseSourceQuery::Value> ParseSourceQuery::provide(
         ParseRejected::fromFacts(key.canonicalSourceBytes(), source.contentDigest(),
                                  source.bytes().size(), parserOptions(options), zc::mv(facts));
     if (failure == zc::none) {
-      return query::TypedQueryResult<Value>::runtimeFailure(
+      return query::CapabilityProviderResult<Capability>::runtimeFailure(
           query::QueryRuntimeFailure::InvariantViolation);
     }
-    return query::TypedQueryResult<Value>::semanticFailure(
+    return query::CapabilityProviderResult<Capability>::semanticFailure(
         ZC_ASSERT_NONNULL(failure).encodeCanonical());
   }
   auto tokens = sourceParser.takeTokenSnapshot();
   if (tokens == zc::none) {
-    return query::TypedQueryResult<Value>::runtimeFailure(
+    return query::CapabilityProviderResult<Capability>::runtimeFailure(
         query::QueryRuntimeFailure::InvariantViolation);
   }
   auto parsed = CanonicalParsedSource::fromParsed(
@@ -236,14 +241,16 @@ query::TypedQueryResult<ParseSourceQuery::Value> ParseSourceQuery::provide(
       parserOptions(options), sourceManager, buffer, zc::mv(ZC_ASSERT_NONNULL(tree)),
       zc::mv(ZC_ASSERT_NONNULL(tokens)), zc::mv(facts));
   if (parsed == zc::none) {
-    return query::TypedQueryResult<Value>::runtimeFailure(
+    return query::CapabilityProviderResult<Capability>::runtimeFailure(
         query::QueryRuntimeFailure::InvariantViolation);
   }
-  return query::TypedQueryResult<Value>::value(zc::mv(ZC_ASSERT_NONNULL(parsed)));
+  auto stableWitness = ZC_ASSERT_NONNULL(parsed).encodeCanonical();
+  return query::CapabilityProviderResult<Capability>::value(
+      zc::heap<Capability>(zc::mv(ZC_ASSERT_NONNULL(parsed))), zc::mv(stableWitness));
 }
 
 bool registerParseSourceQuery(query::QueryDatabase& database) {
-  return database.registerDerivedKind<ParseSourceQuery>() != zc::none;
+  return database.registerRevisionLocalCapabilityKind<ParseSourceQuery>() != zc::none;
 }
 
 }  // namespace zomlang::compiler::parser

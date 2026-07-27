@@ -36,6 +36,24 @@ bool samePackage(const PackageKey& left, const PackageKey& right) {
   return leftBytes.asPtr() == rightBytes.asPtr();
 }
 
+bool isUserPackage(const CompilationUnitIdentity& unit) {
+  return unit.kind() == CompilationUnitKind::UserPackage;
+}
+
+bool isToolchainCore(const CompilationUnitIdentity& unit) {
+  return unit.kind() == CompilationUnitKind::Toolchain &&
+         unit.toolchain().component() == ToolchainComponent::Core;
+}
+
+bool isAcceptedCoreConsumerKind(CompilationDomain domain, CrateTargetKind kind) {
+  if (domain == CompilationDomain::Target) {
+    return kind == CrateTargetKind::Library || kind == CrateTargetKind::Binary ||
+           kind == CrateTargetKind::Test || kind == CrateTargetKind::Benchmark ||
+           kind == CrateTargetKind::Example;
+  }
+  return kind == CrateTargetKind::BuildScript || kind == CrateTargetKind::Library;
+}
+
 }  // namespace
 
 CanonicalTargetSpecificationKey::CanonicalTargetSpecificationKey(
@@ -176,6 +194,18 @@ zc::Maybe<SemanticCompilerOptionsKey> SemanticCompilerOptionsKey::decodeCanonica
   return zc::none;
 }
 
+uint32_t SemanticCompilerOptionsKey::editionYear() const noexcept { return editionYearValue; }
+
+bool SemanticCompilerOptionsKey::useUnicode() const noexcept { return useUnicodeValue; }
+
+bool SemanticCompilerOptionsKey::allowDollarIdentifiers() const noexcept {
+  return allowDollarIdentifiersValue;
+}
+
+bool SemanticCompilerOptionsKey::supportRegexLiterals() const noexcept {
+  return supportRegexLiteralsValue;
+}
+
 void SemanticCompilerOptionsKey::encode(CanonicalEncoder& encoder) const {
   encoder.encodeUint32(editionYearValue);
   encoder.encodeBool(useUnicodeValue);
@@ -265,8 +295,18 @@ CompilationConfigKey CompilationConfigKey::clone() const {
                               zc::mv(producer));
 }
 
+CompilationDomain CompilationConfigKey::domain() const noexcept { return domainValue; }
+
+const CanonicalTargetSpecificationKey& CompilationConfigKey::target() const noexcept {
+  return targetValue;
+}
+
 const SemanticCompilerOptionsKey& CompilationConfigKey::semanticOptions() const noexcept {
   return semanticOptionsValue;
+}
+
+bool CompilationConfigKey::hasBuildScriptProducer() const noexcept {
+  return buildScriptProducerValue != zc::none;
 }
 
 void CompilationConfigKey::encode(CanonicalEncoder& encoder) const {
@@ -281,22 +321,28 @@ void CompilationConfigKey::encode(CanonicalEncoder& encoder) const {
   }
 }
 
-CrateKey::CrateKey(PackageKey&& package, CrateTargetKind kind, TargetName&& targetName,
+CrateKey::CrateKey(CompilationUnitIdentity&& unit, CrateTargetKind kind, TargetName&& targetName,
                    CompilationConfigKey&& compilation) noexcept
-    : packageValue(zc::mv(package)),
+    : unitValue(zc::mv(unit)),
       kindValue(kind),
       targetNameValue(zc::mv(targetName)),
       compilationValue(zc::mv(compilation)) {}
 
-zc::Maybe<CrateKey> CrateKey::from(PackageKey&& package, CrateTargetKind kind,
+zc::Maybe<CrateKey> CrateKey::from(CompilationUnitIdentity&& unit, CrateTargetKind kind,
                                    TargetName&& targetName, CompilationConfigKey&& compilation) {
   if (!isValid(kind)) { return zc::none; }
-  return CrateKey(zc::mv(package), kind, zc::mv(targetName), zc::mv(compilation));
+  if (isToolchainCore(unit) &&
+      (kind != CrateTargetKind::Library || targetName.text() != "core"_zc ||
+       compilation.hasBuildScriptProducer() ||
+       compilation.semanticOptions().editionYear() != 2026)) {
+    return zc::none;
+  }
+  return CrateKey(zc::mv(unit), kind, zc::mv(targetName), zc::mv(compilation));
 }
 
 zc::Maybe<CrateKey> CrateKey::decodeCanonical(CanonicalDecoder& decoder) {
-  auto package = PackageKey::decodeCanonical(decoder);
-  if (package == zc::none) { return zc::none; }
+  auto unit = CompilationUnitIdentity::decodeCanonical(decoder);
+  if (unit == zc::none) { return zc::none; }
   auto kind = decoder.decodeUint8();
   if (kind == zc::none) { return zc::none; }
   ZC_IF_SOME(value, kind) {
@@ -309,11 +355,11 @@ zc::Maybe<CrateKey> CrateKey::decodeCanonical(CanonicalDecoder& decoder) {
   if (targetName == zc::none) { return zc::none; }
   auto compilation = CompilationConfigKey::decodeCanonical(decoder);
   if (compilation == zc::none) { return zc::none; }
-  ZC_IF_SOME(packageValue, package) {
+  ZC_IF_SOME(unitValue, unit) {
     ZC_IF_SOME(kindValue, kind) {
       ZC_IF_SOME(targetNameValue, targetName) {
         ZC_IF_SOME(compilationValue, compilation) {
-          return from(zc::mv(packageValue), static_cast<CrateTargetKind>(kindValue),
+          return from(zc::mv(unitValue), static_cast<CrateTargetKind>(kindValue),
                       zc::mv(targetNameValue), zc::mv(compilationValue));
         }
       }
@@ -323,21 +369,23 @@ zc::Maybe<CrateKey> CrateKey::decodeCanonical(CanonicalDecoder& decoder) {
 }
 
 CrateKey CrateKey::clone() const {
-  return CrateKey(packageValue.clone(), kindValue, targetNameValue.clone(),
-                  compilationValue.clone());
+  return CrateKey(unitValue.clone(), kindValue, targetNameValue.clone(), compilationValue.clone());
 }
 
-const PackageKey& CrateKey::package() const noexcept { return packageValue; }
+const CompilationUnitIdentity& CrateKey::unit() const noexcept { return unitValue; }
 
 CrateTargetKind CrateKey::targetKind() const noexcept { return kindValue; }
 
 zc::StringPtr CrateKey::targetName() const noexcept { return targetNameValue.text(); }
+
+const CompilationConfigKey& CrateKey::compilation() const noexcept { return compilationValue; }
+
 const SemanticCompilerOptionsKey& CrateKey::semanticOptions() const noexcept {
   return compilationValue.semanticOptions();
 }
 
 void CrateKey::encode(CanonicalEncoder& encoder) const {
-  packageValue.encode(encoder);
+  unitValue.encode(encoder);
   encoder.encodeUint8(static_cast<uint8_t>(kindValue));
   targetNameValue.encode(encoder);
   compilationValue.encode(encoder);
@@ -349,33 +397,133 @@ zc::Array<uint8_t> CrateKey::encode() const {
   return encoder.finish();
 }
 
-CrateDependencyEdgeKey::CrateDependencyEdgeKey(PackageDependencyEdgeKey&& packageEdge,
-                                               CrateKey&& consumer, CrateKey&& provider) noexcept
-    : packageEdgeValue(zc::mv(packageEdge)),
+zc::Maybe<CrateKey> projectToolchainCoreCrate(const CrateKey& consumer) {
+  if (!isUserPackage(consumer.unit()) ||
+      !isAcceptedCoreConsumerKind(consumer.compilation().domain(), consumer.targetKind())) {
+    return zc::none;
+  }
+  const auto& consumerOptions = consumer.semanticOptions();
+  auto compilation = CompilationConfigKey::from(
+      consumer.compilation().domain(), consumer.compilation().target().clone(),
+      SemanticCompilerOptionsKey::from(2026, consumerOptions.useUnicode(),
+                                       consumerOptions.allowDollarIdentifiers(),
+                                       consumerOptions.supportRegexLiterals()),
+      zc::Maybe<BuildScriptProducerKey>());
+  auto target = TargetName::fromCanonical("core"_zc);
+  if (compilation == zc::none || target == zc::none) { return zc::none; }
+  ZC_IF_SOME(targetValue, target) {
+    ZC_IF_SOME(compilationValue, compilation) {
+      return CrateKey::from(CompilationUnitIdentity::toolchain(ToolchainUnitKey::core()),
+                            CrateTargetKind::Library, zc::mv(targetValue),
+                            zc::mv(compilationValue));
+    }
+  }
+  return zc::none;
+}
+
+CrateDependencyOrigin::CrateDependencyOrigin(UserPackageCrateDependencyOrigin&& origin) noexcept
+    : value(zc::mv(origin)) {}
+
+CrateDependencyOrigin::CrateDependencyOrigin(ToolchainCoreCrateDependencyOrigin&& origin) noexcept
+    : value(zc::mv(origin)) {}
+
+CrateDependencyOrigin CrateDependencyOrigin::userPackage(PackageDependencyEdgeKey&& edge) {
+  return CrateDependencyOrigin(UserPackageCrateDependencyOrigin{zc::mv(edge)});
+}
+
+CrateDependencyOrigin CrateDependencyOrigin::toolchainCore() {
+  return CrateDependencyOrigin(ToolchainCoreCrateDependencyOrigin{});
+}
+
+zc::Maybe<CrateDependencyOrigin> CrateDependencyOrigin::decodeCanonical(CanonicalDecoder& decoder) {
+  auto kind = decoder.decodeUint8();
+  ZC_IF_SOME(tag, kind) {
+    switch (static_cast<CrateDependencyOriginKind>(tag)) {
+      case CrateDependencyOriginKind::UserPackage: {
+        auto edge = PackageDependencyEdgeKey::decodeCanonical(decoder);
+        ZC_IF_SOME(value, edge) { return userPackage(zc::mv(value)); }
+        return zc::none;
+      }
+      case CrateDependencyOriginKind::ToolchainCore:
+        return toolchainCore();
+    }
+  }
+  return zc::none;
+}
+
+CrateDependencyOrigin CrateDependencyOrigin::clone() const {
+  ZC_SWITCH_ONEOF(value) {
+    ZC_CASE_ONEOF(origin, UserPackageCrateDependencyOrigin) {
+      return userPackage(origin.edge.clone());
+    }
+    ZC_CASE_ONEOF(origin, ToolchainCoreCrateDependencyOrigin) { return toolchainCore(); }
+  }
+  ZC_UNREACHABLE
+}
+
+CrateDependencyOriginKind CrateDependencyOrigin::kind() const noexcept {
+  if (value.is<UserPackageCrateDependencyOrigin>()) {
+    return CrateDependencyOriginKind::UserPackage;
+  }
+  return CrateDependencyOriginKind::ToolchainCore;
+}
+
+const PackageDependencyEdgeKey& CrateDependencyOrigin::userPackageEdge() const {
+  return value.get<UserPackageCrateDependencyOrigin>().edge;
+}
+
+void CrateDependencyOrigin::encode(CanonicalEncoder& encoder) const {
+  encoder.encodeUint8(static_cast<uint8_t>(kind()));
+  ZC_SWITCH_ONEOF(value) {
+    ZC_CASE_ONEOF(origin, UserPackageCrateDependencyOrigin) { origin.edge.encode(encoder); }
+    ZC_CASE_ONEOF(origin, ToolchainCoreCrateDependencyOrigin) {}
+  }
+}
+
+CrateDependencyEdgeKey::CrateDependencyEdgeKey(CrateDependencyOrigin&& origin, CrateKey&& consumer,
+                                               CrateKey&& provider) noexcept
+    : originValue(zc::mv(origin)),
       consumerValue(zc::mv(consumer)),
       providerValue(zc::mv(provider)) {}
 
-zc::Maybe<CrateDependencyEdgeKey> CrateDependencyEdgeKey::from(
-    PackageDependencyEdgeKey&& packageEdge, CrateKey&& consumer, CrateKey&& provider) {
-  if (!samePackage(packageEdge.consumer(), consumer.package()) ||
-      !samePackage(packageEdge.provider(), provider.package())) {
-    return zc::none;
+zc::Maybe<CrateDependencyEdgeKey> CrateDependencyEdgeKey::from(CrateDependencyOrigin&& origin,
+                                                               CrateKey&& consumer,
+                                                               CrateKey&& provider) {
+  if (origin.kind() == CrateDependencyOriginKind::UserPackage) {
+    const auto& packageEdge = origin.userPackageEdge();
+    if (!isUserPackage(consumer.unit()) || !isUserPackage(provider.unit()) ||
+        !samePackage(packageEdge.consumer(), consumer.unit().userPackage()) ||
+        !samePackage(packageEdge.provider(), provider.unit().userPackage())) {
+      return zc::none;
+    }
+  } else {
+    auto expectedProvider = projectToolchainCoreCrate(consumer);
+    bool providerMatchesProjection = false;
+    ZC_IF_SOME(expected, expectedProvider) {
+      providerMatchesProjection = expected.encode().asPtr() == provider.encode().asPtr();
+    }
+    if (!isUserPackage(consumer.unit()) || !isToolchainCore(provider.unit()) ||
+        provider.targetKind() != CrateTargetKind::Library || provider.targetName() != "core"_zc ||
+        !isAcceptedCoreConsumerKind(consumer.compilation().domain(), consumer.targetKind()) ||
+        !providerMatchesProjection) {
+      return zc::none;
+    }
   }
-  return CrateDependencyEdgeKey(zc::mv(packageEdge), zc::mv(consumer), zc::mv(provider));
+  return CrateDependencyEdgeKey(zc::mv(origin), zc::mv(consumer), zc::mv(provider));
 }
 
 zc::Maybe<CrateDependencyEdgeKey> CrateDependencyEdgeKey::decodeCanonical(
     CanonicalDecoder& decoder) {
-  auto packageEdge = PackageDependencyEdgeKey::decodeCanonical(decoder);
-  if (packageEdge == zc::none) { return zc::none; }
+  auto origin = CrateDependencyOrigin::decodeCanonical(decoder);
+  if (origin == zc::none) { return zc::none; }
   auto consumer = CrateKey::decodeCanonical(decoder);
   if (consumer == zc::none) { return zc::none; }
   auto provider = CrateKey::decodeCanonical(decoder);
   if (provider == zc::none) { return zc::none; }
-  ZC_IF_SOME(packageEdgeValue, packageEdge) {
+  ZC_IF_SOME(originValue, origin) {
     ZC_IF_SOME(consumerValue, consumer) {
       ZC_IF_SOME(providerValue, provider) {
-        return from(zc::mv(packageEdgeValue), zc::mv(consumerValue), zc::mv(providerValue));
+        return from(zc::mv(originValue), zc::mv(consumerValue), zc::mv(providerValue));
       }
     }
   }
@@ -383,20 +531,17 @@ zc::Maybe<CrateDependencyEdgeKey> CrateDependencyEdgeKey::decodeCanonical(
 }
 
 CrateDependencyEdgeKey CrateDependencyEdgeKey::clone() const {
-  return CrateDependencyEdgeKey(packageEdgeValue.clone(), consumerValue.clone(),
-                                providerValue.clone());
+  return CrateDependencyEdgeKey(originValue.clone(), consumerValue.clone(), providerValue.clone());
 }
 
-const PackageDependencyEdgeKey& CrateDependencyEdgeKey::packageEdge() const noexcept {
-  return packageEdgeValue;
-}
+const CrateDependencyOrigin& CrateDependencyEdgeKey::origin() const noexcept { return originValue; }
 
 const CrateKey& CrateDependencyEdgeKey::consumer() const noexcept { return consumerValue; }
 
 const CrateKey& CrateDependencyEdgeKey::provider() const noexcept { return providerValue; }
 
 void CrateDependencyEdgeKey::encode(CanonicalEncoder& encoder) const {
-  packageEdgeValue.encode(encoder);
+  originValue.encode(encoder);
   consumerValue.encode(encoder);
   providerValue.encode(encoder);
 }

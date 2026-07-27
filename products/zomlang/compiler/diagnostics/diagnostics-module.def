@@ -15,6 +15,8 @@
 // RFC 0004 module-resolution diagnostics. Numeric values remain stable across
 // the binder/module ownership split.
 
+// CircularImport and CircularReexport are reserved until RFC 0026 R26-11 lands.
+// Tracking: docs/rfc/tracking/0026-review-and-implementation.md
 DIAG(3011, CircularImport, kError, "Circular import detected for module '{0}'", 1)
 DIAG(3012, ImportModuleNotFound, kError, "Cannot resolve module '{0}'", 1)
 DIAG(3013, ImportMemberNotFound, kError, "Module '{0}' has no exported member '{1}'", 2)
@@ -29,6 +31,10 @@ DIAG(3023, ImportModuleAmbiguous, kError, "Import path resolves to multiple modu
 DIAG(3024, ReexportModuleAmbiguous, kError, "Re-export path resolves to multiple modules", 0)
 DIAG(3026, ModuleDeclarationNameMismatch, kError,
      "Module declaration '{0}' does not match selected module '{1}'", 2)
+// Reserved by RFC 0025 until the package and module producers land in R25-02B.
+// Tracking: docs/rfc/tracking/0025-review-and-implementation.md
+DIAG(3027, ToolchainModuleRootReserved, kError,
+     "Module root '{0}' is reserved by the compiler toolchain", 1)
 
 // RFC 0008 verified module-interface publication invariants.
 DIAG(9950, ModuleInterfaceInputMismatch, kFatal,

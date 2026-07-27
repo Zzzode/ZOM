@@ -423,9 +423,9 @@ HirModuleCandidate& HirModuleCandidate::operator=(HirModuleCandidate&&) noexcept
 
 struct VerifiedHirModule::Impl final {
   Impl(identity::SemanticContextBrand semanticContext,
-       identity::SemanticContextFingerprint&& contextFingerprint, identity::PackageId package,
-       identity::CrateId crate, identity::ModuleId module,
-       const identity::Sha256Digest& sourceContentDigest,
+       identity::SemanticContextFingerprint&& contextFingerprint,
+       identity::CompilationUnitId compilationUnit, identity::CrateId crate,
+       identity::ModuleId module, const identity::Sha256Digest& sourceContentDigest,
        const binder::ParsedModuleReceipt& parsedModuleReceipt,
        const checker::checked::CheckedFactsRevision& checkedFactsRevision,
        const checker::dispatch::DispatchFactsRevision& dispatchFactsRevision,
@@ -443,7 +443,7 @@ struct VerifiedHirModule::Impl final {
        zc::Vector<HirScalarLiteralExpression>&& expressions) noexcept
       : semanticContext(semanticContext),
         contextFingerprint(zc::mv(contextFingerprint)),
-        package(package),
+        compilationUnit(compilationUnit),
         crate(crate),
         module(module),
         sourceContentDigest(sourceContentDigest),
@@ -468,7 +468,7 @@ struct VerifiedHirModule::Impl final {
 
   identity::SemanticContextBrand semanticContext;
   identity::SemanticContextFingerprint contextFingerprint;
-  identity::PackageId package;
+  identity::CompilationUnitId compilationUnit;
   identity::CrateId crate;
   identity::ModuleId module;
   identity::Sha256Digest sourceContentDigest;
@@ -505,7 +505,9 @@ const identity::SemanticContextFingerprint& VerifiedHirModule::contextFingerprin
   return impl->contextFingerprint;
 }
 
-identity::PackageId VerifiedHirModule::package() const noexcept { return impl->package; }
+identity::CompilationUnitId VerifiedHirModule::compilationUnit() const noexcept {
+  return impl->compilationUnit;
+}
 identity::CrateId VerifiedHirModule::crate() const noexcept { return impl->crate; }
 identity::ModuleId VerifiedHirModule::module() const noexcept { return impl->module; }
 
@@ -1387,7 +1389,7 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
   const ModuleInterfaceLineage ownInterface{checked.ownInterface().module,
                                             checked.ownInterface().revision};
   auto impl = zc::heap<VerifiedHirModule::Impl>(
-      checked.semanticContext(), checked.contextFingerprint().clone(), checked.package(),
+      checked.semanticContext(), checked.contextFingerprint().clone(), checked.compilationUnit(),
       checked.crate(), checked.module(), checked.sourceContentDigest(),
       checked.parsedModuleReceipt(), checked.checkedFactsRevision(),
       checked.dispatchFactsRevision(), checked.borrowEvidenceRevision(),

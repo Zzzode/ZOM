@@ -5,31 +5,13 @@
 
 #include "zomlang/compiler/binder/module-resolution.h"
 
-#include <atomic>
-
 #include "zc/core/encoding.h"
 #include "zc/core/map.h"
 #include "zomlang/compiler/identity/canonical-decoder.h"
 #include "zomlang/compiler/identity/canonical-encoder.h"
-#include "zomlang/compiler/identity/sha256.h"
 
 namespace zomlang::compiler::binder {
 namespace {
-
-constexpr zc::StringPtr kEnvironmentDomain = "zom.module-resolution-environment"_zc;
-constexpr zc::StringPtr kReceiptDomain = "zom.module-resolution-receipt"_zc;
-constinit std::atomic<uint64_t> gNextEnvironmentIssuer{1};
-
-zc::Maybe<uint64_t> issueEnvironmentIssuer() {
-  uint64_t current = gNextEnvironmentIssuer.load(std::memory_order_relaxed);
-  while (current != UINT64_MAX) {
-    if (gNextEnvironmentIssuer.compare_exchange_weak(
-            current, current + 1, std::memory_order_relaxed, std::memory_order_relaxed)) {
-      return current;
-    }
-  }
-  return zc::none;
-}
 
 bool lessBytes(zc::ArrayPtr<const uint8_t> left, zc::ArrayPtr<const uint8_t> right) noexcept {
   const size_t shared = left.size() < right.size() ? left.size() : right.size();
@@ -44,17 +26,6 @@ bool nonzero(const identity::Sha256Digest& digest) noexcept {
     if (byte != 0) { return true; }
   }
   return false;
-}
-
-void appendUint64(zc::Vector<uint8_t>& output, uint64_t value) {
-  for (uint32_t index = 0; index < 8; ++index) {
-    output.add(static_cast<uint8_t>(value >> (56 - index * 8)));
-  }
-}
-
-void appendDomain(zc::Vector<uint8_t>& output, zc::StringPtr domain) {
-  for (const auto byte : domain.asBytes()) { output.add(byte); }
-  output.add(0x00);
 }
 
 template <typename Value, typename EncodeKey>
@@ -191,71 +162,8 @@ zc::Vector<ModuleSyntaxDependencySite> cloneSyntaxSites(
   return result;
 }
 
-zc::Array<uint8_t> encodeEnvironment(ModuleResolutionEnvironmentRecord& environment) {
-  identity::CanonicalEncoder searchRoots;
-  searchRoots.encodeSequenceSize(environment.searchRoots.size());
-  for (const auto& root : environment.searchRoots) { root.encode(searchRoots); }
-
-  identity::CanonicalEncoder sourceSnapshots;
-  sourceSnapshots.encodeSequenceSize(environment.sourceSnapshots.size());
-  for (const auto& source : environment.sourceSnapshots) {
-    source.source.encode(sourceSnapshots);
-    sourceSnapshots.encodeDigest(source.contentDigest);
-  }
-
-  identity::CanonicalEncoder generated;
-  generated.encodeSequenceSize(environment.generatedSourceRevisions.size());
-  for (const auto& revision : environment.generatedSourceRevisions) {
-    revision.producer.encode(generated);
-    generated.encodeDigest(revision.revision);
-  }
-
-  identity::CanonicalEncoder aliases;
-  aliases.encodeSequenceSize(environment.dependencyAliasRoots.size());
-  for (const auto& alias : environment.dependencyAliasRoots) {
-    alias.requester.encode(aliases);
-    alias.alias.encode(aliases);
-    alias.target.encode(aliases);
-  }
-
-  identity::CanonicalEncoder ancestry;
-  ancestry.encodeSequenceSize(environment.requesterAncestry.size());
-  for (const auto& entry : environment.requesterAncestry) {
-    entry.requester.encode(ancestry);
-    ancestry.encodeSequenceSize(entry.ancestry.size());
-    for (const auto& module : entry.ancestry) { module.encode(ancestry); }
-  }
-
-  auto policy = fixedResolutionPolicy().encode();
-
-  zc::Vector<uint8_t> bytes;
-  appendDomain(bytes, kEnvironmentDomain);
-  bytes.addAll(searchRoots.finish());
-  bytes.addAll(sourceSnapshots.finish());
-  bytes.addAll(generated.finish());
-  bytes.addAll(aliases.finish());
-  bytes.addAll(ancestry.finish());
-  bytes.addAll(policy.asPtr());
-  return bytes.releaseAsArray();
-}
-
 ModuleResolutionInvariantFact failure(ModuleResolutionInvariantKind kind) {
   return ModuleResolutionInvariantFact{kind, 1};
-}
-
-zc::Maybe<identity::Sha256Digest> receiptRevision(
-    zc::ArrayPtr<const uint8_t> requestKey, zc::ArrayPtr<const identity::ModuleKey> candidates) {
-  zc::Vector<uint8_t> bytes;
-  appendDomain(bytes, kReceiptDomain);
-  appendUint64(bytes, requestKey.size());
-  bytes.addAll(requestKey);
-  appendUint64(bytes, candidates.size());
-  for (const auto& candidate : candidates) {
-    auto encoded = candidate.encode();
-    appendUint64(bytes, encoded.size());
-    bytes.addAll(encoded.asPtr());
-  }
-  return identity::sha256(bytes.asPtr());
 }
 
 }  // namespace
@@ -264,6 +172,8 @@ ModuleSearchRoot::ModuleSearchRoot(WorkspaceModuleSearchRoot&& root) noexcept
     : value(zc::mv(root)) {}
 ModuleSearchRoot::ModuleSearchRoot(PackageModuleSearchRoot&& root) noexcept : value(zc::mv(root)) {}
 ModuleSearchRoot::ModuleSearchRoot(GeneratedModuleSearchRoot&& root) noexcept
+    : value(zc::mv(root)) {}
+ModuleSearchRoot::ModuleSearchRoot(ToolchainCoreModuleSearchRoot&& root) noexcept
     : value(zc::mv(root)) {}
 
 ModuleSearchRoot ModuleSearchRoot::workspace(identity::CrateKey&& crate,
@@ -280,6 +190,17 @@ ModuleSearchRoot ModuleSearchRoot::generated(identity::CrateKey&& crate,
                                              identity::CanonicalRelativePath&& root) {
   return ModuleSearchRoot(GeneratedModuleSearchRoot{zc::mv(crate), producer, zc::mv(root)});
 }
+zc::Maybe<ModuleSearchRoot> ModuleSearchRoot::toolchainCore(
+    identity::CrateKey&& crate, const identity::Sha256Digest& distributionDigest) {
+  if (crate.unit().kind() != identity::CompilationUnitKind::Toolchain ||
+      crate.unit().toolchain().component() != identity::ToolchainComponent::Core ||
+      crate.targetKind() != identity::CrateTargetKind::Library || crate.targetName() != "core"_zc ||
+      crate.semanticOptions().editionYear() != 2026 ||
+      crate.compilation().hasBuildScriptProducer() || !nonzero(distributionDigest)) {
+    return zc::none;
+  }
+  return ModuleSearchRoot(ToolchainCoreModuleSearchRoot{zc::mv(crate), distributionDigest});
+}
 ModuleSearchRoot ModuleSearchRoot::clone() const {
   if (value.is<WorkspaceModuleSearchRoot>()) {
     const auto& root = value.get<WorkspaceModuleSearchRoot>();
@@ -289,10 +210,16 @@ ModuleSearchRoot ModuleSearchRoot::clone() const {
     const auto& root = value.get<PackageModuleSearchRoot>();
     return package(root.crate.clone(), root.package.clone(), root.root.clone());
   }
-  const auto& root = value.get<GeneratedModuleSearchRoot>();
-  return generated(root.crate.clone(),
-                   identity::BuildScriptProducerKey::from(root.producer.digest()),
-                   root.root.clone());
+  if (value.is<GeneratedModuleSearchRoot>()) {
+    const auto& root = value.get<GeneratedModuleSearchRoot>();
+    return generated(root.crate.clone(),
+                     identity::BuildScriptProducerKey::from(root.producer.digest()),
+                     root.root.clone());
+  }
+  const auto& root = value.get<ToolchainCoreModuleSearchRoot>();
+  auto cloned = toolchainCore(root.crate.clone(), root.distributionDigest);
+  ZC_IF_SOME(result, cloned) { return zc::mv(result); }
+  ZC_UNREACHABLE
 }
 zc::Maybe<ModuleSearchRoot> ModuleSearchRoot::decodeCanonical(identity::CanonicalDecoder& decoder) {
   auto kind = decoder.decodeUint8();
@@ -337,6 +264,15 @@ zc::Maybe<ModuleSearchRoot> ModuleSearchRoot::decodeCanonical(identity::Canonica
         }
         break;
       }
+      case 0x04: {
+        auto crate = identity::CrateKey::decodeCanonical(decoder);
+        auto digest = decoder.decodeDigest();
+        if (crate == zc::none || digest == zc::none) { return zc::none; }
+        ZC_IF_SOME(crateValue, crate) {
+          ZC_IF_SOME(digestValue, digest) { return toolchainCore(zc::mv(crateValue), digestValue); }
+        }
+        break;
+      }
       default:
         return zc::none;
     }
@@ -346,14 +282,21 @@ zc::Maybe<ModuleSearchRoot> ModuleSearchRoot::decodeCanonical(identity::Canonica
 ModuleSearchRootKind ModuleSearchRoot::kind() const noexcept {
   if (value.is<WorkspaceModuleSearchRoot>()) { return ModuleSearchRootKind::Workspace; }
   if (value.is<PackageModuleSearchRoot>()) { return ModuleSearchRootKind::Package; }
-  return ModuleSearchRootKind::Generated;
+  if (value.is<GeneratedModuleSearchRoot>()) { return ModuleSearchRootKind::Generated; }
+  return ModuleSearchRootKind::ToolchainCore;
 }
 const identity::CrateKey& ModuleSearchRoot::crate() const noexcept {
   if (value.is<WorkspaceModuleSearchRoot>()) {
     return value.get<WorkspaceModuleSearchRoot>().crate;
   }
   if (value.is<PackageModuleSearchRoot>()) { return value.get<PackageModuleSearchRoot>().crate; }
-  return value.get<GeneratedModuleSearchRoot>().crate;
+  if (value.is<GeneratedModuleSearchRoot>()) {
+    return value.get<GeneratedModuleSearchRoot>().crate;
+  }
+  return value.get<ToolchainCoreModuleSearchRoot>().crate;
+}
+const identity::Sha256Digest& ModuleSearchRoot::toolchainCoreDistributionDigest() const noexcept {
+  return value.get<ToolchainCoreModuleSearchRoot>().distributionDigest;
 }
 void ModuleSearchRoot::encode(identity::CanonicalEncoder& encoder) const {
   if (value.is<WorkspaceModuleSearchRoot>()) {
@@ -371,11 +314,18 @@ void ModuleSearchRoot::encode(identity::CanonicalEncoder& encoder) const {
     root.root.encode(encoder);
     return;
   }
-  const auto& root = value.get<GeneratedModuleSearchRoot>();
-  encoder.encodeUint8(0x03);
+  if (value.is<GeneratedModuleSearchRoot>()) {
+    const auto& root = value.get<GeneratedModuleSearchRoot>();
+    encoder.encodeUint8(0x03);
+    root.crate.encode(encoder);
+    root.producer.encode(encoder);
+    root.root.encode(encoder);
+    return;
+  }
+  const auto& root = value.get<ToolchainCoreModuleSearchRoot>();
+  encoder.encodeUint8(0x04);
   root.crate.encode(encoder);
-  root.producer.encode(encoder);
-  root.root.encode(encoder);
+  encoder.encodeDigest(root.distributionDigest);
 }
 
 ModuleSourceSnapshotRevision::ModuleSourceSnapshotRevision(
@@ -410,61 +360,53 @@ ModuleSyntaxDependencySite::ModuleSyntaxDependencySite(ast::NodeId node,
                                                        uint32_t schemaPreorderOrdinal) noexcept
     : node(node), span(zc::mv(span)), schemaPreorderOrdinal(schemaPreorderOrdinal) {}
 ModulePreludeDependencySite::ModulePreludeDependencySite(
-    identity::ModuleKey&& selectedTarget,
-    const identity::Sha256Digest& configurationRevision) noexcept
-    : selectedTarget(zc::mv(selectedTarget)), configurationRevision(configurationRevision) {}
+    identity::ModuleKey&& selectedTarget) noexcept
+    : selectedTarget(zc::mv(selectedTarget)) {}
 
 ModuleDependencyRequest::ModuleDependencyRequest(
     identity::ModuleId requester, identity::ModuleResolutionKey&& key,
-    const identity::Sha256Digest& environmentRevision,
     zc::Vector<ModuleSyntaxDependencySite>&& syntaxSites,
     zc::Maybe<ModulePreludeDependencySite>&& preludeSite) noexcept
     : requesterValue(requester),
       keyValue(zc::mv(key)),
-      environmentRevisionValue(environmentRevision),
       syntaxSiteValues(zc::mv(syntaxSites)),
       preludeSiteValue(zc::mv(preludeSite)) {}
 
 zc::Maybe<ModuleDependencyRequest> ModuleDependencyRequest::source(
     identity::ModuleId requester, identity::ModuleResolutionKey&& key,
-    const identity::Sha256Digest& environmentRevision,
     zc::Vector<ModuleSyntaxDependencySite>&& syntaxSites) {
   if (!requester.isValid() || key.dependencyKind() == identity::ModuleDependencyKind::Prelude ||
       key.normalizedPath() == zc::none || syntaxSites.size() == 0 ||
-      !nonzero(environmentRevision) || !canonicalSortSyntaxSites(syntaxSites)) {
+      !canonicalSortSyntaxSites(syntaxSites)) {
     return zc::none;
   }
   for (const auto& site : syntaxSites) {
     if (!site.node || site.span.byteStart() > site.span.byteEnd()) { return zc::none; }
   }
   zc::Maybe<ModulePreludeDependencySite> noPrelude;
-  return ModuleDependencyRequest(requester, zc::mv(key), environmentRevision, zc::mv(syntaxSites),
-                                 zc::mv(noPrelude));
+  return ModuleDependencyRequest(requester, zc::mv(key), zc::mv(syntaxSites), zc::mv(noPrelude));
 }
 
 zc::Maybe<ModuleDependencyRequest> ModuleDependencyRequest::prelude(
     identity::ModuleId requester, identity::ModuleResolutionKey&& key,
-    identity::ModuleKey&& selectedTarget, const identity::Sha256Digest& environmentRevision,
-    const identity::Sha256Digest& configurationRevision) {
+    identity::ModuleKey&& selectedTarget) {
   if (!requester.isValid() || key.dependencyKind() != identity::ModuleDependencyKind::Prelude ||
-      key.normalizedPath() != zc::none || key.dependencyAlias() != zc::none ||
-      !nonzero(environmentRevision) || !nonzero(configurationRevision)) {
+      key.normalizedPath() != zc::none || key.dependencyAlias() != zc::none) {
     return zc::none;
   }
   zc::Vector<ModuleSyntaxDependencySite> noSyntaxSites;
   zc::Maybe<ModulePreludeDependencySite> preludeSite(
-      ModulePreludeDependencySite(zc::mv(selectedTarget), configurationRevision));
-  return ModuleDependencyRequest(requester, zc::mv(key), environmentRevision, zc::mv(noSyntaxSites),
+      ModulePreludeDependencySite(zc::mv(selectedTarget)));
+  return ModuleDependencyRequest(requester, zc::mv(key), zc::mv(noSyntaxSites),
                                  zc::mv(preludeSite));
 }
 
 ModuleDependencyRequest ModuleDependencyRequest::clone() const {
   zc::Maybe<ModulePreludeDependencySite> preludeSite;
   ZC_IF_SOME(value, preludeSiteValue) {
-    preludeSite =
-        ModulePreludeDependencySite(value.selectedTarget.clone(), value.configurationRevision);
+    preludeSite = ModulePreludeDependencySite(value.selectedTarget.clone());
   }
-  return ModuleDependencyRequest(requesterValue, keyValue.clone(), environmentRevisionValue,
+  return ModuleDependencyRequest(requesterValue, keyValue.clone(),
                                  cloneSyntaxSites(syntaxSiteValues.asPtr()), zc::mv(preludeSite));
 }
 const identity::ModuleResolutionKey& ModuleDependencyRequest::key() const noexcept {
@@ -478,9 +420,6 @@ zc::ArrayPtr<const identity::ModulePathSegment> ModuleDependencyRequest::normali
     const noexcept {
   ZC_IF_SOME(path, keyValue.normalizedPath()) { return path; }
   return nullptr;
-}
-const identity::Sha256Digest& ModuleDependencyRequest::environmentRevision() const noexcept {
-  return environmentRevisionValue;
 }
 bool ModuleDependencyRequest::isPrelude() const noexcept {
   return keyValue.dependencyKind() == identity::ModuleDependencyKind::Prelude;
@@ -497,66 +436,28 @@ const identity::ModuleKey& ModuleDependencyRequest::requestedTarget() const {
   ZC_IF_SOME(value, preludeSiteValue) { return value.selectedTarget; }
   ZC_UNREACHABLE;
 }
-const identity::Sha256Digest& ModuleDependencyRequest::configurationRevision() const {
-  ZC_IF_SOME(value, preludeSiteValue) { return value.configurationRevision; }
-  ZC_UNREACHABLE;
-}
-
-VerifiedStructuralResolutionReceipt::VerifiedStructuralResolutionReceipt(
-    uint64_t issuer, zc::Array<uint8_t>&& requestKey, zc::Vector<identity::ModuleKey>&& candidates,
-    const identity::Sha256Digest& revision) noexcept
-    : issuerValue(issuer),
-      requestKeyValue(zc::mv(requestKey)),
-      candidateValues(zc::mv(candidates)),
-      revisionValue(revision) {}
-zc::ArrayPtr<const identity::ModuleKey> VerifiedStructuralResolutionReceipt::candidates()
-    const noexcept {
-  return candidateValues.asPtr();
-}
-const identity::Sha256Digest& VerifiedStructuralResolutionReceipt::revision() const noexcept {
-  return revisionValue;
-}
-ResolvedModulePath::ResolvedModulePath(ModuleDependencyRequest&& request, identity::ModuleId target,
-                                       VerifiedStructuralResolutionReceipt&& receipt) noexcept
-    : request(zc::mv(request)), target(target), receipt(zc::mv(receipt)) {}
-MissingModulePath::MissingModulePath(ModuleDependencyRequest&& request,
-                                     VerifiedStructuralResolutionReceipt&& receipt) noexcept
-    : request(zc::mv(request)), receipt(zc::mv(receipt)) {}
-AmbiguousModulePath::AmbiguousModulePath(ModuleDependencyRequest&& request,
-                                         zc::Vector<identity::ModuleKey>&& candidates,
-                                         VerifiedStructuralResolutionReceipt&& receipt) noexcept
-    : request(zc::mv(request)), candidates(zc::mv(candidates)), receipt(zc::mv(receipt)) {}
 
 struct StructuralModuleResolver::Impl final {
-  Impl(identity::SemanticContextBrand context, uint64_t issuer,
-       ModuleResolutionEnvironmentRecord&& environment,
-       const identity::Sha256Digest& environmentRevision,
+  Impl(identity::SemanticContextBrand context, ModuleResolutionEnvironmentRecord&& environment,
        identity::ModuleResolutionPolicyKey&& policy,
        zc::Vector<StructuralModuleCatalogEntry>&& catalog,
        zc::Vector<identity::RequesterModuleAncestry>&& requesterAncestry,
        zc::Vector<identity::ModuleCatalogPathBucket>&& catalogBuckets,
-       zc::TreeMap<zc::String, size_t>&& moduleSlots,
        zc::TreeMap<zc::String, size_t>&& bucketSlots) noexcept
       : context(context),
-        issuer(issuer),
         environment(zc::mv(environment)),
-        environmentRevision(environmentRevision),
         policy(zc::mv(policy)),
         catalog(zc::mv(catalog)),
         requesterAncestry(zc::mv(requesterAncestry)),
         catalogBuckets(zc::mv(catalogBuckets)),
-        moduleSlots(zc::mv(moduleSlots)),
         bucketSlots(zc::mv(bucketSlots)) {}
 
   identity::SemanticContextBrand context;
-  uint64_t issuer;
   ModuleResolutionEnvironmentRecord environment;
-  identity::Sha256Digest environmentRevision;
   identity::ModuleResolutionPolicyKey policy;
   zc::Vector<StructuralModuleCatalogEntry> catalog;
   zc::Vector<identity::RequesterModuleAncestry> requesterAncestry;
   zc::Vector<identity::ModuleCatalogPathBucket> catalogBuckets;
-  zc::TreeMap<zc::String, size_t> moduleSlots;
   zc::TreeMap<zc::String, size_t> bucketSlots;
 };
 
@@ -571,10 +472,10 @@ StructuralModuleResolver::FreezeResult StructuralModuleResolver::freeze(
     identity::SemanticContextBrand context, const identity::SemanticIdentityRegistrySet& registries,
     ModuleResolutionEnvironmentRecord&& environment,
     zc::Vector<StructuralModuleCatalogEntry>&& catalog) {
-  if (!context.isValid() || !registries.packages().isFrozen() || !registries.crates().isFrozen() ||
-      !registries.sourceFiles().isFrozen() || !registries.modules().isFrozen() ||
-      environment.searchRoots.size() == 0 || catalog.size() == 0 ||
-      catalog.size() != registries.modules().size() ||
+  if (!context.isValid() || !registries.compilationUnits().isFrozen() ||
+      !registries.crates().isFrozen() || !registries.sourceFiles().isFrozen() ||
+      !registries.modules().isFrozen() || environment.searchRoots.size() == 0 ||
+      catalog.size() == 0 || catalog.size() != registries.modules().size() ||
       environment.sourceSnapshots.size() != registries.sourceSnapshots().size() ||
       environment.requesterAncestry.size() != catalog.size()) {
     return failure(ModuleResolutionInvariantKind::InputMismatch);
@@ -630,19 +531,25 @@ StructuralModuleResolver::FreezeResult StructuralModuleResolver::freeze(
     switch (root.kind()) {
       case ModuleSearchRootKind::Workspace: {
         const auto& value = root.value.get<WorkspaceModuleSearchRoot>();
-        if (value.crate.package().source().kind() != identity::PackageSourceKind::LocalPath ||
-            value.root.leadingParents() !=
-                value.crate.package().source().localPath().leadingParents() ||
-            !startsWith(value.root.segments(),
-                        value.crate.package().source().localPath().segments())) {
+        if (value.crate.unit().kind() != identity::CompilationUnitKind::UserPackage) {
+          return failure(ModuleResolutionInvariantKind::InvalidEnvironment);
+        }
+        const auto& package = value.crate.unit().userPackage();
+        if (package.source().kind() != identity::PackageSourceKind::LocalPath ||
+            value.root.leadingParents() != package.source().localPath().leadingParents() ||
+            !startsWith(value.root.segments(), package.source().localPath().segments())) {
           return failure(ModuleResolutionInvariantKind::InvalidEnvironment);
         }
         break;
       }
       case ModuleSearchRootKind::Package: {
         const auto& value = root.value.get<PackageModuleSearchRoot>();
-        const auto sourceKind = value.crate.package().source().kind();
-        if (!samePackage(value.crate.package(), value.package) ||
+        if (value.crate.unit().kind() != identity::CompilationUnitKind::UserPackage) {
+          return failure(ModuleResolutionInvariantKind::InvalidEnvironment);
+        }
+        const auto& package = value.crate.unit().userPackage();
+        const auto sourceKind = package.source().kind();
+        if (!samePackage(package, value.package) ||
             (sourceKind != identity::PackageSourceKind::Registry &&
              sourceKind != identity::PackageSourceKind::Vcs)) {
           return failure(ModuleResolutionInvariantKind::InvalidEnvironment);
@@ -660,6 +567,28 @@ StructuralModuleResolver::FreezeResult StructuralModuleResolver::freeze(
           foundRevision = true;
         }
         if (!foundRevision) { return failure(ModuleResolutionInvariantKind::InvalidEnvironment); }
+        break;
+      }
+      case ModuleSearchRootKind::ToolchainCore: {
+        const auto& value = root.value.get<ToolchainCoreModuleSearchRoot>();
+        if (value.crate.unit().kind() != identity::CompilationUnitKind::Toolchain ||
+            value.crate.unit().toolchain().component() != identity::ToolchainComponent::Core ||
+            value.crate.targetKind() != identity::CrateTargetKind::Library ||
+            value.crate.targetName() != "core"_zc ||
+            value.crate.semanticOptions().editionYear() != 2026 ||
+            value.crate.compilation().hasBuildScriptProducer() ||
+            !nonzero(value.distributionDigest)) {
+          return failure(ModuleResolutionInvariantKind::InvalidEnvironment);
+        }
+        bool foundCoreModule = false;
+        for (const auto& entry : catalog) {
+          if (!sameCrate(value.crate, entry.key.crate())) { continue; }
+          foundCoreModule = true;
+          if (entry.source.origin().kind() != identity::SourceOriginKind::CoreFile) {
+            return failure(ModuleResolutionInvariantKind::InvalidEnvironment);
+          }
+        }
+        if (!foundCoreModule) { return failure(ModuleResolutionInvariantKind::InvalidEnvironment); }
         break;
       }
     }
@@ -768,25 +697,10 @@ StructuralModuleResolver::FreezeResult StructuralModuleResolver::freeze(
     }
   }
 
-  auto bytes = encodeEnvironment(environment);
-  auto revision = identity::sha256(bytes.asPtr());
-  if (revision == zc::none) { return failure(ModuleResolutionInvariantKind::RevisionMismatch); }
-  auto issuer = issueEnvironmentIssuer();
-  if (issuer == zc::none) { return failure(ModuleResolutionInvariantKind::InvalidEnvironment); }
-  ZC_IF_SOME(value, revision) {
-    ZC_IF_SOME(issuerValue, issuer) {
-      auto policy = fixedResolutionPolicy();
-      return StructuralModuleResolver(
-          zc::heap<Impl>(context, issuerValue, zc::mv(environment), value, zc::mv(policy),
-                         zc::mv(catalog), zc::mv(requesterAncestry), zc::mv(catalogBuckets),
-                         zc::mv(moduleSlots), zc::mv(bucketSlots)));
-    }
-  }
-  return failure(ModuleResolutionInvariantKind::RevisionMismatch);
-}
-
-const identity::Sha256Digest& StructuralModuleResolver::environmentRevision() const noexcept {
-  return impl->environmentRevision;
+  auto policy = fixedResolutionPolicy();
+  return StructuralModuleResolver(zc::heap<Impl>(context, zc::mv(environment), zc::mv(policy),
+                                                 zc::mv(catalog), zc::mv(requesterAncestry),
+                                                 zc::mv(catalogBuckets), zc::mv(bucketSlots)));
 }
 const identity::ModuleResolutionPolicyKey& StructuralModuleResolver::policy() const noexcept {
   return impl->policy;
@@ -846,14 +760,6 @@ zc::Maybe<identity::ModuleResolutionKey> StructuralModuleResolver::resolutionKey
                                              zc::mv(alias), impl->policy.clone());
 }
 
-zc::Maybe<identity::ModuleId> StructuralModuleResolver::moduleForKey(
-    const identity::ModuleKey& key) const {
-  ZC_IF_SOME(slot, impl->moduleSlots.find(zc::encodeHex(key.encode().asPtr()))) {
-    if (slot < impl->catalog.size()) { return impl->catalog[slot].module; }
-  }
-  return zc::none;
-}
-
 zc::Maybe<identity::ModuleCatalogPathBucket> StructuralModuleResolver::readCatalogPathBucket(
     const identity::CrateKey& crate, zc::ArrayPtr<const identity::ModulePathSegment> path) const {
   auto key = identity::ModuleCatalogPathBucketKey::from(crate.clone(), clonePath(path));
@@ -871,119 +777,6 @@ zc::Maybe<identity::ModuleCatalogPathBucket> StructuralModuleResolver::readCatal
 zc::Maybe<identity::ModuleCatalogPathBucket> StructuralModuleResolver::catalogPathBucketInput(
     const identity::CrateKey& crate, zc::ArrayPtr<const identity::ModulePathSegment> path) const {
   return readCatalogPathBucket(crate, path);
-}
-
-zc::Maybe<zc::Array<uint8_t>> StructuralModuleResolver::requestKey(
-    const ModuleDependencyRequest& request) const {
-  auto requesterResult = uniqueCatalogIndex(impl->catalog.asPtr(), request.requester());
-  if (requesterResult == zc::none) { return zc::none; }
-  size_t requesterIndex = 0;
-  ZC_IF_SOME(value, requesterResult) { requesterIndex = value; }
-  const auto& requester = impl->catalog[requesterIndex];
-  auto expected =
-      resolutionKey(request.requester(), request.kind(), clonePath(request.normalizedPath()));
-  if (expected == zc::none) { return zc::none; }
-  ZC_IF_SOME(value, expected) {
-    if (value.encode().asPtr() != request.key().encode().asPtr() ||
-        !sameKey(requester.key, request.key().requester())) {
-      return zc::none;
-    }
-  }
-  return request.key().encode();
-}
-
-bool StructuralModuleResolver::verifiesReceipt(
-    const ModuleDependencyRequest& request,
-    const VerifiedStructuralResolutionReceipt& receipt) const {
-  if (receipt.issuerValue != impl->issuer ||
-      request.environmentRevision() != impl->environmentRevision) {
-    return false;
-  }
-  auto validatedKey = requestKey(request);
-  if (validatedKey == zc::none) { return false; }
-  zc::Array<uint8_t> requestKey;
-  ZC_IF_SOME(value, validatedKey) { requestKey = zc::mv(value); }
-  if (requestKey.asPtr() != receipt.requestKeyValue.asPtr()) { return false; }
-  for (size_t index = 0; index < receipt.candidateValues.size(); ++index) {
-    if (moduleForKey(receipt.candidateValues[index]) == zc::none) { return false; }
-    if (index != 0 && !lessBytes(receipt.candidateValues[index - 1].encode().asPtr(),
-                                 receipt.candidateValues[index].encode().asPtr())) {
-      return false;
-    }
-  }
-  auto revision = receiptRevision(requestKey.asPtr(), receipt.candidateValues.asPtr());
-  ZC_IF_SOME(value, revision) { return value == receipt.revisionValue; }
-  return false;
-}
-
-zc::OneOf<ModulePathResolution, ModuleResolutionInvariantFact>
-StructuralModuleResolver::materializeQueryResolution(
-    ModuleDependencyRequest&& request,
-    const identity::ModuleResolutionCandidates& queryCandidates) const {
-  if (!request.requester().belongsTo(impl->context) ||
-      request.environmentRevision() != impl->environmentRevision) {
-    return failure(ModuleResolutionInvariantKind::InvalidRequest);
-  }
-  auto requesterResult = uniqueCatalogIndex(impl->catalog.asPtr(), request.requester());
-  if (requesterResult == zc::none) {
-    return failure(ModuleResolutionInvariantKind::InvalidRequest);
-  }
-  size_t requesterIndex = 0;
-  ZC_IF_SOME(value, requesterResult) { requesterIndex = value; }
-  const auto& requester = impl->catalog[requesterIndex];
-  auto validatedKey = requestKey(request);
-  if (validatedKey == zc::none) { return failure(ModuleResolutionInvariantKind::InvalidRequest); }
-  if (request.isPrelude()) {
-    if (queryCandidates.candidates().size() > 1 ||
-        (queryCandidates.candidates().size() == 1 &&
-         !sameKey(queryCandidates.candidates()[0], request.requestedTarget()))) {
-      return failure(ModuleResolutionInvariantKind::InvalidRequest);
-    }
-  } else {
-    for (const auto& site : request.syntaxSites()) {
-      if (!site.span.belongsTo(requester.source)) {
-        return failure(ModuleResolutionInvariantKind::InvalidRequest);
-      }
-    }
-  }
-  zc::Array<uint8_t> encodedRequestKey;
-  ZC_IF_SOME(value, validatedKey) { encodedRequestKey = zc::mv(value); }
-
-  zc::Maybe<identity::ModuleId> target;
-  for (const auto& candidate : queryCandidates.candidates()) {
-    auto module = moduleForKey(candidate);
-    if (module == zc::none) { return failure(ModuleResolutionInvariantKind::InvalidEnvironment); }
-    ZC_IF_SOME(value, module) { target = value; }
-  }
-  zc::Vector<identity::ModuleKey> candidates(queryCandidates.candidates().size());
-  for (const auto& candidate : queryCandidates.candidates()) { candidates.add(candidate.clone()); }
-  auto revision = receiptRevision(encodedRequestKey.asPtr(), candidates.asPtr());
-  if (revision == zc::none) { return failure(ModuleResolutionInvariantKind::RevisionMismatch); }
-  ZC_IF_SOME(value, revision) {
-    zc::Vector<identity::ModuleKey> receiptCandidates(candidates.size());
-    for (const auto& candidate : candidates) { receiptCandidates.add(candidate.clone()); }
-    auto receipt = VerifiedStructuralResolutionReceipt(impl->issuer, zc::mv(encodedRequestKey),
-                                                       zc::mv(receiptCandidates), value);
-    if (candidates.size() == 0) {
-      ModulePathResolution result(MissingModulePath(zc::mv(request), zc::mv(receipt)));
-      return zc::mv(result);
-    }
-    if (candidates.size() == 1) {
-      identity::ModuleId resolvedTarget;
-      ZC_IF_SOME(value, target) {
-        resolvedTarget = value;
-      } else {
-        ZC_UNREACHABLE;
-      }
-      ModulePathResolution result(
-          ResolvedModulePath(zc::mv(request), resolvedTarget, zc::mv(receipt)));
-      return zc::mv(result);
-    }
-    ModulePathResolution result(
-        AmbiguousModulePath(zc::mv(request), zc::mv(candidates), zc::mv(receipt)));
-    return zc::mv(result);
-  }
-  return failure(ModuleResolutionInvariantKind::RevisionMismatch);
 }
 
 }  // namespace zomlang::compiler::binder

@@ -13,6 +13,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 QUERY_ROOT = Path("products/zomlang/compiler/query")
 COMPILER_ROOT = Path("products/zomlang/compiler")
+PRODUCT_ROOT = Path("products/zomlang")
 COMPILER_CMAKE = COMPILER_ROOT / "CMakeLists.txt"
 QUERY_CMAKE = QUERY_ROOT / "CMakeLists.txt"
 QUERY_DATABASE_HEADER = QUERY_ROOT / "query-database.h"
@@ -25,6 +26,9 @@ DRIVER_NAMED_IDENTITY_QUERY = COMPILER_ROOT / "driver/named-identity-inventory-q
 DRIVER_NAMED_ITEM_QUERY = COMPILER_ROOT / "driver/named-item-query.cc"
 DRIVER_OWNER_BODY_QUERY = COMPILER_ROOT / "driver/owner-body-query.cc"
 DRIVER_MODULE_RESOLUTION_QUERY = COMPILER_ROOT / "driver/incremental-module-resolution-query.cc"
+DRIVER_MODULE_GRAPH_INPUT = COMPILER_ROOT / "driver/module-graph-query-input.cc"
+DRIVER_MODULE_GRAPH_QUERY = COMPILER_ROOT / "driver/module-graph-query.cc"
+BINDER_GRAPH_BRIDGE = COMPILER_ROOT / "binder/binding-input.cc"
 DRIVER_PACKAGE_GRAPH_INPUT = COMPILER_ROOT / "driver/incremental-package-graph-query-input.cc"
 IDENTITY_SOURCE_QUERY_INPUT = COMPILER_ROOT / "identity/source-query-input.cc"
 PARSER_PARSE_SOURCE_QUERY = COMPILER_ROOT / "parser/parse-source-query.cc"
@@ -38,8 +42,23 @@ DRIVER_SESSION_TEST = Path(
 DRIVER_MODULE_RESOLUTION_QUERY_TEST = Path(
     "products/zomlang/tests/unittests/compiler/driver/incremental-module-resolution-query-test.cc"
 )
+DRIVER_MODULE_GRAPH_QUERY_TEST = Path(
+    "products/zomlang/tests/unittests/compiler/driver/module-graph-query-input-test.cc"
+)
 QUERY_DATABASE_TEST = Path(
     "products/zomlang/tests/unittests/compiler/query/query-database-test.cc"
+)
+QUERY_CAPABILITY_TEST = Path(
+    "products/zomlang/tests/unittests/compiler/query/query-capability-test.cc"
+)
+ACTIVE_IDENTITY_MATERIALIZATION = (
+    COMPILER_ROOT / "driver/active-identity-materialization.h"
+)
+CORE_LIBRARY_QUERY_PROVIDER_HEADER = (
+    COMPILER_ROOT / "driver/core-library-query-provider.h"
+)
+CORE_LIBRARY_QUERY_PROVIDER_SOURCE = (
+    COMPILER_ROOT / "driver/core-library-query-provider.cc"
 )
 DRIVER_AUTHORITY_SESSION_TEST = Path(
     "products/zomlang/tests/unittests/compiler/driver/active-definition-authority-session-test.cc"
@@ -62,6 +81,15 @@ VERIFICATION_OWNER = Path(".agents/subagents/verification.md")
 AGENTS = Path("AGENTS.md")
 
 ROUTING_FILES = (MANIFEST, ROUTING, TASK_ROUTER, MODULE_OWNER, VERIFICATION_OWNER, AGENTS)
+
+MATERIALIZATION_CAPABILITY_TOKENS = (
+    "ActiveMaterialization<",
+    "ActiveMembership<",
+    "ActiveMaterializerPermission<",
+    ".materializeActive(",
+    "semanticContextResources()",
+    "SnapshotCapabilityArena::context",
+)
 
 QUERY_FORBIDDEN_INCLUDES = (
     "zomlang/compiler/ast/",
@@ -114,11 +142,22 @@ def source_files() -> dict[Path, str]:
             if path.suffix not in {".cc", ".h"} and name != "CMakeLists.txt":
                 continue
             files[relative(path)] = path.read_text(encoding="utf-8")
+    for directory, child_directories, names in os.walk(ROOT / PRODUCT_ROOT):
+        child_directories[:] = [name for name in child_directories if name != "vendor"]
+        for name in names:
+            path = Path(directory) / name
+            if path.suffix not in {".cc", ".h"} or path.is_relative_to(ROOT / COMPILER_ROOT):
+                continue
+            text = path.read_text(encoding="utf-8")
+            if any(token in text for token in MATERIALIZATION_CAPABILITY_TOKENS):
+                files[relative(path)] = text
     for path in (
         DRIVER_TOPOLOGY_ADAPTER_TEST,
         DRIVER_SESSION_TEST,
         DRIVER_MODULE_RESOLUTION_QUERY_TEST,
+        DRIVER_MODULE_GRAPH_QUERY_TEST,
         QUERY_DATABASE_TEST,
+        QUERY_CAPABILITY_TEST,
         DRIVER_AUTHORITY_SESSION_TEST,
         BINDER_MODULE_BODY_SYNTAX_TEST,
     ):
@@ -296,14 +335,87 @@ def check_input_probe_contract(files: dict[Path, str], errors: list[str]) -> Non
 
 
 def check_materialization_capability(files: dict[Path, str], errors: list[str]) -> None:
+    specialization_allowlist = {QUERY_CAPABILITY_TEST}
+    call_allowlist = {QUERY_CAPABILITY_TEST}
+
     for path, text in sorted(files.items()):
         if path.suffix not in {".cc", ".h"}:
             continue
-        declares_semantic = "ReuseClass::Semantic" in text or "ReuseClass::Persisted" in text
-        if declares_semantic and "materializeActive(" in text:
+
+        specializes_materialization = re.search(
+            r"struct\s+ActiveMaterialization\s*<", text
+        )
+        specializes_membership = re.search(r"struct\s+ActiveMembership\s*<", text)
+        specializes_permission = re.search(
+            r"struct\s+ActiveMaterializerPermission\s*<", text
+        )
+        if (
+            specializes_materialization
+            or specializes_membership
+            or specializes_permission
+        ) and path not in specialization_allowlist:
             errors.append(
-                f"{path}: Semantic or Persisted provider must not access active-handle materialization"
+                f"{path}: active materialization specialization is outside the closed allowlist"
             )
+
+        materialization_calls = len(re.findall(r"\.materializeActive\s*\(", text))
+        if materialization_calls and path not in call_allowlist:
+            errors.append(
+                f"{path}: active materialization call is outside approved capability providers"
+            )
+
+        if (
+            "semanticContextResources()" in text
+            and path not in {QUERY_DATABASE_HEADER, QUERY_DATABASE_SOURCE}
+        ):
+            errors.append(
+                f"{path}: semantic context capability resources escape the query runtime"
+            )
+        if "SnapshotCapabilityArena::context" in text:
+            errors.append(f"{path}: snapshot capability arena must not expose query context")
+
+    header = files.get(QUERY_DATABASE_HEADER, "")
+    capability_test = files.get(QUERY_CAPABILITY_TEST, "")
+    for path, text, marker, description in (
+        (
+            QUERY_DATABASE_HEADER,
+            header,
+            "ActiveMaterializerPermission<Spec>::allowed",
+            "descriptor-bound materializer permission",
+        ),
+        (
+            QUERY_DATABASE_HEADER,
+            header,
+            "context.activeMaterializationReady()",
+            "final current sealed snapshot barrier",
+        ),
+        (
+            QUERY_DATABASE_HEADER,
+            header,
+            "ActiveMembership<Key>::demand(context, key, authority...)",
+            "tracked active-membership demand",
+        ),
+        (
+            QUERY_DATABASE_HEADER,
+            header,
+            "ActiveMaterialization<Key>::materialize(context.semanticContextResources(), key)",
+            "post-membership materialization",
+        ),
+        (
+            QUERY_CAPABILITY_TEST,
+            capability_test,
+            "UnpermittedMaterializingCapabilityQuery",
+            "unpermitted materializer regression",
+        ),
+        (
+            QUERY_CAPABILITY_TEST,
+            capability_test,
+            "RejectsActiveMaterializationBeforeAndOutsideTheFinalBarrier",
+            "final snapshot barrier regression",
+        ),
+    ):
+        if marker not in text:
+            errors.append(f"{path}: missing {description}: {marker}")
 
 
 def check_provider_registration(files: dict[Path, str], errors: list[str]) -> None:
@@ -367,20 +479,14 @@ def check_active_definition_authority(files: dict[Path, str], errors: list[str])
         (
             session,
             DRIVER_AUTHORITY_SESSION,
-            "snapshot.get<ActiveCratesInput>",
-            "active crate reconstruction",
+            "snapshot.get<module_graph_query::ModuleGraphQuery>",
+            "complete stable graph reconstruction",
         ),
         (
             session,
             DRIVER_AUTHORITY_SESSION,
-            "snapshot.get<ActiveModulesInput>",
-            "per-crate active module reconstruction",
-        ),
-        (
-            session,
-            DRIVER_AUTHORITY_SESSION,
-            "snapshot.get<ModuleBindingOrderQuery>",
-            "binding-order closure comparison",
+            "snapshot.get<module_graph_query::ModuleGraphSccQuery>",
+            "stable graph SCC closure comparison",
         ),
         (
             session,
@@ -548,7 +654,7 @@ def check_owner_body_projection(files: dict[Path, str], errors: list[str]) -> No
         (
             owner_query,
             DRIVER_OWNER_BODY_QUERY,
-            "context.get<NamedDefinitionInventoryQuery>(key)",
+            "context.get<NamedDefinitionInventoryQuery>(ZC_ASSERT_NONNULL(stableModule))",
             "owner inventory dependency",
         ),
         (
@@ -578,13 +684,13 @@ def check_owner_body_projection(files: dict[Path, str], errors: list[str]) -> No
         (
             owner_query,
             DRIVER_OWNER_BODY_QUERY,
-            "context.get<ModuleBodyProvenanceQuery>",
+            "context.getCapability<ModuleBodyProvenanceQuery>",
             "module-owner provenance alternative",
         ),
         (
             owner_query,
             DRIVER_OWNER_BODY_QUERY,
-            "context.get<NamedItemProvenanceQuery>",
+            "context.getCapability<NamedItemProvenanceQuery>",
             "definition-owner provenance alternative",
         ),
         (
@@ -644,8 +750,8 @@ def check_owner_body_projection(files: dict[Path, str], errors: list[str]) -> No
         (
             adapter,
             DRIVER_TOPOLOGY_ADAPTER,
-            "registerDerivedKind<OwnerBodyProvenanceQuery>()",
-            "owner-body provenance registration",
+            "registerRevisionLocalCapabilityKind<OwnerBodyProvenanceQuery>()",
+            "retained owner-body provenance capability registration",
         ),
         (
             query_test,
@@ -700,7 +806,8 @@ def check_owner_body_projection(files: dict[Path, str], errors: list[str]) -> No
     for forbidden in (
         "ParseSourceQuery",
         "SelectedModuleSourceInput",
-        "ActiveSourcesInput",
+        "UserPackageActiveSourcesInput",
+        "ActiveSourcesQuery",
         "CompilerSession",
         "identityRegistries",
         "moduleGraph",
@@ -712,426 +819,243 @@ def check_owner_body_projection(files: dict[Path, str], errors: list[str]) -> No
 
 def check_production_topology_integration(files: dict[Path, str], errors: list[str]) -> None:
     session = files.get(DRIVER_SESSION, "")
-    query_header = files.get(QUERY_DATABASE_HEADER, "")
-    query_source = files.get(QUERY_DATABASE_SOURCE, "")
     adapter = files.get(DRIVER_TOPOLOGY_ADAPTER, "")
-    named_identity_query = files.get(DRIVER_NAMED_IDENTITY_QUERY, "")
-    module_resolution_query = files.get(DRIVER_MODULE_RESOLUTION_QUERY, "")
-    package_graph_input = files.get(DRIVER_PACKAGE_GRAPH_INPUT, "")
-    source_query_input = files.get(IDENTITY_SOURCE_QUERY_INPUT, "")
-    parse_source_query = files.get(PARSER_PARSE_SOURCE_QUERY, "")
-    parse_source_query_verifier = files.get(PARSER_PARSE_SOURCE_QUERY_VERIFIER, "")
-    adapter_test = files.get(DRIVER_TOPOLOGY_ADAPTER_TEST, "")
-    session_test = files.get(DRIVER_SESSION_TEST, "")
-    module_resolution_query_test = files.get(DRIVER_MODULE_RESOLUTION_QUERY_TEST, "")
+    graph_input = files.get(DRIVER_MODULE_GRAPH_INPUT, "")
+    graph_query = files.get(DRIVER_MODULE_GRAPH_QUERY, "")
+    graph_bridge = files.get(BINDER_GRAPH_BRIDGE, "")
+    resolution_query = files.get(DRIVER_MODULE_RESOLUTION_QUERY, "")
+    source_query = files.get(IDENTITY_SOURCE_QUERY_INPUT, "")
+    parse_query = files.get(PARSER_PARSE_SOURCE_QUERY, "")
+    parse_verifier = files.get(PARSER_PARSE_SOURCE_QUERY_VERIFIER, "")
+    named_identity = files.get(DRIVER_NAMED_IDENTITY_QUERY, "")
+    named_item = files.get(DRIVER_NAMED_ITEM_QUERY, "")
+    owner_body = files.get(DRIVER_OWNER_BODY_QUERY, "")
+    package_graph = files.get(DRIVER_PACKAGE_GRAPH_INPUT, "")
+    graph_test = files.get(DRIVER_MODULE_GRAPH_QUERY_TEST, "")
+
     for marker, description in (
         ("basic::ThreadPool queryScheduler;", "session-owned query scheduler"),
         ("query::QueryDatabase queryDatabase;", "session-owned query database"),
-        ("queryDatabase(queryScheduler)", "borrowed query scheduler injection"),
+        ("registerIncrementalBindingQueryAdapter(queryDatabase)", "binding query registration"),
+        ("module_graph_query::registerModuleGraphQueries(queryDatabase)", "graph input registration"),
         (
-            "registerIncrementalBindingQueryAdapter(queryDatabase)",
-            "production query registration",
+            "module_graph_query::registerStableModuleGraphQueries(queryDatabase)",
+            "stable graph registration",
         ),
         (
             "activeDefinitionAuthority.beginBaseMutation(queryDatabase)",
-            "atomic authority-invalidating topology input transaction",
+            "authority-invalidating base transaction",
         ),
         (
-            "transaction.set<incremental::SelectedModuleSourceInput>",
-            "selected-source authority staging",
+            "graph_query::VerifiedModuleGraphInputTransaction::prepare(",
+            "atomic graph input transaction",
         ),
         (
-            "transaction.erase<incremental::SelectedModuleSourceInput>",
-            "stale selected-source authority removal",
+            "graph_query::ModuleGraphInputTransactionAuthority authority",
+            "authority-backed graph input verification",
+        ),
+        ("moduleGraphInputLedger", "complete graph input ledger"),
+        ("stagedCompilationRoots", "complete stable root key"),
+        (
+            "authorityStagingSnapshotValue.get<graph_query::ModuleGraphQuery>",
+            "final stable graph demand",
         ),
         (
-            "transaction.set<source_query::SourceSnapshotInput>",
-            "source snapshot staging",
+            "authorityStagingSnapshotValue.get<graph_query::ModuleGraphSccQuery>",
+            "final stable SCC demand",
         ),
-        (
-            "transaction.set<source_query::CompilationOptionsInput>",
-            "compilation options staging",
-        ),
-        (
-            "transaction.set<incremental::ActiveCratesInput>",
-            "active crate root staging",
-        ),
-        (
-            "transaction.set<incremental::PackageGraphInput>",
-            "package graph root staging",
-        ),
-        (
-            "transaction.erase<incremental::PackageGraphInput>",
-            "stale package graph root removal",
-        ),
-        (
-            "transaction.set<incremental::ActiveSourcesInput>",
-            "per-crate active source staging",
-        ),
-        (
-            "transaction.set<incremental::ActiveModulesInput>",
-            "per-crate active module staging",
-        ),
-        (
-            "transaction.erase<source_query::SourceSnapshotInput>",
-            "stale source snapshot removal",
-        ),
-        ("registries.sourceSnapshots()", "registry-owned source snapshot projection"),
-        ("stagedSourceSnapshots", "complete source snapshot root state"),
-        ("stagedActiveCrates", "complete per-crate membership root state"),
-        ("verifySourceSnapshotInputs", "independent source snapshot root verification"),
-        ("verifyCompilationOptionsInput", "independent compilation options verification"),
-        ("verifyActiveCratesInput", "independent active crate root verification"),
-        ("verifyPackageGraphInput", "independent package graph verification"),
-        ("verifyCrateMembershipInputs", "independent per-crate membership verification"),
-        (
-            "verifySelectedSourceSnapshotClosure",
-            "selected-source to snapshot-root closure verification",
-        ),
-        ("graph.sourceFile(handle)", "direct verified selected-source projection"),
-        ("verifySelectedModuleSourceInputs", "independent selected-source input verification"),
-        ("snapshot.get<incremental::ModuleBindingOrderQuery>", "demanded topology query"),
-        (
-            "incremental_binding_query::ModuleBodySyntaxQuery",
-            "demanded module-body syntax query",
-        ),
-        (
-            "incremental_binding_query::ModuleBodyProvenanceQuery",
-            "demanded module-body provenance query",
-        ),
-        (
-            "incremental_module_resolution_query::stageModuleResolutionQueryInputs(",
-            "module resolution input staging",
-        ),
-        (
-            "resolutionSnapshot.get<incremental_module_resolution_query::ResolveModuleRequestQuery>",
-            "module resolution query demand",
-        ),
-        ("resolver.materializeQueryResolution(", "query result receipt materialization"),
-        ("topologyByRequester", "single-pass topology adjacency index"),
+        ("binder::VerifiedModuleGraphBuilder::build(", "final Binder graph materialization"),
         ("parsedByModule", "stable parsed-module index"),
         ("inventoryByModule", "stable frozen-inventory index"),
         ("bindingOutputsByModule", "stable dependency output index"),
     ):
         if marker not in session:
             errors.append(f"{DRIVER_SESSION}: missing {description}: {marker}")
-    for text, path, marker, description in (
-        (
-            query_header,
-            QUERY_DATABASE_HEADER,
-            "explicit QueryDatabase(basic::ThreadPool& scheduler);",
-            "mandatory scheduler injection",
-        ),
-        (
-            query_source,
-            QUERY_DATABASE_SOURCE,
-            "basic::ThreadPool& scheduler;",
-            "borrowed query scheduler reference",
-        ),
-    ):
-        if marker not in text:
-            errors.append(f"{path}: missing {description}: {marker}")
-    if re.search(r"\bbasic::ThreadPool\s+[A-Za-z_]\w*\s*[({]", query_source):
-        errors.append(f"{QUERY_DATABASE_SOURCE}: query runtime must not own a scheduler")
-    for forbidden, description in (
-        ("while (completed", "batch readiness scheduler"),
-        ("resolver.resolve(zc::mv(request))", "batch module resolution authority"),
-        ("for (const auto& requesterKey : graph.modules())", "per-module graph edge rescan"),
-        ("graph.view(handle)", "per-module complete graph-view cloning"),
-        (
-            "CompilationUnitQueryKey::fixed(), activeValue",
-            "compilation-wide active module input authority",
-        ),
-    ):
-        if forbidden in session:
-            errors.append(f"{DRIVER_SESSION}: production binding retains {description}")
-    if "context.getParallel<ModuleDependenciesInput>" not in adapter:
-        errors.append(
-            f"{DRIVER_TOPOLOGY_ADAPTER}: topology provider must demand dependency inputs in parallel"
-        )
-    if '"zom.driver.active-modules"' in adapter:
-        errors.append(f"{DRIVER_TOPOLOGY_ADAPTER}: obsolete global active-module domain remains")
+
     for marker, description in (
+        ('return "zom.query.selected-module-catalog"_zc;', "selected catalog input domain"),
+        ('return "zom.query.selected-module-source"_zc;', "selected source query domain"),
+        ('return "zom.query.active-modules"_zc;', "active modules query domain"),
+        ('return "zom.query.module-dependency-sites"_zc;', "dependency sites query domain"),
+        ('return "zom.query.module-dependency-requests"_zc;', "dependency requests query domain"),
+        ('return "zom.query.module-dependencies"_zc;', "module dependencies query domain"),
+        ("VerifiedModuleGraphInputTransaction::prepare(", "verified graph input transaction"),
         (
-            'return "zom.query.requester-module-ancestry"_zc;',
-            "requester ancestry input domain",
+            "ModuleGraphInputTransactionVerifier::verify(",
+            "independent graph input transaction verifier",
         ),
+        ("reconstructVerifierSites(", "independent parsed-site reconstruction"),
+        ("authority.resolver.catalog()", "frozen resolver catalog enumeration"),
+        ("authority.coreInputs.projections()", "verified core projection enumeration"),
+        ("registerInputKind<SelectedModuleCatalogInput>()", "catalog input registration"),
+        ("registerInputKind<ModuleDependencySiteInput>()", "dependency site input registration"),
+        ("registerDerivedKind<SelectedModuleSourceQuery>()", "selected source registration"),
+        ("registerDerivedKind<ActiveModulesQuery>()", "active modules registration"),
         (
-            'return "zom.query.module-catalog-path-bucket"_zc;',
-            "catalog bucket input domain",
+            "registerDerivedKind<ModuleDependencyRequestsQuery>()",
+            "dependency request registration",
         ),
-        ('return "zom.query.resolve-module-request"_zc;', "module request query domain"),
+        ("registerDerivedKind<ModuleDependenciesQuery>()", "dependency registration"),
+        ("SelectedModuleSourceQuery::provide(", "selected source provider"),
+        ("SelectedModuleSourceQuery::verify(", "selected source verifier"),
+        ("ActiveModulesQuery::provide(", "active modules provider"),
+        ("ActiveModulesQuery::verify(", "active modules verifier"),
+        ("ModuleDependenciesQuery::provide(", "module dependencies provider"),
+        ("ModuleDependenciesQuery::verify(", "module dependencies verifier"),
+        ("rebuildVerifierRequests(", "independent dependency request reconstruction"),
+        ("resolveVerifierDependencies(", "independent dependency resolution"),
+    ):
+        if marker not in graph_input:
+            errors.append(f"{DRIVER_MODULE_GRAPH_INPUT}: missing {description}: {marker}")
+
+    for marker, description in (
+        ('return "zom.query.module-graph"_zc;', "stable module graph domain"),
+        ('return "zom.query.module-graph-scc"_zc;', "stable SCC domain"),
+        ("ModuleGraphQuery::provide(", "stable graph provider"),
+        ("ModuleGraphQuery::verify(", "independent stable graph verifier"),
+        ("evaluateVerifierGraph(", "independent stable graph reconstruction"),
+        ("ModuleGraphSccQuery::provide(", "Tarjan SCC provider"),
+        ("ModuleGraphSccQuery::verify(", "Kosaraju SCC verifier"),
+        ("verifierOrderComponents(", "independent SCC ordering"),
+        ("registerDerivedKind<ModuleGraphQuery>()", "stable graph registration"),
+        ("registerDerivedKind<ModuleGraphSccQuery>()", "stable SCC registration"),
+    ):
+        if marker not in graph_query:
+            errors.append(f"{DRIVER_MODULE_GRAPH_QUERY}: missing {description}: {marker}")
+
+    for marker, description in (
+        ("reconstructVerifierContextRoots(", "independent final root reconstruction"),
+        ("demandVerifierActiveModules(", "independent final active-module demand"),
+        ("rebuildVerifierSite(", "independent final syntax-site reconstruction"),
+        ("verifierGraphProjectionMatches(", "independent final edge projection"),
+        ("recomputeVerifierGraphRevision(", "independent final revision reconstruction"),
+        ("input.registries.sourceFiles().find(", "independent final source registry demand"),
+        (
+            "input.finalSnapshot.getCapability<parser::ParseSourceQuery>",
+            "independent final parser capability demand",
+        ),
+        ("consumedSites[", "independent final site-consumption proof"),
+    ):
+        if marker not in graph_bridge:
+            errors.append(f"{BINDER_GRAPH_BRIDGE}: missing {description}: {marker}")
+
+    for marker, description in (
+        ('return "zom.query.requester-module-ancestry"_zc;', "requester ancestry input domain"),
+        ('return "zom.query.module-catalog-path-bucket"_zc;', "catalog bucket input domain"),
+        ('return "zom.query.resolve-module-request"_zc;', "resolution query domain"),
         ("context.getParallel<ModuleCatalogPathBucketInput>", "parallel exact bucket demand"),
-        ("stageModuleResolutionQueryInputs(", "verified input closure staging"),
-        ("transaction.set<RequesterModuleAncestryInput>", "requester ancestry staging"),
-        ("transaction.set<ModuleCatalogPathBucketInput>", "catalog bucket staging"),
-        ("transaction.set<DependencyAliasRootInput>", "dependency alias staging"),
-        ("transaction.set<ConfiguredPreludeInput>", "configured prelude staging"),
-        ("registerDerivedKind<ResolveModuleRequestQuery>()", "module request registration"),
+        ("stageModuleResolutionQueryInputs(", "resolver input staging"),
+        ("registerDerivedKind<ResolveModuleRequestQuery>()", "resolution query registration"),
     ):
-        if marker not in module_resolution_query:
-            errors.append(
-                f"{DRIVER_MODULE_RESOLUTION_QUERY}: missing {description}: {marker}"
-            )
+        if marker not in resolution_query:
+            errors.append(f"{DRIVER_MODULE_RESOLUTION_QUERY}: missing {description}: {marker}")
+
     for marker, description in (
-        (
-            'return "zom.query.selected-module-source"_zc;',
-            "selected-source input domain",
-        ),
-        (
-            "registerInputKind<SelectedModuleSourceInput>()",
-            "selected-source input registration",
-        ),
-        ("source.belongsTo(module.crate())", "selected-source crate verification"),
-        ("occurrences != 1", "exact selected-source snapshot closure"),
-        ('return "zom.query.active-crates"_zc;', "active crate input domain"),
-        ("registerInputKind<ActiveCratesInput>()", "active crate input registration"),
-        ('return "zom.query.active-sources"_zc;', "active source domain"),
-        ('return "zom.query.active-modules"_zc;', "active module domain"),
-        ("registerInputKind<ActiveSourcesInput>()", "active source input registration"),
-        ("registerInputKind<ActiveModulesInput>()", "active module input registration"),
-        ("return CanonicalSourceSet::decodeCanonical(bytes);", "canonical active-source set"),
-        (
-            "ZC_ASSERT_NONNULL(modules).modules().size() == 0",
-            "non-empty active-module input admission",
-        ),
-        ("context.get<ActiveCratesInput>(key)", "active crate demand from module order"),
-        (
-            "context.getParallel<ActiveModulesInput>(activeCrates.crates())",
-            "parallel per-crate active module demand",
-        ),
-        ("moduleBelongsToCrate", "module-to-crate membership admission"),
-        (
-            "return PackageRootSetQueryKey::decodeCanonical(bytes);",
-            "canonical package-root-set admission",
-        ),
-        (
-            "return CanonicalCrateSet::decodeCanonical(bytes);",
-            "canonical active-crate-set admission",
-        ),
-        ("identity::PackageKey::decodeCanonical(decoder)", "canonical package-key admission"),
-        ("identity::CrateKey::decodeCanonical(decoder)", "canonical crate-key admission"),
-        (
-            "ActiveCratesInput::contract() {\n"
-            "  return inputContract(domain(), query::Durability::Medium);",
-            "medium active crate durability",
-        ),
-        ("identity::ModuleKey::decodeCanonical(decoder)", "canonical module-key admission"),
-        ("!decoder.finished()", "exact identity envelope consumption"),
-        (
-            "registerIncrementalPackageGraphQueryInput(database)",
-            "package graph input registration composition",
-        ),
+        ('return "zom.query.active-crates"_zc;', "active crates query domain"),
+        ('return "zom.query.active-sources"_zc;', "active sources query domain"),
+        ("registerDerivedKind<ActiveCratesQuery>()", "active crates registration"),
+        ("registerDerivedKind<ActiveSourcesQuery>()", "active sources registration"),
+        ("registerDerivedKind<NamedDefinitionInventoryQuery>()", "named definition registration"),
+        ("registerDerivedKind<ModuleBodySyntaxQuery>()", "module body registration"),
     ):
         if marker not in adapter:
             errors.append(f"{DRIVER_TOPOLOGY_ADAPTER}: missing {description}: {marker}")
+
     for marker, description in (
-        ('return "zom.query.source-snapshot"_zc;', "source snapshot input domain"),
-        ("registerInputKind<SourceSnapshotInput>()", "source snapshot input registration"),
-        ("kMaximumSourceSnapshotBytes = 64 * 1024 * 1024", "bounded source snapshot bytes"),
-        ("auto computed = sha256(", "decoded source digest recomputation"),
-        ("ZC_ASSERT_NONNULL(computed) != ZC_ASSERT_NONNULL(digest)", "source digest mismatch rejection"),
-        (
-            'return "zom.query.compilation-options"_zc;',
-            "compilation options input domain",
-        ),
-        ("registerInputKind<CompilationOptionsInput>()", "compilation options input registration"),
-        (
-            "CompilationOptionsInput::contract() {\n"
-            "  return inputContract(domain(), query::Durability::Medium);",
-            "medium compilation options durability",
-        ),
-        ("validateTargetSelection", "independent target selection admission"),
-        (
-            "static_cast<uint8_t>(driver::package::PackagePanicStrategy::Abort)",
-            "closed panic strategy admission",
-        ),
-        ("SourceFileKey::decodeCanonical(decoder)", "canonical source-key admission"),
+        ('return "zom.query.source-snapshot"_zc;', "source snapshot domain"),
+        ("registerInputKind<SourceSnapshotInput>()", "source snapshot registration"),
+        ('return "zom.query.compilation-options"_zc;', "compilation options domain"),
+        ("registerInputKind<CompilationOptionsInput>()", "compilation options registration"),
+        ("SourceFileKey::decodeCanonical(decoder)", "canonical source key admission"),
     ):
-        if marker not in source_query_input:
+        if marker not in source_query:
             errors.append(f"{IDENTITY_SOURCE_QUERY_INPUT}: missing {description}: {marker}")
-    if (
-        adapter.count("identity::SourceFileKey::decodeCanonical(decoder)")
-        + source_query_input.count("SourceFileKey::decodeCanonical(decoder)")
-        < 2
-    ):
-        errors.append(
-            "canonical source-key admission must guard both "
-            "source input keys and selected-source values"
-        )
-    if adapter.count("identity::ModuleKey::decodeCanonical(decoder)") < 2:
-        errors.append(
-            f"{DRIVER_TOPOLOGY_ADAPTER}: canonical module-key admission must guard both "
-            "query keys and crate membership"
-        )
-    if adapter.count("return PackageRootSetQueryKey::decodeCanonical(bytes);") < 2:
-        errors.append(
-            f"{DRIVER_TOPOLOGY_ADAPTER}: package-root-set admission must guard both "
-            "active-crate input keys and module-order query keys"
-        )
 
-    def verifies_before_transaction(marker: str) -> bool:
-        verification_position = session.find(marker)
-        if verification_position < 0:
-            return False
-        transaction_position = session.find(
-            "activeDefinitionAuthority.beginBaseMutation(queryDatabase)", verification_position
-        )
-        return transaction_position >= 0
-
-    if not verifies_before_transaction("verifySelectedSourceSnapshotClosure"):
-        errors.append(
-            f"{DRIVER_SESSION}: selected-source snapshot closure must verify before transaction staging"
-        )
-    if not verifies_before_transaction("verifyCompilationOptionsInput"):
-        errors.append(
-            f"{DRIVER_SESSION}: compilation options must verify before transaction staging"
-        )
-    if not verifies_before_transaction("verifyActiveCratesInput"):
-        errors.append(f"{DRIVER_SESSION}: active crates must verify before transaction staging")
-    if not verifies_before_transaction("verifyCrateMembershipInputs"):
-        errors.append(
-            f"{DRIVER_SESSION}: per-crate memberships must verify before transaction staging"
-        )
-    if not verifies_before_transaction("verifyPackageGraphInput"):
-        errors.append(f"{DRIVER_SESSION}: package graph must verify before transaction staging")
     for marker, description in (
         ('return "zom.query.parse-source"_zc;', "ParseSource domain"),
         ("CanonicalParsedSource::fromParsed", "query-safe parsed value admission"),
+        (
+            "registerRevisionLocalCapabilityKind<ParseSourceQuery>()",
+            "parser capability registration",
+        ),
     ):
-        if marker not in parse_source_query:
+        if marker not in parse_query:
             errors.append(f"{PARSER_PARSE_SOURCE_QUERY}: missing {description}: {marker}")
-    if "bool ParseSourceQuery::verify" not in parse_source_query_verifier:
-        errors.append(
-            f"{PARSER_PARSE_SOURCE_QUERY_VERIFIER}: missing independent ParseSource verification"
-        )
-    for marker, description in (
-        ('return "zom.query.named-definition-inventory"_zc;', "named definition query domain"),
-        ('return "zom.query.named-implementation-inventory"_zc;', "named implementation query domain"),
-        ('return "zom.query.module-body-syntax"_zc;', "module-body syntax query domain"),
-        ('return "zom.query.module-body-provenance"_zc;', "module-body provenance query domain"),
-        ("StableIdentityCandidateVerifier::reconstruct", "independent stable identity reconstruction"),
-        ("ModuleBodySyntaxVerifier::reconstruct", "independent module-body reconstruction"),
-    ):
-        if marker not in named_identity_query:
-            errors.append(f"{DRIVER_NAMED_IDENTITY_QUERY}: missing {description}: {marker}")
-    for marker, description in (
-        ("registerDerivedKind<NamedDefinitionInventoryQuery>()", "named definition registration"),
-        ("registerDerivedKind<NamedImplementationInventoryQuery>()", "named implementation registration"),
-        ("registerDerivedKind<ModuleBodySyntaxQuery>()", "module-body syntax registration"),
-        ("registerDerivedKind<ModuleBodyProvenanceQuery>()", "module-body provenance registration"),
-    ):
-        if marker not in adapter:
-            errors.append(f"{DRIVER_TOPOLOGY_ADAPTER}: missing {description}: {marker}")
-    for marker, description in (
-        ('return "zom.query.package-graph"_zc;', "package graph domain"),
-        ("registerInputKind<PackageGraphInput>()", "package graph input registration"),
-        (
-            "query::Durability::Medium",
-            "medium package graph durability",
-        ),
-        (
-            "identity::PackageDependencyEdgeKey::decodeCanonical(decoder)",
-            "compositional package-edge admission",
-        ),
-        (
-            "identity::CrateDependencyEdgeKey::decodeCanonical(decoder)",
-            "compositional crate-edge admission",
-        ),
-        ("validateGraphClosure", "closed graph validation"),
-        ("containsPackage(resolvedPackages", "package endpoint closure"),
-        ("containsPackageEdge(resolvedEdges", "selected package-edge subset closure"),
-        ("containsPackageEdge(selectedEdges", "crate-edge projection closure"),
-        (
-            "projectedPackageEdges[index] != selectedEdges[selectedIndex]",
-            "complete selected-edge projection",
-        ),
-        ("remainingDependencies", "crate dependency cycle rejection"),
-        ("kMaximumEncodedGraphBytes", "bounded package graph value"),
-        ("!decoder.finished()", "exact package graph envelope consumption"),
-    ):
-        if marker not in package_graph_input:
-            errors.append(f"{DRIVER_PACKAGE_GRAPH_INPUT}: missing {description}: {marker}")
-    for marker, description in (
-        (
-            "Incremental binding query source snapshot codec is fixed bounded and self checking",
-            "fixed and adversarial source snapshot codec regression",
-        ),
-        ("missingSnapshots", "missing selected-source snapshot regression"),
-        ("replacedSnapshots", "replaced selected-source snapshot regression"),
-        ("duplicateSnapshots", "duplicate selected-source snapshot regression"),
-        (
-            "source snapshots preserve equals replace changes and erase stale",
-            "source snapshot replacement transaction regression",
-        ),
-        (
-            "compilation options codec is exact bounded and closed",
-            "compilation options codec regression",
-        ),
-        (
-            "compilation options backdate equals and replace changes",
-            "compilation options replacement regression",
-        ),
-        (
-            "active crates use a canonical package root set",
-            "active crate root and closed codec regression",
-        ),
-        (
-            "active crates backdate equals and replace changes",
-            "active crate replacement regression",
-        ),
-        (
-            "per crate source and module roots are strict and replaceable",
-            "per-crate membership codec and replacement regression",
-        ),
-        (
-            "Incremental package graph input admits only a closed canonical graph",
-            "closed package graph codec regression",
-        ),
-        (
-            "Incremental package graph input backdates equals and replaces changes",
-            "package graph replacement regression",
-        ),
-        ("outsideResolution", "selected edge outside resolution regression"),
-        ("unprojected", "unprojected selected edge regression"),
-        ("cycle", "package graph cycle regression"),
-        ("malformedModule", "malformed canonical module-key rejection"),
-        ("trailingModule", "trailing canonical module-key rejection"),
-        ("malformedSource", "malformed canonical source-key rejection"),
-        ("trailingSource", "trailing canonical source-value rejection"),
-        ("trailingKey", "trailing canonical source-key rejection"),
-    ):
-        if marker not in adapter_test:
-            errors.append(f"{DRIVER_TOPOLOGY_ADAPTER_TEST}: missing {description}: {marker}")
-    require_marker(
-        files,
-        DRIVER_SESSION_TEST,
-        "CompilerSession stages the complete source snapshot root with module topology",
-        "driver source snapshot transaction regression",
-        errors,
-    )
-    for marker, description in (
-        (
-            "ResolveModuleRequestQuery stages and demands exact candidates",
-            "exact module candidate regression",
-        ),
-        (
-            "ResolveModuleRequestQuery fails closed when exact inputs are absent",
-            "missing module input regression",
-        ),
-        (
-            "ResolveModuleRequestQuery shields unrelated catalog bucket changes",
-            "unrelated bucket shielding regression",
-        ),
-    ):
-        require_marker(
-            files,
-            DRIVER_MODULE_RESOLUTION_QUERY_TEST,
-            marker,
-            description,
-            errors,
-        )
+    if "zc::Maybe<zc::Array<uint8_t>> ParseSourceQuery::verify" not in parse_verifier:
+        errors.append(f"{PARSER_PARSE_SOURCE_QUERY_VERIFIER}: missing independent parser verifier")
 
+    for text, path, markers in (
+        (
+            named_identity,
+            DRIVER_NAMED_IDENTITY_QUERY,
+            (
+                'return "zom.query.named-definition-inventory"_zc;',
+                "StableIdentityCandidateVerifier::reconstruct",
+            ),
+        ),
+        (named_item, DRIVER_NAMED_ITEM_QUERY, ("NamedItemProvenanceQuery::verify",)),
+        (owner_body, DRIVER_OWNER_BODY_QUERY, ("OwnerBodyProvenanceQuery::verify",)),
+        (
+            package_graph,
+            DRIVER_PACKAGE_GRAPH_INPUT,
+            (
+                'return "zom.query.package-graph"_zc;',
+                "registerInputKind<PackageGraphInput>()",
+                "validateGraphClosure",
+            ),
+        ),
+    ):
+        for marker in markers:
+            if marker not in text:
+                errors.append(f"{path}: missing required query architecture marker: {marker}")
+
+    for marker, description in (
+        (
+            "Module graph input transaction commits its complete authority exactly once",
+            "atomic graph transaction regression",
+        ),
+        (
+            "Independent module graph input verifier rejects incomplete core roots",
+            "independent graph transaction verifier regression",
+        ),
+        (
+            "Stable graph and independent SCC queries cover the complete core root",
+            "complete stable graph regression",
+        ),
+        (
+            "Tarjan provider and Kosaraju verifier agree after a tracked cycle mutation",
+            "independent SCC regression",
+        ),
+        (
+            "Nested dependency failure globally precedes an earlier outside edge",
+            "stable graph failure-precedence regression",
+        ),
+        (
+            "Independent transaction verifier rejects sites not backed by parsed syntax",
+            "parsed-site mutation regression",
+        ),
+    ):
+        if marker not in graph_test:
+            errors.append(f"{DRIVER_MODULE_GRAPH_QUERY_TEST}: missing {description}: {marker}")
+
+    forbidden = (
+        "SelectedModuleSourceInput",
+        "ActiveModulesInput",
+        "ModuleDependenciesInput",
+        "ModuleBindingOrderQuery",
+        "ModuleGraphCandidate",
+        "ModuleGraphVerifier",
+        "VerifiedStructuralResolutionReceipt",
+        "materializeQueryResolution",
+        "environmentRevision",
+        "topologyByRequester",
+    )
+    for path, text in files.items():
+        if not str(path).startswith("products/zomlang/"):
+            continue
+        for token in forbidden:
+            if re.search(rf"\b{re.escape(token)}\b", text):
+                errors.append(f"{path}: obsolete topology authority remains: {token}")
 
 def check_files(files: dict[Path, str]) -> list[str]:
     errors: list[str] = []
@@ -1163,402 +1087,185 @@ def self_test() -> list[str]:
     expect_failure(mutation, "module-system query ownership", failures)
 
     mutation = dict(base)
-    mutation[MANIFEST] = mutation[MANIFEST].replace(
-        '      - "scripts/check-incremental-query-architecture.py"\n', "", 1
-    )
-    expect_failure(mutation, "verification gate ownership", failures)
-
-    mutation = dict(base)
     mutation[QUERY_ROOT / "forbidden-test.cc"] = (
         '#include "zomlang/compiler/driver/compiler-session.h"\n'
     )
     expect_failure(mutation, "forbidden semantic path", failures)
 
     mutation = dict(base)
-    mutation[COMPILER_ROOT / "fake-semantic-query-adapter.cc"] = (
-        "auto reuse = ReuseClass::Semantic;\nvoid test() { materializeActive(); }\n"
+    mutation[COMPILER_ROOT / "driver/unapproved-materialization.h"] = (
+        "template <> struct ActiveMaterialization<UnapprovedKey> {};\n"
     )
-    expect_failure(mutation, "must not access active-handle materialization", failures)
+    expect_failure(mutation, "outside the closed allowlist", failures)
 
     mutation = dict(base)
-    mutation[QUERY_CMAKE] = "add_library(query STATIC query-runtime.cc)\ntarget_link_libraries(query PUBLIC zc basic driver)\n"
-    expect_failure(mutation, "must not link semantic target driver", failures)
+    mutation[COMPILER_ROOT / "driver/unapproved-materialization.cc"] = (
+        "void provide(Context& context, const Key& key) { context.materializeActive(key); }\n"
+    )
+    expect_failure(mutation, "outside approved capability providers", failures)
+
+    mutation = dict(base)
+    mutation[ACTIVE_IDENTITY_MATERIALIZATION] = (
+        "template <> struct ActiveMaterialization<ResurrectedKey> {};\n"
+    )
+    expect_failure(mutation, "outside the closed allowlist", failures)
+
+    mutation = dict(base)
+    mutation[CORE_LIBRARY_QUERY_PROVIDER_SOURCE] = (
+        mutation.get(CORE_LIBRARY_QUERY_PROVIDER_SOURCE, "")
+        + "\ntemplate <> struct ActiveMembership<PreauthorizedKey> {};\n"
+    )
+    expect_failure(mutation, "outside the closed allowlist", failures)
+
+    mutation = dict(base)
+    mutation[PRODUCT_ROOT / "utils/unapproved-materialization.cc"] = (
+        "template <> struct ActiveMaterializerPermission<OutsideCompilerQuery> {};\n"
+        "void provide(Context& context, const Key& key) { context.materializeActive(key); }\n"
+    )
+    expect_failure(mutation, "outside the closed allowlist", failures)
+    expect_failure(mutation, "outside approved capability providers", failures)
 
     mutation = dict(base)
     mutation[QUERY_DATABASE_HEADER] = mutation[QUERY_DATABASE_HEADER].replace(
-        "TypedQueryResult<typename Spec::Value> probeInput",
-        "TypedQueryResult<typename Spec::Value> removedInputProbe",
-    )
-    expect_failure(mutation, "typed input probe API", failures)
-
-    mutation = dict(base)
-    mutation[QUERY_DATABASE_HEADER] += "\nvoid probeInputParallel();\n"
-    expect_failure(mutation, "parallel optional input probing is forbidden", failures)
-
-    mutation = dict(base)
-    mutation[DRIVER_AUTHORITY_SESSION] = mutation[DRIVER_AUTHORITY_SESSION].replace(
-        "transaction.erase<ActiveDefinitionAuthorityReadyInput>",
-        "transaction.erase<RemovedAuthorityReadinessInput>",
+        "ActiveMembership<Key>::demand(context, key, authority...)",
+        "REMOVED_ACTIVE_MEMBERSHIP_DEMAND",
         1,
     )
-    expect_failure(mutation, "readiness removal in the first base transaction", failures)
+    expect_failure(mutation, "tracked active-membership demand", failures)
+
+    for path, marker, description in (
+        (
+            DRIVER_SESSION,
+            "graph_query::VerifiedModuleGraphInputTransaction::prepare(",
+            "atomic graph input transaction",
+        ),
+        (
+            DRIVER_SESSION,
+            "binder::VerifiedModuleGraphBuilder::build(",
+            "final Binder graph materialization",
+        ),
+        (
+            DRIVER_MODULE_GRAPH_INPUT,
+            "registerInputKind<SelectedModuleCatalogInput>()",
+            "catalog input registration",
+        ),
+        (
+            DRIVER_MODULE_GRAPH_INPUT,
+            "SelectedModuleSourceQuery::verify(",
+            "selected source verifier",
+        ),
+        (
+            DRIVER_MODULE_GRAPH_INPUT,
+            "ModuleGraphInputTransactionVerifier::verify(",
+            "independent graph input transaction verifier",
+        ),
+        (
+            DRIVER_MODULE_GRAPH_INPUT,
+            "reconstructVerifierSites(",
+            "independent parsed-site reconstruction",
+        ),
+        (
+            DRIVER_MODULE_GRAPH_INPUT,
+            "rebuildVerifierRequests(",
+            "independent dependency request reconstruction",
+        ),
+        (
+            DRIVER_MODULE_GRAPH_INPUT,
+            "resolveVerifierDependencies(",
+            "independent dependency resolution",
+        ),
+        (
+            DRIVER_MODULE_GRAPH_INPUT,
+            "ModuleDependenciesQuery::verify(",
+            "module dependencies verifier",
+        ),
+        (
+            DRIVER_MODULE_GRAPH_QUERY,
+            "ModuleGraphQuery::verify(",
+            "independent stable graph verifier",
+        ),
+        (
+            DRIVER_MODULE_GRAPH_QUERY,
+            "evaluateVerifierGraph(",
+            "independent stable graph reconstruction",
+        ),
+        (
+            DRIVER_MODULE_GRAPH_QUERY,
+            "ModuleGraphSccQuery::verify(",
+            "Kosaraju SCC verifier",
+        ),
+        (
+            DRIVER_MODULE_GRAPH_QUERY,
+            "verifierOrderComponents(",
+            "independent SCC ordering",
+        ),
+        (
+            BINDER_GRAPH_BRIDGE,
+            "reconstructVerifierContextRoots(",
+            "independent final root reconstruction",
+        ),
+        (
+            BINDER_GRAPH_BRIDGE,
+            "rebuildVerifierSite(",
+            "independent final syntax-site reconstruction",
+        ),
+        (
+            BINDER_GRAPH_BRIDGE,
+            "input.finalSnapshot.getCapability<parser::ParseSourceQuery>",
+            "independent final parser capability demand",
+        ),
+        (
+            BINDER_GRAPH_BRIDGE,
+            "verifierGraphProjectionMatches(",
+            "independent final edge projection",
+        ),
+        (
+            BINDER_GRAPH_BRIDGE,
+            "recomputeVerifierGraphRevision(",
+            "independent final revision reconstruction",
+        ),
+        (
+            DRIVER_MODULE_RESOLUTION_QUERY,
+            "context.getParallel<ModuleCatalogPathBucketInput>",
+            "parallel exact bucket demand",
+        ),
+        (
+            PARSER_PARSE_SOURCE_QUERY_VERIFIER,
+            "zc::Maybe<zc::Array<uint8_t>> ParseSourceQuery::verify",
+            "independent parser verifier",
+        ),
+        (
+            DRIVER_MODULE_GRAPH_QUERY_TEST,
+            "Tarjan provider and Kosaraju verifier agree after a tracked cycle mutation",
+            "independent SCC regression",
+        ),
+        (
+            DRIVER_MODULE_GRAPH_QUERY_TEST,
+            "Independent module graph input verifier rejects incomplete core roots",
+            "independent graph transaction verifier regression",
+        ),
+        (
+            DRIVER_MODULE_GRAPH_QUERY_TEST,
+            "Nested dependency failure globally precedes an earlier outside edge",
+            "stable graph failure-precedence regression",
+        ),
+        (
+            DRIVER_MODULE_GRAPH_QUERY_TEST,
+            "Independent transaction verifier rejects sites not backed by parsed syntax",
+            "parsed-site mutation regression",
+        ),
+    ):
+        mutation = dict(base)
+        mutation[path] = mutation[path].replace(marker, "REMOVED_ARCHITECTURE_MARKER")
+        expect_failure(mutation, description, failures)
 
     mutation = dict(base)
-    mutation[DRIVER_NAMED_ITEM_QUERY] = mutation[DRIVER_NAMED_ITEM_QUERY].replace(
-        "ModuleBodySyntaxVerifier::reconstructNamedItem",
-        "ModuleBodySyntaxProducer::produceNamedItem",
+    mutation[COMPILER_ROOT / "driver/obsolete-topology.cc"] = (
+        "void obsolete() { ModuleBindingOrderQuery query; }\n"
     )
-    expect_failure(mutation, "independent named-item reconstruction", failures)
-
-    mutation = dict(base)
-    mutation[DRIVER_NAMED_ITEM_QUERY] += "\nvoid forbidden() { identityRegistries.size(); }\n"
-    expect_failure(mutation, "must not read identityRegistries", failures)
-
-    mutation = dict(base)
-    mutation[DRIVER_AUTHORITY_SESSION_TEST] = mutation[
-        DRIVER_AUTHORITY_SESSION_TEST
-    ].replace(
-        "for (const auto workerCount : {uint32_t{1}, uint32_t{2}, uint32_t{8}})",
-        "for (const auto workerCount : {uint32_t{1}})",
-        1,
-    )
-    expect_failure(mutation, "both required differential worker matrices", failures)
-
-    mutation = dict(base)
-    mutation[DRIVER_AUTHORITY_SESSION_TEST] = mutation[
-        DRIVER_AUTHORITY_SESSION_TEST
-    ].replace(
-        "isolates modules shrinks sets and tracks moves",
-        "removed cross-module shrink and move regression",
-        1,
-    )
-    expect_failure(mutation, "cross-module shrink and move regression", failures)
-
-    mutation = dict(base)
-    mutation[DRIVER_OWNER_BODY_QUERY] = mutation[DRIVER_OWNER_BODY_QUERY].replace(
-        "context.getParallel<NamedItemSyntaxQuery>",
-        "context.getSequentially<NamedItemSyntaxQuery>",
-        1,
-    )
-    expect_failure(mutation, "provider and verifier must each demand one parallel", failures)
-
-    mutation = dict(base)
-    mutation[DRIVER_OWNER_BODY_QUERY] = mutation[DRIVER_OWNER_BODY_QUERY].replace(
-        "verifierExecutableRoot", "providerExecutableRoot"
-    )
-    expect_failure(mutation, "independent verifier executable-root selection", failures)
-
-    mutation = dict(base)
-    mutation[DRIVER_OWNER_BODY_QUERY] = mutation[DRIVER_OWNER_BODY_QUERY].replace(
-        "verifierProvenanceMatches", "providerProvenanceMatches"
-    )
-    expect_failure(mutation, "independent verifier provenance coverage reconstruction", failures)
-
-    mutation = dict(base)
-    mutation[DRIVER_OWNER_BODY_QUERY] = mutation[DRIVER_OWNER_BODY_QUERY].replace(
-        "return retainedSemanticContract(domain());",
-        "return evictableSemanticContract(domain());",
-        1,
-    )
-    expect_failure(mutation, "retained semantic owner inventory contract", failures)
-
-    mutation = dict(base)
-    mutation[DRIVER_TOPOLOGY_ADAPTER] = mutation[DRIVER_TOPOLOGY_ADAPTER].replace(
-        "registerDerivedKind<OwnerBodyProvenanceQuery>()",
-        "registerDerivedKind<RemovedOwnerBodyProvenanceQuery>()",
-        1,
-    )
-    expect_failure(mutation, "owner-body provenance registration", failures)
-
-    mutation = dict(base)
-    mutation[DRIVER_OWNER_BODY_QUERY] += "\nvoid forbidden_owner_read() { ParseSourceQuery(); }\n"
-    expect_failure(mutation, "owner projection must not read ParseSourceQuery", failures)
-
-    mutation = dict(base)
-    mutation[DRIVER_AUTHORITY_SESSION_TEST] = mutation[
-        DRIVER_AUTHORITY_SESSION_TEST
-    ].replace(
-        "for (const auto workerCount : {uint32_t{1}, uint32_t{2}, uint32_t{8}})",
-        "for (const auto workerCount : {uint32_t{1}})",
-    )
-    expect_failure(mutation, "both required differential worker matrices", failures)
-
-    mutation = dict(base)
-    mutation[BINDER_MODULE_BODY_SYNTAX_TEST] = mutation[BINDER_MODULE_BODY_SYNTAX_TEST].replace(
-        "duplicateModule", "removedDuplicateModule"
-    )
-    expect_failure(mutation, "duplicate module-owner rejection", failures)
-
-    mutation = dict(base)
-    mutation[DRIVER_SESSION] = mutation[DRIVER_SESSION].replace(
-        "query::QueryDatabase queryDatabase;", "query::QueryDatabase removedDatabase;", 1
-    )
-    expect_failure(mutation, "session-owned query database", failures)
-
-    mutation = dict(base)
-    mutation[DRIVER_SESSION] = mutation[DRIVER_SESSION].replace(
-        "queryDatabase(queryScheduler)", "queryDatabase()", 1
-    )
-    expect_failure(mutation, "borrowed query scheduler injection", failures)
-
-    mutation = dict(base)
-    mutation[QUERY_DATABASE_SOURCE] = mutation[QUERY_DATABASE_SOURCE].replace(
-        "basic::ThreadPool& scheduler;", "basic::ThreadPool scheduler{4};", 1
-    )
-    expect_failure(mutation, "query runtime must not own a scheduler", failures)
-
-    mutation = dict(base)
-    mutation[DRIVER_SESSION] += "\nvoid restored_batch_scheduler() { while (completed) {} }\n"
-    expect_failure(mutation, "batch readiness scheduler", failures)
-
-    mutation = dict(base)
-    mutation[DRIVER_SESSION] = mutation[DRIVER_SESSION].replace(
-        "incremental_module_resolution_query::stageModuleResolutionQueryInputs(",
-        "removedModuleResolutionInputStaging(",
-        1,
-    )
-    expect_failure(mutation, "module resolution input staging", failures)
-
-    mutation = dict(base)
-    mutation[DRIVER_SESSION] = mutation[DRIVER_SESSION].replace(
-        "resolutionSnapshot.get<incremental_module_resolution_query::ResolveModuleRequestQuery>",
-        "resolutionSnapshot.get<RemovedModuleResolutionQuery>",
-        1,
-    )
-    expect_failure(mutation, "module resolution query demand", failures)
-
-    mutation = dict(base)
-    mutation[DRIVER_SESSION] += (
-        "\nvoid restored_module_resolution_batch() { "
-        "auto result = resolver.resolve(zc::mv(request)); }\n"
-    )
-    expect_failure(mutation, "batch module resolution authority", failures)
-
-    mutation = dict(base)
-    mutation[DRIVER_MODULE_RESOLUTION_QUERY] = mutation[DRIVER_MODULE_RESOLUTION_QUERY].replace(
-        "context.getParallel<ModuleCatalogPathBucketInput>",
-        "context.getSequentially<ModuleCatalogPathBucketInput>",
-        1,
-    )
-    expect_failure(mutation, "parallel exact bucket demand", failures)
-
-    mutation = dict(base)
-    mutation[DRIVER_TOPOLOGY_ADAPTER] = mutation[DRIVER_TOPOLOGY_ADAPTER].replace(
-        "context.getParallel<ModuleDependenciesInput>",
-        "context.getSequentially<ModuleDependenciesInput>",
-    )
-    expect_failure(mutation, "must demand dependency inputs in parallel", failures)
-
-    mutation = dict(base)
-    mutation[DRIVER_SESSION] = mutation[DRIVER_SESSION].replace(
-        "transaction.set<incremental::SelectedModuleSourceInput>",
-        "transaction.set<incremental::RemovedSelectedModuleSourceInput>",
-    )
-    expect_failure(mutation, "selected-source authority staging", failures)
-
-    mutation = dict(base)
-    mutation[DRIVER_SESSION] = mutation[DRIVER_SESSION].replace(
-        "verifySelectedModuleSourceInputs", "removedSelectedModuleSourceInputVerifier"
-    )
-    expect_failure(mutation, "independent selected-source input verification", failures)
-
-    mutation = dict(base)
-    mutation[DRIVER_SESSION] += "\nvoid clone_graph_per_module() { graph.view(handle); }\n"
-    expect_failure(mutation, "per-module complete graph-view cloning", failures)
-
-    mutation = dict(base)
-    mutation[DRIVER_TOPOLOGY_ADAPTER] = mutation[DRIVER_TOPOLOGY_ADAPTER].replace(
-        "source.belongsTo(module.crate())", "true", 1
-    )
-    expect_failure(mutation, "selected-source crate verification", failures)
-
-    mutation = dict(base)
-    mutation[DRIVER_SESSION] = mutation[DRIVER_SESSION].replace(
-        "transaction.set<source_query::SourceSnapshotInput>",
-        "transaction.set<source_query::RemovedSourceSnapshotInput>",
-    )
-    expect_failure(mutation, "source snapshot staging", failures)
-
-    mutation = dict(base)
-    mutation[DRIVER_SESSION] = mutation[DRIVER_SESSION].replace(
-        "transaction.set<source_query::CompilationOptionsInput>",
-        "transaction.set<source_query::RemovedCompilationOptionsInput>",
-    )
-    expect_failure(mutation, "compilation options staging", failures)
-
-    mutation = dict(base)
-    mutation[DRIVER_SESSION] = mutation[DRIVER_SESSION].replace(
-        "verifyCompilationOptionsInput", "removedCompilationOptionsInputVerifier"
-    )
-    expect_failure(mutation, "independent compilation options verification", failures)
-
-    mutation = dict(base)
-    mutation[IDENTITY_SOURCE_QUERY_INPUT] = mutation[IDENTITY_SOURCE_QUERY_INPUT].replace(
-        "CompilationOptionsInput::contract() {\n"
-        "  return inputContract(domain(), query::Durability::Medium);",
-        "CompilationOptionsInput::contract() {\n"
-        "  return inputContract(domain(), query::Durability::Low);",
-        1,
-    )
-    expect_failure(mutation, "medium compilation options durability", failures)
-
-    mutation = dict(base)
-    mutation[DRIVER_SESSION] = mutation[DRIVER_SESSION].replace(
-        "transaction.set<incremental::ActiveCratesInput>",
-        "transaction.set<incremental::RemovedActiveCratesInput>",
-        1,
-    )
-    expect_failure(mutation, "active crate root staging", failures)
-
-    mutation = dict(base)
-    mutation[DRIVER_SESSION] = mutation[DRIVER_SESSION].replace(
-        "transaction.set<incremental::PackageGraphInput>",
-        "transaction.set<incremental::RemovedPackageGraphInput>",
-        1,
-    )
-    expect_failure(mutation, "package graph root staging", failures)
-
-    mutation = dict(base)
-    mutation[DRIVER_SESSION] = mutation[DRIVER_SESSION].replace(
-        "verifyPackageGraphInput", "removedPackageGraphInputVerifier"
-    )
-    expect_failure(mutation, "independent package graph verification", failures)
-
-    mutation = dict(base)
-    mutation[DRIVER_PACKAGE_GRAPH_INPUT] = mutation[DRIVER_PACKAGE_GRAPH_INPUT].replace(
-        "validateGraphClosure", "removedGraphClosure"
-    )
-    expect_failure(mutation, "closed graph validation", failures)
-
-    mutation = dict(base)
-    mutation[DRIVER_PACKAGE_GRAPH_INPUT] = mutation[DRIVER_PACKAGE_GRAPH_INPUT].replace(
-        "identity::CrateDependencyEdgeKey::decodeCanonical(decoder)", "zc::none"
-    )
-    expect_failure(mutation, "compositional crate-edge admission", failures)
-
-    mutation = dict(base)
-    mutation[DRIVER_SESSION] = mutation[DRIVER_SESSION].replace(
-        "verifyActiveCratesInput", "removedActiveCratesInputVerifier"
-    )
-    expect_failure(mutation, "independent active crate root verification", failures)
-
-    mutation = dict(base)
-    mutation[DRIVER_TOPOLOGY_ADAPTER] = mutation[DRIVER_TOPOLOGY_ADAPTER].replace(
-        "return PackageRootSetQueryKey::decodeCanonical(bytes);",
-        "return RemovedPackageRootSetDecoder(bytes);",
-    )
-    expect_failure(mutation, "canonical package-root-set admission", failures)
-
-    mutation = dict(base)
-    mutation[DRIVER_TOPOLOGY_ADAPTER] = mutation[DRIVER_TOPOLOGY_ADAPTER].replace(
-        "return CanonicalCrateSet::decodeCanonical(bytes);",
-        "return RemovedCanonicalCrateSetDecoder(bytes);",
-        1,
-    )
-    expect_failure(mutation, "canonical active-crate-set admission", failures)
-
-    mutation = dict(base)
-    mutation[DRIVER_TOPOLOGY_ADAPTER] = mutation[DRIVER_TOPOLOGY_ADAPTER].replace(
-        "ActiveCratesInput::contract() {\n"
-        "  return inputContract(domain(), query::Durability::Medium);",
-        "ActiveCratesInput::contract() {\n"
-        "  return inputContract(domain(), query::Durability::Low);",
-        1,
-    )
-    expect_failure(mutation, "medium active crate durability", failures)
-
-    mutation = dict(base)
-    mutation[DRIVER_SESSION] = mutation[DRIVER_SESSION].replace(
-        "transaction.set<incremental::ActiveSourcesInput>",
-        "transaction.set<incremental::RemovedActiveSourcesInput>",
-        1,
-    )
-    expect_failure(mutation, "per-crate active source staging", failures)
-
-    mutation = dict(base)
-    mutation[DRIVER_SESSION] = mutation[DRIVER_SESSION].replace(
-        "verifyCrateMembershipInputs", "removedCrateMembershipVerifier"
-    )
-    expect_failure(mutation, "independent per-crate membership verification", failures)
-
-    mutation = dict(base)
-    mutation[DRIVER_TOPOLOGY_ADAPTER] = mutation[DRIVER_TOPOLOGY_ADAPTER].replace(
-        "context.getParallel<ActiveModulesInput>(activeCrates.crates())",
-        "removedActiveModuleGroup(activeCrates.crates())",
-    )
-    expect_failure(mutation, "parallel per-crate active module demand", failures)
-
-    mutation = dict(base)
-    mutation[DRIVER_TOPOLOGY_ADAPTER] = mutation[DRIVER_TOPOLOGY_ADAPTER].replace(
-        "ZC_ASSERT_NONNULL(modules).modules().size() == 0",
-        "ZC_ASSERT_NONNULL(modules).modules().size() > kMaximumActiveModules",
-        1,
-    )
-    expect_failure(mutation, "non-empty active-module input admission", failures)
-
-    mutation = dict(base)
-    mutation[DRIVER_TOPOLOGY_ADAPTER] = mutation[DRIVER_TOPOLOGY_ADAPTER].replace(
-        "identity::ModuleKey::decodeCanonical(decoder)", "zc::none"
-    )
-    expect_failure(mutation, "canonical module-key admission", failures)
-
-    mutation = dict(base)
-    mutation[DRIVER_TOPOLOGY_ADAPTER] = mutation[DRIVER_TOPOLOGY_ADAPTER].replace(
-        "identity::SourceFileKey::decodeCanonical(decoder)", "zc::none"
-    )
-    expect_failure(mutation, "canonical source-key admission", failures)
-
-    mutation = dict(base)
-    mutation[DRIVER_SESSION] = mutation[DRIVER_SESSION].replace(
-        "verifySourceSnapshotInputs", "removedSourceSnapshotInputVerifier"
-    )
-    expect_failure(mutation, "independent source snapshot root verification", failures)
-
-    mutation = dict(base)
-    mutation[DRIVER_SESSION] = mutation[DRIVER_SESSION].replace(
-        "verifySelectedSourceSnapshotClosure", "removedSelectedSourceSnapshotClosure"
-    )
-    expect_failure(mutation, "selected-source to snapshot-root closure verification", failures)
-
-    mutation = dict(base)
-    mutation[IDENTITY_SOURCE_QUERY_INPUT] = mutation[IDENTITY_SOURCE_QUERY_INPUT].replace(
-        "ZC_ASSERT_NONNULL(computed) != ZC_ASSERT_NONNULL(digest)",
-        "ZC_ASSERT_NONNULL(computed) == ZC_ASSERT_NONNULL(digest)",
-        1,
-    )
-    expect_failure(mutation, "source digest mismatch rejection", failures)
-
-    mutation = dict(base)
-    mutation[DRIVER_TOPOLOGY_ADAPTER] = mutation[DRIVER_TOPOLOGY_ADAPTER].replace(
-        "registerDerivedKind<ModuleBodySyntaxQuery>()",
-        "registerDerivedKind<RemovedModuleBodySyntaxQuery>()",
-        1,
-    )
-    expect_failure(mutation, "module-body syntax registration", failures)
-
-    mutation = dict(base)
-    mutation[DRIVER_SESSION] = mutation[DRIVER_SESSION].replace(
-        "incremental_binding_query::ModuleBodyProvenanceQuery",
-        "incremental_binding_query::RemovedModuleBodyProvenanceQuery",
-        1,
-    )
-    expect_failure(mutation, "demanded module-body provenance query", failures)
-
-    mutation = dict(base)
-    mutation[DRIVER_NAMED_IDENTITY_QUERY] = mutation[DRIVER_NAMED_IDENTITY_QUERY].replace(
-        "StableIdentityCandidateVerifier::reconstruct",
-        "StableIdentityCandidateProducer::produce",
-    )
-    expect_failure(mutation, "independent stable identity reconstruction", failures)
-
-    mutation = dict(base)
-    mutation[DRIVER_TOPOLOGY_ADAPTER_TEST] = mutation[DRIVER_TOPOLOGY_ADAPTER_TEST].replace(
-        "replacedSnapshots", "removedReplacedSnapshots"
-    )
-    expect_failure(mutation, "replaced selected-source snapshot regression", failures)
+    expect_failure(mutation, "obsolete topology authority remains", failures)
 
     return failures
-
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)

@@ -1,2 +1,4 @@
+module marker;
+
 export interface Copy {}
 export interface Linear {}

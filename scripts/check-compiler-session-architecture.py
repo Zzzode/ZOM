@@ -73,6 +73,26 @@ NAMED_ITEM_QUERY_HEADER = Path("products/zomlang/compiler/driver/named-item-quer
 NAMED_ITEM_QUERY_SOURCE = Path("products/zomlang/compiler/driver/named-item-query.cc")
 OWNER_BODY_QUERY_HEADER = Path("products/zomlang/compiler/driver/owner-body-query.h")
 OWNER_BODY_QUERY_SOURCE = Path("products/zomlang/compiler/driver/owner-body-query.cc")
+CORE_LIBRARY_QUERY_PROVIDER_HEADER = Path(
+    "products/zomlang/compiler/driver/core-library-query-provider.h"
+)
+CORE_LIBRARY_QUERY_PROVIDER_SOURCE = Path(
+    "products/zomlang/compiler/driver/core-library-query-provider.cc"
+)
+CORE_LIBRARY_QUERY_VERIFIER_HEADER = Path(
+    "products/zomlang/compiler/driver/core-library-query-verifier.h"
+)
+CORE_LIBRARY_QUERY_VERIFIER_SOURCE = Path(
+    "products/zomlang/compiler/driver/core-library-query-verifier.cc"
+)
+MODULE_GRAPH_QUERY_INPUT_HEADER = Path(
+    "products/zomlang/compiler/driver/module-graph-query-input.h"
+)
+MODULE_GRAPH_QUERY_INPUT_SOURCE = Path(
+    "products/zomlang/compiler/driver/module-graph-query-input.cc"
+)
+MODULE_GRAPH_QUERY_HEADER = Path("products/zomlang/compiler/driver/module-graph-query.h")
+MODULE_GRAPH_QUERY_SOURCE = Path("products/zomlang/compiler/driver/module-graph-query.cc")
 QUERY_DATABASE_HEADER = Path("products/zomlang/compiler/query/query-database.h")
 QUERY_DATABASE_SOURCE = Path("products/zomlang/compiler/query/query-database.cc")
 DRIVER_CMAKE = Path("products/zomlang/compiler/driver/CMakeLists.txt")
@@ -121,15 +141,26 @@ EXPECTED_DRIVER_FILES = {
     NAMED_ITEM_QUERY_SOURCE,
     OWNER_BODY_QUERY_HEADER,
     OWNER_BODY_QUERY_SOURCE,
+    CORE_LIBRARY_QUERY_PROVIDER_HEADER,
+    CORE_LIBRARY_QUERY_PROVIDER_SOURCE,
+    CORE_LIBRARY_QUERY_VERIFIER_HEADER,
+    CORE_LIBRARY_QUERY_VERIFIER_SOURCE,
+    MODULE_GRAPH_QUERY_INPUT_HEADER,
+    MODULE_GRAPH_QUERY_INPUT_SOURCE,
+    MODULE_GRAPH_QUERY_HEADER,
+    MODULE_GRAPH_QUERY_SOURCE,
 }
 
 DRIVER_BUILD_MARKER = (
     "set(DRIVER_SRC active-definition-authority-query.cc active-definition-authority-session.cc\n"
-    "               borrow-evidence.cc coherence-builder.cc compiler-session.cc crate-graph.cc\n"
+    "               borrow-evidence.cc coherence-builder.cc compiler-session.cc\n"
+    "               core-library-query-provider.cc core-library-query-verifier.cc crate-graph.cc\n"
     "               imported-signature-view-projector.cc incremental-binding-query-adapter.cc\n"
     "               incremental-module-resolution-query.cc\n"
     "               incremental-package-graph-query-input.cc\n"
-    "               module-discovery.cc module-interface.cc module-interface-diagnostic-adapter.cc\n"
+    "               module-discovery.cc module-graph-query-input.cc module-graph-query.cc\n"
+    "               module-interface.cc\n"
+    "               module-interface-diagnostic-adapter.cc\n"
     "               named-identity-inventory-query.cc named-item-query.cc owner-body-query.cc)"
 )
 
@@ -162,16 +193,16 @@ SESSION_SOURCE_MARKERS = (
     "zc::Maybe<identity::SemanticIdentityRegistrySet> identityRegistries;",
     "basic::ThreadPool queryScheduler;",
     "query::QueryDatabase queryDatabase;",
-    "queryDatabase(queryScheduler)",
+    "queryDatabase(queryScheduler, semanticContextCapabilityArena.addRef())",
     "zc::Own<basic::StringPool> stringPool;",
     "zc::Own<source::SourceManager> sourceManager;",
     "zc::Own<diagnostics::DiagnosticEngine> diagnosticEngine;",
     "zc::Vector<ParsedModuleRecord> parsedModules;",
     "snapshot.snapshot().readVerifiedFile(sourcePath)",
     "registerVerifiedSource(",
-    "parseSnapshot.get<parser::ParseSourceQuery>",
+    "parseSnapshot.getCapability<parser::ParseSourceQuery>",
     "binder::ParsedModuleVerifier::verifyQueryResult(",
-    "extractStructuralModuleDependencyRequests(parsed.value().tree())",
+    "extractStructuralModuleDependencyRequests(parsed.value().capability().tree())",
     "incremental_binding_query::ModuleBodySyntaxQuery",
     "incremental_binding_query::ModuleBodyProvenanceQuery",
     "zc::Vector<ModuleBodyQueryBinding> moduleBodyQueryBindings;",
@@ -189,13 +220,14 @@ SESSION_SOURCE_MARKERS = (
     "zc::Vector<VerifiedPreparatoryCrateGraph> preparatoryCrateGraphs;",
     "zc::Maybe<identity::SemanticContextFingerprint> semanticContextFingerprint;",
     "zc::Maybe<binder::VerifiedModuleGraph> moduleGraph;",
-    "binder::ModuleGraphVerifier::verify(",
-    "incremental_module_resolution_query::stageModuleResolutionQueryInputs(",
-    "resolutionSnapshot.get<incremental_module_resolution_query::ResolveModuleRequestQuery>",
-    "resolver.materializeQueryResolution(",
+    "graph_query::VerifiedModuleGraphInputTransaction::prepare(",
+    "authorityStagingSnapshotValue.get<graph_query::ModuleGraphQuery>(",
+    "authorityStagingSnapshotValue.get<graph_query::ModuleGraphSccQuery>(",
+    "binder::VerifiedModuleGraphBuilder::build(",
     "!impl->freezeModuleGraph()",
     "identity::SemanticContextFingerprint::compute(",
-    "registries, crates.packageEdges(), crates.edges()",
+    "collectSemanticContextInputs(toolchainInputs, crateEdges)",
+    "registries, toolchainInputs.asPtr(), crates.packageEdges(), crateEdges.asPtr()",
     "VerifiedPreparatoryCrateGraph::build(request, node, resolution, plan, completed)",
     "VerifiedPreparatoryCrateGraph::buildPlan(request, graph)",
     "executor.execute(node, graph.get<VerifiedPreparatoryCrateGraph>(), completed)",
@@ -218,10 +250,37 @@ SESSION_SOURCE_MARKERS = (
     "hir::CheckedModuleBuilder::build(",
     "hir::HirBuilder::build(",
     "hir::HirVerifier::verify(",
-    "impl->dispatchFacts = zc::mv(stagedDispatchFacts);",
+    "impl->dispatchFacts = zc::mv(ordinaryDispatchFacts);",
     "impl->borrowEvidenceRepository = zc::mv(stagedBorrowEvidenceRepository);",
     "impl->hirModules = zc::mv(stagedHirModules);",
     "bool verifiedCheckedSources = false;",
+)
+
+ORDINARY_MODULE_PARTITION_MARKERS = (
+    "zc::Vector<size_t> ordinaryBoundModuleIndices;",
+    "ZC_ASSERT_NONNULL(crate).unit().kind() == identity::CompilationUnitKind::UserPackage",
+    "ordinaryBoundModuleIndices.add(index);",
+    "for (size_t ordinaryIndex = 0; ordinaryIndex < ordinaryBoundModuleIndices.size();",
+    "const auto boundIndex = ordinaryBoundModuleIndices[ordinaryIndex];",
+    "impl->boundModules[boundIndex], stagedSignatureFacts[boundIndex],",
+    "stagedModuleInterfaces[boundIndex], stagedImportedSignatureViews[boundIndex],",
+    "stagedModuleInterfaces.asPtr(), stagedCheckedEvidence[boundIndex],",
+    "*stagedCheckedFactsRepository, stagedDispatchFacts[boundIndex],",
+    "mir::BuiltMirBuilder::build(stagedHirModules[ordinaryIndex])",
+    "stagedHirModules.size() != ordinaryBoundModuleIndices.size()",
+    "stagedBuiltMirModules.size() != ordinaryBoundModuleIndices.size()",
+    "stagedOwnershipEventOverlays.size() != ordinaryBoundModuleIndices.size()",
+    "for (const auto index : ordinaryBoundModuleIndices)",
+    "ordinarySignatureFacts.add(zc::mv(stagedSignatureFacts[index]));",
+    "ordinaryImportedSignatureViews.add(zc::mv(stagedImportedSignatureViews[index]));",
+    "ordinaryModuleInterfaces.add(zc::mv(stagedModuleInterfaces[index]));",
+    "ordinaryCheckedEvidence.add(zc::mv(stagedCheckedEvidence[index]));",
+    "ordinaryDispatchFacts.add(zc::mv(stagedDispatchFacts[index]));",
+    "impl->signatureFacts = zc::mv(ordinarySignatureFacts);",
+    "impl->importedSignatureViews = zc::mv(ordinaryImportedSignatureViews);",
+    "impl->moduleInterfaces = zc::mv(ordinaryModuleInterfaces);",
+    "impl->checkedEvidence = zc::mv(ordinaryCheckedEvidence);",
+    "impl->dispatchFacts = zc::mv(ordinaryDispatchFacts);",
 )
 
 
@@ -384,9 +443,14 @@ def check_session_ownership(files: dict[Path, str], errors: list[str]) -> None:
 
     if source.count("while (true) {") != 1:
         errors.append(f"{SESSION_SOURCE}: must own exactly one discovery fixed-point scheduler")
-    if source.count("extractStructuralModuleDependencyRequests(parsed.value().tree())") != 1:
+    if (
+        source.count(
+            "extractStructuralModuleDependencyRequests(parsed.value().capability().tree())"
+        )
+        != 1
+    ):
         errors.append(f"{SESSION_SOURCE}: discovery scheduler must have exactly one request site")
-    if source.count("binder::ModuleGraphVerifier::verify(") != 1:
+    if source.count("binder::VerifiedModuleGraphBuilder::build(") != 1:
         errors.append(f"{SESSION_SOURCE}: must publish exactly one verified module graph")
     if "resolver.resolve(zc::mv(request))" in source:
         errors.append(f"{SESSION_SOURCE}: batch module resolution authority is forbidden")
@@ -395,8 +459,36 @@ def check_session_ownership(files: dict[Path, str], errors: list[str]) -> None:
         if path in {SESSION_SOURCE, BINDING_INPUT_SOURCE} or path.suffix not in {".h", ".cc"}:
             continue
         text = strip_cpp_comments_and_literals(raw_text)
-        if "ModuleGraphVerifier::verify(" in text:
+        if "VerifiedModuleGraphBuilder::build(" in text:
             errors.append(f"{path}: global module graph publication bypasses CompilerSession")
+
+
+def check_ordinary_module_partition(files: dict[Path, str], errors: list[str]) -> None:
+    source = files.get(SESSION_SOURCE, "")
+    for marker in ORDINARY_MODULE_PARTITION_MARKERS:
+        if not contains_format_independent_marker(source, marker):
+            errors.append(f"{SESSION_SOURCE}: missing ordinary-module partition marker: {marker}")
+
+    forbidden_publications = (
+        "impl->signatureFacts = zc::mv(stagedSignatureFacts);",
+        "impl->importedSignatureViews = zc::mv(stagedImportedSignatureViews);",
+        "impl->moduleInterfaces = zc::mv(stagedModuleInterfaces);",
+        "impl->checkedEvidence = zc::mv(stagedCheckedEvidence);",
+        "impl->dispatchFacts = zc::mv(stagedDispatchFacts);",
+    )
+    for publication in forbidden_publications:
+        if contains_format_independent_marker(source, publication):
+            errors.append(
+                f"{SESSION_SOURCE}: core module facts must not enter ordinary publication: "
+                f"{publication}"
+            )
+
+    if contains_format_independent_marker(
+        source, "impl->boundModules[ordinaryIndex], stagedSignatureFacts[ordinaryIndex],"
+    ):
+        errors.append(
+            f"{SESSION_SOURCE}: ordinary HIR lowering must map through the bound-module index"
+        )
 
 
 def check_single_scheduler(files: dict[Path, str], errors: list[str]) -> None:
@@ -513,9 +605,16 @@ def check_crate_graph_authority(files: dict[Path, str], errors: list[str]) -> No
     if "collectCrate(root.crateKey().clone()" in files.get(SESSION_SOURCE, ""):
         errors.append(f"{SESSION_SOURCE}: root-only crate freeze bypasses VerifiedCrateGraph")
     session = files.get(SESSION_SOURCE, "")
-    if session.count("registries.freezePackages()") != 1:
-        errors.append(f"{SESSION_SOURCE}: final crate graph must freeze exactly one package set")
-    if "registries, packages.edges(), crates.edges()" in session:
+    if session.count("registries.freezeCompilationUnits()") != 1:
+        errors.append(
+            f"{SESSION_SOURCE}: final crate graph must freeze exactly one compilation-unit set"
+        )
+    if "noToolchainInputs" in session:
+        errors.append(f"{SESSION_SOURCE}: empty toolchain semantic context bypass is forbidden")
+    if (
+        "registries, toolchainInputs.asPtr(), packages.edges(), crateEdges.asPtr()"
+        in session
+    ):
         errors.append(f"{SESSION_SOURCE}: resolution edges must not enter final semantic context")
     if session.count("executor.execute(") != 1:
         errors.append(f"{SESSION_SOURCE}: build scripts must have exactly one verified execute site")
@@ -528,6 +627,7 @@ def analyze(files: dict[Path, str]) -> list[str]:
     errors: list[str] = []
     check_driver_surface(files, errors)
     check_session_ownership(files, errors)
+    check_ordinary_module_partition(files, errors)
     check_single_scheduler(files, errors)
     check_cli_root(files, errors)
     check_build_wiring(files, errors)
@@ -618,7 +718,9 @@ def run_self_test() -> int:
         lambda files: files.__setitem__(
             SESSION_SOURCE,
             files[SESSION_SOURCE].replace(
-                "queryDatabase(queryScheduler)", "queryDatabase(querySchedulerRemoved)", 1
+                "queryDatabase(queryScheduler, semanticContextCapabilityArena.addRef())",
+                "queryDatabase(querySchedulerRemoved, semanticContextCapabilityArena.addRef())",
+                1,
             ),
         ),
         "missing session ownership marker",
@@ -702,12 +804,22 @@ def run_self_test() -> int:
         lambda files: files.__setitem__(
             SESSION_SOURCE,
             files[SESSION_SOURCE].replace(
-                "registries, crates.packageEdges(), crates.edges()",
-                "registries, packages.edges(), crates.edges()",
+                "registries, toolchainInputs.asPtr(), crates.packageEdges(), crateEdges.asPtr()",
+                "registries, toolchainInputs.asPtr(), packages.edges(), crateEdges.asPtr()",
                 1,
             ),
         ),
         "resolution edges must not enter final semantic context",
+    )
+    failures += expect_rejection(
+        baseline,
+        "empty toolchain semantic context",
+        lambda files: files.__setitem__(
+            SESSION_SOURCE,
+            files[SESSION_SOURCE]
+            + "\nvoid bypass() { auto noToolchainInputs = makeEmptyInputs(); }\n",
+        ),
+        "empty toolchain semantic context bypass is forbidden",
     )
     failures += expect_rejection(
         baseline,
@@ -776,18 +888,18 @@ def run_self_test() -> int:
         "module graph bypass",
         lambda files: files.__setitem__(
             Path("products/zomlang/compiler/checker/module-graph.cc"),
-            "void run() { ModuleGraphVerifier::verify(candidate); }",
+            "void run() { VerifiedModuleGraphBuilder::build(candidate); }",
         ),
         "global module graph publication bypasses CompilerSession",
     )
     failures += expect_rejection(
         baseline,
-        "missing module resolution input staging",
+        "missing stable module graph input staging",
         lambda files: files.__setitem__(
             SESSION_SOURCE,
             files[SESSION_SOURCE].replace(
-                "incremental_module_resolution_query::stageModuleResolutionQueryInputs(",
-                "removedModuleResolutionInputStaging(",
+                "graph_query::VerifiedModuleGraphInputTransaction::prepare(",
+                "removedModuleGraphInputTransaction(",
                 1,
             ),
         ),
@@ -795,12 +907,12 @@ def run_self_test() -> int:
     )
     failures += expect_rejection(
         baseline,
-        "missing module resolution demand",
+        "missing stable module graph demand",
         lambda files: files.__setitem__(
             SESSION_SOURCE,
             files[SESSION_SOURCE].replace(
-                "resolutionSnapshot.get<incremental_module_resolution_query::ResolveModuleRequestQuery>",
-                "resolutionSnapshot.get<RemovedModuleResolutionQuery>",
+                "authorityStagingSnapshotValue.get<graph_query::ModuleGraphQuery>",
+                "authorityStagingSnapshotValue.get<RemovedModuleGraphQuery>",
                 1,
             ),
         ),
@@ -822,10 +934,45 @@ def run_self_test() -> int:
         lambda files: files.__setitem__(
             SESSION_SOURCE,
             files[SESSION_SOURCE].replace(
-                "impl->dispatchFacts = zc::mv(stagedDispatchFacts);", ""
+                "impl->dispatchFacts = zc::mv(ordinaryDispatchFacts);", ""
             ),
         ),
         "missing session ownership marker",
+    )
+    failures += expect_rejection(
+        baseline,
+        "missing ordinary module classification",
+        lambda files: files.__setitem__(
+            SESSION_SOURCE,
+            files[SESSION_SOURCE].replace("ordinaryBoundModuleIndices.add(index);", "", 1),
+        ),
+        "missing ordinary-module partition marker",
+    )
+    failures += expect_rejection(
+        baseline,
+        "ordinary HIR uses the compact index for bound facts",
+        lambda files: files.__setitem__(
+            SESSION_SOURCE,
+            files[SESSION_SOURCE].replace(
+                "impl->boundModules[boundIndex], stagedSignatureFacts[boundIndex],",
+                "impl->boundModules[ordinaryIndex], stagedSignatureFacts[ordinaryIndex],",
+                1,
+            ),
+        ),
+        "ordinary HIR lowering must map through the bound-module index",
+    )
+    failures += expect_rejection(
+        baseline,
+        "core dispatch facts enter ordinary publication",
+        lambda files: files.__setitem__(
+            SESSION_SOURCE,
+            files[SESSION_SOURCE].replace(
+                "impl->dispatchFacts = zc::mv(ordinaryDispatchFacts);",
+                "impl->dispatchFacts = zc::mv(stagedDispatchFacts);",
+                1,
+            ),
+        ),
+        "core module facts must not enter ordinary publication",
     )
     failures += expect_rejection(
         baseline,
@@ -844,7 +991,7 @@ def run_self_test() -> int:
         for failure in failures:
             print(f"  - {failure}", file=sys.stderr)
         return 1
-    print("CompilerSession architecture negative fixtures passed (26/26).")
+    print("CompilerSession architecture negative fixtures passed (29/29).")
     return 0
 
 

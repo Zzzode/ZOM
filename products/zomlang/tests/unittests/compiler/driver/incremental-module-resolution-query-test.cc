@@ -13,7 +13,9 @@
 namespace zomlang::compiler::driver::incremental_module_resolution_query {
 namespace {
 
+using tests::test_identity_detail::coreCrate;
 using tests::test_identity_detail::crate;
+using tests::test_identity_detail::digest;
 using tests::test_identity_detail::package;
 using tests::test_identity_detail::scalar;
 
@@ -46,8 +48,9 @@ identity::SemanticIdentityRegistrySet registries(identity::SemanticContextFactor
 
 struct Fixture final {
   Fixture() : owner(context(factory)), identities(registries(factory, owner)) {
-    ZC_REQUIRE(identities.collectPackage(package()) == identity::FrozenRegistryFailure::None);
-    ZC_REQUIRE(identities.freezePackages() == identity::FrozenRegistryFailure::None);
+    ZC_REQUIRE(identities.collectCompilationUnit(identity::CompilationUnitIdentity::userPackage(
+                   package())) == identity::FrozenRegistryFailure::None);
+    ZC_REQUIRE(identities.freezeCompilationUnits() == identity::FrozenRegistryFailure::None);
     ZC_REQUIRE(identities.collectCrate(crate()) == identity::FrozenRegistryFailure::None);
     ZC_REQUIRE(identities.freezeCrates() == identity::FrozenRegistryFailure::None);
     for (const auto name : {"root.zom"_zc, "child.zom"_zc, "unrelated.zom"_zc}) {
@@ -142,8 +145,7 @@ struct Fixture final {
     }
     zc::Maybe<binder::ModuleDependencyRequest> result;
     ZC_IF_SOME(value, key) {
-      result = binder::ModuleDependencyRequest::source(
-          root, zc::mv(value), resolver.environmentRevision(), zc::mv(sites));
+      result = binder::ModuleDependencyRequest::source(root, zc::mv(value), zc::mv(sites));
     }
     return zc::mv(ZC_REQUIRE_NONNULL(result));
   }
@@ -165,6 +167,31 @@ query::QueryDatabase database(basic::ThreadPool& scheduler) {
   return result;
 }
 
+ZC_TEST("Module search roots input preserves the toolchain core alternative") {
+  zc::Vector<binder::ModuleSearchRoot> environment;
+  auto coreRoot = binder::ModuleSearchRoot::toolchainCore(coreCrate(), digest(0x5a));
+  ZC_REQUIRE(coreRoot != zc::none);
+  environment.add(zc::mv(ZC_REQUIRE_NONNULL(coreRoot)));
+  auto roots = CanonicalModuleSearchRoots::fromVerified(coreCrate(), environment.asPtr());
+  ZC_REQUIRE(roots != zc::none);
+  ZC_REQUIRE(ZC_REQUIRE_NONNULL(roots).roots().size() == 1);
+  ZC_EXPECT(ZC_REQUIRE_NONNULL(roots).roots()[0].kind() ==
+            binder::ModuleSearchRootKind::ToolchainCore);
+  auto encoded = ModuleSearchRootsInput::encodeValue(ZC_REQUIRE_NONNULL(roots));
+  auto decoded = ModuleSearchRootsInput::decodeValue(encoded.asPtr());
+  ZC_REQUIRE(decoded != zc::none);
+  ZC_REQUIRE(ZC_REQUIRE_NONNULL(decoded).roots().size() == 1);
+  ZC_EXPECT(ZC_REQUIRE_NONNULL(decoded).roots()[0].kind() ==
+            binder::ModuleSearchRootKind::ToolchainCore);
+  ZC_EXPECT(ZC_REQUIRE_NONNULL(decoded).roots()[0].toolchainCoreDistributionDigest() ==
+            digest(0x5a));
+
+  auto mutated = zc::heapArray<uint8_t>(encoded.asPtr());
+  ZC_REQUIRE(mutated.size() > 8);
+  mutated[8] = 0xff;
+  ZC_EXPECT(ModuleSearchRootsInput::decodeValue(mutated.asPtr()) == zc::none);
+}
+
 ZC_TEST("ResolveModuleRequestQuery stages and demands exact candidates") {
   Fixture fixture;
   basic::ThreadPool scheduler(4);
@@ -184,13 +211,6 @@ ZC_TEST("ResolveModuleRequestQuery stages and demands exact candidates") {
   ZC_REQUIRE(candidates.value().candidates().size() == 1);
   ZC_EXPECT(candidates.value().candidates()[0].encode().asPtr() ==
             module("root"_zc, "child"_zc).encode().asPtr());
-  auto resolution =
-      fixture.resolver().materializeQueryResolution(zc::mv(requests[0]), candidates.value());
-  ZC_REQUIRE(resolution.is<binder::ModulePathResolution>());
-  ZC_REQUIRE(resolution.get<binder::ModulePathResolution>().is<binder::ResolvedModulePath>());
-  ZC_EXPECT(
-      resolution.get<binder::ModulePathResolution>().get<binder::ResolvedModulePath>().target ==
-      fixture.child);
 }
 
 ZC_TEST("ResolveModuleRequestQuery fails closed when exact inputs are absent") {

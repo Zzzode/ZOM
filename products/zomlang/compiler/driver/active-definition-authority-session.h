@@ -23,12 +23,13 @@ public:
 
   /// \brief Reconstructs and atomically installs the complete active authority projection.
   ZC_NODISCARD bool refresh(query::QueryDatabase& database,
-                            const PackageRootSetQueryKey& packageRoots);
+                            const CompilationRootSetQueryKey& contextRoots);
 
   ZC_NODISCARD zc::ArrayPtr<const identity::DefinitionKey> keyLedger() const ZC_LIFETIMEBOUND;
 
 private:
   zc::Vector<identity::DefinitionKey> keyLedgerField;
+  zc::Maybe<CompilationRootSetQueryKey> contextRootsField;
 };
 
 }  // namespace zomlang::compiler::driver::incremental_binding_query

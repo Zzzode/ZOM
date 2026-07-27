@@ -134,15 +134,19 @@ PackageSourceConstraint PackageSourceConstraint::localPath(
   return PackageSourceConstraint(LocalPathSourceConstraint{zc::mv(canonicalPath)});
 }
 
-PackageSourceConstraint PackageSourceConstraint::clone() const {ZC_SWITCH_ONEOF(value){
-    ZC_CASE_ONEOF(source, RegistrySourceConstraint){return registry(source.registry.clone());
-}  // namespace zomlang::compiler::driver::package
-ZC_CASE_ONEOF(source, VcsSourceConstraint) {
-  return vcs(source.repository.clone(), source.selector.clone(), source.subdirectory.clone());
-}
-ZC_CASE_ONEOF(source, LocalPathSourceConstraint) { return localPath(source.canonicalPath.clone()); }
-}
-ZC_UNREACHABLE
+PackageSourceConstraint PackageSourceConstraint::clone() const {
+  ZC_SWITCH_ONEOF(value) {
+    ZC_CASE_ONEOF(source, RegistrySourceConstraint) {
+      return registry(source.registry.clone());
+    }  // namespace zomlang::compiler::driver::package
+    ZC_CASE_ONEOF(source, VcsSourceConstraint) {
+      return vcs(source.repository.clone(), source.selector.clone(), source.subdirectory.clone());
+    }
+    ZC_CASE_ONEOF(source, LocalPathSourceConstraint) {
+      return localPath(source.canonicalPath.clone());
+    }
+  }
+  ZC_UNREACHABLE
 }
 
 PackageSourceConstraint PackageSourceConstraint::clone(zc::MemoryResource& resource) const {
@@ -261,8 +265,9 @@ void DependencyRequirementWithoutOrigin::encode(identity::CanonicalEncoder& enco
   ZC_IF_SOME(value, versionCheckValue) {
     encoder.encodeSome();
     value.encode(encoder);
+  } else {
+    encoder.encodeNone();
   }
-  else { encoder.encodeNone(); }
   requestedFeatureValues.encode(encoder);
   encoder.encodeBool(useDefaultFeaturesValue);
   encoder.encodeBool(optionalValue);
@@ -290,6 +295,8 @@ DependencyRequirement DependencyRequirement::clone() const {
 const DependencyRequirementWithoutOrigin& DependencyRequirement::withoutOrigin() const noexcept {
   return value;
 }
+
+const DiagnosticAnchor& DependencyRequirement::origin() const noexcept { return originValue; }
 
 void DependencyRequirement::encode(identity::CanonicalEncoder& encoder) const {
   value.encode(encoder);

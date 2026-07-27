@@ -24,6 +24,7 @@
 #include "zomlang/compiler/driver/package/source-tree.h"
 #include "zomlang/compiler/identity/canonical-scalar.h"
 #include "zomlang/compiler/identity/package-key.h"
+#include "zomlang/compiler/source/core-source-catalog.h"
 
 namespace zomlang::compiler::driver {
 
@@ -91,6 +92,30 @@ private:
 
 using ModuleSourceDiscoveryResult = zc::OneOf<InvalidModuleSourceRequest, MissingModuleSource,
                                               ResolvedModuleSource, AmbiguousModuleSource>;
+
+/// \brief Sole admitted source identity for one logical toolchain-core module.
+class ResolvedCoreModuleSource final {
+public:
+  ZC_NODISCARD static ResolvedCoreModuleSource from(identity::SourceFileKey&& source,
+                                                    const identity::Sha256Digest& contentDigest);
+
+  ResolvedCoreModuleSource(ResolvedCoreModuleSource&&) noexcept = default;
+  ResolvedCoreModuleSource& operator=(ResolvedCoreModuleSource&&) noexcept = default;
+  ZC_DISALLOW_COPY(ResolvedCoreModuleSource);
+
+  ZC_NODISCARD const identity::SourceFileKey& source() const noexcept;
+  ZC_NODISCARD const identity::Sha256Digest& contentDigest() const noexcept;
+
+private:
+  ResolvedCoreModuleSource(identity::SourceFileKey&& source,
+                           const identity::Sha256Digest& contentDigest) noexcept;
+
+  identity::SourceFileKey sourceValue;
+  identity::Sha256Digest contentDigestValue;
+};
+
+using CoreModuleSourceDiscoveryResult =
+    zc::OneOf<InvalidModuleSourceRequest, MissingModuleSource, ResolvedCoreModuleSource>;
 
 /// \brief Closed structural dependency forms admitted by the module graph.
 enum class StructuralModuleDependencyKind : uint8_t {
@@ -170,6 +195,14 @@ using StructuralModuleDependencyRequestResult =
 ZC_NODISCARD ModuleSourceDiscoveryResult discoverModuleSource(
     const package::SourceTreeRecord& sourceTree, const identity::CanonicalRelativePath& searchRoot,
     zc::ArrayPtr<const identity::ModulePathSegment> modulePath);
+
+/// \brief Selects one core module only from the independently verified structural catalog.
+/// \param catalog Handle-free logical catalog bound to one projected toolchain-core crate.
+/// \param modulePath Complete non-empty canonical core module path.
+/// \return Invalid for an empty path, Missing for no admitted entry, or the exact source identity.
+ZC_NODISCARD CoreModuleSourceDiscoveryResult
+discoverCoreModuleSource(const source::core::AdmittedCoreSourceCatalog& catalog,
+                         zc::ArrayPtr<const identity::ModulePathSegment> modulePath);
 
 /// \brief Purely extracts module dependencies from one immutable schema-valid syntax tree.
 /// \param tree Syntax tree whose root-reachable nodes are traversed without filesystem access.

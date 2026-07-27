@@ -113,9 +113,16 @@ void collectIndependentBoundaries(const ast::Tree& tree, ast::NodeId node,
 
 bool appendCanonicalIdentifier(identity::CanonicalEncoder& encoder, zc::StringPtr text) {
   auto value = identity::SemanticIdentifier::fromSource(text);
-  if (value == zc::none) { return false; }
-  ZC_IF_SOME(identifier, value) { identifier.encode(encoder); }
-  return true;
+  ZC_IF_SOME(identifier, value) {
+    identifier.encode(encoder);
+    return true;
+  }
+  auto declaredName = identity::DeclaredDefinitionName::fromSource(text);
+  ZC_IF_SOME(identifier, declaredName) {
+    identifier.encode(encoder);
+    return true;
+  }
+  return false;
 }
 
 zc::StringPtr independentlyReadText(const ast::Tree& tree, const ast::NodeSchemaFieldEntry& field,

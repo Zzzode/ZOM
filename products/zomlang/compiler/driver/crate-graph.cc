@@ -126,9 +126,9 @@ zc::OneOf<identity::CrateKey, CrateGraphIssue> makeProviderLibrary(
     if (compilation == zc::none) { return CrateGraphIssue::InvalidCrateIdentity; }
     ZC_IF_SOME(target, library) {
       ZC_IF_SOME(config, compilation) {
-        auto crate =
-            identity::CrateKey::from(provider.key().clone(), identity::CrateTargetKind::Library,
-                                     target.clone(), zc::mv(config));
+        auto crate = identity::CrateKey::from(
+            identity::CompilationUnitIdentity::userPackage(provider.key().clone()),
+            identity::CrateTargetKind::Library, target.clone(), zc::mv(config));
         ZC_IF_SOME(value, crate) { return zc::mv(value); }
       }
     }
@@ -139,7 +139,8 @@ zc::OneOf<identity::CrateKey, CrateGraphIssue> makeProviderLibrary(
 zc::Maybe<package::FinalizedCompilationRoot> makeProviderCompilationRoot(
     const package::ResolvedPackageRecord& provider, const identity::CrateKey& crate) {
   if (crate.targetKind() != identity::CrateTargetKind::Library ||
-      !sameBytes(provider.key().encode().asPtr(), crate.package().encode().asPtr())) {
+      crate.unit().kind() != identity::CompilationUnitKind::UserPackage ||
+      !sameBytes(provider.key().encode().asPtr(), crate.unit().userPackage().encode().asPtr())) {
     return zc::none;
   }
   auto libraryTarget = provider.libraryTarget();
@@ -217,9 +218,9 @@ zc::OneOf<identity::CrateKey, CrateGraphIssue> makeHostLibrary(
     if (compilation == zc::none) { return CrateGraphIssue::InvalidCrateIdentity; }
     ZC_IF_SOME(target, library) {
       ZC_IF_SOME(config, compilation) {
-        auto crate =
-            identity::CrateKey::from(provider.key().clone(), identity::CrateTargetKind::Library,
-                                     target.clone(), zc::mv(config));
+        auto crate = identity::CrateKey::from(
+            identity::CompilationUnitIdentity::userPackage(provider.key().clone()),
+            identity::CrateTargetKind::Library, target.clone(), zc::mv(config));
         ZC_IF_SOME(value, crate) { return zc::mv(value); }
       }
     }
@@ -476,7 +477,8 @@ CrateGraphBuildResult VerifiedCrateGraph::buildFinal(
         }
         if (!foundProvider) { return CrateGraphIssue::InvalidCrateIdentity; }
         auto edge = identity::CrateDependencyEdgeKey::from(
-            packageEdge.clone(), crates[cursor].clone(), crates[providerCrateIndex].clone());
+            identity::CrateDependencyOrigin::userPackage(packageEdge.clone()),
+            crates[cursor].clone(), crates[providerCrateIndex].clone());
         if (edge == zc::none) { return CrateGraphIssue::InvalidCrateIdentity; }
         ZC_IF_SOME(value, edge) { edges.add(zc::mv(value)); }
       }
@@ -498,7 +500,12 @@ CrateGraphBuildResult VerifiedCrateGraph::buildFinal(
   }
   if (hasCycle(crates.asPtr(), edges.asPtr())) { return CrateGraphIssue::DependencyCycle; }
   zc::Vector<identity::PackageDependencyEdgeKey> packageEdges;
-  for (const auto& edge : edges) { packageEdges.add(edge.packageEdge().clone()); }
+  for (const auto& edge : edges) {
+    if (edge.origin().kind() != identity::CrateDependencyOriginKind::UserPackage) {
+      return CrateGraphIssue::InvalidCrateIdentity;
+    }
+    packageEdges.add(edge.origin().userPackageEdge().clone());
+  }
   canonicalSort(packageEdges);
   zc::Vector<identity::PackageDependencyEdgeKey> uniquePackageEdges;
   for (auto& edge : packageEdges) {
@@ -752,9 +759,9 @@ PreparatoryCrateGraphBuildResult VerifiedPreparatoryCrateGraph::build(
             semanticOptions(request, manifest.editionYear()), zc::mv(noBuildOutput));
         if (compilation == zc::none) { return CrateGraphIssue::InvalidCrateIdentity; }
         ZC_IF_SOME(config, compilation) {
-          auto root = identity::CrateKey::from(rootRecord.key().clone(),
-                                               identity::CrateTargetKind::BuildScript, zc::mv(name),
-                                               zc::mv(config));
+          auto root = identity::CrateKey::from(
+              identity::CompilationUnitIdentity::userPackage(rootRecord.key().clone()),
+              identity::CrateTargetKind::BuildScript, zc::mv(name), zc::mv(config));
           if (root == zc::none) { return CrateGraphIssue::InvalidCrateIdentity; }
           ZC_IF_SOME(rootCrate, root) {
             zc::Vector<identity::CrateKey> crates;
@@ -798,8 +805,8 @@ PreparatoryCrateGraphBuildResult VerifiedPreparatoryCrateGraph::build(
                   }
                   if (!foundProvider) { return CrateGraphIssue::InvalidCrateIdentity; }
                   auto edge = identity::CrateDependencyEdgeKey::from(
-                      packageEdge.clone(), crates[cursor].clone(),
-                      crates[providerCrateIndex].clone());
+                      identity::CrateDependencyOrigin::userPackage(packageEdge.clone()),
+                      crates[cursor].clone(), crates[providerCrateIndex].clone());
                   if (edge == zc::none) { return CrateGraphIssue::InvalidCrateIdentity; }
                   ZC_IF_SOME(value, edge) { edges.add(zc::mv(value)); }
                 }
@@ -815,7 +822,12 @@ PreparatoryCrateGraphBuildResult VerifiedPreparatoryCrateGraph::build(
             }
 
             zc::Vector<identity::PackageKey> packages;
-            for (const auto& crate : crates) { packages.add(crate.package().clone()); }
+            for (const auto& crate : crates) {
+              if (crate.unit().kind() != identity::CompilationUnitKind::UserPackage) {
+                return CrateGraphIssue::InvalidCrateIdentity;
+              }
+              packages.add(crate.unit().userPackage().clone());
+            }
             canonicalSort(packages);
             zc::Vector<identity::PackageKey> uniquePackages;
             for (auto& package : packages) {
@@ -824,8 +836,17 @@ PreparatoryCrateGraphBuildResult VerifiedPreparatoryCrateGraph::build(
                 uniquePackages.add(zc::mv(package));
               }
             }
+            zc::Vector<identity::CompilationUnitIdentity> compilationUnits(uniquePackages.size());
+            for (const auto& package : uniquePackages) {
+              compilationUnits.add(identity::CompilationUnitIdentity::userPackage(package.clone()));
+            }
             zc::Vector<identity::PackageDependencyEdgeKey> packageEdges;
-            for (const auto& edge : edges) { packageEdges.add(edge.packageEdge().clone()); }
+            for (const auto& edge : edges) {
+              if (edge.origin().kind() != identity::CrateDependencyOriginKind::UserPackage) {
+                return CrateGraphIssue::InvalidCrateIdentity;
+              }
+              packageEdges.add(edge.origin().userPackageEdge().clone());
+            }
             canonicalSort(packageEdges);
             zc::Vector<identity::PackageDependencyEdgeKey> uniquePackageEdges;
             for (auto& edge : packageEdges) {
@@ -836,9 +857,10 @@ PreparatoryCrateGraphBuildResult VerifiedPreparatoryCrateGraph::build(
             }
             zc::Vector<identity::SourceContentIdentity> sourceContents;
             zc::Vector<identity::ModuleKey> modules;
+            zc::Vector<identity::ToolchainSemanticContextInput> noToolchainInputs;
             auto fingerprint = identity::SemanticContextFingerprint::compute(
-                uniquePackages.asPtr(), uniquePackageEdges.asPtr(), crates.asPtr(), edges.asPtr(),
-                sourceContents.asPtr(), modules.asPtr());
+                compilationUnits.asPtr(), noToolchainInputs.asPtr(), uniquePackageEdges.asPtr(),
+                crates.asPtr(), edges.asPtr(), sourceContents.asPtr(), modules.asPtr());
             if (fingerprint == zc::none) { return CrateGraphIssue::InvalidCrateIdentity; }
             ZC_IF_SOME(value, fingerprint) {
               return VerifiedPreparatoryCrateGraph(zc::heap<Impl>(

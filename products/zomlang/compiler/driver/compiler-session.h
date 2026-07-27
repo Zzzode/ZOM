@@ -30,6 +30,7 @@
 #include "zomlang/compiler/checker/marker-proof.h"
 #include "zomlang/compiler/checker/signature-facts.h"
 #include "zomlang/compiler/driver/borrow-evidence.h"
+#include "zomlang/compiler/driver/core-library-query-provider.h"
 #include "zomlang/compiler/driver/crate-graph.h"
 #include "zomlang/compiler/driver/module-interface.h"
 #include "zomlang/compiler/driver/package/build-script-plan.h"
@@ -52,6 +53,9 @@ namespace compiler {
 namespace source {
 class BufferId;
 class SourceManager;
+namespace core {
+class VerifiedCoreDistribution;
+}
 }  // namespace source
 
 namespace diagnostics {
@@ -148,6 +152,9 @@ public:
   /// \brief Returns sealed checker handoffs in dependency order after binding completes.
   ZC_NODISCARD zc::ArrayPtr<const binder::VerifiedBoundModuleInput> getVerifiedBoundModules()
       const noexcept;
+  /// \brief Returns independently verified stable graphs for every projected core crate.
+  ZC_NODISCARD zc::ArrayPtr<const core_library_query::CoreModuleGraphRecord> getCoreModuleGraphs()
+      const noexcept;
   /// \brief Returns the closed invariant rejection from the most recent Checker run.
   ZC_NODISCARD zc::ArrayPtr<const checker::signature::CheckerVerificationFailure>
   getCheckerInvariantFailures() const noexcept;
@@ -217,6 +224,9 @@ public:
 
   /// \brief Installs one fully verified package input before parsing begins.
   ZC_NODISCARD bool installVerifiedPackageInput(VerifiedPackageSessionInput&& input);
+  /// \brief Atomically installs the verified source-backed core distribution for this context.
+  ZC_NODISCARD bool installVerifiedCoreDistribution(
+      const source::core::VerifiedCoreDistribution& distribution);
 
   /// \brief Returns session-owned storage for package resolution inputs and outputs.
   /// \return A resource that outlives the installed package graph.

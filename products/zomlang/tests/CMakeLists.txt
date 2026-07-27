@@ -64,17 +64,17 @@ add_test(
 set_tests_properties(package-workspace-compile
                      PROPERTIES LABELS "integration;package;cli" TIMEOUT 60)
 add_test(
-  NAME standard-prelude-install-layout
+  NAME core-source-install-layout
   COMMAND
     "${CMAKE_COMMAND}"
     "-DZOM_BINARY_DIR=${CMAKE_BINARY_DIR}"
-    "-DZOM_TEST_PREFIX=${CMAKE_BINARY_DIR}/test-prefixes/standard-prelude-install-layout"
+    "-DZOM_TEST_PREFIX=${CMAKE_BINARY_DIR}/test-prefixes/core-source-install-layout"
     "-DZOMC_FILE_NAME=$<TARGET_FILE_NAME:zomc>"
     -P
-    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/verify-standard-prelude-install.cmake")
+    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/verify-core-source-install.cmake")
 set_tests_properties(
-  standard-prelude-install-layout
-  PROPERTIES LABELS "integration;package;install" RUN_SERIAL TRUE TIMEOUT 120)
+  core-source-install-layout
+  PROPERTIES LABELS "integration;core;install" RUN_SERIAL TRUE TIMEOUT 120)
 
 # Benchmarks - Frontend micro-benchmarks
 add_subdirectory(benchmarks)

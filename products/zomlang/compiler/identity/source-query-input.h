@@ -7,6 +7,7 @@
 
 #include "zc/core/array.h"
 #include "zc/core/common.h"
+#include "zomlang/compiler/identity/crate-key.h"
 #include "zomlang/compiler/identity/sha256.h"
 #include "zomlang/compiler/query/query-database.h"
 
@@ -26,8 +27,7 @@ public:
   StableSourceQueryKey& operator=(StableSourceQueryKey&&) noexcept = default;
   ZC_DISALLOW_COPY(StableSourceQueryKey);
 
-  ZC_NODISCARD static zc::Maybe<StableSourceQueryKey> fromVerified(
-      const SourceFileKey& source);
+  ZC_NODISCARD static zc::Maybe<StableSourceQueryKey> fromVerified(const SourceFileKey& source);
   ZC_NODISCARD static zc::Maybe<StableSourceQueryKey> decodeBounded(
       zc::ArrayPtr<const uint8_t> bytes);
   ZC_NODISCARD StableSourceQueryKey clone() const;
@@ -64,15 +64,6 @@ private:
   zc::Array<uint8_t> bytesField;
 };
 
-class CompilationUnitQueryKey final {
-public:
-  ZC_NODISCARD static CompilationUnitQueryKey fixed() noexcept;
-  bool operator==(CompilationUnitQueryKey) const noexcept { return true; }
-
-private:
-  constexpr CompilationUnitQueryKey() noexcept = default;
-};
-
 class CanonicalCompilationOptions final {
 public:
   CanonicalCompilationOptions(CanonicalCompilationOptions&&) noexcept = default;
@@ -81,6 +72,9 @@ public:
 
   ZC_NODISCARD static zc::Maybe<CanonicalCompilationOptions> fromVerified(
       const driver::package::VerifiedPackageCompilationRequest& request);
+  ZC_NODISCARD static zc::Maybe<CanonicalCompilationOptions> fromCanonicalSelections(
+      zc::Array<uint8_t>&& hostTarget, zc::Array<uint8_t>&& target, bool useUnicode,
+      bool allowDollarIdentifiers, bool supportRegexLiterals);
   ZC_NODISCARD static zc::Maybe<CanonicalCompilationOptions> decodeCanonical(
       zc::ArrayPtr<const uint8_t> bytes);
   ZC_NODISCARD CanonicalCompilationOptions clone() const;
@@ -89,6 +83,8 @@ public:
   ZC_NODISCARD bool useUnicode() const noexcept;
   ZC_NODISCARD bool allowDollarIdentifiers() const noexcept;
   ZC_NODISCARD bool supportRegexLiterals() const noexcept;
+  /// \brief Verifies that this complete session option record selects one exact crate.
+  ZC_NODISCARD bool matchesCrate(const CrateKey& crate) const;
   ZC_NODISCARD zc::Array<uint8_t> encodeCanonical() const;
   bool operator==(const CanonicalCompilationOptions& other) const noexcept;
   bool operator!=(const CanonicalCompilationOptions& other) const noexcept {
@@ -107,7 +103,7 @@ private:
 };
 
 struct CompilationOptionsInput final {
-  using Key = CompilationUnitQueryKey;
+  using Key = CrateKey;
   using Value = CanonicalCompilationOptions;
 
   ZC_NODISCARD static zc::StringPtr domain();

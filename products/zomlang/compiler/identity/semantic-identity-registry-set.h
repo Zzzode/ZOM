@@ -33,9 +33,9 @@ public:
   ZC_NODISCARD static zc::Maybe<SemanticIdentityRegistrySet> create(SemanticContextFactory& factory,
                                                                     SemanticContextBrand context);
 
-  ZC_NODISCARD FrozenRegistryFailure collectPackage(PackageKey&& key,
-                                                    uint32_t traversalOrdinal = 0);
-  ZC_NODISCARD FrozenRegistryFailure freezePackages();
+  ZC_NODISCARD FrozenRegistryFailure collectCompilationUnit(CompilationUnitIdentity&& key,
+                                                            uint32_t traversalOrdinal = 0);
+  ZC_NODISCARD FrozenRegistryFailure freezeCompilationUnits();
   ZC_NODISCARD FrozenRegistryFailure collectCrate(CrateKey&& key, uint32_t traversalOrdinal = 0);
   ZC_NODISCARD FrozenRegistryFailure freezeCrates();
   ZC_NODISCARD FrozenRegistryFailure collectSourceFile(ImmutableSourceSnapshot&& snapshot,
@@ -58,7 +58,7 @@ public:
   ZC_NODISCARD FrozenRegistryFailure freezeGenericParameters();
   ZC_NODISCARD FrozenRegistryFailure freezeCallableParameters();
 
-  ZC_NODISCARD const PackageRegistry& packages() const noexcept;
+  ZC_NODISCARD const CompilationUnitRegistry& compilationUnits() const noexcept;
   ZC_NODISCARD const CrateRegistry& crates() const noexcept;
   ZC_NODISCARD const SourceFileRegistry& sourceFiles() const noexcept;
   ZC_NODISCARD const ModuleRegistry& modules() const noexcept;
@@ -83,7 +83,7 @@ private:
                                       uint32_t traversalOrdinal);
 
   SemanticContextBrand owner;
-  PackageRegistry packageRegistry;
+  CompilationUnitRegistry compilationUnitRegistry;
   CrateRegistry crateRegistry;
   SourceFileRegistry sourceFileRegistry;
   ModuleRegistry moduleRegistry;

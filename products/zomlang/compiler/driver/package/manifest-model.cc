@@ -110,14 +110,16 @@ DiagnosticDocumentPath DiagnosticDocumentPath::package(
   return DiagnosticDocumentPath(PackageDiagnosticDocumentPath{sourceDigest, zc::mv(relativePath)});
 }
 
-DiagnosticDocumentPath DiagnosticDocumentPath::clone() const {ZC_SWITCH_ONEOF(value){
-    ZC_CASE_ONEOF(path, WorkspaceDiagnosticDocumentPath){return workspace(path.path.clone());
-}  // namespace zomlang::compiler::driver::package
-ZC_CASE_ONEOF(path, PackageDiagnosticDocumentPath) {
-  return package(path.sourceDigest, path.relativePath.clone());
-}
-}
-ZC_UNREACHABLE
+DiagnosticDocumentPath DiagnosticDocumentPath::clone() const {
+  ZC_SWITCH_ONEOF(value) {
+    ZC_CASE_ONEOF(path, WorkspaceDiagnosticDocumentPath) {
+      return workspace(path.path.clone());
+    }  // namespace zomlang::compiler::driver::package
+    ZC_CASE_ONEOF(path, PackageDiagnosticDocumentPath) {
+      return package(path.sourceDigest, path.relativePath.clone());
+    }
+  }
+  ZC_UNREACHABLE
 }
 
 DiagnosticDocumentPathKind DiagnosticDocumentPath::kind() const noexcept {
@@ -346,6 +348,7 @@ identity::CrateTargetKind TargetManifest::kind() const noexcept { return kindVal
 zc::StringPtr TargetManifest::name() const noexcept { return nameValue.text(); }
 const identity::CanonicalRelativePath& TargetManifest::path() const noexcept { return pathValue; }
 bool TargetManifest::implicit() const noexcept { return implicitValue; }
+const DiagnosticAnchor& TargetManifest::origin() const noexcept { return originValue; }
 
 void TargetManifest::encode(identity::CanonicalEncoder& encoder) const {
   encoder.encodeUint8(static_cast<uint8_t>(kindValue));
@@ -609,14 +612,14 @@ FeatureEdge FeatureEdge::enableDependencyFeature(identity::DependencyAlias&& dep
 }
 
 FeatureEdge FeatureEdge::clone() const {
-    ZC_SWITCH_ONEOF(value){ZC_CASE_ONEOF(edge, LocalFeatureEdge){return local(edge.feature.clone());
-}
-ZC_CASE_ONEOF(edge, EnableDependencyEdge) { return enableDependency(edge.dependency.clone()); }
-ZC_CASE_ONEOF(edge, EnableDependencyFeatureEdge) {
-  return enableDependencyFeature(edge.dependency.clone(), edge.feature.clone());
-}
-}
-ZC_UNREACHABLE
+  ZC_SWITCH_ONEOF(value) {
+    ZC_CASE_ONEOF(edge, LocalFeatureEdge) { return local(edge.feature.clone()); }
+    ZC_CASE_ONEOF(edge, EnableDependencyEdge) { return enableDependency(edge.dependency.clone()); }
+    ZC_CASE_ONEOF(edge, EnableDependencyFeatureEdge) {
+      return enableDependencyFeature(edge.dependency.clone(), edge.feature.clone());
+    }
+  }
+  ZC_UNREACHABLE
 }
 
 FeatureEdge FeatureEdge::clone(zc::MemoryResource& resource) const {

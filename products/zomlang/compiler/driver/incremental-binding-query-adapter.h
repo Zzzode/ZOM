@@ -8,6 +8,7 @@
 #include "zc/core/array.h"
 #include "zc/core/common.h"
 #include "zc/core/debug.h"
+#include "zc/core/one-of.h"
 #include "zc/core/vector.h"
 #include "zomlang/compiler/driver/package/package-compilation-request.h"
 #include "zomlang/compiler/identity/source-query-input.h"
@@ -38,35 +39,34 @@ private:
 
   zc::Array<uint8_t> canonicalPackageBytesField;
 
-  friend class PackageRootSetQueryKey;
+  friend class PackageRootSetKey;
 };
 
 /// \brief Canonical non-empty package-root-set query key.
-class PackageRootSetQueryKey final {
+class PackageRootSetKey final {
 public:
-  PackageRootSetQueryKey(PackageRootSetQueryKey&&) noexcept = default;
-  PackageRootSetQueryKey& operator=(PackageRootSetQueryKey&&) noexcept = default;
-  ZC_DISALLOW_COPY(PackageRootSetQueryKey);
+  PackageRootSetKey(PackageRootSetKey&&) noexcept = default;
+  PackageRootSetKey& operator=(PackageRootSetKey&&) noexcept = default;
+  ZC_DISALLOW_COPY(PackageRootSetKey);
 
-  ZC_NODISCARD static zc::Maybe<PackageRootSetQueryKey> fromVerified(
+  ZC_NODISCARD static zc::Maybe<PackageRootSetKey> fromVerified(
       const package::VerifiedPackageCompilationRequest& request);
-  ZC_NODISCARD PackageRootSetQueryKey clone() const;
+  ZC_NODISCARD PackageRootSetKey clone() const;
   ZC_NODISCARD zc::ArrayPtr<const StablePackageQueryKey> packages() const ZC_LIFETIMEBOUND;
-  bool operator==(const PackageRootSetQueryKey& other) const noexcept;
-  bool operator!=(const PackageRootSetQueryKey& other) const noexcept { return !(*this == other); }
+  bool operator==(const PackageRootSetKey& other) const noexcept;
+  bool operator!=(const PackageRootSetKey& other) const noexcept { return !(*this == other); }
 
 private:
-  explicit PackageRootSetQueryKey(zc::Vector<StablePackageQueryKey>&& packages) noexcept;
-  ZC_NODISCARD static zc::Maybe<PackageRootSetQueryKey> from(
+  explicit PackageRootSetKey(zc::Vector<StablePackageQueryKey>&& packages) noexcept;
+  ZC_NODISCARD static zc::Maybe<PackageRootSetKey> from(
       zc::Vector<StablePackageQueryKey>&& packages);
-  ZC_NODISCARD static zc::Maybe<PackageRootSetQueryKey> decodeCanonical(
+  ZC_NODISCARD static zc::Maybe<PackageRootSetKey> decodeCanonical(
       zc::ArrayPtr<const uint8_t> bytes);
   ZC_NODISCARD zc::Array<uint8_t> encodeCanonical() const;
 
   zc::Vector<StablePackageQueryKey> packageFields;
 
-  friend struct ActiveCratesInput;
-  friend struct ModuleBindingOrderQuery;
+  friend struct ActiveCratesQuery;
   friend struct PackageGraphInput;
 };
 
@@ -92,8 +92,81 @@ private:
   zc::Array<uint8_t> canonicalCrateBytesField;
 
   friend class CanonicalCrateSet;
-  friend struct ActiveModulesInput;
-  friend struct ActiveSourcesInput;
+  friend class CompilationRootKey;
+  friend struct UserPackageActiveSourcesInput;
+  friend struct ActiveSourcesQuery;
+};
+
+struct UserPackageCompilationRoot final {
+  StablePackageQueryKey package;
+};
+
+struct ToolchainCoreCompilationRoot final {
+  StableCrateQueryKey crate;
+};
+
+enum class CompilationRootKind : uint8_t { UserPackage = 0x01, ToolchainCore = 0x02 };
+
+/// \brief Exhaustive stable root of one user package or projected toolchain core graph.
+class CompilationRootKey final {
+public:
+  CompilationRootKey(CompilationRootKey&&) noexcept = default;
+  CompilationRootKey& operator=(CompilationRootKey&&) noexcept = default;
+  ZC_DISALLOW_COPY(CompilationRootKey);
+
+  ZC_NODISCARD static zc::Maybe<CompilationRootKey> userPackage(
+      const identity::PackageKey& package);
+  ZC_NODISCARD static zc::Maybe<CompilationRootKey> toolchainCore(const identity::CrateKey& crate);
+  ZC_NODISCARD CompilationRootKey clone() const;
+  ZC_NODISCARD CompilationRootKind kind() const noexcept;
+  ZC_NODISCARD const StablePackageQueryKey& userPackage() const ZC_LIFETIMEBOUND;
+  ZC_NODISCARD const StableCrateQueryKey& toolchainCore() const ZC_LIFETIMEBOUND;
+  ZC_NODISCARD zc::Array<uint8_t> encodeCanonical() const;
+  bool operator==(const CompilationRootKey& other) const noexcept;
+  bool operator!=(const CompilationRootKey& other) const noexcept { return !(*this == other); }
+  bool operator<(const CompilationRootKey& other) const noexcept;
+
+private:
+  explicit CompilationRootKey(UserPackageCompilationRoot&& root) noexcept;
+  explicit CompilationRootKey(ToolchainCoreCompilationRoot&& root) noexcept;
+  ZC_NODISCARD static zc::Maybe<CompilationRootKey> decodeCanonical(
+      zc::ArrayPtr<const uint8_t> bytes);
+
+  zc::OneOf<UserPackageCompilationRoot, ToolchainCoreCompilationRoot> value;
+
+  friend class CompilationRootSetQueryKey;
+};
+
+/// \brief Complete canonical non-empty compilation-root-set query key.
+class CompilationRootSetQueryKey final {
+public:
+  CompilationRootSetQueryKey(CompilationRootSetQueryKey&&) noexcept = default;
+  CompilationRootSetQueryKey& operator=(CompilationRootSetQueryKey&&) noexcept = default;
+  ZC_DISALLOW_COPY(CompilationRootSetQueryKey);
+
+  ZC_NODISCARD static zc::Maybe<CompilationRootSetQueryKey> fromVerified(
+      const package::VerifiedPackageCompilationRequest& request);
+  ZC_NODISCARD static zc::Maybe<CompilationRootSetQueryKey> fromVerified(
+      const package::VerifiedPackageCompilationRequest& request,
+      zc::ArrayPtr<const identity::CrateKey> projectedCoreCrates);
+  ZC_NODISCARD static zc::Maybe<CompilationRootSetQueryKey> from(
+      zc::Vector<CompilationRootKey>&& roots);
+  ZC_NODISCARD static zc::Maybe<CompilationRootSetQueryKey> singletonToolchainCore(
+      const identity::CrateKey& crate);
+  ZC_NODISCARD static zc::Maybe<CompilationRootSetQueryKey> decodeCanonical(
+      zc::ArrayPtr<const uint8_t> bytes);
+  ZC_NODISCARD CompilationRootSetQueryKey clone() const;
+  ZC_NODISCARD zc::ArrayPtr<const CompilationRootKey> roots() const ZC_LIFETIMEBOUND;
+  ZC_NODISCARD zc::Array<uint8_t> encodeCanonical() const;
+  bool operator==(const CompilationRootSetQueryKey& other) const noexcept;
+  bool operator!=(const CompilationRootSetQueryKey& other) const noexcept {
+    return !(*this == other);
+  }
+
+private:
+  explicit CompilationRootSetQueryKey(zc::Vector<CompilationRootKey>&& roots) noexcept;
+
+  zc::Vector<CompilationRootKey> rootFields;
 };
 
 /// \brief Canonically sorted and duplicate-free active replacement crate set.
@@ -118,7 +191,7 @@ private:
 
   zc::Vector<StableCrateQueryKey> crateFields;
 
-  friend struct ActiveCratesInput;
+  friend struct ActiveCratesQuery;
 };
 
 /// \brief Bounded canonical query identity projected from one verified semantic module key.
@@ -143,13 +216,11 @@ private:
 
   zc::Array<uint8_t> canonicalModuleBytesField;
 
-  friend struct ActiveModulesInput;
-  friend struct ModuleDependenciesInput;
-  friend struct SelectedModuleSourceInput;
-  friend struct ModuleBindingOrderQuery;
-  friend class CanonicalModuleSet;
-  friend class ModuleBindingOrder;
-  friend class ModuleBindingOrderFailure;
+  friend struct NamedDefinitionInventoryQuery;
+  friend struct NamedImplementationInventoryQuery;
+  friend struct NamedItemSyntaxQuery;
+  friend struct ModuleBodySyntaxQuery;
+  friend struct OwnerBodySyntaxQuery;
 };
 
 /// \brief Canonically sorted and duplicate-free active source set for one crate.
@@ -178,167 +249,12 @@ private:
 
   zc::Vector<identity::source_query::StableSourceQueryKey> sourceFields;
 
-  friend struct ActiveSourcesInput;
+  friend struct UserPackageActiveSourcesInput;
+  friend struct ActiveSourcesQuery;
 };
 
-/// \brief Bounded canonical selected-source authority for one verified semantic module.
-class SelectedModuleSource final {
-public:
-  SelectedModuleSource(SelectedModuleSource&&) noexcept = default;
-  SelectedModuleSource& operator=(SelectedModuleSource&&) noexcept = default;
-  ZC_DISALLOW_COPY(SelectedModuleSource);
-
-  /// \brief Projects a source only when it belongs to the selected module's crate.
-  ZC_NODISCARD static zc::Maybe<SelectedModuleSource> fromVerified(
-      const identity::ModuleKey& module, const identity::SourceFileKey& source);
-  ZC_NODISCARD SelectedModuleSource clone() const;
-  ZC_NODISCARD zc::ArrayPtr<const uint8_t> canonicalSourceBytes() const ZC_LIFETIMEBOUND;
-  bool operator==(const SelectedModuleSource& other) const noexcept;
-  bool operator!=(const SelectedModuleSource& other) const noexcept { return !(*this == other); }
-
-private:
-  explicit SelectedModuleSource(zc::Array<uint8_t>&& canonicalSourceBytes) noexcept;
-  ZC_NODISCARD static zc::Maybe<SelectedModuleSource> decodeBounded(
-      zc::ArrayPtr<const uint8_t> bytes);
-
-  zc::Array<uint8_t> canonicalSourceBytesField;
-
-  friend struct SelectedModuleSourceInput;
-};
-
-/// \brief Canonically sorted and duplicate-free stable module set.
-class CanonicalModuleSet final {
-public:
-  CanonicalModuleSet(CanonicalModuleSet&&) noexcept = default;
-  CanonicalModuleSet& operator=(CanonicalModuleSet&&) noexcept = default;
-  ZC_DISALLOW_COPY(CanonicalModuleSet);
-
-  ZC_NODISCARD static zc::Maybe<CanonicalModuleSet> from(
-      zc::Vector<StableModuleQueryKey>&& modules);
-  ZC_NODISCARD CanonicalModuleSet clone() const;
-  ZC_NODISCARD zc::ArrayPtr<const StableModuleQueryKey> modules() const ZC_LIFETIMEBOUND;
-  ZC_NODISCARD bool contains(const StableModuleQueryKey& module) const noexcept;
-
-private:
-  explicit CanonicalModuleSet(zc::Vector<StableModuleQueryKey>&& modules) noexcept;
-  ZC_NODISCARD static zc::Maybe<CanonicalModuleSet> decodeCanonical(
-      zc::ArrayPtr<const uint8_t> bytes);
-  ZC_NODISCARD zc::Array<uint8_t> encodeCanonical() const;
-
-  zc::Vector<StableModuleQueryKey> moduleFields;
-
-  friend struct ActiveModulesInput;
-  friend struct ModuleDependenciesInput;
-  friend class ModuleDependencySet;
-};
-
-/// \brief Explicit dependency input, including a semantic missing state.
-class ModuleDependencySet final {
-public:
-  ModuleDependencySet(ModuleDependencySet&&) noexcept = default;
-  ModuleDependencySet& operator=(ModuleDependencySet&&) noexcept = default;
-  ZC_DISALLOW_COPY(ModuleDependencySet);
-
-  ZC_NODISCARD static ModuleDependencySet missing();
-  ZC_NODISCARD static ModuleDependencySet present(CanonicalModuleSet&& dependencies);
-  ZC_NODISCARD ModuleDependencySet clone() const;
-  ZC_NODISCARD bool isMissing() const noexcept;
-  ZC_NODISCARD zc::Maybe<const CanonicalModuleSet&> dependencies() const noexcept;
-
-private:
-  explicit ModuleDependencySet(zc::Maybe<CanonicalModuleSet>&& dependencies) noexcept;
-  ZC_NODISCARD static zc::Maybe<ModuleDependencySet> decodeCanonical(
-      zc::ArrayPtr<const uint8_t> bytes);
-  ZC_NODISCARD zc::Array<uint8_t> encodeCanonical() const;
-
-  zc::Maybe<CanonicalModuleSet> dependencyFields;
-
-  friend struct ModuleDependenciesInput;
-};
-
-/// \brief Canonical dependency-first binding schedule.
-class ModuleBindingOrder final {
-public:
-  ModuleBindingOrder(ModuleBindingOrder&&) noexcept = default;
-  ModuleBindingOrder& operator=(ModuleBindingOrder&&) noexcept = default;
-  ZC_DISALLOW_COPY(ModuleBindingOrder);
-
-  ZC_NODISCARD static zc::Maybe<ModuleBindingOrder> fromUnique(
-      zc::Vector<StableModuleQueryKey>&& modules);
-  ZC_NODISCARD ModuleBindingOrder clone() const;
-  ZC_NODISCARD zc::ArrayPtr<const StableModuleQueryKey> modules() const ZC_LIFETIMEBOUND;
-
-private:
-  explicit ModuleBindingOrder(zc::Vector<StableModuleQueryKey>&& modules) noexcept;
-  ZC_NODISCARD static zc::Maybe<ModuleBindingOrder> decodeCanonical(
-      zc::ArrayPtr<const uint8_t> bytes);
-  ZC_NODISCARD zc::Array<uint8_t> encodeCanonical() const;
-
-  zc::Vector<StableModuleQueryKey> moduleFields;
-
-  friend struct ModuleBindingOrderQuery;
-};
-
-enum class ModuleBindingOrderFailureKind : uint8_t {
-  MissingDependencies = 0x01,
-  DependencyOutsideActiveSet = 0x02,
-  SelfDependency = 0x03,
-  Cycle = 0x04
-};
-
-/// \brief Deterministic semantic witness for one invalid active-module topology.
-class ModuleBindingOrderFailure final {
-public:
-  ModuleBindingOrderFailure(ModuleBindingOrderFailure&&) noexcept = default;
-  ModuleBindingOrderFailure& operator=(ModuleBindingOrderFailure&&) noexcept = default;
-  ZC_DISALLOW_COPY(ModuleBindingOrderFailure);
-
-  ZC_NODISCARD static ModuleBindingOrderFailure missingDependencies(
-      const StableModuleQueryKey& requester);
-  ZC_NODISCARD static ModuleBindingOrderFailure dependencyOutsideActiveSet(
-      const StableModuleQueryKey& requester, const StableModuleQueryKey& dependency);
-  ZC_NODISCARD static ModuleBindingOrderFailure selfDependency(
-      const StableModuleQueryKey& requester);
-  ZC_NODISCARD static ModuleBindingOrderFailure cycle(const StableModuleQueryKey& requester);
-  ZC_NODISCARD ModuleBindingOrderFailure clone() const;
-  ZC_NODISCARD ModuleBindingOrderFailureKind kind() const noexcept;
-  ZC_NODISCARD const StableModuleQueryKey& requester() const noexcept;
-  ZC_NODISCARD zc::Maybe<const StableModuleQueryKey&> dependency() const noexcept;
-  ZC_NODISCARD zc::Array<uint8_t> encode() const;
-  ZC_NODISCARD static zc::Maybe<ModuleBindingOrderFailure> decode(
-      zc::ArrayPtr<const uint8_t> bytes);
-  ZC_NODISCARD bool sameAs(const ModuleBindingOrderFailure& other) const;
-
-private:
-  ModuleBindingOrderFailure(ModuleBindingOrderFailureKind kind, StableModuleQueryKey&& requester,
-                            zc::Maybe<StableModuleQueryKey>&& dependency) noexcept;
-  ZC_NODISCARD static ModuleBindingOrderFailure withoutDependency(
-      ModuleBindingOrderFailureKind kind, const StableModuleQueryKey& requester);
-  ZC_NODISCARD static ModuleBindingOrderFailure withDependency(
-      ModuleBindingOrderFailureKind kind, const StableModuleQueryKey& requester,
-      const StableModuleQueryKey& dependency);
-
-  ModuleBindingOrderFailureKind kindField;
-  StableModuleQueryKey requesterField;
-  zc::Maybe<StableModuleQueryKey> dependencyField;
-
-  friend struct ModuleBindingOrderQuery;
-};
-
-struct ActiveModulesInput final {
-  using Key = StableCrateQueryKey;
-  using Value = CanonicalModuleSet;
-
-  ZC_NODISCARD static zc::StringPtr domain();
-  ZC_NODISCARD static query::QueryKindContract contract();
-  ZC_NODISCARD static zc::Array<uint8_t> encodeKey(const Key& key);
-  ZC_NODISCARD static zc::Maybe<Key> decodeKey(zc::ArrayPtr<const uint8_t> bytes);
-  ZC_NODISCARD static zc::Array<uint8_t> encodeValue(const Value& value);
-  ZC_NODISCARD static zc::Maybe<Value> decodeValue(zc::ArrayPtr<const uint8_t> bytes);
-};
-
-/// \brief Low-durability canonical active source set for one stable crate.
-struct ActiveSourcesInput final {
+/// \brief Low-durability explicit active source set for one user-package crate.
+struct UserPackageActiveSourcesInput final {
   using Key = StableCrateQueryKey;
   using Value = CanonicalSourceSet;
 
@@ -350,52 +266,27 @@ struct ActiveSourcesInput final {
   ZC_NODISCARD static zc::Maybe<Value> decodeValue(zc::ArrayPtr<const uint8_t> bytes);
 };
 
-/// \brief Medium-durability active replacement crates for one package-root set.
-struct ActiveCratesInput final {
-  using Key = PackageRootSetQueryKey;
+/// \brief Canonical active sources derived from user-package or toolchain-core authority.
+struct ActiveSourcesQuery final {
+  using Key = StableCrateQueryKey;
+  using Value = CanonicalSourceSet;
+
+  ZC_NODISCARD static zc::StringPtr domain();
+  ZC_NODISCARD static query::QueryKindContract contract();
+  ZC_NODISCARD static zc::Array<uint8_t> encodeKey(const Key& key);
+  ZC_NODISCARD static zc::Maybe<Key> decodeKey(zc::ArrayPtr<const uint8_t> bytes);
+  ZC_NODISCARD static zc::Array<uint8_t> encodeValue(const Value& value);
+  ZC_NODISCARD static zc::Maybe<Value> decodeValue(zc::ArrayPtr<const uint8_t> bytes);
+  ZC_NODISCARD static query::TypedQueryResult<Value> provide(query::QueryContext& context,
+                                                             const Key& key);
+  ZC_NODISCARD static bool verify(query::QueryContext& context, const Key& key,
+                                  const query::TypedQueryResult<Value>& result);
+};
+
+/// \brief Canonical active crates derived from one exhaustive compilation-root set.
+struct ActiveCratesQuery final {
+  using Key = CompilationRootSetQueryKey;
   using Value = CanonicalCrateSet;
-
-  ZC_NODISCARD static zc::StringPtr domain();
-  ZC_NODISCARD static query::QueryKindContract contract();
-  ZC_NODISCARD static zc::Array<uint8_t> encodeKey(const Key& key);
-  ZC_NODISCARD static zc::Maybe<Key> decodeKey(zc::ArrayPtr<const uint8_t> bytes);
-  ZC_NODISCARD static zc::Array<uint8_t> encodeValue(const Value& value);
-  ZC_NODISCARD static zc::Maybe<Value> decodeValue(zc::ArrayPtr<const uint8_t> bytes);
-};
-
-struct ModuleDependenciesInput final {
-  using Key = StableModuleQueryKey;
-  using Value = ModuleDependencySet;
-
-  ZC_NODISCARD static zc::StringPtr domain();
-  ZC_NODISCARD static query::QueryKindContract contract();
-  ZC_NODISCARD static zc::Array<uint8_t> encodeKey(const Key& key);
-  ZC_NODISCARD static zc::Maybe<Key> decodeKey(zc::ArrayPtr<const uint8_t> bytes);
-  ZC_NODISCARD static zc::Array<uint8_t> encodeValue(const Value& value);
-  ZC_NODISCARD static zc::Maybe<Value> decodeValue(zc::ArrayPtr<const uint8_t> bytes);
-};
-
-/// \brief Low-durability explicit module-to-selected-source authority.
-struct SelectedModuleSourceInput final {
-  using Key = StableModuleQueryKey;
-  using Value = SelectedModuleSource;
-
-  ZC_NODISCARD static zc::StringPtr domain();
-  ZC_NODISCARD static query::QueryKindContract contract();
-  ZC_NODISCARD static zc::Array<uint8_t> encodeKey(const Key& key);
-  ZC_NODISCARD static zc::Maybe<Key> decodeKey(zc::ArrayPtr<const uint8_t> bytes);
-  ZC_NODISCARD static zc::Array<uint8_t> encodeValue(const Value& value);
-  ZC_NODISCARD static zc::Maybe<Value> decodeValue(zc::ArrayPtr<const uint8_t> bytes);
-};
-
-/// \brief Verifies that every selected module source has exactly one snapshot input key.
-ZC_NODISCARD bool verifySelectedSourceSnapshotClosure(
-    zc::ArrayPtr<const SelectedModuleSource> selectedSources,
-    zc::ArrayPtr<const identity::source_query::StableSourceQueryKey> snapshotSources);
-
-struct ModuleBindingOrderQuery final {
-  using Key = PackageRootSetQueryKey;
-  using Value = ModuleBindingOrder;
 
   ZC_NODISCARD static zc::StringPtr domain();
   ZC_NODISCARD static query::QueryKindContract contract();

@@ -5631,10 +5631,11 @@ SignatureFactsBuildResult SignatureFactsBuilder::build(const SignatureFactsBuild
   const auto module = input.boundModule.module();
   if (!context.isValid()) { return buildReject(invalidContextInvariant(0)); }
 
-  const auto packageFailure = input.registries.packages().validate(input.boundModule.package());
-  if (packageFailure != identity::FrozenRegistryFailure::None) {
-    return buildReject(
-        registryInvariant(packageFailure, identity::IdentityAllocationPhase::Package, 0));
+  const auto compilationUnitFailure =
+      input.registries.compilationUnits().validate(input.boundModule.compilationUnit());
+  if (compilationUnitFailure != identity::FrozenRegistryFailure::None) {
+    return buildReject(registryInvariant(compilationUnitFailure,
+                                         identity::IdentityAllocationPhase::CompilationUnit, 0));
   }
   const auto crateFailure = input.registries.crates().validate(input.boundModule.crate());
   if (crateFailure != identity::FrozenRegistryFailure::None) {
@@ -5673,7 +5674,8 @@ SignatureFactsBuildResult SignatureFactsBuilder::build(const SignatureFactsBuild
       input.boundModule.bindings().semanticContext() != context ||
       input.semanticTypes.context() != context || input.boundModule.bindings().module() != module ||
       input.boundModule.bindingSurface().sourceModule() != module ||
-      input.boundModule.bindingSurface().sourcePackage() != input.boundModule.package()) {
+      input.boundModule.bindingSurface().sourceCompilationUnit() !=
+          input.boundModule.compilationUnit()) {
     return buildReject(checkerInvariant(CheckerInvariantKind::InputReceiptMismatch, module, 0));
   }
 

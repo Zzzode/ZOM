@@ -721,7 +721,7 @@ public:
   ZC_DISALLOW_COPY(VerifiedExportSurface);
   ZC_NODISCARD VerifiedExportSurface clone() const;
   ZC_NODISCARD identity::ModuleId sourceModule() const noexcept;
-  ZC_NODISCARD identity::PackageId sourcePackage() const noexcept;
+  ZC_NODISCARD identity::CompilationUnitId sourceCompilationUnit() const noexcept;
   ZC_NODISCARD const ExportSurfaceRevision& revision() const noexcept;
   ZC_NODISCARD zc::ArrayPtr<const ExportSurfaceEntry> visibleEntries() const;
   ZC_NODISCARD zc::ArrayPtr<const ExportSurfaceEntry> exports() const;

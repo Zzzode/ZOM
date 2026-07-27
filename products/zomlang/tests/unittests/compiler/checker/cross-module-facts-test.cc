@@ -70,8 +70,8 @@ identity::ModuleId moduleIdentity() {
       identity::SemanticIdentityRegistrySet::create(factory, ZC_REQUIRE_NONNULL(context));
   ZC_REQUIRE(registries != zc::none);
   ZC_IF_SOME(values, registries) {
-    ZC_REQUIRE(values.collectPackage(package()) == identity::FrozenRegistryFailure::None);
-    ZC_REQUIRE(values.freezePackages() == identity::FrozenRegistryFailure::None);
+    ZC_REQUIRE(values.collectCompilationUnit(userUnit()) == identity::FrozenRegistryFailure::None);
+    ZC_REQUIRE(values.freezeCompilationUnits() == identity::FrozenRegistryFailure::None);
     ZC_REQUIRE(values.collectCrate(crate()) == identity::FrozenRegistryFailure::None);
     ZC_REQUIRE(values.freezeCrates() == identity::FrozenRegistryFailure::None);
     auto snapshot = identity::ImmutableSourceSnapshot::from(tests::test_identity_detail::source(),
@@ -247,7 +247,8 @@ ZC_TEST("SignatureRootBinding.AcceptsOnlyDefinitionAndSemanticImportIdentities")
   ZC_EXPECT(!module_interface::sameSignatureRootBinding(semantic, otherSemantic));
   ZC_EXPECT(!module_interface::sameSignatureRootBinding(definition, semantic));
 
-  ImportedDefinitionBindingSelection selection{semantic.clone(), definitions[0],
+  ImportedDefinitionBindingSelection selection{semantic.clone(),
+                                               binder::BindingTarget::definition(definitions[0]),
                                                SignatureViewOrigin::ExplicitImport};
   auto cloned = selection.clone();
   ZC_EXPECT(module_interface::sameSignatureRootBinding(selection.requesterBinding,

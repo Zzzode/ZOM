@@ -7,6 +7,7 @@ file(GLOB DIAGNOSTICS_SRC
   diagnostic-engine.cc
   diagnostic-types.cc
   diagnostic-text.cc
+  toolchain-module-root-argument.cc
   diagnostic-consumer.cc
   in-flight-diagnostic.cc
   consoling-diagnostic-consumer.cc

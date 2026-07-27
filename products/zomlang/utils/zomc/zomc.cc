@@ -20,6 +20,7 @@
 #include "zc/core/io.h"
 #include "zc/core/main.h"
 #include "zc/core/string.h"
+#include "zc/core/time.h"
 #include "zomlang/compiler/ast/dump.h"
 #include "zomlang/compiler/ast/tree.h"
 #include "zomlang/compiler/basic/compiler-opts.h"
@@ -32,7 +33,10 @@
 #include "zomlang/compiler/driver/package/package-diagnostic.h"
 #include "zomlang/compiler/driver/package/source-record.h"
 #include "zomlang/compiler/identity/canonical-encoder.h"
+#include "zomlang/compiler/identity/sha256.h"
 #include "zomlang/compiler/ir/target-registry.h"
+#include "zomlang/compiler/source/core-distribution.h"
+#include "zomlang/compiler/source/core-source-admission.h"
 #include "zomlang/compiler/source/manager.h"
 
 #ifndef VERSION
@@ -46,6 +50,27 @@ namespace utils {
 namespace package = driver::package;
 
 static constexpr char VERSION_STRING[] = "ZomLang Version " VERSION;
+
+class TransientCoreSourceDirectory final : public package::FreshSourceDirectory {
+public:
+  explicit TransientCoreSourceDirectory(zc::Own<const zc::Directory>&& root)
+      : rootValue(zc::mv(root)) {}
+  ~TransientCoreSourceDirectory() noexcept override = default;
+  const zc::Directory& root() const override { return *rootValue; }
+  zc::Maybe<package::MaterializationIssue> finish() override { return zc::none; }
+
+private:
+  zc::Own<const zc::Directory> rootValue;
+};
+
+class TransientCoreSourceDirectoryFactory final : public package::FreshSourceDirectoryFactory {
+public:
+  package::FreshSourceDirectoryResult create() override {
+    zc::Own<const zc::Directory> root = zc::newInMemoryDirectory(zc::nullClock());
+    return zc::Own<package::FreshSourceDirectory>(
+        zc::heap<TransientCoreSourceDirectory>(zc::mv(root)));
+  }
+};
 
 class CompilerMain {
 public:
@@ -423,6 +448,21 @@ public:
     return identity::CanonicalWorkspaceRelativePath::from(0, zc::mv(segments));
   }
 
+  static zc::Maybe<package::PackageDiagnosticDocument> packageDiagnosticDocument(
+      identity::CanonicalWorkspaceRelativePath&& path, zc::ArrayPtr<const zc::byte> source) {
+    auto digest = identity::sha256(source);
+    if (digest == zc::none) { return zc::none; }
+    ZC_IF_SOME(digestValue, digest) {
+      auto key = package::InputDocumentKey::from(
+          package::InputDocumentKind::Manifest,
+          package::DiagnosticDocumentPath::workspace(zc::mv(path)), digestValue);
+      ZC_IF_SOME(keyValue, key) {
+        return package::PackageDiagnosticDocument::from(zc::mv(keyValue), source);
+      }
+    }
+    return zc::none;
+  }
+
   static zc::Path filesystemPath(const identity::CanonicalWorkspaceRelativePath& path) {
     zc::Path result(nullptr);
     for (uint32_t index = 0; index < path.leadingParents(); ++index) {
@@ -436,6 +476,30 @@ public:
     zc::Path result(nullptr);
     for (const auto& segment : path.segments()) { result = zc::mv(result).append(segment.text()); }
     return result;
+  }
+
+  zc::Maybe<source::core::VerifiedCoreDistribution> admitCoreDistribution(
+      const zc::Filesystem& filesystem) const {
+    try {
+      const auto executable =
+          filesystem.getCurrentPath().eval(context.getProgramName()).parent().parent();
+      const auto coreRoot =
+          executable.clone().append(zc::Path({"share"_zc, "zom"_zc, "core"_zc, "src"_zc}));
+      auto directory = filesystem.getRoot().tryOpenSubdir(coreRoot);
+      auto expected = source::core::initialCoreDistributionInput();
+      if (directory == zc::none || expected == zc::none) { return zc::none; }
+      TransientCoreSourceDirectoryFactory factory;
+      source::core::CoreDistributionAdmission admission;
+      ZC_IF_SOME(root, directory) {
+        ZC_IF_SOME(authority, expected) {
+          auto admitted = admission.admit(*root, factory, authority, 2026);
+          if (admitted.is<source::core::VerifiedCoreDistribution>()) {
+            return zc::mv(admitted.get<source::core::VerifiedCoreDistribution>());
+          }
+        }
+      }
+      return zc::none;
+    } catch (const zc::Exception&) { return zc::none; }
   }
 
   static zc::Maybe<package::PackageSourceInventory> inventory(const zc::ReadableDirectory& root) {
@@ -504,6 +568,7 @@ public:
   struct LoadedWorkspace final {
     package::NormalizedWorkspace workspace;
     zc::Path rootPath;
+    zc::Vector<package::PackageDiagnosticDocument> diagnosticDocuments;
   };
 
   zc::Maybe<LoadedWorkspace> loadWorkspace(const zc::Filesystem& filesystem,
@@ -515,6 +580,11 @@ public:
       auto rootInventory = inventory(*rootDirectory);
       if (rootInventory == zc::none) { return zc::none; }
       ZC_IF_SOME(rootInventoryValue, rootInventory) {
+        zc::Vector<package::PackageDiagnosticDocument> diagnosticDocuments;
+        auto rootDiagnosticDocument =
+            packageDiagnosticDocument(workspacePath(zc::Path("Zom.toml"_zc)), rootSource.asBytes());
+        if (rootDiagnosticDocument == zc::none) { return zc::none; }
+        ZC_IF_SOME(document, rootDiagnosticDocument) { diagnosticDocuments.add(zc::mv(document)); }
         package::ManifestParser parser;
         auto parsed = parser.parseWorkspaceManifest(workspacePath(zc::Path("Zom.toml"_zc)),
                                                     rootSource, rootInventoryValue);
@@ -529,6 +599,13 @@ public:
             auto memberInventory = inventory(*memberDirectory);
             if (memberInventory == zc::none) { return zc::none; }
             ZC_IF_SOME(memberInventoryValue, memberInventory) {
+              auto memberManifestPath = relative.clone().append("Zom.toml"_zc);
+              auto memberDiagnosticDocument = packageDiagnosticDocument(
+                  workspacePath(memberManifestPath), memberSource.asBytes());
+              if (memberDiagnosticDocument == zc::none) { return zc::none; }
+              ZC_IF_SOME(document, memberDiagnosticDocument) {
+                diagnosticDocuments.add(zc::mv(document));
+              }
               members.add(package::WorkspaceMemberInput::from(
                   memberPath.clone(), zc::mv(memberSource), zc::mv(memberInventoryValue)));
             }
@@ -538,7 +615,7 @@ public:
             package::normalizeWorkspace(rootSource, rootInventoryValue, zc::mv(members));
         if (normalized.is<package::NormalizedWorkspace>()) {
           return LoadedWorkspace{zc::mv(normalized.get<package::NormalizedWorkspace>()),
-                                 zc::mv(rootPath)};
+                                 zc::mv(rootPath), zc::mv(diagnosticDocuments)};
         }
       }
     } catch (const zc::Exception&) { return zc::none; }
@@ -764,6 +841,15 @@ public:
         context.error(zc::StringPtr());
         return true;
       }
+      if (verified.is<package::PackageToolchainModuleRootFailure>()) {
+        const auto& failure = verified.get<package::PackageToolchainModuleRootFailure>();
+        ZC_IREQUIRE(
+            package::PackageDiagnosticAdapter::emitToolchainModuleRootFailure(
+                session->getDiagnosticEngine(), workspace.diagnosticDocuments.asPtr(), failure),
+            "verified package reservation failure must resolve its retained manifest");
+        context.error(zc::StringPtr());
+        return true;
+      }
       auto& verifiedRequest = verified.get<package::VerifiedPackageCompilationRequest>();
       auto packageInput = resolvePackageInput(
           *filesystem, workspace.rootPath, normalizedRequest, zc::mv(verifiedRequest),
@@ -778,6 +864,15 @@ public:
           context.error("Failed to install the atomic package session input."_zc);
           return true;
         }
+      }
+      coreDistribution = admitCoreDistribution(*filesystem);
+      bool coreInstalled = false;
+      ZC_IF_SOME(distribution, coreDistribution) {
+        coreInstalled = session->installVerifiedCoreDistribution(distribution);
+      }
+      if (!coreInstalled) {
+        context.error("Failed to admit and install the source-backed core distribution."_zc);
+        return true;
       }
       auto finalizedRoots = session->getFinalizedCompilationRoots();
       bool rootsAdmitted = finalizedRoots.size() != 0;
@@ -976,6 +1071,10 @@ private:
                                              ASTDumpFormat format) {
     for (const auto& module : modules) {
       const auto& parsedModule = module.parsedModule();
+      if (parsedModule.source().crate().unit().kind() !=
+          identity::CompilationUnitKind::UserPackage) {
+        continue;
+      }
       const auto syntax = parsedModule.sourceBackedSyntax();
 
       ZC_IF_SOME(error, ast::dumpTree(outputStream, syntax.tree(), syntax.sourceManager(),
@@ -1021,6 +1120,7 @@ private:
   basic::LangOptions langOpts;
   package::RawPackageCompilationRequest packageRequest;
   zc::Vector<zc::String> manifestPaths;
+  zc::Maybe<source::core::VerifiedCoreDistribution> coreDistribution;
 };
 
 }  // namespace utils

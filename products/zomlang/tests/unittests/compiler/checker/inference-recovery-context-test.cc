@@ -39,8 +39,9 @@ public:
       registryBrands = zc::heap<identity::RegistryBrandIssuer>(zc::mv(value));
     }
 
-    ZC_REQUIRE(registries->collectPackage(package()) == identity::FrozenRegistryFailure::None);
-    ZC_REQUIRE(registries->freezePackages() == identity::FrozenRegistryFailure::None);
+    ZC_REQUIRE(registries->collectCompilationUnit(userUnit()) ==
+               identity::FrozenRegistryFailure::None);
+    ZC_REQUIRE(registries->freezeCompilationUnits() == identity::FrozenRegistryFailure::None);
     ZC_REQUIRE(registries->collectCrate(crate()) == identity::FrozenRegistryFailure::None);
     ZC_REQUIRE(registries->freezeCrates() == identity::FrozenRegistryFailure::None);
     auto snapshot = identity::ImmutableSourceSnapshot::from(tests::test_identity_detail::source(),

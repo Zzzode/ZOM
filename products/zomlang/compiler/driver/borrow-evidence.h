@@ -147,6 +147,8 @@ public:
   VerifiedBorrowEvidence& operator=(VerifiedBorrowEvidence&&) noexcept;
   ZC_DISALLOW_COPY(VerifiedBorrowEvidence);
 
+  /// \brief Clones immutable verified evidence without cloning a repository lease.
+  ZC_NODISCARD VerifiedBorrowEvidence clone() const;
   ZC_NODISCARD identity::SemanticContextBrand semanticContext() const noexcept;
   ZC_NODISCARD const identity::SemanticContextFingerprint& contextFingerprint() const noexcept;
   ZC_NODISCARD identity::ModuleId module() const noexcept;

@@ -862,8 +862,9 @@ BuiltMirCandidate::BuiltMirCandidate(const hir::VerifiedHirModule& sourceHir,
 
 struct VerifiedBuiltMir::Impl final {
   Impl(identity::SemanticContextBrand semanticContext,
-       identity::SemanticContextFingerprint&& contextFingerprint, identity::PackageId package,
-       identity::CrateId crate, identity::ModuleId module,
+       identity::SemanticContextFingerprint&& contextFingerprint,
+       identity::CompilationUnitId compilationUnit, identity::CrateId crate,
+       identity::ModuleId module,
        const checker::checked::CheckedFactsRevision& checkedFactsRevision,
        const checker::dispatch::DispatchFactsRevision& dispatchFactsRevision,
        const driver::borrow_evidence::BorrowEvidenceRevision& borrowEvidenceRevision,
@@ -873,7 +874,7 @@ struct VerifiedBuiltMir::Impl final {
        MirRevisionId revision) noexcept
       : semanticContext(semanticContext),
         contextFingerprint(zc::mv(contextFingerprint)),
-        package(package),
+        compilationUnit(compilationUnit),
         crate(crate),
         module(module),
         checkedFactsRevision(checkedFactsRevision),
@@ -887,7 +888,7 @@ struct VerifiedBuiltMir::Impl final {
 
   identity::SemanticContextBrand semanticContext;
   identity::SemanticContextFingerprint contextFingerprint;
-  identity::PackageId package;
+  identity::CompilationUnitId compilationUnit;
   identity::CrateId crate;
   identity::ModuleId module;
   checker::checked::CheckedFactsRevision checkedFactsRevision;
@@ -913,7 +914,9 @@ const identity::SemanticContextFingerprint& VerifiedBuiltMir::contextFingerprint
   return impl->contextFingerprint;
 }
 
-identity::PackageId VerifiedBuiltMir::package() const noexcept { return impl->package; }
+identity::CompilationUnitId VerifiedBuiltMir::compilationUnit() const noexcept {
+  return impl->compilationUnit;
+}
 identity::CrateId VerifiedBuiltMir::crate() const noexcept { return impl->crate; }
 identity::ModuleId VerifiedBuiltMir::module() const noexcept { return impl->module; }
 
@@ -1282,8 +1285,8 @@ ir::IrOperationResult<VerifiedBuiltMir> BuiltMirVerifier::verify(BuiltMirCandida
   }
   ZC_IF_SOME(borrowLease, lease) {
     auto impl = zc::heap<VerifiedBuiltMir::Impl>(
-        hirModule.semanticContext(), hirModule.contextFingerprint().clone(), hirModule.package(),
-        hirModule.crate(), module, hirModule.checkedFactsRevision(),
+        hirModule.semanticContext(), hirModule.contextFingerprint().clone(),
+        hirModule.compilationUnit(), hirModule.crate(), module, hirModule.checkedFactsRevision(),
         hirModule.dispatchFactsRevision(), hirModule.borrowEvidenceRevision(), zc::mv(borrowLease),
         hirModule.borrowEvidenceRepository(), zc::mv(candidate.functions),
         zc::mv(recomputedFunctions), candidate.revision);

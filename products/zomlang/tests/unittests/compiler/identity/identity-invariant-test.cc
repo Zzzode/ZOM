@@ -39,6 +39,11 @@ uint8_t structuralByte(const IdentityInvariant& invariant) {
 
 }  // namespace
 
+ZC_TEST("Compilation-unit invariant phase and freeze site preserve tag four") {
+  ZC_EXPECT(static_cast<uint8_t>(IdentityAllocationPhase::CompilationUnit) == 0x04);
+  ZC_EXPECT(static_cast<uint8_t>(IdentityApiSite::CompilationUnitFreeze) == 0x04);
+}
+
 ZC_TEST("Identity invariant rejects unknown closed values") {
   zc::Maybe<zc::Array<uint8_t>> noStructural;
   zc::Maybe<UnbrandedSourceRange> noRange;
@@ -46,14 +51,30 @@ ZC_TEST("Identity invariant rejects unknown closed values") {
                                     IdentityAllocationPhase::Context, zc::mv(noStructural),
                                     zc::mv(noRange), IdentityApiSite::ContextBrandIssue,
                                     0) == zc::none);
+
+  zc::Maybe<zc::Array<uint8_t>> noPhaseStructural;
+  zc::Maybe<UnbrandedSourceRange> noPhaseRange;
+  ZC_EXPECT(IdentityInvariant::from(IdentityInvariantKind::InvalidHandle,
+                                    static_cast<IdentityAllocationPhase>(0xff),
+                                    zc::mv(noPhaseStructural), zc::mv(noPhaseRange),
+                                    IdentityApiSite::ContextBrandIssue, 0) == zc::none);
+
+  zc::Maybe<zc::Array<uint8_t>> noApiStructural;
+  zc::Maybe<UnbrandedSourceRange> noApiRange;
+  ZC_EXPECT(IdentityInvariant::from(IdentityInvariantKind::InvalidHandle,
+                                    IdentityAllocationPhase::Context, zc::mv(noApiStructural),
+                                    zc::mv(noApiRange), static_cast<IdentityApiSite>(0xff),
+                                    0) == zc::none);
 }
 
 ZC_TEST("Identity invariant collector sorts complete structured facts") {
   IdentityInvariantCollector collector;
-  collector.add(fact(IdentityInvariantKind::DuplicateCanonicalKey, IdentityAllocationPhase::Package,
-                     0x02, IdentityApiSite::RegistryMutation, 2));
-  collector.add(fact(IdentityInvariantKind::DuplicateCanonicalKey, IdentityAllocationPhase::Package,
-                     0x01, IdentityApiSite::RegistryMutation, 1));
+  collector.add(fact(IdentityInvariantKind::DuplicateCanonicalKey,
+                     IdentityAllocationPhase::CompilationUnit, 0x02,
+                     IdentityApiSite::RegistryMutation, 2));
+  collector.add(fact(IdentityInvariantKind::DuplicateCanonicalKey,
+                     IdentityAllocationPhase::CompilationUnit, 0x01,
+                     IdentityApiSite::RegistryMutation, 1));
   collector.add(fact(IdentityInvariantKind::InvalidHandle, IdentityAllocationPhase::Registry, 0xff,
                      IdentityApiSite::HandleLookup, 0));
   collector.sort();
@@ -77,10 +98,12 @@ ZC_TEST("Identity diagnostics use registered fatal entries and preserve full fac
   ZC_EXPECT(DiagnosticTraits<DiagID::IdentityInvalidHandle>::argCount == 1);
 
   IdentityInvariantCollector collector;
-  collector.add(fact(IdentityInvariantKind::DuplicateCanonicalKey, IdentityAllocationPhase::Package,
-                     0x01, IdentityApiSite::PackageFreeze, 0));
-  collector.add(fact(IdentityInvariantKind::DuplicateCanonicalKey, IdentityAllocationPhase::Package,
-                     0x01, IdentityApiSite::PackageFreeze, 1));
+  collector.add(fact(IdentityInvariantKind::DuplicateCanonicalKey,
+                     IdentityAllocationPhase::CompilationUnit, 0x01,
+                     IdentityApiSite::CompilationUnitFreeze, 0));
+  collector.add(fact(IdentityInvariantKind::DuplicateCanonicalKey,
+                     IdentityAllocationPhase::CompilationUnit, 0x01,
+                     IdentityApiSite::CompilationUnitFreeze, 1));
   collector.add(fact(IdentityInvariantKind::InvalidHandle, IdentityAllocationPhase::Registry, 0x01,
                      IdentityApiSite::HandleLookup, 2));
   collector.sort();

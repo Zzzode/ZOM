@@ -18,7 +18,7 @@
 
 #include "zc/core/common.h"
 #include "zomlang/compiler/identity/canonical-scalar.h"
-#include "zomlang/compiler/identity/package-key.h"
+#include "zomlang/compiler/identity/compilation-unit-key.h"
 #include "zomlang/compiler/identity/sha256.h"
 #include "zomlang/compiler/identity/sorted-feature-set.h"
 
@@ -77,6 +77,10 @@ public:
                                                       bool supportRegexLiterals) noexcept;
   ZC_NODISCARD static zc::Maybe<SemanticCompilerOptionsKey> decodeCanonical(
       CanonicalDecoder& decoder);
+  ZC_NODISCARD uint32_t editionYear() const noexcept;
+  ZC_NODISCARD bool useUnicode() const noexcept;
+  ZC_NODISCARD bool allowDollarIdentifiers() const noexcept;
+  ZC_NODISCARD bool supportRegexLiterals() const noexcept;
   void encode(CanonicalEncoder& encoder) const;
 
 private:
@@ -118,7 +122,10 @@ public:
       zc::Maybe<BuildScriptProducerKey>&& buildScriptProducer);
   ZC_NODISCARD static zc::Maybe<CompilationConfigKey> decodeCanonical(CanonicalDecoder& decoder);
   ZC_NODISCARD CompilationConfigKey clone() const;
+  ZC_NODISCARD CompilationDomain domain() const noexcept;
+  ZC_NODISCARD const CanonicalTargetSpecificationKey& target() const noexcept;
   ZC_NODISCARD const SemanticCompilerOptionsKey& semanticOptions() const noexcept;
+  ZC_NODISCARD bool hasBuildScriptProducer() const noexcept;
   void encode(CanonicalEncoder& encoder) const;
 
 private:
@@ -148,26 +155,61 @@ public:
   CrateKey& operator=(CrateKey&&) noexcept = default;
   ZC_DISALLOW_COPY(CrateKey);
 
-  ZC_NODISCARD static zc::Maybe<CrateKey> from(PackageKey&& package, CrateTargetKind kind,
+  ZC_NODISCARD static zc::Maybe<CrateKey> from(CompilationUnitIdentity&& unit, CrateTargetKind kind,
                                                TargetName&& targetName,
                                                CompilationConfigKey&& compilation);
   ZC_NODISCARD static zc::Maybe<CrateKey> decodeCanonical(CanonicalDecoder& decoder);
   ZC_NODISCARD CrateKey clone() const;
-  ZC_NODISCARD const PackageKey& package() const noexcept;
+  ZC_NODISCARD const CompilationUnitIdentity& unit() const noexcept;
   ZC_NODISCARD CrateTargetKind targetKind() const noexcept;
   ZC_NODISCARD zc::StringPtr targetName() const noexcept;
+  ZC_NODISCARD const CompilationConfigKey& compilation() const noexcept;
   ZC_NODISCARD const SemanticCompilerOptionsKey& semanticOptions() const noexcept;
   void encode(CanonicalEncoder& encoder) const;
   ZC_NODISCARD zc::Array<uint8_t> encode() const;
 
 private:
-  CrateKey(PackageKey&& package, CrateTargetKind kind, TargetName&& targetName,
+  CrateKey(CompilationUnitIdentity&& unit, CrateTargetKind kind, TargetName&& targetName,
            CompilationConfigKey&& compilation) noexcept;
 
-  PackageKey packageValue;
+  CompilationUnitIdentity unitValue;
   CrateTargetKind kindValue;
   TargetName targetNameValue;
   CompilationConfigKey compilationValue;
+};
+
+/// \brief Derives the unique unversioned toolchain-core crate required by one user crate.
+ZC_NODISCARD zc::Maybe<CrateKey> projectToolchainCoreCrate(const CrateKey& consumer);
+
+struct UserPackageCrateDependencyOrigin final {
+  PackageDependencyEdgeKey edge;
+};
+
+struct ToolchainCoreCrateDependencyOrigin final {};
+
+enum class CrateDependencyOriginKind : uint8_t { UserPackage = 0x01, ToolchainCore = 0x02 };
+
+/// \brief Exhaustive provenance for a semantic crate dependency.
+class CrateDependencyOrigin final {
+public:
+  CrateDependencyOrigin(CrateDependencyOrigin&&) noexcept = default;
+  CrateDependencyOrigin& operator=(CrateDependencyOrigin&&) noexcept = default;
+  ZC_DISALLOW_COPY(CrateDependencyOrigin);
+
+  ZC_NODISCARD static CrateDependencyOrigin userPackage(PackageDependencyEdgeKey&& edge);
+  ZC_NODISCARD static CrateDependencyOrigin toolchainCore();
+  ZC_NODISCARD static zc::Maybe<CrateDependencyOrigin> decodeCanonical(CanonicalDecoder& decoder);
+  ZC_NODISCARD CrateDependencyOrigin clone() const;
+  ZC_NODISCARD CrateDependencyOriginKind kind() const noexcept;
+  /// \pre `kind() == CrateDependencyOriginKind::UserPackage`.
+  ZC_NODISCARD const PackageDependencyEdgeKey& userPackageEdge() const;
+  void encode(CanonicalEncoder& encoder) const;
+
+private:
+  explicit CrateDependencyOrigin(UserPackageCrateDependencyOrigin&& origin) noexcept;
+  explicit CrateDependencyOrigin(ToolchainCoreCrateDependencyOrigin&& origin) noexcept;
+
+  zc::OneOf<UserPackageCrateDependencyOrigin, ToolchainCoreCrateDependencyOrigin> value;
 };
 
 /// \brief Exact crate-to-crate expansion of one resolved package edge.
@@ -177,22 +219,22 @@ public:
   CrateDependencyEdgeKey& operator=(CrateDependencyEdgeKey&&) noexcept = default;
   ZC_DISALLOW_COPY(CrateDependencyEdgeKey);
 
-  ZC_NODISCARD static zc::Maybe<CrateDependencyEdgeKey> from(PackageDependencyEdgeKey&& packageEdge,
+  ZC_NODISCARD static zc::Maybe<CrateDependencyEdgeKey> from(CrateDependencyOrigin&& origin,
                                                              CrateKey&& consumer,
                                                              CrateKey&& provider);
   ZC_NODISCARD static zc::Maybe<CrateDependencyEdgeKey> decodeCanonical(CanonicalDecoder& decoder);
   ZC_NODISCARD CrateDependencyEdgeKey clone() const;
-  ZC_NODISCARD const PackageDependencyEdgeKey& packageEdge() const noexcept;
+  ZC_NODISCARD const CrateDependencyOrigin& origin() const noexcept;
   ZC_NODISCARD const CrateKey& consumer() const noexcept;
   ZC_NODISCARD const CrateKey& provider() const noexcept;
   void encode(CanonicalEncoder& encoder) const;
   ZC_NODISCARD zc::Array<uint8_t> encode() const;
 
 private:
-  CrateDependencyEdgeKey(PackageDependencyEdgeKey&& packageEdge, CrateKey&& consumer,
+  CrateDependencyEdgeKey(CrateDependencyOrigin&& origin, CrateKey&& consumer,
                          CrateKey&& provider) noexcept;
 
-  PackageDependencyEdgeKey packageEdgeValue;
+  CrateDependencyOrigin originValue;
   CrateKey consumerValue;
   CrateKey providerValue;
 };

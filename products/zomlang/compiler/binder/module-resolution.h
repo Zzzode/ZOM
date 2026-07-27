@@ -33,7 +33,17 @@ struct GeneratedModuleSearchRoot final {
   identity::CanonicalRelativePath root;
 };
 
-enum class ModuleSearchRootKind : uint8_t { Workspace = 0x01, Package = 0x02, Generated = 0x03 };
+struct ToolchainCoreModuleSearchRoot final {
+  identity::CrateKey crate;
+  identity::Sha256Digest distributionDigest;
+};
+
+enum class ModuleSearchRootKind : uint8_t {
+  Workspace = 0x01,
+  Package = 0x02,
+  Generated = 0x03,
+  ToolchainCore = 0x04
+};
 
 /// \brief Ordered, closed search-root variant used by structural module resolution.
 class ModuleSearchRoot final {
@@ -50,19 +60,25 @@ public:
   ZC_NODISCARD static ModuleSearchRoot generated(identity::CrateKey&& crate,
                                                  identity::BuildScriptProducerKey producer,
                                                  identity::CanonicalRelativePath&& root);
+  ZC_NODISCARD static zc::Maybe<ModuleSearchRoot> toolchainCore(
+      identity::CrateKey&& crate, const identity::Sha256Digest& distributionDigest);
   ZC_NODISCARD ModuleSearchRoot clone() const;
   ZC_NODISCARD static zc::Maybe<ModuleSearchRoot> decodeCanonical(
       identity::CanonicalDecoder& decoder);
   ZC_NODISCARD ModuleSearchRootKind kind() const noexcept;
   ZC_NODISCARD const identity::CrateKey& crate() const noexcept;
+  ZC_NODISCARD const identity::Sha256Digest& toolchainCoreDistributionDigest() const noexcept;
   void encode(identity::CanonicalEncoder& encoder) const;
 
 private:
   explicit ModuleSearchRoot(WorkspaceModuleSearchRoot&& root) noexcept;
   explicit ModuleSearchRoot(PackageModuleSearchRoot&& root) noexcept;
   explicit ModuleSearchRoot(GeneratedModuleSearchRoot&& root) noexcept;
+  explicit ModuleSearchRoot(ToolchainCoreModuleSearchRoot&& root) noexcept;
 
-  zc::OneOf<WorkspaceModuleSearchRoot, PackageModuleSearchRoot, GeneratedModuleSearchRoot> value;
+  zc::OneOf<WorkspaceModuleSearchRoot, PackageModuleSearchRoot, GeneratedModuleSearchRoot,
+            ToolchainCoreModuleSearchRoot>
+      value;
 
   friend class StructuralModuleResolver;
 };
@@ -145,8 +161,7 @@ struct StructuralModuleCatalogEntry final {
 enum class ModuleResolutionInvariantKind : uint8_t {
   InputMismatch,
   InvalidEnvironment,
-  InvalidRequest,
-  RevisionMismatch
+  InvalidRequest
 };
 
 struct ModuleResolutionInvariantFact final {
@@ -167,14 +182,12 @@ struct ModuleSyntaxDependencySite final {
 };
 
 struct ModulePreludeDependencySite final {
-  ModulePreludeDependencySite(identity::ModuleKey&& selectedTarget,
-                              const identity::Sha256Digest& configurationRevision) noexcept;
+  explicit ModulePreludeDependencySite(identity::ModuleKey&& selectedTarget) noexcept;
   ModulePreludeDependencySite(ModulePreludeDependencySite&&) noexcept = default;
   ModulePreludeDependencySite& operator=(ModulePreludeDependencySite&&) noexcept = default;
   ZC_DISALLOW_COPY(ModulePreludeDependencySite);
 
   identity::ModuleKey selectedTarget;
-  identity::Sha256Digest configurationRevision;
 };
 
 /// \brief Canonical semantic dependency request derived from syntax or prelude configuration.
@@ -186,109 +199,38 @@ public:
 
   ZC_NODISCARD static zc::Maybe<ModuleDependencyRequest> source(
       identity::ModuleId requester, identity::ModuleResolutionKey&& key,
-      const identity::Sha256Digest& environmentRevision,
       zc::Vector<ModuleSyntaxDependencySite>&& syntaxSites);
   ZC_NODISCARD static zc::Maybe<ModuleDependencyRequest> prelude(
       identity::ModuleId requester, identity::ModuleResolutionKey&& key,
-      identity::ModuleKey&& selectedTarget, const identity::Sha256Digest& environmentRevision,
-      const identity::Sha256Digest& configurationRevision);
+      identity::ModuleKey&& selectedTarget);
   ZC_NODISCARD ModuleDependencyRequest clone() const;
 
   ZC_NODISCARD const identity::ModuleResolutionKey& key() const noexcept;
   ZC_NODISCARD identity::ModuleId requester() const noexcept;
   ZC_NODISCARD identity::ModuleDependencyKind kind() const noexcept;
   ZC_NODISCARD zc::ArrayPtr<const identity::ModulePathSegment> normalizedPath() const noexcept;
-  ZC_NODISCARD const identity::Sha256Digest& environmentRevision() const noexcept;
   ZC_NODISCARD bool isPrelude() const noexcept;
   ZC_NODISCARD zc::ArrayPtr<const ModuleSyntaxDependencySite> syntaxSites() const noexcept;
   /// \brief Returns the canonical first site for single-site materialization consumers.
   ZC_NODISCARD const ModuleSyntaxDependencySite& syntaxSite() const;
   ZC_NODISCARD const identity::ModuleKey& requestedTarget() const;
-  ZC_NODISCARD const identity::Sha256Digest& configurationRevision() const;
 
 private:
   ModuleDependencyRequest(identity::ModuleId requester, identity::ModuleResolutionKey&& key,
-                          const identity::Sha256Digest& environmentRevision,
                           zc::Vector<ModuleSyntaxDependencySite>&& syntaxSites,
                           zc::Maybe<ModulePreludeDependencySite>&& preludeSite) noexcept;
 
   identity::ModuleId requesterValue;
   identity::ModuleResolutionKey keyValue;
-  identity::Sha256Digest environmentRevisionValue;
   zc::Vector<ModuleSyntaxDependencySite> syntaxSiteValues;
   zc::Maybe<ModulePreludeDependencySite> preludeSiteValue;
 
   friend class StructuralModuleResolver;
-  friend class ModuleGraphVerifier;
 };
 
 class StructuralModuleResolver;
-class ModuleGraphVerifier;
 
-/// \brief Private-constructor proof of the exact zero, one, or many structural candidates.
-class VerifiedStructuralResolutionReceipt final {
-public:
-  VerifiedStructuralResolutionReceipt(VerifiedStructuralResolutionReceipt&&) noexcept = default;
-  VerifiedStructuralResolutionReceipt& operator=(VerifiedStructuralResolutionReceipt&&) noexcept =
-      default;
-  ZC_DISALLOW_COPY(VerifiedStructuralResolutionReceipt);
-
-  ZC_NODISCARD zc::ArrayPtr<const identity::ModuleKey> candidates() const noexcept;
-  ZC_NODISCARD const identity::Sha256Digest& revision() const noexcept;
-
-private:
-  VerifiedStructuralResolutionReceipt(uint64_t issuer, zc::Array<uint8_t>&& requestKey,
-                                      zc::Vector<identity::ModuleKey>&& candidates,
-                                      const identity::Sha256Digest& revision) noexcept;
-
-  uint64_t issuerValue;
-  zc::Array<uint8_t> requestKeyValue;
-  zc::Vector<identity::ModuleKey> candidateValues;
-  identity::Sha256Digest revisionValue;
-
-  friend class StructuralModuleResolver;
-  friend class ModuleGraphVerifier;
-};
-
-struct ResolvedModulePath final {
-  ResolvedModulePath(ModuleDependencyRequest&& request, identity::ModuleId target,
-                     VerifiedStructuralResolutionReceipt&& receipt) noexcept;
-  ResolvedModulePath(ResolvedModulePath&&) noexcept = default;
-  ResolvedModulePath& operator=(ResolvedModulePath&&) noexcept = default;
-  ZC_DISALLOW_COPY(ResolvedModulePath);
-
-  ModuleDependencyRequest request;
-  identity::ModuleId target;
-  VerifiedStructuralResolutionReceipt receipt;
-};
-
-struct MissingModulePath final {
-  MissingModulePath(ModuleDependencyRequest&& request,
-                    VerifiedStructuralResolutionReceipt&& receipt) noexcept;
-  MissingModulePath(MissingModulePath&&) noexcept = default;
-  MissingModulePath& operator=(MissingModulePath&&) noexcept = default;
-  ZC_DISALLOW_COPY(MissingModulePath);
-
-  ModuleDependencyRequest request;
-  VerifiedStructuralResolutionReceipt receipt;
-};
-
-struct AmbiguousModulePath final {
-  AmbiguousModulePath(ModuleDependencyRequest&& request,
-                      zc::Vector<identity::ModuleKey>&& candidates,
-                      VerifiedStructuralResolutionReceipt&& receipt) noexcept;
-  AmbiguousModulePath(AmbiguousModulePath&&) noexcept = default;
-  AmbiguousModulePath& operator=(AmbiguousModulePath&&) noexcept = default;
-  ZC_DISALLOW_COPY(AmbiguousModulePath);
-
-  ModuleDependencyRequest request;
-  zc::Vector<identity::ModuleKey> candidates;
-  VerifiedStructuralResolutionReceipt receipt;
-};
-
-using ModulePathResolution = zc::OneOf<ResolvedModulePath, MissingModulePath, AmbiguousModulePath>;
-
-/// \brief Verified immutable environment and sole issuer of structural receipts.
+/// \brief Verified immutable environment for stable structural query staging.
 class StructuralModuleResolver final {
 public:
   ~StructuralModuleResolver() noexcept(false);
@@ -302,7 +244,6 @@ public:
                                           ModuleResolutionEnvironmentRecord&& environment,
                                           zc::Vector<StructuralModuleCatalogEntry>&& catalog);
 
-  ZC_NODISCARD const identity::Sha256Digest& environmentRevision() const noexcept;
   ZC_NODISCARD const identity::ModuleResolutionPolicyKey& policy() const noexcept;
   ZC_NODISCARD zc::ArrayPtr<const StructuralModuleCatalogEntry> catalog() const noexcept;
   /// \brief Returns the independently admitted crate search-root query inputs.
@@ -322,10 +263,6 @@ public:
   ZC_NODISCARD zc::Maybe<identity::ModuleResolutionKey> resolutionKey(
       identity::ModuleId requester, identity::ModuleDependencyKind kind,
       zc::Vector<identity::ModulePathSegment>&& normalizedPath) const;
-  /// \brief Materializes a revision-local graph receipt from one verified query candidate set.
-  ZC_NODISCARD zc::OneOf<ModulePathResolution, ModuleResolutionInvariantFact>
-  materializeQueryResolution(ModuleDependencyRequest&& request,
-                             const identity::ModuleResolutionCandidates& candidates) const;
   /// \brief Projects an exact explicit present-or-absent catalog input.
   ZC_NODISCARD zc::Maybe<identity::ModuleCatalogPathBucket> catalogPathBucketInput(
       const identity::CrateKey& crate, zc::ArrayPtr<const identity::ModulePathSegment> path) const;
@@ -333,16 +270,9 @@ public:
 private:
   struct Impl;
   explicit StructuralModuleResolver(zc::Own<Impl>&& impl) noexcept;
-  ZC_NODISCARD bool verifiesReceipt(const ModuleDependencyRequest& request,
-                                    const VerifiedStructuralResolutionReceipt& receipt) const;
-  ZC_NODISCARD zc::Maybe<zc::Array<uint8_t>> requestKey(
-      const ModuleDependencyRequest& request) const;
-  ZC_NODISCARD zc::Maybe<identity::ModuleId> moduleForKey(const identity::ModuleKey& key) const;
   ZC_NODISCARD zc::Maybe<identity::ModuleCatalogPathBucket> readCatalogPathBucket(
       const identity::CrateKey& crate, zc::ArrayPtr<const identity::ModulePathSegment> path) const;
   zc::Own<Impl> impl;
-
-  friend class ModuleGraphVerifier;
 };
 
 }  // namespace zomlang::compiler::binder

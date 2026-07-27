@@ -6,11 +6,63 @@
 #pragma once
 
 #include "zc/core/vector.h"
+#include "zomlang/compiler/driver/incremental-binding-query-adapter.h"
 #include "zomlang/compiler/identity/definition-key.h"
-#include "zomlang/compiler/identity/source-query-input.h"
 #include "zomlang/compiler/query/query-database.h"
 
 namespace zomlang::compiler::driver::incremental_binding_query {
+
+/// \brief Complete compilation context and stable definition query selector.
+class ContextualDefinitionKey final {
+public:
+  ContextualDefinitionKey(ContextualDefinitionKey&&) noexcept = default;
+  ContextualDefinitionKey& operator=(ContextualDefinitionKey&&) noexcept = default;
+  ZC_DISALLOW_COPY(ContextualDefinitionKey);
+
+  ZC_NODISCARD static ContextualDefinitionKey from(CompilationRootSetQueryKey&& contextRoots,
+                                                   identity::DefinitionKey&& definition);
+  ZC_NODISCARD static zc::Maybe<ContextualDefinitionKey> decodeCanonical(
+      zc::ArrayPtr<const uint8_t> bytes);
+  ZC_NODISCARD ContextualDefinitionKey clone() const;
+  ZC_NODISCARD const CompilationRootSetQueryKey& contextRoots() const noexcept;
+  ZC_NODISCARD const identity::DefinitionKey& definition() const noexcept;
+  ZC_NODISCARD zc::Array<uint8_t> encodeCanonical() const;
+  bool operator==(const ContextualDefinitionKey& other) const noexcept;
+  bool operator!=(const ContextualDefinitionKey& other) const noexcept { return !(*this == other); }
+
+private:
+  ContextualDefinitionKey(CompilationRootSetQueryKey&& contextRoots,
+                          identity::DefinitionKey&& definition) noexcept;
+
+  CompilationRootSetQueryKey contextRootsField;
+  identity::DefinitionKey definitionField;
+};
+
+/// \brief Complete compilation context and stable module query selector.
+class ContextualModuleKey final {
+public:
+  ContextualModuleKey(ContextualModuleKey&&) noexcept = default;
+  ContextualModuleKey& operator=(ContextualModuleKey&&) noexcept = default;
+  ZC_DISALLOW_COPY(ContextualModuleKey);
+
+  ZC_NODISCARD static ContextualModuleKey from(CompilationRootSetQueryKey&& contextRoots,
+                                               identity::ModuleKey&& module);
+  ZC_NODISCARD static zc::Maybe<ContextualModuleKey> decodeCanonical(
+      zc::ArrayPtr<const uint8_t> bytes);
+  ZC_NODISCARD ContextualModuleKey clone() const;
+  ZC_NODISCARD const CompilationRootSetQueryKey& contextRoots() const noexcept;
+  ZC_NODISCARD const identity::ModuleKey& module() const noexcept;
+  ZC_NODISCARD zc::Array<uint8_t> encodeCanonical() const;
+  bool operator==(const ContextualModuleKey& other) const noexcept;
+  bool operator!=(const ContextualModuleKey& other) const noexcept { return !(*this == other); }
+
+private:
+  ContextualModuleKey(CompilationRootSetQueryKey&& contextRoots,
+                      identity::ModuleKey&& module) noexcept;
+
+  CompilationRootSetQueryKey contextRootsField;
+  identity::ModuleKey moduleField;
+};
 
 /// \brief Verified key and complete record pair for the active authority projection.
 class ActiveDefinitionAuthorityRecord final {
@@ -69,6 +121,7 @@ public:
   ZC_DISALLOW_COPY(ActiveDefinitionAuthorityProjection);
 
   ZC_NODISCARD static zc::Maybe<ActiveDefinitionAuthorityProjection> from(
+      const CompilationRootSetQueryKey& contextRoots,
       zc::Vector<ActiveDefinitionAuthorityRecord>&& records);
   ZC_NODISCARD ActiveDefinitionAuthorityProjection clone() const;
   ZC_NODISCARD zc::ArrayPtr<const ActiveDefinitionAuthorityRecord> records() const ZC_LIFETIMEBOUND;
@@ -85,7 +138,7 @@ private:
 
 /// \brief Complete active definition record addressed by its stable digest.
 struct ActiveDefinitionAuthorityInput final {
-  using Key = identity::DefinitionKey;
+  using Key = ContextualDefinitionKey;
   using Value = identity::DefinitionIdentityRecord;
 
   ZC_NODISCARD static zc::StringPtr domain();
@@ -98,7 +151,7 @@ struct ActiveDefinitionAuthorityInput final {
 
 /// \brief Completeness marker for one atomically installed authority projection.
 struct ActiveDefinitionAuthorityReadyInput final {
-  using Key = identity::source_query::CompilationUnitQueryKey;
+  using Key = CompilationRootSetQueryKey;
   using Value = ActiveDefinitionAuthoritySetFingerprint;
 
   ZC_NODISCARD static zc::StringPtr domain();

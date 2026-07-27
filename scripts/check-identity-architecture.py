@@ -22,9 +22,18 @@ FROZEN_REGISTRY = Path("products/zomlang/compiler/identity/frozen-registry.h")
 SEMANTIC_IDENTITY_REGISTRY = Path(
     "products/zomlang/compiler/identity/semantic-identity-registry-set.h"
 )
+IDENTITY_INVARIANT = Path("products/zomlang/compiler/identity/identity-invariant.h")
+IDENTITY_DUMP_IMPLEMENTATION = Path("products/zomlang/compiler/identity/identity-dump.cc")
+SEMANTIC_CONTEXT_FINGERPRINT = Path(
+    "products/zomlang/compiler/identity/semantic-context-fingerprint.h"
+)
 BUILD_SCRIPT_KEY = Path("products/zomlang/compiler/identity/build-script-key.h")
 BUILD_SCRIPT_KEY_IMPLEMENTATION = Path("products/zomlang/compiler/identity/build-script-key.cc")
 CRATE_KEY = Path("products/zomlang/compiler/identity/crate-key.h")
+COMPILATION_UNIT_KEY = Path("products/zomlang/compiler/identity/compilation-unit-key.h")
+COMPILATION_UNIT_KEY_IMPLEMENTATION = Path(
+    "products/zomlang/compiler/identity/compilation-unit-key.cc"
+)
 SOURCE_KEY = Path("products/zomlang/compiler/identity/source-key.h")
 SOURCE_KEY_IMPLEMENTATION = Path("products/zomlang/compiler/identity/source-key.cc")
 MODULE_RESOLUTION_KEY = Path("products/zomlang/compiler/identity/module-resolution-key.h")
@@ -1806,7 +1815,6 @@ def check_module_resolution_key_architecture(
     for marker in (
         "zc::Vector<identity::RequesterModuleAncestry> requesterAncestry;",
         "zc::Vector<identity::ModuleCatalogPathBucket> catalogBuckets;",
-        "zc::TreeMap<zc::String, size_t> moduleSlots;",
         "zc::TreeMap<zc::String, size_t> bucketSlots;",
     ):
         if resolver_impl is None or marker not in resolver_impl:
@@ -2147,6 +2155,114 @@ def check_stable_identity_architecture(
         )
 
 
+def check_compilation_unit_architecture(
+    overrides: dict[Path, str], errors: list[str]
+) -> None:
+    compilation_unit = read_text(COMPILATION_UNIT_KEY, overrides)
+    compilation_unit_implementation = read_text(
+        COMPILATION_UNIT_KEY_IMPLEMENTATION, overrides
+    )
+    crate_key = read_text(CRATE_KEY, overrides)
+    source_key = read_text(SOURCE_KEY, overrides)
+    frozen_registry = read_text(FROZEN_REGISTRY, overrides)
+    registry_set = read_text(SEMANTIC_IDENTITY_REGISTRY, overrides)
+    invariant = read_text(IDENTITY_INVARIANT, overrides)
+    identity_dump = read_text(IDENTITY_DUMP_IMPLEMENTATION, overrides)
+    fingerprint = read_text(SEMANTIC_CONTEXT_FINGERPRINT, overrides)
+    identity_cmake = read_text(IDENTITY_CMAKE, overrides)
+
+    required_markers = {
+        COMPILATION_UNIT_KEY: (
+            "enum class ToolchainComponent : uint8_t { Core = 0x01 };",
+            "enum class CompilationUnitKind : uint8_t { UserPackage = 0x01, Toolchain = 0x02 };",
+            "class ToolchainUnitKey final",
+            "class CompilationUnitIdentity final",
+            "static CompilationUnitIdentity userPackage(PackageKey&& package);",
+            "static CompilationUnitIdentity toolchain(ToolchainUnitKey toolchain);",
+        ),
+        CRATE_KEY: (
+            "static zc::Maybe<CrateKey> from(CompilationUnitIdentity&& unit,",
+            "const CompilationUnitIdentity& unit() const noexcept;",
+            "enum class CrateDependencyOriginKind : uint8_t { UserPackage = 0x01, ToolchainCore = 0x02 };",
+            "class CrateDependencyOrigin final",
+        ),
+        SOURCE_KEY: (
+            "CoreFile = 0x05",
+            "struct CoreFileSourceOrigin final",
+            "static SourceOriginKey coreFile(ToolchainUnitKey toolchain,",
+        ),
+        FROZEN_REGISTRY: (
+            "struct CompilationUnitIdentityTag final {};",
+            "using CompilationUnitId = ContextHandle<CompilationUnitIdentityTag>;",
+            "using CompilationUnitRegistry =",
+        ),
+        SEMANTIC_IDENTITY_REGISTRY: (
+            "collectCompilationUnit(CompilationUnitIdentity&& key,",
+            "freezeCompilationUnits();",
+            "const CompilationUnitRegistry& compilationUnits() const noexcept;",
+        ),
+        IDENTITY_INVARIANT: (
+            "CompilationUnit = 0x04",
+            "CompilationUnitFreeze = 0x04",
+        ),
+        IDENTITY_DUMP_IMPLEMENTATION: (
+            '"zom.identity\\n[compilation-units]\\n"_zc',
+            '"compilation-unit"_zc',
+        ),
+        SEMANTIC_CONTEXT_FINGERPRINT: (
+            "class ToolchainSemanticContextInput final",
+            "zc::ArrayPtr<const CompilationUnitIdentity> compilationUnits,",
+            "zc::ArrayPtr<const ToolchainSemanticContextInput> toolchainInputs,",
+        ),
+        IDENTITY_CMAKE: (
+            "${CMAKE_CURRENT_SOURCE_DIR}/compilation-unit-key.cc",
+        ),
+    }
+    text_by_path = {
+        COMPILATION_UNIT_KEY: compilation_unit,
+        CRATE_KEY: crate_key,
+        SOURCE_KEY: source_key,
+        FROZEN_REGISTRY: frozen_registry,
+        SEMANTIC_IDENTITY_REGISTRY: registry_set,
+        IDENTITY_INVARIANT: invariant,
+        IDENTITY_DUMP_IMPLEMENTATION: identity_dump,
+        SEMANTIC_CONTEXT_FINGERPRINT: fingerprint,
+        IDENTITY_CMAKE: identity_cmake,
+    }
+    for path, markers in required_markers.items():
+        for marker in markers:
+            if marker not in text_by_path[path]:
+                errors.append(f"{path}: missing compilation-unit cutover marker {marker}")
+
+    for marker in (
+        'constexpr auto kToolchainUnitKeyDomain = "zom.toolchain-core-key"_zc;',
+        "bytes.add(0x00);",
+        "unit.toolchain.encode(encoder);",
+    ):
+        if marker not in compilation_unit_implementation:
+            errors.append(
+                f"{COMPILATION_UNIT_KEY_IMPLEMENTATION}: missing toolchain-unit codec marker {marker}"
+            )
+
+    forbidden_patterns = (
+        re.compile(r"\bidentity::PackageId\b"),
+        re.compile(r"\bPackageRegistry\b"),
+        re.compile(r"\bcollectPackage\s*\("),
+        re.compile(r"\bfreezePackages\s*\("),
+        re.compile(r"\bCrateKey::package\s*\("),
+        re.compile(r"\.packageEdge\s*\("),
+        re.compile(r"CrateKey::from\s*\(\s*PackageKey"),
+    )
+    for path in compiler_source_files():
+        text = read_text(path, overrides)
+        for pattern in forbidden_patterns:
+            if pattern.search(text):
+                errors.append(
+                    f"{path}: package-only semantic identity surface is forbidden: "
+                    f"{pattern.pattern}"
+                )
+
+
 def check_semantic_type_store_architecture(
     overrides: dict[Path, str], errors: list[str]
 ) -> None:
@@ -2156,15 +2272,18 @@ def check_semantic_type_store_architecture(
     type_key = read_text(SEMANTIC_TYPE_KEY, overrides)
 
     required_session_markers = (
-        "issueSemanticTypeStoreConstructionToken(contextBrand)",
+        "class CompilerSessionSemanticContextResources final\n"
+        "    : public query::SemanticContextCapabilityResources",
+        "issueSemanticTypeStoreConstructionToken(resources->contextBrand)",
         "zc::Own<type::SemanticTypeStore> semanticTypeStore;",
+        "zc::Own<type::SemanticTypeStore>& semanticTypeStore;",
     )
     for marker in required_session_markers:
         if marker not in session:
             errors.append(f"{COMPILER_SESSION}: missing semantic type store owner marker {marker}")
 
     freeze_markers = (
-        "freezePackages()",
+        "freezeCompilationUnits()",
         "freezeCrates()",
         "freezeSourceFiles()",
         "freezeModules()",
@@ -2181,7 +2300,7 @@ def check_semantic_type_store_architecture(
     check_ordered_function_markers(
         session,
         "bool freezePackageAndCrateIdentities()",
-        ("freezePackages()", "freezeCrates()"),
+        ("freezeCompilationUnits()", "freezeCrates()"),
         "final context identity freeze",
         errors,
     )
@@ -2245,6 +2364,7 @@ def analyze(
     check_module_resolution_key_architecture(active_overrides, errors)
     check_semantic_import_binding_key_architecture(active_overrides, errors)
     check_stable_identity_architecture(active_overrides, errors)
+    check_compilation_unit_architecture(active_overrides, errors)
     check_semantic_type_store_architecture(active_overrides, errors)
     return errors
 
@@ -2307,8 +2427,8 @@ def run_self_test() -> int:
             copy.deepcopy(baseline),
             {
                 COMPILER_SESSION: session_text.replace(
-                    "issueSemanticTypeStoreConstructionToken(contextBrand)",
-                    "missingSemanticTypeStoreConstruction(contextBrand)",
+                    "issueSemanticTypeStoreConstructionToken(resources->contextBrand)",
+                    "missingSemanticTypeStoreConstruction(resources->contextBrand)",
                 )
             },
             "missing semantic type store owner marker",
@@ -2317,14 +2437,41 @@ def run_self_test() -> int:
 
     cases.append(
         (
-            "missing final context package freeze",
+            "missing final context compilation-unit freeze",
             copy.deepcopy(baseline),
             {
                 COMPILER_SESSION: session_text.replace(
-                    "registries.freezePackages()", "registries.missingFreezePackages()"
+                    "registries.freezeCompilationUnits()",
+                    "registries.missingFreezeCompilationUnits()",
                 )
             },
-            "final context identity freeze is missing freezePackages()",
+            "final context identity freeze is missing freezeCompilationUnits()",
+        )
+    )
+
+    fingerprint_text = (ROOT / SEMANTIC_CONTEXT_FINGERPRINT).read_text(encoding="utf-8")
+    cases.append(
+        (
+            "missing toolchain fingerprint lineage",
+            copy.deepcopy(baseline),
+            {
+                SEMANTIC_CONTEXT_FINGERPRINT: fingerprint_text.replace(
+                    "class ToolchainSemanticContextInput final",
+                    "class MissingToolchainSemanticContextInput final",
+                    1,
+                )
+            },
+            "missing compilation-unit cutover marker class ToolchainSemanticContextInput final",
+        )
+    )
+
+    crate_key_text = (ROOT / CRATE_KEY).read_text(encoding="utf-8")
+    cases.append(
+        (
+            "package handle semantic fallback",
+            copy.deepcopy(baseline),
+            {CRATE_KEY: crate_key_text + "\nidentity::PackageId forbiddenPackageHandle;\n"},
+            "package-only semantic identity surface is forbidden",
         )
     )
 
@@ -2343,7 +2490,6 @@ def run_self_test() -> int:
         )
     )
 
-    crate_key_text = (ROOT / CRATE_KEY).read_text(encoding="utf-8")
     cases.append(
         (
             "output-derived build identity",
@@ -2438,15 +2584,13 @@ def run_self_test() -> int:
             {
                 COMPILER_SESSION: session_text.replace(
                     "!impl->freezeModuleIdentities() ||\n"
-                    "      !impl->stageSelectedModuleSourceInputs("
-                    "ZC_ASSERT_NONNULL(impl->identityRegistries)) ||\n"
                     "      !impl->freezeSemanticContextFingerprint() || "
-                    "!impl->freezeDefinitionAndImplIdentities()",
+                    "!impl->freezeModuleGraph() ||\n"
+                    "      !impl->freezeDefinitionAndImplIdentities()",
                     "!impl->freezeDefinitionAndImplIdentities() ||\n"
-                    "      !impl->stageSelectedModuleSourceInputs("
-                    "ZC_ASSERT_NONNULL(impl->identityRegistries)) ||\n"
                     "      !impl->freezeSemanticContextFingerprint() || "
-                    "!impl->freezeModuleIdentities()",
+                    "!impl->freezeModuleGraph() ||\n"
+                    "      !impl->freezeModuleIdentities()",
                 )
             },
             "parseSources identity phase schedule must order",
@@ -2843,12 +2987,8 @@ def run_self_test() -> int:
             "batch structural resolution authority",
             copy.deepcopy(baseline),
             {
-                MODULE_RESOLUTION: module_resolution_text.replace(
-                    "  /// \\brief Materializes a revision-local graph receipt",
-                    "  ZC_NODISCARD ModulePathResolution resolve(ModuleDependencyRequest&&);\n"
-                    "  /// \\brief Materializes a revision-local graph receipt",
-                    1,
-                )
+                MODULE_RESOLUTION: module_resolution_text
+                + "\nModulePathResolution resolve(ModuleDependencyRequest&&);\n"
             },
             "batch structural resolution authority is forbidden",
         )

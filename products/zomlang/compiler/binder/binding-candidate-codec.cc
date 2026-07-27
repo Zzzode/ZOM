@@ -715,11 +715,11 @@ zc::Maybe<zc::Array<uint8_t>> encodeCandidate(const VerifiedBindingInput& input,
 #include "zomlang/compiler/binder/binding-fact-schema.def"
 #undef ZOM_BINDING_FACT
   if (candidate.currentSurface.sourceModule != input.module() ||
-      candidate.currentSurface.sourcePackage != input.package()) {
+      candidate.currentSurface.sourceCompilationUnit != input.compilationUnit()) {
     return zc::none;
   }
   input.moduleKey().encode(encoder);
-  input.packageKey().encode(encoder);
+  input.compilationUnitKey().encode(encoder);
   encoder.encodeDigest(candidate.currentSurface.revision.digest());
   ZC_IF_SOME(visible, encodeSurfaceMap(input, candidate.currentSurface.visibleEntries.asPtr())) {
     encoder.encodeByteString(visible.asPtr());

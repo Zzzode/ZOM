@@ -40,13 +40,52 @@ private:
   Sha256Digest digestValue;
 };
 
+/// \brief Exact distribution and policy lineage for one toolchain compilation unit.
+class ToolchainSemanticContextInput final {
+public:
+  ZC_NODISCARD static ToolchainSemanticContextInput from(
+      ToolchainUnitKey toolchain, const Sha256Digest& distributionDigest,
+      const Sha256Digest& policyTemplateRevision) noexcept;
+  ZC_NODISCARD ToolchainSemanticContextInput clone() const noexcept;
+  ZC_NODISCARD const ToolchainUnitKey& toolchain() const noexcept;
+  ZC_NODISCARD const Sha256Digest& distributionDigest() const noexcept;
+  ZC_NODISCARD const Sha256Digest& policyTemplateRevision() const noexcept;
+  ZC_NODISCARD zc::Array<uint8_t> encode() const;
+
+private:
+  ToolchainSemanticContextInput(ToolchainUnitKey toolchain, const Sha256Digest& distributionDigest,
+                                const Sha256Digest& policyTemplateRevision) noexcept;
+
+  ToolchainUnitKey toolchainValue;
+  Sha256Digest distributionDigestValue;
+  Sha256Digest policyTemplateRevisionValue;
+};
+
+/// \brief Stable semantic coordinate for one projected Toolchain(Core) crate.
+class CoreSemanticContextFingerprint final {
+public:
+  /// \brief Computes the narrow RFC 0025 fingerprint from an exact core projection.
+  ZC_NODISCARD static zc::Maybe<CoreSemanticContextFingerprint> compute(
+      const CrateKey& projectedCoreCrate);
+
+  ZC_NODISCARD CoreSemanticContextFingerprint clone() const noexcept;
+  ZC_NODISCARD const Sha256Digest& digest() const noexcept;
+  void encode(CanonicalEncoder& encoder) const;
+
+private:
+  explicit CoreSemanticContextFingerprint(const Sha256Digest& digest) noexcept;
+
+  Sha256Digest value;
+};
+
 /// \brief Deterministic digest of one closed semantic compilation graph.
 class SemanticContextFingerprint final {
 public:
   /// \brief Computes the RFC 0011 domain-separated fingerprint.
   /// \return None when any supposedly unique sequence contains duplicate encodings.
   ZC_NODISCARD static zc::Maybe<SemanticContextFingerprint> compute(
-      zc::ArrayPtr<const PackageKey> packages,
+      zc::ArrayPtr<const CompilationUnitIdentity> compilationUnits,
+      zc::ArrayPtr<const ToolchainSemanticContextInput> toolchainInputs,
       zc::ArrayPtr<const PackageDependencyEdgeKey> packageEdges,
       zc::ArrayPtr<const CrateKey> crates, zc::ArrayPtr<const CrateDependencyEdgeKey> crateEdges,
       zc::ArrayPtr<const SourceContentIdentity> sourceContents,
@@ -55,6 +94,7 @@ public:
   /// \brief Computes from the frozen context registries and resolved edge inventories.
   ZC_NODISCARD static zc::Maybe<SemanticContextFingerprint> compute(
       const SemanticIdentityRegistrySet& registries,
+      zc::ArrayPtr<const ToolchainSemanticContextInput> toolchainInputs,
       zc::ArrayPtr<const PackageDependencyEdgeKey> packageEdges,
       zc::ArrayPtr<const CrateDependencyEdgeKey> crateEdges);
 

@@ -158,7 +158,12 @@ void appendDefinition(zc::Vector<char>& output, identity::DefId definition,
   }
   ZC_IF_SOME(record, lookup) {
     const auto& module = record.module();
-    append(output, escaped(module.crate().package().name()));
+    const auto& unit = module.crate().unit();
+    if (unit.kind() == identity::CompilationUnitKind::UserPackage) {
+      append(output, escaped(unit.userPackage().name()));
+    } else {
+      append(output, "core"_zc);
+    }
     append(output, "::"_zc);
     append(output, escaped(module.crate().targetName()));
     for (const auto& segment : module.path()) {
@@ -762,19 +767,18 @@ void emitCheckedFactsSourceFailures(diagnostics::DiagnosticEngine& diagnostics,
   }
 }
 
-void emitCoherenceSourceFailure(
-    diagnostics::DiagnosticEngine& diagnostics, const binder::VerifiedParsedModule& parsedModule,
-    const identity::SemanticIdentityRegistrySet& registries,
-    const type::SemanticTypeStore& semanticTypes,
-    const coherence::CoherenceFailureRef& failure) {
+void emitCoherenceSourceFailure(diagnostics::DiagnosticEngine& diagnostics,
+                                const binder::VerifiedParsedModule& parsedModule,
+                                const identity::SemanticIdentityRegistrySet& registries,
+                                const type::SemanticTypeStore& semanticTypes,
+                                const coherence::CoherenceFailureRef& failure) {
   source::SourceLoc location;
   ZC_IF_SOME(value, parsedModule.sourceLocFor(failure.primarySpan)) { location = value; }
   zc::Vector<diagnostics::DiagnosticArgument> arguments(failure.arguments.size());
   for (const auto& argument : failure.arguments) {
     arguments.add(renderDisplayArgument(argument, registries, semanticTypes));
   }
-  diagnostics::Diagnostic primary(failure.diagnostic.diagnosticId(), location,
-                                  zc::mv(arguments));
+  diagnostics::Diagnostic primary(failure.diagnostic.diagnosticId(), location, zc::mv(arguments));
   for (const auto& note : failure.notes) {
     source::SourceLoc noteLocation;
     ZC_IF_SOME(value, parsedModule.sourceLocFor(note.span)) { noteLocation = value; }

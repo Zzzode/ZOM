@@ -79,6 +79,14 @@ PackageKey localPackage(zc::StringPtr name) {
                           requireVersion(), emptyFeatures());
 }
 
+CompilationUnitIdentity userCompilationUnit(zc::StringPtr name) {
+  return CompilationUnitIdentity::userPackage(localPackage(name));
+}
+
+CompilationUnitIdentity coreCompilationUnit() {
+  return CompilationUnitIdentity::toolchain(ToolchainUnitKey::core());
+}
+
 CanonicalTargetSpecificationKey targetSpec() {
   auto value = CanonicalTargetSpecificationKey::from(
       requireScalar<TargetComponentName>("x"_zc), requireScalar<TargetComponentName>("v"_zc),
@@ -97,11 +105,27 @@ CompilationConfigKey targetCompilation() {
   ZC_FAIL_REQUIRE("invalid compilation configuration test input");
 }
 
+CompilationConfigKey coreCompilation() {
+  zc::Maybe<BuildScriptProducerKey> noBuildScript;
+  auto value = CompilationConfigKey::from(
+      CompilationDomain::Target, targetSpec(),
+      SemanticCompilerOptionsKey::from(2026, true, false, false), zc::mv(noBuildScript));
+  ZC_IF_SOME(admitted, value) { return zc::mv(admitted); }
+  ZC_FAIL_REQUIRE("invalid core compilation configuration test input");
+}
+
 CrateKey crate(zc::StringPtr packageName = "a"_zc) {
-  auto value = CrateKey::from(localPackage(packageName), CrateTargetKind::Library,
+  auto value = CrateKey::from(userCompilationUnit(packageName), CrateTargetKind::Library,
                               requireScalar<TargetName>("lib"_zc), targetCompilation());
   ZC_IF_SOME(admitted, value) { return zc::mv(admitted); }
   ZC_FAIL_REQUIRE("invalid crate test input");
+}
+
+CrateKey coreCrate() {
+  auto value = CrateKey::from(coreCompilationUnit(), CrateTargetKind::Library,
+                              requireScalar<TargetName>("core"_zc), coreCompilation());
+  ZC_IF_SOME(admitted, value) { return zc::mv(admitted); }
+  ZC_FAIL_REQUIRE("invalid core crate test input");
 }
 
 SourceFileKey source(zc::StringPtr packageName = "a"_zc) {
@@ -217,8 +241,9 @@ FrozenRegistryFailure admitImpl(SemanticIdentityRegistrySet& registries,
 
 SemanticIdentityRegistrySet populatedRegistrySet(SemanticContextFactory& factory) {
   auto registries = requireRegistrySet(factory, requireContext(factory));
-  ZC_REQUIRE(registries.collectPackage(localPackage("a"_zc)) == FrozenRegistryFailure::None);
-  ZC_REQUIRE(registries.freezePackages() == FrozenRegistryFailure::None);
+  ZC_REQUIRE(registries.collectCompilationUnit(userCompilationUnit("a"_zc)) ==
+             FrozenRegistryFailure::None);
+  ZC_REQUIRE(registries.freezeCompilationUnits() == FrozenRegistryFailure::None);
   ZC_REQUIRE(registries.collectCrate(crate("a"_zc)) == FrozenRegistryFailure::None);
   ZC_REQUIRE(registries.freezeCrates() == FrozenRegistryFailure::None);
   ZC_REQUIRE(registries.collectSourceFile(snapshot("a"_zc, 0x41)) == FrozenRegistryFailure::None);
@@ -233,8 +258,9 @@ SemanticIdentityRegistrySet populatedRegistrySet(SemanticContextFactory& factory
   return registries;
 }
 
-void expectPackage(const PackageRegistry& registry, size_t slot, zc::StringPtr name) {
-  auto expected = localPackage(name).encode();
+void expectUserCompilationUnit(const CompilationUnitRegistry& registry, size_t slot,
+                               zc::StringPtr name) {
+  auto expected = userCompilationUnit(name).encode();
   bool matched = false;
   ZC_IF_SOME(key, registry.keyAt(slot)) {
     ZC_EXPECT(key.encode().asPtr() == expected.asPtr());
@@ -260,37 +286,43 @@ ZC_TEST("Frozen registry assigns slots in canonical key order") {
   SemanticContextFactory factory;
   auto registries = requireRegistrySet(factory, requireContext(factory));
 
-  ZC_EXPECT(registries.collectPackage(localPackage("b"_zc)) == FrozenRegistryFailure::None);
-  ZC_EXPECT(registries.collectPackage(localPackage("a"_zc)) == FrozenRegistryFailure::None);
-  ZC_EXPECT(registries.freezePackages() == FrozenRegistryFailure::None);
-  ZC_EXPECT(registries.packages().isFrozen());
-  ZC_EXPECT(registries.packages().size() == 2);
-  expectPackage(registries.packages(), 0, "a"_zc);
-  expectPackage(registries.packages(), 1, "b"_zc);
+  ZC_EXPECT(registries.collectCompilationUnit(userCompilationUnit("b"_zc)) ==
+            FrozenRegistryFailure::None);
+  ZC_EXPECT(registries.collectCompilationUnit(userCompilationUnit("a"_zc)) ==
+            FrozenRegistryFailure::None);
+  ZC_EXPECT(registries.freezeCompilationUnits() == FrozenRegistryFailure::None);
+  ZC_EXPECT(registries.compilationUnits().isFrozen());
+  ZC_EXPECT(registries.compilationUnits().size() == 2);
+  expectUserCompilationUnit(registries.compilationUnits(), 0, "a"_zc);
+  expectUserCompilationUnit(registries.compilationUnits(), 1, "b"_zc);
 
-  auto firstKey = localPackage("a"_zc);
-  auto secondKey = localPackage("b"_zc);
-  auto first = registries.packages().find(firstKey);
-  auto second = registries.packages().find(secondKey);
+  auto firstKey = userCompilationUnit("a"_zc);
+  auto secondKey = userCompilationUnit("b"_zc);
+  auto first = registries.compilationUnits().find(firstKey);
+  auto second = registries.compilationUnits().find(secondKey);
   ZC_EXPECT(first != zc::none);
   ZC_EXPECT(second != zc::none);
-  ZC_IF_SOME(handle, first) { ZC_EXPECT(registries.packages().lookup(handle) != zc::none); }
-  ZC_IF_SOME(handle, second) { ZC_EXPECT(registries.packages().lookup(handle) != zc::none); }
+  ZC_IF_SOME(handle, first) { ZC_EXPECT(registries.compilationUnits().lookup(handle) != zc::none); }
+  ZC_IF_SOME(handle, second) {
+    ZC_EXPECT(registries.compilationUnits().lookup(handle) != zc::none);
+  }
 }
 
 ZC_TEST("Frozen key index owns canonical lookup after registry move") {
   SemanticContextFactory factory;
   auto registries = requireRegistrySet(factory, requireContext(factory));
-  ZC_EXPECT(registries.packages().snapshotKeys() == zc::none);
-  ZC_REQUIRE(registries.collectPackage(localPackage("b"_zc)) == FrozenRegistryFailure::None);
-  ZC_REQUIRE(registries.collectPackage(localPackage("a"_zc)) == FrozenRegistryFailure::None);
-  ZC_REQUIRE(registries.freezePackages() == FrozenRegistryFailure::None);
+  ZC_EXPECT(registries.compilationUnits().snapshotKeys() == zc::none);
+  ZC_REQUIRE(registries.collectCompilationUnit(userCompilationUnit("b"_zc)) ==
+             FrozenRegistryFailure::None);
+  ZC_REQUIRE(registries.collectCompilationUnit(userCompilationUnit("a"_zc)) ==
+             FrozenRegistryFailure::None);
+  ZC_REQUIRE(registries.freezeCompilationUnits() == FrozenRegistryFailure::None);
 
-  auto firstKey = localPackage("a"_zc);
-  auto secondKey = localPackage("b"_zc);
-  auto first = registries.packages().find(firstKey);
-  auto second = registries.packages().find(secondKey);
-  auto index = registries.packages().snapshotKeys();
+  auto firstKey = userCompilationUnit("a"_zc);
+  auto secondKey = userCompilationUnit("b"_zc);
+  auto first = registries.compilationUnits().find(firstKey);
+  auto second = registries.compilationUnits().find(secondKey);
+  auto index = registries.compilationUnits().snapshotKeys();
   ZC_REQUIRE(first != zc::none);
   ZC_REQUIRE(second != zc::none);
   ZC_REQUIRE(index != zc::none);
@@ -311,53 +343,73 @@ ZC_TEST("Frozen key index owns canonical lookup after registry move") {
         ZC_EXPECT(false);
       }
     }
-    const PackageId invalid;
+    const CompilationUnitId invalid;
     ZC_EXPECT(keys.lookup(invalid) == zc::none);
 
     auto foreignRegistries = requireRegistrySet(factory, requireContext(factory));
-    ZC_REQUIRE(foreignRegistries.collectPackage(localPackage("a"_zc)) ==
+    ZC_REQUIRE(foreignRegistries.collectCompilationUnit(userCompilationUnit("a"_zc)) ==
                FrozenRegistryFailure::None);
-    ZC_REQUIRE(foreignRegistries.freezePackages() == FrozenRegistryFailure::None);
-    ZC_IF_SOME(foreign, foreignRegistries.packages().find(firstKey)) {
+    ZC_REQUIRE(foreignRegistries.freezeCompilationUnits() == FrozenRegistryFailure::None);
+    ZC_IF_SOME(foreign, foreignRegistries.compilationUnits().find(firstKey)) {
       ZC_EXPECT(keys.lookup(foreign) == zc::none);
     }
   }
-  ZC_EXPECT(displacedRegistries.packages().size() == 2);
+  ZC_EXPECT(displacedRegistries.compilationUnits().size() == 2);
 }
 
 ZC_TEST("Frozen registry rejects duplicate canonical keys without issuing handles") {
   SemanticContextFactory factory;
   auto registries = requireRegistrySet(factory, requireContext(factory));
 
-  ZC_EXPECT(registries.collectPackage(localPackage("a"_zc)) == FrozenRegistryFailure::None);
-  ZC_EXPECT(registries.collectPackage(localPackage("a"_zc)) == FrozenRegistryFailure::None);
-  ZC_EXPECT(registries.freezePackages() == FrozenRegistryFailure::DuplicateCanonicalKey);
-  ZC_EXPECT(!registries.packages().isFrozen());
-  ZC_EXPECT(registries.packages().terminalFailure() ==
+  ZC_EXPECT(registries.collectCompilationUnit(userCompilationUnit("a"_zc)) ==
+            FrozenRegistryFailure::None);
+  ZC_EXPECT(registries.collectCompilationUnit(userCompilationUnit("a"_zc)) ==
+            FrozenRegistryFailure::None);
+  ZC_EXPECT(registries.freezeCompilationUnits() == FrozenRegistryFailure::DuplicateCanonicalKey);
+  ZC_EXPECT(!registries.compilationUnits().isFrozen());
+  ZC_EXPECT(registries.compilationUnits().terminalFailure() ==
             FrozenRegistryFailure::DuplicateCanonicalKey);
-  auto key = localPackage("a"_zc);
-  ZC_EXPECT(registries.packages().find(key) == zc::none);
+  auto key = userCompilationUnit("a"_zc);
+  ZC_EXPECT(registries.compilationUnits().find(key) == zc::none);
   registries.sortIdentityInvariants();
   ZC_REQUIRE(registries.identityInvariants().size() == 1);
   ZC_EXPECT(registries.identityInvariants()[0].kind() ==
             IdentityInvariantKind::DuplicateCanonicalKey);
-  ZC_EXPECT(registries.identityInvariants()[0].phase() == IdentityAllocationPhase::Package);
+  ZC_EXPECT(registries.identityInvariants()[0].phase() == IdentityAllocationPhase::CompilationUnit);
   ZC_EXPECT(registries.identityInvariants()[0].structuralInputKey() != zc::none);
+}
+
+ZC_TEST("Frozen registry rejects a duplicate core compilation unit") {
+  SemanticContextFactory factory;
+  auto registries = requireRegistrySet(factory, requireContext(factory));
+
+  ZC_EXPECT(registries.collectCompilationUnit(coreCompilationUnit()) ==
+            FrozenRegistryFailure::None);
+  ZC_EXPECT(registries.collectCompilationUnit(coreCompilationUnit()) ==
+            FrozenRegistryFailure::None);
+  ZC_EXPECT(registries.freezeCompilationUnits() == FrozenRegistryFailure::DuplicateCanonicalKey);
+  ZC_EXPECT(registries.compilationUnits().find(coreCompilationUnit()) == zc::none);
+  registries.sortIdentityInvariants();
+  ZC_REQUIRE(registries.identityInvariants().size() == 1);
+  ZC_EXPECT(registries.identityInvariants()[0].phase() == IdentityAllocationPhase::CompilationUnit);
+  ZC_EXPECT(registries.identityInvariants()[0].apiSite() == IdentityApiSite::CompilationUnitFreeze);
 }
 
 ZC_TEST("Frozen registry invalidates post-freeze mutation") {
   SemanticContextFactory factory;
   auto registries = requireRegistrySet(factory, requireContext(factory));
 
-  ZC_EXPECT(registries.collectPackage(localPackage("a"_zc)) == FrozenRegistryFailure::None);
-  ZC_EXPECT(registries.freezePackages() == FrozenRegistryFailure::None);
-  auto key = localPackage("a"_zc);
-  ZC_EXPECT(registries.packages().find(key) != zc::none);
-  ZC_EXPECT(registries.collectPackage(localPackage("b"_zc)) ==
+  ZC_EXPECT(registries.collectCompilationUnit(userCompilationUnit("a"_zc)) ==
+            FrozenRegistryFailure::None);
+  ZC_EXPECT(registries.freezeCompilationUnits() == FrozenRegistryFailure::None);
+  auto key = userCompilationUnit("a"_zc);
+  ZC_EXPECT(registries.compilationUnits().find(key) != zc::none);
+  ZC_EXPECT(registries.collectCompilationUnit(coreCompilationUnit()) ==
             FrozenRegistryFailure::PostFreezeMutation);
-  ZC_EXPECT(!registries.packages().isFrozen());
-  ZC_EXPECT(registries.packages().terminalFailure() == FrozenRegistryFailure::PostFreezeMutation);
-  ZC_EXPECT(registries.packages().find(key) == zc::none);
+  ZC_EXPECT(!registries.compilationUnits().isFrozen());
+  ZC_EXPECT(registries.compilationUnits().terminalFailure() ==
+            FrozenRegistryFailure::PostFreezeMutation);
+  ZC_EXPECT(registries.compilationUnits().find(key) == zc::none);
   ZC_REQUIRE(registries.identityInvariants().size() == 1);
   ZC_EXPECT(registries.identityInvariants()[0].kind() == IdentityInvariantKind::PostFreezeMutation);
 }
@@ -366,17 +418,19 @@ ZC_TEST("Frozen registry rejects invalid and foreign-context handles") {
   SemanticContextFactory factory;
   auto first = requireRegistrySet(factory, requireContext(factory));
   auto second = requireRegistrySet(factory, requireContext(factory));
-  ZC_EXPECT(first.collectPackage(localPackage("a"_zc)) == FrozenRegistryFailure::None);
-  ZC_EXPECT(second.collectPackage(localPackage("a"_zc)) == FrozenRegistryFailure::None);
-  ZC_EXPECT(first.freezePackages() == FrozenRegistryFailure::None);
-  ZC_EXPECT(second.freezePackages() == FrozenRegistryFailure::None);
+  ZC_EXPECT(first.collectCompilationUnit(userCompilationUnit("a"_zc)) ==
+            FrozenRegistryFailure::None);
+  ZC_EXPECT(second.collectCompilationUnit(userCompilationUnit("a"_zc)) ==
+            FrozenRegistryFailure::None);
+  ZC_EXPECT(first.freezeCompilationUnits() == FrozenRegistryFailure::None);
+  ZC_EXPECT(second.freezeCompilationUnits() == FrozenRegistryFailure::None);
 
-  const PackageId invalid;
-  ZC_EXPECT(first.packages().validate(invalid) == FrozenRegistryFailure::InvalidHandle);
-  auto key = localPackage("a"_zc);
-  ZC_IF_SOME(foreign, second.packages().find(key)) {
-    ZC_EXPECT(first.packages().validate(foreign) == FrozenRegistryFailure::ForeignContext);
-    ZC_EXPECT(first.packages().lookup(foreign) == zc::none);
+  const CompilationUnitId invalid;
+  ZC_EXPECT(first.compilationUnits().validate(invalid) == FrozenRegistryFailure::InvalidHandle);
+  auto key = userCompilationUnit("a"_zc);
+  ZC_IF_SOME(foreign, second.compilationUnits().find(key)) {
+    ZC_EXPECT(first.compilationUnits().validate(foreign) == FrozenRegistryFailure::ForeignContext);
+    ZC_EXPECT(first.compilationUnits().lookup(foreign) == zc::none);
   }
 }
 
@@ -398,11 +452,12 @@ ZC_TEST("Semantic context permits exactly one registry set and enforces freeze o
   }
 }
 
-ZC_TEST("Crate registry rejects a package key outside the frozen package registry") {
+ZC_TEST("Crate registry rejects a unit outside the frozen compilation-unit registry") {
   SemanticContextFactory factory;
   auto registries = requireRegistrySet(factory, requireContext(factory));
-  ZC_REQUIRE(registries.collectPackage(localPackage("a"_zc)) == FrozenRegistryFailure::None);
-  ZC_REQUIRE(registries.freezePackages() == FrozenRegistryFailure::None);
+  ZC_REQUIRE(registries.collectCompilationUnit(userCompilationUnit("a"_zc)) ==
+             FrozenRegistryFailure::None);
+  ZC_REQUIRE(registries.freezeCompilationUnits() == FrozenRegistryFailure::None);
 
   ZC_EXPECT(registries.collectCrate(crate("b"_zc)) == FrozenRegistryFailure::AncestorMismatch);
   ZC_EXPECT(registries.crates().size() == 0);
@@ -412,12 +467,38 @@ ZC_TEST("Crate registry rejects a package key outside the frozen package registr
   ZC_EXPECT(registries.freezeCrates() == FrozenRegistryFailure::None);
 }
 
+ZC_TEST("Crate registry rejects the wrong compilation-unit branch") {
+  SemanticContextFactory factory;
+  auto registries = requireRegistrySet(factory, requireContext(factory));
+  ZC_REQUIRE(registries.collectCompilationUnit(userCompilationUnit("a"_zc)) ==
+             FrozenRegistryFailure::None);
+  ZC_REQUIRE(registries.freezeCompilationUnits() == FrozenRegistryFailure::None);
+
+  ZC_EXPECT(registries.collectCrate(coreCrate()) == FrozenRegistryFailure::AncestorMismatch);
+  ZC_EXPECT(registries.crates().size() == 0);
+  expectSingleAncestorMismatch(registries, IdentityAllocationPhase::Crate);
+}
+
+ZC_TEST("Crate registry rejects a user crate when only core is frozen") {
+  SemanticContextFactory factory;
+  auto registries = requireRegistrySet(factory, requireContext(factory));
+  ZC_REQUIRE(registries.collectCompilationUnit(coreCompilationUnit()) ==
+             FrozenRegistryFailure::None);
+  ZC_REQUIRE(registries.freezeCompilationUnits() == FrozenRegistryFailure::None);
+
+  ZC_EXPECT(registries.collectCrate(crate("a"_zc)) == FrozenRegistryFailure::AncestorMismatch);
+  ZC_EXPECT(registries.crates().size() == 0);
+  expectSingleAncestorMismatch(registries, IdentityAllocationPhase::Crate);
+}
+
 ZC_TEST("Source registry rejects a crate key outside the frozen crate registry") {
   SemanticContextFactory factory;
   auto registries = requireRegistrySet(factory, requireContext(factory));
-  ZC_REQUIRE(registries.collectPackage(localPackage("a"_zc)) == FrozenRegistryFailure::None);
-  ZC_REQUIRE(registries.collectPackage(localPackage("b"_zc)) == FrozenRegistryFailure::None);
-  ZC_REQUIRE(registries.freezePackages() == FrozenRegistryFailure::None);
+  ZC_REQUIRE(registries.collectCompilationUnit(userCompilationUnit("a"_zc)) ==
+             FrozenRegistryFailure::None);
+  ZC_REQUIRE(registries.collectCompilationUnit(userCompilationUnit("b"_zc)) ==
+             FrozenRegistryFailure::None);
+  ZC_REQUIRE(registries.freezeCompilationUnits() == FrozenRegistryFailure::None);
   ZC_REQUIRE(registries.collectCrate(crate("a"_zc)) == FrozenRegistryFailure::None);
   ZC_REQUIRE(registries.freezeCrates() == FrozenRegistryFailure::None);
 
@@ -433,9 +514,11 @@ ZC_TEST("Source registry rejects a crate key outside the frozen crate registry")
 ZC_TEST("Module registry rejects a crate outside the frozen crate registry") {
   SemanticContextFactory factory;
   auto registries = requireRegistrySet(factory, requireContext(factory));
-  ZC_REQUIRE(registries.collectPackage(localPackage("a"_zc)) == FrozenRegistryFailure::None);
-  ZC_REQUIRE(registries.collectPackage(localPackage("b"_zc)) == FrozenRegistryFailure::None);
-  ZC_REQUIRE(registries.freezePackages() == FrozenRegistryFailure::None);
+  ZC_REQUIRE(registries.collectCompilationUnit(userCompilationUnit("a"_zc)) ==
+             FrozenRegistryFailure::None);
+  ZC_REQUIRE(registries.collectCompilationUnit(userCompilationUnit("b"_zc)) ==
+             FrozenRegistryFailure::None);
+  ZC_REQUIRE(registries.freezeCompilationUnits() == FrozenRegistryFailure::None);
   ZC_REQUIRE(registries.collectCrate(crate("a"_zc)) == FrozenRegistryFailure::None);
   ZC_REQUIRE(registries.freezeCrates() == FrozenRegistryFailure::None);
   ZC_REQUIRE(registries.collectSourceFile(snapshot("a"_zc, 0x41)) == FrozenRegistryFailure::None);
@@ -452,9 +535,11 @@ ZC_TEST("Module registry rejects a crate outside the frozen crate registry") {
 ZC_TEST("Definition registry rejects a module outside the frozen module registry") {
   SemanticContextFactory factory;
   auto registries = requireRegistrySet(factory, requireContext(factory));
-  ZC_REQUIRE(registries.collectPackage(localPackage("a"_zc)) == FrozenRegistryFailure::None);
-  ZC_REQUIRE(registries.collectPackage(localPackage("b"_zc)) == FrozenRegistryFailure::None);
-  ZC_REQUIRE(registries.freezePackages() == FrozenRegistryFailure::None);
+  ZC_REQUIRE(registries.collectCompilationUnit(userCompilationUnit("a"_zc)) ==
+             FrozenRegistryFailure::None);
+  ZC_REQUIRE(registries.collectCompilationUnit(userCompilationUnit("b"_zc)) ==
+             FrozenRegistryFailure::None);
+  ZC_REQUIRE(registries.freezeCompilationUnits() == FrozenRegistryFailure::None);
   ZC_REQUIRE(registries.collectCrate(crate("a"_zc)) == FrozenRegistryFailure::None);
   ZC_REQUIRE(registries.collectCrate(crate("b"_zc)) == FrozenRegistryFailure::None);
   ZC_REQUIRE(registries.freezeCrates() == FrozenRegistryFailure::None);
@@ -475,9 +560,11 @@ ZC_TEST("Definition registry rejects a module outside the frozen module registry
 ZC_TEST("Impl registry rejects a module outside the frozen module registry") {
   SemanticContextFactory factory;
   auto registries = requireRegistrySet(factory, requireContext(factory));
-  ZC_REQUIRE(registries.collectPackage(localPackage("a"_zc)) == FrozenRegistryFailure::None);
-  ZC_REQUIRE(registries.collectPackage(localPackage("b"_zc)) == FrozenRegistryFailure::None);
-  ZC_REQUIRE(registries.freezePackages() == FrozenRegistryFailure::None);
+  ZC_REQUIRE(registries.collectCompilationUnit(userCompilationUnit("a"_zc)) ==
+             FrozenRegistryFailure::None);
+  ZC_REQUIRE(registries.collectCompilationUnit(userCompilationUnit("b"_zc)) ==
+             FrozenRegistryFailure::None);
+  ZC_REQUIRE(registries.freezeCompilationUnits() == FrozenRegistryFailure::None);
   ZC_REQUIRE(registries.collectCrate(crate("a"_zc)) == FrozenRegistryFailure::None);
   ZC_REQUIRE(registries.collectCrate(crate("b"_zc)) == FrozenRegistryFailure::None);
   ZC_REQUIRE(registries.freezeCrates() == FrozenRegistryFailure::None);
@@ -499,8 +586,9 @@ ZC_TEST("Impl registry rejects a module outside the frozen module registry") {
 ZC_TEST("Source registry retains immutable contents and bounds source spans") {
   SemanticContextFactory factory;
   auto registries = requireRegistrySet(factory, requireContext(factory));
-  ZC_EXPECT(registries.collectPackage(localPackage("a"_zc)) == FrozenRegistryFailure::None);
-  ZC_EXPECT(registries.freezePackages() == FrozenRegistryFailure::None);
+  ZC_EXPECT(registries.collectCompilationUnit(userCompilationUnit("a"_zc)) ==
+            FrozenRegistryFailure::None);
+  ZC_EXPECT(registries.freezeCompilationUnits() == FrozenRegistryFailure::None);
   ZC_EXPECT(registries.collectCrate(crate()) == FrozenRegistryFailure::None);
   ZC_EXPECT(registries.freezeCrates() == FrozenRegistryFailure::None);
 
@@ -523,8 +611,9 @@ ZC_TEST("Source registry retains immutable contents and bounds source spans") {
 ZC_TEST("Source registry keeps generated contents outside stable source identity") {
   SemanticContextFactory factory;
   auto registries = requireRegistrySet(factory, requireContext(factory));
-  ZC_EXPECT(registries.collectPackage(localPackage("a"_zc)) == FrozenRegistryFailure::None);
-  ZC_EXPECT(registries.freezePackages() == FrozenRegistryFailure::None);
+  ZC_EXPECT(registries.collectCompilationUnit(userCompilationUnit("a"_zc)) ==
+            FrozenRegistryFailure::None);
+  ZC_EXPECT(registries.freezeCompilationUnits() == FrozenRegistryFailure::None);
   ZC_EXPECT(registries.collectCrate(crate()) == FrozenRegistryFailure::None);
   ZC_EXPECT(registries.freezeCrates() == FrozenRegistryFailure::None);
 
@@ -540,9 +629,11 @@ ZC_TEST("Source registry keeps generated contents outside stable source identity
 ZC_TEST("Module registry assigns one global order across crates") {
   SemanticContextFactory factory;
   auto registries = requireRegistrySet(factory, requireContext(factory));
-  ZC_EXPECT(registries.collectPackage(localPackage("b"_zc)) == FrozenRegistryFailure::None);
-  ZC_EXPECT(registries.collectPackage(localPackage("a"_zc)) == FrozenRegistryFailure::None);
-  ZC_EXPECT(registries.freezePackages() == FrozenRegistryFailure::None);
+  ZC_EXPECT(registries.collectCompilationUnit(userCompilationUnit("b"_zc)) ==
+            FrozenRegistryFailure::None);
+  ZC_EXPECT(registries.collectCompilationUnit(userCompilationUnit("a"_zc)) ==
+            FrozenRegistryFailure::None);
+  ZC_EXPECT(registries.freezeCompilationUnits() == FrozenRegistryFailure::None);
   ZC_EXPECT(registries.collectCrate(crate("b"_zc)) == FrozenRegistryFailure::None);
   ZC_EXPECT(registries.collectCrate(crate("a"_zc)) == FrozenRegistryFailure::None);
   ZC_EXPECT(registries.freezeCrates() == FrozenRegistryFailure::None);
@@ -569,9 +660,11 @@ ZC_TEST("Module registry assigns one global order across crates") {
 ZC_TEST("Definition and impl registries freeze after the global module inventory") {
   SemanticContextFactory factory;
   auto registries = requireRegistrySet(factory, requireContext(factory));
-  ZC_EXPECT(registries.collectPackage(localPackage("b"_zc)) == FrozenRegistryFailure::None);
-  ZC_EXPECT(registries.collectPackage(localPackage("a"_zc)) == FrozenRegistryFailure::None);
-  ZC_EXPECT(registries.freezePackages() == FrozenRegistryFailure::None);
+  ZC_EXPECT(registries.collectCompilationUnit(userCompilationUnit("b"_zc)) ==
+            FrozenRegistryFailure::None);
+  ZC_EXPECT(registries.collectCompilationUnit(userCompilationUnit("a"_zc)) ==
+            FrozenRegistryFailure::None);
+  ZC_EXPECT(registries.freezeCompilationUnits() == FrozenRegistryFailure::None);
   ZC_EXPECT(registries.collectCrate(crate("b"_zc)) == FrozenRegistryFailure::None);
   ZC_EXPECT(registries.collectCrate(crate("a"_zc)) == FrozenRegistryFailure::None);
   ZC_EXPECT(registries.freezeCrates() == FrozenRegistryFailure::None);
@@ -603,8 +696,9 @@ ZC_TEST("Definition and impl registries freeze after the global module inventory
 ZC_TEST("Stable authority catalog coalesces equal complete records") {
   SemanticContextFactory factory;
   auto registries = requireRegistrySet(factory, requireContext(factory));
-  ZC_REQUIRE(registries.collectPackage(localPackage("a"_zc)) == FrozenRegistryFailure::None);
-  ZC_REQUIRE(registries.freezePackages() == FrozenRegistryFailure::None);
+  ZC_REQUIRE(registries.collectCompilationUnit(userCompilationUnit("a"_zc)) ==
+             FrozenRegistryFailure::None);
+  ZC_REQUIRE(registries.freezeCompilationUnits() == FrozenRegistryFailure::None);
   ZC_REQUIRE(registries.collectCrate(crate("a"_zc)) == FrozenRegistryFailure::None);
   ZC_REQUIRE(registries.freezeCrates() == FrozenRegistryFailure::None);
   ZC_REQUIRE(registries.collectSourceFile(snapshot("a"_zc, 0x41)) == FrozenRegistryFailure::None);
@@ -624,8 +718,9 @@ ZC_TEST("Stable authority catalog coalesces equal complete records") {
 ZC_TEST("Stable authority catalog admits mixed owners outermost first") {
   SemanticContextFactory factory;
   auto registries = requireRegistrySet(factory, requireContext(factory));
-  ZC_REQUIRE(registries.collectPackage(localPackage("a"_zc)) == FrozenRegistryFailure::None);
-  ZC_REQUIRE(registries.freezePackages() == FrozenRegistryFailure::None);
+  ZC_REQUIRE(registries.collectCompilationUnit(userCompilationUnit("a"_zc)) ==
+             FrozenRegistryFailure::None);
+  ZC_REQUIRE(registries.freezeCompilationUnits() == FrozenRegistryFailure::None);
   ZC_REQUIRE(registries.collectCrate(crate("a"_zc)) == FrozenRegistryFailure::None);
   ZC_REQUIRE(registries.freezeCrates() == FrozenRegistryFailure::None);
   ZC_REQUIRE(registries.collectSourceFile(snapshot("a"_zc, 0x41)) == FrozenRegistryFailure::None);
@@ -660,8 +755,9 @@ ZC_TEST("Stable authority catalog admits mixed owners outermost first") {
 ZC_TEST("Stable authority catalog rejects unknown and skipped owner prefixes") {
   SemanticContextFactory factory;
   auto registries = requireRegistrySet(factory, requireContext(factory));
-  ZC_REQUIRE(registries.collectPackage(localPackage("a"_zc)) == FrozenRegistryFailure::None);
-  ZC_REQUIRE(registries.freezePackages() == FrozenRegistryFailure::None);
+  ZC_REQUIRE(registries.collectCompilationUnit(userCompilationUnit("a"_zc)) ==
+             FrozenRegistryFailure::None);
+  ZC_REQUIRE(registries.freezeCompilationUnits() == FrozenRegistryFailure::None);
   ZC_REQUIRE(registries.collectCrate(crate("a"_zc)) == FrozenRegistryFailure::None);
   ZC_REQUIRE(registries.freezeCrates() == FrozenRegistryFailure::None);
   ZC_REQUIRE(registries.collectSourceFile(snapshot("a"_zc, 0x41)) == FrozenRegistryFailure::None);
@@ -700,15 +796,15 @@ ZC_TEST("Every context identity tag rejects a same-slot foreign context handle")
   auto first = populatedRegistrySet(factory);
   auto second = populatedRegistrySet(factory);
 
-  auto packageKey = localPackage("a"_zc);
+  auto compilationUnitKey = userCompilationUnit("a"_zc);
   auto crateKey = crate("a"_zc);
   auto sourceKey = source("a"_zc);
   auto moduleKey = module("a"_zc);
   auto definitionKey = definition("a"_zc);
   auto implKey = impl("a"_zc);
 
-  ZC_IF_SOME(handle, second.packages().find(packageKey)) {
-    ZC_EXPECT(first.packages().validate(handle) == FrozenRegistryFailure::ForeignContext);
+  ZC_IF_SOME(handle, second.compilationUnits().find(compilationUnitKey)) {
+    ZC_EXPECT(first.compilationUnits().validate(handle) == FrozenRegistryFailure::ForeignContext);
   }
   ZC_IF_SOME(handle, second.crates().find(crateKey)) {
     ZC_EXPECT(first.crates().validate(handle) == FrozenRegistryFailure::ForeignContext);

@@ -73,9 +73,9 @@ identity::CrateKey crate() {
       identity::SemanticCompilerOptionsKey::from(2026, true, false, true), zc::mv(noOutput));
   ZC_REQUIRE(compilation != zc::none);
   ZC_IF_SOME(value, compilation) {
-    auto admitted =
-        identity::CrateKey::from(package(), identity::CrateTargetKind::Library,
-                                 scalar<identity::TargetName>("test"_zc), zc::mv(value));
+    auto admitted = identity::CrateKey::from(
+        identity::CompilationUnitIdentity::userPackage(package()),
+        identity::CrateTargetKind::Library, scalar<identity::TargetName>("test"_zc), zc::mv(value));
     ZC_REQUIRE(admitted != zc::none);
     ZC_IF_SOME(result, admitted) { return zc::mv(result); }
   }
@@ -120,8 +120,9 @@ public:
 
 private:
   void buildRegistry() {
-    ZC_REQUIRE(registries().collectPackage(package()) == identity::FrozenRegistryFailure::None);
-    ZC_REQUIRE(registries().freezePackages() == identity::FrozenRegistryFailure::None);
+    ZC_REQUIRE(registries().collectCompilationUnit(identity::CompilationUnitIdentity::userPackage(
+                   package())) == identity::FrozenRegistryFailure::None);
+    ZC_REQUIRE(registries().freezeCompilationUnits() == identity::FrozenRegistryFailure::None);
     ZC_REQUIRE(registries().collectCrate(crate()) == identity::FrozenRegistryFailure::None);
     ZC_REQUIRE(registries().freezeCrates() == identity::FrozenRegistryFailure::None);
     ZC_REQUIRE(registries().freezeSourceFiles() == identity::FrozenRegistryFailure::None);

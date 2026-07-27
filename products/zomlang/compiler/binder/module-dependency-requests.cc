@@ -79,7 +79,7 @@ struct PendingRequest final {
 
 ModuleDependencyRequestDerivationResult deriveForRequester(
     identity::ModuleId requester, const VerifiedParsedModule& parsedModule,
-    const identity::Sha256Digest& environmentRevision, const StructuralModuleResolver& resolver) {
+    const StructuralModuleResolver& resolver) {
   const auto& tree = parsedModule.tree();
   if (!ast::verifySchema(tree) || !tree.contains(tree.root()) ||
       tree.node(tree.root()).kind != ast::SyntaxKind::SourceFile) {
@@ -158,8 +158,8 @@ ModuleDependencyRequestDerivationResult deriveForRequester(
 
   zc::Vector<ModuleDependencyRequest> requests(sortedRequests.size());
   for (auto& entry : sortedRequests) {
-    auto request = ModuleDependencyRequest::source(
-        requester, zc::mv(entry.value.key), environmentRevision, zc::mv(entry.value.syntaxSites));
+    auto request = ModuleDependencyRequest::source(requester, zc::mv(entry.value.key),
+                                                   zc::mv(entry.value.syntaxSites));
     if (request == zc::none) { return failure(); }
     ZC_IF_SOME(value, request) { requests.add(zc::mv(value)); }
   }
@@ -170,11 +170,9 @@ ModuleDependencyRequestDerivationResult deriveForRequester(
 
 ModuleDependencyRequestDerivationResult ModuleDependencyRequestDeriver::derive(
     identity::ModuleId requester, const VerifiedParsedModule& parsedModule,
-    const identity::Sha256Digest& environmentRevision, const StructuralModuleResolver& resolver) {
-  if (!requester.isValid() || environmentRevision != resolver.environmentRevision()) {
-    return failure();
-  }
-  return deriveForRequester(requester, parsedModule, environmentRevision, resolver);
+    const StructuralModuleResolver& resolver) {
+  if (!requester.isValid()) { return failure(); }
+  return deriveForRequester(requester, parsedModule, resolver);
 }
 
 }  // namespace zomlang::compiler::binder

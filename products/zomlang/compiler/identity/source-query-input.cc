@@ -19,7 +19,6 @@ namespace {
 constexpr uint64_t kMaximumSourceKeyBytes = 64 * 1024;
 constexpr uint64_t kMaximumSourceSnapshotBytes = 64 * 1024 * 1024;
 constexpr uint64_t kMaximumTargetSelectionBytes = 32 * 1024;
-constexpr uint8_t kCompilationUnitKeyTag = 0x01;
 
 int compareBytes(zc::ArrayPtr<const uint8_t> left, zc::ArrayPtr<const uint8_t> right) noexcept {
   const size_t common = left.size() < right.size() ? left.size() : right.size();
@@ -72,6 +71,25 @@ zc::Maybe<Sha256Digest> validateTargetSelection(zc::ArrayPtr<const uint8_t> byte
     return zc::none;
   }
   return ZC_ASSERT_NONNULL(registryRevision);
+}
+
+bool selectionMatchesTarget(zc::ArrayPtr<const uint8_t> bytes,
+                            const CanonicalTargetSpecificationKey& expected) {
+  CanonicalDecoder decoder(bytes);
+  auto registryRevision = decoder.decodeDigest();
+  auto profile = decoder.decodeByteString(255);
+  auto target = CanonicalTargetSpecificationKey::decodeCanonical(decoder);
+  auto panic = decoder.decodeUint8();
+  if (registryRevision == zc::none || profile == zc::none || target == zc::none ||
+      panic == zc::none || !decoder.finished()) {
+    return false;
+  }
+  CanonicalEncoder selectedEncoder;
+  ZC_ASSERT_NONNULL(target).encode(selectedEncoder);
+  const auto selectedBytes = selectedEncoder.finish();
+  CanonicalEncoder expectedEncoder;
+  expected.encode(expectedEncoder);
+  return selectedBytes.asPtr() == expectedEncoder.finish().asPtr();
 }
 
 }  // namespace
@@ -152,10 +170,6 @@ zc::Maybe<CanonicalSourceSnapshot> CanonicalSourceSnapshot::decodeCanonical(
   return CanonicalSourceSnapshot(ZC_ASSERT_NONNULL(digest), zc::mv(ZC_ASSERT_NONNULL(bytes)));
 }
 
-CompilationUnitQueryKey CompilationUnitQueryKey::fixed() noexcept {
-  return CompilationUnitQueryKey();
-}
-
 CanonicalCompilationOptions::CanonicalCompilationOptions(zc::Array<uint8_t>&& hostTarget,
                                                          zc::Array<uint8_t>&& target,
                                                          bool useUnicode,
@@ -175,16 +189,21 @@ zc::Maybe<CanonicalCompilationOptions> CanonicalCompilationOptions::fromVerified
   CanonicalEncoder targetEncoder;
   request.target().encode(targetEncoder);
   auto target = targetEncoder.finish();
+  return fromCanonicalSelections(zc::mv(host), zc::mv(target), request.languageOptions().useUnicode,
+                                 request.languageOptions().allowDollarIdentifiers,
+                                 request.languageOptions().supportRegexLiterals);
+}
+zc::Maybe<CanonicalCompilationOptions> CanonicalCompilationOptions::fromCanonicalSelections(
+    zc::Array<uint8_t>&& host, zc::Array<uint8_t>&& target, bool useUnicode,
+    bool allowDollarIdentifiers, bool supportRegexLiterals) {
   auto hostRevision = validateTargetSelection(host.asPtr());
   auto targetRevision = validateTargetSelection(target.asPtr());
   if (hostRevision == zc::none || targetRevision == zc::none ||
       ZC_ASSERT_NONNULL(hostRevision) != ZC_ASSERT_NONNULL(targetRevision)) {
     return zc::none;
   }
-  const auto& language = request.languageOptions();
-  return CanonicalCompilationOptions(zc::mv(host), zc::mv(target), language.useUnicode,
-                                     language.allowDollarIdentifiers,
-                                     language.supportRegexLiterals);
+  return CanonicalCompilationOptions(zc::mv(host), zc::mv(target), useUnicode,
+                                     allowDollarIdentifiers, supportRegexLiterals);
 }
 CanonicalCompilationOptions CanonicalCompilationOptions::clone() const {
   return CanonicalCompilationOptions(zc::heapArray<uint8_t>(hostTargetField.asPtr()),
@@ -203,6 +222,16 @@ bool CanonicalCompilationOptions::allowDollarIdentifiers() const noexcept {
 }
 bool CanonicalCompilationOptions::supportRegexLiterals() const noexcept {
   return supportRegexLiteralsField;
+}
+bool CanonicalCompilationOptions::matchesCrate(const CrateKey& crate) const {
+  const auto& semantic = crate.semanticOptions();
+  const auto selectedTarget = crate.compilation().domain() == CompilationDomain::Host
+                                  ? hostTargetField.asPtr()
+                                  : targetField.asPtr();
+  return selectionMatchesTarget(selectedTarget, crate.compilation().target()) &&
+         useUnicodeField == semantic.useUnicode() &&
+         allowDollarIdentifiersField == semantic.allowDollarIdentifiers() &&
+         supportRegexLiteralsField == semantic.supportRegexLiterals();
 }
 bool CanonicalCompilationOptions::operator==(
     const CanonicalCompilationOptions& other) const noexcept {
@@ -251,15 +280,15 @@ zc::StringPtr CompilationOptionsInput::domain() { return "zom.query.compilation-
 query::QueryKindContract CompilationOptionsInput::contract() {
   return inputContract(domain(), query::Durability::Medium);
 }
-zc::Array<uint8_t> CompilationOptionsInput::encodeKey(const Key&) {
-  auto bytes = zc::heapArray<uint8_t>(1);
-  bytes[0] = kCompilationUnitKeyTag;
-  return bytes;
-}
+zc::Array<uint8_t> CompilationOptionsInput::encodeKey(const Key& key) { return key.encode(); }
 zc::Maybe<CompilationOptionsInput::Key> CompilationOptionsInput::decodeKey(
     zc::ArrayPtr<const uint8_t> bytes) {
-  if (bytes.size() != 1 || bytes[0] != kCompilationUnitKeyTag) { return zc::none; }
-  return CompilationUnitQueryKey::fixed();
+  CanonicalDecoder decoder(bytes);
+  auto key = CrateKey::decodeCanonical(decoder);
+  if (key == zc::none || !decoder.finished() || ZC_ASSERT_NONNULL(key).encode().asPtr() != bytes) {
+    return zc::none;
+  }
+  return key;
 }
 zc::Array<uint8_t> CompilationOptionsInput::encodeValue(const Value& value) {
   return value.encodeCanonical();

@@ -24,6 +24,7 @@
 #include "zomlang/compiler/binder/internal/closure-free-variables.h"
 #include "zomlang/compiler/binder/internal/label-facts.h"
 #include "zomlang/compiler/binder/internal/scope-arena.h"
+#include "zomlang/compiler/binder/internal/verified-module-graph-storage.h"
 #include "zomlang/compiler/binder/module-dependency-requests.h"
 #include "zomlang/compiler/binder/module-graph-diagnostic-adapter.h"
 #include "zomlang/compiler/binder/module-resolution.h"
@@ -41,10 +42,78 @@
 #include "zomlang/compiler/source/manager.h"
 
 namespace zomlang::compiler::binder {
-namespace {
 
-zc::OneOf<ModulePathResolution, ModuleResolutionInvariantFact> resolveWithQuery(
-    StructuralModuleResolver& resolver, ModuleDependencyRequest&& request);
+namespace test {
+
+class VerifiedModuleGraphFixture final {
+public:
+  static VerifiedModuleGraph build(identity::SemanticContextBrand context,
+                                   const identity::SemanticContextFingerprint& fingerprint,
+                                   zc::ArrayPtr<const ModuleGraphModule> modules,
+                                   zc::ArrayPtr<const identity::SourceFileKey> sources,
+                                   zc::ArrayPtr<const ModuleDependencyRequest> requests = {},
+                                   zc::ArrayPtr<const identity::ModuleId> targets = {}) {
+    ZC_REQUIRE(modules.size() != 0);
+    ZC_REQUIRE(modules.size() == sources.size());
+    ZC_REQUIRE(requests.size() == targets.size());
+
+    zc::Vector<identity::ModuleKey> keys(modules.size());
+    zc::Vector<identity::ModuleId> handles(modules.size());
+    zc::Vector<identity::SourceFileKey> selectedSources(sources.size());
+    for (size_t index = 0; index < modules.size(); ++index) {
+      keys.add(modules[index].key().clone());
+      handles.add(modules[index].module());
+      selectedSources.add(sources[index].clone());
+    }
+
+    zc::Vector<VerifiedModuleDependencyEdge> edges(requests.size());
+    for (size_t requestIndex = 0; requestIndex < requests.size(); ++requestIndex) {
+      zc::Maybe<const identity::ModuleKey&> requester;
+      zc::Maybe<const identity::ModuleKey&> target;
+      for (size_t moduleIndex = 0; moduleIndex < modules.size(); ++moduleIndex) {
+        if (modules[moduleIndex].module() == requests[requestIndex].requester()) {
+          requester = modules[moduleIndex].key();
+        }
+        if (modules[moduleIndex].module() == targets[requestIndex]) {
+          target = modules[moduleIndex].key();
+        }
+      }
+      ZC_REQUIRE(requester != zc::none);
+      ZC_REQUIRE(target != zc::none);
+      identity::CanonicalEncoder encoder;
+      ZC_ASSERT_NONNULL(requester).encode(encoder);
+      encoder.encodeByteString(requests[requestIndex].key().encode().asPtr());
+      ZC_ASSERT_NONNULL(target).encode(encoder);
+      edges.add(VerifiedModuleDependencyEdge(requests[requestIndex].clone(), targets[requestIndex],
+                                             encoder.finish()));
+    }
+    for (size_t index = 1; index < edges.size(); ++index) {
+      auto current = zc::mv(edges[index]);
+      size_t insertion = index;
+      while (insertion != 0 && current.encodedKey() < edges[insertion - 1].encodedKey()) {
+        edges[insertion] = zc::mv(edges[insertion - 1]);
+        --insertion;
+      }
+      edges[insertion] = zc::mv(current);
+    }
+
+    identity::CanonicalEncoder revisionBytes;
+    revisionBytes.encodeDigest(fingerprint.digest());
+    revisionBytes.encodeSequenceSize(keys.size());
+    for (const auto& key : keys) { key.encode(revisionBytes); }
+    revisionBytes.encodeSequenceSize(edges.size());
+    for (const auto& edge : edges) { revisionBytes.encodeByteString(edge.encodedKey()); }
+    auto digest = identity::sha256(revisionBytes.finish().asPtr());
+    ZC_REQUIRE(digest != zc::none);
+    return VerifiedModuleGraph(zc::heap<VerifiedModuleGraph::Impl>(
+        context, fingerprint.clone(), zc::mv(keys), zc::mv(handles), zc::mv(selectedSources),
+        zc::mv(edges), ModuleGraphRevision(ZC_ASSERT_NONNULL(digest))));
+  }
+};
+
+}  // namespace test
+
+namespace {
 
 uint8_t hexNibble(char value) {
   if (value >= '0' && value <= '9') { return static_cast<uint8_t>(value - '0'); }
@@ -85,6 +154,10 @@ identity::PackageKey package() {
   ZC_FAIL_REQUIRE("invalid package test input");
 }
 
+identity::CompilationUnitIdentity userUnit() {
+  return identity::CompilationUnitIdentity::userPackage(package());
+}
+
 identity::CrateKey crate() {
   zc::Vector<identity::TargetFeatureName> features;
   auto featureSet = identity::SortedTargetFeatureSet::from(zc::mv(features));
@@ -102,7 +175,7 @@ identity::CrateKey crate() {
           identity::CompilationDomain::Target, zc::mv(targetValue),
           identity::SemanticCompilerOptionsKey::from(2026, true, false, false), zc::mv(noOutput));
       ZC_IF_SOME(configValue, config) {
-        auto result = identity::CrateKey::from(package(), identity::CrateTargetKind::Library,
+        auto result = identity::CrateKey::from(userUnit(), identity::CrateTargetKind::Library,
                                                requireScalar<identity::TargetName>("binder"_zc),
                                                zc::mv(configValue));
         ZC_IF_SOME(value, result) { return zc::mv(value); }
@@ -149,25 +222,12 @@ identity::SemanticContextBrand requireContext(identity::SemanticContextFactory& 
 
 identity::SemanticContextFingerprint fingerprint(
     const identity::SemanticIdentityRegistrySet& registries) {
+  zc::Vector<identity::ToolchainSemanticContextInput> toolchainInputs;
   auto value = identity::SemanticContextFingerprint::compute(
-      registries, zc::ArrayPtr<const identity::PackageDependencyEdgeKey>(),
+      registries, toolchainInputs.asPtr(), zc::ArrayPtr<const identity::PackageDependencyEdgeKey>(),
       zc::ArrayPtr<const identity::CrateDependencyEdgeKey>());
   ZC_IF_SOME(result, value) { return zc::mv(result); }
   ZC_FAIL_REQUIRE("semantic context fingerprint test input failed");
-}
-
-identity::SemanticContextFingerprint emptyFingerprint() {
-  zc::Vector<identity::PackageKey> packages;
-  zc::Vector<identity::PackageDependencyEdgeKey> packageEdges;
-  zc::Vector<identity::CrateKey> crates;
-  zc::Vector<identity::CrateDependencyEdgeKey> crateEdges;
-  zc::Vector<identity::SourceContentIdentity> sources;
-  zc::Vector<identity::ModuleKey> modules;
-  auto value = identity::SemanticContextFingerprint::compute(packages.asPtr(), packageEdges.asPtr(),
-                                                             crates.asPtr(), crateEdges.asPtr(),
-                                                             sources.asPtr(), modules.asPtr());
-  ZC_IF_SOME(result, value) { return zc::mv(result); }
-  ZC_FAIL_REQUIRE("empty semantic context fingerprint failed");
 }
 
 struct ParsedSource final {
@@ -217,8 +277,9 @@ VerifiedParsedModule alternateVerifiedParsedModule(ParsedSource& sourceFixture) 
         zc::heapArray(sourceFixture.sources->getEntireTextForBuffer(sourceFixture.buffer)));
     ZC_REQUIRE(snapshot != zc::none);
     ZC_IF_SOME(snapshotValue, snapshot) {
-      ZC_REQUIRE(registries.collectPackage(package()) == identity::FrozenRegistryFailure::None);
-      ZC_REQUIRE(registries.freezePackages() == identity::FrozenRegistryFailure::None);
+      ZC_REQUIRE(registries.collectCompilationUnit(userUnit()) ==
+                 identity::FrozenRegistryFailure::None);
+      ZC_REQUIRE(registries.freezeCompilationUnits() == identity::FrozenRegistryFailure::None);
       ZC_REQUIRE(registries.collectCrate(crate()) == identity::FrozenRegistryFailure::None);
       ZC_REQUIRE(registries.freezeCrates() == identity::FrozenRegistryFailure::None);
       ZC_REQUIRE(registries.collectSourceFile(snapshotValue.clone()) ==
@@ -761,8 +822,9 @@ struct FrozenFixture final {
       : context(requireContext(factory)), registries(createRegistries()) {
     auto snapshot = sourceFixture.snapshot();
     const auto inventory = DefinitionInventory::collect(sourceFixture.tree);
-    ZC_REQUIRE(registries.collectPackage(package()) == identity::FrozenRegistryFailure::None);
-    ZC_REQUIRE(registries.freezePackages() == identity::FrozenRegistryFailure::None);
+    ZC_REQUIRE(registries.collectCompilationUnit(userUnit()) ==
+               identity::FrozenRegistryFailure::None);
+    ZC_REQUIRE(registries.freezeCompilationUnits() == identity::FrozenRegistryFailure::None);
     ZC_REQUIRE(registries.collectCrate(crate()) == identity::FrozenRegistryFailure::None);
     ZC_REQUIRE(registries.freezeCrates() == identity::FrozenRegistryFailure::None);
     ZC_REQUIRE(registries.collectSourceFile(snapshot.clone()) ==
@@ -770,7 +832,7 @@ struct FrozenFixture final {
     ZC_REQUIRE(registries.freezeSourceFiles() == identity::FrozenRegistryFailure::None);
     ZC_REQUIRE(registries.collectModule(module()) == identity::FrozenRegistryFailure::None);
     ZC_REQUIRE(registries.freezeModules() == identity::FrozenRegistryFailure::None);
-    packageId = requireHandle(registries.packages().find(package()));
+    compilationUnitId = requireHandle(registries.compilationUnits().find(userUnit()));
     crateId = requireHandle(registries.crates().find(crate()));
     moduleId = requireHandle(registries.modules().find(module()));
 
@@ -881,42 +943,11 @@ struct FrozenFixture final {
       ZC_REQUIRE(registries.freezeCallableParameters() == identity::FrozenRegistryFailure::None);
 
       ModuleGraphModule modules[] = {ModuleGraphModule(module(), moduleId)};
-      ParsedModuleGraphInput parsedModules[] = {{moduleId, parsedValue}};
       auto expectedFingerprint = fingerprint(registries);
-      zc::Vector<identity::CanonicalPathSegment> noRootSegments;
-      zc::Vector<ModuleSearchRoot> searchRoots;
-      searchRoots.add(ModuleSearchRoot::workspace(
-          crate(), identity::CanonicalWorkspaceRelativePath::from(0, zc::mv(noRootSegments))));
-      zc::Vector<ModuleSourceSnapshotRevision> snapshotRevisions;
-      snapshotRevisions.add(
-          ModuleSourceSnapshotRevision(snapshot.source().clone(), snapshot.contentDigest()));
-      zc::Vector<GeneratedModuleSourceRevision> generated;
-      zc::Vector<ModuleDependencyAliasRoot> aliases;
-      zc::Vector<identity::ModuleKey> ancestryPath;
-      ancestryPath.add(module());
-      zc::Vector<RequesterModuleAncestryCandidate> ancestry;
-      ancestry.add(RequesterModuleAncestryCandidate(module(), zc::mv(ancestryPath)));
-      zc::Vector<StructuralModuleCatalogEntry> catalog;
-      catalog.add(StructuralModuleCatalogEntry(module(), moduleId, snapshot.source().clone()));
-      auto resolverResult = StructuralModuleResolver::freeze(
-          context, registries,
-          ModuleResolutionEnvironmentRecord(zc::mv(searchRoots), zc::mv(snapshotRevisions),
-                                            zc::mv(generated), zc::mv(aliases), zc::mv(ancestry)),
-          zc::mv(catalog));
-      ZC_REQUIRE(resolverResult.is<StructuralModuleResolver>());
-      auto resolver = zc::mv(resolverResult.get<StructuralModuleResolver>());
-      auto graphResult = ModuleGraphVerifier::verify(ModuleGraphCandidate{
-          context, expectedFingerprint, registries,
-          zc::ArrayPtr<const identity::PackageDependencyEdgeKey>(),
-          zc::ArrayPtr<const identity::CrateDependencyEdgeKey>(), resolver, modules, parsedModules,
-          zc::ArrayPtr<const ModuleDependencyRequest>(),
-          zc::ArrayPtr<const ModulePathResolution>()});
-      if (graphResult.is<VerifiedModuleGraph>()) {
-        auto view = graphResult.get<VerifiedModuleGraph>().view(moduleId);
-        ZC_IF_SOME(value, view) { graph = zc::mv(value); }
-      } else if (graphResult.is<ModuleGraphInvariantFact>()) {
-        graphFailure = graphResult.get<ModuleGraphInvariantFact>().kind;
-      }
+      identity::SourceFileKey selectedSources[] = {snapshot.source().clone()};
+      auto verifiedGraph = test::VerifiedModuleGraphFixture::build(context, expectedFingerprint,
+                                                                   modules, selectedSources);
+      graph = verifiedGraph.view(moduleId);
       auto inventoryResult = FrozenDefinitionInventoryVerifier::verifySingleModule(
           context, moduleId, parsedValue, registries, zc::mv(ZC_ASSERT_NONNULL(inventoryInput)));
       if (inventoryResult.is<FrozenDefinitionInventoryView>()) {
@@ -943,7 +974,7 @@ struct FrozenFixture final {
   identity::SemanticContextFactory factory;
   identity::SemanticContextBrand context;
   identity::SemanticIdentityRegistrySet registries;
-  identity::PackageId packageId;
+  identity::CompilationUnitId compilationUnitId;
   identity::CrateId crateId;
   identity::ModuleId moduleId;
   identity::DefId definitionId;
@@ -951,7 +982,6 @@ struct FrozenFixture final {
   zc::Maybe<VerifiedParsedModule> parsed;
   zc::Maybe<VerifiedModuleGraphView> graph;
   zc::Maybe<FrozenDefinitionInventoryView> frozenDefinitions;
-  zc::Maybe<ModuleGraphInvariantKind> graphFailure;
   zc::Maybe<FrozenInventoryInvariantKind> inventoryFailure;
 };
 
@@ -973,8 +1003,9 @@ struct DependencySurfaceFixture final {
     const auto requesterInventory = DefinitionInventory::collect(requesterSource.tree);
     const auto dependencyInventory = DefinitionInventory::collect(dependencySource.tree);
 
-    ZC_REQUIRE(registries.collectPackage(package()) == identity::FrozenRegistryFailure::None);
-    ZC_REQUIRE(registries.freezePackages() == identity::FrozenRegistryFailure::None);
+    ZC_REQUIRE(registries.collectCompilationUnit(userUnit()) ==
+               identity::FrozenRegistryFailure::None);
+    ZC_REQUIRE(registries.freezeCompilationUnits() == identity::FrozenRegistryFailure::None);
     ZC_REQUIRE(registries.collectCrate(crate()) == identity::FrozenRegistryFailure::None);
     ZC_REQUIRE(registries.freezeCrates() == identity::FrozenRegistryFailure::None);
     ZC_REQUIRE(registries.collectSourceFile(requesterSnapshot.clone()) ==
@@ -991,7 +1022,7 @@ struct DependencySurfaceFixture final {
     }
     ZC_REQUIRE(registries.freezeModules() == identity::FrozenRegistryFailure::None);
 
-    packageId = requireHandle(registries.packages().find(package()));
+    compilationUnitId = requireHandle(registries.compilationUnits().find(userUnit()));
     crateId = requireHandle(registries.crates().find(crate()));
     requesterModule = requireHandle(registries.modules().find(requesterModuleKey));
     dependencyModule = requireHandle(registries.modules().find(dependencyModuleKey));
@@ -1117,38 +1148,55 @@ struct DependencySurfaceFixture final {
     auto resolver = zc::mv(resolverResult.get<StructuralModuleResolver>());
 
     ZC_IF_SOME(requesterParsedValue, requesterParsed) {
-      auto requests = ModuleDependencyRequestDeriver::derive(
-          requesterModule, requesterParsedValue, resolver.environmentRevision(), resolver);
+      auto requests =
+          ModuleDependencyRequestDeriver::derive(requesterModule, requesterParsedValue, resolver);
       ZC_REQUIRE(requests.is<zc::Vector<ModuleDependencyRequest>>());
       auto requestValues = zc::mv(requests.get<zc::Vector<ModuleDependencyRequest>>());
-      zc::Vector<ModulePathResolution> resolutions(requestValues.size());
-      for (auto& request : requestValues) {
-        auto resolution = resolveWithQuery(resolver, zc::mv(request));
-        ZC_REQUIRE(resolution.is<ModulePathResolution>());
-        resolutions.add(zc::mv(resolution.get<ModulePathResolution>()));
+      basic::ThreadPool scheduler(2);
+      query::QueryDatabase database(scheduler);
+      ZC_REQUIRE(
+          driver::incremental_module_resolution_query::registerIncrementalModuleResolutionQueries(
+              database));
+      auto pending = database.beginInputTransaction();
+      ZC_REQUIRE(pending != zc::none);
+      ZC_IF_SOME(transaction, pending) {
+        ZC_REQUIRE(driver::incremental_module_resolution_query::stageModuleResolutionQueryInputs(
+            transaction, resolver, requestValues.asPtr()));
+        ZC_REQUIRE(transaction.commit() != zc::none);
+      }
+      auto resolutionSnapshot = database.snapshot();
+      zc::Vector<identity::ModuleId> targets(requestValues.size());
+      for (const auto& request : requestValues) {
+        auto candidates =
+            resolutionSnapshot
+                .get<driver::incremental_module_resolution_query::ResolveModuleRequestQuery>(
+                    request.key());
+        ZC_REQUIRE(!candidates.isRuntimeFailure());
+        ZC_REQUIRE(candidates.kind() == query::QueryValueKind::Value);
+        ZC_REQUIRE(candidates.value().candidates().size() == 1);
+        auto target = registries.modules().find(candidates.value().candidates()[0]);
+        ZC_REQUIRE(target != zc::none);
+        targets.add(ZC_ASSERT_NONNULL(target));
       }
       ZC_IF_SOME(dependencyParsedValue, dependencyParsed) {
         zc::Vector<ModuleGraphModule> modules;
         modules.add(ModuleGraphModule(requesterModuleKey.clone(), requesterModule));
         modules.add(ModuleGraphModule(dependencyModuleKey.clone(), dependencyModule));
-        zc::Vector<ParsedModuleGraphInput> parsedModules;
-        parsedModules.add(ParsedModuleGraphInput{requesterModule, requesterParsedValue});
-        parsedModules.add(ParsedModuleGraphInput{dependencyModule, dependencyParsedValue});
         ZC_IF_SOME(root, dependencyRootModuleKey) {
           ZC_IF_SOME(rootModule, dependencyRootModule) {
             modules.add(ModuleGraphModule(root.clone(), rootModule));
-            parsedModules.add(ParsedModuleGraphInput{rootModule, dependencyParsedValue});
           }
         }
         auto expectedFingerprint = fingerprint(registries);
-        auto graphResult = ModuleGraphVerifier::verify(ModuleGraphCandidate{
-            context, expectedFingerprint, registries,
-            zc::ArrayPtr<const identity::PackageDependencyEdgeKey>(),
-            zc::ArrayPtr<const identity::CrateDependencyEdgeKey>(), resolver, modules.asPtr(),
-            parsedModules.asPtr(), zc::ArrayPtr<const ModuleDependencyRequest>(),
-            resolutions.asPtr()});
-        ZC_REQUIRE(graphResult.is<VerifiedModuleGraph>());
-        auto graph = zc::mv(graphResult.get<VerifiedModuleGraph>());
+        zc::Vector<identity::SourceFileKey> selectedSources;
+        selectedSources.add(requesterSourceKey.clone());
+        selectedSources.add(dependencySourceKey.clone());
+        if (dependencyRootModuleKey != zc::none) {
+          selectedSources.add(dependencySourceKey.clone());
+        }
+        auto graph = test::VerifiedModuleGraphFixture::build(
+            context, expectedFingerprint, modules.asPtr(), selectedSources.asPtr(),
+            requestValues.asPtr(), targets.asPtr());
         requesterGraph = graph.view(requesterModule);
         dependencyGraph = graph.view(dependencyModule);
 
@@ -1183,8 +1231,8 @@ struct DependencySurfaceFixture final {
       ZC_IF_SOME(graph, dependencyGraph) {
         ZC_IF_SOME(definitions, dependencyFrozenDefinitions) {
           return BindingInputVerifier::verify(BindingInputCandidate{
-              context, packageId, crateId, dependencyModule, registries, graph, parsed, definitions,
-              zc::ArrayPtr<const DependencyExportSurface>(), zc::none});
+              context, compilationUnitId, crateId, dependencyModule, registries, graph, parsed,
+              definitions, zc::ArrayPtr<const DependencyExportSurface>(), zc::none});
         }
       }
     }
@@ -1196,9 +1244,9 @@ struct DependencySurfaceFixture final {
     ZC_IF_SOME(parsed, requesterParsed) {
       ZC_IF_SOME(graph, requesterGraph) {
         ZC_IF_SOME(definitions, requesterFrozenDefinitions) {
-          return BindingInputVerifier::verify(
-              BindingInputCandidate{context, packageId, crateId, requesterModule, registries, graph,
-                                    parsed, definitions, dependencySurfaces, zc::none});
+          return BindingInputVerifier::verify(BindingInputCandidate{
+              context, compilationUnitId, crateId, requesterModule, registries, graph, parsed,
+              definitions, dependencySurfaces, zc::none});
         }
       }
     }
@@ -1238,7 +1286,7 @@ struct DependencySurfaceFixture final {
   identity::SemanticContextFactory factory;
   identity::SemanticContextBrand context;
   identity::SemanticIdentityRegistrySet registries;
-  identity::PackageId packageId;
+  identity::CompilationUnitId compilationUnitId;
   identity::CrateId crateId;
   identity::ModuleId requesterModule;
   identity::ModuleId dependencyModule;
@@ -1251,138 +1299,18 @@ struct DependencySurfaceFixture final {
   zc::Maybe<VerifiedExportSurface> dependencySurface;
 };
 
-StructuralModuleResolver resolverFor(FrozenFixture& fixture) {
-  zc::Vector<identity::CanonicalPathSegment> noRootSegments;
-  zc::Vector<ModuleSearchRoot> searchRoots;
-  searchRoots.add(ModuleSearchRoot::workspace(
-      crate(), identity::CanonicalWorkspaceRelativePath::from(0, zc::mv(noRootSegments))));
-  zc::Vector<ModuleSourceSnapshotRevision> snapshots;
-  ZC_REQUIRE(fixture.registries.sourceSnapshots().size() == 1);
-  const auto& snapshot = fixture.registries.sourceSnapshots()[0];
-  snapshots.add(ModuleSourceSnapshotRevision(snapshot.source().clone(), snapshot.contentDigest()));
-  zc::Vector<GeneratedModuleSourceRevision> generated;
-  zc::Vector<ModuleDependencyAliasRoot> aliases;
-  zc::Vector<identity::ModuleKey> ancestryPath;
-  ancestryPath.add(module());
-  zc::Vector<RequesterModuleAncestryCandidate> ancestry;
-  ancestry.add(RequesterModuleAncestryCandidate(module(), zc::mv(ancestryPath)));
-  zc::Vector<StructuralModuleCatalogEntry> catalog;
-  catalog.add(StructuralModuleCatalogEntry(module(), fixture.moduleId, snapshot.source().clone()));
-  auto result = StructuralModuleResolver::freeze(
-      fixture.context, fixture.registries,
-      ModuleResolutionEnvironmentRecord(zc::mv(searchRoots), zc::mv(snapshots), zc::mv(generated),
-                                        zc::mv(aliases), zc::mv(ancestry)),
-      zc::mv(catalog));
-  ZC_REQUIRE(result.is<StructuralModuleResolver>());
-  return zc::mv(result.get<StructuralModuleResolver>());
-}
-
-zc::OneOf<ModulePathResolution, ModuleResolutionInvariantFact> resolveWithQuery(
-    StructuralModuleResolver& resolver, ModuleDependencyRequest&& request) {
-  basic::ThreadPool scheduler(2);
-  query::QueryDatabase database(scheduler);
-  ZC_REQUIRE(
-      driver::incremental_module_resolution_query::registerIncrementalModuleResolutionQueries(
-          database));
-  zc::Vector<ModuleDependencyRequest> requests;
-  requests.add(zc::mv(request));
-  auto pending = database.beginInputTransaction();
-  ZC_REQUIRE(pending != zc::none);
-  ZC_IF_SOME(transaction, pending) {
-    ZC_REQUIRE(driver::incremental_module_resolution_query::stageModuleResolutionQueryInputs(
-        transaction, resolver, requests.asPtr()));
-    ZC_REQUIRE(transaction.commit() != zc::none);
-  }
-  auto snapshot = database.snapshot();
-  auto candidates =
-      snapshot.get<driver::incremental_module_resolution_query::ResolveModuleRequestQuery>(
-          requests[0].key());
-  ZC_REQUIRE(!candidates.isRuntimeFailure());
-  ZC_REQUIRE(candidates.kind() == query::QueryValueKind::Value);
-  return resolver.materializeQueryResolution(zc::mv(requests[0]), candidates.value());
-}
-
 BindingInputVerificationResult verify(FrozenFixture& fixture) {
   ZC_IF_SOME(parsed, fixture.parsed) {
     ZC_IF_SOME(graph, fixture.graph) {
       ZC_IF_SOME(definitions, fixture.frozenDefinitions) {
         return BindingInputVerifier::verify(
-            BindingInputCandidate{fixture.context, fixture.packageId, fixture.crateId,
+            BindingInputCandidate{fixture.context, fixture.compilationUnitId, fixture.crateId,
                                   fixture.moduleId, fixture.registries, graph, parsed, definitions,
                                   zc::ArrayPtr<const DependencyExportSurface>(), zc::none});
       }
     }
   }
   ZC_FAIL_REQUIRE("binding verification requires complete verified inputs");
-}
-
-void expectGraphFailure(ModuleGraphVerificationResult& result, ModuleGraphInvariantKind kind) {
-  ZC_REQUIRE(result.is<ModuleGraphInvariantFact>());
-  ZC_EXPECT(result.get<ModuleGraphInvariantFact>().kind == kind);
-}
-
-ModuleDependencyRequest importRequestFor(FrozenFixture& fixture,
-                                         const StructuralModuleResolver& resolver) {
-  ZC_IF_SOME(parsed, fixture.parsed) {
-    ast::NodeId importNode;
-    uint32_t importOrdinal = 0;
-    uint32_t ordinal = 0;
-    ast::visitTreePreOrder(parsed.tree(), parsed.tree().root(),
-                           [&](ast::NodeId node, const ast::Node& syntax) {
-                             const auto currentOrdinal = ordinal++;
-                             if (!importNode && syntax.kind == ast::SyntaxKind::ImportDeclaration) {
-                               importNode = node;
-                               importOrdinal = currentOrdinal;
-                             }
-                           });
-    ZC_REQUIRE(importNode.value != 0);
-    const auto& importSyntax = parsed.tree().node(importNode);
-    const ast::NodeId pathNode(importSyntax.payload.words[ast::kImportDeclarationPathWord]);
-    ZC_REQUIRE(parsed.tree().contains(pathNode));
-    const auto& pathSyntax = parsed.tree().node(pathNode);
-    ZC_REQUIRE(pathSyntax.kind == ast::SyntaxKind::ModulePath);
-    const ast::IdentList pathSegments{pathSyntax.payload.words[ast::kModulePathSegmentsFirstWord],
-                                      pathSyntax.payload.words[ast::kModulePathSegmentsSizeWord]};
-    zc::Vector<identity::ModulePathSegment> normalizedPath(pathSegments.size);
-    for (const auto segment : parsed.tree().identList(pathSegments)) {
-      auto value = identity::ModulePathSegment::fromSource(parsed.tree().ident(segment));
-      ZC_REQUIRE(value != zc::none);
-      ZC_IF_SOME(canonical, value) { normalizedPath.add(zc::mv(canonical)); }
-    }
-    auto span = parsed.spanFor(importSyntax.range);
-    ZC_REQUIRE(span != zc::none);
-    ZC_IF_SOME(spanValue, span) {
-      auto key = resolver.resolutionKey(fixture.moduleId, identity::ModuleDependencyKind::Import,
-                                        zc::mv(normalizedPath));
-      ZC_REQUIRE(key != zc::none);
-      zc::Vector<ModuleSyntaxDependencySite> sites;
-      sites.add(ModuleSyntaxDependencySite(importNode, zc::mv(spanValue), importOrdinal));
-      zc::Maybe<ModuleDependencyRequest> request;
-      ZC_IF_SOME(keyValue, key) {
-        request = ModuleDependencyRequest::source(fixture.moduleId, zc::mv(keyValue),
-                                                  resolver.environmentRevision(), zc::mv(sites));
-      }
-      ZC_REQUIRE(request != zc::none);
-      ZC_IF_SOME(value, request) { return zc::mv(value); }
-    }
-  }
-  ZC_FAIL_REQUIRE("import request fixture failed");
-}
-
-ModuleGraphVerificationResult verifyGraph(FrozenFixture& fixture,
-                                          const StructuralModuleResolver& resolver,
-                                          zc::ArrayPtr<const ModulePathResolution> resolutions) {
-  ZC_IF_SOME(parsed, fixture.parsed) {
-    ModuleGraphModule modules[] = {ModuleGraphModule(module(), fixture.moduleId)};
-    ParsedModuleGraphInput parsedModules[] = {{fixture.moduleId, parsed}};
-    auto expectedFingerprint = fingerprint(fixture.registries);
-    return ModuleGraphVerifier::verify(ModuleGraphCandidate{
-        fixture.context, expectedFingerprint, fixture.registries,
-        zc::ArrayPtr<const identity::PackageDependencyEdgeKey>(),
-        zc::ArrayPtr<const identity::CrateDependencyEdgeKey>(), resolver, modules, parsedModules,
-        zc::ArrayPtr<const ModuleDependencyRequest>(), resolutions});
-  }
-  ZC_FAIL_REQUIRE("module graph verification fixture requires parsed input");
 }
 
 class ModuleGraphDiagnosticCapture final : public diagnostics::DiagnosticConsumer {
@@ -1416,27 +1344,6 @@ public:
     rendered = zc::str(output.getArray().asChars());
   }
 };
-
-void expectModuleGraphDiagnostic(const ModuleGraphDiagnosticCapture& capture,
-                                 ParsedSource& sourceFixture,
-                                 const ModuleGraphSourceFailure& failure,
-                                 diagnostics::DiagID expectedId, zc::StringPtr expectedPath,
-                                 zc::StringPtr expectedRendered) {
-  ZC_EXPECT(capture.count == 1);
-  ZC_EXPECT(capture.id == expectedId);
-  ZC_EXPECT(capture.argumentCount == 1);
-  ZC_EXPECT(capture.argument == expectedPath);
-  ZC_EXPECT(capture.rendered == expectedRendered);
-  ZC_REQUIRE(capture.ranges.size() == 1);
-  ZC_EXPECT(capture.ranges[0].getIsCharRange());
-  const auto& span = failure.request().syntaxSite().span;
-  ZC_EXPECT(sourceFixture.sources->getLocOffsetInBuffer(capture.primary, sourceFixture.buffer) ==
-            span.byteStart());
-  ZC_EXPECT(sourceFixture.sources->getLocOffsetInBuffer(capture.ranges[0].getStart(),
-                                                        sourceFixture.buffer) == span.byteStart());
-  ZC_EXPECT(sourceFixture.sources->getLocOffsetInBuffer(capture.ranges[0].getEnd(),
-                                                        sourceFixture.buffer) == span.byteEnd());
-}
 
 const BinderInvariantFact& requireBinderInvariant(BindingVerificationResult& result) {
   ZC_REQUIRE(result.is<InvariantRejected>());
@@ -2204,8 +2111,9 @@ ZC_TEST("ParsedModule.RejectsStaleQuerySource") {
   auto registriesValue = identity::SemanticIdentityRegistrySet::create(factory, context);
   ZC_REQUIRE(registriesValue != zc::none);
   ZC_IF_SOME(registries, registriesValue) {
-    ZC_REQUIRE(registries.collectPackage(package()) == identity::FrozenRegistryFailure::None);
-    ZC_REQUIRE(registries.freezePackages() == identity::FrozenRegistryFailure::None);
+    ZC_REQUIRE(registries.collectCompilationUnit(userUnit()) ==
+               identity::FrozenRegistryFailure::None);
+    ZC_REQUIRE(registries.freezeCompilationUnits() == identity::FrozenRegistryFailure::None);
     ZC_REQUIRE(registries.collectCrate(crate()) == identity::FrozenRegistryFailure::None);
     ZC_REQUIRE(registries.freezeCrates() == identity::FrozenRegistryFailure::None);
     auto stale =
@@ -2672,13 +2580,13 @@ ZC_TEST("BindingVerifier.PublishesCompletePrivateFunctionFactsAndSurface") {
   ZC_EXPECT(!output.surface.visibleEntries()[0].exported);
   ZC_EXPECT(output.surface.visibleEntries()[0].visibility.value().is<ModuleVisibility>());
   ZC_EXPECT(zc::encodeHex(output.surface.revision().digest().bytes()) ==
-            "55b8869dbbfd5fc9ebd2bc410889a1d890fcadd7c0d80a2afcce1fdaf5d38d38"_zc);
+            "33ff40332a1ec68069d374a6b3a556080758aa9d2ee7fbbe28c779185f32ad12"_zc);
   ZC_IF_SOME(dump, encodeBindingAllocationDump(input, output.metadata.scopes(),
                                                output.metadata.labels())) {
-    ZC_EXPECT(dump.size() == 1426);
+    ZC_EXPECT(dump.size() == 1433);
     ZC_IF_SOME(digest, identity::sha256(dump.asPtr())) {
       ZC_EXPECT(zc::encodeHex(digest.bytes()) ==
-                "440212368bbec70fd40c4f81bfc5ef0adc955c0a56241696901059b5f464ea88"_zc);
+                "ca2482fac415523141aea9d8f8876a2e72f215680f0bfc5182e5e1d1b77b305e"_zc);
     }
   }
 }
@@ -2858,11 +2766,11 @@ ZC_TEST("LabelFacts.SortsCallableOwnersByCanonicalDefinitionKey") {
     ZC_IF_SOME(alfaKeyValue, alfaKey) {
       const auto zuluBytes = zuluKeyValue.encode();
       const auto alfaBytes = alfaKeyValue.encode();
-      ZC_EXPECT(encodedBytesLess(zuluBytes.asPtr(), alfaBytes.asPtr()));
+      ZC_EXPECT(encodedBytesLess(alfaBytes.asPtr(), zuluBytes.asPtr()));
     }
   }
-  ZC_EXPECT(value.labels[0].name.text() == "zulu_label"_zc);
-  ZC_EXPECT(value.labels[1].name.text() == "alfa_label"_zc);
+  ZC_EXPECT(value.labels[0].name.text() == "alfa_label"_zc);
+  ZC_EXPECT(value.labels[1].name.text() == "zulu_label"_zc);
   ZC_EXPECT(value.labels[0].identity.index() == 0);
   ZC_EXPECT(value.labels[1].identity.index() == 0);
 
@@ -2947,7 +2855,7 @@ ZC_TEST("BindingAllocationDump.EncodesSchemaBackedLabelRecords") {
     }
     ZC_IF_SOME(digest, identity::sha256(completeValue.asPtr())) {
       ZC_EXPECT(zc::encodeHex(digest.bytes()) ==
-                "619cb6d284133984a727a8d191fb5eb6d788f7358c6c77a3ea24cfd9b403fbc7"_zc);
+                "a7b2e6d18b759ccbb20045587c05dc158c6dde2385763befb7c69f92f803c0cc"_zc);
     }
   }
   auto verification = BindingVerifier::verify(input, zc::mv(value));
@@ -4328,7 +4236,7 @@ ZC_TEST("BindingVerifier.RejectsForeignSurfaceAndScopeIdentities") {
   ZC_REQUIRE(surfaceCandidate.is<BindingMetadataCandidate>());
   auto& surface = surfaceCandidate.get<BindingMetadataCandidate>().currentSurface;
   surface.sourceModule = foreignInput.module();
-  surface.sourcePackage = foreignInput.package();
+  surface.sourceCompilationUnit = foreignInput.compilationUnit();
   auto surfaceResult =
       BindingVerifier::verify(localInput, zc::mv(surfaceCandidate.get<BindingMetadataCandidate>()));
   ZC_EXPECT(requireIdentityInvariant(surfaceResult).kind() ==
@@ -9224,235 +9132,37 @@ ZC_TEST("BindingActivation.RejectsDuplicateBlockLocals") {
   ZC_EXPECT(failures[0].notes[0].diagnostic == BinderDiagnosticCode::PreviousDeclarationHere);
 }
 
-ZC_TEST("ModuleGraph.ClassifiesUnresolvedSyntaxRequesterAndRevisionFailures") {
-  ParsedSource importSource("module root;\nimport math::geometry;\n"_zc);
-  FrozenFixture unresolved(importSource);
-  ZC_IF_SOME(kind, unresolved.graphFailure) {
-    ZC_EXPECT(kind == ModuleGraphInvariantKind::IncompleteResolution);
+ZC_TEST("ModuleGraphSourceFailure.RejectsReservedToolchainRootWithVerifiedAnchor") {
+  ParsedSource sourceFixture("module core;\n"_zc);
+  FrozenFixture fixture(sourceFixture);
+  ZC_IF_SOME(parsed, fixture.parsed) {
+    ModuleGraphModule moduleInput(module(), fixture.moduleId);
+    ParsedModuleGraphInput parsedInput{fixture.moduleId, parsed};
+    auto built =
+        ModuleGraphSourceFailureBuilder::buildToolchainModuleRootReserved(moduleInput, parsedInput);
+    ZC_REQUIRE(built != zc::none);
+    ZC_IF_SOME(failure, built) {
+      ZC_EXPECT(failure.module().encode().asPtr() == module().encode().asPtr());
+      ZC_EXPECT(failure.source().sameAs(parsed.source()));
+      ZC_REQUIRE(failure.declaredNamePath().components().size() == 1);
+      ZC_EXPECT(failure.declaredNamePath().components()[0] == 0);
+      ZC_EXPECT(failure.schemaPreorderOrdinal() == 1);
+      ZC_REQUIRE(failure.argument().path().size() == 1);
+      ZC_EXPECT(failure.argument().path()[0].text() == "core"_zc);
+
+      auto consumer = zc::heap<ModuleGraphDiagnosticCapture>();
+      const auto& capture = *consumer;
+      sourceFixture.diagnostics->addConsumer(zc::mv(consumer));
+      ZC_EXPECT(canEmitModuleGraphSourceFailure(parsed, failure));
+      ZC_EXPECT(emitModuleGraphSourceFailure(*sourceFixture.diagnostics, parsed, failure));
+      ZC_EXPECT(capture.count == 1);
+      ZC_EXPECT(capture.id == diagnostics::DiagID::ToolchainModuleRootReserved);
+      ZC_EXPECT(capture.argument == "core"_zc);
+      ZC_EXPECT(capture.rendered == "Module root 'core' is reserved by the compiler toolchain"_zc);
+    }
   } else {
     ZC_EXPECT(false);
   }
-
-  ParsedSource sourceFixture("module root;\n"_zc);
-  FrozenFixture fixture(sourceFixture);
-  ZC_IF_SOME(parsed, fixture.parsed) {
-    auto requesterResolver = resolverFor(fixture);
-    ModuleGraphModule invalidModules[] = {ModuleGraphModule(module(), identity::ModuleId())};
-    ParsedModuleGraphInput invalidParsed[] = {{identity::ModuleId(), parsed}};
-    auto expectedFingerprint = fingerprint(fixture.registries);
-    auto requesterResult = ModuleGraphVerifier::verify(ModuleGraphCandidate{
-        fixture.context, expectedFingerprint, fixture.registries,
-        zc::ArrayPtr<const identity::PackageDependencyEdgeKey>(),
-        zc::ArrayPtr<const identity::CrateDependencyEdgeKey>(), requesterResolver, invalidModules,
-        invalidParsed, zc::ArrayPtr<const ModuleDependencyRequest>(),
-        zc::ArrayPtr<const ModulePathResolution>()});
-    expectGraphFailure(requesterResult, ModuleGraphInvariantKind::InputMismatch);
-
-    auto revisionResolver = resolverFor(fixture);
-    ModuleGraphModule modules[] = {ModuleGraphModule(module(), fixture.moduleId)};
-    ParsedModuleGraphInput parsedModules[] = {{fixture.moduleId, parsed}};
-    auto staleFingerprint = emptyFingerprint();
-    auto revisionResult = ModuleGraphVerifier::verify(ModuleGraphCandidate{
-        fixture.context, staleFingerprint, fixture.registries,
-        zc::ArrayPtr<const identity::PackageDependencyEdgeKey>(),
-        zc::ArrayPtr<const identity::CrateDependencyEdgeKey>(), revisionResolver, modules,
-        parsedModules, zc::ArrayPtr<const ModuleDependencyRequest>(),
-        zc::ArrayPtr<const ModulePathResolution>()});
-    expectGraphFailure(revisionResult, ModuleGraphInvariantKind::RevisionMismatch);
-  }
-}
-
-ZC_TEST("StructuralModuleResolver.FreezesEnvironmentAndIssuesExactClosedReceipts") {
-  ParsedSource sourceFixture("module root;\n"_zc);
-  FrozenFixture fixture(sourceFixture);
-  ZC_REQUIRE(fixture.registries.sourceSnapshots().size() == 1);
-
-  zc::Vector<identity::CanonicalPathSegment> noRootSegments;
-  zc::Vector<ModuleSearchRoot> searchRoots;
-  searchRoots.add(ModuleSearchRoot::workspace(
-      crate(), identity::CanonicalWorkspaceRelativePath::from(0, zc::mv(noRootSegments))));
-  zc::Vector<ModuleSourceSnapshotRevision> snapshots;
-  const auto& snapshot = fixture.registries.sourceSnapshots()[0];
-  snapshots.add(ModuleSourceSnapshotRevision(snapshot.source().clone(), snapshot.contentDigest()));
-  zc::Vector<GeneratedModuleSourceRevision> generated;
-  zc::Vector<ModuleDependencyAliasRoot> aliases;
-  zc::Vector<identity::ModuleKey> ancestryPath;
-  ancestryPath.add(module());
-  zc::Vector<RequesterModuleAncestryCandidate> ancestry;
-  ancestry.add(RequesterModuleAncestryCandidate(module(), zc::mv(ancestryPath)));
-  zc::Vector<StructuralModuleCatalogEntry> catalog;
-  catalog.add(StructuralModuleCatalogEntry(module(), fixture.moduleId, snapshot.source().clone()));
-
-  auto freezeResult = StructuralModuleResolver::freeze(
-      fixture.context, fixture.registries,
-      ModuleResolutionEnvironmentRecord(zc::mv(searchRoots), zc::mv(snapshots), zc::mv(generated),
-                                        zc::mv(aliases), zc::mv(ancestry)),
-      zc::mv(catalog));
-  ZC_REQUIRE(freezeResult.is<StructuralModuleResolver>());
-  auto resolver = zc::mv(freezeResult.get<StructuralModuleResolver>());
-  ZC_EXPECT(resolver.environmentRevision().bytes().size() == 32);
-
-  zc::Vector<identity::ModulePathSegment> noPreludePath;
-  auto preludeKey = resolver.resolutionKey(
-      fixture.moduleId, identity::ModuleDependencyKind::Prelude, zc::mv(noPreludePath));
-  ZC_REQUIRE(preludeKey != zc::none);
-  zc::Maybe<ModuleDependencyRequest> preludeRequest;
-  ZC_IF_SOME(keyValue, preludeKey) {
-    preludeRequest = ModuleDependencyRequest::prelude(fixture.moduleId, zc::mv(keyValue), module(),
-                                                      resolver.environmentRevision(),
-                                                      resolver.environmentRevision());
-  }
-  ZC_REQUIRE(preludeRequest != zc::none);
-  ZC_IF_SOME(request, preludeRequest) {
-    auto resolution = resolveWithQuery(resolver, zc::mv(request));
-    ZC_REQUIRE(resolution.is<ModulePathResolution>());
-    auto& path = resolution.get<ModulePathResolution>();
-    ZC_REQUIRE(path.is<ResolvedModulePath>());
-    ZC_EXPECT(path.get<ResolvedModulePath>().target == fixture.moduleId);
-    ZC_EXPECT(path.get<ResolvedModulePath>().receipt.candidates().size() == 1);
-  }
-
-  zc::Vector<identity::ModulePathSegment> missingPath;
-  missingPath.add(requireScalar<identity::ModulePathSegment>("missing"_zc));
-  ZC_IF_SOME(parsed, fixture.parsed) {
-    auto missingKey = resolver.resolutionKey(
-        fixture.moduleId, identity::ModuleDependencyKind::Import, zc::mv(missingPath));
-    ZC_REQUIRE(missingKey != zc::none);
-    zc::Vector<ModuleSyntaxDependencySite> missingSites;
-    missingSites.add(ModuleSyntaxDependencySite(parsed.tree().root(), parsed.rootSpan(), 0));
-    zc::Maybe<ModuleDependencyRequest> missingRequest;
-    ZC_IF_SOME(keyValue, missingKey) {
-      missingRequest = ModuleDependencyRequest::source(
-          fixture.moduleId, zc::mv(keyValue), resolver.environmentRevision(), zc::mv(missingSites));
-    }
-    ZC_REQUIRE(missingRequest != zc::none);
-    ZC_IF_SOME(request, missingRequest) {
-      auto resolution = resolveWithQuery(resolver, zc::mv(request));
-      ZC_REQUIRE(resolution.is<ModulePathResolution>());
-      auto& path = resolution.get<ModulePathResolution>();
-      ZC_REQUIRE(path.is<MissingModulePath>());
-      ZC_EXPECT(path.get<MissingModulePath>().receipt.candidates().size() == 0);
-    }
-  }
-}
-
-ZC_TEST("ModuleGraph.RejectsResolvedImportSelfEdgeAsCircularImport") {
-  ParsedSource sourceFixture("module root;\nimport root::{member};\n"_zc);
-  FrozenFixture fixture(sourceFixture);
-  auto resolver = resolverFor(fixture);
-  auto resolutionResult = resolveWithQuery(resolver, importRequestFor(fixture, resolver));
-  ZC_REQUIRE(resolutionResult.is<ModulePathResolution>());
-  auto& resolution = resolutionResult.get<ModulePathResolution>();
-  ZC_REQUIRE(resolution.is<ResolvedModulePath>());
-  ZC_EXPECT(resolution.get<ResolvedModulePath>().target == fixture.moduleId);
-
-  ModulePathResolution resolutions[] = {zc::mv(resolution)};
-  auto graphResult = verifyGraph(fixture, resolver, resolutions);
-  ZC_REQUIRE(graphResult.is<ModuleGraphSourceRejected>());
-  const auto failures = graphResult.get<ModuleGraphSourceRejected>().failures();
-  ZC_REQUIRE(failures.size() == 1);
-  ZC_EXPECT(failures[0].diagnostic() == ModuleGraphDiagnostic::CircularImport);
-  ZC_EXPECT(failures[0].request().requester() == fixture.moduleId);
-  ZC_EXPECT(failures[0].request().kind() == identity::ModuleDependencyKind::Import);
-  ZC_REQUIRE(failures[0].candidates().size() == 1);
-  ZC_EXPECT(failures[0].candidates()[0].encode().asPtr() == module().encode().asPtr());
-
-  auto consumer = zc::heap<ModuleGraphDiagnosticCapture>();
-  const auto& capture = *consumer;
-  sourceFixture.diagnostics->addConsumer(zc::mv(consumer));
-  ZC_IF_SOME(parsed, fixture.parsed) {
-    ZC_EXPECT(emitModuleGraphSourceFailure(*sourceFixture.diagnostics, parsed, failures[0]));
-    expectModuleGraphDiagnostic(capture, sourceFixture, failures[0],
-                                diagnostics::DiagID::CircularImport, "root"_zc,
-                                "Circular import detected for module 'root'"_zc);
-  } else {
-    ZC_EXPECT(false);
-  }
-}
-
-ZC_TEST("ModuleGraph.RejectsMissingImportAsImportModuleNotFound") {
-  ParsedSource sourceFixture("module root;\nimport missing::{member};\n"_zc);
-  FrozenFixture fixture(sourceFixture);
-  auto resolver = resolverFor(fixture);
-  auto resolutionResult = resolveWithQuery(resolver, importRequestFor(fixture, resolver));
-  ZC_REQUIRE(resolutionResult.is<ModulePathResolution>());
-  auto& resolution = resolutionResult.get<ModulePathResolution>();
-  ZC_REQUIRE(resolution.is<MissingModulePath>());
-
-  ModulePathResolution resolutions[] = {zc::mv(resolution)};
-  auto graphResult = verifyGraph(fixture, resolver, resolutions);
-  ZC_REQUIRE(graphResult.is<ModuleGraphSourceRejected>());
-  const auto failures = graphResult.get<ModuleGraphSourceRejected>().failures();
-  ZC_REQUIRE(failures.size() == 1);
-  ZC_EXPECT(failures[0].diagnostic() == ModuleGraphDiagnostic::ImportModuleNotFound);
-  ZC_EXPECT(failures[0].request().requester() == fixture.moduleId);
-  ZC_EXPECT(failures[0].request().kind() == identity::ModuleDependencyKind::Import);
-  ZC_EXPECT(failures[0].candidates().size() == 0);
-
-  auto consumer = zc::heap<ModuleGraphDiagnosticCapture>();
-  const auto& capture = *consumer;
-  sourceFixture.diagnostics->addConsumer(zc::mv(consumer));
-  ZC_IF_SOME(parsed, fixture.parsed) {
-    ZC_EXPECT(emitModuleGraphSourceFailure(*sourceFixture.diagnostics, parsed, failures[0]));
-    expectModuleGraphDiagnostic(capture, sourceFixture, failures[0],
-                                diagnostics::DiagID::ImportModuleNotFound, "missing"_zc,
-                                "Cannot resolve module 'missing'"_zc);
-  } else {
-    ZC_EXPECT(false);
-  }
-
-  ParsedSource foreignSource("module root;\n"_zc);
-  auto foreignParsed = alternateVerifiedParsedModule(foreignSource);
-  ZC_EXPECT(!emitModuleGraphSourceFailure(*sourceFixture.diagnostics, foreignParsed, failures[0]));
-  ZC_EXPECT(capture.count == 1);
-}
-
-ZC_TEST("ModuleGraph.RejectsResolutionReceiptFromAnotherResolverIssuer") {
-  ParsedSource sourceFixture("module root;\nimport root::{member};\n"_zc);
-  FrozenFixture fixture(sourceFixture);
-  auto receiptIssuer = resolverFor(fixture);
-  auto graphResolver = resolverFor(fixture);
-  ZC_REQUIRE(receiptIssuer.environmentRevision() == graphResolver.environmentRevision());
-  auto resolutionResult = resolveWithQuery(receiptIssuer, importRequestFor(fixture, receiptIssuer));
-  ZC_REQUIRE(resolutionResult.is<ModulePathResolution>());
-  auto& resolution = resolutionResult.get<ModulePathResolution>();
-  ZC_REQUIRE(resolution.is<ResolvedModulePath>());
-
-  ModulePathResolution resolutions[] = {zc::mv(resolution)};
-  auto graphResult = verifyGraph(fixture, graphResolver, resolutions);
-  expectGraphFailure(graphResult, ModuleGraphInvariantKind::InvalidEdge);
-}
-
-ZC_TEST("ModuleGraphRevision.IsDeterministicForEquivalentSingleModuleGraphs") {
-  ParsedSource firstSource("module root;\n"_zc);
-  ParsedSource secondSource("module root;\n"_zc);
-  FrozenFixture first(firstSource);
-  FrozenFixture second(secondSource);
-  ZC_IF_SOME(firstGraph, first.graph) {
-    ZC_IF_SOME(secondGraph, second.graph) {
-      ZC_EXPECT(firstGraph.revision().digest() == secondGraph.revision().digest());
-      ZC_EXPECT(zc::encodeHex(firstGraph.revision().digest().bytes()) ==
-                "38bfc215078d7bf2119548f8d95cee15e0c6feca7363a8443463084ff6c951d1"_zc);
-      return;
-    }
-  }
-  ZC_EXPECT(false);
-}
-
-ZC_TEST("ModuleGraph.PublishesTheVerifiedSelectedSourceWithoutARequesterView") {
-  ParsedSource sourceFixture("module root;\n"_zc);
-  FrozenFixture fixture(sourceFixture);
-  auto resolver = resolverFor(fixture);
-  auto graphResult = verifyGraph(fixture, resolver, zc::ArrayPtr<const ModulePathResolution>());
-  ZC_REQUIRE(graphResult.is<VerifiedModuleGraph>());
-  const auto& graph = graphResult.get<VerifiedModuleGraph>();
-  auto selected = graph.sourceFile(fixture.moduleId);
-  ZC_REQUIRE(selected != zc::none);
-  ZC_IF_SOME(source, selected) {
-    ZC_REQUIRE(fixture.registries.sourceSnapshots().size() == 1);
-    ZC_EXPECT(source.sameAs(fixture.registries.sourceSnapshots()[0].source()));
-  }
-  ZC_EXPECT(graph.sourceFile(identity::ModuleId()) == zc::none);
 }
 
 ZC_TEST("ModuleGraphInvariant.EmitsFatalZOM9956WithOccurrenceCount") {

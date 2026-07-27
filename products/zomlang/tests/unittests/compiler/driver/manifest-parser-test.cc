@@ -65,6 +65,14 @@ ManifestParseResult parseWithFiles(zc::StringPtr source, zc::ArrayPtr<const zc::
   ZC_FAIL_REQUIRE("valid source inventory was rejected");
 }
 
+size_t offsetOf(zc::StringPtr source, zc::StringPtr needle) {
+  ZC_REQUIRE(needle.size() != 0 && needle.size() <= source.size());
+  for (size_t offset = 0; offset + needle.size() <= source.size(); ++offset) {
+    if (source.slice(offset, offset + needle.size()) == needle) { return offset; }
+  }
+  ZC_FAIL_REQUIRE("expected manifest text was not found");
+}
+
 }  // namespace
 
 ZC_TEST("ManifestParser.ParsesMinimalPackage") {
@@ -413,6 +421,37 @@ exported-environment = ["GENERATED_MODE"]
   ZC_REQUIRE(build.environment().size() == 2);
   ZC_EXPECT(build.environment()[0].text() == "HOME"_zc);
   ZC_EXPECT(build.environment()[1].text() == "ZOM_TARGET"_zc);
+}
+
+ZC_TEST("ManifestParser.RetainsExactTargetAndDependencyAliasOrigins") {
+  const auto source = R"toml([package]
+name = "app"
+version = "1.0.0"
+edition = "2026"
+
+[[bin]]
+name = "core"
+path = "src/bin/core.zom"
+
+[dependencies]
+core = { package = "provider", path = "../provider" }
+)toml"_zc;
+  const zc::StringPtr files[] = {"src/bin/core.zom"_zc};
+  auto result = parseWithFiles(source, zc::arrayPtr(files));
+  ZC_REQUIRE(result.is<NormalizedManifest>());
+  const auto& manifest = result.get<NormalizedManifest>();
+  ZC_REQUIRE(manifest.binaries().size() == 1);
+  const auto& targetSpan = manifest.binaries()[0].origin().manifestSpan();
+  const auto targetHeader = "[[bin]]"_zc;
+  const auto targetStart = offsetOf(source, targetHeader);
+  ZC_EXPECT(targetSpan.byteStart() == targetStart);
+  ZC_EXPECT(targetSpan.byteEnd() == targetStart + targetHeader.size());
+
+  ZC_REQUIRE(manifest.targetDependencies().size() == 1);
+  const auto& dependencySpan = manifest.targetDependencies()[0].origin().manifestSpan();
+  const auto aliasStart = offsetOf(source, "core = { package"_zc);
+  ZC_EXPECT(dependencySpan.byteStart() == aliasStart);
+  ZC_EXPECT(dependencySpan.byteEnd() == aliasStart + "core"_zc.size());
 }
 
 ZC_TEST("ManifestParser.RejectsInvalidBuildCapabilities") {

@@ -101,6 +101,10 @@ public:
   static bool emitManifestFailure(diagnostics::DiagnosticEngine& diagnostics,
                                   zc::ArrayPtr<const PackageDiagnosticDocument> documents,
                                   const ManifestFailure& failure);
+  static bool emitToolchainModuleRootFailure(
+      diagnostics::DiagnosticEngine& diagnostics,
+      zc::ArrayPtr<const PackageDiagnosticDocument> documents,
+      const PackageToolchainModuleRootFailure& failure);
 };
 
 }  // namespace zomlang::compiler::driver::package

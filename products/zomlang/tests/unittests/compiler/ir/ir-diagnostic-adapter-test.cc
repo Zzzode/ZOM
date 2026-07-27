@@ -14,14 +14,15 @@ namespace zomlang::compiler::ir {
 namespace {
 
 identity::SemanticContextFingerprint emptyContextFingerprint() {
-  zc::ArrayPtr<const identity::PackageKey> packages;
+  zc::ArrayPtr<const identity::CompilationUnitIdentity> compilationUnits;
+  zc::ArrayPtr<const identity::ToolchainSemanticContextInput> toolchainInputs;
   zc::ArrayPtr<const identity::PackageDependencyEdgeKey> packageEdges;
   zc::ArrayPtr<const identity::CrateKey> crates;
   zc::ArrayPtr<const identity::CrateDependencyEdgeKey> crateEdges;
   zc::ArrayPtr<const identity::SourceContentIdentity> sources;
   zc::ArrayPtr<const identity::ModuleKey> modules;
-  auto result = identity::SemanticContextFingerprint::compute(packages, packageEdges, crates,
-                                                              crateEdges, sources, modules);
+  auto result = identity::SemanticContextFingerprint::compute(
+      compilationUnits, toolchainInputs, packageEdges, crates, crateEdges, sources, modules);
   ZC_IF_SOME(value, result) { return zc::mv(value); }
   ZC_FAIL_REQUIRE("empty semantic context fingerprint fixture was rejected");
 }
@@ -35,8 +36,9 @@ identity::SourceSpan frozenSourceSpan() {
     auto created = identity::SemanticIdentityRegistrySet::create(factory, context);
     ZC_REQUIRE(created != zc::none);
     ZC_IF_SOME(registries, created) {
-      ZC_REQUIRE(registries.collectPackage(package()) == identity::FrozenRegistryFailure::None);
-      ZC_REQUIRE(registries.freezePackages() == identity::FrozenRegistryFailure::None);
+      ZC_REQUIRE(registries.collectCompilationUnit(identity::CompilationUnitIdentity::userPackage(
+                     package())) == identity::FrozenRegistryFailure::None);
+      ZC_REQUIRE(registries.freezeCompilationUnits() == identity::FrozenRegistryFailure::None);
       ZC_REQUIRE(registries.collectCrate(crate()) == identity::FrozenRegistryFailure::None);
       ZC_REQUIRE(registries.freezeCrates() == identity::FrozenRegistryFailure::None);
       auto sourceKey = tests::test_identity_detail::source();
@@ -255,7 +257,7 @@ ZC_TEST("IR invariant grouping uses adjacent mapped diagnostic and exact validat
     source::SourceManager sourceManager;
     diagnostics::DiagnosticEngine engine(sourceManager);
     emitIrDiagnosticGroups(engine, groups.asPtr());
-  ZC_EXPECT(engine.errorCount() == 2);
+    ZC_EXPECT(engine.errorCount() == 2);
   }
 }
 

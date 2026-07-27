@@ -77,7 +77,8 @@ identity::CompilationConfigKey compilation() {
 
 identity::CrateKey crate(zc::StringPtr packageName = "a"_zc) {
   auto value =
-      identity::CrateKey::from(package(packageName), identity::CrateTargetKind::Library,
+      identity::CrateKey::from(identity::CompilationUnitIdentity::userPackage(package(packageName)),
+                               identity::CrateTargetKind::Library,
                                requireScalar<identity::TargetName>("lib"_zc), compilation());
   ZC_IF_SOME(admitted, value) { return zc::mv(admitted); }
   ZC_FAIL_REQUIRE("invalid crate fixture");
@@ -204,8 +205,9 @@ identity::SemanticIdentityRegistrySet admittedImplRegistry(
     auto registryValue = identity::SemanticIdentityRegistrySet::create(factory, admittedContext);
     ZC_REQUIRE(registryValue != zc::none);
     ZC_IF_SOME(registry, registryValue) {
-      ZC_REQUIRE(registry.collectPackage(package()) == identity::FrozenRegistryFailure::None);
-      ZC_REQUIRE(registry.freezePackages() == identity::FrozenRegistryFailure::None);
+      ZC_REQUIRE(registry.collectCompilationUnit(identity::CompilationUnitIdentity::userPackage(
+                     package())) == identity::FrozenRegistryFailure::None);
+      ZC_REQUIRE(registry.freezeCompilationUnits() == identity::FrozenRegistryFailure::None);
       ZC_REQUIRE(registry.collectCrate(crate()) == identity::FrozenRegistryFailure::None);
       ZC_REQUIRE(registry.freezeCrates() == identity::FrozenRegistryFailure::None);
       ZC_REQUIRE(registry.collectSourceFile(snapshot(source())) ==

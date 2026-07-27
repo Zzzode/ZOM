@@ -68,8 +68,9 @@ identity::ModuleId moduleIdentity() {
   auto registries =
       identity::SemanticIdentityRegistrySet::create(factory, ZC_REQUIRE_NONNULL(context));
   ZC_IF_SOME(values, registries) {
-    ZC_REQUIRE(values.collectPackage(package()) == identity::FrozenRegistryFailure::None);
-    ZC_REQUIRE(values.freezePackages() == identity::FrozenRegistryFailure::None);
+    ZC_REQUIRE(values.collectCompilationUnit(identity::CompilationUnitIdentity::userPackage(
+                   package())) == identity::FrozenRegistryFailure::None);
+    ZC_REQUIRE(values.freezeCompilationUnits() == identity::FrozenRegistryFailure::None);
     ZC_REQUIRE(values.collectCrate(crate()) == identity::FrozenRegistryFailure::None);
     ZC_REQUIRE(values.freezeCrates() == identity::FrozenRegistryFailure::None);
     auto snapshot = identity::ImmutableSourceSnapshot::from(tests::test_identity_detail::source(),

@@ -78,7 +78,8 @@ identity::CompilationConfigKey compilation() {
 
 identity::CrateKey crateKey() {
   auto value =
-      identity::CrateKey::from(packageKey(), identity::CrateTargetKind::Library,
+      identity::CrateKey::from(identity::CompilationUnitIdentity::userPackage(packageKey()),
+                               identity::CrateTargetKind::Library,
                                scalar<identity::TargetName>("frozen_inventory"_zc), compilation());
   ZC_IF_SOME(admitted, value) { return zc::mv(admitted); }
   ZC_FAIL_REQUIRE("invalid test crate");
@@ -150,8 +151,9 @@ struct FrozenInventoryFixture final {
       secondGenericNode = inventory.genericParameters()[1].node;
     }
 
-    ZC_REQUIRE(registries.collectPackage(packageKey()) == identity::FrozenRegistryFailure::None);
-    ZC_REQUIRE(registries.freezePackages() == identity::FrozenRegistryFailure::None);
+    ZC_REQUIRE(registries.collectCompilationUnit(identity::CompilationUnitIdentity::userPackage(
+                   packageKey())) == identity::FrozenRegistryFailure::None);
+    ZC_REQUIRE(registries.freezeCompilationUnits() == identity::FrozenRegistryFailure::None);
     ZC_REQUIRE(registries.collectCrate(crateKey()) == identity::FrozenRegistryFailure::None);
     ZC_REQUIRE(registries.freezeCrates() == identity::FrozenRegistryFailure::None);
     ZC_REQUIRE(registries.collectSourceFile(ZC_ASSERT_NONNULL(snapshot).clone()) ==
@@ -297,8 +299,9 @@ ZC_TEST("StableIdentityCandidateProducer retains every duplicate bound occurrenc
   auto snapshot = identity::ImmutableSourceSnapshot::from(
       sourceKey(), zc::heapArray(sources->getEntireTextForBuffer(buffer)));
   ZC_REQUIRE(snapshot != zc::none);
-  ZC_REQUIRE(registries.collectPackage(packageKey()) == identity::FrozenRegistryFailure::None);
-  ZC_REQUIRE(registries.freezePackages() == identity::FrozenRegistryFailure::None);
+  ZC_REQUIRE(registries.collectCompilationUnit(identity::CompilationUnitIdentity::userPackage(
+                 packageKey())) == identity::FrozenRegistryFailure::None);
+  ZC_REQUIRE(registries.freezeCompilationUnits() == identity::FrozenRegistryFailure::None);
   ZC_REQUIRE(registries.collectCrate(crateKey()) == identity::FrozenRegistryFailure::None);
   ZC_REQUIRE(registries.freezeCrates() == identity::FrozenRegistryFailure::None);
   ZC_REQUIRE(registries.collectSourceFile(ZC_ASSERT_NONNULL(snapshot).clone()) ==
@@ -395,8 +398,9 @@ struct ImplOccurrenceFixture final {
     ZC_REQUIRE(inventory.impls().size() == 1);
     implNode = inventory.impls()[0].node;
 
-    ZC_REQUIRE(registries.collectPackage(packageKey()) == identity::FrozenRegistryFailure::None);
-    ZC_REQUIRE(registries.freezePackages() == identity::FrozenRegistryFailure::None);
+    ZC_REQUIRE(registries.collectCompilationUnit(identity::CompilationUnitIdentity::userPackage(
+                   packageKey())) == identity::FrozenRegistryFailure::None);
+    ZC_REQUIRE(registries.freezeCompilationUnits() == identity::FrozenRegistryFailure::None);
     ZC_REQUIRE(registries.collectCrate(crateKey()) == identity::FrozenRegistryFailure::None);
     ZC_REQUIRE(registries.freezeCrates() == identity::FrozenRegistryFailure::None);
     ZC_REQUIRE(registries.collectSourceFile(ZC_ASSERT_NONNULL(snapshot).clone()) ==
@@ -505,8 +509,9 @@ struct CallableHeaderMutationFixture final {
     ZC_REQUIRE(inventory.definitions().size() == 1);
     const auto function = inventory.definitions()[0].node;
 
-    ZC_REQUIRE(registries.collectPackage(packageKey()) == identity::FrozenRegistryFailure::None);
-    ZC_REQUIRE(registries.freezePackages() == identity::FrozenRegistryFailure::None);
+    ZC_REQUIRE(registries.collectCompilationUnit(identity::CompilationUnitIdentity::userPackage(
+                   packageKey())) == identity::FrozenRegistryFailure::None);
+    ZC_REQUIRE(registries.freezeCompilationUnits() == identity::FrozenRegistryFailure::None);
     ZC_REQUIRE(registries.collectCrate(crateKey()) == identity::FrozenRegistryFailure::None);
     ZC_REQUIRE(registries.freezeCrates() == identity::FrozenRegistryFailure::None);
     ZC_REQUIRE(registries.collectSourceFile(ZC_ASSERT_NONNULL(snapshot).clone()) ==
@@ -591,8 +596,9 @@ struct DuplicateBoundFixture final {
     ZC_REQUIRE(inventory.genericParameters().size() == 1);
     ZC_REQUIRE(inventory.callableParameters().size() == 1);
 
-    ZC_REQUIRE(registries.collectPackage(packageKey()) == identity::FrozenRegistryFailure::None);
-    ZC_REQUIRE(registries.freezePackages() == identity::FrozenRegistryFailure::None);
+    ZC_REQUIRE(registries.collectCompilationUnit(identity::CompilationUnitIdentity::userPackage(
+                   packageKey())) == identity::FrozenRegistryFailure::None);
+    ZC_REQUIRE(registries.freezeCompilationUnits() == identity::FrozenRegistryFailure::None);
     ZC_REQUIRE(registries.collectCrate(crateKey()) == identity::FrozenRegistryFailure::None);
     ZC_REQUIRE(registries.freezeCrates() == identity::FrozenRegistryFailure::None);
     ZC_REQUIRE(registries.collectSourceFile(ZC_ASSERT_NONNULL(snapshot).clone()) ==

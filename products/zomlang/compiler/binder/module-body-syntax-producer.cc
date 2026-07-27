@@ -96,9 +96,16 @@ zc::StringPtr textField(const ast::Tree& tree, const ast::NodeSchemaFieldEntry& 
 
 bool encodeIdentifier(identity::CanonicalEncoder& encoder, zc::StringPtr source) {
   auto identifier = identity::SemanticIdentifier::fromSource(source);
-  if (identifier == zc::none) { return false; }
-  ZC_IF_SOME(value, identifier) { value.encode(encoder); }
-  return true;
+  ZC_IF_SOME(value, identifier) {
+    value.encode(encoder);
+    return true;
+  }
+  auto declaredName = identity::DeclaredDefinitionName::fromSource(source);
+  ZC_IF_SOME(value, declaredName) {
+    value.encode(encoder);
+    return true;
+  }
+  return false;
 }
 
 zc::Maybe<zc::Array<uint8_t>> encodeCanonicalFields(const ast::Tree& tree, const ast::Node& node,

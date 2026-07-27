@@ -84,10 +84,26 @@ CompilationConfigKey targetCompilation() {
 }
 
 CrateKey crate(zc::StringPtr packageName) {
-  auto value = CrateKey::from(localPackage(packageName), CrateTargetKind::Library,
-                              requireScalar<TargetName>("lib"_zc), targetCompilation());
+  auto value = CrateKey::from(CompilationUnitIdentity::userPackage(localPackage(packageName)),
+                              CrateTargetKind::Library, requireScalar<TargetName>("lib"_zc),
+                              targetCompilation());
   ZC_IF_SOME(admitted, value) { return zc::mv(admitted); }
   ZC_FAIL_REQUIRE("invalid crate test input");
+}
+
+CrateKey coreCrate() {
+  zc::Maybe<BuildScriptProducerKey> noProducer;
+  auto compilation = CompilationConfigKey::from(
+      CompilationDomain::Target, targetSpec(),
+      SemanticCompilerOptionsKey::from(2026, true, false, false), zc::mv(noProducer));
+  ZC_REQUIRE(compilation != zc::none);
+  ZC_IF_SOME(compilationValue, compilation) {
+    auto value = CrateKey::from(CompilationUnitIdentity::toolchain(ToolchainUnitKey::core()),
+                                CrateTargetKind::Library, requireScalar<TargetName>("core"_zc),
+                                zc::mv(compilationValue));
+    ZC_IF_SOME(admitted, value) { return zc::mv(admitted); }
+  }
+  ZC_FAIL_REQUIRE("invalid core crate test input");
 }
 
 CanonicalRelativePath logicalPath() {
@@ -119,6 +135,11 @@ SourceFileKey vcsSource() {
                              SourceOriginKey::vcsFile(localPackage("checkout"_zc), logicalPath()));
 }
 
+SourceFileKey coreSource() {
+  return SourceFileKey::from(coreCrate(),
+                             SourceOriginKey::coreFile(ToolchainUnitKey::core(), logicalPath()));
+}
+
 void expectSourceRoundTrip(SourceFileKey&& key) {
   auto encoded = key.encode();
   CanonicalDecoder decoder(encoded);
@@ -134,6 +155,14 @@ ModuleKey module() {
   auto value = ModuleKey::from(crate("a"_zc), zc::mv(path));
   ZC_IF_SOME(admitted, value) { return zc::mv(admitted); }
   ZC_FAIL_REQUIRE("invalid module test input");
+}
+
+ModuleKey coreModule() {
+  zc::Vector<ModulePathSegment> path;
+  path.add(requireScalar<ModulePathSegment>("prelude"_zc));
+  auto value = ModuleKey::from(coreCrate(), zc::mv(path));
+  ZC_IF_SOME(admitted, value) { return zc::mv(admitted); }
+  ZC_FAIL_REQUIRE("invalid core module test input");
 }
 
 ImmutableSourceSnapshot snapshot(SourceFileKey&& key, size_t byteCount = 1) {
@@ -158,9 +187,46 @@ void expectDigest(zc::ArrayPtr<const uint8_t> bytes, zc::StringPtr expected) {
 ZC_TEST("SourceFileKey passes the fixed generated-source codec vector") {
   auto key = source();
   auto encoded = key.encode();
-  ZC_EXPECT(encoded.size() == 208);
+  ZC_EXPECT(encoded.size() == 209);
   expectDigest(encoded.asPtr(),
-               "95be7a2e0ce404eafff8efe4fa84b37b680520b5461092d2d7d23d273927df77"_zc);
+               "889b71e47414fb642b8af459e87a64fe99afa5d6c44ef16a92091c4f7cd5b762"_zc);
+}
+
+ZC_TEST("SourceFileKey passes the fixed toolchain core source codec vector") {
+  auto key = coreSource();
+  auto encoded = key.encode();
+  auto crateBytes = key.crate().encode();
+  ZC_EXPECT(encoded.size() == 105);
+  ZC_REQUIRE(encoded.size() >= crateBytes.size() + 2);
+  ZC_EXPECT(encoded.asPtr().first(crateBytes.size()) == crateBytes.asPtr());
+  ZC_EXPECT(encoded[0] == static_cast<uint8_t>(CompilationUnitKind::Toolchain));
+  ZC_EXPECT(encoded[1] == static_cast<uint8_t>(ToolchainComponent::Core));
+  ZC_EXPECT(encoded[crateBytes.size()] == static_cast<uint8_t>(SourceOriginKind::CoreFile));
+  ZC_EXPECT(encoded[crateBytes.size() + 1] == static_cast<uint8_t>(ToolchainComponent::Core));
+  expectDigest(encoded.asPtr(),
+               "0e8fba52f2348cedd83d7a15d58bd1878334e8f54a34bfc0c276e1e60700f9d4"_zc);
+}
+
+ZC_TEST("SourceFileKey origin and core path substitutions change the complete identity") {
+  auto canonicalCore = coreSource();
+
+  zc::Vector<CanonicalPathSegment> otherPathSegments;
+  otherPathSegments.add(requireScalar<CanonicalPathSegment>("other.zom"_zc));
+  auto otherCore = SourceFileKey::from(
+      coreCrate(),
+      SourceOriginKey::coreFile(ToolchainUnitKey::core(),
+                                CanonicalRelativePath::from(zc::mv(otherPathSegments))));
+  ZC_EXPECT(!canonicalCore.sameAs(otherCore));
+
+  auto generatedCore = SourceFileKey::from(
+      coreCrate(), SourceOriginKey::generatedFile(
+                       BuildScriptProducerKey::from(repeatedDigest(0x11)), logicalPath()));
+  ZC_EXPECT(!canonicalCore.sameAs(generatedCore));
+
+  auto userWithCoreOrigin = SourceFileKey::from(
+      crate("a"_zc), SourceOriginKey::coreFile(ToolchainUnitKey::core(), logicalPath()));
+  ZC_EXPECT(!canonicalCore.sameAs(userWithCoreOrigin));
+  ZC_EXPECT(!source().sameAs(userWithCoreOrigin));
 }
 
 ZC_TEST("SourceFileKey remains stable when generated contents change") {
@@ -176,6 +242,7 @@ ZC_TEST("SourceFileKey canonical decoder round trips every source-origin variant
   expectSourceRoundTrip(registrySource());
   expectSourceRoundTrip(vcsSource());
   expectSourceRoundTrip(source());
+  expectSourceRoundTrip(coreSource());
 }
 
 ZC_TEST("SourceFileKey reports the canonical logical file name for every origin") {
@@ -183,6 +250,7 @@ ZC_TEST("SourceFileKey reports the canonical logical file name for every origin"
   ZC_EXPECT(ZC_REQUIRE_NONNULL(registrySource().logicalFileName()) == "g.zom"_zc);
   ZC_EXPECT(ZC_REQUIRE_NONNULL(vcsSource().logicalFileName()) == "g.zom"_zc);
   ZC_EXPECT(ZC_REQUIRE_NONNULL(source().logicalFileName()) == "g.zom"_zc);
+  ZC_EXPECT(ZC_REQUIRE_NONNULL(coreSource().logicalFileName()) == "g.zom"_zc);
 }
 
 ZC_TEST("SourceFileKey canonical decoder rejects unknown truncation and leaves outer framing") {
@@ -206,34 +274,62 @@ ZC_TEST("SourceFileKey canonical decoder rejects unknown truncation and leaves o
   ZC_EXPECT(framedDecoder.remaining() == 1);
   ZC_EXPECT(framedDecoder.decodeUint8() == 0xa5);
   ZC_EXPECT(framedDecoder.finished());
+
+  CanonicalEncoder invalidCoreToolchainEncoder;
+  coreCrate().encode(invalidCoreToolchainEncoder);
+  invalidCoreToolchainEncoder.encodeUint8(static_cast<uint8_t>(SourceOriginKind::CoreFile));
+  invalidCoreToolchainEncoder.encodeUint8(0xff);
+  auto invalidCoreToolchainBytes = invalidCoreToolchainEncoder.finish();
+  CanonicalDecoder invalidCoreToolchainDecoder(invalidCoreToolchainBytes);
+  ZC_EXPECT(SourceFileKey::decodeCanonical(invalidCoreToolchainDecoder) == zc::none);
 }
 
 ZC_TEST("ModuleKey passes the fixed stable module codec vector") {
   const uint8_t expected[] = {
-      0x03, 0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,
-      0,    0,    0,    0,    0,    1,    'a',  0,    0,    0,    0,    0,    0,    0,    5,
-      '0',  '.',  '0',  '.',  '0',  0,    0,    0,    0,    0,    0,    0,    0,    0x01, 0,
-      0,    0,    0,    0,    0,    0,    3,    'l',  'i',  'b',  0x02, 0,    0,    0,    0,
-      0,    0,    0,    1,    'x',  0,    0,    0,    0,    0,    0,    0,    1,    'v',  0,
-      0,    0,    0,    0,    0,    0,    1,    'o',  0,    0,    0,    0,    0,    0,    0,
-      1,    'e',  0,    0,    0,    0,    0,    0,    0,    1,    'a',  0,    0,    0,    64,
-      0x01, 0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0x07, 0xea, 0x01, 0x00,
-      0x00, 0x01, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11,
+      0x01, 0x03, 0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0,
+      0,    0,    0,    0,    0,    0,    1,    'a',  0,    0,    0,    0,    0,    0,    0,
+      5,    '0',  '.',  '0',  '.',  '0',  0,    0,    0,    0,    0,    0,    0,    0,    0x01,
+      0,    0,    0,    0,    0,    0,    0,    3,    'l',  'i',  'b',  0x02, 0,    0,    0,
+      0,    0,    0,    0,    1,    'x',  0,    0,    0,    0,    0,    0,    0,    1,    'v',
+      0,    0,    0,    0,    0,    0,    0,    1,    'o',  0,    0,    0,    0,    0,    0,
+      0,    1,    'e',  0,    0,    0,    0,    0,    0,    0,    1,    'a',  0,    0,    0,
+      64,   0x01, 0,    0,    0,    0,    0,    0,    0,    0,    0,    0,    0x07, 0xea, 0x01,
+      0x00, 0x00, 0x01, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11,
       0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x11,
-      0x11, 0x11, 0x11, 0x11, 0,    0,    0,    0,    0,    0,    0,    1,    0,    0,    0,
-      0,    0,    0,    0,    1,    'm',
+      0x11, 0x11, 0x11, 0x11, 0x11, 0,    0,    0,    0,    0,    0,    0,    1,    0,    0,
+      0,    0,    0,    0,    0,    1,    'm',
   };
   auto key = module();
   auto encoded = key.encode();
-  ZC_EXPECT(encoded.size() == 171);
+  ZC_EXPECT(encoded.size() == 172);
   ZC_EXPECT(encoded.asPtr() == zc::arrayPtr(expected));
   expectDigest(encoded.asPtr(),
-               "d8b9d3128d5997bdefb764dbaa9f1ad91674f7c3e8dd9dbf9e3bf7874beeee03"_zc);
+               "be102589e44f91f4fe750453ca986e0855d38d3d32e5e5dbaacc4f5b19161804"_zc);
 
   CanonicalDecoder decoder(zc::arrayPtr(expected));
   auto decoded = ModuleKey::decodeCanonical(decoder);
   ZC_REQUIRE(decoded != zc::none);
   ZC_IF_SOME(value, decoded) { ZC_EXPECT(value.encode().asPtr() == zc::arrayPtr(expected)); }
+  ZC_EXPECT(decoder.finished());
+}
+
+ZC_TEST("ModuleKey preserves the toolchain core compilation unit") {
+  auto key = coreModule();
+  auto encoded = key.encode();
+  ZC_EXPECT(encoded.size() == 105);
+  ZC_EXPECT(encoded[0] == static_cast<uint8_t>(CompilationUnitKind::Toolchain));
+  ZC_EXPECT(encoded[1] == static_cast<uint8_t>(ToolchainComponent::Core));
+  expectDigest(encoded.asPtr(),
+               "e6e3ce3f73df10036990fe5df6443d621deaf475d29e6c4a44f169f1bc7c69fb"_zc);
+
+  CanonicalDecoder decoder(encoded);
+  auto decoded = ModuleKey::decodeCanonical(decoder);
+  ZC_REQUIRE(decoded != zc::none);
+  ZC_IF_SOME(moduleKey, decoded) {
+    ZC_EXPECT(moduleKey.crate().unit().kind() == CompilationUnitKind::Toolchain);
+    ZC_EXPECT(moduleKey.path().size() == 1);
+    ZC_EXPECT(moduleKey.path()[0].text() == "prelude"_zc);
+  }
   ZC_EXPECT(decoder.finished());
 }
 
@@ -333,8 +429,9 @@ ZC_TEST("Source manager resolver binds only byte-identical immutable snapshots")
   SemanticContextFactory factory;
   auto created = SemanticIdentityRegistrySet::create(factory, ZC_ASSERT_NONNULL(factory.issue()));
   ZC_IF_SOME(registries, created) {
-    ZC_REQUIRE(registries.collectPackage(localPackage("a"_zc)) == FrozenRegistryFailure::None);
-    ZC_REQUIRE(registries.freezePackages() == FrozenRegistryFailure::None);
+    ZC_REQUIRE(registries.collectCompilationUnit(CompilationUnitIdentity::userPackage(
+                   localPackage("a"_zc))) == FrozenRegistryFailure::None);
+    ZC_REQUIRE(registries.freezeCompilationUnits() == FrozenRegistryFailure::None);
     ZC_REQUIRE(registries.collectCrate(crate("a"_zc)) == FrozenRegistryFailure::None);
     ZC_REQUIRE(registries.freezeCrates() == FrozenRegistryFailure::None);
 

@@ -21,6 +21,7 @@
 #include "zc/core/one-of.h"
 #include "zc/core/string.h"
 #include "zc/core/vector.h"
+#include "zomlang/compiler/diagnostics/toolchain-module-root-argument.h"
 #include "zomlang/compiler/driver/package/workspace-normalizer.h"
 #include "zomlang/compiler/identity/crate-key.h"
 #include "zomlang/compiler/identity/package-key.h"
@@ -232,6 +233,78 @@ enum class TargetSelectionIssue : uint8_t {
   UnknownRootFeature = 0x03,
 };
 
+/// \brief Closed package producers that may claim the compiler-reserved module root.
+enum class PackageToolchainModuleRootProducer : uint8_t {
+  UserTargetRoot = 0x01,
+  DependencyAlias = 0x02,
+};
+
+/// \brief Canonical normalized-manifest field path for one reserved-root occurrence.
+class PackageToolchainModuleRootFieldPath final {
+public:
+  PackageToolchainModuleRootFieldPath(PackageToolchainModuleRootFieldPath&&) noexcept = default;
+  PackageToolchainModuleRootFieldPath& operator=(PackageToolchainModuleRootFieldPath&&) noexcept =
+      default;
+  ZC_DISALLOW_COPY(PackageToolchainModuleRootFieldPath);
+
+  ZC_NODISCARD PackageToolchainModuleRootFieldPath clone() const;
+  ZC_NODISCARD zc::ArrayPtr<const identity::CanonicalPathSegment> components() const noexcept;
+  void encode(identity::CanonicalEncoder& encoder) const;
+  bool operator==(const PackageToolchainModuleRootFieldPath& other) const noexcept;
+
+private:
+  explicit PackageToolchainModuleRootFieldPath(
+      zc::Vector<identity::CanonicalPathSegment>&& components) noexcept;
+
+  zc::Vector<identity::CanonicalPathSegment> componentValues;
+
+  friend class PackageToolchainModuleRootFailure;
+};
+
+/// \brief Complete selected-package failure for a reserved target or dependency root.
+class PackageToolchainModuleRootFailure final {
+public:
+  /// \brief Builds a target-root failure from one selected normalized target.
+  ZC_NODISCARD static zc::Maybe<PackageToolchainModuleRootFailure> userTargetRoot(
+      const TargetManifest& target, identity::PackageKey&& package);
+  /// \brief Builds a dependency-alias failure from one normalized dependency record.
+  ZC_NODISCARD static zc::Maybe<PackageToolchainModuleRootFailure> dependencyAlias(
+      const DependencyRequirement& dependency, identity::PackageKey&& package);
+
+  PackageToolchainModuleRootFailure(PackageToolchainModuleRootFailure&&) noexcept = default;
+  PackageToolchainModuleRootFailure& operator=(PackageToolchainModuleRootFailure&&) noexcept =
+      default;
+  ZC_DISALLOW_COPY(PackageToolchainModuleRootFailure);
+
+  ZC_NODISCARD PackageToolchainModuleRootProducer producer() const noexcept;
+  ZC_NODISCARD const DiagnosticProvenance& provenance() const noexcept;
+  ZC_NODISCARD const identity::PackageKey& package() const noexcept;
+  ZC_NODISCARD const PackageToolchainModuleRootFieldPath& fieldPath() const noexcept;
+  ZC_NODISCARD const diagnostics::ToolchainModuleRootArgument& argument() const noexcept;
+
+private:
+  PackageToolchainModuleRootFailure(PackageToolchainModuleRootProducer producer,
+                                    DiagnosticProvenance&& provenance,
+                                    identity::PackageKey&& package,
+                                    PackageToolchainModuleRootFieldPath&& fieldPath,
+                                    diagnostics::ToolchainModuleRootArgument&& argument) noexcept;
+
+  PackageToolchainModuleRootProducer producerValue;
+  DiagnosticProvenance provenanceValue;
+  identity::PackageKey packageValue;
+  PackageToolchainModuleRootFieldPath fieldPathValue;
+  diagnostics::ToolchainModuleRootArgument argumentValue;
+};
+
+/// \brief Independently reconstructs a selected-package reserved-root failure.
+class PackageToolchainModuleRootFailureVerifier final {
+public:
+  ZC_NODISCARD static bool verify(const PackageToolchainModuleRootFailure& failure,
+                                  const NormalizedPackageCompilationRequest& request,
+                                  const NormalizedManifest& manifest,
+                                  const identity::PackageKey& package);
+};
+
 /// \brief One verified target selection retained until build-script outputs are known.
 class VerifiedCompilationRoot final {
 public:
@@ -324,7 +397,8 @@ private:
 };
 
 using PackageCompilationVerificationResult =
-    zc::OneOf<VerifiedPackageCompilationRequest, TargetSelectionIssue>;
+    zc::OneOf<VerifiedPackageCompilationRequest, PackageToolchainModuleRootFailure,
+              TargetSelectionIssue>;
 
 /// \brief Resolves package, target, and feature names against one normalized local workspace.
 ZC_NODISCARD PackageCompilationVerificationResult verifyPackageCompilationRequest(

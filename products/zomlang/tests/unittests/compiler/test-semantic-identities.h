@@ -47,6 +47,14 @@ inline identity::PackageKey package() {
   ZC_FAIL_REQUIRE("invalid semantic identity test package");
 }
 
+inline identity::CompilationUnitIdentity userUnit() {
+  return identity::CompilationUnitIdentity::userPackage(package());
+}
+
+inline identity::CompilationUnitIdentity coreUnit() {
+  return identity::CompilationUnitIdentity::toolchain(identity::ToolchainUnitKey::core());
+}
+
 inline identity::CanonicalTargetSpecificationKey target() {
   zc::Vector<identity::TargetFeatureName> features;
   auto sorted = identity::SortedTargetFeatureSet::from(zc::mv(features));
@@ -69,11 +77,24 @@ inline identity::CrateKey crate() {
       identity::CompilationDomain::Target, target(),
       identity::SemanticCompilerOptionsKey::from(2026, true, false, true), zc::mv(noOutput));
   ZC_IF_SOME(value, compilation) {
-    auto result = identity::CrateKey::from(package(), identity::CrateTargetKind::Library,
+    auto result = identity::CrateKey::from(userUnit(), identity::CrateTargetKind::Library,
                                            scalar<identity::TargetName>("test"_zc), zc::mv(value));
     ZC_IF_SOME(admitted, result) { return zc::mv(admitted); }
   }
   ZC_FAIL_REQUIRE("invalid semantic identity test crate");
+}
+
+inline identity::CrateKey coreCrate() {
+  zc::Maybe<identity::BuildScriptProducerKey> noOutput;
+  auto compilation = identity::CompilationConfigKey::from(
+      identity::CompilationDomain::Target, target(),
+      identity::SemanticCompilerOptionsKey::from(2026, true, false, true), zc::mv(noOutput));
+  ZC_IF_SOME(value, compilation) {
+    auto result = identity::CrateKey::from(coreUnit(), identity::CrateTargetKind::Library,
+                                           scalar<identity::TargetName>("core"_zc), zc::mv(value));
+    ZC_IF_SOME(admitted, result) { return zc::mv(admitted); }
+  }
+  ZC_FAIL_REQUIRE("invalid semantic identity test core crate");
 }
 
 inline identity::SourceFileKey source() {
@@ -107,8 +128,8 @@ inline zc::Vector<identity::DefId> makeTestDefinitionIds(size_t count) {
 
   zc::Vector<identity::DefinitionKey> retained(count);
   ZC_IF_SOME(values, registries) {
-    ZC_REQUIRE(values.collectPackage(package()) == identity::FrozenRegistryFailure::None);
-    ZC_REQUIRE(values.freezePackages() == identity::FrozenRegistryFailure::None);
+    ZC_REQUIRE(values.collectCompilationUnit(userUnit()) == identity::FrozenRegistryFailure::None);
+    ZC_REQUIRE(values.freezeCompilationUnits() == identity::FrozenRegistryFailure::None);
     ZC_REQUIRE(values.collectCrate(crate()) == identity::FrozenRegistryFailure::None);
     ZC_REQUIRE(values.freezeCrates() == identity::FrozenRegistryFailure::None);
     auto snapshot =

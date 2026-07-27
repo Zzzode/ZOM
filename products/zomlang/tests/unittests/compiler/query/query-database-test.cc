@@ -100,6 +100,33 @@ ZC_TEST("QueryDatabaseTest.OneExclusiveTransactionCanBeOpen") {
   ZC_EXPECT(database.beginInputTransaction() != zc::none);
 }
 
+ZC_TEST("QueryDatabaseTest.FinalInputRootSealPermanentlyRejectsTransactions") {
+  QueryDatabase database(queryTestScheduler());
+  ZC_REQUIRE(database.registerInputKind<LowInput>() != zc::none);
+  auto write = database.beginInputTransaction();
+  ZC_REQUIRE(write != zc::none);
+  ZC_REQUIRE(ZC_REQUIRE_NONNULL(write).set<LowInput>(1, 10));
+  ZC_REQUIRE(ZC_REQUIRE_NONNULL(write).commit() != zc::none);
+
+  auto finalSnapshot = database.snapshot();
+  ZC_REQUIRE(finalSnapshot.get<LowInput>(1).kind() == QueryValueKind::Value);
+  ZC_EXPECT(finalSnapshot.get<LowInput>(1).value() == 10);
+  ZC_EXPECT(database.sealInputRoot());
+  ZC_EXPECT(!database.sealInputRoot());
+  ZC_EXPECT(database.beginInputTransaction() == zc::none);
+  ZC_EXPECT(finalSnapshot.get<LowInput>(1).value() == 10);
+}
+
+ZC_TEST("QueryDatabaseTest.FinalInputRootSealRejectsAnOpenTransaction") {
+  QueryDatabase database(queryTestScheduler());
+  ZC_REQUIRE(database.registerInputKind<LowInput>() != zc::none);
+  auto write = database.beginInputTransaction();
+  ZC_REQUIRE(write != zc::none);
+  ZC_EXPECT(!database.sealInputRoot());
+  ZC_REQUIRE_NONNULL(write).abandon();
+  ZC_EXPECT(database.sealInputRoot());
+}
+
 ZC_TEST("QueryDatabaseTest.InputErasurePublishesACompleteRootWithoutTombstones") {
   QueryDatabase database(queryTestScheduler());
   registerCoreKinds(database);

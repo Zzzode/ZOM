@@ -572,6 +572,17 @@ SourceSnapshotResult SourceArchiveMaterializer::materialize(
 SourceDirectoryMaterializer::SourceDirectoryMaterializer(SourceAdmissionLimits limits)
     : limits(limits) {}
 
+SourceTreeBuildResult inspectSourceDirectory(const zc::ReadableDirectory& source,
+                                             SourceAdmissionLimits limits) {
+  if (limits.ioChunkBytes == 0 || limits.ioChunkBytes > SIZE_MAX) {
+    return MaterializationIssue::LengthOverflow;
+  }
+  SourceTreeBuilder builder;
+  WalkCounts counts;
+  ZC_IF_SOME(issue, scanDirectory(source, ""_zc, builder, limits, counts)) { return issue; }
+  return builder.finish();
+}
+
 SourceSnapshotResult SourceDirectoryMaterializer::materialize(
     const zc::ReadableDirectory& source, FreshSourceDirectoryFactory& factory,
     zc::Maybe<SourceMaterializationObserver&> observer) {

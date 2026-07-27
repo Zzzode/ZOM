@@ -48,11 +48,17 @@ struct GeneratedFileSourceOrigin final {
   CanonicalRelativePath logicalPath;
 };
 
+struct CoreFileSourceOrigin final {
+  ToolchainUnitKey toolchain;
+  CanonicalRelativePath path;
+};
+
 enum class SourceOriginKind : uint8_t {
   LocalFile = 0x01,
   RegistryFile = 0x02,
   VcsFile = 0x03,
-  GeneratedFile = 0x04
+  GeneratedFile = 0x04,
+  CoreFile = 0x05
 };
 
 /// \brief Closed canonical source provenance union.
@@ -68,6 +74,8 @@ public:
   ZC_NODISCARD static SourceOriginKey vcsFile(PackageKey&& package, CanonicalRelativePath&& path);
   ZC_NODISCARD static SourceOriginKey generatedFile(BuildScriptProducerKey producer,
                                                     CanonicalRelativePath&& logicalPath);
+  ZC_NODISCARD static SourceOriginKey coreFile(ToolchainUnitKey toolchain,
+                                               CanonicalRelativePath&& path);
   ZC_NODISCARD static zc::Maybe<SourceOriginKey> decodeCanonical(CanonicalDecoder& decoder);
   ZC_NODISCARD SourceOriginKey clone() const;
   ZC_NODISCARD SourceOriginKind kind() const noexcept;
@@ -79,9 +87,10 @@ private:
   explicit SourceOriginKey(RegistryFileSourceOrigin&& value) noexcept;
   explicit SourceOriginKey(VcsFileSourceOrigin&& value) noexcept;
   explicit SourceOriginKey(GeneratedFileSourceOrigin&& value) noexcept;
+  explicit SourceOriginKey(CoreFileSourceOrigin&& value) noexcept;
 
   zc::OneOf<LocalFileSourceOrigin, RegistryFileSourceOrigin, VcsFileSourceOrigin,
-            GeneratedFileSourceOrigin>
+            GeneratedFileSourceOrigin, CoreFileSourceOrigin>
       value;
 };
 
@@ -96,6 +105,7 @@ public:
   ZC_NODISCARD static zc::Maybe<SourceFileKey> decodeCanonical(CanonicalDecoder& decoder);
   ZC_NODISCARD SourceFileKey clone() const;
   ZC_NODISCARD const CrateKey& crate() const noexcept;
+  ZC_NODISCARD const SourceOriginKey& origin() const noexcept;
   ZC_NODISCARD zc::Maybe<zc::String> logicalFileName() const;
   ZC_NODISCARD bool sameAs(const SourceFileKey& other) const;
   ZC_NODISCARD bool belongsTo(const CrateKey& crate) const;

@@ -449,7 +449,7 @@ zc::Maybe<identity::ImplIdentityAuthority> reconstructImplAuthority(
 }
 
 bool allRegistriesFrozen(const identity::SemanticIdentityRegistrySet& registries) {
-  return registries.packages().isFrozen() && registries.crates().isFrozen() &&
+  return registries.compilationUnits().isFrozen() && registries.crates().isFrozen() &&
          registries.sourceFiles().isFrozen() && registries.modules().isFrozen() &&
          registries.definitions().isFrozen() && registries.impls().isFrozen() &&
          registries.genericParameters().isFrozen() && registries.callableParameters().isFrozen();

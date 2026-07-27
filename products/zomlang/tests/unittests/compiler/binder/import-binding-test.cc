@@ -62,9 +62,10 @@ identity::CrateKey crateKey() {
           identity::CompilationDomain::Target, zc::mv(targetValue),
           identity::SemanticCompilerOptionsKey::from(2026, true, false, false), zc::mv(noOutput));
       ZC_IF_SOME(configValue, config) {
-        auto crate = identity::CrateKey::from(packageKey(), identity::CrateTargetKind::Library,
-                                              requireScalar<identity::TargetName>("imports"_zc),
-                                              zc::mv(configValue));
+        auto crate = identity::CrateKey::from(
+            identity::CompilationUnitIdentity::userPackage(packageKey()),
+            identity::CrateTargetKind::Library, requireScalar<identity::TargetName>("imports"_zc),
+            zc::mv(configValue));
         ZC_IF_SOME(value, crate) { return zc::mv(value); }
       }
     }

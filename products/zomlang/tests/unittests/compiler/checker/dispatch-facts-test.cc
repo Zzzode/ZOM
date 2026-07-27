@@ -17,10 +17,11 @@ using namespace tests::test_identity_detail;
 
 identity::SemanticContextFingerprint fingerprint(
     const identity::SemanticIdentityRegistrySet& registries) {
+  zc::Vector<identity::ToolchainSemanticContextInput> toolchainInputs;
   zc::Vector<identity::PackageDependencyEdgeKey> packageEdges;
   zc::Vector<identity::CrateDependencyEdgeKey> crateEdges;
-  auto result = identity::SemanticContextFingerprint::compute(registries, packageEdges.asPtr(),
-                                                              crateEdges.asPtr());
+  auto result = identity::SemanticContextFingerprint::compute(
+      registries, toolchainInputs.asPtr(), packageEdges.asPtr(), crateEdges.asPtr());
   ZC_IF_SOME(value, result) { return zc::mv(value); }
   ZC_FAIL_REQUIRE("invalid dispatch-facts fingerprint fixture");
 }
@@ -71,8 +72,9 @@ public:
       factStoreBrands = zc::heap<identity::RegistryBrandIssuer>(zc::mv(value));
     }
 
-    ZC_REQUIRE(registries->collectPackage(package()) == identity::FrozenRegistryFailure::None);
-    ZC_REQUIRE(registries->freezePackages() == identity::FrozenRegistryFailure::None);
+    ZC_REQUIRE(registries->collectCompilationUnit(userUnit()) ==
+               identity::FrozenRegistryFailure::None);
+    ZC_REQUIRE(registries->freezeCompilationUnits() == identity::FrozenRegistryFailure::None);
     ZC_REQUIRE(registries->collectCrate(crate()) == identity::FrozenRegistryFailure::None);
     ZC_REQUIRE(registries->freezeCrates() == identity::FrozenRegistryFailure::None);
     auto snapshot = identity::ImmutableSourceSnapshot::from(tests::test_identity_detail::source(),

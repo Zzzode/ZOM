@@ -381,7 +381,7 @@ public:
 
   ZC_NODISCARD identity::SemanticContextBrand semanticContext() const noexcept;
   ZC_NODISCARD const identity::SemanticContextFingerprint& contextFingerprint() const noexcept;
-  ZC_NODISCARD identity::PackageId package() const noexcept;
+  ZC_NODISCARD identity::CompilationUnitId compilationUnit() const noexcept;
   ZC_NODISCARD identity::CrateId crate() const noexcept;
   ZC_NODISCARD identity::ModuleId module() const noexcept;
   ZC_NODISCARD const checker::checked::CheckedFactsRevision& checkedFactsRevision() const noexcept;

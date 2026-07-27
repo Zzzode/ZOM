@@ -141,7 +141,7 @@ bool hasSelfOwner(const ImplIdentityRecord& record, const ImplKey& key) {
 
 SemanticIdentityRegistrySet::SemanticIdentityRegistrySet(SemanticContextBrand context) noexcept
     : owner(context),
-      packageRegistry(context),
+      compilationUnitRegistry(context),
       crateRegistry(context),
       sourceFileRegistry(context),
       moduleRegistry(context),
@@ -168,27 +168,29 @@ FrozenRegistryFailure SemanticIdentityRegistrySet::recordFailure(
   return failure;
 }
 
-FrozenRegistryFailure SemanticIdentityRegistrySet::collectPackage(PackageKey&& key,
-                                                                  uint32_t traversalOrdinal) {
+FrozenRegistryFailure SemanticIdentityRegistrySet::collectCompilationUnit(
+    CompilationUnitIdentity&& key, uint32_t traversalOrdinal) {
   zc::Maybe<zc::Array<uint8_t>> structural = key.encode();
-  return recordFailure(packageRegistry.collect(zc::mv(key)), IdentityAllocationPhase::Package,
-                       IdentityApiSite::RegistryMutation, zc::mv(structural), traversalOrdinal);
+  return recordFailure(compilationUnitRegistry.collect(zc::mv(key)),
+                       IdentityAllocationPhase::CompilationUnit, IdentityApiSite::RegistryMutation,
+                       zc::mv(structural), traversalOrdinal);
 }
 
-FrozenRegistryFailure SemanticIdentityRegistrySet::freezePackages() {
-  const auto result = packageRegistry.freeze();
-  return recordFailure(result, IdentityAllocationPhase::Package, IdentityApiSite::PackageFreeze,
-                       copyFailureKey(packageRegistry), 0);
+FrozenRegistryFailure SemanticIdentityRegistrySet::freezeCompilationUnits() {
+  const auto result = compilationUnitRegistry.freeze();
+  return recordFailure(result, IdentityAllocationPhase::CompilationUnit,
+                       IdentityApiSite::CompilationUnitFreeze,
+                       copyFailureKey(compilationUnitRegistry), 0);
 }
 
 FrozenRegistryFailure SemanticIdentityRegistrySet::collectCrate(CrateKey&& key,
                                                                 uint32_t traversalOrdinal) {
   zc::Maybe<zc::Array<uint8_t>> structural = key.encode();
-  if (!packageRegistry.isFrozen()) {
+  if (!compilationUnitRegistry.isFrozen()) {
     return recordFailure(FrozenRegistryFailure::RegistryNotFrozen, IdentityAllocationPhase::Crate,
                          IdentityApiSite::RegistryMutation, zc::mv(structural), traversalOrdinal);
   }
-  if (packageRegistry.find(key.package()) == zc::none) {
+  if (compilationUnitRegistry.find(key.unit()) == zc::none) {
     return recordFailure(FrozenRegistryFailure::AncestorMismatch, IdentityAllocationPhase::Crate,
                          IdentityApiSite::RegistryMutation, zc::mv(structural), traversalOrdinal);
   }
@@ -197,7 +199,7 @@ FrozenRegistryFailure SemanticIdentityRegistrySet::collectCrate(CrateKey&& key,
 }
 
 FrozenRegistryFailure SemanticIdentityRegistrySet::freezeCrates() {
-  if (!packageRegistry.isFrozen()) {
+  if (!compilationUnitRegistry.isFrozen()) {
     zc::Maybe<zc::Array<uint8_t>> noStructural;
     return recordFailure(FrozenRegistryFailure::RegistryNotFrozen, IdentityAllocationPhase::Crate,
                          IdentityApiSite::CrateFreeze, zc::mv(noStructural), 0);
@@ -429,8 +431,8 @@ FrozenRegistryFailure SemanticIdentityRegistrySet::freezeCallableParameters() {
                        copyFailureKey(callableParameterRegistry), 0);
 }
 
-const PackageRegistry& SemanticIdentityRegistrySet::packages() const noexcept {
-  return packageRegistry;
+const CompilationUnitRegistry& SemanticIdentityRegistrySet::compilationUnits() const noexcept {
+  return compilationUnitRegistry;
 }
 const CrateRegistry& SemanticIdentityRegistrySet::crates() const noexcept { return crateRegistry; }
 const SourceFileRegistry& SemanticIdentityRegistrySet::sourceFiles() const noexcept {

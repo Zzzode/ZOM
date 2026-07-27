@@ -6,6 +6,8 @@
 #include "zomlang/compiler/binder/parsed-module.h"
 #include "zomlang/compiler/binder/stable-identity-candidate-producer.h"
 #include "zomlang/compiler/binder/stable-identity-candidate-verifier.h"
+#include "zomlang/compiler/diagnostics/toolchain-module-root-argument.h"
+#include "zomlang/compiler/driver/module-graph-query-input.h"
 #include "zomlang/compiler/identity/canonical-decoder.h"
 #include "zomlang/compiler/identity/canonical-encoder.h"
 #include "zomlang/compiler/parser/parse-source-query.h"
@@ -36,7 +38,7 @@ query::QueryKindContract inventoryContract(zc::StringPtr domain) {
 
 query::QueryKindContract siteContract(zc::StringPtr domain) {
   auto contract = query::QueryKindContract::derived(domain, query::ReuseClass::RevisionLocal,
-                                                    query::RetentionClass::Evictable);
+                                                    query::RetentionClass::Retained);
   return zc::mv(ZC_REQUIRE_NONNULL(contract));
 }
 
@@ -68,7 +70,17 @@ zc::Maybe<ast::NodeId> selectModuleNode(const ast::Tree& tree, const identity::M
   }
   auto name = identity::ModulePathSegment::fromSource(
       tree.ident(ast::IdentId(syntax.payload.words[ast::kModuleDeclarationDeclaredNameWord])));
-  if (name == zc::none || ZC_ASSERT_NONNULL(name) != module.path().back()) { return zc::none; }
+  if (name == zc::none) { return zc::none; }
+  ZC_IF_SOME(value, name) {
+    if (value != module.path().back()) {
+      zc::Vector<identity::ModulePathSegment> declaredPath;
+      declaredPath.add(value.clone());
+      if (diagnostics::ToolchainModuleRootArgument::fromCanonicalPath(zc::mv(declaredPath)) ==
+          zc::none) {
+        return zc::none;
+      }
+    }
+  }
   return declaration;
 }
 
@@ -112,14 +124,16 @@ zc::Array<uint8_t> encodeRejected(const binder::StableIdentityCandidateSourceFai
   ZC_UNREACHABLE;
 }
 
-query::TypedQueryResult<LoadedIdentitySource> loadIdentitySource(query::QueryContext& context,
+template <typename Context>
+query::TypedQueryResult<LoadedIdentitySource> loadIdentitySource(Context& context,
                                                                  const StableModuleQueryKey& key) {
   auto module = decodeModule(key);
   if (module == zc::none) {
     return query::TypedQueryResult<LoadedIdentitySource>::runtimeFailure(
         query::QueryRuntimeFailure::InvalidKeyEncoding);
   }
-  auto selected = context.get<SelectedModuleSourceInput>(key);
+  auto selected = context.template get<module_graph_query::SelectedModuleSourceQuery>(
+      ZC_ASSERT_NONNULL(module));
   if (selected.isRuntimeFailure()) {
     return query::TypedQueryResult<LoadedIdentitySource>::runtimeFailure(selected.runtimeFailure());
   }
@@ -130,13 +144,13 @@ query::TypedQueryResult<LoadedIdentitySource> loadIdentitySource(query::QueryCon
     return query::TypedQueryResult<LoadedIdentitySource>::runtimeFailure(
         query::QueryRuntimeFailure::ProviderRejected);
   }
-  auto sourceKey = identity::source_query::StableSourceQueryKey::decodeBounded(
-      selected.value().canonicalSourceBytes());
+  auto sourceKey = identity::source_query::StableSourceQueryKey::fromVerified(selected.value());
   if (sourceKey == zc::none) {
     return query::TypedQueryResult<LoadedIdentitySource>::runtimeFailure(
         query::QueryRuntimeFailure::InvariantViolation);
   }
-  auto parsed = context.get<parser::ParseSourceQuery>(ZC_ASSERT_NONNULL(sourceKey));
+  auto parsed =
+      context.template getCapability<parser::ParseSourceQuery>(ZC_ASSERT_NONNULL(sourceKey));
   if (parsed.isRuntimeFailure()) {
     return query::TypedQueryResult<LoadedIdentitySource>::runtimeFailure(parsed.runtimeFailure());
   }
@@ -148,7 +162,8 @@ query::TypedQueryResult<LoadedIdentitySource> loadIdentitySource(query::QueryCon
     return query::TypedQueryResult<LoadedIdentitySource>::runtimeFailure(
         query::QueryRuntimeFailure::ProviderRejected);
   }
-  auto canonical = binder::CanonicalParsedModule::fromQueryResult(parsed.value().clone());
+  auto canonical =
+      binder::CanonicalParsedModule::fromQueryResult(parsed.value().capability().clone());
   if (canonical == zc::none) {
     return query::TypedQueryResult<LoadedIdentitySource>::runtimeFailure(
         query::QueryRuntimeFailure::InvariantViolation);
@@ -299,6 +314,23 @@ query::TypedQueryResult<Value> propagateLoadFailure(
         zc::heapArray<uint8_t>(loaded.semanticFailureBytes()));
   }
   return query::TypedQueryResult<Value>::runtimeFailure(
+      query::QueryRuntimeFailure::InvariantViolation);
+}
+
+template <typename Capability>
+query::CapabilityProviderResult<Capability> propagateLoadCapabilityFailure(
+    const query::TypedQueryResult<LoadedIdentitySource>& loaded) {
+  if (loaded.isRuntimeFailure()) {
+    return query::CapabilityProviderResult<Capability>::runtimeFailure(loaded.runtimeFailure());
+  }
+  if (loaded.kind() == query::QueryValueKind::Absence) {
+    return query::CapabilityProviderResult<Capability>::absence();
+  }
+  if (loaded.kind() == query::QueryValueKind::SemanticFailure) {
+    return query::CapabilityProviderResult<Capability>::semanticFailure(
+        zc::heapArray<uint8_t>(loaded.semanticFailureBytes()));
+  }
+  return query::CapabilityProviderResult<Capability>::runtimeFailure(
       query::QueryRuntimeFailure::InvariantViolation);
 }
 
@@ -500,31 +532,22 @@ zc::Maybe<RevisionLocalDefinitionSitesQuery::Key> RevisionLocalDefinitionSitesQu
   return NamedDefinitionInventoryQuery::decodeKey(bytes);
 }
 
-zc::Array<uint8_t> RevisionLocalDefinitionSitesQuery::encodeValue(const Value& value) {
-  return value.encodeCanonical();
-}
-
-zc::Maybe<RevisionLocalDefinitionSitesQuery::Value> RevisionLocalDefinitionSitesQuery::decodeValue(
-    zc::ArrayPtr<const uint8_t> bytes) {
-  return binder::RevisionLocalDefinitionSites::decodeCanonical(bytes);
-}
-
-query::TypedQueryResult<RevisionLocalDefinitionSitesQuery::Value>
-RevisionLocalDefinitionSitesQuery::provide(query::QueryContext& context, const Key& key) {
+query::CapabilityProviderResult<RevisionLocalDefinitionSitesQuery::Capability>
+RevisionLocalDefinitionSitesQuery::provide(query::CapabilityQueryContext& context, const Key& key) {
   auto loaded = loadIdentitySource(context, key);
   if (loaded.kind() != query::QueryValueKind::Value || loaded.isRuntimeFailure()) {
-    return propagateLoadFailure<Value>(loaded);
+    return propagateLoadCapabilityFailure<Capability>(loaded);
   }
   auto named = context.get<NamedDefinitionInventoryQuery>(key);
   if (named.isRuntimeFailure()) {
-    return query::TypedQueryResult<Value>::runtimeFailure(named.runtimeFailure());
+    return query::CapabilityProviderResult<Capability>::runtimeFailure(named.runtimeFailure());
   }
   if (named.kind() == query::QueryValueKind::SemanticFailure) {
-    return query::TypedQueryResult<Value>::semanticFailure(
+    return query::CapabilityProviderResult<Capability>::semanticFailure(
         zc::heapArray<uint8_t>(named.semanticFailureBytes()));
   }
   if (named.kind() != query::QueryValueKind::Value) {
-    return query::TypedQueryResult<Value>::runtimeFailure(
+    return query::CapabilityProviderResult<Capability>::runtimeFailure(
         query::QueryRuntimeFailure::InvariantViolation);
   }
   const auto& source = loaded.value();
@@ -533,53 +556,45 @@ RevisionLocalDefinitionSitesQuery::provide(query::QueryContext& context, const K
   auto verification = binder::StableIdentityCandidateVerifier::verify(
       source.parsed, source.module, source.moduleNode, production);
   if (verification.is<binder::StableIdentityCandidateSourceFailure>()) {
-    return query::TypedQueryResult<Value>::semanticFailure(
+    return query::CapabilityProviderResult<Capability>::semanticFailure(
         encodeRejected(verification.get<binder::StableIdentityCandidateSourceFailure>()));
   }
   if (!verification.is<binder::VerifiedStableIdentityCandidateInventory>() ||
       !production.is<binder::StableIdentityCandidateInventory>()) {
-    return query::TypedQueryResult<Value>::runtimeFailure(
+    return query::CapabilityProviderResult<Capability>::runtimeFailure(
         query::QueryRuntimeFailure::InvariantViolation);
   }
   auto sites = producedDefinitionSites(source.module, source.parsed.source(), named.value(),
                                        production.get<binder::StableIdentityCandidateInventory>());
   if (sites == zc::none) {
-    return query::TypedQueryResult<Value>::runtimeFailure(
+    return query::CapabilityProviderResult<Capability>::runtimeFailure(
         query::QueryRuntimeFailure::InvariantViolation);
   }
-  return query::TypedQueryResult<Value>::value(zc::mv(ZC_ASSERT_NONNULL(sites)));
+  auto stableWitness = ZC_ASSERT_NONNULL(sites).encodeCanonical();
+  return query::CapabilityProviderResult<Capability>::value(
+      zc::heap<Capability>(zc::mv(ZC_ASSERT_NONNULL(sites))), zc::mv(stableWitness));
 }
 
-bool RevisionLocalDefinitionSitesQuery::verify(query::QueryContext& context, const Key& key,
-                                               const query::TypedQueryResult<Value>& result) {
+zc::Maybe<zc::Array<uint8_t>> RevisionLocalDefinitionSitesQuery::verify(
+    query::CapabilityQueryContext& context, const Key& key, const Capability& candidate) {
   auto loaded = loadIdentitySource(context, key);
   if (loaded.kind() != query::QueryValueKind::Value || loaded.isRuntimeFailure()) {
-    return verifyLoadFailure(loaded, result.kind(), result.semanticFailureBytes());
+    return zc::none;
   }
   auto named = context.get<NamedDefinitionInventoryQuery>(key);
-  if (named.isRuntimeFailure()) { return false; }
-  if (named.kind() == query::QueryValueKind::SemanticFailure) {
-    return result.kind() == query::QueryValueKind::SemanticFailure &&
-           named.semanticFailureBytes() == result.semanticFailureBytes();
-  }
-  if (named.kind() != query::QueryValueKind::Value) { return false; }
+  if (named.isRuntimeFailure() || named.kind() != query::QueryValueKind::Value) { return zc::none; }
   const auto& source = loaded.value();
   auto reconstruction = binder::StableIdentityCandidateVerifier::reconstruct(
       source.parsed, source.module, source.moduleNode);
-  if (reconstruction.is<binder::StableIdentityCandidateSourceFailure>()) {
-    return result.kind() == query::QueryValueKind::SemanticFailure &&
-           result.semanticFailureBytes() ==
-               encodeRejected(reconstruction.get<binder::StableIdentityCandidateSourceFailure>())
-                   .asPtr();
-  }
-  if (result.kind() != query::QueryValueKind::Value ||
-      !reconstruction.is<binder::VerifiedStableIdentityCandidateInventory>()) {
-    return false;
-  }
+  if (!reconstruction.is<binder::VerifiedStableIdentityCandidateInventory>()) { return zc::none; }
   auto expected = reconstructedDefinitionSites(
       source.module, source.parsed.source(), named.value(),
       reconstruction.get<binder::VerifiedStableIdentityCandidateInventory>());
-  return expected != zc::none && ZC_ASSERT_NONNULL(expected).sameAs(result.value());
+  if (expected == zc::none || !ZC_ASSERT_NONNULL(expected).sameAs(candidate)) { return zc::none; }
+  auto witness = candidate.encodeCanonical();
+  auto decoded = binder::RevisionLocalDefinitionSites::decodeCanonical(witness.asPtr());
+  if (decoded == zc::none || !ZC_ASSERT_NONNULL(decoded).sameAs(candidate)) { return zc::none; }
+  return zc::mv(witness);
 }
 
 zc::StringPtr RevisionLocalImplementationSitesQuery::domain() {
@@ -599,31 +614,23 @@ RevisionLocalImplementationSitesQuery::decodeKey(zc::ArrayPtr<const uint8_t> byt
   return NamedDefinitionInventoryQuery::decodeKey(bytes);
 }
 
-zc::Array<uint8_t> RevisionLocalImplementationSitesQuery::encodeValue(const Value& value) {
-  return value.encodeCanonical();
-}
-
-zc::Maybe<RevisionLocalImplementationSitesQuery::Value>
-RevisionLocalImplementationSitesQuery::decodeValue(zc::ArrayPtr<const uint8_t> bytes) {
-  return binder::RevisionLocalImplementationSites::decodeCanonical(bytes);
-}
-
-query::TypedQueryResult<RevisionLocalImplementationSitesQuery::Value>
-RevisionLocalImplementationSitesQuery::provide(query::QueryContext& context, const Key& key) {
+query::CapabilityProviderResult<RevisionLocalImplementationSitesQuery::Capability>
+RevisionLocalImplementationSitesQuery::provide(query::CapabilityQueryContext& context,
+                                               const Key& key) {
   auto loaded = loadIdentitySource(context, key);
   if (loaded.kind() != query::QueryValueKind::Value || loaded.isRuntimeFailure()) {
-    return propagateLoadFailure<Value>(loaded);
+    return propagateLoadCapabilityFailure<Capability>(loaded);
   }
   auto named = context.get<NamedImplementationInventoryQuery>(key);
   if (named.isRuntimeFailure()) {
-    return query::TypedQueryResult<Value>::runtimeFailure(named.runtimeFailure());
+    return query::CapabilityProviderResult<Capability>::runtimeFailure(named.runtimeFailure());
   }
   if (named.kind() == query::QueryValueKind::SemanticFailure) {
-    return query::TypedQueryResult<Value>::semanticFailure(
+    return query::CapabilityProviderResult<Capability>::semanticFailure(
         zc::heapArray<uint8_t>(named.semanticFailureBytes()));
   }
   if (named.kind() != query::QueryValueKind::Value) {
-    return query::TypedQueryResult<Value>::runtimeFailure(
+    return query::CapabilityProviderResult<Capability>::runtimeFailure(
         query::QueryRuntimeFailure::InvariantViolation);
   }
   const auto& source = loaded.value();
@@ -632,54 +639,46 @@ RevisionLocalImplementationSitesQuery::provide(query::QueryContext& context, con
   auto verification = binder::StableIdentityCandidateVerifier::verify(
       source.parsed, source.module, source.moduleNode, production);
   if (verification.is<binder::StableIdentityCandidateSourceFailure>()) {
-    return query::TypedQueryResult<Value>::semanticFailure(
+    return query::CapabilityProviderResult<Capability>::semanticFailure(
         encodeRejected(verification.get<binder::StableIdentityCandidateSourceFailure>()));
   }
   if (!verification.is<binder::VerifiedStableIdentityCandidateInventory>() ||
       !production.is<binder::StableIdentityCandidateInventory>()) {
-    return query::TypedQueryResult<Value>::runtimeFailure(
+    return query::CapabilityProviderResult<Capability>::runtimeFailure(
         query::QueryRuntimeFailure::InvariantViolation);
   }
   auto sites =
       producedImplementationSites(source.module, source.parsed.source(), named.value(),
                                   production.get<binder::StableIdentityCandidateInventory>());
   if (sites == zc::none) {
-    return query::TypedQueryResult<Value>::runtimeFailure(
+    return query::CapabilityProviderResult<Capability>::runtimeFailure(
         query::QueryRuntimeFailure::InvariantViolation);
   }
-  return query::TypedQueryResult<Value>::value(zc::mv(ZC_ASSERT_NONNULL(sites)));
+  auto stableWitness = ZC_ASSERT_NONNULL(sites).encodeCanonical();
+  return query::CapabilityProviderResult<Capability>::value(
+      zc::heap<Capability>(zc::mv(ZC_ASSERT_NONNULL(sites))), zc::mv(stableWitness));
 }
 
-bool RevisionLocalImplementationSitesQuery::verify(query::QueryContext& context, const Key& key,
-                                                   const query::TypedQueryResult<Value>& result) {
+zc::Maybe<zc::Array<uint8_t>> RevisionLocalImplementationSitesQuery::verify(
+    query::CapabilityQueryContext& context, const Key& key, const Capability& candidate) {
   auto loaded = loadIdentitySource(context, key);
   if (loaded.kind() != query::QueryValueKind::Value || loaded.isRuntimeFailure()) {
-    return verifyLoadFailure(loaded, result.kind(), result.semanticFailureBytes());
+    return zc::none;
   }
   auto named = context.get<NamedImplementationInventoryQuery>(key);
-  if (named.isRuntimeFailure()) { return false; }
-  if (named.kind() == query::QueryValueKind::SemanticFailure) {
-    return result.kind() == query::QueryValueKind::SemanticFailure &&
-           named.semanticFailureBytes() == result.semanticFailureBytes();
-  }
-  if (named.kind() != query::QueryValueKind::Value) { return false; }
+  if (named.isRuntimeFailure() || named.kind() != query::QueryValueKind::Value) { return zc::none; }
   const auto& source = loaded.value();
   auto reconstruction = binder::StableIdentityCandidateVerifier::reconstruct(
       source.parsed, source.module, source.moduleNode);
-  if (reconstruction.is<binder::StableIdentityCandidateSourceFailure>()) {
-    return result.kind() == query::QueryValueKind::SemanticFailure &&
-           result.semanticFailureBytes() ==
-               encodeRejected(reconstruction.get<binder::StableIdentityCandidateSourceFailure>())
-                   .asPtr();
-  }
-  if (result.kind() != query::QueryValueKind::Value ||
-      !reconstruction.is<binder::VerifiedStableIdentityCandidateInventory>()) {
-    return false;
-  }
+  if (!reconstruction.is<binder::VerifiedStableIdentityCandidateInventory>()) { return zc::none; }
   auto expected = reconstructedImplementationSites(
       source.module, source.parsed.source(), named.value(),
       reconstruction.get<binder::VerifiedStableIdentityCandidateInventory>());
-  return expected != zc::none && ZC_ASSERT_NONNULL(expected).sameAs(result.value());
+  if (expected == zc::none || !ZC_ASSERT_NONNULL(expected).sameAs(candidate)) { return zc::none; }
+  auto witness = candidate.encodeCanonical();
+  auto decoded = binder::RevisionLocalImplementationSites::decodeCanonical(witness.asPtr());
+  if (decoded == zc::none || !ZC_ASSERT_NONNULL(decoded).sameAs(candidate)) { return zc::none; }
+  return zc::mv(witness);
 }
 
 zc::Vector<binder::ModuleBodyDefinitionBoundaryInput> definitionBoundaries(
@@ -748,8 +747,8 @@ query::TypedQueryResult<ModuleBodySyntaxQuery::Value> ModuleBodySyntaxQuery::pro
   }
   auto definitions = context.get<NamedDefinitionInventoryQuery>(key);
   auto implementations = context.get<NamedImplementationInventoryQuery>(key);
-  auto definitionSites = context.get<RevisionLocalDefinitionSitesQuery>(key);
-  auto implementationSites = context.get<RevisionLocalImplementationSitesQuery>(key);
+  auto definitionSites = context.getCapability<RevisionLocalDefinitionSitesQuery>(key);
+  auto implementationSites = context.getCapability<RevisionLocalImplementationSitesQuery>(key);
   if (definitions.isRuntimeFailure() || implementations.isRuntimeFailure() ||
       definitionSites.isRuntimeFailure() || implementationSites.isRuntimeFailure()) {
     const auto failure = definitions.isRuntimeFailure()       ? definitions.runtimeFailure()
@@ -784,8 +783,8 @@ query::TypedQueryResult<ModuleBodySyntaxQuery::Value> ModuleBodySyntaxQuery::pro
   }
   const auto& source = loaded.value();
   auto definitionInputs =
-      definitionBoundaries(source.parsed, source.moduleNode, definitionSites.value());
-  auto implementationInputs = implementationBoundaries(implementationSites.value());
+      definitionBoundaries(source.parsed, source.moduleNode, definitionSites.value().capability());
+  auto implementationInputs = implementationBoundaries(implementationSites.value().capability());
   auto projection = binder::ModuleBodySyntaxProducer::produce(
       source.parsed, source.module, source.moduleNode, definitionInputs.asPtr(),
       implementationInputs.asPtr());
@@ -805,8 +804,8 @@ bool ModuleBodySyntaxQuery::verify(query::QueryContext& context, const Key& key,
   }
   auto definitions = context.get<NamedDefinitionInventoryQuery>(key);
   auto implementations = context.get<NamedImplementationInventoryQuery>(key);
-  auto definitionSites = context.get<RevisionLocalDefinitionSitesQuery>(key);
-  auto implementationSites = context.get<RevisionLocalImplementationSitesQuery>(key);
+  auto definitionSites = context.getCapability<RevisionLocalDefinitionSitesQuery>(key);
+  auto implementationSites = context.getCapability<RevisionLocalImplementationSitesQuery>(key);
   if (definitions.isRuntimeFailure() || implementations.isRuntimeFailure() ||
       definitionSites.isRuntimeFailure() || implementationSites.isRuntimeFailure()) {
     return false;
@@ -828,8 +827,8 @@ bool ModuleBodySyntaxQuery::verify(query::QueryContext& context, const Key& key,
   }
   const auto& source = loaded.value();
   auto definitionInputs =
-      definitionBoundaries(source.parsed, source.moduleNode, definitionSites.value());
-  auto implementationInputs = implementationBoundaries(implementationSites.value());
+      definitionBoundaries(source.parsed, source.moduleNode, definitionSites.value().capability());
+  auto implementationInputs = implementationBoundaries(implementationSites.value().capability());
   auto expected = binder::ModuleBodySyntaxVerifier::reconstruct(
       source.parsed, source.module, source.moduleNode, definitionInputs.asPtr(),
       implementationInputs.asPtr());
@@ -850,102 +849,93 @@ zc::Maybe<ModuleBodyProvenanceQuery::Key> ModuleBodyProvenanceQuery::decodeKey(
   return NamedDefinitionInventoryQuery::decodeKey(bytes);
 }
 
-zc::Array<uint8_t> ModuleBodyProvenanceQuery::encodeValue(const Value& value) {
-  return value.encodeCanonical();
-}
-
-zc::Maybe<ModuleBodyProvenanceQuery::Value> ModuleBodyProvenanceQuery::decodeValue(
-    zc::ArrayPtr<const uint8_t> bytes) {
-  return binder::ModuleBodyProvenance::decodeCanonical(bytes);
-}
-
-query::TypedQueryResult<ModuleBodyProvenanceQuery::Value> ModuleBodyProvenanceQuery::provide(
-    query::QueryContext& context, const Key& key) {
+query::CapabilityProviderResult<ModuleBodyProvenanceQuery::Capability>
+ModuleBodyProvenanceQuery::provide(query::CapabilityQueryContext& context, const Key& key) {
   auto loaded = loadIdentitySource(context, key);
   if (loaded.kind() != query::QueryValueKind::Value || loaded.isRuntimeFailure()) {
-    return propagateLoadFailure<Value>(loaded);
+    return propagateLoadCapabilityFailure<Capability>(loaded);
   }
   auto syntax = context.get<ModuleBodySyntaxQuery>(key);
-  auto definitionSites = context.get<RevisionLocalDefinitionSitesQuery>(key);
-  auto implementationSites = context.get<RevisionLocalImplementationSitesQuery>(key);
+  auto definitionSites = context.getCapability<RevisionLocalDefinitionSitesQuery>(key);
+  auto implementationSites = context.getCapability<RevisionLocalImplementationSitesQuery>(key);
   if (syntax.isRuntimeFailure() || definitionSites.isRuntimeFailure() ||
       implementationSites.isRuntimeFailure()) {
     const auto failure = syntax.isRuntimeFailure() ? syntax.runtimeFailure()
                          : definitionSites.isRuntimeFailure()
                              ? definitionSites.runtimeFailure()
                              : implementationSites.runtimeFailure();
-    return query::TypedQueryResult<Value>::runtimeFailure(failure);
+    return query::CapabilityProviderResult<Capability>::runtimeFailure(failure);
   }
   if (syntax.kind() == query::QueryValueKind::SemanticFailure) {
-    return query::TypedQueryResult<Value>::semanticFailure(
+    return query::CapabilityProviderResult<Capability>::semanticFailure(
         zc::heapArray<uint8_t>(syntax.semanticFailureBytes()));
   }
   if (definitionSites.kind() == query::QueryValueKind::SemanticFailure) {
-    return query::TypedQueryResult<Value>::semanticFailure(
+    return query::CapabilityProviderResult<Capability>::semanticFailure(
         zc::heapArray<uint8_t>(definitionSites.semanticFailureBytes()));
   }
   if (implementationSites.kind() == query::QueryValueKind::SemanticFailure) {
-    return query::TypedQueryResult<Value>::semanticFailure(
+    return query::CapabilityProviderResult<Capability>::semanticFailure(
         zc::heapArray<uint8_t>(implementationSites.semanticFailureBytes()));
   }
   if (syntax.kind() != query::QueryValueKind::Value ||
       definitionSites.kind() != query::QueryValueKind::Value ||
       implementationSites.kind() != query::QueryValueKind::Value) {
-    return query::TypedQueryResult<Value>::runtimeFailure(
+    return query::CapabilityProviderResult<Capability>::runtimeFailure(
         query::QueryRuntimeFailure::InvariantViolation);
   }
   const auto& source = loaded.value();
   auto definitionInputs =
-      definitionBoundaries(source.parsed, source.moduleNode, definitionSites.value());
-  auto implementationInputs = implementationBoundaries(implementationSites.value());
+      definitionBoundaries(source.parsed, source.moduleNode, definitionSites.value().capability());
+  auto implementationInputs = implementationBoundaries(implementationSites.value().capability());
   auto projection = binder::ModuleBodySyntaxProducer::produce(
       source.parsed, source.module, source.moduleNode, definitionInputs.asPtr(),
       implementationInputs.asPtr());
   if (!projection.is<binder::ModuleBodySyntaxProjection>() ||
       projection.get<binder::ModuleBodySyntaxProjection>().syntax != syntax.value()) {
-    return query::TypedQueryResult<Value>::runtimeFailure(
+    return query::CapabilityProviderResult<Capability>::runtimeFailure(
         query::QueryRuntimeFailure::InvariantViolation);
   }
-  return query::TypedQueryResult<Value>::value(
-      zc::mv(projection.get<binder::ModuleBodySyntaxProjection>().provenance));
+  auto provenance = zc::mv(projection.get<binder::ModuleBodySyntaxProjection>().provenance);
+  auto stableWitness = provenance.encodeCanonical();
+  return query::CapabilityProviderResult<Capability>::value(
+      zc::heap<Capability>(zc::mv(provenance)), zc::mv(stableWitness));
 }
 
-bool ModuleBodyProvenanceQuery::verify(query::QueryContext& context, const Key& key,
-                                       const query::TypedQueryResult<Value>& result) {
+zc::Maybe<zc::Array<uint8_t>> ModuleBodyProvenanceQuery::verify(
+    query::CapabilityQueryContext& context, const Key& key, const Capability& candidate) {
   auto loaded = loadIdentitySource(context, key);
   if (loaded.kind() != query::QueryValueKind::Value || loaded.isRuntimeFailure()) {
-    return verifyLoadFailure(loaded, result.kind(), result.semanticFailureBytes());
+    return zc::none;
   }
   auto syntax = context.get<ModuleBodySyntaxQuery>(key);
-  auto definitionSites = context.get<RevisionLocalDefinitionSitesQuery>(key);
-  auto implementationSites = context.get<RevisionLocalImplementationSitesQuery>(key);
+  auto definitionSites = context.getCapability<RevisionLocalDefinitionSitesQuery>(key);
+  auto implementationSites = context.getCapability<RevisionLocalImplementationSitesQuery>(key);
   if (syntax.isRuntimeFailure() || definitionSites.isRuntimeFailure() ||
       implementationSites.isRuntimeFailure()) {
-    return false;
+    return zc::none;
   }
-  for (const auto failure : {syntax.semanticFailureBytes(), definitionSites.semanticFailureBytes(),
-                             implementationSites.semanticFailureBytes()}) {
-    if (failure.size() != 0) {
-      return result.kind() == query::QueryValueKind::SemanticFailure &&
-             result.semanticFailureBytes() == failure;
-    }
-  }
-  if (result.kind() != query::QueryValueKind::Value ||
-      syntax.kind() != query::QueryValueKind::Value ||
+  if (syntax.kind() != query::QueryValueKind::Value ||
       definitionSites.kind() != query::QueryValueKind::Value ||
       implementationSites.kind() != query::QueryValueKind::Value) {
-    return false;
+    return zc::none;
   }
   const auto& source = loaded.value();
   auto definitionInputs =
-      definitionBoundaries(source.parsed, source.moduleNode, definitionSites.value());
-  auto implementationInputs = implementationBoundaries(implementationSites.value());
+      definitionBoundaries(source.parsed, source.moduleNode, definitionSites.value().capability());
+  auto implementationInputs = implementationBoundaries(implementationSites.value().capability());
   auto expected = binder::ModuleBodySyntaxVerifier::reconstruct(
       source.parsed, source.module, source.moduleNode, definitionInputs.asPtr(),
       implementationInputs.asPtr());
-  return expected.is<binder::ModuleBodySyntaxProjection>() &&
-         expected.get<binder::ModuleBodySyntaxProjection>().syntax == syntax.value() &&
-         expected.get<binder::ModuleBodySyntaxProjection>().provenance == result.value();
+  if (!expected.is<binder::ModuleBodySyntaxProjection>() ||
+      expected.get<binder::ModuleBodySyntaxProjection>().syntax != syntax.value() ||
+      expected.get<binder::ModuleBodySyntaxProjection>().provenance != candidate) {
+    return zc::none;
+  }
+  auto witness = candidate.encodeCanonical();
+  auto decoded = binder::ModuleBodyProvenance::decodeCanonical(witness.asPtr());
+  if (decoded == zc::none || ZC_ASSERT_NONNULL(decoded) != candidate) { return zc::none; }
+  return zc::mv(witness);
 }
 
 }  // namespace zomlang::compiler::driver::incremental_binding_query

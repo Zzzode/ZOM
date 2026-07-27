@@ -89,7 +89,7 @@
       "artifact": "build execution key",
       "producer": "build-script-execution-key-test",
       "test": "BuildScriptExecutionKey canonicalizes the complete host closure",
-      "sha256": "f95a5204f19b1f9e7fa02109f15884b3d01323574c26b2cf190adc7a6bc516e4"
+      "sha256": "be3bd2d50289ca57e89c6cef56378ee97595261fd63101fe2f87c9dba2722a36"
     },
     {
       "artifact": "build script output record",

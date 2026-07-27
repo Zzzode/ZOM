@@ -116,7 +116,7 @@ private:
 
 /// \brief Medium-durability exact package and crate graph authority.
 struct PackageGraphInput final {
-  using Key = PackageRootSetQueryKey;
+  using Key = PackageRootSetKey;
   using Value = CanonicalPackageGraph;
 
   ZC_NODISCARD static zc::StringPtr domain();

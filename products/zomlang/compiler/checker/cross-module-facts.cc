@@ -49,7 +49,9 @@ bool sameModuleKey(const identity::ModuleKey& left, const identity::ModuleKey& r
 }
 
 bool validImportedRootBinding(const binder::BindingTarget& binding,
-                              const identity::ModuleKey& requester, identity::ModuleId sourceModule,
+                              const identity::ModuleKey& requester,
+                              const identity::ModuleKey& sourceInterface,
+                              identity::ModuleId sourceModule,
                               const identity::DefinitionIdentityRecord& canonical,
                               const identity::SemanticIdentityRegistrySet& registries) {
   const auto& value = binding.value();
@@ -65,9 +67,11 @@ bool validImportedRootBinding(const binder::BindingTarget& binding,
   }
   if (!value.is<binder::SemanticImportBindingTarget>()) { return false; }
   const auto& semantic = value.get<binder::SemanticImportBindingTarget>().binding;
-  return sameModuleKey(semantic.requester(), requester) &&
-         sameModuleKey(semantic.resolution().requester(), requester) &&
-         semantic.sourceNamespace() == canonical.nameSpace() &&
+  const bool requesterOwned = sameModuleKey(semantic.requester(), requester) &&
+                              sameModuleKey(semantic.resolution().requester(), requester);
+  const bool sourceOwned = sameModuleKey(semantic.requester(), sourceInterface) &&
+                           sameModuleKey(semantic.resolution().requester(), sourceInterface);
+  return (requesterOwned || sourceOwned) && semantic.sourceNamespace() == canonical.nameSpace() &&
          semantic.sourceName().text() == canonical.name();
 }
 
@@ -169,7 +173,7 @@ ImportedModuleTarget ImportedModuleTarget::clone() const {
 }
 
 ImportedDefinitionBindingSelection ImportedDefinitionBindingSelection::clone() const {
-  return ImportedDefinitionBindingSelection{requesterBinding.clone(), sourceBinding,
+  return ImportedDefinitionBindingSelection{requesterBinding.clone(), sourceBinding.clone(),
                                             authorizationOrigin};
 }
 
@@ -374,10 +378,10 @@ zc::Maybe<ImportedSignatureView> ImportedSignatureViewBuilder::build(
   if (requesterKey == zc::none) { return zc::none; }
 
   for (size_t index = 0; index < modules.size(); ++index) {
+    auto sourceInterface = registries.modules().lookup(modules[index].sourceModule());
     if (modules[index].authorizedContext() != semanticContext ||
         modules[index].authorizedRequester() != requester ||
-        modules[index].sourceModule() == requester ||
-        registries.modules().lookup(modules[index].sourceModule()) == zc::none ||
+        modules[index].sourceModule() == requester || sourceInterface == zc::none ||
         modules[index].canonicalRecord().size() == 0) {
       return zc::none;
     }
@@ -393,10 +397,12 @@ zc::Maybe<ImportedSignatureView> ImportedSignatureViewBuilder::build(
       ZC_IF_SOME(canonical, canonicalRecord) {
         ZC_IF_SOME(sourceModule, registries.modules().find(canonical.module())) {
           ZC_IF_SOME(requesterModule, requesterKey) {
-            if (sourceModule != root.sourceModule ||
-                !validImportedRootBinding(root.binding, requesterModule, sourceModule, canonical,
-                                          registries)) {
-              return zc::none;
+            ZC_IF_SOME(interfaceModule, sourceInterface) {
+              if (sourceModule != root.sourceModule ||
+                  !validImportedRootBinding(root.binding, requesterModule, interfaceModule,
+                                            sourceModule, canonical, registries)) {
+                return zc::none;
+              }
             }
           }
         } else {

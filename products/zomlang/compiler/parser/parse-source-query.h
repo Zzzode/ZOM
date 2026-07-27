@@ -24,11 +24,10 @@ public:
   ZC_DISALLOW_COPY(ParseRejected);
 
   ZC_NODISCARD static zc::Maybe<ParseRejected> fromFacts(
-      zc::ArrayPtr<const uint8_t> canonicalSourceKey,
-      const identity::Sha256Digest& contentDigest, uint64_t sourceByteLength,
-      CanonicalParserOptions options, zc::Vector<diagnostics::DiagnosticFact>&& facts);
-  ZC_NODISCARD static zc::Maybe<ParseRejected> decodeCanonical(
-      zc::ArrayPtr<const uint8_t> bytes);
+      zc::ArrayPtr<const uint8_t> canonicalSourceKey, const identity::Sha256Digest& contentDigest,
+      uint64_t sourceByteLength, CanonicalParserOptions options,
+      zc::Vector<diagnostics::DiagnosticFact>&& facts);
+  ZC_NODISCARD static zc::Maybe<ParseRejected> decodeCanonical(zc::ArrayPtr<const uint8_t> bytes);
 
   ZC_NODISCARD zc::Array<uint8_t> encodeCanonical() const;
   ZC_NODISCARD zc::ArrayPtr<const uint8_t> canonicalSourceKey() const ZC_LIFETIMEBOUND;
@@ -54,18 +53,17 @@ private:
 /// \brief Revision-local whole-source parser query over explicit source and option inputs.
 struct ParseSourceQuery final {
   using Key = identity::source_query::StableSourceQueryKey;
-  using Value = CanonicalParsedSource;
+  using Capability = CanonicalParsedSource;
 
   ZC_NODISCARD static zc::StringPtr domain();
   ZC_NODISCARD static query::QueryKindContract contract();
   ZC_NODISCARD static zc::Array<uint8_t> encodeKey(const Key& key);
   ZC_NODISCARD static zc::Maybe<Key> decodeKey(zc::ArrayPtr<const uint8_t> bytes);
-  ZC_NODISCARD static zc::Array<uint8_t> encodeValue(const Value& value);
-  ZC_NODISCARD static zc::Maybe<Value> decodeValue(zc::ArrayPtr<const uint8_t> bytes);
-  ZC_NODISCARD static query::TypedQueryResult<Value> provide(query::QueryContext& context,
-                                                             const Key& key);
-  ZC_NODISCARD static bool verify(query::QueryContext& context, const Key& key,
-                                  const query::TypedQueryResult<Value>& result);
+  ZC_NODISCARD static query::CapabilityProviderResult<Capability> provide(
+      query::CapabilityQueryContext& context, const Key& key);
+  ZC_NODISCARD static zc::Maybe<zc::Array<uint8_t>> verify(query::CapabilityQueryContext& context,
+                                                           const Key& key,
+                                                           const Capability& candidate);
 };
 
 /// \brief Registers the production source parser query exactly once.

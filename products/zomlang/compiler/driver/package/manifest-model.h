@@ -220,6 +220,8 @@ public:
   ZC_NODISCARD zc::StringPtr name() const noexcept;
   ZC_NODISCARD const identity::CanonicalRelativePath& path() const noexcept;
   ZC_NODISCARD bool implicit() const noexcept;
+  /// \brief Returns the retained manifest origin of this normalized target.
+  ZC_NODISCARD const DiagnosticAnchor& origin() const noexcept;
   void encode(identity::CanonicalEncoder& encoder) const;
 
 private:

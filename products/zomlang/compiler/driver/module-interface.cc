@@ -774,9 +774,9 @@ zc::Maybe<zc::Array<uint8_t>> ModuleInterfaceCanonicalCodec::encodeExportedBindi
 
 struct VerifiedModuleInterface::Impl final {
   Impl(identity::SemanticContextBrand semanticContext,
-       module_interface::ModuleInterfaceRevision revision, identity::PackageId package,
-       identity::CrateId crate, identity::ModuleId module,
-       const identity::Sha256Digest& sourceContentDigest,
+       module_interface::ModuleInterfaceRevision revision,
+       identity::CompilationUnitId compilationUnit, identity::CrateId crate,
+       identity::ModuleId module, const identity::Sha256Digest& sourceContentDigest,
        binder::VerifiedExportSurface&& bindingSurface,
        checker::signature::SignatureFactsRevision signatureFactsRevision,
        checker::signature::MarkerPolicyRegistryRevision markerPolicyRegistryRevision,
@@ -790,7 +790,7 @@ struct VerifiedModuleInterface::Impl final {
        zc::Vector<zc::Array<uint8_t>>&& markerFactRecords)
       : semanticContext(semanticContext),
         revision(revision),
-        package(package),
+        compilationUnit(compilationUnit),
         crate(crate),
         module(module),
         sourceContentDigest(sourceContentDigest),
@@ -809,7 +809,7 @@ struct VerifiedModuleInterface::Impl final {
 
   identity::SemanticContextBrand semanticContext;
   module_interface::ModuleInterfaceRevision revision;
-  identity::PackageId package;
+  identity::CompilationUnitId compilationUnit;
   identity::CrateId crate;
   identity::ModuleId module;
   identity::Sha256Digest sourceContentDigest;
@@ -840,7 +840,9 @@ const module_interface::ModuleInterfaceRevision& VerifiedModuleInterface::revisi
     const noexcept {
   return impl->revision;
 }
-identity::PackageId VerifiedModuleInterface::package() const noexcept { return impl->package; }
+identity::CompilationUnitId VerifiedModuleInterface::compilationUnit() const noexcept {
+  return impl->compilationUnit;
+}
 identity::CrateId VerifiedModuleInterface::crate() const noexcept { return impl->crate; }
 identity::ModuleId VerifiedModuleInterface::module() const noexcept { return impl->module; }
 const identity::Sha256Digest& VerifiedModuleInterface::sourceContentDigest() const noexcept {
@@ -954,11 +956,9 @@ VerifiedModuleInterface::projectImportedSignatures(
   for (const auto& selection : definitionBindings) {
     zc::Maybe<identity::DefId> canonicalDefinition;
     for (const auto& exported : impl->exportedBindings) {
-      const auto& identityValue = exported.bindingIdentity.value();
       const auto& targetValue = exported.target.variant();
-      if (identityValue.is<binder::DefinitionBindingTarget>() &&
-          identityValue.get<binder::DefinitionBindingTarget>().definition ==
-              selection.sourceBinding &&
+      if (module_interface::sameSignatureRootBinding(exported.bindingIdentity,
+                                                     selection.sourceBinding) &&
           targetValue.is<DefinitionTypeEnrichedTarget>()) {
         canonicalDefinition = targetValue.get<DefinitionTypeEnrichedTarget>().definition;
         break;
@@ -967,7 +967,7 @@ VerifiedModuleInterface::projectImportedSignatures(
     if (canonicalDefinition == zc::none) { return zc::none; }
 
     zc::Maybe<const module_interface::SignatureRootAuthorization&> sourceRoot;
-    auto sourceBindingTarget = binder::BindingTarget::definition(selection.sourceBinding);
+    auto sourceBindingTarget = selection.sourceBinding.clone();
     for (const auto& root : impl->signatures.roots) {
       ZC_IF_SOME(definition, canonicalDefinition) {
         if (module_interface::sameSignatureRootBinding(root.binding, sourceBindingTarget) &&
@@ -1030,11 +1030,10 @@ VerifiedModuleInterface::projectImportedSignatures(
             for (const auto& scope : requester.bindings().scopes()) {
               if (scope.kind != binder::ScopeKind::Module) { continue; }
               for (const auto& entry : scope.bindings) {
-                const auto& binding = entry.binding.bindingIdentity.value();
                 if (entry.binding.origin == binder::BindingOrigin::Prelude &&
                     module_interface::sameSignatureRootBinding(entry.binding.bindingIdentity,
                                                                selection.requesterBinding) &&
-                    binding.is<binder::DefinitionBindingTarget>()) {
+                    module_interface::isSignatureRootBinding(entry.binding.bindingIdentity)) {
                   exactAuthorization = true;
                   break;
                 }
@@ -1045,9 +1044,9 @@ VerifiedModuleInterface::projectImportedSignatures(
         }
         break;
     }
-    if (!exactAuthorization || (selection.authorizationOrigin !=
-                                    checker::cross_module::SignatureViewOrigin::NamespaceImport &&
-                                requesterEntry == zc::none)) {
+    if (!exactAuthorization ||
+        (selection.authorizationOrigin == checker::cross_module::SignatureViewOrigin::Prelude &&
+         requesterEntry == zc::none)) {
       return zc::none;
     }
 
@@ -1055,7 +1054,11 @@ VerifiedModuleInterface::projectImportedSignatures(
       if (root.bindingSurfaceRevision.digest() != impl->bindingSurface.revision().digest()) {
         return zc::none;
       }
-      binder::VisibilityEnvelope visibility = root.visibility.clone();
+      binder::VisibilityEnvelope visibility =
+          selection.authorizationOrigin ==
+                  checker::cross_module::SignatureViewOrigin::ExplicitImport
+              ? binder::VisibilityEnvelope::module(requester.module())
+              : root.visibility.clone();
       ZC_IF_SOME(entry, requesterEntry) { visibility = entry.visibility.clone(); }
       {
         module_interface::SignatureRootAuthorization importedRoot{
@@ -1084,6 +1087,21 @@ VerifiedModuleInterface::projectImportedSignatures(
   for (const auto& requestedName : moduleTargetNames) {
     zc::Maybe<checker::cross_module::ImportedModuleTarget> selected;
     if (requestedName.authorizationOrigin ==
+        checker::cross_module::SignatureViewOrigin::ExplicitImport) {
+      for (const auto& import : requester.resolvedImports()) {
+        const auto& target = import.canonicalTarget().value();
+        if (sameName(import.localName(), requestedName.requesterName) &&
+            import.sourceModule() == impl->module &&
+            import.sourceRevision().digest() == impl->bindingSurface.revision().digest() &&
+            target.is<binder::ModuleBindingTarget>() &&
+            target.get<binder::ModuleBindingTarget>().module == impl->module) {
+          selected = checker::cross_module::ImportedModuleTarget{
+              requestedName.requesterName.clone(), impl->module, impl->bindingSurface.revision()};
+          break;
+        }
+      }
+    }
+    if (requestedName.authorizationOrigin ==
         checker::cross_module::SignatureViewOrigin::NamespaceImport) {
       for (const auto& alias : requester.resolvedModuleAliases()) {
         if (sameName(alias.localName(), requestedName.requesterName) &&
@@ -1111,6 +1129,33 @@ VerifiedModuleInterface::projectImportedSignatures(
       bool exactRequesterTarget = requestedName.authorizationOrigin ==
                                       checker::cross_module::SignatureViewOrigin::NamespaceImport &&
                                   target.module == impl->module;
+      if (requestedName.authorizationOrigin ==
+          checker::cross_module::SignatureViewOrigin::ExplicitImport) {
+        for (const auto& scope : requester.bindings().scopes()) {
+          if (scope.kind != binder::ScopeKind::Module) { continue; }
+          for (const auto& binding : scope.bindings) {
+            const auto& bindingIdentity = binding.binding.bindingIdentity.value();
+            const auto& canonicalTarget = binding.binding.canonicalTarget.value();
+            if (!sameName(binding.name, requestedName.requesterName) ||
+                !bindingIdentity.is<binder::SemanticImportBindingTarget>() ||
+                !canonicalTarget.is<binder::ModuleBindingTarget>() ||
+                canonicalTarget.get<binder::ModuleBindingTarget>().module != target.module) {
+              continue;
+            }
+            const auto& semantic =
+                bindingIdentity.get<binder::SemanticImportBindingTarget>().binding;
+            for (const auto& import : requester.bindings().imports()) {
+              if (import.binding == semantic && import.sourceModule == impl->module &&
+                  import.sourceRevision.digest() == impl->bindingSurface.revision().digest()) {
+                exactRequesterTarget = true;
+                break;
+              }
+            }
+            if (exactRequesterTarget) { break; }
+          }
+          break;
+        }
+      }
       for (const auto& entry : requester.bindingSurface().visibleEntries()) {
         const auto& canonical = entry.canonicalTarget.value();
         if (sameName(entry.name, requestedName.requesterName) &&
@@ -1300,7 +1345,7 @@ ModuleInterfaceBuildResult ModuleInterfaceVerifier::build(ModuleInterfaceBuildIn
   }
   if (input.signatureFacts.module() != module || input.importedSignatures.requester() != module ||
       input.borrowSurface.module() != module || surface.sourceModule() != module ||
-      surface.sourcePackage() != input.boundModule.package()) {
+      surface.sourceCompilationUnit() != input.boundModule.compilationUnit()) {
     return rejectInterface(module, ModuleInterfaceInvariantKind::InputMismatch,
                            ModuleInterfaceInvariantStage::Input, 2);
   }
@@ -1335,22 +1380,23 @@ ModuleInterfaceBuildResult ModuleInterfaceVerifier::build(ModuleInterfaceBuildIn
     return rejectInterface(module, ModuleInterfaceInvariantKind::InputMismatch,
                            ModuleInterfaceInvariantStage::Input, 7);
   }
-  auto packageKey = input.registries.packages().lookup(input.boundModule.package());
+  auto compilationUnitKey =
+      input.registries.compilationUnits().lookup(input.boundModule.compilationUnit());
   auto crateKey = input.registries.crates().lookup(input.boundModule.crate());
   auto moduleKey = input.registries.modules().lookup(module);
-  if (packageKey == zc::none || crateKey == zc::none || moduleKey == zc::none) {
+  if (compilationUnitKey == zc::none || crateKey == zc::none || moduleKey == zc::none) {
     return rejectInterface(module, ModuleInterfaceInvariantKind::InputMismatch,
                            ModuleInterfaceInvariantStage::Input, 8);
   }
-  ZC_IF_SOME(packageValue, packageKey) {
+  ZC_IF_SOME(compilationUnitValue, compilationUnitKey) {
     ZC_IF_SOME(crateValue, crateKey) {
       ZC_IF_SOME(moduleValue, moduleKey) {
         auto moduleCrate = moduleValue.crate().encode();
         auto registeredCrate = crateValue.encode();
-        auto cratePackage = crateValue.package().encode();
-        auto registeredPackage = packageValue.encode();
+        auto crateCompilationUnit = crateValue.unit().encode();
+        auto registeredCompilationUnit = compilationUnitValue.encode();
         if (!sameBytes(moduleCrate.asPtr(), registeredCrate.asPtr()) ||
-            !sameBytes(cratePackage.asPtr(), registeredPackage.asPtr())) {
+            !sameBytes(crateCompilationUnit.asPtr(), registeredCompilationUnit.asPtr())) {
           return rejectInterface(module, ModuleInterfaceInvariantKind::InputMismatch,
                                  ModuleInterfaceInvariantStage::Input, 8);
         }
@@ -1795,7 +1841,7 @@ ModuleInterfaceBuildResult ModuleInterfaceVerifier::build(ModuleInterfaceBuildIn
 
   ZC_IF_SOME(finalRevision, revision) {
     return VerifiedModuleInterface(zc::heap<VerifiedModuleInterface::Impl>(
-        input.boundModule.semanticContext(), finalRevision, input.boundModule.package(),
+        input.boundModule.semanticContext(), finalRevision, input.boundModule.compilationUnit(),
         input.boundModule.crate(), module, sourceDigest, surface.clone(),
         input.signatureFacts.revision(), input.markerPolicies.revision(),
         input.importedSignatures.revision(), zc::mv(input.borrowSurface),

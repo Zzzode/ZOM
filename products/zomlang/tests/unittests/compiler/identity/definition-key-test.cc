@@ -82,8 +82,9 @@ CompilationConfigKey compilation() {
 }
 
 CrateKey crate() {
-  auto value = CrateKey::from(package(), CrateTargetKind::Library,
-                              requireScalar<TargetName>("lib"_zc), compilation());
+  auto value =
+      CrateKey::from(CompilationUnitIdentity::userPackage(package()), CrateTargetKind::Library,
+                     requireScalar<TargetName>("lib"_zc), compilation());
   ZC_IF_SOME(admitted, value) { return zc::mv(admitted); }
   ZC_FAIL_REQUIRE("invalid crate test input");
 }
@@ -265,15 +266,15 @@ ZC_TEST("DefinitionIdentityRecord passes the complete owner and named-item vecto
   owners.add(EnclosingStableOwnerKey::implementation(rawImplKey(0x22)));
   auto record = definitionRecord(DefinitionKind::Class, "C"_zc, zc::none, zc::mv(owners));
   auto encoded = record.encode();
-  ZC_REQUIRE(module().encode().size() == 171);
-  ZC_EXPECT(encoded.size() == 257);
-  ZC_EXPECT(zc::encodeHex(encoded.asPtr().slice(171)) ==
+  ZC_REQUIRE(module().encode().size() == 172);
+  ZC_EXPECT(encoded.size() == 258);
+  ZC_EXPECT(zc::encodeHex(encoded.asPtr().slice(172)) ==
             "0000000000000002011111111111111111111111111111111111111111111111111111111111111111"
             "0222222222222222222222222222222222222222222222222222222222222222220602"
             "00000000000000014300"_zc);
   auto key = DefinitionKey::compute(record);
   ZC_EXPECT(zc::encodeHex(key.bytes()) ==
-            "30d213a08ef2cc511b0f66e867d621dfcc7a8d95a121fabcf680d4045aa11c23"_zc);
+            "399b67c684a90539cf5e5d2779db2208f036209d9f9f9b98c32f68a9d1b7a1ff"_zc);
   auto decoded = DefinitionIdentityRecord::decodeCanonical(encoded.asPtr());
   ZC_REQUIRE(decoded != zc::none);
   ZC_EXPECT(ZC_REQUIRE_NONNULL(decoded).encode().asPtr() == encoded.asPtr());
@@ -329,15 +330,15 @@ ZC_TEST("ImplIdentityRecord passes the complete owner and implementation-header 
   owners.add(EnclosingStableOwnerKey::definition(rawDefinitionKey(0x33)));
   auto record = ImplIdentityRecord::from(module(), zc::mv(owners), implHeader());
   auto encoded = record.encode();
-  ZC_REQUIRE(module().encode().size() == 171);
-  ZC_EXPECT(encoded.size() == 262);
-  ZC_EXPECT(zc::encodeHex(encoded.asPtr().slice(171)) ==
+  ZC_REQUIRE(module().encode().size() == 172);
+  ZC_EXPECT(encoded.size() == 263);
+  ZC_EXPECT(zc::encodeHex(encoded.asPtr().slice(172)) ==
             "0000000000000001013333333333333333333333333333333333333333333333333333333333333333"
             "0000000000000000010102000000000000000100000000000000055472616974"
             "000000000000000002030000000000000000"_zc);
   auto key = ImplKey::compute(record);
   ZC_EXPECT(zc::encodeHex(key.bytes()) ==
-            "3df449eebe11ec6aff1ad2955045c2d76a60490ccdb6b3fd4610a64d3efe330b"_zc);
+            "250c2ac7bdbf2982970d2ad2bbcb7df02bf9eb30d9a55bb5411fdb5fcb9bf69b"_zc);
 }
 
 ZC_TEST("Stable owner keys encode one closed tag followed by one raw digest") {

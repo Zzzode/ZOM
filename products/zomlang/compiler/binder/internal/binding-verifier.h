@@ -20,7 +20,8 @@ class DiagnosticEngine;
 namespace zomlang::compiler::binder {
 
 struct ExportSurfaceCandidate final {
-  ExportSurfaceCandidate(identity::ModuleId sourceModule, identity::PackageId sourcePackage,
+  ExportSurfaceCandidate(identity::ModuleId sourceModule,
+                         identity::CompilationUnitId sourceCompilationUnit,
                          ExportSurfaceRevision revision,
                          zc::Vector<ExportSurfaceEntry>&& visibleEntries,
                          zc::Vector<ExportSurfaceEntry>&& exports) noexcept;
@@ -29,7 +30,7 @@ struct ExportSurfaceCandidate final {
   ZC_DISALLOW_COPY(ExportSurfaceCandidate);
   ZC_NODISCARD ExportSurfaceCandidate clone() const;
   identity::ModuleId sourceModule;
-  identity::PackageId sourcePackage;
+  identity::CompilationUnitId sourceCompilationUnit;
   ExportSurfaceRevision revision;
   zc::Vector<ExportSurfaceEntry> visibleEntries;
   zc::Vector<ExportSurfaceEntry> exports;

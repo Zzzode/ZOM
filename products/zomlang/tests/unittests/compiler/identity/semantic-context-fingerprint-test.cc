@@ -75,6 +75,20 @@ PackageKey localPackage(zc::StringPtr name) {
                           requireVersion(), emptyFeatures());
 }
 
+CompilationUnitIdentity userCompilationUnit(zc::StringPtr name) {
+  return CompilationUnitIdentity::userPackage(localPackage(name));
+}
+
+CompilationUnitIdentity coreCompilationUnit() {
+  return CompilationUnitIdentity::toolchain(ToolchainUnitKey::core());
+}
+
+ToolchainSemanticContextInput coreContextInput(uint8_t distributionByte = 0x21,
+                                               uint8_t policyByte = 0x31) {
+  return ToolchainSemanticContextInput::from(
+      ToolchainUnitKey::core(), repeatedDigest(distributionByte), repeatedDigest(policyByte));
+}
+
 PackageDependencyEdgeKey packageEdge() {
   auto value =
       PackageDependencyEdgeKey::from(localPackage("a"_zc), requireDependencyAlias("dep"_zc),
@@ -115,10 +129,16 @@ CompilationConfigKey targetCompilation() {
 }
 
 CrateKey crate() {
-  auto value = CrateKey::from(localPackage("a"_zc), CrateTargetKind::Library,
+  auto value = CrateKey::from(userCompilationUnit("a"_zc), CrateTargetKind::Library,
                               requireScalar<TargetName>("lib"_zc), targetCompilation());
   ZC_IF_SOME(admitted, value) { return zc::mv(admitted); }
   ZC_FAIL_REQUIRE("invalid crate test input");
+}
+
+CrateKey coreCrate() {
+  auto projected = projectToolchainCoreCrate(crate());
+  ZC_IF_SOME(value, projected) { return zc::mv(value); }
+  ZC_FAIL_REQUIRE("valid core projection was rejected");
 }
 
 SourceFileKey source() {
@@ -136,71 +156,134 @@ ImmutableSourceSnapshot sourceSnapshot(uint8_t contentByte) {
 }
 
 zc::Maybe<SemanticContextFingerprint> fingerprint(
-    zc::Vector<PackageKey>& packages, zc::Vector<PackageDependencyEdgeKey>& packageEdges) {
+    zc::Vector<CompilationUnitIdentity>& compilationUnits,
+    zc::Vector<ToolchainSemanticContextInput>& toolchainInputs,
+    zc::Vector<PackageDependencyEdgeKey>& packageEdges) {
   zc::Vector<CrateKey> crates;
   zc::Vector<CrateDependencyEdgeKey> crateEdges;
   zc::Vector<SourceContentIdentity> sourceContents;
   zc::Vector<ModuleKey> modules;
-  return SemanticContextFingerprint::compute(packages.asPtr(), packageEdges.asPtr(), crates.asPtr(),
-                                             crateEdges.asPtr(), sourceContents.asPtr(),
-                                             modules.asPtr());
+  return SemanticContextFingerprint::compute(
+      compilationUnits.asPtr(), toolchainInputs.asPtr(), packageEdges.asPtr(), crates.asPtr(),
+      crateEdges.asPtr(), sourceContents.asPtr(), modules.asPtr());
 }
 
 zc::Maybe<SemanticContextFingerprint> fingerprintWithSources(
     zc::Vector<SourceContentIdentity>& sourceContents) {
-  zc::Vector<PackageKey> packages;
+  zc::Vector<CompilationUnitIdentity> compilationUnits;
+  zc::Vector<ToolchainSemanticContextInput> toolchainInputs;
   zc::Vector<PackageDependencyEdgeKey> packageEdges;
   zc::Vector<CrateKey> crates;
   zc::Vector<CrateDependencyEdgeKey> crateEdges;
   zc::Vector<ModuleKey> modules;
-  return SemanticContextFingerprint::compute(packages.asPtr(), packageEdges.asPtr(), crates.asPtr(),
-                                             crateEdges.asPtr(), sourceContents.asPtr(),
-                                             modules.asPtr());
+  return SemanticContextFingerprint::compute(
+      compilationUnits.asPtr(), toolchainInputs.asPtr(), packageEdges.asPtr(), crates.asPtr(),
+      crateEdges.asPtr(), sourceContents.asPtr(), modules.asPtr());
 }
 
 void expectFingerprint(zc::Maybe<SemanticContextFingerprint>& result, zc::StringPtr expected) {
   bool matched = false;
   ZC_IF_SOME(fingerprintValue, result) {
-    ZC_EXPECT(zc::encodeHex(fingerprintValue.digest().bytes()) == expected);
+    auto actual = zc::encodeHex(fingerprintValue.digest().bytes());
+    ZC_EXPECT(actual == expected, actual, expected);
     matched = true;
   }
   ZC_EXPECT(matched);
 }
 
+bool sameFingerprint(const zc::Maybe<SemanticContextFingerprint>& left,
+                     const zc::Maybe<SemanticContextFingerprint>& right) {
+  ZC_IF_SOME(leftValue, left) {
+    ZC_IF_SOME(rightValue, right) {
+      return leftValue.digest().bytes() == rightValue.digest().bytes();
+    }
+  }
+  return false;
+}
+
 }  // namespace
 
 ZC_TEST("Semantic context fingerprint passes the empty codec fixture") {
-  zc::Vector<PackageKey> packages;
+  zc::Vector<CompilationUnitIdentity> compilationUnits;
+  zc::Vector<ToolchainSemanticContextInput> toolchainInputs;
   zc::Vector<PackageDependencyEdgeKey> packageEdges;
-  auto result = fingerprint(packages, packageEdges);
-  expectFingerprint(result, "b0284a2767bcaa8ba0d0c5c9ea1475b9377ef2c4341bbca97d424d088517ba23"_zc);
+  auto result = fingerprint(compilationUnits, toolchainInputs, packageEdges);
+  expectFingerprint(result, "9edf7ccadf4fb6b61b8a8e87c665571bcaed3d4cc4fb1a0554b0cdabbc8dc61b"_zc);
 }
 
-ZC_TEST("Semantic context fingerprint passes the sorted package graph fixture") {
-  zc::Vector<PackageKey> packages;
-  packages.add(localPackage("b"_zc));
-  packages.add(localPackage("a"_zc));
+ZC_TEST("Semantic context fingerprint canonicalizes user compilation-unit order") {
+  zc::Vector<CompilationUnitIdentity> compilationUnits;
+  compilationUnits.add(userCompilationUnit("b"_zc));
+  compilationUnits.add(userCompilationUnit("a"_zc));
+  zc::Vector<ToolchainSemanticContextInput> toolchainInputs;
   zc::Vector<PackageDependencyEdgeKey> packageEdges;
   packageEdges.add(packageEdge());
-  auto result = fingerprint(packages, packageEdges);
-  expectFingerprint(result, "12487f84af23915e05b21cdb4899e1f458c438e425521e7d0659fdde1ac11bf8"_zc);
+  auto result = fingerprint(compilationUnits, toolchainInputs, packageEdges);
+  expectFingerprint(result, "9bd03b6d1c0ac441a09e942e67cbbc526d36555f1c6c24e72e9fe9dc37e325ae"_zc);
 
-  zc::Vector<PackageKey> permutedPackages;
-  permutedPackages.add(localPackage("a"_zc));
-  permutedPackages.add(localPackage("b"_zc));
+  zc::Vector<CompilationUnitIdentity> permutedCompilationUnits;
+  permutedCompilationUnits.add(userCompilationUnit("a"_zc));
+  permutedCompilationUnits.add(userCompilationUnit("b"_zc));
+  zc::Vector<ToolchainSemanticContextInput> permutedToolchainInputs;
   zc::Vector<PackageDependencyEdgeKey> permutedEdges;
   permutedEdges.add(packageEdge());
-  auto permuted = fingerprint(permutedPackages, permutedEdges);
-  expectFingerprint(permuted,
-                    "12487f84af23915e05b21cdb4899e1f458c438e425521e7d0659fdde1ac11bf8"_zc);
+  auto permuted = fingerprint(permutedCompilationUnits, permutedToolchainInputs, permutedEdges);
+  ZC_EXPECT(sameFingerprint(result, permuted));
+}
+
+ZC_TEST("Semantic context fingerprint canonicalizes mixed user and core order") {
+  zc::Vector<CompilationUnitIdentity> compilationUnits;
+  compilationUnits.add(coreCompilationUnit());
+  compilationUnits.add(userCompilationUnit("a"_zc));
+  zc::Vector<ToolchainSemanticContextInput> toolchainInputs;
+  toolchainInputs.add(coreContextInput());
+  zc::Vector<PackageDependencyEdgeKey> packageEdges;
+  auto result = fingerprint(compilationUnits, toolchainInputs, packageEdges);
+  expectFingerprint(result, "0ca67b056331e421600aeda686029b084cd7e1c0e1475f1b87193fdc141f07e3"_zc);
+
+  zc::Vector<CompilationUnitIdentity> permutedCompilationUnits;
+  permutedCompilationUnits.add(userCompilationUnit("a"_zc));
+  permutedCompilationUnits.add(coreCompilationUnit());
+  zc::Vector<ToolchainSemanticContextInput> permutedToolchainInputs;
+  permutedToolchainInputs.add(coreContextInput());
+  zc::Vector<PackageDependencyEdgeKey> permutedEdges;
+  auto permuted = fingerprint(permutedCompilationUnits, permutedToolchainInputs, permutedEdges);
+  ZC_EXPECT(sameFingerprint(result, permuted));
+}
+
+ZC_TEST("Semantic context fingerprint passes the core-only codec fixture") {
+  zc::Vector<CompilationUnitIdentity> compilationUnits;
+  compilationUnits.add(coreCompilationUnit());
+  zc::Vector<ToolchainSemanticContextInput> toolchainInputs;
+  toolchainInputs.add(coreContextInput());
+  zc::Vector<PackageDependencyEdgeKey> packageEdges;
+  auto result = fingerprint(compilationUnits, toolchainInputs, packageEdges);
+  expectFingerprint(result, "f3f4e83d154a5b4b31f9f71a8ba377e899ce4fc21350935505ed3d48f8dcc74a"_zc);
+}
+
+ZC_TEST("Core semantic context fingerprint binds only the exact projected core crate") {
+  auto core = coreCrate();
+  auto result = CoreSemanticContextFingerprint::compute(core);
+  ZC_REQUIRE(result != zc::none);
+
+  zc::Vector<uint8_t> preimage;
+  preimage.addAll("zom.core-semantic-context"_zc.asBytes());
+  preimage.add(0);
+  preimage.addAll(core.encode().asPtr());
+  auto independent = sha256(preimage.asPtr());
+  ZC_REQUIRE(independent != zc::none);
+  ZC_EXPECT(ZC_REQUIRE_NONNULL(result).digest() == ZC_REQUIRE_NONNULL(independent));
+  ZC_EXPECT(CoreSemanticContextFingerprint::compute(crate()) == zc::none);
 }
 
 ZC_TEST("Semantic context fingerprint rejects duplicate canonical inputs") {
-  zc::Vector<PackageKey> packages;
-  packages.add(localPackage("a"_zc));
-  packages.add(localPackage("a"_zc));
+  zc::Vector<CompilationUnitIdentity> compilationUnits;
+  compilationUnits.add(coreCompilationUnit());
+  compilationUnits.add(coreCompilationUnit());
+  zc::Vector<ToolchainSemanticContextInput> toolchainInputs;
+  toolchainInputs.add(coreContextInput());
   zc::Vector<PackageDependencyEdgeKey> packageEdges;
-  ZC_EXPECT(fingerprint(packages, packageEdges) == zc::none);
+  ZC_EXPECT(fingerprint(compilationUnits, toolchainInputs, packageEdges) == zc::none);
 
   auto firstSnapshot = sourceSnapshot(0x33);
   auto secondSnapshot = sourceSnapshot(0x44);
@@ -210,24 +293,85 @@ ZC_TEST("Semantic context fingerprint rejects duplicate canonical inputs") {
   ZC_EXPECT(fingerprintWithSources(sourceContents) == zc::none);
 }
 
+ZC_TEST("Semantic context fingerprint requires exactly one input per toolchain unit") {
+  zc::Vector<CompilationUnitIdentity> coreUnits;
+  coreUnits.add(coreCompilationUnit());
+  zc::Vector<PackageDependencyEdgeKey> packageEdges;
+
+  zc::Vector<ToolchainSemanticContextInput> missingInputs;
+  ZC_EXPECT(fingerprint(coreUnits, missingInputs, packageEdges) == zc::none);
+
+  zc::Vector<ToolchainSemanticContextInput> duplicateInputs;
+  duplicateInputs.add(coreContextInput());
+  duplicateInputs.add(coreContextInput());
+  ZC_EXPECT(fingerprint(coreUnits, duplicateInputs, packageEdges) == zc::none);
+
+  zc::Vector<CompilationUnitIdentity> userUnits;
+  userUnits.add(userCompilationUnit("a"_zc));
+  zc::Vector<ToolchainSemanticContextInput> extraInputs;
+  extraInputs.add(coreContextInput());
+  ZC_EXPECT(fingerprint(userUnits, extraInputs, packageEdges) == zc::none);
+}
+
+ZC_TEST("Semantic context fingerprint changes with core distribution and policy lineage") {
+  zc::Vector<CompilationUnitIdentity> baselineUnits;
+  baselineUnits.add(coreCompilationUnit());
+  zc::Vector<ToolchainSemanticContextInput> baselineInputs;
+  baselineInputs.add(coreContextInput());
+  zc::Vector<PackageDependencyEdgeKey> baselineEdges;
+  auto baseline = fingerprint(baselineUnits, baselineInputs, baselineEdges);
+
+  zc::Vector<CompilationUnitIdentity> distributionUnits;
+  distributionUnits.add(coreCompilationUnit());
+  zc::Vector<ToolchainSemanticContextInput> distributionInputs;
+  distributionInputs.add(coreContextInput(0x22, 0x31));
+  zc::Vector<PackageDependencyEdgeKey> distributionEdges;
+  auto distributionMutation = fingerprint(distributionUnits, distributionInputs, distributionEdges);
+  ZC_EXPECT(!sameFingerprint(baseline, distributionMutation));
+
+  zc::Vector<CompilationUnitIdentity> policyUnits;
+  policyUnits.add(coreCompilationUnit());
+  zc::Vector<ToolchainSemanticContextInput> policyInputs;
+  policyInputs.add(coreContextInput(0x21, 0x32));
+  zc::Vector<PackageDependencyEdgeKey> policyEdges;
+  auto policyMutation = fingerprint(policyUnits, policyInputs, policyEdges);
+  ZC_EXPECT(!sameFingerprint(baseline, policyMutation));
+
+  auto stableToolchain = ToolchainUnitKey::core().encode();
+  auto mutatedDistributionToolchain = coreContextInput(0x22, 0x31).toolchain().encode();
+  auto mutatedPolicyToolchain = coreContextInput(0x21, 0x32).toolchain().encode();
+  ZC_EXPECT(stableToolchain.asPtr() == mutatedDistributionToolchain.asPtr());
+  ZC_EXPECT(stableToolchain.asPtr() == mutatedPolicyToolchain.asPtr());
+}
+
 ZC_TEST("Semantic context fingerprint consumes only frozen context registries") {
   SemanticContextFactory factory;
   auto registries = requireRegistrySet(factory, requireContext(factory));
+  zc::Vector<ToolchainSemanticContextInput> toolchainInputs;
   zc::Vector<PackageDependencyEdgeKey> packageEdges;
   packageEdges.add(packageEdge());
   zc::Vector<CrateDependencyEdgeKey> crateEdges;
-  ZC_EXPECT(SemanticContextFingerprint::compute(registries, packageEdges.asPtr(),
+  ZC_EXPECT(SemanticContextFingerprint::compute(registries, toolchainInputs.asPtr(),
+                                                packageEdges.asPtr(),
                                                 crateEdges.asPtr()) == zc::none);
 
-  ZC_EXPECT(registries.collectPackage(localPackage("b"_zc)) == FrozenRegistryFailure::None);
-  ZC_EXPECT(registries.collectPackage(localPackage("a"_zc)) == FrozenRegistryFailure::None);
-  ZC_EXPECT(registries.freezePackages() == FrozenRegistryFailure::None);
+  ZC_EXPECT(registries.collectCompilationUnit(userCompilationUnit("b"_zc)) ==
+            FrozenRegistryFailure::None);
+  ZC_EXPECT(registries.collectCompilationUnit(userCompilationUnit("a"_zc)) ==
+            FrozenRegistryFailure::None);
+  ZC_EXPECT(registries.freezeCompilationUnits() == FrozenRegistryFailure::None);
   ZC_EXPECT(registries.freezeCrates() == FrozenRegistryFailure::None);
   ZC_EXPECT(registries.freezeSourceFiles() == FrozenRegistryFailure::None);
   ZC_EXPECT(registries.freezeModules() == FrozenRegistryFailure::None);
-  auto result =
-      SemanticContextFingerprint::compute(registries, packageEdges.asPtr(), crateEdges.asPtr());
-  expectFingerprint(result, "12487f84af23915e05b21cdb4899e1f458c438e425521e7d0659fdde1ac11bf8"_zc);
+  auto result = SemanticContextFingerprint::compute(registries, toolchainInputs.asPtr(),
+                                                    packageEdges.asPtr(), crateEdges.asPtr());
+
+  zc::Vector<CompilationUnitIdentity> compilationUnits;
+  compilationUnits.add(userCompilationUnit("a"_zc));
+  compilationUnits.add(userCompilationUnit("b"_zc));
+  zc::Vector<ToolchainSemanticContextInput> directToolchainInputs;
+  auto direct = fingerprint(compilationUnits, directToolchainInputs, packageEdges);
+  ZC_EXPECT(sameFingerprint(result, direct));
 }
 
 }  // namespace zomlang::compiler::identity

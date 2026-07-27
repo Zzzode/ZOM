@@ -65,8 +65,9 @@ CompilationConfigKey targetCompilation() {
 }
 
 CrateKey crate() {
-  auto value = CrateKey::from(localPackage(), CrateTargetKind::Library,
-                              requireScalar<TargetName>("lib"_zc), targetCompilation());
+  auto value =
+      CrateKey::from(CompilationUnitIdentity::userPackage(localPackage()), CrateTargetKind::Library,
+                     requireScalar<TargetName>("lib"_zc), targetCompilation());
   ZC_IF_SOME(admitted, value) { return zc::mv(admitted); }
   ZC_FAIL_REQUIRE("invalid crate test input");
 }
@@ -139,7 +140,7 @@ ZC_TEST("SemanticImportBindingKey passes the fixed canonical codec vector") {
   ZC_EXPECT(encoded.slice(0, domain.size()).asChars() == domain);
   ZC_EXPECT(encoded[domain.size()] == 0x00);
   expectDigest(encoded.asPtr(),
-               "422f9ff6b6c81ba4378abf0a3adeea6c588da99c0da0e62f99e1a4e1ebdc122b"_zc);
+               "6727ffc3d5177ff2304eb0404e3fc7602059dda30aa5cd2125547e5708617484"_zc);
   ZC_EXPECT(key.clone().encode().asPtr() == encoded.asPtr());
   ZC_EXPECT(key.requester().encode().asPtr() == module("app"_zc).encode().asPtr());
   ZC_EXPECT(key.resolution().dependencyKind() == ModuleDependencyKind::Import);

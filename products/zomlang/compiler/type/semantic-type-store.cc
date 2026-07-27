@@ -81,7 +81,7 @@ SemanticTypeStore::SemanticTypeStore(identity::SemanticTypeStoreConstructionToke
 SemanticTypeStore::~SemanticTypeStore() noexcept(false) = default;
 
 bool SemanticTypeStore::registriesReadyForAdmission() const noexcept {
-  return impl->registries.packages().isFrozen() && impl->registries.crates().isFrozen() &&
+  return impl->registries.compilationUnits().isFrozen() && impl->registries.crates().isFrozen() &&
          impl->registries.sourceFiles().isFrozen() && impl->registries.modules().isFrozen() &&
          impl->registries.definitions().isFrozen() && impl->registries.impls().isFrozen() &&
          impl->registries.genericParameters().isFrozen() &&

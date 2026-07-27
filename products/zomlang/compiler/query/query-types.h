@@ -19,6 +19,7 @@
 #include "zc/core/array.h"
 #include "zc/core/common.h"
 #include "zc/core/memory.h"
+#include "zc/core/refcount.h"
 #include "zc/core/string.h"
 #include "zc/core/vector.h"
 
@@ -165,6 +166,167 @@ private:
   zc::Array<uint8_t> canonicalBytesField;
 };
 
+class SemanticContextCapabilityArena;
+class SnapshotCapabilityArena;
+class RevisionLocalCapabilityMemoBase;
+
+/// \brief Type-erased owner of the session semantic resources anchored by an arena.
+///
+/// The compiler-session implementation supplies one concrete owner containing
+/// its semantic-context issuer, identity registries, and semantic type store.
+class SemanticContextCapabilityResources {
+public:
+  virtual ~SemanticContextCapabilityResources() noexcept(false) = default;
+  ZC_DISALLOW_COPY_AND_MOVE(SemanticContextCapabilityResources);
+
+protected:
+  SemanticContextCapabilityResources() = default;
+};
+
+/// \brief Session lifetime anchor for revision-local semantic capabilities.
+///
+/// The compiler session owns one arena and places its semantic-context issuer,
+/// identity registries, and semantic type store behind that lifetime boundary.
+/// The query runtime deliberately treats those resources as opaque.
+class SemanticContextCapabilityArena final : public zc::AtomicRefcounted {
+public:
+  SemanticContextCapabilityArena();
+  explicit SemanticContextCapabilityArena(zc::Own<SemanticContextCapabilityResources>&& resources);
+  ~SemanticContextCapabilityArena() noexcept(false);
+  ZC_DISALLOW_COPY_AND_MOVE(SemanticContextCapabilityArena);
+
+  ZC_NODISCARD bool hasResources() const noexcept;
+
+private:
+  ZC_NODISCARD const SemanticContextCapabilityResources& resources() const ZC_LIFETIMEBOUND;
+
+  struct Impl;
+  zc::Own<Impl> impl;
+
+  friend class SnapshotCapabilityArena;
+};
+
+/// \brief Immutable lifetime anchor created once for one query snapshot.
+class SnapshotCapabilityArena final : public zc::AtomicRefcounted {
+public:
+  SnapshotCapabilityArena(DatabaseRevision revision,
+                          zc::Arc<SemanticContextCapabilityArena>&& context);
+  ~SnapshotCapabilityArena() noexcept(false);
+  ZC_DISALLOW_COPY_AND_MOVE(SnapshotCapabilityArena);
+
+  ZC_NODISCARD DatabaseRevision revision() const noexcept;
+
+private:
+  ZC_NODISCARD const SemanticContextCapabilityResources& resources() const ZC_LIFETIMEBOUND;
+
+  struct Impl;
+  zc::Own<Impl> impl;
+
+  friend class QueryContext;
+};
+
+/// \brief Type-erased immutable owner of one revision-local capability generation.
+class RevisionLocalCapabilityMemoBase : public zc::AtomicRefcounted {
+public:
+  ~RevisionLocalCapabilityMemoBase() noexcept(false) override;
+  ZC_DISALLOW_COPY_AND_MOVE(RevisionLocalCapabilityMemoBase);
+
+  ZC_NODISCARD const CanonicalQueryKey& key() const ZC_LIFETIMEBOUND;
+  ZC_NODISCARD DatabaseRevision revision() const noexcept;
+  ZC_NODISCARD const SnapshotCapabilityArena& arena() const ZC_LIFETIMEBOUND;
+  ZC_NODISCARD zc::ArrayPtr<const zc::Arc<RevisionLocalCapabilityMemoBase>> retainedDependencies()
+      const ZC_LIFETIMEBOUND;
+  ZC_NODISCARD zc::ArrayPtr<const uint8_t> stableWitness() const ZC_LIFETIMEBOUND;
+  ZC_NODISCARD zc::StringPtr capabilityTypeIdentity() const ZC_LIFETIMEBOUND;
+
+protected:
+  RevisionLocalCapabilityMemoBase(
+      CanonicalQueryKey&& key, DatabaseRevision revision, zc::Arc<SnapshotCapabilityArena>&& arena,
+      zc::Vector<zc::Arc<RevisionLocalCapabilityMemoBase>>&& retainedDependencies,
+      zc::Array<uint8_t>&& stableWitness, zc::StringPtr capabilityTypeIdentity);
+
+private:
+  struct Impl;
+  zc::Own<Impl> impl;
+};
+
+namespace _query_detail {
+
+template <typename Capability>
+zc::StringPtr capabilityTypeIdentity() {
+#if defined(__clang__) || defined(__GNUC__)
+  return zc::StringPtr(__PRETTY_FUNCTION__);
+#elif defined(_MSC_VER)
+  return zc::StringPtr(__FUNCSIG__);
+#else
+#error "A compiler-provided function signature is required for capability type identity"
+#endif
+}
+
+}  // namespace _query_detail
+
+template <typename Spec>
+class CapabilityResultDecoder;
+
+/// \brief Immutable memo generation owning exactly one move-only capability.
+template <typename Capability>
+class RevisionLocalCapabilityMemo final : public RevisionLocalCapabilityMemoBase {
+public:
+  RevisionLocalCapabilityMemo(
+      CanonicalQueryKey&& key, DatabaseRevision revision, zc::Arc<SnapshotCapabilityArena>&& arena,
+      zc::Vector<zc::Arc<RevisionLocalCapabilityMemoBase>>&& retainedDependencies,
+      zc::Array<uint8_t>&& stableWitness, zc::Own<Capability>&& capability)
+      : RevisionLocalCapabilityMemoBase(zc::mv(key), revision, zc::mv(arena),
+                                        zc::mv(retainedDependencies), zc::mv(stableWitness),
+                                        _query_detail::capabilityTypeIdentity<Capability>()),
+        capabilityField(zc::mv(capability)) {}
+
+  ZC_NODISCARD const Capability& capability() const ZC_LIFETIMEBOUND { return *capabilityField; }
+
+private:
+  zc::Own<Capability> capabilityField;
+};
+
+/// \brief Cloneable strong lease to one immutable capability memo generation.
+template <typename Capability>
+class QueryCapabilityLease final {
+public:
+  using StoredCapability = zc::RemoveConst<Capability>;
+
+  QueryCapabilityLease(QueryCapabilityLease&&) noexcept = default;
+  QueryCapabilityLease& operator=(QueryCapabilityLease&&) noexcept = default;
+  ZC_DISALLOW_COPY(QueryCapabilityLease);
+
+  ZC_NODISCARD QueryCapabilityLease clone() const {
+    return QueryCapabilityLease(memoField.addRef());
+  }
+  ZC_NODISCARD const StoredCapability& capability() const ZC_LIFETIMEBOUND {
+    return memoField->capability();
+  }
+  ZC_NODISCARD const StoredCapability& operator*() const ZC_LIFETIMEBOUND { return capability(); }
+  ZC_NODISCARD DatabaseRevision revision() const noexcept { return memoField->revision(); }
+  ZC_NODISCARD zc::ArrayPtr<const uint8_t> stableWitness() const ZC_LIFETIMEBOUND {
+    return memoField->stableWitness();
+  }
+  ZC_NODISCARD const CanonicalQueryKey& key() const ZC_LIFETIMEBOUND { return memoField->key(); }
+  ZC_NODISCARD size_t retainedDependencyCount() const noexcept {
+    return memoField->retainedDependencies().size();
+  }
+  ZC_NODISCARD DatabaseRevision arenaRevision() const noexcept {
+    return memoField->arena().revision();
+  }
+
+private:
+  explicit QueryCapabilityLease(
+      zc::Arc<RevisionLocalCapabilityMemo<StoredCapability>>&& memo) noexcept
+      : memoField(zc::mv(memo)) {}
+
+  zc::Arc<RevisionLocalCapabilityMemo<StoredCapability>> memoField;
+
+  template <typename Spec>
+  friend class CapabilityResultDecoder;
+};
+
 /// \brief Runtime failures that never become reusable semantic values.
 enum class QueryRuntimeFailure : uint8_t {
   UnregisteredKind = 0,
@@ -186,17 +348,28 @@ public:
   ZC_DISALLOW_COPY(QueryRequestResult);
 
   ZC_NODISCARD static QueryRequestResult completed(QueryValue&& value);
+  ZC_NODISCARD static QueryRequestResult completed(
+      zc::Arc<RevisionLocalCapabilityMemoBase>&& capabilityMemo);
   ZC_NODISCARD static QueryRequestResult failed(QueryRuntimeFailure failure);
 
   ZC_NODISCARD QueryRequestResult clone() const;
-  ZC_NODISCARD bool isCompleted() const noexcept { return valueField != zc::none; }
+  ZC_NODISCARD bool isCompleted() const noexcept {
+    return valueField != zc::none || capabilityMemoField != nullptr;
+  }
+  ZC_NODISCARD bool isCapability() const noexcept { return capabilityMemoField != nullptr; }
   ZC_NODISCARD const QueryValue& value() const ZC_LIFETIMEBOUND;
+  ZC_NODISCARD const RevisionLocalCapabilityMemoBase& capabilityMemo() const ZC_LIFETIMEBOUND;
+  ZC_NODISCARD zc::Arc<RevisionLocalCapabilityMemoBase> capabilityMemoArc() const;
+  ZC_NODISCARD zc::Arc<RevisionLocalCapabilityMemoBase> takeCapabilityMemo();
   ZC_NODISCARD QueryRuntimeFailure failure() const noexcept { return failureField; }
 
 private:
-  QueryRequestResult(zc::Maybe<QueryValue>&& value, QueryRuntimeFailure failure) noexcept;
+  QueryRequestResult(zc::Maybe<QueryValue>&& value,
+                     zc::Arc<RevisionLocalCapabilityMemoBase>&& capabilityMemo,
+                     QueryRuntimeFailure failure) noexcept;
 
   zc::Maybe<QueryValue> valueField;
+  zc::Arc<RevisionLocalCapabilityMemoBase> capabilityMemoField;
   QueryRuntimeFailure failureField = QueryRuntimeFailure::InvariantViolation;
 };
 
@@ -216,12 +389,19 @@ public:
   ZC_NODISCARD zc::Maybe<InputProbeObservation> inputProbeObservation() const noexcept {
     return inputProbeObservationField;
   }
+  ZC_NODISCARD zc::Maybe<zc::ArrayPtr<const uint8_t>> stableWitness() const noexcept;
+
+  /// \brief Constructs a tracked dependency on one revision-local capability.
+  ZC_NODISCARD static DependencyRecord revisionLocalCapability(
+      CanonicalQueryKey&& key, DatabaseRevision changedAt, Durability durability,
+      zc::ArrayPtr<const uint8_t> stableWitness);
 
 private:
   CanonicalQueryKey keyField;
   DatabaseRevision changedAtField;
   Durability durabilityField;
   zc::Maybe<InputProbeObservation> inputProbeObservationField;
+  zc::Maybe<zc::Array<uint8_t>> stableWitnessField;
 };
 
 /// \brief Deterministic sequential or explicitly parallel dependency execution group.

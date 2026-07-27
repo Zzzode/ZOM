@@ -45,12 +45,12 @@ ExportSurfaceEntry cloneEntry(const ExportSurfaceEntry& entry) {
 }  // namespace
 
 ExportSurfaceCandidate::ExportSurfaceCandidate(identity::ModuleId sourceModule,
-                                               identity::PackageId sourcePackage,
+                                               identity::CompilationUnitId sourceCompilationUnit,
                                                ExportSurfaceRevision revision,
                                                zc::Vector<ExportSurfaceEntry>&& visibleEntries,
                                                zc::Vector<ExportSurfaceEntry>&& exports) noexcept
     : sourceModule(sourceModule),
-      sourcePackage(sourcePackage),
+      sourceCompilationUnit(sourceCompilationUnit),
       revision(revision),
       visibleEntries(zc::mv(visibleEntries)),
       exports(zc::mv(exports)) {}
@@ -60,7 +60,7 @@ ExportSurfaceCandidate ExportSurfaceCandidate::clone() const {
   for (const auto& entry : visibleEntries) { visible.add(cloneEntry(entry)); }
   zc::Vector<ExportSurfaceEntry> external;
   for (const auto& entry : exports) { external.add(cloneEntry(entry)); }
-  return ExportSurfaceCandidate(sourceModule, sourcePackage, revision, zc::mv(visible),
+  return ExportSurfaceCandidate(sourceModule, sourceCompilationUnit, revision, zc::mv(visible),
                                 zc::mv(external));
 }
 
@@ -148,8 +148,8 @@ VerifiedExportSurface VerifiedExportSurface::clone() const {
 identity::ModuleId VerifiedExportSurface::sourceModule() const noexcept {
   return impl->candidate.sourceModule;
 }
-identity::PackageId VerifiedExportSurface::sourcePackage() const noexcept {
-  return impl->candidate.sourcePackage;
+identity::CompilationUnitId VerifiedExportSurface::sourceCompilationUnit() const noexcept {
+  return impl->candidate.sourceCompilationUnit;
 }
 const ExportSurfaceRevision& VerifiedExportSurface::revision() const noexcept {
   return impl->candidate.revision;

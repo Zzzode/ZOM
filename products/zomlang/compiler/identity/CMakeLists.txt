@@ -12,6 +12,7 @@ set(IDENTITY_SRC
   ${CMAKE_CURRENT_SOURCE_DIR}/canonical-overload-header.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/canonical-scalar.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/canonical-url.cc
+  ${CMAKE_CURRENT_SOURCE_DIR}/compilation-unit-key.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/crate-key.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/definition-key.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/identity-invariant.cc
