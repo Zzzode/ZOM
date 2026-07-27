@@ -608,6 +608,11 @@ authority is introduced.
 - The stable foundation is large. Every S2 and S3 review patch is capped at
   400 changed source lines, edits only its named entities and exact files, and
   cannot land independently.
+- RFC 0033 replaces the stable-header review patch with three cumulative,
+  dependency-ordered patches: header primitives and parameter records,
+  `StableDefinitionHeader`, and `StableImplementationOccurrenceHeader`. Each
+  counts the facts header, facts source, and native fact test against the
+  exact approved predecessor hash and retains the 400-line cap.
 - Moving build and test wiring forward increases the size of `R29-12AB`, but
   every added file is necessary to prove the transaction it lands.
 - A clean verification worktree adds operational steps. It is necessary while
@@ -718,8 +723,8 @@ runtime observability, or release operation is added.
 6. Prepare the matching bounded S3 key codec and wire-oracle review patch.
 7. Prepare bounded driver authority and owner-body caller-cutover review
    patches.
-8. Prepare bounded S2 header, module-skeleton, owner-body, and allocation
-   review patches.
+8. Prepare the three RFC 0033 bounded S2 header review patches, then bounded
+   module-skeleton, owner-body, and allocation review patches.
 9. Prepare one matching bounded S3 codec, sequence-admission, and wire-oracle
    review patch after each S2 fact patch.
 10. Add Binder build wiring, the focused ztest, the schema gate, its self-test,
@@ -781,3 +786,4 @@ None
 | 2026-07-28 | ACCEPTED | All six required owners approved proposal SHA-256 `4ed0e6b885abc87a1c4251855780cf115a85b3623b1d46f774a4b664110f7b6b`. Acceptance transaction `rfc0030-accept-20260728-4ed0e6b8` synchronizes RFCs 0025 through 0030, trackers 0017 through 0020 and 0025 through 0030, the RFC index, and affected routing governance without changing the immutable implementation-series base. |
 | 2026-07-28 | ACCEPTED | Transaction `rfc0031-accept-20260728-c25fcb18` synchronized the complete schema metamodel and verification contract to RFC 0031 proposal SHA-256 `c25fcb18e503ac214a8e92c925fa88108a915c2b15c94409dfecb88b3d9a63d5` and tracker SHA-256 `d64e7791ed2e2a488c5f57bc07ac341ccfc37d37c220c85131e2c9e846fb8d0d`; RFC 0030 remains accepted, `R30-11` remains pending implementation, and the design blocker is satisfied. |
 | 2026-07-28 | ACCEPTED | Transaction `rfc0032-accept-20260728-1d519846` synchronized the complete authority-session routing ledger and exact landing set to RFC 0032 proposal SHA-256 `1d519846566992156b16986fc5c75602af403254fce70f48cfb65af9983a6d72` and tracker SHA-256 `b685d88db1e5c2eef13e97ede1e5c085959d2446e39fd07fe5baac0bf7b2ecbf`; RFC 0030 remains accepted and `R30-12C` may resume without changing implementation status. |
+| 2026-07-28 | ACCEPTED | Transaction `rfc0033-accept-20260728-3fc78517` replaced the rejected stable-header review patch with three dependency-ordered patches that each count all exact files and retain the 400-line cap; RFC 0030 remains accepted and source review resumes at `R30-12H-A`. |
