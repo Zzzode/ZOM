@@ -12,11 +12,12 @@
 // See the License for the specific language governing permissions and limitations under
 // the License.
 
-#include "zomlang/compiler/driver/package/package-compilation-request.h"
-
 #include "zc/core/encoding.h"
 #include "zc/ztest/test.h"
 #include "zomlang/compiler/driver/package/build-script-plan.h"
+#include "zomlang/compiler/driver/package/canonical-package-compilation-request.h"
+#include "zomlang/compiler/identity/canonical-encoder.h"
+#include "zomlang/compiler/identity/sha256.h"
 #include "zomlang/compiler/ir/target-registry.h"
 
 namespace zomlang::compiler::driver::package {
@@ -204,6 +205,76 @@ NormalizedPackageCompilationRequest normalize(RawPackageCompilationRequest&& raw
   return zc::mv(result.get<NormalizedPackageCompilationRequest>());
 }
 
+VerifiedPackageCompilationRequest verifyRequest(RawPackageCompilationRequest&& raw,
+                                                NormalizedWorkspace&& input) {
+  auto normalized = normalize(zc::mv(raw));
+  auto result = verifyPackageCompilationRequest(normalized, input);
+  ZC_REQUIRE(result.is<VerifiedPackageCompilationRequest>());
+  return zc::mv(result.get<VerifiedPackageCompilationRequest>());
+}
+
+VerifiedPackageCompilationRequest verifiedRequest() {
+  return verifyRequest(validRaw(), workspace());
+}
+
+VerifiedPackageCompilationRequest verifiedRequestWithTwoRoots() {
+  auto raw = validRaw();
+  raw.targetSelections.add(namedTarget(identity::CrateTargetKind::Binary, "app"_zc));
+  return verifyRequest(zc::mv(raw), workspace());
+}
+
+VerifiedPackageCompilationRequest verifiedRequestWithLanguageOptions(
+    SelectedLanguageOptions options) {
+  auto raw = validRaw();
+  raw.languageOptions = options;
+  return verifyRequest(zc::mv(raw), workspace());
+}
+
+zc::Array<uint8_t> copyBytes(zc::ArrayPtr<const uint8_t> bytes, size_t additional = 0) {
+  auto result = zc::heapArray<uint8_t>(bytes.size() + additional);
+  for (size_t index = 0; index < bytes.size(); ++index) { result[index] = bytes[index]; }
+  return result;
+}
+
+zc::Array<uint8_t> frameRecord(zc::StringPtr domain, zc::ArrayPtr<const uint8_t> payload) {
+  auto result = zc::heapArray<uint8_t>(domain.size() + 1 + payload.size());
+  size_t cursor = 0;
+  for (const auto byte : domain.asBytes()) { result[cursor++] = byte; }
+  result[cursor++] = 0;
+  for (const auto byte : payload) { result[cursor++] = byte; }
+  return result;
+}
+
+zc::Array<uint8_t> encodeRequestWithRoots(const CanonicalPackageCompilationRequest& request,
+                                          zc::ArrayPtr<const size_t> rootIndices) {
+  identity::CanonicalEncoder encoder;
+  encoder.encodeSequenceSize(rootIndices.size());
+  for (const auto index : rootIndices) {
+    ZC_REQUIRE(index < request.roots().size());
+    encoder.encodeByteString(request.roots()[index].encodeCanonical().asPtr());
+  }
+  encoder.encodeByteString(request.hostTarget().encodeCanonical().asPtr());
+  encoder.encodeByteString(request.target().encodeCanonical().asPtr());
+  encoder.encodeByteString(request.languageOptions().encodeCanonical().asPtr());
+  encoder.encodeUint8(static_cast<uint8_t>(request.lockMode()));
+  return frameRecord("zom.input.canonical-package-compilation-request"_zc,
+                     encoder.finish().asPtr());
+}
+
+uint64_t decodeUint64At(zc::ArrayPtr<const uint8_t> bytes, size_t offset) {
+  ZC_REQUIRE(offset <= bytes.size() && bytes.size() - offset >= sizeof(uint64_t));
+  uint64_t result = 0;
+  for (size_t index = 0; index < sizeof(uint64_t); ++index) {
+    result = (result << 8) | bytes[offset + index];
+  }
+  return result;
+}
+
+template <typename Record>
+void expectDifferentOrRejected(zc::Maybe<Record>&& decoded, const Record& original) {
+  ZC_IF_SOME(value, decoded) { ZC_EXPECT(!(value == original)); }
+}
+
 size_t offsetOf(zc::StringPtr source, zc::StringPtr needle, size_t start = 0) {
   ZC_REQUIRE(needle.size() != 0 && needle.size() <= source.size());
   for (size_t offset = start; offset + needle.size() <= source.size(); ++offset) {
@@ -346,6 +417,168 @@ ZC_TEST("Workspace verification finalizes complete package and crate keys") {
     ZC_EXPECT(roots[0].crateKey().encode().size() != 0);
     ZC_EXPECT(roots[1].crateKey().encode().size() != 0);
     ZC_EXPECT(roots[0].crateKey().encode().asPtr() != roots[1].crateKey().encode().asPtr());
+  }
+}
+
+ZC_TEST("Canonical package request projects round trips and retains fixed wire oracles") {
+  auto live = verifiedRequest();
+  auto projected = CanonicalPackageCompilationRequest::fromVerified(live);
+  ZC_REQUIRE(projected != zc::none);
+  ZC_IF_SOME(request, projected) {
+    ZC_EXPECT(CanonicalPackageCompilationRequestProjectionVerifier::verify(request, live));
+    auto encoded = request.encodeCanonical();
+    auto decoded = CanonicalPackageCompilationRequest::decodeCanonical(encoded.asPtr());
+    ZC_REQUIRE(decoded != zc::none);
+    ZC_IF_SOME(value, decoded) { ZC_EXPECT(value == request); }
+    ZC_EXPECT(request.clone() == request);
+    ZC_REQUIRE(request.roots().size() == 1);
+    ZC_EXPECT(request.roots()[0].clone() == request.roots()[0]);
+    ZC_EXPECT(request.hostTarget().clone() == request.hostTarget());
+    ZC_EXPECT(request.languageOptions().clone() == request.languageOptions());
+    ZC_EXPECT(zc::encodeHex(request.languageOptions().encodeCanonical().asPtr()) ==
+              "7a6f6d2e696e7075742e63616e6f6e6963616c2d6c616e67756167652d6f7074696f6e7300"
+              "010001"_zc);
+    auto digest = identity::sha256(encoded.asPtr());
+    ZC_REQUIRE(digest != zc::none);
+    ZC_IF_SOME(value, digest) {
+      ZC_EXPECT(zc::encodeHex(value.bytes()) ==
+                "a6f713bc09ba8f17a8acc760917a064c395447710d99bc6acf9c667bc525255c"_zc);
+    }
+  }
+}
+
+ZC_TEST("Canonical package request leaf codecs reject field and primitive mutations") {
+  auto live = verifiedRequest();
+  auto projected = CanonicalPackageCompilationRequest::fromVerified(live);
+  ZC_REQUIRE(projected != zc::none);
+  ZC_IF_SOME(request, projected) {
+    const auto& root = request.roots()[0];
+    auto rootBytes = root.encodeCanonical();
+    const auto rootDomain = "zom.input.canonical-compilation-root"_zc;
+    size_t cursor = rootDomain.size() + 1;
+    const auto packageBytes = decodeUint64At(rootBytes.asPtr(), cursor);
+    ZC_REQUIRE(packageBytes != 0);
+    auto changedPackage = copyBytes(rootBytes.asPtr());
+    changedPackage[cursor + sizeof(uint64_t) + static_cast<size_t>(packageBytes) - 1] ^= 1;
+    expectDifferentOrRejected(
+        CanonicalCompilationRootRecord::decodeCanonical(changedPackage.asPtr()), root);
+    cursor += sizeof(uint64_t) + static_cast<size_t>(packageBytes);
+    auto unknownKind = copyBytes(rootBytes.asPtr());
+    unknownKind[cursor] = 0xff;
+    ZC_EXPECT(CanonicalCompilationRootRecord::decodeCanonical(unknownKind.asPtr()) == zc::none);
+    ++cursor;
+    const auto targetNameBytes = decodeUint64At(rootBytes.asPtr(), cursor);
+    cursor += sizeof(uint64_t);
+    ZC_REQUIRE(targetNameBytes != 0);
+    auto changedName = copyBytes(rootBytes.asPtr());
+    changedName[cursor] = changedName[cursor] == 'a' ? 'b' : 'a';
+    expectDifferentOrRejected(CanonicalCompilationRootRecord::decodeCanonical(changedName.asPtr()),
+                              root);
+    cursor += static_cast<size_t>(targetNameBytes);
+    auto changedEdition = copyBytes(rootBytes.asPtr());
+    changedEdition[cursor + sizeof(uint32_t) - 1] ^= 1;
+    expectDifferentOrRejected(
+        CanonicalCompilationRootRecord::decodeCanonical(changedEdition.asPtr()), root);
+    cursor += sizeof(uint32_t);
+    auto changedBuildScript = copyBytes(rootBytes.asPtr());
+    changedBuildScript[cursor] = changedBuildScript[cursor] == 0 ? 1 : 0;
+    expectDifferentOrRejected(
+        CanonicalCompilationRootRecord::decodeCanonical(changedBuildScript.asPtr()), root);
+    auto invalidBuildScript = copyBytes(rootBytes.asPtr());
+    invalidBuildScript[cursor] = 2;
+    ZC_EXPECT(CanonicalCompilationRootRecord::decodeCanonical(invalidBuildScript.asPtr()) ==
+              zc::none);
+    auto changedSourcePath = copyBytes(rootBytes.asPtr());
+    changedSourcePath[changedSourcePath.size() - 1] ^= 1;
+    expectDifferentOrRejected(
+        CanonicalCompilationRootRecord::decodeCanonical(changedSourcePath.asPtr()), root);
+
+    const auto& target = request.target();
+    auto targetBytes = target.encodeCanonical();
+    const auto targetDomain = "zom.input.canonical-target-selection"_zc;
+    const size_t targetPayload = targetDomain.size() + 1;
+    auto zeroRevision = copyBytes(targetBytes.asPtr());
+    for (size_t index = 0; index < 32; ++index) { zeroRevision[targetPayload + index] = 0; }
+    ZC_EXPECT(CanonicalTargetSelectionRecord::decodeCanonical(zeroRevision.asPtr()) == zc::none);
+    auto changedProfile = copyBytes(targetBytes.asPtr());
+    const size_t profileLengthOffset = targetPayload + 32;
+    const auto profileBytes = decodeUint64At(targetBytes.asPtr(), profileLengthOffset);
+    ZC_REQUIRE(profileBytes != 0);
+    const size_t profileOffset = profileLengthOffset + sizeof(uint64_t);
+    changedProfile[profileOffset] = changedProfile[profileOffset] == 'a' ? 'b' : 'a';
+    expectDifferentOrRejected(
+        CanonicalTargetSelectionRecord::decodeCanonical(changedProfile.asPtr()), target);
+    auto changedProjection = copyBytes(targetBytes.asPtr());
+    changedProjection[profileOffset + static_cast<size_t>(profileBytes)] ^= 1;
+    expectDifferentOrRejected(
+        CanonicalTargetSelectionRecord::decodeCanonical(changedProjection.asPtr()), target);
+    auto unknownPanic = copyBytes(targetBytes.asPtr());
+    unknownPanic[unknownPanic.size() - 1] = 0xff;
+    ZC_EXPECT(CanonicalTargetSelectionRecord::decodeCanonical(unknownPanic.asPtr()) == zc::none);
+
+    const auto& language = request.languageOptions();
+    auto languageBytes = language.encodeCanonical();
+    const auto languageDomain = "zom.input.canonical-language-options"_zc;
+    const size_t languagePayload = languageDomain.size() + 1;
+    for (size_t field = 0; field < 3; ++field) {
+      auto changed = copyBytes(languageBytes.asPtr());
+      changed[languagePayload + field] = changed[languagePayload + field] == 0 ? 1 : 0;
+      expectDifferentOrRejected(CanonicalLanguageOptionsRecord::decodeCanonical(changed.asPtr()),
+                                language);
+    }
+    auto invalidBool = copyBytes(languageBytes.asPtr());
+    invalidBool[languagePayload + 1] = 2;
+    ZC_EXPECT(CanonicalLanguageOptionsRecord::decodeCanonical(invalidBool.asPtr()) == zc::none);
+  }
+}
+
+ZC_TEST("Canonical package request rejects malformed aggregate framing and root order") {
+  auto live = verifiedRequestWithTwoRoots();
+  auto projected = CanonicalPackageCompilationRequest::fromVerified(live);
+  ZC_REQUIRE(projected != zc::none);
+  ZC_IF_SOME(request, projected) {
+    ZC_REQUIRE(request.roots().size() == 2);
+    const size_t reversed[] = {1, 0};
+    auto reversedBytes = encodeRequestWithRoots(request, zc::arrayPtr(reversed));
+    ZC_EXPECT(CanonicalPackageCompilationRequest::decodeCanonical(reversedBytes.asPtr()) ==
+              zc::none);
+    const size_t duplicate[] = {0, 0};
+    auto duplicateBytes = encodeRequestWithRoots(request, zc::arrayPtr(duplicate));
+    ZC_EXPECT(CanonicalPackageCompilationRequest::decodeCanonical(duplicateBytes.asPtr()) ==
+              zc::none);
+
+    auto encoded = request.encodeCanonical();
+    auto wrongDomain = copyBytes(encoded.asPtr());
+    wrongDomain[0] = 'x';
+    ZC_EXPECT(CanonicalPackageCompilationRequest::decodeCanonical(wrongDomain.asPtr()) == zc::none);
+    ZC_EXPECT(CanonicalPackageCompilationRequest::decodeCanonical(
+                  encoded.asPtr().slice(0, encoded.size() - 1)) == zc::none);
+    auto trailing = copyBytes(encoded.asPtr(), 1);
+    trailing[trailing.size() - 1] = 0;
+    ZC_EXPECT(CanonicalPackageCompilationRequest::decodeCanonical(trailing.asPtr()) == zc::none);
+    auto hostileCount = copyBytes(encoded.asPtr());
+    const size_t countOffset =
+        zc::StringPtr("zom.input.canonical-package-compilation-request").size() + 1;
+    for (size_t index = 0; index < sizeof(uint32_t); ++index) {
+      hostileCount[countOffset + index] = 0;
+      hostileCount[countOffset + sizeof(uint32_t) + index] = 0xff;
+    }
+    ZC_EXPECT(CanonicalPackageCompilationRequest::decodeCanonical(hostileCount.asPtr()) ==
+              zc::none);
+    auto unknownLock = copyBytes(encoded.asPtr());
+    unknownLock[unknownLock.size() - 1] = 0xff;
+    ZC_EXPECT(CanonicalPackageCompilationRequest::decodeCanonical(unknownLock.asPtr()) == zc::none);
+  }
+}
+
+ZC_TEST("Canonical package request verifier rejects live projection disagreement") {
+  auto baseline = verifiedRequest();
+  auto projected = CanonicalPackageCompilationRequest::fromVerified(baseline);
+  ZC_REQUIRE(projected != zc::none);
+  auto changed = verifiedRequestWithLanguageOptions(SelectedLanguageOptions{false, true, false});
+  ZC_IF_SOME(request, projected) {
+    ZC_EXPECT(CanonicalPackageCompilationRequestProjectionVerifier::verify(request, baseline));
+    ZC_EXPECT(!CanonicalPackageCompilationRequestProjectionVerifier::verify(request, changed));
   }
 }
 

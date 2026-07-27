@@ -3,6 +3,7 @@ target_sources(
   PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/archive-reader.cc
           ${CMAKE_CURRENT_SOURCE_DIR}/build-script-plan.cc
           ${CMAKE_CURRENT_SOURCE_DIR}/build-script-runtime.cc
+          ${CMAKE_CURRENT_SOURCE_DIR}/canonical-package-compilation-request.cc
           ${CMAKE_CURRENT_SOURCE_DIR}/dependency-manifest.cc
           ${CMAKE_CURRENT_SOURCE_DIR}/feature-resolver.cc
           ${CMAKE_CURRENT_SOURCE_DIR}/lockfile.cc
