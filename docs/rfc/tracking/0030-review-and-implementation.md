@@ -31,6 +31,22 @@ Transaction `rfc0031-accept-20260728-c25fcb18` satisfies the design blocker.
 `R30-11` remains pending implementation and may now resume because RFC 0031
 `R31-09` is satisfied by that transaction.
 
+### 2026-07-28 RFC 0032 Stable Definition Routing Ledger Closure
+
+The `R30-12C` review found that the authority session retained only
+`DefinitionKey`, while the accepted contextual definition key requires
+`StableDefinitionQueryKey { module, definition }`. Removed and moved
+definitions cannot recover their prior module from a digest or the next
+projection.
+
+All required owners approved RFC 0032 proposal SHA-256
+`1d519846566992156b16986fc5c75602af403254fce70f48cfb65af9983a6d72`
+and tracker SHA-256
+`b685d88db1e5c2eef13e97ede1e5c085959d2446e39fd07fe5baac0bf7b2ecbf`.
+Transaction `rfc0032-accept-20260728-1d519846` adds the session header to
+`R30-12D` and the exact landing set and requires a complete stable-key ledger.
+`R30-12C` may resume; no implementation row is completed by this transaction.
+
 ## Decision Record
 
 Accepted by `task-router`, `rfc`, `module-system`, `binder-checker`,
@@ -49,6 +65,14 @@ and tracker SHA-256
 It establishes the complete schema entity, macro, task, ownership,
 capability-failure, and verification model without changing implementation
 status.
+
+RFC 0032 acceptance transaction `rfc0032-accept-20260728-1d519846`
+synchronizes this tracker to proposal SHA-256
+`1d519846566992156b16986fc5c75602af403254fce70f48cfb65af9983a6d72`
+and tracker SHA-256
+`b685d88db1e5c2eef13e97ede1e5c085959d2446e39fd07fe5baac0bf7b2ecbf`.
+It establishes the complete authority-session routing ledger and corrected
+exact landing set without changing implementation status.
 
 The earlier approvals against proposal SHA-256
 `44f0ed68bdd3635e7ed736efcf2dfb2cef0a499c89733d1ab1334a89dce55151`
@@ -86,7 +110,7 @@ implementation-series base remains
 | `R30-12A` | `binder-checker` with `module-system` and `verification` review | `R30-11` | In `stable-binding-facts.{h,cc}` and `stable-binding-facts-test.cc`, implement the seven `Stable*QueryKey` routing types and canonical sequence shells; at most 400 changed source lines. | Stable key ownership and move-only tests | Pending |
 | `R30-12B` | `binder-checker` with `verification` review | `R30-12A` | In `stable-binding-codec.{h,cc}` and `stable-binding-facts-test.cc`, implement the seven stable-key codecs, sequence builder core, and key wire oracles; at most 400 changed source lines. | Stable key wire and mutation tests | Pending |
 | `R30-12C` | `module-system` with `binder-checker` and `verification` review | `R30-12B` | In `driver/contextual-binding-key.{h,cc}` and `active-definition-authority-query-test.cc`, implement `ContextualBodyOwnerKey`, `ContextualCompilationUnitKey`, `ContextualCrateKey`, `ContextualSourceKey`, `ContextualModuleKey`, `ContextualDefinitionKey`, `ContextualImplementationKey`, `ContextualGenericParameterKey`, and `ContextualCallableParameterKey` plus their codecs; at most 400 changed source lines. | Context ownership, payload, and wire tests | Pending |
-| `R30-12D` | `module-system` with `binder-checker` and `verification` review | `R30-12C` | In `active-definition-authority-query.{h,cc}`, `active-definition-authority-session.cc`, `active-definition-authority-query-test.cc`, and `active-definition-authority-session-test.cc`, delete the two query-specific contextual declarations and migrate authority callers; at most 400 changed source lines. | Authority caller-cutover tests | Pending |
+| `R30-12D` | `module-system` with `binder-checker` and `verification` review | `R30-12C`; RFC 0032 `R32-07` | In `active-definition-authority-query.{h,cc}`, `active-definition-authority-session.{h,cc}`, `active-definition-authority-query-test.cc`, and `active-definition-authority-session-test.cc`, delete the two query-specific contextual declarations, replace the authority ledger with complete `StableDefinitionQueryKey` values, and migrate authority callers; at most 400 changed source lines. | Authority caller-cutover, removal, rename, module removal, movement, and failure-atomicity tests | Pending |
 | `R30-12E` | `module-system` with `binder-checker` review | `R30-12D` | In `named-item-query.{h,cc}`, migrate every contextual definition caller; at most 400 changed source lines. | Named-item caller-cutover tests | Pending |
 | `R30-12F` | `module-system` with `binder-checker` review | `R30-12E` | In `owner-body-query.{h,cc}`, delete the query-specific body-owner declaration and migrate body, module, and definition contextual callers; at most 400 changed source lines. | Owner-body caller-cutover tests | Pending |
 | `R30-12G` | `module-system` with `binder-checker` review | `R30-12F` | In `compiler-session.cc`, migrate the remaining contextual callers and prove zero references to the removed declarations; at most 400 changed source lines. | Compiler-session caller-cutover and zero-reference tests | Pending |
@@ -114,7 +138,9 @@ implementation-series base remains
 | `R30-16` | `error-system` with `binder-checker` and `verification` review | `R30-15` | Land `R29-12D` with the canonical Binder diagnostic facts, exact diagnostic native test, CTest ownership, and diagnostic coverage gates. | Diagnostic fact test and diagnostic coverage check plus self-test | Pending |
 | `R30-17` | `rfc` | `R30-16` | Synchronize truthful tracker state and resume `R29-13A`. | RFC and evidence audit | Pending |
 
-The RFC 0031 design blocker is satisfied by transaction
-`rfc0031-accept-20260728-c25fcb18`; this does not complete `R30-11` or any
-source task. The historical `R30-09` and RFC 0031 `R31-09` design gates are
-satisfied, so `R30-11` is the next authorized implementation task.
+The RFC 0031 and RFC 0032 design blockers are satisfied by transactions
+`rfc0031-accept-20260728-c25fcb18` and
+`rfc0032-accept-20260728-1d519846`. Neither transaction completes a source
+task. The historical `R30-09`, RFC 0031 `R31-09`, and RFC 0032 `R32-07`
+design gates are satisfied, so implementation may resume at the current
+dependency-ordered review slice.

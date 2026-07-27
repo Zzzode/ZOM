@@ -384,6 +384,15 @@ in the current query-specific headers. RFC 0029 `R29-14` no longer owns these
 three caller migrations; it retains provider, session, capability, and
 source-transaction replacement.
 
+The authority session retains one
+`zc::Vector<binder::StableDefinitionQueryKey>` ledger containing the exact
+stable key used for each published authority input. Refresh erases prior
+inputs with the retained prior context roots and complete stable keys before
+setting the next projection in the same transaction. Removed, renamed,
+module-removed, and cross-module-moved definitions require no reverse lookup
+or current-graph owner search. The session ledger and context roots change
+only after a successful input commit.
+
 ### R29-12AB Exact Landing Set
 
 RFC 0029 `R29-12AB` owns exactly these files:
@@ -401,6 +410,7 @@ scripts/check-stable-binding-schema.py
 scripts/check-binder-architecture.py
 products/zomlang/compiler/driver/active-definition-authority-query.h
 products/zomlang/compiler/driver/active-definition-authority-query.cc
+products/zomlang/compiler/driver/active-definition-authority-session.h
 products/zomlang/compiler/driver/active-definition-authority-session.cc
 products/zomlang/compiler/driver/compiler-session.cc
 products/zomlang/compiler/driver/contextual-binding-key.h
@@ -577,7 +587,7 @@ is not rewritten for this transaction.
 |---|---|---|
 | RFC authority | `docs/rfc/0025-*` through `docs/rfc/0030-*`; affected trackers for RFCs 0017 through 0020 and 0025 through 0030; `docs/rfc/README.md` | `rfc` |
 | Task routing | `.agents/subagents/manifest.yaml`, `.agents/subagents/task-router.md`, `.agents/subagents/verification.md`, `.agents/subagents/binder-checker.md` | `task-router` |
-| Stable contextual contracts | `products/zomlang/compiler/driver/contextual-binding-key.*`, `products/zomlang/compiler/driver/active-definition-authority-query.*`, `products/zomlang/compiler/driver/active-definition-authority-session.cc`, `products/zomlang/compiler/driver/compiler-session.cc`, `products/zomlang/compiler/driver/named-item-query.*`, `products/zomlang/compiler/driver/owner-body-query.*`, `products/zomlang/compiler/driver/CMakeLists.txt` | `module-system` |
+| Stable contextual contracts | `products/zomlang/compiler/driver/contextual-binding-key.*`, `products/zomlang/compiler/driver/active-definition-authority-query.*`, `products/zomlang/compiler/driver/active-definition-authority-session.{h,cc}`, `products/zomlang/compiler/driver/compiler-session.cc`, `products/zomlang/compiler/driver/named-item-query.*`, `products/zomlang/compiler/driver/owner-body-query.*`, `products/zomlang/compiler/driver/CMakeLists.txt` | `module-system` |
 | Stable Binder foundation | `products/zomlang/compiler/binder/stable-binding-*`, `products/zomlang/compiler/binder/CMakeLists.txt` | `binder-checker` |
 | Diagnostic schema contract | `products/zomlang/compiler/diagnostics/**` | `error-system` |
 | Native tests and gates | `products/zomlang/tests/unittests/compiler/binder/**`, `products/zomlang/tests/unittests/compiler/driver/package-compilation-request-test.cc`, `products/zomlang/tests/unittests/compiler/diagnostics/diagnostic-fact-test.cc`, `products/zomlang/tests/unittests/compiler/diagnostics/CMakeLists.txt`, `products/zomlang/tests/coverage/rfc-0030-stable-binding-landing-files.txt`, `scripts/check-stable-binding-schema.py`, `scripts/check-binder-architecture.py`, `scripts/check-landing-scope.py` | `verification` |
@@ -650,6 +660,9 @@ RFC index, and affected routing governance were synchronized in the RFC 0030
 acceptance transaction. RFC 0031 acceptance transaction
 `rfc0031-accept-20260728-c25fcb18` synchronizes the complete schema metamodel,
 ownership, and verification contract before `R30-11` resumes.
+RFC 0032 acceptance transaction
+`rfc0032-accept-20260728-1d519846` synchronizes the complete authority-ledger
+key and corrected exact landing set before `R30-12C` resumes.
 The Binder contributor documentation will identify the X-macro inventory as
 the canonical schema authority and list the four native CTest targets.
 Current-state design documentation changes only after production paths land.
@@ -767,3 +780,4 @@ None
 | 2026-07-28 | REVIEW | Ready for exact-hash owner review. |
 | 2026-07-28 | ACCEPTED | All six required owners approved proposal SHA-256 `4ed0e6b885abc87a1c4251855780cf115a85b3623b1d46f774a4b664110f7b6b`. Acceptance transaction `rfc0030-accept-20260728-4ed0e6b8` synchronizes RFCs 0025 through 0030, trackers 0017 through 0020 and 0025 through 0030, the RFC index, and affected routing governance without changing the immutable implementation-series base. |
 | 2026-07-28 | ACCEPTED | Transaction `rfc0031-accept-20260728-c25fcb18` synchronized the complete schema metamodel and verification contract to RFC 0031 proposal SHA-256 `c25fcb18e503ac214a8e92c925fa88108a915c2b15c94409dfecb88b3d9a63d5` and tracker SHA-256 `d64e7791ed2e2a488c5f57bc07ac341ccfc37d37c220c85131e2c9e846fb8d0d`; RFC 0030 remains accepted, `R30-11` remains pending implementation, and the design blocker is satisfied. |
+| 2026-07-28 | ACCEPTED | Transaction `rfc0032-accept-20260728-1d519846` synchronized the complete authority-session routing ledger and exact landing set to RFC 0032 proposal SHA-256 `1d519846566992156b16986fc5c75602af403254fce70f48cfb65af9983a6d72` and tracker SHA-256 `b685d88db1e5c2eef13e97ede1e5c085959d2446e39fd07fe5baac0bf7b2ecbf`; RFC 0030 remains accepted and `R30-12C` may resume without changing implementation status. |
