@@ -148,7 +148,7 @@ true        false
 ```
 public      private     protected   static      abstract
 readonly    mutating    async       await       override
-immediate   intrinsic   global      unique      out
+immediate   global      unique      out
 ```
 
 ### Operator Keywords

@@ -218,7 +218,6 @@ ast::SyntaxKind getKeywordKind(zc::ArrayPtr<const zc::byte> text) {
   if (text == "init"_zcb) return ast::SyntaxKind::InitKeyword;
   if (text == "instanceof"_zcb) return ast::SyntaxKind::InstanceOfKeyword;
   if (text == "interface"_zcb) return ast::SyntaxKind::InterfaceKeyword;
-  if (text == "intrinsic"_zcb) return ast::SyntaxKind::IntrinsicKeyword;
   if (text == "is"_zcb) return ast::SyntaxKind::IsKeyword;
   if (text == "keyof"_zcb) return ast::SyntaxKind::KeyOfKeyword;
   if (text == "let"_zcb) return ast::SyntaxKind::LetKeyword;

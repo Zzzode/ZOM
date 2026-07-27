@@ -1,0 +1,14 @@
+import intrinsic::{intrinsic as intrinsic};
+
+struct intrinsic<intrinsic> {
+    intrinsic: intrinsic;
+}
+
+fun intrinsic<intrinsic>(intrinsic: intrinsic) -> intrinsic {
+    let {intrinsic} = intrinsic;
+    intrinsic: while (intrinsic) {
+        intrinsic.intrinsic;
+        break intrinsic;
+    }
+    return intrinsic;
+}

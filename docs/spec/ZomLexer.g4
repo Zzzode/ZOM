@@ -563,7 +563,6 @@ OVERRIDE  : 'override';
 ABSTRACT  : 'abstract';
 GLOBAL    : 'global';
 IMMEDIATE : 'immediate';
-INTRINSIC : 'intrinsic';
 UNIQUE    : 'unique';
 
 // -- Operator / operation ----------------------------------------------------

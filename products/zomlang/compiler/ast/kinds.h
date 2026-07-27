@@ -81,7 +81,6 @@ enum class SyntaxKind {
   InferKeyword,        // infer
   InstanceOfKeyword,   // instanceof
   InterfaceKeyword,    // interface
-  IntrinsicKeyword,    // intrinsic
   IsKeyword,           // is
   KeyOfKeyword,        // keyof
   LetKeyword,          // let

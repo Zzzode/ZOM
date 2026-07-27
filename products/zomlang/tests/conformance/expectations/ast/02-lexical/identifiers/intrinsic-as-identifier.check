@@ -1,0 +1,113 @@
+// RUN: %zomc compile --dump-ast %corpus/02-lexical/identifiers/intrinsic-as-identifier.zom | %FileCheck %s
+
+
+// CHECK: SourceFile #45 @1:1..15:1 file_name="intrinsic-as-identifier.zom"
+// CHECK-NEXT:   module: null
+// CHECK-NEXT:   statements:
+// CHECK-NEXT:     StatementListItem #4 @1:1..1:44
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         ImportDeclaration #3 @1:1..1:44 alias=null
+// CHECK-NEXT:           path:
+// CHECK-NEXT:             ModulePath #2 @1:8..1:17 segments=["intrinsic"] root=Relative
+// CHECK-NEXT:           specifiers:
+// CHECK-NEXT:             ImportSpecifier #1 @1:20..1:42 name="intrinsic" alias="intrinsic"
+// CHECK-NEXT:       attrs: null
+// CHECK-NEXT:     StatementListItem #12 @3:1..5:2
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         StructDecl #11 @3:1..5:2 name="intrinsic"
+// CHECK-NEXT:           type_params_id:
+// CHECK-NEXT:             GenericParams #6 @3:17..3:28 nparams=1
+// CHECK-NEXT:               params:
+// CHECK-NEXT:                 GenericTypeParam #5 @3:18..3:27 name="intrinsic"
+// CHECK-NEXT:                   bounds_id: null
+// CHECK-NEXT:                   default_ty: null
+// CHECK-NEXT:               where_: null
+// CHECK-NEXT:           members_id:
+// CHECK-NEXT:             ClassMemberList #10 @3:29..5:2 nmembers=1
+// CHECK-NEXT:               members:
+// CHECK-NEXT:                 FieldDecl #9 @4:5..4:26 name="intrinsic" is_mut=false is_static=false visibility=Default
+// CHECK-NEXT:                   ty:
+// CHECK-NEXT:                     NamedTypeExpr #8 @4:16..4:25
+// CHECK-NEXT:                       path:
+// CHECK-NEXT:                         ModulePath #7 @4:16..4:25 segments=["intrinsic"] root=Relative
+// CHECK-NEXT:                       args: []
+// CHECK-NEXT:                   init: null
+// CHECK-NEXT:       attrs: null
+// CHECK-NEXT:     StatementListItem #44 @7:1..14:2
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         FunctionDecl #43 @7:1..14:2 name="intrinsic"
+// CHECK-NEXT:           params_id:
+// CHECK-NEXT:             FunctionParameterList #18 @7:25..7:47 nparams=1
+// CHECK-NEXT:               params:
+// CHECK-NEXT:                 FunctionParameterDecl #17 @7:26..7:46 name="intrinsic"
+// CHECK-NEXT:                   ty:
+// CHECK-NEXT:                     NamedTypeExpr #16 @7:37..7:46
+// CHECK-NEXT:                       path:
+// CHECK-NEXT:                         ModulePath #15 @7:37..7:46 segments=["intrinsic"] root=Relative
+// CHECK-NEXT:                       args: []
+// CHECK-NEXT:                   default_: null
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:           type_params_id:
+// CHECK-NEXT:             GenericParams #14 @7:14..7:25 nparams=1
+// CHECK-NEXT:               params:
+// CHECK-NEXT:                 GenericTypeParam #13 @7:15..7:24 name="intrinsic"
+// CHECK-NEXT:                   bounds_id: null
+// CHECK-NEXT:                   default_ty: null
+// CHECK-NEXT:               where_: null
+// CHECK-NEXT:           ret_ty:
+// CHECK-NEXT:             NamedTypeExpr #20 @7:51..7:60
+// CHECK-NEXT:               path:
+// CHECK-NEXT:                 ModulePath #19 @7:51..7:60 segments=["intrinsic"] root=Relative
+// CHECK-NEXT:               args: []
+// CHECK-NEXT:           raises_ty: null
+// CHECK-NEXT:           body:
+// CHECK-NEXT:             BlockStmt #42 @7:61..14:2
+// CHECK-NEXT:               stmts:
+// CHECK-NEXT:                 StatementListItem #27 @8:5..8:33
+// CHECK-NEXT:                   item:
+// CHECK-NEXT:                     LetStmt #26 @8:5..8:33 kind=Let
+// CHECK-NEXT:                       declarations:
+// CHECK-NEXT:                         VariableDeclaratorList #25 @8:9..8:32 n_decls=1
+// CHECK-NEXT:                           decls:
+// CHECK-NEXT:                             VariableDeclarator #24 @8:9..8:32
+// CHECK-NEXT:                               pattern:
+// CHECK-NEXT:                                 StructPattern #22 @8:9..8:20
+// CHECK-NEXT:                                   ty_path: null
+// CHECK-NEXT:                                   fields:
+// CHECK-NEXT:                                     PatternProperty #21 @8:10..8:19 name="intrinsic" short_form=true
+// CHECK-NEXT:                                       pat: null
+// CHECK-NEXT:                                   rest: null
+// CHECK-NEXT:                               ty: null
+// CHECK-NEXT:                               init:
+// CHECK-NEXT:                                 IdentExpr #23 @8:23..8:32 name="intrinsic"
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:                 StatementListItem #38 @9:5..12:6
+// CHECK-NEXT:                   item:
+// CHECK-NEXT:                     LabeledStatement #37 @9:5..12:6 label="intrinsic"
+// CHECK-NEXT:                       statement:
+// CHECK-NEXT:                         WhileStmt #36 @9:16..12:6
+// CHECK-NEXT:                           cond:
+// CHECK-NEXT:                             IdentExpr #28 @9:23..9:32 name="intrinsic"
+// CHECK-NEXT:                           body:
+// CHECK-NEXT:                             BlockStmt #35 @9:34..12:6
+// CHECK-NEXT:                               stmts:
+// CHECK-NEXT:                                 StatementListItem #32 @10:9..10:29
+// CHECK-NEXT:                                   item:
+// CHECK-NEXT:                                     ExpressionStatement #31 @10:9..10:29
+// CHECK-NEXT:                                       expression:
+// CHECK-NEXT:                                         MemberExpression #30 @10:9..10:28 property="intrinsic" access=Dot
+// CHECK-NEXT:                                           object:
+// CHECK-NEXT:                                             IdentExpr #29 @10:9..10:18 name="intrinsic"
+// CHECK-NEXT:                                   attrs: null
+// CHECK-NEXT:                                 StatementListItem #34 @11:9..11:25
+// CHECK-NEXT:                                   item:
+// CHECK-NEXT:                                     BreakStmt #33 @11:9..11:25 label="intrinsic"
+// CHECK-NEXT:                                   attrs: null
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:                 StatementListItem #41 @13:5..13:22
+// CHECK-NEXT:                   item:
+// CHECK-NEXT:                     ReturnStmt #40 @13:5..13:22
+// CHECK-NEXT:                       value:
+// CHECK-NEXT:                         IdentExpr #39 @13:12..13:21 name="intrinsic"
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:       attrs: null

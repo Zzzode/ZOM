@@ -98,6 +98,13 @@ ZC_TEST("LexerIdentifierTest.MixedAsciiIdentifier") {
   ZC_EXPECT(tokens[0].getValue() == "foo_bar123$baz"_zc);
 }
 
+ZC_TEST("LexerIdentifierTest.IntrinsicIsOrdinaryIdentifier") {
+  auto tokens = tokenize("intrinsic"_zc);
+  ZC_EXPECT(tokens.size() == 2);
+  ZC_EXPECT(tokens[0].is(ast::SyntaxKind::Identifier));
+  ZC_EXPECT(tokens[0].getValue() == "intrinsic"_zc);
+}
+
 // ================================================================================
 // Unicode XID_Start identifiers
 // ================================================================================

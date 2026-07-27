@@ -228,8 +228,6 @@ constexpr zc::StringPtr getStaticTextForTokenKindImpl(ast::SyntaxKind kind) {
       return "override"_zc;
     case ast::SyntaxKind::MutatingKeyword:
       return "mutating"_zc;
-    case ast::SyntaxKind::IntrinsicKeyword:
-      return "intrinsic"_zc;
     case ast::SyntaxKind::InterfaceKeyword:
       return "interface"_zc;
     case ast::SyntaxKind::KeyOfKeyword:
