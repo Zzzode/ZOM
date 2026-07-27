@@ -460,7 +460,7 @@ ZC_TEST("QueryCapabilityTest.NewRevisionCreatesDistinctGenerationWithoutBackdati
   auto firstSnapshot = database.snapshot();
   auto first = firstSnapshot.getCapability<LeafCapabilityQuery>(3);
   ZC_REQUIRE(!first.isRuntimeFailure());
-  auto firstLease = first.value().clone();
+  auto firstLease = first.value().retain();
 
   auto secondWrite = beginTransaction(database);
   ZC_REQUIRE(secondWrite.set<LowInput>(3, 30));
@@ -527,7 +527,7 @@ ZC_TEST("QueryCapabilityTest.ParentMemoRetainsBorrowedCapabilityTransitively") {
     auto witness = dependencies[0].dependencies()[0].stableWitness();
     ZC_REQUIRE(witness != zc::none);
     ZC_EXPECT(ZC_REQUIRE_NONNULL(witness) == encodeUint32(110).asPtr());
-    survivingLease = parent.value().clone();
+    survivingLease = parent.value().retain();
   }
 
   ZC_REQUIRE(survivingLease != zc::none);
@@ -550,7 +550,7 @@ ZC_TEST("QueryCapabilityTest.SurvivingLeaseRetainsSessionAndSnapshotArenas") {
     auto snapshot = database.snapshot();
     auto result = snapshot.getCapability<LeafCapabilityQuery>(12);
     ZC_REQUIRE(!result.isRuntimeFailure());
-    survivingLease = result.value().clone();
+    survivingLease = result.value().retain();
   }
 
   ZC_EXPECT(!*resourcesDestroyed.lockShared());

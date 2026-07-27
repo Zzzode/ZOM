@@ -462,7 +462,7 @@ ZC_TEST("Incremental binding query parses one source from its exact tracked inpu
   ZC_EXPECT(repeated.value().arenaRevision() == result.value().arenaRevision());
   ZC_EXPECT(snapshot.hasRetainedValue<parser::ParseSourceQuery>(sourceKey));
 
-  auto firstLease = result.value().clone();
+  auto firstLease = result.value().retain();
   auto equalWrite = transaction(database);
   ZC_REQUIRE(equalWrite.set<SourceSnapshotInput>(sourceKey, sourceValue));
   ZC_REQUIRE(equalWrite.set<CompilationOptionsInput>(crateKey(), options));
