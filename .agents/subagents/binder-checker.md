@@ -31,14 +31,23 @@ Do **not** route here when:
 
 ```
 products/zomlang/compiler/binder/**
+!products/zomlang/compiler/binder/module-*
 products/zomlang/compiler/checker/**
 !products/zomlang/compiler/checker/checker-source-diagnostics.def
-products/zomlang/compiler/ast/ast-visitor*
+products/zomlang/compiler/type/**
+docs/spec/chapters/03-types.md
 docs/spec/chapters/06-declarations.md
-docs/spec/chapters/07-types.md
-docs/spec/chapters/08-generics.md
-docs/spec/chapters/09-traits.md
+docs/spec/chapters/08-classes-and-structures.md
+docs/spec/chapters/09-interfaces.md
+docs/spec/chapters/10-enumerations.md
+docs/spec/chapters/12-generics.md
+docs/spec/chapters/22-orphan-rule-and-coherence.md
 ```
+
+`module-system` remains the primary file owner for `binder/module-*`, and
+`error-system` remains the primary file owner for
+`checker-source-diagnostics.def`. `spec-audit` remains the drift owner for all
+normative specification changes, including the semantic chapters listed here.
 
 ## Review Checklist (applies to every PR this subagent touches)
 

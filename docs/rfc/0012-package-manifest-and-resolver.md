@@ -8,7 +8,7 @@ review-manager: rfc
 required-owners: [rfc, module-system, error-system, ir-backend, runtime-memory, spec-audit, verification]
 approvers: [rfc, module-system, error-system, ir-backend, runtime-memory, spec-audit, verification]
 created: 2026-07-10
-updated: 2026-07-13
+updated: 2026-07-25
 area: compiler
 requires: [11]
 supersedes: []
@@ -2119,6 +2119,28 @@ because this RFC can state and test its namespace, seccomp, and cgroup
 requirements without claiming equivalent containment from different host
 primitives.
 
+### RFC 0025 Source-Backed Core Replacement
+
+RFC 0025 narrows this RFC to user packages and adds the reserved module-root
+failure at accepted proposal SHA-256
+`4f4085c176a9f391115e12170da93af899e350fa92440d5a51577692faf8bad0`.
+The replacement is atomic:
+
+| RFC 0012 Surface | Normative Replacement |
+|---|---|
+| Package boundary | Keep release, resolver, lock, feature, manifest, and source-materialization contracts user-package-only. No toolchain-core identity or source enters `PackageKey`, a package graph, or a lockfile. |
+| Reservation failure algebra | Add `PackageToolchainModuleRootFailure` to `PackagePipelineFailure` after invocation, compiler-invariant, and manifest failures but before registry, resolver, lock, materialization, and build-script failures. |
+| Producer selection | Construct `UserTargetRoot` only from one normalized selected target and `DependencyAlias` only from a normalized alias. The target precedes aliases; aliases sort by complete canonical record and provenance. |
+| Typed package adapter | Extend the package diagnostic adapter only with `ToolchainModuleRootArgument` reconstructed from the retained manifest record. Raw strings and the module-interface diagnostic adapter are prohibited. |
+| Priority and suppression | A compiler invariant, invalid invocation selection, invalid manifest, or `TargetSelectionInvalid` remains the single earlier failure. After package, feature, and requested-target selection constructs the complete selected `PackageKey`, `ZOM3027` precedes and suppresses every downstream registry-graph, lock, materialization, or build-script failure derived from the reserved target or alias. |
+| Legal package name | Permit a registry package named `core` when neither its selected target nor a dependency alias is `core`. A package name alone never constructs the reservation failure. |
+| Tests and cutover | Add exact target, alias, priority, legal-package-name, anchor, typed-argument, renderer, no-publication, and mutation cases to the native package diagnostic and pipeline suites. Retain no compatibility branch. |
+
+Implementation and evidence are owned by RFC 0025 tasks `R25-02A`,
+`R25-02BA`, `R25-02B`, `R25-02BC`, `R25-02C`, `R25-03C`, `R25-04`,
+`R25-14`, and `R25-15`. This synchronization does not claim those tasks are
+complete.
+
 ## Compatibility And Rollout
 
 The project is pre-1.0 and maintains no package-format compatibility. The first
@@ -2434,3 +2456,4 @@ None
 | 2026-07-11 | IMPLEMENTING | Started the direct package-input implementation series with all five pinned source imports, exact archive and extracted-file inventories, license and commit records, and a mandatory pre-driver vendored-dependency gate. Manifest normalization, resolver, lock, materialization, sandbox, and session handoff remain open. |
 | 2026-07-12 | IMPLEMENTING | Corrected the executable runtime descriptor allocation and added exact cache-candidate and frozen build-result integrity contracts discovered during production launcher and session implementation. Fresh exact-hash owner review is required before LANDED. |
 | 2026-07-13 | IMPLEMENTING | Exact-hash landing review returned the implementation for incomplete build-result publication, production sandbox evidence, typed failure projection, and the unwired build-script CLI path. Result publication and the first production-filter regressions are repaired; native build-script execution remains blocked on RFC 0010 backend, trusted-runtime, and cache implementation. |
+| 2026-07-25 | IMPLEMENTING | Synchronized RFC 0025's accepted user-package-only boundary, `ZOM3027` package failure rail, producer ordering, and atomic test cutover at proposal SHA-256 `4f4085c176a9f391115e12170da93af899e350fa92440d5a51577692faf8bad0`; implementation evidence remains owned by the named R25 tasks. |

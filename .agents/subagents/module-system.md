@@ -21,6 +21,8 @@ Route here when **any** of these are true:
   edges, interface publication, or compilation scheduling.
 - Query keys, explicit inputs, immutable snapshots, memo validation,
   red-green reuse, durability, or projection shielding change.
+- Imported-interface or borrow-evidence publication changes under
+  `compiler/driver`, including `borrow-evidence.{h,cc}`.
 - Adding a whole-program analysis that spans translation units.
 
 Do **not** route here when:
@@ -42,17 +44,24 @@ docs/spec/chapters/13-modules-and-imports.md
 docs/spec/chapters/23-visibility-ladder.md
 ```
 
+`products/zomlang/compiler/driver/borrow-evidence.{h,cc}` remains under this
+subagent's primary file ownership. Any change to its ownership, lifetime, or
+memory contract requires a mandatory `runtime-memory` review.
+
 ## Review Checklist (applies to every PR this subagent touches)
 
-- [ ] `CompilerSession` transitively owns exactly one `QueryDatabase`; the
-      database physically owns semantic identity, explicit inputs, immutable
-      snapshots, memos, and flights. No phase constructs or duplicates them.
+- [ ] `CompilerSession` constructs exactly one `QueryDatabase` and one
+      refcounted semantic-context capability arena. The arena is the sole
+      physical owner of the semantic brand and typed identity interners; the
+      database owns explicit inputs, immutable snapshots, memos, and flights
+      while retaining the arena. No phase constructs or duplicates them.
 - [ ] Every provider reads semantic state through typed inputs or tracked query
       dependencies, and every deterministic value, absence, or failure read is
       recorded.
 - [ ] `RevisionLocal` values never backdate; `Semantic` values contain no
-      handles or provenance; active handle materialization is database-owned and
-      available only to explicit `RevisionLocal` materializers.
+      handles or provenance; active handle materialization occurs only in
+      explicit `RevisionLocal` capability memos backed by the retained
+      semantic-context arena.
 - [ ] Driver phase order matches pipeline contract: parse → bind → check
       → … No heuristics that skip a phase per-file.
 - [ ] Cross-module identity flows through `CompilerSession`, verified imports,

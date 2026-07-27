@@ -2112,7 +2112,12 @@ The event is the exact source operand event for a `Copy` operand and the exact
 initialization event for a resource-plan traversal. The marker is the resolved
 RFC 0015 `DefId` selected by the checked input for the semantic role; source
 spelling, a prelude name, an interface ordinal, and a local handle are never
-marker identity. The subject is the exact canonical semantic type queried at
+marker identity. For the standard `Copy` and `Linear` roles, that identity
+must come from the finalized toolchain-core authority and retain its exact
+`CoreSemanticContextFingerprint` and verified distribution digest through the
+body-derived marker-proof lineage. A user definition with equal spelling, a
+foreign core context, or a different distribution digest is not the same
+marker. The subject is the exact canonical semantic type queried at
 that event. The key carries the exact policy-registry and frozen-coherence
 revisions from the same body-derived proof input; both must match the admitted
 checked module and its checked-facts lineage. The proof input itself, its
@@ -2164,6 +2169,24 @@ A `copy` operand requires the exact `Positive` `Copy` use for its event and
 subject. A consuming operation without that decision is a move. A Built MIR
 copy with a missing, `ExplicitNegative`, `Unsatisfied`, foreign, or mismatched
 decision is `MissingRequiredFact` or `InvalidFact` before analysis.
+
+### RFC 0025 Acceptance Synchronization
+
+On 2026-07-25, the accepted RFC 0025 proposal at SHA-256
+`4f4085c176a9f391115e12170da93af899e350fa92440d5a51577692faf8bad0`
+made toolchain-core context and distribution-digest lineage mandatory for
+standard `Copy` and `Linear` marker identity. The exact positive,
+explicit-negative, and unsatisfied ownership decisions, the fail-closed
+`InvariantRejected` path, complete descendant query inventory, and independent
+producer/verifier construction remain authoritative.
+
+The ordinary RFC 0015 marker inventories are built for the complete session
+after ordinary binding. Every ownership consumer validates its byte-equal
+core-role projection against the finalized standard authority before reading a
+marker decision. A missing, foreign, stale, swapped, or
+distribution-mismatched lineage publishes no marker use, resource plan, event
+overlay, or ownership facts. Product implementation remains tracked by RFC
+0025's `R25` tasks; this synchronization does not complete an ownership slice.
 
 A `Positive` `Linear` decision creates an obligation at each initialization;
 `ExplicitNegative` and `Unsatisfied` create none:
@@ -4061,3 +4084,4 @@ None
 | 2026-07-18 | ACCEPTED | All ten required owners approved the same exact REVIEW proposal and tracker snapshots with no objections; implementation remains blocked until an explicit `ACCEPTED -> IMPLEMENTING` transition and the coordinated enablement transaction. |
 | 2026-07-24 | IMPLEMENTING | Enablement transaction recorded: RFC 0005 deleted `RawConstToReferenceChecked`/`RawMutableToReferenceChecked` and retagged `CastKind` 0x01-0x0d; task-router granted verification ownership of the RFC 0007 architecture and coverage paths; implementation tracker now authorizes the ordered slices. |
 | 2026-07-25 | IMPLEMENTING | Synchronized RFC 0024's complete body-owned event-overlay input and independent producer and verifier proof-input construction. |
+| 2026-07-25 | IMPLEMENTING | Synchronized the accepted RFC 0025 toolchain-core context and distribution-digest lineage for standard Copy and Linear identity while retaining fail-closed ownership decisions at proposal SHA-256 `4f4085c176a9f391115e12170da93af899e350fa92440d5a51577692faf8bad0`. |

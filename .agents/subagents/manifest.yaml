@@ -23,14 +23,7 @@ subagents:
   - id: task-router
     name: Task Router
     owns:
-      - ".agents/subagents/README.md"
-      - ".agents/subagents/manifest.yaml"
-      - ".agents/subagents/task-router.md"
-      - ".agents/subagents/ir-backend.md"
-      - ".agents/subagents/module-system.md"
-      - ".agents/subagents/tooling-lsp.md"
-      - ".agents/subagents/spec-audit.md"
-      - ".agents/subagents/verification.md"
+      - ".agents/subagents/**"
       - "AGENTS.md"
     triggers: [ "route", "assign", "split", "owner", "delegate", "task split", "workflow", "forced cast", "as!" ]
     required-skills: [ build-ci ]
@@ -41,7 +34,6 @@ subagents:
     owns:
       - "docs/rfc/**"
       - ".agents/skills/rfc/**"
-      - ".agents/subagents/rfc.md"
     triggers: [ "RFC", "rfc", "proposal", "design intake", "governance", "template", "status transition", "accepted design", "prior art" ]
     required-skills: [ rfc ]
     escalation-to: [ spec-audit ]
@@ -56,6 +48,7 @@ subagents:
       - "docs/spec/chapters/04-expressions.md"
       - "docs/spec/chapters/17-grammar-reference.md"
       - "docs/spec/ZomLexer.g4"
+      - "docs/spec/ZomParser.g4"
     triggers: [ "lexer", "token", "parser", "grammar", "precedence", "operator", "keyword", "EBNF", "cast", "as!", "?!", "!!" ]
     required-skills: [ build-ci, lit-testing, spec-alignment, zc-library ]
     escalation-to: [ spec-audit ]
@@ -64,14 +57,17 @@ subagents:
     name: Binder & Type Checker
     owns:
       - "products/zomlang/compiler/binder/**"
+      - "!products/zomlang/compiler/binder/module-*"
       - "products/zomlang/compiler/checker/**"
       - "!products/zomlang/compiler/checker/checker-source-diagnostics.def"
       - "products/zomlang/compiler/type/**"
-      - "products/zomlang/compiler/ast/ast-visitor*"
+      - "docs/spec/chapters/03-types.md"
       - "docs/spec/chapters/06-declarations.md"
-      - "docs/spec/chapters/07-types.md"
-      - "docs/spec/chapters/08-generics.md"
-      - "docs/spec/chapters/09-traits.md"
+      - "docs/spec/chapters/08-classes-and-structures.md"
+      - "docs/spec/chapters/09-interfaces.md"
+      - "docs/spec/chapters/10-enumerations.md"
+      - "docs/spec/chapters/12-generics.md"
+      - "docs/spec/chapters/22-orphan-rule-and-coherence.md"
     triggers: [ "binder", "scope", "lookup", "type", "checker", "trait", "generic", "polymorphism", "cast", "as!", "Sendable", "Send", "Sync" ]
     required-skills: [ build-ci, lit-testing, zc-library ]
     escalation-to: [ verification ]
@@ -110,6 +106,7 @@ subagents:
       - "products/zomlang/runtime/**/channel*"
       - "products/zomlang/runtime/**/scheduler*"
       - "docs/concurrency/**"
+      - "docs/spec/specification.md"
       - "docs/spec/chapters/15-concurrency.md"
     triggers: [ "async", "await", "concurr", "actor", "sendable", "task", "future", "channel", "cancel", "parallel", "asynchronous", "forced cast", "as!" ]
     required-skills: [ build-ci, zc-library, lit-testing, ultracode-audit ]
@@ -129,6 +126,7 @@ subagents:
       - "products/zomlang/compiler/CMakeLists.txt"
       - "products/zomlang/compiler/basic/CMakeLists.txt"
       - "products/zomlang/compiler/trace/CMakeLists.txt"
+      - "products/zomlang/utils/CMakeLists.txt"
       - "products/zomlang/utils/zomc/**"
       - "products/zomcore/CMakeLists.txt"
     triggers: [ "IR", "HIR", "MIR", "LIR", "SSA", "CFG", "lowering", "codegen", "backend", "LLVM", "ABI", "object file", "forced cast", "as!" ]
@@ -138,8 +136,10 @@ subagents:
   - id: spec-audit
     name: Spec Alignment & Spec/Impl Drift
     owns:
+      - "docs/overview.md"
       - "docs/spec/**"
       - "docs/design/**"
+      - "!docs/design/tooling/**"
       - "docs/reports/*spec-alignment*"
     triggers: [ "spec", "grammar-ref", "align", "drift", "EBNF", "five-way", "audit", "cast", "as!" ]
     required-skills: [ spec-alignment, ultracode-audit, build-ci ]
@@ -149,12 +149,14 @@ subagents:
     name: Runtime & Memory (zc core + FFI + ownership)
     owns:
       - "libraries/zc/**"
+      - "products/zomlang/compiler/ownership/**"
       - "products/zomlang/runtime/**"
       - "!products/zomlang/runtime/**/task*"
       - "!products/zomlang/runtime/**/async*"
       - "!products/zomlang/runtime/**/actor*"
       - "!products/zomlang/runtime/**/channel*"
       - "!products/zomlang/runtime/**/scheduler*"
+      - "products/zomcore/README.md"
       - "products/zomcore/src/**"
       - "docs/spec/chapters/14-memory-management.md"
     triggers: [ "zc::", "Own<", "ArrayPtr", "Vector", "String", "Maybe", "memory", "heap", "stack", "drop", "free", "FFI", "Pimpl", "ownership", "panic", "forced cast", "as!" ]
@@ -183,13 +185,34 @@ subagents:
       - "scripts/check-identity-architecture.py"
       - "scripts/check-ir-architecture.py"
       - "scripts/check-incremental-query-architecture.py"
+      - "scripts/check-binder-architecture.py"
+      - "scripts/check-checker-architecture.py"
+      - "scripts/check-compiler-session-architecture.py"
+      - "scripts/check-impl-source-architecture.py"
+      - "scripts/check-package-architecture.py"
+      - "scripts/check-lexer-architecture.py"
+      - "scripts/check-parser-coverage.py"
+      - "scripts/check-format.py"
+      - "scripts/check-english-only.py"
+      - "scripts/check-spec-alignment.py"
+      - "scripts/check-rfc.py"
+      - "scripts/check-no-internal-versioning.py"
+      - "scripts/codegen/gen_ast.py"
+      - "scripts/codegen/gen_package_oracles.py"
       - "scripts/generate-canonical-header-syntax-schema.py"
       - "scripts/run-incremental-query-benchmarks.py"
+      - "scripts/check-diagnostic-coverage.py"
+      - "scripts/check-lit-exec-root.py"
+      - "scripts/check-core-library-architecture.py"
+      - "scripts/check-core-library-spec-alignment.py"
+      - "scripts/codegen/gen_core_library_inventory.py"
+      - "products/zomlang/tests/coverage/diagnostic-reservations.json"
       - "scripts/run-rfc0016-coverage.py"
       - "scripts/check-rfc0016-coverage.py"
-      - "scripts/check-rfc0007-architecture.py"
-      - "scripts/run-rfc0007-coverage.py"
-      - "scripts/check-rfc0007-coverage.py"
+      - "scripts/check-ownership-architecture.py"
+      - "scripts/run-ownership-coverage.py"
+      - "scripts/check-ownership-coverage.py"
+      - "products/zomlang/tests/coverage/ownership-exemptions.json"
       - "products/zomlang/tests/performance/incremental-query-corpus.json"
       - "products/zomlang/tests/performance/incremental-query-baseline.json"
       - "cmake/utils/common.cmake"

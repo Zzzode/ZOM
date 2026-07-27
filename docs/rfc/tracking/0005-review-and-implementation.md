@@ -715,6 +715,17 @@ dependency and governance decision gates are satisfied.
 
 Decision: ACCEPTED.
 
+### RFC 0025 Acceptance Synchronization
+
+On 2026-07-25, the accepted RFC 0025 proposal at SHA-256
+`4f4085c176a9f391115e12170da93af899e350fa92440d5a51577692faf8bad0`
+atomically synchronized RFC 0005's core bootstrap/final-interface split,
+exhaustive imported interface and binding-surface revision sums,
+whole-session marker lineage, failure mapping, and one-step codec cutover. RFC
+0005 remains `IMPLEMENTING`. Product implementation and executable evidence
+remain tracked by RFC 0025's `R25` tasks; this decision note marks no
+implementation slice complete.
+
 ### RFC 0013 Additive Overlay
 
 RFC 0013 was accepted on 2026-07-11 at proposal SHA-256
@@ -732,6 +743,16 @@ diagnostics, codecs, and downstream no-reclassification boundary.
 The named direct replacement series started on 2026-07-16. RFC 0005 therefore
 advanced from `ACCEPTED` to `IMPLEMENTING` without changing the accepted
 semantic contract.
+
+### RFC 0025 Acceptance Synchronization Evidence
+
+- Acceptance authority is bound to RFC 0025 proposal SHA-256
+  `4f4085c176a9f391115e12170da93af899e350fa92440d5a51577692faf8bad0`.
+- `python3 scripts/check-rfc.py` and scoped `git diff --check` passed for this
+  documentation transaction.
+- Bootstrap isolation, exhaustive alternatives, failure mapping, transitive
+  revision vectors, downstream consumers, and architecture mutation evidence
+  remains assigned to RFC 0025's `R25` tasks.
 
 ## Implementation Tracker
 

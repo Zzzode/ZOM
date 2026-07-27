@@ -682,3 +682,33 @@ source materialization, registered target selection, build-script runtime,
 sandbox, diagnostic, and verification contracts. The direct implementation
 series has entered `IMPLEMENTING`; the checkpoints above record current
 evidence without claiming completion.
+
+## RFC 0025 Acceptance Synchronization
+
+### Decision Record Synchronization
+
+On 2026-07-25, RFC 0025 received all 12 required-owner approvals at exact
+proposal SHA-256
+`4f4085c176a9f391115e12170da93af899e350fa92440d5a51577692faf8bad0`.
+Its `R25-02` acceptance transaction keeps every RFC 0012 release, resolver,
+lock, feature, manifest, and materialization contract user-package-only and
+adds the typed `ZOM3027` target and dependency-alias reservation rail. RFC 0012
+remains `IMPLEMENTING`; this synchronization neither closes its existing P9
+work nor proves the RFC 0025 implementation.
+
+### Implementation And Evidence Binding
+
+| RFC 0025 Task | RFC 0012 Evidence Responsibility |
+|---|---|
+| `R25-02A` | Register the exact `ZOM3027` diagnostic and accepted typed occurrence schema. |
+| `R25-02BA` | Add and independently verify the source-root reservation alternative. |
+| `R25-02B` | Implement normalized target and alias producers, adapters, precedence, suppression, and package/module publication. |
+| `R25-02BC` | Register all production diagnostic sources before native execution. |
+| `R25-02C` | Prove all producers, anchors, rendering, precedence, suppression, and mutation cases. |
+| `R25-03C` | Make package request and crate graph consumers switch exhaustively on compilation-unit identity. |
+| `R25-04` | Remove the core package manifest and admit only the fixed source catalog. |
+| `R25-14` | Register gates that reject package-backed core inputs and untyped diagnostic paths. |
+| `R25-15` | Supply clean-build, native-suite, architecture, installation, and final-owner evidence. |
+
+Only the RFC 0025 tracker may advance these tasks. This tracker records the
+accepted contract dependency and no product evidence.

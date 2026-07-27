@@ -156,3 +156,30 @@ Its accepted-file SHA-256 is
 `9704d5651606e8a74034c8af4be5172b4007a6c9f0ee8ea2f5ee183223401c01`.
 The overlay directly replaces the RFC 0013 marker-proof and
 body-checking-input lineage contracts named by RFC 0015.
+
+## RFC 0025 Acceptance Synchronization
+
+### Decision Record Synchronization
+
+On 2026-07-25, RFC 0025 received all 12 required-owner approvals at exact
+proposal SHA-256
+`4f4085c176a9f391115e12170da93af899e350fa92440d5a51577692faf8bad0`.
+Its `R25-02` acceptance transaction changes imported borrow input to
+exhaustive `VerifiedInterfaceSource`, preserves callable user borrow surfaces,
+and permits a toolchain-core source only through the closed no-callable branch
+with no synthetic surface. RFC 0013 remains `IMPLEMENTING`, and RFC 0007's
+independent production-publication gate remains unchanged.
+
+### Implementation And Evidence Binding
+
+| RFC 0025 Task | RFC 0013 Evidence Responsibility |
+|---|---|
+| `R25-09A` | Publish the flat finalized core interface consumed by borrow reconstruction. |
+| `R25-10` | Implement callable-driven evidence, no-callable core validation, and bootstrap-data exclusion. |
+| `R25-09B` | Carry completed borrow and visible-interface lineage through checked-module, HIR, and MIR. |
+| `R25-08T` | Prove user and core alternatives, wrong revisions, synthetic surfaces, callable injection, and exact failures. |
+| `R25-14` | Register architecture gates for the closed core branch and ownership boundary. |
+| `R25-15` | Supply clean-build, native-suite, ownership, architecture, and final-owner evidence. |
+
+Only the RFC 0025 tracker may advance these implementation states. This
+tracker records no new ownership-result publication evidence.

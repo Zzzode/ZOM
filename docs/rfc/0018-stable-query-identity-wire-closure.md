@@ -8,7 +8,7 @@ review-manager: rfc
 required-owners: [task-router, rfc, lexer-parser, binder-checker, module-system, error-system, ir-backend, spec-audit, verification]
 approvers: [task-router, rfc, lexer-parser, binder-checker, module-system, error-system, ir-backend, spec-audit, verification]
 created: 2026-07-18
-updated: 2026-07-18
+updated: 2026-07-27
 area: compiler
 requires: [5, 14, 15, 17]
 supersedes: []
@@ -539,9 +539,10 @@ admission rule.
 A syntactically complete `Safe` candidate proceeds through canonical
 `ImplIdentityRecord` construction, complete-record occurrence grouping, and
 ordinary `ImplKey` admission. The first candidate in a unique authority group
-receives its revision-local `ImplId`, remains in the frozen identity registry,
-and establishes the shared identity authority for the group. Stable identity
-admission is not semantic marker validity. Every marker-shaped source
+receives its revision-local `ImplId` from the semantic-context arena after
+tracked active-membership validation and establishes the shared identity
+authority for the group. Stable identity admission is not semantic marker
+validity. Every marker-shaped source
 occurrence in the group, including an occurrence after the authority, reaches
 RFC 0015 signature classification with the shared `ImplKey` and its own exact
 `IdentitySyntaxSiteKey`. A later occurrence receives no distinct `ImplId`; its
@@ -919,18 +920,19 @@ appears first.
 
 Each source occurrence receives a context-branded revision-local
 `ImplOccurrenceId`. It is a dense materialization handle, not a semantic
-identity, persistence key, provider root, or field of any stable codec. RFC
-0004's implementation inventory and Binder facts are replaced by:
+identity, persistence key, provider root, or field of any stable codec. The
+materialized implementation occurrence and Binder fact schemas are:
 
 ```text
-FrozenImplOccurrenceEntry {
+MaterializedImplOccurrenceEntry {
   occurrence: ImplOccurrenceId,
   key: ImplSourceOccurrenceKey,
   authority: ImplId,
   node: NodeId,
+  source: SourceSpan,
 }
 
-ImplOccurrenceBindingFact {
+ImplBindingFact {
   occurrence: ImplOccurrenceId,
   authority: ImplId,
   node: NodeId,
@@ -940,26 +942,24 @@ ImplOccurrenceBindingFact {
 }
 ```
 
-`FrozenDefinitionInventoryView.impls` becomes a bijection between implementation
-syntax `NodeId` values and `ImplOccurrenceId` values plus the dense occurrence
-entry inventory; it is no longer `NodeId -> ImplId`.
-`BindingMetadataCandidate.impls` becomes
-`ImplOccurrenceId -> ImplOccurrenceBindingFact`. `ScopeOwner::Impl(ImplId)` is
-replaced by `ScopeOwner::ImplOccurrence(ImplOccurrenceId)` for every impl-body
-scope and every nested scope that inherits that source owner. Ordinary-body
-`ImplSelfOwner` likewise carries the occurrence handle; the verified occurrence
-entry supplies the shared `ImplId` only when a successfully classified ordinary
-header is published. A bodyless occurrence has one independently allocated,
-empty `ImplBody` scope with its own occurrence owner and never becomes an
-`ImplSelfOwner`. Two occurrence facts may neither share a scope nor exchange
-their node, source, owner, or authority.
+`ImmutableDefinitionInventory.implementationOccurrences` is a bijection
+between implementation syntax `NodeId` values and `ImplOccurrenceId` values
+plus the dense occurrence entry inventory.
+`ImmutableBindingMetadata.implementations` stores the corresponding
+`ImplBindingFact` sequence. `ScopeOwner::ImplOccurrence(ImplOccurrenceId)`
+owns every implementation-body scope and every nested scope that inherits that
+source owner. Ordinary-body `ImplSelfOwner` carries the occurrence handle; the
+verified occurrence entry supplies the shared `ImplId` only when a
+successfully classified ordinary header is published. A bodyless occurrence
+has one independently allocated empty `ImplBody` scope with its own occurrence
+owner and never becomes an `ImplSelfOwner`. Two occurrence facts may neither
+share a scope nor exchange their node, source, owner, or authority.
 
-The replaced RFC 0004 `ScopeOwner` alternative retains tag `0x03` and expands
-its occurrence handle to the complete `ImplSourceOccurrenceKey` payload. The
-replaced RFC 0014 `SelfOwner::Impl` alternative likewise retains tag `0x03` but
-expands its occurrence handle to that complete key instead of an `ImplKey`.
-Module and definition owner tags and payloads use the canonical
-occurrence-owner codec.
+The `ScopeOwner::ImplOccurrence` alternative uses tag `0x03` and expands its
+occurrence handle to the complete `ImplSourceOccurrenceKey` payload.
+`SelfOwner::Impl` also uses tag `0x03` and expands its occurrence handle to
+that complete key. Module and definition owner tags and payloads use the
+canonical occurrence-owner codec.
 
 Occurrence handles are issued independently within each frozen module after
 identity grouping, in the canonical source order already defined for
@@ -1122,6 +1122,83 @@ field, owner-prefix validation, duplicate handling, and definition-collision
 and `W1204` occurrences whose sites have equal `moduleSyntaxPath` values but
 different `SourceFileKey` values.
 
+### Current Core-Library Identity Contract
+
+| RFC 0018 Surface | Current Contract |
+|---|---|
+| Module catalog and requester keys | `ModuleCatalogPathBucketKey`, `RequesterModuleAncestry`, `ModuleResolutionKey`, `IdentitySyntaxSiteKey`, and every value that expands `CrateKey`, `SourceFileKey`, or `ModuleKey` use the complete expanded identity bytes. |
+| Compilation options | `CompilationOptions` is keyed by complete expanded `CrateKey`; every `ParseSource` request selects options through its source key's crate. |
+| Definition and implementation query roots | Every query key, value record, retained collision record, occurrence key, import binding key, and provider root uses the current complete `DefinitionKey`, `ImplKey`, `EnclosingStableOwnerKey`, `GenericParameterKey`, `CallableParameterKey`, and derived `SemanticTypeKey` bytes. |
+| Contextual named-item and body roots | Encode the complete context `CompilationRootSetQueryKey` before the stable definition, module, or body-owner key in every RFC 0019/0020 contextual query key; retain stable semantic identities inside values and regenerate all nested provider roots. |
+| Root-set and graph keys | `ActiveCrates`, `ModuleGraph`, and `ModuleGraphScc` use exhaustive `CompilationRootSetQueryKey`. A `UserPackage` root uses tag `0x01` and its complete package payload; a `ToolchainCore` root uses tag `0x02` and its complete projected core crate. Package resolver queries remain package-keyed. |
+| Dependency projections | `ToolchainCore` participates only in the semantic crate graph. Dependency-alias, lockfile, release, and package-resolution queries accept only user-package edges. `ConfiguredPrelude`, module dependencies, path buckets, and resolution queries consume exact projected-core keys without package fallback. |
+| Core diagnostic identity | Encode `CoreLibraryDiagnosticRoot` as diagnostic-root tag `0x05` followed by the embedded expected distribution digest and canonical optional context fingerprint; encode exact producer, issue, coordinate, causes, emitter, and sorted occurrence index with no observed digest, host path, span, handle, or candidate-carried field. |
+| Stable wire dumps and traces | Canonical query-key dumps, dependency records, collision fixtures, query traces, and fixed vectors cover both user-package and toolchain-core branches. Ordering uses complete current bytes, and traces never print local handles. |
+| Mutation and architecture gates | Independent producer/verifier mutations cover both compilation-unit tags, missing or extra payloads, crate-parent substitution, source-origin substitution, dependency-origin substitution, root-set branch substitution, and every transitive query key. |
+
+### Current Module-Topology Wire Contract
+
+RFC 0026 defines the complete wire closure for selected-module catalogs, detached
+dependency sites, dependency requests and failures, stable graph edges and
+failures, SCC components, cycle failures, and the module-input ledger.
+
+Each registered query kind owns its domain. Its typed `encodeKey` emits only
+the complete canonical `CrateKey`, `ModuleKey`, or
+`CompilationRootSetQueryKey`; it does not repeat the query-kind domain.
+Standalone value decoders enforce only self-contained domains, framing,
+ordering, uniqueness, bounds, tags, and embedded-value invariants.
+Transaction verifiers and keyed query verifiers perform outer-key equality,
+tracked-result equality, graph membership, and cross-input ownership checks.
+
+`SelectedModuleCatalogInput` is the sole selected module-to-source input.
+`SelectedModuleSourceQuery` is its derived narrow projection and retains the
+accepted RFC 0019 consumer boundary. `ModuleDependencySiteInput` stores stable
+source coordinates and no `NodeId`, span, handle, pointer, or borrowed AST
+state. The exact domains, tags, sequence order, decode limits, and mutation
+oracles are those in RFC 0026.
+
+### Binder Query Identity Closure
+
+The RFC 0027 acceptance transaction
+`rfc0027-accept-20260727-e2f4ba5e` binds this contract to proposal SHA-256
+`e2f4ba5eb777d3d70b8eb3ad75b18f5169afc61a83d989ccc61fc9d5d022f435`.
+
+The canonical Binder query keys are:
+
+```text
+StableDefinitionQueryKey {
+  module: ModuleKey,
+  definition: DefinitionKey,
+}
+
+StableImplementationQueryKey {
+  module: ModuleKey,
+  implementation: ImplKey,
+}
+
+StableImplementationOccurrenceQueryKey {
+  module: ModuleKey,
+  occurrence: ImplSourceOccurrenceKey,
+}
+
+StableGenericParameterQueryKey {
+  module: ModuleKey,
+  parameter: GenericParameterKey,
+}
+
+StableCallableParameterQueryKey {
+  module: ModuleKey,
+  parameter: CallableParameterKey,
+}
+```
+
+Each key retains its complete authority record at verification and
+materialization boundaries. Implementation generic parameters retain the
+shared implementation authority and the complete equal-occurrence set.
+Implementation-body scopes, declaration sites, and revision-local occurrence
+handles remain occurrence-specific. The semantic-context arena admits global
+handles only after exact tracked active-membership validation.
+
 ## Repository Impact
 
 | Area | Paths | Owner |
@@ -1169,9 +1246,8 @@ Encoding current alias or prelude targets in `ModuleResolutionKey` would make
 key replacement duplicate the dependency graph. Tracked narrow inputs provide
 the same invalidation with a stable semantic request.
 
-Mutating RFC 0017 in place would detach its accepted hash from its approvers.
-A numbered follow-up preserves review history and makes the additional contract
-explicit.
+RFC 0018 records this identity closure under its own acceptance hash and
+review history.
 
 ## Compatibility And Rollout
 
@@ -1179,10 +1255,9 @@ The definition, implementation, and module-request key models form one
 coherent contract. Every producer, verifier, registry, diagnostic, fixture,
 canonical vector, and caller uses that contract.
 
-RFC 0017 implementation remains blocked at stable identity until this RFC is
-accepted and the replacement tests pass. If implementation must be rolled
-back before landing, the entire unlanded replacement series is reverted; mixed
-identity models are not an allowed rollback state.
+RFC 0017 implementation proceeds only after the identity tests in this RFC
+pass. The implementation transaction updates every producer, verifier, codec,
+fixture, and caller together.
 
 ## Documentation And Teaching Plan
 
@@ -1354,7 +1429,7 @@ different Python environments.
 ## Test Plan
 
 - Build: `cmake --preset sanitizer` and `cmake --build --preset sanitizer`.
-- Unit tests: identity, frozen registry, Binder inventory, module dependency,
+- Unit tests: identity, typed interner, Binder inventory, module dependency,
   module resolution, CompilerSession, diagnostics, and Checker fact suites.
 - Identity mutations: alpha-renamed generic parameters, callable-label owner
   replacement, whole-subordinate-set replacement after an identity-relevant
@@ -1487,3 +1562,6 @@ None
 | 2026-07-18 | REVIEW | All required owners approved exact repaired DRAFT snapshot `58826663bacaf7dba9aca97c8a86d0a34549133af5b7f47560f73e0e4580e43b` for formal review re-entry. |
 | 2026-07-18 | ACCEPTED | All required owners approved exact REVIEW snapshot `bdcbee8761d5476822cbe5bb2548332ad36e4d5f507c38e74d06751c6f444379`. |
 | 2026-07-18 | IMPLEMENTING | Stable identity, occurrence binding, and module-resolution direct replacement started. |
+| 2026-07-25 | IMPLEMENTING | Synchronized the accepted RFC 0025 compilation-unit identity expansion, contextual roots, semantic core graph, diagnostic identity, regenerated wire, and no-fallback mutation contracts from exact proposal SHA-256 `4f4085c176a9f391115e12170da93af899e350fa92440d5a51577692faf8bad0`; implementation completion is tracked only by the RFC 0025 R25 tasks. |
+| 2026-07-26 | IMPLEMENTING | Synchronized the accepted RFC 0026 selected-module, dependency-site, request, failure, graph, SCC, cycle, and ledger wire closure plus standalone-versus-keyed verification boundary from exact proposal SHA-256 `39df5d3f11dbdcb2e95056b1cd14fd5220a19688f31a3e3180230ad465a3f84d`; implementation completion remains tracked by RFC 0026 and RFC 0025. |
+| 2026-07-27 | IMPLEMENTING | Synchronized the RFC 0027 Binder query-key, complete authority-record, occurrence-specific scope, arena admission, and materialized occurrence contracts through transaction `rfc0027-accept-20260727-e2f4ba5e` at proposal SHA-256 `e2f4ba5eb777d3d70b8eb3ad75b18f5169afc61a83d989ccc61fc9d5d022f435`; implementation status is unchanged. |

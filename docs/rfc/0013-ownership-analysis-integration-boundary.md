@@ -8,7 +8,7 @@ review-manager: rfc
 required-owners: [task-router, rfc, binder-checker, module-system, error-system, concurrency, ir-backend, runtime-memory, spec-audit, verification]
 approvers: [task-router, rfc, binder-checker, module-system, error-system, concurrency, ir-backend, runtime-memory, spec-audit, verification]
 created: 2026-07-11
-updated: 2026-07-24
+updated: 2026-07-25
 area: compiler
 requires: [5, 8, 10, 11]
 supersedes: []
@@ -862,6 +862,28 @@ and validated declaration spans.
 - **Trust extern signatures.** Rejected because no body or proof establishes
   conformance.
 
+### RFC 0025 Source-Backed Core Replacement
+
+RFC 0025 replaces the imported-interface input boundary of this RFC at
+accepted proposal SHA-256
+`4f4085c176a9f391115e12170da93af899e350fa92440d5a51577692faf8bad0`.
+Callable user-module borrow behavior remains unchanged:
+
+| RFC 0013 Surface | Normative Replacement |
+|---|---|
+| Borrow-evidence input | Replace imported `VerifiedModuleInterface` inputs with the same canonically ordered `VerifiedInterfaceSource` set consumed by checked-module assembly. |
+| User branch | Preserve the complete `VerifiedBorrowInterfaceSurface`, callable summary collection, revision validation, and `ImportedBorrowSurface` publication. |
+| Toolchain-core branch | Validate exact context, module, interface revision, lookup and support definitions, and the closed no-callable core signature algebra. Publish no imported borrow-surface row. |
+| Revision lineage | Match every imported signature record's `ImportedInterfaceRevision` to the exact interface-source alternative. `ImportedBorrowSurface.interfaceRevision` remains `ModuleInterfaceRevision` because only the user branch can publish a callable surface. |
+| Failure mapping | Use RFC 0010 `InputRevisionMismatch` for same-alternative context, module, or revision disagreement; `MissingRequiredFact` for a missing core interface; `AdditionalFact` for a duplicate source or synthetic surface; `InvalidFact` for a callable core definition, user wrapper, valid wrong alternative, or unauthorized definition; and `CanonicalCodecMismatch` for an illegal tag, bootstrap-only payload, or malformed signature bytes. |
+| Evidence and invalidation | Keep `VerifiedBorrowEvidence.importedSurfaces` callable-only. The ordinary module's interface revision and checked-module visible-interface lineage still invalidate on every core signature or export change. |
+| Future extension | A callable core declaration requires a separately accepted RFC that defines its borrow surface and atomically replaces the closed no-callable branch. No empty placeholder surface or compatibility path is permitted. |
+| Native gates | Add marker-only core imports, re-exports, wrong-branch, wrong-revision, synthetic-surface, injected-callable, checked-module, HIR, MIR, and architecture mutation cases. |
+
+Implementation and evidence are owned by RFC 0025 tasks `R25-09A`,
+`R25-10`, `R25-09B`, `R25-08T`, `R25-14`, and `R25-15`. This
+synchronization does not claim production ownership-result publication.
+
 ## Compatibility And Rollout
 
 1. add RFC 0013 to RFC 0007's dependencies before RFC 0007 returns to DRAFT;
@@ -978,3 +1000,4 @@ None
 | 2026-07-11 | REVIEW | Entered formal owner review after semantic and invariant entry reviews approved the root-only contract, branded evidence repository, canonical module interface, canonical MIR revision, staged failure precedence, and transitive re-export proof selection. |
 | 2026-07-11 | ACCEPTED | All ten required owners approved the same exact REVIEW snapshot with no objections. The accepted design remains unimplemented until an explicit `ACCEPTED -> IMPLEMENTING` transition. |
 | 2026-07-17 | IMPLEMENTING | Started the direct ownership-integration replacement series with the accepted borrow-interface surface, branded BorrowEvidence repository, checked-module and HIR evidence lineage, MIR revision, and ownership-result seam. No predecessor or compatibility rail is permitted. |
+| 2026-07-25 | IMPLEMENTING | Synchronized RFC 0025's accepted exhaustive interface-source borrow input, closed no-callable core branch, failure mapping, and invalidation lineage at proposal SHA-256 `4f4085c176a9f391115e12170da93af899e350fa92440d5a51577692faf8bad0`; implementation evidence remains owned by the named R25 tasks. |

@@ -1051,16 +1051,24 @@ SignatureScope =
   | Member { owner: DefId, visibility: MemberVisibility }
   | Enclosed { owner: DefId }
 
+ImportedInterfaceRevision =
+    User { revision: ModuleInterfaceRevision }              // 0x01
+  | ToolchainCore { revision: CoreModuleInterfaceRevision } // 0x02
+
+ImportedBindingSurfaceRevision =
+    User { revision: ExportSurfaceRevision }              // 0x01
+  | ToolchainCore { revision: CoreBindingSurfaceRevision } // 0x02
+
 SignatureAuthorizationOrigin =
   Local
-  | Imported { interfaceRevision: ModuleInterfaceRevision }
+  | Imported { interfaceRevision: ImportedInterfaceRevision }
 
 SignatureRootAuthorization {
   binding: DefId,
   canonicalDefinition: DefId,
   visibility: VisibilityEnvelope,
   sourceModule: ModuleId,
-  bindingSurfaceRevision: ExportSurfaceRevision,
+  bindingSurfaceRevision: ImportedBindingSurfaceRevision,
   origin: SignatureAuthorizationOrigin,
 }
 
@@ -1213,8 +1221,11 @@ MarkerFact {
 
 `SignatureScope` tags are `ModuleDefinition = 0x01`, `Member = 0x02`, and
 `Enclosed = 0x03`. `SignatureAuthorizationOrigin` tags are
-`Local = 0x01` and `Imported = 0x02`. Variant payloads and record fields encode
-in declaration order. Scope and member visibility belong to the canonical
+`Local = 0x01` and `Imported = 0x02`. `ImportedInterfaceRevision` and
+`ImportedBindingSurfaceRevision` use `User = 0x01` and
+`ToolchainCore = 0x02`; each tag precedes its complete revision payload.
+Variant payloads and record fields encode in declaration order. Scope and
+member visibility belong to the canonical
 definition signature. Module-binding visibility and authorization origin belong
 to the individual root authorization, so an import or re-export alias never
 mutates the canonical signature.
@@ -1401,13 +1412,13 @@ SignatureViewOrigin = ExplicitImport | NamespaceImport | Prelude
 ImportedSignatureModule {
   origin: SignatureViewOrigin,
   sourceModule: ModuleId,
-  interfaceRevision: ModuleInterfaceRevision,
-  bindingSurfaceRevision: ExportSurfaceRevision,
+  interfaceRevision: ImportedInterfaceRevision,
+  bindingSurfaceRevision: ImportedBindingSurfaceRevision,
   authorizedRoots: SortedUniqueSequence<SignatureRootAuthorization>,
   lookupDefinitions: SortedMap<DefId, SemanticSignature>,
   supportDefinitions: SortedMap<DefId, SemanticSignature>,
   moduleTargets: SortedMap<BindingNameKey,
-                           (ModuleId, ExportSurfaceRevision)>,
+                           (ModuleId, ImportedBindingSurfaceRevision)>,
 }
 
 ImportedSignatureView {
@@ -1420,8 +1431,12 @@ ImportedSignatureView {
 
 ModuleInterfaceRevisionEntry {
   module: ModuleId,
-  revision: ModuleInterfaceRevision,
+  revision: ImportedInterfaceRevision,
 }
+
+VerifiedInterfaceSource =
+    User { interface: const VerifiedModuleInterface }
+  | ToolchainCore { interface: const RFC0025::VerifiedCoreModuleInterface }
 
 FrozenCoherenceView {
   semanticContext: SemanticContextBrand,
@@ -1525,6 +1540,15 @@ no body checking starts.
 Malformed identities, revisions, records, or candidate ordering select
 `InvariantRejected`. A frozen view is the only successful result and contains
 no failure or recovery handle.
+
+The imported-signature projector switches exhaustively on
+`VerifiedInterfaceSource` and emits the revision alternatives matching the
+source. A finalized toolchain-core source contributes one flat ordinary
+`ImportedSignatureModule`; its authorization origins use
+`ImportedInterfaceRevision::ToolchainCore`, and its binding and module-target
+surfaces use `ImportedBindingSurfaceRevision::ToolchainCore`. No bootstrap
+revision or schema reaches an ordinary signature, body, coherence, borrow,
+checked-module, diagnostic, dump, or trace consumer.
 
 The coherence view includes every coherence-relevant impl head from every
 frozen module interface, including impls whose source declaration is not
@@ -2614,6 +2638,43 @@ bug-bundle fact. Lifecycle fixtures keep a `SourceRejected` result alive while
 rendering and querying recovery IDs, destroy it, and prove every subsequent
 lookup is rejected without dereferencing freed storage.
 
+### RFC 0025 Core Signature And Interface Contract
+
+Core bootstrap uses the separate RFC 0025
+`CoreSignatureCheckingInput`, `VerifiedCoreImportedSignatureView`,
+`CoreBootstrapSignatureRootAuthorization`, and
+`CoreBootstrapImportedSignatureModule` schemas. These carry
+`CoreBindingSurfaceRevision` and
+`CoreBootstrapModuleInterfaceRevision`, prohibit ordinary checker and
+coherence access, and produce only the closed declaration-only bootstrap
+signature algebra. Finalization publishes a flat
+`VerifiedCoreModuleInterface` with no bootstrap schema or revision.
+
+Ordinary signature, body, coherence, and marker-proof inputs retain the exact
+whole-session RFC 0015 marker-shape and marker-policy lineage, consume final
+standard authority, and require its core-role projection to be byte-equal to
+the core-scoped bootstrap projection. Every downstream consumer switches
+exhaustively on `VerifiedInterfaceSource`,
+`ImportedInterfaceRevision`, and `ImportedBindingSurfaceRevision`.
+
+A same-alternative revision mismatch is `StaleRevision` and emits `ZOM9930`.
+A canonically valid source-incompatible alternative is `ViewMismatch` and
+emits `ZOM9931`. An illegal or non-canonical tag, payload, field order, or
+bootstrap schema at an ordinary boundary is `CanonicalCodecMismatch` and emits
+`ZOM9935`. All affected revisions and fixed vectors include the alternative
+tag and complete revision. The untagged field types, constructors, accessors,
+overloads, fixtures, and decoders do not coexist with this contract.
+
+### RFC 0025 Acceptance Synchronization
+
+On 2026-07-25, the accepted RFC 0025 proposal at SHA-256
+`4f4085c176a9f391115e12170da93af899e350fa92440d5a51577692faf8bad0`
+made the core bootstrap/final-interface split, exhaustive interface-source and
+revision sums, whole-session marker lineage, failure mapping, codec cutover,
+and native mutation matrix above part of this accepted contract. RFC 0005
+remains `IMPLEMENTING`; product implementation remains tracked by RFC 0025's
+`R25` tasks.
+
 ## Repository Impact
 
 | Area | Paths | Owner |
@@ -2940,3 +3001,4 @@ None
 | 2026-07-16 | IMPLEMENTING | Started the Canonical Semantic Foundation Direct Replacement Series with the closed semantic type value algebra. |
 | 2026-07-18 | IMPLEMENTING | Synchronized the accepted RFC 0018 later overlay for occurrence-owned source reconstruction, post-classification survivor publication, and occurrence-free semantic coherence identity. No implementation completion is inferred. |
 | 2026-07-25 | IMPLEMENTING | Synchronized RFC 0024 standard-marker authority in signature and body inputs and added the policy-subject evidence variant required by the complete Copy policy. |
+| 2026-07-25 | IMPLEMENTING | Synchronized the accepted RFC 0025 core bootstrap and final-interface split, exhaustive imported interface and binding-surface revision sums, whole-session marker lineage, failure mapping, and one-step codec cutover at proposal SHA-256 `4f4085c176a9f391115e12170da93af899e350fa92440d5a51577692faf8bad0`. |

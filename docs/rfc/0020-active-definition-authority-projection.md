@@ -8,7 +8,7 @@ review-manager: rfc
 required-owners: [rfc, binder-checker, module-system, spec-audit, verification]
 approvers: [rfc, binder-checker, module-system, spec-audit, verification]
 created: 2026-07-20
-updated: 2026-07-20
+updated: 2026-07-27
 area: compiler
 requires: [17, 18, 19]
 supersedes: []
@@ -23,46 +23,31 @@ tracking-issue: docs/rfc/tracking/0020-review-and-implementation.md
 
 ## Summary
 
-Add the session-maintained tracked inputs
-`ActiveDefinitionAuthorityInput(DefinitionKey) -> DefinitionIdentityRecord`
-and one compilation-unit readiness fingerprint.
-The input supplies the complete active identity preimage required to recover a
-definition's owning module without scanning modules or reading ambient session
-state. `CompilerSession` removes readiness before base-input mutation,
-rebuilds the complete input set from verified
-`NamedDefinitionInventory(ModuleKey)` results, and atomically replaces the map
-and restores readiness before any named-item or owner-body root is demanded.
-Consumers
-must still verify exact `(DefinitionKey, DefinitionIdentityRecord)` membership
-in the owning module inventory, so the projection is navigation authority and
-not an independent source of semantic membership.
+The session installs a complete contextual identity-authority payload keyed by
+one exhaustive `CompilationRootSetQueryKey`. It contains definition,
+implementation, generic-parameter, and callable-parameter authority maps plus
+`CompleteRootIdentityReadiness`. Eight typed membership queries cover
+compilation units, crates, sources, modules, definitions, implementations,
+generic parameters, and callable parameters. Every positive identity result
+retains its complete stable key or authority record and verifies exact
+membership in the owning inventory or header.
 
 ## Motivation
 
-RFC 0019 specifies `NamedItemSyntax(DefinitionKey)` and
-`OwnerBodySyntax(DefinitionOwner(DefinitionKey))`. A `DefinitionKey` is a
-one-way 32-byte SHA-256 digest. Its complete `DefinitionIdentityRecord`, which
-contains the owning `ModuleKey`, is retained by
-`NamedDefinitionInventory(ModuleKey)`. The query provider therefore receives
-the digest needed to select an item but not the module key needed to demand the
+RFC 0027 specifies
+`ActiveDefinitionMembership(ContextualDefinitionKey)` and
+`BindOwnerBody(ContextualBodyOwnerKey)`. A `DefinitionKey` is a one-way
+32-byte SHA-256 digest. Its complete `DefinitionIdentityRecord`, which contains
+the owning `ModuleKey`, is retained by
+`NamedDefinitionInventory(ModuleKey)`. The contextual key supplies the
+complete root set and routed stable definition key required to demand the
 inventory that proves the item is active.
 
-The missing inverse edge cannot be implemented within RFC 0017's provider
-purity contract by any current authority:
-
-- scanning every active module would create a whole-program dependency and
-  make one module edit invalidate unrelated named-item queries;
-- reading `CompilerSession`, a semantic identity registry, or another ambient
-  collection would bypass `QueryContext` and create untracked reads;
-- changing the query key to carry a module would replace the accepted RFC 0019
-  public query identity; and
-- trusting a digest-to-module table without the complete identity record would
-  discard RFC 0018 collision authority.
-
-Implementation must stop at this boundary rather than add a fallback path.
-This RFC supplies the smallest tracked authority that preserves the accepted
-query key, narrow dependencies, exact collision checks, and one production
-Binder path.
+Provider purity requires the owning-module edge to be explicit, tracked, and
+bounded to the demanded definition. The authority projection retains complete
+identity records for collision verification and exposes exact typed
+membership without a whole-program dependency. This contract supplies narrow
+dependencies, exact collision checks, and one production Binder path.
 
 ## Goals
 
@@ -74,8 +59,8 @@ Binder path.
 - Prevent incomplete refresh roots from authorizing missing or contradictory
   definition lookups without invalidating unchanged per-definition inputs.
 - Keep `NamedDefinitionInventory` as the sole membership authority.
-- Preserve RFC 0019's `OwnerBodySyntax(DefinitionOwner)` dependency on only
-  `NamedItemSyntax`.
+- Preserve the stable definition-header and contextual owner-body dependency
+  boundary.
 - Add native tests and architecture mutations for every new authority edge.
 - Add a tracked input-only probe that represents present and absent input
   observations without converting absence into provider failure.
@@ -85,14 +70,14 @@ Binder path.
 - Change `DefinitionKey`, `DefinitionIdentityRecord`, or stable body-owner wire
   formats.
 - Add a global module scan to any query provider or verifier.
-- Expose semantic identity registries through `QueryContext`.
+- Expose identity interner containers through `QueryContext`.
 - Add an implementation-key inverse projection; RFC 0019 owner bodies are not
   keyed by `ImplKey`.
 - Persist the new input outside the current `QueryDatabase` input root.
 - Add optional probing for derived queries or make ordinary required input
   reads tolerate missing values.
 - Change source syntax, language semantics, diagnostics, or module selection.
-- Add a compatibility query, fallback registry lookup, or dual Binder path.
+- Add an untracked authority lookup or a second Binder publication path.
 
 ## Prior Art
 
@@ -145,20 +130,19 @@ between module inventory discovery and named-item demand:
 flowchart TD
     ROOTS["Committed source and module inputs"] --> INV["NamedDefinitionInventory(ModuleKey)"]
     INV --> BUILD["CompilerSession rebuilds complete authority map"]
-    BUILD --> AUTH["ActiveDefinitionAuthorityInput(DefinitionKey)"]
-    BUILD --> READY["ActiveDefinitionAuthorityReadyInput(CompilationUnit)"]
-    AUTH --> ITEM["NamedItemSyntax(DefinitionKey)"]
+    BUILD --> AUTH["ActiveDefinitionAuthorityInput(ContextualDefinitionKey)"]
+    BUILD --> READY["CompleteRootIdentityReadiness(contextRoots)"]
+    AUTH --> ITEM["ActiveDefinitionMembership(ContextualDefinitionKey)"]
     INV --> ITEM
     READY -. negative or contradictory lookup only .-> ITEM
-    ITEM --> BODY["OwnerBodySyntax(DefinitionOwner)"]
+    ITEM --> BODY["BindOwnerBody(ContextualBodyOwnerKey)"]
 ```
 
-For a key `d`, `NamedItemSyntax(d)` first reads the active authority input. The
-record supplies module `m`. The provider then reads
-`NamedDefinitionInventory(m)` and accepts the navigation result only when the
-inventory contains exactly the same key and canonical record. It continues
-with the selected-source, parse, and current-site reads already required by the
-accepted named-item syntax contract.
+For contextual key `d`, `ActiveDefinitionMembership(d)` reads the active
+authority input. The record supplies module `m`. Provider and verifier then
+read `NamedDefinitionInventory(m)` and the exact
+`DefinitionHeaderSyntax(d.definition)` and accept the result only when the
+inventory and header contain byte-equal key and canonical record authority.
 
 Removing or replacing a definition causes the next session staging cycle to
 erase the old input key before owner-body queries are demanded. No consumer
@@ -219,11 +203,11 @@ eviction metadata, and architecture tests exactly like required dependencies.
 
 ### Query descriptor
 
-The closed production input inventory gains this descriptor:
+The closed production input inventory contains this descriptor:
 
 | Field | Contract |
 |---|---|
-| Query | `ActiveDefinitionAuthorityInput(DefinitionKey)` |
+| Query | `ActiveDefinitionAuthorityInput(ContextualDefinitionKey)` |
 | Domain | `zom.query.active-definition-authority` |
 | Value | Complete `DefinitionIdentityRecord` |
 | Reuse class | `Semantic` |
@@ -234,48 +218,52 @@ The closed production input inventory gains this descriptor:
 | Cycle policy | Not applicable to an input |
 | Cost | Constant lookup after session staging |
 
-The companion readiness input has this descriptor:
+The companion complete-root readiness value has this descriptor:
 
 | Field | Contract |
 |---|---|
-| Query | `ActiveDefinitionAuthorityReadyInput(CompilationUnitQueryKey::fixed())` |
-| Domain | `zom.query.active-definition-authority-ready` |
-| Value | `ActiveDefinitionAuthoritySetFingerprint` |
+| Query | `CompleteRootIdentityReadiness(CompilationRootSetQueryKey)` |
+| Domain | `zom.binder.complete-root-identity-readiness` |
+| Value | `CompleteRootIdentityReadiness` |
 | Reuse class | `Semantic` |
 | Input durability | `Low` |
 | Equality | Exact 32-byte set fingerprint |
 | Retention | Retained only when the current authority map is complete |
 | Provider; cycle; cost | None; not applicable; constant lookup |
 
-The fingerprint is exactly:
+The definition-authority digest is exactly:
 
 ```text
 SHA-256(
   ASCII("zom.active-definition-authority-set")
   || 0x00
-  || EncodeSequence(sorted (DefinitionKey, DefinitionIdentityRecord) pairs)
+  || Encode(contextRoots)
+  || EncodeSequence(sorted
+       (ContextualDefinitionKey, DefinitionIdentityRecord) pairs)
 )
 ```
 
-Pairs are sorted by raw `DefinitionKey` bytes and encode the raw digest followed
-by one bounded canonical record. The readiness value is not membership
-authority and does not replace an exact inventory check. It distinguishes a
-complete installed map from an in-progress or failed refresh only for negative
-or contradictory lookups.
+Pairs are sorted by complete contextual-key bytes and encode one bounded
+canonical record. Readiness also carries the independently recomputed
+implementation, generic-parameter, and callable-parameter authority digests.
+It is valid only when all four authority sequences cover the complete active
+module set. Readiness is not membership authority and is consulted only for
+negative or contradictory lookups.
 
-The key codec admits exactly one raw RFC 0018 `DefinitionKey` digest. The value
-codec admits exactly one complete canonical `DefinitionIdentityRecord` and no
-trailing bytes. Decoding is bounded by the existing four-mebibyte per-record
-inventory limit and rejects invalid module encoding, invalid owner tags,
-invalid owner digests, invalid definition kind or namespace, namespace-kind
-mismatch, noncanonical declared names, invalid overload presence, truncation,
-oversized sequences, and trailing bytes.
+The key codec admits one complete `CompilationRootSetQueryKey` followed by one
+complete routed `StableDefinitionQueryKey`. The value codec admits exactly one
+complete canonical `DefinitionIdentityRecord` and no trailing bytes. Decoding
+is bounded by the four-mebibyte per-record inventory limit and rejects invalid
+root encoding, foreign modules, invalid owner tags or digests, invalid
+definition kind or namespace, namespace-kind mismatch, noncanonical declared
+names, invalid overload presence, truncation, oversized sequences, and trailing
+bytes.
 
 The value codec is structural. The session staging verifier and every consumer
 that uses the value as navigation authority additionally require:
 
 ```text
-DefinitionKey::compute(record) == input key
+DefinitionKey::compute(record) == input key.definition.definition
 ```
 
 An equal digest with unequal complete record bytes is
@@ -284,138 +272,73 @@ diagnostic and publishes no derived memo value.
 
 ### Complete authority-map construction
 
-`CompilerSession` owns the only production staging path. Authority publication
-uses a readiness barrier, base staging, reconstruction, and one atomic map
-replacement:
+`CompilerSession` owns the only production staging path:
 
-1. The first transaction that mutates any base input in a binding cycle must
-   also erase `ActiveDefinitionAuthorityReadyInput` when a ready marker exists.
-   If that transaction fails, the prior complete root remains unchanged and the
-   cycle stops. Once it commits, prior per-definition entries may remain
-   physically retained, but the root is explicitly not a complete authority
-   publication.
-2. Commit the remaining external and graph-derived inputs through the existing
-   staging transactions, including the package-root key, active crates,
-   modules, sources, source snapshots, module dependencies, and selected module
-   sources. No named-item or owner-body production root may be demanded during
-   this phase.
-3. Take one base snapshot after all base staging succeeds. Read
-   `ActiveCratesInput(p)` from the exact staged package-root key `p`, then read
-   `ActiveModulesInput(c)` for every returned crate in canonical crate order.
-   Reject absence, semantic failure, runtime failure, an empty active crate
-   projection, a module outside its keyed crate, a duplicate module, or a
-   mismatch with `ModuleBindingOrderQuery(p)`. Flatten and sort the resulting
-   closed module set by complete canonical module bytes. Session-local module
-   vectors and registries are not coverage authority.
-4. From the same base snapshot, demand `NamedDefinitionInventory(m)` for every
-   module in that canonical closed set. Any absence, semantic failure, runtime
-   failure, count mismatch, duplicate demand, or incomplete module coverage
-   aborts owner-body work.
-5. Independently decode every inventory entry's complete record, require its
-   embedded module to equal `m`, recompute its `DefinitionKey`, and insert the
-   pair into a temporary map ordered by raw digest bytes.
-6. Coalesce duplicate digests only when complete canonical records are equal.
-   Equal digests with unequal records abort the cycle as an invariant failure.
-7. Before opening the installation transaction, construct the complete encoded
-   input map, its complete next-key ledger, and its set fingerprint. Allocation
-   or validation failure leaves readiness absent and stops the cycle.
-8. Begin one installation transaction. Erase every key in the prior key ledger,
-   then set every pair from the complete temporary map. An erase followed by an
-   equal set of the same key in this one transaction must preserve the input's
-   prior `changedAt`; removed keys remain erased and added keys are new. Set
-   `ActiveDefinitionAuthorityReadyInput` to the prebuilt fingerprint in this
-   same transaction and commit once.
-9. Commit failure publishes none of the staged erases, values, or readiness and
-   leaves the prior key ledger accurate for retry. After a successful commit,
-   publish the prebuilt next-key ledger through a non-failing move or swap. No
-   allocation or validation may occur after the database commit and before this
-   ledger handoff.
-10. Take a new ready snapshot and only then demand `NamedItemSyntax`,
-    `NamedItemProvenance`, `ModuleBodyOwners`, `OwnerBodySyntax`, or later
-    owner-body roots.
+1. `VerifiedCoreDistributionInputTransaction` installs the complete
+   handle-free compilation context authority and projected-core inputs.
+2. `VerifiedModuleGraphInputTransaction` installs selected-module catalogs,
+   detached dependency sites, catalog buckets, requester ancestries, search
+   roots, dependency aliases, configured preludes, and the exact structural
+   ledger.
+3. `authorityStagingSnapshot` demands the complete-root `ActiveCrates`, every
+   `ActiveSources` and `ActiveModules`, all dependency requests and
+   resolutions, `ModuleGraph`, `ModuleGraphScc`, every named inventory, and
+   every staging-safe definition and implementation-occurrence header.
+4. Cyclic SCCs, incomplete module coverage, unequal records, foreign roots,
+   duplicate keys, and missing header occurrences abort the unpublished
+   session.
+5. Provider and verifier independently build the complete contextual
+   definition, implementation, generic-parameter, and callable-parameter
+   authority sequences plus `CompleteRootIdentityReadiness`.
+6. One `ContextualIdentityAuthorityInputTransaction` atomically commits all
+   four authority sequences and readiness or commits nothing.
+7. `finalCoreSnapshot` re-demands graph, SCC, every authority sequence,
+   readiness, active membership, inventories, and staging-safe headers and
+   requires byte equality with the staging witnesses.
+8. `QueryDatabase::sealInputs` irreversibly closes input mutation before any
+   revision-local materializer executes.
 
-The session is the exclusive binding-cycle owner, so no production root demand
-may interleave between steps 1 and 10. A failed cycle leaves either the prior
-complete root when readiness removal never committed or a fail-closed
-not-ready root. A not-ready root can reuse a prior entry only when the current
-owning inventory proves the exact same key and complete record; a missing or
-contradictory lookup observes no ready marker and publishes no semantic memo.
-Existing snapshots remain immutable and continue to observe the complete root
-from their own revision.
+No production query demand may interleave with these transactions. Existing
+snapshots remain immutable and observe the complete authority root from their
+own revision.
 
 ```mermaid
 sequenceDiagram
     participant S as CompilerSession
     participant Q as QueryDatabase
     participant I as NamedDefinitionInventory
-    S->>Q: Remove readiness with first base mutation
-    S->>Q: Commit complete base input root
-    S->>Q: Read ActiveCrates and ActiveModules from one snapshot
-    S->>I: Demand every module inventory from that closed set
-    I-->>S: Verified key and complete-record entries
-    S->>S: Rebuild map, ledger, and fingerprint
-    S->>Q: Replace map and restore readiness atomically
+    S->>Q: Commit distribution and structural inputs
+    S->>Q: Acquire authorityStagingSnapshot
+    S->>I: Demand complete inventories and stable headers
+    I-->>S: Complete key and authority records
+    S->>S: Build four authority sequences and readiness
+    S->>Q: Commit contextual identity authority atomically
     Q-->>S: Authority revision
-    S->>Q: Demand named-item and owner-body roots
+    S->>Q: Re-demand witnesses and seal finalCoreSnapshot
 ```
 
-### Named-item dependency amendment
+### Typed Active-Membership Projections
 
-The two named-item queries use these complete descriptors. `Computed` input
-durability is the minimum durability of actual provider and verifier reads.
-`Reject` means any cycle is a runtime failure with no memo publication.
+The closed membership query family is:
 
-| Query | Domain | Reuse; input durability | Equality | Complete tracked dependencies | Verifier | Retention; cycle; cost |
-|---|---|---|---|---|---|---|
-| `NamedItemSyntax(DefinitionKey)` | `zom.query.named-item-syntax` | `Semantic`; Computed | complete detached named-item tree with the RFC 0019 stable-boundary census and no revision-local state | probe `ActiveDefinitionAuthorityInput(d)`; on record with module `m`, `NamedDefinitionInventory(m)`, `SelectedModuleSource(m)`; on selected source `s`, `ParseSource(s)`, `NamedImplementationInventory(m)`, `RevisionLocalDefinitionSites(m)`, and `RevisionLocalImplementationSites(m)`; only on absent or contradictory authority, probe `ActiveDefinitionAuthorityReadyInput(fixed)` | independently repeats authority mapping and exact inventory membership, selects the RFC 0018 authority occurrence, and rebuilds the detached tree and stable-boundary census without calling the producer | evictable bounded LRU; Reject; linear in the selected named-item syntax |
-| `NamedItemProvenance(DefinitionKey)` | `zom.query.named-item-provenance` | `RevisionLocal`; Computed | exact current source, legal-path, AST-node, and range map; never backdated | probe `ActiveDefinitionAuthorityInput(d)`; on record with module `m`, `NamedDefinitionInventory(m)`, `SelectedModuleSource(m)`; on selected source `s`, `ParseSource(s)`, `NamedItemSyntax(d)`, `RevisionLocalDefinitionSites(m)`, and `RevisionLocalImplementationSites(m)`; only on absent or contradictory authority, probe `ActiveDefinitionAuthorityReadyInput(fixed)` | independently repeats authority mapping and exact membership, selects the RFC 0018 authority occurrence, then reconstructs total current legal-path coverage against the retained semantic tree | evictable; Reject; linear in the selected named-item syntax |
+| Query | Key | Positive authority |
+|---|---|---|
+| `ActiveCompilationUnitMembership` | `ContextualCompilationUnitKey` | complete non-empty active-crate sequence for the unit |
+| `ActiveCrateMembership` | `ContextualCrateKey` | exact `ActiveCrates(contextRoots)` occurrence |
+| `ActiveSourceMembership` | `ContextualSourceKey` | exact `ActiveSources(crate)` occurrence |
+| `ActiveModuleMembership` | `ContextualModuleKey` | exact `ActiveModules(crate)` occurrence |
+| `ActiveDefinitionMembership` | `ContextualDefinitionKey` | exact authority input, owning definition inventory, and stable definition header |
+| `ActiveImplementationMembership` | `ContextualImplementationKey` | owning implementation inventory and every equal occurrence header |
+| `ActiveGenericParameterMembership` | `ContextualGenericParameterKey` | active global owner and complete authority-header occurrence set |
+| `ActiveCallableParameterMembership` | `ContextualCallableParameterKey` | active definition owner and complete definition header |
 
-Both providers begin with this required module-recovery prefix:
-
-1. Probe `ActiveDefinitionAuthorityInput(d)`.
-2. On a value, derive module `m` only from the returned complete record, read
-   `NamedDefinitionInventory(m)`, and require exact membership of
-   `(d, Encode(record))` in that inventory.
-3. If the authority probe is `Absence`, or if a present authority cannot be
-   proved by its current owning inventory, probe
-   `ActiveDefinitionAuthorityReadyInput(fixed)`.
-4. When the readiness probe is `Absence`, return
-   `QueryRuntimeFailure::ProviderRejected` without a semantic memo because
-   refresh is incomplete. When readiness is present and the authority probe is
-   `Absence`, publish canonical semantic `InactiveOwner`. When readiness is
-   present and a supplied authority or inventory is contradictory, return
-   `QueryRuntimeFailure::InvariantViolation`.
-
-The positive exact-membership path does not read the readiness input. This
-conditional dependency is mandatory: an equal per-definition input preserves
-its prior `changedAt` and an unchanged named item does not recompute merely
-because another definition changed or a refresh barrier toggled. The
-independent verifier reconstructs the same branches and exact dependency set.
-Cancellation, cycle, allocation, invalid codec, probe misuse, and every other
-runtime failure propagate without a memo.
-
-After exact membership succeeds, both producer and verifier filter every
-`RevisionLocalDefinitionSite` whose key equals `d` and select one authority
-occurrence by the complete RFC 0018 canonical source-order tuple: encoded
-`SourceFileKey`, `byteStart`, `byteEnd`, and encoded `moduleSyntaxPath`. They
-must compute that ordering independently and must not select the first entry of
-the current site container, whose storage order is not the RFC 0018 authority
-order. The earliest occurrence is the sole named-item syntax root; later equal
-identity occurrences remain revision-local redeclaration evidence and never
-become alternate query roots.
-
-After the module-recovery prefix succeeds, each provider performs exactly the
-remaining reads in its descriptor. `ParseSource` semantic failure becomes
-`UpstreamSourceRejected`; missing selected-source authority becomes
-`MissingSelectedModuleSource`; boundary or path reconstruction failures use
-the applicable RFC 0019 `BoundaryMismatch`, `MalformedDetachedSyntax`,
-`MissingProvenance`, `DuplicateProvenance`, `NonSelectedSource`, or
-`CrossBoundaryPath` alternative. No other semantic failure is admitted.
-
-`OwnerBodySyntax(DefinitionOwner(d))` continues to read only
-`NamedItemSyntax(d)`. The new authority and inventory reads are transitive
-dependencies of that named-item query and do not leak into the owner-body
-provider.
+Every descriptor returns `ActiveMembershipResult<Record> = Active(record) |
+Inactive`. A positive result carries the complete authority record and does not
+read readiness. An absent or contradictory authority reads
+`CompleteRootIdentityReadiness`: absence returns `ProviderRejected`, complete
+readiness plus absent authority returns `Inactive`, and unequal authority
+returns `InvariantViolation`. Provider and verifier independently reconstruct
+the same dependency branch and compare complete canonical bytes.
 
 ### Invalidation and backdating
 
@@ -425,30 +348,30 @@ provider.
   authority keys.
 - Removing or renaming a definition erases its prior key. The direct authority
   probe observes `Absence`; after the atomically installed readiness
-  marker proves the replacement map complete, `NamedItemSyntax` and
-  `NamedItemProvenance` normalize that condition to `InactiveOwner` and cannot
-  reuse the stale value memo.
+  record proves the complete authority set, `ActiveDefinitionMembership`
+  publishes `Inactive` and cannot reuse the stale value memo.
 - Moving a definition between modules changes the complete record and therefore
   changes its digest under RFC 0018; the old key is erased and the new key is
   installed.
-- A change in another module does not invalidate `NamedItemSyntax(d)` unless
-  it changes the exact authority record or owning inventory read by `d`.
+- A change in another module does not invalidate
+  `ActiveDefinitionMembership(d)` unless it changes the exact authority record
+  or owning inventory read by `d`.
 
 ### Forbidden paths
 
 Production code and architecture gates must reject:
 
 - iteration over all active modules inside a named-item provider or verifier;
-- reads of `CompilerSession`, semantic identity registries, frozen registries,
-  or retained session collections from a provider or verifier;
+- reads of `CompilerSession`, interner containers, or retained session
+  collections from a provider or verifier;
 - ordinary required input reads followed by attempted recovery from
   `MissingInput`; optional presence must use `probeInput`;
 - optional probing of derived queries or parallel optional-probe groups;
 - a `DefinitionKey -> ModuleKey` value that omits the complete record;
 - authority staging before complete named-definition inventories are demanded;
-- active-module coverage derived from a session vector, registry, or graph
-  collection instead of `ActiveCratesInput`, `ActiveModulesInput`, and
-  `ModuleBindingOrderQuery` reads from one base snapshot;
+- active-module coverage derived from a session vector instead of
+  byte-equal `ActiveCrates`, complete `ActiveModules`, `ModuleGraph`, and
+  `ModuleGraphScc` reads from one authority-staging snapshot;
 - additive staging that does not erase prior active keys;
 - any base-input update that occurs while the prior readiness marker remains;
 - unconditional readiness reads on the positive exact-membership path;
@@ -459,7 +382,35 @@ Production code and architecture gates must reject:
 - owner-body demand before the authority replacement and readiness transaction
   commits;
 - accepting digest equality without exact complete-record membership; and
-- fallback to the existing batch Binder path when authority lookup fails.
+- missing authority after complete readiness becoming any result other than
+  `Inactive`.
+
+### Current Authority And Barrier Contract
+
+The RFC 0027 acceptance transaction
+`rfc0027-accept-20260727-e2f4ba5e` binds this contract to proposal SHA-256
+`e2f4ba5eb777d3d70b8eb3ad75b18f5169afc61a83d989ccc61fc9d5d022f435`.
+
+Authority staging begins only after one
+`VerifiedModuleGraphInputTransaction` commits the complete structural input
+inventory and the session acquires `authorityStagingSnapshot`. From that
+snapshot the session demands the complete-root `ActiveCrates`, every
+`ActiveModules`, `ModuleDependencies`, `ModuleGraph`, and `ModuleGraphScc`,
+rejects every cyclic component, and demands only handle-free semantic
+skeleton and named-definition inventory prerequisites.
+
+`ContextualIdentityAuthorityInputTransaction` contains only the complete
+contextual definition, implementation, generic-parameter, and
+callable-parameter authority sequences plus matching complete-root readiness. It
+does not commit selected sources, active modules, dependencies, graph, SCC,
+Binder results, or materialized handles.
+
+After the installation commit, the session acquires `finalCoreSnapshot`,
+re-demands graph, SCC, authority, and readiness with the same independently
+reconstructed complete root key, and requires byte equality. No input commit
+is permitted afterward. The named-item, owner-body, bound-module, core
+bootstrap, provenance, and revision-local materialization barrier opens only
+after those final checks succeed.
 
 ## Repository Impact
 
@@ -499,44 +450,15 @@ introduced.
 
 ## Alternatives Considered
 
-### Key `NamedItemSyntax` by module and definition
-
-`NamedItemSyntax(ModuleKey, DefinitionKey)` would make module recovery trivial
-but would replace an accepted public query key and allow contradictory
-module/key pairs at every call site. The complete record already defines the
-module and should remain the equality authority.
-
-### Scan all active module inventories
-
-The provider could read `ActiveModules` and every inventory until it finds the
-digest. That approach is tracked but creates whole-program dependencies and
-linear work for an item-local query. It defeats the primary incremental
-boundary RFC 0017 and RFC 0019 require.
-
-### Read the semantic identity registry
-
-The registry already maps process-local handles and retained authority, but it
-is not a query input and is unavailable through `QueryContext`. Reading it
-would make dependency capture incomplete and snapshots nondeterministic.
-
-### Store only the module key
-
-A `DefinitionKey -> ModuleKey` input is smaller but cannot prove the complete
-RFC 0018 preimage or distinguish an equal-digest unequal-record collision.
-Every consumer would still need an untracked authority to validate the pair.
-
-### Add a mutable reverse index inside `QueryDatabase`
-
-A hidden database index would introduce a second dependency mechanism outside
-typed query reads and complicate snapshot isolation. The ordinary input
-contract already supplies equality, changed-at tracking, retention, and stale
-key erasure.
+None. The accepted contract uses explicit contextual inputs, complete
+authority records, tracked membership queries, and independently verified
+inventory/header reads.
 
 ## Compatibility And Rollout
 
 This is the compiler's sole active-definition authority projection.
 
-Rollout order is:
+Implementation proceeds in this order:
 
 1. accept this RFC;
 2. create the performance runner and corpus and record the reviewed
@@ -548,16 +470,11 @@ Rollout order is:
    reconstruction, and atomic replacement;
 6. implement the named-item module-recovery prefix and independent verifier;
 7. continue RFC 0019 Phase 3 owner-body queries on that sole path; and
-8. delete any temporary implementation that scans modules or reads registries.
+8. enforce architecture gates that reject module scans and registry reads.
 
-Rollback removes both authority input kinds, readiness and key-ledger staging,
-named-item dependencies, probe-specific tests, and performance cases together
-before any persisted schema exists. If no other accepted caller uses
-`probeInput`, rollback also removes `probeInput`, `InputProbeObservation`, and
-presence-aware dependency metadata and validation; no unused query-runtime
-surface remains. If another accepted RFC has adopted the API, rollback must
-retain that governed caller and cannot silently strand or delete its contract.
-No generated source or user data migration is required.
+Both authority input kinds, readiness, key-ledger staging, named-item
+dependencies, probe semantics, native tests, and performance cases land in one
+coherent implementation.
 
 ## Documentation And Teaching Plan
 
@@ -603,9 +520,9 @@ action is required.
   without context poisoning or tombstone retention.
 - `DefinitionIdentityRecord` has a strict bounded standalone decoder with
   positive, malformed, oversized, truncation, and trailing-byte tests.
-- `ActiveDefinitionAuthorityInput` and
-  `ActiveDefinitionAuthorityReadyInput` are registered with the exact
-  descriptors in this RFC and reject malformed keys and values.
+- `ActiveDefinitionAuthorityInput` and `CompleteRootIdentityReadiness` are
+  registered with the exact descriptors in this RFC and reject malformed keys
+  and values.
 - `CompilerSession` rebuilds and atomically replaces the complete active map
   after demanding every active named-definition inventory.
 - Stale keys are erased and equal values preserve `changedAt`.
@@ -727,3 +644,7 @@ None
 | 2026-07-20 | REVIEW | Entered exact-snapshot owner review after all required owners approved DRAFT readiness. |
 | 2026-07-20 | ACCEPTED | All required owners approved REVIEW snapshot `4b06c2b2...4b84bfe`. |
 | 2026-07-20 | IMPLEMENTING | Implementation started after accepted exact-snapshot review. |
+| 2026-07-25 | IMPLEMENTING | Synchronized the accepted RFC 0025 complete-context readiness, contextual authority, conditional dependency, whole-context diagnostic, and third-transaction installation replacement from exact proposal SHA-256 `4f4085c176a9f391115e12170da93af899e350fa92440d5a51577692faf8bad0`; implementation completion is tracked only by the RFC 0025 R25 tasks. |
+| 2026-07-26 | IMPLEMENTING | Synchronized the accepted RFC 0026 structural transaction, authority-staging graph and SCC roots, cyclic-component rejection, authority-only installation transaction, and final-snapshot re-demand barrier from exact proposal SHA-256 `39df5d3f11dbdcb2e95056b1cd14fd5220a19688f31a3e3180230ad465a3f84d`; implementation completion remains tracked by RFC 0026 and RFC 0025. |
+| 2026-07-27 | IMPLEMENTING | Required authority coverage to come only from complete derived active membership and byte-equal stable graph and SCC results in one authority-staging snapshot. |
+| 2026-07-27 | IMPLEMENTING | Synchronized the RFC 0027 complete-root eight-domain membership, four authority-sequence, conditional readiness, contextual transaction, and final-seal contracts through transaction `rfc0027-accept-20260727-e2f4ba5e` at proposal SHA-256 `e2f4ba5eb777d3d70b8eb3ad75b18f5169afc61a83d989ccc61fc9d5d022f435`; implementation status is unchanged. |

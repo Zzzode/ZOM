@@ -8,7 +8,7 @@ review-manager: rfc
 required-owners: [task-router, rfc, binder-checker, module-system, error-system, ir-backend, spec-audit, verification]
 approvers: [task-router, rfc, binder-checker, module-system, error-system, ir-backend, spec-audit, verification]
 created: 2026-07-18
-updated: 2026-07-18
+updated: 2026-07-27
 area: compiler
 requires: [4, 5, 8, 11, 12, 15]
 supersedes: []
@@ -41,8 +41,8 @@ authority.
 
 The first implementation is an in-memory query engine. Persisted values are a
 later, allowlisted phase after from-scratch consistency and projection
-shielding are proven. No compatibility adapter, second production Binder, or
-parallel revision of the existing batch pipeline is retained after cutover.
+shielding are proven. The repository contains one production Binder path and
+one current revision contract.
 
 ## Motivation
 
@@ -522,33 +522,37 @@ and search-root projections required by the key. Its verifier repeats candidate
 formation through the same dependency frame. An unrelated catalog path change
 cannot execute a resolution provider whose demanded buckets remain equal.
 
-`SourceSpan` and sibling ordinal are removed from named `DefinitionKey` and
-`ImplKey` canonical encodings. There is no old-key alias or dual registry.
-Every producer, verifier, codec, fixture, and caller migrates in the same
-replacement series.
+Named `DefinitionKey` and `ImplKey` canonical encodings exclude `SourceSpan`
+and sibling ordinal. Every producer, verifier, codec, fixture, and caller uses
+the same canonical encoding.
 
 ### Identity Interner Lifetime
 
-One `QueryDatabase` owns one long-lived `SemanticContextBrand` and append-only
-canonical identity interners for its entire lifetime. Equal canonical keys
-always receive the same process-local handle. Handles are never reused.
+One refcounted `SemanticContextCapabilityArena` owns one
+`SemanticContextBrand` and one `CanonicalIdentityInternerSet` for its complete
+lifetime. The set contains typed append-only interners for compilation units,
+crates, sources, modules, definitions, implementations, generic parameters,
+and callable parameters. Equal canonical keys with byte-equal complete
+authority records receive the same process-local handle within that arena.
+Handles are never reused.
 
 Identity activity is an immutable logical query result, not a mutable flag in
 the interner. `ActiveCrates`, `ActiveSources`, `ActiveModules`,
-`NamedDefinitionInventory`, and `NamedImplementationInventory` derive the
-complete active membership of their stable owner from one snapshot's explicit
-inputs. Semantic providers construct and return stable keys without issuing
-handles. Demand order therefore cannot change the logical active set.
+`NamedDefinitionInventory`, `NamedImplementationInventory`, and the eight
+typed active-membership descriptors derive complete current membership from
+one snapshot's explicit inputs. Semantic providers construct and return stable
+keys without issuing handles. Demand order therefore cannot change the logical
+active set.
 
-`QueryDatabase::materializeActive(snapshot, stableKey)` is the sole handle
-admission authority. It first demands the stable key's owning active-membership
-projection in the same query frame. Absence is a deterministic inactive-key
-result. Presence authorizes the database, under the interner lock, to return the
-existing canonical handle or append exactly one new handle. This append-only
-materialization is semantically transparent cache state, not provider-owned
-registry mutation. Semantic providers cannot call it; only explicit
-`RevisionLocal` materialization queries may request active handles, and the
-membership read becomes their dependency.
+`CapabilityQueryContext::materializeActive<Key>(key, authority)` is available
+only when
+`ActiveMaterializerPermission<Descriptor, Key, MembershipDescriptor>` names
+the exact descriptor, key type, and tracked membership descriptor. It requires
+the final sealed snapshot, demands the membership descriptor in the active
+query frame, validates complete authority bytes, and then calls the arena
+interner. Absence is a deterministic inactive result. Presence permits the
+interner lock to return the existing canonical handle or append exactly one
+owned entry.
 
 Two concurrent materializations of the same key coalesce at the interner and
 receive the same handle. An old-snapshot flight checks old activity and may
@@ -558,13 +562,19 @@ interned handle cannot make an inactive new key succeed. Removing an entity
 therefore changes only the new membership projection and never reuses or
 invalidates the handle retained by the old snapshot.
 
-This replaces RFC 0011's one-time physical complete-registry freeze. Each
-snapshot has a logically frozen active set determined by immutable inputs,
-while physical interning is lazy, database-controlled, and append-only. Disk
-entries contain canonical keys and validate active membership, but decode,
-verification, and `Persisted` publication never materialize a handle. A later
-explicit `RevisionLocal` query may materialize the already-published stable
-value. Disk entries never serialize a brand or process-local handle.
+Each snapshot has an immutable active set determined by explicit inputs.
+Physical interning is lazy, arena-owned, and append-only. Disk entries contain
+canonical keys and validate active membership, but decode, verification, and
+`Persisted` publication never materialize a handle. An explicit
+`RevisionLocal` query may materialize an already-published stable value. Disk
+entries never serialize a brand or process-local handle.
+
+Every capability memo retains the snapshot and semantic-context arena required
+by its value. A surviving `QueryCapabilityLease` keeps reverse lookup, brand
+validation, and borrowed child capabilities valid after `CompilerSession` and
+`QueryDatabase` destruction. Session teardown releases session-held leases,
+then the database and lookup tables, then its arena owner; the arena itself is
+released only after the final external lease.
 
 ### Revision And Fingerprint Domains
 
@@ -620,11 +630,11 @@ API. If an unavoidable platform probe is discovered, it must first become a
 closed explicit input record. Debug and sanitizer builds fail hard when a query
 provider crosses a forbidden authority boundary.
 
-The only registry-related operation exposed through `QueryContext` is
-`materializeActive`, and its type is unavailable to `Semantic` and `Persisted`
-descriptors. A `RevisionLocal` materializer receives it as a capability; the
-database performs the append-only interner operation after recording and
-validating the active-membership query read.
+The only identity-materialization operation is exposed through
+`CapabilityQueryContext`; its type is unavailable to `Semantic` and
+`Persisted` descriptors. A permitted `RevisionLocal` materializer receives it
+as a capability. The context records and validates the exact active-membership
+read before invoking the arena-owned typed interner.
 
 ### Query Reuse Classes
 
@@ -1205,6 +1215,65 @@ that terminate at an equal projection divided by the number of changed
 aggregate producers observed by projections. It is diagnostic telemetry, not a
 correctness substitute.
 
+### Current Core-Library Query Contract
+
+| RFC 0017 Surface | Current Contract |
+|---|---|
+| Closed query inventory | `CoreDistributionInput`; semantic `CoreModuleGraph`, `CoreRoleSeed`, `CoreBootstrapModuleInterface`, `CoreExportSurface`, `CorePreludeSurface`, and `CoreRoleAuthority`; and revision-local `MaterializeCoreRoleSeed`, `MaterializeCoreBootstrapModuleInterface`, `MaterializeCoreAuthority`, and `FinalizeCoreModuleInterface` |
+| Query completion and memo ownership | The canonical-or-revision-local-capability algebra defined by RFC 0025; each memo uniquely owns its move-only capability and demands return snapshot-bound `QueryCapabilityLease` values |
+| Root-set query key | Exhaustive `CompilationRootSetQueryKey` for `ActiveCrates`, `ModuleGraph`, and `ModuleGraphScc`; package-only keys remain limited to package resolution |
+| Compilation options key | `CompilationOptions` is keyed by complete `CrateKey`, and `ParseSource` derives it from `SourceFileKey.crate` |
+| Contextual parent queries | Key `VerifyBoundModule` and `ModuleDiagnosticFacts` by `ContextualModuleKey`, and `ResolveDiagnosticProvenance` by `ContextualDiagnosticProvenanceKey`; keep only the explicitly audited non-contextual queries on plain module keys, and preserve the separate rule that only handle-free `Semantic` authority prerequisites may execute during staging |
+| Explicit input ownership | `VerifiedCoreDistributionInputTransaction` commits the distribution, verified source snapshots, compilation options, search roots, and role-keyed policy template. `VerifiedModuleGraphInputTransaction` commits selected structural module records, configured consumer preludes, and narrow graph prerequisites. `ContextualIdentityAuthorityInputTransaction` commits the complete contextual authority maps and readiness. |
+| Derived provider graph | Track the exact graph, role-seed, core-signature, export, prelude, and aggregate-authority provider and independent-verifier read sets defined by RFC 0025 |
+| Final interface witness | `FinalizeCoreModuleInterface` projects a flat final canonical record and stable witness; bootstrap memos remain private tracked dependencies |
+| Diagnostic facts | Diagnostic-root tag `0x05` `CoreLibrary`, producer-local emitter `CoreLibraryDiagnosticEmitter::FailureProjection = 0x01`, exact `CoreFailureProducer` phase tags, locationless invocation or compiler-invariant origins, canonical first-category occurrence indices, complete fact/occurrence wire oracles, and exact `ToolchainModuleRootReservationProducer` and emitter alternatives |
+| Reuse, ownership, and equality | Handle-free `Semantic` values for the six projections; four core-specific materializers are retained revision-local capability memos with sole ownership, transitive dependency retention, and snapshot-bound leases |
+| Retention and persistence | Retain the small mandatory projections in memory and disable persistence until this RFC's cache gate |
+| Readiness and missing values | Permit only graph, semantic skeleton, and named-definition inventory reads from the authority-staging snapshot; reject every named-item, owner-body, core-bootstrap, or materialization demand before contextual authority readiness; map a post-readiness missing required value to `VerifiedStateMismatch` |
+| Configured prelude | Retain the existing `ConfiguredPreludeInput` as the only consumer selection input; commit the complete consumer set in the all-projection graph-prerequisite transaction before acquiring `finalCoreSnapshot`, with no later input commit |
+| Fingerprint boundary | Use `CoreSemanticContextFingerprint` and core-specific projection revisions for stable core equality; keep the complete session fingerprint only on revision-local capabilities |
+| Projection shielding | Add RFC 0025's normative distribution, graph, signature, export, prelude, role, equal-projection, and cross-session invalidation matrix |
+
+### Current Module-Graph Query Contract
+
+RFC 0026 defines the complete normative contract for these module-topology query
+surfaces:
+
+| RFC 0017 Surface | Current Contract |
+|---|---|
+| Structural inputs | `VerifiedModuleGraphInputTransaction` atomically owns selected-module catalogs, detached dependency sites, catalog buckets, requester ancestries, search roots, dependency aliases, configured preludes, and its exact replacement ledger |
+| Derived query inventory | `SelectedModuleSourceQuery`, `ActiveModules`, `ModuleDependencySites`, `ModuleDependencyRequests`, `ModuleDependencies`, `ModuleGraph`, and `ModuleGraphScc` are derived; no derived topology fact is an input |
+| Reuse boundary | Detached dependency sites and requests are handle-free `Semantic` values; source locations and Binder handles are reconstructed only by revision-local capability materialization after the final barrier |
+| Graph keys and values | `ModuleGraph` and `ModuleGraphScc` use `CompilationRootSetQueryKey` and the exact stable records, domains, failure records, ordering, bounds, and keyed verifiers defined by RFC 0026 |
+| Provider algorithms | `ModuleGraph` derives complete membership and edges from active crates, active modules, and module dependencies; `ModuleGraphScc` uses Tarjan while its verifier uses Kosaraju |
+| Partial keys | A closed partial key may publish an ordinary graph and SCC value; only a root key independently reconstructed from the complete verified package request and committed core projections may authorize complete publication or Binder materialization |
+| Runtime failures | Query-runtime absence, rejection, cancellation, and verifier disagreement follow RFC 0026's readiness-sensitive mapping and publication precedence; source-backed missing or ambiguous requests remain independently verified semantic failures |
+| Session barriers | The structural transaction precedes `authorityStagingSnapshot`; contextual authority installation precedes `finalCoreSnapshot`; no revision-local materializer runs before the final graph, SCC, authority, and readiness re-demands succeed |
+| Binder bridge | The final-snapshot bridge independently reconstructs complete roots, active membership, full `SemanticContextFingerprint`, syntax provenance, request edges, stable graph projection, and `ModuleGraphRevision`; it is not a query input or stable value |
+
+### Binder Query And Identity Materialization Contract
+
+The RFC 0027 acceptance transaction
+`rfc0027-accept-20260727-e2f4ba5e` binds this contract to proposal SHA-256
+`e2f4ba5eb777d3d70b8eb3ad75b18f5169afc61a83d989ccc61fc9d5d022f435`.
+
+The semantic-context arena is the sole owner of the eight typed identity
+interners. `CapabilityQueryContext` admits a handle only through an exact
+three-parameter `ActiveMaterializerPermission` row after the final input seal
+and a tracked typed active-membership result. Definition, implementation,
+generic-parameter, and callable-parameter membership retain complete authority
+records; compilation-unit, crate, source, and module membership retain complete
+stable keys. Equal-key unequal-record admission fails with
+`CanonicalCollision`.
+
+Revision-local capability memos retain all dependency memos, the snapshot, and
+the semantic-context arena. Capability leases may outlive
+`CompilerSession` and `QueryDatabase`; reverse lookup and child capabilities
+remain valid until the final lease releases. Materializer results, brands, and
+process-local handles are never serialized, backdated, or used as active
+membership.
+
 ## Repository Impact
 
 | Area | Paths | Owner |
@@ -1359,11 +1428,7 @@ project's ownership model.
 
 ## Compatibility And Rollout
 
-This RFC changes compiler internals and local cache behavior, not source
-language compatibility. The repository is pre-1.0; identity and revision
-contracts are replaced directly.
-
-The implementation uses an ordered cutover:
+Implementation proceeds in this order:
 
 1. land edit-stable named-item identities and separate revision domains;
 2. land the in-memory query engine and synthetic correctness suite;
@@ -1375,18 +1440,13 @@ The implementation uses an ordered cutover:
    diagnostic projections;
 6. split the Binder into immutable skeleton and named-item body queries;
 7. move downstream Binder and Checker reads to projections;
-8. delete the production batch path and its old identity/revision contracts;
+8. establish the query Binder as the sole production path;
 9. pass full differential, sanitizer, determinism, and performance gates; and
 10. enable allowlisted local persistence in a separate final slice.
 
-During steps four through eight, the clean batch Binder may remain in tests
-only. No environment flag, command-line option, build option, compatibility
-class, alias, or second production publication path selects between engines.
-
 Generated canonical fixtures, identity dumps, module-interface revisions,
-Binder facts, and test snapshots change as one coordinated replacement. A
-rollback before `LANDED` reverts the complete implementation series. Persisted
-cache entries are disposable and require no migration.
+Binder facts, and test snapshots change as one coordinated transaction.
+Persisted cache entries are disposable.
 
 ## Documentation And Teaching Plan
 
@@ -1506,7 +1566,7 @@ and does not depend on wall-clock noise.
   the changed projection.
 - Incremental and clean builds produce identical verified facts, public
   interfaces, diagnostics, ordering, and dumps across the complete edit corpus.
-- Lazy identity materialization is database-owned, depends on immutable active
+- Lazy identity materialization is arena-owned, depends on immutable active
   membership, coalesces concurrent equal keys, and never lets an old handle
   authorize an inactive key in a new snapshot.
 - Randomized edit sequences and worker-count permutations produce the same
@@ -1518,8 +1578,8 @@ and does not depend on wall-clock noise.
   tags, current-dependency mismatch, verifier rejection, path or symlink escape,
   partial I/O, concurrent maintenance, and bounded-decoder fuzz cases all
   behave as cache misses or disabled writes without changing compilation.
-- The production batch Binder, old global invalidation fingerprint use, old
-  source-position item identity, and all compatibility selectors are deleted.
+- The query Binder is the sole production publication path and all identities
+  use the canonical contracts in this RFC.
 - Sanitizer build, complete tests, formatting, RFC gate, Binder architecture
   gate, identity architecture gate, diagnostic gates, and incremental query
   architecture gate pass.
@@ -1556,10 +1616,9 @@ and does not depend on wall-clock noise.
    visibility, signature, name-bucket, import-target, closure, and diagnostic
    projections; migrate all downstream reads.
 10. Split Binder production and verification into immutable module skeleton and
-   named-item body query domains; prohibit shared mutable scope arenas.
-11. Run clean-versus-incremental differential tests while retaining the batch
-    implementation as a test-only oracle, then delete that oracle and all old
-    production contracts.
+    named-item body query domains; prohibit shared mutable scope arenas.
+11. Run clean-versus-incremental differential tests against the independent
+    semantic verifier and canonical expected results.
 12. Establish retention and performance baselines and pass sanitizer,
     determinism, architecture, identity, diagnostic, format, and full test
     gates.
@@ -1705,3 +1764,6 @@ None
 | 2026-07-18 | ACCEPTED | All required owners approved exact proposal snapshot `4b134fcb4e61313690b95541beffdfec496a375478afa2fd9a62cbab3bc891e1`. |
 | 2026-07-18 | IMPLEMENTING | Implementation begins with routing ownership and the incremental-query architecture gate. |
 | 2026-07-18 | IMPLEMENTING | Synchronized the accepted RFC 0018 later overlay and ordered its stable digest identities, occurrence bridge, semantic module-resolution key, and narrow ancestry/path-bucket inputs before revision-domain separation. No implementation completion is inferred. |
+| 2026-07-25 | IMPLEMENTING | Synchronized the accepted RFC 0025 core-distribution, capability-lease, contextual-key, provider-graph, readiness, diagnostic, prelude, and projection-shielding replacements from exact proposal SHA-256 `4f4085c176a9f391115e12170da93af899e350fa92440d5a51577692faf8bad0`; implementation completion is tracked only by the RFC 0025 R25 tasks. |
+| 2026-07-26 | IMPLEMENTING | Synchronized the accepted RFC 0026 structural-input transaction, derived topology query family, stable graph and SCC records, failure closure, session barriers, and final Binder bridge from exact proposal SHA-256 `39df5d3f11dbdcb2e95056b1cd14fd5220a19688f31a3e3180230ad465a3f84d`; implementation completion remains tracked by RFC 0026 and RFC 0025. |
+| 2026-07-27 | IMPLEMENTING | Synchronized the RFC 0027 arena-owned eight-domain interner, typed membership permission, final-seal admission, capability-retention, collision, and surviving-lease contracts through transaction `rfc0027-accept-20260727-e2f4ba5e` at proposal SHA-256 `e2f4ba5eb777d3d70b8eb3ad75b18f5169afc61a83d989ccc61fc9d5d022f435`; implementation status is unchanged. |

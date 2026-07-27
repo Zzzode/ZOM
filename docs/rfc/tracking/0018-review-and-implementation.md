@@ -427,9 +427,52 @@ REVIEW snapshot
 `bdcbee8761d5476822cbe5bb2548332ad36e4d5f507c38e74d06751c6f444379`.
 The decision adopts the stable definition, implementation, subordinate,
 module-resolution, occurrence-binding, and diagnostic wire contracts in RFC
-0018 as the mandatory closure for RFC 0017 implementation. The old
-position-bearing identity and whole-environment resolution contracts are
-direct replacements, not compatibility surfaces.
+0018 as the mandatory closure for RFC 0017 implementation. Every producer,
+verifier, codec, fixture, and caller uses those contracts.
+
+### 2026-07-25 RFC 0025 Acceptance Synchronization
+
+The RFC 0025 `R25-02` acceptance transaction is authorized by all twelve
+required-owner approvals on exact proposal SHA-256
+`4f4085c176a9f391115e12170da93af899e350fa92440d5a51577692faf8bad0`.
+It synchronizes RFC 0018's current normative contract without changing this
+RFC's `IMPLEMENTING` status.
+
+| Binding | RFC 0025 Task Authority |
+|---|---|
+| Acceptance-time RFC synchronization | `R25-02` |
+| Compilation-unit identity and transitive wire replacement | `R25-03` |
+| Production package and crate-graph caller cutover | `R25-03C` |
+| Identity mutation and fixed-vector evidence | `R25-03T` |
+| Native transitive caller migration | `R25-03CT` |
+| Contextual query-key and semantic-root replacement | `R25-07` |
+| Crate-keyed parse option selection | `R25-07P` |
+| Query, wire, invalidation, and no-fallback evidence | `R25-07T` |
+| Final integrated evidence | `R25-15` |
+
+The acceptance evidence is the exact 12/12 RFC 0025 approval set. Existing
+RFC 0018 implementation evidence remains accurate for its completed stable-
+identity and module-resolution slices, but the replacement encodings and
+contextual roots complete only through the listed RFC 0025 tasks and gates.
+
+### 2026-07-26 RFC 0026 Acceptance Synchronization
+
+All four RFC 0026 required owners approved proposal SHA-256
+`39df5d3f11dbdcb2e95056b1cd14fd5220a19688f31a3e3180230ad465a3f84d`.
+The selected-module, dependency-site, request, failure, graph, SCC, cycle, and
+ledger wire contracts plus standalone-versus-keyed validation now complete
+through RFC 0026 tasks `R26-05` through `R26-09`.
+
+### 2026-07-27 RFC 0027 Acceptance Synchronization
+
+Acceptance transaction `rfc0027-accept-20260727-e2f4ba5e` synchronizes RFC
+0018 to exact RFC 0027 proposal SHA-256
+`e2f4ba5eb777d3d70b8eb3ad75b18f5169afc61a83d989ccc61fc9d5d022f435`.
+The current contract defines the five stable Binder query keys, retains
+complete authority records at every verification and materialization boundary,
+and keeps implementation scopes and occurrence handles source-occurrence
+specific. RFC 0018 remains `IMPLEMENTING`; completion evidence belongs to the
+RFC 0027 implementation tracker.
 
 ## Implementation Tracker
 
@@ -442,8 +485,8 @@ direct replacements, not compatibility surfaces.
 | Module dependency kind ownership | Complete | Binder enum deleted; all production and test callers use the single identity enum; 5/5 focused tests |
 | Canonical header wire schema | Complete | Generated inventory plus six generator mutations and 4/4 configured-Python CTests |
 | Canonical record types | Complete | DefinitionIdentityRecord and ImplIdentityRecord retain the complete canonical authority, exact domain-separated key derivation, strict decoders, fixed vectors, invalid-record tests, and mutation gates |
-| Definition and implementation replacement | Complete | Independent AST producers and verifiers reconstruct complete records, owner chains, overload authority, duplicate-bound provenance, registry admission, and every production consumer on one path with no compatibility surface |
-| Stable and owner-local inventory split | In progress | Stable registries contain only eligible named definitions and implementations, while parameter, binding, anonymous-owner, and implementation-occurrence identities use separate domains; persistent named-inventory and revision-local provenance query projections remain |
+| Definition and implementation identity | Complete | Independent AST producers and verifiers reconstruct complete records, owner chains, overload authority, duplicate-bound provenance, typed interner admission, and every production consumer on one path |
+| Stable and owner-local inventory split | In progress | Stable inventories contain eligible named definitions and implementations, while parameter, binding, anonymous-owner, and implementation-occurrence identities use separate domains; persistent named-inventory and revision-local provenance query projections remain |
 | Module resolution replacement | In progress | CompilerSession atomically stages exact ancestry, bucket, search-root, alias, and prelude inputs and demands ResolveModuleRequestQuery; direct batch resolution is deleted, while request derivation, site provenance, and reusable stale-input lifecycle remain to become tracked query families |
 | Landing | Blocked by implementation | Sanitizer, full tests, architecture gates, format, and differential evidence |
 

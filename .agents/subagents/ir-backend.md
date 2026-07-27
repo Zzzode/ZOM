@@ -44,6 +44,7 @@ CMakePresets.json
 products/zomlang/compiler/CMakeLists.txt
 products/zomlang/compiler/basic/CMakeLists.txt
 products/zomlang/compiler/trace/CMakeLists.txt
+products/zomlang/utils/CMakeLists.txt
 products/zomlang/utils/zomc/**
 products/zomcore/CMakeLists.txt
 ```

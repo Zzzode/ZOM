@@ -43,6 +43,7 @@ products/zomlang/runtime/**/actor*
 products/zomlang/runtime/**/channel*
 products/zomlang/runtime/**/scheduler*
 docs/concurrency/**
+docs/spec/specification.md
 docs/spec/chapters/15-concurrency.md
 ```
 

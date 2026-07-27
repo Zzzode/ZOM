@@ -100,8 +100,8 @@ and `verification` and returned `module-system`, `binder-checker`,
 - build-script output content still entered `CrateKey` indirectly through RFC
   0011 and RFC 0012, amplifying one generated-file edit into every downstream
   entity key;
-- lazy named-definition discovery had no database-owned identity-admission
-  authority compatible with immutable snapshots and provider purity;
+- lazy named-definition discovery required identity admission through immutable
+  snapshot membership while preserving provider purity;
 - Binder skeleton and body queries had no mandatory reuse class or explicit
   semantic fact versus revision-local materialization split; and
 - the diagnostic contract required source provenance even for legitimate
@@ -173,6 +173,50 @@ authorizes implementation only within the stable identity, typed query,
 semantic/materialization, verifier, diagnostic, cache, and rollout boundaries
 of that snapshot.
 
+### 2026-07-25 RFC 0025 Acceptance Synchronization
+
+The RFC 0025 `R25-02` acceptance transaction is authorized by all twelve
+required-owner approvals on exact proposal SHA-256
+`4f4085c176a9f391115e12170da93af899e350fa92440d5a51577692faf8bad0`.
+It synchronizes RFC 0017's current normative contract without changing this
+RFC's `IMPLEMENTING` status.
+
+| Binding | RFC 0025 Task Authority |
+|---|---|
+| Acceptance-time RFC synchronization | `R25-02` |
+| Query database, capability leases, contextual keys, and core provider/verifier graph | `R25-07` |
+| Crate-keyed parse options | `R25-07P` |
+| Query, invalidation, mutation, and benchmark evidence | `R25-07T` |
+| Contextual core diagnostic publication | `R25-09E` |
+| Configured consumer prelude publication | `R25-11` |
+| Final integrated evidence | `R25-15` |
+
+The acceptance evidence is the exact 12/12 RFC 0025 approval set. Existing
+RFC 0017 implementation evidence remains accurate for the earlier slices it
+records, but it does not complete any replacement above. The RFC 0025 task
+states and native gates are the sole completion authority for those rows.
+
+### 2026-07-26 RFC 0026 Acceptance Synchronization
+
+All four RFC 0026 required owners approved proposal SHA-256
+`39df5d3f11dbdcb2e95056b1cd14fd5220a19688f31a3e3180230ad465a3f84d`.
+RFC 0017 now delegates the structural-input transaction, derived
+selected-source and topology queries, stable graph and SCC records, failure
+mapping, session barriers, and final Binder bridge to RFC 0026.
+Implementation evidence is recorded only by RFC 0026 tasks `R26-05` through
+`R26-09` and the dependent RFC 0025 rows.
+
+### 2026-07-27 RFC 0027 Acceptance Synchronization
+
+Acceptance transaction `rfc0027-accept-20260727-e2f4ba5e` synchronizes RFC
+0017 to exact RFC 0027 proposal SHA-256
+`e2f4ba5eb777d3d70b8eb3ad75b18f5169afc61a83d989ccc61fc9d5d022f435`.
+The current contract assigns the eight typed identity interners exclusively to
+`SemanticContextCapabilityArena`, gates handle admission through typed tracked
+membership after the final seal, and retains the arena and snapshot through
+every capability memo and surviving lease. RFC 0017 remains `IMPLEMENTING`;
+completion evidence belongs to the RFC 0027 implementation tracker.
+
 ## Implementation Tracker
 
 | Slice | State | Required evidence |
@@ -185,7 +229,7 @@ of that snapshot.
 | Binder aggregate query | Blocked by prior slices | Existing complete Binder behind one verified query with clean-build differential evidence |
 | Projection firewalls | Blocked by Binder aggregate query | Export, name, header, signature, visibility, import, closure, and diagnostic projections with mutation tests |
 | Item-level Binder split | Blocked by projections | Immutable skeleton and named-item body providers plus independent domain verification |
-| Production cutover | Blocked by item-level split | No batch authority, dual publication path, compatibility selector, unstable key, or aggregate downstream read |
+| Production query publication | Blocked by item-level split | One verified query publication path, stable keys, and projection-only downstream reads |
 | Local persistence | Blocked by every in-memory gate | Canonical envelope, bounded decoder, atomic writes, allowlist, corruption-as-miss, pruning, and verifier tests |
 | Landing | Blocked by all prior slices | Sanitizer, full tests, deterministic differential corpus, architecture gates, format, and performance budgets |
 
@@ -321,16 +365,15 @@ database destruction cannot outlive the worker authority. Both the
 CompilerSession and incremental-query architecture gates reject a private query
 scheduler or missing constructor injection, including adversarial mutations.
 
-The first production adapter defines low-durability active-module and
-per-module dependency inputs plus a semantic module-binding-order query. Its
-provider reads dependency inputs as one parallel group and its independent
-verifier reconstructs missing-input, outside-active-set, self-edge, cycle, and
-canonical dependency-first ordering decisions. `CompilerSession` owns and
-registers the database, stages the complete topology in one transaction, and
-demands the verified order before Binder execution. The old readiness loop,
-repeated edge readiness scans, and linear dependency-output search are removed;
-stable module-key indexes now join parsed inputs, dependencies, and prior
-outputs.
+The production module-graph family stages `SelectedModuleCatalogInput` and
+`ModuleDependencySiteInput` with the complete resolver authority in one
+verified transaction. It derives selected sources, active modules, dependency
+sites, requests, resolved dependencies, the stable `ModuleGraph`, and the
+independently reconstructed `ModuleGraphScc`. `CompilerSession` owns and
+registers the database, commits the complete structural authority atomically,
+and demands the verified graph and SCC before Binder execution. Stable
+module-key indexes join parsed inputs, dependencies, and exact active identity
+membership without caller-assembled topology capabilities.
 
 The same complete input root includes low-durability `SourceSnapshot` values
 keyed by stable source identity. Each value contains bounded source bytes and a

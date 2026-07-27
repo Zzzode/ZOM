@@ -106,6 +106,35 @@ Decision: Accepted.
 RFC 0024 is `IMPLEMENTING`. Implementation follows the dependency order below
 and preserves the exact accepted contract as the sole internal path.
 
+### 2026-07-25 RFC 0025 Acceptance Synchronization
+
+The RFC 0025 `R25-02` acceptance transaction is authorized by all twelve
+required-owner approvals on exact proposal SHA-256
+`4f4085c176a9f391115e12170da93af899e350fa92440d5a51577692faf8bad0`.
+It retains RFC 0024's marker semantics while replacing its package-backed
+distribution, source layout, resolver, bootstrap, publication, and
+installation contracts. RFC 0024 remains `IMPLEMENTING`.
+
+| Binding | RFC 0025 Task Authority |
+|---|---|
+| Acceptance-time RFC synchronization | `R25-02` |
+| Unversioned source admission and distribution inventory | `R25-04` |
+| ZOM-authored core declarations and contributor boundary | `R25-04A` |
+| Inventory generation and installed-consumer fixtures | `R25-05G`, `R25-05I` |
+| Core query projections, role seed, and authority materialization | `R25-07` |
+| Query and authority mutation evidence | `R25-07T` |
+| Signature bootstrap, role authority, and marker-policy consumers | `R25-08` |
+| Native bootstrap, authority, and final-interface evidence | `R25-08T` |
+| Flat final core interface publication | `R25-09A` |
+| Core diagnostics and exact diagnostic evidence | `R25-09C`, `R25-09D` |
+| Configured consumer prelude and no-self-edge publication | `R25-11` |
+| Architecture and final integrated evidence | `R25-14`, `R25-15` |
+
+The acceptance evidence is the exact 12/12 RFC 0025 approval set. The prior
+package manifest, package CLI, two-file distribution, and three-install-file
+evidence below remains a historical record only; it does not satisfy any
+replacement task in this table.
+
 ## Implementation Tracker
 
 | Slice | State | Required Evidence |

@@ -8,7 +8,7 @@ review-manager: rfc
 required-owners: [rfc, binder-checker, error-system, module-system, ir-backend, spec-audit, verification]
 approvers: [rfc, binder-checker, error-system, module-system, ir-backend, spec-audit, verification]
 created: 2026-07-05
-updated: 2026-07-25
+updated: 2026-07-27
 area: compiler
 requires: [1, 2, 3, 11]
 supersedes: []
@@ -86,10 +86,11 @@ defines a session-shaped binding input and the complete output consumed by RFC
 
 ## Non-Goals
 
-- RFC 0008 owns file discovery, verified resolution-environment assembly, and
-  deterministic module scheduling. This RFC's `ModuleGraphVerifier` consumes
-  those verified inputs, constructs the semantic dependency graph, and owns
-  deterministic SCC classification.
+- RFC 0008 owns file discovery, stable module-query staging, and deterministic
+  module scheduling. RFC 0026 owns the stable `ModuleGraph` and
+  `ModuleGraphScc` queries. This RFC owns only the final-snapshot bridge that
+  materializes their verified stable topology into revision-local Binder
+  handles.
 - This RFC does not infer or check types; RFC 0005 owns semantic types and
   checked facts.
 - This RFC does not select interface methods, operator implementations,
@@ -421,43 +422,27 @@ Import/export handoff records are exact:
 ```text
 ModuleDependencyKind = Import | ForeignReexport | ModuleAlias | Prelude
 
-ModuleDependencySite =
-  Syntax { node: NodeId, span: SourceSpan, schemaPreorderOrdinal: uint32 }
-  Prelude { configurationRevision: Sha256Digest }
+ModuleSyntaxDependencySite {
+  node: NodeId,
+  span: SourceSpan,
+  schemaPreorderOrdinal: uint32,
+}
+
+ModuleDependencyRequest =
+    Source {
+      requester: ModuleId,
+      key: ModuleResolutionKey,
+      syntaxSites: NonEmptySequence<ModuleSyntaxDependencySite>,
+    }
+  | Prelude {
+      requester: ModuleId,
+      key: ModuleResolutionKey,
+      selectedTarget: ModuleKey,
+    }
 
 ModuleDependencyEdgeKey {
   requester: ModuleKey,
-  kind: ModuleDependencyKind,
-  target: ModuleKey,
-  provenance: Source { source: SourceFileKey,
-                       normalizedPath: NonEmptySequence<ModulePathSegment>,
-                       environmentRevision: Sha256Digest,
-                       byteStart: uint64,
-                       byteEnd: uint64,
-                       schemaPreorderOrdinal: uint32 }
-              | Prelude { configurationRevision: Sha256Digest },
-}
-
-ModuleDependencyRequest {
-  requester: ModuleId,
-  kind: ModuleDependencyKind,
-  normalizedPath: Maybe<NonEmptySequence<ModulePathSegment>>,
-  requestedTarget: Maybe<ModuleKey>,
-  environmentRevision: Sha256Digest,
-  site: ModuleDependencySite,
-}
-
-ModuleResolutionRequestKey {
-  requester: ModuleKey,
-  kind: ModuleDependencyKind,
-  normalizedPath: Maybe<NonEmptySequence<ModulePathSegment>>,
-  requestedTarget: Maybe<ModuleKey>,
-  environmentRevision: Sha256Digest,
-  provenance: Source { source: SourceFileKey,
-                       byteStart: uint64,
-                       byteEnd: uint64,
-                       schemaPreorderOrdinal: uint32 }
-              | Prelude { configurationRevision: Sha256Digest },
+  dependency: ModuleKey,
 }
 
 ModuleSearchRoot =
@@ -469,20 +454,13 @@ ModuleSearchRoot =
   Generated { crate: CrateKey,
               producer: BuildScriptOutputKey,
               root: CanonicalRelativePath }
+  ToolchainCore { crate: CrateKey,
+                  distributionDigest: Sha256Digest }
 
 ModuleDependencyAliasRootKey {
   requester: CrateKey,
   alias: DependencyAlias,
 }
-
-ModulePathPolicy {
-  unicodeNormalization: Nfc,
-  caseComparison: CaseSensitive,
-  symlinkHandling: ResolveThenConfine,
-  containment: DeclaredRootsOnly,
-}
-
-ModuleResolutionEnvironmentFingerprint = Sha256Digest
 
 ModuleResolutionEnvironmentRecord {
   searchRoots: Sequence<ModuleSearchRoot>,
@@ -490,66 +468,49 @@ ModuleResolutionEnvironmentRecord {
   generatedSourceRevisions: SortedMap<BuildScriptOutputKey, Sha256Digest>,
   dependencyAliasRoots: SortedMap<ModuleDependencyAliasRootKey, ModuleKey>,
   requesterAncestry: SortedMap<ModuleKey, NonEmptySequence<ModuleKey>>,
-  pathPolicy: ModulePathPolicy,
-}
-
-VerifiedModuleResolutionEnvironment {
-  issuer: ModuleResolutionEnvironmentBrand,
-  record: ModuleResolutionEnvironmentRecord,
-  revision: ModuleResolutionEnvironmentFingerprint,
-}
-
-VerifiedStructuralResolutionReceipt {
-  issuer: ModuleResolutionEnvironmentBrand,
-  request: ModuleResolutionRequestKey,
-  candidates: SortedDistinctSequence<ModuleKey>,
-  revision: ModuleResolutionReceiptRevision,
-}
-
-ModuleDependencyEdgeCandidate {
-  request: ModuleDependencyRequest,
-  targetModule: ModuleId,
 }
 
 VerifiedModuleDependencyEdge {
-  requester: ModuleId,
-  kind: ModuleDependencyKind,
+  request: ModuleDependencyRequest,
   targetModule: ModuleId,
-  site: ModuleDependencySite,
-  key: ModuleDependencyEdgeKey,
+  encodedKey: ByteSequence,
 }
 
-ModulePathResolution =
-  Resolved { edge: ModuleDependencyEdgeCandidate,
-             receipt: VerifiedStructuralResolutionReceipt }
-  Missing { request: ModuleDependencyRequest,
-            receipt: VerifiedStructuralResolutionReceipt }
-  Ambiguous { request: ModuleDependencyRequest,
-              candidates: SortedDistinctAtLeastTwoSequence<ModuleKey>,
-              receipt: VerifiedStructuralResolutionReceipt }
-
-ModuleGraphInput {
+ModuleGraphMaterializationInput {
+  packageRequest: const VerifiedPackageCompilationRequest,
+  coreInputs: const VerifiedCoreDistributionInputTransaction,
   semanticContext: SemanticContextBrand,
-  semanticContextFingerprint: SemanticContextFingerprint,
-  resolutionEnvironment: const VerifiedModuleResolutionEnvironment,
-  parsedModules: SortedMap<ModuleId, VerifiedParsedModule>,
-  compilerMarkers: const RFC0024::VerifiedCompilerMarkerConfiguration,
+  fingerprint: const SemanticContextFingerprint,
+  stableGraph: const ModuleGraphRecord,
+  stableScc: const ModuleGraphSccRecord,
+  registries: const SemanticIdentityRegistrySet,
+  toolchainInputs: Sequence<ToolchainSemanticContextInput>,
+  packageEdges: Sequence<PackageDependencyEdgeKey>,
+  crateEdges: Sequence<CrateDependencyEdgeKey>,
+  parsedModules: Sequence<ParsedModuleGraphInput>,
+  finalSnapshot: const QuerySnapshot,
 }
 
-ModuleGraphCandidate {
+BinderModuleGraphCandidate {
+  expectedContextRoots: CompilationRootSetQueryKey,
   semanticContext: SemanticContextBrand,
-  semanticContextFingerprint: SemanticContextFingerprint,
-  resolutionEnvironmentRevision: Sha256Digest,
-  modules: SortedMap<ModuleKey, ModuleId>,
-  requests: SortedSequence<ModuleDependencyRequest>,
-  resolutions: SortedSequence<ModulePathResolution>,
+  fingerprint: SemanticContextFingerprint,
+  stableGraph: ModuleGraphRecord,
+  stableScc: ModuleGraphSccRecord,
+  modules: SortedSequence<ModuleKey>,
+  handles: Sequence<ModuleId>,
+  sources: Sequence<SourceFileKey>,
+  edges: SortedSequence<VerifiedModuleDependencyEdge>,
+  revision: ModuleGraphRevision,
 }
 
 VerifiedModuleGraph {
   semanticContext: SemanticContextBrand,
-  semanticContextFingerprint: SemanticContextFingerprint,
+  fingerprint: SemanticContextFingerprint,
   revision: ModuleGraphRevision,
-  modules: SortedMap<ModuleKey, ModuleId>,
+  modules: SortedSequence<ModuleKey>,
+  handles: Sequence<ModuleId>,
+  sources: Sequence<SourceFileKey>,
   edges: SortedSequence<VerifiedModuleDependencyEdge>,
 }
 
@@ -619,149 +580,87 @@ ResolvedModuleAlias {
 ```
 
 Module dependency kind tags are `Import = 0x01`, `ForeignReexport = 0x02`,
-`ModuleAlias = 0x03`, and `Prelude = 0x04`. Dependency provenance tags are
-`Source = 0x01` and `Prelude = 0x02`; path-resolution tags are `Resolved =
-0x01`, `Missing = 0x02`, and `Ambiguous = 0x03`. A source-backed request must use
-one `Syntax` site, a present normalized path, and one nonzero resolution-
-environment revision; `requestedTarget` is absent. Its derived `Source` provenance repeats the expanded
-source key, normalized path, environment revision, range, and schema-preorder
-ordinal exactly. A prelude request has no normalized path, uses `Prelude` kind
-and site, and has a present `requestedTarget`. Its `environmentRevision` equals
-the exact structural resolver environment revision, while
-`site.configurationRevision` equals the exact RFC 0024 marker-policy
-configuration revision. These digests have separate canonical domains and
-equality between them is not required. Its successful edge must equal the RFC
-0024 verified prelude target, uses the same prelude provenance, and has no
-`NodeId` or source span. `ModuleGraphVerifier` validates both revisions
-independently from `ModuleGraphInput`; every other combination is invalid.
+`ModuleAlias = 0x03`, and `Prelude = 0x04`. A source request carries one stable
+RFC 0018 `ModuleResolutionKey` and every revision-local syntax site that
+deduplicated to that key. Each site retains the exact `NodeId`, `SourceSpan`,
+and schema-preorder ordinal reconstructed from the selected source and its
+final-snapshot parse capability. A Prelude request carries the stable request
+key and the one configured target and has no syntax site.
 
-`StructuralModuleResolver` is the sole issuer of
-`ModuleResolutionEnvironmentBrand` and the sole private constructor of
-`VerifiedStructuralResolutionReceipt`. It freezes the complete ordered search
-roots, digest-verified source snapshots, generated-source revisions, dependency-
-alias roots, requester ancestry, and case/Unicode path policy into one immutable
-environment. Its revision changes when any search input or policy changes. For
-each request key it performs the exact RFC 0008 candidate search against that
-frozen environment and records the complete zero, one, or many sorted distinct
-`ModuleKey` result; callers cannot supply or remove candidates.
+`StructuralModuleResolver` freezes the complete ordered search roots,
+digest-verified source snapshots, generated-source revisions, dependency-alias
+roots, requester ancestry, structural catalog, and RFC 0018 resolution policy.
+It is an immutable authority used only to prepare the complete
+`VerifiedModuleGraphInputTransaction`. The transaction verifier independently
+reconstructs every selected catalog, detached dependency-site set, ancestry,
+present-or-absent catalog bucket, search-root value, dependency-alias value,
+configured Prelude value, and ledger entry from frozen package, core,
+registry, parsed-source, and resolver authorities before one atomic commit.
 
-`ModuleSearchRoot` tags are `Workspace = 0x01`, `Package = 0x02`, and
-`Generated = 0x03`; fields encode in declaration order. Search-root sequence
-order is semantic and is preserved exactly. All maps sort by complete encoded
+`ModuleSearchRoot` tags are `Workspace = 0x01`, `Package = 0x02`,
+`Generated = 0x03`, and `ToolchainCore = 0x04`; fields encode in declaration
+order. A `ToolchainCore` root contains the exact projected core `CrateKey`
+followed by the accepted RFC 0025 distribution digest and grants no filesystem
+capability. The resolver admits it only with the matching process-local
+`AdmittedCoreSourceCatalog` and resolves only catalog-admitted direct-file or
+`mod.zom` candidates. Workspace, package, current-directory, and physical-path
+probing are forbidden for this branch. Search-root sequence order is semantic
+and is preserved exactly. All maps sort by complete encoded
 key bytes and reject duplicate encoded keys. Each requester-ancestry value
 starts with the requester and then lists its strict parents through the crate
 root; a missing requester, repeated module, foreign crate, or broken parent
-step invalidates the environment. The four single-case path-policy fields each
-encode as `0x01`; any other value is invalid rather than an extension point.
+step invalidates the environment.
 
-`ModuleResolutionEnvironmentFingerprint` is SHA-256 over this exact stream:
+The stable query chain is the sole topology authority. `ActiveModules(crate)`
+derives membership from the selected-module catalog. `ModuleDependencySites`
+and `ModuleDependencyRequests` derive detached sites and canonical stable
+requests. `ModuleDependencies(module)` demands each request resolution and
+publishes a sorted distinct dependency set or the canonical missing or
+ambiguous dependency failure. `ModuleGraph(contextRoots)` joins every active
+module and dependency set into a sorted stable graph, and
+`ModuleGraphScc(contextRoots)` independently verifies its deterministic SCC
+partition with Kosaraju against the provider's Tarjan result.
 
-```text
-ASCII("zom.module-resolution-environment")
-0x00
-Encode(searchRoots)
-Encode(sourceSnapshots)
-Encode(generatedSourceRevisions)
-Encode(dependencyAliasRoots)
-Encode(requesterAncestry)
-Encode(pathPolicy)
-```
+The session rejects every cyclic SCC before Binder materialization. A
+prelude-free cycle is projected through a verified `ModuleCycleFailureRecord`
+whose witness is selected from stable request keys. A cyclic component
+containing a Prelude request, a missing internal witness, or a failed required
+query after the structural transaction is a verified-state invariant and
+publishes no handleful graph.
 
-`Encode` is the RFC 0011 canonical encoder. The independent framing oracle
-supplies already-canonical one-byte field encodings `a1`, `b2`, `c3`, `d4`,
-`e5`, and `f6` in declaration order. Its complete 43-byte preimage is
-`7a6f6d2e6d6f64756c652d7265736f6c7574696f6e2d656e7669726f6e6d656e7400a1b2c3d4e5f6`
-and its SHA-256 is
-`954d2eb8bf74b70c0a1fa329a098b364c0bd19ffb0de5945538d0976fbf1b8de`.
-The environment verifier reconstructs the complete record from the immutable
-discovery inputs, recomputes the fingerprint, and rejects an omitted, extra,
-reordered, stale, cross-crate, or policy-mismatched field before issuing the
-brand. No resolver-defined serialization is permitted.
+`VerifiedModuleGraphBuilder` receives one `ModuleGraphMaterializationInput`
+after the final snapshot barrier. It reconstructs the complete root key from
+the verified package request and every committed projected-core crate,
+re-demands active membership, graph, and SCC, recomputes the complete semantic
+context fingerprint, expands stable module and source keys through the frozen
+registries, rejoins every detached site with the final parse capability, and
+re-demands every resolution and configured Prelude. It sorts request-level
+edges by their complete bytes and requires their distinct stable projection to
+equal `ModuleGraphRecord.edges`.
 
-`ModuleResolutionReceiptRevision` is SHA-256 over
-`ASCII("zom.module-resolution-receipt")`, one zero byte, one byte-framed
-encoded `ModuleResolutionRequestKey`, `uint64be(candidateCount)`, then each
-expanded candidate key as a byte-framed value. Issuer brands do not enter the
-stream. The independent oracle uses request bytes `a1` and candidates `b2` and
-`c3`. Its complete 68-byte preimage is
-`7a6f6d2e6d6f64756c652d7265736f6c7574696f6e2d72656365697074000000000000000001a100000000000000020000000000000001b20000000000000001c3`
-and its SHA-256 is
-`aaec1ed1bb20e124f32b07b756713c6624644665984f7582d433f562903534ba`.
-`ModuleGraphVerifier` requires every receipt issuer and environment revision to
-match `ModuleGraphInput.resolutionEnvironment`, recomputes the request key and
-receipt revision,
-and requires `Missing`, `Resolved`, and `Ambiguous` to contain respectively zero,
-one, and at least two receipt candidates. Resolved target and ambiguous
-candidate sets must equal the receipt exactly. A wrong target, omitted or
-invented candidate, swapped issuer, or stale environment is an invariant and
-publishes no graph.
-
-`ModuleGraphCandidate.requests` contains exactly the observed request for every
-source-backed module path and every configured prelude. The verifier
-independently walks every module in `ModuleGraphInput.parsedModules` to derive
-the complete syntax request inventory. It independently obtains the expected
-prelude target and marker-policy configuration revision from
-`ModuleGraphInput.compilerMarkers`, constructs one expected prelude request for
-every ordinary module and none for that target, and compares the combined
-inventory with the candidate requests and resolution set. A candidate contains
-no expected prelude target, policy configuration revision, parsed-module
-authority, or resolution environment. Missing, additional, duplicate,
-wrong-path, or wrong-environment results are `IncompleteResolution`. Missing
-and ambiguous source results are
-constructible before a successful edge exists and retain their requester-owned
-syntax anchor. A missing or ambiguous prelude request is `InvalidPrelude`, not a
-source failure, and needs no invented AST site. For source syntax, `Missing` maps to `ZOM3015` for
-`ForeignReexport` and `ZOM3012` otherwise; `Ambiguous` maps to `ZOM3024` for
-`ForeignReexport` and `ZOM3023` otherwise. Candidate module keys are retained
-for deterministic proof but never rendered. If any source result fails, no
-`VerifiedModuleGraph` or view is published.
-
-`SortedDistinctAtLeastTwoSequence<ModuleKey>` has a private validating
-constructor, sorts by expanded key bytes, rejects duplicates, and requires at
-least two elements. Every ambiguous candidate key must occur in
-`ModuleGraphCandidate.modules`; one, duplicate, or foreign candidate key is
-`InvalidEdge`, never a source ambiguity diagnostic.
-
-For a successful result, `ModuleGraphVerifier` validates the unverified edge
-candidate, derives `ModuleDependencyEdgeKey`, and only then constructs
-`VerifiedModuleDependencyEdge`. `key.requester` and `key.target` are the
-expanded RFC 0011 keys of the two handles. `ModuleDependencyEdgeKey` fields encode in
-declaration order with the tags above. Verified edges sort by their complete
-encoded keys and duplicate keys are invalid. Cycle primary selection compares
-these exact key bytes; it never compares `NodeId`, handle slots, pointers, or
-map order.
-
-Every request requester must occur in `ModuleGraphCandidate.modules` and map
-to the exact `ModuleId` carried by the request. Every resolved receipt target
-must also occur in that map and map to `edge.targetModule`; the target handle's
-expanded key must byte-equal the receipt's singleton candidate. A missing
-requester or target, duplicate handle under another key, or key/handle mismatch
-is `InvalidEdge` and publishes neither an edge nor a graph. These endpoint
-membership checks apply before graph revision or SCC construction.
+`VerifiedModuleGraphVerifier` repeats those reads and reconstructions with
+independent root insertion, parse-tree traversal, site grouping, edge
+projection, and revision assembly. Only it publishes `VerifiedModuleGraph`.
+The candidate cannot select roots, registries, parsed sources, resolver state,
+or query results.
 
 `ModuleGraphRevision` is SHA-256 over this exact stream:
 
 ```text
-ASCII("zom.module-dependency-graph")
-0x00
-SemanticContextFingerprint
-uint64be(moduleCount)
-for each module sorted by expanded ModuleKey bytes:
-  uint64be(expandedModuleKeyByteLength)
-  expandedModuleKeyBytes
-uint64be(edgeCount)
-for each edge sorted by encoded ModuleDependencyEdgeKey bytes:
-  uint64be(encodedEdgeKeyByteLength)
-  encodedEdgeKeyBytes
+"zom.module-dependency-graph" || 0x00
+|| SemanticContextFingerprint.digest
+|| uint64be(ModuleGraphRecord.valueEncoding.size)
+|| ModuleGraphRecord.valueEncoding
+|| uint64be(requestEdgeCount)
+|| for each request edge:
+     uint64be(requestEdgeBytes.size) || requestEdgeBytes
 ```
 
-The independent framing oracle uses a zero context fingerprint, one expanded
-module key `a1`, and one already-encoded edge key `b2`. Its complete 97-byte
-preimage is
-`7a6f6d2e6d6f64756c652d646570656e64656e63792d677261706800000000000000000000000000000000000000000000000000000000000000000000000000000000010000000000000001a100000000000000010000000000000001b2`
-and its SHA-256 is
-`179943234aaad49c3936cba28a8c49e085706baa8c99b0c93d9a55b720ce6678`.
-`ModuleGraphVerifier` recomputes this revision before publication. Every
+The graph value encoding binds the complete sorted stable modules and
+deduplicated stable edge projection. Each request-edge encoding is the complete
+expanded requester key, framed `ModuleResolutionKey`, and complete expanded
+target key. `VerifiedModuleGraphVerifier` assembles the preimage field by field
+before publication. Every
 `VerifiedModuleGraphView` exposes the complete module and edge sequences, so
 `BindingInputVerifier` can recheck the revision, derive the exact requester
 subset, and reject a missing, additional, foreign-context, or stale edge.
@@ -770,12 +669,13 @@ Graph publication uses one closed result:
 
 ```text
 ModuleGraphSourceFailure =
-  Missing { request: ModulePathResolution::Missing }
-  Ambiguous { request: ModulePathResolution::Ambiguous }
-  Cycle { diagnostic: CircularImport | CircularReexport,
-          modules: SortedNonEmptySequence<ModuleKey>,
-          edges: SortedNonEmptySequence<ModuleDependencyEdgeKey>,
-          primary: ModuleDependencyEdgeKey }
+  ToolchainModuleRootReserved {
+    module: ModuleKey,
+    source: SourceFileKey,
+    declaredNamePath: LocalSyntaxPath,
+    schemaOrdinal: uint32,
+    argument: RFC0025::ToolchainModuleRootArgument,
+  }
 
 ModuleGraphInvariantKind =
   InputMismatch | IncompleteResolution | InvalidEdge |
@@ -788,32 +688,18 @@ ModuleGraphInvariantFact {
   occurrence: uint32,
 }
 
-ModuleGraphVerificationResult =
-  Verified { graph: VerifiedModuleGraph }
-  SourceRejected { failures: SortedNonEmptySequence<ModuleGraphSourceFailure> }
-  IdentityInvariantRejected {
-    failures: SortedNonEmptySequence<RFC0011::IdentityInvariant>
-  }
-  GraphInvariantRejected {
-    failures: SortedNonEmptySequence<ModuleGraphInvariantFact>
-  }
+ModuleGraphMaterializationResult =
+  VerifiedModuleGraph | ModuleGraphInvariantFact
 ```
 
-One cyclic SCC produces one `Cycle` fact only when it contains no prelude edge.
-Any SCC or self-edge containing `Prelude` is
-`GraphInvariantRejected(InvalidPrelude)` and maps only to `ZOM9956`. Among the
-remaining source-only SCCs, a foreign re-export selects `ZOM3014`; every other
-SCC selects `ZOM3011`. Its module and edge sets are sorted by
-expanded/encoded key bytes; `primary` follows the foreign-re-export priority
-above and must occur in `edges`. Source failures sort by validated requester
-span, diagnostic ID, expanded requester `ModuleKey`, expanded `SourceFileKey`,
-byte range, schema-preorder ordinal, dependency-kind tag, normalized path,
-environment revision, resolution tag, then ambiguous candidate keys. `NodeId`,
-handle slots, pointers, and container order never participate. Any identity or graph
-invariant suppresses source publication and produces fatal `ZOM9956
+Stable missing, ambiguous, and cycle failures are projected to source
+diagnostics before the final Binder bridge. `ModuleGraphSourceFailure` is
+reserved for the selected-source root reservation check and carries its exact
+verified syntax anchor. Any identity or graph invariant suppresses publication
+and produces fatal `ZOM9956
 ModuleGraphInvariant`, headline `Internal module graph invariant violated ({0}
-occurrence(s))`, with one unsigned count argument. No failed candidate publishes
-a graph, view, or partial binding input.
+occurrence(s))`, with one unsigned count argument. No rejected materialization
+publishes a graph, view, or partial binding input.
 
 The RFC 0011 canonical tags are fixed here: `Namespace` uses `Value = 0x01`,
 `Type = 0x02`, `Module = 0x03`, `Label = 0x04`, and `Attribute = 0x05`;
@@ -878,7 +764,7 @@ does not rebuild it. Only `BindingInputVerifier` constructs a
 `VerifiedExportSurfaceView` by applying the source entry's closed visibility
 envelope to one requester. It receives only a private-constructor
 `VerifiedModuleGraphView` published by the session's global
-`ModuleGraphVerifier`, plus the complete `VerifiedExportSurface` for every
+`VerifiedModuleGraphVerifier`, plus the complete `VerifiedExportSurface` for every
 successful target. It resolves selected names against the complete surface,
 emits the exact missing-or-invisible result before filtering, and then constructs
 `ResolvedImportEdge`, `ResolvedModuleAlias`, and each requester view. A resolved
@@ -888,19 +774,14 @@ target surface and `ExportSurfaceRevision` in `dependencySurfaces`.
 `BindingInputVerifier` rejects a missing, additional, stale, or cross-context
 surface or alias record, so the binder never re-resolves a module path.
 
-`ModuleGraphVerifier` operates once on the complete discovered semantic graph,
-before any per-module binding input exists. It resolves module paths, rejects
-ambiguous or missing targets, and rejects every cyclic SCC or self-edge. The
-closed cycle classification is deterministic: any SCC containing `Prelude`
-produces only `GraphInvariantRejected(InvalidPrelude)` and `ZOM9956`; among the
-remaining SCCs, one containing `ForeignReexport` produces `ZOM3014` at the least
-canonically encoded foreign-re-export edge, and every other SCC, including
-import/module-alias cycles, produces `ZOM3011` at its least encoded edge. A
-rejected graph publishes no graph or view. RFC 0008 implements
-this global producer and invokes `BindingInputVerifier` in topological order
-after each dependency surface exists; RFC 0004 tests may construct a complete
-graph candidate and complete verified surfaces only through the same verifier
-entry points.
+The stable module-query graph resolves module paths and classifies SCCs before
+any per-module binding input exists. The session verifies every semantic
+failure and cycle witness, projects deterministic source diagnostics, and
+opens the final Binder bridge only for a complete acyclic graph.
+`VerifiedModuleGraphVerifier` then publishes the revision-local graph and
+views. RFC 0008 invokes `BindingInputVerifier` in dependency order after each
+dependency surface exists; tests construct Binder graphs and complete verified
+surfaces only through these verification boundaries.
 
 An ordinary declaration-site export has an empty `reexportChain`. Re-exporting
 an entry copies the source chain and appends exactly one step for the current
@@ -1239,8 +1120,9 @@ Shadowing an outer lexical binding is permitted and records the outer
 
 ### Import And Re-Export Binding
 
-The global `ModuleGraphVerifier` resolves module paths, rejects semantic cycles,
-and publishes one complete verified graph. In topological order,
+The stable module-query graph resolves module paths and rejects semantic
+cycles. The final-snapshot Binder bridge then publishes one complete
+revision-local verified graph. In dependency order,
 `BindingInputVerifier` combines its immutable graph view with complete verified dependency
 surfaces and publishes resolved imports plus requester-filtered views. RFC 0008
 owns that orchestration in a full session; the binder itself depends only on the
@@ -1264,11 +1146,12 @@ On success, the alias becomes an external current-surface entry whose
 re-export chain copies any source import chain and appends the current alias
 step. It never requires the current module's not-yet-published surface revision.
 
-Module-path, ambiguity, and cycle diagnostics belong to
-`ModuleGraphVerifier`. Selected-member absence and visibility diagnostics belong
+Module-path, ambiguity, and cycle diagnostics belong to the module-query
+failure projection. Selected-member absence and visibility diagnostics belong
 to `BindingInputVerifier`, which still has the complete source surface when it
-makes that decision. Lexical duplicate and unresolved-value diagnostics use the
-registered binder family. The same failure is never emitted in two families.
+makes that decision. Lexical duplicate and unresolved-value diagnostics use
+the registered binder family. The same failure is never emitted in two
+families.
 
 ### Reference Resolution
 
@@ -1797,11 +1680,11 @@ Diagnostic ownership is exhaustive:
 | `ZOM3001 UndefinedIdentifier` | Body or label binder | No usable binding exists in the expected lexical domain after the complete lookup order, including a local-export source name or explicit label; a capture item with a non-capturable or inaccessible value target uses this row | Identifier, capture-item, local-export source-name, or explicit-label token; records `Failed` and suppresses dependent binder lookup for that node |
 | `ZOM3002 SymbolNamespaceMismatch` | Body binder | The normalized name has no binding in the expected namespace and has a binding in another lexical namespace | Identifier or capture-item token; suppresses `ZOM3001` for the same node; type-directed member namespace failures belong only to RFC 0005 |
 | `ZOM3003-ZOM3010` | Module skeleton, body, or label binder | Duplicate binding selected by the complete kind table below; duplicate labels use `ZOM3010` | Later declaration, binding leaf, or label token, plus `ZOM3017` at the first; one pair suppresses every other duplicate diagnostic for that later binding |
-| `ZOM3011 CircularImport` | Global `ModuleGraphVerifier` | A prelude-free cyclic SCC or self-edge contains no foreign re-export edge; import/module-alias mixed cycles use this row | Canonically least encoded edge; no verified graph is published |
-| `ZOM3012 ImportModuleNotFound` | Global `ModuleGraphVerifier` | Explicit import or module-alias path selects no module | Import or module-alias target span; suppresses member, visibility, and binder lookup failures for that syntax |
+| `ZOM3011 CircularImport` | Module-query failure projection | A prelude-free cyclic SCC or self-edge contains no foreign re-export edge; import/module-alias mixed cycles use this row | Canonically least encoded witness request; no verified graph is published |
+| `ZOM3012 ImportModuleNotFound` | Module-query failure projection | Explicit import or module-alias path selects no module | Import or module-alias target span; suppresses member, visibility, and binder lookup failures for that syntax |
 | `ZOM3013 ImportMemberNotFound` | `BindingInputVerifier` | Verified imported module surface contains no selected member | Import specifier span; suppresses binder lookup for that specifier |
-| `ZOM3014 CircularReexport` | Global `ModuleGraphVerifier` | A prelude-free cyclic SCC or self-edge contains at least one foreign re-export edge, including a mixed import/re-export cycle | Canonically least encoded foreign re-export edge; no verified graph or export surface is published |
-| `ZOM3015 ReexportModuleNotFound` | Global `ModuleGraphVerifier` | Foreign re-export module path selects no module | Foreign re-export path span; suppresses member and visibility failures for that re-export |
+| `ZOM3014 CircularReexport` | Module-query failure projection | A prelude-free cyclic SCC or self-edge contains at least one foreign re-export edge, including a mixed import/re-export cycle | Canonically least encoded foreign re-export witness request; no verified graph or export surface is published |
+| `ZOM3015 ReexportModuleNotFound` | Module-query failure projection | Foreign re-export module path selects no module | Foreign re-export path span; suppresses member and visibility failures for that re-export |
 | `ZOM3016 ReexportMemberNotFound` | `BindingInputVerifier` | Verified foreign source module surface contains no selected re-export member | Foreign re-export specifier span; suppresses export publication for that specifier |
 | `ZOM3017 PreviousDeclarationHere` | Same redeclaration producer as its primary | First declaration for a `ZOM3003-ZOM3010` pair | First declaration or binding-leaf span; emitted as the primary's attached note |
 | `ZOM3018 ImportTargetNotVisible` | `BindingInputVerifier` | Selected import or module-alias target exists but is not visible to the consumer | Import, alias-target, or specifier span; suppresses binder lookup and checker visibility cascades for that syntax |
@@ -1809,8 +1692,8 @@ Diagnostic ownership is exhaustive:
 | `ZOM3020 BreakTargetNotFound` | Body binder | Unlabeled `break` has no enclosing loop or match | `break` token; records `Failed` and suppresses any target-dependent diagnostic for that statement |
 | `ZOM3021 ContinueTargetNotFound` | Body binder | Unlabeled `continue` has no enclosing loop | `continue` token; records `Failed` and suppresses any target-dependent diagnostic for that statement |
 | `ZOM3022 ContinueTargetNotLoop` | Body binder | An explicit `continue` label resolves to a block target | Explicit label token; records `Failed`; the successful label lookup suppresses `ZOM3001` for that token |
-| `ZOM3023 ImportModuleAmbiguous` | Global `ModuleGraphVerifier` | Explicit import or module-alias path selects multiple distinct modules | Import or module-alias target span; suppresses not-found, member, visibility, and binder lookup failures for that syntax |
-| `ZOM3024 ReexportModuleAmbiguous` | Global `ModuleGraphVerifier` | Foreign re-export path selects multiple distinct modules | Foreign re-export path span; suppresses not-found, member, visibility, and export publication failures for that syntax |
+| `ZOM3023 ImportModuleAmbiguous` | Module-query failure projection | Explicit import or module-alias path selects multiple distinct modules | Import or module-alias target span; suppresses not-found, member, visibility, and binder lookup failures for that syntax |
+| `ZOM3024 ReexportModuleAmbiguous` | Module-query failure projection | Foreign re-export path selects multiple distinct modules | Foreign re-export path span; suppresses not-found, member, visibility, and export publication failures for that syntax |
 
 `ZOM3011-ZOM3016` move from `diagnostics-binder.def` to one
 `diagnostics-module.def` included by the same central registry; their numeric
@@ -1834,9 +1717,9 @@ definitions are:
 The visibility diagnostics render neither the inaccessible target name nor its
 private source location. The two ambiguity diagnostics likewise render no
 candidate path or host location. The binder cannot emit module-family
-diagnostics, `ModuleGraphVerifier` cannot emit member or binder diagnostics, and
-`BindingInputVerifier` cannot emit `ZOM3001-ZOM3012`, `ZOM3014-ZOM3015`,
-`ZOM3017`, or `ZOM3020-ZOM3024`.
+diagnostics, the module-query failure projection cannot emit member or binder
+diagnostics, and `BindingInputVerifier` cannot emit `ZOM3001-ZOM3012`,
+`ZOM3014-ZOM3015`, `ZOM3017`, or `ZOM3020-ZOM3024`.
 
 Redeclaration primary selection covers every RFC 0011 definition kind:
 
@@ -1923,6 +1806,40 @@ escapes backslash, controls, bidi controls, and invalid bytes as uppercase
 `\\u{...}` or `\\xNN`. There is no binder/module adapter overload for
 `zc::String`, `zc::StringPtr`, arbitrary bytes, or a free-form expected-context
 string. Primary and note ranges always retain original source provenance.
+
+### Toolchain Core Prelude And Root Reservation
+
+The prelude source is owned by the exact finalized
+`CompilationUnitIdentity::Toolchain(Core)` unit. The resolver seeds `core` and
+`core::prelude` from the admitted structural catalog, emits no implicit prelude
+edge for a core module, and emits exactly one configured `Prelude` request for
+each non-core module. Prelude lookup remains the final lookup tier, and the
+verified graph rejects every prelude self-cycle.
+
+A selected non-core source root whose declared leading module segment is
+`core` is rejected before module-graph publication with
+`ToolchainModuleRootReserved`. Its diagnostic is
+`ZOM3027 ToolchainModuleRootReserved`, severity `Error`, headline
+`Module root '{0}' is reserved by the compiler toolchain`, and exactly one
+typed `ModulePath` argument. The complete declared-name span is the primary
+anchor. User-target and dependency-alias producers are owned by RFC 0012.
+
+Only `module-graph-diagnostic-adapter` projects this source failure. It accepts
+the verified typed argument and has no raw-string overload; the module-interface
+adapter and `CoreLibraryFailure` rail do not participate. Malformed source
+syntax has precedence. For the same occurrence, `ZOM3027` suppresses
+`ZOM3026` and every derived import or re-export diagnostic, while independent
+duplicate-declaration diagnostics remain.
+
+### RFC 0025 Acceptance Synchronization
+
+On 2026-07-25, the accepted RFC 0025 proposal at SHA-256
+`4f4085c176a9f391115e12170da93af899e350fa92440d5a51577692faf8bad0`
+made the toolchain-core root, structural-catalog admission, finalized prelude
+identity, `ZOM3027` source failure, precedence, suppression, codec, and native
+test matrix above part of this accepted contract. The existing binder and
+verified-graph contract remains authoritative. Product implementation remains
+tracked by RFC 0025's `R25` tasks and is not completed by this synchronization.
 
 ## Repository Impact
 
@@ -2080,11 +1997,11 @@ temporary immutable verified inputs.
    canonical target, exact dependency-surface revision, and source provenance;
    ordinary imports do not become visible or exported surface entries.
 7. Only Chapter 13 explicit module and selected-symbol import forms are bound.
-8. Module-path, ambiguity, and cycle diagnostics are owned by the global
-   `ModuleGraphVerifier`; selected-member absence and visibility are owned by
-   `BindingInputVerifier`; lexical binder diagnostics are not duplicated, local
-   export lookup failure is exactly `ZOM3001`, and `ZOM3015-ZOM3016` plus
-   `ZOM3024` apply only to foreign re-exports.
+8. Module-path, ambiguity, and cycle diagnostics are owned by the module-query
+   failure projection; selected-member absence and visibility are owned by
+   `BindingInputVerifier`; lexical binder diagnostics are not duplicated,
+   local export lookup failure is exactly `ZOM3001`, and `ZOM3015-ZOM3016`
+   plus `ZOM3024` apply only to foreign re-exports.
 9. Identifier, module member, module-alias, label, shadow, import, local-export,
    deferred-member, control-transfer, and closure free-variable facts are
    complete for every applicable AST node.
@@ -2167,10 +2084,11 @@ temporary immutable verified inputs.
 2. Implement `VerifiedParsedModule`, the context-global
    `PrebindingIdentityCollector`, exact per-module frozen inventory views, and
    the implementation occurrence bridge.
-3. Implement the global `ModuleGraphVerifier`, deterministic mixed-cycle and
-   ambiguity classification, then `BindingInputVerifier`, requester-filtered
-   surfaces, exact module alias/import/re-export facts, revisions, and
-   source-provenance checks.
+3. Implement the stable module-query graph, deterministic mixed-cycle and
+   ambiguity classification, final-snapshot `VerifiedModuleGraphBuilder` and
+   `VerifiedModuleGraphVerifier`, then `BindingInputVerifier`,
+   requester-filtered surfaces, exact module alias/import/re-export facts,
+   revisions, and source-provenance checks.
 4. Add context-checked `ScopeId`, `LabelId`, `NameBinding`, and the deterministic
    scope arena with its schema-preorder allocation oracle.
 5. Implement module skeleton collection and every activation-table row for
@@ -2352,4 +2270,6 @@ None
 | 2026-07-16 | IMPLEMENTING | Established one production Binder execution path: `BindingVerifier` now performs candidate-only structural publication checks, while exact semantic reconstruction and canonical candidate comparison are confined to the test-only `BindingDifferentialOracle` and enforced by the Binder architecture gate. |
 | 2026-07-18 | IMPLEMENTING | Decomposed the production verifier into orchestration, canonical codec, handwritten structural validation, and private publication components; added the authoritative seventeen-sequence fact schema and mutation inventory; isolated domain mutation oracles in the test target; prohibited producer reuse in production verification and semantic oracle components; and reclassified the producer-baseline differential path as regression evidence rather than independent verification. |
 | 2026-07-18 | IMPLEMENTING | Synchronized the accepted RFC 0018 implementation occurrence bridge: one shared stable authority per identity group, one revision-local occurrence entry, binding fact, and impl-body scope per source node, and complete occurrence-key expansion in owner codecs. |
-| 2026-07-25 | IMPLEMENTING | Synchronized the RFC 0024 verified compiler-marker input, candidate-owned observed request inventory, and independent resolver versus marker-policy revision checks. |
+| 2026-07-25 | IMPLEMENTING | Synchronized RFC 0024 configured-Prelude authority with stable module-resolution requests and independent final-snapshot verification. |
+| 2026-07-25 | IMPLEMENTING | Synchronized the accepted RFC 0025 toolchain-core search root, structural-catalog admission, finalized prelude identity, reserved-root diagnostic, precedence, suppression, and implementation-task boundary at proposal SHA-256 `4f4085c176a9f391115e12170da93af899e350fa92440d5a51577692faf8bad0`. |
+| 2026-07-27 | IMPLEMENTING | Synchronized the sole stable module-query topology authority, final-snapshot Binder materialization input, independent builder and verifier, request provenance, stable edge projection, and graph revision with accepted RFC 0026. |

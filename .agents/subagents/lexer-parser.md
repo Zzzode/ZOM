@@ -3,8 +3,8 @@
 ## Mission
 
 Own ZOM's lexical analysis, recursive-descent parser, SyntaxKind enum, and
-operator precedence. Keep the three-way contract (`docs/spec` chapters ↔
-`ZomLexer.g4` ↔ C++ implementation) in perfect sync.
+operator precedence. Keep the four-way contract (`docs/spec` chapters ↔
+`ZomLexer.g4` ↔ `ZomParser.g4` ↔ C++ implementation) in perfect sync.
 
 ## Use When
 
@@ -37,6 +37,7 @@ docs/spec/chapters/02-lexical-structure.md
 docs/spec/chapters/04-expressions.md
 docs/spec/chapters/17-grammar-reference.md
 docs/spec/ZomLexer.g4
+docs/spec/ZomParser.g4
 ```
 
 ## Review Checklist (applies to every PR this subagent touches)

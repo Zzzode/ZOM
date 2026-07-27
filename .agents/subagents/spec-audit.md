@@ -31,8 +31,10 @@ Do **not** route here when:
 ## Owns
 
 ```
+docs/overview.md
 docs/spec/**
 docs/design/**
+!docs/design/tooling/**
 docs/reports/*spec-alignment*
 ```
 

@@ -2065,6 +2065,29 @@ require a later pattern-based marker coherence RFC.
 This RFC owns the canonical checker codec closure and records the complete
 contract reviewed by affected owners.
 
+### RFC 0025 Source-Backed Core Replacement
+
+RFC 0025 adds the standard-authority bootstrap boundary to this RFC at
+accepted proposal SHA-256
+`4f4085c176a9f391115e12170da93af899e350fa92440d5a51577692faf8bad0`.
+The existing whole-session marker contracts remain authoritative after
+ordinary binding:
+
+| RFC 0015 Surface | Normative Replacement |
+|---|---|
+| Bootstrap capabilities | Add core-scoped `VerifiedCoreMarkerShapeInventory`, `VerifiedCoreMarkerPolicyRegistry`, and `VerifiedStandardMarkerAuthority`. Bind them to `CoreSemanticContextFingerprint`, exact role-seed lineage, the verified role-keyed policy template revision, and finalized core identity. |
+| Authority construction | Build the standard authority only from the verified core role seed, core-scoped shape inventory, core-scoped policy registry, finalized core interfaces, and exact prelude re-exports. It does not read whole-session inventories or an ordinary consumer graph. |
+| Whole-session publication | Build the existing RFC 0015 marker shape and policy inventories only after ordinary binding. Their revisions remain independent from the core-scoped revisions. |
+| Consumer lineage | Every ordinary signature, body, coherence, and marker-proof consumer retains both whole-session RFC 0015 lineages and the standard authority's core-scoped lineages. Independent verifiers require a byte-equal `Copy` and `Linear` core-role projection. |
+| Revision equality | Do not compare core-scoped and whole-session revision bytes directly. Equality is defined only over the canonical core-role projection; unrelated ordinary interface changes therefore do not invalidate the core authority. |
+| Failure closure | Reject missing, additional, stale, mismatched, or malformed lineage; spelling discovery, source-less declarations, fallback policy, synthetic marker roles, and bootstrap-only records in ordinary consumers remain prohibited. |
+| Cutover and tests | Replace every producer, consumer, verifier, codec vector, dump, trace, fixture, and architecture gate in one change. Add projection equality, unequal-projection, unrelated-interface shielding, bootstrap-record exclusion, and cross-session mutation cases. |
+
+Implementation and evidence are owned by RFC 0025 tasks `R25-08`,
+`R25-09A`, `R25-10`, `R25-08T`, `R25-13B`, `R25-14`, and `R25-15`.
+The existing RFC 0015 implementation remains `LANDED`; this synchronization
+does not claim the RFC 0025 replacement tasks have landed.
+
 ## Compatibility And Rollout
 
 The implementation lands atomically:
@@ -2448,3 +2471,4 @@ None
 | 2026-07-18 | IMPLEMENTING | Synchronized the accepted RFC 0018 occurrence bridge, per-occurrence mixed-form classification, post-classification ordinary and marker survivor streams, and occurrence-specific diagnostic lineage. |
 | 2026-07-20 | LANDED | The implementation, RFC records, architecture guidance, and complete verification evidence landed on `develop` through commits `0bba7e34`, `f86b5660`, and `76e73196`. |
 | 2026-07-25 | LANDED | Synchronized RFC 0024's accepted marker reference and raw-pointer policy, policy-subject evidence, standard configuration vectors, deinitializer exclusion, ZOM4099, and body-only proof-input authority; production implementation remains tracked by RFC 0024. |
+| 2026-07-25 | LANDED | Synchronized RFC 0025's accepted core-scoped marker bootstrap, independent whole-session revisions, byte-equal core-role projection, and consumer lineage at proposal SHA-256 `4f4085c176a9f391115e12170da93af899e350fa92440d5a51577692faf8bad0`; replacement implementation evidence remains owned by the named R25 tasks. |

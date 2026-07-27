@@ -18,7 +18,12 @@ Route here when **any** of these are true:
 - Reviewing a type that crosses thread / await boundaries for
   ownership correctness (in coordination with `concurrency`).
 - Any question about destructor order, move semantics, copy ban, RAII.
+- Ownership-event collection, ownership analysis, or the retained
+  bound-module/Built-MIR lease chain changes.
 - The standard prelude source declares compiler-recognized ownership markers.
+- A change to `compiler/driver/borrow-evidence.{h,cc}` affects ownership,
+  lifetime, or memory contracts. `module-system` remains the primary file owner;
+  this subagent is the mandatory contract reviewer.
 - A forced cast or other compiler operation enters the runtime panic ABI,
   especially across unwind, catch, FFI, or task boundaries.
 
@@ -33,19 +38,25 @@ Do **not** route here when:
 
 ```
 libraries/zc/**
+products/zomlang/compiler/ownership/**
 products/zomlang/runtime/**
 !products/zomlang/runtime/**/task*
 !products/zomlang/runtime/**/async*
 !products/zomlang/runtime/**/actor*
 !products/zomlang/runtime/**/channel*
 !products/zomlang/runtime/**/scheduler*
+products/zomcore/README.md
 products/zomcore/src/**
 docs/spec/chapters/14-memory-management.md
 ```
 
 (Concurrency runtime primitives are owned by `concurrency`; this
 subagent owns everything else in `runtime/` and is the sole primary owner of
-the language ownership and memory contract in Chapter 14.)
+the compiler ownership-analysis subtree and the language ownership and memory
+contract in Chapter 14.
+`products/zomlang/compiler/driver/borrow-evidence.{h,cc}` is owned by
+`module-system`; changes to its ownership or lifetime contract require this
+subagent's review but do not transfer file ownership.)
 
 ## Review Checklist (applies to every PR this subagent touches)
 
@@ -61,6 +72,9 @@ the language ownership and memory contract in Chapter 14.)
 - [ ] Pimpl classes have defaulted move ctor/assign and copy ban.
 - [ ] Every singleton / function-local static cache was audited. Zero
       remain; state is threaded explicitly through the object graph.
+- [ ] Ownership-analysis capabilities retain exact bound-module and Built MIR
+      leases, validate lineage before handle access, and release dependent
+      views before their lifetime anchors.
 - [ ] FFI handles: always wrapped in `Own<T, CustomDisposer>`; raw
       `void*` never escapes the owning scope.
 

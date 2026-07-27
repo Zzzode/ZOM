@@ -421,7 +421,7 @@ the frontend `NodeId` to `HirNodeId` and deterministic `MirOperationSite` at
 Formal RFC 0004 review proved that a single-module `BindingInputVerifier` could
 not receive already-filtered surfaces while also owning complete graph SCCs,
 module-path resolution, and missing-versus-invisible classification. RFC 0008
-now implements the repaired two-stage boundary: global `ModuleGraphVerifier`
+now implements the repaired two-stage boundary: global `VerifiedModuleGraphVerifier`
 publishes only acyclic graph slices and owns path/cycle/ambiguity diagnostics;
 then RFC 0004 `BindingInputVerifier` receives complete dependency surfaces and
 owns selected-member absence and visibility. The current RFC 0008 proposal hash
@@ -488,6 +488,17 @@ governance decision gate is also satisfied.
 
 Decision: ACCEPTED.
 
+### RFC 0025 Acceptance Synchronization
+
+On 2026-07-25, the accepted RFC 0025 proposal at SHA-256
+`4f4085c176a9f391115e12170da93af899e350fa92440d5a51577692faf8bad0`
+atomically synchronized RFC 0008's orchestrator-owned preparatory/final
+schedule, verified core-library set, toolchain-core search root, structural
+catalog admission, three-transaction phase order, complete contextual roots,
+host closure, and configured prelude. RFC 0008 remains `IMPLEMENTING`.
+Product implementation and executable evidence remain tracked by RFC 0025's
+`R25` tasks; this decision note marks no implementation slice complete.
+
 ### RFC 0013 Additive Overlay
 
 RFC 0013 was accepted on 2026-07-11 at proposal SHA-256
@@ -503,6 +514,16 @@ deterministic structural discovery, one `CompilerSession` scheduler, immutable
 module interfaces, signature/coherence ordering, complete checked-facts
 repository, opaque evidence-lease lifetime, diagnostic, codec, and no-rebinding
 boundaries. RFC 0009 and RFC 0010 may advance through their own gates.
+
+### RFC 0025 Acceptance Synchronization Evidence
+
+- Acceptance authority is bound to RFC 0025 proposal SHA-256
+  `4f4085c176a9f391115e12170da93af899e350fa92440d5a51577692faf8bad0`.
+- `python3 scripts/check-rfc.py` and scoped `git diff --check` passed for this
+  documentation transaction.
+- Root codec, structural catalog, snapshot phase order, host closure,
+  configured prelude, publication bijection, and no-registry-rollback evidence
+  remains assigned to RFC 0025's `R25` tasks.
 
 ## Implementation Tracker
 
@@ -545,7 +566,7 @@ changes:
 - selected source-module paths, exact declaration-name validation, canonical
   module, definition, and impl identity freeze, and one retained frozen
   definition inventory per parsed module precede graph publication;
-- the production `StructuralModuleResolver` and `ModuleGraphVerifier` now
+- the production `StructuralModuleResolver` and `VerifiedModuleGraphVerifier` now
   publish the frozen global graph from exact package edges, crate edges,
   dependency aliases, verified source revisions, target-relative search roots,
   and complete structural requester ancestry, including parents without an

@@ -525,3 +525,33 @@ Its accepted-file SHA-256 is
 `9704d5651606e8a74034c8af4be5172b4007a6c9f0ee8ea2f5ee183223401c01`.
 The overlay directly replaces the RFC 0011 impl-pattern sequence-width and
 canonicalization contracts named by RFC 0015.
+
+## RFC 0025 Acceptance Synchronization
+
+### Decision Record Synchronization
+
+On 2026-07-25, RFC 0025 received all 12 required-owner approvals at exact
+proposal SHA-256
+`4f4085c176a9f391115e12170da93af899e350fa92440d5a51577692faf8bad0`.
+Its `R25-02` acceptance transaction adds the exhaustive unversioned
+`CompilationUnitIdentity`, `Toolchain(Core)`, and `CoreFile` contracts while
+retaining one canonical crate, module, definition, implementation, parameter,
+and semantic-type identity family. RFC 0011 remains `LANDED`; that status
+describes its existing implementation and is not evidence that the RFC 0025
+replacement has landed.
+
+### Implementation And Evidence Binding
+
+| RFC 0025 Task | RFC 0011 Evidence Responsibility |
+|---|---|
+| `R25-03` | Replace the identity hierarchy, registries, codecs, context fingerprint, invariants, and dumps atomically. |
+| `R25-03T` | Prove both compilation-unit alternatives, transitive bytes, ancestry, wrong-branch rejection, and no decode fallback. |
+| `R25-03C` | Remove package-only crate access from package request and crate graph production. |
+| `R25-03CT` | Migrate every remaining native identity caller before the first complete build. |
+| `R25-07` | Replace package-only semantic query roots and publish contextual core query identity. |
+| `R25-07T` | Prove the complete atomic identity and query cutover through native and architecture gates. |
+| `R25-14` | Register gates that reject package-shaped core identity, obsolete accessors, and dual encodings. |
+| `R25-15` | Supply clean-build, fixed-vector, determinism, architecture, and final-owner evidence. |
+
+Only the RFC 0025 tracker may advance these replacement tasks. This tracker
+records the accepted dependency without attaching new product evidence.

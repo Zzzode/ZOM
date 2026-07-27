@@ -8,7 +8,7 @@ review-manager: rfc
 required-owners: [rfc, module-system, binder-checker, error-system, ir-backend, spec-audit, verification]
 approvers: [rfc, module-system, binder-checker, error-system, ir-backend, spec-audit, verification]
 created: 2026-07-08
-updated: 2026-07-18
+updated: 2026-07-27
 area: compiler
 requires: [2, 3, 4, 5, 11, 12]
 supersedes: []
@@ -159,6 +159,7 @@ CompilerSession {
   signature_store: SignatureStore,
   coherence_index: CoherenceIndex,
   checked_facts_repository: CheckedFactsRepository,
+  core_libraries: VerifiedCoreLibrarySet,
 }
 ```
 
@@ -166,6 +167,48 @@ CompilerSession {
 facade, alias, or second scheduling entry point remains. No phase owns hidden
 cross-module state outside the session. RFC 0005 owns the semantic type payload
 model; the session owns the store lifetime and context that issue its handles.
+The package and CLI orchestrator owns preparatory-session and final-session
+scheduling. Each created session still owns exactly one semantic context,
+brand, registry family, semantic store family, and query database; no semantic
+handle crosses a session boundary.
+
+### Toolchain Core Session Transaction
+
+RFC 0025 adds one mandatory verified core-distribution input and one atomic
+session publication:
+
+```text
+VerifiedCoreLibrarySet {
+  semanticContext: SemanticContextBrand,
+  context: SemanticContextFingerprint,
+  contextRoots: CompilationRootSetQueryKey,
+  revision: DatabaseRevision,
+  distribution: Sha256Digest,
+  libraries: SortedNonEmptyMap<CrateKey, VerifiedCoreLibrary>,
+}
+```
+
+The orchestrator derives the complete distinct projected-core `CrateKey` set
+before any core query. One pre-parse transaction commits the common
+distribution, every projection's source snapshots, crate-keyed options, and
+`ToolchainCoreModuleSearchRoot`. Active crate and source membership is derived
+from those inputs. Parsing, declaration validation, catalog-only discovery, and
+selection create structural records only.
+
+One `VerifiedModuleGraphInputTransaction` atomically commits the complete
+structural input families, including each configured `core::prelude`.
+`authorityStagingSnapshot` derives and verifies active membership, dependency
+sets, graph, SCC, and named-definition inventories. One third transaction
+installs the complete contextual definition-authority map and readiness.
+`finalCoreSnapshot` re-demands graph, SCC, authority, and readiness with the
+independently reconstructed complete root key before opening the global
+tracked-materializer barrier. No input commit may mix staging and final leases.
+
+`VerifiedCoreLibrarySet` is published only after all projections succeed. It is
+an exact bijection over required projected core crates, retains handle-free
+graph records and same-final-snapshot leases, and carries the matching
+distribution digest. A missing, additional, duplicate, foreign-context,
+foreign-revision, or mixed-snapshot member rejects the complete set.
 
 ### Canonical Identity Integration
 
@@ -227,20 +270,23 @@ by target selection. Both sorted edge sets enter the RFC 0011 semantic context
 fingerprint. Only semantic module dependency edges participate in import SCC
 analysis.
 
-The private-constructor `ModuleGraphVerifier` consumes the complete RFC 0004
-`ModuleGraphCandidate` and publishes one `VerifiedModuleGraph` plus immutable
-views only after all path results, the canonical graph revision, and SCCs
-verify. Semantic edge kinds are exactly
+`ModuleGraph(contextRoots)` and `ModuleGraphScc(contextRoots)` are the sole
+stable topology authority. After the structural transaction, the session
+demands both queries, verifies all path results and deterministic SCCs, and
+rejects every cycle before binding. After the final snapshot barrier,
+`VerifiedModuleGraphBuilder` and the independent
+`VerifiedModuleGraphVerifier` materialize one revision-local
+`VerifiedModuleGraph` plus immutable views from byte-equal stable graph and SCC
+records. Semantic edge kinds are exactly
 `Import`, `ForeignReexport`, `ModuleAlias`, and `Prelude`. Every SCC with more
 than one module and every self-edge is rejected before any per-module binding
 input exists. Any SCC containing a prelude edge produces only RFC 0004
-`GraphInvariantRejected(InvalidPrelude)` and `ZOM9956`. Among prelude-free SCCs,
-a foreign re-export produces `ZOM3014` at the least canonically encoded
-foreign-re-export edge; otherwise the SCC produces `ZOM3011` at the least
-encoded edge. This covers mixed import/re-export and import/module-alias cycles
-without a second source classification. An implicit prelude edge uses RFC 0004
-`Prelude` provenance with no invented AST node or source span. The first
-implementation has no signature-only cycle exception.
+`ModuleGraphInvariant` and `ZOM9956`. Among prelude-free SCCs, a foreign re-export produces `ZOM3014` at
+the least canonically encoded foreign-re-export witness request; otherwise the
+SCC produces `ZOM3011` at its least encoded witness request. This covers mixed
+import/re-export and import/module-alias cycles without a second source
+classification. A Prelude request has no invented AST node or source span. The
+first implementation has no signature-only cycle exception.
 
 Module discovery and resolution use the RFC 0018 semantic request contract:
 
@@ -287,15 +333,48 @@ Alias requests additionally read only the exact `DependencyAliasRoot`; prelude
 requests read only `ConfiguredPrelude`; generated roots read their exact
 `ModuleSearchRoots` projection. The selected alias or prelude target is a
 tracked value, not request identity. All matching modules form one distinct set
-sorted by complete key bytes, and lookup order selects no winner. A verified
-resolution receipt repeats the semantic key and exact candidate set derived
-from those narrow inputs. The graph candidate cannot redirect a request or
-invent an ambiguity.
+sorted by complete key bytes, and lookup order selects no winner.
+`ResolveModuleRequest` publishes that canonical candidate set through its
+independent query verifier. `ModuleDependencies` requires exactly one target or
+publishes the stable missing or ambiguous failure; no revision-local object can
+redirect a request or invent an ambiguity.
 
 One discovery run receives a canonical crate key, the immutable RFC 0012
 package graph, one selected target root, an ordered search-root set, an ordered
 generated-source map, and a source-snapshot fingerprint. Generated sources are
 inputs; discovery never invokes a callback that mutates compiler state.
+
+For a `ToolchainCoreModuleSearchRoot`, discovery receives the matching
+process-local `AdmittedCoreSourceCatalog` and resolves only inventory-admitted
+direct-file or `mod.zom` candidates. The durable root encodes tag `0x04`, the
+complete projected core crate, and the distribution digest; decoded bytes
+never carry source-root authority. Workspace, package, current-directory, and
+physical-path probing are forbidden for this branch.
+
+The structural catalog seeds `core` and `core::prelude`. Core children receive
+no implicit prelude. Every non-core consumer receives the exact selected
+`core::prelude` `ModuleKey` once. Preparatory closure attaches the projected
+core edge and prelude to the host `BuildScript` root and every recursively
+selected host `Library`.
+
+Semantic graph roots use `CompilationRootSetQueryKey`. A core projection uses
+one singleton toolchain-core root and derives its active crate from the
+mandatory core-distribution input.
+
+### RFC 0025 Acceptance Synchronization
+
+On 2026-07-25, the accepted RFC 0025 proposal at SHA-256
+`4f4085c176a9f391115e12170da93af899e350fa92440d5a51577692faf8bad0`
+made orchestrator-owned preparatory/final scheduling,
+`VerifiedCoreLibrarySet`, `ToolchainCoreModuleSearchRoot`, verified structural
+catalog admission, the three-transaction phase order, complete contextual root
+sets, preparatory host closure, and configured-prelude publication part of this
+accepted contract.
+
+Native verification must cover the root tag and payload, catalog and snapshot
+admission, phase ordering, host closure, configured prelude, complete-set
+bijection, and absence of registry rollback. RFC 0008 remains `IMPLEMENTING`;
+product implementation remains tracked by RFC 0025's `R25` tasks.
 
 The selected target root seeds a non-empty canonical module path from the RFC
 0012 target name. Every subsequently requested source candidate receives its
@@ -713,8 +792,9 @@ foreign re-export, or module-alias path. They never participate in unqualified
 source-name lookup and cannot make an unimported dependency name visible.
 
 An imported symbol is visible only if it occurs in the target module's verified
-export surface. After `ModuleGraphVerifier` has published an acyclic graph, the
-session schedules modules in dependency order and gives RFC 0004
+export surface. After the stable graph barrier and final-snapshot Binder bridge
+have published an acyclic revision-local graph, the session schedules modules
+in dependency order and gives RFC 0004
 `BindingInputVerifier` the complete `VerifiedExportSurface` for every resolved
 target. That verifier compares a selected name against complete
 `visibleEntries`, decides missing versus invisible, and only then constructs the
@@ -839,9 +919,9 @@ dependent modules is skipped. If one module body fails type checking, unrelated
 modules may continue, but final session status is failed.
 
 RFC 0004 defines the module diagnostic contract and RFC 0008 implements its two
-producers. The global `ModuleGraphVerifier` owns `ZOM3011-ZOM3012`,
-`ZOM3014-ZOM3015`, and `ZOM3023-ZOM3024` for cycles, missing modules, and
-ambiguous module paths. RFC 0004 `BindingInputVerifier` owns `ZOM3013`,
+producers. The stable module-query failure projection owns
+`ZOM3011-ZOM3012`, `ZOM3014-ZOM3015`, and `ZOM3023-ZOM3024` for cycles,
+missing modules, and ambiguous module paths. RFC 0004 `BindingInputVerifier` owns `ZOM3013`,
 `ZOM3016`, and `ZOM3018-ZOM3019` for selected-member absence and visibility
 after receiving complete verified target surfaces. These rows live in
 `diagnostics-module.def` before their producers land; neither component emits a
@@ -1128,3 +1208,5 @@ None
 | 2026-07-11 | ACCEPTED | All seven required owners approved proposal hash `4a299be3aa1c89d61bfeb679edcf96636e506d0d752997f0853040e4a9a0a67a` after module-graph, resolution-environment, session, interface, opaque evidence-lease, diagnostic, codec, and verifier review. Implementation has not started. |
 | 2026-07-11 | IMPLEMENTING | Started the direct replacement series: `CompilerSession` is the sole compiler root and owns one process-unique semantic context brand plus its sole RFC 0011 identity registry family. Module graph discovery, verified interface publication, signature storage, dependency scheduling, coherence, and consumer migration remain open. |
 | 2026-07-18 | IMPLEMENTING | Synchronized the accepted RFC 0018 later overlay for semantic module-resolution keys, narrow requester-ancestry and catalog-path inputs, and occurrence-survivor-only module-interface and coherence publication. No implementation completion is inferred. |
+| 2026-07-25 | IMPLEMENTING | Synchronized the accepted RFC 0025 orchestrator-owned multi-session schedule, verified core-library set, toolchain-core search root, structural catalog admission, three-transaction phase order, complete contextual roots, host closure, and configured prelude at proposal SHA-256 `4f4085c176a9f391115e12170da93af899e350fa92440d5a51577692faf8bad0`. |
+| 2026-07-27 | IMPLEMENTING | Synchronized stable module graph and SCC authority, deterministic failure projection, final-snapshot Binder graph materialization, and dependency-order scheduling with accepted RFC 0026. |

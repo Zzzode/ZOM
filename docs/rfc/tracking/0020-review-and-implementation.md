@@ -10,7 +10,7 @@ proposal or authorize implementation.
 ### 2026-07-20 Inverse-Key Implementation Discovery
 
 RFC 0019 Phase 3 reached a provider-purity blocker while preparing
-`NamedItemSyntax(DefinitionKey)` and definition-owner body queries:
+digest-routed definition syntax and definition-owner body queries:
 
 - `DefinitionKey` contains only a one-way 32-byte digest;
 - its complete `DefinitionIdentityRecord`, including the owning module, is
@@ -28,10 +28,8 @@ protocol instead of any of those paths.
 
 ### 2026-07-20 Draft Contract
 
-The draft defines
-`ActiveDefinitionAuthorityInput(DefinitionKey) -> DefinitionIdentityRecord`
-and `ActiveDefinitionAuthorityReadyInput(CompilationUnit) ->
-ActiveDefinitionAuthoritySetFingerprint` as low-durability semantic inputs.
+The design defines a complete-record contextual definition-authority input and
+complete-root readiness as low-durability semantic inputs.
 `CompilerSession` removes readiness with the first base mutation, demands all
 active named-definition inventories, independently reconstructs the complete
 authority map, and atomically replaces the map and readiness marker before
@@ -167,6 +165,49 @@ owning-inventory membership, and RFC 0018 authority-occurrence selection.
 Implementation may begin; no approval covers module scanning, registry reads,
 untracked missing-input recovery, or a dual Binder path.
 
+### 2026-07-25 RFC 0025 Acceptance Synchronization
+
+The RFC 0025 `R25-02` acceptance transaction is authorized by all twelve
+required-owner approvals on exact proposal SHA-256
+`4f4085c176a9f391115e12170da93af899e350fa92440d5a51577692faf8bad0`.
+It synchronizes RFC 0020's current normative contract without changing this
+RFC's `IMPLEMENTING` status.
+
+| Binding | RFC 0025 Task Authority |
+|---|---|
+| Acceptance-time RFC synchronization | `R25-02` |
+| Complete-context authority, readiness, and third-transaction installation | `R25-07` |
+| Named-item and semantic caller cutover | `R25-08` |
+| Native authority and semantic fixture migration | `R25-08T` |
+| Contextual diagnostic publication | `R25-09E` |
+| Read-set, transition, invalidation, and mutation evidence | `R25-07T` |
+| Final integrated evidence | `R25-15` |
+
+The acceptance evidence is the exact 12/12 RFC 0025 approval set. Existing
+RFC 0020 evidence remains accurate for the fixed-key authority implementation
+that preceded this transaction, but it is historical for the replaced keys;
+the contextual replacement completes only through the listed RFC 0025 tasks.
+
+### 2026-07-26 RFC 0026 Acceptance Synchronization
+
+All four RFC 0026 required owners approved proposal SHA-256
+`39df5d3f11dbdcb2e95056b1cd14fd5220a19688f31a3e3180230ad465a3f84d`.
+Authority staging now depends on the RFC 0026 structural transaction, complete
+graph and SCC roots, cyclic-component rejection, authority-only installation
+transaction, and final-snapshot re-demand barrier. Completion evidence belongs
+to RFC 0026 tasks `R26-05` through `R26-09` and the dependent RFC 0025 rows.
+
+### 2026-07-27 RFC 0027 Acceptance Synchronization
+
+Acceptance transaction `rfc0027-accept-20260727-e2f4ba5e` synchronizes RFC
+0020 to exact RFC 0027 proposal SHA-256
+`e2f4ba5eb777d3d70b8eb3ad75b18f5169afc61a83d989ccc61fc9d5d022f435`.
+The current contract installs four complete contextual authority sequences and
+`CompleteRootIdentityReadiness`, publishes all eight typed active-membership
+queries, and seals the final snapshot after byte-equal graph, SCC, authority,
+readiness, inventory, and header re-demands. RFC 0020 remains `IMPLEMENTING`;
+completion evidence belongs to the RFC 0027 implementation tracker.
+
 ## Implementation Tracker
 
 Implementation started after the accepted RFC moved through `ACCEPTED` to
@@ -178,8 +219,8 @@ listed in the accepted proposal.
 | 1 | Performance runner, corpus, and reviewed pre-implementation baseline | Complete | `scripts/run-incremental-query-benchmarks.py`; closed corpus and baseline at revision `76e73196f3f9682bb1e5a6f88e7d77c00258a82f`; Release Binder median `332907000 ns`, MAD `1.44%`, peak RSS `5029888 bytes`; module projection median `28489000 ns`, MAD `2.17%`, peak RSS `2867200 bytes`; architecture check and self-test passed. |
 | 2 | Tracked input probe and presence-aware dependency validation | Complete | `QueryContext::probeInput` and `QuerySnapshot::probeInput`; explicit `Present` and `Absent` dependency observations; codec-validated input keys; four presence transitions, equal present, cancellation, derived-kind rejection, context continuation, cloning, eviction, durability, and no-tombstone regressions; five Query runtime tests and incremental-query architecture check and self-test passed under the sanitizer build. |
 | 3 | Complete definition-record decoder and fixed codec vectors | Complete | `DefinitionIdentityRecord::decodeCanonical` performs strict bounded standalone decoding. Native identity and authority tests cover the fixed SHA-256 vector, truncation, malformed lengths, trailing bytes, oversized records, and key-to-record digest mismatch under the sanitizer build. |
-| 4 | Authority and readiness input kinds with strict codecs | Complete | `ActiveDefinitionAuthorityInput` and `ActiveDefinitionAuthorityReadyInput` use the canonical domains, low durability, strict key and value decoders, canonical set fingerprints, and input-only registration. Native tests cover malformed 31-byte and 33-byte keys and fingerprints plus exact round trips. |
-| 5 | Readiness barrier, complete reconstruction, atomic replacement, and stale erasure | Complete | `ActiveDefinitionAuthorityProjectionState` removes readiness in the first base mutation, reconstructs the exact active crate, module, binding-order, and named-inventory closure, rejects foreign-module membership, atomically erases stale keys and installs the complete map plus readiness, preserves equal-input `changedAt`, and publishes its ledger only after commit. Native tests cover old snapshots, failed refresh, stale-ledger retry, active-set shrink, rename, move, and module isolation. |
+| 4 | Authority codec prerequisites | Complete | The bounded definition-record decoder, low-durability input registration, presence tracking, and canonical fingerprint primitives have strict native codec tests. The complete contextual transaction schemas and four-sequence readiness record remain assigned to RFC 0027. |
+| 5 | Readiness barrier, complete reconstruction, atomic replacement, and stale erasure | Complete | `ActiveDefinitionAuthorityProjectionState` removes readiness in the first base mutation, reconstructs the exact active crate, module, stable graph, SCC, and named-inventory closure, rejects foreign-module membership, atomically erases stale keys and installs the complete map plus readiness, preserves equal-input `changedAt`, and publishes its ledger only after commit. Native tests cover old snapshots, failed refresh, stale-ledger retry, active-set shrink, rename, move, and module isolation. |
 | 6 | Named-item dependency, authority occurrence, and independent verification | Complete | Semantic `NamedItemSyntax` and revision-local `NamedItemProvenance` have strict bounded codecs and registered query descriptors. Providers and independent verifiers recover the module only from tracked authority, prove exact owning-inventory membership, conditionally probe readiness only on absent or contradictory authority, select the canonical authority occurrence independently, and reconstruct detached syntax and total provenance through separate Binder implementations. `CompilerSession` demands every active pair from a ready snapshot before binding. |
 | 7 | Architecture mutations, native regressions, benchmark comparison, and RFC 0019 integration | In progress | Focused authority, named-item, and owner-projection regressions pass with worker counts 1, 2, and 8, including fresh-database equivalence, dependency-shape equality, range-only and body-only edits, add, delete, rename, cross-module edit, active-set shrink, module move, canonical owner census, exact alternative dependencies, and strict owner codecs. Incremental-query, Binder, and CompilerSession architecture checks and adversarial self-tests pass. Release benchmark comparison, complete repository verification, final documentation review, and landing evidence remain open. |
 
@@ -187,20 +228,18 @@ listed in the accepted proposal.
 
 The production session now owns one readiness-gated active-definition
 authority projection. Every base-input mutation removes readiness in the same
-transaction. Refresh reads the exact active crate and module closure, compares
-it with `ModuleBindingOrder`, demands every active
+transaction. Refresh reads the exact active crate and module closure, verifies
+the matching `ModuleGraph` and `ModuleGraphScc`, demands every active
 `NamedDefinitionInventory`, independently validates every complete identity
 record, and commits stale-key erasure, the complete replacement map, and the
 set fingerprint in one transaction. Failed refresh publishes neither
 readiness nor a partial ledger.
 
-`NamedItemSyntax(DefinitionKey)` and `NamedItemProvenance(DefinitionKey)` are
-the only named-item query roots. Their providers and verifiers recover the
-owning module solely from the tracked complete record, demand exact membership
-in that module's named-definition inventory, and use separate Binder
-reconstruction paths. Positive lookups do not depend on the compilation-wide
-readiness marker. Absent or contradictory authority reads readiness
-conditionally and fails closed before replacement completion.
+`ActiveDefinitionMembership(ContextualDefinitionKey)` publishes the complete
+definition authority record only after exact owning-inventory and stable-header
+verification. Positive lookups do not depend on complete-root readiness.
+Absent or contradictory authority reads readiness conditionally and fails
+closed before complete authority publication.
 
 Evidence recorded for this slice:
 

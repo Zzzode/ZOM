@@ -743,6 +743,16 @@ does not grant approval.
 
 Decision: ACCEPTED on 2026-07-18.
 
+### RFC 0025 Acceptance Synchronization
+
+On 2026-07-25, the accepted RFC 0025 proposal at SHA-256
+`4f4085c176a9f391115e12170da93af899e350fa92440d5a51577692faf8bad0`
+atomically synchronized RFC 0007's standard `Copy` and `Linear` marker identity
+with the exact toolchain-core context and verified distribution digest. RFC
+0007 remains `IMPLEMENTING`; its exact ownership decisions and fail-closed
+overlay contract remain authoritative. Product implementation and executable
+evidence remain tracked by RFC 0025's `R25` tasks.
+
 Final accepted proposal SHA-256:
 `2766b4ce7ddbb0cc08ea550d0c618228daf7a91e8b951aef03d4c9f1aced6dbb`.
 
@@ -825,6 +835,12 @@ all five coordinated governance records exist. A transition or implementation li
 only one RFC does not unblock any slice.
 
 ## Verification Evidence
+
+- RFC 0025 acceptance synchronization is bound to proposal SHA-256
+  `4f4085c176a9f391115e12170da93af899e350fa92440d5a51577692faf8bad0`.
+  `python3 scripts/check-rfc.py` and scoped `git diff --check` passed for this
+  documentation transaction; toolchain-core marker-lineage and mutation evidence
+  remains assigned to RFC 0025's `R25` tasks and completes no ownership slice.
 
 - `zom.mir-revision` unsafe-scope framing was independently recomputed: the
   283-byte preimage has SHA-256

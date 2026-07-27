@@ -8,7 +8,7 @@ review-manager: rfc
 required-owners: [rfc, task-router, binder-checker, module-system, error-system, ir-backend, runtime-memory, spec-audit, verification]
 approvers: [rfc, task-router, binder-checker, module-system, error-system, ir-backend, runtime-memory, spec-audit, verification]
 created: 2026-07-25
-updated: 2026-07-25
+updated: 2026-07-27
 area: compiler
 requires: [4, 5, 7, 8, 11, 12, 15, 17, 18]
 supersedes: []
@@ -622,49 +622,35 @@ Its SHA-256 is
 Tests construct the preimage without the production builder or revision
 helper.
 
-`ModuleGraphBuilder` and `ModuleGraphVerifier` both receive
-`const VerifiedCompilerMarkerConfiguration&` as a separate input.
-`ModuleGraphCandidate` contains only observed requests, resolutions, modules,
-and graph revisions; it does not contain an expected prelude target or expected
-policy configuration revision. The builder and verifier derive both expected
-values only from the verified capability. This prevents a candidate from
-changing the expected revision together with its prelude sites and resolutions.
+The stable module graph receives configured Prelude topology only through
+crate-keyed `ConfiguredPreludeInput`. Every non-core crate has one present
+target equal to its exact projected `core::prelude`; every core crate has one
+explicit-absence value. `ModuleDependencyRequests(module)` derives one stable
+Prelude request for each selected non-core module and none for a core module.
+Neither the stable graph queries nor the final-snapshot Binder bridge receive
+marker configuration as topology authority.
 
 ### Configured Prelude Injection
 
-After the structural resolver freezes, the session constructs one
-`ModuleDependencyRequest::prelude` for every module except `preludeTarget`.
-Each request carries two distinct revisions:
+The independently verified `VerifiedModuleGraphInputTransaction` reconstructs
+the complete configured-Prelude family from the frozen package and projected
+core inventories. The stable request carries only its canonical
+`ModuleResolutionKey`; it carries no source site or configuration digest.
+`ModuleDependencies` demands `ResolveModuleRequest` and requires exactly one
+candidate byte-equal to the configured target.
 
-- `environmentRevision` is the exact structural resolver environment
-  revision; and
-- `preludeSite.configurationRevision` is the exact
-  `MarkerPolicyConfiguration::revision()`.
-
-This RFC replaces RFC 0004's requirement that those two fields be equal.
-Equality is invalid because the two digests have different canonical domains
-and dependencies. `ModuleGraphVerifier` independently obtains the expected
-prelude target and configuration revision from
-`VerifiedCompilerMarkerConfiguration`, requires every configured prelude site
-to match them, and continues to validate `environmentRevision` against the
-separate structural resolver.
-
-These requests enter the same atomic resolution-input transaction as
-source-derived requests. The session demands them through
-`ResolveModuleRequestQuery` and gives the complete inventories to
-`ModuleGraphVerifier`.
+After the final snapshot barrier, `VerifiedModuleGraphBuilder` and
+`VerifiedModuleGraphVerifier` independently re-demand each configured Prelude
+and resolution, expand the selected target through the frozen module registry,
+construct one revision-local Prelude request with no syntax site, and require
+its stable edge projection to occur in `ModuleGraphRecord`.
 
 The prelude receives no self-edge. A missing target, a target outside the
-resolved module set, missing or ambiguous resolution, mixed revision,
-additional prelude edge, or multiple targets rejects the graph. The session
-never retries without the prelude.
-
-Acceptance of this RFC atomically replaces RFC 0004's equality sentence with
-the two independent validations above and updates the RFC 0004 canonical
-module-graph candidate and verifier-input schemas. The same transaction
-replaces RFC 0007's canonical ownership-overlay input and APIs with the
-complete body-input contract below. Updating only either tracker is
-insufficient.
+resolved module set, missing or ambiguous resolution, an additional Prelude
+edge, or multiple targets rejects the graph. The session never retries without
+the configured Prelude. Marker-policy revisions remain part of marker
+authority and ownership proof; they do not enter stable request identity or
+the revision-local Binder request.
 
 ### Verified Authority
 
@@ -890,6 +876,34 @@ identity failure is never collapsed into a checker invariant.
 An ownership-boundary lineage mismatch maps to RFC 0007
 `InputRevisionMismatch` at `OwnershipProofValidation`. No failure publishes a
 partial authority or overlay.
+
+### RFC 0025 Source-Backed Core Synchronization
+
+The RFC 0025 acceptance transaction is bound to proposal SHA-256
+`4f4085c176a9f391115e12170da93af899e350fa92440d5a51577692faf8bad0`.
+This RFC remains normative for `Copy` and `Linear` semantics, policy, authority,
+proof input, failure precedence, and one consumer prelude edge. The following
+table atomically replaces only the listed distribution, source-layout,
+identity, resolver, bootstrap, publication, and installation contracts; every
+conflicting spelling elsewhere in this RFC is non-authoritative.
+
+| RFC 0024 Surface | Replacement |
+|---|---|
+| `Distribution Bootstrap` and `StandardPreludeDistribution` | `VerifiedCoreDistribution`, exact three-source record, unversioned toolchain unit, executable-relative source root, and `ZOM7101`/`ZOM7102` |
+| Fixed `Zom.toml` and `src/prelude.zom` bytes and digests | Exact `core.zom`, `core/marker.zom`, and `core/prelude.zom` bytes plus `CoreDistributionRecord` and its accepted golden digest |
+| Resolver release, root, snapshot, feature, and lockfile injection | Separate mandatory toolchain distribution input; no RFC 0012 release or lock graph entry |
+| `Verified Compiler Marker Configuration` distribution fields | Hashed `CoreRoleIdentityTemplate` records expanded to exact `DefinitionKey` values after core identity freeze |
+| `Configured Prelude Injection` | One `ConfiguredCratePrelude` per non-core consumer crate and one derived prelude request per non-core module |
+| Core signature bootstrap | Publish `VerifiedCoreRoleSeed`, construct imported signatures only from verified bootstrap interfaces, use `CoreSignatureCheckingInput` for the closed initial signature algebra, derive core-scoped shape and policy state from tracked projections, then materialize final authority and finalize ordinary module interfaces one way |
+| `Verified Authority` owner and context lineage | Preserve `VerifiedStandardMarkerAuthority` with `CoreSemanticContextFingerprint` plus core-scoped shape and policy revision types; consume the aggregate authority query, role seed, frozen core identities, and exact prelude re-exports without reading whole-session inventories or an ordinary consumer graph |
+| RFC 0015 inventory relationship | Build whole-session marker inventories after ordinary binding and require their core-role projection to equal the core-scoped authority entries |
+| `Session Publication` distribution capability | `VerifiedCoreLibrarySet` stores only the verified distribution digest and is published before ordinary module checking |
+| Distribution-related `Failure Mapping` | Closed `CoreLibraryFailure`, `CoreRoleSeedFailure`, and `diagnostics-core.def`; marker-policy failures remain unchanged |
+| Qualified-name, policy inference, and compiler-only alternatives | Retain rejection of spelling discovery, source-less declarations, and separate policy paths |
+| Acceptance, implementation, test, and tracker file lists | Replace manifest/two-file/three-install-file assumptions with the source inventory, identity oracles, installed consumer, mutation matrix, and core architecture gate in RFC 0025 |
+
+No package-backed field or test expectation remains after the RFC 0025
+implementation transaction.
 
 ## Repository Impact
 
@@ -1196,3 +1210,5 @@ None
 | 2026-07-25 | REVIEW | Closed schema, lineage, failure, rollout, and verification contracts for owner review. |
 | 2026-07-25 | ACCEPTED | All nine required owners approved exact REVIEW SHA-256 `56a51ba59cd8f761ee2a6260d14ae9dc4ab9310b6565645e3439126a3d575f3d`; RFC 0004, RFC 0005, RFC 0007, and RFC 0015 were synchronized in the same acceptance transaction. |
 | 2026-07-25 | IMPLEMENTING | Began the dependency-ordered implementation with the exact standard prelude source and relocatable build/install distribution layout; production admission and marker authority remain pending. |
+| 2026-07-25 | IMPLEMENTING | Synchronized the accepted RFC 0025 unversioned source-backed core distribution, role seed, bootstrap, authority, prelude, diagnostics, and installation replacement from exact proposal SHA-256 `4f4085c176a9f391115e12170da93af899e350fa92440d5a51577692faf8bad0`; prior package-backed evidence remains historical and implementation completion is tracked only by the RFC 0025 R25 tasks. |
+| 2026-07-27 | IMPLEMENTING | Synchronized configured-Prelude input authority, stable request derivation, unique resolution, and final-snapshot Binder reconstruction with accepted RFC 0026. |

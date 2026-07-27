@@ -235,8 +235,8 @@ the trigger matrix in `.agents/subagents/README.md`.
 | `ir-backend` | HIR, MIR, LIR, lowering, target ABI, LLVM, native artifacts | compiler IR/backend and CLI, top-level/compiler/basic/trace CMake, CMake presets |
 | `tooling-lsp` | IDE semantic facade, LSP transport, document versions, cancellation, stale-response suppression | `products/zomlang/tools/ide/**`, `products/zomlang/tools/lsp/**`, `editors/**`, `docs/design/tooling/**` |
 | `spec-audit` | Spec ↔ implementation 1:1 alignment | `docs/spec/**`, `docs/design/**`, and compiler/spec drift |
-| `runtime-memory` | Ownership, zc types, RAII, memory model, unsafe boundaries | libraries/zc/**, runtime/**, FFI |
-| `verification` | Build + sanitizer + tests + format, evidence-gating | tests, CI workflows, README build contract, RFC 0016 coverage, incremental-query gates and benchmarks, and identity/IR architecture gates; runs last |
+| `runtime-memory` | Ownership, zc types, RAII, memory model, unsafe boundaries | libraries/zc/**, compiler/ownership/**, runtime/**, FFI |
+| `verification` | Build + sanitizer + tests + format, evidence-gating | tests, CI workflows, README build contract, RFC 0016 coverage, incremental-query gates and benchmarks, English/spec alignment, and identity/IR architecture gates; runs last |
 
 ---
 

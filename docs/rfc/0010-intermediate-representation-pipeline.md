@@ -8,7 +8,7 @@ review-manager: rfc
 required-owners: [task-router, rfc, binder-checker, module-system, error-system, concurrency, ir-backend, runtime-memory, spec-audit, verification]
 approvers: [task-router, rfc, binder-checker, module-system, error-system, concurrency, ir-backend, runtime-memory, spec-audit, verification]
 created: 2026-07-10
-updated: 2026-07-24
+updated: 2026-07-27
 area: compiler
 requires: [4, 5, 8, 9, 11, 12]
 supersedes: []
@@ -677,13 +677,34 @@ method identity through HIR and MIR. Witness-table and vtable slots are assigned
 during LIR target lowering. A mismatched, missing, or additional dispatch fact
 is an invariant failure and no checked module is constructed.
 
-`HirBuilder` copies the non-owning lease and exact `DispatchFactsRevision` into
-`VerifiedHirModule`; every MIR replacement wrapper, `MonomorphizationPlan`,
-`VerifiedLirModule`, and backend translation request carries both. The session
-outlives all of them.
-Dropping an earlier representation cannot invalidate a substitution or witness
-handle. Repository lookup failure, lease mismatch, or use after session teardown
-is an invariant before dereference.
+`CheckedModuleBuilder` consumes the final-snapshot
+`VerifiedBoundModuleLease` returned by `VerifyBoundModule`. Its independent
+verifier reopens that exact capability and checks context roots, database
+revision, semantic-context fingerprint, module, graph witness, skeleton
+witness, owner coverage, and every expanded handle before moving the lease into
+`VerifiedCheckedModule`.
+
+`HirBuilder` calls `retain()` on the checked module's bound-module lease. Its
+independent verifier reopens the retained capability, checks every HIR identity
+and imported-interface lineage record, and moves that lease into
+`VerifiedHirModule`. `BuiltMirBuilder` retains the HIR lease, independently
+checks module identity, graph witness, semantic types, definitions,
+implementations, and HIR lineage, and moves the lease into
+`VerifiedBuiltMir`. `OwnershipEventOverlayBuilder` retains the Built MIR lease,
+independently checks the exact Built MIR revision, module, ownership-event
+coverage, and bound-module lineage, and moves the lease into
+`VerifiedOwnershipEventOverlay`.
+
+Each verified artifact therefore owns exactly one retained
+`VerifiedBoundModuleLease`; none stores a detached bound-module copy, a
+session-vector reference, or a borrowed root. In every Pimpl,
+`boundModuleLease` is declared before each field that depends on it, so reverse
+member destruction releases dependent views before the lease. A missing or
+released lease, foreign semantic-context brand or roots, stale revision,
+unequal graph witness, unequal module, or handle-expansion disagreement is an
+invariant before dereference. The memo retained by the lease owns the snapshot
+and semantic-context arenas, so an explicitly retained artifact may remain
+valid after `CompilerSession` and `QueryDatabase` teardown.
 
 ### Semantic HIR
 
@@ -1483,6 +1504,33 @@ discipline, but the current project does not need MLIR's dependency surface or
 dialect infrastructure to implement three focused representations. Adopting
 MLIR later would require its own RFC and a direct replacement plan.
 
+### Source-Backed Core And Binder Capability Handoff
+
+RFC 0025 defines the source-backed core interface, and RFC 0027 defines the
+Binder capability consumed by this pipeline. The accepted RFC 0027 proposal
+SHA-256 is
+`e2f4ba5eb777d3d70b8eb3ad75b18f5169afc61a83d989ccc61fc9d5d022f435`;
+the synchronized acceptance transaction is
+`rfc0027-accept-20260727-e2f4ba5e`.
+
+The ordinary module's own `VerifiedModuleInterface`, the verified
+checked-module handoff, and the HIR and MIR lineage requirements remain
+normative. The complete handoff is:
+
+| RFC 0010 Surface | Normative Replacement |
+|---|---|
+| Checked-module build input | Own one `VerifiedBoundModuleLease`, keep the ordinary module's own `VerifiedModuleInterface`, and consume the exhaustive canonically ordered `VerifiedInterfaceSource` set paired with exact `ImportedInterfaceRevision` alternatives. |
+| Verified frontend handoff | Retain the exact bound-module capability and every visible `VerifiedInterfaceSource` and `ImportedInterfaceRevision`; validate each referenced definition against its matching source and revision; carry the same bound-module and imported-interface lineage through checked module, HIR, Built MIR, and ownership overlay. |
+| Toolchain-core branch | Accept only the independently finalized declaration-only core interface. Never construct a `VerifiedCheckedModule` for core and never manufacture a package-backed `VerifiedModuleInterface`. |
+| Verifier failures | Use `InputRevisionMismatch` for same-alternative context, module, or revision disagreement; `InvalidFact` for a valid wrong alternative or definition owner; `CanonicalCodecMismatch` for an illegal tag or bootstrap-only payload; `MissingRequiredFact` for a missing visible source; and `AdditionalFact` for a duplicate or additional source before HIR construction. |
+| Failure ownership | Binder capability demand and verification return the RFC 0027 Binder result algebra and diagnostic facts. IR builders verify the admitted capability and publish only IR-layer invariant failures; they do not translate Binder failures into IR failure facts. |
+| Cutover and tests | Replace every imported-interface array, verifier branch, lease field, fixture, dump, and architecture gate in one change. The production pipeline has one lease-owning handoff. |
+
+Implementation and evidence remain pending. RFC 0027 tasks `L1`, `L2`, `L3`,
+`L4`, `D5`, `E2`, `E3`, and `A1` own the direct replacement, deletion,
+verification, and status audit. This contract synchronization does not claim
+that those tasks have landed.
+
 ## Compatibility And Rollout
 
 ZOM is pre-1.0 and does not preserve the mixed IR API or dump syntax. Foundation
@@ -1786,3 +1834,5 @@ None
 | 2026-07-11 | REVIEW | Entered formal review after exact-hash governance, semantic, and invariant reviewers approved the coordinated frontend handoff, MIR lineage, target-selection, diagnostics, and error-lowering boundaries. Approvers and decision remain open. |
 | 2026-07-11 | ACCEPTED | All ten required owners approved proposal hash `715ae992a29e7ff83e4abf6e6c91d979bffccf7cae55ded450d80dfc730d70fe` after HIR/MIR/LIR, target, cast, error, ownership, concurrency, runtime, diagnostic, codec, and verifier review. Implementation has not started. |
 | 2026-07-16 | IMPLEMENTING | Started the Canonical IR Direct Replacement Series with target-selection extraction and complete removal of the mixed `irgen` prototype before HIR, MIR, LIR, and backend construction. |
+| 2026-07-25 | IMPLEMENTING | Synchronized RFC 0025's accepted exhaustive interface-source handoff, declaration-only core exclusion, verifier failures, and one-step cutover at proposal SHA-256 `4f4085c176a9f391115e12170da93af899e350fa92440d5a51577692faf8bad0`; implementation evidence remains owned by the named R25 tasks. |
+| 2026-07-27 | IMPLEMENTING | Synchronized the lease-owning checked-module, HIR, Built MIR, and ownership-overlay lineage plus Binder/IR failure ownership with approved RFC 0027 proposal `e2f4ba5eb777d3d70b8eb3ad75b18f5169afc61a83d989ccc61fc9d5d022f435` in transaction `rfc0027-accept-20260727-e2f4ba5e`; implementation remains pending. |

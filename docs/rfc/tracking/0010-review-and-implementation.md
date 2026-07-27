@@ -541,6 +541,28 @@ The `rfc` governance owner remains pending. This technical approval does not
 populate proposal frontmatter, record an acceptance decision, or authorize
 implementation until governance approves the tracker and atomic transition.
 
+### 2026-07-27 RFC 0027 Acceptance Synchronization
+
+RFC 0027, `Binder Query And Identity Materialization Closure`, was approved at
+exact proposal SHA-256
+`e2f4ba5eb777d3d70b8eb3ad75b18f5169afc61a83d989ccc61fc9d5d022f435`.
+Transaction `rfc0027-accept-20260727-e2f4ba5e` synchronizes this tracker and
+RFC 0010 with the same accepted tree state.
+
+The synchronized contract makes `VerifiedCheckedModule`,
+`VerifiedHirModule`, `VerifiedBuiltMir`, and
+`VerifiedOwnershipEventOverlay` each own an exact retained
+`VerifiedBoundModuleLease`. Builders retain the same memo capability in
+pipeline order, independent verifiers reopen it and prove context, revision,
+module, graph, identity, and lineage agreement, and Pimpl destruction releases
+dependent views before the lease. Binder capability failures remain owned by
+the Binder result and diagnostic contracts; IR builders publish only
+IR-layer invariant failures after the capability has been admitted.
+
+This synchronization changes design authority only. Tasks `L1` through `L4`,
+`D5`, `E2`, `E3`, and `A1` in the RFC 0027 implementation DAG remain pending,
+so RFC 0010 remains `IMPLEMENTING`.
+
 ## Owner Review Checklist
 
 | Owner | Review State | Blocking Surface |
@@ -584,6 +606,15 @@ Replacement Series started on 2026-07-16. RFC 0010 therefore advanced from
 `ACCEPTED` to `IMPLEMENTING` without changing the accepted semantic contract.
 RFC 0006 and RFC 0007 may advance through their own gates.
 
+RFC 0027 acceptance transaction
+`rfc0027-accept-20260727-e2f4ba5e` synchronizes the downstream ownership
+contract at proposal SHA-256
+`e2f4ba5eb777d3d70b8eb3ad75b18f5169afc61a83d989ccc61fc9d5d022f435`.
+The decision requires one retained `VerifiedBoundModuleLease` in each verified
+checked-module, HIR, Built MIR, and ownership-overlay artifact and assigns the
+direct replacement and evidence to RFC 0027. It does not mark any implementation
+slice complete.
+
 ## Implementation Tracker
 
 ### Canonical IR Direct Replacement Series
@@ -596,9 +627,9 @@ revision and ownership-evidence clauses apply together with RFC 0010.
 |---|---|---|
 | Extract canonical target registry and verified selection into `compiler/ir` | In progress | Context-bound selection, exact target codecs, complete negative matrix, and deterministic target oracles |
 | Remove the mixed `compiler/irgen` prototype and non-producing IR CLI surface | In progress | No `zom.ir`, `OutputType::IR`, `--emit=ir`, empty IR conformance target, or prototype diagnostic remains |
-| Publish the verified checked-module handoff | Pending RFC 0005 and RFC 0008 checked-fact closure | Exact input leases, revisions, identities, and failure algebra |
-| Implement semantic HIR and verifier | Pending checked-module handoff | Complete field projection, deterministic revision, mutation matrix, and dump coverage |
-| Implement Built MIR and RFC 0013 ownership integration | Pending HIR | MIR revision, complete exits, ownership facts, drop and coroutine lineage, and permutation evidence |
+| Publish the verified checked-module handoff | Pending RFC 0027 `L1` | Own the final-snapshot `VerifiedBoundModuleLease`; independently verify context roots, revision, fingerprint, module, graph and skeleton witnesses, owner coverage, and expanded handles |
+| Implement semantic HIR and verifier | Pending RFC 0027 `L2` | Retain the checked-module bound-module lease; verify complete field projection, imported-interface lineage, deterministic revision, mutation matrix, and dump coverage |
+| Implement Built MIR and RFC 0013 ownership integration | Pending RFC 0027 `L3` and `L4` | Retain the HIR lease through Built MIR and the ownership overlay; verify MIR revision, complete exits, ownership facts, destruction order, drop and coroutine lineage, and permutation evidence |
 | Implement target LIR, ABI lowering, and monomorphization | Pending executable MIR | Target legality, layout, ABI, instance identity, worklist, verifier, and deterministic artifacts |
 | Implement LLVM translation and native artifacts | Pending verified LIR | Total translation, runtime and FFI boundaries, object and link outputs, and registered failures |
 | Complete repository cutover | Pending all production layers | Layer diagnostics, conformance, architecture gates, documentation, sanitizer, and full default suite |
@@ -622,3 +653,46 @@ stand in for unavailable checked facts.
   implement RFC 0010's HIR/MIR/LIR verifier matrix.
 - Exact-hash semantic, invariant, routing, verification, and RFC governance
   reviews are approved. Structural checks alone are not an acceptance decision.
+- RFC 0027 exact-hash review approved proposal
+  `e2f4ba5eb777d3d70b8eb3ad75b18f5169afc61a83d989ccc61fc9d5d022f435`;
+  transaction `rfc0027-accept-20260727-e2f4ba5e` records this synchronized
+  contract without claiming product evidence.
+
+## RFC 0025 Acceptance Synchronization
+
+### Decision Record Synchronization
+
+On 2026-07-25, RFC 0025 received all 12 required-owner approvals at exact
+proposal SHA-256
+`4f4085c176a9f391115e12170da93af899e350fa92440d5a51577692faf8bad0`.
+Its `R25-02` acceptance transaction replaces RFC 0010's imported
+`VerifiedModuleInterface`-only set with exhaustive `VerifiedInterfaceSource`
+lineage and excludes declaration-only core modules from checked-module, HIR,
+and MIR construction. RFC 0010 remains `IMPLEMENTING`; this synchronization
+does not alter its prior acceptance decision or prove the replacement
+implementation.
+
+### Implementation And Evidence Binding
+
+| RFC 0025 Task | RFC 0010 Evidence Responsibility |
+|---|---|
+| `R25-09A` | Publish the flat finalized core interface and prevent bootstrap records from reaching ordinary consumers. |
+| `R25-10` | Derive callable-driven borrow evidence from the finalized interface. |
+| `R25-09B` | Replace checked-module, HIR, and MIR lineage and prove core modules never enter those stages. |
+| `R25-08T` | Cover exhaustive interface-source and revision alternatives, exact failure mappings, lineage, and native mutations. |
+| `R25-14` | Register architecture gates that reject old interface-only overloads and bootstrap leakage. |
+| `R25-15` | Supply clean-build, native-suite, architecture, determinism, and final-owner evidence. |
+
+Only the RFC 0025 tracker may advance these implementation states. This
+tracker records the accepted contract dependency and no product evidence.
+
+## RFC 0027 Acceptance Synchronization
+
+The RFC 0027 transaction
+`rfc0027-accept-20260727-e2f4ba5e` establishes the current downstream ownership
+contract. The pipeline handoff owns one retained `VerifiedBoundModuleLease` at
+every verified stage. RFC 0027's
+implementation tracker is the sole authority for `L1` through `L4`, `D5`,
+`E2`, `E3`, and the final evidence audit. This tracker remains truthful about
+the current partial IR implementation and records no completion for those
+tasks.

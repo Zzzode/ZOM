@@ -556,3 +556,32 @@ survivor conflict grouping; a unique survivor publishes under the shared
 authority with its own provenance, while conflicting survivor groups publish
 no impl head or marker fact. Implementation evidence remains tracked by RFC
 0018.
+
+## RFC 0025 Acceptance Synchronization
+
+### Decision Record Synchronization
+
+On 2026-07-25, RFC 0025 received all 12 required-owner approvals at exact
+proposal SHA-256
+`4f4085c176a9f391115e12170da93af899e350fa92440d5a51577692faf8bad0`.
+Its `R25-02` acceptance transaction adds core-scoped marker shape, policy, and
+standard-authority bootstrap capabilities, then requires the independently
+revised whole-session RFC 0015 inventories to publish after ordinary binding
+and project byte-equal `Copy` and `Linear` core roles. RFC 0015 remains
+`LANDED`; this status does not claim the RFC 0025 replacement tasks have
+landed.
+
+### Implementation And Evidence Binding
+
+| RFC 0025 Task | RFC 0015 Evidence Responsibility |
+|---|---|
+| `R25-08` | Bind and bootstrap-check the authorized declaration surface and publish exact role and signature authority. |
+| `R25-09A` | Finalize the flat core interfaces used by standard authority without leaking bootstrap records. |
+| `R25-10` | Preserve the finalized authority boundary through imported callable analysis. |
+| `R25-08T` | Prove role seed, core-scoped inventories, independent revisions, projection equality, shielding, and failure mutations. |
+| `R25-13B` | Align normative type, declaration, interface, and generic chapters with the accepted authority boundary. |
+| `R25-14` | Register gates that reject duplicate policy paths, bootstrap leakage, and missing projection checks. |
+| `R25-15` | Supply clean-build, native-suite, determinism, architecture, and final-owner evidence. |
+
+Only the RFC 0025 tracker may advance these replacement tasks. This tracker
+records the accepted dependency and no new product evidence.

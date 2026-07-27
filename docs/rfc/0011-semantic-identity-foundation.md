@@ -8,7 +8,7 @@ review-manager: rfc
 required-owners: [task-router, rfc, lexer-parser, module-system, binder-checker, error-system, ir-backend, spec-audit, verification]
 approvers: [task-router, rfc, lexer-parser, module-system, binder-checker, error-system, ir-backend, spec-audit, verification]
 created: 2026-07-10
-updated: 2026-07-18
+updated: 2026-07-25
 area: compiler
 requires: []
 supersedes: []
@@ -1162,6 +1162,33 @@ canonicalization must not reveal credentials embedded in URLs.
 - **Use object addresses as brands or IDs.** Rejected because addresses are
   non-deterministic, non-serializable, and unsafe after object lifetime ends.
 
+### RFC 0025 Source-Backed Core Replacement
+
+RFC 0025 atomically extends this RFC's semantic identity family at accepted
+proposal SHA-256
+`4f4085c176a9f391115e12170da93af899e350fa92440d5a51577692faf8bad0`.
+Package resolution remains user-package-only; semantic identity uses one
+exhaustive compilation-unit hierarchy:
+
+| RFC 0011 Surface | Normative Replacement |
+|---|---|
+| Handle hierarchy and registries | Replace semantic `PackageId -> CrateId` with `CompilationUnitId -> CrateId` and `PackageRegistry` with `CompilationUnitRegistry`. `UserPackage` retains its exact `PackageKey`; `Toolchain(Core)` has no `PackageId` or package-registry entry. Every ancestor check switches exhaustively on `CompilationUnitIdentity`. |
+| `CompilationUnitIdentity` codec | Encode `UserPackage` as `0x01` plus the complete `PackageKey`; encode `Toolchain` as `0x02` plus `ToolchainUnitKey`, whose `Core` component is `0x01`. Reject missing, additional, and unknown payload bytes. Canonical order places user packages before toolchain units. |
+| `CrateKey` parent and codec | Replace the expanded `PackageKey` parent with the complete encoded `CompilationUnitIdentity`, followed by the unchanged target-kind, target-name, and compilation fields. Delete package-parent accessors and require exhaustive unit matching at every caller. |
+| `CrateDependencyEdgeKey` | Replace `packageEdge` with `CrateDependencyOrigin`: `UserPackage = 0x01` carries the complete existing `PackageDependencyEdgeKey`; `ToolchainCore = 0x02` has no payload. Encode origin, consumer crate, then provider crate. Package edges and lockfile records exist only on the user branch. |
+| Source origins and source keys | Preserve source-origin tags `0x01` through `0x04` byte-for-byte and add `CoreFile = 0x05` with complete `ToolchainUnitKey` and canonical relative path. `SourceFileKey` remains complete `CrateKey` followed by `SourceOriginKey`. |
+| Transitive semantic keys | Recompute every `ModuleKey` and every transitive `DefinitionKey`, `ImplKey`, `OverloadHeaderDigest`, `GenericParameterKey`, `CallableParameterKey`, and `SemanticTypeKey`. No old digest, slot, alias, or alternate lookup key survives. |
+| Semantic context fingerprint | Replace the sorted package sequence with sorted `CompilationUnitIdentity` values. Retain package edges only for user packages and encode the replaced crate, crate-edge, source-content, module, toolchain-distribution, and projection inputs exactly once. |
+| Allocation phases and invariant coordinates | Freeze compilation units before crates, then sources, modules, definitions, implementations, and semantic types. Rename the existing `Package` phase and `PackageFreeze` site to `CompilationUnit` and `CompilationUnitFreeze` while preserving their tag positions. |
+| Ordering and dumps | Sort by complete replacement encodings. Rename `[packages]` to `[compilation-units]` and `package` records to `compilation-unit`; later sections retain their names and use recomputed keys. |
+| Fixed vectors and mutation oracles | Replace all affected user-package vectors, add toolchain-core unit, crate, edge, `CoreFile`, source, module, and mixed-context vectors, and mutate every tag, payload, field order, parent, path, origin, consumer, and provider independently. |
+| One-step cutover | Update schema, codec, registry, verifier, dump, diagnostics, architecture inventory, consumers, and fixtures together. Retain no old decoder, alias, migration reader, compatibility shim, or dual expected vector. |
+
+Implementation and evidence are owned by RFC 0025 tasks `R25-03`,
+`R25-03T`, `R25-03C`, `R25-03CT`, `R25-07`, `R25-07T`, `R25-14`, and
+`R25-15`. This synchronization does not alter the RFC's current `LANDED`
+status and does not claim the replacement implementation has landed.
+
 ## Compatibility And Rollout
 
 This is a direct internal replacement:
@@ -1369,3 +1396,4 @@ None
 | 2026-07-11 | IMPLEMENTING | Started the coordinated direct-replacement series with compiler build wiring, process-root semantic and registry brand issuance, private-construction context/store handle primitives, SHA-256, and the fixed-width canonical byte primitives. Canonical text and composite keys, registries, consumer migration, and the architecture gate remain open. |
 | 2026-07-12 | LANDED | Completed the six-registry session lifecycle, post-build crate finalization, exhaustive definition inventory, context-branded semantic type store migration, old identity deletion gates, registered failure boundaries, Linux native sandbox integration, and all architecture and repository hygiene gates. The final sanitizer matrix passes 1,238/1,238 tests. |
 | 2026-07-18 | LANDED | Synchronized the accepted RFC 0018 later overlay for digest-based stable definition and implementation records, stable-owner digests, owner-local exclusion, subordinate parameter identity, and one-authority implementation occurrence grouping. Implementation evidence remains owned by RFC 0018. |
+| 2026-07-25 | LANDED | Synchronized RFC 0025's accepted unversioned compilation-unit hierarchy, toolchain-core source identity, transitive key replacement, and atomic codec cutover at proposal SHA-256 `4f4085c176a9f391115e12170da93af899e350fa92440d5a51577692faf8bad0`; replacement implementation evidence remains owned by the named R25 tasks. |

@@ -93,7 +93,9 @@ not reused.
 | [RFC 0022](0022-flow-sensitive-type-refinement-and-null-safety.md) | Flow-Sensitive Type Refinement And Null Safety | REVIEW | language | language | rfc | [Review Tracker](tracking/0022-review-and-implementation.md) | TBD |
 | [RFC 0023](0023-ide-semantic-snapshots-and-language-server-architecture.md) | IDE Semantic Snapshots And Language Server Architecture | REVIEW | tooling | compiler | rfc | [Review Tracker](tracking/0023-review-and-implementation.md) | TBD |
 | [RFC 0024](0024-standard-marker-authority.md) | Standard Marker Authority | IMPLEMENTING | compiler | compiler | rfc | [Review Tracker](tracking/0024-review-and-implementation.md) | [Implementation Tracker](tracking/0024-review-and-implementation.md#implementation-tracker) |
-| [RFC 0025](0025-source-backed-core-library-architecture.md) | Source-Backed Core Library Architecture | REVIEW | language | language | rfc | [Review Tracker](tracking/0025-review-and-implementation.md) | TBD |
+| [RFC 0025](0025-source-backed-core-library-architecture.md) | Source-Backed Core Library Architecture | ACCEPTED | language | language | rfc | [Review Tracker](tracking/0025-review-and-implementation.md) | [Implementation Tracker](tracking/0025-review-and-implementation.md#implementation-tracker) |
+| [RFC 0026](0026-module-graph-query-closure.md) | Module Graph Query Closure | ACCEPTED | compiler | compiler | rfc | [Review Tracker](tracking/0026-review-and-implementation.md) | [Implementation Tracker](tracking/0026-review-and-implementation.md#implementation-tracker) |
+| [RFC 0027](0027-binder-query-and-identity-materialization-closure.md) | Binder Query And Identity Materialization Closure | ACCEPTED | compiler | compiler | rfc | [Review Tracker](tracking/0027-review-and-implementation.md) | [Implementation Tracker](tracking/0027-review-and-implementation.md#implementation-tracker) |
 
 ## Status Values
 

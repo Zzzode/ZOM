@@ -207,7 +207,7 @@ review findings.
 
 ### 2026-07-11 Formal Acceptance Review Response
 
-The proposal now separates one global `ModuleGraphVerifier` from the
+The proposal now separates one global `VerifiedModuleGraphVerifier` from the
 per-module `BindingInputVerifier`. The global verifier alone receives the
 complete graph, resolves module paths, emits exact missing/ambiguous/cycle
 diagnostics, classifies every mixed SCC deterministically, and publishes only
@@ -281,6 +281,17 @@ No owner approval is recorded by this table. Approval is recorded only in RFC
 
 Decision: ACCEPTED.
 
+### RFC 0025 Acceptance Synchronization
+
+On 2026-07-25, the accepted RFC 0025 proposal at SHA-256
+`4f4085c176a9f391115e12170da93af899e350fa92440d5a51577692faf8bad0`
+atomically synchronized RFC 0004's toolchain-core search root, structural
+catalog admission, finalized prelude identity, reserved-root source failure,
+typed diagnostic adapter, precedence, and suppression contract. RFC 0004
+remains `IMPLEMENTING`. Product implementation and executable evidence remain
+tracked by RFC 0025's `R25` tasks; this decision note marks no implementation
+slice complete.
+
 On 2026-07-11, every required owner approved RFC 0004 proposal hash
 `26bcc9dd95f5abbf623dd39af0cf6bd3ae2de9ed6be89649465803609c8af5cd`.
 The accepted design freezes the deterministic binder, verified global module
@@ -295,6 +306,16 @@ reference resolution against complete verified inputs. Formal acceptance is
 complete; the implementation tracker below is authoritative for remaining
 landing work.
 
+### RFC 0025 Acceptance Synchronization Evidence
+
+- Acceptance authority is bound to RFC 0025 proposal SHA-256
+  `4f4085c176a9f391115e12170da93af899e350fa92440d5a51577692faf8bad0`.
+- `python3 scripts/check-rfc.py` and scoped `git diff --check` passed for this
+  documentation transaction.
+- Target-root, dependency-alias, source-root, ordering, suppression,
+  no-publication, exact diagnostic, argument, and anchor evidence remains
+  assigned to RFC 0025's `R25` tasks.
+
 ## Implementation Tracker
 
 RFC 0004 entered `IMPLEMENTING` on 2026-07-12. Existing binder code remains
@@ -304,7 +325,7 @@ landing.
 
 | Slice | State | Required evidence |
 |---|---|---|
-| Dependency-free root verifier spine | Complete | Commit `05d12af5`; `ModuleGraphVerifier`, private `VerifiedModuleGraphView`, `BindingInputVerifier`, private `VerifiedBindingInput`, focused sanitizer tests, and positive plus adversarial binder architecture gates |
+| Dependency-free root verifier spine | Complete | Commit `05d12af5`; `VerifiedModuleGraphVerifier`, private `VerifiedModuleGraphView`, `BindingInputVerifier`, private `VerifiedBindingInput`, focused sanitizer tests, and positive plus adversarial binder architecture gates |
 | Parsed-module and frozen-inventory provenance | Complete | Commits `46839dcd` and `1b863942`; normative `ParsedModuleReceipt` oracle, immutable source promotion, exact single-module identity projection, ten focused sanitizer cases, and thirteen architecture mutations |
 | Retained parser token provenance | Complete | Commit `6036f93d`; single-use successful-parser capability, same-source and same-buffer admission, exact EOF and ordered-range validation, owned canonical token text, exact escaped-keyword spans, identifier-prefix rejection, 268 parser cases, 82 binder cases, 105 unit CTests, full sanitizer build, and adversarial architecture mutations |
 | Dependency-free binding metadata publication | Complete | Commit `1745926f`; immutable `VerifiedBindingMetadata` and `VerifiedExportSurface`, private candidate authority, closed verification results, production allocation and surface codecs, registered invariant diagnostics, emitted `ZOM3001`, twenty focused sanitizer cases, and adversarial architecture mutations |
@@ -365,7 +386,7 @@ reconstructs every complete `DefinitionKey` and `ImplKey` from its kind, name,
 parent path, source site, and sibling ordinal, and publishes the private
 `FrozenDefinitionInventoryView` only when the frozen registries contain the
 exact definition and impl census for the current module. Unrelated definitions
-from other modules in the same context are permitted. `ModuleGraphVerifier` and
+from other modules in the same context are permitted. `VerifiedModuleGraphVerifier` and
 `BindingInputVerifier` now consume these verified values rather than reopening
 the raw inputs. Ten focused sanitizer cases cover exact receipt bytes, exact
 tree binding, stale source content and length, cross-source ranges, successful

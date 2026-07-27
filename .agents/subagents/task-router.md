@@ -27,10 +27,11 @@ Do **not** route here when:
 ## Owns
 
 ```
-routing governance documents only; owns no product, build, or CI source files
+.agents/subagents/**
+AGENTS.md
 ```
 
-The router may review changes to its governance documents, but it delegates
+The router owns routing governance documents only and delegates
 implementation of product, build, CI, test, and repository-gate paths to the
 owner declared by `manifest.yaml`.
 
@@ -44,6 +45,11 @@ owner declared by `manifest.yaml`.
 - [ ] Query runtime, memo, red-green, and incremental identity work routes to
       `module-system`; query gates, adversaries, corpora, and benchmarks route
       to `verification`.
+- [ ] Ownership analysis and `products/zomlang/compiler/ownership/**` route to
+      `runtime-memory`; checked semantic inputs and Built MIR dependencies keep
+      their owning subsystem reviews.
+- [ ] `scripts/check-english-only.py` and `scripts/check-spec-alignment.py`
+      route to `verification`.
 - [ ] No "TODO later" items in the plan without a ticket.
 - [ ] Dead-code deletions are explicit tasks, not buried inside other tasks.
 
