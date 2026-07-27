@@ -63,6 +63,15 @@ was approved without findings by all nine required-owner scopes. Acceptance
 transaction `rfc0027-accept-20260727-e2f4ba5e` binds that exact proposal hash
 to the synchronized RFC, tracker, and routing tree.
 
+### 2026-07-27 Implementation Series Base
+
+`products/zomlang/tests/coverage/implementation-series-base.txt` records clean
+committed tree
+`109947943519ec2d380a3e8d71813b40bc68bde5` as the immutable implementation
+series base. The exact forty-lowercase-hex-plus-newline record names an
+ancestor of the base-recording commit. `R27-12B` is complete and source
+implementation is authorized in the dependency order below.
+
 ## Decision Record
 
 Accepted by `task-router`, `rfc`, `module-system`, `binder-checker`,
@@ -70,8 +79,9 @@ Accepted by `task-router`, `rfc`, `module-system`, `binder-checker`,
 `verification` against exact proposal hash
 `e2f4ba5eb777d3d70b8eb3ad75b18f5169afc61a83d989ccc61fc9d5d022f435`.
 The synchronized acceptance transaction is
-`rfc0027-accept-20260727-e2f4ba5e`. Source implementation remains blocked
-until `R27-12B` records the clean committed accepted synchronization SHA.
+`rfc0027-accept-20260727-e2f4ba5e`. Immutable implementation-series base
+`109947943519ec2d380a3e8d71813b40bc68bde5` is recorded and source
+implementation is authorized.
 
 ## Implementation Tracker
 
@@ -90,7 +100,7 @@ until `R27-12B` records the clean committed accepted synchronization SHA.
 | `R27-11` | `rfc` | `R27-02`; `R27-03`; `R27-04`; `R27-05`; `R27-06`; `R27-07`; `R27-08`; `R27-09`; `R27-10` | Record nine exact-hash approvals and prepare synchronized overlays for RFCs 0018, 0017, 0020, 0019, 0026, 0010, and 0025 plus all seven trackers while RFC 0027 remains REVIEW. | `python3 scripts/check-rfc.py` | Complete |
 | `R27-12` | `task-router` | `R27-11` | Synchronize manifest and routing documentation, assign ownership analysis to `runtime-memory`, and assign `scripts/check-english-only.py` plus `scripts/check-spec-alignment.py` to `verification`. | RFC, English-only, and routing review | Complete |
 | `R27-12A` | `rfc` | `R27-11`; `R27-12` | Read the completed routing tree without editing it, validate one tree state, record one transaction identifier and proposal hash in RFC metadata, then transition acceptance metadata atomically. | `python3 scripts/check-rfc.py` | Complete |
-| `R27-12B` | `verification` | `R27-12A` | Record the clean committed accepted synchronization SHA as the immutable implementation-series base. | Frozen-base ancestry check | Pending |
+| `R27-12B` | `verification` | `R27-12A` | Record the clean committed accepted synchronization SHA as the immutable implementation-series base. | Frozen-base ancestry check | Complete; base `109947943519ec2d380a3e8d71813b40bc68bde5` is an ancestor of the recording commit |
 | `R27-13` | `binder-checker` | `R27-12B` | Implement stable keys, headers, facts, result algebra, and generated field inventory. | Focused Binder schema tests | Pending |
 | `R27-14` | `binder-checker` | `R27-13` | Implement literal-domain codecs, bounds, exact consumption, fixed oracles, and mutations. | Codec oracle and mutation tests | Pending |
 | `R27-15` | `binder-checker` | `R27-13` | Implement body disposition and independently verified staging-safe headers. | Header producer/verifier tests | Pending |
@@ -128,4 +138,5 @@ until `R27-12B` records the clean committed accepted synchronization SHA.
 | `R27-32A` | `verification` | `R27-33A` | Recompute and byte-compare the fixed report without writing it, then rerun English-only, RFC, format, versioning, and diff gates after every spec-audit edit. | Final write-free RFC 0027 Test Plan subset | Pending |
 | `R27-33` | `rfc` | `R27-32A` | Audit all implementation, report, and final verification evidence, then perform the only synchronized RFC implementation-state transitions. | `python3 scripts/check-rfc.py` | Pending |
 
-Implementation is authorized only after `R27-12B` is complete.
+`R27-12B` is complete. Implementation is authorized in the dependency order
+recorded above.

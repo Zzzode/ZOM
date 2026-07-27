@@ -2551,3 +2551,4 @@ None
 | 2026-07-27 | DRAFT | Candidate returned for complete contract replacement. |
 | 2026-07-27 | REVIEW | Sixth complete candidate submitted for a new exact-hash review. |
 | 2026-07-27 | ACCEPTED | All nine required owners approved proposal hash `e2f4ba5eb777d3d70b8eb3ad75b18f5169afc61a83d989ccc61fc9d5d022f435`. Acceptance transaction `rfc0027-accept-20260727-e2f4ba5e` synchronizes the seven dependent RFCs, their trackers, and routing governance atomically. Implementation remains blocked on the immutable implementation-series base. |
+| 2026-07-27 | ACCEPTED | Immutable implementation-series base `109947943519ec2d380a3e8d71813b40bc68bde5` was recorded from a clean committed tree and passed the ancestry check. Dependency-ordered implementation is authorized. |
