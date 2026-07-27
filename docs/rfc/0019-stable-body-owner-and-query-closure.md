@@ -8,7 +8,7 @@ review-manager: rfc
 required-owners: [rfc, binder-checker, module-system, error-system, spec-audit, verification]
 approvers: [rfc, binder-checker, module-system, error-system, spec-audit, verification]
 created: 2026-07-19
-updated: 2026-07-27
+updated: 2026-07-28
 area: compiler
 requires: [17, 18]
 supersedes: []
@@ -301,7 +301,7 @@ The stable projection catalog is:
 | `ImplementationBindingHeader` | `StableImplementationQueryKey` | optional canonical occurrence sequence |
 | `ScopeNameBucket` | `StableScopeNameBucketQueryKey` | canonical stable target sequence |
 | `ImportTarget` | `StableSemanticImportQueryKey` | optional stable import |
-| `BindingVisibility` | global `StableBindingTargetKey` | `BindingVisibilityResult` |
+| `BindingVisibility` | global `StableBindingTargetKey` | `Optional<MemberVisibility>` |
 
 Each descriptor has one literal domain, one exact key encoding, and one exact
 value domain. No descriptor wraps an already canonical key. Provider and
@@ -594,11 +594,12 @@ producer, verifier, caller, codec, oracle, gate, and build target. No alternate
 decoder, overload, alias, flag, fallback authority, or dual production root is
 permitted.
 
-Implementation follows the synchronized dependency graph. RFC 0027 `S1` and
-`S2` land together as one buildable schema-and-facts transaction. `S3` and
-`S6` then land as their separate codec and diagnostic commits. RFC 0029
-`R29-13A`, `R29-13B`, and `R29-13C` prepare the query types, exact provenance
-and failure contracts, and native gates before `R29-14` assembles the atomic
+Implementation follows the synchronized dependency graph. RFC 0027 `S1`,
+`S2`, and `S3` remain bounded review partitions and land only as the single
+build-visible RFC 0029 `R29-12AB` transaction. `S6` then lands separately
+through `R29-12D`. RFC 0029 `R29-13A`, `R29-13B`, and `R29-13C` prepare the
+query types, exact provenance and failure contracts, and native gates only
+after both foundation transactions pass; `R29-14` then assembles the atomic
 runtime source transaction. Contextual membership precedes materialization,
 and downstream leases migrate within that atomic transaction.
 
@@ -688,3 +689,4 @@ None
 | 2026-07-27 | IMPLEMENTING | Acceptance transaction `rfc0027-accept-20260727-e2f4ba5e` synchronized the current owner, scope, fact, header, result, allocation, complete-read, diagnostic, materialized-provenance, and Checker contracts to RFC 0027 proposal SHA-256 `e2f4ba5eb777d3d70b8eb3ad75b18f5169afc61a83d989ccc61fc9d5d022f435`; implementation status remains unchanged. |
 | 2026-07-27 | IMPLEMENTING | Acceptance transaction `rfc0028-accept-20260727-944b68ff` synchronized sealed admission, descriptor-specific capability failures, exact membership-before-interner ordering, direct owner-body closure facts, and the RFC 0028 implementation dependency graph to proposal SHA-256 `944b68ffc0aff5576d079a243ff092d7d19fba5ffed65551dda8e68adf230db4`; implementation status remains unchanged. |
 | 2026-07-27 | IMPLEMENTING | Acceptance transaction `rfc0029-accept-20260727-8d393a0c` synchronized the closed capability request result, stable-identity admission prerequisite, exact five-descriptor read and failure contracts, semantic-syntax invariant mapping, direct owner-body reconstruction, and corrected schema-before-runtime dependency graph to proposal SHA-256 `8d393a0c6c00a7fad9ef086d3d25f5ed44300041afa9e1e1a4af5d68830fd3e7`; implementation status remains unchanged. |
+| 2026-07-28 | IMPLEMENTING | Acceptance transaction `rfc0031-accept-20260728-c25fcb18` synchronized the hand-authored stable-schema metamodel, direct `Optional<MemberVisibility>` result, descriptor-owned capability payload and failure aliases, exact Q3/T1 ownership, and atomic `R29-12AB` then `R29-12D` rollout to RFC 0031 proposal SHA-256 `c25fcb18e503ac214a8e92c925fa88108a915c2b15c94409dfecb88b3d9a63d5` and tracker SHA-256 `d64e7791ed2e2a488c5f57bc07ac341ccfc37d37c220c85131e2c9e846fb8d0d`; implementation status remains unchanged. |

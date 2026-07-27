@@ -758,11 +758,23 @@ struct ParseSourceQuery final {
 };
 
 struct ModuleDependencyProvenance final {
+  using Capability = ModuleDependencyProvenanceMap;
   using FailureAlternatives = query::CapabilityFailureList<
       query::SourceRejection<diagnostics::DiagnosticFact>,
       query::KeyRejection<binder::BinderKeyFailure>>;
 };
 ```
+
+The synchronized RFC 0031 stable-Binder schema records both aliases for each
+capability descriptor. `R28-13A` prepares the query-type review partition;
+RFC 0029 `R29-13A` owns the generic
+`CapabilityDemandResult<Descriptor>` runtime sum, and `R29-13C` owns its
+native and mutation coverage. A descriptor-owning task activates only its own
+schema row and compiles exact type equality between the hand-written
+`Descriptor::Capability` and `Descriptor::FailureAlternatives` aliases and the
+row's `capabilityType` and failure-alternative list. Future descriptor rows
+remain inert. The final architecture gate rejects any implemented descriptor
+that lacks either equality check.
 
 The list may contain either wrapper at most once and may be empty. A
 compile-time transformation produces the exact internal `zc::OneOf` storage,
@@ -1265,7 +1277,8 @@ descriptor:
 | Name | `ModuleDependencyProvenance` |
 | Domain | `zom.query.module-dependency-provenance` |
 | Key | `ModuleKey` |
-| Result | `CapabilityDemandResult<ModuleDependencyProvenanceMap>` |
+| Result | `CapabilityDemandResult<ModuleDependencyProvenance>` |
+| Capability | `ModuleDependencyProvenanceMap` |
 | Reuse | `RevisionLocal` |
 | Retention | `Retained` |
 | Cycle | `Reject` |
@@ -1321,6 +1334,27 @@ SHA256(
 ```
 
 Provider and verifier compute the witness through separate collection code.
+
+The synchronized RFC 0031 stable-Binder capability row is exact:
+
+```text
+name: ModuleDependencyProvenance
+resultType: CapabilityDemandResult<ModuleDependencyProvenance>
+capabilityType: ModuleDependencyProvenanceMap
+failureAlternatives:
+  SourceRejection<DiagnosticFact>
+  KeyRejection<BinderKeyFailure>
+descriptorTask: R28_16A
+providerTask: R28_16A
+verifierTask: R28_16A
+testTask: R28_16B
+```
+
+`R28-16A` compiles both alias-equality checks against this owned row while it
+implements the descriptor, provider, and verifier. `R28-16B` mutates the
+result type, capability type, and each failure alternative independently,
+proves that unilateral drift in either hand-written alias fails, and requires
+the final capability architecture gate to recognize both checks.
 
 Complete tracked reads are:
 
@@ -1789,7 +1823,7 @@ configuration. Release readiness requires:
 | `R28-11` | `rfc` | `R28-02` through `R28-10` | Record exact-hash approvals and prepare the complete synchronized acceptance transaction |
 | `R28-11A` | `task-router` | `R28-11` | Assign the two descriptor scripts to `verification` and synchronize routing documentation |
 | `R28-12` | `rfc` | `R28-11`; `R28-11A` | Validate the synchronized tree, record one transaction identifier and proposal hash, and accept atomically |
-| `R28-13A` | `module-system` | `R29-12A`; `R29-12B`; `R29-12AB`; `R29-12D` | Prepare the reviewed query-type partition for token database identity, separated request results, transaction failures, seals, and capability demand results; do not land independently |
+| `R28-13A` | `module-system` with `runtime-memory` review | `R29-12A`; `R29-12B`; `R29-12AB`; `R29-12D` | Prepare the reviewed query-type partition for token database identity, separated request results, transaction failures, seals, and the RFC 0031 generic descriptor-dependent capability-demand runtime sum; do not land independently |
 | `R28-13B` | `module-system` | `R28-13A` | Prepare the reviewed query-database partition for transaction and final-seal state, sealed snapshots, and admission propagation; do not land independently |
 | `R28-13C` | `module-system` | `R28-13B` | Prepare the reviewed descriptor inventory and query build-wiring partition; do not land independently |
 | `R28-13C1` | `verification` | `R28-13C` | Prepare the reviewed inventory generator, architecture gate, and adversarial self-tests; do not land independently |
@@ -1798,8 +1832,8 @@ configuration. Release readiness requires:
 | `R28-13F` | `verification` with `binder-checker` review | `R28-13C1` | Prepare the Binder transaction-consumer native-test cutover; do not land independently |
 | `R28-13G` | `verification` | `R28-13A`; `R28-13B`; `R28-13C`; `R28-13C1`; `R28-13D`; `R28-13E`; `R28-13F` | Prepare reviewed native test, generated test inventory, CTest wiring, real-object decoder, race, and negative compile partitions; do not land independently |
 | `R28-14` | `module-system` with all partition-owner review | `R28-13G`; `R29-13B`; `R29-13C` | Complete the runtime partition join for RFC 0029 `R29-14`; this row has no independent landing authority |
-| `R28-16A` | `module-system` with `lexer-parser` review | RFC 0029 `R29-14` | Prepare the production provenance descriptor, provider, verifier, inventory row, `registerModuleGraphQueries` registration, and build wiring; do not land independently |
-| `R28-16B` | `verification` with `binder-checker` review | `R28-16A` | Prepare the provenance and registration native tests, updated test inventory, and test build wiring; do not land independently |
+| `R28-16A` | `module-system` with `lexer-parser` review | RFC 0029 `R29-14` | Prepare the production provenance descriptor, provider, verifier, query inventory row, stable-Binder owned-row equality checks for both `Capability` and `FailureAlternatives`, `registerModuleGraphQueries` registration, and build wiring; do not land independently |
+| `R28-16B` | `verification` with `binder-checker` review | `R28-16A` | Prepare provenance, registration, result-type, capability-alias, failure-alternative-alias, and final architecture-gate mutation tests, the updated test inventory, and test build wiring; do not land independently |
 | `R28-16` | `module-system` with all partition-owner review | `R28-16B` | Assemble and land one buildable provenance source, schema, test, and CMake transaction |
 | `R28-17` | `verification` | `R28-16` | Run focused, full, architecture, generated-inventory, determinism, and Release verification |
 | `R28-18` | `spec-audit` | `R28-17` | Publish only the production-backed current compiler contract |
@@ -1836,7 +1870,7 @@ The review partitions have these exact file sets:
 | `R28-13G.1` | `products/zomlang/tests/unittests/compiler/query/query-test-specs.h`; `products/zomlang/tests/unittests/compiler/query/query-test-descriptor-schema.def`; all six query test `.cc` files and query `CMakeLists.txt` listed in the atomic migration inventory |
 | `R28-13G.2` | all driver and Binder test files plus their `CMakeLists.txt` files listed in the atomic migration inventory; `products/zomlang/tests/CMakeLists.txt` |
 | `R29-13B` | `products/zomlang/compiler/binder/identity-pre-admission.{h,cc}`; `products/zomlang/compiler/binder/stable-identity-candidate-producer.{h,cc}`; `products/zomlang/compiler/binder/stable-identity-candidate-verifier.{h,cc}`; `products/zomlang/compiler/driver/named-identity-inventory-query.{h,cc}`; `products/zomlang/compiler/driver/named-item-query.{h,cc}`; `products/zomlang/compiler/driver/owner-body-query.{h,cc}`; Binder and driver build wiring; the four focused Binder and driver tests named in the atomic migration inventory |
-| `R29-13C` | query `query-test-specs.h`, database, capability, concurrency, and CMake files; `products/zomlang/tests/cmake/expect-compile-failure/CMakeLists.txt`; the exact query-runtime compile-fail cases; `products/zomlang/tests/CMakeLists.txt`; `scripts/check-query-descriptor-architecture.py` |
+| `R29-13C` | query `query-test-specs.h`, database, capability, concurrency, and CMake files; `products/zomlang/tests/cmake/expect-compile-failure/CMakeLists.txt`; the exact query-runtime compile-fail cases; `products/zomlang/tests/CMakeLists.txt`; `scripts/check-query-descriptor-architecture.py`; generic runtime-sum and reusable staged dual-alias gate coverage |
 
 Each numbered subpartition is separately reviewed and may be split into
 smaller non-landing patches before it exceeds approximately 400 changed source
@@ -1855,7 +1889,9 @@ documentation.
 `products/zomlang/tests/unittests/compiler/driver/module-dependency-provenance-query-test.cc`,
 `products/zomlang/tests/unittests/compiler/driver/module-graph-query-input-test.cc`,
 `products/zomlang/tests/unittests/compiler/query/query-test-descriptor-schema.def`,
-and `products/zomlang/tests/unittests/compiler/driver/CMakeLists.txt`.
+`products/zomlang/tests/unittests/compiler/driver/CMakeLists.txt`, and the
+bounded updates to `scripts/check-query-descriptor-architecture.py` required
+to recognize and adversarially test both owned-row alias checks.
 `R28-16` lands exactly their union. The schema change and descriptor land
 together; the generator rebuilds both build-tree headers, and `--check` proves
 that the test inventory still contains the complete updated production prefix.
@@ -1992,3 +2028,4 @@ None
 | 2026-07-27 | ACCEPTED | Accepted exact REVIEW proposal SHA-256 `944b68ffc0aff5576d079a243ff092d7d19fba5ffed65551dda8e68adf230db4` through synchronized transaction `rfc0028-accept-20260727-944b68ff`; implementation remains pending. |
 | 2026-07-27 | ACCEPTED | Synchronized to RFC 0029 proposal SHA-256 `8d393a0c6c00a7fad9ef086d3d25f5ed44300041afa9e1e1a4af5d68830fd3e7` through transaction `rfc0029-accept-20260727-8d393a0c`; implementation remains pending behind the RFC 0029 foundation tasks. |
 | 2026-07-28 | ACCEPTED | Synchronized to RFC 0030 proposal SHA-256 `4ed0e6b885abc87a1c4251855780cf115a85b3623b1d46f774a4b664110f7b6b` through transaction `rfc0030-accept-20260728-4ed0e6b8`; implementation remains pending behind the atomic S1-plus-S2-plus-S3 foundation and separate S6 diagnostic transaction. |
+| 2026-07-28 | ACCEPTED | Transaction `rfc0031-accept-20260728-c25fcb18` synchronized the descriptor-parameterized provenance result, runtime-only capability payload, generic capability-demand sum ownership, and staged dual-alias checks to RFC 0031 proposal SHA-256 `c25fcb18e503ac214a8e92c925fa88108a915c2b15c94409dfecb88b3d9a63d5` and tracker SHA-256 `d64e7791ed2e2a488c5f57bc07ac341ccfc37d37c220c85131e2c9e846fb8d0d`; implementation tasks remain pending. |

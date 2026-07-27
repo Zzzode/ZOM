@@ -288,6 +288,31 @@ CapabilityDemandResult<Descriptor>
 CapabilityFailureEnvelope
 ```
 
+`R29-13A` owns the generic
+`CapabilityDemandResult<Descriptor>` runtime sum with `runtime-memory` review.
+`R29-13C` owns its native and mutation coverage. It has no canonical codec and
+has this exact descriptor-dependent topology:
+
+```text
+Published = 0x01, Always
+  lease: QueryCapabilityLease<const Descriptor::Capability>
+SourceRejected = 0x02,
+  FailureAlternative<SourceRejection<Diagnostic>>
+  diagnostics: CanonicalNonEmptySequence<Diagnostic>
+KeyRejected = 0x03,
+  FailureAlternative<KeyRejection<KeyFailure>>
+  failure: KeyFailure
+RuntimeRejected = 0x04, Always
+  failure: QueryRuntimeFailure
+```
+
+`Diagnostic` and `KeyFailure` are schema metavariables bound from the matching
+wrapper payload in the demanded descriptor's exact failure-alternative list.
+They are not aliases for Binder-owned types. `SourceRejected` or
+`KeyRejected` exists for an instantiated descriptor if and only if that
+descriptor lists the matching wrapper. The two unconditional alternatives
+exist for every capability descriptor.
+
 The descriptor owner owns every concrete
 `CapabilityFailureContract<Descriptor, Alternative>`.
 
@@ -849,6 +874,13 @@ The `R29-13C` review partition is exactly:
 It is a non-landing review partition and joins `R29-14`. The architecture gate
 rejects an unlisted compile-fail case.
 
+`R29-13C` additionally provides the native and mutation proof for the generic
+runtime sum owned by `R29-13A`. Its reusable staged architecture checks verify
+both the capability alias and the failure-alternative alias for only the
+descriptor rows activated by their owning tasks. It must reject a missing,
+extra, exchanged, or payload-drifted failure alternative and a capability
+payload mismatch without referencing or compiling any future descriptor.
+
 ### Dependency Correction
 
 RFC 0027 tasks `S1`, `S2`, `S3`, and `S6` move before the RFC 0028 runtime
@@ -861,6 +893,114 @@ boundaries:
 | 2 | `S2` | complete stable keys, contextual keys, headers, facts, `BinderQueryOwner`, `BinderKeyFailureKind`, `BinderKeyFailure`, and result algebra |
 | 3 | `S3` | bounded exact-consumption codecs and fixed wire oracles |
 | 4 | `S6` | canonical Binder diagnostic extensions and `DiagnosticFact` payload support required by stable-identity admission |
+
+RFC 0031 replaces the original `S1` inventory shape with the complete stable
+schema metamodel below. `S1` is not a field-and-tag subset and may not land a
+reduced schema.
+
+The closed entity vocabulary is:
+
+```text
+Bound Record NestedRecord NestedField Sum RuntimeSum EnumValue SumVariant
+VariantField InlineSumVariant InlineSumVariantField RuntimeSumVariant
+RuntimeVariantField Field FieldLimit Query Input CapabilityQuery
+MaterializerPermission DiagnosticMapping Constraint Digest
+```
+
+The artifact-owning rows are exact:
+
+```text
+Record(
+  name, domain, maximum, producer, verifier,
+  typeTask, codecTask, testTask, mutations, test)
+NestedRecord(
+  name, typeParameter1, typeParameter2, maximum,
+  typeTask, codecTask, testTask, mutations, test)
+Sum(name, typeTask, codecTask, testTask, mutations, test)
+RuntimeSum(name, typeTask, testTask, mutations, test)
+EnumValue(
+  enumName, valueName, tag,
+  typeTask, codecTask, testTask, mutations, test)
+Query(
+  name, domain, keyType, resultType, valueDomain, producer, verifier,
+  descriptorTask, providerTask, verifierTask, testTask, mutations, test)
+Input(
+  name, domain, keyType, resultType, verifier,
+  descriptorTask, providerTask, verifierTask, testTask, mutations, test)
+CapabilityQuery(
+  name, domain, keyType, resultType, capabilityType, producer, verifier,
+  failureAlternatives, descriptorTask, providerTask, verifierTask, testTask,
+  mutations, test)
+DiagnosticMapping(
+  name, code, arguments, secondaryCode, secondaryRole,
+  secondaryCount, fixItCount, diagnosticTask, testTask, mutations, test)
+Digest(
+  name, domain, preimage, implementationTask, testTask, mutations, test)
+```
+
+Structural field and variant rows inherit their containing artifact's owner.
+Every canonical sum has exactly one `Sum` row. A type represented by both
+`Record` and `Sum` is one permitted composite only when both task triples are
+equal. Every value of one enum carries the same task triple. A
+`RuntimeSumVariant` condition is either `Always` or one exact
+`FailureAlternative<Wrapper<PayloadParameter>>`; a conditional field may use
+only the payload parameter bound by that condition.
+
+The closed task vocabulary is:
+
+```text
+S2A S2B S2C S2D S2E S3 S6 I2 B1 B2 B4 M1 M2 M3 M5 Q3 T1
+R30_13 R29_13A R29_13C R28_16A R28_16B
+```
+
+The underscore forms denote the matching hyphenated tracker tasks and exist
+only as X-macro tokens.
+
+The schema owns `CapabilityDemandResult<Descriptor>` as the `RuntimeSum`
+defined in `Descriptor-Owned Canonical Payloads`, with type task `R29_13A`,
+test task `R29_13C`, and no codec task. Every `CapabilityQuery` row must use
+`CapabilityDemandResult<name>`, must name its runtime capability payload, and
+must list its exact descriptor-dependent failure alternatives. `R30-13`
+validates these structural relationships while future rows remain inert. Each
+descriptor task activates only its owned row and compiles independent equality
+checks for both `name::Capability` and `name::FailureAlternatives`. The final
+capability architecture gate rejects an implemented descriptor without either
+check.
+
+The five stable-Binder capability rows all list
+`SourceRejection<DiagnosticFact>|KeyRejection<BinderKeyFailure>`. Their exact
+result and capability pairs are:
+
+| Descriptor | Public result | Capability payload |
+|---|---|---|
+| `ModuleDependencyProvenance` | `CapabilityDemandResult<ModuleDependencyProvenance>` | `ModuleDependencyProvenanceMap` |
+| `MaterializeModuleGraph` | `CapabilityDemandResult<MaterializeModuleGraph>` | `MaterializedModuleGraph` |
+| `MaterializeModuleSkeleton` | `CapabilityDemandResult<MaterializeModuleSkeleton>` | `MaterializedModuleSkeleton` |
+| `MaterializeOwnerBody` | `CapabilityDemandResult<MaterializeOwnerBody>` | `MaterializedOwnerBody` |
+| `VerifyBoundModule` | `CapabilityDemandResult<VerifyBoundModule>` | `VerifiedBoundModule` |
+
+Input ownership is also schema data:
+
+| Input | Descriptor | Provider | Verifier | Test |
+|---|---|---|---|---|
+| `CompleteCompilationContextAuthorityInput` | `T1` | `T1` | `T1` | `T1` |
+| `ActiveDefinitionAuthorityInput` | `I2` | `T1` | `I2` | `I2` |
+| `CompleteRootIdentityReadiness` | `I2` | `T1` | `I2` | `I2` |
+
+The binding-visibility query result is exactly
+`Optional<MemberVisibility>`. Runtime capability payloads receive descriptor
+rows but no canonical record row or codec.
+
+The complete package-request schema adds
+`CanonicalCompilationRootRecord`, `CanonicalTargetSelectionRecord`,
+`CanonicalLanguageOptionsRecord`, and
+`CanonicalPackageCompilationRequest` with
+`(typeTask=Q3, codecTask=Q3, testTask=R30_13)`. It fixes
+`CanonicalPackageRecordBytes` at `UINT32_MAX`, `TargetProfileBytes` at `255`,
+all accepted zero-based field ordinals, and the root-sequence limit. Only the
+comprehensive schema mutation test in
+`products/zomlang/tests/unittests/compiler/driver/package-compilation-request-test.cc`
+changes; completed Q3 production remains untouched.
 
 `S1`, `S2`, and `S3` remain separate bounded review partitions with their
 accepted owners. RFC 0030 makes `R29-12AB` their only landing transaction so
@@ -876,7 +1016,10 @@ The accepted set includes `stable-binding-schema.def`,
 `stable-binding-facts.{h,cc}`, `stable-binding-codec.{h,cc}`, Binder and driver
 build files, the focused Binder test and CTest file, both stable-binding gates,
 the complete driver contextual-key declaration and caller cutover, both
-authority tests, the allowlist manifest, and `scripts/check-landing-scope.py`.
+authority tests,
+`products/zomlang/tests/unittests/compiler/driver/package-compilation-request-test.cc`,
+the allowlist manifest, and `scripts/check-landing-scope.py`. Only the
+comprehensive schema mutation test changes in the package-request test file.
 
 `S6` lands as one diagnostic-fact Conventional Commit after `R29-12AB`. Its
 exact files, native test, CTest ownership, and diagnostic-coverage gates are
@@ -1089,13 +1232,13 @@ descriptor, provider, verifier, and decoding paths as unit tests.
 | `R29-09` | `verification` | `R29-01` | Review native tests, negative compile gates, race seams, and architecture checks |
 | `R29-10` | `rfc` | `R29-02` through `R29-09` | Record exact-hash approvals and prepare synchronized acceptance |
 | `R29-11` | `rfc` | `R29-10` | Accept one synchronized documentation transaction |
-| `R29-12A` | `binder-checker` with `verification` review | `R29-11` | Prepare and review RFC 0027 `S1`; do not land independently |
+| `R29-12A` | `binder-checker` with `verification` review | `R29-11` | Prepare and review RFC 0027 `S1` as the complete RFC 0031 schema metamodel; do not land independently |
 | `R29-12B` | `binder-checker` with `module-system` review | `R29-12A` | Prepare and review RFC 0027 `S2`; do not land independently |
-| `R29-12AB` | `binder-checker` with `module-system` and `verification` review | `R29-12A`; `R29-12B`; RFC 0030 `R30-14` | Land the exact RFC 0030 allowlist as one buildable S1-plus-S2-plus-S3 transaction with contextual caller cutover and focused native, mutation, architecture, and landing-scope gates |
+| `R29-12AB` | `binder-checker` with `module-system` and `verification` review | `R29-12A`; `R29-12B`; RFC 0030 `R30-14` | Land the exact RFC 0030 allowlist, including the bounded package-request schema mutation test, as one buildable S1-plus-S2-plus-S3 transaction with contextual caller cutover and focused native, mutation, architecture, and landing-scope gates |
 | `R29-12D` | `error-system` with `binder-checker` and `verification` review | `R29-12AB` | Execute RFC 0027 `S6` as one canonical Binder diagnostic-fact commit |
-| `R29-13A` | `module-system` with `runtime-memory` review | `R29-12AB`; `R29-12D` | Revise and approve the RFC 0028 query-type partition |
+| `R29-13A` | `module-system` with `runtime-memory` review | `R29-12AB`; `R29-12D` | Implement the generic descriptor-dependent `CapabilityDemandResult<Descriptor>` runtime sum with no codec and revise the RFC 0028 query-type partition |
 | `R29-13B` | `module-system` with `binder-checker`, `error-system`, and `verification` review | `R29-13A` | Add identity-site provenance, stable identity admission, and the five descriptor failure contracts to bounded source partitions |
-| `R29-13C` | `verification` | `R29-13B` | Add token, result, provenance, mapping, verifier, race, private decoder, and CTest compile-fail coverage |
+| `R29-13C` | `verification` | `R29-13B` | Add generic runtime-sum coverage, staged capability and failure-alternative alias mutations, token, result, provenance, mapping, verifier, race, private decoder, and CTest compile-fail coverage |
 | `R29-14` | `module-system` with all source owners | `R29-13C`; RFC 0028 `R28-13G` | Assemble and land the corrected RFC 0028 atomic runtime source transaction as the sole landing authority |
 | `R29-15` | `verification` | `R29-14` | Run the complete RFC 0028 and RFC 0029 verification plans |
 | `R29-16` | `spec-audit` | `R29-15` | Publish only production-backed current design |
@@ -1209,3 +1352,4 @@ None
 | 2026-07-27 | REVIEW | Entered exact-hash affected-owner review after structural and repository gates passed. |
 | 2026-07-27 | ACCEPTED | Transaction `rfc0029-accept-20260727-8d393a0c` accepted proposal SHA-256 `8d393a0c6c00a7fad9ef086d3d25f5ed44300041afa9e1e1a4af5d68830fd3e7` with exact-hash approval from every required owner and synchronized RFCs 0017 through 0020 and 0025 through 0028 without claiming implementation. |
 | 2026-07-28 | ACCEPTED | Transaction `rfc0030-accept-20260728-4ed0e6b8` synchronized the build-visible S1-plus-S2-plus-S3 atomic landing, exact contextual-key cutover, native and mutation gates, landing-scope proof, and separate S6 diagnostic transaction to RFC 0030 proposal SHA-256 `4ed0e6b885abc87a1c4251855780cf115a85b3623b1d46f774a4b664110f7b6b`; RFC 0029 remains accepted and implementation remains incomplete. |
+| 2026-07-28 | ACCEPTED | Transaction `rfc0031-accept-20260728-c25fcb18` synchronized the complete stable schema metamodel, generic capability runtime sum, descriptor capability and failure-alternative alias checks, and package-request mutation scope to RFC 0031 proposal SHA-256 `c25fcb18e503ac214a8e92c925fa88108a915c2b15c94409dfecb88b3d9a63d5` and tracker SHA-256 `d64e7791ed2e2a488c5f57bc07ac341ccfc37d37c220c85131e2c9e846fb8d0d`; all implementation tasks remain pending. |

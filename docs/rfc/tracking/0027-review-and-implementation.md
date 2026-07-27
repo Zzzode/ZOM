@@ -83,6 +83,20 @@ closes the five provenance capability failure contracts, and orders the
 stable Binder foundation before query-runtime work. RFC 0027 remains
 `ACCEPTED`; completed tasks `R27-12B` and `R27-17A` remain complete.
 
+### 2026-07-28 RFC 0031 Acceptance Synchronization
+
+Acceptance transaction `rfc0031-accept-20260728-c25fcb18` binds RFC 0031
+proposal SHA-256
+`c25fcb18e503ac214a8e92c925fa88108a915c2b15c94409dfecb88b3d9a63d5`
+and tracker SHA-256
+`d64e7791ed2e2a488c5f57bc07ac341ccfc37d37c220c85131e2c9e846fb8d0d`.
+The synchronized design makes the stable-binding schema a hand-authored
+canonical inventory, fixes descriptor-parameterized capability rows and their
+dual owner-task alias checks, assigns complete-context artifacts to T1, and
+assigns the comprehensive canonical-package schema mutation test to RFC 0030
+`R30-13`. RFC 0027 remains `ACCEPTED`; completed Q3 task `R27-17A` remains
+complete and its production files and existing tests are not reopened.
+
 ## Decision Record
 
 Accepted by `task-router`, `rfc`, `module-system`, `binder-checker`,
@@ -100,6 +114,11 @@ through the exact atomic `R29-12AB` allowlist. `S6` then lands separately
 through `R29-12D`. Query-runtime work begins at `R29-13A` only after both
 transactions pass, and the corrected source transaction lands through
 `R29-14`.
+
+Transaction `rfc0031-accept-20260728-c25fcb18` establishes the accepted
+metamodel consumed by RFC 0030 `R30-11`, binds both reviewed hashes, preserves
+completed Q3 production authority, and places the additional package-schema
+mutation test in `R30-13`.
 
 ## Implementation Tracker
 
@@ -120,6 +139,7 @@ transactions pass, and the corrected source transaction lands through
 | `R27-12A` | `rfc` | `R27-11`; `R27-12` | Read the completed routing tree without editing it, validate one tree state, record one transaction identifier and proposal hash in RFC metadata, then transition acceptance metadata atomically. | `python3 scripts/check-rfc.py` | Complete |
 | `R27-12B` | `verification` | `R27-12A` | Record the clean committed accepted synchronization SHA as the immutable implementation-series base. | Frozen-base ancestry check | Complete; base `109947943519ec2d380a3e8d71813b40bc68bde5` is an ancestor of the recording commit |
 | `R27-12C` | `rfc` | `R27-12B`; RFC 0029 `R29-11` | Synchronize complete contextual keys, identity-site provenance, stable-identity admission, exact typed provenance failures, and the corrected dependency order through transaction `rfc0029-accept-20260727-8d393a0c`. | `python3 scripts/check-rfc.py` | Complete |
+| `R27-12D` | `rfc` | `R27-12C`; RFC 0031 `R31-09` | Synchronize the accepted hand-authored schema metamodel, direct visibility result, descriptor capability and failure aliases, Q3/`R30-13` test split, and exact T1 artifacts through transaction `rfc0031-accept-20260728-c25fcb18`. | `python3 scripts/check-rfc.py` | Complete |
 | `R27-15` | `binder-checker` | RFC 0029 `R29-12AB` | Implement body disposition and independently verified staging-safe headers. | Header producer/verifier tests | Pending |
 | `R27-17A` | `module-system` | `R27-12B` | Implement the handle-free canonical package request records, verified-request projection, exact codecs, and independent projection verifier. | Package request codec and projection tests | Complete; implementation `3039da5259be25b139954834f900a21b7b891fcf`, sanitizer unit tests 135/135, focused package request test 1/1, independent integration review approved |
 | `R27-18` | `module-system` with required `runtime-memory` review | RFC 0029 `R29-14` | Replace frozen registries with the arena-owned eight-domain typed interner set. | Identity, concurrency, collision, and teardown tests | Pending |
@@ -136,7 +156,7 @@ transactions pass, and the corrected source transaction lands through
 | `R27-27B` | `ir-backend` | `R27-27A` | Migrate verified HIR to a retained bound-module lease. | HIR lineage tests | Pending |
 | `R27-27C` | `ir-backend` | `R27-27B` | Migrate Built MIR to a retained bound-module lease. | MIR lineage tests | Pending |
 | `R27-27D` | `runtime-memory` | `R27-27C` | Migrate the ownership overlay to a retained bound-module lease and exact destruction order. | Ownership lineage tests | Pending |
-| `R27-28A` | `module-system` | RFC 0029 `R29-14`; RFC 0028 `R28-16`; `R27-23`; `R27-25` | Supply the session-owned live verified package request, execute the input transactions, and implement the session state machine plus sealed snapshots without redeclaring payload schemas. | Session transaction and borrowed-input lifetime tests | Pending |
+| `R27-28A` | `module-system` | RFC 0029 `R29-14`; RFC 0028 `R28-16`; `R27-23`; `R27-25` | In `module-graph-query-input.{h,cc}`, implement `CompleteCompilationContextAuthority`, its canonical codec, `CompleteCompilationContextAuthorityInput`, and its independent verifier; then consume the session-owned live verified package request, execute the input transactions, and implement the session state machine plus sealed snapshots. | Complete-context verifier, session transaction, and borrowed-input lifetime tests | Pending |
 | `R27-28B` | `module-system` | `R27-26A`; `R27-27D`; `R27-28A` | Implement the dependency-first production capability root over the RFC 0028 sealed snapshot and inherited admission contract. | Session architecture and end-to-end tests | Pending |
 | `R27-28C` | `module-system` | `R27-28B` | Implement surviving-lease and session teardown order. | Teardown tests | Pending |
 | `R27-29` | `module-system` | `R27-28C` | Delete identity registry/freeze authority, session ledgers, and the session-owned handleful graph root. | Identity and session zero-reference gates | Pending |
@@ -152,8 +172,11 @@ transactions pass, and the corrected source transaction lands through
 | `R27-32A` | `verification` | `R27-33A` | Recompute and byte-compare the fixed report without writing it, then rerun English-only, RFC, format, versioning, and diff gates after every spec-audit edit. | Final write-free RFC 0027 Test Plan subset | Pending |
 | `R27-33` | `rfc` | `R27-32A` | Audit all implementation, report, and final verification evidence, then perform the only synchronized RFC implementation-state transitions. | `python3 scripts/check-rfc.py` | Pending |
 
-`R27-12B`, `R27-12C`, and `R27-17A` are complete. Remaining implementation is
-authorized only in the dependency order recorded above.
+`R27-12B`, `R27-12C`, `R27-12D`, and `R27-17A` are complete. Remaining
+implementation is authorized only in the dependency order recorded above.
+`R27-17A` remains the completed Q3 production task; RFC 0030 `R30-13` owns
+only the additional comprehensive schema mutation test and exact landing
+allowlist entry.
 
 ## RFC 0029 Acceptance Transaction Record
 
@@ -177,3 +200,15 @@ authorized only in the dependency order recorded above.
 | RFC 0027 status after transaction | `ACCEPTED` |
 | Synchronized authority | Exact build-visible S1-plus-S2-plus-S3 landing set, driver-owned contextual-key cutover, native and mutation gates, landing-scope proof, and exact S6 diagnostic transaction |
 | Implementation authority | RFC 0030 `R30-11` through `R30-16`, then runtime work beginning at RFC 0029 `R29-13A` |
+
+## RFC 0031 Acceptance Transaction Record
+
+| Field | Value |
+|---|---|
+| Transaction | `rfc0031-accept-20260728-c25fcb18` |
+| Proposal SHA-256 | `c25fcb18e503ac214a8e92c925fa88108a915c2b15c94409dfecb88b3d9a63d5` |
+| Tracker SHA-256 | `d64e7791ed2e2a488c5f57bc07ac341ccfc37d37c220c85131e2c9e846fb8d0d` |
+| RFC 0027 status before transaction | `ACCEPTED` |
+| RFC 0027 status after transaction | `ACCEPTED` |
+| Synchronized authority | Hand-authored RFC 0031 schema metamodel, direct visibility result, descriptor result/payload/failure closure, exact Q3 versus `R30-13` test ownership, and T1 complete-context artifacts |
+| Implementation authority | RFC 0030 `R30-11` through `R30-16` under the accepted RFC 0031 metamodel, then runtime work beginning at RFC 0029 `R29-13A`; completed Q3 remains closed |

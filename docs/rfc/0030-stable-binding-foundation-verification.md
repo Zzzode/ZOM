@@ -134,25 +134,45 @@ canonical X-macro inventory. It is not generated output. Its consumers may
 generate C++ tables or test cases during preprocessing, but no second schema
 source exists.
 
-Every record, nested record, enum, sum, field, query, input, capability query,
-diagnostic mapping, bound, constraint, and materializer permission has exactly
-one inventory row. Artifact-producing rows carry their implementation
-ownership in the row itself:
+Every record, nested record, canonical sum, runtime-only sum, enum, field,
+query, input, capability query, diagnostic mapping, digest, bound, constraint,
+and materializer permission has exactly one inventory row. Artifact-producing
+rows carry their implementation ownership in the row itself.
 
 ```text
-record:
-  typeTask, codecTask, testTask
-query or input:
-  descriptorTask, providerTask, verifierTask, testTask
-diagnostic mapping:
-  diagnosticTask, testTask
+Record(
+  name, domain, maximum, producer, verifier,
+  typeTask, codecTask, testTask, mutations, test)
+NestedRecord(
+  name, typeParameter1, typeParameter2, maximum,
+  typeTask, codecTask, testTask, mutations, test)
+Sum(name, typeTask, codecTask, testTask, mutations, test)
+RuntimeSum(name, typeTask, testTask, mutations, test)
+EnumValue(
+  enumName, valueName, tag,
+  typeTask, codecTask, testTask, mutations, test)
+Query(
+  name, domain, keyType, resultType, valueDomain, producer, verifier,
+  descriptorTask, providerTask, verifierTask, testTask, mutations, test)
+Input(
+  name, domain, keyType, resultType, verifier,
+  descriptorTask, providerTask, verifierTask, testTask, mutations, test)
+CapabilityQuery(
+  name, domain, keyType, resultType, capabilityType, producer, verifier,
+  failureAlternatives, descriptorTask, providerTask, verifierTask, testTask,
+  mutations, test)
+DiagnosticMapping(
+  name, code, arguments, secondaryCode, secondaryRole,
+  secondaryCount, fixItCount, diagnosticTask, testTask, mutations, test)
+Digest(
+  name, domain, preimage, implementationTask, testTask, mutations, test)
 ```
 
 The schema gate accepts only these closed entity kinds:
 
 ```text
-Bound Record NestedRecord NestedField EnumValue SumVariant VariantField
-InlineSumVariant InlineSumVariantField RuntimeSumVariant
+Bound Record NestedRecord NestedField Sum RuntimeSum EnumValue SumVariant
+VariantField InlineSumVariant InlineSumVariantField RuntimeSumVariant
 RuntimeVariantField Field FieldLimit Query Input CapabilityQuery
 MaterializerPermission DiagnosticMapping Constraint Digest
 ```
@@ -161,34 +181,87 @@ The closed task vocabulary is:
 
 ```text
 S2A S2B S2C S2D S2E S3 S6 I2 B1 B2 B4 M1 M2 M3 M5 Q3 T1
+R30_13 R29_13A R29_13C R28_16A R28_16B
 ```
 
-Fields and variants inherit type and codec ownership from their containing
-record or sum. Bounds, field limits, constraints, and permissions are
+The underscore task spellings denote `R30-13`, `R29-13A`, `R29-13C`,
+`R28-16A`, and `R28-16B` only as X-macro arguments. They are task identifiers,
+not internal contract revisions.
+
+Fields and variants inherit ownership from exactly one containing record or
+sum. A type with both `Record` and `Sum` rows is one permitted composite:
+`Record` owns canonical framing and `Sum` owns closed variant topology, and
+their task triples must match. A `RuntimeSum` has type and native-test tasks
+but no codec task. Bounds, field limits, constraints, and permissions are
 schema-only rows and have no production artifact task. The schema gate rejects
-a missing task column, unknown task, impossible artifact kind, or assignment
+a missing task column, unknown task, impossible artifact kind, unresolved
+containing row, duplicate owner row, unequal composite ownership, or assignment
 that contradicts the accepted exact-file owner.
 
 The exhaustive type ownership is:
 
-| Task | Entities |
-|---|---|
-| `S2A` | canonical sequence shells and stable routing keys in Binder; contextual keys in the driver context-key unit |
-| `S2B` | header enums, header sites, header records, scope owners, syntax roots, binding targets, `BinderQueryOwner`, `BinderKeyFailure`, and `BinderQueryResult<T>` |
-| `S2C` | module-skeleton facts, `BoundModuleSkeleton`, stable lookup outcomes, projection keys, and projection values |
-| `S2D` | owner-body facts and `BoundOwnerBody` |
-| `S2E` | `ModuleBindingAllocationPlan` and `OwnerAllocationRange` |
-| `S6` | Binder diagnostic argument records and diagnostic enum extensions |
-| `I2` | active membership and readiness records |
-| `Q3` and `T1` | canonical context and transaction input records |
-| `M1`, `M2`, `M3`, and `M5` | materialized witnesses and retained capability records |
+| Entities | Type task | Codec task | Test task |
+|---|---|---|---|
+| Each S2 record or canonical sum | Exact `S2A` through `S2E` owner | `S3` | Same exact S2 owner |
+| Binder diagnostic argument records, diagnostic sums, and diagnostic enums | `S6` | `S6` | `S6` |
+| Active membership and readiness records and sums | `I2` | `I2` | `I2` |
+| Four canonical package-compilation-request records | `Q3` | `Q3` | `R30_13` |
+| Complete compilation-context authority and transaction records | `T1` | `T1` | `T1` |
+| Stable graph materialization witnesses | `M1` | `M1` | `M1` |
 
-Query, input, and capability descriptors retain the `B1`, `B2`, `B4`, `I2`,
-`M1`, `M2`, `M3`, `M5`, `Q3`, and `T1` assignments recorded by RFC 0027.
+`CanonicalInputPayloadDigest` uses
+`(implementationTask=T1, testTask=T1)`.
+`CapabilityDemandResult<Descriptor>` is a runtime-only sum with
+`(typeTask=R29_13A, testTask=R29_13C)` and no codec. Its conditional
+`SourceRejected` and `KeyRejected` alternatives are instantiated only from a
+descriptor's closed `FailureAlternatives`; its `Published` and
+`RuntimeRejected` alternatives are unconditional.
+
+Descriptor ownership is exact:
+
+| Descriptor group | Descriptor | Provider | Verifier | Test |
+|---|---|---|---|---|
+| Stable header and skeleton projections | `B1` | `B1` | `B1` | `B1` |
+| Owner-body and module diagnostic queries | `B2` | `B2` | `B2` | `B2` |
+| Allocation plan | `B4` | `B4` | `B4` | `B4` |
+| Active memberships | `I2` | `I2` | `I2` | `I2` |
+| `ModuleDependencyProvenance` | `R28_16A` | `R28_16A` | `R28_16A` | `R28_16B` |
+| Materialized module graph | `M1` | `M1` | `M1` | `M1` |
+| Materialized module skeleton | `M2` | `M2` | `M2` | `M2` |
+| Materialized owner body | `M3` | `M3` | `M3` | `M3` |
+| Verified bound module | `M5` | `M5` | `M5` | `M5` |
+
+Input ownership is exact:
+
+| Input | Descriptor | Provider | Verifier | Test |
+|---|---|---|---|---|
+| `CompleteCompilationContextAuthorityInput` | `T1` | `T1` | `T1` | `T1` |
+| `ActiveDefinitionAuthorityInput` | `I2` | `T1` | `I2` | `I2` |
+| `CompleteRootIdentityReadiness` | `I2` | `T1` | `I2` | `I2` |
+
+Every capability row uses
+`CapabilityDemandResult<name>`, names its capability payload, and carries an
+explicit closed failure-alternative list. The five stable Binder capability
+rows use `SourceRejection<DiagnosticFact>` and
+`KeyRejection<BinderKeyFailure>`. `R30-13` validates this schema structure
+without naming an unlanded C++ descriptor. Each later descriptor task selects
+only its owned rows and compiles independent equality checks for both
+`name::Capability` and `name::FailureAlternatives`. The final capability
+architecture gate rejects an implemented descriptor that lacks either check.
+
+The schema gate does not infer implementation completion from tracker prose.
+Task columns are immutable ownership metadata. Exact landing-scope and
+architecture gates reject artifacts outside the active transaction. Contract
+rows for a later task remain inert: they do not declare a C++ type, register a
+descriptor, or require a compile-time reference before that task.
+
 Every S2 stable record receives its codec in the matching S3 review partition.
 S1, S2, and S3 are separately reviewable but land only as the atomic
-`R29-12AB` transaction. Contract rows for a later runtime task do not declare
-a C++ type or register a runtime descriptor before that task.
+`R29-12AB` transaction.
+
+The binding-visibility query result is exactly
+`Optional<MemberVisibility>`. No alias, wrapper, compatibility name, or
+additional wire domain is created.
 
 The inventory includes these fixed diagnostic tags:
 
@@ -339,6 +412,7 @@ products/zomlang/compiler/driver/owner-body-query.h
 products/zomlang/compiler/driver/owner-body-query.cc
 products/zomlang/tests/unittests/compiler/driver/active-definition-authority-query-test.cc
 products/zomlang/tests/unittests/compiler/driver/active-definition-authority-session-test.cc
+products/zomlang/tests/unittests/compiler/driver/package-compilation-request-test.cc
 products/zomlang/tests/coverage/rfc-0030-stable-binding-landing-files.txt
 scripts/check-landing-scope.py
 ```
@@ -360,12 +434,20 @@ The existing `binder-architecture`, `binder-architecture-negative`, and
 `scripts/check-stable-binding-schema.py --check` verifies:
 
 - balanced macro parsing and exact arity;
+- the closed entity-kind and task vocabularies;
 - unique record and descriptor domains;
 - unique and dense tags within each enum or sum;
 - unique and dense field ordinals within each record or variant;
+- one resolvable owner row for every field and variant;
+- equal task triples for each canonical `Record` and `Sum` composite;
+- no codec task on a runtime-only sum;
 - valid bound, field-limit, constraint, mutation, producer, verifier, test,
   artifact-task, and exact-file references;
 - complete task columns for every artifact-producing row;
+- `CapabilityDemandResult<name>` for every capability result;
+- complete `capabilityType` and `failureAlternatives` columns;
+- exact agreement between each capability failure list and the conditional
+  runtime-sum variants;
 - an S2 declaration and native test for every S2 entity;
 - a schema consumer in `stable-binding-facts.cc`;
 - no driver include in the four stable-binding facts and codec files;
@@ -377,9 +459,15 @@ The existing `binder-architecture`, `binder-architecture-negative`, and
 
 `--self-test` performs in-memory mutations and must prove rejection of a
 duplicate domain, duplicate tag, ordinal gap, unknown bound, unknown mutation,
-missing artifact task, contradictory artifact task, missing executable test,
-missing schema consumer, missing Binder source wiring, and missing CTest
-registration. It separately removes `stable-binding-facts.cc` and
+missing or duplicate sum ownership, a runtime-sum codec task, missing artifact
+task, contradictory artifact task, missing executable test, missing schema
+consumer, missing Binder source wiring, and missing CTest registration. It
+independently changes a capability result or payload and removes, adds,
+exchanges, or changes the payload of each capability failure alternative. It
+must reject each mutation without consulting C++ source or a script-local
+descriptor table.
+
+The self-test separately removes `stable-binding-facts.cc` and
 `stable-binding-codec.cc` from the Binder target and removes one S3 codec and
 one wire oracle from native test execution. It also swaps identity emitter
 tags `0x03` and `0x04` and independently mutates diagnostic code, argument
@@ -388,6 +476,31 @@ both identity-admission mappings. Every exact mutation must fail.
 
 The gate is reusable repository infrastructure integrated into CTest. It is
 not disposable validation and does not reimplement Binder production logic.
+
+### R30-13 Completion Contract
+
+`R30-13` adds the comprehensive Q3 schema mutation test to
+`products/zomlang/tests/unittests/compiler/driver/package-compilation-request-test.cc`.
+The test exercises the production codecs for
+`CanonicalCompilationRootRecord`, `CanonicalTargetSelectionRecord`,
+`CanonicalLanguageOptionsRecord`, and
+`CanonicalPackageCompilationRequest`. It mutates every declared applicable
+domain, truncation, trailing-byte, field, identity, digest, profile, target,
+enum, Boolean, duplicate, reordered, and hostile-count case.
+
+The schema self-test independently changes `CanonicalPackageRecordBytes` and
+must reject every value other than `UINT32_MAX`; the native test does not
+allocate a multi-gigabyte buffer. `R30-13` neither rewrites the completed Q3
+production files nor names an unlanded capability descriptor in a C++ compile
+consumer.
+
+The capability architecture gate is staged by descriptor ownership. Each
+descriptor task compiles only its owned schema rows and proves equality of the
+hand-written `name::Capability` alias with `capabilityType` and the
+hand-written `name::FailureAlternatives` alias with the row-derived
+`CapabilityFailureList<failureAlternatives...>`. The final gate rejects every
+implemented descriptor lacking either owned-row equality check. Future rows
+remain inert until their named tasks.
 
 ### Landing-Scope Gate
 
@@ -467,7 +580,7 @@ is not rewritten for this transaction.
 | Stable contextual contracts | `products/zomlang/compiler/driver/contextual-binding-key.*`, `products/zomlang/compiler/driver/active-definition-authority-query.*`, `products/zomlang/compiler/driver/active-definition-authority-session.cc`, `products/zomlang/compiler/driver/compiler-session.cc`, `products/zomlang/compiler/driver/named-item-query.*`, `products/zomlang/compiler/driver/owner-body-query.*`, `products/zomlang/compiler/driver/CMakeLists.txt` | `module-system` |
 | Stable Binder foundation | `products/zomlang/compiler/binder/stable-binding-*`, `products/zomlang/compiler/binder/CMakeLists.txt` | `binder-checker` |
 | Diagnostic schema contract | `products/zomlang/compiler/diagnostics/**` | `error-system` |
-| Native tests and gates | `products/zomlang/tests/unittests/compiler/binder/**`, `products/zomlang/tests/unittests/compiler/diagnostics/diagnostic-fact-test.cc`, `products/zomlang/tests/unittests/compiler/diagnostics/CMakeLists.txt`, `products/zomlang/tests/coverage/rfc-0030-stable-binding-landing-files.txt`, `scripts/check-stable-binding-schema.py`, `scripts/check-binder-architecture.py`, `scripts/check-landing-scope.py` | `verification` |
+| Native tests and gates | `products/zomlang/tests/unittests/compiler/binder/**`, `products/zomlang/tests/unittests/compiler/driver/package-compilation-request-test.cc`, `products/zomlang/tests/unittests/compiler/diagnostics/diagnostic-fact-test.cc`, `products/zomlang/tests/unittests/compiler/diagnostics/CMakeLists.txt`, `products/zomlang/tests/coverage/rfc-0030-stable-binding-landing-files.txt`, `scripts/check-stable-binding-schema.py`, `scripts/check-binder-architecture.py`, `scripts/check-landing-scope.py` | `verification` |
 
 ## Security And Safety Impact
 
@@ -533,8 +646,10 @@ surface.
 ## Documentation And Teaching Plan
 
 RFCs 0025 through 0030, trackers 0017 through 0020 and 0025 through 0030, the
-RFC index, and affected routing governance are synchronized in the RFC 0030
-acceptance transaction.
+RFC index, and affected routing governance were synchronized in the RFC 0030
+acceptance transaction. RFC 0031 acceptance transaction
+`rfc0031-accept-20260728-c25fcb18` synchronizes the complete schema metamodel,
+ownership, and verification contract before `R30-11` resumes.
 The Binder contributor documentation will identify the X-macro inventory as
 the canonical schema authority and list the four native CTest targets.
 Current-state design documentation changes only after production paths land.
@@ -553,12 +668,19 @@ runtime observability, or release operation is added.
   the RFC index, and affected routing governance contain no stale foundation
   dependency or ownership claim.
 - The schema contains every fixed tag and identity-diagnostic mapping.
+- The schema uses the RFC 0031 entity, macro, task, sum-ownership, descriptor,
+  input, capability-payload, and failure-alternative model.
 - Every implementable schema entity has one valid partition.
 - Every S2 entity has one declaration, implementation, and native test.
 - `stable-binding-facts.cc` is compiled into the Binder target.
 - The four new CTest targets and three existing Binder regression targets
   pass.
 - Schema mutation self-tests reject every required mutation class.
+- `package-compilation-request-test` rejects every applicable Q3 record and
+  aggregate mutation, and the schema self-test rejects a changed
+  `CanonicalPackageRecordBytes` bound without allocating that bound.
+- Every implemented capability descriptor has compiled equality checks for
+  both its `Capability` and `FailureAlternatives` aliases.
 - `R29-12D` owns and passes `diagnostic-fact-test`, diagnostic coverage check,
   and diagnostic coverage self-test with the exact identity-admission
   mutation matrix.
@@ -575,35 +697,37 @@ runtime observability, or release operation is added.
 2. Prepare RFCs 0025 through 0030, trackers 0017 through 0020 and 0025 through
    0030, the RFC index, and routing overlays while RFC 0030 remains in review,
    then accept the complete synchronization transaction.
-3. Close the schema inventory, diagnostic tags, diagnostic mappings, and
+3. After RFC 0031 `R31-09`, resume `R30-11` from the accepted complete schema
+   metamodel.
+4. Close the schema inventory, diagnostic tags, diagnostic mappings, and
    partition ownership.
-4. Prepare the bounded S2 routing and contextual key review patch.
-5. Prepare the matching bounded S3 key codec and wire-oracle review patch.
-6. Prepare bounded driver authority and owner-body caller-cutover review
+5. Prepare the bounded S2 routing and contextual key review patch.
+6. Prepare the matching bounded S3 key codec and wire-oracle review patch.
+7. Prepare bounded driver authority and owner-body caller-cutover review
    patches.
-7. Prepare bounded S2 header, module-skeleton, owner-body, and allocation
+8. Prepare bounded S2 header, module-skeleton, owner-body, and allocation
    review patches.
-8. Prepare one matching bounded S3 codec, sequence-admission, and wire-oracle
+9. Prepare one matching bounded S3 codec, sequence-admission, and wire-oracle
    review patch after each S2 fact patch.
-9. Add Binder build wiring, the focused ztest, the schema gate, its self-test,
+10. Add Binder build wiring, the focused ztest, the schema gate, its self-test,
    and architecture-gate enforcement.
-10. Re-run S1 and S2 owner reviews.
-11. Assemble the exact `R29-12AB` landing set in an isolated clean worktree.
-12. Prove worktree scope, run focused and complete native verification,
+11. Re-run S1 and S2 owner reviews.
+12. Assemble the exact `R29-12AB` landing set in an isolated clean worktree.
+13. Prove worktree scope, run focused and complete native verification,
     explicitly stage the allowlist, and prove index scope.
-13. Commit and push the atomic transaction.
-14. Land `R29-12D` with its transaction-local diagnostic test and coverage
+14. Commit and push the atomic transaction.
+15. Land `R29-12D` with its transaction-local diagnostic test and coverage
     gates.
-15. Resume `R29-13A`.
+16. Resume `R29-13A`.
 
 ## Test Plan
 
 - Build:
   `PATH=/opt/homebrew/bin:$PATH cmake --preset sanitizer`;
-  `PATH=/opt/homebrew/bin:$PATH cmake --build --preset sanitizer --target stable-binding-facts-test`;
+  `PATH=/opt/homebrew/bin:$PATH cmake --build --preset sanitizer --target stable-binding-facts-test package-compilation-request-test`;
   `PATH=/opt/homebrew/bin:$PATH cmake --build --preset sanitizer --clean-first`.
 - Unit tests:
-  `PATH=/opt/homebrew/bin:$PATH ctest --preset default -R '^(stable-binding-facts-test|stable-binding-schema|stable-binding-schema-negative|stable-binding-landing-scope-negative|binder-architecture|binder-architecture-negative|binder-fact-schema)$' --output-on-failure --no-tests=error`;
+  `PATH=/opt/homebrew/bin:$PATH ctest --preset default -R '^(stable-binding-facts-test|package-compilation-request-test|stable-binding-schema|stable-binding-schema-negative|stable-binding-landing-scope-negative|binder-architecture|binder-architecture-negative|binder-fact-schema)$' --output-on-failure --no-tests=error`;
   `PATH=/opt/homebrew/bin:$PATH ctest --preset default -L unittest --output-on-failure --no-tests=error`.
 - Complete native tests:
   `PATH=/opt/homebrew/bin:$PATH ctest --preset default --output-on-failure --no-tests=error`.
@@ -642,3 +766,4 @@ None
 | 2026-07-28 | DRAFT | Initial proposal. |
 | 2026-07-28 | REVIEW | Ready for exact-hash owner review. |
 | 2026-07-28 | ACCEPTED | All six required owners approved proposal SHA-256 `4ed0e6b885abc87a1c4251855780cf115a85b3623b1d46f774a4b664110f7b6b`. Acceptance transaction `rfc0030-accept-20260728-4ed0e6b8` synchronizes RFCs 0025 through 0030, trackers 0017 through 0020 and 0025 through 0030, the RFC index, and affected routing governance without changing the immutable implementation-series base. |
+| 2026-07-28 | ACCEPTED | Transaction `rfc0031-accept-20260728-c25fcb18` synchronized the complete schema metamodel and verification contract to RFC 0031 proposal SHA-256 `c25fcb18e503ac214a8e92c925fa88108a915c2b15c94409dfecb88b3d9a63d5` and tracker SHA-256 `d64e7791ed2e2a488c5f57bc07ac341ccfc37d37c220c85131e2c9e846fb8d0d`; RFC 0030 remains accepted, `R30-11` remains pending implementation, and the design blocker is satisfied. |

@@ -16,6 +16,21 @@ schema is consumed. Existing Binder gates pass without observing the new
 files. RFC 0030 closes that landing-evidence gap before source implementation
 continues.
 
+### 2026-07-28 RFC 0031 Schema Model Closure
+
+The `R30-11` audit found that the prepared inventory could not express complete
+canonical-sum and runtime-sum ownership, split descriptor ownership, generic
+capability failures, or the four canonical package-compilation-request
+records. RFC 0031 closed those design gaps before schema implementation.
+
+All required owners approved RFC 0031 proposal SHA-256
+`c25fcb18e503ac214a8e92c925fa88108a915c2b15c94409dfecb88b3d9a63d5`
+and tracker SHA-256
+`d64e7791ed2e2a488c5f57bc07ac341ccfc37d37c220c85131e2c9e846fb8d0d`.
+Transaction `rfc0031-accept-20260728-c25fcb18` satisfies the design blocker.
+`R30-11` remains pending implementation and may now resume because RFC 0031
+`R31-09` is satisfied by that transaction.
+
 ## Decision Record
 
 Accepted by `task-router`, `rfc`, `module-system`, `binder-checker`,
@@ -25,6 +40,15 @@ and tracker SHA-256
 `31eb9abae5aa70465a8408e05130263a75cea4ca91c0ada8ac673d238c2664f9`.
 The synchronized acceptance transaction is
 `rfc0030-accept-20260728-4ed0e6b8`.
+
+RFC 0031 acceptance transaction `rfc0031-accept-20260728-c25fcb18`
+synchronizes this tracker to proposal SHA-256
+`c25fcb18e503ac214a8e92c925fa88108a915c2b15c94409dfecb88b3d9a63d5`
+and tracker SHA-256
+`d64e7791ed2e2a488c5f57bc07ac341ccfc37d37c220c85131e2c9e846fb8d0d`.
+It establishes the complete schema entity, macro, task, ownership,
+capability-failure, and verification model without changing implementation
+status.
 
 The earlier approvals against proposal SHA-256
 `44f0ed68bdd3635e7ed736efcf2dfb2cef0a499c89733d1ab1334a89dce55151`
@@ -58,7 +82,7 @@ implementation-series base remains
 
 | Task | Owner | Depends On | Deliverable | Verification | Status |
 |---|---|---|---|---|---|
-| `R30-11` | `binder-checker` with `error-system` and `verification` review | `R30-09` | Close the canonical schema, partitions, diagnostic tags, and mappings. | Schema check and self-test | Pending |
+| `R30-11` | `binder-checker` with `module-system`, `error-system`, `runtime-memory`, and `verification` review | RFC 0031 `R31-09` | Replace the complete unlanded schema candidate with the accepted RFC 0031 entity, macro, task, ownership, sum, input, capability, diagnostic, and package-record model. | Schema check and self-test | Pending |
 | `R30-12A` | `binder-checker` with `module-system` and `verification` review | `R30-11` | In `stable-binding-facts.{h,cc}` and `stable-binding-facts-test.cc`, implement the seven `Stable*QueryKey` routing types and canonical sequence shells; at most 400 changed source lines. | Stable key ownership and move-only tests | Pending |
 | `R30-12B` | `binder-checker` with `verification` review | `R30-12A` | In `stable-binding-codec.{h,cc}` and `stable-binding-facts-test.cc`, implement the seven stable-key codecs, sequence builder core, and key wire oracles; at most 400 changed source lines. | Stable key wire and mutation tests | Pending |
 | `R30-12C` | `module-system` with `binder-checker` and `verification` review | `R30-12B` | In `driver/contextual-binding-key.{h,cc}` and `active-definition-authority-query-test.cc`, implement `ContextualBodyOwnerKey`, `ContextualCompilationUnitKey`, `ContextualCrateKey`, `ContextualSourceKey`, `ContextualModuleKey`, `ContextualDefinitionKey`, `ContextualImplementationKey`, `ContextualGenericParameterKey`, and `ContextualCallableParameterKey` plus their codecs; at most 400 changed source lines. | Context ownership, payload, and wire tests | Pending |
@@ -84,10 +108,13 @@ implementation-series base remains
 | `R30-12W` | `binder-checker` with `verification` review | `R30-12V` | In `stable-binding-codec.{h,cc}` and `stable-binding-facts-test.cc`, implement the `BoundOwnerBody` codec and wire oracles; at most 400 changed source lines. | Complete owner-body wire mutation tests | Pending |
 | `R30-12X` | `binder-checker` with `verification` review | `R30-12W` | In `stable-binding-facts.{h,cc}` and `stable-binding-facts-test.cc`, implement `ModuleBindingAllocationPlan` and `OwnerAllocationRange`; at most 400 changed source lines. | Allocation fact and overflow tests | Pending |
 | `R30-12Y` | `binder-checker` with `verification` review | `R30-12X` | In `stable-binding-codec.{h,cc}` and `stable-binding-facts-test.cc`, implement allocation codecs and wire oracles; at most 400 changed source lines. | Allocation wire mutation tests | Pending |
-| `R30-13` | `verification` with `binder-checker` review | `R30-12Y` | Add build, ztest, schema, CTest, architecture, exact-allowlist, and landing-scope wiring. | Focused native and mutation gates | Pending |
+| `R30-13` | `verification` with `binder-checker`, `module-system`, and `runtime-memory` review | `R30-12Y` | Add build, ztest, schema, CTest, architecture, exact-allowlist, and landing-scope wiring; add the comprehensive Q3 package-request mutation test; enforce staged capability and failure-alternative alias equality checks for implemented descriptors while future rows remain inert. | Focused native, schema mutation, Q3 mutation, and dual-alias architecture gates | Pending |
 | `R30-14` | `verification` | `R30-13` | Assemble only the exact landing set in an isolated clean worktree; prove worktree scope, run focused plus complete gates, explicitly stage the allowlist, and prove index scope. | RFC 0030 Test Plan | Pending |
 | `R30-15` | `binder-checker` with all affected owners | `R30-14` | Land and publish the atomic `R29-12AB` transaction containing S1, S2, and S3. | Local, upstream, and remote SHA parity | Pending |
 | `R30-16` | `error-system` with `binder-checker` and `verification` review | `R30-15` | Land `R29-12D` with the canonical Binder diagnostic facts, exact diagnostic native test, CTest ownership, and diagnostic coverage gates. | Diagnostic fact test and diagnostic coverage check plus self-test | Pending |
 | `R30-17` | `rfc` | `R30-16` | Synchronize truthful tracker state and resume `R29-13A`. | RFC and evidence audit | Pending |
 
-No implementation task begins before `R30-09`.
+The RFC 0031 design blocker is satisfied by transaction
+`rfc0031-accept-20260728-c25fcb18`; this does not complete `R30-11` or any
+source task. The historical `R30-09` and RFC 0031 `R31-09` design gates are
+satisfied, so `R30-11` is the next authorized implementation task.

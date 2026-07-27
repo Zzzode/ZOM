@@ -380,14 +380,23 @@ projection table, every other stable query value domain is its literal query
 domain with `-value` appended. No runtime domain construction is permitted.
 Revision-local capability queries have no value codec.
 
-The generated
-`products/zomlang/compiler/binder/stable-binding-schema.def` contains each
-literal domain, tag, field inventory, maximum-count rule, producer target,
-verifier target, and executable mutation test. The generator emits
-declarations, codecs, descriptor registrations, and fixed empty and non-empty
-wire oracles. `check-binder-architecture.py` rejects a schema record, query, or
-projection without exactly one generated row and rejects literal domains
-outside that inventory.
+`products/zomlang/compiler/binder/stable-binding-schema.def` is the
+hand-authored canonical X-macro inventory. It contains each literal domain,
+tag, field inventory, maximum-count rule, producer and verifier provenance,
+artifact-owner task, and executable mutation test. Preprocessor consumers may
+form C++ tables or native test cases from the inventory, but they do not
+generate the production declarations, codecs, descriptors, providers, or
+verifiers. No second schema source exists. `check-binder-architecture.py`
+rejects a schema record, query, or projection without exactly one canonical
+row and rejects literal domains outside that inventory.
+
+RFC 0031 defines the complete metamodel consumed by RFC 0030 `R30-11`.
+Canonical sums have one explicit `Sum` owner; a `Record` and `Sum` row for the
+same type form one permitted composite only when their type, codec, and test
+tasks are equal. Runtime-only sums use `RuntimeSum`, have no codec task, and
+derive conditional variants from each descriptor row's closed failure list.
+`Record.producer` and `Record.verifier` are semantic provenance, not artifact
+ownership columns.
 
 ### Stable Header Inputs
 
@@ -604,7 +613,7 @@ StableLocalExportFact {
   name: BindingNameKey,
   binding: StableBindingTargetKey,
   canonicalTarget: StableBindingTargetKey,
-  visibility: BindingVisibilityResult,
+  visibility: Optional<MemberVisibility>,
   reexportChain: CanonicalSequence<StableReexportStep>,
 }
 
@@ -705,7 +714,7 @@ ImportTarget(StableSemanticImportQueryKey)
     -> Optional<StableImportFact>
 
 BindingVisibility(StableBindingTargetKey)
-    -> BindingVisibilityResult
+    -> Optional<MemberVisibility>
 ```
 
 Each projection is retained `Semantic`, reads only its exact owning skeleton or
@@ -883,8 +892,8 @@ Every non-boundary node in the pruned owner syntax has exactly one
 implicit free variables. Explicit capture lists remain independently present,
 including an empty explicit list.
 
-The generated stable fact inventory is exhaustive and maps the live Binder
-domains one-to-one:
+The hand-authored canonical stable fact inventory is exhaustive and maps the
+live Binder domains one-to-one:
 
 | Live fact domain | Stable replacement |
 |---|---|
@@ -901,10 +910,10 @@ domains one-to-one:
 | `GenericParameter`, `CallableParameter` | the complete parameter declaration facts above |
 | `OwnerLocalBinding` | `StableOwnerLocalBindingFact` |
 
-`binding-fact-schema.def` is replaced by a generated stable schema inventory
-with exactly these domains, tags, field order, mutation classes, producer
-target, verifier target, and materialized target. A zero-reference gate rejects
-any old fact domain without exactly one listed replacement.
+`binding-fact-schema.def` is replaced by the hand-authored canonical stable
+schema inventory with exactly these domains, tags, field order, mutation
+classes, producer provenance, verifier provenance, and materialized target. A
+zero-reference gate rejects any fact domain outside this canonical inventory.
 
 `StableFailedLookupFact` is a semantic body fact, not a query-runtime failure
 or a substitute diagnostic envelope. `Missing` has no candidates.
@@ -1151,7 +1160,7 @@ equality operation.
 | `ImplementationBindingHeader` | `zom.query.implementation-binding-header` | `StableImplementationQueryKey` | optional canonical occurrence sequence; `Semantic`; complete canonical bytes |
 | `ScopeNameBucket` | `zom.query.scope-name-bucket` | `StableScopeNameBucketQueryKey` | canonical target sequence; `Semantic`; complete canonical bytes |
 | `ImportTarget` | `zom.query.import-target` | `StableSemanticImportQueryKey` | optional stable import; `Semantic`; complete canonical bytes |
-| `BindingVisibility` | `zom.query.binding-visibility` | `StableBindingTargetKey` | `BindingVisibilityResult`; `Semantic`; complete canonical bytes |
+| `BindingVisibility` | `zom.query.binding-visibility` | `StableBindingTargetKey` | `Optional<MemberVisibility>`; `Semantic`; complete canonical bytes |
 | `ModuleBodyOwners` | `zom.query.module-body-owners` | `ContextualModuleKey` | canonical stable owner sequence; `Semantic`; complete canonical bytes |
 | `ModuleDiagnosticFacts` | `zom.query.module-diagnostic-facts` | `ContextualModuleKey` | canonical RFC 0017 fact sequence; `Semantic`; complete canonical bytes |
 | `ActiveCompilationUnitMembership` | `zom.query.active-compilation-unit-membership` | contextual unit key | complete active-crate authority record or semantic absence; `Semantic`; complete canonical bytes |
@@ -1165,11 +1174,23 @@ equality operation.
 | `BindModuleSkeleton` | `zom.query.bind-module-skeleton` | `ModuleKey` | `BinderQueryResult<BoundModuleSkeleton>`; `Semantic`; complete canonical result bytes |
 | `BindOwnerBody` | `zom.query.bind-owner-body` | `ContextualBodyOwnerKey` | `BinderQueryResult<BoundOwnerBody>`; `Semantic`; complete canonical result bytes |
 | `ModuleBindingAllocationPlan` | `zom.query.module-binding-allocation-plan` | `ContextualModuleKey` | `BinderQueryResult<ModuleBindingAllocationPlan>`; `Semantic`; complete canonical result bytes |
-| `ModuleDependencyProvenance` | `zom.query.module-dependency-provenance` | `ModuleKey` | `CapabilityDemandResult<ModuleDependencyProvenanceMap>`; successful retained revision-local capability |
-| `MaterializeModuleGraph` | `zom.query.materialize-module-graph` | complete `CompilationRootSetQueryKey` | `CapabilityDemandResult<MaterializedModuleGraph>`; successful retained revision-local capability |
-| `MaterializeModuleSkeleton` | `zom.query.materialize-module-skeleton` | `ContextualModuleKey` | `CapabilityDemandResult<MaterializedModuleSkeleton>`; successful retained revision-local capability |
-| `MaterializeOwnerBody` | `zom.query.materialize-owner-body` | `ContextualBodyOwnerKey` | `CapabilityDemandResult<MaterializedOwnerBody>`; successful retained revision-local capability |
-| `VerifyBoundModule` | `zom.query.verify-bound-module` | `ContextualModuleKey` | `CapabilityDemandResult<VerifiedBoundModule>`; successful retained revision-local capability |
+| `ModuleDependencyProvenance` | `zom.query.module-dependency-provenance` | `ModuleKey` | `CapabilityDemandResult<ModuleDependencyProvenance>`; payload `ModuleDependencyProvenanceMap`; successful retained revision-local capability |
+| `MaterializeModuleGraph` | `zom.query.materialize-module-graph` | complete `CompilationRootSetQueryKey` | `CapabilityDemandResult<MaterializeModuleGraph>`; payload `MaterializedModuleGraph`; successful retained revision-local capability |
+| `MaterializeModuleSkeleton` | `zom.query.materialize-module-skeleton` | `ContextualModuleKey` | `CapabilityDemandResult<MaterializeModuleSkeleton>`; payload `MaterializedModuleSkeleton`; successful retained revision-local capability |
+| `MaterializeOwnerBody` | `zom.query.materialize-owner-body` | `ContextualBodyOwnerKey` | `CapabilityDemandResult<MaterializeOwnerBody>`; payload `MaterializedOwnerBody`; successful retained revision-local capability |
+| `VerifyBoundModule` | `zom.query.verify-bound-module` | `ContextualModuleKey` | `CapabilityDemandResult<VerifyBoundModule>`; payload `VerifiedBoundModule`; successful retained revision-local capability |
+
+Each canonical `CapabilityQuery` row records `resultType`, `capabilityType`,
+and the exact `failureAlternatives` in addition to its descriptor, provider,
+verifier, and test tasks. `resultType` is always
+`CapabilityDemandResult<name>`. When a descriptor task lands, it selects only
+its owned row and compiles independent equality checks requiring
+`name::Capability` to equal `capabilityType` and
+`name::FailureAlternatives` to equal the schema-derived
+`CapabilityFailureList<failureAlternatives...>`. The final capability
+architecture gate rejects an implemented descriptor without both checks.
+Rows owned by later tasks remain inert and are not named by an earlier C++
+consumer.
 
 `BoundOwnerBody` remains the sole stable authority for
 `StableClosureFact`, `StableClosureFreeVariableFact`, and
@@ -1966,7 +1987,19 @@ calling the producer helper, checks root ordering and uniqueness, compares
 complete canonical bytes, and proves that the context authority's target,
 language, lock, package-root, and package-graph facts agree with that record.
 The four canonical package-request records use the literal domains above,
-global bounds, exact-consumption codecs, and complete value equality.
+global bounds, exact-consumption codecs, and complete value equality. Q3 owns
+those four production types, codecs, the verified-request projection, and its
+independent verifier; completed Q3 is not reopened. Their canonical schema
+rows use `(typeTask=Q3, codecTask=Q3, testTask=R30_13)`. Each complete record
+uses `Bound(CanonicalPackageRecordBytes, UINT32_MAX, CompleteRecordBytes)`, and
+the declaration order above is its exact zero-based field ordinal order.
+The schema also declares `Bound(TargetProfileBytes, 255, NfcUtf8Bytes)`,
+`FieldLimit(CanonicalTargetSelectionRecord.profile, TargetProfileBytes)`, and
+`FieldLimit(CanonicalPackageCompilationRequest.roots,
+CanonicalInputSequenceRecords)`.
+RFC 0030 `R30-13` owns the comprehensive declared-mutation test in
+`products/zomlang/tests/unittests/compiler/driver/package-compilation-request-test.cc`
+and adds that existing test file to the atomic `R29-12AB` allowlist.
 
 `CompleteCompilationContextAuthority` uses domain
 `zom.input.complete-compilation-context-authority`. Its registered input
@@ -1984,6 +2017,14 @@ complete crate, validates the core record and digest, and independently
 recomputes every semantic-context fingerprint input. A partial root key,
 missing projected core crate, extra root, unequal graph edge, or unequal
 fingerprint input rejects the transaction.
+
+T1 owns `CompleteCompilationContextAuthority`, its canonical codec,
+`CompleteCompilationContextAuthorityInput`, and
+`CompleteCompilationContextAuthorityInputVerifier` in exactly
+`products/zomlang/compiler/driver/module-graph-query-input.h` and
+`products/zomlang/compiler/driver/module-graph-query-input.cc`. Q3 supplies
+only the already verified canonical package-request projection consumed by
+that boundary.
 
 The three transaction payload domains are, in order,
 `zom.query.input-transaction.core-distribution`,
@@ -2396,8 +2437,8 @@ baseline change.
   implementation-owned generics, parameter sites, and complete body
   disposition.
 - Every cross-module target has an explicit routing module.
-- Stable Binder schemas have generated field inventories, exact codecs, and
-  structural/domain mutations.
+- Stable Binder schemas have one hand-authored canonical field inventory,
+  exact codecs, and structural/domain mutations.
 - The query catalog and complete dynamic read sets are enforced.
 - All eight global handle domains retain complete authority records and exact
   tracked active membership.
@@ -2628,7 +2669,9 @@ are contractual targets, not optional placement suggestions.
 state. RFC 0030 `R30-11` through `R30-16`, RFC 0029 `R29-12A`,
 `R29-12B`, `R29-12AB`, and `R29-12D` are their sole execution and status
 authority. No RFC 0027 tracker row may execute or land those partitions
-independently.
+independently. RFC 0031 is the accepted metamodel authority consumed by
+`R30-11`; no earlier task may infer ownership, instantiate a future
+descriptor, or replace the hand-authored inventory with generated schema.
 
 | Task | Owner | Depends on | Exact files | Deliverable and focused verification |
 |---|---|---|---|---|
@@ -2636,14 +2679,14 @@ independently.
 | `G2` | `task-router` | `G1` | `.agents/subagents/manifest.yaml`; `.agents/subagents/README.md`; `.agents/subagents/task-router.md`; `.agents/subagents/module-system.md`; `.agents/subagents/runtime-memory.md`; `.agents/subagents/verification.md`; `AGENTS.md` | assign ownership analysis to `runtime-memory`, assign `scripts/check-english-only.py` and `scripts/check-spec-alignment.py` to `verification`, and synchronize exact gate routing; RFC and English-only gates |
 | `G3` | `rfc` | `G1`; `G2` | exactly the RFC and tracker files listed in `G1`, including `docs/rfc/README.md`; no `G2` file | read and validate the completed `G2` tree without editing it, record one transaction identifier and proposal hash in the `G1` files, then change acceptance metadata atomically; `python3 scripts/check-rfc.py` |
 | `G4` | `verification` | `G3` | `products/zomlang/tests/coverage/implementation-series-base.txt` | from a clean committed accepted synchronization tree, record that exact commit SHA and reject a moving or non-ancestor base |
-| `S1` | `binder-checker` with `verification` review | `G4` | `products/zomlang/compiler/binder/stable-binding-schema.def`; `scripts/check-stable-binding-schema.py` | prepare and review the closed field, tag, domain, mutation, implementation-task, and diagnostic-mapping inventory without an independent landing |
+| `S1` | `binder-checker` with `verification` review | `G4`; RFC 0031 `R31-09` | `products/zomlang/compiler/binder/stable-binding-schema.def`; `scripts/check-stable-binding-schema.py` | prepare and review the hand-authored closed field, sum, tag, domain, bound, mutation, artifact-task, capability-payload, failure-alternative, and diagnostic-mapping inventory without an independent landing |
 | `S2` | `binder-checker` for Binder facts; `module-system` for driver contextual declarations and callers; `verification` for native tests | `S1` review | `products/zomlang/compiler/binder/stable-binding-facts.h`; `products/zomlang/compiler/binder/stable-binding-facts.cc`; `products/zomlang/compiler/driver/contextual-binding-key.h`; `products/zomlang/compiler/driver/contextual-binding-key.cc`; the complete driver caller-cutover files and tests named by RFC 0030 | prepare and review stable facts plus driver-owned contextual keys and the direct deletion and migration of all query-specific declarations without an independent landing |
 | `S3` | `binder-checker` for Binder codecs; `module-system` for contextual codecs; `verification` for tests, build discovery, schema, architecture, allowlist, and landing-scope gates | `S2` review | `products/zomlang/compiler/binder/stable-binding-codec.h`; `products/zomlang/compiler/binder/stable-binding-codec.cc`; the matching contextual codecs, Binder build and test wiring, schema and architecture gates, exact allowlist, and landing-scope gate named by RFC 0030 | prepare and review exact-consumption codecs, sequence admission, fixed wire oracles, native tests, mutations, build visibility, and landing-scope proof without an independent landing |
 | `S4` | `binder-checker` | `S2` | `products/zomlang/compiler/binder/canonical-definition-header-producer.h`; `products/zomlang/compiler/binder/canonical-definition-header-producer.cc` | body disposition and staging-safe definition headers |
 | `S4A` | `binder-checker` | `S2` | `products/zomlang/compiler/binder/canonical-impl-header-producer.h`; `products/zomlang/compiler/binder/canonical-impl-header-producer.cc` | staging-safe implementation-occurrence headers |
 | `S5` | `binder-checker` | `S4`; `S4A` | `products/zomlang/compiler/binder/canonical-header-verifier.h`; `products/zomlang/compiler/binder/canonical-header-verifier.cc` | independent header verification and equal-occurrence coverage |
 | `S6` | `error-system` with `binder-checker` and `verification` review | RFC 0029 `R29-12AB` | `products/zomlang/compiler/diagnostics/diagnostics-binder.def`; `products/zomlang/compiler/diagnostics/diagnostic-fact.h`; `products/zomlang/compiler/diagnostics/diagnostic-fact.cc`; `products/zomlang/compiler/checker/checker-source-diagnostics.def`; `products/zomlang/tests/unittests/compiler/diagnostics/diagnostic-fact-test.cc`; `products/zomlang/tests/unittests/compiler/diagnostics/CMakeLists.txt` | land one canonical Binder diagnostic-fact transaction with stable-identity emitters, typed payloads, exact native mutation coverage, CTest registration, diagnostic coverage check and self-test, `ZOM3028`, and failed-lookup bijection |
-| `Q3` | `module-system` | `G3` | `products/zomlang/compiler/driver/package/canonical-package-compilation-request.h`; `products/zomlang/compiler/driver/package/canonical-package-compilation-request.cc` | handle-free canonical package request records, exact codecs, verified-request projection, and independent projection verifier |
+| `Q3` | `module-system` | `G3` | `products/zomlang/compiler/driver/package/canonical-package-compilation-request.h`; `products/zomlang/compiler/driver/package/canonical-package-compilation-request.cc` | handle-free canonical package request records, exact codecs, verified-request projection, and independent projection verifier; completed production ownership remains closed while RFC 0030 `R30-13` owns the comprehensive schema mutation test |
 | `I1` | `module-system` with `runtime-memory` review | RFC 0029 `R29-14` | `products/zomlang/compiler/identity/canonical-identity-interner-set.h`; `products/zomlang/compiler/identity/canonical-identity-interner-set.cc`; `products/zomlang/compiler/query/semantic-context-capability-arena.h`; `products/zomlang/compiler/query/semantic-context-capability-arena.cc` | arena-owned eight-domain typed interner with collision, concurrency, reverse-lookup, and surviving-lease tests |
 | `I2` | `module-system` | `I1`; RFC 0029 `R29-14`; `S5` | `products/zomlang/compiler/driver/active-identity-membership-query.h`; `products/zomlang/compiler/driver/active-identity-membership-query.cc`; `products/zomlang/compiler/driver/active-definition-authority-query.h`; `products/zomlang/compiler/driver/active-definition-authority-query.cc` | all eight complete-record memberships and conditional readiness |
 | `B1` | `binder-checker` | RFC 0029 `R29-12AB`; RFC 0029 `R29-12D`; `S5` | `products/zomlang/compiler/binder/module-skeleton-query.h`; `products/zomlang/compiler/binder/module-skeleton-query.cc` | `BindModuleSkeleton`, projections, and independent verifier |
@@ -2662,7 +2705,7 @@ independently.
 | `L2` | `ir-backend` | `L1` | `products/zomlang/compiler/hir/hir-module.h`; `products/zomlang/compiler/hir/hir-module.cc` | HIR retained lease and lineage verifier |
 | `L3` | `ir-backend` | `L2` | `products/zomlang/compiler/mir/built-mir.h`; `products/zomlang/compiler/mir/built-mir.cc` | Built MIR retained lease and lineage verifier |
 | `L4` | `runtime-memory` | `L3` | `products/zomlang/compiler/ownership/ownership-event-overlay.h`; `products/zomlang/compiler/ownership/ownership-event-overlay.cc` | ownership-overlay retained lease, verifier, and destruction order |
-| `T1` | `module-system` | `I2`; `M1`; RFC 0029 `R29-14`; RFC 0028 `R28-16` | `products/zomlang/compiler/driver/module-graph-query-input.h`; `products/zomlang/compiler/driver/module-graph-query-input.cc`; `products/zomlang/compiler/driver/active-definition-authority-session.h`; `products/zomlang/compiler/driver/active-definition-authority-session.cc` | supply the session-owned live verified package request to the complete-context verifier, execute the three closed input transactions, and publish staging, final, and sealed snapshots; no payload or input schema is declared here |
+| `T1` | `module-system` | `I2`; `M1`; RFC 0029 `R29-14`; RFC 0028 `R28-16` | `products/zomlang/compiler/driver/module-graph-query-input.h`; `products/zomlang/compiler/driver/module-graph-query-input.cc`; `products/zomlang/compiler/driver/active-definition-authority-session.h`; `products/zomlang/compiler/driver/active-definition-authority-session.cc` | in `module-graph-query-input.{h,cc}`, implement `CompleteCompilationContextAuthority`, its codec, `CompleteCompilationContextAuthorityInput`, and its independent verifier; then consume the session-owned live verified package request, execute the three closed input transactions, and publish staging, final, and sealed snapshots |
 | `T2A` | `module-system` | `M5`; `T1` | `products/zomlang/compiler/driver/compiler-session.h`; `products/zomlang/compiler/driver/compiler-session.cc` | install transaction state machine and named snapshots |
 | `T2B` | `module-system` | `C2`; `L4`; `T2A` | `products/zomlang/compiler/driver/compiler-session.h`; `products/zomlang/compiler/driver/compiler-session.cc` | dependency-first final capability root and irreversible seal |
 | `T2C` | `module-system` | `T2B` | `products/zomlang/compiler/driver/compiler-session.h`; `products/zomlang/compiler/driver/compiler-session.cc` | surviving-lease and session teardown order |
@@ -2680,7 +2723,7 @@ independently.
 | `E3` | `verification` | `E2` | `scripts/check-identity-architecture.py`; `scripts/check-incremental-query-architecture.py`; `scripts/check-binder-architecture.py`; `scripts/check-checker-architecture.py`; `scripts/check-compiler-session-architecture.py`; `scripts/check-ir-architecture.py`; `scripts/check-ownership-architecture.py` | exact architecture allowlists and adversarial self-tests |
 | `E4` | `verification` | `E2` | `scripts/check-core-library-architecture.py`; `scripts/check-core-library-spec-alignment.py`; `scripts/check-spec-alignment.py`; `scripts/check-package-architecture.py`; `scripts/check-impl-source-architecture.py`; `scripts/check-lexer-architecture.py`; `scripts/check-parser-coverage.py`; `scripts/check-diagnostic-coverage.py`; `scripts/check-lit-exec-root.py` | core, source, five-way spec, lexer, parser, diagnostic, and lit-root gates; the core alignment gate has a spec-audit-owned `--check --report` publication mode and a write-free `--verify-report` byte-comparison mode |
 | `E4A` | `verification` | `G4` | `scripts/check-english-only.py` | implement changed-text English-only enforcement, require an exact forty-lowercase-hex-plus-newline base file naming a commit that is an ancestor of `HEAD`, and provide adversarial self-tests for malformed, moving, non-ancestor, and CJK mutations |
-| `E5` | `verification` | `E4` | `scripts/generate-canonical-header-syntax-schema.py`; `scripts/codegen/gen_ast.py`; `scripts/codegen/gen_core_library_inventory.py`; `scripts/codegen/gen_package_oracles.py`; `products/zomlang/compiler/binder/stable-binding-schema.def` | generated schema/inventory/oracle drift and self-tests |
+| `E5` | `verification` | `E4` | `scripts/generate-canonical-header-syntax-schema.py`; `scripts/codegen/gen_ast.py`; `scripts/codegen/gen_core_library_inventory.py`; `scripts/codegen/gen_package_oracles.py`; `products/zomlang/compiler/binder/stable-binding-schema.def` | generated header, AST, core-library, and package-oracle drift plus hand-authored stable-binding schema consumer drift and self-tests |
 | `E6` | `verification` | `G4`; `E3` | `scripts/run-ownership-coverage.py`; `scripts/check-ownership-coverage.py`; `products/zomlang/tests/coverage/ownership-exemptions.json`; `products/zomlang/tests/coverage/implementation-series-base.txt`; `cmake/utils/coverage.cmake` | frozen-base ownership coverage artifacts and thresholds |
 | `E7` | `verification` | `E3`; `E4`; `E4A`; `E5`; `E6`; `W1-W4` | `.github/workflows/CI.yml`; `products/zomlang/tests/CMakeLists.txt`; `products/zomlang/tests/integration/core-library/installed-consumer/Zom.toml`; `products/zomlang/tests/integration/core-library/installed-consumer/src/main.zom`; `products/zomlang/tests/cmake/verify-core-library-install.cmake`; `cmake/utils/unittests.cmake` | native sanitizer, codegen, gate, coverage, and the unique `core-library-install-consumer` integration |
 | `E8` | `verification` | `E7` | `scripts/run-incremental-query-benchmarks.py`; `products/zomlang/tests/performance/incremental-query-corpus.json`; `products/zomlang/tests/performance/incremental-query-baseline.json` | fixed Release compare and worker-determinism evidence |
@@ -2834,3 +2877,4 @@ None
 | 2026-07-27 | ACCEPTED | Acceptance transaction `rfc0028-accept-20260727-944b68ff` synchronized the final-seal admission, descriptor-specific capability failures, exact membership ordering, dependency provenance, closure-projection deletion, and corrected query-runtime dependency graph to RFC 0028 proposal SHA-256 `944b68ffc0aff5576d079a243ff092d7d19fba5ffed65551dda8e68adf230db4`; RFC 0027 status remains unchanged. |
 | 2026-07-27 | ACCEPTED | Acceptance transaction `rfc0029-accept-20260727-8d393a0c` synchronized complete module-qualified Binder keys, identity-site provenance, stable-identity admission, the five exact typed capability failure contracts, and the atomic schema-plus-facts dependency order to RFC 0029 proposal SHA-256 `8d393a0c6c00a7fad9ef086d3d25f5ed44300041afa9e1e1a4af5d68830fd3e7`; RFC 0027 status remains unchanged and implementation remains incomplete. |
 | 2026-07-28 | ACCEPTED | Acceptance transaction `rfc0030-accept-20260728-4ed0e6b8` synchronized the exact build-visible S1-plus-S2-plus-S3 landing set, driver-owned contextual-key cutover, native and mutation gates, and separate S6 diagnostic transaction to RFC 0030 proposal SHA-256 `4ed0e6b885abc87a1c4251855780cf115a85b3623b1d46f774a4b664110f7b6b`; RFC 0027 status remains accepted and implementation remains incomplete. |
+| 2026-07-28 | ACCEPTED | Acceptance transaction `rfc0031-accept-20260728-c25fcb18` synchronized the hand-authored schema metamodel, direct `Optional<MemberVisibility>` result, descriptor-parameterized capability results and payloads, dual capability/failure-alternative owner-task checks, exact Q3 versus `R30-13` test ownership, and T1 context-input artifacts to RFC 0031 proposal SHA-256 `c25fcb18e503ac214a8e92c925fa88108a915c2b15c94409dfecb88b3d9a63d5` and tracker SHA-256 `d64e7791ed2e2a488c5f57bc07ac341ccfc37d37c220c85131e2c9e846fb8d0d`; RFC 0027 status remains accepted, completed Q3 remains complete, and implementation remains incomplete. |
