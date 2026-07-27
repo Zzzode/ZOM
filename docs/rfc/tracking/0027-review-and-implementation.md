@@ -94,13 +94,12 @@ The synchronized acceptance transaction is
 `109947943519ec2d380a3e8d71813b40bc68bde5` is recorded and source
 implementation is authorized.
 
-RFC 0029 acceptance transaction `rfc0029-accept-20260727-8d393a0c`
-establishes the current implementation order. `S1` and `S2` remain separate
-review partitions and land only through the atomic `R29-12AB` transaction.
-`S3` and `S6` then land separately through `R29-12C` and `R29-12D`.
-Query-runtime work begins at `R29-13A` only after both transactions pass, and
-the corrected source transaction lands through `R29-14`. The dependencies
-below are the sole implementation authority.
+Transaction `rfc0030-accept-20260728-4ed0e6b8` establishes the implementation
+order. `S1`, `S2`, and `S3` remain bounded review partitions and land only
+through the exact atomic `R29-12AB` allowlist. `S6` then lands separately
+through `R29-12D`. Query-runtime work begins at `R29-13A` only after both
+transactions pass, and the corrected source transaction lands through
+`R29-14`.
 
 ## Implementation Tracker
 
@@ -125,7 +124,7 @@ below are the sole implementation authority.
 | `R27-17A` | `module-system` | `R27-12B` | Implement the handle-free canonical package request records, verified-request projection, exact codecs, and independent projection verifier. | Package request codec and projection tests | Complete; implementation `3039da5259be25b139954834f900a21b7b891fcf`, sanitizer unit tests 135/135, focused package request test 1/1, independent integration review approved |
 | `R27-18` | `module-system` with required `runtime-memory` review | RFC 0029 `R29-14` | Replace frozen registries with the arena-owned eight-domain typed interner set. | Identity, concurrency, collision, and teardown tests | Pending |
 | `R27-19` | `module-system` | `R27-15`; RFC 0029 `R29-14`; `R27-18` | Implement all eight exact complete-record membership projections after sealed admission and before any interner lookup. | Membership and readiness tests | Pending |
-| `R27-20` | `binder-checker` | RFC 0029 `R29-12C`; RFC 0029 `R29-12D`; `R27-15` | Implement `BindModuleSkeleton`, lookup projections, and independent verifier. | Skeleton and read-set tests | Pending |
+| `R27-20` | `binder-checker` | RFC 0029 `R29-12AB`; RFC 0029 `R29-12D`; `R27-15` | Implement `BindModuleSkeleton`, lookup projections, and independent verifier. | Skeleton and read-set tests | Pending |
 | `R27-21` | `binder-checker` | `R27-20` | Implement contextual `BindOwnerBody` and independent traversal/verifier. | Body, capture, control, and source-failure tests | Pending |
 | `R27-22` | `binder-checker` | `R27-21` | Implement the deterministic five-domain module allocation plan. | Overflow and reversed-demand tests | Pending |
 | `R27-23` | `module-system` | RFC 0029 `R29-14`; RFC 0028 `R28-16`; `R27-19` | Implement the typed graph witness and final-sealed-snapshot `MaterializeModuleGraph` consumer over runtime-only module-dependency provenance. | Graph, provenance, and read-set mutations | Pending |
@@ -148,7 +147,7 @@ below are the sole implementation authority.
 | `R27-31C` | `module-system` | `R27-29` | Synchronize identity, query, graph, and session build source lists. | Focused build | Pending |
 | `R27-31D` | `ir-backend` | `R27-31` | Synchronize compiler, checked-module, HIR, MIR, and IR build wiring. | Focused build | Pending |
 | `R27-31E` | `runtime-memory` | `R27-31A` | Synchronize ownership-overlay build wiring. | Focused build | Pending |
-| `R27-32` | `verification` | RFC 0029 `R29-12AB`; RFC 0029 `R29-12C`; RFC 0029 `R29-12D`; `R27-15` through `R27-31E`; RFC 0029 `R29-15` | Implement the English-only and specification-alignment gates under their synchronized routing ownership; add the exact IR diagnostic regression and unique installed-consumer fixture; then run the complete sanitizer, unit, lit, codegen, architecture, format, versioning, frozen-base coverage, English-only, install-consumer, spec-alignment, and Release compare matrix. | RFC 0027, RFC 0028, and RFC 0029 Test Plans | Pending |
+| `R27-32` | `verification` | RFC 0029 `R29-12AB`; RFC 0029 `R29-12D`; `R27-15` through `R27-31E`; RFC 0029 `R29-15` | Implement the English-only and specification-alignment gates under their synchronized routing ownership; add the exact IR diagnostic regression and unique installed-consumer fixture; then run the complete sanitizer, unit, lit, codegen, architecture, format, versioning, frozen-base coverage, English-only, install-consumer, spec-alignment, and Release compare matrix. | RFC 0027, RFC 0028, and RFC 0029 Test Plans | Pending |
 | `R27-33A` | `spec-audit` | `R27-32` | Update current-state compiler design documentation from the landed production path and publish `docs/reports/zom-core-library-spec-alignment.md` with the report-producing core alignment command. | Spec and design audit plus fixed report publication | Pending |
 | `R27-32A` | `verification` | `R27-33A` | Recompute and byte-compare the fixed report without writing it, then rerun English-only, RFC, format, versioning, and diff gates after every spec-audit edit. | Final write-free RFC 0027 Test Plan subset | Pending |
 | `R27-33` | `rfc` | `R27-32A` | Audit all implementation, report, and final verification evidence, then perform the only synchronized RFC implementation-state transitions. | `python3 scripts/check-rfc.py` | Pending |
@@ -165,4 +164,16 @@ authorized only in the dependency order recorded above.
 | RFC 0027 status before transaction | `ACCEPTED` |
 | RFC 0027 status after transaction | `ACCEPTED` |
 | Synchronized authority | Complete contextual keys, identity-site provenance, stable-identity admission, exact typed provenance failures, and schema-before-runtime ordering |
-| Implementation authority | `R29-12AB`, then separate `R29-12C` and `R29-12D`, then runtime work beginning at `R29-13A` and landing through `R29-14` |
+| Implementation authority | exact RFC 0030 `R29-12AB`, then separate `R29-12D`, then runtime work beginning at `R29-13A` and landing through `R29-14` |
+
+## RFC 0030 Acceptance Transaction Record
+
+| Field | Value |
+|---|---|
+| Transaction | `rfc0030-accept-20260728-4ed0e6b8` |
+| Proposal SHA-256 | `4ed0e6b885abc87a1c4251855780cf115a85b3623b1d46f774a4b664110f7b6b` |
+| Tracker SHA-256 | `31eb9abae5aa70465a8408e05130263a75cea4ca91c0ada8ac673d238c2664f9` |
+| RFC 0027 status before transaction | `ACCEPTED` |
+| RFC 0027 status after transaction | `ACCEPTED` |
+| Synchronized authority | Exact build-visible S1-plus-S2-plus-S3 landing set, driver-owned contextual-key cutover, native and mutation gates, landing-scope proof, and exact S6 diagnostic transaction |
+| Implementation authority | RFC 0030 `R30-11` through `R30-16`, then runtime work beginning at RFC 0029 `R29-13A` |

@@ -66,12 +66,11 @@ synchronized the current RFC 0026 contract to RFC 0027 proposal SHA-256
 The synchronized design is accepted, while product implementation and final
 verification retain the statuses below.
 
-On 2026-07-27, transaction `rfc0029-accept-20260727-8d393a0c`
-synchronized the current RFC 0026 contract to RFC 0029 proposal SHA-256
-`8d393a0c6c00a7fad9ef086d3d25f5ed44300041afa9e1e1a4af5d68830fd3e7`.
-The accepted order lands the stable schema and facts atomically, then lands
-codecs and diagnostic facts separately, and only then begins the corrected
-runtime source transaction. No implementation status changes.
+Transaction `rfc0030-accept-20260728-4ed0e6b8` supersedes the earlier
+foundation order without changing RFC 0026 implementation status. The current
+order lands stable schema, facts, codecs, tests, and gates atomically through
+the exact RFC 0030 `R29-12AB` transaction, then lands diagnostic facts through
+`R29-12D`, and only then begins the corrected runtime source transaction.
 
 ## Implementation Tracker
 
@@ -118,7 +117,7 @@ remain pending.
 | RFC 0026 status before transaction | `ACCEPTED` |
 | RFC 0026 status after transaction | `ACCEPTED` |
 | Synchronized authority | Explicit transaction and seal results, sealed-root admission propagation, typed capability failures and permissions, and retained final-parse provenance lineage |
-| Runtime dependencies | RFC 0029 `R29-12AB`, `R29-12C`, and `R29-12D` precede runtime; corrected runtime lands through `R29-14`, provenance continues through RFC 0028 `R28-16`, and verification completes through `R29-15` |
+| Runtime dependencies | exact RFC 0030 `R29-12AB` and RFC 0029 `R29-12D` precede runtime; corrected runtime lands through `R29-14`, provenance continues through RFC 0028 `R28-16`, and verification completes through `R29-15` |
 
 ## RFC 0029 Acceptance Transaction Record
 
@@ -129,7 +128,7 @@ remain pending.
 | RFC 0026 status before transaction | `ACCEPTED` |
 | RFC 0026 status after transaction | `ACCEPTED` |
 | Synchronized authority | Complete Binder contextual keys, identity-site provenance, stable-identity admission, exact typed provenance failures, and schema-before-runtime ordering |
-| Implementation dependencies | RFC 0029 `R29-12AB`, `R29-12C`, `R29-12D`, `R29-14`, RFC 0028 `R28-16`, and RFC 0029 `R29-15` |
+| Implementation dependencies | exact RFC 0030 `R29-12AB`, RFC 0029 `R29-12D`, `R29-14`, RFC 0028 `R28-16`, and RFC 0029 `R29-15` |
 
 ## Required Review Commands
 

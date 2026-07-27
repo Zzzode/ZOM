@@ -66,6 +66,16 @@ normative specification changes, including the semantic chapters listed here.
       at least stubs → blocker. Traits are a day-one primitive.
 - [ ] Type errors reference a stable `ZOMxxxx` code, auto-suggestions are
       treated as bonus, not contracts.
+- [ ] Stable Binder schema rows have one closed implementation-task owner,
+      and every S2 fact has its matching S3 codec, canonical admission path,
+      fixed wire oracle, and native test before landing.
+- [ ] Stable Binder facts and codecs contain only stable keys and do not
+      include driver headers. Contextual roots and contextual-key codecs remain
+      in the driver-owned context-key unit.
+- [ ] RFC 0027 `S1`, `S2`, and `S3` are bounded review partitions only. No
+      subset lands outside the exact RFC 0030 `R29-12AB` transaction, and no
+      placeholder row, compatibility path, duplicate declaration, or
+      uncompiled source is accepted.
 
 ## Required Evidence Before Closing
 

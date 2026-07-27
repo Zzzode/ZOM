@@ -1,0 +1,644 @@
+---
+rfc: 30
+title: Stable Binding Foundation Verification
+type: testing
+status: ACCEPTED
+author: ZOM Compiler Team
+review-manager: rfc
+required-owners: [task-router, rfc, module-system, binder-checker, error-system, verification]
+approvers: [task-router, rfc, module-system, binder-checker, error-system, verification]
+created: 2026-07-28
+updated: 2026-07-28
+area: testing
+requires: [27, 29]
+supersedes: []
+superseded-by: []
+discussion: docs/rfc/tracking/0030-review-and-implementation.md#discussion-record
+decision: docs/rfc/tracking/0030-review-and-implementation.md#decision-record
+implementation: docs/rfc/tracking/0030-review-and-implementation.md#implementation-tracker
+tracking-issue: docs/rfc/tracking/0030-review-and-implementation.md#implementation-tracker
+---
+
+# RFC 0030: Stable Binding Foundation Verification
+
+## Summary
+
+This RFC makes the RFC 0027 stable Binder foundation a build-visible,
+schema-checked, natively tested transaction before query-runtime work begins.
+It defines `stable-binding-schema.def` as the canonical X-macro inventory,
+assigns every inventory row to one implementation partition, closes the
+missing identity-diagnostic tags, and expands RFC 0029 `R29-12AB` to include
+the exact build, unit-test, schema-gate, and architecture-gate files required
+to prove that the stable facts compile and that the inventory is consumed. It
+keeps compilation-context routing in the driver layer and removes contextual
+data from stable Binder values that do not need it.
+
+The transaction introduces no compatibility surface, internal revision
+suffix, inactive code path, or uncompiled source file.
+
+## Motivation
+
+RFC 0029 requires `R29-12AB` to land one buildable schema-plus-facts
+transaction with focused native and mutation gates. The RFC 0027 source plan
+assigns only `stable-binding-schema.def` and `stable-binding-facts.{h,cc}` to
+that transaction, while the Binder source list, ztest registration, schema
+gate, and architecture gate remain assigned to later tasks. A commit within
+that file boundary can therefore leave `stable-binding-facts.cc` outside the
+Binder target and pass only tests that do not observe the new files.
+
+The current schema candidate also has no repository consumer and names future
+tests without identifying which implementation partition must provide each
+one. It omits three tags already fixed by RFCs 0027 and 0029:
+
+- `IdentityDiagnosticEmitter::ConstantExpressionNotAllowed = 0x03`;
+- `IdentityDiagnosticEmitter::DuplicateGenericParameter = 0x04`; and
+- `DiagnosticSecondaryRole::PreviousDeclaration = 0x01`.
+
+Implementation cannot proceed from a file inventory that permits an
+uncompiled facts source, an unregistered test, or an unowned schema row.
+
+## Goals
+
+- Make one file the authoritative inventory for stable Binder records,
+  fields, variants, domains, bounds, descriptors, diagnostics, mutations, and
+  implementation ownership.
+- Require every inventory row to name exactly one implementation partition.
+- Compile the stable facts implementation in the same transaction that adds
+  it.
+- Add native fact tests and positive and negative schema checks in that same
+  transaction.
+- Make Binder architecture checks reject missing source, test, schema, or
+  CTest wiring.
+- Preserve the dependency order: the atomic `R29-12AB` foundation includes
+  S1, S2, and S3; `R29-12D` then lands canonical diagnostics; `R29-13A`
+  begins runtime work.
+- Keep the existing immutable implementation-series base unchanged.
+
+## Non-Goals
+
+- This RFC does not change ZOM language syntax or semantics.
+- This RFC does not implement Binder query providers, materializers, active
+  membership, session sealing, or core-library queries.
+- This RFC does not move canonical diagnostic-fact implementation into
+  `R29-12AB`.
+- This RFC does not add a general code generator or adopt LLVM TableGen.
+- This RFC does not authorize the pending `query-types.{h,cc}` work.
+- This RFC does not alter the immutable implementation-series base record.
+
+## Prior Art
+
+LLVM TableGen uses a declarative record inventory as an authoritative input to
+multiple consumers. ZOM adopts the single-authority and multi-consumer
+properties, while retaining the existing C++ X-macro format because this
+inventory does not require a new language or generator executable.
+
+CMake target source lists make compilation membership explicit. ZOM requires
+the new implementation file to enter the Binder target in the same landing
+transaction, so a source file cannot exist outside native compilation.
+
+LLVM lit and ZOM ztest both make test discovery an executable property rather
+than a documentation claim. ZOM registers the fact test and both schema-gate
+modes in CTest and verifies their exact target names.
+
+## Guide-Level Explanation
+
+A contributor changing a stable Binder record edits one canonical inventory.
+The row names its domain, fields, limits, mutation classes, executable test,
+and implementation partition. The schema gate checks the inventory in both
+directions against the C++ facts and the registered native tests.
+
+```mermaid
+flowchart TD
+    S["Canonical stable-binding-schema.def"] --> F["Stable fact declarations and implementation"]
+    S --> C["Codec partition"]
+    S --> D["Diagnostic partition"]
+    S --> Q["Later query and materializer partitions"]
+    F --> B["Binder target"]
+    F --> U["ztest fact coverage"]
+    S --> G["Schema check and mutation self-test"]
+    B --> A["Binder architecture gate"]
+    U --> A
+    G --> A
+```
+
+`R29-12AB` may land only when the facts source is compiled, its ztest runs,
+the schema check passes, the schema self-test proves that required mutations
+are detected, and the Binder architecture gate proves all wiring.
+
+## Reference-Level Design
+
+### Canonical Inventory Authority
+
+`products/zomlang/compiler/binder/stable-binding-schema.def` is a hand-authored
+canonical X-macro inventory. It is not generated output. Its consumers may
+generate C++ tables or test cases during preprocessing, but no second schema
+source exists.
+
+Every record, nested record, enum, sum, field, query, input, capability query,
+diagnostic mapping, bound, constraint, and materializer permission has exactly
+one inventory row. Artifact-producing rows carry their implementation
+ownership in the row itself:
+
+```text
+record:
+  typeTask, codecTask, testTask
+query or input:
+  descriptorTask, providerTask, verifierTask, testTask
+diagnostic mapping:
+  diagnosticTask, testTask
+```
+
+The schema gate accepts only these closed entity kinds:
+
+```text
+Bound Record NestedRecord NestedField EnumValue SumVariant VariantField
+InlineSumVariant InlineSumVariantField RuntimeSumVariant
+RuntimeVariantField Field FieldLimit Query Input CapabilityQuery
+MaterializerPermission DiagnosticMapping Constraint Digest
+```
+
+The closed task vocabulary is:
+
+```text
+S2A S2B S2C S2D S2E S3 S6 I2 B1 B2 B4 M1 M2 M3 M5 Q3 T1
+```
+
+Fields and variants inherit type and codec ownership from their containing
+record or sum. Bounds, field limits, constraints, and permissions are
+schema-only rows and have no production artifact task. The schema gate rejects
+a missing task column, unknown task, impossible artifact kind, or assignment
+that contradicts the accepted exact-file owner.
+
+The exhaustive type ownership is:
+
+| Task | Entities |
+|---|---|
+| `S2A` | canonical sequence shells and stable routing keys in Binder; contextual keys in the driver context-key unit |
+| `S2B` | header enums, header sites, header records, scope owners, syntax roots, binding targets, `BinderQueryOwner`, `BinderKeyFailure`, and `BinderQueryResult<T>` |
+| `S2C` | module-skeleton facts, `BoundModuleSkeleton`, stable lookup outcomes, projection keys, and projection values |
+| `S2D` | owner-body facts and `BoundOwnerBody` |
+| `S2E` | `ModuleBindingAllocationPlan` and `OwnerAllocationRange` |
+| `S6` | Binder diagnostic argument records and diagnostic enum extensions |
+| `I2` | active membership and readiness records |
+| `Q3` and `T1` | canonical context and transaction input records |
+| `M1`, `M2`, `M3`, and `M5` | materialized witnesses and retained capability records |
+
+Query, input, and capability descriptors retain the `B1`, `B2`, `B4`, `I2`,
+`M1`, `M2`, `M3`, `M5`, `Q3`, and `T1` assignments recorded by RFC 0027.
+Every S2 stable record receives its codec in the matching S3 review partition.
+S1, S2, and S3 are separately reviewable but land only as the atomic
+`R29-12AB` transaction. Contract rows for a later runtime task do not declare
+a C++ type or register a runtime descriptor before that task.
+
+The inventory includes these fixed diagnostic tags:
+
+```text
+IdentityDiagnosticEmitter.ConstantExpressionNotAllowed = 0x03
+IdentityDiagnosticEmitter.DuplicateGenericParameter = 0x04
+DiagnosticSecondaryRole.PreviousDeclaration = 0x01
+```
+
+It also includes the exact identity-admission mappings:
+
+```text
+ConstantExpressionNotAllowed -> ZOM4079, empty arguments, no secondary, no fix-it
+DuplicateGenericParameter -> ZOM3010, BinderIdentifierDiagnosticArguments,
+  one ZOM3017 secondary with PreviousDeclaration, no fix-it
+```
+
+### S2 Type Boundary
+
+`stable-binding-facts.h` and `stable-binding-facts.cc` implement the
+Binder-owned S2 entities. `driver/contextual-binding-key.{h,cc}` implements the
+S2 contextual keys:
+
+- complete stable routing keys and contextual keys;
+- header enums, header sites, and stable header records;
+- stable scope, syntax-root, binding-target, module-skeleton, lookup, and
+  owner-body facts;
+- stable projection keys and projection values;
+- the deterministic allocation-plan value types;
+- `BinderQueryOwner`, `BinderKeyFailureKind`, and `BinderKeyFailure`; and
+- `BinderQueryResult<T>` with its closed `Value`, `SourceRejected`, and
+  `KeyRejected` alternatives.
+
+`BinderQueryOwner::Body` stores `StableOwnerBodyQueryKey`.
+`ModuleBindingAllocationPlan` stores its stable `ModuleKey`. Context roots
+remain in the outer query key and do not enter either stable value.
+
+Active membership records, context-input payloads, diagnostic-fact types,
+materialized capabilities, query descriptors, providers, and verifiers remain
+owned by their named later partitions. S2 does not declare them early.
+
+S2 types are move-only when they contain move-only identity or `zc` values.
+Closed sums use `zc::OneOf`. Factories enforce local structural invariants.
+Cross-query authority and read-set invariants remain the responsibility of the
+later provider and its independent verifier. S2 exposes `clone` and semantic
+equality required by later query values.
+
+The only sequence spellings are `CanonicalSequence<T>` and
+`CanonicalNonEmptySequence<T>`. Both are move-only opaque containers with:
+
+```text
+clone() -> same sequence type
+values() -> ArrayPtr<const T>
+operator== and operator!=
+CanonicalSequence<T>::empty()
+```
+
+Their constructor from `zc::Vector<T>` is private and friends
+`StableBindingSequenceBuilder<T>`. The S3 codec review partitions define that
+builder before `R29-12AB` lands:
+
+```text
+from(Vector<T>) -> Maybe<CanonicalSequence<T>>
+fromNonEmpty(Vector<T>) -> Maybe<CanonicalNonEmptySequence<T>>
+```
+
+The builder encodes each complete element with the matching S3 codec, requires
+strictly increasing encoded bytes, and therefore rejects duplicates and
+reordering. The atomic transaction exposes no S2 type without its S3
+admission path. Empty sequences are canonical without an element codec. The
+schema uses
+`CanonicalNonEmptySequence<T>` everywhere; `NonEmptyCanonicalSequence<T>` is
+invalid.
+
+Canonical byte encoding and decoding are owned by S3. Binder record codecs
+live in `stable-binding-codec.{h,cc}`. The contextual-key codecs live with
+their driver declarations. `StableDefinitionQueryKey`,
+`StableOwnerBodyQueryKey`, `ContextualDefinitionKey`, `ContextualModuleKey`,
+and `ContextualBodyOwnerKey` expose the exact S3 `encodeCanonical` and
+`decodeCanonical` operations required by the atomic cutover.
+
+### Atomic Contextual-Key Cutover
+
+`R29-12AB` removes the driver declarations of `ContextualDefinitionKey`,
+`ContextualModuleKey`, and `ContextualBodyOwnerKey`, migrates every production
+and test caller to the complete declarations in
+`driver/contextual-binding-key.{h,cc}`, and moves their canonical key codecs
+with those declarations.
+
+The context-key unit remains in
+`zomlang::compiler::driver::incremental_binding_query`. It may depend on
+identity, Binder stable routing keys, and the driver-owned
+`CompilationRootSetQueryKey`. `stable-binding-facts.{h,cc}` and
+`stable-binding-codec.{h,cc}` do not include driver headers. Stable Binder
+facts do not contain contextual keys.
+
+The payload replacement is exact:
+
+```text
+ContextualDefinitionKey {
+  contextRoots: CompilationRootSetQueryKey,
+  definition: StableDefinitionQueryKey,
+}
+
+ContextualModuleKey {
+  contextRoots: CompilationRootSetQueryKey,
+  module: ModuleKey,
+}
+
+ContextualBodyOwnerKey {
+  contextRoots: CompilationRootSetQueryKey,
+  body: StableOwnerBodyQueryKey,
+}
+```
+
+Every migrated constructor supplies and validates the explicit owning module.
+No provider searches active modules to recover it. The transaction leaves no
+namespace alias, forwarding wrapper, overload, duplicate codec, or declaration
+in the current query-specific headers. RFC 0029 `R29-14` no longer owns these
+three caller migrations; it retains provider, session, capability, and
+source-transaction replacement.
+
+### R29-12AB Exact Landing Set
+
+RFC 0029 `R29-12AB` owns exactly these files:
+
+```text
+products/zomlang/compiler/binder/stable-binding-schema.def
+products/zomlang/compiler/binder/stable-binding-facts.h
+products/zomlang/compiler/binder/stable-binding-facts.cc
+products/zomlang/compiler/binder/stable-binding-codec.h
+products/zomlang/compiler/binder/stable-binding-codec.cc
+products/zomlang/compiler/binder/CMakeLists.txt
+products/zomlang/tests/unittests/compiler/binder/stable-binding-facts-test.cc
+products/zomlang/tests/unittests/compiler/binder/CMakeLists.txt
+scripts/check-stable-binding-schema.py
+scripts/check-binder-architecture.py
+products/zomlang/compiler/driver/active-definition-authority-query.h
+products/zomlang/compiler/driver/active-definition-authority-query.cc
+products/zomlang/compiler/driver/active-definition-authority-session.cc
+products/zomlang/compiler/driver/compiler-session.cc
+products/zomlang/compiler/driver/contextual-binding-key.h
+products/zomlang/compiler/driver/contextual-binding-key.cc
+products/zomlang/compiler/driver/CMakeLists.txt
+products/zomlang/compiler/driver/named-item-query.h
+products/zomlang/compiler/driver/named-item-query.cc
+products/zomlang/compiler/driver/owner-body-query.h
+products/zomlang/compiler/driver/owner-body-query.cc
+products/zomlang/tests/unittests/compiler/driver/active-definition-authority-query-test.cc
+products/zomlang/tests/unittests/compiler/driver/active-definition-authority-session-test.cc
+products/zomlang/tests/coverage/rfc-0030-stable-binding-landing-files.txt
+scripts/check-landing-scope.py
+```
+
+The transaction registers these exact CTest names:
+
+```text
+stable-binding-facts-test
+stable-binding-schema
+stable-binding-schema-negative
+stable-binding-landing-scope-negative
+```
+
+The existing `binder-architecture`, `binder-architecture-negative`, and
+`binder-fact-schema` tests remain required regressions.
+
+### Schema Gate
+
+`scripts/check-stable-binding-schema.py --check` verifies:
+
+- balanced macro parsing and exact arity;
+- unique record and descriptor domains;
+- unique and dense tags within each enum or sum;
+- unique and dense field ordinals within each record or variant;
+- valid bound, field-limit, constraint, mutation, producer, verifier, test,
+  artifact-task, and exact-file references;
+- complete task columns for every artifact-producing row;
+- an S2 declaration and native test for every S2 entity;
+- a schema consumer in `stable-binding-facts.cc`;
+- no driver include in the four stable-binding facts and codec files;
+- Binder target membership for `stable-binding-facts.cc` and
+  `stable-binding-codec.cc`;
+- native execution of every S3 codec and fixed wire oracle;
+- ztest and CTest registration; and
+- absence of internal revision suffixes and compatibility vocabulary.
+
+`--self-test` performs in-memory mutations and must prove rejection of a
+duplicate domain, duplicate tag, ordinal gap, unknown bound, unknown mutation,
+missing artifact task, contradictory artifact task, missing executable test,
+missing schema consumer, missing Binder source wiring, and missing CTest
+registration. It separately removes `stable-binding-facts.cc` and
+`stable-binding-codec.cc` from the Binder target and removes one S3 codec and
+one wire oracle from native test execution. It also swaps identity emitter
+tags `0x03` and `0x04` and independently mutates diagnostic code, argument
+schema, secondary code, secondary role, secondary count, and fix-it count for
+both identity-admission mappings. Every exact mutation must fail.
+
+The gate is reusable repository infrastructure integrated into CTest. It is
+not disposable validation and does not reimplement Binder production logic.
+
+### Landing-Scope Gate
+
+`products/zomlang/tests/coverage/rfc-0030-stable-binding-landing-files.txt`
+contains the newline-sorted exact `R29-12AB` landing set, including itself.
+`scripts/check-landing-scope.py` is a reusable Git-state gate with:
+
+```text
+--check-worktree --start-ref <accepted-transaction-commit>
+  --allowlist <file> --base-file <file>
+--check-index --start-ref <accepted-transaction-commit>
+  --allowlist <file> --base-file <file>
+--self-test
+```
+
+Both check modes require the immutable base file to pass the same format,
+recording-commit, unchanged-content, and ancestry rules as the English-only
+gate. They require `HEAD` to equal `start-ref` and the immutable base to be its
+ancestor.
+
+`--check-worktree` requires every added, copied, modified, renamed, or deleted
+path relative to `HEAD`, including untracked files, to equal the allowlist and
+requires an empty index. `--check-index` requires the cached path and status
+set to equal the allowlist byte-for-byte and rejects every unstaged or
+untracked path. Both modes reject ignored allowlist entries, duplicate
+entries, non-normalized paths, paths outside the repository, and a start ref
+that is missing, moving, or not `HEAD`.
+
+`--self-test` creates temporary Git repositories and proves positive and
+negative behavior for base mutation, non-ancestor and moving starts, missing
+and additional allowlist entries, staged-set drift, unstaged changes,
+untracked files, rename and deletion status, duplicates, and path escape. It
+is registered in CTest as `stable-binding-landing-scope-negative`.
+
+### R29-12D Exact Landing Set
+
+The canonical Binder diagnostic-fact transaction owns exactly:
+
+```text
+products/zomlang/compiler/diagnostics/diagnostics-binder.def
+products/zomlang/compiler/diagnostics/diagnostic-fact.h
+products/zomlang/compiler/diagnostics/diagnostic-fact.cc
+products/zomlang/compiler/checker/checker-source-diagnostics.def
+products/zomlang/tests/unittests/compiler/diagnostics/diagnostic-fact-test.cc
+products/zomlang/tests/unittests/compiler/diagnostics/CMakeLists.txt
+```
+
+`diagnostic-fact-test` constructs the complete canonical
+`ConstantExpressionNotAllowed` and `DuplicateGenericParameter` facts through
+production factories and codecs. It independently mutates emitter, phase,
+primary identity site, previous identity site, `ZOM4079`, `ZOM3010`,
+`ZOM3017`, arguments, `PreviousDeclaration`, secondary count, fix-it, and
+replacement. It requires exact rejection for every mutation.
+
+The focused transaction runs `check-diagnostic-coverage.py --self-test`,
+`check-diagnostic-coverage.py --check`, and `diagnostic-fact-test`. The
+diagnostics CMake file owns explicit test labeling and proves CTest discovery.
+
+### Isolated Verification
+
+The two pending `query-types` files belong to `R29-13A` and are outside this
+transaction. Full `R29-12AB` verification runs in a clean worktree created
+from the accepted branch state and populated only with the exact landing set.
+The landing-scope gate proves the worktree before verification and the index
+after explicit staging.
+
+The implementation-series base remains
+`109947943519ec2d380a3e8d71813b40bc68bde5`. The base record is immutable and
+is not rewritten for this transaction.
+
+## Repository Impact
+
+| Area | Paths | Owner |
+|---|---|---|
+| RFC authority | `docs/rfc/0025-*` through `docs/rfc/0030-*`; affected trackers for RFCs 0017 through 0020 and 0025 through 0030; `docs/rfc/README.md` | `rfc` |
+| Task routing | `.agents/subagents/manifest.yaml`, `.agents/subagents/task-router.md`, `.agents/subagents/verification.md`, `.agents/subagents/binder-checker.md` | `task-router` |
+| Stable contextual contracts | `products/zomlang/compiler/driver/contextual-binding-key.*`, `products/zomlang/compiler/driver/active-definition-authority-query.*`, `products/zomlang/compiler/driver/active-definition-authority-session.cc`, `products/zomlang/compiler/driver/compiler-session.cc`, `products/zomlang/compiler/driver/named-item-query.*`, `products/zomlang/compiler/driver/owner-body-query.*`, `products/zomlang/compiler/driver/CMakeLists.txt` | `module-system` |
+| Stable Binder foundation | `products/zomlang/compiler/binder/stable-binding-*`, `products/zomlang/compiler/binder/CMakeLists.txt` | `binder-checker` |
+| Diagnostic schema contract | `products/zomlang/compiler/diagnostics/**` | `error-system` |
+| Native tests and gates | `products/zomlang/tests/unittests/compiler/binder/**`, `products/zomlang/tests/unittests/compiler/diagnostics/diagnostic-fact-test.cc`, `products/zomlang/tests/unittests/compiler/diagnostics/CMakeLists.txt`, `products/zomlang/tests/coverage/rfc-0030-stable-binding-landing-files.txt`, `scripts/check-stable-binding-schema.py`, `scripts/check-binder-architecture.py`, `scripts/check-landing-scope.py` | `verification` |
+
+## Security And Safety Impact
+
+The RFC adds no runtime input surface. It improves build and test safety by
+making uncompiled source, unregistered tests, malformed schema ownership, and
+missing mutation coverage hard failures. Stable fact ownership continues to
+use `zc` move-only values and closed sums; no raw pointer or ambient lifetime
+authority is introduced.
+
+## Drawbacks And Risks
+
+- The schema gate is a maintained parser for a constrained X-macro language.
+  Its grammar must remain deliberately small and must have adversarial
+  self-tests.
+- The stable foundation is large. Every S2 and S3 review patch is capped at
+  400 changed source lines, edits only its named entities and exact files, and
+  cannot land independently.
+- Moving build and test wiring forward increases the size of `R29-12AB`, but
+  every added file is necessary to prove the transaction it lands.
+- A clean verification worktree adds operational steps. It is necessary while
+  a separate runtime partition remains dirty in the shared checkout.
+
+## Alternatives Considered
+
+### Adopt LLVM TableGen
+
+TableGen provides a mature declarative system and backend framework. This
+inventory does not need a new build-time language, executable, or generated
+file family, so the additional dependency and backend ownership are not
+justified.
+
+### Generate The X-Macro Inventory
+
+A generated inventory requires a second authoritative schema input and a
+drift protocol. The X-macro file already expresses the complete contract and
+can serve directly as the sole authority.
+
+### Delay Build And Tests
+
+Keeping build wiring and tests in later tasks cannot prove that `R29-12AB` is
+buildable. The acceptance criterion is transaction-local, so its evidence
+must be transaction-local.
+
+### Validate Only With Text Search
+
+Text search cannot prove C++ compilation, native constructors, move-only
+behavior, semantic equality, or CTest discovery. It remains useful inside the
+architecture gate but cannot replace native tests.
+
+## Compatibility And Rollout
+
+The repository is unreleased and this is a direct internal replacement.
+`R29-12AB` adds the canonical inventory, S2 facts, S3 codecs and sequence
+admission, build wiring, native tests, and gates together. It also removes all
+three driver contextual-key declarations and migrates the complete production
+and test caller set. No aliases, shims, feature flags, dual registration, or
+fallback paths are introduced.
+
+If the transaction fails before publication, the entire commit is reverted.
+There is no persisted data migration or external protocol compatibility
+surface.
+
+## Documentation And Teaching Plan
+
+RFCs 0025 through 0030, trackers 0017 through 0020 and 0025 through 0030, the
+RFC index, and affected routing governance are synchronized in the RFC 0030
+acceptance transaction.
+The Binder contributor documentation will identify the X-macro inventory as
+the canonical schema authority and list the four native CTest targets.
+Current-state design documentation changes only after production paths land.
+
+## Operational Readiness
+
+CI must execute the schema check, schema self-test, fact ztest, Binder
+architecture checks, sanitizer build, and full CTest matrix. Gate failures
+must print the violated invariant and file location. No network service,
+runtime observability, or release operation is added.
+
+## Acceptance Criteria
+
+- All required owners approve one unchanged proposal hash.
+- RFCs 0025 through 0030, trackers 0017 through 0020 and 0025 through 0030,
+  the RFC index, and affected routing governance contain no stale foundation
+  dependency or ownership claim.
+- The schema contains every fixed tag and identity-diagnostic mapping.
+- Every implementable schema entity has one valid partition.
+- Every S2 entity has one declaration, implementation, and native test.
+- `stable-binding-facts.cc` is compiled into the Binder target.
+- The four new CTest targets and three existing Binder regression targets
+  pass.
+- Schema mutation self-tests reject every required mutation class.
+- `R29-12D` owns and passes `diagnostic-fact-test`, diagnostic coverage check,
+  and diagnostic coverage self-test with the exact identity-admission
+  mutation matrix.
+- The landing-scope self-test passes, and its two positive modes prove the
+  isolated worktree and staged index against the exact allowlist.
+- Sanitizer build, focused tests, full unit tests, full CTest, format,
+  English-only, internal-versioning, RFC, and diff gates pass in the isolated
+  worktree.
+- The staged file list equals the accepted exact landing set.
+
+## Implementation Plan
+
+1. Review this RFC against one exact proposal hash.
+2. Prepare RFCs 0025 through 0030, trackers 0017 through 0020 and 0025 through
+   0030, the RFC index, and routing overlays while RFC 0030 remains in review,
+   then accept the complete synchronization transaction.
+3. Close the schema inventory, diagnostic tags, diagnostic mappings, and
+   partition ownership.
+4. Prepare the bounded S2 routing and contextual key review patch.
+5. Prepare the matching bounded S3 key codec and wire-oracle review patch.
+6. Prepare bounded driver authority and owner-body caller-cutover review
+   patches.
+7. Prepare bounded S2 header, module-skeleton, owner-body, and allocation
+   review patches.
+8. Prepare one matching bounded S3 codec, sequence-admission, and wire-oracle
+   review patch after each S2 fact patch.
+9. Add Binder build wiring, the focused ztest, the schema gate, its self-test,
+   and architecture-gate enforcement.
+10. Re-run S1 and S2 owner reviews.
+11. Assemble the exact `R29-12AB` landing set in an isolated clean worktree.
+12. Prove worktree scope, run focused and complete native verification,
+    explicitly stage the allowlist, and prove index scope.
+13. Commit and push the atomic transaction.
+14. Land `R29-12D` with its transaction-local diagnostic test and coverage
+    gates.
+15. Resume `R29-13A`.
+
+## Test Plan
+
+- Build:
+  `PATH=/opt/homebrew/bin:$PATH cmake --preset sanitizer`;
+  `PATH=/opt/homebrew/bin:$PATH cmake --build --preset sanitizer --target stable-binding-facts-test`;
+  `PATH=/opt/homebrew/bin:$PATH cmake --build --preset sanitizer --clean-first`.
+- Unit tests:
+  `PATH=/opt/homebrew/bin:$PATH ctest --preset default -R '^(stable-binding-facts-test|stable-binding-schema|stable-binding-schema-negative|stable-binding-landing-scope-negative|binder-architecture|binder-architecture-negative|binder-fact-schema)$' --output-on-failure --no-tests=error`;
+  `PATH=/opt/homebrew/bin:$PATH ctest --preset default -L unittest --output-on-failure --no-tests=error`.
+- Complete native tests:
+  `PATH=/opt/homebrew/bin:$PATH ctest --preset default --output-on-failure --no-tests=error`.
+- Schema:
+  `python3 scripts/check-stable-binding-schema.py --check`;
+  `python3 scripts/check-stable-binding-schema.py --self-test`.
+- Architecture:
+  `python3 scripts/check-binder-architecture.py --check`;
+  `python3 scripts/check-binder-architecture.py --self-test`;
+  `python3 scripts/check-binder-fact-schema.py --check`.
+- Diagnostics:
+  `python3 scripts/check-diagnostic-coverage.py --self-test`;
+  `python3 scripts/check-diagnostic-coverage.py --check`;
+  `PATH=/opt/homebrew/bin:$PATH ctest --preset default -R '^diagnostic-fact-test$' --output-on-failure --no-tests=error`.
+- Landing scope:
+  `python3 scripts/check-landing-scope.py --self-test`;
+  `python3 scripts/check-landing-scope.py --check-worktree --start-ref <accepted-transaction-commit> --allowlist products/zomlang/tests/coverage/rfc-0030-stable-binding-landing-files.txt --base-file products/zomlang/tests/coverage/implementation-series-base.txt`;
+  explicitly stage only the allowlist;
+  `python3 scripts/check-landing-scope.py --check-index --start-ref <accepted-transaction-commit> --allowlist products/zomlang/tests/coverage/rfc-0030-stable-binding-landing-files.txt --base-file products/zomlang/tests/coverage/implementation-series-base.txt`.
+- Repository gates:
+  `python3 scripts/check-rfc.py`;
+  `python3 scripts/check-format.py`;
+  `python3 scripts/check-english-only.py --check --base-file products/zomlang/tests/coverage/implementation-series-base.txt`;
+  `python3 scripts/check-no-internal-versioning.py --check`;
+  `git diff --check`.
+- Staging evidence is the successful `--check-index` result.
+
+## Open Questions
+
+None
+
+## Status History
+
+| Date | Status | Notes |
+|---|---|---|
+| 2026-07-28 | DRAFT | Initial proposal. |
+| 2026-07-28 | REVIEW | Ready for exact-hash owner review. |
+| 2026-07-28 | ACCEPTED | All six required owners approved proposal SHA-256 `4ed0e6b885abc87a1c4251855780cf115a85b3623b1d46f774a4b664110f7b6b`. Acceptance transaction `rfc0030-accept-20260728-4ed0e6b8` synchronizes RFCs 0025 through 0030, trackers 0017 through 0020 and 0025 through 0030, the RFC index, and affected routing governance without changing the immutable implementation-series base. |

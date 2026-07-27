@@ -8,7 +8,7 @@ review-manager: rfc
 required-owners: [task-router, rfc, module-system, binder-checker, runtime-memory, error-system, ir-backend, spec-audit, verification]
 approvers: [task-router, rfc, module-system, binder-checker, runtime-memory, error-system, ir-backend, spec-audit, verification]
 created: 2026-07-27
-updated: 2026-07-27
+updated: 2026-07-28
 area: compiler
 requires: [4, 8, 10, 11, 17, 18, 19, 20, 25, 26]
 supersedes: []
@@ -2611,10 +2611,10 @@ classification independently. None of the five descriptors constructs
 `ForeignOwner`, `BoundaryMismatch`, `NonSelectedSource`, or
 `CrossBoundaryPath`.
 
-RFC 0027 `S1` and `S2` remain separate review partitions and land only as the
-single buildable `R29-12AB` schema-plus-facts transaction. `S3` then lands as
-`R29-12C`, and `S6` lands separately as `R29-12D`. Runtime work resumes at
-`R29-13A` only after both pass their focused native gates. Identity-site
+RFC 0027 `S1`, `S2`, and `S3` remain separate bounded review partitions and
+land only as the single build-visible RFC 0030 `R29-12AB` transaction. `S6`
+lands separately as `R29-12D`. Runtime work resumes at `R29-13A` only after
+both transactions pass their focused native gates. Identity-site
 inventory, stable admission, all five failure contracts, complete-key caller
 migration, and focused tests join the single `R29-14` runtime landing.
 
@@ -2625,9 +2625,10 @@ that exceeds that bound must be split before execution. New files named below
 are contractual targets, not optional placement suggestions.
 
 `S1`, `S2`, `S3`, and `S6` below name file partitions, not independent task
-state. RFC 0029 `R29-12A`, `R29-12B`, `R29-12AB`, `R29-12C`, and `R29-12D`
-are their sole execution and status authority. No RFC 0027 tracker row may
-execute or land those partitions independently.
+state. RFC 0030 `R30-11` through `R30-16`, RFC 0029 `R29-12A`,
+`R29-12B`, `R29-12AB`, and `R29-12D` are their sole execution and status
+authority. No RFC 0027 tracker row may execute or land those partitions
+independently.
 
 | Task | Owner | Depends on | Exact files | Deliverable and focused verification |
 |---|---|---|---|---|
@@ -2635,17 +2636,17 @@ execute or land those partitions independently.
 | `G2` | `task-router` | `G1` | `.agents/subagents/manifest.yaml`; `.agents/subagents/README.md`; `.agents/subagents/task-router.md`; `.agents/subagents/module-system.md`; `.agents/subagents/runtime-memory.md`; `.agents/subagents/verification.md`; `AGENTS.md` | assign ownership analysis to `runtime-memory`, assign `scripts/check-english-only.py` and `scripts/check-spec-alignment.py` to `verification`, and synchronize exact gate routing; RFC and English-only gates |
 | `G3` | `rfc` | `G1`; `G2` | exactly the RFC and tracker files listed in `G1`, including `docs/rfc/README.md`; no `G2` file | read and validate the completed `G2` tree without editing it, record one transaction identifier and proposal hash in the `G1` files, then change acceptance metadata atomically; `python3 scripts/check-rfc.py` |
 | `G4` | `verification` | `G3` | `products/zomlang/tests/coverage/implementation-series-base.txt` | from a clean committed accepted synchronization tree, record that exact commit SHA and reject a moving or non-ancestor base |
-| `S1` | `binder-checker` with `verification` review | `G4` | `products/zomlang/compiler/binder/stable-binding-schema.def` | prepare and review the closed field, tag, domain, mutation, and closure-fact inventory without an independent landing |
-| `S2` | `binder-checker` with `module-system` review | `S1` review | `products/zomlang/compiler/binder/stable-binding-facts.h`; `products/zomlang/compiler/binder/stable-binding-facts.cc` | prepare and review complete stable and contextual keys, headers, facts, `BinderQueryOwner`, `BinderKeyFailure`, and result algebra without an independent landing |
-| `S3` | `binder-checker` with `verification` review | RFC 0029 `R29-12AB` | `products/zomlang/compiler/binder/stable-binding-codec.h`; `products/zomlang/compiler/binder/stable-binding-codec.cc` | land one bounded exact-consumption codec, fixed wire-oracle, and mutation-test transaction |
+| `S1` | `binder-checker` with `verification` review | `G4` | `products/zomlang/compiler/binder/stable-binding-schema.def`; `scripts/check-stable-binding-schema.py` | prepare and review the closed field, tag, domain, mutation, implementation-task, and diagnostic-mapping inventory without an independent landing |
+| `S2` | `binder-checker` for Binder facts; `module-system` for driver contextual declarations and callers; `verification` for native tests | `S1` review | `products/zomlang/compiler/binder/stable-binding-facts.h`; `products/zomlang/compiler/binder/stable-binding-facts.cc`; `products/zomlang/compiler/driver/contextual-binding-key.h`; `products/zomlang/compiler/driver/contextual-binding-key.cc`; the complete driver caller-cutover files and tests named by RFC 0030 | prepare and review stable facts plus driver-owned contextual keys and the direct deletion and migration of all query-specific declarations without an independent landing |
+| `S3` | `binder-checker` for Binder codecs; `module-system` for contextual codecs; `verification` for tests, build discovery, schema, architecture, allowlist, and landing-scope gates | `S2` review | `products/zomlang/compiler/binder/stable-binding-codec.h`; `products/zomlang/compiler/binder/stable-binding-codec.cc`; the matching contextual codecs, Binder build and test wiring, schema and architecture gates, exact allowlist, and landing-scope gate named by RFC 0030 | prepare and review exact-consumption codecs, sequence admission, fixed wire oracles, native tests, mutations, build visibility, and landing-scope proof without an independent landing |
 | `S4` | `binder-checker` | `S2` | `products/zomlang/compiler/binder/canonical-definition-header-producer.h`; `products/zomlang/compiler/binder/canonical-definition-header-producer.cc` | body disposition and staging-safe definition headers |
 | `S4A` | `binder-checker` | `S2` | `products/zomlang/compiler/binder/canonical-impl-header-producer.h`; `products/zomlang/compiler/binder/canonical-impl-header-producer.cc` | staging-safe implementation-occurrence headers |
 | `S5` | `binder-checker` | `S4`; `S4A` | `products/zomlang/compiler/binder/canonical-header-verifier.h`; `products/zomlang/compiler/binder/canonical-header-verifier.cc` | independent header verification and equal-occurrence coverage |
-| `S6` | `error-system` with `binder-checker` and `verification` review | RFC 0029 `R29-12AB` | `products/zomlang/compiler/diagnostics/diagnostics-binder.def`; `products/zomlang/compiler/diagnostics/diagnostic-fact.h`; `products/zomlang/compiler/diagnostics/diagnostic-fact.cc`; `products/zomlang/compiler/checker/checker-source-diagnostics.def` | land one canonical Binder diagnostic-fact transaction with stable-identity emitters, typed payloads, `ZOM3028`, and failed-lookup bijection |
+| `S6` | `error-system` with `binder-checker` and `verification` review | RFC 0029 `R29-12AB` | `products/zomlang/compiler/diagnostics/diagnostics-binder.def`; `products/zomlang/compiler/diagnostics/diagnostic-fact.h`; `products/zomlang/compiler/diagnostics/diagnostic-fact.cc`; `products/zomlang/compiler/checker/checker-source-diagnostics.def`; `products/zomlang/tests/unittests/compiler/diagnostics/diagnostic-fact-test.cc`; `products/zomlang/tests/unittests/compiler/diagnostics/CMakeLists.txt` | land one canonical Binder diagnostic-fact transaction with stable-identity emitters, typed payloads, exact native mutation coverage, CTest registration, diagnostic coverage check and self-test, `ZOM3028`, and failed-lookup bijection |
 | `Q3` | `module-system` | `G3` | `products/zomlang/compiler/driver/package/canonical-package-compilation-request.h`; `products/zomlang/compiler/driver/package/canonical-package-compilation-request.cc` | handle-free canonical package request records, exact codecs, verified-request projection, and independent projection verifier |
 | `I1` | `module-system` with `runtime-memory` review | RFC 0029 `R29-14` | `products/zomlang/compiler/identity/canonical-identity-interner-set.h`; `products/zomlang/compiler/identity/canonical-identity-interner-set.cc`; `products/zomlang/compiler/query/semantic-context-capability-arena.h`; `products/zomlang/compiler/query/semantic-context-capability-arena.cc` | arena-owned eight-domain typed interner with collision, concurrency, reverse-lookup, and surviving-lease tests |
 | `I2` | `module-system` | `I1`; RFC 0029 `R29-14`; `S5` | `products/zomlang/compiler/driver/active-identity-membership-query.h`; `products/zomlang/compiler/driver/active-identity-membership-query.cc`; `products/zomlang/compiler/driver/active-definition-authority-query.h`; `products/zomlang/compiler/driver/active-definition-authority-query.cc` | all eight complete-record memberships and conditional readiness |
-| `B1` | `binder-checker` | RFC 0029 `R29-12C`; RFC 0029 `R29-12D`; `S5` | `products/zomlang/compiler/binder/module-skeleton-query.h`; `products/zomlang/compiler/binder/module-skeleton-query.cc` | `BindModuleSkeleton`, projections, and independent verifier |
+| `B1` | `binder-checker` | RFC 0029 `R29-12AB`; RFC 0029 `R29-12D`; `S5` | `products/zomlang/compiler/binder/module-skeleton-query.h`; `products/zomlang/compiler/binder/module-skeleton-query.cc` | `BindModuleSkeleton`, projections, and independent verifier |
 | `B2` | `binder-checker` | `B1` | `products/zomlang/compiler/binder/owner-body-query.h`; `products/zomlang/compiler/binder/owner-body-query.cc` | contextual `BindOwnerBody` and independent traversal/verifier |
 | `B3` | `binder-checker` | `B2` | `products/zomlang/compiler/binder/owner-body-syntax.h`; `products/zomlang/compiler/binder/owner-body-syntax.cc` | complete node-scope, capture, control, and provenance detachment |
 | `B4` | `binder-checker` | `B2`; `B3` | `products/zomlang/compiler/binder/module-binding-allocation-plan.h`; `products/zomlang/compiler/binder/module-binding-allocation-plan.cc` | deterministic five-domain allocation plan |
@@ -2691,11 +2692,12 @@ Every implementation task from `S1` through `W4` additionally depends on
 `G4`, even where its local data dependency is shown more narrowly. No source
 edit starts before the immutable implementation-series base exists.
 
-`S1` and `S2` are reviewed separately and cannot land separately. RFC 0029
-`R29-12AB` is their only landing transaction. `S3` and `S6` remain independent
-logical and commit boundaries after that atomic transaction. Every
-query-runtime source task depends on both `R29-12C` and `R29-12D`; `R29-13A`
-is the first authorized runtime task.
+`S1`, `S2`, and `S3` are reviewed in the bounded RFC 0030 sequence and cannot
+land separately. RFC 0029 `R29-12AB` is their only landing transaction and
+contains the exact RFC 0030 allowlist. `S6` remains the independent
+`R29-12D` logical and commit boundary. Every query-runtime source task depends
+on both `R29-12AB` and `R29-12D`; `R29-13A` is the first authorized runtime
+task.
 
 ## Test Plan
 
@@ -2831,3 +2833,4 @@ None
 | 2026-07-27 | ACCEPTED | Immutable implementation-series base `109947943519ec2d380a3e8d71813b40bc68bde5` was recorded from a clean committed tree and passed the ancestry check. Dependency-ordered implementation is authorized. |
 | 2026-07-27 | ACCEPTED | Acceptance transaction `rfc0028-accept-20260727-944b68ff` synchronized the final-seal admission, descriptor-specific capability failures, exact membership ordering, dependency provenance, closure-projection deletion, and corrected query-runtime dependency graph to RFC 0028 proposal SHA-256 `944b68ffc0aff5576d079a243ff092d7d19fba5ffed65551dda8e68adf230db4`; RFC 0027 status remains unchanged. |
 | 2026-07-27 | ACCEPTED | Acceptance transaction `rfc0029-accept-20260727-8d393a0c` synchronized complete module-qualified Binder keys, identity-site provenance, stable-identity admission, the five exact typed capability failure contracts, and the atomic schema-plus-facts dependency order to RFC 0029 proposal SHA-256 `8d393a0c6c00a7fad9ef086d3d25f5ed44300041afa9e1e1a4af5d68830fd3e7`; RFC 0027 status remains unchanged and implementation remains incomplete. |
+| 2026-07-28 | ACCEPTED | Acceptance transaction `rfc0030-accept-20260728-4ed0e6b8` synchronized the exact build-visible S1-plus-S2-plus-S3 landing set, driver-owned contextual-key cutover, native and mutation gates, and separate S6 diagnostic transaction to RFC 0030 proposal SHA-256 `4ed0e6b885abc87a1c4251855780cf115a85b3623b1d46f774a4b664110f7b6b`; RFC 0027 status remains accepted and implementation remains incomplete. |

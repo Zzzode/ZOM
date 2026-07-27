@@ -250,8 +250,8 @@ separate executable-root admission algorithms. No owner-body capability reads
 
 | Binding | RFC 0029 Task Authority |
 |---|---|
-| Stable authority schema and facts | `R29-12A`; `R29-12B`; atomic `R29-12AB` |
-| Codec and diagnostic prerequisites | `R29-12C`; `R29-12D` |
+| Stable authority schema, facts, and codecs | `R29-12A`; `R29-12B`; exact RFC 0030 atomic `R29-12AB` |
+| Diagnostic prerequisite | `R29-12D` |
 | Query types and token identity | `R29-13A` |
 | Stable admission and exact named-item/owner-body failure contracts | `R29-13B` |
 | Native conditional-read, rejection, decoder, and mutation gates | `R29-13C` |

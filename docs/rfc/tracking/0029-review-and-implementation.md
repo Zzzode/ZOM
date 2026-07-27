@@ -135,6 +135,13 @@ stable-identity admission diagnostics, complete contextual keys, exact
 descriptor failure/read contracts, and one canonical dependency and landing
 authority. It does not claim implementation.
 
+Transaction `rfc0030-accept-20260728-4ed0e6b8` establishes the foundation
+order. RFC 0027 `S1`, `S2`, and `S3` remain bounded review partitions and land
+only through the exact RFC 0030 `R29-12AB` allowlist. `R29-12D` then lands the
+exact RFC 0030 diagnostic-fact set. `R29-13A` depends on both landing
+transactions. The immutable implementation-series base remains
+`109947943519ec2d380a3e8d71813b40bc68bde5`.
+
 ## Implementation Tracker
 
 | Task | Owner | Depends On | Deliverable | Verification | Status |
@@ -152,10 +159,9 @@ authority. It does not claim implementation.
 | `R29-11` | `rfc` | `R29-10` | Accept one synchronized documentation transaction. | RFC and synchronization gates | Complete |
 | `R29-12A` | `binder-checker` with `verification` review | `R29-11` | Prepare and review RFC 0027 `S1`; do not land independently. | Schema inventory review | Pending |
 | `R29-12B` | `binder-checker` with `module-system` review | `R29-12A` | Prepare and review RFC 0027 `S2`; do not land independently. | Stable fact review | Pending |
-| `R29-12AB` | `binder-checker` with `module-system` and `verification` review | `R29-12A`; `R29-12B` | Assemble and land one buildable schema-plus-facts transaction. | Focused native and mutation gates | Pending |
-| `R29-12C` | `binder-checker` with `verification` review | `R29-12AB` | Execute RFC 0027 `S3` as one bounded codec, wire-oracle, and mutation-test commit. | Codec and mutation tests | Pending |
+| `R29-12AB` | `binder-checker` with `module-system` and `verification` review | `R29-12A`; `R29-12B`; RFC 0030 `R30-14` | Land the exact RFC 0030 allowlist as one buildable S1-plus-S2-plus-S3 transaction with contextual caller cutover. | Focused native, mutation, architecture, and landing-scope gates | Pending |
 | `R29-12D` | `error-system` with `binder-checker` and `verification` review | `R29-12AB` | Execute RFC 0027 `S6` as one canonical Binder diagnostic-fact commit. | Diagnostic fact native tests | Pending |
-| `R29-13A` | `module-system` with `runtime-memory` review | `R29-12C`; `R29-12D` | Revise and approve the RFC 0028 query-type partition. | Type, lifetime, and format review | Pending |
+| `R29-13A` | `module-system` with `runtime-memory` review | `R29-12AB`; `R29-12D` | Revise and approve the RFC 0028 query-type partition. | Type, lifetime, and format review | Pending |
 | `R29-13B` | `module-system` with `binder-checker`, `error-system`, and `verification` review | `R29-13A` | Add identity-site provenance, stable identity admission, and the five descriptor failure contracts. | Owner-focused source review | Pending |
 | `R29-13C` | `verification` | `R29-13B` | Add token, result, provenance, mapping, verifier, race, private decoder, and CTest compile-fail coverage. | Native and architecture tests | Pending |
 | `R29-14` | `module-system` with all source owners | `R29-13C`; RFC 0028 `R28-13G` | Assemble and land the corrected RFC 0028 atomic runtime source transaction as the sole landing authority. | Focused sanitizer build and tests | Pending |

@@ -509,8 +509,7 @@ diagnostics exclusively to `StableIdentityAdmissionQuery`.
 
 | Binding | RFC 0029 Task Authority |
 |---|---|
-| Stable field and fact transaction | `R29-12A`; `R29-12B`; atomic `R29-12AB` |
-| Exact-consumption codecs and fixed wire oracles | `R29-12C` |
+| Stable field, fact, codec, and wire-oracle transaction | `R29-12A`; `R29-12B`; exact RFC 0030 atomic `R29-12AB` |
 | Canonical diagnostic-fact payload | `R29-12D` |
 | Query-type and descriptor inventory partition | `R29-13A` |
 | Site inventory, stable admission, and descriptor-private witnesses | `R29-13B` |

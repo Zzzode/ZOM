@@ -54,6 +54,15 @@ owner declared by `manifest.yaml`.
       their owning subsystem reviews.
 - [ ] `scripts/check-english-only.py` and `scripts/check-spec-alignment.py`
       route to `verification`.
+- [ ] Stable Binder schema, fact, and codec implementation routes to
+      `binder-checker`; driver contextual-key declarations and caller cutover
+      route to `module-system`; diagnostic-fact schemas route to
+      `error-system`; native tests, build discovery, schema mutations,
+      architecture enforcement, exact allowlists, and landing-scope gates
+      route to `verification`.
+- [ ] RFC 0027 `S1`, `S2`, and `S3` may be reviewed as bounded sequential
+      tasks but have only the exact RFC 0030 `R29-12AB` atomic landing.
+      `S6` remains the separate `R29-12D` transaction.
 - [ ] No "TODO later" items in the plan without a ticket.
 - [ ] Dead-code deletions are explicit tasks, not buried inside other tasks.
 

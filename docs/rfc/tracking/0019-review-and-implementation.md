@@ -43,11 +43,11 @@ stable-identity admission prerequisite, exact read order and legal failure
 subset of the five Binder provenance capabilities, semantic syntax failure
 mapping, and direct typed-child owner-body reconstruction.
 
-RFC 0027 `S1` and `S2` land atomically through `R29-12AB`; `S3` and `S6`
-follow as their separate codec and diagnostic commits. RFC 0029 `R29-13A`
-through `R29-13C` prepare the runtime, provenance, descriptor, and verification
-partitions, and `R29-14` is their sole runtime landing transaction. RFC 0019
-remains `IMPLEMENTING`.
+RFC 0027 `S1`, `S2`, and `S3` land atomically through the exact RFC 0030
+`R29-12AB` transaction; `S6` follows as the separate `R29-12D` diagnostic
+commit. RFC 0029 `R29-13A` through `R29-13C` prepare the runtime, provenance,
+descriptor, and verification partitions, and `R29-14` is their sole runtime
+landing transaction. RFC 0019 remains `IMPLEMENTING`.
 
 ## Owner Review Matrix
 
@@ -79,12 +79,12 @@ change RFC 0019's status. Query runtime, descriptor, transaction,
 sealed-snapshot, failure-bridge, and provenance work follows the dependency
 authority recorded below.
 
-RFC 0029 acceptance transaction `rfc0029-accept-20260727-8d393a0c` is the
-current dependency authority for that source work. Schema and facts complete
-through `R29-12AB`, codecs and diagnostics through `R29-12C` and `R29-12D`,
-the reviewed source partitions through `R29-13A` to `R29-13C`, and the atomic
-runtime source transaction through `R29-14`. Completion and documentation
-authority remains `R29-15` through `R29-17`.
+Transaction `rfc0030-accept-20260728-4ed0e6b8` is the dependency authority for
+that source work. Schema, facts, and codecs complete through the exact
+`R29-12AB` transaction and diagnostics through `R29-12D`, the reviewed source
+partitions through `R29-13A` to `R29-13C`, and the atomic runtime source
+transaction through `R29-14`. Completion and documentation authority remains
+`R29-15` through `R29-17`.
 
 ## Implementation Tracker
 

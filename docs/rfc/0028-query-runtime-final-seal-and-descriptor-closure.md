@@ -8,7 +8,7 @@ review-manager: rfc
 required-owners: [task-router, rfc, module-system, lexer-parser, binder-checker, spec-audit, verification]
 approvers: [task-router, rfc, module-system, lexer-parser, binder-checker, spec-audit, verification]
 created: 2026-07-27
-updated: 2026-07-27
+updated: 2026-07-28
 area: compiler
 requires: [17, 18, 19, 20, 25, 26, 27]
 supersedes: []
@@ -1546,7 +1546,7 @@ The required synchronized replacements are:
 | RFC 0020 | define `ActiveMembershipResult<Record>`, conditional readiness, exact authority equality, and admission-before-membership-before-interner order; remove runtime membership dispatch, variadic authority, boolean membership, and ambient readiness |
 | RFC 0025 | bind the session state machine to explicit transaction results and `SealedQuerySnapshot`; require capability failure decoding and the twenty permission rows before core materializers; bind schema, codec, diagnostic, runtime, provenance, and verification work to RFC 0029's dependency order |
 | RFC 0026 | bind `MaterializeModuleGraph` to sealed root demand and the runtime-only `ModuleDependencyProvenanceMap`; require retained final parse lineage and remove any ambient sealed-state or session graph authority |
-| RFC 0027 | move `S1`, `S2`, `S3`, and `S6` before runtime, land `S1` plus `S2` as one buildable schema-and-facts transaction, remove `ClosureEnvironmentMap`, add complete contextual keys, identity-site provenance, stable identity admission, five exact Binder capability failure contracts, explicit descriptor ordinals, affected-owner routing, and corrected downstream dependencies |
+| RFC 0027 | move `S1`, `S2`, `S3`, and `S6` before runtime, land `S1` plus `S2` plus `S3` as the exact RFC 0030 build-visible foundation transaction, remove `ClosureEnvironmentMap`, add complete contextual keys, identity-site provenance, stable identity admission, five exact Binder capability failure contracts, explicit descriptor ordinals, affected-owner routing, and corrected downstream dependencies |
 | RFC 0028 | replace numeric identity with the retained token; separate `CapabilityPublished` from semantic values; retain only independently reachable decoder coordinates; add the complete identity-site, stable-admission, contextual-key, five-descriptor, and `ModuleBodySyntaxQuery` invariant contracts; preserve bounded review partitions and one atomic runtime landing |
 
 Each synchronized tracker records the RFC 0029 proposal hash, transaction
@@ -1683,10 +1683,10 @@ The synchronized rollout order is:
 
 1. accept RFC 0029 and synchronize all listed RFC, tracker, index, and routing
    documents under `rfc0029-accept-20260727-8d393a0c`;
-2. prepare RFC 0027 `S1` and `S2` separately, then land them together through
-   `R29-12AB` as one buildable schema-and-facts transaction;
-3. land `R29-12C` for bounded codecs and fixed wire oracles and `R29-12D` for
-   canonical Binder diagnostic facts;
+2. prepare RFC 0027 `S1`, `S2`, and `S3` as bounded review partitions, then
+   land them together through the exact RFC 0030 `R29-12AB` transaction;
+3. land `R29-12D` for canonical Binder diagnostic facts and its exact native
+   mutation coverage;
 4. prepare the existing RFC 0028 review partitions plus RFC 0029 identity-site,
    stable-admission, descriptor-failure, decoder, race, and negative-compile
    partitions;
@@ -1789,7 +1789,7 @@ configuration. Release readiness requires:
 | `R28-11` | `rfc` | `R28-02` through `R28-10` | Record exact-hash approvals and prepare the complete synchronized acceptance transaction |
 | `R28-11A` | `task-router` | `R28-11` | Assign the two descriptor scripts to `verification` and synchronize routing documentation |
 | `R28-12` | `rfc` | `R28-11`; `R28-11A` | Validate the synchronized tree, record one transaction identifier and proposal hash, and accept atomically |
-| `R28-13A` | `module-system` | `R29-12A`; `R29-12B`; `R29-12AB`; `R29-12C`; `R29-12D` | Prepare the reviewed query-type partition for token database identity, separated request results, transaction failures, seals, and capability demand results; do not land independently |
+| `R28-13A` | `module-system` | `R29-12A`; `R29-12B`; `R29-12AB`; `R29-12D` | Prepare the reviewed query-type partition for token database identity, separated request results, transaction failures, seals, and capability demand results; do not land independently |
 | `R28-13B` | `module-system` | `R28-13A` | Prepare the reviewed query-database partition for transaction and final-seal state, sealed snapshots, and admission propagation; do not land independently |
 | `R28-13C` | `module-system` | `R28-13B` | Prepare the reviewed descriptor inventory and query build-wiring partition; do not land independently |
 | `R28-13C1` | `verification` | `R28-13C` | Prepare the reviewed inventory generator, architecture gate, and adversarial self-tests; do not land independently |
@@ -1805,8 +1805,8 @@ configuration. Release readiness requires:
 | `R28-18` | `spec-audit` | `R28-17` | Publish only the production-backed current compiler contract |
 | `R28-19` | `rfc` | `R28-18` | Audit evidence, synchronize implementation status, and transition this RFC only when complete |
 
-RFC 0027 `S1`, `S2`, `S3`, and `S6` execute through RFC 0029
-`R29-12A`, `R29-12B`, `R29-12AB`, `R29-12C`, and `R29-12D` before
+RFC 0027 `S1`, `S2`, `S3`, and `S6` execute through RFC 0030 and RFC 0029
+`R29-12A`, `R29-12B`, `R29-12AB`, and `R29-12D` before
 `R28-13A`. The remaining runtime and downstream tasks resume only through
 their synchronized dependency edges.
 
@@ -1991,3 +1991,4 @@ None
 | 2026-07-27 | REVIEW | Entered exact-hash affected-owner and supplemental technical review after all proposal gates passed. |
 | 2026-07-27 | ACCEPTED | Accepted exact REVIEW proposal SHA-256 `944b68ffc0aff5576d079a243ff092d7d19fba5ffed65551dda8e68adf230db4` through synchronized transaction `rfc0028-accept-20260727-944b68ff`; implementation remains pending. |
 | 2026-07-27 | ACCEPTED | Synchronized to RFC 0029 proposal SHA-256 `8d393a0c6c00a7fad9ef086d3d25f5ed44300041afa9e1e1a4af5d68830fd3e7` through transaction `rfc0029-accept-20260727-8d393a0c`; implementation remains pending behind the RFC 0029 foundation tasks. |
+| 2026-07-28 | ACCEPTED | Synchronized to RFC 0030 proposal SHA-256 `4ed0e6b885abc87a1c4251855780cf115a85b3623b1d46f774a4b664110f7b6b` through transaction `rfc0030-accept-20260728-4ed0e6b8`; implementation remains pending behind the atomic S1-plus-S2-plus-S3 foundation and separate S6 diagnostic transaction. |

@@ -1328,8 +1328,8 @@ The dependency overlay is:
 
 | Local work | Current dependency |
 |---|---|
-| Stable Binder schema and first facts consumer | RFC 0029 `R29-12AB` |
-| Stable Binder codecs and diagnostic facts | RFC 0029 `R29-12C`; `R29-12D` |
+| Stable Binder schema, facts, codecs, tests, and gates | exact RFC 0030 `R29-12AB` |
+| Stable Binder diagnostic facts | RFC 0029 `R29-12D` |
 | `R25-07` graph, session, and materializer completion | RFC 0029 `R29-14`; RFC 0028 `R28-16` |
 | `R25-07` owner-body closure completion | RFC 0029 `R29-12AB`; `R29-14` |
 | `R25-07T` native and architecture evidence | RFC 0029 `R29-15` |
@@ -1419,13 +1419,13 @@ transaction.
 
 ### 2026-07-27 RFC 0029 Current Implementation Binding
 
-Transaction `rfc0029-accept-20260727-8d393a0c` establishes the current
-identity-site, stable-admission, complete-key, typed-failure, and dependency
-authority for this tracker. The Binder schema and first facts consumer land
-atomically through `R29-12AB`; `R29-12C` and `R29-12D` then land as separate
-codec and diagnostic transactions. `R25-07` and `R25-07T` may claim completion
-only after the applicable `R29-14`, RFC 0028 `R28-16`, and `R29-15`
-dependencies above have completed.
+Transaction `rfc0030-accept-20260728-4ed0e6b8` establishes the
+stable-foundation and dependency authority for this tracker. The Binder
+schema, facts, and codecs land
+atomically through the exact RFC 0030 `R29-12AB` transaction; `R29-12D` then
+lands as the separate diagnostic transaction. `R25-07` and `R25-07T` may
+claim completion only after the applicable `R29-14`, RFC 0028 `R28-16`, and
+`R29-15` dependencies above have completed.
 
 ### 2026-07-26 Core Pre-Parse Transaction And Module-Graph Progress
 
@@ -1517,9 +1517,9 @@ blocked by `R25-12G`.
 
 ## Blocking Dependencies
 
-- RFC 0027 implementation roots resume only through RFC 0029's corrected
-  dependency order: `R29-12AB`, then the separate `R29-12C` and `R29-12D`
-  transactions, then runtime work beginning at `R29-13A`.
+- RFC 0027 implementation roots resume only through the corrected dependency
+  order: exact RFC 0030 `R29-12AB`, then the separate `R29-12D` transaction,
+  then runtime work beginning at `R29-13A`.
 - `R25-07` cannot complete its graph and session boundary before `R29-14` and
   RFC 0028 `R28-16`, or its owner-body closure boundary before `R29-12AB` and
   `R29-14`; `R25-07T` cannot complete before `R29-15`.

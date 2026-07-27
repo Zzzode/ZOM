@@ -8,7 +8,7 @@ review-manager: rfc
 required-owners: [task-router, rfc, module-system, binder-checker, runtime-memory, error-system, spec-audit, verification]
 approvers: [task-router, rfc, module-system, binder-checker, runtime-memory, error-system, spec-audit, verification]
 created: 2026-07-27
-updated: 2026-07-27
+updated: 2026-07-28
 area: compiler
 requires: [17, 18, 19, 20, 25, 26, 27, 28]
 supersedes: []
@@ -862,20 +862,29 @@ boundaries:
 | 3 | `S3` | bounded exact-consumption codecs and fixed wire oracles |
 | 4 | `S6` | canonical Binder diagnostic extensions and `DiagnosticFact` payload support required by stable-identity admission |
 
-`S1` and `S2` remain separate review partitions, each with its accepted exact
-files and owner review. They land only as one atomic buildable transaction so
-the schema and its complete facts consumer enter the repository together.
-Neither partition may land alone.
+`S1`, `S2`, and `S3` remain separate bounded review partitions with their
+accepted owners. RFC 0030 makes `R29-12AB` their only landing transaction so
+the canonical schema, every S2 fact, every S3 admission path and codec, build
+wiring, native tests, schema mutations, architecture enforcement, contextual
+caller cutover, exact allowlist, and reusable landing-scope gate enter the
+repository together. No partition may land alone.
 
-`S3` then lands as one codec and wire-oracle Conventional Commit. `S6` lands as
-one diagnostic-wire Conventional Commit after the `S1` plus `S2` transaction;
-it retains the semantic dependency that RFC 0027 records on `S1`. Runtime work
-resumes only after both `S3` and `S6` land and pass their focused native gates.
+The exact `R29-12AB` files are the newline-sorted set specified by RFC 0030
+under `R29-12AB Exact Landing Set` and recorded verbatim in
+`products/zomlang/tests/coverage/rfc-0030-stable-binding-landing-files.txt`.
+The accepted set includes `stable-binding-schema.def`,
+`stable-binding-facts.{h,cc}`, `stable-binding-codec.{h,cc}`, Binder and driver
+build files, the focused Binder test and CTest file, both stable-binding gates,
+the complete driver contextual-key declaration and caller cutover, both
+authority tests, the allowlist manifest, and `scripts/check-landing-scope.py`.
 
-This does not merge all foundation work into a schema mega-change. It joins
-only the inseparable schema and first consumer. No subset, placeholder row,
-forward-declared dummy type, temporary codec, or unconsumed schema is
-authorized.
+`S6` lands as one diagnostic-fact Conventional Commit after `R29-12AB`. Its
+exact files, native test, CTest ownership, and diagnostic-coverage gates are
+specified by RFC 0030 under `R29-12D Exact Landing Set`. Runtime work resumes
+only after `R29-12AB` and `R29-12D` land and pass their focused native gates.
+
+No subset, placeholder row, forward-declared dummy type, temporary codec,
+uncompiled source, unregistered test, or unconsumed schema is authorized.
 
 After those four accepted partitions land, the RFC 0028 source review
 partitions resume. The sole RFC 0029 `R29-14` source transaction additionally
@@ -1082,10 +1091,9 @@ descriptor, provider, verifier, and decoding paths as unit tests.
 | `R29-11` | `rfc` | `R29-10` | Accept one synchronized documentation transaction |
 | `R29-12A` | `binder-checker` with `verification` review | `R29-11` | Prepare and review RFC 0027 `S1`; do not land independently |
 | `R29-12B` | `binder-checker` with `module-system` review | `R29-12A` | Prepare and review RFC 0027 `S2`; do not land independently |
-| `R29-12AB` | `binder-checker` with `module-system` and `verification` review | `R29-12A`; `R29-12B` | Assemble and land one buildable schema-plus-facts transaction with focused native and mutation gates |
-| `R29-12C` | `binder-checker` with `verification` review | `R29-12AB` | Execute RFC 0027 `S3` as one bounded codec, wire-oracle, and mutation-test commit |
+| `R29-12AB` | `binder-checker` with `module-system` and `verification` review | `R29-12A`; `R29-12B`; RFC 0030 `R30-14` | Land the exact RFC 0030 allowlist as one buildable S1-plus-S2-plus-S3 transaction with contextual caller cutover and focused native, mutation, architecture, and landing-scope gates |
 | `R29-12D` | `error-system` with `binder-checker` and `verification` review | `R29-12AB` | Execute RFC 0027 `S6` as one canonical Binder diagnostic-fact commit |
-| `R29-13A` | `module-system` with `runtime-memory` review | `R29-12C`; `R29-12D` | Revise and approve the RFC 0028 query-type partition |
+| `R29-13A` | `module-system` with `runtime-memory` review | `R29-12AB`; `R29-12D` | Revise and approve the RFC 0028 query-type partition |
 | `R29-13B` | `module-system` with `binder-checker`, `error-system`, and `verification` review | `R29-13A` | Add identity-site provenance, stable identity admission, and the five descriptor failure contracts to bounded source partitions |
 | `R29-13C` | `verification` | `R29-13B` | Add token, result, provenance, mapping, verifier, race, private decoder, and CTest compile-fail coverage |
 | `R29-14` | `module-system` with all source owners | `R29-13C`; RFC 0028 `R28-13G` | Assemble and land the corrected RFC 0028 atomic runtime source transaction as the sole landing authority |
@@ -1200,3 +1208,4 @@ None
 | 2026-07-27 | DRAFT | Initial complete proposal for unforgeable database identity and exact capability failure closure. |
 | 2026-07-27 | REVIEW | Entered exact-hash affected-owner review after structural and repository gates passed. |
 | 2026-07-27 | ACCEPTED | Transaction `rfc0029-accept-20260727-8d393a0c` accepted proposal SHA-256 `8d393a0c6c00a7fad9ef086d3d25f5ed44300041afa9e1e1a4af5d68830fd3e7` with exact-hash approval from every required owner and synchronized RFCs 0017 through 0020 and 0025 through 0028 without claiming implementation. |
+| 2026-07-28 | ACCEPTED | Transaction `rfc0030-accept-20260728-4ed0e6b8` synchronized the build-visible S1-plus-S2-plus-S3 atomic landing, exact contextual-key cutover, native and mutation gates, landing-scope proof, and separate S6 diagnostic transaction to RFC 0030 proposal SHA-256 `4ed0e6b885abc87a1c4251855780cf115a85b3623b1d46f774a4b664110f7b6b`; RFC 0029 remains accepted and implementation remains incomplete. |

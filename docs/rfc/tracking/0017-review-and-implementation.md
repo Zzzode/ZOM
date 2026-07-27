@@ -253,18 +253,19 @@ failure contracts for the five Binder provenance capabilities.
 
 | Binding | RFC 0029 Task Authority |
 |---|---|
-| Stable Binder schema and facts | `R29-12A`; `R29-12B`; atomic `R29-12AB` |
-| Bounded codecs and diagnostic payload | `R29-12C`; `R29-12D` |
+| Stable Binder schema, facts, and bounded codecs | `R29-12A`; `R29-12B`; exact RFC 0030 atomic `R29-12AB` |
+| Canonical diagnostic payload | `R29-12D` |
 | Token identity, result algebra, decoder, and query-type partition | `R29-13A` |
 | Identity-site provenance, stable admission, and exact descriptor failures | `R29-13B` |
 | Native, mutation, race, and negative-compile gates | `R29-13C` |
 | Atomic runtime source transaction | `R29-14` |
 | Integrated evidence, current design, and truthful status | `R29-15` through `R29-17` |
 
-`S1` and `S2` remain separately reviewed and land only through `R29-12AB`.
-`S3` and `S6` land after that transaction. Runtime work resumes only after
-both focused gate sets pass. RFC 0017 remains `IMPLEMENTING`; no RFC 0029
-implementation task is complete through this synchronization.
+`S1`, `S2`, and `S3` remain separately reviewed and land only through the
+exact RFC 0030 `R29-12AB` transaction. `S6` lands afterward through
+`R29-12D`. Runtime work resumes only after both focused gate sets pass. RFC
+0017 remains `IMPLEMENTING`; no foundation implementation task is complete
+through this synchronization.
 
 ## Implementation Tracker
 

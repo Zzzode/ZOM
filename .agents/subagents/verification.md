@@ -52,6 +52,8 @@ scripts/check-identity-architecture.py
 scripts/check-ir-architecture.py
 scripts/check-incremental-query-architecture.py
 scripts/check-binder-architecture.py
+scripts/check-stable-binding-schema.py
+scripts/check-landing-scope.py
 scripts/check-checker-architecture.py
 scripts/check-compiler-session-architecture.py
 scripts/check-impl-source-architecture.py
@@ -75,6 +77,7 @@ scripts/check-core-library-architecture.py
 scripts/check-core-library-spec-alignment.py
 scripts/codegen/gen_core_library_inventory.py
 products/zomlang/tests/coverage/diagnostic-reservations.json
+products/zomlang/tests/coverage/rfc-0030-stable-binding-landing-files.txt
 scripts/run-rfc0016-coverage.py
 scripts/check-rfc0016-coverage.py
 scripts/check-ownership-architecture.py
@@ -124,6 +127,14 @@ cmake/utils/unittests.cmake
 - [ ] Query-runtime race tests use explicit per-database one-shot state and
       condition synchronization, with no sleep, callback, global registry, or
       verifier replacement.
+- [ ] Stable-binding foundation changes compile both fact and codec sources,
+      execute every fixed wire oracle through native ztest, register the four
+      exact RFC 0030 CTest targets, pass positive and mutation schema modes,
+      and pass Binder architecture checks.
+- [ ] RFC 0030 `R29-12AB` worktree and staged-index path/status sets equal the
+      accepted allowlist. The immutable implementation-series base remains
+      unchanged, and unrelated staged, unstaged, or untracked files are
+      rejected.
 
 ## Required Evidence Before Closing
 
@@ -141,6 +152,10 @@ cmake/utils/unittests.cmake
 - [ ] `python3 scripts/check-incremental-query-architecture.py --check` and
       `python3 scripts/check-incremental-query-architecture.py --self-test`
       pass.
+- [ ] `python3 scripts/check-stable-binding-schema.py --check`,
+      `python3 scripts/check-stable-binding-schema.py --self-test`, and
+      `python3 scripts/check-landing-scope.py --self-test` pass when the
+      RFC 0030 foundation is in scope.
 - [ ] Coverage report (when the task is coverage-gated) confirms no
       regressions vs. the last baseline.
 - [ ] For bug fixes: regression test fails on `HEAD^`, passes on HEAD.

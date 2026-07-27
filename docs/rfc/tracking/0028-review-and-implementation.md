@@ -95,7 +95,7 @@ is authorized only through the dependency-ordered pending tasks below.
 | `R28-11` | `rfc` | `R28-02`; `R28-03`; `R28-04`; `R28-05`; `R28-06`; `R28-07`; `R28-08`; `R28-09`; `R28-10` | Record exact-hash approvals and prepare the synchronized acceptance transaction. | `python3 scripts/check-rfc.py` | Complete |
 | `R28-11A` | `task-router` | `R28-11` | Assign the two descriptor scripts to `verification` and synchronize routing documentation. | Routing and RFC review | Complete |
 | `R28-12` | `rfc` | `R28-11`; `R28-11A` | Validate one synchronized tree, record one transaction identifier and proposal hash, and accept atomically. | `python3 scripts/check-rfc.py` | Complete |
-| `R28-13A` | `module-system` | `R29-12A`; `R29-12B`; `R29-12AB`; `R29-12C`; `R29-12D` | Prepare the reviewed token-identity and separated request-result query-type partition; do not land independently. | Type and failure review | Pending |
+| `R28-13A` | `module-system` | `R29-12A`; `R29-12B`; `R29-12AB`; `R29-12D` | Prepare the reviewed token-identity and separated request-result query-type partition; do not land independently. | Type and failure review | Pending |
 | `R28-13B` | `module-system` | `R28-13A` | Prepare the reviewed transaction, seal, sealed-snapshot, and admission partition; do not land independently. | Query database review | Pending |
 | `R28-13C` | `module-system` | `R28-13B` | Prepare the descriptor schema and query build-wiring partition; do not land independently. | Query inventory review | Pending |
 | `R28-13C1` | `verification` | `R28-13C` | Prepare the descriptor generator, architecture gate, and adversarial self-tests; do not land independently. | Gate self-tests | Pending |
@@ -111,8 +111,8 @@ is authorized only through the dependency-ordered pending tasks below.
 | `R28-18` | `spec-audit` | `R28-17` | Publish only the production-backed current compiler contract. | Current-state design audit | Pending |
 | `R28-19` | `rfc` | `R28-18` | Audit evidence and perform truthful synchronized implementation-state transitions. | RFC and evidence audit | Pending |
 
-RFC 0027 `S1`, `S2`, `S3`, and `S6` now execute through RFC 0029
-`R29-12A`, `R29-12B`, `R29-12AB`, `R29-12C`, and `R29-12D`. Runtime
+RFC 0027 `S1`, `S2`, `S3`, and `S6` now execute through RFC 0030 and RFC 0029
+`R29-12A`, `R29-12B`, `R29-12AB`, and `R29-12D`. Runtime
 review partitions remain non-landing work and resume only after those
 foundation tasks complete; the shared source history changes only through the
 atomic RFC 0029 `R29-14` landing.

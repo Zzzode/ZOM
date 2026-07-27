@@ -98,6 +98,7 @@ not reused.
 | [RFC 0027](0027-binder-query-and-identity-materialization-closure.md) | Binder Query And Identity Materialization Closure | ACCEPTED | compiler | compiler | rfc | [Review Tracker](tracking/0027-review-and-implementation.md) | [Implementation Tracker](tracking/0027-review-and-implementation.md#implementation-tracker) |
 | [RFC 0028](0028-query-runtime-final-seal-and-descriptor-closure.md) | Query Runtime Final-Seal And Descriptor Closure | ACCEPTED | compiler | compiler | rfc | [Review Tracker](tracking/0028-review-and-implementation.md) | [Implementation Tracker](tracking/0028-review-and-implementation.md#implementation-tracker) |
 | [RFC 0029](0029-query-identity-and-capability-failure-closure.md) | Query Identity And Capability Failure Closure | ACCEPTED | compiler | compiler | rfc | [Review Tracker](tracking/0029-review-and-implementation.md) | [Implementation Tracker](tracking/0029-review-and-implementation.md#implementation-tracker) |
+| [RFC 0030](0030-stable-binding-foundation-verification.md) | Stable Binding Foundation Verification | ACCEPTED | testing | testing | rfc | [Review Tracker](tracking/0030-review-and-implementation.md) | [Implementation Tracker](tracking/0030-review-and-implementation.md#implementation-tracker) |
 
 ## Status Values
 

@@ -190,6 +190,8 @@ subagents:
       - "scripts/check-ir-architecture.py"
       - "scripts/check-incremental-query-architecture.py"
       - "scripts/check-binder-architecture.py"
+      - "scripts/check-stable-binding-schema.py"
+      - "scripts/check-landing-scope.py"
       - "scripts/check-checker-architecture.py"
       - "scripts/check-compiler-session-architecture.py"
       - "scripts/check-impl-source-architecture.py"

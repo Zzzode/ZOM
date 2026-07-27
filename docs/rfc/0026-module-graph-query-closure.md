@@ -8,7 +8,7 @@ review-manager: rfc
 required-owners: [rfc, module-system, binder-checker, verification]
 approvers: [rfc, module-system, binder-checker, verification]
 created: 2026-07-26
-updated: 2026-07-27
+updated: 2026-07-28
 area: compiler
 requires: [17, 18, 19, 20, 25]
 supersedes: []
@@ -550,10 +550,10 @@ module-qualified contextual keys, `IdentitySyntaxSiteInventoryQuery`, and
 capabilities exposes only typed source and key rejections and follows the
 exact RFC 0029 read order and failure precedence.
 
-The stable Binder schema and facts partitions land atomically through
-`R29-12AB`. Codecs and diagnostic facts then land separately through
-`R29-12C` and `R29-12D`; runtime work cannot start before both pass focused
-native gates. The corrected runtime source transaction is `R29-14`.
+The stable Binder schema, facts, and codecs land atomically through the exact
+RFC 0030 `R29-12AB` transaction. Diagnostic facts then land separately through
+`R29-12D`; runtime work cannot start before both pass focused native gates.
+The corrected runtime source transaction is `R29-14`.
 `ModuleDependencyProvenanceMap` completion remains ordered through RFC 0028
 `R28-16`, and full synchronized verification is `R29-15`.
 
@@ -582,7 +582,7 @@ verification tasks are complete. RFC 0026 remains `ACCEPTED`.
 Completed RFC 0026 stable graph tasks retain their recorded evidence. The
 typed witness, final-snapshot materializer, active membership, session cutover,
 downstream lease migration, removal work, and final gates follow RFC 0029
-`R29-12AB`, the separate `R29-12C` and `R29-12D` transactions, `R29-14`, RFC
+`R29-12AB`, the separate `R29-12D` transaction, `R29-14`, RFC
 0028 `R28-16`, and `R29-15` before later RFC 0027 dependency edges resume.
 
 ## Test Plan
@@ -618,3 +618,4 @@ None
 | 2026-07-27 | ACCEPTED | Acceptance transaction `rfc0027-accept-20260727-e2f4ba5e` synchronized the typed witness, complete-root final-snapshot `MaterializeModuleGraph`, active-membership expansion, retained capability lifetime, and publication contracts to RFC 0027 proposal SHA-256 `e2f4ba5eb777d3d70b8eb3ad75b18f5169afc61a83d989ccc61fc9d5d022f435`; implementation status remains unchanged. |
 | 2026-07-27 | ACCEPTED | Transaction `rfc0028-accept-20260727-944b68ff` synchronized explicit transaction and seal results, `SealedQuerySnapshot` admission, typed capability failures, exact membership permissions, retained final-parse provenance lineage, and runtime source ownership to RFC 0028 proposal SHA-256 `944b68ffc0aff5576d079a243ff092d7d19fba5ffed65551dda8e68adf230db4`; implementation remains pending. |
 | 2026-07-27 | ACCEPTED | Transaction `rfc0029-accept-20260727-8d393a0c` synchronized complete Binder contextual keys, identity-site provenance, stable-identity admission, exact typed provenance failures, and the schema-before-runtime dependency order to RFC 0029 proposal SHA-256 `8d393a0c6c00a7fad9ef086d3d25f5ed44300041afa9e1e1a4af5d68830fd3e7`; implementation remains pending. |
+| 2026-07-28 | ACCEPTED | Transaction `rfc0030-accept-20260728-4ed0e6b8` synchronized the exact build-visible S1-plus-S2-plus-S3 atomic landing and separate S6 diagnostic transaction to RFC 0030 proposal SHA-256 `4ed0e6b885abc87a1c4251855780cf115a85b3623b1d46f774a4b664110f7b6b`; implementation remains pending. |
