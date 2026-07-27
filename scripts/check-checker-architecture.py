@@ -960,7 +960,7 @@ def check_production_session(files: dict[Path, str], errors: list[str]) -> None:
         "DispatchSiteInventoryBuilder::build",
         "DispatchFactsBuilder::build",
         "DispatchFactsVerifier::verify",
-        "impl->dispatchFacts = zc::mv(stagedDispatchFacts);",
+        "impl->dispatchFacts = zc::mv(ordinaryDispatchFacts);",
         "impl->checkedFactsRepository = zc::mv(stagedCheckedFactsRepository);",
         "impl->verifiedCheckedSources = true;",
     )
@@ -1703,6 +1703,16 @@ def run_self_test() -> int:
             files,
             SESSION_SOURCE,
             "impl->checkedFactsRepository = zc::mv(stagedCheckedFactsRepository);",
+        ),
+        "missing production Checker marker",
+    )
+    failures += expect_rejection(
+        baseline,
+        "atomic dispatch-facts publication removed",
+        lambda files: remove_once(
+            files,
+            SESSION_SOURCE,
+            "impl->dispatchFacts = zc::mv(ordinaryDispatchFacts);",
         ),
         "missing production Checker marker",
     )
