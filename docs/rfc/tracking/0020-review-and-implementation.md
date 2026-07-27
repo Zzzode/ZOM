@@ -208,6 +208,28 @@ queries, and seals the final snapshot after byte-equal graph, SCC, authority,
 readiness, inventory, and header re-demands. RFC 0020 remains `IMPLEMENTING`;
 completion evidence belongs to the RFC 0027 implementation tracker.
 
+### 2026-07-27 RFC 0028 Acceptance Synchronization
+
+Acceptance transaction `rfc0028-accept-20260727-944b68ff` synchronizes RFC
+0020 to exact RFC 0028 proposal SHA-256
+`944b68ffc0aff5576d079a243ff092d7d19fba5ffed65551dda8e68adf230db4`.
+All eight membership descriptors now publish
+`ActiveMembershipResult<Record>`, read readiness only on negative or
+contradictory authority, compare complete authority, and enforce inherited
+admission before membership and membership before interner access.
+
+| Binding | RFC 0028 Task Authority |
+|---|---|
+| Routing and acceptance synchronization | `R28-11A`; `R28-12` |
+| Closed runtime, transaction, seal, and admission types | `R28-13A`; `R28-13B` |
+| Descriptor, membership caller, and native-test partitions | `R28-13C` through `R28-13G` |
+| Indivisible source cutover | `R28-14` |
+| Integrated evidence and truthful status transition | `R28-17` through `R28-19` |
+
+RFC 0020 remains `IMPLEMENTING`. Existing authority-projection evidence does
+not complete the membership and final-admission replacement; completion
+authority belongs to the listed RFC 0028 tasks and their dependency edges.
+
 ## Implementation Tracker
 
 Implementation started after the accepted RFC moved through `ACCEPTED` to

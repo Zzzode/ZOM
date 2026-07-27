@@ -217,6 +217,29 @@ membership after the final seal, and retains the arena and snapshot through
 every capability memo and surviving lease. RFC 0017 remains `IMPLEMENTING`;
 completion evidence belongs to the RFC 0027 implementation tracker.
 
+### 2026-07-27 RFC 0028 Acceptance Synchronization
+
+Acceptance transaction `rfc0028-accept-20260727-944b68ff` synchronizes RFC
+0017 to exact RFC 0028 proposal SHA-256
+`944b68ffc0aff5576d079a243ff092d7d19fba5ffed65551dda8e68adf230db4`.
+The current contract now uses a nonzero database generation, kind-specific
+literal descriptor metadata, explicit inventory ordinals, one typed
+registration path, closed transaction and runtime failures, canonical
+capability rejection envelopes, inherited sealed admission, typed capability
+contexts, and direct `BoundOwnerBody` closure facts.
+
+| Binding | RFC 0028 Task Authority |
+|---|---|
+| Routing and acceptance synchronization | `R28-11A`; `R28-12` |
+| Query types, transactions, seal, descriptors, callers, and tests | `R28-13A` through `R28-14` |
+| Direct owner-body closure inventory | `R28-15` |
+| Provenance capability and failure bridge | `R28-16A`; `R28-16B`; `R28-16` |
+| Integrated evidence and truthful status transition | `R28-17` through `R28-19` |
+
+RFC 0017 remains `IMPLEMENTING`. Existing implementation evidence does not
+complete these replacements; completion authority belongs to the listed RFC
+0028 tasks and their dependency edges.
+
 ## Implementation Tracker
 
 | Slice | State | Required evidence |

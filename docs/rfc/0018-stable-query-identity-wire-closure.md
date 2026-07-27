@@ -1199,6 +1199,32 @@ Implementation-body scopes, declaration sites, and revision-local occurrence
 handles remain occurrence-specific. The semantic-context arena admits global
 handles only after exact tracked active-membership validation.
 
+### Query Descriptor And Authority Identity Closure
+
+Acceptance transaction `rfc0028-accept-20260727-944b68ff` binds this current
+contract to exact RFC 0028 proposal SHA-256
+`944b68ffc0aff5576d079a243ff092d7d19fba5ffed65551dda8e68adf230db4`.
+
+Every descriptor inventory row carries an explicit contiguous `uint32`
+ordinal, and `QueryKindId` is exactly that ordinal within its target-specific
+inventory. Registration sequence, hash, address, and link order have no
+identity authority. A test target preserves the complete production inventory
+as its prefix and appends one contiguous test-only tail.
+
+Each descriptor name and query domain is a non-empty printable-ASCII
+`zc::LiteralStringConst` expressed with `_zcc` in its kind-specific metadata.
+The capability failure envelope uses the literal domain
+`zom.query.capability-failure`, frames the demanded descriptor's literal
+domain, failure kind, and canonical payload, and requires exact canonical
+re-encoding. The framed descriptor domain must equal the demanded descriptor's
+domain.
+
+Identity admission and active membership compare the complete canonical
+authority bytes, including contextual roots, global key, owner, and occurrence
+authority. Digest equality alone cannot authorize admission. Equal keys with
+unequal complete authority records are canonical collisions and fail before
+interner access.
+
 ## Repository Impact
 
 | Area | Paths | Owner |
@@ -1211,7 +1237,7 @@ handles only after exact tracked active-membership validation.
 | Diagnostic provenance | `products/zomlang/compiler/diagnostics/**` | `error-system` |
 | Compiler build graph | `products/zomlang/compiler/CMakeLists.txt` | `ir-backend` |
 | Design and spec alignment | `docs/design/**`, `docs/spec/chapters/03-types.md`, `docs/spec/chapters/06-declarations.md`, `docs/spec/chapters/09-interfaces.md`, `docs/spec/chapters/12-generics.md`, `docs/spec/chapters/17-grammar-reference.md`, `docs/spec/chapters/22-orphan-rule-and-coherence.md` | `spec-audit` |
-| Tests, schema generator, and architecture gates | `products/zomlang/tests/**`, `scripts/generate-canonical-header-syntax-schema.py`, `scripts/check-identity-architecture.py`, `scripts/check-incremental-query-architecture.py` | `verification` |
+| Tests, schema generators, and architecture gates | `products/zomlang/tests/**`, `scripts/generate-canonical-header-syntax-schema.py`, `scripts/generate-query-descriptor-schema.py`, `scripts/check-query-descriptor-architecture.py`, `scripts/check-identity-architecture.py`, `scripts/check-incremental-query-architecture.py` | `verification` |
 
 ## Security And Safety Impact
 
@@ -1565,3 +1591,4 @@ None
 | 2026-07-25 | IMPLEMENTING | Synchronized the accepted RFC 0025 compilation-unit identity expansion, contextual roots, semantic core graph, diagnostic identity, regenerated wire, and no-fallback mutation contracts from exact proposal SHA-256 `4f4085c176a9f391115e12170da93af899e350fa92440d5a51577692faf8bad0`; implementation completion is tracked only by the RFC 0025 R25 tasks. |
 | 2026-07-26 | IMPLEMENTING | Synchronized the accepted RFC 0026 selected-module, dependency-site, request, failure, graph, SCC, cycle, and ledger wire closure plus standalone-versus-keyed verification boundary from exact proposal SHA-256 `39df5d3f11dbdcb2e95056b1cd14fd5220a19688f31a3e3180230ad465a3f84d`; implementation completion remains tracked by RFC 0026 and RFC 0025. |
 | 2026-07-27 | IMPLEMENTING | Synchronized the RFC 0027 Binder query-key, complete authority-record, occurrence-specific scope, arena admission, and materialized occurrence contracts through transaction `rfc0027-accept-20260727-e2f4ba5e` at proposal SHA-256 `e2f4ba5eb777d3d70b8eb3ad75b18f5169afc61a83d989ccc61fc9d5d022f435`; implementation status is unchanged. |
+| 2026-07-27 | IMPLEMENTING | Synchronized the RFC 0028 explicit descriptor ordinal, literal query and capability-failure domains, complete canonical authority equality, collision, and target-inventory identity contracts through transaction `rfc0028-accept-20260727-944b68ff` at proposal SHA-256 `944b68ffc0aff5576d079a243ff092d7d19fba5ffed65551dda8e68adf230db4`; implementation status is unchanged. |

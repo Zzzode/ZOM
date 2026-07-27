@@ -111,9 +111,11 @@ flowchart TD
 Stable queries publish canonical keys and facts. They contain no process
 handle, node, source span, brand, revision, arena reference, session reference,
 or diagnostic engine reference. Materializers run only against the final
-sealed snapshot, expand active stable identities through the semantic-context
-arena, reconstruct current provenance, and publish retained immutable
-capabilities.
+sealed snapshot carried by `SealedQuerySnapshot`. The inherited admission is
+validated before provider execution. Materializers then demand exact active
+membership, compare complete authority, enter the semantic-context interner
+only after that dependency succeeds, reconstruct current provenance, and
+publish retained immutable capabilities.
 
 ## Reference-Level Design
 
@@ -411,7 +413,6 @@ Provider and verifier compute counts, order, and prefix sums independently.
 | `BindOwnerBody` | `ContextualBodyOwnerKey` | `BinderQueryResult<BoundOwnerBody>` |
 | `ModuleBindingAllocationPlan` | `ContextualModuleKey` | `BinderQueryResult<ModuleBindingAllocationPlan>` |
 | `ModuleDiagnosticFacts` | `ContextualModuleKey` | canonical RFC 0017 fact sequence |
-| `ClosureEnvironmentMap` | `ContextualBodyOwnerKey` | canonical closure and capture projection |
 
 Header queries read one exact owning inventory, selected source, parse
 capability, and current declaration site. `BindModuleSkeleton` reads module
@@ -425,6 +426,12 @@ owner body. `ModuleDiagnosticFacts` reads the module-resolution diagnostics,
 skeleton result, and every canonical owner-body result; it reads no
 materialized capability.
 
+`BoundOwnerBody` is the sole stable owner of closure, free-variable, and
+explicit-capture facts. `MaterializeOwnerBody` reads the exact
+`BindOwnerBody` result and expands those facts directly. No second projection,
+descriptor, codec, memo, provider, verifier, consumer, schema row, or
+architecture allowance exists for the same authority.
+
 Each descriptor declares complete tracked reads, provider, independent
 verifier, cycle rejection, equality, retention, cost, semantic-failure
 mapping, and runtime-failure mapping. Architecture gates reject shared
@@ -432,6 +439,15 @@ producer/verifier traversal, ambient roots, database-key enumeration, session
 mirrors, and undeclared dynamic reads.
 
 ### Materialized Capabilities
+
+Final Binder capabilities use descriptor-specific failure alternatives.
+`CapabilityDemandResult<Descriptor>` exposes only the source- or key-rejection
+alternatives listed by that descriptor, plus `Published` and
+`RuntimeRejected`. The typed provider result, canonical failure envelope,
+independent rejection verifier, and public decoder are the RFC 0028 contract.
+An unavailable alternative creates no type, storage, constructor, codec,
+verifier, or observer, and no rejection publishes a semantic or capability
+memo.
 
 `MaterializeModuleSkeleton(ContextualModuleKey)` expands the stable skeleton
 through the exact allocation plan, selected-source provenance,
@@ -616,3 +632,4 @@ None
 | 2026-07-25 | IMPLEMENTING | Contextual query shapes were synchronized with the accepted core-library architecture contract. |
 | 2026-07-26 | IMPLEMENTING | Selected-source authority and consumer read sets were synchronized with the accepted module-graph query contract. |
 | 2026-07-27 | IMPLEMENTING | Acceptance transaction `rfc0027-accept-20260727-e2f4ba5e` synchronized the current owner, scope, fact, header, result, allocation, complete-read, diagnostic, materialized-provenance, and Checker contracts to RFC 0027 proposal SHA-256 `e2f4ba5eb777d3d70b8eb3ad75b18f5169afc61a83d989ccc61fc9d5d022f435`; implementation status remains unchanged. |
+| 2026-07-27 | IMPLEMENTING | Acceptance transaction `rfc0028-accept-20260727-944b68ff` synchronized sealed admission, descriptor-specific capability failures, exact membership-before-interner ordering, direct owner-body closure facts, and the RFC 0028 implementation dependency graph to proposal SHA-256 `944b68ffc0aff5576d079a243ff092d7d19fba5ffed65551dda8e68adf230db4`; implementation status remains unchanged. |

@@ -544,15 +544,15 @@ one snapshot's explicit inputs. Semantic providers construct and return stable
 keys without issuing handles. Demand order therefore cannot change the logical
 active set.
 
-`CapabilityQueryContext::materializeActive<Key>(key, authority)` is available
-only when
-`ActiveMaterializerPermission<Descriptor, Key, MembershipDescriptor>` names
-the exact descriptor, key type, and tracked membership descriptor. It requires
-the final sealed snapshot, demands the membership descriptor in the active
-query frame, validates complete authority bytes, and then calls the arena
-interner. Absence is a deterministic inactive result. Presence permits the
-interner lock to return the existing canonical handle or append exactly one
-owned entry.
+On `CapabilityQueryContext<Descriptor>`, `materializeActive` participates in
+overload resolution only when
+`ActiveMaterializerPermission<Descriptor, GlobalIdentityKey,
+MembershipDescriptor>` names the exact descriptor, global key type, and
+tracked membership descriptor. It requires inherited final admission, demands
+the membership descriptor in the active query frame, validates complete
+authority bytes, and then calls the arena interner. Absence is a deterministic
+inactive result. Presence permits the interner lock to return the existing
+canonical handle or append exactly one owned entry.
 
 Two concurrent materializations of the same key coalesce at the interner and
 receive the same handle. An old-snapshot flight checks old activity and may
@@ -631,10 +631,10 @@ closed explicit input record. Debug and sanitizer builds fail hard when a query
 provider crosses a forbidden authority boundary.
 
 The only identity-materialization operation is exposed through
-`CapabilityQueryContext`; its type is unavailable to `Semantic` and
-`Persisted` descriptors. A permitted `RevisionLocal` materializer receives it
-as a capability. The context records and validates the exact active-membership
-read before invoking the arena-owned typed interner.
+`CapabilityQueryContext<Descriptor>`; its type is unavailable to `Semantic`
+and `Persisted` descriptors. A permitted `RevisionLocal` materializer receives
+the context bound to its own descriptor. The context records and validates the
+exact active-membership read before invoking the arena-owned typed interner.
 
 ### Query Reuse Classes
 
@@ -962,7 +962,6 @@ local namespace and NFC name. It excludes the import site, source span,
 | `DefinitionVisibility` | definition key | effective visibility fact |
 | `ScopeNameBucket` | stable scope owner, namespace, canonical name | only declarations relevant to that lookup key |
 | `ImportTarget` | semantic import binding key | stable target, binding kind, visibility, and re-export facts |
-| `ClosureEnvironmentMap` | owning definition key | canonical environments for every closure in one named item |
 
 `DefinitionSignature` contains, in canonical field order, owner
 `DefinitionKey`, callable kind, stable generic parameter and constraint
@@ -984,10 +983,10 @@ a length prefix; it never serializes the store slot or semantic context brand.
 `ImportTarget` contains only stable target `ModuleKey` or `DefinitionKey`,
 binding kind, effective visibility, and re-export semantic facts. It contains
 no site provenance, revisions, or runtime handles and is rehydrated through the
-active snapshot. `ClosureEnvironmentMap` is sorted by the closure's
-owner-local `LocalSyntaxPath` in `NamedItemSyntax`; each record contains stable
-captured `DefinitionKey` values and capture modes. Current closure nodes and
-spans live only in `NamedItemProvenance`.
+active snapshot. `BoundOwnerBody` is the sole stable owner of closure,
+free-variable, and explicit-capture facts. Materialized owner-body consumers
+expand those facts directly; current closure nodes and spans remain
+revision-local provenance.
 
 Projection providers may read a large verified producer result, but consumers
 read the projection. Projection equality contains only facts visible through
@@ -1259,13 +1258,13 @@ The RFC 0027 acceptance transaction
 `e2f4ba5eb777d3d70b8eb3ad75b18f5169afc61a83d989ccc61fc9d5d022f435`.
 
 The semantic-context arena is the sole owner of the eight typed identity
-interners. `CapabilityQueryContext` admits a handle only through an exact
-three-parameter `ActiveMaterializerPermission` row after the final input seal
-and a tracked typed active-membership result. Definition, implementation,
-generic-parameter, and callable-parameter membership retain complete authority
-records; compilation-unit, crate, source, and module membership retain complete
-stable keys. Equal-key unequal-record admission fails with
-`CanonicalCollision`.
+interners. `CapabilityQueryContext<Descriptor>` admits a handle only through
+an exact three-parameter `ActiveMaterializerPermission` row after the final
+input seal and a tracked typed active-membership result. Definition,
+implementation, generic-parameter, and callable-parameter membership retain
+complete authority records; compilation-unit, crate, source, and module
+membership retain complete stable keys. Equal-key unequal-record admission
+fails with `CanonicalCollision`.
 
 Revision-local capability memos retain all dependency memos, the snapshot, and
 the semantic-context arena. Capability leases may outlive
@@ -1273,6 +1272,25 @@ the semantic-context arena. Capability leases may outlive
 remain valid until the final lease releases. Materializer results, brands, and
 process-local handles are never serialized, backdated, or used as active
 membership.
+
+### Query Runtime Final-Seal And Descriptor Contract
+
+Acceptance transaction `rfc0028-accept-20260727-944b68ff` binds this current
+contract to exact RFC 0028 proposal SHA-256
+`944b68ffc0aff5576d079a243ff092d7d19fba5ffed65551dda8e68adf230db4`.
+
+| RFC 0017 Surface | Current Contract |
+|---|---|
+| Database identity | Every database implementation receives a nonzero, strictly monotonic, process-local `QueryDatabaseIdentity` generation. Snapshots, transactions, demands, final admission, and retained capability state carry that identity. The generation is move-stable, never serialized, and never reused. |
+| Descriptor metadata | `InputDescriptorMetadata`, `SemanticDescriptorMetadata`, and `CapabilityDescriptorMetadata` are distinct literal types. Every descriptor declares one immutable non-empty printable-ASCII name and domain through `zc::LiteralStringConst` and `_zcc`; the metadata type selects the descriptor kind. |
+| Closed inventory | The generated target inventory assigns each descriptor an explicit contiguous `uint32` ordinal. `QueryKindId` equals that ordinal. A test inventory preserves the complete production prefix and appends only its contiguous test tail. |
+| Registration | `registerDescriptor<Descriptor>()` is the sole registration entry point. It validates the generated row, inventory identity, literal metadata, and assigned slot under the descriptor lock and returns `DescriptorRegistrationResult`. |
+| Input transactions | `InputTransactionFailure`, `InputTransactionOpenResult`, `InputMutationResult`, `InputCommitResult`, and `FinalSealResult` provide closed results with deterministic precedence and failure atomicity. The final seal is irreversible, and every later input mutation returns `InputMutationAfterFinalSeal`. |
+| Runtime failures | `QueryRuntimeFailure` is the complete runtime-only failure algebra. Descriptor registration and input transaction failures remain separate setup and control results. |
+| Capability failures | Each capability descriptor declares its exact failure alternatives. The type-erased evaluator carries independently verified rejections through the canonical `CapabilityFailureEnvelope` domain `zom.query.capability-failure`; decoding requires exact descriptor-domain equality and canonical re-encoding. |
+| Final admission | `SealedQuerySnapshot<ContextRoots, FinalWitness>` validates and retains the immutable database, revision, complete-context root, and witness admission. Root and nested demands propagate that admission unchanged and validate it before provider code, memo lookup, membership, or interner access. |
+| Typed capability context | Every revision-local provider and verifier receives `CapabilityQueryContext<Descriptor>`. Active materialization is available only through the compile-time three-parameter permission matrix and the exact tracked membership descriptor. |
+| Retained lifetime | Successful capability memos retain their exact child memo generations, snapshot state, final admission, and semantic-context arena. Surviving leases keep that complete chain alive. |
 
 ## Repository Impact
 
@@ -1285,7 +1303,7 @@ membership.
 | Diagnostic facts, collection, and rendering adapters | `products/zomlang/compiler/diagnostics/**` | `error-system` |
 | Compiler target and CMake wiring | `products/zomlang/compiler/CMakeLists.txt`, `products/zomlang/compiler/query/CMakeLists.txt` | `ir-backend` |
 | Current architecture documentation | `docs/design/**` | `spec-audit` |
-| Unit, lit, differential, fuzz, performance, CI, and architecture gates | `products/zomlang/tests/**`, `.github/workflows/**`, `scripts/check-incremental-query-architecture.py` | `verification` |
+| Unit, lit, differential, fuzz, performance, CI, generation, and architecture gates | `products/zomlang/tests/**`, `.github/workflows/**`, `scripts/generate-query-descriptor-schema.py`, `scripts/check-query-descriptor-architecture.py`, `scripts/check-incremental-query-architecture.py` | `verification` |
 
 Routing assigns `products/zomlang/compiler/query/**` and query or incremental
 architecture changes to `module-system`. It assigns the incremental-query gate,
@@ -1767,3 +1785,4 @@ None
 | 2026-07-25 | IMPLEMENTING | Synchronized the accepted RFC 0025 core-distribution, capability-lease, contextual-key, provider-graph, readiness, diagnostic, prelude, and projection-shielding replacements from exact proposal SHA-256 `4f4085c176a9f391115e12170da93af899e350fa92440d5a51577692faf8bad0`; implementation completion is tracked only by the RFC 0025 R25 tasks. |
 | 2026-07-26 | IMPLEMENTING | Synchronized the accepted RFC 0026 structural-input transaction, derived topology query family, stable graph and SCC records, failure closure, session barriers, and final Binder bridge from exact proposal SHA-256 `39df5d3f11dbdcb2e95056b1cd14fd5220a19688f31a3e3180230ad465a3f84d`; implementation completion remains tracked by RFC 0026 and RFC 0025. |
 | 2026-07-27 | IMPLEMENTING | Synchronized the RFC 0027 arena-owned eight-domain interner, typed membership permission, final-seal admission, capability-retention, collision, and surviving-lease contracts through transaction `rfc0027-accept-20260727-e2f4ba5e` at proposal SHA-256 `e2f4ba5eb777d3d70b8eb3ad75b18f5169afc61a83d989ccc61fc9d5d022f435`; implementation status is unchanged. |
+| 2026-07-27 | IMPLEMENTING | Synchronized the RFC 0028 query-database generation, literal descriptor inventory, closed transaction and runtime failures, canonical capability-failure bridge, sealed-root admission, typed capability context, and direct owner-body closure contracts through transaction `rfc0028-accept-20260727-944b68ff` at proposal SHA-256 `944b68ffc0aff5576d079a243ff092d7d19fba5ffed65551dda8e68adf230db4`; implementation status is unchanged. |

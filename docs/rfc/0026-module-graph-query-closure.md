@@ -142,7 +142,11 @@ independent verifier checks the complete compilation-context authority,
 selected-source coverage, catalog ownership, dependency-site detachment,
 requester ancestry, path buckets, search roots, dependency aliases, configured
 preludes, projected core inventory, and byte-equal context roots before commit.
-The database commits every input in one new revision or commits nothing.
+`beginInputTransaction` returns `InputTransactionOpenResult`; every staged
+mutation returns `InputMutationResult`; commit returns `InputCommitResult`.
+The database commits every input in one new revision or commits nothing. A
+rejected commit publishes neither a root nor a revision and closes the
+transaction; any rejection abandons the unpublished session.
 
 No transaction payload contains a graph, SCC, semantic handle, registry,
 capability, Binder fact, or diagnostic.
@@ -163,10 +167,11 @@ The derived query family is:
 
 `SelectedModuleSourceQuery` reads only the exact selected module catalog for
 the module's crate. `ActiveModules` reads the exact active crate and selected
-catalog. Dependency-site and request queries read the selected source, final
-parse capability, detached syntax, path configuration, aliases, and prelude
-configuration reached by that module. `ModuleDependencies` reads only the
-canonical request sequence and each exact resolution.
+catalog. Dependency-site and request queries read the selected source,
+detached syntax, path configuration, aliases, and prelude configuration
+reached by that module. `ModuleDependencyProvenance` separately joins those
+stable values to the retained final parse capability. `ModuleDependencies`
+reads only the canonical request sequence and each exact resolution.
 
 Providers and independent verifiers derive every dynamic key from verified
 upstream values. They do not read the session, an ambient root, an interner
@@ -335,11 +340,16 @@ MaterializedModuleGraph {
 
 `MaterializeModuleGraph` is keyed by the complete
 `CompilationRootSetQueryKey` and returns
-`CapabilityDemandResult<MaterializedModuleGraph>`. Only its `Published`
-alternative installs a retained revision-local capability memo. Source,
-deterministic key, and query-runtime rejection install no capability.
+the descriptor-dependent `CapabilityDemandResult<MaterializeModuleGraph>`.
+Only its `Published` alternative installs a retained revision-local capability
+memo. Every source or key rejection is present only when declared by the
+descriptor's closed `FailureAlternatives` list, passes through the canonical
+typed capability-failure envelope, and is independently verified. Source, key,
+and query-runtime rejection install no capability.
 
-The descriptor has compile-time active-materializer permissions only for:
+The descriptor has compile-time
+`ActiveMaterializerPermission<MaterializeModuleGraph, GlobalIdentityKey,
+MembershipDescriptor>` specializations only for:
 
 | Stable key | Membership query |
 |---|---|
@@ -349,6 +359,9 @@ The descriptor has compile-time active-materializer permissions only for:
 | `ModuleKey` | `ActiveModuleMembership` |
 
 No wildcard permission or runtime descriptor-name dispatch exists.
+`CapabilityQueryContext<MaterializeModuleGraph>` derives the global key,
+demands and records the exact membership descriptor, and compares its complete
+active authority before any interner access.
 
 ### Complete Reads And Independent Verification
 
@@ -363,7 +376,8 @@ No wildcard permission or runtime descriptor-name dispatch exists.
 - every selected source, dependency site, stable request, and exact resolution;
 - every configured prelude reached by a prelude request;
 - final-snapshot parse leases for all selected sources;
-- `ModuleDependencyProvenance` for request-to-current-site reconstruction; and
+- the retained final-sealed `ModuleDependencyProvenance` capability for every
+  reached module; and
 - exact compilation-unit, crate, source, and module active-membership
   projections.
 
@@ -375,6 +389,13 @@ semantic-context fingerprint, expands stable identities only after successful
 tracked membership, joins source requests to exact final parse syntax,
 validates prelude requests, projects request-level edges to the stable graph,
 builds the typed witness, and publishes the capability.
+
+Each `ModuleDependencyProvenanceMap` memo retains the exact final
+`ParseSource` capability generation that owns its AST and source buffer. Its
+runtime-only `NodeId` and `SourceSpan` values are never serialized and cannot
+outlive that retained lineage. The materialized graph reaches provenance only
+through tracked capability dependencies; no session, current parse, registry,
+or detached lease supplies provenance authority.
 
 The independent verifier repeats every demand from the descriptor key. It uses
 separate root collection, fingerprint collection, membership expansion,
@@ -388,23 +409,33 @@ declarations.
 
 The session order is:
 
-1. commit the verified core distribution and complete context authority;
+1. open, mutate, and commit the verified core distribution and complete
+   context authority through `InputTransactionOpenResult`,
+   `InputMutationResult`, and `InputCommitResult`;
 2. acquire `preParseSnapshot`;
 3. parse, discover, and structurally select modules;
-4. commit the module-structure transaction;
+4. commit the module-structure transaction through the same explicit result
+   algebra;
 5. acquire `authorityStagingSnapshot`;
 6. demand stable graph, SCC, inventories, headers, and handle-free Binder
    prerequisites;
 7. reject cyclic SCCs;
-8. commit the complete contextual identity authority;
+8. commit the complete contextual identity authority through the same explicit
+   result algebra;
 9. acquire `finalCoreSnapshot`;
 10. re-demand staging witnesses and require byte equality;
-11. irreversibly seal inputs with the complete root key and final witness; and
-12. demand `MaterializeModuleGraph` and later materializers only from the
-    sealed final snapshot.
+11. require the `Sealed` alternative of
+    `FinalSealResult<CompilationRootSetQueryKey, Sha256Digest>` for the complete
+    root key, final snapshot, and final witness;
+12. consume the matching snapshot and seal into
+    `SealedQuerySnapshot<CompilationRootSetQueryKey, Sha256Digest>`; and
+13. demand `MaterializeModuleGraph` and later final-sealed materializers only
+    through that sealed root.
 
 No handleful materializer runs during authority staging. No input commit is
-accepted after the final seal.
+accepted after the final seal. Sealed admission propagates unchanged through
+root and nested capability demand frames; no provider or verifier reads an
+ambient database seal flag or session readiness mirror.
 
 The materialized graph memo retains its snapshot arena, semantic-context arena,
 stable witness, parse capabilities, provenance capability, and every query
@@ -491,6 +522,8 @@ Architecture gates reject:
 
 - graph or SCC facts committed as inputs;
 - ambient-root or database-key enumeration;
+- an ambient final-seal flag, session readiness mirror, or reconstructed
+  admission used by a capability provider or verifier;
 - a materializer outside the final sealed snapshot;
 - a partial root key used as complete publication authority;
 - stable graph values containing handles, nodes, spans, brands, revisions,
@@ -499,6 +532,28 @@ Architecture gates reject:
 - shared provider/verifier graph, SCC, provenance, or fingerprint helpers;
 - a session graph mirror or detached capability copy; and
 - a downstream graph or bound-module reference without an owning lease.
+
+### RFC 0028 Query Runtime Synchronization
+
+RFC 0028 is accepted at exact proposal SHA-256
+`944b68ffc0aff5576d079a243ff092d7d19fba5ffed65551dda8e68adf230db4`.
+Transaction `rfc0028-accept-20260727-944b68ff` binds this RFC and its tracker
+to that proposal without changing RFC 0026's `ACCEPTED` status or completing
+product work.
+
+The synchronized graph publication path uses explicit transaction and final
+seal results, one sealed root demand, descriptor-dependent typed capability
+failures, and exact three-parameter materializer permissions. Every identity
+expansion first demands and records the exact active-membership descriptor and
+proves complete authority equality. `ModuleDependencyProvenanceMap` is a
+retained final-sealed runtime capability whose memo owns the exact final parse
+lineage used by `MaterializeModuleGraph`; no node, span, parse selection, seal,
+or root authority comes from ambient session state.
+
+RFC 0027 tasks `Q2` and `S1` remain pending. RFC 0028 tasks `R28-13A` through
+`R28-16` replace and refine those implementation boundaries after the
+acceptance transaction. All other RFC 0027 work resumes only through its
+recorded dependency edges.
 
 ## Acceptance Criteria
 
@@ -514,7 +569,7 @@ Design acceptance requires:
 
 Implementation completion additionally requires the sanitizer, unit, lit,
 architecture, coverage, English-only, internal-versioning, format, diff, and
-Release benchmark gates in the synchronized RFC 0027 plan.
+Release benchmark gates in the synchronized RFC 0027 and RFC 0028 plans.
 
 Acceptance synchronization does not claim remaining implementation or
 verification tasks are complete. RFC 0026 remains `ACCEPTED`.
@@ -523,8 +578,9 @@ verification tasks are complete. RFC 0026 remains `ACCEPTED`.
 
 Completed RFC 0026 stable graph tasks retain their recorded evidence. The
 typed witness, final-snapshot materializer, active membership, session cutover,
-downstream lease migration, removal work, and final gates follow the RFC 0027
-dependency graph and tracker.
+downstream lease migration, removal work, and final gates follow the RFC 0028
+`R28-13A` through `R28-16` replacement boundary before the remaining RFC 0027
+dependency graph resumes.
 
 ## Test Plan
 
@@ -557,3 +613,4 @@ None
 | 2026-07-26 | REVIEW | Required-owner findings were incorporated through exact-snapshot review candidates. |
 | 2026-07-26 | ACCEPTED | All four required owners approved proposal SHA-256 `39df5d3f11dbdcb2e95056b1cd14fd5220a19688f31a3e3180230ad465a3f84d`; accepted RFC synchronization completed. |
 | 2026-07-27 | ACCEPTED | Acceptance transaction `rfc0027-accept-20260727-e2f4ba5e` synchronized the typed witness, complete-root final-snapshot `MaterializeModuleGraph`, active-membership expansion, retained capability lifetime, and publication contracts to RFC 0027 proposal SHA-256 `e2f4ba5eb777d3d70b8eb3ad75b18f5169afc61a83d989ccc61fc9d5d022f435`; implementation status remains unchanged. |
+| 2026-07-27 | ACCEPTED | Transaction `rfc0028-accept-20260727-944b68ff` synchronized explicit transaction and seal results, `SealedQuerySnapshot` admission, typed capability failures, exact membership permissions, retained final-parse provenance lineage, and the RFC 0027 `Q2` and `S1` pending boundary to RFC 0028 proposal SHA-256 `944b68ffc0aff5576d079a243ff092d7d19fba5ffed65551dda8e68adf230db4`; implementation remains pending. |

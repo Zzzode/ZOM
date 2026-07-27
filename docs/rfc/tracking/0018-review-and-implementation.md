@@ -474,6 +474,27 @@ and keeps implementation scopes and occurrence handles source-occurrence
 specific. RFC 0018 remains `IMPLEMENTING`; completion evidence belongs to the
 RFC 0027 implementation tracker.
 
+### 2026-07-27 RFC 0028 Acceptance Synchronization
+
+Acceptance transaction `rfc0028-accept-20260727-944b68ff` synchronizes RFC
+0018 to exact RFC 0028 proposal SHA-256
+`944b68ffc0aff5576d079a243ff092d7d19fba5ffed65551dda8e68adf230db4`.
+The current identity contract binds `QueryKindId` to the explicit
+target-inventory ordinal, requires literal query and capability-failure
+domains, and admits identity only after complete canonical authority equality.
+
+| Binding | RFC 0028 Task Authority |
+|---|---|
+| Routing and acceptance synchronization | `R28-11A`; `R28-12` |
+| Descriptor schema and target inventory | `R28-13C` |
+| Generator, descriptor architecture gate, and adversaries | `R28-13C1` |
+| Indivisible descriptor and caller cutover | `R28-13D` through `R28-14` |
+| Integrated evidence and truthful status transition | `R28-17` through `R28-19` |
+
+RFC 0018 remains `IMPLEMENTING`. Existing identity evidence does not complete
+the descriptor-inventory replacement; completion authority belongs to the
+listed RFC 0028 tasks and their dependency edges.
+
 ## Implementation Tracker
 
 | Slice | State | Required evidence |

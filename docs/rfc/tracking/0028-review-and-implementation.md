@@ -1,0 +1,100 @@
+# RFC 0028 Review And Implementation Tracker
+
+## Discussion Record
+
+### 2026-07-27 Implementation Closure Audit
+
+RFC 0027 implementation began from immutable series base
+`109947943519ec2d380a3e8d71813b40bc68bde5`. Query result types and the
+canonical package-compilation request landed, but implementation mapping found
+that `S1` and `Q2` still required undefined contracts for database identity,
+final-seal admission, transaction failures, literal descriptors, exact
+materializer permissions, membership authority equality, and module dependency
+provenance.
+
+Independent schema review also found that `ClosureEnvironmentMap` had no
+production consumer, duplicated `BoundOwnerBody` closure facts, and could not
+preserve the closed Binder result alternatives without adding another result
+domain. RFC 0028 removes that projection and defines
+`ModuleDependencyProvenanceMap` as a retained runtime capability.
+
+No RFC 0028 source implementation is authorized while this proposal is
+`DRAFT` or `REVIEW`.
+
+### Review Candidates
+
+The first complete review candidate,
+`735df50c5f6f27d53e58a7ab934a03c301b9f68a1c1a72217a4758b5a6d91f99`,
+was rejected after the affected-owner and supplemental reviews found
+unavailable capability-failure types, an undefined complete-context verifier
+contract, incomplete failure precedence and mutation gates, incorrect
+ThreadPool spelling, production/test inventory and provenance-schema gaps,
+owner-invalid implementation partitions, and non-executable final gate prose.
+No approval is retained.
+
+The second complete review candidate,
+`b4b2321a5df46c8fc3d5c75d2bc232a3c596a63e02bdd5b367d3e5c9082cdd90`,
+was rejected after review found a rollout-order contradiction, a missing
+production registration caller for the provenance descriptor, and references
+to coverage commands and an exemption schema that do not exist in the current
+repository. No approval is retained.
+
+The third complete review candidate,
+`7eefdbf612dc579ef1dfcedcc599d27f3c5802644c17805dd94b06f6425f61c8`,
+was rejected because its existing CMake coverage flow required only executed
+lines instead of the repository's per-file 70 percent threshold or an exact
+owner-reviewed FFI or unreachable-code exemption. No approval is retained.
+
+The fourth complete review candidate,
+`944b68ffc0aff5576d079a243ff092d7d19fba5ffed65551dda8e68adf230db4`,
+was approved without findings by all seven affected-owner scopes and both
+supplemental technical scopes. Acceptance transaction
+`rfc0028-accept-20260727-944b68ff` binds that exact proposal hash to the
+synchronized RFC, tracker, index, and routing tree.
+
+## Decision Record
+
+Accepted by `task-router`, `rfc`, `module-system`, `lexer-parser`,
+`binder-checker`, `spec-audit`, and `verification`, with supplemental
+`runtime-memory` and `error-system` approval, against exact proposal SHA-256
+`944b68ffc0aff5576d079a243ff092d7d19fba5ffed65551dda8e68adf230db4`.
+The synchronized acceptance transaction is
+`rfc0028-accept-20260727-944b68ff`. Source implementation is authorized only
+through the dependency-ordered pending tasks below.
+
+## Implementation Tracker
+
+| Task | Owner | Depends On | Deliverable | Verification | Status |
+|---|---|---|---|---|---|
+| `R28-01` | `rfc` | None | Complete RFC 0028 draft, tracker, and index row. | `python3 scripts/check-rfc.py` | Complete |
+| `R28-02` | `task-router` | `R28-01` | Confirm required owners, file ownership, gates, and atomic migration boundary. | Exact-hash review | Complete |
+| `R28-03` | `rfc` | `R28-01` | Review process completeness, prior art, exact-hash governance, and synchronization. | Exact-hash review | Complete |
+| `R28-04` | `module-system` | `R28-01` | Review identity, transaction, seal, descriptor, permission, and provenance contracts. | Exact-hash review | Complete |
+| `R28-05` | `lexer-parser` | `R28-01` | Review parser capability descriptors and final parse lifetime. | Exact-hash review | Complete |
+| `R28-06` | `binder-checker` | `R28-01` | Review membership authority, closure deletion, schema boundary, and consumers. | Exact-hash review | Complete |
+| `R28-07` | `runtime-memory` | `R28-01` | Review generation allocation, locking, admission order, leases, and teardown. | Exact-hash review | Complete |
+| `R28-08` | `error-system` | `R28-01` | Review failure algebra, precedence, and atomicity. | Exact-hash review | Complete |
+| `R28-09` | `spec-audit` | `R28-01` | Review synchronized current-contract claims and duplicate authority removal. | Exact-hash review | Complete |
+| `R28-10` | `verification` | `R28-01` | Review tests, generator coverage, gates, determinism, and Release evidence. | Exact-hash review | Complete |
+| `R28-11` | `rfc` | `R28-02`; `R28-03`; `R28-04`; `R28-05`; `R28-06`; `R28-07`; `R28-08`; `R28-09`; `R28-10` | Record exact-hash approvals and prepare the synchronized acceptance transaction. | `python3 scripts/check-rfc.py` | Complete |
+| `R28-11A` | `task-router` | `R28-11` | Assign the two descriptor scripts to `verification` and synchronize routing documentation. | Routing and RFC review | Complete |
+| `R28-12` | `rfc` | `R28-11`; `R28-11A` | Validate one synchronized tree, record one transaction identifier and proposal hash, and accept atomically. | `python3 scripts/check-rfc.py` | Complete |
+| `R28-13A` | `module-system` | `R28-12` | Prepare the reviewed query-type partition; do not land independently. | Type and failure review | Pending |
+| `R28-13B` | `module-system` | `R28-13A` | Prepare the reviewed transaction, seal, sealed-snapshot, and admission partition; do not land independently. | Query database review | Pending |
+| `R28-13C` | `module-system` | `R28-13B` | Prepare the descriptor schema and query build-wiring partition; do not land independently. | Query inventory review | Pending |
+| `R28-13C1` | `verification` | `R28-13C` | Prepare the descriptor generator, architecture gate, and adversarial self-tests; do not land independently. | Gate self-tests | Pending |
+| `R28-13D` | `module-system` | `R28-13C1` | Prepare bounded identity and driver descriptor/caller partitions; do not land independently. | Owner-focused review | Pending |
+| `R28-13E` | `lexer-parser` | `R28-13C1` | Prepare the parse capability descriptor, failure codec, and caller partition; do not land independently. | Parser capability review | Pending |
+| `R28-13F` | `verification` with `binder-checker` review | `R28-13C1` | Prepare the Binder transaction-consumer native-test cutover; do not land independently. | Binder consumer review | Pending |
+| `R28-13G` | `verification` | `R28-13A`; `R28-13B`; `R28-13C`; `R28-13C1`; `R28-13D`; `R28-13E`; `R28-13F` | Prepare bounded native test, generated test inventory, CTest wiring, and negative compile partitions; do not land independently. | Verification review | Pending |
+| `R28-14` | `module-system` with all partition-owner review | `R28-13G` | Assemble and land one buildable indivisible source transaction with every replaced API deleted. | Focused native build and tests | Pending |
+| `R28-15` | `binder-checker` | `R28-12`; `R28-14` | Remove the closure projection and close the stable schema inventory. | Generated schema and zero-reference gates | Pending |
+| `R28-16A` | `module-system` with `lexer-parser` review | `R28-14`; `R28-15` | Prepare the production provenance descriptor, provider, verifier, schema row, `registerModuleGraphQueries` registration, and build wiring; do not land independently. | Production provenance review | Pending |
+| `R28-16B` | `verification` with `binder-checker` review | `R28-16A` | Prepare the provenance and registration tests, updated test inventory, and test build wiring; do not land independently. | Provenance mutation review | Pending |
+| `R28-16` | `module-system` with all partition-owner review | `R28-16B` | Assemble and land one buildable provenance source, schema, test, and CMake transaction. | Provenance capability and mutation tests | Pending |
+| `R28-17` | `verification` | `R28-16` | Run focused, full, architecture, generation, determinism, and Release verification. | RFC 0028 Test Plan | Pending |
+| `R28-18` | `spec-audit` | `R28-17` | Publish only the production-backed current compiler contract. | Current-state design audit | Pending |
+| `R28-19` | `rfc` | `R28-18` | Audit evidence and perform truthful synchronized implementation-state transitions. | RFC and evidence audit | Pending |
+
+RFC 0027 `S1` and `Q2` remain pending. They resume only after the RFC 0028
+acceptance transaction records all required exact-hash approvals.

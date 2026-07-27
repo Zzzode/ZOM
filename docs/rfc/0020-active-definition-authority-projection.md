@@ -412,6 +412,37 @@ is permitted afterward. The named-item, owner-body, bound-module, core
 bootstrap, provenance, and revision-local materialization barrier opens only
 after those final checks succeed.
 
+### Query Runtime Membership And Seal Closure
+
+Acceptance transaction `rfc0028-accept-20260727-944b68ff` binds this current
+contract to exact RFC 0028 proposal SHA-256
+`944b68ffc0aff5576d079a243ff092d7d19fba5ffed65551dda8e68adf230db4`.
+
+All eight active-membership descriptors return
+`ActiveMembershipResult<Record>`. Each provider and independent verifier
+reconstructs the complete contextual membership key and expected authority
+record through separate algorithms.
+
+The fixed materialization order is inherited final-admission validation,
+global-key derivation, tracked membership demand, membership dependency
+recording, deterministic `Inactive` return without interner access, complete
+authority equality, and only then the typed arena interner. Equality covers the
+context roots, global key, owner, occurrence authority, and complete identity
+record. An existing interner entry cannot bypass any preceding step.
+
+Readiness is demanded only on the negative or contradictory authority branch.
+Missing readiness returns `QueryRuntimeFailure::ProviderRejected`; complete
+readiness with proven absence returns `Inactive`; and unequal or contradictory
+authority returns `QueryRuntimeFailure::InvariantViolation`.
+
+Materialization authority exists only through the compile-time
+`ActiveMaterializerPermission<Descriptor, GlobalIdentityKey,
+MembershipDescriptor>` matrix and `CapabilityQueryContext<Descriptor>`. The
+operation takes the exact contextual membership key and complete expected
+authority record. The sealed admission propagates from
+`SealedQuerySnapshot<ContextRoots, FinalWitness>` through every nested demand
+and is validated before membership or interner access.
+
 ## Repository Impact
 
 | Area | Paths | Owner |
@@ -421,7 +452,7 @@ after those final checks succeed.
 | Query input and session staging | `products/zomlang/compiler/query/**`, `products/zomlang/compiler/driver/**` | `module-system` |
 | Inventory membership and named-item integration | `products/zomlang/compiler/binder/**` | `binder-checker` |
 | Current architecture documentation | `docs/design/architecture.md`, `docs/design/compiler-contracts.md` | `spec-audit` |
-| Native tests, performance corpus, runners, and architecture gates | `products/zomlang/tests/**`, `scripts/check-incremental-query-architecture.py`, `scripts/check-binder-architecture.py`, `scripts/check-identity-architecture.py`, `scripts/check-compiler-session-architecture.py`, `scripts/run-incremental-query-benchmarks.py` | `verification` |
+| Native tests, descriptor generation, performance corpus, runners, and architecture gates | `products/zomlang/tests/**`, `scripts/generate-query-descriptor-schema.py`, `scripts/check-query-descriptor-architecture.py`, `scripts/check-incremental-query-architecture.py`, `scripts/check-binder-architecture.py`, `scripts/check-identity-architecture.py`, `scripts/check-compiler-session-architecture.py`, `scripts/run-incremental-query-benchmarks.py` | `verification` |
 
 ## Security And Safety Impact
 
@@ -648,3 +679,4 @@ None
 | 2026-07-26 | IMPLEMENTING | Synchronized the accepted RFC 0026 structural transaction, authority-staging graph and SCC roots, cyclic-component rejection, authority-only installation transaction, and final-snapshot re-demand barrier from exact proposal SHA-256 `39df5d3f11dbdcb2e95056b1cd14fd5220a19688f31a3e3180230ad465a3f84d`; implementation completion remains tracked by RFC 0026 and RFC 0025. |
 | 2026-07-27 | IMPLEMENTING | Required authority coverage to come only from complete derived active membership and byte-equal stable graph and SCC results in one authority-staging snapshot. |
 | 2026-07-27 | IMPLEMENTING | Synchronized the RFC 0027 complete-root eight-domain membership, four authority-sequence, conditional readiness, contextual transaction, and final-seal contracts through transaction `rfc0027-accept-20260727-e2f4ba5e` at proposal SHA-256 `e2f4ba5eb777d3d70b8eb3ad75b18f5169afc61a83d989ccc61fc9d5d022f435`; implementation status is unchanged. |
+| 2026-07-27 | IMPLEMENTING | Synchronized the RFC 0028 typed active-membership result, conditional readiness, complete authority equality, inherited final admission, permission matrix, and admission-before-membership-before-interner contracts through transaction `rfc0028-accept-20260727-944b68ff` at proposal SHA-256 `944b68ffc0aff5576d079a243ff092d7d19fba5ffed65551dda8e68adf230db4`; implementation status is unchanged. |

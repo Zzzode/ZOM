@@ -758,9 +758,11 @@ ContextualCoreModuleKey {
 `NamedItemProvenance` use `ContextualDefinitionKey`. RFC 0019
 `ModuleBodyOwners` uses `ContextualModuleKey`.
 `OwnerBodySyntax`, `OwnerBodyProvenance`, `BindOwnerBody`,
-`MaterializeOwnerBody`, and `ClosureEnvironmentMap` use
-`ContextualBodyOwnerKey`. Values retain stable `DefinitionKey`, `ModuleKey`,
-and `StableOwnerBodyQueryKey` records; context is query selection, not semantic
+and `MaterializeOwnerBody` use `ContextualBodyOwnerKey`. `BoundOwnerBody` is
+the sole stable authority for closure, free-variable, and explicit-capture
+facts; `MaterializeOwnerBody` expands those facts directly from
+`BindOwnerBody`. Values retain stable `DefinitionKey`, `ModuleKey`, and
+`StableOwnerBodyQueryKey` records; context is query selection, not semantic
 identity.
 
 RFC 0019 `VerifyBoundModule` and RFC 0017 `ModuleDiagnosticFacts` use
@@ -882,7 +884,10 @@ Core graph construction has one session-wide ordered staging contract:
    `ModuleSearchRoots` values for every projection before parsing. Each
    `ActiveCrates(singletonToolchainCoreRootSet)` and
    `ActiveSources(core)` then derives handle-free membership from those inputs
-   and the complete admitted source inventory.
+   and the complete admitted source inventory. Opening, mutating, and
+   committing the transaction use `InputTransactionOpenResult`,
+   `InputMutationResult`, and `InputCommitResult`; any `Rejected` alternative
+   abandons the unpublished session and publishes no partial root or revision.
 3. Parsing, module-declaration validation, discovery, and duplicate selection
    for every projection produce structural records only. They create no
    semantic identity handle.
@@ -896,7 +901,9 @@ Core graph construction has one session-wide ordered staging contract:
    consumer's exact projection; committing it requires structural selection
    but not a materialized core interface. The transaction does not commit
    `ActiveCrates`, `ActiveSources`, `ActiveModules`, `ModuleDependencies`,
-   `ModuleGraph`, or `ModuleGraphScc`; those are derived queries.
+   `ModuleGraph`, or `ModuleGraphScc`; those are derived queries. Its open,
+   mutation, and commit operations use the same explicit result algebra and
+   never encode rejection as a Boolean or empty optional value.
 5. From the single post-commit `authorityStagingSnapshot`, the session demands
    and independently verifies `ActiveModules(core)`, each keyed
    `ModuleDependencies`, the singleton `ModuleGraph`, and `ModuleGraphScc` for
@@ -912,14 +919,20 @@ Core graph construction has one session-wide ordered staging contract:
    plus complete-root readiness. One
    `ContextualIdentityAuthorityInputTransaction` atomically installs that
    complete payload. Only after it succeeds does the session acquire
-   `finalCoreSnapshot`.
+   `finalCoreSnapshot`. It uses the same explicit transaction results and
+   publishes neither a partial authority root nor a revision on rejection.
 7. From `finalCoreSnapshot`, the session re-demands and verifies the complete
    active-membership, graph, SCC, authority, and readiness roots. Only their
    success opens the global named-item, owner-body, core-bootstrap, and
-   revision-local materialization barrier. The session then seals that snapshot
-   with its complete roots and independently reconstructed final witness;
-   `MaterializeModuleGraph` and every later materializer require the exact
-   move-only seal. A source, parse, declaration,
+   revision-local materialization barrier. `QueryDatabase::sealInputs` returns
+   `FinalSealResult<CompilationRootSetQueryKey, Sha256Digest>` for that
+   snapshot, its complete roots, and the independently reconstructed final
+   witness. The successful seal constructs
+   `SealedQuerySnapshot<CompilationRootSetQueryKey, Sha256Digest>`;
+   `MaterializeModuleGraph` and every later final-sealed materializer are
+   demanded only through that sealed root. Nested capability demands inherit
+   its immutable admission and never consult an ambient seal flag. A source,
+   parse, declaration,
    duplicate, discovery, transaction-verifier, graph, inventory, authority-map,
    or readiness failure marks the snapshot failed, publishes no verified core
    artifact, and permits no core identity materialization. The failed snapshot
@@ -931,16 +944,21 @@ All committed and derived stable values contain no `CrateId`, `SourceFileId`,
 post-freeze core catalog and no session side table that owns or republishes
 handles.
 
-Direct calls to `QueryDatabase::materializeActive` remain governed by RFC
-0017's closed `RevisionLocal` materializer allowlist. Core bootstrap permits
-the existing `MaterializeModuleSkeleton` and `VerifyBoundModule` capability
-queries plus the four new core-specific materialization queries defined here.
-Their memo dependencies participate in the complete transitive lease and arena
-lifetime closure. A declared query may inspect a revision-local dependency
-only through its tracked `QueryCapabilityLease` and may publish only the value
-class declared by its descriptor. Semantic and Persisted providers cannot call
-`materializeActive`, side tables and free-standing helpers cannot access
-current handles, and no stable query value may contain a handle.
+Calls to `materializeActive` are available only through
+`CapabilityQueryContext<Descriptor>` and an exact
+`ActiveMaterializerPermission<Descriptor, GlobalIdentityKey,
+MembershipDescriptor>` specialization. The provider derives the global key,
+demands the exact membership descriptor, records that dependency, and compares
+the complete active authority before any interner access. Core bootstrap uses
+only the RFC 0028 production permission matrix; no wildcard, runtime
+descriptor-name dispatch, generic lease plus opaque failure bytes, side-table
+authority, or ambient session access is permitted. Capability providers and
+verifiers return the descriptor-dependent `CapabilityProviderResult` and
+`CapabilityDemandResult`; their listed source or key rejections pass through
+the typed canonical failure envelope and publish no capability memo. Successful
+child capability reads remain retained dependencies of the parent memo.
+Semantic and Persisted providers cannot call `materializeActive`, and no
+stable query value may contain a handle.
 
 ### Semantic Context And Session Ownership
 
@@ -997,6 +1015,12 @@ the complete definition, implementation, generic-parameter, and
 callable-parameter authority maps plus complete-root readiness. The snapshot
 obtained after this third commit is `finalCoreSnapshot`.
 
+Each transaction open, mutation, and commit is observed through
+`InputTransactionOpenResult`, `InputMutationResult`, and `InputCommitResult`.
+A rejected mutation leaves the staged root unchanged; a rejected commit
+publishes neither a root nor a revision and closes the transaction. Any
+rejection abandons the unpublished session.
+
 All named-item, owner-body, core semantic, and core materialization queries for
 every projection are demanded from `finalCoreSnapshot`; the earlier staging
 snapshot is limited to handle-free graph, skeleton, inventory, and header reads
@@ -1004,9 +1028,16 @@ required to install authority. A single global readiness barrier opens only
 after the active crate, source, module, dependency, graph, SCC, authority, and
 readiness projections verify in the final snapshot. The session then calls
 `QueryDatabase::sealInputs` with the exact snapshot, complete context roots,
-and independently reconstructed final witness. The transition is irreversible;
-every later input commit aborts the unpublished session.
-`MaterializeModuleGraph` and every later materializer require that exact seal.
+and independently reconstructed final witness. It requires the
+`Sealed(FinalSnapshotSeal<CompilationRootSetQueryKey, Sha256Digest>)`
+alternative of `FinalSealResult`; rejection publishes no seal and abandons
+the unpublished session. The transition is irreversible; every later
+transaction begin, set, erase, or commit returns
+`InputMutationAfterFinalSeal`. The successful seal admits a
+`SealedQuerySnapshot<CompilationRootSetQueryKey, Sha256Digest>`, and
+`MaterializeModuleGraph` and every later final-sealed materializer are demanded
+only through that root. Admission propagates unchanged through nested demand
+frames instead of being reconstructed from mutable database or session state.
 Every module-interface and authority lease stored in
 `VerifiedCoreLibrarySet` carries the sealed database revision and snapshot
 identity; libraries from different revisions can never be assembled into one
@@ -2478,7 +2509,7 @@ The RFC 0019 synchronization is mechanical:
 |---|---|
 | Named-item queries | Replace `NamedItemSyntax(DefinitionKey)` and `NamedItemProvenance(DefinitionKey)` with the corresponding `ContextualDefinitionKey`; values retain the stable definition identity. |
 | Module-owner enumeration | Replace `ModuleBodyOwners(ModuleKey)` with `ModuleBodyOwners(ContextualModuleKey)` so every nested definition query carries the same complete context roots. |
-| Owner-body queries | Replace `OwnerBodySyntax`, `OwnerBodyProvenance`, `BindOwnerBody`, `MaterializeOwnerBody`, and `ClosureEnvironmentMap` keys with `ContextualBodyOwnerKey`; nested named-item and module reads must use byte-equal `contextRoots`. |
+| Owner-body queries | Replace `OwnerBodySyntax`, `OwnerBodyProvenance`, `BindOwnerBody`, and `MaterializeOwnerBody` keys with `ContextualBodyOwnerKey`; nested named-item and module reads must use byte-equal `contextRoots`. `BoundOwnerBody` remains the sole closure-fact authority, and `MaterializeOwnerBody` expands its stable closure, free-variable, and explicit-capture facts directly. |
 | Bound-module aggregate | Replace `VerifyBoundModule(ModuleKey)` with `VerifyBoundModule(ContextualModuleKey)` so its `ModuleBodyOwners` and every `BindOwnerBody` dependency receive the key's exact context roots. |
 | Diagnostic parents | Replace `ModuleDiagnosticFacts(ModuleKey)` with `ModuleDiagnosticFacts(ContextualModuleKey)` and `ResolveDiagnosticProvenance(DiagnosticProvenanceKey)` with `ResolveDiagnosticProvenance(ContextualDiagnosticProvenanceKey)`; compilation aggregation and materialization supply their own complete root-set key. |
 | Non-contextual key boundary | Retain plain `ModuleKey` only for `NamedDefinitionInventory`, `BindModuleSkeleton`, `ModuleBodySyntax`, `ModuleBodyProvenance`, and `MaterializeModuleSkeleton`; architecture tests prove their closed read sets never select a contextual child. Only handle-free Semantic queries required by authority installation may run in the staging snapshot; revision-local provenance and materialization remain behind the final barrier. |
@@ -3200,12 +3231,15 @@ Readiness is staged and monotonic:
    `finalCoreSnapshot`;
 5. from the final snapshot re-demand and verify active membership, the
    complete graph, SCCs, contextual authority, and readiness with the same
-   independently reconstructed complete root key; seal that snapshot with the
-   byte-equal complete roots and final witness, and open one global named-item,
-   owner-body, core-bootstrap, and materialization barrier only after all
-   projections and the complete context pass;
-6. demand `MaterializeModuleGraph` through the RFC 0027 final-snapshot
-   materializer and independent verifier using
+   independently reconstructed complete root key; require
+   the `Sealed` alternative of
+   `FinalSealResult<CompilationRootSetQueryKey, Sha256Digest>`, consume the
+   matching snapshot and seal into
+   `SealedQuerySnapshot<CompilationRootSetQueryKey, Sha256Digest>`, and open
+   one global named-item, owner-body, core-bootstrap, and materialization
+   barrier only after all projections and the complete context pass;
+6. demand `MaterializeModuleGraph` through that sealed root and the independent
+   verifier using
    `CompleteCompilationContextAuthority`; retain the typed stable graph witness,
    complete active membership, request provenance, semantic-context
    fingerprint, and exact graph revision, and admit no partial or singleton
@@ -3307,6 +3341,40 @@ graph publication root. The bounded differential Binder harness is removed
 after its inventory is complete. These deletions and the new production paths
 remain pending under the RFC 0027 implementation DAG; this acceptance
 synchronization is not implementation evidence.
+
+### RFC 0028 Query Runtime Synchronization
+
+RFC 0028 is accepted at exact proposal SHA-256
+`944b68ffc0aff5576d079a243ff092d7d19fba5ffed65551dda8e68adf230db4`.
+Transaction `rfc0028-accept-20260727-944b68ff` binds this RFC and its tracker
+to that proposal without changing RFC 0025's `ACCEPTED` status or completing
+product work.
+
+The synchronized runtime contract uses the explicit transaction and seal
+results described above, one
+`SealedQuerySnapshot<CompilationRootSetQueryKey, Sha256Digest>` for every
+final-sealed root demand, and immutable admission propagation through all
+nested capability demands. Providers and verifiers receive
+`CapabilityQueryContext<Descriptor>`. The exact
+`ActiveMaterializerPermission<Descriptor, GlobalIdentityKey,
+MembershipDescriptor>` specialization, tracked membership demand, and complete
+authority equality are mandatory before any interner access. Typed source and
+key rejections use each descriptor's closed `FailureAlternatives` list and
+canonical capability-failure envelope; no opaque failure payload or generic
+untyped lease remains.
+
+`BoundOwnerBody` is the sole stable closure-fact authority.
+`MaterializeOwnerBody` expands `StableClosureFact`,
+`StableClosureFreeVariableFact`, and
+`StableExplicitClosureCaptureFact` directly from `BindOwnerBody`; there is no
+second descriptor, schema row, provider, verifier, codec, memo, or consumer for
+that projection.
+
+RFC 0027 tasks `Q2` and `S1` remain pending. After the RFC 0028 acceptance
+transaction, RFC 0028 tasks `R28-13A` through `R28-16` replace and refine those
+implementation boundaries. All other RFC 0027 work resumes only through its
+recorded dependency edges. This synchronization is design authority, not
+implementation evidence.
 
 ### Toolchain Layout
 
@@ -4038,3 +4106,4 @@ None
 | 2026-07-25 | ACCEPTED | All twelve required owners approved proposal SHA-256 `4f4085c176a9f391115e12170da93af899e350fa92440d5a51577692faf8bad0` with zero critical, major, or minor findings; the accepted-RFC replacement transaction synchronized RFCs 0004, 0005, 0007, 0008, 0010, 0011, 0012, 0013, 0015, 0017, 0018, 0019, 0020, and 0024 plus their trackers, retained RFC 0006 unchanged, and authorized only the dependency-ordered implementation tracker. |
 | 2026-07-26 | ACCEPTED | Synchronized the accepted RFC 0026 structural-input transaction, derived topology query family, stable graph and SCC records, failure closure, complete-root authority, three-snapshot order, and final Binder bridge from exact proposal SHA-256 `39df5d3f11dbdcb2e95056b1cd14fd5220a19688f31a3e3180230ad465a3f84d`; RFC 0025 implementation remains dependency-ordered and incomplete. |
 | 2026-07-27 | ACCEPTED | Synchronized contextual Binder keys and capabilities, arena-owned typed interners, the three input transactions, final sealing, diagnostic ownership, downstream retained leases, and deletion scope with RFC 0027 proposal `e2f4ba5eb777d3d70b8eb3ad75b18f5169afc61a83d989ccc61fc9d5d022f435` in transaction `rfc0027-accept-20260727-e2f4ba5e`; implementation remains dependency-ordered and incomplete. |
+| 2026-07-27 | ACCEPTED | Transaction `rfc0028-accept-20260727-944b68ff` synchronized explicit transaction and seal results, sealed-root admission propagation, typed capability failures and exact membership permissions, sole `BoundOwnerBody` closure authority, and the RFC 0027 `Q2` and `S1` pending boundary to RFC 0028 proposal SHA-256 `944b68ffc0aff5576d079a243ff092d7d19fba5ffed65551dda8e68adf230db4`; implementation remains dependency-ordered and incomplete. |

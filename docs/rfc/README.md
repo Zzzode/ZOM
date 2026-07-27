@@ -96,6 +96,7 @@ not reused.
 | [RFC 0025](0025-source-backed-core-library-architecture.md) | Source-Backed Core Library Architecture | ACCEPTED | language | language | rfc | [Review Tracker](tracking/0025-review-and-implementation.md) | [Implementation Tracker](tracking/0025-review-and-implementation.md#implementation-tracker) |
 | [RFC 0026](0026-module-graph-query-closure.md) | Module Graph Query Closure | ACCEPTED | compiler | compiler | rfc | [Review Tracker](tracking/0026-review-and-implementation.md) | [Implementation Tracker](tracking/0026-review-and-implementation.md#implementation-tracker) |
 | [RFC 0027](0027-binder-query-and-identity-materialization-closure.md) | Binder Query And Identity Materialization Closure | ACCEPTED | compiler | compiler | rfc | [Review Tracker](tracking/0027-review-and-implementation.md) | [Implementation Tracker](tracking/0027-review-and-implementation.md#implementation-tracker) |
+| [RFC 0028](0028-query-runtime-final-seal-and-descriptor-closure.md) | Query Runtime Final-Seal And Descriptor Closure | ACCEPTED | compiler | compiler | rfc | [Review Tracker](tracking/0028-review-and-implementation.md) | [Implementation Tracker](tracking/0028-review-and-implementation.md#implementation-tracker) |
 
 ## Status Values
 

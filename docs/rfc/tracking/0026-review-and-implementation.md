@@ -27,14 +27,31 @@ seal, retained capability lifetime, and module-system publication contract.
 The synchronization does not change RFC 0026's `ACCEPTED` status and does not
 promote pending implementation or verification work.
 
+### 2026-07-27 RFC 0028 Acceptance Synchronization
+
+RFC 0028 was accepted on exact proposal SHA-256
+`944b68ffc0aff5576d079a243ff092d7d19fba5ffed65551dda8e68adf230db4`
+through transaction `rfc0028-accept-20260727-944b68ff`.
+
+The synchronized graph contract uses explicit transaction and final-seal
+results, one `SealedQuerySnapshot` root with inherited immutable admission,
+descriptor-dependent capability failures, exact materializer permissions, and
+complete membership authority before interning.
+`ModuleDependencyProvenanceMap` is a retained final-sealed runtime capability
+whose memo owns the exact final parse lineage. No ambient session, current
+parse, or database seal flag supplies provenance or admission authority.
+
+The synchronization leaves RFC 0026 `ACCEPTED` and leaves all pending product
+implementation and verification work pending.
+
 ## Owner Review Matrix
 
 | Owner | Required review | Status | Evidence |
 |---|---|---|---|
-| `rfc` | metadata, current contract, synchronization, status | Approved | RFC 0026 accepted snapshot and RFC 0027 exact-hash approval. |
-| `module-system` | inputs, graph, SCC, materializer, membership, session seal | Approved | RFC 0026 accepted snapshot and RFC 0027 exact-hash approval. |
-| `binder-checker` | stable graph consumers, bound-module lineage, lease handoff | Approved | RFC 0026 accepted snapshot and RFC 0027 exact-hash approval. |
-| `verification` | codecs, mutations, native gates, coverage, benchmarks | Approved | RFC 0026 accepted snapshot and RFC 0027 exact-hash approval. |
+| `rfc` | metadata, current contract, synchronization, status | Approved | RFC 0026 accepted snapshot plus RFC 0027 and RFC 0028 exact-hash approvals. |
+| `module-system` | inputs, graph, SCC, materializer, membership, session seal | Approved | RFC 0026 accepted snapshot plus RFC 0027 and RFC 0028 exact-hash approvals. |
+| `binder-checker` | stable graph consumers, bound-module lineage, lease handoff | Approved | RFC 0026 accepted snapshot plus RFC 0027 and RFC 0028 exact-hash approvals. |
+| `verification` | codecs, mutations, native gates, coverage, benchmarks | Approved | RFC 0026 accepted snapshot plus RFC 0027 and RFC 0028 exact-hash approvals. |
 
 ## Decision Record
 
@@ -49,6 +66,12 @@ synchronized the current RFC 0026 contract to RFC 0027 proposal SHA-256
 The synchronized design is accepted, while product implementation and final
 verification retain the statuses below.
 
+On 2026-07-27, transaction `rfc0028-accept-20260727-944b68ff`
+synchronized the current RFC 0026 contract to RFC 0028 proposal SHA-256
+`944b68ffc0aff5576d079a243ff092d7d19fba5ffed65551dda8e68adf230db4`.
+RFC 0027 `Q2` and `S1` remain pending; RFC 0028 `R28-13A` through `R28-16`
+replace and refine those boundaries. No implementation status changes.
+
 ## Implementation Tracker
 
 | Task | Owner | Depends On | Deliverable | Verification | Status |
@@ -62,15 +85,15 @@ verification retain the statuses below.
 | `R26-06` | `module-system` | `R26-05` | Implement selected-source, active-module, dependency-site, request, and dependency queries. | Focused native unit tests and architecture gates | Complete |
 | `R26-07` | `module-system` | `R26-06` | Implement stable `ModuleGraph`, `ModuleGraphScc`, cycle verification, and stable session barriers. | Graph, SCC, session, and architecture tests | Complete |
 | `R26-10` | `rfc` | `R26-07` | Synchronize the current RFC 0026 design through RFC 0027 transaction `rfc0027-accept-20260727-e2f4ba5e`. | `python3 scripts/check-rfc.py` | Complete |
-| `R26-11` | `module-system` | `R26-10` | Implement complete context authority, active memberships, typed materialized witness, final-snapshot `MaterializeModuleGraph`, session seal, and retained capability lifetime. | RFC 0027 `Q3`, `Q4`, `I1`, `I2`, `M1`, `T1`, `T2A`, `T2B`, and `T2C` evidence | Pending |
-| `R26-12` | `binder-checker` | `R26-11` | Migrate bound-module graph consumers and downstream lease lineage. | RFC 0027 `M2` through `M5`, `C1`, and downstream lineage evidence | Pending |
-| `R26-08` | `verification` | `R26-11`; `R26-12` | Run full sanitizer, unit, lit, architecture, coverage, format, versioning, and benchmark gates. | RFC 0027 Test Plan | Pending |
+| `R26-13` | `rfc` | `R26-10`; RFC 0028 `R28-12` | Synchronize explicit transaction and seal results, sealed-root admission, typed capability permissions and failures, retained final-parse provenance lineage, and the replacement dependency boundary through transaction `rfc0028-accept-20260727-944b68ff`. | `python3 scripts/check-rfc.py` | Complete |
+| `R26-11` | `module-system` | `R26-13`; RFC 0028 `R28-14`; `R28-16` | Implement complete context authority, active memberships, typed materialized witness, sealed-root `MaterializeModuleGraph`, retained provenance, and capability lifetime. | RFC 0028 `R28-14`, `R28-16`, and applicable RFC 0027 evidence | Pending |
+| `R26-12` | `binder-checker` | `R26-11`; RFC 0028 `R28-16` | Migrate bound-module graph consumers and downstream lease lineage. | RFC 0027 `M2` through `M5`, `C1`, and RFC 0028 provenance lineage evidence | Pending |
+| `R26-08` | `verification` | `R26-11`; `R26-12`; RFC 0028 `R28-17` | Run full sanitizer, unit, lit, architecture, coverage, format, versioning, and benchmark gates. | RFC 0027 and RFC 0028 Test Plans | Pending |
 | `R26-09` | `rfc` | `R26-08` | Audit completion criteria and transition implementation status truthfully. | `python3 scripts/check-rfc.py` | Pending |
 
-Implementation of the synchronized capability begins only after the RFC 0027
-immutable implementation-series base is recorded. Completed stable graph tasks
-remain complete; the typed materializer and retained publication path remain
-pending.
+Completed stable graph tasks remain complete. The typed materializer, retained
+provenance, and publication path resume through RFC 0028 `R28-14` through
+`R28-17` before the remaining RFC 0027 dependency edges; they remain pending.
 
 ## Acceptance Transaction Record
 
@@ -82,6 +105,17 @@ pending.
 | RFC 0026 status after transaction | `ACCEPTED` |
 | Synchronized authority | Typed graph witness, complete-root final-snapshot materializer, active membership, session seal, and retained capability lifetime |
 | Implementation authority | RFC 0027 dependency graph after the immutable implementation-series base |
+
+## RFC 0028 Acceptance Transaction Record
+
+| Field | Value |
+|---|---|
+| Transaction | `rfc0028-accept-20260727-944b68ff` |
+| Proposal SHA-256 | `944b68ffc0aff5576d079a243ff092d7d19fba5ffed65551dda8e68adf230db4` |
+| RFC 0026 status before transaction | `ACCEPTED` |
+| RFC 0026 status after transaction | `ACCEPTED` |
+| Synchronized authority | Explicit transaction and seal results, sealed-root admission propagation, typed capability failures and permissions, and retained final-parse provenance lineage |
+| Replacement dependencies | RFC 0028 `R28-13A` through `R28-16` replace and refine pending RFC 0027 `Q2` and `S1`; verification continues through `R28-17` |
 
 ## Required Review Commands
 

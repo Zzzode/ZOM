@@ -1312,6 +1312,31 @@ RFC 0027 tasks `Q1-Q4`, `I1-I2`, `B1-B4`, `M1-M5`, `C1-C2`, `L1-L4`,
 `T1-T2C`, `D1-D5`, `W1-W4`, `E1-E8`, and `A1-A3` govern completion and
 evidence.
 
+### 2026-07-27 RFC 0028 Acceptance Synchronization
+
+RFC 0028 was accepted on exact proposal SHA-256
+`944b68ffc0aff5576d079a243ff092d7d19fba5ffed65551dda8e68adf230db4`
+through transaction `rfc0028-accept-20260727-944b68ff`.
+
+The synchronized contract removes the duplicate closure projection, makes
+`BoundOwnerBody` the sole closure-fact authority, uses explicit transaction
+and final-seal results, admits final materializers only through
+`SealedQuerySnapshot`, and requires descriptor-dependent capability failures,
+exact three-parameter permissions, tracked membership demand, and complete
+authority equality. Product implementation remains incomplete.
+
+The dependency overlay is:
+
+| Local work | Current RFC 0028 dependency |
+|---|---|
+| `R25-07` graph, session, and materializer completion | `R28-14`; `R28-16` |
+| `R25-07` owner-body closure completion | `R28-15` |
+| `R25-07T` native and architecture evidence | `R28-17` |
+| Remaining RFC 0027 `Q2` and `S1` boundaries | Replaced and refined by `R28-13A` through `R28-16`; they remain pending |
+
+This documentation synchronization changes neither RFC 0025's `ACCEPTED`
+status nor any implementation row status.
+
 ## Implementation Tracker
 
 `R25-03` extends its exact path set with
@@ -1392,6 +1417,15 @@ the synchronized contract. Current completion requires RFC 0027 tasks
 `W1-W4`, `E1-E8`, and `A1-A3`; none is marked complete by this documentation
 transaction.
 
+### 2026-07-27 RFC 0028 Current Implementation Binding
+
+Transaction `rfc0028-accept-20260727-944b68ff` establishes the current query
+runtime, final-seal, capability permission, closure-fact, and module
+provenance authority for this tracker. RFC 0027 `Q2` and `S1` remain pending;
+RFC 0028 `R28-13A` through `R28-16` replace and refine those implementation
+boundaries. `R25-07` and `R25-07T` may claim completion only after the
+applicable `R28-14` through `R28-17` dependencies above have completed.
+
 ### 2026-07-26 Core Pre-Parse Transaction And Module-Graph Progress
 
 The coordinated `R25-07` and `R25-11` cutover now admits the verified
@@ -1470,11 +1504,18 @@ blocked by `R25-12G`.
   and transaction `rfc0027-accept-20260727-e2f4ba5e`. It changes design and
   tracker authority only; the RFC 0027 implementation and evidence DAG remains
   pending.
+- RFC 0028 acceptance synchronization records proposal SHA-256
+  `944b68ffc0aff5576d079a243ff092d7d19fba5ffed65551dda8e68adf230db4`
+  and transaction `rfc0028-accept-20260727-944b68ff`. It changes design and
+  dependency authority only; `R28-13A` through `R28-17` remain pending.
 
 ## Blocking Dependencies
 
-- RFC 0027 `Q1`, `Q3`, `I1`, and `S1` are the first implementation roots after
-  the synchronized acceptance transaction and additionally depend on its
-  frozen implementation-series base where specified by RFC 0027.
+- RFC 0027 `Q1`, `Q3`, and `I1` remain implementation roots through their
+  recorded dependency edges. RFC 0027 `Q2` and `S1` remain pending and are
+  replaced and refined by RFC 0028 `R28-13A` through `R28-16`.
+- `R25-07` cannot complete its graph and session boundary before `R28-14` and
+  `R28-16`, or its owner-body closure boundary before `R28-15`; `R25-07T`
+  cannot complete before `R28-17`.
 - `R25-12G` remains externally blocked by RFC 0023 acceptance and its named
   production foundation.

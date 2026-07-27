@@ -21,6 +21,8 @@ Route here when **any** of these are true:
   parser, or binder.
 - Adding or changing the incremental-query architecture gate, edit corpus,
   cache adversaries, projection execution assertions, or benchmark baseline.
+- Adding or changing the query descriptor inventory generator or descriptor
+  architecture gate.
 - Adding or changing the source-backed core-library architecture gate.
 - Requesting the user-facing report of "this is safe to ship."
 - Verifying every cast mode and its parser, checker, MIR, panic, and negative
@@ -57,6 +59,8 @@ scripts/check-no-internal-versioning.py
 scripts/codegen/gen_ast.py
 scripts/codegen/gen_package_oracles.py
 scripts/generate-canonical-header-syntax-schema.py
+scripts/generate-query-descriptor-schema.py
+scripts/check-query-descriptor-architecture.py
 scripts/run-incremental-query-benchmarks.py
 scripts/check-diagnostic-coverage.py
 scripts/check-lit-exec-root.py

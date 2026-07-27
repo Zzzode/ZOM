@@ -72,6 +72,17 @@ series base. The exact forty-lowercase-hex-plus-newline record names an
 ancestor of the base-recording commit. `R27-12B` is complete and source
 implementation is authorized in the dependency order below.
 
+### 2026-07-27 RFC 0028 Acceptance Synchronization
+
+Acceptance transaction `rfc0028-accept-20260727-944b68ff` binds RFC 0028
+proposal SHA
+`944b68ffc0aff5576d079a243ff092d7d19fba5ffed65551dda8e68adf230db4`.
+The synchronized design removes the duplicate closure projection and replaces
+the pending query-runtime boundary with RFC 0028's indivisible descriptor,
+caller, transaction, sealed-admission, failure-bridge, membership,
+provenance, and verification transactions. RFC 0027 remains `ACCEPTED`;
+completed tasks `R27-12B` and `R27-17A` remain complete.
+
 ## Decision Record
 
 Accepted by `task-router`, `rfc`, `module-system`, `binder-checker`,
@@ -82,6 +93,13 @@ The synchronized acceptance transaction is
 `rfc0027-accept-20260727-e2f4ba5e`. Immutable implementation-series base
 `109947943519ec2d380a3e8d71813b40bc68bde5` is recorded and source
 implementation is authorized.
+
+RFC 0028 acceptance transaction `rfc0028-accept-20260727-944b68ff`
+supersedes RFC 0027's pending `Q2` query-runtime task. RFC 0028 tasks
+`R28-13A` through `R28-14` own the atomic runtime replacement, `R28-15` owns
+duplicate Binder closure-schema deletion, and `R28-16A` through `R28-16` own
+runtime-only provenance. The corrected dependencies below are the sole
+implementation authority.
 
 ## Implementation Tracker
 
@@ -105,15 +123,15 @@ implementation is authorized.
 | `R27-14` | `binder-checker` | `R27-13` | Implement literal-domain codecs, bounds, exact consumption, fixed oracles, and mutations. | Codec oracle and mutation tests | Pending |
 | `R27-15` | `binder-checker` | `R27-13` | Implement body disposition and independently verified staging-safe headers. | Header producer/verifier tests | Pending |
 | `R27-16` | `error-system` | `R27-13` | Implement the sole RFC 0017 diagnostic wire integration, `ZOM3028`, and failed-lookup bijection. | Diagnostic coverage and focused tests | Pending |
-| `R27-17` | `module-system` | `R27-12B` | Implement final seal, literal descriptors, retained dependency edges, and compile-time materializer permissions. | Query capability tests | Pending |
+| `R27-17` | `module-system` | `R27-12B` | Query-runtime authority transferred to RFC 0028 tasks `R28-13A` through `R28-14`. | RFC 0028 acceptance synchronization | Replaced by RFC 0028 |
 | `R27-17A` | `module-system` | `R27-12B` | Implement the handle-free canonical package request records, verified-request projection, exact codecs, and independent projection verifier. | Package request codec and projection tests | Complete; implementation `3039da5259be25b139954834f900a21b7b891fcf`, sanitizer unit tests 135/135, focused package request test 1/1, independent integration review approved |
-| `R27-17B` | `module-system` | `R27-17`; `R27-17A` | Implement the complete context authority descriptor, three payload schemas and codecs, transaction digests, atomic transaction controls, and synchronous live verified-package-request input with independent projection before any membership or materializer consumer. | Input schema, projection, mutation, lifetime, and atomicity tests | Pending |
-| `R27-18` | `module-system` with required `runtime-memory` review | `R27-17` | Replace frozen registries with the arena-owned eight-domain typed interner set. | Identity, concurrency, collision, and teardown tests | Pending |
-| `R27-19` | `module-system` | `R27-15`; `R27-17B`; `R27-18` | Implement all eight complete-record active-membership projections. | Membership and readiness tests | Pending |
+| `R27-17B` | `module-system` | `R27-17A` | Context authority, transaction, atomicity, and verified-request admission authority transferred to RFC 0028 tasks `R28-13A` through `R28-14`. | RFC 0028 acceptance synchronization | Replaced by RFC 0028 |
+| `R27-18` | `module-system` with required `runtime-memory` review | RFC 0028 `R28-14` | Replace frozen registries with the arena-owned eight-domain typed interner set. | Identity, concurrency, collision, and teardown tests | Pending |
+| `R27-19` | `module-system` | `R27-15`; RFC 0028 `R28-14`; `R27-18` | Implement all eight exact complete-record membership projections after sealed admission and before any interner lookup. | Membership and readiness tests | Pending |
 | `R27-20` | `binder-checker` | `R27-14`; `R27-15` | Implement `BindModuleSkeleton`, lookup projections, and independent verifier. | Skeleton and read-set tests | Pending |
 | `R27-21` | `binder-checker` | `R27-20` | Implement contextual `BindOwnerBody` and independent traversal/verifier. | Body, capture, control, and source-failure tests | Pending |
 | `R27-22` | `binder-checker` | `R27-21` | Implement the deterministic five-domain module allocation plan. | Overflow and reversed-demand tests | Pending |
-| `R27-23` | `module-system` | `R27-17B`; `R27-19` | Implement typed graph witness and final-snapshot `MaterializeModuleGraph`. | Graph, provenance, and read-set mutations | Pending |
+| `R27-23` | `module-system` | RFC 0028 `R28-16`; `R27-19` | Implement the typed graph witness and final-sealed-snapshot `MaterializeModuleGraph` consumer over runtime-only module-dependency provenance. | Graph, provenance, and read-set mutations | Pending |
 | `R27-24` | `binder-checker` | `R27-19`; `R27-22`; `R27-23` | Implement materialized module skeleton and owner-body capabilities. | Typed expansion and retained-child tests | Pending |
 | `R27-25` | `binder-checker` | `R27-24` | Implement `VerifyBoundModule`, immutable aggregate storage, and failure projection. | Coverage, lineage, and failure tests | Pending |
 | `R27-26` | `binder-checker` | `R27-25` | Migrate Checker consumers to `CheckerBoundModuleView`. | Focused Checker tests | Pending |
@@ -122,8 +140,8 @@ implementation is authorized.
 | `R27-27B` | `ir-backend` | `R27-27A` | Migrate verified HIR to a retained bound-module lease. | HIR lineage tests | Pending |
 | `R27-27C` | `ir-backend` | `R27-27B` | Migrate Built MIR to a retained bound-module lease. | MIR lineage tests | Pending |
 | `R27-27D` | `runtime-memory` | `R27-27C` | Migrate the ownership overlay to a retained bound-module lease and exact destruction order. | Ownership lineage tests | Pending |
-| `R27-28A` | `module-system` | `R27-17B`; `R27-23`; `R27-25` | Supply the session-owned live verified package request, execute the three predeclared input transactions, and implement the session state machine plus named snapshots without redeclaring payload schemas. | Session transaction and borrowed-input lifetime tests | Pending |
-| `R27-28B` | `module-system` | `R27-26A`; `R27-27D`; `R27-28A` | Implement the dependency-first production capability root and irreversible final seal. | Session architecture and end-to-end tests | Pending |
+| `R27-28A` | `module-system` | RFC 0028 `R28-14`; RFC 0028 `R28-16`; `R27-23`; `R27-25` | Supply the session-owned live verified package request, execute the RFC 0028 input transactions, and implement the session state machine plus sealed snapshots without redeclaring payload schemas. | Session transaction and borrowed-input lifetime tests | Pending |
+| `R27-28B` | `module-system` | `R27-26A`; `R27-27D`; `R27-28A` | Implement the dependency-first production capability root over the RFC 0028 sealed snapshot and inherited admission contract. | Session architecture and end-to-end tests | Pending |
 | `R27-28C` | `module-system` | `R27-28B` | Implement surviving-lease and session teardown order. | Teardown tests | Pending |
 | `R27-29` | `module-system` | `R27-28C` | Delete identity registry/freeze authority, session ledgers, and the session-owned handleful graph root. | Identity and session zero-reference gates | Pending |
 | `R27-30` | `binder-checker` | `R27-28C` | Delete frozen Binder inventory, production batch binding, mirrors, detached clones, and non-owning bound-module input. | Binder and Checker zero-reference gates | Pending |
@@ -138,5 +156,6 @@ implementation is authorized.
 | `R27-32A` | `verification` | `R27-33A` | Recompute and byte-compare the fixed report without writing it, then rerun English-only, RFC, format, versioning, and diff gates after every spec-audit edit. | Final write-free RFC 0027 Test Plan subset | Pending |
 | `R27-33` | `rfc` | `R27-32A` | Audit all implementation, report, and final verification evidence, then perform the only synchronized RFC implementation-state transitions. | `python3 scripts/check-rfc.py` | Pending |
 
-`R27-12B` and `R27-17A` are complete. Remaining implementation is authorized
+`R27-12B` and `R27-17A` are complete. `R27-17` and `R27-17B` retain no
+independent implementation authority. Remaining implementation is authorized
 only in the dependency order recorded above.

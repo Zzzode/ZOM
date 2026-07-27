@@ -200,6 +200,8 @@ subagents:
       - "scripts/codegen/gen_ast.py"
       - "scripts/codegen/gen_package_oracles.py"
       - "scripts/generate-canonical-header-syntax-schema.py"
+      - "scripts/generate-query-descriptor-schema.py"
+      - "scripts/check-query-descriptor-architecture.py"
       - "scripts/run-incremental-query-benchmarks.py"
       - "scripts/check-diagnostic-coverage.py"
       - "scripts/check-lit-exec-root.py"
