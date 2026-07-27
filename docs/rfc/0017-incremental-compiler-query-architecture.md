@@ -1273,24 +1273,51 @@ remain valid until the final lease releases. Materializer results, brands, and
 process-local handles are never serialized, backdated, or used as active
 membership.
 
-### Query Runtime Final-Seal And Descriptor Contract
+### Query Runtime Identity, Result, And Final-Seal Contract
 
-Acceptance transaction `rfc0028-accept-20260727-944b68ff` binds this current
-contract to exact RFC 0028 proposal SHA-256
-`944b68ffc0aff5576d079a243ff092d7d19fba5ffed65551dda8e68adf230db4`.
+Acceptance transaction `rfc0029-accept-20260727-8d393a0c` binds this current
+contract to exact RFC 0029 proposal SHA-256
+`8d393a0c6c00a7fad9ef086d3d25f5ed44300041afa9e1e1a4af5d68830fd3e7`.
 
 | RFC 0017 Surface | Current Contract |
 |---|---|
-| Database identity | Every database implementation receives a nonzero, strictly monotonic, process-local `QueryDatabaseIdentity` generation. Snapshots, transactions, demands, final admission, and retained capability state carry that identity. The generation is move-stable, never serialized, and never reused. |
+| Database identity | Every fresh `QueryDatabase::Impl` creates one opaque retained `QueryDatabaseIdentityToken`. Equality is token-object identity. Database state, snapshots, transactions, demand frames, final-seal admission, `FinalSnapshotSeal`, and every revision-local capability memo retain the same token. The token has no public field, factory, codec, stable hash, ordinal, printable value, ordering, address conversion, allocator, counter, or exhaustion path. Database moves preserve the token. |
 | Descriptor metadata | `InputDescriptorMetadata`, `SemanticDescriptorMetadata`, and `CapabilityDescriptorMetadata` are distinct literal types. Every descriptor declares one immutable non-empty printable-ASCII name and domain through `zc::LiteralStringConst` and `_zcc`; the metadata type selects the descriptor kind. |
 | Closed inventory | The generated target inventory assigns each descriptor an explicit contiguous `uint32` ordinal. `QueryKindId` equals that ordinal. A test inventory preserves the complete production prefix and appends only its contiguous test tail. |
 | Registration | `registerDescriptor<Descriptor>()` is the sole registration entry point. It validates the generated row, inventory identity, literal metadata, and assigned slot under the descriptor lock and returns `DescriptorRegistrationResult`. |
 | Input transactions | `InputTransactionFailure`, `InputTransactionOpenResult`, `InputMutationResult`, `InputCommitResult`, and `FinalSealResult` provide closed results with deterministic precedence and failure atomicity. The final seal is irreversible, and every later input mutation returns `InputMutationAfterFinalSeal`. |
 | Runtime failures | `QueryRuntimeFailure` is the complete runtime-only failure algebra. Descriptor registration and input transaction failures remain separate setup and control results. |
-| Capability failures | Each capability descriptor declares its exact failure alternatives. The type-erased evaluator carries independently verified rejections through the canonical `CapabilityFailureEnvelope` domain `zom.query.capability-failure`; decoding requires exact descriptor-domain equality and canonical re-encoding. |
+| Request result | `QueryRequestResult` is the move-only closed sum `Semantic(QueryValue)`, `CapabilityPublished(Arc<RevisionLocalCapabilityMemoBase>)`, `CapabilityRejected(CapabilityFailureEnvelope)`, or `RuntimeRejected(QueryRuntimeFailure)`. Semantic descriptors alone use `Semantic`; revision-local capability descriptors alone use the two capability alternatives. A capability rejection never enters `QueryValue` and publishes no memo. |
+| Capability publication | Only the evaluator constructs `CapabilityPublished`, after independent candidate verification, complete witness validation, dependency retention, and canonical memo publication. A cache hit returns another arc to the same memo without rerunning the provider. |
+| Result decoder | `CapabilityResultDecoder<Descriptor>` consumes the request result. Before the private evaluator-owned cast, it requires the memo key kind to equal the generated descriptor ordinal and requires exact database-token and revision equality. The database-bound inventory is immutable, registration proves the ordinal binding before evaluation, and no alternate memo factory, RTTI path, public downcast, or type-name dispatch exists. Kind, database, or revision disagreement is `InvariantViolation`. |
+| Capability failures | Each capability descriptor declares its exact failure alternatives. The evaluator alone constructs a verified `CapabilityFailureEnvelope` from the demanded descriptor's literal domain, listed failure tag, and descriptor-verified canonical payload. Complete decode, exact consumption, and byte-identical re-encoding are required. |
 | Final admission | `SealedQuerySnapshot<ContextRoots, FinalWitness>` validates and retains the immutable database, revision, complete-context root, and witness admission. Root and nested demands propagate that admission unchanged and validate it before provider code, memo lookup, membership, or interner access. |
 | Typed capability context | Every revision-local provider and verifier receives `CapabilityQueryContext<Descriptor>`. Active materialization is available only through the compile-time three-parameter permission matrix and the exact tracked membership descriptor. |
-| Retained lifetime | Successful capability memos retain their exact child memo generations, snapshot state, final admission, and semantic-context arena. Surviving leases keep that complete chain alive. |
+| Retained lifetime | Successful capability memos retain their exact child memos, database token, snapshot state, final admission, and semantic-context arena. Surviving leases keep that complete chain alive. |
+
+`IdentitySyntaxSiteInventoryQuery` is the revision-local source-provenance
+authority for stable-identity processing. It is independently published before
+stable-identity validation, retains the exact parse lease, represents a legal
+site-free module with an empty canonical sequence, and reconstructs every
+decoded `SourceSpan` only through the retained `ImmutableSourceSnapshot`.
+`StableIdentityAdmissionQuery` then reads selected source, parse,
+identity-site inventory, the candidate producer, and the independent verifier
+in that order. It is the sole owner of stable-identity source diagnostics.
+
+The five Binder provenance capabilities have descriptor-specific source, key,
+and runtime failure contracts. Their exact read sequences and legal
+`BinderKeyFailureKind` subsets are defined by RFC 0019 and RFC 0020 under this
+transaction. They expose only `Published`, a listed source rejection, a listed
+key rejection, or `RuntimeRejected`; none exposes absence or opaque semantic
+failure bytes.
+
+Implementation dependency authority is exact. RFC 0027 `S1` and `S2` remain
+separate review partitions and land together as one buildable schema-and-facts
+transaction. `S3` then lands as the bounded codec and wire-oracle commit, and
+`S6` lands as the diagnostic-fact commit after the `S1` plus `S2` transaction.
+RFC 0028 runtime work resumes only after both `S3` and `S6` pass their focused
+native gates. RFC 0017 remains `IMPLEMENTING`; this accepted design does not
+establish runtime implementation.
 
 ## Repository Impact
 
@@ -1785,4 +1812,5 @@ None
 | 2026-07-25 | IMPLEMENTING | Synchronized the accepted RFC 0025 core-distribution, capability-lease, contextual-key, provider-graph, readiness, diagnostic, prelude, and projection-shielding replacements from exact proposal SHA-256 `4f4085c176a9f391115e12170da93af899e350fa92440d5a51577692faf8bad0`; implementation completion is tracked only by the RFC 0025 R25 tasks. |
 | 2026-07-26 | IMPLEMENTING | Synchronized the accepted RFC 0026 structural-input transaction, derived topology query family, stable graph and SCC records, failure closure, session barriers, and final Binder bridge from exact proposal SHA-256 `39df5d3f11dbdcb2e95056b1cd14fd5220a19688f31a3e3180230ad465a3f84d`; implementation completion remains tracked by RFC 0026 and RFC 0025. |
 | 2026-07-27 | IMPLEMENTING | Synchronized the RFC 0027 arena-owned eight-domain interner, typed membership permission, final-seal admission, capability-retention, collision, and surviving-lease contracts through transaction `rfc0027-accept-20260727-e2f4ba5e` at proposal SHA-256 `e2f4ba5eb777d3d70b8eb3ad75b18f5169afc61a83d989ccc61fc9d5d022f435`; implementation status is unchanged. |
-| 2026-07-27 | IMPLEMENTING | Synchronized the RFC 0028 query-database generation, literal descriptor inventory, closed transaction and runtime failures, canonical capability-failure bridge, sealed-root admission, typed capability context, and direct owner-body closure contracts through transaction `rfc0028-accept-20260727-944b68ff` at proposal SHA-256 `944b68ffc0aff5576d079a243ff092d7d19fba5ffed65551dda8e68adf230db4`; implementation status is unchanged. |
+| 2026-07-27 | IMPLEMENTING | Synchronized the RFC 0028 query-database identity, literal descriptor inventory, closed transaction and runtime failures, canonical capability-failure bridge, sealed-root admission, typed capability context, and direct owner-body closure contracts through transaction `rfc0028-accept-20260727-944b68ff` at proposal SHA-256 `944b68ffc0aff5576d079a243ff092d7d19fba5ffed65551dda8e68adf230db4`; implementation status is unchanged. |
+| 2026-07-27 | IMPLEMENTING | Acceptance transaction `rfc0029-accept-20260727-8d393a0c` synchronized opaque retained database identity, the closed request-result and decoder coordinates, independent identity-site provenance, stable-identity admission, exact Binder capability failures, and the corrected schema-before-runtime dependency order to proposal SHA-256 `8d393a0c6c00a7fad9ef086d3d25f5ed44300041afa9e1e1a4af5d68830fd3e7`; implementation status is unchanged. |

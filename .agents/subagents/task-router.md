@@ -45,7 +45,10 @@ owner declared by `manifest.yaml`.
 - [ ] Query runtime, memo, red-green, and incremental identity work routes to
       `module-system`; `scripts/generate-query-descriptor-schema.py`,
       `scripts/check-query-descriptor-architecture.py`, query gates,
-      adversaries, corpora, and benchmarks route to `verification`.
+      adversaries, corpora, benchmarks, real-object request-decoder mismatch
+      tests, per-database race gates, and
+      `products/zomlang/tests/compile-fail/query-runtime/**` route to
+      `verification`.
 - [ ] Ownership analysis and `products/zomlang/compiler/ownership/**` route to
       `runtime-memory`; checked semantic inputs and Built MIR dependencies keep
       their owning subsystem reviews.

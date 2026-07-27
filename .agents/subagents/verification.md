@@ -23,6 +23,9 @@ Route here when **any** of these are true:
   cache adversaries, projection execution assertions, or benchmark baseline.
 - Adding or changing the query descriptor inventory generator or descriptor
   architecture gate.
+- Adding or changing query-runtime request-result alternatives, private
+  real-object decoder mismatch tests, deterministic one-shot race gates, or
+  CTest negative-compilation fixtures.
 - Adding or changing the source-backed core-library architecture gate.
 - Requesting the user-facing report of "this is safe to ship."
 - Verifying every cast mode and its parser, checker, MIR, panic, and negative
@@ -37,6 +40,10 @@ Do **not** route here when:
 
 ```
 products/zomlang/tests/**
+products/zomlang/tests/cmake/expect-compile-failure/CMakeLists.txt
+products/zomlang/tests/compile-fail/query-runtime/**
+products/zomlang/tests/unittests/compiler/query/query-test-specs.h
+products/zomlang/tests/unittests/compiler/query/query-concurrency-test.cc
 examples/**
 .github/workflows/**
 README.md
@@ -108,6 +115,15 @@ cmake/utils/unittests.cmake
 - [ ] Incremental-query changes pass from-scratch equivalence, exact provider
       execution-set assertions, worker permutations, cache adversaries, and the
       reviewed benchmark protocol.
+- [ ] Query-runtime decoder mismatch tests use only independently reachable
+      real database, revision, and descriptor coordinates; no memo-field
+      mutator or unreachable inventory coordinate is accepted.
+- [ ] Query-runtime compile-fail cases use the reusable CMake fixture, inherit
+      the configured compiler, include roots, and C++ mode, compile as
+      `STATIC_LIBRARY`, and require the exact forbidden symbol.
+- [ ] Query-runtime race tests use explicit per-database one-shot state and
+      condition synchronization, with no sleep, callback, global registry, or
+      verifier replacement.
 
 ## Required Evidence Before Closing
 

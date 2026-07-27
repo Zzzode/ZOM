@@ -33,6 +33,22 @@ Binder capabilities through sealed admission, descriptor-specific failure
 alternatives, exact active membership, and membership-before-interner
 ordering. RFC 0019 remains `IMPLEMENTING`.
 
+### 2026-07-27 RFC 0029 Acceptance Synchronization
+
+Acceptance transaction `rfc0029-accept-20260727-8d393a0c` binds RFC 0019 to
+exact RFC 0029 proposal SHA-256
+`8d393a0c6c00a7fad9ef086d3d25f5ed44300041afa9e1e1a4af5d68830fd3e7`.
+The synchronized authority fixes the request-result publication seam,
+stable-identity admission prerequisite, exact read order and legal failure
+subset of the five Binder provenance capabilities, semantic syntax failure
+mapping, and direct typed-child owner-body reconstruction.
+
+RFC 0027 `S1` and `S2` land atomically through `R29-12AB`; `S3` and `S6`
+follow as their separate codec and diagnostic commits. RFC 0029 `R29-13A`
+through `R29-13C` prepare the runtime, provenance, descriptor, and verification
+partitions, and `R29-14` is their sole runtime landing transaction. RFC 0019
+remains `IMPLEMENTING`.
+
 ## Owner Review Matrix
 
 | Owner | Required review | Status | Evidence |
@@ -58,20 +74,26 @@ The transaction is a design synchronization. RFC 0019 remains
 `IMPLEMENTING`, and implementation status changes only after the RFC 0027
 native evidence and final audit complete.
 
-RFC 0028 acceptance transaction `rfc0028-accept-20260727-944b68ff`
-supersedes RFC 0027 task `Q2` without changing RFC 0019's status. Query
-runtime, descriptor, transaction, sealed-snapshot,
-failure-bridge, and provenance work follows RFC 0028 `R28-13A` through
-`R28-17`; Binder schema deletion follows `R28-15`. The remaining Binder and
-Checker work continues through the corrected RFC 0027 dependency graph.
+RFC 0028 acceptance transaction `rfc0028-accept-20260727-944b68ff` does not
+change RFC 0019's status. Query runtime, descriptor, transaction,
+sealed-snapshot, failure-bridge, and provenance work follows the dependency
+authority recorded below.
+
+RFC 0029 acceptance transaction `rfc0029-accept-20260727-8d393a0c` is the
+current dependency authority for that source work. Schema and facts complete
+through `R29-12AB`, codecs and diagnostics through `R29-12C` and `R29-12D`,
+the reviewed source partitions through `R29-13A` to `R29-13C`, and the atomic
+runtime source transaction through `R29-14`. Completion and documentation
+authority remains `R29-15` through `R29-17`.
 
 ## Implementation Tracker
 
 | Phase | Scope | Status | Evidence And RFC 0027 Authority |
 |---|---|---|---|
+| 0 | RFC 0029 synchronized prerequisites and runtime replacement | Pending | RFC 0029 `R29-12A` through `R29-17`; no synchronized implementation evidence is recorded |
 | 1 | Stable body owner and owner-local codec | Complete | Native codec vectors, bounds, owner alternatives, and owner-local identity tests passed. Synchronized schema follow-up is owned by RFC 0027 `S1` through `S3`. |
-| 2 | Module body syntax and provenance | Complete | Selected-source, detached syntax, provenance, dependency, source-switch, session, and architecture tests passed. Synchronized header work remains under RFC 0027 `S4` through `S5`; query-runtime and transaction follow-up is owned by RFC 0028 `R28-13A` through `R28-17`. |
-| 3 | Owner-body query catalog and aggregate verification | In progress | Syntax, provenance, and owner census are implemented. Stable Binder queries, allocation, materializers, aggregate verification, and production demand complete through RFC 0027 `B1` through `B4` and `M2` through `M5`, after RFC 0028 `R28-14` through `R28-16` provide the sealed query-runtime and provenance prerequisites. |
+| 2 | Module body syntax and provenance | Complete | Selected-source, detached syntax, provenance, dependency, source-switch, session, and architecture tests passed. Synchronized header work remains under RFC 0027 `S4` through `S5`; the current query-runtime and transaction follow-up is RFC 0029 `R29-12A` through `R29-17`. |
+| 3 | Owner-body query catalog and aggregate verification | In progress | Syntax, provenance, and owner census are implemented. Stable Binder queries, allocation, materializers, aggregate verification, and production demand complete through RFC 0027 `B1` through `B4` and `M2` through `M5`, after RFC 0029 `R29-14` and `R29-15` provide the atomic query-runtime, provenance, and verification prerequisites. |
 | 4 | Scope, closure, control, diagnostic, and Checker migration | In progress | Owner-local capture and control validation are implemented. Stable scope publication, RFC 0017 diagnostic integration, contextual materialization, and Checker handoff complete through RFC 0027 `S6`, `C1`, and `C1A`. |
 | 5 | Independent schema mutations and native regressions | In progress | Existing owner, provenance, source, registration, verifier-separation, worker-order, and range-shielding adversaries pass. Complete synchronized mutations are owned by RFC 0027 `E1` through `E7`. |
 | 6 | Full sanitizer, differential, architecture, coverage, format, and benchmark gates | Pending | RFC 0027 `E7`, `E8`, and final write-free verification. |
@@ -100,7 +122,18 @@ the dependency-ordered RFC 0027 tasks and project-native evidence.
 | RFC 0019 status before transaction | `IMPLEMENTING` |
 | RFC 0019 status after transaction | `IMPLEMENTING` |
 | Removed authority | duplicate closure projection catalog, read-set, schema, and plan surface |
-| Current implementation authority | RFC 0028 `R28-13A` through `R28-17` plus the corrected RFC 0027 Binder and Checker DAG |
+| Implementation authority | RFC 0029 synchronization record below |
+
+### RFC 0029 Synchronization Record
+
+| Field | Value |
+|---|---|
+| Transaction | `rfc0029-accept-20260727-8d393a0c` |
+| Proposal SHA-256 | `8d393a0c6c00a7fad9ef086d3d25f5ed44300041afa9e1e1a4af5d68830fd3e7` |
+| RFC 0019 status before transaction | `IMPLEMENTING` |
+| RFC 0019 status after transaction | `IMPLEMENTING` |
+| Synchronized authority | Closed capability publication, stable-admission prerequisite, exact five-descriptor reads and failures, semantic syntax invariant mapping, and direct owner-body reconstruction |
+| Current implementation authority | RFC 0029 `R29-12A` through `R29-17` plus the dependent RFC 0027 Binder and Checker tasks |
 
 ## Required Review Commands
 

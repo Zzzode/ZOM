@@ -444,9 +444,60 @@ Final Binder capabilities use descriptor-specific failure alternatives.
 `CapabilityDemandResult<Descriptor>` exposes only the source- or key-rejection
 alternatives listed by that descriptor, plus `Published` and
 `RuntimeRejected`. The typed provider result, canonical failure envelope,
-independent rejection verifier, and public decoder are the RFC 0028 contract.
+independent rejection verifier, and public decoder are the RFC 0029 contract.
 An unavailable alternative creates no type, storage, constructor, codec,
 verifier, or observer, and no rejection publishes a semantic or capability
+memo.
+
+Acceptance transaction `rfc0029-accept-20260727-8d393a0c` binds the exact
+capability result and failure contracts below to RFC 0029 proposal SHA-256
+`8d393a0c6c00a7fad9ef086d3d25f5ed44300041afa9e1e1a4af5d68830fd3e7`.
+`CapabilityPublished` carries the evaluator-published revision-local memo.
+The result decoder consumes the move-only request result and checks descriptor
+ordinal, database token, and revision before its private cast. Capability
+rejections never enter `QueryValue`.
+
+The exact descriptor read sets are:
+
+| Descriptor | Ordered reads |
+|---|---|
+| `RevisionLocalDefinitionSitesQuery` | `SelectedModuleSourceQuery`; `ParseSourceQuery`; `StableIdentityAdmissionQuery`; `NamedDefinitionInventoryQuery`; independent site reconstruction |
+| `RevisionLocalImplementationSitesQuery` | `SelectedModuleSourceQuery`; `ParseSourceQuery`; `StableIdentityAdmissionQuery`; `NamedImplementationInventoryQuery`; independent site reconstruction |
+| `ModuleBodyProvenanceQuery` | `SelectedModuleSourceQuery`; `ParseSourceQuery`; `StableIdentityAdmissionQuery`; `RevisionLocalDefinitionSitesQuery`; `RevisionLocalImplementationSitesQuery`; `ModuleBodySyntaxQuery` |
+| `NamedItemProvenanceQuery` | `ActiveDefinitionAuthorityInput`; `ActiveDefinitionAuthorityReadyInput` only for absent or contradictory authority; `SelectedModuleSourceQuery`; `ParseSourceQuery`; `StableIdentityAdmissionQuery`; `NamedDefinitionInventoryQuery`; `RevisionLocalDefinitionSitesQuery`; `RevisionLocalImplementationSitesQuery`; `NamedItemSyntaxQuery` |
+| `OwnerBodyProvenanceQuery` | exactly one typed branch, `ModuleBodyProvenanceQuery` or `NamedItemProvenanceQuery`; then the matching `ModuleBodySyntaxQuery` or complete-key `NamedItemSyntaxQuery` |
+
+The first eligible typed rejection in read order is returned, and an earlier
+runtime failure stops classification. The two site descriptors construct only
+`MissingSelectedModuleSource(Module(key.module), none)` and forward the
+stable-admission source rejection unchanged. A semantic inventory failure
+after stable admission is `InvariantViolation`.
+
+`ModuleBodyProvenanceQuery` constructs or forwards only
+`MissingSelectedModuleSource(Module(key.module), none)`. It forwards source
+rejections from parse, stable admission, definition sites, and implementation
+sites in read order. `ModuleBodySyntaxQuery` is semantic; its semantic failure
+after typed provenance succeeds is `InvariantViolation`, not a capability
+source rejection.
+
+`NamedItemProvenanceQuery` constructs or forwards only
+`InactiveOwner(DefinitionHeader(key.definition), none)` and
+`MissingSelectedModuleSource(Module(key.definition.module), none)`. Absent
+authority requires complete readiness before `InactiveOwner`; missing
+readiness is `ProviderRejected`, and contradictory authority is
+`InvariantViolation`. Child source and key rejections are forwarded unchanged.
+
+`OwnerBodyProvenanceQuery` never reads `OwnerBodySyntaxQuery`. A definition
+owner applies an independently verified executable-root admission algorithm
+directly to successful named-item syntax. `NoBody` constructs
+`DefinitionWithoutBody(Body(key), none)`; `Malformed` is
+`InvariantViolation`. `InactiveOwner` and `MissingSelectedModuleSource` are
+forwarded unchanged from the selected typed child.
+
+Every source and key rejection verifier independently repeats the exact
+conditional read order, proves the first eligible branch, validates the
+descriptor's legal `BinderKeyFailureKind` subset, and compares the complete
+canonical payload. Candidate, rejection, or codec disagreement publishes no
 memo.
 
 `MaterializeModuleSkeleton(ContextualModuleKey)` expands the stable skeleton
@@ -543,10 +594,13 @@ producer, verifier, caller, codec, oracle, gate, and build target. No alternate
 decoder, overload, alias, flag, fallback authority, or dual production root is
 permitted.
 
-Implementation follows the RFC 0027 dependency graph. Stable schemas and
-headers land before queries; contextual membership lands before
-materialization; downstream leases migrate before replaced authorities are
-removed.
+Implementation follows the synchronized dependency graph. RFC 0027 `S1` and
+`S2` land together as one buildable schema-and-facts transaction. `S3` and
+`S6` then land as their separate codec and diagnostic commits. RFC 0029
+`R29-13A`, `R29-13B`, and `R29-13C` prepare the query types, exact provenance
+and failure contracts, and native gates before `R29-14` assembles the atomic
+runtime source transaction. Contextual membership precedes materialization,
+and downstream leases migrate within that atomic transaction.
 
 ## Documentation And Teaching Plan
 
@@ -633,3 +687,4 @@ None
 | 2026-07-26 | IMPLEMENTING | Selected-source authority and consumer read sets were synchronized with the accepted module-graph query contract. |
 | 2026-07-27 | IMPLEMENTING | Acceptance transaction `rfc0027-accept-20260727-e2f4ba5e` synchronized the current owner, scope, fact, header, result, allocation, complete-read, diagnostic, materialized-provenance, and Checker contracts to RFC 0027 proposal SHA-256 `e2f4ba5eb777d3d70b8eb3ad75b18f5169afc61a83d989ccc61fc9d5d022f435`; implementation status remains unchanged. |
 | 2026-07-27 | IMPLEMENTING | Acceptance transaction `rfc0028-accept-20260727-944b68ff` synchronized sealed admission, descriptor-specific capability failures, exact membership-before-interner ordering, direct owner-body closure facts, and the RFC 0028 implementation dependency graph to proposal SHA-256 `944b68ffc0aff5576d079a243ff092d7d19fba5ffed65551dda8e68adf230db4`; implementation status remains unchanged. |
+| 2026-07-27 | IMPLEMENTING | Acceptance transaction `rfc0029-accept-20260727-8d393a0c` synchronized the closed capability request result, stable-identity admission prerequisite, exact five-descriptor read and failure contracts, semantic-syntax invariant mapping, direct owner-body reconstruction, and corrected schema-before-runtime dependency graph to proposal SHA-256 `8d393a0c6c00a7fad9ef086d3d25f5ed44300041afa9e1e1a4af5d68830fd3e7`; implementation status remains unchanged. |

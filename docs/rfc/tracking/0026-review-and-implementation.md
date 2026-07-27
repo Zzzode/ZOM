@@ -66,11 +66,12 @@ synchronized the current RFC 0026 contract to RFC 0027 proposal SHA-256
 The synchronized design is accepted, while product implementation and final
 verification retain the statuses below.
 
-On 2026-07-27, transaction `rfc0028-accept-20260727-944b68ff`
-synchronized the current RFC 0026 contract to RFC 0028 proposal SHA-256
-`944b68ffc0aff5576d079a243ff092d7d19fba5ffed65551dda8e68adf230db4`.
-RFC 0027 `Q2` and `S1` remain pending; RFC 0028 `R28-13A` through `R28-16`
-replace and refine those boundaries. No implementation status changes.
+On 2026-07-27, transaction `rfc0029-accept-20260727-8d393a0c`
+synchronized the current RFC 0026 contract to RFC 0029 proposal SHA-256
+`8d393a0c6c00a7fad9ef086d3d25f5ed44300041afa9e1e1a4af5d68830fd3e7`.
+The accepted order lands the stable schema and facts atomically, then lands
+codecs and diagnostic facts separately, and only then begins the corrected
+runtime source transaction. No implementation status changes.
 
 ## Implementation Tracker
 
@@ -86,14 +87,16 @@ replace and refine those boundaries. No implementation status changes.
 | `R26-07` | `module-system` | `R26-06` | Implement stable `ModuleGraph`, `ModuleGraphScc`, cycle verification, and stable session barriers. | Graph, SCC, session, and architecture tests | Complete |
 | `R26-10` | `rfc` | `R26-07` | Synchronize the current RFC 0026 design through RFC 0027 transaction `rfc0027-accept-20260727-e2f4ba5e`. | `python3 scripts/check-rfc.py` | Complete |
 | `R26-13` | `rfc` | `R26-10`; RFC 0028 `R28-12` | Synchronize explicit transaction and seal results, sealed-root admission, typed capability permissions and failures, retained final-parse provenance lineage, and the replacement dependency boundary through transaction `rfc0028-accept-20260727-944b68ff`. | `python3 scripts/check-rfc.py` | Complete |
-| `R26-11` | `module-system` | `R26-13`; RFC 0028 `R28-14`; `R28-16` | Implement complete context authority, active memberships, typed materialized witness, sealed-root `MaterializeModuleGraph`, retained provenance, and capability lifetime. | RFC 0028 `R28-14`, `R28-16`, and applicable RFC 0027 evidence | Pending |
-| `R26-12` | `binder-checker` | `R26-11`; RFC 0028 `R28-16` | Migrate bound-module graph consumers and downstream lease lineage. | RFC 0027 `M2` through `M5`, `C1`, and RFC 0028 provenance lineage evidence | Pending |
-| `R26-08` | `verification` | `R26-11`; `R26-12`; RFC 0028 `R28-17` | Run full sanitizer, unit, lit, architecture, coverage, format, versioning, and benchmark gates. | RFC 0027 and RFC 0028 Test Plans | Pending |
+| `R26-14` | `rfc` | `R26-13`; RFC 0029 `R29-11` | Synchronize complete Binder contextual keys, identity-site provenance, stable-identity admission, exact typed provenance failures, and the corrected dependency order through transaction `rfc0029-accept-20260727-8d393a0c`. | `python3 scripts/check-rfc.py` | Complete |
+| `R26-11` | `module-system` | `R26-14`; RFC 0029 `R29-14`; RFC 0028 `R28-16` | Implement complete context authority, active memberships, typed materialized witness, sealed-root `MaterializeModuleGraph`, retained provenance, and capability lifetime. | RFC 0029 `R29-14`, RFC 0028 `R28-16`, and applicable RFC 0027 evidence | Pending |
+| `R26-12` | `binder-checker` | `R26-11`; RFC 0029 `R29-14`; RFC 0028 `R28-16` | Migrate bound-module graph consumers and downstream lease lineage. | RFC 0027 `M2` through `M5`, `C1`, and synchronized provenance lineage evidence | Pending |
+| `R26-08` | `verification` | `R26-11`; `R26-12`; RFC 0029 `R29-15` | Run full sanitizer, unit, lit, architecture, coverage, format, versioning, and benchmark gates. | RFC 0027, RFC 0028, and RFC 0029 Test Plans | Pending |
 | `R26-09` | `rfc` | `R26-08` | Audit completion criteria and transition implementation status truthfully. | `python3 scripts/check-rfc.py` | Pending |
 
 Completed stable graph tasks remain complete. The typed materializer, retained
-provenance, and publication path resume through RFC 0028 `R28-14` through
-`R28-17` before the remaining RFC 0027 dependency edges; they remain pending.
+provenance, and publication path resume through RFC 0029 `R29-14`, RFC 0028
+`R28-16`, and RFC 0029 `R29-15` before later RFC 0027 dependency edges; they
+remain pending.
 
 ## Acceptance Transaction Record
 
@@ -115,7 +118,18 @@ provenance, and publication path resume through RFC 0028 `R28-14` through
 | RFC 0026 status before transaction | `ACCEPTED` |
 | RFC 0026 status after transaction | `ACCEPTED` |
 | Synchronized authority | Explicit transaction and seal results, sealed-root admission propagation, typed capability failures and permissions, and retained final-parse provenance lineage |
-| Replacement dependencies | RFC 0028 `R28-13A` through `R28-16` replace and refine pending RFC 0027 `Q2` and `S1`; verification continues through `R28-17` |
+| Runtime dependencies | RFC 0029 `R29-12AB`, `R29-12C`, and `R29-12D` precede runtime; corrected runtime lands through `R29-14`, provenance continues through RFC 0028 `R28-16`, and verification completes through `R29-15` |
+
+## RFC 0029 Acceptance Transaction Record
+
+| Field | Value |
+|---|---|
+| Transaction | `rfc0029-accept-20260727-8d393a0c` |
+| Proposal SHA-256 | `8d393a0c6c00a7fad9ef086d3d25f5ed44300041afa9e1e1a4af5d68830fd3e7` |
+| RFC 0026 status before transaction | `ACCEPTED` |
+| RFC 0026 status after transaction | `ACCEPTED` |
+| Synchronized authority | Complete Binder contextual keys, identity-site provenance, stable-identity admission, exact typed provenance failures, and schema-before-runtime ordering |
+| Implementation dependencies | RFC 0029 `R29-12AB`, `R29-12C`, `R29-12D`, `R29-14`, RFC 0028 `R28-16`, and RFC 0029 `R29-15` |
 
 ## Required Review Commands
 

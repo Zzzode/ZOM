@@ -67,7 +67,7 @@ surface; `↗` means it escalates to another subagent after doing its part.
 | `import` resolution bug | ✅ route → | ↗ if module contract changes | | ↗ binder | ✅ | | | ↗ imported identity | ✅ | | ↗ add test | ↗ navigation |
 | Standard prelude distribution and marker authority | ✅ route → | ✅ status and tracker | | ↗ shape and policy | ✅ manifest, admission, session, and driver file ownership | ↗ diagnostic registry | | ✅ CMake, install, and zomc layout | ✅ spec alignment | ✅ source declarations and mandatory borrow contract review | ✅ native tests and fixed core-library gate | |
 | Semantic identity or source provenance | ✅ route → | ↗ if contract changes | ✅ parsed origin and AST producer inventory | ↗ identity consumer | ✅ identity/source owner | ↗ invariant codes | | ↗ IR handles and build wiring | ✅ | ↗ lifetime boundary | ✅ architecture gate and permutation tests | ↗ editor source mapping |
-| Incremental query runtime, red-green reuse, or projection shielding | ✅ route → | ↗ if contract changes | ↗ parse provider | ↗ semantic provider | ✅ query database and identity owner | ↗ diagnostic facts | ↗ cancellation interaction | ↗ CMake direction | ✅ architecture drift | ↗ lifetime boundary | ✅ gates, descriptor generator, adversaries, and benchmarks | ↗ request snapshots |
+| Incremental query runtime, red-green reuse, projection shielding, or request-result closure | ✅ route → | ↗ if contract changes | ↗ parse provider | ↗ semantic provider | ✅ query database, token identity, evaluator, and descriptor owner | ↗ diagnostic facts | ↗ cancellation interaction | ↗ CMake direction | ✅ architecture drift | ↗ token and memo lifetime | ✅ gates, descriptor generator, real-object decoder mismatches, race tests, negative compilation, adversaries, and benchmarks | ↗ request snapshots |
 | `?!` operator missing | ✅ route → | ↗ if semantics change | ✅ lex+parse | | | ✅ error semantics | | ✅ lowering | ✅ | ↗ panic ABI | ↗ lit test | |
 | Forced cast `as!` | ✅ route → | ↗ if contract changes | ✅ syntax + AST mode | ✅ `ForcedChecked` fact | | ✅ panic mapping | ↗ task/suspend boundary | ✅ check-once + failure edge | ✅ five-way | ✅ panic ABI | ✅ mode + lowering matrix | ↗ hover and diagnostics |
 | New trait (`Sendable`) | ✅ route → | ✅ design intake | | ✅ core owner | | | ↗ concurrency layer | ↗ erase/lower | ✅ | | ↗ add test | ↗ completion and hover |
@@ -100,7 +100,10 @@ remains the cross-cutting drift owner for all of `docs/spec/**`.
 reviews that subtree only for cross-cutting drift.
 `verification` is the primary owner of
 `scripts/generate-query-descriptor-schema.py` and
-`scripts/check-query-descriptor-architecture.py`.
+`scripts/check-query-descriptor-architecture.py`. It also owns the reusable
+`products/zomlang/tests/cmake/expect-compile-failure/CMakeLists.txt` fixture,
+all `products/zomlang/tests/compile-fail/query-runtime/**` cases, and the
+query-runtime private test-access and race-test files named in the manifest.
 
 ---
 

@@ -178,6 +178,10 @@ subagents:
     name: Formal-ish Verification & Test Coverage
     owns:
       - "products/zomlang/tests/**"
+      - "products/zomlang/tests/cmake/expect-compile-failure/CMakeLists.txt"
+      - "products/zomlang/tests/compile-fail/query-runtime/**"
+      - "products/zomlang/tests/unittests/compiler/query/query-test-specs.h"
+      - "products/zomlang/tests/unittests/compiler/query/query-concurrency-test.cc"
       - "examples/**"
       - ".github/workflows/**"
       - "README.md"
@@ -220,6 +224,6 @@ subagents:
       - "cmake/utils/common.cmake"
       - "cmake/utils/coverage.cmake"
       - "cmake/utils/unittests.cmake"
-    triggers: [ "test", "coverage", "lit", "FileCheck", "ztest", "fuzz", "XFAIL", "regen", "verify", "prove", "cast", "as!", "incremental query gate", "query benchmark", "projection shielding" ]
+    triggers: [ "test", "coverage", "lit", "FileCheck", "ztest", "fuzz", "XFAIL", "regen", "verify", "prove", "cast", "as!", "incremental query gate", "query benchmark", "projection shielding", "negative compile", "request decoder", "race gate", "identity-site provenance" ]
     required-skills: [ build-ci, lit-testing ]
     escalation-to: [ spec-audit ]

@@ -52,15 +52,31 @@ supplemental technical scopes. Acceptance transaction
 `rfc0028-accept-20260727-944b68ff` binds that exact proposal hash to the
 synchronized RFC, tracker, index, and routing tree.
 
+### RFC 0029 Synchronized Acceptance
+
+RFC 0029 proposal SHA-256
+`8d393a0c6c00a7fad9ef086d3d25f5ed44300041afa9e1e1a4af5d68830fd3e7`
+was approved by every required owner. Transaction
+`rfc0029-accept-20260727-8d393a0c` synchronizes this tracker and RFC 0028 to
+unforgeable retained database identity, separated request-result alternatives,
+independent identity-site provenance, stable identity admission, complete
+contextual keys, the five exact Binder capability failure contracts, and the
+corrected foundation-before-runtime dependency order. The original RFC 0028
+acceptance remains historical evidence; the RFC 0029 synchronization is the
+current implementation authority.
+
 ## Decision Record
 
 Accepted by `task-router`, `rfc`, `module-system`, `lexer-parser`,
 `binder-checker`, `spec-audit`, and `verification`, with supplemental
 `runtime-memory` and `error-system` approval, against exact proposal SHA-256
 `944b68ffc0aff5576d079a243ff092d7d19fba5ffed65551dda8e68adf230db4`.
-The synchronized acceptance transaction is
-`rfc0028-accept-20260727-944b68ff`. Source implementation is authorized only
-through the dependency-ordered pending tasks below.
+The original acceptance transaction is
+`rfc0028-accept-20260727-944b68ff`. The current synchronized implementation
+authority is RFC 0029 proposal SHA-256
+`8d393a0c6c00a7fad9ef086d3d25f5ed44300041afa9e1e1a4af5d68830fd3e7`
+under transaction `rfc0029-accept-20260727-8d393a0c`. Source implementation
+is authorized only through the dependency-ordered pending tasks below.
 
 ## Implementation Tracker
 
@@ -72,29 +88,31 @@ through the dependency-ordered pending tasks below.
 | `R28-04` | `module-system` | `R28-01` | Review identity, transaction, seal, descriptor, permission, and provenance contracts. | Exact-hash review | Complete |
 | `R28-05` | `lexer-parser` | `R28-01` | Review parser capability descriptors and final parse lifetime. | Exact-hash review | Complete |
 | `R28-06` | `binder-checker` | `R28-01` | Review membership authority, closure deletion, schema boundary, and consumers. | Exact-hash review | Complete |
-| `R28-07` | `runtime-memory` | `R28-01` | Review generation allocation, locking, admission order, leases, and teardown. | Exact-hash review | Complete |
+| `R28-07` | `runtime-memory` | `R28-01` | Review token identity and lifetime, locking, admission order, leases, and teardown. | Exact-hash review | Complete |
 | `R28-08` | `error-system` | `R28-01` | Review failure algebra, precedence, and atomicity. | Exact-hash review | Complete |
 | `R28-09` | `spec-audit` | `R28-01` | Review synchronized current-contract claims and duplicate authority removal. | Exact-hash review | Complete |
 | `R28-10` | `verification` | `R28-01` | Review tests, generator coverage, gates, determinism, and Release evidence. | Exact-hash review | Complete |
 | `R28-11` | `rfc` | `R28-02`; `R28-03`; `R28-04`; `R28-05`; `R28-06`; `R28-07`; `R28-08`; `R28-09`; `R28-10` | Record exact-hash approvals and prepare the synchronized acceptance transaction. | `python3 scripts/check-rfc.py` | Complete |
 | `R28-11A` | `task-router` | `R28-11` | Assign the two descriptor scripts to `verification` and synchronize routing documentation. | Routing and RFC review | Complete |
 | `R28-12` | `rfc` | `R28-11`; `R28-11A` | Validate one synchronized tree, record one transaction identifier and proposal hash, and accept atomically. | `python3 scripts/check-rfc.py` | Complete |
-| `R28-13A` | `module-system` | `R28-12` | Prepare the reviewed query-type partition; do not land independently. | Type and failure review | Pending |
+| `R28-13A` | `module-system` | `R29-12A`; `R29-12B`; `R29-12AB`; `R29-12C`; `R29-12D` | Prepare the reviewed token-identity and separated request-result query-type partition; do not land independently. | Type and failure review | Pending |
 | `R28-13B` | `module-system` | `R28-13A` | Prepare the reviewed transaction, seal, sealed-snapshot, and admission partition; do not land independently. | Query database review | Pending |
 | `R28-13C` | `module-system` | `R28-13B` | Prepare the descriptor schema and query build-wiring partition; do not land independently. | Query inventory review | Pending |
 | `R28-13C1` | `verification` | `R28-13C` | Prepare the descriptor generator, architecture gate, and adversarial self-tests; do not land independently. | Gate self-tests | Pending |
 | `R28-13D` | `module-system` | `R28-13C1` | Prepare bounded identity and driver descriptor/caller partitions; do not land independently. | Owner-focused review | Pending |
 | `R28-13E` | `lexer-parser` | `R28-13C1` | Prepare the parse capability descriptor, failure codec, and caller partition; do not land independently. | Parser capability review | Pending |
 | `R28-13F` | `verification` with `binder-checker` review | `R28-13C1` | Prepare the Binder transaction-consumer native-test cutover; do not land independently. | Binder consumer review | Pending |
-| `R28-13G` | `verification` | `R28-13A`; `R28-13B`; `R28-13C`; `R28-13C1`; `R28-13D`; `R28-13E`; `R28-13F` | Prepare bounded native test, generated test inventory, CTest wiring, and negative compile partitions; do not land independently. | Verification review | Pending |
-| `R28-14` | `module-system` with all partition-owner review | `R28-13G` | Assemble and land one buildable indivisible source transaction with every replaced API deleted. | Focused native build and tests | Pending |
-| `R28-15` | `binder-checker` | `R28-12`; `R28-14` | Remove the closure projection and close the stable schema inventory. | Generated schema and zero-reference gates | Pending |
-| `R28-16A` | `module-system` with `lexer-parser` review | `R28-14`; `R28-15` | Prepare the production provenance descriptor, provider, verifier, schema row, `registerModuleGraphQueries` registration, and build wiring; do not land independently. | Production provenance review | Pending |
+| `R28-13G` | `verification` | `R28-13A`; `R28-13B`; `R28-13C`; `R28-13C1`; `R28-13D`; `R28-13E`; `R28-13F` | Prepare bounded native tests, generated test inventory, real-object decoder, race gate, CTest wiring, and negative compile partitions; do not land independently. | Verification review | Pending |
+| `R28-14` | `module-system` with all partition-owner review | `R28-13G`; `R29-13B`; `R29-13C` | Complete the runtime partition join for RFC 0029 `R29-14`; this row has no independent landing authority. | Partition-join review | Execution authority: RFC 0029 `R29-14` |
+| `R28-16A` | `module-system` with `lexer-parser` review | RFC 0029 `R29-14` | Prepare the production provenance descriptor, provider, verifier, schema row, `registerModuleGraphQueries` registration, and build wiring; do not land independently. | Production provenance review | Pending |
 | `R28-16B` | `verification` with `binder-checker` review | `R28-16A` | Prepare the provenance and registration tests, updated test inventory, and test build wiring; do not land independently. | Provenance mutation review | Pending |
 | `R28-16` | `module-system` with all partition-owner review | `R28-16B` | Assemble and land one buildable provenance source, schema, test, and CMake transaction. | Provenance capability and mutation tests | Pending |
-| `R28-17` | `verification` | `R28-16` | Run focused, full, architecture, generation, determinism, and Release verification. | RFC 0028 Test Plan | Pending |
+| `R28-17` | `verification` | `R28-16` | Run focused, full, architecture, generated-inventory, determinism, and Release verification. | RFC 0028 Test Plan | Pending |
 | `R28-18` | `spec-audit` | `R28-17` | Publish only the production-backed current compiler contract. | Current-state design audit | Pending |
 | `R28-19` | `rfc` | `R28-18` | Audit evidence and perform truthful synchronized implementation-state transitions. | RFC and evidence audit | Pending |
 
-RFC 0027 `S1` and `Q2` remain pending. They resume only after the RFC 0028
-acceptance transaction records all required exact-hash approvals.
+RFC 0027 `S1`, `S2`, `S3`, and `S6` now execute through RFC 0029
+`R29-12A`, `R29-12B`, `R29-12AB`, `R29-12C`, and `R29-12D`. Runtime
+review partitions remain non-landing work and resume only after those
+foundation tasks complete; the shared source history changes only through the
+atomic RFC 0029 `R29-14` landing.

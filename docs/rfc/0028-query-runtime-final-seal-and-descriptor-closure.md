@@ -26,17 +26,19 @@ tracking-issue: docs/rfc/tracking/0028-review-and-implementation.md#implementati
 This RFC defines the complete query-runtime contract required to implement the
 final-snapshot materializers accepted by RFCs 0025 through 0027.
 
-The design has five parts:
+The design has six parts:
 
-1. every query database and snapshot carries one nonzero process-local database
-   identity;
+1. every query database and snapshot retains one unforgeable process-local
+   database identity token;
 2. input transactions and final sealing use closed failure results and publish
    no partial state;
 3. every query descriptor has one literal compile-time metadata declaration and
    one registration path;
-4. a typed capability context carries final-seal admission and grants active
+4. request evaluation separates semantic values, published capabilities,
+   verified capability rejections, and runtime rejections;
+5. a typed capability context carries final-seal admission and grants active
    materialization only through exact three-parameter permissions; and
-5. module dependency provenance is a retained revision-local capability, while
+6. module dependency provenance is a retained revision-local capability, while
    the unused closure-environment projection is removed from the query catalog.
 
 The implementation is one unversioned internal replacement. It introduces no
@@ -50,7 +52,8 @@ materializer permissions, exact active membership, and two auxiliary query
 projections. Source implementation cannot proceed without inventing contracts
 because the accepted design does not specify:
 
-- how a database identity is allocated and propagated;
+- how an unforgeable database identity is owned and propagated without mutable
+  global state;
 - how a final seal is bound to one database, current snapshot, context root,
   and final witness;
 - how final-seal admission reaches nested capability demands without consulting
@@ -78,14 +81,16 @@ source implementation continues.
 
 ## Goals
 
-- Give every database, snapshot, demand frame, and final seal one exact
-  process-local database identity.
+- Give every database, snapshot, demand frame, final seal, and surviving
+  capability memo one exact unforgeable process-local database identity.
 - Define irreversible final sealing against one current snapshot, context-root
   input, and final witness.
 - Define a closed input-transaction and final-seal failure algebra.
 - Replace runtime descriptor construction with literal compile-time metadata
   and one generated inventory.
 - Make query-kind identity independent of registration call order.
+- Separate semantic values, capability publication, capability rejection, and
+  runtime rejection in the type-erased request result.
 - Bind every revision-local capability provider to
   `CapabilityQueryContext<Descriptor>`.
 - Enforce exact three-parameter active-materializer permissions at compile
@@ -314,30 +319,29 @@ prefix; and any cross-target or restarted test ordinal.
 
 ### Database Identity
 
-`QueryDatabaseIdentity` is a nonzero process-local generation:
+`QueryDatabaseIdentity` is an opaque retained token:
 
 ```text
 QueryDatabaseIdentity {
-  generation: uint64,
+  token: Arc<const QueryDatabaseIdentityToken>,
 }
 ```
 
-Every new `QueryDatabase::Impl` obtains the next generation from one
-process-level synchronized allocator. Generation zero is invalid. Allocation
-is strictly monotonic, never wraps, and never reuses an issued generation.
-Exhaustion is a fail-closed process invariant.
+`QueryDatabaseIdentityToken` is private to the query implementation, has no
+public fields, codec, stable hash, ordinal, generation, or factory, and is
+created exactly once by each fresh `QueryDatabase::Impl`. The identity has no
+default constructor. Only `QueryDatabase` can create one.
 
-The allocator is one internal `QueryDatabaseGenerationAllocator` with an
-atomic checked increment. A unit-test-only friend factory can construct an
-isolated allocator at an explicit nonzero counter; production database
-construction can access only the process allocator. The architecture gate
-rejects a production reference to the friend factory. This seam proves
-`UINT64_MAX` exhaustion without mutating process-global test order.
+Equality is identity of the retained token object. Implementations may use the
+reference-counted handle's native identity comparison, but may not expose,
+serialize, print, hash, order, or convert its storage address. An old identity
+retains its token, so a live comparable identity can never alias storage reused
+for a later database.
 
 Move construction and move assignment transfer the existing implementation and
-identity. They do not allocate another generation. A newly constructed
-database receives a different generation even after another database is
-destroyed.
+token. They do not create another identity. Every fresh database receives a
+distinct token, including concurrently created databases and databases created
+after another database is destroyed.
 
 The identity is retained by:
 
@@ -348,11 +352,14 @@ The identity is retained by:
 - every `InputTransaction`;
 - every demand frame;
 - every final-seal admission; and
-- every public `FinalSnapshotSeal`.
+- every public `FinalSnapshotSeal`; and
+- every `RevisionLocalCapabilityMemoBase`, so detached capability leases can
+  still prove their database coordinate without borrowing the database.
 
-Database identity is not serialized, hashed into semantic values, derived from
-an address, clock, random value, revision, or session identifier, or compared
-across processes.
+Database identity is not serialized, printed, ordered, hashed into semantic
+values, derived from an address, clock, random value, revision, or session
+identifier, or compared across processes. There is no mutable process-level
+identity authority, numeric counter, exhaustion path, or test seed.
 
 `QueryDatabase` exclusively owns `QueryDatabase::Impl`, and the implementation
 borrows the session-owned `basic::ThreadPool`. `QuerySnapshot`,
@@ -687,13 +694,53 @@ materialization authority by descriptor name.
 Retained dependency behavior remains:
 
 - every successful child capability read records one dependency edge;
-- a parent capability memo retains the exact child memo generation;
+- a parent capability memo retains the exact child memo allocation;
 - repeated equal child reads retain one canonical dependency entry;
 - a failed child demand publishes no parent capability; and
 - surviving leases keep the complete child chain and semantic-context arena
   alive.
 
 ### Capability Failure Bridge
+
+The type-erased evaluator result is:
+
+```text
+QueryRequestResult =
+    Semantic(QueryValue)
+  | CapabilityPublished(Arc<RevisionLocalCapabilityMemoBase>)
+  | CapabilityRejected(CapabilityFailureEnvelope)
+  | RuntimeRejected(QueryRuntimeFailure)
+```
+
+`Semantic(QueryValue)` is legal only for input and semantic descriptors.
+`CapabilityPublished` and `CapabilityRejected` are legal only for
+revision-local capability descriptors. `RuntimeRejected` applies to every
+descriptor kind. A capability provider cannot create a `QueryValue`, and a
+capability rejection never enters `QueryValue::SemanticFailure`.
+
+Only the evaluator constructs `CapabilityPublished`, after candidate
+verification, complete witness validation, dependency retention, and canonical
+capability memo publication. The alternative owns one
+`zc::Arc<RevisionLocalCapabilityMemoBase>` to that exact published memo. A
+capability cache hit returns a fresh arc to the same memo without rerunning the
+provider. Candidate publication creates exactly one capability memo and no
+semantic memo; source, key, and runtime rejection publish neither memo kind.
+
+`QueryRequestResult` is move-only and exposes no public base-memo observer or
+clone operation. `CapabilityResultDecoder<Descriptor>` consumes it as an
+rvalue. For `CapabilityPublished`, the decoder verifies that the memo's complete
+canonical key kind equals the generated ordinal of `Descriptor` and that its
+database identity and revision equal the current demand. Its private
+evaluator-owned caster may then transfer the arc into
+`QueryCapabilityLease<const Descriptor::Capability>`.
+
+The cast is sound because the database-bound descriptor inventory is immutable,
+registration already proved the ordinal binding, and the evaluator's only memo
+construction template binds one ordinal to one
+`RevisionLocalCapabilityMemo<Descriptor::Capability>` allocation. There is no
+RTTI, public downcast, runtime type-name dispatch, alternate memo factory, or
+independent decoder inventory coordinate. Kind, database, or revision
+disagreement is `QueryRuntimeFailure::InvariantViolation` and returns no lease.
 
 The provider-side result and public demand result are descriptor-dependent:
 
@@ -807,6 +854,15 @@ static CapabilityRejectionCheck verify(
 Each shape exists only in the matching
 `CapabilityFailureContract<Descriptor, Wrapper>` specialization.
 
+Canonical failure payload construction is private to the matching descriptor
+contract. It requires a nonempty sequence, independently valid elements,
+descriptor-declared canonical order, successful encoding, complete decoding,
+and byte-identical re-encoding. A downstream descriptor forwards an upstream
+`DiagnosticFact` sequence byte-for-byte without sorting, merging,
+deduplicating, or reconstructing it. `StableWitnessBytes` is accepted only
+after independent reconstruction, complete decode, candidate equality, and
+byte-identical re-encoding.
+
 The verifier re-demands the exact failure-producing inputs and compares the
 complete typed payload. Failure returns
 `QueryRuntimeFailure::VerifierRejected`. Runtime rejection is never encoded.
@@ -814,10 +870,11 @@ A candidate follows the capability candidate verifier and publishes only after
 its stable witness matches. No rejection alternative creates a semantic memo
 or capability memo.
 
-`CapabilityResultDecoder<Descriptor>` validates the envelope, invokes the
-descriptor payload decoder, requires canonical re-encoding, and constructs the
-matching public `CapabilityDemandResult`. A malformed domain, tag, framing,
-payload, diagnostic sequence, key failure, or trailing byte returns
+For `CapabilityRejected`, `CapabilityResultDecoder<Descriptor>` validates the
+envelope, invokes the descriptor payload decoder, requires canonical
+re-encoding, and constructs the matching public `CapabilityDemandResult`. A
+malformed domain, tag, framing, payload, diagnostic sequence, key failure, or
+trailing byte returns
 `RuntimeRejected(QueryRuntimeFailure::InvariantViolation)`.
 A globally known tag that is absent from the descriptor's
 `FailureAlternatives` is likewise an invariant violation and never instantiates
@@ -847,6 +904,241 @@ provider execution.
 
 This bridge is part of the atomic query-runtime cutover and applies to parse,
 provenance, graph, Binder, core, and downstream revision-local capabilities.
+
+### Stable Identity Admission And Provenance
+
+`IdentitySyntaxSiteInventoryQuery` is the revision-local provenance authority
+that exists independently of stable identity admission:
+
+| Property | Contract |
+|---|---|
+| Domain | `zom.query.identity-syntax-site-inventory` |
+| Key | `StableModuleQueryKey` |
+| Capability | `binder::IdentitySyntaxSiteInventory` |
+| Admission | `AnySnapshot` |
+| Cycle | `Reject` |
+| Failures | `SourceRejection<DiagnosticFact>`, `KeyRejection<BinderKeyFailure>` |
+
+Its provider reads exactly `SelectedModuleSourceQuery`, `ParseSourceQuery`, and
+`IdentitySyntaxSiteInventoryProducer`. Its independent verifier repeats both
+query reads and uses a separate `IdentitySyntaxSiteInventoryVerifier`
+traversal. Selected-source absence produces
+`MissingSelectedModuleSource(Module(key.module), none)`; parse rejection is
+forwarded unchanged; malformed topology after parse success is
+`InvariantViolation`.
+
+The descriptor-private witness is:
+
+```text
+IdentitySyntaxSiteInventoryWitness {
+  module: ModuleKey,
+  source: SourceFileKey,
+  sourceDigest: Sha256Digest,
+  sites: CanonicalSequence<IdentitySyntaxSiteWitness>,
+}
+
+IdentitySyntaxSiteWitness {
+  key: IdentitySyntaxSiteKey,
+  schemaPreorderOrdinal: uint32,
+  source: SourceSpan,
+}
+```
+
+The witness domain is
+`zom.query.identity-syntax-site-inventory-witness`. Sites sort by complete
+`IdentitySyntaxSiteKey`; ordinals are unique, in range, and resolve to the exact
+node. Keys repeat the outer module and selected source. A legal module with no
+identity syntax sites encodes an empty canonical sequence; neither provider nor
+verifier fabricates a module-root site.
+
+`SourceSpan` has no public standalone decoder. The witness decoder reads the
+encoded `SourceFileKey`, `byteStart`, and `byteEnd`, proves agreement with the
+witness source and retained `ImmutableSourceSnapshot`, proves the retained
+digest equals `sourceDigest`, and reconstructs only through
+`ImmutableSourceSnapshot::span(byteStart, byteEnd)`. Missing bounds, source or
+digest disagreement, or disagreement with the ordinal-selected node span
+rejects the witness. Decode is bounded, completely consumed, and
+byte-identically re-encoded.
+
+`ResolveDiagnosticProvenance` for
+`DiagnosticProvenanceKey::IdentitySyntaxSite(key)` derives the exact module key,
+demands this inventory in the same snapshot, and requires exactly one matching
+site. It never depends on successful stable identity admission. The inventory
+is therefore available when later stable-identity validation returns a source
+rejection.
+
+`StableIdentityAdmissionQuery` is a revision-local retained capability:
+
+| Property | Contract |
+|---|---|
+| Domain | `zom.query.stable-identity-admission` |
+| Key | `StableModuleQueryKey` |
+| Capability | `binder::StableIdentityAdmission` |
+| Admission | `AnySnapshot` |
+| Cycle | `Reject` |
+| Failures | `SourceRejection<DiagnosticFact>`, `KeyRejection<BinderKeyFailure>` |
+
+It owns the verified stable-identity candidate inventory and retains the exact
+`ParseSourceQuery` and `IdentitySyntaxSiteInventoryQuery` leases. Its
+descriptor-private witness uses domain
+`zom.query.stable-identity-admission-witness` and contains the module, source,
+source digest, and canonical definition and implementation sequences. Each
+entry records the checked schema-preorder ordinal, complete identity authority,
+`IdentitySyntaxSiteKey`, and `SourceSpan`. Decode requires the exact domain,
+complete consumption, valid and canonically ordered ordinals, matching source
+and digest, complete equality, and byte-identical re-encoding.
+
+The provider reads in this exact order:
+
+1. `SelectedModuleSourceQuery`;
+2. `ParseSourceQuery`;
+3. `IdentitySyntaxSiteInventoryQuery`;
+4. `StableIdentityCandidateProducer`; and
+5. `StableIdentityCandidateVerifier`.
+
+The independent verifier repeats the selected-source and parse demands,
+reconstructs without provider state, compares the complete inventory, and
+verifies the witness. Selected-source absence produces
+`MissingSelectedModuleSource(Module(key.module), none)` and parse rejection is
+forwarded unchanged.
+
+Stable-identity admission is the sole owner of
+`ZOM4079 ConstantExpressionNotAllowed` and
+`ZOM3010 DuplicateIdentifier` for stable identity validation. Both use
+`ModuleDiagnosticRoot(key.module)`,
+`IdentityDiagnosticPhase::IdentityAdmission`, the matching
+`IdentityDiagnosticEmitter`, and the complete primary
+`IdentitySyntaxSiteKey`. The duplicate form carries exactly one
+`ZOM3017 PreviousDeclarationHere` secondary at the first declaration. Missing
+site resolution, producer/verifier disagreement, malformed canonical facts, or
+witness disagreement is runtime rejection. The descriptor publishes canonical
+`DiagnosticFact` records and never emits through `DiagnosticEngine`.
+
+`NamedDefinitionInventoryQuery` and `NamedImplementationInventoryQuery` remain
+semantic. Capability providers demand stable admission before either semantic
+inventory, so a stable-identity source failure cannot pass through opaque
+semantic-failure bytes.
+
+### Complete Binder Capability Keys And Failures
+
+The production contextual keys are:
+
+```text
+ContextualDefinitionKey {
+  contextRoots: CompilationRootSetQueryKey,
+  definition: StableDefinitionQueryKey {
+    module: ModuleKey,
+    definition: DefinitionKey,
+  },
+}
+
+ContextualBodyOwnerKey {
+  contextRoots: CompilationRootSetQueryKey,
+  body: StableOwnerBodyQueryKey {
+    module: ModuleKey,
+    owner: StableBodyOwnerKey,
+  },
+}
+```
+
+Every producer, consumer, codec, query key, authority record, fixture, and
+generated row changes atomically. There is no constructor from the shorter
+shape and no inferred-module fallback.
+
+These five descriptors declare exactly source and key rejection alternatives:
+
+- `RevisionLocalDefinitionSitesQuery`;
+- `RevisionLocalImplementationSitesQuery`;
+- `ModuleBodyProvenanceQuery`;
+- `NamedItemProvenanceQuery`; and
+- `OwnerBodyProvenanceQuery`.
+
+```cpp
+using FailureAlternatives = query::CapabilityFailureList<
+    query::SourceRejection<diagnostics::DiagnosticFact>,
+    query::KeyRejection<binder::BinderKeyFailure>>;
+```
+
+No descriptor exposes absence, semantic failure bytes, a private failure
+domain, or an unlisted observer. Precedence is evaluator runtime failure, legal
+key rejection, upstream source rejection, then candidate. The first eligible
+typed rejection in the exact read order wins; an earlier runtime result
+prevents later classification.
+
+`RevisionLocalDefinitionSitesQuery` reads:
+
+1. `SelectedModuleSourceQuery`;
+2. `ParseSourceQuery`;
+3. `StableIdentityAdmissionQuery`;
+4. `NamedDefinitionInventoryQuery`; and
+5. independent site reconstruction.
+
+`RevisionLocalImplementationSitesQuery` uses the same order with
+`NamedImplementationInventoryQuery`. Their only locally constructible key
+rejection is `MissingSelectedModuleSource(Module(key.module), none)`. They
+forward stable-admission source rejection unchanged. Semantic inventory failure
+after successful stable admission, reconstruction disagreement, missing site
+construction, or codec disagreement is runtime rejection.
+
+`ModuleBodyProvenanceQuery` reads selected source, parse source, stable
+admission, definition sites, implementation sites, and
+`ModuleBodySyntaxQuery`, in that order. Its only legal key rejection is
+`MissingSelectedModuleSource(Module(key.module), none)`. It forwards the first
+source rejection from parse, stable admission, definition sites, or
+implementation sites. `ModuleBodySyntaxQuery` is semantic and cannot publish a
+capability source rejection; a semantic failure from that final read after
+typed provenance succeeds is `InvariantViolation`.
+
+`NamedItemProvenanceQuery` uses the complete `ContextualDefinitionKey` and reads:
+
+1. `ActiveDefinitionAuthorityInput`;
+2. `ActiveDefinitionAuthorityReadyInput` only when authority is absent or
+   contradictory;
+3. `SelectedModuleSourceQuery`;
+4. `ParseSourceQuery`;
+5. `StableIdentityAdmissionQuery`;
+6. `NamedDefinitionInventoryQuery`;
+7. `RevisionLocalDefinitionSitesQuery`;
+8. `RevisionLocalImplementationSitesQuery`; and
+9. `NamedItemSyntaxQuery`.
+
+Its legal key rejections are
+`InactiveOwner(DefinitionHeader(key.definition), none)` and
+`MissingSelectedModuleSource(Module(key.definition.module), none)`.
+`InactiveOwner` requires absent authority plus present complete readiness.
+Missing readiness is `ProviderRejected`; contradictory authority is
+`InvariantViolation`. Child source and legal key rejections are forwarded
+unchanged.
+
+`OwnerBodyProvenanceQuery` uses the complete `ContextualBodyOwnerKey`. A module
+owner first reads `ModuleBodyProvenanceQuery`; a definition owner first reads
+`NamedItemProvenanceQuery`. Only after typed provenance succeeds does it read
+`ModuleBodySyntaxQuery` or `NamedItemSyntaxQuery`. It never reads or decodes
+`OwnerBodySyntaxQuery`; provider and verifier reconstruct `OwnerBodySyntax`
+directly and independently.
+
+Its legal key rejections are:
+
+```text
+DefinitionWithoutBody(Body(key), none)
+InactiveOwner(DefinitionHeader(definitionKey), none)
+MissingSelectedModuleSource(Module(key.body.module), none)
+```
+
+For a definition owner, provider and verifier independently apply the
+executable-root admission algorithm to the successful named-item syntax.
+`NoBody` constructs `DefinitionWithoutBody`; `Malformed` is
+`InvariantViolation`; `Executable` continues candidate construction. The other
+two legal key alternatives are forwarded unchanged from the selected typed
+child. `ForeignOwner`, `BoundaryMismatch`, `NonSelectedSource`, and
+`CrossBoundaryPath` are illegal for this descriptor.
+
+Each descriptor's source verifier repeats its exact conditional read order,
+finds the first eligible source rejection, proves no earlier runtime or key
+rejection exists, and compares the complete diagnostic sequence byte-for-byte.
+Its key verifier independently proves the exact absence, readiness, `NoBody`,
+or child rejection and compares the complete `{kind, owner, path}` record.
+Forwarded failures retain the child's owner and path.
 
 ### Compile-Time Active Materializer Permission
 
@@ -1009,7 +1301,7 @@ ModuleDependencyProvenanceMap {
 
 These types have no canonical value domain, public codec, cross-revision
 equality, or persistence contract. `NodeId` and `SourceSpan` are valid only
-through the retained final parse capability generation.
+through the retained final parse capability lease.
 
 The capability memo retains the exact final `ParseSource` capability. It does
 not copy a context root, seal, parse lease, resolved target, graph, registry,
@@ -1114,6 +1406,9 @@ The query-runtime files are:
 
 The production descriptor and verifier families are:
 
+- `products/zomlang/compiler/binder/identity-pre-admission.{h,cc}`;
+- `products/zomlang/compiler/binder/stable-identity-candidate-producer.{h,cc}`;
+- `products/zomlang/compiler/binder/stable-identity-candidate-verifier.{h,cc}`;
 - `products/zomlang/compiler/identity/source-query-input.{h,cc}`;
 - `products/zomlang/compiler/parser/parse-source-query.{h,cc}`;
 - `products/zomlang/compiler/parser/parse-source-query-verifier.cc`;
@@ -1161,12 +1456,16 @@ unit order.
 
 The exact driver tests are:
 
+- `products/zomlang/tests/unittests/compiler/binder/identity-pre-admission-test.cc`;
 - `products/zomlang/tests/unittests/compiler/driver/active-definition-authority-query-test.cc`;
 - `products/zomlang/tests/unittests/compiler/driver/active-definition-authority-session-test.cc`;
 - `products/zomlang/tests/unittests/compiler/driver/core-library-query-provider-test.cc`;
 - `products/zomlang/tests/unittests/compiler/driver/incremental-binding-query-adapter-test.cc`;
 - `products/zomlang/tests/unittests/compiler/driver/incremental-module-resolution-query-test.cc`;
 - `products/zomlang/tests/unittests/compiler/driver/module-graph-query-input-test.cc`;
+- `products/zomlang/tests/unittests/compiler/driver/named-identity-inventory-query-test.cc`;
+- `products/zomlang/tests/unittests/compiler/driver/named-item-query-test.cc`;
+- `products/zomlang/tests/unittests/compiler/driver/owner-body-query-test.cc`;
 - `products/zomlang/tests/unittests/compiler/driver/compiler-session-test.cc`;
 - `products/zomlang/tests/unittests/compiler/driver/CMakeLists.txt`; and
 - `products/zomlang/tests/unittests/compiler/binder/CMakeLists.txt`.
@@ -1189,13 +1488,29 @@ query unit-test targets receive exactly their generated inventory header
 through their respective CMake files. Query unit tests bind the one extended
 test inventory; all driver and Binder tests bind the production inventory.
 
+Negative access-control coverage uses
+`products/zomlang/tests/cmake/expect-compile-failure/CMakeLists.txt` and one
+source per forbidden operation under
+`products/zomlang/tests/compile-fail/query-runtime/`. Each
+`query-runtime-negative-compile-<case>` CTest invokes
+`try_compile(SOURCE_FROM_CONTENT ...)` with the configured compiler, source and
+build include roots, repository C++23 mode, and
+`CMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY`. It requires compilation failure
+and the case's exact forbidden symbol. The architecture gate rejects an
+unlisted case or any production reference to the private query-runtime test
+access type.
+
 The migration deletes every runtime descriptor-construction declaration and
 definition after the literal inventory compiles. No forwarding function,
 adapter trait, alias, conditional branch, or fallback registration remains.
 
 ### Synchronization Transaction
 
-Acceptance requires one exact-hash synchronization transaction over:
+The current accepted contract is synchronized through RFC 0029 proposal
+SHA-256
+`8d393a0c6c00a7fad9ef086d3d25f5ed44300041afa9e1e1a4af5d68830fd3e7`
+and transaction `rfc0029-accept-20260727-8d393a0c`. That indivisible
+documentation and routing transaction covers:
 
 - RFC 0017 and its tracker for database identity, transaction outcomes,
   descriptors, final admission, and typed capability context;
@@ -1210,8 +1525,11 @@ Acceptance requires one exact-hash synchronization transaction over:
 - RFC 0026 and its tracker for final graph materialization and dependency
   provenance;
 - RFC 0027 and its tracker for the query catalog, schema inventory, permission
-  matrix, Q2 task boundary, and dependency graph;
-- this RFC and its tracker; and
+  matrix, stable schema transactions, and dependency graph;
+- this RFC and its tracker;
+- RFC 0029 and its tracker for unforgeable database identity, request-result
+  separation, canonical capability failures, identity-site provenance, stable
+  identity admission, complete contextual keys, and implementation order;
 - `.agents/subagents/manifest.yaml`, `.agents/subagents/README.md`,
   `.agents/subagents/task-router.md`, and
   `.agents/subagents/verification.md` for exact ownership of the new
@@ -1222,18 +1540,19 @@ The required synchronized replacements are:
 
 | RFC | Exact synchronized replacement |
 |---|---|
-| RFC 0017 | define nonzero database generation, kind-specific literal descriptor metadata, explicit inventory ordinals, closed transaction and query-runtime failures, the capability failure envelope, sealed-root admission propagation, typed capability context, and one registration path; remove every runtime query contract constructor, caller-selected registration kind, untyped capability context, sealed-state boolean probe, and implicit transaction failure |
+| RFC 0017 | define unforgeable retained database identity, kind-specific literal descriptor metadata, explicit inventory ordinals, closed transaction and query-runtime failures, separated request-result alternatives, the capability failure envelope, sealed-root admission propagation, typed capability context, and one registration path; remove numeric database generation, mutable process identity authority, every runtime query contract constructor, caller-selected registration kind, untyped capability context, sealed-state boolean probe, and implicit transaction failure |
 | RFC 0018 | bind `QueryKindId` to the explicit inventory ordinal; require literal query and failure-envelope domains plus complete canonical authority equality; remove registration-order identity and runtime-computed descriptor domains |
 | RFC 0019 | remove the `ClosureEnvironmentMap` catalog and read-set rows; make final Binder capabilities use sealed admission, typed contexts, exact capability-result decoding, and direct `BoundOwnerBody` closure facts |
 | RFC 0020 | define `ActiveMembershipResult<Record>`, conditional readiness, exact authority equality, and admission-before-membership-before-interner order; remove runtime membership dispatch, variadic authority, boolean membership, and ambient readiness |
-| RFC 0025 | bind the session state machine to explicit transaction results and `SealedQuerySnapshot`; require capability failure decoding and the twenty permission rows before core materializers; keep S1 and Q2 pending until RFC 0028 acceptance |
+| RFC 0025 | bind the session state machine to explicit transaction results and `SealedQuerySnapshot`; require capability failure decoding and the twenty permission rows before core materializers; bind schema, codec, diagnostic, runtime, provenance, and verification work to RFC 0029's dependency order |
 | RFC 0026 | bind `MaterializeModuleGraph` to sealed root demand and the runtime-only `ModuleDependencyProvenanceMap`; require retained final parse lineage and remove any ambient sealed-state or session graph authority |
-| RFC 0027 | replace Q2 with the indivisible query-runtime, descriptor, caller, and test cutover; remove `ClosureEnvironmentMap` from the catalog and S1 inventory; add the complete provenance capability, failure bridge, query-runtime tags, explicit descriptor ordinals, affected-owner routing, and corrected downstream dependencies |
+| RFC 0027 | move `S1`, `S2`, `S3`, and `S6` before runtime, land `S1` plus `S2` as one buildable schema-and-facts transaction, remove `ClosureEnvironmentMap`, add complete contextual keys, identity-site provenance, stable identity admission, five exact Binder capability failure contracts, explicit descriptor ordinals, affected-owner routing, and corrected downstream dependencies |
+| RFC 0028 | replace numeric identity with the retained token; separate `CapabilityPublished` from semantic values; retain only independently reachable decoder coordinates; add the complete identity-site, stable-admission, contextual-key, five-descriptor, and `ModuleBodySyntaxQuery` invariant contracts; preserve bounded review partitions and one atomic runtime landing |
 
-Each same-number tracker records the RFC 0028 proposal hash, one acceptance
-transaction identifier, the exact replaced task rows, and the resulting
-dependency edges. `docs/rfc/README.md` records RFC 0028 `ACCEPTED` in the same
-tree transaction.
+Each synchronized tracker records the RFC 0029 proposal hash, transaction
+identifier, exact replaced task rows, and resulting dependency edges.
+`docs/rfc/README.md` records RFC 0029 `ACCEPTED` while retaining RFC 0028
+`ACCEPTED` in the same tree transaction.
 
 The synchronized acceptance overlays must have zero stale-authority matches
 from:
@@ -1245,6 +1564,9 @@ rg -n 'QueryKindContract|sealInputRoot|activeMaterializationReady' \
 rg -n 'ClosureEnvironmentMap|ActiveMembership<' \
   docs/rfc/00{17,18,19,20,25,26,27}-*.md \
   docs/rfc/tracking/00{17,18,19,20,25,26,27}-*.md
+rg -n 'QueryDatabaseGenerationAllocator|generation exhaustion|counter seed' \
+  docs/rfc/00{17,18,19,20,25,26,27,28}-*.md \
+  docs/rfc/tracking/00{17,18,19,20,25,26,27,28}-*.md
 ```
 
 The indivisible source cutover must then have zero matches from:
@@ -1263,13 +1585,14 @@ rg -n 'CapabilityQueryContext&|ActiveMembership<' \
 The capability architecture gate additionally rejects an untyped
 `CapabilityProviderResult::semanticFailure`, a capability demand decoded as
 `TypedQueryResult<QueryCapabilityLease`, and any materializer permission that
-does not name exactly three types.
+does not name exactly three types. It also rejects mutable global query identity,
+numeric identity access, a public type-erased memo observer or caster, capability
+rejection transported through `QueryValue`, an illegal descriptor failure
+alternative, and test access outside its exact owned files.
 
-All affected owners approve the exact unchanged REVIEW proposal hash.
-`runtime-memory` and `error-system` provide the supplemental reviews listed
-below. The acceptance transaction records that hash and one transaction
-identifier in every synchronized RFC and tracker. No subset is accepted
-independently.
+All RFC 0029 required owners approve the exact unchanged proposal hash above.
+The acceptance transaction records that hash and the transaction identifier in
+every synchronized RFC and tracker. No subset is accepted independently.
 
 ### Supplemental Review Scopes
 
@@ -1277,7 +1600,7 @@ These scopes are mandatory technical reviews but do not claim file ownership:
 
 | Reviewer | Required scope |
 |---|---|
-| `runtime-memory` | generation allocation, lock order, final admission, arena access order, retained child leases, and teardown |
+| `runtime-memory` | token identity and lifetime, lock order, final admission, arena access order, retained child leases, and teardown |
 | `error-system` | closed failure tags, operation precedence, failure-envelope integrity, and publication atomicity |
 
 ## Repository Impact
@@ -1301,9 +1624,9 @@ prevents an interner hit from acting as authority. The fixed execution order
 ensures inactive or contradictory records fail before arena mutation.
 
 Input transaction and sealing state is protected by the existing exclusive
-database lock. Database generation allocation is synchronized. Final
-admission is immutable after publication and is propagated through retained
-demand frames rather than read from mutable ambient state.
+database lock. Database identity has no mutable process authority or exhaustion
+path. Final admission is immutable after publication and is propagated through
+retained demand frames rather than read from mutable ambient state.
 
 Runtime provenance retains the exact parse capability that owns its AST and
 source buffer. Node and span values cannot outlive that lease and are never
@@ -1356,18 +1679,22 @@ This is an internal, unreleased contract. The implementation replaces all
 descriptor, transaction, seal, context, permission, membership, producer,
 consumer, test, generator, and gate call sites directly.
 
-The rollout order is:
+The synchronized rollout order is:
 
-1. accept this RFC and synchronize all overlays;
-2. implement database identity, closed outcomes, seal admission, and sealed
-   snapshots;
-3. atomically migrate the literal descriptor inventory and all registrations;
-4. install typed capability contexts and the permission matrix;
-5. install exact membership demand and admission-before-interner enforcement;
-6. remove the closure projection from generated schema and architecture
-   inventories;
-7. implement module dependency provenance; and
-8. resume the RFC 0027 dependency graph.
+1. accept RFC 0029 and synchronize all listed RFC, tracker, index, and routing
+   documents under `rfc0029-accept-20260727-8d393a0c`;
+2. prepare RFC 0027 `S1` and `S2` separately, then land them together through
+   `R29-12AB` as one buildable schema-and-facts transaction;
+3. land `R29-12C` for bounded codecs and fixed wire oracles and `R29-12D` for
+   canonical Binder diagnostic facts;
+4. prepare the existing RFC 0028 review partitions plus RFC 0029 identity-site,
+   stable-admission, descriptor-failure, decoder, race, and negative-compile
+   partitions;
+5. assemble and land one atomic runtime replacement through RFC 0029
+   `R29-14`, deleting every replaced API and old authority;
+6. implement module dependency provenance; and
+7. resume the remaining dependency graph only through the synchronized
+   trackers.
 
 Rollback before publication is a repository revert of the complete source
 transaction. There is no persisted data or external protocol migration.
@@ -1401,8 +1728,9 @@ configuration. Release readiness requires:
   and the two supplemental review scopes approve the same hash.
 - The acceptance transaction synchronizes all listed RFCs, trackers, and the
   RFC index plus the exact routing tree atomically.
-- Database identities are nonzero, unique, move-stable, and propagated to every
-  snapshot and seal.
+- Database identities are unforgeable, distinct, move-stable retained tokens
+  propagated to every snapshot, seal, admission, demand frame, and capability
+  memo.
 - Every input and sealing failure has one explicit closed result.
 - Final sealing creates no revision and is irreversible.
 - Foreign, stale, context-unequal, and witness-unequal admission fails before
@@ -1419,6 +1747,21 @@ configuration. Release readiness requires:
 - Capability failure envelopes enforce exact descriptor domain, kind, framing,
   canonical payload, complete consumption, independent rejection verification,
   and rejection-without-memo publication.
+- `QueryRequestResult` keeps semantic values, published capabilities, verified
+  capability rejections, and runtime rejections in distinct alternatives;
+  capability decoding checks only independently reachable descriptor,
+  database, and revision coordinates.
+- `IdentitySyntaxSiteInventoryQuery` publishes independently verified complete
+  provenance, including the legal empty sequence, before stable identity
+  admission; `SourceSpan` reconstruction uses only the retained immutable
+  source snapshot.
+- `StableIdentityAdmissionQuery` is the sole stable-identity source-diagnostic
+  owner and retains parse plus identity-site lineage.
+- Complete contextual definition and owner-body keys replace every shorter
+  shape, and the five Binder capabilities expose only their exact source, key,
+  runtime, and success alternatives in the declared read order.
+- A `ModuleBodySyntaxQuery` semantic failure after typed provenance succeeds is
+  `InvariantViolation`, never capability `SourceRejected`.
 - Only the twenty exact materializer permission rows compile.
 - Membership dependency and complete authority equality precede every interner
   access.
@@ -1439,38 +1782,38 @@ configuration. Release readiness requires:
 | `R28-04` | `module-system` | `R28-01` | Review identity, transaction, seal, admission, descriptor, permission, and provenance contracts |
 | `R28-05` | `lexer-parser` | `R28-01` | Review parser capability descriptor and final parse lifetime migration |
 | `R28-06` | `binder-checker` | `R28-01` | Review membership authority, closure deletion, schema boundary, and materializer consumers |
-| `R28-07` | `runtime-memory` | `R28-01` | Review generation allocation, locking, arena admission order, retained leases, and teardown |
+| `R28-07` | `runtime-memory` | `R28-01` | Review token identity and lifetime, locking, arena admission order, retained leases, and teardown |
 | `R28-08` | `error-system` | `R28-01` | Review closed failure algebra, precedence, and publication atomicity |
 | `R28-09` | `spec-audit` | `R28-01` | Review synchronized current-contract claims and removal of duplicate projection authority |
 | `R28-10` | `verification` | `R28-01` | Review native tests, generator coverage, architecture gates, determinism, and Release evidence |
 | `R28-11` | `rfc` | `R28-02` through `R28-10` | Record exact-hash approvals and prepare the complete synchronized acceptance transaction |
 | `R28-11A` | `task-router` | `R28-11` | Assign the two descriptor scripts to `verification` and synchronize routing documentation |
 | `R28-12` | `rfc` | `R28-11`; `R28-11A` | Validate the synchronized tree, record one transaction identifier and proposal hash, and accept atomically |
-| `R28-13A` | `module-system` | `R28-12` | Prepare the reviewed query-type partition for database identity, transaction results, query-runtime failures, seals, and capability demand results; do not land independently |
+| `R28-13A` | `module-system` | `R29-12A`; `R29-12B`; `R29-12AB`; `R29-12C`; `R29-12D` | Prepare the reviewed query-type partition for token database identity, separated request results, transaction failures, seals, and capability demand results; do not land independently |
 | `R28-13B` | `module-system` | `R28-13A` | Prepare the reviewed query-database partition for transaction and final-seal state, sealed snapshots, and admission propagation; do not land independently |
 | `R28-13C` | `module-system` | `R28-13B` | Prepare the reviewed descriptor inventory and query build-wiring partition; do not land independently |
 | `R28-13C1` | `verification` | `R28-13C` | Prepare the reviewed inventory generator, architecture gate, and adversarial self-tests; do not land independently |
 | `R28-13D` | `module-system` | `R28-13C1` | Prepare reviewed identity and driver descriptor/caller partitions, splitting again before any partition exceeds approximately 400 changed source lines; do not land independently |
 | `R28-13E` | `lexer-parser` | `R28-13C1` | Prepare the reviewed parse capability descriptor, failure codec, and caller partition; do not land independently |
 | `R28-13F` | `verification` with `binder-checker` review | `R28-13C1` | Prepare the Binder transaction-consumer native-test cutover; do not land independently |
-| `R28-13G` | `verification` | `R28-13A`; `R28-13B`; `R28-13C`; `R28-13C1`; `R28-13D`; `R28-13E`; `R28-13F` | Prepare reviewed native test, generated test inventory, CTest wiring, and negative compile partitions; do not land independently |
-| `R28-14` | `module-system` with all partition-owner review | `R28-13G` | Assemble one buildable indivisible source transaction, delete every replaced API, run focused native gates, and land no partial partition |
-| `R28-15` | `binder-checker` | `R28-12`; `R28-14` | Remove the closure projection and close the stable schema inventory |
-| `R28-16A` | `module-system` with `lexer-parser` review | `R28-14`; `R28-15` | Prepare the production provenance descriptor, provider, verifier, inventory row, `registerModuleGraphQueries` registration, and build wiring; do not land independently |
+| `R28-13G` | `verification` | `R28-13A`; `R28-13B`; `R28-13C`; `R28-13C1`; `R28-13D`; `R28-13E`; `R28-13F` | Prepare reviewed native test, generated test inventory, CTest wiring, real-object decoder, race, and negative compile partitions; do not land independently |
+| `R28-14` | `module-system` with all partition-owner review | `R28-13G`; `R29-13B`; `R29-13C` | Complete the runtime partition join for RFC 0029 `R29-14`; this row has no independent landing authority |
+| `R28-16A` | `module-system` with `lexer-parser` review | RFC 0029 `R29-14` | Prepare the production provenance descriptor, provider, verifier, inventory row, `registerModuleGraphQueries` registration, and build wiring; do not land independently |
 | `R28-16B` | `verification` with `binder-checker` review | `R28-16A` | Prepare the provenance and registration native tests, updated test inventory, and test build wiring; do not land independently |
 | `R28-16` | `module-system` with all partition-owner review | `R28-16B` | Assemble and land one buildable provenance source, schema, test, and CMake transaction |
-| `R28-17` | `verification` | `R28-16` | Run focused, full, architecture, generation, determinism, and Release verification |
+| `R28-17` | `verification` | `R28-16` | Run focused, full, architecture, generated-inventory, determinism, and Release verification |
 | `R28-18` | `spec-audit` | `R28-17` | Publish only the production-backed current compiler contract |
 | `R28-19` | `rfc` | `R28-18` | Audit evidence, synchronize implementation status, and transition this RFC only when complete |
 
-RFC 0027 `S1` and `Q2` remain pending until `R28-12`. After acceptance,
-`R28-13A` through `R28-16` replace and refine those implementation boundaries;
-the remaining RFC 0027 tasks resume only through their recorded dependency
-edges.
+RFC 0027 `S1`, `S2`, `S3`, and `S6` execute through RFC 0029
+`R29-12A`, `R29-12B`, `R29-12AB`, `R29-12C`, and `R29-12D` before
+`R28-13A`. The remaining runtime and downstream tasks resume only through
+their synchronized dependency edges.
 
 `R28-13A` through `R28-13G` are bounded review partitions, not repository
 landing points. They may be prepared in isolated worktrees or serialized local
-patches. Only `R28-14` may change the shared source history, and it must contain
+patches. Only RFC 0029 `R29-14` may change the shared source history, and it
+must contain
 the complete direct replacement plus every caller and native test.
 
 ### Exact Implementation Partitions
@@ -1489,18 +1832,19 @@ The review partitions have these exact file sets:
 | `R28-13D.4` | `products/zomlang/compiler/driver/module-graph-query-input.{h,cc}`; `products/zomlang/compiler/driver/module-graph-query.{h,cc}`; `products/zomlang/compiler/driver/compiler-session.cc` |
 | `R28-13D.5` | `products/zomlang/compiler/driver/named-identity-inventory-query.{h,cc}`; `products/zomlang/compiler/driver/named-item-query.{h,cc}`; `products/zomlang/compiler/driver/owner-body-query.{h,cc}` |
 | `R28-13E` | `products/zomlang/compiler/parser/parse-source-query.{h,cc}`; `products/zomlang/compiler/parser/parse-source-query-verifier.cc` |
-| `R28-13F` | `products/zomlang/tests/unittests/compiler/binder/binding-input-test.cc`; no Binder production file changes before `R28-15` |
+| `R28-13F` | `products/zomlang/tests/unittests/compiler/binder/binding-input-test.cc`; no additional Binder production file changes |
 | `R28-13G.1` | `products/zomlang/tests/unittests/compiler/query/query-test-specs.h`; `products/zomlang/tests/unittests/compiler/query/query-test-descriptor-schema.def`; all six query test `.cc` files and query `CMakeLists.txt` listed in the atomic migration inventory |
-| `R28-13G.2` | all seven driver test `.cc` files plus driver and Binder test `CMakeLists.txt` files listed in the atomic migration inventory; `products/zomlang/tests/CMakeLists.txt` |
+| `R28-13G.2` | all driver and Binder test files plus their `CMakeLists.txt` files listed in the atomic migration inventory; `products/zomlang/tests/CMakeLists.txt` |
+| `R29-13B` | `products/zomlang/compiler/binder/identity-pre-admission.{h,cc}`; `products/zomlang/compiler/binder/stable-identity-candidate-producer.{h,cc}`; `products/zomlang/compiler/binder/stable-identity-candidate-verifier.{h,cc}`; `products/zomlang/compiler/driver/named-identity-inventory-query.{h,cc}`; `products/zomlang/compiler/driver/named-item-query.{h,cc}`; `products/zomlang/compiler/driver/owner-body-query.{h,cc}`; Binder and driver build wiring; the four focused Binder and driver tests named in the atomic migration inventory |
+| `R29-13C` | query `query-test-specs.h`, database, capability, concurrency, and CMake files; `products/zomlang/tests/cmake/expect-compile-failure/CMakeLists.txt`; the exact query-runtime compile-fail cases; `products/zomlang/tests/CMakeLists.txt`; `scripts/check-query-descriptor-architecture.py` |
 
 Each numbered subpartition is separately reviewed and may be split into
 smaller non-landing patches before it exceeds approximately 400 changed source
-lines. `R28-14` is exactly the union of `R28-13A`, `R28-13B`, `R28-13C`,
+lines. RFC 0029 `R29-14` is exactly the union of `R28-13A`, `R28-13B`, `R28-13C`,
 `R28-13C1`, `R28-13D.1` through `R28-13D.5`, `R28-13E`, `R28-13F`,
-`R28-13G.1`, and `R28-13G.2`; it includes the generated build-tree outputs
-only through CMake generation and contains no RFC 0028 documentation.
-`R28-15` changes only
-`products/zomlang/compiler/binder/stable-binding-schema.def`.
+`R28-13G.1`, `R28-13G.2`, `R29-13B`, and `R29-13C`; it includes generated
+build-tree outputs only through CMake generation and contains no RFC
+documentation.
 `R28-16A` owns
 `products/zomlang/compiler/driver/module-dependency-provenance-query.{h,cc}`,
 `products/zomlang/compiler/query/query-descriptor-schema.def`, and
@@ -1522,9 +1866,9 @@ that the test inventory still contains the complete updated production prefix.
   - `PATH=/opt/homebrew/bin:$PATH cmake --preset sanitizer`
   - `PATH=/opt/homebrew/bin:$PATH cmake --build --preset sanitizer --clean-first`
 - Focused unit tests:
-  - database identity is nonzero, concurrently unique, and move-stable;
-  - an injected generation allocator at `UINT64_MAX - 1` issues the final
-    nonzero generation once and then fails closed without wrap or reuse;
+  - fresh and concurrent database identity tokens are distinct, move-stable,
+    retained after database teardown, and never exposed as integers or
+    addresses;
   - foreign database identity is rejected;
   - final sealing creates no revision;
   - repeat, open-transaction, foreign-snapshot, stale-snapshot,
@@ -1537,8 +1881,9 @@ that the test inventory still contains the complete updated production prefix.
     `OpenTransactionDuringFinalSeal`;
   - an authority-verifier rejection racing with a higher-priority phase-three
     state change returns the phase-three failure and publishes no admission;
-  - an instrumented authority verifier proves the database data lock is not
-    held during phase two;
+  - the per-database one-shot phase-two gate proves the database data lock is
+    released before the static verifier, without sleep, callback injection, or
+    verifier replacement;
   - every transaction failure preserves the specified state;
   - descriptor metadata rejects illegal combinations and duplicate domains;
   - production-prefix plus test-tail inventory construction has no slot
@@ -1552,6 +1897,11 @@ that the test inventory still contains the complete updated production prefix.
     generator gate;
   - a source-only capability descriptor compiles without any key-failure type,
     storage, constructor, codec, verifier, or observer;
+  - semantic values, capability publications, capability rejections, and
+    runtime rejections occupy distinct request-result alternatives;
+  - real cross-database, cross-revision, and same-payload cross-descriptor
+    objects independently reach every decoder coordinate mismatch and return
+    `InvariantViolation` without a lease;
   - `ParseSource` `SourceRejected` and provenance `BinderKeyFailure`
     rejections round-trip through their exact typed demand results;
   - foreign descriptor domain, unlisted or unknown envelope tag, bad frame
@@ -1566,6 +1916,16 @@ that the test inventory still contains the complete updated production prefix.
   - complete authority, context, owner, and occurrence mutations fail;
   - an existing interner entry still records membership first;
   - concurrent equal identity admission coalesces;
+  - identity-site provider and independent verifier cover every admitted site,
+    accept the legal empty module without a fabricated root, round-trip exact
+    witness bytes, and reject source, digest, start, end, ordinal, and
+    ordinal-selected-span mutations;
+  - stable-identity source diagnostics resolve through retained identity-site
+    provenance after admission rejects;
+  - every legal source, key, runtime, and success result for the five Binder
+    capabilities follows its exact read order, while illegal key kinds fail;
+  - `ModuleBodySyntaxQuery` semantic failure after typed provenance succeeds is
+    `InvariantViolation` and never `SourceRejected`;
   - provenance groups and orders source sites;
   - prelude provenance has no fabricated site;
   - missing, duplicate, orphan, ordinal, node, span, source, digest, request,
@@ -1579,6 +1939,7 @@ that the test inventory still contains the complete updated production prefix.
   - `PATH=/opt/homebrew/bin:$PATH ctest --preset default -L unittest --output-on-failure`
   - `PATH=/opt/homebrew/bin:$PATH ctest --preset default --output-on-failure`
   - `PATH=/opt/homebrew/bin:$PATH ctest --preset default -R '^query-descriptor-schema(-negative)?$' --output-on-failure`
+  - `PATH=/opt/homebrew/bin:$PATH ctest --preset default -R '^query-runtime-negative-compile-' --output-on-failure`
 - Repository gates:
   - `python3 scripts/generate-query-descriptor-schema.py --check`
   - `python3 scripts/generate-query-descriptor-schema.py --self-test`
@@ -1629,3 +1990,4 @@ None
 | 2026-07-27 | DRAFT | Initial complete proposal for query-runtime final sealing, literal descriptors, exact membership admission, provenance, and closure projection deletion. |
 | 2026-07-27 | REVIEW | Entered exact-hash affected-owner and supplemental technical review after all proposal gates passed. |
 | 2026-07-27 | ACCEPTED | Accepted exact REVIEW proposal SHA-256 `944b68ffc0aff5576d079a243ff092d7d19fba5ffed65551dda8e68adf230db4` through synchronized transaction `rfc0028-accept-20260727-944b68ff`; implementation remains pending. |
+| 2026-07-27 | ACCEPTED | Synchronized to RFC 0029 proposal SHA-256 `8d393a0c6c00a7fad9ef086d3d25f5ed44300041afa9e1e1a4af5d68830fd3e7` through transaction `rfc0029-accept-20260727-8d393a0c`; implementation remains pending behind the RFC 0029 foundation tasks. |

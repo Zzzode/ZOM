@@ -36,7 +36,7 @@ execution, and from-scratch consistency testing.
 The selected design combines rustc's cross-revision red-green and projection
 model, Salsa's typed tracked reads, equality backdating and durability, Swift's
 named-item granularity, and DICE's single-flight concurrent execution. It uses
-an in-tree C++20/zc implementation rather than Salsa through Rust FFI. Local
+an in-tree C++23/zc implementation rather than Salsa through Rust FFI. Local
 disk persistence is deferred until the in-memory engine passes clean-build
 equivalence and hot-edit shielding gates.
 
@@ -222,17 +222,17 @@ completion evidence belongs to the RFC 0027 implementation tracker.
 Acceptance transaction `rfc0028-accept-20260727-944b68ff` synchronizes RFC
 0017 to exact RFC 0028 proposal SHA-256
 `944b68ffc0aff5576d079a243ff092d7d19fba5ffed65551dda8e68adf230db4`.
-The current contract now uses a nonzero database generation, kind-specific
-literal descriptor metadata, explicit inventory ordinals, one typed
-registration path, closed transaction and runtime failures, canonical
-capability rejection envelopes, inherited sealed admission, typed capability
-contexts, and direct `BoundOwnerBody` closure facts.
+The current contract defines query-database identity, kind-specific literal
+descriptor metadata, explicit inventory ordinals, one typed registration path,
+closed transaction and runtime failures, canonical capability rejection
+envelopes, inherited sealed admission, typed capability contexts, and direct
+`BoundOwnerBody` closure facts.
 
 | Binding | RFC 0028 Task Authority |
 |---|---|
 | Routing and acceptance synchronization | `R28-11A`; `R28-12` |
 | Query types, transactions, seal, descriptors, callers, and tests | `R28-13A` through `R28-14` |
-| Direct owner-body closure inventory | `R28-15` |
+| Stable schema and direct owner-body closure inventory | RFC 0029 `R29-12AB` |
 | Provenance capability and failure bridge | `R28-16A`; `R28-16B`; `R28-16` |
 | Integrated evidence and truthful status transition | `R28-17` through `R28-19` |
 
@@ -240,10 +240,37 @@ RFC 0017 remains `IMPLEMENTING`. Existing implementation evidence does not
 complete these replacements; completion authority belongs to the listed RFC
 0028 tasks and their dependency edges.
 
+### 2026-07-27 RFC 0029 Acceptance Synchronization
+
+Acceptance transaction `rfc0029-accept-20260727-8d393a0c` synchronizes RFC
+0017 to exact RFC 0029 proposal SHA-256
+`8d393a0c6c00a7fad9ef086d3d25f5ed44300041afa9e1e1a4af5d68830fd3e7`.
+The current contract uses one opaque retained token per database, a closed
+move-only request result with a dedicated `CapabilityPublished` branch,
+descriptor-ordinal/database/revision decoder checks, independently published
+identity-site provenance, stable-identity admission, and descriptor-specific
+failure contracts for the five Binder provenance capabilities.
+
+| Binding | RFC 0029 Task Authority |
+|---|---|
+| Stable Binder schema and facts | `R29-12A`; `R29-12B`; atomic `R29-12AB` |
+| Bounded codecs and diagnostic payload | `R29-12C`; `R29-12D` |
+| Token identity, result algebra, decoder, and query-type partition | `R29-13A` |
+| Identity-site provenance, stable admission, and exact descriptor failures | `R29-13B` |
+| Native, mutation, race, and negative-compile gates | `R29-13C` |
+| Atomic runtime source transaction | `R29-14` |
+| Integrated evidence, current design, and truthful status | `R29-15` through `R29-17` |
+
+`S1` and `S2` remain separately reviewed and land only through `R29-12AB`.
+`S3` and `S6` land after that transaction. Runtime work resumes only after
+both focused gate sets pass. RFC 0017 remains `IMPLEMENTING`; no RFC 0029
+implementation task is complete through this synchronization.
+
 ## Implementation Tracker
 
 | Slice | State | Required evidence |
 |---|---|---|
+| RFC 0029 query identity and failure closure | Pending | Completion authority is RFC 0029 `R29-12A` through `R29-17`; exact token, request-result, provenance, descriptor-failure, atomic-runtime, and final-gate evidence is not yet recorded |
 | Routing and ownership | Complete | Query subsystem and architecture-gate ownership is explicit and validated |
 | Stable identity replacement | In progress | RFC 0018 named-definition and implementation record replacement is complete; subordinate-parameter, semantic-import, stable-body-owner, and owner-local domains have strict canonical decoders. RFC 0019 registers detached module-body, named-item, owner-inventory, owner-syntax, and owner-provenance queries, while persistent query inventory ownership, owner binding, and remaining materialization migration stay open |
 | Revision-domain separation | In progress | Database revisions, durability, reuse classes, semantic query values, stable semantic-import keys, revision-local materialization values, detached module-body syntax, module-body provenance, semantic owner-body syntax, and revision-local owner-body provenance are distinct; owner binding, materialization, identity-store ownership, and call-site migration remain open |

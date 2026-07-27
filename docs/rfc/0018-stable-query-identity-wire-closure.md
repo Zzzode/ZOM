@@ -1201,15 +1201,23 @@ handles only after exact tracked active-membership validation.
 
 ### Query Descriptor And Authority Identity Closure
 
-Acceptance transaction `rfc0028-accept-20260727-944b68ff` binds this current
-contract to exact RFC 0028 proposal SHA-256
-`944b68ffc0aff5576d079a243ff092d7d19fba5ffed65551dda8e68adf230db4`.
+Acceptance transaction `rfc0029-accept-20260727-8d393a0c` binds this current
+contract to exact RFC 0029 proposal SHA-256
+`8d393a0c6c00a7fad9ef086d3d25f5ed44300041afa9e1e1a4af5d68830fd3e7`.
 
 Every descriptor inventory row carries an explicit contiguous `uint32`
 ordinal, and `QueryKindId` is exactly that ordinal within its target-specific
 inventory. Registration sequence, hash, address, and link order have no
 identity authority. A test target preserves the complete production inventory
 as its prefix and appends one contiguous test-only tail.
+
+`QueryDatabaseIdentity` is an opaque retained token whose equality is token
+object identity. It has no canonical encoding and never contributes bytes to a
+stable key, descriptor row, witness, diagnostic, trace, or persisted record.
+The database-bound descriptor inventory is immutable. Registration proves one
+descriptor-to-ordinal binding before evaluation, so capability decoding checks
+only the independently reachable descriptor ordinal, database token, and
+revision coordinates.
 
 Each descriptor name and query domain is a non-empty printable-ASCII
 `zc::LiteralStringConst` expressed with `_zcc` in its kind-specific metadata.
@@ -1224,6 +1232,54 @@ authority bytes, including contextual roots, global key, owner, and occurrence
 authority. Digest equality alone cannot authorize admission. Equal keys with
 unequal complete authority records are canonical collisions and fail before
 interner access.
+
+### Identity-Site Provenance And Stable Admission
+
+`IdentitySyntaxSiteInventoryQuery(StableModuleQueryKey)` is the independent
+revision-local authority for every identity root, generic parameter, bound
+occurrence, constant header expression, and other syntax node that
+stable-identity production or verification may cite. Its provider reads
+`SelectedModuleSourceQuery`, `ParseSourceQuery`, and
+`IdentitySyntaxSiteInventoryProducer` in that order. Its verifier repeats the
+two query reads and traverses the complete parsed topology through the separate
+`IdentitySyntaxSiteInventoryVerifier`.
+
+The descriptor-private witness contains the complete module and selected
+source, the source digest, and a canonical sequence of
+`{IdentitySyntaxSiteKey, schemaPreorderOrdinal, SourceSpan}` records. A legal
+module with no sites encodes an empty sequence and has no fabricated root site.
+The decoder reads the span's source key and byte bounds, requires agreement
+with the outer witness and retained immutable source snapshot, requires exact
+digest agreement, and reconstructs the span only through
+`ImmutableSourceSnapshot::span`. Decode is bounded and fully consumed, and
+re-encoding is byte-identical.
+
+`ResolveDiagnosticProvenance(IdentitySyntaxSite(key))` demands the inventory in
+the same snapshot and resolves exactly one matching entry. This lookup does
+not depend on successful stable-identity admission. The inventory is published
+before local stable-identity validation can reject source.
+
+`StableIdentityAdmissionQuery(StableModuleQueryKey)` reads, in order,
+`SelectedModuleSourceQuery`, `ParseSourceQuery`,
+`IdentitySyntaxSiteInventoryQuery`, `StableIdentityCandidateProducer`, and
+`StableIdentityCandidateVerifier`. Its published capability retains the parse
+and identity-site leases. It is the sole source-diagnostic authority for
+stable-identity validation and publishes no capability on rejection.
+
+Selected-source absence is exactly
+`MissingSelectedModuleSource(Module(key.module), none)`. Parse rejection is
+forwarded unchanged. Candidate disagreement, malformed topology, witness
+failure, source or digest disagreement, and provider/verifier disagreement are
+runtime failures. The stable-admission diagnostics use
+`DiagnosticProvenanceKey::IdentitySyntaxSite`; the independent rejection
+verifier resolves every cited key through the already published inventory.
+
+RFC 0027 `S1` and `S2` land atomically as one buildable schema-and-facts
+transaction. `S3` then establishes bounded exact-consumption codecs and fixed
+wire oracles. `S6` establishes the canonical Binder diagnostic payload after
+the `S1` plus `S2` transaction. Query-runtime implementation begins only after
+both `S3` and `S6` pass their focused gates. RFC 0018 remains
+`IMPLEMENTING`; this synchronization records design authority only.
 
 ## Repository Impact
 
@@ -1592,3 +1648,4 @@ None
 | 2026-07-26 | IMPLEMENTING | Synchronized the accepted RFC 0026 selected-module, dependency-site, request, failure, graph, SCC, cycle, and ledger wire closure plus standalone-versus-keyed verification boundary from exact proposal SHA-256 `39df5d3f11dbdcb2e95056b1cd14fd5220a19688f31a3e3180230ad465a3f84d`; implementation completion remains tracked by RFC 0026 and RFC 0025. |
 | 2026-07-27 | IMPLEMENTING | Synchronized the RFC 0027 Binder query-key, complete authority-record, occurrence-specific scope, arena admission, and materialized occurrence contracts through transaction `rfc0027-accept-20260727-e2f4ba5e` at proposal SHA-256 `e2f4ba5eb777d3d70b8eb3ad75b18f5169afc61a83d989ccc61fc9d5d022f435`; implementation status is unchanged. |
 | 2026-07-27 | IMPLEMENTING | Synchronized the RFC 0028 explicit descriptor ordinal, literal query and capability-failure domains, complete canonical authority equality, collision, and target-inventory identity contracts through transaction `rfc0028-accept-20260727-944b68ff` at proposal SHA-256 `944b68ffc0aff5576d079a243ff092d7d19fba5ffed65551dda8e68adf230db4`; implementation status is unchanged. |
+| 2026-07-27 | IMPLEMENTING | Acceptance transaction `rfc0029-accept-20260727-8d393a0c` synchronized opaque database-token identity, descriptor-ordinal/database/revision decoder coordinates, independently published identity-site provenance, retained-snapshot `SourceSpan` decoding, stable-identity admission, and the schema-before-runtime dependency order to proposal SHA-256 `8d393a0c6c00a7fad9ef086d3d25f5ed44300041afa9e1e1a4af5d68830fd3e7`; implementation status is unchanged. |

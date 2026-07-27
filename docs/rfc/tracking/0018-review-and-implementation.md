@@ -495,10 +495,37 @@ RFC 0018 remains `IMPLEMENTING`. Existing identity evidence does not complete
 the descriptor-inventory replacement; completion authority belongs to the
 listed RFC 0028 tasks and their dependency edges.
 
+### 2026-07-27 RFC 0029 Acceptance Synchronization
+
+Acceptance transaction `rfc0029-accept-20260727-8d393a0c` synchronizes RFC
+0018 to exact RFC 0029 proposal SHA-256
+`8d393a0c6c00a7fad9ef086d3d25f5ed44300041afa9e1e1a4af5d68830fd3e7`.
+The current wire authority keeps database identity outside every stable
+encoding, validates capability publication by descriptor ordinal, database
+token, and revision, publishes `IdentitySyntaxSiteInventoryQuery`
+independently of stable admission, reconstructs witness spans only through the
+retained immutable source snapshot, and assigns stable-identity source
+diagnostics exclusively to `StableIdentityAdmissionQuery`.
+
+| Binding | RFC 0029 Task Authority |
+|---|---|
+| Stable field and fact transaction | `R29-12A`; `R29-12B`; atomic `R29-12AB` |
+| Exact-consumption codecs and fixed wire oracles | `R29-12C` |
+| Canonical diagnostic-fact payload | `R29-12D` |
+| Query-type and descriptor inventory partition | `R29-13A` |
+| Site inventory, stable admission, and descriptor-private witnesses | `R29-13B` |
+| Codec mutation, provenance, and private-decoder tests | `R29-13C` |
+| Atomic runtime source transaction and full evidence | `R29-14` through `R29-17` |
+
+RFC 0018 remains `IMPLEMENTING`. Existing stable-identity evidence does not
+complete the synchronized site inventory, admission, or query-runtime
+contracts.
+
 ## Implementation Tracker
 
 | Slice | State | Required evidence |
 |---|---|---|
+| RFC 0029 identity-site and admission closure | Pending | RFC 0029 `R29-12A` through `R29-17` own the stable schema, bounded witness codecs, independent site/admission paths, private span decoder, atomic source landing, and final evidence |
 | Proposal review | ACCEPTED | All owners approved exact formal REVIEW snapshot `bdcbee8761d5476822cbe5bb2548332ad36e4d5f507c38e74d06751c6f444379` |
 | Normative RFC synchronization | Complete | RFC 0004/0005/0008/0011/0014/0015/0017 and required trackers use the accepted later-overlay contract |
 | Configured Python and schema gates | Complete | Project-scope interpreter discovery, configure-time PyYAML fail-fast, zero bare CMake `python3` calls, focused build success, and 6/6 configured-Python CTests |

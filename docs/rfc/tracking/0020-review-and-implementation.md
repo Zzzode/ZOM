@@ -230,6 +230,36 @@ RFC 0020 remains `IMPLEMENTING`. Existing authority-projection evidence does
 not complete the membership and final-admission replacement; completion
 authority belongs to the listed RFC 0028 tasks and their dependency edges.
 
+### 2026-07-27 RFC 0029 Acceptance Synchronization
+
+Acceptance transaction `rfc0029-accept-20260727-8d393a0c` synchronizes RFC
+0020 to exact RFC 0029 proposal SHA-256
+`8d393a0c6c00a7fad9ef086d3d25f5ed44300041afa9e1e1a4af5d68830fd3e7`.
+The current named-item contract reads authority, conditional readiness,
+selected source, parse, stable admission, named inventory, definition sites,
+implementation sites, and named-item syntax in exact order. Its key-rejection
+set contains only `InactiveOwner` and `MissingSelectedModuleSource`; missing
+readiness is `ProviderRejected`, contradictory authority is
+`InvariantViolation`, and child rejections retain their complete payload.
+
+Definition-owned owner-body provenance first demands the typed named-item
+branch and then the exact named-item syntax projection. `NoBody` alone
+constructs `DefinitionWithoutBody`; the provider and rejection verifier use
+separate executable-root admission algorithms. No owner-body capability reads
+`OwnerBodySyntaxQuery`.
+
+| Binding | RFC 0029 Task Authority |
+|---|---|
+| Stable authority schema and facts | `R29-12A`; `R29-12B`; atomic `R29-12AB` |
+| Codec and diagnostic prerequisites | `R29-12C`; `R29-12D` |
+| Query types and token identity | `R29-13A` |
+| Stable admission and exact named-item/owner-body failure contracts | `R29-13B` |
+| Native conditional-read, rejection, decoder, and mutation gates | `R29-13C` |
+| Atomic runtime landing and final evidence | `R29-14` through `R29-17` |
+
+RFC 0020 remains `IMPLEMENTING`; the synchronized descriptor contracts are
+pending their RFC 0029 implementation evidence.
+
 ## Implementation Tracker
 
 Implementation started after the accepted RFC moved through `ACCEPTED` to
@@ -238,6 +268,7 @@ listed in the accepted proposal.
 
 | Phase | Scope | Status | Evidence |
 |---|---|---|---|
+| 0 | RFC 0029 synchronized query identity and descriptor failure closure | Pending | RFC 0029 `R29-12A` through `R29-17`; no synchronized runtime implementation evidence is recorded |
 | 1 | Performance runner, corpus, and reviewed pre-implementation baseline | Complete | `scripts/run-incremental-query-benchmarks.py`; closed corpus and baseline at revision `76e73196f3f9682bb1e5a6f88e7d77c00258a82f`; Release Binder median `332907000 ns`, MAD `1.44%`, peak RSS `5029888 bytes`; module projection median `28489000 ns`, MAD `2.17%`, peak RSS `2867200 bytes`; architecture check and self-test passed. |
 | 2 | Tracked input probe and presence-aware dependency validation | Complete | `QueryContext::probeInput` and `QuerySnapshot::probeInput`; explicit `Present` and `Absent` dependency observations; codec-validated input keys; four presence transitions, equal present, cancellation, derived-kind rejection, context continuation, cloning, eviction, durability, and no-tombstone regressions; five Query runtime tests and incremental-query architecture check and self-test passed under the sanitizer build. |
 | 3 | Complete definition-record decoder and fixed codec vectors | Complete | `DefinitionIdentityRecord::decodeCanonical` performs strict bounded standalone decoding. Native identity and authority tests cover the fixed SHA-256 vector, truncation, malformed lengths, trailing bytes, oversized records, and key-to-record digest mismatch under the sanitizer build. |

@@ -2421,23 +2421,202 @@ benchmark result already exists.
   versioning, RFC, format, diff, and Release benchmark gates pass.
 - RFC implementation states change only after a synchronized evidence audit.
 
-### RFC 0028 Implementation Overlay
+### RFC 0029 Accepted Query And Binder Contract
 
-Acceptance transaction `rfc0028-accept-20260727-944b68ff` binds this RFC to
-RFC 0028 proposal SHA-256
-`944b68ffc0aff5576d079a243ff092d7d19fba5ffed65551dda8e68adf230db4`.
-RFC 0028 `R28-13A` through `R28-14` are the indivisible authority for query
-types, database identity, transactions, final sealing, literal descriptors,
-registration callers, typed capability contexts, exact failure alternatives,
-permissions, membership admission, and their native tests. RFC 0028
-`R28-15` removes the duplicate closure projection from the Binder schema, and
-`R28-16A` through `R28-16` land the dependency-provenance descriptor,
-registration, provider, verifier, tests, and build wiring.
+Acceptance transaction `rfc0029-accept-20260727-8d393a0c` binds this RFC to
+RFC 0029 proposal SHA-256
+`8d393a0c6c00a7fad9ef086d3d25f5ed44300041afa9e1e1a4af5d68830fd3e7`.
+RFC 0027 remains `ACCEPTED`; this synchronization changes design and
+dependency authority without claiming product implementation.
 
-The former local `Q2` query-runtime task has no independent implementation
-authority. The implementation table below names RFC 0028 prerequisites
-directly. No downstream identity, Binder, graph, session, or deletion task may
-substitute a partial query-runtime cutover.
+The complete production key shapes are:
+
+```text
+ContextualDefinitionKey {
+  contextRoots: CompilationRootSetQueryKey,
+  definition: StableDefinitionQueryKey {
+    module: ModuleKey,
+    definition: DefinitionKey,
+  },
+}
+
+ContextualBodyOwnerKey {
+  contextRoots: CompilationRootSetQueryKey,
+  body: StableOwnerBodyQueryKey {
+    module: ModuleKey,
+    owner: StableBodyOwnerKey,
+  },
+}
+```
+
+Every producer, consumer, codec, fixture, authority record, query key, and
+generated inventory row changes atomically. Module ownership is always
+explicit in the nested stable key.
+
+`IdentitySyntaxSiteInventoryQuery` is a retained revision-local capability
+with domain `zom.query.identity-syntax-site-inventory`, key
+`StableModuleQueryKey`, capability
+`binder::IdentitySyntaxSiteInventory`, `AnySnapshot` admission, `Reject`
+cycle policy, and exact failures `SourceRejection<DiagnosticFact>` and
+`KeyRejection<BinderKeyFailure>`. Its provider reads
+`SelectedModuleSourceQuery`, `ParseSourceQuery`, and
+`IdentitySyntaxSiteInventoryProducer` in that order. Its independent verifier
+repeats the two query reads and traverses the complete parsed module topology
+through `IdentitySyntaxSiteInventoryVerifier`.
+
+The capability owns the complete sorted identity-syntax-site sequence and the
+exact parse lease. Its descriptor-private witness is:
+
+```text
+IdentitySyntaxSiteInventoryWitness {
+  module: ModuleKey,
+  source: SourceFileKey,
+  sourceDigest: Sha256Digest,
+  sites: CanonicalSequence<IdentitySyntaxSiteWitness>,
+}
+
+IdentitySyntaxSiteWitness {
+  key: IdentitySyntaxSiteKey,
+  schemaPreorderOrdinal: uint32,
+  source: SourceSpan,
+}
+```
+
+An empty module publishes an empty sequence. Site keys repeat the outer module
+and selected source. Ordinals are unique, in range, and identify the exact
+node and source span. The private span decoder reads source key, byte start,
+and byte end directly; matches the witness source, retained snapshot source,
+and digest; calls `ImmutableSourceSnapshot::span`; requires the ordinal node's
+exact span; consumes the complete payload; and verifies byte-identical
+re-encoding.
+
+`ResolveDiagnosticProvenance` derives the exact `StableModuleQueryKey` for an
+`IdentitySyntaxSiteKey`, demands the inventory capability in the same
+snapshot, and requires exactly one equal site. This resolution is independent
+of stable-identity admission success.
+
+`StableIdentityAdmissionQuery` is a retained revision-local capability with
+domain `zom.query.stable-identity-admission`, key
+`StableModuleQueryKey`, capability `binder::StableIdentityAdmission`,
+`AnySnapshot` admission, `Reject` cycle policy, and the same two exact failure
+alternatives. It owns the verified stable-identity candidate inventory and
+retains the exact parse and identity-site-inventory leases.
+
+Its provider reads in this exact order:
+
+1. `SelectedModuleSourceQuery`;
+2. `ParseSourceQuery`;
+3. `IdentitySyntaxSiteInventoryQuery`;
+4. `StableIdentityCandidateProducer`; and
+5. `StableIdentityCandidateVerifier`.
+
+Selected-source absence produces
+`MissingSelectedModuleSource(Module(key.module), none)`. Parse rejection is
+forwarded byte-for-byte. The independent verifier repeats the selected-source
+and parse demands, reconstructs candidates without provider state, and checks
+the complete descriptor-private witness.
+
+Stable identity admission owns two source diagnostics:
+
+- `ConstantExpressionNotAllowed` publishes `ZOM4079` with empty arguments, the
+  rejected identity site as primary location, no secondary location, and no
+  fix-it.
+- `DuplicateGenericParameter` publishes `ZOM3010` with
+  `BinderIdentifierDiagnosticArguments`, the duplicate identity site as
+  primary location, exactly one `ZOM3017 PreviousDeclarationHere` secondary
+  at the earlier declaration using
+  `DiagnosticSecondaryRole::PreviousDeclaration = 0x01`, and no replacement.
+
+`IdentityDiagnosticEmitter` adds
+`ConstantExpressionNotAllowed = 0x03` and
+`DuplicateGenericParameter = 0x04`. Both facts use
+`ModuleDiagnosticRoot(key.module)`,
+`IdentityDiagnosticPhase::IdentityAdmission`, no semantic owner, the matching
+emitter, and the complete primary identity-site key as the stable occurrence.
+The provider maps every verifier `NodeId` and `SourceSpan` to exactly one
+inventory entry; the duplicate declaration must map to an earlier entry.
+Mapping, payload, source, or candidate disagreement is runtime rejection.
+
+The following five descriptors declare exactly:
+
+```cpp
+using FailureAlternatives = query::CapabilityFailureList<
+    query::SourceRejection<diagnostics::DiagnosticFact>,
+    query::KeyRejection<binder::BinderKeyFailure>>;
+```
+
+- `RevisionLocalDefinitionSitesQuery`;
+- `RevisionLocalImplementationSitesQuery`;
+- `ModuleBodyProvenanceQuery`;
+- `NamedItemProvenanceQuery`; and
+- `OwnerBodyProvenanceQuery`.
+
+The universal precedence is evaluator runtime failure, descriptor key
+rejection, upstream source rejection, then candidate. Each provider returns
+the first eligible typed rejection in the exact read order below.
+
+`RevisionLocalDefinitionSitesQuery` reads selected source, parse, stable
+identity admission, named definition inventory, and independent site
+reconstruction. `RevisionLocalImplementationSitesQuery` uses the same order
+with the named implementation inventory. Their only local key rejection is
+`MissingSelectedModuleSource(Module(key.module), none)`. They forward stable
+admission source rejection unchanged. A semantic inventory failure after
+successful admission is `InvariantViolation`.
+
+`ModuleBodyProvenanceQuery` reads selected source, parse, stable identity
+admission, revision-local definition sites, revision-local implementation
+sites, and module-body syntax in that order. Its only legal key rejection is
+`MissingSelectedModuleSource(Module(key.module), none)`. It forwards the first
+source rejection from parse, admission, definition sites, or implementation
+sites. A semantic module-body-syntax failure after typed provenance succeeds
+is `InvariantViolation`.
+
+`NamedItemProvenanceQuery` uses the complete `ContextualDefinitionKey` and
+reads:
+
+1. `ActiveDefinitionAuthorityInput`;
+2. `ActiveDefinitionAuthorityReadyInput` only when authority is absent or
+   contradictory;
+3. `SelectedModuleSourceQuery`;
+4. `ParseSourceQuery`;
+5. `StableIdentityAdmissionQuery`;
+6. `NamedDefinitionInventoryQuery`;
+7. `RevisionLocalDefinitionSitesQuery`;
+8. `RevisionLocalImplementationSitesQuery`; and
+9. `NamedItemSyntaxQuery`.
+
+Its legal key rejections are
+`InactiveOwner(DefinitionHeader(key.definition), none)` and
+`MissingSelectedModuleSource(Module(key.definition.module), none)`. Missing
+readiness is `ProviderRejected`; contradictory authority is
+`InvariantViolation`. Child source and key rejections are forwarded unchanged.
+
+`OwnerBodyProvenanceQuery` uses the complete `ContextualBodyOwnerKey`. It first
+reads exactly one typed provenance branch: module owners demand
+`ModuleBodyProvenanceQuery`, and definition owners demand
+`NamedItemProvenanceQuery`. Only after that branch succeeds does it read the
+corresponding semantic syntax projection. A definition branch uses the
+complete derived `ContextualDefinitionKey`. It constructs `OwnerBodySyntax`
+directly and does not read `OwnerBodySyntaxQuery`; the independent verifier
+repeats the syntax read and direct reconstruction.
+
+Its legal key rejections are
+`DefinitionWithoutBody(Body(key), none)`,
+`InactiveOwner(DefinitionHeader(definitionKey), none)`, and
+`MissingSelectedModuleSource(Module(key.body.module), none)`. Definition
+admission applies the executable-root classification directly:
+`NoBody` produces `DefinitionWithoutBody`, `Malformed` is
+`InvariantViolation`, and `Executable` continues. The verifier repeats that
+classification independently. None of the five descriptors constructs
+`ForeignOwner`, `BoundaryMismatch`, `NonSelectedSource`, or
+`CrossBoundaryPath`.
+
+RFC 0027 `S1` and `S2` remain separate review partitions and land only as the
+single buildable `R29-12AB` schema-plus-facts transaction. `S3` then lands as
+`R29-12C`, and `S6` lands separately as `R29-12D`. Runtime work resumes at
+`R29-13A` only after both pass their focused native gates. Identity-site
+inventory, stable admission, all five failure contracts, complete-key caller
+migration, and focused tests join the single `R29-14` runtime landing.
 
 ## Implementation Plan
 
@@ -2445,27 +2624,32 @@ Each source task is bounded to approximately 400 changed source lines. A task
 that exceeds that bound must be split before execution. New files named below
 are contractual targets, not optional placement suggestions.
 
+`S1`, `S2`, `S3`, and `S6` below name file partitions, not independent task
+state. RFC 0029 `R29-12A`, `R29-12B`, `R29-12AB`, `R29-12C`, and `R29-12D`
+are their sole execution and status authority. No RFC 0027 tracker row may
+execute or land those partitions independently.
+
 | Task | Owner | Depends on | Exact files | Deliverable and focused verification |
 |---|---|---|---|---|
 | `G1` | `rfc` | none | `docs/rfc/0027-binder-query-and-identity-materialization-closure.md`; `docs/rfc/tracking/0027-review-and-implementation.md`; `docs/rfc/0010-intermediate-representation-pipeline.md`; `docs/rfc/0017-incremental-compiler-query-architecture.md`; `docs/rfc/0018-stable-query-identity-wire-closure.md`; `docs/rfc/0019-stable-body-owner-and-query-closure.md`; `docs/rfc/0020-active-definition-authority-projection.md`; `docs/rfc/0025-source-backed-core-library-architecture.md`; `docs/rfc/0026-module-graph-query-closure.md`; their seven same-number tracker files; `docs/rfc/README.md` | obtain nine exact-hash approvals and prepare all RFC/tracker overlays while RFC 0027 remains REVIEW |
 | `G2` | `task-router` | `G1` | `.agents/subagents/manifest.yaml`; `.agents/subagents/README.md`; `.agents/subagents/task-router.md`; `.agents/subagents/module-system.md`; `.agents/subagents/runtime-memory.md`; `.agents/subagents/verification.md`; `AGENTS.md` | assign ownership analysis to `runtime-memory`, assign `scripts/check-english-only.py` and `scripts/check-spec-alignment.py` to `verification`, and synchronize exact gate routing; RFC and English-only gates |
 | `G3` | `rfc` | `G1`; `G2` | exactly the RFC and tracker files listed in `G1`, including `docs/rfc/README.md`; no `G2` file | read and validate the completed `G2` tree without editing it, record one transaction identifier and proposal hash in the `G1` files, then change acceptance metadata atomically; `python3 scripts/check-rfc.py` |
 | `G4` | `verification` | `G3` | `products/zomlang/tests/coverage/implementation-series-base.txt` | from a clean committed accepted synchronization tree, record that exact commit SHA and reject a moving or non-ancestor base |
-| `S1` | `binder-checker` | `G3` | `products/zomlang/compiler/binder/stable-binding-schema.def` | closed field/tag/domain inventory and generated mutation inventory |
-| `S2` | `binder-checker` | `S1` | `products/zomlang/compiler/binder/stable-binding-facts.h`; `products/zomlang/compiler/binder/stable-binding-facts.cc` | stable keys, headers, facts, and result algebra |
-| `S3` | `binder-checker` | `S2` | `products/zomlang/compiler/binder/stable-binding-codec.h`; `products/zomlang/compiler/binder/stable-binding-codec.cc` | bounded exact-consumption codecs and fixed wire oracles |
+| `S1` | `binder-checker` with `verification` review | `G4` | `products/zomlang/compiler/binder/stable-binding-schema.def` | prepare and review the closed field, tag, domain, mutation, and closure-fact inventory without an independent landing |
+| `S2` | `binder-checker` with `module-system` review | `S1` review | `products/zomlang/compiler/binder/stable-binding-facts.h`; `products/zomlang/compiler/binder/stable-binding-facts.cc` | prepare and review complete stable and contextual keys, headers, facts, `BinderQueryOwner`, `BinderKeyFailure`, and result algebra without an independent landing |
+| `S3` | `binder-checker` with `verification` review | RFC 0029 `R29-12AB` | `products/zomlang/compiler/binder/stable-binding-codec.h`; `products/zomlang/compiler/binder/stable-binding-codec.cc` | land one bounded exact-consumption codec, fixed wire-oracle, and mutation-test transaction |
 | `S4` | `binder-checker` | `S2` | `products/zomlang/compiler/binder/canonical-definition-header-producer.h`; `products/zomlang/compiler/binder/canonical-definition-header-producer.cc` | body disposition and staging-safe definition headers |
 | `S4A` | `binder-checker` | `S2` | `products/zomlang/compiler/binder/canonical-impl-header-producer.h`; `products/zomlang/compiler/binder/canonical-impl-header-producer.cc` | staging-safe implementation-occurrence headers |
 | `S5` | `binder-checker` | `S4`; `S4A` | `products/zomlang/compiler/binder/canonical-header-verifier.h`; `products/zomlang/compiler/binder/canonical-header-verifier.cc` | independent header verification and equal-occurrence coverage |
-| `S6` | `error-system` | `S1` | `products/zomlang/compiler/diagnostics/diagnostics-binder.def`; `products/zomlang/compiler/diagnostics/diagnostic-fact.h`; `products/zomlang/compiler/diagnostics/diagnostic-fact.cc`; `products/zomlang/compiler/checker/checker-source-diagnostics.def` | RFC 0017 Binder enum extensions, typed payloads, `ZOM3028`, and failed-lookup bijection |
+| `S6` | `error-system` with `binder-checker` and `verification` review | RFC 0029 `R29-12AB` | `products/zomlang/compiler/diagnostics/diagnostics-binder.def`; `products/zomlang/compiler/diagnostics/diagnostic-fact.h`; `products/zomlang/compiler/diagnostics/diagnostic-fact.cc`; `products/zomlang/compiler/checker/checker-source-diagnostics.def` | land one canonical Binder diagnostic-fact transaction with stable-identity emitters, typed payloads, `ZOM3028`, and failed-lookup bijection |
 | `Q3` | `module-system` | `G3` | `products/zomlang/compiler/driver/package/canonical-package-compilation-request.h`; `products/zomlang/compiler/driver/package/canonical-package-compilation-request.cc` | handle-free canonical package request records, exact codecs, verified-request projection, and independent projection verifier |
-| `I1` | `module-system` with `runtime-memory` review | RFC 0028 `R28-14` | `products/zomlang/compiler/identity/canonical-identity-interner-set.h`; `products/zomlang/compiler/identity/canonical-identity-interner-set.cc`; `products/zomlang/compiler/query/semantic-context-capability-arena.h`; `products/zomlang/compiler/query/semantic-context-capability-arena.cc` | arena-owned eight-domain typed interner with collision, concurrency, reverse-lookup, and surviving-lease tests |
-| `I2` | `module-system` | `I1`; RFC 0028 `R28-14`; `S5` | `products/zomlang/compiler/driver/active-identity-membership-query.h`; `products/zomlang/compiler/driver/active-identity-membership-query.cc`; `products/zomlang/compiler/driver/active-definition-authority-query.h`; `products/zomlang/compiler/driver/active-definition-authority-query.cc` | all eight complete-record memberships and conditional readiness |
-| `B1` | `binder-checker` | `S3`; `S5` | `products/zomlang/compiler/binder/module-skeleton-query.h`; `products/zomlang/compiler/binder/module-skeleton-query.cc` | `BindModuleSkeleton`, projections, and independent verifier |
+| `I1` | `module-system` with `runtime-memory` review | RFC 0029 `R29-14` | `products/zomlang/compiler/identity/canonical-identity-interner-set.h`; `products/zomlang/compiler/identity/canonical-identity-interner-set.cc`; `products/zomlang/compiler/query/semantic-context-capability-arena.h`; `products/zomlang/compiler/query/semantic-context-capability-arena.cc` | arena-owned eight-domain typed interner with collision, concurrency, reverse-lookup, and surviving-lease tests |
+| `I2` | `module-system` | `I1`; RFC 0029 `R29-14`; `S5` | `products/zomlang/compiler/driver/active-identity-membership-query.h`; `products/zomlang/compiler/driver/active-identity-membership-query.cc`; `products/zomlang/compiler/driver/active-definition-authority-query.h`; `products/zomlang/compiler/driver/active-definition-authority-query.cc` | all eight complete-record memberships and conditional readiness |
+| `B1` | `binder-checker` | RFC 0029 `R29-12C`; RFC 0029 `R29-12D`; `S5` | `products/zomlang/compiler/binder/module-skeleton-query.h`; `products/zomlang/compiler/binder/module-skeleton-query.cc` | `BindModuleSkeleton`, projections, and independent verifier |
 | `B2` | `binder-checker` | `B1` | `products/zomlang/compiler/binder/owner-body-query.h`; `products/zomlang/compiler/binder/owner-body-query.cc` | contextual `BindOwnerBody` and independent traversal/verifier |
 | `B3` | `binder-checker` | `B2` | `products/zomlang/compiler/binder/owner-body-syntax.h`; `products/zomlang/compiler/binder/owner-body-syntax.cc` | complete node-scope, capture, control, and provenance detachment |
 | `B4` | `binder-checker` | `B2`; `B3` | `products/zomlang/compiler/binder/module-binding-allocation-plan.h`; `products/zomlang/compiler/binder/module-binding-allocation-plan.cc` | deterministic five-domain allocation plan |
-| `M1` | `module-system` | `I2`; RFC 0028 `R28-16` | `products/zomlang/compiler/driver/materialized-module-graph-query.h`; `products/zomlang/compiler/driver/materialized-module-graph-query.cc` | typed graph witness and final-sealed materializer using the retained dependency-provenance capability |
+| `M1` | `module-system` | `I2`; RFC 0029 `R29-14`; RFC 0028 `R28-16` | `products/zomlang/compiler/driver/materialized-module-graph-query.h`; `products/zomlang/compiler/driver/materialized-module-graph-query.cc` | typed graph witness and final-sealed materializer using the retained dependency-provenance capability |
 | `M2` | `binder-checker` | `B4`; `I2`; `M1` | `products/zomlang/compiler/binder/materialized-module-skeleton.h`; `products/zomlang/compiler/binder/materialized-module-skeleton.cc` | typed skeleton expansion and provenance |
 | `M3` | `binder-checker` | `B4`; `I2`; `M2` | `products/zomlang/compiler/binder/materialized-owner-body.h`; `products/zomlang/compiler/binder/materialized-owner-body.cc` | typed body expansion without diagnostic references |
 | `M4` | `binder-checker` | `M2`; `M3` | `products/zomlang/compiler/binder/immutable-definition-inventory.h`; `products/zomlang/compiler/binder/immutable-definition-inventory.cc` | complete owned Checker identity and node lookup index |
@@ -2477,7 +2661,7 @@ are contractual targets, not optional placement suggestions.
 | `L2` | `ir-backend` | `L1` | `products/zomlang/compiler/hir/hir-module.h`; `products/zomlang/compiler/hir/hir-module.cc` | HIR retained lease and lineage verifier |
 | `L3` | `ir-backend` | `L2` | `products/zomlang/compiler/mir/built-mir.h`; `products/zomlang/compiler/mir/built-mir.cc` | Built MIR retained lease and lineage verifier |
 | `L4` | `runtime-memory` | `L3` | `products/zomlang/compiler/ownership/ownership-event-overlay.h`; `products/zomlang/compiler/ownership/ownership-event-overlay.cc` | ownership-overlay retained lease, verifier, and destruction order |
-| `T1` | `module-system` | `I2`; `M1`; RFC 0028 `R28-14`; RFC 0028 `R28-16` | `products/zomlang/compiler/driver/module-graph-query-input.h`; `products/zomlang/compiler/driver/module-graph-query-input.cc`; `products/zomlang/compiler/driver/active-definition-authority-session.h`; `products/zomlang/compiler/driver/active-definition-authority-session.cc` | supply the session-owned live verified package request to the RFC 0028 complete-context verifier, execute the three closed input transactions, and publish staging, final, and sealed snapshots; no payload or input schema is declared here |
+| `T1` | `module-system` | `I2`; `M1`; RFC 0029 `R29-14`; RFC 0028 `R28-16` | `products/zomlang/compiler/driver/module-graph-query-input.h`; `products/zomlang/compiler/driver/module-graph-query-input.cc`; `products/zomlang/compiler/driver/active-definition-authority-session.h`; `products/zomlang/compiler/driver/active-definition-authority-session.cc` | supply the session-owned live verified package request to the complete-context verifier, execute the three closed input transactions, and publish staging, final, and sealed snapshots; no payload or input schema is declared here |
 | `T2A` | `module-system` | `M5`; `T1` | `products/zomlang/compiler/driver/compiler-session.h`; `products/zomlang/compiler/driver/compiler-session.cc` | install transaction state machine and named snapshots |
 | `T2B` | `module-system` | `C2`; `L4`; `T2A` | `products/zomlang/compiler/driver/compiler-session.h`; `products/zomlang/compiler/driver/compiler-session.cc` | dependency-first final capability root and irreversible seal |
 | `T2C` | `module-system` | `T2B` | `products/zomlang/compiler/driver/compiler-session.h`; `products/zomlang/compiler/driver/compiler-session.cc` | surviving-lease and session teardown order |
@@ -2506,6 +2690,12 @@ are contractual targets, not optional placement suggestions.
 Every implementation task from `S1` through `W4` additionally depends on
 `G4`, even where its local data dependency is shown more narrowly. No source
 edit starts before the immutable implementation-series base exists.
+
+`S1` and `S2` are reviewed separately and cannot land separately. RFC 0029
+`R29-12AB` is their only landing transaction. `S3` and `S6` remain independent
+logical and commit boundaries after that atomic transaction. Every
+query-runtime source task depends on both `R29-12C` and `R29-12D`; `R29-13A`
+is the first authorized runtime task.
 
 ## Test Plan
 
@@ -2640,3 +2830,4 @@ None
 | 2026-07-27 | ACCEPTED | All nine required owners approved proposal hash `e2f4ba5eb777d3d70b8eb3ad75b18f5169afc61a83d989ccc61fc9d5d022f435`. Acceptance transaction `rfc0027-accept-20260727-e2f4ba5e` synchronizes the seven dependent RFCs, their trackers, and routing governance atomically. Implementation remains blocked on the immutable implementation-series base. |
 | 2026-07-27 | ACCEPTED | Immutable implementation-series base `109947943519ec2d380a3e8d71813b40bc68bde5` was recorded from a clean committed tree and passed the ancestry check. Dependency-ordered implementation is authorized. |
 | 2026-07-27 | ACCEPTED | Acceptance transaction `rfc0028-accept-20260727-944b68ff` synchronized the final-seal admission, descriptor-specific capability failures, exact membership ordering, dependency provenance, closure-projection deletion, and corrected query-runtime dependency graph to RFC 0028 proposal SHA-256 `944b68ffc0aff5576d079a243ff092d7d19fba5ffed65551dda8e68adf230db4`; RFC 0027 status remains unchanged. |
+| 2026-07-27 | ACCEPTED | Acceptance transaction `rfc0029-accept-20260727-8d393a0c` synchronized complete module-qualified Binder keys, identity-site provenance, stable-identity admission, the five exact typed capability failure contracts, and the atomic schema-plus-facts dependency order to RFC 0029 proposal SHA-256 `8d393a0c6c00a7fad9ef086d3d25f5ed44300041afa9e1e1a4af5d68830fd3e7`; RFC 0027 status remains unchanged and implementation remains incomplete. |

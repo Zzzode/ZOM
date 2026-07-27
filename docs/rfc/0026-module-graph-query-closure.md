@@ -533,27 +533,29 @@ Architecture gates reject:
 - a session graph mirror or detached capability copy; and
 - a downstream graph or bound-module reference without an owning lease.
 
-### RFC 0028 Query Runtime Synchronization
+### RFC 0029 Query And Binder Dependency Synchronization
 
-RFC 0028 is accepted at exact proposal SHA-256
-`944b68ffc0aff5576d079a243ff092d7d19fba5ffed65551dda8e68adf230db4`.
-Transaction `rfc0028-accept-20260727-944b68ff` binds this RFC and its tracker
+RFC 0029 is accepted at exact proposal SHA-256
+`8d393a0c6c00a7fad9ef086d3d25f5ed44300041afa9e1e1a4af5d68830fd3e7`.
+Transaction `rfc0029-accept-20260727-8d393a0c` binds this RFC and its tracker
 to that proposal without changing RFC 0026's `ACCEPTED` status or completing
 product work.
 
-The synchronized graph publication path uses explicit transaction and final
-seal results, one sealed root demand, descriptor-dependent typed capability
-failures, and exact three-parameter materializer permissions. Every identity
-expansion first demands and records the exact active-membership descriptor and
-proves complete authority equality. `ModuleDependencyProvenanceMap` is a
-retained final-sealed runtime capability whose memo owns the exact final parse
-lineage used by `MaterializeModuleGraph`; no node, span, parse selection, seal,
-or root authority comes from ambient session state.
+The graph publication path retains RFC 0028's explicit transactions, final
+seal, exact active-membership permissions, and
+`ModuleDependencyProvenanceMap` ownership of final parse lineage. Binder
+provenance feeding graph and session consumers now uses complete
+module-qualified contextual keys, `IdentitySyntaxSiteInventoryQuery`, and
+`StableIdentityAdmissionQuery`. Each of the five Binder provenance
+capabilities exposes only typed source and key rejections and follows the
+exact RFC 0029 read order and failure precedence.
 
-RFC 0027 tasks `Q2` and `S1` remain pending. RFC 0028 tasks `R28-13A` through
-`R28-16` replace and refine those implementation boundaries after the
-acceptance transaction. All other RFC 0027 work resumes only through its
-recorded dependency edges.
+The stable Binder schema and facts partitions land atomically through
+`R29-12AB`. Codecs and diagnostic facts then land separately through
+`R29-12C` and `R29-12D`; runtime work cannot start before both pass focused
+native gates. The corrected runtime source transaction is `R29-14`.
+`ModuleDependencyProvenanceMap` completion remains ordered through RFC 0028
+`R28-16`, and full synchronized verification is `R29-15`.
 
 ## Acceptance Criteria
 
@@ -569,7 +571,8 @@ Design acceptance requires:
 
 Implementation completion additionally requires the sanitizer, unit, lit,
 architecture, coverage, English-only, internal-versioning, format, diff, and
-Release benchmark gates in the synchronized RFC 0027 and RFC 0028 plans.
+Release benchmark gates in the synchronized RFC 0027, RFC 0028, and RFC 0029
+plans.
 
 Acceptance synchronization does not claim remaining implementation or
 verification tasks are complete. RFC 0026 remains `ACCEPTED`.
@@ -578,9 +581,9 @@ verification tasks are complete. RFC 0026 remains `ACCEPTED`.
 
 Completed RFC 0026 stable graph tasks retain their recorded evidence. The
 typed witness, final-snapshot materializer, active membership, session cutover,
-downstream lease migration, removal work, and final gates follow the RFC 0028
-`R28-13A` through `R28-16` replacement boundary before the remaining RFC 0027
-dependency graph resumes.
+downstream lease migration, removal work, and final gates follow RFC 0029
+`R29-12AB`, the separate `R29-12C` and `R29-12D` transactions, `R29-14`, RFC
+0028 `R28-16`, and `R29-15` before later RFC 0027 dependency edges resume.
 
 ## Test Plan
 
@@ -613,4 +616,5 @@ None
 | 2026-07-26 | REVIEW | Required-owner findings were incorporated through exact-snapshot review candidates. |
 | 2026-07-26 | ACCEPTED | All four required owners approved proposal SHA-256 `39df5d3f11dbdcb2e95056b1cd14fd5220a19688f31a3e3180230ad465a3f84d`; accepted RFC synchronization completed. |
 | 2026-07-27 | ACCEPTED | Acceptance transaction `rfc0027-accept-20260727-e2f4ba5e` synchronized the typed witness, complete-root final-snapshot `MaterializeModuleGraph`, active-membership expansion, retained capability lifetime, and publication contracts to RFC 0027 proposal SHA-256 `e2f4ba5eb777d3d70b8eb3ad75b18f5169afc61a83d989ccc61fc9d5d022f435`; implementation status remains unchanged. |
-| 2026-07-27 | ACCEPTED | Transaction `rfc0028-accept-20260727-944b68ff` synchronized explicit transaction and seal results, `SealedQuerySnapshot` admission, typed capability failures, exact membership permissions, retained final-parse provenance lineage, and the RFC 0027 `Q2` and `S1` pending boundary to RFC 0028 proposal SHA-256 `944b68ffc0aff5576d079a243ff092d7d19fba5ffed65551dda8e68adf230db4`; implementation remains pending. |
+| 2026-07-27 | ACCEPTED | Transaction `rfc0028-accept-20260727-944b68ff` synchronized explicit transaction and seal results, `SealedQuerySnapshot` admission, typed capability failures, exact membership permissions, retained final-parse provenance lineage, and runtime source ownership to RFC 0028 proposal SHA-256 `944b68ffc0aff5576d079a243ff092d7d19fba5ffed65551dda8e68adf230db4`; implementation remains pending. |
+| 2026-07-27 | ACCEPTED | Transaction `rfc0029-accept-20260727-8d393a0c` synchronized complete Binder contextual keys, identity-site provenance, stable-identity admission, exact typed provenance failures, and the schema-before-runtime dependency order to RFC 0029 proposal SHA-256 `8d393a0c6c00a7fad9ef086d3d25f5ed44300041afa9e1e1a4af5d68830fd3e7`; implementation remains pending. |

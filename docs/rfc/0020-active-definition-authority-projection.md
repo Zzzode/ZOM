@@ -443,6 +443,60 @@ authority record. The sealed admission propagates from
 `SealedQuerySnapshot<ContextRoots, FinalWitness>` through every nested demand
 and is validated before membership or interner access.
 
+### Named-Item And Owner-Body Failure Closure
+
+Acceptance transaction `rfc0029-accept-20260727-8d393a0c` binds this contract
+to exact RFC 0029 proposal SHA-256
+`8d393a0c6c00a7fad9ef086d3d25f5ed44300041afa9e1e1a4af5d68830fd3e7`.
+
+`NamedItemProvenanceQuery` uses the complete `ContextualDefinitionKey` and
+performs these reads in exact order:
+
+1. `ActiveDefinitionAuthorityInput`;
+2. `ActiveDefinitionAuthorityReadyInput` only when authority is absent or
+   contradictory;
+3. `SelectedModuleSourceQuery`;
+4. `ParseSourceQuery`;
+5. `StableIdentityAdmissionQuery`;
+6. `NamedDefinitionInventoryQuery`;
+7. `RevisionLocalDefinitionSitesQuery`;
+8. `RevisionLocalImplementationSitesQuery`; and
+9. `NamedItemSyntaxQuery`.
+
+Its complete key-rejection set is
+`InactiveOwner(DefinitionHeader(key.definition), none)` and
+`MissingSelectedModuleSource(Module(key.definition.module), none)`. Absent
+authority plus complete readiness proves `InactiveOwner`. Missing readiness is
+`ProviderRejected`; contradictory authority is `InvariantViolation`. The
+descriptor forwards child source and key rejections without changing owner,
+path, order, or payload. Missing provider roots, projection failure,
+provenance disagreement, syntax disagreement, authority disagreement, and
+codec disagreement are runtime failures.
+
+`OwnerBodyProvenanceQuery` first reads exactly one typed provenance branch. A
+definition owner reads `NamedItemProvenanceQuery`; a module owner reads
+`ModuleBodyProvenanceQuery`. Only after that branch succeeds does it read the
+matching semantic syntax projection. The definition branch derives the exact
+`ContextualDefinitionKey`, applies executable-root admission to the successful
+`NamedItemSyntaxQuery` value, and constructs
+`DefinitionWithoutBody(Body(key), none)` only for `NoBody`. The independent
+key-rejection verifier repeats the typed child and syntax reads and separately
+proves `NoBody`. The descriptor never reads or decodes
+`OwnerBodySyntaxQuery`.
+
+`StableIdentityAdmissionQuery` is required before the semantic named inventory
+and site projections. Its independently published
+`IdentitySyntaxSiteInventoryQuery` remains available when stable admission
+returns a source rejection, so every cited identity site retains exact
+same-snapshot provenance.
+
+Implementation authority is RFC 0029 `R29-12A` through `R29-12D` for the
+schema, codecs, and diagnostic prerequisites, followed by `R29-13A` through
+`R29-14` for query types, exact descriptor contracts, native gates, and the
+atomic runtime source transaction. RFC 0020 remains `IMPLEMENTING`; completed
+authority-projection evidence does not establish these synchronized runtime
+contracts.
+
 ## Repository Impact
 
 | Area | Paths | Owner |
@@ -680,3 +734,4 @@ None
 | 2026-07-27 | IMPLEMENTING | Required authority coverage to come only from complete derived active membership and byte-equal stable graph and SCC results in one authority-staging snapshot. |
 | 2026-07-27 | IMPLEMENTING | Synchronized the RFC 0027 complete-root eight-domain membership, four authority-sequence, conditional readiness, contextual transaction, and final-seal contracts through transaction `rfc0027-accept-20260727-e2f4ba5e` at proposal SHA-256 `e2f4ba5eb777d3d70b8eb3ad75b18f5169afc61a83d989ccc61fc9d5d022f435`; implementation status is unchanged. |
 | 2026-07-27 | IMPLEMENTING | Synchronized the RFC 0028 typed active-membership result, conditional readiness, complete authority equality, inherited final admission, permission matrix, and admission-before-membership-before-interner contracts through transaction `rfc0028-accept-20260727-944b68ff` at proposal SHA-256 `944b68ffc0aff5576d079a243ff092d7d19fba5ffed65551dda8e68adf230db4`; implementation status is unchanged. |
+| 2026-07-27 | IMPLEMENTING | Acceptance transaction `rfc0029-accept-20260727-8d393a0c` synchronized stable-identity admission before named inventory and provenance, the exact conditional `NamedItemProvenanceQuery` read order, its closed key-failure subset, direct typed-child owner-body reconstruction, and the corrected schema-before-runtime dependency graph to proposal SHA-256 `8d393a0c6c00a7fad9ef086d3d25f5ed44300041afa9e1e1a4af5d68830fd3e7`; implementation status is unchanged. |

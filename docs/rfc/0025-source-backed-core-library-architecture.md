@@ -3342,39 +3342,39 @@ after its inventory is complete. These deletions and the new production paths
 remain pending under the RFC 0027 implementation DAG; this acceptance
 synchronization is not implementation evidence.
 
-### RFC 0028 Query Runtime Synchronization
+### RFC 0029 Query And Binder Dependency Synchronization
 
-RFC 0028 is accepted at exact proposal SHA-256
-`944b68ffc0aff5576d079a243ff092d7d19fba5ffed65551dda8e68adf230db4`.
-Transaction `rfc0028-accept-20260727-944b68ff` binds this RFC and its tracker
+RFC 0029 is accepted at exact proposal SHA-256
+`8d393a0c6c00a7fad9ef086d3d25f5ed44300041afa9e1e1a4af5d68830fd3e7`.
+Transaction `rfc0029-accept-20260727-8d393a0c` binds this RFC and its tracker
 to that proposal without changing RFC 0025's `ACCEPTED` status or completing
 product work.
 
-The synchronized runtime contract uses the explicit transaction and seal
-results described above, one
-`SealedQuerySnapshot<CompilationRootSetQueryKey, Sha256Digest>` for every
-final-sealed root demand, and immutable admission propagation through all
-nested capability demands. Providers and verifiers receive
-`CapabilityQueryContext<Descriptor>`. The exact
-`ActiveMaterializerPermission<Descriptor, GlobalIdentityKey,
-MembershipDescriptor>` specialization, tracked membership demand, and complete
-authority equality are mandatory before any interner access. Typed source and
-key rejections use each descriptor's closed `FailureAlternatives` list and
-canonical capability-failure envelope; no opaque failure payload or generic
-untyped lease remains.
+Every core-library session and materializer caller uses the complete
+module-qualified `ContextualDefinitionKey` and `ContextualBodyOwnerKey`.
+Revision-local identity provenance is published by
+`IdentitySyntaxSiteInventoryQuery`, and
+`StableIdentityAdmissionQuery` must succeed before the semantic definition or
+implementation inventories can participate in provenance or materialization.
+The five Binder provenance capabilities expose exactly
+`SourceRejection<DiagnosticFact>` and
+`KeyRejection<BinderKeyFailure>` in their closed failure lists. Their
+providers and independent verifiers preserve RFC 0029's exact read order and
+failure precedence.
 
-`BoundOwnerBody` is the sole stable closure-fact authority.
-`MaterializeOwnerBody` expands `StableClosureFact`,
-`StableClosureFreeVariableFact`, and
-`StableExplicitClosureCaptureFact` directly from `BindOwnerBody`; there is no
-second descriptor, schema row, provider, verifier, codec, memo, or consumer for
-that projection.
+The stable Binder schema and its first facts consumer remain separate review
+partitions but land atomically through `R29-12AB`. The codec transaction
+`R29-12C` and diagnostic transaction `R29-12D` land separately after that
+atomic foundation. Query-runtime work starts only after both transactions pass
+their focused native gates. The corrected runtime, session, and materializer
+source transaction is `R29-14`; complete verification is `R29-15`.
 
-RFC 0027 tasks `Q2` and `S1` remain pending. After the RFC 0028 acceptance
-transaction, RFC 0028 tasks `R28-13A` through `R28-16` replace and refine those
-implementation boundaries. All other RFC 0027 work resumes only through its
-recorded dependency edges. This synchronization is design authority, not
-implementation evidence.
+`BoundOwnerBody` remains the sole stable closure-fact authority.
+`MaterializeOwnerBody` expands its closure, free-variable, and explicit-capture
+facts directly from `BindOwnerBody`. Core signature publication, interface
+publication, installed-source loading, and downstream retained leases remain
+pending on the synchronized dependency graph. This synchronization is design
+authority, not implementation evidence.
 
 ### Toolchain Layout
 
@@ -4106,4 +4106,5 @@ None
 | 2026-07-25 | ACCEPTED | All twelve required owners approved proposal SHA-256 `4f4085c176a9f391115e12170da93af899e350fa92440d5a51577692faf8bad0` with zero critical, major, or minor findings; the accepted-RFC replacement transaction synchronized RFCs 0004, 0005, 0007, 0008, 0010, 0011, 0012, 0013, 0015, 0017, 0018, 0019, 0020, and 0024 plus their trackers, retained RFC 0006 unchanged, and authorized only the dependency-ordered implementation tracker. |
 | 2026-07-26 | ACCEPTED | Synchronized the accepted RFC 0026 structural-input transaction, derived topology query family, stable graph and SCC records, failure closure, complete-root authority, three-snapshot order, and final Binder bridge from exact proposal SHA-256 `39df5d3f11dbdcb2e95056b1cd14fd5220a19688f31a3e3180230ad465a3f84d`; RFC 0025 implementation remains dependency-ordered and incomplete. |
 | 2026-07-27 | ACCEPTED | Synchronized contextual Binder keys and capabilities, arena-owned typed interners, the three input transactions, final sealing, diagnostic ownership, downstream retained leases, and deletion scope with RFC 0027 proposal `e2f4ba5eb777d3d70b8eb3ad75b18f5169afc61a83d989ccc61fc9d5d022f435` in transaction `rfc0027-accept-20260727-e2f4ba5e`; implementation remains dependency-ordered and incomplete. |
-| 2026-07-27 | ACCEPTED | Transaction `rfc0028-accept-20260727-944b68ff` synchronized explicit transaction and seal results, sealed-root admission propagation, typed capability failures and exact membership permissions, sole `BoundOwnerBody` closure authority, and the RFC 0027 `Q2` and `S1` pending boundary to RFC 0028 proposal SHA-256 `944b68ffc0aff5576d079a243ff092d7d19fba5ffed65551dda8e68adf230db4`; implementation remains dependency-ordered and incomplete. |
+| 2026-07-27 | ACCEPTED | Transaction `rfc0028-accept-20260727-944b68ff` synchronized explicit transaction and seal results, sealed-root admission propagation, typed capability failures and exact membership permissions, sole `BoundOwnerBody` closure authority, and runtime source ownership to RFC 0028 proposal SHA-256 `944b68ffc0aff5576d079a243ff092d7d19fba5ffed65551dda8e68adf230db4`; implementation remains dependency-ordered and incomplete. |
+| 2026-07-27 | ACCEPTED | Transaction `rfc0029-accept-20260727-8d393a0c` synchronized complete module-qualified Binder keys, identity-site provenance, stable-identity admission, the five exact capability failure contracts, and the schema-before-runtime dependency order to RFC 0029 proposal SHA-256 `8d393a0c6c00a7fad9ef086d3d25f5ed44300041afa9e1e1a4af5d68830fd3e7`; implementation remains dependency-ordered and incomplete. |
