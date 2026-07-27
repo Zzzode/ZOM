@@ -72,6 +72,13 @@ INTERNAL_STRING_GENERATION = re.compile(
     r"(?i)\b(?:tar-zstd|[a-z0-9-]*(?:schema|format|protocol|wire|"
     r"oracles?|scenarios))[-_.]v[0-9]+\b"
 )
+ENCODED_INTERNAL_GENERATION = re.compile(
+    r"""(?ix)
+    ['"][-_.]['"]\s*,\s*
+    ['"]v['"]\s*,\s*
+    ['"][0-9]+['"]
+    """
+)
 VERSIONED_FILE_COMPONENT = re.compile(r"(?i)(?:^|[-_.])v[0-9]+(?=[-_.]|$)")
 
 EXTERNAL_IDENTIFIER_PREFIXES = (
@@ -202,6 +209,7 @@ def scan_text(path: Path, text: str) -> list[Finding]:
         ("zom-spec-generation", ZOM_SPEC_GENERATION),
         ("zom-owned-string-generation", ZOM_OWNED_STRING_GENERATION),
         ("internal-string-generation", INTERNAL_STRING_GENERATION),
+        ("encoded-internal-generation", ENCODED_INTERNAL_GENERATION),
         ("internal-contract-generation", INTERNAL_VERSIONED_TOKEN),
     )
     for line_number, line in enumerate(text.splitlines(), start=1):
@@ -300,6 +308,10 @@ def run_self_test() -> int:
             "zom-owned-string-generation",
         ),
         "archive.txt": ("tar-zstd-v1\n", "internal-string-generation"),
+        "encoded-domain.cc": (
+            "const char domain[] = {'z', 'o', 'm', '.', 'v', '1'};\n",
+            "encoded-internal-generation",
+        ),
         "contract.md": (
             "module-interface v1 replaces the v0 decoder.\n",
             "internal-contract-generation",
