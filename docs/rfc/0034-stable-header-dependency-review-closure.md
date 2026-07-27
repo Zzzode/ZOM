@@ -160,7 +160,9 @@ R30-12G
   -> R30-12J
 ```
 
-No later review may use an unapproved predecessor.
+No later review may use an unapproved predecessor. RFC 0035 inserts its
+identity-owned implementation-record decoder after `R30-12H-C` and before
+`R30-12I-C`; the remaining RFC 0034 order is unchanged.
 
 ### Sequence Construction
 
@@ -306,3 +308,4 @@ None
 | 2026-07-28 | DRAFT | Initial proposal. |
 | 2026-07-28 | REVIEW | Ready for exact-hash owner review. |
 | 2026-07-28 | ACCEPTED | All required owners approved proposal SHA-256 `098023480fb5d84ef5c29b8e10151c687b896ac7d586f9217ee8370c6e966210`. Acceptance transaction `rfc0034-accept-20260728-09802348` supersedes RFC 0033, synchronizes RFC 0030 and all three trackers plus the RFC index, and changes no source, schema, immutable base, or atomic landing boundary. |
+| 2026-07-28 | ACCEPTED | Transaction `rfc0035-accept-20260728-e79c292e` inserts the missing identity-owned implementation-record decoder between `R30-12H-C` and `R30-12I-C` without changing RFC 0034's fact and codec partitions. |

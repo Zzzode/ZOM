@@ -404,8 +404,23 @@ products/zomlang/compiler/binder/stable-binding-facts.cc
 products/zomlang/compiler/binder/stable-binding-codec.h
 products/zomlang/compiler/binder/stable-binding-codec.cc
 products/zomlang/compiler/binder/CMakeLists.txt
+products/zomlang/compiler/identity/canonical-header-name.h
+products/zomlang/compiler/identity/canonical-header-name.cc
+products/zomlang/compiler/identity/canonical-header-type.h
+products/zomlang/compiler/identity/canonical-header-type-decode.cc
+products/zomlang/compiler/identity/canonical-overload-header.h
+products/zomlang/compiler/identity/canonical-overload-header.cc
+products/zomlang/compiler/identity/canonical-impl-header.h
+products/zomlang/compiler/identity/canonical-impl-header.cc
+products/zomlang/compiler/identity/definition-key.h
+products/zomlang/compiler/identity/definition-key.cc
+products/zomlang/compiler/identity/CMakeLists.txt
 products/zomlang/tests/unittests/compiler/binder/stable-binding-facts-test.cc
 products/zomlang/tests/unittests/compiler/binder/CMakeLists.txt
+products/zomlang/tests/unittests/compiler/identity/canonical-header-name-test.cc
+products/zomlang/tests/unittests/compiler/identity/canonical-header-type-test.cc
+products/zomlang/tests/unittests/compiler/identity/canonical-impl-header-test.cc
+products/zomlang/tests/unittests/compiler/identity/definition-key-test.cc
 scripts/check-stable-binding-schema.py
 scripts/check-binder-architecture.py
 products/zomlang/compiler/driver/active-definition-authority-query.h
@@ -792,3 +807,4 @@ None
 | 2026-07-28 | ACCEPTED | Transaction `rfc0032-accept-20260728-1d519846` synchronized the complete authority-session routing ledger and exact landing set to RFC 0032 proposal SHA-256 `1d519846566992156b16986fc5c75602af403254fce70f48cfb65af9983a6d72` and tracker SHA-256 `b685d88db1e5c2eef13e97ede1e5c085959d2446e39fd07fe5baac0bf7b2ecbf`; RFC 0030 remains accepted and `R30-12C` may resume without changing implementation status. |
 | 2026-07-28 | ACCEPTED | Transaction `rfc0033-accept-20260728-3fc78517` replaced the rejected stable-header review patch with three dependency-ordered patches that each count all exact files and retain the 400-line cap; RFC 0030 remains accepted and source review resumes at `R30-12H-A`. |
 | 2026-07-28 | ACCEPTED | Transaction `rfc0034-accept-20260728-09802348` superseded RFC 0033, split header facts and codecs into independently bounded reviews, and moved parameter codecs before populated aggregate tests; RFC 0030 remains accepted and source review resumes at `R30-12H-A1`. |
+| 2026-07-28 | ACCEPTED | Transaction `rfc0035-accept-20260728-e79c292e` inserts the identity-owned implementation-record decoder required by `R30-12I-C`, synchronizes exact RFC 0035 proposal SHA-256 `e79c292e8d3aefcce76d32923e566bc625e49b9b67d8bd1968fbd4b9620ee6c8` and tracker SHA-256 `d50ec5efe5718d6eaa657463a348ac0956dd954174345d7b90c00d99d0f6ec9f`, expands the atomic landing set, and preserves `R30-15` as the only source commit and push. |

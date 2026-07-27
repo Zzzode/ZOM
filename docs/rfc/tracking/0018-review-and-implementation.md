@@ -520,6 +520,18 @@ RFC 0018 remains `IMPLEMENTING`. Existing stable-identity evidence does not
 complete the synchronized site inventory, admission, or query-runtime
 contracts.
 
+### 2026-07-28 RFC 0035 Acceptance Synchronization
+
+Acceptance transaction `rfc0035-accept-20260728-e79c292e` corrects the
+canonical-record evidence boundary and synchronizes the implementation
+identity decoder prerequisite to exact RFC 0035 proposal SHA-256
+`e79c292e8d3aefcce76d32923e566bc625e49b9b67d8bd1968fbd4b9620ee6c8`.
+
+`DefinitionIdentityRecord` retains its existing strict decoder.
+`ImplIdentityRecord` decoder implementation and native evidence now belong to
+RFC 0035 `R35-11` through `R35-15` and land only through RFC 0030 `R30-15`.
+RFC 0018 remains `IMPLEMENTING`.
+
 ## Implementation Tracker
 
 | Slice | State | Required evidence |
@@ -531,7 +543,7 @@ contracts.
 | Module resolution record keys | Complete | Policy and request keys plus requester-ancestry and catalog-path-bucket input values have fixed vectors, 10/10 focused identity tests, and positive and adversarial architecture gates |
 | Module dependency kind ownership | Complete | Binder enum deleted; all production and test callers use the single identity enum; 5/5 focused tests |
 | Canonical header wire schema | Complete | Generated inventory plus six generator mutations and 4/4 configured-Python CTests |
-| Canonical record types | Complete | DefinitionIdentityRecord and ImplIdentityRecord retain the complete canonical authority, exact domain-separated key derivation, strict decoders, fixed vectors, invalid-record tests, and mutation gates |
+| Canonical record types | In progress | DefinitionIdentityRecord has a strict canonical decoder; ImplIdentityRecord retains complete canonical authority and exact domain-separated key derivation but requires RFC 0035's recursive header and record decoder before strict decode evidence is complete |
 | Definition and implementation identity | Complete | Independent AST producers and verifiers reconstruct complete records, owner chains, overload authority, duplicate-bound provenance, typed interner admission, and every production consumer on one path |
 | Stable and owner-local inventory split | In progress | Stable inventories contain eligible named definitions and implementations, while parameter, binding, anonymous-owner, and implementation-occurrence identities use separate domains; persistent named-inventory and revision-local provenance query projections remain |
 | Module resolution replacement | In progress | CompilerSession atomically stages exact ancestry, bucket, search-root, alias, and prelude inputs and demands ResolveModuleRequestQuery; direct batch resolution is deleted, while request derivation, site provenance, and reusable stale-input lifecycle remain to become tracked query families |

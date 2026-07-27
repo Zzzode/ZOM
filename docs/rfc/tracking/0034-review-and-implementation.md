@@ -49,7 +49,7 @@ decision.
 
 | Task | Owner | Depends On | Deliverable | Verification | Status |
 |---|---|---|---|---|---|
-| `R34-11` | `binder-checker` with `verification` review | `R34-07`; RFC 0030 `R30-12G` | Implement and approve all RFC 0034 replacement tasks in dependency order without an intermediate commit or push. | RFC 0034 Test Plan and per-task 400-line accounting | Pending |
+| `R34-11` | `binder-checker` with `verification` review | `R34-07`; RFC 0030 `R30-12G`; RFC 0035 `R35-15` before `R30-12I-C` | Implement and approve all RFC 0034 replacement tasks in dependency order without an intermediate commit or push, including the identity-owned decoder prerequisite inserted by RFC 0035. | RFC 0034 Test Plan and per-task 400-line accounting | Pending |
 | `R34-12` | `rfc` | RFC 0030 `R30-15` | Synchronize truthful evidence and move RFC 0034 to LANDED only after the atomic `R29-12AB` transaction is published. | RFC and SHA audit | Pending |
 
 The `R34-07` design gate is satisfied. Source review may resume at RFC 0030

@@ -167,7 +167,7 @@ implementation-series base remains
 | `R30-12H-B` | `binder-checker` with `verification` review | `R30-12I-A` | In `stable-binding-facts.{h,cc}` and `stable-binding-facts-test.cc`, implement `StableDefinitionHeader`; count additions plus deletions from the exact approved predecessor hashes and allow at most 400 changed source lines. | Populated production-built generic and callable sequences plus complete definition-header mutations | Pending |
 | `R30-12I-B` | `binder-checker` with `verification` review | `R30-12H-B` | In `stable-binding-codec.{h,cc}` and `stable-binding-facts-test.cc`, implement the `StableDefinitionHeader` codec; count additions plus deletions from the exact approved predecessor hashes and allow at most 400 changed source lines. | Definition-header wire, sequence, truncation, trailing-byte, and unknown-tag mutations | Pending |
 | `R30-12H-C` | `binder-checker` with `verification` review | `R30-12I-B` | In `stable-binding-facts.{h,cc}` and `stable-binding-facts-test.cc`, implement `StableImplementationOccurrenceHeader`; count additions plus deletions from the exact approved predecessor hashes and allow at most 400 changed source lines. | Populated production-built generic sequence plus complete implementation-header mutations | Pending |
-| `R30-12I-C` | `binder-checker` with `verification` review | `R30-12H-C` | In `stable-binding-codec.{h,cc}` and `stable-binding-facts-test.cc`, implement the `StableImplementationOccurrenceHeader` codec; count additions plus deletions from the exact approved predecessor hashes and allow at most 400 changed source lines. | Implementation-header wire, sequence, truncation, trailing-byte, and unknown-tag mutations | Pending |
+| `R30-12I-C` | `binder-checker` with `verification` review | `R30-12H-C`; RFC 0035 `R35-15` | In `stable-binding-codec.{h,cc}` and `stable-binding-facts-test.cc`, implement the `StableImplementationOccurrenceHeader` codec through the identity-owned `ImplIdentityRecord::decodeCanonical`; count additions plus deletions from the exact approved predecessor hashes and allow at most 400 changed source lines. | Implementation-header wire, sequence, truncation, trailing-byte, and unknown-tag mutations | Pending |
 | `R30-12J` | `binder-checker` with `verification` review | `R30-12I-C` | In `stable-binding-facts.{h,cc}` and `stable-binding-facts-test.cc`, implement `StableScopeOwnerKey`, `StableNodeSyntaxRoot`, and `StableBindingTargetKey`; at most 400 changed source lines. | Scope, syntax-root, and target fact tests | Pending |
 | `R30-12K` | `binder-checker` with `verification` review | `R30-12J` | In `stable-binding-codec.{h,cc}` and `stable-binding-facts-test.cc`, implement the matching scope, syntax-root, and target codecs and wire oracles; at most 400 changed source lines. | Closed-sum wire and mutation tests | Pending |
 | `R30-12L` | `binder-checker` with `verification` review | `R30-12K` | In `stable-binding-facts.{h,cc}` and `stable-binding-facts-test.cc`, implement `BinderQueryOwner`, `BinderKeyFailureKind`, `BinderKeyFailure`, and `BinderQueryResult<T>`; at most 400 changed source lines. | Owner, failure, and result-algebra tests | Pending |
@@ -190,9 +190,10 @@ implementation-series base remains
 | `R30-16` | `error-system` with `binder-checker` and `verification` review | `R30-15` | Land `R29-12D` with the canonical Binder diagnostic facts, exact diagnostic native test, CTest ownership, and diagnostic coverage gates. | Diagnostic fact test and diagnostic coverage check plus self-test | Pending |
 | `R30-17` | `rfc` | `R30-16` | Synchronize truthful tracker state and resume `R29-13A`. | RFC and evidence audit | Pending |
 
-The RFC 0031 and RFC 0032 design blockers are satisfied by transactions
+The RFC 0031, RFC 0032, and RFC 0035 design blockers are satisfied by transactions
 `rfc0031-accept-20260728-c25fcb18` and
-`rfc0032-accept-20260728-1d519846`. Neither transaction completes a source
-task. The historical `R30-09`, RFC 0031 `R31-09`, and RFC 0032 `R32-07`
-design gates are satisfied, so implementation may resume at the current
-dependency-ordered review slice.
+`rfc0032-accept-20260728-1d519846`, and
+`rfc0035-accept-20260728-e79c292e`. None of these transactions completes a
+source task. The historical `R30-09`, RFC 0031 `R31-09`, RFC 0032 `R32-07`,
+and RFC 0035 `R35-08` design gates are satisfied, so implementation may resume
+at the current dependency-ordered review slice.
