@@ -101,7 +101,8 @@ not reused.
 | [RFC 0030](0030-stable-binding-foundation-verification.md) | Stable Binding Foundation Verification | ACCEPTED | testing | testing | rfc | [Review Tracker](tracking/0030-review-and-implementation.md) | [Implementation Tracker](tracking/0030-review-and-implementation.md#implementation-tracker) |
 | [RFC 0031](0031-stable-binding-schema-model-closure.md) | Stable Binding Schema Model Closure | ACCEPTED | testing | testing | rfc | [Review Tracker](tracking/0031-review-and-implementation.md) | [Implementation Tracker](tracking/0031-review-and-implementation.md#implementation-tracker) |
 | [RFC 0032](0032-stable-definition-routing-ledger-closure.md) | Stable Definition Routing Ledger Closure | ACCEPTED | compiler | compiler | rfc | [Review Tracker](tracking/0032-review-and-implementation.md) | [Implementation Tracker](tracking/0032-review-and-implementation.md#implementation-tracker) |
-| [RFC 0033](0033-stable-header-review-partition-closure.md) | Stable Header Review Partition Closure | ACCEPTED | testing | testing | rfc | [Review Tracker](tracking/0033-review-and-implementation.md) | [Implementation Tracker](tracking/0033-review-and-implementation.md#implementation-tracker) |
+| [RFC 0033](0033-stable-header-review-partition-closure.md) | Stable Header Review Partition Closure | SUPERSEDED | testing | testing | rfc | [Review Tracker](tracking/0033-review-and-implementation.md) | [Implementation Tracker](tracking/0033-review-and-implementation.md#implementation-tracker) |
+| [RFC 0034](0034-stable-header-dependency-review-closure.md) | Stable Header Dependency Review Closure | ACCEPTED | testing | testing | rfc | [Review Tracker](tracking/0034-review-and-implementation.md) | [Implementation Tracker](tracking/0034-review-and-implementation.md#implementation-tracker) |
 
 ## Status Values
 

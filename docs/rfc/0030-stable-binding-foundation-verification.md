@@ -613,6 +613,10 @@ authority is introduced.
   `StableDefinitionHeader`, and `StableImplementationOccurrenceHeader`. Each
   counts the facts header, facts source, and native fact test against the
   exact approved predecessor hash and retains the 400-line cap.
+- RFC 0034 supersedes that review graph. It separates enums and sites, generic
+  parameters, callable parameters, primitive codecs, and both aggregate
+  fact-and-codec pairs. Parameter codecs precede aggregate tests because the
+  production canonical-sequence builder orders complete encoded elements.
 - Moving build and test wiring forward increases the size of `R29-12AB`, but
   every added file is necessary to prove the transaction it lands.
 - A clean verification worktree adds operational steps. It is necessary while
@@ -787,3 +791,4 @@ None
 | 2026-07-28 | ACCEPTED | Transaction `rfc0031-accept-20260728-c25fcb18` synchronized the complete schema metamodel and verification contract to RFC 0031 proposal SHA-256 `c25fcb18e503ac214a8e92c925fa88108a915c2b15c94409dfecb88b3d9a63d5` and tracker SHA-256 `d64e7791ed2e2a488c5f57bc07ac341ccfc37d37c220c85131e2c9e846fb8d0d`; RFC 0030 remains accepted, `R30-11` remains pending implementation, and the design blocker is satisfied. |
 | 2026-07-28 | ACCEPTED | Transaction `rfc0032-accept-20260728-1d519846` synchronized the complete authority-session routing ledger and exact landing set to RFC 0032 proposal SHA-256 `1d519846566992156b16986fc5c75602af403254fce70f48cfb65af9983a6d72` and tracker SHA-256 `b685d88db1e5c2eef13e97ede1e5c085959d2446e39fd07fe5baac0bf7b2ecbf`; RFC 0030 remains accepted and `R30-12C` may resume without changing implementation status. |
 | 2026-07-28 | ACCEPTED | Transaction `rfc0033-accept-20260728-3fc78517` replaced the rejected stable-header review patch with three dependency-ordered patches that each count all exact files and retain the 400-line cap; RFC 0030 remains accepted and source review resumes at `R30-12H-A`. |
+| 2026-07-28 | ACCEPTED | Transaction `rfc0034-accept-20260728-09802348` superseded RFC 0033, split header facts and codecs into independently bounded reviews, and moved parameter codecs before populated aggregate tests; RFC 0030 remains accepted and source review resumes at `R30-12H-A1`. |

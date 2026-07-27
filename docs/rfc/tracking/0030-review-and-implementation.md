@@ -61,6 +61,21 @@ and tracker SHA-256
 Transaction `rfc0033-accept-20260728-3fc78517` replaces `R30-12H` with three
 bounded cumulative review tasks and changes no source or final landing scope.
 
+### 2026-07-28 RFC 0034 Stable Header Dependency Review Closure
+
+The RFC 0033 `R30-12H-A` candidate had a 430-line net lower bound before its
+missing callable wrong-key mutation. The accepted graph also placed populated
+aggregate tests before the parameter codecs required by the production
+canonical-sequence builder.
+
+All required owners approved RFC 0034 proposal SHA-256
+`098023480fb5d84ef5c29b8e10151c687b896ac7d586f9217ee8370c6e966210`
+and tracker SHA-256
+`4db534a78efe41bcca93bc9207f851c57337d38688690feaf03374605d3d69f3`.
+Transaction `rfc0034-accept-20260728-09802348` supersedes RFC 0033, replaces
+the unworkable fact-and-codec review graph, and changes no source or final
+landing scope.
+
 ## Decision Record
 
 Accepted by `task-router`, `rfc`, `module-system`, `binder-checker`,
@@ -95,6 +110,15 @@ and tracker SHA-256
 `62750bddda02554197b623f5e667b5e749a583679dac1b137d1ff76e10d452e2`.
 It establishes the three bounded stable-header review tasks without changing
 source semantics, exact landing scope, or implementation status.
+
+RFC 0034 acceptance transaction `rfc0034-accept-20260728-09802348`
+synchronizes this tracker to proposal SHA-256
+`098023480fb5d84ef5c29b8e10151c687b896ac7d586f9217ee8370c6e966210`
+and tracker SHA-256
+`4db534a78efe41bcca93bc9207f851c57337d38688690feaf03374605d3d69f3`.
+It supersedes RFC 0033 and establishes the executable stable-header review
+graph without changing source semantics, exact landing scope, or
+implementation status.
 
 The earlier approvals against proposal SHA-256
 `44f0ed68bdd3635e7ed736efcf2dfb2cef0a499c89733d1ab1334a89dce55151`
@@ -136,11 +160,15 @@ implementation-series base remains
 | `R30-12E` | `module-system` with `binder-checker` review | `R30-12D` | In `named-item-query.{h,cc}`, migrate every contextual definition caller; at most 400 changed source lines. | Named-item caller-cutover tests | Pending |
 | `R30-12F` | `module-system` with `binder-checker` review | `R30-12E` | In `owner-body-query.{h,cc}`, delete the query-specific body-owner declaration and migrate body, module, and definition contextual callers; at most 400 changed source lines. | Owner-body caller-cutover tests | Pending |
 | `R30-12G` | `module-system` with `binder-checker` review | `R30-12F` | In `compiler-session.cc`, migrate the remaining contextual callers and prove zero references to the removed declarations; at most 400 changed source lines. | Compiler-session caller-cutover and zero-reference tests | Pending |
-| `R30-12H-A` | `binder-checker` with `verification` review | `R30-12G`; RFC 0033 `R33-07` | In `stable-binding-facts.{h,cc}` and `stable-binding-facts-test.cc`, implement `DefinitionBodyDisposition`, `ImplementationSourceForm`, `ScopeRole`, `StableHeaderSite`, `StableHeaderGenericParameter`, and `StableHeaderCallableParameter`; count additions plus deletions across all three files from the exact approved predecessor and allow at most 400 changed source lines. | Closed enum, site, key-record, owner-site, ordinal, position-name, clone, and inequality tests | Pending |
-| `R30-12H-B` | `binder-checker` with `verification` review | `R30-12H-A` | In the same three files, implement `StableDefinitionHeader`; count additions plus deletions from the exact approved `R30-12H-A` hashes and allow at most 400 changed source lines. | Populated generic and callable sequence plus complete definition-header admission mutation tests | Pending |
-| `R30-12H-C` | `binder-checker` with `verification` review | `R30-12H-B` | In the same three files, implement `StableImplementationOccurrenceHeader`; count additions plus deletions from the exact approved `R30-12H-B` hashes and allow at most 400 changed source lines. | Populated generic sequence plus complete implementation-header admission mutation tests | Pending |
-| `R30-12I` | `binder-checker` with `verification` review | `R30-12H-C` | In `stable-binding-codec.{h,cc}` and `stable-binding-facts-test.cc`, implement the matching header codecs and wire oracles; at most 400 changed source lines. | Header wire and mutation tests | Pending |
-| `R30-12J` | `binder-checker` with `verification` review | `R30-12I` | In `stable-binding-facts.{h,cc}` and `stable-binding-facts-test.cc`, implement `StableScopeOwnerKey`, `StableNodeSyntaxRoot`, and `StableBindingTargetKey`; at most 400 changed source lines. | Scope, syntax-root, and target fact tests | Pending |
+| `R30-12H-A1` | `binder-checker` with `verification` review | `R30-12G`; RFC 0034 `R34-07` | In `stable-binding-facts.{h,cc}` and `stable-binding-facts-test.cc`, implement `DefinitionBodyDisposition`, `ImplementationSourceForm`, `ScopeRole`, and `StableHeaderSite`; count additions plus deletions across all three files from the exact approved predecessor and allow at most 400 changed source lines. | Every closed tag, unknown-value rejection, both site variants, clone, and inequality tests | Pending |
+| `R30-12H-A2` | `binder-checker` with `verification` review | `R30-12H-A1` | In the same three files, implement `StableHeaderGenericParameter`; count additions plus deletions from the exact approved predecessor hashes and allow at most 400 changed source lines. | Generic key-record, owner-site, ordinal, clone, and inequality tests | Pending |
+| `R30-12H-A3` | `binder-checker` with `verification` review | `R30-12H-A2` | In the same three files, implement `StableHeaderCallableParameter`; count additions plus deletions from the exact approved predecessor hashes and allow at most 400 changed source lines. | Callable key-record, definition-site, position-name, clone, and inequality tests | Pending |
+| `R30-12I-A` | `binder-checker` with `verification` review | `R30-12H-A3` | In `stable-binding-codec.{h,cc}` and `stable-binding-facts-test.cc`, implement enum, site, generic-parameter, and callable-parameter codecs; count additions plus deletions across all three files from the exact approved predecessor and allow at most 400 changed source lines. | Independent wire oracles and complete primitive and parameter mutations | Pending |
+| `R30-12H-B` | `binder-checker` with `verification` review | `R30-12I-A` | In `stable-binding-facts.{h,cc}` and `stable-binding-facts-test.cc`, implement `StableDefinitionHeader`; count additions plus deletions from the exact approved predecessor hashes and allow at most 400 changed source lines. | Populated production-built generic and callable sequences plus complete definition-header mutations | Pending |
+| `R30-12I-B` | `binder-checker` with `verification` review | `R30-12H-B` | In `stable-binding-codec.{h,cc}` and `stable-binding-facts-test.cc`, implement the `StableDefinitionHeader` codec; count additions plus deletions from the exact approved predecessor hashes and allow at most 400 changed source lines. | Definition-header wire, sequence, truncation, trailing-byte, and unknown-tag mutations | Pending |
+| `R30-12H-C` | `binder-checker` with `verification` review | `R30-12I-B` | In `stable-binding-facts.{h,cc}` and `stable-binding-facts-test.cc`, implement `StableImplementationOccurrenceHeader`; count additions plus deletions from the exact approved predecessor hashes and allow at most 400 changed source lines. | Populated production-built generic sequence plus complete implementation-header mutations | Pending |
+| `R30-12I-C` | `binder-checker` with `verification` review | `R30-12H-C` | In `stable-binding-codec.{h,cc}` and `stable-binding-facts-test.cc`, implement the `StableImplementationOccurrenceHeader` codec; count additions plus deletions from the exact approved predecessor hashes and allow at most 400 changed source lines. | Implementation-header wire, sequence, truncation, trailing-byte, and unknown-tag mutations | Pending |
+| `R30-12J` | `binder-checker` with `verification` review | `R30-12I-C` | In `stable-binding-facts.{h,cc}` and `stable-binding-facts-test.cc`, implement `StableScopeOwnerKey`, `StableNodeSyntaxRoot`, and `StableBindingTargetKey`; at most 400 changed source lines. | Scope, syntax-root, and target fact tests | Pending |
 | `R30-12K` | `binder-checker` with `verification` review | `R30-12J` | In `stable-binding-codec.{h,cc}` and `stable-binding-facts-test.cc`, implement the matching scope, syntax-root, and target codecs and wire oracles; at most 400 changed source lines. | Closed-sum wire and mutation tests | Pending |
 | `R30-12L` | `binder-checker` with `verification` review | `R30-12K` | In `stable-binding-facts.{h,cc}` and `stable-binding-facts-test.cc`, implement `BinderQueryOwner`, `BinderKeyFailureKind`, `BinderKeyFailure`, and `BinderQueryResult<T>`; at most 400 changed source lines. | Owner, failure, and result-algebra tests | Pending |
 | `R30-12M` | `binder-checker` with `verification` review | `R30-12L` | In `stable-binding-codec.{h,cc}` and `stable-binding-facts-test.cc`, implement the matching owner, failure, and result codecs and wire oracles; at most 400 changed source lines. | Failure and result wire mutation tests | Pending |

@@ -2,7 +2,7 @@
 rfc: 33
 title: Stable Header Review Partition Closure
 type: testing
-status: ACCEPTED
+status: SUPERSEDED
 author: ZOM Compiler Team
 review-manager: rfc
 required-owners: [rfc, binder-checker, verification]
@@ -12,7 +12,7 @@ updated: 2026-07-28
 area: testing
 requires: [27, 30, 31]
 supersedes: []
-superseded-by: []
+superseded-by: [34]
 discussion: docs/rfc/tracking/0033-review-and-implementation.md#discussion-record
 decision: docs/rfc/tracking/0033-review-and-implementation.md#decision-record
 implementation: docs/rfc/tracking/0033-review-and-implementation.md#implementation-tracker
@@ -277,3 +277,4 @@ None
 | 2026-07-28 | DRAFT | Initial proposal. |
 | 2026-07-28 | REVIEW | Ready for exact-hash owner review. |
 | 2026-07-28 | ACCEPTED | All required owners approved proposal SHA-256 `3fc78517c36a5794e01bcaca2dcca8d2a616a04b8737f2e2225282a47eea0422`. Acceptance transaction `rfc0033-accept-20260728-3fc78517` synchronizes RFC 0030, its tracker, RFC 0033, its tracker, and the RFC index without changing source, the immutable base, or the atomic landing boundary. |
+| 2026-07-28 | SUPERSEDED | RFC 0034 transaction `rfc0034-accept-20260728-09802348` replaces the unworkable review graph with independently bounded fact reviews and codec-before-aggregate dependencies. No RFC 0033 source task landed. |

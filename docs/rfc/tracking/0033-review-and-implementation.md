@@ -31,6 +31,11 @@ landing allowlist, implementation-series base, or pending
 `query-types.{h,cc}` file. Source review may resume at RFC 0030
 `R30-12H-A`; no implementation task is declared complete by this decision.
 
+RFC 0034 transaction `rfc0034-accept-20260728-09802348` supersedes this review
+graph. It records that `R30-12H-A` exceeded its line cap and that populated
+aggregate sequences require parameter codecs first. No source approval or
+implementation completion transfers from RFC 0033.
+
 ## Review Tracker
 
 | Task | Owner | Depends On | Deliverable | Verification | Status |
@@ -47,8 +52,7 @@ landing allowlist, implementation-series base, or pending
 
 | Task | Owner | Depends On | Deliverable | Verification | Status |
 |---|---|---|---|---|---|
-| `R33-11` | `binder-checker` with `verification` review | `R33-07`; RFC 0030 `R30-12G` | Implement and approve RFC 0030 `R30-12H-A`, `R30-12H-B`, and `R30-12H-C` in dependency order without an intermediate commit or push. | RFC 0033 Test Plan and per-task 400-line accounting | Pending |
-| `R33-12` | `rfc` | RFC 0030 `R30-15` | Synchronize truthful evidence and move RFC 0033 to LANDED only after the atomic `R29-12AB` transaction is published. | RFC and SHA audit | Pending |
+| `R33-11` | `binder-checker` with `verification` review | `R33-07`; RFC 0030 `R30-12G` | Implement and approve RFC 0030 `R30-12H-A`, `R30-12H-B`, and `R30-12H-C` in dependency order without an intermediate commit or push. | RFC 0033 Test Plan and per-task 400-line accounting | Superseded by RFC 0034 |
+| `R33-12` | `rfc` | RFC 0030 `R30-15` | Synchronize truthful evidence and move RFC 0033 to LANDED only after the atomic `R29-12AB` transaction is published. | RFC and SHA audit | Superseded by RFC 0034 |
 
-The `R33-07` design gate is satisfied. Source review may resume at RFC 0030
-`R30-12H-A`; no source implementation is declared complete by this tracker.
+RFC 0034 owns all remaining stable-header review work.
