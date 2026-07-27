@@ -106,7 +106,7 @@ implementation is authorized.
 | `R27-15` | `binder-checker` | `R27-13` | Implement body disposition and independently verified staging-safe headers. | Header producer/verifier tests | Pending |
 | `R27-16` | `error-system` | `R27-13` | Implement the sole RFC 0017 diagnostic wire integration, `ZOM3028`, and failed-lookup bijection. | Diagnostic coverage and focused tests | Pending |
 | `R27-17` | `module-system` | `R27-12B` | Implement final seal, literal descriptors, retained dependency edges, and compile-time materializer permissions. | Query capability tests | Pending |
-| `R27-17A` | `module-system` | `R27-12B` | Implement the handle-free canonical package request records, verified-request projection, exact codecs, and independent projection verifier. | Package request codec and projection tests | Pending |
+| `R27-17A` | `module-system` | `R27-12B` | Implement the handle-free canonical package request records, verified-request projection, exact codecs, and independent projection verifier. | Package request codec and projection tests | Complete; implementation `3039da5259be25b139954834f900a21b7b891fcf`, sanitizer unit tests 135/135, focused package request test 1/1, independent integration review approved |
 | `R27-17B` | `module-system` | `R27-17`; `R27-17A` | Implement the complete context authority descriptor, three payload schemas and codecs, transaction digests, atomic transaction controls, and synchronous live verified-package-request input with independent projection before any membership or materializer consumer. | Input schema, projection, mutation, lifetime, and atomicity tests | Pending |
 | `R27-18` | `module-system` with required `runtime-memory` review | `R27-17` | Replace frozen registries with the arena-owned eight-domain typed interner set. | Identity, concurrency, collision, and teardown tests | Pending |
 | `R27-19` | `module-system` | `R27-15`; `R27-17B`; `R27-18` | Implement all eight complete-record active-membership projections. | Membership and readiness tests | Pending |
@@ -138,5 +138,5 @@ implementation is authorized.
 | `R27-32A` | `verification` | `R27-33A` | Recompute and byte-compare the fixed report without writing it, then rerun English-only, RFC, format, versioning, and diff gates after every spec-audit edit. | Final write-free RFC 0027 Test Plan subset | Pending |
 | `R27-33` | `rfc` | `R27-32A` | Audit all implementation, report, and final verification evidence, then perform the only synchronized RFC implementation-state transitions. | `python3 scripts/check-rfc.py` | Pending |
 
-`R27-12B` is complete. Implementation is authorized in the dependency order
-recorded above.
+`R27-12B` and `R27-17A` are complete. Remaining implementation is authorized
+only in the dependency order recorded above.
