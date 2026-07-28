@@ -336,6 +336,12 @@ schema uses
 `CanonicalNonEmptySequence<T>` everywhere; `NonEmptyCanonicalSequence<T>` is
 invalid.
 
+Diagnostic sequences use RFC 0036's diagnostics-owned explicit limits API.
+The source parser retains its explicit 4,096-fact limit. Stable Binder result
+admission supplies `DiagnosticFactsPerResult` and `DiagnosticPayloadBytes`
+from the schema. Binder does not duplicate diagnostic field validation,
+ordering, size accounting, encoding, or decoding.
+
 Canonical byte encoding and decoding are owned by S3. Binder record codecs
 live in `stable-binding-codec.{h,cc}`. The contextual-key codecs live with
 their driver declarations. `StableDefinitionQueryKey`,
