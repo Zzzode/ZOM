@@ -84,12 +84,13 @@ source, schema, native test, approved RFC 0030 predecessor, pending
 | `R36-15` | `verification` | `R36-14` | Record the full accepted-governance baseline, build an isolated candidate index and tree from only the exact allowlist, materialize it in a detached clean temporary worktree with a fresh build directory, prove the complete changed and untracked path set, record `git write-tree`, and run sanitizer, focused identity, diagnostic, and parser tests, diagnostic coverage, format, and naming gates there. | Candidate tree SHA and project-native clean-assembly evidence | Complete; published transaction evidence for `6b92cfc65bf6c19dfc1591c8abe345d21aa28cda` |
 | `R36-16` | `module-system` and `error-system` with `lexer-parser` and `verification` review | `R36-15` | Reconstruct the isolated index from the same baseline and exact approved path hashes, run its staged diff check, prove `git write-tree` equals the R36-15 tested candidate tree SHA, commit, push, and prove local/upstream/remote SHA parity. | Tested-tree identity, ASCII-English Conventional Commit, and immutable source transaction audit | Complete; commit `6b92cfc65bf6c19dfc1591c8abe345d21aa28cda` |
 | `R36-17` | `binder-checker` with `error-system` and `verification` review | `R36-16`; RFC 0030 `R30-12L` | Repair and approve RFC 0030 `R30-12M` through the published bounded diagnostic API; at most 400 changed source lines from the approved R30-12L predecessor. | Stable result codec and 4,097-fact boundary matrix | Complete; commit `8885782747e4c863cefcb0d069bc4569cefce9aa` |
-| `R36-18` | `rfc` | RFC 0042 `R42-16` | Synchronize truthful evidence and move RFC 0036 to LANDED after the bounded source codec and its canonical direct replacement are published. | RFC and SHA audit | Pending |
+| `R36-18` | `rfc` | RFC 0042 `R42-16` | Synchronize truthful evidence and move RFC 0036 to LANDED after the bounded source codec and its canonical direct replacement are published. | RFC and SHA audit | Complete; RFC 0042 landed as `58897c116cafe3463ec6a46ac3bbdd530ef991a5` |
 
-`R36-11` through `R36-17` are complete. The originally rejected `R30-12M`
+`R36-11` through `R36-18` are complete. The originally rejected `R30-12M`
 candidate remains unapproved; the repaired bounded implementation is part of
 the independently reviewed and published `8885782747e4c863cefcb0d069bc4569cefce9aa`
-transaction. `R36-18` is the only remaining row.
+transaction. The canonical replacement and final audit are published through
+`58897c116cafe3463ec6a46ac3bbdd530ef991a5`.
 
 ## Source Transaction Allowlist
 

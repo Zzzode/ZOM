@@ -177,7 +177,7 @@ base, or implementation status.
 | `R29-12A` | `binder-checker` with `verification` review | `R29-11` | Prepare and review RFC 0027 `S1` as the complete RFC 0031 schema metamodel; do not land independently. | Complete schema metamodel and mutation review | Complete through `R29-12AB` |
 | `R29-12B` | `binder-checker` with `module-system` review | `R29-12A` | Prepare and review RFC 0027 `S2`; do not land independently. | Stable fact review | Complete through `R29-12AB` |
 | `R29-12AB` | `binder-checker` with `module-system` and `verification` review | `R29-12A`; `R29-12B`; RFC 0030 `R30-14` | Land the exact RFC 0030 allowlist as one buildable S1-plus-S2-plus-S3 transaction with contextual caller cutover. | Focused native, mutation, architecture, landing-scope, and SHA parity gates | Complete; commit `8885782747e4c863cefcb0d069bc4569cefce9aa` |
-| `R29-12D` | `error-system` with `binder-checker`, `lexer-parser`, `module-system`, and `verification` review | `R29-12AB`; RFC 0036 `R36-16`; RFC 0042 acceptance | Execute RFC 0042 as one canonical diagnostic-fact and current source-wire cutover while retaining the diagnostics-owned explicit limits API. | RFC 0042 focused and complete gates | Pending |
+| `R29-12D` | `error-system` with `binder-checker`, `lexer-parser`, `module-system`, and `verification` review | `R29-12AB`; RFC 0036 `R36-16`; RFC 0042 acceptance | Execute RFC 0042 as one canonical diagnostic-fact and current source-wire cutover while retaining the diagnostics-owned explicit limits API. | RFC 0042 focused and complete gates | Complete; commit `58897c116cafe3463ec6a46ac3bbdd530ef991a5` |
 | `R29-13A` | `module-system` with `runtime-memory` review | `R29-12AB`; `R29-12D` | Implement the generic descriptor-dependent `CapabilityDemandResult<Descriptor>` runtime sum with no codec and revise the RFC 0028 query-type partition. | Type, conditional alternative, lifetime, and format review | Pending |
 | `R29-13B` | `module-system` with `binder-checker`, `error-system`, and `verification` review | `R29-13A` | Add identity-site provenance, stable identity admission, the five descriptor failure contracts, and RFC 0027 `S6` as the atomic Source-plus-Module expansion with live factories, schema rows, mappings, `ZOM3028`, native tests, and static coverage. | Owner-focused source, schema, mapping, and diagnostic evidence review | Pending |
 | `R29-13C` | `verification` | `R29-13B` | Add generic runtime-sum coverage, reusable staged capability and failure-alternative alias mutations, token, result, provenance, mapping, verifier, race, private decoder, and CTest compile-fail coverage without referencing future descriptors. | Native, mutation, and architecture tests | Pending |
@@ -187,5 +187,6 @@ base, or implementation status.
 | `R29-17` | `rfc` | `R29-16` | Audit evidence and synchronize truthful statuses. | RFC and evidence audit | Pending |
 
 `R29-12A`, `R29-12B`, and `R29-12AB` are complete through
-`8885782747e4c863cefcb0d069bc4569cefce9aa`. `R29-12D` through `R29-17`
-remain pending; RFC 0042 owns the next source-only diagnostic transaction.
+`8885782747e4c863cefcb0d069bc4569cefce9aa`. `R29-12D` is complete through
+`58897c116cafe3463ec6a46ac3bbdd530ef991a5`. `R29-13A` is the next
+unblocked task; `R29-13A` through `R29-17` remain pending.

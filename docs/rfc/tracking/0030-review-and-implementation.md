@@ -319,7 +319,7 @@ implementation-series base remains
 | `R30-14` | `verification` | `R30-13` | Assemble only the exact landing set in an isolated clean worktree; prove worktree scope, run focused plus complete gates, explicitly stage the allowlist, and prove index scope. | RFC 0030 Test Plan | Complete; 220/220 CTest and exact staged scope passed |
 | `R30-15` | `binder-checker` with all affected owners | `R30-14` | Land and publish the atomic `R29-12AB` transaction containing S1, S2, and S3. | Local, upstream, and remote SHA parity | Complete; commit `8885782747e4c863cefcb0d069bc4569cefce9aa` |
 | `R30-16` | `error-system` with `binder-checker`, `lexer-parser`, `module-system`, and `verification` review | `R30-15`; RFC 0042 acceptance | Land `R29-12D` through RFC 0042's atomic source-wire and canonical diagnostic cutover. | RFC 0042 Test Plan | Replaced by RFC 0042 implementation tracker |
-| `R30-17` | `rfc` | RFC 0042 `R42-16` | Synchronize truthful diagnostic evidence and resume `R29-13A`. | RFC and evidence audit | Pending |
+| `R30-17` | `rfc` | RFC 0042 `R42-16` | Synchronize truthful diagnostic evidence and resume `R29-13A`. | RFC and evidence audit | Complete; RFC 0042 landed as `58897c116cafe3463ec6a46ac3bbdd530ef991a5` |
 
 The RFC 0031, RFC 0032, RFC 0035, RFC 0036, RFC 0037, RFC 0039, and RFC 0040
 design blockers are satisfied by transactions

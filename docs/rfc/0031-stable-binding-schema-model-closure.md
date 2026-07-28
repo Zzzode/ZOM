@@ -2,13 +2,13 @@
 rfc: 31
 title: Stable Binding Schema Model Closure
 type: testing
-status: ACCEPTED
+status: LANDED
 author: ZOM Compiler Team
 review-manager: rfc
 required-owners: [rfc, module-system, binder-checker, error-system, runtime-memory, verification]
 approvers: [rfc, module-system, binder-checker, error-system, runtime-memory, verification]
 created: 2026-07-28
-updated: 2026-07-28
+updated: 2026-07-29
 area: testing
 requires: [27, 28, 29, 30]
 supersedes: []
@@ -826,3 +826,5 @@ None
 | 2026-07-28 | DRAFT | Current design prose rewritten to describe only `Optional<MemberVisibility>`. |
 | 2026-07-28 | REVIEW | Ninth complete candidate submitted for a new exact-hash owner review. |
 | 2026-07-28 | ACCEPTED | All six required owners approved proposal SHA-256 `c25fcb18e503ac214a8e92c925fa88108a915c2b15c94409dfecb88b3d9a63d5` and tracker SHA-256 `d64e7791ed2e2a488c5f57bc07ac341ccfc37d37c220c85131e2c9e846fb8d0d`. Acceptance transaction `rfc0031-accept-20260728-c25fcb18` synchronizes RFCs 0019 and 0027 through 0031, trackers 0027 through 0031, and the RFC index without changing source, schema, or the immutable implementation-series base. |
+| 2026-07-28 | IMPLEMENTING | The complete schema metamodel landed through `8885782747e4c863cefcb0d069bc4569cefce9aa`; the diagnostic cleanup remained assigned to RFC 0042. |
+| 2026-07-29 | LANDED | RFC 0042 completed the diagnostic schema cleanup and reusable mutation gate at `58897c116cafe3463ec6a46ac3bbdd530ef991a5`. |

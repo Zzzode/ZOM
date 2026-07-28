@@ -2,13 +2,13 @@
 rfc: 30
 title: Stable Binding Foundation Verification
 type: testing
-status: ACCEPTED
+status: LANDED
 author: ZOM Compiler Team
 review-manager: rfc
 required-owners: [task-router, rfc, module-system, binder-checker, error-system, verification]
 approvers: [task-router, rfc, module-system, binder-checker, error-system, verification]
 created: 2026-07-28
-updated: 2026-07-28
+updated: 2026-07-29
 area: testing
 requires: [27, 29]
 supersedes: []
@@ -848,3 +848,5 @@ None
 | 2026-07-28 | ACCEPTED | Transaction `rfc0030-amend-landing-20260728-71b56ffb` reconciles the exact pending landing set to approved RFC SHA-256 `71b56ffba6823b210322f70e0a24a54b0e9c2291504a496530c237ff1b4b2815`, tracker SHA-256 `07707641939e84a535867decf12aef201305752b85f53c5833dc9684ae05b875`, and allowlist SHA-256 `8bb87b1ba22757097743061e741e5f66662acfbcbc23b62acaf5f6f0952dd851`; the 43-path transaction consumes the published `named-item-query.h` prerequisite and preserves `R30-15` as the only pending source commit and push. |
 | 2026-07-28 | ACCEPTED | Transaction `rfc0030-amend-gate-20260728-f468df91` synchronizes the CompilerSession architecture gate to approved RFC SHA-256 `f468df9160c2b08790134e8923cf7b9882b1640a37719ba6ab0462bf0b14906d`, tracker SHA-256 `3dc6bd85b62bb231a5761c8867664097d7370ac6859385450e6a0b2014fc382a`, allowlist SHA-256 `70695d54b9b5e137e1123050880dea78bc16d452e36107daa0d72e6f4c10b433`, and gate SHA-256 `02a92e43dea40ea9eb5ba5211069de5f1d65f77cc6eb62360425495ab1841521`; the exact pending source transaction contains 44 paths. |
 | 2026-07-28 | ACCEPTED | `R30-11` through `R30-15` published as `8885782747e4c863cefcb0d069bc4569cefce9aa`; RFC 0042 replaces the unlanded `R30-16` diagnostic execution set. |
+| 2026-07-29 | IMPLEMENTING | RFC 0042 executed the replacement diagnostic transaction from baseline `e8be38e1eeba5a4ae40689321710af2d3fc8b24e`. |
+| 2026-07-29 | LANDED | RFC 0042 published the final replacement as `58897c116cafe3463ec6a46ac3bbdd530ef991a5` and its canonical formatting as `02e400332fa87d8fca0bd7f2f5abb153bb776eb1`; all RFC 0030 tracker rows are complete and RFC 0029 resumes at `R29-13A`. |

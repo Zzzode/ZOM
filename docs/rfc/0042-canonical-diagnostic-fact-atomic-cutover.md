@@ -2,13 +2,13 @@
 rfc: 42
 title: Canonical Diagnostic Fact Atomic Cutover
 type: compiler
-status: ACCEPTED
+status: LANDED
 author: ZOM Compiler Team
 review-manager: rfc
 required-owners: [rfc, error-system, lexer-parser, module-system, binder-checker, verification]
 approvers: [rfc, error-system, lexer-parser, module-system, binder-checker, verification]
 created: 2026-07-28
-updated: 2026-07-28
+updated: 2026-07-29
 area: compiler
 requires: [17, 25, 27, 29, 30, 31, 36]
 supersedes: []
@@ -411,7 +411,7 @@ flowchart LR
 ```
 
 RFC 0030 `R30-16` is replaced by this RFC's implementation tracker. `R30-17`
-waits for the RFC 0042 publication audit. RFC 0025 `R25-09C` no longer owns
+closes with the RFC 0042 publication audit. RFC 0025 `R25-09C` no longer owns
 the source-only record removal. RFC 0029 `R29-13B` first replaces the source
 contract with its live Source-and-Module contract. RFC 0025 later replaces that
 closed contract with the final five-origin contract and lands all newly
@@ -656,3 +656,5 @@ None
 | 2026-07-28 | DRAFT | Initial replacement contract written after the R30-16 exact-set preflight failed. |
 | 2026-07-28 | REVIEW | Ready for exact-hash owner review. |
 | 2026-07-28 | ACCEPTED | All required owners approved proposal SHA-256 `1c46e978b91941c9660cf2bc8a37d89fc0a0b726b13c752c4eb8c7afed533491` and tracker SHA-256 `cac93b151aa985cd872cff03742397e7b8678e353f30e7fa15d182afef7c7cc2`; transaction `rfc0042-accept-20260728-1c46e978` authorizes the source-only atomic cutover. |
+| 2026-07-29 | IMPLEMENTING | The accepted 51-path transaction was assembled and verified from baseline `e8be38e1eeba5a4ae40689321710af2d3fc8b24e`. |
+| 2026-07-29 | LANDED | The atomic cutover was published as `58897c116cafe3463ec6a46ac3bbdd530ef991a5`; canonical formatting was completed as `02e400332fa87d8fca0bd7f2f5abb153bb776eb1`, which matched local HEAD, `origin/develop`, and remote `develop`. |

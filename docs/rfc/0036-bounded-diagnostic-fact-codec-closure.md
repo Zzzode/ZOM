@@ -2,13 +2,13 @@
 rfc: 36
 title: Bounded Diagnostic Fact Codec Closure
 type: compiler
-status: ACCEPTED
+status: LANDED
 author: ZOM Compiler Team
 review-manager: rfc
 required-owners: [rfc, module-system, error-system, lexer-parser, binder-checker, verification]
 approvers: [rfc, module-system, error-system, lexer-parser, binder-checker, verification]
 created: 2026-07-28
-updated: 2026-07-28
+updated: 2026-07-29
 area: compiler
 requires: [17, 27, 29, 30, 31]
 supersedes: []
@@ -304,8 +304,8 @@ The source transaction landed as
 `R36-16`. The stable Binder consumer and its 4,097-fact evidence landed in the
 atomic stable-binding transaction
 `8885782747e4c863cefcb0d069bc4569cefce9aa`, completing `R36-17`.
-`R36-18` remains pending until RFC 0042 publishes the direct replacement and
-the final evidence audit can move this RFC to LANDED.
+RFC 0042 published the direct canonical replacement as
+`58897c116cafe3463ec6a46ac3bbdd530ef991a5`, completing `R36-18`.
 
 ## Repository Impact
 
@@ -489,3 +489,5 @@ None
 | 2026-07-28 | REVIEW | Ready for diagnostics, parser, Binder, and verification review. |
 | 2026-07-28 | ACCEPTED | Exact bounded-codec, allocation, candidate-tree, and publication contract approved by all required owners. |
 | 2026-07-28 | ACCEPTED | Source implementation published at `6b92cfc65bf6c19dfc1591c8abe345d21aa28cda`; stable Binder integration published at `8885782747e4c863cefcb0d069bc4569cefce9aa`; final RFC 0042 replacement audit remains pending. |
+| 2026-07-28 | IMPLEMENTING | The bounded codec and stable Binder integration were published while the direct canonical replacement remained assigned to RFC 0042. |
+| 2026-07-29 | LANDED | RFC 0042 published the canonical direct replacement at `58897c116cafe3463ec6a46ac3bbdd530ef991a5`; the final evidence audit passed. |

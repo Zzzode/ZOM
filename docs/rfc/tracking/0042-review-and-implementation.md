@@ -49,15 +49,32 @@ authorizes a partial product commit.
 
 | Task | Owner | Depends On | Deliverable | Verification | Status |
 |---|---|---|---|---|---|
-| `R42-11` | `verification` with all source owners | `R42-08` | Freeze the complete live-use census and exact landing allowlist; add scope mutations for missing, extra, renamed, deleted, staged, and unstaged paths. | Exact-hash review and landing-scope self-test | Pending |
-| `R42-12A` | `error-system` with `module-system` review | `R42-11` | Replace the source fact declarations with current closed occurrence, provenance, argument, secondary, fact, limits, and source-provenance declarations. | Header compile and exact-hash review | Pending |
-| `R42-12B` | `error-system` with `verification` review | `R42-12A` | Implement strict source fact, argument, secondary, and provenance codecs plus complete count, allocation, truncation, trailing, tag, range-kind, and re-encoding mutations. | Focused native codec tests | Pending |
-| `R42-13A` | `error-system` with `lexer-parser` review | `R42-12B` | Replace `DiagnosticFactBuffer` with non-encodable `SourceDiagnosticDraftBuffer`, deterministic draft ordering, and exact primary, highlight, and child-note capture; delete the unused FixIt API. | Draft-buffer native tests and removed-symbol census | Pending |
-| `R42-13B` | `lexer-parser` with `module-system` and `verification` review | `R42-13A` | Publish facts and provenance from parse inputs; migrate canonical parsed source, rejection values, independent reconstruction, fuzz, benchmarks, and callers. | Parse-source and mutation tests | Pending |
-| `R42-14A` | `binder-checker` with `verification` review | `R42-12B` | Delete unimplemented diagnostic phase, emitter, argument, mapping, and code inventory from the stable-binding schema and synchronize its reusable gate and self-test. | Stable-binding-schema check and self-test | Pending |
-| `R42-14B` | `binder-checker` with `error-system` review | `R42-14A` | Migrate the live Binder result limits and canonical sequence admission to the sole fact wire. | Stable-binding fact and codec tests | Pending |
-| `R42-14C` | `error-system` with `module-system` review | `R42-13B`; `R42-14B` | Replace materialization and driver handoff with retained source-provenance resolution, token-range preservation, and no provider emission. | Materializer and compiler-session tests | Pending |
-| `R42-14D` | `verification` with all source owners | `R42-14C` | Prove complete caller migration, removed source and FixIt contracts, exact scope, schema removal, native CTest discovery, and architecture self-test behavior. | Native and architecture checks plus self-tests | Pending |
-| `R42-15` | `verification` | `R42-14D` | Assemble only the exact set in an isolated worktree, run focused and complete native gates, explicitly stage the allowlist, and prove index scope. | RFC 0042 Test Plan | Pending |
-| `R42-16` | `error-system` with all affected owners | `R42-15` | Commit and publish the one atomic source cutover. | Local, upstream, and remote SHA parity | Pending |
-| `R42-17` | `rfc` | `R42-16` | Synchronize landed evidence, resume RFC 0029 `R29-13A`, and move RFC 0042 to LANDED. | RFC and evidence audit | Pending |
+| `R42-11` | `verification` with all source owners | `R42-08` | Freeze the complete live-use census and exact landing allowlist; add scope mutations for missing, extra, renamed, deleted, staged, and unstaged paths. | Exact-hash review and landing-scope self-test | Complete; 51 sorted unique paths and landing-scope mutations passed |
+| `R42-12A` | `error-system` with `module-system` review | `R42-11` | Replace the source fact declarations with current closed occurrence, provenance, argument, secondary, fact, limits, and source-provenance declarations. | Header compile and exact-hash review | Complete; source-only canonical fact and provenance declarations landed |
+| `R42-12B` | `error-system` with `verification` review | `R42-12A` | Implement strict source fact, argument, secondary, and provenance codecs plus complete count, allocation, truncation, trailing, tag, range-kind, and re-encoding mutations. | Focused native codec tests | Complete; strict fact and provenance codec matrices passed |
+| `R42-13A` | `error-system` with `lexer-parser` review | `R42-12B` | Replace `DiagnosticFactBuffer` with non-encodable `SourceDiagnosticDraftBuffer`, deterministic draft ordering, and exact primary, highlight, and child-note capture; delete the unused FixIt API. | Draft-buffer native tests and removed-symbol census | Complete; draft buffer landed and removed-symbol census passed |
+| `R42-13B` | `lexer-parser` with `module-system` and `verification` review | `R42-13A` | Publish facts and provenance from parse inputs; migrate canonical parsed source, rejection values, independent reconstruction, fuzz, benchmarks, and callers. | Parse-source and mutation tests | Complete; parser, query, fuzz, benchmark, and caller migrations passed |
+| `R42-14A` | `binder-checker` with `verification` review | `R42-12B` | Delete unimplemented diagnostic phase, emitter, argument, mapping, and code inventory from the stable-binding schema and synchronize its reusable gate and self-test. | Stable-binding-schema check and self-test | Complete; schema gate and 32 mutation cases passed |
+| `R42-14B` | `binder-checker` with `error-system` review | `R42-14A` | Migrate the live Binder result limits and canonical sequence admission to the sole fact wire. | Stable-binding fact and codec tests | Complete; canonical Binder fact admission and codec tests passed |
+| `R42-14C` | `error-system` with `module-system` review | `R42-13B`; `R42-14B` | Replace materialization and driver handoff with retained source-provenance resolution, token-range preservation, and no provider emission. | Materializer and compiler-session tests | Complete; atomic materializer and CompilerSession tests passed |
+| `R42-14D` | `verification` with all source owners | `R42-14C` | Prove complete caller migration, removed source and FixIt contracts, exact scope, schema removal, native CTest discovery, and architecture self-test behavior. | Native and architecture checks plus self-tests | Complete; all required architecture gates and self-tests passed |
+| `R42-15` | `verification` | `R42-14D` | Assemble only the exact set in an isolated worktree, run focused and complete native gates, explicitly stage the allowlist, and prove index scope. | RFC 0042 Test Plan | Complete; isolated sanitizer build, 223 CTest cases, RFC, naming, and staged-scope gates passed; canonical format was corrected and reverified in `02e400332fa87d8fca0bd7f2f5abb153bb776eb1` |
+| `R42-16` | `error-system` with all affected owners | `R42-15` | Commit and publish the one atomic source cutover. | Local, upstream, and remote SHA parity | Complete; commit `58897c116cafe3463ec6a46ac3bbdd530ef991a5` |
+| `R42-17` | `rfc` | `R42-16` | Synchronize landed evidence, resume RFC 0029 `R29-13A`, and move RFC 0042 to LANDED. | RFC and evidence audit | Complete; RFC 0029 resumes at `R29-13A` |
+
+## Published Evidence
+
+- Baseline: `e8be38e1eeba5a4ae40689321710af2d3fc8b24e`.
+- Atomic source commit: `58897c116cafe3463ec6a46ac3bbdd530ef991a5`.
+- Formatting correction: `02e400332fa87d8fca0bd7f2f5abb153bb776eb1`.
+- Publication: local HEAD, `origin/develop`, and remote `develop` matched the
+  formatting correction after both commits were published.
+- Native build: sanitizer clean build completed all 715 build steps.
+- Native tests: 141 unit tests, 4 lit registrations, and all 223 CTest cases
+  passed.
+- Optional callers: the parser benchmark executable and parser fuzzer object
+  built; the benchmark sample completed with 100 percent parser success.
+- Repository gates: format, diff, English-only, internal-versioning, RFC,
+  exact landing scope, stable-binding schema, Binder, incremental-query,
+  CompilerSession, diagnostic coverage, and implementation-source
+  architecture checks passed with their required self-tests.

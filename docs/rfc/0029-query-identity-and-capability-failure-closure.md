@@ -2,13 +2,13 @@
 rfc: 29
 title: Query Identity And Capability Failure Closure
 type: compiler
-status: ACCEPTED
+status: IMPLEMENTING
 author: ZOM Compiler Team
 review-manager: rfc
 required-owners: [task-router, rfc, module-system, binder-checker, runtime-memory, error-system, spec-audit, verification]
 approvers: [task-router, rfc, module-system, binder-checker, runtime-memory, error-system, spec-audit, verification]
 created: 2026-07-27
-updated: 2026-07-28
+updated: 2026-07-29
 area: compiler
 requires: [17, 18, 19, 20, 25, 26, 27, 28]
 supersedes: []
@@ -1375,3 +1375,4 @@ None
 | 2026-07-28 | ACCEPTED | Transaction `rfc0030-accept-20260728-4ed0e6b8` synchronized the build-visible S1-plus-S2-plus-S3 atomic landing, exact contextual-key cutover, native and mutation gates, landing-scope proof, and separate S6 diagnostic transaction to RFC 0030 proposal SHA-256 `4ed0e6b885abc87a1c4251855780cf115a85b3623b1d46f774a4b664110f7b6b`; RFC 0029 remains accepted and implementation remains incomplete. |
 | 2026-07-28 | ACCEPTED | Transaction `rfc0031-accept-20260728-c25fcb18` synchronized the complete stable schema metamodel, generic capability runtime sum, descriptor capability and failure-alternative alias checks, and package-request mutation scope to RFC 0031 proposal SHA-256 `c25fcb18e503ac214a8e92c925fa88108a915c2b15c94409dfecb88b3d9a63d5` and tracker SHA-256 `d64e7791ed2e2a488c5f57bc07ac341ccfc37d37c220c85131e2c9e846fb8d0d`; all implementation tasks remain pending. |
 | 2026-07-28 | ACCEPTED | `R29-12A`, `R29-12B`, and `R29-12AB` published at `8885782747e4c863cefcb0d069bc4569cefce9aa`; RFC 0042 owns the pending `R29-12D` source-only diagnostic replacement, and `R29-13A` through `R29-17` remain pending. |
+| 2026-07-29 | IMPLEMENTING | RFC 0042 completed `R29-12D` at `58897c116cafe3463ec6a46ac3bbdd530ef991a5`; `R29-13A` is the next unblocked implementation task. |

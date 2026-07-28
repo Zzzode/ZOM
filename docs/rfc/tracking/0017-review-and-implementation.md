@@ -263,11 +263,12 @@ failure contracts for the five Binder provenance capabilities.
 
 `S1`, `S2`, and `S3` landed through the exact RFC 0030 `R29-12AB`
 transaction at commit
-`8885782747e4c863cefcb0d069bc4569cefce9aa`. RFC 0042 lands the direct
-source-wire replacement as `R29-12D`. The live Binder portion of `S6` moves to
+`8885782747e4c863cefcb0d069bc4569cefce9aa`. RFC 0042 landed the direct
+source-wire replacement as `R29-12D` at
+`58897c116cafe3463ec6a46ac3bbdd530ef991a5`. The live Binder portion of `S6` moves to
 `R29-13B`, where its Module root, producers, factories, mappings, and verifier
-land together. Runtime work resumes only after the RFC 0042 focused and
-complete gates pass. RFC 0017 remains `IMPLEMENTING`.
+land together. Runtime work resumes at `R29-13A`. RFC 0017 remains
+`IMPLEMENTING`.
 
 ## Implementation Tracker
 
