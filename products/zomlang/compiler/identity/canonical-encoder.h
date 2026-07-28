@@ -31,6 +31,19 @@ public:
   /// \brief Constructs an encoder whose object and byte storage use `resource`.
   /// \param resource Resource that must outlive this encoder and its finished byte array.
   explicit CanonicalEncoder(zc::MemoryResource& resource);
+
+  /// \brief Constructs a heap-backed encoder with one exact byte capacity.
+  /// \param encodedByteCount Required final byte count.
+  /// \return An encoder, or none when the byte count is not representable as `size_t`.
+  ZC_NODISCARD static zc::Maybe<CanonicalEncoder> forExactSize(uint64_t encodedByteCount);
+
+  /// \brief Constructs a resource-backed encoder with one exact byte capacity.
+  /// \param resource Resource that must outlive this encoder and its finished byte array.
+  /// \param encodedByteCount Required final byte count.
+  /// \return An encoder, or none when the byte count is not representable as `size_t`.
+  ZC_NODISCARD static zc::Maybe<CanonicalEncoder> forExactSize(zc::MemoryResource& resource,
+                                                               uint64_t encodedByteCount);
+
   ~CanonicalEncoder() noexcept(false);
   CanonicalEncoder(CanonicalEncoder&&) noexcept;
   CanonicalEncoder& operator=(CanonicalEncoder&&) noexcept;
@@ -50,6 +63,11 @@ public:
   ZC_NODISCARD zc::Array<uint8_t> finish();
 
 private:
+  struct ExactSizeTag final {};
+  CanonicalEncoder(ExactSizeTag, size_t encodedByteCount);
+  CanonicalEncoder(ExactSizeTag, zc::MemoryResource& resource, size_t encodedByteCount);
+  void requireCapacity(size_t byteCount) const;
+
   struct Impl;
   zc::Own<Impl> impl;
 };

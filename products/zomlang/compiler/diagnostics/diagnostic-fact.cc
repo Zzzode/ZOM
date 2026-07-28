@@ -14,13 +14,35 @@ namespace zomlang::compiler::diagnostics {
 namespace {
 
 constexpr zc::StringPtr kDiagnosticFactsDomain = "zom.source-diagnostic-facts"_zc;
-constexpr uint64_t kMaximumFacts = 4096;
 constexpr uint64_t kMaximumArguments = 3;
 constexpr uint64_t kMaximumRanges = 64;
 constexpr uint64_t kMaximumFixIts = 64;
 constexpr uint64_t kMaximumSecondary = 64;
 constexpr uint64_t kMaximumEmitterBytes = 4096;
 constexpr uint64_t kMaximumTextBytes = 64 * 1024 * 1024;
+constexpr uint64_t kMinimumEncodedFactBytes = 74;
+constexpr uint64_t kMinimumEncodedStringBytes = 8;
+constexpr uint64_t kEncodedRangeBytes = 17;
+constexpr uint64_t kMinimumEncodedFixItBytes = 25;
+constexpr uint64_t kMinimumEncodedSecondaryBytes = 28;
+
+class EncodedSize final {
+public:
+  explicit EncodedSize(uint64_t maximum) : maximum(maximum) {}
+
+  bool add(uint64_t addition) {
+    if (value > maximum || addition > maximum - value) { return false; }
+    value += addition;
+    return true;
+  }
+
+  bool addByteString(uint64_t byteCount) { return add(sizeof(uint64_t)) && add(byteCount); }
+  uint64_t get() const noexcept { return value; }
+
+private:
+  uint64_t maximum;
+  uint64_t value = 0;
+};
 
 zc::Vector<zc::String> cloneStrings(zc::ArrayPtr<const zc::String> values) {
   zc::Vector<zc::String> result(values.size());
@@ -140,15 +162,38 @@ void encodeStrings(identity::CanonicalEncoder& encoder, zc::ArrayPtr<const zc::S
   for (const auto& value : values) { encoder.encodeByteString(value.asBytes()); }
 }
 
-zc::Maybe<zc::Vector<zc::String>> decodeStrings(identity::CanonicalDecoder& decoder,
-                                                uint64_t maximumCount) {
+zc::Maybe<uint64_t> decodeFeasibleCount(identity::CanonicalDecoder& decoder, uint64_t maximumCount,
+                                        uint64_t minimumElementBytes) {
   auto count = decoder.decodeSequenceSize(maximumCount);
+  if (count == zc::none ||
+      ZC_ASSERT_NONNULL(count) > static_cast<uint64_t>(static_cast<size_t>(zc::maxValue)) ||
+      ZC_ASSERT_NONNULL(count) > decoder.remaining() / minimumElementBytes) {
+    return zc::none;
+  }
+  return count;
+}
+
+template <typename T>
+zc::Vector<T> emptyVector(zc::Maybe<zc::MemoryResource&> resource) {
+  ZC_IF_SOME(value, resource) { return zc::Vector<T>(value); }
+  return zc::Vector<T>();
+}
+
+zc::String ownedString(zc::Maybe<zc::MemoryResource&> resource, zc::ArrayPtr<const char> value) {
+  ZC_IF_SOME(memory, resource) { return zc::resourceHeapString(memory, value); }
+  return zc::heapString(value);
+}
+
+zc::Maybe<zc::Vector<zc::String>> decodeStrings(identity::CanonicalDecoder& decoder,
+                                                zc::Maybe<zc::MemoryResource&> resultResource,
+                                                uint64_t maximumCount) {
+  auto count = decodeFeasibleCount(decoder, maximumCount, kMinimumEncodedStringBytes);
   if (count == zc::none) { return zc::none; }
-  zc::Vector<zc::String> result(static_cast<size_t>(ZC_ASSERT_NONNULL(count)));
+  auto result = emptyVector<zc::String>(resultResource);
   for (uint64_t index = 0; index < ZC_ASSERT_NONNULL(count); ++index) {
     auto bytes = decoder.decodeByteString(kMaximumTextBytes);
     if (bytes == zc::none) { return zc::none; }
-    result.add(zc::str(ZC_ASSERT_NONNULL(bytes).asChars()));
+    result.add(ownedString(resultResource, ZC_ASSERT_NONNULL(bytes).asChars()));
   }
   return zc::mv(result);
 }
@@ -159,11 +204,12 @@ void encodeRanges(identity::CanonicalEncoder& encoder,
   for (const auto& range : ranges) { encodeRange(encoder, range); }
 }
 
-zc::Maybe<zc::Vector<DiagnosticFactRange>> decodeRanges(identity::CanonicalDecoder& decoder,
-                                                        uint64_t sourceByteLength) {
-  auto count = decoder.decodeSequenceSize(kMaximumRanges);
+zc::Maybe<zc::Vector<DiagnosticFactRange>> decodeRanges(
+    identity::CanonicalDecoder& decoder, zc::Maybe<zc::MemoryResource&> resultResource,
+    uint64_t sourceByteLength) {
+  auto count = decodeFeasibleCount(decoder, kMaximumRanges, kEncodedRangeBytes);
   if (count == zc::none) { return zc::none; }
-  zc::Vector<DiagnosticFactRange> result(static_cast<size_t>(ZC_ASSERT_NONNULL(count)));
+  auto result = emptyVector<DiagnosticFactRange>(resultResource);
   for (uint64_t index = 0; index < ZC_ASSERT_NONNULL(count); ++index) {
     auto range = decodeRange(decoder, sourceByteLength);
     if (range == zc::none) { return zc::none; }
@@ -174,6 +220,95 @@ zc::Maybe<zc::Vector<DiagnosticFactRange>> decodeRanges(identity::CanonicalDecod
 
 bool validCodeAndArity(DiagID code, size_t argumentCount) {
   return isSourceSyntaxDiagnostic(code) && getDiagnosticInfo(code).argCount == argumentCount;
+}
+
+bool measureStrings(EncodedSize& size, zc::ArrayPtr<const zc::String> values,
+                    uint64_t maximumCount) {
+  if (values.size() > maximumCount || !size.add(sizeof(uint64_t))) { return false; }
+  for (const auto& value : values) {
+    if (value.size() > kMaximumTextBytes || !size.addByteString(value.size())) { return false; }
+  }
+  return true;
+}
+
+bool validRange(const DiagnosticFactRange& range, uint64_t maximumSourceByteOffset) {
+  return range.byteStart <= range.byteEnd && range.byteEnd <= maximumSourceByteOffset;
+}
+
+bool measureRanges(EncodedSize& size, zc::ArrayPtr<const DiagnosticFactRange> ranges,
+                   uint64_t maximumSourceByteOffset) {
+  if (ranges.size() > kMaximumRanges || !size.add(sizeof(uint64_t))) { return false; }
+  for (const auto& range : ranges) {
+    if (!validRange(range, maximumSourceByteOffset) ||
+        !size.add(sizeof(uint64_t) * 2 + sizeof(uint8_t))) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool measureFact(EncodedSize& size, const DiagnosticFact& fact, uint64_t maximumSourceByteOffset) {
+  if ((fact.phase != SourceDiagnosticPhase::Lex && fact.phase != SourceDiagnosticPhase::Parse) ||
+      fact.emitterFile.size() == 0 || fact.emitterFile.size() > kMaximumEmitterBytes ||
+      fact.emitterFunction.size() > kMaximumEmitterBytes || fact.emitterLine == 0 ||
+      fact.primaryByteOffset > maximumSourceByteOffset ||
+      !validCodeAndArity(fact.code, fact.arguments.size()) || !size.add(sizeof(uint8_t)) ||
+      !size.addByteString(fact.emitterFile.size()) ||
+      !size.addByteString(fact.emitterFunction.size()) || !size.add(sizeof(uint32_t) * 4) ||
+      !size.add(sizeof(uint64_t)) ||
+      !measureStrings(size, fact.arguments.asPtr(), kMaximumArguments) ||
+      !measureRanges(size, fact.ranges.asPtr(), maximumSourceByteOffset) ||
+      fact.fixIts.size() > kMaximumFixIts || !size.add(sizeof(uint64_t))) {
+    return false;
+  }
+  for (const auto& fixIt : fact.fixIts) {
+    if (!validRange(fixIt.range, maximumSourceByteOffset) ||
+        fixIt.replacementText.size() > kMaximumTextBytes ||
+        !size.add(sizeof(uint64_t) * 2 + sizeof(uint8_t)) ||
+        !size.addByteString(fixIt.replacementText.size())) {
+      return false;
+    }
+  }
+  if (fact.secondary.size() > kMaximumSecondary || !size.add(sizeof(uint64_t))) { return false; }
+  for (const auto& child : fact.secondary) {
+    if (child.primaryByteOffset > maximumSourceByteOffset ||
+        !validCodeAndArity(child.code, child.arguments.size()) ||
+        !size.add(sizeof(uint32_t) + sizeof(uint64_t)) ||
+        !measureStrings(size, child.arguments.asPtr(), kMaximumArguments) ||
+        !measureRanges(size, child.ranges.asPtr(), maximumSourceByteOffset)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+zc::Maybe<uint64_t> measureFacts(zc::ArrayPtr<const DiagnosticFact> facts,
+                                 DiagnosticFactCodecLimits limits) {
+  if (facts.size() > limits.maximumFacts) { return zc::none; }
+  EncodedSize size(limits.maximumEncodedBytes);
+  if (!size.addByteString(kDiagnosticFactsDomain.size()) || !size.add(sizeof(uint64_t))) {
+    return zc::none;
+  }
+  for (size_t index = 0; index < facts.size(); ++index) {
+    const auto& fact = facts[index];
+    if (!measureFact(size, fact, limits.maximumSourceByteOffset)) { return zc::none; }
+    if (index == 0) {
+      if (fact.occurrenceOrdinal != 0) { return zc::none; }
+      continue;
+    }
+    const auto& previous = facts[index - 1];
+    const int baseComparison = compareFactBase(previous, fact);
+    if (baseComparison > 0) { return zc::none; }
+    if (baseComparison == 0) {
+      if (previous.occurrenceOrdinal == static_cast<uint32_t>(zc::maxValue) ||
+          fact.occurrenceOrdinal != previous.occurrenceOrdinal + 1) {
+        return zc::none;
+      }
+    } else if (fact.occurrenceOrdinal != 0) {
+      return zc::none;
+    }
+  }
+  return size.get();
 }
 
 }  // namespace
@@ -261,8 +396,20 @@ zc::Vector<DiagnosticFact> canonicalizeDiagnosticFacts(zc::Vector<DiagnosticFact
   return zc::mv(facts);
 }
 
-zc::Array<uint8_t> encodeDiagnosticFacts(zc::ArrayPtr<const DiagnosticFact> facts) {
-  identity::CanonicalEncoder encoder;
+zc::Maybe<zc::Array<uint8_t>> encodeDiagnosticFacts(zc::Maybe<zc::MemoryResource&> outputResource,
+                                                    zc::ArrayPtr<const DiagnosticFact> facts,
+                                                    DiagnosticFactCodecLimits limits) {
+  auto encodedSize = measureFacts(facts, limits);
+  if (encodedSize == zc::none) { return zc::none; }
+  zc::Maybe<identity::CanonicalEncoder> exactEncoder;
+  ZC_IF_SOME(resource, outputResource) {
+    exactEncoder =
+        identity::CanonicalEncoder::forExactSize(resource, ZC_ASSERT_NONNULL(encodedSize));
+  } else {
+    exactEncoder = identity::CanonicalEncoder::forExactSize(ZC_ASSERT_NONNULL(encodedSize));
+  }
+  if (exactEncoder == zc::none) { return zc::none; }
+  auto encoder = zc::mv(ZC_ASSERT_NONNULL(exactEncoder));
   encoder.encodeByteString(kDiagnosticFactsDomain.asBytes());
   encoder.encodeSequenceSize(facts.size());
   for (const auto& fact : facts) {
@@ -292,17 +439,19 @@ zc::Array<uint8_t> encodeDiagnosticFacts(zc::ArrayPtr<const DiagnosticFact> fact
   return encoder.finish();
 }
 
-zc::Maybe<zc::Vector<DiagnosticFact>> decodeDiagnosticFacts(zc::ArrayPtr<const uint8_t> encoded,
-                                                            uint64_t sourceByteLength) {
+zc::Maybe<zc::Vector<DiagnosticFact>> decodeDiagnosticFacts(
+    zc::Maybe<zc::MemoryResource&> resultResource, zc::ArrayPtr<const uint8_t> encoded,
+    DiagnosticFactCodecLimits limits) {
+  if (encoded.size() > limits.maximumEncodedBytes) { return zc::none; }
   identity::CanonicalDecoder decoder(encoded);
   auto domain = decoder.decodeByteString(kDiagnosticFactsDomain.size());
-  auto count = decoder.decodeSequenceSize(kMaximumFacts);
-  if (domain == zc::none || count == zc::none ||
-      ZC_ASSERT_NONNULL(domain).asPtr() != kDiagnosticFactsDomain.asBytes()) {
+  if (domain == zc::none || ZC_ASSERT_NONNULL(domain).asPtr() != kDiagnosticFactsDomain.asBytes()) {
     return zc::none;
   }
+  auto count = decodeFeasibleCount(decoder, limits.maximumFacts, kMinimumEncodedFactBytes);
+  if (count == zc::none) { return zc::none; }
 
-  zc::Vector<DiagnosticFact> facts(static_cast<size_t>(ZC_ASSERT_NONNULL(count)));
+  auto facts = emptyVector<DiagnosticFact>(resultResource);
   for (uint64_t index = 0; index < ZC_ASSERT_NONNULL(count); ++index) {
     auto phase = decoder.decodeUint8();
     auto emitterFile = decoder.decodeByteString(kMaximumEmitterBytes);
@@ -312,8 +461,8 @@ zc::Maybe<zc::Vector<DiagnosticFact>> decodeDiagnosticFacts(zc::ArrayPtr<const u
     auto occurrenceOrdinal = decoder.decodeUint32();
     auto codeValue = decoder.decodeUint32();
     auto primary = decoder.decodeUint64();
-    auto arguments = decodeStrings(decoder, kMaximumArguments);
-    auto ranges = decodeRanges(decoder, sourceByteLength);
+    auto arguments = decodeStrings(decoder, resultResource, kMaximumArguments);
+    auto ranges = decodeRanges(decoder, resultResource, limits.maximumSourceByteOffset);
     if (phase == zc::none || emitterFile == zc::none || emitterFunction == zc::none ||
         emitterLine == zc::none || emitterColumn == zc::none || occurrenceOrdinal == zc::none ||
         codeValue == zc::none || primary == zc::none || arguments == zc::none ||
@@ -325,33 +474,35 @@ zc::Maybe<zc::Vector<DiagnosticFact>> decodeDiagnosticFacts(zc::ArrayPtr<const u
     if ((decodedPhase != SourceDiagnosticPhase::Lex &&
          decodedPhase != SourceDiagnosticPhase::Parse) ||
         ZC_ASSERT_NONNULL(emitterFile).size() == 0 || ZC_ASSERT_NONNULL(emitterLine) == 0 ||
-        ZC_ASSERT_NONNULL(primary) > sourceByteLength ||
+        ZC_ASSERT_NONNULL(primary) > limits.maximumSourceByteOffset ||
         !validCodeAndArity(code, ZC_ASSERT_NONNULL(arguments).size())) {
       return zc::none;
     }
 
-    auto fixItCount = decoder.decodeSequenceSize(kMaximumFixIts);
+    auto fixItCount = decodeFeasibleCount(decoder, kMaximumFixIts, kMinimumEncodedFixItBytes);
     if (fixItCount == zc::none) { return zc::none; }
-    zc::Vector<DiagnosticFixItFact> fixIts(static_cast<size_t>(ZC_ASSERT_NONNULL(fixItCount)));
+    auto fixIts = emptyVector<DiagnosticFixItFact>(resultResource);
     for (uint64_t fixItIndex = 0; fixItIndex < ZC_ASSERT_NONNULL(fixItCount); ++fixItIndex) {
-      auto range = decodeRange(decoder, sourceByteLength);
+      auto range = decodeRange(decoder, limits.maximumSourceByteOffset);
       auto replacement = decoder.decodeByteString(kMaximumTextBytes);
       if (range == zc::none || replacement == zc::none) { return zc::none; }
-      fixIts.add(DiagnosticFixItFact{ZC_ASSERT_NONNULL(range),
-                                     zc::str(ZC_ASSERT_NONNULL(replacement).asChars())});
+      fixIts.add(DiagnosticFixItFact{
+          ZC_ASSERT_NONNULL(range),
+          ownedString(resultResource, ZC_ASSERT_NONNULL(replacement).asChars())});
     }
 
-    auto secondaryCount = decoder.decodeSequenceSize(kMaximumSecondary);
+    auto secondaryCount =
+        decodeFeasibleCount(decoder, kMaximumSecondary, kMinimumEncodedSecondaryBytes);
     if (secondaryCount == zc::none) { return zc::none; }
-    zc::Vector<SecondaryDiagnosticFact> secondary(
-        static_cast<size_t>(ZC_ASSERT_NONNULL(secondaryCount)));
+    auto secondary = emptyVector<SecondaryDiagnosticFact>(resultResource);
     for (uint64_t childIndex = 0; childIndex < ZC_ASSERT_NONNULL(secondaryCount); ++childIndex) {
       auto childCodeValue = decoder.decodeUint32();
       auto childPrimary = decoder.decodeUint64();
-      auto childArguments = decodeStrings(decoder, kMaximumArguments);
-      auto childRanges = decodeRanges(decoder, sourceByteLength);
+      auto childArguments = decodeStrings(decoder, resultResource, kMaximumArguments);
+      auto childRanges = decodeRanges(decoder, resultResource, limits.maximumSourceByteOffset);
       if (childCodeValue == zc::none || childPrimary == zc::none || childArguments == zc::none ||
-          childRanges == zc::none || ZC_ASSERT_NONNULL(childPrimary) > sourceByteLength) {
+          childRanges == zc::none ||
+          ZC_ASSERT_NONNULL(childPrimary) > limits.maximumSourceByteOffset) {
         return zc::none;
       }
       const auto childCode = static_cast<DiagID>(ZC_ASSERT_NONNULL(childCodeValue));
@@ -364,8 +515,8 @@ zc::Maybe<zc::Vector<DiagnosticFact>> decodeDiagnosticFacts(zc::ArrayPtr<const u
     }
 
     DiagnosticFact fact{decodedPhase,
-                        zc::str(ZC_ASSERT_NONNULL(emitterFile).asChars()),
-                        zc::str(ZC_ASSERT_NONNULL(emitterFunction).asChars()),
+                        ownedString(resultResource, ZC_ASSERT_NONNULL(emitterFile).asChars()),
+                        ownedString(resultResource, ZC_ASSERT_NONNULL(emitterFunction).asChars()),
                         ZC_ASSERT_NONNULL(emitterLine),
                         ZC_ASSERT_NONNULL(emitterColumn),
                         ZC_ASSERT_NONNULL(occurrenceOrdinal),
@@ -379,6 +530,10 @@ zc::Maybe<zc::Vector<DiagnosticFact>> decodeDiagnosticFacts(zc::ArrayPtr<const u
       const auto& previous = facts.back();
       const int baseComparison = compareFactBase(previous, fact);
       if (baseComparison > 0) { return zc::none; }
+      if (baseComparison == 0 &&
+          previous.occurrenceOrdinal == static_cast<uint32_t>(zc::maxValue)) {
+        return zc::none;
+      }
       const uint32_t expectedOrdinal = baseComparison == 0 ? previous.occurrenceOrdinal + 1 : 0;
       if (fact.occurrenceOrdinal != expectedOrdinal) { return zc::none; }
     } else if (fact.occurrenceOrdinal != 0) {
@@ -387,6 +542,12 @@ zc::Maybe<zc::Vector<DiagnosticFact>> decodeDiagnosticFacts(zc::ArrayPtr<const u
     facts.add(zc::mv(fact));
   }
   if (!decoder.finished()) { return zc::none; }
+  {
+    auto canonical = encodeDiagnosticFacts(resultResource, facts.asPtr(), limits);
+    if (canonical == zc::none || ZC_ASSERT_NONNULL(canonical).asPtr() != encoded) {
+      return zc::none;
+    }
+  }
   return zc::mv(facts);
 }
 

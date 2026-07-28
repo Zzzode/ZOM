@@ -23,6 +23,15 @@ constexpr zc::StringPtr kParseRejectedDomain = "zom.parse-rejected"_zc;
 constexpr uint64_t kMaximumSourceKeyBytes = 64 * 1024;
 constexpr uint64_t kMaximumSourceBytes = 64 * 1024 * 1024;
 constexpr uint64_t kMaximumFactBytes = 64 * 1024 * 1024;
+constexpr uint64_t kMaximumFacts = 4096;
+
+diagnostics::DiagnosticFactCodecLimits sourceFactLimits(uint64_t sourceByteLength) {
+  return diagnostics::DiagnosticFactCodecLimits{
+      .maximumFacts = kMaximumFacts,
+      .maximumEncodedBytes = kMaximumFactBytes,
+      .maximumSourceByteOffset = sourceByteLength,
+  };
+}
 
 bool validSourceKey(zc::ArrayPtr<const uint8_t> bytes) {
   return identity::source_query::StableSourceQueryKey::decodeBounded(bytes) != zc::none;
@@ -89,9 +98,11 @@ zc::Maybe<ParseRejected> ParseRejected::fromFacts(zc::ArrayPtr<const uint8_t> ca
   }
   auto canonicalFacts = diagnostics::canonicalizeDiagnosticFacts(zc::mv(facts));
   if (canonicalFacts.size() == 0 || !containsError(canonicalFacts.asPtr())) { return zc::none; }
-  auto factBytes = diagnostics::encodeDiagnosticFacts(canonicalFacts.asPtr());
-  if (factBytes.size() > kMaximumFactBytes ||
-      diagnostics::decodeDiagnosticFacts(factBytes.asPtr(), sourceByteLength) == zc::none) {
+  const auto limits = sourceFactLimits(sourceByteLength);
+  auto factBytes = diagnostics::encodeDiagnosticFacts(zc::none, canonicalFacts.asPtr(), limits);
+  if (factBytes == zc::none ||
+      diagnostics::decodeDiagnosticFacts(zc::none, ZC_ASSERT_NONNULL(factBytes).asPtr(), limits) ==
+          zc::none) {
     return zc::none;
   }
 
@@ -103,7 +114,7 @@ zc::Maybe<ParseRejected> ParseRejected::fromFacts(zc::ArrayPtr<const uint8_t> ca
   encoder.encodeBool(options.useUnicode);
   encoder.encodeBool(options.allowDollarIdentifiers);
   encoder.encodeBool(options.supportRegexLiterals);
-  encoder.encodeByteString(factBytes.asPtr());
+  encoder.encodeByteString(ZC_ASSERT_NONNULL(factBytes).asPtr());
   auto encoded = encoder.finish();
   return decodeCanonical(encoded.asPtr());
 }
@@ -127,8 +138,9 @@ zc::Maybe<ParseRejected> ParseRejected::decodeCanonical(zc::ArrayPtr<const uint8
       ZC_ASSERT_NONNULL(sourceByteLength) > kMaximumSourceBytes) {
     return zc::none;
   }
-  auto facts = diagnostics::decodeDiagnosticFacts(ZC_ASSERT_NONNULL(factBytes).asPtr(),
-                                                  ZC_ASSERT_NONNULL(sourceByteLength));
+  auto facts =
+      diagnostics::decodeDiagnosticFacts(zc::none, ZC_ASSERT_NONNULL(factBytes).asPtr(),
+                                         sourceFactLimits(ZC_ASSERT_NONNULL(sourceByteLength)));
   if (facts == zc::none || ZC_ASSERT_NONNULL(facts).size() == 0 ||
       !containsError(ZC_ASSERT_NONNULL(facts).asPtr())) {
     return zc::none;

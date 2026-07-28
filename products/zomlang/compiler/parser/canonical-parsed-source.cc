@@ -26,6 +26,15 @@ constexpr uint64_t kMaximumFactBytes = 64 * 1024 * 1024;
 constexpr uint64_t kMaximumValueBodyBytes = 512 * 1024 * 1024;
 constexpr uint64_t kMaximumTokens = 16 * 1024 * 1024;
 constexpr uint64_t kMaximumTextBytes = 64 * 1024 * 1024;
+constexpr uint64_t kMaximumFacts = 4096;
+
+diagnostics::DiagnosticFactCodecLimits sourceFactLimits(uint64_t sourceByteLength) {
+  return diagnostics::DiagnosticFactCodecLimits{
+      .maximumFacts = kMaximumFacts,
+      .maximumEncodedBytes = kMaximumFactBytes,
+      .maximumSourceByteOffset = sourceByteLength,
+  };
+}
 
 bool validSourceKey(zc::ArrayPtr<const uint8_t> bytes) {
   if (bytes.size() == 0 || bytes.size() > kMaximumSourceKeyBytes) { return false; }
@@ -119,7 +128,9 @@ zc::Maybe<zc::Array<uint8_t>> encodeBody(
     zc::ArrayPtr<const diagnostics::DiagnosticFact> facts) {
   auto astBytes = ast::encodeCanonicalTree(tree, sources, buffer);
   if (astBytes == zc::none) { return zc::none; }
-  auto factBytes = diagnostics::encodeDiagnosticFacts(facts);
+  auto factBytes =
+      diagnostics::encodeDiagnosticFacts(zc::none, facts, sourceFactLimits(sourceBytes.size()));
+  if (factBytes == zc::none) { return zc::none; }
   identity::CanonicalEncoder encoder;
   encoder.encodeByteString(canonicalSourceKey);
   encoder.encodeDigest(contentDigest);
@@ -131,7 +142,7 @@ zc::Maybe<zc::Array<uint8_t>> encodeBody(
   encoder.encodeByteString(zc::StringPtr(ast::kAstSchemaFingerprint).asBytes());
   encoder.encodeByteString(ZC_ASSERT_NONNULL(astBytes).asPtr());
   encodeTokens(encoder, tokens);
-  encoder.encodeByteString(factBytes.asPtr());
+  encoder.encodeByteString(ZC_ASSERT_NONNULL(factBytes).asPtr());
   return encoder.finish();
 }
 
@@ -207,8 +218,11 @@ zc::Maybe<CanonicalParsedSource> CanonicalParsedSource::fromParsed(
                                      parsedSources, parsedBuffer, sourceBytes.size());
   if (detachedTokens == zc::none) { return zc::none; }
   auto canonicalFacts = diagnostics::canonicalizeDiagnosticFacts(zc::mv(facts));
-  auto factBytes = diagnostics::encodeDiagnosticFacts(canonicalFacts.asPtr());
-  if (diagnostics::decodeDiagnosticFacts(factBytes.asPtr(), sourceBytes.size()) == zc::none) {
+  const auto limits = sourceFactLimits(sourceBytes.size());
+  auto factBytes = diagnostics::encodeDiagnosticFacts(zc::none, canonicalFacts.asPtr(), limits);
+  if (factBytes == zc::none ||
+      diagnostics::decodeDiagnosticFacts(zc::none, ZC_ASSERT_NONNULL(factBytes).asPtr(), limits) ==
+          zc::none) {
     return zc::none;
   }
   auto body = encodeBody(canonicalSourceKey, contentDigest, sourceBytes, logicalName, options, tree,
@@ -269,8 +283,9 @@ zc::Maybe<CanonicalParsedSource> CanonicalParsedSource::decodeCanonical(
   if (tree == zc::none || tokens == zc::none || factBytes == zc::none || !decoder.finished()) {
     return zc::none;
   }
-  auto facts = diagnostics::decodeDiagnosticFacts(ZC_ASSERT_NONNULL(factBytes).asPtr(),
-                                                  ZC_ASSERT_NONNULL(sourceBytes).size());
+  auto facts =
+      diagnostics::decodeDiagnosticFacts(zc::none, ZC_ASSERT_NONNULL(factBytes).asPtr(),
+                                         sourceFactLimits(ZC_ASSERT_NONNULL(sourceBytes).size()));
   if (facts == zc::none) { return zc::none; }
   auto sourceFileName = ast::canonicalSourceFileName(ZC_ASSERT_NONNULL(tree));
   if (sourceFileName == zc::none || ZC_ASSERT_NONNULL(sourceFileName) != retainedName) {

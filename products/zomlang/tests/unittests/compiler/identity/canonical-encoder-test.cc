@@ -50,6 +50,28 @@ Sha256Digest testDigest() {
   ZC_FAIL_REQUIRE("fixed digest has an invalid length");
 }
 
+CanonicalEncoder requireExactEncoder(uint64_t encodedByteCount) {
+  auto encoder = CanonicalEncoder::forExactSize(encodedByteCount);
+  ZC_IF_SOME(value, encoder) { return zc::mv(value); }
+  ZC_FAIL_REQUIRE("fixed canonical encoder size is not representable");
+}
+
+CanonicalEncoder requireExactEncoder(zc::MemoryResource& resource, uint64_t encodedByteCount) {
+  auto encoder = CanonicalEncoder::forExactSize(resource, encodedByteCount);
+  ZC_IF_SOME(value, encoder) { return zc::mv(value); }
+  ZC_FAIL_REQUIRE("fixed canonical encoder size is not representable");
+}
+
+template <typename Function>
+void expectExactOverfillBeforeWrite(uint64_t encodedByteCount, Function&& encode) {
+  auto encoder = requireExactEncoder(encodedByteCount);
+  ZC_EXPECT_THROW_MESSAGE("CanonicalEncoder exact capacity exceeded", encode(encoder));
+  for (uint64_t index = 0; index < encodedByteCount; ++index) { encoder.encodeUint8(0x7a); }
+  auto encoded = encoder.finish();
+  ZC_EXPECT(encoded.size() == encodedByteCount);
+  for (uint8_t byte : encoded) { ZC_EXPECT(byte == 0x7a); }
+}
+
 void encodeEveryField(CanonicalEncoder& encoder) {
   const uint8_t text[] = {'z', 'o', 'm'};
   encoder.encodeUint8(0xab);
@@ -156,6 +178,97 @@ ZC_TEST("CanonicalEncoder explicit resource preserves every encoded field") {
   ZC_EXPECT(resource.currentAllocatedBytes() == 0);
 }
 
+ZC_TEST("CanonicalEncoder exact heap capacity preserves every encoded field") {
+  CanonicalEncoder expectedEncoder;
+  encodeEveryField(expectedEncoder);
+  auto expected = expectedEncoder.finish();
+
+  auto exactEncoder = requireExactEncoder(expected.size());
+  encodeEveryField(exactEncoder);
+  auto actual = exactEncoder.finish();
+
+  ZC_EXPECT(actual.asPtr() == expected.asPtr());
+}
+
+ZC_TEST("CanonicalEncoder exact resource capacity does not grow") {
+  zc::MemoryResource upstream;
+  zc::CountingMemoryResource resource(upstream);
+  zc::Array<uint8_t> output;
+
+  {
+    auto encoder = requireExactEncoder(resource, 5);
+    const size_t liveBytes = resource.currentAllocatedBytes();
+    const size_t peakBytes = resource.peakAllocatedBytes();
+    encoder.encodeUint8(0x7a);
+    encoder.encodeUint32(0x01020304);
+    ZC_EXPECT(resource.currentAllocatedBytes() == liveBytes);
+    ZC_EXPECT(resource.peakAllocatedBytes() == peakBytes);
+    output = encoder.finish();
+    const uint8_t expected[] = {0x7a, 0x01, 0x02, 0x03, 0x04};
+    ZC_EXPECT(output.asPtr() == zc::arrayPtr(expected));
+  }
+
+  ZC_EXPECT(resource.currentAllocatedBytes() > 0);
+  output = nullptr;
+  ZC_EXPECT(resource.currentAllocatedBytes() == 0);
+}
+
+ZC_TEST("CanonicalEncoder exact zero capacity preserves heap and resource ownership") {
+  auto heapEncoder = requireExactEncoder(0);
+  auto heapOutput = heapEncoder.finish();
+  ZC_EXPECT(heapOutput.size() == 0);
+
+  zc::MemoryResource upstream;
+  zc::CountingMemoryResource resource(upstream);
+  {
+    auto resourceEncoder = requireExactEncoder(resource, 0);
+    const size_t liveBytes = resource.currentAllocatedBytes();
+    const size_t peakBytes = resource.peakAllocatedBytes();
+    auto resourceOutput = resourceEncoder.finish();
+    ZC_EXPECT(resourceOutput.size() == 0);
+    ZC_EXPECT(resource.currentAllocatedBytes() == liveBytes);
+    ZC_EXPECT(resource.peakAllocatedBytes() == peakBytes);
+  }
+  ZC_EXPECT(resource.currentAllocatedBytes() == 0);
+}
+
+ZC_TEST("CanonicalEncoder exact factories reject unrepresentable sizes before allocation") {
+  if constexpr (sizeof(size_t) < sizeof(uint64_t)) {
+    const uint64_t unrepresentable = static_cast<uint64_t>(static_cast<size_t>(zc::maxValue)) + 1;
+    ZC_EXPECT(CanonicalEncoder::forExactSize(unrepresentable) == zc::none);
+
+    zc::MemoryResource upstream;
+    zc::CountingMemoryResource resource(upstream);
+    ZC_EXPECT(CanonicalEncoder::forExactSize(resource, unrepresentable) == zc::none);
+    ZC_EXPECT(resource.currentAllocatedBytes() == 0);
+    ZC_EXPECT(resource.peakAllocatedBytes() == 0);
+  } else {
+    ZC_EXPECT(sizeof(size_t) == sizeof(uint64_t));
+  }
+}
+
+ZC_TEST("CanonicalEncoder exact capacity rejects underfill") {
+  auto encoder = requireExactEncoder(2);
+  encoder.encodeUint8(1);
+  ZC_EXPECT_THROW_MESSAGE("CanonicalEncoder exact capacity underfilled", encoder.finish());
+}
+
+ZC_TEST("CanonicalEncoder exact capacity rejects every independent writer before writing") {
+  const uint8_t value[] = {0x7a};
+  expectExactOverfillBeforeWrite(0, [](CanonicalEncoder& encoder) { encoder.encodeUint8(0x7a); });
+  expectExactOverfillBeforeWrite(
+      sizeof(uint32_t) - 1, [](CanonicalEncoder& encoder) { encoder.encodeUint32(0x01020304); });
+  expectExactOverfillBeforeWrite(sizeof(uint64_t) - 1, [](CanonicalEncoder& encoder) {
+    encoder.encodeUint64(0x0102030405060708);
+  });
+  expectExactOverfillBeforeWrite(testDigest().bytes().size() - 1, [](CanonicalEncoder& encoder) {
+    encoder.encodeDigest(testDigest());
+  });
+  expectExactOverfillBeforeWrite(sizeof(uint64_t), [&](CanonicalEncoder& encoder) {
+    encoder.encodeByteString(zc::arrayPtr(value));
+  });
+}
+
 ZC_TEST("CanonicalEncoder resource storage survives growth and encoder destruction") {
   zc::MemoryResource upstream;
   zc::CountingMemoryResource resource(upstream);
@@ -231,6 +344,16 @@ ZC_TEST("CanonicalEncoder releases its resource object after failed growth") {
                             encoder.encodeUint8(1));
   }
 
+  ZC_EXPECT(resource.currentAllocatedBytes() == 0);
+}
+
+ZC_TEST("CanonicalEncoder exact construction releases its resource object after failed storage") {
+  zc::MemoryResource upstream;
+  FailSecondAllocationResource failingResource(upstream);
+  zc::CountingMemoryResource resource(failingResource);
+
+  ZC_EXPECT_THROW_MESSAGE("injected canonical encoder allocation failure",
+                          CanonicalEncoder::forExactSize(resource, 16));
   ZC_EXPECT(resource.currentAllocatedBytes() == 0);
 }
 
