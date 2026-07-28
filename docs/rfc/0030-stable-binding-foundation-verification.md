@@ -439,7 +439,6 @@ products/zomlang/compiler/driver/compiler-session.cc
 products/zomlang/compiler/driver/contextual-binding-key.h
 products/zomlang/compiler/driver/contextual-binding-key.cc
 products/zomlang/compiler/driver/CMakeLists.txt
-products/zomlang/compiler/driver/named-item-query.h
 products/zomlang/compiler/driver/named-item-query.cc
 products/zomlang/compiler/driver/owner-body-query.h
 products/zomlang/compiler/driver/owner-body-query.cc
@@ -449,6 +448,12 @@ products/zomlang/tests/unittests/compiler/driver/package-compilation-request-tes
 products/zomlang/tests/coverage/rfc-0030-stable-binding-landing-files.txt
 scripts/check-landing-scope.py
 ```
+
+The accepted branch provides the complete `named-item-query.h` contextual-key
+and capability descriptor contract in commit
+`652790085feae33aa23eefc8ee16d7ad2d8c7bdf`. This transaction consumes that
+published prerequisite and does not restage the file. The exact pending
+landing set therefore contains 43 paths.
 
 The transaction registers these exact CTest names:
 
@@ -817,3 +822,4 @@ None
 | 2026-07-28 | ACCEPTED | Transaction `rfc0034-accept-20260728-09802348` superseded RFC 0033, split header facts and codecs into independently bounded reviews, and moved parameter codecs before populated aggregate tests; RFC 0030 remains accepted and source review resumes at `R30-12H-A1`. |
 | 2026-07-28 | ACCEPTED | Transaction `rfc0035-accept-20260728-e79c292e` inserts the identity-owned implementation-record decoder required by `R30-12I-C`, synchronizes exact RFC 0035 proposal SHA-256 `e79c292e8d3aefcce76d32923e566bc625e49b9b67d8bd1968fbd4b9620ee6c8` and tracker SHA-256 `d50ec5efe5718d6eaa657463a348ac0956dd954174345d7b90c00d99d0f6ec9f`, expands the atomic landing set, and preserves `R30-15` as the only source commit and push. |
 | 2026-07-28 | ACCEPTED | Transaction `rfc0039-accept-20260728-de7ab2aa` inserts the Binder-owned `ExportSurfaceRevision::fromDigest` prerequisite required by `R30-12O-D`, expands the atomic landing set by `binding-metadata.{h,cc}`, and preserves `R30-15` as the only source commit and push. |
+| 2026-07-28 | ACCEPTED | Transaction `rfc0030-amend-landing-20260728-71b56ffb` reconciles the exact pending landing set to approved RFC SHA-256 `71b56ffba6823b210322f70e0a24a54b0e9c2291504a496530c237ff1b4b2815`, tracker SHA-256 `07707641939e84a535867decf12aef201305752b85f53c5833dc9684ae05b875`, and allowlist SHA-256 `8bb87b1ba22757097743061e741e5f66662acfbcbc23b62acaf5f6f0952dd851`; the 43-path transaction consumes the published `named-item-query.h` prerequisite and preserves `R30-15` as the only pending source commit and push. |

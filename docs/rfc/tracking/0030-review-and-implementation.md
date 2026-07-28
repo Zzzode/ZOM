@@ -114,6 +114,15 @@ RFC 0039 inserts a bounded Binder-owned digest-admission prerequisite, adds
 `binding-metadata.{h,cc}` to the same cumulative atomic landing set, and
 preserves `R30-15` as the only source commit and push.
 
+### 2026-07-28 R30-14 Exact Landing Reconciliation
+
+Preflight compared the accepted exact landing set with the pending source tree
+and found that `products/zomlang/compiler/driver/named-item-query.h` has no
+pending change. Commit `652790085feae33aa23eefc8ee16d7ad2d8c7bdf`
+already publishes its complete contextual-key and capability descriptor
+contract. `R30-14` therefore treats that commit as a satisfied prerequisite
+and proves the remaining 43-path transaction without restaging the file.
+
 ## Decision Record
 
 Accepted by `task-router`, `rfc`, `module-system`, `binder-checker`,
@@ -174,6 +183,18 @@ and tracker SHA-256
 `253766beefaee323618cc9a589ea015258d19cba16a1cf5e285c39c23b8d7e8b`.
 It inserts typed export-surface revision admission before `R30-12O-D`,
 expands the atomic landing set, and changes no source or implementation
+status.
+
+RFC 0030 amendment transaction
+`rfc0030-amend-landing-20260728-71b56ffb` reconciles the pending atomic
+landing to RFC SHA-256
+`71b56ffba6823b210322f70e0a24a54b0e9c2291504a496530c237ff1b4b2815`,
+tracker SHA-256
+`07707641939e84a535867decf12aef201305752b85f53c5833dc9684ae05b875`,
+and allowlist SHA-256
+`8bb87b1ba22757097743061e741e5f66662acfbcbc23b62acaf5f6f0952dd851`.
+It records `named-item-query.h` as a published prerequisite and establishes
+the remaining 43-path exact landing set without changing implementation
 status.
 
 The earlier approvals against proposal SHA-256
