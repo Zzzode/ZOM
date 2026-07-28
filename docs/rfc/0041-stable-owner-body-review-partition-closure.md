@@ -52,6 +52,14 @@ Dropping tests would make the line limit pass without proving the values.
 The review graph must instead expose coherent fact families and the real
 aggregate dependency order.
 
+The first complete `R41-15F1` candidate later reached 428 additions:
+43 in the fact header, 288 in the fact implementation, and 97 in the native
+test. Strict C++23 sanitizer syntax compilation passed, but the candidate was
+not eligible for review. The three files were restored byte-for-byte to the
+approved `R41-14D` predecessor tuple. The value implementation and populated
+smoke evidence are independently coherent review surfaces, so this amendment
+separates them without changing the stable contract or publication boundary.
+
 ## Goals
 
 - Preserve the 400-line additions-plus-deletions cap for every review.
@@ -61,6 +69,8 @@ aggregate dependency order.
 - Separate label, control-transfer, closure, and explicit-capture contracts.
 - Review `BoundOwnerBody` value construction before two bounded adversarial
   evidence tasks.
+- Review the complete aggregate value before separately bounded populated
+  smoke evidence.
 - Require exact approved predecessor and candidate SHA-256 tuples for every
   task.
 - Preserve the single cumulative source tree and RFC 0030 atomic landing.
@@ -106,7 +116,9 @@ flowchart LR
     LB --> CT["Control transfers"]
     CT --> CL["Closures"]
     CL --> EC["Explicit captures"]
-    EC --> OB["BoundOwnerBody value and evidence"]
+    EC --> OV["BoundOwnerBody value"]
+    OV --> OS["Populated smoke evidence"]
+    OS --> OB["Adversarial aggregate evidence"]
     OB --> OC["BoundOwnerBody codec"]
     OC --> AL["Allocation plan"]
 ```
@@ -150,12 +162,13 @@ re-encoding, and hostile mutation rejection.
 
 | Task | Entities And Evidence |
 |---|---|
-| `R41-15F1` | Complete `BoundOwnerBody` Pimpl, admitted factory, local indexes and relations, all populated sequence accessors, clone, equality, and bounded smoke evidence |
+| `R41-15F1A` | Complete `BoundOwnerBody` Pimpl, admitted factory, linear indexes and iterative relations, all sequence accessors, clone, equality, and move-only compile evidence |
+| `R41-15F1B` | Populated production-built smoke fixture covering every component family, all fourteen aggregate sequences, clone, equality, owner access, and every sequence accessor |
 | `R41-15F2A` | Aggregate-only structural evidence for scope graphs, node coverage, path uniqueness, binding and resolution references, labels, control targets, and closure/capture bijections |
 | `R41-15F2B` | Aggregate-only ownership, sequence-accessor, canonical multiplicity, and accepted iterative scale evidence |
 | `R41-16` | Complete `BoundOwnerBody` codec, independent aggregate oracle, sequence/count/field/ownership mutations, truncation, trailing bytes, and bounds |
 
-`R41-15F2A` and `R41-15F2B` edit only
+`R41-15F1B`, `R41-15F2A`, and `R41-15F2B` edit only
 `stable-binding-facts-test.cc`. They may add production-facing fixtures and
 assertions but no test-only constructor, alternate sequence builder, product
 source, schema, or codec.
@@ -197,13 +210,17 @@ R30-12Q-B
   -> R41-13B -> R41-14B
   -> R41-13C -> R41-14C
   -> R41-13D -> R41-14D
-  -> R41-15F1 -> R41-15F2A -> R41-15F2B -> R41-16
+  -> R41-15F1A -> R41-15F1B -> R41-15F2A -> R41-15F2B -> R41-16
   -> R30-12X
 ```
 
 ### Aggregate Admission
 
-`R41-15F1` constructs at least one valid value of every component family
+`R41-15F1A` implements the complete aggregate value and all relations
+derivable from its inputs. Its native compile evidence proves the public type
+remains move-only without substituting an unchecked construction path.
+
+`R41-15F1B` constructs at least one valid value of every component family
 through its public factory, admits every canonical sequence through
 `StableBindingSequenceBuilder<T>`, and passes all populated sequences to the
 aggregate factory.
@@ -326,3 +343,4 @@ None
 | 2026-07-28 | DRAFT | Initial proposal written from the returned owner-body preflight. |
 | 2026-07-28 | REVIEW | Ready for exact-hash owner review after restoring the approved predecessor. |
 | 2026-07-28 | ACCEPTED | All required owners approved proposal SHA-256 `ad3efd803fa993daa12d427b401eeef224a4f48d9eaf214a99eeeead4d0b3855`, tracker SHA-256 `0d2601e633cb32e8942bfc11e5506ff61af487733af62eda41cf2efe24078de9`, RFC 0030 tracker SHA-256 `4820d5ea1d43a9f404e88db715375a8165936bec015e8061f66fac48c9a938fb`, RFC 0037 SHA-256 `f32dc9d8de584921f94121bf165e781100e60cf806e5475f2d8213b950058e00`, and RFC 0037 tracker SHA-256 `2b21628645997bbfb40e8df66a36678dc2b6423a91dfff9207a8894ddefc2b09`. Transaction `rfc0041-accept-20260728-ad3efd80` changes no source, schema, landing scope, or atomic publication boundary. |
+| 2026-07-28 | ACCEPTED | All required owners approved the aggregate amendment against proposal SHA-256 `a46d2775aa1c7153326eb986229d1dfd995be3e1fa146939ac33620fef29c34a`, tracker SHA-256 `50d0a0d1bdfdb6aa4317768c06c1e0f784a910233f9a6f27797f35e5fdc810e9`, and RFC 0030 tracker SHA-256 `1e4d956eda086df4165681a56cfb7af382a77a804b0296e84a74425c7b9f672f`. Transaction `rfc0041-amend-aggregate-20260728-a46d2775` separates the complete aggregate value from populated smoke evidence without changing source, schema, implementation status, landing scope, or the atomic publication boundary. |
