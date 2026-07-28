@@ -431,6 +431,7 @@ products/zomlang/tests/unittests/compiler/identity/canonical-impl-header-test.cc
 products/zomlang/tests/unittests/compiler/identity/definition-key-test.cc
 scripts/check-stable-binding-schema.py
 scripts/check-binder-architecture.py
+scripts/check-compiler-session-architecture.py
 products/zomlang/compiler/driver/active-definition-authority-query.h
 products/zomlang/compiler/driver/active-definition-authority-query.cc
 products/zomlang/compiler/driver/active-definition-authority-session.h
@@ -453,7 +454,8 @@ The accepted branch provides the complete `named-item-query.h` contextual-key
 and capability descriptor contract in commit
 `652790085feae33aa23eefc8ee16d7ad2d8c7bdf`. This transaction consumes that
 published prerequisite and does not restage the file. The exact pending
-landing set therefore contains 43 paths.
+landing set contains 44 paths, including the CompilerSession architecture gate
+that owns the Driver source inventory and direct build marker.
 
 The transaction registers these exact CTest names:
 
@@ -618,7 +620,7 @@ is not rewritten for this transaction.
 | Stable contextual contracts | `products/zomlang/compiler/driver/contextual-binding-key.*`, `products/zomlang/compiler/driver/active-definition-authority-query.*`, `products/zomlang/compiler/driver/active-definition-authority-session.{h,cc}`, `products/zomlang/compiler/driver/compiler-session.cc`, `products/zomlang/compiler/driver/named-item-query.*`, `products/zomlang/compiler/driver/owner-body-query.*`, `products/zomlang/compiler/driver/CMakeLists.txt` | `module-system` |
 | Stable Binder foundation | `products/zomlang/compiler/binder/stable-binding-*`, `products/zomlang/compiler/binder/CMakeLists.txt` | `binder-checker` |
 | Diagnostic schema contract | `products/zomlang/compiler/diagnostics/**` | `error-system` |
-| Native tests and gates | `products/zomlang/tests/unittests/compiler/binder/**`, `products/zomlang/tests/unittests/compiler/driver/package-compilation-request-test.cc`, `products/zomlang/tests/unittests/compiler/diagnostics/diagnostic-fact-test.cc`, `products/zomlang/tests/unittests/compiler/diagnostics/CMakeLists.txt`, `products/zomlang/tests/coverage/rfc-0030-stable-binding-landing-files.txt`, `scripts/check-stable-binding-schema.py`, `scripts/check-binder-architecture.py`, `scripts/check-landing-scope.py` | `verification` |
+| Native tests and gates | `products/zomlang/tests/unittests/compiler/binder/**`, `products/zomlang/tests/unittests/compiler/driver/package-compilation-request-test.cc`, `products/zomlang/tests/unittests/compiler/diagnostics/diagnostic-fact-test.cc`, `products/zomlang/tests/unittests/compiler/diagnostics/CMakeLists.txt`, `products/zomlang/tests/coverage/rfc-0030-stable-binding-landing-files.txt`, `scripts/check-stable-binding-schema.py`, `scripts/check-binder-architecture.py`, `scripts/check-compiler-session-architecture.py`, `scripts/check-landing-scope.py` | `verification` |
 
 ## Security And Safety Impact
 
@@ -787,6 +789,8 @@ runtime observability, or release operation is added.
 - Architecture:
   `python3 scripts/check-binder-architecture.py --check`;
   `python3 scripts/check-binder-architecture.py --self-test`;
+  `python3 scripts/check-compiler-session-architecture.py --check`;
+  `python3 scripts/check-compiler-session-architecture.py --self-test`;
   `python3 scripts/check-binder-fact-schema.py --check`.
 - Diagnostics:
   `python3 scripts/check-diagnostic-coverage.py --self-test`;
@@ -823,3 +827,4 @@ None
 | 2026-07-28 | ACCEPTED | Transaction `rfc0035-accept-20260728-e79c292e` inserts the identity-owned implementation-record decoder required by `R30-12I-C`, synchronizes exact RFC 0035 proposal SHA-256 `e79c292e8d3aefcce76d32923e566bc625e49b9b67d8bd1968fbd4b9620ee6c8` and tracker SHA-256 `d50ec5efe5718d6eaa657463a348ac0956dd954174345d7b90c00d99d0f6ec9f`, expands the atomic landing set, and preserves `R30-15` as the only source commit and push. |
 | 2026-07-28 | ACCEPTED | Transaction `rfc0039-accept-20260728-de7ab2aa` inserts the Binder-owned `ExportSurfaceRevision::fromDigest` prerequisite required by `R30-12O-D`, expands the atomic landing set by `binding-metadata.{h,cc}`, and preserves `R30-15` as the only source commit and push. |
 | 2026-07-28 | ACCEPTED | Transaction `rfc0030-amend-landing-20260728-71b56ffb` reconciles the exact pending landing set to approved RFC SHA-256 `71b56ffba6823b210322f70e0a24a54b0e9c2291504a496530c237ff1b4b2815`, tracker SHA-256 `07707641939e84a535867decf12aef201305752b85f53c5833dc9684ae05b875`, and allowlist SHA-256 `8bb87b1ba22757097743061e741e5f66662acfbcbc23b62acaf5f6f0952dd851`; the 43-path transaction consumes the published `named-item-query.h` prerequisite and preserves `R30-15` as the only pending source commit and push. |
+| 2026-07-28 | ACCEPTED | Transaction `rfc0030-amend-gate-20260728-f468df91` synchronizes the CompilerSession architecture gate to approved RFC SHA-256 `f468df9160c2b08790134e8923cf7b9882b1640a37719ba6ab0462bf0b14906d`, tracker SHA-256 `3dc6bd85b62bb231a5761c8867664097d7370ac6859385450e6a0b2014fc382a`, allowlist SHA-256 `70695d54b9b5e137e1123050880dea78bc16d452e36107daa0d72e6f4c10b433`, and gate SHA-256 `02a92e43dea40ea9eb5ba5211069de5f1d65f77cc6eb62360425495ab1841521`; the exact pending source transaction contains 44 paths. |

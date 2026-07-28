@@ -121,7 +121,14 @@ and found that `products/zomlang/compiler/driver/named-item-query.h` has no
 pending change. Commit `652790085feae33aa23eefc8ee16d7ad2d8c7bdf`
 already publishes its complete contextual-key and capability descriptor
 contract. `R30-14` therefore treats that commit as a satisfied prerequisite
-and proves the remaining 43-path transaction without restaging the file.
+and does not restage the file.
+
+The first isolated full CTest preflight then rejected the candidate because
+`scripts/check-compiler-session-architecture.py` did not accompany the new
+contextual-key Driver surface and direct build marker. That architecture gate
+is part of the same verification contract. The final exact pending transaction
+therefore contains 44 paths: it adds the gate and retains the published header
+as a prerequisite.
 
 ## Decision Record
 
@@ -196,6 +203,19 @@ and allowlist SHA-256
 It records `named-item-query.h` as a published prerequisite and establishes
 the remaining 43-path exact landing set without changing implementation
 status.
+
+RFC 0030 amendment transaction
+`rfc0030-amend-gate-20260728-f468df91` synchronizes the CompilerSession
+architecture gate to RFC SHA-256
+`f468df9160c2b08790134e8923cf7b9882b1640a37719ba6ab0462bf0b14906d`,
+tracker SHA-256
+`3dc6bd85b62bb231a5761c8867664097d7370ac6859385450e6a0b2014fc382a`,
+allowlist SHA-256
+`70695d54b9b5e137e1123050880dea78bc16d452e36107daa0d72e6f4c10b433`,
+and gate SHA-256
+`02a92e43dea40ea9eb5ba5211069de5f1d65f77cc6eb62360425495ab1841521`.
+It establishes the exact 44-path pending transaction without changing
+implementation status.
 
 The earlier approvals against proposal SHA-256
 `44f0ed68bdd3635e7ed736efcf2dfb2cef0a499c89733d1ab1334a89dce55151`
