@@ -89,9 +89,11 @@ bool ActiveDefinitionAuthorityProjectionState::refresh(
   if (projection == zc::none || ZC_ASSERT_NONNULL(projection).records().size() != authorityCount) {
     return false;
   }
-  zc::Vector<identity::DefinitionKey> nextKeyLedger(ZC_ASSERT_NONNULL(projection).records().size());
+  zc::Vector<binder::StableDefinitionQueryKey> nextKeyLedger(
+      ZC_ASSERT_NONNULL(projection).records().size());
   for (const auto& authority : ZC_ASSERT_NONNULL(projection).records()) {
-    nextKeyLedger.add(authority.key().clone());
+    nextKeyLedger.add(binder::StableDefinitionQueryKey::from(authority.record().module().clone(),
+                                                             authority.key().clone()));
   }
 
   auto pending = database.beginInputTransaction();
@@ -103,8 +105,9 @@ bool ActiveDefinitionAuthorityProjectionState::refresh(
         if (!transaction.erase<ActiveDefinitionAuthorityInput>(key)) { return false; }
       }
     }
-    for (const auto& authority : ZC_ASSERT_NONNULL(projection).records()) {
-      auto key = ContextualDefinitionKey::from(contextRoots.clone(), authority.key().clone());
+    for (size_t index = 0; index < ZC_ASSERT_NONNULL(projection).records().size(); ++index) {
+      const auto& authority = ZC_ASSERT_NONNULL(projection).records()[index];
+      auto key = ContextualDefinitionKey::from(contextRoots.clone(), nextKeyLedger[index].clone());
       if (!transaction.set<ActiveDefinitionAuthorityInput>(key, authority.record())) {
         return false;
       }
@@ -121,8 +124,8 @@ bool ActiveDefinitionAuthorityProjectionState::refresh(
   return false;
 }
 
-zc::ArrayPtr<const identity::DefinitionKey> ActiveDefinitionAuthorityProjectionState::keyLedger()
-    const {
+zc::ArrayPtr<const binder::StableDefinitionQueryKey>
+ActiveDefinitionAuthorityProjectionState::keyLedger() const {
   return keyLedgerField.asPtr();
 }
 

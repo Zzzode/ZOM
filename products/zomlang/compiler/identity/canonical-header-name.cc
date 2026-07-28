@@ -14,6 +14,8 @@
 
 #include "zomlang/compiler/identity/canonical-header-name.h"
 
+#include "zc/core/debug.h"
+#include "zomlang/compiler/identity/canonical-decoder.h"
 #include "zomlang/compiler/identity/canonical-encoder.h"
 
 namespace zomlang::compiler::identity {
@@ -23,6 +25,11 @@ template <typename Enum>
 bool inClosedRange(Enum value, Enum first, Enum last) noexcept {
   return value >= first && value <= last;
 }
+
+constexpr uint64_t kMaximumCanonicalHeaderBytes = 4 * 1024 * 1024;
+constexpr uint64_t kMinimumEncodedIdentifierBytes = sizeof(uint64_t) + 1;
+constexpr uint64_t kMaximumNameSuffixCount =
+    kMaximumCanonicalHeaderBytes / kMinimumEncodedIdentifierBytes;
 
 }  // namespace
 
@@ -70,6 +77,24 @@ CanonicalNameRoot CanonicalNameRoot::generic(uint32_t binderDepth, uint32_t ordi
   return CanonicalNameRoot(CanonicalNameRootKind::Generic, binderDepth, ordinal);
 }
 
+zc::Maybe<CanonicalNameRoot> CanonicalNameRoot::decodeCanonical(CanonicalDecoder& decoder) {
+  auto tag = decoder.decodeUint8();
+  if (tag == zc::none) { return zc::none; }
+  switch (static_cast<CanonicalNameRootKind>(ZC_ASSERT_NONNULL(tag))) {
+    case CanonicalNameRootKind::Absolute:
+      return absolute();
+    case CanonicalNameRootKind::Relative:
+      return relative();
+    case CanonicalNameRootKind::Generic: {
+      auto binderDepth = decoder.decodeUint32();
+      auto ordinal = decoder.decodeUint32();
+      if (binderDepth == zc::none || ordinal == zc::none) { return zc::none; }
+      return generic(ZC_ASSERT_NONNULL(binderDepth), ZC_ASSERT_NONNULL(ordinal));
+    }
+  }
+  return zc::none;
+}
+
 CanonicalNameRoot CanonicalNameRoot::clone() const noexcept {
   return CanonicalNameRoot(kindValue, binderDepthValue, ordinalValue);
 }
@@ -101,6 +126,23 @@ zc::Maybe<CanonicalNameReference> CanonicalNameReference::from(
     CanonicalNameRoot&& root, zc::Vector<SemanticIdentifier>&& suffix) {
   if (root.kind() != CanonicalNameRootKind::Generic && suffix.size() == 0) { return zc::none; }
   return CanonicalNameReference(zc::mv(root), zc::mv(suffix));
+}
+
+zc::Maybe<CanonicalNameReference> CanonicalNameReference::decodeCanonical(
+    CanonicalDecoder& decoder) {
+  auto root = CanonicalNameRoot::decodeCanonical(decoder);
+  auto count = decoder.decodeSequenceSize(kMaximumNameSuffixCount);
+  if (root == zc::none || count == zc::none ||
+      ZC_ASSERT_NONNULL(count) > decoder.remaining() / kMinimumEncodedIdentifierBytes) {
+    return zc::none;
+  }
+  zc::Vector<SemanticIdentifier> suffix(static_cast<size_t>(ZC_ASSERT_NONNULL(count)));
+  for (uint64_t index = 0; index < ZC_ASSERT_NONNULL(count); ++index) {
+    auto segment = SemanticIdentifier::decodeCanonical(decoder);
+    if (segment == zc::none) { return zc::none; }
+    suffix.add(zc::mv(ZC_ASSERT_NONNULL(segment)));
+  }
+  return from(zc::mv(ZC_ASSERT_NONNULL(root)), zc::mv(suffix));
 }
 
 CanonicalNameReference CanonicalNameReference::clone() const {

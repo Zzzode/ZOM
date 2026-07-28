@@ -6,7 +6,6 @@
 #include "zomlang/compiler/driver/active-definition-authority-query.h"
 
 #include "zc/core/debug.h"
-#include "zomlang/compiler/identity/canonical-decoder.h"
 #include "zomlang/compiler/identity/canonical-encoder.h"
 #include "zomlang/compiler/identity/sha256.h"
 
@@ -14,8 +13,6 @@ namespace zomlang::compiler::driver::incremental_binding_query {
 namespace {
 
 constexpr zc::StringPtr kAuthoritySetDomain = "zom.active-definition-authority-set"_zc;
-constexpr uint64_t kMaximumContextRootBytes = 64 * 1024 * 1024;
-constexpr uint64_t kMaximumModuleKeyBytes = 16 * 1024;
 
 int compareBytes(zc::ArrayPtr<const uint8_t> left, zc::ArrayPtr<const uint8_t> right) noexcept {
   const size_t shared = left.size() < right.size() ? left.size() : right.size();
@@ -61,104 +58,6 @@ zc::Maybe<ActiveDefinitionAuthoritySetFingerprint> computeFingerprint(
 }
 
 }  // namespace
-
-ContextualDefinitionKey::ContextualDefinitionKey(CompilationRootSetQueryKey&& contextRoots,
-                                                 identity::DefinitionKey&& definition) noexcept
-    : contextRootsField(zc::mv(contextRoots)), definitionField(zc::mv(definition)) {}
-
-ContextualDefinitionKey ContextualDefinitionKey::from(CompilationRootSetQueryKey&& contextRoots,
-                                                      identity::DefinitionKey&& definition) {
-  return ContextualDefinitionKey(zc::mv(contextRoots), zc::mv(definition));
-}
-
-zc::Maybe<ContextualDefinitionKey> ContextualDefinitionKey::decodeCanonical(
-    zc::ArrayPtr<const uint8_t> bytes) {
-  identity::CanonicalDecoder decoder(bytes);
-  auto rootsBytes = decoder.decodeByteString(kMaximumContextRootBytes);
-  auto definitionBytes = decoder.decodeByteString(32);
-  if (rootsBytes == zc::none || definitionBytes == zc::none || !decoder.finished() ||
-      ZC_ASSERT_NONNULL(definitionBytes).size() != 32) {
-    return zc::none;
-  }
-  auto roots = CompilationRootSetQueryKey::decodeCanonical(ZC_ASSERT_NONNULL(rootsBytes).asPtr());
-  auto definition = identity::DefinitionKey::fromBytes(ZC_ASSERT_NONNULL(definitionBytes).asPtr());
-  if (roots == zc::none || definition == zc::none) { return zc::none; }
-  return ContextualDefinitionKey(zc::mv(ZC_ASSERT_NONNULL(roots)),
-                                 zc::mv(ZC_ASSERT_NONNULL(definition)));
-}
-
-ContextualDefinitionKey ContextualDefinitionKey::clone() const {
-  return ContextualDefinitionKey(contextRootsField.clone(), definitionField.clone());
-}
-
-const CompilationRootSetQueryKey& ContextualDefinitionKey::contextRoots() const noexcept {
-  return contextRootsField;
-}
-
-const identity::DefinitionKey& ContextualDefinitionKey::definition() const noexcept {
-  return definitionField;
-}
-
-zc::Array<uint8_t> ContextualDefinitionKey::encodeCanonical() const {
-  identity::CanonicalEncoder encoder;
-  const auto roots = contextRootsField.encodeCanonical();
-  encoder.encodeByteString(roots.asPtr());
-  encoder.encodeByteString(definitionField.bytes());
-  return encoder.finish();
-}
-
-bool ContextualDefinitionKey::operator==(const ContextualDefinitionKey& other) const noexcept {
-  return contextRootsField == other.contextRootsField && definitionField == other.definitionField;
-}
-
-ContextualModuleKey::ContextualModuleKey(CompilationRootSetQueryKey&& contextRoots,
-                                         identity::ModuleKey&& module) noexcept
-    : contextRootsField(zc::mv(contextRoots)), moduleField(zc::mv(module)) {}
-
-ContextualModuleKey ContextualModuleKey::from(CompilationRootSetQueryKey&& contextRoots,
-                                              identity::ModuleKey&& module) {
-  return ContextualModuleKey(zc::mv(contextRoots), zc::mv(module));
-}
-
-zc::Maybe<ContextualModuleKey> ContextualModuleKey::decodeCanonical(
-    zc::ArrayPtr<const uint8_t> bytes) {
-  identity::CanonicalDecoder decoder(bytes);
-  auto rootsBytes = decoder.decodeByteString(kMaximumContextRootBytes);
-  auto moduleBytes = decoder.decodeByteString(kMaximumModuleKeyBytes);
-  if (rootsBytes == zc::none || moduleBytes == zc::none || !decoder.finished()) { return zc::none; }
-  auto roots = CompilationRootSetQueryKey::decodeCanonical(ZC_ASSERT_NONNULL(rootsBytes).asPtr());
-  identity::CanonicalDecoder moduleDecoder(ZC_ASSERT_NONNULL(moduleBytes).asPtr());
-  auto module = identity::ModuleKey::decodeCanonical(moduleDecoder);
-  if (roots == zc::none || module == zc::none || !moduleDecoder.finished() ||
-      ZC_ASSERT_NONNULL(module).encode().asPtr() != ZC_ASSERT_NONNULL(moduleBytes).asPtr()) {
-    return zc::none;
-  }
-  return ContextualModuleKey(zc::mv(ZC_ASSERT_NONNULL(roots)), zc::mv(ZC_ASSERT_NONNULL(module)));
-}
-
-ContextualModuleKey ContextualModuleKey::clone() const {
-  return ContextualModuleKey(contextRootsField.clone(), moduleField.clone());
-}
-
-const CompilationRootSetQueryKey& ContextualModuleKey::contextRoots() const noexcept {
-  return contextRootsField;
-}
-
-const identity::ModuleKey& ContextualModuleKey::module() const noexcept { return moduleField; }
-
-zc::Array<uint8_t> ContextualModuleKey::encodeCanonical() const {
-  identity::CanonicalEncoder encoder;
-  const auto roots = contextRootsField.encodeCanonical();
-  const auto module = moduleField.encode();
-  encoder.encodeByteString(roots.asPtr());
-  encoder.encodeByteString(module.asPtr());
-  return encoder.finish();
-}
-
-bool ContextualModuleKey::operator==(const ContextualModuleKey& other) const noexcept {
-  return contextRootsField == other.contextRootsField &&
-         moduleField.encode().asPtr() == other.moduleField.encode().asPtr();
-}
 
 ActiveDefinitionAuthorityRecord::ActiveDefinitionAuthorityRecord(
     identity::DefinitionKey&& key, identity::DefinitionIdentityRecord&& record) noexcept

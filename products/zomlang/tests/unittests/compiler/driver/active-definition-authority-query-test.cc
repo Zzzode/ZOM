@@ -8,14 +8,43 @@
 #include "zc/core/encoding.h"
 #include "zc/ztest/test.h"
 #include "zomlang/compiler/basic/thread-pool.h"
+#include "zomlang/compiler/driver/contextual-binding-key.h"
+#include "zomlang/compiler/identity/canonical-encoder.h"
 
 namespace zomlang::compiler::driver::incremental_binding_query {
 namespace {
+
+template <typename T>
+constexpr bool isMoveOnly() {
+  return __is_constructible(T, T&&) && !__is_constructible(T, const T&);
+}
+
+static_assert(isMoveOnly<ContextualBodyOwnerKey>());
+static_assert(isMoveOnly<ContextualCompilationUnitKey>());
+static_assert(isMoveOnly<ContextualCrateKey>());
+static_assert(isMoveOnly<ContextualSourceKey>());
+static_assert(isMoveOnly<ContextualModuleKey>());
+static_assert(isMoveOnly<ContextualDefinitionKey>());
+static_assert(isMoveOnly<ContextualImplementationKey>());
+static_assert(isMoveOnly<ContextualGenericParameterKey>());
+static_assert(isMoveOnly<ContextualCallableParameterKey>());
 
 template <typename Scalar>
 Scalar scalar(zc::StringPtr text) {
   auto value = Scalar::fromCanonical(text);
   return zc::mv(ZC_REQUIRE_NONNULL(value));
+}
+
+template <typename T>
+T require(zc::Maybe<T>&& value) {
+  return zc::mv(ZC_REQUIRE_NONNULL(value));
+}
+
+template <typename T>
+T digestKey(uint8_t byte) {
+  uint8_t bytes[32];
+  for (auto& value : bytes) { value = byte; }
+  return require(T::fromBytes(zc::arrayPtr(bytes)));
 }
 
 identity::ResolvedVersion version() { return scalar<identity::ResolvedVersion>("0.0.0"_zc); }
@@ -32,12 +61,12 @@ identity::SortedTargetFeatureSet targetFeatures() {
   return zc::mv(ZC_REQUIRE_NONNULL(result));
 }
 
-identity::PackageKey package() {
+identity::PackageKey package(zc::StringPtr name = "authority"_zc) {
   zc::Vector<identity::CanonicalPathSegment> path;
   return identity::PackageKey::from(
       identity::CanonicalPackageSource::localPath(
           identity::CanonicalWorkspaceRelativePath::from(0, zc::mv(path))),
-      scalar<identity::PackageName>("authority"_zc), version(), packageFeatures());
+      scalar<identity::PackageName>(name), version(), packageFeatures());
 }
 
 identity::CanonicalTargetSpecificationKey target() {
@@ -59,18 +88,27 @@ identity::CompilationConfigKey compilation() {
   return zc::mv(ZC_REQUIRE_NONNULL(result));
 }
 
-identity::CrateKey crate() {
-  auto result = identity::CrateKey::from(
-      identity::CompilationUnitIdentity::userPackage(package()), identity::CrateTargetKind::Library,
-      scalar<identity::TargetName>("authority"_zc), compilation());
+identity::CrateKey crate(zc::StringPtr packageName = "authority"_zc) {
+  auto result =
+      identity::CrateKey::from(identity::CompilationUnitIdentity::userPackage(package(packageName)),
+                               identity::CrateTargetKind::Library,
+                               scalar<identity::TargetName>("authority"_zc), compilation());
   return zc::mv(ZC_REQUIRE_NONNULL(result));
 }
 
-identity::ModuleKey module() {
+identity::ModuleKey module(zc::StringPtr packageName = "authority"_zc) {
   zc::Vector<identity::ModulePathSegment> path;
   path.add(scalar<identity::ModulePathSegment>("root"_zc));
-  auto result = identity::ModuleKey::from(crate(), zc::mv(path));
+  auto result = identity::ModuleKey::from(crate(packageName), zc::mv(path));
   return zc::mv(ZC_REQUIRE_NONNULL(result));
+}
+
+identity::SourceFileKey source() {
+  zc::Vector<identity::CanonicalPathSegment> path;
+  path.add(scalar<identity::CanonicalPathSegment>("root.zom"_zc));
+  return identity::SourceFileKey::from(
+      crate(), identity::SourceOriginKey::localFile(
+                   identity::CanonicalWorkspaceRelativePath::from(0, zc::mv(path))));
 }
 
 identity::DefinitionIdentityRecord definitionRecord(zc::StringPtr name) {
@@ -95,19 +133,134 @@ basic::ThreadPool& scheduler() {
   return value;
 }
 
-CompilationRootSetQueryKey contextRoots() {
+CompilationRootSetQueryKey contextRoots(zc::StringPtr packageName = "authority"_zc) {
   zc::Vector<CompilationRootKey> roots;
-  auto root = CompilationRootKey::userPackage(package());
+  auto root = CompilationRootKey::userPackage(package(packageName));
   roots.add(zc::mv(ZC_REQUIRE_NONNULL(root)));
   auto result = CompilationRootSetQueryKey::from(zc::mv(roots));
   return zc::mv(ZC_REQUIRE_NONNULL(result));
 }
 
 ContextualDefinitionKey contextualDefinition(const identity::DefinitionKey& definition) {
-  return ContextualDefinitionKey::from(contextRoots(), definition.clone());
+  return ContextualDefinitionKey::from(
+      contextRoots(), binder::StableDefinitionQueryKey::from(module(), definition.clone()));
+}
+
+zc::Array<uint8_t> expectedContextualWire(zc::StringPtr domain,
+                                          const CompilationRootSetQueryKey& roots,
+                                          zc::ArrayPtr<const uint8_t> payload) {
+  identity::CanonicalEncoder record;
+  const auto rootBytes = roots.encodeCanonical();
+  record.encodeByteString(rootBytes.asPtr());
+  record.encodeByteString(payload);
+  const auto fields = record.finish();
+  zc::Vector<uint8_t> expected(domain.size() + 1 + fields.size());
+  expected.addAll(domain.asBytes());
+  expected.add(0x00);
+  expected.addAll(fields.asPtr());
+  return expected.releaseAsArray();
+}
+
+zc::Array<uint8_t> reorderedContextualWire(zc::StringPtr domain,
+                                           const CompilationRootSetQueryKey& roots,
+                                           zc::ArrayPtr<const uint8_t> payload) {
+  identity::CanonicalEncoder record;
+  const auto rootBytes = roots.encodeCanonical();
+  record.encodeByteString(payload);
+  record.encodeByteString(rootBytes.asPtr());
+  const auto fields = record.finish();
+  zc::Vector<uint8_t> reordered(domain.size() + 1 + fields.size());
+  reordered.addAll(domain.asBytes());
+  reordered.add(0x00);
+  reordered.addAll(fields.asPtr());
+  return reordered.releaseAsArray();
+}
+
+zc::Array<uint8_t> oversizedContextualComponent(zc::StringPtr domain) {
+  identity::CanonicalEncoder record;
+  record.encodeUint64((64u * 1024u * 1024u) + 1u);
+  const auto fields = record.finish();
+  zc::Vector<uint8_t> oversized(domain.size() + 1 + fields.size());
+  oversized.addAll(domain.asBytes());
+  oversized.add(0x00);
+  oversized.addAll(fields.asPtr());
+  return oversized.releaseAsArray();
+}
+
+template <typename T>
+void expectContextualWire(const T& value, zc::StringPtr domain,
+                          zc::ArrayPtr<const uint8_t> payload) {
+  const auto encoded = value.encodeCanonical();
+  ZC_EXPECT(encoded.asPtr() ==
+            expectedContextualWire(domain, value.contextRoots(), payload).asPtr());
+  auto decoded = T::decodeCanonical(encoded.asPtr());
+  ZC_REQUIRE(decoded != zc::none);
+  ZC_EXPECT(ZC_REQUIRE_NONNULL(decoded) == value);
+  ZC_EXPECT(
+      T::decodeCanonical(reorderedContextualWire(domain, value.contextRoots(), payload).asPtr()) ==
+      zc::none);
+  ZC_EXPECT(T::decodeCanonical(oversizedContextualComponent(domain).asPtr()) == zc::none);
+  ZC_EXPECT(T::decodeCanonical(encoded.asPtr().first(encoded.size() - 1)) == zc::none);
+  auto wrongDomain = zc::heapArray<uint8_t>(encoded.asPtr());
+  wrongDomain[0] ^= 0x01;
+  ZC_EXPECT(T::decodeCanonical(wrongDomain.asPtr()) == zc::none);
+  auto trailing = zc::heapArray<uint8_t>(encoded.size() + 1);
+  trailing.first(encoded.size()).copyFrom(encoded.asPtr());
+  trailing.back() = 0;
+  ZC_EXPECT(T::decodeCanonical(trailing.asPtr()) == zc::none);
 }
 
 }  // namespace
+
+ZC_TEST("StableBindingQueryTest.ContextualKeysRejectRootAndOwnerDrift") {
+  auto body = ContextualBodyOwnerKey::from(
+      contextRoots(), require(binder::StableOwnerBodyQueryKey::from(
+                          module(), binder::StableBodyOwnerKey::module(module()))));
+  auto unit = ContextualCompilationUnitKey::from(
+      contextRoots(), identity::CompilationUnitIdentity::userPackage(package()));
+  auto crateKey = ContextualCrateKey::from(contextRoots(), crate());
+  auto sourceKey = ContextualSourceKey::from(contextRoots(), source());
+  auto moduleKey = ContextualModuleKey::from(contextRoots(), module());
+  auto definition = ContextualDefinitionKey::from(
+      contextRoots(),
+      binder::StableDefinitionQueryKey::from(module(), digestKey<identity::DefinitionKey>(0x11)));
+  auto implementation = ContextualImplementationKey::from(
+      contextRoots(),
+      binder::StableImplementationQueryKey::from(module(), digestKey<identity::ImplKey>(0x22)));
+  auto generic = ContextualGenericParameterKey::from(
+      contextRoots(), binder::StableGenericParameterQueryKey::from(
+                          module(), digestKey<identity::GenericParameterKey>(0x33)));
+  auto callable = ContextualCallableParameterKey::from(
+      contextRoots(), binder::StableCallableParameterQueryKey::from(
+                          module(), digestKey<identity::CallableParameterKey>(0x44)));
+
+  expectContextualWire(body, "zom.binder.contextual-body-owner-key"_zc,
+                       body.body().encodeCanonical().asPtr());
+  expectContextualWire(unit, "zom.binder.contextual-compilation-unit-key"_zc,
+                       unit.unit().encode().asPtr());
+  expectContextualWire(crateKey, "zom.binder.contextual-crate-key"_zc,
+                       crateKey.crate().encode().asPtr());
+  expectContextualWire(sourceKey, "zom.binder.contextual-source-key"_zc,
+                       sourceKey.source().encode().asPtr());
+  expectContextualWire(moduleKey, "zom.binder.contextual-module-key"_zc,
+                       moduleKey.module().encode().asPtr());
+  expectContextualWire(definition, "zom.binder.contextual-definition-key"_zc,
+                       definition.definition().encodeCanonical().asPtr());
+  expectContextualWire(implementation, "zom.binder.contextual-implementation-key"_zc,
+                       implementation.implementation().encodeCanonical().asPtr());
+  expectContextualWire(generic, "zom.binder.contextual-generic-parameter-key"_zc,
+                       generic.parameter().encodeCanonical().asPtr());
+  expectContextualWire(callable, "zom.binder.contextual-callable-parameter-key"_zc,
+                       callable.parameter().encodeCanonical().asPtr());
+
+  auto contextDrift =
+      ContextualModuleKey::from(contextRoots("alternate"_zc), module("authority"_zc));
+  ZC_EXPECT(contextDrift != moduleKey);
+  auto ownerDrift = ContextualDefinitionKey::from(
+      contextRoots(), binder::StableDefinitionQueryKey::from(
+                          module("alternate"_zc), digestKey<identity::DefinitionKey>(0x11)));
+  ZC_EXPECT(ownerDrift != definition);
+}
 
 ZC_TEST("Active definition authority inputs use strict low durability codecs") {
   auto record = definitionRecord("Alpha"_zc);

@@ -208,6 +208,11 @@ const BindingTargetValue& BindingTarget::value() const noexcept { return valueVa
 BindingNameKey::BindingNameKey(Namespace nameSpace,
                                identity::DeclaredDefinitionName&& name) noexcept
     : namespaceValue(nameSpace), nameValue(zc::mv(name)) {}
+zc::Maybe<BindingNameKey> BindingNameKey::from(Namespace nameSpace,
+                                               identity::DeclaredDefinitionName&& name) noexcept {
+  if (nameSpace < Namespace::Value || nameSpace > Namespace::Attribute) { return zc::none; }
+  return BindingNameKey(nameSpace, zc::mv(name));
+}
 BindingNameKey BindingNameKey::clone() const {
   return BindingNameKey(namespaceValue, nameValue.clone());
 }
@@ -341,6 +346,10 @@ ExportSurfaceEntry ExportSurfaceEntry::clone() const {
 
 ExportSurfaceRevision::ExportSurfaceRevision(const identity::Sha256Digest& digest) noexcept
     : value(digest) {}
+ExportSurfaceRevision ExportSurfaceRevision::fromDigest(
+    const identity::Sha256Digest& digest) noexcept {
+  return ExportSurfaceRevision(digest);
+}
 const identity::Sha256Digest& ExportSurfaceRevision::digest() const noexcept { return value; }
 zc::Maybe<ExportSurfaceRevision> ExportSurfaceRevision::computeFramed(
     const identity::Sha256Digest& semanticContextFingerprint,

@@ -6,8 +6,8 @@
 #pragma once
 
 #include "zc/core/vector.h"
+#include "zomlang/compiler/binder/stable-binding-facts.h"
 #include "zomlang/compiler/driver/incremental-binding-query-adapter.h"
-#include "zomlang/compiler/identity/definition-key.h"
 #include "zomlang/compiler/query/query-database.h"
 
 namespace zomlang::compiler::driver::incremental_binding_query {
@@ -25,10 +25,12 @@ public:
   ZC_NODISCARD bool refresh(query::QueryDatabase& database,
                             const CompilationRootSetQueryKey& contextRoots);
 
-  ZC_NODISCARD zc::ArrayPtr<const identity::DefinitionKey> keyLedger() const ZC_LIFETIMEBOUND;
+  /// \brief Returns the exact stable keys published by the last successful refresh.
+  ZC_NODISCARD zc::ArrayPtr<const binder::StableDefinitionQueryKey> keyLedger() const
+      ZC_LIFETIMEBOUND;
 
 private:
-  zc::Vector<identity::DefinitionKey> keyLedgerField;
+  zc::Vector<binder::StableDefinitionQueryKey> keyLedgerField;
   zc::Maybe<CompilationRootSetQueryKey> contextRootsField;
 };
 

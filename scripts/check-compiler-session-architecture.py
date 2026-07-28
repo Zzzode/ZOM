@@ -45,6 +45,12 @@ ACTIVE_DEFINITION_AUTHORITY_SESSION_HEADER = Path(
 ACTIVE_DEFINITION_AUTHORITY_SESSION_SOURCE = Path(
     "products/zomlang/compiler/driver/active-definition-authority-session.cc"
 )
+CONTEXTUAL_BINDING_KEY_HEADER = Path(
+    "products/zomlang/compiler/driver/contextual-binding-key.h"
+)
+CONTEXTUAL_BINDING_KEY_SOURCE = Path(
+    "products/zomlang/compiler/driver/contextual-binding-key.cc"
+)
 INCREMENTAL_BINDING_QUERY_ADAPTER_HEADER = Path(
     "products/zomlang/compiler/driver/incremental-binding-query-adapter.h"
 )
@@ -129,6 +135,8 @@ EXPECTED_DRIVER_FILES = {
     ACTIVE_DEFINITION_AUTHORITY_QUERY_SOURCE,
     ACTIVE_DEFINITION_AUTHORITY_SESSION_HEADER,
     ACTIVE_DEFINITION_AUTHORITY_SESSION_SOURCE,
+    CONTEXTUAL_BINDING_KEY_HEADER,
+    CONTEXTUAL_BINDING_KEY_SOURCE,
     INCREMENTAL_BINDING_QUERY_ADAPTER_HEADER,
     INCREMENTAL_BINDING_QUERY_ADAPTER_SOURCE,
     INCREMENTAL_PACKAGE_GRAPH_INPUT_HEADER,
@@ -154,6 +162,7 @@ EXPECTED_DRIVER_FILES = {
 DRIVER_BUILD_MARKER = (
     "set(DRIVER_SRC active-definition-authority-query.cc active-definition-authority-session.cc\n"
     "               borrow-evidence.cc coherence-builder.cc compiler-session.cc\n"
+    "               contextual-binding-key.cc\n"
     "               core-library-query-provider.cc core-library-query-verifier.cc crate-graph.cc\n"
     "               imported-signature-view-projector.cc incremental-binding-query-adapter.cc\n"
     "               incremental-module-resolution-query.cc\n"

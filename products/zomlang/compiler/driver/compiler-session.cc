@@ -1035,13 +1035,12 @@ struct CompilerSession::Impl {
   /// Verified RFC 0019 module-body query values retained for owner-body demand.
   zc::Vector<ModuleBodyQueryBinding> moduleBodyQueryBindings;
   struct NamedItemQueryBinding final {
-    NamedItemQueryBinding(identity::DefinitionKey&& definition, binder::NamedItemSyntax&& syntax,
+    NamedItemQueryBinding(binder::NamedItemSyntax&& syntax,
                           binder::NamedItemProvenance&& provenance) noexcept
-        : definition(zc::mv(definition)), syntax(zc::mv(syntax)), provenance(zc::mv(provenance)) {}
+        : syntax(zc::mv(syntax)), provenance(zc::mv(provenance)) {}
     NamedItemQueryBinding(NamedItemQueryBinding&&) noexcept = default;
     NamedItemQueryBinding& operator=(NamedItemQueryBinding&&) noexcept = default;
     ZC_DISALLOW_COPY(NamedItemQueryBinding);
-    identity::DefinitionKey definition;
     binder::NamedItemSyntax syntax;
     binder::NamedItemProvenance provenance;
   };
@@ -1102,8 +1101,8 @@ struct CompilerSession::Impl {
           provenance.kind() != query::QueryValueKind::Value) {
         return false;
       }
-      staged.add(NamedItemQueryBinding(definition.clone(), syntax.value().clone(),
-                                       provenance.value().capability().clone()));
+      staged.add(
+          NamedItemQueryBinding(syntax.value().clone(), provenance.value().capability().clone()));
     }
     namedItemQueryBindings = zc::mv(staged);
     return true;

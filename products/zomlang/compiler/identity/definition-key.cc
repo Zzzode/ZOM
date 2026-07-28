@@ -17,8 +17,10 @@ constexpr auto kDefinitionDomain = "zom.named-item-header"_zc;
 constexpr auto kImplDomain = "zom.impl-header"_zc;
 constexpr auto kGenericParameterDomain = "zom.generic-parameter"_zc;
 constexpr auto kCallableParameterDomain = "zom.callable-parameter"_zc;
-constexpr uint64_t kMaximumDefinitionIdentityRecordBytes = 4 * 1024 * 1024;
-constexpr uint64_t kMaximumDefinitionOwnerCount = kMaximumDefinitionIdentityRecordBytes / 33;
+constexpr uint64_t kMaximumIdentityRecordBytes = 4 * 1024 * 1024;
+constexpr uint64_t kEncodedStableOwnerBytes = 33;
+constexpr uint64_t kMaximumStableOwnerCount =
+    kMaximumIdentityRecordBytes / kEncodedStableOwnerBytes;
 
 template <typename Record>
 Sha256Digest digestRecord(zc::StringPtr domain, const Record& record) {
@@ -59,6 +61,21 @@ zc::Maybe<EnclosingStableOwnerKey> decodeStableOwner(CanonicalDecoder& decoder) 
     }
   }
   return zc::none;
+}
+
+zc::Maybe<zc::Vector<EnclosingStableOwnerKey>> decodeStableOwners(CanonicalDecoder& decoder) {
+  auto count = decoder.decodeSequenceSize(kMaximumStableOwnerCount);
+  if (count == zc::none ||
+      ZC_ASSERT_NONNULL(count) > decoder.remaining() / kEncodedStableOwnerBytes) {
+    return zc::none;
+  }
+  zc::Vector<EnclosingStableOwnerKey> owners(static_cast<size_t>(ZC_ASSERT_NONNULL(count)));
+  for (uint64_t index = 0; index < ZC_ASSERT_NONNULL(count); ++index) {
+    auto owner = decodeStableOwner(decoder);
+    if (owner == zc::none) { return zc::none; }
+    owners.add(zc::mv(ZC_ASSERT_NONNULL(owner)));
+  }
+  return owners;
 }
 
 }  // namespace
@@ -264,19 +281,11 @@ zc::Maybe<DefinitionIdentityRecord> DefinitionIdentityRecord::from(
 
 zc::Maybe<DefinitionIdentityRecord> DefinitionIdentityRecord::decodeCanonical(
     zc::ArrayPtr<const uint8_t> bytes) {
-  if (bytes.size() == 0 || bytes.size() > kMaximumDefinitionIdentityRecordBytes) {
-    return zc::none;
-  }
+  if (bytes.size() == 0 || bytes.size() > kMaximumIdentityRecordBytes) { return zc::none; }
   CanonicalDecoder decoder(bytes);
   auto module = ModuleKey::decodeCanonical(decoder);
-  auto ownerCount = decoder.decodeSequenceSize(kMaximumDefinitionOwnerCount);
-  if (module == zc::none || ownerCount == zc::none) { return zc::none; }
-  zc::Vector<EnclosingStableOwnerKey> owners(static_cast<size_t>(ZC_ASSERT_NONNULL(ownerCount)));
-  for (uint64_t index = 0; index < ZC_ASSERT_NONNULL(ownerCount); ++index) {
-    auto owner = decodeStableOwner(decoder);
-    if (owner == zc::none) { return zc::none; }
-    ZC_IF_SOME(value, owner) { owners.add(zc::mv(value)); }
-  }
+  auto owners = decodeStableOwners(decoder);
+  if (module == zc::none || owners == zc::none) { return zc::none; }
   auto kind = decoder.decodeUint8();
   auto nameSpace = decoder.decodeUint8();
   auto name = DeclaredDefinitionName::decodeCanonical(decoder);
@@ -300,7 +309,7 @@ zc::Maybe<DefinitionIdentityRecord> DefinitionIdentityRecord::decodeCanonical(
       return zc::none;
   }
   if (!decoder.finished()) { return zc::none; }
-  auto record = from(zc::mv(ZC_ASSERT_NONNULL(module)), zc::mv(owners),
+  auto record = from(zc::mv(ZC_ASSERT_NONNULL(module)), zc::mv(ZC_ASSERT_NONNULL(owners)),
                      static_cast<DefinitionKind>(ZC_ASSERT_NONNULL(kind)),
                      static_cast<DefinitionNamespace>(ZC_ASSERT_NONNULL(nameSpace)),
                      zc::mv(ZC_ASSERT_NONNULL(name)), zc::mv(overloadHeader));
@@ -362,6 +371,21 @@ ImplIdentityRecord ImplIdentityRecord::from(ModuleKey&& module,
   return ImplIdentityRecord(zc::heap<definition_identity_detail::ImplIdentityRecordData>(
       definition_identity_detail::ImplIdentityRecordData{zc::mv(module), zc::mv(owners),
                                                          zc::mv(header)}));
+}
+zc::Maybe<ImplIdentityRecord> ImplIdentityRecord::decodeCanonical(
+    zc::ArrayPtr<const uint8_t> bytes) {
+  if (bytes.size() == 0 || bytes.size() > kMaximumIdentityRecordBytes) { return zc::none; }
+  CanonicalDecoder decoder(bytes);
+  auto module = ModuleKey::decodeCanonical(decoder);
+  auto owners = decodeStableOwners(decoder);
+  auto header = CanonicalImplHeader::decodeCanonical(decoder);
+  if (module == zc::none || owners == zc::none || header == zc::none || !decoder.finished()) {
+    return zc::none;
+  }
+  auto record = from(zc::mv(ZC_ASSERT_NONNULL(module)), zc::mv(ZC_ASSERT_NONNULL(owners)),
+                     zc::mv(ZC_ASSERT_NONNULL(header)));
+  if (record.encode().asPtr() != bytes) { return zc::none; }
+  return record;
 }
 ImplIdentityRecord ImplIdentityRecord::clone() const {
   zc::Vector<EnclosingStableOwnerKey> owners(impl->owners.size());

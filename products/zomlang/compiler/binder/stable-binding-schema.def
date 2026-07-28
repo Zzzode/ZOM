@@ -1,0 +1,1967 @@
+// Copyright (c) 2026 Zode.Z. All rights reserved
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+//
+// Intentionally no include guard. Define the inventory macros before including.
+// Current RFC 0027 partitions: stable routing, headers, scope owners, binding
+// targets, the module skeleton, lookup projections, stable owner-body records,
+// fully specified owner-body descriptors, deterministic allocation, Binder
+// result and diagnostic wires, active membership, readiness, canonical context
+// inputs, stable materialization witnesses, and closed capability descriptors.
+
+#ifndef ZOM_STABLE_BINDING_BOUND
+#define ZOM_STABLE_BINDING_BOUND(name, limit, rule)
+#define ZOM_STABLE_BINDING_BOUND_OWNED
+#endif
+
+#ifndef ZOM_STABLE_BINDING_RECORD
+#define ZOM_STABLE_BINDING_RECORD(name, domain, maximum, producer, verifier, typeTask, codecTask, \
+                                  testTask, mutations, test)
+#define ZOM_STABLE_BINDING_RECORD_OWNED
+#endif
+
+#ifndef ZOM_STABLE_BINDING_NESTED_RECORD
+#define ZOM_STABLE_BINDING_NESTED_RECORD(name, typeParameter1, typeParameter2, maximum, typeTask, \
+                                         codecTask, testTask, mutations, test)
+#define ZOM_STABLE_BINDING_NESTED_RECORD_OWNED
+#endif
+
+#ifndef ZOM_STABLE_BINDING_NESTED_FIELD
+#define ZOM_STABLE_BINDING_NESTED_FIELD(recordName, ordinal, fieldName, fieldType)
+#define ZOM_STABLE_BINDING_NESTED_FIELD_OWNED
+#endif
+
+#ifndef ZOM_STABLE_BINDING_ENUM_VALUE
+#define ZOM_STABLE_BINDING_ENUM_VALUE(enumName, valueName, tag, typeTask, codecTask, testTask, \
+                                      mutations, test)
+#define ZOM_STABLE_BINDING_ENUM_VALUE_OWNED
+#endif
+
+#ifndef ZOM_STABLE_BINDING_SUM
+#define ZOM_STABLE_BINDING_SUM(name, typeTask, codecTask, testTask, mutations, test)
+#define ZOM_STABLE_BINDING_SUM_OWNED
+#endif
+
+#ifndef ZOM_STABLE_BINDING_RUNTIME_SUM
+#define ZOM_STABLE_BINDING_RUNTIME_SUM(name, typeTask, testTask, mutations, test)
+#define ZOM_STABLE_BINDING_RUNTIME_SUM_OWNED
+#endif
+
+#ifndef ZOM_STABLE_BINDING_SUM_VARIANT
+#define ZOM_STABLE_BINDING_SUM_VARIANT(sumName, variantName, tag)
+#define ZOM_STABLE_BINDING_SUM_VARIANT_OWNED
+#endif
+
+#ifndef ZOM_STABLE_BINDING_VARIANT_FIELD
+#define ZOM_STABLE_BINDING_VARIANT_FIELD(sumName, variantName, ordinal, fieldName, fieldType)
+#define ZOM_STABLE_BINDING_VARIANT_FIELD_OWNED
+#endif
+
+#ifndef ZOM_STABLE_BINDING_INLINE_SUM_VARIANT
+#define ZOM_STABLE_BINDING_INLINE_SUM_VARIANT(recordName, fieldOrdinal, fieldName, variantName, tag)
+#define ZOM_STABLE_BINDING_INLINE_SUM_VARIANT_OWNED
+#endif
+
+#ifndef ZOM_STABLE_BINDING_INLINE_SUM_VARIANT_FIELD
+#define ZOM_STABLE_BINDING_INLINE_SUM_VARIANT_FIELD(recordName, fieldName, variantName, ordinal, \
+                                                    variantFieldName, variantFieldType)
+#define ZOM_STABLE_BINDING_INLINE_SUM_VARIANT_FIELD_OWNED
+#endif
+
+#ifndef ZOM_STABLE_BINDING_RUNTIME_SUM_VARIANT
+#define ZOM_STABLE_BINDING_RUNTIME_SUM_VARIANT(sumName, variantName, tag, condition)
+#define ZOM_STABLE_BINDING_RUNTIME_SUM_VARIANT_OWNED
+#endif
+
+#ifndef ZOM_STABLE_BINDING_RUNTIME_VARIANT_FIELD
+#define ZOM_STABLE_BINDING_RUNTIME_VARIANT_FIELD(sumName, variantName, ordinal, fieldName, \
+                                                 fieldType)
+#define ZOM_STABLE_BINDING_RUNTIME_VARIANT_FIELD_OWNED
+#endif
+
+#ifndef ZOM_STABLE_BINDING_FIELD
+#define ZOM_STABLE_BINDING_FIELD(recordName, ordinal, fieldName, ...)
+#define ZOM_STABLE_BINDING_FIELD_OWNED
+#endif
+
+#ifndef ZOM_STABLE_BINDING_FIELD_LIMIT
+#define ZOM_STABLE_BINDING_FIELD_LIMIT(target, bound)
+#define ZOM_STABLE_BINDING_FIELD_LIMIT_OWNED
+#endif
+
+#ifndef ZOM_STABLE_BINDING_QUERY
+#define ZOM_STABLE_BINDING_QUERY(name, domain, keyType, resultType, valueDomain, producer,       \
+                                 verifier, descriptorTask, providerTask, verifierTask, testTask, \
+                                 mutations, test)
+#define ZOM_STABLE_BINDING_QUERY_OWNED
+#endif
+
+#ifndef ZOM_STABLE_BINDING_INPUT
+#define ZOM_STABLE_BINDING_INPUT(name, domain, keyType, resultType, verifier, descriptorTask, \
+                                 providerTask, verifierTask, testTask, mutations, test)
+#define ZOM_STABLE_BINDING_INPUT_OWNED
+#endif
+
+#ifndef ZOM_STABLE_BINDING_CAPABILITY_QUERY
+#define ZOM_STABLE_BINDING_CAPABILITY_QUERY(                                                    \
+    name, domain, keyType, resultType, capabilityType, producer, verifier, failureAlternatives, \
+    descriptorTask, providerTask, verifierTask, testTask, mutations, test)
+#define ZOM_STABLE_BINDING_CAPABILITY_QUERY_OWNED
+#endif
+
+#ifndef ZOM_STABLE_BINDING_MATERIALIZER_PERMISSION
+#define ZOM_STABLE_BINDING_MATERIALIZER_PERMISSION(descriptor, keyType, membershipDescriptor)
+#define ZOM_STABLE_BINDING_MATERIALIZER_PERMISSION_OWNED
+#endif
+
+#ifndef ZOM_STABLE_BINDING_DIAGNOSTIC_MAPPING
+#define ZOM_STABLE_BINDING_DIAGNOSTIC_MAPPING(name, code, arguments, secondaryCode, secondaryRole, \
+                                              secondaryCount, fixItCount, diagnosticTask,          \
+                                              testTask, mutations, test)
+#define ZOM_STABLE_BINDING_DIAGNOSTIC_MAPPING_OWNED
+#endif
+
+#ifndef ZOM_STABLE_BINDING_CONSTRAINT
+#define ZOM_STABLE_BINDING_CONSTRAINT(target, rule)
+#define ZOM_STABLE_BINDING_CONSTRAINT_OWNED
+#endif
+
+#ifndef ZOM_STABLE_BINDING_DIGEST
+#define ZOM_STABLE_BINDING_DIGEST(name, domain, preimage, implementationTask, testTask, mutations, \
+                                  test)
+#define ZOM_STABLE_BINDING_DIGEST_OWNED
+#endif
+
+ZOM_STABLE_BINDING_BOUND(IdentifierBytes, 4096, "NfcUtf8Bytes")
+ZOM_STABLE_BINDING_BOUND(LocalSyntaxPathComponents, 4096, "SequenceCount")
+ZOM_STABLE_BINDING_BOUND(NonContextualRoutedKeyBytes, 65536, "CompleteRecordBytes")
+ZOM_STABLE_BINDING_BOUND(CompleteContextRootBytes, 67108864, "CompleteRecordBytes")
+ZOM_STABLE_BINDING_BOUND(ContextualKeyBytes, 134217728, "CompleteRecordBytes")
+ZOM_STABLE_BINDING_BOUND(BinderSemanticSequenceRecords, 1048576, "SequenceCount")
+ZOM_STABLE_BINDING_BOUND(AmbiguityCandidates, 1048576, "SequenceCount")
+ZOM_STABLE_BINDING_BOUND(BinderSemanticValueBytes, 134217728, "CompleteRecordBytes")
+ZOM_STABLE_BINDING_BOUND(DiagnosticFactsPerResult, 1048576, "SequenceCount")
+ZOM_STABLE_BINDING_BOUND(DiagnosticPayloadBytes, 67108864, "CompleteRecordBytes")
+ZOM_STABLE_BINDING_BOUND(ActiveModulesPerGraph, 4096, "SequenceCount")
+ZOM_STABLE_BINDING_BOUND(DependencySitesOrGraphEdges, 1048576, "SequenceCount")
+ZOM_STABLE_BINDING_BOUND(DenseLocalAllocationCount, UINT32_MAX, "CheckedPrefixSum")
+ZOM_STABLE_BINDING_BOUND(CanonicalInputSequenceRecords, UINT32_MAX, "SequenceCount")
+ZOM_STABLE_BINDING_BOUND(CanonicalInputValueBytes, SIZE_MAX, "RemainingInputBytes")
+ZOM_STABLE_BINDING_BOUND(CanonicalPackageRecordBytes, UINT32_MAX, "CompleteRecordBytes")
+ZOM_STABLE_BINDING_BOUND(TargetProfileBytes, 255, "NfcUtf8Bytes")
+
+ZOM_STABLE_BINDING_RECORD(StableDefinitionQueryKey, "zom.binder.definition-query-key",
+                          NonContextualRoutedKeyBytes, StableDefinitionQueryKey::from,
+                          StableDefinitionQueryKey::decodeCanonical, S2A, S3, S2A,
+                          "domain|truncated|trailing|field|ownership|max-bytes",
+                          "StableBindingQueryTest.RoutingKeysRejectMalformedAndForeignOwners")
+ZOM_STABLE_BINDING_RECORD(StableImplementationQueryKey, "zom.binder.implementation-query-key",
+                          NonContextualRoutedKeyBytes, StableImplementationQueryKey::from,
+                          StableImplementationQueryKey::decodeCanonical, S2A, S3, S2A,
+                          "domain|truncated|trailing|field|ownership|max-bytes",
+                          "StableBindingQueryTest.RoutingKeysRejectMalformedAndForeignOwners")
+ZOM_STABLE_BINDING_RECORD(StableImplementationOccurrenceQueryKey,
+                          "zom.binder.implementation-occurrence-query-key",
+                          NonContextualRoutedKeyBytes, StableImplementationOccurrenceQueryKey::from,
+                          StableImplementationOccurrenceQueryKey::decodeCanonical, S2A, S3, S2A,
+                          "domain|truncated|trailing|field|ownership|max-bytes",
+                          "StableBindingQueryTest.RoutingKeysRejectMalformedAndForeignOwners")
+ZOM_STABLE_BINDING_RECORD(StableGenericParameterQueryKey, "zom.binder.generic-parameter-query-key",
+                          NonContextualRoutedKeyBytes, StableGenericParameterQueryKey::from,
+                          StableGenericParameterQueryKey::decodeCanonical, S2A, S3, S2A,
+                          "domain|truncated|trailing|field|ownership|max-bytes",
+                          "StableBindingQueryTest.RoutingKeysRejectMalformedAndForeignOwners")
+ZOM_STABLE_BINDING_RECORD(StableCallableParameterQueryKey,
+                          "zom.binder.callable-parameter-query-key", NonContextualRoutedKeyBytes,
+                          StableCallableParameterQueryKey::from,
+                          StableCallableParameterQueryKey::decodeCanonical, S2A, S3, S2A,
+                          "domain|truncated|trailing|field|ownership|max-bytes",
+                          "StableBindingQueryTest.RoutingKeysRejectMalformedAndForeignOwners")
+ZOM_STABLE_BINDING_RECORD(StableSemanticImportQueryKey, "zom.binder.semantic-import-query-key",
+                          NonContextualRoutedKeyBytes, StableSemanticImportQueryKey::from,
+                          StableSemanticImportQueryKey::decodeCanonical, S2A, S3, S2A,
+                          "domain|truncated|trailing|field|ownership|max-bytes",
+                          "StableBindingQueryTest.RoutingKeysRejectMalformedAndForeignOwners")
+ZOM_STABLE_BINDING_RECORD(StableOwnerBodyQueryKey, "zom.binder.owner-body-query-key",
+                          NonContextualRoutedKeyBytes, StableOwnerBodyQueryKey::from,
+                          StableOwnerBodyQueryKey::decodeCanonical, S2A, S3, S2A,
+                          "domain|truncated|trailing|field|ownership|max-bytes",
+                          "StableBindingQueryTest.RoutingKeysRejectMalformedAndForeignOwners")
+
+ZOM_STABLE_BINDING_RECORD(ContextualBodyOwnerKey, "zom.binder.contextual-body-owner-key",
+                          ContextualKeyBytes, ContextualBodyOwnerKey::from,
+                          ContextualBodyOwnerKey::decodeCanonical, S2A, S3, S2A,
+                          "domain|truncated|trailing|field|ownership|context|max-bytes",
+                          "StableBindingQueryTest.ContextualKeysRejectRootAndOwnerDrift")
+ZOM_STABLE_BINDING_RECORD(ContextualCompilationUnitKey,
+                          "zom.binder.contextual-compilation-unit-key", ContextualKeyBytes,
+                          ContextualCompilationUnitKey::from,
+                          ContextualCompilationUnitKey::decodeCanonical, S2A, S3, S2A,
+                          "domain|truncated|trailing|field|ownership|context|max-bytes",
+                          "StableBindingQueryTest.ContextualKeysRejectRootAndOwnerDrift")
+ZOM_STABLE_BINDING_RECORD(ContextualCrateKey, "zom.binder.contextual-crate-key", ContextualKeyBytes,
+                          ContextualCrateKey::from, ContextualCrateKey::decodeCanonical, S2A, S3,
+                          S2A, "domain|truncated|trailing|field|ownership|context|max-bytes",
+                          "StableBindingQueryTest.ContextualKeysRejectRootAndOwnerDrift")
+ZOM_STABLE_BINDING_RECORD(ContextualSourceKey, "zom.binder.contextual-source-key",
+                          ContextualKeyBytes, ContextualSourceKey::from,
+                          ContextualSourceKey::decodeCanonical, S2A, S3, S2A,
+                          "domain|truncated|trailing|field|ownership|context|max-bytes",
+                          "StableBindingQueryTest.ContextualKeysRejectRootAndOwnerDrift")
+ZOM_STABLE_BINDING_RECORD(ContextualModuleKey, "zom.binder.contextual-module-key",
+                          ContextualKeyBytes, ContextualModuleKey::from,
+                          ContextualModuleKey::decodeCanonical, S2A, S3, S2A,
+                          "domain|truncated|trailing|field|ownership|context|max-bytes",
+                          "StableBindingQueryTest.ContextualKeysRejectRootAndOwnerDrift")
+ZOM_STABLE_BINDING_RECORD(ContextualDefinitionKey, "zom.binder.contextual-definition-key",
+                          ContextualKeyBytes, ContextualDefinitionKey::from,
+                          ContextualDefinitionKey::decodeCanonical, S2A, S3, S2A,
+                          "domain|truncated|trailing|field|ownership|context|max-bytes",
+                          "StableBindingQueryTest.ContextualKeysRejectRootAndOwnerDrift")
+ZOM_STABLE_BINDING_RECORD(ContextualImplementationKey, "zom.binder.contextual-implementation-key",
+                          ContextualKeyBytes, ContextualImplementationKey::from,
+                          ContextualImplementationKey::decodeCanonical, S2A, S3, S2A,
+                          "domain|truncated|trailing|field|ownership|context|max-bytes",
+                          "StableBindingQueryTest.ContextualKeysRejectRootAndOwnerDrift")
+ZOM_STABLE_BINDING_RECORD(ContextualGenericParameterKey,
+                          "zom.binder.contextual-generic-parameter-key", ContextualKeyBytes,
+                          ContextualGenericParameterKey::from,
+                          ContextualGenericParameterKey::decodeCanonical, S2A, S3, S2A,
+                          "domain|truncated|trailing|field|ownership|context|max-bytes",
+                          "StableBindingQueryTest.ContextualKeysRejectRootAndOwnerDrift")
+ZOM_STABLE_BINDING_RECORD(ContextualCallableParameterKey,
+                          "zom.binder.contextual-callable-parameter-key", ContextualKeyBytes,
+                          ContextualCallableParameterKey::from,
+                          ContextualCallableParameterKey::decodeCanonical, S2A, S3, S2A,
+                          "domain|truncated|trailing|field|ownership|context|max-bytes",
+                          "StableBindingQueryTest.ContextualKeysRejectRootAndOwnerDrift")
+
+ZOM_STABLE_BINDING_RECORD(StableHeaderGenericParameter, "zom.binder.header-generic-parameter",
+                          BinderSemanticValueBytes, CanonicalDefinitionHeaderProducer,
+                          CanonicalHeaderVerifier, S2B, S3, S2B,
+                          "domain|truncated|trailing|field|reordered|identity|ownership|max-bytes",
+                          "StableBindingQueryTest.HeadersRejectFieldAndParameterMutations")
+ZOM_STABLE_BINDING_RECORD(StableHeaderCallableParameter, "zom.binder.header-callable-parameter",
+                          BinderSemanticValueBytes, CanonicalDefinitionHeaderProducer,
+                          CanonicalHeaderVerifier, S2B, S3, S2B,
+                          "domain|truncated|trailing|field|reordered|identity|ownership|max-bytes",
+                          "StableBindingQueryTest.HeadersRejectFieldAndParameterMutations")
+ZOM_STABLE_BINDING_RECORD(StableDefinitionHeader, "zom.binder.definition-header",
+                          BinderSemanticValueBytes, CanonicalDefinitionHeaderProducer,
+                          CanonicalHeaderVerifier, S2B, S3, S2B,
+                          "domain|tag|truncated|trailing|field|missing|additional|duplicate|"
+                          "reordered|identity|ownership|max-count|max-bytes",
+                          "StableBindingQueryTest.HeadersRejectFieldAndParameterMutations")
+ZOM_STABLE_BINDING_RECORD(StableImplementationOccurrenceHeader,
+                          "zom.binder.implementation-occurrence-header", BinderSemanticValueBytes,
+                          CanonicalImplHeaderProducer, CanonicalHeaderVerifier, S2B, S3, S2B,
+                          "domain|tag|truncated|trailing|field|missing|additional|duplicate|"
+                          "reordered|identity|ownership|max-count|max-bytes",
+                          "StableBindingQueryTest.HeadersRejectFieldAndParameterMutations")
+ZOM_STABLE_BINDING_RECORD(StableScopeOwnerKey, "zom.binder.scope-owner-key",
+                          NonContextualRoutedKeyBytes, BindModuleSkeletonProvider,
+                          BindModuleSkeletonVerifier, S2B, S3, S2B,
+                          "domain|tag|truncated|trailing|field|ownership|relation|max-bytes",
+                          "StableBindingQueryTest.ScopeAndTargetKeysRejectClosedSumMutations")
+ZOM_STABLE_BINDING_RECORD(StableBindingTargetKey, "zom.binder.binding-target-key",
+                          NonContextualRoutedKeyBytes, BindModuleSkeletonProvider,
+                          BindModuleSkeletonVerifier, S2B, S3, S2B,
+                          "domain|tag|truncated|trailing|field|ownership|relation|max-bytes",
+                          "StableBindingQueryTest.ScopeAndTargetKeysRejectClosedSumMutations")
+ZOM_STABLE_BINDING_RECORD(StableNodeSyntaxRoot, "zom.binder.node-syntax-root",
+                          NonContextualRoutedKeyBytes, BindModuleSkeletonProvider,
+                          BindModuleSkeletonVerifier, S2B, S3, S2B,
+                          "domain|tag|truncated|trailing|field|ownership|relation|max-bytes",
+                          "StableBindingQueryTest.ModuleSkeletonRejectsFactAndCoverageMutations")
+ZOM_STABLE_BINDING_RECORD(
+    StableScopeFact, "zom.binder.skeleton-scope", BinderSemanticValueBytes,
+    BindModuleSkeletonProvider, BindModuleSkeletonVerifier, S2B, S3, S2B,
+    "domain|field|missing|additional|duplicate|reordered|identity|relation|max-count|max-bytes",
+    "StableBindingQueryTest.ModuleSkeletonRejectsFactAndCoverageMutations")
+ZOM_STABLE_BINDING_RECORD(
+    StableNodeScopeFact, "zom.binder.skeleton-node-scope", BinderSemanticValueBytes,
+    BindModuleSkeletonProvider, BindModuleSkeletonVerifier, S2B, S3, S2B,
+    "domain|field|missing|additional|duplicate|reordered|identity|relation|max-count|max-bytes",
+    "StableBindingQueryTest.ModuleSkeletonRejectsFactAndCoverageMutations")
+ZOM_STABLE_BINDING_RECORD(
+    StableDeclarationFact, "zom.binder.skeleton-declaration", BinderSemanticValueBytes,
+    BindModuleSkeletonProvider, BindModuleSkeletonVerifier, S2B, S3, S2B,
+    "domain|field|missing|additional|duplicate|reordered|identity|relation|max-count|max-bytes",
+    "StableBindingQueryTest.ModuleSkeletonRejectsFactAndCoverageMutations")
+ZOM_STABLE_BINDING_RECORD(
+    StableImplementationOccurrenceFact, "zom.binder.skeleton-implementation-occurrence",
+    BinderSemanticValueBytes, BindModuleSkeletonProvider, BindModuleSkeletonVerifier, S2B, S3, S2B,
+    "domain|field|missing|additional|duplicate|reordered|identity|relation|max-count|max-bytes",
+    "StableBindingQueryTest.ModuleSkeletonRejectsFactAndCoverageMutations")
+ZOM_STABLE_BINDING_RECORD(
+    StableGenericParameterDeclarationFact, "zom.binder.skeleton-generic-parameter-declaration",
+    BinderSemanticValueBytes, BindModuleSkeletonProvider, BindModuleSkeletonVerifier, S2B, S3, S2B,
+    "domain|field|missing|additional|duplicate|reordered|identity|relation|max-count|max-bytes",
+    "StableBindingQueryTest.ModuleSkeletonRejectsFactAndCoverageMutations")
+ZOM_STABLE_BINDING_RECORD(
+    StableCallableParameterDeclarationFact, "zom.binder.skeleton-callable-parameter-declaration",
+    BinderSemanticValueBytes, BindModuleSkeletonProvider, BindModuleSkeletonVerifier, S2B, S3, S2B,
+    "domain|field|missing|additional|duplicate|reordered|identity|relation|max-count|max-bytes",
+    "StableBindingQueryTest.ModuleSkeletonRejectsFactAndCoverageMutations")
+ZOM_STABLE_BINDING_RECORD(
+    StableImportFact, "zom.binder.skeleton-import", BinderSemanticValueBytes,
+    BindModuleSkeletonProvider, BindModuleSkeletonVerifier, S2B, S3, S2B,
+    "domain|field|missing|additional|duplicate|reordered|identity|relation|max-count|max-bytes",
+    "StableBindingQueryTest.ModuleSkeletonRejectsFactAndCoverageMutations")
+ZOM_STABLE_BINDING_RECORD(
+    StableModuleAliasFact, "zom.binder.skeleton-module-alias", BinderSemanticValueBytes,
+    BindModuleSkeletonProvider, BindModuleSkeletonVerifier, S2B, S3, S2B,
+    "domain|field|missing|additional|duplicate|reordered|identity|relation|max-count|max-bytes",
+    "StableBindingQueryTest.ModuleSkeletonRejectsFactAndCoverageMutations")
+ZOM_STABLE_BINDING_RECORD(
+    StableReexportStep, "zom.binder.skeleton-reexport-step", BinderSemanticValueBytes,
+    BindModuleSkeletonProvider, BindModuleSkeletonVerifier, S2B, S3, S2B,
+    "domain|field|missing|additional|duplicate|reordered|identity|relation|max-count|max-bytes",
+    "StableBindingQueryTest.ModuleSkeletonRejectsFactAndCoverageMutations")
+ZOM_STABLE_BINDING_RECORD(
+    StableLocalExportFact, "zom.binder.skeleton-local-export", BinderSemanticValueBytes,
+    BindModuleSkeletonProvider, BindModuleSkeletonVerifier, S2B, S3, S2B,
+    "domain|field|missing|additional|duplicate|reordered|identity|relation|max-count|max-bytes",
+    "StableBindingQueryTest.ModuleSkeletonRejectsFactAndCoverageMutations")
+ZOM_STABLE_BINDING_RECORD(
+    StableFailedLookupOutcome, "zom.binder.failed-lookup-outcome", BinderSemanticValueBytes,
+    BindModuleSkeletonProvider, BindModuleSkeletonVerifier, S2C, S3, S2C,
+    "domain|tag|field|missing|additional|duplicate|reordered|identity|relation|max-count|max-bytes",
+    "StableBindingQueryTest.FailedLookupsRejectOutcomeAndCandidateMutations")
+ZOM_STABLE_BINDING_RECORD(
+    StableFailedLookupFact, "zom.binder.failed-lookup", BinderSemanticValueBytes,
+    BindModuleSkeletonProvider, BindModuleSkeletonVerifier, S2C, S3, S2C,
+    "domain|field|missing|additional|duplicate|reordered|identity|relation|max-count|max-bytes",
+    "StableBindingQueryTest.FailedLookupsRejectOutcomeAndCandidateMutations")
+ZOM_STABLE_BINDING_RECORD(BoundModuleSkeleton, "zom.binder.module-skeleton",
+                          BinderSemanticValueBytes, BindModuleSkeletonProvider,
+                          BindModuleSkeletonVerifier, S2B, S3, S2B,
+                          "domain|field|missing|additional|duplicate|reordered|identity|ownership|"
+                          "relation|max-count|max-bytes",
+                          "StableBindingQueryTest.ModuleSkeletonRejectsFactAndCoverageMutations")
+ZOM_STABLE_BINDING_RECORD(
+    StableExportedBinding, "zom.binder.exported-binding", BinderSemanticValueBytes,
+    ExportedBindingProvider, ExportedBindingVerifier, S2C, S3, S2C,
+    "domain|field|missing|additional|reordered|identity|relation|max-bytes",
+    "StableBindingQueryTest.LookupProjectionsRejectDependencyAndValueMutations")
+ZOM_STABLE_BINDING_RECORD(StableExportedBindingQueryKey, "zom.query.exported-binding-key",
+                          NonContextualRoutedKeyBytes, StableExportedBindingQueryKey::from,
+                          StableExportedBindingQueryKey::decodeCanonical, S2C, S3, S2C,
+                          "domain|truncated|trailing|field|ownership|max-bytes",
+                          "StableBindingQueryTest.LookupProjectionKeysRejectMalformedOwners")
+ZOM_STABLE_BINDING_RECORD(StableScopeNameBucketQueryKey, "zom.query.scope-name-bucket-key",
+                          NonContextualRoutedKeyBytes, StableScopeNameBucketQueryKey::from,
+                          StableScopeNameBucketQueryKey::decodeCanonical, S2C, S3, S2C,
+                          "domain|truncated|trailing|field|ownership|max-bytes",
+                          "StableBindingQueryTest.LookupProjectionKeysRejectMalformedOwners")
+ZOM_STABLE_BINDING_RECORD(
+    StableBodyScopeFact, "zom.binder.body-scope", BinderSemanticValueBytes, BindOwnerBodyProvider,
+    BindOwnerBodyVerifier, S2D, S3, S2D,
+    "domain|field|missing|additional|duplicate|reordered|identity|ownership|relation|max-bytes",
+    "StableBindingQueryTest.OwnerBodiesRejectScopeAndOwnershipMutations")
+ZOM_STABLE_BINDING_RECORD(
+    StableBodyNodeScopeFact, "zom.binder.body-node-scope", BinderSemanticValueBytes,
+    BindOwnerBodyProvider, BindOwnerBodyVerifier, S2D, S3, S2D,
+    "domain|field|missing|additional|duplicate|reordered|identity|ownership|relation|max-bytes",
+    "StableBindingQueryTest.OwnerBodiesRejectScopeAndOwnershipMutations")
+ZOM_STABLE_BINDING_RECORD(
+    StableOwnerLocalBindingFact, "zom.binder.body-owner-local-binding", BinderSemanticValueBytes,
+    BindOwnerBodyProvider, BindOwnerBodyVerifier, S2D, S3, S2D,
+    "domain|field|missing|additional|duplicate|reordered|identity|ownership|relation|max-bytes",
+    "StableBindingQueryTest.OwnerBodiesRejectBindingAndResolutionMutations")
+ZOM_STABLE_BINDING_RECORD(
+    StableResolutionFact, "zom.binder.body-resolution", BinderSemanticValueBytes,
+    BindOwnerBodyProvider, BindOwnerBodyVerifier, S2D, S3, S2D,
+    "domain|field|missing|additional|duplicate|reordered|identity|ownership|relation|max-bytes",
+    "StableBindingQueryTest.OwnerBodiesRejectBindingAndResolutionMutations")
+ZOM_STABLE_BINDING_RECORD(StableDeferredMemberFact, "zom.binder.body-deferred-member",
+                          BinderSemanticValueBytes, BindOwnerBodyProvider, BindOwnerBodyVerifier,
+                          S2D, S3, S2D,
+                          "domain|field|missing|additional|duplicate|reordered|identity|ownership|"
+                          "relation|max-count|max-bytes",
+                          "StableBindingQueryTest.OwnerBodiesRejectDeferredMemberMutations")
+ZOM_STABLE_BINDING_RECORD(StableSelfOwner, "zom.binder.self-owner", BinderSemanticValueBytes,
+                          BindOwnerBodyProvider, BindOwnerBodyVerifier, S2D, S3, S2D,
+                          "domain|tag|field|identity|ownership|relation|max-bytes",
+                          "StableBindingQueryTest.OwnerBodiesRejectContextualSelfMutations")
+ZOM_STABLE_BINDING_RECORD(
+    StableSelfTypeFact, "zom.binder.body-self-type", BinderSemanticValueBytes,
+    BindOwnerBodyProvider, BindOwnerBodyVerifier, S2D, S3, S2D,
+    "domain|field|missing|additional|duplicate|reordered|identity|ownership|relation|max-bytes",
+    "StableBindingQueryTest.OwnerBodiesRejectContextualSelfMutations")
+ZOM_STABLE_BINDING_RECORD(
+    StableThisBindingFact, "zom.binder.body-this-binding", BinderSemanticValueBytes,
+    BindOwnerBodyProvider, BindOwnerBodyVerifier, S2D, S3, S2D,
+    "domain|field|missing|additional|duplicate|reordered|identity|ownership|relation|max-bytes",
+    "StableBindingQueryTest.OwnerBodiesRejectContextualSelfMutations")
+ZOM_STABLE_BINDING_RECORD(
+    StableShadowTargetFact, "zom.binder.body-shadow-target", BinderSemanticValueBytes,
+    BindOwnerBodyProvider, BindOwnerBodyVerifier, S2D, S3, S2D,
+    "domain|field|missing|additional|duplicate|reordered|identity|ownership|relation|max-bytes",
+    "StableBindingQueryTest.OwnerBodiesRejectShadowTargetMutations")
+ZOM_STABLE_BINDING_RECORD(StableLabelKey, "zom.binder.label-key", NonContextualRoutedKeyBytes,
+                          BindOwnerBodyProvider, BindOwnerBodyVerifier, S2D, S3, S2D,
+                          "domain|field|identity|ownership|relation|max-bytes",
+                          "StableBindingQueryTest.OwnerBodiesRejectLabelAndControlMutations")
+ZOM_STABLE_BINDING_RECORD(StableLabelTarget, "zom.binder.label-target", BinderSemanticValueBytes,
+                          BindOwnerBodyProvider, BindOwnerBodyVerifier, S2D, S3, S2D,
+                          "domain|tag|field|identity|ownership|relation|max-bytes",
+                          "StableBindingQueryTest.OwnerBodiesRejectLabelAndControlMutations")
+ZOM_STABLE_BINDING_RECORD(
+    StableLabelFact, "zom.binder.body-label", BinderSemanticValueBytes, BindOwnerBodyProvider,
+    BindOwnerBodyVerifier, S2D, S3, S2D,
+    "domain|field|missing|additional|duplicate|reordered|identity|ownership|relation|max-bytes",
+    "StableBindingQueryTest.OwnerBodiesRejectLabelAndControlMutations")
+ZOM_STABLE_BINDING_RECORD(StableControlTarget, "zom.binder.control-target",
+                          BinderSemanticValueBytes, BindOwnerBodyProvider, BindOwnerBodyVerifier,
+                          S2D, S3, S2D, "domain|tag|field|identity|ownership|relation|max-bytes",
+                          "StableBindingQueryTest.OwnerBodiesRejectLabelAndControlMutations")
+ZOM_STABLE_BINDING_RECORD(
+    StableControlTransferFact, "zom.binder.body-control-transfer", BinderSemanticValueBytes,
+    BindOwnerBodyProvider, BindOwnerBodyVerifier, S2D, S3, S2D,
+    "domain|field|missing|additional|duplicate|reordered|identity|ownership|relation|max-bytes",
+    "StableBindingQueryTest.OwnerBodiesRejectLabelAndControlMutations")
+ZOM_STABLE_BINDING_RECORD(
+    StableClosureFact, "zom.binder.body-closure", BinderSemanticValueBytes, BindOwnerBodyProvider,
+    BindOwnerBodyVerifier, S2D, S3, S2D,
+    "domain|field|missing|additional|duplicate|reordered|identity|ownership|relation|max-bytes",
+    "StableBindingQueryTest.OwnerBodiesRejectClosureAndCaptureMutations")
+ZOM_STABLE_BINDING_RECORD(StableClosureFreeVariable, "zom.binder.closure-free-variable",
+                          BinderSemanticValueBytes, BindOwnerBodyProvider, BindOwnerBodyVerifier,
+                          S2D, S3, S2D,
+                          "domain|field|missing|additional|duplicate|reordered|identity|ownership|"
+                          "relation|max-count|max-bytes",
+                          "StableBindingQueryTest.OwnerBodiesRejectClosureAndCaptureMutations")
+ZOM_STABLE_BINDING_RECORD(StableClosureFreeVariableFact, "zom.binder.body-closure-free-variables",
+                          BinderSemanticValueBytes, BindOwnerBodyProvider, BindOwnerBodyVerifier,
+                          S2D, S3, S2D,
+                          "domain|field|missing|additional|duplicate|reordered|identity|ownership|"
+                          "relation|max-count|max-bytes",
+                          "StableBindingQueryTest.OwnerBodiesRejectClosureAndCaptureMutations")
+ZOM_STABLE_BINDING_RECORD(StableExplicitCaptureMode, "zom.binder.explicit-capture-mode",
+                          BinderSemanticValueBytes, BindOwnerBodyProvider, BindOwnerBodyVerifier,
+                          S2D, S3, S2D, "domain|tag|field|identity|relation|max-bytes",
+                          "StableBindingQueryTest.OwnerBodiesRejectClosureAndCaptureMutations")
+ZOM_STABLE_BINDING_RECORD(
+    StableExplicitCaptureBindingFact, "zom.binder.explicit-capture-binding",
+    BinderSemanticValueBytes, BindOwnerBodyProvider, BindOwnerBodyVerifier, S2D, S3, S2D,
+    "domain|field|missing|additional|duplicate|reordered|identity|ownership|relation|max-bytes",
+    "StableBindingQueryTest.OwnerBodiesRejectClosureAndCaptureMutations")
+ZOM_STABLE_BINDING_RECORD(StableExplicitClosureCaptureFact,
+                          "zom.binder.body-explicit-closure-capture", BinderSemanticValueBytes,
+                          BindOwnerBodyProvider, BindOwnerBodyVerifier, S2D, S3, S2D,
+                          "domain|field|missing|additional|duplicate|reordered|identity|ownership|"
+                          "relation|max-count|max-bytes",
+                          "StableBindingQueryTest.OwnerBodiesRejectClosureAndCaptureMutations")
+ZOM_STABLE_BINDING_RECORD(BoundOwnerBody, "zom.binder.owner-body", BinderSemanticValueBytes,
+                          BindOwnerBodyProvider, BindOwnerBodyVerifier, S2D, S3, S2D,
+                          "domain|field|missing|additional|duplicate|reordered|identity|ownership|"
+                          "relation|coverage|max-count|max-bytes",
+                          "StableBindingQueryTest.OwnerBodiesRejectFactAndCoverageMutations")
+ZOM_STABLE_BINDING_RECORD(ModuleBindingAllocationPlan, "zom.binder.module-allocation-plan",
+                          BinderSemanticValueBytes, ModuleBindingAllocationPlanProvider,
+                          ModuleBindingAllocationPlanVerifier, S2E, S3, S2E,
+                          "domain|field|missing|additional|duplicate|reordered|identity|ownership|"
+                          "dense|disjoint|gap|overflow|max-count|max-bytes",
+                          "StableBindingQueryTest.AllocationPlanRejectsRangeAndOverflowMutations")
+ZOM_STABLE_BINDING_RECORD(OwnerAllocationRange, "zom.binder.owner-allocation-range",
+                          BinderSemanticValueBytes, ModuleBindingAllocationPlanProvider,
+                          ModuleBindingAllocationPlanVerifier, S2E, S3, S2E,
+                          "domain|field|missing|additional|duplicate|reordered|identity|ownership|"
+                          "dense|disjoint|gap|overflow|max-bytes",
+                          "StableBindingQueryTest.AllocationPlanRejectsRangeAndOverflowMutations")
+ZOM_STABLE_BINDING_RECORD(BinderQueryResult<StableDefinitionHeader>,
+                          "zom.binder.result-definition-header-syntax", BinderSemanticValueBytes,
+                          DefinitionHeaderSyntaxProvider, DefinitionHeaderSyntaxVerifier, S2B, S3,
+                          S2B,
+                          "domain|tag|field|missing|additional|duplicate|reordered|diagnostics|"
+                          "precedence|max-count|max-bytes",
+                          "StableBindingQueryTest.ResultsRejectAlternativeAndDiagnosticMutations")
+ZOM_STABLE_BINDING_RECORD(BinderQueryResult<StableImplementationOccurrenceHeader>,
+                          "zom.binder.result-implementation-occurrence-header-syntax",
+                          BinderSemanticValueBytes, ImplementationOccurrenceHeaderSyntaxProvider,
+                          ImplementationOccurrenceHeaderSyntaxVerifier, S2B, S3, S2B,
+                          "domain|tag|field|missing|additional|duplicate|reordered|diagnostics|"
+                          "precedence|max-count|max-bytes",
+                          "StableBindingQueryTest.ResultsRejectAlternativeAndDiagnosticMutations")
+ZOM_STABLE_BINDING_RECORD(BinderQueryResult<BoundModuleSkeleton>,
+                          "zom.binder.result-bind-module-skeleton", BinderSemanticValueBytes,
+                          BindModuleSkeletonProvider, BindModuleSkeletonVerifier, S2B, S3, S2B,
+                          "domain|tag|field|missing|additional|duplicate|reordered|diagnostics|"
+                          "precedence|max-count|max-bytes",
+                          "StableBindingQueryTest.ResultsRejectAlternativeAndDiagnosticMutations")
+ZOM_STABLE_BINDING_RECORD(BinderQueryResult<BoundOwnerBody>, "zom.binder.result-bind-owner-body",
+                          BinderSemanticValueBytes, BindOwnerBodyProvider, BindOwnerBodyVerifier,
+                          S2B, S3, S2B,
+                          "domain|tag|field|missing|additional|duplicate|reordered|diagnostics|"
+                          "precedence|max-count|max-bytes",
+                          "StableBindingQueryTest.ResultsRejectAlternativeAndDiagnosticMutations")
+ZOM_STABLE_BINDING_RECORD(BinderQueryResult<ModuleBindingAllocationPlan>,
+                          "zom.binder.result-module-binding-allocation-plan",
+                          BinderSemanticValueBytes, ModuleBindingAllocationPlanProvider,
+                          ModuleBindingAllocationPlanVerifier, S2B, S3, S2B,
+                          "domain|tag|field|missing|additional|duplicate|reordered|diagnostics|"
+                          "precedence|max-count|max-bytes",
+                          "StableBindingQueryTest.ResultsRejectAlternativeAndDiagnosticMutations")
+ZOM_STABLE_BINDING_RECORD(
+    BinderKeyFailure, "zom.binder.key-failure", BinderSemanticValueBytes,
+    "DefinitionHeaderSyntaxProvider|ImplementationOccurrenceHeaderSyntaxProvider|"
+    "BindModuleSkeletonProvider|BindOwnerBodyProvider|ModuleBindingAllocationPlanProvider",
+    "DefinitionHeaderSyntaxVerifier|ImplementationOccurrenceHeaderSyntaxVerifier|"
+    "BindModuleSkeletonVerifier|BindOwnerBodyVerifier|ModuleBindingAllocationPlanVerifier",
+    S2B, S3, S2B, "domain|enum|field|missing|additional|owner|path|precedence|max-bytes",
+    "StableBindingQueryTest.KeyFailuresRejectOwnerPathAndKindMutations")
+ZOM_STABLE_BINDING_RECORD(BinderIdentifierDiagnosticArguments,
+                          "zom.diagnostic.arguments.binder-identifier", DiagnosticPayloadBytes,
+                          "BindModuleSkeletonProvider|BindOwnerBodyProvider",
+                          "BindModuleSkeletonVerifier|BindOwnerBodyVerifier", S6, S6, S6,
+                          "domain|field|missing|additional|identifier|max-bytes",
+                          "StableBindingQueryTest.DiagnosticArgumentsRejectCodeAndPayloadMutations")
+ZOM_STABLE_BINDING_RECORD(BinderNamespaceDiagnosticArguments,
+                          "zom.diagnostic.arguments.binder-namespace", DiagnosticPayloadBytes,
+                          "BindModuleSkeletonProvider|BindOwnerBodyProvider",
+                          "BindModuleSkeletonVerifier|BindOwnerBodyVerifier", S6, S6, S6,
+                          "domain|field|missing|additional|identifier|namespace|max-bytes",
+                          "StableBindingQueryTest.DiagnosticArgumentsRejectCodeAndPayloadMutations")
+ZOM_STABLE_BINDING_RECORD(
+    ActiveCompilationUnitMembership, "zom.binder.active-compilation-unit-membership",
+    BinderSemanticValueBytes, ActiveCompilationUnitMembershipProvider,
+    ActiveCompilationUnitMembershipVerifier, I2, I2, I2,
+    "domain|field|missing|additional|duplicate|reordered|identity|context|coverage|max-count|"
+    "max-bytes",
+    "StableBindingMembershipTest.CompilationUnitRejectsAuthorityAndCoverageMutations")
+ZOM_STABLE_BINDING_RECORD(
+    ActiveImplementationMembershipRecord, "zom.binder.active-implementation-membership",
+    BinderSemanticValueBytes, ActiveImplementationMembershipProvider,
+    ActiveImplementationMembershipVerifier, I2, I2, I2,
+    "domain|field|missing|additional|duplicate|reordered|identity|authority|occurrence|coverage|"
+    "max-count|max-bytes",
+    "StableBindingMembershipTest.ImplementationRejectsAuthorityAndOccurrenceMutations")
+ZOM_STABLE_BINDING_RECORD(
+    ImplementationGenericAuthority, "zom.binder.implementation-generic-authority",
+    BinderSemanticValueBytes, ActiveGenericParameterMembershipProvider,
+    ActiveGenericParameterMembershipVerifier, I2, I2, I2,
+    "domain|field|missing|additional|duplicate|reordered|identity|authority|occurrence|coverage|"
+    "max-count|max-bytes",
+    "StableBindingMembershipTest.GenericParameterRejectsOwnerAndOccurrenceMutations")
+ZOM_STABLE_BINDING_RECORD(
+    ActiveGenericParameterMembership, "zom.binder.active-generic-parameter-membership",
+    BinderSemanticValueBytes, ActiveGenericParameterMembershipProvider,
+    ActiveGenericParameterMembershipVerifier, I2, I2, I2,
+    "domain|tag|field|missing|additional|duplicate|reordered|identity|owner|ordinal|coverage|"
+    "max-count|max-bytes",
+    "StableBindingMembershipTest.GenericParameterRejectsOwnerAndOccurrenceMutations")
+ZOM_STABLE_BINDING_RECORD(
+    ActiveCallableParameterMembershipRecord, "zom.binder.active-callable-parameter-membership",
+    BinderSemanticValueBytes, ActiveCallableParameterMembershipProvider,
+    ActiveCallableParameterMembershipVerifier, I2, I2, I2,
+    "domain|field|missing|additional|identity|owner|header|position|name|receiver|max-bytes",
+    "StableBindingMembershipTest.CallableParameterRejectsHeaderAndPositionMutations")
+ZOM_STABLE_BINDING_RECORD(CompleteRootIdentityReadiness,
+                          "zom.binder.complete-root-identity-readiness", BinderSemanticValueBytes,
+                          ContextualIdentityAuthorityInputTransaction,
+                          CompleteRootIdentityReadinessVerifier, I2, I2, I2,
+                          "domain|field|missing|additional|context|digest|coverage|max-bytes",
+                          "StableBindingMembershipTest.ReadinessRejectsDigestAndCoverageMutations")
+ZOM_STABLE_BINDING_RECORD(
+    ActiveMembershipResult<ActiveCompilationUnitMembership>,
+    "zom.query.active-compilation-unit-membership-value", BinderSemanticValueBytes,
+    ActiveCompilationUnitMembershipProvider, ActiveCompilationUnitMembershipVerifier, I2, I2, I2,
+    "domain|tag|field|missing|additional|authority|readiness|max-bytes",
+    "StableBindingMembershipTest.ResultsRejectAlternativeAndReadinessMutations")
+ZOM_STABLE_BINDING_RECORD(
+    ActiveMembershipResult<CrateKey>, "zom.query.active-crate-membership-value",
+    BinderSemanticValueBytes, ActiveCrateMembershipProvider, ActiveCrateMembershipVerifier, I2, I2,
+    I2, "domain|tag|field|missing|additional|authority|readiness|max-bytes",
+    "StableBindingMembershipTest.ResultsRejectAlternativeAndReadinessMutations")
+ZOM_STABLE_BINDING_RECORD(
+    ActiveMembershipResult<SourceFileKey>, "zom.query.active-source-membership-value",
+    BinderSemanticValueBytes, ActiveSourceMembershipProvider, ActiveSourceMembershipVerifier, I2,
+    I2, I2, "domain|tag|field|missing|additional|authority|readiness|max-bytes",
+    "StableBindingMembershipTest.ResultsRejectAlternativeAndReadinessMutations")
+ZOM_STABLE_BINDING_RECORD(
+    ActiveMembershipResult<ModuleKey>, "zom.query.active-module-membership-value",
+    BinderSemanticValueBytes, ActiveModuleMembershipProvider, ActiveModuleMembershipVerifier, I2,
+    I2, I2, "domain|tag|field|missing|additional|authority|readiness|max-bytes",
+    "StableBindingMembershipTest.ResultsRejectAlternativeAndReadinessMutations")
+ZOM_STABLE_BINDING_RECORD(
+    ActiveMembershipResult<DefinitionIdentityRecord>,
+    "zom.query.active-definition-membership-value", BinderSemanticValueBytes,
+    ActiveDefinitionMembershipProvider, ActiveDefinitionMembershipVerifier, I2, I2, I2,
+    "domain|tag|field|missing|additional|authority|readiness|max-bytes",
+    "StableBindingMembershipTest.ResultsRejectAlternativeAndReadinessMutations")
+ZOM_STABLE_BINDING_RECORD(
+    ActiveMembershipResult<ActiveImplementationMembershipRecord>,
+    "zom.query.active-implementation-membership-value", BinderSemanticValueBytes,
+    ActiveImplementationMembershipProvider, ActiveImplementationMembershipVerifier, I2, I2, I2,
+    "domain|tag|field|missing|additional|authority|readiness|max-bytes",
+    "StableBindingMembershipTest.ResultsRejectAlternativeAndReadinessMutations")
+ZOM_STABLE_BINDING_RECORD(
+    ActiveMembershipResult<ActiveGenericParameterMembership>,
+    "zom.query.active-generic-parameter-membership-value", BinderSemanticValueBytes,
+    ActiveGenericParameterMembershipProvider, ActiveGenericParameterMembershipVerifier, I2, I2, I2,
+    "domain|tag|field|missing|additional|authority|readiness|max-bytes",
+    "StableBindingMembershipTest.ResultsRejectAlternativeAndReadinessMutations")
+ZOM_STABLE_BINDING_RECORD(
+    ActiveMembershipResult<ActiveCallableParameterMembershipRecord>,
+    "zom.query.active-callable-parameter-membership-value", BinderSemanticValueBytes,
+    ActiveCallableParameterMembershipProvider, ActiveCallableParameterMembershipVerifier, I2, I2,
+    I2, "domain|tag|field|missing|additional|authority|readiness|max-bytes",
+    "StableBindingMembershipTest.ResultsRejectAlternativeAndReadinessMutations")
+ZOM_STABLE_BINDING_RECORD(CanonicalCompilationRootRecord, "zom.input.canonical-compilation-root",
+                          CanonicalPackageRecordBytes,
+                          CanonicalPackageCompilationRequest::fromVerified,
+                          CanonicalPackageCompilationRequestProjectionVerifier, Q3, Q3, R30_13,
+                          "domain|truncated|trailing|field|enum|bool|identity",
+                          "Canonical package request schema rejects every declared mutation")
+ZOM_STABLE_BINDING_RECORD(CanonicalTargetSelectionRecord, "zom.input.canonical-target-selection",
+                          CanonicalPackageRecordBytes,
+                          CanonicalPackageCompilationRequest::fromVerified,
+                          CanonicalPackageCompilationRequestProjectionVerifier, Q3, Q3, R30_13,
+                          "domain|truncated|trailing|field|digest|profile|target|enum",
+                          "Canonical package request schema rejects every declared mutation")
+ZOM_STABLE_BINDING_RECORD(CanonicalLanguageOptionsRecord, "zom.input.canonical-language-options",
+                          CanonicalPackageRecordBytes,
+                          CanonicalPackageCompilationRequest::fromVerified,
+                          CanonicalPackageCompilationRequestProjectionVerifier, Q3, Q3, R30_13,
+                          "domain|truncated|trailing|field|bool",
+                          "Canonical package request schema rejects every declared mutation")
+ZOM_STABLE_BINDING_RECORD(CanonicalPackageCompilationRequest,
+                          "zom.input.canonical-package-compilation-request",
+                          CanonicalPackageRecordBytes,
+                          CanonicalPackageCompilationRequest::fromVerified,
+                          CanonicalPackageCompilationRequestProjectionVerifier, Q3, Q3, R30_13,
+                          "domain|truncated|trailing|field|duplicate|reordered|enum|max-count",
+                          "Canonical package request schema rejects every declared mutation")
+ZOM_STABLE_BINDING_NESTED_RECORD(
+    CanonicalInputEntry, Key, Value, CanonicalInputValueBytes, T1, T1, T1,
+    "framing|key|value|truncated|trailing|max-bytes",
+    "SessionInputTransactionTest.PayloadsRejectEntryFramingAndDuplicateKeys")
+ZOM_STABLE_BINDING_RECORD(
+    CompleteCompilationContextAuthority, "zom.input.complete-compilation-context-authority",
+    CanonicalInputValueBytes, VerifiedCoreDistributionInputTransaction,
+    CompleteCompilationContextAuthorityInputVerifier, T1, T1, T1,
+    "domain|field|missing|additional|duplicate|reordered|context|roots|graph|options|search-roots|"
+    "distribution|fingerprint|max-count|max-bytes",
+    "SessionInputTransactionTest.ContextAuthorityRejectsIncompleteAndUnequalInputs")
+ZOM_STABLE_BINDING_RECORD(
+    VerifiedCoreDistributionInputPayload, "zom.query.input-transaction.core-distribution",
+    CanonicalInputValueBytes, VerifiedCoreDistributionInputTransaction,
+    VerifiedCoreDistributionInputVerifier, T1, T1, T1,
+    "domain|field|missing|additional|duplicate|reordered|context|distribution|policy|source|"
+    "options|search-roots|coverage|digest|max-count|max-bytes",
+    "SessionInputTransactionTest.CorePayloadRejectsAuthorityAndProjectionMutations")
+ZOM_STABLE_BINDING_RECORD(
+    VerifiedModuleGraphInputPayload, "zom.query.input-transaction.module-structure",
+    CanonicalInputValueBytes, VerifiedModuleGraphInputTransaction, VerifiedModuleGraphInputVerifier,
+    T1, T1, T1,
+    "domain|field|missing|additional|duplicate|reordered|context|source|module|dependency|"
+    "ancestry|catalog|search-roots|alias|prelude|coverage|digest|max-count|max-bytes",
+    "SessionInputTransactionTest.StructurePayloadRejectsCoverageAndOrderingMutations")
+ZOM_STABLE_BINDING_RECORD(
+    ContextualIdentityAuthorityInputPayload,
+    "zom.query.input-transaction.contextual-identity-authority", CanonicalInputValueBytes,
+    ContextualIdentityAuthorityInputTransaction, ContextualIdentityAuthorityInputVerifier, T1, T1,
+    T1,
+    "domain|field|missing|additional|duplicate|reordered|context|definition|implementation|"
+    "generic|callable|readiness|coverage|digest|max-count|max-bytes",
+    "SessionInputTransactionTest.IdentityPayloadRejectsAuthorityAndReadinessMutations")
+ZOM_STABLE_BINDING_RECORD(
+    StableMaterializedDependencyWitness, "zom.materialized-module-dependency-witness",
+    BinderSemanticValueBytes, ModuleDependencyProvenanceProvider,
+    ModuleDependencyProvenanceVerifier, M1, M1, M1,
+    "domain|field|missing|additional|duplicate|reordered|requester|request|dependency|max-bytes",
+    "MaterializedModuleGraphCapabilityTest.DependencyWitnessRejectsEdgeMutations")
+ZOM_STABLE_BINDING_RECORD(
+    MaterializedModuleGraphWitness, "zom.materialized-module-graph-witness",
+    BinderSemanticValueBytes, MaterializeModuleGraphProvider, MaterializeModuleGraphVerifier, M1,
+    M1, M1,
+    "domain|field|missing|additional|duplicate|reordered|context|fingerprint|graph|scc|edge|"
+    "revision|coverage|max-count|max-bytes",
+    "MaterializedModuleGraphCapabilityTest.GraphWitnessRejectsClosureAndRevisionMutations")
+
+ZOM_STABLE_BINDING_ENUM_VALUE(DefinitionBodyDisposition, NoExecutableBody, 0x01, S2B, S3, S2B,
+                              "tag",
+                              "StableBindingQueryTest.HeadersRejectFieldAndParameterMutations")
+ZOM_STABLE_BINDING_ENUM_VALUE(DefinitionBodyDisposition, ExecutableBody, 0x02, S2B, S3, S2B, "tag",
+                              "StableBindingQueryTest.HeadersRejectFieldAndParameterMutations")
+ZOM_STABLE_BINDING_ENUM_VALUE(ImplementationSourceForm, Ordinary, 0x01, S2B, S3, S2B, "tag",
+                              "StableBindingQueryTest.HeadersRejectFieldAndParameterMutations")
+ZOM_STABLE_BINDING_ENUM_VALUE(ImplementationSourceForm, BodylessMarker, 0x02, S2B, S3, S2B, "tag",
+                              "StableBindingQueryTest.HeadersRejectFieldAndParameterMutations")
+ZOM_STABLE_BINDING_ENUM_VALUE(ScopeRole, Declaration, 0x01, S2B, S3, S2B, "tag",
+                              "StableBindingQueryTest.ScopeAndTargetKeysRejectClosedSumMutations")
+ZOM_STABLE_BINDING_ENUM_VALUE(ScopeRole, Generic, 0x02, S2B, S3, S2B, "tag",
+                              "StableBindingQueryTest.ScopeAndTargetKeysRejectClosedSumMutations")
+ZOM_STABLE_BINDING_ENUM_VALUE(ScopeRole, Parameters, 0x03, S2B, S3, S2B, "tag",
+                              "StableBindingQueryTest.ScopeAndTargetKeysRejectClosedSumMutations")
+ZOM_STABLE_BINDING_ENUM_VALUE(ScopeRole, Members, 0x04, S2B, S3, S2B, "tag",
+                              "StableBindingQueryTest.ScopeAndTargetKeysRejectClosedSumMutations")
+ZOM_STABLE_BINDING_ENUM_VALUE(ScopeRole, Implementation, 0x05, S2B, S3, S2B, "tag",
+                              "StableBindingQueryTest.ScopeAndTargetKeysRejectClosedSumMutations")
+ZOM_STABLE_BINDING_ENUM_VALUE(StableExplicitCaptureMode, ByValue, 0x01, S2D, S3, S2D, "tag",
+                              "StableBindingQueryTest.OwnerBodiesRejectClosureAndCaptureMutations")
+ZOM_STABLE_BINDING_ENUM_VALUE(StableExplicitCaptureMode, ByReference, 0x02, S2D, S3, S2D, "tag",
+                              "StableBindingQueryTest.OwnerBodiesRejectClosureAndCaptureMutations")
+ZOM_STABLE_BINDING_ENUM_VALUE(StableExplicitCaptureMode, This, 0x03, S2D, S3, S2D, "tag",
+                              "StableBindingQueryTest.OwnerBodiesRejectClosureAndCaptureMutations")
+ZOM_STABLE_BINDING_ENUM_VALUE(BinderKeyFailureKind, MissingSelectedModuleSource, 0x01, S2B, S3, S2B,
+                              "tag",
+                              "StableBindingQueryTest.KeyFailuresRejectOwnerPathAndKindMutations")
+ZOM_STABLE_BINDING_ENUM_VALUE(BinderKeyFailureKind, InactiveOwner, 0x02, S2B, S3, S2B, "tag",
+                              "StableBindingQueryTest.KeyFailuresRejectOwnerPathAndKindMutations")
+ZOM_STABLE_BINDING_ENUM_VALUE(BinderKeyFailureKind, ForeignOwner, 0x03, S2B, S3, S2B, "tag",
+                              "StableBindingQueryTest.KeyFailuresRejectOwnerPathAndKindMutations")
+ZOM_STABLE_BINDING_ENUM_VALUE(BinderKeyFailureKind, DefinitionWithoutBody, 0x04, S2B, S3, S2B,
+                              "tag",
+                              "StableBindingQueryTest.KeyFailuresRejectOwnerPathAndKindMutations")
+ZOM_STABLE_BINDING_ENUM_VALUE(BinderKeyFailureKind, BoundaryMismatch, 0x05, S2B, S3, S2B, "tag",
+                              "StableBindingQueryTest.KeyFailuresRejectOwnerPathAndKindMutations")
+ZOM_STABLE_BINDING_ENUM_VALUE(BinderKeyFailureKind, NonSelectedSource, 0x06, S2B, S3, S2B, "tag",
+                              "StableBindingQueryTest.KeyFailuresRejectOwnerPathAndKindMutations")
+ZOM_STABLE_BINDING_ENUM_VALUE(BinderKeyFailureKind, CrossBoundaryPath, 0x07, S2B, S3, S2B, "tag",
+                              "StableBindingQueryTest.KeyFailuresRejectOwnerPathAndKindMutations")
+ZOM_STABLE_BINDING_ENUM_VALUE(BinderDiagnosticProducer, BindModuleSkeleton, 0x01, S6, S6, S6, "tag",
+                              "DiagnosticFactTest.IdentityAdmissionRejectsExactMappingMutations")
+ZOM_STABLE_BINDING_ENUM_VALUE(BinderDiagnosticProducer, BindOwnerBody, 0x02, S6, S6, S6, "tag",
+                              "DiagnosticFactTest.IdentityAdmissionRejectsExactMappingMutations")
+ZOM_STABLE_BINDING_ENUM_VALUE(BinderDiagnosticEmitter, Declaration, 0x01, S6, S6, S6, "tag",
+                              "DiagnosticFactTest.IdentityAdmissionRejectsExactMappingMutations")
+ZOM_STABLE_BINDING_ENUM_VALUE(BinderDiagnosticEmitter, Lookup, 0x02, S6, S6, S6, "tag",
+                              "DiagnosticFactTest.IdentityAdmissionRejectsExactMappingMutations")
+ZOM_STABLE_BINDING_ENUM_VALUE(BinderDiagnosticEmitter, ControlTransfer, 0x03, S6, S6, S6, "tag",
+                              "DiagnosticFactTest.IdentityAdmissionRejectsExactMappingMutations")
+ZOM_STABLE_BINDING_ENUM_VALUE(BinderDiagnosticEmitter, ContextualSelf, 0x04, S6, S6, S6, "tag",
+                              "DiagnosticFactTest.IdentityAdmissionRejectsExactMappingMutations")
+ZOM_STABLE_BINDING_ENUM_VALUE(IdentityDiagnosticPhase, IdentityAdmission, 0x01, S6, S6, S6, "tag",
+                              "DiagnosticFactTest.IdentityAdmissionRejectsExactMappingMutations")
+ZOM_STABLE_BINDING_ENUM_VALUE(IdentityDiagnosticEmitter, DuplicateBound, 0x01, S6, S6, S6, "tag",
+                              "DiagnosticFactTest.IdentityAdmissionRejectsExactMappingMutations")
+ZOM_STABLE_BINDING_ENUM_VALUE(IdentityDiagnosticEmitter, DefinitionIdentityCollision, 0x02, S6, S6,
+                              S6, "tag",
+                              "DiagnosticFactTest.IdentityAdmissionRejectsExactMappingMutations")
+ZOM_STABLE_BINDING_ENUM_VALUE(IdentityDiagnosticEmitter, ConstantExpressionNotAllowed, 0x03, S6, S6,
+                              S6, "tag",
+                              "DiagnosticFactTest.IdentityAdmissionRejectsExactMappingMutations")
+ZOM_STABLE_BINDING_ENUM_VALUE(IdentityDiagnosticEmitter, DuplicateGenericParameter, 0x04, S6, S6,
+                              S6, "tag",
+                              "DiagnosticFactTest.IdentityAdmissionRejectsExactMappingMutations")
+ZOM_STABLE_BINDING_ENUM_VALUE(DiagnosticSecondaryRole, PreviousDeclaration, 0x01, S6, S6, S6, "tag",
+                              "DiagnosticFactTest.IdentityAdmissionRejectsExactMappingMutations")
+
+ZOM_STABLE_BINDING_SUM(StableHeaderSite, S2B, S3, S2B, "tag|field|identity",
+                       "StableBindingQueryTest.HeadersRejectFieldAndParameterMutations")
+ZOM_STABLE_BINDING_SUM(StableScopeOwnerKey, S2B, S3, S2B, "tag|field|ownership|relation",
+                       "StableBindingQueryTest.ScopeAndTargetKeysRejectClosedSumMutations")
+ZOM_STABLE_BINDING_SUM(StableBindingTargetKey, S2B, S3, S2B, "tag|field|ownership|relation",
+                       "StableBindingQueryTest.ScopeAndTargetKeysRejectClosedSumMutations")
+ZOM_STABLE_BINDING_SUM(StableNodeSyntaxRoot, S2B, S3, S2B, "tag|field|ownership|relation",
+                       "StableBindingQueryTest.ModuleSkeletonRejectsFactAndCoverageMutations")
+ZOM_STABLE_BINDING_SUM(StableFailedLookupOutcome, S2C, S3, S2C, "tag|field|identity|relation",
+                       "StableBindingQueryTest.FailedLookupsRejectOutcomeAndCandidateMutations")
+ZOM_STABLE_BINDING_SUM(StableSelfOwner, S2D, S3, S2D, "tag|field|identity|ownership|relation",
+                       "StableBindingQueryTest.OwnerBodiesRejectContextualSelfMutations")
+ZOM_STABLE_BINDING_SUM(StableLabelTarget, S2D, S3, S2D, "tag|field|identity|ownership|relation",
+                       "StableBindingQueryTest.OwnerBodiesRejectLabelAndControlMutations")
+ZOM_STABLE_BINDING_SUM(StableControlTarget, S2D, S3, S2D, "tag|field|identity|ownership|relation",
+                       "StableBindingQueryTest.OwnerBodiesRejectLabelAndControlMutations")
+ZOM_STABLE_BINDING_SUM(BinderQueryResult, S2B, S3, S2B, "tag|field|diagnostics|precedence",
+                       "StableBindingQueryTest.ResultsRejectAlternativeAndDiagnosticMutations")
+ZOM_STABLE_BINDING_SUM(BinderQueryOwner, S2B, S3, S2B, "tag|field|identity|ownership",
+                       "StableBindingQueryTest.ResultsRejectAlternativeAndDiagnosticMutations")
+ZOM_STABLE_BINDING_SUM(DiagnosticPhaseOrQueryKind, S6, S6, S6, "tag|field",
+                       "DiagnosticFactTest.IdentityAdmissionRejectsExactMappingMutations")
+ZOM_STABLE_BINDING_SUM(DiagnosticEmitterSite, S6, S6, S6, "tag|field",
+                       "DiagnosticFactTest.IdentityAdmissionRejectsExactMappingMutations")
+ZOM_STABLE_BINDING_SUM(ActiveMembershipResult, I2, I2, I2, "tag|field|authority|readiness",
+                       "StableBindingMembershipTest.ResultsRejectAlternativeAndReadinessMutations")
+ZOM_STABLE_BINDING_RUNTIME_SUM(CapabilityDemandResult, R29_13A, R29_13C,
+                               "tag|field|payload|precedence",
+                               "QueryCapabilityTest.RejectsFailureAlternativeAndPayloadMutations")
+
+ZOM_STABLE_BINDING_SUM_VARIANT(StableHeaderSite, DefinitionAuthoritySite, 0x01)
+ZOM_STABLE_BINDING_SUM_VARIANT(StableHeaderSite, ImplementationOccurrenceSite, 0x02)
+ZOM_STABLE_BINDING_SUM_VARIANT(StableScopeOwnerKey, ModuleScope, 0x01)
+ZOM_STABLE_BINDING_SUM_VARIANT(StableScopeOwnerKey, DefinitionScope, 0x02)
+ZOM_STABLE_BINDING_SUM_VARIANT(StableScopeOwnerKey, ImplementationOccurrenceScope, 0x03)
+ZOM_STABLE_BINDING_SUM_VARIANT(StableScopeOwnerKey, BodyScope, 0x04)
+ZOM_STABLE_BINDING_SUM_VARIANT(StableBindingTargetKey, Definition, 0x01)
+ZOM_STABLE_BINDING_SUM_VARIANT(StableBindingTargetKey, Implementation, 0x02)
+ZOM_STABLE_BINDING_SUM_VARIANT(StableBindingTargetKey, Module, 0x03)
+ZOM_STABLE_BINDING_SUM_VARIANT(StableBindingTargetKey, SemanticImport, 0x04)
+ZOM_STABLE_BINDING_SUM_VARIANT(StableBindingTargetKey, OwnerLocal, 0x05)
+ZOM_STABLE_BINDING_SUM_VARIANT(StableBindingTargetKey, AnonymousOwner, 0x06)
+ZOM_STABLE_BINDING_SUM_VARIANT(StableBindingTargetKey, GenericParameter, 0x07)
+ZOM_STABLE_BINDING_SUM_VARIANT(StableBindingTargetKey, CallableParameter, 0x08)
+ZOM_STABLE_BINDING_SUM_VARIANT(StableNodeSyntaxRoot, ModuleBody, 0x01)
+ZOM_STABLE_BINDING_SUM_VARIANT(StableNodeSyntaxRoot, DefinitionHeader, 0x02)
+ZOM_STABLE_BINDING_SUM_VARIANT(StableNodeSyntaxRoot, ImplementationHeader, 0x03)
+ZOM_STABLE_BINDING_SUM_VARIANT(StableFailedLookupOutcome, Missing, 0x01)
+ZOM_STABLE_BINDING_SUM_VARIANT(StableFailedLookupOutcome, NamespaceMismatch, 0x02)
+ZOM_STABLE_BINDING_SUM_VARIANT(StableFailedLookupOutcome, Ambiguous, 0x03)
+ZOM_STABLE_BINDING_SUM_VARIANT(StableSelfOwner, Nominal, 0x01)
+ZOM_STABLE_BINDING_SUM_VARIANT(StableSelfOwner, Interface, 0x02)
+ZOM_STABLE_BINDING_SUM_VARIANT(StableSelfOwner, ImplementationOccurrence, 0x03)
+ZOM_STABLE_BINDING_SUM_VARIANT(StableLabelTarget, Block, 0x01)
+ZOM_STABLE_BINDING_SUM_VARIANT(StableLabelTarget, Loop, 0x02)
+ZOM_STABLE_BINDING_SUM_VARIANT(StableControlTarget, ExplicitLabel, 0x01)
+ZOM_STABLE_BINDING_SUM_VARIANT(StableControlTarget, Loop, 0x02)
+ZOM_STABLE_BINDING_SUM_VARIANT(StableControlTarget, Match, 0x03)
+ZOM_STABLE_BINDING_SUM_VARIANT(BinderQueryResult, Value, 0x01)
+ZOM_STABLE_BINDING_SUM_VARIANT(BinderQueryResult, SourceRejected, 0x02)
+ZOM_STABLE_BINDING_SUM_VARIANT(BinderQueryResult, KeyRejected, 0x03)
+ZOM_STABLE_BINDING_SUM_VARIANT(BinderQueryOwner, Module, 0x01)
+ZOM_STABLE_BINDING_SUM_VARIANT(BinderQueryOwner, DefinitionHeader, 0x02)
+ZOM_STABLE_BINDING_SUM_VARIANT(BinderQueryOwner, ImplementationHeader, 0x03)
+ZOM_STABLE_BINDING_SUM_VARIANT(BinderQueryOwner, Body, 0x04)
+ZOM_STABLE_BINDING_SUM_VARIANT(DiagnosticPhaseOrQueryKind, Source, 0x01)
+ZOM_STABLE_BINDING_SUM_VARIANT(DiagnosticPhaseOrQueryKind, Package, 0x02)
+ZOM_STABLE_BINDING_SUM_VARIANT(DiagnosticPhaseOrQueryKind, BuildScript, 0x03)
+ZOM_STABLE_BINDING_SUM_VARIANT(DiagnosticPhaseOrQueryKind, Module, 0x04)
+ZOM_STABLE_BINDING_SUM_VARIANT(DiagnosticPhaseOrQueryKind, ToolchainModuleRootReservation, 0x05)
+ZOM_STABLE_BINDING_SUM_VARIANT(DiagnosticPhaseOrQueryKind, CoreFailureProducer, 0x06)
+ZOM_STABLE_BINDING_SUM_VARIANT(DiagnosticPhaseOrQueryKind, Binder, 0x07)
+ZOM_STABLE_BINDING_SUM_VARIANT(DiagnosticEmitterSite, Source, 0x01)
+ZOM_STABLE_BINDING_SUM_VARIANT(DiagnosticEmitterSite, Package, 0x02)
+ZOM_STABLE_BINDING_SUM_VARIANT(DiagnosticEmitterSite, BuildScript, 0x03)
+ZOM_STABLE_BINDING_SUM_VARIANT(DiagnosticEmitterSite, Module, 0x04)
+ZOM_STABLE_BINDING_SUM_VARIANT(DiagnosticEmitterSite, ToolchainModuleRootReservation, 0x05)
+ZOM_STABLE_BINDING_SUM_VARIANT(DiagnosticEmitterSite, CoreLibrary, 0x06)
+ZOM_STABLE_BINDING_SUM_VARIANT(DiagnosticEmitterSite, Binder, 0x07)
+ZOM_STABLE_BINDING_SUM_VARIANT(ActiveMembershipResult, Active, 0x01)
+ZOM_STABLE_BINDING_SUM_VARIANT(ActiveMembershipResult, Inactive, 0x02)
+
+ZOM_STABLE_BINDING_INLINE_SUM_VARIANT(ActiveGenericParameterMembership, 2, owner, DefinitionOwner,
+                                      0x01)
+ZOM_STABLE_BINDING_INLINE_SUM_VARIANT(ActiveGenericParameterMembership, 2, owner,
+                                      ImplementationOwner, 0x02)
+
+ZOM_STABLE_BINDING_RUNTIME_SUM_VARIANT(CapabilityDemandResult, Published, 0x01, Always)
+ZOM_STABLE_BINDING_RUNTIME_SUM_VARIANT(CapabilityDemandResult, SourceRejected, 0x02,
+                                       FailureAlternative<SourceRejection<Diagnostic>>)
+ZOM_STABLE_BINDING_RUNTIME_SUM_VARIANT(CapabilityDemandResult, KeyRejected, 0x03,
+                                       FailureAlternative<KeyRejection<KeyFailure>>)
+ZOM_STABLE_BINDING_RUNTIME_SUM_VARIANT(CapabilityDemandResult, RuntimeRejected, 0x04, Always)
+
+ZOM_STABLE_BINDING_VARIANT_FIELD(StableHeaderSite, DefinitionAuthoritySite, 0, site,
+                                 IdentitySyntaxSiteKey)
+ZOM_STABLE_BINDING_VARIANT_FIELD(StableHeaderSite, ImplementationOccurrenceSite, 0, site,
+                                 ImplSourceOccurrenceKey)
+ZOM_STABLE_BINDING_VARIANT_FIELD(StableScopeOwnerKey, ModuleScope, 0, module, ModuleKey)
+ZOM_STABLE_BINDING_VARIANT_FIELD(StableScopeOwnerKey, DefinitionScope, 0, definition,
+                                 StableDefinitionQueryKey)
+ZOM_STABLE_BINDING_VARIANT_FIELD(StableScopeOwnerKey, DefinitionScope, 1, role, ScopeRole)
+ZOM_STABLE_BINDING_VARIANT_FIELD(StableScopeOwnerKey, ImplementationOccurrenceScope, 0, occurrence,
+                                 StableImplementationOccurrenceQueryKey)
+ZOM_STABLE_BINDING_VARIANT_FIELD(StableScopeOwnerKey, ImplementationOccurrenceScope, 1, role,
+                                 ScopeRole)
+ZOM_STABLE_BINDING_VARIANT_FIELD(StableScopeOwnerKey, BodyScope, 0, owner, StableOwnerBodyQueryKey)
+ZOM_STABLE_BINDING_VARIANT_FIELD(StableScopeOwnerKey, BodyScope, 1, path, LocalSyntaxPath)
+ZOM_STABLE_BINDING_VARIANT_FIELD(StableBindingTargetKey, Definition, 0, definition,
+                                 StableDefinitionQueryKey)
+ZOM_STABLE_BINDING_VARIANT_FIELD(StableBindingTargetKey, Implementation, 0, implementation,
+                                 StableImplementationQueryKey)
+ZOM_STABLE_BINDING_VARIANT_FIELD(StableBindingTargetKey, Module, 0, module, ModuleKey)
+ZOM_STABLE_BINDING_VARIANT_FIELD(StableBindingTargetKey, SemanticImport, 0, import,
+                                 StableSemanticImportQueryKey)
+ZOM_STABLE_BINDING_VARIANT_FIELD(StableBindingTargetKey, OwnerLocal, 0, owner,
+                                 StableOwnerBodyQueryKey)
+ZOM_STABLE_BINDING_VARIANT_FIELD(StableBindingTargetKey, OwnerLocal, 1, binding,
+                                 OwnerLocalBindingKey)
+ZOM_STABLE_BINDING_VARIANT_FIELD(StableBindingTargetKey, AnonymousOwner, 0, owner,
+                                 StableOwnerBodyQueryKey)
+ZOM_STABLE_BINDING_VARIANT_FIELD(StableBindingTargetKey, AnonymousOwner, 1, binding,
+                                 AnonymousOwnerLocalKey)
+ZOM_STABLE_BINDING_VARIANT_FIELD(StableBindingTargetKey, GenericParameter, 0, parameter,
+                                 StableGenericParameterQueryKey)
+ZOM_STABLE_BINDING_VARIANT_FIELD(StableBindingTargetKey, CallableParameter, 0, parameter,
+                                 StableCallableParameterQueryKey)
+ZOM_STABLE_BINDING_VARIANT_FIELD(StableNodeSyntaxRoot, ModuleBody, 0, module, ModuleKey)
+ZOM_STABLE_BINDING_VARIANT_FIELD(StableNodeSyntaxRoot, DefinitionHeader, 0, definition,
+                                 StableDefinitionQueryKey)
+ZOM_STABLE_BINDING_VARIANT_FIELD(StableNodeSyntaxRoot, ImplementationHeader, 0, occurrence,
+                                 StableImplementationOccurrenceQueryKey)
+ZOM_STABLE_BINDING_VARIANT_FIELD(StableFailedLookupOutcome, NamespaceMismatch, 0,
+                                 availableNamespaces, CanonicalNonEmptySequence<Namespace>)
+ZOM_STABLE_BINDING_VARIANT_FIELD(StableFailedLookupOutcome, Ambiguous, 0, candidates,
+                                 CanonicalNonEmptySequence<StableBindingTargetKey>)
+ZOM_STABLE_BINDING_VARIANT_FIELD(StableSelfOwner, Nominal, 0, definition, StableDefinitionQueryKey)
+ZOM_STABLE_BINDING_VARIANT_FIELD(StableSelfOwner, Interface, 0, definition,
+                                 StableDefinitionQueryKey)
+ZOM_STABLE_BINDING_VARIANT_FIELD(StableSelfOwner, ImplementationOccurrence, 0, occurrence,
+                                 StableImplementationOccurrenceQueryKey)
+ZOM_STABLE_BINDING_VARIANT_FIELD(StableLabelTarget, Block, 0, scope, StableScopeOwnerKey)
+ZOM_STABLE_BINDING_VARIANT_FIELD(StableLabelTarget, Loop, 0, scope, StableScopeOwnerKey)
+ZOM_STABLE_BINDING_VARIANT_FIELD(StableControlTarget, ExplicitLabel, 0, label, StableLabelKey)
+ZOM_STABLE_BINDING_VARIANT_FIELD(StableControlTarget, Loop, 0, scope, StableScopeOwnerKey)
+ZOM_STABLE_BINDING_VARIANT_FIELD(StableControlTarget, Match, 0, scope, StableScopeOwnerKey)
+ZOM_STABLE_BINDING_VARIANT_FIELD(BinderQueryResult, Value, 0, value, T)
+ZOM_STABLE_BINDING_VARIANT_FIELD(BinderQueryResult, Value, 1, diagnostics,
+                                 CanonicalSequence<DiagnosticFact>)
+ZOM_STABLE_BINDING_VARIANT_FIELD(BinderQueryResult, SourceRejected, 0, diagnostics,
+                                 CanonicalNonEmptySequence<DiagnosticFact>)
+ZOM_STABLE_BINDING_VARIANT_FIELD(BinderQueryResult, KeyRejected, 0, failure, BinderKeyFailure)
+ZOM_STABLE_BINDING_VARIANT_FIELD(BinderQueryOwner, Module, 0, module, ModuleKey)
+ZOM_STABLE_BINDING_VARIANT_FIELD(BinderQueryOwner, DefinitionHeader, 0, definition,
+                                 StableDefinitionQueryKey)
+ZOM_STABLE_BINDING_VARIANT_FIELD(BinderQueryOwner, ImplementationHeader, 0, implementation,
+                                 StableImplementationOccurrenceQueryKey)
+ZOM_STABLE_BINDING_VARIANT_FIELD(BinderQueryOwner, Body, 0, body, StableOwnerBodyQueryKey)
+ZOM_STABLE_BINDING_VARIANT_FIELD(DiagnosticPhaseOrQueryKind, ToolchainModuleRootReservation, 0,
+                                 producer, ToolchainModuleRootReservationProducer)
+ZOM_STABLE_BINDING_VARIANT_FIELD(DiagnosticPhaseOrQueryKind, CoreFailureProducer, 0, producer,
+                                 CoreFailureProducer)
+ZOM_STABLE_BINDING_VARIANT_FIELD(DiagnosticPhaseOrQueryKind, Binder, 0, producer,
+                                 BinderDiagnosticProducer)
+ZOM_STABLE_BINDING_VARIANT_FIELD(DiagnosticEmitterSite, ToolchainModuleRootReservation, 0, emitter,
+                                 ToolchainModuleRootReservationEmitter)
+ZOM_STABLE_BINDING_VARIANT_FIELD(DiagnosticEmitterSite, CoreLibrary, 0, emitter,
+                                 CoreLibraryDiagnosticEmitter)
+ZOM_STABLE_BINDING_VARIANT_FIELD(DiagnosticEmitterSite, Binder, 0, emitter, BinderDiagnosticEmitter)
+ZOM_STABLE_BINDING_VARIANT_FIELD(ActiveMembershipResult, Active, 0, record, Record)
+
+ZOM_STABLE_BINDING_INLINE_SUM_VARIANT_FIELD(ActiveGenericParameterMembership, owner,
+                                            DefinitionOwner, 0, definition,
+                                            StableDefinitionQueryKey)
+ZOM_STABLE_BINDING_INLINE_SUM_VARIANT_FIELD(ActiveGenericParameterMembership, owner,
+                                            DefinitionOwner, 1, headerSite, IdentitySyntaxSiteKey)
+ZOM_STABLE_BINDING_INLINE_SUM_VARIANT_FIELD(ActiveGenericParameterMembership, owner,
+                                            ImplementationOwner, 0, authority,
+                                            ImplementationGenericAuthority)
+
+ZOM_STABLE_BINDING_RUNTIME_VARIANT_FIELD(CapabilityDemandResult, Published, 0, lease,
+                                         QueryCapabilityLease<const Descriptor::Capability>)
+ZOM_STABLE_BINDING_RUNTIME_VARIANT_FIELD(CapabilityDemandResult, SourceRejected, 0, diagnostics,
+                                         CanonicalNonEmptySequence<Diagnostic>)
+ZOM_STABLE_BINDING_RUNTIME_VARIANT_FIELD(CapabilityDemandResult, KeyRejected, 0, failure,
+                                         KeyFailure)
+ZOM_STABLE_BINDING_RUNTIME_VARIANT_FIELD(CapabilityDemandResult, RuntimeRejected, 0, failure,
+                                         QueryRuntimeFailure)
+
+ZOM_STABLE_BINDING_DIAGNOSTIC_MAPPING(
+    Missing, ZOM3001, BinderIdentifierDiagnosticArguments, None, None, 0, 0, S6, S6,
+    "code|arguments|secondary-code|secondary-role|secondary-count|fix-it-count",
+    "DiagnosticFactTest.BinderLookupRejectsExactMappingMutations")
+ZOM_STABLE_BINDING_DIAGNOSTIC_MAPPING(
+    NamespaceMismatch, ZOM3002, BinderNamespaceDiagnosticArguments, None, None, 0, 0, S6, S6,
+    "code|arguments|secondary-code|secondary-role|secondary-count|fix-it-count",
+    "DiagnosticFactTest.BinderLookupRejectsExactMappingMutations")
+ZOM_STABLE_BINDING_DIAGNOSTIC_MAPPING(
+    Ambiguous, ZOM3028, BinderIdentifierDiagnosticArguments, None, None, 0, 0, S6, S6,
+    "code|arguments|secondary-code|secondary-role|secondary-count|fix-it-count",
+    "DiagnosticFactTest.BinderLookupRejectsExactMappingMutations")
+ZOM_STABLE_BINDING_DIAGNOSTIC_MAPPING(
+    ConstantExpressionNotAllowed, ZOM4079, None, None, None, 0, 0, S6, S6,
+    "code|arguments|secondary-code|secondary-role|secondary-count|fix-it-count",
+    "DiagnosticFactTest.IdentityAdmissionRejectsExactMappingMutations")
+ZOM_STABLE_BINDING_DIAGNOSTIC_MAPPING(
+    DuplicateGenericParameter, ZOM3010, BinderIdentifierDiagnosticArguments, ZOM3017,
+    PreviousDeclaration, 1, 0, S6, S6,
+    "code|arguments|secondary-code|secondary-role|secondary-count|fix-it-count",
+    "DiagnosticFactTest.IdentityAdmissionRejectsExactMappingMutations")
+
+ZOM_STABLE_BINDING_CONSTRAINT("BinderQueryResult",
+                              "PrecedenceRuntimeFailureKeyRejectedSourceRejectedValue")
+ZOM_STABLE_BINDING_CONSTRAINT("BinderQueryResult.Value.diagnostics",
+                              "ProviderOwnedNoForwardedUpstreamDiagnostics")
+ZOM_STABLE_BINDING_CONSTRAINT("BinderQueryResult.SourceRejected.diagnostics",
+                              "NonEmptyForwardedByteForByteNoLocalDiagnostics")
+ZOM_STABLE_BINDING_CONSTRAINT("BinderQueryResult.KeyRejected", "ContainsNoDiagnostic")
+ZOM_STABLE_BINDING_CONSTRAINT("BinderKeyFailure.path",
+                              "RequiredForBoundaryMismatchNonSelectedSourceCrossBoundaryPath")
+ZOM_STABLE_BINDING_CONSTRAINT(
+    "BinderKeyFailure.path",
+    "ForbiddenForMissingSelectedModuleSourceInactiveOwnerForeignOwnerDefinitionWithoutBody")
+ZOM_STABLE_BINDING_CONSTRAINT("ModuleDiagnosticFacts",
+                              "OnlyBinderCollectorNoMaterializedCapability")
+ZOM_STABLE_BINDING_CONSTRAINT("ActiveMembershipResult.Active", "ContainsCompleteAuthorityRecord")
+ZOM_STABLE_BINDING_CONSTRAINT("ActiveMembershipResult.Inactive", "ContainsNoPayload")
+ZOM_STABLE_BINDING_CONSTRAINT(
+    "ActiveMembershipResult",
+    "PositiveMembershipDoesNotReadReadinessAbsentOrContradictoryMembershipReadsReadiness")
+ZOM_STABLE_BINDING_CONSTRAINT(
+    "CompleteRootIdentityReadiness",
+    "FourDigestsCoverCompleteActiveModuleSetEmptyClassHashesDomainZeroByteAndZeroCount")
+ZOM_STABLE_BINDING_CONSTRAINT("CanonicalInputEntry",
+                              "NestedOnlyFramedCompleteKeyThenFramedCompleteValue")
+ZOM_STABLE_BINDING_CONSTRAINT("CanonicalInputEntrySequence",
+                              "SortByCompleteKeyBytesRejectDuplicateKeys")
+ZOM_STABLE_BINDING_CONSTRAINT(
+    "CompleteCompilationContextAuthority",
+    "ExpectedRootsAreUserAndProjectedCoreUnionCompleteCratesAreGraphAndProjectedCoreUnion")
+ZOM_STABLE_BINDING_CONSTRAINT(
+    "CompleteCompilationContextAuthority",
+    "ExactlyOneCompilationOptionsAndModuleSearchRootsEntryPerCompleteCrate")
+ZOM_STABLE_BINDING_CONSTRAINT(
+    "CanonicalInputPayload",
+    "DomainZeroByteDeclarationOrderExactConsumptionNoDuplicateKeysNoTrailingBytes")
+ZOM_STABLE_BINDING_CONSTRAINT(
+    "CanonicalInputPayload",
+    "NestedContextRootsByteEqualSelectedSourcesAndModulesCoveredByCompleteContextAuthority")
+ZOM_STABLE_BINDING_DIGEST(
+    CanonicalInputPayloadDigest, "zom.query.input-transaction-digest",
+    "DomainZeroByteFramedTransactionDomainFramedCompletePayloadBytes", T1, T1,
+    "domain|transaction-domain|payload|framing|ordering",
+    "SessionInputTransactionTest.PayloadDigestsRejectDomainAndPayloadMutations")
+ZOM_STABLE_BINDING_CONSTRAINT("StableMaterializedDependencyWitnessSequence",
+                              "SortByCompleteRecordBytesRejectDuplicateRecords")
+ZOM_STABLE_BINDING_CONSTRAINT(
+    "MaterializedModuleGraphWitness",
+    "GraphAndSccMembershipClosedSccGraphDigestEqualGraphRevisionIndependentlyRecomputed")
+ZOM_STABLE_BINDING_CONSTRAINT(
+    "MaterializedModuleGraph",
+    "ContextRootsFingerprintGraphSccAndGraphRevisionProjectOnlyFromWitness")
+ZOM_STABLE_BINDING_CONSTRAINT("CapabilityDemandResult",
+                              "MoveOnlyRuntimeResultNoCanonicalCodecNoSemanticEquality")
+ZOM_STABLE_BINDING_CONSTRAINT("CapabilityDemandResult",
+                              "PrecedenceRuntimeRejectedKeyRejectedSourceRejectedPublished")
+ZOM_STABLE_BINDING_CONSTRAINT("CapabilityDemandResult.Published",
+                              "OnlyAlternativeThatInstallsRetainedCapabilityMemo")
+ZOM_STABLE_BINDING_CONSTRAINT("VerifyBoundModule",
+                              "ChildSourceRejectionOrErrorDiagnosticPreventsCapabilityPublication")
+
+ZOM_STABLE_BINDING_FIELD(StableDefinitionQueryKey, 0, module, ModuleKey)
+ZOM_STABLE_BINDING_FIELD(StableDefinitionQueryKey, 1, definition, DefinitionKey)
+ZOM_STABLE_BINDING_FIELD(StableImplementationQueryKey, 0, module, ModuleKey)
+ZOM_STABLE_BINDING_FIELD(StableImplementationQueryKey, 1, implementation, ImplKey)
+ZOM_STABLE_BINDING_FIELD(StableImplementationOccurrenceQueryKey, 0, module, ModuleKey)
+ZOM_STABLE_BINDING_FIELD(StableImplementationOccurrenceQueryKey, 1, occurrence,
+                         ImplSourceOccurrenceKey)
+ZOM_STABLE_BINDING_FIELD(StableGenericParameterQueryKey, 0, module, ModuleKey)
+ZOM_STABLE_BINDING_FIELD(StableGenericParameterQueryKey, 1, parameter, GenericParameterKey)
+ZOM_STABLE_BINDING_FIELD(StableCallableParameterQueryKey, 0, module, ModuleKey)
+ZOM_STABLE_BINDING_FIELD(StableCallableParameterQueryKey, 1, parameter, CallableParameterKey)
+ZOM_STABLE_BINDING_FIELD(StableSemanticImportQueryKey, 0, requester, ModuleKey)
+ZOM_STABLE_BINDING_FIELD(StableSemanticImportQueryKey, 1, binding, SemanticImportBindingKey)
+ZOM_STABLE_BINDING_FIELD(StableOwnerBodyQueryKey, 0, module, ModuleKey)
+ZOM_STABLE_BINDING_FIELD(StableOwnerBodyQueryKey, 1, owner, StableBodyOwnerKey)
+ZOM_STABLE_BINDING_FIELD(ContextualBodyOwnerKey, 0, contextRoots, CompilationRootSetQueryKey)
+ZOM_STABLE_BINDING_FIELD(ContextualBodyOwnerKey, 1, body, StableOwnerBodyQueryKey)
+ZOM_STABLE_BINDING_FIELD(ContextualCompilationUnitKey, 0, contextRoots, CompilationRootSetQueryKey)
+ZOM_STABLE_BINDING_FIELD(ContextualCompilationUnitKey, 1, unit, CompilationUnitIdentity)
+ZOM_STABLE_BINDING_FIELD(ContextualCrateKey, 0, contextRoots, CompilationRootSetQueryKey)
+ZOM_STABLE_BINDING_FIELD(ContextualCrateKey, 1, crate, CrateKey)
+ZOM_STABLE_BINDING_FIELD(ContextualSourceKey, 0, contextRoots, CompilationRootSetQueryKey)
+ZOM_STABLE_BINDING_FIELD(ContextualSourceKey, 1, source, SourceFileKey)
+ZOM_STABLE_BINDING_FIELD(ContextualModuleKey, 0, contextRoots, CompilationRootSetQueryKey)
+ZOM_STABLE_BINDING_FIELD(ContextualModuleKey, 1, module, ModuleKey)
+ZOM_STABLE_BINDING_FIELD(ContextualDefinitionKey, 0, contextRoots, CompilationRootSetQueryKey)
+ZOM_STABLE_BINDING_FIELD(ContextualDefinitionKey, 1, definition, StableDefinitionQueryKey)
+ZOM_STABLE_BINDING_FIELD(ContextualImplementationKey, 0, contextRoots, CompilationRootSetQueryKey)
+ZOM_STABLE_BINDING_FIELD(ContextualImplementationKey, 1, implementation,
+                         StableImplementationQueryKey)
+ZOM_STABLE_BINDING_FIELD(ContextualGenericParameterKey, 0, contextRoots, CompilationRootSetQueryKey)
+ZOM_STABLE_BINDING_FIELD(ContextualGenericParameterKey, 1, parameter,
+                         StableGenericParameterQueryKey)
+ZOM_STABLE_BINDING_FIELD(ContextualCallableParameterKey, 0, contextRoots,
+                         CompilationRootSetQueryKey)
+ZOM_STABLE_BINDING_FIELD(ContextualCallableParameterKey, 1, parameter,
+                         StableCallableParameterQueryKey)
+
+ZOM_STABLE_BINDING_FIELD(StableHeaderGenericParameter, 0, key, GenericParameterKey)
+ZOM_STABLE_BINDING_FIELD(StableHeaderGenericParameter, 1, record, GenericParameterIdentityRecord)
+ZOM_STABLE_BINDING_FIELD(StableHeaderGenericParameter, 2, site, StableHeaderSite)
+ZOM_STABLE_BINDING_FIELD(StableHeaderGenericParameter, 3, name, DeclaredDefinitionName)
+ZOM_STABLE_BINDING_FIELD(StableHeaderGenericParameter, 4, ordinal, uint32)
+ZOM_STABLE_BINDING_FIELD(StableHeaderCallableParameter, 0, key, CallableParameterKey)
+ZOM_STABLE_BINDING_FIELD(StableHeaderCallableParameter, 1, record, CallableParameterIdentityRecord)
+ZOM_STABLE_BINDING_FIELD(StableHeaderCallableParameter, 2, site, StableHeaderSite)
+ZOM_STABLE_BINDING_FIELD(StableHeaderCallableParameter, 3, name, Optional<DeclaredDefinitionName>)
+ZOM_STABLE_BINDING_FIELD(StableHeaderCallableParameter, 4, position, CallableParameterPosition)
+ZOM_STABLE_BINDING_FIELD(StableDefinitionHeader, 0, queryKey, StableDefinitionQueryKey)
+ZOM_STABLE_BINDING_FIELD(StableDefinitionHeader, 1, record, DefinitionIdentityRecord)
+ZOM_STABLE_BINDING_FIELD(StableDefinitionHeader, 2, authoritySite, IdentitySyntaxSiteKey)
+ZOM_STABLE_BINDING_FIELD(StableDefinitionHeader, 3, kind, DefinitionKind)
+ZOM_STABLE_BINDING_FIELD(StableDefinitionHeader, 4, namespace, Namespace)
+ZOM_STABLE_BINDING_FIELD(StableDefinitionHeader, 5, name, DeclaredDefinitionName)
+ZOM_STABLE_BINDING_FIELD(StableDefinitionHeader, 6, activation, DefinitionActivation)
+ZOM_STABLE_BINDING_FIELD(StableDefinitionHeader, 7, visibility, Optional<MemberVisibility>)
+ZOM_STABLE_BINDING_FIELD(StableDefinitionHeader, 8, bodyDisposition, DefinitionBodyDisposition)
+ZOM_STABLE_BINDING_FIELD(StableDefinitionHeader, 9, genericParameters,
+                         CanonicalSequence<StableHeaderGenericParameter>)
+ZOM_STABLE_BINDING_FIELD(StableDefinitionHeader, 10, callableParameters,
+                         CanonicalSequence<StableHeaderCallableParameter>)
+ZOM_STABLE_BINDING_FIELD(StableDefinitionHeader, 11, declaredScopeRoles,
+                         CanonicalSequence<ScopeRole>)
+ZOM_STABLE_BINDING_FIELD(StableImplementationOccurrenceHeader, 0, queryKey,
+                         StableImplementationOccurrenceQueryKey)
+ZOM_STABLE_BINDING_FIELD(StableImplementationOccurrenceHeader, 1, authority,
+                         StableImplementationQueryKey)
+ZOM_STABLE_BINDING_FIELD(StableImplementationOccurrenceHeader, 2, record, ImplIdentityRecord)
+ZOM_STABLE_BINDING_FIELD(StableImplementationOccurrenceHeader, 3, genericParameters,
+                         CanonicalSequence<StableHeaderGenericParameter>)
+ZOM_STABLE_BINDING_FIELD(StableImplementationOccurrenceHeader, 4, declaredScopeRoles,
+                         CanonicalSequence<ScopeRole>)
+ZOM_STABLE_BINDING_FIELD(StableImplementationOccurrenceHeader, 5, sourceForm,
+                         ImplementationSourceForm)
+
+ZOM_STABLE_BINDING_FIELD(StableScopeFact, 0, owner, StableScopeOwnerKey)
+ZOM_STABLE_BINDING_FIELD(StableScopeFact, 1, parent, Optional<StableScopeOwnerKey>)
+ZOM_STABLE_BINDING_FIELD(StableScopeFact, 2, kind, ScopeKind)
+ZOM_STABLE_BINDING_FIELD(StableNodeScopeFact, 0, root, StableNodeSyntaxRoot)
+ZOM_STABLE_BINDING_FIELD(StableNodeScopeFact, 1, nodePath, LocalSyntaxPath)
+ZOM_STABLE_BINDING_FIELD(StableNodeScopeFact, 2, scope, StableScopeOwnerKey)
+ZOM_STABLE_BINDING_FIELD(StableDeclarationFact, 0, queryKey, StableDefinitionQueryKey)
+ZOM_STABLE_BINDING_FIELD(StableDeclarationFact, 1, record, DefinitionIdentityRecord)
+ZOM_STABLE_BINDING_FIELD(StableDeclarationFact, 2, declaringScope, StableScopeOwnerKey)
+ZOM_STABLE_BINDING_FIELD(StableDeclarationFact, 3, kind, DefinitionKind)
+ZOM_STABLE_BINDING_FIELD(StableDeclarationFact, 4, namespace, Namespace)
+ZOM_STABLE_BINDING_FIELD(StableDeclarationFact, 5, name, DeclaredDefinitionName)
+ZOM_STABLE_BINDING_FIELD(StableDeclarationFact, 6, activation, DefinitionActivation)
+ZOM_STABLE_BINDING_FIELD(StableDeclarationFact, 7, visibility, Optional<MemberVisibility>)
+ZOM_STABLE_BINDING_FIELD(StableImplementationOccurrenceFact, 0, occurrence,
+                         StableImplementationOccurrenceQueryKey)
+ZOM_STABLE_BINDING_FIELD(StableImplementationOccurrenceFact, 1, authority,
+                         StableImplementationQueryKey)
+ZOM_STABLE_BINDING_FIELD(StableImplementationOccurrenceFact, 2, record, ImplIdentityRecord)
+ZOM_STABLE_BINDING_FIELD(StableImplementationOccurrenceFact, 3, declaringScope, StableScopeOwnerKey)
+ZOM_STABLE_BINDING_FIELD(StableGenericParameterDeclarationFact, 0, queryKey,
+                         StableGenericParameterQueryKey)
+ZOM_STABLE_BINDING_FIELD(StableGenericParameterDeclarationFact, 1, record,
+                         GenericParameterIdentityRecord)
+ZOM_STABLE_BINDING_FIELD(StableGenericParameterDeclarationFact, 2, headerSite, StableHeaderSite)
+ZOM_STABLE_BINDING_FIELD(StableGenericParameterDeclarationFact, 3, declaringScope,
+                         StableScopeOwnerKey)
+ZOM_STABLE_BINDING_FIELD(StableGenericParameterDeclarationFact, 4, name, DeclaredDefinitionName)
+ZOM_STABLE_BINDING_FIELD(StableCallableParameterDeclarationFact, 0, queryKey,
+                         StableCallableParameterQueryKey)
+ZOM_STABLE_BINDING_FIELD(StableCallableParameterDeclarationFact, 1, record,
+                         CallableParameterIdentityRecord)
+ZOM_STABLE_BINDING_FIELD(StableCallableParameterDeclarationFact, 2, headerSite, StableHeaderSite)
+ZOM_STABLE_BINDING_FIELD(StableCallableParameterDeclarationFact, 3, declaringScope,
+                         StableScopeOwnerKey)
+ZOM_STABLE_BINDING_FIELD(StableCallableParameterDeclarationFact, 4, name,
+                         Optional<DeclaredDefinitionName>)
+ZOM_STABLE_BINDING_FIELD(StableImportFact, 0, queryKey, StableSemanticImportQueryKey)
+ZOM_STABLE_BINDING_FIELD(StableImportFact, 1, declaringScope, StableScopeOwnerKey)
+ZOM_STABLE_BINDING_FIELD(StableImportFact, 2, target, StableBindingTargetKey)
+ZOM_STABLE_BINDING_FIELD(StableImportFact, 3, canonicalTarget, StableBindingTargetKey)
+ZOM_STABLE_BINDING_FIELD(StableImportFact, 4, namespace, Namespace)
+ZOM_STABLE_BINDING_FIELD(StableImportFact, 5, origin, BindingOrigin)
+ZOM_STABLE_BINDING_FIELD(StableImportFact, 6, visibility, Optional<MemberVisibility>)
+ZOM_STABLE_BINDING_FIELD(StableImportFact, 7, exported, bool)
+ZOM_STABLE_BINDING_FIELD(StableModuleAliasFact, 0, queryKey, StableSemanticImportQueryKey)
+ZOM_STABLE_BINDING_FIELD(StableModuleAliasFact, 1, declaringScope, StableScopeOwnerKey)
+ZOM_STABLE_BINDING_FIELD(StableModuleAliasFact, 2, alias, StableDefinitionQueryKey)
+ZOM_STABLE_BINDING_FIELD(StableModuleAliasFact, 3, canonicalModule, ModuleKey)
+ZOM_STABLE_BINDING_FIELD(StableModuleAliasFact, 4, targetSurfaceRevision, ExportSurfaceRevision)
+ZOM_STABLE_BINDING_FIELD(StableReexportStep, 0, module, ModuleKey)
+ZOM_STABLE_BINDING_FIELD(StableReexportStep, 1, exportPath, LocalSyntaxPath)
+ZOM_STABLE_BINDING_FIELD(StableReexportStep, 2, binding, StableBindingTargetKey)
+ZOM_STABLE_BINDING_FIELD(StableReexportStep, 3, canonicalTarget, StableBindingTargetKey)
+ZOM_STABLE_BINDING_FIELD(StableLocalExportFact, 0, declaringModule, ModuleKey)
+ZOM_STABLE_BINDING_FIELD(StableLocalExportFact, 1, exportPath, LocalSyntaxPath)
+ZOM_STABLE_BINDING_FIELD(StableLocalExportFact, 2, name, BindingNameKey)
+ZOM_STABLE_BINDING_FIELD(StableLocalExportFact, 3, binding, StableBindingTargetKey)
+ZOM_STABLE_BINDING_FIELD(StableLocalExportFact, 4, canonicalTarget, StableBindingTargetKey)
+ZOM_STABLE_BINDING_FIELD(StableLocalExportFact, 5, visibility, Optional<MemberVisibility>)
+ZOM_STABLE_BINDING_FIELD(StableLocalExportFact, 6, reexportChain,
+                         CanonicalSequence<StableReexportStep>)
+ZOM_STABLE_BINDING_FIELD(StableFailedLookupFact, 0, owner, BinderQueryOwner)
+ZOM_STABLE_BINDING_FIELD(StableFailedLookupFact, 1, usePath, LocalSyntaxPath)
+ZOM_STABLE_BINDING_FIELD(StableFailedLookupFact, 2, namespace, Namespace)
+ZOM_STABLE_BINDING_FIELD(StableFailedLookupFact, 3, name, DeclaredDefinitionName)
+ZOM_STABLE_BINDING_FIELD(StableFailedLookupFact, 4, outcome, StableFailedLookupOutcome)
+ZOM_STABLE_BINDING_FIELD(BoundModuleSkeleton, 0, module, ModuleKey)
+ZOM_STABLE_BINDING_FIELD(BoundModuleSkeleton, 1, scopes, CanonicalSequence<StableScopeFact>)
+ZOM_STABLE_BINDING_FIELD(BoundModuleSkeleton, 2, nodeScopes, CanonicalSequence<StableNodeScopeFact>)
+ZOM_STABLE_BINDING_FIELD(BoundModuleSkeleton, 3, declarations,
+                         CanonicalSequence<StableDeclarationFact>)
+ZOM_STABLE_BINDING_FIELD(BoundModuleSkeleton, 4, implementationOccurrences,
+                         CanonicalSequence<StableImplementationOccurrenceFact>)
+ZOM_STABLE_BINDING_FIELD(BoundModuleSkeleton, 5, genericParameterDeclarations,
+                         CanonicalSequence<StableGenericParameterDeclarationFact>)
+ZOM_STABLE_BINDING_FIELD(BoundModuleSkeleton, 6, callableParameterDeclarations,
+                         CanonicalSequence<StableCallableParameterDeclarationFact>)
+ZOM_STABLE_BINDING_FIELD(BoundModuleSkeleton, 7, moduleAliases,
+                         CanonicalSequence<StableModuleAliasFact>)
+ZOM_STABLE_BINDING_FIELD(BoundModuleSkeleton, 8, imports, CanonicalSequence<StableImportFact>)
+ZOM_STABLE_BINDING_FIELD(BoundModuleSkeleton, 9, localExports,
+                         CanonicalSequence<StableLocalExportFact>)
+ZOM_STABLE_BINDING_FIELD(BoundModuleSkeleton, 10, bodyOwners,
+                         CanonicalNonEmptySequence<StableOwnerBodyQueryKey>)
+ZOM_STABLE_BINDING_FIELD(BoundModuleSkeleton, 11, failedLookups,
+                         CanonicalSequence<StableFailedLookupFact>)
+
+ZOM_STABLE_BINDING_FIELD(StableExportedBinding, 0, name, BindingNameKey)
+ZOM_STABLE_BINDING_FIELD(StableExportedBinding, 1, binding, StableBindingTargetKey)
+ZOM_STABLE_BINDING_FIELD(StableExportedBinding, 2, canonicalTarget, StableBindingTargetKey)
+ZOM_STABLE_BINDING_FIELD(StableExportedBinding, 3, visibility, Optional<MemberVisibility>)
+ZOM_STABLE_BINDING_FIELD(StableExportedBinding, 4, exported, bool)
+ZOM_STABLE_BINDING_FIELD(StableExportedBindingQueryKey, 0, module, ModuleKey)
+ZOM_STABLE_BINDING_FIELD(StableExportedBindingQueryKey, 1, name, BindingNameKey)
+ZOM_STABLE_BINDING_FIELD(StableScopeNameBucketQueryKey, 0, scope, StableScopeOwnerKey)
+ZOM_STABLE_BINDING_FIELD(StableScopeNameBucketQueryKey, 1, name, BindingNameKey)
+
+ZOM_STABLE_BINDING_FIELD(StableBodyScopeFact, 0, owner, StableOwnerBodyQueryKey)
+ZOM_STABLE_BINDING_FIELD(StableBodyScopeFact, 1, scope, StableScopeOwnerKey)
+ZOM_STABLE_BINDING_FIELD(StableBodyScopeFact, 2, parent, StableScopeOwnerKey)
+ZOM_STABLE_BINDING_FIELD(StableBodyScopeFact, 3, kind, ScopeKind)
+ZOM_STABLE_BINDING_FIELD(StableBodyNodeScopeFact, 0, owner, StableOwnerBodyQueryKey)
+ZOM_STABLE_BINDING_FIELD(StableBodyNodeScopeFact, 1, nodePath, LocalSyntaxPath)
+ZOM_STABLE_BINDING_FIELD(StableBodyNodeScopeFact, 2, scope, StableScopeOwnerKey)
+ZOM_STABLE_BINDING_FIELD(StableOwnerLocalBindingFact, 0, owner, StableOwnerBodyQueryKey)
+ZOM_STABLE_BINDING_FIELD(StableOwnerLocalBindingFact, 1, key, OwnerLocalBindingKey)
+ZOM_STABLE_BINDING_FIELD(StableOwnerLocalBindingFact, 2, kind, OwnerLocalBindingKind)
+ZOM_STABLE_BINDING_FIELD(StableOwnerLocalBindingFact, 3, name, DeclaredDefinitionName)
+ZOM_STABLE_BINDING_FIELD(StableOwnerLocalBindingFact, 4, namespace, Namespace)
+ZOM_STABLE_BINDING_FIELD(StableOwnerLocalBindingFact, 5, declaringScope, StableScopeOwnerKey)
+ZOM_STABLE_BINDING_FIELD(StableOwnerLocalBindingFact, 6, activation, DefinitionActivation)
+ZOM_STABLE_BINDING_FIELD(StableResolutionFact, 0, owner, StableOwnerBodyQueryKey)
+ZOM_STABLE_BINDING_FIELD(StableResolutionFact, 1, usePath, LocalSyntaxPath)
+ZOM_STABLE_BINDING_FIELD(StableResolutionFact, 2, namespace, Namespace)
+ZOM_STABLE_BINDING_FIELD(StableResolutionFact, 3, binding, StableBindingTargetKey)
+ZOM_STABLE_BINDING_FIELD(StableResolutionFact, 4, canonicalTarget, StableBindingTargetKey)
+ZOM_STABLE_BINDING_FIELD(StableResolutionFact, 5, origin, BindingOrigin)
+ZOM_STABLE_BINDING_FIELD(StableDeferredMemberFact, 0, owner, StableOwnerBodyQueryKey)
+ZOM_STABLE_BINDING_FIELD(StableDeferredMemberFact, 1, usePath, LocalSyntaxPath)
+ZOM_STABLE_BINDING_FIELD(StableDeferredMemberFact, 2, basePath, LocalSyntaxPath)
+ZOM_STABLE_BINDING_FIELD(StableDeferredMemberFact, 3, accessKind, MemberAccessKind)
+ZOM_STABLE_BINDING_FIELD(StableDeferredMemberFact, 4, member, DeclaredDefinitionName)
+ZOM_STABLE_BINDING_FIELD(StableDeferredMemberFact, 5, expectedNamespaces,
+                         CanonicalNonEmptySequence<Namespace>)
+ZOM_STABLE_BINDING_FIELD(StableDeferredMemberFact, 6, genericArgumentPaths,
+                         CanonicalSequence<LocalSyntaxPath>)
+ZOM_STABLE_BINDING_FIELD(StableSelfTypeFact, 0, owner, StableOwnerBodyQueryKey)
+ZOM_STABLE_BINDING_FIELD(StableSelfTypeFact, 1, syntaxPath, LocalSyntaxPath)
+ZOM_STABLE_BINDING_FIELD(StableSelfTypeFact, 2, selfOwner, StableSelfOwner)
+ZOM_STABLE_BINDING_FIELD(StableThisBindingFact, 0, owner, StableOwnerBodyQueryKey)
+ZOM_STABLE_BINDING_FIELD(StableThisBindingFact, 1, expressionPath, LocalSyntaxPath)
+ZOM_STABLE_BINDING_FIELD(StableThisBindingFact, 2, receiver, StableCallableParameterQueryKey)
+ZOM_STABLE_BINDING_FIELD(StableShadowTargetFact, 0, owner, StableOwnerBodyQueryKey)
+ZOM_STABLE_BINDING_FIELD(StableShadowTargetFact, 1, binding, StableBindingTargetKey)
+ZOM_STABLE_BINDING_FIELD(StableShadowTargetFact, 2, shadowed, StableBindingTargetKey)
+ZOM_STABLE_BINDING_FIELD(StableLabelKey, 0, owner, StableOwnerBodyQueryKey)
+ZOM_STABLE_BINDING_FIELD(StableLabelKey, 1, declarationPath, LocalSyntaxPath)
+ZOM_STABLE_BINDING_FIELD(StableLabelFact, 0, key, StableLabelKey)
+ZOM_STABLE_BINDING_FIELD(StableLabelFact, 1, name, DeclaredDefinitionName)
+ZOM_STABLE_BINDING_FIELD(StableLabelFact, 2, statementPath, LocalSyntaxPath)
+ZOM_STABLE_BINDING_FIELD(StableLabelFact, 3, target, StableLabelTarget)
+ZOM_STABLE_BINDING_FIELD(StableControlTransferFact, 0, owner, StableOwnerBodyQueryKey)
+ZOM_STABLE_BINDING_FIELD(StableControlTransferFact, 1, transferPath, LocalSyntaxPath)
+ZOM_STABLE_BINDING_FIELD(StableControlTransferFact, 2, kind, ControlTransferKind)
+ZOM_STABLE_BINDING_FIELD(StableControlTransferFact, 3, target, StableControlTarget)
+ZOM_STABLE_BINDING_FIELD(StableClosureFact, 0, owner, StableOwnerBodyQueryKey)
+ZOM_STABLE_BINDING_FIELD(StableClosureFact, 1, closure, AnonymousOwnerLocalKey)
+ZOM_STABLE_BINDING_FIELD(StableClosureFact, 2, scope, StableScopeOwnerKey)
+ZOM_STABLE_BINDING_FIELD(StableClosureFreeVariable, 0, target, StableBindingTargetKey)
+ZOM_STABLE_BINDING_FIELD(StableClosureFreeVariable, 1, referencePaths,
+                         CanonicalNonEmptySequence<LocalSyntaxPath>)
+ZOM_STABLE_BINDING_FIELD(StableClosureFreeVariableFact, 0, owner, StableOwnerBodyQueryKey)
+ZOM_STABLE_BINDING_FIELD(StableClosureFreeVariableFact, 1, closure, AnonymousOwnerLocalKey)
+ZOM_STABLE_BINDING_FIELD(StableClosureFreeVariableFact, 2, variables,
+                         CanonicalSequence<StableClosureFreeVariable>)
+ZOM_STABLE_BINDING_FIELD(StableExplicitCaptureBindingFact, 0, itemPath, LocalSyntaxPath)
+ZOM_STABLE_BINDING_FIELD(StableExplicitCaptureBindingFact, 1, target, StableBindingTargetKey)
+ZOM_STABLE_BINDING_FIELD(StableExplicitCaptureBindingFact, 2, mode, StableExplicitCaptureMode)
+ZOM_STABLE_BINDING_FIELD(StableExplicitClosureCaptureFact, 0, owner, StableOwnerBodyQueryKey)
+ZOM_STABLE_BINDING_FIELD(StableExplicitClosureCaptureFact, 1, closure, AnonymousOwnerLocalKey)
+ZOM_STABLE_BINDING_FIELD(StableExplicitClosureCaptureFact, 2, captureListPath, LocalSyntaxPath)
+ZOM_STABLE_BINDING_FIELD(StableExplicitClosureCaptureFact, 3, captures,
+                         CanonicalSequence<StableExplicitCaptureBindingFact>)
+ZOM_STABLE_BINDING_FIELD(BoundOwnerBody, 0, owner, StableOwnerBodyQueryKey)
+ZOM_STABLE_BINDING_FIELD(BoundOwnerBody, 1, scopes, CanonicalSequence<StableBodyScopeFact>)
+ZOM_STABLE_BINDING_FIELD(BoundOwnerBody, 2, nodeScopes, CanonicalSequence<StableBodyNodeScopeFact>)
+ZOM_STABLE_BINDING_FIELD(BoundOwnerBody, 3, bindings,
+                         CanonicalSequence<StableOwnerLocalBindingFact>)
+ZOM_STABLE_BINDING_FIELD(BoundOwnerBody, 4, resolutions, CanonicalSequence<StableResolutionFact>)
+ZOM_STABLE_BINDING_FIELD(BoundOwnerBody, 5, deferredMembers,
+                         CanonicalSequence<StableDeferredMemberFact>)
+ZOM_STABLE_BINDING_FIELD(BoundOwnerBody, 6, selfTypes, CanonicalSequence<StableSelfTypeFact>)
+ZOM_STABLE_BINDING_FIELD(BoundOwnerBody, 7, thisBindings, CanonicalSequence<StableThisBindingFact>)
+ZOM_STABLE_BINDING_FIELD(BoundOwnerBody, 8, shadowTargets,
+                         CanonicalSequence<StableShadowTargetFact>)
+ZOM_STABLE_BINDING_FIELD(BoundOwnerBody, 9, labels, CanonicalSequence<StableLabelFact>)
+ZOM_STABLE_BINDING_FIELD(BoundOwnerBody, 10, controlTransfers,
+                         CanonicalSequence<StableControlTransferFact>)
+ZOM_STABLE_BINDING_FIELD(BoundOwnerBody, 11, closures, CanonicalSequence<StableClosureFact>)
+ZOM_STABLE_BINDING_FIELD(BoundOwnerBody, 12, closureFreeVariables,
+                         CanonicalSequence<StableClosureFreeVariableFact>)
+ZOM_STABLE_BINDING_FIELD(BoundOwnerBody, 13, explicitClosureCaptures,
+                         CanonicalSequence<StableExplicitClosureCaptureFact>)
+ZOM_STABLE_BINDING_FIELD(BoundOwnerBody, 14, failedLookups,
+                         CanonicalSequence<StableFailedLookupFact>)
+ZOM_STABLE_BINDING_FIELD(ModuleBindingAllocationPlan, 0, key, ModuleKey)
+ZOM_STABLE_BINDING_FIELD(ModuleBindingAllocationPlan, 1, skeletonScopeCount, uint32)
+ZOM_STABLE_BINDING_FIELD(ModuleBindingAllocationPlan, 2, implementationOccurrenceCount, uint32)
+ZOM_STABLE_BINDING_FIELD(ModuleBindingAllocationPlan, 3, owners,
+                         CanonicalSequence<OwnerAllocationRange>)
+ZOM_STABLE_BINDING_FIELD(OwnerAllocationRange, 0, owner, StableOwnerBodyQueryKey)
+ZOM_STABLE_BINDING_FIELD(OwnerAllocationRange, 1, scopeBegin, uint32)
+ZOM_STABLE_BINDING_FIELD(OwnerAllocationRange, 2, scopeCount, uint32)
+ZOM_STABLE_BINDING_FIELD(OwnerAllocationRange, 3, ownerLocalBegin, uint32)
+ZOM_STABLE_BINDING_FIELD(OwnerAllocationRange, 4, ownerLocalCount, uint32)
+ZOM_STABLE_BINDING_FIELD(OwnerAllocationRange, 5, anonymousBegin, uint32)
+ZOM_STABLE_BINDING_FIELD(OwnerAllocationRange, 6, anonymousCount, uint32)
+ZOM_STABLE_BINDING_FIELD(OwnerAllocationRange, 7, labelBegin, uint32)
+ZOM_STABLE_BINDING_FIELD(OwnerAllocationRange, 8, labelCount, uint32)
+ZOM_STABLE_BINDING_FIELD(BinderKeyFailure, 0, kind, BinderKeyFailureKind)
+ZOM_STABLE_BINDING_FIELD(BinderKeyFailure, 1, owner, BinderQueryOwner)
+ZOM_STABLE_BINDING_FIELD(BinderKeyFailure, 2, path, Optional<LocalSyntaxPath>)
+ZOM_STABLE_BINDING_FIELD(BinderIdentifierDiagnosticArguments, 0, identifier, DeclaredDefinitionName)
+ZOM_STABLE_BINDING_FIELD(BinderNamespaceDiagnosticArguments, 0, identifier, DeclaredDefinitionName)
+ZOM_STABLE_BINDING_FIELD(BinderNamespaceDiagnosticArguments, 1, expectedNamespace, Namespace)
+ZOM_STABLE_BINDING_FIELD(ActiveCompilationUnitMembership, 0, unit, CompilationUnitIdentity)
+ZOM_STABLE_BINDING_FIELD(ActiveCompilationUnitMembership, 1, activeCrates,
+                         CanonicalNonEmptySequence<CrateKey>)
+ZOM_STABLE_BINDING_FIELD(ActiveImplementationMembershipRecord, 0, queryKey,
+                         StableImplementationQueryKey)
+ZOM_STABLE_BINDING_FIELD(ActiveImplementationMembershipRecord, 1, record, ImplIdentityRecord)
+ZOM_STABLE_BINDING_FIELD(ActiveImplementationMembershipRecord, 2, authorityOccurrence,
+                         StableImplementationOccurrenceQueryKey)
+ZOM_STABLE_BINDING_FIELD(ActiveImplementationMembershipRecord, 3, equalOccurrences,
+                         CanonicalNonEmptySequence<StableImplementationOccurrenceQueryKey>)
+ZOM_STABLE_BINDING_FIELD(ImplementationGenericAuthority, 0, implementation,
+                         StableImplementationQueryKey)
+ZOM_STABLE_BINDING_FIELD(ImplementationGenericAuthority, 1, authorityOccurrence,
+                         StableImplementationOccurrenceQueryKey)
+ZOM_STABLE_BINDING_FIELD(ImplementationGenericAuthority, 2, equalOccurrences,
+                         CanonicalNonEmptySequence<StableImplementationOccurrenceQueryKey>)
+ZOM_STABLE_BINDING_FIELD(ActiveGenericParameterMembership, 0, queryKey,
+                         StableGenericParameterQueryKey)
+ZOM_STABLE_BINDING_FIELD(ActiveGenericParameterMembership, 1, record,
+                         GenericParameterIdentityRecord)
+ZOM_STABLE_BINDING_FIELD(ActiveGenericParameterMembership, 3, ordinal, uint32)
+ZOM_STABLE_BINDING_FIELD(ActiveCallableParameterMembershipRecord, 0, queryKey,
+                         StableCallableParameterQueryKey)
+ZOM_STABLE_BINDING_FIELD(ActiveCallableParameterMembershipRecord, 1, record,
+                         CallableParameterIdentityRecord)
+ZOM_STABLE_BINDING_FIELD(ActiveCallableParameterMembershipRecord, 2, owner,
+                         StableDefinitionQueryKey)
+ZOM_STABLE_BINDING_FIELD(ActiveCallableParameterMembershipRecord, 3, headerSite,
+                         IdentitySyntaxSiteKey)
+ZOM_STABLE_BINDING_FIELD(ActiveCallableParameterMembershipRecord, 4, position,
+                         CallableParameterPosition)
+ZOM_STABLE_BINDING_FIELD(ActiveCallableParameterMembershipRecord, 5, name,
+                         Optional<DeclaredDefinitionName>)
+ZOM_STABLE_BINDING_FIELD(ActiveCallableParameterMembershipRecord, 6, receiverLegal, bool)
+ZOM_STABLE_BINDING_FIELD(CompleteRootIdentityReadiness, 0, contextRoots, CompilationRootSetQueryKey)
+ZOM_STABLE_BINDING_FIELD(CompleteRootIdentityReadiness, 1, definitionAuthorityDigest, Sha256Digest)
+ZOM_STABLE_BINDING_FIELD(CompleteRootIdentityReadiness, 2, implementationAuthorityDigest,
+                         Sha256Digest)
+ZOM_STABLE_BINDING_FIELD(CompleteRootIdentityReadiness, 3, genericParameterAuthorityDigest,
+                         Sha256Digest)
+ZOM_STABLE_BINDING_FIELD(CompleteRootIdentityReadiness, 4, callableParameterAuthorityDigest,
+                         Sha256Digest)
+ZOM_STABLE_BINDING_FIELD(CanonicalCompilationRootRecord, 0, package, PackageKey)
+ZOM_STABLE_BINDING_FIELD(CanonicalCompilationRootRecord, 1, targetKind, CrateTargetKind)
+ZOM_STABLE_BINDING_FIELD(CanonicalCompilationRootRecord, 2, targetName, TargetName)
+ZOM_STABLE_BINDING_FIELD(CanonicalCompilationRootRecord, 3, editionYear, uint32)
+ZOM_STABLE_BINDING_FIELD(CanonicalCompilationRootRecord, 4, requiresBuildScript, bool)
+ZOM_STABLE_BINDING_FIELD(CanonicalCompilationRootRecord, 5, sourcePath, CanonicalRelativePath)
+ZOM_STABLE_BINDING_FIELD(CanonicalTargetSelectionRecord, 0, registryRevision, Sha256Digest)
+ZOM_STABLE_BINDING_FIELD(CanonicalTargetSelectionRecord, 1, profile, RegisteredTargetProfileName)
+ZOM_STABLE_BINDING_FIELD(CanonicalTargetSelectionRecord, 2, semanticProjection,
+                         CanonicalTargetSpecificationKey)
+ZOM_STABLE_BINDING_FIELD(CanonicalTargetSelectionRecord, 3, panicStrategy, PackagePanicStrategy)
+ZOM_STABLE_BINDING_FIELD(CanonicalLanguageOptionsRecord, 0, useUnicode, bool)
+ZOM_STABLE_BINDING_FIELD(CanonicalLanguageOptionsRecord, 1, allowDollarIdentifiers, bool)
+ZOM_STABLE_BINDING_FIELD(CanonicalLanguageOptionsRecord, 2, supportRegexLiterals, bool)
+ZOM_STABLE_BINDING_FIELD(CanonicalPackageCompilationRequest, 0, roots,
+                         CanonicalNonEmptySequence<CanonicalCompilationRootRecord>)
+ZOM_STABLE_BINDING_FIELD(CanonicalPackageCompilationRequest, 1, hostTarget,
+                         CanonicalTargetSelectionRecord)
+ZOM_STABLE_BINDING_FIELD(CanonicalPackageCompilationRequest, 2, target,
+                         CanonicalTargetSelectionRecord)
+ZOM_STABLE_BINDING_FIELD(CanonicalPackageCompilationRequest, 3, languageOptions,
+                         CanonicalLanguageOptionsRecord)
+ZOM_STABLE_BINDING_FIELD(CanonicalPackageCompilationRequest, 4, lockMode, PackageLockMode)
+ZOM_STABLE_BINDING_NESTED_FIELD(CanonicalInputEntry, 0, key, Key)
+ZOM_STABLE_BINDING_NESTED_FIELD(CanonicalInputEntry, 1, value, Value)
+ZOM_STABLE_BINDING_FIELD(CompleteCompilationContextAuthority, 0, contextRoots,
+                         CompilationRootSetQueryKey)
+ZOM_STABLE_BINDING_FIELD(CompleteCompilationContextAuthority, 1, packageRequest,
+                         CanonicalPackageCompilationRequest)
+ZOM_STABLE_BINDING_FIELD(CompleteCompilationContextAuthority, 2, packageRootSet, PackageRootSetKey)
+ZOM_STABLE_BINDING_FIELD(CompleteCompilationContextAuthority, 3, packageGraph,
+                         CanonicalPackageGraph)
+ZOM_STABLE_BINDING_FIELD(CompleteCompilationContextAuthority, 4, userRootCrates,
+                         CanonicalNonEmptySequence<CrateKey>)
+ZOM_STABLE_BINDING_FIELD(CompleteCompilationContextAuthority, 5, projectedCoreCrates,
+                         CanonicalNonEmptySequence<CrateKey>)
+ZOM_STABLE_BINDING_FIELD(CompleteCompilationContextAuthority, 6, expectedRootCrates,
+                         CanonicalNonEmptySequence<CrateKey>)
+ZOM_STABLE_BINDING_FIELD(CompleteCompilationContextAuthority, 7, completeCrates,
+                         CanonicalNonEmptySequence<CrateKey>)
+ZOM_STABLE_BINDING_FIELD(
+    CompleteCompilationContextAuthority, 8, compilationOptions,
+    CanonicalNonEmptySequence<CanonicalInputEntry<CrateKey, CanonicalCompilationOptions>>)
+ZOM_STABLE_BINDING_FIELD(
+    CompleteCompilationContextAuthority, 9, moduleSearchRoots,
+    CanonicalNonEmptySequence<CanonicalInputEntry<CrateKey, CanonicalModuleSearchRoots>>)
+ZOM_STABLE_BINDING_FIELD(CompleteCompilationContextAuthority, 10, coreDistributionRecord,
+                         CoreDistributionRecord)
+ZOM_STABLE_BINDING_FIELD(CompleteCompilationContextAuthority, 11, coreDistributionDigest,
+                         Sha256Digest)
+ZOM_STABLE_BINDING_FIELD(VerifiedCoreDistributionInputPayload, 0, contextRoots,
+                         CompilationRootSetQueryKey)
+ZOM_STABLE_BINDING_FIELD(VerifiedCoreDistributionInputPayload, 1, distributionRecord,
+                         CoreDistributionRecord)
+ZOM_STABLE_BINDING_FIELD(VerifiedCoreDistributionInputPayload, 2, distributionDigest, Sha256Digest)
+ZOM_STABLE_BINDING_FIELD(VerifiedCoreDistributionInputPayload, 3, policyTemplate,
+                         CoreStandardMarkerPolicyTemplate)
+ZOM_STABLE_BINDING_FIELD(
+    VerifiedCoreDistributionInputPayload, 4, projectedCoreSources,
+    CanonicalNonEmptySequence<CanonicalInputEntry<StableSourceQueryKey, CanonicalSourceSnapshot>>)
+ZOM_STABLE_BINDING_FIELD(
+    VerifiedCoreDistributionInputPayload, 5, compilationOptions,
+    CanonicalNonEmptySequence<CanonicalInputEntry<CrateKey, CanonicalCompilationOptions>>)
+ZOM_STABLE_BINDING_FIELD(
+    VerifiedCoreDistributionInputPayload, 6, moduleSearchRoots,
+    CanonicalNonEmptySequence<CanonicalInputEntry<CrateKey, CanonicalModuleSearchRoots>>)
+ZOM_STABLE_BINDING_FIELD(VerifiedCoreDistributionInputPayload, 7, projectedCoreInventory,
+                         CanonicalNonEmptySequence<CrateKey>)
+ZOM_STABLE_BINDING_FIELD(VerifiedCoreDistributionInputPayload, 8, contextAuthority,
+                         CompleteCompilationContextAuthority)
+ZOM_STABLE_BINDING_FIELD(VerifiedModuleGraphInputPayload, 0, contextRoots,
+                         CompilationRootSetQueryKey)
+ZOM_STABLE_BINDING_FIELD(VerifiedModuleGraphInputPayload, 1, projectedCoreCrates,
+                         CanonicalNonEmptySequence<CrateKey>)
+ZOM_STABLE_BINDING_FIELD(VerifiedModuleGraphInputPayload, 2, selectedModuleCatalogs,
+                         CanonicalNonEmptySequence<SelectedModuleCatalog>)
+ZOM_STABLE_BINDING_FIELD(VerifiedModuleGraphInputPayload, 3, dependencySiteSets,
+                         CanonicalSequence<DetachedModuleDependencySiteSet>)
+ZOM_STABLE_BINDING_FIELD(VerifiedModuleGraphInputPayload, 4, requesterAncestries,
+                         CanonicalSequence<RequesterModuleAncestry>)
+ZOM_STABLE_BINDING_FIELD(VerifiedModuleGraphInputPayload, 5, catalogBuckets,
+                         CanonicalSequence<CanonicalModuleCatalogBucket>)
+ZOM_STABLE_BINDING_FIELD(VerifiedModuleGraphInputPayload, 6, searchRoots,
+                         CanonicalSequence<CanonicalModuleSearchRoots>)
+ZOM_STABLE_BINDING_FIELD(VerifiedModuleGraphInputPayload, 7, dependencyAliases,
+                         CanonicalSequence<ConfiguredDependencyAlias>)
+ZOM_STABLE_BINDING_FIELD(VerifiedModuleGraphInputPayload, 8, configuredPreludes,
+                         CanonicalSequence<ConfiguredCratePrelude>)
+ZOM_STABLE_BINDING_FIELD(ContextualIdentityAuthorityInputPayload, 0, contextRoots,
+                         CompilationRootSetQueryKey)
+ZOM_STABLE_BINDING_FIELD(
+    ContextualIdentityAuthorityInputPayload, 1, definitionAuthorities,
+    CanonicalSequence<CanonicalInputEntry<ContextualDefinitionKey, DefinitionIdentityRecord>>)
+ZOM_STABLE_BINDING_FIELD(
+    ContextualIdentityAuthorityInputPayload, 2, implementationAuthorities,
+    CanonicalSequence<
+        CanonicalInputEntry<ContextualImplementationKey, ActiveImplementationMembershipRecord>>)
+ZOM_STABLE_BINDING_FIELD(ContextualIdentityAuthorityInputPayload, 3, genericParameterAuthorities,
+                         CanonicalSequence<CanonicalInputEntry<ContextualGenericParameterKey,
+                                                               ActiveGenericParameterMembership>>)
+ZOM_STABLE_BINDING_FIELD(
+    ContextualIdentityAuthorityInputPayload, 4, callableParameterAuthorities,
+    CanonicalSequence<CanonicalInputEntry<ContextualCallableParameterKey,
+                                          ActiveCallableParameterMembershipRecord>>)
+ZOM_STABLE_BINDING_FIELD(ContextualIdentityAuthorityInputPayload, 5, completeRootReadiness,
+                         CompleteRootIdentityReadiness)
+ZOM_STABLE_BINDING_FIELD(StableMaterializedDependencyWitness, 0, requester, ModuleKey)
+ZOM_STABLE_BINDING_FIELD(StableMaterializedDependencyWitness, 1, request, ModuleResolutionKey)
+ZOM_STABLE_BINDING_FIELD(StableMaterializedDependencyWitness, 2, dependency, ModuleKey)
+ZOM_STABLE_BINDING_FIELD(MaterializedModuleGraphWitness, 0, contextRoots,
+                         CompilationRootSetQueryKey)
+ZOM_STABLE_BINDING_FIELD(MaterializedModuleGraphWitness, 1, fingerprint, SemanticContextFingerprint)
+ZOM_STABLE_BINDING_FIELD(MaterializedModuleGraphWitness, 2, graph, ModuleGraphRecord)
+ZOM_STABLE_BINDING_FIELD(MaterializedModuleGraphWitness, 3, scc, ModuleGraphSccRecord)
+ZOM_STABLE_BINDING_FIELD(MaterializedModuleGraphWitness, 4, requestEdges,
+                         CanonicalSequence<StableMaterializedDependencyWitness>)
+ZOM_STABLE_BINDING_FIELD(MaterializedModuleGraphWitness, 5, graphRevision, ModuleGraphRevision)
+
+ZOM_STABLE_BINDING_FIELD_LIMIT("StableScopeOwnerKey.BodyScope.path", LocalSyntaxPathComponents)
+ZOM_STABLE_BINDING_FIELD_LIMIT("StableHeaderGenericParameter.name", IdentifierBytes)
+ZOM_STABLE_BINDING_FIELD_LIMIT("StableHeaderCallableParameter.name", IdentifierBytes)
+ZOM_STABLE_BINDING_FIELD_LIMIT("StableDefinitionHeader.name", IdentifierBytes)
+ZOM_STABLE_BINDING_FIELD_LIMIT("StableDefinitionHeader.genericParameters",
+                               BinderSemanticSequenceRecords)
+ZOM_STABLE_BINDING_FIELD_LIMIT("StableDefinitionHeader.callableParameters",
+                               BinderSemanticSequenceRecords)
+ZOM_STABLE_BINDING_FIELD_LIMIT("StableDefinitionHeader.declaredScopeRoles",
+                               BinderSemanticSequenceRecords)
+ZOM_STABLE_BINDING_FIELD_LIMIT("StableImplementationOccurrenceHeader.genericParameters",
+                               BinderSemanticSequenceRecords)
+ZOM_STABLE_BINDING_FIELD_LIMIT("StableImplementationOccurrenceHeader.declaredScopeRoles",
+                               BinderSemanticSequenceRecords)
+ZOM_STABLE_BINDING_FIELD_LIMIT("StableNodeScopeFact.nodePath", LocalSyntaxPathComponents)
+ZOM_STABLE_BINDING_FIELD_LIMIT("StableReexportStep.exportPath", LocalSyntaxPathComponents)
+ZOM_STABLE_BINDING_FIELD_LIMIT("StableLocalExportFact.exportPath", LocalSyntaxPathComponents)
+ZOM_STABLE_BINDING_FIELD_LIMIT("StableFailedLookupFact.usePath", LocalSyntaxPathComponents)
+ZOM_STABLE_BINDING_FIELD_LIMIT("StableDeclarationFact.name", IdentifierBytes)
+ZOM_STABLE_BINDING_FIELD_LIMIT("StableGenericParameterDeclarationFact.name", IdentifierBytes)
+ZOM_STABLE_BINDING_FIELD_LIMIT("StableCallableParameterDeclarationFact.name", IdentifierBytes)
+ZOM_STABLE_BINDING_FIELD_LIMIT("StableFailedLookupFact.name", IdentifierBytes)
+ZOM_STABLE_BINDING_FIELD_LIMIT("StableLocalExportFact.name", IdentifierBytes)
+ZOM_STABLE_BINDING_FIELD_LIMIT("StableExportedBinding.name", IdentifierBytes)
+ZOM_STABLE_BINDING_FIELD_LIMIT("StableExportedBindingQueryKey.name", IdentifierBytes)
+ZOM_STABLE_BINDING_FIELD_LIMIT("StableScopeNameBucketQueryKey.name", IdentifierBytes)
+ZOM_STABLE_BINDING_FIELD_LIMIT("StableFailedLookupOutcome.NamespaceMismatch.availableNamespaces",
+                               BinderSemanticSequenceRecords)
+ZOM_STABLE_BINDING_FIELD_LIMIT("StableFailedLookupOutcome.Ambiguous.candidates",
+                               AmbiguityCandidates)
+ZOM_STABLE_BINDING_FIELD_LIMIT("StableLocalExportFact.reexportChain", BinderSemanticSequenceRecords)
+ZOM_STABLE_BINDING_FIELD_LIMIT("BoundModuleSkeleton.scopes", BinderSemanticSequenceRecords)
+ZOM_STABLE_BINDING_FIELD_LIMIT("BoundModuleSkeleton.nodeScopes", BinderSemanticSequenceRecords)
+ZOM_STABLE_BINDING_FIELD_LIMIT("BoundModuleSkeleton.declarations", BinderSemanticSequenceRecords)
+ZOM_STABLE_BINDING_FIELD_LIMIT("BoundModuleSkeleton.implementationOccurrences",
+                               BinderSemanticSequenceRecords)
+ZOM_STABLE_BINDING_FIELD_LIMIT("BoundModuleSkeleton.genericParameterDeclarations",
+                               BinderSemanticSequenceRecords)
+ZOM_STABLE_BINDING_FIELD_LIMIT("BoundModuleSkeleton.callableParameterDeclarations",
+                               BinderSemanticSequenceRecords)
+ZOM_STABLE_BINDING_FIELD_LIMIT("BoundModuleSkeleton.moduleAliases", BinderSemanticSequenceRecords)
+ZOM_STABLE_BINDING_FIELD_LIMIT("BoundModuleSkeleton.imports", BinderSemanticSequenceRecords)
+ZOM_STABLE_BINDING_FIELD_LIMIT("BoundModuleSkeleton.localExports", BinderSemanticSequenceRecords)
+ZOM_STABLE_BINDING_FIELD_LIMIT("BoundModuleSkeleton.bodyOwners", BinderSemanticSequenceRecords)
+ZOM_STABLE_BINDING_FIELD_LIMIT("BoundModuleSkeleton.failedLookups", BinderSemanticSequenceRecords)
+ZOM_STABLE_BINDING_FIELD_LIMIT("ModuleExportNames.result", BinderSemanticSequenceRecords)
+ZOM_STABLE_BINDING_FIELD_LIMIT("ImplementationBindingHeader.result", BinderSemanticSequenceRecords)
+ZOM_STABLE_BINDING_FIELD_LIMIT("ScopeNameBucket.result", BinderSemanticSequenceRecords)
+ZOM_STABLE_BINDING_FIELD_LIMIT("StableBodyNodeScopeFact.nodePath", LocalSyntaxPathComponents)
+ZOM_STABLE_BINDING_FIELD_LIMIT("StableResolutionFact.usePath", LocalSyntaxPathComponents)
+ZOM_STABLE_BINDING_FIELD_LIMIT("StableDeferredMemberFact.usePath", LocalSyntaxPathComponents)
+ZOM_STABLE_BINDING_FIELD_LIMIT("StableDeferredMemberFact.basePath", LocalSyntaxPathComponents)
+ZOM_STABLE_BINDING_FIELD_LIMIT("StableDeferredMemberFact.genericArgumentPaths[]",
+                               LocalSyntaxPathComponents)
+ZOM_STABLE_BINDING_FIELD_LIMIT("StableSelfTypeFact.syntaxPath", LocalSyntaxPathComponents)
+ZOM_STABLE_BINDING_FIELD_LIMIT("StableThisBindingFact.expressionPath", LocalSyntaxPathComponents)
+ZOM_STABLE_BINDING_FIELD_LIMIT("StableLabelKey.declarationPath", LocalSyntaxPathComponents)
+ZOM_STABLE_BINDING_FIELD_LIMIT("StableLabelFact.statementPath", LocalSyntaxPathComponents)
+ZOM_STABLE_BINDING_FIELD_LIMIT("StableControlTransferFact.transferPath", LocalSyntaxPathComponents)
+ZOM_STABLE_BINDING_FIELD_LIMIT("StableClosureFreeVariable.referencePaths[]",
+                               LocalSyntaxPathComponents)
+ZOM_STABLE_BINDING_FIELD_LIMIT("StableExplicitCaptureBindingFact.itemPath",
+                               LocalSyntaxPathComponents)
+ZOM_STABLE_BINDING_FIELD_LIMIT("StableExplicitClosureCaptureFact.captureListPath",
+                               LocalSyntaxPathComponents)
+ZOM_STABLE_BINDING_FIELD_LIMIT("CanonicalTargetSelectionRecord.profile", TargetProfileBytes)
+ZOM_STABLE_BINDING_FIELD_LIMIT("CanonicalPackageCompilationRequest.roots",
+                               CanonicalInputSequenceRecords)
+ZOM_STABLE_BINDING_FIELD_LIMIT("StableOwnerLocalBindingFact.name", IdentifierBytes)
+ZOM_STABLE_BINDING_FIELD_LIMIT("StableDeferredMemberFact.member", IdentifierBytes)
+ZOM_STABLE_BINDING_FIELD_LIMIT("StableLabelFact.name", IdentifierBytes)
+ZOM_STABLE_BINDING_FIELD_LIMIT("StableDeferredMemberFact.expectedNamespaces",
+                               BinderSemanticSequenceRecords)
+ZOM_STABLE_BINDING_FIELD_LIMIT("StableDeferredMemberFact.genericArgumentPaths",
+                               BinderSemanticSequenceRecords)
+ZOM_STABLE_BINDING_FIELD_LIMIT("StableClosureFreeVariable.referencePaths",
+                               BinderSemanticSequenceRecords)
+ZOM_STABLE_BINDING_FIELD_LIMIT("StableClosureFreeVariableFact.variables",
+                               BinderSemanticSequenceRecords)
+ZOM_STABLE_BINDING_FIELD_LIMIT("StableExplicitClosureCaptureFact.captures",
+                               BinderSemanticSequenceRecords)
+ZOM_STABLE_BINDING_FIELD_LIMIT("BoundOwnerBody.scopes", BinderSemanticSequenceRecords)
+ZOM_STABLE_BINDING_FIELD_LIMIT("BoundOwnerBody.nodeScopes", BinderSemanticSequenceRecords)
+ZOM_STABLE_BINDING_FIELD_LIMIT("BoundOwnerBody.bindings", BinderSemanticSequenceRecords)
+ZOM_STABLE_BINDING_FIELD_LIMIT("BoundOwnerBody.resolutions", BinderSemanticSequenceRecords)
+ZOM_STABLE_BINDING_FIELD_LIMIT("BoundOwnerBody.deferredMembers", BinderSemanticSequenceRecords)
+ZOM_STABLE_BINDING_FIELD_LIMIT("BoundOwnerBody.selfTypes", BinderSemanticSequenceRecords)
+ZOM_STABLE_BINDING_FIELD_LIMIT("BoundOwnerBody.thisBindings", BinderSemanticSequenceRecords)
+ZOM_STABLE_BINDING_FIELD_LIMIT("BoundOwnerBody.shadowTargets", BinderSemanticSequenceRecords)
+ZOM_STABLE_BINDING_FIELD_LIMIT("BoundOwnerBody.labels", BinderSemanticSequenceRecords)
+ZOM_STABLE_BINDING_FIELD_LIMIT("BoundOwnerBody.controlTransfers", BinderSemanticSequenceRecords)
+ZOM_STABLE_BINDING_FIELD_LIMIT("BoundOwnerBody.closures", BinderSemanticSequenceRecords)
+ZOM_STABLE_BINDING_FIELD_LIMIT("BoundOwnerBody.closureFreeVariables", BinderSemanticSequenceRecords)
+ZOM_STABLE_BINDING_FIELD_LIMIT("BoundOwnerBody.explicitClosureCaptures",
+                               BinderSemanticSequenceRecords)
+ZOM_STABLE_BINDING_FIELD_LIMIT("BoundOwnerBody.failedLookups", BinderSemanticSequenceRecords)
+ZOM_STABLE_BINDING_FIELD_LIMIT("ModuleBodyOwners.result", BinderSemanticSequenceRecords)
+ZOM_STABLE_BINDING_FIELD_LIMIT("ModuleBindingAllocationPlan.skeletonScopeCount",
+                               DenseLocalAllocationCount)
+ZOM_STABLE_BINDING_FIELD_LIMIT("ModuleBindingAllocationPlan.implementationOccurrenceCount",
+                               DenseLocalAllocationCount)
+ZOM_STABLE_BINDING_FIELD_LIMIT("ModuleBindingAllocationPlan.owners", BinderSemanticSequenceRecords)
+ZOM_STABLE_BINDING_FIELD_LIMIT("OwnerAllocationRange.scopeBegin", DenseLocalAllocationCount)
+ZOM_STABLE_BINDING_FIELD_LIMIT("OwnerAllocationRange.scopeCount", DenseLocalAllocationCount)
+ZOM_STABLE_BINDING_FIELD_LIMIT("OwnerAllocationRange.ownerLocalBegin", DenseLocalAllocationCount)
+ZOM_STABLE_BINDING_FIELD_LIMIT("OwnerAllocationRange.ownerLocalCount", DenseLocalAllocationCount)
+ZOM_STABLE_BINDING_FIELD_LIMIT("OwnerAllocationRange.anonymousBegin", DenseLocalAllocationCount)
+ZOM_STABLE_BINDING_FIELD_LIMIT("OwnerAllocationRange.anonymousCount", DenseLocalAllocationCount)
+ZOM_STABLE_BINDING_FIELD_LIMIT("OwnerAllocationRange.labelBegin", DenseLocalAllocationCount)
+ZOM_STABLE_BINDING_FIELD_LIMIT("OwnerAllocationRange.labelCount", DenseLocalAllocationCount)
+ZOM_STABLE_BINDING_FIELD_LIMIT("BinderQueryResult.Value.diagnostics", DiagnosticFactsPerResult)
+ZOM_STABLE_BINDING_FIELD_LIMIT("BinderQueryResult.SourceRejected.diagnostics",
+                               DiagnosticFactsPerResult)
+ZOM_STABLE_BINDING_FIELD_LIMIT("CapabilityDemandResult.SourceRejected.diagnostics",
+                               DiagnosticFactsPerResult)
+ZOM_STABLE_BINDING_FIELD_LIMIT("BinderKeyFailure.path", LocalSyntaxPathComponents)
+ZOM_STABLE_BINDING_FIELD_LIMIT("BinderIdentifierDiagnosticArguments.identifier", IdentifierBytes)
+ZOM_STABLE_BINDING_FIELD_LIMIT("BinderNamespaceDiagnosticArguments.identifier", IdentifierBytes)
+ZOM_STABLE_BINDING_FIELD_LIMIT("ModuleDiagnosticFacts.result", DiagnosticFactsPerResult)
+ZOM_STABLE_BINDING_FIELD_LIMIT("ActiveCompilationUnitMembership.activeCrates",
+                               BinderSemanticSequenceRecords)
+ZOM_STABLE_BINDING_FIELD_LIMIT("ActiveImplementationMembershipRecord.equalOccurrences",
+                               BinderSemanticSequenceRecords)
+ZOM_STABLE_BINDING_FIELD_LIMIT("ImplementationGenericAuthority.equalOccurrences",
+                               BinderSemanticSequenceRecords)
+ZOM_STABLE_BINDING_FIELD_LIMIT("ActiveCallableParameterMembershipRecord.name", IdentifierBytes)
+ZOM_STABLE_BINDING_FIELD_LIMIT("CompleteCompilationContextAuthority.userRootCrates",
+                               CanonicalInputSequenceRecords)
+ZOM_STABLE_BINDING_FIELD_LIMIT("CompleteCompilationContextAuthority.projectedCoreCrates",
+                               CanonicalInputSequenceRecords)
+ZOM_STABLE_BINDING_FIELD_LIMIT("CompleteCompilationContextAuthority.expectedRootCrates",
+                               CanonicalInputSequenceRecords)
+ZOM_STABLE_BINDING_FIELD_LIMIT("CompleteCompilationContextAuthority.completeCrates",
+                               CanonicalInputSequenceRecords)
+ZOM_STABLE_BINDING_FIELD_LIMIT("CompleteCompilationContextAuthority.compilationOptions",
+                               CanonicalInputSequenceRecords)
+ZOM_STABLE_BINDING_FIELD_LIMIT("CompleteCompilationContextAuthority.moduleSearchRoots",
+                               CanonicalInputSequenceRecords)
+ZOM_STABLE_BINDING_FIELD_LIMIT("VerifiedCoreDistributionInputPayload.projectedCoreSources",
+                               CanonicalInputSequenceRecords)
+ZOM_STABLE_BINDING_FIELD_LIMIT("VerifiedCoreDistributionInputPayload.compilationOptions",
+                               CanonicalInputSequenceRecords)
+ZOM_STABLE_BINDING_FIELD_LIMIT("VerifiedCoreDistributionInputPayload.moduleSearchRoots",
+                               CanonicalInputSequenceRecords)
+ZOM_STABLE_BINDING_FIELD_LIMIT("VerifiedCoreDistributionInputPayload.projectedCoreInventory",
+                               CanonicalInputSequenceRecords)
+ZOM_STABLE_BINDING_FIELD_LIMIT("VerifiedModuleGraphInputPayload.projectedCoreCrates",
+                               CanonicalInputSequenceRecords)
+ZOM_STABLE_BINDING_FIELD_LIMIT("VerifiedModuleGraphInputPayload.selectedModuleCatalogs",
+                               CanonicalInputSequenceRecords)
+ZOM_STABLE_BINDING_FIELD_LIMIT("VerifiedModuleGraphInputPayload.dependencySiteSets",
+                               CanonicalInputSequenceRecords)
+ZOM_STABLE_BINDING_FIELD_LIMIT("VerifiedModuleGraphInputPayload.requesterAncestries",
+                               CanonicalInputSequenceRecords)
+ZOM_STABLE_BINDING_FIELD_LIMIT("VerifiedModuleGraphInputPayload.catalogBuckets",
+                               CanonicalInputSequenceRecords)
+ZOM_STABLE_BINDING_FIELD_LIMIT("VerifiedModuleGraphInputPayload.searchRoots",
+                               CanonicalInputSequenceRecords)
+ZOM_STABLE_BINDING_FIELD_LIMIT("VerifiedModuleGraphInputPayload.dependencyAliases",
+                               CanonicalInputSequenceRecords)
+ZOM_STABLE_BINDING_FIELD_LIMIT("VerifiedModuleGraphInputPayload.configuredPreludes",
+                               CanonicalInputSequenceRecords)
+ZOM_STABLE_BINDING_FIELD_LIMIT("ContextualIdentityAuthorityInputPayload.definitionAuthorities",
+                               CanonicalInputSequenceRecords)
+ZOM_STABLE_BINDING_FIELD_LIMIT("ContextualIdentityAuthorityInputPayload.implementationAuthorities",
+                               CanonicalInputSequenceRecords)
+ZOM_STABLE_BINDING_FIELD_LIMIT(
+    "ContextualIdentityAuthorityInputPayload.genericParameterAuthorities",
+    CanonicalInputSequenceRecords)
+ZOM_STABLE_BINDING_FIELD_LIMIT(
+    "ContextualIdentityAuthorityInputPayload.callableParameterAuthorities",
+    CanonicalInputSequenceRecords)
+ZOM_STABLE_BINDING_FIELD_LIMIT("MaterializedModuleGraphWitness.requestEdges",
+                               DependencySitesOrGraphEdges)
+
+ZOM_STABLE_BINDING_INPUT(
+    CompleteCompilationContextAuthorityInput, "zom.input.complete-compilation-context-authority",
+    CompilationRootSetQueryKey, CompleteCompilationContextAuthority,
+    CompleteCompilationContextAuthorityInputVerifier, T1, T1, T1, T1,
+    "domain|key|value|equality|transaction|context|coverage|max-count|max-bytes",
+    "SessionInputTransactionTest.ContextAuthorityRejectsIncompleteAndUnequalInputs")
+ZOM_STABLE_BINDING_INPUT(
+    ActiveDefinitionAuthorityInput, "zom.query.active-definition-authority",
+    ContextualDefinitionKey, DefinitionIdentityRecord, ActiveDefinitionAuthorityInputVerifier, I2,
+    T1, I2, I2, "domain|key|value|presence|equality|transaction|authority|max-bytes",
+    "StableBindingMembershipTest.DefinitionInputRejectsMalformedAndStaleAuthority")
+ZOM_STABLE_BINDING_INPUT(CompleteRootIdentityReadiness,
+                         "zom.binder.complete-root-identity-readiness", CompilationRootSetQueryKey,
+                         CompleteRootIdentityReadiness, CompleteRootIdentityReadinessVerifier, I2,
+                         T1, I2, I2,
+                         "domain|key|value|equality|transaction|digest|coverage|max-bytes",
+                         "StableBindingMembershipTest.ReadinessRejectsDigestAndCoverageMutations")
+
+ZOM_STABLE_BINDING_QUERY(DefinitionHeaderSyntax, "zom.query.definition-header-syntax",
+                         StableDefinitionQueryKey, BinderQueryResult<StableDefinitionHeader>,
+                         "zom.binder.result-definition-header-syntax",
+                         DefinitionHeaderSyntaxProvider, DefinitionHeaderSyntaxVerifier, B1, B1, B1,
+                         B1, "domain|key|result|dependency|cycle|equality|max-bytes",
+                         "StableBindingQueryTest.HeaderQueriesRejectReadSetAndResultMutations")
+ZOM_STABLE_BINDING_QUERY(ImplementationOccurrenceHeaderSyntax,
+                         "zom.query.implementation-occurrence-header-syntax",
+                         StableImplementationOccurrenceQueryKey,
+                         BinderQueryResult<StableImplementationOccurrenceHeader>,
+                         "zom.binder.result-implementation-occurrence-header-syntax",
+                         ImplementationOccurrenceHeaderSyntaxProvider,
+                         ImplementationOccurrenceHeaderSyntaxVerifier, B1, B1, B1, B1,
+                         "domain|key|result|dependency|cycle|equality|max-bytes",
+                         "StableBindingQueryTest.HeaderQueriesRejectReadSetAndResultMutations")
+ZOM_STABLE_BINDING_QUERY(
+    ModuleExportNames, "zom.query.module-export-names", ModuleKey,
+    CanonicalSequence<BindingNameKey>, "zom.query.module-export-names-value",
+    ModuleExportNamesProvider, ModuleExportNamesVerifier, B1, B1, B1, B1,
+    "domain|key|result|dependency|cycle|equality|max-count|max-bytes",
+    "StableBindingQueryTest.LookupProjectionsRejectDependencyAndValueMutations")
+ZOM_STABLE_BINDING_QUERY(
+    ExportedBinding, "zom.query.exported-binding", StableExportedBindingQueryKey,
+    Optional<StableExportedBinding>, "zom.query.exported-binding-value", ExportedBindingProvider,
+    ExportedBindingVerifier, B1, B1, B1, B1,
+    "domain|key|result|dependency|cycle|equality|max-bytes",
+    "StableBindingQueryTest.LookupProjectionsRejectDependencyAndValueMutations")
+ZOM_STABLE_BINDING_QUERY(
+    DefinitionBindingHeader, "zom.query.definition-binding-header", StableDefinitionQueryKey,
+    Optional<StableDeclarationFact>, "zom.query.definition-binding-header-value",
+    DefinitionBindingHeaderProvider, DefinitionBindingHeaderVerifier, B1, B1, B1, B1,
+    "domain|key|result|dependency|cycle|equality|max-bytes",
+    "StableBindingQueryTest.LookupProjectionsRejectDependencyAndValueMutations")
+ZOM_STABLE_BINDING_QUERY(
+    ImplementationBindingHeader, "zom.query.implementation-binding-header",
+    StableImplementationQueryKey, Optional<CanonicalSequence<StableImplementationOccurrenceFact>>,
+    "zom.query.implementation-binding-header-value", ImplementationBindingHeaderProvider,
+    ImplementationBindingHeaderVerifier, B1, B1, B1, B1,
+    "domain|key|result|dependency|cycle|equality|max-count|max-bytes",
+    "StableBindingQueryTest.LookupProjectionsRejectDependencyAndValueMutations")
+ZOM_STABLE_BINDING_QUERY(
+    ScopeNameBucket, "zom.query.scope-name-bucket", StableScopeNameBucketQueryKey,
+    CanonicalSequence<StableBindingTargetKey>, "zom.query.scope-name-bucket-value",
+    ScopeNameBucketProvider, ScopeNameBucketVerifier, B1, B1, B1, B1,
+    "domain|key|result|dependency|cycle|equality|max-count|max-bytes",
+    "StableBindingQueryTest.LookupProjectionsRejectDependencyAndValueMutations")
+ZOM_STABLE_BINDING_QUERY(
+    ImportTarget, "zom.query.import-target", StableSemanticImportQueryKey,
+    Optional<StableImportFact>, "zom.query.import-target-value", ImportTargetProvider,
+    ImportTargetVerifier, B1, B1, B1, B1, "domain|key|result|dependency|cycle|equality|max-bytes",
+    "StableBindingQueryTest.LookupProjectionsRejectDependencyAndValueMutations")
+ZOM_STABLE_BINDING_QUERY(
+    BindingVisibility, "zom.query.binding-visibility", StableBindingTargetKey,
+    Optional<MemberVisibility>, "zom.query.binding-visibility-value", BindingVisibilityProvider,
+    BindingVisibilityVerifier, B1, B1, B1, B1,
+    "domain|key|result|dependency|cycle|equality|body-local|max-bytes",
+    "StableBindingQueryTest.LookupProjectionsRejectDependencyAndValueMutations")
+ZOM_STABLE_BINDING_QUERY(
+    ActiveCompilationUnitMembership, "zom.query.active-compilation-unit-membership",
+    ContextualCompilationUnitKey, ActiveMembershipResult<ActiveCompilationUnitMembership>,
+    "zom.query.active-compilation-unit-membership-value", ActiveCompilationUnitMembershipProvider,
+    ActiveCompilationUnitMembershipVerifier, I2, I2, I2, I2,
+    "domain|key|result|dependency|cycle|equality|authority|readiness|coverage|max-count|max-bytes",
+    "StableBindingMembershipTest.CompilationUnitRejectsAuthorityAndCoverageMutations")
+ZOM_STABLE_BINDING_QUERY(
+    ActiveCrateMembership, "zom.query.active-crate-membership", ContextualCrateKey,
+    ActiveMembershipResult<CrateKey>, "zom.query.active-crate-membership-value",
+    ActiveCrateMembershipProvider, ActiveCrateMembershipVerifier, I2, I2, I2, I2,
+    "domain|key|result|dependency|cycle|equality|authority|readiness|coverage|max-count|max-bytes",
+    "StableBindingMembershipTest.CrateRejectsAuthorityAndCoverageMutations")
+ZOM_STABLE_BINDING_QUERY(
+    ActiveSourceMembership, "zom.query.active-source-membership", ContextualSourceKey,
+    ActiveMembershipResult<SourceFileKey>, "zom.query.active-source-membership-value",
+    ActiveSourceMembershipProvider, ActiveSourceMembershipVerifier, I2, I2, I2, I2,
+    "domain|key|result|dependency|cycle|equality|authority|readiness|coverage|max-count|max-bytes",
+    "StableBindingMembershipTest.SourceRejectsAuthorityAndCoverageMutations")
+ZOM_STABLE_BINDING_QUERY(
+    ActiveModuleMembership, "zom.query.active-module-membership", ContextualModuleKey,
+    ActiveMembershipResult<ModuleKey>, "zom.query.active-module-membership-value",
+    ActiveModuleMembershipProvider, ActiveModuleMembershipVerifier, I2, I2, I2, I2,
+    "domain|key|result|dependency|cycle|equality|authority|readiness|coverage|max-count|max-bytes",
+    "StableBindingMembershipTest.ModuleRejectsAuthorityAndCoverageMutations")
+ZOM_STABLE_BINDING_QUERY(
+    ActiveDefinitionMembership, "zom.query.active-definition-membership", ContextualDefinitionKey,
+    ActiveMembershipResult<DefinitionIdentityRecord>,
+    "zom.query.active-definition-membership-value", ActiveDefinitionMembershipProvider,
+    ActiveDefinitionMembershipVerifier, I2, I2, I2, I2,
+    "domain|key|result|dependency|cycle|equality|authority|inventory|header|readiness|max-bytes",
+    "StableBindingMembershipTest.DefinitionRejectsAuthorityAndInventoryMutations")
+ZOM_STABLE_BINDING_QUERY(
+    ActiveImplementationMembership, "zom.query.active-implementation-membership",
+    ContextualImplementationKey, ActiveMembershipResult<ActiveImplementationMembershipRecord>,
+    "zom.query.active-implementation-membership-value", ActiveImplementationMembershipProvider,
+    ActiveImplementationMembershipVerifier, I2, I2, I2, I2,
+    "domain|key|result|dependency|cycle|equality|authority|inventory|occurrence|readiness|"
+    "max-count|max-bytes",
+    "StableBindingMembershipTest.ImplementationRejectsAuthorityAndOccurrenceMutations")
+ZOM_STABLE_BINDING_QUERY(
+    ActiveGenericParameterMembership, "zom.query.active-generic-parameter-membership",
+    ContextualGenericParameterKey, ActiveMembershipResult<ActiveGenericParameterMembership>,
+    "zom.query.active-generic-parameter-membership-value", ActiveGenericParameterMembershipProvider,
+    ActiveGenericParameterMembershipVerifier, I2, I2, I2, I2,
+    "domain|key|result|dependency|cycle|equality|authority|owner|header|occurrence|readiness|"
+    "max-count|max-bytes",
+    "StableBindingMembershipTest.GenericParameterRejectsOwnerAndOccurrenceMutations")
+ZOM_STABLE_BINDING_QUERY(
+    ActiveCallableParameterMembership, "zom.query.active-callable-parameter-membership",
+    ContextualCallableParameterKey, ActiveMembershipResult<ActiveCallableParameterMembershipRecord>,
+    "zom.query.active-callable-parameter-membership-value",
+    ActiveCallableParameterMembershipProvider, ActiveCallableParameterMembershipVerifier, I2, I2,
+    I2, I2,
+    "domain|key|result|dependency|cycle|equality|authority|owner|header|position|receiver|"
+    "readiness|max-count|max-bytes",
+    "StableBindingMembershipTest.CallableParameterRejectsHeaderAndPositionMutations")
+ZOM_STABLE_BINDING_QUERY(BindModuleSkeleton, "zom.query.bind-module-skeleton", ModuleKey,
+                         BinderQueryResult<BoundModuleSkeleton>,
+                         "zom.binder.result-bind-module-skeleton", BindModuleSkeletonProvider,
+                         BindModuleSkeletonVerifier, B1, B1, B1, B1,
+                         "domain|key|result|dependency|cycle|equality|coverage|max-count|max-bytes",
+                         "StableBindingQueryTest.ModuleSkeletonRejectsFactAndCoverageMutations")
+ZOM_STABLE_BINDING_QUERY(
+    ModuleBodyOwners, "zom.query.module-body-owners", ContextualModuleKey,
+    CanonicalSequence<StableOwnerBodyQueryKey>, "zom.query.module-body-owners-value",
+    ModuleBodyOwnersProvider, ModuleBodyOwnersVerifier, B2, B2, B2, B2,
+    "domain|key|result|dependency|cycle|equality|ownership|max-count|max-bytes",
+    "StableBindingQueryTest.ModuleBodyOwnersRejectContextAndAuthorityMutations")
+ZOM_STABLE_BINDING_QUERY(
+    ModuleDiagnosticFacts, "zom.query.module-diagnostic-facts", ContextualModuleKey,
+    CanonicalSequence<DiagnosticFact>, "zom.query.module-diagnostic-facts-value",
+    ModuleDiagnosticFactsProvider, ModuleDiagnosticFactsVerifier, B2, B2, B2, B2,
+    "domain|key|result|dependency|cycle|equality|diagnostic-bijection|max-count|max-bytes",
+    "StableBindingQueryTest.ModuleDiagnosticFactsRejectOwnerAndLookupMutations")
+ZOM_STABLE_BINDING_QUERY(
+    BindOwnerBody, "zom.query.bind-owner-body", ContextualBodyOwnerKey,
+    BinderQueryResult<BoundOwnerBody>, "zom.binder.result-bind-owner-body", BindOwnerBodyProvider,
+    BindOwnerBodyVerifier, B2, B2, B2, B2,
+    "domain|key|result|dependency|cycle|equality|ownership|coverage|max-count|max-bytes",
+    "StableBindingQueryTest.OwnerBodiesRejectFactAndCoverageMutations")
+ZOM_STABLE_BINDING_QUERY(
+    ModuleBindingAllocationPlan, "zom.query.module-binding-allocation-plan", ContextualModuleKey,
+    BinderQueryResult<ModuleBindingAllocationPlan>,
+    "zom.binder.result-module-binding-allocation-plan", ModuleBindingAllocationPlanProvider,
+    ModuleBindingAllocationPlanVerifier, B4, B4, B4, B4,
+    "domain|key|result|dependency|cycle|equality|dense|disjoint|gap|overflow|max-count|max-bytes",
+    "StableBindingQueryTest.AllocationPlanRejectsRangeAndOverflowMutations")
+
+ZOM_STABLE_BINDING_CAPABILITY_QUERY(
+    ModuleDependencyProvenance, "zom.query.module-dependency-provenance", ModuleKey,
+    CapabilityDemandResult<ModuleDependencyProvenance>, ModuleDependencyProvenanceMap,
+    ModuleDependencyProvenanceProvider, ModuleDependencyProvenanceVerifier,
+    SourceRejection<DiagnosticFact> | KeyRejection<BinderKeyFailure>, R28_16A, R28_16A, R28_16A,
+    R28_16B, "domain|key|dependency|cycle|provenance|witness|lineage",
+    "MaterializedModuleGraphCapabilityTest.DependencyWitnessRejectsEdgeMutations")
+ZOM_STABLE_BINDING_CAPABILITY_QUERY(
+    MaterializeModuleGraph, "zom.query.materialize-module-graph", CompilationRootSetQueryKey,
+    CapabilityDemandResult<MaterializeModuleGraph>, MaterializedModuleGraph,
+    MaterializeModuleGraphProvider, MaterializeModuleGraphVerifier,
+    SourceRejection<DiagnosticFact> | KeyRejection<BinderKeyFailure>, M1, M1, M1, M1,
+    "domain|key|dependency|cycle|permission|membership|seal|context|fingerprint|graph|scc|"
+    "provenance|witness|revision|lineage",
+    "MaterializedModuleGraphCapabilityTest.GraphRejectsWitnessAndMembershipMutations")
+ZOM_STABLE_BINDING_CAPABILITY_QUERY(
+    MaterializeModuleSkeleton, "zom.query.materialize-module-skeleton", ContextualModuleKey,
+    CapabilityDemandResult<MaterializeModuleSkeleton>, MaterializedModuleSkeleton,
+    MaterializeModuleSkeletonProvider, MaterializeModuleSkeletonVerifier,
+    SourceRejection<DiagnosticFact> | KeyRejection<BinderKeyFailure>, M2, M2, M2, M2,
+    "domain|key|dependency|cycle|permission|membership|allocation|provenance|graph|lineage",
+    "MaterializedBindingCapabilityTest.SkeletonRejectsPermissionAndLineageMutations")
+ZOM_STABLE_BINDING_CAPABILITY_QUERY(
+    MaterializeOwnerBody, "zom.query.materialize-owner-body", ContextualBodyOwnerKey,
+    CapabilityDemandResult<MaterializeOwnerBody>, MaterializedOwnerBody,
+    MaterializeOwnerBodyProvider, MaterializeOwnerBodyVerifier,
+    SourceRejection<DiagnosticFact> | KeyRejection<BinderKeyFailure>, M3, M3, M3, M3,
+    "domain|key|dependency|cycle|permission|membership|allocation|provenance|lineage",
+    "MaterializedBindingCapabilityTest.OwnerBodyRejectsPermissionAndLineageMutations")
+ZOM_STABLE_BINDING_CAPABILITY_QUERY(
+    VerifyBoundModule, "zom.query.verify-bound-module", ContextualModuleKey,
+    CapabilityDemandResult<VerifyBoundModule>, VerifiedBoundModule, VerifyBoundModuleProvider,
+    VerifyBoundModuleVerifier, SourceRejection<DiagnosticFact> | KeyRejection<BinderKeyFailure>, M5,
+    M5, M5, M5,
+    "domain|key|dependency|cycle|child-failure|diagnostics|coverage|provenance|export|lease|"
+    "lineage",
+    "VerifiedBoundModuleCapabilityTest.RejectsChildFailureAndLeaseLineageMutations")
+
+ZOM_STABLE_BINDING_MATERIALIZER_PERMISSION(MaterializeModuleGraph, CompilationUnitIdentity,
+                                           ActiveCompilationUnitMembership)
+ZOM_STABLE_BINDING_MATERIALIZER_PERMISSION(MaterializeModuleGraph, CrateKey, ActiveCrateMembership)
+ZOM_STABLE_BINDING_MATERIALIZER_PERMISSION(MaterializeModuleGraph, SourceFileKey,
+                                           ActiveSourceMembership)
+ZOM_STABLE_BINDING_MATERIALIZER_PERMISSION(MaterializeModuleGraph, ModuleKey,
+                                           ActiveModuleMembership)
+ZOM_STABLE_BINDING_MATERIALIZER_PERMISSION(MaterializeModuleSkeleton, CompilationUnitIdentity,
+                                           ActiveCompilationUnitMembership)
+ZOM_STABLE_BINDING_MATERIALIZER_PERMISSION(MaterializeModuleSkeleton, CrateKey,
+                                           ActiveCrateMembership)
+ZOM_STABLE_BINDING_MATERIALIZER_PERMISSION(MaterializeModuleSkeleton, SourceFileKey,
+                                           ActiveSourceMembership)
+ZOM_STABLE_BINDING_MATERIALIZER_PERMISSION(MaterializeModuleSkeleton, ModuleKey,
+                                           ActiveModuleMembership)
+ZOM_STABLE_BINDING_MATERIALIZER_PERMISSION(MaterializeModuleSkeleton, DefinitionKey,
+                                           ActiveDefinitionMembership)
+ZOM_STABLE_BINDING_MATERIALIZER_PERMISSION(MaterializeModuleSkeleton, ImplKey,
+                                           ActiveImplementationMembership)
+ZOM_STABLE_BINDING_MATERIALIZER_PERMISSION(MaterializeModuleSkeleton, GenericParameterKey,
+                                           ActiveGenericParameterMembership)
+ZOM_STABLE_BINDING_MATERIALIZER_PERMISSION(MaterializeModuleSkeleton, CallableParameterKey,
+                                           ActiveCallableParameterMembership)
+ZOM_STABLE_BINDING_MATERIALIZER_PERMISSION(MaterializeOwnerBody, CompilationUnitIdentity,
+                                           ActiveCompilationUnitMembership)
+ZOM_STABLE_BINDING_MATERIALIZER_PERMISSION(MaterializeOwnerBody, CrateKey, ActiveCrateMembership)
+ZOM_STABLE_BINDING_MATERIALIZER_PERMISSION(MaterializeOwnerBody, SourceFileKey,
+                                           ActiveSourceMembership)
+ZOM_STABLE_BINDING_MATERIALIZER_PERMISSION(MaterializeOwnerBody, ModuleKey, ActiveModuleMembership)
+ZOM_STABLE_BINDING_MATERIALIZER_PERMISSION(MaterializeOwnerBody, DefinitionKey,
+                                           ActiveDefinitionMembership)
+ZOM_STABLE_BINDING_MATERIALIZER_PERMISSION(MaterializeOwnerBody, ImplKey,
+                                           ActiveImplementationMembership)
+ZOM_STABLE_BINDING_MATERIALIZER_PERMISSION(MaterializeOwnerBody, GenericParameterKey,
+                                           ActiveGenericParameterMembership)
+ZOM_STABLE_BINDING_MATERIALIZER_PERMISSION(MaterializeOwnerBody, CallableParameterKey,
+                                           ActiveCallableParameterMembership)
+
+#ifdef ZOM_STABLE_BINDING_BOUND_OWNED
+#undef ZOM_STABLE_BINDING_BOUND
+#undef ZOM_STABLE_BINDING_BOUND_OWNED
+#endif
+#ifdef ZOM_STABLE_BINDING_RECORD_OWNED
+#undef ZOM_STABLE_BINDING_RECORD
+#undef ZOM_STABLE_BINDING_RECORD_OWNED
+#endif
+#ifdef ZOM_STABLE_BINDING_NESTED_RECORD_OWNED
+#undef ZOM_STABLE_BINDING_NESTED_RECORD
+#undef ZOM_STABLE_BINDING_NESTED_RECORD_OWNED
+#endif
+#ifdef ZOM_STABLE_BINDING_NESTED_FIELD_OWNED
+#undef ZOM_STABLE_BINDING_NESTED_FIELD
+#undef ZOM_STABLE_BINDING_NESTED_FIELD_OWNED
+#endif
+#ifdef ZOM_STABLE_BINDING_ENUM_VALUE_OWNED
+#undef ZOM_STABLE_BINDING_ENUM_VALUE
+#undef ZOM_STABLE_BINDING_ENUM_VALUE_OWNED
+#endif
+#ifdef ZOM_STABLE_BINDING_SUM_OWNED
+#undef ZOM_STABLE_BINDING_SUM
+#undef ZOM_STABLE_BINDING_SUM_OWNED
+#endif
+#ifdef ZOM_STABLE_BINDING_RUNTIME_SUM_OWNED
+#undef ZOM_STABLE_BINDING_RUNTIME_SUM
+#undef ZOM_STABLE_BINDING_RUNTIME_SUM_OWNED
+#endif
+#ifdef ZOM_STABLE_BINDING_SUM_VARIANT_OWNED
+#undef ZOM_STABLE_BINDING_SUM_VARIANT
+#undef ZOM_STABLE_BINDING_SUM_VARIANT_OWNED
+#endif
+#ifdef ZOM_STABLE_BINDING_VARIANT_FIELD_OWNED
+#undef ZOM_STABLE_BINDING_VARIANT_FIELD
+#undef ZOM_STABLE_BINDING_VARIANT_FIELD_OWNED
+#endif
+#ifdef ZOM_STABLE_BINDING_INLINE_SUM_VARIANT_OWNED
+#undef ZOM_STABLE_BINDING_INLINE_SUM_VARIANT
+#undef ZOM_STABLE_BINDING_INLINE_SUM_VARIANT_OWNED
+#endif
+#ifdef ZOM_STABLE_BINDING_INLINE_SUM_VARIANT_FIELD_OWNED
+#undef ZOM_STABLE_BINDING_INLINE_SUM_VARIANT_FIELD
+#undef ZOM_STABLE_BINDING_INLINE_SUM_VARIANT_FIELD_OWNED
+#endif
+#ifdef ZOM_STABLE_BINDING_RUNTIME_SUM_VARIANT_OWNED
+#undef ZOM_STABLE_BINDING_RUNTIME_SUM_VARIANT
+#undef ZOM_STABLE_BINDING_RUNTIME_SUM_VARIANT_OWNED
+#endif
+#ifdef ZOM_STABLE_BINDING_RUNTIME_VARIANT_FIELD_OWNED
+#undef ZOM_STABLE_BINDING_RUNTIME_VARIANT_FIELD
+#undef ZOM_STABLE_BINDING_RUNTIME_VARIANT_FIELD_OWNED
+#endif
+#ifdef ZOM_STABLE_BINDING_FIELD_OWNED
+#undef ZOM_STABLE_BINDING_FIELD
+#undef ZOM_STABLE_BINDING_FIELD_OWNED
+#endif
+#ifdef ZOM_STABLE_BINDING_FIELD_LIMIT_OWNED
+#undef ZOM_STABLE_BINDING_FIELD_LIMIT
+#undef ZOM_STABLE_BINDING_FIELD_LIMIT_OWNED
+#endif
+#ifdef ZOM_STABLE_BINDING_QUERY_OWNED
+#undef ZOM_STABLE_BINDING_QUERY
+#undef ZOM_STABLE_BINDING_QUERY_OWNED
+#endif
+#ifdef ZOM_STABLE_BINDING_INPUT_OWNED
+#undef ZOM_STABLE_BINDING_INPUT
+#undef ZOM_STABLE_BINDING_INPUT_OWNED
+#endif
+#ifdef ZOM_STABLE_BINDING_CAPABILITY_QUERY_OWNED
+#undef ZOM_STABLE_BINDING_CAPABILITY_QUERY
+#undef ZOM_STABLE_BINDING_CAPABILITY_QUERY_OWNED
+#endif
+#ifdef ZOM_STABLE_BINDING_MATERIALIZER_PERMISSION_OWNED
+#undef ZOM_STABLE_BINDING_MATERIALIZER_PERMISSION
+#undef ZOM_STABLE_BINDING_MATERIALIZER_PERMISSION_OWNED
+#endif
+#ifdef ZOM_STABLE_BINDING_DIAGNOSTIC_MAPPING_OWNED
+#undef ZOM_STABLE_BINDING_DIAGNOSTIC_MAPPING
+#undef ZOM_STABLE_BINDING_DIAGNOSTIC_MAPPING_OWNED
+#endif
+#ifdef ZOM_STABLE_BINDING_CONSTRAINT_OWNED
+#undef ZOM_STABLE_BINDING_CONSTRAINT
+#undef ZOM_STABLE_BINDING_CONSTRAINT_OWNED
+#endif
+#ifdef ZOM_STABLE_BINDING_DIGEST_OWNED
+#undef ZOM_STABLE_BINDING_DIGEST
+#undef ZOM_STABLE_BINDING_DIGEST_OWNED
+#endif

@@ -23,6 +23,7 @@
 
 namespace zomlang::compiler::identity {
 
+class CanonicalDecoder;
 class CanonicalEncoder;
 
 namespace canonical_header_schema_detail {
@@ -132,6 +133,8 @@ public:
   ZC_NODISCARD static CanonicalNameRoot absolute() noexcept;
   ZC_NODISCARD static CanonicalNameRoot relative() noexcept;
   ZC_NODISCARD static CanonicalNameRoot generic(uint32_t binderDepth, uint32_t ordinal) noexcept;
+  /// \brief Decodes one inline closed canonical name root.
+  ZC_NODISCARD static zc::Maybe<CanonicalNameRoot> decodeCanonical(CanonicalDecoder& decoder);
   ZC_NODISCARD CanonicalNameRoot clone() const noexcept;
   ZC_NODISCARD CanonicalNameRootKind kind() const noexcept;
   ZC_NODISCARD zc::Maybe<uint32_t> binderDepth() const noexcept;
@@ -155,6 +158,8 @@ public:
 
   ZC_NODISCARD static zc::Maybe<CanonicalNameReference> from(
       CanonicalNameRoot&& root, zc::Vector<SemanticIdentifier>&& suffix);
+  /// \brief Decodes one inline root and bounded ordered identifier suffix.
+  ZC_NODISCARD static zc::Maybe<CanonicalNameReference> decodeCanonical(CanonicalDecoder& decoder);
   ZC_NODISCARD CanonicalNameReference clone() const;
   ZC_NODISCARD const CanonicalNameRoot& root() const noexcept;
   ZC_NODISCARD zc::ArrayPtr<const SemanticIdentifier> suffix() const noexcept;

@@ -48,6 +48,7 @@ public:
   /// \brief Admits only absolute or relative trait name roots.
   ZC_NODISCARD static zc::Maybe<CanonicalTraitReference> from(
       CanonicalNameReference&& name, zc::Vector<CanonicalHeaderTypeSyntax>&& arguments);
+  ZC_NODISCARD static zc::Maybe<CanonicalTraitReference> decodeCanonical(CanonicalDecoder& decoder);
   ZC_NODISCARD CanonicalTraitReference clone() const;
   ZC_NODISCARD const CanonicalNameReference& name() const noexcept;
   ZC_NODISCARD zc::ArrayPtr<const CanonicalHeaderTypeSyntax> arguments() const noexcept;
@@ -80,6 +81,7 @@ public:
       zc::Vector<CanonicalGenericParameter>&& genericParameters, ImplPolarity polarity,
       ImplSafety safety, CanonicalTraitReference&& trait, CanonicalHeaderTypeSyntax&& selfType,
       zc::Vector<CanonicalBoundObligation>&& obligations);
+  ZC_NODISCARD static zc::Maybe<CanonicalImplHeader> decodeCanonical(CanonicalDecoder& decoder);
   ZC_NODISCARD CanonicalImplHeader clone() const;
   ZC_NODISCARD zc::ArrayPtr<const CanonicalGenericParameter> genericParameters() const noexcept;
   ZC_NODISCARD ImplPolarity polarity() const noexcept;

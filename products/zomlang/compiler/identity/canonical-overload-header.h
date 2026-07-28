@@ -84,6 +84,8 @@ public:
 
   ZC_NODISCARD static CanonicalGenericParameter from(
       zc::Maybe<CanonicalHeaderTypeSyntax>&& defaultType);
+  ZC_NODISCARD static zc::Maybe<CanonicalGenericParameter> decodeCanonical(
+      CanonicalDecoder& decoder);
   ZC_NODISCARD CanonicalGenericParameter clone() const;
   ZC_NODISCARD zc::Maybe<const CanonicalHeaderTypeSyntax&> defaultType() const noexcept;
   void encode(CanonicalEncoder& encoder) const;
@@ -105,6 +107,8 @@ public:
 
   ZC_NODISCARD static CanonicalBoundObligation from(CanonicalHeaderTypeSyntax&& subject,
                                                     CanonicalHeaderTypeSyntax&& bound);
+  ZC_NODISCARD static zc::Maybe<CanonicalBoundObligation> decodeCanonical(
+      CanonicalDecoder& decoder);
   ZC_NODISCARD CanonicalBoundObligation clone() const;
   ZC_NODISCARD const CanonicalHeaderTypeSyntax& subject() const noexcept;
   ZC_NODISCARD const CanonicalHeaderTypeSyntax& bound() const noexcept;

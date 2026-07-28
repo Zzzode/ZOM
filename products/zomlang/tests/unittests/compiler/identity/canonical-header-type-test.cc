@@ -16,6 +16,7 @@
 
 #include "zc/core/encoding.h"
 #include "zc/ztest/test.h"
+#include "zomlang/compiler/identity/canonical-decoder.h"
 
 namespace zomlang::compiler::identity {
 namespace {
@@ -83,8 +84,39 @@ CanonicalAssociatedBinding binding(zc::StringPtr name, PredefinedTypeKind kind) 
   return CanonicalAssociatedBinding::from(identifier(name), predefined(kind));
 }
 
+zc::Array<uint8_t> decodedBytes(zc::StringPtr hex) {
+  auto bytes = zc::decodeHex(hex);
+  ZC_REQUIRE(bytes != zc::none);
+  return zc::mv(ZC_REQUIRE_NONNULL(bytes));
+}
+
+void expectRoundTrip(const CanonicalHeaderTypeSyntax& value) {
+  auto bytes = value.encode();
+  CanonicalDecoder decoder(bytes.asPtr());
+  auto decoded = CanonicalHeaderTypeSyntax::decodeCanonical(decoder);
+  ZC_REQUIRE(decoded != zc::none);
+  ZC_EXPECT(decoder.finished());
+  ZC_IF_SOME(admitted, decoded) { ZC_EXPECT(admitted.encode().asPtr() == bytes.asPtr()); }
+  for (size_t size = 0; size < bytes.size(); ++size) {
+    CanonicalDecoder truncated(bytes.asPtr().slice(0, size));
+    ZC_EXPECT(CanonicalHeaderTypeSyntax::decodeCanonical(truncated) == zc::none);
+  }
+}
+
 void expectHex(const CanonicalHeaderTypeSyntax& value, zc::StringPtr expected) {
-  ZC_EXPECT(zc::encodeHex(value.encode().asPtr()) == expected);
+  auto bytes = decodedBytes(expected);
+  ZC_EXPECT(value.encode().asPtr() == bytes.asPtr());
+  expectRoundTrip(value);
+}
+
+zc::Vector<uint8_t> nestedDynamicArrayBytes(uint32_t arrayCount) {
+  zc::Vector<uint8_t> bytes(static_cast<size_t>(arrayCount) + 2);
+  for (uint32_t index = 0; index < arrayCount; ++index) {
+    bytes.add(static_cast<uint8_t>(CanonicalHeaderTypeSyntaxKind::DynamicArray));
+  }
+  bytes.add(static_cast<uint8_t>(CanonicalHeaderTypeSyntaxKind::Predefined));
+  bytes.add(static_cast<uint8_t>(PredefinedTypeKind::I8));
+  return bytes;
 }
 
 bool hasPredefinedKind(const CanonicalHeaderTypeSyntax& value, PredefinedTypeKind expected) {
@@ -179,6 +211,33 @@ ZC_TEST("CanonicalHeaderTypeSyntax rejects invalid enums depth empty sets and em
                                                 zc::mv(emptyRaises)) == zc::none);
 }
 
+ZC_TEST("CanonicalHeaderTypeSyntax decoder rejects hostile tags counts booleans and depth") {
+  const auto expectRejected = [](zc::StringPtr hex) {
+    auto bytes = decodedBytes(hex);
+    CanonicalDecoder decoder(bytes.asPtr());
+    ZC_EXPECT(CanonicalHeaderTypeSyntax::decodeCanonical(decoder) == zc::none);
+  };
+  expectRejected("ff"_zc);
+  expectRejected("02ff"_zc);
+  expectRejected("090201ff"_zc);
+  expectRejected("0aff0201"_zc);
+  expectRejected("0bff0201"_zc);
+  expectRejected("0300000000000000000201ff"_zc);
+  expectRejected("0d00000000000000010000000000000001780201ff00"_zc);
+  expectRejected("0f0201ff"_zc);
+  expectRejected("0e0000000000010000"_zc);
+
+  auto maximumDepth = nestedDynamicArrayBytes(99);
+  CanonicalDecoder maximumDepthDecoder(maximumDepth.asPtr());
+  auto maximumDepthType = CanonicalHeaderTypeSyntax::decodeCanonical(maximumDepthDecoder);
+  ZC_EXPECT(maximumDepthType != zc::none);
+  ZC_EXPECT(maximumDepthDecoder.finished());
+
+  auto excessiveDepth = nestedDynamicArrayBytes(100);
+  CanonicalDecoder excessiveDepthDecoder(excessiveDepth.asPtr());
+  ZC_EXPECT(CanonicalHeaderTypeSyntax::decodeCanonical(excessiveDepthDecoder) == zc::none);
+}
+
 ZC_TEST("CanonicalHeaderTypeSyntax normalizes unions intersections objects and dynamic sets") {
   zc::Vector<CanonicalHeaderTypeSyntax> functionParameters;
   zc::Vector<CanonicalHeaderTypeSyntax> raisesValues;
@@ -231,6 +290,7 @@ ZC_TEST("CanonicalHeaderTypeSyntax normalizes unions intersections objects and d
   objectMembers.add(objectMember("a"_zc, PredefinedTypeKind::I8));
   objectMembers.add(objectMember("a"_zc, PredefinedTypeKind::I16));
   auto object = CanonicalHeaderTypeSyntax::object(zc::mv(objectMembers));
+  expectRoundTrip(object);
   ZC_IF_SOME(members, object.objectMembers()) {
     ZC_REQUIRE(members.size() == 3);
     ZC_EXPECT(members[0].name() == "a"_zc);
@@ -250,6 +310,7 @@ ZC_TEST("CanonicalHeaderTypeSyntax normalizes unions intersections objects and d
   bindings.add(binding("A"_zc, PredefinedTypeKind::I8));
   auto dynamic =
       CanonicalHeaderTypeSyntax::dynamic(namedHeader("P"_zc), zc::mv(markers), zc::mv(bindings));
+  expectRoundTrip(dynamic);
   ZC_IF_SOME(values, dynamic.dynamicMarkers()) {
     ZC_REQUIRE(values.size() == 2);
     ZC_EXPECT(values[0].suffix()[0].text() == "A"_zc);
@@ -268,6 +329,7 @@ ZC_TEST("CanonicalHeaderTypeSyntax preserves ordered children clone accessors an
   arguments.add(predefined(PredefinedTypeKind::I8));
   auto named = CanonicalHeaderTypeSyntax::named(
       CanonicalNamedHeaderType::from(relativeName("N"_zc), zc::mv(arguments)));
+  expectRoundTrip(named);
   ZC_IF_SOME(type, named.namedType()) {
     ZC_REQUIRE(type.arguments().size() == 2);
     ZC_EXPECT(hasPredefinedKind(type.arguments()[0], PredefinedTypeKind::I16));
@@ -287,6 +349,12 @@ ZC_TEST("CanonicalHeaderTypeSyntax preserves ordered children clone accessors an
     ZC_EXPECT(hasPredefinedKind(result, PredefinedTypeKind::Unit));
   }
   ZC_EXPECT(function.functionRaises() == zc::none);
+
+  zc::Maybe<CanonicalHeaderTypeSyntax> noInterface;
+  auto projection = CanonicalHeaderTypeSyntax::associatedProjection(
+      predefined(PredefinedTypeKind::I8), zc::mv(noInterface), identifier("x"_zc));
+  expectRoundTrip(projection);
+  ZC_EXPECT(projection.associatedInterface() == zc::none);
 
   zc::Vector<CanonicalHeaderTypeSyntax> elements;
   elements.add(predefined(PredefinedTypeKind::I16));

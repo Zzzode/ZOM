@@ -196,9 +196,15 @@ CanonicalPackageGraph packageGraph() {
   return zc::mv(ZC_REQUIRE_NONNULL(result));
 }
 
+binder::StableDefinitionQueryKey stableDefinition(const identity::ModuleKey& module,
+                                                  const identity::DefinitionKey& definition) {
+  return binder::StableDefinitionQueryKey::from(module.clone(), definition.clone());
+}
+
 ContextualDefinitionKey contextual(const CompilationRootSetQueryKey& roots,
+                                   const identity::ModuleKey& module,
                                    const identity::DefinitionKey& definition) {
-  return ContextualDefinitionKey::from(roots.clone(), definition.clone());
+  return ContextualDefinitionKey::from(roots.clone(), stableDefinition(module, definition));
 }
 
 ContextualModuleKey contextual(const CompilationRootSetQueryKey& roots,
@@ -207,8 +213,10 @@ ContextualModuleKey contextual(const CompilationRootSetQueryKey& roots,
 }
 
 ContextualBodyOwnerKey contextual(const CompilationRootSetQueryKey& roots,
+                                  const identity::ModuleKey& module,
                                   const binder::StableBodyOwnerKey& owner) {
-  return ContextualBodyOwnerKey::from(roots.clone(), owner.clone());
+  auto body = binder::StableOwnerBodyQueryKey::from(module.clone(), owner.clone());
+  return ContextualBodyOwnerKey::from(roots.clone(), zc::mv(ZC_REQUIRE_NONNULL(body)));
 }
 
 CanonicalSourceSet activeSources() {
@@ -455,8 +463,8 @@ void runDifferentialEdits(uint32_t workerCount) {
       const auto& reusedEntry = reusedInventory.value().entries()[index];
       const auto& freshEntry = freshInventory.value().entries()[index];
       ZC_REQUIRE(reusedEntry.key() == freshEntry.key());
-      auto reusedKey = contextual(roots, reusedEntry.key());
-      auto freshKey = contextual(roots, freshEntry.key());
+      auto reusedKey = contextual(roots, semanticModule(), reusedEntry.key());
+      auto freshKey = contextual(roots, semanticModule(), freshEntry.key());
       auto reusedSyntax = reused.get<NamedItemSyntaxQuery>(reusedKey);
       auto freshSyntax = fresh.get<NamedItemSyntaxQuery>(freshKey);
       auto reusedProvenance = reused.getCapability<NamedItemProvenanceQuery>(reusedKey);
@@ -505,7 +513,9 @@ void runDifferentialEdits(uint32_t workerCount) {
 
     ZC_IF_SOME(previous, priorKey) {
       if (!containsKey(reusedInventory.value(), previous)) {
-        auto inactiveKey = contextual(roots, previous);
+        auto inactiveKey = contextual(roots, semanticModule(), previous);
+        ZC_EXPECT(reused.probeInput<ActiveDefinitionAuthorityInput>(inactiveKey).kind() ==
+                  query::QueryValueKind::Absence);
         auto reusedInactive = reused.get<NamedItemSyntaxQuery>(inactiveKey);
         auto freshInactive = fresh.get<NamedItemSyntaxQuery>(inactiveKey);
         ZC_REQUIRE(reusedInactive.kind() == query::QueryValueKind::SemanticFailure);
@@ -542,7 +552,7 @@ ZC_TEST("Active definition authority session invalidates and atomically refreshe
   ZC_REQUIRE(firstInventory.kind() == query::QueryValueKind::Value);
   ZC_REQUIRE(firstInventory.value().entries().size() == 1);
   auto alphaKey = firstInventory.value().entries()[0].key().clone();
-  auto alphaQueryKey = contextual(roots, alphaKey);
+  auto alphaQueryKey = contextual(roots, semanticModule(), alphaKey);
   auto alpha = first.get<ActiveDefinitionAuthorityInput>(alphaQueryKey);
   auto firstReady = first.get<ActiveDefinitionAuthorityReadyInput>(readyKey);
   auto alphaSyntax = first.get<NamedItemSyntaxQuery>(alphaQueryKey);
@@ -576,7 +586,8 @@ ZC_TEST("Active definition authority session invalidates and atomically refreshe
   trailingSyntax.back() = 0;
   ZC_EXPECT(binder::NamedItemSyntax::decodeCanonical(trailingSyntax.asPtr()) == zc::none);
   ZC_REQUIRE(state.keyLedger().size() == 1);
-  ZC_EXPECT(state.keyLedger()[0] == alphaKey);
+  ZC_EXPECT(state.keyLedger()[0] == stableDefinition(semanticModule(), alphaKey));
+  ZC_EXPECT(state.keyLedger()[0].module().encode().asPtr() == semanticModule().encode().asPtr());
   auto firstAuthorityMetadata = first.metadata<ActiveDefinitionAuthorityInput>(alphaQueryKey);
   auto firstSyntaxMetadata = first.metadata<NamedItemSyntaxQuery>(alphaQueryKey);
   auto firstProvenanceMetadata = first.metadata<NamedItemProvenanceQuery>(alphaQueryKey);
@@ -659,7 +670,7 @@ ZC_TEST("Active definition authority session fails closed and erases stale keys 
   auto alphaInventory = complete.get<NamedDefinitionInventoryQuery>(module);
   ZC_REQUIRE(alphaInventory.kind() == query::QueryValueKind::Value);
   auto alphaKey = alphaInventory.value().entries()[0].key().clone();
-  auto alphaQueryKey = contextual(roots, alphaKey);
+  auto alphaQueryKey = contextual(roots, semanticModule(), alphaKey);
 
   stageBaseInputs(state, database, "module root;\nclass Alpha {\n"_zc);
   auto rejected = database.snapshot();
@@ -674,7 +685,8 @@ ZC_TEST("Active definition authority session fails closed and erases stale keys 
   ZC_EXPECT(complete.get<ActiveDefinitionAuthorityReadyInput>(readyKey).kind() ==
             query::QueryValueKind::Value);
   ZC_REQUIRE(state.keyLedger().size() == 1);
-  ZC_EXPECT(state.keyLedger()[0] == alphaKey);
+  ZC_EXPECT(state.keyLedger()[0] == stableDefinition(semanticModule(), alphaKey));
+  ZC_EXPECT(state.keyLedger()[0].module().encode().asPtr() == semanticModule().encode().asPtr());
 
   stageBaseInputs(state, database, "module root;\nclass Beta {}\n"_zc);
   ZC_REQUIRE(state.refresh(database, roots));
@@ -683,7 +695,7 @@ ZC_TEST("Active definition authority session fails closed and erases stale keys 
   ZC_REQUIRE(betaInventory.kind() == query::QueryValueKind::Value);
   ZC_REQUIRE(betaInventory.value().entries().size() == 1);
   auto betaKey = betaInventory.value().entries()[0].key().clone();
-  auto betaQueryKey = contextual(roots, betaKey);
+  auto betaQueryKey = contextual(roots, semanticModule(), betaKey);
   ZC_EXPECT(betaKey != alphaKey);
   ZC_EXPECT(recovered.probeInput<ActiveDefinitionAuthorityInput>(alphaQueryKey).kind() ==
             query::QueryValueKind::Absence);
@@ -699,7 +711,8 @@ ZC_TEST("Active definition authority session fails closed and erases stale keys 
   ZC_EXPECT(betaSyntax.kind() == query::QueryValueKind::Value);
   ZC_EXPECT(betaProvenance.kind() == query::QueryValueKind::Value);
   ZC_REQUIRE(state.keyLedger().size() == 1);
-  ZC_EXPECT(state.keyLedger()[0] == betaKey);
+  ZC_EXPECT(state.keyLedger()[0] == stableDefinition(semanticModule(), betaKey));
+  ZC_EXPECT(state.keyLedger()[0].module().encode().asPtr() == semanticModule().encode().asPtr());
 }
 
 ZC_TEST("Active definition authority session rejects modules outside their active crate") {
@@ -747,23 +760,25 @@ ZC_TEST("Active definition authority isolates modules shrinks sets and tracks mo
   ZC_REQUIRE(registerIncrementalBindingQueryAdapter(database));
   ActiveDefinitionAuthorityProjectionState state;
   auto roots = packageRoots();
-  auto rootModule = stableModule();
-  auto secondModule = stableNamedModule("second"_zc);
+  auto rootModule = semanticModule();
+  auto secondModule = namedSemanticModule("second"_zc);
+  auto rootModuleQueryKey = stableModule();
+  auto secondModuleQueryKey = stableNamedModule("second"_zc);
 
   stageTwoModuleInputs(state, database, "module root;\nfun Alpha() {}\n"_zc,
                        "module second;\nfun Beta() { let value = 0; }\n"_zc, true);
   ZC_REQUIRE(state.refresh(database, roots));
   auto first = database.snapshot();
-  auto rootInventory = first.get<NamedDefinitionInventoryQuery>(rootModule);
-  auto secondInventory = first.get<NamedDefinitionInventoryQuery>(secondModule);
+  auto rootInventory = first.get<NamedDefinitionInventoryQuery>(rootModuleQueryKey);
+  auto secondInventory = first.get<NamedDefinitionInventoryQuery>(secondModuleQueryKey);
   ZC_REQUIRE(rootInventory.kind() == query::QueryValueKind::Value);
   ZC_REQUIRE(secondInventory.kind() == query::QueryValueKind::Value);
   ZC_REQUIRE(rootInventory.value().entries().size() == 1);
   ZC_REQUIRE(secondInventory.value().entries().size() == 1);
   auto alphaKey = rootInventory.value().entries()[0].key().clone();
   auto betaKey = secondInventory.value().entries()[0].key().clone();
-  auto alphaQueryKey = contextual(roots, alphaKey);
-  auto betaQueryKey = contextual(roots, betaKey);
+  auto alphaQueryKey = contextual(roots, rootModule, alphaKey);
+  auto betaQueryKey = contextual(roots, secondModule, betaKey);
   ZC_REQUIRE(first.get<NamedItemSyntaxQuery>(alphaQueryKey).kind() == query::QueryValueKind::Value);
   auto alphaMetadata = first.metadata<NamedItemSyntaxQuery>(alphaQueryKey);
   ZC_REQUIRE(alphaMetadata != zc::none);
@@ -786,24 +801,34 @@ ZC_TEST("Active definition authority isolates modules shrinks sets and tracks mo
   stageTwoModuleInputs(state, database, "module root;\nfun Alpha() {}\n"_zc, ""_zc, false);
   ZC_REQUIRE(state.refresh(database, roots));
   auto shrunk = database.snapshot();
+  ZC_EXPECT(shrunk.probeInput<ActiveDefinitionAuthorityInput>(betaQueryKey).kind() ==
+            query::QueryValueKind::Absence);
   ZC_EXPECT(shrunk.get<NamedItemSyntaxQuery>(alphaQueryKey).kind() == query::QueryValueKind::Value);
   ZC_EXPECT(shrunk.get<NamedItemSyntaxQuery>(betaQueryKey).kind() ==
             query::QueryValueKind::SemanticFailure);
+  ZC_REQUIRE(state.keyLedger().size() == 1);
+  ZC_EXPECT(state.keyLedger()[0] == stableDefinition(rootModule, alphaKey));
 
   stageTwoModuleInputs(state, database, "module root;\n"_zc, "module second;\nfun Alpha() {}\n"_zc,
                        true);
   ZC_REQUIRE(state.refresh(database, roots));
   auto moved = database.snapshot();
-  auto movedInventory = moved.get<NamedDefinitionInventoryQuery>(secondModule);
+  auto movedInventory = moved.get<NamedDefinitionInventoryQuery>(secondModuleQueryKey);
   ZC_REQUIRE(movedInventory.kind() == query::QueryValueKind::Value);
   ZC_REQUIRE(movedInventory.value().entries().size() == 1);
   auto movedAlphaKey = movedInventory.value().entries()[0].key().clone();
-  auto movedAlphaQueryKey = contextual(roots, movedAlphaKey);
+  auto movedAlphaQueryKey = contextual(roots, secondModule, movedAlphaKey);
   ZC_EXPECT(movedAlphaKey != alphaKey);
+  ZC_EXPECT(moved.probeInput<ActiveDefinitionAuthorityInput>(alphaQueryKey).kind() ==
+            query::QueryValueKind::Absence);
+  ZC_EXPECT(moved.get<ActiveDefinitionAuthorityInput>(movedAlphaQueryKey).kind() ==
+            query::QueryValueKind::Value);
   ZC_EXPECT(moved.get<NamedItemSyntaxQuery>(alphaQueryKey).kind() ==
             query::QueryValueKind::SemanticFailure);
   ZC_EXPECT(moved.get<NamedItemSyntaxQuery>(movedAlphaQueryKey).kind() ==
             query::QueryValueKind::Value);
+  ZC_REQUIRE(state.keyLedger().size() == 1);
+  ZC_EXPECT(state.keyLedger()[0] == stableDefinition(secondModule, movedAlphaKey));
 }
 
 ZC_TEST("Owner body projection records exact alternative dependencies") {
@@ -847,7 +872,7 @@ ZC_TEST("Owner body projection records exact alternative dependencies") {
   zc::Vector<query::QueryKeyFingerprint> namedItemFingerprints(inventory.value().entries().size());
   zc::Maybe<identity::DefinitionKey> bodylessDefinition;
   for (const auto& entry : inventory.value().entries()) {
-    auto definitionQueryKey = contextual(roots, entry.key());
+    auto definitionQueryKey = contextual(roots, semanticModule(), entry.key());
     auto syntax = snapshot.get<NamedItemSyntaxQuery>(definitionQueryKey);
     ZC_REQUIRE(syntax.kind() == query::QueryValueKind::Value);
     auto fingerprint = snapshot.keyFingerprint<NamedItemSyntaxQuery>(definitionQueryKey);
@@ -888,7 +913,7 @@ ZC_TEST("Owner body projection records exact alternative dependencies") {
   ZC_EXPECT(parallelNamedItemGroups == 2);
 
   for (const auto& owner : owners.value().owners()) {
-    auto ownerQueryKey = contextual(roots, owner);
+    auto ownerQueryKey = contextual(roots, semanticModule(), owner);
     auto syntax = snapshot.get<OwnerBodySyntaxQuery>(ownerQueryKey);
     auto provenance = snapshot.getCapability<OwnerBodyProvenanceQuery>(ownerQueryKey);
     ZC_REQUIRE(syntax.kind() == query::QueryValueKind::Value);
@@ -919,7 +944,8 @@ ZC_TEST("Owner body projection records exact alternative dependencies") {
     query::QueryKeyFingerprint expectedSyntaxDependency =
         ZC_REQUIRE_NONNULL(snapshot.keyFingerprint<ModuleBodySyntaxQuery>(module));
     if (owner.kind() == binder::StableBodyOwnerKind::Definition) {
-      auto definitionQueryKey = contextual(roots, ZC_REQUIRE_NONNULL(owner.definitionKey()));
+      auto definitionQueryKey =
+          contextual(roots, semanticModule(), ZC_REQUIRE_NONNULL(owner.definitionKey()));
       expectedSyntaxDependency =
           ZC_REQUIRE_NONNULL(snapshot.keyFingerprint<NamedItemSyntaxQuery>(definitionQueryKey));
     }
@@ -936,7 +962,8 @@ ZC_TEST("Owner body projection records exact alternative dependencies") {
     query::QueryKeyFingerprint expectedProvenanceDependency =
         ZC_REQUIRE_NONNULL(snapshot.keyFingerprint<ModuleBodyProvenanceQuery>(module));
     if (owner.kind() == binder::StableBodyOwnerKind::Definition) {
-      auto definitionQueryKey = contextual(roots, ZC_REQUIRE_NONNULL(owner.definitionKey()));
+      auto definitionQueryKey =
+          contextual(roots, semanticModule(), ZC_REQUIRE_NONNULL(owner.definitionKey()));
       expectedProvenanceDependency =
           ZC_REQUIRE_NONNULL(snapshot.keyFingerprint<NamedItemProvenanceQuery>(definitionQueryKey));
     }
@@ -959,7 +986,7 @@ ZC_TEST("Owner body projection records exact alternative dependencies") {
   ZC_REQUIRE(bodylessDefinition != zc::none);
   auto bodylessOwner =
       binder::StableBodyOwnerKey::definition(ZC_REQUIRE_NONNULL(bodylessDefinition).clone());
-  auto bodylessOwnerQueryKey = contextual(roots, bodylessOwner);
+  auto bodylessOwnerQueryKey = contextual(roots, semanticModule(), bodylessOwner);
   auto rejected = snapshot.get<OwnerBodySyntaxQuery>(bodylessOwnerQueryKey);
   ZC_EXPECT(rejected.kind() == query::QueryValueKind::SemanticFailure);
   const uint8_t malformedOwner[] = {0xff};
@@ -993,7 +1020,7 @@ ZC_TEST("Owner body projections are deterministic across workers") {
     syntaxEncoder.encodeSequenceSize(owners.value().owners().size());
     provenanceEncoder.encodeSequenceSize(owners.value().owners().size());
     for (const auto& owner : owners.value().owners()) {
-      auto ownerQueryKey = contextual(roots, owner);
+      auto ownerQueryKey = contextual(roots, semanticModule(), owner);
       auto syntax = snapshot.get<OwnerBodySyntaxQuery>(ownerQueryKey);
       auto provenance = snapshot.getCapability<OwnerBodyProvenanceQuery>(ownerQueryKey);
       ZC_REQUIRE(syntax.kind() == query::QueryValueKind::Value);

@@ -16,6 +16,7 @@
 
 #include "zc/core/encoding.h"
 #include "zc/ztest/test.h"
+#include "zomlang/compiler/identity/canonical-decoder.h"
 
 namespace zomlang::compiler::identity {
 namespace {
@@ -61,6 +62,26 @@ CanonicalTraitReference trait(zc::StringPtr text) {
 CanonicalBoundObligation obligation(zc::StringPtr subject, zc::StringPtr bound) {
   return CanonicalBoundObligation::from(namedType(CanonicalNameRoot::relative(), subject),
                                         namedType(CanonicalNameRoot::relative(), bound));
+}
+
+template <typename Value>
+void expectRoundTrip(const Value& value) {
+  auto bytes = value.encode();
+  CanonicalDecoder decoder(bytes.asPtr());
+  auto decoded = Value::decodeCanonical(decoder);
+  ZC_REQUIRE(decoded != zc::none);
+  ZC_EXPECT(decoder.finished());
+  ZC_IF_SOME(admitted, decoded) { ZC_EXPECT(admitted.encode().asPtr() == bytes.asPtr()); }
+  for (size_t size = 0; size < bytes.size(); ++size) {
+    CanonicalDecoder truncated(bytes.asPtr().slice(0, size));
+    ZC_EXPECT(Value::decodeCanonical(truncated) == zc::none);
+  }
+}
+
+zc::Array<uint8_t> decodedBytes(zc::StringPtr hex) {
+  auto bytes = zc::decodeHex(hex);
+  ZC_REQUIRE(bytes != zc::none);
+  return zc::mv(ZC_REQUIRE_NONNULL(bytes));
 }
 
 }  // namespace
@@ -114,7 +135,21 @@ ZC_TEST("CanonicalTraitReference passes the exact fieldwise vector and preserves
     ZC_EXPECT(value.arguments()[0].predefinedKind() == PredefinedTypeKind::I16);
     ZC_EXPECT(value.arguments()[1].predefinedKind() == PredefinedTypeKind::I8);
     ZC_EXPECT(value.arguments()[2].predefinedKind() == PredefinedTypeKind::I16);
+    expectRoundTrip(value);
   }
+}
+
+ZC_TEST("Canonical generic parameters and bound obligations decode compositionally") {
+  zc::Maybe<CanonicalHeaderTypeSyntax> defaultType(predefined(PredefinedTypeKind::I16));
+  auto generic = CanonicalGenericParameter::from(zc::mv(defaultType));
+  auto bound = obligation("T"_zc, "Bound"_zc);
+
+  expectRoundTrip(generic);
+  expectRoundTrip(bound);
+
+  auto invalidPresence = decodedBytes("ff"_zc);
+  CanonicalDecoder invalidPresenceDecoder(invalidPresence.asPtr());
+  ZC_EXPECT(CanonicalGenericParameter::decodeCanonical(invalidPresenceDecoder) == zc::none);
 }
 
 ZC_TEST("CanonicalImplHeader passes the exact RFC 0018 fieldwise vector") {
@@ -133,6 +168,7 @@ ZC_TEST("CanonicalImplHeader passes the exact RFC 0018 fieldwise vector") {
     ZC_EXPECT(value.safety() == ImplSafety::Safe);
     ZC_EXPECT(value.trait().name().root().kind() == CanonicalNameRootKind::Relative);
     ZC_EXPECT(value.selfType().predefinedKind() == PredefinedTypeKind::I32);
+    expectRoundTrip(value);
   }
 }
 
@@ -159,6 +195,7 @@ ZC_TEST("CanonicalImplHeader retains generic order and sorts unique obligations"
     const auto expectedSecond = obligation("T"_zc, "B"_zc).encode();
     ZC_EXPECT(value.obligations()[0].encode().asPtr() == expectedFirst.asPtr());
     ZC_EXPECT(value.obligations()[1].encode().asPtr() == expectedSecond.asPtr());
+    expectRoundTrip(value);
   }
 }
 
@@ -185,6 +222,62 @@ ZC_TEST("CanonicalImplHeader rejects the negative unsafe combination") {
       predefined(PredefinedTypeKind::I32), zc::mv(obligations));
 
   ZC_EXPECT(rejected == zc::none);
+}
+
+ZC_TEST("CanonicalImplHeader admits the positive unsafe combination") {
+  zc::Vector<CanonicalGenericParameter> generics;
+  zc::Vector<CanonicalBoundObligation> obligations;
+  auto admitted = CanonicalImplHeader::from(
+      zc::mv(generics), ImplPolarity::Positive, ImplSafety::Unsafe, trait("UnsafeTrait"_zc),
+      predefined(PredefinedTypeKind::I32), zc::mv(obligations));
+
+  ZC_REQUIRE(admitted != zc::none);
+  ZC_IF_SOME(value, admitted) { expectRoundTrip(value); }
+}
+
+ZC_TEST("Canonical implementation decoders reject hostile counts roots and closed tags") {
+  auto hostileCount = decodedBytes("0000000000010000"_zc);
+  CanonicalDecoder hostileCountDecoder(hostileCount.asPtr());
+  ZC_EXPECT(CanonicalImplHeader::decodeCanonical(hostileCountDecoder) == zc::none);
+
+  zc::Vector<CanonicalHeaderTypeSyntax> traitArguments;
+  auto validTrait = CanonicalTraitReference::from(name(CanonicalNameRoot::relative(), "Trait"_zc),
+                                                  zc::mv(traitArguments));
+  ZC_REQUIRE(validTrait != zc::none);
+  ZC_IF_SOME(value, validTrait) {
+    auto bytes = value.encode();
+    const size_t argumentCountOffset = bytes.size() - sizeof(uint64_t);
+    bytes[argumentCountOffset + 5] = 0x01;
+    CanonicalDecoder hostileArgumentsDecoder(bytes.asPtr());
+    ZC_EXPECT(CanonicalTraitReference::decodeCanonical(hostileArgumentsDecoder) == zc::none);
+  }
+
+  auto genericRootTrait =
+      decodedBytes("030000000000000000000000000000000000000000000000000000000000000000"_zc);
+  CanonicalDecoder genericRootDecoder(genericRootTrait.asPtr());
+  ZC_EXPECT(CanonicalTraitReference::decodeCanonical(genericRootDecoder) == zc::none);
+
+  zc::Vector<CanonicalGenericParameter> generics;
+  zc::Vector<CanonicalBoundObligation> obligations;
+  auto header = CanonicalImplHeader::from(zc::mv(generics), ImplPolarity::Positive,
+                                          ImplSafety::Safe, trait("Trait"_zc),
+                                          predefined(PredefinedTypeKind::I32), zc::mv(obligations));
+  ZC_REQUIRE(header != zc::none);
+  ZC_IF_SOME(value, header) {
+    const auto expectMutationRejected = [&value](size_t offset, uint8_t byte) {
+      auto bytes = value.encode();
+      bytes[offset] = byte;
+      CanonicalDecoder decoder(bytes.asPtr());
+      ZC_EXPECT(CanonicalImplHeader::decodeCanonical(decoder) == zc::none);
+    };
+    expectMutationRejected(8, 0xff);
+    expectMutationRejected(9, 0xff);
+    auto bytes = value.encode();
+    bytes[8] = 0x02;
+    bytes[9] = 0x02;
+    CanonicalDecoder negativeUnsafeDecoder(bytes.asPtr());
+    ZC_EXPECT(CanonicalImplHeader::decodeCanonical(negativeUnsafeDecoder) == zc::none);
+  }
 }
 
 }  // namespace zomlang::compiler::identity

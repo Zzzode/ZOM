@@ -14,6 +14,8 @@
 
 #include "zomlang/compiler/identity/canonical-overload-header.h"
 
+#include "zc/core/debug.h"
+#include "zomlang/compiler/identity/canonical-decoder.h"
 #include "zomlang/compiler/identity/canonical-encoder.h"
 #include "zomlang/compiler/identity/canonical-overload-header-data.h"
 
@@ -153,6 +155,25 @@ CanonicalGenericParameter CanonicalGenericParameter::from(
   return CanonicalGenericParameter(zc::heap<detail::CanonicalGenericParameterData>(
       detail::CanonicalGenericParameterData{zc::mv(defaultType)}));
 }
+zc::Maybe<CanonicalGenericParameter> CanonicalGenericParameter::decodeCanonical(
+    CanonicalDecoder& decoder) {
+  auto presence = decoder.decodeUint8();
+  if (presence == zc::none) { return zc::none; }
+  zc::Maybe<CanonicalHeaderTypeSyntax> defaultType;
+  switch (ZC_ASSERT_NONNULL(presence)) {
+    case 0x00:
+      break;
+    case 0x01: {
+      auto value = CanonicalHeaderTypeSyntax::decodeCanonical(decoder);
+      if (value == zc::none) { return zc::none; }
+      defaultType = zc::mv(ZC_ASSERT_NONNULL(value));
+      break;
+    }
+    default:
+      return zc::none;
+  }
+  return from(zc::mv(defaultType));
+}
 CanonicalGenericParameter CanonicalGenericParameter::clone() const {
   zc::Maybe<CanonicalHeaderTypeSyntax> defaultType;
   ZC_IF_SOME(value, impl->defaultType) { defaultType = value.clone(); }
@@ -188,6 +209,13 @@ CanonicalBoundObligation CanonicalBoundObligation::from(CanonicalHeaderTypeSynta
                                                         CanonicalHeaderTypeSyntax&& bound) {
   return CanonicalBoundObligation(zc::heap<detail::CanonicalBoundObligationData>(
       detail::CanonicalBoundObligationData{zc::mv(subject), zc::mv(bound)}));
+}
+zc::Maybe<CanonicalBoundObligation> CanonicalBoundObligation::decodeCanonical(
+    CanonicalDecoder& decoder) {
+  auto subject = CanonicalHeaderTypeSyntax::decodeCanonical(decoder);
+  auto bound = CanonicalHeaderTypeSyntax::decodeCanonical(decoder);
+  if (subject == zc::none || bound == zc::none) { return zc::none; }
+  return from(zc::mv(ZC_ASSERT_NONNULL(subject)), zc::mv(ZC_ASSERT_NONNULL(bound)));
 }
 CanonicalBoundObligation CanonicalBoundObligation::clone() const {
   return from(impl->subject.clone(), impl->bound.clone());

@@ -82,6 +82,10 @@ bool containsAuthority(const binder::NamedDefinitionInventory& inventory,
   return false;
 }
 
+bool sameModule(const identity::ModuleKey& left, const identity::ModuleKey& right) {
+  return left.encode().asPtr() == right.encode().asPtr();
+}
+
 template <typename Context>
 query::TypedQueryResult<RecoveredAuthority> providerAuthority(Context& context,
                                                               const ContextualDefinitionKey& key) {
@@ -113,9 +117,10 @@ query::TypedQueryResult<RecoveredAuthority> providerAuthority(Context& context,
   }
 
   const auto& record = authority.value();
-  auto module = StableModuleQueryKey::fromVerified(record.module());
-  bool contradictory =
-      identity::DefinitionKey::compute(record) != key.definition() || module == zc::none;
+  const auto& routed = key.definition();
+  auto module = StableModuleQueryKey::fromVerified(routed.module());
+  bool contradictory = identity::DefinitionKey::compute(record) != routed.definition() ||
+                       !sameModule(record.module(), routed.module()) || module == zc::none;
   if (!contradictory) {
     auto inventory = context.template get<NamedDefinitionInventoryQuery>(ZC_ASSERT_NONNULL(module));
     if (inventory.isRuntimeFailure()) {
@@ -123,7 +128,7 @@ query::TypedQueryResult<RecoveredAuthority> providerAuthority(Context& context,
           inventory.runtimeFailure());
     }
     contradictory = inventory.kind() != query::QueryValueKind::Value ||
-                    !containsAuthority(inventory.value(), key.definition(), record);
+                    !containsAuthority(inventory.value(), routed.definition(), record);
   }
   if (!contradictory) {
     return query::TypedQueryResult<RecoveredAuthority>::value(
@@ -174,8 +179,11 @@ query::TypedQueryResult<RecoveredAuthority> verifierAuthority(Context& context,
   }
 
   auto recomputed = identity::DefinitionKey::compute(authority.value());
-  auto module = StableModuleQueryKey::fromVerified(authority.value().module());
-  bool contradictory = recomputed != key.definition() || module == zc::none;
+  const auto& routed = key.definition();
+  auto module = StableModuleQueryKey::fromVerified(routed.module());
+  bool contradictory = recomputed != routed.definition() ||
+                       !sameModule(authority.value().module(), routed.module()) ||
+                       module == zc::none;
   if (!contradictory) {
     auto inventory = context.template get<NamedDefinitionInventoryQuery>(ZC_ASSERT_NONNULL(module));
     if (inventory.isRuntimeFailure()) {
@@ -183,7 +191,7 @@ query::TypedQueryResult<RecoveredAuthority> verifierAuthority(Context& context,
           inventory.runtimeFailure());
     }
     contradictory = inventory.kind() != query::QueryValueKind::Value ||
-                    !containsAuthority(inventory.value(), key.definition(), authority.value());
+                    !containsAuthority(inventory.value(), routed.definition(), authority.value());
   }
   if (!contradictory) {
     return query::TypedQueryResult<RecoveredAuthority>::value(
@@ -561,7 +569,7 @@ query::TypedQueryResult<NamedItemSyntaxQuery::Value> NamedItemSyntaxQuery::provi
     return query::TypedQueryResult<Value>::runtimeFailure(
         query::QueryRuntimeFailure::InvariantViolation);
   }
-  auto root = providerRoot(definitionSites.value().capability(), key.definition());
+  auto root = providerRoot(definitionSites.value().capability(), key.definition().definition());
   if (root == zc::none) {
     return query::TypedQueryResult<Value>::runtimeFailure(
         query::QueryRuntimeFailure::InvariantViolation);
@@ -571,7 +579,8 @@ query::TypedQueryResult<NamedItemSyntaxQuery::Value> NamedItemSyntaxQuery::provi
   auto implementationInputs = implementationBoundaries(implementationSites.value().capability());
   auto projection = binder::ModuleBodySyntaxProducer::produceNamedItem(
       source.value().parsed, authority.value().record.module(), source.value().moduleNode,
-      ZC_ASSERT_NONNULL(root), key.definition(), definitions.asPtr(), implementationInputs.asPtr());
+      ZC_ASSERT_NONNULL(root), key.definition().definition(), definitions.asPtr(),
+      implementationInputs.asPtr());
   if (!projection.is<binder::ModuleBodySyntaxProjection>()) {
     return query::TypedQueryResult<Value>::semanticFailure(
         encodeFailure(NamedItemFailureKind::BoundaryMismatch));
@@ -617,14 +626,15 @@ bool NamedItemSyntaxQuery::verify(query::QueryContext& context, const Key& key,
       implementationSites.kind() != query::QueryValueKind::Value) {
     return false;
   }
-  auto root = verifierRoot(definitionSites.value().capability(), key.definition());
+  auto root = verifierRoot(definitionSites.value().capability(), key.definition().definition());
   if (root == zc::none) { return false; }
   auto definitions = definitionBoundaries(source.value().parsed, source.value().moduleNode,
                                           definitionSites.value().capability());
   auto implementationInputs = implementationBoundaries(implementationSites.value().capability());
   auto expected = binder::ModuleBodySyntaxVerifier::reconstructNamedItem(
       source.value().parsed, authority.value().record.module(), source.value().moduleNode,
-      ZC_ASSERT_NONNULL(root), key.definition(), definitions.asPtr(), implementationInputs.asPtr());
+      ZC_ASSERT_NONNULL(root), key.definition().definition(), definitions.asPtr(),
+      implementationInputs.asPtr());
   if (!expected.is<binder::ModuleBodySyntaxProjection>()) { return false; }
   auto syntax = binder::NamedItemSyntax::from(
       authority.value().record.module().clone(),
@@ -683,7 +693,7 @@ NamedItemProvenanceQuery::provide(query::CapabilityQueryContext& context, const 
     return query::CapabilityProviderResult<Capability>::runtimeFailure(
         query::QueryRuntimeFailure::InvariantViolation);
   }
-  auto root = providerRoot(definitionSites.value().capability(), key.definition());
+  auto root = providerRoot(definitionSites.value().capability(), key.definition().definition());
   if (root == zc::none) {
     return query::CapabilityProviderResult<Capability>::semanticFailure(
         encodeFailure(NamedItemFailureKind::MissingProvenance));
@@ -693,7 +703,8 @@ NamedItemProvenanceQuery::provide(query::CapabilityQueryContext& context, const 
   auto implementationInputs = implementationBoundaries(implementationSites.value().capability());
   auto projection = binder::ModuleBodySyntaxProducer::produceNamedItem(
       source.value().parsed, authority.value().record.module(), source.value().moduleNode,
-      ZC_ASSERT_NONNULL(root), key.definition(), definitions.asPtr(), implementationInputs.asPtr());
+      ZC_ASSERT_NONNULL(root), key.definition().definition(), definitions.asPtr(),
+      implementationInputs.asPtr());
   if (!projection.is<binder::ModuleBodySyntaxProjection>()) {
     return query::CapabilityProviderResult<Capability>::semanticFailure(
         encodeFailure(NamedItemFailureKind::BoundaryMismatch));
@@ -737,14 +748,15 @@ zc::Maybe<zc::Array<uint8_t>> NamedItemProvenanceQuery::verify(
       implementationSites.kind() != query::QueryValueKind::Value) {
     return zc::none;
   }
-  auto root = verifierRoot(definitionSites.value().capability(), key.definition());
+  auto root = verifierRoot(definitionSites.value().capability(), key.definition().definition());
   if (root == zc::none) { return zc::none; }
   auto definitions = definitionBoundaries(source.value().parsed, source.value().moduleNode,
                                           definitionSites.value().capability());
   auto implementationInputs = implementationBoundaries(implementationSites.value().capability());
   auto expected = binder::ModuleBodySyntaxVerifier::reconstructNamedItem(
       source.value().parsed, authority.value().record.module(), source.value().moduleNode,
-      ZC_ASSERT_NONNULL(root), key.definition(), definitions.asPtr(), implementationInputs.asPtr());
+      ZC_ASSERT_NONNULL(root), key.definition().definition(), definitions.asPtr(),
+      implementationInputs.asPtr());
   if (!expected.is<binder::ModuleBodySyntaxProjection>()) { return zc::none; }
   auto expectedSyntax = binder::NamedItemSyntax::from(
       authority.value().record.module().clone(),

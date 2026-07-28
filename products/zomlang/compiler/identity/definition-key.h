@@ -188,6 +188,9 @@ public:
   ZC_NODISCARD static ImplIdentityRecord from(ModuleKey&& module,
                                               zc::Vector<EnclosingStableOwnerKey>&& owners,
                                               CanonicalImplHeader&& header);
+  /// \brief Decodes one exact canonical record within the 4 MiB authority bound.
+  ZC_NODISCARD static zc::Maybe<ImplIdentityRecord> decodeCanonical(
+      zc::ArrayPtr<const uint8_t> bytes);
   ZC_NODISCARD ImplIdentityRecord clone() const;
   ZC_NODISCARD const ModuleKey& module() const noexcept;
   ZC_NODISCARD zc::ArrayPtr<const EnclosingStableOwnerKey> owners() const noexcept;

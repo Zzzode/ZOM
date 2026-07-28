@@ -161,6 +161,8 @@ public:
   BindingNameKey(BindingNameKey&&) noexcept = default;
   BindingNameKey& operator=(BindingNameKey&&) noexcept = default;
   ZC_DISALLOW_COPY(BindingNameKey);
+  ZC_NODISCARD static zc::Maybe<BindingNameKey> from(
+      Namespace nameSpace, identity::DeclaredDefinitionName&& name) noexcept;
   ZC_NODISCARD BindingNameKey clone() const;
   ZC_NODISCARD Namespace nameSpace() const noexcept;
   ZC_NODISCARD const identity::DeclaredDefinitionName& name() const noexcept;
@@ -331,6 +333,11 @@ struct ExportSurfaceEntry final {
 
 class ExportSurfaceRevision final {
 public:
+  /// \brief Reconstructs an opaque revision identity from a validated digest.
+  ///
+  /// This operation does not verify the canonical export-surface preimage.
+  ZC_NODISCARD static ExportSurfaceRevision fromDigest(
+      const identity::Sha256Digest& digest) noexcept;
   ZC_NODISCARD const identity::Sha256Digest& digest() const noexcept;
   ZC_NODISCARD static zc::Maybe<ExportSurfaceRevision> computeFramed(
       const identity::Sha256Digest& semanticContextFingerprint,

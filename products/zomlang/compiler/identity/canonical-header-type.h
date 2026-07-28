@@ -181,6 +181,9 @@ public:
       CanonicalNamedHeaderType&& principal, zc::Vector<CanonicalNameReference>&& markers,
       zc::Vector<CanonicalAssociatedBinding>&& associatedBindings);
 
+  /// \brief Decodes one inline canonical type with a maximum nesting depth of 100.
+  ZC_NODISCARD static zc::Maybe<CanonicalHeaderTypeSyntax> decodeCanonical(
+      CanonicalDecoder& decoder);
   ZC_NODISCARD CanonicalHeaderTypeSyntax clone() const;
   ZC_NODISCARD CanonicalHeaderTypeSyntaxKind kind() const noexcept;
   ZC_NODISCARD zc::Maybe<const CanonicalNamedHeaderType&> namedType() const noexcept;

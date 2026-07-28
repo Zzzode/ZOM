@@ -6,6 +6,7 @@ set(IDENTITY_SRC
   ${CMAKE_CURRENT_SOURCE_DIR}/canonical-header-name.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/canonical-header-type-compound.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/canonical-header-type-core.cc
+  ${CMAKE_CURRENT_SOURCE_DIR}/canonical-header-type-decode.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/canonical-header-type-encode.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/canonical-header-type-records.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/canonical-impl-header.cc

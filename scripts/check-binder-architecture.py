@@ -42,6 +42,17 @@ DRIVER_SESSION_TEST = Path(
 )
 FACT_SCHEMA = BINDER / "binding-fact-schema.def"
 FACT_SCHEMA_GATE = Path("scripts/check-binder-fact-schema.py")
+STABLE_SCHEMA = BINDER / "stable-binding-schema.def"
+STABLE_FACTS_HEADER = BINDER / "stable-binding-facts.h"
+STABLE_FACTS_SOURCE = BINDER / "stable-binding-facts.cc"
+STABLE_CODEC_HEADER = BINDER / "stable-binding-codec.h"
+STABLE_CODEC_SOURCE = BINDER / "stable-binding-codec.cc"
+STABLE_TEST_SOURCE = TESTS / "stable-binding-facts-test.cc"
+STABLE_SCHEMA_GATE = Path("scripts/check-stable-binding-schema.py")
+LANDING_SCOPE_GATE = Path("scripts/check-landing-scope.py")
+STABLE_LANDING_ALLOWLIST = Path(
+    "products/zomlang/tests/coverage/rfc-0030-stable-binding-landing-files.txt"
+)
 MODULE_BODY_HEADER = BINDER / "module-body-syntax.h"
 MODULE_BODY_VALUE_SOURCE = BINDER / "module-body-syntax.cc"
 MODULE_BODY_PRODUCER_SOURCE = BINDER / "module-body-syntax-producer.cc"
@@ -153,6 +164,15 @@ def required_files() -> tuple[Path, ...]:
         CLOSURE_FREE_VARIABLES_SOURCE,
         FACT_SCHEMA,
         FACT_SCHEMA_GATE,
+        STABLE_SCHEMA,
+        STABLE_FACTS_HEADER,
+        STABLE_FACTS_SOURCE,
+        STABLE_CODEC_HEADER,
+        STABLE_CODEC_SOURCE,
+        STABLE_TEST_SOURCE,
+        STABLE_SCHEMA_GATE,
+        LANDING_SCOPE_GATE,
+        STABLE_LANDING_ALLOWLIST,
         STABLE_IDENTITY_VERIFIER_SOURCE,
         CANONICAL_HEADER_VERIFIER_HEADER,
         CANONICAL_HEADER_VERIFIER_SOURCE,
@@ -534,6 +554,134 @@ def check_schema_wiring(files: dict[Path, str], errors: list[str]) -> None:
         errors.append(f"{TEST_CMAKE}: Binder fact schema gate is not wired")
 
 
+def normalized_cpp(text: str) -> str:
+    return re.sub(r"\s+", "", text)
+
+
+def capability_rows(schema: str) -> list[tuple[str, str, tuple[str, ...]]]:
+    rows: list[tuple[str, str, tuple[str, ...]]] = []
+    pattern = re.compile(
+        r"ZOM_STABLE_BINDING_CAPABILITY_QUERY\((.*?)\)\s*(?=ZOM_STABLE_BINDING_)",
+        re.DOTALL,
+    )
+    for match in pattern.finditer(schema):
+        arguments = [part.strip() for part in match.group(1).split(",")]
+        if len(arguments) != 14:
+            continue
+        failures = tuple(
+            alternative.strip() for alternative in arguments[7].split("|")
+        )
+        rows.append((arguments[0], arguments[4], failures))
+    return rows
+
+
+def descriptor_body(text: str, name: str) -> str:
+    match = re.search(
+        rf"\b(?:class|struct)\s+{re.escape(name)}\s+final\s*\{{", text
+    )
+    if match is None:
+        return ""
+    depth = 1
+    for index in range(match.end(), len(text)):
+        if text[index] == "{":
+            depth += 1
+        elif text[index] == "}":
+            depth -= 1
+            if depth == 0:
+                return text[match.end():index]
+    return ""
+
+
+def qualified_failure(alternative: str) -> str:
+    if alternative.startswith("SourceRejection<"):
+        payload = alternative.removeprefix("SourceRejection<").removesuffix(">")
+        if payload == "DiagnosticFact":
+            payload = "diagnostics::DiagnosticFact"
+        return f"query::SourceRejection<{payload}>"
+    if alternative.startswith("KeyRejection<"):
+        payload = alternative.removeprefix("KeyRejection<").removesuffix(">")
+        if payload == "BinderKeyFailure":
+            payload = "binder::BinderKeyFailure"
+        return f"query::KeyRejection<{payload}>"
+    return alternative
+
+
+def check_stable_binding_wiring(files: dict[Path, str], errors: list[str]) -> None:
+    binder_cmake = files.get(BINDER_CMAKE, "")
+    test_cmake = files.get(TEST_CMAKE, "")
+    for source in (STABLE_FACTS_SOURCE, STABLE_CODEC_SOURCE):
+        marker = f"${{CMAKE_CURRENT_SOURCE_DIR}}/{source.name}"
+        if binder_cmake.count(marker) != 1:
+            errors.append(f"{BINDER_CMAKE}: stable source must appear exactly once: {source.name}")
+    required_registrations = (
+        'add_ztest_unit_test("stable-binding-facts-test"',
+        "add_test(NAME stable-binding-schema\n",
+        "add_test(NAME stable-binding-schema-negative\n",
+        "add_test(NAME stable-binding-landing-scope-negative\n",
+    )
+    for marker in required_registrations:
+        if test_cmake.count(marker) != 1:
+            errors.append(f"{TEST_CMAKE}: stable Binder registration drift: {marker.strip()}")
+    if "check-stable-binding-schema.py --check" not in test_cmake:
+        errors.append(f"{TEST_CMAKE}: stable schema check is not wired")
+    if "check-stable-binding-schema.py --self-test" not in test_cmake:
+        errors.append(f"{TEST_CMAKE}: stable schema negative check is not wired")
+    if "check-landing-scope.py --self-test" not in test_cmake:
+        errors.append(f"{TEST_CMAKE}: stable landing-scope negative check is not wired")
+
+    production = {
+        path: text
+        for path, text in files.items()
+        if Path("products/zomlang/compiler") in path.parents and path != STABLE_SCHEMA
+    }
+    combined = "\n".join(production.values())
+    normalized_combined = normalized_cpp(combined)
+    for name, capability, failures in capability_rows(files.get(STABLE_SCHEMA, "")):
+        owners = [
+            (path, descriptor_body(text, name))
+            for path, text in production.items()
+            if descriptor_body(text, name)
+        ]
+        proof_prefix = f"static_assert(zc::isSameType<typename{name}::"
+        if not owners:
+            if proof_prefix in normalized_combined:
+                errors.append(
+                    f"{STABLE_SCHEMA}: future capability row {name} must remain inert"
+                )
+            continue
+        if len(owners) != 1:
+            errors.append(f"{STABLE_SCHEMA}: capability descriptor {name} must have one owner")
+            continue
+        owner_path, body = owners[0]
+        normalized_body = normalized_cpp(body)
+        expected_failures = ",".join(qualified_failure(value) for value in failures)
+        expected_failure_alias = (
+            "usingFailureAlternatives="
+            f"query::CapabilityFailureList<{expected_failures}>;"
+        )
+        if f"usingCapability={capability};" not in normalized_body:
+            errors.append(
+                f"{owner_path}: {name}::Capability disagrees with the owned schema row"
+            )
+        if expected_failure_alias not in normalized_body:
+            errors.append(
+                f"{owner_path}: {name}::FailureAlternatives disagrees with the owned schema row"
+            )
+        capability_proof = (
+            f"static_assert(zc::isSameType<typename{name}::Capability,{capability}>());"
+        )
+        failure_proof = (
+            "static_assert(zc::isSameType<typename"
+            f"{name}::FailureAlternatives,query::CapabilityFailureList<{expected_failures}>>());"
+        )
+        if capability_proof not in normalized_combined:
+            errors.append(f"{owner_path}: {name} capability equality proof is missing")
+        if failure_proof not in normalized_combined:
+            errors.append(
+                f"{owner_path}: {name} failure-alternatives equality proof is missing"
+            )
+
+
 def check_cmake_boundaries(files: dict[Path, str], errors: list[str]) -> None:
     binder_cmake = files.get(BINDER_CMAKE, "")
     test_cmake = files.get(TEST_CMAKE, "")
@@ -728,6 +876,7 @@ def check(files: dict[Path, str]) -> list[str]:
     check_pipeline(files, errors)
     check_verifier_independence(files, errors)
     check_schema_wiring(files, errors)
+    check_stable_binding_wiring(files, errors)
     check_cmake_boundaries(files, errors)
     check_layering(files, errors)
     check_module_owned_capture_boundaries(files, errors)
@@ -916,6 +1065,38 @@ def self_test(files: dict[Path, str]) -> list[str]:
             CODEC_SOURCE,
             SCHEMA_INCLUDE,
             '#include "zomlang/compiler/binder/missing-schema.def"',
+        ),
+        (
+            "stable facts source CMake omission",
+            BINDER_CMAKE,
+            "stable-binding-facts.cc",
+            "missing-stable-binding-facts.cc",
+        ),
+        (
+            "stable ztest registration omission",
+            TEST_CMAKE,
+            'add_ztest_unit_test("stable-binding-facts-test"',
+            'add_ztest_unit_test("missing-stable-binding-facts-test"',
+        ),
+        (
+            "implemented descriptor missing capability equality",
+            STABLE_FACTS_HEADER,
+            "namespace zomlang::compiler::binder {",
+            "namespace zomlang::compiler::binder {\n"
+            "struct MaterializeModuleGraph final {\n"
+            "  using FailureAlternatives = query::CapabilityFailureList<"
+            "query::SourceRejection<diagnostics::DiagnosticFact>, "
+            "query::KeyRejection<binder::BinderKeyFailure>>;\n"
+            "};\n",
+        ),
+        (
+            "implemented descriptor missing failure equality",
+            STABLE_FACTS_HEADER,
+            "namespace zomlang::compiler::binder {",
+            "namespace zomlang::compiler::binder {\n"
+            "struct MaterializeModuleGraph final {\n"
+            "  using Capability = MaterializedModuleGraph;\n"
+            "};\n",
         ),
         (
             "duplicate publication",

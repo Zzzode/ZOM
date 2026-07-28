@@ -516,7 +516,9 @@ query::TypedQueryResult<binder::ModuleBodyOwners> providerModuleOwners(
   zc::Vector<ContextualDefinitionKey> keys(inventory.value().entries().size());
   for (const auto& entry : inventory.value().entries()) {
     definitions.add(entry.key().clone());
-    keys.add(ContextualDefinitionKey::from(key.contextRoots().clone(), entry.key().clone()));
+    keys.add(ContextualDefinitionKey::from(
+        key.contextRoots().clone(),
+        binder::StableDefinitionQueryKey::from(key.module().clone(), entry.key().clone())));
   }
   auto syntaxItems = context.getParallel<NamedItemSyntaxQuery>(keys.asPtr());
   if (syntaxItems.size() != keys.size()) {
@@ -569,7 +571,9 @@ bool verifierModuleOwners(query::QueryContext& context, const ContextualModuleKe
   zc::Vector<ContextualDefinitionKey> keys(inventory.value().entries().size());
   for (const auto& entry : inventory.value().entries()) {
     definitions.add(entry.key().clone());
-    keys.add(ContextualDefinitionKey::from(key.contextRoots().clone(), entry.key().clone()));
+    keys.add(ContextualDefinitionKey::from(
+        key.contextRoots().clone(),
+        binder::StableDefinitionQueryKey::from(key.module().clone(), entry.key().clone())));
   }
   auto syntaxItems = context.getParallel<NamedItemSyntaxQuery>(keys.asPtr());
   if (syntaxItems.size() != keys.size()) { return false; }
@@ -606,55 +610,6 @@ bool verifierModuleOwners(query::QueryContext& context, const ContextualModuleKe
 }
 
 }  // namespace
-
-ContextualBodyOwnerKey::ContextualBodyOwnerKey(CompilationRootSetQueryKey&& contextRoots,
-                                               binder::StableBodyOwnerKey&& owner) noexcept
-    : contextRootsField(zc::mv(contextRoots)), ownerField(zc::mv(owner)) {}
-
-ContextualBodyOwnerKey ContextualBodyOwnerKey::from(CompilationRootSetQueryKey&& contextRoots,
-                                                    binder::StableBodyOwnerKey&& owner) {
-  return ContextualBodyOwnerKey(zc::mv(contextRoots), zc::mv(owner));
-}
-
-zc::Maybe<ContextualBodyOwnerKey> ContextualBodyOwnerKey::decodeCanonical(
-    zc::ArrayPtr<const uint8_t> bytes) {
-  identity::CanonicalDecoder decoder(bytes);
-  auto rootsBytes = decoder.decodeByteString(kMaximumScalarBytes);
-  auto ownerBytes = decoder.decodeByteString(kMaximumScalarBytes);
-  if (rootsBytes == zc::none || ownerBytes == zc::none || !decoder.finished()) { return zc::none; }
-  auto roots = CompilationRootSetQueryKey::decodeCanonical(ZC_ASSERT_NONNULL(rootsBytes).asPtr());
-  auto owner = binder::StableBodyOwnerKey::decodeCanonical(ZC_ASSERT_NONNULL(ownerBytes).asPtr());
-  if (roots == zc::none || owner == zc::none ||
-      ZC_ASSERT_NONNULL(owner).encode().asPtr() != ZC_ASSERT_NONNULL(ownerBytes).asPtr()) {
-    return zc::none;
-  }
-  return ContextualBodyOwnerKey(zc::mv(ZC_ASSERT_NONNULL(roots)), zc::mv(ZC_ASSERT_NONNULL(owner)));
-}
-
-ContextualBodyOwnerKey ContextualBodyOwnerKey::clone() const {
-  return ContextualBodyOwnerKey(contextRootsField.clone(), ownerField.clone());
-}
-
-const CompilationRootSetQueryKey& ContextualBodyOwnerKey::contextRoots() const noexcept {
-  return contextRootsField;
-}
-
-const binder::StableBodyOwnerKey& ContextualBodyOwnerKey::owner() const noexcept {
-  return ownerField;
-}
-
-zc::Array<uint8_t> ContextualBodyOwnerKey::encodeCanonical() const {
-  identity::CanonicalEncoder encoder;
-  const auto roots = contextRootsField.encodeCanonical();
-  const auto owner = ownerField.encode();
-  encoder.encodeByteString(roots.asPtr());
-  encoder.encodeByteString(owner.asPtr());
-  return encoder.finish();
-}
-
-bool ContextualBodyOwnerKey::operator==(const ContextualBodyOwnerKey& other) const {
-  return contextRootsField == other.contextRootsField && ownerField == other.ownerField;
-}
 
 zc::StringPtr ModuleBodyOwnersQuery::domain() { return "zom.query.module-body-owners"_zc; }
 
@@ -714,9 +669,10 @@ zc::Maybe<OwnerBodySyntaxQuery::Value> OwnerBodySyntaxQuery::decodeValue(
 
 query::TypedQueryResult<OwnerBodySyntaxQuery::Value> OwnerBodySyntaxQuery::provide(
     query::QueryContext& context, const Key& key) {
-  if (key.owner().kind() == binder::StableBodyOwnerKind::Module) {
-    const auto& module = ZC_ASSERT_NONNULL(key.owner().moduleKey());
-    auto queryKey = StableModuleQueryKey::fromVerified(module);
+  const auto& body = key.body();
+  const auto& owner = body.owner();
+  if (owner.kind() == binder::StableBodyOwnerKind::Module) {
+    auto queryKey = StableModuleQueryKey::fromVerified(body.module());
     if (queryKey == zc::none) {
       return query::TypedQueryResult<Value>::runtimeFailure(
           query::QueryRuntimeFailure::InvariantViolation);
@@ -726,7 +682,7 @@ query::TypedQueryResult<OwnerBodySyntaxQuery::Value> OwnerBodySyntaxQuery::provi
       return propagate<Value>(syntax);
     }
     auto value =
-        binder::OwnerBodySyntax::from(key.owner().clone(), module.clone(), syntax.value().clone());
+        binder::OwnerBodySyntax::from(owner.clone(), body.module().clone(), syntax.value().clone());
     if (value == zc::none) {
       return query::TypedQueryResult<Value>::runtimeFailure(
           query::QueryRuntimeFailure::InvariantViolation);
@@ -734,12 +690,17 @@ query::TypedQueryResult<OwnerBodySyntaxQuery::Value> OwnerBodySyntaxQuery::provi
     return query::TypedQueryResult<Value>::value(zc::mv(ZC_ASSERT_NONNULL(value)));
   }
 
-  const auto& definition = ZC_ASSERT_NONNULL(key.owner().definitionKey());
-  auto definitionKey =
-      ContextualDefinitionKey::from(key.contextRoots().clone(), definition.clone());
+  const auto& definition = ZC_ASSERT_NONNULL(owner.definitionKey());
+  auto definitionKey = ContextualDefinitionKey::from(
+      key.contextRoots().clone(),
+      binder::StableDefinitionQueryKey::from(body.module().clone(), definition.clone()));
   auto syntax = context.get<NamedItemSyntaxQuery>(definitionKey);
   if (syntax.kind() != query::QueryValueKind::Value || syntax.isRuntimeFailure()) {
     return propagate<Value>(syntax);
+  }
+  if (!sameModule(syntax.value().owningModule(), body.module())) {
+    return query::TypedQueryResult<Value>::semanticFailure(
+        encodeFailure(OwnerBodyFailureKind::ForeignOwner));
   }
   const auto admission = providerExecutableRoot(syntax.value().detachedSyntax());
   if (admission == ExecutableRootAdmission::NoBody) {
@@ -750,9 +711,8 @@ query::TypedQueryResult<OwnerBodySyntaxQuery::Value> OwnerBodySyntaxQuery::provi
     return query::TypedQueryResult<Value>::semanticFailure(
         encodeFailure(OwnerBodyFailureKind::MalformedDetachedSyntax));
   }
-  auto value =
-      binder::OwnerBodySyntax::from(key.owner().clone(), syntax.value().owningModule().clone(),
-                                    syntax.value().detachedSyntax().clone());
+  auto value = binder::OwnerBodySyntax::from(owner.clone(), body.module().clone(),
+                                             syntax.value().detachedSyntax().clone());
   if (value == zc::none) {
     return query::TypedQueryResult<Value>::runtimeFailure(
         query::QueryRuntimeFailure::InvariantViolation);
@@ -762,9 +722,10 @@ query::TypedQueryResult<OwnerBodySyntaxQuery::Value> OwnerBodySyntaxQuery::provi
 
 bool OwnerBodySyntaxQuery::verify(query::QueryContext& context, const Key& key,
                                   const query::TypedQueryResult<Value>& result) {
-  if (key.owner().kind() == binder::StableBodyOwnerKind::Module) {
-    const auto& module = ZC_ASSERT_NONNULL(key.owner().moduleKey());
-    auto queryKey = StableModuleQueryKey::fromVerified(module);
+  const auto& body = key.body();
+  const auto& owner = body.owner();
+  if (owner.kind() == binder::StableBodyOwnerKind::Module) {
+    auto queryKey = StableModuleQueryKey::fromVerified(body.module());
     if (queryKey == zc::none) { return false; }
     auto syntax = context.get<ModuleBodySyntaxQuery>(ZC_ASSERT_NONNULL(queryKey));
     if (syntax.isRuntimeFailure()) { return false; }
@@ -774,14 +735,15 @@ bool OwnerBodySyntaxQuery::verify(query::QueryContext& context, const Key& key,
     }
     if (syntax.kind() != query::QueryValueKind::Value) { return false; }
     auto expected =
-        binder::OwnerBodySyntax::from(key.owner().clone(), module.clone(), syntax.value().clone());
+        binder::OwnerBodySyntax::from(owner.clone(), body.module().clone(), syntax.value().clone());
     return result.kind() == query::QueryValueKind::Value && expected != zc::none &&
            ZC_ASSERT_NONNULL(expected) == result.value();
   }
 
-  const auto& definition = ZC_ASSERT_NONNULL(key.owner().definitionKey());
-  auto definitionKey =
-      ContextualDefinitionKey::from(key.contextRoots().clone(), definition.clone());
+  const auto& definition = ZC_ASSERT_NONNULL(owner.definitionKey());
+  auto definitionKey = ContextualDefinitionKey::from(
+      key.contextRoots().clone(),
+      binder::StableDefinitionQueryKey::from(body.module().clone(), definition.clone()));
   auto syntax = context.get<NamedItemSyntaxQuery>(definitionKey);
   if (syntax.isRuntimeFailure()) { return false; }
   if (syntax.kind() == query::QueryValueKind::SemanticFailure) {
@@ -789,6 +751,11 @@ bool OwnerBodySyntaxQuery::verify(query::QueryContext& context, const Key& key,
            result.semanticFailureBytes() == syntax.semanticFailureBytes();
   }
   if (syntax.kind() != query::QueryValueKind::Value) { return false; }
+  if (!sameModule(syntax.value().owningModule(), body.module())) {
+    auto expectedFailure = encodeFailure(OwnerBodyFailureKind::ForeignOwner);
+    return result.kind() == query::QueryValueKind::SemanticFailure &&
+           result.semanticFailureBytes() == expectedFailure.asPtr();
+  }
   const auto admission = verifierExecutableRoot(syntax.value().detachedSyntax());
   if (admission != ExecutableRootAdmission::Executable) {
     const auto failure = admission == ExecutableRootAdmission::NoBody
@@ -798,9 +765,8 @@ bool OwnerBodySyntaxQuery::verify(query::QueryContext& context, const Key& key,
     return result.kind() == query::QueryValueKind::SemanticFailure &&
            result.semanticFailureBytes() == expectedFailure.asPtr();
   }
-  auto expected =
-      binder::OwnerBodySyntax::from(key.owner().clone(), syntax.value().owningModule().clone(),
-                                    syntax.value().detachedSyntax().clone());
+  auto expected = binder::OwnerBodySyntax::from(owner.clone(), body.module().clone(),
+                                                syntax.value().detachedSyntax().clone());
   return result.kind() == query::QueryValueKind::Value && expected != zc::none &&
          ZC_ASSERT_NONNULL(expected) == result.value();
 }
@@ -826,9 +792,11 @@ OwnerBodyProvenanceQuery::provide(query::CapabilityQueryContext& context, const 
   if (syntax.kind() != query::QueryValueKind::Value || syntax.isRuntimeFailure()) {
     return propagateCapability<Capability>(syntax);
   }
+  const auto& body = key.body();
+  const auto& owner = body.owner();
   zc::Maybe<binder::ModuleBodyProvenance> retained;
-  if (key.owner().kind() == binder::StableBodyOwnerKind::Module) {
-    auto moduleKey = StableModuleQueryKey::fromVerified(ZC_ASSERT_NONNULL(key.owner().moduleKey()));
+  if (owner.kind() == binder::StableBodyOwnerKind::Module) {
+    auto moduleKey = StableModuleQueryKey::fromVerified(body.module());
     if (moduleKey == zc::none) {
       return query::CapabilityProviderResult<Capability>::runtimeFailure(
           query::QueryRuntimeFailure::InvariantViolation);
@@ -841,7 +809,9 @@ OwnerBodyProvenanceQuery::provide(query::CapabilityQueryContext& context, const 
     retained = provenance.value().capability().clone();
   } else {
     auto definitionKey = ContextualDefinitionKey::from(
-        key.contextRoots().clone(), ZC_ASSERT_NONNULL(key.owner().definitionKey()).clone());
+        key.contextRoots().clone(),
+        binder::StableDefinitionQueryKey::from(body.module().clone(),
+                                               ZC_ASSERT_NONNULL(owner.definitionKey()).clone()));
     auto provenance = context.getCapability<NamedItemProvenanceQuery>(definitionKey);
     if (provenance.kind() != query::QueryValueKind::Value || provenance.isRuntimeFailure()) {
       return propagateCapability<Capability>(provenance);
@@ -854,7 +824,7 @@ OwnerBodyProvenanceQuery::provide(query::CapabilityQueryContext& context, const 
         encodeFailure(OwnerBodyFailureKind::MissingProvenance));
   }
   auto value =
-      binder::OwnerBodyProvenance::from(key.owner().clone(), zc::mv(ZC_ASSERT_NONNULL(retained)));
+      binder::OwnerBodyProvenance::from(owner.clone(), zc::mv(ZC_ASSERT_NONNULL(retained)));
   if (value == zc::none) {
     return query::CapabilityProviderResult<Capability>::runtimeFailure(
         query::QueryRuntimeFailure::InvariantViolation);
@@ -870,9 +840,11 @@ zc::Maybe<zc::Array<uint8_t>> OwnerBodyProvenanceQuery::verify(
   if (syntax.isRuntimeFailure() || syntax.kind() != query::QueryValueKind::Value) {
     return zc::none;
   }
+  const auto& body = key.body();
+  const auto& owner = body.owner();
   zc::Maybe<binder::ModuleBodyProvenance> retained;
-  if (key.owner().kind() == binder::StableBodyOwnerKind::Module) {
-    auto moduleKey = StableModuleQueryKey::fromVerified(ZC_ASSERT_NONNULL(key.owner().moduleKey()));
+  if (owner.kind() == binder::StableBodyOwnerKind::Module) {
+    auto moduleKey = StableModuleQueryKey::fromVerified(body.module());
     if (moduleKey == zc::none) { return zc::none; }
     auto provenance =
         context.getCapability<ModuleBodyProvenanceQuery>(ZC_ASSERT_NONNULL(moduleKey));
@@ -882,7 +854,9 @@ zc::Maybe<zc::Array<uint8_t>> OwnerBodyProvenanceQuery::verify(
     retained = provenance.value().capability().clone();
   } else {
     auto definitionKey = ContextualDefinitionKey::from(
-        key.contextRoots().clone(), ZC_ASSERT_NONNULL(key.owner().definitionKey()).clone());
+        key.contextRoots().clone(),
+        binder::StableDefinitionQueryKey::from(body.module().clone(),
+                                               ZC_ASSERT_NONNULL(owner.definitionKey()).clone()));
     auto provenance = context.getCapability<NamedItemProvenanceQuery>(definitionKey);
     if (provenance.isRuntimeFailure() || provenance.kind() != query::QueryValueKind::Value) {
       return zc::none;
@@ -894,7 +868,7 @@ zc::Maybe<zc::Array<uint8_t>> OwnerBodyProvenanceQuery::verify(
     return zc::none;
   }
   auto expected =
-      binder::OwnerBodyProvenance::from(key.owner().clone(), zc::mv(ZC_ASSERT_NONNULL(retained)));
+      binder::OwnerBodyProvenance::from(owner.clone(), zc::mv(ZC_ASSERT_NONNULL(retained)));
   if (expected == zc::none || ZC_ASSERT_NONNULL(expected) != candidate) { return zc::none; }
   auto witness = candidate.encodeCanonical();
   auto decoded = binder::OwnerBodyProvenance::decodeCanonical(witness.asPtr());

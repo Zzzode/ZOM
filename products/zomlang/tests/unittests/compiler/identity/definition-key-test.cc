@@ -339,6 +339,85 @@ ZC_TEST("ImplIdentityRecord passes the complete owner and implementation-header 
   auto key = ImplKey::compute(record);
   ZC_EXPECT(zc::encodeHex(key.bytes()) ==
             "250c2ac7bdbf2982970d2ad2bbcb7df02bf9eb30d9a55bb5411fdb5fcb9bf69b"_zc);
+  auto decoded = ImplIdentityRecord::decodeCanonical(encoded.asPtr());
+  ZC_REQUIRE(decoded != zc::none);
+  ZC_EXPECT(ZC_REQUIRE_NONNULL(decoded).encode().asPtr() == encoded.asPtr());
+  ZC_EXPECT(ImplKey::compute(ZC_REQUIRE_NONNULL(decoded)) == key);
+}
+
+ZC_TEST("ImplIdentityRecord decoder is exact bounded and closed") {
+  zc::Vector<EnclosingStableOwnerKey> owners;
+  owners.add(EnclosingStableOwnerKey::definition(rawDefinitionKey(0x33)));
+  auto record = ImplIdentityRecord::from(module(), zc::mv(owners), implHeader());
+  auto encoded = record.encode();
+
+  for (size_t size = 0; size < encoded.size(); ++size) {
+    ZC_EXPECT(ImplIdentityRecord::decodeCanonical(encoded.asPtr().first(size)) == zc::none);
+  }
+
+  auto trailing = zc::heapArray<uint8_t>(encoded.size() + 1);
+  trailing.first(encoded.size()).copyFrom(encoded.asPtr());
+  trailing.back() = 0;
+  ZC_EXPECT(ImplIdentityRecord::decodeCanonical(trailing.asPtr()) == zc::none);
+
+  const size_t ownerCountOffset = module().encode().size();
+  auto hostileOwnerCount = zc::heapArray<uint8_t>(encoded.asPtr());
+  for (size_t index = 0; index < 8; ++index) { hostileOwnerCount[ownerCountOffset + index] = 0; }
+  hostileOwnerCount[ownerCountOffset + 5] = 1;
+  ZC_EXPECT(ImplIdentityRecord::decodeCanonical(hostileOwnerCount.asPtr()) == zc::none);
+
+  auto unknownOwner = zc::heapArray<uint8_t>(encoded.asPtr());
+  unknownOwner[ownerCountOffset + 8] = 0xff;
+  ZC_EXPECT(ImplIdentityRecord::decodeCanonical(unknownOwner.asPtr()) == zc::none);
+
+  zc::ArrayPtr<const uint8_t> empty;
+  ZC_EXPECT(ImplIdentityRecord::decodeCanonical(empty) == zc::none);
+  auto oversized = zc::heapArray<uint8_t>(4 * 1024 * 1024 + 1);
+  ZC_EXPECT(ImplIdentityRecord::decodeCanonical(oversized.asPtr()) == zc::none);
+}
+
+ZC_TEST("ImplIdentityRecord rejects normalized duplicate and unsorted obligation bytes") {
+  zc::Vector<CanonicalGenericParameter> generics;
+  zc::Vector<CanonicalBoundObligation> obligations;
+  obligations.add(CanonicalBoundObligation::from(predefined(PredefinedTypeKind::I8),
+                                                 predefined(PredefinedTypeKind::I16)));
+  auto header = CanonicalImplHeader::from(zc::mv(generics), ImplPolarity::Positive,
+                                          ImplSafety::Safe, trait("Trait"_zc),
+                                          predefined(PredefinedTypeKind::I32), zc::mv(obligations));
+  ZC_REQUIRE(header != zc::none);
+  zc::Vector<EnclosingStableOwnerKey> owners;
+  auto record =
+      ImplIdentityRecord::from(module(), zc::mv(owners), zc::mv(ZC_REQUIRE_NONNULL(header)));
+  auto encoded = record.encode();
+  const auto obligationBytes = record.header().obligations()[0].encode();
+  const size_t obligationCountOffset = encoded.size() - obligationBytes.size() - sizeof(uint64_t);
+  auto duplicate = zc::heapArray<uint8_t>(encoded.size() + obligationBytes.size());
+  duplicate.first(encoded.size()).copyFrom(encoded.asPtr());
+  duplicate.slice(encoded.size(), duplicate.size()).copyFrom(obligationBytes.asPtr());
+  duplicate[obligationCountOffset + 7] = 2;
+  ZC_EXPECT(ImplIdentityRecord::decodeCanonical(duplicate.asPtr()) == zc::none);
+
+  zc::Vector<CanonicalGenericParameter> unsortedGenerics;
+  zc::Vector<CanonicalBoundObligation> unsortedObligations;
+  unsortedObligations.add(CanonicalBoundObligation::from(predefined(PredefinedTypeKind::I8),
+                                                         predefined(PredefinedTypeKind::I16)));
+  unsortedObligations.add(CanonicalBoundObligation::from(predefined(PredefinedTypeKind::I16),
+                                                         predefined(PredefinedTypeKind::I8)));
+  auto unsortedHeader = CanonicalImplHeader::from(
+      zc::mv(unsortedGenerics), ImplPolarity::Positive, ImplSafety::Safe, trait("Trait"_zc),
+      predefined(PredefinedTypeKind::I32), zc::mv(unsortedObligations));
+  ZC_REQUIRE(unsortedHeader != zc::none);
+  zc::Vector<EnclosingStableOwnerKey> unsortedOwners;
+  auto sortedRecord = ImplIdentityRecord::from(module(), zc::mv(unsortedOwners),
+                                               zc::mv(ZC_REQUIRE_NONNULL(unsortedHeader)));
+  auto unsorted = sortedRecord.encode();
+  const auto first = sortedRecord.header().obligations()[0].encode();
+  const auto second = sortedRecord.header().obligations()[1].encode();
+  ZC_REQUIRE(first.size() == second.size());
+  const size_t firstOffset = unsorted.size() - first.size() - second.size();
+  unsorted.slice(firstOffset, firstOffset + second.size()).copyFrom(second.asPtr());
+  unsorted.slice(firstOffset + second.size(), unsorted.size()).copyFrom(first.asPtr());
+  ZC_EXPECT(ImplIdentityRecord::decodeCanonical(unsorted.asPtr()) == zc::none);
 }
 
 ZC_TEST("Stable owner keys encode one closed tag followed by one raw digest") {

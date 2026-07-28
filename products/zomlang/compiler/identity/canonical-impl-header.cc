@@ -14,6 +14,8 @@
 
 #include "zomlang/compiler/identity/canonical-impl-header.h"
 
+#include "zc/core/debug.h"
+#include "zomlang/compiler/identity/canonical-decoder.h"
 #include "zomlang/compiler/identity/canonical-encoder.h"
 
 namespace zomlang::compiler::identity {
@@ -37,6 +39,19 @@ struct CanonicalImplHeaderData final {
 }  // namespace canonical_impl_header_detail
 
 namespace {
+
+constexpr uint64_t kMaximumCanonicalHeaderBytes = 4 * 1024 * 1024;
+constexpr uint64_t kMinimumEncodedTypeBytes = 1;
+constexpr uint64_t kMinimumEncodedGenericParameterBytes = 1;
+constexpr uint64_t kMinimumEncodedBoundObligationBytes = 2;
+
+zc::Maybe<uint64_t> decodeCount(CanonicalDecoder& decoder, uint64_t minimumElementBytes) {
+  auto count = decoder.decodeSequenceSize(kMaximumCanonicalHeaderBytes / minimumElementBytes);
+  if (count == zc::none || ZC_ASSERT_NONNULL(count) > decoder.remaining() / minimumElementBytes) {
+    return zc::none;
+  }
+  return count;
+}
 
 bool lessBytes(zc::ArrayPtr<const uint8_t> left, zc::ArrayPtr<const uint8_t> right) noexcept {
   const size_t shared = left.size() < right.size() ? left.size() : right.size();
@@ -113,6 +128,20 @@ zc::Maybe<CanonicalTraitReference> CanonicalTraitReference::from(
                                                                     zc::mv(arguments)}));
 }
 
+zc::Maybe<CanonicalTraitReference> CanonicalTraitReference::decodeCanonical(
+    CanonicalDecoder& decoder) {
+  auto name = CanonicalNameReference::decodeCanonical(decoder);
+  auto count = decodeCount(decoder, kMinimumEncodedTypeBytes);
+  if (name == zc::none || count == zc::none) { return zc::none; }
+  zc::Vector<CanonicalHeaderTypeSyntax> arguments(static_cast<size_t>(ZC_ASSERT_NONNULL(count)));
+  for (uint64_t index = 0; index < ZC_ASSERT_NONNULL(count); ++index) {
+    auto argument = CanonicalHeaderTypeSyntax::decodeCanonical(decoder);
+    if (argument == zc::none) { return zc::none; }
+    arguments.add(zc::mv(ZC_ASSERT_NONNULL(argument)));
+  }
+  return from(zc::mv(ZC_ASSERT_NONNULL(name)), zc::mv(arguments));
+}
+
 CanonicalTraitReference CanonicalTraitReference::clone() const {
   zc::Vector<CanonicalHeaderTypeSyntax> arguments(impl->arguments.size());
   for (const auto& argument : impl->arguments) { arguments.add(argument.clone()); }
@@ -160,6 +189,37 @@ zc::Maybe<CanonicalImplHeader> CanonicalImplHeader::from(
       canonical_impl_header_detail::CanonicalImplHeaderData{zc::mv(genericParameters), polarity,
                                                             safety, zc::mv(trait), zc::mv(selfType),
                                                             zc::mv(obligations)}));
+}
+
+zc::Maybe<CanonicalImplHeader> CanonicalImplHeader::decodeCanonical(CanonicalDecoder& decoder) {
+  auto genericCount = decodeCount(decoder, kMinimumEncodedGenericParameterBytes);
+  if (genericCount == zc::none) { return zc::none; }
+  zc::Vector<CanonicalGenericParameter> genericParameters(
+      static_cast<size_t>(ZC_ASSERT_NONNULL(genericCount)));
+  for (uint64_t index = 0; index < ZC_ASSERT_NONNULL(genericCount); ++index) {
+    auto parameter = CanonicalGenericParameter::decodeCanonical(decoder);
+    if (parameter == zc::none) { return zc::none; }
+    genericParameters.add(zc::mv(ZC_ASSERT_NONNULL(parameter)));
+  }
+  auto polarity = decoder.decodeUint8();
+  auto safety = decoder.decodeUint8();
+  auto trait = CanonicalTraitReference::decodeCanonical(decoder);
+  auto selfType = CanonicalHeaderTypeSyntax::decodeCanonical(decoder);
+  auto obligationCount = decodeCount(decoder, kMinimumEncodedBoundObligationBytes);
+  if (polarity == zc::none || safety == zc::none || trait == zc::none || selfType == zc::none ||
+      obligationCount == zc::none) {
+    return zc::none;
+  }
+  zc::Vector<CanonicalBoundObligation> obligations(
+      static_cast<size_t>(ZC_ASSERT_NONNULL(obligationCount)));
+  for (uint64_t index = 0; index < ZC_ASSERT_NONNULL(obligationCount); ++index) {
+    auto obligation = CanonicalBoundObligation::decodeCanonical(decoder);
+    if (obligation == zc::none) { return zc::none; }
+    obligations.add(zc::mv(ZC_ASSERT_NONNULL(obligation)));
+  }
+  return from(zc::mv(genericParameters), static_cast<ImplPolarity>(ZC_ASSERT_NONNULL(polarity)),
+              static_cast<ImplSafety>(ZC_ASSERT_NONNULL(safety)), zc::mv(ZC_ASSERT_NONNULL(trait)),
+              zc::mv(ZC_ASSERT_NONNULL(selfType)), zc::mv(obligations));
 }
 
 CanonicalImplHeader CanonicalImplHeader::clone() const {

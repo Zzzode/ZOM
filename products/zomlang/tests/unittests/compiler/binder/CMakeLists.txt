@@ -25,3 +25,14 @@ add_ztest_unit_test("identity-pre-admission-test" "identity-pre-admission-test.c
 add_ztest_unit_test("local-identity-test" "local-identity-test.cc" LIBRARIES binder identity diagnostics lexer ast source basic)
 add_ztest_unit_test("module-dependency-requests-test" "module-dependency-requests-test.cc" LIBRARIES binder parser trace identity diagnostics lexer ast source basic)
 add_ztest_unit_test("module-body-syntax-test" "module-body-syntax-test.cc" LIBRARIES binder parser trace identity diagnostics lexer ast source basic)
+add_ztest_unit_test("stable-binding-facts-test" "stable-binding-facts-test.cc" LIBRARIES binder identity diagnostics lexer ast source basic)
+add_test(NAME stable-binding-schema
+  COMMAND "${Python3_EXECUTABLE}" ${CMAKE_SOURCE_DIR}/scripts/check-stable-binding-schema.py --check)
+set_tests_properties(stable-binding-schema PROPERTIES LABELS "binding;architecture")
+add_test(NAME stable-binding-schema-negative
+  COMMAND "${Python3_EXECUTABLE}" ${CMAKE_SOURCE_DIR}/scripts/check-stable-binding-schema.py --self-test)
+set_tests_properties(stable-binding-schema-negative PROPERTIES LABELS "binding;architecture")
+add_test(NAME stable-binding-landing-scope-negative
+  COMMAND "${Python3_EXECUTABLE}" ${CMAKE_SOURCE_DIR}/scripts/check-landing-scope.py --self-test)
+set_tests_properties(stable-binding-landing-scope-negative
+  PROPERTIES LABELS "binding;architecture")

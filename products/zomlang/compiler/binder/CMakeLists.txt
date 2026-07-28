@@ -40,6 +40,8 @@ set(BINDER_SRC
   ${CMAKE_CURRENT_SOURCE_DIR}/parsed-module.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/revision-local-identity-sites.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/scope-arena.cc
+  ${CMAKE_CURRENT_SOURCE_DIR}/stable-binding-codec.cc
+  ${CMAKE_CURRENT_SOURCE_DIR}/stable-binding-facts.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/stable-identity-candidate-producer.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/stable-identity-candidate-verifier.cc)
 
