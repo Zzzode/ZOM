@@ -202,7 +202,7 @@ R30-12M
   -> R30-12P-A -> R30-12Q-A
   -> R30-12N-F1 -> R30-12N-F2A -> R30-12N-F2B -> R30-12O-F
   -> R30-12P-B -> R30-12Q-B
-  -> R30-12R
+  -> RFC 0041 R41-11A
 ```
 
 The non-alphabetic aggregate position is intentional. Task identifiers retain
@@ -268,7 +268,7 @@ tasks accumulate in the existing uncommitted RFC 0030 source tree. RFC 0030
 
 | Area | Paths | Owner |
 |---|---|---|
-| RFC authority | RFCs 0030, 0036, 0037, 0039, and 0040, their trackers, and the RFC index | `rfc` |
+| RFC authority | RFCs 0030, 0036, 0037, 0039, 0040, and 0041, their trackers, and the RFC index | `rfc` |
 | Revision admission | `binding-metadata.{h,cc}` | `binder-checker` |
 | Stable facts | `stable-binding-facts.{h,cc}` | `binder-checker` |
 | Stable codecs | `stable-binding-codec.{h,cc}` | `binder-checker` |
@@ -348,7 +348,7 @@ architecture, allowlist, and landing-scope gates remain mandatory.
   behavior.
 - Projection work follows the complete module-skeleton codec.
 - No alternate canonical-sequence construction path exists.
-- `R30-12R` depends on `R30-12Q-B`.
+- RFC 0041 `R41-11A` depends on `R30-12Q-B`.
 - The immutable base, exact landing set, and atomic commit remain unchanged.
 - All required owners approve one unchanged proposal and tracker hash.
 - `python3 scripts/check-rfc.py` passes.
@@ -361,7 +361,7 @@ architecture, allowlist, and landing-scope gates remain mandatory.
 4. Add and approve the `R30-12N-F2B` ownership and scale matrix.
 5. Implement and approve each remaining replacement task in strict dependency
    order.
-6. Resume the existing RFC 0030 owner-body partitions at `R30-12R`.
+6. Resume the RFC 0041 owner-body partitions at `R41-11A`.
 7. Complete RFC 0030 native wiring and clean-worktree verification.
 8. Land all cumulative source only through RFC 0030 `R30-15`.
 9. Synchronize truthful RFC 0037 status after the atomic source publication.

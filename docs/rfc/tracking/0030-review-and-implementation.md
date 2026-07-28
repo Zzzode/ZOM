@@ -246,13 +246,29 @@ implementation-series base remains
 | `R30-12O-F` | `binder-checker` with `verification` review | `R30-12N-F2B` | In the codec files, implement the complete module-skeleton codec and wire oracle; at most 400 changed source lines. | Complete module-skeleton wire mutation tests | Pending |
 | `R30-12P-B` | `binder-checker` with `verification` review | `R30-12O-F` | In the fact files, implement `StableExportedBinding`, `StableExportedBindingQueryKey`, and `StableScopeNameBucketQueryKey`; at most 400 changed source lines. | Projection fact and key tests | Pending |
 | `R30-12Q-B` | `binder-checker` with `verification` review | `R30-12P-B` | In the codec files, implement matching projection codecs and wire oracles; at most 400 changed source lines. | Projection wire mutation tests | Pending |
-| `R30-12R` | `binder-checker` with `verification` review | `R30-12Q-B` | In `stable-binding-facts.{h,cc}` and `stable-binding-facts-test.cc`, implement `StableBodyScopeFact`, `StableBodyNodeScopeFact`, `StableOwnerLocalBindingFact`, `StableResolutionFact`, `StableDeferredMemberFact`, `StableSelfOwner`, `StableSelfTypeFact`, `StableThisBindingFact`, and `StableShadowTargetFact`; at most 400 changed source lines. | Owner-body scope and resolution tests | Pending |
-| `R30-12S` | `binder-checker` with `verification` review | `R30-12R` | In `stable-binding-codec.{h,cc}` and `stable-binding-facts-test.cc`, implement the matching owner-body scope and resolution codecs and wire oracles; at most 400 changed source lines. | Owner-body scope wire mutation tests | Pending |
-| `R30-12T` | `binder-checker` with `verification` review | `R30-12S` | In `stable-binding-facts.{h,cc}` and `stable-binding-facts-test.cc`, implement `StableLabelKey`, `StableLabelTarget`, `StableLabelFact`, `StableControlTarget`, `StableControlTransferFact`, `StableClosureFact`, `StableClosureFreeVariable`, `StableClosureFreeVariableFact`, `StableExplicitCaptureMode`, `StableExplicitCaptureBindingFact`, and `StableExplicitClosureCaptureFact`; at most 400 changed source lines. | Control and closure fact tests | Pending |
-| `R30-12U` | `binder-checker` with `verification` review | `R30-12T` | In `stable-binding-codec.{h,cc}` and `stable-binding-facts-test.cc`, implement the matching control and closure codecs and wire oracles; at most 400 changed source lines. | Control and closure wire mutation tests | Pending |
-| `R30-12V` | `binder-checker` with `verification` review | `R30-12U` | In `stable-binding-facts.{h,cc}` and `stable-binding-facts-test.cc`, implement the `BoundOwnerBody` aggregate; at most 400 changed source lines. | Complete owner-body aggregate tests | Pending |
-| `R30-12W` | `binder-checker` with `verification` review | `R30-12V` | In `stable-binding-codec.{h,cc}` and `stable-binding-facts-test.cc`, implement the `BoundOwnerBody` codec and wire oracles; at most 400 changed source lines. | Complete owner-body wire mutation tests | Pending |
-| `R30-12X` | `binder-checker` with `verification` review | `R30-12W` | In `stable-binding-facts.{h,cc}` and `stable-binding-facts-test.cc`, implement `ModuleBindingAllocationPlan` and `OwnerAllocationRange`; at most 400 changed source lines. | Allocation fact and overflow tests | Pending |
+| `R41-11A` | `binder-checker` with `verification` review | `R30-12Q-B`; RFC 0041 `R41-07` | In the fact files, implement body scope and body node-scope facts; at most 400 changed source lines. | Fact invariants and exact hashes | Pending |
+| `R41-12A` | `binder-checker` with `verification` review | `R41-11A` | In the codec files, implement matching body scope codecs and independent wire oracles; at most 400 changed source lines. | Wire mutations and exact hashes | Pending |
+| `R41-11B` | `binder-checker` with `verification` review | `R41-12A` | In the fact files, implement owner-local binding and resolution facts; at most 400 changed source lines. | Fact invariants and exact hashes | Pending |
+| `R41-12B` | `binder-checker` with `verification` review | `R41-11B` | In the codec files, implement matching binding and resolution codecs; at most 400 changed source lines. | Wire mutations and exact hashes | Pending |
+| `R41-11C` | `binder-checker` with `verification` review | `R41-12B` | In the fact files, implement deferred-member facts; at most 400 changed source lines. | Fact invariants and exact hashes | Pending |
+| `R41-12C` | `binder-checker` with `verification` review | `R41-11C` | In the codec files, implement the deferred-member codec; at most 400 changed source lines. | Populated sequence wire mutations | Pending |
+| `R41-11D` | `binder-checker` with `verification` review | `R41-12C` | In the fact files, implement stable self-owner, self-type, and receiver facts; at most 400 changed source lines. | Closed variants and routing invariants | Pending |
+| `R41-12D` | `binder-checker` with `verification` review | `R41-11D` | In the codec files, implement matching self and receiver codecs; at most 400 changed source lines. | Closed-tag wire mutations | Pending |
+| `R41-11E` | `binder-checker` with `verification` review | `R41-12D` | In the fact files, implement shadow-target facts; at most 400 changed source lines. | Target and ownership invariants | Pending |
+| `R41-12E` | `binder-checker` with `verification` review | `R41-11E` | In the codec files, implement the shadow-target codec; at most 400 changed source lines. | Wire mutations and exact hashes | Pending |
+| `R41-13A` | `binder-checker` with `verification` review | `R41-12E` | In the fact files, implement label keys, targets, and facts; at most 400 changed source lines. | Closed variants and relation tests | Pending |
+| `R41-14A` | `binder-checker` with `verification` review | `R41-13A` | In the codec files, implement matching label codecs; at most 400 changed source lines. | Wire mutations and exact hashes | Pending |
+| `R41-13B` | `binder-checker` with `verification` review | `R41-14A` | In the fact files, implement control targets and transfer facts; at most 400 changed source lines. | Closed variants and relation tests | Pending |
+| `R41-14B` | `binder-checker` with `verification` review | `R41-13B` | In the codec files, implement matching control codecs; at most 400 changed source lines. | Wire mutations and exact hashes | Pending |
+| `R41-13C` | `binder-checker` with `verification` review | `R41-14B` | In the fact files, implement closure and free-variable facts; at most 400 changed source lines. | Populated sequences and ownership tests | Pending |
+| `R41-14C` | `binder-checker` with `verification` review | `R41-13C` | In the codec files, implement matching closure codecs; at most 400 changed source lines. | Wire mutations and exact hashes | Pending |
+| `R41-13D` | `binder-checker` with `verification` review | `R41-14C` | In the fact files, implement explicit capture modes and facts; at most 400 changed source lines. | Closed modes and populated captures | Pending |
+| `R41-14D` | `binder-checker` with `verification` review | `R41-13D` | In the codec files, implement matching explicit-capture codecs; at most 400 changed source lines. | Wire mutations and exact hashes | Pending |
+| `R41-15F1` | `binder-checker` with `verification` review | `R41-14D` | In the fact files, implement the complete `BoundOwnerBody` value and bounded smoke evidence; at most 400 changed source lines. | Pimpl, factory, indexes, and accessors | Pending |
+| `R41-15F2A` | `binder-checker` with `verification` review | `R41-15F1` | In the native test only, add structural and relational aggregate evidence; at most 400 changed source lines. | Exact test predecessor and line cap | Pending |
+| `R41-15F2B` | `binder-checker` with `verification` review | `R41-15F2A` | In the native test only, add ownership, multiplicity, accessor, and scale evidence; at most 400 changed source lines. | Exact test predecessor and line cap | Pending |
+| `R41-16` | `binder-checker` with `verification` review | `R41-15F2B` | In the codec files, implement the complete `BoundOwnerBody` codec and independent aggregate oracle; at most 400 changed source lines. | Complete wire mutations | Pending |
+| `R30-12X` | `binder-checker` with `verification` review | RFC 0041 `R41-16` | In `stable-binding-facts.{h,cc}` and `stable-binding-facts-test.cc`, implement `ModuleBindingAllocationPlan` and `OwnerAllocationRange`; at most 400 changed source lines. | Allocation fact and overflow tests | Pending |
 | `R30-12Y` | `binder-checker` with `verification` review | `R30-12X` | In `stable-binding-codec.{h,cc}` and `stable-binding-facts-test.cc`, implement allocation codecs and wire oracles; at most 400 changed source lines. | Allocation wire mutation tests | Pending |
 | `R30-13` | `verification` with `binder-checker`, `module-system`, and `runtime-memory` review | `R30-12Y` | Add build, ztest, schema, CTest, architecture, exact-allowlist, and landing-scope wiring; add the comprehensive Q3 package-request mutation test; enforce staged capability and failure-alternative alias equality checks for implemented descriptors while future rows remain inert. | Focused native, schema mutation, Q3 mutation, and dual-alias architecture gates | Pending |
 | `R30-14` | `verification` | `R30-13` | Assemble only the exact landing set in an isolated clean worktree; prove worktree scope, run focused plus complete gates, explicitly stage the allowlist, and prove index scope. | RFC 0030 Test Plan | Pending |
@@ -289,3 +305,19 @@ atomic publication through `R30-15`. RFC 0037 amendment transaction
 review boundary. RFC 0037 amendment transaction
 `rfc0037-amend-evidence-20260728-d4e18a12` authorizes the refined
 `R30-12N-F2A` and `R30-12N-F2B` evidence reviews without landing source.
+
+Exact-hash review then approved `R30-12N-F2A`, `R30-12N-F2B`, `R30-12O-F`,
+`R30-12P-B`, and `R30-12Q-B` in strict predecessor order. The current approved
+fact tuple is header
+`c721f59631a1dddc57275e8834ac100c2dc605d33c0782a206d196ba5572e682`,
+implementation
+`35b8eebb98b7a179899f5513e0b9161d422e0505078a4b2e1ea1b2f77044a79d`,
+and test
+`4c566c513bda9b06a15b6ed70daefba1fe9ee26c4f69ef1de28c61118d53e457`.
+The current approved codec tuple is header
+`c3c6d26bd1f9d469da563c5b01bd6fc71fece7f5d4585a0ab20bc9f68d4126a5`,
+implementation
+`33adc65a465ee60170090b63e7fd6fd08d2bc18f4f78d972fcb2a77250c2da9f`,
+and the same test hash. Owner-body preflight exceeded the review cap before
+tests and was withdrawn byte-for-byte. RFC 0041 now carries the bounded
+replacement review graph; it changes no source or atomic publication boundary.

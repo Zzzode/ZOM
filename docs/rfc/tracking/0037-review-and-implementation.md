@@ -173,14 +173,20 @@ hash above.
 
 | Task | Owner | Depends On | Deliverable | Verification | Status |
 |---|---|---|---|---|---|
-| `R37-11` | `binder-checker` with `verification` review | `R37-10D`; RFC 0030 `R30-12M`; RFC 0039 `R39-11` before `R30-12O-D`; RFC 0040 `R40-11` before `R30-12N-E` | Implement and approve all RFC 0037 replacement tasks, including separate `R30-12N-F1`, `R30-12N-F2A`, and `R30-12N-F2B` reviews, in strict dependency order without an intermediate commit or push. | Per-task 400-line accounting and RFC 0030 Test Plan | Pending |
+| `R37-11` | `binder-checker` with `verification` review | `R37-10D`; RFC 0030 `R30-12M`; RFC 0039 `R39-11` before `R30-12O-D`; RFC 0040 `R40-11` before `R30-12N-E` | Implement and approve all RFC 0037 replacement tasks, including separate `R30-12N-F1`, `R30-12N-F2A`, and `R30-12N-F2B` reviews, in strict dependency order without an intermediate commit or push, then hand off to RFC 0041 `R41-11A`. | Per-task 400-line accounting and RFC 0030 Test Plan | Pending |
 | `R37-12` | `rfc` | RFC 0030 `R30-15` | Synchronize truthful evidence and move RFC 0037 to LANDED only after the atomic `R29-12AB` transaction is published. | RFC and SHA audit | Pending |
 
-Source review completed exact-hash approval through RFC 0040 `R40-11`, RFC
-0030 `R30-12N-E`, `R30-12O-E`, `R30-12P-A`, and `R30-12Q-A`. Corrected
-`R30-12N-F1` then completed exact-hash approval at the 392-addition tuple
-recorded above. The first `R30-12N-F2` candidate at test hash
-`9dd868623cdc30e103b33d09256faf721a5d72e7f41464f37632d204f3e7b790`
-was returned and fully withdrawn. The live source is the approved F1 tuple,
-remains cumulative and uncommitted, and is not declared landed by this
-tracker.
+Source review completed exact-hash approval through RFC 0040 `R40-11`, all RFC
+0037 replacement tasks, and RFC 0030 `R30-12Q-B`. The final approved hashes are
+facts header
+`c721f59631a1dddc57275e8834ac100c2dc605d33c0782a206d196ba5572e682`,
+facts implementation
+`35b8eebb98b7a179899f5513e0b9161d422e0505078a4b2e1ea1b2f77044a79d`,
+codec header
+`c3c6d26bd1f9d469da563c5b01bd6fc71fece7f5d4585a0ab20bc9f68d4126a5`,
+codec implementation
+`33adc65a465ee60170090b63e7fd6fd08d2bc18f4f78d972fcb2a77250c2da9f`,
+and test
+`4c566c513bda9b06a15b6ed70daefba1fe9ee26c4f69ef1de28c61118d53e457`.
+The live source remains cumulative and uncommitted. RFC 0041 partitions the
+next owner-body reviews and does not declare this source landed.
