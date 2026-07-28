@@ -70,8 +70,9 @@ uncompiled facts source, an unregistered test, or an unowned schema row.
 - Make Binder architecture checks reject missing source, test, schema, or
   CTest wiring.
 - Preserve the dependency order: the atomic `R29-12AB` foundation includes
-  S1, S2, and S3; `R29-12D` then lands canonical diagnostics; `R29-13A`
-  begins runtime work.
+  S1, S2, and S3; `R29-12D` then lands RFC 0042's source-only canonical
+  diagnostic replacement; `R29-13A` begins runtime work; and `R29-13B`
+  introduces S6 with its live Module and Binder producers.
 - Keep the existing immutable implementation-series base unchanged.
 
 ## Non-Goals
@@ -208,6 +209,11 @@ The exhaustive type ownership is:
 | Four canonical package-compilation-request records | `Q3` | `Q3` | `R30_13` |
 | Complete compilation-context authority and transaction records | `T1` | `T1` | `T1` |
 | Stable graph materialization witnesses | `M1` | `M1` | `M1` |
+
+The S6 row above records the accepted future owner partition, not current
+implementation. RFC 0042 deletes its unimplemented rows and task token from
+the live schema. RFC 0029 `R29-13B` reintroduces S6 only when its Module and
+Binder producers, factories, mappings, verifier, and tests land together.
 
 `CanonicalInputPayloadDigest` uses
 `(implementationTask=T1, testTask=T1)`.
@@ -575,7 +581,7 @@ and additional allowlist entries, staged-set drift, unstaged changes,
 untracked files, rename and deletion status, duplicates, and path escape. It
 is registered in CTest as `stable-binding-landing-scope-negative`.
 
-### R29-12D Exact Landing Set
+### Withdrawn R29-12D Six-Path Set
 
 The canonical Binder diagnostic-fact transaction owns exactly:
 
@@ -598,6 +604,18 @@ replacement. It requires exact rejection for every mutation.
 The focused transaction runs `check-diagnostic-coverage.py --self-test`,
 `check-diagnostic-coverage.py --check`, and `diagnostic-fact-test`. The
 diagnostics CMake file owns explicit test labeling and proves CTest discovery.
+
+### RFC 0042 Replacement Of The R29-12D Set
+
+Post-R30-15 live-use inspection rejected the six-path set above: it omitted
+the source fact producer, parser values, materializer, Binder result codec,
+driver handoff, and native callers required by a direct replacement. RFC 0042
+supersedes that execution set with its source-only `Exact Atomic Landing Set`,
+deletes the unimplemented S6 schema inventory, removes the already-satisfied
+`checker-source-diagnostics.def` path, and keeps one atomic `R29-12D` commit.
+RFC 0029 `R29-13B` later owns S6's direct Source-plus-Module expansion,
+production factories, mappings, `ZOM3028`, schema rows, and evidence. The
+six-path set is review history and no longer authorizes product edits.
 
 ### Isolated Verification
 
@@ -768,8 +786,9 @@ runtime observability, or release operation is added.
 13. Prove worktree scope, run focused and complete native verification,
     explicitly stage the allowlist, and prove index scope.
 14. Commit and push the atomic transaction.
-15. Land `R29-12D` with its transaction-local diagnostic test and coverage
-    gates.
+15. Land `R29-12D` through RFC 0042 with the complete source-only fact and
+    provenance cutover, transaction-local diagnostic tests, exact scope, and
+    coverage gates.
 16. Resume `R29-13A`.
 
 ## Test Plan
@@ -828,3 +847,4 @@ None
 | 2026-07-28 | ACCEPTED | Transaction `rfc0039-accept-20260728-de7ab2aa` inserts the Binder-owned `ExportSurfaceRevision::fromDigest` prerequisite required by `R30-12O-D`, expands the atomic landing set by `binding-metadata.{h,cc}`, and preserves `R30-15` as the only source commit and push. |
 | 2026-07-28 | ACCEPTED | Transaction `rfc0030-amend-landing-20260728-71b56ffb` reconciles the exact pending landing set to approved RFC SHA-256 `71b56ffba6823b210322f70e0a24a54b0e9c2291504a496530c237ff1b4b2815`, tracker SHA-256 `07707641939e84a535867decf12aef201305752b85f53c5833dc9684ae05b875`, and allowlist SHA-256 `8bb87b1ba22757097743061e741e5f66662acfbcbc23b62acaf5f6f0952dd851`; the 43-path transaction consumes the published `named-item-query.h` prerequisite and preserves `R30-15` as the only pending source commit and push. |
 | 2026-07-28 | ACCEPTED | Transaction `rfc0030-amend-gate-20260728-f468df91` synchronizes the CompilerSession architecture gate to approved RFC SHA-256 `f468df9160c2b08790134e8923cf7b9882b1640a37719ba6ab0462bf0b14906d`, tracker SHA-256 `3dc6bd85b62bb231a5761c8867664097d7370ac6859385450e6a0b2014fc382a`, allowlist SHA-256 `70695d54b9b5e137e1123050880dea78bc16d452e36107daa0d72e6f4c10b433`, and gate SHA-256 `02a92e43dea40ea9eb5ba5211069de5f1d65f77cc6eb62360425495ab1841521`; the exact pending source transaction contains 44 paths. |
+| 2026-07-28 | ACCEPTED | `R30-11` through `R30-15` published as `8885782747e4c863cefcb0d069bc4569cefce9aa`; RFC 0042 replaces the unlanded `R30-16` diagnostic execution set. |

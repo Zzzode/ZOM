@@ -39,8 +39,10 @@ The design:
    for stable-identity validation;
 6. freezes the exact key and failure contracts of the five live
    revision-local Binder capabilities; and
-7. moves RFC 0027 `S1`, `S2`, `S3`, and `S6` before the atomic runtime
-   cutover without merging their logical partitions.
+7. records the landed RFC 0027 `S1`, `S2`, and `S3` foundation, requires the
+   RFC 0042 source-only diagnostic cutover before runtime work resumes, and
+   moves `S6` into `R29-13B` so its Module and Binder surface lands with live
+   producers and verifiers.
 
 The implementation replaces the current internal contract directly. It adds no
 global allocator, compatibility alias, optional failure surface, generic
@@ -90,8 +92,9 @@ partial landing.
 - Freeze exact failure alternatives, legal key-failure subsets, read order,
   and propagation for the five live Binder capabilities.
 - Remove capability absence and opaque capability semantic failures.
-- Land RFC 0027 `S1`, `S2`, `S3`, and `S6` in their accepted logical
-  partitions before any source partition needs their types.
+- Use the landed RFC 0027 `S1`, `S2`, and `S3` foundation, complete the
+  RFC 0042 source-only diagnostic cutover, and land `S6` in `R29-13B` with
+  the first live Module and Binder producers that require it.
 - Preserve RFC 0028's atomic source replacement and native verification
   requirements.
 
@@ -883,16 +886,20 @@ payload mismatch without referencing or compiling any future descriptor.
 
 ### Dependency Correction
 
-RFC 0027 tasks `S1`, `S2`, `S3`, and `S6` move before the RFC 0028 runtime
-source partitions while retaining their accepted file ownership and logical
-boundaries:
+RFC 0027 tasks `S1`, `S2`, and `S3` form the published stable-binding
+foundation before the RFC 0028 runtime source partitions. RFC 0042 then
+replaces the current source diagnostic contract without reserving Module or
+Binder alternatives. `S6` moves into `R29-13B`, where its schema rows,
+factories, mappings, and codes land with their first live providers and
+verifiers:
 
 | Order | RFC 0027 task | Deliverable |
 |---|---|---|
 | 1 | `S1` | closed stable Binder field, tag, domain, and mutation inventory, including closure-projection deletion |
 | 2 | `S2` | complete stable keys, contextual keys, headers, facts, `BinderQueryOwner`, `BinderKeyFailureKind`, `BinderKeyFailure`, and result algebra |
 | 3 | `S3` | bounded exact-consumption codecs and fixed wire oracles |
-| 4 | `S6` | canonical Binder diagnostic extensions and `DiagnosticFact` payload support required by stable-identity admission |
+| 4 | RFC 0042 `R42-11` through `R42-16` | source-only canonical diagnostic fact, provenance, materialization, and current Binder-consumer cutover |
+| 5 | `S6` in `R29-13B` | direct Source-to-Source-plus-Module expansion with live Binder and identity diagnostic factories, mappings, and verification |
 
 RFC 0031 replaces the original `S1` inventory shape with the complete stable
 schema metamodel below. `S1` is not a field-and-tag subset and may not land a
@@ -1021,19 +1028,30 @@ authority tests,
 the allowlist manifest, and `scripts/check-landing-scope.py`. Only the
 comprehensive schema mutation test changes in the package-request test file.
 
-`S6` lands as one diagnostic-fact Conventional Commit after `R29-12AB`. Its
-exact files, native test, CTest ownership, and diagnostic-coverage gates are
-specified by RFC 0030 under `R29-12D Exact Landing Set`. Runtime work resumes
-only after `R29-12AB` and `R29-12D` land and pass their focused native gates.
+RFC 0042 replaces the incomplete RFC 0030 six-path set with the complete
+current source-only fact, provenance, materializer, caller, native-test,
+CTest, and exact-scope transaction. It also removes the unimplemented `S6`
+schema inventory. Runtime work resumes only after that `R29-12D` commit passes
+its focused and complete native gates.
+
+`S6` lands later inside `R29-13B`. That partition directly replaces the
+source-only diagnostic model with the closed Source-plus-Module model required
+by the live stable-identity provider. It adds the Module root, Binder and
+identity phases and emitters, typed Binder arguments, `PreviousDeclaration`,
+the five exact mappings including `ZOM3028`, production factories, independent
+verification, schema rows, native tests, and static coverage in one bounded
+review partition. No `S6` row, enum alternative, factory, mapping, or code is
+present between RFC 0042 and `R29-13B`.
 
 No subset, placeholder row, forward-declared dummy type, temporary codec,
 uncompiled source, unregistered test, or unconsumed schema is authorized.
 
-After those four accepted partitions land, the RFC 0028 source review
-partitions resume. The sole RFC 0029 `R29-14` source transaction additionally
-contains `IdentitySyntaxSiteInventoryQuery`, `StableIdentityAdmissionQuery`,
-the five exact capability failure contracts, the two complete contextual key
-caller migrations, and their tests.
+After RFC 0042 lands, the RFC 0028 runtime review partitions resume at
+`R29-13A`. `R29-13B` then adds the live `S6` expansion described above. The
+sole RFC 0029 `R29-14` source transaction contains
+`IdentitySyntaxSiteInventoryQuery`, `StableIdentityAdmissionQuery`, the five
+exact capability failure contracts, the two complete contextual key caller
+migrations, the `S6` diagnostic expansion, and their tests.
 
 The additional `R29-13B` review partition has these exact files:
 
@@ -1042,9 +1060,11 @@ The additional `R29-13B` review partition has these exact files:
 | Site inventory and admission payloads | `products/zomlang/compiler/binder/identity-pre-admission.h`; `products/zomlang/compiler/binder/identity-pre-admission.cc` |
 | Independent site and admission production | `products/zomlang/compiler/binder/stable-identity-candidate-producer.h`; `products/zomlang/compiler/binder/stable-identity-candidate-producer.cc` |
 | Independent site and admission verification | `products/zomlang/compiler/binder/stable-identity-candidate-verifier.h`; `products/zomlang/compiler/binder/stable-identity-candidate-verifier.cc` |
+| Canonical Module and Binder diagnostic facts | `products/zomlang/compiler/binder/stable-binding-diagnostic-fact.h`; `products/zomlang/compiler/binder/stable-binding-diagnostic-fact.cc`; `products/zomlang/compiler/diagnostics/diagnostic-fact.h`; `products/zomlang/compiler/diagnostics/diagnostic-fact.cc` |
+| Diagnostic codes, schema rows, and static mappings | `products/zomlang/compiler/diagnostics/diagnostics-binder.def`; `products/zomlang/compiler/binder/stable-binding-schema.def`; `scripts/check-stable-binding-schema.py`; `scripts/check-binder-architecture.py`; `scripts/check-diagnostic-coverage.py` |
 | Descriptors, failure contracts, and caller cutover | `products/zomlang/compiler/driver/named-identity-inventory-query.h`; `products/zomlang/compiler/driver/named-identity-inventory-query.cc`; `products/zomlang/compiler/driver/named-item-query.h`; `products/zomlang/compiler/driver/named-item-query.cc`; `products/zomlang/compiler/driver/owner-body-query.h`; `products/zomlang/compiler/driver/owner-body-query.cc` |
-| Build wiring | `products/zomlang/compiler/binder/CMakeLists.txt`; `products/zomlang/compiler/driver/CMakeLists.txt` |
-| Focused tests | `products/zomlang/tests/unittests/compiler/binder/identity-pre-admission-test.cc`; `products/zomlang/tests/unittests/compiler/driver/named-identity-inventory-query-test.cc`; `products/zomlang/tests/unittests/compiler/driver/named-item-query-test.cc`; `products/zomlang/tests/unittests/compiler/driver/owner-body-query-test.cc`; their Binder and driver `CMakeLists.txt` files |
+| Build wiring | `products/zomlang/compiler/binder/CMakeLists.txt`; `products/zomlang/compiler/driver/CMakeLists.txt`; `products/zomlang/tests/unittests/compiler/binder/CMakeLists.txt`; `products/zomlang/tests/unittests/compiler/driver/CMakeLists.txt` |
+| Focused tests | `products/zomlang/tests/unittests/compiler/binder/identity-pre-admission-test.cc`; `products/zomlang/tests/unittests/compiler/binder/stable-binding-diagnostic-fact-test.cc`; `products/zomlang/tests/unittests/compiler/diagnostics/diagnostic-fact-test.cc`; `products/zomlang/tests/unittests/compiler/driver/named-identity-inventory-query-test.cc`; `products/zomlang/tests/unittests/compiler/driver/named-item-query-test.cc`; `products/zomlang/tests/unittests/compiler/driver/owner-body-query-test.cc` |
 
 These files are bounded review ownership, not an independent landing point.
 They join the existing RFC 0028 `R28-13D.5` and `R28-13G.2` partitions in the
@@ -1144,11 +1164,12 @@ proposal hash.
 
 Implementation then proceeds in this order:
 
-1. land RFC 0027 `S1`, `S2`, `S3`, and `S6` in their accepted logical
-   partitions;
+1. use the published RFC 0027 `S1`, `S2`, and `S3` foundation and complete
+   the RFC 0042 source-only diagnostic cutover;
 2. revise the prepared query-type partition to token identity and
    descriptor-owned canonical payload construction;
-3. prepare the remaining RFC 0028 runtime, descriptor, caller, and test
+3. prepare `R29-13B`, including the live `S6` Source-plus-Module diagnostic
+   expansion, then the remaining RFC 0028 runtime, descriptor, caller, and test
    partitions;
 4. assemble and land one buildable atomic runtime replacement;
 5. continue provenance, full verification, current design publication, and
@@ -1234,10 +1255,10 @@ descriptor, provider, verifier, and decoding paths as unit tests.
 | `R29-11` | `rfc` | `R29-10` | Accept one synchronized documentation transaction |
 | `R29-12A` | `binder-checker` with `verification` review | `R29-11` | Prepare and review RFC 0027 `S1` as the complete RFC 0031 schema metamodel; do not land independently |
 | `R29-12B` | `binder-checker` with `module-system` review | `R29-12A` | Prepare and review RFC 0027 `S2`; do not land independently |
-| `R29-12AB` | `binder-checker` with `module-system` and `verification` review | `R29-12A`; `R29-12B`; RFC 0030 `R30-14` | Land the exact RFC 0030 allowlist, including the bounded package-request schema mutation test, as one buildable S1-plus-S2-plus-S3 transaction with contextual caller cutover and focused native, mutation, architecture, and landing-scope gates |
-| `R29-12D` | `error-system` with `binder-checker` and `verification` review | `R29-12AB` | Execute RFC 0027 `S6` as one canonical Binder diagnostic-fact commit |
+| `R29-12AB` | `binder-checker` with `module-system` and `verification` review | `R29-12A`; `R29-12B`; RFC 0030 `R30-14` | Landed the exact RFC 0030 allowlist as commit `8885782747e4c863cefcb0d069bc4569cefce9aa` |
+| `R29-12D` | `error-system` with `binder-checker`, `lexer-parser`, `module-system`, and `verification` review | `R29-12AB`; RFC 0042 acceptance | Execute RFC 0042 `R42-11` through `R42-16` as one canonical diagnostic-fact cutover |
 | `R29-13A` | `module-system` with `runtime-memory` review | `R29-12AB`; `R29-12D` | Implement the generic descriptor-dependent `CapabilityDemandResult<Descriptor>` runtime sum with no codec and revise the RFC 0028 query-type partition |
-| `R29-13B` | `module-system` with `binder-checker`, `error-system`, and `verification` review | `R29-13A` | Add identity-site provenance, stable identity admission, and the five descriptor failure contracts to bounded source partitions |
+| `R29-13B` | `module-system` with `binder-checker`, `error-system`, and `verification` review | `R29-13A` | Add identity-site provenance, stable identity admission, the five descriptor failure contracts, and RFC 0027 `S6` as one live Source-plus-Module diagnostic expansion with factories, schema rows, mappings, `ZOM3028`, and native evidence |
 | `R29-13C` | `verification` | `R29-13B` | Add generic runtime-sum coverage, staged capability and failure-alternative alias mutations, token, result, provenance, mapping, verifier, race, private decoder, and CTest compile-fail coverage |
 | `R29-14` | `module-system` with all source owners | `R29-13C`; RFC 0028 `R28-13G` | Assemble and land the corrected RFC 0028 atomic runtime source transaction as the sole landing authority |
 | `R29-15` | `verification` | `R29-14` | Run the complete RFC 0028 and RFC 0029 verification plans |
@@ -1353,3 +1374,4 @@ None
 | 2026-07-27 | ACCEPTED | Transaction `rfc0029-accept-20260727-8d393a0c` accepted proposal SHA-256 `8d393a0c6c00a7fad9ef086d3d25f5ed44300041afa9e1e1a4af5d68830fd3e7` with exact-hash approval from every required owner and synchronized RFCs 0017 through 0020 and 0025 through 0028 without claiming implementation. |
 | 2026-07-28 | ACCEPTED | Transaction `rfc0030-accept-20260728-4ed0e6b8` synchronized the build-visible S1-plus-S2-plus-S3 atomic landing, exact contextual-key cutover, native and mutation gates, landing-scope proof, and separate S6 diagnostic transaction to RFC 0030 proposal SHA-256 `4ed0e6b885abc87a1c4251855780cf115a85b3623b1d46f774a4b664110f7b6b`; RFC 0029 remains accepted and implementation remains incomplete. |
 | 2026-07-28 | ACCEPTED | Transaction `rfc0031-accept-20260728-c25fcb18` synchronized the complete stable schema metamodel, generic capability runtime sum, descriptor capability and failure-alternative alias checks, and package-request mutation scope to RFC 0031 proposal SHA-256 `c25fcb18e503ac214a8e92c925fa88108a915c2b15c94409dfecb88b3d9a63d5` and tracker SHA-256 `d64e7791ed2e2a488c5f57bc07ac341ccfc37d37c220c85131e2c9e846fb8d0d`; all implementation tasks remain pending. |
+| 2026-07-28 | ACCEPTED | `R29-12A`, `R29-12B`, and `R29-12AB` published at `8885782747e4c863cefcb0d069bc4569cefce9aa`; RFC 0042 owns the pending `R29-12D` source-only diagnostic replacement, and `R29-13A` through `R29-17` remain pending. |

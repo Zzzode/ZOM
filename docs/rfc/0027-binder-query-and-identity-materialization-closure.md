@@ -2652,10 +2652,12 @@ classification independently. None of the five descriptors constructs
 `ForeignOwner`, `BoundaryMismatch`, `NonSelectedSource`, or
 `CrossBoundaryPath`.
 
-RFC 0027 `S1`, `S2`, and `S3` remain separate bounded review partitions and
-land only as the single build-visible RFC 0030 `R29-12AB` transaction. `S6`
-lands separately as `R29-12D`. Runtime work resumes at `R29-13A` only after
-both transactions pass their focused native gates. Identity-site
+RFC 0027 `S1`, `S2`, and `S3` landed as the single build-visible RFC 0030
+`R29-12AB` transaction at commit
+`8885782747e4c863cefcb0d069bc4569cefce9aa`. The complete source-only wire
+replacement lands separately through RFC 0042 as `R29-12D`. Runtime work
+resumes at `R29-13A` only after that transaction passes its focused and
+complete native gates. `S6` moves to `R29-13B`, where identity-site
 inventory, stable admission, all five failure contracts, complete-key caller
 migration, and focused tests join the single `R29-14` runtime landing.
 
@@ -2666,8 +2668,8 @@ that exceeds that bound must be split before execution. New files named below
 are contractual targets, not optional placement suggestions.
 
 `S1`, `S2`, `S3`, and `S6` below name file partitions, not independent task
-state. RFC 0030 `R30-11` through `R30-16`, RFC 0029 `R29-12A`,
-`R29-12B`, `R29-12AB`, and `R29-12D` are their sole execution and status
+state. RFC 0030 `R30-11` through `R30-15`, RFC 0029 `R29-12A`,
+`R29-12B`, `R29-12AB`, and `R29-13B` are their sole execution and status
 authority. No RFC 0027 tracker row may execute or land those partitions
 independently. RFC 0031 is the accepted metamodel authority consumed by
 `R30-11`; no earlier task may infer ownership, instantiate a future
@@ -2685,7 +2687,7 @@ descriptor, or replace the hand-authored inventory with generated schema.
 | `S4` | `binder-checker` | `S2` | `products/zomlang/compiler/binder/canonical-definition-header-producer.h`; `products/zomlang/compiler/binder/canonical-definition-header-producer.cc` | body disposition and staging-safe definition headers |
 | `S4A` | `binder-checker` | `S2` | `products/zomlang/compiler/binder/canonical-impl-header-producer.h`; `products/zomlang/compiler/binder/canonical-impl-header-producer.cc` | staging-safe implementation-occurrence headers |
 | `S5` | `binder-checker` | `S4`; `S4A` | `products/zomlang/compiler/binder/canonical-header-verifier.h`; `products/zomlang/compiler/binder/canonical-header-verifier.cc` | independent header verification and equal-occurrence coverage |
-| `S6` | `error-system` with `binder-checker` and `verification` review | RFC 0029 `R29-12AB` | `products/zomlang/compiler/diagnostics/diagnostics-binder.def`; `products/zomlang/compiler/diagnostics/diagnostic-fact.h`; `products/zomlang/compiler/diagnostics/diagnostic-fact.cc`; `products/zomlang/compiler/checker/checker-source-diagnostics.def`; `products/zomlang/tests/unittests/compiler/diagnostics/diagnostic-fact-test.cc`; `products/zomlang/tests/unittests/compiler/diagnostics/CMakeLists.txt` | land one canonical Binder diagnostic-fact transaction with stable-identity emitters, typed payloads, exact native mutation coverage, CTest registration, diagnostic coverage check and self-test, `ZOM3028`, and failed-lookup bijection |
+| `S6` | `error-system` with `binder-checker`, `module-system`, and `verification` review | RFC 0029 `R29-13A`; RFC 0042 `R42-16` | RFC 0029 `R29-13B` exact live-producer landing set | directly replace the source-only fact contract with the live Source-and-Module contract; land Binder-owned typed arguments, five factories and mappings, Module provenance, exact native mutation coverage, schema and CTest ownership, `ZOM3028`, provider/verifier use, and failed-lookup bijection |
 | `Q3` | `module-system` | `G3` | `products/zomlang/compiler/driver/package/canonical-package-compilation-request.h`; `products/zomlang/compiler/driver/package/canonical-package-compilation-request.cc` | handle-free canonical package request records, exact codecs, verified-request projection, and independent projection verifier; completed production ownership remains closed while RFC 0030 `R30-13` owns the comprehensive schema mutation test |
 | `I1` | `module-system` with `runtime-memory` review | RFC 0029 `R29-14` | `products/zomlang/compiler/identity/canonical-identity-interner-set.h`; `products/zomlang/compiler/identity/canonical-identity-interner-set.cc`; `products/zomlang/compiler/query/semantic-context-capability-arena.h`; `products/zomlang/compiler/query/semantic-context-capability-arena.cc` | arena-owned eight-domain typed interner with collision, concurrency, reverse-lookup, and surviving-lease tests |
 | `I2` | `module-system` | `I1`; RFC 0029 `R29-14`; `S5` | `products/zomlang/compiler/driver/active-identity-membership-query.h`; `products/zomlang/compiler/driver/active-identity-membership-query.cc`; `products/zomlang/compiler/driver/active-definition-authority-query.h`; `products/zomlang/compiler/driver/active-definition-authority-query.cc` | all eight complete-record memberships and conditional readiness |
@@ -2737,10 +2739,10 @@ edit starts before the immutable implementation-series base exists.
 
 `S1`, `S2`, and `S3` are reviewed in the bounded RFC 0030 sequence and cannot
 land separately. RFC 0029 `R29-12AB` is their only landing transaction and
-contains the exact RFC 0030 allowlist. `S6` remains the independent
-`R29-12D` logical and commit boundary. Every query-runtime source task depends
-on both `R29-12AB` and `R29-12D`; `R29-13A` is the first authorized runtime
-task.
+contains the exact RFC 0030 allowlist. RFC 0042 `R29-12D` is the independent
+source diagnostic prerequisite. `R29-13A` is the first authorized runtime
+task, and `S6` lands atomically with the first live Module diagnostic producers
+in `R29-13B`.
 
 ## Test Plan
 

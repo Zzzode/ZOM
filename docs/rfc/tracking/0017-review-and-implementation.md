@@ -254,18 +254,20 @@ failure contracts for the five Binder provenance capabilities.
 | Binding | RFC 0029 Task Authority |
 |---|---|
 | Stable Binder schema, facts, and bounded codecs | `R29-12A`; `R29-12B`; exact RFC 0030 atomic `R29-12AB` |
-| Canonical diagnostic payload | `R29-12D` |
+| Canonical diagnostic payload and source caller cutover | RFC 0042 `R42-11` through `R42-16`, implementing `R29-12D` |
 | Token identity, result algebra, decoder, and query-type partition | `R29-13A` |
 | Identity-site provenance, stable admission, and exact descriptor failures | `R29-13B` |
 | Native, mutation, race, and negative-compile gates | `R29-13C` |
 | Atomic runtime source transaction | `R29-14` |
 | Integrated evidence, current design, and truthful status | `R29-15` through `R29-17` |
 
-`S1`, `S2`, and `S3` remain separately reviewed and land only through the
-exact RFC 0030 `R29-12AB` transaction. `S6` lands afterward through
-`R29-12D`. Runtime work resumes only after both focused gate sets pass. RFC
-0017 remains `IMPLEMENTING`; no foundation implementation task is complete
-through this synchronization.
+`S1`, `S2`, and `S3` landed through the exact RFC 0030 `R29-12AB`
+transaction at commit
+`8885782747e4c863cefcb0d069bc4569cefce9aa`. RFC 0042 lands the direct
+source-wire replacement as `R29-12D`. The live Binder portion of `S6` moves to
+`R29-13B`, where its Module root, producers, factories, mappings, and verifier
+land together. Runtime work resumes only after the RFC 0042 focused and
+complete gates pass. RFC 0017 remains `IMPLEMENTING`.
 
 ## Implementation Tracker
 

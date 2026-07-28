@@ -299,6 +299,14 @@ transaction. `R36-17` remains part of RFC 0030's cumulative atomic source
 transaction. RFC 0030 `R30-12M` depends on the published `R36-16` source
 commit.
 
+The source transaction landed as
+`6b92cfc65bf6c19dfc1591c8abe345d21aa28cda`, completing `R36-11` through
+`R36-16`. The stable Binder consumer and its 4,097-fact evidence landed in the
+atomic stable-binding transaction
+`8885782747e4c863cefcb0d069bc4569cefce9aa`, completing `R36-17`.
+`R36-18` remains pending until RFC 0042 publishes the direct replacement and
+the final evidence audit can move this RFC to LANDED.
+
 ## Repository Impact
 
 | Area | Paths | Owner |
@@ -433,6 +441,12 @@ required.
   candidate tree SHA, staged diff check, tested-tree identity, ASCII-English
   Conventional Commit, and local, upstream, and remote SHA parity.
 
+RFC 0042 directly replaces the source-only fact schema and domain while
+retaining this RFC's diagnostics-owned explicit limits, preflight measurement,
+bounded non-reserving decode, resource injection, complete consumption, and
+byte-identical re-encoding requirements. No source-domain decoder remains
+after that cutover.
+
 ## Implementation Plan
 
 1. Add and verify identity-owned exact-capacity canonical output.
@@ -474,3 +488,4 @@ None
 | 2026-07-28 | DRAFT | Initial dependency-closure design. |
 | 2026-07-28 | REVIEW | Ready for diagnostics, parser, Binder, and verification review. |
 | 2026-07-28 | ACCEPTED | Exact bounded-codec, allocation, candidate-tree, and publication contract approved by all required owners. |
+| 2026-07-28 | ACCEPTED | Source implementation published at `6b92cfc65bf6c19dfc1591c8abe345d21aa28cda`; stable Binder integration published at `8885782747e4c863cefcb0d069bc4569cefce9aa`; final RFC 0042 replacement audit remains pending. |

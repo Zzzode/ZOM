@@ -115,7 +115,7 @@ approval is retained.
 The eleventh complete review candidate,
 `8d393a0c6c00a7fad9ef086d3d25f5ed44300041afa9e1e1a4af5d68830fd3e7`,
 names `R29-14` consistently as the sole source transaction and adds
-`R29-12D` to the `BindModuleSkeleton` dependency edge. It passed the
+`R29-12D` to the current source-diagnostic dependency edge. It passed the
 structural, English-only, internal-versioning, format, and diff gates and
 received exact-hash approval from every required owner without a P0 or P1
 blocker.
@@ -137,9 +137,12 @@ authority. It does not claim implementation.
 
 Transaction `rfc0030-accept-20260728-4ed0e6b8` establishes the foundation
 order. RFC 0027 `S1`, `S2`, and `S3` remain bounded review partitions and land
-only through the exact RFC 0030 `R29-12AB` allowlist. `R29-12D` then lands the
-exact RFC 0030 diagnostic-fact set. `R29-13A` depends on both landing
-transactions. The immutable implementation-series base remains
+only through the exact RFC 0030 `R29-12AB` allowlist. Commit
+`8885782747e4c863cefcb0d069bc4569cefce9aa` published that foundation.
+RFC 0042 replaces the withdrawn diagnostic execution set and assigns
+`R29-12D` only the live source cutover. `R29-13A` depends on both published
+transactions, and `R29-13B` owns the later live RFC 0027 `S6`
+Source-plus-Module expansion. The immutable implementation-series base remains
 `109947943519ec2d380a3e8d71813b40bc68bde5`.
 
 ### RFC 0031 Synchronized Acceptance
@@ -171,18 +174,18 @@ base, or implementation status.
 | `R29-09` | `verification` | `R29-01` | Review native tests, negative compile gates, race seams, and architecture checks. | Exact-hash review | Complete |
 | `R29-10` | `rfc` | `R29-02`; `R29-03`; `R29-04`; `R29-05`; `R29-06`; `R29-07`; `R29-08`; `R29-09` | Record exact-hash approvals and prepare synchronized acceptance. | `python3 scripts/check-rfc.py` | Complete |
 | `R29-11` | `rfc` | `R29-10` | Accept one synchronized documentation transaction. | RFC and synchronization gates | Complete |
-| `R29-12A` | `binder-checker` with `verification` review | `R29-11` | Prepare and review RFC 0027 `S1` as the complete RFC 0031 schema metamodel; do not land independently. | Complete schema metamodel and mutation review | Pending |
-| `R29-12B` | `binder-checker` with `module-system` review | `R29-12A` | Prepare and review RFC 0027 `S2`; do not land independently. | Stable fact review | Pending |
-| `R29-12AB` | `binder-checker` with `module-system` and `verification` review | `R29-12A`; `R29-12B`; RFC 0030 `R30-14` | Land the exact RFC 0030 allowlist, including only the comprehensive schema mutation changes in `products/zomlang/tests/unittests/compiler/driver/package-compilation-request-test.cc`, as one buildable S1-plus-S2-plus-S3 transaction with contextual caller cutover. | Focused native, mutation, architecture, and landing-scope gates | Pending |
-| `R29-12D` | `error-system` with `binder-checker` and `verification` review | `R29-12AB`; RFC 0036 `R36-16` | Execute RFC 0027 `S6` as one canonical Binder diagnostic-fact commit while retaining the diagnostics-owned explicit limits API. | Diagnostic fact native tests | Pending |
+| `R29-12A` | `binder-checker` with `verification` review | `R29-11` | Prepare and review RFC 0027 `S1` as the complete RFC 0031 schema metamodel; do not land independently. | Complete schema metamodel and mutation review | Complete through `R29-12AB` |
+| `R29-12B` | `binder-checker` with `module-system` review | `R29-12A` | Prepare and review RFC 0027 `S2`; do not land independently. | Stable fact review | Complete through `R29-12AB` |
+| `R29-12AB` | `binder-checker` with `module-system` and `verification` review | `R29-12A`; `R29-12B`; RFC 0030 `R30-14` | Land the exact RFC 0030 allowlist as one buildable S1-plus-S2-plus-S3 transaction with contextual caller cutover. | Focused native, mutation, architecture, landing-scope, and SHA parity gates | Complete; commit `8885782747e4c863cefcb0d069bc4569cefce9aa` |
+| `R29-12D` | `error-system` with `binder-checker`, `lexer-parser`, `module-system`, and `verification` review | `R29-12AB`; RFC 0036 `R36-16`; RFC 0042 acceptance | Execute RFC 0042 as one canonical diagnostic-fact and current source-wire cutover while retaining the diagnostics-owned explicit limits API. | RFC 0042 focused and complete gates | Pending |
 | `R29-13A` | `module-system` with `runtime-memory` review | `R29-12AB`; `R29-12D` | Implement the generic descriptor-dependent `CapabilityDemandResult<Descriptor>` runtime sum with no codec and revise the RFC 0028 query-type partition. | Type, conditional alternative, lifetime, and format review | Pending |
-| `R29-13B` | `module-system` with `binder-checker`, `error-system`, and `verification` review | `R29-13A` | Add identity-site provenance, stable identity admission, and the five descriptor failure contracts. | Owner-focused source review | Pending |
+| `R29-13B` | `module-system` with `binder-checker`, `error-system`, and `verification` review | `R29-13A` | Add identity-site provenance, stable identity admission, the five descriptor failure contracts, and RFC 0027 `S6` as the atomic Source-plus-Module expansion with live factories, schema rows, mappings, `ZOM3028`, native tests, and static coverage. | Owner-focused source, schema, mapping, and diagnostic evidence review | Pending |
 | `R29-13C` | `verification` | `R29-13B` | Add generic runtime-sum coverage, reusable staged capability and failure-alternative alias mutations, token, result, provenance, mapping, verifier, race, private decoder, and CTest compile-fail coverage without referencing future descriptors. | Native, mutation, and architecture tests | Pending |
 | `R29-14` | `module-system` with all source owners | `R29-13C`; RFC 0028 `R28-13G` | Assemble and land the corrected RFC 0028 atomic runtime source transaction as the sole landing authority. | Focused sanitizer build and tests | Pending |
 | `R29-15` | `verification` | `R29-14` | Run the complete RFC 0028 and RFC 0029 verification plans. | Full native, coverage, and Release gates | Pending |
 | `R29-16` | `spec-audit` | `R29-15` | Publish only production-backed current design. | Current-state evidence audit | Pending |
 | `R29-17` | `rfc` | `R29-16` | Audit evidence and synchronize truthful statuses. | RFC and evidence audit | Pending |
 
-All implementation rows remain pending. RFC 0031 changes their accepted
-contracts and authority boundaries only; it does not provide implementation
-evidence for any row.
+`R29-12A`, `R29-12B`, and `R29-12AB` are complete through
+`8885782747e4c863cefcb0d069bc4569cefce9aa`. `R29-12D` through `R29-17`
+remain pending; RFC 0042 owns the next source-only diagnostic transaction.

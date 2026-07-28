@@ -153,8 +153,10 @@ declared complete by this decision.
 
 | Task | Owner | Depends On | Deliverable | Verification | Status |
 |---|---|---|---|---|---|
-| `R31-11` | `binder-checker` with all affected owner review | `R31-09` | Resume RFC 0030 `R30-11` and replace the complete unlanded schema candidate with the accepted metamodel. | RFC 0030 schema check and mutation self-test | Pending |
+| `R31-11` | `binder-checker` with all affected owner review | `R31-09` | Resume RFC 0030 `R30-11` and replace the complete unlanded schema candidate with the accepted metamodel. | RFC 0030 schema check and mutation self-test | Complete; published through `8885782747e4c863cefcb0d069bc4569cefce9aa` |
+| `R31-12` | `binder-checker` with `error-system` and `verification` review | RFC 0042 acceptance | Remove the unimplemented diagnostic sums, enums, arguments, mappings, fields, code expectations, and S6 task token from the schema and reusable gate; retain the live Binder result diagnostic payload and bounds. | Stable-binding-schema check and self-test | Pending through RFC 0042 `R42-14A` |
 
-The `R31-09` design gate is satisfied. `R31-11` is authorized to resume RFC
-0030 `R30-11`; it remains pending until the schema and its native gates are
-implemented.
+The `R31-09` design gate and `R31-11` source publication are satisfied.
+`R31-12` is the direct cleanup required before runtime work resumes; future
+diagnostic schema rows land only with their live RFC 0029 or RFC 0025
+producers.

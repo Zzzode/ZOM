@@ -268,7 +268,7 @@ owning RFC tracker and is not copied into a Python table.
 The closed task vocabulary is:
 
 ```text
-S2A S2B S2C S2D S2E S3 S6 I2 B1 B2 B4 M1 M2 M3 M5 Q3 T1
+S2A S2B S2C S2D S2E S3 I2 B1 B2 B4 M1 M2 M3 M5 Q3 T1
 R30_13 R29_13A R29_13C R28_16A R28_16B
 ```
 
@@ -292,7 +292,6 @@ The remaining exact triples are:
 
 | Records | Type task | Codec task | Test task |
 |---|---|---|---|
-| Binder diagnostic argument records | `S6` | `S6` | `S6` |
 | Active membership and readiness records | `I2` | `I2` | `I2` |
 | `CanonicalCompilationRootRecord`, `CanonicalTargetSelectionRecord`, `CanonicalLanguageOptionsRecord`, `CanonicalPackageCompilationRequest` | `Q3` | `Q3` | `R30_13` |
 | `CompleteCompilationContextAuthority` | `T1` | `T1` | `T1` |
@@ -312,7 +311,6 @@ The canonical sum task triples are:
 | Stable failed lookup outcome | `S2C` | `S3` | `S2C` |
 | Owner-body sum types | `S2D` | `S3` | `S2D` |
 | `ActiveMembershipResult<Record>` | `I2` | `I2` | `I2` |
-| `DiagnosticPhaseOrQueryKind`, `DiagnosticEmitterSite` | `S6` | `S6` | `S6` |
 
 `CapabilityDemandResult<Descriptor>` is a `RuntimeSum` with
 `(typeTask=R29_13A, testTask=R29_13C)` and no codec task. Its variants are:
@@ -351,37 +349,22 @@ condition. The five stable-Binder capability rows currently bind
 `Diagnostic=DiagnosticFact` and `KeyFailure=BinderKeyFailure`; this does not
 restrict the global runtime sum to those payload types.
 
-The diagnostic outer sums are complete, dense inventories:
+### Diagnostic Inventory Admission
 
-```text
-DiagnosticPhaseOrQueryKind:
-  Source = 0x01, zero fields
-  Package = 0x02, zero fields
-  BuildScript = 0x03, zero fields
-  Module = 0x04, zero fields
-  ToolchainModuleRootReservation(ToolchainModuleRootReservationProducer) = 0x05
-  CoreFailureProducer(CoreFailureProducer) = 0x06
-  Binder(BinderDiagnosticProducer) = 0x07
+RFC 0042 removes the unimplemented `S6` diagnostic sums, enums, argument
+records, mappings, and diagnostic-code expectations from
+`stable-binding-schema.def` and its gate. The current executable source
+diagnostic contract is diagnostics-owned and does not need a Binder schema
+mirror. `BinderQueryResult<DiagnosticFact>`, its source-rejection alternative,
+the diagnostic count bound, and the diagnostic payload-byte bound remain
+because they have live consumers.
 
-DiagnosticEmitterSite:
-  Source = 0x01, zero fields
-  Package = 0x02, zero fields
-  BuildScript = 0x03, zero fields
-  Module = 0x04, zero fields
-  ToolchainModuleRootReservation(ToolchainModuleRootReservationEmitter) = 0x05
-  CoreLibrary(CoreLibraryDiagnosticEmitter) = 0x06
-  Binder(BinderDiagnosticEmitter) = 0x07
-```
-
-`S6` replaces and tests each complete closed sum in one transaction. It does
-not add an extension registry or preserve parallel definitions.
-
-The zero-field `0x01` through `0x04` variants are family tags. Their exact
-source, package, build-script, or module subidentity remains in the accepted
-`DiagnosticProvenanceKey` variant fields: source phase and occurrence path,
-package roots and field path, build-script producer and logical path, or module
-owner and local path, together with the deterministic occurrence. There is no
-unwritten inner enum or payload for those four outer variants.
+RFC 0029 `R29-13B` later adds only the Module root, Binder and identity
+phase/emitter alternatives, typed argument records, five exact mappings, and
+`ZOM3028` used by its live provider and verifier. RFC 0025 `R25-09C` later
+directly replaces that inventory with the executable five-origin contract.
+Neither transaction may retain an unused prior alternative or reserve a later
+one.
 
 ### Exact Enum Ownership
 
@@ -394,37 +377,10 @@ The schema inventories these complete enums:
 | `ScopeRole` | `Declaration=0x01`, `Generic=0x02`, `Parameters=0x03`, `Members=0x04`, `Implementation=0x05` | `S2B` | `S3` | `S2B` |
 | `StableExplicitCaptureMode` | `ByValue=0x01`, `ByReference=0x02`, `This=0x03` | `S2D` | `S3` | `S2D` |
 | `BinderKeyFailureKind` | `MissingSelectedModuleSource=0x01`, `InactiveOwner=0x02`, `ForeignOwner=0x03`, `DefinitionWithoutBody=0x04`, `BoundaryMismatch=0x05`, `NonSelectedSource=0x06`, `CrossBoundaryPath=0x07` | `S2B` | `S3` | `S2B` |
-| `BinderDiagnosticProducer` | `BindModuleSkeleton=0x01`, `BindOwnerBody=0x02` | `S6` | `S6` | `S6` |
-| `BinderDiagnosticEmitter` | `Declaration=0x01`, `Lookup=0x02`, `ControlTransfer=0x03`, `ContextualSelf=0x04` | `S6` | `S6` | `S6` |
-| `IdentityDiagnosticPhase` | `IdentityAdmission=0x01` | `S6` | `S6` | `S6` |
-| `IdentityDiagnosticEmitter` | `DuplicateBound=0x01`, `DefinitionIdentityCollision=0x02`, `ConstantExpressionNotAllowed=0x03`, `DuplicateGenericParameter=0x04` | `S6` | `S6` | `S6` |
-| `DiagnosticSecondaryRole` | `PreviousDeclaration=0x01` | `S6` | `S6` | `S6` |
-
-`S6` replaces and tests each complete diagnostic enum listed above. The gate
-rejects a missing value, tag gap, tag exchange, unequal task triple, or
-assignment to another known task.
-
-### Exact Diagnostic Mappings
-
-Diagnostic mappings do not inherit tasks from a sum or enum. Each mapping row
-uses `(diagnosticTask=S6, testTask=S6)` and has this exact content:
-
-| Mapping | Primary | Arguments | Secondary | Role | Secondary count | Fix-it count | Native mutation test |
-|---|---|---|---|---|---:|---:|---|
-| `Missing` | `ZOM3001` | `BinderIdentifierDiagnosticArguments` | None | None | 0 | 0 | `DiagnosticFactTest.BinderLookupRejectsExactMappingMutations` |
-| `NamespaceMismatch` | `ZOM3002` | `BinderNamespaceDiagnosticArguments` | None | None | 0 | 0 | `DiagnosticFactTest.BinderLookupRejectsExactMappingMutations` |
-| `Ambiguous` | `ZOM3028` | `BinderIdentifierDiagnosticArguments` | None | None | 0 | 0 | `DiagnosticFactTest.BinderLookupRejectsExactMappingMutations` |
-| `ConstantExpressionNotAllowed` | `ZOM4079` | None | None | None | 0 | 0 | `DiagnosticFactTest.IdentityAdmissionRejectsExactMappingMutations` |
-| `DuplicateGenericParameter` | `ZOM3010` | `BinderIdentifierDiagnosticArguments` | `ZOM3017` | `PreviousDeclaration` | 1 | 0 | `DiagnosticFactTest.IdentityAdmissionRejectsExactMappingMutations` |
-
-Every row uses the mutation set:
-
-```text
-code|arguments|secondary-code|secondary-role|secondary-count|fix-it-count
-```
-
-The gate rejects a missing mapping, extra mapping, field drift, test drift, or
-assignment to any task other than `S6`.
+No diagnostic enum or mapping row is current in the stable-binding schema
+after RFC 0042. The reusable gate rejects any such row until the same atomic
+transaction adds its production reference, independent verifier, native
+mutation test, and explicit task ownership.
 
 ### Exact Descriptor Ownership
 
@@ -737,8 +693,8 @@ concurrency, sandboxing, or user data exposure.
   schema gate must check the closed task vocabulary and exact row mapping.
 - Tracker completion remains documentation state and is not an input to the
   schema gate.
-- The `S6` transaction must rebuild and test two complete diagnostic sums,
-  increasing that transaction's review surface.
+- RFC 0042 must remove every unimplemented diagnostic sum, enum, record,
+  mapping, field, and task expectation from both the schema and reusable gate.
 - Exact landing-scope checks must remain synchronized with the immutable task
   ownership recorded by the schema.
 

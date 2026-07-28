@@ -877,13 +877,15 @@ nodes and source spans. `BindDefinitionBody` reads `NamedItemSyntax`, not
 `ParseSource` or a revision-local identity map, so an unrelated edit in the same
 source does not execute an unchanged body provider.
 
-The parse provider may initially execute the existing whole-source parser, but
-it does so with a query-local `DiagnosticFactBuffer` rather than the global
+The parse provider may execute the whole-source parser, but it does so with a
+query-local `SourceDiagnosticDraftBuffer` rather than the global
 `DiagnosticEngine`. Parser alternatives take buffer checkpoints and explicitly
-commit or roll back speculative facts; a rolled-back branch publishes no fact.
-Syntax failure is the deterministic `ParseRejected` alternative with its
-canonical syntax facts. It remains `RevisionLocal`, is never backdated, and
-does not publish a partial parser object.
+commit or roll back speculative drafts; a rolled-back branch publishes no
+fact. The parse query combines the stable source key with the sorted drafts and
+publishes canonical facts plus their revision-local provenance map. Syntax
+failure is the deterministic `ParseRejected` alternative with those two
+values. It remains `RevisionLocal`, is never backdated, and does not publish a
+partial parser object.
 
 ### Binder Decomposition
 
@@ -1078,14 +1080,23 @@ boundaries; it carries no fabricated source key or empty range.
 
 Each `DiagnosticFact` contains the occurrence key, diagnostic code, canonical
 argument record, primary `DiagnosticLocation`, and an ordered sequence of
-secondary records. A secondary record contains a role tag,
-`DiagnosticLocation`, optional canonical note arguments, and optional canonical
-fix-it replacement. A fix-it is legal only for a source location. The
+secondary records. A secondary record contains a role tag, optional diagnostic
+code, `DiagnosticLocation`, optional canonical note arguments, and optional
+canonical fix-it replacement. A fix-it is legal only for a source location. The
 schema-defined sequence order is semantic; when the producer receives an
 unordered set it sorts by role, canonical location encoding, and argument
 bytes. Source variants resolve spans only through revision-local provenance
 queries at the demanded snapshot; locationless variants render without a path,
 line, column, or range.
+
+RFC 0042 lands the first executable contract as a direct source-only
+replacement: concrete source occurrence and provenance keys, text arguments,
+primary locations, highlights, and child notes. It declares no diagnostic-root
+sum, location sum, fix-it, Package, BuildScript, Module, Binder, CoreLibrary,
+toolchain, or locationless alternative. RFC 0029 `R29-13B` directly replaces
+that contract with the live Source-and-Module contract. RFC 0025 `R25-09C`
+later directly replaces it with the executable five-origin contract described
+above. No transaction reserves a variant before its producer and verifier land.
 
 Providers do not emit. `SourceDiagnosticFacts`, `PackageDiagnosticFacts`,
 `BuildScriptDiagnosticFacts`, and `ModuleDiagnosticFacts` cover the closed set
@@ -1311,13 +1322,13 @@ transaction. They expose only `Published`, a listed source rejection, a listed
 key rejection, or `RuntimeRejected`; none exposes absence or opaque semantic
 failure bytes.
 
-Implementation dependency authority is exact. RFC 0027 `S1` and `S2` remain
-separate review partitions and land together as one buildable schema-and-facts
-transaction. `S3` then lands as the bounded codec and wire-oracle commit, and
-`S6` lands as the diagnostic-fact commit after the `S1` plus `S2` transaction.
-RFC 0028 runtime work resumes only after both `S3` and `S6` pass their focused
-native gates. RFC 0017 remains `IMPLEMENTING`; this accepted design does not
-establish runtime implementation.
+Implementation dependency authority is exact. RFC 0027 `S1`, `S2`, and `S3`
+landed together in the atomic stable-binding foundation. RFC 0042 next
+replaces the current source diagnostic contract without reserving Module or
+Binder alternatives. RFC 0028 runtime work resumes after that source cutover,
+and RFC 0027 `S6` lands in RFC 0029 `R29-13B` with its first live Module and
+Binder producers. RFC 0017 remains `IMPLEMENTING`; this accepted design does
+not establish runtime implementation.
 
 ## Repository Impact
 

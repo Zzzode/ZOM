@@ -108,12 +108,14 @@ The synchronized acceptance transaction is
 `109947943519ec2d380a3e8d71813b40bc68bde5` is recorded and source
 implementation is authorized.
 
-Transaction `rfc0030-accept-20260728-4ed0e6b8` establishes the implementation
-order. `S1`, `S2`, and `S3` remain bounded review partitions and land only
-through the exact atomic `R29-12AB` allowlist. `S6` then lands separately
-through `R29-12D`. Query-runtime work begins at `R29-13A` only after both
-transactions pass, and the corrected source transaction lands through
-`R29-14`.
+Transaction `rfc0030-accept-20260728-4ed0e6b8` established the implementation
+order. `S1`, `S2`, and `S3` landed through the exact atomic `R29-12AB`
+allowlist at commit `8885782747e4c863cefcb0d069bc4569cefce9aa`. RFC 0042
+replaces the incomplete six-path diagnostic set and lands the complete current
+source-only wire cutover through `R29-12D`. Query-runtime work begins at
+`R29-13A` only after that transaction passes. `S6` moves to the live
+Source-and-Module producer transaction `R29-13B`, and the corrected runtime
+source transaction lands through `R29-14`.
 
 Transaction `rfc0031-accept-20260728-c25fcb18` establishes the accepted
 metamodel consumed by RFC 0030 `R30-11`, binds both reviewed hashes, preserves
@@ -187,7 +189,7 @@ allowlist entry.
 | RFC 0027 status before transaction | `ACCEPTED` |
 | RFC 0027 status after transaction | `ACCEPTED` |
 | Synchronized authority | Complete contextual keys, identity-site provenance, stable-identity admission, exact typed provenance failures, and schema-before-runtime ordering |
-| Implementation authority | exact RFC 0030 `R29-12AB`, then separate `R29-12D`, then runtime work beginning at `R29-13A` and landing through `R29-14` |
+| Implementation authority | RFC 0030 `R30-11` through `R30-15` published at `8885782747e4c863cefcb0d069bc4569cefce9aa`; RFC 0042 replaces `R30-16`; runtime work then begins at `R29-13A` and lands through `R29-14` |
 
 ## RFC 0030 Acceptance Transaction Record
 
@@ -198,8 +200,8 @@ allowlist entry.
 | Tracker SHA-256 | `31eb9abae5aa70465a8408e05130263a75cea4ca91c0ada8ac673d238c2664f9` |
 | RFC 0027 status before transaction | `ACCEPTED` |
 | RFC 0027 status after transaction | `ACCEPTED` |
-| Synchronized authority | Exact build-visible S1-plus-S2-plus-S3 landing set, driver-owned contextual-key cutover, native and mutation gates, landing-scope proof, and exact S6 diagnostic transaction |
-| Implementation authority | RFC 0030 `R30-11` through `R30-16`, then runtime work beginning at RFC 0029 `R29-13A` |
+| Synchronized authority | Exact build-visible S1-plus-S2-plus-S3 landing set, driver-owned contextual-key cutover, source-only RFC 0042 diagnostic prerequisite, and S6 live-producer ownership in `R29-13B` |
+| Implementation authority | RFC 0030 `R30-11` through `R30-15` published at `8885782747e4c863cefcb0d069bc4569cefce9aa`; RFC 0042 is the replacement authority for `R30-16`; runtime work then begins at RFC 0029 `R29-13A` |
 
 ## RFC 0031 Acceptance Transaction Record
 
@@ -211,4 +213,4 @@ allowlist entry.
 | RFC 0027 status before transaction | `ACCEPTED` |
 | RFC 0027 status after transaction | `ACCEPTED` |
 | Synchronized authority | Hand-authored RFC 0031 schema metamodel, direct visibility result, descriptor result/payload/failure closure, exact Q3 versus `R30-13` test ownership, and T1 complete-context artifacts |
-| Implementation authority | RFC 0030 `R30-11` through `R30-16` under the accepted RFC 0031 metamodel, then runtime work beginning at RFC 0029 `R29-13A`; completed Q3 remains closed |
+| Implementation authority | RFC 0030 `R30-11` through `R30-15` published under the accepted RFC 0031 metamodel at `8885782747e4c863cefcb0d069bc4569cefce9aa`; RFC 0042 replaces `R30-16`; runtime work then begins at RFC 0029 `R29-13A`; completed Q3 remains closed |

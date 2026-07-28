@@ -3369,6 +3369,15 @@ atomic foundation. Query-runtime work starts only after both transactions pass
 their focused native gates. The corrected runtime, session, and materializer
 source transaction is `R29-14`; complete verification is `R29-15`.
 
+RFC 0042 replaces the current source-relative diagnostic record with the
+source-only canonical fact contract as `R29-12D`. This removes the dependency
+cycle in which `R25-09C` owned a wire required before `R29-13A`. RFC 0029
+`R29-13B` and `R29-14` then replace it with the live Source-and-Module
+contract. `R25-09C` depends on that publication and owns only the later direct
+replacement that adds the executable `Package`, `BuildScript`, and
+`CoreLibrary` origins, their producers, contextual collection, and core
+projections. It does not retain or reintroduce an earlier wire.
+
 `BoundOwnerBody` remains the sole stable closure-fact authority.
 `MaterializeOwnerBody` expands its closure, free-variable, and explicit-capture
 facts directly from `BindOwnerBody`. Core signature publication, interface
