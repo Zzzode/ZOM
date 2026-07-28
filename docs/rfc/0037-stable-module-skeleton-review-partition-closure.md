@@ -72,9 +72,9 @@ publishing an untested intermediate state.
 - Require the complete aggregate test to use production sequence admission for
   every populated component family.
 - Review the complete aggregate value before a separately bounded adversarial
-  evidence task.
-- Block the aggregate codec and every consumer until both aggregate tasks are
-  approved.
+  evidence sequence.
+- Block the aggregate codec and every consumer until the aggregate value and
+  both aggregate evidence tasks are approved.
 - Preserve one cumulative source tree and one final atomic landing.
 
 ## Non-Goals
@@ -147,8 +147,9 @@ RFC 0030 tasks `R30-12N`, `R30-12O`, `R30-12P`, and `R30-12Q` are replaced by:
 | `R30-12P-A` | `StableFailedLookupOutcome` and `StableFailedLookupFact`; closed variants, non-empty namespaces or candidates, owner, path, namespace, name, clone, equality, and relation mutations |
 | `R30-12Q-A` | Matching failed-lookup codecs, closed tags, populated production-built sequences, and complete independent wire mutations |
 | `R30-12N-F1` | Complete `BoundModuleSkeleton` Pimpl, admitted factory, clone, equality, accessors, locally provable module and reference relations, linear indexes, iterative parent-graph validation, populated production-built component sequences, clone, inequality, foreign export, and missing module-body-owner evidence |
-| `R30-12N-F2` | Aggregate-only adversarial native evidence for every factory branch: scope graph, semantic uniqueness, reference and root coverage, per-family module ownership, body-owner and failed-lookup boundaries, accessor retention, and deep iterative graph behavior |
-| `R30-12O-F` | Complete module-skeleton codec after both aggregate fact tasks; independent wire oracle, sequence, count, field, truncation, trailing-byte, and ownership mutations |
+| `R30-12N-F2A` | Aggregate-only structural and relational evidence: reachable scope-graph rejection, semantic uniqueness, missing scope and owner references, body-owner and failed-lookup boundaries, and canonical-admission proofs for implied multiplicity invariants |
+| `R30-12N-F2B` | Aggregate-only ownership and scale evidence: per-family module ownership, all eleven populated sequence accessors not already covered by the F1 module accessor, implementation-owned generic success and missing-occurrence rejection, and a reference-complete accepted iterative parent chain |
+| `R30-12O-F` | Complete module-skeleton codec after the aggregate value and both evidence tasks; independent wire oracle, sequence, count, field, truncation, trailing-byte, and ownership mutations |
 | `R30-12P-B` | `StableExportedBinding`, `StableExportedBindingQueryKey`, and `StableScopeNameBucketQueryKey`; projection fact and key invariants |
 | `R30-12Q-B` | Matching projection codecs, independent wire oracles, and complete mutation coverage |
 
@@ -174,16 +175,18 @@ Each review records the exact approved predecessor SHA-256 tuple, exact
 candidate tuple, and additions plus deletions across all three files. The
 total must not exceed 400. No later task may use an unapproved predecessor.
 
-`R30-12N-F2` is the only fact review that edits exactly one file:
+`R30-12N-F2A` and `R30-12N-F2B` are the only fact reviews that each edit
+exactly one file:
 
 ```text
 products/zomlang/tests/unittests/compiler/binder/stable-binding-facts-test.cc
 ```
 
-It records the approved `R30-12N-F1` test hash as its predecessor and changes
-at most 400 lines. It may add production-facing fixtures and assertions but no
-test-only constructor, alternate sequence builder, product source, schema, or
-codec.
+`R30-12N-F2A` records the approved `R30-12N-F1` test hash as its predecessor.
+`R30-12N-F2B` records the approved `R30-12N-F2A` test hash as its predecessor.
+Each changes at most 400 lines and may add production-facing fixtures and
+assertions but no test-only constructor, alternate sequence builder, product
+source, schema, or codec.
 
 ### Dependency Order
 
@@ -197,7 +200,7 @@ R30-12M
   -> R30-12N-D -> R39-11 -> R30-12O-D
   -> R40-11 -> R30-12N-E -> R30-12O-E
   -> R30-12P-A -> R30-12Q-A
-  -> R30-12N-F1 -> R30-12N-F2 -> R30-12O-F
+  -> R30-12N-F1 -> R30-12N-F2A -> R30-12N-F2B -> R30-12O-F
   -> R30-12P-B -> R30-12Q-B
   -> R30-12R
 ```
@@ -211,30 +214,44 @@ their RFC 0030 semantic families, while dependency edges define execution.
 at least one valid instance of every module-skeleton component through the
 public admitted factory, admits every sequence through
 `StableBindingSequenceBuilder<T>`, and passes those populated sequences to the
-aggregate factory. It proves move-only Pimpl behavior, all twelve retained
-fields, clone, equality, one unequal field, one cross-module rejection, and
-the unique module-body-owner requirement.
+aggregate factory. It proves move-only Pimpl behavior, complete populated
+aggregate construction, clone, equality, one unequal field, one cross-module
+local export rejection, and the module-body-owner presence requirement. Direct
+sequence-accessor retention evidence belongs to `R30-12N-F2B`.
 
-`R30-12N-F2` begins only from the approved `R30-12N-F1` hashes. Its production
-ztest fixture must exercise every aggregate factory branch, including:
+`R30-12N-F2A` begins only from the approved `R30-12N-F1` hashes. Its
+production ztest fixture exercises the structural and relational aggregate
+branches, including:
 
-- missing parent, cycle, duplicate owner, foreign owner, body scope, and
-  multiple module scopes;
+- missing parent, cycle, duplicate owner, body scope, and a missing module
+  scope;
 - duplicate declaration, occurrence, alias/import, generic-header,
   callable-parameter, node-root/path, local-export-path, and
   failed-lookup-owner/path keys;
-- missing scope owners, node roots, parameter owners, alias declarations, body
-  owners, and failed-lookup header owners;
-- foreign module ownership in every component family;
-- forbidden body-query failed lookups and invalid module or definition body
-  owners;
-- every populated accessor and a deep iterative parent chain that would expose
-  recursive or quadratic validation.
+- missing scope owners, definition-owned generic or callable owners, alias
+  declarations, a definition body owner whose declaration is absent, and
+  definition-header or implementation-header failed-lookup owners;
+- forbidden body-query failed lookups;
+- sequence-builder rejection for a second identical same-module module scope
+  and module body owner, proving the public invariants that make aggregate
+  multiplicity checks unnecessary.
 
-The test derives valid and hostile values through public factories and the
-production sequence builder. A large-count fixture may use a smaller
-deterministic depth than the wire limit when it still reliably catches
-recursion and pairwise validation.
+`R30-12N-F2B` begins only from the approved `R30-12N-F2A` test hash. Its
+production ztest fixture exercises:
+
+- foreign module ownership independently in every component family not already
+  covered by the F1 local-export rejection;
+- all eleven populated sequence accessors not already covered by the F1 module
+  accessor;
+- the implementation-owned generic-parameter occurrence path for both an
+  admitted occurrence and a missing occurrence;
+- a deterministic, reference-complete, successfully admitted parent chain
+  large enough to expose recursive or pairwise graph validation.
+
+Both tasks derive valid and hostile values through public factories and the
+production sequence builder. The large-count fixture records its deterministic
+depth and must assert successful aggregate admission rather than a later
+unrelated rejection.
 
 The aggregate factory enforces only stable local relations representable from
 its complete inputs. Provider and verifier responsibilities recorded by RFC
@@ -265,7 +282,7 @@ audit without weakening any bound.
 
 ## Drawbacks And Risks
 
-- Seventeen exact-hash reviews replace four broad reviews.
+- Eighteen exact-hash reviews replace four broad reviews.
 - Facts and codecs alternate, so predecessor tuples must be recorded
   carefully.
 - Aggregate implementation occurs after a task whose identifier sorts later.
@@ -323,10 +340,12 @@ architecture, allowlist, and landing-scope gates remain mandatory.
 - Every replacement task retains the 400-line exact-file cap.
 - Every component codec follows its fact and precedes aggregate admission.
 - Failed-lookup facts and codecs precede `BoundModuleSkeleton`.
-- `R30-12N-F1` and `R30-12N-F2` each remain within 400 changed lines.
-- `R30-12O-F` depends on both aggregate fact tasks.
-- The aggregate adversarial task covers every locally enforceable factory
-  branch and deep iterative graph behavior.
+- `R30-12N-F1`, `R30-12N-F2A`, and `R30-12N-F2B` each remain within 400
+  changed lines.
+- `R30-12O-F` depends on the aggregate value and both evidence tasks.
+- The aggregate evidence tasks cover every locally enforceable factory branch,
+  every component ownership family, and successful deep iterative graph
+  behavior.
 - Projection work follows the complete module-skeleton codec.
 - No alternate canonical-sequence construction path exists.
 - `R30-12R` depends on `R30-12Q-B`.
@@ -338,13 +357,14 @@ architecture, allowlist, and landing-scope gates remain mandatory.
 
 1. Accept and publish one design-only synchronization transaction.
 2. Approve `R30-12N-F1` against its complete value and smoke-test boundary.
-3. Add and approve the `R30-12N-F2` adversarial matrix.
-4. Implement and approve each remaining replacement task in strict dependency
+3. Add and approve the `R30-12N-F2A` structural and relational matrix.
+4. Add and approve the `R30-12N-F2B` ownership and scale matrix.
+5. Implement and approve each remaining replacement task in strict dependency
    order.
-5. Resume the existing RFC 0030 owner-body partitions at `R30-12R`.
-6. Complete RFC 0030 native wiring and clean-worktree verification.
-7. Land all cumulative source only through RFC 0030 `R30-15`.
-8. Synchronize truthful RFC 0037 status after the atomic source publication.
+6. Resume the existing RFC 0030 owner-body partitions at `R30-12R`.
+7. Complete RFC 0030 native wiring and clean-worktree verification.
+8. Land all cumulative source only through RFC 0030 `R30-15`.
+9. Synchronize truthful RFC 0037 status after the atomic source publication.
 
 ## Test Plan
 
@@ -371,3 +391,4 @@ None
 | 2026-07-28 | ACCEPTED | All required owners approved proposal SHA-256 `ed0b9170c813e42cf02e8a719886ce47aadec5cfbe2ddb788e24572c7243319e` and tracker SHA-256 `063ea9961caa03d957b976a24d7f4bc9f7489dbdd0442e48b825975d1467470e`. Acceptance transaction `rfc0037-accept-20260728-ed0b9170` publishes the bounded review graph and authorizes source review to resume at `R30-12N-A` without changing source or implementation status. |
 | 2026-07-28 | ACCEPTED | Transaction `rfc0039-accept-20260728-de7ab2aa` inserts `R39-11` between the approved `R30-12N-D` fact and its `R30-12O-D` codec without changing the stable fact contract or atomic publication boundary. |
 | 2026-07-28 | ACCEPTED | All required owners approved amendment proposal SHA-256 `25caf4b94dd06953c27b1b09d8f07c4ca94f6b3c166618bc803620ebeb9f435a`, RFC 0037 tracker SHA-256 `21faf1b30428ead842e03023a1714907e355bbf7662eecf1e9257f8823f79aee`, RFC 0030 tracker SHA-256 `2351e98d1f6d73699487a4f1641f6808dd79bc8aae738f0a5e4fbe3cbec36530`, and RFC 0040 tracker SHA-256 `e60b7cd2fb1a5c81c58df22845ba90f83ffb77e879b8247c51ccec8027d1da98`. Amendment transaction `rfc0037-amend-20260728-25caf4b9` splits aggregate value and adversarial evidence review without changing source, schema, implementation status, or the atomic publication boundary. |
+| 2026-07-28 | ACCEPTED | All required owners approved amendment proposal SHA-256 `d4e18a120f655e37259684de516b5455cff7ae594e9448f372b8d61ddfc35a76`, RFC 0037 tracker SHA-256 `a7474f044d81158fa7f5921206954a5118a187aa0211ffb23d0e1f66a238c58d`, and RFC 0030 tracker SHA-256 `b02684fb967253f90109a4f206c7a4bc32e32209aea56f9e205ee663ccc09fba`. Amendment transaction `rfc0037-amend-evidence-20260728-d4e18a12` partitions structural evidence from ownership and accepted-scale evidence without changing source, schema, implementation status, or the atomic publication boundary. |

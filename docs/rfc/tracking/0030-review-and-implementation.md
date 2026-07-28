@@ -96,8 +96,11 @@ The first `R30-12N-F` candidate subsequently consumed the entire 400-line
 allowance for the complete aggregate value and local admission logic.
 Verification returned it because the same task could not also contain the
 required adversarial matrix. RFC 0037 amendment tasks `R37-08` through
-`R37-10` split that review into `R30-12N-F1` and `R30-12N-F2`; the aggregate
-codec remains blocked until both reviews complete.
+`R37-10` split that review into `R30-12N-F1` and aggregate evidence work. A
+subsequent evidence review proved that the complete reachable matrix and
+successful scale proof also require separate `R30-12N-F2A` and
+`R30-12N-F2B` tasks; the aggregate codec remains blocked until all three
+aggregate reviews complete.
 
 ### 2026-07-28 RFC 0039 Export Surface Revision Admission Closure
 
@@ -237,9 +240,10 @@ implementation-series base remains
 | `R30-12O-E` | `binder-checker` with `verification` review | `R30-12N-E` | In the codec files, implement matching reexport and local-export codecs and wire oracles; at most 400 changed source lines. | Reexport and local-export wire mutation tests | Pending |
 | `R30-12P-A` | `binder-checker` with `verification` review | `R30-12O-E` | In the fact files, implement `StableFailedLookupOutcome` and `StableFailedLookupFact`; at most 400 changed source lines. | Failed-lookup fact and closed-outcome tests | Pending |
 | `R30-12Q-A` | `binder-checker` with `verification` review | `R30-12P-A` | In the codec files, implement matching failed-lookup codecs and wire oracles; at most 400 changed source lines. | Failed-lookup wire mutation tests | Pending |
-| `R30-12N-F1` | `binder-checker` with `verification` review | `R30-12Q-A`; RFC 0037 `R37-10` | In `stable-binding-facts.{h,cc}` and `stable-binding-facts-test.cc`, implement the complete `BoundModuleSkeleton` value, local admission logic, linear indexes, iterative parent-graph validation, populated accessors, and bounded smoke evidence; at most 400 changed source lines. | Aggregate value, clone, inequality, foreign export, and module-body-owner tests | Pending |
-| `R30-12N-F2` | `binder-checker` with `verification` review | `R30-12N-F1` | In `stable-binding-facts-test.cc` only, add exhaustive aggregate factory-branch, accessor, ownership, uniqueness, reference, body-boundary, failure-boundary, and deep iterative graph evidence; at most 400 changed source lines. | Complete module-skeleton adversarial native tests | Pending |
-| `R30-12O-F` | `binder-checker` with `verification` review | `R30-12N-F2` | In the codec files, implement the complete module-skeleton codec and wire oracle; at most 400 changed source lines. | Complete module-skeleton wire mutation tests | Pending |
+| `R30-12N-F1` | `binder-checker` with `verification` review | `R30-12Q-A`; RFC 0037 `R37-10` | In `stable-binding-facts.{h,cc}` and `stable-binding-facts-test.cc`, implement the complete `BoundModuleSkeleton` value, local admission logic, linear indexes, iterative parent-graph validation, populated accessors, and bounded smoke evidence; at most 400 changed source lines. | Aggregate value, clone, inequality, foreign export, and module-body-owner presence tests | Pending |
+| `R30-12N-F2A` | `binder-checker` with `verification` review | `R30-12N-F1`; RFC 0037 `R37-10D` | In `stable-binding-facts-test.cc` only, add reachable scope-graph, semantic-uniqueness, missing-scope, definition-owned parameter, alias, missing definition-body declaration, failed-lookup, and canonical implied-invariant evidence; at most 400 changed source lines. | Structural and relational module-skeleton adversarial tests | Pending |
+| `R30-12N-F2B` | `binder-checker` with `verification` review | `R30-12N-F2A` | In `stable-binding-facts-test.cc` only, add remaining per-family ownership, remaining eleven sequence-accessor, implementation-owned generic, and reference-complete accepted deep-chain evidence; at most 400 changed source lines. | Ownership, sequence-accessor, and scale module-skeleton tests | Pending |
+| `R30-12O-F` | `binder-checker` with `verification` review | `R30-12N-F2B` | In the codec files, implement the complete module-skeleton codec and wire oracle; at most 400 changed source lines. | Complete module-skeleton wire mutation tests | Pending |
 | `R30-12P-B` | `binder-checker` with `verification` review | `R30-12O-F` | In the fact files, implement `StableExportedBinding`, `StableExportedBindingQueryKey`, and `StableScopeNameBucketQueryKey`; at most 400 changed source lines. | Projection fact and key tests | Pending |
 | `R30-12Q-B` | `binder-checker` with `verification` review | `R30-12P-B` | In the codec files, implement matching projection codecs and wire oracles; at most 400 changed source lines. | Projection wire mutation tests | Pending |
 | `R30-12R` | `binder-checker` with `verification` review | `R30-12Q-B` | In `stable-binding-facts.{h,cc}` and `stable-binding-facts-test.cc`, implement `StableBodyScopeFact`, `StableBodyNodeScopeFact`, `StableOwnerLocalBindingFact`, `StableResolutionFact`, `StableDeferredMemberFact`, `StableSelfOwner`, `StableSelfTypeFact`, `StableThisBindingFact`, and `StableShadowTargetFact`; at most 400 changed source lines. | Owner-body scope and resolution tests | Pending |
@@ -269,8 +273,19 @@ a source task. Exact-hash source review subsequently approved RFC 0040
 `R40-11`, then RFC 0030 `R30-12N-E`, `R30-12O-E`, `R30-12P-A`, and
 `R30-12Q-A` in strict predecessor order. The first complete `R30-12N-F`
 candidate received Binder approval and a Verification return at the hashes
-recorded in the RFC 0037 tracker. All source candidates remain cumulative and
-uncommitted, so the implementation rows remain pending atomic publication
-through `R30-15`. RFC 0037 amendment transaction
-`rfc0037-amend-20260728-25caf4b9` authorizes the replacement
-`R30-12N-F1` and `R30-12N-F2` reviews.
+recorded in the RFC 0037 tracker. Corrected `R30-12N-F1` subsequently completed
+exact-hash approval at facts header
+`fe8f6e145a4500901ff3544df2ba2d06854a223de31f252883ef01611782d123`,
+facts implementation
+`4f959f7a85ceec182c7b59579052fc26e9df3d449d6565e502cace69e6918220`,
+and test
+`d4b564fd4a7e51a6186647c099f04c0963374ffdaea86e2239af920bac5bffec`,
+with 392 additions. The first F2 candidate at test hash
+`9dd868623cdc30e103b33d09256faf721a5d72e7f41464f37632d204f3e7b790`
+was returned and fully withdrawn. The live source is the approved F1 tuple and
+remains cumulative and uncommitted, so the implementation rows remain pending
+atomic publication through `R30-15`. RFC 0037 amendment transaction
+`rfc0037-amend-20260728-25caf4b9` authorizes the aggregate value and evidence
+review boundary. RFC 0037 amendment transaction
+`rfc0037-amend-evidence-20260728-d4e18a12` authorizes the refined
+`R30-12N-F2A` and `R30-12N-F2B` evidence reviews without landing source.

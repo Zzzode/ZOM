@@ -62,6 +62,18 @@ schema, CMake, immutable base, landing scope, or atomic publication boundary.
 Its recorded repository baseline is
 `693d03a23a63295453b0933b57e7193df9d63e5c`.
 
+All required evidence-split amendment owners approved RFC 0037 proposal
+SHA-256
+`d4e18a120f655e37259684de516b5455cff7ae594e9448f372b8d61ddfc35a76`,
+this tracker SHA-256
+`a7474f044d81158fa7f5921206954a5118a187aa0211ffb23d0e1f66a238c58d`,
+and RFC 0030 tracker SHA-256
+`b02684fb967253f90109a4f206c7a4bc32e32209aea56f9e205ee663ccc09fba`.
+Amendment transaction `rfc0037-amend-evidence-20260728-d4e18a12` changes no
+source, schema, CMake, immutable base, landing scope, or atomic publication
+boundary. Its recorded repository baseline is
+`584528bf9b6534974b1c21fed9ccdca3cef11bba`.
+
 ### 2026-07-28 R30-12N-F Verification Return
 
 The first complete `BoundModuleSkeleton` candidate used the entire 400-line
@@ -110,6 +122,32 @@ The returned candidate hashes are:
 No source approval, commit, or publication resulted from the returned review.
 The source remains cumulative and uncommitted.
 
+### 2026-07-28 R30-12N-F1 Correction And F2 Return
+
+Binder and Verification approved the corrected `R30-12N-F1` candidate:
+
+- facts header
+  `fe8f6e145a4500901ff3544df2ba2d06854a223de31f252883ef01611782d123`;
+- facts implementation
+  `4f959f7a85ceec182c7b59579052fc26e9df3d449d6565e502cace69e6918220`;
+- test
+  `d4b564fd4a7e51a6186647c099f04c0963374ffdaea86e2239af920bac5bffec`.
+
+The candidate contains 392 monotonic additions from the approved `R30-12Q-A`
+predecessor. It removes aggregate checks made unreachable by public fact
+admission plus canonical uniqueness and retains the reachable module-scope and
+module-body-owner presence requirements.
+
+The first `R30-12N-F2` candidate used its full 400-line allowance at test hash
+`9dd868623cdc30e103b33d09256faf721a5d72e7f41464f37632d204f3e7b790`.
+Binder and Verification returned it because one collision fixture was not in
+canonical order, several implementation-owned reference paths were absent, and
+the deep chain was neither reference-complete nor admitted. The review also
+proved that same-module scope and module-body multiplicity are rejected by
+canonical sequence admission before the aggregate factory. The returned F2
+candidate was withdrawn completely; the live test returned to the approved F1
+hash above.
+
 ## Review Tracker
 
 | Task | Owner | Depends On | Deliverable | Verification | Status |
@@ -126,16 +164,23 @@ The source remains cumulative and uncommitted.
 | `R37-09B` | `verification` | `R37-08` | Review the independent 400-line evidence budget and complete aggregate mutation matrix. | Exact-hash review | Complete; approved four-file tuple recorded above |
 | `R37-09C` | `rfc` | `R37-08` | Review direct replacement, status truth, and unchanged atomic publication boundary. | Exact-hash review | Complete; approved four-file tuple recorded above |
 | `R37-10` | `rfc` | `R37-09A`; `R37-09B`; `R37-09C` | Record the unchanged reviewed hashes, accept the amendment, and publish one design-only transaction. | RFC, English-only, internal-versioning, format, diff, and SHA parity gates | Complete; transaction `rfc0037-amend-20260728-25caf4b9` |
+| `R37-10A` | `rfc` | Returned RFC 0030 `R30-12N-F2` verification | Split reachable relation evidence from ownership and accepted-scale evidence; synchronize RFC 0030 and RFC 0037 trackers. | RFC, dependency, exact-file, and progress-truth audit | Complete; reviewed tuple recorded above |
+| `R37-10B` | `binder-checker` | `R37-10A` | Review reachable aggregate invariants, canonical implied invariants, and strict evidence dependency order. | Exact-hash review | Complete; approved tuple recorded above |
+| `R37-10C` | `verification` | `R37-10A` | Review two independent 400-line test-only budgets and complete evidence coverage. | Exact-hash review | Complete; approved tuple recorded above |
+| `R37-10D` | `rfc` | `R37-10B`; `R37-10C` | Record unchanged reviewed hashes, accept the evidence split, and publish one design-only transaction. | RFC, English-only, internal-versioning, format, diff, and SHA parity gates | Complete; transaction `rfc0037-amend-evidence-20260728-d4e18a12` |
 
 ## Implementation Tracker
 
 | Task | Owner | Depends On | Deliverable | Verification | Status |
 |---|---|---|---|---|---|
-| `R37-11` | `binder-checker` with `verification` review | `R37-10`; RFC 0030 `R30-12M`; RFC 0039 `R39-11` before `R30-12O-D`; RFC 0040 `R40-11` before `R30-12N-E` | Implement and approve all RFC 0037 replacement tasks, including separate `R30-12N-F1` and `R30-12N-F2` reviews, in strict dependency order without an intermediate commit or push. | Per-task 400-line accounting and RFC 0030 Test Plan | Pending |
+| `R37-11` | `binder-checker` with `verification` review | `R37-10D`; RFC 0030 `R30-12M`; RFC 0039 `R39-11` before `R30-12O-D`; RFC 0040 `R40-11` before `R30-12N-E` | Implement and approve all RFC 0037 replacement tasks, including separate `R30-12N-F1`, `R30-12N-F2A`, and `R30-12N-F2B` reviews, in strict dependency order without an intermediate commit or push. | Per-task 400-line accounting and RFC 0030 Test Plan | Pending |
 | `R37-12` | `rfc` | RFC 0030 `R30-15` | Synchronize truthful evidence and move RFC 0037 to LANDED only after the atomic `R29-12AB` transaction is published. | RFC and SHA audit | Pending |
 
 Source review completed exact-hash approval through RFC 0040 `R40-11`, RFC
-0030 `R30-12N-E`, `R30-12O-E`, `R30-12P-A`, and `R30-12Q-A`. The first
-`R30-12N-F` candidate then received Binder approval and a Verification return
-at the hashes recorded above. Every source candidate remains cumulative and
-uncommitted; no source implementation is declared landed by this tracker.
+0030 `R30-12N-E`, `R30-12O-E`, `R30-12P-A`, and `R30-12Q-A`. Corrected
+`R30-12N-F1` then completed exact-hash approval at the 392-addition tuple
+recorded above. The first `R30-12N-F2` candidate at test hash
+`9dd868623cdc30e103b33d09256faf721a5d72e7f41464f37632d204f3e7b790`
+was returned and fully withdrawn. The live source is the approved F1 tuple,
+remains cumulative and uncommitted, and is not declared landed by this
+tracker.
