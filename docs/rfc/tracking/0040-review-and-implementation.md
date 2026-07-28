@@ -40,9 +40,13 @@ It changes no source, immutable base, approved cumulative candidate, pending
 
 | Task | Owner | Depends On | Deliverable | Verification | Status |
 |---|---|---|---|---|---|
-| `R40-11` | `binder-checker` with `verification` review | `R40-07`; RFC 0030 `R30-12O-D` | Add validated `BindingNameKey::from` in `binding-metadata.{h,cc}` plus closed namespace assertions in `stable-binding-facts-test.cc`; at most 400 changed source lines. | C++23 ASan and UBSan `-Werror -fsyntax-only` plus exact-hash review; executable test after `R30-13` | Pending |
-| `R40-12` | `binder-checker` with `verification` review | `R40-11` | Resume RFC 0030 `R30-12N-E` and `R30-12O-E`. | RFC 0030 exact-file reviews | Pending |
+| `R40-11` | `binder-checker` with `verification` review | `R40-07`; RFC 0030 `R30-12O-D` | Add validated `BindingNameKey::from` in `binding-metadata.{h,cc}` plus closed namespace assertions in `stable-binding-facts-test.cc`; at most 400 changed source lines. | C++23 ASan and UBSan `-Werror -fsyntax-only` plus exact-hash review; executable test after `R30-13` | Pending atomic publication; exact-hash candidate approved |
+| `R40-12` | `binder-checker` with `verification` review | `R40-11` | Resume RFC 0030 `R30-12N-E` and `R30-12O-E`. | RFC 0030 exact-file reviews | Pending atomic publication; `R30-12N-E` and `R30-12O-E` exact-hash candidates approved |
 | `R40-13` | `rfc` | RFC 0030 `R30-15` | Move RFC 0040 to LANDED after atomic publication. | RFC and SHA audit | Pending |
 
-The `R40-07` design gate is satisfied. Source review may resume at `R40-11`;
-no source implementation is declared complete.
+The `R40-07` design gate is satisfied. `R40-11`, `R30-12N-E`, and
+`R30-12O-E` completed exact-hash source approval in the cumulative tree.
+Their source remains uncommitted and awaits RFC 0030 `R30-15`; no source
+implementation is declared landed. RFC 0037 amendment transaction
+`rfc0037-amend-20260728-25caf4b9` synchronizes this progress without changing
+the RFC 0040 source or publication boundary.

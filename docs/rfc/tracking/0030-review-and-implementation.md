@@ -92,6 +92,13 @@ Transaction `rfc0037-accept-20260728-ed0b9170` replaces `R30-12N` through
 `R30-12Q` with bounded dependency-ordered reviews and changes no source,
 immutable base, or final landing scope.
 
+The first `R30-12N-F` candidate subsequently consumed the entire 400-line
+allowance for the complete aggregate value and local admission logic.
+Verification returned it because the same task could not also contain the
+required adversarial matrix. RFC 0037 amendment tasks `R37-08` through
+`R37-10` split that review into `R30-12N-F1` and `R30-12N-F2`; the aggregate
+codec remains blocked until both reviews complete.
+
 ### 2026-07-28 RFC 0039 Export Surface Revision Admission Closure
 
 The `R30-12O-D` preflight found that the accepted stable alias record carries
@@ -230,8 +237,9 @@ implementation-series base remains
 | `R30-12O-E` | `binder-checker` with `verification` review | `R30-12N-E` | In the codec files, implement matching reexport and local-export codecs and wire oracles; at most 400 changed source lines. | Reexport and local-export wire mutation tests | Pending |
 | `R30-12P-A` | `binder-checker` with `verification` review | `R30-12O-E` | In the fact files, implement `StableFailedLookupOutcome` and `StableFailedLookupFact`; at most 400 changed source lines. | Failed-lookup fact and closed-outcome tests | Pending |
 | `R30-12Q-A` | `binder-checker` with `verification` review | `R30-12P-A` | In the codec files, implement matching failed-lookup codecs and wire oracles; at most 400 changed source lines. | Failed-lookup wire mutation tests | Pending |
-| `R30-12N-F` | `binder-checker` with `verification` review | `R30-12Q-A` | In the fact files, implement `BoundModuleSkeleton` from populated production-admitted component sequences; at most 400 changed source lines. | Complete module-skeleton fact and coverage tests | Pending |
-| `R30-12O-F` | `binder-checker` with `verification` review | `R30-12N-F` | In the codec files, implement the complete module-skeleton codec and wire oracle; at most 400 changed source lines. | Complete module-skeleton wire mutation tests | Pending |
+| `R30-12N-F1` | `binder-checker` with `verification` review | `R30-12Q-A`; RFC 0037 `R37-10` | In `stable-binding-facts.{h,cc}` and `stable-binding-facts-test.cc`, implement the complete `BoundModuleSkeleton` value, local admission logic, linear indexes, iterative parent-graph validation, populated accessors, and bounded smoke evidence; at most 400 changed source lines. | Aggregate value, clone, inequality, foreign export, and module-body-owner tests | Pending |
+| `R30-12N-F2` | `binder-checker` with `verification` review | `R30-12N-F1` | In `stable-binding-facts-test.cc` only, add exhaustive aggregate factory-branch, accessor, ownership, uniqueness, reference, body-boundary, failure-boundary, and deep iterative graph evidence; at most 400 changed source lines. | Complete module-skeleton adversarial native tests | Pending |
+| `R30-12O-F` | `binder-checker` with `verification` review | `R30-12N-F2` | In the codec files, implement the complete module-skeleton codec and wire oracle; at most 400 changed source lines. | Complete module-skeleton wire mutation tests | Pending |
 | `R30-12P-B` | `binder-checker` with `verification` review | `R30-12O-F` | In the fact files, implement `StableExportedBinding`, `StableExportedBindingQueryKey`, and `StableScopeNameBucketQueryKey`; at most 400 changed source lines. | Projection fact and key tests | Pending |
 | `R30-12Q-B` | `binder-checker` with `verification` review | `R30-12P-B` | In the codec files, implement matching projection codecs and wire oracles; at most 400 changed source lines. | Projection wire mutation tests | Pending |
 | `R30-12R` | `binder-checker` with `verification` review | `R30-12Q-B` | In `stable-binding-facts.{h,cc}` and `stable-binding-facts-test.cc`, implement `StableBodyScopeFact`, `StableBodyNodeScopeFact`, `StableOwnerLocalBindingFact`, `StableResolutionFact`, `StableDeferredMemberFact`, `StableSelfOwner`, `StableSelfTypeFact`, `StableThisBindingFact`, and `StableShadowTargetFact`; at most 400 changed source lines. | Owner-body scope and resolution tests | Pending |
@@ -248,18 +256,21 @@ implementation-series base remains
 | `R30-16` | `error-system` with `binder-checker` and `verification` review | `R30-15` | Land `R29-12D` with the canonical Binder diagnostic facts, exact diagnostic native test, CTest ownership, and diagnostic coverage gates. | Diagnostic fact test and diagnostic coverage check plus self-test | Pending |
 | `R30-17` | `rfc` | `R30-16` | Synchronize truthful tracker state and resume `R29-13A`. | RFC and evidence audit | Pending |
 
-The RFC 0031, RFC 0032, RFC 0035, RFC 0036, RFC 0037, and RFC 0039 design blockers are
-satisfied by transactions
+The RFC 0031, RFC 0032, RFC 0035, RFC 0036, RFC 0037, RFC 0039, and RFC 0040
+design blockers are satisfied by transactions
 `rfc0031-accept-20260728-c25fcb18` and
 `rfc0032-accept-20260728-1d519846`, and
 `rfc0035-accept-20260728-e79c292e`,
 `rfc0036-accept-20260728-3bcf4ae9`, and
 `rfc0037-accept-20260728-ed0b9170`, and
-`rfc0039-accept-20260728-de7ab2aa`. None of these transactions completes a
-source task. The historical `R30-09`, RFC 0031 `R31-09`, RFC 0032 `R32-07`,
-RFC 0035 `R35-08`, RFC 0036 `R36-09`, and RFC 0037 `R37-07` design gates are
-satisfied, so implementation may resume at the current dependency-ordered
-review slice. RFC 0039 `R39-11` and `R30-12O-D` have approved exact-hash
-candidates in the cumulative uncommitted tree. RFC 0040 acceptance transaction
-`rfc0040-accept-20260728-e007151b` satisfies `R40-07`, so `R40-11` is the next
-slice before `R30-12N-E`.
+`rfc0039-accept-20260728-de7ab2aa`, and
+`rfc0040-accept-20260728-e007151b`. None of these design transactions completes
+a source task. Exact-hash source review subsequently approved RFC 0040
+`R40-11`, then RFC 0030 `R30-12N-E`, `R30-12O-E`, `R30-12P-A`, and
+`R30-12Q-A` in strict predecessor order. The first complete `R30-12N-F`
+candidate received Binder approval and a Verification return at the hashes
+recorded in the RFC 0037 tracker. All source candidates remain cumulative and
+uncommitted, so the implementation rows remain pending atomic publication
+through `R30-15`. RFC 0037 amendment transaction
+`rfc0037-amend-20260728-25caf4b9` authorizes the replacement
+`R30-12N-F1` and `R30-12N-F2` reviews.
