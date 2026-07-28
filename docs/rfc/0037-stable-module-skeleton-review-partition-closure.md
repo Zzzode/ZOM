@@ -173,7 +173,7 @@ R30-12M
   -> R30-12N-B -> R30-12O-B
   -> R30-12N-C -> R30-12O-C
   -> R30-12N-D -> R39-11 -> R30-12O-D
-  -> R30-12N-E -> R30-12O-E
+  -> R40-11 -> R30-12N-E -> R30-12O-E
   -> R30-12P-A -> R30-12Q-A
   -> R30-12N-F -> R30-12O-F
   -> R30-12P-B -> R30-12Q-B
@@ -206,7 +206,7 @@ tasks accumulate in the existing uncommitted RFC 0030 source tree. RFC 0030
 
 | Area | Paths | Owner |
 |---|---|---|
-| RFC authority | RFCs 0030, 0036, 0037, and 0039, their trackers, and the RFC index | `rfc` |
+| RFC authority | RFCs 0030, 0036, 0037, 0039, and 0040, their trackers, and the RFC index | `rfc` |
 | Revision admission | `binding-metadata.{h,cc}` | `binder-checker` |
 | Stable facts | `stable-binding-facts.{h,cc}` | `binder-checker` |
 | Stable codecs | `stable-binding-codec.{h,cc}` | `binder-checker` |

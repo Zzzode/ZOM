@@ -226,7 +226,7 @@ implementation-series base remains
 | `R30-12O-C` | `binder-checker` with `verification` review | `R30-12N-C` | In the codec files, implement matching parameter-declaration codecs and wire oracles; at most 400 changed source lines. | Parameter declaration wire mutation tests | Pending |
 | `R30-12N-D` | `binder-checker` with `verification` review | `R30-12O-C` | In the fact files, implement `StableImportFact` and `StableModuleAliasFact`; at most 400 changed source lines. | Import and alias fact tests | Pending |
 | `R30-12O-D` | `binder-checker` with `verification` review | `R30-12N-D`; RFC 0039 `R39-11` | In the codec files, implement matching import and alias codecs and wire oracles through `ExportSurfaceRevision::fromDigest`; at most 400 changed source lines. | Import and alias wire mutation tests | Pending |
-| `R30-12N-E` | `binder-checker` with `verification` review | `R30-12O-D` | In the fact files, implement `StableReexportStep` and `StableLocalExportFact`; at most 400 changed source lines. | Reexport and local-export fact tests | Pending |
+| `R30-12N-E` | `binder-checker` with `verification` review | `R30-12O-D`; RFC 0040 `R40-11` | In the fact files, implement `StableReexportStep` and `StableLocalExportFact` through validated `BindingNameKey` admission; at most 400 changed source lines. | Reexport and local-export fact tests | Pending |
 | `R30-12O-E` | `binder-checker` with `verification` review | `R30-12N-E` | In the codec files, implement matching reexport and local-export codecs and wire oracles; at most 400 changed source lines. | Reexport and local-export wire mutation tests | Pending |
 | `R30-12P-A` | `binder-checker` with `verification` review | `R30-12O-E` | In the fact files, implement `StableFailedLookupOutcome` and `StableFailedLookupFact`; at most 400 changed source lines. | Failed-lookup fact and closed-outcome tests | Pending |
 | `R30-12Q-A` | `binder-checker` with `verification` review | `R30-12P-A` | In the codec files, implement matching failed-lookup codecs and wire oracles; at most 400 changed source lines. | Failed-lookup wire mutation tests | Pending |
@@ -259,4 +259,7 @@ satisfied by transactions
 source task. The historical `R30-09`, RFC 0031 `R31-09`, RFC 0032 `R32-07`,
 RFC 0035 `R35-08`, RFC 0036 `R36-09`, and RFC 0037 `R37-07` design gates are
 satisfied, so implementation may resume at the current dependency-ordered
-review slice. RFC 0039 `R39-07` is satisfied, so `R39-11` may begin.
+review slice. RFC 0039 `R39-11` and `R30-12O-D` have approved exact-hash
+candidates in the cumulative uncommitted tree. RFC 0040 acceptance transaction
+`rfc0040-accept-20260728-e007151b` satisfies `R40-07`, so `R40-11` is the next
+slice before `R30-12N-E`.

@@ -65,9 +65,11 @@ RFC 0037 fact and codec contracts or their atomic publication boundary.
 
 | Task | Owner | Depends On | Deliverable | Verification | Status |
 |---|---|---|---|---|---|
-| `R37-11` | `binder-checker` with `verification` review | `R37-07`; RFC 0030 `R30-12M`; RFC 0039 `R39-11` before `R30-12O-D` | Implement and approve all RFC 0037 replacement tasks in strict dependency order without an intermediate commit or push. | Per-task 400-line accounting and RFC 0030 Test Plan | Pending |
+| `R37-11` | `binder-checker` with `verification` review | `R37-07`; RFC 0030 `R30-12M`; RFC 0039 `R39-11` before `R30-12O-D`; RFC 0040 `R40-11` before `R30-12N-E` | Implement and approve all RFC 0037 replacement tasks in strict dependency order without an intermediate commit or push. | Per-task 400-line accounting and RFC 0030 Test Plan | Pending |
 | `R37-12` | `rfc` | RFC 0030 `R30-15` | Synchronize truthful evidence and move RFC 0037 to LANDED only after the atomic `R29-12AB` transaction is published. | RFC and SHA audit | Pending |
 
-Source review reached the approved `R30-12N-D` candidate. RFC 0039 `R39-07`
-is satisfied, so `R39-11` may begin; it must complete before `R30-12O-D`.
-No source implementation is declared complete by this tracker.
+Source review reached approved cumulative `R39-11` and `R30-12O-D`
+candidates. RFC 0040 `R40-07` is satisfied; `R40-11` must complete before
+`R30-12N-E`. The
+candidates remain uncommitted, and no source implementation is declared
+landed by this tracker.

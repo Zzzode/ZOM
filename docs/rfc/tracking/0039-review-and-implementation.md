@@ -57,9 +57,9 @@ authorizes source review to resume at `R39-11`.
 
 | Task | Owner | Depends On | Deliverable | Verification | Status |
 |---|---|---|---|---|---|
-| `R39-11` | `binder-checker` with `verification` review | `R39-07`; RFC 0030 `R30-12N-D` | Add `ExportSurfaceRevision::fromDigest` in `binding-metadata.{h,cc}` plus a digest-preservation assertion in `stable-binding-facts-test.cc`; at most 400 changed source lines. | C++23 ASan and UBSan `-Werror` syntax compilation plus exact-hash review; executable test after RFC 0030 `R30-13` | Pending |
-| `R39-12` | `binder-checker` with `verification` review | `R39-11` | Resume and approve RFC 0030 `R30-12O-D` through the public typed admission operation. | RFC 0030 exact-file line cap and wire mutation evidence | Pending |
+| `R39-11` | `binder-checker` with `verification` review | `R39-07`; RFC 0030 `R30-12N-D` | Add `ExportSurfaceRevision::fromDigest` in `binding-metadata.{h,cc}` plus a digest-preservation assertion in `stable-binding-facts-test.cc`; at most 400 changed source lines. | C++23 ASan and UBSan `-Werror` syntax compilation plus exact-hash review; executable test after RFC 0030 `R30-13` | Approved candidate; `binding-metadata.h` `d27abc608febc0b5b891a7e461a6becefda9e6cf74ea277a49b56dba2770186c`, `binding-metadata.cc` `22dbfe348ec2a66b550516e7a5882f09555560f7b12b6f093efb1799f8d115c4`, test `2edbb1c9c8b7da34746f06ae20fbc255ed4113c8b9a0e80c6afa206e654b84f5`; uncommitted |
+| `R39-12` | `binder-checker` with `verification` review | `R39-11` | Resume and approve RFC 0030 `R30-12O-D` through the public typed admission operation. | RFC 0030 exact-file line cap and wire mutation evidence | Approved candidate; codec header `4959aa8104d47ff1b624de55fb80232a8ed4634d4bf47c64a982039e2e6d03da`, codec source `af29ff073bd47c7dba776f752794ba6b714963074dd62ffa18c1c5a917d22e57`, test `cd14f426e0d40c6c60ac4dc428c00182ea2f3c9efcac02b3dae7abbb1709325d`; uncommitted |
 | `R39-13` | `rfc` | RFC 0030 `R30-15` | Synchronize truthful evidence and move RFC 0039 to LANDED only after the expanded atomic transaction is published. | RFC and SHA audit | Pending |
 
-The `R39-07` design gate is satisfied. Source review may resume at `R39-11`;
-no source implementation is declared complete by this tracker.
+The `R39-11` and `R39-12` candidates are approved but remain cumulative and
+uncommitted. No source implementation is landed by this tracker.
