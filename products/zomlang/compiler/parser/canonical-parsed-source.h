@@ -54,12 +54,12 @@ public:
 
   /// \brief Detaches one successful parser result into canonical bytes and rehydrates ownership.
   ZC_NODISCARD static zc::Maybe<CanonicalParsedSource> fromParsed(
-      zc::ArrayPtr<const uint8_t> canonicalSourceKey,
-      const identity::Sha256Digest& contentDigest, zc::ArrayPtr<const uint8_t> sourceBytes,
-      zc::StringPtr logicalName, CanonicalParserOptions options,
-      const source::SourceManager& parsedSources, const source::BufferId& parsedBuffer,
-      ast::Tree&& tree, ParsedTokenSnapshot&& tokens,
-      zc::Vector<diagnostics::DiagnosticFact>&& facts);
+      zc::ArrayPtr<const uint8_t> canonicalSourceKey, const identity::Sha256Digest& contentDigest,
+      zc::ArrayPtr<const uint8_t> sourceBytes, zc::StringPtr logicalName,
+      CanonicalParserOptions options, const source::SourceManager& parsedSources,
+      const source::BufferId& parsedBuffer, ast::Tree&& tree, ParsedTokenSnapshot&& tokens,
+      zc::Vector<diagnostics::DiagnosticFact>&& facts,
+      diagnostics::SourceDiagnosticProvenanceMap&& provenance);
 
   /// \brief Strictly decodes a complete canonical parsed-source value.
   ZC_NODISCARD static zc::Maybe<CanonicalParsedSource> decodeCanonical(
@@ -77,6 +77,7 @@ public:
   ZC_NODISCARD const ast::Tree& tree() const noexcept;
   ZC_NODISCARD zc::ArrayPtr<const CanonicalParsedToken> tokens() const ZC_LIFETIMEBOUND;
   ZC_NODISCARD zc::ArrayPtr<const diagnostics::DiagnosticFact> facts() const ZC_LIFETIMEBOUND;
+  ZC_NODISCARD const diagnostics::SourceDiagnosticProvenanceMap& provenance() const noexcept;
 
 private:
   struct Impl;

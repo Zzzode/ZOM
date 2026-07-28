@@ -39,11 +39,6 @@ ZC_TEST("InFlightDiagnosticTest: AddNote") {
   // Test disabled due to API changes
   // TODO: Update when SourceLoc and DiagID API is stable
 }
-ZC_TEST("InFlightDiagnosticTest: AddFixIt") {
-  // Test disabled due to API changes
-  // TODO: Update when SourceLoc and DiagID API is stable
-}
-
 ZC_TEST("InFlightDiagnosticTest: MultipleNotes") {
   // Test disabled due to API changes
   // TODO: Update when SourceLoc and DiagID API is stable

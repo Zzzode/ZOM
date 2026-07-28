@@ -107,7 +107,7 @@ namespace stable_binding_codec_detail {
 #undef ZOM_STABLE_BINDING_BOUND
 
 inline constexpr diagnostics::DiagnosticFactCodecLimits kBinderDiagnosticLimits{
-    kDiagnosticFactsPerResult, kDiagnosticPayloadBytes, static_cast<uint64_t>(zc::maxValue)};
+    kDiagnosticFactsPerResult, kDiagnosticPayloadBytes, 3, 64 * 1024 * 1024, 128};
 
 inline int compareBytes(zc::ArrayPtr<const uint8_t> left,
                         zc::ArrayPtr<const uint8_t> right) noexcept {
@@ -178,7 +178,12 @@ private:
       auto decoded = diagnostics::decodeDiagnosticFacts(
           zc::none, bytes.asPtr(), stable_binding_codec_detail::kBinderDiagnosticLimits);
       ZC_IF_SOME(facts, decoded) {
-        return stable_binding_detail::sameElements(values, facts.asPtr().asConst());
+        if (!stable_binding_detail::sameElements(values, facts.asPtr().asConst())) { return false; }
+        auto reencoded = diagnostics::encodeDiagnosticFacts(
+            zc::none, facts.asPtr().asConst(),
+            stable_binding_codec_detail::kBinderDiagnosticLimits);
+        ZC_IF_SOME(canonicalBytes, reencoded) { return canonicalBytes.asPtr() == bytes.asPtr(); }
+        return false;
       }
     }
     return false;

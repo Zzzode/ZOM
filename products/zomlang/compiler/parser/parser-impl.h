@@ -27,8 +27,8 @@
 #include "zomlang/compiler/ast/schema-verifier.h"
 #include "zomlang/compiler/basic/string-pool.h"
 #include "zomlang/compiler/basic/zomlang-opts.h"
-#include "zomlang/compiler/diagnostics/diagnostic-fact-buffer.h"
 #include "zomlang/compiler/diagnostics/diagnostic-ids.h"
+#include "zomlang/compiler/diagnostics/source-diagnostic-draft-buffer.h"
 #include "zomlang/compiler/lexer/token.h"
 #include "zomlang/compiler/lexer/utils.h"
 #include "zomlang/compiler/parser/parser-context.h"
@@ -155,12 +155,13 @@ private:
 // --- Parser::Impl declarations ---
 
 struct Parser::Impl {
-  Impl(const source::SourceManager& sourceMgr, diagnostics::DiagnosticFactBuffer& diagnosticFacts,
+  Impl(const source::SourceManager& sourceMgr,
+       diagnostics::SourceDiagnosticDraftBuffer& diagnosticFacts,
        const basic::LangOptions& langOpts, basic::StringPool& stringPool,
        const source::BufferId& bufferId);
 
   const source::SourceManager& sourceMgr;
-  diagnostics::DiagnosticFactBuffer& diagnosticFacts;
+  diagnostics::SourceDiagnosticDraftBuffer& diagnosticFacts;
   diagnostics::DiagnosticEmitter& diagnosticEngine;
   source::BufferId bufferId;
   ParserContext context;

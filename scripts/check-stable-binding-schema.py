@@ -233,25 +233,25 @@ MACRO_SIGNATURES = {
 }
 EXPECTED_COUNTS = {
     "Bound": 17,
-    "Record": 94,
+    "Record": 92,
     "NestedRecord": 1,
     "NestedField": 2,
-    "Sum": 13,
+    "Sum": 11,
     "RuntimeSum": 1,
-    "EnumValue": 31,
-    "SumVariant": 51,
-    "VariantField": 47,
+    "EnumValue": 19,
+    "SumVariant": 37,
+    "VariantField": 41,
     "InlineSumVariant": 2,
     "InlineSumVariantField": 3,
     "RuntimeSumVariant": 4,
     "RuntimeVariantField": 4,
-    "Field": 320,
-    "FieldLimit": 121,
+    "Field": 317,
+    "FieldLimit": 119,
     "Query": 22,
     "Input": 3,
     "CapabilityQuery": 5,
     "MaterializerPermission": 20,
-    "DiagnosticMapping": 5,
+    "DiagnosticMapping": 0,
     "Constraint": 24,
     "Digest": 1,
 }
@@ -483,8 +483,6 @@ RECORD_TASKS = {
 }
 RECORD_TASKS.update(
     {
-        "BinderIdentifierDiagnosticArguments": ("S6", "S6", "S6"),
-        "BinderNamespaceDiagnosticArguments": ("S6", "S6", "S6"),
         "ActiveCompilationUnitMembership": ("I2", "I2", "I2"),
         "ActiveImplementationMembershipRecord": ("I2", "I2", "I2"),
         "ImplementationGenericAuthority": ("I2", "I2", "I2"),
@@ -522,8 +520,6 @@ SUM_TASKS = {
     "StableControlTarget": ("S2D", "S3", "S2D"),
     "BinderQueryResult": ("S2B", "S3", "S2B"),
     "BinderQueryOwner": ("S2B", "S3", "S2B"),
-    "DiagnosticPhaseOrQueryKind": ("S6", "S6", "S6"),
-    "DiagnosticEmitterSite": ("S6", "S6", "S6"),
     "ActiveMembershipResult": ("I2", "I2", "I2"),
 }
 SUM_VARIANTS = {
@@ -551,24 +547,6 @@ SUM_VARIANTS = {
     "StableControlTarget": ("ExplicitLabel", "Loop", "Match"),
     "BinderQueryResult": ("Value", "SourceRejected", "KeyRejected"),
     "BinderQueryOwner": ("Module", "DefinitionHeader", "ImplementationHeader", "Body"),
-    "DiagnosticPhaseOrQueryKind": (
-        "Source",
-        "Package",
-        "BuildScript",
-        "Module",
-        "ToolchainModuleRootReservation",
-        "CoreFailureProducer",
-        "Binder",
-    ),
-    "DiagnosticEmitterSite": (
-        "Source",
-        "Package",
-        "BuildScript",
-        "Module",
-        "ToolchainModuleRootReservation",
-        "CoreLibrary",
-        "Binder",
-    ),
     "ActiveMembershipResult": ("Active", "Inactive"),
 }
 ENUMS = {
@@ -591,18 +569,6 @@ ENUMS = {
         ),
         ("S2B", "S3", "S2B"),
     ),
-    "BinderDiagnosticProducer": (("BindModuleSkeleton", "BindOwnerBody"), ("S6", "S6", "S6")),
-    "BinderDiagnosticEmitter": (
-        ("Declaration", "Lookup", "ControlTransfer", "ContextualSelf"),
-        ("S6", "S6", "S6"),
-    ),
-    "IdentityDiagnosticPhase": (("IdentityAdmission",), ("S6", "S6", "S6")),
-    "IdentityDiagnosticEmitter": (
-        ("DuplicateBound", "DefinitionIdentityCollision", "ConstantExpressionNotAllowed",
-         "DuplicateGenericParameter"),
-        ("S6", "S6", "S6"),
-    ),
-    "DiagnosticSecondaryRole": (("PreviousDeclaration",), ("S6", "S6", "S6")),
 }
 QUERY_TASKS = {
     **{name: ("B1",) * 4 for name in (
@@ -726,36 +692,8 @@ Q3_RECORDS = {
         "domain|truncated|trailing|field|duplicate|reordered|enum|max-count",
     ),
 }
-DIAGNOSTICS = {
-    "Missing": ("ZOM3001", "BinderIdentifierDiagnosticArguments", "None", "None", "0", "0",
-                "DiagnosticFactTest.BinderLookupRejectsExactMappingMutations"),
-    "NamespaceMismatch": (
-        "ZOM3002", "BinderNamespaceDiagnosticArguments", "None", "None", "0", "0",
-        "DiagnosticFactTest.BinderLookupRejectsExactMappingMutations",
-    ),
-    "Ambiguous": ("ZOM3028", "BinderIdentifierDiagnosticArguments", "None", "None", "0", "0",
-                  "DiagnosticFactTest.BinderLookupRejectsExactMappingMutations"),
-    "ConstantExpressionNotAllowed": (
-        "ZOM4079", "None", "None", "None", "0", "0",
-        "DiagnosticFactTest.IdentityAdmissionRejectsExactMappingMutations",
-    ),
-    "DuplicateGenericParameter": (
-        "ZOM3010", "BinderIdentifierDiagnosticArguments", "ZOM3017", "PreviousDeclaration", "1",
-        "0", "DiagnosticFactTest.IdentityAdmissionRejectsExactMappingMutations",
-    ),
-}
-DIAGNOSTIC_SUM_FIELDS = {
-    ("DiagnosticPhaseOrQueryKind", "ToolchainModuleRootReservation", "producer"): (
-        "ToolchainModuleRootReservationProducer"
-    ),
-    ("DiagnosticPhaseOrQueryKind", "CoreFailureProducer", "producer"): "CoreFailureProducer",
-    ("DiagnosticPhaseOrQueryKind", "Binder", "producer"): "BinderDiagnosticProducer",
-    ("DiagnosticEmitterSite", "ToolchainModuleRootReservation", "emitter"): (
-        "ToolchainModuleRootReservationEmitter"
-    ),
-    ("DiagnosticEmitterSite", "CoreLibrary", "emitter"): "CoreLibraryDiagnosticEmitter",
-    ("DiagnosticEmitterSite", "Binder", "emitter"): "BinderDiagnosticEmitter",
-}
+DIAGNOSTICS = {}
+DIAGNOSTIC_SUM_FIELDS = {}
 
 
 @dataclass(frozen=True)
@@ -1754,27 +1692,6 @@ def self_test(text: str) -> list[str]:
         ),
     ))
 
-    swapped = mutate_arg(
-        text, "EnumValue", "IdentityDiagnosticEmitter", 2, "0x04",
-        "ConstantExpressionNotAllowed")
-    swapped = mutate_arg(
-        swapped, "EnumValue", "IdentityDiagnosticEmitter", 2, "0x03",
-        "DuplicateGenericParameter")
-    cases.append(("identity emitter tag exchange", swapped))
-    mapping_mutations = (
-        (1, "ZOM9999", "diagnostic code"),
-        (2, "OtherArguments", "diagnostic arguments"),
-        (3, "ZOM9998", "diagnostic secondary code"),
-        (4, "OtherRole", "diagnostic secondary role"),
-        (5, "2", "diagnostic secondary count"),
-        (6, "1", "diagnostic fix-it count"),
-    )
-    for mapping in ("ConstantExpressionNotAllowed", "DuplicateGenericParameter"):
-        for column, value, label in mapping_mutations:
-            cases.append((
-                f"{mapping} {label}",
-                mutate_arg(text, "DiagnosticMapping", mapping, column, value),
-            ))
     required_error_fragments = {
         "capability failure removed": "schema-derived runtime substitutions",
         "capability failure added": "schema-derived runtime substitutions",

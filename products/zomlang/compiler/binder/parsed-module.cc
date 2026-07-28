@@ -84,7 +84,7 @@ zc::Maybe<zc::Array<uint8_t>> schemaDump(const parser::CanonicalParsedSource& pa
 
 bool hasSyntaxErrors(const parser::CanonicalParsedSource& parsed) {
   for (const auto& fact : parsed.facts()) {
-    if (diagnostics::getDiagnosticInfo(fact.code).severity >= diagnostics::DiagSeverity::kError) {
+    if (diagnostics::getDiagnosticInfo(fact.code()).severity >= diagnostics::DiagSeverity::kError) {
       return true;
     }
   }

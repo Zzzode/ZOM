@@ -34,7 +34,6 @@ DiagID Diagnostic::getId() const { return id; }
 const zc::Vector<zc::Own<Diagnostic>>& Diagnostic::getChildDiagnostics() const {
   return childDiagnostics;
 }
-const zc::Vector<zc::Own<FixIt>>& Diagnostic::getFixIts() const { return fixIts; }
 const source::SourceLoc& Diagnostic::getLoc() const { return location; }
 zc::ArrayPtr<const DiagnosticArgument> Diagnostic::getArgs() const {
   return diagnosticArgs.asPtr();
@@ -44,7 +43,6 @@ zc::ArrayPtr<const source::CharSourceRange> Diagnostic::getRanges() const { retu
 void Diagnostic::addChildDiagnostic(zc::Own<Diagnostic> child) {
   childDiagnostics.add(zc::mv(child));
 }
-void Diagnostic::addFixIt(zc::Own<FixIt> fixIt) { fixIts.add(zc::mv(fixIt)); }
 void Diagnostic::addRange(const source::CharSourceRange& range) { ranges.add(range); }
 
 }  // namespace diagnostics

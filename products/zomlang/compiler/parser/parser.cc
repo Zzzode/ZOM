@@ -14,7 +14,7 @@
 
 #include "zomlang/compiler/parser/parser.h"
 
-#include "zomlang/compiler/diagnostics/diagnostic-fact-buffer.h"
+#include "zomlang/compiler/diagnostics/source-diagnostic-draft-buffer.h"
 #include "zomlang/compiler/parser/parser-impl.h"
 
 namespace zomlang {
@@ -22,7 +22,7 @@ namespace compiler {
 namespace parser {
 
 Parser::Impl::Impl(const source::SourceManager& sourceMgr,
-                   diagnostics::DiagnosticFactBuffer& diagnosticFacts,
+                   diagnostics::SourceDiagnosticDraftBuffer& diagnosticFacts,
                    const basic::LangOptions& langOpts, basic::StringPool& stringPool,
                    const source::BufferId& bufferId)
     : sourceMgr(sourceMgr),
@@ -144,7 +144,7 @@ ast::Tree Parser::Impl::buildTree() {
 }
 
 Parser::Parser(const source::SourceManager& sourceMgr,
-               diagnostics::DiagnosticFactBuffer& diagnosticFacts,
+               diagnostics::SourceDiagnosticDraftBuffer& diagnosticFacts,
                const basic::LangOptions& langOpts, basic::StringPool& stringPool,
                const source::BufferId& bufferId)
     : impl(zc::heap<Impl>(sourceMgr, diagnosticFacts, langOpts, stringPool, bufferId)) {}

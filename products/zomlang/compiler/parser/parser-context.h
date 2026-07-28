@@ -27,7 +27,7 @@ namespace compiler {
 
 namespace diagnostics {
 class DiagnosticEmitter;
-class DiagnosticFactBuffer;
+class SourceDiagnosticDraftBuffer;
 }  // namespace diagnostics
 
 namespace basic {
@@ -41,10 +41,10 @@ namespace parser {
 class ParserContext {
 public:
   ParserContext(const source::SourceManager& sourceMgr,
-                diagnostics::DiagnosticFactBuffer& diagnosticFacts,
+                diagnostics::SourceDiagnosticDraftBuffer& diagnosticFacts,
                 const source::BufferId& bufferId);
   ParserContext(const source::SourceManager& sourceMgr,
-                diagnostics::DiagnosticFactBuffer& diagnosticFacts,
+                diagnostics::SourceDiagnosticDraftBuffer& diagnosticFacts,
                 const basic::LangOptions& langOpts, basic::StringPool& stringPool,
                 const source::BufferId& bufferId);
 
@@ -91,7 +91,7 @@ public:
 
 private:
   const source::SourceManager& sourceMgr;
-  diagnostics::DiagnosticFactBuffer& diagnosticFacts;
+  diagnostics::SourceDiagnosticDraftBuffer& diagnosticFacts;
   source::BufferId bufferId;
   mutable TokenStream stream;
 };

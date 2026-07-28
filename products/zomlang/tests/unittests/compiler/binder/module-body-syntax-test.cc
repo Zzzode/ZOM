@@ -14,7 +14,7 @@
 #include "zomlang/compiler/basic/zomlang-opts.h"
 #include "zomlang/compiler/binder/definition-inventory.h"
 #include "zomlang/compiler/binder/owner-body-syntax.h"
-#include "zomlang/compiler/diagnostics/diagnostic-fact-buffer.h"
+#include "zomlang/compiler/diagnostics/source-diagnostic-draft-buffer.h"
 #include "zomlang/compiler/parser/parser.h"
 #include "zomlang/compiler/source/manager.h"
 
@@ -155,7 +155,7 @@ struct ModuleBodyFixture final {
         buffer(sources->addMemBufferCopy(sourceText.asBytes(), "module-body.zom")),
         context(requireContext(factory)),
         registries(createRegistries()) {
-    diagnostics::DiagnosticFactBuffer diagnosticFacts(*sources, buffer);
+    diagnostics::SourceDiagnosticDraftBuffer diagnosticFacts(*sources, buffer);
     parser::Parser parser(*sources, diagnosticFacts, options, strings, buffer);
     auto parsedTree = parser.parse();
     auto tokens = parser.takeTokenSnapshot();

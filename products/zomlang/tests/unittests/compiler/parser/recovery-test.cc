@@ -29,7 +29,7 @@
 #include "zomlang/compiler/ast/tree.h"
 #include "zomlang/compiler/basic/string-pool.h"
 #include "zomlang/compiler/basic/zomlang-opts.h"
-#include "zomlang/compiler/diagnostics/diagnostic-fact-buffer.h"
+#include "zomlang/compiler/diagnostics/source-diagnostic-draft-buffer.h"
 #include "zomlang/compiler/parser/parser.h"
 #include "zomlang/compiler/source/manager.h"
 
@@ -65,7 +65,7 @@ ParseOutcome parseSource(zc::StringPtr source) {
   basic::StringPool stringPool;
 
   auto bufferId = sourceManager->addMemBufferCopy(source.asBytes(), "recovery-test.zom");
-  diagnostics::DiagnosticFactBuffer diagnosticFacts(*sourceManager, bufferId);
+  diagnostics::SourceDiagnosticDraftBuffer diagnosticFacts(*sourceManager, bufferId);
   Parser parser(*sourceManager, diagnosticFacts, langOpts, stringPool, bufferId);
 
   ParseOutcome outcome;

@@ -26,10 +26,11 @@
 #include "zomlang/compiler/basic/zomlang-opts.h"
 #include "zomlang/compiler/diagnostics/diagnostic-consumer.h"
 #include "zomlang/compiler/diagnostics/diagnostic-engine.h"
-#include "zomlang/compiler/diagnostics/diagnostic-fact-buffer.h"
 #include "zomlang/compiler/diagnostics/diagnostic-ids.h"
 #include "zomlang/compiler/diagnostics/diagnostic-materializer.h"
+#include "zomlang/compiler/diagnostics/source-diagnostic-draft-buffer.h"
 #include "zomlang/compiler/source/manager.h"
+#include "zomlang/tests/unittests/compiler/test-semantic-identities.h"
 
 namespace zomlang {
 namespace compiler {
@@ -49,8 +50,22 @@ public:
 
   ZC_NODISCARD zc::Maybe<ast::Tree> parse() {
     auto tree = parser.parse();
-    diagnostics::materializeDiagnosticFacts(facts.takeFactsCanonical(), sources, buffer,
-                                            diagnostics);
+    if (facts.hasInvariantViolation()) {
+      diagnostics.diagnose<diagnostics::DiagID::ModuleGraphInvariant>(source::SourceLoc(),
+                                                                      zc::str(uint64_t{1}));
+      return tree;
+    }
+    auto sourceKey = tests::test_identity_detail::source();
+    auto published = facts.publish(sourceKey, sources.getEntireTextForBuffer(buffer).size());
+    ZC_IREQUIRE(published != zc::none, facts.invariantMessage().cStr());
+    diagnostics::SourceDiagnosticProvenanceResolver resolver(
+        sourceKey, ZC_ASSERT_NONNULL(published).provenance());
+    auto materialized = diagnostics::materializeDiagnosticFacts(
+        ZC_ASSERT_NONNULL(published).facts(), resolver, sources, buffer);
+    ZC_IREQUIRE(materialized.is<diagnostics::ResolvedDiagnosticBatch>(),
+                "parser test diagnostic materialization failed");
+    diagnostics::publishResolvedDiagnosticBatch(
+        zc::mv(materialized.get<diagnostics::ResolvedDiagnosticBatch>()), diagnostics);
     return tree;
   }
 
@@ -62,7 +77,7 @@ private:
   source::SourceManager& sources;
   diagnostics::DiagnosticEngine& diagnostics;
   source::BufferId buffer;
-  diagnostics::DiagnosticFactBuffer facts;
+  diagnostics::SourceDiagnosticDraftBuffer facts;
   ::zomlang::compiler::parser::Parser parser;
 };
 

@@ -76,6 +76,23 @@ bool sameBytes(zc::ArrayPtr<const uint8_t> left, zc::ArrayPtr<const uint8_t> rig
   return left == right;
 }
 
+bool publishSourceDiagnostics(zc::ArrayPtr<const diagnostics::DiagnosticFact> facts,
+                              const diagnostics::SourceDiagnosticProvenanceMap& provenance,
+                              const identity::SourceFileKey& sourceKey,
+                              source::SourceManager& sources, const source::BufferId& buffer,
+                              diagnostics::DiagnosticEngine& engine) {
+  diagnostics::SourceDiagnosticProvenanceResolver resolver(sourceKey, provenance);
+  auto materialized = diagnostics::materializeDiagnosticFacts(facts, resolver, sources, buffer);
+  if (materialized.is<diagnostics::DiagnosticMaterializationFailure>()) {
+    engine.diagnose<diagnostics::DiagID::ModuleGraphInvariant>(source::SourceLoc(),
+                                                               zc::str(uint64_t{1}));
+    return false;
+  }
+  diagnostics::publishResolvedDiagnosticBatch(
+      zc::mv(materialized.get<diagnostics::ResolvedDiagnosticBatch>()), engine);
+  return true;
+}
+
 bool containsDefinitionRecord(const binder::NamedDefinitionInventory& inventory,
                               const identity::DefinitionKey& key,
                               zc::ArrayPtr<const uint8_t> record) {
@@ -3194,9 +3211,9 @@ bool CompilerSession::parseSources() {
                 source::SourceLoc(), zc::str(uint64_t{1}));
             return false;
           }
-          diagnostics::materializeDiagnosticFacts(ZC_ASSERT_NONNULL(rejected).facts(),
-                                                  *impl->sourceManager, entry.value,
-                                                  *impl->diagnosticEngine);
+          static_cast<void>(publishSourceDiagnostics(
+              ZC_ASSERT_NONNULL(rejected).facts(), ZC_ASSERT_NONNULL(rejected).provenance(),
+              sourceValue, *impl->sourceManager, entry.value, *impl->diagnosticEngine));
           return false;
         }
         if (parsed.kind() != query::QueryValueKind::Value) {
@@ -3254,9 +3271,12 @@ bool CompilerSession::parseSources() {
             source::SourceLoc(), zc::str(uint64_t{1}));
         return false;
       }
-      diagnostics::materializeDiagnosticFacts(parsed.value().capability().facts(),
-                                              *impl->sourceManager, entry.value,
-                                              *impl->diagnosticEngine);
+      if (!publishSourceDiagnostics(parsed.value().capability().facts(),
+                                    parsed.value().capability().provenance(),
+                                    ZC_ASSERT_NONNULL(sourceKey), *impl->sourceManager, entry.value,
+                                    *impl->diagnosticEngine)) {
+        return false;
+      }
       auto verified = binder::ParsedModuleVerifier::verifyQueryResult(
           impl->contextBrand, registries, ZC_ASSERT_NONNULL(sourceKey), *impl->sourceManager,
           entry.value, parsed.value().capability().clone());

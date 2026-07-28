@@ -11,7 +11,7 @@
 #include "zomlang/compiler/basic/zomlang-opts.h"
 #include "zomlang/compiler/binder/binding-input.h"
 #include "zomlang/compiler/binder/module-dependency-requests.h"
-#include "zomlang/compiler/diagnostics/diagnostic-fact-buffer.h"
+#include "zomlang/compiler/diagnostics/source-diagnostic-draft-buffer.h"
 #include "zomlang/compiler/driver/core-library-query-provider.h"
 #include "zomlang/compiler/driver/module-graph-query.h"
 #include "zomlang/compiler/driver/package/package-compilation-request.h"
@@ -171,7 +171,7 @@ struct ParsedSource final {
   explicit ParsedSource(zc::ArrayPtr<const uint8_t> text)
       : sources(zc::heap<source::SourceManager>()),
         buffer(sources->addMemBufferCopy(text, "module.zom")) {
-    diagnostics::DiagnosticFactBuffer facts(*sources, buffer);
+    diagnostics::SourceDiagnosticDraftBuffer facts(*sources, buffer);
     parser::Parser parser(*sources, facts, options, strings, buffer);
     auto parsed = parser.parse();
     ZC_REQUIRE(parsed != zc::none);

@@ -19,14 +19,16 @@ namespace zomlang::compiler::parser {
 /// \brief Canonical deterministic syntax failure published instead of a partial parser value.
 class ParseRejected final {
 public:
-  ParseRejected(ParseRejected&&) noexcept = default;
-  ParseRejected& operator=(ParseRejected&&) noexcept = default;
+  ~ParseRejected() noexcept(false);
+  ParseRejected(ParseRejected&&) noexcept;
+  ParseRejected& operator=(ParseRejected&&) noexcept;
   ZC_DISALLOW_COPY(ParseRejected);
 
   ZC_NODISCARD static zc::Maybe<ParseRejected> fromFacts(
       zc::ArrayPtr<const uint8_t> canonicalSourceKey, const identity::Sha256Digest& contentDigest,
       uint64_t sourceByteLength, CanonicalParserOptions options,
-      zc::Vector<diagnostics::DiagnosticFact>&& facts);
+      zc::Vector<diagnostics::DiagnosticFact>&& facts,
+      diagnostics::SourceDiagnosticProvenanceMap&& provenance);
   ZC_NODISCARD static zc::Maybe<ParseRejected> decodeCanonical(zc::ArrayPtr<const uint8_t> bytes);
 
   ZC_NODISCARD zc::Array<uint8_t> encodeCanonical() const;
@@ -35,19 +37,12 @@ public:
   ZC_NODISCARD uint64_t sourceByteLength() const noexcept;
   ZC_NODISCARD CanonicalParserOptions options() const noexcept;
   ZC_NODISCARD zc::ArrayPtr<const diagnostics::DiagnosticFact> facts() const ZC_LIFETIMEBOUND;
+  ZC_NODISCARD const diagnostics::SourceDiagnosticProvenanceMap& provenance() const noexcept;
 
 private:
-  ParseRejected(zc::Array<uint8_t>&& canonicalBytes, zc::Array<uint8_t>&& sourceKey,
-                const identity::Sha256Digest& contentDigest, uint64_t sourceByteLength,
-                CanonicalParserOptions options,
-                zc::Vector<diagnostics::DiagnosticFact>&& facts) noexcept;
-
-  zc::Array<uint8_t> canonicalBytesField;
-  zc::Array<uint8_t> sourceKeyField;
-  identity::Sha256Digest contentDigestField;
-  uint64_t sourceByteLengthField;
-  CanonicalParserOptions optionsField;
-  zc::Vector<diagnostics::DiagnosticFact> factsField;
+  struct Impl;
+  explicit ParseRejected(zc::Own<Impl>&& impl) noexcept;
+  zc::Own<Impl> impl;
 };
 
 /// \brief Revision-local whole-source parser query over explicit source and option inputs.

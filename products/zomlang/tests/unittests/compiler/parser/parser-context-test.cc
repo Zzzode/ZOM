@@ -17,7 +17,7 @@
 #include "zc/core/string.h"
 #include "zc/core/vector.h"
 #include "zc/ztest/test.h"
-#include "zomlang/compiler/diagnostics/diagnostic-fact-buffer.h"
+#include "zomlang/compiler/diagnostics/source-diagnostic-draft-buffer.h"
 #include "zomlang/compiler/source/manager.h"
 
 namespace zomlang {
@@ -48,7 +48,7 @@ zc::Vector<lexer::Token> makeTokenStream(source::SourceLoc base) {
 ZC_TEST("ParserContextTest.TokenAccessAndFileIdentifier") {
   auto sourceManager = zc::heap<source::SourceManager>();
   auto bufferId = sourceManager->addMemBufferCopy(zc::str("let value = 1;").asBytes(), "test.zom");
-  diagnostics::DiagnosticFactBuffer diagnosticFacts(*sourceManager, bufferId);
+  diagnostics::SourceDiagnosticDraftBuffer diagnosticFacts(*sourceManager, bufferId);
   ParserContext context(*sourceManager, diagnosticFacts, bufferId);
 
   auto tokens = makeTokenStream(sourceManager->getLocForBufferStart(bufferId));
@@ -63,7 +63,7 @@ ZC_TEST("ParserContextTest.TokenAccessAndFileIdentifier") {
 ZC_TEST("ParserContextTest.RangeAndDiagnosticLocationsClampToEof") {
   auto sourceManager = zc::heap<source::SourceManager>();
   auto bufferId = sourceManager->addMemBufferCopy(zc::str("let value = 1;").asBytes(), "test.zom");
-  diagnostics::DiagnosticFactBuffer diagnosticFacts(*sourceManager, bufferId);
+  diagnostics::SourceDiagnosticDraftBuffer diagnosticFacts(*sourceManager, bufferId);
   ParserContext context(*sourceManager, diagnosticFacts, bufferId);
 
   const source::SourceLoc base = sourceManager->getLocForBufferStart(bufferId);
@@ -81,7 +81,7 @@ ZC_TEST("ParserContextTest.RangeAndDiagnosticLocationsClampToEof") {
 ZC_TEST("ParserContextTest.EmptyTokenRangeUsesBufferStart") {
   auto sourceManager = zc::heap<source::SourceManager>();
   auto bufferId = sourceManager->addMemBufferCopy(zc::str("let value = 1;").asBytes(), "test.zom");
-  diagnostics::DiagnosticFactBuffer diagnosticFacts(*sourceManager, bufferId);
+  diagnostics::SourceDiagnosticDraftBuffer diagnosticFacts(*sourceManager, bufferId);
   ParserContext context(*sourceManager, diagnosticFacts, bufferId);
 
   const source::SourceLoc base = sourceManager->getLocForBufferStart(bufferId);

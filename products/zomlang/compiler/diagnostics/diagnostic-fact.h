@@ -14,83 +14,189 @@
 #include "zc/core/vector.h"
 #include "zomlang/compiler/diagnostics/diagnostic-ids.h"
 
+namespace zomlang::compiler::identity {
+class SourceFileKey;
+}
+
 namespace zomlang::compiler::diagnostics {
 
-enum class SourceDiagnosticPhase : uint8_t { Lex = 1, Parse = 2 };
+enum class SourceDiagnosticPhase : uint8_t { Lex = 0x01, Parse = 0x02 };
+enum class SourceDiagnosticEmitter : uint8_t { Lexer = 0x01, Parser = 0x02 };
+enum class DiagnosticSecondaryRole : uint8_t { Highlight = 0x01, Note = 0x02 };
 
-struct DiagnosticFactRange final {
+/// \brief Stable identity of one deterministic source diagnostic occurrence.
+class DiagnosticOccurrenceKey final {
+public:
+  ~DiagnosticOccurrenceKey() noexcept(false);
+  DiagnosticOccurrenceKey(DiagnosticOccurrenceKey&&) noexcept;
+  DiagnosticOccurrenceKey& operator=(DiagnosticOccurrenceKey&&) noexcept;
+  ZC_DISALLOW_COPY(DiagnosticOccurrenceKey);
+
+  ZC_NODISCARD static zc::Maybe<DiagnosticOccurrenceKey> from(identity::SourceFileKey&& source,
+                                                              SourceDiagnosticPhase phase,
+                                                              SourceDiagnosticEmitter emitter,
+                                                              uint32_t occurrence);
+  ZC_NODISCARD DiagnosticOccurrenceKey clone() const;
+  ZC_NODISCARD const identity::SourceFileKey& source() const noexcept;
+  ZC_NODISCARD SourceDiagnosticPhase phase() const noexcept;
+  ZC_NODISCARD SourceDiagnosticEmitter emitter() const noexcept;
+  ZC_NODISCARD uint32_t occurrence() const noexcept;
+  bool operator==(const DiagnosticOccurrenceKey& other) const noexcept;
+
+private:
+  struct Impl;
+  explicit DiagnosticOccurrenceKey(zc::Own<Impl>&& impl) noexcept;
+  zc::Own<Impl> impl;
+};
+
+/// \brief Stable source provenance key resolved only against its retained source map.
+class DiagnosticProvenanceKey final {
+public:
+  ~DiagnosticProvenanceKey() noexcept(false);
+  DiagnosticProvenanceKey(DiagnosticProvenanceKey&&) noexcept;
+  DiagnosticProvenanceKey& operator=(DiagnosticProvenanceKey&&) noexcept;
+  ZC_DISALLOW_COPY(DiagnosticProvenanceKey);
+
+  ZC_NODISCARD static zc::Maybe<DiagnosticProvenanceKey> from(
+      identity::SourceFileKey&& source, SourceDiagnosticPhase phase,
+      SourceDiagnosticEmitter emitter, zc::Vector<uint32_t>&& occurrencePath);
+  ZC_NODISCARD DiagnosticProvenanceKey clone() const;
+  ZC_NODISCARD const identity::SourceFileKey& source() const noexcept;
+  ZC_NODISCARD SourceDiagnosticPhase phase() const noexcept;
+  ZC_NODISCARD SourceDiagnosticEmitter emitter() const noexcept;
+  ZC_NODISCARD zc::ArrayPtr<const uint32_t> occurrencePath() const ZC_LIFETIMEBOUND;
+  bool operator==(const DiagnosticProvenanceKey& other) const noexcept;
+
+private:
+  struct Impl;
+  explicit DiagnosticProvenanceKey(zc::Own<Impl>&& impl) noexcept;
+  zc::Own<Impl> impl;
+};
+
+/// \brief One canonical source diagnostic secondary record.
+class DiagnosticSecondary final {
+public:
+  ~DiagnosticSecondary() noexcept(false);
+  DiagnosticSecondary(DiagnosticSecondary&&) noexcept;
+  DiagnosticSecondary& operator=(DiagnosticSecondary&&) noexcept;
+  ZC_DISALLOW_COPY(DiagnosticSecondary);
+
+  ZC_NODISCARD static zc::Maybe<DiagnosticSecondary> highlight(
+      DiagnosticProvenanceKey&& provenance);
+  ZC_NODISCARD static zc::Maybe<DiagnosticSecondary> note(DiagID code,
+                                                          DiagnosticProvenanceKey&& provenance,
+                                                          zc::Vector<zc::String>&& arguments);
+  ZC_NODISCARD DiagnosticSecondary clone() const;
+  ZC_NODISCARD DiagnosticSecondaryRole role() const noexcept;
+  ZC_NODISCARD zc::Maybe<DiagID> code() const noexcept;
+  ZC_NODISCARD const DiagnosticProvenanceKey& provenance() const noexcept;
+  ZC_NODISCARD zc::ArrayPtr<const zc::String> arguments() const ZC_LIFETIMEBOUND;
+  bool operator==(const DiagnosticSecondary& other) const noexcept;
+
+private:
+  struct Impl;
+  explicit DiagnosticSecondary(zc::Own<Impl>&& impl) noexcept;
+  zc::Own<Impl> impl;
+};
+
+/// \brief One canonical query-safe source diagnostic fact.
+struct DiagnosticFact final {
+public:
+  ~DiagnosticFact() noexcept(false);
+  DiagnosticFact(DiagnosticFact&&) noexcept;
+  DiagnosticFact& operator=(DiagnosticFact&&) noexcept;
+  ZC_DISALLOW_COPY(DiagnosticFact);
+
+  ZC_NODISCARD static zc::Maybe<DiagnosticFact> from(DiagnosticOccurrenceKey&& occurrence,
+                                                     DiagID code,
+                                                     zc::Vector<zc::String>&& arguments,
+                                                     DiagnosticProvenanceKey&& primary,
+                                                     zc::Vector<DiagnosticSecondary>&& secondary);
+  ZC_NODISCARD DiagnosticFact clone() const;
+  ZC_NODISCARD const DiagnosticOccurrenceKey& occurrence() const noexcept;
+  ZC_NODISCARD DiagID code() const noexcept;
+  ZC_NODISCARD zc::ArrayPtr<const zc::String> arguments() const ZC_LIFETIMEBOUND;
+  ZC_NODISCARD const DiagnosticProvenanceKey& primary() const noexcept;
+  ZC_NODISCARD zc::ArrayPtr<const DiagnosticSecondary> secondary() const ZC_LIFETIMEBOUND;
+  bool operator==(const DiagnosticFact& other) const noexcept;
+
+private:
+  struct Impl;
+  explicit DiagnosticFact(zc::Own<Impl>&& impl) noexcept;
+  zc::Own<Impl> impl;
+};
+
+struct DiagnosticSourceRange final {
   uint64_t byteStart = 0;
   uint64_t byteEnd = 0;
   bool isTokenRange = false;
 
-  bool operator==(const DiagnosticFactRange& other) const noexcept = default;
+  bool operator==(const DiagnosticSourceRange& other) const noexcept = default;
 };
 
-struct DiagnosticFixItFact final {
-  DiagnosticFactRange range;
-  zc::String replacementText;
+struct SourceDiagnosticProvenanceEntry final {
+  DiagnosticProvenanceKey key;
+  DiagnosticSourceRange range;
 
-  ZC_NODISCARD DiagnosticFixItFact clone() const;
-  bool operator==(const DiagnosticFixItFact& other) const noexcept;
+  ZC_NODISCARD SourceDiagnosticProvenanceEntry clone() const;
+  bool operator==(const SourceDiagnosticProvenanceEntry& other) const noexcept;
 };
 
-struct SecondaryDiagnosticFact final {
-  DiagID code = static_cast<DiagID>(0);
-  uint64_t primaryByteOffset = 0;
-  zc::Vector<zc::String> arguments;
-  zc::Vector<DiagnosticFactRange> ranges;
+/// \brief Complete revision-local source provenance authority for one fact sequence.
+class SourceDiagnosticProvenanceMap final {
+public:
+  ~SourceDiagnosticProvenanceMap() noexcept(false);
+  SourceDiagnosticProvenanceMap(SourceDiagnosticProvenanceMap&&) noexcept;
+  SourceDiagnosticProvenanceMap& operator=(SourceDiagnosticProvenanceMap&&) noexcept;
+  ZC_DISALLOW_COPY(SourceDiagnosticProvenanceMap);
 
-  ZC_NODISCARD SecondaryDiagnosticFact clone() const;
-  bool operator==(const SecondaryDiagnosticFact& other) const noexcept;
+  ZC_NODISCARD static zc::Maybe<SourceDiagnosticProvenanceMap> from(
+      zc::Vector<SourceDiagnosticProvenanceEntry>&& entries, uint64_t sourceByteLength);
+  ZC_NODISCARD SourceDiagnosticProvenanceMap clone() const;
+  ZC_NODISCARD zc::ArrayPtr<const SourceDiagnosticProvenanceEntry> entries() const ZC_LIFETIMEBOUND;
+  ZC_NODISCARD uint64_t sourceByteLength() const noexcept;
+  ZC_NODISCARD zc::Maybe<const DiagnosticSourceRange&> find(
+      const DiagnosticProvenanceKey& key) const noexcept;
+  bool operator==(const SourceDiagnosticProvenanceMap& other) const noexcept;
+
+private:
+  struct Impl;
+  explicit SourceDiagnosticProvenanceMap(zc::Own<Impl>&& impl) noexcept;
+  zc::Own<Impl> impl;
 };
 
-/// \brief One owned, source-relative, query-safe diagnostic occurrence.
-struct DiagnosticFact final {
-  SourceDiagnosticPhase phase = SourceDiagnosticPhase::Parse;
-  zc::String emitterFile;
-  zc::String emitterFunction;
-  uint32_t emitterLine = 0;
-  uint32_t emitterColumn = 0;
-  uint32_t occurrenceOrdinal = 0;
-  DiagID code = static_cast<DiagID>(0);
-  uint64_t primaryByteOffset = 0;
-  zc::Vector<zc::String> arguments;
-  zc::Vector<DiagnosticFactRange> ranges;
-  zc::Vector<DiagnosticFixItFact> fixIts;
-  zc::Vector<SecondaryDiagnosticFact> secondary;
-
-  ZC_NODISCARD DiagnosticFact clone() const;
-  bool operator==(const DiagnosticFact& other) const noexcept;
-};
-
-/// \brief Explicit admission limits shared by diagnostic fact encoding and decoding.
+/// \brief Explicit fact-sequence limits shared by encoding and decoding.
 struct DiagnosticFactCodecLimits final {
   uint64_t maximumFacts;
   uint64_t maximumEncodedBytes;
+  uint64_t maximumProvenanceComponentsPerKey;
+  uint64_t maximumArgumentBytesPerRecord;
+  uint64_t maximumSecondaryPerFact;
+};
+
+/// \brief Explicit source-provenance limits shared by encoding and decoding.
+struct DiagnosticProvenanceCodecLimits final {
+  uint64_t maximumEntries;
+  uint64_t maximumEncodedBytes;
+  uint64_t maximumProvenanceComponentsPerKey;
   uint64_t maximumSourceByteOffset;
 };
 
-/// \brief Sorts facts by complete structural occurrence and assigns duplicate ordinals.
-ZC_NODISCARD zc::Vector<DiagnosticFact> canonicalizeDiagnosticFacts(
-    zc::Vector<DiagnosticFact>&& facts);
-
-/// \brief Validates and encodes a strictly canonical diagnostic fact sequence.
-/// \param outputResource Optional resource that must outlive the returned byte array.
-/// \param facts Canonically ordered fact sequence.
-/// \param limits Complete count, byte, and source-offset admission limits.
 ZC_NODISCARD zc::Maybe<zc::Array<uint8_t>> encodeDiagnosticFacts(
     zc::Maybe<zc::MemoryResource&> outputResource, zc::ArrayPtr<const DiagnosticFact> facts,
     DiagnosticFactCodecLimits limits);
-
-/// \brief Strictly decodes and validates canonical diagnostic facts.
-/// \param resultResource Optional resource that must outlive the returned facts and nested values.
-/// \param encoded Complete canonical payload.
-/// \param limits Complete count, byte, and source-offset admission limits.
 ZC_NODISCARD zc::Maybe<zc::Vector<DiagnosticFact>> decodeDiagnosticFacts(
     zc::Maybe<zc::MemoryResource&> resultResource, zc::ArrayPtr<const uint8_t> encoded,
     DiagnosticFactCodecLimits limits);
-
-/// \brief Returns whether a diagnostic is owned by lexing or parsing.
+ZC_NODISCARD zc::Maybe<zc::Array<uint8_t>> encodeSourceDiagnosticProvenance(
+    zc::Maybe<zc::MemoryResource&> outputResource, const SourceDiagnosticProvenanceMap& provenance,
+    DiagnosticProvenanceCodecLimits limits);
+ZC_NODISCARD zc::Maybe<SourceDiagnosticProvenanceMap> decodeSourceDiagnosticProvenance(
+    zc::Maybe<zc::MemoryResource&> resultResource, zc::ArrayPtr<const uint8_t> encoded,
+    uint64_t sourceByteLength, DiagnosticProvenanceCodecLimits limits);
+ZC_NODISCARD bool validateDiagnosticProvenance(
+    zc::ArrayPtr<const DiagnosticFact> facts,
+    const SourceDiagnosticProvenanceMap& provenance) noexcept;
 ZC_NODISCARD bool isSourceSyntaxDiagnostic(DiagID code) noexcept;
 
 }  // namespace zomlang::compiler::diagnostics

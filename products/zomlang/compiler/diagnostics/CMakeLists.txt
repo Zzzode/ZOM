@@ -1,7 +1,7 @@
 file(GLOB DIAGNOSTICS_SRC
   diagnostic.cc
   diagnostic-fact.cc
-  diagnostic-fact-buffer.cc
+  source-diagnostic-draft-buffer.cc
   diagnostic-materializer.cc
   diagnostic-state.cc
   diagnostic-engine.cc

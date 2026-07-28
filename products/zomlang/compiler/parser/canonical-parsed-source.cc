@@ -23,15 +23,28 @@ constexpr uint64_t kMaximumSourceBytes = 64 * 1024 * 1024;
 constexpr uint64_t kMaximumLogicalNameBytes = 64 * 1024;
 constexpr uint64_t kMaximumAstBytes = 256 * 1024 * 1024;
 constexpr uint64_t kMaximumFactBytes = 64 * 1024 * 1024;
+constexpr uint64_t kMaximumProvenanceBytes = 64 * 1024 * 1024;
 constexpr uint64_t kMaximumValueBodyBytes = 512 * 1024 * 1024;
 constexpr uint64_t kMaximumTokens = 16 * 1024 * 1024;
 constexpr uint64_t kMaximumTextBytes = 64 * 1024 * 1024;
 constexpr uint64_t kMaximumFacts = 4096;
 
 diagnostics::DiagnosticFactCodecLimits sourceFactLimits(uint64_t sourceByteLength) {
+  static_cast<void>(sourceByteLength);
   return diagnostics::DiagnosticFactCodecLimits{
       .maximumFacts = kMaximumFacts,
       .maximumEncodedBytes = kMaximumFactBytes,
+      .maximumProvenanceComponentsPerKey = 3,
+      .maximumArgumentBytesPerRecord = 64 * 1024 * 1024,
+      .maximumSecondaryPerFact = 128,
+  };
+}
+
+diagnostics::DiagnosticProvenanceCodecLimits sourceProvenanceLimits(uint64_t sourceByteLength) {
+  return diagnostics::DiagnosticProvenanceCodecLimits{
+      .maximumEntries = 528384,
+      .maximumEncodedBytes = kMaximumProvenanceBytes,
+      .maximumProvenanceComponentsPerKey = 3,
       .maximumSourceByteOffset = sourceByteLength,
   };
 }
@@ -125,12 +138,16 @@ zc::Maybe<zc::Array<uint8_t>> encodeBody(
     zc::ArrayPtr<const uint8_t> sourceBytes, zc::StringPtr logicalName,
     CanonicalParserOptions options, const ast::Tree& tree, const source::SourceManager& sources,
     const source::BufferId& buffer, zc::ArrayPtr<const CanonicalParsedToken> tokens,
-    zc::ArrayPtr<const diagnostics::DiagnosticFact> facts) {
+    zc::ArrayPtr<const diagnostics::DiagnosticFact> facts,
+    const diagnostics::SourceDiagnosticProvenanceMap& provenance) {
   auto astBytes = ast::encodeCanonicalTree(tree, sources, buffer);
   if (astBytes == zc::none) { return zc::none; }
   auto factBytes =
       diagnostics::encodeDiagnosticFacts(zc::none, facts, sourceFactLimits(sourceBytes.size()));
   if (factBytes == zc::none) { return zc::none; }
+  auto provenanceBytes = diagnostics::encodeSourceDiagnosticProvenance(
+      zc::none, provenance, sourceProvenanceLimits(sourceBytes.size()));
+  if (provenanceBytes == zc::none) { return zc::none; }
   identity::CanonicalEncoder encoder;
   encoder.encodeByteString(canonicalSourceKey);
   encoder.encodeDigest(contentDigest);
@@ -143,6 +160,7 @@ zc::Maybe<zc::Array<uint8_t>> encodeBody(
   encoder.encodeByteString(ZC_ASSERT_NONNULL(astBytes).asPtr());
   encodeTokens(encoder, tokens);
   encoder.encodeByteString(ZC_ASSERT_NONNULL(factBytes).asPtr());
+  encoder.encodeByteString(ZC_ASSERT_NONNULL(provenanceBytes).asPtr());
   return encoder.finish();
 }
 
@@ -161,7 +179,8 @@ struct CanonicalParsedSource::Impl final {
   Impl(zc::Array<uint8_t>&& canonicalBytes, zc::Array<uint8_t>&& sourceKey,
        const identity::Sha256Digest& contentDigest, zc::Array<uint8_t>&& sourceBytes,
        zc::String&& logicalName, CanonicalParserOptions options, ast::Tree&& tree,
-       zc::Vector<CanonicalParsedToken>&& tokens, zc::Vector<diagnostics::DiagnosticFact>&& facts)
+       zc::Vector<CanonicalParsedToken>&& tokens, zc::Vector<diagnostics::DiagnosticFact>&& facts,
+       diagnostics::SourceDiagnosticProvenanceMap&& provenance)
       : canonicalBytes(zc::mv(canonicalBytes)),
         sourceKey(zc::mv(sourceKey)),
         contentDigest(contentDigest),
@@ -172,7 +191,8 @@ struct CanonicalParsedSource::Impl final {
         buffer(sourceManager.addMemBufferCopy(this->sourceBytes.asPtr(), this->logicalName)),
         tree(zc::mv(tree)),
         tokens(zc::mv(tokens)),
-        facts(zc::mv(facts)) {}
+        facts(zc::mv(facts)),
+        provenance(zc::mv(provenance)) {}
 
   zc::Array<uint8_t> canonicalBytes;
   zc::Array<uint8_t> sourceKey;
@@ -185,6 +205,7 @@ struct CanonicalParsedSource::Impl final {
   ast::Tree tree;
   zc::Vector<CanonicalParsedToken> tokens;
   zc::Vector<diagnostics::DiagnosticFact> facts;
+  diagnostics::SourceDiagnosticProvenanceMap provenance;
 };
 
 CanonicalParsedToken CanonicalParsedToken::clone() const {
@@ -207,7 +228,8 @@ zc::Maybe<CanonicalParsedSource> CanonicalParsedSource::fromParsed(
     zc::ArrayPtr<const uint8_t> sourceBytes, zc::StringPtr logicalName,
     CanonicalParserOptions options, const source::SourceManager& parsedSources,
     const source::BufferId& parsedBuffer, ast::Tree&& tree, ParsedTokenSnapshot&& tokens,
-    zc::Vector<diagnostics::DiagnosticFact>&& facts) {
+    zc::Vector<diagnostics::DiagnosticFact>&& facts,
+    diagnostics::SourceDiagnosticProvenanceMap&& provenance) {
   auto computedDigest = identity::sha256(sourceBytes);
   if (!validSourceKey(canonicalSourceKey) || sourceBytes.size() > kMaximumSourceBytes ||
       logicalName.size() == 0 || logicalName.size() > kMaximumLogicalNameBytes ||
@@ -217,17 +239,22 @@ zc::Maybe<CanonicalParsedSource> CanonicalParsedSource::fromParsed(
   auto detachedTokens = detachTokens(tokens.sourceManager, tokens.buffer, tokens.tokenValues,
                                      parsedSources, parsedBuffer, sourceBytes.size());
   if (detachedTokens == zc::none) { return zc::none; }
-  auto canonicalFacts = diagnostics::canonicalizeDiagnosticFacts(zc::mv(facts));
   const auto limits = sourceFactLimits(sourceBytes.size());
-  auto factBytes = diagnostics::encodeDiagnosticFacts(zc::none, canonicalFacts.asPtr(), limits);
-  if (factBytes == zc::none ||
+  auto factBytes = diagnostics::encodeDiagnosticFacts(zc::none, facts.asPtr(), limits);
+  auto provenanceBytes = diagnostics::encodeSourceDiagnosticProvenance(
+      zc::none, provenance, sourceProvenanceLimits(sourceBytes.size()));
+  if (factBytes == zc::none || provenanceBytes == zc::none ||
       diagnostics::decodeDiagnosticFacts(zc::none, ZC_ASSERT_NONNULL(factBytes).asPtr(), limits) ==
-          zc::none) {
+          zc::none ||
+      diagnostics::decodeSourceDiagnosticProvenance(
+          zc::none, ZC_ASSERT_NONNULL(provenanceBytes).asPtr(), sourceBytes.size(),
+          sourceProvenanceLimits(sourceBytes.size())) == zc::none ||
+      !diagnostics::validateDiagnosticProvenance(facts.asPtr(), provenance)) {
     return zc::none;
   }
   auto body = encodeBody(canonicalSourceKey, contentDigest, sourceBytes, logicalName, options, tree,
                          parsedSources, parsedBuffer, ZC_ASSERT_NONNULL(detachedTokens).asPtr(),
-                         canonicalFacts.asPtr());
+                         facts.asPtr(), provenance);
   if (body == zc::none) { return zc::none; }
   auto encoded = wrapBody(ZC_ASSERT_NONNULL(body).asPtr());
   return decodeCanonical(encoded.asPtr());
@@ -280,13 +307,22 @@ zc::Maybe<CanonicalParsedSource> CanonicalParsedSource::decodeCanonical(
                                        ZC_ASSERT_NONNULL(sourceBytes).size());
   auto tokens = decodeTokens(decoder, ZC_ASSERT_NONNULL(sourceBytes).size());
   auto factBytes = decoder.decodeByteString(kMaximumFactBytes);
-  if (tree == zc::none || tokens == zc::none || factBytes == zc::none || !decoder.finished()) {
+  auto provenanceBytes = decoder.decodeByteString(kMaximumProvenanceBytes);
+  if (tree == zc::none || tokens == zc::none || factBytes == zc::none ||
+      provenanceBytes == zc::none || !decoder.finished()) {
     return zc::none;
   }
   auto facts =
       diagnostics::decodeDiagnosticFacts(zc::none, ZC_ASSERT_NONNULL(factBytes).asPtr(),
                                          sourceFactLimits(ZC_ASSERT_NONNULL(sourceBytes).size()));
-  if (facts == zc::none) { return zc::none; }
+  auto provenance = diagnostics::decodeSourceDiagnosticProvenance(
+      zc::none, ZC_ASSERT_NONNULL(provenanceBytes).asPtr(), ZC_ASSERT_NONNULL(sourceBytes).size(),
+      sourceProvenanceLimits(ZC_ASSERT_NONNULL(sourceBytes).size()));
+  if (facts == zc::none || provenance == zc::none ||
+      !diagnostics::validateDiagnosticProvenance(ZC_ASSERT_NONNULL(facts).asPtr(),
+                                                 ZC_ASSERT_NONNULL(provenance))) {
+    return zc::none;
+  }
   auto sourceFileName = ast::canonicalSourceFileName(ZC_ASSERT_NONNULL(tree));
   if (sourceFileName == zc::none || ZC_ASSERT_NONNULL(sourceFileName) != retainedName) {
     return zc::none;
@@ -298,13 +334,15 @@ zc::Maybe<CanonicalParsedSource> CanonicalParsedSource::decodeCanonical(
   auto retainedTree = zc::mv(ZC_ASSERT_NONNULL(tree));
   auto retainedTokens = zc::mv(ZC_ASSERT_NONNULL(tokens));
   auto retainedFacts = zc::mv(ZC_ASSERT_NONNULL(facts));
+  auto retainedProvenance = zc::mv(ZC_ASSERT_NONNULL(provenance));
   auto owned = zc::heap<Impl>(zc::mv(canonicalBytes), zc::mv(sourceKeyBytes),
                               ZC_ASSERT_NONNULL(contentDigest), zc::mv(retainedSourceBytes),
                               zc::mv(retainedName),
                               CanonicalParserOptions{ZC_ASSERT_NONNULL(useUnicode),
                                                      ZC_ASSERT_NONNULL(allowDollarIdentifiers),
                                                      ZC_ASSERT_NONNULL(supportRegexLiterals)},
-                              zc::mv(retainedTree), zc::mv(retainedTokens), zc::mv(retainedFacts));
+                              zc::mv(retainedTree), zc::mv(retainedTokens), zc::mv(retainedFacts),
+                              zc::mv(retainedProvenance));
 
   auto rehydratedTree =
       ast::decodeCanonicalTree(ZC_ASSERT_NONNULL(astBytes).asPtr(), owned->sourceManager,
@@ -343,6 +381,10 @@ zc::ArrayPtr<const CanonicalParsedToken> CanonicalParsedSource::tokens() const {
 }
 zc::ArrayPtr<const diagnostics::DiagnosticFact> CanonicalParsedSource::facts() const {
   return impl->facts.asPtr();
+}
+const diagnostics::SourceDiagnosticProvenanceMap& CanonicalParsedSource::provenance()
+    const noexcept {
+  return impl->provenance;
 }
 
 }  // namespace zomlang::compiler::parser

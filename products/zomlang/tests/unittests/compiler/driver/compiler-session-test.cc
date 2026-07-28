@@ -390,6 +390,18 @@ ZC_TEST("CompilerSessionTest.PublishesOrdinaryPackageModuleGraph") {
   }
 }
 
+ZC_TEST("CompilerSessionTest.PublishesCanonicalParseRejectionAtomically") {
+  auto session = packageSession("let main = ;\n"_zc);
+  SessionDiagnostics captured;
+  session->getDiagnosticEngine().addConsumer(zc::heap<SessionDiagnosticConsumer>(captured));
+
+  ZC_EXPECT(!session->parseSources());
+  ZC_EXPECT(!session->hasVerifiedParsedSyntax());
+  ZC_EXPECT(captured.ids.size() == 1);
+  ZC_EXPECT(diagnosticCount(captured, diagnostics::DiagID::ExpressionExpected) == 1);
+  ZC_EXPECT(diagnosticCount(captured, diagnostics::DiagID::ModuleGraphInvariant) == 0);
+}
+
 ZC_TEST("CompilerSessionTest.RejectsPackageParsingWithoutCoreDistribution") {
   auto session = packageSession("let main = 0;\n"_zc, {}, false);
   SessionDiagnostics captured;

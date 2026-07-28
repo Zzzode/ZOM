@@ -26,8 +26,6 @@ class CharSourceRange;
 
 namespace diagnostics {
 
-struct FixIt;
-
 class Diagnostic;
 class DiagnosticEmitter;
 
@@ -44,8 +42,6 @@ public:
 
   void emit();
 
-  /// Add methods to modify the diagnostic, for example, add fix-its
-  InFlightDiagnostic& addFixIt(zc::Own<FixIt> fixit);
   InFlightDiagnostic& addRange(const source::CharSourceRange& range);
   InFlightDiagnostic& addChild(zc::Own<Diagnostic> child);
 

@@ -14,15 +14,14 @@
 
 #include <chrono>
 #include <cstdio>
+#include <cstring>
 #include <string>
 #include <vector>
 
 #include "zc/core/string.h"
 #include "zomlang/compiler/basic/string-pool.h"
 #include "zomlang/compiler/basic/zomlang-opts.h"
-#include "zomlang/compiler/diagnostics/diagnostic-consumer.h"
-#include "zomlang/compiler/diagnostics/diagnostic-engine.h"
-#include "zomlang/compiler/diagnostics/diagnostic-fact-buffer.h"
+#include "zomlang/compiler/diagnostics/source-diagnostic-draft-buffer.h"
 #include "zomlang/compiler/lexer/lexer.h"
 #include "zomlang/compiler/parser/parser.h"
 #include "zomlang/compiler/source/manager.h"
@@ -31,87 +30,93 @@ using namespace zomlang::compiler;
 using Clock = std::chrono::high_resolution_clock;
 
 static const char* kSampleProgram = R"(
-module example
-
-import std.collections.{Vec, Map}
-import std.io.println
+module example;
 
 /// A sample class for benchmarking
-class Person {
-  let name: str
-  let age: u32
-  mut score: f64 = 0.0
+class Counter {
+  private mut value: i32 = 0;
+  static let instances: i32 = 0;
+  const maximum: i32 = 1000;
 
-  init(name: str, age: u32) {
-    this.name = name
-    this.age = age
+  init(initial: i32) {
+    self.value = initial;
   }
 
-  fun greet(): str {
-    return "Hello, " + name + "!"
+  fun increment() -> unit {
+    self.value = self.value + 1;
   }
 
-  fun birthday() {
-    age = age + 1
+  fun current() -> i32 {
+    return self.value;
   }
 }
 
 interface Drawable {
-  fun draw(): unit
+  fun draw(this) -> unit;
 }
 
-struct Point {
-  x: f64
-  y: f64
-}
+export struct Point<T: numeric> {
+  public mut x: T;
+  public mut y: T;
 
-enum Color {
-  Red,
-  Green,
-  Blue,
-  Custom(str),
-}
-
-alias UserId = u64
-
-let people: Vec<Person> = Vec.new()
-const MAX_RETRIES = 3
-mut counter = 0
-
-fun fibonacci(n: u32): u64 {
-  if n <= 1 { return n }
-  return fibonacci(n - 1) + fibonacci(n - 2)
-}
-
-fun process(items: Vec<str>): Vec<u32> {
-  let results: Vec<u32> = Vec.new()
-  for item in items {
-    let parsed = item.parseU32()
-    if parsed? {
-      results.push(parsed!)
-    }
+  init(this, x: T, y: T) {
+    this.x = x;
+    this.y = y;
   }
-  return results
+
+  fun dot(this, other: Point<T>) -> T {
+    return this.x * other.x + this.y * other.y;
+  }
+}
+
+enum Message {
+  Quit(i32),
+  Move(i32),
+  Write(str | i32),
+  ChangeColor(u8, u8, u8) = 10,
+}
+
+alias UserId = u64;
+const maximumRetries: i32 = 3;
+
+fun fibonacci(n: u32) -> u64 {
+  if (n <= 1) {
+    return n;
+  }
+  return fibonacci(n - 1) + fibonacci(n - 2);
+}
+
+fun sum(values: [i32]) -> i32 {
+  let total: i32 = 0;
+  for (let value in values) {
+    total = total + value;
+  }
+  return total;
+}
+
+fun handle(message: Message) -> unit {
+  match (message) {
+    when Message.Quit(code) => { }
+    when Message.Move(value) => { }
+    when Message.Write(text) => { }
+    when Message.ChangeColor(red, green, blue) => { }
+  }
 }
 
 fun main() {
-  let p = Person.new("Alice", 30)
-  println(p.greet())
-
-  for i in 0..10 {
-    counter = counter + i
+  let counter = 0;
+  while (counter < 10) {
+    counter = counter + 1;
   }
 
-  match Color.Red {
-    Color.Red => println("red")
-    Color.Green => println("green")
-    Color.Blue => println("blue")
-    Color.Custom(name) => println(name)
+  for (let index = 0; index < 10; index = index + 1) {
+    counter = counter + index;
   }
 
-  let nums = [1, 2, 3, 4, 5]
-  let doubled = nums.map(fn(n) { n * 2 })
-  println(doubled)
+  let values = [1, 2, 3, 4, 5];
+  for (let value in values) {
+    counter = counter + value;
+  }
 }
 )";
 
@@ -123,7 +128,6 @@ struct BenchmarkResult {
 };
 
 static BenchmarkResult runLexerBenchmark(source::SourceManager& sourceMgr,
-                                         diagnostics::DiagnosticEngine& diagEngine,
                                          basic::StringPool& stringPool,
                                          const source::BufferId& bufferId,
                                          const basic::LangOptions& opts) {
@@ -131,10 +135,11 @@ static BenchmarkResult runLexerBenchmark(source::SourceManager& sourceMgr,
   size_t tokenCount = 0;
 
   for (int iter = 0; iter < 100; ++iter) {
-    Lexer lexer(sourceMgr, diagEngine, opts, stringPool, bufferId);
-    Token token;
+    diagnostics::SourceDiagnosticDraftBuffer diagnosticFacts(sourceMgr, bufferId);
+    lexer::Lexer sourceLexer(sourceMgr, diagnosticFacts.lexerEmitter(), opts, stringPool, bufferId);
+    lexer::Token token;
     do {
-      lexer.lex(token);
+      sourceLexer.lex(token);
       ++tokenCount;
     } while (!token.is(ast::SyntaxKind::EndOfFile));
   }
@@ -152,9 +157,9 @@ static BenchmarkResult runParserBenchmark(source::SourceManager& sourceMgr,
   size_t successCount = 0;
 
   for (int iter = 0; iter < 50; ++iter) {
-    diagnostics::DiagnosticFactBuffer diagnosticFacts(sourceMgr, bufferId);
-    Parser parser(sourceMgr, diagnosticFacts, opts, stringPool, bufferId);
-    if (parser.parse()) { ++successCount; }
+    diagnostics::SourceDiagnosticDraftBuffer diagnosticFacts(sourceMgr, bufferId);
+    parser::Parser sourceParser(sourceMgr, diagnosticFacts, opts, stringPool, bufferId);
+    if (sourceParser.parse() != zc::none) { ++successCount; }
   }
 
   auto end = Clock::now();
@@ -167,21 +172,20 @@ int main(int argc, char* argv[]) {
 
   basic::LangOptions opts;
   source::SourceManager sourceMgr;
-  diagnostics::DiagnosticEngine diagEngine(sourceMgr);
   basic::StringPool stringPool;
 
-  zc::String source(kSampleProgram);
-  auto bufferId = sourceMgr.addMemBuffer(zc::Str("benchmark.zom"), source.asStringPtr());
+  const zc::StringPtr source(kSampleProgram);
+  const auto bufferId = sourceMgr.addMemBufferCopy(source.asBytes(), "benchmark.zom");
 
   // Count lines
   size_t lines = 1;
-  for (char c : kSampleProgram) {
-    if (c == '\n') ++lines;
+  for (const char* cursor = kSampleProgram; *cursor != '\0'; ++cursor) {
+    if (*cursor == '\n') { ++lines; }
   }
 
-  printf("Source: %zu lines, %zu chars\n\n", lines, strlen(kSampleProgram));
+  printf("Source: %zu lines, %zu chars\n\n", lines, source.size());
 
-  auto lexResult = runLexerBenchmark(sourceMgr, diagEngine, stringPool, bufferId, opts);
+  auto lexResult = runLexerBenchmark(sourceMgr, stringPool, bufferId, opts);
   printf("[Lexer]  %.2f ms  (%zu tokens, %.0f tokens/ms)\n", lexResult.ms, lexResult.tokens,
          lexResult.ms > 0 ? lexResult.tokens / lexResult.ms : 0);
 

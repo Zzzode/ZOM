@@ -76,6 +76,7 @@ static_assert(isMoveOnly<BinderSourceRejected>());
 static_assert(isMoveOnly<BinderQueryResult<uint32_t>>());
 static_assert(isMoveOnly<CanonicalSequence<uint32_t>>());
 static_assert(isMoveOnly<CanonicalNonEmptySequence<uint32_t>>());
+static_assert(isMoveOnly<diagnostics::DiagnosticFact>());
 
 template <typename T>
 T require(zc::Maybe<T>&& result) {
@@ -7307,19 +7308,22 @@ ZC_TEST("StableBindingFacts.QueryResultsAreExclusiveAndPreserveDiagnostics") {
   ZC_EXPECT(keyRejected != value);
 }
 
-diagnostics::DiagnosticFact diagnosticFact(uint64_t primaryByteOffset = 0) {
-  return {diagnostics::SourceDiagnosticPhase::Lex,
-          zc::str("test.zom"_zc),
-          zc::str("fixture"_zc),
-          1,
-          1,
-          0,
-          diagnostics::DiagID::InvalidCharacter,
-          primaryByteOffset,
-          {},
-          {},
-          {},
-          {}};
+diagnostics::DiagnosticFact diagnosticFact(uint64_t occurrenceValue = 0) {
+  const auto occurrence = static_cast<uint32_t>(occurrenceValue);
+  auto occurrenceKey = require(diagnostics::DiagnosticOccurrenceKey::from(
+      tests::test_identity_detail::source(), diagnostics::SourceDiagnosticPhase::Lex,
+      diagnostics::SourceDiagnosticEmitter::Lexer, occurrence));
+  zc::Vector<uint32_t> path;
+  path.add(occurrence);
+  path.add(0);
+  auto primary = require(diagnostics::DiagnosticProvenanceKey::from(
+      tests::test_identity_detail::source(), diagnostics::SourceDiagnosticPhase::Lex,
+      diagnostics::SourceDiagnosticEmitter::Lexer, zc::mv(path)));
+  zc::Vector<zc::String> arguments;
+  zc::Vector<diagnostics::DiagnosticSecondary> secondary;
+  return require(diagnostics::DiagnosticFact::from(
+      zc::mv(occurrenceKey), diagnostics::DiagID::InvalidCharacter, zc::mv(arguments),
+      zc::mv(primary), zc::mv(secondary)));
 }
 zc::Array<uint8_t> diagnosticWire(zc::ArrayPtr<const diagnostics::DiagnosticFact> facts) {
   return require(diagnostics::encodeDiagnosticFacts(
@@ -7459,8 +7463,7 @@ ZC_TEST("StableBindingCodec.QueryResultsRejectAlternativeAndDiagnosticMutations"
   duplicateDiagnostics.add(diagnosticFact());
   ZC_EXPECT(StableBindingSequenceBuilder<diagnostics::DiagnosticFact>::fromNonEmpty(
                 zc::mv(duplicateDiagnostics)) == zc::none);
-  auto later = diagnosticFact();
-  later.primaryByteOffset = 1;
+  auto later = diagnosticFact(1);
   zc::Vector<diagnostics::DiagnosticFact> reorderedDiagnostics;
   reorderedDiagnostics.add(zc::mv(later));
   reorderedDiagnostics.add(diagnosticFact());

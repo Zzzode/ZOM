@@ -512,18 +512,6 @@ ZOM_STABLE_BINDING_RECORD(
     "BindModuleSkeletonVerifier|BindOwnerBodyVerifier|ModuleBindingAllocationPlanVerifier",
     S2B, S3, S2B, "domain|enum|field|missing|additional|owner|path|precedence|max-bytes",
     "StableBindingQueryTest.KeyFailuresRejectOwnerPathAndKindMutations")
-ZOM_STABLE_BINDING_RECORD(BinderIdentifierDiagnosticArguments,
-                          "zom.diagnostic.arguments.binder-identifier", DiagnosticPayloadBytes,
-                          "BindModuleSkeletonProvider|BindOwnerBodyProvider",
-                          "BindModuleSkeletonVerifier|BindOwnerBodyVerifier", S6, S6, S6,
-                          "domain|field|missing|additional|identifier|max-bytes",
-                          "StableBindingQueryTest.DiagnosticArgumentsRejectCodeAndPayloadMutations")
-ZOM_STABLE_BINDING_RECORD(BinderNamespaceDiagnosticArguments,
-                          "zom.diagnostic.arguments.binder-namespace", DiagnosticPayloadBytes,
-                          "BindModuleSkeletonProvider|BindOwnerBodyProvider",
-                          "BindModuleSkeletonVerifier|BindOwnerBodyVerifier", S6, S6, S6,
-                          "domain|field|missing|additional|identifier|namespace|max-bytes",
-                          "StableBindingQueryTest.DiagnosticArgumentsRejectCodeAndPayloadMutations")
 ZOM_STABLE_BINDING_RECORD(
     ActiveCompilationUnitMembership, "zom.binder.active-compilation-unit-membership",
     BinderSemanticValueBytes, ActiveCompilationUnitMembershipProvider,
@@ -722,33 +710,6 @@ ZOM_STABLE_BINDING_ENUM_VALUE(BinderKeyFailureKind, NonSelectedSource, 0x06, S2B
                               "StableBindingQueryTest.KeyFailuresRejectOwnerPathAndKindMutations")
 ZOM_STABLE_BINDING_ENUM_VALUE(BinderKeyFailureKind, CrossBoundaryPath, 0x07, S2B, S3, S2B, "tag",
                               "StableBindingQueryTest.KeyFailuresRejectOwnerPathAndKindMutations")
-ZOM_STABLE_BINDING_ENUM_VALUE(BinderDiagnosticProducer, BindModuleSkeleton, 0x01, S6, S6, S6, "tag",
-                              "DiagnosticFactTest.IdentityAdmissionRejectsExactMappingMutations")
-ZOM_STABLE_BINDING_ENUM_VALUE(BinderDiagnosticProducer, BindOwnerBody, 0x02, S6, S6, S6, "tag",
-                              "DiagnosticFactTest.IdentityAdmissionRejectsExactMappingMutations")
-ZOM_STABLE_BINDING_ENUM_VALUE(BinderDiagnosticEmitter, Declaration, 0x01, S6, S6, S6, "tag",
-                              "DiagnosticFactTest.IdentityAdmissionRejectsExactMappingMutations")
-ZOM_STABLE_BINDING_ENUM_VALUE(BinderDiagnosticEmitter, Lookup, 0x02, S6, S6, S6, "tag",
-                              "DiagnosticFactTest.IdentityAdmissionRejectsExactMappingMutations")
-ZOM_STABLE_BINDING_ENUM_VALUE(BinderDiagnosticEmitter, ControlTransfer, 0x03, S6, S6, S6, "tag",
-                              "DiagnosticFactTest.IdentityAdmissionRejectsExactMappingMutations")
-ZOM_STABLE_BINDING_ENUM_VALUE(BinderDiagnosticEmitter, ContextualSelf, 0x04, S6, S6, S6, "tag",
-                              "DiagnosticFactTest.IdentityAdmissionRejectsExactMappingMutations")
-ZOM_STABLE_BINDING_ENUM_VALUE(IdentityDiagnosticPhase, IdentityAdmission, 0x01, S6, S6, S6, "tag",
-                              "DiagnosticFactTest.IdentityAdmissionRejectsExactMappingMutations")
-ZOM_STABLE_BINDING_ENUM_VALUE(IdentityDiagnosticEmitter, DuplicateBound, 0x01, S6, S6, S6, "tag",
-                              "DiagnosticFactTest.IdentityAdmissionRejectsExactMappingMutations")
-ZOM_STABLE_BINDING_ENUM_VALUE(IdentityDiagnosticEmitter, DefinitionIdentityCollision, 0x02, S6, S6,
-                              S6, "tag",
-                              "DiagnosticFactTest.IdentityAdmissionRejectsExactMappingMutations")
-ZOM_STABLE_BINDING_ENUM_VALUE(IdentityDiagnosticEmitter, ConstantExpressionNotAllowed, 0x03, S6, S6,
-                              S6, "tag",
-                              "DiagnosticFactTest.IdentityAdmissionRejectsExactMappingMutations")
-ZOM_STABLE_BINDING_ENUM_VALUE(IdentityDiagnosticEmitter, DuplicateGenericParameter, 0x04, S6, S6,
-                              S6, "tag",
-                              "DiagnosticFactTest.IdentityAdmissionRejectsExactMappingMutations")
-ZOM_STABLE_BINDING_ENUM_VALUE(DiagnosticSecondaryRole, PreviousDeclaration, 0x01, S6, S6, S6, "tag",
-                              "DiagnosticFactTest.IdentityAdmissionRejectsExactMappingMutations")
 
 ZOM_STABLE_BINDING_SUM(StableHeaderSite, S2B, S3, S2B, "tag|field|identity",
                        "StableBindingQueryTest.HeadersRejectFieldAndParameterMutations")
@@ -770,10 +731,6 @@ ZOM_STABLE_BINDING_SUM(BinderQueryResult, S2B, S3, S2B, "tag|field|diagnostics|p
                        "StableBindingQueryTest.ResultsRejectAlternativeAndDiagnosticMutations")
 ZOM_STABLE_BINDING_SUM(BinderQueryOwner, S2B, S3, S2B, "tag|field|identity|ownership",
                        "StableBindingQueryTest.ResultsRejectAlternativeAndDiagnosticMutations")
-ZOM_STABLE_BINDING_SUM(DiagnosticPhaseOrQueryKind, S6, S6, S6, "tag|field",
-                       "DiagnosticFactTest.IdentityAdmissionRejectsExactMappingMutations")
-ZOM_STABLE_BINDING_SUM(DiagnosticEmitterSite, S6, S6, S6, "tag|field",
-                       "DiagnosticFactTest.IdentityAdmissionRejectsExactMappingMutations")
 ZOM_STABLE_BINDING_SUM(ActiveMembershipResult, I2, I2, I2, "tag|field|authority|readiness",
                        "StableBindingMembershipTest.ResultsRejectAlternativeAndReadinessMutations")
 ZOM_STABLE_BINDING_RUNTIME_SUM(CapabilityDemandResult, R29_13A, R29_13C,
@@ -815,20 +772,6 @@ ZOM_STABLE_BINDING_SUM_VARIANT(BinderQueryOwner, Module, 0x01)
 ZOM_STABLE_BINDING_SUM_VARIANT(BinderQueryOwner, DefinitionHeader, 0x02)
 ZOM_STABLE_BINDING_SUM_VARIANT(BinderQueryOwner, ImplementationHeader, 0x03)
 ZOM_STABLE_BINDING_SUM_VARIANT(BinderQueryOwner, Body, 0x04)
-ZOM_STABLE_BINDING_SUM_VARIANT(DiagnosticPhaseOrQueryKind, Source, 0x01)
-ZOM_STABLE_BINDING_SUM_VARIANT(DiagnosticPhaseOrQueryKind, Package, 0x02)
-ZOM_STABLE_BINDING_SUM_VARIANT(DiagnosticPhaseOrQueryKind, BuildScript, 0x03)
-ZOM_STABLE_BINDING_SUM_VARIANT(DiagnosticPhaseOrQueryKind, Module, 0x04)
-ZOM_STABLE_BINDING_SUM_VARIANT(DiagnosticPhaseOrQueryKind, ToolchainModuleRootReservation, 0x05)
-ZOM_STABLE_BINDING_SUM_VARIANT(DiagnosticPhaseOrQueryKind, CoreFailureProducer, 0x06)
-ZOM_STABLE_BINDING_SUM_VARIANT(DiagnosticPhaseOrQueryKind, Binder, 0x07)
-ZOM_STABLE_BINDING_SUM_VARIANT(DiagnosticEmitterSite, Source, 0x01)
-ZOM_STABLE_BINDING_SUM_VARIANT(DiagnosticEmitterSite, Package, 0x02)
-ZOM_STABLE_BINDING_SUM_VARIANT(DiagnosticEmitterSite, BuildScript, 0x03)
-ZOM_STABLE_BINDING_SUM_VARIANT(DiagnosticEmitterSite, Module, 0x04)
-ZOM_STABLE_BINDING_SUM_VARIANT(DiagnosticEmitterSite, ToolchainModuleRootReservation, 0x05)
-ZOM_STABLE_BINDING_SUM_VARIANT(DiagnosticEmitterSite, CoreLibrary, 0x06)
-ZOM_STABLE_BINDING_SUM_VARIANT(DiagnosticEmitterSite, Binder, 0x07)
 ZOM_STABLE_BINDING_SUM_VARIANT(ActiveMembershipResult, Active, 0x01)
 ZOM_STABLE_BINDING_SUM_VARIANT(ActiveMembershipResult, Inactive, 0x02)
 
@@ -908,17 +851,6 @@ ZOM_STABLE_BINDING_VARIANT_FIELD(BinderQueryOwner, DefinitionHeader, 0, definiti
 ZOM_STABLE_BINDING_VARIANT_FIELD(BinderQueryOwner, ImplementationHeader, 0, implementation,
                                  StableImplementationOccurrenceQueryKey)
 ZOM_STABLE_BINDING_VARIANT_FIELD(BinderQueryOwner, Body, 0, body, StableOwnerBodyQueryKey)
-ZOM_STABLE_BINDING_VARIANT_FIELD(DiagnosticPhaseOrQueryKind, ToolchainModuleRootReservation, 0,
-                                 producer, ToolchainModuleRootReservationProducer)
-ZOM_STABLE_BINDING_VARIANT_FIELD(DiagnosticPhaseOrQueryKind, CoreFailureProducer, 0, producer,
-                                 CoreFailureProducer)
-ZOM_STABLE_BINDING_VARIANT_FIELD(DiagnosticPhaseOrQueryKind, Binder, 0, producer,
-                                 BinderDiagnosticProducer)
-ZOM_STABLE_BINDING_VARIANT_FIELD(DiagnosticEmitterSite, ToolchainModuleRootReservation, 0, emitter,
-                                 ToolchainModuleRootReservationEmitter)
-ZOM_STABLE_BINDING_VARIANT_FIELD(DiagnosticEmitterSite, CoreLibrary, 0, emitter,
-                                 CoreLibraryDiagnosticEmitter)
-ZOM_STABLE_BINDING_VARIANT_FIELD(DiagnosticEmitterSite, Binder, 0, emitter, BinderDiagnosticEmitter)
 ZOM_STABLE_BINDING_VARIANT_FIELD(ActiveMembershipResult, Active, 0, record, Record)
 
 ZOM_STABLE_BINDING_INLINE_SUM_VARIANT_FIELD(ActiveGenericParameterMembership, owner,
@@ -938,28 +870,6 @@ ZOM_STABLE_BINDING_RUNTIME_VARIANT_FIELD(CapabilityDemandResult, KeyRejected, 0,
                                          KeyFailure)
 ZOM_STABLE_BINDING_RUNTIME_VARIANT_FIELD(CapabilityDemandResult, RuntimeRejected, 0, failure,
                                          QueryRuntimeFailure)
-
-ZOM_STABLE_BINDING_DIAGNOSTIC_MAPPING(
-    Missing, ZOM3001, BinderIdentifierDiagnosticArguments, None, None, 0, 0, S6, S6,
-    "code|arguments|secondary-code|secondary-role|secondary-count|fix-it-count",
-    "DiagnosticFactTest.BinderLookupRejectsExactMappingMutations")
-ZOM_STABLE_BINDING_DIAGNOSTIC_MAPPING(
-    NamespaceMismatch, ZOM3002, BinderNamespaceDiagnosticArguments, None, None, 0, 0, S6, S6,
-    "code|arguments|secondary-code|secondary-role|secondary-count|fix-it-count",
-    "DiagnosticFactTest.BinderLookupRejectsExactMappingMutations")
-ZOM_STABLE_BINDING_DIAGNOSTIC_MAPPING(
-    Ambiguous, ZOM3028, BinderIdentifierDiagnosticArguments, None, None, 0, 0, S6, S6,
-    "code|arguments|secondary-code|secondary-role|secondary-count|fix-it-count",
-    "DiagnosticFactTest.BinderLookupRejectsExactMappingMutations")
-ZOM_STABLE_BINDING_DIAGNOSTIC_MAPPING(
-    ConstantExpressionNotAllowed, ZOM4079, None, None, None, 0, 0, S6, S6,
-    "code|arguments|secondary-code|secondary-role|secondary-count|fix-it-count",
-    "DiagnosticFactTest.IdentityAdmissionRejectsExactMappingMutations")
-ZOM_STABLE_BINDING_DIAGNOSTIC_MAPPING(
-    DuplicateGenericParameter, ZOM3010, BinderIdentifierDiagnosticArguments, ZOM3017,
-    PreviousDeclaration, 1, 0, S6, S6,
-    "code|arguments|secondary-code|secondary-role|secondary-count|fix-it-count",
-    "DiagnosticFactTest.IdentityAdmissionRejectsExactMappingMutations")
 
 ZOM_STABLE_BINDING_CONSTRAINT("BinderQueryResult",
                               "PrecedenceRuntimeFailureKeyRejectedSourceRejectedValue")
@@ -1299,9 +1209,6 @@ ZOM_STABLE_BINDING_FIELD(OwnerAllocationRange, 8, labelCount, uint32)
 ZOM_STABLE_BINDING_FIELD(BinderKeyFailure, 0, kind, BinderKeyFailureKind)
 ZOM_STABLE_BINDING_FIELD(BinderKeyFailure, 1, owner, BinderQueryOwner)
 ZOM_STABLE_BINDING_FIELD(BinderKeyFailure, 2, path, Optional<LocalSyntaxPath>)
-ZOM_STABLE_BINDING_FIELD(BinderIdentifierDiagnosticArguments, 0, identifier, DeclaredDefinitionName)
-ZOM_STABLE_BINDING_FIELD(BinderNamespaceDiagnosticArguments, 0, identifier, DeclaredDefinitionName)
-ZOM_STABLE_BINDING_FIELD(BinderNamespaceDiagnosticArguments, 1, expectedNamespace, Namespace)
 ZOM_STABLE_BINDING_FIELD(ActiveCompilationUnitMembership, 0, unit, CompilationUnitIdentity)
 ZOM_STABLE_BINDING_FIELD(ActiveCompilationUnitMembership, 1, activeCrates,
                          CanonicalNonEmptySequence<CrateKey>)
@@ -1578,8 +1485,6 @@ ZOM_STABLE_BINDING_FIELD_LIMIT("BinderQueryResult.SourceRejected.diagnostics",
 ZOM_STABLE_BINDING_FIELD_LIMIT("CapabilityDemandResult.SourceRejected.diagnostics",
                                DiagnosticFactsPerResult)
 ZOM_STABLE_BINDING_FIELD_LIMIT("BinderKeyFailure.path", LocalSyntaxPathComponents)
-ZOM_STABLE_BINDING_FIELD_LIMIT("BinderIdentifierDiagnosticArguments.identifier", IdentifierBytes)
-ZOM_STABLE_BINDING_FIELD_LIMIT("BinderNamespaceDiagnosticArguments.identifier", IdentifierBytes)
 ZOM_STABLE_BINDING_FIELD_LIMIT("ModuleDiagnosticFacts.result", DiagnosticFactsPerResult)
 ZOM_STABLE_BINDING_FIELD_LIMIT("ActiveCompilationUnitMembership.activeCrates",
                                BinderSemanticSequenceRecords)

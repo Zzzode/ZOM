@@ -13,7 +13,7 @@
 #include "zomlang/compiler/basic/zomlang-opts.h"
 #include "zomlang/compiler/binder/definition-inventory.h"
 #include "zomlang/compiler/binder/stable-identity-candidate-producer.h"
-#include "zomlang/compiler/diagnostics/diagnostic-fact-buffer.h"
+#include "zomlang/compiler/diagnostics/source-diagnostic-draft-buffer.h"
 #include "zomlang/compiler/parser/parser.h"
 #include "zomlang/compiler/source/manager.h"
 
@@ -125,7 +125,7 @@ struct FrozenInventoryFixture final {
         buffer(sources->addMemBufferCopy(sourceText.asBytes(), "frozen-inventory.zom")),
         context(requireContext(factory)),
         registries(createRegistries()) {
-    diagnostics::DiagnosticFactBuffer diagnosticFacts(*sources, buffer);
+    diagnostics::SourceDiagnosticDraftBuffer diagnosticFacts(*sources, buffer);
     parser::Parser parser(*sources, diagnosticFacts, options, strings, buffer);
     ZC_IF_SOME(value, parser.parse()) {
       tree = zc::mv(value);
@@ -283,7 +283,7 @@ ZC_TEST("StableIdentityCandidateProducer retains every duplicate bound occurrenc
   const auto buffer = sources->addMemBufferCopy(sourceText.asBytes(), "frozen-inventory.zom");
   basic::LangOptions options;
   basic::StringPool strings;
-  diagnostics::DiagnosticFactBuffer diagnosticFacts(*sources, buffer);
+  diagnostics::SourceDiagnosticDraftBuffer diagnosticFacts(*sources, buffer);
   parser::Parser parser(*sources, diagnosticFacts, options, strings, buffer);
   auto parsedTree = parser.parse();
   ZC_REQUIRE(parsedTree != zc::none);
@@ -381,7 +381,7 @@ struct ImplOccurrenceFixture final {
                                          "frozen-inventory.zom")),
         context(requireContext(factory)),
         registries(createRegistries()) {
-    diagnostics::DiagnosticFactBuffer diagnosticFacts(*sources, buffer);
+    diagnostics::SourceDiagnosticDraftBuffer diagnosticFacts(*sources, buffer);
     parser::Parser parser(*sources, diagnosticFacts, options, strings, buffer);
     ZC_IF_SOME(value, parser.parse()) {
       tree = zc::mv(value);
@@ -495,7 +495,7 @@ struct CallableHeaderMutationFixture final {
             "frozen-inventory.zom")),
         context(requireContext(factory)),
         registries(createRegistries()) {
-    diagnostics::DiagnosticFactBuffer diagnosticFacts(*sources, buffer);
+    diagnostics::SourceDiagnosticDraftBuffer diagnosticFacts(*sources, buffer);
     parser::Parser parser(*sources, diagnosticFacts, options, strings, buffer);
     auto parsed = parser.parse();
     ZC_REQUIRE(parsed != zc::none);
@@ -580,7 +580,7 @@ struct DuplicateBoundFixture final {
             "frozen-inventory.zom")),
         context(requireContext(factory)),
         registries(createRegistries()) {
-    diagnostics::DiagnosticFactBuffer diagnosticFacts(*sources, buffer);
+    diagnostics::SourceDiagnosticDraftBuffer diagnosticFacts(*sources, buffer);
     parser::Parser parser(*sources, diagnosticFacts, options, strings, buffer);
     auto parsed = parser.parse();
     ZC_REQUIRE(parsed != zc::none);

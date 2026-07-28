@@ -32,9 +32,9 @@
 #include "zomlang/compiler/binder/stable-identity-candidate-verifier.h"
 #include "zomlang/compiler/diagnostics/diagnostic-consumer.h"
 #include "zomlang/compiler/diagnostics/diagnostic-engine.h"
-#include "zomlang/compiler/diagnostics/diagnostic-fact-buffer.h"
 #include "zomlang/compiler/diagnostics/diagnostic-info.h"
 #include "zomlang/compiler/diagnostics/diagnostic.h"
+#include "zomlang/compiler/diagnostics/source-diagnostic-draft-buffer.h"
 #include "zomlang/compiler/driver/incremental-module-resolution-query.h"
 #include "zomlang/compiler/identity/canonical-encoder.h"
 #include "zomlang/compiler/identity/sha256.h"
@@ -235,7 +235,7 @@ struct ParsedSource final {
       : sources(zc::heap<source::SourceManager>()),
         diagnostics(zc::heap<diagnostics::DiagnosticEngine>(*sources)),
         buffer(sources->addMemBufferCopy(text.asBytes(), "main.zom")) {
-    diagnostics::DiagnosticFactBuffer parseFacts(*sources, buffer);
+    diagnostics::SourceDiagnosticDraftBuffer parseFacts(*sources, buffer);
     parser::Parser parser(*sources, parseFacts, options, strings, buffer);
     ZC_IF_SOME(parsed, parser.parse()) {
       tree = zc::mv(parsed);
@@ -354,7 +354,7 @@ void emitStableSourceFailure(ParsedSource& sourceFixture,
 
 parser::ParsedTokenSnapshot parseTokenSnapshot(source::SourceManager& sources,
                                                const source::BufferId& buffer) {
-  diagnostics::DiagnosticFactBuffer diagnostics(sources, buffer);
+  diagnostics::SourceDiagnosticDraftBuffer diagnostics(sources, buffer);
   basic::LangOptions options;
   basic::StringPool strings;
   parser::Parser parser(sources, diagnostics, options, strings, buffer);

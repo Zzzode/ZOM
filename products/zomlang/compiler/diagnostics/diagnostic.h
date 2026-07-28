@@ -20,22 +20,16 @@
 #include "zc/core/string.h"
 #include "zc/core/vector.h"
 #include "zomlang/compiler/diagnostics/diagnostic-ids.h"
-#include "zomlang/compiler/lexer/token.h"
 #include "zomlang/compiler/source/location.h"
 
 namespace zomlang {
 namespace compiler {
 namespace diagnostics {
 
-struct FixIt {
-  source::CharSourceRange range;
-  zc::String replacementText;
-};
-
 /// Diagnostic argument
 ///
-/// Can be either a string or a token
-using DiagnosticArgument = zc::OneOf<zc::String, zc::StringPtr, lexer::Token>;
+/// Owned and borrowed strings are retained as canonical text by source publication.
+using DiagnosticArgument = zc::OneOf<zc::String, zc::StringPtr>;
 
 class Diagnostic {
 public:
@@ -57,13 +51,11 @@ public:
 
   ZC_NODISCARD DiagID getId() const;
   ZC_NODISCARD const zc::Vector<zc::Own<Diagnostic>>& getChildDiagnostics() const;
-  ZC_NODISCARD const zc::Vector<zc::Own<FixIt>>& getFixIts() const;
   ZC_NODISCARD const source::SourceLoc& getLoc() const;
   ZC_NODISCARD zc::ArrayPtr<const DiagnosticArgument> getArgs() const;
   ZC_NODISCARD zc::ArrayPtr<const source::CharSourceRange> getRanges() const;
 
   void addChildDiagnostic(zc::Own<Diagnostic> child);
-  void addFixIt(zc::Own<FixIt> fixIt);
   void addRange(const source::CharSourceRange& range);
 
 private:
@@ -71,7 +63,6 @@ private:
   source::SourceLoc location;
   zc::Vector<DiagnosticArgument> diagnosticArgs;
   zc::Vector<zc::Own<Diagnostic>> childDiagnostics;
-  zc::Vector<zc::Own<FixIt>> fixIts;
   zc::Vector<source::CharSourceRange> ranges;
 };
 

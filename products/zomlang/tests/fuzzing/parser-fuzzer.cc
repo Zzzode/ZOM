@@ -26,10 +26,10 @@
 #include <cstring>
 
 #include "zc/core/string.h"
+#include "zomlang/compiler/ast/schema-verifier.h"
 #include "zomlang/compiler/basic/string-pool.h"
 #include "zomlang/compiler/basic/zomlang-opts.h"
-#include "zomlang/compiler/diagnostics/diagnostic-engine.h"
-#include "zomlang/compiler/diagnostics/diagnostic-fact-buffer.h"
+#include "zomlang/compiler/diagnostics/source-diagnostic-draft-buffer.h"
 #include "zomlang/compiler/parser/parser.h"
 #include "zomlang/compiler/source/manager.h"
 
@@ -42,14 +42,14 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t* data, size_t size) {
   source::SourceManager sourceMgr;
   basic::StringPool stringPool;
 
-  zc::String source(reinterpret_cast<const char*>(data), size);
-  auto bufferId = sourceMgr.addMemBuffer(zc::Str("fuzz.zom"), source.asStringPtr());
+  const auto source = zc::ArrayPtr<const zc::byte>(reinterpret_cast<const zc::byte*>(data), size);
+  const auto bufferId = sourceMgr.addMemBufferCopy(source, "fuzz.zom");
 
-  diagnostics::DiagnosticFactBuffer diagnosticFacts(sourceMgr, bufferId);
-  Parser parser(sourceMgr, diagnosticFacts, opts, stringPool, bufferId);
-  ZC_IF_SOME(tree, parser.parse()) {
+  diagnostics::SourceDiagnosticDraftBuffer diagnosticFacts(sourceMgr, bufferId);
+  parser::Parser sourceParser(sourceMgr, diagnosticFacts, opts, stringPool, bufferId);
+  ZC_IF_SOME(tree, sourceParser.parse()) {
     // Exercise tree verification to catch schema violations from fuzz input.
-    (void)ast::verifySchemaFailure(*tree);
+    (void)ast::verifySchemaFailure(tree);
   }
 
   return 0;

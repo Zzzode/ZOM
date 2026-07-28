@@ -24,7 +24,7 @@
 #include "zomlang/compiler/basic/string-pool.h"
 #include "zomlang/compiler/basic/zomlang-opts.h"
 #include "zomlang/compiler/diagnostics/diagnostic-engine.h"
-#include "zomlang/compiler/diagnostics/diagnostic-fact-buffer.h"
+#include "zomlang/compiler/diagnostics/source-diagnostic-draft-buffer.h"
 #include "zomlang/compiler/parser/parser.h"
 #include "zomlang/compiler/source/manager.h"
 
@@ -341,7 +341,7 @@ ParseResult parseSource(zc::StringPtr source) {
   basic::StringPool stringPool;
 
   const auto bufferId = result.sourceManager->addMemBufferCopy(source.asBytes(), "test.zom");
-  diagnostics::DiagnosticFactBuffer diagnosticFacts(*result.sourceManager, bufferId);
+  diagnostics::SourceDiagnosticDraftBuffer diagnosticFacts(*result.sourceManager, bufferId);
   parser::Parser parser(*result.sourceManager, diagnosticFacts, langOpts, stringPool, bufferId);
   result.tree = parser.parse();
   return result;

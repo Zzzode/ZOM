@@ -20,7 +20,7 @@
 #include "zomlang/compiler/basic/string-pool.h"
 #include "zomlang/compiler/basic/zomlang-opts.h"
 #include "zomlang/compiler/diagnostics/diagnostic-engine.h"
-#include "zomlang/compiler/diagnostics/diagnostic-fact-buffer.h"
+#include "zomlang/compiler/diagnostics/source-diagnostic-draft-buffer.h"
 #include "zomlang/compiler/parser/parser.h"
 #include "zomlang/compiler/source/manager.h"
 
@@ -85,7 +85,7 @@ ParsedTreeFixture parseTree(zc::StringPtr text) {
   basic::LangOptions langOptions;
   basic::StringPool strings;
   const auto buffer = sourceManager->addMemBufferCopy(text.asBytes(), "module-discovery.zom");
-  diagnostics::DiagnosticFactBuffer diagnosticFacts(*sourceManager, buffer);
+  diagnostics::SourceDiagnosticDraftBuffer diagnosticFacts(*sourceManager, buffer);
   parser::Parser parser(*sourceManager, diagnosticFacts, langOptions, strings, buffer);
   auto result = parser.parse();
   ZC_IF_SOME(tree, result) {

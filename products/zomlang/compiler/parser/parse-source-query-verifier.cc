@@ -34,7 +34,7 @@ zc::Maybe<identity::CrateKey> expectedSourceCrate(const ParseSourceQuery::Key& k
 
 bool containsError(zc::ArrayPtr<const diagnostics::DiagnosticFact> facts) {
   for (const auto& fact : facts) {
-    if (diagnostics::getDiagnosticInfo(fact.code).severity >= diagnostics::DiagSeverity::kError) {
+    if (diagnostics::getDiagnosticInfo(fact.code()).severity >= diagnostics::DiagSeverity::kError) {
       return true;
     }
   }
@@ -69,7 +69,8 @@ zc::Maybe<zc::Array<uint8_t>> ParseSourceQuery::verify(query::CapabilityQueryCon
       candidate.contentDigest() != source.contentDigest() ||
       candidate.sourceBytes() != source.bytes() || candidate.options() != expectedOptions ||
       candidate.logicalName() != ZC_ASSERT_NONNULL(logicalName) ||
-      !factsAreWarningsOnly(candidate.facts())) {
+      !factsAreWarningsOnly(candidate.facts()) ||
+      !diagnostics::validateDiagnosticProvenance(candidate.facts(), candidate.provenance())) {
     return zc::none;
   }
   auto witness = candidate.encodeCanonical();

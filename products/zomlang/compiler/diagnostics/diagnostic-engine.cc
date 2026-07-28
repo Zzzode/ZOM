@@ -135,7 +135,6 @@ void DiagnosticEngine::formatDiagnosticMessage(const source::SourceManager& sm,
     ZC_SWITCH_ONEOF(arg) {
       ZC_CASE_ONEOF(strPtr, zc::StringPtr) { out.write(strPtr.asBytes()); }
       ZC_CASE_ONEOF(str, zc::String) { out.write(str.asBytes()); }
-      ZC_CASE_ONEOF(token, lexer::Token) { out.write(token.getValue().asBytes()); }
     }
     lastPos = param.end + 1;
   }

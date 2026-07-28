@@ -18,30 +18,31 @@ inline zc::Maybe<parser::CanonicalParsedSource> canonicalParsedSource(
     const identity::ImmutableSourceSnapshot& snapshot, const source::SourceManager& sources,
     const source::BufferId& buffer, parser::ParsedTokenSnapshot&& tokens, ast::Tree&& tree) {
   zc::Vector<diagnostics::DiagnosticFact> facts;
+  zc::Vector<diagnostics::SourceDiagnosticProvenanceEntry> entries;
+  auto provenance =
+      diagnostics::SourceDiagnosticProvenanceMap::from(zc::mv(entries), snapshot.bytes().size());
+  if (provenance == zc::none) { return zc::none; }
   const auto sourceKey = snapshot.source().encode();
   return parser::CanonicalParsedSource::fromParsed(
       sourceKey.asPtr(), snapshot.contentDigest(), snapshot.bytes(),
       sources.getIdentifierForBuffer(buffer), parser::CanonicalParserOptions{}, sources, buffer,
-      zc::mv(tree), zc::mv(tokens), zc::mv(facts));
+      zc::mv(tree), zc::mv(tokens), zc::mv(facts), zc::mv(ZC_ASSERT_NONNULL(provenance)));
 }
 
 inline ParsedModuleVerificationResult verifyParsedSource(
-    identity::SemanticContextBrand context,
-    const identity::SemanticIdentityRegistrySet& registries,
+    identity::SemanticContextBrand context, const identity::SemanticIdentityRegistrySet& registries,
     const identity::ImmutableSourceSnapshot& snapshot, const source::SourceManager& sources,
     const source::BufferId& buffer, parser::ParsedTokenSnapshot&& tokens, ast::Tree&& tree) {
   auto parsed = canonicalParsedSource(snapshot, sources, buffer, zc::mv(tokens), zc::mv(tree));
   if (parsed == zc::none) {
     return ParsedModuleInvariantFact{ParsedModuleInvariantKind::InvalidTree, 1};
   }
-  return ParsedModuleVerifier::verifyQueryResult(
-      context, registries, snapshot.source(), sources, buffer,
-      zc::mv(ZC_ASSERT_NONNULL(parsed)));
+  return ParsedModuleVerifier::verifyQueryResult(context, registries, snapshot.source(), sources,
+                                                 buffer, zc::mv(ZC_ASSERT_NONNULL(parsed)));
 }
 
 inline VerifiedParsedModule requireVerifiedParsedSource(
-    identity::SemanticContextBrand context,
-    const identity::SemanticIdentityRegistrySet& registries,
+    identity::SemanticContextBrand context, const identity::SemanticIdentityRegistrySet& registries,
     const identity::ImmutableSourceSnapshot& snapshot, const source::SourceManager& sources,
     const source::BufferId& buffer, parser::ParsedTokenSnapshot&& tokens, ast::Tree&& tree) {
   auto result = verifyParsedSource(context, registries, snapshot, sources, buffer, zc::mv(tokens),

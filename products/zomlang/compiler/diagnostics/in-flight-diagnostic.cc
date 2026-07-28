@@ -56,11 +56,6 @@ void InFlightDiagnostic::emit() {
   }
 }
 
-InFlightDiagnostic& InFlightDiagnostic::addFixIt(zc::Own<FixIt> fixit) {
-  impl->diag.addFixIt(zc::mv(fixit));
-  return *this;
-}
-
 InFlightDiagnostic& InFlightDiagnostic::addRange(const source::CharSourceRange& range) {
   impl->diag.addRange(range);
   return *this;

@@ -28,7 +28,7 @@ struct LangOptions;
 }  // namespace basic
 
 namespace diagnostics {
-class DiagnosticFactBuffer;
+class SourceDiagnosticDraftBuffer;
 }
 
 namespace source {
@@ -41,7 +41,7 @@ namespace parser {
 /// \brief Recursive-descent parser facade that emits the schema-backed AST tree.
 class Parser {
 public:
-  Parser(const source::SourceManager& sm, diagnostics::DiagnosticFactBuffer& diagnosticFacts,
+  Parser(const source::SourceManager& sm, diagnostics::SourceDiagnosticDraftBuffer& diagnosticFacts,
          const basic::LangOptions& langOpts, basic::StringPool& stringPool,
          const source::BufferId& bufferId);
   ~Parser() noexcept(false);

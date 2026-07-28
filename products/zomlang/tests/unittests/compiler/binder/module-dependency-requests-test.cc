@@ -10,7 +10,7 @@
 #include "zc/ztest/test.h"
 #include "zomlang/compiler/basic/string-pool.h"
 #include "zomlang/compiler/basic/zomlang-opts.h"
-#include "zomlang/compiler/diagnostics/diagnostic-fact-buffer.h"
+#include "zomlang/compiler/diagnostics/source-diagnostic-draft-buffer.h"
 #include "zomlang/compiler/identity/canonical-decoder.h"
 #include "zomlang/compiler/identity/canonical-encoder.h"
 #include "zomlang/compiler/parser/parser.h"
@@ -140,7 +140,7 @@ struct ParsedSource final {
   explicit ParsedSource(zc::StringPtr text)
       : sources(zc::heap<source::SourceManager>()),
         buffer(sources->addMemBufferCopy(text.asBytes(), "main.zom")) {
-    diagnostics::DiagnosticFactBuffer diagnosticFacts(*sources, buffer);
+    diagnostics::SourceDiagnosticDraftBuffer diagnosticFacts(*sources, buffer);
     parser::Parser parser(*sources, diagnosticFacts, options, strings, buffer);
     ZC_IF_SOME(parsed, parser.parse()) {
       tree = zc::mv(parsed);
