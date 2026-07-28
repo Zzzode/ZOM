@@ -76,6 +76,22 @@ Transaction `rfc0034-accept-20260728-09802348` supersedes RFC 0033, replaces
 the unworkable fact-and-codec review graph, and changes no source or final
 landing scope.
 
+### 2026-07-28 RFC 0037 Stable Module Skeleton Review Partition Closure
+
+The `R30-12N` preflight found that eleven Pimpl records and 64 schema fields
+could not receive complete invariant and native-test review within 400 changed
+lines. It also found that `BoundModuleSkeleton` stored
+`CanonicalSequence<StableFailedLookupFact>` before the accepted task graph
+defined the complete failed-lookup type and codec.
+
+All required owners approved RFC 0037 proposal SHA-256
+`ed0b9170c813e42cf02e8a719886ce47aadec5cfbe2ddb788e24572c7243319e`
+and tracker SHA-256
+`063ea9961caa03d957b976a24d7f4bc9f7489dbdd0442e48b825975d1467470e`.
+Transaction `rfc0037-accept-20260728-ed0b9170` replaces `R30-12N` through
+`R30-12Q` with bounded dependency-ordered reviews and changes no source,
+immutable base, or final landing scope.
+
 ## Decision Record
 
 Accepted by `task-router`, `rfc`, `module-system`, `binder-checker`,
@@ -119,6 +135,15 @@ and tracker SHA-256
 It supersedes RFC 0033 and establishes the executable stable-header review
 graph without changing source semantics, exact landing scope, or
 implementation status.
+
+RFC 0037 acceptance transaction `rfc0037-accept-20260728-ed0b9170`
+synchronizes this tracker to proposal SHA-256
+`ed0b9170c813e42cf02e8a719886ce47aadec5cfbe2ddb788e24572c7243319e`
+and tracker SHA-256
+`063ea9961caa03d957b976a24d7f4bc9f7489dbdd0442e48b825975d1467470e`.
+It establishes the bounded module-skeleton review graph and authorizes
+implementation to resume at `R30-12N-A` without changing source semantics,
+exact landing scope, or implementation status.
 
 The earlier approvals against proposal SHA-256
 `44f0ed68bdd3635e7ed736efcf2dfb2cef0a499c89733d1ab1334a89dce55151`
@@ -172,11 +197,23 @@ implementation-series base remains
 | `R30-12K` | `binder-checker` with `verification` review | `R30-12J` | In `stable-binding-codec.{h,cc}` and `stable-binding-facts-test.cc`, implement the matching scope, syntax-root, and target codecs and wire oracles; at most 400 changed source lines. | Closed-sum wire and mutation tests | Pending |
 | `R30-12L` | `binder-checker` with `verification` review | `R30-12K` | In `stable-binding-facts.{h,cc}` and `stable-binding-facts-test.cc`, implement `BinderQueryOwner`, `BinderKeyFailureKind`, `BinderKeyFailure`, and `BinderQueryResult<T>`; at most 400 changed source lines. | Owner, failure, and result-algebra tests | Pending |
 | `R30-12M` | `binder-checker` with `verification` review | `R30-12L`; RFC 0036 `R36-16` | In `stable-binding-codec.{h,cc}` and `stable-binding-facts-test.cc`, implement the matching owner, failure, and result codecs and wire oracles through the diagnostics-owned explicit limits API; at most 400 changed source lines. | Failure and result wire mutation tests plus the 4,097-fact Binder boundary | Pending |
-| `R30-12N` | `binder-checker` with `verification` review | `R30-12M` | In `stable-binding-facts.{h,cc}` and `stable-binding-facts-test.cc`, implement `StableScopeFact`, `StableNodeScopeFact`, `StableDeclarationFact`, `StableImplementationOccurrenceFact`, both parameter-declaration facts, `StableImportFact`, `StableModuleAliasFact`, `StableReexportStep`, `StableLocalExportFact`, and `BoundModuleSkeleton`; at most 400 changed source lines. | Module-skeleton fact tests | Pending |
-| `R30-12O` | `binder-checker` with `verification` review | `R30-12N` | In `stable-binding-codec.{h,cc}` and `stable-binding-facts-test.cc`, implement the matching module-skeleton codecs and wire oracles; at most 400 changed source lines. | Module-skeleton wire mutation tests | Pending |
-| `R30-12P` | `binder-checker` with `verification` review | `R30-12O` | In `stable-binding-facts.{h,cc}` and `stable-binding-facts-test.cc`, implement `StableFailedLookupOutcome`, `StableFailedLookupFact`, `StableExportedBinding`, `StableExportedBindingQueryKey`, and `StableScopeNameBucketQueryKey`; at most 400 changed source lines. | Lookup and projection fact tests | Pending |
-| `R30-12Q` | `binder-checker` with `verification` review | `R30-12P` | In `stable-binding-codec.{h,cc}` and `stable-binding-facts-test.cc`, implement the matching lookup and projection codecs and wire oracles; at most 400 changed source lines. | Lookup and projection wire mutation tests | Pending |
-| `R30-12R` | `binder-checker` with `verification` review | `R30-12Q` | In `stable-binding-facts.{h,cc}` and `stable-binding-facts-test.cc`, implement `StableBodyScopeFact`, `StableBodyNodeScopeFact`, `StableOwnerLocalBindingFact`, `StableResolutionFact`, `StableDeferredMemberFact`, `StableSelfOwner`, `StableSelfTypeFact`, `StableThisBindingFact`, and `StableShadowTargetFact`; at most 400 changed source lines. | Owner-body scope and resolution tests | Pending |
+| `R30-12N-A` | `binder-checker` with `verification` review | `R30-12M`; RFC 0037 `R37-07` | In `stable-binding-facts.{h,cc}` and `stable-binding-facts-test.cc`, implement `StableScopeFact` and `StableNodeScopeFact`; at most 400 changed source lines. | Scope and node-scope fact tests | Pending |
+| `R30-12O-A` | `binder-checker` with `verification` review | `R30-12N-A` | In `stable-binding-codec.{h,cc}` and `stable-binding-facts-test.cc`, implement matching scope codecs and wire oracles; at most 400 changed source lines. | Scope wire mutation tests | Pending |
+| `R30-12N-B` | `binder-checker` with `verification` review | `R30-12O-A` | In the fact files, implement `StableDeclarationFact` and `StableImplementationOccurrenceFact`; at most 400 changed source lines. | Declaration fact and relation tests | Pending |
+| `R30-12O-B` | `binder-checker` with `verification` review | `R30-12N-B` | In the codec files, implement matching declaration codecs and wire oracles; at most 400 changed source lines. | Declaration wire mutation tests | Pending |
+| `R30-12N-C` | `binder-checker` with `verification` review | `R30-12O-B` | In the fact files, implement both parameter-declaration facts; at most 400 changed source lines. | Parameter declaration fact tests | Pending |
+| `R30-12O-C` | `binder-checker` with `verification` review | `R30-12N-C` | In the codec files, implement matching parameter-declaration codecs and wire oracles; at most 400 changed source lines. | Parameter declaration wire mutation tests | Pending |
+| `R30-12N-D` | `binder-checker` with `verification` review | `R30-12O-C` | In the fact files, implement `StableImportFact` and `StableModuleAliasFact`; at most 400 changed source lines. | Import and alias fact tests | Pending |
+| `R30-12O-D` | `binder-checker` with `verification` review | `R30-12N-D` | In the codec files, implement matching import and alias codecs and wire oracles; at most 400 changed source lines. | Import and alias wire mutation tests | Pending |
+| `R30-12N-E` | `binder-checker` with `verification` review | `R30-12O-D` | In the fact files, implement `StableReexportStep` and `StableLocalExportFact`; at most 400 changed source lines. | Reexport and local-export fact tests | Pending |
+| `R30-12O-E` | `binder-checker` with `verification` review | `R30-12N-E` | In the codec files, implement matching reexport and local-export codecs and wire oracles; at most 400 changed source lines. | Reexport and local-export wire mutation tests | Pending |
+| `R30-12P-A` | `binder-checker` with `verification` review | `R30-12O-E` | In the fact files, implement `StableFailedLookupOutcome` and `StableFailedLookupFact`; at most 400 changed source lines. | Failed-lookup fact and closed-outcome tests | Pending |
+| `R30-12Q-A` | `binder-checker` with `verification` review | `R30-12P-A` | In the codec files, implement matching failed-lookup codecs and wire oracles; at most 400 changed source lines. | Failed-lookup wire mutation tests | Pending |
+| `R30-12N-F` | `binder-checker` with `verification` review | `R30-12Q-A` | In the fact files, implement `BoundModuleSkeleton` from populated production-admitted component sequences; at most 400 changed source lines. | Complete module-skeleton fact and coverage tests | Pending |
+| `R30-12O-F` | `binder-checker` with `verification` review | `R30-12N-F` | In the codec files, implement the complete module-skeleton codec and wire oracle; at most 400 changed source lines. | Complete module-skeleton wire mutation tests | Pending |
+| `R30-12P-B` | `binder-checker` with `verification` review | `R30-12O-F` | In the fact files, implement `StableExportedBinding`, `StableExportedBindingQueryKey`, and `StableScopeNameBucketQueryKey`; at most 400 changed source lines. | Projection fact and key tests | Pending |
+| `R30-12Q-B` | `binder-checker` with `verification` review | `R30-12P-B` | In the codec files, implement matching projection codecs and wire oracles; at most 400 changed source lines. | Projection wire mutation tests | Pending |
+| `R30-12R` | `binder-checker` with `verification` review | `R30-12Q-B` | In `stable-binding-facts.{h,cc}` and `stable-binding-facts-test.cc`, implement `StableBodyScopeFact`, `StableBodyNodeScopeFact`, `StableOwnerLocalBindingFact`, `StableResolutionFact`, `StableDeferredMemberFact`, `StableSelfOwner`, `StableSelfTypeFact`, `StableThisBindingFact`, and `StableShadowTargetFact`; at most 400 changed source lines. | Owner-body scope and resolution tests | Pending |
 | `R30-12S` | `binder-checker` with `verification` review | `R30-12R` | In `stable-binding-codec.{h,cc}` and `stable-binding-facts-test.cc`, implement the matching owner-body scope and resolution codecs and wire oracles; at most 400 changed source lines. | Owner-body scope wire mutation tests | Pending |
 | `R30-12T` | `binder-checker` with `verification` review | `R30-12S` | In `stable-binding-facts.{h,cc}` and `stable-binding-facts-test.cc`, implement `StableLabelKey`, `StableLabelTarget`, `StableLabelFact`, `StableControlTarget`, `StableControlTransferFact`, `StableClosureFact`, `StableClosureFreeVariable`, `StableClosureFreeVariableFact`, `StableExplicitCaptureMode`, `StableExplicitCaptureBindingFact`, and `StableExplicitClosureCaptureFact`; at most 400 changed source lines. | Control and closure fact tests | Pending |
 | `R30-12U` | `binder-checker` with `verification` review | `R30-12T` | In `stable-binding-codec.{h,cc}` and `stable-binding-facts-test.cc`, implement the matching control and closure codecs and wire oracles; at most 400 changed source lines. | Control and closure wire mutation tests | Pending |
@@ -190,10 +227,14 @@ implementation-series base remains
 | `R30-16` | `error-system` with `binder-checker` and `verification` review | `R30-15` | Land `R29-12D` with the canonical Binder diagnostic facts, exact diagnostic native test, CTest ownership, and diagnostic coverage gates. | Diagnostic fact test and diagnostic coverage check plus self-test | Pending |
 | `R30-17` | `rfc` | `R30-16` | Synchronize truthful tracker state and resume `R29-13A`. | RFC and evidence audit | Pending |
 
-The RFC 0031, RFC 0032, and RFC 0035 design blockers are satisfied by transactions
+The RFC 0031, RFC 0032, RFC 0035, RFC 0036, and RFC 0037 design blockers are
+satisfied by transactions
 `rfc0031-accept-20260728-c25fcb18` and
 `rfc0032-accept-20260728-1d519846`, and
-`rfc0035-accept-20260728-e79c292e`. None of these transactions completes a
+`rfc0035-accept-20260728-e79c292e`,
+`rfc0036-accept-20260728-3bcf4ae9`, and
+`rfc0037-accept-20260728-ed0b9170`. None of these transactions completes a
 source task. The historical `R30-09`, RFC 0031 `R31-09`, RFC 0032 `R32-07`,
-and RFC 0035 `R35-08` design gates are satisfied, so implementation may resume
-at the current dependency-ordered review slice.
+RFC 0035 `R35-08`, RFC 0036 `R36-09`, and RFC 0037 `R37-07` design gates are
+satisfied, so implementation may resume at the current dependency-ordered
+review slice.

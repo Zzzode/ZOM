@@ -130,7 +130,7 @@ flowchart LR
     D1 --> D2["Parser caller migration"]
     D2 --> D3["Independent source commit"]
     D3 --> M["RFC 0030 R30-12M"]
-    M --> N["RFC 0030 R30-12N"]
+    M --> N["RFC 0030 R30-12N-A"]
 ```
 
 ## Reference-Level Design
@@ -444,7 +444,11 @@ required.
    from an isolated index and recorded baseline.
 5. Rebase RFC 0030 `R30-12M` onto the published API.
 6. Run stable-binding syntax, schema, mutation, format, and naming gates.
-7. Resume RFC 0030 at `R30-12N`.
+7. Resume RFC 0030 through RFC 0037 at `R30-12N-A`.
+
+RFC 0037 acceptance transaction `rfc0037-accept-20260728-ed0b9170`
+establishes the bounded module-skeleton review graph without changing the
+approved bounded-diagnostic contract or implementation status.
 
 ## Test Plan
 
