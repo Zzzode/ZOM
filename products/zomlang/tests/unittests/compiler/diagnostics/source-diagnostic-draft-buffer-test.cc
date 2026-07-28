@@ -3,8 +3,9 @@
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 
-#include "zc/ztest/test.h"
 #include "zomlang/compiler/diagnostics/source-diagnostic-draft-buffer.h"
+
+#include "zc/ztest/test.h"
 #include "zomlang/compiler/diagnostics/diagnostic.h"
 #include "zomlang/compiler/source/manager.h"
 #include "zomlang/tests/unittests/compiler/test-semantic-identities.h"
@@ -26,14 +27,13 @@ ZC_TEST("SourceDiagnosticDraftBuffer publishes deterministic facts and exact pro
   Diagnostic parse(DiagID::InvalidCharacter, sources.getLocForOffset(buffer, 5));
   emit(drafts.parserEmitter(), parse);
   Diagnostic lex(DiagID::InvalidCharacter, sources.getLocForOffset(buffer, 1));
-  lex.addRange(source::CharSourceRange(
-      sources.getLocForOffset(buffer, 1), sources.getLocForOffset(buffer, 3), true));
-  lex.addChildDiagnostic(zc::heap<Diagnostic>(
-      DiagID::ExpectedToken, sources.getLocForOffset(buffer, 4), "identifier"_zc));
+  lex.addRange(source::CharSourceRange(sources.getLocForOffset(buffer, 1),
+                                       sources.getLocForOffset(buffer, 3), true));
+  lex.addChildDiagnostic(zc::heap<Diagnostic>(DiagID::ExpectedToken,
+                                              sources.getLocForOffset(buffer, 4), "identifier"_zc));
   emit(drafts.lexerEmitter(), lex);
 
-  auto published = ZC_REQUIRE_NONNULL(
-      drafts.publish(tests::test_identity_detail::source(), 10));
+  auto published = ZC_REQUIRE_NONNULL(drafts.publish(tests::test_identity_detail::source(), 10));
   ZC_REQUIRE(published.facts().size() == 2);
   ZC_EXPECT(published.facts()[0].occurrence().phase() == SourceDiagnosticPhase::Lex);
   ZC_EXPECT(published.facts()[0].occurrence().occurrence() == 0);
@@ -56,8 +56,7 @@ ZC_TEST("SourceDiagnosticDraftBuffer retains duplicates and rolls back parser sp
   emit(drafts.parserEmitter(), speculative);
   drafts.rollback(checkpoint);
 
-  auto published = ZC_REQUIRE_NONNULL(
-      drafts.publish(tests::test_identity_detail::source(), 3));
+  auto published = ZC_REQUIRE_NONNULL(drafts.publish(tests::test_identity_detail::source(), 3));
   ZC_REQUIRE(published.facts().size() == 2);
   ZC_EXPECT(published.facts()[0].occurrence().occurrence() == 0);
   ZC_EXPECT(published.facts()[1].occurrence().occurrence() == 1);

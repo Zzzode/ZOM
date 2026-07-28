@@ -3,10 +3,11 @@
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 
+#include "zomlang/compiler/diagnostics/diagnostic-materializer.h"
+
 #include "zc/ztest/test.h"
 #include "zomlang/compiler/diagnostics/diagnostic-consumer.h"
 #include "zomlang/compiler/diagnostics/diagnostic-engine.h"
-#include "zomlang/compiler/diagnostics/diagnostic-materializer.h"
 #include "zomlang/compiler/source/manager.h"
 #include "zomlang/tests/unittests/compiler/test-semantic-identities.h"
 
@@ -28,30 +29,27 @@ DiagnosticProvenanceKey key(uint32_t slot, zc::Maybe<uint32_t> ordinal = zc::non
 }
 
 DiagnosticFact populatedFact() {
-  auto occurrence = ZC_REQUIRE_NONNULL(DiagnosticOccurrenceKey::from(
-      tests::test_identity_detail::source(), SourceDiagnosticPhase::Lex,
-      SourceDiagnosticEmitter::Lexer, 0));
+  auto occurrence = ZC_REQUIRE_NONNULL(
+      DiagnosticOccurrenceKey::from(tests::test_identity_detail::source(),
+                                    SourceDiagnosticPhase::Lex, SourceDiagnosticEmitter::Lexer, 0));
   zc::Vector<zc::String> arguments;
   zc::Vector<DiagnosticSecondary> secondary;
-  secondary.add(ZC_REQUIRE_NONNULL(
-      DiagnosticSecondary::highlight(key(1, uint32_t{0}))));
+  secondary.add(ZC_REQUIRE_NONNULL(DiagnosticSecondary::highlight(key(1, uint32_t{0}))));
   zc::Vector<zc::String> noteArguments;
   noteArguments.add(zc::str("identifier"_zc));
   secondary.add(ZC_REQUIRE_NONNULL(DiagnosticSecondary::note(
       DiagID::ExpectedToken, key(2, uint32_t{0}), zc::mv(noteArguments))));
-  return ZC_REQUIRE_NONNULL(DiagnosticFact::from(
-      zc::mv(occurrence), DiagID::InvalidCharacter, zc::mv(arguments), key(0),
-      zc::mv(secondary)));
+  return ZC_REQUIRE_NONNULL(DiagnosticFact::from(zc::mv(occurrence), DiagID::InvalidCharacter,
+                                                 zc::mv(arguments), key(0), zc::mv(secondary)));
 }
 
 SourceDiagnosticProvenanceMap map() {
   zc::Vector<SourceDiagnosticProvenanceEntry> entries;
-  entries.add(SourceDiagnosticProvenanceEntry{
-      key(0), DiagnosticSourceRange{1, 1, false}});
-  entries.add(SourceDiagnosticProvenanceEntry{
-      key(1, uint32_t{0}), DiagnosticSourceRange{1, 3, true}});
-  entries.add(SourceDiagnosticProvenanceEntry{
-      key(2, uint32_t{0}), DiagnosticSourceRange{4, 4, false}});
+  entries.add(SourceDiagnosticProvenanceEntry{key(0), DiagnosticSourceRange{1, 1, false}});
+  entries.add(
+      SourceDiagnosticProvenanceEntry{key(1, uint32_t{0}), DiagnosticSourceRange{1, 3, true}});
+  entries.add(
+      SourceDiagnosticProvenanceEntry{key(2, uint32_t{0}), DiagnosticSourceRange{4, 4, false}});
   return ZC_REQUIRE_NONNULL(SourceDiagnosticProvenanceMap::from(zc::mv(entries), 6));
 }
 
@@ -106,10 +104,8 @@ ZC_TEST("DiagnosticMaterializer reports missing and foreign provenance without e
   source::SourceManager sources;
   const auto buffer = sources.addMemBufferCopy("abcdef"_zc.asBytes(), "test.zom"_zc);
   zc::Vector<SourceDiagnosticProvenanceEntry> onlyPrimary;
-  onlyPrimary.add(SourceDiagnosticProvenanceEntry{
-      key(0), DiagnosticSourceRange{1, 1, false}});
-  auto incomplete =
-      ZC_REQUIRE_NONNULL(SourceDiagnosticProvenanceMap::from(zc::mv(onlyPrimary), 6));
+  onlyPrimary.add(SourceDiagnosticProvenanceEntry{key(0), DiagnosticSourceRange{1, 1, false}});
+  auto incomplete = ZC_REQUIRE_NONNULL(SourceDiagnosticProvenanceMap::from(zc::mv(onlyPrimary), 6));
   auto sourceKey = tests::test_identity_detail::source();
   SourceDiagnosticProvenanceResolver resolver(sourceKey, incomplete);
   zc::Vector<DiagnosticFact> facts;

@@ -62,8 +62,7 @@ int compareScalar(const T& left, const T& right) {
   return 0;
 }
 
-int compareStrings(zc::ArrayPtr<const zc::String> left,
-                   zc::ArrayPtr<const zc::String> right) {
+int compareStrings(zc::ArrayPtr<const zc::String> left, zc::ArrayPtr<const zc::String> right) {
   const size_t common = left.size() < right.size() ? left.size() : right.size();
   for (size_t index = 0; index < common; ++index) {
     const int comparison = compareScalar(zc::StringPtr(left[index]), zc::StringPtr(right[index]));
@@ -88,15 +87,12 @@ int compareRanges(zc::ArrayPtr<const DraftRange> left, zc::ArrayPtr<const DraftR
 int compareNotes(zc::ArrayPtr<const DraftNote> left, zc::ArrayPtr<const DraftNote> right) {
   const size_t common = left.size() < right.size() ? left.size() : right.size();
   for (size_t index = 0; index < common; ++index) {
-    int comparison =
-        compareScalar(static_cast<uint32_t>(left[index].code),
-                      static_cast<uint32_t>(right[index].code));
+    int comparison = compareScalar(static_cast<uint32_t>(left[index].code),
+                                   static_cast<uint32_t>(right[index].code));
     if (comparison != 0) { return comparison; }
-    comparison =
-        compareScalar(left[index].primaryByteOffset, right[index].primaryByteOffset);
+    comparison = compareScalar(left[index].primaryByteOffset, right[index].primaryByteOffset);
     if (comparison != 0) { return comparison; }
-    comparison =
-        compareStrings(left[index].arguments.asPtr(), right[index].arguments.asPtr());
+    comparison = compareStrings(left[index].arguments.asPtr(), right[index].arguments.asPtr());
     if (comparison != 0) { return comparison; }
   }
   return compareScalar(left.size(), right.size());
@@ -105,11 +101,9 @@ int compareNotes(zc::ArrayPtr<const DraftNote> left, zc::ArrayPtr<const DraftNot
 int compareDrafts(const SourceDiagnosticDraft& left, const SourceDiagnosticDraft& right) {
   int comparison = compareScalar(left.primaryByteOffset, right.primaryByteOffset);
   if (comparison != 0) { return comparison; }
-  comparison =
-      compareScalar(static_cast<uint8_t>(left.phase), static_cast<uint8_t>(right.phase));
+  comparison = compareScalar(static_cast<uint8_t>(left.phase), static_cast<uint8_t>(right.phase));
   if (comparison != 0) { return comparison; }
-  comparison = compareScalar(static_cast<uint32_t>(left.code),
-                             static_cast<uint32_t>(right.code));
+  comparison = compareScalar(static_cast<uint32_t>(left.code), static_cast<uint32_t>(right.code));
   if (comparison != 0) { return comparison; }
   comparison = compareStrings(left.arguments.asPtr(), right.arguments.asPtr());
   if (comparison != 0) { return comparison; }
@@ -152,8 +146,7 @@ SourceDiagnosticEmitter emitterFor(SourceDiagnosticPhase phase) {
                                              : SourceDiagnosticEmitter::Parser;
 }
 
-bool equalFacts(zc::ArrayPtr<const DiagnosticFact> left,
-                zc::ArrayPtr<const DiagnosticFact> right) {
+bool equalFacts(zc::ArrayPtr<const DiagnosticFact> left, zc::ArrayPtr<const DiagnosticFact> right) {
   if (left.size() != right.size()) { return false; }
   for (size_t index = 0; index < left.size(); ++index) {
     if (!(left[index] == right[index])) { return false; }
@@ -183,9 +176,7 @@ zc::ArrayPtr<const DiagnosticFact> PublishedSourceDiagnostics::facts() const {
 const SourceDiagnosticProvenanceMap& PublishedSourceDiagnostics::provenance() const noexcept {
   return impl->provenance;
 }
-zc::Vector<DiagnosticFact> PublishedSourceDiagnostics::takeFacts() {
-  return zc::mv(impl->facts);
-}
+zc::Vector<DiagnosticFact> PublishedSourceDiagnostics::takeFacts() { return zc::mv(impl->facts); }
 SourceDiagnosticProvenanceMap PublishedSourceDiagnostics::takeProvenance() {
   return zc::mv(impl->provenance);
 }
@@ -218,26 +209,21 @@ struct SourceDiagnosticDraftBuffer::Impl final {
   zc::Maybe<uint64_t> offsetFor(source::SourceLoc location) const {
     if (location.isInvalid()) { return zc::none; }
     const auto sourceRange = sources.getRangeForBuffer(buffer);
-    if (location < sourceRange.getStart() || location > sourceRange.getEnd()) {
-      return zc::none;
-    }
+    if (location < sourceRange.getStart() || location > sourceRange.getEnd()) { return zc::none; }
     return static_cast<uint64_t>(sources.getLocOffsetInBuffer(location, buffer));
   }
 
   zc::Maybe<DraftRange> rangeFor(const source::CharSourceRange& range) const {
     auto start = offsetFor(range.getStart());
     auto end = offsetFor(range.getEnd());
-    if (start == zc::none || end == zc::none ||
-        ZC_ASSERT_NONNULL(start) > ZC_ASSERT_NONNULL(end)) {
+    if (start == zc::none || end == zc::none || ZC_ASSERT_NONNULL(start) > ZC_ASSERT_NONNULL(end)) {
       return zc::none;
     }
-    return DraftRange{ZC_ASSERT_NONNULL(start), ZC_ASSERT_NONNULL(end),
-                      range.getIsTokenRange()};
+    return DraftRange{ZC_ASSERT_NONNULL(start), ZC_ASSERT_NONNULL(end), range.getIsTokenRange()};
   }
 
   zc::Maybe<DraftNote> retainNote(const Diagnostic& diagnostic) const {
-    if (diagnostic.getChildDiagnostics().size() != 0 ||
-        diagnostic.getRanges().size() != 0 ||
+    if (diagnostic.getChildDiagnostics().size() != 0 || diagnostic.getRanges().size() != 0 ||
         !isSourceSyntaxDiagnostic(diagnostic.getId())) {
       return zc::none;
     }
@@ -250,9 +236,7 @@ struct SourceDiagnosticDraftBuffer::Impl final {
   zc::Maybe<SourceDiagnosticDraft> retainDraft(SourceDiagnosticPhase phase,
                                                const Diagnostic& diagnostic) const {
     auto primary = offsetFor(diagnostic.getLoc());
-    if (primary == zc::none || !isSourceSyntaxDiagnostic(diagnostic.getId())) {
-      return zc::none;
-    }
+    if (primary == zc::none || !isSourceSyntaxDiagnostic(diagnostic.getId())) { return zc::none; }
     zc::Vector<DraftRange> ranges(diagnostic.getRanges().size());
     for (const auto& range : diagnostic.getRanges()) {
       auto retained = rangeFor(range);
@@ -265,8 +249,11 @@ struct SourceDiagnosticDraftBuffer::Impl final {
       if (retained == zc::none) { return zc::none; }
       notes.add(zc::mv(ZC_ASSERT_NONNULL(retained)));
     }
-    return SourceDiagnosticDraft{phase, ZC_ASSERT_NONNULL(primary), diagnostic.getId(),
-                                 retainArguments(diagnostic.getArgs()), zc::mv(ranges),
+    return SourceDiagnosticDraft{phase,
+                                 ZC_ASSERT_NONNULL(primary),
+                                 diagnostic.getId(),
+                                 retainArguments(diagnostic.getArgs()),
+                                 zc::mv(ranges),
                                  zc::mv(notes)};
   }
 
@@ -305,12 +292,12 @@ struct SourceDiagnosticDraftBuffer::Impl final {
   zc::String invariantMessage;
 };
 
-SourceDiagnosticDraftBuffer::SourceDiagnosticDraftBuffer(
-    const source::SourceManager& sources, const source::BufferId& buffer)
+SourceDiagnosticDraftBuffer::SourceDiagnosticDraftBuffer(const source::SourceManager& sources,
+                                                         const source::BufferId& buffer)
     : impl(zc::heap<Impl>(sources, buffer)) {}
 SourceDiagnosticDraftBuffer::~SourceDiagnosticDraftBuffer() noexcept(false) = default;
-SourceDiagnosticDraftBuffer::SourceDiagnosticDraftBuffer(
-    SourceDiagnosticDraftBuffer&&) noexcept = default;
+SourceDiagnosticDraftBuffer::SourceDiagnosticDraftBuffer(SourceDiagnosticDraftBuffer&&) noexcept =
+    default;
 SourceDiagnosticDraftBuffer& SourceDiagnosticDraftBuffer::operator=(
     SourceDiagnosticDraftBuffer&&) noexcept = default;
 DiagnosticEmitter& SourceDiagnosticDraftBuffer::lexerEmitter() { return impl->lexerEmitter; }
@@ -323,23 +310,19 @@ SourceDiagnosticDraftBuffer::Checkpoint SourceDiagnosticDraftBuffer::checkpoint(
   return Checkpoint{id};
 }
 void SourceDiagnosticDraftBuffer::commit(Checkpoint checkpoint) {
-  ZC_IREQUIRE(impl->checkpoints.size() != 0 &&
-                  impl->checkpoints.back().id == checkpoint.id,
+  ZC_IREQUIRE(impl->checkpoints.size() != 0 && impl->checkpoints.back().id == checkpoint.id,
               "diagnostic checkpoints must commit in stack order");
   impl->checkpoints.removeLast();
 }
 void SourceDiagnosticDraftBuffer::rollback(Checkpoint checkpoint) {
-  ZC_IREQUIRE(impl->checkpoints.size() != 0 &&
-                  impl->checkpoints.back().id == checkpoint.id,
+  ZC_IREQUIRE(impl->checkpoints.size() != 0 && impl->checkpoints.back().id == checkpoint.id,
               "diagnostic checkpoints must roll back in stack order");
   const auto retained = impl->checkpoints.back();
   impl->parserDrafts.truncate(retained.draftCount);
   impl->parserErrorCount = retained.errorCount;
   impl->checkpoints.removeLast();
 }
-bool SourceDiagnosticDraftBuffer::hasErrors() const noexcept {
-  return impl->errorCount() != 0;
-}
+bool SourceDiagnosticDraftBuffer::hasErrors() const noexcept { return impl->errorCount() != 0; }
 size_t SourceDiagnosticDraftBuffer::errorCount() const noexcept { return impl->errorCount(); }
 bool SourceDiagnosticDraftBuffer::hasInvariantViolation() const noexcept {
   return impl->invariantMessage.size() != 0;
@@ -359,8 +342,7 @@ zc::Maybe<PublishedSourceDiagnostics> SourceDiagnosticDraftBuffer::publish(
     }
     return zc::none;
   }
-  zc::Vector<SourceDiagnosticDraft> drafts(impl->lexDrafts.size() +
-                                          impl->parserDrafts.size());
+  zc::Vector<SourceDiagnosticDraft> drafts(impl->lexDrafts.size() + impl->parserDrafts.size());
   for (auto& draft : impl->lexDrafts) { drafts.add(zc::mv(draft)); }
   for (auto& draft : impl->parserDrafts) { drafts.add(zc::mv(draft)); }
   sortDrafts(drafts);
@@ -377,18 +359,18 @@ zc::Maybe<PublishedSourceDiagnostics> SourceDiagnosticDraftBuffer::publish(
     auto& draft = drafts[draftIndex];
     const uint32_t occurrenceIndex = static_cast<uint32_t>(draftIndex);
     const auto emitter = emitterFor(draft.phase);
-    auto occurrence = DiagnosticOccurrenceKey::from(
-        source.clone(), draft.phase, emitter, occurrenceIndex);
-    auto primary = DiagnosticProvenanceKey::from(
-        source.clone(), draft.phase, emitter, primaryPath(occurrenceIndex));
+    auto occurrence =
+        DiagnosticOccurrenceKey::from(source.clone(), draft.phase, emitter, occurrenceIndex);
+    auto primary = DiagnosticProvenanceKey::from(source.clone(), draft.phase, emitter,
+                                                 primaryPath(occurrenceIndex));
     if (occurrence == zc::none || primary == zc::none ||
         draft.primaryByteOffset > sourceByteLength) {
       impl->reportInvariant(zc::str("source diagnostic primary provenance is invalid"));
       return zc::none;
     }
     zc::Vector<DiagnosticSecondary> secondary(draft.ranges.size() + draft.notes.size());
-    zc::Vector<SourceDiagnosticProvenanceEntry> entries(
-        1 + draft.ranges.size() + draft.notes.size());
+    zc::Vector<SourceDiagnosticProvenanceEntry> entries(1 + draft.ranges.size() +
+                                                        draft.notes.size());
     entries.add(SourceDiagnosticProvenanceEntry{
         ZC_ASSERT_NONNULL(primary).clone(),
         DiagnosticSourceRange{draft.primaryByteOffset, draft.primaryByteOffset, false}});
@@ -447,17 +429,15 @@ zc::Maybe<PublishedSourceDiagnostics> SourceDiagnosticDraftBuffer::publish(
       }
       secondary.add(zc::mv(ZC_ASSERT_NONNULL(item)));
     }
-    auto fact = DiagnosticFact::from(
-        zc::mv(ZC_ASSERT_NONNULL(occurrence)), draft.code, zc::mv(draft.arguments),
-        zc::mv(ZC_ASSERT_NONNULL(primary)), zc::mv(secondary));
+    auto fact = DiagnosticFact::from(zc::mv(ZC_ASSERT_NONNULL(occurrence)), draft.code,
+                                     zc::mv(draft.arguments), zc::mv(ZC_ASSERT_NONNULL(primary)),
+                                     zc::mv(secondary));
     if (fact == zc::none) {
       impl->reportInvariant(zc::str("source diagnostic fact is invalid"));
       return zc::none;
     }
-    auto& targetFacts =
-        draft.phase == SourceDiagnosticPhase::Lex ? lexFacts : parseFacts;
-    auto& targetEntries =
-        draft.phase == SourceDiagnosticPhase::Lex ? lexEntries : parseEntries;
+    auto& targetFacts = draft.phase == SourceDiagnosticPhase::Lex ? lexFacts : parseFacts;
+    auto& targetEntries = draft.phase == SourceDiagnosticPhase::Lex ? lexEntries : parseEntries;
     targetFacts.add(zc::mv(ZC_ASSERT_NONNULL(fact)));
     for (auto& entry : entries) { targetEntries.add(zc::mv(entry)); }
   }
@@ -465,12 +445,10 @@ zc::Maybe<PublishedSourceDiagnostics> SourceDiagnosticDraftBuffer::publish(
   zc::Vector<DiagnosticFact> facts(lexFacts.size() + parseFacts.size());
   for (auto& fact : lexFacts) { facts.add(zc::mv(fact)); }
   for (auto& fact : parseFacts) { facts.add(zc::mv(fact)); }
-  zc::Vector<SourceDiagnosticProvenanceEntry> entries(lexEntries.size() +
-                                                       parseEntries.size());
+  zc::Vector<SourceDiagnosticProvenanceEntry> entries(lexEntries.size() + parseEntries.size());
   for (auto& entry : lexEntries) { entries.add(zc::mv(entry)); }
   for (auto& entry : parseEntries) { entries.add(zc::mv(entry)); }
-  auto provenance =
-      SourceDiagnosticProvenanceMap::from(zc::mv(entries), sourceByteLength);
+  auto provenance = SourceDiagnosticProvenanceMap::from(zc::mv(entries), sourceByteLength);
   if (provenance == zc::none ||
       !validateDiagnosticProvenance(facts.asPtr(), ZC_ASSERT_NONNULL(provenance))) {
     impl->reportInvariant(zc::str("source diagnostic provenance is not bijective"));
@@ -490,8 +468,8 @@ zc::Maybe<PublishedSourceDiagnostics> SourceDiagnosticDraftBuffer::publish(
       .maximumSourceByteOffset = sourceByteLength,
   };
   auto factBytes = encodeDiagnosticFacts(zc::none, facts.asPtr(), factLimits);
-  auto provenanceBytes = encodeSourceDiagnosticProvenance(
-      zc::none, ZC_ASSERT_NONNULL(provenance), provenanceLimits);
+  auto provenanceBytes =
+      encodeSourceDiagnosticProvenance(zc::none, ZC_ASSERT_NONNULL(provenance), provenanceLimits);
   if (factBytes == zc::none || provenanceBytes == zc::none) {
     impl->reportInvariant(zc::str("source diagnostic publication exceeds codec limits"));
     return zc::none;
@@ -499,8 +477,7 @@ zc::Maybe<PublishedSourceDiagnostics> SourceDiagnosticDraftBuffer::publish(
   auto decodedFacts =
       decodeDiagnosticFacts(zc::none, ZC_ASSERT_NONNULL(factBytes).asPtr(), factLimits);
   auto decodedProvenance = decodeSourceDiagnosticProvenance(
-      zc::none, ZC_ASSERT_NONNULL(provenanceBytes).asPtr(), sourceByteLength,
-      provenanceLimits);
+      zc::none, ZC_ASSERT_NONNULL(provenanceBytes).asPtr(), sourceByteLength, provenanceLimits);
   if (decodedFacts == zc::none || decodedProvenance == zc::none ||
       !equalFacts(facts.asPtr(), ZC_ASSERT_NONNULL(decodedFacts).asPtr()) ||
       !(ZC_ASSERT_NONNULL(provenance) == ZC_ASSERT_NONNULL(decodedProvenance))) {

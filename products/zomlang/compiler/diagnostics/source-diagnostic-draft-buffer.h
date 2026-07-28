@@ -51,8 +51,7 @@ public:
     uint64_t id = 0;
   };
 
-  SourceDiagnosticDraftBuffer(const source::SourceManager& sources,
-                              const source::BufferId& buffer);
+  SourceDiagnosticDraftBuffer(const source::SourceManager& sources, const source::BufferId& buffer);
   ~SourceDiagnosticDraftBuffer() noexcept(false);
   SourceDiagnosticDraftBuffer(SourceDiagnosticDraftBuffer&&) noexcept;
   SourceDiagnosticDraftBuffer& operator=(SourceDiagnosticDraftBuffer&&) noexcept;
@@ -70,8 +69,8 @@ public:
   void reportInvariant(zc::String&& message);
 
   /// \brief Publishes deterministic facts and complete provenance for one stable source.
-  ZC_NODISCARD zc::Maybe<PublishedSourceDiagnostics> publish(
-      const identity::SourceFileKey& source, uint64_t sourceByteLength);
+  ZC_NODISCARD zc::Maybe<PublishedSourceDiagnostics> publish(const identity::SourceFileKey& source,
+                                                             uint64_t sourceByteLength);
 
 private:
   struct Impl;
