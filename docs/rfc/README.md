@@ -106,6 +106,7 @@ not reused.
 | [RFC 0035](0035-canonical-implementation-identity-decoder-closure.md) | Canonical Implementation Identity Decoder Closure | ACCEPTED | compiler | compiler | rfc | [Review Tracker](tracking/0035-review-and-implementation.md) | [Implementation Tracker](tracking/0035-review-and-implementation.md#implementation-tracker) |
 | [RFC 0036](0036-bounded-diagnostic-fact-codec-closure.md) | Bounded Diagnostic Fact Codec Closure | ACCEPTED | compiler | compiler | rfc | [Review Tracker](tracking/0036-review-and-implementation.md) | [Implementation Tracker](tracking/0036-review-and-implementation.md#implementation-tracker) |
 | [RFC 0037](0037-stable-module-skeleton-review-partition-closure.md) | Stable Module Skeleton Review Partition Closure | ACCEPTED | testing | testing | rfc | [Review Tracker](tracking/0037-review-and-implementation.md) | [Implementation Tracker](tracking/0037-review-and-implementation.md#implementation-tracker) |
+| [RFC 0039](0039-export-surface-revision-admission-closure.md) | Export Surface Revision Admission Closure | ACCEPTED | compiler | compiler | rfc | [Review Tracker](tracking/0039-review-and-implementation.md) | [Implementation Tracker](tracking/0039-review-and-implementation.md#implementation-tracker) |
 
 ## Status Values
 

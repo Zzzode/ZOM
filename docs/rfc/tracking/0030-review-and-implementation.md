@@ -92,6 +92,18 @@ Transaction `rfc0037-accept-20260728-ed0b9170` replaces `R30-12N` through
 `R30-12Q` with bounded dependency-ordered reviews and changes no source,
 immutable base, or final landing scope.
 
+### 2026-07-28 RFC 0039 Export Surface Revision Admission Closure
+
+The `R30-12O-D` preflight found that the accepted stable alias record carries
+an `ExportSurfaceRevision`, while the owning Binder type exposes no public
+operation that reconstructs the typed identity from its decoded digest.
+`computeFramed(...)` requires a complete canonical preimage that is not part
+of the alias record.
+
+RFC 0039 inserts a bounded Binder-owned digest-admission prerequisite, adds
+`binding-metadata.{h,cc}` to the same cumulative atomic landing set, and
+preserves `R30-15` as the only source commit and push.
+
 ## Decision Record
 
 Accepted by `task-router`, `rfc`, `module-system`, `binder-checker`,
@@ -144,6 +156,15 @@ and tracker SHA-256
 It establishes the bounded module-skeleton review graph and authorizes
 implementation to resume at `R30-12N-A` without changing source semantics,
 exact landing scope, or implementation status.
+
+RFC 0039 acceptance transaction `rfc0039-accept-20260728-de7ab2aa`
+synchronizes this tracker to proposal SHA-256
+`de7ab2aa3e571b39aa4c67a48ab32ca219c2f74241fc72dc4ae3c89ffc35cd1a`
+and tracker SHA-256
+`253766beefaee323618cc9a589ea015258d19cba16a1cf5e285c39c23b8d7e8b`.
+It inserts typed export-surface revision admission before `R30-12O-D`,
+expands the atomic landing set, and changes no source or implementation
+status.
 
 The earlier approvals against proposal SHA-256
 `44f0ed68bdd3635e7ed736efcf2dfb2cef0a499c89733d1ab1334a89dce55151`
@@ -204,7 +225,7 @@ implementation-series base remains
 | `R30-12N-C` | `binder-checker` with `verification` review | `R30-12O-B` | In the fact files, implement both parameter-declaration facts; at most 400 changed source lines. | Parameter declaration fact tests | Pending |
 | `R30-12O-C` | `binder-checker` with `verification` review | `R30-12N-C` | In the codec files, implement matching parameter-declaration codecs and wire oracles; at most 400 changed source lines. | Parameter declaration wire mutation tests | Pending |
 | `R30-12N-D` | `binder-checker` with `verification` review | `R30-12O-C` | In the fact files, implement `StableImportFact` and `StableModuleAliasFact`; at most 400 changed source lines. | Import and alias fact tests | Pending |
-| `R30-12O-D` | `binder-checker` with `verification` review | `R30-12N-D` | In the codec files, implement matching import and alias codecs and wire oracles; at most 400 changed source lines. | Import and alias wire mutation tests | Pending |
+| `R30-12O-D` | `binder-checker` with `verification` review | `R30-12N-D`; RFC 0039 `R39-11` | In the codec files, implement matching import and alias codecs and wire oracles through `ExportSurfaceRevision::fromDigest`; at most 400 changed source lines. | Import and alias wire mutation tests | Pending |
 | `R30-12N-E` | `binder-checker` with `verification` review | `R30-12O-D` | In the fact files, implement `StableReexportStep` and `StableLocalExportFact`; at most 400 changed source lines. | Reexport and local-export fact tests | Pending |
 | `R30-12O-E` | `binder-checker` with `verification` review | `R30-12N-E` | In the codec files, implement matching reexport and local-export codecs and wire oracles; at most 400 changed source lines. | Reexport and local-export wire mutation tests | Pending |
 | `R30-12P-A` | `binder-checker` with `verification` review | `R30-12O-E` | In the fact files, implement `StableFailedLookupOutcome` and `StableFailedLookupFact`; at most 400 changed source lines. | Failed-lookup fact and closed-outcome tests | Pending |
@@ -227,14 +248,15 @@ implementation-series base remains
 | `R30-16` | `error-system` with `binder-checker` and `verification` review | `R30-15` | Land `R29-12D` with the canonical Binder diagnostic facts, exact diagnostic native test, CTest ownership, and diagnostic coverage gates. | Diagnostic fact test and diagnostic coverage check plus self-test | Pending |
 | `R30-17` | `rfc` | `R30-16` | Synchronize truthful tracker state and resume `R29-13A`. | RFC and evidence audit | Pending |
 
-The RFC 0031, RFC 0032, RFC 0035, RFC 0036, and RFC 0037 design blockers are
+The RFC 0031, RFC 0032, RFC 0035, RFC 0036, RFC 0037, and RFC 0039 design blockers are
 satisfied by transactions
 `rfc0031-accept-20260728-c25fcb18` and
 `rfc0032-accept-20260728-1d519846`, and
 `rfc0035-accept-20260728-e79c292e`,
 `rfc0036-accept-20260728-3bcf4ae9`, and
-`rfc0037-accept-20260728-ed0b9170`. None of these transactions completes a
+`rfc0037-accept-20260728-ed0b9170`, and
+`rfc0039-accept-20260728-de7ab2aa`. None of these transactions completes a
 source task. The historical `R30-09`, RFC 0031 `R31-09`, RFC 0032 `R32-07`,
 RFC 0035 `R35-08`, RFC 0036 `R36-09`, and RFC 0037 `R37-07` design gates are
 satisfied, so implementation may resume at the current dependency-ordered
-review slice.
+review slice. RFC 0039 `R39-07` is satisfied, so `R39-11` may begin.

@@ -409,6 +409,8 @@ products/zomlang/compiler/binder/stable-binding-facts.h
 products/zomlang/compiler/binder/stable-binding-facts.cc
 products/zomlang/compiler/binder/stable-binding-codec.h
 products/zomlang/compiler/binder/stable-binding-codec.cc
+products/zomlang/compiler/binder/binding-metadata.h
+products/zomlang/compiler/binder/binding-metadata.cc
 products/zomlang/compiler/binder/CMakeLists.txt
 products/zomlang/compiler/identity/canonical-header-name.h
 products/zomlang/compiler/identity/canonical-header-name.cc
@@ -814,3 +816,4 @@ None
 | 2026-07-28 | ACCEPTED | Transaction `rfc0033-accept-20260728-3fc78517` replaced the rejected stable-header review patch with three dependency-ordered patches that each count all exact files and retain the 400-line cap; RFC 0030 remains accepted and source review resumes at `R30-12H-A`. |
 | 2026-07-28 | ACCEPTED | Transaction `rfc0034-accept-20260728-09802348` superseded RFC 0033, split header facts and codecs into independently bounded reviews, and moved parameter codecs before populated aggregate tests; RFC 0030 remains accepted and source review resumes at `R30-12H-A1`. |
 | 2026-07-28 | ACCEPTED | Transaction `rfc0035-accept-20260728-e79c292e` inserts the identity-owned implementation-record decoder required by `R30-12I-C`, synchronizes exact RFC 0035 proposal SHA-256 `e79c292e8d3aefcce76d32923e566bc625e49b9b67d8bd1968fbd4b9620ee6c8` and tracker SHA-256 `d50ec5efe5718d6eaa657463a348ac0956dd954174345d7b90c00d99d0f6ec9f`, expands the atomic landing set, and preserves `R30-15` as the only source commit and push. |
+| 2026-07-28 | ACCEPTED | Transaction `rfc0039-accept-20260728-de7ab2aa` inserts the Binder-owned `ExportSurfaceRevision::fromDigest` prerequisite required by `R30-12O-D`, expands the atomic landing set by `binding-metadata.{h,cc}`, and preserves `R30-15` as the only source commit and push. |

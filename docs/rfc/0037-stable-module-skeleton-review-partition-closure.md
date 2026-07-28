@@ -131,7 +131,7 @@ RFC 0030 tasks `R30-12N`, `R30-12O`, `R30-12P`, and `R30-12Q` are replaced by:
 | `R30-12N-C` | Both parameter-declaration facts; key-record, site, declaring-scope, name-position, clone, and equality mutations |
 | `R30-12O-C` | Matching parameter-declaration codecs and complete independent wire mutations |
 | `R30-12N-D` | `StableImportFact` and `StableModuleAliasFact`; import key, scope, target, canonical target, namespace, origin, visibility, export flag, alias, module, revision, clone, and equality mutations |
-| `R30-12O-D` | Matching import and alias codecs and complete independent wire mutations |
+| `R30-12O-D` | Matching import and alias codecs through RFC 0039 typed revision admission and complete independent wire mutations |
 | `R30-12N-E` | `StableReexportStep` and `StableLocalExportFact`; module, exact export path, binding, canonical target, name, visibility, reexport chain, clone, and equality mutations |
 | `R30-12O-E` | Matching reexport and local-export codecs, populated production-built reexport sequence, and complete independent wire mutations |
 | `R30-12P-A` | `StableFailedLookupOutcome` and `StableFailedLookupFact`; closed variants, non-empty namespaces or candidates, owner, path, namespace, name, clone, equality, and relation mutations |
@@ -172,7 +172,7 @@ R30-12M
   -> R30-12N-A -> R30-12O-A
   -> R30-12N-B -> R30-12O-B
   -> R30-12N-C -> R30-12O-C
-  -> R30-12N-D -> R30-12O-D
+  -> R30-12N-D -> R39-11 -> R30-12O-D
   -> R30-12N-E -> R30-12O-E
   -> R30-12P-A -> R30-12Q-A
   -> R30-12N-F -> R30-12O-F
@@ -206,7 +206,8 @@ tasks accumulate in the existing uncommitted RFC 0030 source tree. RFC 0030
 
 | Area | Paths | Owner |
 |---|---|---|
-| RFC authority | RFCs 0030, 0036, and 0037, their trackers, and the RFC index | `rfc` |
+| RFC authority | RFCs 0030, 0036, 0037, and 0039, their trackers, and the RFC index | `rfc` |
+| Revision admission | `binding-metadata.{h,cc}` | `binder-checker` |
 | Stable facts | `stable-binding-facts.{h,cc}` | `binder-checker` |
 | Stable codecs | `stable-binding-codec.{h,cc}` | `binder-checker` |
 | Native evidence | `stable-binding-facts-test.cc` | `verification` |
@@ -316,3 +317,4 @@ None
 | 2026-07-28 | DRAFT | Initial proposal written from the rejected R30-12N review boundary. |
 | 2026-07-28 | REVIEW | Ready for exact-hash owner review. |
 | 2026-07-28 | ACCEPTED | All required owners approved proposal SHA-256 `ed0b9170c813e42cf02e8a719886ce47aadec5cfbe2ddb788e24572c7243319e` and tracker SHA-256 `063ea9961caa03d957b976a24d7f4bc9f7489dbdd0442e48b825975d1467470e`. Acceptance transaction `rfc0037-accept-20260728-ed0b9170` publishes the bounded review graph and authorizes source review to resume at `R30-12N-A` without changing source or implementation status. |
+| 2026-07-28 | ACCEPTED | Transaction `rfc0039-accept-20260728-de7ab2aa` inserts `R39-11` between the approved `R30-12N-D` fact and its `R30-12O-D` codec without changing the stable fact contract or atomic publication boundary. |
