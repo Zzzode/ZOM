@@ -210,6 +210,26 @@ complete-context atomic landing correction to the independently approved
 exact pre-evidence Git diff above. I1A, I2, and M1 have preparation authority
 only; T1 is their sole source landing authority.
 
+### 2026-07-30 Atomic Build-Wiring Correction
+
+I2 and M1 each create one production translation unit, but the accepted T1
+exact file set omitted `products/zomlang/compiler/driver/CMakeLists.txt`.
+Following the plan literally would leave both reviewed sources outside the
+driver library while still allowing T1 to claim a buildable atomic closure.
+
+The correction assigns T1 the exact additive source rows for
+`active-identity-membership-query.cc` and
+`materialized-module-graph-query.cc`. The preparation partitions remain
+non-landing work and cannot add those rows independently. W2 retains only its
+later post-T2C deletion and final-wiring scope in the same build file; it
+cannot defer, replace, or remove the two T1 rows.
+
+The user-designated independent approver accepted exact two-document
+pre-evidence Git diff SHA-256
+`d36467858da78500b5cc5bfa47dc350d932ac45bd91a0e8fd97aaa0cdeee58a5`.
+Transaction `rfc0027-atomic-build-wiring-20260730-d3646785` records that
+approval and changes no source-task completion state.
+
 ## Implementation Tracker
 
 | Task | Owner | Depends On | Deliverable | Verification | Status |
@@ -251,7 +271,7 @@ only; T1 is their sole source landing authority.
 | `R27-27B` | `ir-backend` | `R27-27A` | Migrate verified HIR to a retained bound-module lease. | HIR lineage tests | Pending |
 | `R27-27C` | `ir-backend` | `R27-27B` | Migrate Built MIR to a retained bound-module lease. | MIR lineage tests | Pending |
 | `R27-27D` | `runtime-memory` | `R27-27C` | Migrate the ownership overlay to a retained bound-module lease and exact destruction order. | Ownership lineage tests | Pending |
-| `R27-28A` | `module-system` with `verification` and query-runtime review | RFC 0029 `R29-14`; RFC 0028 `R28-16`; approved preparations `R27-18A`, `R27-19`, and `R27-23` | Atomically land the complete-context value and descriptor, memberships, readiness, graph and SCC witnesses, complete static final verifier, three transactions, query-test migration, both shadow deletions, full mutation matrix, and staging, final, and sealed snapshots. | Complete-context, final-seal, query-inventory, mutation, session, and clean sanitizer gates | Pending |
+| `R27-28A` | `module-system` with `verification` and query-runtime review | RFC 0029 `R29-14`; RFC 0028 `R28-16`; approved preparations `R27-18A`, `R27-19`, and `R27-23` | Atomically land the complete-context value and descriptor, memberships, readiness, graph and SCC witnesses, their two exact driver CMake source rows, complete static final verifier, three transactions, query-test migration, both shadow deletions, full mutation matrix, and staging, final, and sealed snapshots. | Complete-context, final-seal, query-inventory, mutation, session, and clean sanitizer gates | Pending |
 | `R27-28B` | `module-system` | `R27-26A`; `R27-27D`; `R27-28A` | Implement the dependency-first production capability root over the RFC 0028 sealed snapshot and inherited admission contract. | Session architecture and end-to-end tests | Pending |
 | `R27-28C` | `module-system` | `R27-28B` | Implement surviving-lease and session teardown order. | Teardown tests | Pending |
 | `R27-29` | `module-system` | `R27-28C` | Delete identity registry/freeze authority, session ledgers, and the session-owned handleful graph root. | Identity and session zero-reference gates | Pending |
