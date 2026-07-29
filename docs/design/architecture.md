@@ -1,7 +1,7 @@
 <!-- @dsCard group="Design Documents" name="ARCHITECTURE" -->
 # ZOM Compiler Architecture - Current Implementation
 
-Updated: 2026-07-20
+Updated: 2026-07-29
 
 This document describes executable code in the repository. RFC status and
 future contracts are tracked under `docs/rfc`; a contract is listed here only
@@ -18,9 +18,9 @@ The compiler currently provides:
 - fixed-point structural module discovery;
 - one session-owned semantic context, frozen identity registries, and one
   canonical semantic type store;
-- one session-owned incremental query database and scheduler with exact source,
-  package, topology, selected-source, definition-authority, and readiness
-  inputs;
+- one session-owned incremental query database and scheduler with a generated
+  descriptor inventory, exact source, package, topology, selected-source,
+  definition-authority, and readiness inputs;
 - a complete verified module graph before binding starts;
 - verified module-body, named-item, and stable owner-body semantic syntax
   separated from revision-local source provenance;
@@ -52,7 +52,7 @@ fact or any source, identity, codec, or IR invariant rejects the entire stage.
 | `compiler/source` | Own source buffers and source locations | `BufferId`, `SourceLoc`, source text views |
 | `compiler/lexer` | Produce tokens on demand | parser-consumed tokens |
 | `compiler/parser` | Parse one retained source snapshot | `ast::Tree` and `ParsedTokenSnapshot` |
-| `compiler/query` | Own tracked inputs, immutable snapshots, dependency validation, red-green memo reuse, and deterministic demand telemetry | `QueryDatabase`, `QuerySnapshot`, typed query values, dependency groups, and memo metadata |
+| `compiler/query` | Own tracked inputs, immutable snapshots, dependency validation, red-green memo reuse, revision-local capabilities, final-seal admission, and deterministic demand telemetry | `QueryDatabase`, `QuerySnapshot`, `QueryCapabilityLease`, dependency groups, and memo metadata; see [Incremental Query Runtime](query-runtime.md) |
 | `compiler/ast` | Own immutable schema-backed syntax | `Tree`, `NodeId`, schema verification, deterministic dumps |
 | `compiler/identity` | Define and freeze canonical semantic identities | context-branded package, crate, source, module, definition, impl, and type handles |
 | `compiler/driver/package` | Resolve packages, targets, source snapshots, and build scripts | verified package-session inputs and finalized compilation roots |
@@ -141,13 +141,12 @@ Before binding starts, the session stages exact active-crate, active-module,
 dependency, selected-source, and source-snapshot inputs and verifies the
 query-derived module order against the frozen module graph. It then refreshes
 the complete active-definition authority map in one transaction and restores
-readiness only with the complete set fingerprint. A new ready snapshot demands
-`NamedItemSyntax` and `NamedItemProvenance` for every active definition. No
-named-item provider scans modules or reads session registries. The registered
-owner projection catalog derives canonical `ModuleBodyOwners`, projects one
-module-or-definition `OwnerBodySyntax`, and retains exact revision-local
-`OwnerBodyProvenance` through alternative-specific dependencies. These owner
-queries are not yet production Binder roots.
+readiness only with the complete set fingerprint. The session retains an
+authority-staging snapshot and a new authority-ready snapshot. Semantic
+named-item and owner syntax descriptors are registered, but final-sealed
+named-item and owner provenance capabilities are not yet production Binder
+roots because the session does not yet publish and admit the final input seal.
+No query provider may scan session registries or other untracked state.
 
 Successful binding publishes one atomic `VerifiedBindingOutput`:
 
@@ -191,7 +190,7 @@ preparation. Packages with directly available roots do not require that API.
 | Package resolution memory, request, graph, snapshots, build plan, and results | `CompilerSession` | installed atomically before parsing; snapshots explicitly finalized |
 | Source bytes | `SourceManager` | immutable source snapshots bind bytes, length, and digest before parser promotion |
 | Parser tokens and AST | `VerifiedParsedModule` | receipt-verified and immutable after source-registry freeze |
-| Query inputs and memos | `CompilerSession` and `QueryDatabase` | base mutations remove definition-authority readiness; complete authority replacement restores readiness atomically before named-item demand; owner projection memos retain canonical owner syntax separately from revision-local provenance |
+| Query inputs and memos | `CompilerSession` and `QueryDatabase` | generated descriptor identity; complete input transactions; immutable snapshots; semantic red-green memos; retained revision-local capability leases; base mutations remove definition-authority readiness before complete replacement |
 | Semantic context and identity registries | `CompilerSession` | one brand and one registry family; handles are context and slot checked |
 | Semantic types | `SemanticTypeStore` | one append-only store; only store-bound `canonicalizeClosed()` may create an internable payload |
 | Module dependencies | `VerifiedModuleGraph` | one complete immutable graph and requester-filtered views |
@@ -220,6 +219,8 @@ The production session is deterministic and phase-ordered:
 - active-definition authority replacement is complete and atomic, and
   named-item and owner projection query keys and canonical values are
   independent of worker execution order;
+- query descriptor identity comes from the generated inventory, while
+  single-flight joins and parallel groups retain canonical dependency order;
 - binding runs in dependency order and consumes immutable dependency surfaces;
 - binder source failures are constructed deterministically, and identity and
   binder invariant facts are ordered and grouped before rendering; and
@@ -261,14 +262,14 @@ The `.def` registries are authoritative. The registered families are:
 | Family | Codes | Purpose |
 |---|---|---|
 | Parse | sparse `ZOM2001-ZOM2105` | lexer, parser, grammar, modifier, and module-scope syntax |
-| Binder and module | `ZOM3001-ZOM3026` | names, scopes, imports, exports, visibility, and module paths |
+| Binder and module | sparse `ZOM3001-ZOM3028` | names, scopes, imports, exports, visibility, and module paths |
 | Checker | sparse `ZOM4001-ZOM4092` | semantic, constant, borrow-surface, and marker-interface diagnostics |
 | IR and backend capability | `ZOM6006`, `ZOM6007`, `ZOM6009` | panic, binary, and target capability failures |
 | Package | `ZOM7001-ZOM7017`, `ZOM7091-ZOM7093` | manifests, resolution, materialization, build scripts, and notes |
 | Compiler invariants | sparse `ZOM9905-ZOM9956` | package, identity, binder, checker, dispatch, IR, interface, and module-graph invariants |
 
-The executable diagnostic coverage gate currently proves 249 definitions, 212
-production emissions with test assertions, and 37 non-emitted definitions
+The executable diagnostic coverage gate currently proves 251 definitions, 212
+production emissions with test assertions, and 39 non-emitted definitions
 bound to active RFC trackers. It rejects undefined emissions, untracked dead
 definitions, stale reservations, and unasserted production emissions.
 
@@ -285,6 +286,8 @@ The merge-ready verification set is:
 - `python3 scripts/check-checker-architecture.py --check`;
 - `python3 scripts/check-compiler-session-architecture.py --check`;
 - `python3 scripts/check-incremental-query-architecture.py --check`;
+- `python3 scripts/check-query-descriptor-architecture.py --check`;
+- `python3 scripts/generate-query-descriptor-schema.py --check`;
 - `python3 scripts/check-identity-architecture.py --check`;
 - `python3 scripts/check-ir-architecture.py --check`;
 - `python3 scripts/check-diagnostic-coverage.py --check` and `--self-test`;

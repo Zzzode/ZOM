@@ -1,7 +1,7 @@
 <!-- @dsCard group="Design Documents" name="COMPILER_CONTRACTS" -->
 # ZOM Compiler Subsystem Contracts
 
-Updated: 2026-07-20
+Updated: 2026-07-29
 
 ## 1. Authority And Scope
 
@@ -55,6 +55,15 @@ The following rules apply to every stage boundary:
 
 ### Query runtime reads
 
+#### Q-00 Generated descriptor identity
+
+Every production input, semantic query, and revision-local capability appears
+exactly once in `query-descriptor-schema.def`. The generated inventory assigns
+its stable ordinal and binds its literal type, name, domain, policies, role,
+and owner path. `registerDescriptor<Descriptor>()` verifies that exact row
+before the first snapshot or input transaction closes registration. Runtime
+registration order does not assign query identity.
+
 #### Q-01 Required input reads
 
 `QueryContext::get<InputSpec>(key)` remains the required-input operation. A
@@ -92,7 +101,7 @@ active identity record but does not replace exact membership in
 restores readiness only while atomically replacing the complete authority map;
 named-item roots are demanded only from a new ready snapshot.
 
-#### Q-05 Stable owner projection
+#### Q-05 Stable owner projection status
 
 `ModuleBodyOwners(ModuleKey)` reads exactly one named-definition inventory and
 one canonical parallel group of all corresponding `NamedItemSyntax` values. It
@@ -100,12 +109,31 @@ publishes one module owner plus only definitions in the closed executable-root
 set, sorted by complete owner bytes. `OwnerBodySyntax` then reads only the
 matching module-body or named-item syntax alternative.
 
-`OwnerBodyProvenance` is revision-local. It reads `OwnerBodySyntax` and exactly
-the matching module-body or named-item provenance alternative, and it rejects
-missing, extra, duplicate, foreign-source, or boundary-crossing paths. Owner
-projection providers and verifiers use independent executable-root and path
-coverage algorithms and may not read parser, session, registry, or module-graph
-state directly.
+`OwnerBodyProvenance` is a retained final-sealed capability. Its provider and
+verifier read `OwnerBodySyntax` and exactly the matching module-body or
+named-item provenance alternative, and reject missing, extra, duplicate,
+foreign-source, or boundary-crossing paths. These descriptors and their native
+success and rejection matrix are implemented. `CompilerSession` does not yet
+publish final admission or demand them as production Binder roots.
+
+#### Q-06 Capability publication
+
+A revision-local capability provider receives only
+`CapabilityQueryContext<Descriptor>`. Candidate construction, stable witness
+encoding, independent verification, and each reachable source or key rejection
+belong to that descriptor. Success publishes one retained
+`QueryCapabilityLease`; cancellation, cycles, verifier disagreement, illegal
+failure alternatives, and runtime invariant failures publish no capability.
+
+#### Q-07 Final seal
+
+The query runtime can publish one revision-neutral, irreversible final input
+seal through the sole generated complete-context input row. A sealed snapshot
+must match database identity, revision, context key, and final witness.
+Final-sealed descriptors reject missing or unequal admission before provider
+execution, and an admitted parent propagates the same authority to nested
+capability demands. This runtime is implemented and natively tested; production
+session adoption remains incomplete.
 
 ## 3. Lexer To Parser Contract
 
@@ -397,7 +425,7 @@ Diagnostic allocation authority is the set of `.def` files included by
 | Family | Registered codes |
 |---|---|
 | Parse | sparse `ZOM2001-ZOM2105` |
-| Binder and module | sparse `ZOM3001-ZOM3026` |
+| Binder and module | sparse `ZOM3001-ZOM3028` |
 | Checker | sparse `ZOM4001-ZOM4092` |
 | IR and backend capability | `ZOM6006`, `ZOM6007`, `ZOM6009` |
 | Package | `ZOM7001-ZOM7017`, `ZOM7091-ZOM7093` |
@@ -435,9 +463,12 @@ direct architecture gates are:
 - `check-binder-architecture.py` and its self-test;
 - `check-checker-architecture.py` and its self-test;
 - `check-compiler-session-architecture.py` and its self-test;
+- `check-incremental-query-architecture.py` and its self-test;
+- `check-query-descriptor-architecture.py` and its self-test;
+- `generate-query-descriptor-schema.py` and its self-test;
 - `check-identity-architecture.py` and its self-test;
-- `check-ir-architecture.py` and its self-test; and
-- `check-diagnostic-coverage.py` and its self-test; and
+- `check-ir-architecture.py` and its self-test;
+- `check-diagnostic-coverage.py` and its self-test;
 - `check-package-architecture.py` and its negative fixtures.
 
 A passing gate proves only its named live boundary. Production readiness for
