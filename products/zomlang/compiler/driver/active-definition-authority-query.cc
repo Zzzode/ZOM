@@ -25,11 +25,6 @@ int compareBytes(zc::ArrayPtr<const uint8_t> left, zc::ArrayPtr<const uint8_t> r
   return 0;
 }
 
-query::QueryKindContract inputContract(zc::StringPtr domain) {
-  auto contract = query::QueryKindContract::input(domain, query::Durability::Low);
-  return zc::mv(ZC_REQUIRE_NONNULL(contract));
-}
-
 zc::Maybe<ActiveDefinitionAuthoritySetFingerprint> computeFingerprint(
     const CompilationRootSetQueryKey& contextRoots,
     zc::ArrayPtr<const ActiveDefinitionAuthorityRecord> records) {
@@ -159,14 +154,6 @@ const ActiveDefinitionAuthoritySetFingerprint& ActiveDefinitionAuthorityProjecti
   return fingerprintField;
 }
 
-zc::StringPtr ActiveDefinitionAuthorityInput::domain() {
-  return "zom.query.active-definition-authority"_zc;
-}
-
-query::QueryKindContract ActiveDefinitionAuthorityInput::contract() {
-  return inputContract(domain());
-}
-
 zc::Array<uint8_t> ActiveDefinitionAuthorityInput::encodeKey(const Key& key) {
   return key.encodeCanonical();
 }
@@ -183,14 +170,6 @@ zc::Array<uint8_t> ActiveDefinitionAuthorityInput::encodeValue(const Value& valu
 zc::Maybe<ActiveDefinitionAuthorityInput::Value> ActiveDefinitionAuthorityInput::decodeValue(
     zc::ArrayPtr<const uint8_t> bytes) {
   return identity::DefinitionIdentityRecord::decodeCanonical(bytes);
-}
-
-zc::StringPtr ActiveDefinitionAuthorityReadyInput::domain() {
-  return "zom.query.active-definition-authority-ready"_zc;
-}
-
-query::QueryKindContract ActiveDefinitionAuthorityReadyInput::contract() {
-  return inputContract(domain());
 }
 
 zc::Array<uint8_t> ActiveDefinitionAuthorityReadyInput::encodeKey(const Key& key) {
@@ -212,8 +191,9 @@ ActiveDefinitionAuthorityReadyInput::decodeValue(zc::ArrayPtr<const uint8_t> byt
 }
 
 bool registerActiveDefinitionAuthorityInputs(query::QueryDatabase& database) {
-  return database.registerInputKind<ActiveDefinitionAuthorityInput>() != zc::none &&
-         database.registerInputKind<ActiveDefinitionAuthorityReadyInput>() != zc::none;
+  auto authority = database.registerDescriptor<ActiveDefinitionAuthorityInput>();
+  if (!authority.isRegistered()) { return false; }
+  return database.registerDescriptor<ActiveDefinitionAuthorityReadyInput>().isRegistered();
 }
 
 }  // namespace zomlang::compiler::driver::incremental_binding_query

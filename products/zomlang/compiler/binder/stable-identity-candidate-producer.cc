@@ -85,7 +85,102 @@ ast::NodeId implementationGenericParameters(const ast::Tree& tree, ast::NodeId n
   return ast::NodeId(syntax.payload.words[ast::kStandaloneImplDeclTypeParamsIdWord]);
 }
 
+class IdentitySyntaxSiteInventoryProducerImpl final {
+public:
+  IdentitySyntaxSiteInventoryProducerImpl(const CanonicalParsedModule& parsedModule,
+                                          const identity::ModuleKey& module, ast::NodeId moduleNode)
+      : parsedModule(parsedModule),
+        tree(parsedModule.tree()),
+        module(module),
+        moduleNode(moduleNode),
+        inventory(DefinitionInventory::collect(tree)) {
+    paths.resize(tree.nodeCount() + 1);
+    ordinals.resize(tree.nodeCount() + 1);
+    seen.resize(tree.nodeCount() + 1);
+    identityRoot.resize(tree.nodeCount() + 1);
+    for (auto& value : seen) { value = 0; }
+    for (auto& value : identityRoot) { value = 0; }
+  }
+
+  zc::Maybe<IdentitySyntaxSiteInventory> produce() {
+    if (!tree.contains(tree.root()) || tree.nodeCount() > UINT32_MAX ||
+        !parsedModule.source().belongsTo(module.crate()) ||
+        (moduleNode && (!tree.contains(moduleNode) ||
+                        tree.node(moduleNode).kind != ast::SyntaxKind::ModuleDeclaration))) {
+      return zc::none;
+    }
+    for (const auto& definition : inventory.definitions()) {
+      if (definition.moduleNode == moduleNode && tree.contains(definition.node)) {
+        identityRoot[definition.node.value] = 1;
+      }
+    }
+    for (const auto& implementation : inventory.impls()) {
+      if (implementation.moduleNode == moduleNode && tree.contains(implementation.node)) {
+        identityRoot[implementation.node.value] = 1;
+      }
+    }
+    zc::Vector<uint32_t> path;
+    uint32_t ordinal = 0;
+    if (!collect(tree.root(), false, path, ordinal) || ordinal != tree.nodeCount()) {
+      return zc::none;
+    }
+    return IdentitySyntaxSiteInventory::fromVerified(
+        module.clone(), parsedModule.source().clone(), parsedModule.contentDigest(),
+        static_cast<uint32_t>(tree.nodeCount()), zc::mv(entries));
+  }
+
+private:
+  bool collect(ast::NodeId node, bool insideIdentity, zc::Vector<uint32_t>& path,
+               uint32_t& ordinal) {
+    if (!tree.contains(node) || node.value >= seen.size() || seen[node.value] != 0) {
+      return false;
+    }
+    seen[node.value] = 1;
+    paths[node.value] = clonePath(path.asPtr());
+    ordinals[node.value] = ordinal++;
+    insideIdentity = insideIdentity || identityRoot[node.value] != 0;
+    if (insideIdentity) {
+      auto key = IdentitySyntaxSiteKey::from(module.clone(), parsedModule.source().clone(),
+                                             clonePath(path.asPtr()));
+      auto span = parsedModule.spanFor(tree.node(node).range);
+      if (key == zc::none || span == zc::none) { return false; }
+      auto site =
+          IdentitySyntaxSite::from(zc::mv(ZC_ASSERT_NONNULL(key)), zc::mv(ZC_ASSERT_NONNULL(span)));
+      if (site == zc::none) { return false; }
+      entries.add(
+          IdentitySyntaxSiteInventoryEntry{ordinals[node.value], zc::mv(ZC_ASSERT_NONNULL(site))});
+    }
+    uint32_t childIndex = 0;
+    bool valid = true;
+    ast::visitChildNodeIds(tree, tree.node(node), [&](ast::NodeId child) {
+      const uint32_t index = childIndex++;
+      if (!valid) { return; }
+      path.add(index);
+      valid = collect(child, insideIdentity, path, ordinal);
+      path.removeLast();
+    });
+    return valid;
+  }
+
+  const CanonicalParsedModule& parsedModule;
+  const ast::Tree& tree;
+  const identity::ModuleKey& module;
+  ast::NodeId moduleNode;
+  DefinitionInventory inventory;
+  zc::Vector<zc::Vector<uint32_t>> paths;
+  zc::Vector<uint32_t> ordinals;
+  zc::Vector<uint8_t> seen;
+  zc::Vector<uint8_t> identityRoot;
+  zc::Vector<IdentitySyntaxSiteInventoryEntry> entries;
+};
+
 }  // namespace
+
+zc::Maybe<IdentitySyntaxSiteInventory> IdentitySyntaxSiteInventoryProducer::produce(
+    const CanonicalParsedModule& parsedModule, const identity::ModuleKey& module,
+    ast::NodeId moduleNode) {
+  return IdentitySyntaxSiteInventoryProducerImpl(parsedModule, module, moduleNode).produce();
+}
 
 class StableIdentityCandidateProducerImpl final {
 public:
@@ -134,11 +229,10 @@ public:
   }
 
 private:
-  StableIdentityCandidateFailure reject(StableIdentityCandidateFailureKind kind,
-                                        ast::NodeId node,
-                                        CanonicalHeaderSyntaxFailureKind headerKind =
-                                            CanonicalHeaderSyntaxFailureKind::InvalidTypeSyntax)
-      const noexcept {
+  StableIdentityCandidateFailure reject(
+      StableIdentityCandidateFailureKind kind, ast::NodeId node,
+      CanonicalHeaderSyntaxFailureKind headerKind =
+          CanonicalHeaderSyntaxFailureKind::InvalidTypeSyntax) const noexcept {
     return StableIdentityCandidateFailure{kind, node, headerKind};
   }
 
@@ -445,8 +539,9 @@ private:
             }
             definitionKeys[entry.node.value] = recordKey.clone();
             producedDefinitions.add(ProducedDefinitionIdentity{entry.node, recordKey.clone()});
-            producedDefinitionSites.add(ProducedDefinitionIdentitySite{
-                entry.node, zc::mv(recordKey), siteValue.clone(), zc::mv(ZC_ASSERT_NONNULL(source))});
+            producedDefinitionSites.add(
+                ProducedDefinitionIdentitySite{entry.node, zc::mv(recordKey), siteValue.clone(),
+                                               zc::mv(ZC_ASSERT_NONNULL(source))});
             ZC_IF_SOME(candidateValue, candidate) { candidates.add(zc::mv(candidateValue)); }
           }
         }
@@ -549,8 +644,8 @@ zc::ArrayPtr<const ProducedDefinitionIdentitySite>
 StableIdentityCandidateInventory::definitionSites() const noexcept {
   return impl->definitionSites.asPtr();
 }
-zc::ArrayPtr<const ProducedImplIdentitySite>
-StableIdentityCandidateInventory::implementationSites() const noexcept {
+zc::ArrayPtr<const ProducedImplIdentitySite> StableIdentityCandidateInventory::implementationSites()
+    const noexcept {
   return impl->implementationSites.asPtr();
 }
 

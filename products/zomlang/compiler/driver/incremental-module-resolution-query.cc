@@ -77,17 +77,6 @@ zc::Maybe<identity::ModuleKey> decodeModule(zc::ArrayPtr<const uint8_t> bytes) {
   return zc::none;
 }
 
-query::QueryKindContract inputContract(zc::StringPtr domain) {
-  auto contract = query::QueryKindContract::input(domain, query::Durability::Low);
-  return zc::mv(ZC_REQUIRE_NONNULL(contract));
-}
-
-query::QueryKindContract derivedContract(zc::StringPtr domain) {
-  auto contract = query::QueryKindContract::derived(domain, query::ReuseClass::Semantic,
-                                                    query::RetentionClass::Retained);
-  return zc::mv(ZC_REQUIRE_NONNULL(contract));
-}
-
 template <typename Spec>
 zc::Maybe<typename Spec::Value> readValue(query::QueryContext& context,
                                           const typename Spec::Key& key) {
@@ -335,12 +324,19 @@ zc::Maybe<identity::ModuleResolutionCandidates> verifierCandidates(
 bool stageCatalogBucket(query::InputTransaction& transaction,
                         const binder::StructuralModuleResolver& resolver,
                         const identity::CrateKey& crate,
-                        zc::ArrayPtr<const identity::ModulePathSegment> path) {
+                        zc::ArrayPtr<const identity::ModulePathSegment> path,
+                        zc::TreeMap<zc::String, bool>& stagedBuckets) {
   auto bucket = resolver.catalogPathBucketInput(crate, path);
   if (bucket == zc::none) { return false; }
   ZC_IF_SOME(value, bucket) {
+    auto encodedKey = zc::encodeHex(value.key().encode().asPtr());
+    if (stagedBuckets.find(encodedKey) != zc::none) { return true; }
     auto queryValue = CanonicalModuleCatalogBucket::fromVerified(value);
-    return transaction.set<ModuleCatalogPathBucketInput>(value.key(), queryValue);
+    if (!transaction.set<ModuleCatalogPathBucketInput>(value.key(), queryValue).isApplied()) {
+      return false;
+    }
+    stagedBuckets.insert(zc::mv(encodedKey), true);
+    return true;
   }
   return false;
 }
@@ -608,12 +604,6 @@ zc::Maybe<CanonicalModuleCatalogBucket> CanonicalModuleCatalogBucket::decodeCano
   return zc::none;
 }
 
-zc::StringPtr RequesterModuleAncestryInput::domain() {
-  return "zom.query.requester-module-ancestry"_zc;
-}
-query::QueryKindContract RequesterModuleAncestryInput::contract() {
-  return inputContract(domain());
-}
 zc::Array<uint8_t> RequesterModuleAncestryInput::encodeKey(const Key& key) { return key.encode(); }
 zc::Maybe<RequesterModuleAncestryInput::Key> RequesterModuleAncestryInput::decodeKey(
     zc::ArrayPtr<const uint8_t> bytes) {
@@ -627,12 +617,6 @@ zc::Maybe<RequesterModuleAncestryInput::Value> RequesterModuleAncestryInput::dec
   return identity::RequesterModuleAncestry::decodeCanonical(bytes);
 }
 
-zc::StringPtr ModuleCatalogPathBucketInput::domain() {
-  return "zom.query.module-catalog-path-bucket"_zc;
-}
-query::QueryKindContract ModuleCatalogPathBucketInput::contract() {
-  return inputContract(domain());
-}
 zc::Array<uint8_t> ModuleCatalogPathBucketInput::encodeKey(const Key& key) { return key.encode(); }
 zc::Maybe<ModuleCatalogPathBucketInput::Key> ModuleCatalogPathBucketInput::decodeKey(
     zc::ArrayPtr<const uint8_t> bytes) {
@@ -646,8 +630,6 @@ zc::Maybe<ModuleCatalogPathBucketInput::Value> ModuleCatalogPathBucketInput::dec
   return CanonicalModuleCatalogBucket::decodeCanonical(bytes);
 }
 
-zc::StringPtr ModuleSearchRootsInput::domain() { return "zom.query.module-search-roots"_zc; }
-query::QueryKindContract ModuleSearchRootsInput::contract() { return inputContract(domain()); }
 zc::Array<uint8_t> ModuleSearchRootsInput::encodeKey(const Key& key) { return key.encode(); }
 zc::Maybe<ModuleSearchRootsInput::Key> ModuleSearchRootsInput::decodeKey(
     zc::ArrayPtr<const uint8_t> bytes) {
@@ -661,8 +643,6 @@ zc::Maybe<ModuleSearchRootsInput::Value> ModuleSearchRootsInput::decodeValue(
   return CanonicalModuleSearchRoots::decodeCanonical(bytes);
 }
 
-zc::StringPtr DependencyAliasRootInput::domain() { return "zom.query.dependency-alias-root"_zc; }
-query::QueryKindContract DependencyAliasRootInput::contract() { return inputContract(domain()); }
 zc::Array<uint8_t> DependencyAliasRootInput::encodeKey(const Key& key) { return key.encode(); }
 zc::Maybe<DependencyAliasRootInput::Key> DependencyAliasRootInput::decodeKey(
     zc::ArrayPtr<const uint8_t> bytes) {
@@ -676,8 +656,6 @@ zc::Maybe<DependencyAliasRootInput::Value> DependencyAliasRootInput::decodeValue
   return ExplicitModuleTarget::decodeCanonical(bytes);
 }
 
-zc::StringPtr ConfiguredPreludeInput::domain() { return "zom.query.configured-prelude"_zc; }
-query::QueryKindContract ConfiguredPreludeInput::contract() { return inputContract(domain()); }
 zc::Array<uint8_t> ConfiguredPreludeInput::encodeKey(const Key& key) { return key.encode(); }
 zc::Maybe<ConfiguredPreludeInput::Key> ConfiguredPreludeInput::decodeKey(
     zc::ArrayPtr<const uint8_t> bytes) {
@@ -691,8 +669,6 @@ zc::Maybe<ConfiguredPreludeInput::Value> ConfiguredPreludeInput::decodeValue(
   return ExplicitModuleTarget::decodeCanonical(bytes);
 }
 
-zc::StringPtr ResolveModuleRequestQuery::domain() { return "zom.query.resolve-module-request"_zc; }
-query::QueryKindContract ResolveModuleRequestQuery::contract() { return derivedContract(domain()); }
 zc::Array<uint8_t> ResolveModuleRequestQuery::encodeKey(const Key& key) { return key.encode(); }
 zc::Maybe<ResolveModuleRequestQuery::Key> ResolveModuleRequestQuery::decodeKey(
     zc::ArrayPtr<const uint8_t> bytes) {
@@ -726,6 +702,9 @@ bool stageModuleResolutionQueryInputs(
     query::InputTransaction& transaction, const binder::StructuralModuleResolver& resolver,
     zc::ArrayPtr<const binder::ModuleDependencyRequest> requests) {
   zc::TreeMap<zc::String, identity::CrateKey> crates;
+  zc::TreeMap<zc::String, bool> stagedCatalogBuckets;
+  zc::TreeMap<zc::String, bool> stagedAliasRoots;
+  zc::TreeMap<zc::String, bool> stagedPreludes;
   for (const auto& root : resolver.searchRootInputs()) {
     auto encoded = zc::encodeHex(root.crate().encode().asPtr());
     if (crates.find(encoded) == zc::none) { crates.insert(zc::mv(encoded), root.crate().clone()); }
@@ -734,25 +713,36 @@ bool stageModuleResolutionQueryInputs(
     auto roots = CanonicalModuleSearchRoots::fromVerified(entry.value, resolver.searchRootInputs());
     if (roots == zc::none) { return false; }
     ZC_IF_SOME(value, roots) {
-      if (!transaction.set<ModuleSearchRootsInput>(entry.value, value)) { return false; }
+      if (!transaction.set<ModuleSearchRootsInput>(entry.value, value).isApplied()) {
+        return false;
+      }
     }
   }
 
   for (const auto& ancestry : resolver.requesterAncestryInputs()) {
-    if (!transaction.set<RequesterModuleAncestryInput>(ancestry.requester(), ancestry)) {
+    if (!transaction.set<RequesterModuleAncestryInput>(ancestry.requester(), ancestry)
+             .isApplied()) {
       return false;
     }
   }
   for (const auto& bucket : resolver.catalogPathBucketInputs()) {
+    auto encodedKey = zc::encodeHex(bucket.key().encode().asPtr());
+    if (stagedCatalogBuckets.find(encodedKey) != zc::none) { return false; }
     auto value = CanonicalModuleCatalogBucket::fromVerified(bucket);
-    if (!transaction.set<ModuleCatalogPathBucketInput>(bucket.key(), value)) { return false; }
+    if (!transaction.set<ModuleCatalogPathBucketInput>(bucket.key(), value).isApplied()) {
+      return false;
+    }
+    stagedCatalogBuckets.insert(zc::mv(encodedKey), true);
   }
   for (const auto& alias : resolver.dependencyAliasRootInputs()) {
     auto key = DependencyAliasRootQueryKey::from(alias.requester.clone(), alias.alias.clone());
     if (key == zc::none) { return false; }
     auto value = ExplicitModuleTarget::present(alias.target.clone());
     ZC_IF_SOME(keyValue, key) {
-      if (!transaction.set<DependencyAliasRootInput>(keyValue, value)) { return false; }
+      auto encodedKey = zc::encodeHex(keyValue.encode().asPtr());
+      if (stagedAliasRoots.find(encodedKey) != zc::none) { return false; }
+      if (!transaction.set<DependencyAliasRootInput>(keyValue, value).isApplied()) { return false; }
+      stagedAliasRoots.insert(zc::mv(encodedKey), true);
     }
   }
 
@@ -768,9 +758,15 @@ bool stageModuleResolutionQueryInputs(
         }
       }
       auto configured = ExplicitModuleTarget::present(request.requestedTarget().clone());
-      if (!transaction.set<ConfiguredPreludeInput>(requester.crate(), configured) ||
-          !stageCatalogBucket(transaction, resolver, request.requestedTarget().crate(),
-                              request.requestedTarget().path())) {
+      auto encodedPrelude = zc::encodeHex(requester.crate().encode().asPtr());
+      if (stagedPreludes.find(encodedPrelude) == zc::none) {
+        if (!transaction.set<ConfiguredPreludeInput>(requester.crate(), configured).isApplied()) {
+          return false;
+        }
+        stagedPreludes.insert(zc::mv(encodedPrelude), true);
+      }
+      if (!stageCatalogBucket(transaction, resolver, request.requestedTarget().crate(),
+                              request.requestedTarget().path(), stagedCatalogBuckets)) {
         return false;
       }
       continue;
@@ -782,12 +778,14 @@ bool stageModuleResolutionQueryInputs(
       for (const auto& ancestor : value.ancestry()) {
         auto path = clonePath(ancestor.path());
         for (const auto& segment : request.normalizedPath()) { path.add(segment.clone()); }
-        if (!stageCatalogBucket(transaction, resolver, requester.crate(), path.asPtr())) {
+        if (!stageCatalogBucket(transaction, resolver, requester.crate(), path.asPtr(),
+                                stagedCatalogBuckets)) {
           return false;
         }
       }
     }
-    if (!stageCatalogBucket(transaction, resolver, requester.crate(), request.normalizedPath())) {
+    if (!stageCatalogBucket(transaction, resolver, requester.crate(), request.normalizedPath(),
+                            stagedCatalogBuckets)) {
       return false;
     }
 
@@ -810,12 +808,19 @@ bool stageModuleResolutionQueryInputs(
         for (size_t index = 1; index < request.normalizedPath().size(); ++index) {
           path.add(request.normalizedPath()[index].clone());
         }
-        if (!stageCatalogBucket(transaction, resolver, targetValue.target.crate(), path.asPtr())) {
+        if (!stageCatalogBucket(transaction, resolver, targetValue.target.crate(), path.asPtr(),
+                                stagedCatalogBuckets)) {
           return false;
         }
       }
       ZC_IF_SOME(keyValue, inputKey) {
-        if (!transaction.set<DependencyAliasRootInput>(keyValue, inputValue)) { return false; }
+        auto encodedKey = zc::encodeHex(keyValue.encode().asPtr());
+        if (stagedAliasRoots.find(encodedKey) == zc::none) {
+          if (!transaction.set<DependencyAliasRootInput>(keyValue, inputValue).isApplied()) {
+            return false;
+          }
+          stagedAliasRoots.insert(zc::mv(encodedKey), true);
+        }
       }
     }
   }
@@ -823,12 +828,12 @@ bool stageModuleResolutionQueryInputs(
 }
 
 bool registerIncrementalModuleResolutionQueries(query::QueryDatabase& database) {
-  if (database.registerInputKind<RequesterModuleAncestryInput>() == zc::none) { return false; }
-  if (database.registerInputKind<ModuleCatalogPathBucketInput>() == zc::none) { return false; }
-  if (database.registerInputKind<ModuleSearchRootsInput>() == zc::none) { return false; }
-  if (database.registerInputKind<DependencyAliasRootInput>() == zc::none) { return false; }
-  if (database.registerInputKind<ConfiguredPreludeInput>() == zc::none) { return false; }
-  return database.registerDerivedKind<ResolveModuleRequestQuery>() != zc::none;
+  if (!database.registerDescriptor<RequesterModuleAncestryInput>().isRegistered()) { return false; }
+  if (!database.registerDescriptor<ModuleCatalogPathBucketInput>().isRegistered()) { return false; }
+  if (!database.registerDescriptor<ModuleSearchRootsInput>().isRegistered()) { return false; }
+  if (!database.registerDescriptor<DependencyAliasRootInput>().isRegistered()) { return false; }
+  if (!database.registerDescriptor<ConfiguredPreludeInput>().isRegistered()) { return false; }
+  return database.registerDescriptor<ResolveModuleRequestQuery>().isRegistered();
 }
 
 }  // namespace zomlang::compiler::driver::incremental_module_resolution_query

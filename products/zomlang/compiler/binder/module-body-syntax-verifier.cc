@@ -344,7 +344,61 @@ private:
   ast::NodeId unprunedRoot;
 };
 
+zc::Maybe<zc::Vector<ModuleBodyDefinitionBoundaryInput>> definitionBoundaries(
+    const CanonicalParsedModule& parsedModule, ast::NodeId moduleNode,
+    const StableIdentityAdmission& admission) {
+  auto items = independentlySelectItems(parsedModule.tree(), moduleNode);
+  if (items == zc::none) { return zc::none; }
+  IndependentBoundaryCensus census;
+  ZC_IF_SOME(values, items) {
+    for (const auto item : values) {
+      collectIndependentBoundaries(parsedModule.tree(), item, census);
+    }
+  }
+  zc::Vector<ModuleBodyDefinitionBoundaryInput> result(census.definitions.size());
+  for (const auto node : census.definitions) {
+    size_t matches = 0;
+    for (const auto& definition : admission.definitions()) {
+      if (definition.node != node) { continue; }
+      ++matches;
+      result.add(ModuleBodyDefinitionBoundaryInput{node, definition.authority.key().clone()});
+    }
+    if (matches != 1) { return zc::none; }
+  }
+  return result;
+}
+
+zc::Vector<ModuleBodyImplementationBoundaryInput> implementationBoundaries(
+    const StableIdentityAdmission& admission) {
+  zc::Vector<ModuleBodyImplementationBoundaryInput> result(admission.implementations().size());
+  for (const auto& implementation : admission.implementations()) {
+    result.add(ModuleBodyImplementationBoundaryInput{
+        implementation.node, ImplSourceOccurrenceKey::from(implementation.authority.key().clone(),
+                                                           implementation.site.key().clone())});
+  }
+  return result;
+}
+
 }  // namespace
+
+ModuleBodySyntaxProjectionResult ModuleBodySyntaxVerifier::reconstruct(
+    const CanonicalParsedModule& parsedModule, const identity::ModuleKey& module,
+    ast::NodeId moduleNode, const StableIdentityAdmission& admission) {
+  if (!equalModule(admission.module(), module) ||
+      !admission.source().sameAs(parsedModule.source()) ||
+      admission.sourceDigest() != parsedModule.contentDigest()) {
+    return ModuleBodySyntaxFailure{ModuleBodySyntaxFailureKind::InvalidBoundaryInventory,
+                                   moduleNode};
+  }
+  auto definitions = definitionBoundaries(parsedModule, moduleNode, admission);
+  if (definitions == zc::none) {
+    return ModuleBodySyntaxFailure{ModuleBodySyntaxFailureKind::InvalidBoundaryInventory,
+                                   moduleNode};
+  }
+  auto implementations = implementationBoundaries(admission);
+  return reconstruct(parsedModule, module, moduleNode, ZC_ASSERT_NONNULL(definitions).asPtr(),
+                     implementations.asPtr());
+}
 
 ModuleBodySyntaxProjectionResult ModuleBodySyntaxVerifier::reconstruct(
     const CanonicalParsedModule& parsedModule, const identity::ModuleKey& module,

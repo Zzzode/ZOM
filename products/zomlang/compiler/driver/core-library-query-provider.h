@@ -79,8 +79,8 @@ struct CoreDistributionInput final {
   using Key = identity::ToolchainUnitKey;
   using Value = source::core::CoreDistributionInputRecord;
 
-  ZC_NODISCARD static zc::StringPtr domain();
-  ZC_NODISCARD static query::QueryKindContract contract();
+  static constexpr query::InputDescriptorMetadata descriptor{
+      "CoreDistributionInput"_zcc, "zom.query.core-distribution"_zcc, query::Durability::High};
   ZC_NODISCARD static zc::Array<uint8_t> encodeKey(const Key& key);
   ZC_NODISCARD static zc::Maybe<Key> decodeKey(zc::ArrayPtr<const uint8_t> bytes);
   ZC_NODISCARD static zc::Array<uint8_t> encodeValue(const Value& value);
@@ -137,8 +137,14 @@ struct CoreModuleGraphQuery final {
   using Key = ContextualCoreCrateKey;
   using Value = CoreModuleGraphRecord;
 
-  ZC_NODISCARD static zc::StringPtr domain();
-  ZC_NODISCARD static query::QueryKindContract contract();
+  static constexpr query::SemanticDescriptorMetadata descriptor{
+      "CoreModuleGraphQuery"_zcc,
+      "zom.query.core-module-graph"_zcc,
+      query::ReuseClass::Semantic,
+      query::RetentionClass::Retained,
+      query::QueryEqualityPolicy::CanonicalBytes,
+      query::QueryCyclePolicy::Reject,
+      query::QueryCostClass::Linear};
   ZC_NODISCARD static zc::Array<uint8_t> encodeKey(const Key& key);
   ZC_NODISCARD static zc::Maybe<Key> decodeKey(zc::ArrayPtr<const uint8_t> bytes);
   ZC_NODISCARD static zc::Array<uint8_t> encodeValue(const Value& value);

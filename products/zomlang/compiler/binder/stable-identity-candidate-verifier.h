@@ -34,6 +34,7 @@ struct StableIdentityCandidateSourceFailure final {
   StableIdentityCandidateSourceFailureKind kind;
   ast::NodeId node;
   identity::SourceSpan source;
+  zc::Maybe<ast::NodeId> previousNode;
   zc::Maybe<identity::SourceSpan> previous;
   zc::Maybe<identity::DeclaredDefinitionName> identifier;
 };
@@ -64,6 +65,20 @@ using StableIdentityCandidateVerification =
     zc::OneOf<VerifiedStableIdentityCandidateInventory, StableIdentityCandidateSourceFailure,
               StableIdentityCandidateInvariant>;
 
+/// \brief Independently reconstructs the complete identity syntax-site topology.
+class IdentitySyntaxSiteInventoryVerifier final {
+public:
+  ZC_NODISCARD static zc::Maybe<IdentitySyntaxSiteInventory> reconstruct(
+      const CanonicalParsedModule& parsedModule, const identity::ModuleKey& module,
+      ast::NodeId moduleNode);
+  ZC_NODISCARD static bool verify(const CanonicalParsedModule& parsedModule,
+                                  const identity::ModuleKey& module, ast::NodeId moduleNode,
+                                  const IdentitySyntaxSiteInventory& candidate);
+  ZC_NODISCARD static zc::Maybe<IdentitySyntaxSiteKey> resolve(
+      const CanonicalParsedModule& parsedModule, const IdentitySyntaxSiteInventory& inventory,
+      ast::NodeId node, const identity::SourceSpan& source);
+};
+
 /// \brief One later equal definition occurrence paired with the canonical first occurrence.
 struct StableDefinitionRedeclaration final {
   uint32_t first;
@@ -89,6 +104,19 @@ public:
   /// \brief Groups verified authorities by complete record in canonical source order.
   ZC_NODISCARD static StableDefinitionRedeclarationValidation findDefinitionRedeclarations(
       zc::ArrayPtr<const VerifiedStableDefinitionCandidate> definitions);
+};
+
+using StableIdentityAdmissionVerification =
+    zc::OneOf<StableIdentityAdmission, StableIdentityCandidateSourceFailure,
+              StableIdentityCandidateInvariant>;
+
+/// \brief Independently verifies and materializes the stable-identity admission capability.
+class StableIdentityAdmissionVerifier final {
+public:
+  ZC_NODISCARD static StableIdentityAdmissionVerification verify(
+      const CanonicalParsedModule& parsedModule, const identity::ModuleKey& module,
+      ast::NodeId moduleNode, const IdentitySyntaxSiteInventory& sites,
+      const StableIdentityCandidateProduction& production);
 };
 
 }  // namespace zomlang::compiler::binder

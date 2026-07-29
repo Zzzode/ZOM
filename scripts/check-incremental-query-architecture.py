@@ -255,9 +255,17 @@ def check_query_leaf(files: dict[Path, str], errors: list[str]) -> None:
         return
     if not re.search(r"\badd_library\s*\(\s*query\b", query_cmake):
         errors.append(f"{QUERY_CMAKE}: query runtime target must be named query")
-    for target in QUERY_FORBIDDEN_LINK_TARGETS:
-        if re.search(rf"\b{re.escape(target)}\b", query_cmake):
-            errors.append(f"{QUERY_CMAKE}: query runtime must not link semantic target {target}")
+    query_links = re.findall(
+        r"target_link_libraries\s*\(\s*query\b(.*?)\)",
+        query_cmake,
+        flags=re.DOTALL,
+    )
+    for link_block in query_links:
+        for target in QUERY_FORBIDDEN_LINK_TARGETS:
+            if re.search(rf"\b{re.escape(target)}\b", link_block):
+                errors.append(
+                    f"{QUERY_CMAKE}: query runtime must not link semantic target {target}"
+                )
 
     compiler_cmake = files.get(COMPILER_CMAKE, "")
     if "add_subdirectory(query)" not in compiler_cmake:
@@ -312,7 +320,7 @@ def check_input_probe_contract(files: dict[Path, str], errors: list[str]) -> Non
         (
             query_source,
             QUERY_DATABASE_SOURCE,
-            "descriptor.contract.inputDurability()",
+            "kind.descriptor.durability",
             "absent probe durability",
         ),
         (
@@ -334,88 +342,93 @@ def check_input_probe_contract(files: dict[Path, str], errors: list[str]) -> Non
         errors.append(f"{QUERY_DATABASE_HEADER}: parallel optional input probing is forbidden")
 
 
-def check_materialization_capability(files: dict[Path, str], errors: list[str]) -> None:
-    specialization_allowlist = {QUERY_CAPABILITY_TEST}
-    call_allowlist = {QUERY_CAPABILITY_TEST}
-
-    for path, text in sorted(files.items()):
-        if path.suffix not in {".cc", ".h"}:
-            continue
-
-        specializes_materialization = re.search(
-            r"struct\s+ActiveMaterialization\s*<", text
-        )
-        specializes_membership = re.search(r"struct\s+ActiveMembership\s*<", text)
-        specializes_permission = re.search(
-            r"struct\s+ActiveMaterializerPermission\s*<", text
-        )
-        if (
-            specializes_materialization
-            or specializes_membership
-            or specializes_permission
-        ) and path not in specialization_allowlist:
-            errors.append(
-                f"{path}: active materialization specialization is outside the closed allowlist"
-            )
-
-        materialization_calls = len(re.findall(r"\.materializeActive\s*\(", text))
-        if materialization_calls and path not in call_allowlist:
-            errors.append(
-                f"{path}: active materialization call is outside approved capability providers"
-            )
-
-        if (
-            "semanticContextResources()" in text
-            and path not in {QUERY_DATABASE_HEADER, QUERY_DATABASE_SOURCE}
-        ):
-            errors.append(
-                f"{path}: semantic context capability resources escape the query runtime"
-            )
-        if "SnapshotCapabilityArena::context" in text:
-            errors.append(f"{path}: snapshot capability arena must not expose query context")
-
+def check_final_seal_contract(files: dict[Path, str], errors: list[str]) -> None:
     header = files.get(QUERY_DATABASE_HEADER, "")
+    source = files.get(QUERY_DATABASE_SOURCE, "")
+    database_test = files.get(QUERY_DATABASE_TEST, "")
     capability_test = files.get(QUERY_CAPABILITY_TEST, "")
     for path, text, marker, description in (
         (
             QUERY_DATABASE_HEADER,
             header,
-            "ActiveMaterializerPermission<Spec>::allowed",
-            "descriptor-bound materializer permission",
+            "FinalSealResult<typename CompleteContextInput::Key, FinalWitness> sealInputs",
+            "typed final-seal transaction",
         ),
         (
             QUERY_DATABASE_HEADER,
             header,
-            "context.activeMaterializationReady()",
-            "final current sealed snapshot barrier",
+            "admitFinalSnapshot(",
+            "descriptor-bound sealed snapshot admission",
         ),
         (
-            QUERY_DATABASE_HEADER,
-            header,
-            "ActiveMembership<Key>::demand(context, key, authority...)",
-            "tracked active-membership demand",
+            QUERY_DATABASE_SOURCE,
+            source,
+            "InputTransactionFailure::InputMutationAfterFinalSeal",
+            "irreversible post-seal input barrier",
         ),
         (
-            QUERY_DATABASE_HEADER,
-            header,
-            "ActiveMaterialization<Key>::materialize(context.semanticContextResources(), key)",
-            "post-membership materialization",
+            QUERY_DATABASE_SOURCE,
+            source,
+            "retainAdmission(",
+            "nested capability admission propagation",
+        ),
+        (
+            QUERY_DATABASE_SOURCE,
+            source,
+            "QueryRuntimeFailure::FinalSealRequired",
+            "final-sealed capability rejection",
+        ),
+        (
+            QUERY_DATABASE_TEST,
+            database_test,
+            "FinalSealIsOneShotRevisionNeutralAndIrreversible",
+            "one-shot final-seal regression",
+        ),
+        (
+            QUERY_DATABASE_TEST,
+            database_test,
+            "FinalSealRaceReturnsStaleSnapshotAfterWinningCommit",
+            "final-seal precedence regression",
         ),
         (
             QUERY_CAPABILITY_TEST,
             capability_test,
-            "UnpermittedMaterializingCapabilityQuery",
-            "unpermitted materializer regression",
-        ),
-        (
-            QUERY_CAPABILITY_TEST,
-            capability_test,
-            "RejectsActiveMaterializationBeforeAndOutsideTheFinalBarrier",
-            "final snapshot barrier regression",
+            "FinalSealedParentCapabilityQuery",
+            "nested final-sealed capability regression",
         ),
     ):
         if marker not in text:
             errors.append(f"{path}: missing {description}: {marker}")
+
+    for marker, description in (
+        (
+            "ActiveMaterializerPermission<Descriptor, GlobalIdentityKey, MembershipDescriptor>::"
+            "allowed",
+            "descriptor-bound active-materialization permission",
+        ),
+        (
+            "context.inheritedFinalAdmissionFailure()",
+            "final admission barrier before materialization",
+        ),
+        (
+            "context.get<MembershipDescriptor>(membershipKey)",
+            "tracked active-membership demand",
+        ),
+        (
+            "ActiveMaterialization<GlobalIdentityKey>::materialize",
+            "post-membership materialization",
+        ),
+    ):
+        if marker not in header:
+            errors.append(f"{QUERY_DATABASE_HEADER}: missing {description}: {marker}")
+
+    for path, text in sorted(files.items()):
+        if path.suffix not in {".cc", ".h"}:
+            continue
+        if path not in {QUERY_DATABASE_HEADER, QUERY_DATABASE_SOURCE} and (
+            "semanticContextResources()" in text or "SnapshotCapabilityArena::context" in text
+        ):
+            errors.append(f"{path}: semantic context capability resources escape the query runtime")
 
 
 def check_provider_registration(files: dict[Path, str], errors: list[str]) -> None:
@@ -437,14 +450,14 @@ def check_active_definition_authority(files: dict[Path, str], errors: list[str])
         (
             authority,
             DRIVER_AUTHORITY_QUERY,
-            'return "zom.query.active-definition-authority"_zc;',
-            "definition authority input domain",
+            "registerDescriptor<ActiveDefinitionAuthorityInput>()",
+            "definition authority input registration",
         ),
         (
             authority,
             DRIVER_AUTHORITY_QUERY,
-            'return "zom.query.active-definition-authority-ready"_zc;',
-            "authority readiness input domain",
+            "registerDescriptor<ActiveDefinitionAuthorityReadyInput>()",
+            "authority readiness input registration",
         ),
         (
             authority,
@@ -455,14 +468,8 @@ def check_active_definition_authority(files: dict[Path, str], errors: list[str])
         (
             authority,
             DRIVER_AUTHORITY_QUERY,
-            "query::Durability::Low",
-            "low authority durability",
-        ),
-        (
-            authority,
-            DRIVER_AUTHORITY_QUERY,
-            "registerInputKind<ActiveDefinitionAuthorityReadyInput>()",
-            "readiness input registration",
+            "identity::DefinitionIdentityRecord::decodeCanonical",
+            "complete authority record admission",
         ),
         (
             session,
@@ -503,7 +510,7 @@ def check_active_definition_authority(files: dict[Path, str], errors: list[str])
         (
             session,
             DRIVER_AUTHORITY_SESSION,
-            "transaction.set<ActiveDefinitionAuthorityReadyInput>",
+            ".set<ActiveDefinitionAuthorityReadyInput>",
             "atomic readiness restoration",
         ),
         (
@@ -515,14 +522,8 @@ def check_active_definition_authority(files: dict[Path, str], errors: list[str])
         (
             named_item,
             DRIVER_NAMED_ITEM_QUERY,
-            'return "zom.query.named-item-syntax"_zc;',
-            "named-item syntax query domain",
-        ),
-        (
-            named_item,
-            DRIVER_NAMED_ITEM_QUERY,
-            'return "zom.query.named-item-provenance"_zc;',
-            "named-item provenance query domain",
+            "NamedItemSyntaxQuery::provide(",
+            "named-item syntax provider",
         ),
         (
             named_item,
@@ -569,8 +570,8 @@ def check_active_definition_authority(files: dict[Path, str], errors: list[str])
         (
             compiler_session,
             DRIVER_SESSION,
-            "demandNamedItemQueries()",
-            "ready-snapshot named-item demand",
+            "authorityReadySnapshot",
+            "ready-snapshot publication",
         ),
         (
             test,
@@ -587,8 +588,8 @@ def check_active_definition_authority(files: dict[Path, str], errors: list[str])
         (
             test,
             DRIVER_AUTHORITY_SESSION_TEST,
-            "readinessReads == 0",
-            "conditional positive-path readiness regression",
+            "shiftedSyntax.runtimeFailure() == query::QueryRuntimeFailure::FinalSealRequired",
+            "pre-seal named-item rejection regression",
         ),
         (
             test,
@@ -615,6 +616,10 @@ def check_active_definition_authority(files: dict[Path, str], errors: list[str])
         for forbidden in ("identityRegistries", "CompilerSession", "moduleGraph"):
             if forbidden in text:
                 errors.append(f"{path}: tracked authority path must not read {forbidden}")
+    if "demandNamedItemQueries" in compiler_session:
+        errors.append(
+            f"{DRIVER_SESSION}: unauthorized complete-context named-item demand entered R29-14"
+        )
     if named_item.count("probeInput<ActiveDefinitionAuthorityReadyInput>") != 4:
         errors.append(
             f"{DRIVER_NAMED_ITEM_QUERY}: readiness must be read only by absent or contradictory "
@@ -636,20 +641,8 @@ def check_owner_body_projection(files: dict[Path, str], errors: list[str]) -> No
         (
             owner_query,
             DRIVER_OWNER_BODY_QUERY,
-            'return "zom.query.module-body-owners"_zc;',
-            "module-body owner inventory query domain",
-        ),
-        (
-            owner_query,
-            DRIVER_OWNER_BODY_QUERY,
-            'return "zom.query.owner-body-syntax"_zc;',
-            "owner-body syntax query domain",
-        ),
-        (
-            owner_query,
-            DRIVER_OWNER_BODY_QUERY,
-            'return "zom.query.owner-body-provenance"_zc;',
-            "owner-body provenance query domain",
+            "ModuleBodyOwnersQuery::provide(",
+            "module-body owner inventory provider",
         ),
         (
             owner_query,
@@ -678,8 +671,8 @@ def check_owner_body_projection(files: dict[Path, str], errors: list[str]) -> No
         (
             owner_query,
             DRIVER_OWNER_BODY_QUERY,
-            "context.get<OwnerBodySyntaxQuery>(key)",
-            "provenance syntax closure dependency",
+            "context.get<ModuleBodySyntaxQuery>",
+            "module-owner semantic syntax closure",
         ),
         (
             owner_query,
@@ -720,56 +713,44 @@ def check_owner_body_projection(files: dict[Path, str], errors: list[str]) -> No
         (
             owner_query,
             DRIVER_OWNER_BODY_QUERY,
-            "return retainedSemanticContract(domain());",
-            "retained semantic owner inventory contract",
-        ),
-        (
-            owner_query,
-            DRIVER_OWNER_BODY_QUERY,
-            "return evictableSemanticContract(domain());",
-            "evictable semantic owner syntax contract",
-        ),
-        (
-            owner_query,
-            DRIVER_OWNER_BODY_QUERY,
-            "return revisionLocalContract(domain());",
-            "revision-local owner provenance contract",
+            "OwnerBodyProvenanceQuery::verify(",
+            "independent owner provenance verifier",
         ),
         (
             adapter,
             DRIVER_TOPOLOGY_ADAPTER,
-            "registerDerivedKind<ModuleBodyOwnersQuery>()",
+            "registerDescriptor<ModuleBodyOwnersQuery>()",
             "module-body owners registration",
         ),
         (
             adapter,
             DRIVER_TOPOLOGY_ADAPTER,
-            "registerDerivedKind<OwnerBodySyntaxQuery>()",
+            "registerDescriptor<OwnerBodySyntaxQuery>()",
             "owner-body syntax registration",
         ),
         (
             adapter,
             DRIVER_TOPOLOGY_ADAPTER,
-            "registerRevisionLocalCapabilityKind<OwnerBodyProvenanceQuery>()",
+            "registerDescriptor<OwnerBodyProvenanceQuery>()",
             "retained owner-body provenance capability registration",
         ),
         (
             query_test,
             DRIVER_AUTHORITY_SESSION_TEST,
-            "Owner body projection records exact alternative dependencies",
-            "exact owner projection dependency regression",
+            "Owner body projection requires final admission",
+            "owner projection final-admission regression",
         ),
         (
             query_test,
             DRIVER_AUTHORITY_SESSION_TEST,
-            "Owner body projections are deterministic across workers",
-            "owner projection worker determinism regression",
+            "Owner body final-admission rejection is deterministic across workers",
+            "owner projection rejection worker determinism regression",
         ),
         (
             query_test,
             DRIVER_AUTHORITY_SESSION_TEST,
-            "parallelNamedItemGroups == 2",
-            "provider and verifier parallel dependency regression",
+            "provenance.runtimeFailure() == query::QueryRuntimeFailure::FinalSealRequired",
+            "owner provenance final-admission regression",
         ),
         (
             codec_test,
@@ -873,12 +854,6 @@ def check_production_topology_integration(files: dict[Path, str], errors: list[s
             errors.append(f"{DRIVER_SESSION}: missing {description}: {marker}")
 
     for marker, description in (
-        ('return "zom.query.selected-module-catalog"_zc;', "selected catalog input domain"),
-        ('return "zom.query.selected-module-source"_zc;', "selected source query domain"),
-        ('return "zom.query.active-modules"_zc;', "active modules query domain"),
-        ('return "zom.query.module-dependency-sites"_zc;', "dependency sites query domain"),
-        ('return "zom.query.module-dependency-requests"_zc;', "dependency requests query domain"),
-        ('return "zom.query.module-dependencies"_zc;', "module dependencies query domain"),
         ("VerifiedModuleGraphInputTransaction::prepare(", "verified graph input transaction"),
         (
             "ModuleGraphInputTransactionVerifier::verify(",
@@ -887,15 +862,15 @@ def check_production_topology_integration(files: dict[Path, str], errors: list[s
         ("reconstructVerifierSites(", "independent parsed-site reconstruction"),
         ("authority.resolver.catalog()", "frozen resolver catalog enumeration"),
         ("authority.coreInputs.projections()", "verified core projection enumeration"),
-        ("registerInputKind<SelectedModuleCatalogInput>()", "catalog input registration"),
-        ("registerInputKind<ModuleDependencySiteInput>()", "dependency site input registration"),
-        ("registerDerivedKind<SelectedModuleSourceQuery>()", "selected source registration"),
-        ("registerDerivedKind<ActiveModulesQuery>()", "active modules registration"),
+        ("registerDescriptor<SelectedModuleCatalogInput>()", "catalog input registration"),
+        ("registerDescriptor<ModuleDependencySiteInput>()", "dependency site input registration"),
+        ("registerDescriptor<SelectedModuleSourceQuery>()", "selected source registration"),
+        ("registerDescriptor<ActiveModulesQuery>()", "active modules registration"),
         (
-            "registerDerivedKind<ModuleDependencyRequestsQuery>()",
+            "registerDescriptor<ModuleDependencyRequestsQuery>()",
             "dependency request registration",
         ),
-        ("registerDerivedKind<ModuleDependenciesQuery>()", "dependency registration"),
+        ("registerDescriptor<ModuleDependenciesQuery>()", "dependency registration"),
         ("SelectedModuleSourceQuery::provide(", "selected source provider"),
         ("SelectedModuleSourceQuery::verify(", "selected source verifier"),
         ("ActiveModulesQuery::provide(", "active modules provider"),
@@ -909,16 +884,14 @@ def check_production_topology_integration(files: dict[Path, str], errors: list[s
             errors.append(f"{DRIVER_MODULE_GRAPH_INPUT}: missing {description}: {marker}")
 
     for marker, description in (
-        ('return "zom.query.module-graph"_zc;', "stable module graph domain"),
-        ('return "zom.query.module-graph-scc"_zc;', "stable SCC domain"),
         ("ModuleGraphQuery::provide(", "stable graph provider"),
         ("ModuleGraphQuery::verify(", "independent stable graph verifier"),
         ("evaluateVerifierGraph(", "independent stable graph reconstruction"),
         ("ModuleGraphSccQuery::provide(", "Tarjan SCC provider"),
         ("ModuleGraphSccQuery::verify(", "Kosaraju SCC verifier"),
         ("verifierOrderComponents(", "independent SCC ordering"),
-        ("registerDerivedKind<ModuleGraphQuery>()", "stable graph registration"),
-        ("registerDerivedKind<ModuleGraphSccQuery>()", "stable SCC registration"),
+        ("registerDescriptor<ModuleGraphQuery>()", "stable graph registration"),
+        ("registerDescriptor<ModuleGraphSccQuery>()", "stable SCC registration"),
     ):
         if marker not in graph_query:
             errors.append(f"{DRIVER_MODULE_GRAPH_QUERY}: missing {description}: {marker}")
@@ -940,42 +913,34 @@ def check_production_topology_integration(files: dict[Path, str], errors: list[s
             errors.append(f"{BINDER_GRAPH_BRIDGE}: missing {description}: {marker}")
 
     for marker, description in (
-        ('return "zom.query.requester-module-ancestry"_zc;', "requester ancestry input domain"),
-        ('return "zom.query.module-catalog-path-bucket"_zc;', "catalog bucket input domain"),
-        ('return "zom.query.resolve-module-request"_zc;', "resolution query domain"),
         ("context.getParallel<ModuleCatalogPathBucketInput>", "parallel exact bucket demand"),
         ("stageModuleResolutionQueryInputs(", "resolver input staging"),
-        ("registerDerivedKind<ResolveModuleRequestQuery>()", "resolution query registration"),
+        ("registerDescriptor<ResolveModuleRequestQuery>()", "resolution query registration"),
     ):
         if marker not in resolution_query:
             errors.append(f"{DRIVER_MODULE_RESOLUTION_QUERY}: missing {description}: {marker}")
 
     for marker, description in (
-        ('return "zom.query.active-crates"_zc;', "active crates query domain"),
-        ('return "zom.query.active-sources"_zc;', "active sources query domain"),
-        ("registerDerivedKind<ActiveCratesQuery>()", "active crates registration"),
-        ("registerDerivedKind<ActiveSourcesQuery>()", "active sources registration"),
-        ("registerDerivedKind<NamedDefinitionInventoryQuery>()", "named definition registration"),
-        ("registerDerivedKind<ModuleBodySyntaxQuery>()", "module body registration"),
+        ("registerDescriptor<ActiveCratesQuery>()", "active crates registration"),
+        ("registerDescriptor<ActiveSourcesQuery>()", "active sources registration"),
+        ("registerDescriptor<NamedDefinitionInventoryQuery>()", "named definition registration"),
+        ("registerDescriptor<ModuleBodySyntaxQuery>()", "module body registration"),
     ):
         if marker not in adapter:
             errors.append(f"{DRIVER_TOPOLOGY_ADAPTER}: missing {description}: {marker}")
 
     for marker, description in (
-        ('return "zom.query.source-snapshot"_zc;', "source snapshot domain"),
-        ("registerInputKind<SourceSnapshotInput>()", "source snapshot registration"),
-        ('return "zom.query.compilation-options"_zc;', "compilation options domain"),
-        ("registerInputKind<CompilationOptionsInput>()", "compilation options registration"),
+        ("registerDescriptor<SourceSnapshotInput>()", "source snapshot registration"),
+        ("registerDescriptor<CompilationOptionsInput>()", "compilation options registration"),
         ("SourceFileKey::decodeCanonical(decoder)", "canonical source key admission"),
     ):
         if marker not in source_query:
             errors.append(f"{IDENTITY_SOURCE_QUERY_INPUT}: missing {description}: {marker}")
 
     for marker, description in (
-        ('return "zom.query.parse-source"_zc;', "ParseSource domain"),
         ("CanonicalParsedSource::fromParsed", "query-safe parsed value admission"),
         (
-            "registerRevisionLocalCapabilityKind<ParseSourceQuery>()",
+            "registerDescriptor<ParseSourceQuery>()",
             "parser capability registration",
         ),
     ):
@@ -989,8 +954,8 @@ def check_production_topology_integration(files: dict[Path, str], errors: list[s
             named_identity,
             DRIVER_NAMED_IDENTITY_QUERY,
             (
-                'return "zom.query.named-definition-inventory"_zc;',
-                "StableIdentityCandidateVerifier::reconstruct",
+                "IdentitySyntaxSiteInventoryQuery::verify",
+                "StableIdentityAdmissionQuery::verify",
             ),
         ),
         (named_item, DRIVER_NAMED_ITEM_QUERY, ("NamedItemProvenanceQuery::verify",)),
@@ -999,8 +964,7 @@ def check_production_topology_integration(files: dict[Path, str], errors: list[s
             package_graph,
             DRIVER_PACKAGE_GRAPH_INPUT,
             (
-                'return "zom.query.package-graph"_zc;',
-                "registerInputKind<PackageGraphInput>()",
+                "registerDescriptor<PackageGraphInput>()",
                 "validateGraphClosure",
             ),
         ),
@@ -1062,7 +1026,7 @@ def check_files(files: dict[Path, str]) -> list[str]:
     check_routing(files, errors)
     check_query_leaf(files, errors)
     check_input_probe_contract(files, errors)
-    check_materialization_capability(files, errors)
+    check_final_seal_contract(files, errors)
     check_provider_registration(files, errors)
     check_active_definition_authority(files, errors)
     check_owner_body_projection(files, errors)
@@ -1093,45 +1057,26 @@ def self_test() -> list[str]:
     expect_failure(mutation, "forbidden semantic path", failures)
 
     mutation = dict(base)
-    mutation[COMPILER_ROOT / "driver/unapproved-materialization.h"] = (
-        "template <> struct ActiveMaterialization<UnapprovedKey> {};\n"
+    mutation[PRODUCT_ROOT / "utils/escaped-semantic-context.cc"] = (
+        "void escape(Context& context) { context.semanticContextResources(); }\n"
     )
-    expect_failure(mutation, "outside the closed allowlist", failures)
-
-    mutation = dict(base)
-    mutation[COMPILER_ROOT / "driver/unapproved-materialization.cc"] = (
-        "void provide(Context& context, const Key& key) { context.materializeActive(key); }\n"
-    )
-    expect_failure(mutation, "outside approved capability providers", failures)
-
-    mutation = dict(base)
-    mutation[ACTIVE_IDENTITY_MATERIALIZATION] = (
-        "template <> struct ActiveMaterialization<ResurrectedKey> {};\n"
-    )
-    expect_failure(mutation, "outside the closed allowlist", failures)
-
-    mutation = dict(base)
-    mutation[CORE_LIBRARY_QUERY_PROVIDER_SOURCE] = (
-        mutation.get(CORE_LIBRARY_QUERY_PROVIDER_SOURCE, "")
-        + "\ntemplate <> struct ActiveMembership<PreauthorizedKey> {};\n"
-    )
-    expect_failure(mutation, "outside the closed allowlist", failures)
-
-    mutation = dict(base)
-    mutation[PRODUCT_ROOT / "utils/unapproved-materialization.cc"] = (
-        "template <> struct ActiveMaterializerPermission<OutsideCompilerQuery> {};\n"
-        "void provide(Context& context, const Key& key) { context.materializeActive(key); }\n"
-    )
-    expect_failure(mutation, "outside the closed allowlist", failures)
-    expect_failure(mutation, "outside approved capability providers", failures)
+    expect_failure(mutation, "semantic context capability resources escape", failures)
 
     mutation = dict(base)
     mutation[QUERY_DATABASE_HEADER] = mutation[QUERY_DATABASE_HEADER].replace(
-        "ActiveMembership<Key>::demand(context, key, authority...)",
-        "REMOVED_ACTIVE_MEMBERSHIP_DEMAND",
+        "context.get<MembershipDescriptor>(membershipKey)",
+        "REMOVED_TRACKED_MEMBERSHIP_DEMAND",
         1,
     )
     expect_failure(mutation, "tracked active-membership demand", failures)
+
+    mutation = dict(base)
+    mutation[QUERY_DATABASE_HEADER] = mutation[QUERY_DATABASE_HEADER].replace(
+        "FinalSealResult<typename CompleteContextInput::Key, FinalWitness> sealInputs",
+        "REMOVED_FINAL_SEAL_TRANSACTION",
+        1,
+    )
+    expect_failure(mutation, "typed final-seal transaction", failures)
 
     for path, marker, description in (
         (
@@ -1146,7 +1091,7 @@ def self_test() -> list[str]:
         ),
         (
             DRIVER_MODULE_GRAPH_INPUT,
-            "registerInputKind<SelectedModuleCatalogInput>()",
+            "registerDescriptor<SelectedModuleCatalogInput>()",
             "catalog input registration",
         ),
         (

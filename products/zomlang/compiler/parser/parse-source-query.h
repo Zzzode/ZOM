@@ -49,19 +49,59 @@ private:
 struct ParseSourceQuery final {
   using Key = identity::source_query::StableSourceQueryKey;
   using Capability = CanonicalParsedSource;
+  using FailureAlternatives =
+      query::CapabilityFailureList<query::SourceRejection<diagnostics::DiagnosticFact>>;
 
-  ZC_NODISCARD static zc::StringPtr domain();
-  ZC_NODISCARD static query::QueryKindContract contract();
+  static constexpr query::CapabilityDescriptorMetadata descriptor{
+      "ParseSourceQuery"_zcc,          "zom.query.parse-source"_zcc,
+      query::RetentionClass::Retained, query::QueryCyclePolicy::Reject,
+      query::QueryCostClass::Linear,   query::CapabilityAdmission::AnySnapshot};
   ZC_NODISCARD static zc::Array<uint8_t> encodeKey(const Key& key);
   ZC_NODISCARD static zc::Maybe<Key> decodeKey(zc::ArrayPtr<const uint8_t> bytes);
-  ZC_NODISCARD static query::CapabilityProviderResult<Capability> provide(
-      query::CapabilityQueryContext& context, const Key& key);
-  ZC_NODISCARD static zc::Maybe<zc::Array<uint8_t>> verify(query::CapabilityQueryContext& context,
-                                                           const Key& key,
-                                                           const Capability& candidate);
+  ZC_NODISCARD static query::CapabilityProviderResult<ParseSourceQuery> provide(
+      query::CapabilityQueryContext<ParseSourceQuery>& context, const Key& key);
+  ZC_NODISCARD static zc::Maybe<zc::Array<uint8_t>> verify(
+      query::CapabilityQueryContext<ParseSourceQuery>& context, const Key& key,
+      const Capability& candidate);
 };
+
+/// \brief Reconstructs revision-local provenance for one verified parse rejection.
+ZC_NODISCARD zc::Maybe<ParseRejected> reconstructParseRejection(
+    const ParseSourceQuery::Key& key,
+    const identity::source_query::CanonicalCompilationOptions& options,
+    const identity::source_query::CanonicalSourceSnapshot& source,
+    zc::ArrayPtr<const diagnostics::DiagnosticFact> expectedFacts);
 
 /// \brief Registers the production source parser query exactly once.
 ZC_NODISCARD bool registerParseSourceQuery(query::QueryDatabase& database);
 
 }  // namespace zomlang::compiler::parser
+
+namespace zomlang::compiler::query {
+
+/// \brief Canonical candidate codec owned by the parse capability descriptor.
+template <>
+class CapabilityCandidateContract<parser::ParseSourceQuery> final {
+public:
+  ZC_NODISCARD static StableWitnessBytes encode(
+      const parser::ParseSourceQuery::Capability& candidate);
+  ZC_NODISCARD static zc::Maybe<zc::Own<parser::ParseSourceQuery::Capability>> decode(
+      zc::ArrayPtr<const uint8_t> bytes);
+};
+
+/// \brief Canonical source-rejection codec and verifier owned by the parse descriptor.
+template <>
+class CapabilityFailureContract<parser::ParseSourceQuery,
+                                SourceRejection<diagnostics::DiagnosticFact>>
+    final {
+public:
+  using Sequence = CanonicalNonEmptySequence<diagnostics::DiagnosticFact>;
+
+  ZC_NODISCARD static zc::Array<uint8_t> encode(const Sequence& diagnostics);
+  ZC_NODISCARD static zc::Maybe<Sequence> decode(zc::ArrayPtr<const uint8_t> bytes);
+  ZC_NODISCARD static CapabilityRejectionCheck verify(
+      CapabilityQueryContext<parser::ParseSourceQuery>& context,
+      const parser::ParseSourceQuery::Key& key, const Sequence& diagnostics);
+};
+
+}  // namespace zomlang::compiler::query

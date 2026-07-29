@@ -20,9 +20,9 @@ bool isValue(const query::TypedQueryResult<ActiveDefinitionAuthorityReadyInput::
 
 zc::Maybe<query::InputTransaction> ActiveDefinitionAuthorityProjectionState::beginBaseMutation(
     query::QueryDatabase& database) {
+  auto snapshot = database.snapshot();
   bool removeReadiness = false;
   ZC_IF_SOME(contextRoots, contextRootsField) {
-    auto snapshot = database.snapshot();
     auto readiness = snapshot.probeInput<ActiveDefinitionAuthorityReadyInput>(contextRoots);
     if (readiness.isRuntimeFailure() || (readiness.kind() != query::QueryValueKind::Value &&
                                          readiness.kind() != query::QueryValueKind::Absence)) {
@@ -30,19 +30,17 @@ zc::Maybe<query::InputTransaction> ActiveDefinitionAuthorityProjectionState::beg
     }
     removeReadiness = isValue(readiness);
   }
-  auto pending = database.beginInputTransaction();
-  if (pending == zc::none) { return zc::none; }
-  ZC_IF_SOME(transaction, pending) {
-    if (removeReadiness) {
-      ZC_IF_SOME(contextRoots, contextRootsField) {
-        if (!transaction.erase<ActiveDefinitionAuthorityReadyInput>(contextRoots)) {
-          return zc::none;
-        }
+  auto pending = database.beginInputTransaction(snapshot.revision());
+  if (!pending.isOpened()) { return zc::none; }
+  auto transaction = zc::mv(pending).takeTransaction();
+  if (removeReadiness) {
+    ZC_IF_SOME(contextRoots, contextRootsField) {
+      if (!transaction.erase<ActiveDefinitionAuthorityReadyInput>(contextRoots).isApplied()) {
+        return zc::none;
       }
     }
-    return zc::mv(transaction);
   }
-  return zc::none;
+  return zc::mv(transaction);
 }
 
 bool ActiveDefinitionAuthorityProjectionState::refresh(
@@ -96,32 +94,43 @@ bool ActiveDefinitionAuthorityProjectionState::refresh(
                                                              authority.key().clone()));
   }
 
-  auto pending = database.beginInputTransaction();
-  if (pending == zc::none) { return false; }
-  ZC_IF_SOME(transaction, pending) {
-    ZC_IF_SOME(priorContext, contextRootsField) {
-      for (const auto& prior : keyLedgerField) {
-        auto key = ContextualDefinitionKey::from(priorContext.clone(), prior.clone());
-        if (!transaction.erase<ActiveDefinitionAuthorityInput>(key)) { return false; }
+  auto pending = database.beginInputTransaction(snapshot.revision());
+  if (!pending.isOpened()) { return false; }
+  auto transaction = zc::mv(pending).takeTransaction();
+  ZC_IF_SOME(priorContext, contextRootsField) {
+    for (const auto& prior : keyLedgerField) {
+      bool retained = priorContext == contextRoots;
+      if (retained) {
+        retained = false;
+        for (const auto& next : nextKeyLedger) {
+          if (prior == next) {
+            retained = true;
+            break;
+          }
+        }
       }
+      if (retained) { continue; }
+      auto key = ContextualDefinitionKey::from(priorContext.clone(), prior.clone());
+      if (!transaction.erase<ActiveDefinitionAuthorityInput>(key).isApplied()) { return false; }
     }
-    for (size_t index = 0; index < ZC_ASSERT_NONNULL(projection).records().size(); ++index) {
-      const auto& authority = ZC_ASSERT_NONNULL(projection).records()[index];
-      auto key = ContextualDefinitionKey::from(contextRoots.clone(), nextKeyLedger[index].clone());
-      if (!transaction.set<ActiveDefinitionAuthorityInput>(key, authority.record())) {
-        return false;
-      }
-    }
-    if (!transaction.set<ActiveDefinitionAuthorityReadyInput>(
-            contextRoots, ZC_ASSERT_NONNULL(projection).fingerprint()) ||
-        transaction.commit() == zc::none) {
+  }
+  for (size_t index = 0; index < ZC_ASSERT_NONNULL(projection).records().size(); ++index) {
+    const auto& authority = ZC_ASSERT_NONNULL(projection).records()[index];
+    auto key = ContextualDefinitionKey::from(contextRoots.clone(), nextKeyLedger[index].clone());
+    if (!transaction.set<ActiveDefinitionAuthorityInput>(key, authority.record()).isApplied()) {
       return false;
     }
-    keyLedgerField = zc::mv(nextKeyLedger);
-    contextRootsField = contextRoots.clone();
-    return true;
   }
-  return false;
+  if (!transaction
+           .set<ActiveDefinitionAuthorityReadyInput>(contextRoots,
+                                                     ZC_ASSERT_NONNULL(projection).fingerprint())
+           .isApplied() ||
+      !transaction.commit().isCommitted()) {
+    return false;
+  }
+  keyLedgerField = zc::mv(nextKeyLedger);
+  contextRootsField = contextRoots.clone();
+  return true;
 }
 
 zc::ArrayPtr<const binder::StableDefinitionQueryKey>

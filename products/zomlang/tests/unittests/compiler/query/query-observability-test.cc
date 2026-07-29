@@ -18,12 +18,12 @@
 namespace zomlang::compiler::query::test {
 
 ZC_TEST("QueryObservabilityTest.ClassifiesReuseChangeCancellationCycleAndRejection") {
-  QueryDatabase database(queryTestScheduler());
+  auto database = queryTestDatabase();
   registerCoreKinds(database);
   auto write = beginTransaction(database);
-  ZC_REQUIRE(write.set<LowInput>(5, 1));
-  ZC_REQUIRE(write.set<HighInput>(90, 0));
-  ZC_REQUIRE(write.commit() != zc::none);
+  ZC_REQUIRE(write.set<LowInput>(5, 1).isApplied());
+  ZC_REQUIRE(write.set<HighInput>(90, 0).isApplied());
+  ZC_REQUIRE(write.commit().isCommitted());
   auto first = database.snapshot();
 
   ZC_EXPECT(first.get<ParityProjectionQuery>(5).value() == 1);
@@ -32,8 +32,8 @@ ZC_TEST("QueryObservabilityTest.ClassifiesReuseChangeCancellationCycleAndRejecti
   ZC_EXPECT(hasEvent(first.events().asPtr(), QueryEventKind::GreenReused));
 
   auto update = beginTransaction(database);
-  ZC_REQUIRE(update.set<LowInput>(5, 3));
-  ZC_REQUIRE(update.commit() != zc::none);
+  ZC_REQUIRE(update.set<LowInput>(5, 3).isApplied());
+  ZC_REQUIRE(update.commit().isCommitted());
   auto second = database.snapshot();
   ZC_EXPECT(second.get<ParityProjectionQuery>(5).value() == 1);
 
@@ -65,8 +65,8 @@ ZC_TEST("QueryObservabilityTest.ClassifiesReuseChangeCancellationCycleAndRejecti
 }
 
 ZC_TEST("QueryObservabilityTest.ParallelCompletionOrderDoesNotChangeCanonicalTrace") {
-  QueryDatabase firstDatabase(queryTestScheduler());
-  QueryDatabase secondDatabase(queryTestScheduler());
+  auto firstDatabase = queryTestDatabase();
+  auto secondDatabase = queryTestDatabase();
   registerCoreKinds(firstDatabase);
   registerCoreKinds(secondDatabase);
   auto first = firstDatabase.snapshot();

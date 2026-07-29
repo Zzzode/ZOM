@@ -58,6 +58,13 @@ bool containsError(zc::ArrayPtr<const diagnostics::DiagnosticFact> facts) {
   return false;
 }
 
+bool containsOnlySourceSyntaxDiagnostics(zc::ArrayPtr<const diagnostics::DiagnosticFact> facts) {
+  for (const auto& fact : facts) {
+    if (!diagnostics::isSourceSyntaxDiagnostic(fact.code())) { return false; }
+  }
+  return true;
+}
+
 CanonicalParserOptions parserOptions(
     const identity::source_query::CanonicalCompilationOptions& options) {
   return CanonicalParserOptions{options.useUnicode(), options.allowDollarIdentifiers(),
@@ -132,6 +139,7 @@ zc::Maybe<ParseRejected> ParseRejected::fromFacts(
     return zc::none;
   }
   if (facts.size() == 0 || !containsError(facts.asPtr()) ||
+      !containsOnlySourceSyntaxDiagnostics(facts.asPtr()) ||
       !diagnostics::validateDiagnosticProvenance(facts.asPtr(), provenance)) {
     return zc::none;
   }
@@ -189,6 +197,7 @@ zc::Maybe<ParseRejected> ParseRejected::decodeCanonical(zc::ArrayPtr<const uint8
       sourceProvenanceLimits(ZC_ASSERT_NONNULL(sourceByteLength)));
   if (facts == zc::none || provenance == zc::none || ZC_ASSERT_NONNULL(facts).size() == 0 ||
       !containsError(ZC_ASSERT_NONNULL(facts).asPtr()) ||
+      !containsOnlySourceSyntaxDiagnostics(ZC_ASSERT_NONNULL(facts).asPtr()) ||
       !diagnostics::validateDiagnosticProvenance(ZC_ASSERT_NONNULL(facts).asPtr(),
                                                  ZC_ASSERT_NONNULL(provenance))) {
     return zc::none;
@@ -220,12 +229,37 @@ const diagnostics::SourceDiagnosticProvenanceMap& ParseRejected::provenance() co
   return impl->provenance;
 }
 
-zc::StringPtr ParseSourceQuery::domain() { return "zom.query.parse-source"_zc; }
+zc::Maybe<ParseRejected> reconstructParseRejection(
+    const ParseSourceQuery::Key& key,
+    const identity::source_query::CanonicalCompilationOptions& options,
+    const identity::source_query::CanonicalSourceSnapshot& source,
+    zc::ArrayPtr<const diagnostics::DiagnosticFact> expectedFacts) {
+  auto sourceFileKey = sourceFile(key);
+  auto maybeLogicalName = logicalSourceName(key);
+  if (sourceFileKey == zc::none || maybeLogicalName == zc::none) { return zc::none; }
 
-query::QueryKindContract ParseSourceQuery::contract() {
-  auto contract = query::QueryKindContract::derived(domain(), query::ReuseClass::RevisionLocal,
-                                                    query::RetentionClass::Retained);
-  return zc::mv(ZC_REQUIRE_NONNULL(contract));
+  source::SourceManager sourceManager;
+  const auto buffer =
+      sourceManager.addMemBufferCopy(source.bytes(), ZC_ASSERT_NONNULL(maybeLogicalName));
+  diagnostics::SourceDiagnosticDraftBuffer diagnosticFacts(sourceManager, buffer);
+  basic::StringPool stringPool;
+  const auto langOptions = languageOptions(options);
+  Parser sourceParser(sourceManager, diagnosticFacts, langOptions, stringPool, buffer);
+  auto tree = sourceParser.parse();
+  const bool hasSyntaxErrors = diagnosticFacts.hasErrors();
+  if (diagnosticFacts.hasInvariantViolation() || (tree != zc::none && !hasSyntaxErrors)) {
+    return zc::none;
+  }
+  auto published = diagnosticFacts.publish(ZC_ASSERT_NONNULL(sourceFileKey), source.bytes().size());
+  if (published == zc::none) { return zc::none; }
+  auto rejected = ParseRejected::fromFacts(key.canonicalSourceBytes(), source.contentDigest(),
+                                           source.bytes().size(), parserOptions(options),
+                                           ZC_ASSERT_NONNULL(published).takeFacts(),
+                                           ZC_ASSERT_NONNULL(published).takeProvenance());
+  if (rejected == zc::none || ZC_ASSERT_NONNULL(rejected).facts() != expectedFacts) {
+    return zc::none;
+  }
+  return zc::mv(rejected);
 }
 
 zc::Array<uint8_t> ParseSourceQuery::encodeKey(const Key& key) {
@@ -236,31 +270,31 @@ zc::Maybe<ParseSourceQuery::Key> ParseSourceQuery::decodeKey(zc::ArrayPtr<const 
   return identity::source_query::StableSourceQueryKey::decodeBounded(bytes);
 }
 
-query::CapabilityProviderResult<ParseSourceQuery::Capability> ParseSourceQuery::provide(
-    query::CapabilityQueryContext& context, const Key& key) {
+query::CapabilityProviderResult<ParseSourceQuery> ParseSourceQuery::provide(
+    query::CapabilityQueryContext<ParseSourceQuery>& context, const Key& key) {
   auto sourceResult = context.get<identity::source_query::SourceSnapshotInput>(key);
   if (sourceResult.isRuntimeFailure()) {
-    return query::CapabilityProviderResult<Capability>::runtimeFailure(
+    return query::CapabilityProviderResult<ParseSourceQuery>::runtimeRejected(
         sourceResult.runtimeFailure());
   }
   if (sourceResult.kind() != query::QueryValueKind::Value) {
-    return query::CapabilityProviderResult<Capability>::runtimeFailure(
+    return query::CapabilityProviderResult<ParseSourceQuery>::runtimeRejected(
         query::QueryRuntimeFailure::ProviderRejected);
   }
   auto crate = sourceCrate(key);
   auto sourceFileKey = sourceFile(key);
   if (crate == zc::none || sourceFileKey == zc::none) {
-    return query::CapabilityProviderResult<Capability>::runtimeFailure(
+    return query::CapabilityProviderResult<ParseSourceQuery>::runtimeRejected(
         query::QueryRuntimeFailure::InvariantViolation);
   }
   auto optionsResult =
       context.get<identity::source_query::CompilationOptionsInput>(ZC_ASSERT_NONNULL(crate));
   if (optionsResult.isRuntimeFailure()) {
-    return query::CapabilityProviderResult<Capability>::runtimeFailure(
+    return query::CapabilityProviderResult<ParseSourceQuery>::runtimeRejected(
         optionsResult.runtimeFailure());
   }
   if (optionsResult.kind() != query::QueryValueKind::Value) {
-    return query::CapabilityProviderResult<Capability>::runtimeFailure(
+    return query::CapabilityProviderResult<ParseSourceQuery>::runtimeRejected(
         query::QueryRuntimeFailure::ProviderRejected);
   }
 
@@ -268,7 +302,7 @@ query::CapabilityProviderResult<ParseSourceQuery::Capability> ParseSourceQuery::
   const auto& options = optionsResult.value();
   auto maybeLogicalName = logicalSourceName(key);
   if (maybeLogicalName == zc::none) {
-    return query::CapabilityProviderResult<Capability>::runtimeFailure(
+    return query::CapabilityProviderResult<ParseSourceQuery>::runtimeRejected(
         query::QueryRuntimeFailure::InvariantViolation);
   }
   auto logicalName = zc::mv(ZC_ASSERT_NONNULL(maybeLogicalName));
@@ -280,13 +314,13 @@ query::CapabilityProviderResult<ParseSourceQuery::Capability> ParseSourceQuery::
   Parser sourceParser(sourceManager, diagnosticFacts, langOptions, stringPool, buffer);
   auto tree = sourceParser.parse();
   if (diagnosticFacts.hasInvariantViolation()) {
-    return query::CapabilityProviderResult<Capability>::runtimeFailure(
+    return query::CapabilityProviderResult<ParseSourceQuery>::runtimeRejected(
         query::QueryRuntimeFailure::InvariantViolation);
   }
   const bool hasSyntaxErrors = diagnosticFacts.hasErrors();
   auto published = diagnosticFacts.publish(ZC_ASSERT_NONNULL(sourceFileKey), source.bytes().size());
   if (published == zc::none) {
-    return query::CapabilityProviderResult<Capability>::runtimeFailure(
+    return query::CapabilityProviderResult<ParseSourceQuery>::runtimeRejected(
         query::QueryRuntimeFailure::InvariantViolation);
   }
   auto facts = ZC_ASSERT_NONNULL(published).takeFacts();
@@ -296,15 +330,29 @@ query::CapabilityProviderResult<ParseSourceQuery::Capability> ParseSourceQuery::
                                             source.bytes().size(), parserOptions(options),
                                             zc::mv(facts), zc::mv(provenance));
     if (failure == zc::none) {
-      return query::CapabilityProviderResult<Capability>::runtimeFailure(
+      return query::CapabilityProviderResult<ParseSourceQuery>::runtimeRejected(
           query::QueryRuntimeFailure::InvariantViolation);
     }
-    return query::CapabilityProviderResult<Capability>::semanticFailure(
-        ZC_ASSERT_NONNULL(failure).encodeCanonical());
+    auto factBytes = diagnostics::encodeDiagnosticFacts(
+        zc::none, ZC_ASSERT_NONNULL(failure).facts(), sourceFactLimits());
+    if (factBytes == zc::none) {
+      return query::CapabilityProviderResult<ParseSourceQuery>::runtimeRejected(
+          query::QueryRuntimeFailure::InvariantViolation);
+    }
+    auto rejected =
+        query::CapabilityFailureContract<ParseSourceQuery,
+                                         query::SourceRejection<diagnostics::DiagnosticFact>>::
+            decode(ZC_ASSERT_NONNULL(factBytes).asPtr());
+    if (rejected == zc::none) {
+      return query::CapabilityProviderResult<ParseSourceQuery>::runtimeRejected(
+          query::QueryRuntimeFailure::InvariantViolation);
+    }
+    return query::CapabilityProviderResult<ParseSourceQuery>::sourceRejected<
+        diagnostics::DiagnosticFact>(zc::mv(ZC_ASSERT_NONNULL(rejected)));
   }
   auto tokens = sourceParser.takeTokenSnapshot();
   if (tokens == zc::none) {
-    return query::CapabilityProviderResult<Capability>::runtimeFailure(
+    return query::CapabilityProviderResult<ParseSourceQuery>::runtimeRejected(
         query::QueryRuntimeFailure::InvariantViolation);
   }
   auto parsed = CanonicalParsedSource::fromParsed(
@@ -312,16 +360,89 @@ query::CapabilityProviderResult<ParseSourceQuery::Capability> ParseSourceQuery::
       parserOptions(options), sourceManager, buffer, zc::mv(ZC_ASSERT_NONNULL(tree)),
       zc::mv(ZC_ASSERT_NONNULL(tokens)), zc::mv(facts), zc::mv(provenance));
   if (parsed == zc::none) {
-    return query::CapabilityProviderResult<Capability>::runtimeFailure(
+    return query::CapabilityProviderResult<ParseSourceQuery>::runtimeRejected(
         query::QueryRuntimeFailure::InvariantViolation);
   }
-  auto stableWitness = ZC_ASSERT_NONNULL(parsed).encodeCanonical();
-  return query::CapabilityProviderResult<Capability>::value(
-      zc::heap<Capability>(zc::mv(ZC_ASSERT_NONNULL(parsed))), zc::mv(stableWitness));
+  auto candidate = zc::heap<Capability>(zc::mv(ZC_ASSERT_NONNULL(parsed)));
+  auto stableWitness = query::CapabilityCandidateContract<ParseSourceQuery>::encode(*candidate);
+  return query::CapabilityProviderResult<ParseSourceQuery>::candidate(zc::mv(candidate),
+                                                                      zc::mv(stableWitness));
 }
 
 bool registerParseSourceQuery(query::QueryDatabase& database) {
-  return database.registerRevisionLocalCapabilityKind<ParseSourceQuery>() != zc::none;
+  return database.registerDescriptor<ParseSourceQuery>().isRegistered();
 }
 
 }  // namespace zomlang::compiler::parser
+
+namespace zomlang::compiler::query {
+namespace {
+
+diagnostics::DiagnosticFactCodecLimits parseFailureFactLimits() {
+  return diagnostics::DiagnosticFactCodecLimits{
+      .maximumFacts = 4096,
+      .maximumEncodedBytes = 64 * 1024 * 1024,
+      .maximumProvenanceComponentsPerKey = 3,
+      .maximumArgumentBytesPerRecord = 64 * 1024 * 1024,
+      .maximumSecondaryPerFact = 128,
+  };
+}
+
+bool parseFailureContainsError(zc::ArrayPtr<const diagnostics::DiagnosticFact> facts) {
+  for (const auto& fact : facts) {
+    if (diagnostics::getDiagnosticInfo(fact.code()).severity >= diagnostics::DiagSeverity::kError) {
+      return true;
+    }
+  }
+  return false;
+}
+
+bool containsOnlyParseDiagnostics(zc::ArrayPtr<const diagnostics::DiagnosticFact> facts) {
+  for (const auto& fact : facts) {
+    if (!diagnostics::isSourceSyntaxDiagnostic(fact.code())) { return false; }
+  }
+  return true;
+}
+
+}  // namespace
+
+StableWitnessBytes CapabilityCandidateContract<parser::ParseSourceQuery>::encode(
+    const parser::ParseSourceQuery::Capability& candidate) {
+  return StableWitnessBytes(candidate.encodeCanonical());
+}
+
+zc::Maybe<zc::Own<parser::ParseSourceQuery::Capability>>
+CapabilityCandidateContract<parser::ParseSourceQuery>::decode(zc::ArrayPtr<const uint8_t> bytes) {
+  auto candidate = parser::CanonicalParsedSource::decodeCanonical(bytes);
+  if (candidate == zc::none || ZC_ASSERT_NONNULL(candidate).encodeCanonical().asPtr() != bytes) {
+    return zc::none;
+  }
+  return zc::heap<parser::ParseSourceQuery::Capability>(zc::mv(ZC_ASSERT_NONNULL(candidate)));
+}
+
+zc::Array<uint8_t> CapabilityFailureContract<
+    parser::ParseSourceQuery,
+    SourceRejection<diagnostics::DiagnosticFact>>::encode(const Sequence& diagnostics) {
+  auto encoded =
+      diagnostics::encodeDiagnosticFacts(zc::none, diagnostics.values(), parseFailureFactLimits());
+  ZC_IREQUIRE(encoded != zc::none, "parse rejection contains non-canonical diagnostic facts");
+  return zc::mv(ZC_REQUIRE_NONNULL(encoded));
+}
+
+zc::Maybe<CapabilityFailureContract<parser::ParseSourceQuery,
+                                    SourceRejection<diagnostics::DiagnosticFact>>::Sequence>
+CapabilityFailureContract<parser::ParseSourceQuery, SourceRejection<diagnostics::DiagnosticFact>>::
+    decode(zc::ArrayPtr<const uint8_t> bytes) {
+  auto facts = diagnostics::decodeDiagnosticFacts(zc::none, bytes, parseFailureFactLimits());
+  if (facts == zc::none || ZC_ASSERT_NONNULL(facts).size() == 0 ||
+      !parseFailureContainsError(ZC_ASSERT_NONNULL(facts).asPtr()) ||
+      !containsOnlyParseDiagnostics(ZC_ASSERT_NONNULL(facts).asPtr())) {
+    return zc::none;
+  }
+  auto canonical = diagnostics::encodeDiagnosticFacts(zc::none, ZC_ASSERT_NONNULL(facts).asPtr(),
+                                                      parseFailureFactLimits());
+  if (canonical == zc::none || ZC_ASSERT_NONNULL(canonical).asPtr() != bytes) { return zc::none; }
+  return Sequence(zc::mv(ZC_ASSERT_NONNULL(facts)));
+}
+
+}  // namespace zomlang::compiler::query

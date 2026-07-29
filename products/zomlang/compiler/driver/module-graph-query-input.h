@@ -144,8 +144,9 @@ struct SelectedModuleCatalogInput final {
   using Key = identity::CrateKey;
   using Value = SelectedModuleCatalog;
 
-  ZC_NODISCARD static zc::StringPtr domain();
-  ZC_NODISCARD static query::QueryKindContract contract();
+  static constexpr query::InputDescriptorMetadata descriptor{
+      "SelectedModuleCatalogInput"_zcc, "zom.query.selected-module-catalog"_zcc,
+      query::Durability::Low};
   ZC_NODISCARD static zc::Array<uint8_t> encodeKey(const Key& key);
   ZC_NODISCARD static zc::Maybe<Key> decodeKey(zc::ArrayPtr<const uint8_t> bytes);
   ZC_NODISCARD static zc::Array<uint8_t> encodeValue(const Value& value);
@@ -156,8 +157,9 @@ struct ModuleDependencySiteInput final {
   using Key = identity::ModuleKey;
   using Value = DetachedModuleDependencySiteSet;
 
-  ZC_NODISCARD static zc::StringPtr domain();
-  ZC_NODISCARD static query::QueryKindContract contract();
+  static constexpr query::InputDescriptorMetadata descriptor{
+      "ModuleDependencySiteInput"_zcc, "zom.query.module-dependency-site-input"_zcc,
+      query::Durability::Low};
   ZC_NODISCARD static zc::Array<uint8_t> encodeKey(const Key& key);
   ZC_NODISCARD static zc::Maybe<Key> decodeKey(zc::ArrayPtr<const uint8_t> bytes);
   ZC_NODISCARD static zc::Array<uint8_t> encodeValue(const Value& value);
@@ -261,8 +263,14 @@ struct SelectedModuleSourceQuery final {
   using Key = identity::ModuleKey;
   using Value = identity::SourceFileKey;
 
-  ZC_NODISCARD static zc::StringPtr domain();
-  ZC_NODISCARD static query::QueryKindContract contract();
+  static constexpr query::SemanticDescriptorMetadata descriptor{
+      "SelectedModuleSourceQuery"_zcc,
+      "zom.query.selected-module-source"_zcc,
+      query::ReuseClass::Semantic,
+      query::RetentionClass::Retained,
+      query::QueryEqualityPolicy::CanonicalBytes,
+      query::QueryCyclePolicy::Reject,
+      query::QueryCostClass::Linear};
   ZC_NODISCARD static zc::Array<uint8_t> encodeKey(const Key& key);
   ZC_NODISCARD static zc::Maybe<Key> decodeKey(zc::ArrayPtr<const uint8_t> bytes);
   ZC_NODISCARD static zc::Array<uint8_t> encodeValue(const Value& value);
@@ -277,8 +285,14 @@ struct ActiveModulesQuery final {
   using Key = identity::CrateKey;
   using Value = ActiveModuleSetRecord;
 
-  ZC_NODISCARD static zc::StringPtr domain();
-  ZC_NODISCARD static query::QueryKindContract contract();
+  static constexpr query::SemanticDescriptorMetadata descriptor{
+      "ActiveModulesQuery"_zcc,
+      "zom.query.active-modules"_zcc,
+      query::ReuseClass::Semantic,
+      query::RetentionClass::Retained,
+      query::QueryEqualityPolicy::CanonicalBytes,
+      query::QueryCyclePolicy::Reject,
+      query::QueryCostClass::Linear};
   ZC_NODISCARD static zc::Array<uint8_t> encodeKey(const Key& key);
   ZC_NODISCARD static zc::Maybe<Key> decodeKey(zc::ArrayPtr<const uint8_t> bytes);
   ZC_NODISCARD static zc::Array<uint8_t> encodeValue(const Value& value);
@@ -293,8 +307,14 @@ struct ModuleDependencySitesQuery final {
   using Key = identity::ModuleKey;
   using Value = DetachedModuleDependencySiteSet;
 
-  ZC_NODISCARD static zc::StringPtr domain();
-  ZC_NODISCARD static query::QueryKindContract contract();
+  static constexpr query::SemanticDescriptorMetadata descriptor{
+      "ModuleDependencySitesQuery"_zcc,
+      "zom.query.module-dependency-sites"_zcc,
+      query::ReuseClass::Semantic,
+      query::RetentionClass::Retained,
+      query::QueryEqualityPolicy::CanonicalBytes,
+      query::QueryCyclePolicy::Reject,
+      query::QueryCostClass::Linear};
   ZC_NODISCARD static zc::Array<uint8_t> encodeKey(const Key& key);
   ZC_NODISCARD static zc::Maybe<Key> decodeKey(zc::ArrayPtr<const uint8_t> bytes);
   ZC_NODISCARD static zc::Array<uint8_t> encodeValue(const Value& value);
@@ -309,8 +329,14 @@ struct ModuleDependencyRequestsQuery final {
   using Key = identity::ModuleKey;
   using Value = ModuleDependencyRequestSetRecord;
 
-  ZC_NODISCARD static zc::StringPtr domain();
-  ZC_NODISCARD static query::QueryKindContract contract();
+  static constexpr query::SemanticDescriptorMetadata descriptor{
+      "ModuleDependencyRequestsQuery"_zcc,
+      "zom.query.module-dependency-requests"_zcc,
+      query::ReuseClass::Semantic,
+      query::RetentionClass::Retained,
+      query::QueryEqualityPolicy::CanonicalBytes,
+      query::QueryCyclePolicy::Reject,
+      query::QueryCostClass::Linear};
   ZC_NODISCARD static zc::Array<uint8_t> encodeKey(const Key& key);
   ZC_NODISCARD static zc::Maybe<Key> decodeKey(zc::ArrayPtr<const uint8_t> bytes);
   ZC_NODISCARD static zc::Array<uint8_t> encodeValue(const Value& value);
@@ -325,8 +351,14 @@ struct ModuleDependenciesQuery final {
   using Key = identity::ModuleKey;
   using Value = ModuleDependencySetRecord;
 
-  ZC_NODISCARD static zc::StringPtr domain();
-  ZC_NODISCARD static query::QueryKindContract contract();
+  static constexpr query::SemanticDescriptorMetadata descriptor{
+      "ModuleDependenciesQuery"_zcc,
+      "zom.query.module-dependencies"_zcc,
+      query::ReuseClass::Semantic,
+      query::RetentionClass::Retained,
+      query::QueryEqualityPolicy::CanonicalBytes,
+      query::QueryCyclePolicy::Reject,
+      query::QueryCostClass::Linear};
   ZC_NODISCARD static zc::Array<uint8_t> encodeKey(const Key& key);
   ZC_NODISCARD static zc::Maybe<Key> decodeKey(zc::ArrayPtr<const uint8_t> bytes);
   ZC_NODISCARD static zc::Array<uint8_t> encodeValue(const Value& value);

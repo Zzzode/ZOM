@@ -162,7 +162,7 @@ struct Fixture final {
 };
 
 query::QueryDatabase database(basic::ThreadPool& scheduler) {
-  query::QueryDatabase result(scheduler);
+  query::QueryDatabase result(scheduler, query::productionQueryDescriptorInventory());
   ZC_REQUIRE(registerIncrementalModuleResolutionQueries(result));
   return result;
 }
@@ -198,12 +198,11 @@ ZC_TEST("ResolveModuleRequestQuery stages and demands exact candidates") {
   auto queries = database(scheduler);
   zc::Vector<binder::ModuleDependencyRequest> requests;
   requests.add(fixture.request());
-  auto pending = queries.beginInputTransaction();
-  ZC_REQUIRE(pending != zc::none);
-  ZC_IF_SOME(transaction, pending) {
-    ZC_REQUIRE(stageModuleResolutionQueryInputs(transaction, fixture.resolver(), requests.asPtr()));
-    ZC_REQUIRE(transaction.commit() != zc::none);
-  }
+  auto pending = queries.beginInputTransaction(queries.snapshot().revision());
+  ZC_REQUIRE(pending.isOpened());
+  auto transaction = zc::mv(pending).takeTransaction();
+  ZC_REQUIRE(stageModuleResolutionQueryInputs(transaction, fixture.resolver(), requests.asPtr()));
+  ZC_REQUIRE(transaction.commit().isCommitted());
   auto snapshot = queries.snapshot();
   auto candidates = snapshot.get<ResolveModuleRequestQuery>(requests[0].key());
   ZC_REQUIRE(!candidates.isRuntimeFailure());
@@ -228,12 +227,11 @@ ZC_TEST("ResolveModuleRequestQuery shields unrelated catalog bucket changes") {
   auto queries = database(scheduler);
   zc::Vector<binder::ModuleDependencyRequest> requests;
   requests.add(fixture.request());
-  auto pending = queries.beginInputTransaction();
-  ZC_REQUIRE(pending != zc::none);
-  ZC_IF_SOME(transaction, pending) {
-    ZC_REQUIRE(stageModuleResolutionQueryInputs(transaction, fixture.resolver(), requests.asPtr()));
-    ZC_REQUIRE(transaction.commit() != zc::none);
-  }
+  auto pending = queries.beginInputTransaction(queries.snapshot().revision());
+  ZC_REQUIRE(pending.isOpened());
+  auto transaction = zc::mv(pending).takeTransaction();
+  ZC_REQUIRE(stageModuleResolutionQueryInputs(transaction, fixture.resolver(), requests.asPtr()));
+  ZC_REQUIRE(transaction.commit().isCommitted());
   auto first = queries.snapshot();
   auto firstResult = first.get<ResolveModuleRequestQuery>(requests[0].key());
   auto firstMetadata = first.metadata<ResolveModuleRequestQuery>(requests[0].key());
@@ -245,16 +243,15 @@ ZC_TEST("ResolveModuleRequestQuery shields unrelated catalog bucket changes") {
   unrelatedPath.add(scalar<identity::ModulePathSegment>("unrelated"_zc));
   auto unrelatedKey = identity::ModuleCatalogPathBucketKey::from(crate(), zc::mv(unrelatedPath));
   ZC_REQUIRE(unrelatedKey != zc::none);
-  auto update = queries.beginInputTransaction();
-  ZC_REQUIRE(update != zc::none);
-  ZC_IF_SOME(transaction, update) {
-    ZC_IF_SOME(key, unrelatedKey) {
-      auto absent = identity::ModuleCatalogPathBucket::absent(key.clone());
-      auto value = CanonicalModuleCatalogBucket::fromVerified(absent);
-      ZC_REQUIRE(transaction.set<ModuleCatalogPathBucketInput>(key, value));
-    }
-    ZC_REQUIRE(transaction.commit() != zc::none);
+  auto update = queries.beginInputTransaction(queries.snapshot().revision());
+  ZC_REQUIRE(update.isOpened());
+  auto updateTransaction = zc::mv(update).takeTransaction();
+  ZC_IF_SOME(key, unrelatedKey) {
+    auto absent = identity::ModuleCatalogPathBucket::absent(key.clone());
+    auto value = CanonicalModuleCatalogBucket::fromVerified(absent);
+    ZC_REQUIRE(updateTransaction.set<ModuleCatalogPathBucketInput>(key, value).isApplied());
   }
+  ZC_REQUIRE(updateTransaction.commit().isCommitted());
 
   auto second = queries.snapshot();
   auto secondResult = second.get<ResolveModuleRequestQuery>(requests[0].key());

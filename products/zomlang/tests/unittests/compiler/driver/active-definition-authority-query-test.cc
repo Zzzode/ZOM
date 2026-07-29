@@ -293,14 +293,11 @@ ZC_TEST("Active definition authority inputs use strict low durability codecs") {
   ZC_EXPECT(ActiveDefinitionAuthorityRecord::from(zc::mv(mismatchedKey),
                                                   zc::mv(mismatchedRecord)) == zc::none);
 
-  auto authorityContract = ActiveDefinitionAuthorityInput::contract();
-  auto readinessContract = ActiveDefinitionAuthorityReadyInput::contract();
-  ZC_EXPECT(authorityContract.isInput());
-  ZC_EXPECT(readinessContract.isInput());
-  ZC_EXPECT(authorityContract.inputDurability() == query::Durability::Low);
-  ZC_EXPECT(readinessContract.inputDurability() == query::Durability::Low);
-  ZC_EXPECT(ActiveDefinitionAuthorityInput::domain() == "zom.query.active-definition-authority"_zc);
-  ZC_EXPECT(ActiveDefinitionAuthorityReadyInput::domain() ==
+  ZC_EXPECT(ActiveDefinitionAuthorityInput::descriptor.durability == query::Durability::Low);
+  ZC_EXPECT(ActiveDefinitionAuthorityReadyInput::descriptor.durability == query::Durability::Low);
+  ZC_EXPECT(ActiveDefinitionAuthorityInput::descriptor.domain ==
+            "zom.query.active-definition-authority"_zc);
+  ZC_EXPECT(ActiveDefinitionAuthorityReadyInput::descriptor.domain ==
             "zom.query.active-definition-authority-ready"_zc);
 }
 
@@ -362,7 +359,7 @@ ZC_TEST("Active definition authority projection is canonical and fingerprinted")
 }
 
 ZC_TEST("Active definition authority inputs round trip through QueryDatabase") {
-  query::QueryDatabase database(scheduler());
+  query::QueryDatabase database(scheduler(), query::productionQueryDescriptorInventory());
   ZC_REQUIRE(registerActiveDefinitionAuthorityInputs(database));
   auto projectionRecords = zc::Vector<ActiveDefinitionAuthorityRecord>();
   projectionRecords.add(authorityRecord("Alpha"_zc));
@@ -371,15 +368,17 @@ ZC_TEST("Active definition authority inputs round trip through QueryDatabase") {
   ZC_REQUIRE(projection != zc::none);
   const auto& authority = ZC_REQUIRE_NONNULL(projection).records()[0];
 
-  auto transaction = database.beginInputTransaction();
-  ZC_REQUIRE(transaction != zc::none);
+  auto pending = database.beginInputTransaction(database.snapshot().revision());
+  ZC_REQUIRE(pending.isOpened());
+  auto transaction = zc::mv(pending).takeTransaction();
   auto authorityKey = contextualDefinition(authority.key());
-  ZC_REQUIRE(ZC_REQUIRE_NONNULL(transaction)
-                 .set<ActiveDefinitionAuthorityInput>(authorityKey, authority.record()));
-  ZC_REQUIRE(ZC_REQUIRE_NONNULL(transaction)
+  ZC_REQUIRE(transaction.set<ActiveDefinitionAuthorityInput>(authorityKey, authority.record())
+                 .isApplied());
+  ZC_REQUIRE(transaction
                  .set<ActiveDefinitionAuthorityReadyInput>(
-                     roots, ZC_REQUIRE_NONNULL(projection).fingerprint()));
-  ZC_REQUIRE(ZC_REQUIRE_NONNULL(transaction).commit() != zc::none);
+                     roots, ZC_REQUIRE_NONNULL(projection).fingerprint())
+                 .isApplied());
+  ZC_REQUIRE(transaction.commit().isCommitted());
 
   auto snapshot = database.snapshot();
   auto retained = snapshot.get<ActiveDefinitionAuthorityInput>(authorityKey);

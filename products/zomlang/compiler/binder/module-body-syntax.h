@@ -233,6 +233,9 @@ class ModuleBodySyntaxProducer final {
 public:
   ZC_NODISCARD static ModuleBodySyntaxProjectionResult produce(
       const CanonicalParsedModule& parsedModule, const identity::ModuleKey& module,
+      ast::NodeId moduleNode, const StableIdentityAdmission& admission);
+  ZC_NODISCARD static ModuleBodySyntaxProjectionResult produce(
+      const CanonicalParsedModule& parsedModule, const identity::ModuleKey& module,
       ast::NodeId moduleNode, zc::ArrayPtr<const ModuleBodyDefinitionBoundaryInput> definitions,
       zc::ArrayPtr<const ModuleBodyImplementationBoundaryInput> implementations);
 
@@ -246,6 +249,9 @@ public:
 /// \brief Independently reconstructs pruning, canonical syntax, and total provenance coverage.
 class ModuleBodySyntaxVerifier final {
 public:
+  ZC_NODISCARD static ModuleBodySyntaxProjectionResult reconstruct(
+      const CanonicalParsedModule& parsedModule, const identity::ModuleKey& module,
+      ast::NodeId moduleNode, const StableIdentityAdmission& admission);
   ZC_NODISCARD static ModuleBodySyntaxProjectionResult reconstruct(
       const CanonicalParsedModule& parsedModule, const identity::ModuleKey& module,
       ast::NodeId moduleNode, zc::ArrayPtr<const ModuleBodyDefinitionBoundaryInput> definitions,

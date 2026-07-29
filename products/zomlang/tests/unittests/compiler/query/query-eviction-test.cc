@@ -18,12 +18,12 @@
 namespace zomlang::compiler::query::test {
 
 ZC_TEST("QueryEvictionTest.RetainsDependenciesAndConservativelyRecomputesWithoutEqualityWitness") {
-  QueryDatabase database(queryTestScheduler());
+  auto database = queryTestDatabase();
   registerCoreKinds(database);
   auto write = beginTransaction(database);
-  ZC_REQUIRE(write.set<LowInput>(40, 5));
-  ZC_REQUIRE(write.set<LowInput>(99, 1));
-  ZC_REQUIRE(write.commit() != zc::none);
+  ZC_REQUIRE(write.set<LowInput>(40, 5).isApplied());
+  ZC_REQUIRE(write.set<LowInput>(99, 1).isApplied());
+  ZC_REQUIRE(write.commit().isCommitted());
   auto first = database.snapshot();
 
   ZC_EXPECT(first.get<EvictableQuery>(40).value() == 15);
@@ -50,8 +50,8 @@ ZC_TEST("QueryEvictionTest.RetainsDependenciesAndConservativelyRecomputesWithout
             initialDependencies[0].dependencies()[0].key());
 
   auto unrelated = beginTransaction(database);
-  ZC_REQUIRE(unrelated.set<LowInput>(99, 2));
-  ZC_REQUIRE(unrelated.commit() != zc::none);
+  ZC_REQUIRE(unrelated.set<LowInput>(99, 2).isApplied());
+  ZC_REQUIRE(unrelated.commit().isCommitted());
   auto second = database.snapshot();
   ZC_EXPECT(!second.hasRetainedValue<EvictableQuery>(40));
   ZC_EXPECT(second.dependencies<EvictableQuery>(40).size() == 1);

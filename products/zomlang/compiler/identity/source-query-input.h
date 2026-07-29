@@ -106,8 +106,9 @@ struct CompilationOptionsInput final {
   using Key = CrateKey;
   using Value = CanonicalCompilationOptions;
 
-  ZC_NODISCARD static zc::StringPtr domain();
-  ZC_NODISCARD static query::QueryKindContract contract();
+  static constexpr query::InputDescriptorMetadata descriptor{"CompilationOptionsInput"_zcc,
+                                                             "zom.query.compilation-options"_zcc,
+                                                             query::Durability::Medium};
   ZC_NODISCARD static zc::Array<uint8_t> encodeKey(const Key& key);
   ZC_NODISCARD static zc::Maybe<Key> decodeKey(zc::ArrayPtr<const uint8_t> bytes);
   ZC_NODISCARD static zc::Array<uint8_t> encodeValue(const Value& value);
@@ -118,8 +119,8 @@ struct SourceSnapshotInput final {
   using Key = StableSourceQueryKey;
   using Value = CanonicalSourceSnapshot;
 
-  ZC_NODISCARD static zc::StringPtr domain();
-  ZC_NODISCARD static query::QueryKindContract contract();
+  static constexpr query::InputDescriptorMetadata descriptor{
+      "SourceSnapshotInput"_zcc, "zom.query.source-snapshot"_zcc, query::Durability::Low};
   ZC_NODISCARD static zc::Array<uint8_t> encodeKey(const Key& key);
   ZC_NODISCARD static zc::Maybe<Key> decodeKey(zc::ArrayPtr<const uint8_t> bytes);
   ZC_NODISCARD static zc::Array<uint8_t> encodeValue(const Value& value);

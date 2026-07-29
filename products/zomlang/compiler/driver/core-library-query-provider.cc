@@ -17,7 +17,6 @@ namespace {
 
 constexpr zc::StringPtr kCoreDistributionDomain = "zom.query.core-distribution"_zc;
 constexpr zc::StringPtr kCoreDistributionValueDomain = "zom.query.core-distribution-value"_zc;
-constexpr zc::StringPtr kCoreModuleGraphDomain = "zom.query.core-module-graph"_zc;
 constexpr zc::StringPtr kCoreModuleGraphValueDomain = "zom.query.core-module-graph-value"_zc;
 constexpr zc::StringPtr kCoreModuleGraphRevisionDomain = "zom.core-module-graph"_zc;
 constexpr size_t kMaximumCoreDistributionKeyBytes = 256;
@@ -86,12 +85,6 @@ bool verifiedDistributionMatchesAccepted(
       distribution.policyTemplate().clone());
   return candidate != zc::none &&
          ZC_ASSERT_NONNULL(candidate).encode().asPtr() == accepted.encode().asPtr();
-}
-
-query::QueryKindContract derivedContract(zc::StringPtr domain) {
-  auto contract = query::QueryKindContract::derived(domain, query::ReuseClass::Semantic,
-                                                    query::RetentionClass::Retained);
-  return zc::mv(ZC_REQUIRE_NONNULL(contract));
 }
 
 zc::Array<uint8_t> encodeCoreGraphPayload(
@@ -351,13 +344,6 @@ bool ContextualCoreModuleKey::operator==(const ContextualCoreModuleKey& other) c
          moduleField.encode().asPtr() == other.moduleField.encode().asPtr();
 }
 
-zc::StringPtr CoreDistributionInput::domain() { return kCoreDistributionDomain; }
-
-query::QueryKindContract CoreDistributionInput::contract() {
-  auto contract = query::QueryKindContract::input(domain(), query::Durability::High);
-  return zc::mv(ZC_ASSERT_NONNULL(contract));
-}
-
 zc::Array<uint8_t> CoreDistributionInput::encodeKey(const Key& key) {
   const auto payload = key.encode();
   return frame(kCoreDistributionDomain, payload.asPtr());
@@ -564,10 +550,6 @@ zc::Array<uint8_t> CoreModuleGraphRecord::encodeCanonical() const {
   return frame(kCoreModuleGraphValueDomain, payload.asPtr());
 }
 
-zc::StringPtr CoreModuleGraphQuery::domain() { return kCoreModuleGraphDomain; }
-
-query::QueryKindContract CoreModuleGraphQuery::contract() { return derivedContract(domain()); }
-
 zc::Array<uint8_t> CoreModuleGraphQuery::encodeKey(const Key& key) { return key.encodeCanonical(); }
 
 zc::Maybe<CoreModuleGraphQuery::Key> CoreModuleGraphQuery::decodeKey(
@@ -755,37 +737,44 @@ VerifiedCoreDistributionInputTransaction::distribution() const noexcept {
 bool VerifiedCoreDistributionInputTransaction::commit(query::QueryDatabase& database) {
   if (impl.get() == nullptr || impl->committed) { return false; }
   const auto coreUnit = identity::ToolchainUnitKey::core();
-  auto existing = database.snapshot().probeInput<CoreDistributionInput>(coreUnit);
+  auto snapshot = database.snapshot();
+  auto existing = snapshot.probeInput<CoreDistributionInput>(coreUnit);
   if (existing.isRuntimeFailure() || existing.kind() != query::QueryValueKind::Absence) {
     return false;
   }
-  auto pending = database.beginInputTransaction();
-  if (pending == zc::none) { return false; }
-  ZC_IF_SOME(transaction, pending) {
-    if (!transaction.set<CoreDistributionInput>(coreUnit, impl->distribution)) { return false; }
-    for (const auto& projection : impl->projections) {
-      if (!transaction.set<identity::source_query::CompilationOptionsInput>(
-              projection.impl->crate, impl->compilationOptions) ||
-          !transaction.set<incremental_module_resolution_query::ModuleSearchRootsInput>(
-              projection.impl->crate, projection.impl->searchRoots)) {
+  auto pending = database.beginInputTransaction(snapshot.revision());
+  if (!pending.isOpened()) { return false; }
+  auto transaction = zc::mv(pending).takeTransaction();
+  if (!transaction.set<CoreDistributionInput>(coreUnit, impl->distribution).isApplied()) {
+    return false;
+  }
+  for (const auto& projection : impl->projections) {
+    if (!transaction
+             .set<identity::source_query::CompilationOptionsInput>(projection.impl->crate,
+                                                                   impl->compilationOptions)
+             .isApplied() ||
+        !transaction
+             .set<incremental_module_resolution_query::ModuleSearchRootsInput>(
+                 projection.impl->crate, projection.impl->searchRoots)
+             .isApplied()) {
+      return false;
+    }
+    for (const auto& source : projection.impl->sources) {
+      if (!transaction.set<identity::source_query::SourceSnapshotInput>(source.key, source.snapshot)
+               .isApplied()) {
         return false;
       }
-      for (const auto& source : projection.impl->sources) {
-        if (!transaction.set<identity::source_query::SourceSnapshotInput>(source.key,
-                                                                          source.snapshot)) {
-          return false;
-        }
-      }
     }
-    if (transaction.commit() == zc::none) { return false; }
   }
+  if (!transaction.commit().isCommitted()) { return false; }
   impl->committed = true;
   return true;
 }
 
 bool registerCoreLibraryQueryProvider(query::QueryDatabase& database) {
-  return database.registerInputKind<CoreDistributionInput>() != zc::none &&
-         database.registerDerivedKind<CoreModuleGraphQuery>() != zc::none;
+  auto distribution = database.registerDescriptor<CoreDistributionInput>();
+  if (!distribution.isRegistered()) { return false; }
+  return database.registerDescriptor<CoreModuleGraphQuery>().isRegistered();
 }
 
 }  // namespace zomlang::compiler::driver::core_library_query

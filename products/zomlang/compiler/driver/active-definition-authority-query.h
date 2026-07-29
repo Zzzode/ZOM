@@ -89,8 +89,9 @@ struct ActiveDefinitionAuthorityInput final {
   using Key = ContextualDefinitionKey;
   using Value = identity::DefinitionIdentityRecord;
 
-  ZC_NODISCARD static zc::StringPtr domain();
-  ZC_NODISCARD static query::QueryKindContract contract();
+  static constexpr query::InputDescriptorMetadata descriptor{
+      "ActiveDefinitionAuthorityInput"_zcc, "zom.query.active-definition-authority"_zcc,
+      query::Durability::Low};
   ZC_NODISCARD static zc::Array<uint8_t> encodeKey(const Key& key);
   ZC_NODISCARD static zc::Maybe<Key> decodeKey(zc::ArrayPtr<const uint8_t> bytes);
   ZC_NODISCARD static zc::Array<uint8_t> encodeValue(const Value& value);
@@ -102,8 +103,9 @@ struct ActiveDefinitionAuthorityReadyInput final {
   using Key = CompilationRootSetQueryKey;
   using Value = ActiveDefinitionAuthoritySetFingerprint;
 
-  ZC_NODISCARD static zc::StringPtr domain();
-  ZC_NODISCARD static query::QueryKindContract contract();
+  static constexpr query::InputDescriptorMetadata descriptor{
+      "ActiveDefinitionAuthorityReadyInput"_zcc, "zom.query.active-definition-authority-ready"_zcc,
+      query::Durability::Low};
   ZC_NODISCARD static zc::Array<uint8_t> encodeKey(const Key& key);
   ZC_NODISCARD static zc::Maybe<Key> decodeKey(zc::ArrayPtr<const uint8_t> bytes);
   ZC_NODISCARD static zc::Array<uint8_t> encodeValue(const Value& value);

@@ -20,17 +20,10 @@
 #include "zc/core/common.h"
 #include "zc/core/debug.h"
 #include "zc/core/memory.h"
+#include "zc/core/one-of.h"
 #include "zc/core/refcount.h"
 #include "zc/core/string.h"
 #include "zc/core/vector.h"
-
-namespace zomlang::compiler::binder {
-class BinderKeyFailure;
-}
-
-namespace zomlang::compiler::diagnostics {
-struct DiagnosticFact;
-}
 
 namespace zomlang::compiler::identity {
 class Sha256Digest;
@@ -39,6 +32,27 @@ class Sha256Digest;
 namespace zomlang::compiler::query {
 
 class QueryDatabase;
+class QuerySnapshot;
+class QueryContext;
+class InputTransaction;
+template <typename Spec>
+class CapabilityResultDecoder;
+template <typename Descriptor>
+class CapabilityCandidateContract;
+template <typename ContextRoots, typename FinalWitness>
+class FinalSnapshotSeal;
+
+namespace test {
+class QueryRuntimeTestAccess;
+}
+
+namespace _query_detail {
+class QueryDatabaseIdentityToken;
+class CapabilityMemoBuilderBase;
+template <typename Capability>
+class CapabilityMemoBuilder;
+class QueryRequestResultAccess;
+}  // namespace _query_detail
 
 /// \brief Process-local coordinate of one committed explicit-input root.
 class DatabaseRevision final {
@@ -67,25 +81,141 @@ private:
   uint64_t valueField = 0;
 };
 
-/// \brief Process-local identity of one query database instance.
-class QueryDatabaseIdentity final {
-public:
-  constexpr QueryDatabaseIdentity() noexcept = default;
+/// \brief Closed control failures for input transactions and final sealing.
+enum class InputTransactionFailure : uint8_t {
+  TransactionAlreadyOpen = 0x01,
+  TransactionClosed = 0x02,
+  InputMutationAfterFinalSeal = 0x03,
+  UnknownDescriptor = 0x04,
+  DescriptorKindMismatch = 0x05,
+  InvalidKeyEncoding = 0x06,
+  FingerprintCollision = 0x07,
+  FrozenInputMutation = 0x08,
+  MissingInputForErase = 0x09,
+  DuplicateInputOperation = 0x0a,
+  StaleBaseRevision = 0x0b,
+  RevisionExhausted = 0x0c,
+  OpenTransactionDuringFinalSeal = 0x0d,
+  FinalSealAlreadyPublished = 0x0e,
+  ForeignSnapshot = 0x0f,
+  StaleSnapshot = 0x10,
+  InvalidFinalSealAuthority = 0x11
+};
 
-  ZC_NODISCARD constexpr uint64_t value() const noexcept { return valueField; }
-  constexpr bool operator==(QueryDatabaseIdentity other) const noexcept {
-    return valueField == other.valueField;
+enum class InputMutationResultKind : uint8_t { Applied = 0x01, Rejected = 0x02 };
+
+namespace _query_detail {
+
+class InputMutationApplied final {};
+
+class InputCommitCommitted final {
+public:
+  explicit InputCommitCommitted(DatabaseRevision revision) noexcept : revisionField(revision) {}
+
+  DatabaseRevision revisionField;
+};
+
+}  // namespace _query_detail
+
+/// \brief Closed result of staging one input mutation.
+class InputMutationResult final {
+public:
+  InputMutationResult(InputMutationResult&&) noexcept = default;
+  InputMutationResult& operator=(InputMutationResult&&) noexcept = default;
+  ZC_DISALLOW_COPY(InputMutationResult);
+
+  ZC_NODISCARD static InputMutationResult applied() noexcept {
+    return InputMutationResult(_query_detail::InputMutationApplied());
   }
-  constexpr bool operator!=(QueryDatabaseIdentity other) const noexcept {
-    return !(*this == other);
+  ZC_NODISCARD static InputMutationResult rejected(InputTransactionFailure failure) noexcept {
+    return InputMutationResult(failure);
+  }
+
+  ZC_NODISCARD InputMutationResultKind kind() const noexcept {
+    return isApplied() ? InputMutationResultKind::Applied : InputMutationResultKind::Rejected;
+  }
+  ZC_NODISCARD bool isApplied() const noexcept {
+    return storageField.template is<_query_detail::InputMutationApplied>();
+  }
+  ZC_NODISCARD InputTransactionFailure failure() const {
+    ZC_IREQUIRE(!isApplied(), "applied input mutation has no failure");
+    return storageField.template get<InputTransactionFailure>();
   }
 
 private:
-  explicit constexpr QueryDatabaseIdentity(uint64_t value) noexcept : valueField(value) {}
+  template <typename Alternative>
+  explicit InputMutationResult(Alternative&& alternative) noexcept
+      : storageField(zc::fwd<Alternative>(alternative)) {}
 
-  uint64_t valueField = 0;
+  zc::OneOf<_query_detail::InputMutationApplied, InputTransactionFailure> storageField;
+};
+
+enum class InputCommitResultKind : uint8_t { Committed = 0x01, Rejected = 0x02 };
+
+/// \brief Closed result of committing one input transaction.
+class InputCommitResult final {
+public:
+  InputCommitResult(InputCommitResult&&) noexcept = default;
+  InputCommitResult& operator=(InputCommitResult&&) noexcept = default;
+  ZC_DISALLOW_COPY(InputCommitResult);
+
+  ZC_NODISCARD static InputCommitResult committed(DatabaseRevision revision) noexcept {
+    return InputCommitResult(_query_detail::InputCommitCommitted(revision));
+  }
+  ZC_NODISCARD static InputCommitResult rejected(InputTransactionFailure failure) noexcept {
+    return InputCommitResult(failure);
+  }
+
+  ZC_NODISCARD InputCommitResultKind kind() const noexcept {
+    return isCommitted() ? InputCommitResultKind::Committed : InputCommitResultKind::Rejected;
+  }
+  ZC_NODISCARD bool isCommitted() const noexcept {
+    return storageField.template is<_query_detail::InputCommitCommitted>();
+  }
+  ZC_NODISCARD DatabaseRevision revision() const {
+    ZC_IREQUIRE(isCommitted(), "rejected input commit has no revision");
+    return storageField.template get<_query_detail::InputCommitCommitted>().revisionField;
+  }
+  ZC_NODISCARD InputTransactionFailure failure() const {
+    ZC_IREQUIRE(!isCommitted(), "committed input transaction has no failure");
+    return storageField.template get<InputTransactionFailure>();
+  }
+
+private:
+  template <typename Alternative>
+  explicit InputCommitResult(Alternative&& alternative) noexcept
+      : storageField(zc::fwd<Alternative>(alternative)) {}
+
+  zc::OneOf<_query_detail::InputCommitCommitted, InputTransactionFailure> storageField;
+};
+
+/// \brief Process-local identity of one query database instance.
+class QueryDatabaseIdentity final {
+public:
+  QueryDatabaseIdentity(QueryDatabaseIdentity&&) noexcept;
+  QueryDatabaseIdentity& operator=(QueryDatabaseIdentity&&) noexcept;
+  ~QueryDatabaseIdentity() noexcept(false);
+  ZC_DISALLOW_COPY(QueryDatabaseIdentity);
+
+  bool operator==(const QueryDatabaseIdentity& other) const noexcept;
+  bool operator!=(const QueryDatabaseIdentity& other) const noexcept { return !(*this == other); }
+
+private:
+  explicit QueryDatabaseIdentity(
+      zc::Arc<const _query_detail::QueryDatabaseIdentityToken>&& token) noexcept;
+
+  ZC_NODISCARD static QueryDatabaseIdentity create();
+  ZC_NODISCARD QueryDatabaseIdentity retain() const;
+
+  zc::Arc<const _query_detail::QueryDatabaseIdentityToken> tokenField;
 
   friend class QueryDatabase;
+  friend class QueryContext;
+  friend class QuerySnapshot;
+  friend class InputTransaction;
+  friend class RevisionLocalCapabilityMemoBase;
+  template <typename ContextRoots, typename FinalWitness>
+  friend class FinalSnapshotSeal;
 };
 
 /// \brief Move-only proof that one exact database snapshot has final immutable inputs.
@@ -96,7 +226,9 @@ public:
   FinalSnapshotSeal& operator=(FinalSnapshotSeal&&) noexcept = default;
   ZC_DISALLOW_COPY(FinalSnapshotSeal);
 
-  ZC_NODISCARD QueryDatabaseIdentity database() const noexcept { return databaseField; }
+  ZC_NODISCARD const QueryDatabaseIdentity& database() const ZC_LIFETIMEBOUND {
+    return databaseField;
+  }
   ZC_NODISCARD DatabaseRevision revision() const noexcept { return revisionField; }
   ZC_NODISCARD const ContextRoots& contextRoots() const ZC_LIFETIMEBOUND {
     return contextRootsField;
@@ -113,9 +245,9 @@ public:
   bool operator!=(const FinalSnapshotSeal& other) const noexcept { return !(*this == other); }
 
 private:
-  FinalSnapshotSeal(QueryDatabaseIdentity database, DatabaseRevision revision,
+  FinalSnapshotSeal(QueryDatabaseIdentity&& database, DatabaseRevision revision,
                     ContextRoots&& contextRoots, const FinalWitness& finalWitness) noexcept
-      : databaseField(database),
+      : databaseField(zc::mv(database)),
         revisionField(revision),
         contextRootsField(zc::mv(contextRoots)),
         finalWitnessField(finalWitness) {}
@@ -128,19 +260,206 @@ private:
   friend class QueryDatabase;
 };
 
+enum class FinalSealResultKind : uint8_t { Sealed = 0x01, Rejected = 0x02 };
+
+/// \brief Closed result of publishing one irreversible final snapshot seal.
+template <typename ContextRoots, typename FinalWitness = identity::Sha256Digest>
+class FinalSealResult final {
+public:
+  FinalSealResult(FinalSealResult&&) noexcept = default;
+  FinalSealResult& operator=(FinalSealResult&&) noexcept = default;
+  ZC_DISALLOW_COPY(FinalSealResult);
+
+  ZC_NODISCARD static FinalSealResult sealed(FinalSnapshotSeal<ContextRoots, FinalWitness>&& seal) {
+    return FinalSealResult(FinalSealResultKind::Sealed, zc::mv(seal));
+  }
+  ZC_NODISCARD static FinalSealResult rejected(InputTransactionFailure failure) {
+    return FinalSealResult(FinalSealResultKind::Rejected, failure);
+  }
+
+  ZC_NODISCARD FinalSealResultKind kind() const noexcept { return kindField; }
+  ZC_NODISCARD bool isSealed() const noexcept { return kindField == FinalSealResultKind::Sealed; }
+  ZC_NODISCARD const FinalSnapshotSeal<ContextRoots, FinalWitness>& seal() const ZC_LIFETIMEBOUND {
+    ZC_IREQUIRE(isSealed(), "rejected final seal result has no seal");
+    return storageField.template get<FinalSnapshotSeal<ContextRoots, FinalWitness>>();
+  }
+  ZC_NODISCARD FinalSnapshotSeal<ContextRoots, FinalWitness> takeSeal() && {
+    ZC_IREQUIRE(isSealed(), "rejected final seal result has no seal");
+    return zc::mv(storageField).template get<FinalSnapshotSeal<ContextRoots, FinalWitness>>();
+  }
+  ZC_NODISCARD InputTransactionFailure failure() const {
+    ZC_IREQUIRE(!isSealed(), "sealed final result has no failure");
+    return storageField.template get<InputTransactionFailure>();
+  }
+
+private:
+  template <typename Alternative>
+  FinalSealResult(FinalSealResultKind kind, Alternative&& alternative)
+      : kindField(kind), storageField(zc::fwd<Alternative>(alternative)) {}
+
+  FinalSealResultKind kindField;
+  zc::OneOf<FinalSnapshotSeal<ContextRoots, FinalWitness>, InputTransactionFailure> storageField;
+};
+
+/// \brief Independent verification result for final-context authority.
+enum class FinalAuthorityCheck : uint8_t { Verified = 0x01, Rejected = 0x02 };
+
+/// \brief Closed active-membership alternatives for one complete authority record.
+enum class ActiveMembershipResultKind : uint8_t { Active = 0x01, Inactive = 0x02 };
+
+namespace _query_detail {
+
+template <typename Record>
+class ActiveMembershipRecord final {
+public:
+  explicit ActiveMembershipRecord(Record&& record) : recordField(zc::mv(record)) {}
+
+  Record recordField;
+};
+
+class InactiveMembership final {};
+
+}  // namespace _query_detail
+
+/// \brief Exact active authority or deterministic inactive membership.
+template <typename Record>
+class ActiveMembershipResult final {
+public:
+  ActiveMembershipResult(ActiveMembershipResult&&) noexcept = default;
+  ActiveMembershipResult& operator=(ActiveMembershipResult&&) noexcept = default;
+  ZC_DISALLOW_COPY(ActiveMembershipResult);
+
+  ZC_NODISCARD static ActiveMembershipResult active(Record&& record) {
+    return ActiveMembershipResult(_query_detail::ActiveMembershipRecord<Record>(zc::mv(record)));
+  }
+  ZC_NODISCARD static ActiveMembershipResult inactive() {
+    return ActiveMembershipResult(_query_detail::InactiveMembership());
+  }
+
+  ZC_NODISCARD bool isActive() const noexcept {
+    return storageField.template is<_query_detail::ActiveMembershipRecord<Record>>();
+  }
+  ZC_NODISCARD ActiveMembershipResultKind kind() const noexcept {
+    return isActive() ? ActiveMembershipResultKind::Active : ActiveMembershipResultKind::Inactive;
+  }
+  ZC_NODISCARD const Record& record() const ZC_LIFETIMEBOUND {
+    ZC_IREQUIRE(isActive(), "inactive membership has no authority record");
+    return storageField.template get<_query_detail::ActiveMembershipRecord<Record>>().recordField;
+  }
+
+private:
+  template <typename Alternative>
+  explicit ActiveMembershipResult(Alternative&& alternative)
+      : storageField(zc::fwd<Alternative>(alternative)) {}
+
+  zc::OneOf<_query_detail::ActiveMembershipRecord<Record>, _query_detail::InactiveMembership>
+      storageField;
+};
+
 /// \brief Closed validation durability lattice ordered from mutable to immutable.
 enum class Durability : uint8_t { Low = 0, Medium = 1, High = 2, Frozen = 3 };
 
 /// \brief Cross-revision reuse contract of one query kind.
-enum class ReuseClass : uint8_t { RevisionLocal = 0, Semantic = 1, Persisted = 2 };
+enum class ReuseClass : uint8_t {
+  Input = 0x01,
+  RevisionLocal = 0x02,
+  Semantic = 0x03,
+  Persisted = 0x04
+};
 
 /// \brief Retention policy for the complete equality witness.
 enum class RetentionClass : uint8_t { Retained = 0, Evictable = 1 };
 
-/// \brief Stable in-process index assigned to one registered query kind.
+/// \brief Snapshot admission required before a capability evaluator may run.
+enum class CapabilityAdmission : uint8_t { AnySnapshot = 0x01, FinalSealedSnapshot = 0x02 };
+
+/// \brief Closed descriptor kinds selected by literal metadata type.
+enum class QueryDescriptorKind : uint8_t {
+  Input = 0x01,
+  Semantic = 0x02,
+  RevisionLocalCapability = 0x03
+};
+
+/// \brief Compile-time role of one descriptor inventory row.
+enum class QueryDescriptorRole : uint8_t { Ordinary = 0x01, CompleteContextAuthority = 0x02 };
+
+/// \brief Canonical semantic equality policy.
+enum class QueryEqualityPolicy : uint8_t { CanonicalBytes = 0x01 };
+
+/// \brief Closed cycle policy.
+enum class QueryCyclePolicy : uint8_t { Reject = 0x01 };
+
+/// \brief Declared asymptotic provider cost.
+enum class QueryCostClass : uint8_t { Linear = 0x01 };
+
+/// \brief Literal metadata for one input descriptor.
+struct InputDescriptorMetadata final {
+  zc::LiteralStringConst name;
+  zc::LiteralStringConst domain;
+  Durability durability;
+};
+
+/// \brief Literal metadata for one reusable semantic descriptor.
+struct SemanticDescriptorMetadata final {
+  zc::LiteralStringConst name;
+  zc::LiteralStringConst domain;
+  ReuseClass reuse;
+  RetentionClass retention;
+  QueryEqualityPolicy equality;
+  QueryCyclePolicy cycle;
+  QueryCostClass cost;
+};
+
+/// \brief Literal metadata for one revision-local capability descriptor.
+struct CapabilityDescriptorMetadata final {
+  zc::LiteralStringConst name;
+  zc::LiteralStringConst domain;
+  RetentionClass retention;
+  QueryCyclePolicy cycle;
+  QueryCostClass cost;
+  CapabilityAdmission admission;
+};
+
+/// \brief Compile-time shape of one input query descriptor.
+template <typename Descriptor>
+concept InputQueryDescriptor =
+    requires(const typename Descriptor::Key& key, const typename Descriptor::Value& value,
+             zc::ArrayPtr<const uint8_t> bytes) {
+      Descriptor::descriptor;
+      Descriptor::encodeKey(key);
+      Descriptor::decodeKey(bytes);
+      Descriptor::encodeValue(value);
+      Descriptor::decodeValue(bytes);
+    } &&
+    zc::isSameType<zc::RemoveConst<decltype(Descriptor::descriptor)>, InputDescriptorMetadata>() &&
+    zc::isSameType<decltype(Descriptor::encodeKey(zc::instance<const typename Descriptor::Key&>())),
+                   zc::Array<uint8_t>>() &&
+    zc::isSameType<decltype(Descriptor::decodeKey(zc::instance<zc::ArrayPtr<const uint8_t>>())),
+                   zc::Maybe<typename Descriptor::Key>>() &&
+    zc::isSameType<decltype(Descriptor::encodeValue(
+                       zc::instance<const typename Descriptor::Value&>())),
+                   zc::Array<uint8_t>>() &&
+    zc::isSameType<decltype(Descriptor::decodeValue(zc::instance<zc::ArrayPtr<const uint8_t>>())),
+                   zc::Maybe<typename Descriptor::Value>>();
+
+/// \brief Input descriptor authorized to verify the one complete final context.
+template <typename Descriptor>
+concept CompleteContextAuthorityInput =
+    InputQueryDescriptor<Descriptor> &&
+    requires(const QuerySnapshot& snapshot, const typename Descriptor::Key& key,
+             const typename Descriptor::Value& value, const identity::Sha256Digest& witness) {
+      Descriptor::verifyFinalAuthority(snapshot, key, value, witness);
+    } &&
+    zc::isSameType<decltype(Descriptor::verifyFinalAuthority(
+                       zc::instance<const QuerySnapshot&>(),
+                       zc::instance<const typename Descriptor::Key&>(),
+                       zc::instance<const typename Descriptor::Value&>(),
+                       zc::instance<const identity::Sha256Digest&>())),
+                   FinalAuthorityCheck>();
+
+/// \brief Stable target-inventory ordinal of one query descriptor.
 class QueryKindId final {
 public:
-  constexpr QueryKindId() noexcept = default;
   explicit constexpr QueryKindId(uint32_t value) noexcept : valueField(value) {}
 
   ZC_NODISCARD constexpr uint32_t value() const noexcept { return valueField; }
@@ -153,7 +472,104 @@ public:
   }
 
 private:
-  uint32_t valueField = 0;
+  uint32_t valueField;
+};
+
+/// \brief One immutable generated descriptor-inventory row.
+struct QueryDescriptorInventoryRow final {
+  uint32_t ordinal;
+  zc::LiteralStringConst descriptorType;
+  zc::LiteralStringConst name;
+  zc::LiteralStringConst domain;
+  QueryDescriptorKind kind;
+  QueryDescriptorRole role;
+  ReuseClass reuse;
+  RetentionClass retention;
+  Durability durability;
+  QueryEqualityPolicy equality;
+  QueryCyclePolicy cycle;
+  QueryCostClass cost;
+  CapabilityAdmission admission;
+  zc::LiteralStringConst ownerPathFamily;
+};
+
+class QueryDescriptorInventoryRef;
+
+template <typename GeneratedInventory>
+ZC_NODISCARD constexpr QueryDescriptorInventoryRef generatedQueryDescriptorInventory();
+
+/// \brief Immutable generated descriptor inventory selected by one build target.
+class QueryDescriptorInventoryRef final {
+public:
+  ZC_NODISCARD constexpr zc::LiteralStringConst identity() const noexcept { return identityField; }
+  ZC_NODISCARD constexpr zc::ArrayPtr<const QueryDescriptorInventoryRow> rows() const noexcept {
+    return rowsField;
+  }
+
+private:
+  constexpr QueryDescriptorInventoryRef(
+      zc::LiteralStringConst identity,
+      zc::ArrayPtr<const QueryDescriptorInventoryRow> rows) noexcept
+      : identityField(identity), rowsField(rows) {}
+
+  zc::LiteralStringConst identityField;
+  zc::ArrayPtr<const QueryDescriptorInventoryRow> rowsField;
+
+  template <typename GeneratedInventory>
+  friend constexpr QueryDescriptorInventoryRef generatedQueryDescriptorInventory();
+};
+
+/// \brief Constructs a reference from one generated immutable inventory definition.
+template <typename GeneratedInventory>
+constexpr QueryDescriptorInventoryRef generatedQueryDescriptorInventory() {
+  return QueryDescriptorInventoryRef(GeneratedInventory::identity, GeneratedInventory::rows());
+}
+
+/// \brief Generated binding from one descriptor type to one target inventory row.
+template <typename Descriptor>
+struct QueryDescriptorInventoryBinding;
+
+/// \brief Closed setup-time descriptor registration failures.
+enum class DescriptorRegistrationFailure : uint8_t {
+  DescriptorAbsentFromInventory = 0x01,
+  InventoryMismatch = 0x02,
+  MetadataMismatch = 0x03,
+  SlotAlreadyRegistered = 0x04,
+  SlotCollision = 0x05
+};
+
+/// \brief Exact setup-time result of descriptor registration.
+class DescriptorRegistrationResult final {
+public:
+  DescriptorRegistrationResult(DescriptorRegistrationResult&&) noexcept = default;
+  DescriptorRegistrationResult& operator=(DescriptorRegistrationResult&&) noexcept = default;
+  ZC_DISALLOW_COPY(DescriptorRegistrationResult);
+
+  ZC_NODISCARD static DescriptorRegistrationResult registered(QueryKindId kind) {
+    return DescriptorRegistrationResult(kind);
+  }
+  ZC_NODISCARD static DescriptorRegistrationResult rejected(DescriptorRegistrationFailure failure) {
+    return DescriptorRegistrationResult(failure);
+  }
+
+  ZC_NODISCARD bool isRegistered() const noexcept {
+    return storageField.template is<QueryKindId>();
+  }
+  ZC_NODISCARD QueryKindId kind() const {
+    ZC_IREQUIRE(isRegistered(), "rejected descriptor registration has no query kind");
+    return storageField.template get<QueryKindId>();
+  }
+  ZC_NODISCARD DescriptorRegistrationFailure failure() const {
+    ZC_IREQUIRE(!isRegistered(), "registered descriptor has no registration failure");
+    return storageField.template get<DescriptorRegistrationFailure>();
+  }
+
+private:
+  template <typename Alternative>
+  explicit DescriptorRegistrationResult(Alternative&& alternative)
+      : storageField(zc::fwd<Alternative>(alternative)) {}
+
+  zc::OneOf<QueryKindId, DescriptorRegistrationFailure> storageField;
 };
 
 /// \brief SHA-256 fingerprint of a query domain and canonical key encoding.
@@ -246,6 +662,28 @@ class SemanticContextCapabilityArena;
 class SnapshotCapabilityArena;
 class RevisionLocalCapabilityMemoBase;
 
+/// \brief Descriptor-codec-owned canonical witness for one capability candidate.
+class StableWitnessBytes final {
+public:
+  StableWitnessBytes(StableWitnessBytes&&) noexcept = default;
+  StableWitnessBytes& operator=(StableWitnessBytes&&) noexcept = default;
+  ZC_DISALLOW_COPY(StableWitnessBytes);
+
+  ZC_NODISCARD zc::ArrayPtr<const uint8_t> bytes() const ZC_LIFETIMEBOUND {
+    return bytesField.asPtr();
+  }
+
+private:
+  explicit StableWitnessBytes(zc::Array<uint8_t>&& bytes) : bytesField(zc::mv(bytes)) {
+    ZC_IREQUIRE(bytesField.size() != 0, "stable capability witness must not be empty");
+  }
+
+  zc::Array<uint8_t> bytesField;
+
+  template <typename Descriptor>
+  friend class CapabilityCandidateContract;
+};
+
 /// \brief Type-erased owner of the session semantic resources anchored by an arena.
 ///
 /// The compiler-session implementation supplies one concrete owner containing
@@ -307,60 +745,62 @@ public:
   ~RevisionLocalCapabilityMemoBase() noexcept(false) override;
   ZC_DISALLOW_COPY_AND_MOVE(RevisionLocalCapabilityMemoBase);
 
+private:
+  RevisionLocalCapabilityMemoBase(
+      QueryDatabaseIdentity&& database, CanonicalQueryKey&& key, DatabaseRevision revision,
+      zc::Arc<SnapshotCapabilityArena>&& arena,
+      zc::Vector<zc::Arc<RevisionLocalCapabilityMemoBase>>&& retainedDependencies,
+      zc::Array<uint8_t>&& stableWitness);
+
+private:
+  ZC_NODISCARD const QueryDatabaseIdentity& database() const ZC_LIFETIMEBOUND;
   ZC_NODISCARD const CanonicalQueryKey& key() const ZC_LIFETIMEBOUND;
   ZC_NODISCARD DatabaseRevision revision() const noexcept;
   ZC_NODISCARD const SnapshotCapabilityArena& arena() const ZC_LIFETIMEBOUND;
   ZC_NODISCARD zc::ArrayPtr<const zc::Arc<RevisionLocalCapabilityMemoBase>> retainedDependencies()
       const ZC_LIFETIMEBOUND;
   ZC_NODISCARD zc::ArrayPtr<const uint8_t> stableWitness() const ZC_LIFETIMEBOUND;
-  ZC_NODISCARD zc::StringPtr capabilityTypeIdentity() const ZC_LIFETIMEBOUND;
 
-protected:
-  RevisionLocalCapabilityMemoBase(
-      CanonicalQueryKey&& key, DatabaseRevision revision, zc::Arc<SnapshotCapabilityArena>&& arena,
-      zc::Vector<zc::Arc<RevisionLocalCapabilityMemoBase>>&& retainedDependencies,
-      zc::Array<uint8_t>&& stableWitness, zc::StringPtr capabilityTypeIdentity);
-
-private:
   struct Impl;
   zc::Own<Impl> impl;
+
+  friend class _query_detail::CapabilityMemoBuilderBase;
+  friend class _query_detail::QueryRequestResultAccess;
+  template <typename Capability>
+  friend class RevisionLocalCapabilityMemo;
+  template <typename Spec>
+  friend class CapabilityResultDecoder;
+  template <typename Capability>
+  friend class QueryCapabilityLease;
 };
-
-namespace _query_detail {
-
-template <typename Capability>
-zc::StringPtr capabilityTypeIdentity() {
-#if defined(__clang__) || defined(__GNUC__)
-  return zc::StringPtr(__PRETTY_FUNCTION__);
-#elif defined(_MSC_VER)
-  return zc::StringPtr(__FUNCSIG__);
-#else
-#error "A compiler-provided function signature is required for capability type identity"
-#endif
-}
-
-}  // namespace _query_detail
-
-template <typename Spec>
-class CapabilityResultDecoder;
 
 /// \brief Immutable memo generation owning exactly one move-only capability.
 template <typename Capability>
 class RevisionLocalCapabilityMemo final : public RevisionLocalCapabilityMemoBase {
 public:
+  /// \brief Constructs one memo from query-runtime-only authorities.
+  ///
+  /// The parameter types remain nonconstructible outside the query runtime.
   RevisionLocalCapabilityMemo(
-      CanonicalQueryKey&& key, DatabaseRevision revision, zc::Arc<SnapshotCapabilityArena>&& arena,
+      QueryDatabaseIdentity&& database, CanonicalQueryKey&& key, DatabaseRevision revision,
+      zc::Arc<SnapshotCapabilityArena>&& arena,
       zc::Vector<zc::Arc<RevisionLocalCapabilityMemoBase>>&& retainedDependencies,
       zc::Array<uint8_t>&& stableWitness, zc::Own<Capability>&& capability)
-      : RevisionLocalCapabilityMemoBase(zc::mv(key), revision, zc::mv(arena),
-                                        zc::mv(retainedDependencies), zc::mv(stableWitness),
-                                        _query_detail::capabilityTypeIdentity<Capability>()),
+      : RevisionLocalCapabilityMemoBase(zc::mv(database), zc::mv(key), revision, zc::mv(arena),
+                                        zc::mv(retainedDependencies), zc::mv(stableWitness)),
         capabilityField(zc::mv(capability)) {}
 
+private:
   ZC_NODISCARD const Capability& capability() const ZC_LIFETIMEBOUND { return *capabilityField; }
 
-private:
   zc::Own<Capability> capabilityField;
+
+  template <typename>
+  friend class _query_detail::CapabilityMemoBuilder;
+  template <typename Spec>
+  friend class CapabilityResultDecoder;
+  template <typename>
+  friend class QueryCapabilityLease;
 };
 
 /// \brief Retainable strong lease to one immutable capability memo generation.
@@ -414,72 +854,306 @@ enum class CapabilityDemandResultKind : uint8_t {
 
 /// \brief Runtime failures that never become reusable semantic values.
 enum class QueryRuntimeFailure : uint8_t {
-  UnregisteredKind = 0,
-  InvalidKeyEncoding = 1,
-  MissingInput = 2,
-  ProviderRejected = 3,
-  VerifierRejected = 4,
-  Cycle = 5,
-  Cancelled = 6,
-  FingerprintCollision = 7,
-  InvariantViolation = 8
+  UnregisteredKind = 0x01,
+  InvalidKeyEncoding = 0x02,
+  MissingInput = 0x03,
+  ProviderRejected = 0x04,
+  VerifierRejected = 0x05,
+  Cycle = 0x06,
+  Cancelled = 0x07,
+  FingerprintCollision = 0x08,
+  InvariantViolation = 0x09,
+  FinalSealRequired = 0x0a,
+  FinalSealMismatch = 0x0b,
+  AllocationFailure = 0x0c
 };
 
+/// \brief Canonical descriptor rejection alternatives carried by the evaluator.
+enum class CapabilityFailureKind : uint8_t { SourceRejected = 0x01, KeyRejected = 0x02 };
+
+/// \brief Independent verification outcome for one descriptor-owned rejection.
+enum class CapabilityRejectionCheck : uint8_t { Verified = 0x01, Rejected = 0x02 };
+
+/// \brief Verified type-erased capability rejection passed through the evaluator.
+class CapabilityFailureEnvelope final {
+public:
+  CapabilityFailureEnvelope(CapabilityFailureEnvelope&&) noexcept = default;
+  CapabilityFailureEnvelope& operator=(CapabilityFailureEnvelope&&) noexcept = default;
+  ZC_DISALLOW_COPY(CapabilityFailureEnvelope);
+
+private:
+  CapabilityFailureEnvelope(zc::String&& descriptorDomain, CapabilityFailureKind kind,
+                            zc::Array<uint8_t>&& canonicalPayload);
+
+  ZC_NODISCARD static zc::Maybe<CapabilityFailureEnvelope> decodeCanonical(
+      zc::ArrayPtr<const uint8_t> bytes);
+  ZC_NODISCARD zc::Maybe<CapabilityFailureEnvelope> decodeCanonical() const {
+    return decodeCanonical(canonicalBytesField.asPtr());
+  }
+
+  ZC_NODISCARD zc::StringPtr descriptorDomain() const ZC_LIFETIMEBOUND {
+    return descriptorDomainField;
+  }
+  ZC_NODISCARD CapabilityFailureKind kind() const noexcept { return kindField; }
+  ZC_NODISCARD zc::ArrayPtr<const uint8_t> canonicalPayload() const ZC_LIFETIMEBOUND {
+    return canonicalPayloadField.asPtr();
+  }
+  ZC_NODISCARD zc::ArrayPtr<const uint8_t> canonicalBytes() const ZC_LIFETIMEBOUND {
+    return canonicalBytesField.asPtr();
+  }
+
+  zc::String descriptorDomainField;
+  CapabilityFailureKind kindField;
+  zc::Array<uint8_t> canonicalPayloadField;
+  zc::Array<uint8_t> canonicalBytesField;
+
+  friend class QueryDatabase;
+  friend class _query_detail::QueryRequestResultAccess;
+  template <typename Spec>
+  friend class CapabilityResultDecoder;
+};
+
+/// \brief Closed descriptor-owned list of legal capability rejection alternatives.
+template <typename... Alternatives>
+class CapabilityFailureList final {};
+
+/// \brief Descriptor-owned source rejection carrying one canonical diagnostic type.
+template <typename Diagnostic>
+class SourceRejection final {};
+
+/// \brief Descriptor-owned key rejection carrying one canonical key-failure type.
+template <typename KeyFailure>
+class KeyRejection final {};
+
+template <typename Descriptor, typename Alternative>
+class CapabilityFailureContract;
+
+/// \brief Move-only nonempty sequence admitted by one capability failure contract.
+template <typename T>
+class CanonicalNonEmptySequence final {
+public:
+  CanonicalNonEmptySequence(CanonicalNonEmptySequence&&) noexcept = default;
+  CanonicalNonEmptySequence& operator=(CanonicalNonEmptySequence&&) noexcept = default;
+  ZC_DISALLOW_COPY(CanonicalNonEmptySequence);
+
+  ZC_NODISCARD zc::ArrayPtr<const T> values() const ZC_LIFETIMEBOUND { return valuesField.asPtr(); }
+
+private:
+  explicit CanonicalNonEmptySequence(zc::Vector<T>&& values) : valuesField(zc::mv(values)) {
+    ZC_IREQUIRE(valuesField.size() != 0,
+                "canonical capability rejection sequence must not be empty");
+  }
+
+  zc::Vector<T> valuesField;
+
+  template <typename Descriptor, typename Alternative>
+  friend class CapabilityFailureContract;
+};
+
+namespace _query_detail {
+
+template <typename Alternative>
+struct CapabilityFailureAlternative final {
+  static constexpr bool supported = false;
+  static constexpr bool source = false;
+  static constexpr bool key = false;
+};
+
+template <typename Diagnostic>
+struct CapabilityFailureAlternative<SourceRejection<Diagnostic>> final {
+  using Payload = Diagnostic;
+  static constexpr bool supported = true;
+  static constexpr bool source = true;
+  static constexpr bool key = false;
+};
+
+template <typename KeyFailure>
+struct CapabilityFailureAlternative<KeyRejection<KeyFailure>> final {
+  using Payload = KeyFailure;
+  static constexpr bool supported = true;
+  static constexpr bool source = false;
+  static constexpr bool key = true;
+};
+
+template <typename Needle, typename List>
+struct CapabilityFailureListContains;
+
+template <typename Needle, typename... Alternatives>
+struct CapabilityFailureListContains<Needle, CapabilityFailureList<Alternatives...>> final {
+  static constexpr bool value = (false || ... || zc::isSameType<Needle, Alternatives>());
+};
+
+template <typename List>
+struct CapabilityFailureListShape;
+
+template <typename... Alternatives>
+struct CapabilityFailureListShape<CapabilityFailureList<Alternatives...>> final {
+  static constexpr size_t sourceCount =
+      (size_t{0} + ... + (CapabilityFailureAlternative<Alternatives>::source ? 1 : 0));
+  static constexpr size_t keyCount =
+      (size_t{0} + ... + (CapabilityFailureAlternative<Alternatives>::key ? 1 : 0));
+  static constexpr bool supported =
+      (true && ... && CapabilityFailureAlternative<Alternatives>::supported);
+};
+
+template <typename... Alternatives>
+struct SourceFailurePayload {
+  using Type = void;
+};
+
+template <typename Diagnostic, typename... Alternatives>
+struct SourceFailurePayload<SourceRejection<Diagnostic>, Alternatives...> {
+  using Type = Diagnostic;
+};
+
+template <typename Alternative, typename... Alternatives>
+struct SourceFailurePayload<Alternative, Alternatives...> : SourceFailurePayload<Alternatives...> {
+};
+
+template <typename... Alternatives>
+struct KeyFailurePayload {
+  using Type = void;
+};
+
+template <typename KeyFailure, typename... Alternatives>
+struct KeyFailurePayload<KeyRejection<KeyFailure>, Alternatives...> {
+  using Type = KeyFailure;
+};
+
+template <typename Alternative, typename... Alternatives>
+struct KeyFailurePayload<Alternative, Alternatives...> : KeyFailurePayload<Alternatives...> {};
+
+template <typename List>
+struct CapabilityFailurePayloads;
+
+template <typename... Alternatives>
+struct CapabilityFailurePayloads<CapabilityFailureList<Alternatives...>> final {
+  using Source = typename SourceFailurePayload<Alternatives...>::Type;
+  using Key = typename KeyFailurePayload<Alternatives...>::Type;
+};
+
+template <typename Descriptor>
+class PublishedCapabilityDemand final {
+public:
+  explicit PublishedCapabilityDemand(
+      QueryCapabilityLease<const typename Descriptor::Capability>&& lease) noexcept
+      : leaseField(zc::mv(lease)) {}
+
+  QueryCapabilityLease<const typename Descriptor::Capability> leaseField;
+};
+
+template <typename Diagnostic>
+class SourceRejectedCapabilityDemand final {
+public:
+  explicit SourceRejectedCapabilityDemand(
+      CanonicalNonEmptySequence<Diagnostic>&& diagnostics) noexcept
+      : diagnosticsField(zc::mv(diagnostics)) {}
+
+  CanonicalNonEmptySequence<Diagnostic> diagnosticsField;
+};
+
+template <typename KeyFailure>
+class KeyRejectedCapabilityDemand final {
+public:
+  explicit KeyRejectedCapabilityDemand(KeyFailure&& failure) noexcept
+      : failureField(zc::mv(failure)) {}
+
+  KeyFailure failureField;
+};
+
+class RuntimeRejectedCapabilityDemand final {
+public:
+  explicit RuntimeRejectedCapabilityDemand(QueryRuntimeFailure failure) noexcept
+      : failureField(failure) {}
+
+  QueryRuntimeFailure failureField;
+};
+
+template <typename Alternative>
+struct CapabilityDemandAlternative;
+
+template <typename Diagnostic>
+struct CapabilityDemandAlternative<SourceRejection<Diagnostic>> final {
+  using Type = SourceRejectedCapabilityDemand<Diagnostic>;
+};
+
+template <typename KeyFailure>
+struct CapabilityDemandAlternative<KeyRejection<KeyFailure>> final {
+  using Type = KeyRejectedCapabilityDemand<KeyFailure>;
+};
+
+template <typename Descriptor, typename List>
+struct CapabilityDemandStorage;
+
+template <typename Descriptor, typename... Alternatives>
+struct CapabilityDemandStorage<Descriptor, CapabilityFailureList<Alternatives...>> final {
+  static_assert(CapabilityFailureListShape<CapabilityFailureList<Alternatives...>>::supported,
+                "capability descriptor lists an unsupported failure alternative");
+  static_assert(CapabilityFailureListShape<CapabilityFailureList<Alternatives...>>::sourceCount <=
+                    1,
+                "capability descriptor lists more than one source rejection");
+  static_assert(CapabilityFailureListShape<CapabilityFailureList<Alternatives...>>::keyCount <= 1,
+                "capability descriptor lists more than one key rejection");
+
+  using Type = zc::OneOf<PublishedCapabilityDemand<Descriptor>,
+                         typename CapabilityDemandAlternative<Alternatives>::Type...,
+                         RuntimeRejectedCapabilityDemand>;
+};
+
+}  // namespace _query_detail
+
 /// \brief Move-only caller result of demanding one retained capability.
-///
-/// Diagnostic and key-failure payloads remain dependent so the query layer
-/// does not acquire dependencies on diagnostics or Binder. Callers instantiate
-/// this result only where those concrete payload types are complete.
-template <typename Capability, typename Diagnostic = diagnostics::DiagnosticFact,
-          typename KeyFailure = binder::BinderKeyFailure>
+template <typename Descriptor>
 class CapabilityDemandResult final {
 public:
+  using FailureAlternatives = typename Descriptor::FailureAlternatives;
+
   CapabilityDemandResult(CapabilityDemandResult&&) noexcept = default;
   CapabilityDemandResult& operator=(CapabilityDemandResult&&) noexcept = default;
   ZC_DISALLOW_COPY(CapabilityDemandResult);
 
   ZC_NODISCARD static CapabilityDemandResult published(
-      QueryCapabilityLease<const Capability>&& lease) {
-    zc::Maybe<QueryCapabilityLease<const Capability>> retainedLease(zc::mv(lease));
-    zc::Maybe<KeyFailure> noKeyFailure;
-    return CapabilityDemandResult(CapabilityDemandResultKind::Published, zc::mv(retainedLease),
-                                  zc::Vector<Diagnostic>(), zc::mv(noKeyFailure),
-                                  QueryRuntimeFailure::InvariantViolation);
+      QueryCapabilityLease<const typename Descriptor::Capability>&& lease) {
+    return CapabilityDemandResult(
+        CapabilityDemandResultKind::Published,
+        _query_detail::PublishedCapabilityDemand<Descriptor>(zc::mv(lease)));
   }
 
+  template <typename Diagnostic>
+    requires(_query_detail::CapabilityFailureListContains<SourceRejection<Diagnostic>,
+                                                          FailureAlternatives>::value)
   ZC_NODISCARD static CapabilityDemandResult sourceRejected(
-      zc::Vector<Diagnostic>&& canonicalDiagnostics) {
-    ZC_IREQUIRE(canonicalDiagnostics.size() != 0,
-                "source-rejected capability demand has no diagnostics");
-    zc::Maybe<QueryCapabilityLease<const Capability>> noLease;
-    zc::Maybe<KeyFailure> noKeyFailure;
-    return CapabilityDemandResult(CapabilityDemandResultKind::SourceRejected, zc::mv(noLease),
-                                  zc::mv(canonicalDiagnostics), zc::mv(noKeyFailure),
-                                  QueryRuntimeFailure::InvariantViolation);
+      CanonicalNonEmptySequence<Diagnostic>&& diagnostics) {
+    return CapabilityDemandResult(
+        CapabilityDemandResultKind::SourceRejected,
+        _query_detail::SourceRejectedCapabilityDemand<Diagnostic>(zc::mv(diagnostics)));
   }
 
+  template <typename KeyFailure>
+    requires(_query_detail::CapabilityFailureListContains<KeyRejection<KeyFailure>,
+                                                          FailureAlternatives>::value)
   ZC_NODISCARD static CapabilityDemandResult keyRejected(KeyFailure&& failure) {
-    zc::Maybe<QueryCapabilityLease<const Capability>> noLease;
-    zc::Maybe<KeyFailure> retainedFailure(zc::mv(failure));
-    return CapabilityDemandResult(CapabilityDemandResultKind::KeyRejected, zc::mv(noLease),
-                                  zc::Vector<Diagnostic>(), zc::mv(retainedFailure),
-                                  QueryRuntimeFailure::InvariantViolation);
+    return CapabilityDemandResult(
+        CapabilityDemandResultKind::KeyRejected,
+        _query_detail::KeyRejectedCapabilityDemand<KeyFailure>(zc::mv(failure)));
   }
 
   ZC_NODISCARD static CapabilityDemandResult runtimeRejected(QueryRuntimeFailure failure) {
-    zc::Maybe<QueryCapabilityLease<const Capability>> noLease;
-    zc::Maybe<KeyFailure> noKeyFailure;
-    return CapabilityDemandResult(CapabilityDemandResultKind::RuntimeRejected, zc::mv(noLease),
-                                  zc::Vector<Diagnostic>(), zc::mv(noKeyFailure), failure);
+    return CapabilityDemandResult(CapabilityDemandResultKind::RuntimeRejected,
+                                  _query_detail::RuntimeRejectedCapabilityDemand(failure));
   }
 
   ZC_NODISCARD CapabilityDemandResultKind kind() const noexcept { return kindField; }
   ZC_NODISCARD bool isPublished() const noexcept {
     return kindField == CapabilityDemandResultKind::Published;
   }
+  template <typename Alternatives = FailureAlternatives>
+    requires(_query_detail::CapabilityFailureListShape<Alternatives>::sourceCount == 1)
   ZC_NODISCARD bool isSourceRejected() const noexcept {
     return kindField == CapabilityDemandResultKind::SourceRejected;
   }
+  template <typename Alternatives = FailureAlternatives>
+    requires(_query_detail::CapabilityFailureListShape<Alternatives>::keyCount == 1)
   ZC_NODISCARD bool isKeyRejected() const noexcept {
     return kindField == CapabilityDemandResultKind::KeyRejected;
   }
@@ -487,43 +1161,52 @@ public:
     return kindField == CapabilityDemandResultKind::RuntimeRejected;
   }
 
-  ZC_NODISCARD const QueryCapabilityLease<const Capability>& lease() const ZC_LIFETIMEBOUND {
+  ZC_NODISCARD const QueryCapabilityLease<const typename Descriptor::Capability>& lease() const
+      ZC_LIFETIMEBOUND {
     ZC_IREQUIRE(isPublished(), "capability demand did not publish a lease");
-    return ZC_ASSERT_NONNULL(leaseField);
+    return storageField.template get<_query_detail::PublishedCapabilityDemand<Descriptor>>()
+        .leaseField;
   }
-  ZC_NODISCARD QueryCapabilityLease<const Capability> takeLease() && {
+  ZC_NODISCARD QueryCapabilityLease<const typename Descriptor::Capability> takeLease() && {
     ZC_IREQUIRE(isPublished(), "capability demand did not publish a lease");
-    return zc::mv(ZC_ASSERT_NONNULL(leaseField));
+    return zc::mv(storageField)
+        .template get<_query_detail::PublishedCapabilityDemand<Descriptor>>()
+        .leaseField;
   }
-  ZC_NODISCARD zc::ArrayPtr<const Diagnostic> diagnostics() const ZC_LIFETIMEBOUND {
+
+  template <typename Alternatives = FailureAlternatives>
+    requires(_query_detail::CapabilityFailureListShape<Alternatives>::sourceCount == 1)
+  ZC_NODISCARD const auto& diagnostics() const ZC_LIFETIMEBOUND {
     ZC_IREQUIRE(isSourceRejected(), "capability demand has no source diagnostics");
-    return diagnosticFields.asPtr();
+    using Diagnostic = typename _query_detail::CapabilityFailurePayloads<Alternatives>::Source;
+    return storageField.template get<_query_detail::SourceRejectedCapabilityDemand<Diagnostic>>()
+        .diagnosticsField;
   }
-  ZC_NODISCARD const KeyFailure& keyFailure() const ZC_LIFETIMEBOUND {
+
+  template <typename Alternatives = FailureAlternatives>
+    requires(_query_detail::CapabilityFailureListShape<Alternatives>::keyCount == 1)
+  ZC_NODISCARD const auto& keyFailure() const ZC_LIFETIMEBOUND {
     ZC_IREQUIRE(isKeyRejected(), "capability demand has no key failure");
-    return ZC_ASSERT_NONNULL(keyFailureField);
+    using KeyFailure = typename _query_detail::CapabilityFailurePayloads<Alternatives>::Key;
+    return storageField.template get<_query_detail::KeyRejectedCapabilityDemand<KeyFailure>>()
+        .failureField;
   }
+
   ZC_NODISCARD QueryRuntimeFailure runtimeFailure() const noexcept {
     ZC_IREQUIRE(isRuntimeRejected(), "capability demand has no runtime failure");
-    return runtimeFailureField;
+    return storageField.template get<_query_detail::RuntimeRejectedCapabilityDemand>().failureField;
   }
 
 private:
-  CapabilityDemandResult(CapabilityDemandResultKind kind,
-                         zc::Maybe<QueryCapabilityLease<const Capability>>&& lease,
-                         zc::Vector<Diagnostic>&& diagnostics, zc::Maybe<KeyFailure>&& keyFailure,
-                         QueryRuntimeFailure runtimeFailure) noexcept
-      : kindField(kind),
-        leaseField(zc::mv(lease)),
-        diagnosticFields(zc::mv(diagnostics)),
-        keyFailureField(zc::mv(keyFailure)),
-        runtimeFailureField(runtimeFailure) {}
+  using Storage =
+      typename _query_detail::CapabilityDemandStorage<Descriptor, FailureAlternatives>::Type;
+
+  template <typename Alternative>
+  CapabilityDemandResult(CapabilityDemandResultKind kind, Alternative&& alternative) noexcept
+      : kindField(kind), storageField(zc::mv(alternative)) {}
 
   CapabilityDemandResultKind kindField;
-  zc::Maybe<QueryCapabilityLease<const Capability>> leaseField;
-  zc::Vector<Diagnostic> diagnosticFields;
-  zc::Maybe<KeyFailure> keyFailureField;
-  QueryRuntimeFailure runtimeFailureField;
+  Storage storageField;
 };
 
 /// \brief Universal result of a query demand.
@@ -533,30 +1216,27 @@ public:
   QueryRequestResult& operator=(QueryRequestResult&&) noexcept = default;
   ZC_DISALLOW_COPY(QueryRequestResult);
 
-  ZC_NODISCARD static QueryRequestResult completed(QueryValue&& value);
-  ZC_NODISCARD static QueryRequestResult completed(
-      zc::Arc<RevisionLocalCapabilityMemoBase>&& capabilityMemo);
-  ZC_NODISCARD static QueryRequestResult failed(QueryRuntimeFailure failure);
-
-  ZC_NODISCARD QueryRequestResult clone() const;
-  ZC_NODISCARD bool isCompleted() const noexcept {
-    return valueField != zc::none || capabilityMemoField != nullptr;
-  }
-  ZC_NODISCARD bool isCapability() const noexcept { return capabilityMemoField != nullptr; }
-  ZC_NODISCARD const QueryValue& value() const ZC_LIFETIMEBOUND;
-  ZC_NODISCARD const RevisionLocalCapabilityMemoBase& capabilityMemo() const ZC_LIFETIMEBOUND;
-  ZC_NODISCARD zc::Arc<RevisionLocalCapabilityMemoBase> capabilityMemoArc() const;
-  ZC_NODISCARD zc::Arc<RevisionLocalCapabilityMemoBase> takeCapabilityMemo();
-  ZC_NODISCARD QueryRuntimeFailure failure() const noexcept { return failureField; }
-
 private:
-  QueryRequestResult(zc::Maybe<QueryValue>&& value,
-                     zc::Arc<RevisionLocalCapabilityMemoBase>&& capabilityMemo,
-                     QueryRuntimeFailure failure) noexcept;
+  using Storage = zc::OneOf<QueryValue, zc::Arc<RevisionLocalCapabilityMemoBase>,
+                            CapabilityFailureEnvelope, QueryRuntimeFailure>;
 
-  zc::Maybe<QueryValue> valueField;
-  zc::Arc<RevisionLocalCapabilityMemoBase> capabilityMemoField;
-  QueryRuntimeFailure failureField = QueryRuntimeFailure::InvariantViolation;
+  explicit QueryRequestResult(QueryValue&& value) : storageField(zc::mv(value)) {}
+  explicit QueryRequestResult(zc::Arc<RevisionLocalCapabilityMemoBase>&& capabilityMemo)
+      : storageField(zc::mv(capabilityMemo)) {
+    ZC_IREQUIRE(storageField.template get<zc::Arc<RevisionLocalCapabilityMemoBase>>() != nullptr,
+                "published capability result requires a memo");
+  }
+  explicit QueryRequestResult(CapabilityFailureEnvelope&& rejection)
+      : storageField(zc::mv(rejection)) {}
+  explicit QueryRequestResult(QueryRuntimeFailure failure) : storageField(failure) {}
+
+  Storage storageField;
+
+  friend class QueryDatabase;
+  friend class _query_detail::QueryRequestResultAccess;
+  template <typename Spec>
+  friend class CapabilityResultDecoder;
+  friend class test::QueryRuntimeTestAccess;
 };
 
 /// \brief One actual dependency read and its observed semantic metadata.

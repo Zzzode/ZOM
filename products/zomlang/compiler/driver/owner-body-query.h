@@ -1,6 +1,8 @@
 #pragma once
 
 #include "zomlang/compiler/binder/owner-body-syntax.h"
+#include "zomlang/compiler/binder/stable-binding-facts.h"
+#include "zomlang/compiler/diagnostics/diagnostic-fact.h"
 #include "zomlang/compiler/driver/contextual-binding-key.h"
 #include "zomlang/compiler/query/query-database.h"
 
@@ -11,8 +13,14 @@ struct ModuleBodyOwnersQuery final {
   using Key = ContextualModuleKey;
   using Value = binder::ModuleBodyOwners;
 
-  ZC_NODISCARD static zc::StringPtr domain();
-  ZC_NODISCARD static query::QueryKindContract contract();
+  static constexpr query::SemanticDescriptorMetadata descriptor{
+      "ModuleBodyOwnersQuery"_zcc,
+      "zom.query.module-body-owners"_zcc,
+      query::ReuseClass::Semantic,
+      query::RetentionClass::Retained,
+      query::QueryEqualityPolicy::CanonicalBytes,
+      query::QueryCyclePolicy::Reject,
+      query::QueryCostClass::Linear};
   ZC_NODISCARD static zc::Array<uint8_t> encodeKey(const Key& key);
   ZC_NODISCARD static zc::Maybe<Key> decodeKey(zc::ArrayPtr<const uint8_t> bytes);
   ZC_NODISCARD static zc::Array<uint8_t> encodeValue(const Value& value);
@@ -28,8 +36,14 @@ struct OwnerBodySyntaxQuery final {
   using Key = ContextualBodyOwnerKey;
   using Value = binder::OwnerBodySyntax;
 
-  ZC_NODISCARD static zc::StringPtr domain();
-  ZC_NODISCARD static query::QueryKindContract contract();
+  static constexpr query::SemanticDescriptorMetadata descriptor{
+      "OwnerBodySyntaxQuery"_zcc,
+      "zom.query.owner-body-syntax"_zcc,
+      query::ReuseClass::Semantic,
+      query::RetentionClass::Evictable,
+      query::QueryEqualityPolicy::CanonicalBytes,
+      query::QueryCyclePolicy::Reject,
+      query::QueryCostClass::Linear};
   ZC_NODISCARD static zc::Array<uint8_t> encodeKey(const Key& key);
   ZC_NODISCARD static zc::Maybe<Key> decodeKey(zc::ArrayPtr<const uint8_t> bytes);
   ZC_NODISCARD static zc::Array<uint8_t> encodeValue(const Value& value);
@@ -44,16 +58,62 @@ struct OwnerBodySyntaxQuery final {
 struct OwnerBodyProvenanceQuery final {
   using Key = ContextualBodyOwnerKey;
   using Capability = binder::OwnerBodyProvenance;
+  using FailureAlternatives =
+      query::CapabilityFailureList<query::SourceRejection<diagnostics::DiagnosticFact>,
+                                   query::KeyRejection<binder::BinderKeyFailure>>;
 
-  ZC_NODISCARD static zc::StringPtr domain();
-  ZC_NODISCARD static query::QueryKindContract contract();
+  static constexpr query::CapabilityDescriptorMetadata descriptor{
+      "OwnerBodyProvenanceQuery"_zcc,  "zom.query.owner-body-provenance"_zcc,
+      query::RetentionClass::Retained, query::QueryCyclePolicy::Reject,
+      query::QueryCostClass::Linear,   query::CapabilityAdmission::FinalSealedSnapshot};
   ZC_NODISCARD static zc::Array<uint8_t> encodeKey(const Key& key);
   ZC_NODISCARD static zc::Maybe<Key> decodeKey(zc::ArrayPtr<const uint8_t> bytes);
-  ZC_NODISCARD static query::CapabilityProviderResult<Capability> provide(
-      query::CapabilityQueryContext& context, const Key& key);
-  ZC_NODISCARD static zc::Maybe<zc::Array<uint8_t>> verify(query::CapabilityQueryContext& context,
-                                                           const Key& key,
-                                                           const Capability& candidate);
+  ZC_NODISCARD static query::CapabilityProviderResult<OwnerBodyProvenanceQuery> provide(
+      query::CapabilityQueryContext<OwnerBodyProvenanceQuery>& context, const Key& key);
+  ZC_NODISCARD static zc::Maybe<zc::Array<uint8_t>> verify(
+      query::CapabilityQueryContext<OwnerBodyProvenanceQuery>& context, const Key& key,
+      const Capability& candidate);
 };
 
 }  // namespace zomlang::compiler::driver::incremental_binding_query
+
+namespace zomlang::compiler::query {
+
+template <>
+class CapabilityCandidateContract<driver::incremental_binding_query::OwnerBodyProvenanceQuery>
+    final {
+public:
+  using Descriptor = driver::incremental_binding_query::OwnerBodyProvenanceQuery;
+  ZC_NODISCARD static StableWitnessBytes encode(const Descriptor::Capability& candidate);
+  ZC_NODISCARD static zc::Maybe<zc::Own<Descriptor::Capability>> decode(
+      zc::ArrayPtr<const uint8_t> bytes);
+};
+
+template <>
+class CapabilityFailureContract<driver::incremental_binding_query::OwnerBodyProvenanceQuery,
+                                SourceRejection<diagnostics::DiagnosticFact>>
+    final {
+public:
+  using Descriptor = driver::incremental_binding_query::OwnerBodyProvenanceQuery;
+  using Sequence = CanonicalNonEmptySequence<diagnostics::DiagnosticFact>;
+  ZC_NODISCARD static zc::Array<uint8_t> encode(const Sequence& diagnostics);
+  ZC_NODISCARD static zc::Maybe<Sequence> decode(zc::ArrayPtr<const uint8_t> bytes);
+  ZC_NODISCARD static CapabilityRejectionCheck verify(CapabilityQueryContext<Descriptor>& context,
+                                                      const Descriptor::Key& key,
+                                                      const Sequence& diagnostics);
+};
+
+template <>
+class CapabilityFailureContract<driver::incremental_binding_query::OwnerBodyProvenanceQuery,
+                                KeyRejection<binder::BinderKeyFailure>>
+    final {
+public:
+  using Descriptor = driver::incremental_binding_query::OwnerBodyProvenanceQuery;
+  ZC_NODISCARD static zc::Array<uint8_t> encode(const binder::BinderKeyFailure& failure);
+  ZC_NODISCARD static zc::Maybe<binder::BinderKeyFailure> decode(zc::ArrayPtr<const uint8_t> bytes);
+  ZC_NODISCARD static CapabilityRejectionCheck verify(CapabilityQueryContext<Descriptor>& context,
+                                                      const Descriptor::Key& key,
+                                                      const binder::BinderKeyFailure& failure);
+};
+
+}  // namespace zomlang::compiler::query

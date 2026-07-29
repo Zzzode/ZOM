@@ -158,6 +158,47 @@ bool isCanonicalDomain(zc::StringPtr domain) {
   return true;
 }
 
+bool isPrintableAscii(zc::StringPtr value) {
+  if (value.size() == 0) { return false; }
+  for (char character : value) {
+    if (character < 0x20 || character > 0x7e) { return false; }
+  }
+  return true;
+}
+
+bool descriptorMetadataIsValid(const QueryDescriptorInventoryRow& row) {
+  if (!isPrintableAscii(row.descriptorType) || !isPrintableAscii(row.name) ||
+      !isCanonicalDomain(row.domain) || !isPrintableAscii(row.ownerPathFamily) ||
+      row.equality != QueryEqualityPolicy::CanonicalBytes ||
+      row.cycle != QueryCyclePolicy::Reject || row.cost != QueryCostClass::Linear) {
+    return false;
+  }
+  switch (row.kind) {
+    case QueryDescriptorKind::Input:
+      return row.reuse == ReuseClass::Input && row.retention == RetentionClass::Retained &&
+             row.admission == CapabilityAdmission::AnySnapshot;
+    case QueryDescriptorKind::Semantic:
+      return (row.reuse == ReuseClass::Semantic || row.reuse == ReuseClass::Persisted) &&
+             row.durability == Durability::Frozen &&
+             row.admission == CapabilityAdmission::AnySnapshot &&
+             row.role == QueryDescriptorRole::Ordinary;
+    case QueryDescriptorKind::RevisionLocalCapability:
+      return row.reuse == ReuseClass::RevisionLocal && row.retention == RetentionClass::Retained &&
+             row.durability == Durability::Frozen && row.role == QueryDescriptorRole::Ordinary;
+  }
+  return false;
+}
+
+bool descriptorRowsEqual(const QueryDescriptorInventoryRow& left,
+                         const QueryDescriptorInventoryRow& right) {
+  return left.ordinal == right.ordinal && left.descriptorType == right.descriptorType &&
+         left.name == right.name && left.domain == right.domain && left.kind == right.kind &&
+         left.role == right.role && left.reuse == right.reuse &&
+         left.retention == right.retention && left.durability == right.durability &&
+         left.equality == right.equality && left.cycle == right.cycle && left.cost == right.cost &&
+         left.admission == right.admission && left.ownerPathFamily == right.ownerPathFamily;
+}
+
 bool keyFingerprintMatches(const CanonicalQueryKey& left, const CanonicalQueryKey& right) {
   return left.kind() == right.kind() && left.fingerprint() == right.fingerprint();
 }
@@ -276,14 +317,17 @@ struct SnapshotRuntime final {
 
 class SnapshotState final : public zc::AtomicRefcounted {
 public:
-  SnapshotState(DatabaseRevision revision, zc::ArrayPtr<const DatabaseRevision> changes,
+  SnapshotState(QueryDatabaseIdentity&& database, DatabaseRevision revision,
+                zc::ArrayPtr<const DatabaseRevision> changes,
                 zc::Arc<SemanticContextCapabilityArena>&& semanticContextArena)
-      : revision(revision),
+      : database(zc::mv(database)),
+        revision(revision),
         capabilityArena(zc::arc<SnapshotCapabilityArena>(revision, zc::mv(semanticContextArena))) {
     ZC_IREQUIRE(changes.size() == 4, "snapshot durability revision count is not four");
     for (size_t index = 0; index < 4; ++index) { lastChanged[index] = changes[index]; }
   }
 
+  QueryDatabaseIdentity database;
   DatabaseRevision revision;
   DatabaseRevision lastChanged[4];
   zc::Arc<SnapshotCapabilityArena> capabilityArena;
@@ -291,13 +335,12 @@ public:
 };
 
 struct RegisteredKind final {
-  RegisteredKind(QueryKindId id, QueryKindContract&& contract,
+  RegisteredKind(const QueryDescriptorInventoryRow& descriptor,
                  QueryDatabase::ErasedKeyValidator&& keyValidator,
                  zc::Maybe<QueryDatabase::ErasedProvider>&& provider,
                  zc::Maybe<QueryDatabase::ErasedVerifier>&& verifier,
                  zc::Maybe<QueryDatabase::ErasedCapabilityEvaluator>&& capabilityEvaluator) noexcept
-      : id(id),
-        contract(zc::mv(contract)),
+      : descriptor(descriptor),
         keyValidator(zc::mv(keyValidator)),
         provider(zc::mv(provider)),
         verifier(zc::mv(verifier)),
@@ -306,28 +349,81 @@ struct RegisteredKind final {
   RegisteredKind& operator=(RegisteredKind&&) noexcept = default;
   ZC_DISALLOW_COPY(RegisteredKind);
 
-  QueryKindId id;
-  QueryKindContract contract;
+  QueryDescriptorInventoryRow descriptor;
   QueryDatabase::ErasedKeyValidator keyValidator;
   zc::Maybe<QueryDatabase::ErasedProvider> provider;
   zc::Maybe<QueryDatabase::ErasedVerifier> verifier;
   zc::Maybe<QueryDatabase::ErasedCapabilityEvaluator> capabilityEvaluator;
 };
 
+struct DescriptorSlot final {
+  explicit DescriptorSlot(const QueryDescriptorInventoryRow& expected) : expected(expected) {}
+  DescriptorSlot(DescriptorSlot&&) noexcept = default;
+  DescriptorSlot& operator=(DescriptorSlot&&) noexcept = default;
+  ZC_DISALLOW_COPY(DescriptorSlot);
+
+  QueryDescriptorInventoryRow expected;
+  zc::Maybe<RegisteredKind> registered;
+};
+
+class FinalSealAdmission final : public zc::AtomicRefcounted {
+public:
+  FinalSealAdmission(QueryDatabaseIdentity&& database, DatabaseRevision revision,
+                     CanonicalQueryKey&& contextKey, zc::Array<uint8_t>&& finalWitness) noexcept
+      : database(zc::mv(database)),
+        revision(revision),
+        contextKey(zc::mv(contextKey)),
+        finalWitness(zc::mv(finalWitness)) {}
+  ~FinalSealAdmission() noexcept(false) override = default;
+  ZC_DISALLOW_COPY_AND_MOVE(FinalSealAdmission);
+
+  QueryDatabaseIdentity database;
+  DatabaseRevision revision;
+  CanonicalQueryKey contextKey;
+  zc::Array<uint8_t> finalWitness;
+};
+
 struct DatabaseData final {
-  explicit DatabaseData(zc::Arc<SemanticContextCapabilityArena>&& capabilityArena)
-      : capabilityArena(zc::mv(capabilityArena)),
-        current(zc::arc<SnapshotState>(DatabaseRevision(), zc::arrayPtr(initialLastChanged),
-                                       this->capabilityArena.addRef())) {}
+  DatabaseData(QueryDatabaseIdentity&& database, QueryDatabaseIdentity&& snapshotDatabase,
+               QueryDescriptorInventoryRef descriptorInventory,
+               zc::Arc<SemanticContextCapabilityArena>&& capabilityArena)
+      : database(zc::mv(database)),
+        descriptorInventory(descriptorInventory),
+        capabilityArena(zc::mv(capabilityArena)),
+        current(zc::arc<SnapshotState>(zc::mv(snapshotDatabase), DatabaseRevision(),
+                                       zc::arrayPtr(initialLastChanged),
+                                       this->capabilityArena.addRef())) {
+    ZC_IREQUIRE(isPrintableAscii(descriptorInventory.identity()),
+                "query descriptor inventory identity must be printable ASCII");
+    ZC_IREQUIRE(descriptorInventory.rows().size() <= UINT32_MAX,
+                "query descriptor inventory exceeds the ordinal range");
+    for (size_t index = 0; index < descriptorInventory.rows().size(); ++index) {
+      const auto& row = descriptorInventory.rows()[index];
+      ZC_IREQUIRE(row.ordinal == index, "query descriptor inventory ordinals are not contiguous");
+      ZC_IREQUIRE(descriptorMetadataIsValid(row),
+                  "query descriptor inventory contains invalid metadata");
+      for (size_t priorIndex = 0; priorIndex < index; ++priorIndex) {
+        const auto& prior = descriptorInventory.rows()[priorIndex];
+        ZC_IREQUIRE(prior.descriptorType != row.descriptorType,
+                    "query descriptor inventory repeats a descriptor type");
+        ZC_IREQUIRE(prior.name != row.name, "query descriptor inventory repeats a descriptor name");
+        ZC_IREQUIRE(prior.domain != row.domain,
+                    "query descriptor inventory repeats a descriptor domain");
+      }
+      descriptors.add(DescriptorSlot(row));
+    }
+  }
 
   DatabaseRevision initialLastChanged[4] = {};
 
-  zc::Vector<RegisteredKind> kinds;
+  zc::Vector<DescriptorSlot> descriptors;
+  QueryDatabaseIdentity database;
+  QueryDescriptorInventoryRef descriptorInventory;
   zc::Arc<SemanticContextCapabilityArena> capabilityArena;
   zc::Arc<SnapshotState> current;
   bool registrySealed = false;
   bool transactionOpen = false;
-  bool inputRootSealed = false;
+  zc::Arc<const FinalSealAdmission> finalSeal;
 };
 
 struct DetailedDemand final {
@@ -339,6 +435,13 @@ struct DetailedDemand final {
 
   QueryRequestResult result;
   MemoMetadata metadata;
+};
+
+struct FinalSealPhaseTwoGateState final {
+  bool armed = false;
+  bool claimed = false;
+  bool entered = false;
+  bool released = false;
 };
 
 struct ParallelDemandData final {
@@ -359,12 +462,13 @@ public:
 
 struct StagedInput final {
   StagedInput(InputEntry&& current, QueryValue&& baseValue, bool changed, bool existedAtBase,
-              bool present) noexcept
+              bool present, bool operated) noexcept
       : current(zc::mv(current)),
         baseValue(zc::mv(baseValue)),
         changed(changed),
         existedAtBase(existedAtBase),
-        present(present) {}
+        present(present),
+        operated(operated) {}
   StagedInput(StagedInput&&) noexcept = default;
   StagedInput& operator=(StagedInput&&) noexcept = default;
   ZC_DISALLOW_COPY(StagedInput);
@@ -378,6 +482,7 @@ struct StagedInput final {
   bool changed;
   bool existedAtBase;
   bool present;
+  bool operated;
 };
 
 zc::Maybe<size_t> exactInputIndex(const SnapshotRuntime& runtime, const CanonicalQueryKey& key,
@@ -479,53 +584,48 @@ QueryEventKind failureEvent(QueryRuntimeFailure failure) {
     case QueryRuntimeFailure::ProviderRejected:
     case QueryRuntimeFailure::FingerprintCollision:
     case QueryRuntimeFailure::InvariantViolation:
+    case QueryRuntimeFailure::FinalSealRequired:
+    case QueryRuntimeFailure::FinalSealMismatch:
+    case QueryRuntimeFailure::AllocationFailure:
       return QueryEventKind::RuntimeFailed;
   }
   return QueryEventKind::RuntimeFailed;
 }
 
-void retainCapabilityDependency(zc::Vector<zc::Arc<RevisionLocalCapabilityMemoBase>>& retained,
-                                zc::Arc<RevisionLocalCapabilityMemoBase>&& dependency) {
-  size_t position = 0;
-  while (position < retained.size() && retained[position]->key() < dependency->key()) {
-    ++position;
-  }
-  if (position < retained.size() && retained[position]->key() == dependency->key()) { return; }
-  retained.add(zc::mv(dependency));
-  for (size_t index = retained.size() - 1; index > position; --index) {
-    auto temporary = zc::mv(retained[index]);
-    retained[index] = zc::mv(retained[index - 1]);
-    retained[index - 1] = zc::mv(temporary);
-  }
+zc::Arc<const FinalSealAdmission> retainAdmission(
+    const zc::Arc<const FinalSealAdmission>& admission) {
+  if (admission == nullptr) { return nullptr; }
+  return admission.addRef();
 }
 
 }  // namespace
 
-QueryKindContract::QueryKindContract(zc::String&& domain, ReuseClass reuseClass,
-                                     RetentionClass retention, bool isInput,
-                                     Durability inputDurability) noexcept
-    : domainField(zc::mv(domain)),
-      reuseClassField(reuseClass),
-      retentionField(retention),
-      isInputField(isInput),
-      inputDurabilityField(inputDurability) {}
+namespace _query_detail {
 
-zc::Maybe<QueryKindContract> QueryKindContract::input(zc::StringPtr domain, Durability durability) {
-  if (!isCanonicalDomain(domain)) { return zc::none; }
-  return QueryKindContract(zc::str(domain), ReuseClass::Semantic, RetentionClass::Retained, true,
-                           durability);
-}
+class FinalSealPreparationState final : public zc::AtomicRefcounted {
+public:
+  FinalSealPreparationState(zc::Arc<SnapshotState>&& snapshot,
+                            const QueryDescriptorInventoryRow& descriptor) noexcept
+      : snapshotField(zc::mv(snapshot)), descriptorField(descriptor) {}
+  ~FinalSealPreparationState() noexcept(false) override = default;
+  ZC_DISALLOW_COPY_AND_MOVE(FinalSealPreparationState);
 
-zc::Maybe<QueryKindContract> QueryKindContract::derived(zc::StringPtr domain, ReuseClass reuseClass,
-                                                        RetentionClass retention) {
-  if (!isCanonicalDomain(domain)) { return zc::none; }
-  return QueryKindContract(zc::str(domain), reuseClass, retention, false, Durability::Frozen);
-}
+  zc::Arc<SnapshotState> snapshotField;
+  QueryDescriptorInventoryRow descriptorField;
+};
 
-QueryKindContract QueryKindContract::clone() const {
-  return QueryKindContract(zc::str(domainField), reuseClassField, retentionField, isInputField,
-                           inputDurabilityField);
-}
+FinalSealPreparation::FinalSealPreparation(
+    QueryDatabaseIdentity&& database, DatabaseRevision revision, CanonicalQueryKey&& contextKey,
+    zc::Arc<const FinalSealPreparationState>&& state) noexcept
+    : databaseField(zc::mv(database)),
+      revisionField(revision),
+      contextKeyField(zc::mv(contextKey)),
+      stateField(zc::mv(state)) {}
+FinalSealPreparation::FinalSealPreparation(FinalSealPreparation&&) noexcept = default;
+FinalSealPreparation& FinalSealPreparation::operator=(FinalSealPreparation&&) noexcept = default;
+FinalSealPreparation::~FinalSealPreparation() noexcept(false) = default;
+
+}  // namespace _query_detail
 
 struct CancellationSource::Impl final {
   Impl() : state(zc::arc<CancellationState>()) {}
@@ -560,14 +660,49 @@ CancellationSource::Token CancellationSource::Token::clone() const {
 bool CancellationSource::Token::isCancelled() const { return *impl->state->cancelled.lockShared(); }
 
 struct QueryDatabase::Impl final {
-  Impl(basic::ThreadPool& scheduler,
+  Impl(basic::ThreadPool& scheduler, QueryDescriptorInventoryRef descriptorInventory,
        zc::Arc<SemanticContextCapabilityArena>&& capabilityArena) noexcept
-      : data(DatabaseData(zc::mv(capabilityArena))), scheduler(scheduler) {}
+      : identity(QueryDatabaseIdentity::create()),
+        data(DatabaseData(identity.retain(), identity.retain(), descriptorInventory,
+                          zc::mv(capabilityArena))),
+        scheduler(scheduler) {}
 
   enum class KeyAdmission : uint8_t { Trusted, Validate };
 
+  QueryDatabaseIdentity identity;
   zc::MutexGuarded<DatabaseData> data;
+  zc::MutexGuarded<size_t> liveBorrowers{0};
+  zc::MutexGuarded<FinalSealPhaseTwoGateState> finalSealPhaseTwoGate;
   basic::ThreadPool& scheduler;
+
+  void retainBorrower() { ++*liveBorrowers.lockExclusive(); }
+
+  void releaseBorrower() {
+    auto count = liveBorrowers.lockExclusive();
+    ZC_IREQUIRE(*count != 0, "query database borrower count underflow");
+    --*count;
+  }
+
+  void requireNoBorrowers() const {
+    ZC_IREQUIRE(*liveBorrowers.lockShared() == 0,
+                "query database destroyed while wrappers still borrow it");
+  }
+
+  CanonicalQueryKey makeCanonicalKey(const RegisteredKind& kind,
+                                     zc::Array<uint8_t>&& keyBytes) const {
+    static constexpr zc::StringPtr fingerprintDomain = "zom.query-key"_zc;
+    const auto domain = kind.descriptor.domain;
+    zc::Vector<uint8_t> preimage;
+    for (char value : fingerprintDomain) { preimage.add(static_cast<uint8_t>(value)); }
+    preimage.add(0);
+    appendUint32(preimage, static_cast<uint32_t>(domain.size()));
+    for (char value : domain) { preimage.add(static_cast<uint8_t>(value)); }
+    appendUint32(preimage, static_cast<uint32_t>(keyBytes.size()));
+    for (uint8_t value : keyBytes) { preimage.add(value); }
+    auto fingerprintBytes = vectorToArray(zc::mv(preimage));
+    return CanonicalQueryKey(QueryKindId(kind.descriptor.ordinal), sha256(fingerprintBytes.asPtr()),
+                             zc::mv(keyBytes));
+  }
 
   zc::Maybe<CanonicalQueryKey> makeKeyInternal(zc::StringPtr domain, zc::Array<uint8_t>&& keyBytes,
                                                QueryRuntimeFailure& failure,
@@ -580,29 +715,23 @@ struct QueryDatabase::Impl final {
       return zc::none;
     }
     auto locked = data.lockShared();
-    const RegisteredKind* kind = nullptr;
-    for (const auto& candidate : locked->kinds) {
-      if (candidate.contract.domain() == domain) {
-        kind = &candidate;
+    zc::Maybe<size_t> descriptorIndex;
+    for (size_t index = 0; index < locked->descriptors.size(); ++index) {
+      if (locked->descriptors[index].expected.domain == domain) {
+        descriptorIndex = index;
         break;
       }
     }
-    if (kind == nullptr) { return zc::none; }
-    if (admission == KeyAdmission::Validate && !kind->keyValidator(keyBytes.asPtr())) {
+    if (descriptorIndex == zc::none) { return zc::none; }
+    const auto& slot = locked->descriptors[ZC_REQUIRE_NONNULL(descriptorIndex)];
+    if (slot.registered == zc::none) { return zc::none; }
+    const auto& kind = ZC_REQUIRE_NONNULL(slot.registered);
+    if (admission == KeyAdmission::Validate && !kind.keyValidator(keyBytes.asPtr())) {
       failure = QueryRuntimeFailure::InvalidKeyEncoding;
       return zc::none;
     }
 
-    static constexpr zc::StringPtr fingerprintDomain = "zom.query-key"_zc;
-    zc::Vector<uint8_t> preimage;
-    for (char value : fingerprintDomain) { preimage.add(static_cast<uint8_t>(value)); }
-    preimage.add(0);
-    appendUint32(preimage, static_cast<uint32_t>(domain.size()));
-    for (char value : domain) { preimage.add(static_cast<uint8_t>(value)); }
-    appendUint32(preimage, static_cast<uint32_t>(keyBytes.size()));
-    for (uint8_t value : keyBytes) { preimage.add(value); }
-    auto fingerprintBytes = vectorToArray(zc::mv(preimage));
-    return CanonicalQueryKey(kind->id, sha256(fingerprintBytes.asPtr()), zc::mv(keyBytes));
+    return makeCanonicalKey(kind, zc::mv(keyBytes));
   }
 
   zc::Maybe<CanonicalQueryKey> makeKey(zc::StringPtr domain, zc::Array<uint8_t>&& keyBytes,
@@ -615,10 +744,22 @@ struct QueryDatabase::Impl final {
     return makeKeyInternal(domain, zc::mv(keyBytes), failure, KeyAdmission::Validate);
   }
 
+  zc::Maybe<QueryKindId> kindId(zc::StringPtr domain) const {
+    auto locked = data.lockShared();
+    for (const auto& slot : locked->descriptors) {
+      if (slot.expected.domain == domain && slot.registered != zc::none) {
+        return QueryKindId(slot.expected.ordinal);
+      }
+    }
+    return zc::none;
+  }
+
   RegisteredKind& kind(QueryKindId id) {
     auto locked = data.lockExclusive();
-    ZC_IREQUIRE(id.value() < locked->kinds.size(), "query kind id is out of range");
-    return locked->kinds[id.value()];
+    ZC_IREQUIRE(id.value() < locked->descriptors.size(), "query kind id is out of range");
+    auto& slot = locked->descriptors[id.value()];
+    ZC_IREQUIRE(slot.registered != zc::none, "query descriptor slot is not registered");
+    return ZC_REQUIRE_NONNULL(slot.registered);
   }
 
   void appendEvent(const SnapshotState& snapshot, const CanonicalQueryKey& key,
@@ -629,7 +770,8 @@ struct QueryDatabase::Impl final {
 
   DetailedDemand demand(zc::Arc<SnapshotState> snapshot, CanonicalQueryKey&& key,
                         zc::Vector<CanonicalQueryKey>&& activeChain,
-                        const CancellationSource::Token& cancellation, bool allowParallelGroups);
+                        const CancellationSource::Token& cancellation, bool allowParallelGroups,
+                        zc::Arc<const FinalSealAdmission> admission);
 
   DetailedDemand probeInput(zc::Arc<SnapshotState> snapshot, CanonicalQueryKey&& key,
                             const CancellationSource::Token& cancellation);
@@ -637,46 +779,64 @@ struct QueryDatabase::Impl final {
   zc::Vector<DetailedDemand> demandParallel(zc::Arc<SnapshotState> snapshot,
                                             zc::ArrayPtr<const CanonicalQueryKey> keys,
                                             zc::ArrayPtr<const CanonicalQueryKey> activeChain,
-                                            zc::Arc<Flight> flight);
+                                            zc::Arc<Flight> flight,
+                                            zc::Arc<const FinalSealAdmission> admission);
 
   DetailedDemand execute(zc::Arc<SnapshotState> snapshot, RegisteredKind& kind,
                          CanonicalQueryKey&& key, zc::Maybe<Memo>&& prior,
                          zc::Vector<CanonicalQueryKey>&& activeChain, zc::Arc<Flight> flight,
-                         bool allowParallelGroups);
+                         bool allowParallelGroups, zc::Arc<const FinalSealAdmission> admission);
 };
 
 struct QueryContext::Impl final {
   Impl(QueryDatabase::Impl& database, zc::Arc<SnapshotState> snapshot,
        zc::Vector<CanonicalQueryKey>&& activeChain, zc::Arc<Flight> flight,
-       bool allowParallelGroups) noexcept
+       bool allowParallelGroups, zc::Arc<const FinalSealAdmission>&& admission) noexcept
       : database(database),
         snapshot(zc::mv(snapshot)),
         activeChain(zc::mv(activeChain)),
         flight(zc::mv(flight)),
-        allowParallelGroups(allowParallelGroups) {}
+        allowParallelGroups(allowParallelGroups),
+        admission(zc::mv(admission)) {
+    database.retainBorrower();
+  }
+  ~Impl() noexcept(false) { database.releaseBorrower(); }
 
   QueryDatabase::Impl& database;
   zc::Arc<SnapshotState> snapshot;
   zc::Vector<CanonicalQueryKey> activeChain;
   zc::Arc<Flight> flight;
   bool allowParallelGroups;
+  zc::Arc<const FinalSealAdmission> admission;
   zc::Vector<DependencyGroup> dependencies;
   zc::Vector<zc::Arc<RevisionLocalCapabilityMemoBase>> capabilityDependencies;
   zc::Maybe<QueryRuntimeFailure> failure;
 };
 
 struct QuerySnapshot::Impl final {
-  Impl(QueryDatabase::Impl& database, zc::Arc<SnapshotState>&& snapshot) noexcept
-      : database(database), snapshot(zc::mv(snapshot)) {}
+  Impl(QueryDatabase::Impl& database, zc::Arc<SnapshotState>&& snapshot,
+       zc::Arc<const FinalSealAdmission>&& admission) noexcept
+      : database(database), snapshot(zc::mv(snapshot)), admission(zc::mv(admission)) {
+    database.retainBorrower();
+  }
+  ~Impl() noexcept(false) { database.releaseBorrower(); }
   QueryDatabase::Impl& database;
   zc::Arc<SnapshotState> snapshot;
+  zc::Arc<const FinalSealAdmission> admission;
 };
 
 struct InputTransaction::Impl final {
-  Impl(QueryDatabase::Impl& database, DatabaseRevision baseRevision,
-       zc::Vector<StagedInput>&& inputs) noexcept
-      : database(database), baseRevision(baseRevision), inputs(zc::mv(inputs)) {}
+  Impl(QueryDatabase::Impl& database, QueryDatabaseIdentity&& databaseIdentity,
+       DatabaseRevision baseRevision, zc::Vector<StagedInput>&& inputs) noexcept
+      : database(database),
+        databaseIdentity(zc::mv(databaseIdentity)),
+        baseRevision(baseRevision),
+        inputs(zc::mv(inputs)) {
+    database.retainBorrower();
+  }
+  ~Impl() noexcept(false) { database.releaseBorrower(); }
   QueryDatabase::Impl& database;
+  QueryDatabaseIdentity databaseIdentity;
   DatabaseRevision baseRevision;
   zc::Vector<StagedInput> inputs;
   bool closed = false;
@@ -689,14 +849,31 @@ QueryContext::~QueryContext() noexcept(false) = default;
 
 bool QueryContext::isCancelled() const { return impl->flight->isCancelled(); }
 
-const SemanticContextCapabilityResources& QueryContext::semanticContextResources() const {
-  return impl->snapshot->capabilityArena->resources();
+const QueryDatabaseIdentity& QueryContext::databaseIdentity() const {
+  return impl->snapshot->database;
 }
 
-bool QueryContext::activeMaterializationReady() const {
+DatabaseRevision QueryContext::snapshotRevision() const noexcept {
+  return impl->snapshot->revision;
+}
+
+zc::Maybe<QueryRuntimeFailure> QueryContext::inheritedFinalAdmissionFailure() const {
+  if (impl->admission == nullptr) { return QueryRuntimeFailure::FinalSealRequired; }
   auto locked = impl->database.data.lockShared();
-  return locked->inputRootSealed &&
-         locked->current->revision.value() == impl->snapshot->revision.value();
+  if (locked->finalSeal == nullptr || impl->admission != locked->finalSeal ||
+      impl->admission->database != locked->database ||
+      impl->admission->database != impl->snapshot->database ||
+      impl->admission->revision != impl->snapshot->revision ||
+      impl->admission->revision != locked->current->revision ||
+      impl->admission->contextKey != locked->finalSeal->contextKey ||
+      impl->admission->finalWitness.asPtr() != locked->finalSeal->finalWitness.asPtr()) {
+    return QueryRuntimeFailure::FinalSealMismatch;
+  }
+  return zc::none;
+}
+
+const SemanticContextCapabilityResources& QueryContext::semanticContextResources() const {
+  return impl->snapshot->capabilityArena->resources();
 }
 
 zc::Maybe<QueryRuntimeFailure> QueryContext::capabilityPublicationFailure() const {
@@ -708,18 +885,19 @@ zc::Maybe<QueryRuntimeFailure> QueryContext::capabilityPublicationFailure() cons
 QueryRequestResult QueryContext::publishCapability(
     zc::Own<_query_detail::CapabilityMemoBuilderBase>&& builder) {
   ZC_IF_SOME(failure, capabilityPublicationFailure()) {
-    return QueryRequestResult::failed(failure);
+    return _query_detail::QueryRequestResultAccess::runtimeRejected(failure);
   }
   ZC_IREQUIRE(impl->activeChain.size() != 0, "capability publication has no active query key");
-  auto memo = builder->publish(impl->activeChain.back().clone(), impl->snapshot->revision,
-                               impl->snapshot->capabilityArena.addRef(),
+  auto memo = builder->publish(impl->snapshot->database.retain(), impl->activeChain.back().clone(),
+                               impl->snapshot->revision, impl->snapshot->capabilityArena.addRef(),
                                zc::mv(impl->capabilityDependencies));
-  return QueryRequestResult::completed(zc::mv(memo));
+  return _query_detail::QueryRequestResultAccess::capabilityPublished(zc::mv(memo));
 }
 
 zc::Vector<DetailedDemand> QueryDatabase::Impl::demandParallel(
     zc::Arc<SnapshotState> snapshot, zc::ArrayPtr<const CanonicalQueryKey> keys,
-    zc::ArrayPtr<const CanonicalQueryKey> activeChain, zc::Arc<Flight> flight) {
+    zc::ArrayPtr<const CanonicalQueryKey> activeChain, zc::Arc<Flight> flight,
+    zc::Arc<const FinalSealAdmission> admission) {
   auto state = zc::arc<ParallelDemandState>(keys.size());
   for (size_t index = 0; index < keys.size(); ++index) {
     zc::Vector<CanonicalQueryKey> chain;
@@ -727,15 +905,17 @@ zc::Vector<DetailedDemand> QueryDatabase::Impl::demandParallel(
     auto cancellation = flight->cancellationToken();
     scheduler.enqueue([&database = *this, snapshot = snapshot.addRef(), key = keys[index].clone(),
                        chain = zc::mv(chain), cancellation = zc::mv(cancellation),
-                       state = state.addRef(), index]() mutable {
+                       state = state.addRef(), admission = retainAdmission(admission),
+                       index]() mutable {
       zc::Maybe<DetailedDemand> outcome;
       auto exception = zc::runCatchingExceptions([&]() {
-        outcome =
-            database.demand(snapshot.addRef(), zc::mv(key), zc::mv(chain), cancellation, false);
+        outcome = database.demand(snapshot.addRef(), zc::mv(key), zc::mv(chain), cancellation,
+                                  false, zc::mv(admission));
       });
       if (exception != zc::none) {
-        outcome = DetailedDemand(
-            QueryRequestResult::failed(QueryRuntimeFailure::InvariantViolation), MemoMetadata());
+        outcome = DetailedDemand(_query_detail::QueryRequestResultAccess::runtimeRejected(
+                                     QueryRuntimeFailure::InvariantViolation),
+                                 MemoMetadata());
       }
       auto locked = state->data.lockExclusive();
       locked->results[index] = zc::mv(ZC_REQUIRE_NONNULL(outcome));
@@ -764,23 +944,31 @@ QueryRequestResult QueryContext::getEncoded(zc::StringPtr domain, zc::Array<uint
   auto key = impl->database.makeKey(domain, zc::mv(keyBytes), keyFailure);
   if (key == zc::none) {
     impl->failure = keyFailure;
-    return QueryRequestResult::failed(keyFailure);
+    return _query_detail::QueryRequestResultAccess::runtimeRejected(keyFailure);
   }
   auto demandedKey = ZC_REQUIRE_NONNULL(key).clone();
   zc::Vector<CanonicalQueryKey> chain;
   for (const auto& active : impl->activeChain) { chain.add(active.clone()); }
   auto cancellation = impl->flight->cancellationToken();
   auto demand = impl->database.demand(impl->snapshot.addRef(), zc::mv(ZC_REQUIRE_NONNULL(key)),
-                                      zc::mv(chain), cancellation, impl->allowParallelGroups);
-  if (!demand.result.isCompleted()) {
-    impl->failure = demand.result.failure();
+                                      zc::mv(chain), cancellation, impl->allowParallelGroups,
+                                      retainAdmission(impl->admission));
+  if (_query_detail::QueryRequestResultAccess::isRuntimeRejected(demand.result)) {
+    impl->failure = _query_detail::QueryRequestResultAccess::runtimeFailure(demand.result);
     return zc::mv(demand.result);
   }
-  if (demand.result.isCapability()) {
+  if (_query_detail::QueryRequestResultAccess::isCapabilityPublished(demand.result)) {
+    const auto& memo = _query_detail::QueryRequestResultAccess::capabilityMemo(demand.result);
     impl->dependencies.add(DependencyGroup::sequential(DependencyRecord::revisionLocalCapability(
         zc::mv(demandedKey), demand.metadata.changedAt(), demand.metadata.minimumDurability(),
-        demand.result.capabilityMemo().stableWitness())));
-    retainCapabilityDependency(impl->capabilityDependencies, demand.result.capabilityMemoArc());
+        _query_detail::QueryRequestResultAccess::memoStableWitness(memo))));
+    _query_detail::QueryRequestResultAccess::retainCapabilityDependency(
+        impl->capabilityDependencies,
+        _query_detail::QueryRequestResultAccess::retainCapabilityMemo(demand.result));
+  } else if (_query_detail::QueryRequestResultAccess::isCapabilityRejected(demand.result)) {
+    impl->dependencies.add(DependencyGroup::sequential(DependencyRecord(
+        zc::mv(demandedKey), demand.metadata.changedAt(), demand.metadata.minimumDurability())));
+    return zc::mv(demand.result);
   } else {
     impl->dependencies.add(DependencyGroup::sequential(DependencyRecord(
         zc::mv(demandedKey), demand.metadata.changedAt(), demand.metadata.minimumDurability())));
@@ -794,19 +982,26 @@ QueryRequestResult QueryContext::probeInputEncoded(zc::StringPtr domain,
   auto key = impl->database.makeValidatedKey(domain, zc::mv(keyBytes), keyFailure);
   if (key == zc::none) {
     impl->failure = keyFailure;
-    return QueryRequestResult::failed(keyFailure);
+    return _query_detail::QueryRequestResultAccess::runtimeRejected(keyFailure);
   }
   auto demandedKey = ZC_REQUIRE_NONNULL(key).clone();
   auto cancellation = impl->flight->cancellationToken();
   auto demand = impl->database.probeInput(impl->snapshot.addRef(), zc::mv(ZC_REQUIRE_NONNULL(key)),
                                           cancellation);
-  if (!demand.result.isCompleted()) {
-    impl->failure = demand.result.failure();
+  if (_query_detail::QueryRequestResultAccess::isRuntimeRejected(demand.result)) {
+    impl->failure = _query_detail::QueryRequestResultAccess::runtimeFailure(demand.result);
     return zc::mv(demand.result);
   }
-  const auto observation = demand.result.value().kind() == QueryValueKind::Absence
-                               ? InputProbeObservation::Absent
-                               : InputProbeObservation::Present;
+  if (!_query_detail::QueryRequestResultAccess::isSemantic(demand.result)) {
+    impl->failure = QueryRuntimeFailure::InvariantViolation;
+    return _query_detail::QueryRequestResultAccess::runtimeRejected(
+        QueryRuntimeFailure::InvariantViolation);
+  }
+  const auto observation =
+      _query_detail::QueryRequestResultAccess::semanticValue(demand.result).kind() ==
+              QueryValueKind::Absence
+          ? InputProbeObservation::Absent
+          : InputProbeObservation::Present;
   impl->dependencies.add(DependencyGroup::sequential(
       DependencyRecord(zc::mv(demandedKey), demand.metadata.changedAt(),
                        demand.metadata.minimumDurability(), observation)));
@@ -818,7 +1013,8 @@ zc::Vector<QueryRequestResult> QueryContext::getParallelEncoded(
   if (!impl->allowParallelGroups) {
     impl->failure = QueryRuntimeFailure::InvariantViolation;
     zc::Vector<QueryRequestResult> failed;
-    failed.add(QueryRequestResult::failed(QueryRuntimeFailure::InvariantViolation));
+    failed.add(_query_detail::QueryRequestResultAccess::runtimeRejected(
+        QueryRuntimeFailure::InvariantViolation));
     return failed;
   }
 
@@ -830,7 +1026,7 @@ zc::Vector<QueryRequestResult> QueryContext::getParallelEncoded(
     if (key == zc::none) {
       impl->failure = keyFailure;
       zc::Vector<QueryRequestResult> failed;
-      failed.add(QueryRequestResult::failed(keyFailure));
+      failed.add(_query_detail::QueryRequestResultAccess::runtimeRejected(keyFailure));
       return failed;
     }
     resultPositions.add(resultPositions.size());
@@ -850,11 +1046,13 @@ zc::Vector<QueryRequestResult> QueryContext::getParallelEncoded(
   }
 
   auto demands = impl->database.demandParallel(impl->snapshot.addRef(), keys.asPtr(),
-                                               impl->activeChain.asPtr(), impl->flight.addRef());
+                                               impl->activeChain.asPtr(), impl->flight.addRef(),
+                                               retainAdmission(impl->admission));
   if (demands.size() != keys.size()) {
     impl->failure = QueryRuntimeFailure::InvariantViolation;
     zc::Vector<QueryRequestResult> failed;
-    failed.add(QueryRequestResult::failed(QueryRuntimeFailure::InvariantViolation));
+    failed.add(_query_detail::QueryRequestResultAccess::runtimeRejected(
+        QueryRuntimeFailure::InvariantViolation));
     return failed;
   }
   zc::Vector<zc::Maybe<QueryRequestResult>> orderedResults;
@@ -863,17 +1061,27 @@ zc::Vector<QueryRequestResult> QueryContext::getParallelEncoded(
   bool failed = false;
   for (size_t index = 0; index < keys.size(); ++index) {
     auto& demand = demands[index];
-    if (!demand.result.isCompleted()) {
-      if (!failed) { impl->failure = demand.result.failure(); }
+    if (_query_detail::QueryRequestResultAccess::isRuntimeRejected(demand.result)) {
+      if (!failed) {
+        impl->failure = _query_detail::QueryRequestResultAccess::runtimeFailure(demand.result);
+      }
       failed = true;
       orderedResults[resultPositions[index]] = zc::mv(demand.result);
       continue;
     }
-    if (demand.result.isCapability()) {
+    if (_query_detail::QueryRequestResultAccess::isCapabilityPublished(demand.result)) {
+      const auto& memo = _query_detail::QueryRequestResultAccess::capabilityMemo(demand.result);
       dependencies.add(DependencyRecord::revisionLocalCapability(
           keys[index].clone(), demand.metadata.changedAt(), demand.metadata.minimumDurability(),
-          demand.result.capabilityMemo().stableWitness()));
-      retainCapabilityDependency(impl->capabilityDependencies, demand.result.capabilityMemoArc());
+          _query_detail::QueryRequestResultAccess::memoStableWitness(memo)));
+      _query_detail::QueryRequestResultAccess::retainCapabilityDependency(
+          impl->capabilityDependencies,
+          _query_detail::QueryRequestResultAccess::retainCapabilityMemo(demand.result));
+    } else if (_query_detail::QueryRequestResultAccess::isCapabilityRejected(demand.result)) {
+      dependencies.add(DependencyRecord(keys[index].clone(), demand.metadata.changedAt(),
+                                        demand.metadata.minimumDurability()));
+      orderedResults[resultPositions[index]] = zc::mv(demand.result);
+      continue;
     } else {
       dependencies.add(DependencyRecord(keys[index].clone(), demand.metadata.changedAt(),
                                         demand.metadata.minimumDurability()));
@@ -893,14 +1101,21 @@ QuerySnapshot::~QuerySnapshot() noexcept(false) = default;
 
 DatabaseRevision QuerySnapshot::revision() const noexcept { return impl->snapshot->revision; }
 
+const QueryDatabaseIdentity& QuerySnapshot::databaseIdentity() const {
+  return impl->snapshot->database;
+}
+
 QueryRequestResult QuerySnapshot::getEncoded(zc::StringPtr domain, zc::Array<uint8_t>&& keyBytes,
                                              const CancellationSource::Token& cancellation) const {
   QueryRuntimeFailure keyFailure;
   auto key = impl->database.makeKey(domain, zc::mv(keyBytes), keyFailure);
-  if (key == zc::none) { return QueryRequestResult::failed(keyFailure); }
+  if (key == zc::none) {
+    return _query_detail::QueryRequestResultAccess::runtimeRejected(keyFailure);
+  }
   zc::Vector<CanonicalQueryKey> chain;
-  auto demand = impl->database.demand(impl->snapshot.addRef(), zc::mv(ZC_REQUIRE_NONNULL(key)),
-                                      zc::mv(chain), cancellation, true);
+  auto demand =
+      impl->database.demand(impl->snapshot.addRef(), zc::mv(ZC_REQUIRE_NONNULL(key)), zc::mv(chain),
+                            cancellation, true, retainAdmission(impl->admission));
   return zc::mv(demand.result);
 }
 
@@ -909,7 +1124,9 @@ QueryRequestResult QuerySnapshot::probeInputEncoded(
     const CancellationSource::Token& cancellation) const {
   QueryRuntimeFailure keyFailure;
   auto key = impl->database.makeValidatedKey(domain, zc::mv(keyBytes), keyFailure);
-  if (key == zc::none) { return QueryRequestResult::failed(keyFailure); }
+  if (key == zc::none) {
+    return _query_detail::QueryRequestResultAccess::runtimeRejected(keyFailure);
+  }
   auto demand = impl->database.probeInput(impl->snapshot.addRef(), zc::mv(ZC_REQUIRE_NONNULL(key)),
                                           cancellation);
   return zc::mv(demand.result);
@@ -952,8 +1169,8 @@ bool QuerySnapshot::evictValueEncoded(zc::StringPtr domain, zc::Array<uint8_t>&&
   if (key == zc::none) { return false; }
   const auto& canonicalKey = ZC_REQUIRE_NONNULL(key);
   const auto& descriptor = impl->database.kind(canonicalKey.kind());
-  if (descriptor.contract.isInput() ||
-      descriptor.contract.retention() != RetentionClass::Evictable) {
+  if (descriptor.descriptor.kind == QueryDescriptorKind::Input ||
+      descriptor.descriptor.retention != RetentionClass::Evictable) {
     return false;
   }
 
@@ -1018,71 +1235,136 @@ zc::Vector<QueryEvent> QuerySnapshot::events() const {
 
 InputTransaction::InputTransaction(zc::Own<Impl>&& impl) noexcept : impl(zc::mv(impl)) {}
 InputTransaction::InputTransaction(InputTransaction&&) noexcept = default;
-InputTransaction& InputTransaction::operator=(InputTransaction&&) noexcept = default;
+InputTransaction& InputTransaction::operator=(InputTransaction&& other) noexcept(false) {
+  if (this == &other) { return *this; }
+  if (impl.get() != nullptr && !impl->closed) { abandon(); }
+  impl = zc::mv(other.impl);
+  return *this;
+}
 InputTransaction::~InputTransaction() noexcept(false) {
   if (impl.get() != nullptr && !impl->closed) { abandon(); }
 }
 
-bool InputTransaction::stageEncoded(zc::StringPtr domain, zc::Array<uint8_t>&& keyBytes,
-                                    QueryValue&& value) {
-  if (impl->closed) { return false; }
+InputMutationResult InputTransaction::stageEncoded(zc::StringPtr domain,
+                                                   zc::Array<uint8_t>&& keyBytes,
+                                                   QueryValue&& value) {
+  {
+    auto database = impl->database.data.lockShared();
+    if (database->finalSeal != nullptr) {
+      return InputMutationResult::rejected(InputTransactionFailure::InputMutationAfterFinalSeal);
+    }
+  }
+  if (impl->closed) {
+    return InputMutationResult::rejected(InputTransactionFailure::TransactionClosed);
+  }
+  auto descriptorKind = impl->database.kindId(domain);
+  if (descriptorKind == zc::none) {
+    return InputMutationResult::rejected(InputTransactionFailure::UnknownDescriptor);
+  }
+  RegisteredKind& kind = impl->database.kind(ZC_REQUIRE_NONNULL(descriptorKind));
+  if (kind.descriptor.kind != QueryDescriptorKind::Input) {
+    return InputMutationResult::rejected(InputTransactionFailure::DescriptorKindMismatch);
+  }
   QueryRuntimeFailure keyFailure;
   auto key = impl->database.makeValidatedKey(domain, zc::mv(keyBytes), keyFailure);
-  if (key == zc::none) { return false; }
-  RegisteredKind& kind = impl->database.kind(ZC_REQUIRE_NONNULL(key).kind());
-  if (!kind.contract.isInput()) { return false; }
+  if (key == zc::none) {
+    return InputMutationResult::rejected(InputTransactionFailure::InvalidKeyEncoding);
+  }
 
   for (auto& input : impl->inputs) {
     if (!keyFingerprintMatches(input.current.key, ZC_REQUIRE_NONNULL(key))) { continue; }
-    if (input.current.key != ZC_REQUIRE_NONNULL(key)) { return false; }
+    if (input.current.key != ZC_REQUIRE_NONNULL(key)) {
+      return InputMutationResult::rejected(InputTransactionFailure::FingerprintCollision);
+    }
+    if (input.operated) {
+      return InputMutationResult::rejected(InputTransactionFailure::DuplicateInputOperation);
+    }
     if (input.current.durability == Durability::Frozen && input.existedAtBase &&
         input.baseValue != value) {
-      return false;
+      return InputMutationResult::rejected(InputTransactionFailure::FrozenInputMutation);
     }
     input.current.value = zc::mv(value);
     input.present = true;
+    input.operated = true;
     input.refreshChanged();
-    return true;
+    return InputMutationResult::applied();
   }
 
   auto base = QueryValue::absence();
   impl->inputs.add(StagedInput(InputEntry(zc::mv(ZC_REQUIRE_NONNULL(key)), zc::mv(value),
-                                          DatabaseRevision(), kind.contract.inputDurability()),
-                               zc::mv(base), true, false, true));
-  return true;
+                                          DatabaseRevision(), kind.descriptor.durability),
+                               zc::mv(base), true, false, true, true));
+  return InputMutationResult::applied();
 }
 
-bool InputTransaction::eraseEncoded(zc::StringPtr domain, zc::Array<uint8_t>&& keyBytes) {
-  if (impl->closed) { return false; }
+InputMutationResult InputTransaction::eraseEncoded(zc::StringPtr domain,
+                                                   zc::Array<uint8_t>&& keyBytes) {
+  {
+    auto database = impl->database.data.lockShared();
+    if (database->finalSeal != nullptr) {
+      return InputMutationResult::rejected(InputTransactionFailure::InputMutationAfterFinalSeal);
+    }
+  }
+  if (impl->closed) {
+    return InputMutationResult::rejected(InputTransactionFailure::TransactionClosed);
+  }
+  auto descriptorKind = impl->database.kindId(domain);
+  if (descriptorKind == zc::none) {
+    return InputMutationResult::rejected(InputTransactionFailure::UnknownDescriptor);
+  }
+  RegisteredKind& kind = impl->database.kind(ZC_REQUIRE_NONNULL(descriptorKind));
+  if (kind.descriptor.kind != QueryDescriptorKind::Input) {
+    return InputMutationResult::rejected(InputTransactionFailure::DescriptorKindMismatch);
+  }
   QueryRuntimeFailure keyFailure;
   auto key = impl->database.makeValidatedKey(domain, zc::mv(keyBytes), keyFailure);
-  if (key == zc::none) { return false; }
-  RegisteredKind& kind = impl->database.kind(ZC_REQUIRE_NONNULL(key).kind());
-  if (!kind.contract.isInput() || kind.contract.inputDurability() == Durability::Frozen) {
-    return false;
+  if (key == zc::none) {
+    return InputMutationResult::rejected(InputTransactionFailure::InvalidKeyEncoding);
   }
 
   for (auto& input : impl->inputs) {
     if (!keyFingerprintMatches(input.current.key, ZC_REQUIRE_NONNULL(key))) { continue; }
-    if (input.current.key != ZC_REQUIRE_NONNULL(key) || !input.present) { return false; }
+    if (input.current.key != ZC_REQUIRE_NONNULL(key)) {
+      return InputMutationResult::rejected(InputTransactionFailure::FingerprintCollision);
+    }
+    if (input.operated) {
+      return InputMutationResult::rejected(InputTransactionFailure::DuplicateInputOperation);
+    }
+    if (kind.descriptor.durability == Durability::Frozen) {
+      return InputMutationResult::rejected(InputTransactionFailure::FrozenInputMutation);
+    }
+    if (!input.existedAtBase) {
+      return InputMutationResult::rejected(InputTransactionFailure::MissingInputForErase);
+    }
     input.present = false;
+    input.operated = true;
     input.refreshChanged();
-    return true;
+    return InputMutationResult::applied();
   }
-  return false;
+  if (kind.descriptor.durability == Durability::Frozen) {
+    return InputMutationResult::rejected(InputTransactionFailure::FrozenInputMutation);
+  }
+  return InputMutationResult::rejected(InputTransactionFailure::MissingInputForErase);
 }
 
-zc::Maybe<DatabaseRevision> InputTransaction::commit() {
-  if (impl->closed) { return zc::none; }
+InputCommitResult InputTransaction::commit() {
   auto database = impl->database.data.lockExclusive();
-  if (database->current->revision != impl->baseRevision || !database->transactionOpen) {
+  if (database->finalSeal != nullptr) {
     impl->closed = true;
-    return zc::none;
+    return InputCommitResult::rejected(InputTransactionFailure::InputMutationAfterFinalSeal);
+  }
+  if (impl->closed) {
+    return InputCommitResult::rejected(InputTransactionFailure::TransactionClosed);
+  }
+  if (database->current->revision != impl->baseRevision || !database->transactionOpen) {
+    database->transactionOpen = false;
+    impl->closed = true;
+    return InputCommitResult::rejected(InputTransactionFailure::StaleBaseRevision);
   }
   if (impl->baseRevision.value() == UINT64_MAX) {
     database->transactionOpen = false;
     impl->closed = true;
-    return zc::none;
+    return InputCommitResult::rejected(InputTransactionFailure::RevisionExhausted);
   }
   const DatabaseRevision nextRevision = impl->baseRevision.next();
   DatabaseRevision nextLastChanged[4];
@@ -1096,8 +1378,9 @@ zc::Maybe<DatabaseRevision> InputTransaction::commit() {
       nextLastChanged[level] = nextRevision;
     }
   }
-  auto next = zc::arc<SnapshotState>(nextRevision, zc::arrayPtr(nextLastChanged),
-                                     database->capabilityArena.addRef());
+  auto next =
+      zc::arc<SnapshotState>(database->database.retain(), nextRevision,
+                             zc::arrayPtr(nextLastChanged), database->capabilityArena.addRef());
 
   {
     auto nextRuntime = next->runtime.lockExclusive();
@@ -1108,7 +1391,9 @@ zc::Maybe<DatabaseRevision> InputTransaction::commit() {
     }
     auto priorRuntime = database->current->runtime.lockShared();
     for (const auto& memo : priorRuntime->memos) {
-      const auto& descriptor = database->kinds[memo.key.kind().value()];
+      const auto& slot = database->descriptors[memo.key.kind().value()];
+      ZC_IREQUIRE(slot.registered != zc::none, "memo references an unregistered descriptor slot");
+      const auto& descriptor = ZC_REQUIRE_NONNULL(slot.registered);
       if (descriptor.capabilityEvaluator != zc::none) { continue; }
       nextRuntime->memos.add(memo.clone());
     }
@@ -1117,7 +1402,7 @@ zc::Maybe<DatabaseRevision> InputTransaction::commit() {
   database->current = zc::mv(next);
   database->transactionOpen = false;
   impl->closed = true;
-  return nextRevision;
+  return InputCommitResult::committed(nextRevision);
 }
 
 void InputTransaction::abandon() {
@@ -1127,131 +1412,381 @@ void InputTransaction::abandon() {
   impl->closed = true;
 }
 
-QueryDatabase::QueryDatabase(basic::ThreadPool& scheduler)
-    : QueryDatabase(scheduler, zc::arc<SemanticContextCapabilityArena>()) {}
 QueryDatabase::QueryDatabase(basic::ThreadPool& scheduler,
+                             QueryDescriptorInventoryRef descriptorInventory)
+    : QueryDatabase(scheduler, descriptorInventory, zc::arc<SemanticContextCapabilityArena>()) {}
+QueryDatabase::QueryDatabase(basic::ThreadPool& scheduler,
+                             QueryDescriptorInventoryRef descriptorInventory,
                              zc::Arc<SemanticContextCapabilityArena>&& capabilityArena)
-    : impl(zc::heap<Impl>(scheduler, zc::mv(capabilityArena))) {}
-QueryDatabase::~QueryDatabase() noexcept(false) = default;
+    : impl(zc::heap<Impl>(scheduler, descriptorInventory, zc::mv(capabilityArena))) {}
+QueryDatabase::~QueryDatabase() noexcept(false) {
+  if (impl.get() != nullptr) { impl->requireNoBorrowers(); }
+}
 QueryDatabase::QueryDatabase(QueryDatabase&&) noexcept = default;
-QueryDatabase& QueryDatabase::operator=(QueryDatabase&&) noexcept = default;
-
-zc::Maybe<QueryKindId> QueryDatabase::installInput(QueryKindContract&& contract,
-                                                   ErasedKeyValidator&& keyValidator) {
-  if (!contract.isInput()) { return zc::none; }
-  auto locked = impl->data.lockExclusive();
-  if (locked->registrySealed || locked->kinds.size() >= UINT32_MAX) { return zc::none; }
-  for (const auto& kind : locked->kinds) {
-    if (kind.contract.domain() == contract.domain()) { return zc::none; }
-  }
-  const QueryKindId id(static_cast<uint32_t>(locked->kinds.size()));
-  zc::Maybe<ErasedProvider> noProvider;
-  zc::Maybe<ErasedVerifier> noVerifier;
-  zc::Maybe<ErasedCapabilityEvaluator> noCapabilityEvaluator;
-  locked->kinds.add(RegisteredKind(id, zc::mv(contract), zc::mv(keyValidator), zc::mv(noProvider),
-                                   zc::mv(noVerifier), zc::mv(noCapabilityEvaluator)));
-  return id;
+QueryDatabase& QueryDatabase::operator=(QueryDatabase&& other) noexcept(false) {
+  if (this == &other) { return *this; }
+  if (impl.get() != nullptr) { impl->requireNoBorrowers(); }
+  impl = zc::mv(other.impl);
+  return *this;
 }
 
-zc::Maybe<QueryKindId> QueryDatabase::installDerived(QueryKindContract&& contract,
-                                                     ErasedKeyValidator&& keyValidator,
-                                                     ErasedProvider&& provider,
-                                                     ErasedVerifier&& verifier) {
-  if (contract.isInput()) { return zc::none; }
+DescriptorRegistrationResult QueryDatabase::installDescriptor(
+    zc::StringPtr inventoryIdentity, const QueryDescriptorInventoryRow& descriptor,
+    ErasedKeyValidator&& keyValidator, zc::Maybe<ErasedProvider>&& provider,
+    zc::Maybe<ErasedVerifier>&& verifier,
+    zc::Maybe<ErasedCapabilityEvaluator>&& capabilityEvaluator) {
   auto locked = impl->data.lockExclusive();
-  if (locked->registrySealed || locked->kinds.size() >= UINT32_MAX) { return zc::none; }
-  for (const auto& kind : locked->kinds) {
-    if (kind.contract.domain() == contract.domain()) { return zc::none; }
+  zc::Maybe<size_t> rowIndex;
+  for (size_t index = 0; index < locked->descriptors.size(); ++index) {
+    if (locked->descriptors[index].expected.descriptorType == descriptor.descriptorType) {
+      rowIndex = index;
+      break;
+    }
   }
-  const QueryKindId id(static_cast<uint32_t>(locked->kinds.size()));
-  zc::Maybe<ErasedProvider> retainedProvider(zc::mv(provider));
-  zc::Maybe<ErasedVerifier> retainedVerifier(zc::mv(verifier));
-  zc::Maybe<ErasedCapabilityEvaluator> noCapabilityEvaluator;
-  locked->kinds.add(RegisteredKind(id, zc::mv(contract), zc::mv(keyValidator),
-                                   zc::mv(retainedProvider), zc::mv(retainedVerifier),
-                                   zc::mv(noCapabilityEvaluator)));
-  return id;
-}
-
-zc::Maybe<QueryKindId> QueryDatabase::installCapability(QueryKindContract&& contract,
-                                                        ErasedKeyValidator&& keyValidator,
-                                                        ErasedCapabilityEvaluator&& evaluator) {
-  if (contract.isInput() || contract.reuseClass() != ReuseClass::RevisionLocal ||
-      contract.retention() != RetentionClass::Retained) {
-    return zc::none;
+  if (rowIndex == zc::none) {
+    return DescriptorRegistrationResult::rejected(
+        DescriptorRegistrationFailure::DescriptorAbsentFromInventory);
   }
-  auto locked = impl->data.lockExclusive();
-  if (!locked->capabilityArena->hasResources() || locked->registrySealed ||
-      locked->kinds.size() >= UINT32_MAX) {
-    return zc::none;
+  if (inventoryIdentity != locked->descriptorInventory.identity()) {
+    return DescriptorRegistrationResult::rejected(DescriptorRegistrationFailure::InventoryMismatch);
   }
-  for (const auto& kind : locked->kinds) {
-    if (kind.contract.domain() == contract.domain()) { return zc::none; }
+  const auto& expected = locked->descriptors[ZC_REQUIRE_NONNULL(rowIndex)].expected;
+  const bool metadataMatches =
+      descriptorRowsEqual(expected, descriptor) && descriptorMetadataIsValid(descriptor);
+  const bool callbackShapeMatches =
+      (descriptor.kind == QueryDescriptorKind::Input && provider == zc::none &&
+       verifier == zc::none && capabilityEvaluator == zc::none) ||
+      (descriptor.kind == QueryDescriptorKind::Semantic && provider != zc::none &&
+       verifier != zc::none && capabilityEvaluator == zc::none) ||
+      (descriptor.kind == QueryDescriptorKind::RevisionLocalCapability && provider == zc::none &&
+       verifier == zc::none && capabilityEvaluator != zc::none &&
+       descriptor.reuse == ReuseClass::RevisionLocal &&
+       descriptor.retention == RetentionClass::Retained);
+  if (!metadataMatches || !callbackShapeMatches) {
+    return DescriptorRegistrationResult::rejected(DescriptorRegistrationFailure::MetadataMismatch);
   }
-  const QueryKindId id(static_cast<uint32_t>(locked->kinds.size()));
-  zc::Maybe<ErasedProvider> noProvider;
-  zc::Maybe<ErasedVerifier> noVerifier;
-  zc::Maybe<ErasedCapabilityEvaluator> retainedEvaluator(zc::mv(evaluator));
-  locked->kinds.add(RegisteredKind(id, zc::mv(contract), zc::mv(keyValidator), zc::mv(noProvider),
-                                   zc::mv(noVerifier), zc::mv(retainedEvaluator)));
-  return id;
+  ZC_IREQUIRE(!locked->registrySealed,
+              "query descriptor registration attempted after registry publication");
+  if (descriptor.kind == QueryDescriptorKind::RevisionLocalCapability) {
+    ZC_IREQUIRE(locked->capabilityArena->hasResources(),
+                "capability descriptor registration requires semantic resources");
+  }
+  auto& slot = locked->descriptors[ZC_REQUIRE_NONNULL(rowIndex)];
+  if (slot.registered != zc::none) {
+    if (ZC_REQUIRE_NONNULL(slot.registered).descriptor.descriptorType ==
+        descriptor.descriptorType) {
+      return DescriptorRegistrationResult::rejected(
+          DescriptorRegistrationFailure::SlotAlreadyRegistered);
+    }
+    return DescriptorRegistrationResult::rejected(DescriptorRegistrationFailure::SlotCollision);
+  }
+  slot.registered = RegisteredKind(descriptor, zc::mv(keyValidator), zc::mv(provider),
+                                   zc::mv(verifier), zc::mv(capabilityEvaluator));
+  return DescriptorRegistrationResult::registered(QueryKindId(descriptor.ordinal));
 }
 
 QuerySnapshot QueryDatabase::snapshot() {
   auto locked = impl->data.lockExclusive();
   locked->registrySealed = true;
-  return QuerySnapshot(zc::heap<QuerySnapshot::Impl>(*impl, locked->current.addRef()));
+  zc::Arc<const FinalSealAdmission> noAdmission;
+  return QuerySnapshot(
+      zc::heap<QuerySnapshot::Impl>(*impl, locked->current.addRef(), zc::mv(noAdmission)));
 }
 
-zc::Maybe<InputTransaction> QueryDatabase::beginInputTransaction() {
+InputTransactionOpenResult QueryDatabase::beginInputTransaction(
+    DatabaseRevision expectedPreviousRevision) {
   auto locked = impl->data.lockExclusive();
-  if (locked->transactionOpen || locked->inputRootSealed) { return zc::none; }
+  if (locked->finalSeal != nullptr) {
+    return InputTransactionOpenResult::rejected(
+        InputTransactionFailure::InputMutationAfterFinalSeal);
+  }
+  if (locked->transactionOpen) {
+    return InputTransactionOpenResult::rejected(InputTransactionFailure::TransactionAlreadyOpen);
+  }
+  if (locked->current->revision != expectedPreviousRevision) {
+    return InputTransactionOpenResult::rejected(InputTransactionFailure::StaleBaseRevision);
+  }
   locked->registrySealed = true;
   locked->transactionOpen = true;
   zc::Vector<StagedInput> inputs;
   auto runtime = locked->current->runtime.lockShared();
   for (const auto& input : runtime->inputs) {
-    inputs.add(StagedInput(input.clone(), input.value.clone(), false, true, true));
+    inputs.add(StagedInput(input.clone(), input.value.clone(), false, true, true, false));
   }
-  return InputTransaction(
-      zc::heap<InputTransaction::Impl>(*impl, locked->current->revision, zc::mv(inputs)));
+  return InputTransactionOpenResult::opened(InputTransaction(zc::heap<InputTransaction::Impl>(
+      *impl, locked->database.retain(), locked->current->revision, zc::mv(inputs))));
 }
 
-bool QueryDatabase::sealInputRoot() {
+void QueryDatabase::armFinalSealPhaseTwoGateForTest() {
+  auto gate = impl->finalSealPhaseTwoGate.lockExclusive();
+  ZC_IREQUIRE(!gate->armed && !gate->claimed, "final-seal phase-two test gate is already active");
+  gate->armed = true;
+  gate->entered = false;
+  gate->released = false;
+}
+
+void QueryDatabase::waitForFinalSealPhaseTwoGateForTest() {
+  auto gate = impl->finalSealPhaseTwoGate.lockExclusive();
+  gate.wait([](const FinalSealPhaseTwoGateState& state) { return state.entered; });
+}
+
+void QueryDatabase::releaseFinalSealPhaseTwoGateForTest() {
+  auto gate = impl->finalSealPhaseTwoGate.lockExclusive();
+  ZC_IREQUIRE(gate->entered && !gate->released,
+              "final-seal phase-two test gate has not been entered");
+  gate->released = true;
+}
+
+void QueryDatabase::pauseAtFinalSealPhaseTwoGate() {
+  auto gate = impl->finalSealPhaseTwoGate.lockExclusive();
+  if (!gate->armed || gate->claimed) { return; }
+  gate->claimed = true;
+  gate->entered = true;
+  gate.wait([](const FinalSealPhaseTwoGateState& state) { return state.released; });
+  gate->armed = false;
+  gate->claimed = false;
+}
+
+_query_detail::FinalSealPreparationResult QueryDatabase::prepareFinalSeal(
+    const QuerySnapshot& snapshot, zc::StringPtr domain, zc::Array<uint8_t>&& keyBytes) {
   auto locked = impl->data.lockExclusive();
-  if (locked->transactionOpen || locked->inputRootSealed) { return false; }
+  if (locked->finalSeal != nullptr) {
+    return _query_detail::FinalSealPreparationResult::rejected(
+        InputTransactionFailure::FinalSealAlreadyPublished);
+  }
+  if (locked->transactionOpen) {
+    return _query_detail::FinalSealPreparationResult::rejected(
+        InputTransactionFailure::OpenTransactionDuringFinalSeal);
+  }
+  if (snapshot.impl->snapshot->database != locked->database) {
+    return _query_detail::FinalSealPreparationResult::rejected(
+        InputTransactionFailure::ForeignSnapshot);
+  }
+  if (snapshot.impl->snapshot->revision != locked->current->revision) {
+    return _query_detail::FinalSealPreparationResult::rejected(
+        InputTransactionFailure::StaleSnapshot);
+  }
+
+  zc::Maybe<size_t> descriptorIndex;
+  for (size_t index = 0; index < locked->descriptors.size(); ++index) {
+    if (locked->descriptors[index].expected.domain == domain &&
+        locked->descriptors[index].registered != zc::none) {
+      descriptorIndex = index;
+      break;
+    }
+  }
+  if (descriptorIndex == zc::none) {
+    return _query_detail::FinalSealPreparationResult::rejected(
+        InputTransactionFailure::UnknownDescriptor);
+  }
+  const auto& descriptor =
+      ZC_REQUIRE_NONNULL(locked->descriptors[ZC_REQUIRE_NONNULL(descriptorIndex)].registered);
+  if (descriptor.descriptor.kind != QueryDescriptorKind::Input) {
+    return _query_detail::FinalSealPreparationResult::rejected(
+        InputTransactionFailure::DescriptorKindMismatch);
+  }
+  if (keyBytes.size() > UINT32_MAX || !descriptor.keyValidator(keyBytes.asPtr())) {
+    return _query_detail::FinalSealPreparationResult::rejected(
+        InputTransactionFailure::InvalidFinalSealAuthority);
+  }
+
+  auto contextKey = impl->makeCanonicalKey(descriptor, zc::mv(keyBytes));
+  zc::Arc<const _query_detail::FinalSealPreparationState> retainedState =
+      zc::arc<_query_detail::FinalSealPreparationState>(snapshot.impl->snapshot.addRef(),
+                                                        descriptor.descriptor);
+  return _query_detail::FinalSealPreparationResult::prepared(
+      _query_detail::FinalSealPreparation(locked->database.retain(), locked->current->revision,
+                                          zc::mv(contextKey), zc::mv(retainedState)));
+}
+
+InputTransactionFailure QueryDatabase::rejectFinalSeal(
+    _query_detail::FinalSealPreparation&& preparation) {
+  auto locked = impl->data.lockExclusive();
+  if (locked->finalSeal != nullptr) { return InputTransactionFailure::FinalSealAlreadyPublished; }
+  if (locked->transactionOpen) { return InputTransactionFailure::OpenTransactionDuringFinalSeal; }
+  if (preparation.databaseField != locked->database) {
+    return InputTransactionFailure::ForeignSnapshot;
+  }
+  if (preparation.revisionField != locked->current->revision) {
+    return InputTransactionFailure::StaleSnapshot;
+  }
+  ZC_IREQUIRE(preparation.stateField != nullptr,
+              "final seal preparation lost retained phase-one state");
+  const auto& phaseOne = *preparation.stateField.get();
+  if (phaseOne.snapshotField->database != preparation.databaseField) {
+    return InputTransactionFailure::ForeignSnapshot;
+  }
+  if (phaseOne.snapshotField != locked->current ||
+      phaseOne.snapshotField->revision != preparation.revisionField) {
+    return InputTransactionFailure::StaleSnapshot;
+  }
+  const auto kind = preparation.contextKeyField.kind();
+  if (kind.value() >= locked->descriptors.size() ||
+      locked->descriptors[kind.value()].registered == zc::none) {
+    return InputTransactionFailure::UnknownDescriptor;
+  }
+  const auto& descriptor = ZC_REQUIRE_NONNULL(locked->descriptors[kind.value()].registered);
+  if (!descriptorRowsEqual(descriptor.descriptor, phaseOne.descriptorField)) {
+    return InputTransactionFailure::UnknownDescriptor;
+  }
+  if (descriptor.descriptor.kind != QueryDescriptorKind::Input) {
+    return InputTransactionFailure::DescriptorKindMismatch;
+  }
+  if (!descriptor.keyValidator(preparation.contextKeyField.canonicalBytes())) {
+    return InputTransactionFailure::InvalidFinalSealAuthority;
+  }
+  auto reconstructed = impl->makeCanonicalKey(
+      descriptor, zc::heapArray<uint8_t>(preparation.contextKeyField.canonicalBytes()));
+  if (reconstructed != preparation.contextKeyField) {
+    return InputTransactionFailure::InvalidFinalSealAuthority;
+  }
+  return InputTransactionFailure::InvalidFinalSealAuthority;
+}
+
+zc::Maybe<InputTransactionFailure> QueryDatabase::publishFinalSeal(
+    _query_detail::FinalSealPreparation&& preparation,
+    _query_detail::VerifiedFinalSealAuthority&& authority,
+    zc::ArrayPtr<const uint8_t> suppliedWitness) {
+  auto locked = impl->data.lockExclusive();
+  if (locked->finalSeal != nullptr) { return InputTransactionFailure::FinalSealAlreadyPublished; }
+  if (locked->transactionOpen) { return InputTransactionFailure::OpenTransactionDuringFinalSeal; }
+  if (preparation.databaseField != locked->database ||
+      authority.databaseField != locked->database ||
+      authority.databaseField != preparation.databaseField) {
+    return InputTransactionFailure::ForeignSnapshot;
+  }
+  if (preparation.revisionField != locked->current->revision ||
+      authority.revisionField != locked->current->revision ||
+      authority.revisionField != preparation.revisionField) {
+    return InputTransactionFailure::StaleSnapshot;
+  }
+  ZC_IREQUIRE(preparation.stateField != nullptr,
+              "verified final seal lost retained phase-one state");
+  const auto& phaseOne = *preparation.stateField.get();
+  if (phaseOne.snapshotField->database != preparation.databaseField) {
+    return InputTransactionFailure::ForeignSnapshot;
+  }
+  if (phaseOne.snapshotField != locked->current ||
+      phaseOne.snapshotField->revision != preparation.revisionField) {
+    return InputTransactionFailure::StaleSnapshot;
+  }
+  const auto kind = authority.contextKeyField.kind();
+  if (kind.value() >= locked->descriptors.size() ||
+      locked->descriptors[kind.value()].registered == zc::none) {
+    return InputTransactionFailure::UnknownDescriptor;
+  }
+  const auto& descriptor = ZC_REQUIRE_NONNULL(locked->descriptors[kind.value()].registered);
+  if (!descriptorRowsEqual(descriptor.descriptor, phaseOne.descriptorField)) {
+    return InputTransactionFailure::UnknownDescriptor;
+  }
+  if (descriptor.descriptor.kind != QueryDescriptorKind::Input) {
+    return InputTransactionFailure::DescriptorKindMismatch;
+  }
+  if (!descriptor.keyValidator(authority.contextKeyField.canonicalBytes())) {
+    return InputTransactionFailure::InvalidFinalSealAuthority;
+  }
+  auto reconstructed = impl->makeCanonicalKey(
+      descriptor, zc::heapArray<uint8_t>(authority.contextKeyField.canonicalBytes()));
+  if (preparation.contextKeyField != authority.contextKeyField ||
+      reconstructed != authority.contextKeyField || authority.finalWitnessField.size() == 0 ||
+      authority.finalWitnessField.asPtr() != suppliedWitness) {
+    return InputTransactionFailure::InvalidFinalSealAuthority;
+  }
+
   locked->registrySealed = true;
-  locked->inputRootSealed = true;
-  return true;
+  locked->finalSeal = zc::arc<FinalSealAdmission>(
+      locked->database.retain(), locked->current->revision, authority.contextKeyField.clone(),
+      zc::mv(authority.finalWitnessField));
+  return zc::none;
+}
+
+zc::Maybe<QueryRuntimeFailure> QueryDatabase::validateSnapshotAdmission(
+    QuerySnapshot& snapshot, const QueryDatabaseIdentity& sealDatabase,
+    DatabaseRevision sealRevision, zc::StringPtr descriptorDomain,
+    zc::Array<uint8_t>&& contextKeyBytes, zc::ArrayPtr<const uint8_t> finalWitness) {
+  auto locked = impl->data.lockShared();
+  if (locked->finalSeal == nullptr) { return QueryRuntimeFailure::FinalSealRequired; }
+  if (snapshot.impl->snapshot->database != locked->database ||
+      snapshot.impl->snapshot->revision != locked->current->revision ||
+      sealDatabase != locked->database || sealRevision != locked->current->revision ||
+      snapshot.impl->admission != nullptr) {
+    return QueryRuntimeFailure::FinalSealMismatch;
+  }
+
+  zc::Maybe<size_t> descriptorIndex;
+  for (size_t index = 0; index < locked->descriptors.size(); ++index) {
+    if (locked->descriptors[index].expected.domain == descriptorDomain &&
+        locked->descriptors[index].registered != zc::none) {
+      descriptorIndex = index;
+      break;
+    }
+  }
+  if (descriptorIndex == zc::none) { return QueryRuntimeFailure::FinalSealMismatch; }
+  const auto& descriptor =
+      ZC_REQUIRE_NONNULL(locked->descriptors[ZC_REQUIRE_NONNULL(descriptorIndex)].registered);
+  if (descriptor.descriptor.kind != QueryDescriptorKind::Input ||
+      !descriptor.keyValidator(contextKeyBytes.asPtr())) {
+    return QueryRuntimeFailure::FinalSealMismatch;
+  }
+  auto contextKey = impl->makeCanonicalKey(descriptor, zc::mv(contextKeyBytes));
+  if (contextKey != locked->finalSeal->contextKey ||
+      finalWitness != locked->finalSeal->finalWitness.asPtr()) {
+    return QueryRuntimeFailure::FinalSealMismatch;
+  }
+  snapshot.impl->admission = locked->finalSeal.addRef();
+  return zc::none;
 }
 
 DetailedDemand QueryDatabase::Impl::demand(zc::Arc<SnapshotState> snapshot, CanonicalQueryKey&& key,
                                            zc::Vector<CanonicalQueryKey>&& activeChain,
                                            const CancellationSource::Token& cancellation,
-                                           bool allowParallelGroups) {
+                                           bool allowParallelGroups,
+                                           zc::Arc<const FinalSealAdmission> admission) {
+  RegisteredKind& descriptor = kind(key.kind());
+  if (descriptor.capabilityEvaluator != zc::none &&
+      descriptor.descriptor.admission == CapabilityAdmission::FinalSealedSnapshot) {
+    if (admission == nullptr) {
+      return DetailedDemand(_query_detail::QueryRequestResultAccess::runtimeRejected(
+                                QueryRuntimeFailure::FinalSealRequired),
+                            MemoMetadata());
+    }
+    auto locked = data.lockShared();
+    if (locked->finalSeal == nullptr || admission != locked->finalSeal ||
+        admission->database != locked->database || admission->database != snapshot->database ||
+        admission->revision != snapshot->revision ||
+        admission->revision != locked->current->revision ||
+        admission->contextKey != locked->finalSeal->contextKey ||
+        admission->finalWitness.asPtr() != locked->finalSeal->finalWitness.asPtr()) {
+      return DetailedDemand(_query_detail::QueryRequestResultAccess::runtimeRejected(
+                                QueryRuntimeFailure::FinalSealMismatch),
+                            MemoMetadata());
+    }
+  }
   if (cancellation.isCancelled()) {
     appendEvent(*snapshot.get(), key, QueryEventKind::Cancelled);
-    return DetailedDemand(QueryRequestResult::failed(QueryRuntimeFailure::Cancelled),
-                          MemoMetadata());
+    return DetailedDemand(
+        _query_detail::QueryRequestResultAccess::runtimeRejected(QueryRuntimeFailure::Cancelled),
+        MemoMetadata());
   }
   if (containsKey(activeChain.asPtr(), key)) {
     appendEvent(*snapshot.get(), key, QueryEventKind::Cycle);
-    return DetailedDemand(QueryRequestResult::failed(QueryRuntimeFailure::Cycle), MemoMetadata());
+    return DetailedDemand(
+        _query_detail::QueryRequestResultAccess::runtimeRejected(QueryRuntimeFailure::Cycle),
+        MemoMetadata());
   }
 
-  RegisteredKind& descriptor = kind(key.kind());
-  if (descriptor.contract.isInput()) {
+  if (descriptor.descriptor.kind == QueryDescriptorKind::Input) {
     auto locked = snapshot->runtime.lockShared();
     bool collision = false;
     ZC_IF_SOME(index, exactInputIndex(*locked, key, collision)) {
       const auto& input = locked->inputs[index];
-      return DetailedDemand(QueryRequestResult::completed(input.value.clone()),
+      return DetailedDemand(_query_detail::QueryRequestResultAccess::semantic(input.value.clone()),
                             MemoMetadata(snapshot->revision, input.changedAt, input.durability));
     }
-    return DetailedDemand(
-        QueryRequestResult::failed(collision ? QueryRuntimeFailure::FingerprintCollision
-                                             : QueryRuntimeFailure::MissingInput),
-        MemoMetadata());
+    return DetailedDemand(_query_detail::QueryRequestResultAccess::runtimeRejected(
+                              collision ? QueryRuntimeFailure::FingerprintCollision
+                                        : QueryRuntimeFailure::MissingInput),
+                          MemoMetadata());
   }
 
   zc::Maybe<Memo> prior;
@@ -1269,8 +1804,10 @@ DetailedDemand QueryDatabase::Impl::demand(zc::Arc<SnapshotState> snapshot, Cano
           (memo.value != zc::none || memo.capability != nullptr)) {
         QueryRequestResult result =
             memo.capability != nullptr
-                ? QueryRequestResult::completed(memo.capability.addRef())
-                : QueryRequestResult::completed(ZC_REQUIRE_NONNULL(memo.value).clone());
+                ? _query_detail::QueryRequestResultAccess::capabilityPublished(
+                      memo.capability.addRef())
+                : _query_detail::QueryRequestResultAccess::semantic(
+                      ZC_REQUIRE_NONNULL(memo.value).clone());
         const auto metadata = memo.metadata;
         locked->events.add(
             QueryEvent(snapshot->revision, key.clone(), QueryEventKind::GreenReused));
@@ -1279,7 +1816,8 @@ DetailedDemand QueryDatabase::Impl::demand(zc::Arc<SnapshotState> snapshot, Cano
       prior = memo.clone();
     }
     if (collision) {
-      return DetailedDemand(QueryRequestResult::failed(QueryRuntimeFailure::FingerprintCollision),
+      return DetailedDemand(_query_detail::QueryRequestResultAccess::runtimeRejected(
+                                QueryRuntimeFailure::FingerprintCollision),
                             MemoMetadata());
     }
     ZC_IF_SOME(index, exactFlightIndex(*locked, key, collision)) {
@@ -1292,15 +1830,17 @@ DetailedDemand QueryDatabase::Impl::demand(zc::Arc<SnapshotState> snapshot, Cano
         if (pathExists(*locked, key, parent, visited)) {
           removeWaitEdge(*locked, parent, key);
           locked->events.add(QueryEvent(snapshot->revision, key.clone(), QueryEventKind::Cycle));
-          return DetailedDemand(QueryRequestResult::failed(QueryRuntimeFailure::Cycle),
-                                MemoMetadata());
+          return DetailedDemand(
+              _query_detail::QueryRequestResultAccess::runtimeRejected(QueryRuntimeFailure::Cycle),
+              MemoMetadata());
         }
       }
       locked->events.add(
           QueryEvent(snapshot->revision, key.clone(), QueryEventKind::SingleFlightJoined));
     } else {
       if (collision) {
-        return DetailedDemand(QueryRequestResult::failed(QueryRuntimeFailure::FingerprintCollision),
+        return DetailedDemand(_query_detail::QueryRequestResultAccess::runtimeRejected(
+                                  QueryRuntimeFailure::FingerprintCollision),
                               MemoMetadata());
       }
       flight = zc::arc<Flight>(key.clone(), cancellation.clone());
@@ -1317,20 +1857,21 @@ DetailedDemand QueryDatabase::Impl::demand(zc::Arc<SnapshotState> snapshot, Cano
           removeWaitEdge(*locked, parent, key);
         }
         appendEvent(*snapshot.get(), key, QueryEventKind::Cancelled);
-        return DetailedDemand(QueryRequestResult::failed(QueryRuntimeFailure::Cancelled),
+        return DetailedDemand(_query_detail::QueryRequestResultAccess::runtimeRejected(
+                                  QueryRuntimeFailure::Cancelled),
                               MemoMetadata());
       }
       auto state = flight->data.lockExclusive();
       state.wait([](const FlightData& data) { return data.result != zc::none; },
                  10 * zc::MILLISECONDS);
       ZC_IF_SOME(result, state->result) {
-        auto clonedResult = result.clone();
+        auto clonedResult = _query_detail::QueryRequestResultAccess::retain(result);
         if (waitEdgeAdded) {
           state.release();
           auto locked = snapshot->runtime.lockExclusive();
           removeWaitEdge(*locked, parent, key);
         }
-        if (!clonedResult.isCompleted()) {
+        if (_query_detail::QueryRequestResultAccess::isRuntimeRejected(clonedResult)) {
           return DetailedDemand(zc::mv(clonedResult), MemoMetadata());
         }
         auto locked = snapshot->runtime.lockShared();
@@ -1338,26 +1879,30 @@ DetailedDemand QueryDatabase::Impl::demand(zc::Arc<SnapshotState> snapshot, Cano
         ZC_IF_SOME(index, exactMemoIndex(*locked, key, collision)) {
           return DetailedDemand(zc::mv(clonedResult), locked->memos[index].metadata);
         }
-        return DetailedDemand(QueryRequestResult::failed(QueryRuntimeFailure::InvariantViolation),
+        return DetailedDemand(_query_detail::QueryRequestResultAccess::runtimeRejected(
+                                  QueryRuntimeFailure::InvariantViolation),
                               MemoMetadata());
       }
     }
   }
 
-  auto outcome = execute(snapshot.addRef(), descriptor, key.clone(), zc::mv(prior),
-                         zc::mv(activeChain), flight.addRef(), allowParallelGroups);
+  auto outcome =
+      execute(snapshot.addRef(), descriptor, key.clone(), zc::mv(prior), zc::mv(activeChain),
+              flight.addRef(), allowParallelGroups, zc::mv(admission));
   {
     auto state = flight->data.lockExclusive();
-    state->result = outcome.result.clone();
+    state->result = _query_detail::QueryRequestResultAccess::retain(outcome.result);
   }
   {
     auto locked = snapshot->runtime.lockExclusive();
     removeFlight(*locked, *flight.get());
   }
-  if (cancellation.isCancelled() && outcome.result.isCompleted()) {
+  if (cancellation.isCancelled() &&
+      !_query_detail::QueryRequestResultAccess::isRuntimeRejected(outcome.result)) {
     appendEvent(*snapshot.get(), key, QueryEventKind::Cancelled);
-    return DetailedDemand(QueryRequestResult::failed(QueryRuntimeFailure::Cancelled),
-                          MemoMetadata());
+    return DetailedDemand(
+        _query_detail::QueryRequestResultAccess::runtimeRejected(QueryRuntimeFailure::Cancelled),
+        MemoMetadata());
   }
   return outcome;
 }
@@ -1367,12 +1912,14 @@ DetailedDemand QueryDatabase::Impl::probeInput(zc::Arc<SnapshotState> snapshot,
                                                const CancellationSource::Token& cancellation) {
   if (cancellation.isCancelled()) {
     appendEvent(*snapshot.get(), key, QueryEventKind::Cancelled);
-    return DetailedDemand(QueryRequestResult::failed(QueryRuntimeFailure::Cancelled),
-                          MemoMetadata());
+    return DetailedDemand(
+        _query_detail::QueryRequestResultAccess::runtimeRejected(QueryRuntimeFailure::Cancelled),
+        MemoMetadata());
   }
   RegisteredKind& descriptor = kind(key.kind());
-  if (!descriptor.contract.isInput()) {
-    return DetailedDemand(QueryRequestResult::failed(QueryRuntimeFailure::InvariantViolation),
+  if (descriptor.descriptor.kind != QueryDescriptorKind::Input) {
+    return DetailedDemand(_query_detail::QueryRequestResultAccess::runtimeRejected(
+                              QueryRuntimeFailure::InvariantViolation),
                           MemoMetadata());
   }
   auto locked = snapshot->runtime.lockShared();
@@ -1380,28 +1927,31 @@ DetailedDemand QueryDatabase::Impl::probeInput(zc::Arc<SnapshotState> snapshot,
   ZC_IF_SOME(index, exactInputIndex(*locked, key, collision)) {
     const auto& input = locked->inputs[index];
     if (input.value.kind() != QueryValueKind::Value) {
-      return DetailedDemand(QueryRequestResult::failed(QueryRuntimeFailure::InvariantViolation),
+      return DetailedDemand(_query_detail::QueryRequestResultAccess::runtimeRejected(
+                                QueryRuntimeFailure::InvariantViolation),
                             MemoMetadata());
     }
-    return DetailedDemand(QueryRequestResult::completed(input.value.clone()),
+    return DetailedDemand(_query_detail::QueryRequestResultAccess::semantic(input.value.clone()),
                           MemoMetadata(snapshot->revision, input.changedAt, input.durability));
   }
   if (collision) {
-    return DetailedDemand(QueryRequestResult::failed(QueryRuntimeFailure::FingerprintCollision),
+    return DetailedDemand(_query_detail::QueryRequestResultAccess::runtimeRejected(
+                              QueryRuntimeFailure::FingerprintCollision),
                           MemoMetadata());
   }
   return DetailedDemand(
-      QueryRequestResult::completed(QueryValue::absence()),
-      MemoMetadata(snapshot->revision, DatabaseRevision(), descriptor.contract.inputDurability()));
+      _query_detail::QueryRequestResultAccess::semantic(QueryValue::absence()),
+      MemoMetadata(snapshot->revision, DatabaseRevision(), descriptor.descriptor.durability));
 }
 
 DetailedDemand QueryDatabase::Impl::execute(zc::Arc<SnapshotState> snapshot,
                                             RegisteredKind& descriptor, CanonicalQueryKey&& key,
                                             zc::Maybe<Memo>&& prior,
                                             zc::Vector<CanonicalQueryKey>&& activeChain,
-                                            zc::Arc<Flight> flight, bool allowParallelGroups) {
+                                            zc::Arc<Flight> flight, bool allowParallelGroups,
+                                            zc::Arc<const FinalSealAdmission> admission) {
   ZC_IF_SOME(oldMemo, prior) {
-    if (descriptor.contract.reuseClass() != ReuseClass::RevisionLocal) {
+    if (descriptor.descriptor.reuse != ReuseClass::RevisionLocal) {
       const size_t durabilityIndex = static_cast<size_t>(oldMemo.metadata.minimumDurability());
       bool green = oldMemo.value != zc::none &&
                    snapshot->lastChanged[durabilityIndex] <= oldMemo.metadata.verifiedAt();
@@ -1412,9 +1962,9 @@ DetailedDemand QueryDatabase::Impl::execute(zc::Arc<SnapshotState> snapshot,
             for (const auto& dependency : group.dependencies()) {
               if (dependency.inputProbeObservation() != zc::none) {
                 appendEvent(*snapshot.get(), key, QueryEventKind::RuntimeFailed);
-                return DetailedDemand(
-                    QueryRequestResult::failed(QueryRuntimeFailure::InvariantViolation),
-                    MemoMetadata());
+                return DetailedDemand(_query_detail::QueryRequestResultAccess::runtimeRejected(
+                                          QueryRuntimeFailure::InvariantViolation),
+                                      MemoMetadata());
               }
             }
           }
@@ -1427,11 +1977,14 @@ DetailedDemand QueryDatabase::Impl::execute(zc::Arc<SnapshotState> snapshot,
             zc::Vector<CanonicalQueryKey> validationChain;
             for (const auto& active : activeChain) { validationChain.add(active.clone()); }
             validationChain.add(key.clone());
-            auto validated = demandParallel(snapshot.addRef(), dependencyKeys.asPtr(),
-                                            validationChain.asPtr(), flight.addRef());
+            auto validated =
+                demandParallel(snapshot.addRef(), dependencyKeys.asPtr(), validationChain.asPtr(),
+                               flight.addRef(), retainAdmission(admission));
             for (auto& result : validated) {
-              if (!result.result.isCompleted()) {
-                appendEvent(*snapshot.get(), key, failureEvent(result.result.failure()));
+              if (_query_detail::QueryRequestResultAccess::isRuntimeRejected(result.result)) {
+                appendEvent(*snapshot.get(), key,
+                            failureEvent(_query_detail::QueryRequestResultAccess::runtimeFailure(
+                                result.result)));
                 return DetailedDemand(zc::mv(result.result), MemoMetadata());
               }
               if (result.metadata.changedAt() > oldMemo.metadata.verifiedAt()) { green = false; }
@@ -1448,12 +2001,21 @@ DetailedDemand QueryDatabase::Impl::execute(zc::Arc<SnapshotState> snapshot,
             ZC_IF_SOME(observation, dependency.inputProbeObservation()) {
               auto validated =
                   probeInput(snapshot.addRef(), dependency.key().clone(), validationCancellation);
-              if (!validated.result.isCompleted()) {
-                appendEvent(*snapshot.get(), key, failureEvent(validated.result.failure()));
+              if (_query_detail::QueryRequestResultAccess::isRuntimeRejected(validated.result)) {
+                appendEvent(*snapshot.get(), key,
+                            failureEvent(_query_detail::QueryRequestResultAccess::runtimeFailure(
+                                validated.result)));
                 return DetailedDemand(zc::mv(validated.result), MemoMetadata());
               }
+              if (!_query_detail::QueryRequestResultAccess::isSemantic(validated.result)) {
+                appendEvent(*snapshot.get(), key, QueryEventKind::RuntimeFailed);
+                return DetailedDemand(_query_detail::QueryRequestResultAccess::runtimeRejected(
+                                          QueryRuntimeFailure::InvariantViolation),
+                                      MemoMetadata());
+              }
               const auto currentObservation =
-                  validated.result.value().kind() == QueryValueKind::Absence
+                  _query_detail::QueryRequestResultAccess::semanticValue(validated.result).kind() ==
+                          QueryValueKind::Absence
                       ? InputProbeObservation::Absent
                       : InputProbeObservation::Present;
               if (currentObservation != observation ||
@@ -1465,9 +2027,11 @@ DetailedDemand QueryDatabase::Impl::execute(zc::Arc<SnapshotState> snapshot,
             }
             auto validated =
                 demand(snapshot.addRef(), dependency.key().clone(), zc::mv(validationChain),
-                       validationCancellation, allowParallelGroups);
-            if (!validated.result.isCompleted()) {
-              appendEvent(*snapshot.get(), key, failureEvent(validated.result.failure()));
+                       validationCancellation, allowParallelGroups, retainAdmission(admission));
+            if (_query_detail::QueryRequestResultAccess::isRuntimeRejected(validated.result)) {
+              appendEvent(*snapshot.get(), key,
+                          failureEvent(_query_detail::QueryRequestResultAccess::runtimeFailure(
+                              validated.result)));
               return DetailedDemand(zc::mv(validated.result), MemoMetadata());
             }
             if (validated.metadata.changedAt() > oldMemo.metadata.verifiedAt()) { green = false; }
@@ -1490,49 +2054,64 @@ DetailedDemand QueryDatabase::Impl::execute(zc::Arc<SnapshotState> snapshot,
           locked->events.add(
               QueryEvent(snapshot->revision, key.clone(), QueryEventKind::GreenReused));
         }
-        return DetailedDemand(QueryRequestResult::completed(zc::mv(value)), metadata);
+        return DetailedDemand(_query_detail::QueryRequestResultAccess::semantic(zc::mv(value)),
+                              metadata);
       }
     }
   }
 
   if (flight->isCancelled()) {
     appendEvent(*snapshot.get(), key, QueryEventKind::Cancelled);
-    return DetailedDemand(QueryRequestResult::failed(QueryRuntimeFailure::Cancelled),
-                          MemoMetadata());
+    return DetailedDemand(
+        _query_detail::QueryRequestResultAccess::runtimeRejected(QueryRuntimeFailure::Cancelled),
+        MemoMetadata());
   }
   zc::Vector<CanonicalQueryKey> providerChain;
   for (const auto& active : activeChain) { providerChain.add(active.clone()); }
   providerChain.add(key.clone());
   QueryContext context(zc::heap<QueryContext::Impl>(*this, snapshot.addRef(), zc::mv(providerChain),
-                                                    flight.addRef(), allowParallelGroups));
+                                                    flight.addRef(), allowParallelGroups,
+                                                    zc::mv(admission)));
   if (descriptor.capabilityEvaluator != zc::none) {
     auto completion =
         ZC_REQUIRE_NONNULL(descriptor.capabilityEvaluator)(context, key.canonicalBytes());
     if (context.impl->failure != zc::none) {
       const auto failure = ZC_REQUIRE_NONNULL(context.impl->failure);
       appendEvent(*snapshot.get(), key, failureEvent(failure));
-      return DetailedDemand(QueryRequestResult::failed(failure), MemoMetadata());
+      return DetailedDemand(_query_detail::QueryRequestResultAccess::runtimeRejected(failure),
+                            MemoMetadata());
     }
-    if (!completion.isCompleted()) {
-      appendEvent(*snapshot.get(), key, failureEvent(completion.failure()));
+    if (_query_detail::QueryRequestResultAccess::isRuntimeRejected(completion)) {
+      appendEvent(
+          *snapshot.get(), key,
+          failureEvent(_query_detail::QueryRequestResultAccess::runtimeFailure(completion)));
       return DetailedDemand(zc::mv(completion), MemoMetadata());
     }
     if (flight->isCancelled()) {
       appendEvent(*snapshot.get(), key, QueryEventKind::Cancelled);
-      return DetailedDemand(QueryRequestResult::failed(QueryRuntimeFailure::Cancelled),
-                            MemoMetadata());
+      return DetailedDemand(
+          _query_detail::QueryRequestResultAccess::runtimeRejected(QueryRuntimeFailure::Cancelled),
+          MemoMetadata());
     }
-    if (completion.isCapability()) {
-      const auto& capabilityMemo = completion.capabilityMemo();
-      if (capabilityMemo.key() != key || capabilityMemo.revision() != snapshot->revision ||
-          capabilityMemo.arena().revision() != snapshot->revision) {
+    if (_query_detail::QueryRequestResultAccess::isCapabilityPublished(completion)) {
+      const auto& capabilityMemo =
+          _query_detail::QueryRequestResultAccess::capabilityMemo(completion);
+      if (_query_detail::QueryRequestResultAccess::memoDatabase(capabilityMemo) !=
+              snapshot->database ||
+          _query_detail::QueryRequestResultAccess::memoKey(capabilityMemo) != key ||
+          _query_detail::QueryRequestResultAccess::memoRevision(capabilityMemo) !=
+              snapshot->revision ||
+          _query_detail::QueryRequestResultAccess::memoArenaRevision(capabilityMemo) !=
+              snapshot->revision) {
         appendEvent(*snapshot.get(), key, QueryEventKind::RuntimeFailed);
-        return DetailedDemand(QueryRequestResult::failed(QueryRuntimeFailure::InvariantViolation),
+        return DetailedDemand(_query_detail::QueryRequestResultAccess::runtimeRejected(
+                                  QueryRuntimeFailure::InvariantViolation),
                               MemoMetadata());
       }
-    } else if (completion.value().kind() == QueryValueKind::Value) {
+    } else if (!_query_detail::QueryRequestResultAccess::isCapabilityRejected(completion)) {
       appendEvent(*snapshot.get(), key, QueryEventKind::RuntimeFailed);
-      return DetailedDemand(QueryRequestResult::failed(QueryRuntimeFailure::InvariantViolation),
+      return DetailedDemand(_query_detail::QueryRequestResultAccess::runtimeRejected(
+                                QueryRuntimeFailure::InvariantViolation),
                             MemoMetadata());
     }
 
@@ -1547,10 +2126,9 @@ DetailedDemand QueryDatabase::Impl::execute(zc::Arc<SnapshotState> snapshot,
     for (const auto& group : context.impl->dependencies) { dependencies.add(group.clone()); }
     zc::Maybe<QueryValue> retainedValue;
     zc::Arc<RevisionLocalCapabilityMemoBase> retainedCapability;
-    if (completion.isCapability()) {
-      retainedCapability = completion.capabilityMemoArc();
-    } else {
-      retainedValue = completion.value().clone();
+    if (_query_detail::QueryRequestResultAccess::isCapabilityPublished(completion)) {
+      retainedCapability =
+          _query_detail::QueryRequestResultAccess::retainCapabilityMemo(completion);
     }
     {
       auto locked = snapshot->runtime.lockExclusive();
@@ -1565,28 +2143,40 @@ DetailedDemand QueryDatabase::Impl::execute(zc::Arc<SnapshotState> snapshot,
   if (context.impl->failure != zc::none) {
     const auto failure = ZC_REQUIRE_NONNULL(context.impl->failure);
     appendEvent(*snapshot.get(), key, failureEvent(failure));
-    return DetailedDemand(QueryRequestResult::failed(failure), MemoMetadata());
+    return DetailedDemand(_query_detail::QueryRequestResultAccess::runtimeRejected(failure),
+                          MemoMetadata());
   }
-  if (!candidate.isCompleted()) {
-    appendEvent(*snapshot.get(), key, failureEvent(candidate.failure()));
+  if (_query_detail::QueryRequestResultAccess::isRuntimeRejected(candidate)) {
+    appendEvent(*snapshot.get(), key,
+                failureEvent(_query_detail::QueryRequestResultAccess::runtimeFailure(candidate)));
     return DetailedDemand(zc::mv(candidate), MemoMetadata());
+  }
+  if (!_query_detail::QueryRequestResultAccess::isSemantic(candidate)) {
+    appendEvent(*snapshot.get(), key, QueryEventKind::RuntimeFailed);
+    return DetailedDemand(_query_detail::QueryRequestResultAccess::runtimeRejected(
+                              QueryRuntimeFailure::InvariantViolation),
+                          MemoMetadata());
   }
   if (flight->isCancelled()) {
     appendEvent(*snapshot.get(), key, QueryEventKind::Cancelled);
-    return DetailedDemand(QueryRequestResult::failed(QueryRuntimeFailure::Cancelled),
-                          MemoMetadata());
+    return DetailedDemand(
+        _query_detail::QueryRequestResultAccess::runtimeRejected(QueryRuntimeFailure::Cancelled),
+        MemoMetadata());
   }
+  const auto& candidateValue = _query_detail::QueryRequestResultAccess::semanticValue(candidate);
   const bool verified =
-      ZC_REQUIRE_NONNULL(descriptor.verifier)(context, key.canonicalBytes(), candidate.value());
+      ZC_REQUIRE_NONNULL(descriptor.verifier)(context, key.canonicalBytes(), candidateValue);
   if (context.impl->failure != zc::none || flight->isCancelled()) {
     const auto failure = flight->isCancelled() ? QueryRuntimeFailure::Cancelled
                                                : ZC_REQUIRE_NONNULL(context.impl->failure);
     appendEvent(*snapshot.get(), key, failureEvent(failure));
-    return DetailedDemand(QueryRequestResult::failed(failure), MemoMetadata());
+    return DetailedDemand(_query_detail::QueryRequestResultAccess::runtimeRejected(failure),
+                          MemoMetadata());
   }
   if (!verified) {
     appendEvent(*snapshot.get(), key, QueryEventKind::VerifierRejected);
-    return DetailedDemand(QueryRequestResult::failed(QueryRuntimeFailure::VerifierRejected),
+    return DetailedDemand(_query_detail::QueryRequestResultAccess::runtimeRejected(
+                              QueryRuntimeFailure::VerifierRejected),
                           MemoMetadata());
   }
 
@@ -1599,14 +2189,13 @@ DetailedDemand QueryDatabase::Impl::execute(zc::Arc<SnapshotState> snapshot,
   DatabaseRevision changedAt = snapshot->revision;
   QueryEventKind event = QueryEventKind::Executed;
   ZC_IF_SOME(oldMemo, prior) {
-    if (descriptor.contract.reuseClass() != ReuseClass::RevisionLocal &&
-        oldMemo.value != zc::none && candidate.value() == ZC_REQUIRE_NONNULL(oldMemo.value) &&
+    if (descriptor.descriptor.reuse != ReuseClass::RevisionLocal && oldMemo.value != zc::none &&
+        candidateValue == ZC_REQUIRE_NONNULL(oldMemo.value) &&
         static_cast<uint8_t>(minimumDurability) >=
             static_cast<uint8_t>(oldMemo.metadata.minimumDurability())) {
       changedAt = oldMemo.metadata.changedAt();
       event = QueryEventKind::RecomputedEqual;
-    } else if (oldMemo.value != zc::none &&
-               candidate.value() == ZC_REQUIRE_NONNULL(oldMemo.value) &&
+    } else if (oldMemo.value != zc::none && candidateValue == ZC_REQUIRE_NONNULL(oldMemo.value) &&
                static_cast<uint8_t>(minimumDurability) <
                    static_cast<uint8_t>(oldMemo.metadata.minimumDurability())) {
       event = QueryEventKind::DurabilityDecreased;
@@ -1614,13 +2203,11 @@ DetailedDemand QueryDatabase::Impl::execute(zc::Arc<SnapshotState> snapshot,
       event = QueryEventKind::RecomputedChanged;
     }
   }
-  if (descriptor.contract.reuseClass() == ReuseClass::RevisionLocal) {
-    changedAt = snapshot->revision;
-  }
+  if (descriptor.descriptor.reuse == ReuseClass::RevisionLocal) { changedAt = snapshot->revision; }
   const MemoMetadata metadata(snapshot->revision, changedAt, minimumDurability);
   zc::Vector<DependencyGroup> dependencies;
   for (const auto& group : context.impl->dependencies) { dependencies.add(group.clone()); }
-  auto resultValue = candidate.value().clone();
+  auto resultValue = candidateValue.clone();
   zc::Maybe<QueryValue> retainedValue(resultValue.clone());
   zc::Arc<RevisionLocalCapabilityMemoBase> noCapability;
   {
@@ -1629,7 +2216,8 @@ DetailedDemand QueryDatabase::Impl::execute(zc::Arc<SnapshotState> snapshot,
                               zc::mv(dependencies)));
     locked->events.add(QueryEvent(snapshot->revision, key.clone(), event));
   }
-  return DetailedDemand(QueryRequestResult::completed(zc::mv(resultValue)), metadata);
+  return DetailedDemand(_query_detail::QueryRequestResultAccess::semantic(zc::mv(resultValue)),
+                        metadata);
 }
 
 }  // namespace zomlang::compiler::query

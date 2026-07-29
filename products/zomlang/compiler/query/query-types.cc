@@ -27,7 +27,142 @@ bool bytesLess(zc::ArrayPtr<const uint8_t> left, zc::ArrayPtr<const uint8_t> rig
   return left.size() < right.size();
 }
 
+void appendUint32(zc::Vector<uint8_t>& bytes, uint32_t value) {
+  bytes.add(static_cast<uint8_t>(value >> 24));
+  bytes.add(static_cast<uint8_t>(value >> 16));
+  bytes.add(static_cast<uint8_t>(value >> 8));
+  bytes.add(static_cast<uint8_t>(value));
+}
+
+zc::Array<uint8_t> vectorToArray(zc::Vector<uint8_t>&& bytes) {
+  auto result = zc::heapArray<uint8_t>(bytes.size());
+  for (size_t index = 0; index < bytes.size(); ++index) { result[index] = bytes[index]; }
+  return result;
+}
+
+bool consumeUint32(zc::ArrayPtr<const uint8_t> bytes, size_t& cursor, uint32_t& value) {
+  if (cursor > bytes.size() || bytes.size() - cursor < 4) { return false; }
+  value = (static_cast<uint32_t>(bytes[cursor]) << 24) |
+          (static_cast<uint32_t>(bytes[cursor + 1]) << 16) |
+          (static_cast<uint32_t>(bytes[cursor + 2]) << 8) |
+          static_cast<uint32_t>(bytes[cursor + 3]);
+  cursor += 4;
+  return true;
+}
+
+bool isCanonicalDomain(zc::StringPtr domain) {
+  if (domain.size() == 0 || domain.size() > UINT32_MAX) { return false; }
+  for (char value : domain) {
+    const bool lowercase = value >= 'a' && value <= 'z';
+    const bool digit = value >= '0' && value <= '9';
+    if (!lowercase && !digit && value != '.' && value != '-') { return false; }
+  }
+  return true;
+}
+
 }  // namespace
+
+namespace _query_detail {
+
+class QueryDatabaseIdentityToken final : public zc::AtomicRefcounted {
+public:
+  QueryDatabaseIdentityToken() = default;
+  ~QueryDatabaseIdentityToken() noexcept(false) override = default;
+  ZC_DISALLOW_COPY_AND_MOVE(QueryDatabaseIdentityToken);
+};
+
+}  // namespace _query_detail
+
+QueryDatabaseIdentity::QueryDatabaseIdentity(
+    zc::Arc<const _query_detail::QueryDatabaseIdentityToken>&& token) noexcept
+    : tokenField(zc::mv(token)) {
+  ZC_IREQUIRE(tokenField != nullptr, "query database identity has no token");
+}
+
+QueryDatabaseIdentity::QueryDatabaseIdentity(QueryDatabaseIdentity&&) noexcept = default;
+QueryDatabaseIdentity& QueryDatabaseIdentity::operator=(QueryDatabaseIdentity&&) noexcept = default;
+QueryDatabaseIdentity::~QueryDatabaseIdentity() noexcept(false) = default;
+
+QueryDatabaseIdentity QueryDatabaseIdentity::create() {
+  zc::Arc<const _query_detail::QueryDatabaseIdentityToken> token =
+      zc::arc<_query_detail::QueryDatabaseIdentityToken>();
+  return QueryDatabaseIdentity(zc::mv(token));
+}
+
+QueryDatabaseIdentity QueryDatabaseIdentity::retain() const {
+  return QueryDatabaseIdentity(tokenField.addRef());
+}
+
+bool QueryDatabaseIdentity::operator==(const QueryDatabaseIdentity& other) const noexcept {
+  return tokenField == other.tokenField;
+}
+
+CapabilityFailureEnvelope::CapabilityFailureEnvelope(zc::String&& descriptorDomain,
+                                                     CapabilityFailureKind kind,
+                                                     zc::Array<uint8_t>&& canonicalPayload)
+    : descriptorDomainField(zc::mv(descriptorDomain)),
+      kindField(kind),
+      canonicalPayloadField(zc::mv(canonicalPayload)) {
+  ZC_IREQUIRE(isCanonicalDomain(descriptorDomainField),
+              "capability rejection requires a canonical descriptor domain");
+  ZC_IREQUIRE(canonicalPayloadField.size() != 0 && canonicalPayloadField.size() <= UINT32_MAX,
+              "capability rejection requires a bounded canonical payload");
+
+  static constexpr zc::StringPtr envelopeDomain = "zom.query.capability-failure"_zc;
+  zc::Vector<uint8_t> encoded;
+  for (char value : envelopeDomain) { encoded.add(static_cast<uint8_t>(value)); }
+  encoded.add(0);
+  appendUint32(encoded, static_cast<uint32_t>(descriptorDomainField.size()));
+  for (char value : descriptorDomainField) { encoded.add(static_cast<uint8_t>(value)); }
+  encoded.add(static_cast<uint8_t>(kindField));
+  appendUint32(encoded, static_cast<uint32_t>(canonicalPayloadField.size()));
+  for (uint8_t value : canonicalPayloadField) { encoded.add(value); }
+  canonicalBytesField = vectorToArray(zc::mv(encoded));
+}
+
+zc::Maybe<CapabilityFailureEnvelope> CapabilityFailureEnvelope::decodeCanonical(
+    zc::ArrayPtr<const uint8_t> bytes) {
+  static constexpr zc::StringPtr envelopeDomain = "zom.query.capability-failure"_zc;
+  const size_t prefixSize = envelopeDomain.size() + 1;
+  if (bytes.size() < prefixSize + 4 + 1 + 4) { return zc::none; }
+  for (size_t index = 0; index < envelopeDomain.size(); ++index) {
+    if (bytes[index] != static_cast<uint8_t>(envelopeDomain[index])) { return zc::none; }
+  }
+  if (bytes[envelopeDomain.size()] != 0) { return zc::none; }
+
+  size_t cursor = prefixSize;
+  uint32_t descriptorSize = 0;
+  if (!consumeUint32(bytes, cursor, descriptorSize) || descriptorSize == 0 ||
+      cursor > bytes.size() || descriptorSize > bytes.size() - cursor) {
+    return zc::none;
+  }
+  auto descriptorBytes = bytes.slice(cursor, cursor + descriptorSize);
+  cursor += descriptorSize;
+  auto descriptorCharacters = zc::heapArray<char>(static_cast<size_t>(descriptorSize) + 1);
+  for (size_t index = 0; index < descriptorSize; ++index) {
+    descriptorCharacters[index] = static_cast<char>(descriptorBytes[index]);
+  }
+  descriptorCharacters[descriptorSize] = '\0';
+  zc::String descriptorDomain(zc::mv(descriptorCharacters));
+  if (!isCanonicalDomain(descriptorDomain)) { return zc::none; }
+  if (cursor == bytes.size()) { return zc::none; }
+  const uint8_t rawKind = bytes[cursor++];
+  if (rawKind != static_cast<uint8_t>(CapabilityFailureKind::SourceRejected) &&
+      rawKind != static_cast<uint8_t>(CapabilityFailureKind::KeyRejected)) {
+    return zc::none;
+  }
+
+  uint32_t payloadSize = 0;
+  if (!consumeUint32(bytes, cursor, payloadSize) || payloadSize == 0 || cursor > bytes.size() ||
+      payloadSize != bytes.size() - cursor) {
+    return zc::none;
+  }
+  auto payload = zc::heapArray<uint8_t>(bytes.slice(cursor, bytes.size()));
+  CapabilityFailureEnvelope decoded(zc::mv(descriptorDomain),
+                                    static_cast<CapabilityFailureKind>(rawKind), zc::mv(payload));
+  if (decoded.canonicalBytes() != bytes) { return zc::none; }
+  return decoded;
+}
 
 bool QueryKeyFingerprint::operator<(const QueryKeyFingerprint& other) const noexcept {
   return bytesLess(bytes(), other.bytes());
@@ -133,32 +268,38 @@ const SemanticContextCapabilityResources& SnapshotCapabilityArena::resources() c
 }
 
 struct RevisionLocalCapabilityMemoBase::Impl final {
-  Impl(CanonicalQueryKey&& key, DatabaseRevision revision, zc::Arc<SnapshotCapabilityArena>&& arena,
+  Impl(QueryDatabaseIdentity&& database, CanonicalQueryKey&& key, DatabaseRevision revision,
+       zc::Arc<SnapshotCapabilityArena>&& arena,
        zc::Vector<zc::Arc<RevisionLocalCapabilityMemoBase>>&& retainedDependencies,
-       zc::Array<uint8_t>&& stableWitness, zc::StringPtr capabilityTypeIdentity) noexcept
-      : key(zc::mv(key)),
+       zc::Array<uint8_t>&& stableWitness) noexcept
+      : database(zc::mv(database)),
+        key(zc::mv(key)),
         revision(revision),
         arena(zc::mv(arena)),
         retainedDependencies(zc::mv(retainedDependencies)),
-        stableWitness(zc::mv(stableWitness)),
-        capabilityTypeIdentity(zc::str(capabilityTypeIdentity)) {}
+        stableWitness(zc::mv(stableWitness)) {}
 
+  QueryDatabaseIdentity database;
   CanonicalQueryKey key;
   DatabaseRevision revision;
   zc::Arc<SnapshotCapabilityArena> arena;
   zc::Vector<zc::Arc<RevisionLocalCapabilityMemoBase>> retainedDependencies;
   zc::Array<uint8_t> stableWitness;
-  zc::String capabilityTypeIdentity;
 };
 
 RevisionLocalCapabilityMemoBase::RevisionLocalCapabilityMemoBase(
-    CanonicalQueryKey&& key, DatabaseRevision revision, zc::Arc<SnapshotCapabilityArena>&& arena,
+    QueryDatabaseIdentity&& database, CanonicalQueryKey&& key, DatabaseRevision revision,
+    zc::Arc<SnapshotCapabilityArena>&& arena,
     zc::Vector<zc::Arc<RevisionLocalCapabilityMemoBase>>&& retainedDependencies,
-    zc::Array<uint8_t>&& stableWitness, zc::StringPtr capabilityTypeIdentity)
-    : impl(zc::heap<Impl>(zc::mv(key), revision, zc::mv(arena), zc::mv(retainedDependencies),
-                          zc::mv(stableWitness), capabilityTypeIdentity)) {}
+    zc::Array<uint8_t>&& stableWitness)
+    : impl(zc::heap<Impl>(zc::mv(database), zc::mv(key), revision, zc::mv(arena),
+                          zc::mv(retainedDependencies), zc::mv(stableWitness))) {}
 
 RevisionLocalCapabilityMemoBase::~RevisionLocalCapabilityMemoBase() noexcept(false) = default;
+
+const QueryDatabaseIdentity& RevisionLocalCapabilityMemoBase::database() const {
+  return impl->database;
+}
 
 const CanonicalQueryKey& RevisionLocalCapabilityMemoBase::key() const { return impl->key; }
 
@@ -177,64 +318,6 @@ RevisionLocalCapabilityMemoBase::retainedDependencies() const {
 
 zc::ArrayPtr<const uint8_t> RevisionLocalCapabilityMemoBase::stableWitness() const {
   return impl->stableWitness.asPtr();
-}
-
-zc::StringPtr RevisionLocalCapabilityMemoBase::capabilityTypeIdentity() const {
-  return impl->capabilityTypeIdentity;
-}
-
-QueryRequestResult::QueryRequestResult(zc::Maybe<QueryValue>&& value,
-                                       zc::Arc<RevisionLocalCapabilityMemoBase>&& capabilityMemo,
-                                       QueryRuntimeFailure failure) noexcept
-    : valueField(zc::mv(value)),
-      capabilityMemoField(zc::mv(capabilityMemo)),
-      failureField(failure) {}
-
-QueryRequestResult QueryRequestResult::completed(QueryValue&& value) {
-  zc::Maybe<QueryValue> retained(zc::mv(value));
-  zc::Arc<RevisionLocalCapabilityMemoBase> noCapability;
-  return QueryRequestResult(zc::mv(retained), zc::mv(noCapability),
-                            QueryRuntimeFailure::InvariantViolation);
-}
-
-QueryRequestResult QueryRequestResult::completed(
-    zc::Arc<RevisionLocalCapabilityMemoBase>&& capabilityMemo) {
-  ZC_IREQUIRE(capabilityMemo != nullptr, "query capability completion has no memo");
-  zc::Maybe<QueryValue> noValue;
-  return QueryRequestResult(zc::mv(noValue), zc::mv(capabilityMemo),
-                            QueryRuntimeFailure::InvariantViolation);
-}
-
-QueryRequestResult QueryRequestResult::failed(QueryRuntimeFailure failure) {
-  zc::Maybe<QueryValue> noValue;
-  zc::Arc<RevisionLocalCapabilityMemoBase> noCapability;
-  return QueryRequestResult(zc::mv(noValue), zc::mv(noCapability), failure);
-}
-
-QueryRequestResult QueryRequestResult::clone() const {
-  ZC_IF_SOME(value, valueField) { return completed(value.clone()); }
-  if (capabilityMemoField != nullptr) { return completed(capabilityMemoField.addRef()); }
-  return failed(failureField);
-}
-
-const QueryValue& QueryRequestResult::value() const {
-  ZC_IREQUIRE(valueField != zc::none, "query request has no canonical completed value");
-  return ZC_REQUIRE_NONNULL(valueField);
-}
-
-const RevisionLocalCapabilityMemoBase& QueryRequestResult::capabilityMemo() const {
-  ZC_IREQUIRE(capabilityMemoField != nullptr, "query request has no capability completion");
-  return *capabilityMemoField.get();
-}
-
-zc::Arc<RevisionLocalCapabilityMemoBase> QueryRequestResult::capabilityMemoArc() const {
-  ZC_IREQUIRE(capabilityMemoField != nullptr, "query request has no capability completion");
-  return capabilityMemoField.addRef();
-}
-
-zc::Arc<RevisionLocalCapabilityMemoBase> QueryRequestResult::takeCapabilityMemo() {
-  ZC_IREQUIRE(capabilityMemoField != nullptr, "query request has no capability completion");
-  return zc::mv(capabilityMemoField);
 }
 
 DependencyRecord::DependencyRecord(CanonicalQueryKey&& key, DatabaseRevision changedAt,

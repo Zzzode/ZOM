@@ -18,13 +18,62 @@
 
 #include "zc/core/debug.h"
 #include "zomlang/compiler/basic/thread-pool.h"
+#include "zomlang/compiler/identity/sha256.h"
 #include "zomlang/compiler/query/query-database.h"
+
+namespace zomlang::compiler::driver::module_graph_query {
+
+/// \brief Test-only definition for the accepted future production inventory role.
+struct CompleteCompilationContextAuthorityInput final {
+  using Key = uint32_t;
+  using Value = uint32_t;
+
+  static constexpr query::InputDescriptorMetadata descriptor{
+      "CompleteCompilationContextAuthorityInput"_zcc,
+      "zom.input.complete-compilation-context-authority"_zcc, query::Durability::Frozen};
+
+  static zc::Array<uint8_t> encodeKey(const Key& key) {
+    auto bytes = zc::heapArray<uint8_t>(4);
+    bytes[0] = static_cast<uint8_t>(key >> 24);
+    bytes[1] = static_cast<uint8_t>(key >> 16);
+    bytes[2] = static_cast<uint8_t>(key >> 8);
+    bytes[3] = static_cast<uint8_t>(key);
+    return bytes;
+  }
+
+  static zc::Maybe<Key> decodeKey(zc::ArrayPtr<const uint8_t> bytes) {
+    if (bytes.size() != 4) { return zc::none; }
+    return (uint32_t{bytes[0]} << 24) | (uint32_t{bytes[1]} << 16) | (uint32_t{bytes[2]} << 8) |
+           uint32_t{bytes[3]};
+  }
+
+  static zc::Array<uint8_t> encodeValue(const Value& value) { return encodeKey(value); }
+  static zc::Maybe<Value> decodeValue(zc::ArrayPtr<const uint8_t> bytes) {
+    return decodeKey(bytes);
+  }
+
+  static query::FinalAuthorityCheck verifyFinalAuthority(const query::QuerySnapshot&,
+                                                         const Key& key, const Value& value,
+                                                         const identity::Sha256Digest& witness) {
+    if (key != value) { return query::FinalAuthorityCheck::Rejected; }
+    for (uint8_t byte : witness.bytes()) {
+      if (byte != static_cast<uint8_t>(key)) { return query::FinalAuthorityCheck::Rejected; }
+    }
+    return query::FinalAuthorityCheck::Verified;
+  }
+};
+
+}  // namespace zomlang::compiler::driver::module_graph_query
 
 namespace zomlang::compiler::query::test {
 
 inline basic::ThreadPool& queryTestScheduler() {
   static basic::ThreadPool scheduler(4);
   return scheduler;
+}
+
+inline QueryDatabase queryTestDatabase() {
+  return QueryDatabase(queryTestScheduler(), queryTestDescriptorInventory());
 }
 
 inline zc::Array<uint8_t> encodeUint32(uint32_t value) {
@@ -42,23 +91,11 @@ inline zc::Maybe<uint32_t> decodeUint32(zc::ArrayPtr<const uint8_t> bytes) {
          uint32_t{bytes[3]};
 }
 
-inline QueryKindContract inputContract(zc::StringPtr domain, Durability durability) {
-  auto contract = QueryKindContract::input(domain, durability);
-  return zc::mv(ZC_REQUIRE_NONNULL(contract));
-}
-
-inline QueryKindContract derivedContract(zc::StringPtr domain,
-                                         ReuseClass reuse = ReuseClass::Semantic,
-                                         RetentionClass retention = RetentionClass::Retained) {
-  auto contract = QueryKindContract::derived(domain, reuse, retention);
-  return zc::mv(ZC_REQUIRE_NONNULL(contract));
-}
-
 struct LowInput {
   using Key = uint32_t;
   using Value = uint32_t;
-  static zc::StringPtr domain() { return "test.input.low"_zc; }
-  static QueryKindContract contract() { return inputContract(domain(), Durability::Low); }
+  static constexpr InputDescriptorMetadata descriptor{"LowInput"_zcc, "test.input.low"_zcc,
+                                                      Durability::Low};
   static zc::Array<uint8_t> encodeKey(const Key& key) { return encodeUint32(key); }
   static zc::Maybe<Key> decodeKey(zc::ArrayPtr<const uint8_t> bytes) { return decodeUint32(bytes); }
   static zc::Array<uint8_t> encodeValue(const Value& value) { return encodeUint32(value); }
@@ -68,29 +105,149 @@ struct LowInput {
 };
 
 struct MediumInput final : LowInput {
-  static zc::StringPtr domain() { return "test.input.medium"_zc; }
-  static QueryKindContract contract() { return inputContract(domain(), Durability::Medium); }
+  static constexpr InputDescriptorMetadata descriptor{"MediumInput"_zcc, "test.input.medium"_zcc,
+                                                      Durability::Medium};
 };
 
 struct HighInput final : LowInput {
-  static zc::StringPtr domain() { return "test.input.high"_zc; }
-  static QueryKindContract contract() { return inputContract(domain(), Durability::High); }
+  static constexpr InputDescriptorMetadata descriptor{"HighInput"_zcc, "test.input.high"_zcc,
+                                                      Durability::High};
 };
 
 struct FrozenInput final : LowInput {
-  static zc::StringPtr domain() { return "test.input.frozen"_zc; }
-  static QueryKindContract contract() { return inputContract(domain(), Durability::Frozen); }
+  static constexpr InputDescriptorMetadata descriptor{"FrozenInput"_zcc, "test.input.frozen"_zcc,
+                                                      Durability::Frozen};
 };
 
 struct MalformedLowInputKey final : LowInput {
+  static constexpr InputDescriptorMetadata descriptor{
+      "MalformedLowInputKey"_zcc, "test.input.malformed-low-key"_zcc, Durability::Low};
   static zc::Array<uint8_t> encodeKey(const Key&) { return zc::heapArray<uint8_t>(3); }
+};
+
+constexpr uint32_t CAPABILITY_GENERATION_INPUT_MASK = uint32_t{1} << 31;
+
+inline uint32_t capabilityGenerationInputKey(uint32_t key) {
+  return key ^ CAPABILITY_GENERATION_INPUT_MASK;
+}
+
+class LeafCapability final {
+public:
+  LeafCapability(uint32_t value, uint32_t generation) noexcept
+      : valueField(value), generationField(generation) {}
+
+  ZC_NODISCARD uint32_t value() const noexcept { return valueField; }
+  ZC_NODISCARD uint32_t generation() const noexcept { return generationField; }
+
+private:
+  uint32_t valueField;
+  uint32_t generationField;
+};
+
+class ParentCapability final {
+public:
+  ParentCapability(uint32_t value, uint32_t generation) noexcept
+      : valueField(value), generationField(generation) {}
+
+  ZC_NODISCARD uint32_t value() const noexcept { return valueField; }
+  ZC_NODISCARD uint32_t generation() const noexcept { return generationField; }
+
+private:
+  uint32_t valueField;
+  uint32_t generationField;
+};
+
+#define ZOM_DECLARE_TEST_CAPABILITY_QUERY(Name, CapabilityType, NameLiteral, DomainLiteral,   \
+                                          Admission)                                          \
+  struct Name final {                                                                         \
+    using Key = uint32_t;                                                                     \
+    using Capability = CapabilityType;                                                        \
+    using FailureAlternatives = CapabilityFailureList<>;                                      \
+                                                                                              \
+    static constexpr CapabilityDescriptorMetadata descriptor{NameLiteral,                     \
+                                                             DomainLiteral,                   \
+                                                             RetentionClass::Retained,        \
+                                                             QueryCyclePolicy::Reject,        \
+                                                             QueryCostClass::Linear,          \
+                                                             CapabilityAdmission::Admission}; \
+    static zc::Array<uint8_t> encodeKey(const Key& key) { return encodeUint32(key); }         \
+    static zc::Maybe<Key> decodeKey(zc::ArrayPtr<const uint8_t> bytes) {                      \
+      return decodeUint32(bytes);                                                             \
+    }                                                                                         \
+    static CapabilityProviderResult<Name> provide(CapabilityQueryContext<Name>& context,      \
+                                                  const Key& key);                            \
+    static zc::Maybe<zc::Array<uint8_t>> verify(CapabilityQueryContext<Name>&, const Key&,    \
+                                                const Capability& candidate);                 \
+  }
+
+ZOM_DECLARE_TEST_CAPABILITY_QUERY(LeafCapabilityQuery, LeafCapability, "LeafCapabilityQuery"_zcc,
+                                  "test.capability.leaf"_zcc, AnySnapshot);
+ZOM_DECLARE_TEST_CAPABILITY_QUERY(ParentCapabilityQuery, ParentCapability,
+                                  "ParentCapabilityQuery"_zcc, "test.capability.parent"_zcc,
+                                  AnySnapshot);
+ZOM_DECLARE_TEST_CAPABILITY_QUERY(SlowCapabilityQuery, LeafCapability, "SlowCapabilityQuery"_zcc,
+                                  "test.capability.slow"_zcc, AnySnapshot);
+ZOM_DECLARE_TEST_CAPABILITY_QUERY(RejectedCapabilityQuery, LeafCapability,
+                                  "RejectedCapabilityQuery"_zcc, "test.capability.rejected"_zcc,
+                                  AnySnapshot);
+ZOM_DECLARE_TEST_CAPABILITY_QUERY(FinalSealedCapabilityQuery, LeafCapability,
+                                  "FinalSealedCapabilityQuery"_zcc,
+                                  "test.capability.final-sealed"_zcc, FinalSealedSnapshot);
+ZOM_DECLARE_TEST_CAPABILITY_QUERY(FinalSealedParentCapabilityQuery, ParentCapability,
+                                  "FinalSealedParentCapabilityQuery"_zcc,
+                                  "test.capability.final-sealed-parent"_zcc, FinalSealedSnapshot);
+
+#undef ZOM_DECLARE_TEST_CAPABILITY_QUERY
+
+struct TerminalCapabilityQuery final {
+  using Key = uint32_t;
+  using Capability = LeafCapability;
+  using FailureAlternatives = CapabilityFailureList<KeyRejection<uint32_t>>;
+
+  static constexpr CapabilityDescriptorMetadata descriptor{
+      "TerminalCapabilityQuery"_zcc, "test.capability.terminal"_zcc,
+      RetentionClass::Retained,      QueryCyclePolicy::Reject,
+      QueryCostClass::Linear,        CapabilityAdmission::AnySnapshot};
+  static zc::Array<uint8_t> encodeKey(const Key& key) { return encodeUint32(key); }
+  static zc::Maybe<Key> decodeKey(zc::ArrayPtr<const uint8_t> bytes) { return decodeUint32(bytes); }
+  static CapabilityProviderResult<TerminalCapabilityQuery> provide(
+      CapabilityQueryContext<TerminalCapabilityQuery>&, const Key& key);
+  static zc::Maybe<zc::Array<uint8_t>> verify(CapabilityQueryContext<TerminalCapabilityQuery>&,
+                                              const Key&, const Capability& candidate);
+};
+
+struct CapabilityRejectionProjectionQuery final {
+  using Key = uint32_t;
+  using Value = uint32_t;
+
+  static constexpr SemanticDescriptorMetadata descriptor{
+      "CapabilityRejectionProjectionQuery"_zcc,
+      "test.query.capability-rejection-projection"_zcc,
+      ReuseClass::Semantic,
+      RetentionClass::Retained,
+      QueryEqualityPolicy::CanonicalBytes,
+      QueryCyclePolicy::Reject,
+      QueryCostClass::Linear};
+  static zc::Array<uint8_t> encodeKey(const Key& key) { return encodeUint32(key); }
+  static zc::Maybe<Key> decodeKey(zc::ArrayPtr<const uint8_t> bytes) { return decodeUint32(bytes); }
+  static zc::Array<uint8_t> encodeValue(const Value& value) { return encodeUint32(value); }
+  static zc::Maybe<Value> decodeValue(zc::ArrayPtr<const uint8_t> bytes) {
+    return decodeUint32(bytes);
+  }
+  static TypedQueryResult<Value> provide(QueryContext& context, const Key& key);
+  static bool verify(QueryContext& context, const Key& key, const TypedQueryResult<Value>& result);
 };
 
 struct AddTenQuery {
   using Key = uint32_t;
   using Value = uint32_t;
-  static zc::StringPtr domain() { return "test.query.add-ten"_zc; }
-  static QueryKindContract contract() { return derivedContract(domain()); }
+  static constexpr SemanticDescriptorMetadata descriptor{"AddTenQuery"_zcc,
+                                                         "test.query.add-ten"_zcc,
+                                                         ReuseClass::Semantic,
+                                                         RetentionClass::Retained,
+                                                         QueryEqualityPolicy::CanonicalBytes,
+                                                         QueryCyclePolicy::Reject,
+                                                         QueryCostClass::Linear};
   static zc::Array<uint8_t> encodeKey(const Key& key) { return encodeUint32(key); }
   static zc::Maybe<Key> decodeKey(zc::ArrayPtr<const uint8_t> bytes) { return decodeUint32(bytes); }
   static zc::Array<uint8_t> encodeValue(const Value& value) { return encodeUint32(value); }
@@ -110,8 +267,13 @@ struct AddTenQuery {
 };
 
 struct ParityProjectionQuery final : AddTenQuery {
-  static zc::StringPtr domain() { return "test.query.parity"_zc; }
-  static QueryKindContract contract() { return derivedContract(domain()); }
+  static constexpr SemanticDescriptorMetadata descriptor{"ParityProjectionQuery"_zcc,
+                                                         "test.query.parity"_zcc,
+                                                         ReuseClass::Semantic,
+                                                         RetentionClass::Retained,
+                                                         QueryEqualityPolicy::CanonicalBytes,
+                                                         QueryCyclePolicy::Reject,
+                                                         QueryCostClass::Linear};
   static TypedQueryResult<Value> provide(QueryContext& context, const Key& key) {
     auto source = context.get<AddTenQuery>(key);
     if (source.isRuntimeFailure()) {
@@ -121,23 +283,28 @@ struct ParityProjectionQuery final : AddTenQuery {
   }
 };
 
-struct RevisionLocalQuery final : AddTenQuery {
-  static zc::StringPtr domain() { return "test.query.revision-local"_zc; }
-  static QueryKindContract contract() {
-    return derivedContract(domain(), ReuseClass::RevisionLocal);
-  }
+struct ChangedProjectionQuery final : AddTenQuery {
+  static constexpr SemanticDescriptorMetadata descriptor{
+      "ChangedProjectionQuery"_zcc, "test.query.changed-projection"_zcc, ReuseClass::Semantic,
+      RetentionClass::Retained,     QueryEqualityPolicy::CanonicalBytes, QueryCyclePolicy::Reject,
+      QueryCostClass::Linear};
 };
 
 struct EvictableQuery final : AddTenQuery {
-  static zc::StringPtr domain() { return "test.query.evictable"_zc; }
-  static QueryKindContract contract() {
-    return derivedContract(domain(), ReuseClass::Semantic, RetentionClass::Evictable);
-  }
+  static constexpr SemanticDescriptorMetadata descriptor{
+      "EvictableQuery"_zcc,      "test.query.evictable"_zcc,          ReuseClass::Semantic,
+      RetentionClass::Evictable, QueryEqualityPolicy::CanonicalBytes, QueryCyclePolicy::Reject,
+      QueryCostClass::Linear};
 };
 
 struct BranchQuery final : AddTenQuery {
-  static zc::StringPtr domain() { return "test.query.branch"_zc; }
-  static QueryKindContract contract() { return derivedContract(domain()); }
+  static constexpr SemanticDescriptorMetadata descriptor{"BranchQuery"_zcc,
+                                                         "test.query.branch"_zcc,
+                                                         ReuseClass::Semantic,
+                                                         RetentionClass::Retained,
+                                                         QueryEqualityPolicy::CanonicalBytes,
+                                                         QueryCyclePolicy::Reject,
+                                                         QueryCostClass::Linear};
   static TypedQueryResult<Value> provide(QueryContext& context, const Key&) {
     auto selector = context.get<LowInput>(0);
     if (selector.isRuntimeFailure()) {
@@ -152,8 +319,10 @@ struct BranchQuery final : AddTenQuery {
 };
 
 struct ParallelSumQuery final : AddTenQuery {
-  static zc::StringPtr domain() { return "test.query.parallel-sum"_zc; }
-  static QueryKindContract contract() { return derivedContract(domain()); }
+  static constexpr SemanticDescriptorMetadata descriptor{
+      "ParallelSumQuery"_zcc,   "test.query.parallel-sum"_zcc,       ReuseClass::Semantic,
+      RetentionClass::Retained, QueryEqualityPolicy::CanonicalBytes, QueryCyclePolicy::Reject,
+      QueryCostClass::Linear};
   static TypedQueryResult<Value> provide(QueryContext& context, const Key& key) {
     uint32_t keys[] = {key + 1, key};
     auto values = context.getParallel<LowInput>(zc::arrayPtr(keys));
@@ -165,8 +334,10 @@ struct ParallelSumQuery final : AddTenQuery {
 };
 
 struct ParallelPositionalQuery final : AddTenQuery {
-  static zc::StringPtr domain() { return "test.query.parallel-positional"_zc; }
-  static QueryKindContract contract() { return derivedContract(domain()); }
+  static constexpr SemanticDescriptorMetadata descriptor{
+      "ParallelPositionalQuery"_zcc, "test.query.parallel-positional"_zcc, ReuseClass::Semantic,
+      RetentionClass::Retained,      QueryEqualityPolicy::CanonicalBytes,  QueryCyclePolicy::Reject,
+      QueryCostClass::Linear};
   static TypedQueryResult<Value> provide(QueryContext& context, const Key& key) {
     uint32_t keys[] = {key + 3, key + 1, key + 2, key};
     auto values = context.getParallel<LowInput>(zc::arrayPtr(keys));
@@ -184,8 +355,10 @@ struct ParallelPositionalQuery final : AddTenQuery {
 };
 
 struct ParallelSlowLeafQuery final : AddTenQuery {
-  static zc::StringPtr domain() { return "test.query.parallel-slow-leaf"_zc; }
-  static QueryKindContract contract() { return derivedContract(domain()); }
+  static constexpr SemanticDescriptorMetadata descriptor{
+      "ParallelSlowLeafQuery"_zcc, "test.query.parallel-slow-leaf"_zcc, ReuseClass::Semantic,
+      RetentionClass::Retained,    QueryEqualityPolicy::CanonicalBytes, QueryCyclePolicy::Reject,
+      QueryCostClass::Linear};
   static TypedQueryResult<Value> provide(QueryContext&, const Key& key) {
     usleep(100000);
     return TypedQueryResult<Value>::value(key);
@@ -193,8 +366,10 @@ struct ParallelSlowLeafQuery final : AddTenQuery {
 };
 
 struct ParallelSlowSumQuery final : AddTenQuery {
-  static zc::StringPtr domain() { return "test.query.parallel-slow-sum"_zc; }
-  static QueryKindContract contract() { return derivedContract(domain()); }
+  static constexpr SemanticDescriptorMetadata descriptor{
+      "ParallelSlowSumQuery"_zcc, "test.query.parallel-slow-sum"_zcc,  ReuseClass::Semantic,
+      RetentionClass::Retained,   QueryEqualityPolicy::CanonicalBytes, QueryCyclePolicy::Reject,
+      QueryCostClass::Linear};
   static TypedQueryResult<Value> provide(QueryContext& context, const Key& key) {
     uint32_t keys[] = {key + 3, key + 1, key + 2, key};
     auto values = context.getParallel<ParallelSlowLeafQuery>(zc::arrayPtr(keys));
@@ -213,8 +388,14 @@ struct ParallelSlowSumQuery final : AddTenQuery {
 };
 
 struct ParallelTrackedSlowLeafQuery final : AddTenQuery {
-  static zc::StringPtr domain() { return "test.query.parallel-tracked-slow-leaf"_zc; }
-  static QueryKindContract contract() { return derivedContract(domain()); }
+  static constexpr SemanticDescriptorMetadata descriptor{
+      "ParallelTrackedSlowLeafQuery"_zcc,
+      "test.query.parallel-tracked-slow-leaf"_zcc,
+      ReuseClass::Semantic,
+      RetentionClass::Retained,
+      QueryEqualityPolicy::CanonicalBytes,
+      QueryCyclePolicy::Reject,
+      QueryCostClass::Linear};
   static TypedQueryResult<Value> provide(QueryContext& context, const Key& key) {
     auto input = context.get<LowInput>(key);
     if (input.isRuntimeFailure()) {
@@ -226,8 +407,13 @@ struct ParallelTrackedSlowLeafQuery final : AddTenQuery {
 };
 
 struct ParallelTrackedSumQuery final : AddTenQuery {
-  static zc::StringPtr domain() { return "test.query.parallel-tracked-sum"_zc; }
-  static QueryKindContract contract() { return derivedContract(domain()); }
+  static constexpr SemanticDescriptorMetadata descriptor{"ParallelTrackedSumQuery"_zcc,
+                                                         "test.query.parallel-tracked-sum"_zcc,
+                                                         ReuseClass::Semantic,
+                                                         RetentionClass::Retained,
+                                                         QueryEqualityPolicy::CanonicalBytes,
+                                                         QueryCyclePolicy::Reject,
+                                                         QueryCostClass::Linear};
   static TypedQueryResult<Value> provide(QueryContext& context, const Key& key) {
     uint32_t keys[] = {key + 3, key + 1, key + 2, key};
     auto values = context.getParallel<ParallelTrackedSlowLeafQuery>(zc::arrayPtr(keys));
@@ -246,8 +432,13 @@ struct ParallelTrackedSumQuery final : AddTenQuery {
 };
 
 struct NestedParallelLeafQuery final : AddTenQuery {
-  static zc::StringPtr domain() { return "test.query.nested-parallel-leaf"_zc; }
-  static QueryKindContract contract() { return derivedContract(domain()); }
+  static constexpr SemanticDescriptorMetadata descriptor{"NestedParallelLeafQuery"_zcc,
+                                                         "test.query.nested-parallel-leaf"_zcc,
+                                                         ReuseClass::Semantic,
+                                                         RetentionClass::Retained,
+                                                         QueryEqualityPolicy::CanonicalBytes,
+                                                         QueryCyclePolicy::Reject,
+                                                         QueryCostClass::Linear};
   static TypedQueryResult<Value> provide(QueryContext& context, const Key& key) {
     uint32_t keys[] = {key, key + 1};
     auto values = context.getParallel<ParallelSlowLeafQuery>(zc::arrayPtr(keys));
@@ -260,8 +451,13 @@ struct NestedParallelLeafQuery final : AddTenQuery {
 };
 
 struct NestedParallelRootQuery final : AddTenQuery {
-  static zc::StringPtr domain() { return "test.query.nested-parallel-root"_zc; }
-  static QueryKindContract contract() { return derivedContract(domain()); }
+  static constexpr SemanticDescriptorMetadata descriptor{"NestedParallelRootQuery"_zcc,
+                                                         "test.query.nested-parallel-root"_zcc,
+                                                         ReuseClass::Semantic,
+                                                         RetentionClass::Retained,
+                                                         QueryEqualityPolicy::CanonicalBytes,
+                                                         QueryCyclePolicy::Reject,
+                                                         QueryCostClass::Linear};
   static TypedQueryResult<Value> provide(QueryContext& context, const Key& key) {
     uint32_t keys[] = {key, key + 1};
     auto values = context.getParallel<NestedParallelLeafQuery>(zc::arrayPtr(keys));
@@ -274,8 +470,13 @@ struct NestedParallelRootQuery final : AddTenQuery {
 };
 
 struct DeterministicAlternativeQuery final : AddTenQuery {
-  static zc::StringPtr domain() { return "test.query.alternatives"_zc; }
-  static QueryKindContract contract() { return derivedContract(domain()); }
+  static constexpr SemanticDescriptorMetadata descriptor{"DeterministicAlternativeQuery"_zcc,
+                                                         "test.query.alternatives"_zcc,
+                                                         ReuseClass::Semantic,
+                                                         RetentionClass::Retained,
+                                                         QueryEqualityPolicy::CanonicalBytes,
+                                                         QueryCyclePolicy::Reject,
+                                                         QueryCostClass::Linear};
   static TypedQueryResult<Value> provide(QueryContext& context, const Key& key) {
     auto control = context.get<LowInput>(key);
     if (control.isRuntimeFailure()) {
@@ -291,8 +492,10 @@ struct DeterministicAlternativeQuery final : AddTenQuery {
 };
 
 struct VerifiedQuery final : AddTenQuery {
-  static zc::StringPtr domain() { return "test.query.verified"_zc; }
-  static QueryKindContract contract() { return derivedContract(domain()); }
+  static constexpr SemanticDescriptorMetadata descriptor{
+      "VerifiedQuery"_zcc,      "test.query.verified"_zcc,           ReuseClass::Semantic,
+      RetentionClass::Retained, QueryEqualityPolicy::CanonicalBytes, QueryCyclePolicy::Reject,
+      QueryCostClass::Linear};
   static TypedQueryResult<Value> provide(QueryContext&, const Key& key) {
     return TypedQueryResult<Value>::value(key);
   }
@@ -304,8 +507,10 @@ struct VerifiedQuery final : AddTenQuery {
 };
 
 struct HighOnlyQuery final : AddTenQuery {
-  static zc::StringPtr domain() { return "test.query.high-only"_zc; }
-  static QueryKindContract contract() { return derivedContract(domain()); }
+  static constexpr SemanticDescriptorMetadata descriptor{
+      "HighOnlyQuery"_zcc,      "test.query.high-only"_zcc,          ReuseClass::Semantic,
+      RetentionClass::Retained, QueryEqualityPolicy::CanonicalBytes, QueryCyclePolicy::Reject,
+      QueryCostClass::Linear};
   static TypedQueryResult<Value> provide(QueryContext& context, const Key& key) {
     auto input = context.get<HighInput>(key);
     if (input.isRuntimeFailure()) {
@@ -316,10 +521,10 @@ struct HighOnlyQuery final : AddTenQuery {
 };
 
 struct OptionalLowInputQuery final : AddTenQuery {
-  static zc::StringPtr domain() { return "test.query.optional-low-input"_zc; }
-  static QueryKindContract contract() {
-    return derivedContract(domain(), ReuseClass::Semantic, RetentionClass::Evictable);
-  }
+  static constexpr SemanticDescriptorMetadata descriptor{
+      "OptionalLowInputQuery"_zcc, "test.query.optional-low-input"_zcc, ReuseClass::Semantic,
+      RetentionClass::Evictable,   QueryEqualityPolicy::CanonicalBytes, QueryCyclePolicy::Reject,
+      QueryCostClass::Linear};
   static TypedQueryResult<Value> provide(QueryContext& context, const Key& key) {
     auto optional = context.probeInput<LowInput>(key);
     if (optional.isRuntimeFailure()) {
@@ -336,8 +541,14 @@ struct OptionalLowInputQuery final : AddTenQuery {
 };
 
 struct InvalidDerivedInputProbeQuery final : AddTenQuery {
-  static zc::StringPtr domain() { return "test.query.invalid-derived-input-probe"_zc; }
-  static QueryKindContract contract() { return derivedContract(domain()); }
+  static constexpr SemanticDescriptorMetadata descriptor{
+      "InvalidDerivedInputProbeQuery"_zcc,
+      "test.query.invalid-derived-input-probe"_zcc,
+      ReuseClass::Semantic,
+      RetentionClass::Retained,
+      QueryEqualityPolicy::CanonicalBytes,
+      QueryCyclePolicy::Reject,
+      QueryCostClass::Linear};
   static TypedQueryResult<Value> provide(QueryContext& context, const Key& key) {
     auto invalid = context.probeInput<AddTenQuery>(key);
     if (invalid.isRuntimeFailure()) {
@@ -348,8 +559,10 @@ struct InvalidDerivedInputProbeQuery final : AddTenQuery {
 };
 
 struct DurabilitySwitchQuery final : AddTenQuery {
-  static zc::StringPtr domain() { return "test.query.durability-switch"_zc; }
-  static QueryKindContract contract() { return derivedContract(domain()); }
+  static constexpr SemanticDescriptorMetadata descriptor{
+      "DurabilitySwitchQuery"_zcc, "test.query.durability-switch"_zcc,  ReuseClass::Semantic,
+      RetentionClass::Retained,    QueryEqualityPolicy::CanonicalBytes, QueryCyclePolicy::Reject,
+      QueryCostClass::Linear};
   static TypedQueryResult<Value> provide(QueryContext& context, const Key&) {
     auto control = context.get<HighInput>(9);
     auto stable = context.get<HighInput>(10);
@@ -367,8 +580,13 @@ struct DurabilitySwitchQuery final : AddTenQuery {
 };
 
 struct SlowQuery final : AddTenQuery {
-  static zc::StringPtr domain() { return "test.query.slow"_zc; }
-  static QueryKindContract contract() { return derivedContract(domain()); }
+  static constexpr SemanticDescriptorMetadata descriptor{"SlowQuery"_zcc,
+                                                         "test.query.slow"_zcc,
+                                                         ReuseClass::Semantic,
+                                                         RetentionClass::Retained,
+                                                         QueryEqualityPolicy::CanonicalBytes,
+                                                         QueryCyclePolicy::Reject,
+                                                         QueryCostClass::Linear};
   static TypedQueryResult<Value> provide(QueryContext& context, const Key& key) {
     for (uint32_t iteration = 0; iteration < 50; ++iteration) {
       if (context.isCancelled()) {
@@ -383,14 +601,24 @@ struct SlowQuery final : AddTenQuery {
 struct CycleBQuery;
 
 struct CycleAQuery final : AddTenQuery {
-  static zc::StringPtr domain() { return "test.query.cycle-a"_zc; }
-  static QueryKindContract contract() { return derivedContract(domain()); }
+  static constexpr SemanticDescriptorMetadata descriptor{"CycleAQuery"_zcc,
+                                                         "test.query.cycle-a"_zcc,
+                                                         ReuseClass::Semantic,
+                                                         RetentionClass::Retained,
+                                                         QueryEqualityPolicy::CanonicalBytes,
+                                                         QueryCyclePolicy::Reject,
+                                                         QueryCostClass::Linear};
   static TypedQueryResult<Value> provide(QueryContext& context, const Key& key);
 };
 
 struct CycleBQuery final : AddTenQuery {
-  static zc::StringPtr domain() { return "test.query.cycle-b"_zc; }
-  static QueryKindContract contract() { return derivedContract(domain()); }
+  static constexpr SemanticDescriptorMetadata descriptor{"CycleBQuery"_zcc,
+                                                         "test.query.cycle-b"_zcc,
+                                                         ReuseClass::Semantic,
+                                                         RetentionClass::Retained,
+                                                         QueryEqualityPolicy::CanonicalBytes,
+                                                         QueryCyclePolicy::Reject,
+                                                         QueryCostClass::Linear};
   static TypedQueryResult<Value> provide(QueryContext& context, const Key& key) {
     auto cycle = context.get<CycleAQuery>(key);
     if (cycle.isRuntimeFailure()) {
@@ -412,14 +640,18 @@ inline TypedQueryResult<CycleAQuery::Value> CycleAQuery::provide(QueryContext& c
 struct CrossWorkerCycleBQuery;
 
 struct CrossWorkerCycleAQuery final : AddTenQuery {
-  static zc::StringPtr domain() { return "test.query.cross-cycle-a"_zc; }
-  static QueryKindContract contract() { return derivedContract(domain()); }
+  static constexpr SemanticDescriptorMetadata descriptor{
+      "CrossWorkerCycleAQuery"_zcc, "test.query.cross-cycle-a"_zcc,      ReuseClass::Semantic,
+      RetentionClass::Retained,     QueryEqualityPolicy::CanonicalBytes, QueryCyclePolicy::Reject,
+      QueryCostClass::Linear};
   static TypedQueryResult<Value> provide(QueryContext& context, const Key& key);
 };
 
 struct CrossWorkerCycleBQuery final : AddTenQuery {
-  static zc::StringPtr domain() { return "test.query.cross-cycle-b"_zc; }
-  static QueryKindContract contract() { return derivedContract(domain()); }
+  static constexpr SemanticDescriptorMetadata descriptor{
+      "CrossWorkerCycleBQuery"_zcc, "test.query.cross-cycle-b"_zcc,      ReuseClass::Semantic,
+      RetentionClass::Retained,     QueryEqualityPolicy::CanonicalBytes, QueryCyclePolicy::Reject,
+      QueryCostClass::Linear};
   static TypedQueryResult<Value> provide(QueryContext& context, const Key& key) {
     usleep(20000);
     auto cycle = context.get<CrossWorkerCycleAQuery>(key);
@@ -441,65 +673,45 @@ inline TypedQueryResult<CrossWorkerCycleAQuery::Value> CrossWorkerCycleAQuery::p
 }
 
 inline void registerCoreKinds(QueryDatabase& database) {
-  ZC_IREQUIRE(database.registerInputKind<LowInput>() != zc::none, "failed to register LowInput");
-  ZC_IREQUIRE(database.registerInputKind<MediumInput>() != zc::none,
-              "failed to register MediumInput");
-  ZC_IREQUIRE(database.registerInputKind<HighInput>() != zc::none, "failed to register HighInput");
-  ZC_IREQUIRE(database.registerInputKind<FrozenInput>() != zc::none,
-              "failed to register FrozenInput");
-  ZC_IREQUIRE(database.registerDerivedKind<AddTenQuery>() != zc::none,
-              "failed to register AddTenQuery");
-  ZC_IREQUIRE(database.registerDerivedKind<ParityProjectionQuery>() != zc::none,
-              "failed to register ParityProjectionQuery");
-  ZC_IREQUIRE(database.registerDerivedKind<RevisionLocalQuery>() != zc::none,
-              "failed to register RevisionLocalQuery");
-  ZC_IREQUIRE(database.registerDerivedKind<EvictableQuery>() != zc::none,
-              "failed to register EvictableQuery");
-  ZC_IREQUIRE(database.registerDerivedKind<BranchQuery>() != zc::none,
-              "failed to register BranchQuery");
-  ZC_IREQUIRE(database.registerDerivedKind<ParallelSumQuery>() != zc::none,
-              "failed to register ParallelSumQuery");
-  ZC_IREQUIRE(database.registerDerivedKind<ParallelPositionalQuery>() != zc::none,
-              "failed to register ParallelPositionalQuery");
-  ZC_IREQUIRE(database.registerDerivedKind<ParallelSlowLeafQuery>() != zc::none,
-              "failed to register ParallelSlowLeafQuery");
-  ZC_IREQUIRE(database.registerDerivedKind<ParallelSlowSumQuery>() != zc::none,
-              "failed to register ParallelSlowSumQuery");
-  ZC_IREQUIRE(database.registerDerivedKind<ParallelTrackedSlowLeafQuery>() != zc::none,
-              "failed to register ParallelTrackedSlowLeafQuery");
-  ZC_IREQUIRE(database.registerDerivedKind<ParallelTrackedSumQuery>() != zc::none,
-              "failed to register ParallelTrackedSumQuery");
-  ZC_IREQUIRE(database.registerDerivedKind<NestedParallelLeafQuery>() != zc::none,
-              "failed to register NestedParallelLeafQuery");
-  ZC_IREQUIRE(database.registerDerivedKind<NestedParallelRootQuery>() != zc::none,
-              "failed to register NestedParallelRootQuery");
-  ZC_IREQUIRE(database.registerDerivedKind<DeterministicAlternativeQuery>() != zc::none,
-              "failed to register DeterministicAlternativeQuery");
-  ZC_IREQUIRE(database.registerDerivedKind<VerifiedQuery>() != zc::none,
-              "failed to register VerifiedQuery");
-  ZC_IREQUIRE(database.registerDerivedKind<HighOnlyQuery>() != zc::none,
-              "failed to register HighOnlyQuery");
-  ZC_IREQUIRE(database.registerDerivedKind<OptionalLowInputQuery>() != zc::none,
-              "failed to register OptionalLowInputQuery");
-  ZC_IREQUIRE(database.registerDerivedKind<InvalidDerivedInputProbeQuery>() != zc::none,
-              "failed to register InvalidDerivedInputProbeQuery");
-  ZC_IREQUIRE(database.registerDerivedKind<DurabilitySwitchQuery>() != zc::none,
-              "failed to register DurabilitySwitchQuery");
-  ZC_IREQUIRE(database.registerDerivedKind<SlowQuery>() != zc::none,
-              "failed to register SlowQuery");
-  ZC_IREQUIRE(database.registerDerivedKind<CycleAQuery>() != zc::none,
-              "failed to register CycleAQuery");
-  ZC_IREQUIRE(database.registerDerivedKind<CycleBQuery>() != zc::none,
-              "failed to register CycleBQuery");
-  ZC_IREQUIRE(database.registerDerivedKind<CrossWorkerCycleAQuery>() != zc::none,
-              "failed to register CrossWorkerCycleAQuery");
-  ZC_IREQUIRE(database.registerDerivedKind<CrossWorkerCycleBQuery>() != zc::none,
-              "failed to register CrossWorkerCycleBQuery");
+  const auto requireRegistration = []<typename Descriptor>(QueryDatabase& target) {
+    ZC_IREQUIRE(target.registerDescriptor<Descriptor>().isRegistered(),
+                "failed to register query test descriptor");
+  };
+  requireRegistration.template operator()<LowInput>(database);
+  requireRegistration.template operator()<MediumInput>(database);
+  requireRegistration.template operator()<HighInput>(database);
+  requireRegistration.template operator()<FrozenInput>(database);
+  requireRegistration.template operator()<MalformedLowInputKey>(database);
+  requireRegistration.template operator()<AddTenQuery>(database);
+  requireRegistration.template operator()<ParityProjectionQuery>(database);
+  requireRegistration.template operator()<ChangedProjectionQuery>(database);
+  requireRegistration.template operator()<EvictableQuery>(database);
+  requireRegistration.template operator()<BranchQuery>(database);
+  requireRegistration.template operator()<ParallelSumQuery>(database);
+  requireRegistration.template operator()<ParallelPositionalQuery>(database);
+  requireRegistration.template operator()<ParallelSlowLeafQuery>(database);
+  requireRegistration.template operator()<ParallelSlowSumQuery>(database);
+  requireRegistration.template operator()<ParallelTrackedSlowLeafQuery>(database);
+  requireRegistration.template operator()<ParallelTrackedSumQuery>(database);
+  requireRegistration.template operator()<NestedParallelLeafQuery>(database);
+  requireRegistration.template operator()<NestedParallelRootQuery>(database);
+  requireRegistration.template operator()<DeterministicAlternativeQuery>(database);
+  requireRegistration.template operator()<VerifiedQuery>(database);
+  requireRegistration.template operator()<HighOnlyQuery>(database);
+  requireRegistration.template operator()<OptionalLowInputQuery>(database);
+  requireRegistration.template operator()<InvalidDerivedInputProbeQuery>(database);
+  requireRegistration.template operator()<DurabilitySwitchQuery>(database);
+  requireRegistration.template operator()<SlowQuery>(database);
+  requireRegistration.template operator()<CycleAQuery>(database);
+  requireRegistration.template operator()<CycleBQuery>(database);
+  requireRegistration.template operator()<CrossWorkerCycleAQuery>(database);
+  requireRegistration.template operator()<CrossWorkerCycleBQuery>(database);
 }
 
 inline InputTransaction beginTransaction(QueryDatabase& database) {
-  auto transaction = database.beginInputTransaction();
-  return zc::mv(ZC_REQUIRE_NONNULL(transaction));
+  auto transaction = database.beginInputTransaction(database.snapshot().revision());
+  ZC_IREQUIRE(transaction.isOpened(), "failed to open query test input transaction");
+  return zc::mv(transaction).takeTransaction();
 }
 
 inline bool hasEvent(zc::ArrayPtr<const QueryEvent> events, QueryEventKind kind) {
@@ -508,5 +720,36 @@ inline bool hasEvent(zc::ArrayPtr<const QueryEvent> events, QueryEventKind kind)
   }
   return false;
 }
+
+/// \brief Narrow native-test bridge for real erased request results and the one-shot seal gate.
+class QueryRuntimeTestAccess final {
+public:
+  template <typename Descriptor>
+  static QueryRequestResult evaluate(const QuerySnapshot& snapshot,
+                                     const typename Descriptor::Key& key) {
+    CancellationSource cancellation;
+    return snapshot.getEncoded(Descriptor::descriptor.domain, Descriptor::encodeKey(key),
+                               cancellation.token());
+  }
+
+  template <typename Descriptor>
+  static CapabilityDemandResult<Descriptor> decode(QueryRequestResult&& result,
+                                                   const QuerySnapshot& snapshot) {
+    return CapabilityResultDecoder<Descriptor>::decode(zc::mv(result), snapshot.databaseIdentity(),
+                                                       snapshot.revision());
+  }
+
+  static void armFinalSealPhaseTwoGate(QueryDatabase& database) {
+    database.armFinalSealPhaseTwoGateForTest();
+  }
+
+  static void waitForFinalSealPhaseTwoGate(QueryDatabase& database) {
+    database.waitForFinalSealPhaseTwoGateForTest();
+  }
+
+  static void releaseFinalSealPhaseTwoGate(QueryDatabase& database) {
+    database.releaseFinalSealPhaseTwoGateForTest();
+  }
+};
 
 }  // namespace zomlang::compiler::query::test

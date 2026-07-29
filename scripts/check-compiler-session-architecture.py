@@ -202,7 +202,8 @@ SESSION_SOURCE_MARKERS = (
     "zc::Maybe<identity::SemanticIdentityRegistrySet> identityRegistries;",
     "basic::ThreadPool queryScheduler;",
     "query::QueryDatabase queryDatabase;",
-    "queryDatabase(queryScheduler, semanticContextCapabilityArena.addRef())",
+    "queryDatabase(queryScheduler, query::productionQueryDescriptorInventory(), "
+    "semanticContextCapabilityArena.addRef())",
     "zc::Own<basic::StringPool> stringPool;",
     "zc::Own<source::SourceManager> sourceManager;",
     "zc::Own<diagnostics::DiagnosticEngine> diagnosticEngine;",
@@ -211,15 +212,13 @@ SESSION_SOURCE_MARKERS = (
     "registerVerifiedSource(",
     "parseSnapshot.getCapability<parser::ParseSourceQuery>",
     "binder::ParsedModuleVerifier::verifyQueryResult(",
-    "extractStructuralModuleDependencyRequests(parsed.value().capability().tree())",
+    "extractStructuralModuleDependencyRequests(parsed.lease().capability().tree())",
     "incremental_binding_query::ModuleBodySyntaxQuery",
-    "incremental_binding_query::ModuleBodyProvenanceQuery",
+    "incremental_binding_query::StableIdentityAdmissionQuery",
+    "binder::ModuleBodySyntaxVerifier::reconstruct(",
     "zc::Vector<ModuleBodyQueryBinding> moduleBodyQueryBindings;",
     "ActiveDefinitionAuthorityProjectionState",
     "activeDefinitionAuthority.refresh(",
-    "incremental_binding_query::NamedItemSyntaxQuery",
-    "incremental_binding_query::NamedItemProvenanceQuery",
-    "zc::Vector<NamedItemQueryBinding> namedItemQueryBindings;",
     "!impl->freezeSourceIdentities()",
     "binder::DefinitionInventory::collect(tree);",
     "diagnostics::DiagID::IdentityBrandExhausted",
@@ -446,6 +445,15 @@ def check_session_ownership(files: dict[Path, str], errors: list[str]) -> None:
     for forbidden in forbidden_source_authority:
         if forbidden in source:
             errors.append(f"{SESSION_SOURCE}: forbidden raw source authority remains: {forbidden}")
+    for forbidden in (
+        "NamedItemQueryBinding",
+        "namedItemQueryBindings",
+        "demandNamedItemQueries",
+    ):
+        if forbidden in source:
+            errors.append(
+                f"{SESSION_SOURCE}: unauthorized complete-context demand remains: {forbidden}"
+            )
     for forbidden in ("addSourceFile(", "addPackageSourceFile(", "getASTs("):
         if forbidden in header:
             errors.append(f"{SESSION_HEADER}: forbidden raw source API remains: {forbidden}")
@@ -454,7 +462,7 @@ def check_session_ownership(files: dict[Path, str], errors: list[str]) -> None:
         errors.append(f"{SESSION_SOURCE}: must own exactly one discovery fixed-point scheduler")
     if (
         source.count(
-            "extractStructuralModuleDependencyRequests(parsed.value().capability().tree())"
+            "extractStructuralModuleDependencyRequests(parsed.lease().capability().tree())"
         )
         != 1
     ):
@@ -518,12 +526,18 @@ def check_single_scheduler(files: dict[Path, str], errors: list[str]) -> None:
 
     query_header = files.get(QUERY_DATABASE_HEADER, "")
     query_source = files.get(QUERY_DATABASE_SOURCE, "")
-    for marker in (
-        "explicit QueryDatabase(basic::ThreadPool& scheduler);",
-        "basic::ThreadPool& scheduler;",
-        "QueryDatabase::QueryDatabase(basic::ThreadPool& scheduler)",
+    for owner, marker in (
+        (
+            query_header,
+            "QueryDatabase(basic::ThreadPool& scheduler, QueryDescriptorInventoryRef inventory);",
+        ),
+        (query_source, "basic::ThreadPool& scheduler;"),
+        (
+            query_source,
+            "QueryDatabase::QueryDatabase(basic::ThreadPool& scheduler, "
+            "QueryDescriptorInventoryRef descriptorInventory)",
+        ),
     ):
-        owner = query_header if marker.startswith("explicit") else query_source
         if not contains_format_independent_marker(owner, marker):
             errors.append(f"{QUERY_DATABASE_SOURCE}: missing borrowed scheduler marker: {marker}")
     if contains_format_independent_marker(query_source, "basic::ThreadPool parallelWork{4};"):
@@ -727,8 +741,8 @@ def run_self_test() -> int:
         lambda files: files.__setitem__(
             SESSION_SOURCE,
             files[SESSION_SOURCE].replace(
-                "queryDatabase(queryScheduler, semanticContextCapabilityArena.addRef())",
-                "queryDatabase(querySchedulerRemoved, semanticContextCapabilityArena.addRef())",
+                "queryDatabase(queryScheduler,",
+                "queryDatabase(querySchedulerRemoved,",
                 1,
             ),
         ),

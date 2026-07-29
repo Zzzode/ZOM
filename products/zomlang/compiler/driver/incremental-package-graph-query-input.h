@@ -119,8 +119,8 @@ struct PackageGraphInput final {
   using Key = PackageRootSetKey;
   using Value = CanonicalPackageGraph;
 
-  ZC_NODISCARD static zc::StringPtr domain();
-  ZC_NODISCARD static query::QueryKindContract contract();
+  static constexpr query::InputDescriptorMetadata descriptor{
+      "PackageGraphInput"_zcc, "zom.query.package-graph"_zcc, query::Durability::Medium};
   ZC_NODISCARD static zc::Array<uint8_t> encodeKey(const Key& key);
   ZC_NODISCARD static zc::Maybe<Key> decodeKey(zc::ArrayPtr<const uint8_t> bytes);
   ZC_NODISCARD static zc::Array<uint8_t> encodeValue(const Value& value);

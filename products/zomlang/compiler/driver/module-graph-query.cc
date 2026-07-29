@@ -100,12 +100,6 @@ zc::Maybe<identity::ModuleKey> decodeModule(zc::ArrayPtr<const uint8_t> bytes) {
   return zc::none;
 }
 
-query::QueryKindContract derivedContract(zc::StringPtr domain) {
-  auto contract = query::QueryKindContract::derived(domain, query::ReuseClass::Semantic,
-                                                    query::RetentionClass::Retained);
-  return zc::mv(ZC_REQUIRE_NONNULL(contract));
-}
-
 zc::Maybe<size_t> moduleIndex(const ModuleGraphRecord& graph, const identity::ModuleKey& module) {
   for (size_t index = 0; index < graph.modules().size(); ++index) {
     if (sameModule(graph.modules()[index], module)) { return index; }
@@ -1039,10 +1033,6 @@ bool ModuleGraphSccRecord::hasCycle(const ModuleGraphRecord& graph) const {
   return false;
 }
 
-zc::StringPtr ModuleGraphQuery::domain() { return "zom.query.module-graph"_zc; }
-
-query::QueryKindContract ModuleGraphQuery::contract() { return derivedContract(domain()); }
-
 zc::Array<uint8_t> ModuleGraphQuery::encodeKey(const Key& key) { return key.encodeCanonical(); }
 
 zc::Maybe<ModuleGraphQuery::Key> ModuleGraphQuery::decodeKey(zc::ArrayPtr<const uint8_t> bytes) {
@@ -1078,10 +1068,6 @@ bool ModuleGraphQuery::verify(query::QueryContext& context, const Key& key,
   }
   return false;
 }
-
-zc::StringPtr ModuleGraphSccQuery::domain() { return "zom.query.module-graph-scc"_zc; }
-
-query::QueryKindContract ModuleGraphSccQuery::contract() { return derivedContract(domain()); }
 
 zc::Array<uint8_t> ModuleGraphSccQuery::encodeKey(const Key& key) { return key.encodeCanonical(); }
 
@@ -1149,8 +1135,8 @@ bool ModuleGraphSccQuery::verify(query::QueryContext& context, const Key& key,
 }
 
 bool registerStableModuleGraphQueries(query::QueryDatabase& database) {
-  return database.registerDerivedKind<ModuleGraphQuery>() != zc::none &&
-         database.registerDerivedKind<ModuleGraphSccQuery>() != zc::none;
+  return database.registerDescriptor<ModuleGraphQuery>().isRegistered() &&
+         database.registerDescriptor<ModuleGraphSccQuery>().isRegistered();
 }
 
 }  // namespace zomlang::compiler::driver::module_graph_query

@@ -1153,17 +1153,16 @@ struct DependencySurfaceFixture final {
       ZC_REQUIRE(requests.is<zc::Vector<ModuleDependencyRequest>>());
       auto requestValues = zc::mv(requests.get<zc::Vector<ModuleDependencyRequest>>());
       basic::ThreadPool scheduler(2);
-      query::QueryDatabase database(scheduler);
+      query::QueryDatabase database(scheduler, query::productionQueryDescriptorInventory());
       ZC_REQUIRE(
           driver::incremental_module_resolution_query::registerIncrementalModuleResolutionQueries(
               database));
-      auto pending = database.beginInputTransaction();
-      ZC_REQUIRE(pending != zc::none);
-      ZC_IF_SOME(transaction, pending) {
-        ZC_REQUIRE(driver::incremental_module_resolution_query::stageModuleResolutionQueryInputs(
-            transaction, resolver, requestValues.asPtr()));
-        ZC_REQUIRE(transaction.commit() != zc::none);
-      }
+      auto pending = database.beginInputTransaction(database.snapshot().revision());
+      ZC_REQUIRE(pending.isOpened());
+      auto transaction = zc::mv(pending).takeTransaction();
+      ZC_REQUIRE(driver::incremental_module_resolution_query::stageModuleResolutionQueryInputs(
+          transaction, resolver, requestValues.asPtr()));
+      ZC_REQUIRE(transaction.commit().isCommitted());
       auto resolutionSnapshot = database.snapshot();
       zc::Vector<identity::ModuleId> targets(requestValues.size());
       for (const auto& request : requestValues) {

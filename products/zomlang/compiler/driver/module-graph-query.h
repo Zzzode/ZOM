@@ -145,8 +145,14 @@ struct ModuleGraphQuery final {
   using Key = incremental_binding_query::CompilationRootSetQueryKey;
   using Value = ModuleGraphRecord;
 
-  ZC_NODISCARD static zc::StringPtr domain();
-  ZC_NODISCARD static query::QueryKindContract contract();
+  static constexpr query::SemanticDescriptorMetadata descriptor{
+      "ModuleGraphQuery"_zcc,
+      "zom.query.module-graph"_zcc,
+      query::ReuseClass::Semantic,
+      query::RetentionClass::Retained,
+      query::QueryEqualityPolicy::CanonicalBytes,
+      query::QueryCyclePolicy::Reject,
+      query::QueryCostClass::Linear};
   ZC_NODISCARD static zc::Array<uint8_t> encodeKey(const Key& key);
   ZC_NODISCARD static zc::Maybe<Key> decodeKey(zc::ArrayPtr<const uint8_t> bytes);
   ZC_NODISCARD static zc::Array<uint8_t> encodeValue(const Value& value);
@@ -161,8 +167,14 @@ struct ModuleGraphSccQuery final {
   using Key = incremental_binding_query::CompilationRootSetQueryKey;
   using Value = ModuleGraphSccRecord;
 
-  ZC_NODISCARD static zc::StringPtr domain();
-  ZC_NODISCARD static query::QueryKindContract contract();
+  static constexpr query::SemanticDescriptorMetadata descriptor{
+      "ModuleGraphSccQuery"_zcc,
+      "zom.query.module-graph-scc"_zcc,
+      query::ReuseClass::Semantic,
+      query::RetentionClass::Retained,
+      query::QueryEqualityPolicy::CanonicalBytes,
+      query::QueryCyclePolicy::Reject,
+      query::QueryCostClass::Linear};
   ZC_NODISCARD static zc::Array<uint8_t> encodeKey(const Key& key);
   ZC_NODISCARD static zc::Maybe<Key> decodeKey(zc::ArrayPtr<const uint8_t> bytes);
   ZC_NODISCARD static zc::Array<uint8_t> encodeValue(const Value& value);

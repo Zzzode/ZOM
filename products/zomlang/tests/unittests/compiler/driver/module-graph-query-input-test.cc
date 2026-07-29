@@ -488,18 +488,19 @@ zc::Maybe<VerifiedModuleGraphInputTransaction> preparedTransaction(
 }
 
 query::QueryDatabase database(basic::ThreadPool& scheduler) {
-  query::QueryDatabase result(scheduler);
+  query::QueryDatabase result(scheduler, query::productionQueryDescriptorInventory());
   ZC_REQUIRE(registerModuleGraphQueries(result));
   ZC_REQUIRE(
       incremental_module_resolution_query::registerIncrementalModuleResolutionQueries(result));
-  ZC_REQUIRE(result.registerInputKind<incremental_binding_query::UserPackageActiveSourcesInput>() !=
-             zc::none);
-  ZC_REQUIRE(result.registerDerivedKind<incremental_binding_query::ActiveSourcesQuery>() !=
-             zc::none);
-  ZC_REQUIRE(result.registerInputKind<identity::source_query::SourceSnapshotInput>() != zc::none);
+  ZC_REQUIRE(result.registerDescriptor<incremental_binding_query::UserPackageActiveSourcesInput>()
+                 .isRegistered());
+  ZC_REQUIRE(
+      result.registerDescriptor<incremental_binding_query::ActiveSourcesQuery>().isRegistered());
+  ZC_REQUIRE(
+      result.registerDescriptor<identity::source_query::SourceSnapshotInput>().isRegistered());
   ZC_REQUIRE(core_library_query::registerCoreLibraryQueryProvider(result));
-  ZC_REQUIRE(result.registerDerivedKind<incremental_binding_query::ActiveCratesQuery>() !=
-             zc::none);
+  ZC_REQUIRE(
+      result.registerDescriptor<incremental_binding_query::ActiveCratesQuery>().isRegistered());
   ZC_REQUIRE(registerStableModuleGraphQueries(result));
   return result;
 }
@@ -513,8 +514,10 @@ void stageSource(query::InputTransaction& transaction, const identity::SourceFil
       identity::source_query::CanonicalSourceSnapshot::fromVerified(ZC_REQUIRE_NONNULL(immutable));
   ZC_REQUIRE(key != zc::none);
   ZC_REQUIRE(snapshot != zc::none);
-  ZC_REQUIRE(transaction.set<identity::source_query::SourceSnapshotInput>(
-      ZC_REQUIRE_NONNULL(key), ZC_REQUIRE_NONNULL(snapshot)));
+  ZC_REQUIRE(transaction
+                 .set<identity::source_query::SourceSnapshotInput>(ZC_REQUIRE_NONNULL(key),
+                                                                   ZC_REQUIRE_NONNULL(snapshot))
+                 .isApplied());
 }
 
 void stageUserActiveSource(query::InputTransaction& transaction,
@@ -527,8 +530,10 @@ void stageUserActiveSource(query::InputTransaction& transaction,
   sources.add(zc::mv(ZC_REQUIRE_NONNULL(stable)));
   auto value = incremental_binding_query::CanonicalSourceSet::from(zc::mv(sources));
   ZC_REQUIRE(value != zc::none);
-  ZC_REQUIRE(transaction.set<incremental_binding_query::UserPackageActiveSourcesInput>(
-      ZC_REQUIRE_NONNULL(key), ZC_REQUIRE_NONNULL(value)));
+  ZC_REQUIRE(transaction
+                 .set<incremental_binding_query::UserPackageActiveSourcesInput>(
+                     ZC_REQUIRE_NONNULL(key), ZC_REQUIRE_NONNULL(value))
+                 .isApplied());
 }
 
 void stageCoreDistribution(query::InputTransaction& transaction) {
@@ -537,8 +542,10 @@ void stageCoreDistribution(query::InputTransaction& transaction) {
       distribution.record().clone(), distribution.distributionDigest(),
       distribution.policyTemplate().clone());
   ZC_REQUIRE(record != zc::none);
-  ZC_REQUIRE(transaction.set<core_library_query::CoreDistributionInput>(
-      identity::ToolchainUnitKey::core(), ZC_REQUIRE_NONNULL(record)));
+  ZC_REQUIRE(transaction
+                 .set<core_library_query::CoreDistributionInput>(identity::ToolchainUnitKey::core(),
+                                                                 ZC_REQUIRE_NONNULL(record))
+                 .isApplied());
   auto core = coreCrate();
   for (const auto& admitted : distribution.snapshots()) {
     auto source = identity::SourceFileKey::from(
@@ -551,8 +558,10 @@ void stageCoreDistribution(query::InputTransaction& transaction) {
         ZC_REQUIRE_NONNULL(immutable));
     ZC_REQUIRE(key != zc::none);
     ZC_REQUIRE(snapshot != zc::none);
-    ZC_REQUIRE(transaction.set<identity::source_query::SourceSnapshotInput>(
-        ZC_REQUIRE_NONNULL(key), ZC_REQUIRE_NONNULL(snapshot)));
+    ZC_REQUIRE(transaction
+                   .set<identity::source_query::SourceSnapshotInput>(ZC_REQUIRE_NONNULL(key),
+                                                                     ZC_REQUIRE_NONNULL(snapshot))
+                   .isApplied());
   }
 }
 
@@ -568,8 +577,10 @@ void stageBucket(query::InputTransaction& transaction, const identity::CrateKey&
   ZC_REQUIRE(bucket != zc::none);
   auto canonical = incremental_module_resolution_query::CanonicalModuleCatalogBucket::fromVerified(
       ZC_REQUIRE_NONNULL(bucket));
-  ZC_REQUIRE(transaction.set<incremental_module_resolution_query::ModuleCatalogPathBucketInput>(
-      ZC_REQUIRE_NONNULL(key), canonical));
+  ZC_REQUIRE(transaction
+                 .set<incremental_module_resolution_query::ModuleCatalogPathBucketInput>(
+                     ZC_REQUIRE_NONNULL(key), canonical)
+                 .isApplied());
 }
 
 }  // namespace
@@ -654,13 +665,12 @@ ZC_TEST("Derived module queries project the sole catalog through prelude resolut
   auto userCrate = crate();
   auto userModule = module(userCrate, "test"_zc);
   auto userSource = localSource(userCrate, "test.zom"_zc);
-  auto sourceInputs = queries.beginInputTransaction();
-  ZC_REQUIRE(sourceInputs != zc::none);
-  ZC_IF_SOME(transaction, sourceInputs) {
-    stageSource(transaction, userSource);
-    stageUserActiveSource(transaction, userSource);
-    ZC_REQUIRE(transaction.commit() != zc::none);
-  }
+  auto sourceInputs = queries.beginInputTransaction(queries.snapshot().revision());
+  ZC_REQUIRE(sourceInputs.isOpened());
+  auto sourceTransaction = zc::mv(sourceInputs).takeTransaction();
+  stageSource(sourceTransaction, userSource);
+  stageUserActiveSource(sourceTransaction, userSource);
+  ZC_REQUIRE(sourceTransaction.commit().isCommitted());
 
   auto snapshot = queries.snapshot();
   auto selected = snapshot.get<SelectedModuleSourceQuery>(userModule);
@@ -701,12 +711,11 @@ ZC_TEST("Stable graph and independent SCC queries cover the complete core root")
   auto graphInputs = preparedTransaction(empty, true);
   ZC_REQUIRE(graphInputs != zc::none);
   ZC_REQUIRE(ZC_REQUIRE_NONNULL(graphInputs).commit(queries));
-  auto sourceInputs = queries.beginInputTransaction();
-  ZC_REQUIRE(sourceInputs != zc::none);
-  ZC_IF_SOME(transaction, sourceInputs) {
-    stageCoreDistribution(transaction);
-    ZC_REQUIRE(transaction.commit() != zc::none);
-  }
+  auto sourceInputs = queries.beginInputTransaction(queries.snapshot().revision());
+  ZC_REQUIRE(sourceInputs.isOpened());
+  auto sourceTransaction = zc::mv(sourceInputs).takeTransaction();
+  stageCoreDistribution(sourceTransaction);
+  ZC_REQUIRE(sourceTransaction.commit().isCommitted());
 
   auto roots =
       incremental_binding_query::CompilationRootSetQueryKey::singletonToolchainCore(coreCrate());
@@ -757,12 +766,11 @@ ZC_TEST("Nested dependency failure globally precedes an earlier outside edge") {
   auto graphInputs = preparedTransaction(empty, true);
   ZC_REQUIRE(graphInputs != zc::none);
   ZC_REQUIRE(ZC_REQUIRE_NONNULL(graphInputs).commit(queries));
-  auto sourceInputs = queries.beginInputTransaction();
-  ZC_REQUIRE(sourceInputs != zc::none);
-  ZC_IF_SOME(transaction, sourceInputs) {
-    stageCoreDistribution(transaction);
-    ZC_REQUIRE(transaction.commit() != zc::none);
-  }
+  auto sourceInputs = queries.beginInputTransaction(queries.snapshot().revision());
+  ZC_REQUIRE(sourceInputs.isOpened());
+  auto sourceTransaction = zc::mv(sourceInputs).takeTransaction();
+  stageCoreDistribution(sourceTransaction);
+  ZC_REQUIRE(sourceTransaction.commit().isCommitted());
 
   auto core = coreCrate();
   auto earlier = module(core, "core"_zc);
@@ -785,9 +793,10 @@ ZC_TEST("Nested dependency failure globally precedes an earlier outside edge") {
   ZC_REQUIRE(earlierSnapshot.kind() == query::QueryValueKind::Value);
   ZC_REQUIRE(laterSnapshot.kind() == query::QueryValueKind::Value);
 
-  auto mutation = queries.beginInputTransaction();
-  ZC_REQUIRE(mutation != zc::none);
-  ZC_IF_SOME(transaction, mutation) {
+  auto mutation = queries.beginInputTransaction(queries.snapshot().revision());
+  ZC_REQUIRE(mutation.isOpened());
+  {
+    auto transaction = zc::mv(mutation).takeTransaction();
     auto outsidePath = modulePath("outside"_zc);
     zc::Vector<DetachedModuleDependencySite> outsideSites;
     auto outsideSite = DetachedModuleDependencySite::from(
@@ -796,7 +805,8 @@ ZC_TEST("Nested dependency failure globally precedes an earlier outside edge") {
     auto outsideSet = DetachedModuleDependencySiteSet::from(
         earlier.clone(), earlierSource.value().clone(), earlierSnapshot.value().contentDigest(),
         zc::mv(outsideSites));
-    ZC_REQUIRE(transaction.set<ModuleDependencySiteInput>(earlier, ZC_REQUIRE_NONNULL(outsideSet)));
+    ZC_REQUIRE(transaction.set<ModuleDependencySiteInput>(earlier, ZC_REQUIRE_NONNULL(outsideSet))
+                   .isApplied());
 
     auto missingPath = modulePath("missing"_zc);
     zc::Vector<DetachedModuleDependencySite> missingSites;
@@ -806,15 +816,18 @@ ZC_TEST("Nested dependency failure globally precedes an earlier outside edge") {
     auto missingSet = DetachedModuleDependencySiteSet::from(
         later.clone(), laterSource.value().clone(), laterSnapshot.value().contentDigest(),
         zc::mv(missingSites));
-    ZC_REQUIRE(transaction.set<ModuleDependencySiteInput>(later, ZC_REQUIRE_NONNULL(missingSet)));
+    ZC_REQUIRE(transaction.set<ModuleDependencySiteInput>(later, ZC_REQUIRE_NONNULL(missingSet))
+                   .isApplied());
 
     for (const auto name : {"outside"_zc, "missing"_zc}) {
       auto alias = identity::DependencyAlias::fromCanonical(name);
       auto key = incremental_module_resolution_query::DependencyAliasRootQueryKey::from(
           core.clone(), zc::mv(ZC_REQUIRE_NONNULL(alias)));
-      ZC_REQUIRE(transaction.set<incremental_module_resolution_query::DependencyAliasRootInput>(
-          ZC_REQUIRE_NONNULL(key),
-          incremental_module_resolution_query::ExplicitModuleTarget::absent()));
+      ZC_REQUIRE(transaction
+                     .set<incremental_module_resolution_query::DependencyAliasRootInput>(
+                         ZC_REQUIRE_NONNULL(key),
+                         incremental_module_resolution_query::ExplicitModuleTarget::absent())
+                     .isApplied());
     }
 
     auto inactive = module(core, "outside"_zc);
@@ -824,7 +837,7 @@ ZC_TEST("Nested dependency failure globally precedes an earlier outside edge") {
     stageBucket(transaction, core, modulePath("core"_zc, "marker"_zc, "missing"_zc));
     stageBucket(transaction, core, modulePath("core"_zc, "missing"_zc));
     stageBucket(transaction, core, modulePath("missing"_zc));
-    ZC_REQUIRE(transaction.commit() != zc::none);
+    ZC_REQUIRE(transaction.commit().isCommitted());
   }
 
   auto roots = incremental_binding_query::CompilationRootSetQueryKey::singletonToolchainCore(core);
@@ -846,12 +859,11 @@ ZC_TEST("Tarjan provider and Kosaraju verifier agree after a tracked cycle mutat
   auto graphInputs = preparedTransaction(empty, true);
   ZC_REQUIRE(graphInputs != zc::none);
   ZC_REQUIRE(ZC_REQUIRE_NONNULL(graphInputs).commit(queries));
-  auto sourceInputs = queries.beginInputTransaction();
-  ZC_REQUIRE(sourceInputs != zc::none);
-  ZC_IF_SOME(transaction, sourceInputs) {
-    stageCoreDistribution(transaction);
-    ZC_REQUIRE(transaction.commit() != zc::none);
-  }
+  auto sourceInputs = queries.beginInputTransaction(queries.snapshot().revision());
+  ZC_REQUIRE(sourceInputs.isOpened());
+  auto sourceTransaction = zc::mv(sourceInputs).takeTransaction();
+  stageCoreDistribution(sourceTransaction);
+  ZC_REQUIRE(sourceTransaction.commit().isCommitted());
 
   auto core = coreCrate();
   auto root = module(core, "core"_zc);
@@ -873,9 +885,10 @@ ZC_TEST("Tarjan provider and Kosaraju verifier agree after a tracked cycle mutat
   ZC_REQUIRE(rootSnapshot.kind() == query::QueryValueKind::Value);
   ZC_REQUIRE(markerSnapshot.kind() == query::QueryValueKind::Value);
 
-  auto mutation = queries.beginInputTransaction();
-  ZC_REQUIRE(mutation != zc::none);
-  ZC_IF_SOME(transaction, mutation) {
+  auto mutation = queries.beginInputTransaction(queries.snapshot().revision());
+  ZC_REQUIRE(mutation.isOpened());
+  {
+    auto transaction = zc::mv(mutation).takeTransaction();
     zc::Vector<DetachedModuleDependencySite> rootSites;
     auto rootSite = DetachedModuleDependencySite::from(DetachedModuleDependencySiteKind::Import,
                                                        modulePath("marker"_zc), 910);
@@ -883,7 +896,8 @@ ZC_TEST("Tarjan provider and Kosaraju verifier agree after a tracked cycle mutat
     auto rootSet = DetachedModuleDependencySiteSet::from(root.clone(), rootSource.value().clone(),
                                                          rootSnapshot.value().contentDigest(),
                                                          zc::mv(rootSites));
-    ZC_REQUIRE(transaction.set<ModuleDependencySiteInput>(root, ZC_REQUIRE_NONNULL(rootSet)));
+    ZC_REQUIRE(
+        transaction.set<ModuleDependencySiteInput>(root, ZC_REQUIRE_NONNULL(rootSet)).isApplied());
 
     zc::Vector<DetachedModuleDependencySite> markerSites;
     auto markerSite = DetachedModuleDependencySite::from(DetachedModuleDependencySiteKind::Import,
@@ -892,15 +906,18 @@ ZC_TEST("Tarjan provider and Kosaraju verifier agree after a tracked cycle mutat
     auto markerSet = DetachedModuleDependencySiteSet::from(
         marker.clone(), markerSource.value().clone(), markerSnapshot.value().contentDigest(),
         zc::mv(markerSites));
-    ZC_REQUIRE(transaction.set<ModuleDependencySiteInput>(marker, ZC_REQUIRE_NONNULL(markerSet)));
+    ZC_REQUIRE(transaction.set<ModuleDependencySiteInput>(marker, ZC_REQUIRE_NONNULL(markerSet))
+                   .isApplied());
 
     for (const auto name : {"marker"_zc, "core"_zc}) {
       auto alias = identity::DependencyAlias::fromCanonical(name);
       auto key = incremental_module_resolution_query::DependencyAliasRootQueryKey::from(
           core.clone(), zc::mv(ZC_REQUIRE_NONNULL(alias)));
-      ZC_REQUIRE(transaction.set<incremental_module_resolution_query::DependencyAliasRootInput>(
-          ZC_REQUIRE_NONNULL(key),
-          incremental_module_resolution_query::ExplicitModuleTarget::absent()));
+      ZC_REQUIRE(transaction
+                     .set<incremental_module_resolution_query::DependencyAliasRootInput>(
+                         ZC_REQUIRE_NONNULL(key),
+                         incremental_module_resolution_query::ExplicitModuleTarget::absent())
+                     .isApplied());
     }
     zc::Maybe<identity::ModuleKey> markerTarget(marker.clone());
     stageBucket(transaction, core, modulePath("core"_zc, "marker"_zc), zc::mv(markerTarget));
@@ -909,7 +926,7 @@ ZC_TEST("Tarjan provider and Kosaraju verifier agree after a tracked cycle mutat
     stageBucket(transaction, core, modulePath("core"_zc, "core"_zc));
     zc::Maybe<identity::ModuleKey> rootTarget(root.clone());
     stageBucket(transaction, core, modulePath("core"_zc), zc::mv(rootTarget));
-    ZC_REQUIRE(transaction.commit() != zc::none);
+    ZC_REQUIRE(transaction.commit().isCommitted());
   }
 
   auto roots = incremental_binding_query::CompilationRootSetQueryKey::singletonToolchainCore(core);

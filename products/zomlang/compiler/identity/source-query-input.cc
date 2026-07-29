@@ -31,11 +31,6 @@ int compareBytes(zc::ArrayPtr<const uint8_t> left, zc::ArrayPtr<const uint8_t> r
   return 0;
 }
 
-query::QueryKindContract inputContract(zc::StringPtr domain, query::Durability durability) {
-  auto contract = query::QueryKindContract::input(domain, durability);
-  return zc::mv(ZC_REQUIRE_NONNULL(contract));
-}
-
 bool isValidTargetProfile(zc::ArrayPtr<const uint8_t> bytes) {
   if (bytes.size() == 0 || bytes.size() > 255) { return false; }
   for (const auto value : bytes) {
@@ -276,10 +271,6 @@ zc::Maybe<CanonicalCompilationOptions> CanonicalCompilationOptions::decodeCanoni
       ZC_ASSERT_NONNULL(supportRegexLiterals));
 }
 
-zc::StringPtr CompilationOptionsInput::domain() { return "zom.query.compilation-options"_zc; }
-query::QueryKindContract CompilationOptionsInput::contract() {
-  return inputContract(domain(), query::Durability::Medium);
-}
 zc::Array<uint8_t> CompilationOptionsInput::encodeKey(const Key& key) { return key.encode(); }
 zc::Maybe<CompilationOptionsInput::Key> CompilationOptionsInput::decodeKey(
     zc::ArrayPtr<const uint8_t> bytes) {
@@ -298,10 +289,6 @@ zc::Maybe<CompilationOptionsInput::Value> CompilationOptionsInput::decodeValue(
   return CanonicalCompilationOptions::decodeCanonical(bytes);
 }
 
-zc::StringPtr SourceSnapshotInput::domain() { return "zom.query.source-snapshot"_zc; }
-query::QueryKindContract SourceSnapshotInput::contract() {
-  return inputContract(domain(), query::Durability::Low);
-}
 zc::Array<uint8_t> SourceSnapshotInput::encodeKey(const Key& key) {
   return zc::heapArray<uint8_t>(key.canonicalSourceBytes());
 }
@@ -318,8 +305,9 @@ zc::Maybe<SourceSnapshotInput::Value> SourceSnapshotInput::decodeValue(
 }
 
 bool registerSourceQueryInputs(query::QueryDatabase& database) {
-  return database.registerInputKind<CompilationOptionsInput>() != zc::none &&
-         database.registerInputKind<SourceSnapshotInput>() != zc::none;
+  auto compilationOptions = database.registerDescriptor<CompilationOptionsInput>();
+  if (!compilationOptions.isRegistered()) { return false; }
+  return database.registerDescriptor<SourceSnapshotInput>().isRegistered();
 }
 
 }  // namespace zomlang::compiler::identity::source_query

@@ -3,6 +3,8 @@
 #include "zc/core/debug.h"
 #include "zomlang/compiler/ast/generated/node-accessors.h"
 #include "zomlang/compiler/ast/generated/node-schema.h"
+#include "zomlang/compiler/binder/stable-binding-codec.h"
+#include "zomlang/compiler/binder/stable-binding-diagnostic-fact.h"
 #include "zomlang/compiler/driver/named-identity-inventory-query.h"
 #include "zomlang/compiler/driver/named-item-query.h"
 #include "zomlang/compiler/identity/canonical-decoder.h"
@@ -35,24 +37,6 @@ struct DetachedFieldProjection final {
   bool present;
   uint32_t childOrdinal;
 };
-
-query::QueryKindContract retainedSemanticContract(zc::StringPtr domain) {
-  auto contract = query::QueryKindContract::derived(domain, query::ReuseClass::Semantic,
-                                                    query::RetentionClass::Retained);
-  return zc::mv(ZC_REQUIRE_NONNULL(contract));
-}
-
-query::QueryKindContract evictableSemanticContract(zc::StringPtr domain) {
-  auto contract = query::QueryKindContract::derived(domain, query::ReuseClass::Semantic,
-                                                    query::RetentionClass::Evictable);
-  return zc::mv(ZC_REQUIRE_NONNULL(contract));
-}
-
-query::QueryKindContract revisionLocalContract(zc::StringPtr domain) {
-  auto contract = query::QueryKindContract::derived(domain, query::ReuseClass::RevisionLocal,
-                                                    query::RetentionClass::Retained);
-  return zc::mv(ZC_REQUIRE_NONNULL(contract));
-}
 
 zc::Array<uint8_t> encodeFailure(OwnerBodyFailureKind kind,
                                  zc::ArrayPtr<const uint8_t> payload = {}) {
@@ -483,17 +467,37 @@ query::TypedQueryResult<Value> propagate(const query::TypedQueryResult<Upstream>
       query::QueryRuntimeFailure::InvariantViolation);
 }
 
-template <typename Capability, typename UpstreamResult>
-query::CapabilityProviderResult<Capability> propagateCapability(const UpstreamResult& upstream) {
-  if (upstream.isRuntimeFailure()) {
-    return query::CapabilityProviderResult<Capability>::runtimeFailure(upstream.runtimeFailure());
+template <typename TargetDescriptor, typename SourceDescriptor>
+query::CapabilityProviderResult<TargetDescriptor> forwardSourceRejection(
+    const query::CapabilityDemandResult<SourceDescriptor>& source) {
+  using SourceContract =
+      query::CapabilityFailureContract<SourceDescriptor,
+                                       query::SourceRejection<diagnostics::DiagnosticFact>>;
+  using TargetContract =
+      query::CapabilityFailureContract<TargetDescriptor,
+                                       query::SourceRejection<diagnostics::DiagnosticFact>>;
+  auto diagnostics = TargetContract::decode(SourceContract::encode(source.diagnostics()).asPtr());
+  if (diagnostics == zc::none) {
+    return query::CapabilityProviderResult<TargetDescriptor>::runtimeRejected(
+        query::QueryRuntimeFailure::InvariantViolation);
   }
-  if (upstream.kind() == query::QueryValueKind::SemanticFailure) {
-    return query::CapabilityProviderResult<Capability>::semanticFailure(
-        zc::heapArray<uint8_t>(upstream.semanticFailureBytes()));
-  }
-  return query::CapabilityProviderResult<Capability>::runtimeFailure(
-      query::QueryRuntimeFailure::InvariantViolation);
+  return query::CapabilityProviderResult<TargetDescriptor>::template sourceRejected<
+      diagnostics::DiagnosticFact>(zc::mv(ZC_ASSERT_NONNULL(diagnostics)));
+}
+
+template <typename TargetDescriptor, typename SourceDescriptor>
+query::CapabilityProviderResult<TargetDescriptor> forwardKeyRejection(
+    const query::CapabilityDemandResult<SourceDescriptor>& source) {
+  return query::CapabilityProviderResult<TargetDescriptor>::template keyRejected<
+      binder::BinderKeyFailure>(source.keyFailure().clone());
+}
+
+zc::Maybe<binder::BinderKeyFailure> definitionWithoutBodyFailure(
+    const ContextualBodyOwnerKey& key) {
+  zc::Maybe<binder::LocalSyntaxPath> noPath;
+  return binder::BinderKeyFailure::from(binder::BinderKeyFailureKind::DefinitionWithoutBody,
+                                        binder::BinderQueryOwner::body(key.body().clone()),
+                                        zc::mv(noPath));
 }
 
 query::TypedQueryResult<binder::ModuleBodyOwners> providerModuleOwners(
@@ -611,12 +615,6 @@ bool verifierModuleOwners(query::QueryContext& context, const ContextualModuleKe
 
 }  // namespace
 
-zc::StringPtr ModuleBodyOwnersQuery::domain() { return "zom.query.module-body-owners"_zc; }
-
-query::QueryKindContract ModuleBodyOwnersQuery::contract() {
-  return retainedSemanticContract(domain());
-}
-
 zc::Array<uint8_t> ModuleBodyOwnersQuery::encodeKey(const Key& key) {
   return key.encodeCanonical();
 }
@@ -643,12 +641,6 @@ query::TypedQueryResult<ModuleBodyOwnersQuery::Value> ModuleBodyOwnersQuery::pro
 bool ModuleBodyOwnersQuery::verify(query::QueryContext& context, const Key& key,
                                    const query::TypedQueryResult<Value>& result) {
   return verifierModuleOwners(context, key, result);
-}
-
-zc::StringPtr OwnerBodySyntaxQuery::domain() { return "zom.query.owner-body-syntax"_zc; }
-
-query::QueryKindContract OwnerBodySyntaxQuery::contract() {
-  return evictableSemanticContract(domain());
 }
 
 zc::Array<uint8_t> OwnerBodySyntaxQuery::encodeKey(const Key& key) { return key.encodeCanonical(); }
@@ -771,12 +763,6 @@ bool OwnerBodySyntaxQuery::verify(query::QueryContext& context, const Key& key,
          ZC_ASSERT_NONNULL(expected) == result.value();
 }
 
-zc::StringPtr OwnerBodyProvenanceQuery::domain() { return "zom.query.owner-body-provenance"_zc; }
-
-query::QueryKindContract OwnerBodyProvenanceQuery::contract() {
-  return revisionLocalContract(domain());
-}
-
 zc::Array<uint8_t> OwnerBodyProvenanceQuery::encodeKey(const Key& key) {
   return key.encodeCanonical();
 }
@@ -786,85 +772,160 @@ zc::Maybe<OwnerBodyProvenanceQuery::Key> OwnerBodyProvenanceQuery::decodeKey(
   return ContextualBodyOwnerKey::decodeCanonical(bytes);
 }
 
-query::CapabilityProviderResult<OwnerBodyProvenanceQuery::Capability>
-OwnerBodyProvenanceQuery::provide(query::CapabilityQueryContext& context, const Key& key) {
-  auto syntax = context.get<OwnerBodySyntaxQuery>(key);
-  if (syntax.kind() != query::QueryValueKind::Value || syntax.isRuntimeFailure()) {
-    return propagateCapability<Capability>(syntax);
-  }
+query::CapabilityProviderResult<OwnerBodyProvenanceQuery> OwnerBodyProvenanceQuery::provide(
+    query::CapabilityQueryContext<OwnerBodyProvenanceQuery>& context, const Key& key) {
   const auto& body = key.body();
   const auto& owner = body.owner();
+  zc::Maybe<binder::OwnerBodySyntax> syntax;
   zc::Maybe<binder::ModuleBodyProvenance> retained;
   if (owner.kind() == binder::StableBodyOwnerKind::Module) {
     auto moduleKey = StableModuleQueryKey::fromVerified(body.module());
     if (moduleKey == zc::none) {
-      return query::CapabilityProviderResult<Capability>::runtimeFailure(
+      return query::CapabilityProviderResult<OwnerBodyProvenanceQuery>::runtimeRejected(
           query::QueryRuntimeFailure::InvariantViolation);
     }
     auto provenance =
         context.getCapability<ModuleBodyProvenanceQuery>(ZC_ASSERT_NONNULL(moduleKey));
-    if (provenance.kind() != query::QueryValueKind::Value || provenance.isRuntimeFailure()) {
-      return propagateCapability<Capability>(provenance);
+    if (provenance.isRuntimeRejected()) {
+      return query::CapabilityProviderResult<OwnerBodyProvenanceQuery>::runtimeRejected(
+          provenance.runtimeFailure());
     }
-    retained = provenance.value().capability().clone();
+    if (provenance.isKeyRejected()) {
+      return forwardKeyRejection<OwnerBodyProvenanceQuery>(provenance);
+    }
+    if (provenance.isSourceRejected()) {
+      return forwardSourceRejection<OwnerBodyProvenanceQuery>(provenance);
+    }
+    if (!provenance.isPublished()) {
+      return query::CapabilityProviderResult<OwnerBodyProvenanceQuery>::runtimeRejected(
+          query::QueryRuntimeFailure::InvariantViolation);
+    }
+    auto moduleSyntax = context.get<ModuleBodySyntaxQuery>(ZC_ASSERT_NONNULL(moduleKey));
+    if (moduleSyntax.isRuntimeFailure()) {
+      return query::CapabilityProviderResult<OwnerBodyProvenanceQuery>::runtimeRejected(
+          moduleSyntax.runtimeFailure());
+    }
+    if (moduleSyntax.kind() != query::QueryValueKind::Value) {
+      return query::CapabilityProviderResult<OwnerBodyProvenanceQuery>::runtimeRejected(
+          query::QueryRuntimeFailure::InvariantViolation);
+    }
+    syntax = binder::OwnerBodySyntax::from(owner.clone(), body.module().clone(),
+                                           moduleSyntax.value().clone());
+    if (syntax == zc::none) {
+      return query::CapabilityProviderResult<OwnerBodyProvenanceQuery>::runtimeRejected(
+          query::QueryRuntimeFailure::InvariantViolation);
+    }
+    retained = provenance.lease().capability().clone();
   } else {
     auto definitionKey = ContextualDefinitionKey::from(
         key.contextRoots().clone(),
         binder::StableDefinitionQueryKey::from(body.module().clone(),
                                                ZC_ASSERT_NONNULL(owner.definitionKey()).clone()));
     auto provenance = context.getCapability<NamedItemProvenanceQuery>(definitionKey);
-    if (provenance.kind() != query::QueryValueKind::Value || provenance.isRuntimeFailure()) {
-      return propagateCapability<Capability>(provenance);
+    if (provenance.isRuntimeRejected()) {
+      return query::CapabilityProviderResult<OwnerBodyProvenanceQuery>::runtimeRejected(
+          provenance.runtimeFailure());
     }
-    retained = provenance.value().capability().detachedProvenance().clone();
+    if (provenance.isKeyRejected()) {
+      return forwardKeyRejection<OwnerBodyProvenanceQuery>(provenance);
+    }
+    if (provenance.isSourceRejected()) {
+      return forwardSourceRejection<OwnerBodyProvenanceQuery>(provenance);
+    }
+    if (!provenance.isPublished()) {
+      return query::CapabilityProviderResult<OwnerBodyProvenanceQuery>::runtimeRejected(
+          query::QueryRuntimeFailure::InvariantViolation);
+    }
+    auto namedSyntax = context.get<NamedItemSyntaxQuery>(definitionKey);
+    if (namedSyntax.isRuntimeFailure()) {
+      return query::CapabilityProviderResult<OwnerBodyProvenanceQuery>::runtimeRejected(
+          namedSyntax.runtimeFailure());
+    }
+    if (namedSyntax.kind() != query::QueryValueKind::Value ||
+        !sameModule(namedSyntax.value().owningModule(), body.module())) {
+      return query::CapabilityProviderResult<OwnerBodyProvenanceQuery>::runtimeRejected(
+          query::QueryRuntimeFailure::InvariantViolation);
+    }
+    const auto admission = providerExecutableRoot(namedSyntax.value().detachedSyntax());
+    if (admission == ExecutableRootAdmission::NoBody) {
+      auto failure = definitionWithoutBodyFailure(key);
+      if (failure == zc::none) {
+        return query::CapabilityProviderResult<OwnerBodyProvenanceQuery>::runtimeRejected(
+            query::QueryRuntimeFailure::InvariantViolation);
+      }
+      return query::CapabilityProviderResult<OwnerBodyProvenanceQuery>::keyRejected<
+          binder::BinderKeyFailure>(zc::mv(ZC_ASSERT_NONNULL(failure)));
+    }
+    if (admission != ExecutableRootAdmission::Executable) {
+      return query::CapabilityProviderResult<OwnerBodyProvenanceQuery>::runtimeRejected(
+          query::QueryRuntimeFailure::InvariantViolation);
+    }
+    syntax = binder::OwnerBodySyntax::from(owner.clone(), body.module().clone(),
+                                           namedSyntax.value().detachedSyntax().clone());
+    if (syntax == zc::none) {
+      return query::CapabilityProviderResult<OwnerBodyProvenanceQuery>::runtimeRejected(
+          query::QueryRuntimeFailure::InvariantViolation);
+    }
+    retained = provenance.lease().capability().detachedProvenance().clone();
   }
   if (retained == zc::none ||
-      !providerProvenanceMatches(syntax.value(), ZC_ASSERT_NONNULL(retained))) {
-    return query::CapabilityProviderResult<Capability>::semanticFailure(
-        encodeFailure(OwnerBodyFailureKind::MissingProvenance));
+      !providerProvenanceMatches(ZC_ASSERT_NONNULL(syntax), ZC_ASSERT_NONNULL(retained))) {
+    return query::CapabilityProviderResult<OwnerBodyProvenanceQuery>::runtimeRejected(
+        query::QueryRuntimeFailure::InvariantViolation);
   }
   auto value =
       binder::OwnerBodyProvenance::from(owner.clone(), zc::mv(ZC_ASSERT_NONNULL(retained)));
   if (value == zc::none) {
-    return query::CapabilityProviderResult<Capability>::runtimeFailure(
+    return query::CapabilityProviderResult<OwnerBodyProvenanceQuery>::runtimeRejected(
         query::QueryRuntimeFailure::InvariantViolation);
   }
-  auto stableWitness = ZC_ASSERT_NONNULL(value).encodeCanonical();
-  return query::CapabilityProviderResult<Capability>::value(
-      zc::heap<Capability>(zc::mv(ZC_ASSERT_NONNULL(value))), zc::mv(stableWitness));
+  auto candidate = zc::heap<Capability>(zc::mv(ZC_ASSERT_NONNULL(value)));
+  auto stableWitness =
+      query::CapabilityCandidateContract<OwnerBodyProvenanceQuery>::encode(*candidate);
+  return query::CapabilityProviderResult<OwnerBodyProvenanceQuery>::candidate(
+      zc::mv(candidate), zc::mv(stableWitness));
 }
 
 zc::Maybe<zc::Array<uint8_t>> OwnerBodyProvenanceQuery::verify(
-    query::CapabilityQueryContext& context, const Key& key, const Capability& candidate) {
-  auto syntax = context.get<OwnerBodySyntaxQuery>(key);
-  if (syntax.isRuntimeFailure() || syntax.kind() != query::QueryValueKind::Value) {
-    return zc::none;
-  }
+    query::CapabilityQueryContext<OwnerBodyProvenanceQuery>& context, const Key& key,
+    const Capability& candidate) {
   const auto& body = key.body();
   const auto& owner = body.owner();
+  zc::Maybe<binder::OwnerBodySyntax> syntax;
   zc::Maybe<binder::ModuleBodyProvenance> retained;
   if (owner.kind() == binder::StableBodyOwnerKind::Module) {
     auto moduleKey = StableModuleQueryKey::fromVerified(body.module());
     if (moduleKey == zc::none) { return zc::none; }
     auto provenance =
         context.getCapability<ModuleBodyProvenanceQuery>(ZC_ASSERT_NONNULL(moduleKey));
-    if (provenance.isRuntimeFailure() || provenance.kind() != query::QueryValueKind::Value) {
+    if (!provenance.isPublished()) { return zc::none; }
+    auto moduleSyntax = context.get<ModuleBodySyntaxQuery>(ZC_ASSERT_NONNULL(moduleKey));
+    if (moduleSyntax.isRuntimeFailure() || moduleSyntax.kind() != query::QueryValueKind::Value) {
       return zc::none;
     }
-    retained = provenance.value().capability().clone();
+    syntax = binder::OwnerBodySyntax::from(owner.clone(), body.module().clone(),
+                                           moduleSyntax.value().clone());
+    retained = provenance.lease().capability().clone();
   } else {
     auto definitionKey = ContextualDefinitionKey::from(
         key.contextRoots().clone(),
         binder::StableDefinitionQueryKey::from(body.module().clone(),
                                                ZC_ASSERT_NONNULL(owner.definitionKey()).clone()));
     auto provenance = context.getCapability<NamedItemProvenanceQuery>(definitionKey);
-    if (provenance.isRuntimeFailure() || provenance.kind() != query::QueryValueKind::Value) {
+    if (!provenance.isPublished()) { return zc::none; }
+    auto namedSyntax = context.get<NamedItemSyntaxQuery>(definitionKey);
+    if (namedSyntax.isRuntimeFailure() || namedSyntax.kind() != query::QueryValueKind::Value ||
+        !sameModule(namedSyntax.value().owningModule(), body.module()) ||
+        verifierExecutableRoot(namedSyntax.value().detachedSyntax()) !=
+            ExecutableRootAdmission::Executable) {
       return zc::none;
     }
-    retained = provenance.value().capability().detachedProvenance().clone();
+    syntax = binder::OwnerBodySyntax::from(owner.clone(), body.module().clone(),
+                                           namedSyntax.value().detachedSyntax().clone());
+    retained = provenance.lease().capability().detachedProvenance().clone();
   }
-  if (retained == zc::none ||
-      !verifierProvenanceMatches(syntax.value(), ZC_ASSERT_NONNULL(retained))) {
+  if (syntax == zc::none || retained == zc::none ||
+      !verifierProvenanceMatches(ZC_ASSERT_NONNULL(syntax), ZC_ASSERT_NONNULL(retained))) {
     return zc::none;
   }
   auto expected =
@@ -876,4 +937,136 @@ zc::Maybe<zc::Array<uint8_t>> OwnerBodyProvenanceQuery::verify(
   return zc::mv(witness);
 }
 
+query::CapabilityRejectionCheck verifyOwnerBodySourceRejection(
+    query::CapabilityQueryContext<OwnerBodyProvenanceQuery>& context,
+    const OwnerBodyProvenanceQuery::Key& key,
+    zc::ArrayPtr<const diagnostics::DiagnosticFact> diagnostics) {
+  const auto& body = key.body();
+  const auto& owner = body.owner();
+  auto actual = binder::encodeStableBindingDiagnosticFacts(diagnostics);
+  if (actual == zc::none) { return query::CapabilityRejectionCheck::Rejected; }
+  if (owner.kind() == binder::StableBodyOwnerKind::Module) {
+    auto moduleKey = StableModuleQueryKey::fromVerified(body.module());
+    if (moduleKey == zc::none) { return query::CapabilityRejectionCheck::Rejected; }
+    auto provenance =
+        context.getCapability<ModuleBodyProvenanceQuery>(ZC_ASSERT_NONNULL(moduleKey));
+    if (!provenance.isSourceRejected()) { return query::CapabilityRejectionCheck::Rejected; }
+    auto expected = binder::encodeStableBindingDiagnosticFacts(provenance.diagnostics().values());
+    return expected != zc::none &&
+                   ZC_ASSERT_NONNULL(expected).asPtr() == ZC_ASSERT_NONNULL(actual).asPtr()
+               ? query::CapabilityRejectionCheck::Verified
+               : query::CapabilityRejectionCheck::Rejected;
+  }
+  auto definitionKey = ContextualDefinitionKey::from(
+      key.contextRoots().clone(),
+      binder::StableDefinitionQueryKey::from(body.module().clone(),
+                                             ZC_ASSERT_NONNULL(owner.definitionKey()).clone()));
+  auto provenance = context.getCapability<NamedItemProvenanceQuery>(definitionKey);
+  if (!provenance.isSourceRejected()) { return query::CapabilityRejectionCheck::Rejected; }
+  auto expected = binder::encodeStableBindingDiagnosticFacts(provenance.diagnostics().values());
+  return expected != zc::none &&
+                 ZC_ASSERT_NONNULL(expected).asPtr() == ZC_ASSERT_NONNULL(actual).asPtr()
+             ? query::CapabilityRejectionCheck::Verified
+             : query::CapabilityRejectionCheck::Rejected;
+}
+
+query::CapabilityRejectionCheck verifyOwnerBodyKeyRejection(
+    query::CapabilityQueryContext<OwnerBodyProvenanceQuery>& context,
+    const OwnerBodyProvenanceQuery::Key& key, const binder::BinderKeyFailure& failure) {
+  const auto& body = key.body();
+  const auto& owner = body.owner();
+  if (owner.kind() == binder::StableBodyOwnerKind::Module) {
+    auto moduleKey = StableModuleQueryKey::fromVerified(body.module());
+    if (moduleKey == zc::none) { return query::CapabilityRejectionCheck::Rejected; }
+    auto provenance =
+        context.getCapability<ModuleBodyProvenanceQuery>(ZC_ASSERT_NONNULL(moduleKey));
+    return provenance.isKeyRejected() && provenance.keyFailure() == failure
+               ? query::CapabilityRejectionCheck::Verified
+               : query::CapabilityRejectionCheck::Rejected;
+  }
+  auto definitionKey = ContextualDefinitionKey::from(
+      key.contextRoots().clone(),
+      binder::StableDefinitionQueryKey::from(body.module().clone(),
+                                             ZC_ASSERT_NONNULL(owner.definitionKey()).clone()));
+  auto provenance = context.getCapability<NamedItemProvenanceQuery>(definitionKey);
+  if (provenance.isKeyRejected()) {
+    return provenance.keyFailure() == failure ? query::CapabilityRejectionCheck::Verified
+                                              : query::CapabilityRejectionCheck::Rejected;
+  }
+  if (!provenance.isPublished()) { return query::CapabilityRejectionCheck::Rejected; }
+  auto syntax = context.get<NamedItemSyntaxQuery>(definitionKey);
+  if (syntax.isRuntimeFailure() || syntax.kind() != query::QueryValueKind::Value ||
+      verifierExecutableRoot(syntax.value().detachedSyntax()) != ExecutableRootAdmission::NoBody) {
+    return query::CapabilityRejectionCheck::Rejected;
+  }
+  auto expected = definitionWithoutBodyFailure(key);
+  return expected != zc::none && ZC_ASSERT_NONNULL(expected) == failure
+             ? query::CapabilityRejectionCheck::Verified
+             : query::CapabilityRejectionCheck::Rejected;
+}
+
 }  // namespace zomlang::compiler::driver::incremental_binding_query
+
+namespace zomlang::compiler::query {
+
+using OwnerBodyProvenanceDescriptor = driver::incremental_binding_query::OwnerBodyProvenanceQuery;
+
+StableWitnessBytes CapabilityCandidateContract<OwnerBodyProvenanceDescriptor>::encode(
+    const OwnerBodyProvenanceDescriptor::Capability& candidate) {
+  return StableWitnessBytes(candidate.encodeCanonical());
+}
+
+zc::Maybe<zc::Own<OwnerBodyProvenanceDescriptor::Capability>> CapabilityCandidateContract<
+    OwnerBodyProvenanceDescriptor>::decode(zc::ArrayPtr<const uint8_t> bytes) {
+  auto candidate = binder::OwnerBodyProvenance::decodeCanonical(bytes);
+  if (candidate == zc::none || ZC_ASSERT_NONNULL(candidate).encodeCanonical().asPtr() != bytes) {
+    return zc::none;
+  }
+  return zc::heap<OwnerBodyProvenanceDescriptor::Capability>(zc::mv(ZC_ASSERT_NONNULL(candidate)));
+}
+
+zc::Array<uint8_t> CapabilityFailureContract<
+    OwnerBodyProvenanceDescriptor,
+    SourceRejection<diagnostics::DiagnosticFact>>::encode(const Sequence& diagnostics) {
+  auto encoded = binder::encodeStableBindingDiagnosticFacts(diagnostics.values());
+  return zc::mv(ZC_ASSERT_NONNULL(encoded));
+}
+
+zc::Maybe<CapabilityFailureContract<OwnerBodyProvenanceDescriptor,
+                                    SourceRejection<diagnostics::DiagnosticFact>>::Sequence>
+CapabilityFailureContract<
+    OwnerBodyProvenanceDescriptor,
+    SourceRejection<diagnostics::DiagnosticFact>>::decode(zc::ArrayPtr<const uint8_t> bytes) {
+  auto facts = binder::decodeStableBindingDiagnosticFacts(bytes);
+  if (facts == zc::none) { return zc::none; }
+  return Sequence(zc::mv(ZC_ASSERT_NONNULL(facts)));
+}
+
+CapabilityRejectionCheck CapabilityFailureContract<OwnerBodyProvenanceDescriptor,
+                                                   SourceRejection<diagnostics::DiagnosticFact>>::
+    verify(CapabilityQueryContext<OwnerBodyProvenanceDescriptor>& context,
+           const OwnerBodyProvenanceDescriptor::Key& key, const Sequence& diagnostics) {
+  return driver::incremental_binding_query::verifyOwnerBodySourceRejection(context, key,
+                                                                           diagnostics.values());
+}
+
+zc::Array<uint8_t> CapabilityFailureContract<
+    OwnerBodyProvenanceDescriptor,
+    KeyRejection<binder::BinderKeyFailure>>::encode(const binder::BinderKeyFailure& failure) {
+  return binder::StableBindingCodec<binder::BinderKeyFailure>::encode(failure);
+}
+
+zc::Maybe<binder::BinderKeyFailure> CapabilityFailureContract<
+    OwnerBodyProvenanceDescriptor,
+    KeyRejection<binder::BinderKeyFailure>>::decode(zc::ArrayPtr<const uint8_t> bytes) {
+  return binder::StableBindingCodec<binder::BinderKeyFailure>::decode(bytes);
+}
+
+CapabilityRejectionCheck
+CapabilityFailureContract<OwnerBodyProvenanceDescriptor, KeyRejection<binder::BinderKeyFailure>>::
+    verify(CapabilityQueryContext<OwnerBodyProvenanceDescriptor>& context,
+           const OwnerBodyProvenanceDescriptor::Key& key, const binder::BinderKeyFailure& failure) {
+  return driver::incremental_binding_query::verifyOwnerBodyKeyRejection(context, key, failure);
+}
+
+}  // namespace zomlang::compiler::query

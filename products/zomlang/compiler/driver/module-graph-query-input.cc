@@ -221,17 +221,6 @@ zc::Maybe<identity::SourceFileKey> decodeSource(zc::ArrayPtr<const uint8_t> byte
   return zc::none;
 }
 
-query::QueryKindContract inputContract(zc::StringPtr domain) {
-  auto contract = query::QueryKindContract::input(domain, query::Durability::Low);
-  return zc::mv(ZC_REQUIRE_NONNULL(contract));
-}
-
-query::QueryKindContract derivedContract(zc::StringPtr domain) {
-  auto contract = query::QueryKindContract::derived(domain, query::ReuseClass::Semantic,
-                                                    query::RetentionClass::Retained);
-  return zc::mv(ZC_REQUIRE_NONNULL(contract));
-}
-
 zc::Array<uint8_t> encodePath(zc::ArrayPtr<const identity::ModulePathSegment> path) {
   identity::CanonicalEncoder encoder;
   encoder.encodeSequenceSize(path.size());
@@ -680,47 +669,57 @@ bool eraseLedgerEntry(query::InputTransaction& transaction,
     case ModuleGraphInputFamily::SelectedModuleCatalog: {
       auto key = SelectedModuleCatalogInput::decodeKey(entry.keyBytes());
       return key != zc::none &&
-             transaction.erase<SelectedModuleCatalogInput>(ZC_ASSERT_NONNULL(key));
+             transaction.erase<SelectedModuleCatalogInput>(ZC_ASSERT_NONNULL(key)).isApplied();
     }
     case ModuleGraphInputFamily::ModuleDependencySite: {
       auto key = ModuleDependencySiteInput::decodeKey(entry.keyBytes());
       return key != zc::none &&
-             transaction.erase<ModuleDependencySiteInput>(ZC_ASSERT_NONNULL(key));
+             transaction.erase<ModuleDependencySiteInput>(ZC_ASSERT_NONNULL(key)).isApplied();
     }
     case ModuleGraphInputFamily::ModuleCatalogPathBucket: {
       auto key = incremental_module_resolution_query::ModuleCatalogPathBucketInput::decodeKey(
           entry.keyBytes());
       return key != zc::none &&
-             transaction.erase<incremental_module_resolution_query::ModuleCatalogPathBucketInput>(
-                 ZC_ASSERT_NONNULL(key));
+             transaction
+                 .erase<incremental_module_resolution_query::ModuleCatalogPathBucketInput>(
+                     ZC_ASSERT_NONNULL(key))
+                 .isApplied();
     }
     case ModuleGraphInputFamily::RequesterModuleAncestry: {
       auto key = incremental_module_resolution_query::RequesterModuleAncestryInput::decodeKey(
           entry.keyBytes());
       return key != zc::none &&
-             transaction.erase<incremental_module_resolution_query::RequesterModuleAncestryInput>(
-                 ZC_ASSERT_NONNULL(key));
+             transaction
+                 .erase<incremental_module_resolution_query::RequesterModuleAncestryInput>(
+                     ZC_ASSERT_NONNULL(key))
+                 .isApplied();
     }
     case ModuleGraphInputFamily::ModuleSearchRoots: {
       auto key =
           incremental_module_resolution_query::ModuleSearchRootsInput::decodeKey(entry.keyBytes());
       return key != zc::none &&
-             transaction.erase<incremental_module_resolution_query::ModuleSearchRootsInput>(
-                 ZC_ASSERT_NONNULL(key));
+             transaction
+                 .erase<incremental_module_resolution_query::ModuleSearchRootsInput>(
+                     ZC_ASSERT_NONNULL(key))
+                 .isApplied();
     }
     case ModuleGraphInputFamily::DependencyAliasRoot: {
       auto key = incremental_module_resolution_query::DependencyAliasRootInput::decodeKey(
           entry.keyBytes());
       return key != zc::none &&
-             transaction.erase<incremental_module_resolution_query::DependencyAliasRootInput>(
-                 ZC_ASSERT_NONNULL(key));
+             transaction
+                 .erase<incremental_module_resolution_query::DependencyAliasRootInput>(
+                     ZC_ASSERT_NONNULL(key))
+                 .isApplied();
     }
     case ModuleGraphInputFamily::ConfiguredPrelude: {
       auto key =
           incremental_module_resolution_query::ConfiguredPreludeInput::decodeKey(entry.keyBytes());
       return key != zc::none &&
-             transaction.erase<incremental_module_resolution_query::ConfiguredPreludeInput>(
-                 ZC_ASSERT_NONNULL(key));
+             transaction
+                 .erase<incremental_module_resolution_query::ConfiguredPreludeInput>(
+                     ZC_ASSERT_NONNULL(key))
+                 .isApplied();
     }
   }
   return false;
@@ -1002,12 +1001,6 @@ zc::Array<uint8_t> DetachedModuleDependencySiteSet::encodeCanonical() const {
   return frame(kDependencySiteValueDomain, payload.finish().asPtr());
 }
 
-zc::StringPtr SelectedModuleCatalogInput::domain() {
-  return "zom.query.selected-module-catalog"_zc;
-}
-
-query::QueryKindContract SelectedModuleCatalogInput::contract() { return inputContract(domain()); }
-
 zc::Array<uint8_t> SelectedModuleCatalogInput::encodeKey(const Key& key) { return key.encode(); }
 
 zc::Maybe<SelectedModuleCatalogInput::Key> SelectedModuleCatalogInput::decodeKey(
@@ -1023,12 +1016,6 @@ zc::Maybe<SelectedModuleCatalogInput::Value> SelectedModuleCatalogInput::decodeV
     zc::ArrayPtr<const uint8_t> bytes) {
   return SelectedModuleCatalog::decodeCanonical(bytes);
 }
-
-zc::StringPtr ModuleDependencySiteInput::domain() {
-  return "zom.query.module-dependency-site-input"_zc;
-}
-
-query::QueryKindContract ModuleDependencySiteInput::contract() { return inputContract(domain()); }
 
 zc::Array<uint8_t> ModuleDependencySiteInput::encodeKey(const Key& key) { return key.encode(); }
 
@@ -1327,10 +1314,6 @@ zc::Array<uint8_t> ModuleDependencyFailureRecord::encodeCanonical() const {
   return frame(kDependencyFailureDomain, payload.finish().asPtr());
 }
 
-zc::StringPtr SelectedModuleSourceQuery::domain() { return "zom.query.selected-module-source"_zc; }
-
-query::QueryKindContract SelectedModuleSourceQuery::contract() { return derivedContract(domain()); }
-
 zc::Array<uint8_t> SelectedModuleSourceQuery::encodeKey(const Key& key) { return key.encode(); }
 
 zc::Maybe<SelectedModuleSourceQuery::Key> SelectedModuleSourceQuery::decodeKey(
@@ -1387,10 +1370,6 @@ bool SelectedModuleSourceQuery::verify(query::QueryContext& context, const Key& 
   return result.kind() == query::QueryValueKind::Value &&
          sameSource(found->source(), result.value()) && result.value().belongsTo(key.crate());
 }
-
-zc::StringPtr ActiveModulesQuery::domain() { return "zom.query.active-modules"_zc; }
-
-query::QueryKindContract ActiveModulesQuery::contract() { return derivedContract(domain()); }
 
 zc::Array<uint8_t> ActiveModulesQuery::encodeKey(const Key& key) { return key.encode(); }
 
@@ -1473,14 +1452,6 @@ bool ActiveModulesQuery::verify(query::QueryContext& context, const Key& key,
   return true;
 }
 
-zc::StringPtr ModuleDependencySitesQuery::domain() {
-  return "zom.query.module-dependency-sites"_zc;
-}
-
-query::QueryKindContract ModuleDependencySitesQuery::contract() {
-  return derivedContract(domain());
-}
-
 zc::Array<uint8_t> ModuleDependencySitesQuery::encodeKey(const Key& key) { return key.encode(); }
 
 zc::Maybe<ModuleDependencySitesQuery::Key> ModuleDependencySitesQuery::decodeKey(
@@ -1558,14 +1529,6 @@ bool ModuleDependencySitesQuery::verify(query::QueryContext& context, const Key&
          result.value().encodeCanonical().asPtr() == input.value().encodeCanonical().asPtr();
 }
 
-zc::StringPtr ModuleDependencyRequestsQuery::domain() {
-  return "zom.query.module-dependency-requests"_zc;
-}
-
-query::QueryKindContract ModuleDependencyRequestsQuery::contract() {
-  return derivedContract(domain());
-}
-
 zc::Array<uint8_t> ModuleDependencyRequestsQuery::encodeKey(const Key& key) { return key.encode(); }
 
 zc::Maybe<ModuleDependencyRequestsQuery::Key> ModuleDependencyRequestsQuery::decodeKey(
@@ -1619,10 +1582,6 @@ bool ModuleDependencyRequestsQuery::verify(query::QueryContext& context, const K
   return expected != zc::none && ZC_ASSERT_NONNULL(expected).encodeCanonical().asPtr() ==
                                      result.value().encodeCanonical().asPtr();
 }
-
-zc::StringPtr ModuleDependenciesQuery::domain() { return "zom.query.module-dependencies"_zc; }
-
-query::QueryKindContract ModuleDependenciesQuery::contract() { return derivedContract(domain()); }
 
 zc::Array<uint8_t> ModuleDependenciesQuery::encodeKey(const Key& key) { return key.encode(); }
 
@@ -2392,7 +2351,6 @@ zc::Maybe<VerifiedModuleGraphInputTransaction> VerifiedModuleGraphInputTransacti
   }
   auto nextLedger = VerifiedModuleGraphInputLedger::from(zc::mv(nextEntries));
   if (nextLedger == zc::none) { return zc::none; }
-
   VerifiedModuleGraphInputTransaction candidate(
       zc::heap<Impl>(zc::mv(contextRoots), zc::mv(projectedCoreCrates), zc::mv(catalogs),
                      zc::mv(dependencySites), zc::mv(requesterAncestries), zc::mv(catalogBuckets),
@@ -2419,77 +2377,86 @@ const VerifiedModuleGraphInputLedger& VerifiedModuleGraphInputTransaction::nextL
 
 bool VerifiedModuleGraphInputTransaction::commit(query::QueryDatabase& database) {
   if (impl.get() == nullptr || impl->committed) { return false; }
-  auto pending = database.beginInputTransaction();
-  if (pending == zc::none) { return false; }
-  ZC_IF_SOME(transaction, pending) {
-    for (const auto& prior : impl->priorLedger.entries()) {
-      if (!ledgerContains(impl->nextLedger.entries(), prior) &&
-          !eraseLedgerEntry(transaction, prior)) {
-        transaction.abandon();
-        return false;
-      }
+  auto snapshot = database.snapshot();
+  auto pending = database.beginInputTransaction(snapshot.revision());
+  if (!pending.isOpened()) { return false; }
+  auto transaction = zc::mv(pending).takeTransaction();
+  for (const auto& prior : impl->priorLedger.entries()) {
+    if (!ledgerContains(impl->nextLedger.entries(), prior) &&
+        !eraseLedgerEntry(transaction, prior)) {
+      transaction.abandon();
+      return false;
     }
-    for (const auto& catalog : impl->catalogs) {
-      if (!transaction.set<SelectedModuleCatalogInput>(catalog.crate(), catalog)) {
-        transaction.abandon();
-        return false;
-      }
-    }
-    for (const auto& sites : impl->dependencySites) {
-      if (!transaction.set<ModuleDependencySiteInput>(sites.module(), sites)) {
-        transaction.abandon();
-        return false;
-      }
-    }
-    for (const auto& ancestry : impl->requesterAncestries) {
-      if (!transaction.set<incremental_module_resolution_query::RequesterModuleAncestryInput>(
-              ancestry.requester(), ancestry)) {
-        transaction.abandon();
-        return false;
-      }
-    }
-    for (const auto& bucket : impl->catalogBuckets) {
-      if (!transaction.set<incremental_module_resolution_query::ModuleCatalogPathBucketInput>(
-              bucket.key(), bucket)) {
-        transaction.abandon();
-        return false;
-      }
-    }
-    for (const auto& roots : impl->searchRoots) {
-      if (!transaction.set<incremental_module_resolution_query::ModuleSearchRootsInput>(
-              roots.crate(), roots)) {
-        transaction.abandon();
-        return false;
-      }
-    }
-    for (const auto& alias : impl->dependencyAliases) {
-      if (!transaction.set<incremental_module_resolution_query::DependencyAliasRootInput>(
-              alias.key, alias.target)) {
-        transaction.abandon();
-        return false;
-      }
-    }
-    for (const auto& prelude : impl->configuredPreludes) {
-      if (!transaction.set<incremental_module_resolution_query::ConfiguredPreludeInput>(
-              prelude.crate, prelude.target)) {
-        transaction.abandon();
-        return false;
-      }
-    }
-    if (transaction.commit() == zc::none) { return false; }
   }
+  for (const auto& catalog : impl->catalogs) {
+    if (!transaction.set<SelectedModuleCatalogInput>(catalog.crate(), catalog).isApplied()) {
+      transaction.abandon();
+      return false;
+    }
+  }
+  for (const auto& sites : impl->dependencySites) {
+    if (!transaction.set<ModuleDependencySiteInput>(sites.module(), sites).isApplied()) {
+      transaction.abandon();
+      return false;
+    }
+  }
+  for (const auto& ancestry : impl->requesterAncestries) {
+    if (!transaction
+             .set<incremental_module_resolution_query::RequesterModuleAncestryInput>(
+                 ancestry.requester(), ancestry)
+             .isApplied()) {
+      transaction.abandon();
+      return false;
+    }
+  }
+  for (const auto& bucket : impl->catalogBuckets) {
+    if (!transaction
+             .set<incremental_module_resolution_query::ModuleCatalogPathBucketInput>(bucket.key(),
+                                                                                     bucket)
+             .isApplied()) {
+      transaction.abandon();
+      return false;
+    }
+  }
+  for (const auto& roots : impl->searchRoots) {
+    if (!transaction
+             .set<incremental_module_resolution_query::ModuleSearchRootsInput>(roots.crate(), roots)
+             .isApplied()) {
+      transaction.abandon();
+      return false;
+    }
+  }
+  for (const auto& alias : impl->dependencyAliases) {
+    if (!transaction
+             .set<incremental_module_resolution_query::DependencyAliasRootInput>(alias.key,
+                                                                                 alias.target)
+             .isApplied()) {
+      transaction.abandon();
+      return false;
+    }
+  }
+  for (const auto& prelude : impl->configuredPreludes) {
+    if (!transaction
+             .set<incremental_module_resolution_query::ConfiguredPreludeInput>(prelude.crate,
+                                                                               prelude.target)
+             .isApplied()) {
+      transaction.abandon();
+      return false;
+    }
+  }
+  if (!transaction.commit().isCommitted()) { return false; }
   impl->committed = true;
   return true;
 }
 
 bool registerModuleGraphQueries(query::QueryDatabase& database) {
-  return database.registerInputKind<SelectedModuleCatalogInput>() != zc::none &&
-         database.registerInputKind<ModuleDependencySiteInput>() != zc::none &&
-         database.registerDerivedKind<SelectedModuleSourceQuery>() != zc::none &&
-         database.registerDerivedKind<ActiveModulesQuery>() != zc::none &&
-         database.registerDerivedKind<ModuleDependencySitesQuery>() != zc::none &&
-         database.registerDerivedKind<ModuleDependencyRequestsQuery>() != zc::none &&
-         database.registerDerivedKind<ModuleDependenciesQuery>() != zc::none;
+  return database.registerDescriptor<SelectedModuleCatalogInput>().isRegistered() &&
+         database.registerDescriptor<ModuleDependencySiteInput>().isRegistered() &&
+         database.registerDescriptor<SelectedModuleSourceQuery>().isRegistered() &&
+         database.registerDescriptor<ActiveModulesQuery>().isRegistered() &&
+         database.registerDescriptor<ModuleDependencySitesQuery>().isRegistered() &&
+         database.registerDescriptor<ModuleDependencyRequestsQuery>().isRegistered() &&
+         database.registerDescriptor<ModuleDependenciesQuery>().isRegistered();
 }
 
 }  // namespace zomlang::compiler::driver::module_graph_query

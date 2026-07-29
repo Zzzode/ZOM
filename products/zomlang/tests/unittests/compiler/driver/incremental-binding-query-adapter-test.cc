@@ -31,7 +31,8 @@ class QueryTestSemanticContextResources final : public query::SemanticContextCap
 query::QueryDatabase queryTestDatabase() {
   auto resources = zc::heap<QueryTestSemanticContextResources>();
   auto arena = zc::arc<query::SemanticContextCapabilityArena>(zc::mv(resources));
-  return query::QueryDatabase(queryTestScheduler(), zc::mv(arena));
+  return query::QueryDatabase(queryTestScheduler(), query::productionQueryDescriptorInventory(),
+                              zc::mv(arena));
 }
 
 template <typename Scalar>
@@ -319,8 +320,10 @@ CanonicalCompilationOptions compilationOptionsValue(
 }
 
 query::InputTransaction transaction(query::QueryDatabase& database) {
-  auto result = database.beginInputTransaction();
-  return zc::mv(ZC_REQUIRE_NONNULL(result));
+  auto current = database.snapshot();
+  auto result = database.beginInputTransaction(current.revision());
+  ZC_REQUIRE(result.isOpened());
+  return zc::mv(result).takeTransaction();
 }
 
 PackageRootSetKey packageRootSet(const package::VerifiedPackageCompilationRequest& request) {
@@ -361,37 +364,36 @@ CanonicalSourceSet sourceSet(const StableSourceQueryKey& first, const Rest&... r
 }  // namespace
 
 ZC_TEST("Incremental binding query registers low durability source snapshot inputs") {
-  auto contract = SourceSnapshotInput::contract();
-  ZC_EXPECT(contract.domain() == "zom.query.source-snapshot"_zc);
-  ZC_EXPECT(contract.isInput());
-  ZC_EXPECT(contract.inputDurability() == query::Durability::Low);
+  ZC_EXPECT(SourceSnapshotInput::descriptor.domain == "zom.query.source-snapshot"_zc);
+  ZC_EXPECT(SourceSnapshotInput::descriptor.durability == query::Durability::Low);
 
   auto database = queryTestDatabase();
   ZC_REQUIRE(registerIncrementalBindingQueryAdapter(database));
-  ZC_EXPECT(database.registerInputKind<SourceSnapshotInput>() == zc::none);
+  auto duplicate = database.registerDescriptor<SourceSnapshotInput>();
+  ZC_EXPECT(!duplicate.isRegistered());
+  ZC_EXPECT(duplicate.failure() == query::DescriptorRegistrationFailure::SlotAlreadyRegistered);
 }
 
 ZC_TEST("Incremental binding query registers medium durability compilation options") {
-  auto contract = CompilationOptionsInput::contract();
-  ZC_EXPECT(contract.domain() == "zom.query.compilation-options"_zc);
-  ZC_EXPECT(contract.isInput());
-  ZC_EXPECT(contract.inputDurability() == query::Durability::Medium);
+  ZC_EXPECT(CompilationOptionsInput::descriptor.domain == "zom.query.compilation-options"_zc);
+  ZC_EXPECT(CompilationOptionsInput::descriptor.durability == query::Durability::Medium);
 
   auto database = queryTestDatabase();
   ZC_REQUIRE(registerIncrementalBindingQueryAdapter(database));
-  ZC_EXPECT(database.registerInputKind<CompilationOptionsInput>() == zc::none);
+  auto duplicate = database.registerDescriptor<CompilationOptionsInput>();
+  ZC_EXPECT(!duplicate.isRegistered());
+  ZC_EXPECT(duplicate.failure() == query::DescriptorRegistrationFailure::SlotAlreadyRegistered);
 }
 
 ZC_TEST("Incremental binding query registers retained revision local source parsing") {
-  auto contract = parser::ParseSourceQuery::contract();
-  ZC_EXPECT(contract.domain() == "zom.query.parse-source"_zc);
-  ZC_EXPECT(!contract.isInput());
-  ZC_EXPECT(contract.reuseClass() == query::ReuseClass::RevisionLocal);
-  ZC_EXPECT(contract.retention() == query::RetentionClass::Retained);
+  ZC_EXPECT(parser::ParseSourceQuery::descriptor.domain == "zom.query.parse-source"_zc);
+  ZC_EXPECT(parser::ParseSourceQuery::descriptor.retention == query::RetentionClass::Retained);
 
   auto database = queryTestDatabase();
   ZC_REQUIRE(registerIncrementalBindingQueryAdapter(database));
-  ZC_EXPECT(database.registerRevisionLocalCapabilityKind<parser::ParseSourceQuery>() == zc::none);
+  auto duplicate = database.registerDescriptor<parser::ParseSourceQuery>();
+  ZC_EXPECT(!duplicate.isRegistered());
+  ZC_EXPECT(duplicate.failure() == query::DescriptorRegistrationFailure::SlotAlreadyRegistered);
 }
 
 ZC_TEST("Incremental binding query parses one source from its exact tracked inputs") {
@@ -403,15 +405,14 @@ ZC_TEST("Incremental binding query parses one source from its exact tracked inpu
   auto registry = targetRegistry();
   auto options = compilationOptionsValue(registry);
   auto write = transaction(database);
-  ZC_REQUIRE(write.set<SourceSnapshotInput>(sourceKey, sourceValue));
-  ZC_REQUIRE(write.set<CompilationOptionsInput>(crateKey(), options));
-  ZC_REQUIRE(write.commit() != zc::none);
+  ZC_REQUIRE(write.set<SourceSnapshotInput>(sourceKey, sourceValue).isApplied());
+  ZC_REQUIRE(write.set<CompilationOptionsInput>(crateKey(), options).isApplied());
+  ZC_REQUIRE(write.commit().isCommitted());
 
   auto snapshot = database.snapshot();
   auto result = snapshot.getCapability<parser::ParseSourceQuery>(sourceKey);
-  ZC_REQUIRE(!result.isRuntimeFailure());
-  ZC_REQUIRE(result.kind() == query::QueryValueKind::Value);
-  const auto& parsed = result.value().capability();
+  ZC_REQUIRE(result.isPublished());
+  const auto& parsed = result.lease().capability();
   ZC_EXPECT(parsed.canonicalSourceKey() == sourceKey.canonicalSourceBytes());
   ZC_EXPECT(parsed.contentDigest() == sourceValue.contentDigest());
   ZC_EXPECT(parsed.sourceBytes() == sourceValue.bytes());
@@ -455,26 +456,24 @@ ZC_TEST("Incremental binding query parses one source from its exact tracked inpu
   ZC_REQUIRE(snapshot.hasRetainedValue<parser::ParseSourceQuery>(sourceKey));
   ZC_EXPECT(!snapshot.evictValue<parser::ParseSourceQuery>(sourceKey));
   auto repeated = snapshot.getCapability<parser::ParseSourceQuery>(sourceKey);
-  ZC_REQUIRE(!repeated.isRuntimeFailure());
-  ZC_REQUIRE(repeated.kind() == query::QueryValueKind::Value);
-  ZC_EXPECT(repeated.value().stableWitness() == encoded.asPtr());
-  ZC_EXPECT(repeated.value().revision() == result.value().revision());
-  ZC_EXPECT(repeated.value().arenaRevision() == result.value().arenaRevision());
+  ZC_REQUIRE(repeated.isPublished());
+  ZC_EXPECT(repeated.lease().stableWitness() == encoded.asPtr());
+  ZC_EXPECT(repeated.lease().revision() == result.lease().revision());
+  ZC_EXPECT(repeated.lease().arenaRevision() == result.lease().arenaRevision());
   ZC_EXPECT(snapshot.hasRetainedValue<parser::ParseSourceQuery>(sourceKey));
 
-  auto firstLease = result.value().retain();
+  auto firstLease = zc::mv(result).takeLease();
   auto equalWrite = transaction(database);
-  ZC_REQUIRE(equalWrite.set<SourceSnapshotInput>(sourceKey, sourceValue));
-  ZC_REQUIRE(equalWrite.set<CompilationOptionsInput>(crateKey(), options));
-  ZC_REQUIRE(equalWrite.commit() != zc::none);
+  ZC_REQUIRE(equalWrite.set<SourceSnapshotInput>(sourceKey, sourceValue).isApplied());
+  ZC_REQUIRE(equalWrite.set<CompilationOptionsInput>(crateKey(), options).isApplied());
+  ZC_REQUIRE(equalWrite.commit().isCommitted());
   auto nextSnapshot = database.snapshot();
   ZC_EXPECT(!nextSnapshot.hasRetainedValue<parser::ParseSourceQuery>(sourceKey));
   auto next = nextSnapshot.getCapability<parser::ParseSourceQuery>(sourceKey);
-  ZC_REQUIRE(!next.isRuntimeFailure());
-  ZC_REQUIRE(next.kind() == query::QueryValueKind::Value);
-  ZC_EXPECT(firstLease.revision() != next.value().revision());
-  ZC_EXPECT(firstLease.arenaRevision() != next.value().arenaRevision());
-  ZC_EXPECT(firstLease.stableWitness() == next.value().stableWitness());
+  ZC_REQUIRE(next.isPublished());
+  ZC_EXPECT(firstLease.revision() != next.lease().revision());
+  ZC_EXPECT(firstLease.arenaRevision() != next.lease().arenaRevision());
+  ZC_EXPECT(firstLease.stableWitness() == next.lease().stableWitness());
   ZC_EXPECT(firstLease.capability().sourceBytes() == sourceValue.bytes());
   ZC_EXPECT(firstLease.capability().tree().node(firstLease.capability().tree().root()).kind ==
             ast::SyntaxKind::SourceFile);
@@ -490,44 +489,28 @@ ZC_TEST("Incremental binding query publishes strict deterministic parse rejectio
   auto options =
       compilationOptionsValue(registry, package::SelectedLanguageOptions{false, true, false});
   auto write = transaction(database);
-  ZC_REQUIRE(write.set<SourceSnapshotInput>(sourceKey, sourceValue));
-  ZC_REQUIRE(write.set<CompilationOptionsInput>(crateKey(), options));
-  ZC_REQUIRE(write.commit() != zc::none);
+  ZC_REQUIRE(write.set<SourceSnapshotInput>(sourceKey, sourceValue).isApplied());
+  ZC_REQUIRE(write.set<CompilationOptionsInput>(crateKey(), options).isApplied());
+  ZC_REQUIRE(write.commit().isCommitted());
 
   auto result = database.snapshot().getCapability<parser::ParseSourceQuery>(sourceKey);
-  ZC_REQUIRE(!result.isRuntimeFailure());
-  ZC_REQUIRE(result.kind() == query::QueryValueKind::SemanticFailure);
-  auto rejected = parser::ParseRejected::decodeCanonical(result.semanticFailureBytes());
-  ZC_REQUIRE(rejected != zc::none);
-  const auto& failure = ZC_REQUIRE_NONNULL(rejected);
-  ZC_EXPECT(failure.canonicalSourceKey() == sourceKey.canonicalSourceBytes());
-  ZC_EXPECT(failure.contentDigest() == sourceValue.contentDigest());
-  ZC_EXPECT(failure.sourceByteLength() == sourceValue.bytes().size());
-  ZC_EXPECT(failure.options() == (parser::CanonicalParserOptions{false, true, false}));
-  ZC_REQUIRE(failure.facts().size() != 0);
-
-  auto encoded = failure.encodeCanonical();
-  auto trailing = zc::heapArray<uint8_t>(encoded.size() + 1);
-  for (size_t index = 0; index < encoded.size(); ++index) { trailing[index] = encoded[index]; }
-  trailing.back() = 0;
-  ZC_EXPECT(parser::ParseRejected::decodeCanonical(trailing.asPtr()) == zc::none);
-  auto malformed = zc::heapArray<uint8_t>(encoded.asPtr());
-  malformed[0] ^= 0x01;
-  ZC_EXPECT(parser::ParseRejected::decodeCanonical(malformed.asPtr()) == zc::none);
+  ZC_REQUIRE(result.isSourceRejected());
+  ZC_REQUIRE(result.diagnostics().values().size() != 0);
 }
 
 ZC_TEST("Incremental binding query publishes verified stable named inventories") {
-  ZC_EXPECT(RevisionLocalDefinitionSitesQuery::contract().retention() ==
+  ZC_EXPECT(RevisionLocalDefinitionSitesQuery::descriptor.retention ==
             query::RetentionClass::Retained);
-  ZC_EXPECT(RevisionLocalImplementationSitesQuery::contract().retention() ==
+  ZC_EXPECT(RevisionLocalImplementationSitesQuery::descriptor.retention ==
             query::RetentionClass::Retained);
   auto database = queryTestDatabase();
   ZC_REQUIRE(registerIncrementalBindingQueryAdapter(database));
   ZC_REQUIRE(module_graph_query::registerModuleGraphQueries(database));
-  ZC_EXPECT(database.registerRevisionLocalCapabilityKind<RevisionLocalDefinitionSitesQuery>() ==
-            zc::none);
-  ZC_EXPECT(database.registerRevisionLocalCapabilityKind<RevisionLocalImplementationSitesQuery>() ==
-            zc::none);
+  auto duplicateDefinitions = database.registerDescriptor<RevisionLocalDefinitionSitesQuery>();
+  ZC_EXPECT(!duplicateDefinitions.isRegistered());
+  auto duplicateImplementations =
+      database.registerDescriptor<RevisionLocalImplementationSitesQuery>();
+  ZC_EXPECT(!duplicateImplementations.isRegistered());
   auto moduleKey = module("root"_zc);
   auto catalog = selectedModuleCatalog("root"_zc, "root.zom"_zc);
   auto sourceKey = sourceQueryKey("root.zom"_zc);
@@ -537,47 +520,68 @@ ZC_TEST("Incremental binding query publishes verified stable named inventories")
   auto registry = targetRegistry();
   auto options = compilationOptionsValue(registry);
   auto write = transaction(database);
-  ZC_REQUIRE(write.set<module_graph_query::SelectedModuleCatalogInput>(crateKey(), catalog));
-  ZC_REQUIRE(write.set<SourceSnapshotInput>(sourceKey, sourceValue));
-  ZC_REQUIRE(write.set<CompilationOptionsInput>(crateKey(), options));
-  ZC_REQUIRE(write.commit() != zc::none);
+  ZC_REQUIRE(
+      write.set<module_graph_query::SelectedModuleCatalogInput>(crateKey(), catalog).isApplied());
+  ZC_REQUIRE(write.set<SourceSnapshotInput>(sourceKey, sourceValue).isApplied());
+  ZC_REQUIRE(write.set<CompilationOptionsInput>(crateKey(), options).isApplied());
+  ZC_REQUIRE(write.commit().isCommitted());
 
   auto snapshot = database.snapshot();
+  auto identitySites = snapshot.getCapability<IdentitySyntaxSiteInventoryQuery>(moduleKey);
+  ZC_REQUIRE(identitySites.isPublished());
+  auto admission = snapshot.getCapability<StableIdentityAdmissionQuery>(moduleKey);
+  ZC_REQUIRE(admission.isPublished());
+  ZC_EXPECT(admission.lease().capability().definitions().size() == 2);
+  zc::Vector<binder::RevisionLocalDefinitionSite> reconstructedSites;
+  for (const auto& definition : admission.lease().capability().definitions()) {
+    auto site = binder::RevisionLocalDefinitionSite::from(
+        definition.node, definition.authority.key().clone(), definition.site.key().clone(),
+        definition.site.range().byteStart(), definition.site.range().byteEnd());
+    ZC_REQUIRE(site != zc::none);
+    reconstructedSites.add(zc::mv(ZC_ASSERT_NONNULL(site)));
+  }
   auto definitions = snapshot.get<NamedDefinitionInventoryQuery>(moduleKey);
   ZC_REQUIRE(!definitions.isRuntimeFailure());
   ZC_REQUIRE(definitions.kind() == query::QueryValueKind::Value);
   ZC_EXPECT(definitions.value().entries().size() == 2);
+  auto reconstructedDefinitionSites = binder::RevisionLocalDefinitionSites::fromVerified(
+      admission.lease().capability().module(), admission.lease().capability().source(),
+      definitions.value(), zc::mv(reconstructedSites));
+  ZC_REQUIRE(reconstructedDefinitionSites != zc::none);
   auto implementations = snapshot.get<NamedImplementationInventoryQuery>(moduleKey);
   ZC_REQUIRE(!implementations.isRuntimeFailure());
   ZC_REQUIRE(implementations.kind() == query::QueryValueKind::Value);
   ZC_EXPECT(implementations.value().keys().size() == 1);
+  zc::Vector<binder::RevisionLocalImplementationSite> reconstructedImplementationSites;
+  for (const auto& implementation : admission.lease().capability().implementations()) {
+    auto occurrence = binder::ImplSourceOccurrenceKey::from(implementation.authority.key().clone(),
+                                                            implementation.site.key().clone());
+    auto site = binder::RevisionLocalImplementationSite::from(
+        implementation.node, zc::mv(occurrence), implementation.site.range().byteStart(),
+        implementation.site.range().byteEnd());
+    ZC_REQUIRE(site != zc::none);
+    reconstructedImplementationSites.add(zc::mv(ZC_ASSERT_NONNULL(site)));
+  }
+  auto reconstructedImplementationSiteInventory =
+      binder::RevisionLocalImplementationSites::fromVerified(
+          admission.lease().capability().module(), admission.lease().capability().source(),
+          implementations.value(), zc::mv(reconstructedImplementationSites));
+  ZC_REQUIRE(reconstructedImplementationSiteInventory != zc::none);
   auto definitionSites = snapshot.getCapability<RevisionLocalDefinitionSitesQuery>(moduleKey);
-  ZC_REQUIRE(!definitionSites.isRuntimeFailure());
-  ZC_REQUIRE(definitionSites.kind() == query::QueryValueKind::Value);
-  ZC_EXPECT(definitionSites.value().capability().entries().size() == 2);
+  ZC_REQUIRE(definitionSites.isRuntimeRejected());
+  ZC_EXPECT(definitionSites.runtimeFailure() == query::QueryRuntimeFailure::FinalSealRequired);
   auto implementationSites =
       snapshot.getCapability<RevisionLocalImplementationSitesQuery>(moduleKey);
-  ZC_REQUIRE(!implementationSites.isRuntimeFailure());
-  ZC_REQUIRE(implementationSites.kind() == query::QueryValueKind::Value);
-  ZC_EXPECT(implementationSites.value().capability().entries().size() == 1);
-  ZC_EXPECT(definitionSites.value().retainedDependencyCount() != 0);
-  ZC_EXPECT(implementationSites.value().retainedDependencyCount() != 0);
-  ZC_EXPECT(snapshot.hasRetainedValue<RevisionLocalDefinitionSitesQuery>(moduleKey));
-  ZC_EXPECT(snapshot.hasRetainedValue<RevisionLocalImplementationSitesQuery>(moduleKey));
-  ZC_EXPECT(!snapshot.evictValue<RevisionLocalDefinitionSitesQuery>(moduleKey));
-  ZC_EXPECT(!snapshot.evictValue<RevisionLocalImplementationSitesQuery>(moduleKey));
+  ZC_REQUIRE(implementationSites.isRuntimeRejected());
+  ZC_EXPECT(implementationSites.runtimeFailure() == query::QueryRuntimeFailure::FinalSealRequired);
   auto moduleBodySyntax = snapshot.get<ModuleBodySyntaxQuery>(moduleKey);
   ZC_REQUIRE(!moduleBodySyntax.isRuntimeFailure());
   ZC_REQUIRE(moduleBodySyntax.kind() == query::QueryValueKind::Value);
   ZC_EXPECT(moduleBodySyntax.value().rootCount() == 3);
   auto moduleBodyProvenance = snapshot.getCapability<ModuleBodyProvenanceQuery>(moduleKey);
-  ZC_REQUIRE(!moduleBodyProvenance.isRuntimeFailure());
-  ZC_REQUIRE(moduleBodyProvenance.kind() == query::QueryValueKind::Value);
-  ZC_REQUIRE(moduleBodyProvenance.value().capability().entries().size() != 0);
-  ZC_EXPECT(ModuleBodyProvenanceQuery::contract().retention() == query::RetentionClass::Retained);
-  ZC_EXPECT(moduleBodyProvenance.value().retainedDependencyCount() != 0);
-  ZC_EXPECT(snapshot.hasRetainedValue<ModuleBodyProvenanceQuery>(moduleKey));
-  ZC_EXPECT(!snapshot.evictValue<ModuleBodyProvenanceQuery>(moduleKey));
+  ZC_REQUIRE(moduleBodyProvenance.isRuntimeRejected());
+  ZC_EXPECT(moduleBodyProvenance.runtimeFailure() == query::QueryRuntimeFailure::FinalSealRequired);
+  ZC_EXPECT(ModuleBodyProvenanceQuery::descriptor.retention == query::RetentionClass::Retained);
 
   auto definitionBytes = definitions.value().encodeCanonical();
   auto decodedDefinitions =
@@ -602,17 +606,19 @@ ZC_TEST("Incremental binding query publishes verified stable named inventories")
   ZC_EXPECT(binder::NamedImplementationInventory::decodeCanonical(
                 trailingImplementations.asPtr()) == zc::none);
 
-  auto definitionSiteBytes = definitionSites.value().capability().encodeCanonical();
+  auto definitionSiteBytes = ZC_ASSERT_NONNULL(reconstructedDefinitionSites).encodeCanonical();
   auto decodedDefinitionSites =
       binder::RevisionLocalDefinitionSites::decodeCanonical(definitionSiteBytes.asPtr());
   ZC_REQUIRE(decodedDefinitionSites != zc::none);
-  ZC_EXPECT(ZC_ASSERT_NONNULL(decodedDefinitionSites).sameAs(definitionSites.value().capability()));
-  auto implementationSiteBytes = implementationSites.value().capability().encodeCanonical();
+  ZC_EXPECT(ZC_ASSERT_NONNULL(decodedDefinitionSites)
+                .sameAs(ZC_ASSERT_NONNULL(reconstructedDefinitionSites)));
+  auto implementationSiteBytes =
+      ZC_ASSERT_NONNULL(reconstructedImplementationSiteInventory).encodeCanonical();
   auto decodedImplementationSites =
       binder::RevisionLocalImplementationSites::decodeCanonical(implementationSiteBytes.asPtr());
   ZC_REQUIRE(decodedImplementationSites != zc::none);
   ZC_EXPECT(ZC_ASSERT_NONNULL(decodedImplementationSites)
-                .sameAs(implementationSites.value().capability()));
+                .sameAs(ZC_ASSERT_NONNULL(reconstructedImplementationSiteInventory)));
   auto moduleBodySyntaxBytes = moduleBodySyntax.value().encodeCanonical();
   auto decodedModuleBodySyntax =
       binder::ModuleBodySyntax::decodeCanonical(moduleBodySyntaxBytes.asPtr());
@@ -625,19 +631,23 @@ ZC_TEST("Incremental binding query publishes verified stable named inventories")
   trailingModuleBodySyntax.back() = 0;
   ZC_EXPECT(binder::ModuleBodySyntax::decodeCanonical(trailingModuleBodySyntax.asPtr()) ==
             zc::none);
-  auto moduleBodyProvenanceBytes = moduleBodyProvenance.value().capability().encodeCanonical();
-  auto decodedModuleBodyProvenance =
-      binder::ModuleBodyProvenance::decodeCanonical(moduleBodyProvenanceBytes.asPtr());
-  ZC_REQUIRE(decodedModuleBodyProvenance != zc::none);
-  ZC_EXPECT(ZC_ASSERT_NONNULL(decodedModuleBodyProvenance) ==
-            moduleBodyProvenance.value().capability());
-  auto trailingModuleBodyProvenance = zc::heapArray<uint8_t>(moduleBodyProvenanceBytes.size() + 1);
-  for (size_t index = 0; index < moduleBodyProvenanceBytes.size(); ++index) {
-    trailingModuleBodyProvenance[index] = moduleBodyProvenanceBytes[index];
+  auto admissionFingerprint = snapshot.keyFingerprint<StableIdentityAdmissionQuery>(moduleKey);
+  ZC_REQUIRE(admissionFingerprint != zc::none);
+  for (const auto& groups : {snapshot.dependencies<NamedDefinitionInventoryQuery>(moduleKey),
+                             snapshot.dependencies<NamedImplementationInventoryQuery>(moduleKey)}) {
+    size_t admissionReads = 0;
+    for (const auto& group : groups) {
+      ZC_REQUIRE(group.kind() == query::DependencyGroup::Kind::Sequential);
+      ZC_REQUIRE(group.dependencies().size() == 1);
+      const auto& fingerprint = group.dependencies()[0].key().fingerprint();
+      if (fingerprint == ZC_ASSERT_NONNULL(admissionFingerprint)) {
+        ++admissionReads;
+      } else {
+        ZC_FAIL_REQUIRE("Named inventory recorded an undeclared dependency");
+      }
+    }
+    ZC_EXPECT(admissionReads == 2);
   }
-  trailingModuleBodyProvenance.back() = 0;
-  ZC_EXPECT(binder::ModuleBodyProvenance::decodeCanonical(trailingModuleBodyProvenance.asPtr()) ==
-            zc::none);
 
   auto selectedFingerprint = snapshot.keyFingerprint<module_graph_query::SelectedModuleSourceQuery>(
       ZC_REQUIRE_NONNULL(module_graph_query::SelectedModuleSourceQuery::decodeKey(
@@ -645,46 +655,10 @@ ZC_TEST("Incremental binding query publishes verified stable named inventories")
   auto parseFingerprint = snapshot.keyFingerprint<parser::ParseSourceQuery>(sourceKey);
   ZC_REQUIRE(selectedFingerprint != zc::none);
   ZC_REQUIRE(parseFingerprint != zc::none);
-  for (const auto& groups : {snapshot.dependencies<NamedDefinitionInventoryQuery>(moduleKey),
-                             snapshot.dependencies<NamedImplementationInventoryQuery>(moduleKey)}) {
-    size_t selectedReads = 0;
-    size_t parseReads = 0;
-    for (const auto& group : groups) {
-      ZC_REQUIRE(group.kind() == query::DependencyGroup::Kind::Sequential);
-      ZC_REQUIRE(group.dependencies().size() == 1);
-      const auto& fingerprint = group.dependencies()[0].key().fingerprint();
-      if (fingerprint == ZC_ASSERT_NONNULL(selectedFingerprint)) {
-        ++selectedReads;
-      } else if (fingerprint == ZC_ASSERT_NONNULL(parseFingerprint)) {
-        ++parseReads;
-      } else {
-        ZC_FAIL_REQUIRE("Named inventory recorded an undeclared dependency");
-      }
-    }
-    ZC_EXPECT(selectedReads == 2);
-    ZC_EXPECT(parseReads == 2);
-  }
-
-  auto definitionFingerprint = snapshot.keyFingerprint<NamedDefinitionInventoryQuery>(moduleKey);
-  auto implementationFingerprint =
-      snapshot.keyFingerprint<NamedImplementationInventoryQuery>(moduleKey);
-  auto definitionSitesFingerprint =
-      snapshot.keyFingerprint<RevisionLocalDefinitionSitesQuery>(moduleKey);
-  auto implementationSitesFingerprint =
-      snapshot.keyFingerprint<RevisionLocalImplementationSitesQuery>(moduleKey);
-  auto moduleBodySyntaxFingerprint = snapshot.keyFingerprint<ModuleBodySyntaxQuery>(moduleKey);
-  ZC_REQUIRE(definitionFingerprint != zc::none);
-  ZC_REQUIRE(implementationFingerprint != zc::none);
-  ZC_REQUIRE(definitionSitesFingerprint != zc::none);
-  ZC_REQUIRE(implementationSitesFingerprint != zc::none);
-  ZC_REQUIRE(moduleBodySyntaxFingerprint != zc::none);
 
   size_t syntaxSelectedReads = 0;
   size_t syntaxParseReads = 0;
-  size_t syntaxDefinitionReads = 0;
-  size_t syntaxImplementationReads = 0;
-  size_t syntaxDefinitionSiteReads = 0;
-  size_t syntaxImplementationSiteReads = 0;
+  size_t syntaxAdmissionReads = 0;
   for (const auto& group : snapshot.dependencies<ModuleBodySyntaxQuery>(moduleKey)) {
     ZC_REQUIRE(group.kind() == query::DependencyGroup::Kind::Sequential);
     ZC_REQUIRE(group.dependencies().size() == 1);
@@ -693,53 +667,15 @@ ZC_TEST("Incremental binding query publishes verified stable named inventories")
       ++syntaxSelectedReads;
     } else if (fingerprint == ZC_ASSERT_NONNULL(parseFingerprint)) {
       ++syntaxParseReads;
-    } else if (fingerprint == ZC_ASSERT_NONNULL(definitionFingerprint)) {
-      ++syntaxDefinitionReads;
-    } else if (fingerprint == ZC_ASSERT_NONNULL(implementationFingerprint)) {
-      ++syntaxImplementationReads;
-    } else if (fingerprint == ZC_ASSERT_NONNULL(definitionSitesFingerprint)) {
-      ++syntaxDefinitionSiteReads;
-    } else if (fingerprint == ZC_ASSERT_NONNULL(implementationSitesFingerprint)) {
-      ++syntaxImplementationSiteReads;
+    } else if (fingerprint == ZC_ASSERT_NONNULL(admissionFingerprint)) {
+      ++syntaxAdmissionReads;
     } else {
       ZC_FAIL_REQUIRE("Module body syntax recorded an undeclared dependency");
     }
   }
   ZC_EXPECT(syntaxSelectedReads == 2);
   ZC_EXPECT(syntaxParseReads == 2);
-  ZC_EXPECT(syntaxDefinitionReads == 2);
-  ZC_EXPECT(syntaxImplementationReads == 2);
-  ZC_EXPECT(syntaxDefinitionSiteReads == 2);
-  ZC_EXPECT(syntaxImplementationSiteReads == 2);
-
-  size_t provenanceSelectedReads = 0;
-  size_t provenanceParseReads = 0;
-  size_t provenanceSyntaxReads = 0;
-  size_t provenanceDefinitionSiteReads = 0;
-  size_t provenanceImplementationSiteReads = 0;
-  for (const auto& group : snapshot.dependencies<ModuleBodyProvenanceQuery>(moduleKey)) {
-    ZC_REQUIRE(group.kind() == query::DependencyGroup::Kind::Sequential);
-    ZC_REQUIRE(group.dependencies().size() == 1);
-    const auto& fingerprint = group.dependencies()[0].key().fingerprint();
-    if (fingerprint == ZC_ASSERT_NONNULL(selectedFingerprint)) {
-      ++provenanceSelectedReads;
-    } else if (fingerprint == ZC_ASSERT_NONNULL(parseFingerprint)) {
-      ++provenanceParseReads;
-    } else if (fingerprint == ZC_ASSERT_NONNULL(moduleBodySyntaxFingerprint)) {
-      ++provenanceSyntaxReads;
-    } else if (fingerprint == ZC_ASSERT_NONNULL(definitionSitesFingerprint)) {
-      ++provenanceDefinitionSiteReads;
-    } else if (fingerprint == ZC_ASSERT_NONNULL(implementationSitesFingerprint)) {
-      ++provenanceImplementationSiteReads;
-    } else {
-      ZC_FAIL_REQUIRE("Module body provenance recorded an undeclared dependency");
-    }
-  }
-  ZC_EXPECT(provenanceSelectedReads == 2);
-  ZC_EXPECT(provenanceParseReads == 2);
-  ZC_EXPECT(provenanceSyntaxReads == 2);
-  ZC_EXPECT(provenanceDefinitionSiteReads == 2);
-  ZC_EXPECT(provenanceImplementationSiteReads == 2);
+  ZC_EXPECT(syntaxAdmissionReads == 2);
 }
 
 ZC_TEST("Incremental binding query keeps module item let syntax in the module body") {
@@ -754,31 +690,28 @@ ZC_TEST("Incremental binding query keeps module item let syntax in the module bo
   auto registry = targetRegistry();
   auto options = compilationOptionsValue(registry);
   auto write = transaction(database);
-  ZC_REQUIRE(write.set<module_graph_query::SelectedModuleCatalogInput>(crateKey(), catalog));
-  ZC_REQUIRE(write.set<SourceSnapshotInput>(sourceKey, sourceValue));
-  ZC_REQUIRE(write.set<CompilationOptionsInput>(crateKey(), options));
-  ZC_REQUIRE(write.commit() != zc::none);
+  ZC_REQUIRE(
+      write.set<module_graph_query::SelectedModuleCatalogInput>(crateKey(), catalog).isApplied());
+  ZC_REQUIRE(write.set<SourceSnapshotInput>(sourceKey, sourceValue).isApplied());
+  ZC_REQUIRE(write.set<CompilationOptionsInput>(crateKey(), options).isApplied());
+  ZC_REQUIRE(write.commit().isCommitted());
 
   auto snapshot = database.snapshot();
   auto definitions = snapshot.get<NamedDefinitionInventoryQuery>(moduleKey);
-  auto definitionSites = snapshot.getCapability<RevisionLocalDefinitionSitesQuery>(moduleKey);
+  auto admission = snapshot.getCapability<StableIdentityAdmissionQuery>(moduleKey);
   auto bodySyntax = snapshot.get<ModuleBodySyntaxQuery>(moduleKey);
-  auto bodyProvenance = snapshot.getCapability<ModuleBodyProvenanceQuery>(moduleKey);
   ZC_REQUIRE(definitions.kind() == query::QueryValueKind::Value);
-  ZC_REQUIRE(definitionSites.kind() == query::QueryValueKind::Value);
+  ZC_REQUIRE(admission.isPublished());
   ZC_REQUIRE(bodySyntax.kind() == query::QueryValueKind::Value);
-  ZC_REQUIRE(bodyProvenance.kind() == query::QueryValueKind::Value);
   ZC_EXPECT(definitions.value().entries().size() == 1);
-  ZC_EXPECT(definitionSites.value().capability().entries().size() == 1);
+  ZC_EXPECT(admission.lease().capability().definitions().size() == 1);
   ZC_EXPECT(bodySyntax.value().rootCount() == 1);
   for (const auto& node : bodySyntax.value().nodes()) {
     ZC_EXPECT(node.kind() != binder::DetachedModuleBodyNodeKind::DefinitionBoundary);
   }
-  ZC_EXPECT(bodyProvenance.value().capability().entries().size() ==
-            bodySyntax.value().nodes().size());
 }
 
-ZC_TEST("Incremental binding query backdates range-only named inventory edits") {
+ZC_TEST("Incremental binding query backdates semantic inventory and tracks range-only sites") {
   auto database = queryTestDatabase();
   ZC_REQUIRE(registerIncrementalBindingQueryAdapter(database));
   ZC_REQUIRE(module_graph_query::registerModuleGraphQueries(database));
@@ -790,19 +723,18 @@ ZC_TEST("Incremental binding query backdates range-only named inventory edits") 
   auto firstSource =
       sourceSnapshotValue("backdate.zom"_zc, zc::heapArray("module root;\nclass Alpha {}\n"_zcb));
   auto firstWrite = transaction(database);
-  ZC_REQUIRE(firstWrite.set<module_graph_query::SelectedModuleCatalogInput>(crateKey(), catalog));
-  ZC_REQUIRE(firstWrite.set<SourceSnapshotInput>(sourceKey, firstSource));
-  ZC_REQUIRE(firstWrite.set<CompilationOptionsInput>(crateKey(), options));
-  ZC_REQUIRE(firstWrite.commit() != zc::none);
+  ZC_REQUIRE(firstWrite.set<module_graph_query::SelectedModuleCatalogInput>(crateKey(), catalog)
+                 .isApplied());
+  ZC_REQUIRE(firstWrite.set<SourceSnapshotInput>(sourceKey, firstSource).isApplied());
+  ZC_REQUIRE(firstWrite.set<CompilationOptionsInput>(crateKey(), options).isApplied());
+  ZC_REQUIRE(firstWrite.commit().isCommitted());
   auto first = database.snapshot();
   auto firstResult = first.get<NamedDefinitionInventoryQuery>(moduleKey);
   ZC_REQUIRE(firstResult.kind() == query::QueryValueKind::Value);
-  auto firstSites = first.getCapability<RevisionLocalDefinitionSitesQuery>(moduleKey);
-  ZC_REQUIRE(firstSites.kind() == query::QueryValueKind::Value);
+  auto firstSites = first.getCapability<IdentitySyntaxSiteInventoryQuery>(moduleKey);
+  ZC_REQUIRE(firstSites.isPublished());
   auto firstBodySyntax = first.get<ModuleBodySyntaxQuery>(moduleKey);
   ZC_REQUIRE(firstBodySyntax.kind() == query::QueryValueKind::Value);
-  auto firstBodyProvenance = first.getCapability<ModuleBodyProvenanceQuery>(moduleKey);
-  ZC_REQUIRE(firstBodyProvenance.kind() == query::QueryValueKind::Value);
   auto firstMetadata = first.metadata<NamedDefinitionInventoryQuery>(moduleKey);
   ZC_REQUIRE(firstMetadata != zc::none);
   auto firstBodySyntaxMetadata = first.metadata<ModuleBodySyntaxQuery>(moduleKey);
@@ -811,35 +743,29 @@ ZC_TEST("Incremental binding query backdates range-only named inventory edits") 
   auto shiftedSource = sourceSnapshotValue("backdate.zom"_zc,
                                            zc::heapArray("module root;\n\n\nclass Alpha {}\n"_zcb));
   auto shiftedWrite = transaction(database);
-  ZC_REQUIRE(shiftedWrite.set<SourceSnapshotInput>(sourceKey, shiftedSource));
-  ZC_REQUIRE(shiftedWrite.commit() != zc::none);
+  ZC_REQUIRE(shiftedWrite.set<SourceSnapshotInput>(sourceKey, shiftedSource).isApplied());
+  ZC_REQUIRE(shiftedWrite.commit().isCommitted());
   auto shifted = database.snapshot();
   auto shiftedResult = shifted.get<NamedDefinitionInventoryQuery>(moduleKey);
   ZC_REQUIRE(shiftedResult.kind() == query::QueryValueKind::Value);
-  auto shiftedSites = shifted.getCapability<RevisionLocalDefinitionSitesQuery>(moduleKey);
-  ZC_REQUIRE(shiftedSites.kind() == query::QueryValueKind::Value);
+  auto shiftedSites = shifted.getCapability<IdentitySyntaxSiteInventoryQuery>(moduleKey);
+  ZC_REQUIRE(shiftedSites.isPublished());
   auto shiftedBodySyntax = shifted.get<ModuleBodySyntaxQuery>(moduleKey);
   ZC_REQUIRE(shiftedBodySyntax.kind() == query::QueryValueKind::Value);
-  auto shiftedBodyProvenance = shifted.getCapability<ModuleBodyProvenanceQuery>(moduleKey);
-  ZC_REQUIRE(shiftedBodyProvenance.kind() == query::QueryValueKind::Value);
   ZC_EXPECT(firstResult.value().sameAs(shiftedResult.value()));
-  ZC_EXPECT(!firstSites.value().capability().sameAs(shiftedSites.value().capability()));
+  ZC_EXPECT(firstSites.lease().capability() != shiftedSites.lease().capability());
   ZC_EXPECT(firstBodySyntax.value() == shiftedBodySyntax.value());
-  ZC_EXPECT(firstBodyProvenance.value().capability() != shiftedBodyProvenance.value().capability());
   auto shiftedMetadata = shifted.metadata<NamedDefinitionInventoryQuery>(moduleKey);
   ZC_REQUIRE(shiftedMetadata != zc::none);
   ZC_EXPECT(ZC_ASSERT_NONNULL(shiftedMetadata).changedAt() ==
             ZC_ASSERT_NONNULL(firstMetadata).changedAt());
-  auto shiftedSiteMetadata = shifted.metadata<RevisionLocalDefinitionSitesQuery>(moduleKey);
+  auto shiftedSiteMetadata = shifted.metadata<IdentitySyntaxSiteInventoryQuery>(moduleKey);
   ZC_REQUIRE(shiftedSiteMetadata != zc::none);
   ZC_EXPECT(ZC_ASSERT_NONNULL(shiftedSiteMetadata).changedAt() == shifted.revision());
   auto shiftedBodySyntaxMetadata = shifted.metadata<ModuleBodySyntaxQuery>(moduleKey);
   ZC_REQUIRE(shiftedBodySyntaxMetadata != zc::none);
   ZC_EXPECT(ZC_ASSERT_NONNULL(shiftedBodySyntaxMetadata).changedAt() ==
             ZC_ASSERT_NONNULL(firstBodySyntaxMetadata).changedAt());
-  auto shiftedBodyProvenanceMetadata = shifted.metadata<ModuleBodyProvenanceQuery>(moduleKey);
-  ZC_REQUIRE(shiftedBodyProvenanceMetadata != zc::none);
-  ZC_EXPECT(ZC_ASSERT_NONNULL(shiftedBodyProvenanceMetadata).changedAt() == shifted.revision());
 }
 
 ZC_TEST("Incremental binding query compilation options codec is exact bounded and closed") {
@@ -909,15 +835,15 @@ ZC_TEST("Incremental binding query compilation options backdate equals and repla
   const auto root = crateKey();
   ZC_IF_SOME(value, firstValue) {
     auto initialWrite = transaction(database);
-    ZC_REQUIRE(initialWrite.set<CompilationOptionsInput>(root, value));
-    ZC_REQUIRE(initialWrite.commit() != zc::none);
+    ZC_REQUIRE(initialWrite.set<CompilationOptionsInput>(root, value).isApplied());
+    ZC_REQUIRE(initialWrite.commit().isCommitted());
     auto initial = database.snapshot();
     auto initialMetadata = initial.metadata<CompilationOptionsInput>(root);
     ZC_REQUIRE(initialMetadata != zc::none);
 
     auto equalWrite = transaction(database);
-    ZC_REQUIRE(equalWrite.set<CompilationOptionsInput>(root, value));
-    ZC_REQUIRE(equalWrite.commit() != zc::none);
+    ZC_REQUIRE(equalWrite.set<CompilationOptionsInput>(root, value).isApplied());
+    ZC_REQUIRE(equalWrite.commit().isCommitted());
     auto equal = database.snapshot();
     auto equalMetadata = equal.metadata<CompilationOptionsInput>(root);
     ZC_REQUIRE(equalMetadata != zc::none);
@@ -930,8 +856,8 @@ ZC_TEST("Incremental binding query compilation options backdate equals and repla
     ZC_REQUIRE(changedValue != zc::none);
     ZC_IF_SOME(changedOptions, changedValue) {
       auto changedWrite = transaction(database);
-      ZC_REQUIRE(changedWrite.set<CompilationOptionsInput>(root, changedOptions));
-      ZC_REQUIRE(changedWrite.commit() != zc::none);
+      ZC_REQUIRE(changedWrite.set<CompilationOptionsInput>(root, changedOptions).isApplied());
+      ZC_REQUIRE(changedWrite.commit().isCommitted());
       auto changed = database.snapshot();
       auto result = changed.get<CompilationOptionsInput>(root);
       ZC_REQUIRE(result.kind() == query::QueryValueKind::Value);
@@ -945,15 +871,15 @@ ZC_TEST("Incremental binding query compilation options backdate equals and repla
 }
 
 ZC_TEST("Incremental binding query active crates use a canonical compilation root set") {
-  auto contract = ActiveCratesQuery::contract();
-  ZC_EXPECT(contract.domain() == "zom.query.active-crates"_zc);
-  ZC_EXPECT(!contract.isInput());
-  ZC_EXPECT(contract.reuseClass() == query::ReuseClass::Semantic);
-  ZC_EXPECT(contract.retention() == query::RetentionClass::Retained);
+  ZC_EXPECT(ActiveCratesQuery::descriptor.domain == "zom.query.active-crates"_zc);
+  ZC_EXPECT(ActiveCratesQuery::descriptor.reuse == query::ReuseClass::Semantic);
+  ZC_EXPECT(ActiveCratesQuery::descriptor.retention == query::RetentionClass::Retained);
 
   auto database = queryTestDatabase();
   ZC_REQUIRE(registerIncrementalBindingQueryAdapter(database));
-  ZC_EXPECT(database.registerDerivedKind<ActiveCratesQuery>() == zc::none);
+  auto duplicate = database.registerDescriptor<ActiveCratesQuery>();
+  ZC_EXPECT(!duplicate.isRegistered());
+  ZC_EXPECT(duplicate.failure() == query::DescriptorRegistrationFailure::SlotAlreadyRegistered);
 
   auto registry = targetRegistry();
   auto request = compilationRequest(registry);
@@ -1023,8 +949,8 @@ ZC_TEST("Incremental binding query active crates derive and shield package graph
   auto database = queryTestDatabase();
   ZC_REQUIRE(registerIncrementalBindingQueryAdapter(database));
   auto initialWrite = transaction(database);
-  ZC_REQUIRE(initialWrite.set<PackageGraphInput>(packageRoots, firstGraph));
-  ZC_REQUIRE(initialWrite.commit() != zc::none);
+  ZC_REQUIRE(initialWrite.set<PackageGraphInput>(packageRoots, firstGraph).isApplied());
+  ZC_REQUIRE(initialWrite.commit().isCommitted());
   auto initial = database.snapshot();
   auto initialResult = initial.get<ActiveCratesQuery>(roots);
   ZC_REQUIRE(initialResult.kind() == query::QueryValueKind::Value);
@@ -1033,8 +959,8 @@ ZC_TEST("Incremental binding query active crates derive and shield package graph
   ZC_REQUIRE(initialMetadata != zc::none);
 
   auto equalWrite = transaction(database);
-  ZC_REQUIRE(equalWrite.set<PackageGraphInput>(packageRoots, firstGraph));
-  ZC_REQUIRE(equalWrite.commit() != zc::none);
+  ZC_REQUIRE(equalWrite.set<PackageGraphInput>(packageRoots, firstGraph).isApplied());
+  ZC_REQUIRE(equalWrite.commit().isCommitted());
   auto equal = database.snapshot();
   auto equalResult = equal.get<ActiveCratesQuery>(roots);
   ZC_REQUIRE(equalResult.kind() == query::QueryValueKind::Value);
@@ -1058,9 +984,9 @@ ZC_TEST("Incremental binding query active crates derive and shield package graph
   auto replacementGraph = PackageGraphInput::decodeValue(replacementBytes.asPtr());
   ZC_REQUIRE(replacementGraph != zc::none);
   auto changedWrite = transaction(database);
-  ZC_REQUIRE(
-      changedWrite.set<PackageGraphInput>(packageRoots, ZC_REQUIRE_NONNULL(replacementGraph)));
-  ZC_REQUIRE(changedWrite.commit() != zc::none);
+  ZC_REQUIRE(changedWrite.set<PackageGraphInput>(packageRoots, ZC_REQUIRE_NONNULL(replacementGraph))
+                 .isApplied());
+  ZC_REQUIRE(changedWrite.commit().isCommitted());
   auto changed = database.snapshot();
   auto result = changed.get<ActiveCratesQuery>(roots);
   ZC_REQUIRE(result.kind() == query::QueryValueKind::Value);
@@ -1090,12 +1016,16 @@ ZC_TEST("Incremental binding query active crates unite user and toolchain core r
   auto distribution = source::core::initialCoreDistributionInput();
   ZC_REQUIRE(distribution != zc::none);
   auto write = transaction(database);
-  ZC_REQUIRE(write.set<PackageGraphInput>(
-      packageRoots,
-      singlePackageGraph("incremental_binding_query"_zc, "incremental_binding_query"_zc)));
-  ZC_REQUIRE(write.set<core_library_query::CoreDistributionInput>(
-      identity::ToolchainUnitKey::core(), ZC_REQUIRE_NONNULL(distribution)));
-  ZC_REQUIRE(write.commit() != zc::none);
+  ZC_REQUIRE(
+      write
+          .set<PackageGraphInput>(packageRoots, singlePackageGraph("incremental_binding_query"_zc,
+                                                                   "incremental_binding_query"_zc))
+          .isApplied());
+  ZC_REQUIRE(write
+                 .set<core_library_query::CoreDistributionInput>(identity::ToolchainUnitKey::core(),
+                                                                 ZC_REQUIRE_NONNULL(distribution))
+                 .isApplied());
+  ZC_REQUIRE(write.commit().isCommitted());
 
   auto active = database.snapshot().get<ActiveCratesQuery>(ZC_REQUIRE_NONNULL(roots));
   ZC_REQUIRE(!active.isRuntimeFailure());
@@ -1104,10 +1034,8 @@ ZC_TEST("Incremental binding query active crates unite user and toolchain core r
 }
 
 ZC_TEST("Incremental package graph input admits only a closed canonical graph") {
-  auto contract = PackageGraphInput::contract();
-  ZC_EXPECT(contract.domain() == "zom.query.package-graph"_zc);
-  ZC_EXPECT(contract.isInput());
-  ZC_EXPECT(contract.inputDurability() == query::Durability::Medium);
+  ZC_EXPECT(PackageGraphInput::descriptor.domain == "zom.query.package-graph"_zc);
+  ZC_EXPECT(PackageGraphInput::descriptor.durability == query::Durability::Medium);
 
   auto registry = targetRegistry();
   auto request = compilationRequest(registry);
@@ -1225,22 +1153,24 @@ ZC_TEST("Incremental package graph input admits only a closed canonical graph") 
 ZC_TEST("Incremental package graph input backdates equals and replaces changes") {
   auto database = queryTestDatabase();
   ZC_REQUIRE(registerIncrementalBindingQueryAdapter(database));
-  ZC_EXPECT(database.registerInputKind<PackageGraphInput>() == zc::none);
+  auto duplicate = database.registerDescriptor<PackageGraphInput>();
+  ZC_EXPECT(!duplicate.isRegistered());
+  ZC_EXPECT(duplicate.failure() == query::DescriptorRegistrationFailure::SlotAlreadyRegistered);
   auto registry = targetRegistry();
   auto request = compilationRequest(registry);
   auto roots = packageRootSet(request);
   auto first = singlePackageGraph("incremental_binding_query"_zc, "incremental_binding_query"_zc);
 
   auto firstWrite = transaction(database);
-  ZC_REQUIRE(firstWrite.set<PackageGraphInput>(roots, first));
-  ZC_REQUIRE(firstWrite.commit() != zc::none);
+  ZC_REQUIRE(firstWrite.set<PackageGraphInput>(roots, first).isApplied());
+  ZC_REQUIRE(firstWrite.commit().isCommitted());
   auto firstSnapshot = database.snapshot();
   auto firstMetadata = firstSnapshot.metadata<PackageGraphInput>(roots);
   ZC_REQUIRE(firstMetadata != zc::none);
 
   auto equalWrite = transaction(database);
-  ZC_REQUIRE(equalWrite.set<PackageGraphInput>(roots, first));
-  ZC_REQUIRE(equalWrite.commit() != zc::none);
+  ZC_REQUIRE(equalWrite.set<PackageGraphInput>(roots, first).isApplied());
+  ZC_REQUIRE(equalWrite.commit().isCommitted());
   auto equalSnapshot = database.snapshot();
   auto equalMetadata = equalSnapshot.metadata<PackageGraphInput>(roots);
   ZC_REQUIRE(equalMetadata != zc::none);
@@ -1250,8 +1180,8 @@ ZC_TEST("Incremental package graph input backdates equals and replaces changes")
   auto changed =
       singlePackageGraph("incremental_binding_query"_zc, "incremental_binding_query_aux"_zc);
   auto changedWrite = transaction(database);
-  ZC_REQUIRE(changedWrite.set<PackageGraphInput>(roots, changed));
-  ZC_REQUIRE(changedWrite.commit() != zc::none);
+  ZC_REQUIRE(changedWrite.set<PackageGraphInput>(roots, changed).isApplied());
+  ZC_REQUIRE(changedWrite.commit().isCommitted());
   auto changedSnapshot = database.snapshot();
   auto result = changedSnapshot.get<PackageGraphInput>(roots);
   ZC_REQUIRE(result.kind() == query::QueryValueKind::Value);
@@ -1316,14 +1246,11 @@ ZC_TEST("Incremental binding query source snapshot codec is fixed bounded and se
 }
 
 ZC_TEST("Incremental binding query per crate source roots are strict and replaceable") {
-  auto sourceContract = UserPackageActiveSourcesInput::contract();
-  ZC_EXPECT(sourceContract.domain() == "zom.query.user-package-active-sources"_zc);
-  ZC_EXPECT(sourceContract.isInput());
-  ZC_EXPECT(sourceContract.inputDurability() == query::Durability::Low);
-  auto derivedSourceContract = ActiveSourcesQuery::contract();
-  ZC_EXPECT(derivedSourceContract.domain() == "zom.query.active-sources"_zc);
-  ZC_EXPECT(!derivedSourceContract.isInput());
-  ZC_EXPECT(derivedSourceContract.reuseClass() == query::ReuseClass::Semantic);
+  ZC_EXPECT(UserPackageActiveSourcesInput::descriptor.domain ==
+            "zom.query.user-package-active-sources"_zc);
+  ZC_EXPECT(UserPackageActiveSourcesInput::descriptor.durability == query::Durability::Low);
+  ZC_EXPECT(ActiveSourcesQuery::descriptor.domain == "zom.query.active-sources"_zc);
+  ZC_EXPECT(ActiveSourcesQuery::descriptor.reuse == query::ReuseClass::Semantic);
   auto crate = stableCrate("incremental_binding_query"_zc);
   auto encodedCrate = UserPackageActiveSourcesInput::encodeKey(crate);
   auto decodedCrate = UserPackageActiveSourcesInput::decodeKey(encodedCrate.asPtr());
@@ -1350,11 +1277,13 @@ ZC_TEST("Incremental binding query per crate source roots are strict and replace
 
   auto database = queryTestDatabase();
   ZC_REQUIRE(registerIncrementalBindingQueryAdapter(database));
-  ZC_EXPECT(database.registerInputKind<UserPackageActiveSourcesInput>() == zc::none);
-  ZC_EXPECT(database.registerDerivedKind<ActiveSourcesQuery>() == zc::none);
+  auto duplicateInput = database.registerDescriptor<UserPackageActiveSourcesInput>();
+  ZC_EXPECT(!duplicateInput.isRegistered());
+  auto duplicateQuery = database.registerDescriptor<ActiveSourcesQuery>();
+  ZC_EXPECT(!duplicateQuery.isRegistered());
   auto firstWrite = transaction(database);
-  ZC_REQUIRE(firstWrite.set<UserPackageActiveSourcesInput>(crate, sources));
-  ZC_REQUIRE(firstWrite.commit() != zc::none);
+  ZC_REQUIRE(firstWrite.set<UserPackageActiveSourcesInput>(crate, sources).isApplied());
+  ZC_REQUIRE(firstWrite.commit().isCommitted());
   auto first = database.snapshot();
   auto firstDerived = first.get<ActiveSourcesQuery>(crate);
   ZC_REQUIRE(firstDerived.kind() == query::QueryValueKind::Value);
@@ -1363,8 +1292,8 @@ ZC_TEST("Incremental binding query per crate source roots are strict and replace
   ZC_REQUIRE(firstMetadata != zc::none);
 
   auto equalWrite = transaction(database);
-  ZC_REQUIRE(equalWrite.set<UserPackageActiveSourcesInput>(crate, sources));
-  ZC_REQUIRE(equalWrite.commit() != zc::none);
+  ZC_REQUIRE(equalWrite.set<UserPackageActiveSourcesInput>(crate, sources).isApplied());
+  ZC_REQUIRE(equalWrite.commit().isCommitted());
   auto equal = database.snapshot();
   auto equalMetadata = equal.metadata<UserPackageActiveSourcesInput>(crate);
   ZC_REQUIRE(equalMetadata != zc::none);
@@ -1373,8 +1302,8 @@ ZC_TEST("Incremental binding query per crate source roots are strict and replace
 
   auto replacement = sourceSet(secondSource);
   auto changedWrite = transaction(database);
-  ZC_REQUIRE(changedWrite.set<UserPackageActiveSourcesInput>(crate, replacement));
-  ZC_REQUIRE(changedWrite.commit() != zc::none);
+  ZC_REQUIRE(changedWrite.set<UserPackageActiveSourcesInput>(crate, replacement).isApplied());
+  ZC_REQUIRE(changedWrite.commit().isCommitted());
   auto changed = database.snapshot();
   auto changedResult = changed.get<UserPackageActiveSourcesInput>(crate);
   ZC_REQUIRE(changedResult.kind() == query::QueryValueKind::Value);
@@ -1394,19 +1323,17 @@ ZC_TEST(
   auto staleValue = sourceSnapshotValue("stale.zom"_zc, zc::heapArray("stale"_zcb));
 
   auto initialWrite = transaction(database);
-  ZC_REQUIRE(initialWrite.set<SourceSnapshotInput>(firstKey, firstValue));
-  ZC_REQUIRE(initialWrite.set<SourceSnapshotInput>(staleKey, staleValue));
-  ZC_REQUIRE(initialWrite.commit() != zc::none);
+  ZC_REQUIRE(initialWrite.set<SourceSnapshotInput>(firstKey, firstValue).isApplied());
+  ZC_REQUIRE(initialWrite.set<SourceSnapshotInput>(staleKey, staleValue).isApplied());
+  ZC_REQUIRE(initialWrite.commit().isCommitted());
   auto initial = database.snapshot();
   auto initialMetadata = initial.metadata<SourceSnapshotInput>(firstKey);
   ZC_REQUIRE(initialMetadata != zc::none);
 
   auto equalReplacement = transaction(database);
-  ZC_REQUIRE(equalReplacement.erase<SourceSnapshotInput>(firstKey));
-  ZC_REQUIRE(equalReplacement.erase<SourceSnapshotInput>(staleKey));
-  ZC_REQUIRE(equalReplacement.set<SourceSnapshotInput>(firstKey, firstValue));
-  ZC_REQUIRE(equalReplacement.set<SourceSnapshotInput>(staleKey, staleValue));
-  ZC_REQUIRE(equalReplacement.commit() != zc::none);
+  ZC_REQUIRE(equalReplacement.set<SourceSnapshotInput>(firstKey, firstValue).isApplied());
+  ZC_REQUIRE(equalReplacement.set<SourceSnapshotInput>(staleKey, staleValue).isApplied());
+  ZC_REQUIRE(equalReplacement.commit().isCommitted());
   auto equal = database.snapshot();
   auto equalMetadata = equal.metadata<SourceSnapshotInput>(firstKey);
   ZC_REQUIRE(equalMetadata != zc::none);
@@ -1415,10 +1342,9 @@ ZC_TEST(
 
   auto changedValue = sourceSnapshotValue("first.zom"_zc, zc::heapArray("changed"_zcb));
   auto changedRoot = transaction(database);
-  ZC_REQUIRE(changedRoot.erase<SourceSnapshotInput>(firstKey));
-  ZC_REQUIRE(changedRoot.erase<SourceSnapshotInput>(staleKey));
-  ZC_REQUIRE(changedRoot.set<SourceSnapshotInput>(firstKey, changedValue));
-  ZC_REQUIRE(changedRoot.commit() != zc::none);
+  ZC_REQUIRE(changedRoot.erase<SourceSnapshotInput>(staleKey).isApplied());
+  ZC_REQUIRE(changedRoot.set<SourceSnapshotInput>(firstKey, changedValue).isApplied());
+  ZC_REQUIRE(changedRoot.commit().isCommitted());
   auto changed = database.snapshot();
   auto changedResult = changed.get<SourceSnapshotInput>(firstKey);
   ZC_REQUIRE(changedResult.kind() == query::QueryValueKind::Value);

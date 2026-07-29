@@ -85,6 +85,14 @@ private:
 using StableIdentityCandidateProduction =
     zc::OneOf<StableIdentityCandidateInventory, StableIdentityCandidateFailure>;
 
+/// \brief Produces complete revision-local identity syntax provenance without identity admission.
+class IdentitySyntaxSiteInventoryProducer final {
+public:
+  ZC_NODISCARD static zc::Maybe<IdentitySyntaxSiteInventory> produce(
+      const CanonicalParsedModule& parsedModule, const identity::ModuleKey& module,
+      ast::NodeId moduleNode);
+};
+
 /// \brief Produces complete RFC 0018 records directly from parser AST authority.
 class StableIdentityCandidateProducer final {
 public:

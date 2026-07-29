@@ -11,6 +11,7 @@
 #include "zc/core/common.h"
 #include "zc/core/memory.h"
 #include "zc/core/vector.h"
+#include "zomlang/compiler/ast/node-id.h"
 #include "zomlang/compiler/identity/definition-key.h"
 #include "zomlang/compiler/identity/frozen-registry.h"
 
@@ -23,6 +24,8 @@ struct DuplicateBoundOccurrenceData;
 struct PreAdmissionIdentityCandidateData;
 struct ImplSourceOccurrenceKeyData;
 struct ImplIdentityOccurrenceGroupData;
+struct IdentitySyntaxSiteInventoryData;
+struct StableIdentityAdmissionData;
 }  // namespace identity_pre_admission_detail
 
 /// \brief Revision-local structural address of one identity-related syntax occurrence.
@@ -78,6 +81,93 @@ private:
       zc::Own<identity_pre_admission_detail::IdentitySyntaxSiteData>&& impl) noexcept;
 
   zc::Own<identity_pre_admission_detail::IdentitySyntaxSiteData> impl;
+};
+
+/// \brief One complete-tree preorder identity site admitted for revision-local provenance.
+struct IdentitySyntaxSiteInventoryEntry final {
+  uint32_t schemaPreorderOrdinal;
+  IdentitySyntaxSite site;
+
+  ZC_NODISCARD IdentitySyntaxSiteInventoryEntry clone() const;
+  bool operator==(const IdentitySyntaxSiteInventoryEntry& other) const;
+};
+
+/// \brief Complete revision-local identity syntax topology for one selected module source.
+class IdentitySyntaxSiteInventory final {
+public:
+  ~IdentitySyntaxSiteInventory() noexcept(false);
+  IdentitySyntaxSiteInventory(IdentitySyntaxSiteInventory&&) noexcept;
+  IdentitySyntaxSiteInventory& operator=(IdentitySyntaxSiteInventory&&) noexcept;
+  ZC_DISALLOW_COPY(IdentitySyntaxSiteInventory);
+
+  ZC_NODISCARD static zc::Maybe<IdentitySyntaxSiteInventory> fromVerified(
+      identity::ModuleKey&& module, identity::SourceFileKey&& source,
+      const identity::Sha256Digest& sourceDigest, uint32_t schemaNodeCount,
+      zc::Vector<IdentitySyntaxSiteInventoryEntry>&& entries);
+  ZC_NODISCARD IdentitySyntaxSiteInventory clone() const;
+  ZC_NODISCARD const identity::ModuleKey& module() const noexcept;
+  ZC_NODISCARD const identity::SourceFileKey& source() const noexcept;
+  ZC_NODISCARD const identity::Sha256Digest& sourceDigest() const noexcept;
+  ZC_NODISCARD uint32_t schemaNodeCount() const noexcept;
+  ZC_NODISCARD zc::ArrayPtr<const IdentitySyntaxSiteInventoryEntry> entries() const noexcept;
+  ZC_NODISCARD zc::Maybe<const IdentitySyntaxSiteInventoryEntry&> find(
+      const IdentitySyntaxSiteKey& key) const noexcept;
+  bool operator==(const IdentitySyntaxSiteInventory& other) const;
+
+private:
+  explicit IdentitySyntaxSiteInventory(
+      zc::Own<identity_pre_admission_detail::IdentitySyntaxSiteInventoryData>&& impl) noexcept;
+  zc::Own<identity_pre_admission_detail::IdentitySyntaxSiteInventoryData> impl;
+};
+
+/// \brief One independently verified definition admitted before semantic inventory publication.
+struct StableIdentityAdmissionDefinition final {
+  uint32_t schemaPreorderOrdinal;
+  ast::NodeId node;
+  identity::DefinitionIdentityAuthority authority;
+  IdentitySyntaxSite site;
+
+  ZC_NODISCARD StableIdentityAdmissionDefinition clone() const;
+  bool operator==(const StableIdentityAdmissionDefinition& other) const;
+};
+
+/// \brief One independently verified implementation admitted before semantic inventory publication.
+struct StableIdentityAdmissionImplementation final {
+  uint32_t schemaPreorderOrdinal;
+  ast::NodeId node;
+  identity::ImplIdentityAuthority authority;
+  IdentitySyntaxSite site;
+
+  ZC_NODISCARD StableIdentityAdmissionImplementation clone() const;
+  bool operator==(const StableIdentityAdmissionImplementation& other) const;
+};
+
+/// \brief Verified stable-identity candidates retained by one revision-local capability.
+class StableIdentityAdmission final {
+public:
+  ~StableIdentityAdmission() noexcept(false);
+  StableIdentityAdmission(StableIdentityAdmission&&) noexcept;
+  StableIdentityAdmission& operator=(StableIdentityAdmission&&) noexcept;
+  ZC_DISALLOW_COPY(StableIdentityAdmission);
+
+  ZC_NODISCARD static zc::Maybe<StableIdentityAdmission> fromVerified(
+      identity::ModuleKey&& module, identity::SourceFileKey&& source,
+      const identity::Sha256Digest& sourceDigest,
+      zc::Vector<StableIdentityAdmissionDefinition>&& definitions,
+      zc::Vector<StableIdentityAdmissionImplementation>&& implementations);
+  ZC_NODISCARD StableIdentityAdmission clone() const;
+  ZC_NODISCARD const identity::ModuleKey& module() const noexcept;
+  ZC_NODISCARD const identity::SourceFileKey& source() const noexcept;
+  ZC_NODISCARD const identity::Sha256Digest& sourceDigest() const noexcept;
+  ZC_NODISCARD zc::ArrayPtr<const StableIdentityAdmissionDefinition> definitions() const noexcept;
+  ZC_NODISCARD zc::ArrayPtr<const StableIdentityAdmissionImplementation> implementations()
+      const noexcept;
+  bool operator==(const StableIdentityAdmission& other) const;
+
+private:
+  explicit StableIdentityAdmission(
+      zc::Own<identity_pre_admission_detail::StableIdentityAdmissionData>&& impl) noexcept;
+  zc::Own<identity_pre_admission_detail::StableIdentityAdmissionData> impl;
 };
 
 /// \brief One normalized bound removed after its first current source occurrence.

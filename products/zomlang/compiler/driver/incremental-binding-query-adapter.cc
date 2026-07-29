@@ -41,21 +41,6 @@ int compareBytes(zc::ArrayPtr<const uint8_t> left, zc::ArrayPtr<const uint8_t> r
   return 0;
 }
 
-query::QueryKindContract inputContract(zc::StringPtr domain, query::Durability durability) {
-  auto contract = query::QueryKindContract::input(domain, durability);
-  return zc::mv(ZC_REQUIRE_NONNULL(contract));
-}
-
-query::QueryKindContract lowDurabilityInputContract(zc::StringPtr domain) {
-  return inputContract(domain, query::Durability::Low);
-}
-
-query::QueryKindContract derivedContract(zc::StringPtr domain) {
-  auto contract = query::QueryKindContract::derived(domain, query::ReuseClass::Semantic,
-                                                    query::RetentionClass::Retained);
-  return zc::mv(ZC_REQUIRE_NONNULL(contract));
-}
-
 }  // namespace
 
 StablePackageQueryKey::StablePackageQueryKey(zc::Array<uint8_t>&& canonicalPackageBytes) noexcept
@@ -643,14 +628,6 @@ zc::Maybe<CanonicalSourceSet> CanonicalSourceSet::decodeCanonical(
   return CanonicalSourceSet(zc::mv(sources));
 }
 
-zc::StringPtr UserPackageActiveSourcesInput::domain() {
-  return "zom.query.user-package-active-sources"_zc;
-}
-
-query::QueryKindContract UserPackageActiveSourcesInput::contract() {
-  return lowDurabilityInputContract(domain());
-}
-
 zc::Array<uint8_t> UserPackageActiveSourcesInput::encodeKey(const Key& key) {
   return zc::heapArray<uint8_t>(key.canonicalCrateBytes());
 }
@@ -668,10 +645,6 @@ zc::Maybe<UserPackageActiveSourcesInput::Value> UserPackageActiveSourcesInput::d
     zc::ArrayPtr<const uint8_t> bytes) {
   return CanonicalSourceSet::decodeCanonical(bytes);
 }
-
-zc::StringPtr ActiveSourcesQuery::domain() { return "zom.query.active-sources"_zc; }
-
-query::QueryKindContract ActiveSourcesQuery::contract() { return derivedContract(domain()); }
 
 zc::Array<uint8_t> ActiveSourcesQuery::encodeKey(const Key& key) {
   return zc::heapArray<uint8_t>(key.canonicalCrateBytes());
@@ -817,10 +790,6 @@ bool ActiveSourcesQuery::verify(query::QueryContext& context, const Key& key,
   return expected != zc::none && ZC_ASSERT_NONNULL(expected) == result.value();
 }
 
-zc::StringPtr ActiveCratesQuery::domain() { return "zom.query.active-crates"_zc; }
-
-query::QueryKindContract ActiveCratesQuery::contract() { return derivedContract(domain()); }
-
 zc::Array<uint8_t> ActiveCratesQuery::encodeKey(const Key& key) { return key.encodeCanonical(); }
 
 zc::Maybe<ActiveCratesQuery::Key> ActiveCratesQuery::decodeKey(zc::ArrayPtr<const uint8_t> bytes) {
@@ -954,37 +923,37 @@ bool registerIncrementalBindingQueryAdapter(query::QueryDatabase& database) {
   if (!incremental_module_resolution_query::registerIncrementalModuleResolutionQueries(database)) {
     return false;
   }
-  if (database.registerInputKind<UserPackageActiveSourcesInput>() == zc::none) { return false; }
-  if (database.registerDerivedKind<ActiveSourcesQuery>() == zc::none) { return false; }
+  if (!database.registerDescriptor<UserPackageActiveSourcesInput>().isRegistered()) {
+    return false;
+  }
+  if (!database.registerDescriptor<ActiveSourcesQuery>().isRegistered()) { return false; }
   if (!identity::source_query::registerSourceQueryInputs(database)) { return false; }
   if (!parser::registerParseSourceQuery(database)) { return false; }
-  if (database.registerDerivedKind<ActiveCratesQuery>() == zc::none) { return false; }
+  if (!database.registerDescriptor<ActiveCratesQuery>().isRegistered()) { return false; }
   if (!registerActiveDefinitionAuthorityInputs(database)) { return false; }
-  if (database.registerDerivedKind<NamedDefinitionInventoryQuery>() == zc::none) { return false; }
-  if (database.registerDerivedKind<NamedImplementationInventoryQuery>() == zc::none) {
+  if (!database.registerDescriptor<IdentitySyntaxSiteInventoryQuery>().isRegistered()) {
     return false;
   }
-  if (database.registerRevisionLocalCapabilityKind<RevisionLocalDefinitionSitesQuery>() ==
-      zc::none) {
+  if (!database.registerDescriptor<StableIdentityAdmissionQuery>().isRegistered()) { return false; }
+  if (!database.registerDescriptor<NamedDefinitionInventoryQuery>().isRegistered()) {
     return false;
   }
-  if (database.registerRevisionLocalCapabilityKind<RevisionLocalImplementationSitesQuery>() ==
-      zc::none) {
+  if (!database.registerDescriptor<NamedImplementationInventoryQuery>().isRegistered()) {
     return false;
   }
-  if (database.registerDerivedKind<NamedItemSyntaxQuery>() == zc::none) { return false; }
-  if (database.registerRevisionLocalCapabilityKind<NamedItemProvenanceQuery>() == zc::none) {
+  if (!database.registerDescriptor<RevisionLocalDefinitionSitesQuery>().isRegistered()) {
     return false;
   }
-  if (database.registerDerivedKind<ModuleBodySyntaxQuery>() == zc::none) { return false; }
-  if (database.registerRevisionLocalCapabilityKind<ModuleBodyProvenanceQuery>() == zc::none) {
+  if (!database.registerDescriptor<RevisionLocalImplementationSitesQuery>().isRegistered()) {
     return false;
   }
-  if (database.registerDerivedKind<ModuleBodyOwnersQuery>() == zc::none) { return false; }
-  if (database.registerDerivedKind<OwnerBodySyntaxQuery>() == zc::none) { return false; }
-  if (database.registerRevisionLocalCapabilityKind<OwnerBodyProvenanceQuery>() == zc::none) {
-    return false;
-  }
+  if (!database.registerDescriptor<NamedItemSyntaxQuery>().isRegistered()) { return false; }
+  if (!database.registerDescriptor<NamedItemProvenanceQuery>().isRegistered()) { return false; }
+  if (!database.registerDescriptor<ModuleBodySyntaxQuery>().isRegistered()) { return false; }
+  if (!database.registerDescriptor<ModuleBodyProvenanceQuery>().isRegistered()) { return false; }
+  if (!database.registerDescriptor<ModuleBodyOwnersQuery>().isRegistered()) { return false; }
+  if (!database.registerDescriptor<OwnerBodySyntaxQuery>().isRegistered()) { return false; }
+  if (!database.registerDescriptor<OwnerBodyProvenanceQuery>().isRegistered()) { return false; }
   return true;
 }
 

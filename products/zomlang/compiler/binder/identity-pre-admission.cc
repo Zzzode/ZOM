@@ -59,6 +59,22 @@ struct ImplIdentityOccurrenceGroupData final {
   zc::Vector<ImplSourceOccurrenceKey> occurrences;
 };
 
+struct IdentitySyntaxSiteInventoryData final {
+  identity::ModuleKey module;
+  identity::SourceFileKey source;
+  identity::Sha256Digest sourceDigest;
+  uint32_t schemaNodeCount;
+  zc::Vector<IdentitySyntaxSiteInventoryEntry> entries;
+};
+
+struct StableIdentityAdmissionData final {
+  identity::ModuleKey module;
+  identity::SourceFileKey source;
+  identity::Sha256Digest sourceDigest;
+  zc::Vector<StableIdentityAdmissionDefinition> definitions;
+  zc::Vector<StableIdentityAdmissionImplementation> implementations;
+};
+
 }  // namespace identity_pre_admission_detail
 
 namespace detail = identity_pre_admission_detail;
@@ -158,6 +174,11 @@ zc::Maybe<const IdentitySyntaxSite&> resolveSite(const IdentitySyntaxSiteKey& ke
   }
   if (result == nullptr) { return zc::none; }
   return *result;
+}
+
+bool sameSite(const IdentitySyntaxSite& left, const IdentitySyntaxSite& right) {
+  return left.key().sameAs(right.key()) && left.range().byteStart() == right.range().byteStart() &&
+         left.range().byteEnd() == right.range().byteEnd();
 }
 
 }  // namespace
@@ -277,6 +298,182 @@ zc::Array<uint8_t> IdentitySyntaxSite::encode() const {
   identity::CanonicalEncoder encoder;
   encode(encoder);
   return encoder.finish();
+}
+
+IdentitySyntaxSiteInventoryEntry IdentitySyntaxSiteInventoryEntry::clone() const {
+  return IdentitySyntaxSiteInventoryEntry{schemaPreorderOrdinal, site.clone()};
+}
+
+bool IdentitySyntaxSiteInventoryEntry::operator==(
+    const IdentitySyntaxSiteInventoryEntry& other) const {
+  return schemaPreorderOrdinal == other.schemaPreorderOrdinal && sameSite(site, other.site);
+}
+
+IdentitySyntaxSiteInventory::IdentitySyntaxSiteInventory(
+    zc::Own<detail::IdentitySyntaxSiteInventoryData>&& value) noexcept
+    : impl(zc::mv(value)) {}
+IdentitySyntaxSiteInventory::~IdentitySyntaxSiteInventory() noexcept(false) = default;
+IdentitySyntaxSiteInventory::IdentitySyntaxSiteInventory(IdentitySyntaxSiteInventory&&) noexcept =
+    default;
+IdentitySyntaxSiteInventory& IdentitySyntaxSiteInventory::operator=(
+    IdentitySyntaxSiteInventory&&) noexcept = default;
+
+zc::Maybe<IdentitySyntaxSiteInventory> IdentitySyntaxSiteInventory::fromVerified(
+    identity::ModuleKey&& module, identity::SourceFileKey&& source,
+    const identity::Sha256Digest& sourceDigest, uint32_t schemaNodeCount,
+    zc::Vector<IdentitySyntaxSiteInventoryEntry>&& entries) {
+  if (!source.belongsTo(module.crate())) { return zc::none; }
+  const IdentitySyntaxSiteInventoryEntry* previous = nullptr;
+  for (const auto& entry : entries) {
+    if (entry.schemaPreorderOrdinal >= schemaNodeCount ||
+        !sameModule(entry.site.key().module(), module) ||
+        !entry.site.key().source().sameAs(source) || !entry.site.range().belongsTo(source)) {
+      return zc::none;
+    }
+    if (previous != nullptr && (previous->schemaPreorderOrdinal >= entry.schemaPreorderOrdinal ||
+                                comparePath(previous->site.key().moduleSyntaxPath(),
+                                            entry.site.key().moduleSyntaxPath()) >= 0)) {
+      return zc::none;
+    }
+    previous = &entry;
+  }
+  return IdentitySyntaxSiteInventory(
+      zc::heap<detail::IdentitySyntaxSiteInventoryData>(detail::IdentitySyntaxSiteInventoryData{
+          zc::mv(module), zc::mv(source), sourceDigest, schemaNodeCount, zc::mv(entries)}));
+}
+
+IdentitySyntaxSiteInventory IdentitySyntaxSiteInventory::clone() const {
+  zc::Vector<IdentitySyntaxSiteInventoryEntry> entries(impl->entries.size());
+  for (const auto& entry : impl->entries) { entries.add(entry.clone()); }
+  return ZC_REQUIRE_NONNULL(fromVerified(impl->module.clone(), impl->source.clone(),
+                                         impl->sourceDigest, impl->schemaNodeCount,
+                                         zc::mv(entries)));
+}
+const identity::ModuleKey& IdentitySyntaxSiteInventory::module() const noexcept {
+  return impl->module;
+}
+const identity::SourceFileKey& IdentitySyntaxSiteInventory::source() const noexcept {
+  return impl->source;
+}
+const identity::Sha256Digest& IdentitySyntaxSiteInventory::sourceDigest() const noexcept {
+  return impl->sourceDigest;
+}
+uint32_t IdentitySyntaxSiteInventory::schemaNodeCount() const noexcept {
+  return impl->schemaNodeCount;
+}
+zc::ArrayPtr<const IdentitySyntaxSiteInventoryEntry> IdentitySyntaxSiteInventory::entries()
+    const noexcept {
+  return impl->entries.asPtr();
+}
+zc::Maybe<const IdentitySyntaxSiteInventoryEntry&> IdentitySyntaxSiteInventory::find(
+    const IdentitySyntaxSiteKey& key) const noexcept {
+  const IdentitySyntaxSiteInventoryEntry* found = nullptr;
+  for (const auto& entry : impl->entries) {
+    if (!entry.site.key().sameAs(key)) { continue; }
+    if (found != nullptr) { return zc::none; }
+    found = &entry;
+  }
+  if (found == nullptr) { return zc::none; }
+  return *found;
+}
+bool IdentitySyntaxSiteInventory::operator==(const IdentitySyntaxSiteInventory& other) const {
+  return sameModule(module(), other.module()) && source().sameAs(other.source()) &&
+         sourceDigest() == other.sourceDigest() && schemaNodeCount() == other.schemaNodeCount() &&
+         entries() == other.entries();
+}
+
+StableIdentityAdmissionDefinition StableIdentityAdmissionDefinition::clone() const {
+  return StableIdentityAdmissionDefinition{schemaPreorderOrdinal, node, authority.clone(),
+                                           site.clone()};
+}
+bool StableIdentityAdmissionDefinition::operator==(
+    const StableIdentityAdmissionDefinition& other) const {
+  return schemaPreorderOrdinal == other.schemaPreorderOrdinal && node == other.node &&
+         authority.sameRecordAs(other.authority) && sameSite(site, other.site);
+}
+
+StableIdentityAdmissionImplementation StableIdentityAdmissionImplementation::clone() const {
+  return StableIdentityAdmissionImplementation{schemaPreorderOrdinal, node, authority.clone(),
+                                               site.clone()};
+}
+bool StableIdentityAdmissionImplementation::operator==(
+    const StableIdentityAdmissionImplementation& other) const {
+  return schemaPreorderOrdinal == other.schemaPreorderOrdinal && node == other.node &&
+         authority.key() == other.authority.key() && sameSite(site, other.site);
+}
+
+StableIdentityAdmission::StableIdentityAdmission(
+    zc::Own<detail::StableIdentityAdmissionData>&& value) noexcept
+    : impl(zc::mv(value)) {}
+StableIdentityAdmission::~StableIdentityAdmission() noexcept(false) = default;
+StableIdentityAdmission::StableIdentityAdmission(StableIdentityAdmission&&) noexcept = default;
+StableIdentityAdmission& StableIdentityAdmission::operator=(StableIdentityAdmission&&) noexcept =
+    default;
+
+zc::Maybe<StableIdentityAdmission> StableIdentityAdmission::fromVerified(
+    identity::ModuleKey&& module, identity::SourceFileKey&& source,
+    const identity::Sha256Digest& sourceDigest,
+    zc::Vector<StableIdentityAdmissionDefinition>&& definitions,
+    zc::Vector<StableIdentityAdmissionImplementation>&& implementations) {
+  if (!source.belongsTo(module.crate())) { return zc::none; }
+  uint32_t previousOrdinal = 0;
+  bool hasPrevious = false;
+  for (const auto& definition : definitions) {
+    if ((hasPrevious && definition.schemaPreorderOrdinal <= previousOrdinal) ||
+        !sameModule(definition.site.key().module(), module) ||
+        !definition.site.key().source().sameAs(source) ||
+        !definition.site.range().belongsTo(source)) {
+      return zc::none;
+    }
+    previousOrdinal = definition.schemaPreorderOrdinal;
+    hasPrevious = true;
+  }
+  previousOrdinal = 0;
+  hasPrevious = false;
+  for (const auto& implementation : implementations) {
+    if ((hasPrevious && implementation.schemaPreorderOrdinal <= previousOrdinal) ||
+        !sameModule(implementation.site.key().module(), module) ||
+        !implementation.site.key().source().sameAs(source) ||
+        !implementation.site.range().belongsTo(source)) {
+      return zc::none;
+    }
+    previousOrdinal = implementation.schemaPreorderOrdinal;
+    hasPrevious = true;
+  }
+  return StableIdentityAdmission(zc::heap<detail::StableIdentityAdmissionData>(
+      detail::StableIdentityAdmissionData{zc::mv(module), zc::mv(source), sourceDigest,
+                                          zc::mv(definitions), zc::mv(implementations)}));
+}
+StableIdentityAdmission StableIdentityAdmission::clone() const {
+  zc::Vector<StableIdentityAdmissionDefinition> definitions(impl->definitions.size());
+  for (const auto& definition : impl->definitions) { definitions.add(definition.clone()); }
+  zc::Vector<StableIdentityAdmissionImplementation> implementations(impl->implementations.size());
+  for (const auto& implementation : impl->implementations) {
+    implementations.add(implementation.clone());
+  }
+  return ZC_REQUIRE_NONNULL(fromVerified(impl->module.clone(), impl->source.clone(),
+                                         impl->sourceDigest, zc::mv(definitions),
+                                         zc::mv(implementations)));
+}
+const identity::ModuleKey& StableIdentityAdmission::module() const noexcept { return impl->module; }
+const identity::SourceFileKey& StableIdentityAdmission::source() const noexcept {
+  return impl->source;
+}
+const identity::Sha256Digest& StableIdentityAdmission::sourceDigest() const noexcept {
+  return impl->sourceDigest;
+}
+zc::ArrayPtr<const StableIdentityAdmissionDefinition> StableIdentityAdmission::definitions()
+    const noexcept {
+  return impl->definitions.asPtr();
+}
+zc::ArrayPtr<const StableIdentityAdmissionImplementation> StableIdentityAdmission::implementations()
+    const noexcept {
+  return impl->implementations.asPtr();
+}
+bool StableIdentityAdmission::operator==(const StableIdentityAdmission& other) const {
+  return sameModule(module(), other.module()) && source().sameAs(other.source()) &&
+         sourceDigest() == other.sourceDigest() && definitions() == other.definitions() &&
+         implementations() == other.implementations();
 }
 
 DuplicateBoundOccurrence::DuplicateBoundOccurrence(

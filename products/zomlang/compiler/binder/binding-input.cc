@@ -1208,11 +1208,11 @@ ModuleGraphCandidateResult VerifiedModuleGraphBuilder::produce(
     }
     auto finalParse =
         input.finalSnapshot.getCapability<parser::ParseSourceQuery>(ZC_ASSERT_NONNULL(sourceKey));
-    if (finalParse.isRuntimeFailure() || finalParse.kind() != query::QueryValueKind::Value ||
-        finalParse.value().capability().canonicalSourceKey() != selected.value().encode().asPtr() ||
-        finalParse.value().capability().contentDigest() !=
+    if (!finalParse.isPublished() ||
+        finalParse.lease().capability().canonicalSourceKey() != selected.value().encode().asPtr() ||
+        finalParse.lease().capability().contentDigest() !=
             ZC_ASSERT_NONNULL(parsed).parsedModule.contentDigest() ||
-        finalParse.value().capability().sourceBytes().size() !=
+        finalParse.lease().capability().sourceBytes().size() !=
             ZC_ASSERT_NONNULL(parsed).parsedModule.byteLength()) {
       return failure(ModuleGraphInvariantKind::InputMismatch, ZC_ASSERT_NONNULL(handle));
     }
@@ -1402,11 +1402,11 @@ ModuleGraphMaterializationResult VerifiedModuleGraphVerifier::verify(
     }
     auto finalParse =
         input.finalSnapshot.getCapability<parser::ParseSourceQuery>(ZC_ASSERT_NONNULL(sourceKey));
-    if (finalParse.isRuntimeFailure() || finalParse.kind() != query::QueryValueKind::Value ||
-        finalParse.value().capability().canonicalSourceKey() != selected.value().encode().asPtr() ||
-        finalParse.value().capability().contentDigest() !=
+    if (!finalParse.isPublished() ||
+        finalParse.lease().capability().canonicalSourceKey() != selected.value().encode().asPtr() ||
+        finalParse.lease().capability().contentDigest() !=
             ZC_ASSERT_NONNULL(parsed).parsedModule.contentDigest() ||
-        finalParse.value().capability().sourceBytes().size() !=
+        finalParse.lease().capability().sourceBytes().size() !=
             ZC_ASSERT_NONNULL(parsed).parsedModule.byteLength()) {
       return failure(ModuleGraphInvariantKind::InputMismatch, ZC_ASSERT_NONNULL(handle));
     }

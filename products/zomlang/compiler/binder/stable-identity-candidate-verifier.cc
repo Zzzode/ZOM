@@ -29,6 +29,86 @@ struct VerifiedImplKey final {
   identity::ImplKey key;
 };
 
+zc::Vector<uint32_t> cloneInventoryPath(zc::ArrayPtr<const uint32_t> path) {
+  zc::Vector<uint32_t> result(path.size());
+  result.addAll(path);
+  return result;
+}
+
+class IdentitySyntaxSiteInventoryVerifierImpl final {
+public:
+  IdentitySyntaxSiteInventoryVerifierImpl(const CanonicalParsedModule& parsedModule,
+                                          const identity::ModuleKey& module, ast::NodeId moduleNode)
+      : parsedModule(parsedModule),
+        tree(parsedModule.tree()),
+        module(module),
+        moduleNode(moduleNode) {
+    roots.resize(tree.nodeCount() + 1);
+    visited.resize(tree.nodeCount() + 1);
+    for (auto& value : roots) { value = 0; }
+    for (auto& value : visited) { value = 0; }
+  }
+
+  zc::Maybe<IdentitySyntaxSiteInventory> reconstruct() {
+    if (!tree.contains(tree.root()) || tree.nodeCount() > UINT32_MAX ||
+        !parsedModule.source().belongsTo(module.crate()) ||
+        (moduleNode && (!tree.contains(moduleNode) ||
+                        tree.node(moduleNode).kind != ast::SyntaxKind::ModuleDeclaration))) {
+      return zc::none;
+    }
+    if (!markIdentityRoots()) { return zc::none; }
+    zc::Vector<uint32_t> path;
+    uint32_t ordinal = 0;
+    if (!walk(tree.root(), path, 0, ordinal) || ordinal != tree.nodeCount()) { return zc::none; }
+    return IdentitySyntaxSiteInventory::fromVerified(
+        module.clone(), parsedModule.source().clone(), parsedModule.contentDigest(),
+        static_cast<uint32_t>(tree.nodeCount()), zc::mv(entries));
+  }
+
+private:
+  bool markIdentityRoots();
+
+  bool walk(ast::NodeId node, zc::Vector<uint32_t>& path, uint32_t activeRootDepth,
+            uint32_t& ordinal) {
+    if (!tree.contains(node) || node.value >= visited.size() || visited[node.value] != 0) {
+      return false;
+    }
+    visited[node.value] = 1;
+    const uint32_t currentOrdinal = ordinal++;
+    const bool beginsIdentity = roots[node.value] != 0;
+    if (beginsIdentity) { ++activeRootDepth; }
+    if (activeRootDepth != 0) {
+      auto siteKey = IdentitySyntaxSiteKey::from(module.clone(), parsedModule.source().clone(),
+                                                 cloneInventoryPath(path.asPtr()));
+      auto exactSpan = parsedModule.spanFor(tree.node(node).range);
+      if (siteKey == zc::none || exactSpan == zc::none) { return false; }
+      auto site = IdentitySyntaxSite::from(zc::mv(ZC_ASSERT_NONNULL(siteKey)),
+                                           zc::mv(ZC_ASSERT_NONNULL(exactSpan)));
+      if (site == zc::none) { return false; }
+      entries.add(
+          IdentitySyntaxSiteInventoryEntry{currentOrdinal, zc::mv(ZC_ASSERT_NONNULL(site))});
+    }
+    uint32_t childSlot = 0;
+    bool valid = true;
+    ast::visitChildNodeIds(tree, tree.node(node), [&](ast::NodeId child) {
+      const uint32_t slot = childSlot++;
+      if (!valid) { return; }
+      path.add(slot);
+      valid = walk(child, path, activeRootDepth, ordinal);
+      path.removeLast();
+    });
+    return valid;
+  }
+
+  const CanonicalParsedModule& parsedModule;
+  const ast::Tree& tree;
+  const identity::ModuleKey& module;
+  ast::NodeId moduleNode;
+  zc::Vector<uint8_t> roots;
+  zc::Vector<uint8_t> visited;
+  zc::Vector<IdentitySyntaxSiteInventoryEntry> entries;
+};
+
 StableIdentityCandidateInvariant invariant(StableIdentityCandidateInvariantKind kind,
                                            ast::NodeId node) {
   return StableIdentityCandidateInvariant{kind, node};
@@ -73,6 +153,7 @@ ast::NodeId stableImplementationGenericBinder(const ast::Tree& tree, ast::NodeId
 
 struct DuplicateGenericParameterSyntax final {
   ast::NodeId node;
+  ast::NodeId firstNode;
   identity::SourceSpan first;
   identity::SourceSpan duplicate;
   identity::DeclaredDefinitionName name;
@@ -126,7 +207,7 @@ bool findFirstDuplicateGenericParameter(const CanonicalParsedModule& parsedModul
         }
         ZC_IF_SOME(firstValue, first) {
           ZC_IF_SOME(repeatedValue, repeated) {
-            duplicate = DuplicateGenericParameterSyntax{parameter, zc::mv(firstValue),
+            duplicate = DuplicateGenericParameterSyntax{parameter, prior.node, zc::mv(firstValue),
                                                         zc::mv(repeatedValue), nameValue.clone()};
           }
         }
@@ -615,6 +696,22 @@ private:
   zc::Vector<StableReference> stableReferences;
 };
 
+bool IdentitySyntaxSiteInventoryVerifierImpl::markIdentityRoots() {
+  StableSyntaxOracle syntax(tree, moduleNode);
+  if (!syntax.reconstruct()) { return false; }
+  for (const auto& definition : syntax.definitions()) {
+    if (!tree.contains(definition.node) || definition.node.value >= roots.size()) { return false; }
+    roots[definition.node.value] = 1;
+  }
+  for (const auto& implementation : syntax.implementations()) {
+    if (!tree.contains(implementation.node) || implementation.node.value >= roots.size()) {
+      return false;
+    }
+    roots[implementation.node.value] = 1;
+  }
+  return true;
+}
+
 zc::Maybe<const ProducedDefinitionIdentity&> producedDefinitionAt(
     const StableIdentityCandidateInventory& inventory, ast::NodeId node) {
   const ProducedDefinitionIdentity* result = nullptr;
@@ -727,6 +824,72 @@ bool sourceOrderLess(const VerifiedStableDefinitionCandidate& left,
 
 }  // namespace
 
+zc::Maybe<IdentitySyntaxSiteInventory> IdentitySyntaxSiteInventoryVerifier::reconstruct(
+    const CanonicalParsedModule& parsedModule, const identity::ModuleKey& module,
+    ast::NodeId moduleNode) {
+  return IdentitySyntaxSiteInventoryVerifierImpl(parsedModule, module, moduleNode).reconstruct();
+}
+
+bool IdentitySyntaxSiteInventoryVerifier::verify(const CanonicalParsedModule& parsedModule,
+                                                 const identity::ModuleKey& module,
+                                                 ast::NodeId moduleNode,
+                                                 const IdentitySyntaxSiteInventory& candidate) {
+  auto reconstructed = reconstruct(parsedModule, module, moduleNode);
+  return reconstructed != zc::none && ZC_ASSERT_NONNULL(reconstructed) == candidate;
+}
+
+zc::Maybe<IdentitySyntaxSiteKey> IdentitySyntaxSiteInventoryVerifier::resolve(
+    const CanonicalParsedModule& parsedModule, const IdentitySyntaxSiteInventory& inventory,
+    ast::NodeId node, const identity::SourceSpan& source) {
+  const auto& tree = parsedModule.tree();
+  if (!tree.contains(tree.root()) || !tree.contains(node) ||
+      !source.belongsTo(inventory.source()) ||
+      parsedModule.contentDigest() != inventory.sourceDigest()) {
+    return zc::none;
+  }
+  zc::Maybe<uint32_t> targetOrdinal;
+  zc::Vector<uint32_t> targetPath;
+  zc::Vector<uint32_t> path;
+  uint32_t ordinal = 0;
+  zc::Vector<uint8_t> visited(tree.nodeCount() + 1);
+  for (auto& value : visited) { value = 0; }
+  bool valid = true;
+  const auto walk = [&](auto&& self, ast::NodeId current) -> void {
+    if (!valid || !tree.contains(current) || current.value >= visited.size() ||
+        visited[current.value] != 0) {
+      valid = false;
+      return;
+    }
+    visited[current.value] = 1;
+    const uint32_t currentOrdinal = ordinal++;
+    if (current == node) {
+      targetOrdinal = currentOrdinal;
+      targetPath = cloneInventoryPath(path.asPtr());
+    }
+    uint32_t childSlot = 0;
+    ast::visitChildNodeIds(tree, tree.node(current), [&](ast::NodeId child) {
+      const uint32_t slot = childSlot++;
+      if (!valid) { return; }
+      path.add(slot);
+      self(self, child);
+      path.removeLast();
+    });
+  };
+  walk(walk, tree.root());
+  if (!valid || ordinal != tree.nodeCount() || targetOrdinal == zc::none) { return zc::none; }
+  auto key = IdentitySyntaxSiteKey::from(inventory.module().clone(), inventory.source().clone(),
+                                         zc::mv(targetPath));
+  if (key == zc::none) { return zc::none; }
+  auto entry = inventory.find(ZC_ASSERT_NONNULL(key));
+  if (entry == zc::none ||
+      ZC_ASSERT_NONNULL(entry).schemaPreorderOrdinal != ZC_ASSERT_NONNULL(targetOrdinal) ||
+      ZC_ASSERT_NONNULL(entry).site.range().byteStart() != source.byteStart() ||
+      ZC_ASSERT_NONNULL(entry).site.range().byteEnd() != source.byteEnd()) {
+    return zc::none;
+  }
+  return zc::mv(key);
+}
+
 static StableIdentityCandidateVerification reconstructStableCandidates(
     const CanonicalParsedModule& parsedModule, const identity::ModuleKey& module,
     ast::NodeId moduleNode, const StableIdentityCandidateProduction* production) {
@@ -777,8 +940,12 @@ static StableIdentityCandidateVerification reconstructStableCandidates(
           zc::Maybe<identity::SourceSpan> previous = zc::mv(duplicate.first);
           zc::Maybe<identity::DeclaredDefinitionName> identifier = zc::mv(duplicate.name);
           return StableIdentityCandidateSourceFailure{
-              StableIdentityCandidateSourceFailureKind::DuplicateGenericParameter, duplicate.node,
-              zc::mv(duplicate.duplicate), zc::mv(previous), zc::mv(identifier)};
+              StableIdentityCandidateSourceFailureKind::DuplicateGenericParameter,
+              duplicate.node,
+              zc::mv(duplicate.duplicate),
+              zc::Maybe<ast::NodeId>(duplicate.firstNode),
+              zc::mv(previous),
+              zc::mv(identifier)};
         }
         auto owners =
             buildOwners(entry.parentPath.asPtr(), definitionKeys.asPtr(), implKeys.asPtr());
@@ -808,8 +975,12 @@ static StableIdentityCandidateVerification reconstructStableCandidates(
               }
               ZC_IF_SOME(value, source) {
                 return StableIdentityCandidateSourceFailure{
-                    StableIdentityCandidateSourceFailureKind::ConstantExpressionNotAllowed, bad,
-                    zc::mv(value), zc::none, zc::none};
+                    StableIdentityCandidateSourceFailureKind::ConstantExpressionNotAllowed,
+                    bad,
+                    zc::mv(value),
+                    zc::none,
+                    zc::none,
+                    zc::none};
               }
             }
             return invariant(StableIdentityCandidateInvariantKind::InvalidDefinitionAuthority, bad);
@@ -861,8 +1032,9 @@ static StableIdentityCandidateVerification reconstructStableCandidates(
                         }
                         ZC_IF_SOME(producedValue, produced) {
                           if (producedValue.key != authorityValue.key()) {
-                            return invariant(StableIdentityCandidateInvariantKind::ProductionMismatch,
-                                             entry.node);
+                            return invariant(
+                                StableIdentityCandidateInvariantKind::ProductionMismatch,
+                                entry.node);
                           }
                         }
                         ZC_IF_SOME(candidateValue, candidate) {
@@ -923,8 +1095,12 @@ static StableIdentityCandidateVerification reconstructStableCandidates(
         zc::Maybe<identity::SourceSpan> previous = zc::mv(duplicate.first);
         zc::Maybe<identity::DeclaredDefinitionName> identifier = zc::mv(duplicate.name);
         return StableIdentityCandidateSourceFailure{
-            StableIdentityCandidateSourceFailureKind::DuplicateGenericParameter, duplicate.node,
-            zc::mv(duplicate.duplicate), zc::mv(previous), zc::mv(identifier)};
+            StableIdentityCandidateSourceFailureKind::DuplicateGenericParameter,
+            duplicate.node,
+            zc::mv(duplicate.duplicate),
+            zc::Maybe<ast::NodeId>(duplicate.firstNode),
+            zc::mv(previous),
+            zc::mv(identifier)};
       }
       auto owners = buildOwners(entry.parentPath.asPtr(), definitionKeys.asPtr(), implKeys.asPtr());
       auto header = CanonicalHeaderVerifier::reconstructImpl(tree, headerSyntax, entry);
@@ -1063,6 +1239,68 @@ StableIdentityCandidateVerifier::findDefinitionRedeclarations(
     }
   }
   return result;
+}
+
+StableIdentityAdmissionVerification StableIdentityAdmissionVerifier::verify(
+    const CanonicalParsedModule& parsedModule, const identity::ModuleKey& module,
+    ast::NodeId moduleNode, const IdentitySyntaxSiteInventory& sites,
+    const StableIdentityCandidateProduction& production) {
+  if (!IdentitySyntaxSiteInventoryVerifier::verify(parsedModule, module, moduleNode, sites)) {
+    return StableIdentityCandidateInvariant{StableIdentityCandidateInvariantKind::InvalidSyntaxSite,
+                                            moduleNode};
+  }
+  auto verification =
+      StableIdentityCandidateVerifier::verify(parsedModule, module, moduleNode, production);
+  if (verification.is<StableIdentityCandidateSourceFailure>()) {
+    return zc::mv(verification.get<StableIdentityCandidateSourceFailure>());
+  }
+  if (verification.is<StableIdentityCandidateInvariant>()) {
+    return verification.get<StableIdentityCandidateInvariant>();
+  }
+  auto verified = zc::mv(verification.get<VerifiedStableIdentityCandidateInventory>());
+  zc::Vector<StableIdentityAdmissionDefinition> definitions(verified.definitions.size());
+  for (const auto& definition : verified.definitions) {
+    auto inventoryEntry = sites.find(definition.site);
+    if (inventoryEntry == zc::none) {
+      return StableIdentityCandidateInvariant{
+          StableIdentityCandidateInvariantKind::InvalidSyntaxSite, definition.node};
+    }
+    const auto& entry = ZC_ASSERT_NONNULL(inventoryEntry);
+    if (entry.site.range().byteStart() != definition.source.byteStart() ||
+        entry.site.range().byteEnd() != definition.source.byteEnd()) {
+      return StableIdentityCandidateInvariant{
+          StableIdentityCandidateInvariantKind::InvalidSyntaxSite, definition.node};
+    }
+    definitions.add(StableIdentityAdmissionDefinition{entry.schemaPreorderOrdinal, definition.node,
+                                                      definition.authority.clone(),
+                                                      entry.site.clone()});
+  }
+  zc::Vector<StableIdentityAdmissionImplementation> implementations(
+      verified.implementations.size());
+  for (const auto& implementation : verified.implementations) {
+    auto inventoryEntry = sites.find(implementation.site);
+    if (inventoryEntry == zc::none) {
+      return StableIdentityCandidateInvariant{
+          StableIdentityCandidateInvariantKind::InvalidSyntaxSite, implementation.node};
+    }
+    const auto& entry = ZC_ASSERT_NONNULL(inventoryEntry);
+    if (entry.site.range().byteStart() != implementation.source.byteStart() ||
+        entry.site.range().byteEnd() != implementation.source.byteEnd()) {
+      return StableIdentityCandidateInvariant{
+          StableIdentityCandidateInvariantKind::InvalidSyntaxSite, implementation.node};
+    }
+    implementations.add(StableIdentityAdmissionImplementation{
+        entry.schemaPreorderOrdinal, implementation.node, implementation.authority.clone(),
+        entry.site.clone()});
+  }
+  auto admission = StableIdentityAdmission::fromVerified(
+      module.clone(), parsedModule.source().clone(), parsedModule.contentDigest(),
+      zc::mv(definitions), zc::mv(implementations));
+  if (admission == zc::none) {
+    return StableIdentityCandidateInvariant{
+        StableIdentityCandidateInvariantKind::ProductionMismatch, moduleNode};
+  }
+  return zc::mv(ZC_ASSERT_NONNULL(admission));
 }
 
 }  // namespace zomlang::compiler::binder

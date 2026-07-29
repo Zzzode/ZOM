@@ -30,12 +30,14 @@ class QueryTestSemanticContextResources final : public query::SemanticContextCap
 query::QueryDatabase queryDatabase() {
   auto resources = zc::heap<QueryTestSemanticContextResources>();
   auto arena = zc::arc<query::SemanticContextCapabilityArena>(zc::mv(resources));
-  return query::QueryDatabase(scheduler(), zc::mv(arena));
+  return query::QueryDatabase(scheduler(), query::productionQueryDescriptorInventory(),
+                              zc::mv(arena));
 }
 
 query::InputTransaction transaction(query::QueryDatabase& database) {
-  auto result = database.beginInputTransaction();
-  return zc::mv(ZC_REQUIRE_NONNULL(result));
+  auto result = database.beginInputTransaction(database.snapshot().revision());
+  ZC_REQUIRE(result.isOpened());
+  return zc::mv(result).takeTransaction();
 }
 
 source::core::VerifiedCoreDistribution admittedDistribution() {
@@ -99,8 +101,10 @@ void stageCoreSourceInputs(query::InputTransaction& write, const identity::Crate
     auto stable = identity::source_query::StableSourceQueryKey::fromVerified(sourceKey);
     ZC_REQUIRE(snapshot != zc::none);
     ZC_REQUIRE(stable != zc::none);
-    ZC_REQUIRE(write.set<identity::source_query::SourceSnapshotInput>(
-        ZC_REQUIRE_NONNULL(stable), ZC_REQUIRE_NONNULL(snapshot)));
+    ZC_REQUIRE(write
+                   .set<identity::source_query::SourceSnapshotInput>(ZC_REQUIRE_NONNULL(stable),
+                                                                     ZC_REQUIRE_NONNULL(snapshot))
+                   .isApplied());
   }
 }
 
@@ -149,10 +153,8 @@ ZC_TEST("Core query contextual keys require exact core membership") {
 }
 
 ZC_TEST("Core distribution query input has exact high durability codecs") {
-  auto contract = CoreDistributionInput::contract();
-  ZC_EXPECT(contract.domain() == "zom.query.core-distribution"_zc);
-  ZC_EXPECT(contract.isInput());
-  ZC_EXPECT(contract.inputDurability() == query::Durability::High);
+  ZC_EXPECT(CoreDistributionInput::descriptor.domain == "zom.query.core-distribution"_zc);
+  ZC_EXPECT(CoreDistributionInput::descriptor.durability == query::Durability::High);
 
   auto key = identity::ToolchainUnitKey::core();
   auto encodedKey = CoreDistributionInput::encodeKey(key);
@@ -184,14 +186,15 @@ ZC_TEST("Core distribution query input has exact high durability codecs") {
 ZC_TEST("Core distribution query input round trips through the query database") {
   auto database = queryDatabase();
   ZC_REQUIRE(registerCoreLibraryQueryProvider(database));
-  ZC_EXPECT(database.registerInputKind<CoreDistributionInput>() == zc::none);
+  auto duplicate = database.registerDescriptor<CoreDistributionInput>();
+  ZC_EXPECT(!duplicate.isRegistered());
 
   auto value = source::core::initialCoreDistributionInput();
   ZC_REQUIRE(value != zc::none);
   auto key = identity::ToolchainUnitKey::core();
   auto write = transaction(database);
-  ZC_REQUIRE(write.set<CoreDistributionInput>(key, ZC_REQUIRE_NONNULL(value)));
-  ZC_REQUIRE(write.commit() != zc::none);
+  ZC_REQUIRE(write.set<CoreDistributionInput>(key, ZC_REQUIRE_NONNULL(value)).isApplied());
+  ZC_REQUIRE(write.commit().isCommitted());
 
   auto snapshot = database.snapshot();
   auto retained = snapshot.get<CoreDistributionInput>(key);
@@ -216,9 +219,11 @@ ZC_TEST("Active crates derive a singleton toolchain core from the distribution i
   auto value = source::core::initialCoreDistributionInput();
   ZC_REQUIRE(value != zc::none);
   auto write = transaction(database);
-  ZC_REQUIRE(write.set<CoreDistributionInput>(identity::ToolchainUnitKey::core(),
-                                              ZC_REQUIRE_NONNULL(value)));
-  ZC_REQUIRE(write.commit() != zc::none);
+  ZC_REQUIRE(
+      write
+          .set<CoreDistributionInput>(identity::ToolchainUnitKey::core(), ZC_REQUIRE_NONNULL(value))
+          .isApplied());
+  ZC_REQUIRE(write.commit().isCommitted());
 
   auto snapshot = database.snapshot();
   auto active =
@@ -250,10 +255,12 @@ ZC_TEST("Active sources derive exact toolchain core membership and source depend
   ZC_REQUIRE(stableCrate != zc::none);
   ZC_REQUIRE(distribution != zc::none);
   auto write = transaction(database);
-  ZC_REQUIRE(write.set<CoreDistributionInput>(identity::ToolchainUnitKey::core(),
-                                              ZC_REQUIRE_NONNULL(distribution)));
+  ZC_REQUIRE(write
+                 .set<CoreDistributionInput>(identity::ToolchainUnitKey::core(),
+                                             ZC_REQUIRE_NONNULL(distribution))
+                 .isApplied());
   stageCoreSourceInputs(write, crate, ZC_REQUIRE_NONNULL(distribution));
-  ZC_REQUIRE(write.commit() != zc::none);
+  ZC_REQUIRE(write.commit().isCommitted());
 
   auto snapshot = database.snapshot();
   auto active =
@@ -348,9 +355,11 @@ ZC_TEST(
   auto accepted = source::core::initialCoreDistributionInput();
   ZC_REQUIRE(accepted != zc::none);
   auto existing = transaction(database);
-  ZC_REQUIRE(existing.set<CoreDistributionInput>(identity::ToolchainUnitKey::core(),
-                                                 ZC_REQUIRE_NONNULL(accepted)));
-  ZC_REQUIRE(existing.commit() != zc::none);
+  ZC_REQUIRE(existing
+                 .set<CoreDistributionInput>(identity::ToolchainUnitKey::core(),
+                                             ZC_REQUIRE_NONNULL(accepted))
+                 .isApplied());
+  ZC_REQUIRE(existing.commit().isCommitted());
 
   zc::Vector<identity::CrateKey> consumers;
   consumers.add(tests::test_identity_detail::crate());

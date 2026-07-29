@@ -342,7 +342,51 @@ bool validateBoundaryInventory(
   return true;
 }
 
+zc::Vector<ModuleBodyDefinitionBoundaryInput> definitionBoundaries(
+    const CanonicalParsedModule& parsedModule, ast::NodeId moduleNode,
+    const StableIdentityAdmission& admission) {
+  const auto inventory = DefinitionInventory::collect(parsedModule.tree());
+  const ast::NodeId inventoryModuleNode =
+      moduleNode == parsedModule.tree().root() ? ast::NodeId() : moduleNode;
+  zc::Vector<ModuleBodyDefinitionBoundaryInput> result(admission.definitions().size());
+  for (const auto& definition : admission.definitions()) {
+    for (const auto& expected : inventory.definitions()) {
+      if (expected.node == definition.node && expected.moduleNode == inventoryModuleNode &&
+          expected.site.value().is<DeclarationDefinitionSite>()) {
+        result.add(
+            ModuleBodyDefinitionBoundaryInput{definition.node, definition.authority.key().clone()});
+        break;
+      }
+    }
+  }
+  return result;
+}
+
+zc::Vector<ModuleBodyImplementationBoundaryInput> implementationBoundaries(
+    const StableIdentityAdmission& admission) {
+  zc::Vector<ModuleBodyImplementationBoundaryInput> result(admission.implementations().size());
+  for (const auto& implementation : admission.implementations()) {
+    result.add(ModuleBodyImplementationBoundaryInput{
+        implementation.node, ImplSourceOccurrenceKey::from(implementation.authority.key().clone(),
+                                                           implementation.site.key().clone())});
+  }
+  return result;
+}
+
 }  // namespace
+
+ModuleBodySyntaxProjectionResult ModuleBodySyntaxProducer::produce(
+    const CanonicalParsedModule& parsedModule, const identity::ModuleKey& module,
+    ast::NodeId moduleNode, const StableIdentityAdmission& admission) {
+  if (!sameModule(admission.module(), module) ||
+      !admission.source().sameAs(parsedModule.source()) ||
+      admission.sourceDigest() != parsedModule.contentDigest()) {
+    return failure(ModuleBodySyntaxFailureKind::InvalidBoundaryInventory);
+  }
+  auto definitions = definitionBoundaries(parsedModule, moduleNode, admission);
+  auto implementations = implementationBoundaries(admission);
+  return produce(parsedModule, module, moduleNode, definitions.asPtr(), implementations.asPtr());
+}
 
 ModuleBodySyntaxProjectionResult ModuleBodySyntaxProducer::produce(
     const CanonicalParsedModule& parsedModule, const identity::ModuleKey& module,

@@ -258,8 +258,9 @@ struct UserPackageActiveSourcesInput final {
   using Key = StableCrateQueryKey;
   using Value = CanonicalSourceSet;
 
-  ZC_NODISCARD static zc::StringPtr domain();
-  ZC_NODISCARD static query::QueryKindContract contract();
+  static constexpr query::InputDescriptorMetadata descriptor{
+      "UserPackageActiveSourcesInput"_zcc, "zom.query.user-package-active-sources"_zcc,
+      query::Durability::Low};
   ZC_NODISCARD static zc::Array<uint8_t> encodeKey(const Key& key);
   ZC_NODISCARD static zc::Maybe<Key> decodeKey(zc::ArrayPtr<const uint8_t> bytes);
   ZC_NODISCARD static zc::Array<uint8_t> encodeValue(const Value& value);
@@ -271,8 +272,14 @@ struct ActiveSourcesQuery final {
   using Key = StableCrateQueryKey;
   using Value = CanonicalSourceSet;
 
-  ZC_NODISCARD static zc::StringPtr domain();
-  ZC_NODISCARD static query::QueryKindContract contract();
+  static constexpr query::SemanticDescriptorMetadata descriptor{
+      "ActiveSourcesQuery"_zcc,
+      "zom.query.active-sources"_zcc,
+      query::ReuseClass::Semantic,
+      query::RetentionClass::Retained,
+      query::QueryEqualityPolicy::CanonicalBytes,
+      query::QueryCyclePolicy::Reject,
+      query::QueryCostClass::Linear};
   ZC_NODISCARD static zc::Array<uint8_t> encodeKey(const Key& key);
   ZC_NODISCARD static zc::Maybe<Key> decodeKey(zc::ArrayPtr<const uint8_t> bytes);
   ZC_NODISCARD static zc::Array<uint8_t> encodeValue(const Value& value);
@@ -288,8 +295,14 @@ struct ActiveCratesQuery final {
   using Key = CompilationRootSetQueryKey;
   using Value = CanonicalCrateSet;
 
-  ZC_NODISCARD static zc::StringPtr domain();
-  ZC_NODISCARD static query::QueryKindContract contract();
+  static constexpr query::SemanticDescriptorMetadata descriptor{
+      "ActiveCratesQuery"_zcc,
+      "zom.query.active-crates"_zcc,
+      query::ReuseClass::Semantic,
+      query::RetentionClass::Retained,
+      query::QueryEqualityPolicy::CanonicalBytes,
+      query::QueryCyclePolicy::Reject,
+      query::QueryCostClass::Linear};
   ZC_NODISCARD static zc::Array<uint8_t> encodeKey(const Key& key);
   ZC_NODISCARD static zc::Maybe<Key> decodeKey(zc::ArrayPtr<const uint8_t> bytes);
   ZC_NODISCARD static zc::Array<uint8_t> encodeValue(const Value& value);

@@ -4,6 +4,8 @@
 #include "zomlang/compiler/ast/generated/node-schema.h"
 #include "zomlang/compiler/binder/definition-inventory.h"
 #include "zomlang/compiler/binder/parsed-module.h"
+#include "zomlang/compiler/binder/stable-binding-codec.h"
+#include "zomlang/compiler/binder/stable-binding-diagnostic-fact.h"
 #include "zomlang/compiler/binder/stable-identity-candidate-producer.h"
 #include "zomlang/compiler/binder/stable-identity-candidate-verifier.h"
 #include "zomlang/compiler/diagnostics/toolchain-module-root-argument.h"
@@ -15,32 +17,16 @@
 namespace zomlang::compiler::driver::incremental_binding_query {
 namespace {
 
-constexpr zc::StringPtr kRejectedDomain = "zom.named-identity-inventory-rejected"_zc;
-constexpr uint64_t kMaximumParseFailureBytes = 64 * 1024 * 1024;
-
-enum class RejectedKind : uint8_t {
-  ParseRejected = 0x01,
-  ConstantExpressionNotAllowed = 0x02,
-  DuplicateGenericParameter = 0x03
-};
+constexpr zc::StringPtr kIdentitySyntaxSiteInventoryWitnessDomain =
+    "zom.query.identity-syntax-site-inventory-witness"_zc;
+constexpr zc::StringPtr kStableIdentityAdmissionWitnessDomain =
+    "zom.query.stable-identity-admission-witness"_zc;
 
 struct LoadedIdentitySource final {
   identity::ModuleKey module;
   binder::CanonicalParsedModule parsed;
   ast::NodeId moduleNode;
 };
-
-query::QueryKindContract inventoryContract(zc::StringPtr domain) {
-  auto contract = query::QueryKindContract::derived(domain, query::ReuseClass::Semantic,
-                                                    query::RetentionClass::Retained);
-  return zc::mv(ZC_REQUIRE_NONNULL(contract));
-}
-
-query::QueryKindContract siteContract(zc::StringPtr domain) {
-  auto contract = query::QueryKindContract::derived(domain, query::ReuseClass::RevisionLocal,
-                                                    query::RetentionClass::Retained);
-  return zc::mv(ZC_REQUIRE_NONNULL(contract));
-}
 
 zc::Maybe<identity::ModuleKey> decodeModule(const StableModuleQueryKey& key) {
   identity::CanonicalDecoder decoder(key.canonicalModuleBytes());
@@ -84,46 +70,6 @@ zc::Maybe<ast::NodeId> selectModuleNode(const ast::Tree& tree, const identity::M
   return declaration;
 }
 
-zc::Array<uint8_t> encodeRejected(RejectedKind kind, zc::ArrayPtr<const uint8_t> payload = {}) {
-  identity::CanonicalEncoder encoder;
-  encoder.encodeByteString(kRejectedDomain.asBytes());
-  encoder.encodeUint8(static_cast<uint8_t>(kind));
-  encoder.encodeByteString(payload);
-  return encoder.finish();
-}
-
-zc::Maybe<zc::Array<uint8_t>> decodeRejected(zc::ArrayPtr<const uint8_t> bytes) {
-  identity::CanonicalDecoder decoder(bytes);
-  auto domain = decoder.decodeByteString(kRejectedDomain.size());
-  auto rawKind = decoder.decodeUint8();
-  auto payload = decoder.decodeByteString(kMaximumParseFailureBytes);
-  if (domain == zc::none || rawKind == zc::none || payload == zc::none || !decoder.finished() ||
-      ZC_ASSERT_NONNULL(domain).asPtr() != kRejectedDomain.asBytes()) {
-    return zc::none;
-  }
-  const auto kind = static_cast<RejectedKind>(ZC_ASSERT_NONNULL(rawKind));
-  if (kind == RejectedKind::ParseRejected) {
-    if (parser::ParseRejected::decodeCanonical(ZC_ASSERT_NONNULL(payload).asPtr()) == zc::none) {
-      return zc::none;
-    }
-  } else if ((kind != RejectedKind::ConstantExpressionNotAllowed &&
-              kind != RejectedKind::DuplicateGenericParameter) ||
-             ZC_ASSERT_NONNULL(payload).size() != 0) {
-    return zc::none;
-  }
-  return zc::heapArray<uint8_t>(bytes);
-}
-
-zc::Array<uint8_t> encodeRejected(const binder::StableIdentityCandidateSourceFailure& failure) {
-  switch (failure.kind) {
-    case binder::StableIdentityCandidateSourceFailureKind::ConstantExpressionNotAllowed:
-      return encodeRejected(RejectedKind::ConstantExpressionNotAllowed);
-    case binder::StableIdentityCandidateSourceFailureKind::DuplicateGenericParameter:
-      return encodeRejected(RejectedKind::DuplicateGenericParameter);
-  }
-  ZC_UNREACHABLE;
-}
-
 template <typename Context>
 query::TypedQueryResult<LoadedIdentitySource> loadIdentitySource(Context& context,
                                                                  const StableModuleQueryKey& key) {
@@ -151,19 +97,22 @@ query::TypedQueryResult<LoadedIdentitySource> loadIdentitySource(Context& contex
   }
   auto parsed =
       context.template getCapability<parser::ParseSourceQuery>(ZC_ASSERT_NONNULL(sourceKey));
-  if (parsed.isRuntimeFailure()) {
+  if (parsed.isRuntimeRejected()) {
     return query::TypedQueryResult<LoadedIdentitySource>::runtimeFailure(parsed.runtimeFailure());
   }
-  if (parsed.kind() == query::QueryValueKind::SemanticFailure) {
+  if (parsed.isSourceRejected()) {
+    using Contract =
+        query::CapabilityFailureContract<parser::ParseSourceQuery,
+                                         query::SourceRejection<diagnostics::DiagnosticFact>>;
     return query::TypedQueryResult<LoadedIdentitySource>::semanticFailure(
-        encodeRejected(RejectedKind::ParseRejected, parsed.semanticFailureBytes()));
+        Contract::encode(parsed.diagnostics()));
   }
-  if (parsed.kind() != query::QueryValueKind::Value) {
+  if (!parsed.isPublished()) {
     return query::TypedQueryResult<LoadedIdentitySource>::runtimeFailure(
         query::QueryRuntimeFailure::ProviderRejected);
   }
   auto canonical =
-      binder::CanonicalParsedModule::fromQueryResult(parsed.value().capability().clone());
+      binder::CanonicalParsedModule::fromQueryResult(parsed.lease().capability().clone());
   if (canonical == zc::none) {
     return query::TypedQueryResult<LoadedIdentitySource>::runtimeFailure(
         query::QueryRuntimeFailure::InvariantViolation);
@@ -179,125 +128,55 @@ query::TypedQueryResult<LoadedIdentitySource> loadIdentitySource(Context& contex
                            ZC_ASSERT_NONNULL(moduleNode)});
 }
 
-zc::Maybe<binder::NamedDefinitionInventory> producedDefinitionInventory(
-    const identity::ModuleKey& module, const binder::StableIdentityCandidateInventory& production) {
-  zc::Vector<identity::DefinitionIdentityAuthority> authorities;
-  for (const auto& candidate : production.candidates()) {
-    if (candidate.kind() != binder::PreAdmissionIdentityKind::Definition) { continue; }
-    auto record = candidate.definitionRecord();
-    if (record == zc::none) { return zc::none; }
-    zc::Maybe<identity::OverloadHeaderAuthority> overload;
-    ZC_IF_SOME(value, candidate.overloadHeader()) { overload = value.clone(); }
-    ZC_IF_SOME(value, record) {
-      auto authority = identity::DefinitionIdentityAuthority::from(value.clone(), zc::mv(overload));
-      if (authority == zc::none) { return zc::none; }
-      authorities.add(zc::mv(ZC_ASSERT_NONNULL(authority)));
-    }
+zc::Maybe<binder::NamedDefinitionInventory> admittedDefinitionInventory(
+    const binder::StableIdentityAdmission& admission) {
+  zc::Vector<identity::DefinitionIdentityAuthority> authorities(admission.definitions().size());
+  for (const auto& definition : admission.definitions()) {
+    authorities.add(definition.authority.clone());
   }
-  return binder::NamedDefinitionInventory::fromVerified(module, authorities.asPtr());
+  return binder::NamedDefinitionInventory::fromVerified(admission.module(), authorities.asPtr());
 }
 
-zc::Maybe<binder::NamedImplementationInventory> producedImplementationInventory(
-    const identity::ModuleKey& module, const binder::StableIdentityCandidateInventory& production) {
-  zc::Vector<identity::ImplIdentityAuthority> authorities;
-  for (const auto& candidate : production.candidates()) {
-    if (candidate.kind() != binder::PreAdmissionIdentityKind::Implementation) { continue; }
-    auto record = candidate.implRecord();
-    if (record == zc::none) { return zc::none; }
-    ZC_IF_SOME(value, record) {
-      authorities.add(identity::ImplIdentityAuthority::from(value.clone()));
-    }
+zc::Maybe<binder::NamedImplementationInventory> admittedImplementationInventory(
+    const binder::StableIdentityAdmission& admission) {
+  zc::Vector<identity::ImplIdentityAuthority> authorities(admission.implementations().size());
+  for (const auto& implementation : admission.implementations()) {
+    authorities.add(implementation.authority.clone());
   }
-  return binder::NamedImplementationInventory::fromVerified(module, authorities.asPtr());
+  return binder::NamedImplementationInventory::fromVerified(admission.module(),
+                                                            authorities.asPtr());
 }
 
-zc::Maybe<binder::NamedDefinitionInventory> reconstructedDefinitionInventory(
-    const identity::ModuleKey& module,
-    const binder::VerifiedStableIdentityCandidateInventory& reconstruction) {
-  zc::Vector<identity::DefinitionIdentityAuthority> authorities(reconstruction.definitions.size());
-  for (const auto& candidate : reconstruction.definitions) {
-    authorities.add(candidate.authority.clone());
-  }
-  return binder::NamedDefinitionInventory::fromVerified(module, authorities.asPtr());
-}
-
-zc::Maybe<binder::NamedImplementationInventory> reconstructedImplementationInventory(
-    const identity::ModuleKey& module,
-    const binder::VerifiedStableIdentityCandidateInventory& reconstruction) {
-  zc::Vector<identity::ImplIdentityAuthority> authorities(reconstruction.implementations.size());
-  for (const auto& candidate : reconstruction.implementations) {
-    authorities.add(candidate.authority.clone());
-  }
-  return binder::NamedImplementationInventory::fromVerified(module, authorities.asPtr());
-}
-
-zc::Maybe<binder::RevisionLocalDefinitionSites> producedDefinitionSites(
-    const identity::ModuleKey& module, const identity::SourceFileKey& source,
-    const binder::NamedDefinitionInventory& inventory,
-    const binder::StableIdentityCandidateInventory& production) {
-  zc::Vector<binder::RevisionLocalDefinitionSite> sites(production.definitionSites().size());
-  for (const auto& definition : production.definitionSites()) {
+zc::Maybe<binder::RevisionLocalDefinitionSites> admittedDefinitionSites(
+    const binder::StableIdentityAdmission& admission,
+    const binder::NamedDefinitionInventory& inventory) {
+  zc::Vector<binder::RevisionLocalDefinitionSite> sites(admission.definitions().size());
+  for (const auto& definition : admission.definitions()) {
     auto site = binder::RevisionLocalDefinitionSite::from(
-        definition.node, definition.key.clone(), definition.site.clone(),
-        definition.source.byteStart(), definition.source.byteEnd());
+        definition.node, definition.authority.key().clone(), definition.site.key().clone(),
+        definition.site.range().byteStart(), definition.site.range().byteEnd());
     if (site == zc::none) { return zc::none; }
     sites.add(zc::mv(ZC_ASSERT_NONNULL(site)));
   }
-  return binder::RevisionLocalDefinitionSites::fromVerified(module, source, inventory,
-                                                            zc::mv(sites));
+  return binder::RevisionLocalDefinitionSites::fromVerified(admission.module(), admission.source(),
+                                                            inventory, zc::mv(sites));
 }
 
-zc::Maybe<binder::RevisionLocalImplementationSites> producedImplementationSites(
-    const identity::ModuleKey& module, const identity::SourceFileKey& source,
-    const binder::NamedImplementationInventory& inventory,
-    const binder::StableIdentityCandidateInventory& production) {
-  zc::Vector<binder::RevisionLocalImplementationSite> sites(
-      production.implementationSites().size());
-  for (const auto& implementation : production.implementationSites()) {
-    auto site = binder::RevisionLocalImplementationSite::from(
-        implementation.node,
-        binder::ImplSourceOccurrenceKey::from(implementation.key.clone(),
-                                              implementation.site.clone()),
-        implementation.source.byteStart(), implementation.source.byteEnd());
-    if (site == zc::none) { return zc::none; }
-    sites.add(zc::mv(ZC_ASSERT_NONNULL(site)));
-  }
-  return binder::RevisionLocalImplementationSites::fromVerified(module, source, inventory,
-                                                                zc::mv(sites));
-}
-
-zc::Maybe<binder::RevisionLocalDefinitionSites> reconstructedDefinitionSites(
-    const identity::ModuleKey& module, const identity::SourceFileKey& source,
-    const binder::NamedDefinitionInventory& inventory,
-    const binder::VerifiedStableIdentityCandidateInventory& reconstruction) {
-  zc::Vector<binder::RevisionLocalDefinitionSite> sites(reconstruction.definitions.size());
-  for (const auto& definition : reconstruction.definitions) {
-    auto site = binder::RevisionLocalDefinitionSite::from(
-        definition.node, definition.authority.key().clone(), definition.site.clone(),
-        definition.source.byteStart(), definition.source.byteEnd());
-    if (site == zc::none) { return zc::none; }
-    sites.add(zc::mv(ZC_ASSERT_NONNULL(site)));
-  }
-  return binder::RevisionLocalDefinitionSites::fromVerified(module, source, inventory,
-                                                            zc::mv(sites));
-}
-
-zc::Maybe<binder::RevisionLocalImplementationSites> reconstructedImplementationSites(
-    const identity::ModuleKey& module, const identity::SourceFileKey& source,
-    const binder::NamedImplementationInventory& inventory,
-    const binder::VerifiedStableIdentityCandidateInventory& reconstruction) {
-  zc::Vector<binder::RevisionLocalImplementationSite> sites(reconstruction.implementations.size());
-  for (const auto& implementation : reconstruction.implementations) {
+zc::Maybe<binder::RevisionLocalImplementationSites> admittedImplementationSites(
+    const binder::StableIdentityAdmission& admission,
+    const binder::NamedImplementationInventory& inventory) {
+  zc::Vector<binder::RevisionLocalImplementationSite> sites(admission.implementations().size());
+  for (const auto& implementation : admission.implementations()) {
     auto site = binder::RevisionLocalImplementationSite::from(
         implementation.node,
         binder::ImplSourceOccurrenceKey::from(implementation.authority.key().clone(),
-                                              implementation.site.clone()),
-        implementation.source.byteStart(), implementation.source.byteEnd());
+                                              implementation.site.key().clone()),
+        implementation.site.range().byteStart(), implementation.site.range().byteEnd());
     if (site == zc::none) { return zc::none; }
     sites.add(zc::mv(ZC_ASSERT_NONNULL(site)));
   }
-  return binder::RevisionLocalImplementationSites::fromVerified(module, source, inventory,
-                                                                zc::mv(sites));
+  return binder::RevisionLocalImplementationSites::fromVerified(
+      admission.module(), admission.source(), inventory, zc::mv(sites));
 }
 
 template <typename Value>
@@ -317,21 +196,68 @@ query::TypedQueryResult<Value> propagateLoadFailure(
       query::QueryRuntimeFailure::InvariantViolation);
 }
 
-template <typename Capability>
-query::CapabilityProviderResult<Capability> propagateLoadCapabilityFailure(
-    const query::TypedQueryResult<LoadedIdentitySource>& loaded) {
+template <typename Descriptor>
+query::CapabilityProviderResult<Descriptor> propagateLoadCapabilityFailure(
+    const query::TypedQueryResult<LoadedIdentitySource>& loaded, const StableModuleQueryKey& key) {
   if (loaded.isRuntimeFailure()) {
-    return query::CapabilityProviderResult<Capability>::runtimeFailure(loaded.runtimeFailure());
+    return query::CapabilityProviderResult<Descriptor>::runtimeRejected(loaded.runtimeFailure());
   }
   if (loaded.kind() == query::QueryValueKind::Absence) {
-    return query::CapabilityProviderResult<Capability>::absence();
+    auto module = decodeModule(key);
+    if (module == zc::none) {
+      return query::CapabilityProviderResult<Descriptor>::runtimeRejected(
+          query::QueryRuntimeFailure::InvalidKeyEncoding);
+    }
+    zc::Maybe<binder::LocalSyntaxPath> noPath;
+    auto failure = binder::BinderKeyFailure::from(
+        binder::BinderKeyFailureKind::MissingSelectedModuleSource,
+        binder::BinderQueryOwner::module(zc::mv(ZC_ASSERT_NONNULL(module))), zc::mv(noPath));
+    if (failure == zc::none) {
+      return query::CapabilityProviderResult<Descriptor>::runtimeRejected(
+          query::QueryRuntimeFailure::InvariantViolation);
+    }
+    return query::CapabilityProviderResult<Descriptor>::template keyRejected<
+        binder::BinderKeyFailure>(zc::mv(ZC_ASSERT_NONNULL(failure)));
   }
   if (loaded.kind() == query::QueryValueKind::SemanticFailure) {
-    return query::CapabilityProviderResult<Capability>::semanticFailure(
-        zc::heapArray<uint8_t>(loaded.semanticFailureBytes()));
+    using Contract =
+        query::CapabilityFailureContract<Descriptor,
+                                         query::SourceRejection<diagnostics::DiagnosticFact>>;
+    auto diagnostics = Contract::decode(loaded.semanticFailureBytes());
+    if (diagnostics == zc::none) {
+      return query::CapabilityProviderResult<Descriptor>::runtimeRejected(
+          query::QueryRuntimeFailure::InvariantViolation);
+    }
+    return query::CapabilityProviderResult<Descriptor>::template sourceRejected<
+        diagnostics::DiagnosticFact>(zc::mv(ZC_ASSERT_NONNULL(diagnostics)));
   }
-  return query::CapabilityProviderResult<Capability>::runtimeFailure(
+  return query::CapabilityProviderResult<Descriptor>::runtimeRejected(
       query::QueryRuntimeFailure::InvariantViolation);
+}
+
+template <typename TargetDescriptor, typename SourceDescriptor>
+query::CapabilityProviderResult<TargetDescriptor> forwardSourceRejection(
+    const query::CapabilityDemandResult<SourceDescriptor>& source) {
+  using SourceContract =
+      query::CapabilityFailureContract<SourceDescriptor,
+                                       query::SourceRejection<diagnostics::DiagnosticFact>>;
+  using TargetContract =
+      query::CapabilityFailureContract<TargetDescriptor,
+                                       query::SourceRejection<diagnostics::DiagnosticFact>>;
+  auto diagnostics = TargetContract::decode(SourceContract::encode(source.diagnostics()).asPtr());
+  if (diagnostics == zc::none) {
+    return query::CapabilityProviderResult<TargetDescriptor>::runtimeRejected(
+        query::QueryRuntimeFailure::InvariantViolation);
+  }
+  return query::CapabilityProviderResult<TargetDescriptor>::template sourceRejected<
+      diagnostics::DiagnosticFact>(zc::mv(ZC_ASSERT_NONNULL(diagnostics)));
+}
+
+template <typename TargetDescriptor, typename SourceDescriptor>
+query::CapabilityProviderResult<TargetDescriptor> forwardKeyRejection(
+    const query::CapabilityDemandResult<SourceDescriptor>& source) {
+  return query::CapabilityProviderResult<TargetDescriptor>::template keyRejected<
+      binder::BinderKeyFailure>(source.keyFailure().clone());
 }
 
 bool verifyLoadFailure(const query::TypedQueryResult<LoadedIdentitySource>& loaded,
@@ -342,21 +268,249 @@ bool verifyLoadFailure(const query::TypedQueryResult<LoadedIdentitySource>& load
     return actualKind == query::QueryValueKind::Absence;
   }
   if (loaded.kind() == query::QueryValueKind::SemanticFailure) {
-    return actualKind == query::QueryValueKind::SemanticFailure &&
-           decodeRejected(actualFailure) != zc::none &&
+    auto decoded = binder::decodeStableBindingDiagnosticFacts(actualFailure);
+    return actualKind == query::QueryValueKind::SemanticFailure && decoded != zc::none &&
            loaded.semanticFailureBytes() == actualFailure;
   }
   return false;
 }
 
-}  // namespace
-
-zc::StringPtr NamedDefinitionInventoryQuery::domain() {
-  return "zom.query.named-definition-inventory"_zc;
+void encodeSourceSpan(identity::CanonicalEncoder& encoder, const identity::SourceSpan& source) {
+  source.encode(encoder);
 }
 
-query::QueryKindContract NamedDefinitionInventoryQuery::contract() {
-  return inventoryContract(domain());
+zc::Array<uint8_t> encodeIdentitySyntaxSiteInventoryWitness(
+    const binder::IdentitySyntaxSiteInventory& inventory) {
+  identity::CanonicalEncoder encoder;
+  encoder.encodeByteString(kIdentitySyntaxSiteInventoryWitnessDomain.asBytes());
+  encoder.encodeUint8(0);
+  inventory.module().encode(encoder);
+  inventory.source().encode(encoder);
+  encoder.encodeDigest(inventory.sourceDigest());
+  encoder.encodeSequenceSize(inventory.entries().size());
+  for (const auto& entry : inventory.entries()) {
+    entry.site.key().encode(encoder);
+    encoder.encodeUint32(entry.schemaPreorderOrdinal);
+    encodeSourceSpan(encoder, entry.site.range());
+  }
+  return encoder.finish();
+}
+
+void encodeDefinitionAuthority(identity::CanonicalEncoder& encoder,
+                               const identity::DefinitionIdentityAuthority& authority) {
+  authority.record().encode(encoder);
+  ZC_IF_SOME(overload, authority.overloadHeaderAuthority()) {
+    encoder.encodeSome();
+    overload.digest().encode(encoder);
+    overload.header().encode(encoder);
+  } else {
+    encoder.encodeNone();
+  }
+}
+
+zc::Array<uint8_t> encodeStableIdentityAdmissionWitness(
+    const binder::StableIdentityAdmission& admission) {
+  identity::CanonicalEncoder encoder;
+  encoder.encodeByteString(kStableIdentityAdmissionWitnessDomain.asBytes());
+  encoder.encodeUint8(0);
+  admission.module().encode(encoder);
+  admission.source().encode(encoder);
+  encoder.encodeDigest(admission.sourceDigest());
+  encoder.encodeSequenceSize(admission.definitions().size());
+  for (const auto& definition : admission.definitions()) {
+    encoder.encodeUint32(definition.schemaPreorderOrdinal);
+    encodeDefinitionAuthority(encoder, definition.authority);
+    definition.site.key().encode(encoder);
+    encodeSourceSpan(encoder, definition.site.range());
+  }
+  encoder.encodeSequenceSize(admission.implementations().size());
+  for (const auto& implementation : admission.implementations()) {
+    encoder.encodeUint32(implementation.schemaPreorderOrdinal);
+    implementation.authority.record().encode(encoder);
+    implementation.site.key().encode(encoder);
+    encodeSourceSpan(encoder, implementation.site.range());
+  }
+  return encoder.finish();
+}
+
+template <typename Descriptor>
+query::CapabilityProviderResult<Descriptor> sourceRejectionFromFact(
+    diagnostics::DiagnosticFact&& fact) {
+  zc::Vector<diagnostics::DiagnosticFact> facts;
+  facts.add(zc::mv(fact));
+  auto encoded = binder::encodeStableBindingDiagnosticFacts(facts.asPtr());
+  if (encoded == zc::none) {
+    return query::CapabilityProviderResult<Descriptor>::runtimeRejected(
+        query::QueryRuntimeFailure::InvariantViolation);
+  }
+  using Contract =
+      query::CapabilityFailureContract<Descriptor,
+                                       query::SourceRejection<diagnostics::DiagnosticFact>>;
+  auto diagnostics = Contract::decode(ZC_ASSERT_NONNULL(encoded).asPtr());
+  if (diagnostics == zc::none) {
+    return query::CapabilityProviderResult<Descriptor>::runtimeRejected(
+        query::QueryRuntimeFailure::InvariantViolation);
+  }
+  return query::CapabilityProviderResult<Descriptor>::template sourceRejected<
+      diagnostics::DiagnosticFact>(zc::mv(ZC_ASSERT_NONNULL(diagnostics)));
+}
+
+zc::Maybe<diagnostics::DiagnosticFact> identityAdmissionDiagnostic(
+    const binder::CanonicalParsedModule& parsed, const binder::IdentitySyntaxSiteInventory& sites,
+    const binder::StableIdentityCandidateSourceFailure& failure) {
+  auto primary = binder::IdentitySyntaxSiteInventoryVerifier::resolve(parsed, sites, failure.node,
+                                                                      failure.source);
+  if (primary == zc::none) { return zc::none; }
+  switch (failure.kind) {
+    case binder::StableIdentityCandidateSourceFailureKind::ConstantExpressionNotAllowed:
+      if (failure.previousNode != zc::none || failure.previous != zc::none ||
+          failure.identifier != zc::none) {
+        return zc::none;
+      }
+      return binder::StableBindingDiagnosticFactFactory::constantExpressionNotAllowed(
+          ZC_ASSERT_NONNULL(primary));
+    case binder::StableIdentityCandidateSourceFailureKind::DuplicateGenericParameter: {
+      if (failure.previousNode == zc::none || failure.previous == zc::none ||
+          failure.identifier == zc::none) {
+        return zc::none;
+      }
+      auto previous = binder::IdentitySyntaxSiteInventoryVerifier::resolve(
+          parsed, sites, ZC_ASSERT_NONNULL(failure.previousNode),
+          ZC_ASSERT_NONNULL(failure.previous));
+      if (previous == zc::none) { return zc::none; }
+      auto arguments = binder::BinderIdentifierDiagnosticArguments::from(
+          ZC_ASSERT_NONNULL(failure.identifier).clone());
+      return binder::StableBindingDiagnosticFactFactory::duplicateGenericParameter(
+          ZC_ASSERT_NONNULL(primary), ZC_ASSERT_NONNULL(previous), arguments);
+    }
+  }
+  ZC_UNREACHABLE;
+}
+
+}  // namespace
+
+zc::Array<uint8_t> IdentitySyntaxSiteInventoryQuery::encodeKey(const Key& key) {
+  return NamedDefinitionInventoryQuery::encodeKey(key);
+}
+
+zc::Maybe<IdentitySyntaxSiteInventoryQuery::Key> IdentitySyntaxSiteInventoryQuery::decodeKey(
+    zc::ArrayPtr<const uint8_t> bytes) {
+  return NamedDefinitionInventoryQuery::decodeKey(bytes);
+}
+
+query::CapabilityProviderResult<IdentitySyntaxSiteInventoryQuery>
+IdentitySyntaxSiteInventoryQuery::provide(
+    query::CapabilityQueryContext<IdentitySyntaxSiteInventoryQuery>& context, const Key& key) {
+  auto loaded = loadIdentitySource(context, key);
+  if (loaded.kind() != query::QueryValueKind::Value || loaded.isRuntimeFailure()) {
+    return propagateLoadCapabilityFailure<IdentitySyntaxSiteInventoryQuery>(loaded, key);
+  }
+  const auto& source = loaded.value();
+  auto inventory = binder::IdentitySyntaxSiteInventoryProducer::produce(
+      source.parsed, source.module, source.moduleNode);
+  if (inventory == zc::none) {
+    return query::CapabilityProviderResult<IdentitySyntaxSiteInventoryQuery>::runtimeRejected(
+        query::QueryRuntimeFailure::InvariantViolation);
+  }
+  auto candidate = zc::heap<Capability>(zc::mv(ZC_ASSERT_NONNULL(inventory)));
+  auto witness =
+      query::CapabilityCandidateContract<IdentitySyntaxSiteInventoryQuery>::encode(*candidate);
+  return query::CapabilityProviderResult<IdentitySyntaxSiteInventoryQuery>::candidate(
+      zc::mv(candidate), zc::mv(witness));
+}
+
+zc::Maybe<zc::Array<uint8_t>> IdentitySyntaxSiteInventoryQuery::verify(
+    query::CapabilityQueryContext<IdentitySyntaxSiteInventoryQuery>& context, const Key& key,
+    const Capability& candidate) {
+  auto loaded = loadIdentitySource(context, key);
+  if (loaded.kind() != query::QueryValueKind::Value || loaded.isRuntimeFailure()) {
+    return zc::none;
+  }
+  const auto& source = loaded.value();
+  if (!binder::IdentitySyntaxSiteInventoryVerifier::verify(source.parsed, source.module,
+                                                           source.moduleNode, candidate)) {
+    return zc::none;
+  }
+  return encodeIdentitySyntaxSiteInventoryWitness(candidate);
+}
+
+zc::Array<uint8_t> StableIdentityAdmissionQuery::encodeKey(const Key& key) {
+  return NamedDefinitionInventoryQuery::encodeKey(key);
+}
+
+zc::Maybe<StableIdentityAdmissionQuery::Key> StableIdentityAdmissionQuery::decodeKey(
+    zc::ArrayPtr<const uint8_t> bytes) {
+  return NamedDefinitionInventoryQuery::decodeKey(bytes);
+}
+
+query::CapabilityProviderResult<StableIdentityAdmissionQuery> StableIdentityAdmissionQuery::provide(
+    query::CapabilityQueryContext<StableIdentityAdmissionQuery>& context, const Key& key) {
+  auto loaded = loadIdentitySource(context, key);
+  if (loaded.kind() != query::QueryValueKind::Value || loaded.isRuntimeFailure()) {
+    return propagateLoadCapabilityFailure<StableIdentityAdmissionQuery>(loaded, key);
+  }
+  auto siteInventory = context.getCapability<IdentitySyntaxSiteInventoryQuery>(key);
+  if (siteInventory.isRuntimeRejected()) {
+    return query::CapabilityProviderResult<StableIdentityAdmissionQuery>::runtimeRejected(
+        siteInventory.runtimeFailure());
+  }
+  if (siteInventory.isKeyRejected()) {
+    return forwardKeyRejection<StableIdentityAdmissionQuery>(siteInventory);
+  }
+  if (siteInventory.isSourceRejected()) {
+    return forwardSourceRejection<StableIdentityAdmissionQuery>(siteInventory);
+  }
+  if (!siteInventory.isPublished()) {
+    return query::CapabilityProviderResult<StableIdentityAdmissionQuery>::runtimeRejected(
+        query::QueryRuntimeFailure::InvariantViolation);
+  }
+  const auto& source = loaded.value();
+  auto production = binder::StableIdentityCandidateProducer::produce(source.parsed, source.module,
+                                                                     source.moduleNode);
+  auto admission = binder::StableIdentityAdmissionVerifier::verify(
+      source.parsed, source.module, source.moduleNode, siteInventory.lease().capability(),
+      production);
+  if (admission.is<binder::StableIdentityCandidateSourceFailure>()) {
+    auto fact =
+        identityAdmissionDiagnostic(source.parsed, siteInventory.lease().capability(),
+                                    admission.get<binder::StableIdentityCandidateSourceFailure>());
+    if (fact == zc::none) {
+      return query::CapabilityProviderResult<StableIdentityAdmissionQuery>::runtimeRejected(
+          query::QueryRuntimeFailure::InvariantViolation);
+    }
+    return sourceRejectionFromFact<StableIdentityAdmissionQuery>(zc::mv(ZC_ASSERT_NONNULL(fact)));
+  }
+  if (!admission.is<binder::StableIdentityAdmission>()) {
+    return query::CapabilityProviderResult<StableIdentityAdmissionQuery>::runtimeRejected(
+        query::QueryRuntimeFailure::InvariantViolation);
+  }
+  auto candidate = zc::heap<Capability>(zc::mv(admission.get<binder::StableIdentityAdmission>()));
+  auto witness =
+      query::CapabilityCandidateContract<StableIdentityAdmissionQuery>::encode(*candidate);
+  return query::CapabilityProviderResult<StableIdentityAdmissionQuery>::candidate(zc::mv(candidate),
+                                                                                  zc::mv(witness));
+}
+
+zc::Maybe<zc::Array<uint8_t>> StableIdentityAdmissionQuery::verify(
+    query::CapabilityQueryContext<StableIdentityAdmissionQuery>& context, const Key& key,
+    const Capability& candidate) {
+  auto loaded = loadIdentitySource(context, key);
+  if (loaded.kind() != query::QueryValueKind::Value || loaded.isRuntimeFailure()) {
+    return zc::none;
+  }
+  auto siteInventory = context.getCapability<IdentitySyntaxSiteInventoryQuery>(key);
+  if (!siteInventory.isPublished()) { return zc::none; }
+  const auto& source = loaded.value();
+  auto production = binder::StableIdentityCandidateProducer::produce(source.parsed, source.module,
+                                                                     source.moduleNode);
+  auto admission = binder::StableIdentityAdmissionVerifier::verify(
+      source.parsed, source.module, source.moduleNode, siteInventory.lease().capability(),
+      production);
+  if (!admission.is<binder::StableIdentityAdmission>() ||
+      !(admission.get<binder::StableIdentityAdmission>() == candidate)) {
+    return zc::none;
+  }
+  return encodeStableIdentityAdmissionWitness(candidate);
 }
 
 zc::Array<uint8_t> NamedDefinitionInventoryQuery::encodeKey(const Key& key) {
@@ -365,13 +519,10 @@ zc::Array<uint8_t> NamedDefinitionInventoryQuery::encodeKey(const Key& key) {
 
 zc::Maybe<NamedDefinitionInventoryQuery::Key> NamedDefinitionInventoryQuery::decodeKey(
     zc::ArrayPtr<const uint8_t> bytes) {
-  return StableModuleQueryKey::fromVerified(
-      ZC_ASSERT_NONNULL([&]() -> zc::Maybe<identity::ModuleKey> {
-        identity::CanonicalDecoder decoder(bytes);
-        auto module = identity::ModuleKey::decodeCanonical(decoder);
-        if (module == zc::none || !decoder.finished()) { return zc::none; }
-        return zc::mv(ZC_ASSERT_NONNULL(module));
-      }()));
+  identity::CanonicalDecoder decoder(bytes);
+  auto module = identity::ModuleKey::decodeCanonical(decoder);
+  if (module == zc::none || !decoder.finished()) { return zc::none; }
+  return StableModuleQueryKey::fromVerified(ZC_ASSERT_NONNULL(module));
 }
 
 zc::Array<uint8_t> NamedDefinitionInventoryQuery::encodeValue(const Value& value) {
@@ -385,26 +536,24 @@ zc::Maybe<NamedDefinitionInventoryQuery::Value> NamedDefinitionInventoryQuery::d
 
 query::TypedQueryResult<NamedDefinitionInventoryQuery::Value>
 NamedDefinitionInventoryQuery::provide(query::QueryContext& context, const Key& key) {
-  auto loaded = loadIdentitySource(context, key);
-  if (loaded.kind() != query::QueryValueKind::Value || loaded.isRuntimeFailure()) {
-    return propagateLoadFailure<Value>(loaded);
+  auto admission = context.getCapability<StableIdentityAdmissionQuery>(key);
+  if (admission.isRuntimeRejected()) {
+    return query::TypedQueryResult<Value>::runtimeFailure(admission.runtimeFailure());
   }
-  const auto& source = loaded.value();
-  auto production = binder::StableIdentityCandidateProducer::produce(source.parsed, source.module,
-                                                                     source.moduleNode);
-  auto verification = binder::StableIdentityCandidateVerifier::verify(
-      source.parsed, source.module, source.moduleNode, production);
-  if (verification.is<binder::StableIdentityCandidateSourceFailure>()) {
-    return query::TypedQueryResult<Value>::semanticFailure(
-        encodeRejected(verification.get<binder::StableIdentityCandidateSourceFailure>()));
+  if (admission.isKeyRejected()) { return query::TypedQueryResult<Value>::absence(); }
+  if (admission.isSourceRejected()) {
+    auto encoded = binder::encodeStableBindingDiagnosticFacts(admission.diagnostics().values());
+    if (encoded == zc::none) {
+      return query::TypedQueryResult<Value>::runtimeFailure(
+          query::QueryRuntimeFailure::InvariantViolation);
+    }
+    return query::TypedQueryResult<Value>::semanticFailure(zc::mv(ZC_ASSERT_NONNULL(encoded)));
   }
-  if (!verification.is<binder::VerifiedStableIdentityCandidateInventory>() ||
-      !production.is<binder::StableIdentityCandidateInventory>()) {
+  if (!admission.isPublished()) {
     return query::TypedQueryResult<Value>::runtimeFailure(
         query::QueryRuntimeFailure::InvariantViolation);
   }
-  auto inventory = producedDefinitionInventory(
-      source.module, production.get<binder::StableIdentityCandidateInventory>());
+  auto inventory = admittedDefinitionInventory(admission.lease().capability());
   if (inventory == zc::none) {
     return query::TypedQueryResult<Value>::runtimeFailure(
         query::QueryRuntimeFailure::InvariantViolation);
@@ -414,34 +563,17 @@ NamedDefinitionInventoryQuery::provide(query::QueryContext& context, const Key& 
 
 bool NamedDefinitionInventoryQuery::verify(query::QueryContext& context, const Key& key,
                                            const query::TypedQueryResult<Value>& result) {
-  auto loaded = loadIdentitySource(context, key);
-  if (loaded.kind() != query::QueryValueKind::Value || loaded.isRuntimeFailure()) {
-    return verifyLoadFailure(loaded, result.kind(), result.semanticFailureBytes());
+  auto admission = context.getCapability<StableIdentityAdmissionQuery>(key);
+  if (admission.isRuntimeRejected()) { return false; }
+  if (admission.isKeyRejected()) { return result.kind() == query::QueryValueKind::Absence; }
+  if (admission.isSourceRejected()) {
+    auto encoded = binder::encodeStableBindingDiagnosticFacts(admission.diagnostics().values());
+    return result.kind() == query::QueryValueKind::SemanticFailure && encoded != zc::none &&
+           result.semanticFailureBytes() == ZC_ASSERT_NONNULL(encoded).asPtr();
   }
-  const auto& source = loaded.value();
-  auto reconstruction = binder::StableIdentityCandidateVerifier::reconstruct(
-      source.parsed, source.module, source.moduleNode);
-  if (reconstruction.is<binder::StableIdentityCandidateSourceFailure>()) {
-    return result.kind() == query::QueryValueKind::SemanticFailure &&
-           result.semanticFailureBytes() ==
-               encodeRejected(reconstruction.get<binder::StableIdentityCandidateSourceFailure>())
-                   .asPtr();
-  }
-  if (result.kind() != query::QueryValueKind::Value ||
-      !reconstruction.is<binder::VerifiedStableIdentityCandidateInventory>()) {
-    return false;
-  }
-  auto expected = reconstructedDefinitionInventory(
-      source.module, reconstruction.get<binder::VerifiedStableIdentityCandidateInventory>());
+  if (!admission.isPublished() || result.kind() != query::QueryValueKind::Value) { return false; }
+  auto expected = admittedDefinitionInventory(admission.lease().capability());
   return expected != zc::none && ZC_ASSERT_NONNULL(expected).sameAs(result.value());
-}
-
-zc::StringPtr NamedImplementationInventoryQuery::domain() {
-  return "zom.query.named-implementation-inventory"_zc;
-}
-
-query::QueryKindContract NamedImplementationInventoryQuery::contract() {
-  return inventoryContract(domain());
 }
 
 zc::Array<uint8_t> NamedImplementationInventoryQuery::encodeKey(const Key& key) {
@@ -464,26 +596,24 @@ zc::Maybe<NamedImplementationInventoryQuery::Value> NamedImplementationInventory
 
 query::TypedQueryResult<NamedImplementationInventoryQuery::Value>
 NamedImplementationInventoryQuery::provide(query::QueryContext& context, const Key& key) {
-  auto loaded = loadIdentitySource(context, key);
-  if (loaded.kind() != query::QueryValueKind::Value || loaded.isRuntimeFailure()) {
-    return propagateLoadFailure<Value>(loaded);
+  auto admission = context.getCapability<StableIdentityAdmissionQuery>(key);
+  if (admission.isRuntimeRejected()) {
+    return query::TypedQueryResult<Value>::runtimeFailure(admission.runtimeFailure());
   }
-  const auto& source = loaded.value();
-  auto production = binder::StableIdentityCandidateProducer::produce(source.parsed, source.module,
-                                                                     source.moduleNode);
-  auto verification = binder::StableIdentityCandidateVerifier::verify(
-      source.parsed, source.module, source.moduleNode, production);
-  if (verification.is<binder::StableIdentityCandidateSourceFailure>()) {
-    return query::TypedQueryResult<Value>::semanticFailure(
-        encodeRejected(verification.get<binder::StableIdentityCandidateSourceFailure>()));
+  if (admission.isKeyRejected()) { return query::TypedQueryResult<Value>::absence(); }
+  if (admission.isSourceRejected()) {
+    auto encoded = binder::encodeStableBindingDiagnosticFacts(admission.diagnostics().values());
+    if (encoded == zc::none) {
+      return query::TypedQueryResult<Value>::runtimeFailure(
+          query::QueryRuntimeFailure::InvariantViolation);
+    }
+    return query::TypedQueryResult<Value>::semanticFailure(zc::mv(ZC_ASSERT_NONNULL(encoded)));
   }
-  if (!verification.is<binder::VerifiedStableIdentityCandidateInventory>() ||
-      !production.is<binder::StableIdentityCandidateInventory>()) {
+  if (!admission.isPublished()) {
     return query::TypedQueryResult<Value>::runtimeFailure(
         query::QueryRuntimeFailure::InvariantViolation);
   }
-  auto inventory = producedImplementationInventory(
-      source.module, production.get<binder::StableIdentityCandidateInventory>());
+  auto inventory = admittedImplementationInventory(admission.lease().capability());
   if (inventory == zc::none) {
     return query::TypedQueryResult<Value>::runtimeFailure(
         query::QueryRuntimeFailure::InvariantViolation);
@@ -493,34 +623,17 @@ NamedImplementationInventoryQuery::provide(query::QueryContext& context, const K
 
 bool NamedImplementationInventoryQuery::verify(query::QueryContext& context, const Key& key,
                                                const query::TypedQueryResult<Value>& result) {
-  auto loaded = loadIdentitySource(context, key);
-  if (loaded.kind() != query::QueryValueKind::Value || loaded.isRuntimeFailure()) {
-    return verifyLoadFailure(loaded, result.kind(), result.semanticFailureBytes());
+  auto admission = context.getCapability<StableIdentityAdmissionQuery>(key);
+  if (admission.isRuntimeRejected()) { return false; }
+  if (admission.isKeyRejected()) { return result.kind() == query::QueryValueKind::Absence; }
+  if (admission.isSourceRejected()) {
+    auto encoded = binder::encodeStableBindingDiagnosticFacts(admission.diagnostics().values());
+    return result.kind() == query::QueryValueKind::SemanticFailure && encoded != zc::none &&
+           result.semanticFailureBytes() == ZC_ASSERT_NONNULL(encoded).asPtr();
   }
-  const auto& source = loaded.value();
-  auto reconstruction = binder::StableIdentityCandidateVerifier::reconstruct(
-      source.parsed, source.module, source.moduleNode);
-  if (reconstruction.is<binder::StableIdentityCandidateSourceFailure>()) {
-    return result.kind() == query::QueryValueKind::SemanticFailure &&
-           result.semanticFailureBytes() ==
-               encodeRejected(reconstruction.get<binder::StableIdentityCandidateSourceFailure>())
-                   .asPtr();
-  }
-  if (result.kind() != query::QueryValueKind::Value ||
-      !reconstruction.is<binder::VerifiedStableIdentityCandidateInventory>()) {
-    return false;
-  }
-  auto expected = reconstructedImplementationInventory(
-      source.module, reconstruction.get<binder::VerifiedStableIdentityCandidateInventory>());
+  if (!admission.isPublished() || result.kind() != query::QueryValueKind::Value) { return false; }
+  auto expected = admittedImplementationInventory(admission.lease().capability());
   return expected != zc::none && ZC_ASSERT_NONNULL(expected).sameAs(result.value());
-}
-
-zc::StringPtr RevisionLocalDefinitionSitesQuery::domain() {
-  return "zom.query.revision-local-definition-sites"_zc;
-}
-
-query::QueryKindContract RevisionLocalDefinitionSitesQuery::contract() {
-  return siteContract(domain());
 }
 
 zc::Array<uint8_t> RevisionLocalDefinitionSitesQuery::encodeKey(const Key& key) {
@@ -532,77 +645,78 @@ zc::Maybe<RevisionLocalDefinitionSitesQuery::Key> RevisionLocalDefinitionSitesQu
   return NamedDefinitionInventoryQuery::decodeKey(bytes);
 }
 
-query::CapabilityProviderResult<RevisionLocalDefinitionSitesQuery::Capability>
-RevisionLocalDefinitionSitesQuery::provide(query::CapabilityQueryContext& context, const Key& key) {
+query::CapabilityProviderResult<RevisionLocalDefinitionSitesQuery>
+RevisionLocalDefinitionSitesQuery::provide(
+    query::CapabilityQueryContext<RevisionLocalDefinitionSitesQuery>& context, const Key& key) {
   auto loaded = loadIdentitySource(context, key);
   if (loaded.kind() != query::QueryValueKind::Value || loaded.isRuntimeFailure()) {
-    return propagateLoadCapabilityFailure<Capability>(loaded);
+    return propagateLoadCapabilityFailure<RevisionLocalDefinitionSitesQuery>(loaded, key);
+  }
+  auto admission = context.getCapability<StableIdentityAdmissionQuery>(key);
+  if (admission.isRuntimeRejected()) {
+    return query::CapabilityProviderResult<RevisionLocalDefinitionSitesQuery>::runtimeRejected(
+        admission.runtimeFailure());
+  }
+  if (admission.isKeyRejected()) {
+    return forwardKeyRejection<RevisionLocalDefinitionSitesQuery>(admission);
+  }
+  if (admission.isSourceRejected()) {
+    return forwardSourceRejection<RevisionLocalDefinitionSitesQuery>(admission);
+  }
+  if (!admission.isPublished()) {
+    return query::CapabilityProviderResult<RevisionLocalDefinitionSitesQuery>::runtimeRejected(
+        query::QueryRuntimeFailure::InvariantViolation);
   }
   auto named = context.get<NamedDefinitionInventoryQuery>(key);
   if (named.isRuntimeFailure()) {
-    return query::CapabilityProviderResult<Capability>::runtimeFailure(named.runtimeFailure());
+    return query::CapabilityProviderResult<RevisionLocalDefinitionSitesQuery>::runtimeRejected(
+        named.runtimeFailure());
   }
   if (named.kind() == query::QueryValueKind::SemanticFailure) {
-    return query::CapabilityProviderResult<Capability>::semanticFailure(
-        zc::heapArray<uint8_t>(named.semanticFailureBytes()));
+    using Contract =
+        query::CapabilityFailureContract<RevisionLocalDefinitionSitesQuery,
+                                         query::SourceRejection<diagnostics::DiagnosticFact>>;
+    auto diagnostics = Contract::decode(named.semanticFailureBytes());
+    if (diagnostics == zc::none) {
+      return query::CapabilityProviderResult<RevisionLocalDefinitionSitesQuery>::runtimeRejected(
+          query::QueryRuntimeFailure::InvariantViolation);
+    }
+    return query::CapabilityProviderResult<RevisionLocalDefinitionSitesQuery>::sourceRejected<
+        diagnostics::DiagnosticFact>(zc::mv(ZC_ASSERT_NONNULL(diagnostics)));
   }
   if (named.kind() != query::QueryValueKind::Value) {
-    return query::CapabilityProviderResult<Capability>::runtimeFailure(
+    return query::CapabilityProviderResult<RevisionLocalDefinitionSitesQuery>::runtimeRejected(
         query::QueryRuntimeFailure::InvariantViolation);
   }
-  const auto& source = loaded.value();
-  auto production = binder::StableIdentityCandidateProducer::produce(source.parsed, source.module,
-                                                                     source.moduleNode);
-  auto verification = binder::StableIdentityCandidateVerifier::verify(
-      source.parsed, source.module, source.moduleNode, production);
-  if (verification.is<binder::StableIdentityCandidateSourceFailure>()) {
-    return query::CapabilityProviderResult<Capability>::semanticFailure(
-        encodeRejected(verification.get<binder::StableIdentityCandidateSourceFailure>()));
-  }
-  if (!verification.is<binder::VerifiedStableIdentityCandidateInventory>() ||
-      !production.is<binder::StableIdentityCandidateInventory>()) {
-    return query::CapabilityProviderResult<Capability>::runtimeFailure(
-        query::QueryRuntimeFailure::InvariantViolation);
-  }
-  auto sites = producedDefinitionSites(source.module, source.parsed.source(), named.value(),
-                                       production.get<binder::StableIdentityCandidateInventory>());
+  auto sites = admittedDefinitionSites(admission.lease().capability(), named.value());
   if (sites == zc::none) {
-    return query::CapabilityProviderResult<Capability>::runtimeFailure(
+    return query::CapabilityProviderResult<RevisionLocalDefinitionSitesQuery>::runtimeRejected(
         query::QueryRuntimeFailure::InvariantViolation);
   }
-  auto stableWitness = ZC_ASSERT_NONNULL(sites).encodeCanonical();
-  return query::CapabilityProviderResult<Capability>::value(
-      zc::heap<Capability>(zc::mv(ZC_ASSERT_NONNULL(sites))), zc::mv(stableWitness));
+  auto candidate = zc::heap<Capability>(zc::mv(ZC_ASSERT_NONNULL(sites)));
+  auto stableWitness =
+      query::CapabilityCandidateContract<RevisionLocalDefinitionSitesQuery>::encode(*candidate);
+  return query::CapabilityProviderResult<RevisionLocalDefinitionSitesQuery>::candidate(
+      zc::mv(candidate), zc::mv(stableWitness));
 }
 
 zc::Maybe<zc::Array<uint8_t>> RevisionLocalDefinitionSitesQuery::verify(
-    query::CapabilityQueryContext& context, const Key& key, const Capability& candidate) {
+    query::CapabilityQueryContext<RevisionLocalDefinitionSitesQuery>& context, const Key& key,
+    const Capability& candidate) {
   auto loaded = loadIdentitySource(context, key);
   if (loaded.kind() != query::QueryValueKind::Value || loaded.isRuntimeFailure()) {
     return zc::none;
   }
+  auto admission = context.getCapability<StableIdentityAdmissionQuery>(key);
+  if (!admission.isPublished()) { return zc::none; }
   auto named = context.get<NamedDefinitionInventoryQuery>(key);
   if (named.isRuntimeFailure() || named.kind() != query::QueryValueKind::Value) { return zc::none; }
-  const auto& source = loaded.value();
-  auto reconstruction = binder::StableIdentityCandidateVerifier::reconstruct(
-      source.parsed, source.module, source.moduleNode);
-  if (!reconstruction.is<binder::VerifiedStableIdentityCandidateInventory>()) { return zc::none; }
-  auto expected = reconstructedDefinitionSites(
-      source.module, source.parsed.source(), named.value(),
-      reconstruction.get<binder::VerifiedStableIdentityCandidateInventory>());
+  auto expected = admittedDefinitionSites(admission.lease().capability(), named.value());
   if (expected == zc::none || !ZC_ASSERT_NONNULL(expected).sameAs(candidate)) { return zc::none; }
   auto witness = candidate.encodeCanonical();
   auto decoded = binder::RevisionLocalDefinitionSites::decodeCanonical(witness.asPtr());
   if (decoded == zc::none || !ZC_ASSERT_NONNULL(decoded).sameAs(candidate)) { return zc::none; }
   return zc::mv(witness);
-}
-
-zc::StringPtr RevisionLocalImplementationSitesQuery::domain() {
-  return "zom.query.revision-local-implementation-sites"_zc;
-}
-
-query::QueryKindContract RevisionLocalImplementationSitesQuery::contract() {
-  return siteContract(domain());
 }
 
 zc::Array<uint8_t> RevisionLocalImplementationSitesQuery::encodeKey(const Key& key) {
@@ -614,111 +728,78 @@ RevisionLocalImplementationSitesQuery::decodeKey(zc::ArrayPtr<const uint8_t> byt
   return NamedDefinitionInventoryQuery::decodeKey(bytes);
 }
 
-query::CapabilityProviderResult<RevisionLocalImplementationSitesQuery::Capability>
-RevisionLocalImplementationSitesQuery::provide(query::CapabilityQueryContext& context,
-                                               const Key& key) {
+query::CapabilityProviderResult<RevisionLocalImplementationSitesQuery>
+RevisionLocalImplementationSitesQuery::provide(
+    query::CapabilityQueryContext<RevisionLocalImplementationSitesQuery>& context, const Key& key) {
   auto loaded = loadIdentitySource(context, key);
   if (loaded.kind() != query::QueryValueKind::Value || loaded.isRuntimeFailure()) {
-    return propagateLoadCapabilityFailure<Capability>(loaded);
+    return propagateLoadCapabilityFailure<RevisionLocalImplementationSitesQuery>(loaded, key);
+  }
+  auto admission = context.getCapability<StableIdentityAdmissionQuery>(key);
+  if (admission.isRuntimeRejected()) {
+    return query::CapabilityProviderResult<RevisionLocalImplementationSitesQuery>::runtimeRejected(
+        admission.runtimeFailure());
+  }
+  if (admission.isKeyRejected()) {
+    return forwardKeyRejection<RevisionLocalImplementationSitesQuery>(admission);
+  }
+  if (admission.isSourceRejected()) {
+    return forwardSourceRejection<RevisionLocalImplementationSitesQuery>(admission);
+  }
+  if (!admission.isPublished()) {
+    return query::CapabilityProviderResult<RevisionLocalImplementationSitesQuery>::runtimeRejected(
+        query::QueryRuntimeFailure::InvariantViolation);
   }
   auto named = context.get<NamedImplementationInventoryQuery>(key);
   if (named.isRuntimeFailure()) {
-    return query::CapabilityProviderResult<Capability>::runtimeFailure(named.runtimeFailure());
+    return query::CapabilityProviderResult<RevisionLocalImplementationSitesQuery>::runtimeRejected(
+        named.runtimeFailure());
   }
   if (named.kind() == query::QueryValueKind::SemanticFailure) {
-    return query::CapabilityProviderResult<Capability>::semanticFailure(
-        zc::heapArray<uint8_t>(named.semanticFailureBytes()));
+    using Contract =
+        query::CapabilityFailureContract<RevisionLocalImplementationSitesQuery,
+                                         query::SourceRejection<diagnostics::DiagnosticFact>>;
+    auto diagnostics = Contract::decode(named.semanticFailureBytes());
+    if (diagnostics == zc::none) {
+      return query::CapabilityProviderResult<RevisionLocalImplementationSitesQuery>::
+          runtimeRejected(query::QueryRuntimeFailure::InvariantViolation);
+    }
+    return query::CapabilityProviderResult<RevisionLocalImplementationSitesQuery>::sourceRejected<
+        diagnostics::DiagnosticFact>(zc::mv(ZC_ASSERT_NONNULL(diagnostics)));
   }
   if (named.kind() != query::QueryValueKind::Value) {
-    return query::CapabilityProviderResult<Capability>::runtimeFailure(
+    return query::CapabilityProviderResult<RevisionLocalImplementationSitesQuery>::runtimeRejected(
         query::QueryRuntimeFailure::InvariantViolation);
   }
-  const auto& source = loaded.value();
-  auto production = binder::StableIdentityCandidateProducer::produce(source.parsed, source.module,
-                                                                     source.moduleNode);
-  auto verification = binder::StableIdentityCandidateVerifier::verify(
-      source.parsed, source.module, source.moduleNode, production);
-  if (verification.is<binder::StableIdentityCandidateSourceFailure>()) {
-    return query::CapabilityProviderResult<Capability>::semanticFailure(
-        encodeRejected(verification.get<binder::StableIdentityCandidateSourceFailure>()));
-  }
-  if (!verification.is<binder::VerifiedStableIdentityCandidateInventory>() ||
-      !production.is<binder::StableIdentityCandidateInventory>()) {
-    return query::CapabilityProviderResult<Capability>::runtimeFailure(
-        query::QueryRuntimeFailure::InvariantViolation);
-  }
-  auto sites =
-      producedImplementationSites(source.module, source.parsed.source(), named.value(),
-                                  production.get<binder::StableIdentityCandidateInventory>());
+  auto sites = admittedImplementationSites(admission.lease().capability(), named.value());
   if (sites == zc::none) {
-    return query::CapabilityProviderResult<Capability>::runtimeFailure(
+    return query::CapabilityProviderResult<RevisionLocalImplementationSitesQuery>::runtimeRejected(
         query::QueryRuntimeFailure::InvariantViolation);
   }
-  auto stableWitness = ZC_ASSERT_NONNULL(sites).encodeCanonical();
-  return query::CapabilityProviderResult<Capability>::value(
-      zc::heap<Capability>(zc::mv(ZC_ASSERT_NONNULL(sites))), zc::mv(stableWitness));
+  auto candidate = zc::heap<Capability>(zc::mv(ZC_ASSERT_NONNULL(sites)));
+  auto stableWitness =
+      query::CapabilityCandidateContract<RevisionLocalImplementationSitesQuery>::encode(*candidate);
+  return query::CapabilityProviderResult<RevisionLocalImplementationSitesQuery>::candidate(
+      zc::mv(candidate), zc::mv(stableWitness));
 }
 
 zc::Maybe<zc::Array<uint8_t>> RevisionLocalImplementationSitesQuery::verify(
-    query::CapabilityQueryContext& context, const Key& key, const Capability& candidate) {
+    query::CapabilityQueryContext<RevisionLocalImplementationSitesQuery>& context, const Key& key,
+    const Capability& candidate) {
   auto loaded = loadIdentitySource(context, key);
   if (loaded.kind() != query::QueryValueKind::Value || loaded.isRuntimeFailure()) {
     return zc::none;
   }
+  auto admission = context.getCapability<StableIdentityAdmissionQuery>(key);
+  if (!admission.isPublished()) { return zc::none; }
   auto named = context.get<NamedImplementationInventoryQuery>(key);
   if (named.isRuntimeFailure() || named.kind() != query::QueryValueKind::Value) { return zc::none; }
-  const auto& source = loaded.value();
-  auto reconstruction = binder::StableIdentityCandidateVerifier::reconstruct(
-      source.parsed, source.module, source.moduleNode);
-  if (!reconstruction.is<binder::VerifiedStableIdentityCandidateInventory>()) { return zc::none; }
-  auto expected = reconstructedImplementationSites(
-      source.module, source.parsed.source(), named.value(),
-      reconstruction.get<binder::VerifiedStableIdentityCandidateInventory>());
+  auto expected = admittedImplementationSites(admission.lease().capability(), named.value());
   if (expected == zc::none || !ZC_ASSERT_NONNULL(expected).sameAs(candidate)) { return zc::none; }
   auto witness = candidate.encodeCanonical();
   auto decoded = binder::RevisionLocalImplementationSites::decodeCanonical(witness.asPtr());
   if (decoded == zc::none || !ZC_ASSERT_NONNULL(decoded).sameAs(candidate)) { return zc::none; }
   return zc::mv(witness);
-}
-
-zc::Vector<binder::ModuleBodyDefinitionBoundaryInput> definitionBoundaries(
-    const binder::CanonicalParsedModule& parsed, ast::NodeId moduleNode,
-    const binder::RevisionLocalDefinitionSites& sites) {
-  const auto inventory = binder::DefinitionInventory::collect(parsed.tree());
-  const ast::NodeId inventoryModuleNode =
-      moduleNode == parsed.tree().root() ? ast::NodeId() : moduleNode;
-  zc::Vector<binder::ModuleBodyDefinitionBoundaryInput> result(sites.entries().size());
-  for (const auto& site : sites.entries()) {
-    bool boundary = false;
-    for (const auto& definition : inventory.definitions()) {
-      if (definition.node == site.node() && definition.moduleNode == inventoryModuleNode &&
-          definition.site.value().is<binder::DeclarationDefinitionSite>()) {
-        boundary = true;
-        break;
-      }
-    }
-    if (!boundary) { continue; }
-    result.add(binder::ModuleBodyDefinitionBoundaryInput{site.node(), site.definition().clone()});
-  }
-  return result;
-}
-
-zc::Vector<binder::ModuleBodyImplementationBoundaryInput> implementationBoundaries(
-    const binder::RevisionLocalImplementationSites& sites) {
-  zc::Vector<binder::ModuleBodyImplementationBoundaryInput> result(sites.entries().size());
-  for (const auto& site : sites.entries()) {
-    result.add(
-        binder::ModuleBodyImplementationBoundaryInput{site.node(), site.occurrence().clone()});
-  }
-  return result;
-}
-
-zc::StringPtr ModuleBodySyntaxQuery::domain() { return "zom.query.module-body-syntax"_zc; }
-
-query::QueryKindContract ModuleBodySyntaxQuery::contract() {
-  auto contract = query::QueryKindContract::derived(domain(), query::ReuseClass::Semantic,
-                                                    query::RetentionClass::Evictable);
-  return zc::mv(ZC_REQUIRE_NONNULL(contract));
 }
 
 zc::Array<uint8_t> ModuleBodySyntaxQuery::encodeKey(const Key& key) {
@@ -745,49 +826,25 @@ query::TypedQueryResult<ModuleBodySyntaxQuery::Value> ModuleBodySyntaxQuery::pro
   if (loaded.kind() != query::QueryValueKind::Value || loaded.isRuntimeFailure()) {
     return propagateLoadFailure<Value>(loaded);
   }
-  auto definitions = context.get<NamedDefinitionInventoryQuery>(key);
-  auto implementations = context.get<NamedImplementationInventoryQuery>(key);
-  auto definitionSites = context.getCapability<RevisionLocalDefinitionSitesQuery>(key);
-  auto implementationSites = context.getCapability<RevisionLocalImplementationSitesQuery>(key);
-  if (definitions.isRuntimeFailure() || implementations.isRuntimeFailure() ||
-      definitionSites.isRuntimeFailure() || implementationSites.isRuntimeFailure()) {
-    const auto failure = definitions.isRuntimeFailure()       ? definitions.runtimeFailure()
-                         : implementations.isRuntimeFailure() ? implementations.runtimeFailure()
-                         : definitionSites.isRuntimeFailure()
-                             ? definitionSites.runtimeFailure()
-                             : implementationSites.runtimeFailure();
-    return query::TypedQueryResult<Value>::runtimeFailure(failure);
+  auto admission = context.getCapability<StableIdentityAdmissionQuery>(key);
+  if (admission.isRuntimeRejected()) {
+    return query::TypedQueryResult<Value>::runtimeFailure(admission.runtimeFailure());
   }
-  if (definitions.kind() == query::QueryValueKind::SemanticFailure) {
+  if (admission.isKeyRejected()) { return query::TypedQueryResult<Value>::absence(); }
+  if (admission.isSourceRejected()) {
+    using Contract =
+        query::CapabilityFailureContract<StableIdentityAdmissionQuery,
+                                         query::SourceRejection<diagnostics::DiagnosticFact>>;
     return query::TypedQueryResult<Value>::semanticFailure(
-        zc::heapArray<uint8_t>(definitions.semanticFailureBytes()));
+        Contract::encode(admission.diagnostics()));
   }
-  if (implementations.kind() == query::QueryValueKind::SemanticFailure) {
-    return query::TypedQueryResult<Value>::semanticFailure(
-        zc::heapArray<uint8_t>(implementations.semanticFailureBytes()));
-  }
-  if (definitionSites.kind() == query::QueryValueKind::SemanticFailure) {
-    return query::TypedQueryResult<Value>::semanticFailure(
-        zc::heapArray<uint8_t>(definitionSites.semanticFailureBytes()));
-  }
-  if (implementationSites.kind() == query::QueryValueKind::SemanticFailure) {
-    return query::TypedQueryResult<Value>::semanticFailure(
-        zc::heapArray<uint8_t>(implementationSites.semanticFailureBytes()));
-  }
-  if (definitions.kind() != query::QueryValueKind::Value ||
-      implementations.kind() != query::QueryValueKind::Value ||
-      definitionSites.kind() != query::QueryValueKind::Value ||
-      implementationSites.kind() != query::QueryValueKind::Value) {
+  if (!admission.isPublished()) {
     return query::TypedQueryResult<Value>::runtimeFailure(
         query::QueryRuntimeFailure::InvariantViolation);
   }
   const auto& source = loaded.value();
-  auto definitionInputs =
-      definitionBoundaries(source.parsed, source.moduleNode, definitionSites.value().capability());
-  auto implementationInputs = implementationBoundaries(implementationSites.value().capability());
   auto projection = binder::ModuleBodySyntaxProducer::produce(
-      source.parsed, source.module, source.moduleNode, definitionInputs.asPtr(),
-      implementationInputs.asPtr());
+      source.parsed, source.module, source.moduleNode, admission.lease().capability());
   if (!projection.is<binder::ModuleBodySyntaxProjection>()) {
     return query::TypedQueryResult<Value>::runtimeFailure(
         query::QueryRuntimeFailure::InvariantViolation);
@@ -802,43 +859,24 @@ bool ModuleBodySyntaxQuery::verify(query::QueryContext& context, const Key& key,
   if (loaded.kind() != query::QueryValueKind::Value || loaded.isRuntimeFailure()) {
     return verifyLoadFailure(loaded, result.kind(), result.semanticFailureBytes());
   }
-  auto definitions = context.get<NamedDefinitionInventoryQuery>(key);
-  auto implementations = context.get<NamedImplementationInventoryQuery>(key);
-  auto definitionSites = context.getCapability<RevisionLocalDefinitionSitesQuery>(key);
-  auto implementationSites = context.getCapability<RevisionLocalImplementationSitesQuery>(key);
-  if (definitions.isRuntimeFailure() || implementations.isRuntimeFailure() ||
-      definitionSites.isRuntimeFailure() || implementationSites.isRuntimeFailure()) {
-    return false;
+  auto admission = context.getCapability<StableIdentityAdmissionQuery>(key);
+  if (admission.isRuntimeRejected()) { return false; }
+  if (admission.isKeyRejected()) { return result.kind() == query::QueryValueKind::Absence; }
+  if (admission.isSourceRejected()) {
+    using Contract =
+        query::CapabilityFailureContract<StableIdentityAdmissionQuery,
+                                         query::SourceRejection<diagnostics::DiagnosticFact>>;
+    const auto failure = Contract::encode(admission.diagnostics());
+    return result.kind() == query::QueryValueKind::SemanticFailure &&
+           result.semanticFailureBytes() == failure.asPtr();
   }
-  for (const auto failure :
-       {definitions.semanticFailureBytes(), implementations.semanticFailureBytes(),
-        definitionSites.semanticFailureBytes(), implementationSites.semanticFailureBytes()}) {
-    if (failure.size() != 0) {
-      return result.kind() == query::QueryValueKind::SemanticFailure &&
-             result.semanticFailureBytes() == failure;
-    }
-  }
-  if (result.kind() != query::QueryValueKind::Value ||
-      definitions.kind() != query::QueryValueKind::Value ||
-      implementations.kind() != query::QueryValueKind::Value ||
-      definitionSites.kind() != query::QueryValueKind::Value ||
-      implementationSites.kind() != query::QueryValueKind::Value) {
-    return false;
-  }
+  if (result.kind() != query::QueryValueKind::Value || !admission.isPublished()) { return false; }
   const auto& source = loaded.value();
-  auto definitionInputs =
-      definitionBoundaries(source.parsed, source.moduleNode, definitionSites.value().capability());
-  auto implementationInputs = implementationBoundaries(implementationSites.value().capability());
   auto expected = binder::ModuleBodySyntaxVerifier::reconstruct(
-      source.parsed, source.module, source.moduleNode, definitionInputs.asPtr(),
-      implementationInputs.asPtr());
+      source.parsed, source.module, source.moduleNode, admission.lease().capability());
   return expected.is<binder::ModuleBodySyntaxProjection>() &&
          expected.get<binder::ModuleBodySyntaxProjection>().syntax == result.value();
 }
-
-zc::StringPtr ModuleBodyProvenanceQuery::domain() { return "zom.query.module-body-provenance"_zc; }
-
-query::QueryKindContract ModuleBodyProvenanceQuery::contract() { return siteContract(domain()); }
 
 zc::Array<uint8_t> ModuleBodyProvenanceQuery::encodeKey(const Key& key) {
   return NamedDefinitionInventoryQuery::encodeKey(key);
@@ -849,84 +887,68 @@ zc::Maybe<ModuleBodyProvenanceQuery::Key> ModuleBodyProvenanceQuery::decodeKey(
   return NamedDefinitionInventoryQuery::decodeKey(bytes);
 }
 
-query::CapabilityProviderResult<ModuleBodyProvenanceQuery::Capability>
-ModuleBodyProvenanceQuery::provide(query::CapabilityQueryContext& context, const Key& key) {
+query::CapabilityProviderResult<ModuleBodyProvenanceQuery> ModuleBodyProvenanceQuery::provide(
+    query::CapabilityQueryContext<ModuleBodyProvenanceQuery>& context, const Key& key) {
   auto loaded = loadIdentitySource(context, key);
   if (loaded.kind() != query::QueryValueKind::Value || loaded.isRuntimeFailure()) {
-    return propagateLoadCapabilityFailure<Capability>(loaded);
+    return propagateLoadCapabilityFailure<ModuleBodyProvenanceQuery>(loaded, key);
+  }
+  auto admission = context.getCapability<StableIdentityAdmissionQuery>(key);
+  if (admission.isRuntimeRejected()) {
+    return query::CapabilityProviderResult<ModuleBodyProvenanceQuery>::runtimeRejected(
+        admission.runtimeFailure());
+  }
+  if (admission.isKeyRejected()) {
+    return forwardKeyRejection<ModuleBodyProvenanceQuery>(admission);
+  }
+  if (admission.isSourceRejected()) {
+    return forwardSourceRejection<ModuleBodyProvenanceQuery>(admission);
+  }
+  if (!admission.isPublished()) {
+    return query::CapabilityProviderResult<ModuleBodyProvenanceQuery>::runtimeRejected(
+        query::QueryRuntimeFailure::InvariantViolation);
   }
   auto syntax = context.get<ModuleBodySyntaxQuery>(key);
-  auto definitionSites = context.getCapability<RevisionLocalDefinitionSitesQuery>(key);
-  auto implementationSites = context.getCapability<RevisionLocalImplementationSitesQuery>(key);
-  if (syntax.isRuntimeFailure() || definitionSites.isRuntimeFailure() ||
-      implementationSites.isRuntimeFailure()) {
-    const auto failure = syntax.isRuntimeFailure() ? syntax.runtimeFailure()
-                         : definitionSites.isRuntimeFailure()
-                             ? definitionSites.runtimeFailure()
-                             : implementationSites.runtimeFailure();
-    return query::CapabilityProviderResult<Capability>::runtimeFailure(failure);
+  if (syntax.isRuntimeFailure()) {
+    return query::CapabilityProviderResult<ModuleBodyProvenanceQuery>::runtimeRejected(
+        syntax.runtimeFailure());
   }
-  if (syntax.kind() == query::QueryValueKind::SemanticFailure) {
-    return query::CapabilityProviderResult<Capability>::semanticFailure(
-        zc::heapArray<uint8_t>(syntax.semanticFailureBytes()));
-  }
-  if (definitionSites.kind() == query::QueryValueKind::SemanticFailure) {
-    return query::CapabilityProviderResult<Capability>::semanticFailure(
-        zc::heapArray<uint8_t>(definitionSites.semanticFailureBytes()));
-  }
-  if (implementationSites.kind() == query::QueryValueKind::SemanticFailure) {
-    return query::CapabilityProviderResult<Capability>::semanticFailure(
-        zc::heapArray<uint8_t>(implementationSites.semanticFailureBytes()));
-  }
-  if (syntax.kind() != query::QueryValueKind::Value ||
-      definitionSites.kind() != query::QueryValueKind::Value ||
-      implementationSites.kind() != query::QueryValueKind::Value) {
-    return query::CapabilityProviderResult<Capability>::runtimeFailure(
+  if (syntax.kind() != query::QueryValueKind::Value) {
+    return query::CapabilityProviderResult<ModuleBodyProvenanceQuery>::runtimeRejected(
         query::QueryRuntimeFailure::InvariantViolation);
   }
   const auto& source = loaded.value();
-  auto definitionInputs =
-      definitionBoundaries(source.parsed, source.moduleNode, definitionSites.value().capability());
-  auto implementationInputs = implementationBoundaries(implementationSites.value().capability());
   auto projection = binder::ModuleBodySyntaxProducer::produce(
-      source.parsed, source.module, source.moduleNode, definitionInputs.asPtr(),
-      implementationInputs.asPtr());
+      source.parsed, source.module, source.moduleNode, admission.lease().capability());
   if (!projection.is<binder::ModuleBodySyntaxProjection>() ||
       projection.get<binder::ModuleBodySyntaxProjection>().syntax != syntax.value()) {
-    return query::CapabilityProviderResult<Capability>::runtimeFailure(
+    return query::CapabilityProviderResult<ModuleBodyProvenanceQuery>::runtimeRejected(
         query::QueryRuntimeFailure::InvariantViolation);
   }
   auto provenance = zc::mv(projection.get<binder::ModuleBodySyntaxProjection>().provenance);
-  auto stableWitness = provenance.encodeCanonical();
-  return query::CapabilityProviderResult<Capability>::value(
-      zc::heap<Capability>(zc::mv(provenance)), zc::mv(stableWitness));
+  auto candidate = zc::heap<Capability>(zc::mv(provenance));
+  auto stableWitness =
+      query::CapabilityCandidateContract<ModuleBodyProvenanceQuery>::encode(*candidate);
+  return query::CapabilityProviderResult<ModuleBodyProvenanceQuery>::candidate(
+      zc::mv(candidate), zc::mv(stableWitness));
 }
 
 zc::Maybe<zc::Array<uint8_t>> ModuleBodyProvenanceQuery::verify(
-    query::CapabilityQueryContext& context, const Key& key, const Capability& candidate) {
+    query::CapabilityQueryContext<ModuleBodyProvenanceQuery>& context, const Key& key,
+    const Capability& candidate) {
   auto loaded = loadIdentitySource(context, key);
   if (loaded.kind() != query::QueryValueKind::Value || loaded.isRuntimeFailure()) {
     return zc::none;
   }
+  auto admission = context.getCapability<StableIdentityAdmissionQuery>(key);
+  if (!admission.isPublished()) { return zc::none; }
   auto syntax = context.get<ModuleBodySyntaxQuery>(key);
-  auto definitionSites = context.getCapability<RevisionLocalDefinitionSitesQuery>(key);
-  auto implementationSites = context.getCapability<RevisionLocalImplementationSitesQuery>(key);
-  if (syntax.isRuntimeFailure() || definitionSites.isRuntimeFailure() ||
-      implementationSites.isRuntimeFailure()) {
-    return zc::none;
-  }
-  if (syntax.kind() != query::QueryValueKind::Value ||
-      definitionSites.kind() != query::QueryValueKind::Value ||
-      implementationSites.kind() != query::QueryValueKind::Value) {
+  if (syntax.isRuntimeFailure() || syntax.kind() != query::QueryValueKind::Value) {
     return zc::none;
   }
   const auto& source = loaded.value();
-  auto definitionInputs =
-      definitionBoundaries(source.parsed, source.moduleNode, definitionSites.value().capability());
-  auto implementationInputs = implementationBoundaries(implementationSites.value().capability());
   auto expected = binder::ModuleBodySyntaxVerifier::reconstruct(
-      source.parsed, source.module, source.moduleNode, definitionInputs.asPtr(),
-      implementationInputs.asPtr());
+      source.parsed, source.module, source.moduleNode, admission.lease().capability());
   if (!expected.is<binder::ModuleBodySyntaxProjection>() ||
       expected.get<binder::ModuleBodySyntaxProjection>().syntax != syntax.value() ||
       expected.get<binder::ModuleBodySyntaxProjection>().provenance != candidate) {
@@ -938,4 +960,247 @@ zc::Maybe<zc::Array<uint8_t>> ModuleBodyProvenanceQuery::verify(
   return zc::mv(witness);
 }
 
+enum class BinderCapabilityFailureReconstruction : uint8_t {
+  IdentitySiteInventory = 0x01,
+  StableIdentityAdmission = 0x02,
+  StableIdentityDependent = 0x03
+};
+
+bool sameSourceRejection(zc::ArrayPtr<const uint8_t> expected,
+                         zc::ArrayPtr<const diagnostics::DiagnosticFact> actual) {
+  auto encoded = binder::encodeStableBindingDiagnosticFacts(actual);
+  return encoded != zc::none && expected == ZC_ASSERT_NONNULL(encoded).asPtr();
+}
+
+template <typename Descriptor>
+query::CapabilityRejectionCheck verifyBinderSourceRejection(
+    query::CapabilityQueryContext<Descriptor>& context, const typename Descriptor::Key& key,
+    zc::ArrayPtr<const diagnostics::DiagnosticFact> diagnostics,
+    BinderCapabilityFailureReconstruction reconstruction) {
+  auto loaded = loadIdentitySource(context, key);
+  if (loaded.isRuntimeFailure() || loaded.kind() == query::QueryValueKind::Absence) {
+    return query::CapabilityRejectionCheck::Rejected;
+  }
+  if (loaded.kind() == query::QueryValueKind::SemanticFailure) {
+    return sameSourceRejection(loaded.semanticFailureBytes(), diagnostics)
+               ? query::CapabilityRejectionCheck::Verified
+               : query::CapabilityRejectionCheck::Rejected;
+  }
+  if (loaded.kind() != query::QueryValueKind::Value ||
+      reconstruction == BinderCapabilityFailureReconstruction::IdentitySiteInventory) {
+    return query::CapabilityRejectionCheck::Rejected;
+  }
+  if (reconstruction == BinderCapabilityFailureReconstruction::StableIdentityDependent) {
+    auto admission = context.template getCapability<StableIdentityAdmissionQuery>(key);
+    if (!admission.isSourceRejected()) { return query::CapabilityRejectionCheck::Rejected; }
+    auto expected = binder::encodeStableBindingDiagnosticFacts(admission.diagnostics().values());
+    auto actual = binder::encodeStableBindingDiagnosticFacts(diagnostics);
+    return expected != zc::none && actual != zc::none &&
+                   ZC_ASSERT_NONNULL(expected).asPtr() == ZC_ASSERT_NONNULL(actual).asPtr()
+               ? query::CapabilityRejectionCheck::Verified
+               : query::CapabilityRejectionCheck::Rejected;
+  }
+  auto sites = context.template getCapability<IdentitySyntaxSiteInventoryQuery>(key);
+  if (!sites.isPublished()) {
+    if (!sites.isSourceRejected()) { return query::CapabilityRejectionCheck::Rejected; }
+    auto expected = binder::encodeStableBindingDiagnosticFacts(sites.diagnostics().values());
+    auto actual = binder::encodeStableBindingDiagnosticFacts(diagnostics);
+    return expected != zc::none && actual != zc::none &&
+                   ZC_ASSERT_NONNULL(expected).asPtr() == ZC_ASSERT_NONNULL(actual).asPtr()
+               ? query::CapabilityRejectionCheck::Verified
+               : query::CapabilityRejectionCheck::Rejected;
+  }
+  const auto& source = loaded.value();
+  auto verification = binder::StableIdentityCandidateVerifier::reconstruct(
+      source.parsed, source.module, source.moduleNode);
+  if (!verification.template is<binder::StableIdentityCandidateSourceFailure>()) {
+    return query::CapabilityRejectionCheck::Rejected;
+  }
+  auto fact = identityAdmissionDiagnostic(
+      source.parsed, sites.lease().capability(),
+      verification.template get<binder::StableIdentityCandidateSourceFailure>());
+  if (fact == zc::none) { return query::CapabilityRejectionCheck::Rejected; }
+  zc::Vector<diagnostics::DiagnosticFact> expectedFacts;
+  expectedFacts.add(zc::mv(ZC_ASSERT_NONNULL(fact)));
+  auto expected = binder::encodeStableBindingDiagnosticFacts(expectedFacts.asPtr());
+  auto actual = binder::encodeStableBindingDiagnosticFacts(diagnostics);
+  return expected != zc::none && actual != zc::none &&
+                 ZC_ASSERT_NONNULL(expected).asPtr() == ZC_ASSERT_NONNULL(actual).asPtr()
+             ? query::CapabilityRejectionCheck::Verified
+             : query::CapabilityRejectionCheck::Rejected;
+}
+
+template <typename Descriptor>
+query::CapabilityRejectionCheck verifyBinderKeyRejection(
+    query::CapabilityQueryContext<Descriptor>& context, const typename Descriptor::Key& key,
+    const binder::BinderKeyFailure& failure, BinderCapabilityFailureReconstruction reconstruction) {
+  auto loaded = loadIdentitySource(context, key);
+  if (loaded.isRuntimeFailure() || loaded.kind() == query::QueryValueKind::SemanticFailure) {
+    return query::CapabilityRejectionCheck::Rejected;
+  }
+  if (loaded.kind() == query::QueryValueKind::Absence) {
+    auto module = decodeModule(key);
+    if (module == zc::none) { return query::CapabilityRejectionCheck::Rejected; }
+    zc::Maybe<binder::LocalSyntaxPath> noPath;
+    auto expected = binder::BinderKeyFailure::from(
+        binder::BinderKeyFailureKind::MissingSelectedModuleSource,
+        binder::BinderQueryOwner::module(zc::mv(ZC_ASSERT_NONNULL(module))), zc::mv(noPath));
+    return expected != zc::none && ZC_ASSERT_NONNULL(expected) == failure
+               ? query::CapabilityRejectionCheck::Verified
+               : query::CapabilityRejectionCheck::Rejected;
+  }
+  if (loaded.kind() != query::QueryValueKind::Value ||
+      reconstruction == BinderCapabilityFailureReconstruction::IdentitySiteInventory) {
+    return query::CapabilityRejectionCheck::Rejected;
+  }
+  if (reconstruction == BinderCapabilityFailureReconstruction::StableIdentityAdmission) {
+    auto sites = context.template getCapability<IdentitySyntaxSiteInventoryQuery>(key);
+    return sites.isKeyRejected() && sites.keyFailure() == failure
+               ? query::CapabilityRejectionCheck::Verified
+               : query::CapabilityRejectionCheck::Rejected;
+  }
+  auto admission = context.template getCapability<StableIdentityAdmissionQuery>(key);
+  return admission.isKeyRejected() && admission.keyFailure() == failure
+             ? query::CapabilityRejectionCheck::Verified
+             : query::CapabilityRejectionCheck::Rejected;
+}
+
 }  // namespace zomlang::compiler::driver::incremental_binding_query
+
+namespace zomlang::compiler::query {
+namespace {
+
+template <typename Capability>
+zc::Maybe<zc::Own<Capability>> decodeCanonicalCandidate(zc::ArrayPtr<const uint8_t> bytes) {
+  auto candidate = Capability::decodeCanonical(bytes);
+  if (candidate == zc::none || ZC_ASSERT_NONNULL(candidate).encodeCanonical().asPtr() != bytes) {
+    return zc::none;
+  }
+  return zc::heap<Capability>(zc::mv(ZC_ASSERT_NONNULL(candidate)));
+}
+
+template <typename Contract>
+zc::Array<uint8_t> encodeSourceSequence(const typename Contract::Sequence& diagnostics) {
+  auto encoded = binder::encodeStableBindingDiagnosticFacts(diagnostics.values());
+  return zc::mv(ZC_ASSERT_NONNULL(encoded));
+}
+
+zc::Array<uint8_t> encodeBinderKeyFailure(const binder::BinderKeyFailure& failure) {
+  return binder::StableBindingCodec<binder::BinderKeyFailure>::encode(failure);
+}
+
+zc::Maybe<binder::BinderKeyFailure> decodeBinderKeyFailure(zc::ArrayPtr<const uint8_t> bytes) {
+  return binder::StableBindingCodec<binder::BinderKeyFailure>::decode(bytes);
+}
+
+}  // namespace
+
+#define ZOM_DEFINE_BINDER_FAILURE_CONTRACTS(DescriptorName, Reconstruction)                        \
+  zc::Array<uint8_t>                                                                               \
+  CapabilityFailureContract<DescriptorName, SourceRejection<diagnostics::DiagnosticFact>>::encode( \
+      const Sequence& diagnostics) {                                                               \
+    using Contract =                                                                               \
+        CapabilityFailureContract<DescriptorName, SourceRejection<diagnostics::DiagnosticFact>>;   \
+    return encodeSourceSequence<Contract>(diagnostics);                                            \
+  }                                                                                                \
+  zc::Maybe<CapabilityFailureContract<DescriptorName,                                              \
+                                      SourceRejection<diagnostics::DiagnosticFact>>::Sequence>     \
+  CapabilityFailureContract<DescriptorName, SourceRejection<diagnostics::DiagnosticFact>>::decode( \
+      zc::ArrayPtr<const uint8_t> bytes) {                                                         \
+    auto facts = binder::decodeStableBindingDiagnosticFacts(bytes);                                \
+    if (facts == zc::none) { return zc::none; }                                                    \
+    return Sequence(zc::mv(ZC_ASSERT_NONNULL(facts)));                                             \
+  }                                                                                                \
+  CapabilityRejectionCheck                                                                         \
+  CapabilityFailureContract<DescriptorName, SourceRejection<diagnostics::DiagnosticFact>>::verify( \
+      CapabilityQueryContext<DescriptorName>& context, const DescriptorName::Key& key,             \
+      const Sequence& diagnostics) {                                                               \
+    return driver::incremental_binding_query::verifyBinderSourceRejection(                         \
+        context, key, diagnostics.values(), Reconstruction);                                       \
+  }                                                                                                \
+  zc::Array<uint8_t>                                                                               \
+  CapabilityFailureContract<DescriptorName, KeyRejection<binder::BinderKeyFailure>>::encode(       \
+      const binder::BinderKeyFailure& failure) {                                                   \
+    return encodeBinderKeyFailure(failure);                                                        \
+  }                                                                                                \
+  zc::Maybe<binder::BinderKeyFailure>                                                              \
+  CapabilityFailureContract<DescriptorName, KeyRejection<binder::BinderKeyFailure>>::decode(       \
+      zc::ArrayPtr<const uint8_t> bytes) {                                                         \
+    return decodeBinderKeyFailure(bytes);                                                          \
+  }                                                                                                \
+  CapabilityRejectionCheck                                                                         \
+  CapabilityFailureContract<DescriptorName, KeyRejection<binder::BinderKeyFailure>>::verify(       \
+      CapabilityQueryContext<DescriptorName>& context, const DescriptorName::Key& key,             \
+      const binder::BinderKeyFailure& failure) {                                                   \
+    return driver::incremental_binding_query::verifyBinderKeyRejection(context, key, failure,      \
+                                                                       Reconstruction);            \
+  }
+
+using IdentitySiteInventoryDescriptor =
+    driver::incremental_binding_query::IdentitySyntaxSiteInventoryQuery;
+using StableIdentityAdmissionDescriptor =
+    driver::incremental_binding_query::StableIdentityAdmissionQuery;
+using DefinitionSitesDescriptor =
+    driver::incremental_binding_query::RevisionLocalDefinitionSitesQuery;
+using ImplementationSitesDescriptor =
+    driver::incremental_binding_query::RevisionLocalImplementationSitesQuery;
+using ModuleBodyProvenanceDescriptor = driver::incremental_binding_query::ModuleBodyProvenanceQuery;
+
+StableWitnessBytes CapabilityCandidateContract<IdentitySiteInventoryDescriptor>::encode(
+    const IdentitySiteInventoryDescriptor::Capability& candidate) {
+  return StableWitnessBytes(
+      driver::incremental_binding_query::encodeIdentitySyntaxSiteInventoryWitness(candidate));
+}
+zc::Maybe<zc::Own<IdentitySiteInventoryDescriptor::Capability>> CapabilityCandidateContract<
+    IdentitySiteInventoryDescriptor>::decode(zc::ArrayPtr<const uint8_t> bytes) {
+  return zc::none;
+}
+
+StableWitnessBytes CapabilityCandidateContract<StableIdentityAdmissionDescriptor>::encode(
+    const StableIdentityAdmissionDescriptor::Capability& candidate) {
+  return StableWitnessBytes(
+      driver::incremental_binding_query::encodeStableIdentityAdmissionWitness(candidate));
+}
+zc::Maybe<zc::Own<StableIdentityAdmissionDescriptor::Capability>> CapabilityCandidateContract<
+    StableIdentityAdmissionDescriptor>::decode(zc::ArrayPtr<const uint8_t> bytes) {
+  return zc::none;
+}
+
+#define ZOM_DEFINE_CANONICAL_BINDER_CANDIDATE(DescriptorName, CapabilityType)              \
+  StableWitnessBytes CapabilityCandidateContract<DescriptorName>::encode(                  \
+      const DescriptorName::Capability& candidate) {                                       \
+    return StableWitnessBytes(candidate.encodeCanonical());                                \
+  }                                                                                        \
+  zc::Maybe<zc::Own<DescriptorName::Capability>>                                           \
+  CapabilityCandidateContract<DescriptorName>::decode(zc::ArrayPtr<const uint8_t> bytes) { \
+    return decodeCanonicalCandidate<CapabilityType>(bytes);                                \
+  }
+
+ZOM_DEFINE_BINDER_FAILURE_CONTRACTS(
+    IdentitySiteInventoryDescriptor,
+    driver::incremental_binding_query::BinderCapabilityFailureReconstruction::IdentitySiteInventory)
+ZOM_DEFINE_BINDER_FAILURE_CONTRACTS(
+    StableIdentityAdmissionDescriptor,
+    driver::incremental_binding_query::BinderCapabilityFailureReconstruction::
+        StableIdentityAdmission)
+ZOM_DEFINE_CANONICAL_BINDER_CANDIDATE(DefinitionSitesDescriptor,
+                                      binder::RevisionLocalDefinitionSites)
+ZOM_DEFINE_BINDER_FAILURE_CONTRACTS(
+    DefinitionSitesDescriptor, driver::incremental_binding_query::
+                                   BinderCapabilityFailureReconstruction::StableIdentityDependent)
+ZOM_DEFINE_CANONICAL_BINDER_CANDIDATE(ImplementationSitesDescriptor,
+                                      binder::RevisionLocalImplementationSites)
+ZOM_DEFINE_BINDER_FAILURE_CONTRACTS(
+    ImplementationSitesDescriptor,
+    driver::incremental_binding_query::BinderCapabilityFailureReconstruction::
+        StableIdentityDependent)
+ZOM_DEFINE_CANONICAL_BINDER_CANDIDATE(ModuleBodyProvenanceDescriptor, binder::ModuleBodyProvenance)
+ZOM_DEFINE_BINDER_FAILURE_CONTRACTS(
+    ModuleBodyProvenanceDescriptor,
+    driver::incremental_binding_query::BinderCapabilityFailureReconstruction::
+        StableIdentityDependent)
+
+#undef ZOM_DEFINE_CANONICAL_BINDER_CANDIDATE
+#undef ZOM_DEFINE_BINDER_FAILURE_CONTRACTS
+
+}  // namespace zomlang::compiler::query

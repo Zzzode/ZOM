@@ -37,6 +37,44 @@ endif()
 # Unit Tests - Low-level component tests
 add_subdirectory(unittests)
 
+set(ZOM_QUERY_RUNTIME_NEGATIVE_CASES
+  identity-token-construction:QueryDatabaseIdentityToken
+  request-result-copy:QueryRequestResult
+  request-result-clone:clone
+  memo-base-observer:memoBase
+  memo-base-cast:memoAs
+  capability-published-construction:CapabilityPublished
+  request-decoder-bridge:QueryRuntimeTestAccess
+  database-identity-constructor:QueryDatabase
+  database-allocator-constructor:QueryDatabase
+  database-gate-constructor:QueryDatabase
+  database-callback-constructor:QueryDatabase
+  database-verifier-constructor:QueryDatabase
+  memo-kind-mutation:kind
+  memo-database-mutation:database
+  memo-revision-mutation:revision)
+
+foreach(case_entry IN LISTS ZOM_QUERY_RUNTIME_NEGATIVE_CASES)
+  string(REPLACE ":" ";" case_fields "${case_entry}")
+  list(GET case_fields 0 case_name)
+  list(GET case_fields 1 forbidden_symbol)
+  add_test(
+    NAME query-runtime-negative-compile-${case_name}
+    COMMAND
+      "${CMAKE_COMMAND}"
+      "-S${CMAKE_CURRENT_SOURCE_DIR}/cmake/expect-compile-failure"
+      "-B${CMAKE_CURRENT_BINARY_DIR}/negative-compile/query-runtime/${case_name}"
+      "-DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}"
+      "-DZOM_NEGATIVE_SOURCE=${CMAKE_CURRENT_SOURCE_DIR}/compile-fail/query-runtime/${case_name}.cc"
+      "-DZOM_FORBIDDEN_SYMBOL=${forbidden_symbol}"
+      "-DZOM_SOURCE_ROOT=${CMAKE_SOURCE_DIR}"
+      "-DZOM_BINARY_ROOT=${CMAKE_BINARY_DIR}"
+      "-DZOM_DESCRIPTOR_HEADER=${CMAKE_BINARY_DIR}/products/zomlang/compiler/query/query-descriptor-inventory.generated.h")
+  set_tests_properties(
+    query-runtime-negative-compile-${case_name}
+    PROPERTIES LABELS "unittest;query;architecture;compile-fail" TIMEOUT 60)
+endforeach()
+
 # Conformance runner orchestration
 add_subdirectory(conformance)
 

@@ -21,7 +21,7 @@
 namespace zomlang::compiler::query::test {
 
 ZC_TEST("QueryConcurrencyTest.SameKeyAndRevisionUseSingleFlight") {
-  QueryDatabase database(queryTestScheduler());
+  auto database = queryTestDatabase();
   registerCoreKinds(database);
   auto snapshot = database.snapshot();
   zc::MutexGuarded<zc::Vector<uint32_t>> values;
@@ -52,7 +52,7 @@ ZC_TEST("QueryConcurrencyTest.SameKeyAndRevisionUseSingleFlight") {
 }
 
 ZC_TEST("QueryConcurrencyTest.DirectCyclesPublishNoMemoAndRetryCleanly") {
-  QueryDatabase database(queryTestScheduler());
+  auto database = queryTestDatabase();
   registerCoreKinds(database);
   auto snapshot = database.snapshot();
   auto first = snapshot.get<CycleAQuery>(1);
@@ -67,7 +67,7 @@ ZC_TEST("QueryConcurrencyTest.DirectCyclesPublishNoMemoAndRetryCleanly") {
 }
 
 ZC_TEST("QueryConcurrencyTest.CrossWorkerWaitCyclesFailWithoutDeadlock") {
-  QueryDatabase database(queryTestScheduler());
+  auto database = queryTestDatabase();
   registerCoreKinds(database);
   auto snapshot = database.snapshot();
   zc::MutexGuarded<zc::Vector<QueryRuntimeFailure>> failures;
@@ -91,11 +91,11 @@ ZC_TEST("QueryConcurrencyTest.CrossWorkerWaitCyclesFailWithoutDeadlock") {
 }
 
 ZC_TEST("QueryConcurrencyTest.CancellationAndVerifierFailurePublishNothing") {
-  QueryDatabase database(queryTestScheduler());
+  auto database = queryTestDatabase();
   registerCoreKinds(database);
   auto write = beginTransaction(database);
-  ZC_REQUIRE(write.set<HighInput>(90, 0));
-  ZC_REQUIRE(write.commit() != zc::none);
+  ZC_REQUIRE(write.set<HighInput>(90, 0).isApplied());
+  ZC_REQUIRE(write.commit().isCommitted());
   auto first = database.snapshot();
 
   auto rejected = first.get<VerifiedQuery>(8);
@@ -111,8 +111,8 @@ ZC_TEST("QueryConcurrencyTest.CancellationAndVerifierFailurePublishNothing") {
   ZC_EXPECT(first.metadata<SlowQuery>(1) == zc::none);
 
   auto update = beginTransaction(database);
-  ZC_REQUIRE(update.set<HighInput>(90, 1));
-  ZC_REQUIRE(update.commit() != zc::none);
+  ZC_REQUIRE(update.set<HighInput>(90, 1).isApplied());
+  ZC_REQUIRE(update.commit().isCommitted());
   auto second = database.snapshot();
   ZC_EXPECT(second.get<VerifiedQuery>(8).value() == 8);
   auto verifiedMetadata = second.metadata<VerifiedQuery>(8);
@@ -122,7 +122,7 @@ ZC_TEST("QueryConcurrencyTest.CancellationAndVerifierFailurePublishNothing") {
 }
 
 ZC_TEST("QueryConcurrencyTest.CancellationDuringProviderPublishesNoCandidateOrDependencies") {
-  QueryDatabase database(queryTestScheduler());
+  auto database = queryTestDatabase();
   registerCoreKinds(database);
   auto snapshot = database.snapshot();
   CancellationSource cancellation;
@@ -146,7 +146,7 @@ ZC_TEST("QueryConcurrencyTest.CancellationDuringProviderPublishesNoCandidateOrDe
 }
 
 ZC_TEST("QueryConcurrencyTest.CancelledRequesterDoesNotCancelSharedFlight") {
-  QueryDatabase database(queryTestScheduler());
+  auto database = queryTestDatabase();
   registerCoreKinds(database);
   auto snapshot = database.snapshot();
   CancellationSource firstCancellation;
@@ -179,7 +179,7 @@ ZC_TEST("QueryConcurrencyTest.CancelledRequesterDoesNotCancelSharedFlight") {
 }
 
 ZC_TEST("QueryConcurrencyTest.OldSnapshotFlightCannotPublishIntoNewRevision") {
-  QueryDatabase database(queryTestScheduler());
+  auto database = queryTestDatabase();
   registerCoreKinds(database);
   auto oldSnapshot = database.snapshot();
   zc::MutexGuarded<bool> oldCompleted(false);
@@ -190,8 +190,8 @@ ZC_TEST("QueryConcurrencyTest.OldSnapshotFlightCannotPublishIntoNewRevision") {
   usleep(5000);
 
   auto transaction = beginTransaction(database);
-  ZC_REQUIRE(transaction.set<LowInput>(1, 1));
-  ZC_REQUIRE(transaction.commit() != zc::none);
+  ZC_REQUIRE(transaction.set<LowInput>(1, 1).isApplied());
+  ZC_REQUIRE(transaction.commit().isCommitted());
   auto newSnapshot = database.snapshot();
   oldFlight = nullptr;
 
@@ -202,7 +202,7 @@ ZC_TEST("QueryConcurrencyTest.OldSnapshotFlightCannotPublishIntoNewRevision") {
 }
 
 ZC_TEST("QueryConcurrencyTest.ParallelDependencyGroupExecutesConcurrently") {
-  QueryDatabase database(queryTestScheduler());
+  auto database = queryTestDatabase();
   registerCoreKinds(database);
   auto snapshot = database.snapshot();
   const auto start = zc::systemPreciseMonotonicClock().now();
@@ -219,14 +219,14 @@ ZC_TEST("QueryConcurrencyTest.ParallelDependencyGroupExecutesConcurrently") {
 }
 
 ZC_TEST("QueryConcurrencyTest.ParallelResultsRetainCallerKeyOrder") {
-  QueryDatabase database(queryTestScheduler());
+  auto database = queryTestDatabase();
   registerCoreKinds(database);
   auto write = beginTransaction(database);
-  ZC_REQUIRE(write.set<LowInput>(40, 1));
-  ZC_REQUIRE(write.set<LowInput>(41, 2));
-  ZC_REQUIRE(write.set<LowInput>(42, 3));
-  ZC_REQUIRE(write.set<LowInput>(43, 4));
-  ZC_REQUIRE(write.commit() != zc::none);
+  ZC_REQUIRE(write.set<LowInput>(40, 1).isApplied());
+  ZC_REQUIRE(write.set<LowInput>(41, 2).isApplied());
+  ZC_REQUIRE(write.set<LowInput>(42, 3).isApplied());
+  ZC_REQUIRE(write.set<LowInput>(43, 4).isApplied());
+  ZC_REQUIRE(write.commit().isCommitted());
 
   auto snapshot = database.snapshot();
   auto result = snapshot.get<ParallelPositionalQuery>(40);
@@ -239,17 +239,21 @@ ZC_TEST("QueryConcurrencyTest.ParallelResultsRetainCallerKeyOrder") {
 }
 
 ZC_TEST("QueryConcurrencyTest.PriorParallelDependencyGroupValidatesConcurrently") {
-  QueryDatabase database(queryTestScheduler());
+  auto database = queryTestDatabase();
   registerCoreKinds(database);
   auto initial = beginTransaction(database);
-  for (uint32_t key = 30; key < 34; ++key) { ZC_REQUIRE(initial.set<LowInput>(key, key)); }
-  ZC_REQUIRE(initial.commit() != zc::none);
+  for (uint32_t key = 30; key < 34; ++key) {
+    ZC_REQUIRE(initial.set<LowInput>(key, key).isApplied());
+  }
+  ZC_REQUIRE(initial.commit().isCommitted());
   auto first = database.snapshot();
   ZC_EXPECT(first.get<ParallelTrackedSumQuery>(30).value() == 126);
 
   auto changed = beginTransaction(database);
-  for (uint32_t key = 30; key < 34; ++key) { ZC_REQUIRE(changed.set<LowInput>(key, key + 10)); }
-  ZC_REQUIRE(changed.commit() != zc::none);
+  for (uint32_t key = 30; key < 34; ++key) {
+    ZC_REQUIRE(changed.set<LowInput>(key, key + 10).isApplied());
+  }
+  ZC_REQUIRE(changed.commit().isCommitted());
   auto second = database.snapshot();
   const auto start = zc::systemPreciseMonotonicClock().now();
   auto result = second.get<ParallelTrackedSumQuery>(30);
@@ -262,7 +266,7 @@ ZC_TEST("QueryConcurrencyTest.PriorParallelDependencyGroupValidatesConcurrently"
 }
 
 ZC_TEST("QueryConcurrencyTest.NestedParallelGroupsFailClosedWithoutPoolStarvation") {
-  QueryDatabase database(queryTestScheduler());
+  auto database = queryTestDatabase();
   registerCoreKinds(database);
   auto snapshot = database.snapshot();
   auto result = snapshot.get<NestedParallelRootQuery>(1);

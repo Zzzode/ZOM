@@ -594,13 +594,6 @@ zc::Maybe<CanonicalPackageGraph> CanonicalPackageGraph::decodeCanonical(
                                zc::mv(crates), zc::mv(crateEdges));
 }
 
-zc::StringPtr PackageGraphInput::domain() { return "zom.query.package-graph"_zc; }
-
-query::QueryKindContract PackageGraphInput::contract() {
-  auto contract = query::QueryKindContract::input(domain(), query::Durability::Medium);
-  return zc::mv(ZC_REQUIRE_NONNULL(contract));
-}
-
 zc::Array<uint8_t> PackageGraphInput::encodeKey(const Key& key) { return key.encodeCanonical(); }
 
 zc::Maybe<PackageGraphInput::Key> PackageGraphInput::decodeKey(zc::ArrayPtr<const uint8_t> bytes) {
@@ -617,7 +610,7 @@ zc::Maybe<PackageGraphInput::Value> PackageGraphInput::decodeValue(
 }
 
 bool registerIncrementalPackageGraphQueryInput(query::QueryDatabase& database) {
-  return database.registerInputKind<PackageGraphInput>() != zc::none;
+  return database.registerDescriptor<PackageGraphInput>().isRegistered();
 }
 
 }  // namespace zomlang::compiler::driver::incremental_binding_query

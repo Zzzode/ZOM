@@ -364,4 +364,37 @@ ZC_TEST("Implementation occurrence groups require exact authorities and canonica
   }
 }
 
+ZC_TEST("Identity site inventory and stable admission retain exact parse lineage") {
+  auto selected = snapshot(source());
+  const uint32_t firstPath[] = {1};
+  const uint32_t secondPath[] = {2};
+  auto first = IdentitySyntaxSite::from(siteKey(firstPath), span(selected, 1, 2));
+  auto second = IdentitySyntaxSite::from(siteKey(secondPath), span(selected, 3, 4));
+  ZC_REQUIRE(first != zc::none);
+  ZC_REQUIRE(second != zc::none);
+
+  zc::Vector<IdentitySyntaxSiteInventoryEntry> entries;
+  entries.add(IdentitySyntaxSiteInventoryEntry{1, ZC_REQUIRE_NONNULL(first).clone()});
+  entries.add(IdentitySyntaxSiteInventoryEntry{2, ZC_REQUIRE_NONNULL(second).clone()});
+  auto inventory = IdentitySyntaxSiteInventory::fromVerified(
+      module(), source(), selected.contentDigest(), 3, zc::mv(entries));
+  ZC_REQUIRE(inventory != zc::none);
+  ZC_EXPECT(ZC_REQUIRE_NONNULL(inventory).entries().size() == 2);
+  ZC_EXPECT(ZC_REQUIRE_NONNULL(inventory).clone() == ZC_REQUIRE_NONNULL(inventory));
+
+  zc::Vector<IdentitySyntaxSiteInventoryEntry> reversed;
+  reversed.add(IdentitySyntaxSiteInventoryEntry{2, ZC_REQUIRE_NONNULL(second).clone()});
+  reversed.add(IdentitySyntaxSiteInventoryEntry{1, ZC_REQUIRE_NONNULL(first).clone()});
+  ZC_EXPECT(IdentitySyntaxSiteInventory::fromVerified(module(), source(), selected.contentDigest(),
+                                                      3, zc::mv(reversed)) == zc::none);
+
+  zc::Vector<StableIdentityAdmissionDefinition> definitions;
+  zc::Vector<StableIdentityAdmissionImplementation> implementations;
+  auto admission = StableIdentityAdmission::fromVerified(
+      module(), source(), selected.contentDigest(), zc::mv(definitions), zc::mv(implementations));
+  ZC_REQUIRE(admission != zc::none);
+  ZC_EXPECT(ZC_REQUIRE_NONNULL(admission).sourceDigest() == selected.contentDigest());
+  ZC_EXPECT(ZC_REQUIRE_NONNULL(admission).clone() == ZC_REQUIRE_NONNULL(admission));
+}
+
 }  // namespace zomlang::compiler::binder

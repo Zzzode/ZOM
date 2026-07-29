@@ -119,8 +119,9 @@ struct RequesterModuleAncestryInput final {
   using Key = identity::ModuleKey;
   using Value = identity::RequesterModuleAncestry;
 
-  ZC_NODISCARD static zc::StringPtr domain();
-  ZC_NODISCARD static query::QueryKindContract contract();
+  static constexpr query::InputDescriptorMetadata descriptor{
+      "RequesterModuleAncestryInput"_zcc, "zom.query.requester-module-ancestry"_zcc,
+      query::Durability::Low};
   ZC_NODISCARD static zc::Array<uint8_t> encodeKey(const Key& key);
   ZC_NODISCARD static zc::Maybe<Key> decodeKey(zc::ArrayPtr<const uint8_t> bytes);
   ZC_NODISCARD static zc::Array<uint8_t> encodeValue(const Value& value);
@@ -132,8 +133,9 @@ struct ModuleCatalogPathBucketInput final {
   using Key = identity::ModuleCatalogPathBucketKey;
   using Value = CanonicalModuleCatalogBucket;
 
-  ZC_NODISCARD static zc::StringPtr domain();
-  ZC_NODISCARD static query::QueryKindContract contract();
+  static constexpr query::InputDescriptorMetadata descriptor{
+      "ModuleCatalogPathBucketInput"_zcc, "zom.query.module-catalog-path-bucket"_zcc,
+      query::Durability::Low};
   ZC_NODISCARD static zc::Array<uint8_t> encodeKey(const Key& key);
   ZC_NODISCARD static zc::Maybe<Key> decodeKey(zc::ArrayPtr<const uint8_t> bytes);
   ZC_NODISCARD static zc::Array<uint8_t> encodeValue(const Value& value);
@@ -145,8 +147,8 @@ struct ModuleSearchRootsInput final {
   using Key = identity::CrateKey;
   using Value = CanonicalModuleSearchRoots;
 
-  ZC_NODISCARD static zc::StringPtr domain();
-  ZC_NODISCARD static query::QueryKindContract contract();
+  static constexpr query::InputDescriptorMetadata descriptor{
+      "ModuleSearchRootsInput"_zcc, "zom.query.module-search-roots"_zcc, query::Durability::Low};
   ZC_NODISCARD static zc::Array<uint8_t> encodeKey(const Key& key);
   ZC_NODISCARD static zc::Maybe<Key> decodeKey(zc::ArrayPtr<const uint8_t> bytes);
   ZC_NODISCARD static zc::Array<uint8_t> encodeValue(const Value& value);
@@ -158,8 +160,9 @@ struct DependencyAliasRootInput final {
   using Key = DependencyAliasRootQueryKey;
   using Value = ExplicitModuleTarget;
 
-  ZC_NODISCARD static zc::StringPtr domain();
-  ZC_NODISCARD static query::QueryKindContract contract();
+  static constexpr query::InputDescriptorMetadata descriptor{"DependencyAliasRootInput"_zcc,
+                                                             "zom.query.dependency-alias-root"_zcc,
+                                                             query::Durability::Low};
   ZC_NODISCARD static zc::Array<uint8_t> encodeKey(const Key& key);
   ZC_NODISCARD static zc::Maybe<Key> decodeKey(zc::ArrayPtr<const uint8_t> bytes);
   ZC_NODISCARD static zc::Array<uint8_t> encodeValue(const Value& value);
@@ -171,8 +174,8 @@ struct ConfiguredPreludeInput final {
   using Key = identity::CrateKey;
   using Value = ExplicitModuleTarget;
 
-  ZC_NODISCARD static zc::StringPtr domain();
-  ZC_NODISCARD static query::QueryKindContract contract();
+  static constexpr query::InputDescriptorMetadata descriptor{
+      "ConfiguredPreludeInput"_zcc, "zom.query.configured-prelude"_zcc, query::Durability::Low};
   ZC_NODISCARD static zc::Array<uint8_t> encodeKey(const Key& key);
   ZC_NODISCARD static zc::Maybe<Key> decodeKey(zc::ArrayPtr<const uint8_t> bytes);
   ZC_NODISCARD static zc::Array<uint8_t> encodeValue(const Value& value);
@@ -184,8 +187,14 @@ struct ResolveModuleRequestQuery final {
   using Key = identity::ModuleResolutionKey;
   using Value = identity::ModuleResolutionCandidates;
 
-  ZC_NODISCARD static zc::StringPtr domain();
-  ZC_NODISCARD static query::QueryKindContract contract();
+  static constexpr query::SemanticDescriptorMetadata descriptor{
+      "ResolveModuleRequestQuery"_zcc,
+      "zom.query.resolve-module-request"_zcc,
+      query::ReuseClass::Semantic,
+      query::RetentionClass::Retained,
+      query::QueryEqualityPolicy::CanonicalBytes,
+      query::QueryCyclePolicy::Reject,
+      query::QueryCostClass::Linear};
   ZC_NODISCARD static zc::Array<uint8_t> encodeKey(const Key& key);
   ZC_NODISCARD static zc::Maybe<Key> decodeKey(zc::ArrayPtr<const uint8_t> bytes);
   ZC_NODISCARD static zc::Array<uint8_t> encodeValue(const Value& value);
