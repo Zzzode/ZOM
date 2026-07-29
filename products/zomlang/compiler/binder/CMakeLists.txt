@@ -43,6 +43,7 @@ set(BINDER_SRC
   ${CMAKE_CURRENT_SOURCE_DIR}/stable-binding-codec.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/stable-binding-diagnostic-fact.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/stable-binding-facts.cc
+  ${CMAKE_CURRENT_SOURCE_DIR}/stable-definition-header-producer.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/stable-identity-candidate-producer.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/stable-identity-candidate-verifier.cc)
 

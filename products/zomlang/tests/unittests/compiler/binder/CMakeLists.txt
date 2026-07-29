@@ -27,6 +27,7 @@ add_ztest_unit_test("module-dependency-requests-test" "module-dependency-request
 add_ztest_unit_test("module-body-syntax-test" "module-body-syntax-test.cc" LIBRARIES binder parser trace identity diagnostics lexer ast source basic)
 add_ztest_unit_test("stable-binding-facts-test" "stable-binding-facts-test.cc" LIBRARIES binder identity diagnostics lexer ast source basic)
 add_ztest_unit_test("stable-binding-diagnostic-fact-test" "stable-binding-diagnostic-fact-test.cc" LIBRARIES binder identity diagnostics lexer ast source basic)
+add_ztest_unit_test("stable-definition-header-producer-test" "stable-definition-header-producer-test.cc" LIBRARIES binder parser trace identity diagnostics lexer ast source basic)
 add_test(NAME stable-binding-schema
   COMMAND "${Python3_EXECUTABLE}" ${CMAKE_SOURCE_DIR}/scripts/check-stable-binding-schema.py --check)
 set_tests_properties(stable-binding-schema PROPERTIES LABELS "binding;architecture")
