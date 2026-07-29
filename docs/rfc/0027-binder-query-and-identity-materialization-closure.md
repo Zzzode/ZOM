@@ -8,7 +8,7 @@ review-manager: rfc
 required-owners: [task-router, rfc, module-system, binder-checker, runtime-memory, error-system, ir-backend, spec-audit, verification]
 approvers: [task-router, rfc, module-system, binder-checker, runtime-memory, error-system, ir-backend, spec-audit, verification]
 created: 2026-07-27
-updated: 2026-07-29
+updated: 2026-07-30
 area: compiler
 requires: [4, 8, 10, 11, 17, 18, 19, 20, 25, 26]
 supersedes: []
@@ -2184,13 +2184,18 @@ recomputes every semantic-context fingerprint input. A partial root key,
 missing projected core crate, extra root, unequal graph edge, or unequal
 fingerprint input rejects the transaction.
 
-T1 owns `CompleteCompilationContextAuthority`, its canonical codec,
+I1A owns `CanonicalInputEntry<Key, Value>`,
+`CompleteCompilationContextAuthority`, its canonical codec,
 `CompleteCompilationContextAuthorityInput`, and
 `CompleteCompilationContextAuthorityInputVerifier` in exactly
 `products/zomlang/compiler/driver/module-graph-query-input.h` and
-`products/zomlang/compiler/driver/module-graph-query-input.cc`. Q3 supplies
-only the already verified canonical package-request projection consumed by
-that boundary.
+`products/zomlang/compiler/driver/module-graph-query-input.cc`. This foundation
+lands before I2 because `ActiveCompilationUnitMembership` must directly read
+the complete-context input and cannot infer completeness from its contextual
+key. Q3 supplies only the already verified canonical package-request
+projection consumed by that boundary. T1 later owns the three transaction
+producers and session publication; it installs the I1A input but does not
+redefine its value, codec, descriptor, or verifier.
 
 The three transaction payload domains are, in order,
 `zom.query.input-transaction.core-distribution`,
@@ -2858,7 +2863,8 @@ descriptor, or replace the hand-authored inventory with generated schema.
 | `S6` | `error-system` with `binder-checker`, `module-system`, and `verification` review | RFC 0029 `R29-13A`; RFC 0042 `R42-16` | RFC 0029 `R29-13B` exact live-producer landing set | directly replace the source-only fact contract with the live Source-and-Module contract; land Binder-owned typed arguments, five factories and mappings, Module provenance, exact native mutation coverage, schema and CTest ownership, `ZOM3028`, provider/verifier use, and failed-lookup bijection |
 | `Q3` | `module-system` | `G3` | `products/zomlang/compiler/driver/package/canonical-package-compilation-request.h`; `products/zomlang/compiler/driver/package/canonical-package-compilation-request.cc` | handle-free canonical package request records, exact codecs, verified-request projection, and independent projection verifier; completed production ownership remains closed while RFC 0030 `R30-13` owns the comprehensive schema mutation test |
 | `I1` | `module-system` with `runtime-memory` review | RFC 0029 `R29-14` | `products/zomlang/compiler/identity/canonical-identity-interner-set.h`; `products/zomlang/compiler/identity/canonical-identity-interner-set.cc`; `products/zomlang/compiler/query/semantic-context-capability-arena.h`; `products/zomlang/compiler/query/semantic-context-capability-arena.cc` | arena-owned eight-domain typed interner with collision, concurrency, reverse-lookup, and surviving-lease tests |
-| `I2` | `module-system` | `I1`; RFC 0029 `R29-14`; `S5` | `products/zomlang/compiler/driver/active-identity-membership-query.h`; `products/zomlang/compiler/driver/active-identity-membership-query.cc`; `products/zomlang/compiler/driver/active-definition-authority-query.h`; `products/zomlang/compiler/driver/active-definition-authority-query.cc` | all eight complete-record memberships and conditional readiness |
+| `I1A` | `module-system` with `verification` review | `Q3`; RFC 0029 `R29-14` | `products/zomlang/compiler/driver/module-graph-query-input.h`; `products/zomlang/compiler/driver/module-graph-query-input.cc`; `products/zomlang/compiler/binder/stable-binding-schema.def`; `scripts/check-stable-binding-schema.py`; `products/zomlang/tests/unittests/compiler/driver/module-graph-query-input-test.cc`; `products/zomlang/tests/unittests/compiler/driver/active-definition-authority-session-test.cc` | canonical input entries, complete compilation-context authority value and exact codec, registered input descriptor, independent verifier, native mutation coverage, schema ownership, and direct deletion of the test-only shadow authority |
+| `I2` | `module-system` | `I1`; `I1A`; RFC 0029 `R29-14`; `S5` | `products/zomlang/compiler/driver/active-identity-membership-query.h`; `products/zomlang/compiler/driver/active-identity-membership-query.cc`; `products/zomlang/compiler/driver/active-definition-authority-query.h`; `products/zomlang/compiler/driver/active-definition-authority-query.cc` | all eight complete-record memberships and conditional readiness |
 | `B1` | `binder-checker` | RFC 0029 `R29-12AB`; RFC 0029 `R29-12D`; `S5` | `products/zomlang/compiler/binder/module-skeleton-query.h`; `products/zomlang/compiler/binder/module-skeleton-query.cc` | `BindModuleSkeleton`, projections, and independent verifier |
 | `B2` | `binder-checker` | `B1` | `products/zomlang/compiler/binder/owner-body-query.h`; `products/zomlang/compiler/binder/owner-body-query.cc` | contextual `BindOwnerBody` and independent traversal/verifier |
 | `B3` | `binder-checker` | `B2` | `products/zomlang/compiler/binder/owner-body-syntax.h`; `products/zomlang/compiler/binder/owner-body-syntax.cc` | complete node-scope, capture, control, and provenance detachment |
@@ -2875,7 +2881,7 @@ descriptor, or replace the hand-authored inventory with generated schema.
 | `L2` | `ir-backend` | `L1` | `products/zomlang/compiler/hir/hir-module.h`; `products/zomlang/compiler/hir/hir-module.cc` | HIR retained lease and lineage verifier |
 | `L3` | `ir-backend` | `L2` | `products/zomlang/compiler/mir/built-mir.h`; `products/zomlang/compiler/mir/built-mir.cc` | Built MIR retained lease and lineage verifier |
 | `L4` | `runtime-memory` | `L3` | `products/zomlang/compiler/ownership/ownership-event-overlay.h`; `products/zomlang/compiler/ownership/ownership-event-overlay.cc` | ownership-overlay retained lease, verifier, and destruction order |
-| `T1` | `module-system` | `I2`; `M1`; RFC 0029 `R29-14`; RFC 0028 `R28-16` | `products/zomlang/compiler/driver/module-graph-query-input.h`; `products/zomlang/compiler/driver/module-graph-query-input.cc`; `products/zomlang/compiler/driver/active-definition-authority-session.h`; `products/zomlang/compiler/driver/active-definition-authority-session.cc` | in `module-graph-query-input.{h,cc}`, implement `CompleteCompilationContextAuthority`, its codec, `CompleteCompilationContextAuthorityInput`, and its independent verifier; then consume the session-owned live verified package request, execute the three closed input transactions, and publish staging, final, and sealed snapshots |
+| `T1` | `module-system` | `I1A`; `I2`; `M1`; RFC 0029 `R29-14`; RFC 0028 `R28-16` | `products/zomlang/compiler/driver/module-graph-query-input.h`; `products/zomlang/compiler/driver/module-graph-query-input.cc`; `products/zomlang/compiler/driver/active-definition-authority-session.h`; `products/zomlang/compiler/driver/active-definition-authority-session.cc` | consume the session-owned live verified package request and the I1A authority foundation, execute the three closed input transactions, install the complete-context input plus identity authority and readiness, and publish staging, final, and sealed snapshots |
 | `T2A` | `module-system` | `M5`; `T1` | `products/zomlang/compiler/driver/compiler-session.h`; `products/zomlang/compiler/driver/compiler-session.cc` | install transaction state machine and named snapshots |
 | `T2B` | `module-system` | `C2`; `L4`; `T2A` | `products/zomlang/compiler/driver/compiler-session.h`; `products/zomlang/compiler/driver/compiler-session.cc` | dependency-first final capability root and irreversible seal |
 | `T2C` | `module-system` | `T2B` | `products/zomlang/compiler/driver/compiler-session.h`; `products/zomlang/compiler/driver/compiler-session.cc` | surviving-lease and session teardown order |
@@ -3047,5 +3053,6 @@ None
 | 2026-07-27 | ACCEPTED | Acceptance transaction `rfc0028-accept-20260727-944b68ff` synchronized the final-seal admission, descriptor-specific capability failures, exact membership ordering, dependency provenance, closure-projection deletion, and corrected query-runtime dependency graph to RFC 0028 proposal SHA-256 `944b68ffc0aff5576d079a243ff092d7d19fba5ffed65551dda8e68adf230db4`; RFC 0027 status remains unchanged. |
 | 2026-07-27 | ACCEPTED | Acceptance transaction `rfc0029-accept-20260727-8d393a0c` synchronized complete module-qualified Binder keys, identity-site provenance, stable-identity admission, the five exact typed capability failure contracts, and the atomic schema-plus-facts dependency order to RFC 0029 proposal SHA-256 `8d393a0c6c00a7fad9ef086d3d25f5ed44300041afa9e1e1a4af5d68830fd3e7`; RFC 0027 status remains unchanged and implementation remains incomplete. |
 | 2026-07-28 | ACCEPTED | Acceptance transaction `rfc0030-accept-20260728-4ed0e6b8` synchronized the exact build-visible S1-plus-S2-plus-S3 landing set, driver-owned contextual-key cutover, native and mutation gates, and separate S6 diagnostic transaction to RFC 0030 proposal SHA-256 `4ed0e6b885abc87a1c4251855780cf115a85b3623b1d46f774a4b664110f7b6b`; RFC 0027 status remains accepted and implementation remains incomplete. |
-| 2026-07-28 | ACCEPTED | Acceptance transaction `rfc0031-accept-20260728-c25fcb18` synchronized the hand-authored schema metamodel, direct `Optional<MemberVisibility>` result, descriptor-parameterized capability results and payloads, dual capability/failure-alternative owner-task checks, exact Q3 versus `R30-13` test ownership, and T1 context-input artifacts to RFC 0031 proposal SHA-256 `c25fcb18e503ac214a8e92c925fa88108a915c2b15c94409dfecb88b3d9a63d5` and tracker SHA-256 `d64e7791ed2e2a488c5f57bc07ac341ccfc37d37c220c85131e2c9e846fb8d0d`; RFC 0027 status remains accepted, completed Q3 remains complete, and implementation remains incomplete. |
+| 2026-07-28 | ACCEPTED | Acceptance transaction `rfc0031-accept-20260728-c25fcb18` synchronized the hand-authored schema metamodel, direct `Optional<MemberVisibility>` result, descriptor-parameterized capability results and payloads, dual capability/failure-alternative owner-task checks, exact Q3 versus `R30-13` test ownership, and the complete-context ownership matrix to RFC 0031 proposal SHA-256 `c25fcb18e503ac214a8e92c925fa88108a915c2b15c94409dfecb88b3d9a63d5` and tracker SHA-256 `d64e7791ed2e2a488c5f57bc07ac341ccfc37d37c220c85131e2c9e846fb8d0d`; RFC 0027 status remains accepted, completed Q3 remains complete, and implementation remains incomplete. |
 | 2026-07-29 | ACCEPTED | User-designated independent approval bound the stable-header scope correction to exact pre-evidence Git diff SHA-256 `9af2ae8a4610f578ef14f3975277ba52eda4497cef2843ee7e699fb264d5e756` through transaction `rfc0027-header-scope-20260729-9af2ae8a`; the transaction authorizes only the corrected dependency order and source tasks and completes no implementation row. |
+| 2026-07-30 | ACCEPTED | Transaction `rfc0027-context-foundation-20260730-1214413e` binds the synchronized eight-document complete-context foundation correction to independently approved exact pre-evidence Git diff SHA-256 `1214413eef714da5727a705d68bb9872d47ea78b28b18600ac158c87db63ac61`; `I1A` owns the value, codec, descriptor, verifier, schema row, and tests before `I2`, while `T1` retains provider, transaction, and session publication duties. No source task is completed. |

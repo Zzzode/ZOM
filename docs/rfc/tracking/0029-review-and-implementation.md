@@ -241,6 +241,25 @@ CompilerSession does not yet publish a final-sealed production root; that
 downstream boundary remains explicit in the current design and is not claimed
 by RFC 0029.
 
+### 2026-07-30 Complete-Context Input Ownership Correction
+
+RFC 0027 R27-19 preflight found that the active compilation-unit membership
+must read `CompleteCompilationContextAuthorityInput` before T1 is reachable.
+The accepted RFC 0029 ownership table instead assigned the descriptor,
+verifier, and tests to T1, creating a dependency cycle through I2 and M1.
+
+The correction adds `I1A` to the closed task vocabulary and assigns the
+complete-context input descriptor, value, codec, verifier, and tests to I1A.
+T1 remains the provider because its session transaction installs that input.
+This design-only ownership correction does not reopen any landed RFC 0029
+runtime task or change its implementation evidence.
+
+The user-designated independent approver accepted exact pre-evidence Git diff
+SHA-256
+`1214413eef714da5727a705d68bb9872d47ea78b28b18600ac158c87db63ac61`.
+Transaction `rfc0027-context-foundation-20260730-1214413e` synchronizes this
+ownership correction with RFCs 0027, 0030, and 0031.
+
 ## Implementation Tracker
 
 | Task | Owner | Depends On | Deliverable | Verification | Status |
@@ -270,3 +289,7 @@ by RFC 0029.
 
 All RFC 0029 implementation tasks are complete. RFC 0028 `R28-16A` is the
 next unblocked query-runtime task.
+
+Transaction `rfc0027-context-foundation-20260730-1214413e` records the
+synchronized complete-context ownership correction. RFC 0029 remains
+`LANDED`.

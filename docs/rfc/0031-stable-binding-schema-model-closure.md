@@ -8,7 +8,7 @@ review-manager: rfc
 required-owners: [rfc, module-system, binder-checker, error-system, runtime-memory, verification]
 approvers: [rfc, module-system, binder-checker, error-system, runtime-memory, verification]
 created: 2026-07-28
-updated: 2026-07-29
+updated: 2026-07-30
 area: testing
 requires: [27, 28, 29, 30]
 supersedes: []
@@ -268,7 +268,7 @@ owning RFC tracker and is not copied into a Python table.
 The closed task vocabulary is:
 
 ```text
-S2A S2B S2C S2D S2E S3 I2 B1 B2 B4 M1 M2 M3 M5 Q3 T1
+S2A S2B S2C S2D S2E S3 I1A I2 B1 B2 B4 M1 M2 M3 M5 Q3 T1
 R30_13 R29_13A R29_13C R28_16A R28_16B
 ```
 
@@ -294,8 +294,8 @@ The remaining exact triples are:
 |---|---|---|---|
 | Active membership and readiness records | `I2` | `I2` | `I2` |
 | `CanonicalCompilationRootRecord`, `CanonicalTargetSelectionRecord`, `CanonicalLanguageOptionsRecord`, `CanonicalPackageCompilationRequest` | `Q3` | `Q3` | `R30_13` |
-| `CompleteCompilationContextAuthority` | `T1` | `T1` | `T1` |
-| `CanonicalInputEntry<Key, Value>` and the three transaction payload records | `T1` | `T1` | `T1` |
+| `CanonicalInputEntry<Key, Value>` and `CompleteCompilationContextAuthority` | `I1A` | `I1A` | `I1A` |
+| The three transaction payload records | `T1` | `T1` | `T1` |
 | Stable graph materialization witnesses | `M1` | `M1` | `M1` |
 
 `CanonicalInputPayloadDigest` uses
@@ -459,7 +459,7 @@ Input ownership is:
 
 | Input | Descriptor | Provider | Verifier | Test |
 |---|---|---|---|---|
-| `CompleteCompilationContextAuthorityInput` | `T1` | `T1` | `T1` | `T1` |
+| `CompleteCompilationContextAuthorityInput` | `I1A` | `T1` | `I1A` | `I1A` |
 | `ActiveDefinitionAuthorityInput` | `I2` | `T1` | `I2` | `I2` |
 | `CompleteRootIdentityReadiness` | `I2` | `T1` | `I2` | `I2` |
 
@@ -468,17 +468,20 @@ The verifier column names the independent semantic verifier. Q3 remains
 complete and owns only the package-request records and projection verifier
 that T1 consumes.
 
-`CompleteCompilationContextAuthority`, its canonical codec,
+`CanonicalInputEntry<Key, Value>`, `CompleteCompilationContextAuthority`, its canonical codec,
 `CompleteCompilationContextAuthorityInput`, and
-`CompleteCompilationContextAuthorityInputVerifier` are T1 artifacts in:
+`CompleteCompilationContextAuthorityInputVerifier` are I1A artifacts in:
 
 ```text
 products/zomlang/compiler/driver/module-graph-query-input.h
 products/zomlang/compiler/driver/module-graph-query-input.cc
 ```
 
-The RFC 0027 T1 exact-file row is synchronized to name those artifacts
-explicitly. This does not reopen or add files to completed Q3.
+The RFC 0027 I1A exact-file row names those artifacts, their schema ownership,
+native mutation tests, and deletion of the test-only shadow authority. T1
+retains only provider ownership and consumes the I1A foundation when its
+session transaction installs the input. This does not reopen or add files to
+completed Q3.
 
 ### Stable Visibility Result
 
@@ -828,3 +831,4 @@ None
 | 2026-07-28 | ACCEPTED | All six required owners approved proposal SHA-256 `c25fcb18e503ac214a8e92c925fa88108a915c2b15c94409dfecb88b3d9a63d5` and tracker SHA-256 `d64e7791ed2e2a488c5f57bc07ac341ccfc37d37c220c85131e2c9e846fb8d0d`. Acceptance transaction `rfc0031-accept-20260728-c25fcb18` synchronizes RFCs 0019 and 0027 through 0031, trackers 0027 through 0031, and the RFC index without changing source, schema, or the immutable implementation-series base. |
 | 2026-07-28 | IMPLEMENTING | The complete schema metamodel landed through `8885782747e4c863cefcb0d069bc4569cefce9aa`; the diagnostic cleanup remained assigned to RFC 0042. |
 | 2026-07-29 | LANDED | RFC 0042 completed the diagnostic schema cleanup and reusable mutation gate at `58897c116cafe3463ec6a46ac3bbdd530ef991a5`. |
+| 2026-07-30 | LANDED | Transaction `rfc0027-context-foundation-20260730-1214413e` binds the synchronized eight-document schema ownership correction to independently approved exact pre-evidence Git diff SHA-256 `1214413eef714da5727a705d68bb9872d47ea78b28b18600ac158c87db63ac61`; the complete-context input ownership tuple is `I1A/T1/I1A/I1A`. No completed schema task is reopened. |

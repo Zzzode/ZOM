@@ -8,7 +8,7 @@ review-manager: rfc
 required-owners: [task-router, rfc, module-system, binder-checker, runtime-memory, error-system, spec-audit, verification]
 approvers: [task-router, rfc, module-system, binder-checker, runtime-memory, error-system, spec-audit, verification]
 created: 2026-07-27
-updated: 2026-07-29
+updated: 2026-07-30
 area: compiler
 requires: [17, 18, 19, 20, 25, 26, 27, 28]
 supersedes: []
@@ -956,7 +956,7 @@ only the payload parameter bound by that condition.
 The closed task vocabulary is:
 
 ```text
-S2A S2B S2C S2D S2E S3 S6 I2 B1 B2 B4 M1 M2 M3 M5 Q3 T1
+S2A S2B S2C S2D S2E S3 S6 I1A I2 B1 B2 B4 M1 M2 M3 M5 Q3 T1
 R30_13 R29_13A R29_13C R28_16A R28_16B
 ```
 
@@ -990,9 +990,15 @@ Input ownership is also schema data:
 
 | Input | Descriptor | Provider | Verifier | Test |
 |---|---|---|---|---|
-| `CompleteCompilationContextAuthorityInput` | `T1` | `T1` | `T1` | `T1` |
+| `CompleteCompilationContextAuthorityInput` | `I1A` | `T1` | `I1A` | `I1A` |
 | `ActiveDefinitionAuthorityInput` | `I2` | `T1` | `I2` | `I2` |
 | `CompleteRootIdentityReadiness` | `I2` | `T1` | `I2` | `I2` |
+
+`I1A` is the RFC 0027 pre-membership complete-context foundation. It owns the
+input's value, codec, descriptor, independent verifier, and native tests. T1
+retains only provider ownership because its session transaction installs the
+already verified input. This split prevents I2 from depending on a descriptor
+that T1 would otherwise implement only after I2 and M1.
 
 The binding-visibility query result is exactly
 `Optional<MemberVisibility>`. Runtime capability payloads receive descriptor
@@ -1379,3 +1385,4 @@ None
 | 2026-07-29 | IMPLEMENTING | RFC 0042 completed `R29-12D` at `58897c116cafe3463ec6a46ac3bbdd530ef991a5`; `R29-13A` is the next unblocked implementation task. |
 | 2026-07-29 | IMPLEMENTING | Transaction `rfc0028-r29-14-scope-20260729-521d82c7` bound exact four-document candidate manifest SHA-256 `521d82c731dee0a4b262e937d5578651850446eebfe7448a71a39cb63fc8e086`, adding only the four omitted Binder callers to the atomic source union without completing an implementation task. |
 | 2026-07-29 | LANDED | `R29-13A` through `R29-14` landed through `d83eed927ad782963dc49a143b4dab48cb857f85`; Binder failure verification and Release validation corrections landed through `89d0c5e1ea1087bdf27c4d8745ed86de8363b842` and `e9ccb17fab8ba8ec471afa9512e8b13e6f30fcc5`; the approved Release baseline and passing comparison landed at `cd94cf6bc220158114125d151658aa88c1db335c`; and production-backed current design was published at `598fa6d6a7b4d2ea7ed4f1d61e321c07c624e83c`. Downstream RFC 0028 provenance activation and CompilerSession final-seal adoption remain separately tracked work. |
+| 2026-07-30 | LANDED | Transaction `rfc0027-context-foundation-20260730-1214413e` binds the synchronized eight-document complete-context ownership correction to independently approved exact pre-evidence Git diff SHA-256 `1214413eef714da5727a705d68bb9872d47ea78b28b18600ac158c87db63ac61`; input ownership is `I1A` descriptor, `T1` provider, `I1A` verifier, and `I1A` test. No RFC 0029 runtime task is reopened. |

@@ -119,6 +119,27 @@ and tracker SHA-256
 The `rfc`, `module-system`, `binder-checker`, `error-system`,
 `runtime-memory`, and `verification` owners approved both unchanged hashes.
 
+### 2026-07-30 Complete-Context Schema Ownership Correction
+
+RFC 0027 `I2` requires compilation-unit membership to read
+`CompleteCompilationContextAuthorityInput` directly, but the accepted schema
+assigned the input value, codec, descriptor, verifier, and native tests to
+`T1`. Because `T1` depends on `I2`, that ownership assignment created a cycle
+and left no task able to construct the direct input before its first consumer.
+
+The synchronized correction introduces the RFC 0027 `I1A` ownership token.
+`I1A` owns `CanonicalInputEntry<Key, Value>`,
+`CompleteCompilationContextAuthority`, its codec, input descriptor,
+independent verifier, and native schema and mutation coverage. `T1` remains
+the provider that installs the verified input while publishing the three
+complete-context runtime transactions.
+
+The user-designated independent approver accepted exact pre-evidence Git diff
+SHA-256
+`1214413eef714da5727a705d68bb9872d47ea78b28b18600ac158c87db63ac61`.
+Transaction `rfc0027-context-foundation-20260730-1214413e` synchronizes the
+eight-document correction and changes no source or landed runtime status.
+
 ## Decision Record
 
 Accepted by `rfc`, `module-system`, `binder-checker`, `error-system`,
@@ -134,6 +155,10 @@ The transaction synchronizes RFCs 0019 and 0027 through 0031, trackers
 implementation-series base, CMake, test, or gate file. RFC 0030 `R30-11` may
 resume from the accepted schema metamodel; no source implementation is
 declared complete by this decision.
+
+Transaction `rfc0027-context-foundation-20260730-1214413e` binds the
+2026-07-30 complete-context ownership correction to the independently
+approved exact pre-evidence Git diff. RFC 0031 remains `LANDED`.
 
 ## Review Tracker
 
@@ -158,4 +183,7 @@ declared complete by this decision.
 
 The `R31-09` design gate, `R31-11` source publication, and `R31-12`
 diagnostic cleanup are satisfied. Future diagnostic schema rows land only
-with their live RFC 0029 or RFC 0025 producers.
+with their live RFC 0029 or RFC 0025 producers. The complete-context
+ownership correction is recorded by
+`rfc0027-context-foundation-20260730-1214413e` and does not reopen either
+completed implementation task.

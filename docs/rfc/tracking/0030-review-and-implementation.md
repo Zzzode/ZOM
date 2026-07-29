@@ -131,6 +131,27 @@ is part of the same verification contract. The final exact pending transaction
 therefore contains 44 paths: it adds the gate and retains the published header
 as a prerequisite.
 
+### 2026-07-30 Complete-Context Foundation Ownership Correction
+
+RFC 0027 `I2` directly reads `CompleteCompilationContextAuthorityInput`, but
+the RFC 0030 metamodel assigned that input and its complete authority value to
+the later `T1` transaction. Because `T1` depends on `I2`, the accepted
+ownership created a cycle and could not authorize the first production
+consumer.
+
+The synchronized correction adds `I1A` to the closed schema task vocabulary
+and moves the canonical input-entry type, complete-context authority value,
+codec, descriptor, verifier, schema row, and native tests to that pre-I2
+foundation. `T1` remains the input provider and owns the three transaction
+records plus session publication. This design-only correction does not reopen
+any landed RFC 0030 implementation task.
+
+The user-designated independent approver accepted exact pre-evidence Git diff
+SHA-256
+`1214413eef714da5727a705d68bb9872d47ea78b28b18600ac158c87db63ac61`.
+Transaction `rfc0027-context-foundation-20260730-1214413e` synchronizes the
+eight-document ownership correction.
+
 ## Decision Record
 
 Accepted by `task-router`, `rfc`, `module-system`, `binder-checker`,
@@ -149,6 +170,11 @@ and tracker SHA-256
 It establishes the complete schema entity, macro, task, ownership,
 capability-failure, and verification model without changing implementation
 status.
+
+Transaction `rfc0027-context-foundation-20260730-1214413e` binds the
+2026-07-30 complete-context ownership correction to the independently
+approved exact pre-evidence Git diff. RFC 0030 remains `LANDED`; no completed
+implementation task is reopened.
 
 RFC 0032 acceptance transaction `rfc0032-accept-20260728-1d519846`
 synchronizes this tracker to proposal SHA-256

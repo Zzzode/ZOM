@@ -8,7 +8,7 @@ review-manager: rfc
 required-owners: [task-router, rfc, module-system, binder-checker, error-system, verification]
 approvers: [task-router, rfc, module-system, binder-checker, error-system, verification]
 created: 2026-07-28
-updated: 2026-07-29
+updated: 2026-07-30
 area: testing
 requires: [27, 29]
 supersedes: []
@@ -181,7 +181,7 @@ MaterializerPermission DiagnosticMapping Constraint Digest
 The closed task vocabulary is:
 
 ```text
-S2A S2B S2C S2D S2E S3 S6 I2 B1 B2 B4 M1 M2 M3 M5 Q3 T1
+S2A S2B S2C S2D S2E S3 S6 I1A I2 B1 B2 B4 M1 M2 M3 M5 Q3 T1
 R30_13 R29_13A R29_13C R28_16A R28_16B
 ```
 
@@ -207,7 +207,8 @@ The exhaustive type ownership is:
 | Binder diagnostic argument records, diagnostic sums, and diagnostic enums | `S6` | `S6` | `S6` |
 | Active membership and readiness records and sums | `I2` | `I2` | `I2` |
 | Four canonical package-compilation-request records | `Q3` | `Q3` | `R30_13` |
-| Complete compilation-context authority and transaction records | `T1` | `T1` | `T1` |
+| `CanonicalInputEntry<Key, Value>` and complete compilation-context authority | `I1A` | `I1A` | `I1A` |
+| Complete-context transaction records | `T1` | `T1` | `T1` |
 | Stable graph materialization witnesses | `M1` | `M1` | `M1` |
 
 The S6 row above records the accepted future owner partition, not current
@@ -241,9 +242,14 @@ Input ownership is exact:
 
 | Input | Descriptor | Provider | Verifier | Test |
 |---|---|---|---|---|
-| `CompleteCompilationContextAuthorityInput` | `T1` | `T1` | `T1` | `T1` |
+| `CompleteCompilationContextAuthorityInput` | `I1A` | `T1` | `I1A` | `I1A` |
 | `ActiveDefinitionAuthorityInput` | `I2` | `T1` | `I2` | `I2` |
 | `CompleteRootIdentityReadiness` | `I2` | `T1` | `I2` | `I2` |
+
+`I1A` is the RFC 0027 pre-membership foundation. It owns the complete-context
+value, codec, descriptor, independent verifier, schema row, and native tests.
+`T1` retains provider ownership because its session transaction installs the
+verified input together with the three complete-context transaction records.
 
 Every capability row uses
 `CapabilityDemandResult<name>`, names its capability payload, and carries an
@@ -850,3 +856,4 @@ None
 | 2026-07-28 | ACCEPTED | `R30-11` through `R30-15` published as `8885782747e4c863cefcb0d069bc4569cefce9aa`; RFC 0042 replaces the unlanded `R30-16` diagnostic execution set. |
 | 2026-07-29 | IMPLEMENTING | RFC 0042 executed the replacement diagnostic transaction from baseline `e8be38e1eeba5a4ae40689321710af2d3fc8b24e`. |
 | 2026-07-29 | LANDED | RFC 0042 published the final replacement as `58897c116cafe3463ec6a46ac3bbdd530ef991a5` and its canonical formatting as `02e400332fa87d8fca0bd7f2f5abb153bb776eb1`; all RFC 0030 tracker rows are complete and RFC 0029 resumes at `R29-13A`. |
+| 2026-07-30 | LANDED | Transaction `rfc0027-context-foundation-20260730-1214413e` binds the synchronized eight-document complete-context schema correction to independently approved exact pre-evidence Git diff SHA-256 `1214413eef714da5727a705d68bb9872d47ea78b28b18600ac158c87db63ac61`; `I1A` owns the foundation while `T1` retains the transaction records and input-provider role. No completed RFC 0030 task is reopened. |
