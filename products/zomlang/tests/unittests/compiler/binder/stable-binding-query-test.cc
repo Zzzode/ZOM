@@ -5,10 +5,27 @@
 
 #include "stable-header-test-fixture.h"
 #include "zc/ztest/test.h"
+#include "zomlang/compiler/binder/module-skeleton-query.h"
 #include "zomlang/compiler/binder/stable-binding-codec.h"
 #include "zomlang/compiler/binder/stable-header-verifier.h"
 
 namespace zomlang::compiler::binder {
+namespace {
+
+CanonicalSequence<diagnostics::DiagnosticFact> noDiagnostics() {
+  zc::Vector<diagnostics::DiagnosticFact> values;
+  auto result = StableBindingSequenceBuilder<diagnostics::DiagnosticFact>::from(zc::mv(values));
+  return zc::mv(ZC_REQUIRE_NONNULL(result));
+}
+
+zc::Array<uint8_t> withTrailingByte(zc::ArrayPtr<const uint8_t> bytes) {
+  auto result = zc::heapArray<uint8_t>(bytes.size() + 1);
+  result.first(bytes.size()).copyFrom(bytes);
+  result.back() = 0;
+  return result;
+}
+
+}  // namespace
 
 ZC_TEST("StableBindingQueryTest.HeadersRejectFieldAndParameterMutations") {
   test::StableHeaderFixture fixture(test::stableHeaderSourceFile("mutations"_zc));
@@ -39,6 +56,54 @@ ZC_TEST("StableBindingQueryTest.HeadersRejectFieldAndParameterMutations") {
           implementation.declaredScopeRoles().clone(), ImplementationSourceForm::BodylessMarker));
   ZC_EXPECT(!StableHeaderVerifier::verifyImplementationOccurrence(
       fixture.context(), implementation.queryKey(), mutatedImplementation));
+}
+
+ZC_TEST("StableBindingQueryTest.HeaderDescriptorsUseExactCanonicalCodecs") {
+  test::StableHeaderFixture fixture(test::stableHeaderSourceFile("descriptor-codecs"_zc));
+
+  auto definition = fixture.definitionHeader("Box"_zc);
+  auto definitionKeyBytes = DefinitionHeaderSyntax::encodeKey(definition.queryKey());
+  auto decodedDefinitionKey = DefinitionHeaderSyntax::decodeKey(definitionKeyBytes.asPtr());
+  ZC_REQUIRE(decodedDefinitionKey != zc::none);
+  ZC_EXPECT(ZC_REQUIRE_NONNULL(decodedDefinitionKey) == definition.queryKey());
+  ZC_EXPECT(DefinitionHeaderSyntax::decodeKey(
+                withTrailingByte(definitionKeyBytes.asPtr()).asPtr()) == zc::none);
+
+  auto definitionResult = DefinitionHeaderSyntax::Value::value(zc::mv(definition), noDiagnostics());
+  auto definitionValueBytes = DefinitionHeaderSyntax::encodeValue(definitionResult);
+  auto decodedDefinitionValue = DefinitionHeaderSyntax::decodeValue(definitionValueBytes.asPtr());
+  ZC_REQUIRE(decodedDefinitionValue != zc::none);
+  ZC_EXPECT(ZC_REQUIRE_NONNULL(decodedDefinitionValue) == definitionResult);
+  ZC_EXPECT(DefinitionHeaderSyntax::decodeValue(
+                withTrailingByte(definitionValueBytes.asPtr()).asPtr()) == zc::none);
+
+  auto implementation = fixture.implementationHeader(0);
+  auto implementationKeyBytes =
+      ImplementationOccurrenceHeaderSyntax::encodeKey(implementation.queryKey());
+  auto decodedImplementationKey =
+      ImplementationOccurrenceHeaderSyntax::decodeKey(implementationKeyBytes.asPtr());
+  ZC_REQUIRE(decodedImplementationKey != zc::none);
+  ZC_EXPECT(ZC_REQUIRE_NONNULL(decodedImplementationKey) == implementation.queryKey());
+  ZC_EXPECT(ImplementationOccurrenceHeaderSyntax::decodeKey(
+                withTrailingByte(implementationKeyBytes.asPtr()).asPtr()) == zc::none);
+
+  auto implementationResult =
+      ImplementationOccurrenceHeaderSyntax::Value::value(zc::mv(implementation), noDiagnostics());
+  auto implementationValueBytes =
+      ImplementationOccurrenceHeaderSyntax::encodeValue(implementationResult);
+  auto decodedImplementationValue =
+      ImplementationOccurrenceHeaderSyntax::decodeValue(implementationValueBytes.asPtr());
+  ZC_REQUIRE(decodedImplementationValue != zc::none);
+  ZC_EXPECT(ZC_REQUIRE_NONNULL(decodedImplementationValue) == implementationResult);
+  ZC_EXPECT(ImplementationOccurrenceHeaderSyntax::decodeValue(
+                withTrailingByte(implementationValueBytes.asPtr()).asPtr()) == zc::none);
+
+  ZC_EXPECT(DefinitionHeaderSyntax::descriptor.domain == "zom.query.definition-header-syntax"_zc);
+  ZC_EXPECT(ImplementationOccurrenceHeaderSyntax::descriptor.domain ==
+            "zom.query.implementation-occurrence-header-syntax"_zc);
+  ZC_EXPECT(DefinitionHeaderSyntax::descriptor.retention == query::RetentionClass::Retained);
+  ZC_EXPECT(ImplementationOccurrenceHeaderSyntax::descriptor.retention ==
+            query::RetentionClass::Retained);
 }
 
 }  // namespace zomlang::compiler::binder

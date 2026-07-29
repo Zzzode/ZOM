@@ -44,4 +44,6 @@ ZOM_SEMANTIC(36, zomlang::compiler::driver::incremental_binding_query::ModuleBod
 ZOM_SEMANTIC(37, zomlang::compiler::driver::incremental_binding_query::OwnerBodySyntaxQuery, "OwnerBodySyntaxQuery", "zom.query.owner-body-syntax", Semantic, Evictable, "products/zomlang/compiler/driver/owner-body-query")
 ZOM_CAPABILITY(38, zomlang::compiler::driver::incremental_binding_query::OwnerBodyProvenanceQuery, "OwnerBodyProvenanceQuery", "zom.query.owner-body-provenance", Retained, FinalSealedSnapshot, "products/zomlang/compiler/driver/owner-body-query")
 ZOM_COMPLETE_CONTEXT_INPUT(39, zomlang::compiler::driver::module_graph_query::CompleteCompilationContextAuthorityInput, "CompleteCompilationContextAuthorityInput", "zom.input.complete-compilation-context-authority", Frozen, "products/zomlang/compiler/driver/module-graph-query-input")
+ZOM_SEMANTIC(40, zomlang::compiler::binder::DefinitionHeaderSyntax, "DefinitionHeaderSyntax", "zom.query.definition-header-syntax", Semantic, Retained, "products/zomlang/compiler/binder/module-skeleton-query")
+ZOM_SEMANTIC(41, zomlang::compiler::binder::ImplementationOccurrenceHeaderSyntax, "ImplementationOccurrenceHeaderSyntax", "zom.query.implementation-occurrence-header-syntax", Semantic, Retained, "products/zomlang/compiler/binder/module-skeleton-query")
 // clang-format on

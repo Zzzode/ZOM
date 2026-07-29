@@ -33,6 +33,7 @@ set(BINDER_SRC
   ${CMAKE_CURRENT_SOURCE_DIR}/module-body-syntax.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/module-body-syntax-producer.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/module-body-syntax-verifier.cc
+  ${CMAKE_CURRENT_SOURCE_DIR}/module-skeleton-query.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/module-graph-diagnostic-adapter.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/module-resolution.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/named-identity-inventory.cc

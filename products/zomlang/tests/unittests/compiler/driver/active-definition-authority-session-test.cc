@@ -7,6 +7,7 @@
 
 #include "zc/ztest/test.h"
 #include "zomlang/compiler/basic/thread-pool.h"
+#include "zomlang/compiler/binder/module-skeleton-query.h"
 #include "zomlang/compiler/driver/active-definition-authority-query.h"
 #include "zomlang/compiler/driver/incremental-package-graph-query-input.h"
 #include "zomlang/compiler/driver/module-graph-query.h"
@@ -15,6 +16,7 @@
 #include "zomlang/compiler/driver/owner-body-query.h"
 #include "zomlang/compiler/identity/canonical-encoder.h"
 #include "zomlang/compiler/identity/sha256.h"
+#include "zomlang/compiler/parser/parse-source-query.h"
 
 namespace zomlang::compiler::driver::module_graph_query {
 
@@ -441,6 +443,64 @@ FinalQuerySnapshot sealDatabase(query::QueryDatabase& database,
           database.snapshot(), seal.seal());
   ZC_REQUIRE(admitted.isAdmitted());
   return zc::mv(admitted).takeSnapshot();
+}
+
+template <typename Descriptor>
+void expectExactHeaderReadSet(const query::QuerySnapshot& snapshot,
+                              const typename Descriptor::Key& key, size_t definitionReads,
+                              size_t implementationReads) {
+  const auto moduleKey = stableModule();
+  auto definitionFingerprint = snapshot.keyFingerprint<NamedDefinitionInventoryQuery>(moduleKey);
+  auto implementationFingerprint =
+      snapshot.keyFingerprint<NamedImplementationInventoryQuery>(moduleKey);
+  auto selectedFingerprint =
+      snapshot.keyFingerprint<graph_query::SelectedModuleSourceQuery>(semanticModule());
+  auto parseFingerprint = snapshot.keyFingerprint<parser::ParseSourceQuery>(stableSource());
+  auto definitionSitesFingerprint =
+      snapshot.keyFingerprint<RevisionLocalDefinitionSitesQuery>(moduleKey);
+  auto implementationSitesFingerprint =
+      snapshot.keyFingerprint<RevisionLocalImplementationSitesQuery>(moduleKey);
+  ZC_REQUIRE(definitionFingerprint != zc::none);
+  ZC_REQUIRE(implementationFingerprint != zc::none);
+  ZC_REQUIRE(selectedFingerprint != zc::none);
+  ZC_REQUIRE(parseFingerprint != zc::none);
+  ZC_REQUIRE(definitionSitesFingerprint != zc::none);
+  ZC_REQUIRE(implementationSitesFingerprint != zc::none);
+
+  size_t observedDefinitionReads = 0;
+  size_t observedImplementationReads = 0;
+  size_t observedSelectedReads = 0;
+  size_t observedParseReads = 0;
+  size_t observedDefinitionSiteReads = 0;
+  size_t observedImplementationSiteReads = 0;
+  const auto dependencies = snapshot.dependencies<Descriptor>(key);
+  for (const auto& group : dependencies) {
+    ZC_REQUIRE(group.kind() == query::DependencyGroup::Kind::Sequential);
+    ZC_REQUIRE(group.dependencies().size() == 1);
+    const auto& fingerprint = group.dependencies()[0].key().fingerprint();
+    if (fingerprint == ZC_REQUIRE_NONNULL(definitionFingerprint)) {
+      ++observedDefinitionReads;
+    } else if (fingerprint == ZC_REQUIRE_NONNULL(implementationFingerprint)) {
+      ++observedImplementationReads;
+    } else if (fingerprint == ZC_REQUIRE_NONNULL(selectedFingerprint)) {
+      ++observedSelectedReads;
+    } else if (fingerprint == ZC_REQUIRE_NONNULL(parseFingerprint)) {
+      ++observedParseReads;
+    } else if (fingerprint == ZC_REQUIRE_NONNULL(definitionSitesFingerprint)) {
+      ++observedDefinitionSiteReads;
+    } else if (fingerprint == ZC_REQUIRE_NONNULL(implementationSitesFingerprint)) {
+      ++observedImplementationSiteReads;
+    } else {
+      ZC_FAIL_REQUIRE("Header query recorded an undeclared dependency");
+    }
+  }
+  ZC_EXPECT(observedDefinitionReads == definitionReads);
+  ZC_EXPECT(observedImplementationReads == implementationReads);
+  ZC_EXPECT(observedSelectedReads == 2);
+  ZC_EXPECT(observedParseReads == 2);
+  ZC_EXPECT(observedDefinitionSiteReads == 2);
+  ZC_EXPECT(observedImplementationSiteReads == 2);
+  ZC_EXPECT(dependencies.size() == definitionReads + implementationReads + 8);
 }
 
 void replaceSelectedModuleCatalogWithUnrelatedModule(query::QueryDatabase& database) {
@@ -875,6 +935,37 @@ ZC_TEST("Final-sealed identity and named-item capabilities publish verified valu
   ZC_EXPECT(implementations.lease().capability().entries().size() == 1);
   ZC_EXPECT(moduleProvenance.lease().capability().entries().size() > 0);
 
+  for (const auto& definition : definitionKeys) {
+    auto key = binder::StableDefinitionQueryKey::from(semanticModule(), definition.clone());
+    auto header = sealed.get<binder::DefinitionHeaderSyntax>(key);
+    ZC_REQUIRE(header.kind() == query::QueryValueKind::Value);
+    ZC_REQUIRE(
+        header.value().storage().is<binder::BinderQueryValue<binder::StableDefinitionHeader>>());
+    const auto& value =
+        header.value().storage().get<binder::BinderQueryValue<binder::StableDefinitionHeader>>();
+    ZC_EXPECT(value.value.queryKey() == key);
+    ZC_EXPECT(value.diagnostics.values().size() == 0);
+    expectExactHeaderReadSet<binder::DefinitionHeaderSyntax>(database.snapshot(), key, 2, 1);
+  }
+  for (const auto& site : implementations.lease().capability().entries()) {
+    auto key = binder::StableImplementationOccurrenceQueryKey::from(semanticModule(),
+                                                                    site.occurrence().clone());
+    ZC_REQUIRE(key != zc::none);
+    auto header = sealed.get<binder::ImplementationOccurrenceHeaderSyntax>(ZC_REQUIRE_NONNULL(key));
+    ZC_REQUIRE(header.kind() == query::QueryValueKind::Value);
+    ZC_REQUIRE(header.value()
+                   .storage()
+                   .is<binder::BinderQueryValue<binder::StableImplementationOccurrenceHeader>>());
+    const auto& value =
+        header.value()
+            .storage()
+            .get<binder::BinderQueryValue<binder::StableImplementationOccurrenceHeader>>();
+    ZC_EXPECT(value.value.queryKey() == ZC_REQUIRE_NONNULL(key));
+    ZC_EXPECT(value.diagnostics.values().size() == 0);
+    expectExactHeaderReadSet<binder::ImplementationOccurrenceHeaderSyntax>(
+        database.snapshot(), ZC_REQUIRE_NONNULL(key), 1, 2);
+  }
+
   ZC_REQUIRE(alphaKey != zc::none);
   auto itemKey = contextual(roots, semanticModule(), ZC_REQUIRE_NONNULL(alphaKey));
   auto syntax = sealed.get<NamedItemSyntaxQuery>(itemKey);
@@ -922,6 +1013,12 @@ ZC_TEST("Final-sealed queries verify inactive owner rejections") {
   ZC_REQUIRE(syntax.kind() == query::QueryValueKind::SemanticFailure);
   ZC_REQUIRE(provenance.isKeyRejected());
   ZC_EXPECT(provenance.keyFailure().kind() == binder::BinderKeyFailureKind::InactiveOwner);
+  auto headerKey = binder::StableDefinitionQueryKey::from(semanticModule(), alphaKey.clone());
+  auto header = sealed.get<binder::DefinitionHeaderSyntax>(headerKey);
+  ZC_REQUIRE(header.kind() == query::QueryValueKind::Value);
+  ZC_REQUIRE(header.value().storage().is<binder::BinderKeyRejected>());
+  ZC_EXPECT(header.value().storage().get<binder::BinderKeyRejected>().failure.kind() ==
+            binder::BinderKeyFailureKind::InactiveOwner);
 
   auto bodyOwner = binder::StableBodyOwnerKey::definition(alphaKey.clone());
   auto bodyKey = contextual(roots, semanticModule(), bodyOwner);
@@ -965,6 +1062,12 @@ ZC_TEST("Final-sealed queries verify missing selected source rejections") {
   ZC_REQUIRE(syntax.kind() == query::QueryValueKind::SemanticFailure);
   ZC_REQUIRE(provenance.isKeyRejected());
   ZC_EXPECT(provenance.keyFailure().kind() ==
+            binder::BinderKeyFailureKind::MissingSelectedModuleSource);
+  auto headerKey = binder::StableDefinitionQueryKey::from(semanticModule(), alphaKey.clone());
+  auto header = sealed.get<binder::DefinitionHeaderSyntax>(headerKey);
+  ZC_REQUIRE(header.kind() == query::QueryValueKind::Value);
+  ZC_REQUIRE(header.value().storage().is<binder::BinderKeyRejected>());
+  ZC_EXPECT(header.value().storage().get<binder::BinderKeyRejected>().failure.kind() ==
             binder::BinderKeyFailureKind::MissingSelectedModuleSource);
 }
 
@@ -1023,6 +1126,12 @@ ZC_TEST("Final-sealed queries verify parse source rejections") {
   auto provenance = sealed.getCapability<NamedItemProvenanceQuery>(alphaQueryKey);
   ZC_REQUIRE(syntax.kind() == query::QueryValueKind::SemanticFailure);
   ZC_REQUIRE(provenance.isSourceRejected());
+  auto headerKey = binder::StableDefinitionQueryKey::from(semanticModule(), alphaKey.clone());
+  auto header = sealed.get<binder::DefinitionHeaderSyntax>(headerKey);
+  ZC_REQUIRE(header.kind() == query::QueryValueKind::Value);
+  ZC_REQUIRE(header.value().storage().is<binder::BinderSourceRejected>());
+  ZC_EXPECT(
+      header.value().storage().get<binder::BinderSourceRejected>().diagnostics.values().size() > 0);
 
   auto moduleOwner = binder::StableBodyOwnerKey::module(semanticModule());
   auto moduleBodyKey = contextual(roots, semanticModule(), moduleOwner);

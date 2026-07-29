@@ -5,6 +5,7 @@
 
 #include "zomlang/compiler/driver/incremental-binding-query-adapter.h"
 
+#include "zomlang/compiler/binder/module-skeleton-query.h"
 #include "zomlang/compiler/driver/active-definition-authority-query.h"
 #include "zomlang/compiler/driver/core-library-query-provider.h"
 #include "zomlang/compiler/driver/incremental-module-resolution-query.h"
@@ -947,6 +948,7 @@ bool registerIncrementalBindingQueryAdapter(query::QueryDatabase& database) {
   if (!database.registerDescriptor<RevisionLocalImplementationSitesQuery>().isRegistered()) {
     return false;
   }
+  if (!binder::registerStableHeaderSyntaxQueries(database)) { return false; }
   if (!database.registerDescriptor<NamedItemSyntaxQuery>().isRegistered()) { return false; }
   if (!database.registerDescriptor<NamedItemProvenanceQuery>().isRegistered()) { return false; }
   if (!database.registerDescriptor<ModuleBodySyntaxQuery>().isRegistered()) { return false; }

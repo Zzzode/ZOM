@@ -26,7 +26,7 @@ add_ztest_unit_test("local-identity-test" "local-identity-test.cc" LIBRARIES bin
 add_ztest_unit_test("module-dependency-requests-test" "module-dependency-requests-test.cc" LIBRARIES binder parser trace identity diagnostics lexer ast source basic)
 add_ztest_unit_test("module-body-syntax-test" "module-body-syntax-test.cc" LIBRARIES binder parser trace identity diagnostics lexer ast source basic)
 add_ztest_unit_test("stable-binding-facts-test" "stable-binding-facts-test.cc" LIBRARIES binder identity diagnostics lexer ast source basic)
-add_ztest_unit_test("stable-binding-query-test" "stable-binding-query-test.cc" LIBRARIES binder parser trace identity diagnostics lexer ast source basic)
+add_ztest_unit_test("stable-binding-query-test" "stable-binding-query-test.cc" LIBRARIES frontend)
 add_ztest_unit_test("stable-binding-diagnostic-fact-test" "stable-binding-diagnostic-fact-test.cc" LIBRARIES binder identity diagnostics lexer ast source basic)
 add_ztest_unit_test("stable-definition-header-producer-test" "stable-definition-header-producer-test.cc" LIBRARIES binder parser trace identity diagnostics lexer ast source basic)
 add_ztest_unit_test("stable-header-verifier-test" "stable-header-verifier-test.cc" LIBRARIES binder parser trace identity diagnostics lexer ast source basic)
