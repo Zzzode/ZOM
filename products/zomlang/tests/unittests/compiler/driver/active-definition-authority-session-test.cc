@@ -16,6 +16,39 @@
 #include "zomlang/compiler/identity/canonical-encoder.h"
 #include "zomlang/compiler/identity/sha256.h"
 
+namespace zomlang::compiler::driver::module_graph_query {
+
+/// \brief Test-only complete-context authority for final-sealed driver queries.
+struct CompleteCompilationContextAuthorityInput final {
+  using Key = incremental_binding_query::CompilationRootSetQueryKey;
+  using Value = incremental_binding_query::CompilationRootSetQueryKey;
+
+  static constexpr query::InputDescriptorMetadata descriptor{
+      "CompleteCompilationContextAuthorityInput"_zcc,
+      "zom.input.complete-compilation-context-authority"_zcc, query::Durability::Frozen};
+
+  static zc::Array<uint8_t> encodeKey(const Key& key) { return key.encodeCanonical(); }
+  static zc::Maybe<Key> decodeKey(zc::ArrayPtr<const uint8_t> bytes) {
+    return Key::decodeCanonical(bytes);
+  }
+  static zc::Array<uint8_t> encodeValue(const Value& value) { return value.encodeCanonical(); }
+  static zc::Maybe<Value> decodeValue(zc::ArrayPtr<const uint8_t> bytes) {
+    return Value::decodeCanonical(bytes);
+  }
+
+  static query::FinalAuthorityCheck verifyFinalAuthority(const query::QuerySnapshot&,
+                                                         const Key& key, const Value& value,
+                                                         const identity::Sha256Digest& witness) {
+    auto expected = identity::sha256(key.encodeCanonical().asPtr());
+    if (expected == zc::none || key != value || ZC_REQUIRE_NONNULL(expected) != witness) {
+      return query::FinalAuthorityCheck::Rejected;
+    }
+    return query::FinalAuthorityCheck::Verified;
+  }
+};
+
+}  // namespace zomlang::compiler::driver::module_graph_query
+
 namespace zomlang::compiler::driver::incremental_binding_query {
 namespace {
 
@@ -380,7 +413,49 @@ query::QueryDatabase queryDatabase(basic::ThreadPool& queryScheduler) {
                               zc::mv(arena));
   ZC_REQUIRE(graph_query::registerModuleGraphQueries(result));
   ZC_REQUIRE(graph_query::registerStableModuleGraphQueries(result));
+  ZC_REQUIRE(result.registerDescriptor<graph_query::CompleteCompilationContextAuthorityInput>()
+                 .isRegistered());
   return result;
+}
+
+using FinalQuerySnapshot =
+    query::SealedQuerySnapshot<CompilationRootSetQueryKey, identity::Sha256Digest>;
+
+FinalQuerySnapshot sealDatabase(query::QueryDatabase& database,
+                                const CompilationRootSetQueryKey& roots) {
+  auto opened = database.beginInputTransaction(database.snapshot().revision());
+  ZC_REQUIRE(opened.isOpened());
+  auto transaction = zc::mv(opened).takeTransaction();
+  ZC_REQUIRE(transaction.set<graph_query::CompleteCompilationContextAuthorityInput>(roots, roots)
+                 .isApplied());
+  ZC_REQUIRE(transaction.commit().isCommitted());
+
+  auto finalSnapshot = database.snapshot();
+  auto witness = identity::sha256(roots.encodeCanonical().asPtr());
+  ZC_REQUIRE(witness != zc::none);
+  auto seal = database.sealInputs<graph_query::CompleteCompilationContextAuthorityInput>(
+      finalSnapshot, roots, ZC_REQUIRE_NONNULL(witness));
+  ZC_REQUIRE(seal.isSealed());
+  auto admitted =
+      database.admitFinalSnapshot<graph_query::CompleteCompilationContextAuthorityInput>(
+          database.snapshot(), seal.seal());
+  ZC_REQUIRE(admitted.isAdmitted());
+  return zc::mv(admitted).takeSnapshot();
+}
+
+void replaceSelectedModuleCatalogWithUnrelatedModule(query::QueryDatabase& database) {
+  zc::Vector<graph_query::SelectedModuleRecord> entries;
+  entries.add(graph_query::SelectedModuleRecord(namedSemanticModule("second"_zc),
+                                                namedSource("second.zom"_zc)));
+  auto catalog = graph_query::SelectedModuleCatalog::from(crate(), zc::mv(entries));
+  ZC_REQUIRE(catalog != zc::none);
+  auto opened = database.beginInputTransaction(database.snapshot().revision());
+  ZC_REQUIRE(opened.isOpened());
+  auto transaction = zc::mv(opened).takeTransaction();
+  ZC_REQUIRE(
+      transaction.set<graph_query::SelectedModuleCatalogInput>(crate(), ZC_REQUIRE_NONNULL(catalog))
+          .isApplied());
+  ZC_REQUIRE(transaction.commit().isCommitted());
 }
 
 void runDifferentialEdits(uint32_t workerCount) {
@@ -751,6 +826,433 @@ ZC_TEST("Owner body final-admission rejection is deterministic across workers") 
     auto owners = snapshot.get<ModuleBodyOwnersQuery>(moduleQueryKey);
     ZC_REQUIRE(owners.isRuntimeFailure());
     ZC_EXPECT(owners.runtimeFailure() == query::QueryRuntimeFailure::FinalSealRequired);
+  }
+}
+
+ZC_TEST("Final-sealed identity and named-item capabilities publish verified values") {
+  auto database = queryDatabase(scheduler());
+  ZC_REQUIRE(registerIncrementalBindingQueryAdapter(database));
+  ActiveDefinitionAuthorityProjectionState state;
+  auto roots = packageRoots();
+  auto module = stableModule();
+  zc::Vector<identity::DefinitionKey> definitionKeys;
+  stageBaseInputs(state, database,
+                  "module root;\n"
+                  "class Alpha {}\n"
+                  "impl Trait for Alpha {}\n"
+                  "fun Beta() { let value = 1; }\n"_zc);
+  ZC_REQUIRE(state.refresh(database, roots));
+
+  zc::Maybe<identity::DefinitionKey> alphaKey;
+  {
+    auto staging = database.snapshot();
+    auto inventory = staging.get<NamedDefinitionInventoryQuery>(module);
+    ZC_REQUIRE(inventory.kind() == query::QueryValueKind::Value);
+    ZC_REQUIRE(inventory.value().entries().size() == 2);
+    alphaKey = inventory.value().entries()[0].key().clone();
+    for (const auto& entry : inventory.value().entries()) {
+      definitionKeys.add(entry.key().clone());
+    }
+  }
+
+  auto sealed = sealDatabase(database, roots);
+  auto sites = sealed.getCapability<IdentitySyntaxSiteInventoryQuery>(module);
+  auto admission = sealed.getCapability<StableIdentityAdmissionQuery>(module);
+  auto definitions = sealed.getCapability<RevisionLocalDefinitionSitesQuery>(module);
+  auto implementations = sealed.getCapability<RevisionLocalImplementationSitesQuery>(module);
+  auto moduleProvenance = sealed.getCapability<ModuleBodyProvenanceQuery>(module);
+  ZC_REQUIRE(sites.isPublished());
+  ZC_REQUIRE(admission.isPublished());
+  ZC_REQUIRE(definitions.isPublished());
+  ZC_REQUIRE(implementations.isPublished());
+  ZC_REQUIRE(moduleProvenance.isPublished());
+  ZC_EXPECT(sites.lease().capability().module().encode().asPtr() ==
+            semanticModule().encode().asPtr());
+  ZC_EXPECT(admission.lease().capability().module().encode().asPtr() ==
+            semanticModule().encode().asPtr());
+  ZC_EXPECT(definitions.lease().capability().entries().size() == 2);
+  ZC_EXPECT(implementations.lease().capability().entries().size() == 1);
+  ZC_EXPECT(moduleProvenance.lease().capability().entries().size() > 0);
+
+  ZC_REQUIRE(alphaKey != zc::none);
+  auto itemKey = contextual(roots, semanticModule(), ZC_REQUIRE_NONNULL(alphaKey));
+  auto syntax = sealed.get<NamedItemSyntaxQuery>(itemKey);
+  auto provenance = sealed.getCapability<NamedItemProvenanceQuery>(itemKey);
+  ZC_REQUIRE(syntax.kind() == query::QueryValueKind::Value);
+  ZC_REQUIRE(provenance.isPublished());
+  ZC_EXPECT(syntax.value().owningModule().encode().asPtr() == semanticModule().encode().asPtr());
+  ZC_EXPECT(provenance.lease().capability().detachedProvenance().entries().size() > 0);
+
+  bool foundDefinitionWithoutBody = false;
+  for (const auto& definition : definitionKeys) {
+    auto bodyOwner = binder::StableBodyOwnerKey::definition(definition.clone());
+    auto bodyKey = contextual(roots, semanticModule(), bodyOwner);
+    auto bodySyntax = sealed.get<OwnerBodySyntaxQuery>(bodyKey);
+    if (bodySyntax.kind() != query::QueryValueKind::SemanticFailure) { continue; }
+    auto bodyProvenance = sealed.getCapability<OwnerBodyProvenanceQuery>(bodyKey);
+    ZC_REQUIRE(bodyProvenance.isKeyRejected());
+    ZC_EXPECT(bodyProvenance.keyFailure().kind() ==
+              binder::BinderKeyFailureKind::DefinitionWithoutBody);
+    foundDefinitionWithoutBody = true;
+  }
+  ZC_EXPECT(foundDefinitionWithoutBody);
+}
+
+ZC_TEST("Final-sealed queries verify inactive owner rejections") {
+  auto database = queryDatabase(scheduler());
+  ZC_REQUIRE(registerIncrementalBindingQueryAdapter(database));
+  ActiveDefinitionAuthorityProjectionState state;
+  auto roots = packageRoots();
+  auto module = stableModule();
+  stageBaseInputs(state, database, "module root;\nclass Alpha {}\n"_zc);
+  ZC_REQUIRE(state.refresh(database, roots));
+
+  auto first = database.snapshot().get<NamedDefinitionInventoryQuery>(module);
+  ZC_REQUIRE(first.kind() == query::QueryValueKind::Value);
+  ZC_REQUIRE(first.value().entries().size() == 1);
+  auto alphaKey = first.value().entries()[0].key().clone();
+
+  stageBaseInputs(state, database, "module root;\nclass Beta {}\n"_zc);
+  ZC_REQUIRE(state.refresh(database, roots));
+  auto sealed = sealDatabase(database, roots);
+  auto alphaQueryKey = contextual(roots, semanticModule(), alphaKey);
+  auto syntax = sealed.get<NamedItemSyntaxQuery>(alphaQueryKey);
+  auto provenance = sealed.getCapability<NamedItemProvenanceQuery>(alphaQueryKey);
+  ZC_REQUIRE(syntax.kind() == query::QueryValueKind::SemanticFailure);
+  ZC_REQUIRE(provenance.isKeyRejected());
+  ZC_EXPECT(provenance.keyFailure().kind() == binder::BinderKeyFailureKind::InactiveOwner);
+
+  auto bodyOwner = binder::StableBodyOwnerKey::definition(alphaKey.clone());
+  auto bodyKey = contextual(roots, semanticModule(), bodyOwner);
+  auto bodySyntax = sealed.get<OwnerBodySyntaxQuery>(bodyKey);
+  auto bodyProvenance = sealed.getCapability<OwnerBodyProvenanceQuery>(bodyKey);
+  ZC_REQUIRE(bodySyntax.kind() == query::QueryValueKind::SemanticFailure);
+  ZC_REQUIRE(bodyProvenance.isKeyRejected());
+  ZC_EXPECT(bodyProvenance.keyFailure().kind() == binder::BinderKeyFailureKind::InactiveOwner);
+}
+
+ZC_TEST("Final-sealed queries verify missing selected source rejections") {
+  auto database = queryDatabase(scheduler());
+  ZC_REQUIRE(registerIncrementalBindingQueryAdapter(database));
+  ActiveDefinitionAuthorityProjectionState state;
+  auto roots = packageRoots();
+  auto module = stableModule();
+  stageBaseInputs(state, database, "module root;\nclass Alpha {}\n"_zc);
+  ZC_REQUIRE(state.refresh(database, roots));
+
+  auto inventory = database.snapshot().get<NamedDefinitionInventoryQuery>(module);
+  ZC_REQUIRE(inventory.kind() == query::QueryValueKind::Value);
+  ZC_REQUIRE(inventory.value().entries().size() == 1);
+  auto alphaKey = inventory.value().entries()[0].key().clone();
+  replaceSelectedModuleCatalogWithUnrelatedModule(database);
+
+  auto sealed = sealDatabase(database, roots);
+  auto sites = sealed.getCapability<IdentitySyntaxSiteInventoryQuery>(module);
+  auto admission = sealed.getCapability<StableIdentityAdmissionQuery>(module);
+  auto definitions = sealed.getCapability<RevisionLocalDefinitionSitesQuery>(module);
+  auto implementations = sealed.getCapability<RevisionLocalImplementationSitesQuery>(module);
+  auto moduleProvenance = sealed.getCapability<ModuleBodyProvenanceQuery>(module);
+  ZC_REQUIRE(sites.isKeyRejected());
+  ZC_REQUIRE(admission.isKeyRejected());
+  ZC_REQUIRE(definitions.isKeyRejected());
+  ZC_REQUIRE(implementations.isKeyRejected());
+  ZC_REQUIRE(moduleProvenance.isKeyRejected());
+
+  auto alphaQueryKey = contextual(roots, semanticModule(), alphaKey);
+  auto syntax = sealed.get<NamedItemSyntaxQuery>(alphaQueryKey);
+  auto provenance = sealed.getCapability<NamedItemProvenanceQuery>(alphaQueryKey);
+  ZC_REQUIRE(syntax.kind() == query::QueryValueKind::SemanticFailure);
+  ZC_REQUIRE(provenance.isKeyRejected());
+  ZC_EXPECT(provenance.keyFailure().kind() ==
+            binder::BinderKeyFailureKind::MissingSelectedModuleSource);
+}
+
+ZC_TEST("Final-sealed identity queries verify absent module key rejections") {
+  auto database = queryDatabase(scheduler());
+  ZC_REQUIRE(registerIncrementalBindingQueryAdapter(database));
+  ActiveDefinitionAuthorityProjectionState state;
+  auto roots = packageRoots();
+  stageBaseInputs(state, database, "module root;\nclass Alpha {}\n"_zc);
+  ZC_REQUIRE(state.refresh(database, roots));
+
+  auto sealed = sealDatabase(database, roots);
+  auto missingModule = stableNamedModule("missing"_zc);
+  auto sites = sealed.getCapability<IdentitySyntaxSiteInventoryQuery>(missingModule);
+  auto admission = sealed.getCapability<StableIdentityAdmissionQuery>(missingModule);
+  auto definitions = sealed.getCapability<RevisionLocalDefinitionSitesQuery>(missingModule);
+  auto implementations = sealed.getCapability<RevisionLocalImplementationSitesQuery>(missingModule);
+  auto moduleProvenance = sealed.getCapability<ModuleBodyProvenanceQuery>(missingModule);
+  ZC_REQUIRE(sites.isKeyRejected());
+  ZC_REQUIRE(admission.isKeyRejected());
+  ZC_REQUIRE(definitions.isKeyRejected());
+  ZC_REQUIRE(implementations.isKeyRejected());
+  ZC_REQUIRE(moduleProvenance.isKeyRejected());
+  ZC_EXPECT(sites.keyFailure().kind() == binder::BinderKeyFailureKind::MissingSelectedModuleSource);
+}
+
+ZC_TEST("Final-sealed queries verify parse source rejections") {
+  auto database = queryDatabase(scheduler());
+  ZC_REQUIRE(registerIncrementalBindingQueryAdapter(database));
+  ActiveDefinitionAuthorityProjectionState state;
+  auto roots = packageRoots();
+  auto module = stableModule();
+  stageBaseInputs(state, database, "module root;\nclass Alpha {}\n"_zc);
+  ZC_REQUIRE(state.refresh(database, roots));
+
+  auto inventory = database.snapshot().get<NamedDefinitionInventoryQuery>(module);
+  ZC_REQUIRE(inventory.kind() == query::QueryValueKind::Value);
+  ZC_REQUIRE(inventory.value().entries().size() == 1);
+  auto alphaKey = inventory.value().entries()[0].key().clone();
+  stageBaseInputs(state, database, "module root;\nclass Alpha {\n"_zc);
+
+  auto sealed = sealDatabase(database, roots);
+  auto sites = sealed.getCapability<IdentitySyntaxSiteInventoryQuery>(module);
+  auto admission = sealed.getCapability<StableIdentityAdmissionQuery>(module);
+  auto definitions = sealed.getCapability<RevisionLocalDefinitionSitesQuery>(module);
+  auto implementations = sealed.getCapability<RevisionLocalImplementationSitesQuery>(module);
+  auto moduleProvenance = sealed.getCapability<ModuleBodyProvenanceQuery>(module);
+  ZC_REQUIRE(sites.isSourceRejected());
+  ZC_REQUIRE(admission.isSourceRejected());
+  ZC_REQUIRE(definitions.isSourceRejected());
+  ZC_REQUIRE(implementations.isSourceRejected());
+  ZC_REQUIRE(moduleProvenance.isSourceRejected());
+
+  auto alphaQueryKey = contextual(roots, semanticModule(), alphaKey);
+  auto syntax = sealed.get<NamedItemSyntaxQuery>(alphaQueryKey);
+  auto provenance = sealed.getCapability<NamedItemProvenanceQuery>(alphaQueryKey);
+  ZC_REQUIRE(syntax.kind() == query::QueryValueKind::SemanticFailure);
+  ZC_REQUIRE(provenance.isSourceRejected());
+
+  auto moduleOwner = binder::StableBodyOwnerKey::module(semanticModule());
+  auto moduleBodyKey = contextual(roots, semanticModule(), moduleOwner);
+  auto moduleBodyProvenance = sealed.getCapability<OwnerBodyProvenanceQuery>(moduleBodyKey);
+  ZC_REQUIRE(moduleBodyProvenance.isSourceRejected());
+
+  auto definitionOwner = binder::StableBodyOwnerKey::definition(alphaKey.clone());
+  auto definitionBodyKey = contextual(roots, semanticModule(), definitionOwner);
+  auto definitionBodySyntax = sealed.get<OwnerBodySyntaxQuery>(definitionBodyKey);
+  auto definitionBodyProvenance = sealed.getCapability<OwnerBodyProvenanceQuery>(definitionBodyKey);
+  ZC_REQUIRE(definitionBodySyntax.kind() == query::QueryValueKind::SemanticFailure);
+  ZC_REQUIRE(definitionBodyProvenance.isSourceRejected());
+}
+
+ZC_TEST("Final-sealed identity queries verify candidate source diagnostics") {
+  auto database = queryDatabase(scheduler());
+  ZC_REQUIRE(registerIncrementalBindingQueryAdapter(database));
+  ActiveDefinitionAuthorityProjectionState state;
+  auto roots = packageRoots();
+  auto module = stableModule();
+  stageBaseInputs(state, database,
+                  "module root;\n"
+                  "fun run(size: i32) -> [i32; size] {}\n"_zc);
+
+  auto sealed = sealDatabase(database, roots);
+  auto sites = sealed.getCapability<IdentitySyntaxSiteInventoryQuery>(module);
+  auto admission = sealed.getCapability<StableIdentityAdmissionQuery>(module);
+  auto definitions = sealed.getCapability<RevisionLocalDefinitionSitesQuery>(module);
+  auto implementations = sealed.getCapability<RevisionLocalImplementationSitesQuery>(module);
+  auto moduleProvenance = sealed.getCapability<ModuleBodyProvenanceQuery>(module);
+  ZC_REQUIRE(sites.isPublished());
+  ZC_REQUIRE(admission.isSourceRejected());
+  ZC_REQUIRE(definitions.isSourceRejected());
+  ZC_REQUIRE(implementations.isSourceRejected());
+  ZC_REQUIRE(moduleProvenance.isSourceRejected());
+}
+
+ZC_TEST("Final-sealed identity queries verify duplicate generic diagnostics") {
+  auto database = queryDatabase(scheduler());
+  ZC_REQUIRE(registerIncrementalBindingQueryAdapter(database));
+  ActiveDefinitionAuthorityProjectionState state;
+  auto roots = packageRoots();
+  auto module = stableModule();
+  stageBaseInputs(state, database, "module root;\nfun run<T, U, T, T>();\n"_zc);
+
+  auto sealed = sealDatabase(database, roots);
+  auto sites = sealed.getCapability<IdentitySyntaxSiteInventoryQuery>(module);
+  auto admission = sealed.getCapability<StableIdentityAdmissionQuery>(module);
+  ZC_REQUIRE(sites.isPublished());
+  ZC_REQUIRE(admission.isSourceRejected());
+  ZC_REQUIRE(admission.diagnostics().values().size() == 1);
+}
+
+ZC_TEST("Final-sealed named-item queries forward identity admission diagnostics") {
+  auto database = queryDatabase(scheduler());
+  ZC_REQUIRE(registerIncrementalBindingQueryAdapter(database));
+  ActiveDefinitionAuthorityProjectionState state;
+  auto roots = packageRoots();
+  auto module = stableModule();
+  stageBaseInputs(state, database, "module root;\nclass Alpha {}\n"_zc);
+  ZC_REQUIRE(state.refresh(database, roots));
+
+  auto inventory = database.snapshot().get<NamedDefinitionInventoryQuery>(module);
+  ZC_REQUIRE(inventory.kind() == query::QueryValueKind::Value);
+  ZC_REQUIRE(inventory.value().entries().size() == 1);
+  auto alphaKey = inventory.value().entries()[0].key().clone();
+  stageBaseInputs(state, database,
+                  "module root;\n"
+                  "class Alpha {}\n"
+                  "fun run(size: i32) -> [i32; size] {}\n"_zc);
+
+  auto sealed = sealDatabase(database, roots);
+  auto alphaQueryKey = contextual(roots, semanticModule(), alphaKey);
+  auto syntax = sealed.get<NamedItemSyntaxQuery>(alphaQueryKey);
+  auto provenance = sealed.getCapability<NamedItemProvenanceQuery>(alphaQueryKey);
+  ZC_REQUIRE(syntax.kind() == query::QueryValueKind::SemanticFailure);
+  ZC_REQUIRE(provenance.isSourceRejected());
+
+  auto owner = binder::StableBodyOwnerKey::definition(alphaKey.clone());
+  auto bodyKey = contextual(roots, semanticModule(), owner);
+  auto bodySyntax = sealed.get<OwnerBodySyntaxQuery>(bodyKey);
+  auto bodyProvenance = sealed.getCapability<OwnerBodyProvenanceQuery>(bodyKey);
+  ZC_REQUIRE(bodySyntax.kind() == query::QueryValueKind::SemanticFailure);
+  ZC_REQUIRE(bodyProvenance.isSourceRejected());
+}
+
+ZC_TEST("Final-sealed named-item queries select deterministic repeated definition sites") {
+  auto database = queryDatabase(scheduler());
+  ZC_REQUIRE(registerIncrementalBindingQueryAdapter(database));
+  ActiveDefinitionAuthorityProjectionState state;
+  auto roots = packageRoots();
+  auto module = stableModule();
+  stageBaseInputs(state, database,
+                  "module root;\n"
+                  "fun Alpha();\n"
+                  "fun Alpha();\n"
+                  "fun Alpha() { let value = 1; }\n"_zc);
+  ZC_REQUIRE(state.refresh(database, roots));
+
+  auto inventory = database.snapshot().get<NamedDefinitionInventoryQuery>(module);
+  ZC_REQUIRE(inventory.kind() == query::QueryValueKind::Value);
+  ZC_REQUIRE(inventory.value().entries().size() == 1);
+  auto alphaKey = inventory.value().entries()[0].key().clone();
+
+  auto sealed = sealDatabase(database, roots);
+  auto sites = sealed.getCapability<RevisionLocalDefinitionSitesQuery>(module);
+  ZC_REQUIRE(sites.isPublished());
+  ZC_REQUIRE(sites.lease().capability().entries().size() == 3);
+  auto alphaQueryKey = contextual(roots, semanticModule(), alphaKey);
+  auto syntax = sealed.get<NamedItemSyntaxQuery>(alphaQueryKey);
+  auto provenance = sealed.getCapability<NamedItemProvenanceQuery>(alphaQueryKey);
+  ZC_REQUIRE(syntax.kind() == query::QueryValueKind::Value);
+  ZC_REQUIRE(provenance.isPublished());
+}
+
+ZC_TEST("Final-sealed named-item queries fail closed before authority readiness") {
+  auto database = queryDatabase(scheduler());
+  ZC_REQUIRE(registerIncrementalBindingQueryAdapter(database));
+  ActiveDefinitionAuthorityProjectionState state;
+  auto roots = packageRoots();
+  auto module = stableModule();
+  stageBaseInputs(state, database, "module root;\nclass Alpha {}\n"_zc);
+
+  auto inventory = database.snapshot().get<NamedDefinitionInventoryQuery>(module);
+  ZC_REQUIRE(inventory.kind() == query::QueryValueKind::Value);
+  ZC_REQUIRE(inventory.value().entries().size() == 1);
+  auto alphaKey = inventory.value().entries()[0].key().clone();
+  auto sealed = sealDatabase(database, roots);
+  auto alphaQueryKey = contextual(roots, semanticModule(), alphaKey);
+  auto syntax = sealed.get<NamedItemSyntaxQuery>(alphaQueryKey);
+  auto provenance = sealed.getCapability<NamedItemProvenanceQuery>(alphaQueryKey);
+  ZC_REQUIRE(syntax.isRuntimeFailure());
+  ZC_EXPECT(syntax.runtimeFailure() == query::QueryRuntimeFailure::ProviderRejected);
+  ZC_REQUIRE(provenance.isRuntimeRejected());
+  ZC_EXPECT(provenance.runtimeFailure() == query::QueryRuntimeFailure::ProviderRejected);
+}
+
+ZC_TEST("Final-sealed named-item queries reject contradictory authority records") {
+  auto database = queryDatabase(scheduler());
+  ZC_REQUIRE(registerIncrementalBindingQueryAdapter(database));
+  ActiveDefinitionAuthorityProjectionState state;
+  auto roots = packageRoots();
+  auto module = stableModule();
+  stageBaseInputs(state, database,
+                  "module root;\n"
+                  "class Alpha {}\n"
+                  "class Beta {}\n"_zc);
+  ZC_REQUIRE(state.refresh(database, roots));
+
+  auto snapshot = database.snapshot();
+  auto inventory = snapshot.get<NamedDefinitionInventoryQuery>(module);
+  ZC_REQUIRE(inventory.kind() == query::QueryValueKind::Value);
+  ZC_REQUIRE(inventory.value().entries().size() == 2);
+  auto firstKey = inventory.value().entries()[0].key().clone();
+  auto secondKey = inventory.value().entries()[1].key().clone();
+  auto firstQueryKey = contextual(roots, semanticModule(), firstKey);
+  auto secondQueryKey = contextual(roots, semanticModule(), secondKey);
+  auto secondAuthority = snapshot.get<ActiveDefinitionAuthorityInput>(secondQueryKey);
+  ZC_REQUIRE(secondAuthority.kind() == query::QueryValueKind::Value);
+
+  auto opened = database.beginInputTransaction(snapshot.revision());
+  ZC_REQUIRE(opened.isOpened());
+  auto transaction = zc::mv(opened).takeTransaction();
+  ZC_REQUIRE(
+      transaction
+          .set<ActiveDefinitionAuthorityInput>(firstQueryKey, secondAuthority.value().clone())
+          .isApplied());
+  ZC_REQUIRE(transaction.commit().isCommitted());
+
+  auto sealed = sealDatabase(database, roots);
+  auto syntax = sealed.get<NamedItemSyntaxQuery>(firstQueryKey);
+  auto provenance = sealed.getCapability<NamedItemProvenanceQuery>(firstQueryKey);
+  ZC_REQUIRE(syntax.isRuntimeFailure());
+  ZC_EXPECT(syntax.runtimeFailure() == query::QueryRuntimeFailure::InvariantViolation);
+  ZC_REQUIRE(provenance.isRuntimeRejected());
+  ZC_EXPECT(provenance.runtimeFailure() == query::QueryRuntimeFailure::InvariantViolation);
+}
+
+ZC_TEST("Final-sealed named-item queries reject authorities absent from current inventory") {
+  auto database = queryDatabase(scheduler());
+  ZC_REQUIRE(registerIncrementalBindingQueryAdapter(database));
+  ActiveDefinitionAuthorityProjectionState state;
+  auto roots = packageRoots();
+  auto module = stableModule();
+  stageBaseInputs(state, database, "module root;\nclass Alpha {}\n"_zc);
+  ZC_REQUIRE(state.refresh(database, roots));
+
+  auto inventory = database.snapshot().get<NamedDefinitionInventoryQuery>(module);
+  ZC_REQUIRE(inventory.kind() == query::QueryValueKind::Value);
+  ZC_REQUIRE(inventory.value().entries().size() == 1);
+  auto alphaKey = inventory.value().entries()[0].key().clone();
+  stageBaseInputs(state, database, "module root;\nclass Beta {}\n"_zc);
+
+  auto sealed = sealDatabase(database, roots);
+  auto alphaQueryKey = contextual(roots, semanticModule(), alphaKey);
+  auto syntax = sealed.get<NamedItemSyntaxQuery>(alphaQueryKey);
+  auto provenance = sealed.getCapability<NamedItemProvenanceQuery>(alphaQueryKey);
+  ZC_REQUIRE(syntax.isRuntimeFailure());
+  ZC_EXPECT(syntax.runtimeFailure() == query::QueryRuntimeFailure::InvariantViolation);
+  ZC_REQUIRE(provenance.isRuntimeRejected());
+  ZC_EXPECT(provenance.runtimeFailure() == query::QueryRuntimeFailure::InvariantViolation);
+}
+
+ZC_TEST("Final-sealed owner-body capabilities publish every active body") {
+  auto database = queryDatabase(scheduler());
+  ZC_REQUIRE(registerIncrementalBindingQueryAdapter(database));
+  ActiveDefinitionAuthorityProjectionState state;
+  auto roots = packageRoots();
+  stageBaseInputs(state, database,
+                  "module root;\n"
+                  "let module_value = 0;\n"
+                  "fun Alpha() { let value = 0; }\n"
+                  "class Holder {\n"
+                  "  let field: i32 = 1;\n"
+                  "  fun run() {}\n"
+                  "}\n"_zc);
+  ZC_REQUIRE(state.refresh(database, roots));
+
+  auto sealed = sealDatabase(database, roots);
+  auto moduleKey = contextual(roots, semanticModule());
+  auto owners = sealed.get<ModuleBodyOwnersQuery>(moduleKey);
+  ZC_REQUIRE(owners.kind() == query::QueryValueKind::Value);
+  ZC_REQUIRE(owners.value().owners().size() >= 3);
+  for (const auto& owner : owners.value().owners()) {
+    auto ownerKey = contextual(roots, semanticModule(), owner);
+    auto syntax = sealed.get<OwnerBodySyntaxQuery>(ownerKey);
+    auto provenance = sealed.getCapability<OwnerBodyProvenanceQuery>(ownerKey);
+    ZC_REQUIRE(syntax.kind() == query::QueryValueKind::Value);
+    ZC_REQUIRE(provenance.isPublished());
+    ZC_EXPECT(syntax.value().owner() == owner);
+    ZC_EXPECT(provenance.lease().capability().owner() == owner);
   }
 }
 

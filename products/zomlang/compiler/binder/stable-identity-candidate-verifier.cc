@@ -851,7 +851,8 @@ zc::Maybe<IdentitySyntaxSiteKey> IdentitySyntaxSiteInventoryVerifier::resolve(
   zc::Vector<uint32_t> targetPath;
   zc::Vector<uint32_t> path;
   uint32_t ordinal = 0;
-  zc::Vector<uint8_t> visited(tree.nodeCount() + 1);
+  zc::Vector<uint8_t> visited;
+  visited.resize(tree.nodeCount() + 1);
   for (auto& value : visited) { value = 0; }
   bool valid = true;
   const auto walk = [&](auto&& self, ast::NodeId current) -> void {
