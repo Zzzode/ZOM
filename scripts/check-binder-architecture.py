@@ -29,6 +29,10 @@ CONTEXT_VALIDATOR_SOURCE = BINDER / "binding-context-validator.cc"
 PUBLICATION_SOURCE = BINDER / "binding-publication.cc"
 VERIFIER_SOURCE = BINDER / "binding-verifier.cc"
 STABLE_IDENTITY_VERIFIER_SOURCE = BINDER / "stable-identity-candidate-verifier.cc"
+STABLE_HEADER_VERIFIER_HEADER = BINDER / "stable-header-verifier.h"
+STABLE_HEADER_VERIFIER_SOURCE = BINDER / "stable-header-verifier.cc"
+STABLE_HEADER_VERIFIER_TEST = TESTS / "stable-header-verifier-test.cc"
+STABLE_BINDING_QUERY_TEST = TESTS / "stable-binding-query-test.cc"
 CANONICAL_HEADER_VERIFIER_HEADER = BINDER / "canonical-header-verifier.h"
 CANONICAL_HEADER_VERIFIER_SOURCE = BINDER / "canonical-header-verifier.cc"
 BINDER_CMAKE = BINDER / "CMakeLists.txt"
@@ -185,6 +189,10 @@ def required_files() -> tuple[Path, ...]:
         LANDING_SCOPE_GATE,
         STABLE_LANDING_ALLOWLIST,
         STABLE_IDENTITY_VERIFIER_SOURCE,
+        STABLE_HEADER_VERIFIER_HEADER,
+        STABLE_HEADER_VERIFIER_SOURCE,
+        STABLE_HEADER_VERIFIER_TEST,
+        STABLE_BINDING_QUERY_TEST,
         CANONICAL_HEADER_VERIFIER_HEADER,
         CANONICAL_HEADER_VERIFIER_SOURCE,
         DRIVER_SESSION_SOURCE,
@@ -324,6 +332,41 @@ def check_verifier_independence(files: dict[Path, str], errors: list[str]) -> No
         for symbol in PRODUCER_SYMBOLS:
             if symbol in text:
                 errors.append(f"{path}: semantic mutation oracle reuses producer algorithm {symbol}")
+    stable_header = files.get(STABLE_HEADER_VERIFIER_SOURCE, "")
+    for marker in (
+        "StableDefinitionHeaderProducer::",
+        "StableImplementationOccurrenceHeaderProducer::",
+        '#include "zomlang/compiler/binder/stable-definition-header-producer.h"',
+        '#include "zomlang/compiler/binder/stable-implementation-occurrence-header-producer.h"',
+    ):
+        if marker in stable_header:
+            errors.append(
+                f"{STABLE_HEADER_VERIFIER_SOURCE}: stable header verifier reuses producer: {marker}"
+            )
+    for marker in (
+        "definitionEntry(context, queryKey.definition())",
+        "definitionAuthority(context, queryKey.definition())",
+        "implementationEntry(context, queryKey.occurrence().implementation())",
+        "implementationOccurrence(context, queryKey.occurrence())",
+        "StableIdentityCandidateVerifier::reconstruct(",
+        "completeAuthority(context,",
+        "matchesOwners(context,",
+        "canonicalRoundTrip(candidate)",
+    ):
+        if marker not in stable_header:
+            errors.append(
+                f"{STABLE_HEADER_VERIFIER_SOURCE}: independent header verification is incomplete: "
+                f"{marker}"
+            )
+    stable_header_test = files.get(STABLE_HEADER_VERIFIER_TEST, "")
+    for marker in (
+        "verifies every equal implementation occurrence independently",
+        "rejects a candidate from another complete source context",
+    ):
+        if marker not in stable_header_test:
+            errors.append(
+                f"{STABLE_HEADER_VERIFIER_TEST}: stable header regression is missing: {marker}"
+            )
     verifier = files.get(VERIFIER_SOURCE, "")
     for marker in (
         "bindingCandidateHasForeignContext(input, candidate)",

@@ -1131,6 +1131,34 @@ def validate(text: str) -> list[str]:
             valid_rows.append(row)
     grouped = rows_by_kind(valid_rows)
 
+    stable_header_provenance = {
+        "StableHeaderGenericParameter": (
+            "StableDefinitionHeaderProducer",
+            "StableHeaderVerifier",
+        ),
+        "StableHeaderCallableParameter": (
+            "StableDefinitionHeaderProducer",
+            "StableHeaderVerifier",
+        ),
+        "StableDefinitionHeader": (
+            "StableDefinitionHeaderProducer",
+            "StableHeaderVerifier",
+        ),
+        "StableImplementationOccurrenceHeader": (
+            "StableImplementationOccurrenceHeaderProducer",
+            "StableHeaderVerifier",
+        ),
+    }
+    for row in grouped["Record"]:
+        name = atom(row.args[0])
+        if name not in stable_header_provenance:
+            continue
+        producer, verifier = stable_header_provenance[name]
+        if atom(row.args[3]) != producer or atom(row.args[4]) != verifier:
+            errors.append(
+                f"line {row.line}: {name} must name its RFC 0027 producer and verifier"
+            )
+
     for row in valid_rows:
         for index in TASK_COLUMNS.get(row.kind, ()):
             task = atom(row.args[index])
@@ -1731,6 +1759,8 @@ def self_test(text: str) -> list[str]:
         text, "Record", "CanonicalCompilationRootRecord", 2, "UnknownBound")))
     cases.append(("unknown mutation", mutate_arg(
         text, "Record", "StableDefinitionQueryKey", 8, '"domain|unknown-mutation"')))
+    cases.append(("stable header provenance", mutate_arg(
+        text, "Record", "StableDefinitionHeader", 4, "CanonicalHeaderVerifier")))
 
     sum_row = find_row(text, "Sum", "StableHeaderSite")
     cases.append(("missing sum owner", text[:sum_row.start] + text[sum_row.end:]))

@@ -238,24 +238,25 @@ ZOM_STABLE_BINDING_RECORD(ContextualCallableParameterKey,
                           "StableBindingQueryTest.ContextualKeysRejectRootAndOwnerDrift")
 
 ZOM_STABLE_BINDING_RECORD(StableHeaderGenericParameter, "zom.binder.header-generic-parameter",
-                          BinderSemanticValueBytes, CanonicalDefinitionHeaderProducer,
-                          CanonicalHeaderVerifier, S2B, S3, S2B,
+                          BinderSemanticValueBytes, StableDefinitionHeaderProducer,
+                          StableHeaderVerifier, S2B, S3, S2B,
                           "domain|truncated|trailing|field|reordered|identity|ownership|max-bytes",
                           "StableBindingQueryTest.HeadersRejectFieldAndParameterMutations")
 ZOM_STABLE_BINDING_RECORD(StableHeaderCallableParameter, "zom.binder.header-callable-parameter",
-                          BinderSemanticValueBytes, CanonicalDefinitionHeaderProducer,
-                          CanonicalHeaderVerifier, S2B, S3, S2B,
+                          BinderSemanticValueBytes, StableDefinitionHeaderProducer,
+                          StableHeaderVerifier, S2B, S3, S2B,
                           "domain|truncated|trailing|field|reordered|identity|ownership|max-bytes",
                           "StableBindingQueryTest.HeadersRejectFieldAndParameterMutations")
 ZOM_STABLE_BINDING_RECORD(StableDefinitionHeader, "zom.binder.definition-header",
-                          BinderSemanticValueBytes, CanonicalDefinitionHeaderProducer,
-                          CanonicalHeaderVerifier, S2B, S3, S2B,
+                          BinderSemanticValueBytes, StableDefinitionHeaderProducer,
+                          StableHeaderVerifier, S2B, S3, S2B,
                           "domain|tag|truncated|trailing|field|missing|additional|duplicate|"
                           "reordered|identity|ownership|max-count|max-bytes",
                           "StableBindingQueryTest.HeadersRejectFieldAndParameterMutations")
 ZOM_STABLE_BINDING_RECORD(StableImplementationOccurrenceHeader,
                           "zom.binder.implementation-occurrence-header", BinderSemanticValueBytes,
-                          CanonicalImplHeaderProducer, CanonicalHeaderVerifier, S2B, S3, S2B,
+                          StableImplementationOccurrenceHeaderProducer, StableHeaderVerifier, S2B,
+                          S3, S2B,
                           "domain|tag|truncated|trailing|field|missing|additional|duplicate|"
                           "reordered|identity|ownership|max-count|max-bytes",
                           "StableBindingQueryTest.HeadersRejectFieldAndParameterMutations")
