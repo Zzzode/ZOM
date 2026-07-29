@@ -156,3 +156,22 @@ The shared query-runtime partitions and their complete RFC 0029 evidence are
 landed. `R28-16A` is the next unblocked task. `R28-16A` and `R28-16B`
 activate and verify only the production module-dependency-provenance row;
 `R28-16` remains their sole source landing authority.
+
+### 2026-07-30 Complete-Context Final-Seal Atomicity Correction
+
+Independent RFC 0027 source review found that a separately landed
+complete-context descriptor could expose a static final verifier before the
+graph, SCC, authority, readiness, and transaction-witness descriptors existed.
+That intermediate contract cannot satisfy this RFC.
+
+The synchronized correction makes RFC 0027 I1A, I2, and M1 prepare-only and
+T1 their sole atomic landing authority. T1 also migrates the query inventory
+to the production descriptor and deletes both test-only complete-context
+shadows in the same buildable transaction. A key/value/self-witness-only
+verifier is forbidden.
+
+The user-designated independent approver accepted exact pre-evidence Git diff
+SHA-256
+`b25aef908d13395fce59151e6e31a9fea2f11f788fdd2806d17fa378b99d8821`.
+Transaction `rfc0027-context-atomic-20260730-b25aef90` records the synchronized
+correction and does not change the status of any RFC 0028 implementation task.

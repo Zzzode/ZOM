@@ -260,6 +260,24 @@ SHA-256
 Transaction `rfc0027-context-foundation-20260730-1214413e` synchronizes this
 ownership correction with RFCs 0027, 0030, and 0031.
 
+### 2026-07-30 Complete-Context Atomic Landing Correction
+
+Independent implementation review found that assigning descriptor ownership
+to I1A did not remove the final-seal dependency cycle: the descriptor's static
+verifier requires inputs prepared by I2 and M1, and the query-test inventory
+still held a duplicate complete-context shadow.
+
+The synchronized correction preserves `I1A/T1/I1A/I1A` as schema partition
+ownership. I1A, I2, and M1 are prepare-only; T1 is the sole atomic landing
+authority for their union, complete final verification, query-test migration
+and shadow deletion, transactions, and snapshots. This design correction is
+independently approved and reopens no completed RFC 0029 task.
+
+The approved exact pre-evidence Git diff SHA-256 is
+`b25aef908d13395fce59151e6e31a9fea2f11f788fdd2806d17fa378b99d8821`.
+Transaction `rfc0027-context-atomic-20260730-b25aef90` records the synchronized
+correction.
+
 ## Implementation Tracker
 
 | Task | Owner | Depends On | Deliverable | Verification | Status |
@@ -293,3 +311,6 @@ next unblocked query-runtime task.
 Transaction `rfc0027-context-foundation-20260730-1214413e` records the
 synchronized complete-context ownership correction. RFC 0029 remains
 `LANDED`.
+
+Transaction `rfc0027-context-atomic-20260730-b25aef90` changes only the landing
+authority of future RFC 0027 work and does not alter RFC 0029 runtime evidence.

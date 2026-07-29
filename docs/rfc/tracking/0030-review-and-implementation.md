@@ -152,6 +152,24 @@ SHA-256
 Transaction `rfc0027-context-foundation-20260730-1214413e` synchronizes the
 eight-document ownership correction.
 
+### 2026-07-30 Complete-Context Atomic Landing Correction
+
+Independent source review found that the corrected ownership tuple alone
+still permitted a descriptor whose static final verifier could not yet read
+the I2 and M1 prerequisites required by RFC 0028.
+
+The synchronized correction keeps `I1A/T1/I1A/I1A`, binds the schema record
+producer to the I1A `fromVerified` construction boundary, and makes I1A, I2,
+and M1 prepare-only. T1 is the sole atomic landing authority for the complete
+dependency closure, query-test migration, shadow deletion, transactions, and
+snapshots. No completed RFC 0030 task is reopened.
+
+The user-designated independent approver accepted exact pre-evidence Git diff
+SHA-256
+`b25aef908d13395fce59151e6e31a9fea2f11f788fdd2806d17fa378b99d8821`.
+Transaction `rfc0027-context-atomic-20260730-b25aef90` records the synchronized
+correction.
+
 ## Decision Record
 
 Accepted by `task-router`, `rfc`, `module-system`, `binder-checker`,
@@ -175,6 +193,9 @@ Transaction `rfc0027-context-foundation-20260730-1214413e` binds the
 2026-07-30 complete-context ownership correction to the independently
 approved exact pre-evidence Git diff. RFC 0030 remains `LANDED`; no completed
 implementation task is reopened.
+
+Transaction `rfc0027-context-atomic-20260730-b25aef90` changes only future RFC
+0027 landing authority.
 
 RFC 0032 acceptance transaction `rfc0032-accept-20260728-1d519846`
 synchronizes this tracker to proposal SHA-256

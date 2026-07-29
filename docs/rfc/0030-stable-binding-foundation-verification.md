@@ -246,10 +246,15 @@ Input ownership is exact:
 | `ActiveDefinitionAuthorityInput` | `I2` | `T1` | `I2` | `I2` |
 | `CompleteRootIdentityReadiness` | `I2` | `T1` | `I2` | `I2` |
 
-`I1A` is the RFC 0027 pre-membership foundation. It owns the complete-context
-value, codec, descriptor, independent verifier, schema row, and native tests.
-`T1` retains provider ownership because its session transaction installs the
-verified input together with the three complete-context transaction records.
+`I1A` is the RFC 0027 prepare-only complete-context partition. It owns the
+value, codec, descriptor definition, independent verifier, schema row, and
+native tests. The schema tuple remains `I1A/T1/I1A/I1A`; the record producer
+names the I1A `fromVerified` construction boundary, and the schema gate checks
+that identity in addition to the ownership tuple. I2 and M1 prepare the
+membership, readiness, graph, and SCC prerequisites. T1 retains provider
+ownership and is the sole atomic landing authority for all prepared
+partitions, the complete final verifier, the three transaction records,
+query-test migration, shadow deletion, and session publication.
 
 Every capability row uses
 `CapabilityDemandResult<name>`, names its capability payload, and carries an
@@ -857,3 +862,4 @@ None
 | 2026-07-29 | IMPLEMENTING | RFC 0042 executed the replacement diagnostic transaction from baseline `e8be38e1eeba5a4ae40689321710af2d3fc8b24e`. |
 | 2026-07-29 | LANDED | RFC 0042 published the final replacement as `58897c116cafe3463ec6a46ac3bbdd530ef991a5` and its canonical formatting as `02e400332fa87d8fca0bd7f2f5abb153bb776eb1`; all RFC 0030 tracker rows are complete and RFC 0029 resumes at `R29-13A`. |
 | 2026-07-30 | LANDED | Transaction `rfc0027-context-foundation-20260730-1214413e` binds the synchronized eight-document complete-context schema correction to independently approved exact pre-evidence Git diff SHA-256 `1214413eef714da5727a705d68bb9872d47ea78b28b18600ac158c87db63ac61`; `I1A` owns the foundation while `T1` retains the transaction records and input-provider role. No completed RFC 0030 task is reopened. |
+| 2026-07-30 | LANDED | Transaction `rfc0027-context-atomic-20260730-b25aef90` binds the atomic landing correction to independently approved exact pre-evidence Git diff SHA-256 `b25aef908d13395fce59151e6e31a9fea2f11f788fdd2806d17fa378b99d8821`; the schema tuple and producer identity remain exact, and no completed RFC 0030 task is reopened. |

@@ -8,7 +8,7 @@ review-manager: rfc
 required-owners: [task-router, rfc, module-system, lexer-parser, binder-checker, spec-audit, verification]
 approvers: [task-router, rfc, module-system, lexer-parser, binder-checker, spec-audit, verification]
 created: 2026-07-27
-updated: 2026-07-29
+updated: 2026-07-30
 area: compiler
 requires: [17, 18, 19, 20, 25, 26, 27]
 supersedes: []
@@ -536,6 +536,14 @@ authority, readiness, and transaction-witness inputs from the supplied
 snapshot, compares the complete value and final witness, and returns one
 `FinalAuthorityCheck`. The verifier never receives a database lock or a
 constructible seal type.
+
+The descriptor and static verifier do not land before those prerequisite
+descriptors and reads exist. RFC 0027 I1A, I2, and M1 are prepare-only
+partitions. RFC 0027 T1 is their sole atomic landing authority and must land
+the complete descriptor, all prerequisite inputs, the independent static
+verifier, the transaction witness, and the snapshot state machine in one
+buildable transaction. A temporary self-authentication check over only the
+stored value, key, or witness is forbidden.
 
 Only `QueryDatabase::sealInputs` may turn `Verified` into the private
 nonconstructible `VerifiedFinalSealAuthority`, after phase three repeats all
@@ -1492,6 +1500,13 @@ descriptor. The shared test schema can therefore name every type in its
 production-prefix-plus-test-tail inventory without depending on translation
 unit order.
 
+RFC 0027 T1 owns the atomic migration of the query tests from the test-only
+complete-context descriptor to the production descriptor. That transaction
+deletes both test-only complete-context shadows, including the declaration in
+`query-test-specs.h`, updates the shared test descriptor schema and inventory,
+and lands no duplicate fully qualified descriptor name at any intermediate
+commit.
+
 The exact driver tests are:
 
 - `products/zomlang/tests/unittests/compiler/binder/identity-pre-admission-test.cc`;
@@ -2035,3 +2050,4 @@ None
 | 2026-07-28 | ACCEPTED | Transaction `rfc0031-accept-20260728-c25fcb18` synchronized the descriptor-parameterized provenance result, runtime-only capability payload, generic capability-demand sum ownership, and staged dual-alias checks to RFC 0031 proposal SHA-256 `c25fcb18e503ac214a8e92c925fa88108a915c2b15c94409dfecb88b3d9a63d5` and tracker SHA-256 `d64e7791ed2e2a488c5f57bc07ac341ccfc37d37c220c85131e2c9e846fb8d0d`; implementation tasks remain pending. |
 | 2026-07-29 | ACCEPTED | Transaction `rfc0028-r29-14-scope-20260729-521d82c7` bound exact four-document candidate manifest SHA-256 `521d82c731dee0a4b262e937d5578651850446eebfe7448a71a39cb63fc8e086`, adding only the four omitted Binder callers to the existing `R29-14` union; `R29-14` remains the sole source landing authority. |
 | 2026-07-29 | IMPLEMENTING | The shared runtime, descriptor inventory, capability result, final-seal, Binder consumer, and native verification foundation landed through RFC 0029 `R29-14` and `R29-15`. `R28-16A` is the next unblocked task; production module-dependency provenance activation, final verification, current-design audit, and final status synchronization remain pending. |
+| 2026-07-30 | IMPLEMENTING | Transaction `rfc0027-context-atomic-20260730-b25aef90` binds the atomic landing correction to independently approved exact pre-evidence Git diff SHA-256 `b25aef908d13395fce59151e6e31a9fea2f11f788fdd2806d17fa378b99d8821`; RFC 0027 T1 is the sole landing authority for the complete final-seal dependency closure. No weak interim final verifier may land. |

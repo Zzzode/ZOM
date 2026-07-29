@@ -140,6 +140,26 @@ SHA-256
 Transaction `rfc0027-context-foundation-20260730-1214413e` synchronizes the
 eight-document correction and changes no source or landed runtime status.
 
+### 2026-07-30 Complete-Context Atomic Landing Correction
+
+Independent implementation review found that the ownership correction still
+allowed the descriptor to land before its final-verifier prerequisite
+descriptors and left a duplicate test-only complete-context descriptor in the
+query inventory.
+
+The synchronized correction preserves `I1A/T1/I1A/I1A`, requires the schema
+producer to name the I1A `fromVerified` construction boundary, and makes I1A,
+I2, and M1 prepare-only. T1 becomes the sole atomic landing authority for the
+complete descriptor and verifier closure, query-test migration and both
+shadow deletions, transactions, and snapshots. No completed schema task is
+reopened.
+
+The user-designated independent approver accepted exact pre-evidence Git diff
+SHA-256
+`b25aef908d13395fce59151e6e31a9fea2f11f788fdd2806d17fa378b99d8821`.
+Transaction `rfc0027-context-atomic-20260730-b25aef90` records the synchronized
+correction.
+
 ## Decision Record
 
 Accepted by `rfc`, `module-system`, `binder-checker`, `error-system`,
@@ -159,6 +179,9 @@ declared complete by this decision.
 Transaction `rfc0027-context-foundation-20260730-1214413e` binds the
 2026-07-30 complete-context ownership correction to the independently
 approved exact pre-evidence Git diff. RFC 0031 remains `LANDED`.
+
+Transaction `rfc0027-context-atomic-20260730-b25aef90` changes only future RFC
+0027 landing authority.
 
 ## Review Tracker
 
@@ -186,4 +209,5 @@ diagnostic cleanup are satisfied. Future diagnostic schema rows land only
 with their live RFC 0029 or RFC 0025 producers. The complete-context
 ownership correction is recorded by
 `rfc0027-context-foundation-20260730-1214413e` and does not reopen either
-completed implementation task.
+completed implementation task. The atomic landing correction likewise changes
+only future RFC 0027 assembly authority.

@@ -994,11 +994,15 @@ Input ownership is also schema data:
 | `ActiveDefinitionAuthorityInput` | `I2` | `T1` | `I2` | `I2` |
 | `CompleteRootIdentityReadiness` | `I2` | `T1` | `I2` | `I2` |
 
-`I1A` is the RFC 0027 pre-membership complete-context foundation. It owns the
-input's value, codec, descriptor, independent verifier, and native tests. T1
-retains only provider ownership because its session transaction installs the
-already verified input. This split prevents I2 from depending on a descriptor
-that T1 would otherwise implement only after I2 and M1.
+`I1A` is the RFC 0027 prepare-only complete-context partition. It owns the
+input value, codec, descriptor definition, independent verifier, and native
+tests; I2 prepares the membership and readiness inputs; M1 prepares the graph
+and SCC witnesses. The ownership tuple remains `I1A/T1/I1A/I1A`, where T1 is
+the provider because its session transaction installs the verified input.
+None of those three prerequisite partitions lands independently. T1 is the
+sole atomic landing authority for their union, the complete static
+final-authority verifier, the query-test migration and shadow deletion, and
+the transaction and snapshot publication state machine.
 
 The binding-visibility query result is exactly
 `Optional<MemberVisibility>`. Runtime capability payloads receive descriptor
@@ -1386,3 +1390,4 @@ None
 | 2026-07-29 | IMPLEMENTING | Transaction `rfc0028-r29-14-scope-20260729-521d82c7` bound exact four-document candidate manifest SHA-256 `521d82c731dee0a4b262e937d5578651850446eebfe7448a71a39cb63fc8e086`, adding only the four omitted Binder callers to the atomic source union without completing an implementation task. |
 | 2026-07-29 | LANDED | `R29-13A` through `R29-14` landed through `d83eed927ad782963dc49a143b4dab48cb857f85`; Binder failure verification and Release validation corrections landed through `89d0c5e1ea1087bdf27c4d8745ed86de8363b842` and `e9ccb17fab8ba8ec471afa9512e8b13e6f30fcc5`; the approved Release baseline and passing comparison landed at `cd94cf6bc220158114125d151658aa88c1db335c`; and production-backed current design was published at `598fa6d6a7b4d2ea7ed4f1d61e321c07c624e83c`. Downstream RFC 0028 provenance activation and CompilerSession final-seal adoption remain separately tracked work. |
 | 2026-07-30 | LANDED | Transaction `rfc0027-context-foundation-20260730-1214413e` binds the synchronized eight-document complete-context ownership correction to independently approved exact pre-evidence Git diff SHA-256 `1214413eef714da5727a705d68bb9872d47ea78b28b18600ac158c87db63ac61`; input ownership is `I1A` descriptor, `T1` provider, `I1A` verifier, and `I1A` test. No RFC 0029 runtime task is reopened. |
+| 2026-07-30 | LANDED | Transaction `rfc0027-context-atomic-20260730-b25aef90` binds the atomic landing correction to independently approved exact pre-evidence Git diff SHA-256 `b25aef908d13395fce59151e6e31a9fea2f11f788fdd2806d17fa378b99d8821`; the `I1A/T1/I1A/I1A` tuple remains exact and no completed RFC 0029 task is reopened. |

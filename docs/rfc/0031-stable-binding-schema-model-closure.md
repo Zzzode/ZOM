@@ -464,9 +464,11 @@ Input ownership is:
 | `CompleteRootIdentityReadiness` | `I2` | `T1` | `I2` | `I2` |
 
 The provider column names the transaction that installs the verified input.
-The verifier column names the independent semantic verifier. Q3 remains
-complete and owns only the package-request records and projection verifier
-that T1 consumes.
+The verifier column names the independent semantic verifier. For the
+complete-context record, the producer provenance names the I1A
+`fromVerified` construction boundary and the gate verifies that identity in
+addition to the `I1A/T1/I1A/I1A` ownership tuple. Q3 remains complete and owns
+only the package-request records and projection verifier that T1 consumes.
 
 `CanonicalInputEntry<Key, Value>`, `CompleteCompilationContextAuthority`, its canonical codec,
 `CompleteCompilationContextAuthorityInput`, and
@@ -477,11 +479,13 @@ products/zomlang/compiler/driver/module-graph-query-input.h
 products/zomlang/compiler/driver/module-graph-query-input.cc
 ```
 
-The RFC 0027 I1A exact-file row names those artifacts, their schema ownership,
-native mutation tests, and deletion of the test-only shadow authority. T1
-retains only provider ownership and consumes the I1A foundation when its
-session transaction installs the input. This does not reopen or add files to
-completed Q3.
+The RFC 0027 I1A exact-file row names the prepare-only value, codec,
+descriptor definition, independent verifier, schema ownership, and native
+mutation work. I2 and M1 prepare the remaining membership, readiness, graph,
+and SCC prerequisites. T1 retains provider ownership and is the sole atomic
+landing authority for those prepared partitions, the complete static final
+verifier, the query-test migration and both shadow deletions, the transactions,
+and session snapshots. This does not reopen or add files to completed Q3.
 
 ### Stable Visibility Result
 
@@ -832,3 +836,4 @@ None
 | 2026-07-28 | IMPLEMENTING | The complete schema metamodel landed through `8885782747e4c863cefcb0d069bc4569cefce9aa`; the diagnostic cleanup remained assigned to RFC 0042. |
 | 2026-07-29 | LANDED | RFC 0042 completed the diagnostic schema cleanup and reusable mutation gate at `58897c116cafe3463ec6a46ac3bbdd530ef991a5`. |
 | 2026-07-30 | LANDED | Transaction `rfc0027-context-foundation-20260730-1214413e` binds the synchronized eight-document schema ownership correction to independently approved exact pre-evidence Git diff SHA-256 `1214413eef714da5727a705d68bb9872d47ea78b28b18600ac158c87db63ac61`; the complete-context input ownership tuple is `I1A/T1/I1A/I1A`. No completed schema task is reopened. |
+| 2026-07-30 | LANDED | Transaction `rfc0027-context-atomic-20260730-b25aef90` binds the atomic landing correction to independently approved exact pre-evidence Git diff SHA-256 `b25aef908d13395fce59151e6e31a9fea2f11f788fdd2806d17fa378b99d8821`; `I1A/T1/I1A/I1A` and the I1A producer identity remain exact, and no completed schema task is reopened. |
