@@ -97,6 +97,32 @@ assigns the comprehensive canonical-package schema mutation test to RFC 0030
 `R30-13`. RFC 0027 remains `ACCEPTED`; completed Q3 task `R27-17A` remains
 complete and its production files and existing tests are not reopened.
 
+### 2026-07-29 R27-15 Preflight Scope Correction
+
+Implementation preflight found that the accepted stable-header contract
+requires `NamedDefinitionInventoryEntry` to retain a complete typed
+`DefinitionIdentityRecord` and `DefinitionBodyDisposition`, while the `S4`
+through `S5` exact file set does not include the inventory, its codec, its
+query provider and verifier, or its live consumers. The implementation scope
+therefore requires the dependency split recorded below.
+
+This correction adds `S3A` as typed definition and implementation inventory
+authority plus production-caller cutover and `S3B` as the selected-source
+query derivation and architecture proof. It also fixes the body, activation,
+visibility, receiver, empty-list, parameter, failure, and scope-role
+classification contracts consumed by `S4`, `S4A`, and `S5`. The three header
+tasks use dedicated staging-header classes, closed borrowed producer inputs,
+and full-context verifier selection while RFC 0018 identity normalization
+retains its distinct classes. No source task is marked complete.
+
+The user-designated independent approver accepted exact pre-evidence Git diff
+SHA-256
+`9af2ae8a4610f578ef14f3975277ba52eda4497cef2843ee7e699fb264d5e756`.
+Transaction `rfc0027-header-scope-20260729-9af2ae8a` records that approval and
+authorizes only the dependency-ordered `R27-14A` through `R27-15E` source
+tasks. It does not claim additional required-owner decisions or complete an
+implementation task.
+
 ## Decision Record
 
 Accepted by `task-router`, `rfc`, `module-system`, `binder-checker`,
@@ -122,6 +148,12 @@ metamodel consumed by RFC 0030 `R30-11`, binds both reviewed hashes, preserves
 completed Q3 production authority, and places the additional package-schema
 mutation test in `R30-13`.
 
+Transaction `rfc0027-header-scope-20260729-9af2ae8a` binds the corrected typed
+inventory, staging-header input, independent-verifier, source partition, and
+RFC 0025 dependency contracts to the user-designated independent approval
+above. RFC 0027 remains `ACCEPTED`; implementation resumes only at
+`R27-14A`.
+
 ## Implementation Tracker
 
 | Task | Owner | Depends On | Deliverable | Verification | Status |
@@ -142,11 +174,15 @@ mutation test in `R30-13`.
 | `R27-12B` | `verification` | `R27-12A` | Record the clean committed accepted synchronization SHA as the immutable implementation-series base. | Frozen-base ancestry check | Complete; base `109947943519ec2d380a3e8d71813b40bc68bde5` is an ancestor of the recording commit |
 | `R27-12C` | `rfc` | `R27-12B`; RFC 0029 `R29-11` | Synchronize complete contextual keys, identity-site provenance, stable-identity admission, exact typed provenance failures, and the corrected dependency order through transaction `rfc0029-accept-20260727-8d393a0c`. | `python3 scripts/check-rfc.py` | Complete |
 | `R27-12D` | `rfc` | `R27-12C`; RFC 0031 `R31-09` | Synchronize the accepted hand-authored schema metamodel, direct visibility result, descriptor capability and failure aliases, Q3/`R30-13` test split, and exact T1 artifacts through transaction `rfc0031-accept-20260728-c25fcb18`. | `python3 scripts/check-rfc.py` | Complete |
-| `R27-15` | `binder-checker` | RFC 0029 `R29-12AB` | Implement body disposition and independently verified staging-safe headers. | Header producer/verifier tests | Pending |
+| `R27-14A` | `binder-checker` with `module-system` integration and `verification` review | RFC 0029 `R29-12AB`; RFC 0029 `R29-14` | Land typed complete definition and implementation inventory entries, exact codecs and mutation coverage, and direct production caller cutover. | Focused inventory and caller tests | Pending |
+| `R27-14B` | `module-system` with `binder-checker` and `verification` review | `R27-14A` | Make the named-definition inventory query read selected parse provenance, derive body disposition independently in provider and verifier, and prove exact read ordering and failure behavior. | Focused query tests and `python3 scripts/check-binder-architecture.py --self-test` | Pending |
+| `R27-15C` | `binder-checker` with `verification` review | `R27-14B` | Implement `StableDefinitionHeaderProducer` from the closed borrowed input record, retained parse provenance, and complete syntax-role matrix. | Definition-header producer tests and cross-input mismatch mutations | Pending |
+| `R27-15D` | `binder-checker` with `verification` review | `R27-14B` | Implement `StableImplementationOccurrenceHeaderProducer` from the closed borrowed input record with complete identity, source-form, and scope-role coverage. | Implementation-header producer tests and cross-input mismatch mutations | Pending |
+| `R27-15E` | `binder-checker` with `verification` review | `R27-15C`; `R27-15D` | Implement `StableHeaderVerifier`, independently select entries and sites from complete inventories and projections, synchronize schema provenance names, and cover equal occurrences without producer traversal reuse. | Header verifier, schema, caller-selected-entry, and disagreement mutations | Pending |
 | `R27-17A` | `module-system` | `R27-12B` | Implement the handle-free canonical package request records, verified-request projection, exact codecs, and independent projection verifier. | Package request codec and projection tests | Complete; implementation `3039da5259be25b139954834f900a21b7b891fcf`, sanitizer unit tests 135/135, focused package request test 1/1, independent integration review approved |
 | `R27-18` | `module-system` with required `runtime-memory` review | RFC 0029 `R29-14` | Replace frozen registries with the arena-owned eight-domain typed interner set. | Identity, concurrency, collision, and teardown tests | Pending |
-| `R27-19` | `module-system` | `R27-15`; RFC 0029 `R29-14`; `R27-18` | Implement all eight exact complete-record membership projections after sealed admission and before any interner lookup. | Membership and readiness tests | Pending |
-| `R27-20` | `binder-checker` | RFC 0029 `R29-12AB`; RFC 0029 `R29-12D`; `R27-15` | Implement `BindModuleSkeleton`, lookup projections, and independent verifier. | Skeleton and read-set tests | Pending |
+| `R27-19` | `module-system` | `R27-15E`; RFC 0029 `R29-14`; `R27-18` | Implement all eight exact complete-record membership projections after sealed admission and before any interner lookup. | Membership and readiness tests | Pending |
+| `R27-20` | `binder-checker` | RFC 0029 `R29-12AB`; RFC 0029 `R29-12D`; `R27-15E` | Implement `BindModuleSkeleton`, lookup projections, and independent verifier. | Skeleton and read-set tests | Pending |
 | `R27-21` | `binder-checker` | `R27-20` | Implement contextual `BindOwnerBody` and independent traversal/verifier. | Body, capture, control, and source-failure tests | Pending |
 | `R27-22` | `binder-checker` | `R27-21` | Implement the deterministic five-domain module allocation plan. | Overflow and reversed-demand tests | Pending |
 | `R27-23` | `module-system` | RFC 0029 `R29-14`; RFC 0028 `R28-16`; `R27-19` | Implement the typed graph witness and final-sealed-snapshot `MaterializeModuleGraph` consumer over runtime-only module-dependency provenance. | Graph, provenance, and read-set mutations | Pending |
@@ -169,7 +205,7 @@ mutation test in `R30-13`.
 | `R27-31C` | `module-system` | `R27-29` | Synchronize identity, query, graph, and session build source lists. | Focused build | Pending |
 | `R27-31D` | `ir-backend` | `R27-31` | Synchronize compiler, checked-module, HIR, MIR, and IR build wiring. | Focused build | Pending |
 | `R27-31E` | `runtime-memory` | `R27-31A` | Synchronize ownership-overlay build wiring. | Focused build | Pending |
-| `R27-32` | `verification` | RFC 0029 `R29-12AB`; RFC 0029 `R29-12D`; `R27-15` through `R27-31E`; RFC 0029 `R29-15` | Implement the English-only and specification-alignment gates under their synchronized routing ownership; add the exact IR diagnostic regression and unique installed-consumer fixture; then run the complete sanitizer, unit, lit, codegen, architecture, format, versioning, frozen-base coverage, English-only, install-consumer, spec-alignment, and Release compare matrix. | RFC 0027, RFC 0028, and RFC 0029 Test Plans | Pending |
+| `R27-32` | `verification` | RFC 0029 `R29-12AB`; RFC 0029 `R29-12D`; `R27-14A` through `R27-31E`; RFC 0029 `R29-15` | Implement the English-only and specification-alignment gates under their synchronized routing ownership; add the exact IR diagnostic regression and unique installed-consumer fixture; then run the complete sanitizer, unit, lit, codegen, architecture, format, versioning, frozen-base coverage, English-only, install-consumer, spec-alignment, and Release compare matrix. | RFC 0027, RFC 0028, and RFC 0029 Test Plans | Pending |
 | `R27-33A` | `spec-audit` | `R27-32` | Update current-state compiler design documentation from the landed production path and publish `docs/reports/zom-core-library-spec-alignment.md` with the report-producing core alignment command. | Spec and design audit plus fixed report publication | Pending |
 | `R27-32A` | `verification` | `R27-33A` | Recompute and byte-compare the fixed report without writing it, then rerun English-only, RFC, format, versioning, and diff gates after every spec-audit edit. | Final write-free RFC 0027 Test Plan subset | Pending |
 | `R27-33` | `rfc` | `R27-32A` | Audit all implementation, report, and final verification evidence, then perform the only synchronized RFC implementation-state transitions. | `python3 scripts/check-rfc.py` | Pending |

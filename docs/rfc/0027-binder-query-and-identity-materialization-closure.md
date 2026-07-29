@@ -8,7 +8,7 @@ review-manager: rfc
 required-owners: [task-router, rfc, module-system, binder-checker, runtime-memory, error-system, ir-backend, spec-audit, verification]
 approvers: [task-router, rfc, module-system, binder-checker, runtime-memory, error-system, ir-backend, spec-audit, verification]
 created: 2026-07-27
-updated: 2026-07-28
+updated: 2026-07-29
 area: compiler
 requires: [4, 8, 10, 11, 17, 18, 19, 20, 25, 26]
 supersedes: []
@@ -412,6 +412,68 @@ ExecutableBody   = 0x02
 the disposition from the exact selected declaration syntax and require equal
 bytes.
 
+The inventory entry is the following typed record:
+
+```text
+NamedDefinitionInventoryEntry {
+  key: DefinitionKey,
+  record: DefinitionIdentityRecord,
+  bodyDisposition: DefinitionBodyDisposition,
+}
+```
+
+Its canonical inventory encoding contains the key, complete record encoding,
+and disposition in that order. The entry exposes `key`, `record`, and
+`bodyDisposition`. The inventory constructor accepts complete definition
+authorities paired with their derived dispositions, verifies every authority,
+key, record, module, duplicate, and disposition, and stores the typed records.
+The decoder admits exactly this encoding and reconstructs the same typed
+records.
+
+The implementation inventory entry is the following typed record:
+
+```text
+NamedImplementationInventoryEntry {
+  key: ImplKey,
+  record: ImplIdentityRecord,
+}
+```
+
+Its canonical inventory encoding contains the key followed by the complete
+record encoding. The constructor verifies every authority, key, record,
+module, and duplicate before storing the typed entries. The decoder
+reconstructs the complete record and proves that its derived key equals the
+encoded key. The inventory exposes its complete typed `entries`.
+
+`NamedDefinitionInventoryQuery` reads the selected source and parse capability
+in addition to `StableIdentityAdmissionQuery`. Its provider and verifier each
+walk the exact admitted definition nodes and independently apply this closed
+body classification:
+
+- `FunctionDecl`, `ConstructorDecl`, and `DestructorDecl` require one present
+  `BlockStmt` and produce `ExecutableBody`; absence or any other child kind is
+  an invariant failure.
+- `MethodDecl` produces `NoExecutableBody` when its optional body is absent
+  and otherwise requires one `BlockStmt` and produces `ExecutableBody`.
+- `FieldDecl` and `ClassConstDecl` produce `NoExecutableBody` when the optional
+  initializer is absent and otherwise require one expression, literal
+  expression, or unsafe-block expression and produce `ExecutableBody`.
+- every other stable definition kind produces `NoExecutableBody`.
+
+The admitted definition site must resolve to exactly one retained AST node
+whose syntax kind and complete derived identity record match the admission
+entry. A missing node, duplicate site, unexpected syntax kind, record
+disagreement, missing required child, child-kind mismatch, or malformed
+optional child is `InvariantViolation`. Source and parse rejection is
+forwarded through the existing typed semantic-failure encoding; key absence
+remains semantic absence. Provider and verifier use the same tracked-read
+order: selected source, parse capability, stable identity admission, then
+candidate construction.
+
+The two query paths do not call a shared body-classification helper. They
+construct typed inventory candidates separately and require equal complete
+inventory bytes. Every consumer reads the typed `record` accessor.
+
 The staging-safe header schemas are:
 
 ```text
@@ -490,6 +552,110 @@ These providers do not read contextual definition authority, readiness,
 Their independent verifiers repeat authority selection, owner/ordinal
 classification, scope-role census, parameter record coverage, and canonical
 encoding without calling producer traversal helpers.
+
+Definition and implementation header construction consumes
+`CanonicalParsedModule`, using retained `ThisKeyword` token provenance for
+receiver classification. Definition activation is `ImportSurface` only for
+`ModuleAlias` and `ModuleSkeleton` for every other stable definition kind.
+Member visibility is present only for method, field, constructor, destructor,
+and class-constant syntax. An omitted member visibility is `Public` under an
+interface owner and `Private` otherwise; explicit public, private, and
+protected spellings map to their matching closed values.
+
+The staging producers use these exact borrowed input records:
+
+```text
+StableDefinitionHeaderProductionInput {
+  parsed: &CanonicalParsedModule,
+  queryKey: &StableDefinitionQueryKey,
+  entry: &NamedDefinitionInventoryEntry,
+  authoritySite: &RevisionLocalDefinitionSite,
+  definitionSites: &RevisionLocalDefinitionSites,
+  implementationSites: &RevisionLocalImplementationSites,
+}
+
+StableImplementationOccurrenceHeaderProductionInput {
+  parsed: &CanonicalParsedModule,
+  queryKey: &StableImplementationOccurrenceQueryKey,
+  entry: &NamedImplementationInventoryEntry,
+  occurrenceSite: &RevisionLocalImplementationSite,
+  definitionSites: &RevisionLocalDefinitionSites,
+  implementationSites: &RevisionLocalImplementationSites,
+}
+```
+
+Each producer proves that the query key, module, source, typed record, selected
+entry, selected site, node, range, and full current site projections identify
+one exact admitted authority or occurrence before traversing syntax. The
+definition producer independently applies RFC 0018 authority ordering to the
+complete definition-site projection and requires the borrowed authority site
+to be that result. The implementation producer requires the occurrence key
+and borrowed occurrence site to name the same complete implementation record
+and source occurrence. Callers cannot supply a detached identity record,
+detached syntax entry, or site outside these records.
+
+The independent verifier uses this complete context:
+
+```text
+StableHeaderVerificationContext {
+  parsed: &CanonicalParsedModule,
+  definitionInventory: &NamedDefinitionInventory,
+  implementationInventory: &NamedImplementationInventory,
+  definitionSites: &RevisionLocalDefinitionSites,
+  implementationSites: &RevisionLocalImplementationSites,
+}
+```
+
+`verifyDefinition(context, queryKey, candidate)` selects the typed definition
+entry and RFC 0018 authority site from the complete context.
+`verifyImplementationOccurrence(context, queryKey, candidate)` selects the
+typed implementation entry and exact occurrence site from the complete
+context. Neither verifier entrypoint accepts a caller-selected inventory entry
+or site. Both repeat owner classification, scope-role census, parameter
+coverage, and canonical encoding without calling a producer traversal helper.
+The `S4`, `S4A`, and `S5` native suites independently mutate the query key,
+module, source, complete record, typed inventory entry, site key, `NodeId`,
+source range, and caller-selected candidate origin one field at a time. Every
+cross-input mismatch is rejected before header publication.
+
+RFC 0018 canonical identity normalization remains owned by
+`CanonicalDefinitionHeaderProducer`, `CanonicalImplHeaderProducer`, and
+`CanonicalHeaderVerifier`. RFC 0027 staging headers are owned separately by
+`StableDefinitionHeaderProducer`,
+`StableImplementationOccurrenceHeaderProducer`, and `StableHeaderVerifier`.
+The source files and classes for these responsibilities are distinct.
+
+Definition scope-role census is exact and syntax-driven:
+
+- `Declaration` is present exactly once for every definition header;
+- `Generic` is present exactly for `EnumDeclaration`, `FunctionDecl`,
+  `ClassDecl`, `StructDecl`, `InterfaceDecl`, `AliasDecl`, `MethodDecl`, and
+  `AssociatedTypeDecl` when their optional `GenericParams` field is present;
+- `Parameters` is present exactly for `ExternDecl`, `FunctionDecl`,
+  `MethodDecl`, `ConstructorDecl`, and `DestructorDecl`; and
+- `Members` is present exactly for `EnumDeclaration`, `ClassDecl`,
+  `StructDecl`, `InterfaceDecl`, and `ErrorDecl`.
+
+An explicit `GenericParams` node declares `Generic` even when its parameter
+sequence is empty, including the grammar-authorized where-clause-only form.
+Every callable syntax kind above declares `Parameters` even when its parameter
+sequence is empty. Every aggregate syntax kind above declares `Members` even
+when its member sequence is absent or empty. `ExternVarDecl`, `UnitVariant`,
+`TupleVariant`, `FieldDecl`, `ClassConstDecl`, and module-level constant or
+static pattern authorities declare only `Declaration`. Any other
+admission-to-syntax pairing is an invariant failure.
+
+Implementation-occurrence headers contain `Implementation` exactly once and
+contain `Generic` exactly when ordinary standalone-implementation syntax owns
+an explicit `GenericParams` node, including an empty parameter sequence.
+Marker implementations have no generic parameters and use `BodylessMarker`;
+standalone implementations use `Ordinary`. A marker occurrence carrying
+generic parameters, a where clause, or a body, or a standalone occurrence
+without its required member-body syntax, is an invariant failure. Every role
+and parameter sequence is sorted by complete canonical record bytes. Producer
+and verifier independently prove the exact generic and callable parameter
+occurrence census, owner, ordinal or receiver position, name, header site, and
+canonical encoding.
 
 ### Stable Scope And Target Keys
 
@@ -2684,9 +2850,11 @@ descriptor, or replace the hand-authored inventory with generated schema.
 | `S1` | `binder-checker` with `verification` review | `G4`; RFC 0031 `R31-09` | `products/zomlang/compiler/binder/stable-binding-schema.def`; `scripts/check-stable-binding-schema.py` | prepare and review the hand-authored closed field, sum, tag, domain, bound, mutation, artifact-task, capability-payload, failure-alternative, and diagnostic-mapping inventory without an independent landing |
 | `S2` | `binder-checker` for Binder facts; `module-system` for driver contextual declarations and callers; `verification` for native tests | `S1` review | `products/zomlang/compiler/binder/stable-binding-facts.h`; `products/zomlang/compiler/binder/stable-binding-facts.cc`; `products/zomlang/compiler/driver/contextual-binding-key.h`; `products/zomlang/compiler/driver/contextual-binding-key.cc`; the complete driver caller-cutover files and tests named by RFC 0030 | prepare and review stable facts plus driver-owned contextual keys and the direct deletion and migration of all query-specific declarations without an independent landing |
 | `S3` | `binder-checker` for Binder codecs; `module-system` for contextual codecs; `verification` for tests, build discovery, schema, architecture, allowlist, and landing-scope gates | `S2` review | `products/zomlang/compiler/binder/stable-binding-codec.h`; `products/zomlang/compiler/binder/stable-binding-codec.cc`; the matching contextual codecs, Binder build and test wiring, schema and architecture gates, exact allowlist, and landing-scope gate named by RFC 0030 | prepare and review exact-consumption codecs, sequence admission, fixed wire oracles, native tests, mutations, build visibility, and landing-scope proof without an independent landing |
-| `S4` | `binder-checker` | `S2` | `products/zomlang/compiler/binder/canonical-definition-header-producer.h`; `products/zomlang/compiler/binder/canonical-definition-header-producer.cc` | body disposition and staging-safe definition headers |
-| `S4A` | `binder-checker` | `S2` | `products/zomlang/compiler/binder/canonical-impl-header-producer.h`; `products/zomlang/compiler/binder/canonical-impl-header-producer.cc` | staging-safe implementation-occurrence headers |
-| `S5` | `binder-checker` | `S4`; `S4A` | `products/zomlang/compiler/binder/canonical-header-verifier.h`; `products/zomlang/compiler/binder/canonical-header-verifier.cc` | independent header verification and equal-occurrence coverage |
+| `S3A` | `binder-checker` with `module-system` integration and `verification` review | `S3`; RFC 0029 `R29-14` | `products/zomlang/compiler/binder/named-identity-inventory.h`; `products/zomlang/compiler/binder/named-identity-inventory.cc`; `products/zomlang/compiler/binder/revision-local-identity-sites.cc`; `products/zomlang/compiler/driver/active-definition-authority-session.cc`; `products/zomlang/compiler/driver/named-item-query.cc`; `products/zomlang/compiler/driver/compiler-session.cc`; `products/zomlang/tests/unittests/compiler/driver/active-definition-authority-session-test.cc`; `products/zomlang/tests/unittests/compiler/driver/incremental-binding-query-adapter-test.cc` | land typed complete definition and implementation inventory entries, the exact codecs and mutation coverage, and the direct production caller cutover |
+| `S3B` | `module-system` with `binder-checker` and `verification` review | `S3A` | `products/zomlang/compiler/driver/named-identity-inventory-query.h`; `products/zomlang/compiler/driver/named-identity-inventory-query.cc`; `products/zomlang/tests/unittests/compiler/driver/named-identity-inventory-query-test.cc`; `scripts/check-binder-architecture.py` | read selected parse provenance, derive body disposition independently in provider and verifier, prove exact read ordering and failures, and enforce the architecture boundary |
+| `S4` | `binder-checker` with `verification` review | `S3B` | `products/zomlang/compiler/binder/stable-definition-header-producer.h`; `products/zomlang/compiler/binder/stable-definition-header-producer.cc`; `products/zomlang/compiler/binder/CMakeLists.txt`; `products/zomlang/tests/unittests/compiler/binder/stable-definition-header-producer-test.cc`; `products/zomlang/tests/unittests/compiler/binder/CMakeLists.txt` | definition-header production from the closed borrowed input record, retained parse provenance, and complete syntax-role matrix |
+| `S4A` | `binder-checker` with `verification` review | `S3B` | `products/zomlang/compiler/binder/stable-implementation-occurrence-header-producer.h`; `products/zomlang/compiler/binder/stable-implementation-occurrence-header-producer.cc`; `products/zomlang/compiler/binder/CMakeLists.txt`; `products/zomlang/tests/unittests/compiler/binder/stable-implementation-occurrence-header-producer-test.cc`; `products/zomlang/tests/unittests/compiler/binder/CMakeLists.txt` | implementation-occurrence header production from the closed borrowed input record with complete identity, source-form, and scope-role coverage |
+| `S5` | `binder-checker` with `verification` review | `S4`; `S4A` | `products/zomlang/compiler/binder/stable-header-verifier.h`; `products/zomlang/compiler/binder/stable-header-verifier.cc`; `products/zomlang/compiler/binder/stable-binding-schema.def`; `products/zomlang/compiler/binder/CMakeLists.txt`; `products/zomlang/tests/unittests/compiler/binder/stable-header-verifier-test.cc`; `products/zomlang/tests/unittests/compiler/binder/stable-binding-query-test.cc`; `products/zomlang/tests/unittests/compiler/binder/CMakeLists.txt`; `scripts/check-stable-binding-schema.py`; `scripts/check-binder-architecture.py` | independent full-context selection and header verification, exact schema provenance names, equal-occurrence coverage, caller-selected-entry rejection, and producer/verifier disagreement mutations |
 | `S6` | `error-system` with `binder-checker`, `module-system`, and `verification` review | RFC 0029 `R29-13A`; RFC 0042 `R42-16` | RFC 0029 `R29-13B` exact live-producer landing set | directly replace the source-only fact contract with the live Source-and-Module contract; land Binder-owned typed arguments, five factories and mappings, Module provenance, exact native mutation coverage, schema and CTest ownership, `ZOM3028`, provider/verifier use, and failed-lookup bijection |
 | `Q3` | `module-system` | `G3` | `products/zomlang/compiler/driver/package/canonical-package-compilation-request.h`; `products/zomlang/compiler/driver/package/canonical-package-compilation-request.cc` | handle-free canonical package request records, exact codecs, verified-request projection, and independent projection verifier; completed production ownership remains closed while RFC 0030 `R30-13` owns the comprehensive schema mutation test |
 | `I1` | `module-system` with `runtime-memory` review | RFC 0029 `R29-14` | `products/zomlang/compiler/identity/canonical-identity-interner-set.h`; `products/zomlang/compiler/identity/canonical-identity-interner-set.cc`; `products/zomlang/compiler/query/semantic-context-capability-arena.h`; `products/zomlang/compiler/query/semantic-context-capability-arena.cc` | arena-owned eight-domain typed interner with collision, concurrency, reverse-lookup, and surviving-lease tests |
@@ -2880,3 +3048,4 @@ None
 | 2026-07-27 | ACCEPTED | Acceptance transaction `rfc0029-accept-20260727-8d393a0c` synchronized complete module-qualified Binder keys, identity-site provenance, stable-identity admission, the five exact typed capability failure contracts, and the atomic schema-plus-facts dependency order to RFC 0029 proposal SHA-256 `8d393a0c6c00a7fad9ef086d3d25f5ed44300041afa9e1e1a4af5d68830fd3e7`; RFC 0027 status remains unchanged and implementation remains incomplete. |
 | 2026-07-28 | ACCEPTED | Acceptance transaction `rfc0030-accept-20260728-4ed0e6b8` synchronized the exact build-visible S1-plus-S2-plus-S3 landing set, driver-owned contextual-key cutover, native and mutation gates, and separate S6 diagnostic transaction to RFC 0030 proposal SHA-256 `4ed0e6b885abc87a1c4251855780cf115a85b3623b1d46f774a4b664110f7b6b`; RFC 0027 status remains accepted and implementation remains incomplete. |
 | 2026-07-28 | ACCEPTED | Acceptance transaction `rfc0031-accept-20260728-c25fcb18` synchronized the hand-authored schema metamodel, direct `Optional<MemberVisibility>` result, descriptor-parameterized capability results and payloads, dual capability/failure-alternative owner-task checks, exact Q3 versus `R30-13` test ownership, and T1 context-input artifacts to RFC 0031 proposal SHA-256 `c25fcb18e503ac214a8e92c925fa88108a915c2b15c94409dfecb88b3d9a63d5` and tracker SHA-256 `d64e7791ed2e2a488c5f57bc07ac341ccfc37d37c220c85131e2c9e846fb8d0d`; RFC 0027 status remains accepted, completed Q3 remains complete, and implementation remains incomplete. |
+| 2026-07-29 | ACCEPTED | User-designated independent approval bound the stable-header scope correction to exact pre-evidence Git diff SHA-256 `9af2ae8a4610f578ef14f3975277ba52eda4497cef2843ee7e699fb264d5e756` through transaction `rfc0027-header-scope-20260729-9af2ae8a`; the transaction authorizes only the corrected dependency order and source tasks and completes no implementation row. |
