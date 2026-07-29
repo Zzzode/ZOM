@@ -59,8 +59,8 @@ bool addFramedSize(size_t& total, size_t payloadSize) {
 
 zc::Array<uint8_t> frame(zc::StringPtr domain, zc::ArrayPtr<const uint8_t> payload) {
   size_t encodedSize;
-  ZC_IREQUIRE(beginRecordSize(domain, encodedSize) && addSize(encodedSize, payload.size()),
-              "canonical record size must fit size_t");
+  ZC_REQUIRE(beginRecordSize(domain, encodedSize) && addSize(encodedSize, payload.size()),
+             "canonical record size must fit size_t");
   auto result = zc::heapArray<uint8_t>(encodedSize);
   size_t cursor = 0;
   for (const auto byte : domain.asBytes()) { result[cursor++] = byte; }
@@ -203,9 +203,9 @@ zc::Array<uint8_t> CanonicalCompilationRootRecord::encodeCanonical() const {
   impl->sourcePath.encode(encoder);
   auto payload = encoder.finish();
   size_t encodedSize;
-  ZC_IREQUIRE(beginRecordSize(kCompilationRootDomain, encodedSize) &&
-                  addSize(encodedSize, payload.size()) && encodedSize <= UINT32_MAX,
-              "canonical compilation root must fit RFC byte bound");
+  ZC_REQUIRE(beginRecordSize(kCompilationRootDomain, encodedSize) &&
+                 addSize(encodedSize, payload.size()) && encodedSize <= UINT32_MAX,
+             "canonical compilation root must fit RFC byte bound");
   return frame(kCompilationRootDomain, payload.asPtr());
 }
 bool CanonicalCompilationRootRecord::operator==(const CanonicalCompilationRootRecord& other) const {
@@ -331,9 +331,9 @@ zc::Array<uint8_t> CanonicalTargetSelectionRecord::encodeCanonical() const {
   encoder.encodeUint8(static_cast<uint8_t>(impl->panicStrategy));
   auto payload = encoder.finish();
   size_t encodedSize;
-  ZC_IREQUIRE(beginRecordSize(kTargetSelectionDomain, encodedSize) &&
-                  addSize(encodedSize, payload.size()) && encodedSize <= UINT32_MAX,
-              "canonical target selection must fit RFC byte bound");
+  ZC_REQUIRE(beginRecordSize(kTargetSelectionDomain, encodedSize) &&
+                 addSize(encodedSize, payload.size()) && encodedSize <= UINT32_MAX,
+             "canonical target selection must fit RFC byte bound");
   return frame(kTargetSelectionDomain, payload.asPtr());
 }
 bool CanonicalTargetSelectionRecord::operator==(const CanonicalTargetSelectionRecord& other) const {
@@ -576,33 +576,33 @@ PackageLockMode CanonicalPackageCompilationRequest::lockMode() const noexcept {
 }
 zc::Array<uint8_t> CanonicalPackageCompilationRequest::encodeCanonical() const {
   size_t encodedSize;
-  ZC_IREQUIRE(beginRecordSize(kPackageRequestDomain, encodedSize) &&
-                  addSize(encodedSize, kEncodedCountBytes) && encodedSize <= UINT32_MAX,
-              "canonical package request must fit RFC byte bound");
+  ZC_REQUIRE(beginRecordSize(kPackageRequestDomain, encodedSize) &&
+                 addSize(encodedSize, kEncodedCountBytes) && encodedSize <= UINT32_MAX,
+             "canonical package request must fit RFC byte bound");
   identity::CanonicalEncoder encoder;
   encoder.encodeSequenceSize(impl->roots.size());
   for (const auto& root : impl->roots) {
     auto encoded = root.encodeCanonical();
-    ZC_IREQUIRE(addFramedSize(encodedSize, encoded.size()) && encodedSize <= UINT32_MAX,
-                "canonical package request roots must fit RFC byte bound");
+    ZC_REQUIRE(addFramedSize(encodedSize, encoded.size()) && encodedSize <= UINT32_MAX,
+               "canonical package request roots must fit RFC byte bound");
     encoder.encodeByteString(encoded.asPtr());
   }
   auto hostTarget = impl->hostTarget.encodeCanonical();
-  ZC_IREQUIRE(addFramedSize(encodedSize, hostTarget.size()) && encodedSize <= UINT32_MAX,
-              "canonical package request host target must fit RFC byte bound");
+  ZC_REQUIRE(addFramedSize(encodedSize, hostTarget.size()) && encodedSize <= UINT32_MAX,
+             "canonical package request host target must fit RFC byte bound");
   encoder.encodeByteString(hostTarget.asPtr());
   auto target = impl->target.encodeCanonical();
-  ZC_IREQUIRE(addFramedSize(encodedSize, target.size()) && encodedSize <= UINT32_MAX,
-              "canonical package request target must fit RFC byte bound");
+  ZC_REQUIRE(addFramedSize(encodedSize, target.size()) && encodedSize <= UINT32_MAX,
+             "canonical package request target must fit RFC byte bound");
   encoder.encodeByteString(target.asPtr());
   auto languageOptions = impl->languageOptions.encodeCanonical();
-  ZC_IREQUIRE(addFramedSize(encodedSize, languageOptions.size()) &&
-                  addSize(encodedSize, sizeof(uint8_t)) && encodedSize <= UINT32_MAX,
-              "canonical package request fields must fit RFC byte bound");
+  ZC_REQUIRE(addFramedSize(encodedSize, languageOptions.size()) &&
+                 addSize(encodedSize, sizeof(uint8_t)) && encodedSize <= UINT32_MAX,
+             "canonical package request fields must fit RFC byte bound");
   encoder.encodeByteString(languageOptions.asPtr());
   encoder.encodeUint8(static_cast<uint8_t>(impl->lockMode));
   auto encoded = frame(kPackageRequestDomain, encoder.finish().asPtr());
-  ZC_IREQUIRE(encoded.size() == encodedSize, "canonical package request size must match encoding");
+  ZC_REQUIRE(encoded.size() == encodedSize, "canonical package request size must match encoding");
   return encoded;
 }
 bool CanonicalPackageCompilationRequest::operator==(

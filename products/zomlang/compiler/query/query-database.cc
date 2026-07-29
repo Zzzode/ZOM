@@ -403,11 +403,11 @@ struct DatabaseData final {
       ZC_IREQUIRE(descriptorMetadataIsValid(row),
                   "query descriptor inventory contains invalid metadata");
       for (size_t priorIndex = 0; priorIndex < index; ++priorIndex) {
-        const auto& prior = descriptorInventory.rows()[priorIndex];
-        ZC_IREQUIRE(prior.descriptorType != row.descriptorType,
+        ZC_IREQUIRE(descriptorInventory.rows()[priorIndex].descriptorType != row.descriptorType,
                     "query descriptor inventory repeats a descriptor type");
-        ZC_IREQUIRE(prior.name != row.name, "query descriptor inventory repeats a descriptor name");
-        ZC_IREQUIRE(prior.domain != row.domain,
+        ZC_IREQUIRE(descriptorInventory.rows()[priorIndex].name != row.name,
+                    "query descriptor inventory repeats a descriptor name");
+        ZC_IREQUIRE(descriptorInventory.rows()[priorIndex].domain != row.domain,
                     "query descriptor inventory repeats a descriptor domain");
       }
       descriptors.add(DescriptorSlot(row));

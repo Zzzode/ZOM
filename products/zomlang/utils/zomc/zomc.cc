@@ -843,7 +843,7 @@ public:
       }
       if (verified.is<package::PackageToolchainModuleRootFailure>()) {
         const auto& failure = verified.get<package::PackageToolchainModuleRootFailure>();
-        ZC_IREQUIRE(
+        ZC_REQUIRE(
             package::PackageDiagnosticAdapter::emitToolchainModuleRootFailure(
                 session->getDiagnosticEngine(), workspace.diagnosticDocuments.asPtr(), failure),
             "verified package reservation failure must resolve its retained manifest");
