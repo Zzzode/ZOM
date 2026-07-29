@@ -8,7 +8,7 @@ review-manager: rfc
 required-owners: [task-router, rfc, module-system, lexer-parser, binder-checker, spec-audit, verification]
 approvers: [task-router, rfc, module-system, lexer-parser, binder-checker, spec-audit, verification]
 created: 2026-07-27
-updated: 2026-07-28
+updated: 2026-07-29
 area: compiler
 requires: [17, 18, 19, 20, 25, 26, 27]
 supersedes: []
@@ -1441,6 +1441,9 @@ The query-runtime files are:
 The production descriptor and verifier families are:
 
 - `products/zomlang/compiler/binder/identity-pre-admission.{h,cc}`;
+- `products/zomlang/compiler/binder/module-body-syntax.h`;
+- `products/zomlang/compiler/binder/module-body-syntax-producer.cc`;
+- `products/zomlang/compiler/binder/module-body-syntax-verifier.cc`;
 - `products/zomlang/compiler/binder/stable-identity-candidate-producer.{h,cc}`;
 - `products/zomlang/compiler/binder/stable-identity-candidate-verifier.{h,cc}`;
 - `products/zomlang/compiler/identity/source-query-input.{h,cc}`;
@@ -1460,6 +1463,7 @@ The production descriptor and verifier families are:
 
 Input-transaction consumers are:
 
+- `products/zomlang/compiler/binder/binding-input.cc`;
 - `products/zomlang/compiler/driver/active-definition-authority-session.cc`;
 - `products/zomlang/compiler/driver/compiler-session.cc`;
 - `products/zomlang/compiler/driver/core-library-query-provider.cc`;
@@ -1829,7 +1833,7 @@ configuration. Release readiness requires:
 | `R28-13C1` | `verification` | `R28-13C` | Prepare the reviewed inventory generator, architecture gate, and adversarial self-tests; do not land independently |
 | `R28-13D` | `module-system` | `R28-13C1` | Prepare reviewed identity and driver descriptor/caller partitions, splitting again before any partition exceeds approximately 400 changed source lines; do not land independently |
 | `R28-13E` | `lexer-parser` | `R28-13C1` | Prepare the reviewed parse capability descriptor, failure codec, and caller partition; do not land independently |
-| `R28-13F` | `verification` with `binder-checker` review | `R28-13C1` | Prepare the Binder transaction-consumer native-test cutover; do not land independently |
+| `R28-13F` | `binder-checker` with `verification` review | `R28-13C1` | Prepare the Binder transaction-consumer production and native-test cutover; do not land independently |
 | `R28-13G` | `verification` | `R28-13A`; `R28-13B`; `R28-13C`; `R28-13C1`; `R28-13D`; `R28-13E`; `R28-13F` | Prepare reviewed native test, generated test inventory, CTest wiring, real-object decoder, race, and negative compile partitions; do not land independently |
 | `R28-14` | `module-system` with all partition-owner review | `R28-13G`; `R29-13B`; `R29-13C` | Complete the runtime partition join for RFC 0029 `R29-14`; this row has no independent landing authority |
 | `R28-16A` | `module-system` with `lexer-parser` review | RFC 0029 `R29-14` | Prepare the production provenance descriptor, provider, verifier, query inventory row, stable-Binder owned-row equality checks for both `Capability` and `FailureAlternatives`, `registerModuleGraphQueries` registration, and build wiring; do not land independently |
@@ -1866,10 +1870,10 @@ The review partitions have these exact file sets:
 | `R28-13D.4` | `products/zomlang/compiler/driver/module-graph-query-input.{h,cc}`; `products/zomlang/compiler/driver/module-graph-query.{h,cc}`; `products/zomlang/compiler/driver/compiler-session.cc` |
 | `R28-13D.5` | `products/zomlang/compiler/driver/named-identity-inventory-query.{h,cc}`; `products/zomlang/compiler/driver/named-item-query.{h,cc}`; `products/zomlang/compiler/driver/owner-body-query.{h,cc}` |
 | `R28-13E` | `products/zomlang/compiler/parser/parse-source-query.{h,cc}`; `products/zomlang/compiler/parser/parse-source-query-verifier.cc` |
-| `R28-13F` | `products/zomlang/tests/unittests/compiler/binder/binding-input-test.cc`; no additional Binder production file changes |
+| `R28-13F` | `products/zomlang/compiler/binder/binding-input.cc`; `products/zomlang/tests/unittests/compiler/binder/binding-input-test.cc` |
 | `R28-13G.1` | `products/zomlang/tests/unittests/compiler/query/query-test-specs.h`; `products/zomlang/tests/unittests/compiler/query/query-test-descriptor-schema.def`; all six query test `.cc` files and query `CMakeLists.txt` listed in the atomic migration inventory |
 | `R28-13G.2` | all driver and Binder test files plus their `CMakeLists.txt` files listed in the atomic migration inventory; `products/zomlang/tests/CMakeLists.txt` |
-| `R29-13B` | `products/zomlang/compiler/binder/identity-pre-admission.{h,cc}`; `products/zomlang/compiler/binder/stable-identity-candidate-producer.{h,cc}`; `products/zomlang/compiler/binder/stable-identity-candidate-verifier.{h,cc}`; `products/zomlang/compiler/driver/named-identity-inventory-query.{h,cc}`; `products/zomlang/compiler/driver/named-item-query.{h,cc}`; `products/zomlang/compiler/driver/owner-body-query.{h,cc}`; Binder and driver build wiring; the four focused Binder and driver tests named in the atomic migration inventory |
+| `R29-13B` | `products/zomlang/compiler/binder/identity-pre-admission.{h,cc}`; `products/zomlang/compiler/binder/module-body-syntax.h`; `products/zomlang/compiler/binder/module-body-syntax-producer.cc`; `products/zomlang/compiler/binder/module-body-syntax-verifier.cc`; `products/zomlang/compiler/binder/stable-identity-candidate-producer.{h,cc}`; `products/zomlang/compiler/binder/stable-identity-candidate-verifier.{h,cc}`; `products/zomlang/compiler/driver/named-identity-inventory-query.{h,cc}`; `products/zomlang/compiler/driver/named-item-query.{h,cc}`; `products/zomlang/compiler/driver/owner-body-query.{h,cc}`; Binder and driver build wiring; the focused Binder and driver tests named in the atomic migration inventory |
 | `R29-13C` | query `query-test-specs.h`, database, capability, concurrency, and CMake files; `products/zomlang/tests/cmake/expect-compile-failure/CMakeLists.txt`; the exact query-runtime compile-fail cases; `products/zomlang/tests/CMakeLists.txt`; `scripts/check-query-descriptor-architecture.py`; generic runtime-sum and reusable staged dual-alias gate coverage |
 
 Each numbered subpartition is separately reviewed and may be split into
@@ -2029,3 +2033,4 @@ None
 | 2026-07-27 | ACCEPTED | Synchronized to RFC 0029 proposal SHA-256 `8d393a0c6c00a7fad9ef086d3d25f5ed44300041afa9e1e1a4af5d68830fd3e7` through transaction `rfc0029-accept-20260727-8d393a0c`; implementation remains pending behind the RFC 0029 foundation tasks. |
 | 2026-07-28 | ACCEPTED | Synchronized to RFC 0030 proposal SHA-256 `4ed0e6b885abc87a1c4251855780cf115a85b3623b1d46f774a4b664110f7b6b` through transaction `rfc0030-accept-20260728-4ed0e6b8`; implementation remains pending behind the atomic S1-plus-S2-plus-S3 foundation and separate S6 diagnostic transaction. |
 | 2026-07-28 | ACCEPTED | Transaction `rfc0031-accept-20260728-c25fcb18` synchronized the descriptor-parameterized provenance result, runtime-only capability payload, generic capability-demand sum ownership, and staged dual-alias checks to RFC 0031 proposal SHA-256 `c25fcb18e503ac214a8e92c925fa88108a915c2b15c94409dfecb88b3d9a63d5` and tracker SHA-256 `d64e7791ed2e2a488c5f57bc07ac341ccfc37d37c220c85131e2c9e846fb8d0d`; implementation tasks remain pending. |
+| 2026-07-29 | ACCEPTED | Transaction `rfc0028-r29-14-scope-20260729-521d82c7` bound exact four-document candidate manifest SHA-256 `521d82c731dee0a4b262e937d5578651850446eebfe7448a71a39cb63fc8e086`, adding only the four omitted Binder callers to the existing `R29-14` union; `R29-14` remains the sole source landing authority. |

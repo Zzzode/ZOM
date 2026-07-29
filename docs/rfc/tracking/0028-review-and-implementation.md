@@ -78,6 +78,21 @@ module-dependency-provenance result, its runtime-only payload, and staged
 compile-time equality checks for both hand-written descriptor aliases.
 Implementation authority remains with the pending tasks below.
 
+### 2026-07-29 R29-14 Exact-Scope Correction
+
+Preparation of the atomic runtime landing found four required production
+callers that the accepted exact-file tables omitted. The query transaction
+replacement requires `products/zomlang/compiler/binder/binding-input.cc` to
+consume the unversioned publication result directly. Stable identity admission
+requires the existing `ModuleBodySyntax` producer and independent verifier to
+consume the admitted authority at their Binder-owned boundary.
+
+The correction adds only `binding-input.cc`, `module-body-syntax.h`,
+`module-body-syntax-producer.cc`, and `module-body-syntax-verifier.cc` to the
+existing `R29-14` union. It does not change runtime semantics, add a
+compatibility path, expand landing authority beyond those four files, or claim
+implementation completion.
+
 ## Decision Record
 
 Accepted by `task-router`, `rfc`, `module-system`, `lexer-parser`,
@@ -96,6 +111,13 @@ overlay to RFC 0031 proposal SHA-256
 and tracker SHA-256
 `d64e7791ed2e2a488c5f57bc07ac341ccfc37d37c220c85131e2c9e846fb8d0d`
 without completing any implementation task.
+Transaction `rfc0028-r29-14-scope-20260729-521d82c7` binds exact
+four-document candidate manifest SHA-256
+`521d82c731dee0a4b262e937d5578651850446eebfe7448a71a39cb63fc8e086`.
+It adds only `binding-input.cc`, `module-body-syntax.h`,
+`module-body-syntax-producer.cc`, and `module-body-syntax-verifier.cc` to the
+existing atomic union. RFC 0029 `R29-14` remains the sole source landing
+authority.
 
 ## Implementation Tracker
 
@@ -120,7 +142,7 @@ without completing any implementation task.
 | `R28-13C1` | `verification` | `R28-13C` | Prepare the descriptor generator, architecture gate, and adversarial self-tests; do not land independently. | Gate self-tests | Pending |
 | `R28-13D` | `module-system` | `R28-13C1` | Prepare bounded identity and driver descriptor/caller partitions; do not land independently. | Owner-focused review | Pending |
 | `R28-13E` | `lexer-parser` | `R28-13C1` | Prepare the parse capability descriptor, failure codec, and caller partition; do not land independently. | Parser capability review | Pending |
-| `R28-13F` | `verification` with `binder-checker` review | `R28-13C1` | Prepare the Binder transaction-consumer native-test cutover; do not land independently. | Binder consumer review | Pending |
+| `R28-13F` | `binder-checker` with `verification` review | `R28-13C1` | Prepare the Binder transaction-consumer production and native-test cutover; do not land independently. | Binder consumer review | Pending |
 | `R28-13G` | `verification` | `R28-13A`; `R28-13B`; `R28-13C`; `R28-13C1`; `R28-13D`; `R28-13E`; `R28-13F` | Prepare bounded native tests, generated test inventory, real-object decoder, race gate, CTest wiring, and negative compile partitions; do not land independently. | Verification review | Pending |
 | `R28-14` | `module-system` with all partition-owner review | `R28-13G`; `R29-13B`; `R29-13C` | Complete the runtime partition join for RFC 0029 `R29-14`; this row has no independent landing authority. | Partition-join review | Execution authority: RFC 0029 `R29-14` |
 | `R28-16A` | `module-system` with `lexer-parser` review | RFC 0029 `R29-14` | Prepare the production provenance descriptor, provider, verifier, query schema row, owned stable-Binder row checks for both `Capability` and `FailureAlternatives`, `registerModuleGraphQueries` registration, and build wiring; do not land independently. | Production provenance and dual-alias review | Pending |

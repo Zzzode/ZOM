@@ -159,6 +159,26 @@ comprehensive package-request schema mutation test to the exact `R29-12AB`
 set. It changes no source, schema, CMake, test, gate, implementation-series
 base, or implementation status.
 
+### 2026-07-29 R29-14 Exact-Scope Correction
+
+Implementation review found that the exact landing union omitted four
+production callers required by the accepted direct replacement.
+`products/zomlang/compiler/binder/binding-input.cc` must consume the
+unversioned query publication result. `module-body-syntax.h`,
+`module-body-syntax-producer.cc`, and `module-body-syntax-verifier.cc` must
+accept stable identity admission at the Binder-owned producer and independent
+verifier boundary.
+
+The correction adds exactly those four files to `R28-13F` and `R29-13B`. It
+does not change the semantic contract, create independent landing authority,
+add compatibility behavior, or complete an implementation task.
+
+Transaction `rfc0028-r29-14-scope-20260729-521d82c7` binds this correction to
+exact four-document candidate manifest SHA-256
+`521d82c731dee0a4b262e937d5578651850446eebfe7448a71a39cb63fc8e086`.
+`R29-14` remains the sole source landing authority, and every existing
+dependency and owner-review gate remains mandatory.
+
 ## Implementation Tracker
 
 | Task | Owner | Depends On | Deliverable | Verification | Status |

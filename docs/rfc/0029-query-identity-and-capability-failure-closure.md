@@ -1058,6 +1058,7 @@ The additional `R29-13B` review partition has these exact files:
 | Concern | Exact files |
 |---|---|
 | Site inventory and admission payloads | `products/zomlang/compiler/binder/identity-pre-admission.h`; `products/zomlang/compiler/binder/identity-pre-admission.cc` |
+| Stable-admission Binder boundary | `products/zomlang/compiler/binder/module-body-syntax.h`; `products/zomlang/compiler/binder/module-body-syntax-producer.cc`; `products/zomlang/compiler/binder/module-body-syntax-verifier.cc` |
 | Independent site and admission production | `products/zomlang/compiler/binder/stable-identity-candidate-producer.h`; `products/zomlang/compiler/binder/stable-identity-candidate-producer.cc` |
 | Independent site and admission verification | `products/zomlang/compiler/binder/stable-identity-candidate-verifier.h`; `products/zomlang/compiler/binder/stable-identity-candidate-verifier.cc` |
 | Canonical Module and Binder diagnostic facts | `products/zomlang/compiler/binder/stable-binding-diagnostic-fact.h`; `products/zomlang/compiler/binder/stable-binding-diagnostic-fact.cc`; `products/zomlang/compiler/diagnostics/diagnostic-fact.h`; `products/zomlang/compiler/diagnostics/diagnostic-fact.cc` |
@@ -1376,3 +1377,4 @@ None
 | 2026-07-28 | ACCEPTED | Transaction `rfc0031-accept-20260728-c25fcb18` synchronized the complete stable schema metamodel, generic capability runtime sum, descriptor capability and failure-alternative alias checks, and package-request mutation scope to RFC 0031 proposal SHA-256 `c25fcb18e503ac214a8e92c925fa88108a915c2b15c94409dfecb88b3d9a63d5` and tracker SHA-256 `d64e7791ed2e2a488c5f57bc07ac341ccfc37d37c220c85131e2c9e846fb8d0d`; all implementation tasks remain pending. |
 | 2026-07-28 | ACCEPTED | `R29-12A`, `R29-12B`, and `R29-12AB` published at `8885782747e4c863cefcb0d069bc4569cefce9aa`; RFC 0042 owns the pending `R29-12D` source-only diagnostic replacement, and `R29-13A` through `R29-17` remain pending. |
 | 2026-07-29 | IMPLEMENTING | RFC 0042 completed `R29-12D` at `58897c116cafe3463ec6a46ac3bbdd530ef991a5`; `R29-13A` is the next unblocked implementation task. |
+| 2026-07-29 | IMPLEMENTING | Transaction `rfc0028-r29-14-scope-20260729-521d82c7` bound exact four-document candidate manifest SHA-256 `521d82c731dee0a4b262e937d5578651850446eebfe7448a71a39cb63fc8e086`, adding only the four omitted Binder callers to the atomic source union without completing an implementation task. |
