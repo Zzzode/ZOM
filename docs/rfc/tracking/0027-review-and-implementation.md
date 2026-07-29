@@ -249,6 +249,34 @@ pre-evidence Git diff SHA-256
 Transaction `rfc0027-membership-partitions-20260730-872a0791` records that
 approval and changes no source-task completion state.
 
+### 2026-07-30 Parameter Authority Discovery Correction
+
+I2F2 preflight found that contextual generic- and callable-parameter keys
+retain only the routed module and stable parameter digest. The accepted narrow
+read sets require the exact active owner before demanding owner membership and
+headers, but no reverse owner projection or queryable per-parameter authority
+input existed. A full module scan would violate the accepted read set. The
+same transaction payload also carried implementation authority records
+without naming their input descriptor.
+
+The correction makes all four authority sequences in
+`ContextualIdentityAuthorityInputPayload` queryable through exact contextual
+inputs. I2E1 owns `ActiveImplementationAuthorityInput`; I2F1 owns
+`ActiveGenericParameterAuthorityInput`; and I2G1 owns
+`ActiveCallableParameterAuthorityInput`. Their structural verifiers run
+before commit. Membership providers probe the exact authority input first,
+follow only the owner and headers named by that record, and read complete-root
+readiness only when authority is absent or contradictory. I2G3 registers the
+four authority inputs, readiness input, and eight membership descriptors.
+T1 installs their complete union atomically. No source task is completed by
+this correction.
+
+The user-designated independent approver accepted exact two-document
+pre-evidence Git diff SHA-256
+`bf68f2a58bfaf000a11be8e5e06ab12fc44e3e9e45f0baf43a9045bb9e8821e6`.
+Transaction `rfc0027-parameter-authority-20260730-bf68f2a5` records that
+approval and changes no source-task completion state.
+
 ## Implementation Tracker
 
 | Task | Owner | Depends On | Deliverable | Verification | Status |
@@ -281,15 +309,15 @@ approval and changes no source-task completion state.
 | `R27-19B` | `module-system` | approved `R27-19A` preparation | Prepare compilation-unit and crate membership descriptors with independent providers and verifiers; do not land independently. | Compilation-unit and crate membership review | Pending |
 | `R27-19C` | `module-system` | approved `R27-19B` preparation | Prepare source and module membership descriptors with active-parent validation and independent providers and verifiers; do not land independently. | Source and module membership review | Pending |
 | `R27-19D` | `module-system` | approved `R27-19C` preparation | Prepare complete-root readiness, the definition-authority input verifier, and inventory-backed definition membership; do not land independently. | Readiness, definition authority, and conditional absence review | Pending |
-| `R27-19E1` | `module-system` | approved `R27-19D` preparation | Prepare the complete implementation membership record, exact codec, authority input, and structural input verifier; do not land independently. | Implementation record, codec, and input review | Pending |
-| `R27-19E2` | `module-system` | approved `R27-19E1` preparation | Prepare implementation occurrence coverage and independent membership provider and verifier; do not land independently. | Implementation occurrence and membership review | Pending |
+| `R27-19E1` | `module-system` | approved `R27-19D` preparation | Prepare the complete implementation membership record, exact codec, `ActiveImplementationAuthorityInput`, and structural input verifier; do not land independently. | Implementation record, codec, and input review | Pending |
+| `R27-19E2` | `module-system` | approved `R27-19E1` preparation | Prepare implementation occurrence coverage and independent membership provider and verifier starting from the exact implementation-authority input; do not land independently. | Implementation occurrence and membership review | Pending |
 | `R27-19E` | `module-system` | approved `R27-19E1` and `R27-19E2` preparations | Review the complete implementation membership union without source edits or independent landing. | Complete implementation membership review | Pending |
-| `R27-19F1` | `module-system` | approved `R27-19E` preparation | Prepare implementation-generic authority, the definition/implementation owner sum, complete generic-parameter membership records, and exact codecs; do not land independently. | Generic records, owner sum, and codec review | Pending |
-| `R27-19F2` | `module-system` | approved `R27-19F1` preparation | Prepare definition-owned and implementation-owned generic-parameter membership providers and independent verifiers with equal-occurrence authority; do not land independently. | Generic owner and occurrence review | Pending |
+| `R27-19F1` | `module-system` | approved `R27-19E` preparation | Prepare implementation-generic authority, the definition/implementation owner sum, complete generic-parameter membership records, exact codecs, `ActiveGenericParameterAuthorityInput`, and its structural verifier; do not land independently. | Generic records, owner sum, codec, and input review | Pending |
+| `R27-19F2` | `module-system` | approved `R27-19F1` preparation | Prepare definition-owned and implementation-owned generic-parameter membership providers and independent verifiers starting from the exact parameter-authority input and preserving equal-occurrence authority; do not land independently. | Generic owner and occurrence review | Pending |
 | `R27-19F` | `module-system` | approved `R27-19F1` and `R27-19F2` preparations | Review the complete generic-parameter membership union without source edits or independent landing. | Complete generic membership review | Pending |
-| `R27-19G1` | `module-system` | approved `R27-19F` preparation | Prepare the complete callable-parameter membership record and exact codec; do not land independently. | Callable record and codec review | Pending |
-| `R27-19G2` | `module-system` | approved `R27-19G1` preparation | Prepare callable-parameter membership provider and independent verifier with receiver and position validation; do not land independently. | Callable header, receiver, and position review | Pending |
-| `R27-19G3` | `module-system` | approved `R27-19G2` preparation | Prepare all eight membership descriptors and complete-root readiness registration; do not land independently. | Complete membership registration review | Pending |
+| `R27-19G1` | `module-system` | approved `R27-19F` preparation | Prepare the complete callable-parameter membership record, exact codec, `ActiveCallableParameterAuthorityInput`, and its structural verifier; do not land independently. | Callable record, codec, and input review | Pending |
+| `R27-19G2` | `module-system` | approved `R27-19G1` preparation | Prepare callable-parameter membership provider and independent verifier starting from the exact parameter-authority input with receiver and position validation; do not land independently. | Callable header, receiver, and position review | Pending |
+| `R27-19G3` | `module-system` | approved `R27-19G2` preparation | Prepare registration for all four contextual authority inputs, complete-root readiness input, and eight membership descriptors; do not land independently. | Complete authority and membership registration review | Pending |
 | `R27-19G` | `module-system` | approved `R27-19G1` through `R27-19G3` preparations | Review the complete callable-parameter and registration union without source edits or independent landing. | Complete callable and registration review | Pending |
 | `R27-19` | `module-system` with `verification` review | approved preparations `R27-19A` through `R27-19G` | Review the complete eight exact complete-record memberships and conditional readiness union without source edits or independent landing. | Complete membership, readiness, and mutation-inventory review | Pending |
 | `R27-20` | `binder-checker` | RFC 0029 `R29-12AB`; RFC 0029 `R29-12D`; `R27-15E` | Implement `BindModuleSkeleton`, lookup projections, and independent verifier. | Skeleton and read-set tests | Pending |

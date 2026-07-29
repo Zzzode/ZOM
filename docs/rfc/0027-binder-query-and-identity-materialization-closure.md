@@ -1318,6 +1318,11 @@ equality operation.
 | Query | Domain | Key | Exact result; reuse; equality |
 |---|---|---|---|
 | `CompleteCompilationContextAuthorityInput` | `zom.input.complete-compilation-context-authority` | `CompilationRootSetQueryKey` | `CompleteCompilationContextAuthority`; `Input`; complete canonical value bytes |
+| `ActiveDefinitionAuthorityInput` | `zom.query.active-definition-authority` | `ContextualDefinitionKey` | `DefinitionIdentityRecord`; `Input`; complete canonical value bytes |
+| `ActiveImplementationAuthorityInput` | `zom.query.active-implementation-authority` | `ContextualImplementationKey` | `ActiveImplementationMembershipRecord`; `Input`; complete canonical value bytes |
+| `ActiveGenericParameterAuthorityInput` | `zom.query.active-generic-parameter-authority` | `ContextualGenericParameterKey` | `ActiveGenericParameterMembership`; `Input`; complete canonical value bytes |
+| `ActiveCallableParameterAuthorityInput` | `zom.query.active-callable-parameter-authority` | `ContextualCallableParameterKey` | `ActiveCallableParameterMembershipRecord`; `Input`; complete canonical value bytes |
+| `CompleteRootIdentityReadinessInput` | `zom.binder.complete-root-identity-readiness` | `CompilationRootSetQueryKey` | `CompleteRootIdentityReadiness`; `Input`; complete canonical value bytes |
 | `DefinitionHeaderSyntax` | `zom.query.definition-header-syntax` | `StableDefinitionQueryKey` | `BinderQueryResult<StableDefinitionHeader>`; `Semantic`; complete canonical result bytes |
 | `ImplementationOccurrenceHeaderSyntax` | `zom.query.implementation-occurrence-header-syntax` | `StableImplementationOccurrenceQueryKey` | `BinderQueryResult<StableImplementationOccurrenceHeader>`; `Semantic`; complete canonical result bytes |
 | `ModuleExportNames` | `zom.query.module-export-names` | `ModuleKey` | canonical name sequence; `Semantic`; complete canonical bytes |
@@ -1384,9 +1389,9 @@ allowlist.
 | source membership | exact owning crate membership and `ActiveSources(crate)`; verifier independently proves one complete source occurrence; linear in active sources |
 | module membership | exact owning crate membership and `ActiveModules(crate)`; verifier independently proves one complete module occurrence; linear in active modules |
 | definition membership | exact contextual authority input, owning named-definition inventory, exact header, and conditional complete-root readiness only on absent or contradictory authority; verifier independently checks full record, owner, site, and disposition; constant after inventory demand |
-| implementation membership | exact owning named-implementation inventory, all equal occurrence headers, active module membership, and conditional readiness only on absence or contradiction; verifier independently derives authority occurrence and byte-equal complete record; linear in equal occurrences |
-| generic-parameter membership | exact active definition or implementation membership plus the authority header and every equal implementation occurrence header when applicable; verifier independently checks owner sum, ordinal, name, record, and occurrence coverage; linear in equal occurrences |
-| callable-parameter membership | exact active definition membership and definition header; verifier independently checks definition owner, position, receiver legality, name, and complete record; linear in callable parameters |
+| implementation membership | exact contextual implementation-authority input, owning named-implementation inventory, all equal occurrence headers, active module membership, and conditional readiness only on absent or contradictory authority; verifier independently derives authority occurrence and byte-equal complete record; linear in equal occurrences |
+| generic-parameter membership | exact contextual generic-parameter-authority input, exact active definition or implementation membership selected by that input, the authority header, every equal implementation occurrence header when applicable, and conditional readiness only on absent or contradictory authority; verifier independently checks owner sum, ordinal, name, record, and occurrence coverage; linear in equal occurrences |
+| callable-parameter membership | exact contextual callable-parameter-authority input, exact active definition membership selected by that input, definition header, and conditional readiness only on absent or contradictory authority; verifier independently checks definition owner, position, receiver legality, name, and complete record; linear in callable parameters |
 | `BindModuleSkeleton` | module-body syntax, both named inventories, every exact header, dependency requests, each resolution, and only reached export/header projections; verifier independently rebuilds scope, import, export, alias, and owner inventories; expensive linear module skeleton |
 | `BindOwnerBody` | contextual owner syntax, owning skeleton, and only reached scope, import, header, export, and visibility projections with byte-equal roots; verifier independently traverses, resolves, and rebuilds every fact domain; expensive linear owner body |
 | allocation plan | owning skeleton, contextual module owners, and every contextual body in canonical owner order; verifier independently computes all five dense ranges and checked sums; linear in published facts |
@@ -1650,6 +1655,26 @@ transaction. The record is valid only when all four sequences cover the
 complete active module set. An empty authority class uses the SHA-256 of its
 domain, one zero byte, and a zero count; absence is not readiness.
 
+The authority transaction installs one exact input for every entry in each
+authority sequence. `ActiveDefinitionAuthorityInput`,
+`ActiveImplementationAuthorityInput`,
+`ActiveGenericParameterAuthorityInput`, and
+`ActiveCallableParameterAuthorityInput` use the contextual key and complete
+record types shown in the query catalog. Their structural input verifiers
+require the routed module to agree with the record, recompute the stable query
+key from the complete identity record, and reject an unequal owner, occurrence
+set, ordinal, parameter position, or receiver classification before commit.
+These input verifiers do not demand semantic queries. The transaction verifier
+additionally requires every contextual key to use `payload.contextRoots`,
+proves canonical uniqueness and complete active-module coverage, and
+independently recomputes all four authority digests from the complete four
+sequences. `CompleteRootIdentityReadinessVerifier` verifies only the input
+key/value context-root binding and the readiness record's structural codec
+invariants; it does not read authority inputs or recompute their digests.
+`CompleteRootIdentityReadinessInput` is installed atomically only after the
+transaction verifier proves that its four retained digests equal the four
+recomputed sequence digests.
+
 Every membership descriptor returns the corresponding
 `ActiveMembershipResult<Record>`. Its literal value domain is the descriptor
 domain plus `-value`; `Active` contains the complete authority record and
@@ -1664,17 +1689,20 @@ alternatives.
 | `SourceFileKey` | `ContextualSourceKey` | exact key occurs once in `ActiveSources(crate)` and its crate passes the prior row |
 | `ModuleKey` | `ContextualModuleKey` | exact key occurs once in `ActiveModules(crate)` and its crate passes the prior row |
 | `DefinitionKey` | `ContextualDefinitionKey` plus complete record | exact `ActiveDefinitionAuthorityInput` record and exact owning `NamedDefinitionInventory` membership; conditional readiness only on absent or contradictory authority |
-| `ImplKey` | `ContextualImplementationKey` plus complete record | exact `ActiveImplementationMembership` record from the owning `NamedImplementationInventory`; conditional complete-root readiness only on absent or contradictory membership |
-| `GenericParameterKey` | `ContextualGenericParameterKey` plus complete record and header owner | exact `ActiveGenericParameterMembership` projection from the definition header or complete canonical implementation-occurrence authority set, including owner sum, ordinal, record coverage, and active global owner |
-| `CallableParameterKey` | `ContextualCallableParameterKey` plus complete record and definition owner | exact `ActiveCallableParameterMembership` projection from the matching definition header, including position, receiver legality, record coverage, and active definition owner |
+| `ImplKey` | `ContextualImplementationKey` plus complete record | exact `ActiveImplementationAuthorityInput` record, owning `NamedImplementationInventory`, and complete canonical implementation-occurrence authority set; conditional complete-root readiness only on absent or contradictory authority |
+| `GenericParameterKey` | `ContextualGenericParameterKey` plus complete record and header owner | exact `ActiveGenericParameterAuthorityInput` record followed by the exact active definition or implementation owner and its authority header set, including owner sum, ordinal, record coverage, and active global owner |
+| `CallableParameterKey` | `ContextualCallableParameterKey` plus complete record and definition owner | exact `ActiveCallableParameterAuthorityInput` record followed by the exact active definition owner and matching definition header, including position, receiver legality, record coverage, and active definition owner |
 
 `ActiveImplementationMembership`,
 `ActiveGenericParameterMembership`, and
 `ActiveCallableParameterMembership` are retained `Semantic` narrow
-projections. Their provider and verifier read only the explicit owning
-inventory/header and the same complete-root readiness input used by the
-definition authority transaction. Positive exact membership does not read
-readiness. They return complete records, not booleans.
+projections. Their provider and verifier first probe the corresponding exact
+authority input, then read only the owner and inventory/header named by that
+record. They read the same complete-root readiness input used by the
+definition authority transaction only when the authority input is absent or
+structurally contradictory. Positive exact membership does not read
+readiness. They return complete records, not booleans, and no provider scans a
+module to discover a parameter owner.
 
 For an implementation-owned generic parameter, provider and verifier
 independently read the exact named-implementation inventory, derive the
@@ -2205,7 +2233,9 @@ authority, readiness, and transaction-witness descriptors exist, implements
 the static final-authority verifier against those snapshot reads, migrates the
 query-runtime tests from their test-only production-role descriptor to the
 real descriptor, deletes both test-only shadows, installs the three input
-transactions, and publishes staging, final, and sealed snapshots. This atomic
+transactions, including all four contextual authority inputs and the
+complete-root readiness input in the identity-authority transaction, and
+publishes staging, final, and sealed snapshots. This atomic
 assembly prevents an intermediate production descriptor from accepting a
 self-authenticated value before its complete final-seal read set exists.
 Because I2 and M1 add production translation units, T1 also owns the exact
@@ -2887,15 +2917,15 @@ descriptor, or replace the hand-authored inventory with generated schema.
 | `I2B` | `module-system` | `I2A` review | `products/zomlang/compiler/driver/active-identity-membership-query.h`; `products/zomlang/compiler/driver/active-identity-membership-query.cc` | prepare compilation-unit and crate membership descriptors with independent providers and verifiers; do not land independently |
 | `I2C` | `module-system` | `I2B` review | `products/zomlang/compiler/driver/active-identity-membership-query.h`; `products/zomlang/compiler/driver/active-identity-membership-query.cc` | prepare source and module membership descriptors with active-parent validation and independent providers and verifiers; do not land independently |
 | `I2D` | `module-system` | `I2C` review | `products/zomlang/compiler/driver/active-identity-membership-query.h`; `products/zomlang/compiler/driver/active-identity-membership-query.cc`; `products/zomlang/compiler/driver/active-definition-authority-query.h`; `products/zomlang/compiler/driver/active-definition-authority-query.cc` | prepare `CompleteRootIdentityReadiness`, the definition-authority input verifier, and definition membership with inventory-backed positive authority and conditional readiness; do not land independently |
-| `I2E1` | `module-system` | `I2D` review | `products/zomlang/compiler/driver/active-identity-membership-query.h`; `products/zomlang/compiler/driver/active-identity-membership-query.cc`; `products/zomlang/compiler/driver/active-definition-authority-query.h`; `products/zomlang/compiler/driver/active-definition-authority-query.cc` | prepare the complete implementation membership record, exact codec, authority input, and structural input verifier; do not land independently |
-| `I2E2` | `module-system` | `I2E1` review | `products/zomlang/compiler/driver/active-identity-membership-query.h`; `products/zomlang/compiler/driver/active-identity-membership-query.cc`; `products/zomlang/compiler/driver/active-definition-authority-query.h`; `products/zomlang/compiler/driver/active-definition-authority-query.cc` | prepare implementation occurrence coverage and independent membership provider and verifier; do not land independently |
+| `I2E1` | `module-system` | `I2D` review | `products/zomlang/compiler/driver/active-identity-membership-query.h`; `products/zomlang/compiler/driver/active-identity-membership-query.cc`; `products/zomlang/compiler/driver/active-definition-authority-query.h`; `products/zomlang/compiler/driver/active-definition-authority-query.cc` | prepare the complete implementation membership record, exact codec, `ActiveImplementationAuthorityInput`, and structural input verifier; do not land independently |
+| `I2E2` | `module-system` | `I2E1` review | `products/zomlang/compiler/driver/active-identity-membership-query.h`; `products/zomlang/compiler/driver/active-identity-membership-query.cc`; `products/zomlang/compiler/driver/active-definition-authority-query.h`; `products/zomlang/compiler/driver/active-definition-authority-query.cc` | prepare implementation occurrence coverage and independent membership provider and verifier starting from the exact implementation-authority input; do not land independently |
 | `I2E` | `module-system` | approved `I2E1` and `I2E2` preparations | exactly the four files listed by `I2E1` and `I2E2`; no additional file | review the complete implementation membership union; no source edits and no independent landing |
-| `I2F1` | `module-system` | `I2E` review | `products/zomlang/compiler/driver/active-identity-membership-query.h`; `products/zomlang/compiler/driver/active-identity-membership-query.cc`; `products/zomlang/compiler/driver/active-definition-authority-query.h`; `products/zomlang/compiler/driver/active-definition-authority-query.cc` | prepare implementation-generic authority, the definition/implementation owner sum, complete generic-parameter membership records, and exact codecs; do not land independently |
-| `I2F2` | `module-system` | `I2F1` review | `products/zomlang/compiler/driver/active-identity-membership-query.h`; `products/zomlang/compiler/driver/active-identity-membership-query.cc`; `products/zomlang/compiler/driver/active-definition-authority-query.h`; `products/zomlang/compiler/driver/active-definition-authority-query.cc` | prepare definition-owned and implementation-owned generic-parameter membership providers and independent verifiers with equal-occurrence authority; do not land independently |
+| `I2F1` | `module-system` | `I2E` review | `products/zomlang/compiler/driver/active-identity-membership-query.h`; `products/zomlang/compiler/driver/active-identity-membership-query.cc`; `products/zomlang/compiler/driver/active-definition-authority-query.h`; `products/zomlang/compiler/driver/active-definition-authority-query.cc` | prepare implementation-generic authority, the definition/implementation owner sum, complete generic-parameter membership records, exact codecs, `ActiveGenericParameterAuthorityInput`, and its structural verifier; do not land independently |
+| `I2F2` | `module-system` | `I2F1` review | `products/zomlang/compiler/driver/active-identity-membership-query.h`; `products/zomlang/compiler/driver/active-identity-membership-query.cc`; `products/zomlang/compiler/driver/active-definition-authority-query.h`; `products/zomlang/compiler/driver/active-definition-authority-query.cc` | prepare definition-owned and implementation-owned generic-parameter membership providers and independent verifiers starting from the exact parameter-authority input and preserving equal-occurrence authority; do not land independently |
 | `I2F` | `module-system` | approved `I2F1` and `I2F2` preparations | exactly the four files listed by `I2F1` and `I2F2`; no additional file | review the complete generic-parameter membership union; no source edits and no independent landing |
-| `I2G1` | `module-system` | `I2F` review | `products/zomlang/compiler/driver/active-identity-membership-query.h`; `products/zomlang/compiler/driver/active-identity-membership-query.cc`; `products/zomlang/compiler/driver/active-definition-authority-query.h`; `products/zomlang/compiler/driver/active-definition-authority-query.cc` | prepare the complete callable-parameter membership record and exact codec; do not land independently |
-| `I2G2` | `module-system` | `I2G1` review | `products/zomlang/compiler/driver/active-identity-membership-query.h`; `products/zomlang/compiler/driver/active-identity-membership-query.cc`; `products/zomlang/compiler/driver/active-definition-authority-query.h`; `products/zomlang/compiler/driver/active-definition-authority-query.cc` | prepare callable-parameter membership provider and independent verifier with receiver and position validation; do not land independently |
-| `I2G3` | `module-system` | `I2G2` review | `products/zomlang/compiler/driver/active-identity-membership-query.h`; `products/zomlang/compiler/driver/active-identity-membership-query.cc`; `products/zomlang/compiler/driver/active-definition-authority-query.h`; `products/zomlang/compiler/driver/active-definition-authority-query.cc` | prepare the complete eight-descriptor and readiness registration surface; do not land independently |
+| `I2G1` | `module-system` | `I2F` review | `products/zomlang/compiler/driver/active-identity-membership-query.h`; `products/zomlang/compiler/driver/active-identity-membership-query.cc`; `products/zomlang/compiler/driver/active-definition-authority-query.h`; `products/zomlang/compiler/driver/active-definition-authority-query.cc` | prepare the complete callable-parameter membership record, exact codec, `ActiveCallableParameterAuthorityInput`, and its structural verifier; do not land independently |
+| `I2G2` | `module-system` | `I2G1` review | `products/zomlang/compiler/driver/active-identity-membership-query.h`; `products/zomlang/compiler/driver/active-identity-membership-query.cc`; `products/zomlang/compiler/driver/active-definition-authority-query.h`; `products/zomlang/compiler/driver/active-definition-authority-query.cc` | prepare callable-parameter membership provider and independent verifier starting from the exact parameter-authority input with receiver and position validation; do not land independently |
+| `I2G3` | `module-system` | `I2G2` review | `products/zomlang/compiler/driver/active-identity-membership-query.h`; `products/zomlang/compiler/driver/active-identity-membership-query.cc`; `products/zomlang/compiler/driver/active-definition-authority-query.h`; `products/zomlang/compiler/driver/active-definition-authority-query.cc` | prepare registration for all four contextual authority inputs, complete-root readiness input, and eight membership descriptors; do not land independently |
 | `I2G` | `module-system` | approved `I2G1` through `I2G3` preparations | exactly the four files listed by `I2G1` through `I2G3`; no additional file | review the complete callable-parameter and registration union; no source edits and no independent landing |
 | `I2` | `module-system` with `verification` review | approved `I2A` through `I2G` preparations | exactly the four files listed by `I2A` through `I2G`; no additional file | review the complete eight-membership and readiness union against the mutation inventory; no source edits and no independent landing |
 | `B1` | `binder-checker` | RFC 0029 `R29-12AB`; RFC 0029 `R29-12D`; `S5` | `products/zomlang/compiler/binder/module-skeleton-query.h`; `products/zomlang/compiler/binder/module-skeleton-query.cc` | `BindModuleSkeleton`, projections, and independent verifier |
@@ -3092,3 +3122,4 @@ None
 | 2026-07-30 | ACCEPTED | Transaction `rfc0027-context-atomic-20260730-b25aef90` binds the complete-context atomic landing correction to independently approved exact pre-evidence Git diff SHA-256 `b25aef908d13395fce59151e6e31a9fea2f11f788fdd2806d17fa378b99d8821`; I1A, I2, and M1 are prepare-only, and T1 is the sole atomic landing authority. No source task is completed. |
 | 2026-07-30 | ACCEPTED | Transaction `rfc0027-atomic-build-wiring-20260730-d3646785` binds the T1 build-wiring correction to independently approved exact two-document pre-evidence Git diff SHA-256 `d36467858da78500b5cc5bfa47dc350d932ac45bd91a0e8fd97aaa0cdeee58a5`; T1 owns the two additive driver source rows, I2 and M1 remain prepare-only, and W2 retains only post-T2C deletion and final wiring. No source task is completed. |
 | 2026-07-30 | ACCEPTED | Transaction `rfc0027-membership-partitions-20260730-872a0791` binds the I2 preparation split to independently approved exact two-document pre-evidence Git diff SHA-256 `872a079129e4f8b74967169252d394a099f3ee9edb02aa4a08e042a25cc000de`; I2A through I2G are sequential symbol-level prepare-only partitions over the same four files, I2 is their review-only join, and T1 remains the sole landing authority. No source task is completed. |
+| 2026-07-30 | ACCEPTED | Transaction `rfc0027-parameter-authority-20260730-bf68f2a5` binds exact contextual implementation, generic-parameter, and callable-parameter authority inputs plus the corrected verifier boundaries to independently approved exact two-document pre-evidence Git diff SHA-256 `bf68f2a58bfaf000a11be8e5e06ab12fc44e3e9e45f0baf43a9045bb9e8821e6`; I2E/F/G remain prepare-only and T1 remains the sole atomic landing authority. No source task is completed. |
