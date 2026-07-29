@@ -26,6 +26,18 @@ class FrozenContextRegistry;
 template <typename Key, typename Record, typename Authority, typename Tag>
 class FrozenAuthorityRegistry;
 
+template <typename Key, typename Record, typename Tag>
+class CanonicalIdentityInterner;
+
+struct CompilationUnitIdentityTag final {};
+struct CrateIdentityTag final {};
+struct SourceFileIdentityTag final {};
+struct ModuleIdentityTag final {};
+struct DefinitionIdentityTag final {};
+struct ImplIdentityTag final {};
+struct GenericParameterIdentityTag final {};
+struct CallableParameterIdentityTag final {};
+
 /// \brief Context-owned semantic handle whose tag is its only issuing registry or store.
 template <typename Tag>
 class ContextHandle final {
@@ -57,6 +69,8 @@ private:
   friend class FrozenContextRegistry;
   template <typename Key, typename Record, typename Authority, typename IdentityTag>
   friend class FrozenAuthorityRegistry;
+  template <typename Key, typename Record, typename IdentityTag>
+  friend class CanonicalIdentityInterner;
 };
 
 /// \brief Store-owned semantic handle for tags with multiple issuing stores per context.
@@ -95,5 +109,14 @@ private:
 
   friend Tag;
 };
+
+using CompilationUnitId = ContextHandle<CompilationUnitIdentityTag>;
+using CrateId = ContextHandle<CrateIdentityTag>;
+using SourceFileId = ContextHandle<SourceFileIdentityTag>;
+using ModuleId = ContextHandle<ModuleIdentityTag>;
+using DefId = ContextHandle<DefinitionIdentityTag>;
+using ImplId = ContextHandle<ImplIdentityTag>;
+using GenericParameterId = ContextHandle<GenericParameterIdentityTag>;
+using CallableParameterId = ContextHandle<CallableParameterIdentityTag>;
 
 }  // namespace zomlang::compiler::identity

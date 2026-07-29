@@ -16,6 +16,8 @@
 #include "zc/core/mutex.h"
 #include "zc/core/thread.h"
 #include "zc/ztest/test.h"
+#include "zomlang/compiler/identity/canonical-identity-interner-set.h"
+#include "zomlang/tests/unittests/compiler/test-semantic-identities.h"
 
 namespace zomlang::compiler::query::test {
 
@@ -23,14 +25,31 @@ class EmptySemanticContextResources final : public SemanticContextCapabilityReso
 
 class TestSemanticContextResources final : public SemanticContextCapabilityResources {
 public:
-  explicit TestSemanticContextResources(zc::MutexGuarded<bool>& destroyed) noexcept
-      : destroyedField(destroyed) {}
+  TestSemanticContextResources(identity::SemanticContextFactory& factory,
+                               identity::SemanticContextBrand context,
+                               zc::MutexGuarded<bool>& destroyed,
+                               zc::MutexGuarded<bool>& reverseLookupSucceeded)
+      : interners(identity::CanonicalIdentityInternerSet::create(factory, context)),
+        destroyedField(destroyed),
+        reverseLookupSucceededField(reverseLookupSucceeded) {
+    ZC_IREQUIRE(interners != zc::none, "test semantic context has no identity interner");
+    auto result = ZC_ASSERT_NONNULL(interners).internCompilationUnit(
+        context, tests::test_identity_detail::userUnit());
+    ZC_IREQUIRE(result.is<identity::CompilationUnitId>(),
+                "test semantic context failed to intern compilation unit");
+    retainedUnit = result.get<identity::CompilationUnitId>();
+  }
   ~TestSemanticContextResources() noexcept(false) override {
+    *reverseLookupSucceededField.lockExclusive() =
+        ZC_ASSERT_NONNULL(interners).compilationUnit(retainedUnit) != zc::none;
     *destroyedField.lockExclusive() = true;
   }
 
 private:
+  zc::Maybe<identity::CanonicalIdentityInternerSet> interners;
+  identity::CompilationUnitId retainedUnit;
   zc::MutexGuarded<bool>& destroyedField;
+  zc::MutexGuarded<bool>& reverseLookupSucceededField;
 };
 
 QueryDatabase capabilityTestDatabase() {
@@ -454,9 +473,15 @@ ZC_TEST("QueryCapabilityTest.ParentMemoRetainsCapabilityDependencyTransitively")
 
 ZC_TEST("QueryCapabilityTest.SurvivingLeaseRetainsSessionAndSnapshotArenas") {
   zc::MutexGuarded<bool> resourcesDestroyed(false);
+  zc::MutexGuarded<bool> reverseLookupSucceeded(false);
   zc::Maybe<QueryCapabilityLease<const LeafCapability>> survivingLease;
   {
-    auto resources = zc::heap<TestSemanticContextResources>(resourcesDestroyed);
+    identity::SemanticContextFactory contextFactory;
+    auto issuedContext = contextFactory.issue();
+    ZC_REQUIRE(issuedContext != zc::none);
+    auto resources =
+        zc::heap<TestSemanticContextResources>(contextFactory, ZC_REQUIRE_NONNULL(issuedContext),
+                                               resourcesDestroyed, reverseLookupSucceeded);
     auto arena = zc::arc<SemanticContextCapabilityArena>(zc::mv(resources));
     QueryDatabase database(queryTestScheduler(), queryTestDescriptorInventory(), zc::mv(arena));
     ZC_REQUIRE(database.registerDescriptor<LowInput>().isRegistered());
@@ -471,8 +496,10 @@ ZC_TEST("QueryCapabilityTest.SurvivingLeaseRetainsSessionAndSnapshotArenas") {
   }
 
   ZC_EXPECT(!*resourcesDestroyed.lockShared());
+  ZC_EXPECT(!*reverseLookupSucceeded.lockShared());
   survivingLease = zc::none;
   ZC_EXPECT(*resourcesDestroyed.lockShared());
+  ZC_EXPECT(*reverseLookupSucceeded.lockShared());
 }
 
 ZC_TEST("QueryCapabilityTest.VerifierMismatchAndTypedKeyRejectionPublishExactly") {

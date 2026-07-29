@@ -61,6 +61,7 @@
 #include "zomlang/compiler/driver/package/package-diagnostic.h"
 #include "zomlang/compiler/identity/canonical-decoder.h"
 #include "zomlang/compiler/identity/canonical-encoder.h"
+#include "zomlang/compiler/identity/canonical-identity-interner-set.h"
 #include "zomlang/compiler/identity/identity-diagnostic-adapter.h"
 #include "zomlang/compiler/parser/parse-source-query.h"
 #include "zomlang/compiler/source/manager.h"
@@ -796,15 +797,17 @@ namespace {
 enum class SemanticContextResourceFailure : uint8_t {
   None = 0,
   ContextBrandExhausted = 1,
-  IdentityRegistryUnavailable = 2,
-  RegistryBrandIssuerUnavailable = 3,
-  SemanticTypeStoreUnavailable = 4,
+  IdentityInternerUnavailable = 2,
+  IdentityRegistryUnavailable = 3,
+  RegistryBrandIssuerUnavailable = 4,
+  SemanticTypeStoreUnavailable = 5,
 };
 
 class CompilerSessionSemanticContextResources final
     : public query::SemanticContextCapabilityResources {
 public:
   identity::SemanticContextBrand contextBrand;
+  zc::Maybe<identity::CanonicalIdentityInternerSet> identityInterners;
   zc::Maybe<identity::SemanticIdentityRegistrySet> identityRegistries;
   zc::Own<type::SemanticTypeStore> semanticTypeStore;
   zc::Maybe<identity::RegistryBrandIssuer> factStoreBrands;
@@ -830,6 +833,14 @@ InitializedSemanticContextResources initializeSemanticContextResources(
         zc::mv(resources), SemanticContextResourceFailure::ContextBrandExhausted);
   }
   ZC_IF_SOME(context, issuedContext) { resources->contextBrand = context; }
+
+  auto issuedInterners =
+      identity::CanonicalIdentityInternerSet::create(contextFactory, resources->contextBrand);
+  if (issuedInterners == zc::none) {
+    return InitializedSemanticContextResources(
+        zc::mv(resources), SemanticContextResourceFailure::IdentityInternerUnavailable);
+  }
+  ZC_IF_SOME(interners, issuedInterners) { resources->identityInterners = zc::mv(interners); }
 
   auto issuedRegistries =
       identity::SemanticIdentityRegistrySet::create(contextFactory, resources->contextBrand);

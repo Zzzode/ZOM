@@ -18,9 +18,16 @@ SCHEMA = Path("products/zomlang/compiler/ast/schema.yml")
 MANIFEST = Path("products/zomlang/compiler/identity/definition-producers.json")
 DEFINITION_KEY = Path("products/zomlang/compiler/identity/definition-key.h")
 DEFINITION_KEY_IMPLEMENTATION = Path("products/zomlang/compiler/identity/definition-key.cc")
+HANDLE = Path("products/zomlang/compiler/identity/handle.h")
 FROZEN_REGISTRY = Path("products/zomlang/compiler/identity/frozen-registry.h")
 SEMANTIC_IDENTITY_REGISTRY = Path(
     "products/zomlang/compiler/identity/semantic-identity-registry-set.h"
+)
+CANONICAL_IDENTITY_INTERNER = Path(
+    "products/zomlang/compiler/identity/canonical-identity-interner-set.h"
+)
+CANONICAL_IDENTITY_INTERNER_IMPLEMENTATION = Path(
+    "products/zomlang/compiler/identity/canonical-identity-interner-set.cc"
 )
 IDENTITY_INVARIANT = Path("products/zomlang/compiler/identity/identity-invariant.h")
 IDENTITY_DUMP_IMPLEMENTATION = Path("products/zomlang/compiler/identity/identity-dump.cc")
@@ -1940,6 +1947,10 @@ def check_stable_identity_architecture(
     definition_key_implementation = read_text(DEFINITION_KEY_IMPLEMENTATION, overrides)
     frozen_registry = read_text(FROZEN_REGISTRY, overrides)
     semantic_identity_registry = read_text(SEMANTIC_IDENTITY_REGISTRY, overrides)
+    interner = read_text(CANONICAL_IDENTITY_INTERNER, overrides)
+    interner_implementation = read_text(
+        CANONICAL_IDENTITY_INTERNER_IMPLEMENTATION, overrides
+    )
     build_script_key = read_text(BUILD_SCRIPT_KEY, overrides)
     build_script_key_implementation = read_text(BUILD_SCRIPT_KEY_IMPLEMENTATION, overrides)
     crate_key = read_text(CRATE_KEY, overrides)
@@ -2027,6 +2038,70 @@ def check_stable_identity_architecture(
         if marker not in semantic_identity_registry:
             errors.append(
                 f"{SEMANTIC_IDENTITY_REGISTRY}: missing mixed authority admission marker {marker}"
+            )
+
+    for marker in (
+        "enum class IdentityInternerFailure : uint8_t",
+        "AllocationFailure = 0x01",
+        "SlotOverflow = 0x02",
+        "ForeignBrand = 0x03",
+        "MalformedRecord = 0x04",
+        "CanonicalCollision = 0x05",
+        "using CompilationUnitIdentityEntry =",
+        "using CrateIdentityEntry =",
+        "using SourceFileIdentityEntry =",
+        "using ModuleIdentityEntry =",
+        "using DefinitionIdentityEntry =",
+        "using ImplementationIdentityEntry =",
+        "using GenericParameterIdentityEntry =",
+        "using CallableParameterIdentityEntry =",
+        "class CanonicalIdentityInternerSet final",
+        "static zc::Maybe<CanonicalIdentityInternerSet> create(",
+    ):
+        if marker not in interner:
+            errors.append(
+                f"{CANONICAL_IDENTITY_INTERNER}: missing arena interner marker {marker}"
+            )
+    if "frozen-registry.h" in interner:
+        errors.append(
+            f"{CANONICAL_IDENTITY_INTERNER}: append-only interner must not depend on frozen registries"
+        )
+    for marker in (
+        "zc::Arena arena;",
+        "zc::MutexGuarded<Data> data;",
+        "factory.claimCanonicalIdentityInternerSet(context)",
+        "IdentityInternerFailure::CanonicalCollision",
+        "IdentityInternerFailure::SlotOverflow",
+        "DefinitionKey::compute(record) == key",
+        "ImplKey::compute(record) == key",
+        "GenericParameterKey::compute(record) == key",
+        "CallableParameterKey::compute(record) == key",
+        "compilationUnits;",
+        "crates;",
+        "sourceFiles;",
+        "modules;",
+        "definitions;",
+        "implementations;",
+        "genericParameters;",
+        "callableParameters;",
+    ):
+        if marker not in interner_implementation:
+            errors.append(
+                f"{CANONICAL_IDENTITY_INTERNER_IMPLEMENTATION}: missing arena interner implementation marker {marker}"
+            )
+    if "${CMAKE_CURRENT_SOURCE_DIR}/canonical-identity-interner-set.cc" not in read_text(
+        IDENTITY_CMAKE, overrides
+    ):
+        errors.append(
+            f"{IDENTITY_CMAKE}: missing canonical-identity-interner-set.cc registration"
+        )
+    for marker in (
+        "zc::Maybe<identity::CanonicalIdentityInternerSet> identityInterners;",
+        "identity::CanonicalIdentityInternerSet::create(contextFactory, resources->contextBrand)",
+    ):
+        if marker not in session:
+            errors.append(
+                f"{COMPILER_SESSION}: missing arena-owned identity interner marker {marker}"
             )
 
     output_identity_files = matching_files(re.compile(r"\bBuildScriptOutputKey\b"), overrides)
@@ -2162,6 +2237,7 @@ def check_compilation_unit_architecture(
     compilation_unit_implementation = read_text(
         COMPILATION_UNIT_KEY_IMPLEMENTATION, overrides
     )
+    handle = read_text(HANDLE, overrides)
     crate_key = read_text(CRATE_KEY, overrides)
     source_key = read_text(SOURCE_KEY, overrides)
     frozen_registry = read_text(FROZEN_REGISTRY, overrides)
@@ -2191,9 +2267,11 @@ def check_compilation_unit_architecture(
             "struct CoreFileSourceOrigin final",
             "static SourceOriginKey coreFile(ToolchainUnitKey toolchain,",
         ),
-        FROZEN_REGISTRY: (
+        HANDLE: (
             "struct CompilationUnitIdentityTag final {};",
             "using CompilationUnitId = ContextHandle<CompilationUnitIdentityTag>;",
+        ),
+        FROZEN_REGISTRY: (
             "using CompilationUnitRegistry =",
         ),
         SEMANTIC_IDENTITY_REGISTRY: (
@@ -2222,6 +2300,7 @@ def check_compilation_unit_architecture(
         COMPILATION_UNIT_KEY: compilation_unit,
         CRATE_KEY: crate_key,
         SOURCE_KEY: source_key,
+        HANDLE: handle,
         FROZEN_REGISTRY: frozen_registry,
         SEMANTIC_IDENTITY_REGISTRY: registry_set,
         IDENTITY_INVARIANT: invariant,
@@ -2421,6 +2500,21 @@ def run_self_test() -> int:
     )
 
     session_text = (ROOT / COMPILER_SESSION).read_text(encoding="utf-8")
+    interner_text = (ROOT / CANONICAL_IDENTITY_INTERNER).read_text(encoding="utf-8")
+    cases.append(
+        (
+            "missing callable parameter interner",
+            copy.deepcopy(baseline),
+            {
+                CANONICAL_IDENTITY_INTERNER: interner_text.replace(
+                    "using CallableParameterIdentityEntry =",
+                    "using MissingCallableParameterIdentityEntry =",
+                    1,
+                )
+            },
+            "missing arena interner marker using CallableParameterIdentityEntry =",
+        )
+    )
     cases.append(
         (
             "missing semantic type store construction",

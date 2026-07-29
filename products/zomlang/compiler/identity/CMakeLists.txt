@@ -10,6 +10,7 @@ set(IDENTITY_SRC
   ${CMAKE_CURRENT_SOURCE_DIR}/canonical-header-type-encode.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/canonical-header-type-records.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/canonical-impl-header.cc
+  ${CMAKE_CURRENT_SOURCE_DIR}/canonical-identity-interner-set.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/canonical-overload-header.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/canonical-scalar.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/canonical-url.cc
@@ -36,3 +37,4 @@ set(IDENTITY_SRC
   ${CMAKE_CURRENT_SOURCE_DIR}/unicode-normalization.cc)
 
 add_library(identity STATIC ${IDENTITY_SRC})
+target_link_libraries(identity PUBLIC zc lexer)

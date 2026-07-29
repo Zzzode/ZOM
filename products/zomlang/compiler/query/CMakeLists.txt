@@ -1,6 +1,7 @@
 set(QUERY_SRC
   ${CMAKE_CURRENT_SOURCE_DIR}/query-database.cc
-  ${CMAKE_CURRENT_SOURCE_DIR}/query-types.cc)
+  ${CMAKE_CURRENT_SOURCE_DIR}/query-types.cc
+  ${CMAKE_CURRENT_SOURCE_DIR}/semantic-context-capability-arena.cc)
 
 set(QUERY_DESCRIPTOR_SCHEMA
   ${CMAKE_CURRENT_SOURCE_DIR}/query-descriptor-schema.def)

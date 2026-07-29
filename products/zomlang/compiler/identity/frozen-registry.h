@@ -429,24 +429,6 @@ private:
   friend class SemanticIdentityRegistrySet;
 };
 
-struct CompilationUnitIdentityTag final {};
-struct CrateIdentityTag final {};
-struct SourceFileIdentityTag final {};
-struct ModuleIdentityTag final {};
-struct DefinitionIdentityTag final {};
-struct ImplIdentityTag final {};
-struct GenericParameterIdentityTag final {};
-struct CallableParameterIdentityTag final {};
-
-using CompilationUnitId = ContextHandle<CompilationUnitIdentityTag>;
-using CrateId = ContextHandle<CrateIdentityTag>;
-using SourceFileId = ContextHandle<SourceFileIdentityTag>;
-using ModuleId = ContextHandle<ModuleIdentityTag>;
-using DefId = ContextHandle<DefinitionIdentityTag>;
-using ImplId = ContextHandle<ImplIdentityTag>;
-using GenericParameterId = ContextHandle<GenericParameterIdentityTag>;
-using CallableParameterId = ContextHandle<CallableParameterIdentityTag>;
-
 using CompilationUnitRegistry =
     FrozenContextRegistry<CompilationUnitIdentity, CompilationUnitIdentityTag>;
 using CrateRegistry = FrozenContextRegistry<CrateKey, CrateIdentityTag>;

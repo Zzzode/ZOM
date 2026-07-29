@@ -24,6 +24,7 @@
 #include "zc/core/refcount.h"
 #include "zc/core/string.h"
 #include "zc/core/vector.h"
+#include "zomlang/compiler/query/semantic-context-capability-arena.h"
 
 namespace zomlang::compiler::identity {
 class Sha256Digest;
@@ -658,7 +659,6 @@ private:
   zc::Array<uint8_t> canonicalBytesField;
 };
 
-class SemanticContextCapabilityArena;
 class SnapshotCapabilityArena;
 class RevisionLocalCapabilityMemoBase;
 
@@ -682,42 +682,6 @@ private:
 
   template <typename Descriptor>
   friend class CapabilityCandidateContract;
-};
-
-/// \brief Type-erased owner of the session semantic resources anchored by an arena.
-///
-/// The compiler-session implementation supplies one concrete owner containing
-/// its semantic-context issuer, identity registries, and semantic type store.
-class SemanticContextCapabilityResources {
-public:
-  virtual ~SemanticContextCapabilityResources() noexcept(false) = default;
-  ZC_DISALLOW_COPY_AND_MOVE(SemanticContextCapabilityResources);
-
-protected:
-  SemanticContextCapabilityResources() = default;
-};
-
-/// \brief Session lifetime anchor for revision-local semantic capabilities.
-///
-/// The compiler session owns one arena and places its semantic-context issuer,
-/// identity registries, and semantic type store behind that lifetime boundary.
-/// The query runtime deliberately treats those resources as opaque.
-class SemanticContextCapabilityArena final : public zc::AtomicRefcounted {
-public:
-  SemanticContextCapabilityArena();
-  explicit SemanticContextCapabilityArena(zc::Own<SemanticContextCapabilityResources>&& resources);
-  ~SemanticContextCapabilityArena() noexcept(false);
-  ZC_DISALLOW_COPY_AND_MOVE(SemanticContextCapabilityArena);
-
-  ZC_NODISCARD bool hasResources() const noexcept;
-
-private:
-  ZC_NODISCARD const SemanticContextCapabilityResources& resources() const ZC_LIFETIMEBOUND;
-
-  struct Impl;
-  zc::Own<Impl> impl;
-
-  friend class SnapshotCapabilityArena;
 };
 
 /// \brief Immutable lifetime anchor created once for one query snapshot.
