@@ -179,6 +179,41 @@ exact four-document candidate manifest SHA-256
 `R29-14` remains the sole source landing authority, and every existing
 dependency and owner-review gate remains mandatory.
 
+### 2026-07-29 R29-15 Incremental-Query Baseline Preparation
+
+RFC 0027 requires a replacement baseline because the fixed corpus identity
+changed. Commit `0c01c39fa5a3e883732e2f040a61fb555b6e54b4` removed the
+internal `schema_version` field from `incremental-query-corpus.json`, changing
+its manifest SHA-256 from
+`d88257b16c8dc6beb8e3eedf404b53aa5795eb91518a724f16161c72bf909969` to
+`89a664bec2f5f1020e252edb88cf9e5a19812c67ee4ed53b64db7a3d6bf1f87f`.
+The R29-14 implementation series changed the two corpus source files to
+SHA-256 `11c75cc94164aaec34a7e8e467d45a825d1673d3cfe3840033fb7387465ba0d7`
+and `b325ac2f246c9a22997098d30ea913ece36bc1fe6abf495a06a263512fc11a9d`;
+the resulting combined corpus identity is
+`6c5b785dd885a67951c88c74063682bb67c441bb49281578d7b8a44fe526ba26`.
+
+Verification reviewed baseline candidate SHA-256
+`98527688526d40159d3faa6a0248b214d5a3a1c6f5634bd24c35c35453db2d9d`,
+recorded at clean committed revision
+`e9ccb17fab8ba8ec471afa9512e8b13e6f30fcc5` with the recorded Release,
+compiler, machine, and eight-worker metadata, five warmups, and twenty-one
+measured samples. Binder projection median is `180760000 ns`, MAD
+`2670000 ns` (`1.477%`), and peak RSS `5931008 bytes`; module projection
+median is `26552000 ns`, MAD `268000 ns` (`1.009%`), and peak RSS
+`2949120 bytes`. Aggregate elapsed is `207312000 ns` and aggregate peak RSS
+is `8880128 bytes`.
+
+The previous aggregate baseline was `361396000 ns` and `7897088 bytes`, so
+elapsed changed by `-42.64%` and peak RSS by `+12.45%`. The elapsed change is
+plausible because the Binder benchmark executable now contains eighteen tests
+rather than twenty-three after obsolete query surfaces were removed; the RSS
+change is plausible because the current fixture constructs the semantic-context
+arena and production descriptor inventory. This baseline preparation is not
+Release comparison evidence and does not complete `R29-15`. After the approved
+baseline is committed, `R29-15` must clean-build Release from that exact commit
+and run mandatory `--compare` mode against the committed baseline.
+
 ## Implementation Tracker
 
 | Task | Owner | Depends On | Deliverable | Verification | Status |
