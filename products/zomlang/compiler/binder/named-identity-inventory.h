@@ -3,9 +3,16 @@
 #include "zc/core/array.h"
 #include "zc/core/common.h"
 #include "zc/core/vector.h"
+#include "zomlang/compiler/binder/stable-binding-facts.h"
 #include "zomlang/compiler/identity/definition-key.h"
 
 namespace zomlang::compiler::binder {
+
+/// \brief One verified definition authority paired with its selected syntax body disposition.
+struct NamedDefinitionInventoryInput final {
+  identity::DefinitionIdentityAuthority authority;
+  DefinitionBodyDisposition bodyDisposition;
+};
 
 /// \brief One stable named-definition key and its complete RFC 0018 identity record.
 class NamedDefinitionInventoryEntry final {
@@ -16,14 +23,17 @@ public:
 
   ZC_NODISCARD NamedDefinitionInventoryEntry clone() const;
   ZC_NODISCARD const identity::DefinitionKey& key() const noexcept;
-  ZC_NODISCARD zc::ArrayPtr<const uint8_t> canonicalRecord() const ZC_LIFETIMEBOUND;
+  ZC_NODISCARD const identity::DefinitionIdentityRecord& record() const noexcept;
+  ZC_NODISCARD DefinitionBodyDisposition bodyDisposition() const noexcept;
 
 private:
   NamedDefinitionInventoryEntry(identity::DefinitionKey&& key,
-                                zc::Array<uint8_t>&& canonicalRecord) noexcept;
+                                identity::DefinitionIdentityRecord&& record,
+                                DefinitionBodyDisposition bodyDisposition) noexcept;
 
   identity::DefinitionKey keyField;
-  zc::Array<uint8_t> canonicalRecordField;
+  identity::DefinitionIdentityRecord recordField;
+  DefinitionBodyDisposition bodyDispositionField;
 
   friend class NamedDefinitionInventory;
 };
@@ -36,8 +46,7 @@ public:
   ZC_DISALLOW_COPY(NamedDefinitionInventory);
 
   ZC_NODISCARD static zc::Maybe<NamedDefinitionInventory> fromVerified(
-      const identity::ModuleKey& module,
-      zc::ArrayPtr<const identity::DefinitionIdentityAuthority> authorities);
+      const identity::ModuleKey& module, zc::ArrayPtr<const NamedDefinitionInventoryInput> inputs);
   ZC_NODISCARD static zc::Maybe<NamedDefinitionInventory> decodeCanonical(
       zc::ArrayPtr<const uint8_t> bytes);
   ZC_NODISCARD NamedDefinitionInventory clone() const;

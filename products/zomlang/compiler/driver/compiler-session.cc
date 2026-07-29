@@ -97,7 +97,7 @@ bool containsDefinitionRecord(const binder::NamedDefinitionInventory& inventory,
                               const identity::DefinitionKey& key,
                               zc::ArrayPtr<const uint8_t> record) {
   for (const auto& entry : inventory.entries()) {
-    if (entry.key() == key) { return entry.canonicalRecord() == record; }
+    if (entry.key() == key) { return entry.record().encode().asPtr() == record; }
   }
   return false;
 }
@@ -1969,26 +1969,43 @@ struct CompilerSession::Impl {
               failed = true;
               break;
             }
-            zc::Vector<identity::DefinitionIdentityAuthority> definitionAuthorities(
-                verified.definitions.size());
-            for (const auto& definition : verified.definitions) {
-              definitionAuthorities.add(definition.authority.clone());
-            }
             zc::Vector<identity::ImplIdentityAuthority> implementationAuthorities(
                 verified.implementations.size());
             for (const auto& implementation : verified.implementations) {
               implementationAuthorities.add(implementation.authority.clone());
             }
-            auto expectedDefinitions = binder::NamedDefinitionInventory::fromVerified(
-                moduleKeyValue, definitionAuthorities.asPtr());
             auto expectedImplementations = binder::NamedImplementationInventory::fromVerified(
                 moduleKeyValue, implementationAuthorities.asPtr());
-            if (expectedDefinitions == zc::none || expectedImplementations == zc::none ||
-                !ZC_ASSERT_NONNULL(expectedDefinitions).sameAs(definitions.value()) ||
+            if (expectedImplementations == zc::none ||
                 !ZC_ASSERT_NONNULL(expectedImplementations).sameAs(implementations.value())) {
               failed = true;
               break;
             }
+            for (const auto& definition : verified.definitions) {
+              auto record = definition.authority.record().encode();
+              if (!containsDefinitionRecord(definitions.value(), definition.authority.key(),
+                                            record.asPtr())) {
+                failed = true;
+                break;
+              }
+            }
+            if (failed) { break; }
+            for (const auto& entry : definitions.value().entries()) {
+              bool matched = false;
+              auto entryRecord = entry.record().encode();
+              for (const auto& definition : verified.definitions) {
+                if (definition.authority.key() == entry.key() &&
+                    definition.authority.record().encode().asPtr() == entryRecord.asPtr()) {
+                  matched = true;
+                  break;
+                }
+              }
+              if (!matched) {
+                failed = true;
+                break;
+              }
+            }
+            if (failed) { break; }
             for (auto& definition : verified.definitions) {
               verifiedDefinitions.add(zc::mv(definition));
               verifiedDefinitionParsedIndices.add(parsedIndex);

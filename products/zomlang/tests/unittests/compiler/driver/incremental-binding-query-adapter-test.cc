@@ -642,28 +642,52 @@ ZC_TEST("Incremental binding query publishes verified stable named inventories")
             zc::none);
   auto admissionFingerprint = snapshot.keyFingerprint<StableIdentityAdmissionQuery>(moduleKey);
   ZC_REQUIRE(admissionFingerprint != zc::none);
-  for (const auto& groups : {snapshot.dependencies<NamedDefinitionInventoryQuery>(moduleKey),
-                             snapshot.dependencies<NamedImplementationInventoryQuery>(moduleKey)}) {
-    size_t admissionReads = 0;
-    for (const auto& group : groups) {
-      ZC_REQUIRE(group.kind() == query::DependencyGroup::Kind::Sequential);
-      ZC_REQUIRE(group.dependencies().size() == 1);
-      const auto& fingerprint = group.dependencies()[0].key().fingerprint();
-      if (fingerprint == ZC_ASSERT_NONNULL(admissionFingerprint)) {
-        ++admissionReads;
-      } else {
-        ZC_FAIL_REQUIRE("Named inventory recorded an undeclared dependency");
-      }
-    }
-    ZC_EXPECT(admissionReads == 2);
-  }
-
   auto selectedFingerprint = snapshot.keyFingerprint<module_graph_query::SelectedModuleSourceQuery>(
       ZC_REQUIRE_NONNULL(module_graph_query::SelectedModuleSourceQuery::decodeKey(
           moduleKey.canonicalModuleBytes())));
   auto parseFingerprint = snapshot.keyFingerprint<parser::ParseSourceQuery>(sourceKey);
   ZC_REQUIRE(selectedFingerprint != zc::none);
   ZC_REQUIRE(parseFingerprint != zc::none);
+
+  size_t definitionSelectedReads = 0;
+  size_t definitionParseReads = 0;
+  size_t definitionAdmissionReads = 0;
+  size_t definitionReadOrdinal = 0;
+  for (const auto& group : snapshot.dependencies<NamedDefinitionInventoryQuery>(moduleKey)) {
+    ZC_REQUIRE(group.kind() == query::DependencyGroup::Kind::Sequential);
+    ZC_REQUIRE(group.dependencies().size() == 1);
+    const auto& fingerprint = group.dependencies()[0].key().fingerprint();
+    const size_t phase = definitionReadOrdinal % 3;
+    if (fingerprint == ZC_ASSERT_NONNULL(selectedFingerprint)) {
+      ZC_REQUIRE(phase == 0);
+      ++definitionSelectedReads;
+    } else if (fingerprint == ZC_ASSERT_NONNULL(parseFingerprint)) {
+      ZC_REQUIRE(phase == 1);
+      ++definitionParseReads;
+    } else if (fingerprint == ZC_ASSERT_NONNULL(admissionFingerprint)) {
+      ZC_REQUIRE(phase == 2);
+      ++definitionAdmissionReads;
+    } else {
+      ZC_FAIL_REQUIRE("Definition inventory recorded an undeclared dependency");
+    }
+    ++definitionReadOrdinal;
+  }
+  ZC_EXPECT(definitionReadOrdinal == 6);
+  ZC_EXPECT(definitionSelectedReads == 2);
+  ZC_EXPECT(definitionParseReads == 2);
+  ZC_EXPECT(definitionAdmissionReads == 2);
+
+  size_t implementationAdmissionReads = 0;
+  for (const auto& group : snapshot.dependencies<NamedImplementationInventoryQuery>(moduleKey)) {
+    ZC_REQUIRE(group.kind() == query::DependencyGroup::Kind::Sequential);
+    ZC_REQUIRE(group.dependencies().size() == 1);
+    if (group.dependencies()[0].key().fingerprint() == ZC_ASSERT_NONNULL(admissionFingerprint)) {
+      ++implementationAdmissionReads;
+    } else {
+      ZC_FAIL_REQUIRE("Implementation inventory recorded an undeclared dependency");
+    }
+  }
+  ZC_EXPECT(implementationAdmissionReads == 2);
 
   size_t syntaxSelectedReads = 0;
   size_t syntaxParseReads = 0;
@@ -685,6 +709,56 @@ ZC_TEST("Incremental binding query publishes verified stable named inventories")
   ZC_EXPECT(syntaxSelectedReads == 2);
   ZC_EXPECT(syntaxParseReads == 2);
   ZC_EXPECT(syntaxAdmissionReads == 2);
+}
+
+ZC_TEST("Named definition inventory derives executable bodies from selected syntax") {
+  auto database = queryTestDatabase();
+  ZC_REQUIRE(registerIncrementalBindingQueryAdapter(database));
+  ZC_REQUIRE(module_graph_query::registerModuleGraphQueries(database));
+  auto moduleKey = module("root"_zc);
+  auto catalog = selectedModuleCatalog("root"_zc, "body-disposition.zom"_zc);
+  auto sourceKey = sourceQueryKey("body-disposition.zom"_zc);
+  auto sourceValue = sourceSnapshotValue("body-disposition.zom"_zc, zc::heapArray(R"zom(module root;
+fun Top() {}
+interface Contract {
+    fun required() -> unit;
+}
+class Counter {
+    let plain: i32;
+    let initialized: i32 = 1;
+    const MAX: i32 = 2;
+    init() {}
+    deinit() {}
+    fun present() {}
+}
+)zom"_zcb));
+  auto registry = targetRegistry();
+  auto options = compilationOptionsValue(registry);
+  auto write = transaction(database);
+  ZC_REQUIRE(
+      write.set<module_graph_query::SelectedModuleCatalogInput>(crateKey(), catalog).isApplied());
+  ZC_REQUIRE(write.set<SourceSnapshotInput>(sourceKey, sourceValue).isApplied());
+  ZC_REQUIRE(write.set<CompilationOptionsInput>(crateKey(), options).isApplied());
+  ZC_REQUIRE(write.commit().isCommitted());
+
+  auto snapshot = database.snapshot();
+  auto inventory = snapshot.get<NamedDefinitionInventoryQuery>(moduleKey);
+  ZC_REQUIRE(!inventory.isRuntimeFailure());
+  ZC_REQUIRE(inventory.kind() == query::QueryValueKind::Value);
+  size_t executable = 0;
+  size_t nonExecutable = 0;
+  for (const auto& entry : inventory.value().entries()) {
+    if (entry.bodyDisposition() == binder::DefinitionBodyDisposition::ExecutableBody) {
+      ++executable;
+    } else if (entry.bodyDisposition() == binder::DefinitionBodyDisposition::NoExecutableBody) {
+      ++nonExecutable;
+    } else {
+      ZC_FAIL_REQUIRE("Definition inventory published an unknown body disposition");
+    }
+    ZC_EXPECT(identity::DefinitionKey::compute(entry.record()) == entry.key());
+  }
+  ZC_EXPECT(executable == 6);
+  ZC_EXPECT(nonExecutable == 4);
 }
 
 ZC_TEST("Incremental binding query keeps module item let syntax in the module body") {

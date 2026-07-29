@@ -67,7 +67,7 @@ bool containsAuthority(const binder::NamedDefinitionInventory& inventory,
                        const identity::DefinitionIdentityRecord& record) {
   auto encoded = record.encode();
   for (const auto& entry : inventory.entries()) {
-    if (entry.key() == key) { return entry.canonicalRecord() == encoded.asPtr(); }
+    if (entry.key() == key) { return entry.record().encode().asPtr() == encoded.asPtr(); }
   }
   return false;
 }

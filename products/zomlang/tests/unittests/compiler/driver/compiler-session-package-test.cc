@@ -2475,7 +2475,7 @@ ZC_TEST("CompilerSession rejects duplicate stable definitions before registry mu
   auto input = VerifiedPackageSessionInput::from(
       request(registry), verifiedSelection(registry), verifiedSelection(registry),
       resolution(session.getPackageResolutionMemoryResource(), "app"_zc),
-      resolvedSourceSnapshots("app"_zc, "fun value();\nfun value();\n"_zc));
+      resolvedSourceSnapshots("app"_zc, "fun value() {}\nfun value() {}\n"_zc));
   ZC_REQUIRE(input != zc::none);
   ZC_IF_SOME(value, input) { ZC_REQUIRE(session.installVerifiedPackageInput(zc::mv(value))); }
   installCore(session);

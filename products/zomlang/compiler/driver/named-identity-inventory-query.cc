@@ -1,6 +1,7 @@
 #include "zomlang/compiler/driver/named-identity-inventory-query.h"
 
 #include "zc/core/debug.h"
+#include "zomlang/compiler/ast/generated/node-accessors.h"
 #include "zomlang/compiler/ast/generated/node-schema.h"
 #include "zomlang/compiler/binder/definition-inventory.h"
 #include "zomlang/compiler/binder/parsed-module.h"
@@ -128,13 +129,206 @@ query::TypedQueryResult<LoadedIdentitySource> loadIdentitySource(Context& contex
                            ZC_ASSERT_NONNULL(moduleNode)});
 }
 
-zc::Maybe<binder::NamedDefinitionInventory> admittedDefinitionInventory(
-    const binder::StableIdentityAdmission& admission) {
-  zc::Vector<identity::DefinitionIdentityAuthority> authorities(admission.definitions().size());
-  for (const auto& definition : admission.definitions()) {
-    authorities.add(definition.authority.clone());
+zc::Maybe<binder::VerifiedStableIdentityCandidateInventory> verifiedIdentityCandidates(
+    const LoadedIdentitySource& source) {
+  auto production = binder::StableIdentityCandidateProducer::produce(source.parsed, source.module,
+                                                                     source.moduleNode);
+  auto verification = binder::StableIdentityCandidateVerifier::verify(
+      source.parsed, source.module, source.moduleNode, production);
+  if (!verification.is<binder::VerifiedStableIdentityCandidateInventory>()) { return zc::none; }
+  return zc::mv(verification.get<binder::VerifiedStableIdentityCandidateInventory>());
+}
+
+zc::Maybe<binder::NamedDefinitionInventory> providerDefinitionInventory(
+    const LoadedIdentitySource& source, const binder::StableIdentityAdmission& admission) {
+  auto verified = verifiedIdentityCandidates(source);
+  if (verified == zc::none ||
+      ZC_ASSERT_NONNULL(verified).definitions.size() != admission.definitions().size()) {
+    return zc::none;
   }
-  return binder::NamedDefinitionInventory::fromVerified(admission.module(), authorities.asPtr());
+  const auto& tree = source.parsed.tree();
+  zc::Vector<binder::NamedDefinitionInventoryInput> inputs(admission.definitions().size());
+  for (size_t index = 0; index < admission.definitions().size(); ++index) {
+    const auto& definition = admission.definitions()[index];
+    if (!tree.contains(definition.node) ||
+        !definition.site.key().source().sameAs(admission.source())) {
+      return zc::none;
+    }
+    for (size_t prior = 0; prior < index; ++prior) {
+      if (admission.definitions()[prior].node == definition.node ||
+          admission.definitions()[prior].site.key().sameAs(definition.site.key())) {
+        return zc::none;
+      }
+    }
+    zc::Maybe<const binder::VerifiedStableDefinitionCandidate&> matched;
+    for (const auto& candidate : ZC_ASSERT_NONNULL(verified).definitions) {
+      if (candidate.node != definition.node) { continue; }
+      if (matched != zc::none) { return zc::none; }
+      matched = candidate;
+    }
+    if (matched == zc::none ||
+        !ZC_ASSERT_NONNULL(matched).authority.sameRecordAs(definition.authority) ||
+        ZC_ASSERT_NONNULL(matched).authority.key() != definition.authority.key() ||
+        !ZC_ASSERT_NONNULL(matched).site.sameAs(definition.site.key()) ||
+        ZC_ASSERT_NONNULL(matched).source.byteStart() != definition.site.range().byteStart() ||
+        ZC_ASSERT_NONNULL(matched).source.byteEnd() != definition.site.range().byteEnd()) {
+      return zc::none;
+    }
+
+    const auto& syntax = tree.node(definition.node);
+    auto disposition = binder::DefinitionBodyDisposition::NoExecutableBody;
+    switch (syntax.kind) {
+      case ast::SyntaxKind::FunctionDecl: {
+        const ast::NodeId body(syntax.payload.words[ast::kFunctionDeclBodyWord]);
+        if (!body || !tree.contains(body) || tree.node(body).kind != ast::SyntaxKind::BlockStmt) {
+          return zc::none;
+        }
+        disposition = binder::DefinitionBodyDisposition::ExecutableBody;
+        break;
+      }
+      case ast::SyntaxKind::ConstructorDecl: {
+        const ast::NodeId body(syntax.payload.words[ast::kConstructorDeclBodyWord]);
+        if (!body || !tree.contains(body) || tree.node(body).kind != ast::SyntaxKind::BlockStmt) {
+          return zc::none;
+        }
+        disposition = binder::DefinitionBodyDisposition::ExecutableBody;
+        break;
+      }
+      case ast::SyntaxKind::DestructorDecl: {
+        const ast::NodeId body(syntax.payload.words[ast::kDestructorDeclBodyWord]);
+        if (!body || !tree.contains(body) || tree.node(body).kind != ast::SyntaxKind::BlockStmt) {
+          return zc::none;
+        }
+        disposition = binder::DefinitionBodyDisposition::ExecutableBody;
+        break;
+      }
+      case ast::SyntaxKind::MethodDecl: {
+        const ast::NodeId body(syntax.payload.words[ast::kMethodDeclBodyWord]);
+        if (body && (!tree.contains(body) || tree.node(body).kind != ast::SyntaxKind::BlockStmt)) {
+          return zc::none;
+        }
+        if (body) { disposition = binder::DefinitionBodyDisposition::ExecutableBody; }
+        break;
+      }
+      case ast::SyntaxKind::FieldDecl:
+      case ast::SyntaxKind::ClassConstDecl: {
+        const uint32_t initializerWord = syntax.kind == ast::SyntaxKind::FieldDecl
+                                             ? ast::kFieldDeclInitWord
+                                             : ast::kClassConstDeclInitWord;
+        const ast::NodeId initializer(syntax.payload.words[initializerWord]);
+        if (initializer) {
+          if (!tree.contains(initializer)) { return zc::none; }
+          const auto kind = tree.node(initializer).kind;
+          if (!ast::isLiteralExprKind(kind) && !ast::isExprKind(kind) &&
+              kind != ast::SyntaxKind::UnsafeBlockExpr) {
+            return zc::none;
+          }
+          disposition = binder::DefinitionBodyDisposition::ExecutableBody;
+        }
+        break;
+      }
+      default:
+        break;
+    }
+    inputs.add(binder::NamedDefinitionInventoryInput{definition.authority.clone(), disposition});
+  }
+  return binder::NamedDefinitionInventory::fromVerified(admission.module(), inputs.asPtr());
+}
+
+zc::Maybe<binder::NamedDefinitionInventory> verifierDefinitionInventory(
+    const LoadedIdentitySource& source, const binder::StableIdentityAdmission& admission) {
+  auto verified = verifiedIdentityCandidates(source);
+  if (verified == zc::none ||
+      ZC_ASSERT_NONNULL(verified).definitions.size() != admission.definitions().size()) {
+    return zc::none;
+  }
+  const auto& tree = source.parsed.tree();
+  zc::Vector<binder::NamedDefinitionInventoryInput> inputs(admission.definitions().size());
+  for (size_t index = 0; index < admission.definitions().size(); ++index) {
+    const auto& definition = admission.definitions()[index];
+    if (!tree.contains(definition.node) ||
+        !definition.site.key().source().sameAs(admission.source())) {
+      return zc::none;
+    }
+    for (size_t prior = 0; prior < index; ++prior) {
+      if (admission.definitions()[prior].node == definition.node ||
+          admission.definitions()[prior].site.key().sameAs(definition.site.key())) {
+        return zc::none;
+      }
+    }
+    zc::Maybe<const binder::VerifiedStableDefinitionCandidate&> matched;
+    for (const auto& candidate : ZC_ASSERT_NONNULL(verified).definitions) {
+      if (candidate.node != definition.node) { continue; }
+      if (matched != zc::none) { return zc::none; }
+      matched = candidate;
+    }
+    if (matched == zc::none ||
+        !ZC_ASSERT_NONNULL(matched).authority.sameRecordAs(definition.authority) ||
+        ZC_ASSERT_NONNULL(matched).authority.key() != definition.authority.key() ||
+        !ZC_ASSERT_NONNULL(matched).site.sameAs(definition.site.key()) ||
+        ZC_ASSERT_NONNULL(matched).source.byteStart() != definition.site.range().byteStart() ||
+        ZC_ASSERT_NONNULL(matched).source.byteEnd() != definition.site.range().byteEnd()) {
+      return zc::none;
+    }
+
+    const auto& syntax = tree.node(definition.node);
+    auto disposition = binder::DefinitionBodyDisposition::NoExecutableBody;
+    switch (syntax.kind) {
+      case ast::SyntaxKind::FunctionDecl: {
+        const ast::NodeId body(syntax.payload.words[ast::kFunctionDeclBodyWord]);
+        if (!body || !tree.contains(body) || tree.node(body).kind != ast::SyntaxKind::BlockStmt) {
+          return zc::none;
+        }
+        disposition = binder::DefinitionBodyDisposition::ExecutableBody;
+        break;
+      }
+      case ast::SyntaxKind::ConstructorDecl: {
+        const ast::NodeId body(syntax.payload.words[ast::kConstructorDeclBodyWord]);
+        if (!body || !tree.contains(body) || tree.node(body).kind != ast::SyntaxKind::BlockStmt) {
+          return zc::none;
+        }
+        disposition = binder::DefinitionBodyDisposition::ExecutableBody;
+        break;
+      }
+      case ast::SyntaxKind::DestructorDecl: {
+        const ast::NodeId body(syntax.payload.words[ast::kDestructorDeclBodyWord]);
+        if (!body || !tree.contains(body) || tree.node(body).kind != ast::SyntaxKind::BlockStmt) {
+          return zc::none;
+        }
+        disposition = binder::DefinitionBodyDisposition::ExecutableBody;
+        break;
+      }
+      case ast::SyntaxKind::MethodDecl: {
+        const ast::NodeId body(syntax.payload.words[ast::kMethodDeclBodyWord]);
+        if (body && (!tree.contains(body) || tree.node(body).kind != ast::SyntaxKind::BlockStmt)) {
+          return zc::none;
+        }
+        if (body) { disposition = binder::DefinitionBodyDisposition::ExecutableBody; }
+        break;
+      }
+      case ast::SyntaxKind::FieldDecl:
+      case ast::SyntaxKind::ClassConstDecl: {
+        const uint32_t initializerWord = syntax.kind == ast::SyntaxKind::FieldDecl
+                                             ? ast::kFieldDeclInitWord
+                                             : ast::kClassConstDeclInitWord;
+        const ast::NodeId initializer(syntax.payload.words[initializerWord]);
+        if (initializer) {
+          if (!tree.contains(initializer)) { return zc::none; }
+          const auto kind = tree.node(initializer).kind;
+          if (!ast::isLiteralExprKind(kind) && !ast::isExprKind(kind) &&
+              kind != ast::SyntaxKind::UnsafeBlockExpr) {
+            return zc::none;
+          }
+          disposition = binder::DefinitionBodyDisposition::ExecutableBody;
+        }
+        break;
+      }
+      default:
+        break;
+    }
+    inputs.add(binder::NamedDefinitionInventoryInput{definition.authority.clone(), disposition});
+  }
+  return binder::NamedDefinitionInventory::fromVerified(admission.module(), inputs.asPtr());
 }
 
 zc::Maybe<binder::NamedImplementationInventory> admittedImplementationInventory(
@@ -536,6 +730,10 @@ zc::Maybe<NamedDefinitionInventoryQuery::Value> NamedDefinitionInventoryQuery::d
 
 query::TypedQueryResult<NamedDefinitionInventoryQuery::Value>
 NamedDefinitionInventoryQuery::provide(query::QueryContext& context, const Key& key) {
+  auto loaded = loadIdentitySource(context, key);
+  if (loaded.kind() != query::QueryValueKind::Value || loaded.isRuntimeFailure()) {
+    return propagateLoadFailure<Value>(loaded);
+  }
   auto admission = context.getCapability<StableIdentityAdmissionQuery>(key);
   if (admission.isRuntimeRejected()) {
     return query::TypedQueryResult<Value>::runtimeFailure(admission.runtimeFailure());
@@ -553,7 +751,7 @@ NamedDefinitionInventoryQuery::provide(query::QueryContext& context, const Key& 
     return query::TypedQueryResult<Value>::runtimeFailure(
         query::QueryRuntimeFailure::InvariantViolation);
   }
-  auto inventory = admittedDefinitionInventory(admission.lease().capability());
+  auto inventory = providerDefinitionInventory(loaded.value(), admission.lease().capability());
   if (inventory == zc::none) {
     return query::TypedQueryResult<Value>::runtimeFailure(
         query::QueryRuntimeFailure::InvariantViolation);
@@ -563,6 +761,16 @@ NamedDefinitionInventoryQuery::provide(query::QueryContext& context, const Key& 
 
 bool NamedDefinitionInventoryQuery::verify(query::QueryContext& context, const Key& key,
                                            const query::TypedQueryResult<Value>& result) {
+  auto loaded = loadIdentitySource(context, key);
+  if (loaded.isRuntimeFailure()) { return false; }
+  if (loaded.kind() == query::QueryValueKind::Absence) {
+    return result.kind() == query::QueryValueKind::Absence;
+  }
+  if (loaded.kind() == query::QueryValueKind::SemanticFailure) {
+    return result.kind() == query::QueryValueKind::SemanticFailure &&
+           result.semanticFailureBytes() == loaded.semanticFailureBytes();
+  }
+  if (loaded.kind() != query::QueryValueKind::Value) { return false; }
   auto admission = context.getCapability<StableIdentityAdmissionQuery>(key);
   if (admission.isRuntimeRejected()) { return false; }
   if (admission.isKeyRejected()) { return result.kind() == query::QueryValueKind::Absence; }
@@ -572,7 +780,7 @@ bool NamedDefinitionInventoryQuery::verify(query::QueryContext& context, const K
            result.semanticFailureBytes() == ZC_ASSERT_NONNULL(encoded).asPtr();
   }
   if (!admission.isPublished() || result.kind() != query::QueryValueKind::Value) { return false; }
-  auto expected = admittedDefinitionInventory(admission.lease().capability());
+  auto expected = verifierDefinitionInventory(loaded.value(), admission.lease().capability());
   return expected != zc::none && ZC_ASSERT_NONNULL(expected).sameAs(result.value());
 }
 

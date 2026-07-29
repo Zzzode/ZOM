@@ -70,13 +70,9 @@ bool ActiveDefinitionAuthorityProjectionState::refresh(
     }
     authorityCount += inventory.value().entries().size();
     for (const auto& entry : inventory.value().entries()) {
-      auto record = identity::DefinitionIdentityRecord::decodeCanonical(entry.canonicalRecord());
-      if (record == zc::none ||
-          ZC_ASSERT_NONNULL(record).module().encode().asPtr() != module.encode().asPtr()) {
-        return false;
-      }
-      auto authority = ActiveDefinitionAuthorityRecord::from(entry.key().clone(),
-                                                             zc::mv(ZC_ASSERT_NONNULL(record)));
+      if (entry.record().module().encode().asPtr() != module.encode().asPtr()) { return false; }
+      auto authority =
+          ActiveDefinitionAuthorityRecord::from(entry.key().clone(), entry.record().clone());
       if (authority == zc::none) { return false; }
       authorityRecords.add(zc::mv(ZC_ASSERT_NONNULL(authority)));
     }

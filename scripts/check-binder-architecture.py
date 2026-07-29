@@ -58,6 +58,17 @@ MODULE_BODY_VALUE_SOURCE = BINDER / "module-body-syntax.cc"
 MODULE_BODY_PRODUCER_SOURCE = BINDER / "module-body-syntax-producer.cc"
 MODULE_BODY_VERIFIER_SOURCE = BINDER / "module-body-syntax-verifier.cc"
 MODULE_BODY_TEST_SOURCE = TESTS / "module-body-syntax-test.cc"
+NAMED_INVENTORY_HEADER = BINDER / "named-identity-inventory.h"
+NAMED_INVENTORY_SOURCE = BINDER / "named-identity-inventory.cc"
+NAMED_INVENTORY_QUERY_SOURCE = Path(
+    "products/zomlang/compiler/driver/named-identity-inventory-query.cc"
+)
+NAMED_INVENTORY_QUERY_TEST = Path(
+    "products/zomlang/tests/unittests/compiler/driver/named-identity-inventory-query-test.cc"
+)
+INCREMENTAL_BINDING_QUERY_TEST = Path(
+    "products/zomlang/tests/unittests/compiler/driver/incremental-binding-query-adapter-test.cc"
+)
 
 PRODUCTION_COMPONENTS = (
     BUILDER_SOURCE,
@@ -183,6 +194,11 @@ def required_files() -> tuple[Path, ...]:
         MODULE_BODY_PRODUCER_SOURCE,
         MODULE_BODY_VERIFIER_SOURCE,
         MODULE_BODY_TEST_SOURCE,
+        NAMED_INVENTORY_HEADER,
+        NAMED_INVENTORY_SOURCE,
+        NAMED_INVENTORY_QUERY_SOURCE,
+        NAMED_INVENTORY_QUERY_TEST,
+        INCREMENTAL_BINDING_QUERY_TEST,
     )
 
 
@@ -851,6 +867,129 @@ def check_module_body_syntax(files: dict[Path, str], errors: list[str]) -> None:
             errors.append(f"{MODULE_BODY_TEST_SOURCE}: module-body regression is missing: {marker}")
 
 
+def check_named_definition_inventory(files: dict[Path, str], errors: list[str]) -> None:
+    header = files.get(NAMED_INVENTORY_HEADER, "")
+    inventory = files.get(NAMED_INVENTORY_SOURCE, "")
+    query = files.get(NAMED_INVENTORY_QUERY_SOURCE, "")
+    query_tests = files.get(NAMED_INVENTORY_QUERY_TEST, "")
+    incremental_tests = files.get(INCREMENTAL_BINDING_QUERY_TEST, "")
+
+    entry_body = type_body(header, "NamedDefinitionInventoryEntry")
+    for marker in (
+        "identity::DefinitionIdentityRecord recordField;",
+        "DefinitionBodyDisposition bodyDispositionField;",
+        "const identity::DefinitionIdentityRecord& record() const noexcept;",
+        "DefinitionBodyDisposition bodyDisposition() const noexcept;",
+    ):
+        if marker not in entry_body:
+            errors.append(
+                f"{NAMED_INVENTORY_HEADER}: typed definition inventory entry is incomplete: {marker}"
+            )
+    if "canonicalRecord" in entry_body:
+        errors.append(
+            f"{NAMED_INVENTORY_HEADER}: byte-only definition record accessor remains"
+        )
+    for marker in (
+        "identity::DefinitionIdentityRecord::decodeCanonical(",
+        "identity::DefinitionKey::compute(recordValue) != keyValue",
+        "isStableBindingValue(bodyDisposition)",
+        "encoder.encodeUint8(static_cast<uint8_t>(entry.bodyDisposition()))",
+    ):
+        if marker not in inventory:
+            errors.append(
+                f"{NAMED_INVENTORY_SOURCE}: definition inventory codec is incomplete: {marker}"
+            )
+
+    if "admittedDefinitionInventory" in query:
+        errors.append(
+            f"{NAMED_INVENTORY_QUERY_SOURCE}: authority-only definition inventory path remains"
+        )
+    for marker in (
+        "providerDefinitionInventory(",
+        "verifierDefinitionInventory(",
+        "verifiedIdentityCandidates(",
+    ):
+        if marker not in query:
+            errors.append(
+                f"{NAMED_INVENTORY_QUERY_SOURCE}: selected-syntax inventory path is missing: {marker}"
+            )
+    for marker in (
+        "case ast::SyntaxKind::FunctionDecl:",
+        "case ast::SyntaxKind::ConstructorDecl:",
+        "case ast::SyntaxKind::DestructorDecl:",
+        "case ast::SyntaxKind::MethodDecl:",
+        "case ast::SyntaxKind::FieldDecl:",
+        "case ast::SyntaxKind::ClassConstDecl:",
+        "ast::kFunctionDeclBodyWord",
+        "ast::kConstructorDeclBodyWord",
+        "ast::kDestructorDeclBodyWord",
+        "ast::kMethodDeclBodyWord",
+        "ast::kFieldDeclInitWord",
+        "ast::kClassConstDeclInitWord",
+        "ast::isLiteralExprKind(kind)",
+        "ast::isExprKind(kind)",
+        "kind != ast::SyntaxKind::UnsafeBlockExpr",
+    ):
+        if query.count(marker) != 2:
+            errors.append(
+                f"{NAMED_INVENTORY_QUERY_SOURCE}: provider/verifier body classification "
+                f"must contain two independent occurrences: {marker}"
+            )
+
+    provide_start = query.find("NamedDefinitionInventoryQuery::provide(")
+    provide_end = query.find("bool NamedDefinitionInventoryQuery::verify(", provide_start)
+    verify_start = provide_end
+    verify_end = query.find("NamedImplementationInventoryQuery::encodeKey(", verify_start)
+    provide_body = query[provide_start:provide_end]
+    verify_body = query[verify_start:verify_end]
+    for label, body, builder in (
+        ("provider", provide_body, "providerDefinitionInventory("),
+        ("verifier", verify_body, "verifierDefinitionInventory("),
+    ):
+        selected_parse = body.find("loadIdentitySource(context, key)")
+        admission = body.find("getCapability<StableIdentityAdmissionQuery>(key)")
+        if selected_parse < 0 or admission < 0 or selected_parse >= admission:
+            errors.append(
+                f"{NAMED_INVENTORY_QUERY_SOURCE}: definition inventory {label} "
+                "must read selected source and parse before admission"
+            )
+        if builder not in body:
+            errors.append(
+                f"{NAMED_INVENTORY_QUERY_SOURCE}: definition inventory {label} "
+                f"does not use its independent candidate builder: {builder}"
+            )
+    if "verifierDefinitionInventory(" in provide_body:
+        errors.append(
+            f"{NAMED_INVENTORY_QUERY_SOURCE}: provider reuses verifier inventory builder"
+        )
+    if "providerDefinitionInventory(" in verify_body:
+        errors.append(
+            f"{NAMED_INVENTORY_QUERY_SOURCE}: verifier reuses provider inventory builder"
+        )
+
+    for marker in (
+        "DefinitionInventoryRetainsCanonicalRecordsAndBodies",
+        "DefinitionInventoryRejectsInvalidWireRelations",
+    ):
+        if marker not in query_tests:
+            errors.append(
+                f"{NAMED_INVENTORY_QUERY_TEST}: definition inventory mutation coverage "
+                f"is missing: {marker}"
+            )
+    for marker in (
+        "Named definition inventory derives executable bodies from selected syntax",
+        "definitionReadOrdinal == 6",
+        "definitionSelectedReads == 2",
+        "definitionParseReads == 2",
+        "definitionAdmissionReads == 2",
+    ):
+        if marker not in incremental_tests:
+            errors.append(
+                f"{INCREMENTAL_BINDING_QUERY_TEST}: selected-syntax definition inventory "
+                f"coverage is missing: {marker}"
+            )
+
+
 def check_size_boundaries(files: dict[Path, str], errors: list[str]) -> None:
     limits = {
         VERIFIER_SOURCE: 300,
@@ -881,6 +1020,7 @@ def check(files: dict[Path, str]) -> list[str]:
     check_layering(files, errors)
     check_module_owned_capture_boundaries(files, errors)
     check_module_body_syntax(files, errors)
+    check_named_definition_inventory(files, errors)
     check_size_boundaries(files, errors)
     return sorted(set(errors))
 
@@ -1159,6 +1299,24 @@ def self_test(files: dict[Path, str]) -> list[str]:
             MODULE_BODY_TEST_SOURCE,
             "Module body syntax backdates across range-only source edits",
             "Module body syntax changes across range-only source edits",
+        ),
+        (
+            "definition inventory provider reuses verifier builder",
+            NAMED_INVENTORY_QUERY_SOURCE,
+            "providerDefinitionInventory(loaded.value(), admission.lease().capability())",
+            "verifierDefinitionInventory(loaded.value(), admission.lease().capability())",
+        ),
+        (
+            "definition inventory drops field body classification",
+            NAMED_INVENTORY_QUERY_SOURCE,
+            "ast::kFieldDeclInitWord",
+            "ast::kMissingFieldDeclInitWord",
+        ),
+        (
+            "definition inventory drops selected syntax test",
+            INCREMENTAL_BINDING_QUERY_TEST,
+            "Named definition inventory derives executable bodies from selected syntax",
+            "Named definition inventory trusts admission body flags",
         ),
     )
     failures: list[str] = []

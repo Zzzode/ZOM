@@ -494,7 +494,8 @@ void runDifferentialEdits(uint32_t workerCount) {
       const auto& reusedEntry = reusedInventory.value().entries()[index];
       const auto& freshEntry = freshInventory.value().entries()[index];
       ZC_REQUIRE(reusedEntry.key() == freshEntry.key());
-      ZC_EXPECT(reusedEntry.canonicalRecord() == freshEntry.canonicalRecord());
+      ZC_EXPECT(reusedEntry.record().encode().asPtr() == freshEntry.record().encode().asPtr());
+      ZC_EXPECT(reusedEntry.bodyDisposition() == freshEntry.bodyDisposition());
       auto reusedKey = contextual(roots, semanticModule(), reusedEntry.key());
       auto freshKey = contextual(roots, semanticModule(), freshEntry.key());
       auto reusedAuthority = reused.get<ActiveDefinitionAuthorityInput>(reusedKey);
@@ -554,7 +555,7 @@ ZC_TEST("Active definition authority session invalidates and atomically refreshe
   ZC_REQUIRE(firstReady.kind() == query::QueryValueKind::Value);
   ZC_EXPECT(!first.hasRetainedValue<NamedItemProvenanceQuery>(alphaQueryKey));
   ZC_EXPECT(alpha.value().encode().asPtr() ==
-            firstInventory.value().entries()[0].canonicalRecord());
+            firstInventory.value().entries()[0].record().encode().asPtr());
   ZC_REQUIRE(state.keyLedger().size() == 1);
   ZC_EXPECT(state.keyLedger()[0] == stableDefinition(semanticModule(), alphaKey));
   ZC_EXPECT(state.keyLedger()[0].module().encode().asPtr() == semanticModule().encode().asPtr());

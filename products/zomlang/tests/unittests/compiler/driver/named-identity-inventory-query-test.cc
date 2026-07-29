@@ -46,6 +46,56 @@ identity::ModuleKey semanticModule(zc::StringPtr name) {
   return require(zc::mv(result));
 }
 
+identity::DefinitionIdentityAuthority definitionAuthority(identity::ModuleKey&& module,
+                                                          zc::StringPtr name) {
+  zc::Vector<identity::EnclosingStableOwnerKey> owners;
+  zc::Maybe<identity::OverloadHeaderDigest> noOverload;
+  auto record = identity::DefinitionIdentityRecord::from(
+      zc::mv(module), zc::mv(owners), identity::DefinitionKind::Class,
+      identity::DefinitionNamespace::Type,
+      require(identity::DeclaredDefinitionName::fromCanonical(name)), zc::mv(noOverload));
+  zc::Maybe<identity::OverloadHeaderAuthority> noOverloadAuthority;
+  return require(identity::DefinitionIdentityAuthority::from(require(zc::mv(record)),
+                                                             zc::mv(noOverloadAuthority)));
+}
+
+void encodeDefinitionEntry(identity::CanonicalEncoder& encoder, const identity::DefinitionKey& key,
+                           const identity::DefinitionIdentityRecord& record,
+                           binder::DefinitionBodyDisposition disposition) {
+  key.encode(encoder);
+  auto recordBytes = record.encode();
+  encoder.encodeByteString(recordBytes.asPtr());
+  encoder.encodeUint8(static_cast<uint8_t>(disposition));
+}
+
+zc::Array<uint8_t> singleDefinitionEntryBytes(const identity::DefinitionKey& key,
+                                              const identity::DefinitionIdentityRecord& record,
+                                              binder::DefinitionBodyDisposition disposition) {
+  identity::CanonicalEncoder encoder;
+  encoder.encodeByteString("zom.named-definition-inventory"_zcb);
+  encoder.encodeSequenceSize(1);
+  encodeDefinitionEntry(encoder, key, record, disposition);
+  return encoder.finish();
+}
+
+zc::Array<uint8_t> twoDefinitionEntryBytes(const identity::DefinitionIdentityAuthority& first,
+                                           binder::DefinitionBodyDisposition firstDisposition,
+                                           const identity::DefinitionIdentityAuthority& second,
+                                           binder::DefinitionBodyDisposition secondDisposition,
+                                           bool sortEntries) {
+  identity::CanonicalEncoder encoder;
+  encoder.encodeByteString("zom.named-definition-inventory"_zcb);
+  encoder.encodeSequenceSize(2);
+  if (sortEntries && compareBytes(second.key().bytes(), first.key().bytes()) < 0) {
+    encodeDefinitionEntry(encoder, second.key(), second.record(), secondDisposition);
+    encodeDefinitionEntry(encoder, first.key(), first.record(), firstDisposition);
+  } else {
+    encodeDefinitionEntry(encoder, first.key(), first.record(), firstDisposition);
+    encodeDefinitionEntry(encoder, second.key(), second.record(), secondDisposition);
+  }
+  return encoder.finish();
+}
+
 identity::CanonicalNameReference implementationName(zc::StringPtr name) {
   zc::Vector<identity::SemanticIdentifier> suffix;
   suffix.add(tests::test_identity_detail::scalar<identity::SemanticIdentifier>(name));
@@ -171,9 +221,9 @@ ZC_TEST("NamedIdentityInventoryQueryTest.PrivateAdmissionWitnessesAreStableAndOp
 }
 
 ZC_TEST("NamedIdentityInventoryQueryTest.SemanticAndRevisionLocalCodecsRejectTrailingBytes") {
-  zc::Vector<identity::DefinitionIdentityAuthority> definitionAuthorities;
+  zc::Vector<binder::NamedDefinitionInventoryInput> definitionInputs;
   auto definitions = require(binder::NamedDefinitionInventory::fromVerified(
-      tests::test_identity_detail::module(), definitionAuthorities.asPtr()));
+      tests::test_identity_detail::module(), definitionInputs.asPtr()));
   auto definitionBytes = NamedDefinitionInventoryQuery::encodeValue(definitions);
   auto decodedDefinitions = NamedDefinitionInventoryQuery::decodeValue(definitionBytes.asPtr());
   ZC_REQUIRE(decodedDefinitions != zc::none);
@@ -221,6 +271,101 @@ ZC_TEST("NamedIdentityInventoryQueryTest.SemanticAndRevisionLocalCodecsRejectTra
   ZC_EXPECT(ZC_REQUIRE_NONNULL(decodedRevisionImplementations)->sameAs(revisionImplementations));
   ZC_EXPECT(query::CapabilityCandidateContract<RevisionLocalImplementationSitesQuery>::decode(
                 withTrailingByte(implementationWitness.bytes()).asPtr()) == zc::none);
+}
+
+ZC_TEST("NamedIdentityInventoryQueryTest.DefinitionInventoryRetainsCanonicalRecordsAndBodies") {
+  auto first = definitionAuthority(semanticModule("test"_zc), "First"_zc);
+  auto second = definitionAuthority(semanticModule("test"_zc), "Second"_zc);
+  zc::Vector<binder::NamedDefinitionInventoryInput> inputs;
+  if (compareBytes(first.key().bytes(), second.key().bytes()) < 0) {
+    inputs.add(binder::NamedDefinitionInventoryInput{
+        second.clone(), binder::DefinitionBodyDisposition::NoExecutableBody});
+    inputs.add(binder::NamedDefinitionInventoryInput{
+        first.clone(), binder::DefinitionBodyDisposition::ExecutableBody});
+  } else {
+    inputs.add(binder::NamedDefinitionInventoryInput{
+        first.clone(), binder::DefinitionBodyDisposition::ExecutableBody});
+    inputs.add(binder::NamedDefinitionInventoryInput{
+        second.clone(), binder::DefinitionBodyDisposition::NoExecutableBody});
+  }
+
+  auto inventory = require(
+      binder::NamedDefinitionInventory::fromVerified(semanticModule("test"_zc), inputs.asPtr()));
+  ZC_REQUIRE(inventory.entries().size() == 2);
+  ZC_EXPECT(
+      compareBytes(inventory.entries()[0].key().bytes(), inventory.entries()[1].key().bytes()) < 0);
+  for (const auto& entry : inventory.entries()) {
+    ZC_EXPECT(identity::DefinitionKey::compute(entry.record()) == entry.key());
+    if (entry.key() == first.key()) {
+      ZC_EXPECT(entry.bodyDisposition() == binder::DefinitionBodyDisposition::ExecutableBody);
+    } else {
+      ZC_EXPECT(entry.key() == second.key());
+      ZC_EXPECT(entry.bodyDisposition() == binder::DefinitionBodyDisposition::NoExecutableBody);
+    }
+  }
+
+  zc::Vector<binder::NamedDefinitionInventoryInput> duplicates;
+  duplicates.add(binder::NamedDefinitionInventoryInput{
+      first.clone(), binder::DefinitionBodyDisposition::ExecutableBody});
+  duplicates.add(binder::NamedDefinitionInventoryInput{
+      first.clone(), binder::DefinitionBodyDisposition::ExecutableBody});
+  auto deduplicated = require(binder::NamedDefinitionInventory::fromVerified(
+      semanticModule("test"_zc), duplicates.asPtr()));
+  ZC_EXPECT(deduplicated.entries().size() == 1);
+
+  zc::Vector<binder::NamedDefinitionInventoryInput> contradictory;
+  contradictory.add(binder::NamedDefinitionInventoryInput{
+      first.clone(), binder::DefinitionBodyDisposition::ExecutableBody});
+  contradictory.add(binder::NamedDefinitionInventoryInput{
+      first.clone(), binder::DefinitionBodyDisposition::NoExecutableBody});
+  ZC_EXPECT(binder::NamedDefinitionInventory::fromVerified(semanticModule("test"_zc),
+                                                           contradictory.asPtr()) == zc::none);
+
+  zc::Vector<binder::NamedDefinitionInventoryInput> wrongModule;
+  wrongModule.add(binder::NamedDefinitionInventoryInput{
+      definitionAuthority(semanticModule("other"_zc), "Other"_zc),
+      binder::DefinitionBodyDisposition::NoExecutableBody});
+  ZC_EXPECT(binder::NamedDefinitionInventory::fromVerified(semanticModule("test"_zc),
+                                                           wrongModule.asPtr()) == zc::none);
+
+  zc::Vector<binder::NamedDefinitionInventoryInput> unknownDisposition;
+  unknownDisposition.add(binder::NamedDefinitionInventoryInput{
+      first.clone(), static_cast<binder::DefinitionBodyDisposition>(0xff)});
+  ZC_EXPECT(binder::NamedDefinitionInventory::fromVerified(semanticModule("test"_zc),
+                                                           unknownDisposition.asPtr()) == zc::none);
+}
+
+ZC_TEST("NamedIdentityInventoryQueryTest.DefinitionInventoryRejectsInvalidWireRelations") {
+  auto first = definitionAuthority(semanticModule("test"_zc), "First"_zc);
+  auto second = definitionAuthority(semanticModule("test"_zc), "Second"_zc);
+  constexpr auto executable = binder::DefinitionBodyDisposition::ExecutableBody;
+  constexpr auto noExecutable = binder::DefinitionBodyDisposition::NoExecutableBody;
+
+  auto canonical = twoDefinitionEntryBytes(first, executable, second, noExecutable, true);
+  auto decoded = binder::NamedDefinitionInventory::decodeCanonical(canonical.asPtr());
+  ZC_REQUIRE(decoded != zc::none);
+  ZC_EXPECT(ZC_REQUIRE_NONNULL(decoded).entries().size() == 2);
+
+  auto nonIncreasing = twoDefinitionEntryBytes(first, executable, second, noExecutable, false);
+  if (compareBytes(first.key().bytes(), second.key().bytes()) < 0) {
+    nonIncreasing = twoDefinitionEntryBytes(second, noExecutable, first, executable, false);
+  }
+  ZC_EXPECT(binder::NamedDefinitionInventory::decodeCanonical(nonIncreasing.asPtr()) == zc::none);
+
+  auto duplicate = twoDefinitionEntryBytes(first, executable, first, executable, false);
+  ZC_EXPECT(binder::NamedDefinitionInventory::decodeCanonical(duplicate.asPtr()) == zc::none);
+
+  auto mismatched = singleDefinitionEntryBytes(first.key(), second.record(), executable);
+  ZC_EXPECT(binder::NamedDefinitionInventory::decodeCanonical(mismatched.asPtr()) == zc::none);
+
+  auto unknownDisposition = singleDefinitionEntryBytes(
+      first.key(), first.record(), static_cast<binder::DefinitionBodyDisposition>(0xff));
+  ZC_EXPECT(binder::NamedDefinitionInventory::decodeCanonical(unknownDisposition.asPtr()) ==
+            zc::none);
+
+  auto otherModule = definitionAuthority(semanticModule("other"_zc), "Other"_zc);
+  auto mixedModules = twoDefinitionEntryBytes(first, executable, otherModule, noExecutable, true);
+  ZC_EXPECT(binder::NamedDefinitionInventory::decodeCanonical(mixedModules.asPtr()) == zc::none);
 }
 
 ZC_TEST("NamedIdentityInventoryQueryTest.ImplementationInventoryRetainsCanonicalRecords") {
