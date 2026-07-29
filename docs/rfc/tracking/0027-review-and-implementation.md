@@ -230,6 +230,25 @@ pre-evidence Git diff SHA-256
 Transaction `rfc0027-atomic-build-wiring-20260730-d3646785` records that
 approval and changes no source-task completion state.
 
+### 2026-07-30 Membership Preparation Partition Correction
+
+The accepted I2 row combined the common result and codec surface, four
+topology memberships, complete-root readiness, and four authority-backed
+identity memberships into one source task. That scope cannot satisfy the
+repository rule that each source task remain approximately 400 changed source
+lines or less.
+
+The correction splits preparation into I2A through I2G with explicit
+symbol-level outcomes and sequential review. I2 becomes a review-only join
+over the same four production files. Every partition remains non-landing work,
+and T1 remains the sole source transaction for the approved union.
+
+The user-designated independent approver accepted exact two-document
+pre-evidence Git diff SHA-256
+`872a079129e4f8b74967169252d394a099f3ee9edb02aa4a08e042a25cc000de`.
+Transaction `rfc0027-membership-partitions-20260730-872a0791` records that
+approval and changes no source-task completion state.
+
 ## Implementation Tracker
 
 | Task | Owner | Depends On | Deliverable | Verification | Status |
@@ -258,7 +277,14 @@ approval and changes no source-task completion state.
 | `R27-17A` | `module-system` | `R27-12B` | Implement the handle-free canonical package request records, verified-request projection, exact codecs, and independent projection verifier. | Package request codec and projection tests | Complete; implementation `3039da5259be25b139954834f900a21b7b891fcf`, sanitizer unit tests 135/135, focused package request test 1/1, independent integration review approved |
 | `R27-18` | `module-system` with required `runtime-memory` review | RFC 0029 `R29-14` | Replace frozen registries with the arena-owned eight-domain typed interner set. | Identity, concurrency, collision, and teardown tests | Pending |
 | `R27-18A` | `module-system` with `verification` review | `R27-17A`; RFC 0029 `R29-14` | Prepare canonical input entries, `CompleteCompilationContextAuthority`, its exact codec, descriptor definition, producer-independent verifier, schema ownership and producer identity, and the full declared mutation matrix; do not register or land independently. | Complete-context codec, verifier, mutation, and schema review | Pending |
-| `R27-19` | `module-system` | `R27-15E`; RFC 0029 `R29-14`; `R27-18`; approved `R27-18A` preparation | Prepare all eight exact complete-record membership projections and conditional readiness inputs; do not land independently. | Membership and readiness review | Pending |
+| `R27-19A` | `module-system` | `R27-15E`; RFC 0029 `R29-14`; `R27-18`; approved `R27-18A` preparation | Prepare `ActiveMembershipResult`, its closed codec and record-codec contracts, and `ActiveCompilationUnitMembership`; do not land independently. | Result, codec, and compilation-unit record review | Pending |
+| `R27-19B` | `module-system` | approved `R27-19A` preparation | Prepare compilation-unit and crate membership descriptors with independent providers and verifiers; do not land independently. | Compilation-unit and crate membership review | Pending |
+| `R27-19C` | `module-system` | approved `R27-19B` preparation | Prepare source and module membership descriptors with active-parent validation and independent providers and verifiers; do not land independently. | Source and module membership review | Pending |
+| `R27-19D` | `module-system` | approved `R27-19C` preparation | Prepare complete-root readiness, the definition-authority input verifier, and inventory-backed definition membership; do not land independently. | Readiness, definition authority, and conditional absence review | Pending |
+| `R27-19E` | `module-system` | approved `R27-19D` preparation | Prepare complete implementation membership, authority input, occurrence coverage, and independent provider/verifier; do not land independently. | Implementation authority and occurrence review | Pending |
+| `R27-19F` | `module-system` | approved `R27-19E` preparation | Prepare definition-owned and implementation-owned generic-parameter membership with equal-occurrence authority; do not land independently. | Generic owner and occurrence review | Pending |
+| `R27-19G` | `module-system` | approved `R27-19F` preparation | Prepare callable-parameter membership, receiver and position validation, and all eight descriptor registrations; do not land independently. | Callable header, receiver, and registration review | Pending |
+| `R27-19` | `module-system` with `verification` review | approved preparations `R27-19A` through `R27-19G` | Review the complete eight exact complete-record memberships and conditional readiness union without source edits or independent landing. | Complete membership, readiness, and mutation-inventory review | Pending |
 | `R27-20` | `binder-checker` | RFC 0029 `R29-12AB`; RFC 0029 `R29-12D`; `R27-15E` | Implement `BindModuleSkeleton`, lookup projections, and independent verifier. | Skeleton and read-set tests | Pending |
 | `R27-21` | `binder-checker` | `R27-20` | Implement contextual `BindOwnerBody` and independent traversal/verifier. | Body, capture, control, and source-failure tests | Pending |
 | `R27-22` | `binder-checker` | `R27-21` | Implement the deterministic five-domain module allocation plan. | Overflow and reversed-demand tests | Pending |
