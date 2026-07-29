@@ -92,10 +92,10 @@ the exact RFC 0030 `R29-12AB` transaction, then lands diagnostic facts through
 | `R26-08` | `verification` | `R26-11`; `R26-12`; RFC 0029 `R29-15` | Run full sanitizer, unit, lit, architecture, coverage, format, versioning, and benchmark gates. | RFC 0027, RFC 0028, and RFC 0029 Test Plans | Pending |
 | `R26-09` | `rfc` | `R26-08` | Audit completion criteria and transition implementation status truthfully. | `python3 scripts/check-rfc.py` | Pending |
 
-Completed stable graph tasks remain complete. The typed materializer, retained
-provenance, and publication path resume through RFC 0029 `R29-14`, RFC 0028
-`R28-16`, and RFC 0029 `R29-15` before later RFC 0027 dependency edges; they
-remain pending.
+Completed stable graph tasks remain complete. RFC 0029 `R29-14` and `R29-15`
+are satisfied. The typed materializer, retained provenance, and publication
+path remain pending behind RFC 0028 `R28-16` and the later RFC 0027 dependency
+edges.
 
 ## Acceptance Transaction Record
 

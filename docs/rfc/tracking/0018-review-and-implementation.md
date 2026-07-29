@@ -516,9 +516,10 @@ diagnostics exclusively to `StableIdentityAdmissionQuery`.
 | Codec mutation, provenance, and private-decoder tests | `R29-13C` |
 | Atomic runtime source transaction and full evidence | `R29-14` through `R29-17` |
 
-RFC 0018 remains `IMPLEMENTING`. Existing stable-identity evidence does not
-complete the synchronized site inventory, admission, or query-runtime
-contracts.
+RFC 0029 completed the synchronized site inventory, stable admission, and
+query-runtime contracts through `R29-17`. RFC 0018 remains `IMPLEMENTING`
+because its remaining identity-domain and materialization work is outside
+RFC 0029.
 
 ### 2026-07-28 RFC 0035 Acceptance Synchronization
 
@@ -536,7 +537,7 @@ RFC 0018 remains `IMPLEMENTING`.
 
 | Slice | State | Required evidence |
 |---|---|---|
-| RFC 0029 identity-site and admission closure | Pending | RFC 0029 `R29-12A` through `R29-17` own the stable schema, bounded witness codecs, independent site/admission paths, private span decoder, atomic source landing, and final evidence |
+| RFC 0029 identity-site and admission closure | Complete | RFC 0029 `R29-12A` through `R29-17` landed the stable schema, bounded witness codecs, independent site/admission paths, private span decoder, atomic source transaction, and final evidence |
 | Proposal review | ACCEPTED | All owners approved exact formal REVIEW snapshot `bdcbee8761d5476822cbe5bb2548332ad36e4d5f507c38e74d06751c6f444379` |
 | Normative RFC synchronization | Complete | RFC 0004/0005/0008/0011/0014/0015/0017 and required trackers use the accepted later-overlay contract |
 | Configured Python and schema gates | Complete | Project-scope interpreter discovery, configure-time PyYAML fail-fast, zero bare CMake `python3` calls, focused build success, and 6/6 configured-Python CTests |

@@ -265,16 +265,17 @@ failure contracts for the five Binder provenance capabilities.
 transaction at commit
 `8885782747e4c863cefcb0d069bc4569cefce9aa`. RFC 0042 landed the direct
 source-wire replacement as `R29-12D` at
-`58897c116cafe3463ec6a46ac3bbdd530ef991a5`. The live Binder portion of `S6` moves to
-`R29-13B`, where its Module root, producers, factories, mappings, and verifier
-land together. Runtime work resumes at `R29-13A`. RFC 0017 remains
-`IMPLEMENTING`.
+`58897c116cafe3463ec6a46ac3bbdd530ef991a5`. The live Binder portion of `S6`,
+its Module root, producers, factories, mappings, verifier, and query-runtime
+foundation landed through RFC 0029 `R29-14`; complete RFC 0029 evidence
+followed through `R29-17`. RFC 0017 remains `IMPLEMENTING` because its
+downstream Binder aggregate, projection, and item-level work is still open.
 
 ## Implementation Tracker
 
 | Slice | State | Required evidence |
 |---|---|---|
-| RFC 0029 query identity and failure closure | Pending | Completion authority is RFC 0029 `R29-12A` through `R29-17`; exact token, request-result, provenance, descriptor-failure, atomic-runtime, and final-gate evidence is not yet recorded |
+| RFC 0029 query identity and failure closure | Complete | RFC 0029 `R29-12A` through `R29-17` landed the exact token, request-result, provenance, descriptor-failure, atomic-runtime, and final-gate evidence |
 | Routing and ownership | Complete | Query subsystem and architecture-gate ownership is explicit and validated |
 | Stable identity replacement | In progress | RFC 0018 named-definition and implementation record replacement is complete; subordinate-parameter, semantic-import, stable-body-owner, and owner-local domains have strict canonical decoders. RFC 0019 registers detached module-body, named-item, owner-inventory, owner-syntax, and owner-provenance queries, while persistent query inventory ownership, owner binding, and remaining materialization migration stay open |
 | Revision-domain separation | In progress | Database revisions, durability, reuse classes, semantic query values, stable semantic-import keys, revision-local materialization values, detached module-body syntax, module-body provenance, semantic owner-body syntax, and revision-local owner-body provenance are distinct; owner binding, materialization, identity-store ownership, and call-site migration remain open |

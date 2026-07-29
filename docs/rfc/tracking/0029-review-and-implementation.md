@@ -214,6 +214,33 @@ Release comparison evidence and does not complete `R29-15`. After the approved
 baseline is committed, `R29-15` must clean-build Release from that exact commit
 and run mandatory `--compare` mode against the committed baseline.
 
+### 2026-07-29 Implementation Closure
+
+The implementation series is complete:
+
+- `R29-13A`, `R29-13B`, `R29-13C`, and the atomic `R29-14` source
+  transaction landed through
+  `d83eed927ad782963dc49a143b4dab48cb857f85`;
+- Binder final-seal failure verification and Release validation corrections
+  landed through `89d0c5e1ea1087bdf27c4d8745ed86de8363b842` and
+  `e9ccb17fab8ba8ec471afa9512e8b13e6f30fcc5`;
+- `R29-15` completed sanitizer, full native, architecture, generated inventory,
+  determinism, coverage, format, English-only, internal-versioning, and
+  Release evidence; the approved baseline and exact-commit comparison landed
+  at `cd94cf6bc220158114125d151658aa88c1db335c`;
+- the Release comparison passed with aggregate elapsed ratio `0.989103` and
+  aggregate peak-RSS ratio `1.000000`;
+- changed production compiler files met the recorded per-file coverage
+  threshold; and
+- `R29-16` published the production-backed query-runtime and compiler-contract
+  design at `598fa6d6a7b4d2ea7ed4f1d61e321c07c624e83c`.
+
+`R29-17` closes this RFC in the current synchronized status transaction.
+RFC 0028 `R28-16A` is now the next unblocked query-runtime task. The current
+CompilerSession does not yet publish a final-sealed production root; that
+downstream boundary remains explicit in the current design and is not claimed
+by RFC 0029.
+
 ## Implementation Tracker
 
 | Task | Owner | Depends On | Deliverable | Verification | Status |
@@ -233,15 +260,13 @@ and run mandatory `--compare` mode against the committed baseline.
 | `R29-12B` | `binder-checker` with `module-system` review | `R29-12A` | Prepare and review RFC 0027 `S2`; do not land independently. | Stable fact review | Complete through `R29-12AB` |
 | `R29-12AB` | `binder-checker` with `module-system` and `verification` review | `R29-12A`; `R29-12B`; RFC 0030 `R30-14` | Land the exact RFC 0030 allowlist as one buildable S1-plus-S2-plus-S3 transaction with contextual caller cutover. | Focused native, mutation, architecture, landing-scope, and SHA parity gates | Complete; commit `8885782747e4c863cefcb0d069bc4569cefce9aa` |
 | `R29-12D` | `error-system` with `binder-checker`, `lexer-parser`, `module-system`, and `verification` review | `R29-12AB`; RFC 0036 `R36-16`; RFC 0042 acceptance | Execute RFC 0042 as one canonical diagnostic-fact and current source-wire cutover while retaining the diagnostics-owned explicit limits API. | RFC 0042 focused and complete gates | Complete; commit `58897c116cafe3463ec6a46ac3bbdd530ef991a5` |
-| `R29-13A` | `module-system` with `runtime-memory` review | `R29-12AB`; `R29-12D` | Implement the generic descriptor-dependent `CapabilityDemandResult<Descriptor>` runtime sum with no codec and revise the RFC 0028 query-type partition. | Type, conditional alternative, lifetime, and format review | Pending |
-| `R29-13B` | `module-system` with `binder-checker`, `error-system`, and `verification` review | `R29-13A` | Add identity-site provenance, stable identity admission, the five descriptor failure contracts, and RFC 0027 `S6` as the atomic Source-plus-Module expansion with live factories, schema rows, mappings, `ZOM3028`, native tests, and static coverage. | Owner-focused source, schema, mapping, and diagnostic evidence review | Pending |
-| `R29-13C` | `verification` | `R29-13B` | Add generic runtime-sum coverage, reusable staged capability and failure-alternative alias mutations, token, result, provenance, mapping, verifier, race, private decoder, and CTest compile-fail coverage without referencing future descriptors. | Native, mutation, and architecture tests | Pending |
-| `R29-14` | `module-system` with all source owners | `R29-13C`; RFC 0028 `R28-13G` | Assemble and land the corrected RFC 0028 atomic runtime source transaction as the sole landing authority. | Focused sanitizer build and tests | Pending |
-| `R29-15` | `verification` | `R29-14` | Run the complete RFC 0028 and RFC 0029 verification plans. | Full native, coverage, and Release gates | Pending |
-| `R29-16` | `spec-audit` | `R29-15` | Publish only production-backed current design. | Current-state evidence audit | Pending |
-| `R29-17` | `rfc` | `R29-16` | Audit evidence and synchronize truthful statuses. | RFC and evidence audit | Pending |
+| `R29-13A` | `module-system` with `runtime-memory` review | `R29-12AB`; `R29-12D` | Implement the generic descriptor-dependent `CapabilityDemandResult<Descriptor>` runtime sum with no codec and revise the RFC 0028 query-type partition. | Type, conditional alternative, lifetime, and format review | Complete through `d83eed927ad782963dc49a143b4dab48cb857f85` |
+| `R29-13B` | `module-system` with `binder-checker`, `error-system`, and `verification` review | `R29-13A` | Add identity-site provenance, stable identity admission, the five descriptor failure contracts, and RFC 0027 `S6` as the atomic Source-plus-Module expansion with live factories, schema rows, mappings, `ZOM3028`, native tests, and static coverage. | Owner-focused source, schema, mapping, and diagnostic evidence review | Complete through `d83eed927ad782963dc49a143b4dab48cb857f85` |
+| `R29-13C` | `verification` | `R29-13B` | Add generic runtime-sum coverage, reusable staged capability and failure-alternative alias mutations, token, result, provenance, mapping, verifier, race, private decoder, and CTest compile-fail coverage without referencing future descriptors. | Native, mutation, and architecture tests | Complete through `d83eed927ad782963dc49a143b4dab48cb857f85` |
+| `R29-14` | `module-system` with all source owners | `R29-13C`; RFC 0028 `R28-13G` | Assemble and land the corrected RFC 0028 atomic runtime source transaction as the sole landing authority. | Focused sanitizer build and tests | Complete; commit `d83eed927ad782963dc49a143b4dab48cb857f85` |
+| `R29-15` | `verification` | `R29-14` | Run the complete RFC 0028 and RFC 0029 verification plans. | Full native, coverage, and Release gates | Complete through `cd94cf6bc220158114125d151658aa88c1db335c` |
+| `R29-16` | `spec-audit` | `R29-15` | Publish only production-backed current design. | Current-state evidence audit | Complete; commit `598fa6d6a7b4d2ea7ed4f1d61e321c07c624e83c` |
+| `R29-17` | `rfc` | `R29-16` | Audit evidence and synchronize truthful statuses. | RFC and evidence audit | Complete in this synchronized status transaction |
 
-`R29-12A`, `R29-12B`, and `R29-12AB` are complete through
-`8885782747e4c863cefcb0d069bc4569cefce9aa`. `R29-12D` is complete through
-`58897c116cafe3463ec6a46ac3bbdd530ef991a5`. `R29-13A` is the next
-unblocked task; `R29-13A` through `R29-17` remain pending.
+All RFC 0029 implementation tasks are complete. RFC 0028 `R28-16A` is the
+next unblocked query-runtime task.

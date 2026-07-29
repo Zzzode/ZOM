@@ -2,7 +2,7 @@
 rfc: 28
 title: Query Runtime Final-Seal And Descriptor Closure
 type: compiler
-status: ACCEPTED
+status: IMPLEMENTING
 author: ZOM Compiler Team
 review-manager: rfc
 required-owners: [task-router, rfc, module-system, lexer-parser, binder-checker, spec-audit, verification]
@@ -2034,3 +2034,4 @@ None
 | 2026-07-28 | ACCEPTED | Synchronized to RFC 0030 proposal SHA-256 `4ed0e6b885abc87a1c4251855780cf115a85b3623b1d46f774a4b664110f7b6b` through transaction `rfc0030-accept-20260728-4ed0e6b8`; implementation remains pending behind the atomic S1-plus-S2-plus-S3 foundation and separate S6 diagnostic transaction. |
 | 2026-07-28 | ACCEPTED | Transaction `rfc0031-accept-20260728-c25fcb18` synchronized the descriptor-parameterized provenance result, runtime-only capability payload, generic capability-demand sum ownership, and staged dual-alias checks to RFC 0031 proposal SHA-256 `c25fcb18e503ac214a8e92c925fa88108a915c2b15c94409dfecb88b3d9a63d5` and tracker SHA-256 `d64e7791ed2e2a488c5f57bc07ac341ccfc37d37c220c85131e2c9e846fb8d0d`; implementation tasks remain pending. |
 | 2026-07-29 | ACCEPTED | Transaction `rfc0028-r29-14-scope-20260729-521d82c7` bound exact four-document candidate manifest SHA-256 `521d82c731dee0a4b262e937d5578651850446eebfe7448a71a39cb63fc8e086`, adding only the four omitted Binder callers to the existing `R29-14` union; `R29-14` remains the sole source landing authority. |
+| 2026-07-29 | IMPLEMENTING | The shared runtime, descriptor inventory, capability result, final-seal, Binder consumer, and native verification foundation landed through RFC 0029 `R29-14` and `R29-15`. `R28-16A` is the next unblocked task; production module-dependency provenance activation, final verification, current-design audit, and final status synchronization remain pending. |

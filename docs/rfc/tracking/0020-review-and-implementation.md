@@ -257,8 +257,9 @@ separate executable-root admission algorithms. No owner-body capability reads
 | Native conditional-read, rejection, decoder, and mutation gates | `R29-13C` |
 | Atomic runtime landing and final evidence | `R29-14` through `R29-17` |
 
-RFC 0020 remains `IMPLEMENTING`; the synchronized descriptor contracts are
-pending their RFC 0029 implementation evidence.
+RFC 0029 completed the synchronized descriptor contracts and implementation
+evidence through `R29-17`. RFC 0020 remains `IMPLEMENTING` because its
+remaining integrated Binder work is outside RFC 0029.
 
 ## Implementation Tracker
 
@@ -268,7 +269,7 @@ listed in the accepted proposal.
 
 | Phase | Scope | Status | Evidence |
 |---|---|---|---|
-| 0 | RFC 0029 synchronized query identity and descriptor failure closure | Pending | RFC 0029 `R29-12A` through `R29-17`; no synchronized runtime implementation evidence is recorded |
+| 0 | RFC 0029 synchronized query identity and descriptor failure closure | Complete | RFC 0029 `R29-12A` through `R29-17` landed the synchronized query identity, descriptor failures, runtime source transaction, and final evidence |
 | 1 | Performance runner, corpus, and reviewed pre-implementation baseline | Complete | `scripts/run-incremental-query-benchmarks.py`; closed corpus and baseline at revision `76e73196f3f9682bb1e5a6f88e7d77c00258a82f`; Release Binder median `332907000 ns`, MAD `1.44%`, peak RSS `5029888 bytes`; module projection median `28489000 ns`, MAD `2.17%`, peak RSS `2867200 bytes`; architecture check and self-test passed. |
 | 2 | Tracked input probe and presence-aware dependency validation | Complete | `QueryContext::probeInput` and `QuerySnapshot::probeInput`; explicit `Present` and `Absent` dependency observations; codec-validated input keys; four presence transitions, equal present, cancellation, derived-kind rejection, context continuation, cloning, eviction, durability, and no-tombstone regressions; five Query runtime tests and incremental-query architecture check and self-test passed under the sanitizer build. |
 | 3 | Complete definition-record decoder and fixed codec vectors | Complete | `DefinitionIdentityRecord::decodeCanonical` performs strict bounded standalone decoding. Native identity and authority tests cover the fixed SHA-256 vector, truncation, malformed lengths, trailing bytes, oversized records, and key-to-record digest mismatch under the sanitizer build. |

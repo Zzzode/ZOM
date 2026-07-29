@@ -1524,21 +1524,20 @@ blocked by `R25-12G`.
   pending.
 - RFC 0028 acceptance synchronization records proposal SHA-256
   `944b68ffc0aff5576d079a243ff092d7d19fba5ffed65551dda8e68adf230db4`
-  and transaction `rfc0028-accept-20260727-944b68ff`. It changes design and
-  dependency authority only; `R28-13A` through `R28-14` and `R28-16` through
-  `R28-19` remain pending.
+  and transaction `rfc0028-accept-20260727-944b68ff`. `R28-13A` through
+  `R28-14` are complete through RFC 0029; `R28-16A` through `R28-19` remain
+  pending.
 - RFC 0029 acceptance synchronization records proposal SHA-256
   `8d393a0c6c00a7fad9ef086d3d25f5ed44300041afa9e1e1a4af5d68830fd3e7`
-  and transaction `rfc0029-accept-20260727-8d393a0c`. It changes design and
-  dependency authority only; `R29-12A` through `R29-17` remain pending.
+  and transaction `rfc0029-accept-20260727-8d393a0c`. `R29-12A` through
+  `R29-17` are complete; RFC 0029 is `LANDED`.
 
 ## Blocking Dependencies
 
-- RFC 0027 implementation roots resume only through the corrected dependency
-  order: exact RFC 0030 `R29-12AB`, then the separate `R29-12D` transaction,
-  then runtime work beginning at `R29-13A`.
-- `R25-07` cannot complete its graph and session boundary before `R29-14` and
-  RFC 0028 `R28-16`, or its owner-body closure boundary before `R29-12AB` and
-  `R29-14`; `R25-07T` cannot complete before `R29-15`.
+- RFC 0029 completed the runtime prerequisites through `R29-17`.
+- `R25-07` graph and session completion remains blocked by RFC 0028 `R28-16`;
+  its RFC 0029 owner-body prerequisites are satisfied. `R25-07T` still depends
+  on the local `R25-07` implementation even though its RFC 0029 verification
+  prerequisite is satisfied.
 - `R25-12G` remains externally blocked by RFC 0023 acceptance and its named
   production foundation.

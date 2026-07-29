@@ -2,7 +2,7 @@
 rfc: 29
 title: Query Identity And Capability Failure Closure
 type: compiler
-status: IMPLEMENTING
+status: LANDED
 author: ZOM Compiler Team
 review-manager: rfc
 required-owners: [task-router, rfc, module-system, binder-checker, runtime-memory, error-system, spec-audit, verification]
@@ -1378,3 +1378,4 @@ None
 | 2026-07-28 | ACCEPTED | `R29-12A`, `R29-12B`, and `R29-12AB` published at `8885782747e4c863cefcb0d069bc4569cefce9aa`; RFC 0042 owns the pending `R29-12D` source-only diagnostic replacement, and `R29-13A` through `R29-17` remain pending. |
 | 2026-07-29 | IMPLEMENTING | RFC 0042 completed `R29-12D` at `58897c116cafe3463ec6a46ac3bbdd530ef991a5`; `R29-13A` is the next unblocked implementation task. |
 | 2026-07-29 | IMPLEMENTING | Transaction `rfc0028-r29-14-scope-20260729-521d82c7` bound exact four-document candidate manifest SHA-256 `521d82c731dee0a4b262e937d5578651850446eebfe7448a71a39cb63fc8e086`, adding only the four omitted Binder callers to the atomic source union without completing an implementation task. |
+| 2026-07-29 | LANDED | `R29-13A` through `R29-14` landed through `d83eed927ad782963dc49a143b4dab48cb857f85`; Binder failure verification and Release validation corrections landed through `89d0c5e1ea1087bdf27c4d8745ed86de8363b842` and `e9ccb17fab8ba8ec471afa9512e8b13e6f30fcc5`; the approved Release baseline and passing comparison landed at `cd94cf6bc220158114125d151658aa88c1db335c`; and production-backed current design was published at `598fa6d6a7b4d2ea7ed4f1d61e321c07c624e83c`. Downstream RFC 0028 provenance activation and CompilerSession final-seal adoption remain separately tracked work. |

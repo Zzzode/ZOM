@@ -174,8 +174,10 @@ mutation test in `R30-13`.
 | `R27-32A` | `verification` | `R27-33A` | Recompute and byte-compare the fixed report without writing it, then rerun English-only, RFC, format, versioning, and diff gates after every spec-audit edit. | Final write-free RFC 0027 Test Plan subset | Pending |
 | `R27-33` | `rfc` | `R27-32A` | Audit all implementation, report, and final verification evidence, then perform the only synchronized RFC implementation-state transitions. | `python3 scripts/check-rfc.py` | Pending |
 
-`R27-12B`, `R27-12C`, `R27-12D`, and `R27-17A` are complete. Remaining
-implementation is authorized only in the dependency order recorded above.
+`R27-12B`, `R27-12C`, `R27-12D`, `R27-17A`, and all RFC 0029 dependencies
+through `R29-17` are complete. Remaining implementation is authorized only in
+the dependency order recorded above; RFC 0028 `R28-16` remains a prerequisite
+for the graph-materialization path.
 `R27-17A` remains the completed Q3 production task; RFC 0030 `R30-13` owns
 only the additional comprehensive schema mutation test and exact landing
 allowlist entry.
