@@ -1,0 +1,4 @@
+interface Trait {}
+struct Item {}
+
+impl Trait for Item where Item: Trait {}

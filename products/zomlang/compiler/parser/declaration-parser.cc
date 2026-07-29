@@ -2297,6 +2297,11 @@ ast::NodeId Parser::Impl::parseStandaloneImplDeclaration(AstFactory& builder, si
   if (where < headerEnd) {
     whereClause = parseWhereClause(builder, where, headerEnd);
     if (!whereClause) { return ast::NodeId(); }
+    if (!typeParams) {
+      zc::Vector<ast::NodeId> emptyParams;
+      typeParams = builder.makeGenericParams(rangeFor(where, headerEnd), 0,
+                                             builder.makeList(emptyParams.asPtr()), ast::NodeId());
+    }
   }
 
   TokenCursor plusCursor = tokenCursorAt(ifaceStart);

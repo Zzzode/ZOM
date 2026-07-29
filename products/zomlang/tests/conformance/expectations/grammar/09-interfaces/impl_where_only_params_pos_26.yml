@@ -1,0 +1,4 @@
+section: "§12.2 WhereClause"
+covers_rule: "standaloneImplDeclaration, whereClause"
+expected: "ACCEPT"
+notes: []
