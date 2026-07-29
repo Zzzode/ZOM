@@ -104,8 +104,8 @@ bool containsDefinitionRecord(const binder::NamedDefinitionInventory& inventory,
 
 bool containsImplementationKey(const binder::NamedImplementationInventory& inventory,
                                const identity::ImplKey& key) {
-  for (const auto& candidate : inventory.keys()) {
-    if (candidate == key) { return true; }
+  for (const auto& entry : inventory.entries()) {
+    if (entry.key() == key) { return true; }
   }
   return false;
 }

@@ -41,19 +41,39 @@ public:
   ZC_NODISCARD static zc::Maybe<NamedDefinitionInventory> decodeCanonical(
       zc::ArrayPtr<const uint8_t> bytes);
   ZC_NODISCARD NamedDefinitionInventory clone() const;
-  ZC_NODISCARD zc::ArrayPtr<const NamedDefinitionInventoryEntry> entries() const
-      ZC_LIFETIMEBOUND;
+  ZC_NODISCARD zc::ArrayPtr<const NamedDefinitionInventoryEntry> entries() const ZC_LIFETIMEBOUND;
   ZC_NODISCARD zc::Array<uint8_t> encodeCanonical() const;
   ZC_NODISCARD bool sameAs(const NamedDefinitionInventory& other) const;
 
 private:
-  explicit NamedDefinitionInventory(
-      zc::Vector<NamedDefinitionInventoryEntry>&& entries) noexcept;
+  explicit NamedDefinitionInventory(zc::Vector<NamedDefinitionInventoryEntry>&& entries) noexcept;
 
   zc::Vector<NamedDefinitionInventoryEntry> entryFields;
 };
 
-/// \brief Canonical semantic active implementation-key inventory for one module.
+/// \brief One stable implementation key and its complete RFC 0018 identity record.
+class NamedImplementationInventoryEntry final {
+public:
+  NamedImplementationInventoryEntry(NamedImplementationInventoryEntry&&) noexcept = default;
+  NamedImplementationInventoryEntry& operator=(NamedImplementationInventoryEntry&&) noexcept =
+      default;
+  ZC_DISALLOW_COPY(NamedImplementationInventoryEntry);
+
+  ZC_NODISCARD NamedImplementationInventoryEntry clone() const;
+  ZC_NODISCARD const identity::ImplKey& key() const noexcept;
+  ZC_NODISCARD const identity::ImplIdentityRecord& record() const noexcept;
+
+private:
+  NamedImplementationInventoryEntry(identity::ImplKey&& key,
+                                    identity::ImplIdentityRecord&& record) noexcept;
+
+  identity::ImplKey keyField;
+  identity::ImplIdentityRecord recordField;
+
+  friend class NamedImplementationInventory;
+};
+
+/// \brief Canonical semantic active implementation inventory for one module.
 class NamedImplementationInventory final {
 public:
   NamedImplementationInventory(NamedImplementationInventory&&) noexcept = default;
@@ -66,14 +86,16 @@ public:
   ZC_NODISCARD static zc::Maybe<NamedImplementationInventory> decodeCanonical(
       zc::ArrayPtr<const uint8_t> bytes);
   ZC_NODISCARD NamedImplementationInventory clone() const;
-  ZC_NODISCARD zc::ArrayPtr<const identity::ImplKey> keys() const ZC_LIFETIMEBOUND;
+  ZC_NODISCARD zc::ArrayPtr<const NamedImplementationInventoryEntry> entries() const
+      ZC_LIFETIMEBOUND;
   ZC_NODISCARD zc::Array<uint8_t> encodeCanonical() const;
   ZC_NODISCARD bool sameAs(const NamedImplementationInventory& other) const;
 
 private:
-  explicit NamedImplementationInventory(zc::Vector<identity::ImplKey>&& keys) noexcept;
+  explicit NamedImplementationInventory(
+      zc::Vector<NamedImplementationInventoryEntry>&& entries) noexcept;
 
-  zc::Vector<identity::ImplKey> keyFields;
+  zc::Vector<NamedImplementationInventoryEntry> entryFields;
 };
 
 }  // namespace zomlang::compiler::binder

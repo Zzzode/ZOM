@@ -12,7 +12,7 @@ constexpr zc::StringPtr kDefinitionInventoryDomain = "zom.named-definition-inven
 constexpr zc::StringPtr kImplementationInventoryDomain = "zom.named-implementation-inventory"_zc;
 constexpr zc::StringPtr kDefinitionKeyDomain = "zom.named-item-header"_zc;
 constexpr uint64_t kMaximumInventoryEntries = 1024 * 1024;
-constexpr uint64_t kMaximumDefinitionRecordBytes = 4 * 1024 * 1024;
+constexpr uint64_t kMaximumIdentityRecordBytes = 4 * 1024 * 1024;
 constexpr uint64_t kMaximumInventoryBytes = 64 * 1024 * 1024;
 
 int compareBytes(zc::ArrayPtr<const uint8_t> left, zc::ArrayPtr<const uint8_t> right) noexcept {
@@ -132,7 +132,7 @@ zc::Maybe<NamedDefinitionInventory> NamedDefinitionInventory::decodeCanonical(
   zc::Vector<NamedDefinitionInventoryEntry> entries(static_cast<size_t>(ZC_ASSERT_NONNULL(count)));
   for (uint64_t index = 0; index < ZC_ASSERT_NONNULL(count); ++index) {
     auto digest = decoder.decodeDigest();
-    auto record = decoder.decodeByteString(kMaximumDefinitionRecordBytes);
+    auto record = decoder.decodeByteString(kMaximumIdentityRecordBytes);
     if (digest == zc::none || record == zc::none) { return zc::none; }
     auto key = identity::DefinitionKey::fromBytes(ZC_ASSERT_NONNULL(digest).bytes());
     if (key == zc::none ||
@@ -177,9 +177,25 @@ bool NamedDefinitionInventory::sameAs(const NamedDefinitionInventory& other) con
   return encodeCanonical().asPtr() == other.encodeCanonical().asPtr();
 }
 
+NamedImplementationInventoryEntry::NamedImplementationInventoryEntry(
+    identity::ImplKey&& key, identity::ImplIdentityRecord&& record) noexcept
+    : keyField(zc::mv(key)), recordField(zc::mv(record)) {}
+
+NamedImplementationInventoryEntry NamedImplementationInventoryEntry::clone() const {
+  return NamedImplementationInventoryEntry(keyField.clone(), recordField.clone());
+}
+
+const identity::ImplKey& NamedImplementationInventoryEntry::key() const noexcept {
+  return keyField;
+}
+
+const identity::ImplIdentityRecord& NamedImplementationInventoryEntry::record() const noexcept {
+  return recordField;
+}
+
 NamedImplementationInventory::NamedImplementationInventory(
-    zc::Vector<identity::ImplKey>&& keys) noexcept
-    : keyFields(zc::mv(keys)) {}
+    zc::Vector<NamedImplementationInventoryEntry>&& entries) noexcept
+    : entryFields(zc::mv(entries)) {}
 
 zc::Maybe<NamedImplementationInventory> NamedImplementationInventory::fromVerified(
     const identity::ModuleKey& module,
@@ -194,15 +210,16 @@ zc::Maybe<NamedImplementationInventory> NamedImplementationInventory::fromVerifi
   }
   sortImplementations(sorted);
 
-  zc::Vector<identity::ImplKey> keys(sorted.size());
+  zc::Vector<NamedImplementationInventoryEntry> entries(sorted.size());
   for (size_t index = 0; index < sorted.size(); ++index) {
     if (index != 0 && sorted[index - 1].key() == sorted[index].key()) {
       if (!sorted[index - 1].sameRecordAs(sorted[index])) { return zc::none; }
       continue;
     }
-    keys.add(sorted[index].key().clone());
+    entries.add(NamedImplementationInventoryEntry(sorted[index].key().clone(),
+                                                  sorted[index].record().clone()));
   }
-  NamedImplementationInventory result(zc::mv(keys));
+  NamedImplementationInventory result(zc::mv(entries));
   if (result.encodeCanonical().size() > kMaximumInventoryBytes) { return zc::none; }
   return zc::mv(result);
 }
@@ -217,38 +234,55 @@ zc::Maybe<NamedImplementationInventory> NamedImplementationInventory::decodeCano
       ZC_ASSERT_NONNULL(domain).asPtr() != kImplementationInventoryDomain.asBytes()) {
     return zc::none;
   }
-  zc::Vector<identity::ImplKey> keys(static_cast<size_t>(ZC_ASSERT_NONNULL(count)));
+  zc::Vector<NamedImplementationInventoryEntry> entries(
+      static_cast<size_t>(ZC_ASSERT_NONNULL(count)));
   for (uint64_t index = 0; index < ZC_ASSERT_NONNULL(count); ++index) {
     auto digest = decoder.decodeDigest();
-    if (digest == zc::none) { return zc::none; }
+    auto recordBytes = decoder.decodeByteString(kMaximumIdentityRecordBytes);
+    if (digest == zc::none || recordBytes == zc::none) { return zc::none; }
     auto key = identity::ImplKey::fromBytes(ZC_ASSERT_NONNULL(digest).bytes());
-    if (key == zc::none) { return zc::none; }
+    auto record =
+        identity::ImplIdentityRecord::decodeCanonical(ZC_ASSERT_NONNULL(recordBytes).asPtr());
+    if (key == zc::none || record == zc::none) { return zc::none; }
     ZC_IF_SOME(keyValue, key) {
-      if (keys.size() != 0 && compareBytes(keys.back().bytes(), keyValue.bytes()) >= 0) {
+      if (entries.size() != 0 &&
+          compareBytes(entries.back().key().bytes(), keyValue.bytes()) >= 0) {
         return zc::none;
       }
-      keys.add(zc::mv(keyValue));
+      ZC_IF_SOME(recordValue, record) {
+        if (identity::ImplKey::compute(recordValue) != keyValue) { return zc::none; }
+        if (entries.size() != 0 &&
+            !sameModule(entries[0].record().module(), recordValue.module())) {
+          return zc::none;
+        }
+        entries.add(NamedImplementationInventoryEntry(zc::mv(keyValue), zc::mv(recordValue)));
+      }
     }
   }
   if (!decoder.finished()) { return zc::none; }
-  return NamedImplementationInventory(zc::mv(keys));
+  return NamedImplementationInventory(zc::mv(entries));
 }
 
 NamedImplementationInventory NamedImplementationInventory::clone() const {
-  zc::Vector<identity::ImplKey> keys(keyFields.size());
-  for (const auto& key : keyFields) { keys.add(key.clone()); }
-  return NamedImplementationInventory(zc::mv(keys));
+  zc::Vector<NamedImplementationInventoryEntry> entries(entryFields.size());
+  for (const auto& entry : entryFields) { entries.add(entry.clone()); }
+  return NamedImplementationInventory(zc::mv(entries));
 }
 
-zc::ArrayPtr<const identity::ImplKey> NamedImplementationInventory::keys() const {
-  return keyFields.asPtr();
+zc::ArrayPtr<const NamedImplementationInventoryEntry> NamedImplementationInventory::entries()
+    const {
+  return entryFields.asPtr();
 }
 
 zc::Array<uint8_t> NamedImplementationInventory::encodeCanonical() const {
   identity::CanonicalEncoder encoder;
   encoder.encodeByteString(kImplementationInventoryDomain.asBytes());
-  encoder.encodeSequenceSize(keyFields.size());
-  for (const auto& key : keyFields) { key.encode(encoder); }
+  encoder.encodeSequenceSize(entryFields.size());
+  for (const auto& entry : entryFields) {
+    entry.key().encode(encoder);
+    auto record = entry.record().encode();
+    encoder.encodeByteString(record.asPtr());
+  }
   return encoder.finish();
 }
 

@@ -6,6 +6,7 @@
 #include "zomlang/compiler/driver/named-identity-inventory-query.h"
 
 #include "zc/ztest/test.h"
+#include "zomlang/compiler/identity/canonical-encoder.h"
 #include "zomlang/tests/unittests/compiler/test-semantic-identities.h"
 
 namespace zomlang::compiler::driver::incremental_binding_query {
@@ -25,6 +26,85 @@ zc::Array<uint8_t> withTrailingByte(zc::ArrayPtr<const uint8_t> bytes) {
   result.first(bytes.size()).copyFrom(bytes);
   result.back() = 0;
   return result;
+}
+
+int compareBytes(zc::ArrayPtr<const uint8_t> left, zc::ArrayPtr<const uint8_t> right) noexcept {
+  const size_t shared = left.size() < right.size() ? left.size() : right.size();
+  for (size_t index = 0; index < shared; ++index) {
+    if (left[index] < right[index]) { return -1; }
+    if (left[index] > right[index]) { return 1; }
+  }
+  if (left.size() < right.size()) { return -1; }
+  if (left.size() > right.size()) { return 1; }
+  return 0;
+}
+
+identity::ModuleKey semanticModule(zc::StringPtr name) {
+  zc::Vector<identity::ModulePathSegment> path;
+  path.add(tests::test_identity_detail::scalar<identity::ModulePathSegment>(name));
+  auto result = identity::ModuleKey::from(tests::test_identity_detail::crate(), zc::mv(path));
+  return require(zc::mv(result));
+}
+
+identity::CanonicalNameReference implementationName(zc::StringPtr name) {
+  zc::Vector<identity::SemanticIdentifier> suffix;
+  suffix.add(tests::test_identity_detail::scalar<identity::SemanticIdentifier>(name));
+  auto result = identity::CanonicalNameReference::from(identity::CanonicalNameRoot::relative(),
+                                                       zc::mv(suffix));
+  return require(zc::mv(result));
+}
+
+identity::CanonicalImplHeader implementationHeader(zc::StringPtr traitName) {
+  zc::Vector<identity::CanonicalHeaderTypeSyntax> arguments;
+  auto trait =
+      identity::CanonicalTraitReference::from(implementationName(traitName), zc::mv(arguments));
+  auto selfType =
+      identity::CanonicalHeaderTypeSyntax::predefined(identity::PredefinedTypeKind::I32);
+  zc::Vector<identity::CanonicalGenericParameter> generics;
+  zc::Vector<identity::CanonicalBoundObligation> obligations;
+  auto result = identity::CanonicalImplHeader::from(
+      zc::mv(generics), identity::ImplPolarity::Positive, identity::ImplSafety::Safe,
+      require(zc::mv(trait)), require(zc::mv(selfType)), zc::mv(obligations));
+  return require(zc::mv(result));
+}
+
+identity::ImplIdentityAuthority implementationAuthority(identity::ModuleKey&& module,
+                                                        zc::StringPtr traitName) {
+  zc::Vector<identity::EnclosingStableOwnerKey> owners;
+  return identity::ImplIdentityAuthority::from(identity::ImplIdentityRecord::from(
+      zc::mv(module), zc::mv(owners), implementationHeader(traitName)));
+}
+
+void encodeImplementationEntry(identity::CanonicalEncoder& encoder, const identity::ImplKey& key,
+                               const identity::ImplIdentityRecord& record) {
+  key.encode(encoder);
+  auto recordBytes = record.encode();
+  encoder.encodeByteString(recordBytes.asPtr());
+}
+
+zc::Array<uint8_t> singleImplementationEntryBytes(const identity::ImplKey& key,
+                                                  const identity::ImplIdentityRecord& record) {
+  identity::CanonicalEncoder encoder;
+  encoder.encodeByteString("zom.named-implementation-inventory"_zcb);
+  encoder.encodeSequenceSize(1);
+  encodeImplementationEntry(encoder, key, record);
+  return encoder.finish();
+}
+
+zc::Array<uint8_t> twoImplementationEntryBytes(const identity::ImplIdentityAuthority& first,
+                                               const identity::ImplIdentityAuthority& second,
+                                               bool sortEntries) {
+  identity::CanonicalEncoder encoder;
+  encoder.encodeByteString("zom.named-implementation-inventory"_zcb);
+  encoder.encodeSequenceSize(2);
+  if (sortEntries && compareBytes(second.key().bytes(), first.key().bytes()) < 0) {
+    encodeImplementationEntry(encoder, second.key(), second.record());
+    encodeImplementationEntry(encoder, first.key(), first.record());
+  } else {
+    encodeImplementationEntry(encoder, first.key(), first.record());
+    encodeImplementationEntry(encoder, second.key(), second.record());
+  }
+  return encoder.finish();
 }
 
 template <typename Descriptor>
@@ -141,6 +221,68 @@ ZC_TEST("NamedIdentityInventoryQueryTest.SemanticAndRevisionLocalCodecsRejectTra
   ZC_EXPECT(ZC_REQUIRE_NONNULL(decodedRevisionImplementations)->sameAs(revisionImplementations));
   ZC_EXPECT(query::CapabilityCandidateContract<RevisionLocalImplementationSitesQuery>::decode(
                 withTrailingByte(implementationWitness.bytes()).asPtr()) == zc::none);
+}
+
+ZC_TEST("NamedIdentityInventoryQueryTest.ImplementationInventoryRetainsCanonicalRecords") {
+  auto first = implementationAuthority(semanticModule("test"_zc), "First"_zc);
+  auto second = implementationAuthority(semanticModule("test"_zc), "Second"_zc);
+  zc::Vector<identity::ImplIdentityAuthority> authorities;
+  if (compareBytes(first.key().bytes(), second.key().bytes()) < 0) {
+    authorities.add(second.clone());
+    authorities.add(first.clone());
+  } else {
+    authorities.add(first.clone());
+    authorities.add(second.clone());
+  }
+
+  auto inventory = require(binder::NamedImplementationInventory::fromVerified(
+      semanticModule("test"_zc), authorities.asPtr()));
+  ZC_REQUIRE(inventory.entries().size() == 2);
+  ZC_EXPECT(
+      compareBytes(inventory.entries()[0].key().bytes(), inventory.entries()[1].key().bytes()) < 0);
+  for (const auto& entry : inventory.entries()) {
+    ZC_EXPECT(identity::ImplKey::compute(entry.record()) == entry.key());
+  }
+
+  zc::Vector<identity::ImplIdentityAuthority> duplicates;
+  duplicates.add(first.clone());
+  duplicates.add(first.clone());
+  auto deduplicated = require(binder::NamedImplementationInventory::fromVerified(
+      semanticModule("test"_zc), duplicates.asPtr()));
+  ZC_EXPECT(deduplicated.entries().size() == 1);
+
+  zc::Vector<identity::ImplIdentityAuthority> wrongModule;
+  wrongModule.add(implementationAuthority(semanticModule("other"_zc), "Other"_zc));
+  ZC_EXPECT(binder::NamedImplementationInventory::fromVerified(semanticModule("test"_zc),
+                                                               wrongModule.asPtr()) == zc::none);
+}
+
+ZC_TEST("NamedIdentityInventoryQueryTest.ImplementationInventoryRejectsInvalidWireRelations") {
+  auto first = implementationAuthority(semanticModule("test"_zc), "First"_zc);
+  auto second = implementationAuthority(semanticModule("test"_zc), "Second"_zc);
+
+  auto canonical = twoImplementationEntryBytes(first, second, true);
+  auto decoded = binder::NamedImplementationInventory::decodeCanonical(canonical.asPtr());
+  ZC_REQUIRE(decoded != zc::none);
+  ZC_EXPECT(ZC_REQUIRE_NONNULL(decoded).entries().size() == 2);
+
+  auto nonIncreasing = twoImplementationEntryBytes(first, second, false);
+  if (compareBytes(first.key().bytes(), second.key().bytes()) < 0) {
+    nonIncreasing = twoImplementationEntryBytes(second, first, false);
+  }
+  ZC_EXPECT(binder::NamedImplementationInventory::decodeCanonical(nonIncreasing.asPtr()) ==
+            zc::none);
+
+  auto duplicate = twoImplementationEntryBytes(first, first, false);
+  ZC_EXPECT(binder::NamedImplementationInventory::decodeCanonical(duplicate.asPtr()) == zc::none);
+
+  auto mismatched = singleImplementationEntryBytes(first.key(), second.record());
+  ZC_EXPECT(binder::NamedImplementationInventory::decodeCanonical(mismatched.asPtr()) == zc::none);
+
+  auto otherModule = implementationAuthority(semanticModule("other"_zc), "Other"_zc);
+  auto mixedModules = twoImplementationEntryBytes(first, otherModule, true);
+  ZC_EXPECT(binder::NamedImplementationInventory::decodeCanonical(mixedModules.asPtr()) ==
+            zc::none);
 }
 
 }  // namespace zomlang::compiler::driver::incremental_binding_query

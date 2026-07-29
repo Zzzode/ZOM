@@ -551,7 +551,12 @@ ZC_TEST("Incremental binding query publishes verified stable named inventories")
   auto implementations = snapshot.get<NamedImplementationInventoryQuery>(moduleKey);
   ZC_REQUIRE(!implementations.isRuntimeFailure());
   ZC_REQUIRE(implementations.kind() == query::QueryValueKind::Value);
-  ZC_EXPECT(implementations.value().keys().size() == 1);
+  ZC_REQUIRE(implementations.value().entries().size() == 1);
+  ZC_EXPECT(implementations.value().entries()[0].key() ==
+            admission.lease().capability().implementations()[0].authority.key());
+  ZC_EXPECT(
+      implementations.value().entries()[0].record().encode().asPtr() ==
+      admission.lease().capability().implementations()[0].authority.record().encode().asPtr());
   zc::Vector<binder::RevisionLocalImplementationSite> reconstructedImplementationSites;
   for (const auto& implementation : admission.lease().capability().implementations()) {
     auto occurrence = binder::ImplSourceOccurrenceKey::from(implementation.authority.key().clone(),
@@ -598,6 +603,10 @@ ZC_TEST("Incremental binding query publishes verified stable named inventories")
       binder::NamedImplementationInventory::decodeCanonical(implementationBytes.asPtr());
   ZC_REQUIRE(decodedImplementations != zc::none);
   ZC_EXPECT(ZC_ASSERT_NONNULL(decodedImplementations).sameAs(implementations.value()));
+  auto malformedImplementations = zc::heapArray<uint8_t>(implementationBytes.asPtr());
+  malformedImplementations.back() ^= 0x01;
+  ZC_EXPECT(binder::NamedImplementationInventory::decodeCanonical(
+                malformedImplementations.asPtr()) == zc::none);
   auto trailingImplementations = zc::heapArray<uint8_t>(implementationBytes.size() + 1);
   for (size_t index = 0; index < implementationBytes.size(); ++index) {
     trailingImplementations[index] = implementationBytes[index];
