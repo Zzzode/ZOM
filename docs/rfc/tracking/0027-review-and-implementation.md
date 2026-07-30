@@ -241,6 +241,12 @@ two-document pre-evidence Git diff below. M1C remains a review-only join,
 every partition remains prepare-only, and T1 remains the sole registration,
 build, test, final-publication, and landing authority.
 
+Transaction `rfc0027-materializer-acquisition-20260730-b29b5965` binds the
+M1C1A and M1C1B acquisition preparation split to the independently approved
+exact two-document pre-evidence Git diff below. M1C1 remains a review-only
+join, every partition remains prepare-only, and T1 remains the sole
+registration, build, test, final-publication, and landing authority.
+
 ### 2026-07-30 Atomic Build-Wiring Correction
 
 I2 and M1 each create one production translation unit, but the accepted T1
@@ -439,6 +445,27 @@ pre-evidence Git diff SHA-256
 Transaction `rfc0027-materializer-provider-20260730-233922df` records that
 approval and changes no source-task completion state.
 
+### 2026-07-30 Materializer Provider Acquisition Partition Correction
+
+Detailed M1C1 call-surface preflight found two independently reviewable
+workflows: complete-context, fingerprint-prerequisite, active-domain, graph,
+and SCC acquisition; and per-module selected-source, dependency, resolution,
+prelude, parse, provenance, and typed capability-failure acquisition.
+Together they exceed one approximately 400 changed-source-line task.
+
+The correction splits M1C1 into M1C1A for the first workflow and M1C1B for
+the second. M1C1 becomes a review-only join. M1C1A cannot issue per-module
+dependency or capability reads. M1C1B cannot repeat, reorder, or replace the
+approved M1C1A reads and cannot materialize identities. M1C2 depends on the
+complete M1C1 review. All partitions remain prepare-only; T1 remains the sole
+registration, build, test, final-publication, and landing authority.
+
+The user-designated independent approver accepted exact two-document
+pre-evidence Git diff SHA-256
+`b29b596572a00266acd539f7846421ba44136b7b0cf6579f0b2a1a7b493e5cd5`.
+Transaction `rfc0027-materializer-acquisition-20260730-b29b5965` records that
+approval and changes no source-task completion state.
+
 ## Implementation Tracker
 
 | Task | Owner | Depends On | Deliverable | Verification | Status |
@@ -490,7 +517,9 @@ approval and changes no source-task completion state.
 | `R27-23A3` | `module-system` | approved `R27-23A2` preparation | Prepare the four-domain identity-resource interface, exact active-materialization specializations, closed interner-failure mapping, and four permissions; do not land independently. | Resource, permission, and interner-failure review | Pending |
 | `R27-23A` | `module-system` | approved preparations `R27-23A1`; `R27-23A2`; `R27-23A3` | Review the complete M1A union without adding files or landing it. | Opaque value, resource, permission, and no-fallback review | Pending |
 | `R27-23B` | `module-system` | approved `R27-23A` preparation | Prepare stable dependency and graph witness construction, exact codecs, canonical comparison, and candidate contract; do not land independently. | Codec, exact-consumption, closure, and revision review | Pending |
-| `R27-23C1` | `module-system` | approved `R27-23B` preparation | Prepare provider-only canonical ordered input acquisition and exact typed child-failure forwarding through provenance reads; do not materialize or land independently. | Provider read-set, rejection-order, and provenance review | Pending |
+| `R27-23C1A` | `module-system` | approved `R27-23B` preparation | Prepare provider-only complete-context and fingerprint-prerequisite reads, active crate/source/module acquisition, and graph/SCC validation in canonical order; do not issue per-module dependency or capability reads and do not land independently. | Complete-context, fingerprint-input, active-domain, graph, and SCC review | Pending |
+| `R27-23C1B` | `module-system` | approved `R27-23C1A` preparation | Prepare provider-only per-module selected-source, dependency-site, request, exact-resolution, configured-prelude, parse, and provenance reads plus exact typed child-failure forwarding in canonical order; do not materialize or land independently. | Module read-set, rejection-order, parse, and provenance review | Pending |
+| `R27-23C1` | `module-system` | approved `R27-23C1A` and `R27-23C1B` preparations | Review the complete provider acquisition union without adding files or landing it. | Complete acquisition-order and typed-failure review | Pending |
 | `R27-23C2` | `module-system` | approved `R27-23C1` preparation | Prepare provider-only four-domain membership admission, logical-const materialization, and reverse expansion in the accepted domain order; do not publish a candidate or land independently. | Membership, resource, domain-order, and reverse-expansion review | Pending |
 | `R27-23C3` | `module-system` | approved `R27-23C2` preparation | Prepare provider-only stable witness, independently recomputed revision, handle-edge, and candidate publication from the approved ordered acquisition and materialization state; do not land independently. | Witness, revision, handle-edge, and candidate-publication review | Pending |
 | `R27-23C` | `module-system` | approved `R27-23C1` through `R27-23C3` preparations | Review the complete provider union without adding files or landing it. | Complete read-set, rejection-order, membership, reverse-expansion, and publication review | Pending |
