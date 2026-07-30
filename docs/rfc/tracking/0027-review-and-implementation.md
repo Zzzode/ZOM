@@ -522,6 +522,28 @@ Transaction
 `rfc0027-final-seal-test-boundary-20260730-f6c04155` records that approval
 without completing a source task.
 
+### 2026-07-30 Transaction Ownership Scope Correction
+
+T1 implementation preflight found that its exact file list omitted the owner
+of the first required transaction. The live
+`VerifiedCoreDistributionInputTransaction` is declared and implemented in
+`core-library-query-provider.{h,cc}` and covered by
+`core-library-query-provider-test.cc`. Leaving those files outside T1 would
+force either a second wrapper transaction or a witness-only follow-up
+revision, both of which violate the accepted atomic transaction contract.
+
+The corrected scope adds those three existing files to T1. The transaction is
+replaced directly with the caller-supplied expected revision, complete
+canonical payload validation, same-revision witness installation, closed
+`InputCommitResult`, and native stale-revision, mutation, witness, and
+failure-atomicity coverage. No source task is complete.
+
+The user-designated independent approver accepted exact four-document
+pre-evidence Git diff SHA-256
+`d0979738a664312a018922acc7d13fe8aa3fb5efe705c806cc3cef58a3ef7539`.
+Transaction `rfc0027-transaction-ownership-20260730-d0979738` records the
+correction without completing a source task.
+
 ## Implementation Tracker
 
 | Task | Owner | Depends On | Deliverable | Verification | Status |
@@ -593,7 +615,7 @@ without completing a source task.
 | `R27-27B` | `ir-backend` | `R27-27A` | Migrate verified HIR to a retained bound-module lease. | HIR lineage tests | Pending |
 | `R27-27C` | `ir-backend` | `R27-27B` | Migrate Built MIR to a retained bound-module lease. | MIR lineage tests | Pending |
 | `R27-27D` | `runtime-memory` | `R27-27C` | Migrate the ownership overlay to a retained bound-module lease and exact destruction order. | Ownership lineage tests | Pending |
-| `R27-28A` | `module-system` with `verification` and query-runtime review | RFC 0029 `R29-14`; RFC 0028 `R28-16`; approved preparations `R27-18A`, `R27-19`, and `R27-23` | Atomically land the complete-context value and descriptor, unique graph-revision and fingerprint construction boundaries, narrow capability-context revision and typed-resource accessors, memberships, readiness, graph and SCC witnesses, production and test descriptor inventories, their two exact driver CMake source rows, complete static final verifier, three transactions, query-test migration, both shadow deletions, full mutation matrix, and staging, final, and sealed snapshots. | Complete-context, canonical demand-order and authority-comparison, typed-resource invariant, final-seal, production/test query-inventory, mutation, session, and clean sanitizer gates | Pending |
+| `R27-28A` | `module-system` with `verification` and query-runtime review | RFC 0029 `R29-14`; RFC 0028 `R28-16`; approved preparations `R27-18A`, `R27-19`, and `R27-23` | Atomically land the complete-context value and descriptor, unique graph-revision and fingerprint construction boundaries, narrow capability-context revision and typed-resource accessors, memberships, readiness, graph and SCC witnesses, production and test descriptor inventories, their two exact driver CMake source rows, complete static final verifier, three caller-revision-bound transactions with same-revision witnesses, query-test migration, both shadow deletions, full mutation matrix, and staging, final, and sealed snapshots; the first transaction is replaced directly in `core-library-query-provider.{h,cc}` with native coverage in `core-library-query-provider-test.cc`. | Complete-context, transaction-result, stale-revision, witness, canonical demand-order and authority-comparison, typed-resource invariant, final-seal, production/test query-inventory, mutation, session, and clean sanitizer gates | Pending |
 | `R27-28B` | `module-system` | `R27-26A`; `R27-27D`; `R27-28A` | Make the arena-owned compiler-session semantic resource implement the approved module-graph identity-materialization interface, then implement the dependency-first production capability root over the RFC 0028 sealed snapshot and inherited admission contract. | Resource ownership, no-fallback, session architecture, and end-to-end tests | Pending |
 | `R27-28C` | `module-system` | `R27-28B` | Implement surviving-lease and session teardown order. | Teardown tests | Pending |
 | `R27-29` | `module-system` | `R27-28C` | Delete identity registry/freeze authority, session ledgers, and the session-owned handleful graph root. | Identity and session zero-reference gates | Pending |

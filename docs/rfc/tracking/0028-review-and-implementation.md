@@ -195,3 +195,21 @@ pre-evidence Git diff SHA-256
 Transaction
 `rfc0027-final-seal-test-boundary-20260730-f6c04155` records the synchronized
 correction without completing an RFC 0028 source task.
+
+### 2026-07-30 Transaction Ownership Scope Correction
+
+Final-seal implementation preflight found that RFC 0027 T1 omitted the live
+owner and native test of `VerifiedCoreDistributionInputTransaction` from its
+exact file list. The corrected scope adds
+`core-library-query-provider.{h,cc}` and
+`core-library-query-provider-test.cc`, replaces that transaction directly,
+and requires the same caller-supplied previous revision, closed commit result,
+canonical payload verification, and same-revision transaction witness as the
+other two session transactions. No wrapper or follow-up witness revision is
+permitted, and no RFC 0028 implementation task changes status.
+
+The user-designated independent approver accepted exact four-document
+pre-evidence Git diff SHA-256
+`d0979738a664312a018922acc7d13fe8aa3fb5efe705c806cc3cef58a3ef7539`.
+Transaction `rfc0027-transaction-ownership-20260730-d0979738` records the
+synchronized correction without completing an RFC 0028 source task.

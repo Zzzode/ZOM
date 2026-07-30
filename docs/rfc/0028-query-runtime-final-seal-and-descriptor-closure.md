@@ -545,6 +545,14 @@ verifier, the transaction witness, and the snapshot state machine in one
 buildable transaction. A temporary self-authentication check over only the
 stored value, key, or witness is forbidden.
 
+The same landing replaces the existing core-distribution transaction API in
+`core-library-query-provider.{h,cc}` directly. All three session transactions
+accept a caller-supplied expected previous revision, validate their complete
+payload before opening the database transaction, install their witness in the
+same new revision as their semantic inputs, and return `InputCommitResult`.
+They never discover their base revision internally and never publish a witness
+through a second transaction.
+
 Only `QueryDatabase::sealInputs` may turn `Verified` into the private
 nonconstructible `VerifiedFinalSealAuthority`, after phase three repeats all
 higher-priority state checks. The generator rejects zero or multiple complete
@@ -2057,3 +2065,4 @@ None
 | 2026-07-29 | IMPLEMENTING | The shared runtime, descriptor inventory, capability result, final-seal, Binder consumer, and native verification foundation landed through RFC 0029 `R29-14` and `R29-15`. `R28-16A` is the next unblocked task; production module-dependency provenance activation, final verification, current-design audit, and final status synchronization remain pending. |
 | 2026-07-30 | IMPLEMENTING | Transaction `rfc0027-context-atomic-20260730-b25aef90` binds the atomic landing correction to independently approved exact pre-evidence Git diff SHA-256 `b25aef908d13395fce59151e6e31a9fea2f11f788fdd2806d17fa378b99d8821`; RFC 0027 T1 is the sole landing authority for the complete final-seal dependency closure. No weak interim final verifier may land. |
 | 2026-07-30 | IMPLEMENTING | Transaction `rfc0027-final-seal-test-boundary-20260730-f6c04155` binds the generic-versus-production final-seal test responsibility correction to independently approved exact four-document pre-evidence Git diff SHA-256 `f6c041551684ac722a7b4e12682d963f65f01cd4557cc06ca0faaa5f07879437`; generic race tests retain the unique slot-56 test descriptor while production integration uses the real authority and witness. No implementation task is completed. |
+| 2026-07-30 | IMPLEMENTING | Transaction `rfc0027-transaction-ownership-20260730-d0979738` binds the T1 transaction-owner scope correction to independently approved exact four-document pre-evidence Git diff SHA-256 `d0979738a664312a018922acc7d13fe8aa3fb5efe705c806cc3cef58a3ef7539`; all three session transactions now require direct closed replacement, caller-supplied previous revision, pre-open canonical verification, and same-revision witnesses. No implementation task is completed. |
