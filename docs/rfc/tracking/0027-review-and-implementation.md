@@ -229,6 +229,12 @@ exact two-document pre-evidence Git diff below. M1 is a review-only join,
 every partition remains prepare-only, and T1 remains the sole atomic landing
 authority.
 
+Transaction `rfc0027-materializer-pimpl-20260730-ef91a1a3` binds the M1A1
+through M1A3 Pimpl preparation split to the independently approved exact
+two-document pre-evidence Git diff below. M1A remains a review-only join,
+every partition remains prepare-only, and T1 remains the sole registration,
+build, test, final-publication, and landing authority.
+
 ### 2026-07-30 Atomic Build-Wiring Correction
 
 I2 and M1 each create one production translation unit, but the accepted T1
@@ -382,6 +388,30 @@ pre-evidence Git diff SHA-256
 Transaction `rfc0027-materializer-partitions-20260730-2038e76b` records that
 approval and changes no source-task completion state.
 
+### 2026-07-30 Materializer Pimpl Partition Correction
+
+M1A source review found that the initial preparation exposed concrete storage
+for the two largest materialized graph values. Both contain multiple move-only
+authorities and vectors and therefore require Pimpl under the repository C++
+contract. Applying Pimpl to the complete public value family, including the
+explicitly instantiated identity-entry template, would also make the original
+M1A task exceed the approximately 400 changed-source-line limit.
+
+The correction splits M1A into M1A1 public Pimpl declarations, M1A2 private
+storage and basic value operations, and M1A3 resource, materialization,
+interner-failure, and permission implementation. M1A becomes a review-only
+join. Every non-trivial public M1 value has only `struct Impl; zc::Own<Impl>`
+storage; template implementation remains in the `.cc` file with only the four
+approved explicit M1 instantiations. M1B may add witness construction and
+codecs but cannot expose storage. All three partitions remain prepare-only;
+T1 remains the sole registration, build, test, and landing authority.
+
+The user-designated independent approver accepted exact two-document
+pre-evidence Git diff SHA-256
+`ef91a1a3a81ef9d8ed84335bc3f9e0629b8b1442d302a55972bd210fdeca56a3`.
+Transaction `rfc0027-materializer-pimpl-20260730-ef91a1a3` records that
+approval and changes no source-task completion state.
+
 ## Implementation Tracker
 
 | Task | Owner | Depends On | Deliverable | Verification | Status |
@@ -428,7 +458,10 @@ approval and changes no source-task completion state.
 | `R27-20` | `binder-checker` | RFC 0029 `R29-12AB`; RFC 0029 `R29-12D`; `R27-15E` | Implement `BindModuleSkeleton`, lookup projections, and independent verifier. | Skeleton and read-set tests | Pending |
 | `R27-21` | `binder-checker` | `R27-20` | Implement contextual `BindOwnerBody` and independent traversal/verifier. | Body, capture, control, and source-failure tests | Pending |
 | `R27-22` | `binder-checker` | `R27-21` | Implement the deterministic five-domain module allocation plan. | Overflow and reversed-demand tests | Pending |
-| `R27-23A` | `module-system` | RFC 0029 `R29-14`; RFC 0028 `R28-16`; approved `R27-19` preparation | Prepare public materialized graph values, the four-domain identity-resource interface, exact active-materialization specializations, and the descriptor declaration; do not land independently. | Value-shape, resource, permission, and interner-failure review | Pending |
+| `R27-23A1` | `module-system` | RFC 0029 `R29-14`; RFC 0028 `R28-16`; approved `R27-19` preparation | Prepare public Pimpl declarations for every non-trivial materialized graph value, explicit identity-entry aliases, and the descriptor declaration; do not land independently. | Value-shape, opaque-layout, and header-boundary review | Pending |
+| `R27-23A2` | `module-system` | approved `R27-23A1` preparation | Prepare private Pimpl storage, explicit identity-entry instantiations, move operations, destructors, clones, and basic accessors; do not land independently. | Pimpl, ownership, move-only, and accessor review | Pending |
+| `R27-23A3` | `module-system` | approved `R27-23A2` preparation | Prepare the four-domain identity-resource interface, exact active-materialization specializations, closed interner-failure mapping, and four permissions; do not land independently. | Resource, permission, and interner-failure review | Pending |
+| `R27-23A` | `module-system` | approved preparations `R27-23A1`; `R27-23A2`; `R27-23A3` | Review the complete M1A union without adding files or landing it. | Opaque value, resource, permission, and no-fallback review | Pending |
 | `R27-23B` | `module-system` | approved `R27-23A` preparation | Prepare stable dependency and graph witness construction, exact codecs, canonical comparison, and candidate contract; do not land independently. | Codec, exact-consumption, closure, and revision review | Pending |
 | `R27-23C` | `module-system` | approved `R27-23B` preparation | Prepare the canonical total-order provider, typed child-failure forwarding, membership admission, reverse expansion, and candidate publication; do not land independently. | Provider read-set, rejection-order, membership, and provenance review | Pending |
 | `R27-23D` | `module-system` | approved `R27-23C` preparation | Prepare the independent canonical total-order verifier without provider graph, edge-order, candidate, or revision helpers; do not land independently. | Independent reconstruction and mutation review | Pending |
