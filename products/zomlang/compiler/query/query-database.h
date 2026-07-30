@@ -415,6 +415,17 @@ public:
     return context.probeInput<Spec>(key);
   }
 
+  /// \brief Returns the immutable revision captured by this capability evaluation.
+  ZC_NODISCARD DatabaseRevision snapshotRevision() const noexcept {
+    return context.snapshotRevision();
+  }
+
+  /// \brief Returns the descriptor's exact semantic-resource interface when available.
+  template <typename Resource>
+  ZC_NODISCARD zc::Maybe<const Resource&> semanticContextResources() const ZC_LIFETIMEBOUND {
+    return zc::dynamicDowncastIfAvailable<const Resource>(context.semanticContextResources());
+  }
+
   /// \brief Materializes one identity after exact active-membership admission.
   template <typename GlobalIdentityKey, typename MembershipDescriptor>
     requires(
@@ -446,14 +457,18 @@ public:
       return TypedQueryResult<Handle>::runtimeFailure(QueryRuntimeFailure::InvariantViolation);
     }
     if (!membership.value().isActive()) { return TypedQueryResult<Handle>::absence(); }
-    if (membership.value().record() != expectedAuthority ||
+    if (!MembershipDescriptor::sameAuthority(membership.value().record(), expectedAuthority) ||
         !MembershipDescriptor::validateAuthority(membershipKey, ZC_REQUIRE_NONNULL(globalKey),
                                                  membership.value().record())) {
       return TypedQueryResult<Handle>::runtimeFailure(QueryRuntimeFailure::InvariantViolation);
     }
-    return ActiveMaterialization<GlobalIdentityKey>::materialize(context.semanticContextResources(),
-                                                                 ZC_REQUIRE_NONNULL(globalKey),
-                                                                 membership.value().record());
+    using Resource = typename ActiveMaterialization<GlobalIdentityKey>::Resource;
+    auto resources = semanticContextResources<Resource>();
+    if (resources == zc::none) {
+      return TypedQueryResult<Handle>::runtimeFailure(QueryRuntimeFailure::InvariantViolation);
+    }
+    return ActiveMaterialization<GlobalIdentityKey>::materialize(
+        ZC_ASSERT_NONNULL(resources), ZC_REQUIRE_NONNULL(globalKey), membership.value().record());
   }
 
 private:

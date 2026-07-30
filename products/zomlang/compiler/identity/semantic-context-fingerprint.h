@@ -81,6 +81,10 @@ private:
 /// \brief Deterministic digest of one closed semantic compilation graph.
 class SemanticContextFingerprint final {
 public:
+  /// \brief Reconstructs a fingerprint from an independently verified canonical digest.
+  ZC_NODISCARD static SemanticContextFingerprint fromCanonicalDigest(
+      const Sha256Digest& digest) noexcept;
+
   /// \brief Computes the RFC 0011 domain-separated fingerprint.
   /// \return None when any supposedly unique sequence contains duplicate encodings.
   ZC_NODISCARD static zc::Maybe<SemanticContextFingerprint> compute(

@@ -16,10 +16,32 @@
 #include "zc/core/mutex.h"
 #include "zc/core/thread.h"
 #include "zc/ztest/test.h"
+#include "zomlang/compiler/driver/active-definition-authority-query.h"
+#include "zomlang/compiler/driver/core-library-query-provider.h"
+#include "zomlang/compiler/driver/incremental-binding-query-adapter.h"
+#include "zomlang/compiler/driver/module-graph-query-input.h"
+#include "zomlang/compiler/driver/module-graph-query.h"
 #include "zomlang/compiler/identity/canonical-identity-interner-set.h"
+#include "zomlang/compiler/ir/target-registry.h"
+#include "zomlang/tests/unittests/compiler/driver/core-library-test-fixture.h"
 #include "zomlang/tests/unittests/compiler/test-semantic-identities.h"
 
 namespace zomlang::compiler::query::test {
+
+namespace binding_query = driver::incremental_binding_query;
+namespace core_query = driver::core_library_query;
+namespace graph_query = driver::module_graph_query;
+namespace resolution_query = driver::incremental_module_resolution_query;
+namespace source_query = identity::source_query;
+
+using tests::test_identity_detail::coreCrate;
+using tests::test_identity_detail::crate;
+using tests::test_identity_detail::digest;
+using tests::test_identity_detail::module;
+using tests::test_identity_detail::package;
+using tests::test_identity_detail::scalar;
+using tests::test_identity_detail::source;
+using tests::test_identity_detail::target;
 
 class EmptySemanticContextResources final : public SemanticContextCapabilityResources {};
 
@@ -56,6 +78,356 @@ QueryDatabase capabilityTestDatabase() {
   auto resources = zc::heap<EmptySemanticContextResources>();
   auto arena = zc::arc<SemanticContextCapabilityArena>(zc::mv(resources));
   return QueryDatabase(queryTestScheduler(), queryTestDescriptorInventory(), zc::mv(arena));
+}
+
+QueryDatabase productionFinalSealTestDatabase() {
+  auto resources = zc::heap<EmptySemanticContextResources>();
+  auto arena = zc::arc<SemanticContextCapabilityArena>(zc::mv(resources));
+  return QueryDatabase(queryTestScheduler(), queryTestDescriptorInventory(), zc::mv(arena));
+}
+
+driver::package::RegisteredTargetProfileName finalSealProfileName() {
+  auto result = driver::package::RegisteredTargetProfileName::from("query-capability-test"_zc);
+  return zc::mv(ZC_REQUIRE_NONNULL(result));
+}
+
+ir::TargetRegistrySnapshot finalSealTargetRegistry() {
+  zc::Vector<ir::CanonicalTargetFeature> backendFeatures;
+  auto specification = ir::CanonicalTargetSpec::from(
+      "x-v-o-e"_zc, "e-p:64:64"_zc, "generic"_zc, zc::mv(backendFeatures), "a"_zc,
+      ir::BackendPanicStrategy::Unwind, ir::ObjectFormat::Elf);
+  ZC_REQUIRE(specification != zc::none);
+  zc::Vector<identity::TargetFeatureName> semanticFeatures;
+  zc::Vector<ir::CanonicalTargetSpec> specifications;
+  specifications.add(zc::mv(ZC_REQUIRE_NONNULL(specification)));
+  auto profile = ir::RegisteredTargetProfileRecord::from(
+      finalSealProfileName(), target(), zc::mv(semanticFeatures), zc::mv(specifications));
+  ZC_REQUIRE(profile != zc::none);
+  zc::Vector<ir::RegisteredTargetProfileRecord> profiles;
+  profiles.add(zc::mv(ZC_REQUIRE_NONNULL(profile)));
+  auto registry = ir::TargetRegistrySnapshot::from(finalSealProfileName(), zc::mv(profiles));
+  return zc::mv(ZC_REQUIRE_NONNULL(registry));
+}
+
+driver::package::RegisteredTargetSelection finalSealTargetSelection(
+    const ir::TargetRegistrySnapshot& registry) {
+  auto service = registry.packageTargetService();
+  ZC_REQUIRE(service != zc::none);
+  auto selected =
+      ZC_REQUIRE_NONNULL(service).select(zc::none, driver::package::PackagePanicStrategy::Unwind);
+  return zc::mv(ZC_REQUIRE_NONNULL(selected));
+}
+
+driver::package::VerifiedPackageCompilationRequest finalSealPackageRequest(
+    const ir::TargetRegistrySnapshot& registry) {
+  zc::Vector<identity::CanonicalPathSegment> path;
+  path.add(scalar<identity::CanonicalPathSegment>("test.zom"_zc));
+  zc::Vector<driver::package::VerifiedCompilationRoot> roots;
+  roots.add(driver::package::VerifiedCompilationRoot::from(
+      package(), identity::CrateTargetKind::Library, scalar<identity::TargetName>("test"_zc), 2026,
+      false, identity::CanonicalRelativePath::from(zc::mv(path))));
+  auto request = driver::package::VerifiedPackageCompilationRequest::from(
+      zc::mv(roots), finalSealTargetSelection(registry), finalSealTargetSelection(registry),
+      driver::package::SelectedLanguageOptions{true, false, true},
+      driver::package::PackageLockMode::PreferLocked);
+  return zc::mv(ZC_REQUIRE_NONNULL(request));
+}
+
+binding_query::CompilationRootSetQueryKey finalSealContextRoots() {
+  zc::Vector<binding_query::CompilationRootKey> roots;
+  auto user = binding_query::CompilationRootKey::userPackage(package());
+  auto core = binding_query::CompilationRootKey::toolchainCore(coreCrate());
+  roots.add(zc::mv(ZC_REQUIRE_NONNULL(user)));
+  roots.add(zc::mv(ZC_REQUIRE_NONNULL(core)));
+  auto result = binding_query::CompilationRootSetQueryKey::from(zc::mv(roots));
+  return zc::mv(ZC_REQUIRE_NONNULL(result));
+}
+
+binding_query::PackageRootSetKey finalSealPackageGraphRoots() {
+  auto registry = finalSealTargetRegistry();
+  auto request = finalSealPackageRequest(registry);
+  auto result = binding_query::PackageRootSetKey::fromVerified(request);
+  return zc::mv(ZC_REQUIRE_NONNULL(result));
+}
+
+binding_query::CanonicalPackageGraph finalSealPackageGraph() {
+  identity::CanonicalEncoder encoder;
+  encoder.encodeSequenceSize(1);
+  encoder.encodeByteString(package().encode().asPtr());
+  encoder.encodeSequenceSize(0);
+  encoder.encodeSequenceSize(0);
+  encoder.encodeSequenceSize(1);
+  encoder.encodeByteString(crate().encode().asPtr());
+  encoder.encodeSequenceSize(0);
+  auto result = binding_query::PackageGraphInput::decodeValue(encoder.finish().asPtr());
+  return zc::mv(ZC_REQUIRE_NONNULL(result));
+}
+
+graph_query::CompleteCompilationContextAuthority finalSealAuthority() {
+  auto registry = finalSealTargetRegistry();
+  auto request = finalSealPackageRequest(registry);
+  auto packageRoots = binding_query::PackageRootSetKey::fromVerified(request);
+  auto distribution = source::core::initialCoreDistributionInput();
+  auto options = source_query::CanonicalCompilationOptions::fromVerified(request);
+  ZC_REQUIRE(packageRoots != zc::none);
+  ZC_REQUIRE(distribution != zc::none);
+  ZC_REQUIRE(options != zc::none);
+
+  auto user = crate();
+  auto core = coreCrate();
+  zc::Vector<identity::CrateKey> userRoots;
+  userRoots.add(user.clone());
+  zc::Vector<identity::CrateKey> coreRoots;
+  coreRoots.add(core.clone());
+  zc::Vector<graph_query::CompilationOptionsEntry> optionEntries;
+  optionEntries.add(graph_query::CompilationOptionsEntry::from(
+      user.clone(), ZC_REQUIRE_NONNULL(options).clone()));
+  optionEntries.add(graph_query::CompilationOptionsEntry::from(
+      core.clone(), ZC_REQUIRE_NONNULL(options).clone()));
+
+  zc::Vector<binder::ModuleSearchRoot> userEnvironment;
+  zc::Vector<identity::CanonicalPathSegment> workspacePath;
+  userEnvironment.add(binder::ModuleSearchRoot::workspace(
+      user.clone(), identity::CanonicalWorkspaceRelativePath::from(0, zc::mv(workspacePath))));
+  auto userSearch =
+      resolution_query::CanonicalModuleSearchRoots::fromVerified(user, userEnvironment.asPtr());
+  auto coreRoot = binder::ModuleSearchRoot::toolchainCore(
+      core.clone(), ZC_REQUIRE_NONNULL(distribution).digest());
+  ZC_REQUIRE(userSearch != zc::none);
+  ZC_REQUIRE(coreRoot != zc::none);
+  zc::Vector<binder::ModuleSearchRoot> coreEnvironment;
+  coreEnvironment.add(zc::mv(ZC_REQUIRE_NONNULL(coreRoot)));
+  auto coreSearch =
+      resolution_query::CanonicalModuleSearchRoots::fromVerified(core, coreEnvironment.asPtr());
+  ZC_REQUIRE(coreSearch != zc::none);
+  zc::Vector<graph_query::ModuleSearchRootsEntry> searchEntries;
+  searchEntries.add(graph_query::ModuleSearchRootsEntry::from(
+      user.clone(), zc::mv(ZC_REQUIRE_NONNULL(userSearch))));
+  searchEntries.add(graph_query::ModuleSearchRootsEntry::from(
+      core.clone(), zc::mv(ZC_REQUIRE_NONNULL(coreSearch))));
+
+  auto graph = finalSealPackageGraph();
+  const graph_query::CompleteCompilationContextSources sources{
+      request,
+      ZC_REQUIRE_NONNULL(packageRoots),
+      graph,
+      userRoots.asPtr(),
+      coreRoots.asPtr(),
+      optionEntries.asPtr(),
+      searchEntries.asPtr(),
+      ZC_REQUIRE_NONNULL(distribution),
+  };
+  auto authority = graph_query::CompleteCompilationContextAuthority::fromVerified(sources);
+  return zc::mv(ZC_REQUIRE_NONNULL(authority));
+}
+
+identity::RequesterModuleAncestry finalSealAncestry(identity::ModuleKey&& requester) {
+  zc::Vector<identity::ModuleKey> ancestry;
+  ancestry.add(requester.clone());
+  auto result = identity::RequesterModuleAncestry::from(zc::mv(requester), zc::mv(ancestry));
+  return zc::mv(ZC_REQUIRE_NONNULL(result));
+}
+
+void stageFinalSealModule(query::InputTransaction& transaction, identity::ModuleKey&& moduleKey,
+                          identity::SourceFileKey&& sourceKey, zc::Array<uint8_t>&& sourceBytes) {
+  auto immutable = identity::ImmutableSourceSnapshot::from(sourceKey.clone(), zc::mv(sourceBytes));
+  ZC_REQUIRE(immutable != zc::none);
+  auto stableSource = source_query::StableSourceQueryKey::fromVerified(sourceKey);
+  auto snapshot =
+      source_query::CanonicalSourceSnapshot::fromVerified(ZC_REQUIRE_NONNULL(immutable));
+  ZC_REQUIRE(stableSource != zc::none);
+  ZC_REQUIRE(snapshot != zc::none);
+  zc::Vector<graph_query::DetachedModuleDependencySite> noSites;
+  auto sites = graph_query::DetachedModuleDependencySiteSet::from(
+      moduleKey.clone(), sourceKey.clone(), ZC_REQUIRE_NONNULL(immutable).contentDigest(),
+      zc::mv(noSites));
+  ZC_REQUIRE(sites != zc::none);
+  ZC_REQUIRE(transaction
+                 .set<source_query::SourceSnapshotInput>(ZC_REQUIRE_NONNULL(stableSource),
+                                                         ZC_REQUIRE_NONNULL(snapshot))
+                 .isApplied());
+  ZC_REQUIRE(
+      transaction.set<graph_query::ModuleDependencySiteInput>(moduleKey, ZC_REQUIRE_NONNULL(sites))
+          .isApplied());
+  ZC_REQUIRE(transaction
+                 .set<resolution_query::RequesterModuleAncestryInput>(
+                     moduleKey, finalSealAncestry(moduleKey.clone()))
+                 .isApplied());
+}
+
+void stageFinalSealCoreInputs(query::InputTransaction& transaction) {
+  auto admitted = driver::core_library_test::admittedCoreDistribution();
+  auto distribution = source::core::CoreDistributionInputRecord::from(
+      admitted.record().clone(), admitted.distributionDigest(), admitted.policyTemplate().clone());
+  ZC_REQUIRE(distribution != zc::none);
+  auto core = coreCrate();
+  const zc::StringPtr moduleNames[] = {"core"_zc, "marker"_zc, "prelude"_zc};
+  zc::Vector<graph_query::SelectedModuleRecord> catalogEntries;
+  for (size_t index = 0; index < admitted.snapshots().size(); ++index) {
+    zc::Vector<identity::ModulePathSegment> path;
+    path.add(scalar<identity::ModulePathSegment>("core"_zc));
+    if (index != 0) { path.add(scalar<identity::ModulePathSegment>(moduleNames[index])); }
+    auto moduleKey = identity::ModuleKey::from(core.clone(), zc::mv(path));
+    ZC_REQUIRE(moduleKey != zc::none);
+    auto sourceKey = identity::SourceFileKey::from(
+        core.clone(),
+        identity::SourceOriginKey::coreFile(identity::ToolchainUnitKey::core(),
+                                            admitted.snapshots()[index].path().clone()));
+    stageFinalSealModule(transaction, ZC_REQUIRE_NONNULL(moduleKey).clone(), sourceKey.clone(),
+                         zc::heapArray<uint8_t>(admitted.snapshots()[index].bytes()));
+    catalogEntries.add(graph_query::SelectedModuleRecord(zc::mv(ZC_REQUIRE_NONNULL(moduleKey)),
+                                                         zc::mv(sourceKey)));
+  }
+  auto catalog = graph_query::SelectedModuleCatalog::from(core.clone(), zc::mv(catalogEntries));
+  ZC_REQUIRE(catalog != zc::none);
+  ZC_REQUIRE(transaction
+                 .set<core_query::CoreDistributionInput>(identity::ToolchainUnitKey::core(),
+                                                         ZC_REQUIRE_NONNULL(distribution))
+                 .isApplied());
+  ZC_REQUIRE(
+      transaction.set<graph_query::SelectedModuleCatalogInput>(core, ZC_REQUIRE_NONNULL(catalog))
+          .isApplied());
+  ZC_REQUIRE(transaction
+                 .set<resolution_query::ConfiguredPreludeInput>(
+                     core, resolution_query::ExplicitModuleTarget::absent())
+                 .isApplied());
+}
+
+binding_query::CanonicalSourceSet finalSealUserSources() {
+  auto stable = source_query::StableSourceQueryKey::fromVerified(source());
+  ZC_REQUIRE(stable != zc::none);
+  zc::Vector<source_query::StableSourceQueryKey> sources;
+  sources.add(zc::mv(ZC_REQUIRE_NONNULL(stable)));
+  auto result = binding_query::CanonicalSourceSet::from(zc::mv(sources));
+  return zc::mv(ZC_REQUIRE_NONNULL(result));
+}
+
+void stageFinalSealUserInputs(query::InputTransaction& transaction) {
+  auto user = crate();
+  auto moduleKey = module();
+  auto sourceKey = source();
+  zc::Vector<graph_query::SelectedModuleRecord> entries;
+  entries.add(graph_query::SelectedModuleRecord(moduleKey.clone(), sourceKey.clone()));
+  auto catalog = graph_query::SelectedModuleCatalog::from(user.clone(), zc::mv(entries));
+  auto stableCrate = binding_query::StableCrateQueryKey::fromVerified(user);
+  ZC_REQUIRE(catalog != zc::none);
+  ZC_REQUIRE(stableCrate != zc::none);
+  stageFinalSealModule(transaction, moduleKey.clone(), zc::mv(sourceKey),
+                       zc::heapArray<uint8_t>("module test;\n"_zc.asBytes()));
+  ZC_REQUIRE(transaction
+                 .set<binding_query::UserPackageActiveSourcesInput>(ZC_REQUIRE_NONNULL(stableCrate),
+                                                                    finalSealUserSources())
+                 .isApplied());
+  ZC_REQUIRE(
+      transaction.set<graph_query::SelectedModuleCatalogInput>(user, ZC_REQUIRE_NONNULL(catalog))
+          .isApplied());
+  ZC_REQUIRE(transaction
+                 .set<resolution_query::ConfiguredPreludeInput>(
+                     user, resolution_query::ExplicitModuleTarget::absent())
+                 .isApplied());
+}
+
+void registerProductionFinalSealQueries(QueryDatabase& database) {
+  ZC_REQUIRE(database.registerDescriptor<graph_query::CoreDistributionTransactionWitnessInput>()
+                 .isRegistered());
+  ZC_REQUIRE(database.registerDescriptor<graph_query::ModuleStructureTransactionWitnessInput>()
+                 .isRegistered());
+  ZC_REQUIRE(
+      database.registerDescriptor<graph_query::ContextualIdentityAuthorityTransactionWitnessInput>()
+          .isRegistered());
+  ZC_REQUIRE(database.registerDescriptor<graph_query::CompleteCompilationContextAuthorityInput>()
+                 .isRegistered());
+  ZC_REQUIRE(database.registerDescriptor<graph_query::SelectedModuleCatalogInput>().isRegistered());
+  ZC_REQUIRE(database.registerDescriptor<graph_query::ModuleDependencySiteInput>().isRegistered());
+  ZC_REQUIRE(database.registerDescriptor<graph_query::SelectedModuleSourceQuery>().isRegistered());
+  ZC_REQUIRE(database.registerDescriptor<graph_query::ActiveModulesQuery>().isRegistered());
+  ZC_REQUIRE(database.registerDescriptor<graph_query::ModuleDependencySitesQuery>().isRegistered());
+  ZC_REQUIRE(
+      database.registerDescriptor<graph_query::ModuleDependencyRequestsQuery>().isRegistered());
+  ZC_REQUIRE(database.registerDescriptor<graph_query::ModuleDependenciesQuery>().isRegistered());
+  ZC_REQUIRE(database.registerDescriptor<graph_query::ModuleGraphQuery>().isRegistered());
+  ZC_REQUIRE(database.registerDescriptor<graph_query::ModuleGraphSccQuery>().isRegistered());
+  ZC_REQUIRE(database.registerDescriptor<core_query::CoreDistributionInput>().isRegistered());
+  ZC_REQUIRE(database.registerDescriptor<binding_query::PackageGraphInput>().isRegistered());
+  ZC_REQUIRE(
+      database.registerDescriptor<binding_query::UserPackageActiveSourcesInput>().isRegistered());
+  ZC_REQUIRE(database.registerDescriptor<binding_query::ActiveSourcesQuery>().isRegistered());
+  ZC_REQUIRE(database.registerDescriptor<binding_query::ActiveCratesQuery>().isRegistered());
+  ZC_REQUIRE(database.registerDescriptor<source_query::SourceSnapshotInput>().isRegistered());
+  ZC_REQUIRE(database.registerDescriptor<source_query::CompilationOptionsInput>().isRegistered());
+  ZC_REQUIRE(
+      database.registerDescriptor<resolution_query::RequesterModuleAncestryInput>().isRegistered());
+  ZC_REQUIRE(
+      database.registerDescriptor<resolution_query::ModuleSearchRootsInput>().isRegistered());
+  ZC_REQUIRE(
+      database.registerDescriptor<resolution_query::ConfiguredPreludeInput>().isRegistered());
+  ZC_REQUIRE(database.registerDescriptor<binding_query::ActiveDefinitionAuthorityReadyInput>()
+                 .isRegistered());
+  ZC_REQUIRE(database.registerDescriptor<binding_query::CompleteRootIdentityReadinessInput>()
+                 .isRegistered());
+}
+
+binding_query::CompilationRootSetQueryKey installProductionFinalSealInputs(
+    QueryDatabase& database, uint32_t capabilityKey, uint32_t capabilityValue) {
+  auto roots = finalSealContextRoots();
+  auto authority = finalSealAuthority();
+  ZC_REQUIRE(authority.contextRoots() == roots);
+  auto opened = database.beginInputTransaction(database.snapshot().revision());
+  ZC_REQUIRE(opened.isOpened());
+  auto transaction = zc::mv(opened).takeTransaction();
+  stageFinalSealCoreInputs(transaction);
+  stageFinalSealUserInputs(transaction);
+  auto graphRoots = finalSealPackageGraphRoots();
+  auto graph = finalSealPackageGraph();
+  ZC_REQUIRE(transaction.set<binding_query::PackageGraphInput>(graphRoots, graph).isApplied());
+  ZC_REQUIRE(transaction.set<LowInput>(capabilityKey, capabilityValue).isApplied());
+  ZC_REQUIRE(
+      transaction.set<graph_query::CompleteCompilationContextAuthorityInput>(roots, authority)
+          .isApplied());
+  for (const auto& entry : authority.compilationOptions()) {
+    ZC_REQUIRE(transaction.set<source_query::CompilationOptionsInput>(entry.key(), entry.value())
+                   .isApplied());
+  }
+  for (const auto& entry : authority.moduleSearchRoots()) {
+    ZC_REQUIRE(transaction.set<resolution_query::ModuleSearchRootsInput>(entry.key(), entry.value())
+                   .isApplied());
+  }
+  auto authorityBytes = authority.encodeCanonical();
+  auto coreWitness = graph_query::computeCanonicalInputPayloadDigest(
+      "zom.query.input-transaction.core-distribution"_zc, authorityBytes.asPtr());
+  auto structureWitness = graph_query::computeCanonicalInputPayloadDigest(
+      "zom.query.input-transaction.module-structure"_zc, authorityBytes.asPtr());
+  auto identityWitness = graph_query::computeCanonicalInputPayloadDigest(
+      "zom.query.input-transaction.contextual-identity-authority"_zc, authorityBytes.asPtr());
+  ZC_REQUIRE(coreWitness != zc::none);
+  ZC_REQUIRE(structureWitness != zc::none);
+  ZC_REQUIRE(identityWitness != zc::none);
+  ZC_REQUIRE(transaction
+                 .set<graph_query::CoreDistributionTransactionWitnessInput>(
+                     roots, ZC_REQUIRE_NONNULL(coreWitness))
+                 .isApplied());
+  ZC_REQUIRE(transaction
+                 .set<graph_query::ModuleStructureTransactionWitnessInput>(
+                     roots, ZC_REQUIRE_NONNULL(structureWitness))
+                 .isApplied());
+  ZC_REQUIRE(transaction
+                 .set<graph_query::ContextualIdentityAuthorityTransactionWitnessInput>(
+                     roots, ZC_REQUIRE_NONNULL(identityWitness))
+                 .isApplied());
+  zc::Vector<binding_query::ActiveDefinitionAuthorityRecord> noDefinitions;
+  auto projection =
+      binding_query::ActiveDefinitionAuthorityProjection::from(roots, zc::mv(noDefinitions));
+  ZC_REQUIRE(projection != zc::none);
+  auto readiness = binding_query::CompleteRootIdentityReadiness::from(
+      roots.clone(), digest(0xd1), digest(0xd2), digest(0xd3), digest(0xd4));
+  ZC_REQUIRE(transaction
+                 .set<binding_query::ActiveDefinitionAuthorityReadyInput>(
+                     roots, ZC_REQUIRE_NONNULL(projection).fingerprint())
+                 .isApplied());
+  ZC_REQUIRE(transaction.set<binding_query::CompleteRootIdentityReadinessInput>(roots, readiness)
+                 .isApplied());
+  ZC_REQUIRE(transaction.commit().isCommitted());
+  return roots;
 }
 
 void registerCapabilityKinds(QueryDatabase& database) {
@@ -548,28 +920,23 @@ ZC_TEST("QueryCapabilityTest.SemanticParentInvalidatesAfterCapabilityRejection")
 }
 
 ZC_TEST("QueryCapabilityTest.FinalSealedCapabilityRequiresMatchingAdmission") {
-  using CompleteContext = driver::module_graph_query::CompleteCompilationContextAuthorityInput;
+  using CompleteContext = graph_query::CompleteCompilationContextAuthorityInput;
 
-  auto database = capabilityTestDatabase();
+  auto database = productionFinalSealTestDatabase();
+  registerProductionFinalSealQueries(database);
   ZC_REQUIRE(database.registerDescriptor<LowInput>().isRegistered());
-  ZC_REQUIRE(database.registerDescriptor<CompleteContext>().isRegistered());
   ZC_REQUIRE(database.registerDescriptor<FinalSealedCapabilityQuery>().isRegistered());
   ZC_REQUIRE(database.registerDescriptor<FinalSealedParentCapabilityQuery>().isRegistered());
-  auto write = beginTransaction(database);
-  ZC_REQUIRE(write.set<LowInput>(7, 70).isApplied());
-  ZC_REQUIRE(write.set<CompleteContext>(7, 7).isApplied());
-  ZC_REQUIRE(write.commit().isCommitted());
+  auto roots = installProductionFinalSealInputs(database, 7, 70);
   auto ordinary = database.snapshot();
 
   auto rejected = ordinary.getCapability<FinalSealedCapabilityQuery>(7);
   ZC_REQUIRE(rejected.isRuntimeRejected());
   ZC_EXPECT(rejected.runtimeFailure() == QueryRuntimeFailure::FinalSealRequired);
 
-  uint8_t bytes[32];
-  for (auto& byte : bytes) { byte = 7; }
-  auto witness = identity::Sha256Digest::fromBytes(zc::arrayPtr(bytes));
+  auto witness = graph_query::computeFinalSnapshotWitness(ordinary, roots);
   ZC_REQUIRE(witness != zc::none);
-  auto seal = database.sealInputs<CompleteContext>(ordinary, 7, ZC_REQUIRE_NONNULL(witness));
+  auto seal = database.sealInputs<CompleteContext>(ordinary, roots, ZC_REQUIRE_NONNULL(witness));
   ZC_REQUIRE(seal.isSealed());
   auto admitted = database.admitFinalSnapshot<CompleteContext>(database.snapshot(), seal.seal());
   ZC_REQUIRE(admitted.isAdmitted());

@@ -8,6 +8,7 @@
 #include "zc/core/vector.h"
 #include "zomlang/compiler/driver/contextual-binding-key.h"
 #include "zomlang/compiler/identity/definition-key.h"
+#include "zomlang/compiler/identity/sha256.h"
 #include "zomlang/compiler/query/query-database.h"
 
 namespace zomlang::compiler::driver::incremental_binding_query {
@@ -96,6 +97,72 @@ struct ActiveDefinitionAuthorityInput final {
   ZC_NODISCARD static zc::Maybe<Key> decodeKey(zc::ArrayPtr<const uint8_t> bytes);
   ZC_NODISCARD static zc::Array<uint8_t> encodeValue(const Value& value);
   ZC_NODISCARD static zc::Maybe<Value> decodeValue(zc::ArrayPtr<const uint8_t> bytes);
+};
+
+/// \brief Structural verifier for one contextual definition-authority input.
+class ActiveDefinitionAuthorityInputVerifier final {
+public:
+  ZC_NODISCARD static bool verify(const ContextualDefinitionKey& key,
+                                  const identity::DefinitionIdentityRecord& record);
+};
+
+/// \brief Complete four-domain identity-authority readiness for one root set.
+class CompleteRootIdentityReadiness final {
+public:
+  CompleteRootIdentityReadiness(CompleteRootIdentityReadiness&&) noexcept = default;
+  CompleteRootIdentityReadiness& operator=(CompleteRootIdentityReadiness&&) noexcept = default;
+  ZC_DISALLOW_COPY(CompleteRootIdentityReadiness);
+
+  ZC_NODISCARD static CompleteRootIdentityReadiness from(
+      CompilationRootSetQueryKey&& contextRoots,
+      const identity::Sha256Digest& definitionAuthorityDigest,
+      const identity::Sha256Digest& implementationAuthorityDigest,
+      const identity::Sha256Digest& genericParameterAuthorityDigest,
+      const identity::Sha256Digest& callableParameterAuthorityDigest);
+  ZC_NODISCARD static zc::Maybe<CompleteRootIdentityReadiness> decodeCanonical(
+      zc::ArrayPtr<const uint8_t> bytes);
+  ZC_NODISCARD CompleteRootIdentityReadiness clone() const;
+  ZC_NODISCARD const CompilationRootSetQueryKey& contextRoots() const noexcept;
+  ZC_NODISCARD const identity::Sha256Digest& definitionAuthorityDigest() const noexcept;
+  ZC_NODISCARD const identity::Sha256Digest& implementationAuthorityDigest() const noexcept;
+  ZC_NODISCARD const identity::Sha256Digest& genericParameterAuthorityDigest() const noexcept;
+  ZC_NODISCARD const identity::Sha256Digest& callableParameterAuthorityDigest() const noexcept;
+  ZC_NODISCARD zc::Array<uint8_t> encodeCanonical() const;
+
+private:
+  CompleteRootIdentityReadiness(
+      CompilationRootSetQueryKey&& contextRoots,
+      const identity::Sha256Digest& definitionAuthorityDigest,
+      const identity::Sha256Digest& implementationAuthorityDigest,
+      const identity::Sha256Digest& genericParameterAuthorityDigest,
+      const identity::Sha256Digest& callableParameterAuthorityDigest) noexcept;
+
+  CompilationRootSetQueryKey contextRootsField;
+  identity::Sha256Digest definitionAuthorityDigestField;
+  identity::Sha256Digest implementationAuthorityDigestField;
+  identity::Sha256Digest genericParameterAuthorityDigestField;
+  identity::Sha256Digest callableParameterAuthorityDigestField;
+};
+
+/// \brief Complete-root readiness input installed with all contextual authorities.
+struct CompleteRootIdentityReadinessInput final {
+  using Key = CompilationRootSetQueryKey;
+  using Value = CompleteRootIdentityReadiness;
+
+  static constexpr query::InputDescriptorMetadata descriptor{
+      "CompleteRootIdentityReadinessInput"_zcc, "zom.binder.complete-root-identity-readiness"_zcc,
+      query::Durability::Low};
+  ZC_NODISCARD static zc::Array<uint8_t> encodeKey(const Key& key);
+  ZC_NODISCARD static zc::Maybe<Key> decodeKey(zc::ArrayPtr<const uint8_t> bytes);
+  ZC_NODISCARD static zc::Array<uint8_t> encodeValue(const Value& value);
+  ZC_NODISCARD static zc::Maybe<Value> decodeValue(zc::ArrayPtr<const uint8_t> bytes);
+};
+
+/// \brief Structural verifier for one complete-root readiness input.
+class CompleteRootIdentityReadinessVerifier final {
+public:
+  ZC_NODISCARD static bool verify(const CompilationRootSetQueryKey& key,
+                                  const CompleteRootIdentityReadiness& readiness);
 };
 
 /// \brief Completeness marker for one atomically installed authority projection.

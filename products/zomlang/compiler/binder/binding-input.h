@@ -46,6 +46,26 @@ namespace test {
 class VerifiedModuleGraphFixture;
 }
 
+/// \brief SHA-256 digest of one complete canonical session-input payload.
+class CanonicalInputPayloadDigest final {
+public:
+  /// \brief Constructs the digest from exactly 32 verified bytes.
+  ZC_NODISCARD static zc::Maybe<CanonicalInputPayloadDigest> fromBytes(
+      zc::ArrayPtr<const uint8_t> bytes);
+
+  ZC_NODISCARD CanonicalInputPayloadDigest clone() const noexcept;
+  ZC_NODISCARD zc::ArrayPtr<const uint8_t> bytes() const ZC_LIFETIMEBOUND;
+  bool operator==(const CanonicalInputPayloadDigest& other) const noexcept;
+  bool operator!=(const CanonicalInputPayloadDigest& other) const noexcept {
+    return !(*this == other);
+  }
+
+private:
+  explicit CanonicalInputPayloadDigest(const identity::Sha256Digest& digest) noexcept;
+
+  identity::Sha256Digest digestField;
+};
+
 enum class ModuleGraphInvariantKind : uint8_t {
   InputMismatch,
   IncompleteResolution,
@@ -67,6 +87,10 @@ class VerifiedModuleDependencyEdge;
 /// \brief Immutable revision of one verified module dependency graph.
 class ModuleGraphRevision final {
 public:
+  /// \brief Reconstructs a graph revision from an independently verified canonical digest.
+  ZC_NODISCARD static ModuleGraphRevision fromCanonicalDigest(
+      const identity::Sha256Digest& digest) noexcept;
+
   ZC_NODISCARD const identity::Sha256Digest& digest() const noexcept;
 
 private:

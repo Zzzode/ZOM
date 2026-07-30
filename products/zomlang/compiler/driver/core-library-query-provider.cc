@@ -8,6 +8,8 @@
 #include "zc/core/encoding.h"
 #include "zc/core/map.h"
 #include "zomlang/compiler/driver/core-library-query-verifier.h"
+#include "zomlang/compiler/driver/module-graph-query-input.h"
+#include "zomlang/compiler/driver/package/canonical-package-compilation-request.h"
 #include "zomlang/compiler/identity/canonical-decoder.h"
 #include "zomlang/compiler/identity/canonical-encoder.h"
 #include "zomlang/compiler/identity/source-snapshot.h"
@@ -19,6 +21,8 @@ constexpr zc::StringPtr kCoreDistributionDomain = "zom.query.core-distribution"_
 constexpr zc::StringPtr kCoreDistributionValueDomain = "zom.query.core-distribution-value"_zc;
 constexpr zc::StringPtr kCoreModuleGraphValueDomain = "zom.query.core-module-graph-value"_zc;
 constexpr zc::StringPtr kCoreModuleGraphRevisionDomain = "zom.core-module-graph"_zc;
+constexpr zc::StringPtr kCoreDistributionTransactionDomain =
+    "zom.query.input-transaction.core-distribution"_zc;
 constexpr size_t kMaximumCoreDistributionKeyBytes = 256;
 constexpr size_t kMaximumCoreDistributionValueBytes = 512 * 1024;
 constexpr size_t kMaximumContextRootBytes = 64 * 1024 * 1024;
@@ -45,6 +49,47 @@ zc::Maybe<zc::ArrayPtr<const uint8_t>> unframe(zc::StringPtr domain,
     return zc::none;
   }
   return bytes.slice(prefixSize, bytes.size());
+}
+
+int compareCanonicalBytes(zc::ArrayPtr<const uint8_t> left,
+                          zc::ArrayPtr<const uint8_t> right) noexcept {
+  const size_t common = left.size() < right.size() ? left.size() : right.size();
+  for (size_t index = 0; index < common; ++index) {
+    if (left[index] < right[index]) { return -1; }
+    if (left[index] > right[index]) { return 1; }
+  }
+  if (left.size() < right.size()) { return -1; }
+  if (left.size() > right.size()) { return 1; }
+  return 0;
+}
+
+template <typename T, typename Bytes>
+bool canonicalizePayloadValues(zc::Vector<T>& values, Bytes bytes) {
+  for (size_t index = 1; index < values.size(); ++index) {
+    auto current = zc::mv(values[index]);
+    size_t insertion = index;
+    while (insertion != 0 &&
+           compareCanonicalBytes(bytes(current), bytes(values[insertion - 1])) < 0) {
+      values[insertion] = zc::mv(values[insertion - 1]);
+      --insertion;
+    }
+    values[insertion] = zc::mv(current);
+  }
+  for (size_t index = 1; index < values.size(); ++index) {
+    if (bytes(values[index - 1]).asPtr() == bytes(values[index]).asPtr()) { return false; }
+  }
+  return true;
+}
+
+zc::Maybe<identity::CrateKey> decodePayloadCrate(zc::ArrayPtr<const uint8_t> bytes) {
+  if (bytes.size() == 0 || bytes.size() > kMaximumCrateOrModuleKeyBytes) { return zc::none; }
+  identity::CanonicalDecoder decoder(bytes);
+  auto crate = identity::CrateKey::decodeCanonical(decoder);
+  if (crate == zc::none || !decoder.finished() ||
+      ZC_ASSERT_NONNULL(crate).encode().asPtr() != bytes) {
+    return zc::none;
+  }
+  return zc::mv(ZC_ASSERT_NONNULL(crate));
 }
 
 bool contextContainsCoreCrate(
@@ -623,16 +668,397 @@ VerifiedCoreProjectionInput::searchRoots() const noexcept {
   return impl->searchRoots;
 }
 
-struct VerifiedCoreDistributionInputTransaction::Impl final {
-  Impl(source::core::CoreDistributionInputRecord&& distribution,
-       identity::source_query::CanonicalCompilationOptions&& compilationOptions,
-       zc::Vector<VerifiedCoreProjectionInput>&& projections) noexcept
-      : distribution(zc::mv(distribution)),
+struct VerifiedCoreDistributionInputPayload::Impl final {
+  Impl(incremental_binding_query::CompilationRootSetQueryKey&& contextRoots,
+       source::core::CoreDistributionRecord&& distributionRecord,
+       const identity::Sha256Digest& distributionDigest,
+       source::core::CoreStandardMarkerPolicyTemplate&& policyTemplate,
+       zc::Vector<ProjectedCoreSourceEntry>&& projectedCoreSources,
+       zc::Vector<module_graph_query::CompilationOptionsEntry>&& compilationOptions,
+       zc::Vector<module_graph_query::ModuleSearchRootsEntry>&& moduleSearchRoots,
+       zc::Vector<identity::CrateKey>&& projectedCoreInventory,
+       module_graph_query::CompleteCompilationContextAuthority&& contextAuthority) noexcept
+      : contextRoots(zc::mv(contextRoots)),
+        distributionRecord(zc::mv(distributionRecord)),
+        distributionDigest(distributionDigest),
+        policyTemplate(zc::mv(policyTemplate)),
+        projectedCoreSources(zc::mv(projectedCoreSources)),
         compilationOptions(zc::mv(compilationOptions)),
+        moduleSearchRoots(zc::mv(moduleSearchRoots)),
+        projectedCoreInventory(zc::mv(projectedCoreInventory)),
+        contextAuthority(zc::mv(contextAuthority)) {}
+
+  incremental_binding_query::CompilationRootSetQueryKey contextRoots;
+  source::core::CoreDistributionRecord distributionRecord;
+  identity::Sha256Digest distributionDigest;
+  source::core::CoreStandardMarkerPolicyTemplate policyTemplate;
+  zc::Vector<ProjectedCoreSourceEntry> projectedCoreSources;
+  zc::Vector<module_graph_query::CompilationOptionsEntry> compilationOptions;
+  zc::Vector<module_graph_query::ModuleSearchRootsEntry> moduleSearchRoots;
+  zc::Vector<identity::CrateKey> projectedCoreInventory;
+  module_graph_query::CompleteCompilationContextAuthority contextAuthority;
+};
+
+VerifiedCoreDistributionInputPayload::VerifiedCoreDistributionInputPayload(
+    zc::Own<Impl>&& impl) noexcept
+    : impl(zc::mv(impl)) {}
+VerifiedCoreDistributionInputPayload::~VerifiedCoreDistributionInputPayload() noexcept(false) =
+    default;
+VerifiedCoreDistributionInputPayload::VerifiedCoreDistributionInputPayload(
+    VerifiedCoreDistributionInputPayload&&) noexcept = default;
+VerifiedCoreDistributionInputPayload& VerifiedCoreDistributionInputPayload::operator=(
+    VerifiedCoreDistributionInputPayload&&) noexcept = default;
+
+zc::Maybe<VerifiedCoreDistributionInputPayload> VerifiedCoreDistributionInputPayload::from(
+    incremental_binding_query::CompilationRootSetQueryKey&& contextRoots,
+    source::core::CoreDistributionRecord&& distributionRecord,
+    const identity::Sha256Digest& distributionDigest,
+    source::core::CoreStandardMarkerPolicyTemplate&& policyTemplate,
+    zc::Vector<ProjectedCoreSourceEntry>&& projectedCoreSources,
+    zc::Vector<module_graph_query::CompilationOptionsEntry>&& compilationOptions,
+    zc::Vector<module_graph_query::ModuleSearchRootsEntry>&& moduleSearchRoots,
+    zc::Vector<identity::CrateKey>&& projectedCoreInventory,
+    module_graph_query::CompleteCompilationContextAuthority&& contextAuthority) {
+  auto computedDigest = source::core::computeCoreDistributionDigest(distributionRecord);
+  if (projectedCoreSources.empty() || compilationOptions.empty() || moduleSearchRoots.empty() ||
+      projectedCoreInventory.empty() || computedDigest == zc::none ||
+      ZC_ASSERT_NONNULL(computedDigest) != distributionDigest ||
+      contextRoots != contextAuthority.contextRoots() ||
+      distributionRecord.encode().asPtr() !=
+          contextAuthority.coreDistributionRecord().encode().asPtr() ||
+      distributionDigest != contextAuthority.coreDistributionDigest() ||
+      !canonicalizePayloadValues(projectedCoreSources,
+                                 [](const ProjectedCoreSourceEntry& value) {
+                                   return zc::heapArray<uint8_t>(
+                                       value.key().canonicalSourceBytes());
+                                 }) ||
+      !canonicalizePayloadValues(compilationOptions,
+                                 [](const module_graph_query::CompilationOptionsEntry& value) {
+                                   return value.key().encode();
+                                 }) ||
+      !canonicalizePayloadValues(moduleSearchRoots,
+                                 [](const module_graph_query::ModuleSearchRootsEntry& value) {
+                                   return value.key().encode();
+                                 }) ||
+      !canonicalizePayloadValues(projectedCoreInventory,
+                                 [](const identity::CrateKey& value) { return value.encode(); })) {
+    return zc::none;
+  }
+  if (compilationOptions.size() != contextAuthority.compilationOptions().size() ||
+      moduleSearchRoots.size() != contextAuthority.moduleSearchRoots().size() ||
+      projectedCoreInventory.size() != contextAuthority.projectedCoreCrates().size()) {
+    return zc::none;
+  }
+  for (size_t index = 0; index < compilationOptions.size(); ++index) {
+    if (compilationOptions[index].key().encode().asPtr() !=
+            contextAuthority.compilationOptions()[index].key().encode().asPtr() ||
+        compilationOptions[index].value().encodeCanonical().asPtr() !=
+            contextAuthority.compilationOptions()[index].value().encodeCanonical().asPtr()) {
+      return zc::none;
+    }
+  }
+  for (size_t index = 0; index < moduleSearchRoots.size(); ++index) {
+    if (moduleSearchRoots[index].key().encode().asPtr() !=
+            contextAuthority.moduleSearchRoots()[index].key().encode().asPtr() ||
+        moduleSearchRoots[index].value().encode().asPtr() !=
+            contextAuthority.moduleSearchRoots()[index].value().encode().asPtr()) {
+      return zc::none;
+    }
+  }
+  for (size_t index = 0; index < projectedCoreInventory.size(); ++index) {
+    if (projectedCoreInventory[index].encode().asPtr() !=
+        contextAuthority.projectedCoreCrates()[index].encode().asPtr()) {
+      return zc::none;
+    }
+  }
+  return VerifiedCoreDistributionInputPayload(zc::heap<Impl>(
+      zc::mv(contextRoots), zc::mv(distributionRecord), distributionDigest, zc::mv(policyTemplate),
+      zc::mv(projectedCoreSources), zc::mv(compilationOptions), zc::mv(moduleSearchRoots),
+      zc::mv(projectedCoreInventory), zc::mv(contextAuthority)));
+}
+
+VerifiedCoreDistributionInputPayload VerifiedCoreDistributionInputPayload::clone() const {
+  zc::Vector<ProjectedCoreSourceEntry> sources(impl->projectedCoreSources.size());
+  for (const auto& value : impl->projectedCoreSources) { sources.add(value.clone()); }
+  zc::Vector<module_graph_query::CompilationOptionsEntry> options(impl->compilationOptions.size());
+  for (const auto& value : impl->compilationOptions) { options.add(value.clone()); }
+  zc::Vector<module_graph_query::ModuleSearchRootsEntry> roots(impl->moduleSearchRoots.size());
+  for (const auto& value : impl->moduleSearchRoots) { roots.add(value.clone()); }
+  zc::Vector<identity::CrateKey> inventory(impl->projectedCoreInventory.size());
+  for (const auto& value : impl->projectedCoreInventory) { inventory.add(value.clone()); }
+  return VerifiedCoreDistributionInputPayload(zc::heap<Impl>(
+      impl->contextRoots.clone(), impl->distributionRecord.clone(), impl->distributionDigest,
+      impl->policyTemplate.clone(), zc::mv(sources), zc::mv(options), zc::mv(roots),
+      zc::mv(inventory), impl->contextAuthority.clone()));
+}
+
+const incremental_binding_query::CompilationRootSetQueryKey&
+VerifiedCoreDistributionInputPayload::contextRoots() const noexcept {
+  return impl->contextRoots;
+}
+const source::core::CoreDistributionRecord&
+VerifiedCoreDistributionInputPayload::distributionRecord() const noexcept {
+  return impl->distributionRecord;
+}
+const identity::Sha256Digest& VerifiedCoreDistributionInputPayload::distributionDigest()
+    const noexcept {
+  return impl->distributionDigest;
+}
+const source::core::CoreStandardMarkerPolicyTemplate&
+VerifiedCoreDistributionInputPayload::policyTemplate() const noexcept {
+  return impl->policyTemplate;
+}
+zc::ArrayPtr<const ProjectedCoreSourceEntry>
+VerifiedCoreDistributionInputPayload::projectedCoreSources() const noexcept {
+  return impl->projectedCoreSources.asPtr();
+}
+zc::ArrayPtr<const module_graph_query::CompilationOptionsEntry>
+VerifiedCoreDistributionInputPayload::compilationOptions() const noexcept {
+  return impl->compilationOptions.asPtr();
+}
+zc::ArrayPtr<const module_graph_query::ModuleSearchRootsEntry>
+VerifiedCoreDistributionInputPayload::moduleSearchRoots() const noexcept {
+  return impl->moduleSearchRoots.asPtr();
+}
+zc::ArrayPtr<const identity::CrateKey>
+VerifiedCoreDistributionInputPayload::projectedCoreInventory() const noexcept {
+  return impl->projectedCoreInventory.asPtr();
+}
+const module_graph_query::CompleteCompilationContextAuthority&
+VerifiedCoreDistributionInputPayload::contextAuthority() const noexcept {
+  return impl->contextAuthority;
+}
+
+zc::Array<uint8_t> VerifiedCoreDistributionInputPayload::encodeCanonical() const {
+  identity::CanonicalEncoder encoder;
+  encoder.encodeByteString(impl->contextRoots.encodeCanonical().asPtr());
+  encoder.encodeByteString(impl->distributionRecord.encode().asPtr());
+  encoder.encodeDigest(impl->distributionDigest);
+  encoder.encodeByteString(impl->policyTemplate.encode().asPtr());
+  encoder.encodeSequenceSize(impl->projectedCoreSources.size());
+  for (const auto& value : impl->projectedCoreSources) {
+    encoder.encodeByteString(value.key().canonicalSourceBytes());
+    encoder.encodeByteString(value.value().encodeCanonical().asPtr());
+  }
+  encoder.encodeSequenceSize(impl->compilationOptions.size());
+  for (const auto& value : impl->compilationOptions) {
+    encoder.encodeByteString(value.key().encode().asPtr());
+    encoder.encodeByteString(value.value().encodeCanonical().asPtr());
+  }
+  encoder.encodeSequenceSize(impl->moduleSearchRoots.size());
+  for (const auto& value : impl->moduleSearchRoots) {
+    encoder.encodeByteString(value.key().encode().asPtr());
+    encoder.encodeByteString(value.value().encode().asPtr());
+  }
+  encoder.encodeSequenceSize(impl->projectedCoreInventory.size());
+  for (const auto& value : impl->projectedCoreInventory) {
+    encoder.encodeByteString(value.encode().asPtr());
+  }
+  encoder.encodeByteString(impl->contextAuthority.encodeCanonical().asPtr());
+  return frame(kCoreDistributionTransactionDomain, encoder.finish().asPtr());
+}
+
+bool VerifiedCoreDistributionInputPayload::operator==(
+    const VerifiedCoreDistributionInputPayload& other) const {
+  return encodeCanonical().asPtr() == other.encodeCanonical().asPtr();
+}
+
+zc::Maybe<VerifiedCoreDistributionInputPayload>
+VerifiedCoreDistributionInputPayload::decodeCanonical(zc::ArrayPtr<const uint8_t> bytes) {
+  auto payload = unframe(kCoreDistributionTransactionDomain, bytes, kMaximumCoreGraphBytes);
+  if (payload == zc::none) { return zc::none; }
+  identity::CanonicalDecoder decoder(ZC_ASSERT_NONNULL(payload));
+  auto contextBytes = decoder.decodeByteString(kMaximumContextRootBytes);
+  auto distributionBytes = decoder.decodeByteString(kMaximumCoreDistributionValueBytes);
+  auto digest = decoder.decodeDigest();
+  auto policyBytes = decoder.decodeByteString(kMaximumCoreDistributionValueBytes);
+  if (contextBytes == zc::none || distributionBytes == zc::none || digest == zc::none ||
+      policyBytes == zc::none) {
+    return zc::none;
+  }
+  auto context = incremental_binding_query::CompilationRootSetQueryKey::decodeCanonical(
+      ZC_ASSERT_NONNULL(contextBytes).asPtr());
+  auto distribution = source::core::CoreDistributionRecord::decodeCanonical(
+      ZC_ASSERT_NONNULL(distributionBytes).asPtr());
+  auto policy = source::core::CoreStandardMarkerPolicyTemplate::decodeCanonical(
+      ZC_ASSERT_NONNULL(policyBytes).asPtr());
+  if (context == zc::none || distribution == zc::none || policy == zc::none) { return zc::none; }
+  auto sourceCount = decoder.decodeSequenceSize(kMaximumCoreEdges);
+  if (sourceCount == zc::none) { return zc::none; }
+  zc::Vector<ProjectedCoreSourceEntry> sources;
+  sources.reserve(ZC_ASSERT_NONNULL(sourceCount));
+  for (uint64_t index = 0; index < ZC_ASSERT_NONNULL(sourceCount); ++index) {
+    auto keyBytes = decoder.decodeByteString(kMaximumCrateOrModuleKeyBytes);
+    auto valueBytes = decoder.decodeByteString(kMaximumCoreDistributionValueBytes);
+    if (keyBytes == zc::none || valueBytes == zc::none) { return zc::none; }
+    auto key = identity::source_query::StableSourceQueryKey::decodeBounded(
+        ZC_ASSERT_NONNULL(keyBytes).asPtr());
+    auto value = identity::source_query::CanonicalSourceSnapshot::decodeCanonical(
+        ZC_ASSERT_NONNULL(valueBytes).asPtr());
+    if (key == zc::none || value == zc::none) { return zc::none; }
+    sources.add(ProjectedCoreSourceEntry::from(zc::mv(ZC_ASSERT_NONNULL(key)),
+                                               zc::mv(ZC_ASSERT_NONNULL(value))));
+  }
+  auto optionsCount = decoder.decodeSequenceSize(kMaximumCoreEdges);
+  if (optionsCount == zc::none) { return zc::none; }
+  zc::Vector<module_graph_query::CompilationOptionsEntry> options;
+  options.reserve(ZC_ASSERT_NONNULL(optionsCount));
+  for (uint64_t index = 0; index < ZC_ASSERT_NONNULL(optionsCount); ++index) {
+    auto keyBytes = decoder.decodeByteString(kMaximumCrateOrModuleKeyBytes);
+    auto valueBytes = decoder.decodeByteString(kMaximumCoreDistributionValueBytes);
+    if (keyBytes == zc::none || valueBytes == zc::none) { return zc::none; }
+    auto key = decodePayloadCrate(ZC_ASSERT_NONNULL(keyBytes).asPtr());
+    auto value = identity::source_query::CompilationOptionsInput::decodeValue(
+        ZC_ASSERT_NONNULL(valueBytes).asPtr());
+    if (key == zc::none || value == zc::none) { return zc::none; }
+    options.add(module_graph_query::CompilationOptionsEntry::from(
+        zc::mv(ZC_ASSERT_NONNULL(key)), zc::mv(ZC_ASSERT_NONNULL(value))));
+  }
+  auto rootsCount = decoder.decodeSequenceSize(kMaximumCoreEdges);
+  if (rootsCount == zc::none) { return zc::none; }
+  zc::Vector<module_graph_query::ModuleSearchRootsEntry> roots;
+  roots.reserve(ZC_ASSERT_NONNULL(rootsCount));
+  for (uint64_t index = 0; index < ZC_ASSERT_NONNULL(rootsCount); ++index) {
+    auto keyBytes = decoder.decodeByteString(kMaximumCrateOrModuleKeyBytes);
+    auto valueBytes = decoder.decodeByteString(kMaximumCoreDistributionValueBytes);
+    if (keyBytes == zc::none || valueBytes == zc::none) { return zc::none; }
+    auto key = decodePayloadCrate(ZC_ASSERT_NONNULL(keyBytes).asPtr());
+    auto value = incremental_module_resolution_query::ModuleSearchRootsInput::decodeValue(
+        ZC_ASSERT_NONNULL(valueBytes).asPtr());
+    if (key == zc::none || value == zc::none) { return zc::none; }
+    roots.add(module_graph_query::ModuleSearchRootsEntry::from(zc::mv(ZC_ASSERT_NONNULL(key)),
+                                                               zc::mv(ZC_ASSERT_NONNULL(value))));
+  }
+  auto inventoryCount = decoder.decodeSequenceSize(kMaximumCoreEdges);
+  if (inventoryCount == zc::none) { return zc::none; }
+  zc::Vector<identity::CrateKey> inventory;
+  inventory.reserve(ZC_ASSERT_NONNULL(inventoryCount));
+  for (uint64_t index = 0; index < ZC_ASSERT_NONNULL(inventoryCount); ++index) {
+    auto crateBytes = decoder.decodeByteString(kMaximumCrateOrModuleKeyBytes);
+    if (crateBytes == zc::none) { return zc::none; }
+    auto crate = decodePayloadCrate(ZC_ASSERT_NONNULL(crateBytes).asPtr());
+    if (crate == zc::none) { return zc::none; }
+    inventory.add(zc::mv(ZC_ASSERT_NONNULL(crate)));
+  }
+  auto authorityBytes = decoder.decodeByteString(kMaximumCoreGraphBytes);
+  if (authorityBytes == zc::none || !decoder.finished()) { return zc::none; }
+  auto authority = module_graph_query::CompleteCompilationContextAuthority::decodeCanonical(
+      ZC_ASSERT_NONNULL(authorityBytes).asPtr());
+  if (authority == zc::none) { return zc::none; }
+  auto result =
+      from(zc::mv(ZC_ASSERT_NONNULL(context)), zc::mv(ZC_ASSERT_NONNULL(distribution)),
+           ZC_ASSERT_NONNULL(digest), zc::mv(ZC_ASSERT_NONNULL(policy)), zc::mv(sources),
+           zc::mv(options), zc::mv(roots), zc::mv(inventory), zc::mv(ZC_ASSERT_NONNULL(authority)));
+  if (result == zc::none || ZC_ASSERT_NONNULL(result).encodeCanonical().asPtr() != bytes) {
+    return zc::none;
+  }
+  return zc::mv(ZC_ASSERT_NONNULL(result));
+}
+
+bool VerifiedCoreDistributionInputVerifier::verify(
+    const VerifiedCoreDistributionInputPayload& candidate,
+    const source::core::VerifiedCoreDistribution& distribution,
+    const package::VerifiedPackageCompilationRequest& packageRequest,
+    const identity::source_query::CanonicalCompilationOptions& compilationOptions,
+    zc::ArrayPtr<const identity::CrateKey> completeConsumerInventory) {
+  auto encoded = candidate.encodeCanonical();
+  auto decoded = VerifiedCoreDistributionInputPayload::decodeCanonical(encoded.asPtr());
+  if (decoded == zc::none || ZC_ASSERT_NONNULL(decoded) != candidate ||
+      candidate.distributionRecord().encode().asPtr() != distribution.record().encode().asPtr() ||
+      candidate.distributionDigest() != distribution.distributionDigest() ||
+      candidate.policyTemplate().encode().asPtr() !=
+          distribution.policyTemplate().encode().asPtr() ||
+      !package::CanonicalPackageCompilationRequestProjectionVerifier::verify(
+          candidate.contextAuthority().packageRequest(), packageRequest)) {
+    return false;
+  }
+  zc::Vector<identity::CrateKey> projectedCoreCrates;
+  for (const auto& consumer : completeConsumerInventory) {
+    if (!compilationOptions.matchesCrate(consumer)) { return false; }
+    auto projected = identity::projectToolchainCoreCrate(consumer);
+    if (projected == zc::none) { return false; }
+    bool present = false;
+    for (const auto& candidateCore : projectedCoreCrates) {
+      if (candidateCore.encode().asPtr() == ZC_ASSERT_NONNULL(projected).encode().asPtr()) {
+        present = true;
+        break;
+      }
+    }
+    if (!present) { projectedCoreCrates.add(zc::mv(ZC_ASSERT_NONNULL(projected))); }
+  }
+  if (!canonicalizePayloadValues(projectedCoreCrates,
+                                 [](const identity::CrateKey& value) { return value.encode(); }) ||
+      projectedCoreCrates.size() != candidate.projectedCoreInventory().size()) {
+    return false;
+  }
+  for (size_t index = 0; index < projectedCoreCrates.size(); ++index) {
+    if (projectedCoreCrates[index].encode().asPtr() !=
+        candidate.projectedCoreInventory()[index].encode().asPtr()) {
+      return false;
+    }
+  }
+  if (candidate.projectedCoreSources().size() !=
+      projectedCoreCrates.size() * distribution.snapshots().size()) {
+    return false;
+  }
+  size_t matchedSources = 0;
+  for (const auto& core : projectedCoreCrates) {
+    for (const auto& snapshot : distribution.snapshots()) {
+      auto sourceKey = identity::SourceFileKey::from(
+          core.clone(), identity::SourceOriginKey::coreFile(identity::ToolchainUnitKey::core(),
+                                                            snapshot.path().clone()));
+      auto immutable = identity::ImmutableSourceSnapshot::from(
+          sourceKey.clone(), zc::heapArray<uint8_t>(snapshot.bytes()));
+      if (immutable == zc::none ||
+          ZC_ASSERT_NONNULL(immutable).contentDigest() != snapshot.contentDigest()) {
+        return false;
+      }
+      auto stable = identity::source_query::StableSourceQueryKey::fromVerified(sourceKey);
+      auto canonical = identity::source_query::CanonicalSourceSnapshot::fromVerified(
+          ZC_ASSERT_NONNULL(immutable));
+      if (stable == zc::none || canonical == zc::none) { return false; }
+      size_t occurrences = 0;
+      for (const auto& entry : candidate.projectedCoreSources()) {
+        if (entry.key() != ZC_ASSERT_NONNULL(stable)) { continue; }
+        if (entry.value() != ZC_ASSERT_NONNULL(canonical)) { return false; }
+        ++occurrences;
+      }
+      if (occurrences != 1) { return false; }
+      ++matchedSources;
+    }
+  }
+  if (matchedSources != candidate.projectedCoreSources().size() ||
+      candidate.compilationOptions().size() !=
+          candidate.contextAuthority().compilationOptions().size() ||
+      candidate.moduleSearchRoots().size() !=
+          candidate.contextAuthority().moduleSearchRoots().size()) {
+    return false;
+  }
+  for (const auto& entry : candidate.compilationOptions()) {
+    if (!entry.value().matchesCrate(entry.key()) ||
+        entry.value().encodeCanonical().asPtr() != compilationOptions.encodeCanonical().asPtr()) {
+      return false;
+    }
+  }
+  return true;
+}
+
+struct VerifiedCoreDistributionInputTransaction::Impl final {
+  Impl(query::DatabaseRevision expectedPreviousRevision,
+       source::core::CoreDistributionInputRecord&& distribution,
+       VerifiedCoreDistributionInputPayload&& payload,
+       binder::CanonicalInputPayloadDigest&& payloadDigest,
+       zc::Vector<VerifiedCoreProjectionInput>&& projections) noexcept
+      : expectedPreviousRevision(expectedPreviousRevision),
+        distribution(zc::mv(distribution)),
+        payload(zc::mv(payload)),
+        payloadDigest(zc::mv(payloadDigest)),
         projections(zc::mv(projections)) {}
 
+  query::DatabaseRevision expectedPreviousRevision;
   source::core::CoreDistributionInputRecord distribution;
-  identity::source_query::CanonicalCompilationOptions compilationOptions;
+  VerifiedCoreDistributionInputPayload payload;
+  binder::CanonicalInputPayloadDigest payloadDigest;
   zc::Vector<VerifiedCoreProjectionInput> projections;
   bool committed = false;
 };
@@ -649,12 +1075,20 @@ VerifiedCoreDistributionInputTransaction& VerifiedCoreDistributionInputTransacti
 
 zc::Maybe<VerifiedCoreDistributionInputTransaction>
 VerifiedCoreDistributionInputTransaction::prepare(
+    query::DatabaseRevision expectedPreviousRevision,
     const source::core::VerifiedCoreDistribution& distribution,
+    const package::VerifiedPackageCompilationRequest& packageRequest,
+    module_graph_query::CompleteCompilationContextAuthority&& contextAuthority,
     const identity::source_query::CanonicalCompilationOptions& compilationOptions,
     zc::ArrayPtr<const identity::CrateKey> completeConsumerInventory) {
   auto accepted = source::core::initialCoreDistributionInput();
   if (accepted == zc::none || completeConsumerInventory.size() == 0 ||
+      !package::CanonicalPackageCompilationRequestProjectionVerifier::verify(
+          contextAuthority.packageRequest(), packageRequest) ||
       !verifiedDistributionMatchesAccepted(distribution, ZC_ASSERT_NONNULL(accepted)) ||
+      contextAuthority.coreDistributionRecord().encode().asPtr() !=
+          distribution.record().encode().asPtr() ||
+      contextAuthority.coreDistributionDigest() != distribution.distributionDigest() ||
       distribution.record().editionYear() != 2026 ||
       distribution.snapshots().size() != distribution.record().files().size()) {
     return zc::none;
@@ -719,8 +1153,43 @@ VerifiedCoreDistributionInputTransaction::prepare(
         zc::mv(sources))));
   }
   if (projections.empty()) { return zc::none; }
-  return VerifiedCoreDistributionInputTransaction(zc::heap<Impl>(
-      zc::mv(ZC_ASSERT_NONNULL(accepted)), compilationOptions.clone(), zc::mv(projections)));
+
+  zc::Vector<ProjectedCoreSourceEntry> projectedSources(projections.size() *
+                                                        distribution.snapshots().size());
+  for (const auto& projection : projections) {
+    for (const auto& source : projection.impl->sources) {
+      projectedSources.add(
+          ProjectedCoreSourceEntry::from(source.key.clone(), source.snapshot.clone()));
+    }
+  }
+  zc::Vector<module_graph_query::CompilationOptionsEntry> options(
+      contextAuthority.compilationOptions().size());
+  for (const auto& entry : contextAuthority.compilationOptions()) { options.add(entry.clone()); }
+  zc::Vector<module_graph_query::ModuleSearchRootsEntry> roots(
+      contextAuthority.moduleSearchRoots().size());
+  for (const auto& entry : contextAuthority.moduleSearchRoots()) { roots.add(entry.clone()); }
+  zc::Vector<identity::CrateKey> projectedInventory(projections.size());
+  for (const auto& projection : projections) {
+    projectedInventory.add(projection.impl->crate.clone());
+  }
+  auto payload = VerifiedCoreDistributionInputPayload::from(
+      contextAuthority.contextRoots().clone(), distribution.record().clone(),
+      distribution.distributionDigest(), distribution.policyTemplate().clone(),
+      zc::mv(projectedSources), zc::mv(options), zc::mv(roots), zc::mv(projectedInventory),
+      zc::mv(contextAuthority));
+  if (payload == zc::none || !VerifiedCoreDistributionInputVerifier::verify(
+                                 ZC_ASSERT_NONNULL(payload), distribution, packageRequest,
+                                 compilationOptions, completeConsumerInventory)) {
+    return zc::none;
+  }
+  auto payloadBytes = ZC_ASSERT_NONNULL(payload).encodeCanonical();
+  auto payloadDigest = module_graph_query::computeCanonicalInputPayloadDigest(
+      kCoreDistributionTransactionDomain, payloadBytes.asPtr());
+  if (payloadDigest == zc::none) { return zc::none; }
+  return VerifiedCoreDistributionInputTransaction(
+      zc::heap<Impl>(expectedPreviousRevision, zc::mv(ZC_ASSERT_NONNULL(accepted)),
+                     zc::mv(ZC_ASSERT_NONNULL(payload)), zc::mv(ZC_ASSERT_NONNULL(payloadDigest)),
+                     zc::mv(projections)));
 }
 
 zc::ArrayPtr<const VerifiedCoreProjectionInput>
@@ -734,41 +1203,70 @@ VerifiedCoreDistributionInputTransaction::distribution() const noexcept {
   return impl->distribution;
 }
 
-bool VerifiedCoreDistributionInputTransaction::commit(query::QueryDatabase& database) {
-  if (impl.get() == nullptr || impl->committed) { return false; }
-  const auto coreUnit = identity::ToolchainUnitKey::core();
-  auto snapshot = database.snapshot();
-  auto existing = snapshot.probeInput<CoreDistributionInput>(coreUnit);
-  if (existing.isRuntimeFailure() || existing.kind() != query::QueryValueKind::Absence) {
-    return false;
+const VerifiedCoreDistributionInputPayload& VerifiedCoreDistributionInputTransaction::payload()
+    const noexcept {
+  return impl->payload;
+}
+
+query::InputCommitResult VerifiedCoreDistributionInputTransaction::commit(
+    query::QueryDatabase& database) {
+  if (impl.get() == nullptr || impl->committed) {
+    return query::InputCommitResult::rejected(query::InputTransactionFailure::TransactionClosed);
   }
-  auto pending = database.beginInputTransaction(snapshot.revision());
-  if (!pending.isOpened()) { return false; }
+  const auto coreUnit = identity::ToolchainUnitKey::core();
+  auto pending = database.beginInputTransaction(impl->expectedPreviousRevision);
+  if (!pending.isOpened()) { return query::InputCommitResult::rejected(pending.failure()); }
   auto transaction = zc::mv(pending).takeTransaction();
-  if (!transaction.set<CoreDistributionInput>(coreUnit, impl->distribution).isApplied()) {
-    return false;
+  auto distributionMutation = transaction.set<CoreDistributionInput>(coreUnit, impl->distribution);
+  if (!distributionMutation.isApplied()) {
+    transaction.abandon();
+    return query::InputCommitResult::rejected(distributionMutation.failure());
+  }
+  for (const auto& entry : impl->payload.compilationOptions()) {
+    auto optionsMutation = transaction.set<identity::source_query::CompilationOptionsInput>(
+        entry.key(), entry.value());
+    if (!optionsMutation.isApplied()) {
+      transaction.abandon();
+      return query::InputCommitResult::rejected(optionsMutation.failure());
+    }
+  }
+  for (const auto& entry : impl->payload.moduleSearchRoots()) {
+    auto rootsMutation =
+        transaction.set<incremental_module_resolution_query::ModuleSearchRootsInput>(entry.key(),
+                                                                                     entry.value());
+    if (!rootsMutation.isApplied()) {
+      transaction.abandon();
+      return query::InputCommitResult::rejected(rootsMutation.failure());
+    }
   }
   for (const auto& projection : impl->projections) {
-    if (!transaction
-             .set<identity::source_query::CompilationOptionsInput>(projection.impl->crate,
-                                                                   impl->compilationOptions)
-             .isApplied() ||
-        !transaction
-             .set<incremental_module_resolution_query::ModuleSearchRootsInput>(
-                 projection.impl->crate, projection.impl->searchRoots)
-             .isApplied()) {
-      return false;
-    }
     for (const auto& source : projection.impl->sources) {
-      if (!transaction.set<identity::source_query::SourceSnapshotInput>(source.key, source.snapshot)
-               .isApplied()) {
-        return false;
+      auto sourceMutation =
+          transaction.set<identity::source_query::SourceSnapshotInput>(source.key, source.snapshot);
+      if (!sourceMutation.isApplied()) {
+        transaction.abandon();
+        return query::InputCommitResult::rejected(sourceMutation.failure());
       }
     }
   }
-  if (!transaction.commit().isCommitted()) { return false; }
+  auto authorityMutation =
+      transaction.set<module_graph_query::CompleteCompilationContextAuthorityInput>(
+          impl->payload.contextRoots(), impl->payload.contextAuthority());
+  if (!authorityMutation.isApplied()) {
+    transaction.abandon();
+    return query::InputCommitResult::rejected(authorityMutation.failure());
+  }
+  auto witnessMutation =
+      transaction.set<module_graph_query::CoreDistributionTransactionWitnessInput>(
+          impl->payload.contextRoots(), impl->payloadDigest);
+  if (!witnessMutation.isApplied()) {
+    transaction.abandon();
+    return query::InputCommitResult::rejected(witnessMutation.failure());
+  }
+  auto result = transaction.commit();
+  if (!result.isCommitted()) { return result; }
   impl->committed = true;
-  return true;
+  return result;
 }
 
 bool registerCoreLibraryQueryProvider(query::QueryDatabase& database) {

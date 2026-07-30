@@ -173,6 +173,11 @@ void CoreSemanticContextFingerprint::encode(CanonicalEncoder& encoder) const {
 SemanticContextFingerprint::SemanticContextFingerprint(const Sha256Digest& digest) noexcept
     : value(digest) {}
 
+SemanticContextFingerprint SemanticContextFingerprint::fromCanonicalDigest(
+    const Sha256Digest& digest) noexcept {
+  return SemanticContextFingerprint(digest);
+}
+
 zc::Maybe<SemanticContextFingerprint> SemanticContextFingerprint::compute(
     zc::ArrayPtr<const CompilationUnitIdentity> compilationUnits,
     zc::ArrayPtr<const ToolchainSemanticContextInput> toolchainInputs,

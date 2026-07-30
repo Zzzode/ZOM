@@ -636,13 +636,13 @@ ZOM_STABLE_BINDING_RECORD(CanonicalPackageCompilationRequest,
                           "domain|truncated|trailing|field|duplicate|reordered|enum|max-count",
                           "Canonical package request schema rejects every declared mutation")
 ZOM_STABLE_BINDING_NESTED_RECORD(
-    CanonicalInputEntry, Key, Value, CanonicalInputValueBytes, T1, T1, T1,
+    CanonicalInputEntry, Key, Value, CanonicalInputValueBytes, I1A, I1A, I1A,
     "framing|key|value|truncated|trailing|max-bytes",
     "SessionInputTransactionTest.PayloadsRejectEntryFramingAndDuplicateKeys")
 ZOM_STABLE_BINDING_RECORD(
     CompleteCompilationContextAuthority, "zom.input.complete-compilation-context-authority",
-    CanonicalInputValueBytes, VerifiedCoreDistributionInputTransaction,
-    CompleteCompilationContextAuthorityInputVerifier, T1, T1, T1,
+    CanonicalInputValueBytes, CompleteCompilationContextAuthority::fromVerified,
+    CompleteCompilationContextAuthorityInputVerifier, I1A, I1A, I1A,
     "domain|field|missing|additional|duplicate|reordered|context|roots|graph|options|search-roots|"
     "distribution|fingerprint|max-count|max-bytes",
     "SessionInputTransactionTest.ContextAuthorityRejectsIncompleteAndUnequalInputs")
@@ -1641,7 +1641,7 @@ ZOM_STABLE_BINDING_FIELD_LIMIT("MaterializedModuleGraphWitness.requestEdges",
 ZOM_STABLE_BINDING_INPUT(
     CompleteCompilationContextAuthorityInput, "zom.input.complete-compilation-context-authority",
     CompilationRootSetQueryKey, CompleteCompilationContextAuthority,
-    CompleteCompilationContextAuthorityInputVerifier, T1, T1, T1, T1,
+    CompleteCompilationContextAuthorityInputVerifier, I1A, T1, I1A, I1A,
     "domain|key|value|equality|transaction|context|coverage|max-count|max-bytes",
     "SessionInputTransactionTest.ContextAuthorityRejectsIncompleteAndUnequalInputs")
 ZOM_STABLE_BINDING_INPUT(
@@ -1649,6 +1649,26 @@ ZOM_STABLE_BINDING_INPUT(
     ContextualDefinitionKey, DefinitionIdentityRecord, ActiveDefinitionAuthorityInputVerifier, I2,
     T1, I2, I2, "domain|key|value|presence|equality|transaction|authority|max-bytes",
     "StableBindingMembershipTest.DefinitionInputRejectsMalformedAndStaleAuthority")
+ZOM_STABLE_BINDING_INPUT(
+    ActiveImplementationAuthorityInput, "zom.query.active-implementation-authority",
+    ContextualImplementationKey, ActiveImplementationMembershipRecord,
+    ActiveImplementationAuthorityInputVerifier, I2, T1, I2, I2,
+    "domain|key|value|presence|equality|transaction|authority|occurrence|coverage|max-count|"
+    "max-bytes",
+    "StableBindingMembershipTest.ImplementationInputRejectsMalformedAndStaleAuthority")
+ZOM_STABLE_BINDING_INPUT(
+    ActiveGenericParameterAuthorityInput, "zom.query.active-generic-parameter-authority",
+    ContextualGenericParameterKey, ActiveGenericParameterMembership,
+    ActiveGenericParameterAuthorityInputVerifier, I2, T1, I2, I2,
+    "domain|key|value|presence|equality|transaction|authority|owner|ordinal|coverage|max-bytes",
+    "StableBindingMembershipTest.GenericParameterInputRejectsMalformedAndStaleAuthority")
+ZOM_STABLE_BINDING_INPUT(
+    ActiveCallableParameterAuthorityInput, "zom.query.active-callable-parameter-authority",
+    ContextualCallableParameterKey, ActiveCallableParameterMembershipRecord,
+    ActiveCallableParameterAuthorityInputVerifier, I2, T1, I2, I2,
+    "domain|key|value|presence|equality|transaction|authority|owner|header|position|name|receiver|"
+    "max-bytes",
+    "StableBindingMembershipTest.CallableParameterInputRejectsMalformedAndStaleAuthority")
 ZOM_STABLE_BINDING_INPUT(CompleteRootIdentityReadiness,
                          "zom.binder.complete-root-identity-readiness", CompilationRootSetQueryKey,
                          CompleteRootIdentityReadiness, CompleteRootIdentityReadinessVerifier, I2,

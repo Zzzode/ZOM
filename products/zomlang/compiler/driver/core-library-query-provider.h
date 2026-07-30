@@ -7,6 +7,7 @@
 
 #include "zomlang/compiler/driver/incremental-binding-query-adapter.h"
 #include "zomlang/compiler/driver/incremental-module-resolution-query.h"
+#include "zomlang/compiler/driver/module-graph-query-input.h"
 #include "zomlang/compiler/driver/module-graph-query.h"
 #include "zomlang/compiler/identity/compilation-unit-key.h"
 #include "zomlang/compiler/identity/module-resolution-key.h"
@@ -15,6 +16,10 @@
 #include "zomlang/compiler/query/query-database.h"
 #include "zomlang/compiler/source/core-distribution.h"
 #include "zomlang/compiler/source/core-source-catalog.h"
+
+namespace zomlang::compiler::driver::package {
+class VerifiedPackageCompilationRequest;
+}
 
 namespace zomlang::compiler::driver::core_library_query {
 
@@ -175,11 +180,73 @@ private:
   friend class VerifiedCoreDistributionInputTransaction;
 };
 
+using ProjectedCoreSourceEntry =
+    module_graph_query::CanonicalInputEntry<identity::source_query::StableSourceQueryKey,
+                                            identity::source_query::CanonicalSourceSnapshot>;
+
+/// \brief Complete canonical value installed by the core-distribution transaction.
+class VerifiedCoreDistributionInputPayload final {
+public:
+  ~VerifiedCoreDistributionInputPayload() noexcept(false);
+  VerifiedCoreDistributionInputPayload(VerifiedCoreDistributionInputPayload&&) noexcept;
+  VerifiedCoreDistributionInputPayload& operator=(VerifiedCoreDistributionInputPayload&&) noexcept;
+  ZC_DISALLOW_COPY(VerifiedCoreDistributionInputPayload);
+
+  ZC_NODISCARD static zc::Maybe<VerifiedCoreDistributionInputPayload> from(
+      incremental_binding_query::CompilationRootSetQueryKey&& contextRoots,
+      source::core::CoreDistributionRecord&& distributionRecord,
+      const identity::Sha256Digest& distributionDigest,
+      source::core::CoreStandardMarkerPolicyTemplate&& policyTemplate,
+      zc::Vector<ProjectedCoreSourceEntry>&& projectedCoreSources,
+      zc::Vector<module_graph_query::CompilationOptionsEntry>&& compilationOptions,
+      zc::Vector<module_graph_query::ModuleSearchRootsEntry>&& moduleSearchRoots,
+      zc::Vector<identity::CrateKey>&& projectedCoreInventory,
+      module_graph_query::CompleteCompilationContextAuthority&& contextAuthority);
+  ZC_NODISCARD static zc::Maybe<VerifiedCoreDistributionInputPayload> decodeCanonical(
+      zc::ArrayPtr<const uint8_t> bytes);
+  ZC_NODISCARD VerifiedCoreDistributionInputPayload clone() const;
+  ZC_NODISCARD const incremental_binding_query::CompilationRootSetQueryKey& contextRoots()
+      const noexcept;
+  ZC_NODISCARD const source::core::CoreDistributionRecord& distributionRecord() const noexcept;
+  ZC_NODISCARD const identity::Sha256Digest& distributionDigest() const noexcept;
+  ZC_NODISCARD const source::core::CoreStandardMarkerPolicyTemplate& policyTemplate()
+      const noexcept;
+  ZC_NODISCARD zc::ArrayPtr<const ProjectedCoreSourceEntry> projectedCoreSources() const noexcept;
+  ZC_NODISCARD zc::ArrayPtr<const module_graph_query::CompilationOptionsEntry> compilationOptions()
+      const noexcept;
+  ZC_NODISCARD zc::ArrayPtr<const module_graph_query::ModuleSearchRootsEntry> moduleSearchRoots()
+      const noexcept;
+  ZC_NODISCARD zc::ArrayPtr<const identity::CrateKey> projectedCoreInventory() const noexcept;
+  ZC_NODISCARD const module_graph_query::CompleteCompilationContextAuthority& contextAuthority()
+      const noexcept;
+  ZC_NODISCARD zc::Array<uint8_t> encodeCanonical() const;
+  bool operator==(const VerifiedCoreDistributionInputPayload& other) const;
+
+private:
+  struct Impl;
+  explicit VerifiedCoreDistributionInputPayload(zc::Own<Impl>&& impl) noexcept;
+  zc::Own<Impl> impl;
+};
+
+/// \brief Independently reconstructs the complete core-distribution payload.
+class VerifiedCoreDistributionInputVerifier final {
+public:
+  ZC_NODISCARD static bool verify(
+      const VerifiedCoreDistributionInputPayload& candidate,
+      const source::core::VerifiedCoreDistribution& distribution,
+      const package::VerifiedPackageCompilationRequest& packageRequest,
+      const identity::source_query::CanonicalCompilationOptions& compilationOptions,
+      zc::ArrayPtr<const identity::CrateKey> completeConsumerInventory);
+};
+
 /// \brief Sole atomic writer for one session's complete pre-parse core input root.
 class VerifiedCoreDistributionInputTransaction final {
 public:
   ZC_NODISCARD static zc::Maybe<VerifiedCoreDistributionInputTransaction> prepare(
+      query::DatabaseRevision expectedPreviousRevision,
       const source::core::VerifiedCoreDistribution& distribution,
+      const package::VerifiedPackageCompilationRequest& packageRequest,
+      module_graph_query::CompleteCompilationContextAuthority&& contextAuthority,
       const identity::source_query::CanonicalCompilationOptions& compilationOptions,
       zc::ArrayPtr<const identity::CrateKey> completeConsumerInventory);
 
@@ -190,8 +257,9 @@ public:
   ZC_DISALLOW_COPY(VerifiedCoreDistributionInputTransaction);
 
   ZC_NODISCARD const source::core::CoreDistributionInputRecord& distribution() const noexcept;
+  ZC_NODISCARD const VerifiedCoreDistributionInputPayload& payload() const noexcept;
   ZC_NODISCARD zc::ArrayPtr<const VerifiedCoreProjectionInput> projections() const noexcept;
-  ZC_NODISCARD bool commit(query::QueryDatabase& database);
+  ZC_NODISCARD query::InputCommitResult commit(query::QueryDatabase& database);
 
 private:
   struct Impl;

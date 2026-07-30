@@ -10,10 +10,14 @@
 #include "zc/core/array.h"
 #include "zc/core/common.h"
 #include "zc/core/vector.h"
+#include "zomlang/compiler/binder/binding-input.h"
 #include "zomlang/compiler/driver/incremental-binding-query-adapter.h"
 #include "zomlang/compiler/driver/incremental-module-resolution-query.h"
+#include "zomlang/compiler/driver/incremental-package-graph-query-input.h"
+#include "zomlang/compiler/driver/package/canonical-package-compilation-request.h"
 #include "zomlang/compiler/identity/sha256.h"
 #include "zomlang/compiler/query/query-database.h"
+#include "zomlang/compiler/source/core-distribution.h"
 
 namespace zomlang::compiler::binder {
 class StructuralModuleResolver;
@@ -35,6 +39,164 @@ class SemanticIdentityRegistrySet;
 namespace zomlang::compiler::driver::module_graph_query {
 
 class ModuleGraphInputTransactionVerifier;
+
+/// \brief One canonical input key and its exact canonical value.
+template <typename Key, typename Value>
+class CanonicalInputEntry final {
+public:
+  CanonicalInputEntry(CanonicalInputEntry&&) noexcept = default;
+  CanonicalInputEntry& operator=(CanonicalInputEntry&&) noexcept = default;
+  ZC_DISALLOW_COPY(CanonicalInputEntry);
+
+  ZC_NODISCARD static CanonicalInputEntry from(Key&& key, Value&& value) {
+    return CanonicalInputEntry(zc::mv(key), zc::mv(value));
+  }
+  ZC_NODISCARD CanonicalInputEntry clone() const {
+    return CanonicalInputEntry(keyField.clone(), valueField.clone());
+  }
+  ZC_NODISCARD const Key& key() const noexcept { return keyField; }
+  ZC_NODISCARD const Value& value() const noexcept { return valueField; }
+
+private:
+  CanonicalInputEntry(Key&& key, Value&& value) noexcept
+      : keyField(zc::mv(key)), valueField(zc::mv(value)) {}
+
+  Key keyField;
+  Value valueField;
+};
+
+using CompilationOptionsEntry =
+    CanonicalInputEntry<identity::CrateKey, identity::source_query::CanonicalCompilationOptions>;
+using ModuleSearchRootsEntry =
+    CanonicalInputEntry<identity::CrateKey,
+                        incremental_module_resolution_query::CanonicalModuleSearchRoots>;
+
+/// \brief Independent live authorities used to construct and verify one complete context.
+struct CompleteCompilationContextSources final {
+  const package::VerifiedPackageCompilationRequest& packageRequest;
+  const incremental_binding_query::PackageRootSetKey& packageRootSet;
+  const incremental_binding_query::CanonicalPackageGraph& packageGraph;
+  zc::ArrayPtr<const identity::CrateKey> userRootCrates;
+  zc::ArrayPtr<const identity::CrateKey> projectedCoreCrates;
+  zc::ArrayPtr<const CompilationOptionsEntry> compilationOptions;
+  zc::ArrayPtr<const ModuleSearchRootsEntry> moduleSearchRoots;
+  const source::core::CoreDistributionInputRecord& coreDistribution;
+};
+
+/// \brief Handle-free canonical authority for one complete compilation context.
+class CompleteCompilationContextAuthority final {
+public:
+  ~CompleteCompilationContextAuthority() noexcept(false);
+  CompleteCompilationContextAuthority(CompleteCompilationContextAuthority&&) noexcept;
+  CompleteCompilationContextAuthority& operator=(CompleteCompilationContextAuthority&&) noexcept;
+  ZC_DISALLOW_COPY(CompleteCompilationContextAuthority);
+
+  ZC_NODISCARD static zc::Maybe<CompleteCompilationContextAuthority> fromVerified(
+      const CompleteCompilationContextSources& sources);
+  ZC_NODISCARD static zc::Maybe<CompleteCompilationContextAuthority> decodeCanonical(
+      zc::ArrayPtr<const uint8_t> bytes);
+  ZC_NODISCARD CompleteCompilationContextAuthority clone() const;
+  ZC_NODISCARD const incremental_binding_query::CompilationRootSetQueryKey& contextRoots()
+      const noexcept;
+  ZC_NODISCARD const package::CanonicalPackageCompilationRequest& packageRequest() const noexcept;
+  ZC_NODISCARD const incremental_binding_query::PackageRootSetKey& packageRootSet() const noexcept;
+  ZC_NODISCARD const incremental_binding_query::CanonicalPackageGraph& packageGraph()
+      const noexcept;
+  ZC_NODISCARD zc::ArrayPtr<const identity::CrateKey> userRootCrates() const noexcept;
+  ZC_NODISCARD zc::ArrayPtr<const identity::CrateKey> projectedCoreCrates() const noexcept;
+  ZC_NODISCARD zc::ArrayPtr<const identity::CrateKey> expectedRootCrates() const noexcept;
+  ZC_NODISCARD zc::ArrayPtr<const identity::CrateKey> completeCrates() const noexcept;
+  ZC_NODISCARD zc::ArrayPtr<const CompilationOptionsEntry> compilationOptions() const noexcept;
+  ZC_NODISCARD zc::ArrayPtr<const ModuleSearchRootsEntry> moduleSearchRoots() const noexcept;
+  ZC_NODISCARD const source::core::CoreDistributionRecord& coreDistributionRecord() const noexcept;
+  ZC_NODISCARD const identity::Sha256Digest& coreDistributionDigest() const noexcept;
+  ZC_NODISCARD zc::Array<uint8_t> encodeCanonical() const;
+  bool operator==(const CompleteCompilationContextAuthority& other) const;
+
+private:
+  struct Impl;
+  explicit CompleteCompilationContextAuthority(zc::Own<Impl>&& impl) noexcept;
+  zc::Own<Impl> impl;
+};
+
+/// \brief Reconstructs a complete context without trusting its candidate value.
+class CompleteCompilationContextAuthorityInputVerifier final {
+public:
+  ZC_NODISCARD static bool verify(const CompleteCompilationContextAuthority& candidate,
+                                  const CompleteCompilationContextSources& sources);
+};
+
+/// \brief Computes the canonical witness of one complete-context authority value.
+ZC_NODISCARD zc::Maybe<identity::Sha256Digest> computeCompleteCompilationContextWitness(
+    const CompleteCompilationContextAuthority& authority);
+
+/// \brief Computes one transaction witness from its domain and complete payload bytes.
+ZC_NODISCARD zc::Maybe<binder::CanonicalInputPayloadDigest> computeCanonicalInputPayloadDigest(
+    zc::StringPtr transactionDomain, zc::ArrayPtr<const uint8_t> payloadBytes);
+
+/// \brief Frozen witness installed by the complete core-distribution transaction.
+struct CoreDistributionTransactionWitnessInput final {
+  using Key = incremental_binding_query::CompilationRootSetQueryKey;
+  using Value = binder::CanonicalInputPayloadDigest;
+
+  static constexpr query::InputDescriptorMetadata descriptor{
+      "CoreDistributionTransactionWitnessInput"_zcc,
+      "zom.query.core-distribution-transaction-witness"_zcc, query::Durability::Frozen};
+  ZC_NODISCARD static zc::Array<uint8_t> encodeKey(const Key& key);
+  ZC_NODISCARD static zc::Maybe<Key> decodeKey(zc::ArrayPtr<const uint8_t> bytes);
+  ZC_NODISCARD static zc::Array<uint8_t> encodeValue(const Value& value);
+  ZC_NODISCARD static zc::Maybe<Value> decodeValue(zc::ArrayPtr<const uint8_t> bytes);
+};
+
+/// \brief Frozen witness installed by the complete structural-input transaction.
+struct ModuleStructureTransactionWitnessInput final {
+  using Key = incremental_binding_query::CompilationRootSetQueryKey;
+  using Value = binder::CanonicalInputPayloadDigest;
+
+  static constexpr query::InputDescriptorMetadata descriptor{
+      "ModuleStructureTransactionWitnessInput"_zcc,
+      "zom.query.module-structure-transaction-witness"_zcc, query::Durability::Frozen};
+  ZC_NODISCARD static zc::Array<uint8_t> encodeKey(const Key& key);
+  ZC_NODISCARD static zc::Maybe<Key> decodeKey(zc::ArrayPtr<const uint8_t> bytes);
+  ZC_NODISCARD static zc::Array<uint8_t> encodeValue(const Value& value);
+  ZC_NODISCARD static zc::Maybe<Value> decodeValue(zc::ArrayPtr<const uint8_t> bytes);
+};
+
+/// \brief Frozen witness installed by the complete contextual-authority transaction.
+struct ContextualIdentityAuthorityTransactionWitnessInput final {
+  using Key = incremental_binding_query::CompilationRootSetQueryKey;
+  using Value = binder::CanonicalInputPayloadDigest;
+
+  static constexpr query::InputDescriptorMetadata descriptor{
+      "ContextualIdentityAuthorityTransactionWitnessInput"_zcc,
+      "zom.query.contextual-identity-authority-transaction-witness"_zcc, query::Durability::Frozen};
+  ZC_NODISCARD static zc::Array<uint8_t> encodeKey(const Key& key);
+  ZC_NODISCARD static zc::Maybe<Key> decodeKey(zc::ArrayPtr<const uint8_t> bytes);
+  ZC_NODISCARD static zc::Array<uint8_t> encodeValue(const Value& value);
+  ZC_NODISCARD static zc::Maybe<Value> decodeValue(zc::ArrayPtr<const uint8_t> bytes);
+};
+
+/// \brief Independently reconstructs the complete final-snapshot witness.
+ZC_NODISCARD zc::Maybe<identity::Sha256Digest> computeFinalSnapshotWitness(
+    const query::QuerySnapshot& snapshot,
+    const incremental_binding_query::CompilationRootSetQueryKey& contextRoots);
+
+/// \brief Frozen complete-context input required by final snapshot admission.
+struct CompleteCompilationContextAuthorityInput final {
+  using Key = incremental_binding_query::CompilationRootSetQueryKey;
+  using Value = CompleteCompilationContextAuthority;
+
+  static constexpr query::InputDescriptorMetadata descriptor{
+      "CompleteCompilationContextAuthorityInput"_zcc,
+      "zom.input.complete-compilation-context-authority"_zcc, query::Durability::Frozen};
+  ZC_NODISCARD static zc::Array<uint8_t> encodeKey(const Key& key);
+  ZC_NODISCARD static zc::Maybe<Key> decodeKey(zc::ArrayPtr<const uint8_t> bytes);
+  ZC_NODISCARD static zc::Array<uint8_t> encodeValue(const Value& value);
+  ZC_NODISCARD static zc::Maybe<Value> decodeValue(zc::ArrayPtr<const uint8_t> bytes);
+  ZC_NODISCARD static query::FinalAuthorityCheck verifyFinalAuthority(
+      const query::QuerySnapshot& snapshot, const Key& key, const Value& value,
+      const identity::Sha256Digest& witness);
+};
 
 /// \brief One selected stable module and its exact source.
 class SelectedModuleRecord final {
@@ -381,6 +543,57 @@ struct ConfiguredCratePrelude final {
   incremental_module_resolution_query::ExplicitModuleTarget target;
 };
 
+/// \brief Complete canonical value installed by the structural-input transaction.
+class VerifiedModuleGraphInputPayload final {
+public:
+  ~VerifiedModuleGraphInputPayload() noexcept(false);
+  VerifiedModuleGraphInputPayload(VerifiedModuleGraphInputPayload&&) noexcept;
+  VerifiedModuleGraphInputPayload& operator=(VerifiedModuleGraphInputPayload&&) noexcept;
+  ZC_DISALLOW_COPY(VerifiedModuleGraphInputPayload);
+
+  ZC_NODISCARD static zc::Maybe<VerifiedModuleGraphInputPayload> from(
+      incremental_binding_query::CompilationRootSetQueryKey&& contextRoots,
+      zc::Vector<identity::CrateKey>&& projectedCoreCrates,
+      zc::Vector<SelectedModuleCatalog>&& selectedModuleCatalogs,
+      zc::Vector<DetachedModuleDependencySiteSet>&& dependencySiteSets,
+      zc::Vector<identity::RequesterModuleAncestry>&& requesterAncestries,
+      zc::Vector<incremental_module_resolution_query::CanonicalModuleCatalogBucket>&&
+          catalogBuckets,
+      zc::Vector<incremental_module_resolution_query::CanonicalModuleSearchRoots>&& searchRoots,
+      zc::Vector<ConfiguredDependencyAlias>&& dependencyAliases,
+      zc::Vector<ConfiguredCratePrelude>&& configuredPreludes);
+  ZC_NODISCARD static zc::Maybe<VerifiedModuleGraphInputPayload> decodeCanonical(
+      zc::ArrayPtr<const uint8_t> bytes);
+  ZC_NODISCARD VerifiedModuleGraphInputPayload clone() const;
+  ZC_NODISCARD const incremental_binding_query::CompilationRootSetQueryKey& contextRoots()
+      const noexcept;
+  ZC_NODISCARD zc::ArrayPtr<const identity::CrateKey> projectedCoreCrates() const noexcept;
+  ZC_NODISCARD zc::ArrayPtr<const SelectedModuleCatalog> selectedModuleCatalogs() const noexcept;
+  ZC_NODISCARD zc::ArrayPtr<const DetachedModuleDependencySiteSet> dependencySiteSets()
+      const noexcept;
+  ZC_NODISCARD zc::ArrayPtr<const identity::RequesterModuleAncestry> requesterAncestries()
+      const noexcept;
+  ZC_NODISCARD
+  zc::ArrayPtr<const incremental_module_resolution_query::CanonicalModuleCatalogBucket>
+  catalogBuckets() const noexcept;
+  ZC_NODISCARD
+  zc::ArrayPtr<const incremental_module_resolution_query::CanonicalModuleSearchRoots> searchRoots()
+      const noexcept;
+  ZC_NODISCARD zc::ArrayPtr<const ConfiguredDependencyAlias> dependencyAliases() const noexcept;
+  ZC_NODISCARD zc::ArrayPtr<const ConfiguredCratePrelude> configuredPreludes() const noexcept;
+  ZC_NODISCARD zc::Array<uint8_t> encodeCanonical() const;
+  bool operator==(const VerifiedModuleGraphInputPayload& other) const;
+
+private:
+  struct Impl;
+  explicit VerifiedModuleGraphInputPayload(zc::Own<Impl>&& impl) noexcept;
+  zc::Own<Impl> impl;
+
+  friend class ModuleGraphInputTransactionVerifier;
+  friend class VerifiedModuleGraphInputVerifier;
+  friend class VerifiedModuleGraphInputTransaction;
+};
+
 enum class ModuleGraphInputFamily : uint8_t {
   SelectedModuleCatalog = 0x01,
   ModuleDependencySite = 0x02,
@@ -456,6 +669,7 @@ public:
 
   ZC_NODISCARD static zc::Maybe<VerifiedModuleGraphInputTransaction> prepare(
       const ModuleGraphInputTransactionAuthority& authority,
+      query::DatabaseRevision expectedPreviousRevision,
       incremental_binding_query::CompilationRootSetQueryKey&& contextRoots,
       zc::Vector<identity::CrateKey>&& projectedCoreCrates,
       zc::Vector<SelectedModuleCatalog>&& catalogs,
@@ -470,9 +684,10 @@ public:
 
   ZC_NODISCARD const incremental_binding_query::CompilationRootSetQueryKey& contextRoots()
       const noexcept;
+  ZC_NODISCARD const VerifiedModuleGraphInputPayload& payload() const noexcept;
   ZC_NODISCARD const VerifiedModuleGraphInputLedger& priorLedger() const noexcept;
   ZC_NODISCARD const VerifiedModuleGraphInputLedger& nextLedger() const noexcept;
-  ZC_NODISCARD bool commit(query::QueryDatabase& database);
+  ZC_NODISCARD query::InputCommitResult commit(query::QueryDatabase& database);
 
 private:
   struct Impl;
@@ -480,6 +695,7 @@ private:
   zc::Own<Impl> impl;
 
   friend class ModuleGraphInputTransactionVerifier;
+  friend class VerifiedModuleGraphInputVerifier;
 };
 
 /// \brief Independently verifies one complete structural-input transaction candidate.
@@ -487,6 +703,13 @@ class ModuleGraphInputTransactionVerifier final {
 public:
   ZC_NODISCARD static bool verify(const ModuleGraphInputTransactionAuthority& authority,
                                   const VerifiedModuleGraphInputTransaction& candidate);
+};
+
+/// \brief Independently reconstructs and verifies the complete structural payload.
+class VerifiedModuleGraphInputVerifier final {
+public:
+  ZC_NODISCARD static bool verify(const ModuleGraphInputTransactionAuthority& authority,
+                                  const VerifiedModuleGraphInputPayload& candidate);
 };
 
 /// \brief Registers the structural inputs owned by the module-graph transaction.

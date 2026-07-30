@@ -7,6 +7,7 @@
 
 #include "zomlang/compiler/binder/module-skeleton-query.h"
 #include "zomlang/compiler/driver/active-definition-authority-query.h"
+#include "zomlang/compiler/driver/active-identity-membership-query.h"
 #include "zomlang/compiler/driver/core-library-query-provider.h"
 #include "zomlang/compiler/driver/incremental-module-resolution-query.h"
 #include "zomlang/compiler/driver/incremental-package-graph-query-input.h"
@@ -931,7 +932,7 @@ bool registerIncrementalBindingQueryAdapter(query::QueryDatabase& database) {
   if (!identity::source_query::registerSourceQueryInputs(database)) { return false; }
   if (!parser::registerParseSourceQuery(database)) { return false; }
   if (!database.registerDescriptor<ActiveCratesQuery>().isRegistered()) { return false; }
-  if (!registerActiveDefinitionAuthorityInputs(database)) { return false; }
+  if (!registerActiveIdentityMembershipQueries(database)) { return false; }
   if (!database.registerDescriptor<IdentitySyntaxSiteInventoryQuery>().isRegistered()) {
     return false;
   }

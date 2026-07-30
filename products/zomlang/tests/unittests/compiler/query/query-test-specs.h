@@ -21,16 +21,15 @@
 #include "zomlang/compiler/identity/sha256.h"
 #include "zomlang/compiler/query/query-database.h"
 
-namespace zomlang::compiler::driver::module_graph_query {
+namespace zomlang::compiler::query::test {
 
-/// \brief Test-only definition for the accepted future production inventory role.
-struct CompleteCompilationContextAuthorityInput final {
+/// \brief Generic complete-context fixture for query-runtime seal precedence tests.
+struct TestCompleteContextInput final {
   using Key = uint32_t;
   using Value = uint32_t;
 
   static constexpr query::InputDescriptorMetadata descriptor{
-      "CompleteCompilationContextAuthorityInput"_zcc,
-      "zom.input.complete-compilation-context-authority"_zcc, query::Durability::Frozen};
+      "TestCompleteContextInput"_zcc, "test.input.complete-context"_zcc, query::Durability::Frozen};
 
   static zc::Array<uint8_t> encodeKey(const Key& key) {
     auto bytes = zc::heapArray<uint8_t>(4);
@@ -62,10 +61,6 @@ struct CompleteCompilationContextAuthorityInput final {
     return query::FinalAuthorityCheck::Verified;
   }
 };
-
-}  // namespace zomlang::compiler::driver::module_graph_query
-
-namespace zomlang::compiler::query::test {
 
 inline basic::ThreadPool& queryTestScheduler() {
   static basic::ThreadPool scheduler(4);

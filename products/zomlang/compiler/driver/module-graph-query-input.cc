@@ -14,7 +14,9 @@
 #include "zomlang/compiler/ast/schema-verifier.h"
 #include "zomlang/compiler/binder/binding-input.h"
 #include "zomlang/compiler/binder/module-resolution.h"
+#include "zomlang/compiler/driver/active-definition-authority-query.h"
 #include "zomlang/compiler/driver/core-library-query-provider.h"
+#include "zomlang/compiler/driver/materialized-module-graph-query.h"
 #include "zomlang/compiler/driver/module-dependency-provenance-query.h"
 #include "zomlang/compiler/driver/package/package-compilation-request.h"
 #include "zomlang/compiler/identity/canonical-decoder.h"
@@ -31,6 +33,14 @@ constexpr zc::StringPtr kDependencyRequestsValueDomain =
     "zom.query.module-dependency-requests-value"_zc;
 constexpr zc::StringPtr kDependenciesValueDomain = "zom.query.module-dependencies-value"_zc;
 constexpr zc::StringPtr kDependencyFailureDomain = "zom.query.module-dependency-failure"_zc;
+constexpr zc::StringPtr kCompleteContextAuthorityDomain =
+    "zom.input.complete-compilation-context-authority"_zc;
+constexpr zc::StringPtr kCompleteContextWitnessDomain =
+    "zom.input.complete-compilation-context-witness"_zc;
+constexpr zc::StringPtr kInputTransactionDigestDomain = "zom.query.input-transaction-digest"_zc;
+constexpr zc::StringPtr kModuleStructureTransactionDomain =
+    "zom.query.input-transaction.module-structure"_zc;
+constexpr zc::StringPtr kFinalSnapshotWitnessDomain = "zom.query.final-snapshot-witness"_zc;
 constexpr uint64_t kMaximumCrateKeyBytes = 2 * 1024 * 1024;
 constexpr uint64_t kMaximumModuleKeyBytes = 64 * 1024;
 constexpr uint64_t kMaximumSourceKeyBytes = 64 * 1024;
@@ -39,6 +49,9 @@ constexpr uint64_t kMaximumModules = 4096;
 constexpr uint64_t kMaximumDependencySites = 1024 * 1024;
 constexpr uint64_t kMaximumValueBytes = 64 * 1024 * 1024;
 constexpr uint64_t kMaximumLedgerEntries = 8 * 1024 * 1024;
+constexpr uint64_t kMaximumCanonicalInputSequenceRecords = UINT32_MAX;
+constexpr uint64_t kMaximumCanonicalInputValueBytes = SIZE_MAX;
+constexpr uint64_t kCanonicalByteStringPrefixBytes = sizeof(uint64_t);
 
 zc::Maybe<zc::Vector<uint32_t>> verifierSchemaOrdinals(const ast::Tree& tree) {
   if (!ast::verifySchema(tree) || !tree.contains(tree.root()) || tree.nodeCount() > UINT32_MAX) {
@@ -186,6 +199,16 @@ zc::Maybe<zc::ArrayPtr<const uint8_t>> unframe(zc::StringPtr domain,
   return bytes.slice(prefixSize, bytes.size());
 }
 
+zc::Maybe<zc::ArrayPtr<const uint8_t>> unframeCanonicalInput(zc::StringPtr domain,
+                                                             zc::ArrayPtr<const uint8_t> bytes) {
+  const size_t prefixSize = domain.size() + 1;
+  if (bytes.size() <= prefixSize || bytes.slice(0, domain.size()) != domain.asBytes() ||
+      bytes[domain.size()] != 0) {
+    return zc::none;
+  }
+  return bytes.slice(prefixSize, bytes.size());
+}
+
 zc::Maybe<identity::CrateKey> decodeCrate(zc::ArrayPtr<const uint8_t> bytes) {
   if (bytes.size() == 0 || bytes.size() > kMaximumCrateKeyBytes) { return zc::none; }
   identity::CanonicalDecoder decoder(bytes);
@@ -294,6 +317,23 @@ void sortByBytes(zc::Vector<T>& values, Bytes bytes) {
     }
     values[insertion] = zc::mv(current);
   }
+}
+
+template <typename T, typename Decode>
+zc::Maybe<zc::Vector<T>> decodeCanonicalSequence(identity::CanonicalDecoder& decoder,
+                                                 Decode decodeValue) {
+  auto count = decoder.decodeSequenceSize(kMaximumCanonicalInputSequenceRecords);
+  if (count == zc::none) { return zc::none; }
+  zc::Vector<T> values;
+  values.reserve(ZC_ASSERT_NONNULL(count));
+  for (uint64_t index = 0; index < ZC_ASSERT_NONNULL(count); ++index) {
+    auto valueBytes = decoder.decodeByteString(kMaximumCanonicalInputValueBytes);
+    if (valueBytes == zc::none) { return zc::none; }
+    auto value = decodeValue(ZC_ASSERT_NONNULL(valueBytes).asPtr());
+    if (value == zc::none) { return zc::none; }
+    values.add(zc::mv(ZC_ASSERT_NONNULL(value)));
+  }
+  return zc::mv(values);
 }
 
 bool isSelected(zc::ArrayPtr<const SelectedModuleCatalog> catalogs,
@@ -726,7 +766,1084 @@ bool eraseLedgerEntry(query::InputTransaction& transaction,
   return false;
 }
 
+zc::Vector<identity::CrateKey> cloneCrates(zc::ArrayPtr<const identity::CrateKey> crates) {
+  zc::Vector<identity::CrateKey> result(crates.size());
+  for (const auto& crate : crates) { result.add(crate.clone()); }
+  return result;
+}
+
+bool canonicalizeCrates(zc::Vector<identity::CrateKey>& crates, bool requireNonEmpty = true) {
+  if ((requireNonEmpty && crates.size() == 0) ||
+      crates.size() > kMaximumCanonicalInputSequenceRecords) {
+    return false;
+  }
+  sortByBytes(crates, [](const identity::CrateKey& crate) { return crate.encode(); });
+  for (size_t index = 1; index < crates.size(); ++index) {
+    if (sameCrate(crates[index - 1], crates[index])) { return false; }
+  }
+  return true;
+}
+
+zc::Maybe<zc::Vector<identity::CrateKey>> canonicalCrateUnion(
+    zc::ArrayPtr<const identity::CrateKey> left, zc::ArrayPtr<const identity::CrateKey> right) {
+  auto result = cloneCrates(left);
+  for (const auto& crate : right) { result.add(crate.clone()); }
+  if (!canonicalizeCrates(result)) { return zc::none; }
+  return zc::mv(result);
+}
+
+bool sameCrates(zc::ArrayPtr<const identity::CrateKey> left,
+                zc::ArrayPtr<const identity::CrateKey> right) {
+  if (left.size() != right.size()) { return false; }
+  for (size_t index = 0; index < left.size(); ++index) {
+    if (!sameCrate(left[index], right[index])) { return false; }
+  }
+  return true;
+}
+
+template <typename Entry, typename KeyEncoder>
+bool canonicalizeEntries(zc::Vector<Entry>& entries, KeyEncoder&& encodeKey) {
+  if (entries.size() == 0 || entries.size() > kMaximumCanonicalInputSequenceRecords) {
+    return false;
+  }
+  sortByBytes(entries, [&](const Entry& entry) { return encodeKey(entry.key()); });
+  for (size_t index = 1; index < entries.size(); ++index) {
+    if (encodeKey(entries[index - 1].key()).asPtr() == encodeKey(entries[index].key()).asPtr()) {
+      return false;
+    }
+  }
+  return true;
+}
+
+zc::Vector<CompilationOptionsEntry> cloneCompilationOptions(
+    zc::ArrayPtr<const CompilationOptionsEntry> entries) {
+  zc::Vector<CompilationOptionsEntry> result(entries.size());
+  for (const auto& entry : entries) { result.add(entry.clone()); }
+  return result;
+}
+
+zc::Vector<ModuleSearchRootsEntry> cloneSearchRoots(
+    zc::ArrayPtr<const ModuleSearchRootsEntry> entries) {
+  zc::Vector<ModuleSearchRootsEntry> result(entries.size());
+  for (const auto& entry : entries) { result.add(entry.clone()); }
+  return result;
+}
+
+zc::Maybe<identity::CrateKey> decodeStableCrate(
+    const incremental_binding_query::StableCrateQueryKey& key) {
+  return decodeCrate(key.canonicalCrateBytes());
+}
+
+bool containsCrate(zc::ArrayPtr<const identity::CrateKey> crates,
+                   const identity::CrateKey& candidate) {
+  for (const auto& crate : crates) {
+    if (sameCrate(crate, candidate)) { return true; }
+  }
+  return false;
+}
+
+bool samePackage(const identity::PackageKey& left, const identity::PackageKey& right) {
+  return left.encode().asPtr() == right.encode().asPtr();
+}
+
+bool containsPackage(zc::ArrayPtr<const incremental_binding_query::StablePackageQueryKey> packages,
+                     const identity::PackageKey& candidate) {
+  const auto encoded = candidate.encode();
+  for (const auto& package : packages) {
+    if (package.canonicalPackageBytes() == encoded.asPtr()) { return true; }
+  }
+  return false;
+}
+
+zc::Maybe<identity::PackageDependencyEdgeKey> decodePackageEdge(
+    const incremental_binding_query::StablePackageDependencyQueryKey& stable) {
+  identity::CanonicalDecoder decoder(stable.canonicalEdgeBytes());
+  auto edge = identity::PackageDependencyEdgeKey::decodeCanonical(decoder);
+  if (edge == zc::none || !decoder.finished()) { return zc::none; }
+  return edge;
+}
+
+zc::Maybe<identity::CrateDependencyEdgeKey> decodeCrateEdge(
+    const incremental_binding_query::StableCrateDependencyQueryKey& stable) {
+  identity::CanonicalDecoder decoder(stable.canonicalEdgeBytes());
+  auto edge = identity::CrateDependencyEdgeKey::decodeCanonical(decoder);
+  if (edge == zc::none || !decoder.finished()) { return zc::none; }
+  return edge;
+}
+
+bool containsPackageEdge(
+    zc::ArrayPtr<const incremental_binding_query::StablePackageDependencyQueryKey> edges,
+    const identity::PackageDependencyEdgeKey& candidate) {
+  const auto encoded = candidate.encode();
+  for (const auto& edge : edges) {
+    if (edge.canonicalEdgeBytes() == encoded.asPtr()) { return true; }
+  }
+  return false;
+}
+
+zc::Array<uint8_t> encodeTargetSpecification(
+    const identity::CanonicalTargetSpecificationKey& target) {
+  identity::CanonicalEncoder encoder;
+  target.encode(encoder);
+  return encoder.finish();
+}
+
+bool rootMatchesCrate(const package::VerifiedCompilationRoot& root,
+                      const package::VerifiedPackageCompilationRequest& request,
+                      const identity::CrateKey& crate) {
+  const auto& semantic = crate.semanticOptions();
+  return crate.unit().kind() == identity::CompilationUnitKind::UserPackage &&
+         samePackage(crate.unit().userPackage(), root.packageKey()) &&
+         crate.targetKind() == root.targetKind() && crate.targetName() == root.targetName() &&
+         crate.compilation().domain() == identity::CompilationDomain::Target &&
+         encodeTargetSpecification(crate.compilation().target()).asPtr() ==
+             encodeTargetSpecification(request.target().semanticProjection()).asPtr() &&
+         semantic.editionYear() == root.editionYear() &&
+         semantic.useUnicode() == request.languageOptions().useUnicode &&
+         semantic.allowDollarIdentifiers() == request.languageOptions().allowDollarIdentifiers &&
+         semantic.supportRegexLiterals() == request.languageOptions().supportRegexLiterals &&
+         crate.compilation().hasBuildScriptProducer() == root.requiresBuildScript();
+}
+
+bool validateProducerGraphClosure(const CompleteCompilationContextSources& sources,
+                                  zc::ArrayPtr<const identity::CrateKey> completeCrates) {
+  const auto packages = sources.packageGraph.resolvedPackages();
+  const auto packageEdges = sources.packageGraph.resolvedPackageEdges();
+  const auto selectedEdges = sources.packageGraph.selectedPackageEdges();
+  if (packages.size() == 0 || sources.packageGraph.crates().size() == 0) { return false; }
+  for (const auto& root : sources.packageRequest.roots()) {
+    if (!containsPackage(packages, root.packageKey())) { return false; }
+  }
+  for (const auto& stable : packageEdges) {
+    auto edge = decodePackageEdge(stable);
+    if (edge == zc::none || !containsPackage(packages, ZC_ASSERT_NONNULL(edge).consumer()) ||
+        !containsPackage(packages, ZC_ASSERT_NONNULL(edge).provider())) {
+      return false;
+    }
+  }
+  for (const auto& selected : selectedEdges) {
+    bool present = false;
+    for (const auto& resolved : packageEdges) {
+      if (selected == resolved) {
+        present = true;
+        break;
+      }
+    }
+    if (!present) { return false; }
+  }
+  for (const auto& stable : sources.packageGraph.crates()) {
+    auto crate = decodeStableCrate(stable);
+    if (crate == zc::none || !containsCrate(completeCrates, ZC_ASSERT_NONNULL(crate))) {
+      return false;
+    }
+    const auto& unit = ZC_ASSERT_NONNULL(crate).unit();
+    if (unit.kind() == identity::CompilationUnitKind::UserPackage) {
+      if (!containsPackage(packages, unit.userPackage())) { return false; }
+    } else if (unit.toolchain().component() != identity::ToolchainComponent::Core) {
+      return false;
+    }
+  }
+  for (const auto& stable : sources.packageGraph.crateEdges()) {
+    auto edge = decodeCrateEdge(stable);
+    if (edge == zc::none || !containsCrate(completeCrates, ZC_ASSERT_NONNULL(edge).consumer()) ||
+        !containsCrate(completeCrates, ZC_ASSERT_NONNULL(edge).provider())) {
+      return false;
+    }
+    const auto& origin = ZC_ASSERT_NONNULL(edge).origin();
+    if (origin.kind() == identity::CrateDependencyOriginKind::UserPackage) {
+      const auto& packageEdge = origin.userPackageEdge();
+      if (!containsPackageEdge(selectedEdges, packageEdge) ||
+          ZC_ASSERT_NONNULL(edge).consumer().unit().kind() !=
+              identity::CompilationUnitKind::UserPackage ||
+          ZC_ASSERT_NONNULL(edge).provider().unit().kind() !=
+              identity::CompilationUnitKind::UserPackage ||
+          !samePackage(ZC_ASSERT_NONNULL(edge).consumer().unit().userPackage(),
+                       packageEdge.consumer()) ||
+          !samePackage(ZC_ASSERT_NONNULL(edge).provider().unit().userPackage(),
+                       packageEdge.provider())) {
+        return false;
+      }
+    } else if (ZC_ASSERT_NONNULL(edge).provider().unit().kind() !=
+                   identity::CompilationUnitKind::Toolchain ||
+               ZC_ASSERT_NONNULL(edge).provider().unit().toolchain().component() !=
+                   identity::ToolchainComponent::Core) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool validateCompleteContextProducerSources(
+    const CompleteCompilationContextSources& sources,
+    const incremental_binding_query::CompilationRootSetQueryKey& contextRoots,
+    zc::ArrayPtr<const identity::CrateKey> expectedRoots,
+    zc::ArrayPtr<const identity::CrateKey> completeCrates) {
+  auto independentlyProjected = incremental_binding_query::CompilationRootSetQueryKey::fromVerified(
+      sources.packageRequest, sources.projectedCoreCrates);
+  auto independentlyRooted =
+      incremental_binding_query::PackageRootSetKey::fromVerified(sources.packageRequest);
+  auto expectedOptions =
+      identity::source_query::CanonicalCompilationOptions::fromVerified(sources.packageRequest);
+  if (independentlyProjected == zc::none || independentlyRooted == zc::none ||
+      expectedOptions == zc::none || ZC_ASSERT_NONNULL(independentlyProjected) != contextRoots ||
+      ZC_ASSERT_NONNULL(independentlyRooted) != sources.packageRootSet ||
+      sources.userRootCrates.size() != sources.packageRequest.roots().size() ||
+      sources.compilationOptions.size() != completeCrates.size() ||
+      sources.moduleSearchRoots.size() != completeCrates.size() ||
+      !validateProducerGraphClosure(sources, completeCrates)) {
+    return false;
+  }
+  for (const auto& requestRoot : sources.packageRequest.roots()) {
+    size_t matches = 0;
+    for (const auto& crate : sources.userRootCrates) {
+      if (rootMatchesCrate(requestRoot, sources.packageRequest, crate)) { ++matches; }
+    }
+    if (matches != 1) { return false; }
+  }
+  for (const auto& root : sources.userRootCrates) {
+    if (!containsCrate(completeCrates, root) ||
+        root.unit().kind() != identity::CompilationUnitKind::UserPackage) {
+      return false;
+    }
+  }
+  for (const auto& core : sources.projectedCoreCrates) {
+    if (core.unit().kind() != identity::CompilationUnitKind::Toolchain ||
+        core.unit().toolchain().component() != identity::ToolchainComponent::Core ||
+        !containsCrate(expectedRoots, core) || !containsCrate(completeCrates, core)) {
+      return false;
+    }
+  }
+  for (const auto& entry : sources.compilationOptions) {
+    if (!containsCrate(completeCrates, entry.key()) || !entry.value().matchesCrate(entry.key()) ||
+        entry.value() != ZC_ASSERT_NONNULL(expectedOptions)) {
+      return false;
+    }
+  }
+  for (const auto& entry : sources.moduleSearchRoots) {
+    if (!containsCrate(completeCrates, entry.key()) ||
+        !sameCrate(entry.key(), entry.value().crate()) || entry.value().roots().size() == 0) {
+      return false;
+    }
+    bool foundCoreDistribution = false;
+    for (const auto& root : entry.value().roots()) {
+      if (!sameCrate(root.crate(), entry.key())) { return false; }
+      if (root.kind() == binder::ModuleSearchRootKind::ToolchainCore) {
+        if (entry.key().unit().kind() != identity::CompilationUnitKind::Toolchain ||
+            entry.key().unit().toolchain().component() != identity::ToolchainComponent::Core ||
+            root.toolchainCoreDistributionDigest() != sources.coreDistribution.digest()) {
+          return false;
+        }
+        foundCoreDistribution = true;
+      }
+    }
+    const bool isCore =
+        entry.key().unit().kind() == identity::CompilationUnitKind::Toolchain &&
+        entry.key().unit().toolchain().component() == identity::ToolchainComponent::Core;
+    if (foundCoreDistribution != isCore) { return false; }
+  }
+  auto digest = source::core::computeCoreDistributionDigest(sources.coreDistribution.record());
+  return digest != zc::none && ZC_ASSERT_NONNULL(digest) == sources.coreDistribution.digest();
+}
+
+void encodeCrateSequence(identity::CanonicalEncoder& encoder,
+                         zc::ArrayPtr<const identity::CrateKey> crates) {
+  encoder.encodeSequenceSize(crates.size());
+  for (const auto& crate : crates) {
+    auto bytes = crate.encode();
+    encoder.encodeByteString(bytes.asPtr());
+  }
+}
+
+template <typename Entry, typename KeyEncoder, typename ValueEncoder>
+void encodeEntrySequence(identity::CanonicalEncoder& encoder, zc::ArrayPtr<const Entry> entries,
+                         KeyEncoder&& encodeKey, ValueEncoder&& encodeValue) {
+  encoder.encodeSequenceSize(entries.size());
+  for (const auto& entry : entries) {
+    identity::CanonicalEncoder nested;
+    auto keyBytes = encodeKey(entry.key());
+    auto valueBytes = encodeValue(entry.value());
+    nested.encodeByteString(keyBytes.asPtr());
+    nested.encodeByteString(valueBytes.asPtr());
+    auto bytes = nested.finish();
+    encoder.encodeByteString(bytes.asPtr());
+  }
+}
+
+zc::Maybe<zc::Vector<identity::CrateKey>> decodeCrateSequence(identity::CanonicalDecoder& decoder) {
+  auto count = decoder.decodeSequenceSize(kMaximumCanonicalInputSequenceRecords);
+  if (count == zc::none || ZC_ASSERT_NONNULL(count) == 0 ||
+      ZC_ASSERT_NONNULL(count) > decoder.remaining() / kCanonicalByteStringPrefixBytes) {
+    return zc::none;
+  }
+  zc::Vector<identity::CrateKey> result(static_cast<size_t>(ZC_ASSERT_NONNULL(count)));
+  for (uint64_t index = 0; index < ZC_ASSERT_NONNULL(count); ++index) {
+    auto bytes = decoder.decodeByteString(kMaximumCanonicalInputValueBytes);
+    if (bytes == zc::none) { return zc::none; }
+    auto crate = decodeCrate(ZC_ASSERT_NONNULL(bytes).asPtr());
+    if (crate == zc::none) { return zc::none; }
+    result.add(zc::mv(ZC_ASSERT_NONNULL(crate)));
+  }
+  if (!canonicalizeCrates(result)) { return zc::none; }
+  return zc::mv(result);
+}
+
+zc::Maybe<zc::Vector<CompilationOptionsEntry>> decodeCompilationOptions(
+    identity::CanonicalDecoder& decoder) {
+  auto count = decoder.decodeSequenceSize(kMaximumCanonicalInputSequenceRecords);
+  if (count == zc::none || ZC_ASSERT_NONNULL(count) == 0 ||
+      ZC_ASSERT_NONNULL(count) > decoder.remaining() / kCanonicalByteStringPrefixBytes) {
+    return zc::none;
+  }
+  zc::Vector<CompilationOptionsEntry> result(static_cast<size_t>(ZC_ASSERT_NONNULL(count)));
+  for (uint64_t index = 0; index < ZC_ASSERT_NONNULL(count); ++index) {
+    auto record = decoder.decodeByteString(kMaximumCanonicalInputValueBytes);
+    if (record == zc::none) { return zc::none; }
+    identity::CanonicalDecoder nested(ZC_ASSERT_NONNULL(record).asPtr());
+    auto keyBytes = nested.decodeByteString(kMaximumCanonicalInputValueBytes);
+    auto valueBytes = nested.decodeByteString(kMaximumCanonicalInputValueBytes);
+    if (keyBytes == zc::none || valueBytes == zc::none || !nested.finished()) { return zc::none; }
+    auto key = identity::source_query::CompilationOptionsInput::decodeKey(
+        ZC_ASSERT_NONNULL(keyBytes).asPtr());
+    auto value = identity::source_query::CompilationOptionsInput::decodeValue(
+        ZC_ASSERT_NONNULL(valueBytes).asPtr());
+    if (key == zc::none || value == zc::none) { return zc::none; }
+    result.add(CompilationOptionsEntry::from(zc::mv(ZC_ASSERT_NONNULL(key)),
+                                             zc::mv(ZC_ASSERT_NONNULL(value))));
+  }
+  if (!canonicalizeEntries(result, [](const identity::CrateKey& key) {
+        return identity::source_query::CompilationOptionsInput::encodeKey(key);
+      })) {
+    return zc::none;
+  }
+  return zc::mv(result);
+}
+
+zc::Maybe<zc::Vector<ModuleSearchRootsEntry>> decodeSearchRoots(
+    identity::CanonicalDecoder& decoder) {
+  auto count = decoder.decodeSequenceSize(kMaximumCanonicalInputSequenceRecords);
+  if (count == zc::none || ZC_ASSERT_NONNULL(count) == 0 ||
+      ZC_ASSERT_NONNULL(count) > decoder.remaining() / kCanonicalByteStringPrefixBytes) {
+    return zc::none;
+  }
+  zc::Vector<ModuleSearchRootsEntry> result(static_cast<size_t>(ZC_ASSERT_NONNULL(count)));
+  for (uint64_t index = 0; index < ZC_ASSERT_NONNULL(count); ++index) {
+    auto record = decoder.decodeByteString(kMaximumCanonicalInputValueBytes);
+    if (record == zc::none) { return zc::none; }
+    identity::CanonicalDecoder nested(ZC_ASSERT_NONNULL(record).asPtr());
+    auto keyBytes = nested.decodeByteString(kMaximumCanonicalInputValueBytes);
+    auto valueBytes = nested.decodeByteString(kMaximumCanonicalInputValueBytes);
+    if (keyBytes == zc::none || valueBytes == zc::none || !nested.finished()) { return zc::none; }
+    auto key = incremental_module_resolution_query::ModuleSearchRootsInput::decodeKey(
+        ZC_ASSERT_NONNULL(keyBytes).asPtr());
+    auto value = incremental_module_resolution_query::ModuleSearchRootsInput::decodeValue(
+        ZC_ASSERT_NONNULL(valueBytes).asPtr());
+    if (key == zc::none || value == zc::none) { return zc::none; }
+    result.add(ModuleSearchRootsEntry::from(zc::mv(ZC_ASSERT_NONNULL(key)),
+                                            zc::mv(ZC_ASSERT_NONNULL(value))));
+  }
+  if (!canonicalizeEntries(result, [](const identity::CrateKey& key) {
+        return incremental_module_resolution_query::ModuleSearchRootsInput::encodeKey(key);
+      })) {
+    return zc::none;
+  }
+  return zc::mv(result);
+}
+
 }  // namespace
+
+struct CompleteCompilationContextAuthority::Impl final {
+  Impl(incremental_binding_query::CompilationRootSetQueryKey&& contextRoots,
+       package::CanonicalPackageCompilationRequest&& packageRequest,
+       incremental_binding_query::PackageRootSetKey&& packageRootSet,
+       incremental_binding_query::CanonicalPackageGraph&& packageGraph,
+       zc::Vector<identity::CrateKey>&& userRootCrates,
+       zc::Vector<identity::CrateKey>&& projectedCoreCrates,
+       zc::Vector<identity::CrateKey>&& expectedRootCrates,
+       zc::Vector<identity::CrateKey>&& completeCrates,
+       zc::Vector<CompilationOptionsEntry>&& compilationOptions,
+       zc::Vector<ModuleSearchRootsEntry>&& moduleSearchRoots,
+       source::core::CoreDistributionRecord&& coreDistributionRecord,
+       const identity::Sha256Digest& coreDistributionDigest) noexcept
+      : contextRoots(zc::mv(contextRoots)),
+        packageRequest(zc::mv(packageRequest)),
+        packageRootSet(zc::mv(packageRootSet)),
+        packageGraph(zc::mv(packageGraph)),
+        userRootCrates(zc::mv(userRootCrates)),
+        projectedCoreCrates(zc::mv(projectedCoreCrates)),
+        expectedRootCrates(zc::mv(expectedRootCrates)),
+        completeCrates(zc::mv(completeCrates)),
+        compilationOptions(zc::mv(compilationOptions)),
+        moduleSearchRoots(zc::mv(moduleSearchRoots)),
+        coreDistributionRecord(zc::mv(coreDistributionRecord)),
+        coreDistributionDigest(coreDistributionDigest) {}
+
+  incremental_binding_query::CompilationRootSetQueryKey contextRoots;
+  package::CanonicalPackageCompilationRequest packageRequest;
+  incremental_binding_query::PackageRootSetKey packageRootSet;
+  incremental_binding_query::CanonicalPackageGraph packageGraph;
+  zc::Vector<identity::CrateKey> userRootCrates;
+  zc::Vector<identity::CrateKey> projectedCoreCrates;
+  zc::Vector<identity::CrateKey> expectedRootCrates;
+  zc::Vector<identity::CrateKey> completeCrates;
+  zc::Vector<CompilationOptionsEntry> compilationOptions;
+  zc::Vector<ModuleSearchRootsEntry> moduleSearchRoots;
+  source::core::CoreDistributionRecord coreDistributionRecord;
+  identity::Sha256Digest coreDistributionDigest;
+};
+
+CompleteCompilationContextAuthority::CompleteCompilationContextAuthority(
+    zc::Own<Impl>&& value) noexcept
+    : impl(zc::mv(value)) {}
+CompleteCompilationContextAuthority::~CompleteCompilationContextAuthority() noexcept(false) =
+    default;
+CompleteCompilationContextAuthority::CompleteCompilationContextAuthority(
+    CompleteCompilationContextAuthority&&) noexcept = default;
+CompleteCompilationContextAuthority& CompleteCompilationContextAuthority::operator=(
+    CompleteCompilationContextAuthority&&) noexcept = default;
+
+zc::Maybe<CompleteCompilationContextAuthority> CompleteCompilationContextAuthority::fromVerified(
+    const CompleteCompilationContextSources& sources) {
+  auto packageRequest =
+      package::CanonicalPackageCompilationRequest::fromVerified(sources.packageRequest);
+  auto contextRoots = incremental_binding_query::CompilationRootSetQueryKey::fromVerified(
+      sources.packageRequest, sources.projectedCoreCrates);
+  auto userRoots = cloneCrates(sources.userRootCrates);
+  auto projectedCore = cloneCrates(sources.projectedCoreCrates);
+  if (packageRequest == zc::none || contextRoots == zc::none || !canonicalizeCrates(userRoots) ||
+      !canonicalizeCrates(projectedCore)) {
+    return zc::none;
+  }
+  auto expectedRoots = canonicalCrateUnion(userRoots.asPtr(), projectedCore.asPtr());
+  zc::Vector<identity::CrateKey> packageCrates(sources.packageGraph.crates().size());
+  for (const auto& stable : sources.packageGraph.crates()) {
+    auto crate = decodeStableCrate(stable);
+    if (crate == zc::none) { return zc::none; }
+    packageCrates.add(zc::mv(ZC_ASSERT_NONNULL(crate)));
+  }
+  auto completeCrates = canonicalCrateUnion(packageCrates.asPtr(), projectedCore.asPtr());
+  auto options = cloneCompilationOptions(sources.compilationOptions);
+  auto searchRoots = cloneSearchRoots(sources.moduleSearchRoots);
+  if (expectedRoots == zc::none || completeCrates == zc::none ||
+      !canonicalizeEntries(options,
+                           [](const identity::CrateKey& key) {
+                             return identity::source_query::CompilationOptionsInput::encodeKey(key);
+                           }) ||
+      !canonicalizeEntries(
+          searchRoots,
+          [](const identity::CrateKey& key) {
+            return incremental_module_resolution_query::ModuleSearchRootsInput::encodeKey(key);
+          }) ||
+      !validateCompleteContextProducerSources(sources, ZC_ASSERT_NONNULL(contextRoots),
+                                              ZC_ASSERT_NONNULL(expectedRoots).asPtr(),
+                                              ZC_ASSERT_NONNULL(completeCrates).asPtr())) {
+    return zc::none;
+  }
+  auto result = CompleteCompilationContextAuthority(zc::heap<Impl>(
+      zc::mv(ZC_ASSERT_NONNULL(contextRoots)), zc::mv(ZC_ASSERT_NONNULL(packageRequest)),
+      sources.packageRootSet.clone(), sources.packageGraph.clone(), zc::mv(userRoots),
+      zc::mv(projectedCore), zc::mv(ZC_ASSERT_NONNULL(expectedRoots)),
+      zc::mv(ZC_ASSERT_NONNULL(completeCrates)), zc::mv(options), zc::mv(searchRoots),
+      sources.coreDistribution.record().clone(), sources.coreDistribution.digest()));
+  return zc::mv(result);
+}
+
+CompleteCompilationContextAuthority CompleteCompilationContextAuthority::clone() const {
+  return CompleteCompilationContextAuthority(zc::heap<Impl>(
+      impl->contextRoots.clone(), impl->packageRequest.clone(), impl->packageRootSet.clone(),
+      impl->packageGraph.clone(), cloneCrates(impl->userRootCrates.asPtr()),
+      cloneCrates(impl->projectedCoreCrates.asPtr()), cloneCrates(impl->expectedRootCrates.asPtr()),
+      cloneCrates(impl->completeCrates.asPtr()),
+      cloneCompilationOptions(impl->compilationOptions.asPtr()),
+      cloneSearchRoots(impl->moduleSearchRoots.asPtr()), impl->coreDistributionRecord.clone(),
+      impl->coreDistributionDigest));
+}
+
+const incremental_binding_query::CompilationRootSetQueryKey&
+CompleteCompilationContextAuthority::contextRoots() const noexcept {
+  return impl->contextRoots;
+}
+const package::CanonicalPackageCompilationRequest&
+CompleteCompilationContextAuthority::packageRequest() const noexcept {
+  return impl->packageRequest;
+}
+const incremental_binding_query::PackageRootSetKey&
+CompleteCompilationContextAuthority::packageRootSet() const noexcept {
+  return impl->packageRootSet;
+}
+const incremental_binding_query::CanonicalPackageGraph&
+CompleteCompilationContextAuthority::packageGraph() const noexcept {
+  return impl->packageGraph;
+}
+zc::ArrayPtr<const identity::CrateKey> CompleteCompilationContextAuthority::userRootCrates()
+    const noexcept {
+  return impl->userRootCrates.asPtr();
+}
+zc::ArrayPtr<const identity::CrateKey> CompleteCompilationContextAuthority::projectedCoreCrates()
+    const noexcept {
+  return impl->projectedCoreCrates.asPtr();
+}
+zc::ArrayPtr<const identity::CrateKey> CompleteCompilationContextAuthority::expectedRootCrates()
+    const noexcept {
+  return impl->expectedRootCrates.asPtr();
+}
+zc::ArrayPtr<const identity::CrateKey> CompleteCompilationContextAuthority::completeCrates()
+    const noexcept {
+  return impl->completeCrates.asPtr();
+}
+zc::ArrayPtr<const CompilationOptionsEntry>
+CompleteCompilationContextAuthority::compilationOptions() const noexcept {
+  return impl->compilationOptions.asPtr();
+}
+zc::ArrayPtr<const ModuleSearchRootsEntry> CompleteCompilationContextAuthority::moduleSearchRoots()
+    const noexcept {
+  return impl->moduleSearchRoots.asPtr();
+}
+const source::core::CoreDistributionRecord&
+CompleteCompilationContextAuthority::coreDistributionRecord() const noexcept {
+  return impl->coreDistributionRecord;
+}
+const identity::Sha256Digest& CompleteCompilationContextAuthority::coreDistributionDigest()
+    const noexcept {
+  return impl->coreDistributionDigest;
+}
+
+zc::Array<uint8_t> CompleteCompilationContextAuthority::encodeCanonical() const {
+  identity::CanonicalEncoder encoder;
+  auto contextBytes = impl->contextRoots.encodeCanonical();
+  auto requestBytes = impl->packageRequest.encodeCanonical();
+  auto rootSetBytes = incremental_binding_query::PackageGraphInput::encodeKey(impl->packageRootSet);
+  auto graphBytes = incremental_binding_query::PackageGraphInput::encodeValue(impl->packageGraph);
+  encoder.encodeByteString(contextBytes.asPtr());
+  encoder.encodeByteString(requestBytes.asPtr());
+  encoder.encodeByteString(rootSetBytes.asPtr());
+  encoder.encodeByteString(graphBytes.asPtr());
+  encodeCrateSequence(encoder, impl->userRootCrates.asPtr());
+  encodeCrateSequence(encoder, impl->projectedCoreCrates.asPtr());
+  encodeCrateSequence(encoder, impl->expectedRootCrates.asPtr());
+  encodeCrateSequence(encoder, impl->completeCrates.asPtr());
+  encodeEntrySequence(
+      encoder, impl->compilationOptions.asPtr(),
+      [](const identity::CrateKey& key) {
+        return identity::source_query::CompilationOptionsInput::encodeKey(key);
+      },
+      [](const identity::source_query::CanonicalCompilationOptions& value) {
+        return identity::source_query::CompilationOptionsInput::encodeValue(value);
+      });
+  encodeEntrySequence(
+      encoder, impl->moduleSearchRoots.asPtr(),
+      [](const identity::CrateKey& key) {
+        return incremental_module_resolution_query::ModuleSearchRootsInput::encodeKey(key);
+      },
+      [](const incremental_module_resolution_query::CanonicalModuleSearchRoots& value) {
+        return incremental_module_resolution_query::ModuleSearchRootsInput::encodeValue(value);
+      });
+  auto distributionBytes = impl->coreDistributionRecord.encode();
+  encoder.encodeByteString(distributionBytes.asPtr());
+  encoder.encodeDigest(impl->coreDistributionDigest);
+  return frame(kCompleteContextAuthorityDomain, encoder.finish().asPtr());
+}
+
+bool CompleteCompilationContextAuthority::operator==(
+    const CompleteCompilationContextAuthority& other) const {
+  return encodeCanonical().asPtr() == other.encodeCanonical().asPtr();
+}
+
+zc::Maybe<CompleteCompilationContextAuthority> CompleteCompilationContextAuthority::decodeCanonical(
+    zc::ArrayPtr<const uint8_t> bytes) {
+  auto payload = unframeCanonicalInput(kCompleteContextAuthorityDomain, bytes);
+  if (payload == zc::none) { return zc::none; }
+  identity::CanonicalDecoder decoder(ZC_ASSERT_NONNULL(payload));
+  auto contextBytes = decoder.decodeByteString(kMaximumCanonicalInputValueBytes);
+  auto requestBytes = decoder.decodeByteString(kMaximumCanonicalInputValueBytes);
+  auto rootSetBytes = decoder.decodeByteString(kMaximumCanonicalInputValueBytes);
+  auto graphBytes = decoder.decodeByteString(kMaximumCanonicalInputValueBytes);
+  if (contextBytes == zc::none || requestBytes == zc::none || rootSetBytes == zc::none ||
+      graphBytes == zc::none) {
+    return zc::none;
+  }
+  auto contextRoots = incremental_binding_query::CompilationRootSetQueryKey::decodeCanonical(
+      ZC_ASSERT_NONNULL(contextBytes).asPtr());
+  auto packageRequest = package::CanonicalPackageCompilationRequest::decodeCanonical(
+      ZC_ASSERT_NONNULL(requestBytes).asPtr());
+  auto packageRootSet = incremental_binding_query::PackageGraphInput::decodeKey(
+      ZC_ASSERT_NONNULL(rootSetBytes).asPtr());
+  auto packageGraph = incremental_binding_query::PackageGraphInput::decodeValue(
+      ZC_ASSERT_NONNULL(graphBytes).asPtr());
+  auto userRoots = decodeCrateSequence(decoder);
+  auto projectedCore = decodeCrateSequence(decoder);
+  auto expectedRoots = decodeCrateSequence(decoder);
+  auto completeCrates = decodeCrateSequence(decoder);
+  auto options = decodeCompilationOptions(decoder);
+  auto searchRoots = decodeSearchRoots(decoder);
+  auto distributionBytes = decoder.decodeByteString(kMaximumCanonicalInputValueBytes);
+  auto distributionDigest = decoder.decodeDigest();
+  if (contextRoots == zc::none || packageRequest == zc::none || packageRootSet == zc::none ||
+      packageGraph == zc::none || userRoots == zc::none || projectedCore == zc::none ||
+      expectedRoots == zc::none || completeCrates == zc::none || options == zc::none ||
+      searchRoots == zc::none || distributionBytes == zc::none || distributionDigest == zc::none ||
+      !decoder.finished()) {
+    return zc::none;
+  }
+  auto distribution = source::core::CoreDistributionRecord::decodeCanonical(
+      ZC_ASSERT_NONNULL(distributionBytes).asPtr());
+  if (distribution == zc::none) { return zc::none; }
+  auto expectedUnion = canonicalCrateUnion(ZC_ASSERT_NONNULL(userRoots).asPtr(),
+                                           ZC_ASSERT_NONNULL(projectedCore).asPtr());
+  zc::Vector<identity::CrateKey> packageCrates(ZC_ASSERT_NONNULL(packageGraph).crates().size());
+  for (const auto& stable : ZC_ASSERT_NONNULL(packageGraph).crates()) {
+    auto crate = decodeStableCrate(stable);
+    if (crate == zc::none) { return zc::none; }
+    packageCrates.add(zc::mv(ZC_ASSERT_NONNULL(crate)));
+  }
+  auto completeUnion =
+      canonicalCrateUnion(packageCrates.asPtr(), ZC_ASSERT_NONNULL(projectedCore).asPtr());
+  auto computedDigest =
+      source::core::computeCoreDistributionDigest(ZC_ASSERT_NONNULL(distribution));
+  if (expectedUnion == zc::none || completeUnion == zc::none || computedDigest == zc::none ||
+      !sameCrates(ZC_ASSERT_NONNULL(expectedUnion).asPtr(),
+                  ZC_ASSERT_NONNULL(expectedRoots).asPtr()) ||
+      !sameCrates(ZC_ASSERT_NONNULL(completeUnion).asPtr(),
+                  ZC_ASSERT_NONNULL(completeCrates).asPtr()) ||
+      ZC_ASSERT_NONNULL(options).size() != ZC_ASSERT_NONNULL(completeCrates).size() ||
+      ZC_ASSERT_NONNULL(searchRoots).size() != ZC_ASSERT_NONNULL(completeCrates).size() ||
+      ZC_ASSERT_NONNULL(computedDigest) != ZC_ASSERT_NONNULL(distributionDigest)) {
+    return zc::none;
+  }
+  for (const auto& core : ZC_ASSERT_NONNULL(projectedCore)) {
+    if (core.unit().kind() != identity::CompilationUnitKind::Toolchain ||
+        core.unit().toolchain().component() != identity::ToolchainComponent::Core) {
+      return zc::none;
+    }
+  }
+  for (const auto& entry : ZC_ASSERT_NONNULL(options)) {
+    if (!containsCrate(ZC_ASSERT_NONNULL(completeCrates).asPtr(), entry.key()) ||
+        !entry.value().matchesCrate(entry.key())) {
+      return zc::none;
+    }
+  }
+  for (const auto& entry : ZC_ASSERT_NONNULL(searchRoots)) {
+    if (!containsCrate(ZC_ASSERT_NONNULL(completeCrates).asPtr(), entry.key()) ||
+        !sameCrate(entry.key(), entry.value().crate())) {
+      return zc::none;
+    }
+  }
+  zc::Vector<incremental_binding_query::CompilationRootKey> rebuiltRoots;
+  for (const auto& root : ZC_ASSERT_NONNULL(packageRequest).roots()) {
+    auto value = incremental_binding_query::CompilationRootKey::userPackage(root.package());
+    if (value == zc::none) { return zc::none; }
+    bool present = false;
+    for (const auto& existing : rebuiltRoots) {
+      if (existing == ZC_ASSERT_NONNULL(value)) {
+        present = true;
+        break;
+      }
+    }
+    if (!present) { rebuiltRoots.add(zc::mv(ZC_ASSERT_NONNULL(value))); }
+  }
+  for (const auto& core : ZC_ASSERT_NONNULL(projectedCore)) {
+    auto value = incremental_binding_query::CompilationRootKey::toolchainCore(core);
+    if (value == zc::none) { return zc::none; }
+    rebuiltRoots.add(zc::mv(ZC_ASSERT_NONNULL(value)));
+  }
+  auto rebuiltContext =
+      incremental_binding_query::CompilationRootSetQueryKey::from(zc::mv(rebuiltRoots));
+  if (rebuiltContext == zc::none ||
+      ZC_ASSERT_NONNULL(rebuiltContext) != ZC_ASSERT_NONNULL(contextRoots)) {
+    return zc::none;
+  }
+  for (const auto& root : ZC_ASSERT_NONNULL(packageRequest).roots()) {
+    bool present = false;
+    const auto packageBytes = root.package().encode();
+    for (const auto& key : ZC_ASSERT_NONNULL(packageRootSet).packages()) {
+      if (key.canonicalPackageBytes() == packageBytes.asPtr()) {
+        present = true;
+        break;
+      }
+    }
+    if (!present) { return zc::none; }
+  }
+  for (const auto& key : ZC_ASSERT_NONNULL(packageRootSet).packages()) {
+    bool present = false;
+    for (const auto& root : ZC_ASSERT_NONNULL(packageRequest).roots()) {
+      if (key.canonicalPackageBytes() == root.package().encode().asPtr()) {
+        present = true;
+        break;
+      }
+    }
+    if (!present) { return zc::none; }
+  }
+  auto result = CompleteCompilationContextAuthority(zc::heap<Impl>(
+      zc::mv(ZC_ASSERT_NONNULL(contextRoots)), zc::mv(ZC_ASSERT_NONNULL(packageRequest)),
+      zc::mv(ZC_ASSERT_NONNULL(packageRootSet)), zc::mv(ZC_ASSERT_NONNULL(packageGraph)),
+      zc::mv(ZC_ASSERT_NONNULL(userRoots)), zc::mv(ZC_ASSERT_NONNULL(projectedCore)),
+      zc::mv(ZC_ASSERT_NONNULL(expectedRoots)), zc::mv(ZC_ASSERT_NONNULL(completeCrates)),
+      zc::mv(ZC_ASSERT_NONNULL(options)), zc::mv(ZC_ASSERT_NONNULL(searchRoots)),
+      zc::mv(ZC_ASSERT_NONNULL(distribution)), ZC_ASSERT_NONNULL(distributionDigest)));
+  if (result.encodeCanonical().asPtr() != bytes) { return zc::none; }
+  return zc::mv(result);
+}
+
+bool CompleteCompilationContextAuthorityInputVerifier::verify(
+    const CompleteCompilationContextAuthority& candidate,
+    const CompleteCompilationContextSources& sources) {
+  auto independentlyRooted = incremental_binding_query::CompilationRootSetQueryKey::fromVerified(
+      sources.packageRequest, sources.projectedCoreCrates);
+  auto independentlyPackageRooted =
+      incremental_binding_query::PackageRootSetKey::fromVerified(sources.packageRequest);
+  auto expectedOptions =
+      identity::source_query::CanonicalCompilationOptions::fromVerified(sources.packageRequest);
+  auto userRoots = cloneCrates(sources.userRootCrates);
+  auto projectedCore = cloneCrates(sources.projectedCoreCrates);
+  if (independentlyRooted == zc::none || independentlyPackageRooted == zc::none ||
+      expectedOptions == zc::none || !canonicalizeCrates(userRoots) ||
+      !canonicalizeCrates(projectedCore) ||
+      !package::CanonicalPackageCompilationRequestProjectionVerifier::verify(
+          candidate.packageRequest(), sources.packageRequest) ||
+      candidate.contextRoots() != ZC_ASSERT_NONNULL(independentlyRooted) ||
+      ZC_ASSERT_NONNULL(independentlyPackageRooted) != sources.packageRootSet ||
+      candidate.packageRootSet() != ZC_ASSERT_NONNULL(independentlyPackageRooted) ||
+      candidate.packageGraph() != sources.packageGraph) {
+    return false;
+  }
+  auto expectedRoots = canonicalCrateUnion(userRoots.asPtr(), projectedCore.asPtr());
+  zc::Vector<identity::CrateKey> packageCrates(sources.packageGraph.crates().size());
+  for (const auto& stable : sources.packageGraph.crates()) {
+    auto crate = decodeStableCrate(stable);
+    if (crate == zc::none) { return false; }
+    packageCrates.add(zc::mv(ZC_ASSERT_NONNULL(crate)));
+  }
+  auto completeCrates = canonicalCrateUnion(packageCrates.asPtr(), projectedCore.asPtr());
+  auto options = cloneCompilationOptions(sources.compilationOptions);
+  auto searchRoots = cloneSearchRoots(sources.moduleSearchRoots);
+  if (expectedRoots == zc::none || completeCrates == zc::none ||
+      sources.userRootCrates.size() != sources.packageRequest.roots().size() ||
+      sources.compilationOptions.size() != ZC_ASSERT_NONNULL(completeCrates).size() ||
+      sources.moduleSearchRoots.size() != ZC_ASSERT_NONNULL(completeCrates).size() ||
+      !canonicalizeEntries(options,
+                           [](const identity::CrateKey& key) {
+                             return identity::source_query::CompilationOptionsInput::encodeKey(key);
+                           }) ||
+      !canonicalizeEntries(
+          searchRoots,
+          [](const identity::CrateKey& key) {
+            return incremental_module_resolution_query::ModuleSearchRootsInput::encodeKey(key);
+          }) ||
+      !sameCrates(candidate.userRootCrates(), userRoots.asPtr()) ||
+      !sameCrates(candidate.projectedCoreCrates(), projectedCore.asPtr()) ||
+      !sameCrates(candidate.expectedRootCrates(), ZC_ASSERT_NONNULL(expectedRoots).asPtr()) ||
+      !sameCrates(candidate.completeCrates(), ZC_ASSERT_NONNULL(completeCrates).asPtr()) ||
+      candidate.compilationOptions().size() != options.size() ||
+      candidate.moduleSearchRoots().size() != searchRoots.size() ||
+      candidate.coreDistributionRecord().encode().asPtr() !=
+          sources.coreDistribution.record().encode().asPtr() ||
+      candidate.coreDistributionDigest() != sources.coreDistribution.digest()) {
+    return false;
+  }
+  const auto resolvedPackages = sources.packageGraph.resolvedPackages();
+  const auto resolvedEdges = sources.packageGraph.resolvedPackageEdges();
+  const auto selectedEdges = sources.packageGraph.selectedPackageEdges();
+  if (resolvedPackages.size() == 0 || sources.packageGraph.crates().size() == 0) { return false; }
+  for (const auto& requestRoot : sources.packageRequest.roots()) {
+    if (!containsPackage(resolvedPackages, requestRoot.packageKey())) { return false; }
+    size_t matches = 0;
+    for (const auto& crate : userRoots) {
+      const auto& semantic = crate.semanticOptions();
+      const bool sameTarget =
+          encodeTargetSpecification(crate.compilation().target()).asPtr() ==
+          encodeTargetSpecification(sources.packageRequest.target().semanticProjection()).asPtr();
+      if (crate.unit().kind() == identity::CompilationUnitKind::UserPackage &&
+          samePackage(crate.unit().userPackage(), requestRoot.packageKey()) &&
+          crate.targetKind() == requestRoot.targetKind() &&
+          crate.targetName() == requestRoot.targetName() &&
+          crate.compilation().domain() == identity::CompilationDomain::Target && sameTarget &&
+          semantic.editionYear() == requestRoot.editionYear() &&
+          semantic.useUnicode() == sources.packageRequest.languageOptions().useUnicode &&
+          semantic.allowDollarIdentifiers() ==
+              sources.packageRequest.languageOptions().allowDollarIdentifiers &&
+          semantic.supportRegexLiterals() ==
+              sources.packageRequest.languageOptions().supportRegexLiterals &&
+          crate.compilation().hasBuildScriptProducer() == requestRoot.requiresBuildScript()) {
+        ++matches;
+      }
+    }
+    if (matches != 1) { return false; }
+  }
+  for (const auto& stable : resolvedEdges) {
+    auto edge = decodePackageEdge(stable);
+    if (edge == zc::none ||
+        !containsPackage(resolvedPackages, ZC_ASSERT_NONNULL(edge).consumer()) ||
+        !containsPackage(resolvedPackages, ZC_ASSERT_NONNULL(edge).provider())) {
+      return false;
+    }
+  }
+  for (const auto& selected : selectedEdges) {
+    bool found = false;
+    for (const auto& resolved : resolvedEdges) {
+      if (selected.canonicalEdgeBytes() == resolved.canonicalEdgeBytes()) {
+        found = true;
+        break;
+      }
+    }
+    if (!found) { return false; }
+  }
+  for (const auto& stable : sources.packageGraph.crates()) {
+    auto crate = decodeStableCrate(stable);
+    if (crate == zc::none ||
+        !containsCrate(ZC_ASSERT_NONNULL(completeCrates).asPtr(), ZC_ASSERT_NONNULL(crate))) {
+      return false;
+    }
+    const auto& unit = ZC_ASSERT_NONNULL(crate).unit();
+    if (unit.kind() == identity::CompilationUnitKind::UserPackage) {
+      if (!containsPackage(resolvedPackages, unit.userPackage())) { return false; }
+    } else if (unit.toolchain().component() != identity::ToolchainComponent::Core) {
+      return false;
+    }
+  }
+  for (const auto& stable : sources.packageGraph.crateEdges()) {
+    auto edge = decodeCrateEdge(stable);
+    if (edge == zc::none ||
+        !containsCrate(ZC_ASSERT_NONNULL(completeCrates).asPtr(),
+                       ZC_ASSERT_NONNULL(edge).consumer()) ||
+        !containsCrate(ZC_ASSERT_NONNULL(completeCrates).asPtr(),
+                       ZC_ASSERT_NONNULL(edge).provider())) {
+      return false;
+    }
+    const auto& origin = ZC_ASSERT_NONNULL(edge).origin();
+    if (origin.kind() == identity::CrateDependencyOriginKind::UserPackage) {
+      const auto& packageEdge = origin.userPackageEdge();
+      if (!containsPackageEdge(selectedEdges, packageEdge) ||
+          ZC_ASSERT_NONNULL(edge).consumer().unit().kind() !=
+              identity::CompilationUnitKind::UserPackage ||
+          ZC_ASSERT_NONNULL(edge).provider().unit().kind() !=
+              identity::CompilationUnitKind::UserPackage ||
+          !samePackage(ZC_ASSERT_NONNULL(edge).consumer().unit().userPackage(),
+                       packageEdge.consumer()) ||
+          !samePackage(ZC_ASSERT_NONNULL(edge).provider().unit().userPackage(),
+                       packageEdge.provider())) {
+        return false;
+      }
+    } else if (ZC_ASSERT_NONNULL(edge).provider().unit().kind() !=
+                   identity::CompilationUnitKind::Toolchain ||
+               ZC_ASSERT_NONNULL(edge).provider().unit().toolchain().component() !=
+                   identity::ToolchainComponent::Core) {
+      return false;
+    }
+  }
+  for (const auto& root : userRoots) {
+    if (!containsCrate(packageCrates.asPtr(), root) ||
+        root.unit().kind() != identity::CompilationUnitKind::UserPackage) {
+      return false;
+    }
+  }
+  for (const auto& core : projectedCore) {
+    if (core.unit().kind() != identity::CompilationUnitKind::Toolchain ||
+        core.unit().toolchain().component() != identity::ToolchainComponent::Core ||
+        !containsCrate(ZC_ASSERT_NONNULL(expectedRoots).asPtr(), core) ||
+        !containsCrate(ZC_ASSERT_NONNULL(completeCrates).asPtr(), core)) {
+      return false;
+    }
+  }
+  for (size_t index = 0; index < options.size(); ++index) {
+    if (!containsCrate(ZC_ASSERT_NONNULL(completeCrates).asPtr(), options[index].key()) ||
+        !options[index].value().matchesCrate(options[index].key()) ||
+        options[index].value() != ZC_ASSERT_NONNULL(expectedOptions) ||
+        identity::source_query::CompilationOptionsInput::encodeKey(
+            candidate.compilationOptions()[index].key())
+                .asPtr() !=
+            identity::source_query::CompilationOptionsInput::encodeKey(options[index].key())
+                .asPtr() ||
+        identity::source_query::CompilationOptionsInput::encodeValue(
+            candidate.compilationOptions()[index].value())
+                .asPtr() !=
+            identity::source_query::CompilationOptionsInput::encodeValue(options[index].value())
+                .asPtr()) {
+      return false;
+    }
+  }
+  for (size_t index = 0; index < searchRoots.size(); ++index) {
+    if (!containsCrate(ZC_ASSERT_NONNULL(completeCrates).asPtr(), searchRoots[index].key()) ||
+        !sameCrate(searchRoots[index].key(), searchRoots[index].value().crate()) ||
+        searchRoots[index].value().roots().size() == 0) {
+      return false;
+    }
+    bool foundCoreDistribution = false;
+    for (const auto& root : searchRoots[index].value().roots()) {
+      if (!sameCrate(root.crate(), searchRoots[index].key())) { return false; }
+      if (root.kind() == binder::ModuleSearchRootKind::ToolchainCore) {
+        if (searchRoots[index].key().unit().kind() != identity::CompilationUnitKind::Toolchain ||
+            searchRoots[index].key().unit().toolchain().component() !=
+                identity::ToolchainComponent::Core ||
+            root.toolchainCoreDistributionDigest() != sources.coreDistribution.digest()) {
+          return false;
+        }
+        foundCoreDistribution = true;
+      }
+    }
+    const bool isCore =
+        searchRoots[index].key().unit().kind() == identity::CompilationUnitKind::Toolchain &&
+        searchRoots[index].key().unit().toolchain().component() ==
+            identity::ToolchainComponent::Core;
+    if (foundCoreDistribution != isCore ||
+        incremental_module_resolution_query::ModuleSearchRootsInput::encodeKey(
+            candidate.moduleSearchRoots()[index].key())
+                .asPtr() != incremental_module_resolution_query::ModuleSearchRootsInput::encodeKey(
+                                searchRoots[index].key())
+                                .asPtr() ||
+        incremental_module_resolution_query::ModuleSearchRootsInput::encodeValue(
+            candidate.moduleSearchRoots()[index].value())
+                .asPtr() !=
+            incremental_module_resolution_query::ModuleSearchRootsInput::encodeValue(
+                searchRoots[index].value())
+                .asPtr()) {
+      return false;
+    }
+  }
+  auto digest = source::core::computeCoreDistributionDigest(sources.coreDistribution.record());
+  return digest != zc::none && ZC_ASSERT_NONNULL(digest) == sources.coreDistribution.digest();
+}
+
+zc::Maybe<identity::Sha256Digest> computeCompleteCompilationContextWitness(
+    const CompleteCompilationContextAuthority& authority) {
+  auto bytes = authority.encodeCanonical();
+  auto framed = frame(kCompleteContextWitnessDomain, bytes.asPtr());
+  return identity::sha256(framed.asPtr());
+}
+
+zc::Maybe<binder::CanonicalInputPayloadDigest> computeCanonicalInputPayloadDigest(
+    zc::StringPtr transactionDomain, zc::ArrayPtr<const uint8_t> payloadBytes) {
+  if (transactionDomain.size() == 0 || payloadBytes.size() == 0) { return zc::none; }
+  identity::CanonicalEncoder payload;
+  payload.encodeByteString(transactionDomain.asBytes());
+  payload.encodeByteString(payloadBytes);
+  auto framed = frame(kInputTransactionDigestDomain, payload.finish().asPtr());
+  auto digest = identity::sha256(framed.asPtr());
+  if (digest == zc::none) { return zc::none; }
+  return binder::CanonicalInputPayloadDigest::fromBytes(ZC_ASSERT_NONNULL(digest).bytes());
+}
+
+namespace {
+
+zc::Array<uint8_t> encodeTransactionWitnessKey(
+    const incremental_binding_query::CompilationRootSetQueryKey& key) {
+  return key.encodeCanonical();
+}
+
+zc::Maybe<incremental_binding_query::CompilationRootSetQueryKey> decodeTransactionWitnessKey(
+    zc::ArrayPtr<const uint8_t> bytes) {
+  return incremental_binding_query::CompilationRootSetQueryKey::decodeCanonical(bytes);
+}
+
+zc::Array<uint8_t> encodeTransactionWitnessValue(const binder::CanonicalInputPayloadDigest& value) {
+  return zc::heapArray<uint8_t>(value.bytes());
+}
+
+zc::Maybe<binder::CanonicalInputPayloadDigest> decodeTransactionWitnessValue(
+    zc::ArrayPtr<const uint8_t> bytes) {
+  return binder::CanonicalInputPayloadDigest::fromBytes(bytes);
+}
+
+}  // namespace
+
+#define ZOM_DEFINE_TRANSACTION_WITNESS_INPUT(TypeName)                                  \
+  zc::Array<uint8_t> TypeName::encodeKey(const Key& key) {                              \
+    return encodeTransactionWitnessKey(key);                                            \
+  }                                                                                     \
+  zc::Maybe<TypeName::Key> TypeName::decodeKey(zc::ArrayPtr<const uint8_t> bytes) {     \
+    return decodeTransactionWitnessKey(bytes);                                          \
+  }                                                                                     \
+  zc::Array<uint8_t> TypeName::encodeValue(const Value& value) {                        \
+    return encodeTransactionWitnessValue(value);                                        \
+  }                                                                                     \
+  zc::Maybe<TypeName::Value> TypeName::decodeValue(zc::ArrayPtr<const uint8_t> bytes) { \
+    return decodeTransactionWitnessValue(bytes);                                        \
+  }
+
+ZOM_DEFINE_TRANSACTION_WITNESS_INPUT(CoreDistributionTransactionWitnessInput)
+ZOM_DEFINE_TRANSACTION_WITNESS_INPUT(ModuleStructureTransactionWitnessInput)
+ZOM_DEFINE_TRANSACTION_WITNESS_INPUT(ContextualIdentityAuthorityTransactionWitnessInput)
+
+#undef ZOM_DEFINE_TRANSACTION_WITNESS_INPUT
+
+zc::Maybe<identity::Sha256Digest> computeFinalSnapshotWitness(
+    const query::QuerySnapshot& snapshot,
+    const incremental_binding_query::CompilationRootSetQueryKey& contextRoots) {
+  auto distributionWitness =
+      snapshot.probeInput<CoreDistributionTransactionWitnessInput>(contextRoots);
+  auto structureWitness = snapshot.probeInput<ModuleStructureTransactionWitnessInput>(contextRoots);
+  auto identityWitness =
+      snapshot.probeInput<ContextualIdentityAuthorityTransactionWitnessInput>(contextRoots);
+  auto authority = snapshot.probeInput<CompleteCompilationContextAuthorityInput>(contextRoots);
+  auto graph = snapshot.get<ModuleGraphQuery>(contextRoots);
+  auto scc = snapshot.get<ModuleGraphSccQuery>(contextRoots);
+  auto authorityMap =
+      snapshot.probeInput<incremental_binding_query::ActiveDefinitionAuthorityReadyInput>(
+          contextRoots);
+  auto readiness =
+      snapshot.probeInput<incremental_binding_query::CompleteRootIdentityReadinessInput>(
+          contextRoots);
+  if (distributionWitness.isRuntimeFailure() || structureWitness.isRuntimeFailure() ||
+      identityWitness.isRuntimeFailure() || authority.isRuntimeFailure() ||
+      graph.isRuntimeFailure() || scc.isRuntimeFailure() || authorityMap.isRuntimeFailure() ||
+      readiness.isRuntimeFailure() || distributionWitness.kind() != query::QueryValueKind::Value ||
+      structureWitness.kind() != query::QueryValueKind::Value ||
+      identityWitness.kind() != query::QueryValueKind::Value ||
+      authority.kind() != query::QueryValueKind::Value ||
+      graph.kind() != query::QueryValueKind::Value || scc.kind() != query::QueryValueKind::Value ||
+      authorityMap.kind() != query::QueryValueKind::Value ||
+      readiness.kind() != query::QueryValueKind::Value ||
+      authority.value().contextRoots() != contextRoots ||
+      readiness.value().contextRoots() != contextRoots || graph.value().modules().size() == 0 ||
+      scc.value().hasCycle(graph.value())) {
+    return zc::none;
+  }
+
+  identity::CanonicalEncoder payload;
+  auto authorityBytes = authority.value().encodeCanonical();
+  auto graphBytes = graph.value().encodeCanonical();
+  auto sccBytes = scc.value().encodeCanonical();
+  auto authorityMapBytes =
+      incremental_binding_query::ActiveDefinitionAuthorityReadyInput::encodeValue(
+          authorityMap.value());
+  auto readinessBytes = readiness.value().encodeCanonical();
+  payload.encodeByteString(distributionWitness.value().bytes());
+  payload.encodeByteString(structureWitness.value().bytes());
+  payload.encodeByteString(identityWitness.value().bytes());
+  payload.encodeByteString(authorityBytes.asPtr());
+  payload.encodeByteString(graphBytes.asPtr());
+  payload.encodeByteString(sccBytes.asPtr());
+  payload.encodeByteString(authorityMapBytes.asPtr());
+  payload.encodeByteString(readinessBytes.asPtr());
+
+  auto framed = frame(kFinalSnapshotWitnessDomain, payload.finish().asPtr());
+  return identity::sha256(framed.asPtr());
+}
+
+zc::Array<uint8_t> CompleteCompilationContextAuthorityInput::encodeKey(const Key& key) {
+  return key.encodeCanonical();
+}
+zc::Maybe<CompleteCompilationContextAuthorityInput::Key>
+CompleteCompilationContextAuthorityInput::decodeKey(zc::ArrayPtr<const uint8_t> bytes) {
+  return Key::decodeCanonical(bytes);
+}
+zc::Array<uint8_t> CompleteCompilationContextAuthorityInput::encodeValue(const Value& value) {
+  return value.encodeCanonical();
+}
+zc::Maybe<CompleteCompilationContextAuthorityInput::Value>
+CompleteCompilationContextAuthorityInput::decodeValue(zc::ArrayPtr<const uint8_t> bytes) {
+  return Value::decodeCanonical(bytes);
+}
+query::FinalAuthorityCheck CompleteCompilationContextAuthorityInput::verifyFinalAuthority(
+    const query::QuerySnapshot& snapshot, const Key& key, const Value& value,
+    const identity::Sha256Digest& witness) {
+  if (key != value.contextRoots()) { return query::FinalAuthorityCheck::Rejected; }
+  auto stored = snapshot.probeInput<CompleteCompilationContextAuthorityInput>(key);
+  auto expected = computeFinalSnapshotWitness(snapshot, key);
+  if (stored.isRuntimeFailure() || stored.kind() != query::QueryValueKind::Value ||
+      stored.value() != value || expected == zc::none || ZC_ASSERT_NONNULL(expected) != witness) {
+    return query::FinalAuthorityCheck::Rejected;
+  }
+  return query::FinalAuthorityCheck::Verified;
+}
 
 SelectedModuleRecord::SelectedModuleRecord(identity::ModuleKey&& module,
                                            identity::SourceFileKey&& source) noexcept
@@ -1733,30 +2850,26 @@ bool VerifiedModuleGraphInputLedger::operator==(
   return encodeCanonical().asPtr() == other.encodeCanonical().asPtr();
 }
 
-struct VerifiedModuleGraphInputTransaction::Impl final {
+struct VerifiedModuleGraphInputPayload::Impl final {
   Impl(incremental_binding_query::CompilationRootSetQueryKey&& contextRoots,
        zc::Vector<identity::CrateKey>&& projectedCoreCrates,
-       zc::Vector<SelectedModuleCatalog>&& catalogs,
-       zc::Vector<DetachedModuleDependencySiteSet>&& dependencySites,
+       zc::Vector<SelectedModuleCatalog>&& selectedModuleCatalogs,
+       zc::Vector<DetachedModuleDependencySiteSet>&& dependencySiteSets,
        zc::Vector<identity::RequesterModuleAncestry>&& requesterAncestries,
        zc::Vector<incremental_module_resolution_query::CanonicalModuleCatalogBucket>&&
            catalogBuckets,
        zc::Vector<incremental_module_resolution_query::CanonicalModuleSearchRoots>&& searchRoots,
        zc::Vector<ConfiguredDependencyAlias>&& dependencyAliases,
-       zc::Vector<ConfiguredCratePrelude>&& configuredPreludes,
-       VerifiedModuleGraphInputLedger&& priorLedger,
-       VerifiedModuleGraphInputLedger&& nextLedger) noexcept
+       zc::Vector<ConfiguredCratePrelude>&& configuredPreludes) noexcept
       : contextRoots(zc::mv(contextRoots)),
         projectedCoreCrates(zc::mv(projectedCoreCrates)),
-        catalogs(zc::mv(catalogs)),
-        dependencySites(zc::mv(dependencySites)),
+        catalogs(zc::mv(selectedModuleCatalogs)),
+        dependencySites(zc::mv(dependencySiteSets)),
         requesterAncestries(zc::mv(requesterAncestries)),
         catalogBuckets(zc::mv(catalogBuckets)),
         searchRoots(zc::mv(searchRoots)),
         dependencyAliases(zc::mv(dependencyAliases)),
-        configuredPreludes(zc::mv(configuredPreludes)),
-        priorLedger(zc::mv(priorLedger)),
-        nextLedger(zc::mv(nextLedger)) {}
+        configuredPreludes(zc::mv(configuredPreludes)) {}
 
   incremental_binding_query::CompilationRootSetQueryKey contextRoots;
   zc::Vector<identity::CrateKey> projectedCoreCrates;
@@ -1767,8 +2880,293 @@ struct VerifiedModuleGraphInputTransaction::Impl final {
   zc::Vector<incremental_module_resolution_query::CanonicalModuleSearchRoots> searchRoots;
   zc::Vector<ConfiguredDependencyAlias> dependencyAliases;
   zc::Vector<ConfiguredCratePrelude> configuredPreludes;
+};
+
+VerifiedModuleGraphInputPayload::VerifiedModuleGraphInputPayload(zc::Own<Impl>&& impl) noexcept
+    : impl(zc::mv(impl)) {}
+VerifiedModuleGraphInputPayload::~VerifiedModuleGraphInputPayload() noexcept(false) = default;
+VerifiedModuleGraphInputPayload::VerifiedModuleGraphInputPayload(
+    VerifiedModuleGraphInputPayload&&) noexcept = default;
+VerifiedModuleGraphInputPayload& VerifiedModuleGraphInputPayload::operator=(
+    VerifiedModuleGraphInputPayload&&) noexcept = default;
+
+zc::Maybe<VerifiedModuleGraphInputPayload> VerifiedModuleGraphInputPayload::from(
+    incremental_binding_query::CompilationRootSetQueryKey&& contextRoots,
+    zc::Vector<identity::CrateKey>&& projectedCoreCrates,
+    zc::Vector<SelectedModuleCatalog>&& selectedModuleCatalogs,
+    zc::Vector<DetachedModuleDependencySiteSet>&& dependencySiteSets,
+    zc::Vector<identity::RequesterModuleAncestry>&& requesterAncestries,
+    zc::Vector<incremental_module_resolution_query::CanonicalModuleCatalogBucket>&& catalogBuckets,
+    zc::Vector<incremental_module_resolution_query::CanonicalModuleSearchRoots>&& searchRoots,
+    zc::Vector<ConfiguredDependencyAlias>&& dependencyAliases,
+    zc::Vector<ConfiguredCratePrelude>&& configuredPreludes) {
+  if (projectedCoreCrates.empty() || selectedModuleCatalogs.empty() ||
+      selectedModuleCatalogs.size() != searchRoots.size() ||
+      selectedModuleCatalogs.size() != configuredPreludes.size()) {
+    return zc::none;
+  }
+  sortByBytes(projectedCoreCrates, [](const identity::CrateKey& value) { return value.encode(); });
+  sortByBytes(selectedModuleCatalogs,
+              [](const SelectedModuleCatalog& value) { return value.crate().encode(); });
+  sortByBytes(dependencySiteSets,
+              [](const DetachedModuleDependencySiteSet& value) { return value.module().encode(); });
+  sortByBytes(requesterAncestries, [](const identity::RequesterModuleAncestry& value) {
+    return value.requester().encode();
+  });
+  sortByBytes(catalogBuckets,
+              [](const incremental_module_resolution_query::CanonicalModuleCatalogBucket& value) {
+                return value.key().encode();
+              });
+  sortByBytes(searchRoots,
+              [](const incremental_module_resolution_query::CanonicalModuleSearchRoots& value) {
+                return value.crate().encode();
+              });
+  sortByBytes(dependencyAliases,
+              [](const ConfiguredDependencyAlias& value) { return value.key.encode(); });
+  sortByBytes(configuredPreludes,
+              [](const ConfiguredCratePrelude& value) { return value.crate.encode(); });
+  const auto duplicates = [](const auto& values, const auto& bytes) {
+    for (size_t index = 1; index < values.size(); ++index) {
+      if (bytes(values[index - 1]).asPtr() == bytes(values[index]).asPtr()) { return true; }
+    }
+    return false;
+  };
+  if (duplicates(projectedCoreCrates,
+                 [](const identity::CrateKey& value) { return value.encode(); }) ||
+      duplicates(selectedModuleCatalogs,
+                 [](const SelectedModuleCatalog& value) { return value.crate().encode(); }) ||
+      duplicates(
+          dependencySiteSets,
+          [](const DetachedModuleDependencySiteSet& value) { return value.module().encode(); }) ||
+      duplicates(requesterAncestries,
+                 [](const identity::RequesterModuleAncestry& value) {
+                   return value.requester().encode();
+                 }) ||
+      duplicates(
+          catalogBuckets,
+          [](const incremental_module_resolution_query::CanonicalModuleCatalogBucket& value) {
+            return value.key().encode();
+          }) ||
+      duplicates(searchRoots,
+                 [](const incremental_module_resolution_query::CanonicalModuleSearchRoots& value) {
+                   return value.crate().encode();
+                 }) ||
+      duplicates(dependencyAliases,
+                 [](const ConfiguredDependencyAlias& value) { return value.key.encode(); }) ||
+      duplicates(configuredPreludes,
+                 [](const ConfiguredCratePrelude& value) { return value.crate.encode(); })) {
+    return zc::none;
+  }
+  return VerifiedModuleGraphInputPayload(zc::heap<Impl>(
+      zc::mv(contextRoots), zc::mv(projectedCoreCrates), zc::mv(selectedModuleCatalogs),
+      zc::mv(dependencySiteSets), zc::mv(requesterAncestries), zc::mv(catalogBuckets),
+      zc::mv(searchRoots), zc::mv(dependencyAliases), zc::mv(configuredPreludes)));
+}
+
+VerifiedModuleGraphInputPayload VerifiedModuleGraphInputPayload::clone() const {
+  zc::Vector<identity::CrateKey> projected(impl->projectedCoreCrates.size());
+  for (const auto& value : impl->projectedCoreCrates) { projected.add(value.clone()); }
+  zc::Vector<SelectedModuleCatalog> catalogs(impl->catalogs.size());
+  for (const auto& value : impl->catalogs) { catalogs.add(value.clone()); }
+  zc::Vector<DetachedModuleDependencySiteSet> sites(impl->dependencySites.size());
+  for (const auto& value : impl->dependencySites) { sites.add(value.clone()); }
+  zc::Vector<identity::RequesterModuleAncestry> ancestries(impl->requesterAncestries.size());
+  for (const auto& value : impl->requesterAncestries) { ancestries.add(value.clone()); }
+  zc::Vector<incremental_module_resolution_query::CanonicalModuleCatalogBucket> buckets(
+      impl->catalogBuckets.size());
+  for (const auto& value : impl->catalogBuckets) { buckets.add(value.clone()); }
+  zc::Vector<incremental_module_resolution_query::CanonicalModuleSearchRoots> roots(
+      impl->searchRoots.size());
+  for (const auto& value : impl->searchRoots) { roots.add(value.clone()); }
+  zc::Vector<ConfiguredDependencyAlias> aliases(impl->dependencyAliases.size());
+  for (const auto& value : impl->dependencyAliases) {
+    aliases.add(ConfiguredDependencyAlias{value.key.clone(), value.target.clone()});
+  }
+  zc::Vector<ConfiguredCratePrelude> preludes(impl->configuredPreludes.size());
+  for (const auto& value : impl->configuredPreludes) {
+    preludes.add(ConfiguredCratePrelude{value.crate.clone(), value.target.clone()});
+  }
+  return VerifiedModuleGraphInputPayload(zc::heap<Impl>(
+      impl->contextRoots.clone(), zc::mv(projected), zc::mv(catalogs), zc::mv(sites),
+      zc::mv(ancestries), zc::mv(buckets), zc::mv(roots), zc::mv(aliases), zc::mv(preludes)));
+}
+
+const incremental_binding_query::CompilationRootSetQueryKey&
+VerifiedModuleGraphInputPayload::contextRoots() const noexcept {
+  return impl->contextRoots;
+}
+zc::ArrayPtr<const identity::CrateKey> VerifiedModuleGraphInputPayload::projectedCoreCrates()
+    const noexcept {
+  return impl->projectedCoreCrates.asPtr();
+}
+zc::ArrayPtr<const SelectedModuleCatalog> VerifiedModuleGraphInputPayload::selectedModuleCatalogs()
+    const noexcept {
+  return impl->catalogs.asPtr();
+}
+zc::ArrayPtr<const DetachedModuleDependencySiteSet>
+VerifiedModuleGraphInputPayload::dependencySiteSets() const noexcept {
+  return impl->dependencySites.asPtr();
+}
+zc::ArrayPtr<const identity::RequesterModuleAncestry>
+VerifiedModuleGraphInputPayload::requesterAncestries() const noexcept {
+  return impl->requesterAncestries.asPtr();
+}
+zc::ArrayPtr<const incremental_module_resolution_query::CanonicalModuleCatalogBucket>
+VerifiedModuleGraphInputPayload::catalogBuckets() const noexcept {
+  return impl->catalogBuckets.asPtr();
+}
+zc::ArrayPtr<const incremental_module_resolution_query::CanonicalModuleSearchRoots>
+VerifiedModuleGraphInputPayload::searchRoots() const noexcept {
+  return impl->searchRoots.asPtr();
+}
+zc::ArrayPtr<const ConfiguredDependencyAlias> VerifiedModuleGraphInputPayload::dependencyAliases()
+    const noexcept {
+  return impl->dependencyAliases.asPtr();
+}
+zc::ArrayPtr<const ConfiguredCratePrelude> VerifiedModuleGraphInputPayload::configuredPreludes()
+    const noexcept {
+  return impl->configuredPreludes.asPtr();
+}
+
+zc::Array<uint8_t> VerifiedModuleGraphInputPayload::encodeCanonical() const {
+  identity::CanonicalEncoder encoder;
+  encoder.encodeByteString(impl->contextRoots.encodeCanonical().asPtr());
+  encoder.encodeSequenceSize(impl->projectedCoreCrates.size());
+  for (const auto& value : impl->projectedCoreCrates) {
+    encoder.encodeByteString(value.encode().asPtr());
+  }
+  encoder.encodeSequenceSize(impl->catalogs.size());
+  for (const auto& value : impl->catalogs) {
+    encoder.encodeByteString(value.encodeCanonical().asPtr());
+  }
+  encoder.encodeSequenceSize(impl->dependencySites.size());
+  for (const auto& value : impl->dependencySites) {
+    encoder.encodeByteString(value.encodeCanonical().asPtr());
+  }
+  encoder.encodeSequenceSize(impl->requesterAncestries.size());
+  for (const auto& value : impl->requesterAncestries) {
+    encoder.encodeByteString(value.encode().asPtr());
+  }
+  encoder.encodeSequenceSize(impl->catalogBuckets.size());
+  for (const auto& value : impl->catalogBuckets) {
+    encoder.encodeByteString(value.encode().asPtr());
+  }
+  encoder.encodeSequenceSize(impl->searchRoots.size());
+  for (const auto& value : impl->searchRoots) { encoder.encodeByteString(value.encode().asPtr()); }
+  encoder.encodeSequenceSize(impl->dependencyAliases.size());
+  for (const auto& value : impl->dependencyAliases) {
+    encoder.encodeByteString(value.key.encode().asPtr());
+    encoder.encodeByteString(value.target.encode().asPtr());
+  }
+  encoder.encodeSequenceSize(impl->configuredPreludes.size());
+  for (const auto& value : impl->configuredPreludes) {
+    encoder.encodeByteString(value.crate.encode().asPtr());
+    encoder.encodeByteString(value.target.encode().asPtr());
+  }
+  return frame(kModuleStructureTransactionDomain, encoder.finish().asPtr());
+}
+
+bool VerifiedModuleGraphInputPayload::operator==(
+    const VerifiedModuleGraphInputPayload& other) const {
+  return encodeCanonical().asPtr() == other.encodeCanonical().asPtr();
+}
+
+zc::Maybe<VerifiedModuleGraphInputPayload> VerifiedModuleGraphInputPayload::decodeCanonical(
+    zc::ArrayPtr<const uint8_t> bytes) {
+  auto payload = unframeCanonicalInput(kModuleStructureTransactionDomain, bytes);
+  if (payload == zc::none) { return zc::none; }
+  identity::CanonicalDecoder decoder(ZC_ASSERT_NONNULL(payload));
+  auto contextBytes = decoder.decodeByteString(kMaximumCanonicalInputValueBytes);
+  if (contextBytes == zc::none) { return zc::none; }
+  auto contextRoots = incremental_binding_query::CompilationRootSetQueryKey::decodeCanonical(
+      ZC_ASSERT_NONNULL(contextBytes).asPtr());
+  if (contextRoots == zc::none) { return zc::none; }
+  auto projected = decodeCanonicalSequence<identity::CrateKey>(
+      decoder, [](zc::ArrayPtr<const uint8_t> value) { return decodeCrate(value); });
+  auto catalogs = decodeCanonicalSequence<SelectedModuleCatalog>(
+      decoder, [](zc::ArrayPtr<const uint8_t> value) {
+        return SelectedModuleCatalog::decodeCanonical(value);
+      });
+  auto sites = decodeCanonicalSequence<DetachedModuleDependencySiteSet>(
+      decoder, [](zc::ArrayPtr<const uint8_t> value) {
+        return DetachedModuleDependencySiteSet::decodeCanonical(value);
+      });
+  auto ancestries = decodeCanonicalSequence<identity::RequesterModuleAncestry>(
+      decoder, [](zc::ArrayPtr<const uint8_t> value) {
+        return identity::RequesterModuleAncestry::decodeCanonical(value);
+      });
+  auto buckets =
+      decodeCanonicalSequence<incremental_module_resolution_query::CanonicalModuleCatalogBucket>(
+          decoder, [](zc::ArrayPtr<const uint8_t> value) {
+            return incremental_module_resolution_query::ModuleCatalogPathBucketInput::decodeValue(
+                value);
+          });
+  auto roots =
+      decodeCanonicalSequence<incremental_module_resolution_query::CanonicalModuleSearchRoots>(
+          decoder, [](zc::ArrayPtr<const uint8_t> value) {
+            return incremental_module_resolution_query::ModuleSearchRootsInput::decodeValue(value);
+          });
+  if (projected == zc::none || catalogs == zc::none || sites == zc::none ||
+      ancestries == zc::none || buckets == zc::none || roots == zc::none) {
+    return zc::none;
+  }
+  auto aliasCount = decoder.decodeSequenceSize(kMaximumCanonicalInputSequenceRecords);
+  if (aliasCount == zc::none) { return zc::none; }
+  zc::Vector<ConfiguredDependencyAlias> aliases;
+  aliases.reserve(ZC_ASSERT_NONNULL(aliasCount));
+  for (uint64_t index = 0; index < ZC_ASSERT_NONNULL(aliasCount); ++index) {
+    auto keyBytes = decoder.decodeByteString(kMaximumCanonicalInputValueBytes);
+    auto targetBytes = decoder.decodeByteString(kMaximumCanonicalInputValueBytes);
+    if (keyBytes == zc::none || targetBytes == zc::none) { return zc::none; }
+    auto key = incremental_module_resolution_query::DependencyAliasRootInput::decodeKey(
+        ZC_ASSERT_NONNULL(keyBytes).asPtr());
+    auto target = incremental_module_resolution_query::DependencyAliasRootInput::decodeValue(
+        ZC_ASSERT_NONNULL(targetBytes).asPtr());
+    if (key == zc::none || target == zc::none) { return zc::none; }
+    aliases.add(ConfiguredDependencyAlias{zc::mv(ZC_ASSERT_NONNULL(key)),
+                                          zc::mv(ZC_ASSERT_NONNULL(target))});
+  }
+  auto preludeCount = decoder.decodeSequenceSize(kMaximumCanonicalInputSequenceRecords);
+  if (preludeCount == zc::none) { return zc::none; }
+  zc::Vector<ConfiguredCratePrelude> preludes;
+  preludes.reserve(ZC_ASSERT_NONNULL(preludeCount));
+  for (uint64_t index = 0; index < ZC_ASSERT_NONNULL(preludeCount); ++index) {
+    auto crateBytes = decoder.decodeByteString(kMaximumCanonicalInputValueBytes);
+    auto targetBytes = decoder.decodeByteString(kMaximumCanonicalInputValueBytes);
+    if (crateBytes == zc::none || targetBytes == zc::none) { return zc::none; }
+    auto crate = decodeCrate(ZC_ASSERT_NONNULL(crateBytes).asPtr());
+    auto target = incremental_module_resolution_query::ConfiguredPreludeInput::decodeValue(
+        ZC_ASSERT_NONNULL(targetBytes).asPtr());
+    if (crate == zc::none || target == zc::none) { return zc::none; }
+    preludes.add(ConfiguredCratePrelude{zc::mv(ZC_ASSERT_NONNULL(crate)),
+                                        zc::mv(ZC_ASSERT_NONNULL(target))});
+  }
+  if (!decoder.finished()) { return zc::none; }
+  auto result = from(zc::mv(ZC_ASSERT_NONNULL(contextRoots)), zc::mv(ZC_ASSERT_NONNULL(projected)),
+                     zc::mv(ZC_ASSERT_NONNULL(catalogs)), zc::mv(ZC_ASSERT_NONNULL(sites)),
+                     zc::mv(ZC_ASSERT_NONNULL(ancestries)), zc::mv(ZC_ASSERT_NONNULL(buckets)),
+                     zc::mv(ZC_ASSERT_NONNULL(roots)), zc::mv(aliases), zc::mv(preludes));
+  if (result == zc::none || ZC_ASSERT_NONNULL(result).encodeCanonical().asPtr() != bytes) {
+    return zc::none;
+  }
+  return zc::mv(ZC_ASSERT_NONNULL(result));
+}
+
+struct VerifiedModuleGraphInputTransaction::Impl final {
+  Impl(query::DatabaseRevision expectedPreviousRevision, VerifiedModuleGraphInputPayload&& payload,
+       VerifiedModuleGraphInputLedger&& priorLedger, VerifiedModuleGraphInputLedger&& nextLedger,
+       binder::CanonicalInputPayloadDigest&& payloadDigest) noexcept
+      : expectedPreviousRevision(expectedPreviousRevision),
+        payload(zc::mv(payload)),
+        priorLedger(zc::mv(priorLedger)),
+        nextLedger(zc::mv(nextLedger)),
+        payloadDigest(zc::mv(payloadDigest)) {}
+
+  query::DatabaseRevision expectedPreviousRevision;
+  VerifiedModuleGraphInputPayload payload;
   VerifiedModuleGraphInputLedger priorLedger;
   VerifiedModuleGraphInputLedger nextLedger;
+  binder::CanonicalInputPayloadDigest payloadDigest;
   bool committed = false;
 };
 
@@ -1787,7 +3185,7 @@ bool ModuleGraphInputTransactionVerifier::verify(
     const ModuleGraphInputTransactionAuthority& authority,
     const VerifiedModuleGraphInputTransaction& candidate) {
   if (candidate.impl.get() == nullptr) { return false; }
-  const auto& value = *candidate.impl;
+  const auto& value = *candidate.impl->payload.impl;
   if (!authority.registries.crates().isFrozen() || !authority.registries.sourceFiles().isFrozen() ||
       !authority.registries.modules().isFrozen() || authority.resolver.catalog().size() == 0 ||
       authority.parsedModules.size() != authority.resolver.catalog().size() ||
@@ -2177,19 +3575,88 @@ bool ModuleGraphInputTransactionVerifier::verify(
   }
   auto expectedLedger = VerifiedModuleGraphInputLedger::from(zc::mv(entries));
   if (expectedLedger == zc::none || ZC_ASSERT_NONNULL(expectedLedger).encodeCanonical().asPtr() !=
-                                        value.nextLedger.encodeCanonical().asPtr()) {
+                                        candidate.impl->nextLedger.encodeCanonical().asPtr()) {
     return false;
   }
-  zc::Vector<ModuleGraphInputLedgerEntry> priorEntries(value.priorLedger.entries().size());
-  for (const auto& entry : value.priorLedger.entries()) { priorEntries.add(entry.clone()); }
+  zc::Vector<ModuleGraphInputLedgerEntry> priorEntries(
+      candidate.impl->priorLedger.entries().size());
+  for (const auto& entry : candidate.impl->priorLedger.entries()) {
+    priorEntries.add(entry.clone());
+  }
   auto reconstructedPrior = VerifiedModuleGraphInputLedger::from(zc::mv(priorEntries));
   return reconstructedPrior != zc::none &&
          ZC_ASSERT_NONNULL(reconstructedPrior).encodeCanonical().asPtr() ==
-             value.priorLedger.encodeCanonical().asPtr();
+             candidate.impl->priorLedger.encodeCanonical().asPtr();
+}
+
+bool VerifiedModuleGraphInputVerifier::verify(const ModuleGraphInputTransactionAuthority& authority,
+                                              const VerifiedModuleGraphInputPayload& candidate) {
+  if (candidate.impl.get() == nullptr) { return false; }
+  auto decoded = VerifiedModuleGraphInputPayload::decodeCanonical(candidate.encodeCanonical());
+  if (decoded == zc::none || ZC_ASSERT_NONNULL(decoded) != candidate) { return false; }
+
+  zc::Vector<ModuleGraphInputLedgerEntry> entries(
+      candidate.selectedModuleCatalogs().size() + candidate.dependencySiteSets().size() +
+      candidate.requesterAncestries().size() + candidate.catalogBuckets().size() +
+      candidate.searchRoots().size() + candidate.dependencyAliases().size() +
+      candidate.configuredPreludes().size());
+  const auto appendEntry = [&](ModuleGraphInputFamily family, zc::Array<uint8_t>&& keyBytes) {
+    auto entry = ModuleGraphInputLedgerEntry::from(family, zc::mv(keyBytes));
+    if (entry == zc::none) { return false; }
+    entries.add(zc::mv(ZC_ASSERT_NONNULL(entry)));
+    return true;
+  };
+  for (const auto& catalog : candidate.selectedModuleCatalogs()) {
+    if (!appendEntry(ModuleGraphInputFamily::SelectedModuleCatalog, catalog.crate().encode())) {
+      return false;
+    }
+  }
+  for (const auto& sites : candidate.dependencySiteSets()) {
+    if (!appendEntry(ModuleGraphInputFamily::ModuleDependencySite, sites.module().encode())) {
+      return false;
+    }
+  }
+  for (const auto& ancestry : candidate.requesterAncestries()) {
+    if (!appendEntry(ModuleGraphInputFamily::RequesterModuleAncestry,
+                     ancestry.requester().encode())) {
+      return false;
+    }
+  }
+  for (const auto& bucket : candidate.catalogBuckets()) {
+    if (!appendEntry(ModuleGraphInputFamily::ModuleCatalogPathBucket, bucket.key().encode())) {
+      return false;
+    }
+  }
+  for (const auto& roots : candidate.searchRoots()) {
+    if (!appendEntry(ModuleGraphInputFamily::ModuleSearchRoots, roots.crate().encode())) {
+      return false;
+    }
+  }
+  for (const auto& alias : candidate.dependencyAliases()) {
+    if (!appendEntry(ModuleGraphInputFamily::DependencyAliasRoot, alias.key.encode())) {
+      return false;
+    }
+  }
+  for (const auto& prelude : candidate.configuredPreludes()) {
+    if (!appendEntry(ModuleGraphInputFamily::ConfiguredPrelude, prelude.crate.encode())) {
+      return false;
+    }
+  }
+  auto nextLedger = VerifiedModuleGraphInputLedger::from(zc::mv(entries));
+  auto payloadBytes = candidate.encodeCanonical();
+  auto payloadDigest =
+      computeCanonicalInputPayloadDigest(kModuleStructureTransactionDomain, payloadBytes.asPtr());
+  if (nextLedger == zc::none || payloadDigest == zc::none) { return false; }
+  auto transaction =
+      VerifiedModuleGraphInputTransaction(zc::heap<VerifiedModuleGraphInputTransaction::Impl>(
+          query::DatabaseRevision(), candidate.clone(), VerifiedModuleGraphInputLedger::empty(),
+          zc::mv(ZC_ASSERT_NONNULL(nextLedger)), zc::mv(ZC_ASSERT_NONNULL(payloadDigest))));
+  return ModuleGraphInputTransactionVerifier::verify(authority, transaction);
 }
 
 zc::Maybe<VerifiedModuleGraphInputTransaction> VerifiedModuleGraphInputTransaction::prepare(
     const ModuleGraphInputTransactionAuthority& authority,
+    query::DatabaseRevision expectedPreviousRevision,
     incremental_binding_query::CompilationRootSetQueryKey&& contextRoots,
     zc::Vector<identity::CrateKey>&& projectedCoreCrates,
     zc::Vector<SelectedModuleCatalog>&& catalogs,
@@ -2352,18 +3819,34 @@ zc::Maybe<VerifiedModuleGraphInputTransaction> VerifiedModuleGraphInputTransacti
   }
   auto nextLedger = VerifiedModuleGraphInputLedger::from(zc::mv(nextEntries));
   if (nextLedger == zc::none) { return zc::none; }
-  VerifiedModuleGraphInputTransaction candidate(
-      zc::heap<Impl>(zc::mv(contextRoots), zc::mv(projectedCoreCrates), zc::mv(catalogs),
-                     zc::mv(dependencySites), zc::mv(requesterAncestries), zc::mv(catalogBuckets),
-                     zc::mv(searchRoots), zc::mv(dependencyAliases), zc::mv(configuredPreludes),
-                     priorLedger.clone(), zc::mv(ZC_ASSERT_NONNULL(nextLedger))));
+
+  auto payload = VerifiedModuleGraphInputPayload::from(
+      zc::mv(contextRoots), zc::mv(projectedCoreCrates), zc::mv(catalogs), zc::mv(dependencySites),
+      zc::mv(requesterAncestries), zc::mv(catalogBuckets), zc::mv(searchRoots),
+      zc::mv(dependencyAliases), zc::mv(configuredPreludes));
+  if (payload == zc::none ||
+      !VerifiedModuleGraphInputVerifier::verify(authority, ZC_ASSERT_NONNULL(payload))) {
+    return zc::none;
+  }
+  auto payloadBytes = ZC_ASSERT_NONNULL(payload).encodeCanonical();
+  auto payloadDigest =
+      computeCanonicalInputPayloadDigest(kModuleStructureTransactionDomain, payloadBytes.asPtr());
+  if (payloadDigest == zc::none) { return zc::none; }
+  VerifiedModuleGraphInputTransaction candidate(zc::heap<Impl>(
+      expectedPreviousRevision, zc::mv(ZC_ASSERT_NONNULL(payload)), priorLedger.clone(),
+      zc::mv(ZC_ASSERT_NONNULL(nextLedger)), zc::mv(ZC_ASSERT_NONNULL(payloadDigest))));
   if (!ModuleGraphInputTransactionVerifier::verify(authority, candidate)) { return zc::none; }
   return zc::mv(candidate);
 }
 
 const incremental_binding_query::CompilationRootSetQueryKey&
 VerifiedModuleGraphInputTransaction::contextRoots() const noexcept {
-  return impl->contextRoots;
+  return impl->payload.contextRoots();
+}
+
+const VerifiedModuleGraphInputPayload& VerifiedModuleGraphInputTransaction::payload()
+    const noexcept {
+  return impl->payload;
 }
 
 const VerifiedModuleGraphInputLedger& VerifiedModuleGraphInputTransaction::priorLedger()
@@ -2376,89 +3859,105 @@ const VerifiedModuleGraphInputLedger& VerifiedModuleGraphInputTransaction::nextL
   return impl->nextLedger;
 }
 
-bool VerifiedModuleGraphInputTransaction::commit(query::QueryDatabase& database) {
-  if (impl.get() == nullptr || impl->committed) { return false; }
-  auto snapshot = database.snapshot();
-  auto pending = database.beginInputTransaction(snapshot.revision());
-  if (!pending.isOpened()) { return false; }
+query::InputCommitResult VerifiedModuleGraphInputTransaction::commit(
+    query::QueryDatabase& database) {
+  if (impl.get() == nullptr || impl->committed) {
+    return query::InputCommitResult::rejected(query::InputTransactionFailure::TransactionClosed);
+  }
+  auto pending = database.beginInputTransaction(impl->expectedPreviousRevision);
+  if (!pending.isOpened()) { return query::InputCommitResult::rejected(pending.failure()); }
   auto transaction = zc::mv(pending).takeTransaction();
   for (const auto& prior : impl->priorLedger.entries()) {
     if (!ledgerContains(impl->nextLedger.entries(), prior) &&
         !eraseLedgerEntry(transaction, prior)) {
       transaction.abandon();
-      return false;
+      return query::InputCommitResult::rejected(
+          query::InputTransactionFailure::MissingInputForErase);
     }
   }
-  for (const auto& catalog : impl->catalogs) {
-    if (!transaction.set<SelectedModuleCatalogInput>(catalog.crate(), catalog).isApplied()) {
+  for (const auto& catalog : impl->payload.selectedModuleCatalogs()) {
+    auto mutation = transaction.set<SelectedModuleCatalogInput>(catalog.crate(), catalog);
+    if (!mutation.isApplied()) {
       transaction.abandon();
-      return false;
+      return query::InputCommitResult::rejected(mutation.failure());
     }
   }
-  for (const auto& sites : impl->dependencySites) {
-    if (!transaction.set<ModuleDependencySiteInput>(sites.module(), sites).isApplied()) {
+  for (const auto& sites : impl->payload.dependencySiteSets()) {
+    auto mutation = transaction.set<ModuleDependencySiteInput>(sites.module(), sites);
+    if (!mutation.isApplied()) {
       transaction.abandon();
-      return false;
+      return query::InputCommitResult::rejected(mutation.failure());
     }
   }
-  for (const auto& ancestry : impl->requesterAncestries) {
-    if (!transaction
-             .set<incremental_module_resolution_query::RequesterModuleAncestryInput>(
-                 ancestry.requester(), ancestry)
-             .isApplied()) {
+  for (const auto& ancestry : impl->payload.requesterAncestries()) {
+    auto mutation =
+        transaction.set<incremental_module_resolution_query::RequesterModuleAncestryInput>(
+            ancestry.requester(), ancestry);
+    if (!mutation.isApplied()) {
       transaction.abandon();
-      return false;
+      return query::InputCommitResult::rejected(mutation.failure());
     }
   }
-  for (const auto& bucket : impl->catalogBuckets) {
-    if (!transaction
-             .set<incremental_module_resolution_query::ModuleCatalogPathBucketInput>(bucket.key(),
-                                                                                     bucket)
-             .isApplied()) {
+  for (const auto& bucket : impl->payload.catalogBuckets()) {
+    auto mutation =
+        transaction.set<incremental_module_resolution_query::ModuleCatalogPathBucketInput>(
+            bucket.key(), bucket);
+    if (!mutation.isApplied()) {
       transaction.abandon();
-      return false;
+      return query::InputCommitResult::rejected(mutation.failure());
     }
   }
-  for (const auto& roots : impl->searchRoots) {
-    if (!transaction
-             .set<incremental_module_resolution_query::ModuleSearchRootsInput>(roots.crate(), roots)
-             .isApplied()) {
+  for (const auto& roots : impl->payload.searchRoots()) {
+    auto mutation = transaction.set<incremental_module_resolution_query::ModuleSearchRootsInput>(
+        roots.crate(), roots);
+    if (!mutation.isApplied()) {
       transaction.abandon();
-      return false;
+      return query::InputCommitResult::rejected(mutation.failure());
     }
   }
-  for (const auto& alias : impl->dependencyAliases) {
-    if (!transaction
-             .set<incremental_module_resolution_query::DependencyAliasRootInput>(alias.key,
-                                                                                 alias.target)
-             .isApplied()) {
+  for (const auto& alias : impl->payload.dependencyAliases()) {
+    auto mutation = transaction.set<incremental_module_resolution_query::DependencyAliasRootInput>(
+        alias.key, alias.target);
+    if (!mutation.isApplied()) {
       transaction.abandon();
-      return false;
+      return query::InputCommitResult::rejected(mutation.failure());
     }
   }
-  for (const auto& prelude : impl->configuredPreludes) {
-    if (!transaction
-             .set<incremental_module_resolution_query::ConfiguredPreludeInput>(prelude.crate,
-                                                                               prelude.target)
-             .isApplied()) {
+  for (const auto& prelude : impl->payload.configuredPreludes()) {
+    auto mutation = transaction.set<incremental_module_resolution_query::ConfiguredPreludeInput>(
+        prelude.crate, prelude.target);
+    if (!mutation.isApplied()) {
       transaction.abandon();
-      return false;
+      return query::InputCommitResult::rejected(mutation.failure());
     }
   }
-  if (!transaction.commit().isCommitted()) { return false; }
+  auto witnessMutation = transaction.set<ModuleStructureTransactionWitnessInput>(
+      impl->payload.contextRoots(), impl->payloadDigest);
+  if (!witnessMutation.isApplied()) {
+    transaction.abandon();
+    return query::InputCommitResult::rejected(witnessMutation.failure());
+  }
+  auto result = transaction.commit();
+  if (!result.isCommitted()) { return result; }
   impl->committed = true;
-  return true;
+  return result;
 }
 
 bool registerModuleGraphQueries(query::QueryDatabase& database) {
-  return database.registerDescriptor<SelectedModuleCatalogInput>().isRegistered() &&
+  return database.registerDescriptor<CoreDistributionTransactionWitnessInput>().isRegistered() &&
+         database.registerDescriptor<ModuleStructureTransactionWitnessInput>().isRegistered() &&
+         database.registerDescriptor<ContextualIdentityAuthorityTransactionWitnessInput>()
+             .isRegistered() &&
+         database.registerDescriptor<CompleteCompilationContextAuthorityInput>().isRegistered() &&
+         database.registerDescriptor<SelectedModuleCatalogInput>().isRegistered() &&
          database.registerDescriptor<ModuleDependencySiteInput>().isRegistered() &&
          database.registerDescriptor<SelectedModuleSourceQuery>().isRegistered() &&
          database.registerDescriptor<ActiveModulesQuery>().isRegistered() &&
          database.registerDescriptor<ModuleDependencySitesQuery>().isRegistered() &&
          database.registerDescriptor<ModuleDependencyRequestsQuery>().isRegistered() &&
          database.registerDescriptor<ModuleDependencyProvenanceQuery>().isRegistered() &&
-         database.registerDescriptor<ModuleDependenciesQuery>().isRegistered();
+         database.registerDescriptor<ModuleDependenciesQuery>().isRegistered() &&
+         database.registerDescriptor<MaterializeModuleGraphQuery>().isRegistered();
 }
 
 }  // namespace zomlang::compiler::driver::module_graph_query

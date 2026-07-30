@@ -31,6 +31,33 @@ add_custom_command(
 add_custom_target(query-test-descriptor-inventory
   DEPENDS ${QUERY_TEST_DESCRIPTOR_HEADER})
 
+add_library(
+  query-capability-production-fixture STATIC
+  ${CMAKE_SOURCE_DIR}/products/zomlang/compiler/driver/active-definition-authority-query.cc
+  ${CMAKE_SOURCE_DIR}/products/zomlang/compiler/driver/core-library-query-provider.cc
+  ${CMAKE_SOURCE_DIR}/products/zomlang/compiler/driver/incremental-binding-query-adapter.cc
+  ${CMAKE_SOURCE_DIR}/products/zomlang/compiler/driver/incremental-module-resolution-query.cc
+  ${CMAKE_SOURCE_DIR}/products/zomlang/compiler/driver/incremental-package-graph-query-input.cc
+  ${CMAKE_SOURCE_DIR}/products/zomlang/compiler/driver/module-graph-query-input.cc
+  ${CMAKE_SOURCE_DIR}/products/zomlang/compiler/driver/module-graph-query.cc)
+add_dependencies(
+  query-capability-production-fixture
+  query-test-descriptor-inventory
+  check-vendored-dependencies)
+target_compile_definitions(
+  query-capability-production-fixture
+  PRIVATE ZOM_QUERY_TEST_DESCRIPTOR_INVENTORY=1)
+target_compile_options(
+  query-capability-production-fixture
+  PRIVATE
+    "$<$<COMPILE_LANGUAGE:CXX>:SHELL:-include ${QUERY_TEST_DESCRIPTOR_HEADER}>")
+target_link_libraries(
+  query-capability-production-fixture
+  PUBLIC frontend)
+target_link_libraries(
+  query-capability-test
+  PRIVATE query-capability-production-fixture)
+
 add_test(
   NAME query-descriptor-schema
   COMMAND

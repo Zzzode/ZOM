@@ -22,6 +22,12 @@ DRIVER_SESSION = COMPILER_ROOT / "driver/compiler-session.cc"
 DRIVER_TOPOLOGY_ADAPTER = COMPILER_ROOT / "driver/incremental-binding-query-adapter.cc"
 DRIVER_AUTHORITY_QUERY = COMPILER_ROOT / "driver/active-definition-authority-query.cc"
 DRIVER_AUTHORITY_SESSION = COMPILER_ROOT / "driver/active-definition-authority-session.cc"
+DRIVER_ACTIVE_IDENTITY_MEMBERSHIP = (
+    COMPILER_ROOT / "driver/active-identity-membership-query.cc"
+)
+DRIVER_MATERIALIZED_MODULE_GRAPH = (
+    COMPILER_ROOT / "driver/materialized-module-graph-query.cc"
+)
 DRIVER_NAMED_IDENTITY_QUERY = COMPILER_ROOT / "driver/named-identity-inventory-query.cc"
 DRIVER_NAMED_ITEM_QUERY = COMPILER_ROOT / "driver/named-item-query.cc"
 DRIVER_OWNER_BODY_QUERY = COMPILER_ROOT / "driver/owner-body-query.cc"
@@ -486,19 +492,19 @@ def check_active_definition_authority(files: dict[Path, str], errors: list[str])
         (
             session,
             DRIVER_AUTHORITY_SESSION,
-            "snapshot.get<module_graph_query::ModuleGraphQuery>",
+            "authorityStagingSnapshot.get<module_graph_query::ModuleGraphQuery>",
             "complete stable graph reconstruction",
         ),
         (
             session,
             DRIVER_AUTHORITY_SESSION,
-            "snapshot.get<module_graph_query::ModuleGraphSccQuery>",
+            "authorityStagingSnapshot.get<module_graph_query::ModuleGraphSccQuery>",
             "stable graph SCC closure comparison",
         ),
         (
             session,
             DRIVER_AUTHORITY_SESSION,
-            "snapshot.get<NamedDefinitionInventoryQuery>",
+            "authorityStagingSnapshot.get<NamedDefinitionInventoryQuery>",
             "complete named inventory demand",
         ),
         (
@@ -510,14 +516,21 @@ def check_active_definition_authority(files: dict[Path, str], errors: list[str])
         (
             session,
             DRIVER_AUTHORITY_SESSION,
-            ".set<ActiveDefinitionAuthorityReadyInput>",
-            "atomic readiness restoration",
+            "transaction.set<CompleteRootIdentityReadinessInput>",
+            "complete identity readiness restoration",
         ),
         (
             session,
             DRIVER_AUTHORITY_SESSION,
-            "keyLedgerField = zc::mv(nextKeyLedger);",
-            "non-failing post-commit ledger publication",
+            "transaction.set<module_graph_query::"
+            "ContextualIdentityAuthorityTransactionWitnessInput>",
+            "contextual identity transaction witness publication",
+        ),
+        (
+            session,
+            DRIVER_AUTHORITY_SESSION,
+            "impl->committed = true;",
+            "closed transaction publication",
         ),
         (
             named_item,
@@ -558,14 +571,20 @@ def check_active_definition_authority(files: dict[Path, str], errors: list[str])
         (
             compiler_session,
             DRIVER_SESSION,
-            "activeDefinitionAuthority.beginBaseMutation(queryDatabase)",
+            "identityAuthorityInputs.beginBaseMutation(queryDatabase)",
             "authority-invalidating base transactions",
         ),
         (
             compiler_session,
             DRIVER_SESSION,
-            "activeDefinitionAuthority.refresh(",
-            "production authority refresh",
+            "incremental_binding_query::ContextualIdentityAuthorityInputTransaction::prepare(",
+            "production authority transaction preparation",
+        ),
+        (
+            compiler_session,
+            DRIVER_SESSION,
+            "takeNextLedger();",
+            "post-commit authority ledger publication",
         ),
         (
             compiler_session,
@@ -576,26 +595,26 @@ def check_active_definition_authority(files: dict[Path, str], errors: list[str])
         (
             test,
             DRIVER_AUTHORITY_SESSION_TEST,
-            "invalidates and atomically refreshes readiness",
-            "atomic refresh regression",
+            "Contextual identity authority transaction commits complete readiness atomically",
+            "atomic authority transaction regression",
         ),
         (
             test,
             DRIVER_AUTHORITY_SESSION_TEST,
-            "fails closed and erases stale keys on retry",
-            "failed refresh and stale-ledger retry regression",
+            "Contextual identity authority transaction rejects stale and malformed staging",
+            "stale and malformed transaction regression",
         ),
         (
             test,
             DRIVER_AUTHORITY_SESSION_TEST,
-            "shiftedSyntax.runtimeFailure() == query::QueryRuntimeFailure::FinalSealRequired",
-            "pre-seal named-item rejection regression",
+            "Owner body projection requires final admission",
+            "pre-seal projection rejection regression",
         ),
         (
             test,
             DRIVER_AUTHORITY_SESSION_TEST,
-            "differential edits are deterministic across workers",
-            "worker-count differential regression",
+            "Owner body final-admission rejection is deterministic across workers",
+            "worker-count final-admission regression",
         ),
         (
             test,
@@ -606,8 +625,8 @@ def check_active_definition_authority(files: dict[Path, str], errors: list[str])
         (
             test,
             DRIVER_AUTHORITY_SESSION_TEST,
-            "isolates modules shrinks sets and tracks moves",
-            "cross-module shrink and move regression",
+            "Active definition authority session rejects modules outside their active crate",
+            "cross-crate authority rejection regression",
         ),
     ):
         if marker not in text:
@@ -626,10 +645,106 @@ def check_active_definition_authority(files: dict[Path, str], errors: list[str])
             "provider and verifier branches"
         )
     worker_matrix = "for (const auto workerCount : {uint32_t{1}, uint32_t{2}, uint32_t{8}})"
-    if test.count(worker_matrix) != 2:
+    if test.count(worker_matrix) != 1:
         errors.append(
-            f"{DRIVER_AUTHORITY_SESSION_TEST}: must retain both required differential worker matrices"
+            f"{DRIVER_AUTHORITY_SESSION_TEST}: must retain the required final-admission worker matrix"
         )
+
+
+def check_active_identity_materialization(files: dict[Path, str], errors: list[str]) -> None:
+    membership = files.get(DRIVER_ACTIVE_IDENTITY_MEMBERSHIP, "")
+    materialized_graph = files.get(DRIVER_MATERIALIZED_MODULE_GRAPH, "")
+    adapter = files.get(DRIVER_TOPOLOGY_ADAPTER, "")
+    graph_input = files.get(DRIVER_MODULE_GRAPH_INPUT, "")
+    test = files.get(DRIVER_AUTHORITY_SESSION_TEST, "")
+    for text, path, marker, description in (
+        (
+            membership,
+            DRIVER_ACTIVE_IDENTITY_MEMBERSHIP,
+            "ActiveCompilationUnitMembershipQuery::provide(",
+            "compilation-unit membership provider",
+        ),
+        (
+            membership,
+            DRIVER_ACTIVE_IDENTITY_MEMBERSHIP,
+            "ActiveCompilationUnitMembershipQuery::verify(",
+            "compilation-unit membership verifier",
+        ),
+        (
+            membership,
+            DRIVER_ACTIVE_IDENTITY_MEMBERSHIP,
+            "ActiveCallableParameterMembershipQuery::provide(",
+            "callable-parameter membership provider",
+        ),
+        (
+            membership,
+            DRIVER_ACTIVE_IDENTITY_MEMBERSHIP,
+            "ActiveCallableParameterMembershipQuery::verify(",
+            "callable-parameter membership verifier",
+        ),
+        (
+            membership,
+            DRIVER_ACTIVE_IDENTITY_MEMBERSHIP,
+            "registerDescriptor<ActiveCompilationUnitMembershipQuery>()",
+            "first active-membership registration",
+        ),
+        (
+            membership,
+            DRIVER_ACTIVE_IDENTITY_MEMBERSHIP,
+            "registerDescriptor<ActiveCallableParameterMembershipQuery>()",
+            "last active-membership registration",
+        ),
+        (
+            materialized_graph,
+            DRIVER_MATERIALIZED_MODULE_GRAPH,
+            "MaterializeModuleGraphQuery::provide(",
+            "materialized graph provider",
+        ),
+        (
+            materialized_graph,
+            DRIVER_MATERIALIZED_MODULE_GRAPH,
+            "MaterializeModuleGraphQuery::verify(",
+            "independent materialized graph verifier",
+        ),
+        (
+            materialized_graph,
+            DRIVER_MATERIALIZED_MODULE_GRAPH,
+            "context.template materializeActive<GlobalKey, MembershipDescriptor>",
+            "tracked active-identity materialization",
+        ),
+        (
+            materialized_graph,
+            DRIVER_MATERIALIZED_MODULE_GRAPH,
+            "CompleteCompilationContextAuthorityInput",
+            "complete-context authority demand",
+        ),
+        (
+            adapter,
+            DRIVER_TOPOLOGY_ADAPTER,
+            "registerActiveIdentityMembershipQueries(database)",
+            "active-membership adapter registration",
+        ),
+        (
+            graph_input,
+            DRIVER_MODULE_GRAPH_INPUT,
+            "registerDescriptor<MaterializeModuleGraphQuery>()",
+            "materialized graph registration",
+        ),
+        (
+            test,
+            DRIVER_AUTHORITY_SESSION_TEST,
+            "Final-sealed identity and named-item capabilities publish verified values",
+            "final-sealed materialization regression",
+        ),
+        (
+            test,
+            DRIVER_AUTHORITY_SESSION_TEST,
+            "sealed.getCapability<graph_query::MaterializeModuleGraphQuery>(roots)",
+            "production materialized graph capability demand",
+        ),
+    ):
+        if marker not in text:
+            errors.append(f"{path}: missing {description}: {marker}")
 
 
 def check_owner_body_projection(files: dict[Path, str], errors: list[str]) -> None:
@@ -824,7 +939,7 @@ def check_production_topology_integration(files: dict[Path, str], errors: list[s
             "stable graph registration",
         ),
         (
-            "activeDefinitionAuthority.beginBaseMutation(queryDatabase)",
+            "identityAuthorityInputs.beginBaseMutation(queryDatabase)",
             "authority-invalidating base transaction",
         ),
         (
@@ -1029,6 +1144,7 @@ def check_files(files: dict[Path, str]) -> list[str]:
     check_final_seal_contract(files, errors)
     check_provider_registration(files, errors)
     check_active_definition_authority(files, errors)
+    check_active_identity_materialization(files, errors)
     check_owner_body_projection(files, errors)
     check_production_topology_integration(files, errors)
     return errors
@@ -1143,6 +1259,31 @@ def self_test() -> list[str]:
             DRIVER_MODULE_GRAPH_QUERY,
             "verifierOrderComponents(",
             "independent SCC ordering",
+        ),
+        (
+            DRIVER_ACTIVE_IDENTITY_MEMBERSHIP,
+            "ActiveCompilationUnitMembershipQuery::provide(",
+            "compilation-unit membership provider",
+        ),
+        (
+            DRIVER_ACTIVE_IDENTITY_MEMBERSHIP,
+            "ActiveCallableParameterMembershipQuery::verify(",
+            "callable-parameter membership verifier",
+        ),
+        (
+            DRIVER_MATERIALIZED_MODULE_GRAPH,
+            "MaterializeModuleGraphQuery::provide(",
+            "materialized graph provider",
+        ),
+        (
+            DRIVER_MATERIALIZED_MODULE_GRAPH,
+            "MaterializeModuleGraphQuery::verify(",
+            "independent materialized graph verifier",
+        ),
+        (
+            DRIVER_MATERIALIZED_MODULE_GRAPH,
+            "context.template materializeActive<GlobalKey, MembershipDescriptor>",
+            "tracked active-identity materialization",
         ),
         (
             BINDER_GRAPH_BRIDGE,

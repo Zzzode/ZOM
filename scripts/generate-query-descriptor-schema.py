@@ -46,6 +46,38 @@ COMPLETE_CONTEXT_TYPE = (
 COMPLETE_CONTEXT_NAME = "CompleteCompilationContextAuthorityInput"
 COMPLETE_CONTEXT_DOMAIN = "zom.input.complete-compilation-context-authority"
 COMPLETE_CONTEXT_OWNER = "products/zomlang/compiler/driver/module-graph-query-input"
+TRANSACTION_WITNESS_OWNER = (
+    "products/zomlang/compiler/driver/module-graph-query-input"
+)
+TRANSACTION_WITNESS_ROWS = (
+    (
+        56,
+        "zomlang::compiler::driver::module_graph_query::"
+        "CoreDistributionTransactionWitnessInput",
+        "CoreDistributionTransactionWitnessInput",
+        "zom.query.core-distribution-transaction-witness",
+    ),
+    (
+        57,
+        "zomlang::compiler::driver::module_graph_query::"
+        "ModuleStructureTransactionWitnessInput",
+        "ModuleStructureTransactionWitnessInput",
+        "zom.query.module-structure-transaction-witness",
+    ),
+    (
+        58,
+        "zomlang::compiler::driver::module_graph_query::"
+        "ContextualIdentityAuthorityTransactionWitnessInput",
+        "ContextualIdentityAuthorityTransactionWitnessInput",
+        "zom.query.contextual-identity-authority-transaction-witness",
+    ),
+)
+TEST_COMPLETE_CONTEXT_TYPE = "zomlang::compiler::query::test::TestCompleteContextInput"
+TEST_COMPLETE_CONTEXT_NAME = "TestCompleteContextInput"
+TEST_COMPLETE_CONTEXT_DOMAIN = "test.input.complete-context"
+TEST_COMPLETE_CONTEXT_OWNER = (
+    "products/zomlang/tests/unittests/compiler/query/query-test-specs"
+)
 
 
 class SchemaError(ValueError):
@@ -281,8 +313,22 @@ def validate_rows(
             raise SchemaError(
                 f"{path}: complete-context row does not name the exact production authority"
             )
-    elif complete_context_rows:
-        raise SchemaError(f"{path}: test tail cannot add a complete-context row")
+        rows_by_ordinal = {row.ordinal: row for row in rows}
+        for ordinal, descriptor_type, name, domain in TRANSACTION_WITNESS_ROWS:
+            witness = rows_by_ordinal.get(ordinal)
+            if (
+                witness is None
+                or witness.macro != "ZOM_INPUT"
+                or witness.descriptor_type != descriptor_type
+                or witness.name != name
+                or witness.domain != domain
+                or witness.first_policy != "Frozen"
+                or witness.second_policy is not None
+                or witness.owner != TRANSACTION_WITNESS_OWNER
+            ):
+                raise SchemaError(
+                    f"{path}: transaction-witness row {ordinal} is not exact"
+                )
 
 
 def load_schema(path: Path, *, require_complete_context: bool) -> list[Row]:
@@ -309,6 +355,25 @@ def validate_test_prefix(production: list[Row], combined: list[Row], path: Path)
         require_complete_context=False,
         expected_start=len(production),
     )
+    complete_context_rows = [
+        row for row in tail if row.role == "CompleteContextAuthority"
+    ]
+    first = tail[0]
+    if (
+        len(production) != 59
+        or len(complete_context_rows) != 1
+        or first != complete_context_rows[0]
+        or first.ordinal != 59
+        or first.descriptor_type != TEST_COMPLETE_CONTEXT_TYPE
+        or first.name != TEST_COMPLETE_CONTEXT_NAME
+        or first.domain != TEST_COMPLETE_CONTEXT_DOMAIN
+        or first.first_policy != "Frozen"
+        or first.second_policy is not None
+        or first.owner != TEST_COMPLETE_CONTEXT_OWNER
+    ):
+        raise SchemaError(
+            f"{path}: test tail must begin with the exact slot-59 complete-context fixture"
+        )
     production_domains = {row.domain for row in production}
     production_names = {row.name for row in production}
     production_types = {row.descriptor_type for row in production}
@@ -458,57 +523,111 @@ def combined_test_rows(production: list[Row], test_path: Path) -> list[Row]:
 
 
 def run_self_test() -> None:
-    base_text = "\n".join(
-        [
-            'ZOM_INPUT(0, example::Input, "Input", "zom.query.input", Low, '
-            '"products/zomlang/compiler/example")',
-            'ZOM_COMPLETE_CONTEXT_INPUT(1, '
-            'zomlang::compiler::driver::module_graph_query::'
-            'CompleteCompilationContextAuthorityInput, '
-            '"CompleteCompilationContextAuthorityInput", '
-            '"zom.input.complete-compilation-context-authority", Frozen, '
-            '"products/zomlang/compiler/driver/module-graph-query-input")',
-        ]
-    )
-    path = Path("fixture.def")
-    baseline = parse_schema_text(base_text, path)
+    production_text = PRODUCTION_SCHEMA.read_text(encoding="utf-8")
+    test_text = TEST_SCHEMA.read_text(encoding="utf-8")
+    path = Path("production-fixture.def")
+    test_path = Path("test-fixture.def")
+    baseline = parse_schema_text(production_text, path)
     validate_rows(baseline, path, require_complete_context=True)
+    combined = parse_schema_text(test_text, test_path)
+    validate_test_prefix(baseline, combined, test_path)
+    witness_lines = [
+        line
+        for line in production_text.splitlines()
+        if "TransactionWitnessInput" in line
+    ]
+    if len(witness_lines) != 3:
+        raise SchemaError("self-test requires the exact three witness rows")
+    test_complete_line = next(
+        line
+        for line in test_text.splitlines()
+        if line.startswith("ZOM_COMPLETE_CONTEXT_INPUT(59,")
+    )
+    first_production_line = next(
+        line for line in test_text.splitlines() if line.startswith("ZOM_")
+    )
     fixtures = [
-        ("duplicate ordinal", base_text.replace("INPUT(1", "INPUT(0")),
+        (
+            "missing witness",
+            production_text.replace(witness_lines[0] + "\n", ""),
+        ),
+        (
+            "duplicate witness ordinal",
+            production_text.replace("ZOM_INPUT(57,", "ZOM_INPUT(56,", 1),
+        ),
+        (
+            "reordered witnesses",
+            production_text.replace(
+                witness_lines[0] + "\n" + witness_lines[1],
+                witness_lines[1] + "\n" + witness_lines[0],
+            ),
+        ),
+        (
+            "renamed witness",
+            production_text.replace(
+                '"CoreDistributionTransactionWitnessInput"',
+                '"OtherTransactionWitnessInput"',
+                1,
+            ),
+        ),
+        (
+            "wrong witness domain",
+            production_text.replace(
+                "zom.query.core-distribution-transaction-witness",
+                "zom.query.other-transaction-witness",
+                1,
+            ),
+        ),
+        (
+            "wrong witness type",
+            production_text.replace(
+                "::CoreDistributionTransactionWitnessInput,",
+                "::OtherTransactionWitnessInput,",
+                1,
+            ),
+        ),
+        (
+            "mutable witness",
+            production_text.replace(
+                witness_lines[0],
+                witness_lines[0].replace(", Frozen,", ", Low,"),
+            ),
+        ),
+    ]
+    test_fixtures = [
         (
             "restarted test ordinal",
-            'ZOM_INPUT(0, example::Test, "Test", "zom.query.test", Low, '
-            '"products/zomlang/tests/example")',
-        ),
-        ("missing production prefix", base_text.splitlines()[1]),
-        (
-            "duplicate domain",
-            base_text.replace(
-                "zom.input.complete-compilation-context-authority",
-                "zom.query.input",
+            test_text.replace(
+                "ZOM_COMPLETE_CONTEXT_INPUT(59,",
+                "ZOM_COMPLETE_CONTEXT_INPUT(60,",
+                1,
             ),
         ),
-        ("invalid literal metadata", base_text.replace(", Low,", ", Mutable,")),
         (
-            "descriptor/schema disagreement",
-            base_text.replace('"Input"', '"OtherInput"'),
+            "test tail witness row",
+            test_text.replace(
+                test_complete_line,
+                witness_lines[0].replace("ZOM_INPUT(56,", "ZOM_INPUT(59,"),
+                1,
+            ),
         ),
         (
-            "wrong complete authority",
-            base_text.replace(
-                "CompleteCompilationContextAuthorityInput",
-                "OtherCompilationContextAuthorityInput",
-            ),
+            "missing production prefix",
+            test_text.replace(first_production_line + "\n", "", 1),
         ),
     ]
     failures: list[str] = []
     for name, fixture in fixtures:
         try:
             rows = parse_schema_text(fixture, path)
-            if name in {"restarted test ordinal", "missing production prefix"}:
-                validate_test_prefix(baseline, rows, path)
-            else:
-                validate_rows(rows, path, require_complete_context=True)
+            validate_rows(rows, path, require_complete_context=True)
+        except SchemaError:
+            continue
+        failures.append(name)
+    for name, fixture in test_fixtures:
+        try:
+            rows = parse_schema_text(fixture, test_path)
+            validate_test_prefix(baseline, rows, test_path)
         except SchemaError:
             continue
         failures.append(name)
@@ -516,7 +635,8 @@ def run_self_test() -> None:
         raise SchemaError(
             "self-test did not reject: " + ", ".join(failures)
         )
-    print(f"query descriptor schema self-test passed ({len(fixtures)}/{len(fixtures)})")
+    total = len(fixtures) + len(test_fixtures)
+    print(f"query descriptor schema self-test passed ({total}/{total})")
 
 
 def main() -> int:

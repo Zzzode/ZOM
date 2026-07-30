@@ -19,7 +19,7 @@
 namespace zomlang::compiler::query::test {
 namespace {
 
-using CompleteContext = driver::module_graph_query::CompleteCompilationContextAuthorityInput;
+using CompleteContext = TestCompleteContextInput;
 using CompleteContextSealResult = FinalSealResult<CompleteContext::Key, identity::Sha256Digest>;
 
 identity::Sha256Digest repeatedDigest(uint8_t byte) {

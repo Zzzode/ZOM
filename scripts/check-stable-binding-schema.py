@@ -248,7 +248,7 @@ EXPECTED_COUNTS = {
     "Field": 320,
     "FieldLimit": 121,
     "Query": 22,
-    "Input": 3,
+    "Input": 6,
     "CapabilityQuery": 5,
     "MaterializerPermission": 20,
     "DiagnosticMapping": 5,
@@ -263,6 +263,7 @@ TASKS = {
     "S2E",
     "S3",
     "S6",
+    "I1A",
     "I2",
     "B1",
     "B2",
@@ -503,7 +504,7 @@ RECORD_TASKS.update(
         "CanonicalTargetSelectionRecord": ("Q3", "Q3", "R30_13"),
         "CanonicalLanguageOptionsRecord": ("Q3", "Q3", "R30_13"),
         "CanonicalPackageCompilationRequest": ("Q3", "Q3", "R30_13"),
-        "CompleteCompilationContextAuthority": ("T1", "T1", "T1"),
+        "CompleteCompilationContextAuthority": ("I1A", "I1A", "I1A"),
         "VerifiedCoreDistributionInputPayload": ("T1", "T1", "T1"),
         "VerifiedModuleGraphInputPayload": ("T1", "T1", "T1"),
         "ContextualIdentityAuthorityInputPayload": ("T1", "T1", "T1"),
@@ -638,8 +639,11 @@ QUERY_TASKS = {
     "ModuleBindingAllocationPlan": ("B4",) * 4,
 }
 INPUT_TASKS = {
-    "CompleteCompilationContextAuthorityInput": ("T1", "T1", "T1", "T1"),
+    "CompleteCompilationContextAuthorityInput": ("I1A", "T1", "I1A", "I1A"),
     "ActiveDefinitionAuthorityInput": ("I2", "T1", "I2", "I2"),
+    "ActiveImplementationAuthorityInput": ("I2", "T1", "I2", "I2"),
+    "ActiveGenericParameterAuthorityInput": ("I2", "T1", "I2", "I2"),
+    "ActiveCallableParameterAuthorityInput": ("I2", "T1", "I2", "I2"),
     "CompleteRootIdentityReadiness": ("I2", "T1", "I2", "I2"),
 }
 CAPABILITIES = {
@@ -1369,10 +1373,23 @@ def validate(text: str) -> list[str]:
         expected = RECORD_TASKS.get(name)
         if expected and task_tuple(row) != expected:
             errors.append(f"Record {name}: task triple must be {expected}")
+        if (
+            name == "CompleteCompilationContextAuthority"
+            and atom(row.args[3])
+            != "CompleteCompilationContextAuthority::fromVerified"
+        ):
+            errors.append(
+                "Record CompleteCompilationContextAuthority: producer must be "
+                "CompleteCompilationContextAuthority::fromVerified"
+            )
     exact_names("NestedRecord", grouped["NestedRecord"], {"CanonicalInputEntry"}, errors)
     for row in grouped["NestedRecord"]:
-        if atom(row.args[0]) == "CanonicalInputEntry" and task_tuple(row) != ("T1", "T1", "T1"):
-            errors.append("NestedRecord CanonicalInputEntry: task triple must be T1/T1/T1")
+        if atom(row.args[0]) == "CanonicalInputEntry" and task_tuple(row) != (
+            "I1A",
+            "I1A",
+            "I1A",
+        ):
+            errors.append("NestedRecord CanonicalInputEntry: task triple must be I1A/I1A/I1A")
 
     exact_names("Sum", grouped["Sum"], set(SUM_TASKS), errors)
     for row in grouped["Sum"]:
@@ -1523,6 +1540,14 @@ def validate(text: str) -> list[str]:
     if bounds.get("CanonicalPackageRecordBytes") != ("UINT32_MAX", "CompleteRecordBytes"):
         errors.append(
             "CanonicalPackageRecordBytes must be UINT32_MAX with CompleteRecordBytes"
+        )
+    if bounds.get("CanonicalInputSequenceRecords") != ("UINT32_MAX", "SequenceCount"):
+        errors.append(
+            "CanonicalInputSequenceRecords must be UINT32_MAX with SequenceCount"
+        )
+    if bounds.get("CanonicalInputValueBytes") != ("SIZE_MAX", "RemainingInputBytes"):
+        errors.append(
+            "CanonicalInputValueBytes must be SIZE_MAX with RemainingInputBytes"
         )
     if bounds.get("TargetProfileBytes") != ("255", "NfcUtf8Bytes"):
         errors.append("TargetProfileBytes must be 255 with NfcUtf8Bytes")
@@ -1761,6 +1786,11 @@ def self_test(text: str) -> list[str]:
         text, "Record", "StableDefinitionQueryKey", 8, '"domain|unknown-mutation"')))
     cases.append(("stable header provenance", mutate_arg(
         text, "Record", "StableDefinitionHeader", 4, "CanonicalHeaderVerifier")))
+    cases.append(("complete context producer identity", mutate_arg(
+        text, "Record", "CompleteCompilationContextAuthority", 3,
+        "VerifiedCoreDistributionInputTransaction")))
+    cases.append(("complete context provider ownership", mutate_arg(
+        text, "Input", "CompleteCompilationContextAuthorityInput", 6, "I1A")))
 
     sum_row = find_row(text, "Sum", "StableHeaderSite")
     cases.append(("missing sum owner", text[:sum_row.start] + text[sum_row.end:]))
@@ -1798,6 +1828,14 @@ def self_test(text: str) -> list[str]:
     for value in ("0", "1", "4294967294", "UINT64_MAX"):
         cases.append((f"package bound drift {value}", mutate_arg(
             text, "Bound", "CanonicalPackageRecordBytes", 1, value)))
+    cases.append(("canonical input sequence bound drift", mutate_arg(
+        text, "Bound", "CanonicalInputSequenceRecords", 1, "4294967294")))
+    cases.append(("canonical input sequence rule drift", mutate_arg(
+        text, "Bound", "CanonicalInputSequenceRecords", 2, '"CompleteRecordBytes"')))
+    cases.append(("canonical input value bound drift", mutate_arg(
+        text, "Bound", "CanonicalInputValueBytes", 1, "UINT64_MAX")))
+    cases.append(("canonical input value rule drift", mutate_arg(
+        text, "Bound", "CanonicalInputValueBytes", 2, '"CompleteRecordBytes"')))
     cases.append(("visibility wrapper drift", mutate_arg(
         text, "Query", "BindingVisibility", 3, "BindingVisibilityResult")))
     cases.append(("local export visibility drift", mutate_arg(
@@ -1861,6 +1899,12 @@ def self_test(text: str) -> list[str]:
             "StableLocalExportFact.visibility must be Optional<MemberVisibility>"
         ),
         "runtime-sum-variant declaration shape": "macro RUNTIME_SUM_VARIANT",
+        "complete context producer identity": (
+            "producer must be CompleteCompilationContextAuthority::fromVerified"
+        ),
+        "complete context provider ownership": (
+            "Input CompleteCompilationContextAuthorityInput: task columns"
+        ),
     }
     failures: list[str] = []
     for name, mutated in cases:

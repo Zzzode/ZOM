@@ -45,6 +45,12 @@ ACTIVE_DEFINITION_AUTHORITY_SESSION_HEADER = Path(
 ACTIVE_DEFINITION_AUTHORITY_SESSION_SOURCE = Path(
     "products/zomlang/compiler/driver/active-definition-authority-session.cc"
 )
+ACTIVE_IDENTITY_MEMBERSHIP_QUERY_HEADER = Path(
+    "products/zomlang/compiler/driver/active-identity-membership-query.h"
+)
+ACTIVE_IDENTITY_MEMBERSHIP_QUERY_SOURCE = Path(
+    "products/zomlang/compiler/driver/active-identity-membership-query.cc"
+)
 CONTEXTUAL_BINDING_KEY_HEADER = Path(
     "products/zomlang/compiler/driver/contextual-binding-key.h"
 )
@@ -105,6 +111,12 @@ MODULE_DEPENDENCY_PROVENANCE_QUERY_SOURCE = Path(
 )
 MODULE_GRAPH_QUERY_HEADER = Path("products/zomlang/compiler/driver/module-graph-query.h")
 MODULE_GRAPH_QUERY_SOURCE = Path("products/zomlang/compiler/driver/module-graph-query.cc")
+MATERIALIZED_MODULE_GRAPH_QUERY_HEADER = Path(
+    "products/zomlang/compiler/driver/materialized-module-graph-query.h"
+)
+MATERIALIZED_MODULE_GRAPH_QUERY_SOURCE = Path(
+    "products/zomlang/compiler/driver/materialized-module-graph-query.cc"
+)
 QUERY_DATABASE_HEADER = Path("products/zomlang/compiler/query/query-database.h")
 QUERY_DATABASE_SOURCE = Path("products/zomlang/compiler/query/query-database.cc")
 DRIVER_CMAKE = Path("products/zomlang/compiler/driver/CMakeLists.txt")
@@ -141,6 +153,8 @@ EXPECTED_DRIVER_FILES = {
     ACTIVE_DEFINITION_AUTHORITY_QUERY_SOURCE,
     ACTIVE_DEFINITION_AUTHORITY_SESSION_HEADER,
     ACTIVE_DEFINITION_AUTHORITY_SESSION_SOURCE,
+    ACTIVE_IDENTITY_MEMBERSHIP_QUERY_HEADER,
+    ACTIVE_IDENTITY_MEMBERSHIP_QUERY_SOURCE,
     CONTEXTUAL_BINDING_KEY_HEADER,
     CONTEXTUAL_BINDING_KEY_SOURCE,
     INCREMENTAL_BINDING_QUERY_ADAPTER_HEADER,
@@ -165,10 +179,13 @@ EXPECTED_DRIVER_FILES = {
     MODULE_DEPENDENCY_PROVENANCE_QUERY_SOURCE,
     MODULE_GRAPH_QUERY_HEADER,
     MODULE_GRAPH_QUERY_SOURCE,
+    MATERIALIZED_MODULE_GRAPH_QUERY_HEADER,
+    MATERIALIZED_MODULE_GRAPH_QUERY_SOURCE,
 }
 
 DRIVER_BUILD_MARKER = (
     "set(DRIVER_SRC active-definition-authority-query.cc active-definition-authority-session.cc\n"
+    "               active-identity-membership-query.cc\n"
     "               borrow-evidence.cc coherence-builder.cc compiler-session.cc\n"
     "               contextual-binding-key.cc\n"
     "               core-library-query-provider.cc core-library-query-verifier.cc crate-graph.cc\n"
@@ -176,7 +193,8 @@ DRIVER_BUILD_MARKER = (
     "               incremental-module-resolution-query.cc\n"
     "               incremental-package-graph-query-input.cc\n"
     "               module-dependency-provenance-query.cc module-discovery.cc\n"
-    "               module-graph-query-input.cc module-graph-query.cc\n"
+    "               materialized-module-graph-query.cc module-graph-query-input.cc "
+    "module-graph-query.cc\n"
     "               module-interface.cc\n"
     "               module-interface-diagnostic-adapter.cc\n"
     "               named-identity-inventory-query.cc named-item-query.cc owner-body-query.cc)"
@@ -226,8 +244,10 @@ SESSION_SOURCE_MARKERS = (
     "incremental_binding_query::StableIdentityAdmissionQuery",
     "binder::ModuleBodySyntaxVerifier::reconstruct(",
     "zc::Vector<ModuleBodyQueryBinding> moduleBodyQueryBindings;",
-    "ActiveDefinitionAuthorityProjectionState",
-    "activeDefinitionAuthority.refresh(",
+    "incremental_binding_query::ContextualIdentityAuthorityInputLedger identityAuthorityInputs;",
+    "incremental_binding_query::ContextualIdentityAuthorityInputTransaction::prepare(",
+    "impl->identityAuthorityInputs = "
+    "zc::mv(ZC_ASSERT_NONNULL(authorityTransaction)).takeNextLedger();",
     "!impl->freezeSourceIdentities()",
     "binder::DefinitionInventory::collect(tree);",
     "diagnostics::DiagID::IdentityBrandExhausted",

@@ -495,8 +495,36 @@ bool findToolchainRootPathForBuilder(const ast::Tree& tree, ast::NodeId current,
 
 }  // namespace
 
+CanonicalInputPayloadDigest::CanonicalInputPayloadDigest(
+    const identity::Sha256Digest& digest) noexcept
+    : digestField(digest) {}
+
+zc::Maybe<CanonicalInputPayloadDigest> CanonicalInputPayloadDigest::fromBytes(
+    zc::ArrayPtr<const uint8_t> bytes) {
+  auto digest = identity::Sha256Digest::fromBytes(bytes);
+  if (digest == zc::none) { return zc::none; }
+  return CanonicalInputPayloadDigest(ZC_ASSERT_NONNULL(digest));
+}
+
+CanonicalInputPayloadDigest CanonicalInputPayloadDigest::clone() const noexcept {
+  return CanonicalInputPayloadDigest(digestField);
+}
+
+zc::ArrayPtr<const uint8_t> CanonicalInputPayloadDigest::bytes() const {
+  return digestField.bytes();
+}
+
+bool CanonicalInputPayloadDigest::operator==(
+    const CanonicalInputPayloadDigest& other) const noexcept {
+  return digestField == other.digestField;
+}
+
 ModuleGraphRevision::ModuleGraphRevision(const identity::Sha256Digest& digest) noexcept
     : value(digest) {}
+ModuleGraphRevision ModuleGraphRevision::fromCanonicalDigest(
+    const identity::Sha256Digest& digest) noexcept {
+  return ModuleGraphRevision(digest);
+}
 const identity::Sha256Digest& ModuleGraphRevision::digest() const noexcept { return value; }
 
 ModuleGraphModule::ModuleGraphModule(identity::ModuleKey&& key, identity::ModuleId module) noexcept

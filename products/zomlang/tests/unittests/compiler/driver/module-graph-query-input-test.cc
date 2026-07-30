@@ -22,11 +22,14 @@
 #include "zomlang/compiler/parser/parser.h"
 #include "zomlang/compiler/source/manager.h"
 #include "zomlang/tests/unittests/compiler/binder/parsed-module-query-test-fixture.h"
+#include "zomlang/tests/unittests/compiler/driver/canonical-mutation-test-helpers.h"
 #include "zomlang/tests/unittests/compiler/driver/core-library-test-fixture.h"
 #include "zomlang/tests/unittests/compiler/test-semantic-identities.h"
 
 namespace zomlang::compiler::driver::module_graph_query {
 namespace {
+
+namespace mutation = tests::canonical_mutation;
 
 using tests::test_identity_detail::coreCrate;
 using tests::test_identity_detail::crate;
@@ -49,6 +52,193 @@ bool sameCrate(const identity::CrateKey& left, const identity::CrateKey& right) 
 
 bool sameModule(const identity::ModuleKey& left, const identity::ModuleKey& right) {
   return left.encode().asPtr() == right.encode().asPtr();
+}
+
+identity::PackageKey packageNamed(zc::StringPtr name) {
+  zc::Vector<identity::CanonicalPathSegment> path;
+  auto version = identity::ResolvedVersion::fromCanonical("0.0.0"_zc);
+  zc::Vector<identity::FeatureName> features;
+  auto sortedFeatures = identity::SortedFeatureSet::from(zc::mv(features));
+  ZC_REQUIRE(version != zc::none);
+  ZC_REQUIRE(sortedFeatures != zc::none);
+  return identity::PackageKey::from(
+      identity::CanonicalPackageSource::localPath(
+          identity::CanonicalWorkspaceRelativePath::from(0, zc::mv(path))),
+      scalar<identity::PackageName>(name), zc::mv(ZC_REQUIRE_NONNULL(version)),
+      zc::mv(ZC_REQUIRE_NONNULL(sortedFeatures)));
+}
+
+identity::CrateKey crateForPackage(const identity::CrateKey& model, identity::PackageKey&& owner,
+                                   zc::StringPtr targetName) {
+  auto result = identity::CrateKey::from(
+      identity::CompilationUnitIdentity::userPackage(zc::mv(owner)),
+      identity::CrateTargetKind::Library, scalar<identity::TargetName>(targetName),
+      model.compilation().clone());
+  return zc::mv(ZC_REQUIRE_NONNULL(result));
+}
+
+identity::PackageDependencyEdgeKey packageEdge(const identity::PackageKey& consumer,
+                                               const identity::PackageKey& provider,
+                                               zc::StringPtr alias = "dependency"_zc) {
+  auto result = identity::PackageDependencyEdgeKey::from(
+      consumer.clone(), scalar<identity::DependencyAlias>(alias),
+      identity::DependencyDomain::Target, provider.clone());
+  return zc::mv(ZC_REQUIRE_NONNULL(result));
+}
+
+identity::CrateDependencyEdgeKey crateEdge(const identity::PackageDependencyEdgeKey& origin,
+                                           const identity::CrateKey& consumer,
+                                           const identity::CrateKey& provider) {
+  auto result = identity::CrateDependencyEdgeKey::from(
+      identity::CrateDependencyOrigin::userPackage(origin.clone()), consumer.clone(),
+      provider.clone());
+  return zc::mv(ZC_REQUIRE_NONNULL(result));
+}
+
+bool encodedLess(zc::ArrayPtr<const uint8_t> left, zc::ArrayPtr<const uint8_t> right) {
+  const size_t common = left.size() < right.size() ? left.size() : right.size();
+  for (size_t index = 0; index < common; ++index) {
+    if (left[index] < right[index]) { return true; }
+    if (left[index] > right[index]) { return false; }
+  }
+  return left.size() < right.size();
+}
+
+void sortEncoded(zc::Vector<zc::Array<uint8_t>>& values) {
+  for (size_t index = 1; index < values.size(); ++index) {
+    auto current = zc::mv(values[index]);
+    size_t insertion = index;
+    while (insertion != 0 && encodedLess(current.asPtr(), values[insertion - 1].asPtr())) {
+      values[insertion] = zc::mv(values[insertion - 1]);
+      --insertion;
+    }
+    values[insertion] = zc::mv(current);
+  }
+}
+
+zc::Array<uint8_t> packageGraphBytes(zc::Vector<zc::Array<uint8_t>>&& packages,
+                                     zc::Vector<zc::Array<uint8_t>>&& resolvedEdges,
+                                     zc::Vector<zc::Array<uint8_t>>&& selectedEdges,
+                                     zc::Vector<zc::Array<uint8_t>>&& crates,
+                                     zc::Vector<zc::Array<uint8_t>>&& crateEdges) {
+  sortEncoded(packages);
+  sortEncoded(resolvedEdges);
+  sortEncoded(selectedEdges);
+  sortEncoded(crates);
+  sortEncoded(crateEdges);
+  identity::CanonicalEncoder encoder;
+  const auto encode = [&](const zc::Vector<zc::Array<uint8_t>>& values) {
+    encoder.encodeSequenceSize(values.size());
+    for (const auto& value : values) { encoder.encodeByteString(value.asPtr()); }
+  };
+  encode(packages);
+  encode(resolvedEdges);
+  encode(selectedEdges);
+  encode(crates);
+  encode(crateEdges);
+  return encoder.finish();
+}
+
+struct WireRange final {
+  size_t begin;
+  size_t end;
+};
+
+uint64_t readWireUint64(zc::ArrayPtr<const uint8_t> bytes, size_t offset) {
+  ZC_REQUIRE(offset <= bytes.size() && bytes.size() - offset >= sizeof(uint64_t));
+  uint64_t result = 0;
+  for (size_t index = 0; index < sizeof(uint64_t); ++index) {
+    result = (result << 8U) | bytes[offset + index];
+  }
+  return result;
+}
+
+void writeWireUint64(zc::ArrayPtr<uint8_t> bytes, size_t offset, uint64_t value) {
+  ZC_REQUIRE(offset <= bytes.size() && bytes.size() - offset >= sizeof(uint64_t));
+  for (size_t index = 0; index < sizeof(uint64_t); ++index) {
+    const auto shift = static_cast<uint32_t>((sizeof(uint64_t) - index - 1) * 8);
+    bytes[offset + index] = static_cast<uint8_t>(value >> shift);
+  }
+}
+
+WireRange consumeWireByteString(zc::ArrayPtr<const uint8_t> bytes, size_t& cursor) {
+  const size_t begin = cursor;
+  const uint64_t size = readWireUint64(bytes, cursor);
+  cursor += sizeof(uint64_t);
+  ZC_REQUIRE(size <= bytes.size() - cursor);
+  cursor += static_cast<size_t>(size);
+  return WireRange{begin, cursor};
+}
+
+WireRange consumeWireSequence(zc::ArrayPtr<const uint8_t> bytes, size_t& cursor) {
+  const size_t begin = cursor;
+  const uint64_t count = readWireUint64(bytes, cursor);
+  cursor += sizeof(uint64_t);
+  ZC_REQUIRE(count <= UINT32_MAX);
+  for (uint64_t index = 0; index < count; ++index) {
+    static_cast<void>(consumeWireByteString(bytes, cursor));
+  }
+  return WireRange{begin, cursor};
+}
+
+zc::Vector<WireRange> completeContextFieldRanges(zc::ArrayPtr<const uint8_t> bytes) {
+  constexpr zc::StringPtr domain = "zom.input.complete-compilation-context-authority"_zc;
+  ZC_REQUIRE(bytes.size() > domain.size() && bytes.slice(0, domain.size()) == domain.asBytes());
+  ZC_REQUIRE(bytes[domain.size()] == 0);
+  size_t cursor = domain.size() + 1;
+  zc::Vector<WireRange> result;
+  for (size_t index = 0; index < 4; ++index) { result.add(consumeWireByteString(bytes, cursor)); }
+  for (size_t index = 0; index < 6; ++index) { result.add(consumeWireSequence(bytes, cursor)); }
+  result.add(consumeWireByteString(bytes, cursor));
+  ZC_REQUIRE(bytes.size() - cursor == 32);
+  result.add(WireRange{cursor, bytes.size()});
+  return result;
+}
+
+zc::Array<uint8_t> swapFirstTwoWireSequenceElements(zc::ArrayPtr<const uint8_t> bytes,
+                                                    WireRange sequence) {
+  size_t cursor = sequence.begin;
+  ZC_REQUIRE(readWireUint64(bytes, cursor) >= 2);
+  cursor += sizeof(uint64_t);
+  const auto first = consumeWireByteString(bytes, cursor);
+  const auto second = consumeWireByteString(bytes, cursor);
+  ZC_REQUIRE(cursor <= sequence.end);
+  zc::Vector<uint8_t> result(bytes.size());
+  result.addAll(bytes.slice(0, first.begin));
+  result.addAll(bytes.slice(second.begin, second.end));
+  result.addAll(bytes.slice(first.begin, first.end));
+  result.addAll(bytes.slice(second.end, bytes.size()));
+  return result.releaseAsArray();
+}
+
+struct StructurePayloadWire final {
+  mutation::WireRange context;
+  mutation::SequenceRange projectedCoreCrates;
+  mutation::SequenceRange catalogs;
+  mutation::SequenceRange dependencySites;
+  mutation::SequenceRange ancestries;
+  mutation::SequenceRange catalogBuckets;
+  mutation::SequenceRange searchRoots;
+  mutation::SequenceRange aliases;
+  mutation::SequenceRange preludes;
+};
+
+StructurePayloadWire structurePayloadWire(zc::ArrayPtr<const uint8_t> bytes) {
+  constexpr zc::StringPtr domain = "zom.query.input-transaction.module-structure"_zc;
+  size_t cursor = mutation::payloadOffset(bytes, domain);
+  const auto context = mutation::consumeByteString(bytes, cursor);
+  const auto projectedCoreCrates = mutation::consumeSequence(bytes, cursor);
+  const auto catalogs = mutation::consumeSequence(bytes, cursor);
+  const auto dependencySites = mutation::consumeSequence(bytes, cursor);
+  const auto ancestries = mutation::consumeSequence(bytes, cursor);
+  const auto catalogBuckets = mutation::consumeSequence(bytes, cursor);
+  const auto searchRoots = mutation::consumeSequence(bytes, cursor);
+  const auto aliases = mutation::consumeSequence(bytes, cursor, 2);
+  const auto preludes = mutation::consumeSequence(bytes, cursor, 2);
+  ZC_REQUIRE(cursor == bytes.size());
+  return StructurePayloadWire{context,    projectedCoreCrates, catalogs,    dependencySites,
+                              ancestries, catalogBuckets,      searchRoots, aliases,
+                              preludes};
 }
 
 zc::Vector<identity::ModulePathSegment> cloneModulePath(
@@ -168,6 +358,62 @@ identity::source_query::CanonicalCompilationOptions compilationOptions() {
   return zc::mv(ZC_REQUIRE_NONNULL(options));
 }
 
+CompleteCompilationContextAuthority completeAuthorityForSinglePackage(
+    const package::VerifiedPackageCompilationRequest& request, const identity::CrateKey& user,
+    const identity::CrateKey& core,
+    const identity::source_query::CanonicalCompilationOptions& options,
+    const source::core::CoreDistributionInputRecord& distribution) {
+  auto rootSet = incremental_binding_query::PackageRootSetKey::fromVerified(request);
+  ZC_REQUIRE(rootSet != zc::none);
+  zc::Vector<zc::Array<uint8_t>> packages;
+  packages.add(package().encode());
+  zc::Vector<zc::Array<uint8_t>> noResolvedEdges;
+  zc::Vector<zc::Array<uint8_t>> noSelectedEdges;
+  zc::Vector<zc::Array<uint8_t>> crates;
+  crates.add(user.encode());
+  zc::Vector<zc::Array<uint8_t>> noCrateEdges;
+  auto graphBytes =
+      packageGraphBytes(zc::mv(packages), zc::mv(noResolvedEdges), zc::mv(noSelectedEdges),
+                        zc::mv(crates), zc::mv(noCrateEdges));
+  auto graph = incremental_binding_query::PackageGraphInput::decodeValue(graphBytes.asPtr());
+  ZC_REQUIRE(graph != zc::none);
+
+  zc::Vector<identity::CrateKey> userRoots;
+  userRoots.add(user.clone());
+  zc::Vector<identity::CrateKey> coreRoots;
+  coreRoots.add(core.clone());
+  zc::Vector<CompilationOptionsEntry> optionEntries;
+  optionEntries.add(CompilationOptionsEntry::from(user.clone(), options.clone()));
+  optionEntries.add(CompilationOptionsEntry::from(core.clone(), options.clone()));
+
+  zc::Vector<binder::ModuleSearchRoot> userEnvironment;
+  zc::Vector<identity::CanonicalPathSegment> workspacePath;
+  userEnvironment.add(binder::ModuleSearchRoot::workspace(
+      user.clone(), identity::CanonicalWorkspaceRelativePath::from(0, zc::mv(workspacePath))));
+  auto userSearch = incremental_module_resolution_query::CanonicalModuleSearchRoots::fromVerified(
+      user, userEnvironment.asPtr());
+  auto coreRoot = binder::ModuleSearchRoot::toolchainCore(core.clone(), distribution.digest());
+  ZC_REQUIRE(userSearch != zc::none);
+  ZC_REQUIRE(coreRoot != zc::none);
+  zc::Vector<binder::ModuleSearchRoot> coreEnvironment;
+  coreEnvironment.add(zc::mv(ZC_REQUIRE_NONNULL(coreRoot)));
+  auto coreSearch = incremental_module_resolution_query::CanonicalModuleSearchRoots::fromVerified(
+      core, coreEnvironment.asPtr());
+  ZC_REQUIRE(coreSearch != zc::none);
+  zc::Vector<ModuleSearchRootsEntry> searchEntries;
+  searchEntries.add(
+      ModuleSearchRootsEntry::from(user.clone(), zc::mv(ZC_REQUIRE_NONNULL(userSearch))));
+  searchEntries.add(
+      ModuleSearchRootsEntry::from(core.clone(), zc::mv(ZC_REQUIRE_NONNULL(coreSearch))));
+
+  const CompleteCompilationContextSources sources{
+      request,           ZC_REQUIRE_NONNULL(rootSet), ZC_REQUIRE_NONNULL(graph), userRoots.asPtr(),
+      coreRoots.asPtr(), optionEntries.asPtr(),       searchEntries.asPtr(),     distribution,
+  };
+  auto authority = CompleteCompilationContextAuthority::fromVerified(sources);
+  return zc::mv(ZC_REQUIRE_NONNULL(authority));
+}
+
 struct ParsedSource final {
   explicit ParsedSource(zc::ArrayPtr<const uint8_t> text)
       : sources(zc::heap<source::SourceManager>()),
@@ -206,7 +452,8 @@ struct ParsedSource final {
 
 zc::Maybe<VerifiedModuleGraphInputTransaction> preparedTransaction(
     const VerifiedModuleGraphInputLedger& prior, bool includeMarker, bool withCycle = false,
-    bool omitCoreProjection = false) {
+    bool omitCoreProjection = false,
+    zc::ArrayPtr<const VerifiedModuleGraphInputPayload> rejectedPayloads = nullptr) {
   auto userCrate = crate();
   auto core = coreCrate();
   auto userModule = module(userCrate, "test"_zc);
@@ -220,11 +467,20 @@ zc::Maybe<VerifiedModuleGraphInputTransaction> preparedTransaction(
   auto distribution = core_library_test::admittedCoreDistribution();
   ZC_REQUIRE(distribution.snapshots().size() == 3);
 
-  auto options = compilationOptions();
+  auto targetRegistryValue = targetRegistry();
+  auto request = packageRequest(targetRegistryValue);
+  auto verifiedOptions = identity::source_query::CanonicalCompilationOptions::fromVerified(request);
+  ZC_REQUIRE(verifiedOptions != zc::none);
+  auto options = zc::mv(ZC_REQUIRE_NONNULL(verifiedOptions));
+  auto acceptedDistribution = source::core::initialCoreDistributionInput();
+  ZC_REQUIRE(acceptedDistribution != zc::none);
+  auto contextAuthority = completeAuthorityForSinglePackage(
+      request, userCrate, core, options, ZC_REQUIRE_NONNULL(acceptedDistribution));
   zc::Vector<identity::CrateKey> consumers;
   consumers.add(userCrate.clone());
   auto preparedCore = core_library_query::VerifiedCoreDistributionInputTransaction::prepare(
-      distribution, options, consumers.asPtr());
+      query::DatabaseRevision(), distribution, request, zc::mv(contextAuthority), options,
+      consumers.asPtr());
   ZC_REQUIRE(preparedCore != zc::none);
   auto coreInputs = zc::mv(ZC_REQUIRE_NONNULL(preparedCore));
   ZC_REQUIRE(coreInputs.projections().size() == 1);
@@ -478,14 +734,15 @@ zc::Maybe<VerifiedModuleGraphInputTransaction> preparedTransaction(
   zc::Vector<identity::CrateKey> projectedCore;
   if (!omitCoreProjection) { projectedCore.add(core.clone()); }
 
-  auto registry = targetRegistry();
-  auto request = packageRequest(registry);
   const ModuleGraphInputTransactionAuthority authority{request, coreInputs, resolver, registries,
                                                        parsedInputs.asPtr()};
+  for (const auto& candidate : rejectedPayloads) {
+    ZC_EXPECT(!VerifiedModuleGraphInputVerifier::verify(authority, candidate));
+  }
   return VerifiedModuleGraphInputTransaction::prepare(
-      authority, contextRoots(core), zc::mv(projectedCore), zc::mv(catalogs), zc::mv(sites),
-      zc::mv(ancestries), zc::mv(buckets), zc::mv(searchRoots), zc::mv(aliases), zc::mv(preludes),
-      prior);
+      authority, query::DatabaseRevision(), contextRoots(core), zc::mv(projectedCore),
+      zc::mv(catalogs), zc::mv(sites), zc::mv(ancestries), zc::mv(buckets), zc::mv(searchRoots),
+      zc::mv(aliases), zc::mv(preludes), prior);
 }
 
 class QueryTestSemanticContextResources final : public query::SemanticContextCapabilityResources {};
@@ -649,14 +906,83 @@ ZC_TEST("Module graph input transaction commits its complete authority exactly o
   auto empty = VerifiedModuleGraphInputLedger::empty();
   auto first = preparedTransaction(empty, true);
   ZC_REQUIRE(first != zc::none);
-  ZC_REQUIRE(ZC_REQUIRE_NONNULL(first).commit(queries));
-  ZC_EXPECT(!ZC_REQUIRE_NONNULL(first).commit(queries));
+  ZC_REQUIRE(ZC_REQUIRE_NONNULL(first).commit(queries).isCommitted());
+  ZC_EXPECT(!ZC_REQUIRE_NONNULL(first).commit(queries).isCommitted());
 
   auto marker = module(coreCrate(), "core"_zc, "marker"_zc);
   auto present = queries.snapshot().probeInput<ModuleDependencySiteInput>(marker);
   ZC_REQUIRE(!present.isRuntimeFailure());
   ZC_REQUIRE(present.kind() == query::QueryValueKind::Value);
   ZC_EXPECT(ZC_REQUIRE_NONNULL(first).nextLedger().entries().size() != 0);
+}
+
+ZC_TEST("SessionInputTransactionTest.StructurePayloadRejectsCoverageAndOrderingMutations") {
+  auto prior = VerifiedModuleGraphInputLedger::empty();
+  auto prepared = preparedTransaction(prior, true);
+  ZC_REQUIRE(prepared != zc::none);
+  const auto& payload = ZC_REQUIRE_NONNULL(prepared).payload();
+  auto encoded = payload.encodeCanonical();
+  auto decoded = VerifiedModuleGraphInputPayload::decodeCanonical(encoded.asPtr());
+  ZC_REQUIRE(decoded != zc::none);
+  ZC_EXPECT(ZC_REQUIRE_NONNULL(decoded) == payload);
+  const auto wire = structurePayloadWire(encoded.asPtr());
+  ZC_REQUIRE(wire.catalogs.count >= 2);
+  ZC_REQUIRE(wire.dependencySites.count != 0);
+  ZC_REQUIRE(wire.ancestries.count != 0);
+  ZC_REQUIRE(wire.catalogBuckets.count != 0);
+  ZC_REQUIRE(wire.searchRoots.count != 0);
+  ZC_REQUIRE(wire.preludes.count != 0);
+  zc::Vector<VerifiedModuleGraphInputPayload> authorityMutations;
+  const auto retainForVerifier = [&](zc::Array<uint8_t>&& bytes) {
+    auto candidate = VerifiedModuleGraphInputPayload::decodeCanonical(bytes.asPtr());
+    if (candidate != zc::none) { authorityMutations.add(zc::mv(ZC_REQUIRE_NONNULL(candidate))); }
+  };
+
+  auto wrongDomain = mutation::flipByte(encoded.asPtr(), 0);
+  ZC_EXPECT(VerifiedModuleGraphInputPayload::decodeCanonical(wrongDomain.asPtr()) == zc::none);
+
+  retainForVerifier(mutation::flipPayloadByte(encoded.asPtr(), wire.context));
+  retainForVerifier(mutation::flipPayloadByte(
+      encoded.asPtr(), mutation::sequenceField(encoded.asPtr(), wire.projectedCoreCrates, 0, 0)));
+  retainForVerifier(mutation::flipPayloadByte(
+      encoded.asPtr(), mutation::sequenceField(encoded.asPtr(), wire.catalogs, 0, 0)));
+  retainForVerifier(mutation::flipPayloadByte(
+      encoded.asPtr(), mutation::sequenceField(encoded.asPtr(), wire.dependencySites, 0, 0)));
+  retainForVerifier(mutation::flipPayloadByte(
+      encoded.asPtr(), mutation::sequenceField(encoded.asPtr(), wire.ancestries, 0, 0)));
+  retainForVerifier(mutation::flipPayloadByte(
+      encoded.asPtr(), mutation::sequenceField(encoded.asPtr(), wire.catalogBuckets, 0, 0)));
+  retainForVerifier(mutation::flipPayloadByte(
+      encoded.asPtr(), mutation::sequenceField(encoded.asPtr(), wire.searchRoots, 0, 0)));
+  auto changedAlias =
+      wire.aliases.count == 0
+          ? mutation::setSequenceCount(encoded.asPtr(), wire.aliases, 1)
+          : mutation::flipPayloadByte(encoded.asPtr(),
+                                      mutation::sequenceField(encoded.asPtr(), wire.aliases, 0, 0));
+  retainForVerifier(zc::mv(changedAlias));
+  retainForVerifier(mutation::flipPayloadByte(
+      encoded.asPtr(), mutation::sequenceField(encoded.asPtr(), wire.preludes, 0, 1)));
+
+  auto duplicate = mutation::duplicateFirstElement(encoded.asPtr(), wire.catalogs);
+  ZC_EXPECT(VerifiedModuleGraphInputPayload::decodeCanonical(duplicate.asPtr()) == zc::none);
+  auto reordered = mutation::swapFirstTwoElements(encoded.asPtr(), wire.catalogs);
+  ZC_EXPECT(VerifiedModuleGraphInputPayload::decodeCanonical(reordered.asPtr()) == zc::none);
+  auto changedCoverage = mutation::removeFirstElement(encoded.asPtr(), wire.dependencySites);
+  retainForVerifier(zc::mv(changedCoverage));
+  auto excessiveCount = mutation::setSequenceCount(encoded.asPtr(), wire.catalogs, UINT64_MAX);
+  ZC_EXPECT(VerifiedModuleGraphInputPayload::decodeCanonical(excessiveCount.asPtr()) == zc::none);
+  auto excessiveBytes = mutation::setByteStringSize(encoded.asPtr(), wire.context, UINT64_MAX);
+  ZC_EXPECT(VerifiedModuleGraphInputPayload::decodeCanonical(excessiveBytes.asPtr()) == zc::none);
+
+  auto trailing = mutation::withTrailingByte(encoded.asPtr());
+  ZC_EXPECT(VerifiedModuleGraphInputPayload::decodeCanonical(trailing.asPtr()) == zc::none);
+  ZC_EXPECT(VerifiedModuleGraphInputPayload::decodeCanonical(
+                encoded.asPtr().slice(0, encoded.size() - 1)) == zc::none);
+
+  ZC_REQUIRE(authorityMutations.size() != 0);
+  auto independentlyChecked =
+      preparedTransaction(prior, true, false, false, authorityMutations.asPtr());
+  ZC_REQUIRE(independentlyChecked != zc::none);
 }
 
 ZC_TEST("Independent module graph input verifier rejects incomplete core roots") {
@@ -675,7 +1001,7 @@ ZC_TEST("Derived module queries project the sole catalog through prelude resolut
   auto empty = VerifiedModuleGraphInputLedger::empty();
   auto graphInputs = preparedTransaction(empty, true);
   ZC_REQUIRE(graphInputs != zc::none);
-  ZC_REQUIRE(ZC_REQUIRE_NONNULL(graphInputs).commit(queries));
+  ZC_REQUIRE(ZC_REQUIRE_NONNULL(graphInputs).commit(queries).isCommitted());
 
   auto userCrate = crate();
   auto userModule = module(userCrate, "test"_zc);
@@ -725,7 +1051,7 @@ ZC_TEST("Stable graph and independent SCC queries cover the complete core root")
   auto empty = VerifiedModuleGraphInputLedger::empty();
   auto graphInputs = preparedTransaction(empty, true);
   ZC_REQUIRE(graphInputs != zc::none);
-  ZC_REQUIRE(ZC_REQUIRE_NONNULL(graphInputs).commit(queries));
+  ZC_REQUIRE(ZC_REQUIRE_NONNULL(graphInputs).commit(queries).isCommitted());
   auto sourceInputs = queries.beginInputTransaction(queries.snapshot().revision());
   ZC_REQUIRE(sourceInputs.isOpened());
   auto sourceTransaction = zc::mv(sourceInputs).takeTransaction();
@@ -780,7 +1106,7 @@ ZC_TEST("Nested dependency failure globally precedes an earlier outside edge") {
   auto empty = VerifiedModuleGraphInputLedger::empty();
   auto graphInputs = preparedTransaction(empty, true);
   ZC_REQUIRE(graphInputs != zc::none);
-  ZC_REQUIRE(ZC_REQUIRE_NONNULL(graphInputs).commit(queries));
+  ZC_REQUIRE(ZC_REQUIRE_NONNULL(graphInputs).commit(queries).isCommitted());
   auto sourceInputs = queries.beginInputTransaction(queries.snapshot().revision());
   ZC_REQUIRE(sourceInputs.isOpened());
   auto sourceTransaction = zc::mv(sourceInputs).takeTransaction();
@@ -873,7 +1199,7 @@ ZC_TEST("Tarjan provider and Kosaraju verifier agree after a tracked cycle mutat
   auto empty = VerifiedModuleGraphInputLedger::empty();
   auto graphInputs = preparedTransaction(empty, true);
   ZC_REQUIRE(graphInputs != zc::none);
-  ZC_REQUIRE(ZC_REQUIRE_NONNULL(graphInputs).commit(queries));
+  ZC_REQUIRE(ZC_REQUIRE_NONNULL(graphInputs).commit(queries).isCommitted());
   auto sourceInputs = queries.beginInputTransaction(queries.snapshot().revision());
   ZC_REQUIRE(sourceInputs.isOpened());
   auto sourceTransaction = zc::mv(sourceInputs).takeTransaction();
@@ -960,6 +1286,366 @@ ZC_TEST("Independent transaction verifier rejects sites not backed by parsed syn
   auto empty = VerifiedModuleGraphInputLedger::empty();
   auto graphInputs = preparedTransaction(empty, true, true);
   ZC_EXPECT(graphInputs == zc::none);
+}
+
+ZC_TEST("Complete context authority rejects malformed and unequal canonical inputs") {
+  auto registry = targetRegistry();
+  auto request = packageRequest(registry);
+  auto rootSet = incremental_binding_query::PackageRootSetKey::fromVerified(request);
+  ZC_REQUIRE(rootSet != zc::none);
+
+  auto user = crate();
+  auto dependencyPackage = packageNamed("dependency"_zc);
+  auto dependency = crateForPackage(user, dependencyPackage.clone(), "dependency"_zc);
+  auto core = coreCrate();
+  auto resolvedEdge = packageEdge(package(), dependencyPackage);
+  auto expandedEdge = crateEdge(resolvedEdge, user, dependency);
+  zc::Vector<zc::Array<uint8_t>> graphPackages;
+  graphPackages.add(package().encode());
+  graphPackages.add(dependencyPackage.encode());
+  zc::Vector<zc::Array<uint8_t>> graphResolvedEdges;
+  graphResolvedEdges.add(resolvedEdge.encode());
+  zc::Vector<zc::Array<uint8_t>> graphSelectedEdges;
+  graphSelectedEdges.add(resolvedEdge.encode());
+  zc::Vector<zc::Array<uint8_t>> graphCrates;
+  graphCrates.add(user.encode());
+  graphCrates.add(dependency.encode());
+  zc::Vector<zc::Array<uint8_t>> graphCrateEdges;
+  graphCrateEdges.add(expandedEdge.encode());
+  auto graphBytes =
+      packageGraphBytes(zc::mv(graphPackages), zc::mv(graphResolvedEdges),
+                        zc::mv(graphSelectedEdges), zc::mv(graphCrates), zc::mv(graphCrateEdges));
+  auto graph = incremental_binding_query::PackageGraphInput::decodeValue(graphBytes.asPtr());
+  ZC_REQUIRE(graph != zc::none);
+
+  auto distribution = core_library_test::admittedCoreDistribution();
+  auto canonicalOptions =
+      identity::source_query::CanonicalCompilationOptions::fromVerified(request);
+  ZC_REQUIRE(canonicalOptions != zc::none);
+  auto options = zc::mv(ZC_REQUIRE_NONNULL(canonicalOptions));
+  zc::Vector<identity::CrateKey> consumers;
+  consumers.add(user.clone());
+  consumers.add(dependency.clone());
+
+  zc::Vector<identity::CrateKey> userRoots;
+  userRoots.add(user.clone());
+  zc::Vector<identity::CrateKey> projectedCore;
+  projectedCore.add(core.clone());
+  zc::Vector<CompilationOptionsEntry> optionEntries;
+  optionEntries.add(CompilationOptionsEntry::from(user.clone(), options.clone()));
+  optionEntries.add(CompilationOptionsEntry::from(dependency.clone(), options.clone()));
+  optionEntries.add(CompilationOptionsEntry::from(core.clone(), options.clone()));
+
+  zc::Vector<binder::ModuleSearchRoot> workspaceRoots;
+  zc::Vector<identity::CanonicalPathSegment> workspacePath;
+  workspaceRoots.add(binder::ModuleSearchRoot::workspace(
+      user.clone(), identity::CanonicalWorkspaceRelativePath::from(0, zc::mv(workspacePath))));
+  auto userSearchRoots =
+      incremental_module_resolution_query::CanonicalModuleSearchRoots::fromVerified(
+          user, workspaceRoots.asPtr());
+  ZC_REQUIRE(userSearchRoots != zc::none);
+  zc::Vector<ModuleSearchRootsEntry> searchEntries;
+  searchEntries.add(
+      ModuleSearchRootsEntry::from(user.clone(), zc::mv(ZC_REQUIRE_NONNULL(userSearchRoots))));
+  zc::Vector<binder::ModuleSearchRoot> dependencyWorkspaceRoots;
+  zc::Vector<identity::CanonicalPathSegment> dependencyWorkspacePath;
+  dependencyWorkspacePath.add(scalar<identity::CanonicalPathSegment>("dependency"_zc));
+  dependencyWorkspaceRoots.add(binder::ModuleSearchRoot::workspace(
+      dependency.clone(),
+      identity::CanonicalWorkspaceRelativePath::from(0, zc::mv(dependencyWorkspacePath))));
+  auto dependencySearchRoots =
+      incremental_module_resolution_query::CanonicalModuleSearchRoots::fromVerified(
+          dependency, dependencyWorkspaceRoots.asPtr());
+  ZC_REQUIRE(dependencySearchRoots != zc::none);
+  searchEntries.add(ModuleSearchRootsEntry::from(
+      dependency.clone(), zc::mv(ZC_REQUIRE_NONNULL(dependencySearchRoots))));
+  auto acceptedDistribution = source::core::initialCoreDistributionInput();
+  ZC_REQUIRE(acceptedDistribution != zc::none);
+  auto coreRoot = binder::ModuleSearchRoot::toolchainCore(
+      core.clone(), ZC_REQUIRE_NONNULL(acceptedDistribution).digest());
+  ZC_REQUIRE(coreRoot != zc::none);
+  zc::Vector<binder::ModuleSearchRoot> coreEnvironment;
+  coreEnvironment.add(zc::mv(ZC_REQUIRE_NONNULL(coreRoot)));
+  auto coreSearchRoots =
+      incremental_module_resolution_query::CanonicalModuleSearchRoots::fromVerified(
+          core, coreEnvironment.asPtr());
+  ZC_REQUIRE(coreSearchRoots != zc::none);
+  searchEntries.add(
+      ModuleSearchRootsEntry::from(core.clone(), zc::mv(ZC_REQUIRE_NONNULL(coreSearchRoots))));
+
+  const CompleteCompilationContextSources sources{
+      request,
+      ZC_REQUIRE_NONNULL(rootSet),
+      ZC_REQUIRE_NONNULL(graph),
+      userRoots.asPtr(),
+      projectedCore.asPtr(),
+      optionEntries.asPtr(),
+      searchEntries.asPtr(),
+      ZC_REQUIRE_NONNULL(acceptedDistribution),
+  };
+  auto authority = CompleteCompilationContextAuthority::fromVerified(sources);
+  ZC_REQUIRE(authority != zc::none);
+  auto preparedCore = core_library_query::VerifiedCoreDistributionInputTransaction::prepare(
+      query::DatabaseRevision(), distribution, request, ZC_REQUIRE_NONNULL(authority).clone(),
+      options, consumers.asPtr());
+  ZC_REQUIRE(preparedCore != zc::none);
+  auto coreInputs = zc::mv(ZC_REQUIRE_NONNULL(preparedCore));
+  ZC_EXPECT(CompleteCompilationContextAuthorityInputVerifier::verify(ZC_REQUIRE_NONNULL(authority),
+                                                                     sources));
+
+  auto alternateResolvedEdge = packageEdge(package(), dependencyPackage, "alternate"_zc);
+  auto alternateExpandedEdge = crateEdge(alternateResolvedEdge, user, dependency);
+  zc::Vector<zc::Array<uint8_t>> alternatePackages;
+  alternatePackages.add(package().encode());
+  alternatePackages.add(dependencyPackage.encode());
+  zc::Vector<zc::Array<uint8_t>> alternateResolvedEdges;
+  alternateResolvedEdges.add(alternateResolvedEdge.encode());
+  zc::Vector<zc::Array<uint8_t>> alternateSelectedEdges;
+  alternateSelectedEdges.add(alternateResolvedEdge.encode());
+  zc::Vector<zc::Array<uint8_t>> alternateCrates;
+  alternateCrates.add(user.encode());
+  alternateCrates.add(dependency.encode());
+  zc::Vector<zc::Array<uint8_t>> alternateCrateEdges;
+  alternateCrateEdges.add(alternateExpandedEdge.encode());
+  auto alternateGraphBytes = packageGraphBytes(
+      zc::mv(alternatePackages), zc::mv(alternateResolvedEdges), zc::mv(alternateSelectedEdges),
+      zc::mv(alternateCrates), zc::mv(alternateCrateEdges));
+  auto alternateGraph =
+      incremental_binding_query::PackageGraphInput::decodeValue(alternateGraphBytes.asPtr());
+  ZC_REQUIRE(alternateGraph != zc::none);
+  const CompleteCompilationContextSources alternateGraphSources{
+      request,
+      ZC_REQUIRE_NONNULL(rootSet),
+      ZC_REQUIRE_NONNULL(alternateGraph),
+      userRoots.asPtr(),
+      projectedCore.asPtr(),
+      optionEntries.asPtr(),
+      searchEntries.asPtr(),
+      coreInputs.distribution(),
+  };
+  auto alternateAuthority =
+      CompleteCompilationContextAuthority::fromVerified(alternateGraphSources);
+  ZC_REQUIRE(alternateAuthority != zc::none);
+  ZC_EXPECT(CompleteCompilationContextAuthorityInputVerifier::verify(
+      ZC_REQUIRE_NONNULL(alternateAuthority), alternateGraphSources));
+  ZC_EXPECT(!CompleteCompilationContextAuthorityInputVerifier::verify(ZC_REQUIRE_NONNULL(authority),
+                                                                      alternateGraphSources));
+
+  zc::Vector<zc::Array<uint8_t>> mismatchedOriginPackages;
+  mismatchedOriginPackages.add(package().encode());
+  mismatchedOriginPackages.add(dependencyPackage.encode());
+  zc::Vector<zc::Array<uint8_t>> mismatchedOriginResolvedEdges;
+  mismatchedOriginResolvedEdges.add(resolvedEdge.encode());
+  mismatchedOriginResolvedEdges.add(alternateResolvedEdge.encode());
+  zc::Vector<zc::Array<uint8_t>> mismatchedOriginSelectedEdges;
+  mismatchedOriginSelectedEdges.add(resolvedEdge.encode());
+  zc::Vector<zc::Array<uint8_t>> mismatchedOriginCrates;
+  mismatchedOriginCrates.add(user.encode());
+  mismatchedOriginCrates.add(dependency.encode());
+  zc::Vector<zc::Array<uint8_t>> mismatchedOriginCrateEdges;
+  mismatchedOriginCrateEdges.add(alternateExpandedEdge.encode());
+  auto mismatchedOriginBytes =
+      packageGraphBytes(zc::mv(mismatchedOriginPackages), zc::mv(mismatchedOriginResolvedEdges),
+                        zc::mv(mismatchedOriginSelectedEdges), zc::mv(mismatchedOriginCrates),
+                        zc::mv(mismatchedOriginCrateEdges));
+  ZC_EXPECT(incremental_binding_query::PackageGraphInput::decodeValue(
+                mismatchedOriginBytes.asPtr()) == zc::none);
+
+  basic::ThreadPool scheduler(2);
+  auto queries = database(scheduler);
+  auto opened = queries.beginInputTransaction(queries.snapshot().revision());
+  ZC_REQUIRE(opened.isOpened());
+  auto transaction = zc::mv(opened).takeTransaction();
+  ZC_REQUIRE(transaction
+                 .set<CompleteCompilationContextAuthorityInput>(
+                     ZC_REQUIRE_NONNULL(authority).contextRoots(), ZC_REQUIRE_NONNULL(authority))
+                 .isApplied());
+  ZC_REQUIRE(transaction.commit().isCommitted());
+  auto witness = computeCompleteCompilationContextWitness(ZC_REQUIRE_NONNULL(authority));
+  ZC_REQUIRE(witness != zc::none);
+  auto snapshot = queries.snapshot();
+  ZC_EXPECT(CompleteCompilationContextAuthorityInput::verifyFinalAuthority(
+                snapshot, ZC_REQUIRE_NONNULL(authority).contextRoots(),
+                ZC_REQUIRE_NONNULL(authority),
+                ZC_REQUIRE_NONNULL(witness)) == query::FinalAuthorityCheck::Rejected);
+  ZC_EXPECT(CompleteCompilationContextAuthorityInput::verifyFinalAuthority(
+                snapshot, ZC_REQUIRE_NONNULL(authority).contextRoots(),
+                ZC_REQUIRE_NONNULL(authority),
+                digest(0x93)) == query::FinalAuthorityCheck::Rejected);
+
+  auto encoded = ZC_REQUIRE_NONNULL(authority).encodeCanonical();
+  auto decoded = CompleteCompilationContextAuthority::decodeCanonical(encoded.asPtr());
+  ZC_REQUIRE(decoded != zc::none);
+  ZC_EXPECT(ZC_REQUIRE_NONNULL(decoded) == ZC_REQUIRE_NONNULL(authority));
+
+  auto fieldRanges = completeContextFieldRanges(encoded.asPtr());
+  ZC_REQUIRE(fieldRanges.size() == 12);
+  for (size_t fieldIndex = 0; fieldIndex < fieldRanges.size(); ++fieldIndex) {
+    const auto range = fieldRanges[fieldIndex];
+    auto fieldMutation = zc::heapArray<uint8_t>(encoded.asPtr());
+    ZC_REQUIRE(range.end > range.begin);
+    fieldMutation[range.end - 1] ^= 0x01;
+    auto fieldCandidate =
+        CompleteCompilationContextAuthority::decodeCanonical(fieldMutation.asPtr());
+    ZC_IF_SOME(value, fieldCandidate) {
+      ZC_EXPECT(!CompleteCompilationContextAuthorityInputVerifier::verify(value, sources),
+                fieldIndex);
+    }
+  }
+
+  auto domainMutation = zc::heapArray<uint8_t>(encoded.asPtr());
+  domainMutation[0] ^= 0x01;
+  ZC_EXPECT(CompleteCompilationContextAuthority::decodeCanonical(domainMutation.asPtr()) ==
+            zc::none);
+  ZC_EXPECT(CompleteCompilationContextAuthority::decodeCanonical(
+                encoded.asPtr().slice(0, encoded.size() - 1)) == zc::none);
+
+  zc::Vector<uint8_t> trailing(encoded.size() + 1);
+  trailing.addAll(encoded.asPtr());
+  trailing.add(0);
+  ZC_EXPECT(CompleteCompilationContextAuthority::decodeCanonical(
+                trailing.releaseAsArray().asPtr()) == zc::none);
+
+  auto reordered = swapFirstTwoWireSequenceElements(encoded.asPtr(), fieldRanges[8]);
+  ZC_EXPECT(CompleteCompilationContextAuthority::decodeCanonical(reordered.asPtr()) == zc::none);
+
+  auto excessiveCount = zc::heapArray<uint8_t>(encoded.asPtr());
+  writeWireUint64(excessiveCount.asPtr(), fieldRanges[4].begin,
+                  static_cast<uint64_t>(UINT32_MAX) + 1);
+  ZC_EXPECT(CompleteCompilationContextAuthority::decodeCanonical(excessiveCount.asPtr()) ==
+            zc::none);
+
+  const auto expectHostileCountRejected = [&](size_t fieldIndex) {
+    auto hostileCount = zc::heapArray<uint8_t>(encoded.asPtr());
+    writeWireUint64(hostileCount.asPtr(), fieldRanges[fieldIndex].begin, UINT32_MAX);
+    ZC_EXPECT(CompleteCompilationContextAuthority::decodeCanonical(hostileCount.asPtr().slice(
+                  0, fieldRanges[fieldIndex].begin + sizeof(uint64_t))) == zc::none,
+              fieldIndex);
+  };
+  expectHostileCountRejected(4);
+  expectHostileCountRejected(8);
+  expectHostileCountRejected(9);
+
+  auto excessiveBytes = zc::heapArray<uint8_t>(encoded.asPtr());
+  writeWireUint64(excessiveBytes.asPtr(), fieldRanges[0].begin, UINT64_MAX);
+  ZC_EXPECT(CompleteCompilationContextAuthority::decodeCanonical(excessiveBytes.asPtr()) ==
+            zc::none);
+
+  zc::Vector<CompilationOptionsEntry> duplicateOptions;
+  for (const auto& entry : optionEntries) { duplicateOptions.add(entry.clone()); }
+  duplicateOptions.add(optionEntries.front().clone());
+  const CompleteCompilationContextSources duplicateSources{
+      request,
+      ZC_REQUIRE_NONNULL(rootSet),
+      ZC_REQUIRE_NONNULL(graph),
+      userRoots.asPtr(),
+      projectedCore.asPtr(),
+      duplicateOptions.asPtr(),
+      searchEntries.asPtr(),
+      coreInputs.distribution(),
+  };
+  ZC_EXPECT(CompleteCompilationContextAuthority::fromVerified(duplicateSources) == zc::none);
+  ZC_EXPECT(!CompleteCompilationContextAuthorityInputVerifier::verify(ZC_REQUIRE_NONNULL(authority),
+                                                                      duplicateSources));
+
+  zc::Vector<identity::CrateKey> missingUserRoots;
+  const CompleteCompilationContextSources missingRootSources{
+      request,
+      ZC_REQUIRE_NONNULL(rootSet),
+      ZC_REQUIRE_NONNULL(graph),
+      missingUserRoots.asPtr(),
+      projectedCore.asPtr(),
+      optionEntries.asPtr(),
+      searchEntries.asPtr(),
+      coreInputs.distribution(),
+  };
+  ZC_EXPECT(CompleteCompilationContextAuthority::fromVerified(missingRootSources) == zc::none);
+  ZC_EXPECT(!CompleteCompilationContextAuthorityInputVerifier::verify(ZC_REQUIRE_NONNULL(authority),
+                                                                      missingRootSources));
+
+  zc::Vector<identity::CrateKey> additionalUserRoots;
+  additionalUserRoots.add(user.clone());
+  additionalUserRoots.add(core.clone());
+  const CompleteCompilationContextSources additionalRootSources{
+      request,
+      ZC_REQUIRE_NONNULL(rootSet),
+      ZC_REQUIRE_NONNULL(graph),
+      additionalUserRoots.asPtr(),
+      projectedCore.asPtr(),
+      optionEntries.asPtr(),
+      searchEntries.asPtr(),
+      coreInputs.distribution(),
+  };
+  ZC_EXPECT(CompleteCompilationContextAuthority::fromVerified(additionalRootSources) == zc::none);
+  ZC_EXPECT(!CompleteCompilationContextAuthorityInputVerifier::verify(ZC_REQUIRE_NONNULL(authority),
+                                                                      additionalRootSources));
+
+  auto unequalOptions = compilationOptions();
+  zc::Vector<CompilationOptionsEntry> unequalOptionEntries;
+  unequalOptionEntries.add(CompilationOptionsEntry::from(user.clone(), unequalOptions.clone()));
+  unequalOptionEntries.add(
+      CompilationOptionsEntry::from(dependency.clone(), unequalOptions.clone()));
+  unequalOptionEntries.add(CompilationOptionsEntry::from(core.clone(), unequalOptions.clone()));
+  const CompleteCompilationContextSources unequalOptionSources{
+      request,
+      ZC_REQUIRE_NONNULL(rootSet),
+      ZC_REQUIRE_NONNULL(graph),
+      userRoots.asPtr(),
+      projectedCore.asPtr(),
+      unequalOptionEntries.asPtr(),
+      searchEntries.asPtr(),
+      coreInputs.distribution(),
+  };
+  ZC_EXPECT(CompleteCompilationContextAuthority::fromVerified(unequalOptionSources) == zc::none);
+  ZC_EXPECT(!CompleteCompilationContextAuthorityInputVerifier::verify(ZC_REQUIRE_NONNULL(authority),
+                                                                      unequalOptionSources));
+
+  zc::Vector<ModuleSearchRootsEntry> incompleteSearchEntries;
+  incompleteSearchEntries.add(searchEntries.front().clone());
+  const CompleteCompilationContextSources incompleteSearchSources{
+      request,
+      ZC_REQUIRE_NONNULL(rootSet),
+      ZC_REQUIRE_NONNULL(graph),
+      userRoots.asPtr(),
+      projectedCore.asPtr(),
+      optionEntries.asPtr(),
+      incompleteSearchEntries.asPtr(),
+      coreInputs.distribution(),
+  };
+  ZC_EXPECT(CompleteCompilationContextAuthority::fromVerified(incompleteSearchSources) == zc::none);
+  ZC_EXPECT(!CompleteCompilationContextAuthorityInputVerifier::verify(ZC_REQUIRE_NONNULL(authority),
+                                                                      incompleteSearchSources));
+
+  auto unequalTargetName = identity::TargetName::fromCanonical("other"_zc);
+  ZC_REQUIRE(unequalTargetName != zc::none);
+  auto unequalCrate = identity::CrateKey::from(
+      user.unit().clone(), identity::CrateTargetKind::Binary,
+      zc::mv(ZC_REQUIRE_NONNULL(unequalTargetName)), user.compilation().clone());
+  ZC_REQUIRE(unequalCrate != zc::none);
+  identity::CanonicalEncoder unequalGraphEncoder;
+  unequalGraphEncoder.encodeSequenceSize(1);
+  unequalGraphEncoder.encodeByteString(package().encode().asPtr());
+  unequalGraphEncoder.encodeSequenceSize(0);
+  unequalGraphEncoder.encodeSequenceSize(0);
+  unequalGraphEncoder.encodeSequenceSize(1);
+  unequalGraphEncoder.encodeByteString(ZC_REQUIRE_NONNULL(unequalCrate).encode().asPtr());
+  unequalGraphEncoder.encodeSequenceSize(0);
+  auto unequalGraph = incremental_binding_query::PackageGraphInput::decodeValue(
+      unequalGraphEncoder.finish().asPtr());
+  ZC_REQUIRE(unequalGraph != zc::none);
+  const CompleteCompilationContextSources unequalGraphSources{
+      request,
+      ZC_REQUIRE_NONNULL(rootSet),
+      ZC_REQUIRE_NONNULL(unequalGraph),
+      userRoots.asPtr(),
+      projectedCore.asPtr(),
+      optionEntries.asPtr(),
+      searchEntries.asPtr(),
+      coreInputs.distribution(),
+  };
+  ZC_EXPECT(CompleteCompilationContextAuthority::fromVerified(unequalGraphSources) == zc::none);
+  ZC_EXPECT(!CompleteCompilationContextAuthorityInputVerifier::verify(ZC_REQUIRE_NONNULL(authority),
+                                                                      unequalGraphSources));
 }
 
 }  // namespace zomlang::compiler::driver::module_graph_query

@@ -1,4 +1,5 @@
 set(DRIVER_SRC active-definition-authority-query.cc active-definition-authority-session.cc
+               active-identity-membership-query.cc
                borrow-evidence.cc coherence-builder.cc compiler-session.cc
                contextual-binding-key.cc
                core-library-query-provider.cc core-library-query-verifier.cc crate-graph.cc
@@ -6,7 +7,7 @@ set(DRIVER_SRC active-definition-authority-query.cc active-definition-authority-
                incremental-module-resolution-query.cc
                incremental-package-graph-query-input.cc
                module-dependency-provenance-query.cc module-discovery.cc
-               module-graph-query-input.cc module-graph-query.cc
+               materialized-module-graph-query.cc module-graph-query-input.cc module-graph-query.cc
                module-interface.cc
                module-interface-diagnostic-adapter.cc
                named-identity-inventory-query.cc named-item-query.cc owner-body-query.cc)
