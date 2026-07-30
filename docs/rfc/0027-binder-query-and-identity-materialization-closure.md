@@ -1588,6 +1588,54 @@ the typed arena interner. An existing interner entry bypasses none of these
 steps. Providers and verifiers independently reconstruct membership keys and
 expected authority.
 
+Every membership descriptor admitted by this operation declares its exact
+`GlobalKey` and complete `Record`, plus
+`projectGlobalKey(contextualKey)` and
+`validateAuthority(contextualKey, globalKey, record)`. The projection returns
+no value for a malformed routed key. Validation checks the complete contextual
+root, routed owner, full authority record, and occurrence coverage applicable
+to that descriptor. `materializeActive` has no descriptor-name switch,
+wildcard trait, record truncation, or inactive-key interner lookup.
+
+Final-sealed capability providers also require two immutable properties of
+their owning query frame that are not semantic inputs: the current
+`DatabaseRevision` and the arena-owned resource interface used by typed
+materialization. `CapabilityQueryContext` therefore exposes exactly
+`snapshotRevision()` and
+`semanticContextResources<Resource>()`. The latter returns
+`Maybe<const Resource&>` after one checked downcast from the arena's single
+`SemanticContextCapabilityResources` owner to the descriptor's statically
+named resource interface. Each `ActiveMaterialization` specialization names
+its exact `Resource` type. `materializeActive` maps a missing or foreign
+resource to `QueryRuntimeFailure::InvariantViolation` before interner access;
+it never selects a fallback resource, session registry, ambient singleton, or
+second interner. Interning through the const resource view is logical-const:
+the append-only concurrent interner may allocate a handle, but the semantic
+key-to-handle relation and resource identity cannot change.
+
+M1 defines `ModuleGraphIdentityMaterializationResources` in
+`materialized-module-graph-query.h`. The interface exposes the one semantic
+context brand, typed intern operations, and typed reverse lookups for only
+`CompilationUnitIdentity`, `CrateKey`, `SourceFileKey`, and `ModuleKey`.
+`MaterializeModuleGraph` uses that interface both to issue admitted handles
+and to reverse-expand every candidate edge during independent verification.
+The production `CompilerSession` resource owner implements the interface when
+the session root is migrated; T1's query-runtime fixtures implement the same
+interface before the descriptor is registered. The interface owns no
+interner, memo, lease, snapshot, or session reference.
+
+`binder::ModuleGraphRevision` remains the only graph-revision value in the
+repository. T1 replaces its private friend-only construction with
+`fromCanonicalDigest(const Sha256Digest&)`, migrates every builder, verifier,
+fixture, and M1 caller to that constructor, and removes construction-only
+friends. The existing digest and the independently recomputed digest remain
+byte-equal authorities; M1 does not declare a second revision type.
+`SemanticContextFingerprint` likewise gains
+`fromCanonicalDigest(const Sha256Digest&)` for exact witness decoding. Both
+factories accept an already decoded fixed-width digest and create only the
+current immutable value; neither is a compatibility adapter, alternate
+computation path, authority bypass, or versioned representation.
+
 ```text
 ActiveCompilationUnitMembership {
   unit: CompilationUnitIdentity,
@@ -1978,13 +2026,58 @@ the 32-byte graph-revision digest. Decoding requires exact consumption,
 canonical unique request edges, graph/SCC membership closure, SCC graph-digest
 equality, and independent recomputation of `ModuleGraphRevision`.
 
-Provider and verifier independently re-demand the graph, SCC, resolution,
-fingerprint, root, and provenance inputs. The verifier rebuilds this witness
-without provider graph, edge, ordering, or revision helpers and requires
-complete byte equality. Every materialized handle edge reverse-expands to the
-matching stable witness edge. Context roots, fingerprint, graph, SCC, and graph
-revision are projected only from `witness`; no duplicate authority field
-exists.
+Provider and verifier independently execute this canonical total demand order:
+
+1. demand `CompleteCompilationContextAuthority(contextRoots)` and prove that
+   the descriptor key is the complete root set;
+2. demand the canonical package request, projected core distribution, and all
+   fingerprint inputs in their schema order;
+3. demand `ActiveCrates`, then visit crates in complete crate-key order and,
+   for each crate, demand `ActiveSources(crate)` followed by
+   `ActiveModules(crate)`; the nested rejection-order tuple is
+   `(complete crate key bytes, family ordinal)` where source family is zero
+   and module family is one;
+4. demand graph and SCC, then prove closure, SCC graph-digest equality, and
+   acyclicity;
+5. visit modules in complete module-key order and demand selected source,
+   dependency sites, and stable requests in that family order; then demand
+   every exact resolution in complete request-key order; collect configured
+   prelude input keys reached by those resolutions, deduplicate by complete
+   prelude-input key bytes, sort those unique bytes, and demand the configured
+   preludes after all resolutions for that module;
+6. deduplicate selected sources by complete source-key bytes and demand the
+   final `ParseSource` capability in that byte order;
+7. demand the retained `ModuleDependencyProvenance` capability for every
+   reached module in complete module-key order;
+8. materialize units, crates, sources, and modules in that domain order and
+   complete key-byte order through their exact membership descriptors; and
+9. construct the stable request edges, graph projection, fingerprint,
+   revision, stable witness, reverse-expanded handle edges, and candidate.
+
+Provider and verifier may execute independent reads concurrently only when
+result collection and rejection selection preserve this order. For every
+child result the precedence is runtime rejection, key rejection, source
+rejection, then value. Across multiple children, the first eligible rejection
+in the canonical order above wins. A child runtime failure retains its exact
+`QueryRuntimeFailure`; final-admission failures occur before provider
+execution; provenance and parse source rejection and provenance key rejection
+are forwarded unchanged. `IdentityInternerFailure::AllocationFailure` and
+`IdentityInternerFailure::SlotOverflow` map to `AllocationFailure`.
+`IdentityInternerFailure::ForeignBrand`,
+`IdentityInternerFailure::MalformedRecord`, and
+`IdentityInternerFailure::CanonicalCollision` map to `InvariantViolation`.
+Missing tracked reads, inactive membership, authority disagreement, malformed
+provenance, graph or SCC closure disagreement, a cyclic SCC observed after
+final admission, reverse-lookup disagreement, and revision disagreement also
+map to `InvariantViolation`. Cancellation is `Cancelled`; an evaluator
+dependency cycle is `Cycle`; the cyclic-SCC case never uses `Cycle`.
+Candidate-verifier disagreement is `VerifierRejected`.
+
+The verifier rebuilds the witness without provider graph, edge, ordering,
+candidate, or revision helpers and requires complete byte equality. Every
+materialized handle edge reverse-expands to the matching stable witness edge.
+Context roots, fingerprint, graph, SCC, and graph revision are projected only
+from `witness`; no duplicate authority field exists.
 
 `MaterializedIdentityEntry<Key, Record, Handle>` carries exactly one typed
 handle plus its complete key and authority record. Definition and implementation provenance comes from
@@ -2246,6 +2339,16 @@ partition, and T1 cannot claim a buildable atomic closure without them. W2 may
 later edit the same build file only for its post-T2C deletion and final wiring
 scope; it does not own or defer these two T1 source rows.
 
+T1 also owns the narrow `CapabilityQueryContext` accessor additions in
+`products/zomlang/compiler/query/query-database.h`, the
+`MaterializeModuleGraph` production inventory row in
+`products/zomlang/compiler/query/query-descriptor-schema.def`, and the
+corresponding test-inventory ordinal migration. The accessors, descriptor,
+driver source rows, test resource, final-authority verifier, and session
+publication sequence land together. No preparation partition may publish an
+unregistered descriptor, a descriptor without its static resource contract,
+or a resource accessor without a production consumer and mutation coverage.
+
 The three transaction payload domains are, in order,
 `zom.query.input-transaction.core-distribution`,
 `zom.query.input-transaction.module-structure`, and
@@ -2368,8 +2471,9 @@ content inputs used by the semantic-context fingerprint; `ActiveCrates` and
 every reached `ActiveSources` and `ActiveModules`; graph and SCC; every selected
 source; every dependency site and request; every exact module-resolution
 result; every configured prelude selected by a prelude request; final-snapshot
-parse leases for all selected sources; and exact unit, crate, source, and
-module active-membership projections.
+parse leases for all selected sources; the retained final-sealed
+`ModuleDependencyProvenance` capability for every reached module; and exact
+unit, crate, source, and module active-membership projections.
 
 Provider and verifier independently reconstruct the complete root set and
 active module union, graph and acyclic SCC membership, full semantic-context
@@ -2932,7 +3036,7 @@ descriptor, or replace the hand-authored inventory with generated schema.
 | `B2` | `binder-checker` | `B1` | `products/zomlang/compiler/binder/owner-body-query.h`; `products/zomlang/compiler/binder/owner-body-query.cc` | contextual `BindOwnerBody` and independent traversal/verifier |
 | `B3` | `binder-checker` | `B2` | `products/zomlang/compiler/binder/owner-body-syntax.h`; `products/zomlang/compiler/binder/owner-body-syntax.cc` | complete node-scope, capture, control, and provenance detachment |
 | `B4` | `binder-checker` | `B2`; `B3` | `products/zomlang/compiler/binder/module-binding-allocation-plan.h`; `products/zomlang/compiler/binder/module-binding-allocation-plan.cc` | deterministic five-domain allocation plan |
-| `M1` | `module-system` | `I2` review; RFC 0029 `R29-14`; RFC 0028 `R28-16` | `products/zomlang/compiler/driver/materialized-module-graph-query.h`; `products/zomlang/compiler/driver/materialized-module-graph-query.cc` | prepare the typed graph and SCC witnesses plus final-sealed materializer using the retained dependency-provenance capability; do not land independently |
+| `M1` | `module-system` | `I2` review; RFC 0029 `R29-14`; RFC 0028 `R28-16` | `products/zomlang/compiler/driver/materialized-module-graph-query.h`; `products/zomlang/compiler/driver/materialized-module-graph-query.cc` | prepare the typed graph and SCC witnesses, the four-domain module-graph identity-resource interface, its exact active-materialization specializations, and the final-sealed materializer using the retained dependency-provenance capability; do not land independently |
 | `M2` | `binder-checker` | `B4`; `T1` | `products/zomlang/compiler/binder/materialized-module-skeleton.h`; `products/zomlang/compiler/binder/materialized-module-skeleton.cc` | typed skeleton expansion and provenance after the complete-context atomic landing |
 | `M3` | `binder-checker` | `B4`; `M2` | `products/zomlang/compiler/binder/materialized-owner-body.h`; `products/zomlang/compiler/binder/materialized-owner-body.cc` | typed body expansion without diagnostic references |
 | `M4` | `binder-checker` | `M2`; `M3` | `products/zomlang/compiler/binder/immutable-definition-inventory.h`; `products/zomlang/compiler/binder/immutable-definition-inventory.cc` | complete owned Checker identity and node lookup index |
@@ -2944,8 +3048,8 @@ descriptor, or replace the hand-authored inventory with generated schema.
 | `L2` | `ir-backend` | `L1` | `products/zomlang/compiler/hir/hir-module.h`; `products/zomlang/compiler/hir/hir-module.cc` | HIR retained lease and lineage verifier |
 | `L3` | `ir-backend` | `L2` | `products/zomlang/compiler/mir/built-mir.h`; `products/zomlang/compiler/mir/built-mir.cc` | Built MIR retained lease and lineage verifier |
 | `L4` | `runtime-memory` | `L3` | `products/zomlang/compiler/ownership/ownership-event-overlay.h`; `products/zomlang/compiler/ownership/ownership-event-overlay.cc` | ownership-overlay retained lease, verifier, and destruction order |
-| `T1` | `module-system` with `verification` and query-runtime review | approved I1A, I2, and M1 preparations; RFC 0029 `R29-14`; RFC 0028 `R28-16` | all files listed by I1A, I2, and M1; `products/zomlang/compiler/driver/CMakeLists.txt`; `products/zomlang/compiler/driver/active-definition-authority-session.h`; `products/zomlang/compiler/driver/active-definition-authority-session.cc`; `products/zomlang/tests/unittests/compiler/driver/active-definition-authority-session-test.cc`; `products/zomlang/tests/unittests/compiler/query/query-test-specs.h`; `products/zomlang/tests/unittests/compiler/query/query-test-descriptor-schema.def`; `products/zomlang/tests/unittests/compiler/query/query-database-test.cc`; `products/zomlang/tests/unittests/compiler/query/query-capability-test.cc`; `products/zomlang/tests/unittests/compiler/query/CMakeLists.txt`; `scripts/check-query-descriptor-architecture.py` | atomically land the complete-context value, descriptor, complete static final-authority verifier, memberships, readiness, graph and SCC witnesses, their exact driver build rows, three closed input transactions, query-test migration, both shadow deletions, full mutation matrix, and staging, final, and sealed snapshot publication |
-| `T2A` | `module-system` | `M5`; `T1` | `products/zomlang/compiler/driver/compiler-session.h`; `products/zomlang/compiler/driver/compiler-session.cc` | install transaction state machine and named snapshots |
+| `T1` | `module-system` with `verification` and query-runtime review | approved I1A, I2, and M1 preparations; RFC 0029 `R29-14`; RFC 0028 `R28-16` | all files listed by I1A, I2, and M1; `products/zomlang/compiler/binder/binding-input.h`; `products/zomlang/compiler/binder/binding-input.cc`; `products/zomlang/compiler/identity/semantic-context-fingerprint.h`; `products/zomlang/compiler/identity/semantic-context-fingerprint.cc`; `products/zomlang/compiler/query/query-database.h`; `products/zomlang/compiler/query/query-descriptor-schema.def`; `products/zomlang/compiler/driver/CMakeLists.txt`; `products/zomlang/compiler/driver/active-definition-authority-session.h`; `products/zomlang/compiler/driver/active-definition-authority-session.cc`; `products/zomlang/tests/unittests/compiler/binder/binding-input-test.cc`; `products/zomlang/tests/unittests/compiler/driver/active-definition-authority-session-test.cc`; `products/zomlang/tests/unittests/compiler/query/query-test-specs.h`; `products/zomlang/tests/unittests/compiler/query/query-test-descriptor-schema.def`; `products/zomlang/tests/unittests/compiler/query/query-database-test.cc`; `products/zomlang/tests/unittests/compiler/query/query-capability-test.cc`; `products/zomlang/tests/unittests/compiler/query/CMakeLists.txt`; `scripts/check-query-descriptor-architecture.py` | atomically land the complete-context value and descriptor, the unique graph-revision and fingerprint canonical-digest construction boundaries, the narrow capability-context revision and typed-resource accessors, memberships, readiness, graph and SCC witnesses, the production and test descriptor inventories, their exact driver build rows, three closed input transactions, query-test migration, both shadow deletions, complete static final-authority verification, full mutation matrix, and staging, final, and sealed snapshot publication |
+| `T2A` | `module-system` | `M5`; `T1` | `products/zomlang/compiler/driver/compiler-session.h`; `products/zomlang/compiler/driver/compiler-session.cc` | install the transaction state machine and named snapshots, and make the arena-owned compiler-session semantic resource implement the approved module-graph identity-materialization interface without a second interner or resource fallback |
 | `T2B` | `module-system` | `C2`; `L4`; `T2A` | `products/zomlang/compiler/driver/compiler-session.h`; `products/zomlang/compiler/driver/compiler-session.cc` | dependency-first final capability root and irreversible seal |
 | `T2C` | `module-system` | `T2B` | `products/zomlang/compiler/driver/compiler-session.h`; `products/zomlang/compiler/driver/compiler-session.cc` | surviving-lease and session teardown order |
 | `D1` | `module-system` | `T2C` | `products/zomlang/compiler/identity/semantic-identity-registry-set.h`; `products/zomlang/compiler/identity/semantic-identity-registry-set.cc`; `products/zomlang/compiler/identity/frozen-registry.h` | delete registry/freeze identity authority |
@@ -3123,3 +3227,4 @@ None
 | 2026-07-30 | ACCEPTED | Transaction `rfc0027-atomic-build-wiring-20260730-d3646785` binds the T1 build-wiring correction to independently approved exact two-document pre-evidence Git diff SHA-256 `d36467858da78500b5cc5bfa47dc350d932ac45bd91a0e8fd97aaa0cdeee58a5`; T1 owns the two additive driver source rows, I2 and M1 remain prepare-only, and W2 retains only post-T2C deletion and final wiring. No source task is completed. |
 | 2026-07-30 | ACCEPTED | Transaction `rfc0027-membership-partitions-20260730-872a0791` binds the I2 preparation split to independently approved exact two-document pre-evidence Git diff SHA-256 `872a079129e4f8b74967169252d394a099f3ee9edb02aa4a08e042a25cc000de`; I2A through I2G are sequential symbol-level prepare-only partitions over the same four files, I2 is their review-only join, and T1 remains the sole landing authority. No source task is completed. |
 | 2026-07-30 | ACCEPTED | Transaction `rfc0027-parameter-authority-20260730-bf68f2a5` binds exact contextual implementation, generic-parameter, and callable-parameter authority inputs plus the corrected verifier boundaries to independently approved exact two-document pre-evidence Git diff SHA-256 `bf68f2a58bfaf000a11be8e5e06ab12fc44e3e9e45f0baf43a9045bb9e8821e6`; I2E/F/G remain prepare-only and T1 remains the sole atomic landing authority. No source task is completed. |
+| 2026-07-30 | ACCEPTED | Transaction `rfc0027-materializer-context-20260730-4c760c36` binds the materializer context, unique revision and fingerprint construction, production inventory, provenance read, and canonical rejection-order correction to independently approved exact two-document pre-evidence Git diff SHA-256 `4c760c36bfab2a8b977b2185efb99a885a0513ffdf6ac73dfc02418897b3348a`; I2 and M1 remain prepare-only, T1 remains the sole atomic landing authority, and T2A retains production resource integration. No source task is completed. |

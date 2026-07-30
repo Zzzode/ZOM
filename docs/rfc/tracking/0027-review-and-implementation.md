@@ -210,6 +210,13 @@ complete-context atomic landing correction to the independently approved
 exact pre-evidence Git diff above. I1A, I2, and M1 have preparation authority
 only; T1 is their sole source landing authority.
 
+Transaction `rfc0027-materializer-context-20260730-4c760c36` binds the
+materializer context, unique revision and fingerprint construction,
+production inventory, provenance read, and canonical rejection-order
+correction to the independently approved exact two-document pre-evidence Git
+diff below. I2 and M1 remain prepare-only; T1 remains their sole atomic landing
+authority; T2A retains production resource integration.
+
 ### 2026-07-30 Atomic Build-Wiring Correction
 
 I2 and M1 each create one production translation unit, but the accepted T1
@@ -277,6 +284,42 @@ pre-evidence Git diff SHA-256
 Transaction `rfc0027-parameter-authority-20260730-bf68f2a5` records that
 approval and changes no source-task completion state.
 
+### 2026-07-30 Materializer Context And Inventory Scope Correction
+
+M1 preflight found four accepted-scope omissions. First, the final-sealed
+materialized graph must store its exact `DatabaseRevision` and semantic-context
+brand, issue four typed global handles, and independently reverse-expand those
+handles, while `CapabilityQueryContext` exposes neither snapshot revision nor
+a statically typed view of the arena-owned resource. Second, T1 registers
+`MaterializeModuleGraph` but its exact file set omitted the production query
+descriptor schema. Third, the repository's only `ModuleGraphRevision` and
+`SemanticContextFingerprint` values have no public canonical-digest
+construction boundary for witness decoding. Fourth, the complete read set did
+not lock a unique multi-child rejection order and one summary omitted the
+retained per-module provenance capability. Following the accepted plan would
+therefore produce an unbuildable M1 source, an unregistered production
+descriptor, or demand-order-dependent failure publication.
+
+The correction makes every active-membership descriptor declare its exact
+global-key projection and complete-authority validator. M1 owns a narrow
+four-domain `ModuleGraphIdentityMaterializationResources` interface and the
+matching active-materialization specializations. T1 atomically adds the
+read-only `CapabilityQueryContext::snapshotRevision()` and checked
+`semanticContextResources<Resource>()` accessors, the production descriptor
+row, test-inventory migration, test resource, build rows, unique
+graph-revision and fingerprint construction boundaries, canonical total demand
+and rejection order, and final session publication. T2A later makes the
+arena-owned compiler-session resource implement the same interface before
+production demands the materializer. There is no descriptor-name dispatch,
+generic service locator, duplicate revision type, second interner, session
+lookup, fallback resource, or independently landable query-runtime surface.
+
+The user-designated independent approver accepted exact two-document
+pre-evidence Git diff SHA-256
+`4c760c36bfab2a8b977b2185efb99a885a0513ffdf6ac73dfc02418897b3348a`.
+Transaction `rfc0027-materializer-context-20260730-4c760c36` records that
+approval and changes no source-task completion state.
+
 ## Implementation Tracker
 
 | Task | Owner | Depends On | Deliverable | Verification | Status |
@@ -323,7 +366,7 @@ approval and changes no source-task completion state.
 | `R27-20` | `binder-checker` | RFC 0029 `R29-12AB`; RFC 0029 `R29-12D`; `R27-15E` | Implement `BindModuleSkeleton`, lookup projections, and independent verifier. | Skeleton and read-set tests | Pending |
 | `R27-21` | `binder-checker` | `R27-20` | Implement contextual `BindOwnerBody` and independent traversal/verifier. | Body, capture, control, and source-failure tests | Pending |
 | `R27-22` | `binder-checker` | `R27-21` | Implement the deterministic five-domain module allocation plan. | Overflow and reversed-demand tests | Pending |
-| `R27-23` | `module-system` | RFC 0029 `R29-14`; RFC 0028 `R28-16`; approved `R27-19` preparation | Prepare the typed graph and SCC witnesses plus final-sealed-snapshot `MaterializeModuleGraph` consumer over runtime-only module-dependency provenance; do not land independently. | Graph, provenance, and read-set review | Pending |
+| `R27-23` | `module-system` | RFC 0029 `R29-14`; RFC 0028 `R28-16`; approved `R27-19` preparation | Prepare the typed graph and SCC witnesses, four-domain module-graph identity-resource interface and active-materialization specializations, plus the final-sealed-snapshot `MaterializeModuleGraph` consumer over runtime-only module-dependency provenance; do not land independently. | Graph, provenance, membership projection, reverse expansion, resource-interface, total rejection-order, and read-set review | Pending |
 | `R27-24` | `binder-checker` | `R27-22`; `R27-28A` | Implement materialized module skeleton and owner-body capabilities after the complete-context atomic landing. | Typed expansion and retained-child tests | Pending |
 | `R27-25` | `binder-checker` | `R27-24` | Implement `VerifyBoundModule`, immutable aggregate storage, and failure projection. | Coverage, lineage, and failure tests | Pending |
 | `R27-26` | `binder-checker` | `R27-25` | Migrate Checker consumers to `CheckerBoundModuleView`. | Focused Checker tests | Pending |
@@ -332,8 +375,8 @@ approval and changes no source-task completion state.
 | `R27-27B` | `ir-backend` | `R27-27A` | Migrate verified HIR to a retained bound-module lease. | HIR lineage tests | Pending |
 | `R27-27C` | `ir-backend` | `R27-27B` | Migrate Built MIR to a retained bound-module lease. | MIR lineage tests | Pending |
 | `R27-27D` | `runtime-memory` | `R27-27C` | Migrate the ownership overlay to a retained bound-module lease and exact destruction order. | Ownership lineage tests | Pending |
-| `R27-28A` | `module-system` with `verification` and query-runtime review | RFC 0029 `R29-14`; RFC 0028 `R28-16`; approved preparations `R27-18A`, `R27-19`, and `R27-23` | Atomically land the complete-context value and descriptor, memberships, readiness, graph and SCC witnesses, their two exact driver CMake source rows, complete static final verifier, three transactions, query-test migration, both shadow deletions, full mutation matrix, and staging, final, and sealed snapshots. | Complete-context, final-seal, query-inventory, mutation, session, and clean sanitizer gates | Pending |
-| `R27-28B` | `module-system` | `R27-26A`; `R27-27D`; `R27-28A` | Implement the dependency-first production capability root over the RFC 0028 sealed snapshot and inherited admission contract. | Session architecture and end-to-end tests | Pending |
+| `R27-28A` | `module-system` with `verification` and query-runtime review | RFC 0029 `R29-14`; RFC 0028 `R28-16`; approved preparations `R27-18A`, `R27-19`, and `R27-23` | Atomically land the complete-context value and descriptor, unique graph-revision and fingerprint construction boundaries, narrow capability-context revision and typed-resource accessors, memberships, readiness, graph and SCC witnesses, production and test descriptor inventories, their two exact driver CMake source rows, complete static final verifier, three transactions, query-test migration, both shadow deletions, full mutation matrix, and staging, final, and sealed snapshots. | Complete-context, canonical demand-order, typed-resource invariant, final-seal, production/test query-inventory, mutation, session, and clean sanitizer gates | Pending |
+| `R27-28B` | `module-system` | `R27-26A`; `R27-27D`; `R27-28A` | Make the arena-owned compiler-session semantic resource implement the approved module-graph identity-materialization interface, then implement the dependency-first production capability root over the RFC 0028 sealed snapshot and inherited admission contract. | Resource ownership, no-fallback, session architecture, and end-to-end tests | Pending |
 | `R27-28C` | `module-system` | `R27-28B` | Implement surviving-lease and session teardown order. | Teardown tests | Pending |
 | `R27-29` | `module-system` | `R27-28C` | Delete identity registry/freeze authority, session ledgers, and the session-owned handleful graph root. | Identity and session zero-reference gates | Pending |
 | `R27-30` | `binder-checker` | `R27-28C` | Delete frozen Binder inventory, production batch binding, mirrors, detached clones, and non-owning bound-module input. | Binder and Checker zero-reference gates | Pending |
