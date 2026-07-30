@@ -181,7 +181,8 @@ correction and does not change the status of any RFC 0028 implementation task.
 Runtime preflight proved that generic final-seal phase-order, race, and
 irreversibility tests need a minimal descriptor with independently selectable
 authority outcomes. Those tests use the distinct `Frozen`
-`query::test::TestCompleteContextInput` at test-inventory slot 56 with domain
+`query::test::TestCompleteContextInput` at the first test-only inventory slot
+with domain
 `test.input.complete-context`. Both same-name production-role shadows are
 deleted. `QueryCapability` final-sealed integration and driver session
 final-seal tests use `CompleteCompilationContextAuthorityInput` with a valid
@@ -213,3 +214,23 @@ pre-evidence Git diff SHA-256
 `d0979738a664312a018922acc7d13fe8aa3fb5efe705c806cc3cef58a3ef7539`.
 Transaction `rfc0027-transaction-ownership-20260730-d0979738` records the
 synchronized correction without completing an RFC 0028 source task.
+
+### 2026-07-30 Transaction Witness Inventory Correction
+
+Descriptor preflight found that the final-authority verifier required three
+transaction-witness inputs while the production prefix ended at ordinal 55.
+The corrected contract adds three static transaction-witness input descriptors
+at production ordinals 56 through 58. Each uses the complete context roots as
+key and exactly one transaction's canonical payload digest as value. The
+generic complete-context fixture moves to ordinal 59 and every later test
+descriptor advances by three. No tagged key, aggregate witness input, runtime
+name dispatch, or RFC 0028 status change is permitted. The descriptor generator
+and its self-test reject a missing, duplicate, reordered, renamed, mistyped,
+mutable, or test-tail witness row and any first test ordinal other than 59.
+
+The user-designated independent approver accepted exact four-document
+pre-evidence Git diff SHA-256
+`ddd640c83235ff8d178b615f8a532f7179588b21d477ae58fe293f0ba5e87b60`.
+Transaction `rfc0027-transaction-witness-inventory-20260730-ddd640c8`
+records the synchronized correction without completing an RFC 0028 source
+task.

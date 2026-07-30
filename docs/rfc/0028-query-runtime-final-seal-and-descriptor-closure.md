@@ -553,6 +553,22 @@ same new revision as their semantic inputs, and return `InputCommitResult`.
 They never discover their base revision internally and never publish a witness
 through a second transaction.
 
+The production inventory contains three `Frozen` transaction-witness input
+descriptors. `CoreDistributionTransactionWitnessInput`,
+`ModuleStructureTransactionWitnessInput`, and
+`ContextualIdentityAuthorityTransactionWitnessInput` occupy ordinals 56, 57,
+and 58 respectively. Each uses the complete context roots as its key and its
+transaction's `CanonicalInputPayloadDigest` as its value. Each transaction
+owns exactly one descriptor and installs it with its semantic inputs in the
+same revision. The final authority verifier probes the three static descriptor
+types in that order. No tagged key, aggregate input, runtime descriptor-name
+dispatch, or additional descriptor kind exists.
+
+The descriptor generator and its self-test enforce all three exact production
+rows, their order, input kind, domain, `Frozen` durability, and the ordinal-59
+start of the contiguous test tail. Missing, duplicate, reordered, renamed,
+mistyped, mutable, or test-tail witness rows are rejected.
+
 Only `QueryDatabase::sealInputs` may turn `Verified` into the private
 nonconstructible `VerifiedFinalSealAuthority`, after phase three repeats all
 higher-priority state checks. The generator rejects zero or multiple complete
@@ -1513,7 +1529,7 @@ the production fully qualified name and lands no alias or duplicate name at
 any intermediate commit. Generic `QueryDatabase` seal phase-order, race, and
 irreversibility tests use `query::test::TestCompleteContextInput`, a `Frozen`
 descriptor with the unique domain `test.input.complete-context`. It is the
-first test-only row after the complete production prefix, at slot 56, and
+first test-only row after the complete production prefix, at slot 59, and
 never enters a production schema or library. `QueryCapability` final-sealed
 integration and the driver session final-seal tests use the real production
 descriptor with a valid production root key, complete authority, installed
@@ -2064,5 +2080,6 @@ None
 | 2026-07-29 | ACCEPTED | Transaction `rfc0028-r29-14-scope-20260729-521d82c7` bound exact four-document candidate manifest SHA-256 `521d82c731dee0a4b262e937d5578651850446eebfe7448a71a39cb63fc8e086`, adding only the four omitted Binder callers to the existing `R29-14` union; `R29-14` remains the sole source landing authority. |
 | 2026-07-29 | IMPLEMENTING | The shared runtime, descriptor inventory, capability result, final-seal, Binder consumer, and native verification foundation landed through RFC 0029 `R29-14` and `R29-15`. `R28-16A` is the next unblocked task; production module-dependency provenance activation, final verification, current-design audit, and final status synchronization remain pending. |
 | 2026-07-30 | IMPLEMENTING | Transaction `rfc0027-context-atomic-20260730-b25aef90` binds the atomic landing correction to independently approved exact pre-evidence Git diff SHA-256 `b25aef908d13395fce59151e6e31a9fea2f11f788fdd2806d17fa378b99d8821`; RFC 0027 T1 is the sole landing authority for the complete final-seal dependency closure. No weak interim final verifier may land. |
-| 2026-07-30 | IMPLEMENTING | Transaction `rfc0027-final-seal-test-boundary-20260730-f6c04155` binds the generic-versus-production final-seal test responsibility correction to independently approved exact four-document pre-evidence Git diff SHA-256 `f6c041551684ac722a7b4e12682d963f65f01cd4557cc06ca0faaa5f07879437`; generic race tests retain the unique slot-56 test descriptor while production integration uses the real authority and witness. No implementation task is completed. |
+| 2026-07-30 | IMPLEMENTING | Transaction `rfc0027-final-seal-test-boundary-20260730-f6c04155` binds the generic-versus-production final-seal test responsibility correction to independently approved exact four-document pre-evidence Git diff SHA-256 `f6c041551684ac722a7b4e12682d963f65f01cd4557cc06ca0faaa5f07879437`; generic race tests retain the unique first test-only descriptor while production integration uses the real authority and witness. No implementation task is completed. |
 | 2026-07-30 | IMPLEMENTING | Transaction `rfc0027-transaction-ownership-20260730-d0979738` binds the T1 transaction-owner scope correction to independently approved exact four-document pre-evidence Git diff SHA-256 `d0979738a664312a018922acc7d13fe8aa3fb5efe705c806cc3cef58a3ef7539`; all three session transactions now require direct closed replacement, caller-supplied previous revision, pre-open canonical verification, and same-revision witnesses. No implementation task is completed. |
+| 2026-07-30 | IMPLEMENTING | Transaction `rfc0027-transaction-witness-inventory-20260730-ddd640c8` binds the static transaction-witness inventory correction to independently approved exact four-document pre-evidence Git diff SHA-256 `ddd640c83235ff8d178b615f8a532f7179588b21d477ae58fe293f0ba5e87b60`; production ordinals 56 through 58 are the three static witness inputs, the test tail starts at ordinal 59, and generator checks own the complete negative matrix. No implementation task is completed. |

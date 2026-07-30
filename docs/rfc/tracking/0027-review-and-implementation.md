@@ -508,8 +508,9 @@ same-name test descriptor would leave a second production authority.
 The correction deletes both descriptors that shadow the production fully
 qualified name. Generic `QueryDatabase` tests use the distinct
 `query::test::TestCompleteContextInput` descriptor, unique domain
-`test.input.complete-context`, and test-inventory slot 56 immediately after
-the complete production prefix. `QueryCapability` final-sealed integration and
+`test.input.complete-context`, and the first test-only inventory slot
+immediately after the complete production prefix. `QueryCapability`
+final-sealed integration and
 driver session final-seal tests use the real production descriptor and valid
 production authority, input set, and witness. The generic fixture enters no
 production schema or library and has no alias, verifier injection seam, or
@@ -543,6 +544,32 @@ pre-evidence Git diff SHA-256
 `d0979738a664312a018922acc7d13fe8aa3fb5efe705c806cc3cef58a3ef7539`.
 Transaction `rfc0027-transaction-ownership-20260730-d0979738` records the
 correction without completing a source task.
+
+### 2026-07-30 Transaction Witness Inventory Correction
+
+T1 schema preflight found that the production prefix already ended at ordinal
+55 while the final-authority contract required transaction-witness inputs.
+Keeping the generic complete-context fixture at ordinal 56 would leave no
+production descriptor for those inputs.
+
+The corrected contract adds three static production transaction-witness input
+descriptors at ordinals 56 through 58, one for each session transaction. Every
+descriptor uses the complete context roots as key and the exact canonical
+payload digest as value, and each transaction installs only its own witness.
+The generic complete-context fixture moves to ordinal 59, which remains the
+first test-only slot; every later test ordinal advances by three. The final
+verifier probes the three descriptor types in canonical transaction order.
+No tagged key, aggregate witness input, or runtime descriptor dispatch exists.
+T1 also owns `scripts/generate-query-descriptor-schema.py`; its check and
+self-test reject every individual witness-row mutation and a test tail that
+does not begin at ordinal 59.
+No source task is complete.
+
+The user-designated independent approver accepted exact four-document
+pre-evidence Git diff SHA-256
+`ddd640c83235ff8d178b615f8a532f7179588b21d477ae58fe293f0ba5e87b60`.
+Transaction `rfc0027-transaction-witness-inventory-20260730-ddd640c8`
+records the correction without completing a source task.
 
 ## Implementation Tracker
 
@@ -615,7 +642,7 @@ correction without completing a source task.
 | `R27-27B` | `ir-backend` | `R27-27A` | Migrate verified HIR to a retained bound-module lease. | HIR lineage tests | Pending |
 | `R27-27C` | `ir-backend` | `R27-27B` | Migrate Built MIR to a retained bound-module lease. | MIR lineage tests | Pending |
 | `R27-27D` | `runtime-memory` | `R27-27C` | Migrate the ownership overlay to a retained bound-module lease and exact destruction order. | Ownership lineage tests | Pending |
-| `R27-28A` | `module-system` with `verification` and query-runtime review | RFC 0029 `R29-14`; RFC 0028 `R28-16`; approved preparations `R27-18A`, `R27-19`, and `R27-23` | Atomically land the complete-context value and descriptor, unique graph-revision and fingerprint construction boundaries, narrow capability-context revision and typed-resource accessors, memberships, readiness, graph and SCC witnesses, production and test descriptor inventories, their two exact driver CMake source rows, complete static final verifier, three caller-revision-bound transactions with same-revision witnesses, query-test migration, both shadow deletions, full mutation matrix, and staging, final, and sealed snapshots; the first transaction is replaced directly in `core-library-query-provider.{h,cc}` with native coverage in `core-library-query-provider-test.cc`. | Complete-context, transaction-result, stale-revision, witness, canonical demand-order and authority-comparison, typed-resource invariant, final-seal, production/test query-inventory, mutation, session, and clean sanitizer gates | Pending |
+| `R27-28A` | `module-system` with `verification` and query-runtime review | RFC 0029 `R29-14`; RFC 0028 `R28-16`; approved preparations `R27-18A`, `R27-19`, and `R27-23` | Atomically land the complete-context value and descriptor, unique graph-revision and fingerprint construction boundaries, narrow capability-context revision and typed-resource accessors, memberships, readiness, graph and SCC witnesses, production and test descriptor inventories, their two exact driver CMake source rows, three static transaction-witness descriptors, complete static final verifier, three caller-revision-bound transactions with same-revision witnesses, query-test migration, both shadow deletions, full mutation matrix, and staging, final, and sealed snapshots; the first transaction is replaced directly in `core-library-query-provider.{h,cc}` with native coverage in `core-library-query-provider-test.cc`, and `scripts/generate-query-descriptor-schema.py` enforces all witness rows plus the ordinal-59 test-tail boundary. | Complete-context, transaction-result, stale-revision, witness, descriptor-generator check and self-test, canonical demand-order and authority-comparison, typed-resource invariant, final-seal, production/test query-inventory, mutation, session, and clean sanitizer gates | Pending |
 | `R27-28B` | `module-system` | `R27-26A`; `R27-27D`; `R27-28A` | Make the arena-owned compiler-session semantic resource implement the approved module-graph identity-materialization interface, then implement the dependency-first production capability root over the RFC 0028 sealed snapshot and inherited admission contract. | Resource ownership, no-fallback, session architecture, and end-to-end tests | Pending |
 | `R27-28C` | `module-system` | `R27-28B` | Implement surviving-lease and session teardown order. | Teardown tests | Pending |
 | `R27-29` | `module-system` | `R27-28C` | Delete identity registry/freeze authority, session ledgers, and the session-owned handleful graph root. | Identity and session zero-reference gates | Pending |
