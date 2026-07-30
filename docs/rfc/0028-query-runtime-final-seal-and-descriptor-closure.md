@@ -569,6 +569,15 @@ rows, their order, input kind, domain, `Frozen` durability, and the ordinal-59
 start of the contiguous test tail. Missing, duplicate, reordered, renamed,
 mistyped, mutable, or test-tail witness rows are rejected.
 
+RFC 0027 T1 migrates all three production mutation callers in
+`compiler-session.cc` in the same landing: core distribution, module structure,
+and direct replacement of `activeDefinitionAuthority.refresh(...)` by the
+contextual-identity-authority transaction. Every caller supplies the retained
+previous revision and consumes the closed commit result without an overload,
+Boolean adapter, or retained refresh path. This narrow call-site cutover does
+not implement the T2A session state machine, named snapshots, semantic resource
+interface, or final capability root.
+
 Only `QueryDatabase::sealInputs` may turn `Verified` into the private
 nonconstructible `VerifiedFinalSealAuthority`, after phase three repeats all
 higher-priority state checks. The generator rejects zero or multiple complete
@@ -2083,3 +2092,4 @@ None
 | 2026-07-30 | IMPLEMENTING | Transaction `rfc0027-final-seal-test-boundary-20260730-f6c04155` binds the generic-versus-production final-seal test responsibility correction to independently approved exact four-document pre-evidence Git diff SHA-256 `f6c041551684ac722a7b4e12682d963f65f01cd4557cc06ca0faaa5f07879437`; generic race tests retain the unique first test-only descriptor while production integration uses the real authority and witness. No implementation task is completed. |
 | 2026-07-30 | IMPLEMENTING | Transaction `rfc0027-transaction-ownership-20260730-d0979738` binds the T1 transaction-owner scope correction to independently approved exact four-document pre-evidence Git diff SHA-256 `d0979738a664312a018922acc7d13fe8aa3fb5efe705c806cc3cef58a3ef7539`; all three session transactions now require direct closed replacement, caller-supplied previous revision, pre-open canonical verification, and same-revision witnesses. No implementation task is completed. |
 | 2026-07-30 | IMPLEMENTING | Transaction `rfc0027-transaction-witness-inventory-20260730-ddd640c8` binds the static transaction-witness inventory correction to independently approved exact four-document pre-evidence Git diff SHA-256 `ddd640c83235ff8d178b615f8a532f7179588b21d477ae58fe293f0ba5e87b60`; production ordinals 56 through 58 are the three static witness inputs, the test tail starts at ordinal 59, and generator checks own the complete negative matrix. No implementation task is completed. |
+| 2026-07-30 | IMPLEMENTING | Transaction `rfc0027-transaction-callers-20260730-490a96eb` binds the complete production mutation-caller scope correction to independently approved exact four-document pre-evidence Git diff SHA-256 `490a96eba8bbb8b8b1f96008c864fd9d1eb5ef2781771385e2ce74682d57b5cf`; all three compiler-session mutation paths use the direct closed transactions, the refresh path has no adapter, and T2A ownership remains unchanged. No implementation task is completed. |

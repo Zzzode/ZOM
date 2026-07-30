@@ -571,6 +571,30 @@ pre-evidence Git diff SHA-256
 Transaction `rfc0027-transaction-witness-inventory-20260730-ddd640c8`
 records the correction without completing a source task.
 
+### 2026-07-30 Transaction Caller Scope Correction
+
+T1 implementation preflight found that all three production mutation callers
+live in `compiler-session.cc`: the existing core and module-structure
+transaction call sites plus `activeDefinitionAuthority.refresh(...)`, which
+must be directly replaced by the contextual-identity-authority transaction.
+Replacing the transaction APIs while leaving that file outside the exact
+landing set would either break the build or require a prohibited compatibility
+path.
+
+The corrected scope adds `compiler-session.cc` and
+`compiler-session-package-test.cc` to T1 only for all three direct transaction
+constructions, caller-supplied previous revisions, closed commit-result
+handling, required descriptor registration, direct refresh-path deletion, and
+native caller coverage. T2A continues to own the session input-state machine,
+named snapshots, semantic resource implementation, and final capability root.
+No Boolean adapter or refresh adapter is permitted. No source task is complete.
+
+The user-designated independent approver accepted exact four-document
+pre-evidence Git diff SHA-256
+`490a96eba8bbb8b8b1f96008c864fd9d1eb5ef2781771385e2ce74682d57b5cf`.
+Transaction `rfc0027-transaction-callers-20260730-490a96eb` records the
+correction without completing a source task.
+
 ## Implementation Tracker
 
 | Task | Owner | Depends On | Deliverable | Verification | Status |
@@ -642,7 +666,7 @@ records the correction without completing a source task.
 | `R27-27B` | `ir-backend` | `R27-27A` | Migrate verified HIR to a retained bound-module lease. | HIR lineage tests | Pending |
 | `R27-27C` | `ir-backend` | `R27-27B` | Migrate Built MIR to a retained bound-module lease. | MIR lineage tests | Pending |
 | `R27-27D` | `runtime-memory` | `R27-27C` | Migrate the ownership overlay to a retained bound-module lease and exact destruction order. | Ownership lineage tests | Pending |
-| `R27-28A` | `module-system` with `verification` and query-runtime review | RFC 0029 `R29-14`; RFC 0028 `R28-16`; approved preparations `R27-18A`, `R27-19`, and `R27-23` | Atomically land the complete-context value and descriptor, unique graph-revision and fingerprint construction boundaries, narrow capability-context revision and typed-resource accessors, memberships, readiness, graph and SCC witnesses, production and test descriptor inventories, their two exact driver CMake source rows, three static transaction-witness descriptors, complete static final verifier, three caller-revision-bound transactions with same-revision witnesses, query-test migration, both shadow deletions, full mutation matrix, and staging, final, and sealed snapshots; the first transaction is replaced directly in `core-library-query-provider.{h,cc}` with native coverage in `core-library-query-provider-test.cc`, and `scripts/generate-query-descriptor-schema.py` enforces all witness rows plus the ordinal-59 test-tail boundary. | Complete-context, transaction-result, stale-revision, witness, descriptor-generator check and self-test, canonical demand-order and authority-comparison, typed-resource invariant, final-seal, production/test query-inventory, mutation, session, and clean sanitizer gates | Pending |
+| `R27-28A` | `module-system` with `verification` and query-runtime review | RFC 0029 `R29-14`; RFC 0028 `R28-16`; approved preparations `R27-18A`, `R27-19`, and `R27-23` | Atomically land the complete-context value and descriptor, unique graph-revision and fingerprint construction boundaries, narrow capability-context revision and typed-resource accessors, memberships, readiness, graph and SCC witnesses, production and test descriptor inventories, their two exact driver CMake source rows, three static transaction-witness descriptors, complete static final verifier, three caller-revision-bound transactions with same-revision witnesses, all three production mutation caller cutovers, query-test migration, both shadow deletions, full mutation matrix, and staging, final, and sealed snapshots; the first transaction is replaced directly in `core-library-query-provider.{h,cc}` with native coverage in `core-library-query-provider-test.cc`, `compiler-session.cc` and `compiler-session-package-test.cc` own the buildable caller migration including direct deletion of the authority refresh path, and `scripts/generate-query-descriptor-schema.py` enforces all witness rows plus the ordinal-59 test-tail boundary. | Complete-context, transaction-result, stale-revision, witness, all production callers, refresh-path zero-reference, descriptor-generator check and self-test, canonical demand-order and authority-comparison, typed-resource invariant, final-seal, production/test query-inventory, mutation, session, and clean sanitizer gates | Pending |
 | `R27-28B` | `module-system` | `R27-26A`; `R27-27D`; `R27-28A` | Make the arena-owned compiler-session semantic resource implement the approved module-graph identity-materialization interface, then implement the dependency-first production capability root over the RFC 0028 sealed snapshot and inherited admission contract. | Resource ownership, no-fallback, session architecture, and end-to-end tests | Pending |
 | `R27-28C` | `module-system` | `R27-28B` | Implement surviving-lease and session teardown order. | Teardown tests | Pending |
 | `R27-29` | `module-system` | `R27-28C` | Delete identity registry/freeze authority, session ledgers, and the session-owned handleful graph root. | Identity and session zero-reference gates | Pending |

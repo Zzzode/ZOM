@@ -234,3 +234,21 @@ pre-evidence Git diff SHA-256
 Transaction `rfc0027-transaction-witness-inventory-20260730-ddd640c8`
 records the synchronized correction without completing an RFC 0028 source
 task.
+
+### 2026-07-30 Transaction Caller Scope Correction
+
+The closed transaction API cutover has three production mutation callers in
+`compiler-session.cc`: core distribution, module structure, and the authority
+refresh path. RFC 0027 T1 therefore includes that file and
+`compiler-session-package-test.cc` for caller-supplied previous revisions,
+closed result handling, descriptor registration, direct replacement of
+authority refresh, and caller coverage in the same buildable landing. T2A
+retains the session state machine, named snapshots, semantic resource
+implementation, and final capability root. No compatibility overload, refresh
+adapter, or RFC 0028 status change is permitted.
+
+The user-designated independent approver accepted exact four-document
+pre-evidence Git diff SHA-256
+`490a96eba8bbb8b8b1f96008c864fd9d1eb5ef2781771385e2ce74682d57b5cf`.
+Transaction `rfc0027-transaction-callers-20260730-490a96eb` records the
+synchronized correction without completing an RFC 0028 source task.
