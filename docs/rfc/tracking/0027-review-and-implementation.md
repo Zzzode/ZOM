@@ -247,6 +247,13 @@ exact two-document pre-evidence Git diff below. M1C1 remains a review-only
 join, every partition remains prepare-only, and T1 remains the sole
 registration, build, test, final-publication, and landing authority.
 
+Transaction `rfc0027-materializer-verifier-20260730-d44bcd5a` binds the M1D1
+through M1D3 verifier preparation split to the independently approved exact
+two-document pre-evidence Git diff below. M1D remains a review-only join,
+every partition remains prepare-only and independent from provider helpers,
+and T1 remains the sole registration, build, test, final-publication, and
+landing authority.
+
 ### 2026-07-30 Atomic Build-Wiring Correction
 
 I2 and M1 each create one production translation unit, but the accepted T1
@@ -466,6 +473,30 @@ pre-evidence Git diff SHA-256
 Transaction `rfc0027-materializer-acquisition-20260730-b29b5965` records that
 approval and changes no source-task completion state.
 
+### 2026-07-30 Materializer Verifier Partition Correction
+
+M1D implementation preflight found that independent canonical acquisition,
+per-module resolution and capability reconstruction, four-domain
+materialization, reverse expansion, revision reconstruction, and candidate
+comparison require more than one approximately 400 changed-source-line task.
+Keeping them in one task would obscure the required separation from provider
+graph, edge-order, candidate, fingerprint, and revision helpers.
+
+The correction splits M1D into M1D1 for exact context through SCC acquisition,
+M1D2 for per-module resolution through provenance and independent fingerprint
+reconstruction, and M1D3 for membership materialization, reverse expansion,
+independent revision and graph-edge reconstruction, handle-edge validation,
+and candidate comparison. M1D becomes a review-only join. M1D2 cannot repeat
+or reorder M1D1 reads, M1D3 cannot issue earlier reads or use provider helpers,
+and no partition can register, build, test, or land independently. T1 remains
+the sole atomic landing authority.
+
+The user-designated independent approver accepted exact two-document
+pre-evidence Git diff SHA-256
+`d44bcd5ac164f61355507f710886ec645aab6a0c498b6bf43a9a442d35231251`.
+Transaction `rfc0027-materializer-verifier-20260730-d44bcd5a` records that
+approval and changes no source-task completion state.
+
 ## Implementation Tracker
 
 | Task | Owner | Depends On | Deliverable | Verification | Status |
@@ -523,7 +554,10 @@ approval and changes no source-task completion state.
 | `R27-23C2` | `module-system` | approved `R27-23C1` preparation | Prepare provider-only four-domain membership admission, logical-const materialization, and reverse expansion in the accepted domain order; do not publish a candidate or land independently. | Membership, resource, domain-order, and reverse-expansion review | Pending |
 | `R27-23C3` | `module-system` | approved `R27-23C2` preparation | Prepare provider-only stable witness, independently recomputed revision, handle-edge, and candidate publication from the approved ordered acquisition and materialization state; do not land independently. | Witness, revision, handle-edge, and candidate-publication review | Pending |
 | `R27-23C` | `module-system` | approved `R27-23C1` through `R27-23C3` preparations | Review the complete provider union without adding files or landing it. | Complete read-set, rejection-order, membership, reverse-expansion, and publication review | Pending |
-| `R27-23D` | `module-system` | approved `R27-23C` preparation | Prepare the independent canonical total-order verifier without provider graph, edge-order, candidate, or revision helpers; do not land independently. | Independent reconstruction and mutation review | Pending |
+| `R27-23D1` | `module-system` | approved `R27-23C` preparation | Prepare verifier-only exact context, fingerprint-prerequisite, active-domain, graph, and SCC acquisition with independent canonical ordering; do not issue per-module reads, materialize, or land independently. | Independent context, graph, SCC, and order review | Pending |
+| `R27-23D2` | `module-system` | approved `R27-23D1` preparation | Prepare verifier-only per-module resolution, reached prelude, parse, provenance, independent stable-edge ordering, and fingerprint reconstruction; do not materialize or land independently. | Independent module read-set, edge order, provenance, and fingerprint review | Pending |
+| `R27-23D3` | `module-system` | approved `R27-23D2` preparation | Prepare verifier-only four-domain membership materialization, same-resource reverse expansion, independent revision and graph-edge reconstruction, handle-edge validation, and candidate witness comparison; do not issue earlier reads or land independently. | Independent membership, reverse, revision, edge, and candidate review | Pending |
+| `R27-23D` | `module-system` | approved `R27-23D1` through `R27-23D3` preparations | Review the complete verifier union without adding files or landing it. | Complete independent reconstruction, demand-order, and mutation review | Pending |
 | `R27-23E` | `module-system` | approved `R27-23D` preparation | Prepare source/key failure contracts plus schema-derived capability, failure, permission, and descriptor assertions; do not land independently. | Failure-envelope, schema, permission, and descriptor review | Pending |
 | `R27-23` | `module-system` | approved preparations `R27-23A`; `R27-23B`; `R27-23C`; `R27-23D`; `R27-23E` | Review the complete M1 union without adding files or landing it. | Graph, provenance, membership projection, canonical authority comparison, reverse expansion, resource-interface, total rejection-order, provider/verifier independence, and read-set review | Pending |
 | `R27-24` | `binder-checker` | `R27-22`; `R27-28A` | Implement materialized module skeleton and owner-body capabilities after the complete-context atomic landing. | Typed expansion and retained-child tests | Pending |
