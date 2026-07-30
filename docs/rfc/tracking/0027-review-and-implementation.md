@@ -223,6 +223,12 @@ approved exact two-document pre-evidence Git diff below. I2 owns the eight
 comparison implementations; T1 owns runtime use and mutation coverage; both
 remain prepare-only before the sole atomic landing.
 
+Transaction `rfc0027-materializer-partitions-20260730-2038e76b` binds the
+sequential M1A through M1E preparation split to the independently approved
+exact two-document pre-evidence Git diff below. M1 is a review-only join,
+every partition remains prepare-only, and T1 remains the sole atomic landing
+authority.
+
 ### 2026-07-30 Atomic Build-Wiring Correction
 
 I2 and M1 each create one production translation unit, but the accepted T1
@@ -350,6 +356,32 @@ pre-evidence Git diff SHA-256
 Transaction `rfc0027-membership-comparison-20260730-50920a7e` records that
 approval and changes no source-task completion state.
 
+### 2026-07-30 Materializer Preparation Partition Correction
+
+M1 preflight mapped the accepted materializer to five independent source
+concerns: public runtime values and the four-domain resource boundary; stable
+witness construction and codecs; canonical-order provider execution;
+independent verifier reconstruction; and failure, schema, permission, and
+descriptor contracts. Implementing that union as one source task would exceed
+the repository's approximately 400 changed-source-line limit and would prevent
+symbol-level review of the provider/verifier independence boundary.
+
+The correction splits preparation into M1A through M1E in that dependency
+order. Every partition edits only the existing two M1 files, remains
+prepare-only, and requires review before the next partition. M1 becomes a
+review-only join with no new file ownership. T1 remains the only transaction
+that may add query-runtime accessors and factories, register the descriptor,
+add the driver source row, install fixtures and mutation tests, publish the
+final authority, and land the complete I1A/I2/M1 union. The split creates no
+partial registration, compatibility path, alternate provider, shared
+provider/verifier builder, or independently landable materializer.
+
+The user-designated independent approver accepted exact two-document
+pre-evidence Git diff SHA-256
+`2038e76b96a580da827456c466d7c1a0ec9aff67b133a26fe040a3e197f46df8`.
+Transaction `rfc0027-materializer-partitions-20260730-2038e76b` records that
+approval and changes no source-task completion state.
+
 ## Implementation Tracker
 
 | Task | Owner | Depends On | Deliverable | Verification | Status |
@@ -396,7 +428,12 @@ approval and changes no source-task completion state.
 | `R27-20` | `binder-checker` | RFC 0029 `R29-12AB`; RFC 0029 `R29-12D`; `R27-15E` | Implement `BindModuleSkeleton`, lookup projections, and independent verifier. | Skeleton and read-set tests | Pending |
 | `R27-21` | `binder-checker` | `R27-20` | Implement contextual `BindOwnerBody` and independent traversal/verifier. | Body, capture, control, and source-failure tests | Pending |
 | `R27-22` | `binder-checker` | `R27-21` | Implement the deterministic five-domain module allocation plan. | Overflow and reversed-demand tests | Pending |
-| `R27-23` | `module-system` | RFC 0029 `R29-14`; RFC 0028 `R28-16`; approved `R27-19` preparation | Prepare the typed graph and SCC witnesses, four-domain module-graph identity-resource interface and active-materialization specializations, plus the final-sealed-snapshot `MaterializeModuleGraph` consumer over runtime-only module-dependency provenance; do not land independently. | Graph, provenance, membership projection, canonical authority comparison, reverse expansion, resource-interface, total rejection-order, and read-set review | Pending |
+| `R27-23A` | `module-system` | RFC 0029 `R29-14`; RFC 0028 `R28-16`; approved `R27-19` preparation | Prepare public materialized graph values, the four-domain identity-resource interface, exact active-materialization specializations, and the descriptor declaration; do not land independently. | Value-shape, resource, permission, and interner-failure review | Pending |
+| `R27-23B` | `module-system` | approved `R27-23A` preparation | Prepare stable dependency and graph witness construction, exact codecs, canonical comparison, and candidate contract; do not land independently. | Codec, exact-consumption, closure, and revision review | Pending |
+| `R27-23C` | `module-system` | approved `R27-23B` preparation | Prepare the canonical total-order provider, typed child-failure forwarding, membership admission, reverse expansion, and candidate publication; do not land independently. | Provider read-set, rejection-order, membership, and provenance review | Pending |
+| `R27-23D` | `module-system` | approved `R27-23C` preparation | Prepare the independent canonical total-order verifier without provider graph, edge-order, candidate, or revision helpers; do not land independently. | Independent reconstruction and mutation review | Pending |
+| `R27-23E` | `module-system` | approved `R27-23D` preparation | Prepare source/key failure contracts plus schema-derived capability, failure, permission, and descriptor assertions; do not land independently. | Failure-envelope, schema, permission, and descriptor review | Pending |
+| `R27-23` | `module-system` | approved preparations `R27-23A`; `R27-23B`; `R27-23C`; `R27-23D`; `R27-23E` | Review the complete M1 union without adding files or landing it. | Graph, provenance, membership projection, canonical authority comparison, reverse expansion, resource-interface, total rejection-order, provider/verifier independence, and read-set review | Pending |
 | `R27-24` | `binder-checker` | `R27-22`; `R27-28A` | Implement materialized module skeleton and owner-body capabilities after the complete-context atomic landing. | Typed expansion and retained-child tests | Pending |
 | `R27-25` | `binder-checker` | `R27-24` | Implement `VerifyBoundModule`, immutable aggregate storage, and failure projection. | Coverage, lineage, and failure tests | Pending |
 | `R27-26` | `binder-checker` | `R27-25` | Migrate Checker consumers to `CheckerBoundModuleView`. | Focused Checker tests | Pending |
