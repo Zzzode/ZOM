@@ -5,7 +5,8 @@ set(DRIVER_SRC active-definition-authority-query.cc active-definition-authority-
                imported-signature-view-projector.cc incremental-binding-query-adapter.cc
                incremental-module-resolution-query.cc
                incremental-package-graph-query-input.cc
-               module-discovery.cc module-graph-query-input.cc module-graph-query.cc
+               module-dependency-provenance-query.cc module-discovery.cc
+               module-graph-query-input.cc module-graph-query.cc
                module-interface.cc
                module-interface-diagnostic-adapter.cc
                named-identity-inventory-query.cc named-item-query.cc owner-body-query.cc)

@@ -13,6 +13,7 @@
 #include "zomlang/compiler/binder/module-dependency-requests.h"
 #include "zomlang/compiler/diagnostics/source-diagnostic-draft-buffer.h"
 #include "zomlang/compiler/driver/core-library-query-provider.h"
+#include "zomlang/compiler/driver/module-dependency-provenance-query.h"
 #include "zomlang/compiler/driver/module-graph-query.h"
 #include "zomlang/compiler/driver/package/package-compilation-request.h"
 #include "zomlang/compiler/identity/canonical-encoder.h"
@@ -487,8 +488,13 @@ zc::Maybe<VerifiedModuleGraphInputTransaction> preparedTransaction(
       prior);
 }
 
+class QueryTestSemanticContextResources final : public query::SemanticContextCapabilityResources {};
+
 query::QueryDatabase database(basic::ThreadPool& scheduler) {
-  query::QueryDatabase result(scheduler, query::productionQueryDescriptorInventory());
+  auto resources = zc::heap<QueryTestSemanticContextResources>();
+  auto arena = zc::arc<query::SemanticContextCapabilityArena>(zc::mv(resources));
+  query::QueryDatabase result(scheduler, query::productionQueryDescriptorInventory(),
+                              zc::mv(arena));
   ZC_REQUIRE(registerModuleGraphQueries(result));
   ZC_REQUIRE(
       incremental_module_resolution_query::registerIncrementalModuleResolutionQueries(result));
@@ -626,6 +632,15 @@ ZC_TEST("Detached dependency sites reject duplicate stable ordinals") {
   sites.add(zc::mv(ZC_REQUIRE_NONNULL(second)));
   ZC_EXPECT(DetachedModuleDependencySiteSet::from(zc::mv(selectedModule), zc::mv(selectedSource),
                                                   digest(0x62), zc::mv(sites)) == zc::none);
+}
+
+ZC_TEST("Module graph registration installs final dependency provenance") {
+  basic::ThreadPool scheduler(2);
+  auto queries = database(scheduler);
+  auto result = queries.snapshot().getCapability<ModuleDependencyProvenanceQuery>(
+      tests::test_identity_detail::module());
+  ZC_REQUIRE(result.isRuntimeRejected());
+  ZC_EXPECT(result.runtimeFailure() == query::QueryRuntimeFailure::FinalSealRequired);
 }
 
 ZC_TEST("Module graph input transaction commits its complete authority exactly once") {

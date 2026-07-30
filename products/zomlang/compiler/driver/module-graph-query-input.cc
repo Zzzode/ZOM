@@ -15,6 +15,7 @@
 #include "zomlang/compiler/binder/binding-input.h"
 #include "zomlang/compiler/binder/module-resolution.h"
 #include "zomlang/compiler/driver/core-library-query-provider.h"
+#include "zomlang/compiler/driver/module-dependency-provenance-query.h"
 #include "zomlang/compiler/driver/package/package-compilation-request.h"
 #include "zomlang/compiler/identity/canonical-decoder.h"
 #include "zomlang/compiler/identity/canonical-encoder.h"
@@ -2456,6 +2457,7 @@ bool registerModuleGraphQueries(query::QueryDatabase& database) {
          database.registerDescriptor<ActiveModulesQuery>().isRegistered() &&
          database.registerDescriptor<ModuleDependencySitesQuery>().isRegistered() &&
          database.registerDescriptor<ModuleDependencyRequestsQuery>().isRegistered() &&
+         database.registerDescriptor<ModuleDependencyProvenanceQuery>().isRegistered() &&
          database.registerDescriptor<ModuleDependenciesQuery>().isRegistered();
 }
 

@@ -97,6 +97,12 @@ MODULE_GRAPH_QUERY_INPUT_HEADER = Path(
 MODULE_GRAPH_QUERY_INPUT_SOURCE = Path(
     "products/zomlang/compiler/driver/module-graph-query-input.cc"
 )
+MODULE_DEPENDENCY_PROVENANCE_QUERY_HEADER = Path(
+    "products/zomlang/compiler/driver/module-dependency-provenance-query.h"
+)
+MODULE_DEPENDENCY_PROVENANCE_QUERY_SOURCE = Path(
+    "products/zomlang/compiler/driver/module-dependency-provenance-query.cc"
+)
 MODULE_GRAPH_QUERY_HEADER = Path("products/zomlang/compiler/driver/module-graph-query.h")
 MODULE_GRAPH_QUERY_SOURCE = Path("products/zomlang/compiler/driver/module-graph-query.cc")
 QUERY_DATABASE_HEADER = Path("products/zomlang/compiler/query/query-database.h")
@@ -155,6 +161,8 @@ EXPECTED_DRIVER_FILES = {
     CORE_LIBRARY_QUERY_VERIFIER_SOURCE,
     MODULE_GRAPH_QUERY_INPUT_HEADER,
     MODULE_GRAPH_QUERY_INPUT_SOURCE,
+    MODULE_DEPENDENCY_PROVENANCE_QUERY_HEADER,
+    MODULE_DEPENDENCY_PROVENANCE_QUERY_SOURCE,
     MODULE_GRAPH_QUERY_HEADER,
     MODULE_GRAPH_QUERY_SOURCE,
 }
@@ -167,7 +175,8 @@ DRIVER_BUILD_MARKER = (
     "               imported-signature-view-projector.cc incremental-binding-query-adapter.cc\n"
     "               incremental-module-resolution-query.cc\n"
     "               incremental-package-graph-query-input.cc\n"
-    "               module-discovery.cc module-graph-query-input.cc module-graph-query.cc\n"
+    "               module-dependency-provenance-query.cc module-discovery.cc\n"
+    "               module-graph-query-input.cc module-graph-query.cc\n"
     "               module-interface.cc\n"
     "               module-interface-diagnostic-adapter.cc\n"
     "               named-identity-inventory-query.cc named-item-query.cc owner-body-query.cc)"
