@@ -1591,11 +1591,16 @@ expected authority.
 Every membership descriptor admitted by this operation declares its exact
 `GlobalKey` and complete `Record`, plus
 `projectGlobalKey(contextualKey)` and
-`validateAuthority(contextualKey, globalKey, record)`. The projection returns
-no value for a malformed routed key. Validation checks the complete contextual
-root, routed owner, full authority record, and occurrence coverage applicable
-to that descriptor. `materializeActive` has no descriptor-name switch,
-wildcard trait, record truncation, or inactive-key interner lookup.
+`sameAuthority(leftRecord, rightRecord)` and
+`validateAuthority(contextualKey, globalKey, record)`. `sameAuthority`
+compares complete canonical record bytes; the generic query runtime does not
+assume an identity record provides `operator==` or `operator!=`. The
+projection returns no value for a malformed routed key. Validation checks the
+complete contextual root, routed owner, full authority record, and occurrence
+coverage applicable to that descriptor. `materializeActive` first requires
+`sameAuthority(actualRecord, expectedRecord)`, then validates the actual
+record. It has no descriptor-name switch, wildcard trait, record truncation,
+or inactive-key interner lookup.
 
 Final-sealed capability providers also require two immutable properties of
 their owning query frame that are not semantic inputs: the current
@@ -3228,3 +3233,4 @@ None
 | 2026-07-30 | ACCEPTED | Transaction `rfc0027-membership-partitions-20260730-872a0791` binds the I2 preparation split to independently approved exact two-document pre-evidence Git diff SHA-256 `872a079129e4f8b74967169252d394a099f3ee9edb02aa4a08e042a25cc000de`; I2A through I2G are sequential symbol-level prepare-only partitions over the same four files, I2 is their review-only join, and T1 remains the sole landing authority. No source task is completed. |
 | 2026-07-30 | ACCEPTED | Transaction `rfc0027-parameter-authority-20260730-bf68f2a5` binds exact contextual implementation, generic-parameter, and callable-parameter authority inputs plus the corrected verifier boundaries to independently approved exact two-document pre-evidence Git diff SHA-256 `bf68f2a58bfaf000a11be8e5e06ab12fc44e3e9e45f0baf43a9045bb9e8821e6`; I2E/F/G remain prepare-only and T1 remains the sole atomic landing authority. No source task is completed. |
 | 2026-07-30 | ACCEPTED | Transaction `rfc0027-materializer-context-20260730-4c760c36` binds the materializer context, unique revision and fingerprint construction, production inventory, provenance read, and canonical rejection-order correction to independently approved exact two-document pre-evidence Git diff SHA-256 `4c760c36bfab2a8b977b2185efb99a885a0513ffdf6ac73dfc02418897b3348a`; I2 and M1 remain prepare-only, T1 remains the sole atomic landing authority, and T2A retains production resource integration. No source task is completed. |
+| 2026-07-30 | ACCEPTED | Transaction `rfc0027-membership-comparison-20260730-50920a7e` binds descriptor-owned complete canonical authority comparison to independently approved exact two-document pre-evidence Git diff SHA-256 `50920a7e5e0aa1cb60b29b96e541c5e48ce9c015a1b7e37b51aaa597ac23b058`; I2 owns the eight comparison implementations, T1 owns runtime use and mutation coverage, and both remain prepare-only before the sole atomic landing. No source task is completed. |

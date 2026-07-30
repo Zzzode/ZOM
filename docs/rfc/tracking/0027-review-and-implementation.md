@@ -217,6 +217,12 @@ correction to the independently approved exact two-document pre-evidence Git
 diff below. I2 and M1 remain prepare-only; T1 remains their sole atomic landing
 authority; T2A retains production resource integration.
 
+Transaction `rfc0027-membership-comparison-20260730-50920a7e` binds
+descriptor-owned complete canonical authority comparison to the independently
+approved exact two-document pre-evidence Git diff below. I2 owns the eight
+comparison implementations; T1 owns runtime use and mutation coverage; both
+remain prepare-only before the sole atomic landing.
+
 ### 2026-07-30 Atomic Build-Wiring Correction
 
 I2 and M1 each create one production translation unit, but the accepted T1
@@ -320,6 +326,30 @@ pre-evidence Git diff SHA-256
 Transaction `rfc0027-materializer-context-20260730-4c760c36` records that
 approval and changes no source-task completion state.
 
+### 2026-07-30 Membership Record Comparison Correction
+
+I2 static-contract preparation found that
+`CapabilityQueryContext::materializeActive` compares the descriptor's complete `Record` with
+`operator!=`. Complete identity authorities such as
+`DefinitionIdentityRecord` intentionally expose canonical encoding rather than
+general equality operators. The accepted template therefore cannot
+instantiate for all eight membership descriptors.
+
+The correction makes each descriptor own
+`sameAuthority(leftRecord, rightRecord)` over complete canonical record bytes.
+The generic runtime calls that operation before descriptor-owned authority
+validation. No identity record gains a query-runtime-only operator, no record
+is truncated to its digest key, and no descriptor-name dispatch or generic
+codec registry is introduced. T1 already owns the runtime template and query
+mutation tests; I2 owns the eight descriptor implementations. Both remain
+prepare-only before the T1 atomic landing.
+
+The user-designated independent approver accepted exact two-document
+pre-evidence Git diff SHA-256
+`50920a7e5e0aa1cb60b29b96e541c5e48ce9c015a1b7e37b51aaa597ac23b058`.
+Transaction `rfc0027-membership-comparison-20260730-50920a7e` records that
+approval and changes no source-task completion state.
+
 ## Implementation Tracker
 
 | Task | Owner | Depends On | Deliverable | Verification | Status |
@@ -366,7 +396,7 @@ approval and changes no source-task completion state.
 | `R27-20` | `binder-checker` | RFC 0029 `R29-12AB`; RFC 0029 `R29-12D`; `R27-15E` | Implement `BindModuleSkeleton`, lookup projections, and independent verifier. | Skeleton and read-set tests | Pending |
 | `R27-21` | `binder-checker` | `R27-20` | Implement contextual `BindOwnerBody` and independent traversal/verifier. | Body, capture, control, and source-failure tests | Pending |
 | `R27-22` | `binder-checker` | `R27-21` | Implement the deterministic five-domain module allocation plan. | Overflow and reversed-demand tests | Pending |
-| `R27-23` | `module-system` | RFC 0029 `R29-14`; RFC 0028 `R28-16`; approved `R27-19` preparation | Prepare the typed graph and SCC witnesses, four-domain module-graph identity-resource interface and active-materialization specializations, plus the final-sealed-snapshot `MaterializeModuleGraph` consumer over runtime-only module-dependency provenance; do not land independently. | Graph, provenance, membership projection, reverse expansion, resource-interface, total rejection-order, and read-set review | Pending |
+| `R27-23` | `module-system` | RFC 0029 `R29-14`; RFC 0028 `R28-16`; approved `R27-19` preparation | Prepare the typed graph and SCC witnesses, four-domain module-graph identity-resource interface and active-materialization specializations, plus the final-sealed-snapshot `MaterializeModuleGraph` consumer over runtime-only module-dependency provenance; do not land independently. | Graph, provenance, membership projection, canonical authority comparison, reverse expansion, resource-interface, total rejection-order, and read-set review | Pending |
 | `R27-24` | `binder-checker` | `R27-22`; `R27-28A` | Implement materialized module skeleton and owner-body capabilities after the complete-context atomic landing. | Typed expansion and retained-child tests | Pending |
 | `R27-25` | `binder-checker` | `R27-24` | Implement `VerifyBoundModule`, immutable aggregate storage, and failure projection. | Coverage, lineage, and failure tests | Pending |
 | `R27-26` | `binder-checker` | `R27-25` | Migrate Checker consumers to `CheckerBoundModuleView`. | Focused Checker tests | Pending |
@@ -375,7 +405,7 @@ approval and changes no source-task completion state.
 | `R27-27B` | `ir-backend` | `R27-27A` | Migrate verified HIR to a retained bound-module lease. | HIR lineage tests | Pending |
 | `R27-27C` | `ir-backend` | `R27-27B` | Migrate Built MIR to a retained bound-module lease. | MIR lineage tests | Pending |
 | `R27-27D` | `runtime-memory` | `R27-27C` | Migrate the ownership overlay to a retained bound-module lease and exact destruction order. | Ownership lineage tests | Pending |
-| `R27-28A` | `module-system` with `verification` and query-runtime review | RFC 0029 `R29-14`; RFC 0028 `R28-16`; approved preparations `R27-18A`, `R27-19`, and `R27-23` | Atomically land the complete-context value and descriptor, unique graph-revision and fingerprint construction boundaries, narrow capability-context revision and typed-resource accessors, memberships, readiness, graph and SCC witnesses, production and test descriptor inventories, their two exact driver CMake source rows, complete static final verifier, three transactions, query-test migration, both shadow deletions, full mutation matrix, and staging, final, and sealed snapshots. | Complete-context, canonical demand-order, typed-resource invariant, final-seal, production/test query-inventory, mutation, session, and clean sanitizer gates | Pending |
+| `R27-28A` | `module-system` with `verification` and query-runtime review | RFC 0029 `R29-14`; RFC 0028 `R28-16`; approved preparations `R27-18A`, `R27-19`, and `R27-23` | Atomically land the complete-context value and descriptor, unique graph-revision and fingerprint construction boundaries, narrow capability-context revision and typed-resource accessors, memberships, readiness, graph and SCC witnesses, production and test descriptor inventories, their two exact driver CMake source rows, complete static final verifier, three transactions, query-test migration, both shadow deletions, full mutation matrix, and staging, final, and sealed snapshots. | Complete-context, canonical demand-order and authority-comparison, typed-resource invariant, final-seal, production/test query-inventory, mutation, session, and clean sanitizer gates | Pending |
 | `R27-28B` | `module-system` | `R27-26A`; `R27-27D`; `R27-28A` | Make the arena-owned compiler-session semantic resource implement the approved module-graph identity-materialization interface, then implement the dependency-first production capability root over the RFC 0028 sealed snapshot and inherited admission contract. | Resource ownership, no-fallback, session architecture, and end-to-end tests | Pending |
 | `R27-28C` | `module-system` | `R27-28B` | Implement surviving-lease and session teardown order. | Teardown tests | Pending |
 | `R27-29` | `module-system` | `R27-28C` | Delete identity registry/freeze authority, session ledgers, and the session-owned handleful graph root. | Identity and session zero-reference gates | Pending |
