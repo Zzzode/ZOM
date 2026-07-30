@@ -1500,12 +1500,17 @@ descriptor. The shared test schema can therefore name every type in its
 production-prefix-plus-test-tail inventory without depending on translation
 unit order.
 
-RFC 0027 T1 owns the atomic migration of the query tests from the test-only
-complete-context descriptor to the production descriptor. That transaction
-deletes both test-only complete-context shadows, including the declaration in
-`query-test-specs.h`, updates the shared test descriptor schema and inventory,
-and lands no duplicate fully qualified descriptor name at any intermediate
-commit.
+RFC 0027 T1 deletes both test-only complete-context descriptors that shadow
+the production fully qualified name and lands no alias or duplicate name at
+any intermediate commit. Generic `QueryDatabase` seal phase-order, race, and
+irreversibility tests use `query::test::TestCompleteContextInput`, a `Frozen`
+descriptor with the unique domain `test.input.complete-context`. It is the
+first test-only row after the complete production prefix, at slot 56, and
+never enters a production schema or library. `QueryCapability` final-sealed
+integration and the driver session final-seal tests use the real production
+descriptor with a valid production root key, complete authority, installed
+read set, and final witness. The generic fixture has no alias, verifier
+injection seam, or fallback to the production descriptor.
 
 The exact driver tests are:
 
@@ -2051,3 +2056,4 @@ None
 | 2026-07-29 | ACCEPTED | Transaction `rfc0028-r29-14-scope-20260729-521d82c7` bound exact four-document candidate manifest SHA-256 `521d82c731dee0a4b262e937d5578651850446eebfe7448a71a39cb63fc8e086`, adding only the four omitted Binder callers to the existing `R29-14` union; `R29-14` remains the sole source landing authority. |
 | 2026-07-29 | IMPLEMENTING | The shared runtime, descriptor inventory, capability result, final-seal, Binder consumer, and native verification foundation landed through RFC 0029 `R29-14` and `R29-15`. `R28-16A` is the next unblocked task; production module-dependency provenance activation, final verification, current-design audit, and final status synchronization remain pending. |
 | 2026-07-30 | IMPLEMENTING | Transaction `rfc0027-context-atomic-20260730-b25aef90` binds the atomic landing correction to independently approved exact pre-evidence Git diff SHA-256 `b25aef908d13395fce59151e6e31a9fea2f11f788fdd2806d17fa378b99d8821`; RFC 0027 T1 is the sole landing authority for the complete final-seal dependency closure. No weak interim final verifier may land. |
+| 2026-07-30 | IMPLEMENTING | Transaction `rfc0027-final-seal-test-boundary-20260730-f6c04155` binds the generic-versus-production final-seal test responsibility correction to independently approved exact four-document pre-evidence Git diff SHA-256 `f6c041551684ac722a7b4e12682d963f65f01cd4557cc06ca0faaa5f07879437`; generic race tests retain the unique slot-56 test descriptor while production integration uses the real authority and witness. No implementation task is completed. |

@@ -175,3 +175,23 @@ SHA-256
 `b25aef908d13395fce59151e6e31a9fea2f11f788fdd2806d17fa378b99d8821`.
 Transaction `rfc0027-context-atomic-20260730-b25aef90` records the synchronized
 correction and does not change the status of any RFC 0028 implementation task.
+
+### 2026-07-30 Final-Seal Test Responsibility Correction
+
+Runtime preflight proved that generic final-seal phase-order, race, and
+irreversibility tests need a minimal descriptor with independently selectable
+authority outcomes. Those tests use the distinct `Frozen`
+`query::test::TestCompleteContextInput` at test-inventory slot 56 with domain
+`test.input.complete-context`. Both same-name production-role shadows are
+deleted. `QueryCapability` final-sealed integration and driver session
+final-seal tests use `CompleteCompilationContextAuthorityInput` with a valid
+production root key, complete authority, installed read set, and final
+witness. The test fixture enters no production schema or library and no alias,
+verifier injection seam, or fallback is permitted.
+
+The user-designated independent approver accepted exact four-document
+pre-evidence Git diff SHA-256
+`f6c041551684ac722a7b4e12682d963f65f01cd4557cc06ca0faaa5f07879437`.
+Transaction
+`rfc0027-final-seal-test-boundary-20260730-f6c04155` records the synchronized
+correction without completing an RFC 0028 source task.

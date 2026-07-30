@@ -497,6 +497,31 @@ pre-evidence Git diff SHA-256
 Transaction `rfc0027-materializer-verifier-20260730-d44bcd5a` records that
 approval and changes no source-task completion state.
 
+### 2026-07-30 Final-Seal Test Responsibility Correction
+
+T1 preflight found that the generic `QueryDatabase` race and phase-precedence
+tests require deliberately selectable key, value, witness, and verifier
+outcomes. Coupling those runtime state-machine tests to the complete production
+driver graph would obscure the precedence contract, while retaining the
+same-name test descriptor would leave a second production authority.
+
+The correction deletes both descriptors that shadow the production fully
+qualified name. Generic `QueryDatabase` tests use the distinct
+`query::test::TestCompleteContextInput` descriptor, unique domain
+`test.input.complete-context`, and test-inventory slot 56 immediately after
+the complete production prefix. `QueryCapability` final-sealed integration and
+driver session final-seal tests use the real production descriptor and valid
+production authority, input set, and witness. The generic fixture enters no
+production schema or library and has no alias, verifier injection seam, or
+fallback.
+
+The user-designated independent approver accepted exact four-document
+pre-evidence Git diff SHA-256
+`f6c041551684ac722a7b4e12682d963f65f01cd4557cc06ca0faaa5f07879437`.
+Transaction
+`rfc0027-final-seal-test-boundary-20260730-f6c04155` records that approval
+without completing a source task.
+
 ## Implementation Tracker
 
 | Task | Owner | Depends On | Deliverable | Verification | Status |
