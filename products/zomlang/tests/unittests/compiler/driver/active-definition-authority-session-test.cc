@@ -4034,6 +4034,77 @@ ZC_TEST("Named-item syntax forwards selected-source rejection") {
 
   auto syntax = database.snapshot().get<NamedItemSyntaxQuery>(itemKey);
   ZC_REQUIRE(syntax.kind() == query::QueryValueKind::SemanticFailure);
+
+  auto sealed = sealDatabase(database, roots);
+  auto provenance = sealed.getCapability<NamedItemProvenanceQuery>(itemKey);
+  ZC_REQUIRE(provenance.isSourceRejected());
+  ZC_EXPECT(provenance.diagnostics().values().size() != 0);
+}
+
+ZC_TEST("Named-item syntax rejects a selected source with another module declaration") {
+  auto database = queryDatabase(scheduler());
+  ZC_REQUIRE(registerIncrementalBindingQueryAdapter(database));
+  ContextualIdentityAuthorityInputLedger state;
+  auto roots = packageRoots();
+  auto module = stableModule();
+  stageBaseInputs(state, database, "module root;\nclass Alpha {}\n"_zc);
+  ZC_REQUIRE(commitAuthority(state, database, roots));
+
+  auto snapshot = database.snapshot();
+  auto inventory = snapshot.get<NamedDefinitionInventoryQuery>(module);
+  ZC_REQUIRE(inventory.kind() == query::QueryValueKind::Value);
+  ZC_REQUIRE(inventory.value().entries().size() == 1);
+  auto itemKey = contextual(roots, semanticModule(), inventory.value().entries()[0].key().clone());
+
+  auto opened = database.beginInputTransaction(snapshot.revision());
+  ZC_REQUIRE(opened.isOpened());
+  auto transaction = zc::mv(opened).takeTransaction();
+  ZC_REQUIRE(transaction
+                 .set<source_query::SourceSnapshotInput>(
+                     stableSource(), sourceSnapshot("module other;\nclass Alpha {}\n"_zc))
+                 .isApplied());
+  ZC_REQUIRE(transaction.commit().isCommitted());
+
+  auto syntax = database.snapshot().get<NamedItemSyntaxQuery>(itemKey);
+  ZC_REQUIRE(syntax.isRuntimeFailure());
+  ZC_EXPECT(syntax.runtimeFailure() == query::QueryRuntimeFailure::InvariantViolation);
+
+  auto sealed = sealDatabase(database, roots);
+  auto provenance = sealed.getCapability<NamedItemProvenanceQuery>(itemKey);
+  ZC_REQUIRE(provenance.isRuntimeRejected());
+  ZC_EXPECT(provenance.runtimeFailure() == query::QueryRuntimeFailure::InvariantViolation);
+}
+
+ZC_TEST("Named-item syntax rejects a selected source without a module declaration") {
+  auto database = queryDatabase(scheduler());
+  ZC_REQUIRE(registerIncrementalBindingQueryAdapter(database));
+  ContextualIdentityAuthorityInputLedger state;
+  auto roots = packageRoots();
+  auto module = stableModule();
+  stageBaseInputs(state, database, "module root;\nclass Alpha {}\n"_zc);
+  ZC_REQUIRE(commitAuthority(state, database, roots));
+
+  auto snapshot = database.snapshot();
+  auto inventory = snapshot.get<NamedDefinitionInventoryQuery>(module);
+  ZC_REQUIRE(inventory.kind() == query::QueryValueKind::Value);
+  ZC_REQUIRE(inventory.value().entries().size() == 1);
+  auto itemKey = contextual(roots, semanticModule(), inventory.value().entries()[0].key().clone());
+
+  auto opened = database.beginInputTransaction(snapshot.revision());
+  ZC_REQUIRE(opened.isOpened());
+  auto transaction = zc::mv(opened).takeTransaction();
+  ZC_REQUIRE(transaction
+                 .set<source_query::SourceSnapshotInput>(stableSource(),
+                                                         sourceSnapshot("class Alpha {}\n"_zc))
+                 .isApplied());
+  ZC_REQUIRE(transaction.commit().isCommitted());
+
+  auto syntax = database.snapshot().get<NamedItemSyntaxQuery>(itemKey);
+  ZC_REQUIRE(syntax.isRuntimeFailure());
+
+  auto sealed = sealDatabase(database, roots);
+  auto provenance = sealed.getCapability<NamedItemProvenanceQuery>(itemKey);
+  ZC_REQUIRE(provenance.isRuntimeRejected());
 }
 
 ZC_TEST("Named-item syntax projects a missing selected module source") {
