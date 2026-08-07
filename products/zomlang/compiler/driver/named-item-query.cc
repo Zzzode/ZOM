@@ -494,13 +494,6 @@ query::CapabilityProviderResult<TargetDescriptor> forwardSourceRejection(
       SourceContract::encode(source.diagnostics()).asPtr());
 }
 
-template <typename TargetDescriptor, typename SourceDescriptor>
-query::CapabilityProviderResult<TargetDescriptor> forwardKeyRejection(
-    const query::CapabilityDemandResult<SourceDescriptor>& source) {
-  return query::CapabilityProviderResult<TargetDescriptor>::template keyRejected<
-      binder::BinderKeyFailure>(source.keyFailure().clone());
-}
-
 template <typename ResultValue, typename ExpectedValue>
 bool sameFailure(const query::TypedQueryResult<ExpectedValue>& expected,
                  const query::TypedQueryResult<ResultValue>& result) {
@@ -546,20 +539,6 @@ query::TypedQueryResult<NamedItemSyntaxQuery::Value> NamedItemSyntaxQuery::provi
   if (implementations.semanticFailureBytes().size() != 0) {
     return query::TypedQueryResult<Value>::semanticFailure(
         zc::heapArray<uint8_t>(implementations.semanticFailureBytes()));
-  }
-  if (definitionSites.isSourceRejected()) {
-    using Contract =
-        query::CapabilityFailureContract<RevisionLocalDefinitionSitesQuery,
-                                         query::SourceRejection<diagnostics::DiagnosticFact>>;
-    return query::TypedQueryResult<Value>::semanticFailure(
-        Contract::encode(definitionSites.diagnostics()));
-  }
-  if (implementationSites.isSourceRejected()) {
-    using Contract =
-        query::CapabilityFailureContract<RevisionLocalImplementationSitesQuery,
-                                         query::SourceRejection<diagnostics::DiagnosticFact>>;
-    return query::TypedQueryResult<Value>::semanticFailure(
-        Contract::encode(implementationSites.diagnostics()));
   }
   if (implementations.isRuntimeFailure() || definitionSites.isRuntimeRejected() ||
       implementationSites.isRuntimeRejected()) {
@@ -617,22 +596,6 @@ bool NamedItemSyntaxQuery::verify(query::QueryContext& context, const Key& key,
     return result.kind() == query::QueryValueKind::SemanticFailure &&
            result.semanticFailureBytes() == implementations.semanticFailureBytes();
   }
-  if (definitionSites.isSourceRejected()) {
-    using Contract =
-        query::CapabilityFailureContract<RevisionLocalDefinitionSitesQuery,
-                                         query::SourceRejection<diagnostics::DiagnosticFact>>;
-    const auto failure = Contract::encode(definitionSites.diagnostics());
-    return result.kind() == query::QueryValueKind::SemanticFailure &&
-           result.semanticFailureBytes() == failure.asPtr();
-  }
-  if (implementationSites.isSourceRejected()) {
-    using Contract =
-        query::CapabilityFailureContract<RevisionLocalImplementationSitesQuery,
-                                         query::SourceRejection<diagnostics::DiagnosticFact>>;
-    const auto failure = Contract::encode(implementationSites.diagnostics());
-    return result.kind() == query::QueryValueKind::SemanticFailure &&
-           result.semanticFailureBytes() == failure.asPtr();
-  }
   if (result.kind() != query::QueryValueKind::Value || implementations.isRuntimeFailure() ||
       definitionSites.isRuntimeRejected() || implementationSites.isRuntimeRejected() ||
       implementations.kind() != query::QueryValueKind::Value || !definitionSites.isPublished() ||
@@ -679,10 +642,6 @@ query::CapabilityProviderResult<NamedItemProvenanceQuery> NamedItemProvenanceQue
     return query::CapabilityProviderResult<NamedItemProvenanceQuery>::keyRejected<
         binder::BinderKeyFailure>(zc::mv(ZC_ASSERT_NONNULL(failure)));
   }
-  if (authority.kind() != query::QueryValueKind::Value) {
-    return query::CapabilityProviderResult<NamedItemProvenanceQuery>::runtimeRejected(
-        query::QueryRuntimeFailure::InvariantViolation);
-  }
   auto source = providerSource(context, authority.value());
   if (source.isRuntimeFailure()) {
     return query::CapabilityProviderResult<NamedItemProvenanceQuery>::runtimeRejected(
@@ -701,17 +660,10 @@ query::CapabilityProviderResult<NamedItemProvenanceQuery> NamedItemProvenanceQue
     }
     return sourceRejectedFromBytes<NamedItemProvenanceQuery>(source.semanticFailureBytes());
   }
-  if (source.kind() != query::QueryValueKind::Value) {
-    return query::CapabilityProviderResult<NamedItemProvenanceQuery>::runtimeRejected(
-        query::QueryRuntimeFailure::InvariantViolation);
-  }
   auto admission = context.getCapability<StableIdentityAdmissionQuery>(authority.value().module);
   if (admission.isRuntimeRejected()) {
     return query::CapabilityProviderResult<NamedItemProvenanceQuery>::runtimeRejected(
         admission.runtimeFailure());
-  }
-  if (admission.isKeyRejected()) {
-    return forwardKeyRejection<NamedItemProvenanceQuery>(admission);
   }
   if (admission.isSourceRejected()) {
     return forwardSourceRejection<NamedItemProvenanceQuery>(admission);
@@ -738,12 +690,6 @@ query::CapabilityProviderResult<NamedItemProvenanceQuery> NamedItemProvenanceQue
     return query::CapabilityProviderResult<NamedItemProvenanceQuery>::runtimeRejected(
         definitionSites.runtimeFailure());
   }
-  if (definitionSites.isKeyRejected()) {
-    return forwardKeyRejection<NamedItemProvenanceQuery>(definitionSites);
-  }
-  if (definitionSites.isSourceRejected()) {
-    return forwardSourceRejection<NamedItemProvenanceQuery>(definitionSites);
-  }
   if (!definitionSites.isPublished()) {
     return query::CapabilityProviderResult<NamedItemProvenanceQuery>::runtimeRejected(
         query::QueryRuntimeFailure::InvariantViolation);
@@ -753,12 +699,6 @@ query::CapabilityProviderResult<NamedItemProvenanceQuery> NamedItemProvenanceQue
   if (implementationSites.isRuntimeRejected()) {
     return query::CapabilityProviderResult<NamedItemProvenanceQuery>::runtimeRejected(
         implementationSites.runtimeFailure());
-  }
-  if (implementationSites.isKeyRejected()) {
-    return forwardKeyRejection<NamedItemProvenanceQuery>(implementationSites);
-  }
-  if (implementationSites.isSourceRejected()) {
-    return forwardSourceRejection<NamedItemProvenanceQuery>(implementationSites);
   }
   if (!implementationSites.isPublished()) {
     return query::CapabilityProviderResult<NamedItemProvenanceQuery>::runtimeRejected(
@@ -881,9 +821,6 @@ query::CapabilityRejectionCheck verifyNamedItemSourceRejection(
                ? query::CapabilityRejectionCheck::Verified
                : query::CapabilityRejectionCheck::Rejected;
   }
-  if (source.kind() != query::QueryValueKind::Value) {
-    return query::CapabilityRejectionCheck::Rejected;
-  }
   auto admission = context.getCapability<StableIdentityAdmissionQuery>(authority.value().module);
   if (!admission.isSourceRejected()) { return query::CapabilityRejectionCheck::Rejected; }
   auto expected = binder::encodeStableBindingDiagnosticFacts(admission.diagnostics().values());
@@ -919,13 +856,7 @@ query::CapabilityRejectionCheck verifyNamedItemKeyRejection(
                ? query::CapabilityRejectionCheck::Verified
                : query::CapabilityRejectionCheck::Rejected;
   }
-  if (source.kind() != query::QueryValueKind::Value) {
-    return query::CapabilityRejectionCheck::Rejected;
-  }
-  auto admission = context.getCapability<StableIdentityAdmissionQuery>(authority.value().module);
-  return admission.isKeyRejected() && admission.keyFailure() == failure
-             ? query::CapabilityRejectionCheck::Verified
-             : query::CapabilityRejectionCheck::Rejected;
+  return query::CapabilityRejectionCheck::Rejected;
 }
 
 }  // namespace zomlang::compiler::driver::incremental_binding_query
