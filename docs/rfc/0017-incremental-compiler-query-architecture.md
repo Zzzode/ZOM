@@ -1559,11 +1559,16 @@ The reproducible performance contract uses
 corpus manifest, `scripts/run-incremental-query-benchmarks.py` as the only
 runner, and
 `products/zomlang/tests/performance/incremental-query-baseline.json` as the
-reviewed pre-query baseline. The baseline records repository revision, release
-preset and flags, compiler build identity, OS and architecture, CPU model and
-logical-core count, physical memory, worker count, corpus file digests, and per
-case results. A comparison on a mismatched machine or corpus is invalid rather
-than silently normalized.
+reviewed pre-query baseline catalog. Each catalog entry records repository
+revision, release preset and flags, compiler build identity, OS and
+architecture, CPU model and logical-core count, physical memory, worker count,
+corpus file digests, and per-case results. The runner derives one canonical
+SHA-256 entry identity from the build, compiler, corpus, machine, and worker
+comparison metadata, selects only the entry with that exact identity, and
+rejects a missing or malformed entry. A
+comparison on a mismatched machine or corpus is invalid rather than silently
+normalized, while independently reviewed macOS and Linux entries coexist in
+the same catalog.
 
 The runner performs five unrecorded warm-ups followed by twenty-one measured
 cold compilations per case in an otherwise idle local run, records monotonic

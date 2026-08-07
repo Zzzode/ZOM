@@ -328,7 +328,7 @@ descriptor beside its replacement.
 | Deterministic telemetry | `query-observability-test` |
 | Binder final-sealed success and rejection matrix | `active-definition-authority-session-test` |
 | Forbidden construction, observation, copying, and decoder access | `query-runtime-negative-compile-*` CTests |
-| Release performance | `scripts/run-incremental-query-benchmarks.py` with the committed corpus and baseline |
+| Release performance | `scripts/run-incremental-query-benchmarks.py` with the committed corpus and exact-metadata baseline catalog entry |
 
 ## Known Gaps
 

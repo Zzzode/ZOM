@@ -302,6 +302,17 @@ set_tests_properties(incremental-query-architecture-negative PROPERTIES
 )
 
 add_test(
+  NAME incremental-query-benchmark-runner
+  COMMAND "${Python3_EXECUTABLE}" ${CMAKE_SOURCE_DIR}/scripts/run-incremental-query-benchmarks.py --self-test
+  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+)
+
+set_tests_properties(incremental-query-benchmark-runner PROPERTIES
+  LABELS "conformance;query;incremental;benchmark"
+  TIMEOUT 30
+)
+
+add_test(
   NAME vendored-dependencies
   COMMAND "${Python3_EXECUTABLE}"
           ${CMAKE_SOURCE_DIR}/products/zomlang/tests/tools/check-vendored-dependencies.py

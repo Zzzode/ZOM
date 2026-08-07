@@ -34,14 +34,15 @@ class BenchmarkError(RuntimeError):
 
 def parse_arguments() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--repository", type=Path, required=True)
-    parser.add_argument("--build-dir", type=Path, required=True)
-    parser.add_argument("--corpus", type=Path, required=True)
-    parser.add_argument("--baseline", type=Path, required=True)
-    parser.add_argument("--worker-count", type=int, required=True)
+    parser.add_argument("--repository", type=Path)
+    parser.add_argument("--build-dir", type=Path)
+    parser.add_argument("--corpus", type=Path)
+    parser.add_argument("--baseline", type=Path)
+    parser.add_argument("--worker-count", type=int)
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument("--record-baseline", action="store_true")
     mode.add_argument("--compare", action="store_true")
+    mode.add_argument("--self-test", action="store_true")
     return parser.parse_args()
 
 
@@ -82,6 +83,66 @@ def load_json(path: Path) -> dict[str, Any]:
     if not isinstance(value, dict):
         raise BenchmarkError(f"{path}: top-level JSON value must be an object")
     return value
+
+
+def canonical_json(value: Any) -> bytes:
+    return json.dumps(value, sort_keys=True, separators=(",", ":")).encode("utf-8")
+
+
+def baseline_identity(metadata: dict[str, Any]) -> str:
+    return sha256_bytes(canonical_json(comparable_metadata(metadata)))
+
+
+def require_report_entry(value: Any, description: str) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        raise BenchmarkError(f"{description} must be an object")
+    metadata = value.get("metadata")
+    results = value.get("results")
+    aggregate = value.get("aggregate")
+    if not isinstance(metadata, dict):
+        raise BenchmarkError(f"{description}: metadata must be an object")
+    if not isinstance(results, dict) or not results:
+        raise BenchmarkError(f"{description}: results must be a non-empty object")
+    if not isinstance(aggregate, dict):
+        raise BenchmarkError(f"{description}: aggregate must be an object")
+    try:
+        comparable_metadata(metadata)
+    except (KeyError, TypeError) as error:
+        raise BenchmarkError(f"{description}: incomplete comparison metadata") from error
+    return value
+
+
+def empty_baseline_catalog() -> dict[str, Any]:
+    return {"protocol": EXPECTED_PROTOCOL, "baselines": {}}
+
+
+def load_baseline_catalog(path: Path) -> dict[str, Any]:
+    catalog = load_json(path)
+    validate_baseline_catalog(catalog)
+    return catalog
+
+
+def select_baseline(current: dict[str, Any], catalog: dict[str, Any]) -> tuple[str, dict[str, Any]]:
+    identifier = baseline_identity(current["metadata"])
+    entries = catalog["baselines"]
+    baseline = entries.get(identifier)
+    if baseline is None:
+        available = ", ".join(sorted(entries))
+        raise BenchmarkError(
+            "no metadata-compatible baseline entry for this machine, build, worker-count, or corpus; "
+            f"available identities: {available}"
+        )
+    report = require_report_entry(baseline, f"baseline catalog entry {identifier}")
+    if comparable_metadata(current["metadata"]) != comparable_metadata(report["metadata"]):
+        raise BenchmarkError("selected baseline metadata does not match the current benchmark")
+    return identifier, report
+
+
+def add_baseline(catalog: dict[str, Any], report: dict[str, Any]) -> str:
+    entry = require_report_entry(report, "recorded baseline")
+    identifier = baseline_identity(entry["metadata"])
+    catalog["baselines"][identifier] = entry
+    return identifier
 
 
 def resolve_argument_path(path: Path, repository: Path) -> Path:
@@ -464,8 +525,6 @@ def comparable_metadata(metadata: dict[str, Any]) -> dict[str, Any]:
 
 
 def compare_results(current: dict[str, Any], baseline: dict[str, Any]) -> None:
-    if baseline.get("protocol") != EXPECTED_PROTOCOL:
-        raise BenchmarkError("baseline protocol does not match RFC 0017")
     if comparable_metadata(current["metadata"]) != comparable_metadata(baseline["metadata"]):
         raise BenchmarkError("baseline machine, build, worker-count, or corpus metadata mismatch")
     baseline_results = baseline.get("results")
@@ -496,8 +555,90 @@ def compare_results(current: dict[str, Any], baseline: dict[str, Any]) -> None:
         raise BenchmarkError("; ".join(failures))
 
 
+def self_test_metadata() -> dict[str, Any]:
+    return {
+        "build": {"cmake_cache": {"CMAKE_BUILD_TYPE": "Release"}, "preset": "release"},
+        "compiler": {"path": "/toolchain/c++", "sha256": "a" * 64, "version": "Test C++"},
+        "corpus": {"combined_sha256": "b" * 64},
+        "machine": {"architecture": "x86_64", "operating_system": "Linux"},
+        "repository_revision": "c" * 40,
+        "worker_count": 8,
+    }
+
+
+def self_test_report(metadata: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "metadata": metadata,
+        "results": {"fixture": {"elapsed_median_nanoseconds": 1, "peak_rss_median_bytes": 1}},
+        "aggregate": {"elapsed_median_nanoseconds": 1, "peak_rss_median_bytes": 1},
+    }
+
+
+def run_self_tests() -> None:
+    linux_metadata = self_test_metadata()
+    macos_metadata = self_test_metadata()
+    macos_metadata["machine"] = {"architecture": "arm64", "operating_system": "Darwin"}
+    catalog = empty_baseline_catalog()
+    linux_identity = add_baseline(catalog, self_test_report(linux_metadata))
+    macos_identity = add_baseline(catalog, self_test_report(macos_metadata))
+    if linux_identity == macos_identity:
+        raise AssertionError("distinct metadata must not share a baseline identity")
+    selected_identity, selected = select_baseline(
+        {"metadata": linux_metadata, "results": {}, "aggregate": {}}, catalog
+    )
+    if selected_identity != linux_identity or selected["metadata"] != linux_metadata:
+        raise AssertionError("catalog must select the exact metadata identity")
+    unmatched_metadata = self_test_metadata()
+    unmatched_metadata["worker_count"] = 1
+    try:
+        select_baseline({"metadata": unmatched_metadata, "results": {}, "aggregate": {}}, catalog)
+    except BenchmarkError as error:
+        if "no metadata-compatible baseline entry" not in str(error):
+            raise AssertionError("unmatched metadata must report a selection error") from error
+    else:
+        raise AssertionError("unmatched metadata must not select a baseline")
+    catalog["baselines"][linux_identity]["metadata"]["worker_count"] = 1
+    try:
+        validate_baseline_catalog(catalog)
+    except BenchmarkError as error:
+        if "does not match its comparison metadata" not in str(error):
+            raise AssertionError("metadata identity mutation must be rejected") from error
+    else:
+        raise AssertionError("metadata identity mutation must invalidate the catalog")
+
+
+def validate_baseline_catalog(catalog: dict[str, Any]) -> None:
+    if catalog.get("protocol") != EXPECTED_PROTOCOL:
+        raise BenchmarkError("baseline catalog protocol does not match RFC 0017")
+    entries = catalog.get("baselines")
+    if not isinstance(entries, dict) or not entries:
+        raise BenchmarkError("baseline catalog must contain a non-empty baselines object")
+    for identifier, entry in entries.items():
+        if not isinstance(identifier, str) or not re.fullmatch(r"[0-9a-f]{64}", identifier):
+            raise BenchmarkError("baseline catalog contains an invalid metadata identity")
+        report = require_report_entry(entry, f"baseline catalog entry {identifier}")
+        if baseline_identity(report["metadata"]) != identifier:
+            raise BenchmarkError(
+                f"baseline catalog entry {identifier} does not match its comparison metadata"
+            )
+
+
 def main() -> int:
     arguments = parse_arguments()
+    if arguments.self_test:
+        run_self_tests()
+        print("incremental-query benchmark runner self-test passed")
+        return 0
+    if (
+        arguments.repository is None
+        or arguments.build_dir is None
+        or arguments.corpus is None
+        or arguments.baseline is None
+        or arguments.worker_count is None
+    ):
+        raise BenchmarkError(
+            "--repository, --build-dir, --corpus, --baseline, and --worker-count are required"
+        )
     if arguments.worker_count < 1:
         raise BenchmarkError("worker count must be positive")
     repository = arguments.repository.resolve()
@@ -525,20 +666,27 @@ def main() -> int:
         for case in corpus["cases"]
     }
     report = {
-        "protocol": EXPECTED_PROTOCOL,
         "metadata": metadata,
         "results": results,
         "aggregate": aggregate(results),
     }
     if arguments.record_baseline:
+        catalog = (
+            load_baseline_catalog(baseline_path)
+            if baseline_path.exists()
+            else empty_baseline_catalog()
+        )
+        identifier = add_baseline(catalog, report)
         baseline_path.parent.mkdir(parents=True, exist_ok=True)
         baseline_path.write_text(
-            json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+            json.dumps(catalog, indent=2, sort_keys=True) + "\n", encoding="utf-8"
         )
-        print(f"recorded baseline: {baseline_path}")
+        print(f"recorded baseline entry {identifier}: {baseline_path}")
     else:
-        baseline = load_json(baseline_path)
+        catalog = load_baseline_catalog(baseline_path)
+        identifier, baseline = select_baseline(report, catalog)
         compare_results(report, baseline)
+        print(f"selected baseline entry: {identifier}")
         print("incremental-query performance comparison passed")
     return 0
 

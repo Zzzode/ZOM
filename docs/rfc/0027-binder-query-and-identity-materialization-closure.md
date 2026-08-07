@@ -3240,9 +3240,10 @@ script is not substitute evidence.
   `PATH=/opt/homebrew/bin:$PATH cmake --preset release`;
   `PATH=/opt/homebrew/bin:$PATH cmake --build --preset release --clean-first`;
   `python3 scripts/run-incremental-query-benchmarks.py --repository . --build-dir build-release --corpus products/zomlang/tests/performance/incremental-query-corpus.json --baseline products/zomlang/tests/performance/incremental-query-baseline.json --worker-count 8 --compare`.
-  The checked-in baseline currently fixes worker count `8`; an approved
-  baseline transaction updates both metadata and this command before
-  acceptance.
+  The checked-in catalog contains independently reviewed worker-count `8`
+  entries. An approved baseline transaction updates only the entry whose exact
+  machine, compiler, build, corpus, and worker metadata it records; the
+  comparison command remains unchanged.
 - Spec-audit publication after the complete implementation and Release matrix:
   `python3 scripts/check-core-library-spec-alignment.py --check --report docs/reports/zom-core-library-spec-alignment.md`.
   This is the only command that writes the fixed report and is executed by
