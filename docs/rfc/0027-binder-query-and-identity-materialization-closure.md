@@ -2,13 +2,13 @@
 rfc: 27
 title: Binder Query And Identity Materialization Closure
 type: compiler
-status: ACCEPTED
+status: IMPLEMENTING
 author: ZOM Compiler Team
 review-manager: rfc
 required-owners: [task-router, rfc, module-system, binder-checker, runtime-memory, error-system, ir-backend, spec-audit, verification]
 approvers: [task-router, rfc, module-system, binder-checker, runtime-memory, error-system, ir-backend, spec-audit, verification]
 created: 2026-07-27
-updated: 2026-07-30
+updated: 2026-08-07
 area: compiler
 requires: [4, 8, 10, 11, 17, 18, 19, 20, 25, 26]
 supersedes: []
@@ -3316,3 +3316,4 @@ None
 | 2026-07-30 | ACCEPTED | Transaction `rfc0027-transaction-ownership-20260730-d0979738` binds the T1 transaction-owner scope correction to independently approved exact four-document pre-evidence Git diff SHA-256 `d0979738a664312a018922acc7d13fe8aa3fb5efe705c806cc3cef58a3ef7539`; the live core transaction owner and native test enter T1, direct closed replacement and same-revision witness publication are mandatory, and no source task is completed. |
 | 2026-07-30 | ACCEPTED | Transaction `rfc0027-transaction-witness-inventory-20260730-ddd640c8` binds the static transaction-witness inventory correction to independently approved exact four-document pre-evidence Git diff SHA-256 `ddd640c83235ff8d178b615f8a532f7179588b21d477ae58fe293f0ba5e87b60`; three production input descriptors occupy ordinals 56 through 58, the generic test fixture begins the contiguous test tail at ordinal 59, and the descriptor generator owns the complete negative matrix. No source task is completed. |
 | 2026-07-30 | ACCEPTED | Transaction `rfc0027-transaction-callers-20260730-490a96eb` binds the complete production mutation-caller scope correction to independently approved exact four-document pre-evidence Git diff SHA-256 `490a96eba8bbb8b8b1f96008c864fd9d1eb5ef2781771385e2ce74682d57b5cf`; all three compiler-session callers enter T1, the authority refresh path is replaced directly, T2A ownership remains unchanged, and no source task is completed. |
+| 2026-08-07 | IMPLEMENTING | Audit confirmed the R27-18 through R27-32A implementation chain in atomic landings `6fac75b4` and `eb1033ef`, current 10-target sanitizer coverage, the full 257-test default CTest matrix, fixed-report verification, and strict Linux Release comparison. RFC 0025 retains independent incomplete tasks, so this transition makes no LANDED claim for the synchronized RFC set. |
