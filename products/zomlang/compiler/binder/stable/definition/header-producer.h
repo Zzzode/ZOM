@@ -25,8 +25,7 @@ struct DefinitionHeaderInput final {
 /// \brief Produces a definition header only after exact current-source authority validation.
 class DefinitionHeaderProducer final {
 public:
-  ZC_NODISCARD static zc::Maybe<StableDefinitionHeader> produce(
-      const DefinitionHeaderInput& input);
+  ZC_NODISCARD static zc::Maybe<StableDefinitionHeader> produce(const DefinitionHeaderInput& input);
 };
 
 }  // namespace zomlang::compiler::binder

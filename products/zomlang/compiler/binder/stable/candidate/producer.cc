@@ -191,7 +191,7 @@ zc::Maybe<IdentitySyntaxSiteInventory> IdentitySyntaxSiteInventoryProducer::prod
 class CandidateProducerImpl final {
 public:
   CandidateProducerImpl(const CanonicalParsedModule& parsedModule,
-                                      const identity::ModuleKey& module, ast::NodeId moduleNode)
+                        const identity::ModuleKey& module, ast::NodeId moduleNode)
       : parsedModule(parsedModule),
         tree(parsedModule.tree()),
         module(module),

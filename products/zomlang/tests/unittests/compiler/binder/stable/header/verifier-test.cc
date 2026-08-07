@@ -5,8 +5,8 @@
 
 #include "zomlang/compiler/binder/stable/header/verifier.h"
 
-#include "zomlang/tests/unittests/compiler/binder/stable/header/fixture.h"
 #include "zc/ztest/test.h"
+#include "zomlang/tests/unittests/compiler/binder/stable/header/fixture.h"
 
 namespace zomlang::compiler::binder {
 namespace {

@@ -332,9 +332,7 @@ zc::Maybe<VerifiedExportSurface> MaterializedExportSurfaceVerifier::from(
     const auto& fact = localExports[index];
     const auto& stableBinding = stableExport.binding().value();
     const auto& stableCanonical = stableExport.canonicalTarget().value();
-    if (!sameKey(stableExport.declaringModule(), moduleKey)) {
-      return zc::none;
-    }
+    if (!sameKey(stableExport.declaringModule(), moduleKey)) { return zc::none; }
     if (stableBinding.is<StableSemanticImportBindingTarget>()) {
       const auto& importBinding =
           stableBinding.get<StableSemanticImportBindingTarget>().import.binding();
@@ -357,8 +355,8 @@ zc::Maybe<VerifiedExportSurface> MaterializedExportSurfaceVerifier::from(
           !sameSource(fact.exportSpan, fact.reexportChain[0].exportSpan)) {
         return zc::none;
       }
-      auto entryName = BindingNameKey::from(stableExport.name().nameSpace(),
-                                            stableExport.name().name().clone());
+      auto entryName =
+          BindingNameKey::from(stableExport.name().nameSpace(), stableExport.name().name().clone());
       if (entryName == zc::none) { return zc::none; }
       auto orderKey = SurfaceOrderKey(ZC_ASSERT_NONNULL(entryName).nameSpace(),
                                       zc::str(ZC_ASSERT_NONNULL(entryName).name().text()));
@@ -369,11 +367,11 @@ zc::Maybe<VerifiedExportSurface> MaterializedExportSurfaceVerifier::from(
       zc::Vector<ReexportProvenanceStep> chain;
       chain.add(fact.reexportChain[0].clone());
       const auto position = unordered.size();
-      unordered.add(ExportSurfaceEntry(
-          zc::mv(ZC_ASSERT_NONNULL(entryName)), fact.sourceBinding.clone(),
-          fact.canonicalTarget.clone(), VisibilityEnvelope::external(), true, fact.bindingSpan.clone(),
-          fact.canonicalDeclarationSpan.clone(), zc::mv(aliasSpan), zc::mv(exportSpan),
-          zc::mv(chain)));
+      unordered.add(
+          ExportSurfaceEntry(zc::mv(ZC_ASSERT_NONNULL(entryName)), fact.sourceBinding.clone(),
+                             fact.canonicalTarget.clone(), VisibilityEnvelope::external(), true,
+                             fact.bindingSpan.clone(), fact.canonicalDeclarationSpan.clone(),
+                             zc::mv(aliasSpan), zc::mv(exportSpan), zc::mv(chain)));
       order.insert(zc::mv(orderKey), position);
       continue;
     }

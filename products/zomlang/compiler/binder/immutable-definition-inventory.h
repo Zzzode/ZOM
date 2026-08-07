@@ -111,8 +111,8 @@ public:
       const noexcept;
   ZC_NODISCARD zc::ArrayPtr<const MaterializedCallableParameterInventoryEntry> callableParameters()
       const noexcept;
-  ZC_NODISCARD zc::ArrayPtr<const MaterializedOwnerLocalBindingInventoryEntry>
-  ownerLocalBindings() const noexcept;
+  ZC_NODISCARD zc::ArrayPtr<const MaterializedOwnerLocalBindingInventoryEntry> ownerLocalBindings()
+      const noexcept;
   ZC_NODISCARD zc::ArrayPtr<const MaterializedImplAuthorityInventoryEntry> implAuthorities()
       const noexcept;
   ZC_NODISCARD zc::ArrayPtr<const MaterializedImplOccurrenceInventoryEntry> impls() const noexcept;
@@ -135,7 +135,8 @@ public:
   ZC_NODISCARD zc::Maybe<ImplOccurrenceId> implementationAt(ast::NodeId node) const noexcept;
   ZC_NODISCARD zc::Maybe<identity::ImplId> implementationAuthority(
       ImplOccurrenceId occurrence) const noexcept;
-  ZC_NODISCARD zc::ArrayPtr<const MaterializedAnonymousEntityEntry> anonymousEntities() const noexcept;
+  ZC_NODISCARD zc::ArrayPtr<const MaterializedAnonymousEntityEntry> anonymousEntities()
+      const noexcept;
   ZC_NODISCARD bool matches(const MaterializedModuleSkeletonIdentities& identities,
                             zc::ArrayPtr<const BoundOwnerBody> ownerBodies,
                             zc::ArrayPtr<const DefinitionFact> definitions,

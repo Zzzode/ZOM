@@ -256,14 +256,14 @@ zc::Maybe<ImmutableDefinitionInventory> ImmutableDefinitionInventory::from(
     for (const auto& stable : body.bindings().values()) {
       if (ownerLocalIndex >= ownerLocalBindings.size()) { return zc::none; }
       const auto& fact = ownerLocalBindings[ownerLocalIndex++];
-    if (!fact.node || !fact.identity.belongsTo(identities.context()) ||
-        !fact.identity.belongsTo(identities.module()) ||
-        hasNode(ownerLocalBindingNodes.asPtr(), fact.node) || fact.kind != stable.kind() ||
-        fact.name != stable.name() || fact.nameSpace != stable.nameSpace() ||
-        fact.activation != stable.activation()) {
-      return zc::none;
-    }
-    ownerLocalBindingNodes.add(NodeHandleEntry<OwnerLocalBindingId>{fact.node, fact.identity});
+      if (!fact.node || !fact.identity.belongsTo(identities.context()) ||
+          !fact.identity.belongsTo(identities.module()) ||
+          hasNode(ownerLocalBindingNodes.asPtr(), fact.node) || fact.kind != stable.kind() ||
+          fact.name != stable.name() || fact.nameSpace != stable.nameSpace() ||
+          fact.activation != stable.activation()) {
+        return zc::none;
+      }
+      ownerLocalBindingNodes.add(NodeHandleEntry<OwnerLocalBindingId>{fact.node, fact.identity});
       ownerLocalEntries.add(MaterializedOwnerLocalBindingInventoryEntry{
           fact.node, fact.site.clone(), fact.identity, stable.key().clone(), fact.source.clone()});
     }
@@ -310,7 +310,8 @@ zc::Maybe<ImmutableDefinitionInventory> ImmutableDefinitionInventory::from(
     implAuthorityEntries.add(MaterializedImplAuthorityInventoryEntry{
         identity.handle(), identity.key().clone(), identity.record().clone()});
   }
-  const auto stableImplementations = identities.stableWitness().implementationOccurrences().values();
+  const auto stableImplementations =
+      identities.stableWitness().implementationOccurrences().values();
   if (implementations.size() != stableImplementations.size()) { return zc::none; }
   zc::Vector<MaterializedImplOccurrenceInventoryEntry> implEntries(implementations.size());
   for (size_t index = 0; index < implementations.size(); ++index) {
@@ -334,9 +335,9 @@ zc::Maybe<ImmutableDefinitionInventory> ImmutableDefinitionInventory::from(
   return ImmutableDefinitionInventory(zc::heap<Impl>(
       zc::mv(identities), zc::mv(ownerBodies), zc::mv(definitionNodes),
       zc::mv(genericParameterNodes), zc::mv(callableParameterNodes), zc::mv(ownerLocalBindingNodes),
-      zc::mv(definitionEntries), zc::mv(genericParameterEntries),
-      zc::mv(callableParameterEntries), zc::mv(ownerLocalEntries), zc::mv(anonymousEntries),
-      zc::mv(implAuthorityEntries), zc::mv(implEntries), zc::mv(implementationEntries)));
+      zc::mv(definitionEntries), zc::mv(genericParameterEntries), zc::mv(callableParameterEntries),
+      zc::mv(ownerLocalEntries), zc::mv(anonymousEntries), zc::mv(implAuthorityEntries),
+      zc::mv(implEntries), zc::mv(implementationEntries)));
 }
 
 ImmutableDefinitionInventory ImmutableDefinitionInventory::clone() const {
@@ -393,8 +394,8 @@ ImmutableDefinitionInventory ImmutableDefinitionInventory::clone() const {
       impl->identities.clone(), zc::mv(ownerBodies), zc::mv(definitionNodes),
       zc::mv(genericParameterNodes), zc::mv(callableParameterNodes), zc::mv(ownerLocalBindingNodes),
       zc::mv(definitions), zc::mv(genericParameters), zc::mv(callableParameters),
-      zc::mv(ownerLocalBindings), zc::mv(anonymousEntities), zc::mv(implAuthorities),
-      zc::mv(impls), zc::mv(implementations)));
+      zc::mv(ownerLocalBindings), zc::mv(anonymousEntities), zc::mv(implAuthorities), zc::mv(impls),
+      zc::mv(implementations)));
 }
 
 identity::SemanticContextBrand ImmutableDefinitionInventory::semanticContext() const noexcept {
@@ -423,8 +424,8 @@ zc::ArrayPtr<const BoundOwnerBody> ImmutableDefinitionInventory::ownerBodies() c
   return impl->ownerBodies.asPtr();
 }
 
-zc::ArrayPtr<const MaterializedDefinitionInventoryEntry>
-ImmutableDefinitionInventory::definitions() const noexcept {
+zc::ArrayPtr<const MaterializedDefinitionInventoryEntry> ImmutableDefinitionInventory::definitions()
+    const noexcept {
   return impl->definitions.asPtr();
 }
 
@@ -448,8 +449,8 @@ ImmutableDefinitionInventory::implAuthorities() const noexcept {
   return impl->implAuthorities.asPtr();
 }
 
-zc::ArrayPtr<const MaterializedImplOccurrenceInventoryEntry>
-ImmutableDefinitionInventory::impls() const noexcept {
+zc::ArrayPtr<const MaterializedImplOccurrenceInventoryEntry> ImmutableDefinitionInventory::impls()
+    const noexcept {
   return impl->impls.asPtr();
 }
 

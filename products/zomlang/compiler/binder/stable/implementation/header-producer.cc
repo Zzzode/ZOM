@@ -43,10 +43,9 @@ bool containsOccurrence(const ImplementationHeaderInput& input) {
   return matches == 1;
 }
 
-bool completeProjections(const ImplementationHeaderInput& input,
-                         ast::NodeId moduleNode) {
-  auto reconstructed = CandidateVerifier::reconstruct(
-      input.parsed, input.queryKey.module(), moduleNode);
+bool completeProjections(const ImplementationHeaderInput& input, ast::NodeId moduleNode) {
+  auto reconstructed =
+      CandidateVerifier::reconstruct(input.parsed, input.queryKey.module(), moduleNode);
   if (!reconstructed.is<VerifiedStableIdentityCandidateInventory>()) { return false; }
   const auto& verified = reconstructed.get<VerifiedStableIdentityCandidateInventory>();
   if (verified.definitions.size() != input.definitionSites.entries().size() ||
@@ -86,16 +85,16 @@ bool completeProjections(const ImplementationHeaderInput& input,
   return true;
 }
 
-zc::Maybe<const identity::DefinitionKey&> definitionKeyAt(
-    const ImplementationHeaderInput& input, ast::NodeId node) {
+zc::Maybe<const identity::DefinitionKey&> definitionKeyAt(const ImplementationHeaderInput& input,
+                                                          ast::NodeId node) {
   for (const auto& site : input.definitionSites.entries()) {
     if (site.node() == node) { return site.definition(); }
   }
   return zc::none;
 }
 
-zc::Maybe<const identity::ImplKey&> implementationKeyAt(
-    const ImplementationHeaderInput& input, ast::NodeId node) {
+zc::Maybe<const identity::ImplKey&> implementationKeyAt(const ImplementationHeaderInput& input,
+                                                        ast::NodeId node) {
   for (const auto& site : input.implementationSites.entries()) {
     if (site.node() == node) { return site.occurrence().implementation(); }
   }
@@ -146,8 +145,7 @@ void sortCanonical(zc::Vector<T>& values) {
 }
 
 zc::Maybe<CanonicalSequence<StableHeaderGenericParameter>> buildGenericParameters(
-    const ImplementationHeaderInput& input,
-    const DefinitionInventory& inventory) {
+    const ImplementationHeaderInput& input, const DefinitionInventory& inventory) {
   zc::Vector<StableHeaderGenericParameter> values;
   uint32_t ordinal = 0;
   for (const auto& parameter : inventory.genericParameters()) {
@@ -202,8 +200,7 @@ zc::Maybe<ImplementationSourceForm> sourceForm(const ast::Tree& tree, ast::NodeI
 
 }  // namespace
 
-zc::Maybe<StableImplementationOccurrenceHeader>
-ImplementationHeaderProducer::produce(
+zc::Maybe<StableImplementationOccurrenceHeader> ImplementationHeaderProducer::produce(
     const ImplementationHeaderInput& input) {
   const auto& occurrence = input.queryKey.occurrence();
   const auto& record = input.entry.record();

@@ -65,10 +65,9 @@ zc::Maybe<const DefinitionInventoryEntry&> definitionAt(const DefinitionInventor
   return zc::none;
 }
 
-bool completeProjections(const DefinitionHeaderInput& input,
-                         ast::NodeId moduleNode) {
-  auto reconstructed = CandidateVerifier::reconstruct(
-      input.parsed, input.queryKey.module(), moduleNode);
+bool completeProjections(const DefinitionHeaderInput& input, ast::NodeId moduleNode) {
+  auto reconstructed =
+      CandidateVerifier::reconstruct(input.parsed, input.queryKey.module(), moduleNode);
   if (!reconstructed.is<VerifiedStableIdentityCandidateInventory>()) { return false; }
   const auto& verified = reconstructed.get<VerifiedStableIdentityCandidateInventory>();
   if (verified.definitions.size() != input.definitionSites.entries().size() ||
@@ -108,16 +107,16 @@ bool completeProjections(const DefinitionHeaderInput& input,
   return true;
 }
 
-zc::Maybe<const identity::DefinitionKey&> definitionKeyAt(
-    const DefinitionHeaderInput& input, ast::NodeId node) {
+zc::Maybe<const identity::DefinitionKey&> definitionKeyAt(const DefinitionHeaderInput& input,
+                                                          ast::NodeId node) {
   for (const auto& site : input.definitionSites.entries()) {
     if (site.node() == node) { return site.definition(); }
   }
   return zc::none;
 }
 
-zc::Maybe<const identity::ImplKey&> implementationKeyAt(
-    const DefinitionHeaderInput& input, ast::NodeId node) {
+zc::Maybe<const identity::ImplKey&> implementationKeyAt(const DefinitionHeaderInput& input,
+                                                        ast::NodeId node) {
   for (const auto& site : input.implementationSites.entries()) {
     if (site.node() == node) { return site.occurrence().implementation(); }
   }
@@ -281,8 +280,7 @@ void sortCanonical(zc::Vector<T>& values) {
 }
 
 zc::Maybe<CanonicalSequence<StableHeaderGenericParameter>> buildGenericParameters(
-    const DefinitionHeaderInput& input, const DefinitionInventory& inventory,
-    ast::NodeId owner) {
+    const DefinitionHeaderInput& input, const DefinitionInventory& inventory, ast::NodeId owner) {
   zc::Vector<StableHeaderGenericParameter> values;
   uint32_t ordinal = 0;
   for (const auto& parameter : inventory.genericParameters()) {

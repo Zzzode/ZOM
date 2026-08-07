@@ -94,10 +94,10 @@ zc::Vector<ScopeRecord> cloneScopes(zc::ArrayPtr<const ScopeRecord> records) {
       zc::Maybe<identity::SourceSpan> alias;
       ZC_IF_SOME(value, entry.binding.aliasSpan) { alias = value.clone(); }
       bindings.add(ScopeBindingEntry(
-          entry.name.clone(), NameBinding(entry.binding.bindingIdentity.clone(),
-                                          entry.binding.canonicalTarget.clone(),
-                                          entry.binding.nameSpace, entry.binding.origin,
-                                          entry.binding.declarationSpan.clone(), zc::mv(alias))));
+          entry.name.clone(),
+          NameBinding(entry.binding.bindingIdentity.clone(), entry.binding.canonicalTarget.clone(),
+                      entry.binding.nameSpace, entry.binding.origin,
+                      entry.binding.declarationSpan.clone(), zc::mv(alias))));
     }
     result.add(ScopeRecord(record.id, zc::mv(parent), record.owner.clone(), record.kind,
                            zc::mv(bindings), record.source.clone()));
@@ -109,10 +109,10 @@ zc::Vector<ModuleAliasBindingFact> cloneModuleAliases(
     zc::ArrayPtr<const ModuleAliasBindingFact> facts) {
   zc::Vector<ModuleAliasBindingFact> result(facts.size());
   for (const auto& fact : facts) {
-    result.add(ModuleAliasBindingFact{fact.node, fact.alias, fact.canonicalTarget,
-                                      ModuleAliasExportNamesRevision::fromDigest(
-                                          fact.targetExportNamesRevision.digest()),
-                                      fact.declarationSpan.clone(), fact.targetSpan.clone()});
+    result.add(ModuleAliasBindingFact{
+        fact.node, fact.alias, fact.canonicalTarget,
+        ModuleAliasExportNamesRevision::fromDigest(fact.targetExportNamesRevision.digest()),
+        fact.declarationSpan.clone(), fact.targetSpan.clone()});
   }
   return result;
 }
@@ -124,11 +124,10 @@ zc::Vector<ImportBindingFact> cloneImports(zc::ArrayPtr<const ImportBindingFact>
     ZC_IF_SOME(value, fact.aliasSpan) { alias = value.clone(); }
     zc::Vector<ReexportProvenanceStep> chain(fact.reexportChain.size());
     for (const auto& step : fact.reexportChain) { chain.add(step.clone()); }
-    result.add(ImportBindingFact{fact.node, fact.binding.clone(), fact.canonicalTarget.clone(),
-                                 fact.sourceModule,
-                                 ExportSurfaceRevision::fromDigest(fact.sourceRevision.digest()),
-                                 fact.kind, fact.declarationSpan.clone(), zc::mv(alias),
-                                 zc::mv(chain)});
+    result.add(ImportBindingFact{
+        fact.node, fact.binding.clone(), fact.canonicalTarget.clone(), fact.sourceModule,
+        ExportSurfaceRevision::fromDigest(fact.sourceRevision.digest()), fact.kind,
+        fact.declarationSpan.clone(), zc::mv(alias), zc::mv(chain)});
   }
   return result;
 }
@@ -147,8 +146,7 @@ zc::Vector<LocalExportFact> cloneLocalExports(zc::ArrayPtr<const LocalExportFact
   return result;
 }
 
-zc::Vector<DeferredMemberFact> cloneDeferredMembers(
-    zc::ArrayPtr<const DeferredMemberFact> facts) {
+zc::Vector<DeferredMemberFact> cloneDeferredMembers(zc::ArrayPtr<const DeferredMemberFact> facts) {
   zc::Vector<DeferredMemberFact> result(facts.size());
   for (const auto& fact : facts) {
     zc::Vector<Namespace> namespaces(fact.expectedNamespaces.size());
@@ -161,23 +159,22 @@ zc::Vector<DeferredMemberFact> cloneDeferredMembers(
   return result;
 }
 
-zc::Vector<BindingResolution> cloneNodeBindings(
-    zc::ArrayPtr<const BindingResolution> facts) {
+zc::Vector<BindingResolution> cloneNodeBindings(zc::ArrayPtr<const BindingResolution> facts) {
   zc::Vector<BindingResolution> result(facts.size());
   for (const auto& fact : facts) {
     const auto& value = fact.value;
     if (value.is<BoundNameResolution>()) {
       const auto& name = value.get<BoundNameResolution>();
-      result.add(BindingResolution{fact.node,
-                                   BindingResolutionValue(BoundNameResolution{
-                                       name.bindingIdentity.clone(), name.canonicalTarget.clone(),
-                                       name.nameSpace, name.origin})});
+      result.add(BindingResolution{
+          fact.node, BindingResolutionValue(BoundNameResolution{name.bindingIdentity.clone(),
+                                                                name.canonicalTarget.clone(),
+                                                                name.nameSpace, name.origin})});
       continue;
     }
     if (value.is<BoundLabelResolution>()) {
       const auto& label = value.get<BoundLabelResolution>();
       result.add(BindingResolution{fact.node, BindingResolutionValue(BoundLabelResolution{
-                                          label.label.clone(), label.target.clone()})});
+                                                  label.label.clone(), label.target.clone()})});
       continue;
     }
     if (value.is<DeferredMemberFact>()) {
@@ -186,16 +183,15 @@ zc::Vector<BindingResolution> cloneNodeBindings(
       for (const auto nameSpace : member.expectedNamespaces) { namespaces.add(nameSpace); }
       zc::Vector<ast::NodeId> arguments(member.genericArguments.size());
       for (const auto argument : member.genericArguments) { arguments.add(argument); }
-      result.add(BindingResolution{fact.node, BindingResolutionValue(DeferredMemberFact{
-                                          member.node, member.base, member.member.clone(),
-                                          zc::mv(namespaces), zc::mv(arguments),
-                                          member.source.clone()})});
+      result.add(BindingResolution{
+          fact.node, BindingResolutionValue(DeferredMemberFact{
+                         member.node, member.base, member.member.clone(), zc::mv(namespaces),
+                         zc::mv(arguments), member.source.clone()})});
       continue;
     }
-    result.add(BindingResolution{fact.node,
-                                 BindingResolutionValue(
-                                     FailedBindingResolution{value.get<FailedBindingResolution>()
-                                                                 .failureIndex})});
+    result.add(
+        BindingResolution{fact.node, BindingResolutionValue(FailedBindingResolution{
+                                         value.get<FailedBindingResolution>().failureIndex})});
   }
   return result;
 }
@@ -204,22 +200,20 @@ zc::Vector<BoundSelfType> cloneSelfTypes(zc::ArrayPtr<const BoundSelfType> facts
   zc::Vector<BoundSelfType> result(facts.size());
   for (const auto& fact : facts) {
     if (fact.owner.is<NominalSelfOwner>()) {
-      result.add(BoundSelfType{fact.syntax,
-                               SelfOwner(NominalSelfOwner{
-                                   fact.owner.get<NominalSelfOwner>().definition}),
-                               fact.source.clone()});
+      result.add(BoundSelfType{
+          fact.syntax, SelfOwner(NominalSelfOwner{fact.owner.get<NominalSelfOwner>().definition}),
+          fact.source.clone()});
       continue;
     }
     if (fact.owner.is<InterfaceSelfOwner>()) {
-      result.add(BoundSelfType{fact.syntax,
-                               SelfOwner(InterfaceSelfOwner{
-                                   fact.owner.get<InterfaceSelfOwner>().definition}),
-                               fact.source.clone()});
+      result.add(BoundSelfType{
+          fact.syntax,
+          SelfOwner(InterfaceSelfOwner{fact.owner.get<InterfaceSelfOwner>().definition}),
+          fact.source.clone()});
       continue;
     }
     result.add(BoundSelfType{fact.syntax,
-                             SelfOwner(ImplSelfOwner{
-                                 fact.owner.get<ImplSelfOwner>().occurrence}),
+                             SelfOwner(ImplSelfOwner{fact.owner.get<ImplSelfOwner>().occurrence}),
                              fact.source.clone()});
   }
   return result;
@@ -249,11 +243,10 @@ zc::Vector<ControlTransferFact> cloneControlTransfers(
   for (const auto& fact : facts) {
     const auto& target = fact.target;
     if (target.is<ExplicitLabelControlTarget>()) {
-      result.add(ControlTransferFact{
-          fact.node, fact.kind,
-          ControlTarget(ExplicitLabelControlTarget{
-              target.get<ExplicitLabelControlTarget>().label.clone()}),
-          fact.source.clone()});
+      result.add(ControlTransferFact{fact.node, fact.kind,
+                                     ControlTarget(ExplicitLabelControlTarget{
+                                         target.get<ExplicitLabelControlTarget>().label.clone()}),
+                                     fact.source.clone()});
       continue;
     }
     if (target.is<LoopControlTarget>()) {
@@ -300,8 +293,8 @@ zc::Vector<ExplicitClosureCaptureFact> cloneExplicitClosureCaptures(
   for (const auto& fact : facts) {
     zc::Vector<ExplicitCaptureBindingFact> captures(fact.captures.size());
     for (const auto& capture : fact.captures) {
-      captures.add(ExplicitCaptureBindingFact{capture.item, capture.target.clone(),
-                                              capture.source.clone()});
+      captures.add(
+          ExplicitCaptureBindingFact{capture.item, capture.target.clone(), capture.source.clone()});
     }
     result.add(ExplicitClosureCaptureFact{fact.closure.clone(), fact.captureList,
                                           fact.source.clone(), zc::mv(captures)});
@@ -412,57 +405,43 @@ zc::Maybe<ImmutableBindingMetadata> ImmutableBindingMetadata::from(
   auto allocationPlan =
       ModuleBindingAllocationPlanner::from(skeleton, ownerBodies.asPtr().asConst());
   if (allocationPlan == zc::none) { return zc::none; }
-  return ImmutableBindingMetadata(zc::heap<Impl>(context, revision, fingerprint.clone(),
-                                                 zc::mv(skeleton), zc::mv(ownerBodies),
-                                                 zc::mv(ZC_ASSERT_NONNULL(allocationPlan)),
-                                                 cloneNodeScopes(facts.nodeScopes),
-                                                 cloneNodeBindings(facts.nodeBindings),
-                                                 cloneSelfTypes(facts.selfTypes),
-                                                 cloneThisBindings(facts.thisBindings),
-                                                 cloneDefinitions(facts.definitions),
-                                                 cloneImplementations(facts.implementations),
-                                                 cloneScopes(facts.scopes),
-                                                 cloneModuleAliases(facts.moduleAliases),
-                                                 cloneImports(facts.imports),
-                                                 cloneLocalExports(facts.localExports),
-                                                 cloneDeferredMembers(facts.deferredMembers),
-                                                 cloneLabels(facts.labels),
-                                                 cloneControlTransfers(facts.controlTransfers),
-                                                 cloneShadowTargets(facts.shadowTargets),
-                                                 cloneClosureFreeVariables(
-                                                     facts.closureFreeVariables),
-                                                 cloneExplicitClosureCaptures(
-                                                     facts.explicitClosureCaptures),
-                                                 cloneGenericParameters(facts.genericParameters),
-                                                 cloneCallableParameters(facts.callableParameters),
-                                                 cloneOwnerLocalBindings(facts.ownerLocalBindings),
-                                                 cloneFailedLookups(facts.failedLookups)));
+  return ImmutableBindingMetadata(zc::heap<Impl>(
+      context, revision, fingerprint.clone(), zc::mv(skeleton), zc::mv(ownerBodies),
+      zc::mv(ZC_ASSERT_NONNULL(allocationPlan)), cloneNodeScopes(facts.nodeScopes),
+      cloneNodeBindings(facts.nodeBindings), cloneSelfTypes(facts.selfTypes),
+      cloneThisBindings(facts.thisBindings), cloneDefinitions(facts.definitions),
+      cloneImplementations(facts.implementations), cloneScopes(facts.scopes),
+      cloneModuleAliases(facts.moduleAliases), cloneImports(facts.imports),
+      cloneLocalExports(facts.localExports), cloneDeferredMembers(facts.deferredMembers),
+      cloneLabels(facts.labels), cloneControlTransfers(facts.controlTransfers),
+      cloneShadowTargets(facts.shadowTargets),
+      cloneClosureFreeVariables(facts.closureFreeVariables),
+      cloneExplicitClosureCaptures(facts.explicitClosureCaptures),
+      cloneGenericParameters(facts.genericParameters),
+      cloneCallableParameters(facts.callableParameters),
+      cloneOwnerLocalBindings(facts.ownerLocalBindings), cloneFailedLookups(facts.failedLookups)));
 }
 
 ImmutableBindingMetadata ImmutableBindingMetadata::clone() const {
   zc::Vector<BoundOwnerBody> ownerBodies;
   for (const auto& ownerBody : impl->ownerBodies) { ownerBodies.add(ownerBody.clone()); }
-  return ImmutableBindingMetadata(
-      zc::heap<Impl>(impl->context, impl->revision, impl->fingerprint.clone(),
-                     impl->skeleton.clone(), zc::mv(ownerBodies), impl->allocationPlan.clone(),
-                     cloneNodeScopes(impl->nodeScopes.asPtr()),
-                     cloneNodeBindings(impl->nodeBindings.asPtr()),
-                     cloneSelfTypes(impl->selfTypes.asPtr()),
-                     cloneThisBindings(impl->thisBindings.asPtr()),
-                     cloneDefinitions(impl->definitions.asPtr()),
-                     cloneImplementations(impl->implementations.asPtr()),
-                     cloneScopes(impl->scopes.asPtr()),
-                     cloneModuleAliases(impl->moduleAliases.asPtr()),
-                     cloneImports(impl->imports.asPtr()), cloneLocalExports(impl->localExports.asPtr()),
-                     cloneDeferredMembers(impl->deferredMembers.asPtr()), cloneLabels(impl->labels.asPtr()),
-                     cloneControlTransfers(impl->controlTransfers.asPtr()),
-                     cloneShadowTargets(impl->shadowTargets.asPtr()),
-                     cloneClosureFreeVariables(impl->closureFreeVariables.asPtr()),
-                     cloneExplicitClosureCaptures(impl->explicitClosureCaptures.asPtr()),
-                     cloneGenericParameters(impl->genericParameters.asPtr()),
-                     cloneCallableParameters(impl->callableParameters.asPtr()),
-                     cloneOwnerLocalBindings(impl->ownerLocalBindings.asPtr()),
-                     cloneFailedLookups(impl->failedLookups.asPtr())));
+  return ImmutableBindingMetadata(zc::heap<Impl>(
+      impl->context, impl->revision, impl->fingerprint.clone(), impl->skeleton.clone(),
+      zc::mv(ownerBodies), impl->allocationPlan.clone(), cloneNodeScopes(impl->nodeScopes.asPtr()),
+      cloneNodeBindings(impl->nodeBindings.asPtr()), cloneSelfTypes(impl->selfTypes.asPtr()),
+      cloneThisBindings(impl->thisBindings.asPtr()), cloneDefinitions(impl->definitions.asPtr()),
+      cloneImplementations(impl->implementations.asPtr()), cloneScopes(impl->scopes.asPtr()),
+      cloneModuleAliases(impl->moduleAliases.asPtr()), cloneImports(impl->imports.asPtr()),
+      cloneLocalExports(impl->localExports.asPtr()),
+      cloneDeferredMembers(impl->deferredMembers.asPtr()), cloneLabels(impl->labels.asPtr()),
+      cloneControlTransfers(impl->controlTransfers.asPtr()),
+      cloneShadowTargets(impl->shadowTargets.asPtr()),
+      cloneClosureFreeVariables(impl->closureFreeVariables.asPtr()),
+      cloneExplicitClosureCaptures(impl->explicitClosureCaptures.asPtr()),
+      cloneGenericParameters(impl->genericParameters.asPtr()),
+      cloneCallableParameters(impl->callableParameters.asPtr()),
+      cloneOwnerLocalBindings(impl->ownerLocalBindings.asPtr()),
+      cloneFailedLookups(impl->failedLookups.asPtr())));
 }
 
 identity::SemanticContextBrand ImmutableBindingMetadata::semanticContext() const noexcept {
@@ -522,7 +501,8 @@ zc::ArrayPtr<const ImplBindingFact> ImmutableBindingMetadata::implementations() 
 zc::ArrayPtr<const ScopeRecord> ImmutableBindingMetadata::scopes() const noexcept {
   return impl->scopes.asPtr();
 }
-zc::ArrayPtr<const ModuleAliasBindingFact> ImmutableBindingMetadata::moduleAliases() const noexcept {
+zc::ArrayPtr<const ModuleAliasBindingFact> ImmutableBindingMetadata::moduleAliases()
+    const noexcept {
   return impl->moduleAliases.asPtr();
 }
 zc::ArrayPtr<const ImportBindingFact> ImmutableBindingMetadata::imports() const noexcept {
@@ -537,7 +517,8 @@ zc::ArrayPtr<const DeferredMemberFact> ImmutableBindingMetadata::deferredMembers
 zc::ArrayPtr<const LabelFact> ImmutableBindingMetadata::labels() const noexcept {
   return impl->labels.asPtr();
 }
-zc::ArrayPtr<const ControlTransferFact> ImmutableBindingMetadata::controlTransfers() const noexcept {
+zc::ArrayPtr<const ControlTransferFact> ImmutableBindingMetadata::controlTransfers()
+    const noexcept {
   return impl->controlTransfers.asPtr();
 }
 zc::ArrayPtr<const ShadowTargetFact> ImmutableBindingMetadata::shadowTargets() const noexcept {
@@ -551,10 +532,12 @@ zc::ArrayPtr<const ExplicitClosureCaptureFact> ImmutableBindingMetadata::explici
     const noexcept {
   return impl->explicitClosureCaptures.asPtr();
 }
-zc::ArrayPtr<const GenericParameterFact> ImmutableBindingMetadata::genericParameters() const noexcept {
+zc::ArrayPtr<const GenericParameterFact> ImmutableBindingMetadata::genericParameters()
+    const noexcept {
   return impl->genericParameters.asPtr();
 }
-zc::ArrayPtr<const CallableParameterFact> ImmutableBindingMetadata::callableParameters() const noexcept {
+zc::ArrayPtr<const CallableParameterFact> ImmutableBindingMetadata::callableParameters()
+    const noexcept {
   return impl->callableParameters.asPtr();
 }
 zc::ArrayPtr<const OwnerLocalBindingFact> ImmutableBindingMetadata::ownerLocalBindings()
@@ -583,12 +566,16 @@ bool ImmutableBindingMetadata::matches(identity::SemanticContextBrand context,
   }
   return nodeScopes().size() == facts.nodeScopes.size() &&
          nodeBindings().size() == facts.nodeBindings.size() &&
-         selfTypes().size() == facts.selfTypes.size() && thisBindings().size() == facts.thisBindings.size() &&
+         selfTypes().size() == facts.selfTypes.size() &&
+         thisBindings().size() == facts.thisBindings.size() &&
          definitions().size() == facts.definitions.size() &&
-         implementations().size() == facts.implementations.size() && scopes().size() == facts.scopes.size() &&
-         moduleAliases().size() == facts.moduleAliases.size() && imports().size() == facts.imports.size() &&
+         implementations().size() == facts.implementations.size() &&
+         scopes().size() == facts.scopes.size() &&
+         moduleAliases().size() == facts.moduleAliases.size() &&
+         imports().size() == facts.imports.size() &&
          localExports().size() == facts.localExports.size() &&
-         deferredMembers().size() == facts.deferredMembers.size() && labels().size() == facts.labels.size() &&
+         deferredMembers().size() == facts.deferredMembers.size() &&
+         labels().size() == facts.labels.size() &&
          controlTransfers().size() == facts.controlTransfers.size() &&
          shadowTargets().size() == facts.shadowTargets.size() &&
          closureFreeVariables().size() == facts.closureFreeVariables.size() &&

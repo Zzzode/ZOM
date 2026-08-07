@@ -79,7 +79,9 @@ VerifiedExportSurface VerifiedExportSurface::clone() const {
       cloneEntries(impl->visibleEntries.asPtr()), cloneEntries(impl->exports.asPtr())));
 }
 
-identity::ModuleId VerifiedExportSurface::sourceModule() const noexcept { return impl->sourceModule; }
+identity::ModuleId VerifiedExportSurface::sourceModule() const noexcept {
+  return impl->sourceModule;
+}
 
 identity::CompilationUnitId VerifiedExportSurface::sourceCompilationUnit() const noexcept {
   return impl->sourceCompilationUnit;

@@ -4026,6 +4026,38 @@ ZC_TEST("Named-item syntax forwards selected-source rejection") {
   ZC_REQUIRE(syntax.kind() == query::QueryValueKind::SemanticFailure);
 }
 
+ZC_TEST("Named-item syntax projects a missing selected module source") {
+  auto database = queryDatabase(scheduler());
+  ZC_REQUIRE(registerIncrementalBindingQueryAdapter(database));
+  ContextualIdentityAuthorityInputLedger state;
+  auto roots = packageRoots();
+  auto module = stableModule();
+  stageBaseInputs(state, database, "module root;\nclass Alpha {}\n"_zc);
+  ZC_REQUIRE(commitAuthority(state, database, roots));
+
+  auto snapshot = database.snapshot();
+  auto inventory = snapshot.get<NamedDefinitionInventoryQuery>(module);
+  ZC_REQUIRE(inventory.kind() == query::QueryValueKind::Value);
+  ZC_REQUIRE(inventory.value().entries().size() == 1);
+  auto itemKey = contextual(roots, semanticModule(), inventory.value().entries()[0].key().clone());
+
+  auto opened = database.beginInputTransaction(snapshot.revision());
+  ZC_REQUIRE(opened.isOpened());
+  auto transaction = zc::mv(opened).takeTransaction();
+  zc::Vector<graph_query::SelectedModuleRecord> entries;
+  entries.add(graph_query::SelectedModuleRecord(namedSemanticModule("other"_zc),
+                                                namedSource("other.zom"_zc)));
+  auto catalog = graph_query::SelectedModuleCatalog::from(crate(), zc::mv(entries));
+  ZC_REQUIRE(catalog != zc::none);
+  ZC_REQUIRE(
+      transaction.set<graph_query::SelectedModuleCatalogInput>(crate(), ZC_REQUIRE_NONNULL(catalog))
+          .isApplied());
+  ZC_REQUIRE(transaction.commit().isCommitted());
+
+  auto result = database.snapshot().get<NamedItemSyntaxQuery>(itemKey);
+  ZC_REQUIRE(result.kind() == query::QueryValueKind::SemanticFailure);
+}
+
 ZC_TEST("Named-item syntax requires a committed authority transaction") {
   auto database = queryDatabase(scheduler());
   ZC_REQUIRE(registerIncrementalBindingQueryAdapter(database));

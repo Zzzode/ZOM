@@ -5,7 +5,6 @@
 
 #include "zomlang/compiler/binder/stable/implementation/header-producer.h"
 
-#include "zomlang/tests/unittests/compiler/binder/parsed-module-query-test-fixture.h"
 #include "zc/ztest/test.h"
 #include "zomlang/compiler/ast/generated/node-payload.h"
 #include "zomlang/compiler/basic/string-pool.h"
@@ -15,6 +14,7 @@
 #include "zomlang/compiler/binder/stable/candidate/verifier.h"
 #include "zomlang/compiler/diagnostics/source-diagnostic-draft-buffer.h"
 #include "zomlang/compiler/parser/parser.h"
+#include "zomlang/tests/unittests/compiler/binder/parsed-module-query-test-fixture.h"
 #include "zomlang/tests/unittests/compiler/test-semantic-identities.h"
 
 namespace zomlang::compiler::binder {
@@ -76,10 +76,10 @@ struct HeaderFixture final {
     const auto syntax = DefinitionInventory::collect(parsed().tree());
     ZC_REQUIRE(syntax.modules().size() == 1);
     moduleNode = syntax.modules()[0].node;
-    auto production = CandidateProducer::produce(
-        parsed(), tests::test_identity_detail::module(), moduleNode);
-    auto verified = CandidateVerifier::verify(
-        parsed(), tests::test_identity_detail::module(), moduleNode, production);
+    auto production =
+        CandidateProducer::produce(parsed(), tests::test_identity_detail::module(), moduleNode);
+    auto verified = CandidateVerifier::verify(parsed(), tests::test_identity_detail::module(),
+                                              moduleNode, production);
     ZC_REQUIRE(verified.is<VerifiedStableIdentityCandidateInventory>());
     auto candidates = zc::mv(verified.get<VerifiedStableIdentityCandidateInventory>());
     ZC_REQUIRE(candidates.implementations.size() == 5);
@@ -168,9 +168,8 @@ StableImplementationOccurrenceHeader produce(const HeaderFixture& fixture, size_
   auto query = require(StableImplementationOccurrenceQueryKey::from(
       tests::test_identity_detail::module(), site.occurrence().clone()));
   return require(ImplementationHeaderProducer::produce(
-      ImplementationHeaderInput{fixture.parsed(), query, entry, site,
-                                                          fixture.definitionSites(),
-                                                          fixture.implementationSites()}));
+      ImplementationHeaderInput{fixture.parsed(), query, entry, site, fixture.definitionSites(),
+                                fixture.implementationSites()}));
 }
 
 bool hasRole(const StableImplementationOccurrenceHeader& header, ScopeRole role) {
@@ -288,10 +287,9 @@ ZC_TEST("ImplementationHeaderProducer rejects one-field input mutations") {
   const auto& otherEntry = fixture.entry(otherSite.occurrence().implementation());
   auto wrongOccurrence = require(StableImplementationOccurrenceQueryKey::from(
       tests::test_identity_detail::module(), otherSite.occurrence().clone()));
-  ZC_EXPECT(ImplementationHeaderProducer::produce(
-                ImplementationHeaderInput{
-                    fixture.parsed(), wrongOccurrence, entry, site, fixture.definitionSites(),
-                    fixture.implementationSites()}) == zc::none);
+  ZC_EXPECT(ImplementationHeaderProducer::produce(ImplementationHeaderInput{
+                fixture.parsed(), wrongOccurrence, entry, site, fixture.definitionSites(),
+                fixture.implementationSites()}) == zc::none);
 
   auto module = foreignModule();
   zc::Vector<uint32_t> syntaxPath;
@@ -301,25 +299,21 @@ ZC_TEST("ImplementationHeaderProducer rejects one-field input mutations") {
   auto foreignOccurrence = ImplSourceOccurrenceKey::from(entry.key().clone(), zc::mv(foreignSite));
   auto wrongModule = require(
       StableImplementationOccurrenceQueryKey::from(zc::mv(module), zc::mv(foreignOccurrence)));
-  ZC_EXPECT(ImplementationHeaderProducer::produce(
-                ImplementationHeaderInput{
-                    fixture.parsed(), wrongModule, entry, site, fixture.definitionSites(),
-                    fixture.implementationSites()}) == zc::none);
+  ZC_EXPECT(ImplementationHeaderProducer::produce(ImplementationHeaderInput{
+                fixture.parsed(), wrongModule, entry, site, fixture.definitionSites(),
+                fixture.implementationSites()}) == zc::none);
 
   HeaderFixture otherSource(sourceFile("other.zom"_zc));
-  ZC_EXPECT(ImplementationHeaderProducer::produce(
-                ImplementationHeaderInput{
-                    otherSource.parsed(), query, entry, site, fixture.definitionSites(),
-                    fixture.implementationSites()}) == zc::none);
+  ZC_EXPECT(ImplementationHeaderProducer::produce(ImplementationHeaderInput{
+                otherSource.parsed(), query, entry, site, fixture.definitionSites(),
+                fixture.implementationSites()}) == zc::none);
 
-  ZC_EXPECT(ImplementationHeaderProducer::produce(
-                ImplementationHeaderInput{
-                    fixture.parsed(), query, otherEntry, site, fixture.definitionSites(),
-                    fixture.implementationSites()}) == zc::none);
-  ZC_EXPECT(ImplementationHeaderProducer::produce(
-                ImplementationHeaderInput{
-                    fixture.parsed(), query, entry, otherSite, fixture.definitionSites(),
-                    fixture.implementationSites()}) == zc::none);
+  ZC_EXPECT(ImplementationHeaderProducer::produce(ImplementationHeaderInput{
+                fixture.parsed(), query, otherEntry, site, fixture.definitionSites(),
+                fixture.implementationSites()}) == zc::none);
+  ZC_EXPECT(ImplementationHeaderProducer::produce(ImplementationHeaderInput{
+                fixture.parsed(), query, entry, otherSite, fixture.definitionSites(),
+                fixture.implementationSites()}) == zc::none);
 
   zc::Vector<RevisionLocalDefinitionSite> emptyDefinitionsInput;
   auto emptyDefinitions = require(NamedDefinitionInventory::fromVerified(
@@ -327,10 +321,9 @@ ZC_TEST("ImplementationHeaderProducer rejects one-field input mutations") {
   auto emptyDefinitionSites = require(RevisionLocalDefinitionSites::fromVerified(
       tests::test_identity_detail::module(), fixture.parsed().source(), emptyDefinitions,
       zc::mv(emptyDefinitionsInput)));
-  ZC_EXPECT(ImplementationHeaderProducer::produce(
-                ImplementationHeaderInput{
-                    fixture.parsed(), query, entry, site, emptyDefinitionSites,
-                    fixture.implementationSites()}) == zc::none);
+  ZC_EXPECT(ImplementationHeaderProducer::produce(ImplementationHeaderInput{
+                fixture.parsed(), query, entry, site, emptyDefinitionSites,
+                fixture.implementationSites()}) == zc::none);
 
   zc::Vector<RevisionLocalImplementationSite> incompleteInput;
   incompleteInput.add(site.clone());
@@ -338,16 +331,14 @@ ZC_TEST("ImplementationHeaderProducer rejects one-field input mutations") {
       tests::test_identity_detail::module(), fixture.parsed().source(), fixture.implementations(),
       zc::mv(incompleteInput)));
   ZC_EXPECT(ImplementationHeaderProducer::produce(
-                ImplementationHeaderInput{fixture.parsed(), query, entry,
-                                                                    site, fixture.definitionSites(),
-                                                                    incompleteSites}) == zc::none);
+                ImplementationHeaderInput{fixture.parsed(), query, entry, site,
+                                          fixture.definitionSites(), incompleteSites}) == zc::none);
 
   for (const auto mutation : {SiteMutation::Key, SiteMutation::Node, SiteMutation::Range}) {
     auto mutated = mutateOccurrence(fixture, site, mutation);
-    ZC_EXPECT(ImplementationHeaderProducer::produce(
-                  ImplementationHeaderInput{
-                      fixture.parsed(), query, entry, matchingOccurrence(mutated, entry.key()),
-                      fixture.definitionSites(), fixture.implementationSites()}) == zc::none);
+    ZC_EXPECT(ImplementationHeaderProducer::produce(ImplementationHeaderInput{
+                  fixture.parsed(), query, entry, matchingOccurrence(mutated, entry.key()),
+                  fixture.definitionSites(), fixture.implementationSites()}) == zc::none);
   }
 }
 

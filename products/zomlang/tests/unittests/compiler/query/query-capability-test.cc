@@ -16,6 +16,7 @@
 #include "zc/core/mutex.h"
 #include "zc/core/thread.h"
 #include "zc/ztest/test.h"
+#include "zomlang/compiler/binder/canonical-input-payload-digest.h"
 #include "zomlang/compiler/driver/active-definition-authority-query.h"
 #include "zomlang/compiler/driver/core-library-query-provider.h"
 #include "zomlang/compiler/driver/incremental-binding-query-adapter.h"
@@ -428,6 +429,19 @@ binding_query::CompilationRootSetQueryKey installProductionFinalSealInputs(
                  .isApplied());
   ZC_REQUIRE(transaction.commit().isCommitted());
   return roots;
+}
+
+ZC_TEST("Canonical input payload digest preserves canonical bytes") {
+  auto expectedDigest = digest(0xa5);
+  auto bytes = expectedDigest.bytes();
+  auto value = binder::CanonicalInputPayloadDigest::fromBytes(bytes);
+  ZC_REQUIRE(value != zc::none);
+  auto clone = ZC_ASSERT_NONNULL(value).clone();
+  ZC_EXPECT(clone == ZC_ASSERT_NONNULL(value));
+  ZC_EXPECT(clone.bytes() == bytes);
+
+  auto malformed = zc::heapArray<uint8_t>(bytes.size() - 1);
+  ZC_EXPECT(binder::CanonicalInputPayloadDigest::fromBytes(malformed.asPtr()) == zc::none);
 }
 
 void registerCapabilityKinds(QueryDatabase& database) {

@@ -1197,8 +1197,7 @@ StableIdentityCandidateVerification CandidateVerifier::verify(
   return reconstructStableCandidates(parsedModule, module, moduleNode, &production);
 }
 
-StableDefinitionRedeclarationValidation
-CandidateVerifier::findDefinitionRedeclarations(
+StableDefinitionRedeclarationValidation CandidateVerifier::findDefinitionRedeclarations(
     zc::ArrayPtr<const VerifiedStableDefinitionCandidate> definitions) {
   if (definitions.size() > UINT32_MAX) {
     return invariant(StableIdentityCandidateInvariantKind::ProductionMismatch, ast::NodeId());
@@ -1256,8 +1255,7 @@ StableIdentityAdmissionVerification StableIdentityAdmissionVerifier::verify(
     return StableIdentityCandidateInvariant{StableIdentityCandidateInvariantKind::InvalidSyntaxSite,
                                             moduleNode};
   }
-  auto verification =
-      CandidateVerifier::verify(parsedModule, module, moduleNode, production);
+  auto verification = CandidateVerifier::verify(parsedModule, module, moduleNode, production);
   if (verification.is<StableIdentityCandidateSourceFailure>()) {
     return zc::mv(verification.get<StableIdentityCandidateSourceFailure>());
   }

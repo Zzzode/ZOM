@@ -1061,9 +1061,7 @@ zc::Maybe<OwnerBodyLookupFacts> projectOwnerBodyLookups(
       name = syntax.nodes()[entry.nodeIndex].identifierField(0);
     } else if (entry.syntaxKind == ast::SyntaxKind::ModulePath ||
                entry.syntaxKind == ast::SyntaxKind::AttributePath) {
-      if (entry.parentIndex == kNoParent || entry.parentIndex >= entries.size()) {
-        continue;
-      }
+      if (entry.parentIndex == kNoParent || entry.parentIndex >= entries.size()) { continue; }
       const auto parentKind = entries[entry.parentIndex].syntaxKind;
       if ((entry.syntaxKind == ast::SyntaxKind::ModulePath &&
            parentKind != ast::SyntaxKind::NamedTypeExpr) ||
@@ -1859,9 +1857,7 @@ bool OwnerBodyLookupProjection::verify(
       name = syntax.nodes()[entry.nodeIndex].identifierField(0);
     } else if (entry.syntaxKind == ast::SyntaxKind::ModulePath ||
                entry.syntaxKind == ast::SyntaxKind::AttributePath) {
-      if (entry.parentIndex == kNoParent || entry.parentIndex >= entries.size()) {
-        continue;
-      }
+      if (entry.parentIndex == kNoParent || entry.parentIndex >= entries.size()) { continue; }
       const auto parentKind = entries[entry.parentIndex].syntaxKind;
       if ((entry.syntaxKind == ast::SyntaxKind::ModulePath &&
            parentKind != ast::SyntaxKind::NamedTypeExpr) ||
@@ -2166,9 +2162,9 @@ zc::Maybe<OwnerBodyDeferredMemberProjection> OwnerBodyDeferredMemberProjection::
       return zc::none;
     }
     auto basePath = providerChildPath(entry.path, ZC_ASSERT_NONNULL(path).firstChildOrdinal);
-    auto baseEntry =
-        basePath == zc::none ? zc::Maybe<const OwnerBodySyntaxPathEntry&>()
-                             : providerEntryAtPath(entries, ZC_ASSERT_NONNULL(basePath));
+    auto baseEntry = basePath == zc::none
+                         ? zc::Maybe<const OwnerBodySyntaxPathEntry&>()
+                         : providerEntryAtPath(entries, ZC_ASSERT_NONNULL(basePath));
     if (baseEntry == zc::none ||
         ZC_ASSERT_NONNULL(baseEntry).syntaxKind != ast::SyntaxKind::ModulePath) {
       return zc::none;
@@ -2178,8 +2174,8 @@ zc::Maybe<OwnerBodyDeferredMemberProjection> OwnerBodyDeferredMemberProjection::
     if (segments == zc::none || ZC_ASSERT_NONNULL(segments).size() < 2) { continue; }
     zc::Vector<LocalSyntaxPath> genericArguments(ZC_ASSERT_NONNULL(arguments).childCount);
     for (uint32_t index = 0; index < ZC_ASSERT_NONNULL(arguments).childCount; ++index) {
-      auto argumentPath = providerChildPath(
-          entry.path, ZC_ASSERT_NONNULL(arguments).firstChildOrdinal + index);
+      auto argumentPath =
+          providerChildPath(entry.path, ZC_ASSERT_NONNULL(arguments).firstChildOrdinal + index);
       if (argumentPath == zc::none ||
           providerEntryAtPath(entries, ZC_ASSERT_NONNULL(argumentPath)) == zc::none) {
         return zc::none;
@@ -2192,9 +2188,7 @@ zc::Maybe<OwnerBodyDeferredMemberProjection> OwnerBodyDeferredMemberProjection::
         StableBindingSequenceBuilder<Namespace>::fromNonEmpty(zc::mv(namespaces));
     auto admittedGenericArguments =
         StableBindingSequenceBuilder<LocalSyntaxPath>::from(zc::mv(genericArguments));
-    if (expectedNamespaces == zc::none || admittedGenericArguments == zc::none) {
-      return zc::none;
-    }
+    if (expectedNamespaces == zc::none || admittedGenericArguments == zc::none) { return zc::none; }
     auto fact = StableDeferredMemberFact::from(
         owner.clone(), entry.path.clone(), zc::mv(ZC_ASSERT_NONNULL(basePath)),
         MemberAccessKind::Qualified, ZC_ASSERT_NONNULL(segments).back().clone(),
@@ -2311,8 +2305,8 @@ bool OwnerBodyDeferredMemberProjection::verify(
     if (segments == zc::none || ZC_ASSERT_NONNULL(segments).size() < 2) { continue; }
     zc::Vector<LocalSyntaxPath> genericArguments(ZC_ASSERT_NONNULL(arguments).childCount);
     for (uint32_t index = 0; index < ZC_ASSERT_NONNULL(arguments).childCount; ++index) {
-      auto argumentPath = verifierChildPath(
-          entry.path, ZC_ASSERT_NONNULL(arguments).firstChildOrdinal + index);
+      auto argumentPath =
+          verifierChildPath(entry.path, ZC_ASSERT_NONNULL(arguments).firstChildOrdinal + index);
       if (argumentPath == zc::none || !containsPath(ZC_ASSERT_NONNULL(argumentPath))) {
         return false;
       }
@@ -2324,9 +2318,7 @@ bool OwnerBodyDeferredMemberProjection::verify(
         StableBindingSequenceBuilder<Namespace>::fromNonEmpty(zc::mv(namespaces));
     auto admittedGenericArguments =
         StableBindingSequenceBuilder<LocalSyntaxPath>::from(zc::mv(genericArguments));
-    if (expectedNamespaces == zc::none || admittedGenericArguments == zc::none) {
-      return false;
-    }
+    if (expectedNamespaces == zc::none || admittedGenericArguments == zc::none) { return false; }
     auto fact = StableDeferredMemberFact::from(
         owner.clone(), entry.path.clone(), zc::mv(ZC_ASSERT_NONNULL(basePath)),
         MemberAccessKind::Qualified, ZC_ASSERT_NONNULL(segments).back().clone(),

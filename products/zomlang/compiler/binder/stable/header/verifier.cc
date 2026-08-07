@@ -560,8 +560,8 @@ bool StableHeaderVerifier::verifyDefinition(const StableHeaderVerificationContex
       ZC_ASSERT_NONNULL(syntax).nameKind != InventoryDefinitionNameKind::Declared) {
     return false;
   }
-  auto reconstructed = CandidateVerifier::reconstruct(
-      context.parsed, queryKey.module(), ZC_ASSERT_NONNULL(syntax).moduleNode);
+  auto reconstructed = CandidateVerifier::reconstruct(context.parsed, queryKey.module(),
+                                                      ZC_ASSERT_NONNULL(syntax).moduleNode);
   if (!reconstructed.is<VerifiedStableIdentityCandidateInventory>() ||
       !completeAuthority(context, reconstructed.get<VerifiedStableIdentityCandidateInventory>()) ||
       !matchesOwners(context, ZC_ASSERT_NONNULL(syntax).parentPath.asPtr(),
@@ -615,8 +615,8 @@ bool StableHeaderVerifier::verifyImplementationOccurrence(
   const auto inventory = DefinitionInventory::collect(context.parsed.tree());
   auto syntax = implementationAt(inventory, ZC_ASSERT_NONNULL(occurrence).node());
   if (syntax == zc::none) { return false; }
-  auto reconstructed = CandidateVerifier::reconstruct(
-      context.parsed, queryKey.module(), ZC_ASSERT_NONNULL(syntax).moduleNode);
+  auto reconstructed = CandidateVerifier::reconstruct(context.parsed, queryKey.module(),
+                                                      ZC_ASSERT_NONNULL(syntax).moduleNode);
   if (!reconstructed.is<VerifiedStableIdentityCandidateInventory>() ||
       !completeAuthority(context, reconstructed.get<VerifiedStableIdentityCandidateInventory>()) ||
       !matchesOwners(context, ZC_ASSERT_NONNULL(syntax).parentPath.asPtr(),

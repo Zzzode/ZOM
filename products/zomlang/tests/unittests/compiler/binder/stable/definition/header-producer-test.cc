@@ -5,7 +5,6 @@
 
 #include "zomlang/compiler/binder/stable/definition/header-producer.h"
 
-#include "zomlang/tests/unittests/compiler/binder/parsed-module-query-test-fixture.h"
 #include "zc/ztest/test.h"
 #include "zomlang/compiler/ast/generated/node-payload.h"
 #include "zomlang/compiler/basic/string-pool.h"
@@ -15,6 +14,7 @@
 #include "zomlang/compiler/binder/stable/candidate/verifier.h"
 #include "zomlang/compiler/diagnostics/source-diagnostic-draft-buffer.h"
 #include "zomlang/compiler/parser/parser.h"
+#include "zomlang/tests/unittests/compiler/binder/parsed-module-query-test-fixture.h"
 #include "zomlang/tests/unittests/compiler/test-semantic-identities.h"
 
 namespace zomlang::compiler::binder {
@@ -98,10 +98,10 @@ struct HeaderFixture final {
           ast::ModuleDeclarationForm::Alias);
       moduleNode = ast::NodeId();
     }
-    auto production = CandidateProducer::produce(
-        parsed(), tests::test_identity_detail::module(), moduleNode);
-    auto verified = CandidateVerifier::verify(
-        parsed(), tests::test_identity_detail::module(), moduleNode, production);
+    auto production =
+        CandidateProducer::produce(parsed(), tests::test_identity_detail::module(), moduleNode);
+    auto verified = CandidateVerifier::verify(parsed(), tests::test_identity_detail::module(),
+                                              moduleNode, production);
     ZC_REQUIRE(verified.is<VerifiedStableIdentityCandidateInventory>());
     auto candidates = zc::mv(verified.get<VerifiedStableIdentityCandidateInventory>());
 
@@ -196,9 +196,9 @@ StableDefinitionHeader produce(const HeaderFixture& fixture, zc::StringPtr name)
   const auto& entry = fixture.entry(name);
   auto query =
       StableDefinitionQueryKey::from(tests::test_identity_detail::module(), entry.key().clone());
-  return require(DefinitionHeaderProducer::produce(DefinitionHeaderInput{
-      fixture.parsed(), query, entry, fixture.firstSite(entry.key()), fixture.definitionSites(),
-      fixture.implementationSites()}));
+  return require(DefinitionHeaderProducer::produce(
+      DefinitionHeaderInput{fixture.parsed(), query, entry, fixture.firstSite(entry.key()),
+                            fixture.definitionSites(), fixture.implementationSites()}));
 }
 
 bool hasRole(const StableDefinitionHeader& header, ScopeRole role) {

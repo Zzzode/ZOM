@@ -5,19 +5,19 @@
 
 #pragma once
 
-#include "zomlang/tests/unittests/compiler/binder/parsed-module-query-test-fixture.h"
 #include "zc/ztest/test.h"
 #include "zomlang/compiler/ast/generated/node-payload.h"
 #include "zomlang/compiler/basic/string-pool.h"
 #include "zomlang/compiler/basic/zomlang-opts.h"
 #include "zomlang/compiler/binder/definition-inventory.h"
-#include "zomlang/compiler/binder/stable/definition/header-producer.h"
-#include "zomlang/compiler/binder/stable/header/verifier.h"
 #include "zomlang/compiler/binder/stable/candidate/producer.h"
 #include "zomlang/compiler/binder/stable/candidate/verifier.h"
+#include "zomlang/compiler/binder/stable/definition/header-producer.h"
+#include "zomlang/compiler/binder/stable/header/verifier.h"
 #include "zomlang/compiler/binder/stable/implementation/header-producer.h"
 #include "zomlang/compiler/diagnostics/source-diagnostic-draft-buffer.h"
 #include "zomlang/compiler/parser/parser.h"
+#include "zomlang/tests/unittests/compiler/binder/parsed-module-query-test-fixture.h"
 #include "zomlang/tests/unittests/compiler/test-semantic-identities.h"
 
 namespace zomlang::compiler::binder::test {
@@ -67,10 +67,10 @@ impl<T> Trait for Box<T> {}
     const auto syntax = DefinitionInventory::collect(parsed().tree());
     ZC_REQUIRE(syntax.modules().size() == 1);
     moduleNode = syntax.modules()[0].node;
-    auto production = CandidateProducer::produce(
-        parsed(), tests::test_identity_detail::module(), moduleNode);
-    auto verification = CandidateVerifier::verify(
-        parsed(), tests::test_identity_detail::module(), moduleNode, production);
+    auto production =
+        CandidateProducer::produce(parsed(), tests::test_identity_detail::module(), moduleNode);
+    auto verification = CandidateVerifier::verify(parsed(), tests::test_identity_detail::module(),
+                                                  moduleNode, production);
     ZC_REQUIRE(verification.is<VerifiedStableIdentityCandidateInventory>());
     auto candidates = zc::mv(verification.get<VerifiedStableIdentityCandidateInventory>());
     ZC_REQUIRE(candidates.implementations.size() == 2);
@@ -168,7 +168,7 @@ impl<T> Trait for Box<T> {}
         StableDefinitionQueryKey::from(tests::test_identity_detail::module(), entry.key().clone());
     return requireStableHeaderValue(DefinitionHeaderProducer::produce(
         DefinitionHeaderInput{parsed(), query, entry, definitionSite(entry.key()),
-                                              definitionSites(), implementationSites()}));
+                              definitionSites(), implementationSites()}));
   }
 
   StableImplementationOccurrenceHeader implementationHeader(size_t ordinal) const {
@@ -176,9 +176,8 @@ impl<T> Trait for Box<T> {}
     const auto& entry = implementation(site.occurrence().implementation());
     auto query = requireStableHeaderValue(StableImplementationOccurrenceQueryKey::from(
         tests::test_identity_detail::module(), site.occurrence().clone()));
-    return requireStableHeaderValue(ImplementationHeaderProducer::produce(
-        ImplementationHeaderInput{
-            parsed(), query, entry, site, definitionSites(), implementationSites()}));
+    return requireStableHeaderValue(ImplementationHeaderProducer::produce(ImplementationHeaderInput{
+        parsed(), query, entry, site, definitionSites(), implementationSites()}));
   }
 
 private:

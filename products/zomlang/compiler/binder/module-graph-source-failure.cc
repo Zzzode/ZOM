@@ -83,7 +83,8 @@ uint32_t ModuleGraphSourceFailure::schemaPreorderOrdinal() const noexcept {
   return impl->schemaPreorderOrdinal;
 }
 
-const diagnostics::ToolchainModuleRootArgument& ModuleGraphSourceFailure::argument() const noexcept {
+const diagnostics::ToolchainModuleRootArgument& ModuleGraphSourceFailure::argument()
+    const noexcept {
   return impl->argument;
 }
 
