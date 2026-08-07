@@ -106,9 +106,13 @@ struct RevisionLocalDefinitionSitesQuery final {
                                    query::KeyRejection<binder::BinderKeyFailure>>;
 
   static constexpr query::CapabilityDescriptorMetadata descriptor{
-      "RevisionLocalDefinitionSitesQuery"_zcc, "zom.query.revision-local-definition-sites"_zcc,
-      query::RetentionClass::Retained,         query::QueryCyclePolicy::Reject,
-      query::QueryCostClass::Linear,           query::CapabilityAdmission::FinalSealedSnapshot};
+      "RevisionLocalDefinitionSitesQuery"_zcc,
+      "zom.query.revision-local-definition-sites"_zcc,
+      query::RetentionClass::Retained,
+      query::QueryCyclePolicy::Reject,
+      query::QueryCostClass::Linear,
+      query::CapabilityAdmission::FinalSealedSnapshot,
+      query::FinalFailureProjection::SourceOrKey};
   ZC_NODISCARD static zc::Array<uint8_t> encodeKey(const Key& key);
   ZC_NODISCARD static zc::Maybe<Key> decodeKey(zc::ArrayPtr<const uint8_t> bytes);
   ZC_NODISCARD static query::CapabilityProviderResult<RevisionLocalDefinitionSitesQuery> provide(
@@ -132,7 +136,8 @@ struct RevisionLocalImplementationSitesQuery final {
       query::RetentionClass::Retained,
       query::QueryCyclePolicy::Reject,
       query::QueryCostClass::Linear,
-      query::CapabilityAdmission::FinalSealedSnapshot};
+      query::CapabilityAdmission::FinalSealedSnapshot,
+      query::FinalFailureProjection::SourceOrKey};
   ZC_NODISCARD static zc::Array<uint8_t> encodeKey(const Key& key);
   ZC_NODISCARD static zc::Maybe<Key> decodeKey(zc::ArrayPtr<const uint8_t> bytes);
   ZC_NODISCARD static query::CapabilityProviderResult<RevisionLocalImplementationSitesQuery>
@@ -175,9 +180,13 @@ struct ModuleBodyProvenanceQuery final {
                                    query::KeyRejection<binder::BinderKeyFailure>>;
 
   static constexpr query::CapabilityDescriptorMetadata descriptor{
-      "ModuleBodyProvenanceQuery"_zcc, "zom.query.module-body-provenance"_zcc,
-      query::RetentionClass::Retained, query::QueryCyclePolicy::Reject,
-      query::QueryCostClass::Linear,   query::CapabilityAdmission::FinalSealedSnapshot};
+      "ModuleBodyProvenanceQuery"_zcc,
+      "zom.query.module-body-provenance"_zcc,
+      query::RetentionClass::Retained,
+      query::QueryCyclePolicy::Reject,
+      query::QueryCostClass::Linear,
+      query::CapabilityAdmission::FinalSealedSnapshot,
+      query::FinalFailureProjection::SourceOrKey};
   ZC_NODISCARD static zc::Array<uint8_t> encodeKey(const Key& key);
   ZC_NODISCARD static zc::Maybe<Key> decodeKey(zc::ArrayPtr<const uint8_t> bytes);
   ZC_NODISCARD static query::CapabilityProviderResult<ModuleBodyProvenanceQuery> provide(

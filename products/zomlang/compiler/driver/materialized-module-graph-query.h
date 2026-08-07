@@ -480,9 +480,13 @@ struct MaterializeModuleGraphQuery final {
                                    query::KeyRejection<binder::BinderKeyFailure>>;
 
   static constexpr query::CapabilityDescriptorMetadata descriptor{
-      "MaterializeModuleGraphQuery"_zcc, "zom.query.materialize-module-graph"_zcc,
-      query::RetentionClass::Retained,   query::QueryCyclePolicy::Reject,
-      query::QueryCostClass::Linear,     query::CapabilityAdmission::FinalSealedSnapshot};
+      "MaterializeModuleGraphQuery"_zcc,
+      "zom.query.materialize-module-graph"_zcc,
+      query::RetentionClass::Retained,
+      query::QueryCyclePolicy::Reject,
+      query::QueryCostClass::Linear,
+      query::CapabilityAdmission::FinalSealedSnapshot,
+      query::FinalFailureProjection::SourceOrKey};
   ZC_NODISCARD static zc::Array<uint8_t> encodeKey(const Key& key);
   ZC_NODISCARD static zc::Maybe<Key> decodeKey(zc::ArrayPtr<const uint8_t> bytes);
   ZC_NODISCARD static query::CapabilityProviderResult<MaterializeModuleGraphQuery> provide(
@@ -501,9 +505,13 @@ struct MaterializeModuleSkeletonQuery final {
                                    query::KeyRejection<binder::BinderKeyFailure>>;
 
   static constexpr query::CapabilityDescriptorMetadata descriptor{
-      "MaterializeModuleSkeletonQuery"_zcc, "zom.query.materialize-module-skeleton"_zcc,
-      query::RetentionClass::Retained,      query::QueryCyclePolicy::Reject,
-      query::QueryCostClass::Linear,        query::CapabilityAdmission::FinalSealedSnapshot};
+      "MaterializeModuleSkeletonQuery"_zcc,
+      "zom.query.materialize-module-skeleton"_zcc,
+      query::RetentionClass::Retained,
+      query::QueryCyclePolicy::Reject,
+      query::QueryCostClass::Linear,
+      query::CapabilityAdmission::FinalSealedSnapshot,
+      query::FinalFailureProjection::SourceOrKey};
   ZC_NODISCARD static zc::Array<uint8_t> encodeKey(const Key& key);
   ZC_NODISCARD static zc::Maybe<Key> decodeKey(zc::ArrayPtr<const uint8_t> bytes);
   ZC_NODISCARD static query::CapabilityProviderResult<MaterializeModuleSkeletonQuery> provide(
@@ -522,9 +530,13 @@ struct MaterializeOwnerBodyQuery final {
                                    query::KeyRejection<binder::BinderKeyFailure>>;
 
   static constexpr query::CapabilityDescriptorMetadata descriptor{
-      "MaterializeOwnerBodyQuery"_zcc, "zom.query.materialize-owner-body"_zcc,
-      query::RetentionClass::Retained, query::QueryCyclePolicy::Reject,
-      query::QueryCostClass::Linear,   query::CapabilityAdmission::FinalSealedSnapshot};
+      "MaterializeOwnerBodyQuery"_zcc,
+      "zom.query.materialize-owner-body"_zcc,
+      query::RetentionClass::Retained,
+      query::QueryCyclePolicy::Reject,
+      query::QueryCostClass::Linear,
+      query::CapabilityAdmission::FinalSealedSnapshot,
+      query::FinalFailureProjection::SourceOrKey};
   ZC_NODISCARD static zc::Array<uint8_t> encodeKey(const Key& key);
   ZC_NODISCARD static zc::Maybe<Key> decodeKey(zc::ArrayPtr<const uint8_t> bytes);
   ZC_NODISCARD static query::CapabilityProviderResult<MaterializeOwnerBodyQuery> provide(
@@ -543,9 +555,13 @@ struct VerifyBoundModuleQuery final {
                                    query::KeyRejection<binder::BinderKeyFailure>>;
 
   static constexpr query::CapabilityDescriptorMetadata descriptor{
-      "VerifyBoundModuleQuery"_zcc,    "zom.query.verify-bound-module"_zcc,
-      query::RetentionClass::Retained, query::QueryCyclePolicy::Reject,
-      query::QueryCostClass::Linear,   query::CapabilityAdmission::FinalSealedSnapshot};
+      "VerifyBoundModuleQuery"_zcc,
+      "zom.query.verify-bound-module"_zcc,
+      query::RetentionClass::Retained,
+      query::QueryCyclePolicy::Reject,
+      query::QueryCostClass::Linear,
+      query::CapabilityAdmission::FinalSealedSnapshot,
+      query::FinalFailureProjection::SourceOrKey};
   ZC_NODISCARD static zc::Array<uint8_t> encodeKey(const Key& key);
   ZC_NODISCARD static zc::Maybe<Key> decodeKey(zc::ArrayPtr<const uint8_t> bytes);
   ZC_NODISCARD static query::CapabilityProviderResult<VerifyBoundModuleQuery> provide(

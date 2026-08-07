@@ -369,10 +369,12 @@ struct DescriptorSlot final {
 class FinalSealAdmission final : public zc::AtomicRefcounted {
 public:
   FinalSealAdmission(QueryDatabaseIdentity&& database, DatabaseRevision revision,
-                     CanonicalQueryKey&& contextKey, zc::Array<uint8_t>&& finalWitness) noexcept
+                     CanonicalQueryKey&& contextKey, FinalSnapshotClosureKind closureKind,
+                     zc::Array<uint8_t>&& finalWitness) noexcept
       : database(zc::mv(database)),
         revision(revision),
         contextKey(zc::mv(contextKey)),
+        closureKind(closureKind),
         finalWitness(zc::mv(finalWitness)) {}
   ~FinalSealAdmission() noexcept(false) override = default;
   ZC_DISALLOW_COPY_AND_MOVE(FinalSealAdmission);
@@ -380,6 +382,7 @@ public:
   QueryDatabaseIdentity database;
   DatabaseRevision revision;
   CanonicalQueryKey contextKey;
+  FinalSnapshotClosureKind closureKind;
   zc::Array<uint8_t> finalWitness;
 };
 
@@ -866,10 +869,16 @@ zc::Maybe<QueryRuntimeFailure> QueryContext::inheritedFinalAdmissionFailure() co
       impl->admission->revision != impl->snapshot->revision ||
       impl->admission->revision != locked->current->revision ||
       impl->admission->contextKey != locked->finalSeal->contextKey ||
+      impl->admission->closureKind != locked->finalSeal->closureKind ||
       impl->admission->finalWitness.asPtr() != locked->finalSeal->finalWitness.asPtr()) {
     return QueryRuntimeFailure::FinalSealMismatch;
   }
   return zc::none;
+}
+
+FinalSnapshotClosureKind QueryContext::finalSnapshotClosureKind() const {
+  ZC_IREQUIRE(impl->admission != nullptr, "final closure kind requires final admission");
+  return impl->admission->closureKind;
 }
 
 const SemanticContextCapabilityResources& QueryContext::semanticContextResources() const {
@@ -1689,6 +1698,8 @@ zc::Maybe<InputTransactionFailure> QueryDatabase::publishFinalSeal(
       descriptor, zc::heapArray<uint8_t>(authority.contextKeyField.canonicalBytes()));
   if (preparation.contextKeyField != authority.contextKeyField ||
       reconstructed != authority.contextKeyField || authority.finalWitnessField.size() == 0 ||
+      (authority.closureKindField != FinalSnapshotClosureKind::Success &&
+       authority.closureKindField != FinalSnapshotClosureKind::Failure) ||
       authority.finalWitnessField.asPtr() != suppliedWitness) {
     return InputTransactionFailure::InvalidFinalSealAuthority;
   }
@@ -1696,14 +1707,15 @@ zc::Maybe<InputTransactionFailure> QueryDatabase::publishFinalSeal(
   locked->registrySealed = true;
   locked->finalSeal = zc::arc<FinalSealAdmission>(
       locked->database.retain(), locked->current->revision, authority.contextKeyField.clone(),
-      zc::mv(authority.finalWitnessField));
+      authority.closureKindField, zc::mv(authority.finalWitnessField));
   return zc::none;
 }
 
 zc::Maybe<QueryRuntimeFailure> QueryDatabase::validateSnapshotAdmission(
     QuerySnapshot& snapshot, const QueryDatabaseIdentity& sealDatabase,
     DatabaseRevision sealRevision, zc::StringPtr descriptorDomain,
-    zc::Array<uint8_t>&& contextKeyBytes, zc::ArrayPtr<const uint8_t> finalWitness) {
+    zc::Array<uint8_t>&& contextKeyBytes, FinalSnapshotClosureKind closureKind,
+    zc::ArrayPtr<const uint8_t> finalWitness) {
   auto locked = impl->data.lockShared();
   if (locked->finalSeal == nullptr) { return QueryRuntimeFailure::FinalSealRequired; }
   if (snapshot.impl->snapshot->database != locked->database ||
@@ -1730,6 +1742,7 @@ zc::Maybe<QueryRuntimeFailure> QueryDatabase::validateSnapshotAdmission(
   }
   auto contextKey = impl->makeCanonicalKey(descriptor, zc::mv(contextKeyBytes));
   if (contextKey != locked->finalSeal->contextKey ||
+      closureKind != locked->finalSeal->closureKind ||
       finalWitness != locked->finalSeal->finalWitness.asPtr()) {
     return QueryRuntimeFailure::FinalSealMismatch;
   }

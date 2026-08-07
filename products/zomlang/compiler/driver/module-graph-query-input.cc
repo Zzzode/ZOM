@@ -40,6 +40,29 @@ constexpr zc::StringPtr kInputTransactionDigestDomain = "zom.query.input-transac
 constexpr zc::StringPtr kModuleStructureTransactionDomain =
     "zom.query.input-transaction.module-structure"_zc;
 constexpr zc::StringPtr kFinalSnapshotWitnessDomain = "zom.query.final-snapshot-witness"_zc;
+constexpr zc::StringPtr kFinalFailureGraphWitnessDomain =
+    "zom.query.final-failure-closure.graph"_zc;
+constexpr zc::StringPtr kFinalFailureSccWitnessDomain = "zom.query.final-failure-closure.scc"_zc;
+constexpr zc::StringPtr kFinalFailureAuthorityWitnessDomain =
+    "zom.query.final-failure-closure.authority"_zc;
+constexpr zc::StringPtr kFinalFailureReadinessWitnessDomain =
+    "zom.query.final-failure-closure.readiness"_zc;
+constexpr zc::StringPtr kFinalFailureGraphAbsenceWitnessDomain =
+    "zom.query.final-failure-closure.graph-absence"_zc;
+constexpr zc::StringPtr kFinalFailureSccAbsenceWitnessDomain =
+    "zom.query.final-failure-closure.scc-absence"_zc;
+constexpr zc::StringPtr kFinalFailureAuthorityAbsenceWitnessDomain =
+    "zom.query.final-failure-closure.authority-absence"_zc;
+constexpr zc::StringPtr kFinalFailureReadinessAbsenceWitnessDomain =
+    "zom.query.final-failure-closure.readiness-absence"_zc;
+constexpr zc::StringPtr kFinalFailureGraphRuntimeWitnessDomain =
+    "zom.query.final-failure-closure.graph-runtime"_zc;
+constexpr zc::StringPtr kFinalFailureSccRuntimeWitnessDomain =
+    "zom.query.final-failure-closure.scc-runtime"_zc;
+constexpr zc::StringPtr kFinalFailureAuthorityRuntimeWitnessDomain =
+    "zom.query.final-failure-closure.authority-runtime"_zc;
+constexpr zc::StringPtr kFinalFailureReadinessRuntimeWitnessDomain =
+    "zom.query.final-failure-closure.readiness-runtime"_zc;
 constexpr uint64_t kMaximumCrateKeyBytes = 2 * 1024 * 1024;
 constexpr uint64_t kMaximumModuleKeyBytes = 64 * 1024;
 constexpr uint64_t kMaximumSourceKeyBytes = 64 * 1024;
@@ -1763,7 +1786,9 @@ ZOM_DEFINE_TRANSACTION_WITNESS_INPUT(ContextualIdentityAuthorityTransactionWitne
 
 #undef ZOM_DEFINE_TRANSACTION_WITNESS_INPUT
 
-zc::Maybe<identity::Sha256Digest> computeFinalSnapshotWitness(
+namespace {
+
+zc::Maybe<identity::Sha256Digest> computeFinalSnapshotSuccessWitness(
     const query::QuerySnapshot& snapshot,
     const incremental_binding_query::CompilationRootSetQueryKey& contextRoots) {
   auto distributionWitness =
@@ -1817,6 +1842,180 @@ zc::Maybe<identity::Sha256Digest> computeFinalSnapshotWitness(
   return identity::sha256(framed.asPtr());
 }
 
+zc::Maybe<identity::Sha256Digest> computeFinalSnapshotFailureWitness(
+    const query::QuerySnapshot& snapshot,
+    const incremental_binding_query::CompilationRootSetQueryKey& contextRoots) {
+  auto distributionWitness =
+      snapshot.probeInput<CoreDistributionTransactionWitnessInput>(contextRoots);
+  auto structureWitness = snapshot.probeInput<ModuleStructureTransactionWitnessInput>(contextRoots);
+  auto identityWitness =
+      snapshot.probeInput<ContextualIdentityAuthorityTransactionWitnessInput>(contextRoots);
+  auto authority = snapshot.probeInput<CompleteCompilationContextAuthorityInput>(contextRoots);
+  const bool identityWitnessMissing =
+      identityWitness.isRuntimeFailure() &&
+      identityWitness.runtimeFailure() == query::QueryRuntimeFailure::MissingInput;
+  if (distributionWitness.isRuntimeFailure() || structureWitness.isRuntimeFailure() ||
+      (!identityWitnessMissing && identityWitness.isRuntimeFailure()) ||
+      authority.isRuntimeFailure() || distributionWitness.kind() != query::QueryValueKind::Value ||
+      structureWitness.kind() != query::QueryValueKind::Value ||
+      (!identityWitnessMissing && identityWitness.kind() != query::QueryValueKind::Value &&
+       identityWitness.kind() != query::QueryValueKind::Absence) ||
+      authority.kind() != query::QueryValueKind::Value ||
+      authority.value().contextRoots() != contextRoots) {
+    return zc::none;
+  }
+
+  auto rootsBytes = contextRoots.encodeCanonical();
+  auto authorityBytes = authority.value().encodeCanonical();
+  const auto basePayload = [&]() {
+    identity::CanonicalEncoder payload;
+    payload.encodeByteString(rootsBytes.asPtr());
+    payload.encodeByteString(distributionWitness.value().bytes());
+    payload.encodeByteString(structureWitness.value().bytes());
+    if (!identityWitnessMissing && identityWitness.kind() == query::QueryValueKind::Value) {
+      payload.encodeByteString("value"_zcc.asBytes());
+      payload.encodeByteString(identityWitness.value().bytes());
+    } else {
+      payload.encodeByteString("absence"_zcc.asBytes());
+    }
+    payload.encodeByteString(authorityBytes.asPtr());
+    return payload;
+  };
+
+  const auto encodeRuntimeFailure = [](query::QueryRuntimeFailure failure) {
+    auto bytes = zc::heapArray<uint8_t>(1);
+    bytes[0] = static_cast<uint8_t>(failure);
+    return bytes;
+  };
+
+  auto graph = snapshot.get<ModuleGraphQuery>(contextRoots);
+  if (graph.isRuntimeFailure()) {
+    auto payload = basePayload();
+    auto failure = encodeRuntimeFailure(graph.runtimeFailure());
+    payload.encodeByteString(failure.asPtr());
+    auto framed = frame(kFinalFailureGraphRuntimeWitnessDomain, payload.finish().asPtr());
+    return identity::sha256(framed.asPtr());
+  }
+  if (graph.kind() == query::QueryValueKind::SemanticFailure) {
+    auto payload = basePayload();
+    payload.encodeByteString(graph.semanticFailureBytes());
+    auto framed = frame(kFinalFailureGraphWitnessDomain, payload.finish().asPtr());
+    return identity::sha256(framed.asPtr());
+  }
+  if (graph.kind() != query::QueryValueKind::Value) {
+    auto payload = basePayload();
+    auto framed = frame(kFinalFailureGraphAbsenceWitnessDomain, payload.finish().asPtr());
+    return identity::sha256(framed.asPtr());
+  }
+
+  auto graphBytes = graph.value().encodeCanonical();
+  auto scc = snapshot.get<ModuleGraphSccQuery>(contextRoots);
+  if (scc.isRuntimeFailure()) {
+    auto payload = basePayload();
+    payload.encodeByteString(graphBytes.asPtr());
+    auto failure = encodeRuntimeFailure(scc.runtimeFailure());
+    payload.encodeByteString(failure.asPtr());
+    auto framed = frame(kFinalFailureSccRuntimeWitnessDomain, payload.finish().asPtr());
+    return identity::sha256(framed.asPtr());
+  }
+  if (scc.kind() == query::QueryValueKind::SemanticFailure) {
+    auto payload = basePayload();
+    payload.encodeByteString(graphBytes.asPtr());
+    payload.encodeByteString(scc.semanticFailureBytes());
+    auto framed = frame(kFinalFailureSccWitnessDomain, payload.finish().asPtr());
+    return identity::sha256(framed.asPtr());
+  }
+  if (scc.kind() != query::QueryValueKind::Value) {
+    auto payload = basePayload();
+    payload.encodeByteString(graphBytes.asPtr());
+    auto framed = frame(kFinalFailureSccAbsenceWitnessDomain, payload.finish().asPtr());
+    return identity::sha256(framed.asPtr());
+  }
+
+  auto sccBytes = scc.value().encodeCanonical();
+  if (scc.value().hasCycle(graph.value())) {
+    auto payload = basePayload();
+    payload.encodeByteString(graphBytes.asPtr());
+    payload.encodeByteString(sccBytes.asPtr());
+    auto framed = frame(kFinalFailureSccWitnessDomain, payload.finish().asPtr());
+    return identity::sha256(framed.asPtr());
+  }
+
+  auto authorityMap =
+      snapshot.probeInput<incremental_binding_query::ActiveDefinitionAuthorityReadyInput>(
+          contextRoots);
+  if (authorityMap.isRuntimeFailure()) {
+    auto payload = basePayload();
+    payload.encodeByteString(graphBytes.asPtr());
+    payload.encodeByteString(sccBytes.asPtr());
+    auto failure = encodeRuntimeFailure(authorityMap.runtimeFailure());
+    payload.encodeByteString(failure.asPtr());
+    auto framed = frame(kFinalFailureAuthorityRuntimeWitnessDomain, payload.finish().asPtr());
+    return identity::sha256(framed.asPtr());
+  }
+  if (authorityMap.kind() == query::QueryValueKind::SemanticFailure) {
+    auto payload = basePayload();
+    payload.encodeByteString(graphBytes.asPtr());
+    payload.encodeByteString(sccBytes.asPtr());
+    payload.encodeByteString(authorityMap.semanticFailureBytes());
+    auto framed = frame(kFinalFailureAuthorityWitnessDomain, payload.finish().asPtr());
+    return identity::sha256(framed.asPtr());
+  }
+  if (authorityMap.kind() != query::QueryValueKind::Value) {
+    auto payload = basePayload();
+    payload.encodeByteString(graphBytes.asPtr());
+    payload.encodeByteString(sccBytes.asPtr());
+    auto framed = frame(kFinalFailureAuthorityAbsenceWitnessDomain, payload.finish().asPtr());
+    return identity::sha256(framed.asPtr());
+  }
+
+  auto authorityMapBytes =
+      incremental_binding_query::ActiveDefinitionAuthorityReadyInput::encodeValue(
+          authorityMap.value());
+  auto readiness =
+      snapshot.probeInput<incremental_binding_query::CompleteRootIdentityReadinessInput>(
+          contextRoots);
+  if (readiness.isRuntimeFailure()) {
+    auto payload = basePayload();
+    payload.encodeByteString(graphBytes.asPtr());
+    payload.encodeByteString(sccBytes.asPtr());
+    payload.encodeByteString(authorityMapBytes.asPtr());
+    auto failure = encodeRuntimeFailure(readiness.runtimeFailure());
+    payload.encodeByteString(failure.asPtr());
+    auto framed = frame(kFinalFailureReadinessRuntimeWitnessDomain, payload.finish().asPtr());
+    return identity::sha256(framed.asPtr());
+  }
+  if (readiness.kind() == query::QueryValueKind::SemanticFailure) {
+    auto payload = basePayload();
+    payload.encodeByteString(graphBytes.asPtr());
+    payload.encodeByteString(sccBytes.asPtr());
+    payload.encodeByteString(authorityMapBytes.asPtr());
+    payload.encodeByteString(readiness.semanticFailureBytes());
+    auto framed = frame(kFinalFailureReadinessWitnessDomain, payload.finish().asPtr());
+    return identity::sha256(framed.asPtr());
+  }
+  if (readiness.kind() != query::QueryValueKind::Value) {
+    auto payload = basePayload();
+    payload.encodeByteString(graphBytes.asPtr());
+    payload.encodeByteString(sccBytes.asPtr());
+    payload.encodeByteString(authorityMapBytes.asPtr());
+    auto framed = frame(kFinalFailureReadinessAbsenceWitnessDomain, payload.finish().asPtr());
+    return identity::sha256(framed.asPtr());
+  }
+  if (readiness.value().contextRoots() != contextRoots) { return zc::none; }
+  return zc::none;
+}
+
+}  // namespace
+
+zc::Maybe<identity::Sha256Digest> computeFinalSnapshotWitness(
+    const query::QuerySnapshot& snapshot,
+    const incremental_binding_query::CompilationRootSetQueryKey& contextRoots) {
+  auto success = computeFinalSnapshotSuccessWitness(snapshot, contextRoots);
+  if (success != zc::none) { return success; }
+  return computeFinalSnapshotFailureWitness(snapshot, contextRoots);
+}
+
 zc::Array<uint8_t> CompleteCompilationContextAuthorityInput::encodeKey(const Key& key) {
   return key.encodeCanonical();
 }
@@ -1836,12 +2035,19 @@ query::FinalAuthorityCheck CompleteCompilationContextAuthorityInput::verifyFinal
     const identity::Sha256Digest& witness) {
   if (key != value.contextRoots()) { return query::FinalAuthorityCheck::Rejected; }
   auto stored = snapshot.probeInput<CompleteCompilationContextAuthorityInput>(key);
-  auto expected = computeFinalSnapshotWitness(snapshot, key);
   if (stored.isRuntimeFailure() || stored.kind() != query::QueryValueKind::Value ||
-      stored.value() != value || expected == zc::none || ZC_ASSERT_NONNULL(expected) != witness) {
+      stored.value() != value) {
     return query::FinalAuthorityCheck::Rejected;
   }
-  return query::FinalAuthorityCheck::Verified;
+  auto success = computeFinalSnapshotSuccessWitness(snapshot, key);
+  if (success != zc::none && ZC_ASSERT_NONNULL(success) == witness) {
+    return query::FinalAuthorityCheck::VerifiedSuccess;
+  }
+  auto failure = computeFinalSnapshotFailureWitness(snapshot, key);
+  if (failure != zc::none && ZC_ASSERT_NONNULL(failure) == witness) {
+    return query::FinalAuthorityCheck::VerifiedFailure;
+  }
+  return query::FinalAuthorityCheck::Rejected;
 }
 
 SelectedModuleRecord::SelectedModuleRecord(identity::ModuleKey&& module,

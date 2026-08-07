@@ -1053,6 +1053,13 @@ FinalQuerySnapshot sealDatabase(query::QueryDatabase& database,
   ZC_REQUIRE(transaction.commit().isCommitted());
 
   auto finalSnapshot = database.snapshot();
+  ZC_REQUIRE(finalSnapshot.probeInput<graph_query::CoreDistributionTransactionWitnessInput>(roots)
+                 .kind() == query::QueryValueKind::Value);
+  ZC_REQUIRE(
+      finalSnapshot.probeInput<graph_query::ModuleStructureTransactionWitnessInput>(roots).kind() ==
+      query::QueryValueKind::Value);
+  ZC_REQUIRE(finalSnapshot.probeInput<graph_query::CompleteCompilationContextAuthorityInput>(roots)
+                 .kind() == query::QueryValueKind::Value);
   auto witness = graph_query::computeFinalSnapshotWitness(finalSnapshot, roots);
   ZC_REQUIRE(witness != zc::none);
   auto seal = database.sealInputs<graph_query::CompleteCompilationContextAuthorityInput>(
@@ -1405,8 +1412,9 @@ ZC_TEST("MaterializedBindingCapabilityTest.SkeletonRejectsPermissionAndLineageMu
   auto foreignKey = ContextualModuleKey::from(roots.clone(), foreignModule.clone());
   auto rejected =
       sealed.getCapability<graph_query::MaterializeModuleSkeletonQuery>(zc::mv(foreignKey));
-  ZC_REQUIRE(rejected.isRuntimeRejected());
-  ZC_EXPECT(rejected.runtimeFailure() == query::QueryRuntimeFailure::InvariantViolation);
+  ZC_REQUIRE(rejected.isKeyRejected());
+  ZC_EXPECT(rejected.keyFailure().kind() ==
+            binder::BinderKeyFailureKind::MissingSelectedModuleSource);
 
   zc::Vector<graph_query::MaterializedModuleSkeleton::DefinitionProvenanceLease>
       invalidDefinitionProvenances;
@@ -1585,8 +1593,9 @@ ZC_TEST("MaterializedBindingCapabilityTest.OwnerBodyRejectsPermissionAndLineageM
   auto foreignKey =
       ContextualBodyOwnerKey::from(roots.clone(), zc::mv(ZC_REQUIRE_NONNULL(foreignOwner)));
   auto rejected = sealed.getCapability<graph_query::MaterializeOwnerBodyQuery>(zc::mv(foreignKey));
-  ZC_REQUIRE(rejected.isRuntimeRejected());
-  ZC_EXPECT(rejected.runtimeFailure() == query::QueryRuntimeFailure::InvariantViolation);
+  ZC_REQUIRE(rejected.isKeyRejected());
+  ZC_EXPECT(rejected.keyFailure().kind() ==
+            binder::BinderKeyFailureKind::MissingSelectedModuleSource);
 
   auto invalidOwner = binder::StableOwnerBodyQueryKey::from(
       foreignModule.clone(), binder::StableBodyOwnerKey::module(zc::mv(foreignModule)));
@@ -2447,8 +2456,9 @@ ZC_TEST("VerifiedBoundModuleCapabilityTest.RejectsChildFailureAndLeaseLineageMut
 
   auto foreignKey = ContextualModuleKey::from(roots.clone(), namedSemanticModule("foreign"_zc));
   auto rejected = sealed.getCapability<graph_query::VerifyBoundModuleQuery>(zc::mv(foreignKey));
-  ZC_REQUIRE(rejected.isRuntimeRejected());
-  ZC_EXPECT(rejected.runtimeFailure() == query::QueryRuntimeFailure::InvariantViolation);
+  ZC_REQUIRE(rejected.isKeyRejected());
+  ZC_EXPECT(rejected.keyFailure().kind() ==
+            binder::BinderKeyFailureKind::MissingSelectedModuleSource);
 
   auto wrongDomain = mutation::flipByte(encodedKey.asPtr(), 0);
   ZC_EXPECT(graph_query::VerifyBoundModuleQuery::decodeKey(wrongDomain.asPtr()) == zc::none);
@@ -4056,6 +4066,19 @@ ZC_TEST("Named-item syntax projects a missing selected module source") {
 
   auto result = database.snapshot().get<NamedItemSyntaxQuery>(itemKey);
   ZC_REQUIRE(result.kind() == query::QueryValueKind::SemanticFailure);
+
+  auto sealed = sealDatabase(database, roots);
+  auto provenance = sealed.getCapability<NamedItemProvenanceQuery>(itemKey);
+  ZC_REQUIRE(provenance.isKeyRejected());
+  ZC_EXPECT(provenance.keyFailure().kind() ==
+            binder::BinderKeyFailureKind::MissingSelectedModuleSource);
+
+  auto owner = binder::StableBodyOwnerKey::definition(itemKey.definition().definition().clone());
+  auto ownerKey = contextual(roots, semanticModule(), owner);
+  auto ownerProvenance = sealed.getCapability<OwnerBodyProvenanceQuery>(ownerKey);
+  ZC_REQUIRE(ownerProvenance.isKeyRejected());
+  ZC_EXPECT(ownerProvenance.keyFailure().kind() ==
+            binder::BinderKeyFailureKind::MissingSelectedModuleSource);
 }
 
 ZC_TEST("Named-item syntax requires a committed authority transaction") {

@@ -325,6 +325,19 @@ ZC_TEST("QueryDatabaseTest.FinalSealIsOneShotRevisionNeutralAndIrreversible") {
   ZC_EXPECT(zc::mv(admitted).takeSnapshot().revision() == revision);
 }
 
+ZC_TEST("QueryDatabaseTest.FinalFailureClosureAdmitsItsExactSnapshot") {
+  auto database = queryTestDatabase();
+  registerFinalSealInput(database);
+  auto snapshot = publishCompleteContext(database, 0xfe, 0xfe);
+
+  auto seal = database.sealInputs<CompleteContext>(snapshot, 0xfe, repeatedDigest(0xfe));
+  ZC_REQUIRE(seal.isSealed());
+  ZC_EXPECT(seal.seal().closureKind() == FinalSnapshotClosureKind::Failure);
+
+  auto admitted = database.admitFinalSnapshot<CompleteContext>(database.snapshot(), seal.seal());
+  ZC_REQUIRE(admitted.isAdmitted());
+}
+
 ZC_TEST("QueryDatabaseTest.FinalSealRejectsPhaseOneAndAuthorityFailuresExactly") {
   auto database = queryTestDatabase();
   registerFinalSealInput(database);

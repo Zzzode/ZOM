@@ -376,6 +376,7 @@ private:
   ZC_NODISCARD QueryRequestResult
   publishCapability(zc::Own<_query_detail::CapabilityMemoBuilderBase>&& builder);
   ZC_NODISCARD zc::Maybe<QueryRuntimeFailure> inheritedFinalAdmissionFailure() const;
+  ZC_NODISCARD FinalSnapshotClosureKind finalSnapshotClosureKind() const;
   ZC_NODISCARD zc::Maybe<QueryRuntimeFailure> capabilityPublicationFailure() const;
   ZC_NODISCARD const QueryDatabaseIdentity& databaseIdentity() const ZC_LIFETIMEBOUND;
   ZC_NODISCARD DatabaseRevision snapshotRevision() const noexcept;
@@ -420,6 +421,11 @@ public:
     return context.snapshotRevision();
   }
 
+  /// \brief Returns the independently verified state of the admitted final closure.
+  ZC_NODISCARD FinalSnapshotClosureKind finalSnapshotClosureKind() const {
+    return context.finalSnapshotClosureKind();
+  }
+
   /// \brief Returns the descriptor's exact semantic-resource interface when available.
   template <typename Resource>
   ZC_NODISCARD zc::Maybe<const Resource&> semanticContextResources() const ZC_LIFETIMEBOUND {
@@ -441,6 +447,9 @@ public:
                   "active materialization requires final-sealed descriptor admission");
     ZC_IF_SOME(failure, context.inheritedFinalAdmissionFailure()) {
       return TypedQueryResult<Handle>::runtimeFailure(failure);
+    }
+    if (context.finalSnapshotClosureKind() == FinalSnapshotClosureKind::Failure) {
+      return TypedQueryResult<Handle>::runtimeFailure(QueryRuntimeFailure::InvariantViolation);
     }
     ZC_IF_SOME(failure, context.capabilityPublicationFailure()) {
       return TypedQueryResult<Handle>::runtimeFailure(failure);
@@ -837,16 +846,18 @@ public:
 
 private:
   VerifiedFinalSealAuthority(QueryDatabaseIdentity&& database, DatabaseRevision revision,
-                             CanonicalQueryKey&& contextKey,
+                             CanonicalQueryKey&& contextKey, FinalSnapshotClosureKind closureKind,
                              zc::Array<uint8_t>&& finalWitness) noexcept
       : databaseField(zc::mv(database)),
         revisionField(revision),
         contextKeyField(zc::mv(contextKey)),
+        closureKindField(closureKind),
         finalWitnessField(zc::mv(finalWitness)) {}
 
   QueryDatabaseIdentity databaseField;
   DatabaseRevision revisionField;
   CanonicalQueryKey contextKeyField;
+  FinalSnapshotClosureKind closureKindField;
   zc::Array<uint8_t> finalWitnessField;
 
   friend class ::zomlang::compiler::query::QueryDatabase;
@@ -915,7 +926,8 @@ private:
   ZC_NODISCARD zc::Maybe<QueryRuntimeFailure> validateSnapshotAdmission(
       QuerySnapshot& snapshot, const QueryDatabaseIdentity& sealDatabase,
       DatabaseRevision sealRevision, zc::StringPtr descriptorDomain,
-      zc::Array<uint8_t>&& contextKeyBytes, zc::ArrayPtr<const uint8_t> finalWitness);
+      zc::Array<uint8_t>&& contextKeyBytes, FinalSnapshotClosureKind closureKind,
+      zc::ArrayPtr<const uint8_t> finalWitness);
   void armFinalSealPhaseTwoGateForTest();
   void waitForFinalSealPhaseTwoGateForTest();
   void releaseFinalSealPhaseTwoGateForTest();
@@ -1404,19 +1416,23 @@ FinalSealResult<typename CompleteContextInput::Key, FinalWitness> QueryDatabase:
 
   pauseAtFinalSealPhaseTwoGate();
   auto authority = finalSnapshot.get<CompleteContextInput>(contextRoots);
-  bool authorityVerified = false;
+  auto authorityCheck = FinalAuthorityCheck::Rejected;
   if (!authority.isRuntimeFailure() && authority.kind() == QueryValueKind::Value) {
-    authorityVerified =
-        CompleteContextInput::verifyFinalAuthority(finalSnapshot, contextRoots, authority.value(),
-                                                   finalWitness) == FinalAuthorityCheck::Verified;
+    authorityCheck = CompleteContextInput::verifyFinalAuthority(finalSnapshot, contextRoots,
+                                                                authority.value(), finalWitness);
   }
 
   auto prepared = zc::mv(preparation).takePreparation();
-  if (!authorityVerified) { return Result::rejected(rejectFinalSeal(zc::mv(prepared))); }
+  if (authorityCheck == FinalAuthorityCheck::Rejected) {
+    return Result::rejected(rejectFinalSeal(zc::mv(prepared)));
+  }
+  const auto closureKind = authorityCheck == FinalAuthorityCheck::VerifiedSuccess
+                               ? FinalSnapshotClosureKind::Success
+                               : FinalSnapshotClosureKind::Failure;
 
   _query_detail::VerifiedFinalSealAuthority verified(
       prepared.databaseField.retain(), prepared.revisionField, prepared.contextKeyField.clone(),
-      zc::heapArray<uint8_t>(finalWitness.bytes()));
+      closureKind, zc::heapArray<uint8_t>(finalWitness.bytes()));
   ZC_IF_SOME(failure, publishFinalSeal(zc::mv(prepared), zc::mv(verified), finalWitness.bytes())) {
     return Result::rejected(failure);
   }
@@ -1427,7 +1443,7 @@ FinalSealResult<typename CompleteContextInput::Key, FinalWitness> QueryDatabase:
               "verified complete-context key did not survive canonical round trip");
   return Result::sealed(FinalSnapshotSeal<typename CompleteContextInput::Key, FinalWitness>(
       finalSnapshot.databaseIdentity().retain(), finalSnapshot.revision(),
-      zc::mv(ZC_REQUIRE_NONNULL(retainedRoots)), finalWitness));
+      zc::mv(ZC_REQUIRE_NONNULL(retainedRoots)), closureKind, finalWitness));
 }
 
 template <typename CompleteContextInput, typename FinalWitness>
@@ -1441,7 +1457,7 @@ QueryDatabase::admitFinalSnapshot(
              validateSnapshotAdmission(snapshot, seal.database(), seal.revision(),
                                        CompleteContextInput::descriptor.domain,
                                        CompleteContextInput::encodeKey(seal.contextRoots()),
-                                       seal.finalWitness().bytes())) {
+                                       seal.closureKind(), seal.finalWitness().bytes())) {
     return Result::rejected(failure);
   }
   if constexpr (requires { seal.contextRoots().clone(); }) {
@@ -1600,10 +1616,27 @@ DescriptorRegistrationResult QueryDatabase::registerDescriptor() {
           return _query_detail::QueryRequestResultAccess::runtimeRejected(
               candidate.runtimeFailure());
         }
+        if constexpr (Spec::descriptor.admission == CapabilityAdmission::FinalSealedSnapshot) {
+          const auto closureKind = capabilityContext.finalSnapshotClosureKind();
+          if (closureKind == FinalSnapshotClosureKind::Failure && candidate.isCandidate()) {
+            return _query_detail::QueryRequestResultAccess::runtimeRejected(
+                QueryRuntimeFailure::InvariantViolation);
+          }
+        }
         using FailureAlternatives = typename Spec::FailureAlternatives;
         if constexpr (_query_detail::CapabilityFailureListShape<FailureAlternatives>::sourceCount ==
                       1) {
           if (candidate.isSourceRejected()) {
+            if constexpr (Spec::descriptor.admission == CapabilityAdmission::FinalSealedSnapshot) {
+              const auto projection = Spec::descriptor.failureProjection;
+              if (capabilityContext.finalSnapshotClosureKind() ==
+                      FinalSnapshotClosureKind::Failure &&
+                  projection != FinalFailureProjection::Source &&
+                  projection != FinalFailureProjection::SourceOrKey) {
+                return _query_detail::QueryRequestResultAccess::runtimeRejected(
+                    QueryRuntimeFailure::InvariantViolation);
+              }
+            }
             using Diagnostic =
                 typename _query_detail::CapabilityFailurePayloads<FailureAlternatives>::Source;
             using Alternative = SourceRejection<Diagnostic>;
@@ -1623,6 +1656,16 @@ DescriptorRegistrationResult QueryDatabase::registerDescriptor() {
         if constexpr (_query_detail::CapabilityFailureListShape<FailureAlternatives>::keyCount ==
                       1) {
           if (candidate.isKeyRejected()) {
+            if constexpr (Spec::descriptor.admission == CapabilityAdmission::FinalSealedSnapshot) {
+              const auto projection = Spec::descriptor.failureProjection;
+              if (capabilityContext.finalSnapshotClosureKind() ==
+                      FinalSnapshotClosureKind::Failure &&
+                  projection != FinalFailureProjection::Key &&
+                  projection != FinalFailureProjection::SourceOrKey) {
+                return _query_detail::QueryRequestResultAccess::runtimeRejected(
+                    QueryRuntimeFailure::InvariantViolation);
+              }
+            }
             using KeyFailure =
                 typename _query_detail::CapabilityFailurePayloads<FailureAlternatives>::Key;
             using Alternative = KeyRejection<KeyFailure>;

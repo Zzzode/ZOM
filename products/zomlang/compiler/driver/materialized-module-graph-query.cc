@@ -4805,6 +4805,33 @@ zc::Maybe<MaterializeModuleSkeletonQuery::Key> MaterializeModuleSkeletonQuery::d
 query::CapabilityProviderResult<MaterializeModuleSkeletonQuery>
 MaterializeModuleSkeletonQuery::provide(
     query::CapabilityQueryContext<MaterializeModuleSkeletonQuery>& context, const Key& key) {
+  auto selected = context.get<SelectedModuleSourceQuery>(key.module());
+  if (selected.isRuntimeFailure()) {
+    if (selected.runtimeFailure() != query::QueryRuntimeFailure::MissingInput) {
+      return SkeletonProviderResult::runtimeRejected(selected.runtimeFailure());
+    }
+    auto failure = missingSelectedModuleSourceFailure(key.module());
+    if (failure == zc::none) {
+      return SkeletonProviderResult::runtimeRejected(
+          query::QueryRuntimeFailure::InvariantViolation);
+    }
+    return SkeletonProviderResult::keyRejected<binder::BinderKeyFailure>(
+        zc::mv(ZC_ASSERT_NONNULL(failure)));
+  }
+  if (selected.kind() == query::QueryValueKind::Absence ||
+      selected.kind() == query::QueryValueKind::SemanticFailure) {
+    auto failure = missingSelectedModuleSourceFailure(key.module());
+    if (failure == zc::none) {
+      return SkeletonProviderResult::runtimeRejected(
+          query::QueryRuntimeFailure::InvariantViolation);
+    }
+    return SkeletonProviderResult::keyRejected<binder::BinderKeyFailure>(
+        zc::mv(ZC_ASSERT_NONNULL(failure)));
+  }
+  if (selected.kind() != query::QueryValueKind::Value) {
+    return SkeletonProviderResult::runtimeRejected(query::QueryRuntimeFailure::InvariantViolation);
+  }
+
   auto graph = context.getCapability<MaterializeModuleGraphQuery>(key.contextRoots().clone());
   if (graph.isSourceRejected()) { return forwardSkeletonSourceRejection(graph); }
   if (graph.isKeyRejected()) { return forwardSkeletonKeyRejection(graph); }
@@ -4832,22 +4859,6 @@ MaterializeModuleSkeletonQuery::provide(
   if (rejection != zc::none) { return zc::mv(ZC_ASSERT_NONNULL(rejection)); }
   if (skeleton == zc::none ||
       !skeletonMembershipsMatch(context, key, ZC_ASSERT_NONNULL(skeleton))) {
-    return SkeletonProviderResult::runtimeRejected(query::QueryRuntimeFailure::InvariantViolation);
-  }
-  auto selected = context.get<SelectedModuleSourceQuery>(key.module());
-  if (selected.isRuntimeFailure()) {
-    return SkeletonProviderResult::runtimeRejected(selected.runtimeFailure());
-  }
-  if (selected.kind() == query::QueryValueKind::Absence) {
-    auto failure = missingSelectedModuleSourceFailure(key.module());
-    if (failure == zc::none) {
-      return SkeletonProviderResult::runtimeRejected(
-          query::QueryRuntimeFailure::InvariantViolation);
-    }
-    return SkeletonProviderResult::keyRejected<binder::BinderKeyFailure>(
-        zc::mv(ZC_ASSERT_NONNULL(failure)));
-  }
-  if (selected.kind() != query::QueryValueKind::Value) {
     return SkeletonProviderResult::runtimeRejected(query::QueryRuntimeFailure::InvariantViolation);
   }
   auto sourceKey = identity::source_query::StableSourceQueryKey::fromVerified(selected.value());
@@ -8405,6 +8416,25 @@ CapabilityRejectionCheck CapabilityFailureContract<MaterializeModuleSkeletonDesc
     verify(CapabilityQueryContext<MaterializeModuleSkeletonDescriptor>& context,
            const MaterializeModuleSkeletonDescriptor::Key& key,
            const binder::BinderKeyFailure& failure) {
+  auto selected = context.get<driver::module_graph_query::SelectedModuleSourceQuery>(key.module());
+  if (selected.isRuntimeFailure() &&
+      selected.runtimeFailure() != QueryRuntimeFailure::MissingInput) {
+    return CapabilityRejectionCheck::Rejected;
+  }
+  if ((selected.isRuntimeFailure() &&
+       selected.runtimeFailure() == QueryRuntimeFailure::MissingInput) ||
+      selected.kind() == QueryValueKind::Absence ||
+      selected.kind() == QueryValueKind::SemanticFailure) {
+    zc::Maybe<binder::LocalSyntaxPath> noPath;
+    auto expected = binder::BinderKeyFailure::from(
+        binder::BinderKeyFailureKind::MissingSelectedModuleSource,
+        binder::BinderQueryOwner::module(key.module().clone()), zc::mv(noPath));
+    return expected != zc::none && ZC_ASSERT_NONNULL(expected) == failure
+               ? CapabilityRejectionCheck::Verified
+               : CapabilityRejectionCheck::Rejected;
+  }
+  if (selected.kind() != QueryValueKind::Value) { return CapabilityRejectionCheck::Rejected; }
+
   auto graph = context.getCapability<driver::module_graph_query::MaterializeModuleGraphQuery>(
       key.contextRoots().clone());
   if (graph.isKeyRejected()) {
@@ -8424,18 +8454,6 @@ CapabilityRejectionCheck CapabilityFailureContract<MaterializeModuleSkeletonDesc
   if (!result.is<binder::BinderQueryValue<binder::BoundModuleSkeleton>>()) {
     return CapabilityRejectionCheck::Rejected;
   }
-  auto selected = context.get<driver::module_graph_query::SelectedModuleSourceQuery>(key.module());
-  if (selected.isRuntimeFailure()) { return CapabilityRejectionCheck::Rejected; }
-  if (selected.kind() == QueryValueKind::Absence) {
-    zc::Maybe<binder::LocalSyntaxPath> noPath;
-    auto expected = binder::BinderKeyFailure::from(
-        binder::BinderKeyFailureKind::MissingSelectedModuleSource,
-        binder::BinderQueryOwner::module(key.module().clone()), zc::mv(noPath));
-    return expected != zc::none && ZC_ASSERT_NONNULL(expected) == failure
-               ? CapabilityRejectionCheck::Verified
-               : CapabilityRejectionCheck::Rejected;
-  }
-  if (selected.kind() != QueryValueKind::Value) { return CapabilityRejectionCheck::Rejected; }
   auto moduleKey =
       driver::incremental_binding_query::StableModuleQueryKey::fromVerified(key.module());
   if (moduleKey == zc::none) { return CapabilityRejectionCheck::Rejected; }

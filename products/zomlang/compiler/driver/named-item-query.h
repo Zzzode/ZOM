@@ -46,9 +46,13 @@ struct NamedItemProvenanceQuery final {
                                    query::KeyRejection<binder::BinderKeyFailure>>;
 
   static constexpr query::CapabilityDescriptorMetadata descriptor{
-      "NamedItemProvenanceQuery"_zcc,  "zom.query.named-item-provenance"_zcc,
-      query::RetentionClass::Retained, query::QueryCyclePolicy::Reject,
-      query::QueryCostClass::Linear,   query::CapabilityAdmission::FinalSealedSnapshot};
+      "NamedItemProvenanceQuery"_zcc,
+      "zom.query.named-item-provenance"_zcc,
+      query::RetentionClass::Retained,
+      query::QueryCyclePolicy::Reject,
+      query::QueryCostClass::Linear,
+      query::CapabilityAdmission::FinalSealedSnapshot,
+      query::FinalFailureProjection::SourceOrKey};
   ZC_NODISCARD static zc::Array<uint8_t> encodeKey(const Key& key);
   ZC_NODISCARD static zc::Maybe<Key> decodeKey(zc::ArrayPtr<const uint8_t> bytes);
   ZC_NODISCARD static query::CapabilityProviderResult<NamedItemProvenanceQuery> provide(

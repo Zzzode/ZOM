@@ -55,10 +55,16 @@ struct TestCompleteContextInput final {
                                                          const Key& key, const Value& value,
                                                          const identity::Sha256Digest& witness) {
     if (key != value) { return query::FinalAuthorityCheck::Rejected; }
+    if (key == 0xfe) {
+      for (uint8_t byte : witness.bytes()) {
+        if (byte != 0xfe) { return query::FinalAuthorityCheck::Rejected; }
+      }
+      return query::FinalAuthorityCheck::VerifiedFailure;
+    }
     for (uint8_t byte : witness.bytes()) {
       if (byte != static_cast<uint8_t>(key)) { return query::FinalAuthorityCheck::Rejected; }
     }
-    return query::FinalAuthorityCheck::Verified;
+    return query::FinalAuthorityCheck::VerifiedSuccess;
   }
 };
 

@@ -219,6 +219,9 @@ private:
   friend class FinalSnapshotSeal;
 };
 
+/// \brief Exhaustive immutable state of a final snapshot closure.
+enum class FinalSnapshotClosureKind : uint8_t { Success = 0x01, Failure = 0x02 };
+
 /// \brief Move-only proof that one exact database snapshot has final immutable inputs.
 template <typename ContextRoots, typename FinalWitness = identity::Sha256Digest>
 class FinalSnapshotSeal final {
@@ -237,25 +240,30 @@ public:
   ZC_NODISCARD const FinalWitness& finalWitness() const ZC_LIFETIMEBOUND {
     return finalWitnessField;
   }
+  ZC_NODISCARD FinalSnapshotClosureKind closureKind() const noexcept { return closureKindField; }
 
   bool operator==(const FinalSnapshotSeal& other) const noexcept {
     return databaseField == other.databaseField && revisionField == other.revisionField &&
            contextRootsField == other.contextRootsField &&
-           finalWitnessField == other.finalWitnessField;
+           finalWitnessField == other.finalWitnessField &&
+           closureKindField == other.closureKindField;
   }
   bool operator!=(const FinalSnapshotSeal& other) const noexcept { return !(*this == other); }
 
 private:
   FinalSnapshotSeal(QueryDatabaseIdentity&& database, DatabaseRevision revision,
-                    ContextRoots&& contextRoots, const FinalWitness& finalWitness) noexcept
+                    ContextRoots&& contextRoots, FinalSnapshotClosureKind closureKind,
+                    const FinalWitness& finalWitness) noexcept
       : databaseField(zc::mv(database)),
         revisionField(revision),
         contextRootsField(zc::mv(contextRoots)),
+        closureKindField(closureKind),
         finalWitnessField(finalWitness) {}
 
   QueryDatabaseIdentity databaseField;
   DatabaseRevision revisionField;
   ContextRoots contextRootsField;
+  FinalSnapshotClosureKind closureKindField;
   FinalWitness finalWitnessField;
 
   friend class QueryDatabase;
@@ -303,7 +311,11 @@ private:
 };
 
 /// \brief Independent verification result for final-context authority.
-enum class FinalAuthorityCheck : uint8_t { Verified = 0x01, Rejected = 0x02 };
+enum class FinalAuthorityCheck : uint8_t {
+  VerifiedSuccess = 0x01,
+  VerifiedFailure = 0x02,
+  Rejected = 0x03
+};
 
 /// \brief Closed active-membership alternatives for one complete authority record.
 enum class ActiveMembershipResultKind : uint8_t { Active = 0x01, Inactive = 0x02 };
@@ -374,6 +386,14 @@ enum class RetentionClass : uint8_t { Retained = 0, Evictable = 1 };
 /// \brief Snapshot admission required before a capability evaluator may run.
 enum class CapabilityAdmission : uint8_t { AnySnapshot = 0x01, FinalSealedSnapshot = 0x02 };
 
+/// \brief Rejection alternatives a final-sealed descriptor may project from a failure closure.
+enum class FinalFailureProjection : uint8_t {
+  None = 0x00,
+  Source = 0x01,
+  Key = 0x02,
+  SourceOrKey = 0x03
+};
+
 /// \brief Closed descriptor kinds selected by literal metadata type.
 enum class QueryDescriptorKind : uint8_t {
   Input = 0x01,
@@ -419,6 +439,7 @@ struct CapabilityDescriptorMetadata final {
   QueryCyclePolicy cycle;
   QueryCostClass cost;
   CapabilityAdmission admission;
+  FinalFailureProjection failureProjection = FinalFailureProjection::None;
 };
 
 /// \brief Compile-time shape of one input query descriptor.
