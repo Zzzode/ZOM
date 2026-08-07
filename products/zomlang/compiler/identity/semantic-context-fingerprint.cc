@@ -226,39 +226,6 @@ zc::Maybe<SemanticContextFingerprint> SemanticContextFingerprint::compute(
   return zc::none;
 }
 
-zc::Maybe<SemanticContextFingerprint> SemanticContextFingerprint::compute(
-    const SemanticIdentityRegistrySet& registries,
-    zc::ArrayPtr<const ToolchainSemanticContextInput> toolchainInputs,
-    zc::ArrayPtr<const PackageDependencyEdgeKey> packageEdges,
-    zc::ArrayPtr<const CrateDependencyEdgeKey> crateEdges) {
-  if (!registries.compilationUnits().isFrozen() || !registries.crates().isFrozen() ||
-      !registries.sourceFiles().isFrozen() || !registries.modules().isFrozen()) {
-    return zc::none;
-  }
-
-  zc::Vector<CompilationUnitIdentity> compilationUnits(registries.compilationUnits().size());
-  for (size_t index = 0; index < registries.compilationUnits().size(); ++index) {
-    ZC_IF_SOME(key, registries.compilationUnits().keyAt(index)) {
-      compilationUnits.add(key.clone());
-    }
-  }
-  zc::Vector<CrateKey> crates(registries.crates().size());
-  for (size_t index = 0; index < registries.crates().size(); ++index) {
-    ZC_IF_SOME(key, registries.crates().keyAt(index)) { crates.add(key.clone()); }
-  }
-  zc::Vector<SourceContentIdentity> sourceContents(registries.sourceSnapshots().size());
-  for (const auto& snapshot : registries.sourceSnapshots()) {
-    sourceContents.add(SourceContentIdentity::from(snapshot));
-  }
-  zc::Vector<ModuleKey> modules(registries.modules().size());
-  for (size_t index = 0; index < registries.modules().size(); ++index) {
-    ZC_IF_SOME(key, registries.modules().keyAt(index)) { modules.add(key.clone()); }
-  }
-
-  return compute(compilationUnits.asPtr(), toolchainInputs, packageEdges, crates.asPtr(),
-                 crateEdges, sourceContents.asPtr(), modules.asPtr());
-}
-
 const Sha256Digest& SemanticContextFingerprint::digest() const noexcept { return value; }
 
 SemanticContextFingerprint SemanticContextFingerprint::clone() const noexcept {

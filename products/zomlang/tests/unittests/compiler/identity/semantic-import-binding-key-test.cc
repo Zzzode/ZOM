@@ -114,9 +114,18 @@ SemanticImportBindingKey importKey(
     zc::StringPtr sourceName = "source"_zc,
     DefinitionNamespace localNamespace = DefinitionNamespace::Value,
     zc::StringPtr localName = "local"_zc) {
-  const auto dependencyKind = operation == SemanticImportOperation::ForeignReexport
-                                  ? ModuleDependencyKind::ForeignReexport
-                                  : ModuleDependencyKind::Import;
+  ModuleDependencyKind dependencyKind;
+  switch (operation) {
+    case SemanticImportOperation::Import:
+      dependencyKind = ModuleDependencyKind::Import;
+      break;
+    case SemanticImportOperation::ForeignReexport:
+      dependencyKind = ModuleDependencyKind::ForeignReexport;
+      break;
+    case SemanticImportOperation::ModuleAlias:
+      dependencyKind = ModuleDependencyKind::ModuleAlias;
+      break;
+  }
   auto value = SemanticImportBindingKey::from(
       module(requesterName), resolution(requesterName, dependencyKind, targetName), operation,
       sourceNamespace, name(sourceName), localNamespace, name(localName));
@@ -156,6 +165,9 @@ ZC_TEST("SemanticImportBindingKey distinguishes every semantic field") {
   ZC_EXPECT(baseline != importKey("other"_zc));
   ZC_EXPECT(baseline != importKey("app"_zc, "other"_zc));
   ZC_EXPECT(baseline != importKey("app"_zc, "dep"_zc, SemanticImportOperation::ForeignReexport));
+  ZC_EXPECT(baseline != importKey("app"_zc, "dep"_zc, SemanticImportOperation::ModuleAlias,
+                                  DefinitionNamespace::Module, "dep"_zc,
+                                  DefinitionNamespace::Module, "proxy"_zc));
   ZC_EXPECT(baseline != importKey("app"_zc, "dep"_zc, SemanticImportOperation::Import,
                                   DefinitionNamespace::Type));
   ZC_EXPECT(baseline != importKey("app"_zc, "dep"_zc, SemanticImportOperation::Import,
@@ -166,6 +178,16 @@ ZC_TEST("SemanticImportBindingKey distinguishes every semantic field") {
   ZC_EXPECT(baseline != importKey("app"_zc, "dep"_zc, SemanticImportOperation::Import,
                                   DefinitionNamespace::Value, "source"_zc,
                                   DefinitionNamespace::Value, "other"_zc));
+}
+
+ZC_TEST("SemanticImportBindingKey admits module alias slots") {
+  auto alias =
+      importKey("app"_zc, "dep"_zc, SemanticImportOperation::ModuleAlias,
+                DefinitionNamespace::Module, "dep"_zc, DefinitionNamespace::Module, "proxy"_zc);
+  ZC_EXPECT(alias.operation() == SemanticImportOperation::ModuleAlias);
+  ZC_EXPECT(alias.resolution().dependencyKind() == ModuleDependencyKind::ModuleAlias);
+  ZC_EXPECT(alias.sourceNamespace() == DefinitionNamespace::Module);
+  ZC_EXPECT(alias.localNamespace() == DefinitionNamespace::Module);
 }
 
 ZC_TEST("SemanticImportBindingKey rejects requester operation and namespace mismatches") {

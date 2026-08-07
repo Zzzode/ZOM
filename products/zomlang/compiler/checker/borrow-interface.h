@@ -10,11 +10,11 @@
 #include "zc/core/memory.h"
 #include "zc/core/one-of.h"
 #include "zc/core/vector.h"
+#include "zomlang/compiler/checker/checker-identity-authority.h"
 #include "zomlang/compiler/checker/cross-module-facts.h"
 #include "zomlang/compiler/checker/signature-facts.h"
 #include "zomlang/compiler/identity/definition-key.h"
 #include "zomlang/compiler/identity/semantic-context-fingerprint.h"
-#include "zomlang/compiler/identity/semantic-identity-registry-set.h"
 #include "zomlang/compiler/identity/sha256.h"
 #include "zomlang/compiler/type/semantic-type-store.h"
 
@@ -75,8 +75,7 @@ public:
   ZC_NODISCARD static zc::Maybe<zc::Array<uint8_t>> encodeFramed(
       const BorrowSignatureSummary& summary, zc::ArrayPtr<const uint8_t> expandedCallableKey);
   ZC_NODISCARD static zc::Maybe<zc::Array<uint8_t>> encode(
-      const BorrowSignatureSummary& summary,
-      const identity::SemanticIdentityRegistrySet& registries);
+      const BorrowSignatureSummary& summary, const CheckerIdentityAuthority& identities);
 };
 
 /// \brief Domain-separated revision of one verified borrow-interface surface.
@@ -152,7 +151,7 @@ struct BorrowInterfaceBuildInput final {
   const cross_module::ImportedSignatureViewRevision& importedSignatureViewRevision;
   zc::ArrayPtr<const signature::SemanticSignature> definitions;
   zc::ArrayPtr<const signature::SemanticSignature> supportDefinitions;
-  const identity::SemanticIdentityRegistrySet& registries;
+  const CheckerIdentityAuthority& identities;
   const type::SemanticTypeStore& semanticTypes;
 };
 

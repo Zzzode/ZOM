@@ -565,7 +565,7 @@ protected spellings map to their matching closed values.
 The staging producers use these exact borrowed input records:
 
 ```text
-StableDefinitionHeaderProductionInput {
+DefinitionHeaderInput {
   parsed: &CanonicalParsedModule,
   queryKey: &StableDefinitionQueryKey,
   entry: &NamedDefinitionInventoryEntry,
@@ -574,7 +574,7 @@ StableDefinitionHeaderProductionInput {
   implementationSites: &RevisionLocalImplementationSites,
 }
 
-StableImplementationOccurrenceHeaderProductionInput {
+ImplementationHeaderInput {
   parsed: &CanonicalParsedModule,
   queryKey: &StableImplementationOccurrenceQueryKey,
   entry: &NamedImplementationInventoryEntry,
@@ -621,8 +621,8 @@ cross-input mismatch is rejected before header publication.
 RFC 0018 canonical identity normalization remains owned by
 `CanonicalDefinitionHeaderProducer`, `CanonicalImplHeaderProducer`, and
 `CanonicalHeaderVerifier`. RFC 0027 staging headers are owned separately by
-`StableDefinitionHeaderProducer`,
-`StableImplementationOccurrenceHeaderProducer`, and `StableHeaderVerifier`.
+`DefinitionHeaderProducer`,
+`ImplementationHeaderProducer`, and `StableHeaderVerifier`.
 The source files and classes for these responsibilities are distinct.
 
 Definition scope-role census is exact and syntax-driven:
@@ -2933,8 +2933,8 @@ Its provider reads in this exact order:
 1. `SelectedModuleSourceQuery`;
 2. `ParseSourceQuery`;
 3. `IdentitySyntaxSiteInventoryQuery`;
-4. `StableIdentityCandidateProducer`; and
-5. `StableIdentityCandidateVerifier`.
+4. `CandidateProducer`; and
+5. `CandidateVerifier`.
 
 Selected-source absence produces
 `MissingSelectedModuleSource(Module(key.module), none)`. Parse rejection is
@@ -3071,9 +3071,9 @@ descriptor, or replace the hand-authored inventory with generated schema.
 | `S3` | `binder-checker` for Binder codecs; `module-system` for contextual codecs; `verification` for tests, build discovery, schema, architecture, allowlist, and landing-scope gates | `S2` review | `products/zomlang/compiler/binder/stable-binding-codec.h`; `products/zomlang/compiler/binder/stable-binding-codec.cc`; the matching contextual codecs, Binder build and test wiring, schema and architecture gates, exact allowlist, and landing-scope gate named by RFC 0030 | prepare and review exact-consumption codecs, sequence admission, fixed wire oracles, native tests, mutations, build visibility, and landing-scope proof without an independent landing |
 | `S3A` | `binder-checker` with `module-system` integration and `verification` review | `S3`; RFC 0029 `R29-14` | `products/zomlang/compiler/binder/named-identity-inventory.h`; `products/zomlang/compiler/binder/named-identity-inventory.cc`; `products/zomlang/compiler/binder/revision-local-identity-sites.cc`; `products/zomlang/compiler/driver/active-definition-authority-session.cc`; `products/zomlang/compiler/driver/named-item-query.cc`; `products/zomlang/compiler/driver/compiler-session.cc`; `products/zomlang/tests/unittests/compiler/driver/active-definition-authority-session-test.cc`; `products/zomlang/tests/unittests/compiler/driver/incremental-binding-query-adapter-test.cc` | land typed complete definition and implementation inventory entries, the exact codecs and mutation coverage, and the direct production caller cutover |
 | `S3B` | `module-system` with `binder-checker` and `verification` review | `S3A` | `products/zomlang/compiler/driver/named-identity-inventory-query.h`; `products/zomlang/compiler/driver/named-identity-inventory-query.cc`; `products/zomlang/tests/unittests/compiler/driver/named-identity-inventory-query-test.cc`; `scripts/check-binder-architecture.py` | read selected parse provenance, derive body disposition independently in provider and verifier, prove exact read ordering and failures, and enforce the architecture boundary |
-| `S4` | `binder-checker` with `verification` review | `S3B` | `products/zomlang/compiler/binder/stable-definition-header-producer.h`; `products/zomlang/compiler/binder/stable-definition-header-producer.cc`; `products/zomlang/compiler/binder/CMakeLists.txt`; `products/zomlang/tests/unittests/compiler/binder/stable-definition-header-producer-test.cc`; `products/zomlang/tests/unittests/compiler/binder/CMakeLists.txt` | definition-header production from the closed borrowed input record, retained parse provenance, and complete syntax-role matrix |
-| `S4A` | `binder-checker` with `verification` review | `S3B` | `products/zomlang/compiler/binder/stable-implementation-occurrence-header-producer.h`; `products/zomlang/compiler/binder/stable-implementation-occurrence-header-producer.cc`; `products/zomlang/compiler/binder/CMakeLists.txt`; `products/zomlang/tests/unittests/compiler/binder/stable-implementation-occurrence-header-producer-test.cc`; `products/zomlang/tests/unittests/compiler/binder/CMakeLists.txt` | implementation-occurrence header production from the closed borrowed input record with complete identity, source-form, and scope-role coverage |
-| `S5` | `binder-checker` with `verification` review | `S4`; `S4A` | `products/zomlang/compiler/binder/stable-header-verifier.h`; `products/zomlang/compiler/binder/stable-header-verifier.cc`; `products/zomlang/compiler/binder/stable-binding-schema.def`; `products/zomlang/compiler/binder/CMakeLists.txt`; `products/zomlang/tests/unittests/compiler/binder/stable-header-verifier-test.cc`; `products/zomlang/tests/unittests/compiler/binder/stable-binding-query-test.cc`; `products/zomlang/tests/unittests/compiler/binder/CMakeLists.txt`; `scripts/check-stable-binding-schema.py`; `scripts/check-binder-architecture.py` | independent full-context selection and header verification, exact schema provenance names, equal-occurrence coverage, caller-selected-entry rejection, and producer/verifier disagreement mutations |
+| `S4` | `binder-checker` with `verification` review | `S3B` | `products/zomlang/compiler/binder/stable/definition/header-producer.h`; `products/zomlang/compiler/binder/stable/definition/header-producer.cc`; `products/zomlang/compiler/binder/CMakeLists.txt`; `products/zomlang/tests/unittests/compiler/binder/stable/definition/header-producer-test.cc`; `products/zomlang/tests/unittests/compiler/binder/CMakeLists.txt` | definition-header production from the closed borrowed input record, retained parse provenance, and complete syntax-role matrix |
+| `S4A` | `binder-checker` with `verification` review | `S3B` | `products/zomlang/compiler/binder/stable/implementation/header-producer.h`; `products/zomlang/compiler/binder/stable/implementation/header-producer.cc`; `products/zomlang/compiler/binder/CMakeLists.txt`; `products/zomlang/tests/unittests/compiler/binder/stable/implementation/header-producer-test.cc`; `products/zomlang/tests/unittests/compiler/binder/CMakeLists.txt` | implementation-occurrence header production from the closed borrowed input record with complete identity, source-form, and scope-role coverage |
+| `S5` | `binder-checker` with `verification` review | `S4`; `S4A` | `products/zomlang/compiler/binder/stable/header/verifier.h`; `products/zomlang/compiler/binder/stable/header/verifier.cc`; `products/zomlang/compiler/binder/stable-binding-schema.def`; `products/zomlang/compiler/binder/CMakeLists.txt`; `products/zomlang/tests/unittests/compiler/binder/stable/header/verifier-test.cc`; `products/zomlang/tests/unittests/compiler/binder/stable-binding-query-test.cc`; `products/zomlang/tests/unittests/compiler/binder/CMakeLists.txt`; `scripts/check-stable-binding-schema.py`; `scripts/check-binder-architecture.py` | independent full-context selection and header verification, exact schema provenance names, equal-occurrence coverage, caller-selected-entry rejection, and producer/verifier disagreement mutations |
 | `S6` | `error-system` with `binder-checker`, `module-system`, and `verification` review | RFC 0029 `R29-13A`; RFC 0042 `R42-16` | RFC 0029 `R29-13B` exact live-producer landing set | directly replace the source-only fact contract with the live Source-and-Module contract; land Binder-owned typed arguments, five factories and mappings, Module provenance, exact native mutation coverage, schema and CTest ownership, `ZOM3028`, provider/verifier use, and failed-lookup bijection |
 | `Q3` | `module-system` | `G3` | `products/zomlang/compiler/driver/package/canonical-package-compilation-request.h`; `products/zomlang/compiler/driver/package/canonical-package-compilation-request.cc` | handle-free canonical package request records, exact codecs, verified-request projection, and independent projection verifier; completed production ownership remains closed while RFC 0030 `R30-13` owns the comprehensive schema mutation test |
 | `I1` | `module-system` with `runtime-memory` review | RFC 0029 `R29-14` | `products/zomlang/compiler/identity/canonical-identity-interner-set.h`; `products/zomlang/compiler/identity/canonical-identity-interner-set.cc`; `products/zomlang/compiler/query/semantic-context-capability-arena.h`; `products/zomlang/compiler/query/semantic-context-capability-arena.cc` | arena-owned eight-domain typed interner with collision, concurrency, reverse-lookup, and surviving-lease tests |

@@ -938,7 +938,8 @@ public:
   }
 
   zc::MainBuilder::Validity emitAST() {
-    const auto modules = session->getParsedModules();
+    const auto modules = session->retainedParsedModules();
+    if (modules.size() == 0) { return "Failed to retain verified parser results."; }
     const auto& options = session->getCompilerOptions();
 
     zc::Maybe<zc::Own<zc::OutputStream>> outputStream = createOutputStream(
@@ -1049,10 +1050,10 @@ private:
 
   /// Extracts base name from the first source file
   zc::Maybe<zc::String> extractSourceBaseName() {
-    const auto modules = session->getParsedModules();
-    if (modules.size() == 0) return zc::none;
+    auto modules = session->materializeParsedModules();
+    if (modules == zc::none || ZC_ASSERT_NONNULL(modules).size() == 0) { return zc::none; }
 
-    const source::BufferId& firstBufferId = modules[0].buffer();
+    const source::BufferId& firstBufferId = ZC_ASSERT_NONNULL(modules)[0].buffer();
 
     const auto& sourceManager = session->getSourceManager();
     zc::StringPtr filePath = sourceManager.getIdentifierForBuffer(firstBufferId);
@@ -1091,10 +1092,12 @@ private:
   }
 
   source::SourceLoc emissionLocation() const {
-    const auto modules = session->getParsedModules();
-    if (modules.size() == 0) { return source::SourceLoc(); }
+    auto modules = session->materializeParsedModules();
+    if (modules == zc::none || ZC_ASSERT_NONNULL(modules).size() == 0) {
+      return source::SourceLoc();
+    }
 
-    const auto& parsedModule = modules[0].parsedModule();
+    const auto& parsedModule = ZC_ASSERT_NONNULL(modules)[0].parsedModule();
     auto location = parsedModule.sourceLocFor(parsedModule.rootSpan());
     ZC_IF_SOME(value, location) { return value; }
     return source::SourceLoc();

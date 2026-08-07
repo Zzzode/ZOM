@@ -238,24 +238,24 @@ ZOM_STABLE_BINDING_RECORD(ContextualCallableParameterKey,
                           "StableBindingQueryTest.ContextualKeysRejectRootAndOwnerDrift")
 
 ZOM_STABLE_BINDING_RECORD(StableHeaderGenericParameter, "zom.binder.header-generic-parameter",
-                          BinderSemanticValueBytes, StableDefinitionHeaderProducer,
+                          BinderSemanticValueBytes, DefinitionHeaderProducer,
                           StableHeaderVerifier, S2B, S3, S2B,
                           "domain|truncated|trailing|field|reordered|identity|ownership|max-bytes",
                           "StableBindingQueryTest.HeadersRejectFieldAndParameterMutations")
 ZOM_STABLE_BINDING_RECORD(StableHeaderCallableParameter, "zom.binder.header-callable-parameter",
-                          BinderSemanticValueBytes, StableDefinitionHeaderProducer,
+                          BinderSemanticValueBytes, DefinitionHeaderProducer,
                           StableHeaderVerifier, S2B, S3, S2B,
                           "domain|truncated|trailing|field|reordered|identity|ownership|max-bytes",
                           "StableBindingQueryTest.HeadersRejectFieldAndParameterMutations")
 ZOM_STABLE_BINDING_RECORD(StableDefinitionHeader, "zom.binder.definition-header",
-                          BinderSemanticValueBytes, StableDefinitionHeaderProducer,
+                          BinderSemanticValueBytes, DefinitionHeaderProducer,
                           StableHeaderVerifier, S2B, S3, S2B,
                           "domain|tag|truncated|trailing|field|missing|additional|duplicate|"
                           "reordered|identity|ownership|max-count|max-bytes",
                           "StableBindingQueryTest.HeadersRejectFieldAndParameterMutations")
 ZOM_STABLE_BINDING_RECORD(StableImplementationOccurrenceHeader,
                           "zom.binder.implementation-occurrence-header", BinderSemanticValueBytes,
-                          StableImplementationOccurrenceHeaderProducer, StableHeaderVerifier, S2B,
+                          ImplementationHeaderProducer, StableHeaderVerifier, S2B,
                           S3, S2B,
                           "domain|tag|truncated|trailing|field|missing|additional|duplicate|"
                           "reordered|identity|ownership|max-count|max-bytes",
@@ -1146,7 +1146,8 @@ ZOM_STABLE_BINDING_FIELD(StableModuleAliasFact, 0, queryKey, StableSemanticImpor
 ZOM_STABLE_BINDING_FIELD(StableModuleAliasFact, 1, declaringScope, StableScopeOwnerKey)
 ZOM_STABLE_BINDING_FIELD(StableModuleAliasFact, 2, alias, StableDefinitionQueryKey)
 ZOM_STABLE_BINDING_FIELD(StableModuleAliasFact, 3, canonicalModule, ModuleKey)
-ZOM_STABLE_BINDING_FIELD(StableModuleAliasFact, 4, targetSurfaceRevision, ExportSurfaceRevision)
+ZOM_STABLE_BINDING_FIELD(StableModuleAliasFact, 4, targetExportNamesRevision,
+                         ModuleAliasExportNamesRevision)
 ZOM_STABLE_BINDING_FIELD(StableReexportStep, 0, module, ModuleKey)
 ZOM_STABLE_BINDING_FIELD(StableReexportStep, 1, exportPath, LocalSyntaxPath)
 ZOM_STABLE_BINDING_FIELD(StableReexportStep, 2, binding, StableBindingTargetKey)

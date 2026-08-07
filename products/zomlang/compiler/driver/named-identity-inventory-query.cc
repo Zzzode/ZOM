@@ -7,8 +7,8 @@
 #include "zomlang/compiler/binder/parsed-module.h"
 #include "zomlang/compiler/binder/stable-binding-codec.h"
 #include "zomlang/compiler/binder/stable-binding-diagnostic-fact.h"
-#include "zomlang/compiler/binder/stable-identity-candidate-producer.h"
-#include "zomlang/compiler/binder/stable-identity-candidate-verifier.h"
+#include "zomlang/compiler/binder/stable/candidate/producer.h"
+#include "zomlang/compiler/binder/stable/candidate/verifier.h"
 #include "zomlang/compiler/diagnostics/toolchain-module-root-argument.h"
 #include "zomlang/compiler/driver/module-graph-query-input.h"
 #include "zomlang/compiler/identity/canonical-decoder.h"
@@ -52,7 +52,7 @@ zc::Maybe<ast::NodeId> selectModuleNode(const ast::Tree& tree, const identity::M
   const auto form = static_cast<ast::ModuleDeclarationForm>(
       syntax.payload.words[ast::kModuleDeclarationFormWord]);
   if (form != ast::ModuleDeclarationForm::RootDeclaration &&
-      form != ast::ModuleDeclarationForm::InlineRoot) {
+      form != ast::ModuleDeclarationForm::InlineRoot && form != ast::ModuleDeclarationForm::Alias) {
     return zc::none;
   }
   auto name = identity::ModulePathSegment::fromSource(
@@ -131,10 +131,10 @@ query::TypedQueryResult<LoadedIdentitySource> loadIdentitySource(Context& contex
 
 zc::Maybe<binder::VerifiedStableIdentityCandidateInventory> verifiedIdentityCandidates(
     const LoadedIdentitySource& source) {
-  auto production = binder::StableIdentityCandidateProducer::produce(source.parsed, source.module,
-                                                                     source.moduleNode);
-  auto verification = binder::StableIdentityCandidateVerifier::verify(
-      source.parsed, source.module, source.moduleNode, production);
+  auto production =
+      binder::CandidateProducer::produce(source.parsed, source.module, source.moduleNode);
+  auto verification = binder::CandidateVerifier::verify(source.parsed, source.module,
+                                                        source.moduleNode, production);
   if (!verification.is<binder::VerifiedStableIdentityCandidateInventory>()) { return zc::none; }
   return zc::mv(verification.get<binder::VerifiedStableIdentityCandidateInventory>());
 }
@@ -581,6 +581,19 @@ zc::Maybe<diagnostics::DiagnosticFact> identityAdmissionDiagnostic(
   ZC_UNREACHABLE;
 }
 
+zc::Maybe<diagnostics::DiagnosticFact> definitionRedeclarationDiagnostic(
+    zc::ArrayPtr<const binder::VerifiedStableDefinitionCandidate> definitions,
+    const binder::StableDefinitionRedeclaration& redeclaration) {
+  if (redeclaration.first >= definitions.size() || redeclaration.duplicate >= definitions.size()) {
+    return zc::none;
+  }
+  const auto& duplicate = definitions[redeclaration.duplicate];
+  const auto& previous = definitions[redeclaration.first];
+  return binder::StableBindingDiagnosticFactFactory::definitionRedeclaration(
+      duplicate.site, previous.site, static_cast<diagnostics::DiagID>(redeclaration.diagnostic),
+      duplicate.authority.record().name());
+}
+
 }  // namespace
 
 zc::Array<uint8_t> IdentitySyntaxSiteInventoryQuery::encodeKey(const Key& key) {
@@ -659,8 +672,33 @@ query::CapabilityProviderResult<StableIdentityAdmissionQuery> StableIdentityAdmi
         query::QueryRuntimeFailure::InvariantViolation);
   }
   const auto& source = loaded.value();
-  auto production = binder::StableIdentityCandidateProducer::produce(source.parsed, source.module,
-                                                                     source.moduleNode);
+  auto production =
+      binder::CandidateProducer::produce(source.parsed, source.module, source.moduleNode);
+  auto reconstructed = binder::CandidateVerifier::verify(source.parsed, source.module,
+                                                         source.moduleNode, production);
+  if (reconstructed.is<binder::StableIdentityCandidateInvariant>()) {
+    return query::CapabilityProviderResult<StableIdentityAdmissionQuery>::runtimeRejected(
+        query::QueryRuntimeFailure::InvariantViolation);
+  }
+  if (reconstructed.is<binder::VerifiedStableIdentityCandidateInventory>()) {
+    const auto& definitions =
+        reconstructed.get<binder::VerifiedStableIdentityCandidateInventory>().definitions;
+    auto redeclarations =
+        binder::CandidateVerifier::findDefinitionRedeclarations(definitions.asPtr());
+    if (!redeclarations.is<zc::Vector<binder::StableDefinitionRedeclaration>>()) {
+      return query::CapabilityProviderResult<StableIdentityAdmissionQuery>::runtimeRejected(
+          query::QueryRuntimeFailure::InvariantViolation);
+    }
+    const auto& rows = redeclarations.get<zc::Vector<binder::StableDefinitionRedeclaration>>();
+    if (!rows.empty()) {
+      auto fact = definitionRedeclarationDiagnostic(definitions.asPtr(), rows[0]);
+      if (fact == zc::none) {
+        return query::CapabilityProviderResult<StableIdentityAdmissionQuery>::runtimeRejected(
+            query::QueryRuntimeFailure::InvariantViolation);
+      }
+      return sourceRejectionFromFact<StableIdentityAdmissionQuery>(zc::mv(ZC_ASSERT_NONNULL(fact)));
+    }
+  }
   auto admission = binder::StableIdentityAdmissionVerifier::verify(
       source.parsed, source.module, source.moduleNode, siteInventory.lease().capability(),
       production);
@@ -695,8 +733,8 @@ zc::Maybe<zc::Array<uint8_t>> StableIdentityAdmissionQuery::verify(
   auto siteInventory = context.getCapability<IdentitySyntaxSiteInventoryQuery>(key);
   if (!siteInventory.isPublished()) { return zc::none; }
   const auto& source = loaded.value();
-  auto production = binder::StableIdentityCandidateProducer::produce(source.parsed, source.module,
-                                                                     source.moduleNode);
+  auto production =
+      binder::CandidateProducer::produce(source.parsed, source.module, source.moduleNode);
   auto admission = binder::StableIdentityAdmissionVerifier::verify(
       source.parsed, source.module, source.moduleNode, siteInventory.lease().capability(),
       production);
@@ -1219,8 +1257,30 @@ query::CapabilityRejectionCheck verifyBinderSourceRejection(
                : query::CapabilityRejectionCheck::Rejected;
   }
   const auto& source = loaded.value();
-  auto verification = binder::StableIdentityCandidateVerifier::reconstruct(
-      source.parsed, source.module, source.moduleNode);
+  auto verification =
+      binder::CandidateVerifier::reconstruct(source.parsed, source.module, source.moduleNode);
+  if (verification.template is<binder::VerifiedStableIdentityCandidateInventory>()) {
+    const auto& definitions =
+        verification.template get<binder::VerifiedStableIdentityCandidateInventory>().definitions;
+    auto redeclarations =
+        binder::CandidateVerifier::findDefinitionRedeclarations(definitions.asPtr());
+    if (!redeclarations.template is<zc::Vector<binder::StableDefinitionRedeclaration>>()) {
+      return query::CapabilityRejectionCheck::Rejected;
+    }
+    const auto& rows =
+        redeclarations.template get<zc::Vector<binder::StableDefinitionRedeclaration>>();
+    if (rows.empty()) { return query::CapabilityRejectionCheck::Rejected; }
+    auto fact = definitionRedeclarationDiagnostic(definitions.asPtr(), rows[0]);
+    if (fact == zc::none) { return query::CapabilityRejectionCheck::Rejected; }
+    zc::Vector<diagnostics::DiagnosticFact> expectedFacts;
+    expectedFacts.add(zc::mv(ZC_ASSERT_NONNULL(fact)));
+    auto expected = binder::encodeStableBindingDiagnosticFacts(expectedFacts.asPtr());
+    auto actual = binder::encodeStableBindingDiagnosticFacts(diagnostics);
+    return expected != zc::none && actual != zc::none &&
+                   ZC_ASSERT_NONNULL(expected).asPtr() == ZC_ASSERT_NONNULL(actual).asPtr()
+               ? query::CapabilityRejectionCheck::Verified
+               : query::CapabilityRejectionCheck::Rejected;
+  }
   if (!verification.template is<binder::StableIdentityCandidateSourceFailure>()) {
     return query::CapabilityRejectionCheck::Rejected;
   }

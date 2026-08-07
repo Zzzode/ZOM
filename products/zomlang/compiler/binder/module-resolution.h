@@ -11,8 +11,9 @@
 #include "zc/core/one-of.h"
 #include "zc/core/vector.h"
 #include "zomlang/compiler/ast/node-id.h"
+#include "zomlang/compiler/identity/brand.h"
+#include "zomlang/compiler/identity/handle.h"
 #include "zomlang/compiler/identity/module-resolution-key.h"
-#include "zomlang/compiler/identity/semantic-identity-registry-set.h"
 
 namespace zomlang::compiler::binder {
 
@@ -240,7 +241,6 @@ public:
 
   using FreezeResult = zc::OneOf<StructuralModuleResolver, ModuleResolutionInvariantFact>;
   ZC_NODISCARD static FreezeResult freeze(identity::SemanticContextBrand context,
-                                          const identity::SemanticIdentityRegistrySet& registries,
                                           ModuleResolutionEnvironmentRecord&& environment,
                                           zc::Vector<StructuralModuleCatalogEntry>&& catalog);
 

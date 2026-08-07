@@ -280,9 +280,10 @@ zc::Maybe<uint32_t> singleUtf8Scalar(zc::StringPtr text) noexcept {
 }  // namespace
 
 FactEmissionResult FactEmitter::emit(const FactEmissionInput& input) {
-  if (!input.semanticContext.isValid() || input.registries.context() != input.semanticContext ||
+  if (!input.semanticContext.isValid() ||
+      input.identities.semanticContext() != input.semanticContext ||
       input.semanticTypes.context() != input.semanticContext || !input.tree.contains(input.node) ||
-      input.registries.modules().validate(input.module) != identity::FrozenRegistryFailure::None) {
+      input.identities.module(input.module) == zc::none) {
     return rejectInvariant(signature::CheckerInvariantKind::InputReceiptMismatch, input.module, 0,
                            zc::none, input.node);
   }
@@ -297,11 +298,11 @@ FactEmissionResult FactEmitter::emit(const FactEmissionInput& input) {
     }
     ++preorder;
   });
-  auto moduleKey = input.registries.modules().lookup(input.module);
+  auto moduleEntry = input.identities.module(input.module);
   bool sourceMatches = false;
-  ZC_IF_SOME(value, moduleKey) {
-    sourceMatches = input.registries.sourceFiles().find(input.source) != zc::none &&
-                    input.source.belongsTo(value.crate()) &&
+  ZC_IF_SOME(value, moduleEntry) {
+    sourceMatches = input.identities.sourceFile(input.source) != zc::none &&
+                    input.source.belongsTo(value.key().crate()) &&
                     input.checkedNode.sourceSpan.belongsTo(input.source);
   }
   if (!found || input.checkedNode.syntaxKind != static_cast<uint32_t>(syntax.kind) ||

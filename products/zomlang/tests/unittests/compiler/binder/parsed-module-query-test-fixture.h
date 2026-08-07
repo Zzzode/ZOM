@@ -30,23 +30,23 @@ inline zc::Maybe<parser::CanonicalParsedSource> canonicalParsedSource(
 }
 
 inline ParsedModuleVerificationResult verifyParsedSource(
-    identity::SemanticContextBrand context, const identity::SemanticIdentityRegistrySet& registries,
-    const identity::ImmutableSourceSnapshot& snapshot, const source::SourceManager& sources,
-    const source::BufferId& buffer, parser::ParsedTokenSnapshot&& tokens, ast::Tree&& tree) {
+    identity::SemanticContextBrand context, const identity::ImmutableSourceSnapshot& snapshot,
+    const source::SourceManager& sources, const source::BufferId& buffer,
+    parser::ParsedTokenSnapshot&& tokens, ast::Tree&& tree) {
   auto parsed = canonicalParsedSource(snapshot, sources, buffer, zc::mv(tokens), zc::mv(tree));
   if (parsed == zc::none) {
     return ParsedModuleInvariantFact{ParsedModuleInvariantKind::InvalidTree, 1};
   }
-  return ParsedModuleVerifier::verifyQueryResult(context, registries, snapshot.source(), sources,
+  return ParsedModuleVerifier::verifyQueryResult(context, snapshot, snapshot.source(), sources,
                                                  buffer, zc::mv(ZC_ASSERT_NONNULL(parsed)));
 }
 
 inline VerifiedParsedModule requireVerifiedParsedSource(
-    identity::SemanticContextBrand context, const identity::SemanticIdentityRegistrySet& registries,
-    const identity::ImmutableSourceSnapshot& snapshot, const source::SourceManager& sources,
-    const source::BufferId& buffer, parser::ParsedTokenSnapshot&& tokens, ast::Tree&& tree) {
-  auto result = verifyParsedSource(context, registries, snapshot, sources, buffer, zc::mv(tokens),
-                                   zc::mv(tree));
+    identity::SemanticContextBrand context, const identity::ImmutableSourceSnapshot& snapshot,
+    const source::SourceManager& sources, const source::BufferId& buffer,
+    parser::ParsedTokenSnapshot&& tokens, ast::Tree&& tree) {
+  auto result =
+      verifyParsedSource(context, snapshot, sources, buffer, zc::mv(tokens), zc::mv(tree));
   ZC_REQUIRE(result.is<VerifiedParsedModule>());
   return zc::mv(result.get<VerifiedParsedModule>());
 }

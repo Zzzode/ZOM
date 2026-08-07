@@ -206,6 +206,11 @@ bool isOwnedBodyParent(const StableOwnerBodyQueryKey& owner, const StableScopeOw
   ZC_UNREACHABLE
 }
 
+bool isOwnedBodyNodeScope(const StableOwnerBodyQueryKey& owner, const StableScopeOwnerKey& scope) {
+  return isOwnedBodyScope(owner, scope) ||
+         (!scope.value().is<StableBodyScope>() && isOwnedBodyParent(owner, scope));
+}
+
 bool isOwnedBodyTarget(const StableOwnerBodyQueryKey& owner, const StableBindingTargetKey& target) {
   if (target.value().is<StableOwnerLocalBindingTarget>()) {
     return target.value().get<StableOwnerLocalBindingTarget>().owner == owner;
@@ -616,7 +621,7 @@ StableBodyNodeScopeFact::StableBodyNodeScopeFact(zc::Own<Impl>&& impl) noexcept
 zc::Maybe<StableBodyNodeScopeFact> StableBodyNodeScopeFact::from(StableOwnerBodyQueryKey&& owner,
                                                                  LocalSyntaxPath&& nodePath,
                                                                  StableScopeOwnerKey&& scope) {
-  if (!isOwnedBodyScope(owner, scope)) { return zc::none; }
+  if (!isOwnedBodyNodeScope(owner, scope)) { return zc::none; }
   return StableBodyNodeScopeFact(
       zc::heap<Impl>(Impl{zc::mv(owner), zc::mv(nodePath), zc::mv(scope)}));
 }
@@ -659,7 +664,7 @@ zc::Maybe<StableOwnerLocalBindingFact> StableOwnerLocalBindingFact::from(
     StableScopeOwnerKey&& declaringScope, DefinitionActivation activation) {
   if (owner.owner() != key.owner() || kind != key.kind() || name != key.name() ||
       static_cast<uint8_t>(nameSpace) != static_cast<uint8_t>(key.nameSpace()) ||
-      !isOwnedBodyScope(owner, declaringScope) ||
+      !isOwnedBodyNodeScope(owner, declaringScope) ||
       !inClosedRange(activation, DefinitionActivation::GenericList,
                      DefinitionActivation::LoopPattern)) {
     return zc::none;
@@ -1860,7 +1865,7 @@ struct StableModuleAliasFact::Impl final {
   StableScopeOwnerKey declaringScope;
   StableDefinitionQueryKey alias;
   identity::ModuleKey canonicalModule;
-  ExportSurfaceRevision targetSurfaceRevision;
+  ModuleAliasExportNamesRevision targetExportNamesRevision;
 };
 
 StableModuleAliasFact::~StableModuleAliasFact() noexcept(false) = default;
@@ -1871,21 +1876,23 @@ StableModuleAliasFact::StableModuleAliasFact(zc::Own<Impl>&& impl) noexcept : im
 zc::Maybe<StableModuleAliasFact> StableModuleAliasFact::from(
     StableSemanticImportQueryKey&& queryKey, StableScopeOwnerKey&& declaringScope,
     StableDefinitionQueryKey&& alias, identity::ModuleKey&& canonicalModule,
-    ExportSurfaceRevision targetSurfaceRevision) {
+    ModuleAliasExportNamesRevision targetExportNamesRevision) {
   if (!sameModule(queryKey.requester(), moduleOf(declaringScope)) ||
       !sameModule(queryKey.requester(), alias.module()) ||
+      queryKey.binding().operation() != identity::SemanticImportOperation::ModuleAlias ||
+      queryKey.binding().sourceNamespace() != identity::DefinitionNamespace::Module ||
       queryKey.binding().localNamespace() != identity::DefinitionNamespace::Module) {
     return zc::none;
   }
   return StableModuleAliasFact(
       zc::heap<Impl>(Impl{zc::mv(queryKey), zc::mv(declaringScope), zc::mv(alias),
-                          zc::mv(canonicalModule), targetSurfaceRevision}));
+                          zc::mv(canonicalModule), targetExportNamesRevision}));
 }
 
 StableModuleAliasFact StableModuleAliasFact::clone() const {
   return StableModuleAliasFact(
       zc::heap<Impl>(Impl{impl->queryKey.clone(), impl->declaringScope.clone(), impl->alias.clone(),
-                          impl->canonicalModule.clone(), impl->targetSurfaceRevision}));
+                          impl->canonicalModule.clone(), impl->targetExportNamesRevision}));
 }
 const StableSemanticImportQueryKey& StableModuleAliasFact::queryKey() const noexcept {
   return impl->queryKey;
@@ -1899,14 +1906,15 @@ const StableDefinitionQueryKey& StableModuleAliasFact::alias() const noexcept {
 const identity::ModuleKey& StableModuleAliasFact::canonicalModule() const noexcept {
   return impl->canonicalModule;
 }
-const ExportSurfaceRevision& StableModuleAliasFact::targetSurfaceRevision() const noexcept {
-  return impl->targetSurfaceRevision;
+const ModuleAliasExportNamesRevision& StableModuleAliasFact::targetExportNamesRevision()
+    const noexcept {
+  return impl->targetExportNamesRevision;
 }
 bool StableModuleAliasFact::operator==(const StableModuleAliasFact& other) const {
   return impl->queryKey == other.impl->queryKey &&
          impl->declaringScope == other.impl->declaringScope && impl->alias == other.impl->alias &&
          sameModule(impl->canonicalModule, other.impl->canonicalModule) &&
-         impl->targetSurfaceRevision.digest() == other.impl->targetSurfaceRevision.digest();
+         impl->targetExportNamesRevision.digest() == other.impl->targetExportNamesRevision.digest();
 }
 
 struct StableReexportStep::Impl final {
@@ -2282,7 +2290,7 @@ bool validOwnerScopeGraph(const StableOwnerBodyQueryKey& owner,
         pending.add(child);
     }
   }
-  return sentinel != 0 && clock == sentinel;
+  return clock == sentinel;
 }
 zc::Array<uint8_t> pathNamespaceKey(const LocalSyntaxPath& path, Namespace nameSpace) {
   identity::CanonicalEncoder encoder;
@@ -2351,23 +2359,30 @@ zc::Maybe<BoundOwnerBody> BoundOwnerBody::from(
                             callableRoots))
     return zc::none;
   auto containsScope = [&](size_t ancestor, size_t node) {
+    if (ancestor >= scopeEntries.size() || node >= scopeEntries.size()) return false;
     return scopeEntries[ancestor] <= scopeEntries[node] &&
            scopeEntries[node] < scopeExits[ancestor];
   };
   for (size_t position = 0; position < nodeScopes.values().size(); ++position) {
     const auto& value = nodeScopes.values()[position];
     const auto scopePosition = find(scopeIndex, value.scope());
-    if (value.owner() != owner || scopePosition == zc::none) return zc::none;
-    if (!nodeIndex.add(value.nodePath().encode(), ZC_ASSERT_NONNULL(scopePosition)))
+    if (value.owner() != owner ||
+        (scopePosition == zc::none &&
+         (value.scope().value().is<StableBodyScope>() || !isOwnedBodyParent(owner, value.scope()))))
       return zc::none;
+    const auto indexedScope =
+        scopePosition == zc::none ? scopes.values().size() : ZC_ASSERT_NONNULL(scopePosition);
+    if (!nodeIndex.add(value.nodePath().encode(), indexedScope)) return zc::none;
   }
   auto covered = [&](const LocalSyntaxPath& path) { return find(nodeIndex, path) != zc::none; };
   for (const auto& value : scopes.values())
     if (!covered(value.scope().value().get<StableBodyScope>().path)) return zc::none;
   for (size_t position = 0; position < bindings.values().size(); ++position) {
     const auto& value = bindings.values()[position];
+    const auto declaringScope = find(scopeIndex, value.declaringScope());
     if (value.owner() != owner || !covered(value.key().path()) ||
-        find(scopeIndex, value.declaringScope()) == zc::none ||
+        (declaringScope == zc::none && (value.declaringScope().value().is<StableBodyScope>() ||
+                                        !isOwnedBodyParent(owner, value.declaringScope()))) ||
         !bindingIndex.add(value.key().encode(), position))
       return zc::none;
   }
@@ -2833,7 +2848,9 @@ zc::Maybe<BoundModuleSkeleton> BoundModuleSkeleton::from(
   for (size_t position = 0; position < localExports.values().size(); ++position) {
     const auto& value = localExports.values()[position];
     if (!sameModule(module, value.declaringModule()) ||
-        (position != 0 && value.exportPath() == localExports.values()[position - 1].exportPath()))
+        (position != 0 && value.exportPath() == localExports.values()[position - 1].exportPath() &&
+         value.name().nameSpace() == localExports.values()[position - 1].name().nameSpace() &&
+         value.name().name() == localExports.values()[position - 1].name().name()))
       return zc::none;
   }
   for (size_t position = 0; position < failedLookups.values().size(); ++position) {

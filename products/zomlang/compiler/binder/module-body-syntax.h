@@ -29,10 +29,13 @@ struct ModuleBodyProvenanceData;
 }  // namespace module_body_syntax_detail
 
 /// \brief Closed detached node alternatives admitted into one semantic module body tree.
-enum class DetachedModuleBodyNodeKind : uint8_t {
-  Syntax = 0x01,
-  DefinitionBoundary = 0x02,
-  ImplementationBoundary = 0x03
+enum class DetachedModuleBodyNodeKind : uint8_t { Syntax = 0x01, DefinitionBoundary = 0x02 };
+
+/// \brief One schema child field mapped into detached preorder child ordinals.
+struct DetachedModuleBodyChildField final {
+  bool present;
+  uint32_t firstChildOrdinal;
+  uint32_t childCount;
 };
 
 /// \brief One handle-free canonical syntax record or stable-item boundary leaf.
@@ -50,15 +53,20 @@ public:
                                                                uint32_t childCount);
   /// \brief Constructs one stable definition boundary leaf.
   ZC_NODISCARD static DetachedModuleBodyNode definitionBoundary(const identity::DefinitionKey& key);
-  /// \brief Constructs one stable implementation occurrence boundary leaf.
-  ZC_NODISCARD static DetachedModuleBodyNode implementationBoundary(
-      const ImplSourceOccurrenceKey& key);
   ZC_NODISCARD DetachedModuleBodyNodeKind kind() const noexcept;
   ZC_NODISCARD zc::Maybe<ast::SyntaxKind> syntaxKind() const noexcept;
   /// \brief Returns the schema-ordered scalar and child-cardinality record for syntax nodes.
   ZC_NODISCARD zc::ArrayPtr<const uint8_t> canonicalPayload() const ZC_LIFETIMEBOUND;
   /// \brief Returns the number of immediate detached children in preorder storage.
   ZC_NODISCARD uint32_t childCount() const noexcept;
+  /// \brief Maps one schema node field to its immediate detached child ordinals.
+  ZC_NODISCARD zc::Maybe<DetachedModuleBodyChildField> childField(uint32_t fieldIndex) const;
+  /// \brief Decodes one canonical identifier scalar from an identifier schema field.
+  ZC_NODISCARD zc::Maybe<identity::DeclaredDefinitionName> identifierField(
+      uint32_t fieldIndex) const;
+  /// \brief Decodes one canonical identifier sequence from an identifier-list schema field.
+  ZC_NODISCARD zc::Maybe<zc::Vector<identity::DeclaredDefinitionName>> identifierListField(
+      uint32_t fieldIndex) const;
   bool operator==(const DetachedModuleBodyNode& other) const noexcept;
   bool operator!=(const DetachedModuleBodyNode& other) const noexcept { return !(*this == other); }
 
@@ -198,12 +206,6 @@ struct ModuleBodyDefinitionBoundaryInput final {
   identity::DefinitionKey key;
 };
 
-/// \brief Current stable implementation occurrence consumed while pruning module-owned syntax.
-struct ModuleBodyImplementationBoundaryInput final {
-  ast::NodeId node;
-  ImplSourceOccurrenceKey key;
-};
-
 /// \brief Semantic and revision-local halves produced from one exact selected source.
 struct ModuleBodySyntaxProjection final {
   ModuleBodySyntax syntax;
@@ -236,14 +238,12 @@ public:
       ast::NodeId moduleNode, const StableIdentityAdmission& admission);
   ZC_NODISCARD static ModuleBodySyntaxProjectionResult produce(
       const CanonicalParsedModule& parsedModule, const identity::ModuleKey& module,
-      ast::NodeId moduleNode, zc::ArrayPtr<const ModuleBodyDefinitionBoundaryInput> definitions,
-      zc::ArrayPtr<const ModuleBodyImplementationBoundaryInput> implementations);
+      ast::NodeId moduleNode, zc::ArrayPtr<const ModuleBodyDefinitionBoundaryInput> definitions);
 
   ZC_NODISCARD static ModuleBodySyntaxProjectionResult produceNamedItem(
       const CanonicalParsedModule& parsedModule, const identity::ModuleKey& module,
       ast::NodeId moduleNode, ast::NodeId definitionNode, const identity::DefinitionKey& definition,
-      zc::ArrayPtr<const ModuleBodyDefinitionBoundaryInput> definitions,
-      zc::ArrayPtr<const ModuleBodyImplementationBoundaryInput> implementations);
+      zc::ArrayPtr<const ModuleBodyDefinitionBoundaryInput> definitions);
 };
 
 /// \brief Independently reconstructs pruning, canonical syntax, and total provenance coverage.
@@ -254,19 +254,16 @@ public:
       ast::NodeId moduleNode, const StableIdentityAdmission& admission);
   ZC_NODISCARD static ModuleBodySyntaxProjectionResult reconstruct(
       const CanonicalParsedModule& parsedModule, const identity::ModuleKey& module,
-      ast::NodeId moduleNode, zc::ArrayPtr<const ModuleBodyDefinitionBoundaryInput> definitions,
-      zc::ArrayPtr<const ModuleBodyImplementationBoundaryInput> implementations);
+      ast::NodeId moduleNode, zc::ArrayPtr<const ModuleBodyDefinitionBoundaryInput> definitions);
 
   ZC_NODISCARD static ModuleBodySyntaxProjectionResult reconstructNamedItem(
       const CanonicalParsedModule& parsedModule, const identity::ModuleKey& module,
       ast::NodeId moduleNode, ast::NodeId definitionNode, const identity::DefinitionKey& definition,
-      zc::ArrayPtr<const ModuleBodyDefinitionBoundaryInput> definitions,
-      zc::ArrayPtr<const ModuleBodyImplementationBoundaryInput> implementations);
+      zc::ArrayPtr<const ModuleBodyDefinitionBoundaryInput> definitions);
 
   ZC_NODISCARD static ModuleBodySyntaxFailureKind verify(
       const CanonicalParsedModule& parsedModule, const identity::ModuleKey& module,
       ast::NodeId moduleNode, zc::ArrayPtr<const ModuleBodyDefinitionBoundaryInput> definitions,
-      zc::ArrayPtr<const ModuleBodyImplementationBoundaryInput> implementations,
       const ModuleBodySyntaxProjection& projection);
 };
 

@@ -6,7 +6,6 @@
 #include "zomlang/compiler/binder/identity-pre-admission.h"
 
 #include "zc/ztest/test.h"
-#include "zomlang/compiler/identity/semantic-identity-registry-set.h"
 #include "zomlang/compiler/identity/source-snapshot.h"
 
 namespace zomlang::compiler::binder {
@@ -196,31 +195,22 @@ identity::DefinitionIdentityRecord functionRecord(const identity::OverloadHeader
   ZC_FAIL_REQUIRE("invalid function identity record fixture");
 }
 
-identity::SemanticIdentityRegistrySet admittedImplRegistry(
+identity::CanonicalIdentityInternerSet admittedImplAuthorities(
     const identity::ImplIdentityRecord& record) {
   identity::SemanticContextFactory factory;
   auto context = factory.issue();
   ZC_REQUIRE(context != zc::none);
   ZC_IF_SOME(admittedContext, context) {
-    auto registryValue = identity::SemanticIdentityRegistrySet::create(factory, admittedContext);
-    ZC_REQUIRE(registryValue != zc::none);
-    ZC_IF_SOME(registry, registryValue) {
-      ZC_REQUIRE(registry.collectCompilationUnit(identity::CompilationUnitIdentity::userPackage(
-                     package())) == identity::FrozenRegistryFailure::None);
-      ZC_REQUIRE(registry.freezeCompilationUnits() == identity::FrozenRegistryFailure::None);
-      ZC_REQUIRE(registry.collectCrate(crate()) == identity::FrozenRegistryFailure::None);
-      ZC_REQUIRE(registry.freezeCrates() == identity::FrozenRegistryFailure::None);
-      ZC_REQUIRE(registry.collectSourceFile(snapshot(source())) ==
-                 identity::FrozenRegistryFailure::None);
-      ZC_REQUIRE(registry.freezeSourceFiles() == identity::FrozenRegistryFailure::None);
-      ZC_REQUIRE(registry.collectModule(module()) == identity::FrozenRegistryFailure::None);
-      ZC_REQUIRE(registry.freezeModules() == identity::FrozenRegistryFailure::None);
-      ZC_REQUIRE(registry.collectImpl(record.clone()) == identity::FrozenRegistryFailure::None);
-      ZC_REQUIRE(registry.freezeStableIdentities() == identity::FrozenRegistryFailure::None);
-      return zc::mv(registry);
+    auto authorities = identity::CanonicalIdentityInternerSet::create(factory, admittedContext);
+    ZC_REQUIRE(authorities != zc::none);
+    ZC_IF_SOME(value, authorities) {
+      const auto key = identity::ImplKey::compute(record);
+      auto interned = value.internImplementation(admittedContext, key, record);
+      ZC_REQUIRE(interned.is<identity::ImplId>());
+      return zc::mv(value);
     }
   }
-  ZC_FAIL_REQUIRE("failed to build implementation registry fixture");
+  ZC_FAIL_REQUIRE("failed to build implementation authority fixture");
 }
 
 }  // namespace
@@ -321,8 +311,8 @@ ZC_TEST("Definition candidates require the exact complete overload authority") {
 ZC_TEST("Implementation occurrence groups require exact authorities and canonical source order") {
   auto record = implRecord();
   auto authorityRecord = identity::ImplIdentityAuthority::from(record.clone());
-  auto registry = admittedImplRegistry(record);
-  auto authorityValue = registry.impls().find(authorityRecord.key());
+  auto authorities = admittedImplAuthorities(record);
+  auto authorityValue = authorities.implementation(authorityRecord.key());
   ZC_REQUIRE(authorityValue != zc::none);
   const uint32_t firstPath[] = {2};
   const uint32_t secondPath[] = {3};
@@ -341,9 +331,10 @@ ZC_TEST("Implementation occurrence groups require exact authorities and canonica
           ImplSourceOccurrenceKey::from(authorityRecord.key().clone(), first.key().clone()));
       occurrences.add(
           ImplSourceOccurrenceKey::from(authorityRecord.key().clone(), second.key().clone()));
-      ZC_IF_SOME(authority, authorityValue) {
-        auto group = ImplIdentityOccurrenceGroup::from(registry.impls(), authority,
-                                                       zc::mv(occurrences), sites.asPtr());
+      ZC_IF_SOME(authorityEntry, authorityValue) {
+        const auto authority = authorityEntry.handle();
+        auto group = ImplIdentityOccurrenceGroup::from(authorities, authority, zc::mv(occurrences),
+                                                       sites.asPtr());
         ZC_REQUIRE(group != zc::none);
         ZC_IF_SOME(admitted, group) {
           ZC_EXPECT(admitted.implementation() == authorityRecord.key());
@@ -357,7 +348,7 @@ ZC_TEST("Implementation occurrence groups require exact authorities and canonica
             ImplSourceOccurrenceKey::from(authorityRecord.key().clone(), second.key().clone()));
         reversed.add(
             ImplSourceOccurrenceKey::from(authorityRecord.key().clone(), first.key().clone()));
-        ZC_EXPECT(ImplIdentityOccurrenceGroup::from(registry.impls(), authority, zc::mv(reversed),
+        ZC_EXPECT(ImplIdentityOccurrenceGroup::from(authorities, authority, zc::mv(reversed),
                                                     sites.asPtr()) == zc::none);
       }
     }

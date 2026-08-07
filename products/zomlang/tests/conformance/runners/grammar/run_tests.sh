@@ -59,7 +59,8 @@ if [ -z "${ANTLRJAR:-}" ]; then
     /opt/homebrew/opt/antlr/antlr-*-complete.jar \
     /usr/local/opt/antlr/antlr-*-complete.jar \
     /opt/homebrew/Cellar/antlr/*/antlr-*-complete.jar \
-    /usr/local/Cellar/antlr/*/antlr-*-complete.jar; do
+    /usr/local/Cellar/antlr/*/antlr-*-complete.jar \
+    "$HOME"/.cache/antlr/antlr-*-complete.jar; do
     if [ -f "$candidate" ]; then
       ANTLRJAR="$candidate"
       break
@@ -343,7 +344,7 @@ for d in "${all_dirs[@]}"; do
   if [ "$t" -gt 0 ]; then
     pct=$(awk -v a="$p" -v b="$t" 'BEGIN {printf "%.1f", a*100/b}')
   fi
-  printf "  %-18s %3d/%3d passed   (fail %3d)   %5s%%\n" "$d" "$p" "$t" "$f" "$pct"
+  printf '  %-18s %3d/%3d passed   (fail %3d)   %5s%%\n' "$d" "$p" "$t" "$f" "$pct"
 done
 
 echo

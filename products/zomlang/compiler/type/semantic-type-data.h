@@ -21,7 +21,6 @@
 #include "zc/core/vector.h"
 #include "zomlang/compiler/identity/canonical-scalar.h"
 #include "zomlang/compiler/identity/definition-key.h"
-#include "zomlang/compiler/identity/frozen-registry.h"
 #include "zomlang/compiler/identity/semantic-type-id.h"
 
 namespace zomlang::compiler::type::semantic {

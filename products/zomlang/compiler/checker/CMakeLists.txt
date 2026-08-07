@@ -4,6 +4,7 @@ set(CHECKER_SRC
   ${CMAKE_CURRENT_SOURCE_DIR}/borrow-interface-diagnostic-adapter.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/checked-facts.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/checked-facts-repository.cc
+  ${CMAKE_CURRENT_SOURCE_DIR}/checker-identity-authority.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/checker-diagnostic-adapter.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/checker-diagnostic-id.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/coherence-facts.cc

@@ -763,11 +763,11 @@ def check_type_key_pattern_closure(files: dict[Path, str], errors: list[str]) ->
         "SignatureFactsCanonicalCodec::implPatternHead",
         "SignatureFactsCanonicalCodec::implPatternIsPublishable(head.pattern,",
         "SignatureFactsCanonicalCodec::implPatternHead(head.pattern)",
-        "PatternByteDecoder patternDecoder(decoder, registries)",
+        "PatternByteDecoder patternDecoder(decoder, identities)",
         "if (pattern == zc::none || !decoder.finished()) return zc::none;",
         "if (interface == zc::none || self == zc::none || !decoder.finished()) return zc::none;",
-        "SignatureFactsCanonicalCodec::makeImplPatternKey(completePattern, input.registries)",
-        "SignatureFactsCanonicalCodec::implPatternKeyIsCanonical(head.pattern, registries)",
+        "SignatureFactsCanonicalCodec::makeImplPatternKey(completePattern, input.identities)",
+        "SignatureFactsCanonicalCodec::implPatternKeyIsCanonical(head.pattern, identities)",
         "encoder.encodeByteString(head.pattern.bytes())",
         "field.name.encode(key)",
         "encodeDefinition(key, binding.associated)",
@@ -1359,7 +1359,7 @@ def run_self_test() -> int:
         lambda files: remove_once(
             files,
             SIGNATURE_FACTS_SOURCE,
-            "SignatureFactsCanonicalCodec::makeImplPatternKey(completePattern, input.registries)",
+            "SignatureFactsCanonicalCodec::makeImplPatternKey(completePattern, input.identities)",
         ),
         "missing pattern codec marker SignatureFactsCanonicalCodec::makeImplPatternKey",
     )
@@ -1369,7 +1369,7 @@ def run_self_test() -> int:
         lambda files: remove_once(
             files,
             SIGNATURE_FACTS_SOURCE,
-            "SignatureFactsCanonicalCodec::implPatternKeyIsCanonical(head.pattern, registries)",
+            "SignatureFactsCanonicalCodec::implPatternKeyIsCanonical(head.pattern, identities)",
         ),
         "missing pattern codec marker SignatureFactsCanonicalCodec::implPatternKeyIsCanonical",
     )

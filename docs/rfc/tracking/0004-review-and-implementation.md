@@ -799,7 +799,7 @@ Verified evidence at `0e5a6d3f`:
 - `scripts/check-format.py`: all changed files formatted correctly.
 - `scripts/check-rfc.py`: 19 proposal RFCs pass.
 - All architecture gates pass: `check-binder-architecture`,
-  `check-binder-fact-schema`, `check-checker-architecture`,
+  `check-checker-architecture`,
   `check-compiler-session-architecture`, `check-diagnostic-coverage`,
   `check-identity-architecture`, `check-impl-source-architecture`,
   `check-incremental-query-architecture`, `check-ir-architecture`,

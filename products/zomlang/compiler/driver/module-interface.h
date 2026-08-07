@@ -10,11 +10,11 @@
 #include "zc/core/one-of.h"
 #include "zc/core/vector.h"
 #include "zomlang/compiler/binder/binding-metadata.h"
-#include "zomlang/compiler/binder/verified-bound-module-input.h"
 #include "zomlang/compiler/checker/coherence-facts.h"
 #include "zomlang/compiler/checker/cross-module-facts.h"
 #include "zomlang/compiler/checker/module-interface-contract.h"
 #include "zomlang/compiler/checker/signature-facts.h"
+#include "zomlang/compiler/driver/materialized-module-graph-query.h"
 #include "zomlang/compiler/identity/definition-key.h"
 #include "zomlang/compiler/identity/sha256.h"
 
@@ -107,12 +107,12 @@ class ModuleInterfaceCanonicalCodec final {
 public:
   ZC_NODISCARD static zc::Maybe<zc::Array<uint8_t>> encodeSignatureRoot(
       const module_interface::SignatureRootAuthorization& root,
-      const identity::SemanticIdentityRegistrySet& registries);
+      const checker::CheckerIdentityAuthority& identities);
   ZC_NODISCARD static zc::Maybe<zc::Array<uint8_t>> encodeVisibleBinding(
-      const VisibleBinding& binding, const identity::SemanticIdentityRegistrySet& registries,
+      const VisibleBinding& binding, const checker::CheckerIdentityAuthority& identities,
       const type::SemanticTypeStore& semanticTypes);
   ZC_NODISCARD static zc::Maybe<zc::Array<uint8_t>> encodeExportedBinding(
-      const ExportedBinding& binding, const identity::SemanticIdentityRegistrySet& registries,
+      const ExportedBinding& binding, const checker::CheckerIdentityAuthority& identities,
       const type::SemanticTypeStore& semanticTypes);
 };
 
@@ -144,19 +144,21 @@ public:
   ZC_NODISCARD zc::ArrayPtr<const ExportedBinding> exportedBindings() const noexcept;
   ZC_NODISCARD zc::ArrayPtr<const checker::signature::ImplHead> coherenceImplHeads() const noexcept;
   ZC_NODISCARD zc::ArrayPtr<const checker::signature::MarkerFact> markerFacts() const noexcept;
+  /// \brief Retains the materialized module capability that authorized this interface.
+  ZC_NODISCARD module_graph_query::CheckerBoundModuleView retainBoundModule() const;
 
   /// \brief Project the exact frozen facts and canonical records accepted by coherence.
   ZC_NODISCARD checker::coherence::CoherenceModuleInput projectCoherenceInput() const;
 
   /// \brief Project one requester-authorized imported-signature module capability.
   ZC_NODISCARD zc::Maybe<checker::cross_module::ImportedSignatureModule> projectImportedSignatures(
-      const binder::VerifiedBoundModuleInput& requester,
+      const module_graph_query::CheckerBoundModuleView& requester,
       checker::cross_module::SignatureViewOrigin origin,
       zc::ArrayPtr<const checker::cross_module::ImportedDefinitionBindingSelection>
           definitionBindings,
       zc::ArrayPtr<const checker::cross_module::ImportedModuleTargetSelection> moduleTargetNames,
-      const identity::SemanticIdentityRegistrySet& registries,
-      const type::SemanticTypeStore& semanticTypes) const;
+      const type::SemanticTypeStore& semanticTypes,
+      const checker::CheckerIdentityAuthority& identities) const;
 
 private:
   struct Impl;
@@ -167,13 +169,13 @@ private:
 
 /// \brief Complete verified-only inputs for atomic module-interface publication.
 struct ModuleInterfaceBuildInput final {
-  const binder::VerifiedBoundModuleInput& boundModule;
+  const module_graph_query::CheckerBoundModuleView& boundModule;
   const checker::signature::VerifiedSignatureFacts& signatureFacts;
   const checker::cross_module::ImportedSignatureView& importedSignatures;
   const checker::signature::VerifiedMarkerPolicyRegistry& markerPolicies;
   checker::borrow::VerifiedBorrowInterfaceSurface&& borrowSurface;
-  const identity::SemanticIdentityRegistrySet& registries;
   const type::SemanticTypeStore& semanticTypes;
+  const checker::CheckerIdentityAuthority& identities;
 };
 
 struct ModuleInterfaceInvariantRejected final {

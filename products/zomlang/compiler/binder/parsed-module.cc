@@ -135,12 +135,13 @@ zc::Maybe<ParsedModuleReceipt> ParsedModuleReceipt::compute(
 }
 
 struct CanonicalParsedModule::Impl final {
-  Impl(identity::ImmutableSourceSnapshot&& snapshot,
-       parser::CanonicalParsedSource&& parsedSource) noexcept
-      : snapshot(zc::mv(snapshot)), parsedSource(zc::mv(parsedSource)) {}
+  Impl(identity::ImmutableSourceSnapshot&& snapshot, parser::CanonicalParsedSource&& parsedSource,
+       ParsedModuleReceipt receipt) noexcept
+      : snapshot(zc::mv(snapshot)), parsedSource(zc::mv(parsedSource)), receipt(receipt) {}
 
   identity::ImmutableSourceSnapshot snapshot;
   parser::CanonicalParsedSource parsedSource;
+  ParsedModuleReceipt receipt;
 };
 
 CanonicalParsedModule::CanonicalParsedModule(zc::Own<Impl>&& value) noexcept
@@ -159,8 +160,16 @@ zc::Maybe<CanonicalParsedModule> CanonicalParsedModule::fromQueryResult(
       ZC_ASSERT_NONNULL(snapshot).contentDigest() != parsedSource.contentDigest()) {
     return zc::none;
   }
-  return CanonicalParsedModule(
-      zc::heap<Impl>(zc::mv(ZC_ASSERT_NONNULL(snapshot)), zc::mv(parsedSource)));
+  auto dump = schemaDump(parsedSource);
+  auto schemaDigest = parserSchemaDigest();
+  if (dump == zc::none || schemaDigest == zc::none) { return zc::none; }
+  auto receipt = ParsedModuleReceipt::compute(
+      parsedSource.canonicalSourceKey(), parsedSource.contentDigest(),
+      parsedSource.sourceBytes().size(), ZC_ASSERT_NONNULL(schemaDigest),
+      ZC_ASSERT_NONNULL(dump).asPtr());
+  if (receipt == zc::none) { return zc::none; }
+  return CanonicalParsedModule(zc::heap<Impl>(zc::mv(ZC_ASSERT_NONNULL(snapshot)),
+                                              zc::mv(parsedSource), ZC_ASSERT_NONNULL(receipt)));
 }
 
 CanonicalParsedModule CanonicalParsedModule::clone() const {
@@ -176,19 +185,21 @@ uint64_t CanonicalParsedModule::byteLength() const noexcept {
   return impl->snapshot.bytes().size();
 }
 const ast::Tree& CanonicalParsedModule::tree() const noexcept { return impl->parsedSource.tree(); }
+const ParsedModuleReceipt& CanonicalParsedModule::receipt() const noexcept { return impl->receipt; }
 const parser::CanonicalParsedSource& CanonicalParsedModule::queryResult() const noexcept {
   return impl->parsedSource;
 }
 
-struct VerifiedParsedModule::Impl final {
-  Impl(identity::SourceFileId sourceFile, source::SourceLoc materializedStart,
-       CanonicalParsedModule&& syntax, ParsedModuleReceipt receipt)
-      : sourceFile(sourceFile),
-        materializedStart(materializedStart),
-        syntax(zc::mv(syntax)),
-        receipt(receipt) {}
+identity::SourceSpan CanonicalParsedModule::rootSpan() const {
+  auto span = spanFor(tree().node(tree().root()).range);
+  return zc::mv(ZC_ASSERT_NONNULL(span));
+}
 
-  identity::SourceFileId sourceFile;
+struct VerifiedParsedModule::Impl final {
+  Impl(source::SourceLoc materializedStart, CanonicalParsedModule&& syntax,
+       ParsedModuleReceipt receipt)
+      : materializedStart(materializedStart), syntax(zc::mv(syntax)), receipt(receipt) {}
+
   source::SourceLoc materializedStart;
   CanonicalParsedModule syntax;
   ParsedModuleReceipt receipt;
@@ -199,9 +210,6 @@ VerifiedParsedModule::~VerifiedParsedModule() noexcept(false) = default;
 VerifiedParsedModule::VerifiedParsedModule(VerifiedParsedModule&&) noexcept = default;
 VerifiedParsedModule& VerifiedParsedModule::operator=(VerifiedParsedModule&&) noexcept = default;
 
-identity::SourceFileId VerifiedParsedModule::sourceFile() const noexcept {
-  return impl->sourceFile;
-}
 const identity::SourceFileKey& VerifiedParsedModule::source() const noexcept {
   return impl->syntax.source();
 }
@@ -323,6 +331,18 @@ bool CanonicalParsedModule::functionParameterHasImplicitSelfType(ast::NodeId par
          hasReceiverSpan(ZC_ASSERT_NONNULL(pathSpan));
 }
 
+zc::Maybe<source::SourceLoc> CanonicalParsedModule::sourceLocFor(
+    const identity::SourceSpan& span) const {
+  if (!span.belongsTo(source()) || span.byteStart() > span.byteEnd() ||
+      span.byteEnd() > byteLength() || span.byteStart() > UINT_MAX) {
+    return zc::none;
+  }
+  return queryResult()
+      .sourceManager()
+      .getLocForBufferStart(queryResult().buffer())
+      .getAdvancedLoc(static_cast<unsigned>(span.byteStart()));
+}
+
 zc::Maybe<identity::SourceSpan> VerifiedParsedModule::spanFor(source::SourceRange range) const {
   return impl->syntax.spanFor(range);
 }
@@ -356,13 +376,12 @@ identity::SourceSpan VerifiedParsedModule::rootSpan() const {
 }
 
 ParsedModuleVerificationResult ParsedModuleVerifier::verifyQueryResult(
-    identity::SemanticContextBrand context, const identity::SemanticIdentityRegistrySet& registries,
+    identity::SemanticContextBrand context,
+    const identity::ImmutableSourceSnapshot& materializedSnapshot,
     const identity::SourceFileKey& materializedSource,
     const source::SourceManager& materializedSources, const source::BufferId& materializedBuffer,
     parser::CanonicalParsedSource&& parsedSource) {
-  if (!context.isValid() || !registries.sourceFiles().isFrozen()) {
-    return failure(ParsedModuleInvariantKind::RegistryMismatch);
-  }
+  if (!context.isValid()) { return failure(ParsedModuleInvariantKind::RegistryMismatch); }
   if (hasSyntaxErrors(parsedSource)) {
     return failure(ParsedModuleInvariantKind::SyntaxDiagnosticsPresent);
   }
@@ -373,14 +392,9 @@ ParsedModuleVerificationResult ParsedModuleVerifier::verifyQueryResult(
           parsedSource.sourceBytes()) {
     return failure(ParsedModuleInvariantKind::SourceMismatch);
   }
-  auto sourceFile = registries.sourceFiles().find(ZC_ASSERT_NONNULL(sourceKey));
-  if (sourceFile == zc::none || !ZC_ASSERT_NONNULL(sourceFile).belongsTo(context)) {
-    return failure(ParsedModuleInvariantKind::RegistryMismatch);
-  }
-  auto snapshot = registries.sourceSnapshot(ZC_ASSERT_NONNULL(sourceFile));
-  if (snapshot == zc::none ||
-      ZC_ASSERT_NONNULL(snapshot).contentDigest() != parsedSource.contentDigest() ||
-      ZC_ASSERT_NONNULL(snapshot).bytes() != parsedSource.sourceBytes()) {
+  if (materializedSnapshot.source().encode().asPtr() != materializedSource.encode().asPtr() ||
+      materializedSnapshot.contentDigest() != parsedSource.contentDigest() ||
+      materializedSnapshot.bytes() != parsedSource.sourceBytes()) {
     return failure(ParsedModuleInvariantKind::SourceMismatch);
   }
   if (!ast::verifySchema(parsedSource.tree())) {
@@ -405,7 +419,7 @@ ParsedModuleVerificationResult ParsedModuleVerifier::verifyQueryResult(
   auto syntax = CanonicalParsedModule::fromQueryResult(zc::mv(parsedSource));
   if (syntax == zc::none) { return failure(ParsedModuleInvariantKind::InvalidTree); }
   return VerifiedParsedModule(zc::heap<VerifiedParsedModule::Impl>(
-      ZC_ASSERT_NONNULL(sourceFile), materializedSources.getLocForBufferStart(materializedBuffer),
+      materializedSources.getLocForBufferStart(materializedBuffer),
       zc::mv(ZC_ASSERT_NONNULL(syntax)), ZC_ASSERT_NONNULL(receipt)));
 }
 

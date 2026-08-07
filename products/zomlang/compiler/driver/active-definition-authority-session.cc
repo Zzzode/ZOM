@@ -7,8 +7,8 @@
 
 #include "zc/core/encoding.h"
 #include "zomlang/compiler/binder/parsed-module.h"
-#include "zomlang/compiler/binder/stable-definition-header-producer.h"
-#include "zomlang/compiler/binder/stable-implementation-occurrence-header-producer.h"
+#include "zomlang/compiler/binder/stable/definition/header-producer.h"
+#include "zomlang/compiler/binder/stable/implementation/header-producer.h"
 #include "zomlang/compiler/driver/active-definition-authority-query.h"
 #include "zomlang/compiler/driver/module-graph-query-input.h"
 #include "zomlang/compiler/driver/module-graph-query.h"
@@ -632,11 +632,10 @@ ContextualIdentityAuthorityInputTransaction::prepare(
           binder::StableDefinitionQueryKey::from(module.clone(), entry.key().clone());
       auto authoritySite = findDefinitionSite(ZC_ASSERT_NONNULL(definitionSites), entry.key());
       if (authoritySite == zc::none) { return zc::none; }
-      auto header = binder::StableDefinitionHeaderProducer::produce(
-          binder::StableDefinitionHeaderProductionInput{
-              ZC_ASSERT_NONNULL(canonicalParsed), stableDefinition, entry,
-              ZC_ASSERT_NONNULL(authoritySite), ZC_ASSERT_NONNULL(definitionSites),
-              ZC_ASSERT_NONNULL(implementationSites)});
+      auto header = binder::DefinitionHeaderProducer::produce(binder::DefinitionHeaderInput{
+          ZC_ASSERT_NONNULL(canonicalParsed), stableDefinition, entry,
+          ZC_ASSERT_NONNULL(authoritySite), ZC_ASSERT_NONNULL(definitionSites),
+          ZC_ASSERT_NONNULL(implementationSites)});
       if (header == zc::none) { return zc::none; }
       const auto& headerValue = ZC_ASSERT_NONNULL(header);
       if (headerValue.queryKey() != stableDefinition ||
@@ -715,11 +714,10 @@ ContextualIdentityAuthorityInputTransaction::prepare(
       auto occurrenceSite = findImplementationSite(ZC_ASSERT_NONNULL(implementationSites),
                                                    authorityOccurrence.occurrence());
       if (occurrenceSite == zc::none) { return zc::none; }
-      auto header = binder::StableImplementationOccurrenceHeaderProducer::produce(
-          binder::StableImplementationOccurrenceHeaderProductionInput{
-              ZC_ASSERT_NONNULL(canonicalParsed), authorityOccurrence, entry,
-              ZC_ASSERT_NONNULL(occurrenceSite), ZC_ASSERT_NONNULL(definitionSites),
-              ZC_ASSERT_NONNULL(implementationSites)});
+      auto header = binder::ImplementationHeaderProducer::produce(binder::ImplementationHeaderInput{
+          ZC_ASSERT_NONNULL(canonicalParsed), authorityOccurrence, entry,
+          ZC_ASSERT_NONNULL(occurrenceSite), ZC_ASSERT_NONNULL(definitionSites),
+          ZC_ASSERT_NONNULL(implementationSites)});
       if (header == zc::none) { return zc::none; }
       const auto& headerValue = ZC_ASSERT_NONNULL(header);
       auto genericOwner = ImplementationGenericAuthority::from(

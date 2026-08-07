@@ -9,7 +9,7 @@
 #include "zc/core/one-of.h"
 #include "zomlang/compiler/ast/tree.h"
 #include "zomlang/compiler/checker/checked-facts.h"
-#include "zomlang/compiler/identity/semantic-identity-registry-set.h"
+#include "zomlang/compiler/checker/checker-identity-authority.h"
 #include "zomlang/compiler/type/semantic-type-store.h"
 
 namespace zomlang::compiler::checker::scalar_literal {
@@ -22,7 +22,7 @@ struct FactEmissionInput final {
   ast::NodeId node;
   const checked::CheckedNodeKey& checkedNode;
   const identity::SourceFileKey& source;
-  const identity::SemanticIdentityRegistrySet& registries;
+  const CheckerIdentityAuthority& identities;
   type::SemanticTypeStore& semanticTypes;
 };
 

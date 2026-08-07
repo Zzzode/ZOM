@@ -442,16 +442,6 @@ zc::Vector<binder::ModuleBodyDefinitionBoundaryInput> definitionBoundaries(
   return result;
 }
 
-zc::Vector<binder::ModuleBodyImplementationBoundaryInput> implementationBoundaries(
-    const binder::RevisionLocalImplementationSites& sites) {
-  zc::Vector<binder::ModuleBodyImplementationBoundaryInput> result(sites.entries().size());
-  for (const auto& site : sites.entries()) {
-    result.add(
-        binder::ModuleBodyImplementationBoundaryInput{site.node(), site.occurrence().clone()});
-  }
-  return result;
-}
-
 template <typename Value, typename Upstream>
 query::TypedQueryResult<Value> propagateFailure(const query::TypedQueryResult<Upstream>& result) {
   if (result.isRuntimeFailure()) {
@@ -591,11 +581,9 @@ query::TypedQueryResult<NamedItemSyntaxQuery::Value> NamedItemSyntaxQuery::provi
   }
   auto definitions = definitionBoundaries(source.value().parsed, source.value().moduleNode,
                                           definitionSites.lease().capability());
-  auto implementationInputs = implementationBoundaries(implementationSites.lease().capability());
   auto projection = binder::ModuleBodySyntaxProducer::produceNamedItem(
       source.value().parsed, authority.value().record.module(), source.value().moduleNode,
-      ZC_ASSERT_NONNULL(root), key.definition().definition(), definitions.asPtr(),
-      implementationInputs.asPtr());
+      ZC_ASSERT_NONNULL(root), key.definition().definition(), definitions.asPtr());
   if (!projection.is<binder::ModuleBodySyntaxProjection>()) {
     return query::TypedQueryResult<Value>::semanticFailure(
         encodeFailure(NamedItemFailureKind::BoundaryMismatch));
@@ -655,11 +643,9 @@ bool NamedItemSyntaxQuery::verify(query::QueryContext& context, const Key& key,
   if (root == zc::none) { return false; }
   auto definitions = definitionBoundaries(source.value().parsed, source.value().moduleNode,
                                           definitionSites.lease().capability());
-  auto implementationInputs = implementationBoundaries(implementationSites.lease().capability());
   auto expected = binder::ModuleBodySyntaxVerifier::reconstructNamedItem(
       source.value().parsed, authority.value().record.module(), source.value().moduleNode,
-      ZC_ASSERT_NONNULL(root), key.definition().definition(), definitions.asPtr(),
-      implementationInputs.asPtr());
+      ZC_ASSERT_NONNULL(root), key.definition().definition(), definitions.asPtr());
   if (!expected.is<binder::ModuleBodySyntaxProjection>()) { return false; }
   auto syntax = binder::NamedItemSyntax::from(
       authority.value().record.module().clone(),
@@ -794,11 +780,9 @@ query::CapabilityProviderResult<NamedItemProvenanceQuery> NamedItemProvenanceQue
   }
   auto definitions = definitionBoundaries(source.value().parsed, source.value().moduleNode,
                                           definitionSites.lease().capability());
-  auto implementationInputs = implementationBoundaries(implementationSites.lease().capability());
   auto projection = binder::ModuleBodySyntaxProducer::produceNamedItem(
       source.value().parsed, authority.value().record.module(), source.value().moduleNode,
-      ZC_ASSERT_NONNULL(root), key.definition().definition(), definitions.asPtr(),
-      implementationInputs.asPtr());
+      ZC_ASSERT_NONNULL(root), key.definition().definition(), definitions.asPtr());
   if (!projection.is<binder::ModuleBodySyntaxProjection>()) {
     return query::CapabilityProviderResult<NamedItemProvenanceQuery>::runtimeRejected(
         query::QueryRuntimeFailure::InvariantViolation);
@@ -856,11 +840,9 @@ zc::Maybe<zc::Array<uint8_t>> NamedItemProvenanceQuery::verify(
   if (root == zc::none) { return zc::none; }
   auto definitions = definitionBoundaries(source.value().parsed, source.value().moduleNode,
                                           definitionSites.lease().capability());
-  auto implementationInputs = implementationBoundaries(implementationSites.lease().capability());
   auto expected = binder::ModuleBodySyntaxVerifier::reconstructNamedItem(
       source.value().parsed, authority.value().record.module(), source.value().moduleNode,
-      ZC_ASSERT_NONNULL(root), key.definition().definition(), definitions.asPtr(),
-      implementationInputs.asPtr());
+      ZC_ASSERT_NONNULL(root), key.definition().definition(), definitions.asPtr());
   if (!expected.is<binder::ModuleBodySyntaxProjection>()) { return zc::none; }
   auto expectedSyntax = binder::NamedItemSyntax::from(
       authority.value().record.module().clone(),

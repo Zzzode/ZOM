@@ -72,6 +72,20 @@ PACKAGE_COMPILATION_REQUEST_IMPLEMENTATION = Path(
 )
 SEMANTIC_TYPE_STORE = Path("products/zomlang/compiler/type/semantic-type-store.h")
 SEMANTIC_TYPE_KEY = Path("products/zomlang/compiler/type/semantic-type-key.h")
+SCALAR_LITERAL_FACTS = Path("products/zomlang/compiler/checker/scalar-literal-facts.h")
+SCALAR_LITERAL_FACTS_IMPLEMENTATION = Path(
+    "products/zomlang/compiler/checker/scalar-literal-facts.cc"
+)
+CHECKER_DIAGNOSTIC_ADAPTER = Path(
+    "products/zomlang/compiler/checker/checker-diagnostic-adapter.h"
+)
+CHECKER_DIAGNOSTIC_ADAPTER_IMPLEMENTATION = Path(
+    "products/zomlang/compiler/checker/checker-diagnostic-adapter.cc"
+)
+BORROW_INTERFACE = Path("products/zomlang/compiler/checker/borrow-interface.h")
+BORROW_INTERFACE_IMPLEMENTATION = Path(
+    "products/zomlang/compiler/checker/borrow-interface.cc"
+)
 HEADER_SYNTAX_SCHEMA = Path(
     "products/zomlang/compiler/identity/canonical-header-syntax-schema.yml"
 )
@@ -125,7 +139,7 @@ CANONICAL_IMPL_HEADER_PRODUCER_TEST = Path(
 )
 BINDER_CMAKE = Path("products/zomlang/compiler/binder/CMakeLists.txt")
 BINDER_TEST_CMAKE = Path("products/zomlang/tests/unittests/compiler/binder/CMakeLists.txt")
-BINDING_VERIFIER = Path("products/zomlang/compiler/binder/binding-verifier.cc")
+BINDING_VERIFIER = Path("products/zomlang/compiler/binder/stable/header/verifier.cc")
 CANONICAL_OVERLOAD_HEADER = Path(
     "products/zomlang/compiler/identity/canonical-overload-header.h"
 )
@@ -330,27 +344,75 @@ def check_no_post_parse_expansion(
     producers = manifest.get("producers", {})
     if not isinstance(producers, dict):
         return
-    maker = re.compile(
-        r"\bmake(" + "|".join(re.escape(name) for name in sorted(producers)) + r")\s*\("
-    )
-    for relative_path in compiler_source_files():
-        if relative_path.suffix != ".cc":
+    producer_names = tuple(sorted(producers))
+    maker = re.compile(r"\bmake(" + "|".join(re.escape(name) for name in producer_names) + r")\s*\(")
+    matches = {Path(path): values for path, values in baseline_post_parse_expansion_matches(producer_names)}
+    for relative_path, text in overrides.items():
+        if relative_path.suffix != ".cc" or relative_path.parent == PARSER_ROOT:
             continue
-        if relative_path.parent == PARSER_ROOT:
-            continue
-        text = read_text(relative_path, overrides)
-        for match in maker.finditer(text):
+        matches[relative_path] = tuple(match.group(1) for match in maker.finditer(text))
+    for relative_path in sorted(matches):
+        for producer_name in matches[relative_path]:
             errors.append(
-                f"{relative_path}: post-parse semantic producer make{match.group(1)} is forbidden"
+                f"{relative_path}: post-parse semantic producer make{producer_name} is forbidden"
             )
 
 
-def matching_files(pattern: re.Pattern[str], overrides: dict[Path, str]) -> set[str]:
-    matches: set[str] = set()
+@functools.lru_cache(maxsize=None)
+def baseline_post_parse_expansion_matches(
+    producer_names: tuple[str, ...],
+) -> tuple[tuple[str, tuple[str, ...]], ...]:
+    maker = re.compile(r"\bmake(" + "|".join(re.escape(name) for name in producer_names) + r")\s*\(")
+    matches: list[tuple[str, tuple[str, ...]]] = []
     for relative_path in compiler_source_files():
-        if pattern.search(read_text(relative_path, overrides)):
+        if relative_path.suffix != ".cc" or relative_path.parent == PARSER_ROOT:
+            continue
+        values = tuple(match.group(1) for match in maker.finditer(repository_text(relative_path)))
+        if values:
+            matches.append((str(relative_path), values))
+    return tuple(matches)
+
+
+def matching_files(pattern: re.Pattern[str], overrides: dict[Path, str]) -> set[str]:
+    matches = set(baseline_matching_files(pattern.pattern, pattern.flags))
+    for relative_path, text in overrides.items():
+        if relative_path not in compiler_source_files():
+            continue
+        if pattern.search(text):
             matches.add(str(relative_path))
+        else:
+            matches.discard(str(relative_path))
     return matches
+
+
+@functools.lru_cache(maxsize=None)
+def baseline_matching_files(pattern_text: str, flags: int) -> frozenset[str]:
+    pattern = re.compile(pattern_text, flags)
+    return frozenset(
+        str(relative_path)
+        for relative_path in compiler_source_files()
+        if pattern.search(repository_text(relative_path))
+    )
+
+
+def matching_occurrence_paths(pattern: re.Pattern[str], overrides: dict[Path, str]) -> tuple[Path, ...]:
+    paths = [Path(path) for path in baseline_matching_occurrence_paths(pattern.pattern, pattern.flags)]
+    for relative_path, text in overrides.items():
+        if relative_path not in compiler_source_files():
+            continue
+        paths = [path for path in paths if path != relative_path]
+        paths.extend(relative_path for _ in pattern.finditer(text))
+    return tuple(paths)
+
+
+@functools.lru_cache(maxsize=None)
+def baseline_matching_occurrence_paths(pattern_text: str, flags: int) -> tuple[str, ...]:
+    pattern = re.compile(pattern_text, flags)
+    return tuple(
+        str(relative_path)
+        for relative_path in compiler_source_files()
+        for _ in pattern.finditer(repository_text(relative_path))
+    )
 
 
 def function_body(text: str, marker: str) -> str | None:
@@ -1464,13 +1526,9 @@ def check_module_resolution_key_architecture(
             f"{MODULE_RESOLUTION_KEY}: ModuleDependencyKind must retain its four exact tags"
         )
 
-    dependency_kind_owners: list[Path] = []
     dependency_kind_pattern = re.compile(r"\benum\s+class\s+ModuleDependencyKind\b")
-    for path in compiler_source_files():
-        dependency_kind_owners.extend(
-            path for _ in dependency_kind_pattern.finditer(read_text(path, overrides))
-        )
-    if dependency_kind_owners != [MODULE_RESOLUTION_KEY]:
+    dependency_kind_owners = matching_occurrence_paths(dependency_kind_pattern, overrides)
+    if dependency_kind_owners != (MODULE_RESOLUTION_KEY,):
         owners = ", ".join(str(path) for path in dependency_kind_owners) or "none"
         errors.append(
             f"{MODULE_RESOLUTION_KEY}: ModuleDependencyKind must have one identity-layer owner; "
@@ -1847,10 +1905,14 @@ def check_semantic_import_binding_key_architecture(
     test = read_text(SEMANTIC_IMPORT_BINDING_KEY_TEST, overrides)
 
     operation_tags = tagged_enum_members(header, "SemanticImportOperation")
-    expected_operation_tags = (("Import", "0x01"), ("ForeignReexport", "0x02"))
+    expected_operation_tags = (
+        ("Import", "0x01"),
+        ("ForeignReexport", "0x02"),
+        ("ModuleAlias", "0x03"),
+    )
     if operation_tags != expected_operation_tags:
         errors.append(
-            f"{SEMANTIC_IMPORT_BINDING_KEY}: SemanticImportOperation must retain its two exact RFC 0017 tags"
+            f"{SEMANTIC_IMPORT_BINDING_KEY}: SemanticImportOperation must retain its three exact semantic tags"
         )
 
     key = declaration_body(header, "class SemanticImportBindingKey final")
@@ -1945,8 +2007,6 @@ def check_stable_identity_architecture(
 ) -> None:
     definition_key = read_text(DEFINITION_KEY, overrides)
     definition_key_implementation = read_text(DEFINITION_KEY_IMPLEMENTATION, overrides)
-    frozen_registry = read_text(FROZEN_REGISTRY, overrides)
-    semantic_identity_registry = read_text(SEMANTIC_IDENTITY_REGISTRY, overrides)
     interner = read_text(CANONICAL_IDENTITY_INTERNER, overrides)
     interner_implementation = read_text(
         CANONICAL_IDENTITY_INTERNER_IMPLEMENTATION, overrides
@@ -1956,7 +2016,6 @@ def check_stable_identity_architecture(
     crate_key = read_text(CRATE_KEY, overrides)
     source_key = read_text(SOURCE_KEY, overrides)
     source_key_implementation = read_text(SOURCE_KEY_IMPLEMENTATION, overrides)
-    binding_input = read_text(BINDING_INPUT, overrides)
     module_resolution = read_text(MODULE_RESOLUTION, overrides)
     package_request = read_text(PACKAGE_COMPILATION_REQUEST, overrides)
     package_request_implementation = read_text(
@@ -2014,33 +2073,6 @@ def check_stable_identity_architecture(
                 )
 
     for marker in (
-        "class FrozenAuthorityRegistry final",
-        "FrozenRegistryFailure::DigestCollision",
-        "entry.authority.sameRecordAs(authority)",
-        "using GenericParameterRegistry =",
-        "using CallableParameterRegistry =",
-    ):
-        if marker not in frozen_registry:
-            errors.append(f"{FROZEN_REGISTRY}: missing complete-record authority marker {marker}")
-    if "FrozenContextRegistry<DefinitionKey" in frozen_registry or (
-        "FrozenContextRegistry<ImplKey" in frozen_registry
-    ):
-        errors.append(
-            f"{FROZEN_REGISTRY}: definition and implementation registries must retain authorities"
-        )
-    for marker in (
-        "DefinitionIdentityRecord&& record",
-        "ImplIdentityRecord&& record",
-        "freezeStableIdentities()",
-        "collectGenericParameter(",
-        "collectCallableParameter(",
-    ):
-        if marker not in semantic_identity_registry:
-            errors.append(
-                f"{SEMANTIC_IDENTITY_REGISTRY}: missing mixed authority admission marker {marker}"
-            )
-
-    for marker in (
         "enum class IdentityInternerFailure : uint8_t",
         "AllocationFailure = 0x01",
         "SlotOverflow = 0x02",
@@ -2057,6 +2089,14 @@ def check_stable_identity_architecture(
         "using CallableParameterIdentityEntry =",
         "class CanonicalIdentityInternerSet final",
         "static zc::Maybe<CanonicalIdentityInternerSet> create(",
+        "const CompilationUnitIdentity& key) const;",
+        "const CrateKey& key) const;",
+        "const SourceFileKey& key) const;",
+        "const ModuleKey& key) const;",
+        "const DefinitionKey& key) const;",
+        "const ImplKey& key) const;",
+        "const GenericParameterKey& key) const;",
+        "const CallableParameterKey& key) const;",
     ):
         if marker not in interner:
             errors.append(
@@ -2096,7 +2136,7 @@ def check_stable_identity_architecture(
             f"{IDENTITY_CMAKE}: missing canonical-identity-interner-set.cc registration"
         )
     for marker in (
-        "zc::Maybe<identity::CanonicalIdentityInternerSet> identityInterners;",
+        "zc::Maybe<identity::CanonicalIdentityInternerSet> identityInternerSet;",
         "identity::CanonicalIdentityInternerSet::create(contextFactory, resources->contextBrand)",
     ):
         if marker not in session:
@@ -2185,13 +2225,11 @@ def check_stable_identity_architecture(
     ):
         errors.append(f"{SOURCE_KEY_IMPLEMENTATION}: ModuleKey codec must encode crate and path")
 
-    for marker in (
-        "identity::SourceFileKey source;",
-        "zc::Maybe<const identity::SourceFileKey&> sourceFile(",
-    ):
-        combined_module_source_surface = module_resolution + binding_input
-        if marker not in combined_module_source_surface:
-            errors.append(f"{BINDING_INPUT}: missing revision-local module source marker {marker}")
+    structural_catalog_entry = declaration_body(
+        module_resolution, "struct StructuralModuleCatalogEntry final"
+    )
+    if structural_catalog_entry is None or "identity::SourceFileKey source;" not in structural_catalog_entry:
+        errors.append(f"{MODULE_RESOLUTION}: missing revision-local module source marker")
 
     if "const VerifiedBuildScriptPlan& buildPlan" not in package_request:
         errors.append(
@@ -2240,10 +2278,7 @@ def check_compilation_unit_architecture(
     handle = read_text(HANDLE, overrides)
     crate_key = read_text(CRATE_KEY, overrides)
     source_key = read_text(SOURCE_KEY, overrides)
-    frozen_registry = read_text(FROZEN_REGISTRY, overrides)
-    registry_set = read_text(SEMANTIC_IDENTITY_REGISTRY, overrides)
     invariant = read_text(IDENTITY_INVARIANT, overrides)
-    identity_dump = read_text(IDENTITY_DUMP_IMPLEMENTATION, overrides)
     fingerprint = read_text(SEMANTIC_CONTEXT_FINGERPRINT, overrides)
     identity_cmake = read_text(IDENTITY_CMAKE, overrides)
 
@@ -2271,21 +2306,9 @@ def check_compilation_unit_architecture(
             "struct CompilationUnitIdentityTag final {};",
             "using CompilationUnitId = ContextHandle<CompilationUnitIdentityTag>;",
         ),
-        FROZEN_REGISTRY: (
-            "using CompilationUnitRegistry =",
-        ),
-        SEMANTIC_IDENTITY_REGISTRY: (
-            "collectCompilationUnit(CompilationUnitIdentity&& key,",
-            "freezeCompilationUnits();",
-            "const CompilationUnitRegistry& compilationUnits() const noexcept;",
-        ),
         IDENTITY_INVARIANT: (
             "CompilationUnit = 0x04",
             "CompilationUnitFreeze = 0x04",
-        ),
-        IDENTITY_DUMP_IMPLEMENTATION: (
-            '"zom.identity\\n[compilation-units]\\n"_zc',
-            '"compilation-unit"_zc',
         ),
         SEMANTIC_CONTEXT_FINGERPRINT: (
             "class ToolchainSemanticContextInput final",
@@ -2301,10 +2324,7 @@ def check_compilation_unit_architecture(
         CRATE_KEY: crate_key,
         SOURCE_KEY: source_key,
         HANDLE: handle,
-        FROZEN_REGISTRY: frozen_registry,
-        SEMANTIC_IDENTITY_REGISTRY: registry_set,
         IDENTITY_INVARIANT: invariant,
-        IDENTITY_DUMP_IMPLEMENTATION: identity_dump,
         SEMANTIC_CONTEXT_FINGERPRINT: fingerprint,
         IDENTITY_CMAKE: identity_cmake,
     }
@@ -2332,14 +2352,11 @@ def check_compilation_unit_architecture(
         re.compile(r"\.packageEdge\s*\("),
         re.compile(r"CrateKey::from\s*\(\s*PackageKey"),
     )
-    for path in compiler_source_files():
-        text = read_text(path, overrides)
-        for pattern in forbidden_patterns:
-            if pattern.search(text):
-                errors.append(
-                    f"{path}: package-only semantic identity surface is forbidden: "
-                    f"{pattern.pattern}"
-                )
+    for pattern in forbidden_patterns:
+        for path in sorted(matching_files(pattern, overrides)):
+            errors.append(
+                f"{path}: package-only semantic identity surface is forbidden: {pattern.pattern}"
+            )
 
 
 def check_semantic_type_store_architecture(
@@ -2352,7 +2369,7 @@ def check_semantic_type_store_architecture(
 
     required_session_markers = (
         "class CompilerSessionSemanticContextResources final\n"
-        "    : public query::SemanticContextCapabilityResources",
+        "    : public module_graph_query::ModuleGraphIdentityMaterializationResources",
         "issueSemanticTypeStoreConstructionToken(resources->contextBrand)",
         "zc::Own<type::SemanticTypeStore> semanticTypeStore;",
         "zc::Own<type::SemanticTypeStore>& semanticTypeStore;",
@@ -2361,64 +2378,110 @@ def check_semantic_type_store_architecture(
         if marker not in session:
             errors.append(f"{COMPILER_SESSION}: missing semantic type store owner marker {marker}")
 
-    freeze_markers = (
-        "freezeCompilationUnits()",
-        "freezeCrates()",
-        "freezeSourceFiles()",
-        "freezeModules()",
-        "freezeStableIdentities()",
-        "freezeGenericParameters()",
-        "freezeCallableParameters()",
-    )
-    for marker in freeze_markers:
-        if session.count(marker) != 1:
-            errors.append(
-                f"{COMPILER_SESSION}: identity freeze site {marker} must occur exactly once"
-            )
-
-    check_ordered_function_markers(
-        session,
-        "bool freezePackageAndCrateIdentities()",
-        ("freezeCompilationUnits()", "freezeCrates()"),
-        "final context identity freeze",
-        errors,
-    )
-    check_ordered_function_markers(
-        session,
-        "CompilerSession::parseSources()",
-        (
-            "freezePackageAndCrateIdentities()",
-            "freezeSourceIdentities()",
-            "freezeModuleIdentities()",
-            "freezeDefinitionAndImplIdentities()",
-        ),
-        "parseSources identity phase schedule",
-        errors,
-    )
-    check_ordered_function_markers(
-        session,
-        "bool freezeDefinitionAndImplIdentities()",
-        (
-            "freezeStableIdentities()",
-            "freezeGenericParameters()",
-            "freezeCallableParameters()",
-        ),
-        "stable and subordinate identity freeze",
-        errors,
-    )
+    if session.count("finalSealedSnapshot = zc::mv(admitted).takeSnapshot();") != 1:
+        errors.append(
+            f"{COMPILER_SESSION}: final sealed snapshot must publish exactly once"
+        )
 
     if "ZC_DISALLOW_COPY_AND_MOVE(SemanticTypeStore);" not in store:
         errors.append(f"{SEMANTIC_TYPE_STORE}: semantic type store must be pinned")
     required_admission_markers = (
-        "const identity::SemanticIdentityRegistrySet& registries",
+        "const identity::CanonicalIdentityInternerSet& identities",
         "SemanticTypeAdmissionResult canonicalizeClosed(semantic::TypeData&& data) const",
-        "bool registriesReadyForAdmission() const noexcept",
+        "definitionKeyForAdmission(",
+        "validateGenericParameterForAdmission(",
     )
     for marker in required_admission_markers:
         if marker not in store:
             errors.append(f"{SEMANTIC_TYPE_STORE}: missing store-bound admission marker {marker}")
     if "identity::SemanticContextBrand admissionContext;" not in type_key:
         errors.append(f"{SEMANTIC_TYPE_KEY}: canonical type data must retain admission provenance")
+
+
+def check_scalar_literal_authority_architecture(
+    overrides: dict[Path, str], errors: list[str]
+) -> None:
+    header = read_text(SCALAR_LITERAL_FACTS, overrides)
+    implementation = read_text(SCALAR_LITERAL_FACTS_IMPLEMENTATION, overrides)
+
+    if '#include "zomlang/compiler/checker/checker-identity-authority.h"' not in header:
+        errors.append(f"{SCALAR_LITERAL_FACTS}: missing checker identity authority dependency")
+    if "const CheckerIdentityAuthority& identities;" not in header:
+        errors.append(f"{SCALAR_LITERAL_FACTS}: scalar facts must retain checker identity authority")
+    for path, text in (
+        (SCALAR_LITERAL_FACTS, header),
+        (SCALAR_LITERAL_FACTS_IMPLEMENTATION, implementation),
+    ):
+        if "SemanticIdentityRegistrySet" in text:
+            errors.append(f"{path}: scalar facts must not depend on frozen identity registries")
+    for marker in (
+        "input.identities.semanticContext() != input.semanticContext",
+        "input.identities.module(input.module) == zc::none",
+        "input.identities.sourceFile(input.source) != zc::none",
+    ):
+        if marker not in implementation:
+            errors.append(
+                f"{SCALAR_LITERAL_FACTS_IMPLEMENTATION}: missing scalar authority admission marker {marker}"
+            )
+
+
+def check_checker_diagnostic_authority_architecture(
+    overrides: dict[Path, str], errors: list[str]
+) -> None:
+    header = read_text(CHECKER_DIAGNOSTIC_ADAPTER, overrides)
+    implementation = read_text(CHECKER_DIAGNOSTIC_ADAPTER_IMPLEMENTATION, overrides)
+
+    for marker in (
+        '#include "zomlang/compiler/checker/checker-identity-authority.h"',
+        "const CheckerIdentityAuthority& identities",
+    ):
+        if marker not in header:
+            errors.append(f"{CHECKER_DIAGNOSTIC_ADAPTER}: missing checker authority marker {marker}")
+    for path, text in (
+        (CHECKER_DIAGNOSTIC_ADAPTER, header),
+        (CHECKER_DIAGNOSTIC_ADAPTER_IMPLEMENTATION, implementation),
+    ):
+        if "SemanticIdentityRegistrySet" in text:
+            errors.append(f"{path}: checker diagnostic rendering must not depend on frozen registries")
+    for marker in (
+        "identities.definition(definition)",
+        "identities.definition(key)",
+        "identities.genericParameter(key)",
+    ):
+        if marker not in implementation:
+            errors.append(
+                f"{CHECKER_DIAGNOSTIC_ADAPTER_IMPLEMENTATION}: missing diagnostic authority lookup {marker}"
+            )
+
+
+def check_borrow_interface_authority_architecture(
+    overrides: dict[Path, str], errors: list[str]
+) -> None:
+    header = read_text(BORROW_INTERFACE, overrides)
+    implementation = read_text(BORROW_INTERFACE_IMPLEMENTATION, overrides)
+
+    for marker in (
+        '#include "zomlang/compiler/checker/checker-identity-authority.h"',
+        "const CheckerIdentityAuthority& identities;",
+        "const CheckerIdentityAuthority& identities);",
+    ):
+        if marker not in header:
+            errors.append(f"{BORROW_INTERFACE}: missing borrow authority marker {marker}")
+    for path, text in (
+        (BORROW_INTERFACE, header),
+        (BORROW_INTERFACE_IMPLEMENTATION, implementation),
+    ):
+        if "SemanticIdentityRegistrySet" in text:
+            errors.append(f"{path}: borrow interface must not depend on frozen registries")
+    for marker in (
+        "identities.definition(summary.callable)",
+        "input.identities.module(input.module) == zc::none",
+        "input.identities.module(input.module)",
+    ):
+        if marker not in implementation:
+            errors.append(
+                f"{BORROW_INTERFACE_IMPLEMENTATION}: missing borrow authority lookup {marker}"
+            )
 
 
 def analyze(
@@ -2445,6 +2508,9 @@ def analyze(
     check_stable_identity_architecture(active_overrides, errors)
     check_compilation_unit_architecture(active_overrides, errors)
     check_semantic_type_store_architecture(active_overrides, errors)
+    check_scalar_literal_authority_architecture(active_overrides, errors)
+    check_checker_diagnostic_authority_architecture(active_overrides, errors)
+    check_borrow_interface_authority_architecture(active_overrides, errors)
     return errors
 
 
@@ -2517,6 +2583,20 @@ def run_self_test() -> int:
     )
     cases.append(
         (
+            "missing definition key interner lookup",
+            copy.deepcopy(baseline),
+            {
+                CANONICAL_IDENTITY_INTERNER: interner_text.replace(
+                    "const DefinitionKey& key) const;",
+                    "const MissingDefinitionKey& key) const;",
+                    1,
+                )
+            },
+            "missing arena interner marker const DefinitionKey& key) const;",
+        )
+    )
+    cases.append(
+        (
             "missing semantic type store construction",
             copy.deepcopy(baseline),
             {
@@ -2529,17 +2609,122 @@ def run_self_test() -> int:
         )
     )
 
+    scalar_literal_header_text = (ROOT / SCALAR_LITERAL_FACTS).read_text(encoding="utf-8")
+    scalar_literal_implementation_text = (ROOT / SCALAR_LITERAL_FACTS_IMPLEMENTATION).read_text(
+        encoding="utf-8"
+    )
     cases.append(
         (
-            "missing final context compilation-unit freeze",
+            "scalar literal authority removed",
+            copy.deepcopy(baseline),
+            {
+                SCALAR_LITERAL_FACTS: scalar_literal_header_text.replace(
+                    "const CheckerIdentityAuthority& identities;",
+                    "const MissingCheckerIdentityAuthority& identities;",
+                    1,
+                )
+            },
+            "scalar facts must retain checker identity authority",
+        )
+    )
+    cases.append(
+        (
+            "scalar literal registry fallback",
+            copy.deepcopy(baseline),
+            {
+                SCALAR_LITERAL_FACTS_IMPLEMENTATION: scalar_literal_implementation_text.replace(
+                    "FactEmissionResult FactEmitter::emit(const FactEmissionInput& input) {",
+                    "SemanticIdentityRegistrySet forbiddenRegistry;\n"
+                    "FactEmissionResult FactEmitter::emit(const FactEmissionInput& input) {",
+                    1,
+                )
+            },
+            "scalar facts must not depend on frozen identity registries",
+        )
+    )
+
+    checker_diagnostic_adapter_text = (ROOT / CHECKER_DIAGNOSTIC_ADAPTER).read_text(
+        encoding="utf-8"
+    )
+    checker_diagnostic_adapter_implementation_text = (
+        ROOT / CHECKER_DIAGNOSTIC_ADAPTER_IMPLEMENTATION
+    ).read_text(encoding="utf-8")
+    cases.append(
+        (
+            "checker diagnostic authority removed",
+            copy.deepcopy(baseline),
+            {
+                CHECKER_DIAGNOSTIC_ADAPTER: checker_diagnostic_adapter_text.replace(
+                    "CheckerIdentityAuthority", "MissingCheckerIdentityAuthority"
+                )
+            },
+            "missing checker authority marker const CheckerIdentityAuthority& identities",
+        )
+    )
+    cases.append(
+        (
+            "checker diagnostic registry fallback",
+            copy.deepcopy(baseline),
+            {
+                CHECKER_DIAGNOSTIC_ADAPTER_IMPLEMENTATION: (
+                    checker_diagnostic_adapter_implementation_text.replace(
+                        "void appendDefinition(zc::Vector<char>& output, identity::DefId definition,",
+                        "SemanticIdentityRegistrySet forbiddenRegistry;\n"
+                        "void appendDefinition(zc::Vector<char>& output, identity::DefId definition,",
+                        1,
+                    )
+                )
+            },
+            "checker diagnostic rendering must not depend on frozen registries",
+        )
+    )
+
+    borrow_interface_text = (ROOT / BORROW_INTERFACE).read_text(encoding="utf-8")
+    borrow_interface_implementation_text = (ROOT / BORROW_INTERFACE_IMPLEMENTATION).read_text(
+        encoding="utf-8"
+    )
+    cases.append(
+        (
+            "borrow interface authority removed",
+            copy.deepcopy(baseline),
+            {
+                BORROW_INTERFACE: borrow_interface_text.replace(
+                    "const CheckerIdentityAuthority& identities;",
+                    "const MissingCheckerIdentityAuthority& identities;",
+                    1,
+                )
+            },
+            "missing borrow authority marker const CheckerIdentityAuthority& identities;",
+        )
+    )
+    cases.append(
+        (
+            "borrow interface registry fallback",
+            copy.deepcopy(baseline),
+            {
+                BORROW_INTERFACE_IMPLEMENTATION: borrow_interface_implementation_text.replace(
+                    "BorrowInterfaceBuildResult BorrowInterfaceBuilder::build(",
+                    "SemanticIdentityRegistrySet forbiddenRegistry;\n"
+                    "BorrowInterfaceBuildResult BorrowInterfaceBuilder::build(",
+                    1,
+                )
+            },
+            "borrow interface must not depend on frozen registries",
+        )
+    )
+
+    cases.append(
+        (
+            "missing canonical interner owner",
             copy.deepcopy(baseline),
             {
                 COMPILER_SESSION: session_text.replace(
-                    "registries.freezeCompilationUnits()",
-                    "registries.missingFreezeCompilationUnits()",
+                    "zc::Maybe<identity::CanonicalIdentityInternerSet> identityInternerSet;",
+                    "zc::Maybe<identity::MissingCanonicalIdentityInternerSet> identityInternerSet;",
+                    1,
                 )
             },
-            "final context identity freeze is missing freezeCompilationUnits()",
+            "missing arena-owned identity interner marker",
         )
     )
 
@@ -2656,15 +2841,16 @@ def run_self_test() -> int:
         )
     )
 
-    binding_input_text = (ROOT / BINDING_INPUT).read_text(encoding="utf-8")
+    module_resolution_text = (ROOT / MODULE_RESOLUTION).read_text(encoding="utf-8")
     cases.append(
         (
             "missing module source projection",
             copy.deepcopy(baseline),
             {
-                BINDING_INPUT: binding_input_text.replace(
-                    "zc::Maybe<const identity::SourceFileKey&> sourceFile(",
-                    "zc::Maybe<const identity::SourceFileKey&> missingSourceFile(",
+                MODULE_RESOLUTION: module_resolution_text.replace(
+                    "identity::ModuleId module;\n  identity::SourceFileKey source;",
+                    "identity::ModuleId module;\n  identity::MissingSourceFileKey source;",
+                    1,
                 )
             },
             "missing revision-local module source marker",
@@ -2673,21 +2859,16 @@ def run_self_test() -> int:
 
     cases.append(
         (
-            "misordered identity phase schedule",
+            "missing final sealed publication",
             copy.deepcopy(baseline),
             {
                 COMPILER_SESSION: session_text.replace(
-                    "!impl->freezeModuleIdentities() ||\n"
-                    "      !impl->freezeSemanticContextFingerprint() || "
-                    "!impl->freezeModuleGraph() ||\n"
-                    "      !impl->freezeDefinitionAndImplIdentities()",
-                    "!impl->freezeDefinitionAndImplIdentities() ||\n"
-                    "      !impl->freezeSemanticContextFingerprint() || "
-                    "!impl->freezeModuleGraph() ||\n"
-                    "      !impl->freezeModuleIdentities()",
+                    "finalSealedSnapshot = zc::mv(admitted).takeSnapshot();",
+                    "finalSealedSnapshot = zc::mv(rejected).takeSnapshot();",
+                    1,
                 )
             },
-            "parseSources identity phase schedule must order",
+            "final sealed snapshot must publish exactly once",
         )
     )
 
@@ -2710,7 +2891,7 @@ def run_self_test() -> int:
                     "ForeignReexport = 0x02", "ForeignReexport = 0x03"
                 )
             },
-            "SemanticImportOperation must retain its two exact RFC 0017 tags",
+            "SemanticImportOperation must retain its three exact semantic tags",
         )
     )
     cases.append(

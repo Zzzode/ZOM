@@ -14,9 +14,10 @@
 #include "zc/core/string.h"
 #include "zc/core/vector.h"
 #include "zomlang/compiler/ast/node-id.h"
-#include "zomlang/compiler/binder/frozen-definition-inventory.h"
+#include "zomlang/compiler/binder/immutable-definition-inventory.h"
 #include "zomlang/compiler/binder/parsed-module.h"
 #include "zomlang/compiler/checker/checker-diagnostic-id.h"
+#include "zomlang/compiler/checker/checker-identity-authority.h"
 #include "zomlang/compiler/checker/cross-module-facts.h"
 #include "zomlang/compiler/checker/operator-kind.h"
 #include "zomlang/compiler/checker/signature-facts.h"
@@ -24,7 +25,6 @@
 #include "zomlang/compiler/identity/crate-key.h"
 #include "zomlang/compiler/identity/handle.h"
 #include "zomlang/compiler/identity/semantic-context-fingerprint.h"
-#include "zomlang/compiler/identity/semantic-identity-registry-set.h"
 #include "zomlang/compiler/identity/sha256.h"
 #include "zomlang/compiler/type/semantic-type-store.h"
 
@@ -1073,9 +1073,9 @@ struct CheckedFactsVerificationInput final {
   zc::ArrayPtr<const identity::DefId> importedDefinitions;
   zc::ArrayPtr<const identity::ImplId> coherentImpls;
   zc::ArrayPtr<const CheckerFailureRef> registeredPrimaryFailures;
-  zc::ArrayPtr<const binder::FrozenOwnerLocalBindingEntry> ownerLocalBindings;
-  zc::ArrayPtr<const binder::FrozenAnonymousEntityEntry> anonymousEntities;
-  const identity::SemanticIdentityRegistrySet& registries;
+  zc::ArrayPtr<const binder::MaterializedOwnerLocalBindingInventoryEntry> ownerLocalBindings;
+  zc::ArrayPtr<const binder::MaterializedAnonymousEntityEntry> anonymousEntities;
+  const CheckerIdentityAuthority& identities;
   const type::SemanticTypeStore& semanticTypes;
 };
 
@@ -1085,8 +1085,7 @@ public:
   /// \brief Canonically encode one retained diagnostic argument without identity handle slots.
   ZC_NODISCARD static zc::Maybe<zc::Array<uint8_t>> encodeDisplayArgument(
       const CheckerDisplayArgument& argument, identity::ModuleId module,
-      const identity::SemanticIdentityRegistrySet& registries,
-      const type::SemanticTypeStore& semanticTypes);
+      const CheckerIdentityAuthority& identities, const type::SemanticTypeStore& semanticTypes);
   /// \brief Populate every producer record from typed facts, then canonically order map entries.
   ZC_NODISCARD static bool writeCanonicalRecords(CheckedFactsCandidate& candidate,
                                                  const CheckedFactsVerificationInput& input);

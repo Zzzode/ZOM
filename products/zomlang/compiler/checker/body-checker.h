@@ -9,15 +9,15 @@
 #include "zc/core/memory.h"
 #include "zc/core/one-of.h"
 #include "zc/core/vector.h"
-#include "zomlang/compiler/binder/verified-bound-module-input.h"
 #include "zomlang/compiler/checker/checked-facts.h"
+#include "zomlang/compiler/checker/checker-identity-authority.h"
 #include "zomlang/compiler/checker/coherence-facts.h"
 #include "zomlang/compiler/checker/cross-module-facts.h"
 #include "zomlang/compiler/checker/signature-facts.h"
+#include "zomlang/compiler/driver/materialized-module-graph-query.h"
 #include "zomlang/compiler/identity/brand.h"
 #include "zomlang/compiler/identity/crate-key.h"
 #include "zomlang/compiler/identity/semantic-context-fingerprint.h"
-#include "zomlang/compiler/identity/semantic-identity-registry-set.h"
 #include "zomlang/compiler/type/semantic-type-store.h"
 
 namespace zomlang::compiler::checker::body {
@@ -69,16 +69,16 @@ using BodyFactRequirementInventoryBuildResult =
 class BodyFactRequirementInventoryBuilder final {
 public:
   ZC_NODISCARD static BodyFactRequirementInventoryBuildResult build(
-      const binder::VerifiedBoundModuleInput& boundModule);
+      const driver::module_graph_query::CheckerBoundModuleView& boundModule);
 };
 
 /// \brief Complete capability input for production body checking.
 struct BodyCheckingInput final {
-  const binder::VerifiedBoundModuleInput& boundModule;
+  const driver::module_graph_query::CheckerBoundModuleView& boundModule;
+  const CheckerIdentityAuthority& identities;
   const signature::VerifiedSignatureFacts& signatureFacts;
   const cross_module::ImportedSignatureView& importedSignatures;
   const coherence::FrozenCoherenceView& coherence;
-  const identity::SemanticIdentityRegistrySet& registries;
   type::SemanticTypeStore& semanticTypes;
   const VerifiedBodyFactRequirementInventory& requirements;
   const identity::SemanticCompilerOptionsKey& semanticOptions;

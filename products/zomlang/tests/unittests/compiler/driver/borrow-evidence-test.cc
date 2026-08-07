@@ -8,6 +8,7 @@
 #include "zc/core/encoding.h"
 #include "zc/core/time.h"
 #include "zc/ztest/test.h"
+#include "zomlang/compiler/checker/checker-identity-authority.h"
 #include "zomlang/compiler/diagnostics/diagnostic-engine.h"
 #include "zomlang/compiler/driver/compiler-session.h"
 #include "zomlang/compiler/driver/imported-signature-view-projector.h"
@@ -28,15 +29,15 @@ identity::Sha256Digest repeatedDigest(uint8_t byte) {
 }
 
 bool expandedModuleLess(identity::ModuleId left, identity::ModuleId right,
-                        const identity::SemanticIdentityRegistrySet& registries) {
-  auto leftKey = registries.modules().lookup(left);
-  auto rightKey = registries.modules().lookup(right);
-  ZC_REQUIRE(leftKey != zc::none);
-  ZC_REQUIRE(rightKey != zc::none);
-  ZC_IF_SOME(leftValue, leftKey) {
-    ZC_IF_SOME(rightValue, rightKey) {
-      const auto leftBytes = leftValue.encode();
-      const auto rightBytes = rightValue.encode();
+                        const checker::CheckerIdentityAuthority& identities) {
+  auto leftModule = identities.module(left);
+  auto rightModule = identities.module(right);
+  ZC_REQUIRE(leftModule != zc::none);
+  ZC_REQUIRE(rightModule != zc::none);
+  ZC_IF_SOME(leftValue, leftModule) {
+    ZC_IF_SOME(rightValue, rightModule) {
+      const auto leftBytes = leftValue.key().encode();
+      const auto rightBytes = rightValue.key().encode();
       const size_t shared =
           leftBytes.size() < rightBytes.size() ? leftBytes.size() : rightBytes.size();
       for (size_t index = 0; index < shared; ++index) {
@@ -199,21 +200,21 @@ package::DigestVerifiedSourceSnapshot sourceSnapshot(uint32_t importCount,
   ZC_REQUIRE(importCount <= 2);
   ZC_REQUIRE(detachedModuleCount <= 2);
   auto sourceDirectory = zc::newInMemoryDirectory(zc::nullClock());
-  const auto mainSource = importCount == 0 ? "let root = 0;"_zc
-                          : importCount == 1
-                              ? "import app::first;\nlet root = 0;"_zc
-                              : "import app::first;\nimport app::second;\nlet root = 0;"_zc;
+  const auto mainSource = importCount == 0   ? "let root = 0;"_zc
+                          : importCount == 1 ? "import app::first::{First};\nlet root = 0;"_zc
+                                             : "import app::first::{First};\n"
+                                               "import app::second::{Second};\nlet root = 0;"_zc;
   sourceDirectory
       ->openFile(zc::Path({"src"_zc, "main.zom"_zc}),
                  zc::WriteMode::CREATE | zc::WriteMode::CREATE_PARENT)
       ->writeAll(mainSource);
   if (importCount >= 1) {
     sourceDirectory->openFile(zc::Path({"src"_zc, "first.zom"_zc}), zc::WriteMode::CREATE)
-        ->writeAll("module first;\nlet first_value = 1;"_zc);
+        ->writeAll("module first;\nexport class First {}"_zc);
   }
   if (importCount == 2) {
     sourceDirectory->openFile(zc::Path({"src"_zc, "second.zom"_zc}), zc::WriteMode::CREATE)
-        ->writeAll("module second;\nlet second_value = 2;"_zc);
+        ->writeAll("module second;\nexport class Second {}"_zc);
   }
   if (detachedModuleCount >= 1) {
     sourceDirectory->openFile(zc::Path({"src"_zc, "detached.zom"_zc}), zc::WriteMode::CREATE)
@@ -289,10 +290,35 @@ public:
     ZC_REQUIRE(session.bindSources());
     ZC_REQUIRE(!session.getDiagnosticEngine().hasErrors());
 
-    const auto boundModules = session.getVerifiedBoundModules();
+    checkerIdentityAuthority = session.materializeCheckerIdentityAuthority();
+    ZC_REQUIRE(checkerIdentityAuthority != zc::none);
+    const auto& authority = ZC_REQUIRE_NONNULL(checkerIdentityAuthority);
+    const auto boundModules = authority.modules();
     ZC_REQUIRE(boundModules.size() == importCount + 4);
-    ZC_IF_SOME(registries, session.getIdentityRegistries()) {
-      ZC_IF_SOME(fingerprint, session.getSemanticContextFingerprint()) {
+    const auto& materializedGraph = authority.graphLease().capability();
+    const auto& graphWitness = materializedGraph.witness();
+    ZC_REQUIRE(!graphWitness.scc().hasCycle(graphWitness.graph()));
+    zc::Vector<size_t> checkerFactModuleIndices;
+    for (const auto& component : graphWitness.scc().components()) {
+      ZC_REQUIRE(component.modules().size() == 1);
+      ZC_REQUIRE(!component.cyclic());
+      zc::Maybe<size_t> moduleIndex;
+      for (size_t index = 0; index < materializedGraph.modules().size(); ++index) {
+        if (materializedGraph.modules()[index].key().encode().asPtr() !=
+            component.modules()[0].encode().asPtr()) {
+          continue;
+        }
+        ZC_REQUIRE(moduleIndex == zc::none);
+        moduleIndex = index;
+      }
+      ZC_REQUIRE(moduleIndex != zc::none);
+      ZC_REQUIRE(ZC_ASSERT_NONNULL(moduleIndex) < boundModules.size());
+      checkerFactModuleIndices.add(ZC_ASSERT_NONNULL(moduleIndex));
+    }
+    ZC_REQUIRE(checkerFactModuleIndices.size() == boundModules.size());
+    if (authority.semanticContext().isValid()) {
+      const auto& fingerprint = authority.fingerprint();
+      {
         ZC_IF_SOME(constSemanticTypes, session.getSemanticTypeStore()) {
           // Checker construction is intentionally transactional in CompilerSession. This fixture
           // executes the same public verified-builder sequence before body checking, so the test
@@ -303,7 +329,8 @@ public:
             markerInputs.add(checker::signature::MarkerShapeModuleInput{bound});
           }
           auto shapeResult = checker::signature::MarkerShapeInventoryBuilder::build(
-              session.getSemanticContextBrand(), fingerprint, markerInputs.asPtr(), registries);
+              session.getSemanticContextBrand(), fingerprint, boundModules[0].module(),
+              markerInputs.asPtr(), authority);
           ZC_REQUIRE(shapeResult.is<checker::signature::VerifiedMarkerShapeInventory>());
           markerShapes =
               zc::mv(shapeResult).get<checker::signature::VerifiedMarkerShapeInventory>();
@@ -314,17 +341,18 @@ public:
             ZC_IF_SOME(prelude, bound.preludeSurface()) {
               bool duplicate = false;
               for (const auto module : authorizedPreludeModules) {
-                if (module == prelude.sourceModule()) {
+                if (module == prelude.module) {
                   duplicate = true;
                   break;
                 }
               }
-              if (!duplicate) { authorizedPreludeModules.add(prelude.sourceModule()); }
+              if (!duplicate) { authorizedPreludeModules.add(prelude.module); }
             }
           }
           ZC_IF_SOME(shapes, markerShapes) {
             auto policyResult = checker::signature::MarkerPolicyRegistryBuilder::build(
-                policyConfiguration, shapes, authorizedPreludeModules.asPtr(), registries);
+                boundModules[0].module(), policyConfiguration, shapes,
+                authorizedPreludeModules.asPtr(), authority);
             ZC_REQUIRE(policyResult.is<checker::signature::VerifiedMarkerPolicyRegistry>());
             markerPolicies =
                 zc::mv(policyResult).get<checker::signature::VerifiedMarkerPolicyRegistry>();
@@ -332,16 +360,18 @@ public:
 
           ZC_IF_SOME(shapes, markerShapes) {
             ZC_IF_SOME(policies, markerPolicies) {
-              for (const auto& bound : boundModules) {
+              for (const auto boundIndex : checkerFactModuleIndices) {
+                const auto& bound = boundModules[boundIndex];
                 auto signatureResult = checker::signature::SignatureFactsBuilder::build(
-                    checker::signature::SignatureFactsBuildInput{bound, registries, semanticTypes,
-                                                                 shapes, policies});
+                    checker::signature::SignatureFactsBuildInput{bound, semanticTypes, shapes,
+                                                                 policies, authority});
                 ZC_REQUIRE(signatureResult.is<checker::signature::VerifiedSignatureFacts>());
                 signatureFacts.add(
                     zc::mv(signatureResult).get<checker::signature::VerifiedSignatureFacts>());
+                signatureFactModules.add(bound.module());
 
                 auto imported = ImportedSignatureViewProjector::build(
-                    bound, moduleInterfaces.asPtr(), registries, semanticTypes);
+                    bound, moduleInterfaces.asPtr(), semanticTypes, authority);
                 ZC_REQUIRE(imported != zc::none);
                 ZC_IF_SOME(view, imported) { importedViews.add(zc::mv(view)); }
 
@@ -351,13 +381,13 @@ public:
                     checker::borrow::BorrowInterfaceBuildInput{
                         session.getSemanticContextBrand(), fingerprint, bound.module(),
                         signatures.revision(), importedView.revision(), signatures.signatures(),
-                        zc::ArrayPtr<const checker::signature::SemanticSignature>(), registries,
+                        zc::ArrayPtr<const checker::signature::SemanticSignature>(), authority,
                         semanticTypes});
                 ZC_REQUIRE(borrowResult.is<checker::borrow::VerifiedBorrowInterfaceSurface>());
                 auto interfaceResult = ModuleInterfaceVerifier::build(ModuleInterfaceBuildInput{
                     bound, signatures, importedView, policies,
                     zc::mv(borrowResult).get<checker::borrow::VerifiedBorrowInterfaceSurface>(),
-                    registries, semanticTypes});
+                    semanticTypes, authority});
                 ZC_REQUIRE(interfaceResult.is<VerifiedModuleInterface>());
                 moduleInterfaces.add(zc::mv(interfaceResult).get<VerifiedModuleInterface>());
               }
@@ -367,11 +397,14 @@ public:
       }
     }
     ZC_REQUIRE(signatureFacts.size() == importCount + 4);
+    ZC_REQUIRE(signatureFactModules.size() == signatureFacts.size());
     ZC_REQUIRE(importedViews.size() == importCount + 4);
     ZC_REQUIRE(moduleInterfaces.size() == importCount + 4);
     zc::Maybe<size_t> userRequester;
-    for (size_t index = 0; index < boundModules.size(); ++index) {
-      if (!core_library_test::isUserPackageModule(boundModules[index], registries()) ||
+    for (size_t index = 0; index < signatureFactModules.size(); ++index) {
+      auto module = authority.boundModule(signatureFactModules[index]);
+      ZC_REQUIRE(module != zc::none);
+      if (!core_library_test::isUserPackageModule(authority, ZC_REQUIRE_NONNULL(module)) ||
           importedViews[index].modules().size() != importCount + 1) {
         continue;
       }
@@ -383,18 +416,13 @@ public:
   }
 
   BorrowEvidenceBuildInput input() const {
-    ZC_REQUIRE(session.getIdentityRegistries() != zc::none);
-    ZC_IF_SOME(registries, session.getIdentityRegistries()) {
-      return BorrowEvidenceBuildInput{signatureFacts[requester], importedViews[requester],
-                                      moduleInterfaces[requester], moduleInterfaces.asPtr(),
-                                      registries};
-    }
-    ZC_UNREACHABLE
+    return BorrowEvidenceBuildInput{signatureFacts[requester], importedViews[requester],
+                                    moduleInterfaces[requester], moduleInterfaces.asPtr(),
+                                    identities()};
   }
 
-  const identity::SemanticIdentityRegistrySet& registries() const {
-    ZC_IF_SOME(value, session.getIdentityRegistries()) { return value; }
-    ZC_UNREACHABLE
+  const checker::CheckerIdentityAuthority& identities() const {
+    return ZC_REQUIRE_NONNULL(checkerIdentityAuthority);
   }
 
   BorrowEvidenceCandidate candidate() const {
@@ -409,14 +437,68 @@ public:
     return zc::mv(result.get<VerifiedBorrowEvidence>());
   }
 
+  ModuleInterfaceBuildResult rebuildModuleInterface(
+      const checker::CheckerIdentityAuthority& authority) const {
+    ZC_IF_SOME(bound, identities().boundModule(signatureFactModules[requester])) {
+      ZC_IF_SOME(policies, markerPolicies) {
+        ZC_IF_SOME(semanticTypes, session.getSemanticTypeStore()) {
+          return ModuleInterfaceVerifier::build(ModuleInterfaceBuildInput{
+              bound, signatureFacts[requester], importedViews[requester], policies,
+              moduleInterfaces[requester].borrowSurface().clone(), semanticTypes, authority});
+        }
+      }
+    }
+    ZC_UNREACHABLE
+  }
+
+  ModuleInterfaceBuildResult rebuildWithForeignBorrowSurface() const {
+    for (size_t index = 0; index < moduleInterfaces.size(); ++index) {
+      if (index == requester) continue;
+      ZC_IF_SOME(bound, identities().boundModule(signatureFactModules[requester])) {
+        ZC_IF_SOME(policies, markerPolicies) {
+          ZC_IF_SOME(semanticTypes, session.getSemanticTypeStore()) {
+            return ModuleInterfaceVerifier::build(ModuleInterfaceBuildInput{
+                bound, signatureFacts[requester], importedViews[requester], policies,
+                moduleInterfaces[index].borrowSurface().clone(), semanticTypes, identities()});
+          }
+        }
+      }
+    }
+    ZC_UNREACHABLE
+  }
+
+  size_t publishedBindingCount() const {
+    return moduleInterfaces[requester].visibleBindings().size() +
+           moduleInterfaces[requester].exportedBindings().size();
+  }
+
+  bool retainsRequesterBoundModule() const {
+    auto retained = moduleInterfaces[requester].retainBoundModule();
+    return retained.module() == signatureFactModules[requester];
+  }
+
+  bool hasPublishedMarkerPolicyRevision() const {
+    return moduleInterfaces[requester].markerPolicyRegistryRevision().digest().bytes().size() == 32;
+  }
+
+  bool swapsPublishedInterfaces() {
+    ZC_REQUIRE(moduleInterfaces.size() >= 2);
+    auto first = zc::mv(moduleInterfaces[0]);
+    moduleInterfaces[0] = zc::mv(moduleInterfaces[1]);
+    moduleInterfaces[1] = zc::mv(first);
+    return moduleInterfaces[0].module() != moduleInterfaces[1].module();
+  }
+
 private:
   basic::LangOptions languageOptions;
   basic::CompilerOptions compilerOptions;
   identity::SemanticContextFactory contextFactory;
   driver::CompilerSession session;
+  zc::Maybe<checker::CheckerIdentityAuthority> checkerIdentityAuthority;
   zc::Maybe<checker::signature::VerifiedMarkerShapeInventory> markerShapes;
   zc::Maybe<checker::signature::VerifiedMarkerPolicyRegistry> markerPolicies;
   zc::Vector<checker::signature::VerifiedSignatureFacts> signatureFacts;
+  zc::Vector<identity::ModuleId> signatureFactModules;
   zc::Vector<checker::cross_module::ImportedSignatureView> importedViews;
   zc::Vector<VerifiedModuleInterface> moduleInterfaces;
   size_t requester = 0;
@@ -443,17 +525,20 @@ public:
     ZC_REQUIRE(session.getVerifiedSignatureFacts().size() == 3);
     ZC_REQUIRE(session.getImportedSignatureViews().size() == 3);
     ZC_REQUIRE(session.getVerifiedModuleInterfaces().size() == 3);
+    checkerIdentityAuthority = session.materializeCheckerIdentityAuthority();
+    ZC_REQUIRE(checkerIdentityAuthority != zc::none);
   }
 
   BorrowEvidenceBuildInput input(size_t index = 0) const {
     ZC_REQUIRE(index < session.getVerifiedSignatureFacts().size());
-    ZC_IF_SOME(registries, session.getIdentityRegistries()) {
-      return BorrowEvidenceBuildInput{session.getVerifiedSignatureFacts()[index],
-                                      session.getImportedSignatureViews()[index],
-                                      session.getVerifiedModuleInterfaces()[index],
-                                      session.getVerifiedModuleInterfaces(), registries};
-    }
-    ZC_UNREACHABLE
+    return BorrowEvidenceBuildInput{session.getVerifiedSignatureFacts()[index],
+                                    session.getImportedSignatureViews()[index],
+                                    session.getVerifiedModuleInterfaces()[index],
+                                    session.getVerifiedModuleInterfaces(), identities()};
+  }
+
+  const checker::CheckerIdentityAuthority& identities() const {
+    return ZC_REQUIRE_NONNULL(checkerIdentityAuthority);
   }
 
   VerifiedBorrowEvidence evidence(size_t index = 0) const {
@@ -478,11 +563,6 @@ public:
     return session.getSemanticContextBrand();
   }
 
-  const identity::SemanticIdentityRegistrySet& registries() const {
-    ZC_IF_SOME(value, session.getIdentityRegistries()) { return value; }
-    ZC_UNREACHABLE
-  }
-
   size_t evidenceCount() const noexcept { return session.getVerifiedSignatureFacts().size(); }
 
 private:
@@ -502,6 +582,7 @@ private:
   basic::CompilerOptions compilerOptions;
   identity::SemanticContextFactory contextFactory;
   driver::CompilerSession session;
+  zc::Maybe<checker::CheckerIdentityAuthority> checkerIdentityAuthority;
 };
 
 const BorrowEvidenceInvariantFact& rejected(const BorrowEvidenceVerificationResult& result) {
@@ -584,6 +665,37 @@ ZC_TEST("BorrowEvidenceVerifier accepts exact local and imported inventories") {
     ZC_EXPECT(evidence.localSummaries().size() == 0);
     ZC_EXPECT(evidence.importedSurfaces().size() == importCount + 1);
   }
+}
+
+ZC_TEST("BorrowEvidenceBuilder rejects a foreign retained identity authority") {
+  BorrowEvidenceFixture fixture;
+  BorrowEvidenceFixture foreignFixture;
+  const auto input = fixture.input();
+  auto result = BorrowEvidenceBuilder::build(BorrowEvidenceBuildInput{
+      input.localSignatureFacts, input.importedSignatures, input.ownInterface,
+      input.availableInterfaces, foreignFixture.identities()});
+  ZC_REQUIRE(result.is<BorrowEvidenceInvariantRejected>());
+  const auto& rejection = result.get<BorrowEvidenceInvariantRejected>();
+  ZC_REQUIRE(rejection.failures.size() == 1);
+  ZC_EXPECT(rejection.failures[0].kind == ir::IrFailureKind::InputRevisionMismatch);
+
+  auto interfaceResult = fixture.rebuildModuleInterface(foreignFixture.identities());
+  ZC_REQUIRE(interfaceResult.is<ModuleInterfaceInvariantRejected>());
+  const auto& interfaceRejection = interfaceResult.get<ModuleInterfaceInvariantRejected>();
+  ZC_REQUIRE(interfaceRejection.failures.size() == 1);
+  ZC_EXPECT(interfaceRejection.failures[0].kind == ModuleInterfaceInvariantKind::InputMismatch);
+  ZC_EXPECT(interfaceRejection.failures[0].stage == ModuleInterfaceInvariantStage::Input);
+
+  auto surfaceResult = fixture.rebuildWithForeignBorrowSurface();
+  ZC_REQUIRE(surfaceResult.is<ModuleInterfaceInvariantRejected>());
+  const auto& surfaceRejection = surfaceResult.get<ModuleInterfaceInvariantRejected>();
+  ZC_REQUIRE(surfaceRejection.failures.size() == 1);
+  ZC_EXPECT(surfaceRejection.failures[0].kind == ModuleInterfaceInvariantKind::InputMismatch);
+  ZC_EXPECT(surfaceRejection.failures[0].stage == ModuleInterfaceInvariantStage::Input);
+  ZC_EXPECT(fixture.publishedBindingCount() != 0);
+  ZC_EXPECT(fixture.retainsRequesterBoundModule());
+  ZC_EXPECT(fixture.hasPublishedMarkerPolicyRevision());
+  ZC_EXPECT(fixture.swapsPublishedInterfaces());
 }
 
 ZC_TEST("BorrowEvidenceVerifier rejects counts order duplicates and malformed bytes") {
@@ -684,11 +796,11 @@ ZC_TEST("BorrowEvidenceRepository rejects duplicate foreign and swapped leases")
   for (size_t index = 1; index < fixture.evidenceCount(); ++index) {
     const auto module = fixture.input(index).localSignatureFacts.module();
     if (expandedModuleLess(module, fixture.input(smallest).localSignatureFacts.module(),
-                           fixture.registries())) {
+                           fixture.identities())) {
       smallest = index;
     }
     if (expandedModuleLess(fixture.input(largest).localSignatureFacts.module(), module,
-                           fixture.registries())) {
+                           fixture.identities())) {
       largest = index;
     }
   }
@@ -705,7 +817,7 @@ ZC_TEST("BorrowEvidenceRepository rejects duplicate foreign and swapped leases")
   ZC_REQUIRE(secondRepository != zc::none);
 
   ZC_IF_SOME(first, firstRepository) {
-    auto adopted = first.adopt(fixture.evidence(largest), fixture.registries());
+    auto adopted = first.adopt(fixture.evidence(largest), fixture.identities());
     ZC_REQUIRE(adopted.is<VerifiedBorrowEvidenceLease>());
     const auto& lease = adopted.get<VerifiedBorrowEvidenceLease>();
     auto retainedLookup = first.lookup(lease);
@@ -714,7 +826,7 @@ ZC_TEST("BorrowEvidenceRepository rejects duplicate foreign and swapped leases")
     const auto retainedModule = retained.module();
     const auto retainedRevision = retained.revision();
 
-    auto insertedBefore = first.adopt(fixture.evidence(smallest), fixture.registries());
+    auto insertedBefore = first.adopt(fixture.evidence(smallest), fixture.identities());
     ZC_REQUIRE(insertedBefore.is<VerifiedBorrowEvidenceLease>());
     ZC_EXPECT(retained.module() == retainedModule);
     ZC_EXPECT(retained.revision().digest() == retainedRevision.digest());
@@ -729,12 +841,12 @@ ZC_TEST("BorrowEvidenceRepository rejects duplicate foreign and swapped leases")
       ZC_EXPECT(swapped.rejectionKind() == ir::IrFailureKind::InvalidFact);
     }
 
-    auto duplicate = first.adopt(fixture.evidence(largest), fixture.registries());
+    auto duplicate = first.adopt(fixture.evidence(largest), fixture.identities());
     ZC_REQUIRE(duplicate.is<BorrowEvidenceRepositoryRejected>());
     ZC_EXPECT(duplicate.get<BorrowEvidenceRepositoryRejected>().kind ==
               ir::IrFailureKind::AdditionalFact);
 
-    auto overCapacity = first.adopt(fixture.evidence(remaining), fixture.registries());
+    auto overCapacity = first.adopt(fixture.evidence(remaining), fixture.identities());
     ZC_REQUIRE(overCapacity.is<BorrowEvidenceRepositoryRejected>());
     ZC_EXPECT(overCapacity.get<BorrowEvidenceRepositoryRejected>().kind ==
               ir::IrFailureKind::AdditionalFact);

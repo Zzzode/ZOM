@@ -130,7 +130,7 @@ class CoherenceVerifier final {
 public:
   ZC_NODISCARD static CoherenceBuildResult verify(
       CoherenceCandidate&& candidate, const signature::VerifiedMarkerPolicyRegistry& markerPolicies,
-      const identity::SemanticIdentityRegistrySet& registries);
+      const CheckerIdentityAuthority& identities);
 };
 
 }  // namespace zomlang::compiler::checker::coherence

@@ -320,26 +320,29 @@ type::SemanticTypeInternResult SemanticTypeInterningCapability::intern(
 }
 
 struct MarkerProofInput::Impl final {
-  Impl(const signature::VerifiedMarkerPolicyRegistry& policy,
+  Impl(const driver::module_graph_query::CheckerBoundModuleView& boundModule,
+       const CheckerIdentityAuthority& identities,
+       const signature::VerifiedMarkerPolicyRegistry& policy,
        const signature::VerifiedSignatureFacts& localSignatures,
        const cross_module::ImportedSignatureView& importedSignatures,
        const coherence::FrozenCoherenceView& coherence,
-       const identity::SemanticIdentityRegistrySet& registries,
        const type::SemanticTypeStore& semanticTypes,
        SemanticTypeInterningCapability&& componentInterner) noexcept
-      : policy(policy),
+      : boundModule(boundModule),
+        identities(identities),
+        policy(policy),
         localSignatures(localSignatures),
         importedSignatures(importedSignatures),
         coherence(coherence),
-        registries(registries),
         semanticTypes(semanticTypes),
         componentInterner(zc::mv(componentInterner)) {}
 
+  const driver::module_graph_query::CheckerBoundModuleView& boundModule;
+  const CheckerIdentityAuthority& identities;
   const signature::VerifiedMarkerPolicyRegistry& policy;
   const signature::VerifiedSignatureFacts& localSignatures;
   const cross_module::ImportedSignatureView& importedSignatures;
   const coherence::FrozenCoherenceView& coherence;
-  const identity::SemanticIdentityRegistrySet& registries;
   const type::SemanticTypeStore& semanticTypes;
   SemanticTypeInterningCapability componentInterner;
 };
@@ -356,14 +359,16 @@ zc::Maybe<MarkerProofInput> MarkerProofInput::from(
   const auto module = bodyInput.boundModule.module();
   const auto& parsedModule = bodyInput.boundModule.parsedModule();
   if (!context.isValid() || policy.semanticContext() != context ||
+      bodyInput.identities.semanticContext() != context ||
       bodyInput.signatureFacts.semanticContext() != context ||
       bodyInput.importedSignatures.semanticContext() != context ||
       bodyInput.coherence.semanticContext() != context ||
-      bodyInput.registries.context() != context || bodyInput.semanticTypes.context() != context ||
+      bodyInput.semanticTypes.context() != context ||
       bodyInput.requirements.semanticContext() != context ||
       bodyInput.signatureFacts.module() != module ||
       bodyInput.importedSignatures.requester() != module ||
       bodyInput.requirements.module() != module ||
+      bodyInput.identities.boundModule(module) == zc::none ||
       bodyInput.boundModule.bindingSurface().revision().digest() !=
           bodyInput.signatureFacts.bindingSurfaceRevision().digest() ||
       bodyInput.boundModule.semanticFingerprint().digest() !=
@@ -386,17 +391,19 @@ zc::Maybe<MarkerProofInput> MarkerProofInput::from(
   SemanticTypeInterningCapability componentInterner(
       zc::heap<SemanticTypeInterningCapability::Impl>(bodyInput.semanticTypes));
   return MarkerProofInput(zc::heap<MarkerProofInput::Impl>(
-      policy, bodyInput.signatureFacts, bodyInput.importedSignatures, bodyInput.coherence,
-      bodyInput.registries, bodyInput.semanticTypes, zc::mv(componentInterner)));
+      bodyInput.boundModule, bodyInput.identities, policy, bodyInput.signatureFacts,
+      bodyInput.importedSignatures, bodyInput.coherence, bodyInput.semanticTypes,
+      zc::mv(componentInterner)));
 }
 
 struct MarkerProofEngine::Impl final {
   explicit Impl(MarkerProofInput&& input) noexcept
-      : policy(input.impl->policy),
+      : boundModule(input.impl->boundModule),
+        identities(input.impl->identities),
+        policy(input.impl->policy),
         localSignatures(input.impl->localSignatures),
         importedSignatures(input.impl->importedSignatures),
         coherence(input.impl->coherence),
-        registries(input.impl->registries),
         semanticTypes(input.impl->semanticTypes),
         componentInterner(zc::mv(input.impl->componentInterner)) {}
 
@@ -409,13 +416,25 @@ struct MarkerProofEngine::Impl final {
     return zc::none;
   }
 
+  zc::Maybe<identity::DefId> materializedDefinitionForType(identity::DefId definition) const {
+    auto entry = identities.definition(definition);
+    ZC_IF_SOME(value, entry) { return value.handle(); }
+    return zc::none;
+  }
+
+  zc::Maybe<const identity::DefinitionKey&> definitionKey(identity::DefId definition) const {
+    auto entry = identities.definition(definition);
+    ZC_IF_SOME(value, entry) { return value.key(); }
+    return zc::none;
+  }
+
   bool genericSubstitutions(identity::DefId definition,
                             const signature::NominalSignature& nominalSignature,
                             const type::semantic::NominalTypeData& subject,
                             zc::Vector<TypeSubstitution>& output) const {
     if (nominalSignature.genericParameters.size() != subject.arguments.size()) return false;
-    auto definitionKey = registries.definitions().lookup(definition);
-    if (definitionKey == zc::none) return false;
+    auto ownerKey = definitionKey(definition);
+    if (ownerKey == zc::none) return false;
     for (size_t index = 0; index < nominalSignature.genericParameters.size(); ++index) {
       const auto& generic = nominalSignature.genericParameters[index];
       if (generic.index != index) return false;
@@ -424,23 +443,20 @@ struct MarkerProofEngine::Impl final {
           return false;
         }
       }
-      auto parameterId = registries.genericParameters().find(generic.parameter);
-      if (parameterId == zc::none) return false;
-      ZC_IF_SOME(id, parameterId) {
-        auto record = registries.genericParameters().lookupRecord(id);
-        if (record == zc::none) return false;
-        ZC_IF_SOME(value, record) {
-          auto owner = value.owner().definitionKey();
-          if (value.kind() != identity::GenericParameterKind::Type || value.ordinal() != index ||
-              owner == zc::none) {
-            return false;
-          }
-          bool matchesOwner = false;
-          ZC_IF_SOME(key, owner) {
-            ZC_IF_SOME(expected, definitionKey) { matchesOwner = key == expected; }
-          }
-          if (!matchesOwner) return false;
+      auto parameter = identities.genericParameter(generic.parameter);
+      if (parameter == zc::none) return false;
+      ZC_IF_SOME(value, parameter) {
+        const auto& record = value.record();
+        auto owner = record.owner().definitionKey();
+        if (record.kind() != identity::GenericParameterKind::Type || record.ordinal() != index ||
+            owner == zc::none) {
+          return false;
         }
+        bool matchesOwner = false;
+        ZC_IF_SOME(key, owner) {
+          ZC_IF_SOME(expected, ownerKey) { matchesOwner = key == expected; }
+        }
+        if (!matchesOwner) return false;
       }
       output.add(TypeSubstitution{generic.parameter.clone(), subject.arguments[index]});
     }
@@ -526,7 +542,13 @@ struct MarkerProofEngine::Impl final {
       }
     } else if (data.is<type::semantic::NominalTypeData>()) {
       const auto& nominalType = data.get<type::semantic::NominalTypeData>();
-      auto signatureValue = signature(nominalType.definition);
+      auto nominalDefinition = materializedDefinitionForType(nominalType.definition);
+      if (nominalDefinition == zc::none) {
+        return reject(localSignatures.module(), marker, CheckerInvariantKind::InvalidFact);
+      }
+      identity::DefId definition;
+      ZC_IF_SOME(value, nominalDefinition) { definition = value; }
+      auto signatureValue = signature(definition);
       if (signatureValue == zc::none) {
         return reject(localSignatures.module(), marker, CheckerInvariantKind::InvalidFact);
       }
@@ -546,8 +568,7 @@ struct MarkerProofEngine::Impl final {
         const auto& nominalSignature =
             selected.payload.variant().get<signature::NominalSignature>();
         zc::Vector<TypeSubstitution> substitutions;
-        if (!genericSubstitutions(nominalType.definition, nominalSignature, nominalType,
-                                  substitutions)) {
+        if (!genericSubstitutions(definition, nominalSignature, nominalType, substitutions)) {
           return reject(localSignatures.module(), marker, CheckerInvariantKind::InvalidFact);
         }
         ComponentTypeRebuilder rebuilder(semanticTypes, componentInterner, substitutions.asPtr());
@@ -562,7 +583,7 @@ struct MarkerProofEngine::Impl final {
                   !fieldValue.payload.variant().is<signature::ValueSignature>() ||
                   !fieldValue.scope.variant().is<signature::MemberSignatureScope>() ||
                   fieldValue.scope.variant().get<signature::MemberSignatureScope>().owner !=
-                      nominalType.definition) {
+                      definition) {
                 return reject(localSignatures.module(), marker, CheckerInvariantKind::InvalidFact);
               }
               auto component = rebuilder.rebuild(
@@ -588,7 +609,7 @@ struct MarkerProofEngine::Impl final {
                   !variantValue.payload.variant().is<signature::EnumVariantSignature>() ||
                   !variantValue.scope.variant().is<signature::EnclosedSignatureScope>() ||
                   variantValue.scope.variant().get<signature::EnclosedSignatureScope>().owner !=
-                      nominalType.definition) {
+                      definition) {
                 return reject(localSignatures.module(), marker, CheckerInvariantKind::InvalidFact);
               }
               const auto& payload =
@@ -624,7 +645,7 @@ struct MarkerProofEngine::Impl final {
 
   MarkerProofResult resolve(identity::DefId marker, identity::SemanticTypeId subject,
                             zc::Vector<MarkerFactKey>& active) {
-    if (registries.definitions().validate(marker) != identity::FrozenRegistryFailure::None) {
+    if (identities.definition(marker) == zc::none) {
       return reject(localSignatures.module(), marker, CheckerInvariantKind::InvalidFact);
     }
     auto subjectLookup = semanticTypes.get(subject);
@@ -638,7 +659,7 @@ struct MarkerProofEngine::Impl final {
         return reject(localSignatures.module(), marker, CheckerInvariantKind::InvalidFact);
       }
       auto record = signature::SignatureFactsCanonicalCodec::encodeMarkerFact(
-          explicitFact, registries, semanticTypes);
+          explicitFact, identities, semanticTypes);
       if (record == zc::none) {
         return reject(localSignatures.module(), marker,
                       CheckerInvariantKind::CanonicalCodecMismatch);
@@ -682,11 +703,12 @@ struct MarkerProofEngine::Impl final {
     return resolve(marker, subject, active);
   }
 
+  const driver::module_graph_query::CheckerBoundModuleView& boundModule;
+  const CheckerIdentityAuthority& identities;
   const signature::VerifiedMarkerPolicyRegistry& policy;
   const signature::VerifiedSignatureFacts& localSignatures;
   const cross_module::ImportedSignatureView& importedSignatures;
   const coherence::FrozenCoherenceView& coherence;
-  const identity::SemanticIdentityRegistrySet& registries;
   const type::SemanticTypeStore& semanticTypes;
   SemanticTypeInterningCapability componentInterner;
 };
@@ -704,9 +726,9 @@ MarkerProofResult MarkerProofEngine::prove(identity::DefId marker,
   }
   if (produced.is<MarkerProofPositive>()) {
     auto producedRecord = signature::SignatureFactsCanonicalCodec::encodeMarkerFact(
-        produced.get<MarkerProofPositive>().proof, impl->registries, impl->semanticTypes);
+        produced.get<MarkerProofPositive>().proof, impl->identities, impl->semanticTypes);
     auto verifiedRecord = signature::SignatureFactsCanonicalCodec::encodeMarkerFact(
-        verified.get<MarkerProofPositive>().proof, impl->registries, impl->semanticTypes);
+        verified.get<MarkerProofPositive>().proof, impl->identities, impl->semanticTypes);
     if (producedRecord == zc::none || verifiedRecord == zc::none) {
       return reject(impl->localSignatures.module(), marker,
                     CheckerInvariantKind::CanonicalCodecMismatch);
@@ -720,9 +742,9 @@ MarkerProofResult MarkerProofEngine::prove(identity::DefId marker,
     }
   } else if (produced.is<MarkerProofNegative>()) {
     auto producedRecord = signature::SignatureFactsCanonicalCodec::encodeMarkerFact(
-        produced.get<MarkerProofNegative>().explicitFact, impl->registries, impl->semanticTypes);
+        produced.get<MarkerProofNegative>().explicitFact, impl->identities, impl->semanticTypes);
     auto verifiedRecord = signature::SignatureFactsCanonicalCodec::encodeMarkerFact(
-        verified.get<MarkerProofNegative>().explicitFact, impl->registries, impl->semanticTypes);
+        verified.get<MarkerProofNegative>().explicitFact, impl->identities, impl->semanticTypes);
     if (producedRecord == zc::none || verifiedRecord == zc::none) {
       return reject(impl->localSignatures.module(), marker,
                     CheckerInvariantKind::CanonicalCodecMismatch);

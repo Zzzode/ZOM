@@ -15,6 +15,7 @@ bool isValid(SemanticImportOperation operation) {
   switch (operation) {
     case SemanticImportOperation::Import:
     case SemanticImportOperation::ForeignReexport:
+    case SemanticImportOperation::ModuleAlias:
       return true;
   }
   return false;
@@ -41,6 +42,8 @@ bool operationMatchesResolution(SemanticImportOperation operation,
       return dependencyKind == ModuleDependencyKind::Import;
     case SemanticImportOperation::ForeignReexport:
       return dependencyKind == ModuleDependencyKind::ForeignReexport;
+    case SemanticImportOperation::ModuleAlias:
+      return dependencyKind == ModuleDependencyKind::ModuleAlias;
   }
   return false;
 }

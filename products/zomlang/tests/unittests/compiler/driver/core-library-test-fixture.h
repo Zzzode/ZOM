@@ -8,6 +8,7 @@
 #include "zc/core/filesystem.h"
 #include "zc/core/time.h"
 #include "zc/ztest/test.h"
+#include "zomlang/compiler/checker/checker-identity-authority.h"
 #include "zomlang/compiler/driver/compiler-session.h"
 #include "zomlang/compiler/driver/package/source-snapshot.h"
 #include "zomlang/compiler/source/core-source-admission.h"
@@ -60,39 +61,31 @@ inline void installCoreDistribution(CompilerSession& session) {
   ZC_REQUIRE(session.installVerifiedCoreDistribution(distribution));
 }
 
-inline bool isUserPackageModule(const binder::VerifiedBoundModuleInput& module,
-                                const identity::SemanticIdentityRegistrySet& registries) {
-  auto crate = registries.crates().lookup(module.crate());
+inline bool isUserPackageModule(const checker::CheckerIdentityAuthority& authority,
+                                const checker::CheckerIdentityAuthority::BoundModuleView& module) {
+  auto crate = authority.crate(module.crate());
   return crate != zc::none &&
-         ZC_ASSERT_NONNULL(crate).unit().kind() == identity::CompilationUnitKind::UserPackage;
+         ZC_ASSERT_NONNULL(crate).key().unit().kind() == identity::CompilationUnitKind::UserPackage;
 }
 
-inline size_t userBoundModuleCount(const CompilerSession& session,
-                                   const identity::SemanticIdentityRegistrySet& registries) {
+inline size_t userBoundModuleCount(const checker::CheckerIdentityAuthority& authority) {
   size_t count = 0;
-  for (const auto& module : session.getVerifiedBoundModules()) {
-    if (isUserPackageModule(module, registries)) { ++count; }
+  for (const auto& module : authority.modules()) {
+    if (isUserPackageModule(authority, module)) { ++count; }
   }
   return count;
 }
 
-inline const binder::VerifiedBoundModuleInput& soleUserBoundModule(
-    const CompilerSession& session, const identity::SemanticIdentityRegistrySet& registries) {
+inline const checker::CheckerIdentityAuthority::BoundModuleView& soleUserBoundModule(
+    const checker::CheckerIdentityAuthority& authority) {
   zc::Maybe<size_t> selected;
-  const auto modules = session.getVerifiedBoundModules();
+  const auto modules = authority.modules();
   for (size_t index = 0; index < modules.size(); ++index) {
-    if (!isUserPackageModule(modules[index], registries)) { continue; }
+    if (!isUserPackageModule(authority, modules[index])) { continue; }
     ZC_REQUIRE(selected == zc::none);
     selected = index;
   }
   return modules[ZC_REQUIRE_NONNULL(selected)];
-}
-
-inline const binder::VerifiedBoundModuleInput& soleUserBoundModule(const CompilerSession& session) {
-  ZC_IF_SOME(registries, session.getIdentityRegistries()) {
-    return soleUserBoundModule(session, registries);
-  }
-  ZC_UNREACHABLE
 }
 
 }  // namespace zomlang::compiler::driver::core_library_test

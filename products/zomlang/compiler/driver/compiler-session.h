@@ -19,10 +19,7 @@
 #include "zomlang/compiler/ast/tree.h"
 #include "zomlang/compiler/basic/compiler-opts.h"
 #include "zomlang/compiler/basic/zomlang-opts.h"
-#include "zomlang/compiler/binder/binding-input.h"
-#include "zomlang/compiler/binder/binding-run.h"
 #include "zomlang/compiler/binder/parsed-module.h"
-#include "zomlang/compiler/binder/verified-bound-module-input.h"
 #include "zomlang/compiler/checker/checked-facts-repository.h"
 #include "zomlang/compiler/checker/coherence-facts.h"
 #include "zomlang/compiler/checker/cross-module-facts.h"
@@ -32,6 +29,7 @@
 #include "zomlang/compiler/driver/borrow-evidence.h"
 #include "zomlang/compiler/driver/core-library-query-provider.h"
 #include "zomlang/compiler/driver/crate-graph.h"
+#include "zomlang/compiler/driver/materialized-module-graph-query.h"
 #include "zomlang/compiler/driver/module-interface.h"
 #include "zomlang/compiler/driver/package/build-script-plan.h"
 #include "zomlang/compiler/driver/package/build-script-runtime.h"
@@ -40,7 +38,6 @@
 #include "zomlang/compiler/driver/package/source-snapshot.h"
 #include "zomlang/compiler/hir/hir-module.h"
 #include "zomlang/compiler/identity/brand.h"
-#include "zomlang/compiler/identity/semantic-identity-registry-set.h"
 #include "zomlang/compiler/ir/ir-diagnostic-adapter.h"
 #include "zomlang/compiler/ir/target-registry.h"
 #include "zomlang/compiler/mir/built-mir.h"
@@ -62,13 +59,21 @@ namespace diagnostics {
 class DiagnosticEngine;
 }  // namespace diagnostics
 
+namespace checker {
+class CheckerIdentityAuthority;
+}
+
 namespace basic {
 class StringPool;
 }  // namespace basic
 
 namespace driver {
 
-/// \brief Canonically retained production parser result and its source-manager handle.
+namespace module_graph_query {
+class CheckerBoundModuleView;
+}
+
+/// \brief Caller-owned verified parser result and its source-manager handle.
 class ParsedModuleRecord final {
 public:
   ParsedModuleRecord(ParsedModuleRecord&&) noexcept = default;
@@ -141,20 +146,20 @@ public:
   /// \return True if checking succeeded without fatal errors, false otherwise.
   bool checkSources();
 
-  /// \brief Returns parser results in canonical source-identity order.
-  ZC_NODISCARD zc::ArrayPtr<const ParsedModuleRecord> getParsedModules() const noexcept;
+  /// \brief Reconstructs parser results from the final sealed snapshot in canonical order.
+  ZC_NODISCARD zc::Maybe<zc::Vector<ParsedModuleRecord>> materializeParsedModules() const;
+  /// \brief Returns the canonical parser records retained for AST-only emission.
+  ZC_NODISCARD zc::ArrayPtr<const ParsedModuleRecord> retainedParsedModules() const noexcept;
   /// \brief Returns whether all discovered sources published immutable parser results.
   ZC_NODISCARD bool hasVerifiedParsedSyntax() const noexcept;
 
-  /// \brief Returns dependency-ordered verified binder publications.
-  ZC_NODISCARD zc::ArrayPtr<const binder::VerifiedBindingOutput> getVerifiedBindingOutputs()
-      const noexcept;
-  /// \brief Returns sealed checker handoffs in dependency order after binding completes.
-  ZC_NODISCARD zc::ArrayPtr<const binder::VerifiedBoundModuleInput> getVerifiedBoundModules()
-      const noexcept;
-  /// \brief Returns independently verified stable graphs for every projected core crate.
-  ZC_NODISCARD zc::ArrayPtr<const core_library_query::CoreModuleGraphRecord> getCoreModuleGraphs()
-      const noexcept;
+  using MaterializedModuleGraphLease =
+      query::QueryCapabilityLease<const module_graph_query::MaterializedModuleGraph>;
+  /// \brief Demands the final-sealed retained module graph for this session.
+  ZC_NODISCARD zc::Maybe<MaterializedModuleGraphLease> materializeModuleGraph() const;
+  /// \brief Materializes retained Checker identity authority from the sealed binding snapshot.
+  ZC_NODISCARD zc::Maybe<checker::CheckerIdentityAuthority> materializeCheckerIdentityAuthority()
+      const;
   /// \brief Returns the closed invariant rejection from the most recent Checker run.
   ZC_NODISCARD zc::ArrayPtr<const checker::signature::CheckerVerificationFailure>
   getCheckerInvariantFailures() const noexcept;
@@ -216,11 +221,11 @@ public:
   /// \brief Returns the process-unique brand owned by this compilation session.
   identity::SemanticContextBrand getSemanticContextBrand() const noexcept;
 
-  /// \brief Returns the sole RFC 0011 registry family owned by this session.
-  zc::Maybe<const identity::SemanticIdentityRegistrySet&> getIdentityRegistries() const noexcept;
-
   /// \brief Returns the sole RFC 0005 semantic type store owned by this session.
   zc::Maybe<const type::SemanticTypeStore&> getSemanticTypeStore() const noexcept;
+
+  /// \brief Returns the session-owned issuer for Checker fact and recovery identities.
+  zc::Maybe<const identity::RegistryBrandIssuer&> getFactStoreBrandIssuer() const noexcept;
 
   /// \brief Installs one fully verified package input before parsing begins.
   ZC_NODISCARD bool installVerifiedPackageInput(VerifiedPackageSessionInput&& input);
@@ -242,12 +247,6 @@ public:
   ZC_NODISCARD zc::Maybe<const VerifiedCrateGraph&> getVerifiedCrateGraph() const noexcept;
   ZC_NODISCARD zc::ArrayPtr<const VerifiedPreparatoryCrateGraph> getVerifiedPreparatoryCrateGraphs()
       const noexcept;
-  ZC_NODISCARD zc::Maybe<const identity::SemanticContextFingerprint&>
-  getSemanticContextFingerprint() const noexcept;
-  /// \brief Returns the complete verified semantic module graph after parse/discovery freeze.
-  ZC_NODISCARD zc::Maybe<const binder::VerifiedModuleGraph&> getVerifiedModuleGraph()
-      const noexcept;
-
   ZC_NODISCARD zc::Maybe<const ir::VerifiedTargetSelection&> getVerifiedHostTarget() const noexcept;
   ZC_NODISCARD zc::Maybe<const ir::VerifiedTargetSelection&> getVerifiedTarget() const noexcept;
 

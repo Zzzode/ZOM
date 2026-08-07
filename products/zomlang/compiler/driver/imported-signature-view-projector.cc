@@ -5,8 +5,8 @@
 
 #include "zomlang/compiler/driver/imported-signature-view-projector.h"
 
-#include "zomlang/compiler/binder/binding-input.h"
 #include "zomlang/compiler/binder/binding-metadata.h"
+#include "zomlang/compiler/checker/checker-identity-authority.h"
 
 namespace zomlang::compiler::driver {
 namespace {
@@ -17,6 +17,46 @@ using checker::cross_module::SignatureViewOrigin;
 
 bool sameName(const binder::BindingNameKey& left, const binder::BindingNameKey& right) {
   return left.nameSpace() == right.nameSpace() && left.name() == right.name();
+}
+
+zc::Maybe<binder::Namespace> bindingNamespace(identity::DefinitionNamespace value) {
+  switch (value) {
+    case identity::DefinitionNamespace::Value:
+      return binder::Namespace::Value;
+    case identity::DefinitionNamespace::Type:
+      return binder::Namespace::Type;
+    case identity::DefinitionNamespace::Module:
+      return binder::Namespace::Module;
+  }
+  ZC_UNREACHABLE
+}
+
+zc::Maybe<binder::BindingNameKey> importName(const identity::SemanticImportBindingKey& binding,
+                                             bool local) {
+  auto nameSpace = bindingNamespace(local ? binding.localNamespace() : binding.sourceNamespace());
+  if (nameSpace == zc::none) { return zc::none; }
+  return binder::BindingNameKey::from(
+      ZC_ASSERT_NONNULL(nameSpace),
+      local ? binding.localName().clone() : binding.sourceName().clone());
+}
+
+zc::Maybe<binder::BindingNameKey> moduleAliasName(
+    const module_graph_query::CheckerBoundModuleView& requester,
+    const binder::ModuleAliasBindingFact& alias) {
+  const auto& tree = requester.tree();
+  if (!tree.contains(alias.node)) { return zc::none; }
+  const auto& syntax = tree.node(alias.node);
+  if (syntax.kind != ast::SyntaxKind::ModuleDeclaration ||
+      static_cast<ast::ModuleDeclarationForm>(
+          syntax.payload.words[ast::kModuleDeclarationFormWord]) !=
+          ast::ModuleDeclarationForm::Alias) {
+    return zc::none;
+  }
+  const ast::IdentId identifier(syntax.payload.words[ast::kModuleDeclarationDeclaredNameWord]);
+  if (!identifier) { return zc::none; }
+  auto name = identity::DeclaredDefinitionName::fromCanonical(tree.ident(identifier));
+  if (name == zc::none) { return zc::none; }
+  return binder::BindingNameKey::from(binder::Namespace::Module, zc::mv(ZC_ASSERT_NONNULL(name)));
 }
 
 zc::Maybe<binder::BindingTarget> signatureRootBinding(const ExportedBinding& binding) {
@@ -98,11 +138,11 @@ void retainStrongest(SignatureViewOrigin candidate, SignatureViewOrigin& current
 }  // namespace
 
 zc::Maybe<checker::cross_module::ImportedSignatureView> ImportedSignatureViewProjector::build(
-    const binder::VerifiedBoundModuleInput& requester,
+    const module_graph_query::CheckerBoundModuleView& requester,
     zc::ArrayPtr<const VerifiedModuleInterface> dependencyInterfaces,
-    const identity::SemanticIdentityRegistrySet& registries,
-    const type::SemanticTypeStore& semanticTypes) {
-  if (requester.semanticContext() != registries.context() ||
+    const type::SemanticTypeStore& semanticTypes,
+    const checker::CheckerIdentityAuthority& identities) {
+  if (requester.semanticContext() != identities.semanticContext() ||
       requester.semanticContext() != semanticTypes.context()) {
     return zc::none;
   }
@@ -120,21 +160,24 @@ zc::Maybe<checker::cross_module::ImportedSignatureView> ImportedSignatureViewPro
     bool hasOrigin = false;
 
     for (const auto& import : requester.resolvedImports()) {
-      if (import.sourceModule() != source.module() ||
-          import.sourceRevision().digest() != source.bindingSurface().revision().digest()) {
+      if (import.sourceModule != source.module() ||
+          import.sourceRevision.digest() != source.bindingSurface().revision().digest()) {
         continue;
       }
-      const auto& target = import.canonicalTarget().value();
+      const auto& target = import.canonicalTarget.value();
+      auto requestedName = importName(import.binding, false);
+      auto localName = importName(import.binding, true);
+      if (requestedName == zc::none || localName == zc::none) { return zc::none; }
       if (target.is<binder::DefinitionBindingTarget>()) {
         auto exported =
             exactDefinitionExport(source, target.get<binder::DefinitionBindingTarget>().definition,
-                                  import.requestedName());
+                                  ZC_ASSERT_NONNULL(requestedName));
         if (exported == zc::none) { return zc::none; }
         ZC_IF_SOME(binding, exported) {
           auto sourceBinding = signatureRootBinding(binding);
           if (sourceBinding == zc::none) { return zc::none; }
           ZC_IF_SOME(value, sourceBinding) {
-            auto requesterBinding = binder::BindingTarget::semanticImport(import.binding().clone());
+            auto requesterBinding = binder::BindingTarget::semanticImport(import.binding.clone());
             if (hasDefinitionSelection(definitions.asPtr(), requesterBinding)) { return zc::none; }
             definitions.add(ImportedDefinitionBindingSelection{
                 zc::mv(requesterBinding), value.clone(), SignatureViewOrigin::ExplicitImport});
@@ -142,16 +185,18 @@ zc::Maybe<checker::cross_module::ImportedSignatureView> ImportedSignatureViewPro
         }
       } else {
         const auto targetModule = target.get<binder::ModuleBindingTarget>().module;
-        if (hasTargetSelection(moduleTargets.asPtr(), import.localName())) { return zc::none; }
+        if (hasTargetSelection(moduleTargets.asPtr(), ZC_ASSERT_NONNULL(localName))) {
+          return zc::none;
+        }
         if (targetModule == source.module()) {
-          moduleTargets.add(ImportedModuleTargetSelection{import.localName().clone(),
-                                                          import.localName().clone(),
+          moduleTargets.add(ImportedModuleTargetSelection{ZC_ASSERT_NONNULL(localName).clone(),
+                                                          ZC_ASSERT_NONNULL(localName).clone(),
                                                           SignatureViewOrigin::ExplicitImport});
         } else {
-          auto exported = exactModuleExport(source, targetModule, import.requestedName());
+          auto exported = exactModuleExport(source, targetModule, ZC_ASSERT_NONNULL(requestedName));
           if (exported == zc::none) { return zc::none; }
           ZC_IF_SOME(binding, exported) {
-            moduleTargets.add(ImportedModuleTargetSelection{import.localName().clone(),
+            moduleTargets.add(ImportedModuleTargetSelection{ZC_ASSERT_NONNULL(localName).clone(),
                                                             binding.name.clone(),
                                                             SignatureViewOrigin::ExplicitImport});
           }
@@ -161,13 +206,14 @@ zc::Maybe<checker::cross_module::ImportedSignatureView> ImportedSignatureViewPro
     }
 
     for (const auto& alias : requester.resolvedModuleAliases()) {
-      if (alias.targetModule() != source.module() ||
-          alias.targetRevision().digest() != source.bindingSurface().revision().digest()) {
-        continue;
+      if (alias.canonicalTarget != source.module()) { continue; }
+      auto localName = moduleAliasName(requester, alias);
+      if (localName == zc::none ||
+          hasTargetSelection(moduleTargets.asPtr(), ZC_ASSERT_NONNULL(localName))) {
+        return zc::none;
       }
-      if (hasTargetSelection(moduleTargets.asPtr(), alias.localName())) { return zc::none; }
-      moduleTargets.add(ImportedModuleTargetSelection{alias.localName().clone(),
-                                                      alias.localName().clone(),
+      moduleTargets.add(ImportedModuleTargetSelection{ZC_ASSERT_NONNULL(localName).clone(),
+                                                      ZC_ASSERT_NONNULL(localName).clone(),
                                                       SignatureViewOrigin::NamespaceImport});
       for (const auto& binding : source.exportedBindings()) {
         auto sourceBinding = signatureRootBinding(binding);
@@ -185,68 +231,22 @@ zc::Maybe<checker::cross_module::ImportedSignatureView> ImportedSignatureViewPro
 
     bool isPrelude = false;
     ZC_IF_SOME(prelude, requester.preludeSurface()) {
-      isPrelude = prelude.sourceModule() == source.module() &&
-                  prelude.sourceRevision().digest() == source.bindingSurface().revision().digest();
+      isPrelude =
+          prelude.module == source.module() &&
+          prelude.surface.revision().digest() == source.bindingSurface().revision().digest();
     }
-    if (isPrelude) {
-      for (const auto& entry : requester.bindingSurface().visibleEntries()) {
-        bool exactPreludeBinding = false;
-        for (const auto& scope : requester.bindings().scopes()) {
-          if (scope.kind != binder::ScopeKind::Module) continue;
-          for (const auto& binding : scope.bindings) {
-            if (sameName(binding.name, entry.name) &&
-                binding.binding.origin == binder::BindingOrigin::Prelude) {
-              exactPreludeBinding = true;
-              break;
-            }
-          }
-          break;
-        }
-        if (!exactPreludeBinding) continue;
-        const auto& target = entry.canonicalTarget.value();
-        if (target.is<binder::DefinitionBindingTarget>()) {
-          auto sourceExport = exactDefinitionExport(
-              source, target.get<binder::DefinitionBindingTarget>().definition, entry.name);
-          if (sourceExport == zc::none) { return zc::none; }
-          ZC_IF_SOME(exported, sourceExport) {
-            auto sourceBinding = signatureRootBinding(exported);
-            if (sourceBinding == zc::none ||
-                !module_interface::isSignatureRootBinding(entry.bindingIdentity)) {
-              return zc::none;
-            }
-            ZC_IF_SOME(value, sourceBinding) {
-              auto requesterBinding = entry.bindingIdentity.clone();
-              if (!hasDefinitionSelection(definitions.asPtr(), requesterBinding)) {
-                definitions.add(ImportedDefinitionBindingSelection{
-                    zc::mv(requesterBinding), value.clone(), SignatureViewOrigin::Prelude});
-              }
-            }
-          }
-        } else {
-          auto sourceExport = exactModuleExport(
-              source, target.get<binder::ModuleBindingTarget>().module, entry.name);
-          if (sourceExport == zc::none || hasTargetSelection(moduleTargets.asPtr(), entry.name)) {
-            return zc::none;
-          }
-          ZC_IF_SOME(exported, sourceExport) {
-            moduleTargets.add(ImportedModuleTargetSelection{
-                entry.name.clone(), exported.name.clone(), SignatureViewOrigin::Prelude});
-          }
-        }
-      }
-      retainStrongest(SignatureViewOrigin::Prelude, origin, hasOrigin);
-    }
+    if (isPrelude) { retainStrongest(SignatureViewOrigin::Prelude, origin, hasOrigin); }
 
     if (!hasOrigin) continue;
     auto projected = source.projectImportedSignatures(
-        requester, origin, definitions.asPtr(), moduleTargets.asPtr(), registries, semanticTypes);
+        requester, origin, definitions.asPtr(), moduleTargets.asPtr(), semanticTypes, identities);
     if (projected == zc::none) { return zc::none; }
     ZC_IF_SOME(module, projected) { modules.add(zc::mv(module)); }
   }
 
   return checker::cross_module::ImportedSignatureViewBuilder::build(
       requester.semanticContext(), requester.semanticFingerprint(), requester.module(),
-      zc::mv(modules), registries);
+      zc::mv(modules), identities);
 }
 
 }  // namespace zomlang::compiler::driver

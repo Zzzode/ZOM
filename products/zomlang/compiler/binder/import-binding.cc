@@ -147,14 +147,15 @@ ImportSurfaceSeed::ImportSurfaceSeed(
 ResolvedModuleAliasProjection::ResolvedModuleAliasProjection(
     ast::NodeId node, uint32_t schemaPreorderOrdinal, identity::DefId alias,
     ImportBindingNameProjection&& localName, identity::ModuleId target,
-    ExportSurfaceRevision targetRevision, identity::SourceSpan&& declarationSpan,
-    identity::SourceSpan&& targetSpan, bool exported) noexcept
+    ModuleAliasExportNamesRevision targetExportNamesRevision,
+    identity::SourceSpan&& declarationSpan, identity::SourceSpan&& targetSpan,
+    bool exported) noexcept
     : node(node),
       schemaPreorderOrdinal(schemaPreorderOrdinal),
       alias(alias),
       localName(zc::mv(localName)),
       target(target),
-      targetRevision(targetRevision),
+      targetExportNamesRevision(targetExportNamesRevision),
       declarationSpan(zc::mv(declarationSpan)),
       targetSpan(zc::mv(targetSpan)),
       exported(exported) {}
@@ -314,7 +315,7 @@ ImportBindingProjectionResult ImportBindingProjector::project(
       }
 
       candidate.moduleAliases.add(
-          ModuleAliasBindingFact{item.node, item.alias, item.target, item.targetRevision,
+          ModuleAliasBindingFact{item.node, item.alias, item.target, item.targetExportNamesRevision,
                                  item.declarationSpan.clone(), item.targetSpan.clone()});
       zc::Maybe<identity::SourceSpan> noAlias;
       zc::Vector<ReexportProvenanceStep> noChain;

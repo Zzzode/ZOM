@@ -1,5 +1,8 @@
 #pragma once
 
+#include "zomlang/compiler/binder/module-binding-allocation-plan.h"
+#include "zomlang/compiler/binder/module-skeleton-query.h"
+#include "zomlang/compiler/binder/owner-body-query.h"
 #include "zomlang/compiler/binder/owner-body-syntax.h"
 #include "zomlang/compiler/binder/stable-binding-facts.h"
 #include "zomlang/compiler/diagnostics/diagnostic-fact.h"
@@ -76,6 +79,56 @@ struct OwnerBodyProvenanceQuery final {
 };
 
 }  // namespace zomlang::compiler::driver::incremental_binding_query
+
+namespace zomlang::compiler::binder {
+
+/// \brief Complete stable semantic binding projection for one contextual owner body.
+struct BindOwnerBody final {
+  using Key = driver::incremental_binding_query::ContextualBodyOwnerKey;
+  using Value = BinderQueryResult<BoundOwnerBody>;
+
+  static constexpr query::SemanticDescriptorMetadata descriptor{
+      "BindOwnerBody"_zcc,
+      "zom.query.bind-owner-body"_zcc,
+      query::ReuseClass::Semantic,
+      query::RetentionClass::Retained,
+      query::QueryEqualityPolicy::CanonicalBytes,
+      query::QueryCyclePolicy::Reject,
+      query::QueryCostClass::Linear};
+  ZC_NODISCARD static zc::Array<uint8_t> encodeKey(const Key& key);
+  ZC_NODISCARD static zc::Maybe<Key> decodeKey(zc::ArrayPtr<const uint8_t> bytes);
+  ZC_NODISCARD static zc::Array<uint8_t> encodeValue(const Value& value);
+  ZC_NODISCARD static zc::Maybe<Value> decodeValue(zc::ArrayPtr<const uint8_t> bytes);
+  ZC_NODISCARD static query::TypedQueryResult<Value> provide(query::QueryContext& context,
+                                                             const Key& key);
+  ZC_NODISCARD static bool verify(query::QueryContext& context, const Key& key,
+                                  const query::TypedQueryResult<Value>& result);
+};
+
+/// \brief Deterministic dense allocation plan for all contextual module body facts.
+struct ModuleBindingAllocationPlanQuery final {
+  using Key = driver::incremental_binding_query::ContextualModuleKey;
+  using Value = BinderQueryResult<ModuleBindingAllocationPlan>;
+
+  static constexpr query::SemanticDescriptorMetadata descriptor{
+      "ModuleBindingAllocationPlanQuery"_zcc,
+      "zom.query.module-binding-allocation-plan"_zcc,
+      query::ReuseClass::Semantic,
+      query::RetentionClass::Retained,
+      query::QueryEqualityPolicy::CanonicalBytes,
+      query::QueryCyclePolicy::Reject,
+      query::QueryCostClass::Linear};
+  ZC_NODISCARD static zc::Array<uint8_t> encodeKey(const Key& key);
+  ZC_NODISCARD static zc::Maybe<Key> decodeKey(zc::ArrayPtr<const uint8_t> bytes);
+  ZC_NODISCARD static zc::Array<uint8_t> encodeValue(const Value& value);
+  ZC_NODISCARD static zc::Maybe<Value> decodeValue(zc::ArrayPtr<const uint8_t> bytes);
+  ZC_NODISCARD static query::TypedQueryResult<Value> provide(query::QueryContext& context,
+                                                             const Key& key);
+  ZC_NODISCARD static bool verify(query::QueryContext& context, const Key& key,
+                                  const query::TypedQueryResult<Value>& result);
+};
+
+}  // namespace zomlang::compiler::binder
 
 namespace zomlang::compiler::query {
 

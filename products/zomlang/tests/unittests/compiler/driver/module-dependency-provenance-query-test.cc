@@ -153,6 +153,9 @@ ZC_TEST("ModuleDependencyProvenanceQueryTest.RuntimeWitnessDetectsCandidateMutat
   auto first = mapWith(sourceRequest(module, "dependency"_zc),
                        sourceOrigin(firstSnapshot, 1, 1, 0, 6), firstWitness);
 
+  auto cloned = first.clone();
+  ZC_EXPECT(first.sameAs(cloned));
+
   auto secondSnapshot = sourceSnapshot();
   auto changedNode = mapWith(sourceRequest(module, "dependency"_zc),
                              sourceOrigin(secondSnapshot, 1, 2, 0, 6), firstWitness);

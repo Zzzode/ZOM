@@ -191,11 +191,9 @@ zc::Maybe<identity::ModuleResolutionCandidates> providerCandidates(
 
   zc::Vector<identity::ModuleCatalogPathBucketKey> bucketKeys(bucketMap.size());
   for (const auto& entry : bucketMap) { bucketKeys.add(entry.value.clone()); }
-  auto bucketResults = context.getParallel<ModuleCatalogPathBucketInput>(bucketKeys.asPtr());
-  if (bucketResults.size() != bucketKeys.size()) { return zc::none; }
   zc::Vector<identity::ModuleKey> candidates;
-  for (size_t index = 0; index < bucketResults.size(); ++index) {
-    const auto& result = bucketResults[index];
+  for (size_t index = 0; index < bucketKeys.size(); ++index) {
+    auto result = context.get<ModuleCatalogPathBucketInput>(bucketKeys[index]);
     if (result.isRuntimeFailure() || result.kind() != query::QueryValueKind::Value ||
         result.value().key().encode().asPtr() != bucketKeys[index].encode().asPtr()) {
       return zc::none;

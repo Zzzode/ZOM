@@ -91,7 +91,8 @@ struct ImportSurfaceSeed final {
 struct ResolvedModuleAliasProjection final {
   ResolvedModuleAliasProjection(ast::NodeId node, uint32_t schemaPreorderOrdinal,
                                 identity::DefId alias, ImportBindingNameProjection&& localName,
-                                identity::ModuleId target, ExportSurfaceRevision targetRevision,
+                                identity::ModuleId target,
+                                ModuleAliasExportNamesRevision targetExportNamesRevision,
                                 identity::SourceSpan&& declarationSpan,
                                 identity::SourceSpan&& targetSpan, bool exported) noexcept;
   ResolvedModuleAliasProjection(ResolvedModuleAliasProjection&&) noexcept = default;
@@ -103,7 +104,7 @@ struct ResolvedModuleAliasProjection final {
   identity::DefId alias;
   ImportBindingNameProjection localName;
   identity::ModuleId target;
-  ExportSurfaceRevision targetRevision;
+  ModuleAliasExportNamesRevision targetExportNamesRevision;
   identity::SourceSpan declarationSpan;
   identity::SourceSpan targetSpan;
   bool exported;

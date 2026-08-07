@@ -204,13 +204,12 @@ SESSION_HEADER_MARKERS = (
     "class CompilerSession",
     "CompilerSession(identity::SemanticContextFactory& contextFactory,",
     "identity::SemanticContextBrand getSemanticContextBrand() const noexcept;",
-    "zc::Maybe<const identity::SemanticIdentityRegistrySet&> getIdentityRegistries() const noexcept;",
     "addVerifiedPackageRoot(",
-    "zc::ArrayPtr<const ParsedModuleRecord> getParsedModules() const noexcept;",
+    "zc::Maybe<zc::Vector<ParsedModuleRecord>> materializeParsedModules() const;",
     "zc::Maybe<const VerifiedCrateGraph&> getVerifiedCrateGraph() const noexcept;",
     "getVerifiedPreparatoryCrateGraphs()\n      const noexcept;",
-    "getSemanticContextFingerprint() const noexcept;",
-    "getVerifiedModuleGraph()\n      const noexcept;",
+    "zc::Maybe<MaterializedModuleGraphLease> materializeModuleGraph() const;",
+    "zc::Maybe<checker::CheckerIdentityAuthority> materializeCheckerIdentityAuthority()",
     "getVerifiedSignatureFacts() const noexcept;",
     "getImportedSignatureViews() const noexcept;",
     "getVerifiedModuleInterfaces()\n      const noexcept;",
@@ -226,7 +225,18 @@ SESSION_HEADER_MARKERS = (
 
 SESSION_SOURCE_MARKERS = (
     "identity::SemanticContextBrand contextBrand;",
-    "zc::Maybe<identity::SemanticIdentityRegistrySet> identityRegistries;",
+    "public module_graph_query::ModuleGraphIdentityMaterializationResources",
+    "identity::CanonicalIdentityInternerSet& identityInterners() const override",
+    "return ZC_ASSERT_NONNULL(identityInternerSet);",
+    "identity::IdentityInternResult<identity::DefId> internDefinition(",
+    "identity::IdentityInternResult<identity::ImplId> internImplementation(",
+    "identity::IdentityInternResult<identity::GenericParameterId> internGenericParameter(",
+    "identity::IdentityInternResult<identity::CallableParameterId> internCallableParameter(",
+    "zc::Maybe<identity::DefinitionIdentityEntry> definition(identity::DefId handle) const override",
+    "zc::Maybe<identity::ImplementationIdentityEntry> implementation(",
+    "zc::Maybe<identity::GenericParameterIdentityEntry> genericParameter(",
+    "zc::Maybe<identity::CallableParameterIdentityEntry> callableParameter(",
+    "mutable zc::Maybe<identity::CanonicalIdentityInternerSet> identityInternerSet;",
     "basic::ThreadPool queryScheduler;",
     "query::QueryDatabase queryDatabase;",
     "queryDatabase(queryScheduler, query::productionQueryDescriptorInventory(), "
@@ -235,36 +245,30 @@ SESSION_SOURCE_MARKERS = (
     "zc::Own<source::SourceManager> sourceManager;",
     "zc::Own<diagnostics::DiagnosticEngine> diagnosticEngine;",
     "zc::Vector<ParsedModuleRecord> parsedModules;",
+    "struct ModuleKeyBinding final",
+    "zc::Vector<ModuleKeyBinding> moduleKeys;",
     "snapshot.snapshot().readVerifiedFile(sourcePath)",
     "registerVerifiedSource(",
     "parseSnapshot.getCapability<parser::ParseSourceQuery>",
     "binder::ParsedModuleVerifier::verifyQueryResult(",
     "extractStructuralModuleDependencyRequests(parsed.lease().capability().tree())",
-    "incremental_binding_query::ModuleBodySyntaxQuery",
     "incremental_binding_query::StableIdentityAdmissionQuery",
-    "binder::ModuleBodySyntaxVerifier::reconstruct(",
-    "zc::Vector<ModuleBodyQueryBinding> moduleBodyQueryBindings;",
-    "incremental_binding_query::ContextualIdentityAuthorityInputLedger identityAuthorityInputs;",
+    "stagedCompilationRoots = zc::none;",
+    "const auto& roots = snapshot.contextRoots();",
+    "const auto& roots = finalSnapshot.contextRoots();",
     "incremental_binding_query::ContextualIdentityAuthorityInputTransaction::prepare(",
-    "impl->identityAuthorityInputs = "
-    "zc::mv(ZC_ASSERT_NONNULL(authorityTransaction)).takeNextLedger();",
-    "!impl->freezeSourceIdentities()",
     "binder::DefinitionInventory::collect(tree);",
     "diagnostics::DiagID::IdentityBrandExhausted",
     "diagnostics::DiagID::IdentityDuplicateSingletonStore",
     "while (true) {",
     "zc::Maybe<VerifiedCrateGraph> crateGraph;",
     "zc::Vector<VerifiedPreparatoryCrateGraph> preparatoryCrateGraphs;",
-    "zc::Maybe<identity::SemanticContextFingerprint> semanticContextFingerprint;",
-    "zc::Maybe<binder::VerifiedModuleGraph> moduleGraph;",
+    "const auto& fingerprint = checkerAuthority.fingerprint();",
     "graph_query::VerifiedModuleGraphInputTransaction::prepare(",
-    "authorityStagingSnapshotValue.get<graph_query::ModuleGraphQuery>(",
-    "authorityStagingSnapshotValue.get<graph_query::ModuleGraphSccQuery>(",
-    "binder::VerifiedModuleGraphBuilder::build(",
-    "!impl->freezeModuleGraph()",
-    "identity::SemanticContextFingerprint::compute(",
-    "collectSemanticContextInputs(toolchainInputs, crateEdges)",
-    "registries, toolchainInputs.asPtr(), crates.packageEdges(), crateEdges.asPtr()",
+    "authorityStagingSnapshot.get<graph_query::ModuleGraphQuery>(",
+    "authorityStagingSnapshot.get<graph_query::ModuleGraphSccQuery>(",
+    "snapshot.getCapability<module_graph_query::MaterializeModuleGraphQuery>(roots)",
+    "finalSealedSnapshot = zc::mv(admitted).takeSnapshot();",
     "VerifiedPreparatoryCrateGraph::build(request, node, resolution, plan, completed)",
     "VerifiedPreparatoryCrateGraph::buildPlan(request, graph)",
     "executor.execute(node, graph.get<VerifiedPreparatoryCrateGraph>(), completed)",
@@ -280,7 +284,7 @@ SESSION_SOURCE_MARKERS = (
     "zc::Vector<hir::VerifiedHirModule> hirModules;",
     "zc::Vector<ir::IrDiagnosticGroup> irFailureGroups;",
     "zc::Vector<identity::IdentityInvariant> irIdentityInvariantFailures;",
-    "checker::dispatch::DispatchSiteInventoryBuilder::build(bound, inventory)",
+    "checker::dispatch::DispatchSiteInventoryBuilder::build(boundView, inventory)",
     "checker::dispatch::DispatchFactsBuilder::build(",
     "checker::dispatch::DispatchFactsVerifier::verify(",
     "borrow_evidence::BorrowEvidenceRepository::create(",
@@ -295,24 +299,26 @@ SESSION_SOURCE_MARKERS = (
 
 ORDINARY_MODULE_PARTITION_MARKERS = (
     "zc::Vector<size_t> ordinaryBoundModuleIndices;",
-    "ZC_ASSERT_NONNULL(crate).unit().kind() == identity::CompilationUnitKind::UserPackage",
+    "ZC_ASSERT_NONNULL(crate).key().unit().kind() == identity::CompilationUnitKind::UserPackage",
     "ordinaryBoundModuleIndices.add(index);",
     "for (size_t ordinaryIndex = 0; ordinaryIndex < ordinaryBoundModuleIndices.size();",
     "const auto boundIndex = ordinaryBoundModuleIndices[ordinaryIndex];",
-    "impl->boundModules[boundIndex], stagedSignatureFacts[boundIndex],",
-    "stagedModuleInterfaces[boundIndex], stagedImportedSignatureViews[boundIndex],",
-    "stagedModuleInterfaces.asPtr(), stagedCheckedEvidence[boundIndex],",
-    "*stagedCheckedFactsRepository, stagedDispatchFacts[boundIndex],",
+    "const auto factIndex = checkerFactIndexByModule[boundIndex];",
+    "checkerBound, stagedSignatureFacts[factIndex],",
+    "stagedModuleInterfaces[factIndex], stagedImportedSignatureViews[factIndex],",
+    "stagedModuleInterfaces.asPtr(), stagedCheckedEvidence[factIndex],",
+    "*stagedCheckedFactsRepository, stagedDispatchFacts[factIndex],",
     "mir::BuiltMirBuilder::build(stagedHirModules[ordinaryIndex])",
     "stagedHirModules.size() != ordinaryBoundModuleIndices.size()",
     "stagedBuiltMirModules.size() != ordinaryBoundModuleIndices.size()",
     "stagedOwnershipEventOverlays.size() != ordinaryBoundModuleIndices.size()",
     "for (const auto index : ordinaryBoundModuleIndices)",
-    "ordinarySignatureFacts.add(zc::mv(stagedSignatureFacts[index]));",
-    "ordinaryImportedSignatureViews.add(zc::mv(stagedImportedSignatureViews[index]));",
-    "ordinaryModuleInterfaces.add(zc::mv(stagedModuleInterfaces[index]));",
-    "ordinaryCheckedEvidence.add(zc::mv(stagedCheckedEvidence[index]));",
-    "ordinaryDispatchFacts.add(zc::mv(stagedDispatchFacts[index]));",
+    "const auto factIndex = checkerFactIndexByModule[index];",
+    "ordinarySignatureFacts.add(zc::mv(stagedSignatureFacts[factIndex]));",
+    "ordinaryImportedSignatureViews.add(zc::mv(stagedImportedSignatureViews[factIndex]));",
+    "ordinaryModuleInterfaces.add(zc::mv(stagedModuleInterfaces[factIndex]));",
+    "ordinaryCheckedEvidence.add(zc::mv(stagedCheckedEvidence[factIndex]));",
+    "ordinaryDispatchFacts.add(zc::mv(stagedDispatchFacts[factIndex]));",
     "impl->signatureFacts = zc::mv(ordinarySignatureFacts);",
     "impl->importedSignatureViews = zc::mv(ordinaryImportedSignatureViews);",
     "impl->moduleInterfaces = zc::mv(ordinaryModuleInterfaces);",
@@ -415,7 +421,10 @@ def strip_cpp_comments_and_literals(text: str) -> str:
     return "".join(output)
 
 
-def check_driver_surface(files: dict[Path, str], errors: list[str]) -> None:
+def check_driver_surface(
+    files: dict[Path, str], stripped_sources: dict[Path, str], errors: list[str],
+    scan_paths: set[Path] | None
+) -> None:
     driver_files = {
         path for path in files if path.parent == SESSION_HEADER.parent
     }
@@ -426,13 +435,12 @@ def check_driver_surface(files: dict[Path, str], errors: list[str]) -> None:
     for path in missing:
         errors.append(f"{path}: required CompilerSession surface is missing")
 
-    for path, raw_text in sorted(files.items()):
-        if path.suffix not in {".h", ".cc"}:
+    for path, text in sorted(stripped_sources.items()):
+        if scan_paths is not None and path not in scan_paths:
             continue
-        text = strip_cpp_comments_and_literals(raw_text)
         if re.search(r"\bCompilerDriver\b", text):
             errors.append(f"{path}: forbidden CompilerDriver identifier remains")
-        if "zomlang/compiler/driver/driver.h" in raw_text:
+        if "zomlang/compiler/driver/driver.h" in files[path]:
             errors.append(f"{path}: forbidden driver.h include remains")
         if path.parent == SESSION_HEADER.parent and re.search(
             r"\b(?:ZC_IREQUIRE|ZC_FAIL(?:_ASSERT)?)\b", text
@@ -456,7 +464,10 @@ def check_driver_surface(files: dict[Path, str], errors: list[str]) -> None:
             errors.append(f"{SESSION_HEADER}: CompilerSession wrapper class is forbidden")
 
 
-def check_session_ownership(files: dict[Path, str], errors: list[str]) -> None:
+def check_session_ownership(
+    files: dict[Path, str], stripped_sources: dict[Path, str], errors: list[str],
+    scan_paths: set[Path] | None
+) -> None:
     header = files.get(SESSION_HEADER, "")
     source = files.get(SESSION_SOURCE, "")
     for marker in SESSION_HEADER_MARKERS:
@@ -486,6 +497,18 @@ def check_session_ownership(files: dict[Path, str], errors: list[str]) -> None:
     for forbidden in ("addSourceFile(", "addPackageSourceFile(", "getASTs("):
         if forbidden in header:
             errors.append(f"{SESSION_HEADER}: forbidden raw source API remains: {forbidden}")
+    if "getParsedModules(" in header:
+        errors.append(f"{SESSION_HEADER}: obsolete retained parser-result API remains")
+    for forbidden in (
+        "FrozenInventoryBinding",
+        "FrozenInventoryInputBinding",
+        "frozenInventories",
+        "frozenInventoryInputs",
+        "ModuleBodyQueryBinding",
+        "moduleBodyQueryBindings",
+    ):
+        if forbidden in source:
+            errors.append(f"{SESSION_SOURCE}: obsolete session ledger remains: {forbidden}")
 
     if source.count("while (true) {") != 1:
         errors.append(f"{SESSION_SOURCE}: must own exactly one discovery fixed-point scheduler")
@@ -496,15 +519,22 @@ def check_session_ownership(files: dict[Path, str], errors: list[str]) -> None:
         != 1
     ):
         errors.append(f"{SESSION_SOURCE}: discovery scheduler must have exactly one request site")
-    if source.count("binder::VerifiedModuleGraphBuilder::build(") != 1:
-        errors.append(f"{SESSION_SOURCE}: must publish exactly one verified module graph")
+    if "binder::VerifiedModuleGraphBuilder::build(" in source:
+        errors.append(f"{SESSION_SOURCE}: session-owned module graph publication is forbidden")
+    if source.count("getCapability<module_graph_query::MaterializeModuleGraphQuery>") < 2:
+        errors.append(f"{SESSION_SOURCE}: sealed materialized graph demand is missing")
     if "resolver.resolve(zc::mv(request))" in source:
         errors.append(f"{SESSION_SOURCE}: batch module resolution authority is forbidden")
+    if "identity::ModuleId identity;" in source:
+        errors.append(
+            f"{SESSION_SOURCE}: session-owned persistent module handle cache is forbidden"
+        )
 
-    for path, raw_text in files.items():
-        if path in {SESSION_SOURCE, BINDING_INPUT_SOURCE} or path.suffix not in {".h", ".cc"}:
+    for path, text in stripped_sources.items():
+        if path in {SESSION_SOURCE, BINDING_INPUT_SOURCE} or (
+            scan_paths is not None and path not in scan_paths
+        ):
             continue
-        text = strip_cpp_comments_and_literals(raw_text)
         if "VerifiedModuleGraphBuilder::build(" in text:
             errors.append(f"{path}: global module graph publication bypasses CompilerSession")
 
@@ -530,27 +560,48 @@ def check_ordinary_module_partition(files: dict[Path, str], errors: list[str]) -
             )
 
     if contains_format_independent_marker(
-        source, "impl->boundModules[ordinaryIndex], stagedSignatureFacts[ordinaryIndex],"
+        source, "checkerBound, stagedSignatureFacts[ordinaryIndex],"
     ):
         errors.append(
-            f"{SESSION_SOURCE}: ordinary HIR lowering must map through the bound-module index"
+            f"{SESSION_SOURCE}: ordinary HIR lowering must map through the fact-module index"
         )
 
 
-def check_single_scheduler(files: dict[Path, str], errors: list[str]) -> None:
+def stripped_cpp_sources(files: dict[Path, str]) -> dict[Path, str]:
+    return {
+        path: strip_cpp_comments_and_literals(text)
+        for path, text in files.items()
+        if path.suffix in {".h", ".cc"}
+    }
+
+
+def check_single_scheduler(
+    files: dict[Path, str], stripped_sources: dict[Path, str], errors: list[str],
+    scan_paths: set[Path] | None
+) -> None:
     infrastructure = {THREAD_POOL_HEADER, THREAD_POOL_SOURCE}
     thread_pool_declaration = re.compile(r"\b(?:basic::)?ThreadPool\s+[A-Za-z_]\w*\s*[;({]")
     raw_scheduler = re.compile(r"\b(?:std::jthread|std::async|pthread_create|dispatch_async)\b")
 
-    for path, raw_text in sorted(files.items()):
-        if path.suffix not in {".h", ".cc"} or path in infrastructure:
+    for path, text in sorted(stripped_sources.items()):
+        if path in infrastructure or (scan_paths is not None and path not in scan_paths):
             continue
-        text = strip_cpp_comments_and_literals(raw_text)
-        if path != SESSION_SOURCE and thread_pool_declaration.search(text):
+        if (
+            path != SESSION_SOURCE
+            and "ThreadPool" in text
+            and thread_pool_declaration.search(text)
+        ):
             errors.append(f"{path}: secondary ThreadPool scheduler is forbidden")
-        if path != SESSION_SOURCE and re.search(r"\bthreadPool\s*\.\s*enqueue\s*\(", text):
+        if (
+            path != SESSION_SOURCE
+            and "threadPool" in text
+            and re.search(r"\bthreadPool\s*\.\s*enqueue\s*\(", text)
+        ):
             errors.append(f"{path}: secondary frontend enqueue site is forbidden")
-        if raw_scheduler.search(text):
+        if (
+            any(marker in text for marker in ("jthread", "async", "pthread_create", "dispatch_async"))
+            and raw_scheduler.search(text)
+        ):
             errors.append(f"{path}: raw secondary scheduler primitive is forbidden")
 
     query_header = files.get(QUERY_DATABASE_HEADER, "")
@@ -573,7 +624,10 @@ def check_single_scheduler(files: dict[Path, str], errors: list[str]) -> None:
         errors.append(f"{QUERY_DATABASE_SOURCE}: query database must not own worker threads")
 
 
-def check_cli_root(files: dict[Path, str], errors: list[str]) -> None:
+def check_cli_root(
+    files: dict[Path, str], stripped_sources: dict[Path, str], errors: list[str],
+    scan_paths: set[Path] | None
+) -> None:
     source = files.get(CLI_SOURCE, "")
     for marker in CLI_MARKERS:
         if marker not in source:
@@ -587,24 +641,22 @@ def check_cli_root(files: dict[Path, str], errors: list[str]) -> None:
     factory_declaration = re.compile(
         r"\b(?:identity::)?SemanticContextFactory\s+[A-Za-z_]\w*\s*(?:[;{]|\()"
     )
-    for path, raw_text in sorted(files.items()):
-        if path.suffix not in {".h", ".cc"} or path in {
+    for path, text in sorted(stripped_sources.items()):
+        if path in {
             CLI_SOURCE,
             BRAND_HEADER,
             BRAND_SOURCE,
-        }:
+        } or (scan_paths is not None and path not in scan_paths):
             continue
-        text = strip_cpp_comments_and_literals(raw_text)
-        if factory_declaration.search(text):
+        if "SemanticContextFactory" in text and factory_declaration.search(text):
             errors.append(f"{path}: secondary process-root SemanticContextFactory is forbidden")
 
-    for path, raw_text in sorted(files.items()):
-        if path.suffix not in {".h", ".cc"} or path in {
+    for path, text in sorted(stripped_sources.items()):
+        if path in {
             SESSION_SOURCE,
             REGISTRY_SET_SOURCE,
-        }:
+        } or (scan_paths is not None and path not in scan_paths):
             continue
-        text = strip_cpp_comments_and_literals(raw_text)
         if "SemanticIdentityRegistrySet::create(" in text:
             errors.append(f"{path}: identity registry family must be claimed by CompilerSession")
 
@@ -618,7 +670,9 @@ def check_build_wiring(files: dict[Path, str], errors: list[str]) -> None:
         errors.append(f"{DRIVER_CMAKE}: forbidden driver.cc build input remains")
 
 
-def check_crate_graph_authority(files: dict[Path, str], errors: list[str]) -> None:
+def check_crate_graph_authority(
+    files: dict[Path, str], errors: list[str], scan_paths: set[Path] | None
+) -> None:
     header = files.get(CRATE_GRAPH_HEADER, "")
     source = files.get(CRATE_GRAPH_SOURCE, "")
     for marker in (
@@ -650,16 +704,16 @@ def check_crate_graph_authority(files: dict[Path, str], errors: list[str]) -> No
             CRATE_GRAPH_HEADER,
             Path("products/zomlang/compiler/driver/package/package-compilation-request.h"),
             Path("products/zomlang/compiler/driver/package/package-compilation-request.cc"),
-        }:
+        } or (scan_paths is not None and path not in scan_paths):
             continue
         if "finalizeRoots(" in text and path.suffix in {".h", ".cc"}:
             errors.append(f"{path}: final crate identity bypasses VerifiedCrateGraph")
     if "collectCrate(root.crateKey().clone()" in files.get(SESSION_SOURCE, ""):
         errors.append(f"{SESSION_SOURCE}: root-only crate freeze bypasses VerifiedCrateGraph")
     session = files.get(SESSION_SOURCE, "")
-    if session.count("registries.freezeCompilationUnits()") != 1:
+    if session.count("finalSealedSnapshot = zc::mv(admitted).takeSnapshot();") != 1:
         errors.append(
-            f"{SESSION_SOURCE}: final crate graph must freeze exactly one compilation-unit set"
+            f"{SESSION_SOURCE}: final query snapshot must have exactly one sealed publication"
         )
     if "noToolchainInputs" in session:
         errors.append(f"{SESSION_SOURCE}: empty toolchain semantic context bypass is forbidden")
@@ -671,19 +725,26 @@ def check_crate_graph_authority(files: dict[Path, str], errors: list[str]) -> No
     if session.count("executor.execute(") != 1:
         errors.append(f"{SESSION_SOURCE}: build scripts must have exactly one verified execute site")
     for path, text in files.items():
+        if scan_paths is not None and path not in scan_paths:
+            continue
         if "executeBuildScriptPlan" in text:
             errors.append(f"{path}: caller-supplied build-script plan is forbidden")
 
 
-def analyze(files: dict[Path, str]) -> list[str]:
+def analyze(
+    files: dict[Path, str], stripped_sources: dict[Path, str] | None = None,
+    scan_paths: set[Path] | None = None
+) -> list[str]:
+    if stripped_sources is None:
+        stripped_sources = stripped_cpp_sources(files)
     errors: list[str] = []
-    check_driver_surface(files, errors)
-    check_session_ownership(files, errors)
+    check_driver_surface(files, stripped_sources, errors, scan_paths)
+    check_session_ownership(files, stripped_sources, errors, scan_paths)
     check_ordinary_module_partition(files, errors)
-    check_single_scheduler(files, errors)
-    check_cli_root(files, errors)
+    check_single_scheduler(files, stripped_sources, errors, scan_paths)
+    check_cli_root(files, stripped_sources, errors, scan_paths)
     check_build_wiring(files, errors)
-    check_crate_graph_authority(files, errors)
+    check_crate_graph_authority(files, errors, scan_paths)
     return errors
 
 
@@ -699,11 +760,19 @@ def run_check() -> int:
 
 
 def expect_rejection(
-    baseline: dict[Path, str], name: str, mutate, expected_fragment: str
+    baseline: dict[Path, str], baseline_stripped_sources: dict[Path, str], name: str, mutate,
+    expected_fragment: str
 ) -> list[str]:
     fixture = dict(baseline)
     mutate(fixture)
-    errors = analyze(fixture)
+    fixture_stripped_sources = dict(baseline_stripped_sources)
+    changed_paths = set[Path]()
+    for path, text in fixture.items():
+        if baseline.get(path) != text:
+            changed_paths.add(path)
+        if baseline.get(path) != text and path.suffix in {".h", ".cc"}:
+            fixture_stripped_sources[path] = strip_cpp_comments_and_literals(text)
+    errors = analyze(fixture, fixture_stripped_sources, changed_paths)
     if any(expected_fragment in error for error in errors):
         return []
     return [f"negative fixture {name!r} was not rejected for {expected_fragment!r}"]
@@ -711,7 +780,8 @@ def expect_rejection(
 
 def run_self_test() -> int:
     baseline = production_sources()
-    errors = analyze(baseline)
+    baseline_stripped_sources = stripped_cpp_sources(baseline)
+    errors = analyze(baseline, baseline_stripped_sources)
     if errors:
         print("CompilerSession architecture self-test baseline failed:", file=sys.stderr)
         for error in errors:
@@ -720,7 +790,7 @@ def run_self_test() -> int:
 
     failures: list[str] = []
     failures += expect_rejection(
-        baseline,
+        baseline, baseline_stripped_sources,
         "old driver",
         lambda files: files.__setitem__(
             Path("products/zomlang/compiler/driver/driver.h"), "class CompilerDriver {};"
@@ -728,7 +798,7 @@ def run_self_test() -> int:
         "forbidden CompilerDriver identifier remains",
     )
     failures += expect_rejection(
-        baseline,
+        baseline, baseline_stripped_sources,
         "compatibility alias",
         lambda files: files.__setitem__(
             SESSION_HEADER, files[SESSION_HEADER] + "\nusing Driver = CompilerSession;\n"
@@ -736,7 +806,7 @@ def run_self_test() -> int:
         "CompilerSession compatibility alias is forbidden",
     )
     failures += expect_rejection(
-        baseline,
+        baseline, baseline_stripped_sources,
         "wrapper surface",
         lambda files: files.__setitem__(
             SESSION_HEADER,
@@ -745,7 +815,7 @@ def run_self_test() -> int:
         "CompilerSession wrapper class is forbidden",
     )
     failures += expect_rejection(
-        baseline,
+        baseline, baseline_stripped_sources,
         "second scheduler",
         lambda files: files.__setitem__(
             Path("products/zomlang/compiler/checker/parallel-checker.cc"),
@@ -754,7 +824,7 @@ def run_self_test() -> int:
         "secondary ThreadPool scheduler is forbidden",
     )
     failures += expect_rejection(
-        baseline,
+        baseline, baseline_stripped_sources,
         "query-owned scheduler",
         lambda files: files.__setitem__(
             QUERY_DATABASE_SOURCE,
@@ -765,7 +835,7 @@ def run_self_test() -> int:
         "secondary ThreadPool scheduler is forbidden",
     )
     failures += expect_rejection(
-        baseline,
+        baseline, baseline_stripped_sources,
         "missing scheduler injection",
         lambda files: files.__setitem__(
             SESSION_SOURCE,
@@ -778,18 +848,29 @@ def run_self_test() -> int:
         "missing session ownership marker",
     )
     failures += expect_rejection(
-        baseline,
-        "missing registry owner",
+        baseline, baseline_stripped_sources,
+        "missing canonical interner owner",
         lambda files: files.__setitem__(
             SESSION_SOURCE,
             files[SESSION_SOURCE].replace(
-                "zc::Maybe<identity::SemanticIdentityRegistrySet> identityRegistries;", ""
+                "mutable zc::Maybe<identity::CanonicalIdentityInternerSet> identityInternerSet;", ""
             ),
         ),
         "missing session ownership marker",
     )
     failures += expect_rejection(
-        baseline,
+        baseline, baseline_stripped_sources,
+        "session module handle cache",
+        lambda files: files.__setitem__(
+            SESSION_SOURCE,
+            files[SESSION_SOURCE].replace(
+                "identity::ModuleKey key;", "identity::ModuleId identity;", 1
+            ),
+        ),
+        "session-owned persistent module handle cache is forbidden",
+    )
+    failures += expect_rejection(
+        baseline, baseline_stripped_sources,
         "missing retained IR identity failures",
         lambda files: files.__setitem__(
             SESSION_HEADER,
@@ -800,7 +881,47 @@ def run_self_test() -> int:
         "missing session contract marker",
     )
     failures += expect_rejection(
-        baseline,
+        baseline, baseline_stripped_sources,
+        "retained parser-result API",
+        lambda files: files.__setitem__(
+            SESSION_HEADER,
+            files[SESSION_HEADER]
+            + "\nzc::ArrayPtr<const ParsedModuleRecord> getParsedModules() const noexcept;\n",
+        ),
+        "obsolete retained parser-result API remains",
+    )
+    failures += expect_rejection(
+        baseline, baseline_stripped_sources,
+        "module-body session ledger",
+        lambda files: files.__setitem__(
+            SESSION_SOURCE,
+            files[SESSION_SOURCE]
+            + "\nzc::Vector<ModuleBodyQueryBinding> moduleBodyQueryBindings;\n",
+        ),
+        "obsolete session ledger remains",
+    )
+    failures += expect_rejection(
+        baseline, baseline_stripped_sources,
+        "frozen inventory session ledger",
+        lambda files: files.__setitem__(
+            SESSION_SOURCE,
+            files[SESSION_SOURCE]
+            + "\nzc::Vector<FrozenInventoryBinding> frozenInventories;\n",
+        ),
+        "obsolete session ledger remains",
+    )
+    failures += expect_rejection(
+        baseline, baseline_stripped_sources,
+        "frozen inventory input session ledger",
+        lambda files: files.__setitem__(
+            SESSION_SOURCE,
+            files[SESSION_SOURCE]
+            + "\nzc::Vector<FrozenInventoryInputBinding> frozenInventoryInputs;\n",
+        ),
+        "obsolete session ledger remains",
+    )
+    failures += expect_rejection(
+        baseline, baseline_stripped_sources,
         "second context factory",
         lambda files: files.__setitem__(
             Path("products/zomlang/compiler/checker/checker-context.cc"),
@@ -809,7 +930,7 @@ def run_self_test() -> int:
         "secondary process-root SemanticContextFactory is forbidden",
     )
     failures += expect_rejection(
-        baseline,
+        baseline, baseline_stripped_sources,
         "raw session assertion",
         lambda files: files.__setitem__(
             SESSION_SOURCE, files[SESSION_SOURCE] + "\nZC_IREQUIRE(false, \"bad\");\n"
@@ -817,7 +938,7 @@ def run_self_test() -> int:
         "raw session invariant assertion is forbidden",
     )
     failures += expect_rejection(
-        baseline,
+        baseline, baseline_stripped_sources,
         "missing crate graph wiring",
         lambda files: files.__setitem__(
             DRIVER_CMAKE,
@@ -829,7 +950,7 @@ def run_self_test() -> int:
         "missing direct driver build marker",
     )
     failures += expect_rejection(
-        baseline,
+        baseline, baseline_stripped_sources,
         "root-only crate freeze",
         lambda files: files.__setitem__(
             SESSION_SOURCE,
@@ -838,33 +959,30 @@ def run_self_test() -> int:
         "root-only crate freeze bypasses VerifiedCrateGraph",
     )
     failures += expect_rejection(
-        baseline,
+        baseline, baseline_stripped_sources,
         "missing semantic fingerprint",
         lambda files: files.__setitem__(
-            SESSION_SOURCE,
-            files[SESSION_SOURCE].replace(
+            CRATE_GRAPH_SOURCE,
+            files[CRATE_GRAPH_SOURCE].replace(
                 "identity::SemanticContextFingerprint::compute(",
                 "missingSemanticContextFingerprint(",
                 1,
             ),
         ),
-        "missing session ownership marker",
+        "missing crate expansion marker",
     )
     failures += expect_rejection(
-        baseline,
+        baseline, baseline_stripped_sources,
         "resolution edges in final context",
         lambda files: files.__setitem__(
             SESSION_SOURCE,
-            files[SESSION_SOURCE].replace(
-                "registries, toolchainInputs.asPtr(), crates.packageEdges(), crateEdges.asPtr()",
-                "registries, toolchainInputs.asPtr(), packages.edges(), crateEdges.asPtr()",
-                1,
-            ),
+            files[SESSION_SOURCE]
+            + "\nvoid bypass() { registries, toolchainInputs.asPtr(), packages.edges(), crateEdges.asPtr(); }\n",
         ),
         "resolution edges must not enter final semantic context",
     )
     failures += expect_rejection(
-        baseline,
+        baseline, baseline_stripped_sources,
         "empty toolchain semantic context",
         lambda files: files.__setitem__(
             SESSION_SOURCE,
@@ -874,7 +992,7 @@ def run_self_test() -> int:
         "empty toolchain semantic context bypass is forbidden",
     )
     failures += expect_rejection(
-        baseline,
+        baseline, baseline_stripped_sources,
         "missing preparatory crate graph",
         lambda files: files.__setitem__(
             SESSION_SOURCE,
@@ -887,7 +1005,7 @@ def run_self_test() -> int:
         "missing session ownership marker",
     )
     failures += expect_rejection(
-        baseline,
+        baseline, baseline_stripped_sources,
         "caller supplied build plan",
         lambda files: files.__setitem__(
             SESSION_HEADER,
@@ -897,7 +1015,7 @@ def run_self_test() -> int:
         "caller-supplied build-script plan is forbidden",
     )
     failures += expect_rejection(
-        baseline,
+        baseline, baseline_stripped_sources,
         "package path reread",
         lambda files: files.__setitem__(
             SESSION_SOURCE,
@@ -906,7 +1024,7 @@ def run_self_test() -> int:
         "forbidden raw source authority remains",
     )
     failures += expect_rejection(
-        baseline,
+        baseline, baseline_stripped_sources,
         "raw AST store",
         lambda files: files.__setitem__(
             SESSION_SOURCE,
@@ -916,7 +1034,7 @@ def run_self_test() -> int:
         "forbidden raw source authority remains",
     )
     failures += expect_rejection(
-        baseline,
+        baseline, baseline_stripped_sources,
         "parse wrapper",
         lambda files: files.__setitem__(
             SESSION_SOURCE,
@@ -925,18 +1043,17 @@ def run_self_test() -> int:
         "forbidden raw source authority remains",
     )
     failures += expect_rejection(
-        baseline,
-        "missing module graph owner",
+        baseline, baseline_stripped_sources,
+        "session-owned module graph publication",
         lambda files: files.__setitem__(
             SESSION_SOURCE,
-            files[SESSION_SOURCE].replace(
-                "zc::Maybe<binder::VerifiedModuleGraph> moduleGraph;", ""
-            ),
+            files[SESSION_SOURCE]
+            + "\nvoid bypass() { binder::VerifiedModuleGraphBuilder::build(candidate); }\n",
         ),
-        "missing session ownership marker",
+        "session-owned module graph publication is forbidden",
     )
     failures += expect_rejection(
-        baseline,
+        baseline, baseline_stripped_sources,
         "module graph bypass",
         lambda files: files.__setitem__(
             Path("products/zomlang/compiler/checker/module-graph.cc"),
@@ -945,7 +1062,7 @@ def run_self_test() -> int:
         "global module graph publication bypasses CompilerSession",
     )
     failures += expect_rejection(
-        baseline,
+        baseline, baseline_stripped_sources,
         "missing stable module graph input staging",
         lambda files: files.__setitem__(
             SESSION_SOURCE,
@@ -958,20 +1075,20 @@ def run_self_test() -> int:
         "missing session ownership marker",
     )
     failures += expect_rejection(
-        baseline,
+        baseline, baseline_stripped_sources,
         "missing stable module graph demand",
         lambda files: files.__setitem__(
             SESSION_SOURCE,
             files[SESSION_SOURCE].replace(
-                "authorityStagingSnapshotValue.get<graph_query::ModuleGraphQuery>",
-                "authorityStagingSnapshotValue.get<RemovedModuleGraphQuery>",
+                "snapshot.getCapability<module_graph_query::MaterializeModuleGraphQuery>",
+                "snapshot.getCapability<module_graph_query::RemovedModuleGraphQuery>",
                 1,
             ),
         ),
-        "missing session ownership marker",
+        "sealed materialized graph demand is missing",
     )
     failures += expect_rejection(
-        baseline,
+        baseline, baseline_stripped_sources,
         "batch module resolution authority",
         lambda files: files.__setitem__(
             SESSION_SOURCE,
@@ -981,7 +1098,7 @@ def run_self_test() -> int:
         "batch module resolution authority is forbidden",
     )
     failures += expect_rejection(
-        baseline,
+        baseline, baseline_stripped_sources,
         "missing atomic dispatch publication",
         lambda files: files.__setitem__(
             SESSION_SOURCE,
@@ -992,7 +1109,7 @@ def run_self_test() -> int:
         "missing session ownership marker",
     )
     failures += expect_rejection(
-        baseline,
+        baseline, baseline_stripped_sources,
         "missing ordinary module classification",
         lambda files: files.__setitem__(
             SESSION_SOURCE,
@@ -1001,20 +1118,20 @@ def run_self_test() -> int:
         "missing ordinary-module partition marker",
     )
     failures += expect_rejection(
-        baseline,
+        baseline, baseline_stripped_sources,
         "ordinary HIR uses the compact index for bound facts",
         lambda files: files.__setitem__(
             SESSION_SOURCE,
             files[SESSION_SOURCE].replace(
-                "impl->boundModules[boundIndex], stagedSignatureFacts[boundIndex],",
-                "impl->boundModules[ordinaryIndex], stagedSignatureFacts[ordinaryIndex],",
+                "checkerBound, stagedSignatureFacts[factIndex],",
+                "checkerBound, stagedSignatureFacts[ordinaryIndex],",
                 1,
             ),
         ),
-        "ordinary HIR lowering must map through the bound-module index",
+        "ordinary HIR lowering must map through the fact-module index",
     )
     failures += expect_rejection(
-        baseline,
+        baseline, baseline_stripped_sources,
         "core dispatch facts enter ordinary publication",
         lambda files: files.__setitem__(
             SESSION_SOURCE,
@@ -1027,7 +1144,7 @@ def run_self_test() -> int:
         "core module facts must not enter ordinary publication",
     )
     failures += expect_rejection(
-        baseline,
+        baseline, baseline_stripped_sources,
         "missing atomic borrow evidence publication",
         lambda files: files.__setitem__(
             SESSION_SOURCE,
@@ -1043,7 +1160,7 @@ def run_self_test() -> int:
         for failure in failures:
             print(f"  - {failure}", file=sys.stderr)
         return 1
-    print("CompilerSession architecture negative fixtures passed (29/29).")
+    print("CompilerSession architecture negative fixtures passed (33/33).")
     return 0
 
 

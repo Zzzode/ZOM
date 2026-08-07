@@ -15,7 +15,11 @@
 namespace zomlang::compiler::identity {
 
 /// \brief Closed semantic operations that create stable selected-import slots.
-enum class SemanticImportOperation : uint8_t { Import = 0x01, ForeignReexport = 0x02 };
+enum class SemanticImportOperation : uint8_t {
+  Import = 0x01,
+  ForeignReexport = 0x02,
+  ModuleAlias = 0x03,
+};
 
 /// \brief Stable semantic identity of one selected import or re-export namespace slot.
 class SemanticImportBindingKey final {

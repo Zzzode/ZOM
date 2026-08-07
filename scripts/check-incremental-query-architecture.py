@@ -34,7 +34,7 @@ DRIVER_OWNER_BODY_QUERY = COMPILER_ROOT / "driver/owner-body-query.cc"
 DRIVER_MODULE_RESOLUTION_QUERY = COMPILER_ROOT / "driver/incremental-module-resolution-query.cc"
 DRIVER_MODULE_GRAPH_INPUT = COMPILER_ROOT / "driver/module-graph-query-input.cc"
 DRIVER_MODULE_GRAPH_QUERY = COMPILER_ROOT / "driver/module-graph-query.cc"
-BINDER_GRAPH_BRIDGE = COMPILER_ROOT / "binder/binding-input.cc"
+BINDER_GRAPH_BRIDGE = DRIVER_MATERIALIZED_MODULE_GRAPH
 DRIVER_PACKAGE_GRAPH_INPUT = COMPILER_ROOT / "driver/incremental-package-graph-query-input.cc"
 IDENTITY_SOURCE_QUERY_INPUT = COMPILER_ROOT / "identity/source-query-input.cc"
 PARSER_PARSE_SOURCE_QUERY = COMPILER_ROOT / "parser/parse-source-query.cc"
@@ -571,26 +571,14 @@ def check_active_definition_authority(files: dict[Path, str], errors: list[str])
         (
             compiler_session,
             DRIVER_SESSION,
-            "identityAuthorityInputs.beginBaseMutation(queryDatabase)",
-            "authority-invalidating base transactions",
-        ),
-        (
-            compiler_session,
-            DRIVER_SESSION,
             "incremental_binding_query::ContextualIdentityAuthorityInputTransaction::prepare(",
             "production authority transaction preparation",
         ),
         (
             compiler_session,
             DRIVER_SESSION,
-            "takeNextLedger();",
-            "post-commit authority ledger publication",
-        ),
-        (
-            compiler_session,
-            DRIVER_SESSION,
-            "authorityReadySnapshot",
-            "ready-snapshot publication",
+            "finalSealedSnapshot",
+            "sealed snapshot publication",
         ),
         (
             test,
@@ -768,8 +756,8 @@ def check_owner_body_projection(files: dict[Path, str], errors: list[str]) -> No
         (
             owner_query,
             DRIVER_OWNER_BODY_QUERY,
-            "context.getParallel<NamedItemSyntaxQuery>",
-            "canonical parallel named-item dependency group",
+            "context.get<NamedItemSyntaxQuery>",
+            "sequential named-item dependency demand",
         ),
         (
             owner_query,
@@ -894,11 +882,6 @@ def check_owner_body_projection(files: dict[Path, str], errors: list[str]) -> No
     ):
         if marker not in text:
             errors.append(f"{path}: missing {description}: {marker}")
-    if owner_query.count("context.getParallel<NamedItemSyntaxQuery>") != 2:
-        errors.append(
-            f"{DRIVER_OWNER_BODY_QUERY}: provider and verifier must each demand one parallel "
-            "named-item group"
-        )
     for forbidden in (
         "ParseSourceQuery",
         "SelectedModuleSourceInput",
@@ -911,6 +894,25 @@ def check_owner_body_projection(files: dict[Path, str], errors: list[str]) -> No
     ):
         if forbidden in owner_query:
             errors.append(f"{DRIVER_OWNER_BODY_QUERY}: owner projection must not read {forbidden}")
+
+
+def check_nested_parallel_demands(files: dict[Path, str], errors: list[str]) -> None:
+    for path in (
+        DRIVER_TOPOLOGY_ADAPTER,
+        DRIVER_MODULE_RESOLUTION_QUERY,
+        DRIVER_MATERIALIZED_MODULE_GRAPH,
+        DRIVER_OWNER_BODY_QUERY,
+    ):
+        if "context.getParallel<" in files.get(path, ""):
+            errors.append(
+                f"{path}: production materialization must not issue nested parallel capability demands"
+            )
+    resolution = files.get(DRIVER_MODULE_RESOLUTION_QUERY, "")
+    if resolution.count("context.get<ModuleCatalogPathBucketInput>") != 2:
+        errors.append(
+            f"{DRIVER_MODULE_RESOLUTION_QUERY}: provider and verifier must each issue one "
+            "sequential catalog-bucket demand"
+        )
 
 
 def check_production_topology_integration(files: dict[Path, str], errors: list[str]) -> None:
@@ -939,8 +941,8 @@ def check_production_topology_integration(files: dict[Path, str], errors: list[s
             "stable graph registration",
         ),
         (
-            "identityAuthorityInputs.beginBaseMutation(queryDatabase)",
-            "authority-invalidating base transaction",
+            "queryDatabase.beginInputTransaction(queryDatabase.snapshot().revision())",
+            "base input transaction",
         ),
         (
             "graph_query::VerifiedModuleGraphInputTransaction::prepare(",
@@ -950,20 +952,24 @@ def check_production_topology_integration(files: dict[Path, str], errors: list[s
             "graph_query::ModuleGraphInputTransactionAuthority authority",
             "authority-backed graph input verification",
         ),
-        ("moduleGraphInputLedger", "complete graph input ledger"),
+        (
+            "graph_query::VerifiedModuleGraphInputLedger::empty()",
+            "transaction-local graph input ledger",
+        ),
         ("stagedCompilationRoots", "complete stable root key"),
         (
-            "authorityStagingSnapshotValue.get<graph_query::ModuleGraphQuery>",
-            "final stable graph demand",
+            "authorityStagingSnapshot.get<graph_query::ModuleGraphQuery>",
+            "staging graph demand",
         ),
         (
-            "authorityStagingSnapshotValue.get<graph_query::ModuleGraphSccQuery>",
-            "final stable SCC demand",
+            "authorityStagingSnapshot.get<graph_query::ModuleGraphSccQuery>",
+            "staging SCC demand",
         ),
-        ("binder::VerifiedModuleGraphBuilder::build(", "final Binder graph materialization"),
-        ("parsedByModule", "stable parsed-module index"),
-        ("inventoryByModule", "stable frozen-inventory index"),
-        ("bindingOutputsByModule", "stable dependency output index"),
+        (
+            "getCapability<module_graph_query::MaterializeModuleGraphQuery>",
+            "sealed graph materialization",
+        ),
+        ("checkerFactIndexByModule", "checker module index"),
     ):
         if marker not in session:
             errors.append(f"{DRIVER_SESSION}: missing {description}: {marker}")
@@ -1012,23 +1018,25 @@ def check_production_topology_integration(files: dict[Path, str], errors: list[s
             errors.append(f"{DRIVER_MODULE_GRAPH_QUERY}: missing {description}: {marker}")
 
     for marker, description in (
-        ("reconstructVerifierContextRoots(", "independent final root reconstruction"),
-        ("demandVerifierActiveModules(", "independent final active-module demand"),
-        ("rebuildVerifierSite(", "independent final syntax-site reconstruction"),
-        ("verifierGraphProjectionMatches(", "independent final edge projection"),
-        ("recomputeVerifierGraphRevision(", "independent final revision reconstruction"),
-        ("input.registries.sourceFiles().find(", "independent final source registry demand"),
+        ("acquireVerifierContext(", "independent final root reconstruction"),
+        ("acquireVerifierModules(", "independent final module demand"),
+        ("VerifierSourceContent", "independent final source reconstruction"),
+        ("stableEdgesMatchGraph(", "independent final edge projection"),
+        ("computeVerifierGraphRevision(", "independent final revision reconstruction"),
         (
-            "input.finalSnapshot.getCapability<parser::ParseSourceQuery>",
+            "identity::source_query::StableSourceQueryKey::fromVerified(",
+            "independent final source-key demand",
+        ),
+        (
+            "context.getCapability<parser::ParseSourceQuery>",
             "independent final parser capability demand",
         ),
-        ("consumedSites[", "independent final site-consumption proof"),
+        ("rootsMatchMaterializedEntries(", "independent final root membership proof"),
     ):
         if marker not in graph_bridge:
             errors.append(f"{BINDER_GRAPH_BRIDGE}: missing {description}: {marker}")
 
     for marker, description in (
-        ("context.getParallel<ModuleCatalogPathBucketInput>", "parallel exact bucket demand"),
         ("stageModuleResolutionQueryInputs(", "resolver input staging"),
         ("registerDescriptor<ResolveModuleRequestQuery>()", "resolution query registration"),
     ):
@@ -1146,6 +1154,7 @@ def check_files(files: dict[Path, str]) -> list[str]:
     check_active_definition_authority(files, errors)
     check_active_identity_materialization(files, errors)
     check_owner_body_projection(files, errors)
+    check_nested_parallel_demands(files, errors)
     check_production_topology_integration(files, errors)
     return errors
 
@@ -1202,8 +1211,8 @@ def self_test() -> list[str]:
         ),
         (
             DRIVER_SESSION,
-            "binder::VerifiedModuleGraphBuilder::build(",
-            "final Binder graph materialization",
+            "getCapability<module_graph_query::MaterializeModuleGraphQuery>",
+            "sealed graph materialization",
         ),
         (
             DRIVER_MODULE_GRAPH_INPUT,
@@ -1287,33 +1296,28 @@ def self_test() -> list[str]:
         ),
         (
             BINDER_GRAPH_BRIDGE,
-            "reconstructVerifierContextRoots(",
+            "acquireVerifierContext(",
             "independent final root reconstruction",
         ),
         (
             BINDER_GRAPH_BRIDGE,
-            "rebuildVerifierSite(",
-            "independent final syntax-site reconstruction",
+            "VerifierSourceContent",
+            "independent final source reconstruction",
         ),
         (
             BINDER_GRAPH_BRIDGE,
-            "input.finalSnapshot.getCapability<parser::ParseSourceQuery>",
+            "context.getCapability<parser::ParseSourceQuery>",
             "independent final parser capability demand",
         ),
         (
             BINDER_GRAPH_BRIDGE,
-            "verifierGraphProjectionMatches(",
+            "stableEdgesMatchGraph(",
             "independent final edge projection",
         ),
         (
             BINDER_GRAPH_BRIDGE,
-            "recomputeVerifierGraphRevision(",
+            "computeVerifierGraphRevision(",
             "independent final revision reconstruction",
-        ),
-        (
-            DRIVER_MODULE_RESOLUTION_QUERY,
-            "context.getParallel<ModuleCatalogPathBucketInput>",
-            "parallel exact bucket demand",
         ),
         (
             PARSER_PARSE_SOURCE_QUERY_VERIFIER,
@@ -1350,6 +1354,10 @@ def self_test() -> list[str]:
         "void obsolete() { ModuleBindingOrderQuery query; }\n"
     )
     expect_failure(mutation, "obsolete topology authority remains", failures)
+
+    mutation = dict(base)
+    mutation[DRIVER_MATERIALIZED_MODULE_GRAPH] += "\ncontext.getParallel<InjectedDemand>();\n"
+    expect_failure(mutation, "nested parallel capability demand", failures)
 
     return failures
 

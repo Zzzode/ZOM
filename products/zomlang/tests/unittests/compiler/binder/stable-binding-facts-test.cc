@@ -5,6 +5,7 @@
 
 #include "zc/core/map.h"
 #include "zc/ztest/test.h"
+#include "zomlang/compiler/binder/module-binding-allocation-plan.h"
 #include "zomlang/compiler/binder/stable-binding-codec.h"
 #include "zomlang/compiler/identity/canonical-encoder.h"
 #include "zomlang/tests/unittests/compiler/test-semantic-identities.h"
@@ -647,9 +648,18 @@ identity::SemanticImportBindingKey semanticBinding(identity::SemanticImportOpera
   path.add(tests::test_identity_detail::scalar<identity::ModulePathSegment>("dep"_zc));
   zc::Maybe<zc::Vector<identity::ModulePathSegment>> retainedPath(zc::mv(path));
   zc::Maybe<identity::DependencyAlias> noAlias;
-  const auto dependencyKind = operation == identity::SemanticImportOperation::ForeignReexport
-                                  ? identity::ModuleDependencyKind::ForeignReexport
-                                  : identity::ModuleDependencyKind::Import;
+  identity::ModuleDependencyKind dependencyKind;
+  switch (operation) {
+    case identity::SemanticImportOperation::Import:
+      dependencyKind = identity::ModuleDependencyKind::Import;
+      break;
+    case identity::SemanticImportOperation::ForeignReexport:
+      dependencyKind = identity::ModuleDependencyKind::ForeignReexport;
+      break;
+    case identity::SemanticImportOperation::ModuleAlias:
+      dependencyKind = identity::ModuleDependencyKind::ModuleAlias;
+      break;
+  }
   auto resolution = require(identity::ModuleResolutionKey::from(
       module("owner"_zc), dependencyKind, zc::mv(retainedPath), zc::mv(noAlias), policy()));
   return require(identity::SemanticImportBindingKey::from(
@@ -657,13 +667,8 @@ identity::SemanticImportBindingKey semanticBinding(identity::SemanticImportOpera
       nameSpace, declaredName(localName)));
 }
 
-ExportSurfaceRevision surfaceRevision(uint8_t seed) {
-  const auto fingerprint = digestKey<identity::Sha256Digest>(0x11);
-  const auto encodedModule = module("target"_zc).encode();
-  uint8_t bytes[] = {seed};
-  return require(ExportSurfaceRevision::computeFramed(fingerprint, encodedModule.asPtr(),
-                                                      zc::arrayPtr(bytes), zc::arrayPtr(bytes),
-                                                      zc::arrayPtr(bytes)));
+ModuleAliasExportNamesRevision moduleAliasExportNamesRevision(uint8_t seed) {
+  return ModuleAliasExportNamesRevision::fromDigest(digestKey<identity::Sha256Digest>(seed));
 }
 
 enum class ImportFactMutation {
@@ -746,7 +751,7 @@ enum class ModuleAliasMutation {
 };
 
 zc::Maybe<StableModuleAliasFact> moduleAliasFact(ModuleAliasMutation mutation) {
-  auto binding = semanticBinding(identity::SemanticImportOperation::Import,
+  auto binding = semanticBinding(identity::SemanticImportOperation::ModuleAlias,
                                  mutation == ModuleAliasMutation::Namespace
                                      ? identity::DefinitionNamespace::Value
                                      : identity::DefinitionNamespace::Module,
@@ -765,7 +770,7 @@ zc::Maybe<StableModuleAliasFact> moduleAliasFact(ModuleAliasMutation mutation) {
   return StableModuleAliasFact::from(
       zc::mv(queryKey), zc::mv(scope), zc::mv(alias),
       module(mutation == ModuleAliasMutation::CanonicalModule ? "other"_zc : "target"_zc),
-      surfaceRevision(mutation == ModuleAliasMutation::Revision ? 0x22 : 0x11));
+      moduleAliasExportNamesRevision(mutation == ModuleAliasMutation::Revision ? 0x22 : 0x11));
 }
 
 enum class ReexportStepMutation { None, Module, ExportPath, Binding, CanonicalTarget };
@@ -888,10 +893,10 @@ zc::Maybe<BoundModuleSkeleton> moduleSkeleton(LocalExportMutation exportMutation
   auto declaration = require(declarationFact(DeclarationFactMutation::None));
   auto alias = require(StableModuleAliasFact::from(
       require(StableSemanticImportQueryKey::from(
-          module("owner"_zc), semanticBinding(identity::SemanticImportOperation::Import,
+          module("owner"_zc), semanticBinding(identity::SemanticImportOperation::ModuleAlias,
                                               identity::DefinitionNamespace::Module))),
       StableScopeOwnerKey::module(module("owner"_zc)), declaration.queryKey().clone(),
-      module("target"_zc), surfaceRevision(0x11)));
+      module("target"_zc), moduleAliasExportNamesRevision(0x11)));
   auto definition = declaration.queryKey().definition().clone();
   auto implementationRecordValue = implementationRecord("owner"_zc);
   auto implementation = identity::ImplKey::compute(implementationRecordValue);
@@ -955,7 +960,7 @@ enum class SkeletonRelationMutation {
   DuplicateGeneric,
   DuplicateCallable,
   DuplicateAliasImport,
-  DuplicateLocalExportPath,
+  DuplicateLocalExportName,
   DuplicateFailedLookupPath,
   MissingDeclarationScope,
   MissingOccurrenceScope,
@@ -1118,9 +1123,9 @@ zc::Maybe<BoundModuleSkeleton> hostileModuleSkeleton(SkeletonRelationMutation mu
           BindingOrigin::ImportAlias, zc::mv(visibility), false)));
       break;
     }
-    case SkeletonRelationMutation::DuplicateLocalExportPath:
+    case SkeletonRelationMutation::DuplicateLocalExportName:
       exports = pairSequence(base.localExports().values()[0].clone(),
-                             require(localExportFact(LocalExportMutation::Name)));
+                             require(localExportFact(LocalExportMutation::Binding)));
       break;
     case SkeletonRelationMutation::DuplicateFailedLookupPath:
       failures = pairSequence(base.failedLookups().values()[0].clone(),
@@ -1228,7 +1233,7 @@ ZC_TEST("StableBindingFacts.ModuleSkeletonRejectsReachableRelationFailures") {
       SkeletonRelationMutation::DuplicateGeneric,
       SkeletonRelationMutation::DuplicateCallable,
       SkeletonRelationMutation::DuplicateAliasImport,
-      SkeletonRelationMutation::DuplicateLocalExportPath,
+      SkeletonRelationMutation::DuplicateLocalExportName,
       SkeletonRelationMutation::DuplicateFailedLookupPath,
       SkeletonRelationMutation::MissingDeclarationScope,
       SkeletonRelationMutation::MissingOccurrenceScope,
@@ -1281,18 +1286,30 @@ ImplSourceOccurrenceKey implementationOccurrenceFor(const identity::ImplKey& imp
   return ImplSourceOccurrenceKey::from(implementation.clone(), zc::mv(site));
 }
 
-identity::SemanticImportBindingKey semanticBindingFor(zc::StringPtr owner,
-                                                      identity::DefinitionNamespace nameSpace) {
+identity::SemanticImportBindingKey semanticBindingFor(
+    zc::StringPtr owner, identity::DefinitionNamespace nameSpace,
+    identity::SemanticImportOperation operation = identity::SemanticImportOperation::Import) {
   zc::Vector<identity::ModulePathSegment> path;
   path.add(tests::test_identity_detail::scalar<identity::ModulePathSegment>("dep"_zc));
   zc::Maybe<zc::Vector<identity::ModulePathSegment>> retainedPath(zc::mv(path));
   zc::Maybe<identity::DependencyAlias> noAlias;
-  auto resolution = require(
-      identity::ModuleResolutionKey::from(module(owner), identity::ModuleDependencyKind::Import,
-                                          zc::mv(retainedPath), zc::mv(noAlias), policy()));
+  identity::ModuleDependencyKind dependencyKind;
+  switch (operation) {
+    case identity::SemanticImportOperation::Import:
+      dependencyKind = identity::ModuleDependencyKind::Import;
+      break;
+    case identity::SemanticImportOperation::ForeignReexport:
+      dependencyKind = identity::ModuleDependencyKind::ForeignReexport;
+      break;
+    case identity::SemanticImportOperation::ModuleAlias:
+      dependencyKind = identity::ModuleDependencyKind::ModuleAlias;
+      break;
+  }
+  auto resolution = require(identity::ModuleResolutionKey::from(
+      module(owner), dependencyKind, zc::mv(retainedPath), zc::mv(noAlias), policy()));
   return require(identity::SemanticImportBindingKey::from(
-      module(owner), zc::mv(resolution), identity::SemanticImportOperation::Import, nameSpace,
-      declaredName("source"_zc), nameSpace, declaredName("local"_zc)));
+      module(owner), zc::mv(resolution), operation, nameSpace, declaredName("source"_zc), nameSpace,
+      declaredName("local"_zc)));
 }
 
 zc::Maybe<BoundModuleSkeleton> foreignOwnershipSkeleton(SkeletonOwnershipMutation mutation) {
@@ -1368,12 +1385,13 @@ zc::Maybe<BoundModuleSkeleton> foreignOwnershipSkeleton(SkeletonOwnershipMutatio
     case SkeletonOwnershipMutation::Alias: {
       auto query = require(StableSemanticImportQueryKey::from(
           module("foreign"_zc),
-          semanticBindingFor("foreign"_zc, identity::DefinitionNamespace::Module)));
+          semanticBindingFor("foreign"_zc, identity::DefinitionNamespace::Module,
+                             identity::SemanticImportOperation::ModuleAlias)));
       aliases = singletonSequence(require(StableModuleAliasFact::from(
           zc::mv(query), StableScopeOwnerKey::module(module("foreign"_zc)),
           StableDefinitionQueryKey::from(module("foreign"_zc),
                                          digestKey<identity::DefinitionKey>(0x11)),
-          module("target"_zc), surfaceRevision(0x11))));
+          module("target"_zc), moduleAliasExportNamesRevision(0x11))));
       break;
     }
     case SkeletonOwnershipMutation::Import: {
@@ -1797,7 +1815,15 @@ ZC_TEST("StableBindingFacts.BodyNodeScopeFactsRejectForeignOwners") {
       StableScopeOwnerKey::body(definitionOwner.clone(), localPath())));
   ZC_EXPECT(fact != differentPath && fact != differentScope && fact != differentOwner);
 
-  ZC_EXPECT(StableBodyNodeScopeFact::from(owner.clone(), localPath(),
+  auto inheritedModuleScope = require(StableBodyNodeScopeFact::from(
+      owner.clone(), localPath(), StableScopeOwnerKey::module(module("owner"_zc))));
+  ZC_EXPECT(inheritedModuleScope.scope() == StableScopeOwnerKey::module(module("owner"_zc)));
+  auto definitionScope = require(StableScopeOwnerKey::definition(
+      StableDefinitionQueryKey::from(module("owner"_zc), digestKey<identity::DefinitionKey>(0x31)),
+      ScopeRole::Parameters));
+  ZC_EXPECT(StableBodyNodeScopeFact::from(definitionOwner.clone(), localPath(),
+                                          zc::mv(definitionScope)) != zc::none);
+  ZC_EXPECT(StableBodyNodeScopeFact::from(definitionOwner.clone(), localPath(),
                                           StableScopeOwnerKey::module(module("owner"_zc))) ==
             zc::none);
   ZC_EXPECT(StableBodyNodeScopeFact::from(
@@ -1870,10 +1896,11 @@ ZC_TEST("StableBindingFacts.OwnerLocalBindingsEnforceExactKeyAndScope") {
       StableOwnerLocalBindingFact::from(owner.clone(), key.clone(), OwnerLocalBindingKind::Local,
                                         declaredName("value"_zc), Namespace::Type, scope.clone(),
                                         DefinitionActivation::ExpressionIntroduction) == zc::none);
-  ZC_EXPECT(StableOwnerLocalBindingFact::from(
-                owner.clone(), key.clone(), OwnerLocalBindingKind::Local, declaredName("value"_zc),
-                Namespace::Value, StableScopeOwnerKey::module(module("owner"_zc)),
-                DefinitionActivation::ExpressionIntroduction) == zc::none);
+  auto moduleRootFact = require(StableOwnerLocalBindingFact::from(
+      owner.clone(), key.clone(), OwnerLocalBindingKind::Local, declaredName("value"_zc),
+      Namespace::Value, StableScopeOwnerKey::module(module("owner"_zc)),
+      DefinitionActivation::ExpressionIntroduction));
+  ZC_EXPECT(moduleRootFact.declaringScope() == StableScopeOwnerKey::module(module("owner"_zc)));
   ZC_EXPECT(StableOwnerLocalBindingFact::from(
                 owner.clone(), key.clone(), OwnerLocalBindingKind::Local, declaredName("value"_zc),
                 Namespace::Value, scope.clone(), DefinitionActivation::ModuleSkeleton) == zc::none);
@@ -2525,6 +2552,62 @@ ZC_TEST("StableBindingFacts.BoundOwnerBodyAdmitsEveryPopulatedFactFamily") {
             body.failedLookups().values().size() == 1);
 }
 
+ZC_TEST("StableBindingFacts.BoundOwnerBodyAdmitsEmptyOwnerBody") {
+  auto owner = ownerBody();
+  auto body =
+      require(BoundOwnerBody::from(owner.clone(), CanonicalSequence<StableBodyScopeFact>::empty(),
+                                   CanonicalSequence<StableBodyNodeScopeFact>::empty(),
+                                   CanonicalSequence<StableOwnerLocalBindingFact>::empty(),
+                                   CanonicalSequence<StableResolutionFact>::empty(),
+                                   CanonicalSequence<StableDeferredMemberFact>::empty(),
+                                   CanonicalSequence<StableSelfTypeFact>::empty(),
+                                   CanonicalSequence<StableThisBindingFact>::empty(),
+                                   CanonicalSequence<StableShadowTargetFact>::empty(),
+                                   CanonicalSequence<StableLabelFact>::empty(),
+                                   CanonicalSequence<StableControlTransferFact>::empty(),
+                                   CanonicalSequence<StableClosureFact>::empty(),
+                                   CanonicalSequence<StableClosureFreeVariableFact>::empty(),
+                                   CanonicalSequence<StableExplicitClosureCaptureFact>::empty(),
+                                   CanonicalSequence<StableFailedLookupFact>::empty()));
+
+  ZC_EXPECT(body.owner() == owner);
+  ZC_EXPECT(body.scopes().values().size() == 0);
+  ZC_EXPECT(body.nodeScopes().values().size() == 0);
+  ZC_EXPECT(body.bindings().values().size() == 0);
+  ZC_EXPECT(body.resolutions().values().size() == 0);
+  ZC_EXPECT(body.deferredMembers().values().size() == 0);
+  ZC_EXPECT(body.selfTypes().values().size() == 0);
+  ZC_EXPECT(body.thisBindings().values().size() == 0);
+  ZC_EXPECT(body.shadowTargets().values().size() == 0);
+  ZC_EXPECT(body.labels().values().size() == 0);
+  ZC_EXPECT(body.controlTransfers().values().size() == 0);
+  ZC_EXPECT(body.closures().values().size() == 0);
+  ZC_EXPECT(body.closureFreeVariables().values().size() == 0);
+  ZC_EXPECT(body.explicitClosureCaptures().values().size() == 0);
+  ZC_EXPECT(body.failedLookups().values().size() == 0);
+}
+
+ZC_TEST("StableBindingFacts.BoundOwnerBodyAdmitsNodesInOwningModuleScope") {
+  auto owner = ownerBody();
+  auto nodeScope = singletonSequence(require(StableBodyNodeScopeFact::from(
+      owner.clone(), localPath(), StableScopeOwnerKey::module(module("owner"_zc)))));
+  auto body = BoundOwnerBody::from(owner.clone(), CanonicalSequence<StableBodyScopeFact>::empty(),
+                                   zc::mv(nodeScope),
+                                   CanonicalSequence<StableOwnerLocalBindingFact>::empty(),
+                                   CanonicalSequence<StableResolutionFact>::empty(),
+                                   CanonicalSequence<StableDeferredMemberFact>::empty(),
+                                   CanonicalSequence<StableSelfTypeFact>::empty(),
+                                   CanonicalSequence<StableThisBindingFact>::empty(),
+                                   CanonicalSequence<StableShadowTargetFact>::empty(),
+                                   CanonicalSequence<StableLabelFact>::empty(),
+                                   CanonicalSequence<StableControlTransferFact>::empty(),
+                                   CanonicalSequence<StableClosureFact>::empty(),
+                                   CanonicalSequence<StableClosureFreeVariableFact>::empty(),
+                                   CanonicalSequence<StableExplicitClosureCaptureFact>::empty(),
+                                   CanonicalSequence<StableFailedLookupFact>::empty());
+  ZC_EXPECT(body != zc::none);
+}
+
 enum class OwnerBodyRelationMutation {
   None,
   ScopeCycle,
@@ -2753,26 +2836,24 @@ zc::Maybe<BoundOwnerBody> relationOwnerBody(OwnerBodyRelationMutation mutation) 
 
 ZC_TEST("StableBindingFacts.BoundOwnerBodyRejectsStructuralAndRelationalDrift") {
   ZC_EXPECT(relationOwnerBody(OwnerBodyRelationMutation::None) != zc::none);
-  constexpr OwnerBodyRelationMutation mutations[] = {
-      OwnerBodyRelationMutation::ScopeCycle,
-      OwnerBodyRelationMutation::MissingScopeParent,
-      OwnerBodyRelationMutation::MissingScopeCoverage,
-      OwnerBodyRelationMutation::NodeUnknownScope,
-      OwnerBodyRelationMutation::BindingUnknownScope,
-      OwnerBodyRelationMutation::ResolutionUnknownBinding,
-      OwnerBodyRelationMutation::LookupCollision,
-      OwnerBodyRelationMutation::DeferredUnknownBase,
-      OwnerBodyRelationMutation::DuplicateSelfPath,
-      OwnerBodyRelationMutation::LabelTargetKind,
-      OwnerBodyRelationMutation::ClosureScopeKind,
-      OwnerBodyRelationMutation::FreeReferenceOutsideClosure,
-      OwnerBodyRelationMutation::MissingFreeVariableInventory,
-      OwnerBodyRelationMutation::CaptureUnknownClosure,
-      OwnerBodyRelationMutation::ControlTargetNotAncestor,
-      OwnerBodyRelationMutation::ControlCrossesCallable,
-      OwnerBodyRelationMutation::ShadowNamespace,
-      OwnerBodyRelationMutation::FailedCandidateNamespace};
-  for (const auto mutation : mutations) ZC_EXPECT(relationOwnerBody(mutation) == zc::none);
+  ZC_EXPECT(relationOwnerBody(OwnerBodyRelationMutation::ScopeCycle) == zc::none);
+  ZC_EXPECT(relationOwnerBody(OwnerBodyRelationMutation::MissingScopeParent) == zc::none);
+  ZC_EXPECT(relationOwnerBody(OwnerBodyRelationMutation::MissingScopeCoverage) == zc::none);
+  ZC_EXPECT(relationOwnerBody(OwnerBodyRelationMutation::NodeUnknownScope) == zc::none);
+  ZC_EXPECT(relationOwnerBody(OwnerBodyRelationMutation::BindingUnknownScope) == zc::none);
+  ZC_EXPECT(relationOwnerBody(OwnerBodyRelationMutation::ResolutionUnknownBinding) == zc::none);
+  ZC_EXPECT(relationOwnerBody(OwnerBodyRelationMutation::LookupCollision) == zc::none);
+  ZC_EXPECT(relationOwnerBody(OwnerBodyRelationMutation::DeferredUnknownBase) == zc::none);
+  ZC_EXPECT(relationOwnerBody(OwnerBodyRelationMutation::DuplicateSelfPath) == zc::none);
+  ZC_EXPECT(relationOwnerBody(OwnerBodyRelationMutation::LabelTargetKind) == zc::none);
+  ZC_EXPECT(relationOwnerBody(OwnerBodyRelationMutation::ClosureScopeKind) == zc::none);
+  ZC_EXPECT(relationOwnerBody(OwnerBodyRelationMutation::FreeReferenceOutsideClosure) == zc::none);
+  ZC_EXPECT(relationOwnerBody(OwnerBodyRelationMutation::MissingFreeVariableInventory) == zc::none);
+  ZC_EXPECT(relationOwnerBody(OwnerBodyRelationMutation::CaptureUnknownClosure) == zc::none);
+  ZC_EXPECT(relationOwnerBody(OwnerBodyRelationMutation::ControlTargetNotAncestor) == zc::none);
+  ZC_EXPECT(relationOwnerBody(OwnerBodyRelationMutation::ControlCrossesCallable) == zc::none);
+  ZC_EXPECT(relationOwnerBody(OwnerBodyRelationMutation::ShadowNamespace) == zc::none);
+  ZC_EXPECT(relationOwnerBody(OwnerBodyRelationMutation::FailedCandidateNamespace) == zc::none);
 }
 
 enum class OwnerBodyForeignFamily {
@@ -3123,6 +3204,83 @@ zc::Maybe<ModuleBindingAllocationPlan> allocationPlan(AllocationPlanMutation mut
   }
   return ModuleBindingAllocationPlan::from(module("owner"_zc), 5, 3,
                                            admitOrderedFixtures(orderedRanges));
+}
+
+BoundOwnerBody emptyOwnerBodyForAllocation(StableOwnerBodyQueryKey&& owner) {
+  return require(BoundOwnerBody::from(zc::mv(owner),
+                                      CanonicalSequence<StableBodyScopeFact>::empty(),
+                                      CanonicalSequence<StableBodyNodeScopeFact>::empty(),
+                                      CanonicalSequence<StableOwnerLocalBindingFact>::empty(),
+                                      CanonicalSequence<StableResolutionFact>::empty(),
+                                      CanonicalSequence<StableDeferredMemberFact>::empty(),
+                                      CanonicalSequence<StableSelfTypeFact>::empty(),
+                                      CanonicalSequence<StableThisBindingFact>::empty(),
+                                      CanonicalSequence<StableShadowTargetFact>::empty(),
+                                      CanonicalSequence<StableLabelFact>::empty(),
+                                      CanonicalSequence<StableControlTransferFact>::empty(),
+                                      CanonicalSequence<StableClosureFact>::empty(),
+                                      CanonicalSequence<StableClosureFreeVariableFact>::empty(),
+                                      CanonicalSequence<StableExplicitClosureCaptureFact>::empty(),
+                                      CanonicalSequence<StableFailedLookupFact>::empty()));
+}
+
+zc::Vector<BoundOwnerBody> allocationBodies(const BoundModuleSkeleton& skeleton) {
+  zc::Vector<BoundOwnerBody> bodies;
+  const auto owners = skeleton.bodyOwners().values();
+  for (size_t index = owners.size(); index > 0; --index) {
+    const auto& owner = owners[index - 1];
+    bodies.add(owner.owner().kind() == StableBodyOwnerKind::Module
+                   ? populatedOwnerBody()
+                   : emptyOwnerBodyForAllocation(owner.clone()));
+  }
+  return bodies;
+}
+
+ZC_TEST("ModuleBindingAllocationPlanner.ComputesCanonicalFiveDomainRanges") {
+  auto skeleton = require(moduleSkeleton(LocalExportMutation::None));
+  auto bodies = allocationBodies(skeleton);
+  auto plan = require(ModuleBindingAllocationPlanner::from(skeleton, bodies.asPtr().asConst()));
+
+  ZC_EXPECT(ModuleBindingAllocationPlanner::verify(skeleton, bodies.asPtr().asConst(), plan));
+  ZC_REQUIRE(plan.key().encode().asPtr() == skeleton.module().encode().asPtr());
+  ZC_REQUIRE(plan.skeletonScopeCount() == skeleton.scopes().values().size());
+  ZC_REQUIRE(plan.implementationOccurrenceCount() ==
+             skeleton.implementationOccurrences().values().size());
+  ZC_REQUIRE(plan.owners().values().size() == skeleton.bodyOwners().values().size());
+  const auto ranges = plan.owners().values();
+  const auto owners = skeleton.bodyOwners().values();
+  for (size_t index = 0; index < ranges.size(); ++index) {
+    ZC_EXPECT(ranges[index].owner() == owners[index]);
+  }
+  for (const auto& range : ranges) {
+    if (range.owner().owner().kind() != StableBodyOwnerKind::Module) { continue; }
+    ZC_EXPECT(range.scopeCount() == 3 && range.ownerLocalCount() == 1 &&
+              range.anonymousCount() == 2 && range.labelCount() == 1);
+  }
+}
+
+ZC_TEST("ModuleBindingAllocationPlanner.RejectsIncompleteForeignAndTamperedInputs") {
+  auto skeleton = require(moduleSkeleton(LocalExportMutation::None));
+  auto bodies = allocationBodies(skeleton);
+  auto plan = require(ModuleBindingAllocationPlanner::from(skeleton, bodies.asPtr().asConst()));
+
+  zc::Vector<BoundOwnerBody> missing;
+  missing.add(bodies[0].clone());
+  ZC_EXPECT(ModuleBindingAllocationPlanner::from(skeleton, missing.asPtr().asConst()) == zc::none);
+
+  zc::Vector<BoundOwnerBody> duplicate;
+  duplicate.add(bodies[0].clone());
+  duplicate.add(bodies[0].clone());
+  ZC_EXPECT(ModuleBindingAllocationPlanner::from(skeleton, duplicate.asPtr().asConst()) ==
+            zc::none);
+
+  zc::Vector<BoundOwnerBody> foreign;
+  foreign.add(bodies[0].clone());
+  foreign.add(emptyOwnerBodyForAllocation(ownerBody("foreign"_zc)));
+  ZC_EXPECT(ModuleBindingAllocationPlanner::from(skeleton, foreign.asPtr().asConst()) == zc::none);
+  ZC_EXPECT(!ModuleBindingAllocationPlanner::verify(
+      skeleton, bodies.asPtr().asConst(), require(allocationPlan(AllocationPlanMutation::None))));
+  ZC_EXPECT(!ModuleBindingAllocationPlanner::verify(skeleton, duplicate.asPtr().asConst(), plan));
 }
 
 ZC_TEST("StableBindingFacts.ModuleBindingAllocationPlanEnforcesEveryDenseDomain") {
@@ -4176,7 +4334,7 @@ zc::Array<uint8_t> moduleAliasFactWire(const StableModuleAliasFact& value) {
   encodeStableOracleFrame(record, value.declaringScope());
   encodeStableOracleFrame(record, value.alias());
   encodeOracleFrame(record, value.canonicalModule().encode().asPtr());
-  record.encodeDigest(value.targetSurfaceRevision().digest());
+  record.encodeDigest(value.targetExportNamesRevision().digest());
   return expectedDomainRecord("zom.binder.skeleton-module-alias"_zc, record.finish().asPtr());
 }
 zc::Array<uint8_t> reexportStepWire(const StableReexportStep& value) {
@@ -6443,8 +6601,8 @@ ZC_TEST("StableBindingCodec.ImportAndAliasFactsMatchWireAndRejectIndependentMuta
   otherRevision[offset] ^= 0x01;
   auto decodedRevision = StableBindingCodec<StableModuleAliasFact>::decode(otherRevision.asPtr());
   ZC_EXPECT(decodedRevision != zc::none &&
-            ZC_ASSERT_NONNULL(decodedRevision).targetSurfaceRevision().digest() !=
-                alias.targetSurfaceRevision().digest());
+            ZC_ASSERT_NONNULL(decodedRevision).targetExportNamesRevision().digest() !=
+                alias.targetExportNamesRevision().digest());
 
   auto wrongImportDomain = zc::heapArray(importBytes.asPtr());
   wrongImportDomain[0] ^= 0x01;

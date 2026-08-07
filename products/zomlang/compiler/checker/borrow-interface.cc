@@ -135,11 +135,10 @@ zc::Maybe<zc::Array<uint8_t>> BorrowSignatureCanonicalCodec::encodeFramed(
 }
 
 zc::Maybe<zc::Array<uint8_t>> BorrowSignatureCanonicalCodec::encode(
-    const BorrowSignatureSummary& summary,
-    const identity::SemanticIdentityRegistrySet& registries) {
-  auto key = registries.definitions().lookup(summary.callable);
-  ZC_IF_SOME(value, key) {
-    const auto bytes = value.encode();
+    const BorrowSignatureSummary& summary, const CheckerIdentityAuthority& identities) {
+  auto definition = identities.definition(summary.callable);
+  ZC_IF_SOME(value, definition) {
+    const auto bytes = value.key().encode();
     return encodeFramed(summary, bytes.asPtr());
   }
   return zc::none;
@@ -478,7 +477,8 @@ VerifiedBorrowInterfaceSurface VerifiedBorrowInterfaceSurface::clone() const {
 
 BorrowInterfaceBuildResult BorrowInterfaceBuilder::build(const BorrowInterfaceBuildInput& input) {
   if (!input.semanticContext.isValid() || !input.module.belongsTo(input.semanticContext) ||
-      input.registries.context() != input.semanticContext ||
+      input.identities.semanticContext() != input.semanticContext ||
+      input.identities.module(input.module) == zc::none ||
       input.semanticTypes.context() != input.semanticContext) {
     zc::Vector<signature::CheckerVerificationFailure> failures;
     failures.add(signature::CheckerVerificationFailure(checkerFailure(
@@ -643,7 +643,7 @@ BorrowInterfaceBuildResult BorrowInterfaceBuilder::build(const BorrowInterfaceBu
 
     BorrowSignatureSummary summary{semanticSignature.definition, zc::mv(directInputs),
                                    returnRelation};
-    auto bytes = BorrowSignatureCanonicalCodec::encode(summary, input.registries);
+    auto bytes = BorrowSignatureCanonicalCodec::encode(summary, input.identities);
     if (bytes == zc::none) {
       return signature::CheckerVerificationFailure(checkerFailure(
           input, signature::CheckerInvariantKind::CanonicalCodecMismatch,
@@ -676,7 +676,7 @@ BorrowInterfaceBuildResult BorrowInterfaceBuilder::build(const BorrowInterfaceBu
   });
   zc::Vector<zc::ArrayPtr<const uint8_t>> recordViews(encoded.size());
   for (const auto& item : encoded) { recordViews.add(item.bytes.asPtr()); }
-  auto moduleKey = input.registries.modules().lookup(input.module);
+  auto moduleKey = input.identities.module(input.module);
   if (moduleKey == zc::none) {
     zc::Vector<signature::CheckerVerificationFailure> failures;
     failures.add(signature::CheckerVerificationFailure(checkerFailure(
@@ -684,7 +684,7 @@ BorrowInterfaceBuildResult BorrowInterfaceBuilder::build(const BorrowInterfaceBu
     return BorrowInterfaceInvariantRejected{zc::mv(failures)};
   }
   ZC_IF_SOME(module, moduleKey) {
-    const auto moduleBytes = module.encode();
+    const auto moduleBytes = module.key().encode();
     auto revision = BorrowInterfaceRevision::computeFramed(
         input.contextFingerprint.digest(), moduleBytes.asPtr(),
         input.signatureFactsRevision.digest(), input.importedSignatureViewRevision.digest(),

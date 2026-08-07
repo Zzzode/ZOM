@@ -114,18 +114,36 @@ ZC_TEST("CanonicalIdentityInternerSet interns and reverses all eight domains") {
   ZC_EXPECT(generic.belongsTo(owner));
   ZC_EXPECT(callable.belongsTo(owner));
   ZC_EXPECT(ZC_REQUIRE_NONNULL(interners.compilationUnit(unit)).handle() == unit);
+  ZC_EXPECT(ZC_REQUIRE_NONNULL(interners.compilationUnit(tests::test_identity_detail::userUnit()))
+                .handle() == unit);
   ZC_EXPECT(ZC_REQUIRE_NONNULL(interners.crate(crate)).handle() == crate);
+  ZC_EXPECT(ZC_REQUIRE_NONNULL(interners.crate(tests::test_identity_detail::crate())).handle() ==
+            crate);
   ZC_EXPECT(ZC_REQUIRE_NONNULL(interners.sourceFile(source)).handle() == source);
+  ZC_EXPECT(
+      ZC_REQUIRE_NONNULL(interners.sourceFile(tests::test_identity_detail::source())).handle() ==
+      source);
   ZC_EXPECT(ZC_REQUIRE_NONNULL(interners.module(module)).handle() == module);
+  ZC_EXPECT(ZC_REQUIRE_NONNULL(interners.module(tests::test_identity_detail::module())).handle() ==
+            module);
   ZC_EXPECT(ZC_REQUIRE_NONNULL(interners.definition(definition)).record().encode().asPtr() ==
             definitionAuthority.encode().asPtr());
+  ZC_EXPECT(ZC_REQUIRE_NONNULL(interners.definition(definitionKey)).handle() == definition);
   ZC_EXPECT(
       ZC_REQUIRE_NONNULL(interners.implementation(implementation)).record().encode().asPtr() ==
       implementationAuthority.encode().asPtr());
+  ZC_EXPECT(ZC_REQUIRE_NONNULL(interners.implementation(implementationKey)).handle() ==
+            implementation);
   ZC_EXPECT(ZC_REQUIRE_NONNULL(interners.genericParameter(generic)).record().encode().asPtr() ==
             genericAuthority.encode().asPtr());
+  ZC_EXPECT(ZC_REQUIRE_NONNULL(interners.genericParameter(genericKey)).handle() == generic);
+  auto unknownGenericAuthority = GenericParameterIdentityRecord::type(
+      StableGenericParameterOwnerKey::definition(definitionKey.clone()), 1);
+  const auto unknownGenericKey = GenericParameterKey::compute(unknownGenericAuthority);
+  ZC_EXPECT(interners.genericParameter(unknownGenericKey) == zc::none);
   ZC_EXPECT(ZC_REQUIRE_NONNULL(interners.callableParameter(callable)).record().encode().asPtr() ==
             callableAuthority.encode().asPtr());
+  ZC_EXPECT(ZC_REQUIRE_NONNULL(interners.callableParameter(callableKey)).handle() == callable);
 }
 
 ZC_TEST("CanonicalIdentityInternerSet coalesces concurrent equal admission") {

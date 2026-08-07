@@ -5,7 +5,6 @@
 
 #include "zomlang/compiler/hir/checked-module.h"
 
-#include "zomlang/compiler/binder/binding-input.h"
 #include "zomlang/compiler/identity/definition-key.h"
 #include "zomlang/compiler/identity/source-key.h"
 
@@ -31,20 +30,19 @@ identity::IdentityInvariant invalidIdentity(identity::IdentityAllocationPhase ph
   ZC_UNREACHABLE
 }
 
-class RegistryIdentityResolver final : public ir::IrFailureIdentityResolver {
+class AuthorityIdentityResolver final : public ir::IrFailureIdentityResolver {
 public:
-  explicit RegistryIdentityResolver(
-      const identity::SemanticIdentityRegistrySet& registries) noexcept
-      : registries(registries) {}
+  explicit AuthorityIdentityResolver(const checker::CheckerIdentityAuthority& identities) noexcept
+      : identities(identities) {}
 
   ir::ExpandedIrIdentityResult expand(identity::ModuleId module) const override {
-    auto key = registries.modules().lookup(module);
+    auto key = identities.module(module);
     if (key == zc::none) {
       return ir::RejectedIrIdentityValue{
           invalidIdentity(identity::IdentityAllocationPhase::Module, 0)};
     }
     ZC_IF_SOME(value, key) {
-      auto expanded = ir::ExpandedIrIdentity::from(value.encode());
+      auto expanded = ir::ExpandedIrIdentity::from(value.key().encode());
       ZC_IF_SOME(bytes, expanded) { return ir::ExpandedIrIdentityValue{zc::mv(bytes)}; }
     }
     return ir::RejectedIrIdentityValue{
@@ -52,13 +50,13 @@ public:
   }
 
   ir::ExpandedIrIdentityResult expand(identity::DefId definition) const override {
-    auto key = registries.definitions().lookup(definition);
+    auto key = identities.definition(definition);
     if (key == zc::none) {
       return ir::RejectedIrIdentityValue{
           invalidIdentity(identity::IdentityAllocationPhase::Definition, 0)};
     }
     ZC_IF_SOME(value, key) {
-      auto expanded = ir::ExpandedIrIdentity::from(value.encode());
+      auto expanded = ir::ExpandedIrIdentity::from(value.key().encode());
       ZC_IF_SOME(bytes, expanded) { return ir::ExpandedIrIdentityValue{zc::mv(bytes)}; }
     }
     return ir::RejectedIrIdentityValue{
@@ -71,14 +69,14 @@ public:
   }
 
 private:
-  const identity::SemanticIdentityRegistrySet& registries;
+  const checker::CheckerIdentityAuthority& identities;
 };
 
 ir::IrOperationResult<VerifiedCheckedModule> rejectCheckedModule(
     ir::IrFailureKind kind, identity::ModuleId module,
-    const identity::SemanticIdentityRegistrySet& registries, uint32_t ordinal,
+    const checker::CheckerIdentityAuthority& identities, uint32_t ordinal,
     zc::Vector<uint32_t>&& fieldPath = zc::Vector<uint32_t>()) {
-  RegistryIdentityResolver identities(registries);
+  AuthorityIdentityResolver resolver(identities);
   auto fallback = ir::IrFailureFallbackContext::from(ir::IrFailurePhase::CheckedModuleAssembly,
                                                      ir::IrFailureOwner::module(module));
   ZC_IREQUIRE(fallback != zc::none, "checked-module failure fallback must be legal");
@@ -89,7 +87,7 @@ ir::IrOperationResult<VerifiedCheckedModule> rejectCheckedModule(
       ir::IrFailureOwner::module(module), zc::mv(noSite), ir::IrFailureDetail::none(),
       zc::mv(noSpan), zc::mv(fieldPath), ordinal);
   ZC_IF_SOME(fallbackValue, fallback) {
-    auto admitted = ir::IrFailureFactory::admit(zc::mv(descriptor), fallbackValue, identities);
+    auto admitted = ir::IrFailureFactory::admit(zc::mv(descriptor), fallbackValue, resolver);
     if (admitted.is<ir::IdentityRejectedIrFailureDescriptor>()) {
       zc::Vector<identity::IdentityInvariant> failures;
       failures.add(zc::mv(admitted).get<ir::IdentityRejectedIrFailureDescriptor>().failure);
@@ -116,12 +114,12 @@ ir::IrOperationResult<VerifiedCheckedModule> rejectCheckedModule(
 
 ir::IrOperationResult<VerifiedCheckedModule> rejectBorrowEvidence(
     const driver::borrow_evidence::BorrowEvidenceInvariantRejected& rejected,
-    identity::ModuleId module, const identity::SemanticIdentityRegistrySet& registries) {
+    identity::ModuleId module, const checker::CheckerIdentityAuthority& identities) {
   if (rejected.failures.empty()) {
-    return rejectCheckedModule(ir::IrFailureKind::InvalidFact, module, registries, 0);
+    return rejectCheckedModule(ir::IrFailureKind::InvalidFact, module, identities, 0);
   }
 
-  RegistryIdentityResolver identities(registries);
+  AuthorityIdentityResolver resolver(identities);
   auto fallback = ir::IrFailureFallbackContext::from(ir::IrFailurePhase::CheckedModuleAssembly,
                                                      ir::IrFailureOwner::module(module));
   ZC_IREQUIRE(fallback != zc::none, "borrow-evidence failure fallback must be legal");
@@ -136,7 +134,7 @@ ir::IrOperationResult<VerifiedCheckedModule> rejectBorrowEvidence(
           ir::IrRejectedBranch::IrInvariantRejected, ir::IrFailurePhase::CheckedModuleAssembly,
           failure.kind, ir::IrFailureOwner::module(module), zc::mv(noSite),
           ir::IrFailureDetail::none(), zc::mv(noSpan), zc::mv(fieldPath), failure.traversalOrdinal);
-      auto admitted = ir::IrFailureFactory::admit(zc::mv(descriptor), fallbackValue, identities);
+      auto admitted = ir::IrFailureFactory::admit(zc::mv(descriptor), fallbackValue, resolver);
       if (admitted.is<ir::IdentityRejectedIrFailureDescriptor>()) {
         zc::Vector<identity::IdentityInvariant> identityFailures;
         identityFailures.add(
@@ -169,12 +167,12 @@ struct ExpectedInterface final {
 };
 
 bool appendExpectedInterface(zc::Vector<ExpectedInterface>& expected,
-                             const binder::VerifiedExportSurfaceView& surface) {
+                             const binder::MaterializedDependencyExportSurface& surface) {
   for (const auto& entry : expected) {
-    if (entry.module != surface.sourceModule()) continue;
-    return entry.bindingRevision == surface.sourceRevision().digest();
+    if (entry.module != surface.module) continue;
+    return entry.bindingRevision == surface.surface.revision().digest();
   }
-  expected.add(ExpectedInterface{surface.sourceModule(), surface.sourceRevision().digest(), false});
+  expected.add(ExpectedInterface{surface.module, surface.surface.revision().digest(), false});
   return true;
 }
 
@@ -193,10 +191,10 @@ bool validateImportedInterfaces(const CheckedModuleBuildInput& input,
   bool hasPrevious = false;
   for (const auto& imported : input.importedSignatures.modules()) {
     if (imported.sourceModule() == input.boundModule.module()) return false;
-    auto key = input.registries.modules().lookup(imported.sourceModule());
+    auto key = input.identities.module(imported.sourceModule());
     if (key == zc::none) return false;
     zc::Array<uint8_t> currentKey;
-    ZC_IF_SOME(value, key) { currentKey = value.encode(); }
+    ZC_IF_SOME(value, key) { currentKey = value.key().encode(); }
     if (hasPrevious && !lessBytes(previousKey.asPtr(), currentKey.asPtr())) return false;
     previousKey = zc::mv(currentKey);
     hasPrevious = true;
@@ -237,7 +235,7 @@ bool validateImportedInterfaces(const CheckedModuleBuildInput& input,
 
 bool validateDispatchRevision(const CheckedModuleBuildInput& input,
                               const checker::checked::VerifiedCheckedFacts& checkedFacts) {
-  auto moduleKey = input.registries.modules().lookup(input.boundModule.module());
+  auto moduleKey = input.identities.module(input.boundModule.module());
   if (moduleKey == zc::none) return false;
   zc::Vector<zc::ArrayPtr<const uint8_t>> records;
   for (const auto& fact : input.dispatchFacts.facts()) {
@@ -245,7 +243,7 @@ bool validateDispatchRevision(const CheckedModuleBuildInput& input,
   }
   zc::Maybe<checker::dispatch::DispatchFactsRevision> expected;
   ZC_IF_SOME(key, moduleKey) {
-    const auto encodedModule = key.encode();
+    const auto encodedModule = key.key().encode();
     expected = checker::dispatch::DispatchFactsRevision::computeFramed(
         input.boundModule.semanticFingerprint().digest(), encodedModule.asPtr(),
         checkedFacts.revision(), records.asPtr());
@@ -261,7 +259,7 @@ bool validateDispatchRevision(const CheckedModuleBuildInput& input,
 }  // namespace
 
 struct VerifiedCheckedModule::Impl final {
-  Impl(const binder::VerifiedBoundModuleInput& boundModule,
+  Impl(driver::module_graph_query::CheckerBoundModuleView&& boundModule,
        const driver::VerifiedModuleInterface& ownModuleInterface,
        const checker::checked::CheckedFactsRepository& checkedRepository,
        const checker::checked::VerifiedCheckedFacts& checkedFacts,
@@ -270,10 +268,10 @@ struct VerifiedCheckedModule::Impl final {
        const driver::borrow_evidence::BorrowEvidenceRevision& borrowEvidenceRevision,
        driver::borrow_evidence::VerifiedBorrowEvidenceLease&& borrowEvidenceLease,
        const driver::borrow_evidence::BorrowEvidenceRepository& borrowEvidenceRepository,
-       const identity::SemanticIdentityRegistrySet& registries,
-       const type::SemanticTypeStore& semanticTypes, ModuleInterfaceLineage&& ownInterface,
+       checker::CheckerIdentityAuthority&& identities, const type::SemanticTypeStore& semanticTypes,
+       ModuleInterfaceLineage&& ownInterface,
        zc::Vector<ModuleInterfaceLineage>&& visibleImportedInterfaces) noexcept
-      : boundModuleValue(boundModule),
+      : boundModuleValue(zc::mv(boundModule)),
         ownModuleInterfaceValue(ownModuleInterface),
         checkedRepositoryValue(checkedRepository),
         checkedFactsValue(checkedFacts),
@@ -282,12 +280,12 @@ struct VerifiedCheckedModule::Impl final {
         borrowEvidenceRevisionValue(borrowEvidenceRevision),
         borrowEvidenceLeaseValue(zc::mv(borrowEvidenceLease)),
         borrowEvidenceRepositoryValue(borrowEvidenceRepository),
-        registriesValue(registries),
+        identitiesValue(zc::mv(identities)),
         semanticTypesValue(semanticTypes),
         ownInterfaceValue(zc::mv(ownInterface)),
         visibleImportedInterfaceValues(zc::mv(visibleImportedInterfaces)) {}
 
-  const binder::VerifiedBoundModuleInput& boundModuleValue;
+  driver::module_graph_query::CheckerBoundModuleView boundModuleValue;
   const driver::VerifiedModuleInterface& ownModuleInterfaceValue;
   const checker::checked::CheckedFactsRepository& checkedRepositoryValue;
   const checker::checked::VerifiedCheckedFacts& checkedFactsValue;
@@ -296,7 +294,7 @@ struct VerifiedCheckedModule::Impl final {
   driver::borrow_evidence::BorrowEvidenceRevision borrowEvidenceRevisionValue;
   driver::borrow_evidence::VerifiedBorrowEvidenceLease borrowEvidenceLeaseValue;
   const driver::borrow_evidence::BorrowEvidenceRepository& borrowEvidenceRepositoryValue;
-  const identity::SemanticIdentityRegistrySet& registriesValue;
+  checker::CheckerIdentityAuthority identitiesValue;
   const type::SemanticTypeStore& semanticTypesValue;
   ModuleInterfaceLineage ownInterfaceValue;
   zc::Vector<ModuleInterfaceLineage> visibleImportedInterfaceValues;
@@ -370,8 +368,9 @@ VerifiedCheckedModule::borrowEvidenceLease() const noexcept {
   return impl->borrowEvidenceLeaseValue;
 }
 
-const binder::VerifiedBoundModuleInput& VerifiedCheckedModule::boundModule() const noexcept {
-  return impl->boundModuleValue;
+driver::module_graph_query::CheckerBoundModuleView VerifiedCheckedModule::retainBoundModule()
+    const {
+  return impl->boundModuleValue.retain();
 }
 
 const checker::checked::CheckedFactsRepository& VerifiedCheckedModule::checkedRepository()
@@ -393,12 +392,12 @@ VerifiedCheckedModule::borrowEvidenceRepository() const noexcept {
   return impl->borrowEvidenceRepositoryValue;
 }
 
-const driver::VerifiedModuleInterface& VerifiedCheckedModule::ownModuleInterface() const noexcept {
-  return impl->ownModuleInterfaceValue;
+checker::CheckerIdentityAuthority VerifiedCheckedModule::retainIdentityAuthority() const {
+  return impl->identitiesValue.clone();
 }
 
-const identity::SemanticIdentityRegistrySet& VerifiedCheckedModule::registries() const noexcept {
-  return impl->registriesValue;
+const driver::VerifiedModuleInterface& VerifiedCheckedModule::ownModuleInterface() const noexcept {
+  return impl->ownModuleInterfaceValue;
 }
 
 const type::SemanticTypeStore& VerifiedCheckedModule::semanticTypes() const noexcept {
@@ -420,7 +419,9 @@ ir::IrOperationResult<VerifiedCheckedModule> CheckedModuleBuilder::build(
   const auto module = input.boundModule.module();
   const auto& ownInterface = input.moduleInterface;
   const auto& parsedModule = input.boundModule.parsedModule();
-  if (!context.isValid() || input.registries.context() != context ||
+  if (!context.isValid() || input.identities.semanticContext() != context ||
+      input.identities.fingerprint().digest() != input.boundModule.semanticFingerprint().digest() ||
+      input.identities.boundModule(module) == zc::none ||
       input.semanticTypes.context() != context ||
       input.checkedRepository.semanticContext() != context ||
       input.localSignatureFacts.semanticContext() != context ||
@@ -448,13 +449,13 @@ ir::IrOperationResult<VerifiedCheckedModule> CheckedModuleBuilder::build(
       input.dispatchFacts.module() != module ||
       input.dispatchFacts.checkedFactsRevision().digest() !=
           input.checkedLease.revision().digest()) {
-    return rejectCheckedModule(ir::IrFailureKind::InputRevisionMismatch, module, input.registries,
+    return rejectCheckedModule(ir::IrFailureKind::InputRevisionMismatch, module, input.identities,
                                0);
   }
 
   auto checkedFacts = input.checkedRepository.lookup(input.checkedLease);
   if (checkedFacts == zc::none) {
-    return rejectCheckedModule(ir::IrFailureKind::InputRevisionMismatch, module, input.registries,
+    return rejectCheckedModule(ir::IrFailureKind::InputRevisionMismatch, module, input.identities,
                                1);
   }
 
@@ -465,7 +466,7 @@ ir::IrOperationResult<VerifiedCheckedModule> CheckedModuleBuilder::build(
         ownInterface.importedSignatureViewRevision().digest() !=
             facts.importedSignatureViewRevision().digest() ||
         !validateDispatchRevision(input, facts)) {
-      return rejectCheckedModule(ir::IrFailureKind::InputRevisionMismatch, module, input.registries,
+      return rejectCheckedModule(ir::IrFailureKind::InputRevisionMismatch, module, input.identities,
                                  2);
     }
 
@@ -473,24 +474,24 @@ ir::IrOperationResult<VerifiedCheckedModule> CheckedModuleBuilder::build(
     if (!validateImportedInterfaces(input, importedLineage)) {
       zc::Vector<uint32_t> path;
       path.add(1);
-      return rejectCheckedModule(ir::IrFailureKind::InvalidFact, module, input.registries, 3,
+      return rejectCheckedModule(ir::IrFailureKind::InvalidFact, module, input.identities, 3,
                                  zc::mv(path));
     }
 
     auto retainedLease = input.checkedRepository.lease(module, facts.revision());
     if (retainedLease == zc::none) {
-      return rejectCheckedModule(ir::IrFailureKind::InputRevisionMismatch, module, input.registries,
+      return rejectCheckedModule(ir::IrFailureKind::InputRevisionMismatch, module, input.identities,
                                  4);
     }
 
     const driver::borrow_evidence::BorrowEvidenceBuildInput evidenceInput{
         input.localSignatureFacts, input.importedSignatures, input.moduleInterface,
-        input.availableModuleInterfaces, input.registries};
+        input.availableModuleInterfaces, input.identities};
     auto evidenceCandidate = driver::borrow_evidence::BorrowEvidenceBuilder::build(evidenceInput);
     if (evidenceCandidate.is<driver::borrow_evidence::BorrowEvidenceInvariantRejected>()) {
       return rejectBorrowEvidence(
           evidenceCandidate.get<driver::borrow_evidence::BorrowEvidenceInvariantRejected>(), module,
-          input.registries);
+          input.identities);
     }
     auto evidenceVerification = driver::borrow_evidence::BorrowEvidenceVerifier::verify(
         zc::mv(evidenceCandidate).get<driver::borrow_evidence::BorrowEvidenceCandidate>(),
@@ -498,17 +499,17 @@ ir::IrOperationResult<VerifiedCheckedModule> CheckedModuleBuilder::build(
     if (evidenceVerification.is<driver::borrow_evidence::BorrowEvidenceInvariantRejected>()) {
       return rejectBorrowEvidence(
           evidenceVerification.get<driver::borrow_evidence::BorrowEvidenceInvariantRejected>(),
-          module, input.registries);
+          module, input.identities);
     }
     auto verifiedEvidence =
         zc::mv(evidenceVerification).get<driver::borrow_evidence::VerifiedBorrowEvidence>();
     const auto evidenceRevision = verifiedEvidence.revision();
     auto evidenceAdoption =
-        input.borrowEvidenceRepository.adopt(zc::mv(verifiedEvidence), input.registries);
+        input.borrowEvidenceRepository.adopt(zc::mv(verifiedEvidence), input.identities);
     if (evidenceAdoption.is<driver::borrow_evidence::BorrowEvidenceRepositoryRejected>()) {
       return rejectCheckedModule(
           evidenceAdoption.get<driver::borrow_evidence::BorrowEvidenceRepositoryRejected>().kind,
-          module, input.registries, 5);
+          module, input.identities, 5);
     }
     auto borrowLease =
         zc::mv(evidenceAdoption).get<driver::borrow_evidence::VerifiedBorrowEvidenceLease>();
@@ -516,15 +517,15 @@ ir::IrOperationResult<VerifiedCheckedModule> CheckedModuleBuilder::build(
     if (!resolvedEvidence.isResolved() ||
         resolvedEvidence.evidence().revision().digest() != evidenceRevision.digest() ||
         borrowLease.key().revision.digest() != evidenceRevision.digest()) {
-      return rejectCheckedModule(ir::IrFailureKind::InputRevisionMismatch, module, input.registries,
+      return rejectCheckedModule(ir::IrFailureKind::InputRevisionMismatch, module, input.identities,
                                  6);
     }
 
     ZC_IF_SOME(lease, retainedLease) {
       auto impl = zc::heap<VerifiedCheckedModule::Impl>(
-          input.boundModule, input.moduleInterface, input.checkedRepository, facts, zc::mv(lease),
-          input.dispatchFacts, evidenceRevision, zc::mv(borrowLease),
-          input.borrowEvidenceRepository, input.registries, input.semanticTypes,
+          input.boundModule.retain(), input.moduleInterface, input.checkedRepository, facts,
+          zc::mv(lease), input.dispatchFacts, evidenceRevision, zc::mv(borrowLease),
+          input.borrowEvidenceRepository, input.identities.clone(), input.semanticTypes,
           ModuleInterfaceLineage{module, ownInterface.revision().digest()},
           zc::mv(importedLineage));
       return ir::IrOperationResult<VerifiedCheckedModule>::verified(

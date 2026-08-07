@@ -164,7 +164,39 @@ ScopeOwner ScopeOwner::implementation(ImplOccurrenceId value) {
 ScopeOwner ScopeOwner::anonymous(AnonymousOwnerLocalKey&& value) {
   return ScopeOwner(ScopeOwnerValue(AnonymousScopeOwner{zc::mv(value)}));
 }
+ScopeOwner ScopeOwner::clone() const {
+  if (valueValue.is<ModuleScopeOwner>()) {
+    return module(valueValue.get<ModuleScopeOwner>().module);
+  }
+  if (valueValue.is<DefinitionScopeOwner>()) {
+    return definition(valueValue.get<DefinitionScopeOwner>().definition);
+  }
+  if (valueValue.is<ImplScopeOwner>()) {
+    return implementation(valueValue.get<ImplScopeOwner>().occurrence);
+  }
+  return anonymous(valueValue.get<AnonymousScopeOwner>().anonymous.clone());
+}
 const ScopeOwnerValue& ScopeOwner::value() const noexcept { return valueValue; }
+bool ScopeOwner::operator==(const ScopeOwner& other) const noexcept {
+  if (valueValue.is<ModuleScopeOwner>()) {
+    return other.valueValue.is<ModuleScopeOwner>() &&
+           valueValue.get<ModuleScopeOwner>().module ==
+               other.valueValue.get<ModuleScopeOwner>().module;
+  }
+  if (valueValue.is<DefinitionScopeOwner>()) {
+    return other.valueValue.is<DefinitionScopeOwner>() &&
+           valueValue.get<DefinitionScopeOwner>().definition ==
+               other.valueValue.get<DefinitionScopeOwner>().definition;
+  }
+  if (valueValue.is<ImplScopeOwner>()) {
+    return other.valueValue.is<ImplScopeOwner>() &&
+           valueValue.get<ImplScopeOwner>().occurrence ==
+               other.valueValue.get<ImplScopeOwner>().occurrence;
+  }
+  return other.valueValue.is<AnonymousScopeOwner>() &&
+         valueValue.get<AnonymousScopeOwner>().anonymous ==
+             other.valueValue.get<AnonymousScopeOwner>().anonymous;
+}
 
 BindingTarget::BindingTarget(BindingTargetValue&& value) noexcept : valueValue(zc::mv(value)) {}
 BindingTarget BindingTarget::definition(identity::DefId value) {
@@ -367,6 +399,17 @@ zc::Maybe<ExportSurfaceRevision> ExportSurfaceRevision::computeFramed(
   bytes.addAll(encodedExports);
   ZC_IF_SOME(digest, identity::sha256(bytes.asPtr())) { return ExportSurfaceRevision(digest); }
   return zc::none;
+}
+
+ModuleAliasExportNamesRevision::ModuleAliasExportNamesRevision(
+    const identity::Sha256Digest& digest) noexcept
+    : value(digest) {}
+ModuleAliasExportNamesRevision ModuleAliasExportNamesRevision::fromDigest(
+    const identity::Sha256Digest& digest) noexcept {
+  return ModuleAliasExportNamesRevision(digest);
+}
+const identity::Sha256Digest& ModuleAliasExportNamesRevision::digest() const noexcept {
+  return value;
 }
 
 diagnostics::DiagID binderInvariantDiagnosticId(BinderInvariantKind kind) {

@@ -708,6 +708,7 @@ public:
   ZC_DISALLOW_COPY(SealedQuerySnapshot);
 
   ZC_NODISCARD DatabaseRevision revision() const noexcept { return snapshotField.revision(); }
+  ZC_NODISCARD const ContextRoots& contextRoots() const noexcept { return contextRootsField; }
 
   template <typename Spec>
   ZC_NODISCARD TypedQueryResult<typename Spec::Value> get(const typename Spec::Key& key) const {
@@ -726,10 +727,11 @@ public:
   }
 
 private:
-  explicit SealedQuerySnapshot(QuerySnapshot&& snapshot) noexcept
-      : snapshotField(zc::mv(snapshot)) {}
+  explicit SealedQuerySnapshot(QuerySnapshot&& snapshot, ContextRoots&& contextRoots) noexcept
+      : snapshotField(zc::mv(snapshot)), contextRootsField(zc::mv(contextRoots)) {}
 
   QuerySnapshot snapshotField;
+  ContextRoots contextRootsField;
 
   friend class QueryDatabase;
 };
@@ -1442,8 +1444,15 @@ QueryDatabase::admitFinalSnapshot(
                                        seal.finalWitness().bytes())) {
     return Result::rejected(failure);
   }
-  return Result::admitted(
-      SealedQuerySnapshot<typename CompleteContextInput::Key, FinalWitness>(zc::mv(snapshot)));
+  if constexpr (requires { seal.contextRoots().clone(); }) {
+    auto retainedRoots = seal.contextRoots().clone();
+    return Result::admitted(SealedQuerySnapshot<typename CompleteContextInput::Key, FinalWitness>(
+        zc::mv(snapshot), zc::mv(retainedRoots)));
+  } else {
+    auto retainedRoots = seal.contextRoots();
+    return Result::admitted(SealedQuerySnapshot<typename CompleteContextInput::Key, FinalWitness>(
+        zc::mv(snapshot), zc::mv(retainedRoots)));
+  }
 }
 
 template <typename Spec>

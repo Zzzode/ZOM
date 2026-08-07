@@ -21,6 +21,7 @@
 #include "zc/core/memory.h"
 #include "zc/core/one-of.h"
 #include "zc/core/vector.h"
+#include "zomlang/compiler/checker/checker-identity-authority.h"
 #include "zomlang/compiler/identity/brand.h"
 #include "zomlang/compiler/identity/canonical-encoder.h"
 #include "zomlang/compiler/identity/semantic-context-fingerprint.h"
@@ -269,16 +270,14 @@ public:
 class OwnershipEventOverlayBuilder final {
 public:
   ZC_NODISCARD static ir::IrOperationResult<OwnershipEventOverlayCandidate> build(
-      const mir::VerifiedBuiltMir& builtMir,
-      const identity::SemanticIdentityRegistrySet& registries);
+      const mir::VerifiedBuiltMir& builtMir);
 };
 
 /// \brief Sole publisher of immutable revision-checked ownership event overlays.
 class OwnershipEventOverlayVerifier final {
 public:
   ZC_NODISCARD static ir::IrOperationResult<VerifiedOwnershipEventOverlay> verify(
-      OwnershipEventOverlayCandidate&& candidate, const mir::VerifiedBuiltMir& builtMir,
-      const identity::SemanticIdentityRegistrySet& registries);
+      OwnershipEventOverlayCandidate&& candidate, const mir::VerifiedBuiltMir& builtMir);
 };
 
 }  // namespace zomlang::compiler::ownership

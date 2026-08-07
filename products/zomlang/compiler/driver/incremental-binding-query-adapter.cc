@@ -717,19 +717,13 @@ query::TypedQueryResult<ActiveSourcesQuery::Value> ActiveSourcesQuery::provide(
     }
     sources.add(zc::mv(ZC_ASSERT_NONNULL(stable)));
   }
-  auto snapshots =
-      context.getParallel<identity::source_query::SourceSnapshotInput>(sources.asPtr());
-  if (snapshots.size() != sources.size()) {
-    return query::TypedQueryResult<Value>::runtimeFailure(
-        query::QueryRuntimeFailure::ProviderRejected);
-  }
-  for (size_t index = 0; index < snapshots.size(); ++index) {
-    if (snapshots[index].isRuntimeFailure()) {
-      return query::TypedQueryResult<Value>::runtimeFailure(snapshots[index].runtimeFailure());
+  for (size_t index = 0; index < sources.size(); ++index) {
+    auto snapshot = context.get<identity::source_query::SourceSnapshotInput>(sources[index]);
+    if (snapshot.isRuntimeFailure()) {
+      return query::TypedQueryResult<Value>::runtimeFailure(snapshot.runtimeFailure());
     }
-    if (snapshots[index].kind() != query::QueryValueKind::Value ||
-        snapshots[index].value().contentDigest() !=
-            distribution.value().record().files()[index].digest()) {
+    if (snapshot.kind() != query::QueryValueKind::Value ||
+        snapshot.value().contentDigest() != distribution.value().record().files()[index].digest()) {
       return query::TypedQueryResult<Value>::runtimeFailure(
           query::QueryRuntimeFailure::ProviderRejected);
     }
@@ -777,14 +771,10 @@ bool ActiveSourcesQuery::verify(query::QueryContext& context, const Key& key,
     if (stable == zc::none) { return false; }
     sources.add(zc::mv(ZC_ASSERT_NONNULL(stable)));
   }
-  auto snapshots =
-      context.getParallel<identity::source_query::SourceSnapshotInput>(sources.asPtr());
-  if (snapshots.size() != sources.size()) { return false; }
-  for (size_t index = 0; index < snapshots.size(); ++index) {
-    if (snapshots[index].isRuntimeFailure() ||
-        snapshots[index].kind() != query::QueryValueKind::Value ||
-        snapshots[index].value().contentDigest() !=
-            distribution.value().record().files()[index].digest()) {
+  for (size_t index = 0; index < sources.size(); ++index) {
+    auto snapshot = context.get<identity::source_query::SourceSnapshotInput>(sources[index]);
+    if (snapshot.isRuntimeFailure() || snapshot.kind() != query::QueryValueKind::Value ||
+        snapshot.value().contentDigest() != distribution.value().record().files()[index].digest()) {
       return false;
     }
   }
@@ -957,6 +947,10 @@ bool registerIncrementalBindingQueryAdapter(query::QueryDatabase& database) {
   if (!database.registerDescriptor<ModuleBodyOwnersQuery>().isRegistered()) { return false; }
   if (!database.registerDescriptor<OwnerBodySyntaxQuery>().isRegistered()) { return false; }
   if (!database.registerDescriptor<OwnerBodyProvenanceQuery>().isRegistered()) { return false; }
+  if (!database.registerDescriptor<binder::BindOwnerBody>().isRegistered()) { return false; }
+  if (!database.registerDescriptor<binder::ModuleBindingAllocationPlanQuery>().isRegistered()) {
+    return false;
+  }
   return true;
 }
 

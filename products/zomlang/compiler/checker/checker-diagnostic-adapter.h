@@ -9,6 +9,7 @@
 #include "zc/core/string.h"
 #include "zomlang/compiler/binder/parsed-module.h"
 #include "zomlang/compiler/checker/checked-facts.h"
+#include "zomlang/compiler/checker/checker-identity-authority.h"
 #include "zomlang/compiler/checker/coherence-facts.h"
 #include "zomlang/compiler/checker/dispatch-facts.h"
 #include "zomlang/compiler/checker/signature-facts.h"
@@ -33,21 +34,20 @@ void emitDispatchVerificationFailures(
 /// \brief Emit closed source failures with their verifier-checked diagnostic arguments.
 void emitCheckedFactsSourceFailures(diagnostics::DiagnosticEngine& diagnostics,
                                     const binder::VerifiedParsedModule& parsedModule,
-                                    const identity::SemanticIdentityRegistrySet& registries,
+                                    const CheckerIdentityAuthority& identities,
                                     const type::SemanticTypeStore& semanticTypes,
                                     zc::ArrayPtr<const checked::CheckerFailureRef> failures);
 
 /// \brief Emit one verifier-admitted global coherence source failure.
-void emitCoherenceSourceFailure(
-    diagnostics::DiagnosticEngine& diagnostics, const binder::VerifiedParsedModule& parsedModule,
-    const identity::SemanticIdentityRegistrySet& registries,
-    const type::SemanticTypeStore& semanticTypes,
-    const coherence::CoherenceFailureRef& failure);
+void emitCoherenceSourceFailure(diagnostics::DiagnosticEngine& diagnostics,
+                                const binder::VerifiedParsedModule& parsedModule,
+                                const CheckerIdentityAuthority& identities,
+                                const type::SemanticTypeStore& semanticTypes,
+                                const coherence::CoherenceFailureRef& failure);
 
 /// \brief Deterministically render one verifier-admitted structured diagnostic argument.
 ZC_NODISCARD zc::String renderCheckerDisplayArgument(
-    const checked::CheckerDisplayArgument& argument,
-    const identity::SemanticIdentityRegistrySet& registries,
+    const checked::CheckerDisplayArgument& argument, const CheckerIdentityAuthority& identities,
     const type::SemanticTypeStore& semanticTypes);
 
 }  // namespace zomlang::compiler::checker

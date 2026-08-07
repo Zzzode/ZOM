@@ -83,15 +83,11 @@ namespace {
 
 class TestExceptionCallback : public ExceptionCallback {
 public:
-  TestExceptionCallback(const ProcessContext& context)
-      : context(context), mainThreadCallback(zc::none) {}
+  TestExceptionCallback(const ProcessContext& context) : context(context) {}
 
   bool failed() { return sawError; }
 
-  void fail() const {
-    sawError.store(true);
-    ZC_IF_SOME(callback, mainThreadCallback) { callback.fail(); }
-  }
+  void fail() const { sawError.store(true); }
 
   void logMessage(LogSeverity severity, const char* file, int line, int contextDepth,
                   String&& text) override {
@@ -112,32 +108,17 @@ public:
   }
 
   Function<void(Function<void()>)> getThreadInitializer() override {
-    return [&](Function<void()> func) {
-      ZC_IF_SOME(callback, mainThreadCallback) {
-        TestExceptionCallback exceptionCallback(context, callback);
-        func();
-      }
-      else {
-        TestExceptionCallback exceptionCallback(context, *this);
-        func();
-      }
+    const ProcessContext& processContext = context;
+    return [&processContext](Function<void()> func) {
+      TestExceptionCallback exceptionCallback(processContext);
+      func();
     };
   }
 
 private:
   const ProcessContext& context;
-  // In the case where a thread spawns a thread, we report failure to the main thread's
-  // TestExceptionCallback, which I assume stays alive as long as all child threads.  If we reported
-  // failures to a thread's parent, we'd have to worry about a child thread spawning a grandchild
-  // thread and then immediately dying, leaving the grandchild thread with a dangling pointer to the
-  // now-dead child's TestExceptionCallback.
-  zc::Maybe<const TestExceptionCallback&> mainThreadCallback;
   // sawError is mutable because we need to modify it in const-for-multithreadedness methods.
   mutable std::atomic_bool sawError = false;
-
-  TestExceptionCallback(const ProcessContext& context,
-                        const TestExceptionCallback& topLevelCallback)
-      : context(context), mainThreadCallback(topLevelCallback) {}
 };
 
 TimePoint readClock() { return systemPreciseMonotonicClock().now(); }
@@ -226,8 +207,9 @@ public:
     ZC_IF_SOME(i, param.tryParseAs<size_t>()) {
       benchmarkIterCount = i;
       return true;
+    } else {
+      return "expected an integer";
     }
-    else { return "expected an integer"; }
   }
 
   MainBuilder::Validity run() {

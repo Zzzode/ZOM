@@ -691,14 +691,13 @@ ImplIdentityOccurrenceGroup& ImplIdentityOccurrenceGroup::operator=(
     ImplIdentityOccurrenceGroup&&) noexcept = default;
 
 zc::Maybe<ImplIdentityOccurrenceGroup> ImplIdentityOccurrenceGroup::from(
-    const identity::ImplRegistry& authorities, identity::ImplId authority,
+    const identity::CanonicalIdentityInternerSet& authorities, identity::ImplId authority,
     zc::Vector<ImplSourceOccurrenceKey>&& occurrences,
     zc::ArrayPtr<const IdentitySyntaxSite> sites) {
-  auto authorityValue = authorities.lookupAuthority(authority);
+  auto authorityValue = authorities.implementation(authority);
   if (authorityValue == zc::none || occurrences.empty()) { return zc::none; }
 
   ZC_IF_SOME(authorityRecord, authorityValue) {
-    if (!authorityRecord.verify()) { return zc::none; }
     const IdentitySyntaxSite* previousSite = nullptr;
     for (const auto& occurrence : occurrences) {
       if (occurrence.implementation() != authorityRecord.key() ||

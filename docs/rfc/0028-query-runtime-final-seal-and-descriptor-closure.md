@@ -8,7 +8,7 @@ review-manager: rfc
 required-owners: [task-router, rfc, module-system, lexer-parser, binder-checker, spec-audit, verification]
 approvers: [task-router, rfc, module-system, lexer-parser, binder-checker, spec-audit, verification]
 created: 2026-07-27
-updated: 2026-07-30
+updated: 2026-08-02
 area: compiler
 requires: [17, 18, 19, 20, 25, 26, 27]
 supersedes: []
@@ -798,7 +798,7 @@ struct ParseSourceQuery final {
       query::SourceRejection<diagnostics::DiagnosticFact>>;
 };
 
-struct ModuleDependencyProvenance final {
+struct ModuleDependencyProvenanceQuery final {
   using Capability = ModuleDependencyProvenanceMap;
   using FailureAlternatives = query::CapabilityFailureList<
       query::SourceRejection<diagnostics::DiagnosticFact>,
@@ -842,7 +842,7 @@ ParseSource =
   | SourceRejected(CanonicalNonEmptySequence<diagnostics::DiagnosticFact>)
   | RuntimeRejected(QueryRuntimeFailure)
 
-ModuleDependencyProvenance =
+ModuleDependencyProvenanceQuery =
     Candidate
   | SourceRejected(CanonicalNonEmptySequence<diagnostics::DiagnosticFact>)
   | KeyRejected(BinderKeyFailure)
@@ -1046,8 +1046,8 @@ The provider reads in this exact order:
 1. `SelectedModuleSourceQuery`;
 2. `ParseSourceQuery`;
 3. `IdentitySyntaxSiteInventoryQuery`;
-4. `StableIdentityCandidateProducer`; and
-5. `StableIdentityCandidateVerifier`.
+4. `CandidateProducer`; and
+5. `CandidateVerifier`.
 
 The independent verifier repeats the selected-source and parse demands,
 reconstructs without provider state, compares the complete inventory, and
@@ -1310,15 +1310,15 @@ and RFC 0027 query catalogs and read-set tables.
 
 ### Module Dependency Provenance Capability
 
-`ModuleDependencyProvenance` is a final-sealed revision-local capability
+`ModuleDependencyProvenanceQuery` is a final-sealed revision-local capability
 descriptor:
 
 | Property | Contract |
 |---|---|
-| Name | `ModuleDependencyProvenance` |
+| Name | `ModuleDependencyProvenanceQuery` |
 | Domain | `zom.query.module-dependency-provenance` |
 | Key | `ModuleKey` |
-| Result | `CapabilityDemandResult<ModuleDependencyProvenance>` |
+| Result | `CapabilityDemandResult<ModuleDependencyProvenanceQuery>` |
 | Capability | `ModuleDependencyProvenanceMap` |
 | Reuse | `RevisionLocal` |
 | Retention | `Retained` |
@@ -1379,8 +1379,8 @@ Provider and verifier compute the witness through separate collection code.
 The synchronized RFC 0031 stable-Binder capability row is exact:
 
 ```text
-name: ModuleDependencyProvenance
-resultType: CapabilityDemandResult<ModuleDependencyProvenance>
+name: ModuleDependencyProvenanceQuery
+resultType: CapabilityDemandResult<ModuleDependencyProvenanceQuery>
 capabilityType: ModuleDependencyProvenanceMap
 failureAlternatives:
   SourceRejection<DiagnosticFact>
@@ -1485,8 +1485,8 @@ The production descriptor and verifier families are:
 - `products/zomlang/compiler/binder/module-body-syntax.h`;
 - `products/zomlang/compiler/binder/module-body-syntax-producer.cc`;
 - `products/zomlang/compiler/binder/module-body-syntax-verifier.cc`;
-- `products/zomlang/compiler/binder/stable-identity-candidate-producer.{h,cc}`;
-- `products/zomlang/compiler/binder/stable-identity-candidate-verifier.{h,cc}`;
+- `products/zomlang/compiler/binder/stable/candidate/producer.{h,cc}`;
+- `products/zomlang/compiler/binder/stable/candidate/verifier.{h,cc}`;
 - `products/zomlang/compiler/identity/source-query-input.{h,cc}`;
 - `products/zomlang/compiler/parser/parse-source-query.{h,cc}`;
 - `products/zomlang/compiler/parser/parse-source-query-verifier.cc`;
@@ -1926,7 +1926,7 @@ The review partitions have these exact file sets:
 | `R28-13F` | `products/zomlang/compiler/binder/binding-input.cc`; `products/zomlang/tests/unittests/compiler/binder/binding-input-test.cc` |
 | `R28-13G.1` | `products/zomlang/tests/unittests/compiler/query/query-test-specs.h`; `products/zomlang/tests/unittests/compiler/query/query-test-descriptor-schema.def`; all six query test `.cc` files and query `CMakeLists.txt` listed in the atomic migration inventory |
 | `R28-13G.2` | all driver and Binder test files plus their `CMakeLists.txt` files listed in the atomic migration inventory; `products/zomlang/tests/CMakeLists.txt` |
-| `R29-13B` | `products/zomlang/compiler/binder/identity-pre-admission.{h,cc}`; `products/zomlang/compiler/binder/module-body-syntax.h`; `products/zomlang/compiler/binder/module-body-syntax-producer.cc`; `products/zomlang/compiler/binder/module-body-syntax-verifier.cc`; `products/zomlang/compiler/binder/stable-identity-candidate-producer.{h,cc}`; `products/zomlang/compiler/binder/stable-identity-candidate-verifier.{h,cc}`; `products/zomlang/compiler/driver/named-identity-inventory-query.{h,cc}`; `products/zomlang/compiler/driver/named-item-query.{h,cc}`; `products/zomlang/compiler/driver/owner-body-query.{h,cc}`; Binder and driver build wiring; the focused Binder and driver tests named in the atomic migration inventory |
+| `R29-13B` | `products/zomlang/compiler/binder/identity-pre-admission.{h,cc}`; `products/zomlang/compiler/binder/module-body-syntax.h`; `products/zomlang/compiler/binder/module-body-syntax-producer.cc`; `products/zomlang/compiler/binder/module-body-syntax-verifier.cc`; `products/zomlang/compiler/binder/stable/candidate/producer.{h,cc}`; `products/zomlang/compiler/binder/stable/candidate/verifier.{h,cc}`; `products/zomlang/compiler/driver/named-identity-inventory-query.{h,cc}`; `products/zomlang/compiler/driver/named-item-query.{h,cc}`; `products/zomlang/compiler/driver/owner-body-query.{h,cc}`; Binder and driver build wiring; the focused Binder and driver tests named in the atomic migration inventory |
 | `R29-13C` | query `query-test-specs.h`, database, capability, concurrency, and CMake files; `products/zomlang/tests/cmake/expect-compile-failure/CMakeLists.txt`; the exact query-runtime compile-fail cases; `products/zomlang/tests/CMakeLists.txt`; `scripts/check-query-descriptor-architecture.py`; generic runtime-sum and reusable staged dual-alias gate coverage |
 
 Each numbered subpartition is separately reviewed and may be split into
@@ -2093,3 +2093,4 @@ None
 | 2026-07-30 | IMPLEMENTING | Transaction `rfc0027-transaction-ownership-20260730-d0979738` binds the T1 transaction-owner scope correction to independently approved exact four-document pre-evidence Git diff SHA-256 `d0979738a664312a018922acc7d13fe8aa3fb5efe705c806cc3cef58a3ef7539`; all three session transactions now require direct closed replacement, caller-supplied previous revision, pre-open canonical verification, and same-revision witnesses. No implementation task is completed. |
 | 2026-07-30 | IMPLEMENTING | Transaction `rfc0027-transaction-witness-inventory-20260730-ddd640c8` binds the static transaction-witness inventory correction to independently approved exact four-document pre-evidence Git diff SHA-256 `ddd640c83235ff8d178b615f8a532f7179588b21d477ae58fe293f0ba5e87b60`; production ordinals 56 through 58 are the three static witness inputs, the test tail starts at ordinal 59, and generator checks own the complete negative matrix. No implementation task is completed. |
 | 2026-07-30 | IMPLEMENTING | Transaction `rfc0027-transaction-callers-20260730-490a96eb` binds the complete production mutation-caller scope correction to independently approved exact four-document pre-evidence Git diff SHA-256 `490a96eba8bbb8b8b1f96008c864fd9d1eb5ef2781771385e2ce74682d57b5cf`; all three compiler-session mutation paths use the direct closed transactions, the refresh path has no adapter, and T2A ownership remains unchanged. No implementation task is completed. |
+| 2026-08-02 | IMPLEMENTING | R28-19 re-audited the landed `ModuleDependencyProvenanceQuery` transaction. Its focused sanitizer test, production and test descriptor inventories, descriptor architecture check and self-test, generator check, CompilerSession architecture check, and RFC structure check pass. RFC 0028 remains IMPLEMENTING because its materializer closure still depends on RFC 0027 R27-21, R27-22, and R27-28A. |

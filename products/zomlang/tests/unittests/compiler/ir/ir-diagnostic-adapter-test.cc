@@ -27,39 +27,21 @@ identity::SemanticContextFingerprint emptyContextFingerprint() {
   ZC_FAIL_REQUIRE("empty semantic context fingerprint fixture was rejected");
 }
 
-identity::SourceSpan frozenSourceSpan() {
+identity::SourceSpan sourceSpan() {
   using namespace tests::test_identity_detail;
-  identity::SemanticContextFactory factory;
-  auto issuedContext = factory.issue();
-  ZC_REQUIRE(issuedContext != zc::none);
-  ZC_IF_SOME(context, issuedContext) {
-    auto created = identity::SemanticIdentityRegistrySet::create(factory, context);
-    ZC_REQUIRE(created != zc::none);
-    ZC_IF_SOME(registries, created) {
-      ZC_REQUIRE(registries.collectCompilationUnit(identity::CompilationUnitIdentity::userPackage(
-                     package())) == identity::FrozenRegistryFailure::None);
-      ZC_REQUIRE(registries.freezeCompilationUnits() == identity::FrozenRegistryFailure::None);
-      ZC_REQUIRE(registries.collectCrate(crate()) == identity::FrozenRegistryFailure::None);
-      ZC_REQUIRE(registries.freezeCrates() == identity::FrozenRegistryFailure::None);
-      auto sourceKey = tests::test_identity_detail::source();
-      auto snapshot = identity::ImmutableSourceSnapshot::from(
-          sourceKey.clone(), zc::heapArray<uint8_t>(1, uint8_t{0}));
-      ZC_REQUIRE(snapshot != zc::none);
-      ZC_IF_SOME(value, snapshot) {
-        ZC_REQUIRE(registries.collectSourceFile(zc::mv(value)) ==
-                   identity::FrozenRegistryFailure::None);
-      }
-      ZC_REQUIRE(registries.freezeSourceFiles() == identity::FrozenRegistryFailure::None);
-      ZC_REQUIRE(registries.sourceSnapshots().size() == 1);
-      auto span = registries.sourceSnapshots()[0].span(0, 1);
-      ZC_REQUIRE(span != zc::none);
-      ZC_IF_SOME(value, span) {
-        ZC_EXPECT(value.belongsTo(sourceKey));
-        return zc::mv(value);
-      }
+  auto sourceKey = tests::test_identity_detail::source();
+  auto snapshot = identity::ImmutableSourceSnapshot::from(sourceKey.clone(),
+                                                          zc::heapArray<uint8_t>(1, uint8_t{0}));
+  ZC_REQUIRE(snapshot != zc::none);
+  ZC_IF_SOME(value, snapshot) {
+    auto span = value.span(0, 1);
+    ZC_REQUIRE(span != zc::none);
+    ZC_IF_SOME(admitted, span) {
+      ZC_EXPECT(admitted.belongsTo(sourceKey));
+      return zc::mv(admitted);
     }
   }
-  ZC_FAIL_REQUIRE("frozen source span fixture was rejected");
+  ZC_FAIL_REQUIRE("source span fixture was rejected");
 }
 
 class UnusedIdentityResolver final : public IrFailureIdentityResolver {
@@ -227,7 +209,7 @@ ZC_TEST("IR invariant grouping uses adjacent mapped diagnostic and exact validat
   zc::Maybe<identity::SourceSpan> noFirstSpan;
   zc::Maybe<identity::SourceSpan> noSecondSpan;
   zc::Maybe<identity::SourceSpan> noCodecSpan;
-  zc::Maybe<identity::SourceSpan> distinctSpan = frozenSourceSpan();
+  zc::Maybe<identity::SourceSpan> distinctSpan = sourceSpan();
   zc::Vector<IrFailureFact> facts;
   facts.add(targetSelectionFact(IrRejectedBranch::IrInvariantRejected, IrFailureKind::InvalidFact,
                                 zc::mv(noFirstSpan), 2));

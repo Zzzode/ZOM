@@ -7,8 +7,8 @@
 
 #include "zc/core/array.h"
 #include "zc/core/common.h"
-#include "zomlang/compiler/binder/verified-bound-module-input.h"
 #include "zomlang/compiler/checker/cross-module-facts.h"
+#include "zomlang/compiler/driver/materialized-module-graph-query.h"
 #include "zomlang/compiler/driver/module-interface.h"
 
 namespace zomlang::compiler::driver {
@@ -17,10 +17,10 @@ namespace zomlang::compiler::driver {
 class ImportedSignatureViewProjector final {
 public:
   ZC_NODISCARD static zc::Maybe<checker::cross_module::ImportedSignatureView> build(
-      const binder::VerifiedBoundModuleInput& requester,
+      const module_graph_query::CheckerBoundModuleView& requester,
       zc::ArrayPtr<const VerifiedModuleInterface> dependencyInterfaces,
-      const identity::SemanticIdentityRegistrySet& registries,
-      const type::SemanticTypeStore& semanticTypes);
+      const type::SemanticTypeStore& semanticTypes,
+      const checker::CheckerIdentityAuthority& identities);
 };
 
 }  // namespace zomlang::compiler::driver

@@ -330,20 +330,19 @@ identity::IdentityInvariant invalidIdentity(identity::IdentityAllocationPhase ph
   ZC_UNREACHABLE
 }
 
-class RegistryIdentityResolver final : public ir::IrFailureIdentityResolver {
+class AuthorityIdentityResolver final : public ir::IrFailureIdentityResolver {
 public:
-  explicit RegistryIdentityResolver(
-      const identity::SemanticIdentityRegistrySet& registries) noexcept
-      : registries(registries) {}
+  explicit AuthorityIdentityResolver(const checker::CheckerIdentityAuthority& identities) noexcept
+      : identities(identities) {}
 
   ir::ExpandedIrIdentityResult expand(identity::ModuleId module) const override {
-    auto key = registries.modules().lookup(module);
+    auto key = identities.module(module);
     if (key == zc::none) {
       return ir::RejectedIrIdentityValue{
           invalidIdentity(identity::IdentityAllocationPhase::Module, 0)};
     }
     ZC_IF_SOME(value, key) {
-      auto expanded = ir::ExpandedIrIdentity::from(value.encode());
+      auto expanded = ir::ExpandedIrIdentity::from(value.key().encode());
       ZC_IF_SOME(bytes, expanded) { return ir::ExpandedIrIdentityValue{zc::mv(bytes)}; }
     }
     return ir::RejectedIrIdentityValue{
@@ -351,13 +350,13 @@ public:
   }
 
   ir::ExpandedIrIdentityResult expand(identity::DefId definition) const override {
-    auto key = registries.definitions().lookup(definition);
+    auto key = identities.definition(definition);
     if (key == zc::none) {
       return ir::RejectedIrIdentityValue{
           invalidIdentity(identity::IdentityAllocationPhase::Definition, 0)};
     }
     ZC_IF_SOME(value, key) {
-      auto expanded = ir::ExpandedIrIdentity::from(value.encode());
+      auto expanded = ir::ExpandedIrIdentity::from(value.key().encode());
       ZC_IF_SOME(bytes, expanded) { return ir::ExpandedIrIdentityValue{zc::mv(bytes)}; }
     }
     return ir::RejectedIrIdentityValue{
@@ -370,15 +369,15 @@ public:
   }
 
 private:
-  const identity::SemanticIdentityRegistrySet& registries;
+  const checker::CheckerIdentityAuthority& identities;
 };
 
 template <typename VerifiedValue>
 ir::IrOperationResult<VerifiedValue> rejectMir(
     ir::IrFailurePhase phase, ir::IrFailureKind kind, identity::ModuleId module,
-    zc::Maybe<identity::DefId> definition, const identity::SemanticIdentityRegistrySet& registries,
+    zc::Maybe<identity::DefId> definition, const checker::CheckerIdentityAuthority& identities,
     uint32_t ordinal, zc::Vector<uint32_t>&& fieldPath = zc::Vector<uint32_t>()) {
-  RegistryIdentityResolver identities(registries);
+  AuthorityIdentityResolver resolver(identities);
   if (definition == zc::none) {
     zc::Vector<identity::IdentityInvariant> failures;
     failures.add(invalidIdentity(identity::IdentityAllocationPhase::Definition, ordinal));
@@ -398,7 +397,7 @@ ir::IrOperationResult<VerifiedValue> rejectMir(
       ir::IrRejectedBranch::IrInvariantRejected, phase, kind, ir::IrFailureOwner::definition(owner),
       zc::mv(noSite), ir::IrFailureDetail::none(), zc::mv(noSpan), zc::mv(fieldPath), ordinal);
   ZC_IF_SOME(fallbackValue, fallback) {
-    auto admitted = ir::IrFailureFactory::admit(zc::mv(descriptor), fallbackValue, identities);
+    auto admitted = ir::IrFailureFactory::admit(zc::mv(descriptor), fallbackValue, resolver);
     if (admitted.is<ir::IdentityRejectedIrFailureDescriptor>()) {
       zc::Vector<identity::IdentityInvariant> failures;
       failures.add(zc::mv(admitted).get<ir::IdentityRejectedIrFailureDescriptor>().failure);
@@ -447,11 +446,11 @@ MirBlockId blockId(uint32_t ordinal) {
 }
 
 bool encodeDefinition(identity::CanonicalEncoder& encoder, identity::DefId definition,
-                      const identity::SemanticIdentityRegistrySet& registries) {
-  auto key = registries.definitions().lookup(definition);
+                      const checker::CheckerIdentityAuthority& identities) {
+  auto key = identities.definition(definition);
   if (key == zc::none) return false;
   ZC_IF_SOME(value, key) {
-    auto bytes = value.encode();
+    auto bytes = value.key().encode();
     encoder.encodeByteString(bytes.asPtr());
     return true;
   }
@@ -468,10 +467,11 @@ bool encodeType(identity::CanonicalEncoder& encoder, identity::SemanticTypeId ty
 
 bool encodeConstant(identity::CanonicalEncoder& encoder,
                     const checker::checked::CanonicalConstValue& value, identity::ModuleId module,
-                    const identity::SemanticIdentityRegistrySet& registries,
+                    const checker::CheckerIdentityAuthority& identities,
                     const type::SemanticTypeStore& semanticTypes) {
-  auto bytes = checker::signature::SignatureFactsCanonicalCodec::encodeCanonicalConstValue(
-      value, module, registries, semanticTypes);
+  auto bytes =
+      checker::signature::SignatureFactsCanonicalCodec::encodeCanonicalConstValueFromAuthority(
+          value, module, identities, semanticTypes);
   if (bytes == zc::none) return false;
   ZC_IF_SOME(record, bytes) {
     encoder.encodeByteString(record.asPtr());
@@ -481,18 +481,18 @@ bool encodeConstant(identity::CanonicalEncoder& encoder,
 }
 
 bool encodeProjection(identity::CanonicalEncoder& encoder, const MirProjection& projection,
-                      const identity::SemanticIdentityRegistrySet& registries) {
+                      const checker::CheckerIdentityAuthority& identities) {
   encoder.encodeUint8(static_cast<uint8_t>(projection.kind()));
   switch (projection.kind()) {
     case MirProjectionKind::Field:
-      return encodeDefinition(encoder, projection.fieldValue().field, registries);
+      return encodeDefinition(encoder, projection.fieldValue().field, identities);
     case MirProjectionKind::Index:
       encoder.encodeUint32(projection.indexValue().index.ordinal());
       return projection.indexValue().index.isValid();
     case MirProjectionKind::Dereference:
       return true;
     case MirProjectionKind::Downcast:
-      return encodeDefinition(encoder, projection.downcastValue().variant, registries);
+      return encodeDefinition(encoder, projection.downcastValue().variant, identities);
     case MirProjectionKind::Subslice:
       encoder.encodeUint32(projection.subsliceValue().first);
       encoder.encodeUint32(projection.subsliceValue().pastLast);
@@ -502,12 +502,12 @@ bool encodeProjection(identity::CanonicalEncoder& encoder, const MirProjection& 
 }
 
 bool encodePlace(identity::CanonicalEncoder& encoder, const MirPlace& place,
-                 const identity::SemanticIdentityRegistrySet& registries) {
+                 const checker::CheckerIdentityAuthority& identities) {
   if (!place.local().isValid()) return false;
   encoder.encodeUint32(place.local().ordinal());
   encoder.encodeSequenceSize(place.projections().size());
   for (const auto& projection : place.projections()) {
-    if (!projection.isStructurallyValid() || !encodeProjection(encoder, projection, registries)) {
+    if (!projection.isStructurallyValid() || !encodeProjection(encoder, projection, identities)) {
       return false;
     }
   }
@@ -515,36 +515,33 @@ bool encodePlace(identity::CanonicalEncoder& encoder, const MirPlace& place,
 }
 
 bool encodeOperand(identity::CanonicalEncoder& encoder, const MirOperand& operand,
-                   identity::ModuleId module,
-                   const identity::SemanticIdentityRegistrySet& registries,
+                   identity::ModuleId module, const checker::CheckerIdentityAuthority& identities,
                    const type::SemanticTypeStore& semanticTypes) {
   encoder.encodeUint8(static_cast<uint8_t>(operand.kind()));
   if (operand.kind() == MirOperandKind::Copy || operand.kind() == MirOperandKind::Move) {
-    return encodePlace(encoder, operand.place(), registries);
+    return encodePlace(encoder, operand.place(), identities);
   }
   const auto& constant = operand.constantValue();
   return encodeType(encoder, constant.type, semanticTypes) &&
-         encodeConstant(encoder, constant.value, module, registries, semanticTypes);
+         encodeConstant(encoder, constant.value, module, identities, semanticTypes);
 }
 
 bool encodeRvalue(identity::CanonicalEncoder& encoder, const MirRvalue& value,
-                  identity::ModuleId module,
-                  const identity::SemanticIdentityRegistrySet& registries,
+                  identity::ModuleId module, const checker::CheckerIdentityAuthority& identities,
                   const type::SemanticTypeStore& semanticTypes) {
   encoder.encodeUint8(static_cast<uint8_t>(value.kind()));
-  return encodeOperand(encoder, value.useValue().operand, module, registries, semanticTypes);
+  return encodeOperand(encoder, value.useValue().operand, module, identities, semanticTypes);
 }
 
 bool encodeStatement(identity::CanonicalEncoder& encoder, const MirStatement& statement,
-                     identity::ModuleId module,
-                     const identity::SemanticIdentityRegistrySet& registries,
+                     identity::ModuleId module, const checker::CheckerIdentityAuthority& identities,
                      const type::SemanticTypeStore& semanticTypes) {
   encoder.encodeUint8(static_cast<uint8_t>(statement.kind()));
   switch (statement.kind()) {
     case MirStatementKind::Assign: {
       const auto& assignment = statement.assignmentValue();
-      if (!encodePlace(encoder, assignment.destination, registries) ||
-          !encodeRvalue(encoder, assignment.value, module, registries, semanticTypes)) {
+      if (!encodePlace(encoder, assignment.destination, identities) ||
+          !encodeRvalue(encoder, assignment.value, module, identities, semanticTypes)) {
         return false;
       }
       encoder.encodeUint8(static_cast<uint8_t>(assignment.initialization));
@@ -556,41 +553,40 @@ bool encodeStatement(identity::CanonicalEncoder& encoder, const MirStatement& st
       return statement.storageLocal().isValid();
     case MirStatementKind::BorrowCreation: {
       const auto& borrow = statement.borrowCreationValue();
-      if (!encodePlace(encoder, borrow.destination, registries)) return false;
+      if (!encodePlace(encoder, borrow.destination, identities)) return false;
       encoder.encodeUint8(static_cast<uint8_t>(borrow.kind));
-      return encodePlace(encoder, borrow.source, registries);
+      return encodePlace(encoder, borrow.source, identities);
     }
     case MirStatementKind::SetDiscriminant: {
       const auto& discriminant = statement.setDiscriminantValue();
-      return encodePlace(encoder, discriminant.destination, registries) &&
-             encodeDefinition(encoder, discriminant.variant, registries);
+      return encodePlace(encoder, discriminant.destination, identities) &&
+             encodeDefinition(encoder, discriminant.variant, identities);
     }
     case MirStatementKind::Deinitialize:
-      return encodePlace(encoder, statement.deinitializeValue().destination, registries);
+      return encodePlace(encoder, statement.deinitializeValue().destination, identities);
   }
   return false;
 }
 
 bool encodeTerminator(identity::CanonicalEncoder& encoder, const MirTerminator& terminator,
                       identity::ModuleId module,
-                      const identity::SemanticIdentityRegistrySet& registries,
+                      const checker::CheckerIdentityAuthority& identities,
                       const type::SemanticTypeStore& semanticTypes) {
   encoder.encodeUint8(static_cast<uint8_t>(terminator.kind()));
   if (terminator.kind() == MirTerminatorKind::Unreachable) return true;
   ZC_IF_SOME(value, terminator.returnValue().value) {
     encoder.encodeSome();
-    return encodeOperand(encoder, value, module, registries, semanticTypes);
+    return encodeOperand(encoder, value, module, identities, semanticTypes);
   }
   encoder.encodeNone();
   return true;
 }
 
-zc::Maybe<zc::Array<uint8_t>> encodeFunction(
-    const MirFunction& function, identity::ModuleId module,
-    const identity::SemanticIdentityRegistrySet& registries,
-    const type::SemanticTypeStore& semanticTypes) {
+zc::Maybe<zc::Array<uint8_t>> encodeFunction(const MirFunction& function, identity::ModuleId module,
+                                             const checker::CheckerIdentityAuthority& identities,
+                                             const type::SemanticTypeStore& semanticTypes) {
   identity::CanonicalEncoder encoder;
-  if (!encodeDefinition(encoder, function.owner, registries)) return zc::none;
+  if (!encodeDefinition(encoder, function.owner, identities)) return zc::none;
   encoder.encodeUint8(static_cast<uint8_t>(function.kind));
   encoder.encodeUint8(static_cast<uint8_t>(function.sourceDefinitionKind));
   if (!encodeType(encoder, function.resultType, semanticTypes)) return zc::none;
@@ -624,11 +620,11 @@ zc::Maybe<zc::Array<uint8_t>> encodeFunction(
     encoder.encodeUint32(block.sourceScope.ordinal());
     encoder.encodeSequenceSize(block.statements.size());
     for (const auto& statement : block.statements) {
-      if (!encodeStatement(encoder, statement, module, registries, semanticTypes)) {
+      if (!encodeStatement(encoder, statement, module, identities, semanticTypes)) {
         return zc::none;
       }
     }
-    if (!encodeTerminator(encoder, block.terminator, module, registries, semanticTypes)) {
+    if (!encodeTerminator(encoder, block.terminator, module, identities, semanticTypes)) {
       return zc::none;
     }
   }
@@ -688,12 +684,14 @@ zc::Maybe<const hir::HirReturnStatement&> returnFor(const hir::VerifiedHirModule
 
 bool sameConstant(const checker::checked::CanonicalConstValue& left,
                   const checker::checked::CanonicalConstValue& right, identity::ModuleId module,
-                  const identity::SemanticIdentityRegistrySet& registries,
+                  const checker::CheckerIdentityAuthority& identities,
                   const type::SemanticTypeStore& semanticTypes) {
-  auto leftRecord = checker::signature::SignatureFactsCanonicalCodec::encodeCanonicalConstValue(
-      left, module, registries, semanticTypes);
-  auto rightRecord = checker::signature::SignatureFactsCanonicalCodec::encodeCanonicalConstValue(
-      right, module, registries, semanticTypes);
+  auto leftRecord =
+      checker::signature::SignatureFactsCanonicalCodec::encodeCanonicalConstValueFromAuthority(
+          left, module, identities, semanticTypes);
+  auto rightRecord =
+      checker::signature::SignatureFactsCanonicalCodec::encodeCanonicalConstValueFromAuthority(
+          right, module, identities, semanticTypes);
   if (leftRecord == zc::none || rightRecord == zc::none) return false;
   bool same = false;
   ZC_IF_SOME(leftBytes, leftRecord) {
@@ -705,7 +703,7 @@ bool sameConstant(const checker::checked::CanonicalConstValue& left,
 bool validScalarFunction(const MirFunction& function, const hir::HirValueDeclaration& declaration,
                          const hir::HirScalarLiteralExpression& expression,
                          identity::ModuleId module,
-                         const identity::SemanticIdentityRegistrySet& registries,
+                         const checker::CheckerIdentityAuthority& identities,
                          const type::SemanticTypeStore& semanticTypes) {
   if (function.owner != declaration.definition ||
       function.kind != MirFunctionKind::ModuleInitializer ||
@@ -739,7 +737,7 @@ bool validScalarFunction(const MirFunction& function, const hir::HirValueDeclara
   }
   const auto& constant = assignment.value.useValue().operand.constantValue();
   if (constant.type != expression.type ||
-      !sameConstant(constant.value, expression.value, module, registries, semanticTypes) ||
+      !sameConstant(constant.value, expression.value, module, identities, semanticTypes) ||
       block.terminator.kind() != MirTerminatorKind::Return ||
       block.terminator.returnValue().value == zc::none) {
     return false;
@@ -758,7 +756,7 @@ bool validScalarReturnFunction(const MirFunction& function,
                                const hir::HirReturnStatement& sourceReturn,
                                const hir::HirScalarLiteralExpression& expression,
                                identity::ModuleId module,
-                               const identity::SemanticIdentityRegistrySet& registries,
+                               const checker::CheckerIdentityAuthority& identities,
                                const type::SemanticTypeStore& semanticTypes) {
   if (function.owner != declaration.definition || function.kind != MirFunctionKind::Function ||
       function.sourceDefinitionKind != identity::DefinitionKind::Function ||
@@ -784,7 +782,7 @@ bool validScalarReturnFunction(const MirFunction& function,
   ZC_IF_SOME(value, block.terminator.returnValue().value) {
     validReturn = value.kind() == MirOperandKind::Constant &&
                   value.constantValue().type == expression.type &&
-                  sameConstant(value.constantValue().value, expression.value, module, registries,
+                  sameConstant(value.constantValue().value, expression.value, module, identities,
                                semanticTypes);
   }
   return validReturn;
@@ -868,11 +866,15 @@ struct VerifiedBuiltMir::Impl final {
        const checker::checked::CheckedFactsRevision& checkedFactsRevision,
        const checker::dispatch::DispatchFactsRevision& dispatchFactsRevision,
        const driver::borrow_evidence::BorrowEvidenceRevision& borrowEvidenceRevision,
+       driver::module_graph_query::CheckerBoundModuleView&& boundModule,
+       checker::CheckerIdentityAuthority&& identities,
        driver::borrow_evidence::VerifiedBorrowEvidenceLease&& borrowEvidenceLease,
        const driver::borrow_evidence::BorrowEvidenceRepository& borrowEvidenceRepository,
        zc::Vector<MirFunction>&& functions, zc::Vector<zc::Array<uint8_t>>&& canonicalFunctions,
        MirRevisionId revision) noexcept
-      : semanticContext(semanticContext),
+      : boundModule(zc::mv(boundModule)),
+        identities(zc::mv(identities)),
+        semanticContext(semanticContext),
         contextFingerprint(zc::mv(contextFingerprint)),
         compilationUnit(compilationUnit),
         crate(crate),
@@ -880,12 +882,14 @@ struct VerifiedBuiltMir::Impl final {
         checkedFactsRevision(checkedFactsRevision),
         dispatchFactsRevision(dispatchFactsRevision),
         borrowEvidenceRevision(borrowEvidenceRevision),
-        borrowEvidenceLease(zc::mv(borrowEvidenceLease)),
         borrowEvidenceRepository(borrowEvidenceRepository),
         functions(zc::mv(functions)),
         canonicalFunctions(zc::mv(canonicalFunctions)),
-        revision(revision) {}
+        revision(revision),
+        borrowEvidenceLease(zc::mv(borrowEvidenceLease)) {}
 
+  driver::module_graph_query::CheckerBoundModuleView boundModule;
+  checker::CheckerIdentityAuthority identities;
   identity::SemanticContextBrand semanticContext;
   identity::SemanticContextFingerprint contextFingerprint;
   identity::CompilationUnitId compilationUnit;
@@ -894,11 +898,11 @@ struct VerifiedBuiltMir::Impl final {
   checker::checked::CheckedFactsRevision checkedFactsRevision;
   checker::dispatch::DispatchFactsRevision dispatchFactsRevision;
   driver::borrow_evidence::BorrowEvidenceRevision borrowEvidenceRevision;
-  driver::borrow_evidence::VerifiedBorrowEvidenceLease borrowEvidenceLease;
   const driver::borrow_evidence::BorrowEvidenceRepository& borrowEvidenceRepository;
   zc::Vector<MirFunction> functions;
   zc::Vector<zc::Array<uint8_t>> canonicalFunctions;
   MirRevisionId revision;
+  driver::borrow_evidence::VerifiedBorrowEvidenceLease borrowEvidenceLease;
 };
 
 VerifiedBuiltMir::VerifiedBuiltMir(zc::Own<Impl>&& impl) noexcept : impl(zc::mv(impl)) {}
@@ -940,6 +944,14 @@ const driver::borrow_evidence::VerifiedBorrowEvidenceLease& VerifiedBuiltMir::bo
   return impl->borrowEvidenceLease;
 }
 
+driver::module_graph_query::CheckerBoundModuleView VerifiedBuiltMir::retainBoundModule() const {
+  return impl->boundModule.retain();
+}
+
+checker::CheckerIdentityAuthority VerifiedBuiltMir::retainIdentityAuthority() const {
+  return impl->identities.clone();
+}
+
 const MirRevisionId& VerifiedBuiltMir::revision() const noexcept { return impl->revision; }
 
 zc::ArrayPtr<const MirFunction> VerifiedBuiltMir::functions() const noexcept {
@@ -953,7 +965,7 @@ zc::ArrayPtr<const zc::Array<uint8_t>> VerifiedBuiltMir::canonicalFunctionRecord
 ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(
     const hir::VerifiedHirModule& hirModule) {
   const auto module = hirModule.module();
-  const auto& registries = hirModule.registries();
+  const auto identities = hirModule.retainIdentityAuthority();
   const auto& semanticTypes = hirModule.semanticTypes();
   const auto evidence =
       hirModule.borrowEvidenceRepository().lookup(hirModule.borrowEvidenceLease());
@@ -967,13 +979,13 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(
       hirModule.functions().size() != hirModule.returns().size()) {
     return rejectMir<BuiltMirCandidate>(ir::IrFailurePhase::MirConstruction,
                                         ir::IrFailureKind::InputRevisionMismatch, module,
-                                        firstDefinition(hirModule), registries, 0);
+                                        firstDefinition(hirModule), identities, 0);
   }
 
   zc::Vector<PendingMirFunction> pending;
   for (const auto& declaration : hirModule.declarations()) {
     auto expression = expressionFor(hirModule, declaration.initializer);
-    auto definition = registries.definitions().lookup(declaration.definition);
+    auto definition = identities.definition(declaration.definition);
     auto semanticType = semanticTypes.get(declaration.inferredType);
     if (expression == zc::none || definition == zc::none ||
         !semanticType.is<type::SemanticTypeLookup>() ||
@@ -981,7 +993,7 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(
         !declaration.inferredType.belongsTo(hirModule.semanticContext())) {
       return rejectMir<BuiltMirCandidate>(
           ir::IrFailurePhase::MirConstruction, ir::IrFailureKind::MissingRequiredFact, module,
-          declaration.definition, registries, static_cast<uint32_t>(pending.size() + 1));
+          declaration.definition, identities, static_cast<uint32_t>(pending.size() + 1));
     }
     ZC_IF_SOME(literal, expression) {
       zc::Vector<MirSourceScope> scopes;
@@ -1012,7 +1024,7 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(
                            zc::mv(locals),
                            zc::mv(blocks)};
       zc::Array<uint8_t> ownerKey;
-      ZC_IF_SOME(key, definition) { ownerKey = key.encode(); }
+      ZC_IF_SOME(key, definition) { ownerKey = key.key().encode(); }
       pending.add(PendingMirFunction{zc::mv(function), zc::mv(ownerKey)});
       continue;
     }
@@ -1023,7 +1035,7 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(
     if (sourceBlock == zc::none) {
       return rejectMir<BuiltMirCandidate>(
           ir::IrFailurePhase::MirConstruction, ir::IrFailureKind::MissingRequiredFact, module,
-          declaration.definition, registries, static_cast<uint32_t>(pending.size() + 1));
+          declaration.definition, identities, static_cast<uint32_t>(pending.size() + 1));
     }
     hir::HirNodeId returnNode;
     ZC_IF_SOME(value, sourceBlock) {
@@ -1033,7 +1045,7 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(
     hir::HirNodeId expressionNode;
     ZC_IF_SOME(value, sourceReturn) { expressionNode = value.value; }
     auto expression = expressionFor(hirModule, expressionNode);
-    auto definition = registries.definitions().lookup(declaration.definition);
+    auto definition = identities.definition(declaration.definition);
     auto semanticType = semanticTypes.get(declaration.resultType);
     if (sourceReturn == zc::none || expression == zc::none || definition == zc::none ||
         !semanticType.is<type::SemanticTypeLookup>() ||
@@ -1041,7 +1053,7 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(
         !declaration.resultType.belongsTo(hirModule.semanticContext())) {
       return rejectMir<BuiltMirCandidate>(
           ir::IrFailurePhase::MirConstruction, ir::IrFailureKind::MissingRequiredFact, module,
-          declaration.definition, registries, static_cast<uint32_t>(pending.size() + 1));
+          declaration.definition, identities, static_cast<uint32_t>(pending.size() + 1));
     }
     ZC_IF_SOME(literal, expression) {
       zc::Vector<MirSourceScope> scopes;
@@ -1062,7 +1074,7 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(
                            zc::mv(locals),
                            zc::mv(blocks)};
       zc::Array<uint8_t> ownerKey;
-      ZC_IF_SOME(key, definition) { ownerKey = key.encode(); }
+      ZC_IF_SOME(key, definition) { ownerKey = key.key().encode(); }
       pending.add(PendingMirFunction{zc::mv(function), zc::mv(ownerKey)});
       continue;
     }
@@ -1073,24 +1085,24 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(
   zc::Vector<MirFunction> functions;
   zc::Vector<zc::Array<uint8_t>> canonicalFunctions;
   for (auto& item : pending) {
-    auto encoded = encodeFunction(item.function, module, registries, semanticTypes);
+    auto encoded = encodeFunction(item.function, module, identities, semanticTypes);
     if (encoded == zc::none) {
       return rejectMir<BuiltMirCandidate>(
           ir::IrFailurePhase::MirConstruction, ir::IrFailureKind::CanonicalCodecMismatch, module,
-          item.function.owner, registries, static_cast<uint32_t>(functions.size() + 1));
+          item.function.owner, identities, static_cast<uint32_t>(functions.size() + 1));
     }
     ZC_IF_SOME(record, encoded) { canonicalFunctions.add(zc::mv(record)); }
     functions.add(zc::mv(item.function));
   }
-  auto moduleKey = registries.modules().lookup(module);
+  auto moduleKey = identities.module(module);
   if (moduleKey == zc::none) {
     return rejectMir<BuiltMirCandidate>(ir::IrFailurePhase::MirConstruction,
                                         ir::IrFailureKind::InvalidFact, module,
-                                        firstDefinition(hirModule), registries, 0);
+                                        firstDefinition(hirModule), identities, 0);
   }
   zc::Maybe<MirRevisionId> revision;
   ZC_IF_SOME(key, moduleKey) {
-    auto expanded = key.encode();
+    auto expanded = key.key().encode();
     revision = MirRevisionCodec::computeBuilt(
         hirModule.contextFingerprint(), expanded.asPtr(), hirModule.checkedFactsRevision(),
         hirModule.dispatchFactsRevision(), hirModule.borrowEvidenceRevision(),
@@ -1099,7 +1111,7 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(
   if (revision == zc::none) {
     return rejectMir<BuiltMirCandidate>(ir::IrFailurePhase::MirConstruction,
                                         ir::IrFailureKind::CanonicalCodecMismatch, module,
-                                        firstDefinition(hirModule), registries, 0);
+                                        firstDefinition(hirModule), identities, 0);
   }
   ZC_IF_SOME(value, revision) {
     return ir::IrOperationResult<BuiltMirCandidate>::verified(
@@ -1111,7 +1123,7 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(
 ir::IrOperationResult<VerifiedBuiltMir> BuiltMirVerifier::verify(BuiltMirCandidate&& candidate) {
   const auto& hirModule = candidate.sourceHir;
   const auto module = hirModule.module();
-  const auto& registries = hirModule.registries();
+  const auto identities = hirModule.retainIdentityAuthority();
   const auto& semanticTypes = hirModule.semanticTypes();
   const auto evidence =
       hirModule.borrowEvidenceRepository().lookup(hirModule.borrowEvidenceLease());
@@ -1122,7 +1134,7 @@ ir::IrOperationResult<VerifiedBuiltMir> BuiltMirVerifier::verify(BuiltMirCandida
       candidate.canonicalFunctions.size() != candidate.functions.size()) {
     return rejectMir<VerifiedBuiltMir>(ir::IrFailurePhase::BuiltMirVerification,
                                        ir::IrFailureKind::InputRevisionMismatch, module,
-                                       firstDefinition(hirModule), registries, 0);
+                                       firstDefinition(hirModule), identities, 0);
   }
 
   zc::Vector<zc::Array<uint8_t>> recomputedFunctions;
@@ -1135,7 +1147,7 @@ ir::IrOperationResult<VerifiedBuiltMir> BuiltMirVerifier::verify(BuiltMirCandida
       if (declaration != zc::none) {
         return rejectMir<VerifiedBuiltMir>(
             ir::IrFailurePhase::BuiltMirVerification, ir::IrFailureKind::AdditionalFact, module,
-            function.owner, registries, static_cast<uint32_t>(index + 1));
+            function.owner, identities, static_cast<uint32_t>(index + 1));
       }
       declaration = value;
     }
@@ -1145,49 +1157,49 @@ ir::IrOperationResult<VerifiedBuiltMir> BuiltMirVerifier::verify(BuiltMirCandida
       if (sourceFunction != zc::none) {
         return rejectMir<VerifiedBuiltMir>(
             ir::IrFailurePhase::BuiltMirVerification, ir::IrFailureKind::AdditionalFact, module,
-            function.owner, registries, static_cast<uint32_t>(index + 1));
+            function.owner, identities, static_cast<uint32_t>(index + 1));
       }
       sourceFunction = value;
     }
     if ((declaration == zc::none) == (sourceFunction == zc::none)) {
       return rejectMir<VerifiedBuiltMir>(ir::IrFailurePhase::BuiltMirVerification,
                                          ir::IrFailureKind::AdditionalFact, module, function.owner,
-                                         registries, static_cast<uint32_t>(index + 1));
+                                         identities, static_cast<uint32_t>(index + 1));
     }
     ZC_IF_SOME(sourceDeclaration, declaration) {
       auto expression = expressionFor(hirModule, sourceDeclaration.initializer);
       if (expression == zc::none) {
         return rejectMir<VerifiedBuiltMir>(
             ir::IrFailurePhase::BuiltMirVerification, ir::IrFailureKind::MissingRequiredFact,
-            module, function.owner, registries, static_cast<uint32_t>(index + 1));
+            module, function.owner, identities, static_cast<uint32_t>(index + 1));
       }
       ZC_IF_SOME(sourceExpression, expression) {
-        if (!validScalarFunction(function, sourceDeclaration, sourceExpression, module, registries,
+        if (!validScalarFunction(function, sourceDeclaration, sourceExpression, module, identities,
                                  semanticTypes)) {
           return rejectMir<VerifiedBuiltMir>(ir::IrFailurePhase::BuiltMirVerification,
                                              ir::IrFailureKind::InvalidFact, module, function.owner,
-                                             registries, static_cast<uint32_t>(index + 1));
+                                             identities, static_cast<uint32_t>(index + 1));
         }
-        auto owner = registries.definitions().lookup(function.owner);
-        auto record = encodeFunction(function, module, registries, semanticTypes);
+        auto owner = identities.definition(function.owner);
+        auto record = encodeFunction(function, module, identities, semanticTypes);
         if (owner == zc::none || record == zc::none) {
           return rejectMir<VerifiedBuiltMir>(
               ir::IrFailurePhase::BuiltMirVerification, ir::IrFailureKind::CanonicalCodecMismatch,
-              module, function.owner, registries, static_cast<uint32_t>(index + 1));
+              module, function.owner, identities, static_cast<uint32_t>(index + 1));
         }
         zc::Array<uint8_t> ownerBytes;
-        ZC_IF_SOME(value, owner) { ownerBytes = value.encode(); }
+        ZC_IF_SOME(value, owner) { ownerBytes = value.key().encode(); }
         if (index != 0 && !lessBytes(previousOwner.asPtr(), ownerBytes.asPtr())) {
           return rejectMir<VerifiedBuiltMir>(ir::IrFailurePhase::BuiltMirVerification,
                                              ir::IrFailureKind::InvalidFact, module, function.owner,
-                                             registries, static_cast<uint32_t>(index + 1));
+                                             identities, static_cast<uint32_t>(index + 1));
         }
         previousOwner = zc::mv(ownerBytes);
         ZC_IF_SOME(value, record) {
           if (value.asPtr() != candidate.canonicalFunctions[index].asPtr()) {
             return rejectMir<VerifiedBuiltMir>(
                 ir::IrFailurePhase::BuiltMirVerification, ir::IrFailureKind::CanonicalCodecMismatch,
-                module, function.owner, registries, static_cast<uint32_t>(index + 1));
+                module, function.owner, identities, static_cast<uint32_t>(index + 1));
           }
           recomputedFunctions.add(zc::mv(value));
         }
@@ -1207,42 +1219,42 @@ ir::IrOperationResult<VerifiedBuiltMir> BuiltMirVerifier::verify(BuiltMirCandida
       if (sourceBlock == zc::none || sourceReturn == zc::none || expression == zc::none) {
         return rejectMir<VerifiedBuiltMir>(
             ir::IrFailurePhase::BuiltMirVerification, ir::IrFailureKind::MissingRequiredFact,
-            module, function.owner, registries, static_cast<uint32_t>(index + 1));
+            module, function.owner, identities, static_cast<uint32_t>(index + 1));
       }
       bool valid = false;
       ZC_IF_SOME(block, sourceBlock) {
         ZC_IF_SOME(returnStatement, sourceReturn) {
           ZC_IF_SOME(sourceExpression, expression) {
             valid = validScalarReturnFunction(function, sourceDeclaration, block, returnStatement,
-                                              sourceExpression, module, registries, semanticTypes);
+                                              sourceExpression, module, identities, semanticTypes);
           }
         }
       }
       if (!valid) {
         return rejectMir<VerifiedBuiltMir>(ir::IrFailurePhase::BuiltMirVerification,
                                            ir::IrFailureKind::InvalidFact, module, function.owner,
-                                           registries, static_cast<uint32_t>(index + 1));
+                                           identities, static_cast<uint32_t>(index + 1));
       }
-      auto owner = registries.definitions().lookup(function.owner);
-      auto record = encodeFunction(function, module, registries, semanticTypes);
+      auto owner = identities.definition(function.owner);
+      auto record = encodeFunction(function, module, identities, semanticTypes);
       if (owner == zc::none || record == zc::none) {
         return rejectMir<VerifiedBuiltMir>(
             ir::IrFailurePhase::BuiltMirVerification, ir::IrFailureKind::CanonicalCodecMismatch,
-            module, function.owner, registries, static_cast<uint32_t>(index + 1));
+            module, function.owner, identities, static_cast<uint32_t>(index + 1));
       }
       zc::Array<uint8_t> ownerBytes;
-      ZC_IF_SOME(value, owner) { ownerBytes = value.encode(); }
+      ZC_IF_SOME(value, owner) { ownerBytes = value.key().encode(); }
       if (index != 0 && !lessBytes(previousOwner.asPtr(), ownerBytes.asPtr())) {
         return rejectMir<VerifiedBuiltMir>(ir::IrFailurePhase::BuiltMirVerification,
                                            ir::IrFailureKind::InvalidFact, module, function.owner,
-                                           registries, static_cast<uint32_t>(index + 1));
+                                           identities, static_cast<uint32_t>(index + 1));
       }
       previousOwner = zc::mv(ownerBytes);
       ZC_IF_SOME(value, record) {
         if (value.asPtr() != candidate.canonicalFunctions[index].asPtr()) {
           return rejectMir<VerifiedBuiltMir>(
               ir::IrFailurePhase::BuiltMirVerification, ir::IrFailureKind::CanonicalCodecMismatch,
-              module, function.owner, registries, static_cast<uint32_t>(index + 1));
+              module, function.owner, identities, static_cast<uint32_t>(index + 1));
         }
         recomputedFunctions.add(zc::mv(value));
       }
@@ -1251,11 +1263,11 @@ ir::IrOperationResult<VerifiedBuiltMir> BuiltMirVerifier::verify(BuiltMirCandida
     ZC_UNREACHABLE
   }
 
-  auto moduleKey = registries.modules().lookup(module);
+  auto moduleKey = identities.module(module);
   zc::Maybe<MirRevisionId> recomputedRevision;
   if (moduleKey != zc::none) {
     ZC_IF_SOME(key, moduleKey) {
-      auto expanded = key.encode();
+      auto expanded = key.key().encode();
       recomputedRevision = MirRevisionCodec::computeBuilt(
           hirModule.contextFingerprint(), expanded.asPtr(), hirModule.checkedFactsRevision(),
           hirModule.dispatchFactsRevision(), hirModule.borrowEvidenceRevision(),
@@ -1265,7 +1277,7 @@ ir::IrOperationResult<VerifiedBuiltMir> BuiltMirVerifier::verify(BuiltMirCandida
   if (recomputedRevision == zc::none) {
     return rejectMir<VerifiedBuiltMir>(ir::IrFailurePhase::BuiltMirVerification,
                                        ir::IrFailureKind::CanonicalCodecMismatch, module,
-                                       firstDefinition(hirModule), registries, 0);
+                                       firstDefinition(hirModule), identities, 0);
   }
   bool revisionMatches = false;
   ZC_IF_SOME(value, recomputedRevision) {
@@ -1274,20 +1286,21 @@ ir::IrOperationResult<VerifiedBuiltMir> BuiltMirVerifier::verify(BuiltMirCandida
   if (!revisionMatches) {
     return rejectMir<VerifiedBuiltMir>(ir::IrFailurePhase::BuiltMirVerification,
                                        ir::IrFailureKind::InputRevisionMismatch, module,
-                                       firstDefinition(hirModule), registries, 0);
+                                       firstDefinition(hirModule), identities, 0);
   }
   auto lease =
       hirModule.borrowEvidenceRepository().lease(module, hirModule.borrowEvidenceRevision());
   if (lease == zc::none) {
     return rejectMir<VerifiedBuiltMir>(ir::IrFailurePhase::BuiltMirVerification,
                                        ir::IrFailureKind::InputRevisionMismatch, module,
-                                       firstDefinition(hirModule), registries, 0);
+                                       firstDefinition(hirModule), identities, 0);
   }
   ZC_IF_SOME(borrowLease, lease) {
     auto impl = zc::heap<VerifiedBuiltMir::Impl>(
         hirModule.semanticContext(), hirModule.contextFingerprint().clone(),
         hirModule.compilationUnit(), hirModule.crate(), module, hirModule.checkedFactsRevision(),
-        hirModule.dispatchFactsRevision(), hirModule.borrowEvidenceRevision(), zc::mv(borrowLease),
+        hirModule.dispatchFactsRevision(), hirModule.borrowEvidenceRevision(),
+        hirModule.retainBoundModule(), hirModule.retainIdentityAuthority(), zc::mv(borrowLease),
         hirModule.borrowEvidenceRepository(), zc::mv(candidate.functions),
         zc::mv(recomputedFunctions), candidate.revision);
     return ir::IrOperationResult<VerifiedBuiltMir>::verified(VerifiedBuiltMir(zc::mv(impl)));

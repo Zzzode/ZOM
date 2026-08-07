@@ -278,6 +278,48 @@ def parse_peak_rss(path: Path) -> int:
     raise BenchmarkError(f"cannot parse peak RSS output:\n{text}")
 
 
+def linux_process_peak_rss(process_id: int) -> int | None:
+    try:
+        status = Path(f"/proc/{process_id}/status").read_text(encoding="utf-8", errors="strict")
+    except OSError:
+        return None
+    for line in status.splitlines():
+        if not line.startswith("VmHWM:"):
+            continue
+        fields = line.split()
+        if len(fields) != 3 or fields[2] != "kB":
+            return None
+        return int(fields[1]) * 1024
+    return None
+
+
+def run_linux_without_time(
+    command: list[str], repository: Path, environment: dict[str, str]
+) -> tuple[int, str, int]:
+    with tempfile.TemporaryFile(prefix="zom-incremental-output-") as output:
+        process = subprocess.Popen(
+            command,
+            cwd=repository,
+            env=environment,
+            stdout=output,
+            stderr=subprocess.STDOUT,
+        )
+        peak_rss = 0
+        while process.poll() is None:
+            observed_rss = linux_process_peak_rss(process.pid)
+            if observed_rss is not None:
+                peak_rss = max(peak_rss, observed_rss)
+            time.sleep(0.001)
+        observed_rss = linux_process_peak_rss(process.pid)
+        if observed_rss is not None:
+            peak_rss = max(peak_rss, observed_rss)
+        output.seek(0)
+        command_output = output.read().decode("utf-8", errors="strict")
+    if peak_rss == 0:
+        raise BenchmarkError("cannot observe Linux peak RSS without an external time command")
+    return process.returncode, command_output, peak_rss
+
+
 def parse_ztest_elapsed(output: str) -> int:
     unit_nanoseconds = {"ns": 1, "μs": 1_000, "ms": 1_000_000, "s": 1_000_000_000}
     elapsed = 0.0
@@ -298,36 +340,41 @@ def parse_ztest_elapsed(output: str) -> int:
 def run_once(
     command: list[str], repository: Path, worker_count: int, elapsed_measurement: str
 ) -> tuple[int, int]:
-    with tempfile.NamedTemporaryFile(prefix="zom-incremental-rss-") as measurement:
-        if sys.platform == "darwin":
-            timed_command = ["/usr/bin/time", "-l", "-o", measurement.name, *command]
-        elif sys.platform.startswith("linux"):
-            timed_command = ["/usr/bin/time", "-v", "-o", measurement.name, *command]
-        else:
-            raise BenchmarkError(f"unsupported benchmark operating system: {sys.platform}")
-        environment = os.environ.copy()
-        environment["ZOM_INCREMENTAL_QUERY_WORKER_COUNT"] = str(worker_count)
-        started = time.monotonic_ns()
-        completed = subprocess.run(
-            timed_command,
-            cwd=repository,
-            env=environment,
-            check=False,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-        )
-        process_elapsed = time.monotonic_ns() - started
-        if completed.returncode != 0:
-            raise BenchmarkError(
-                f"benchmark command failed with exit code {completed.returncode}: "
-                f"{' '.join(command)}\n{completed.stdout}"
+    environment = os.environ.copy()
+    environment["ZOM_INCREMENTAL_QUERY_WORKER_COUNT"] = str(worker_count)
+    started = time.monotonic_ns()
+    if sys.platform == "darwin":
+        time_command = "/usr/bin/time"
+    elif sys.platform.startswith("linux"):
+        time_command = shutil.which("gtime") or shutil.which("time")
+    else:
+        raise BenchmarkError(f"unsupported benchmark operating system: {sys.platform}")
+    if time_command is None:
+        return_code, output, peak_rss = run_linux_without_time(command, repository, environment)
+    else:
+        with tempfile.NamedTemporaryFile(prefix="zom-incremental-rss-") as measurement:
+            time_flag = "-l" if sys.platform == "darwin" else "-v"
+            completed = subprocess.run(
+                [time_command, time_flag, "-o", measurement.name, *command],
+                cwd=repository,
+                env=environment,
+                check=False,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
             )
-        if elapsed_measurement == "ztest-monotonic-sum":
-            elapsed = parse_ztest_elapsed(completed.stdout)
-        else:
-            elapsed = process_elapsed
-        peak_rss = parse_peak_rss(Path(measurement.name))
+            return_code = completed.returncode
+            output = completed.stdout
+            peak_rss = parse_peak_rss(Path(measurement.name))
+    process_elapsed = time.monotonic_ns() - started
+    if return_code != 0:
+        raise BenchmarkError(
+            f"benchmark command failed with exit code {return_code}: {' '.join(command)}\n{output}"
+        )
+    if elapsed_measurement == "ztest-monotonic-sum":
+        elapsed = parse_ztest_elapsed(output)
+    else:
+        elapsed = process_elapsed
     return elapsed, peak_rss
 
 

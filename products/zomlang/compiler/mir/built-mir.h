@@ -18,6 +18,11 @@
 #include "zomlang/compiler/ir/ir-failure.h"
 #include "zomlang/compiler/ir/ir-identity.h"
 
+namespace zomlang::compiler::ownership {
+class OwnershipEventOverlayBuilder;
+class OwnershipEventOverlayVerifier;
+}  // namespace zomlang::compiler::ownership
+
 namespace zomlang::compiler::mir {
 
 /// \brief Deterministic one-based identity of a local in one MIR body.
@@ -396,11 +401,15 @@ public:
   ZC_NODISCARD zc::ArrayPtr<const zc::Array<uint8_t>> canonicalFunctionRecords() const noexcept;
 
 private:
+  ZC_NODISCARD driver::module_graph_query::CheckerBoundModuleView retainBoundModule() const;
+  ZC_NODISCARD checker::CheckerIdentityAuthority retainIdentityAuthority() const;
   struct Impl;
   explicit VerifiedBuiltMir(zc::Own<Impl>&& impl) noexcept;
   zc::Own<Impl> impl;
 
   friend class BuiltMirVerifier;
+  friend class ownership::OwnershipEventOverlayBuilder;
+  friend class ownership::OwnershipEventOverlayVerifier;
 };
 
 /// \brief Lowers the complete currently supported HIR scalar slice into Built MIR.

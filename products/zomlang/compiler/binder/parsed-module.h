@@ -9,7 +9,7 @@
 #include "zc/core/memory.h"
 #include "zc/core/one-of.h"
 #include "zomlang/compiler/ast/tree.h"
-#include "zomlang/compiler/identity/semantic-identity-registry-set.h"
+#include "zomlang/compiler/identity/brand.h"
 #include "zomlang/compiler/identity/source-snapshot.h"
 #include "zomlang/compiler/parser/canonical-parsed-source.h"
 #include "zomlang/compiler/source/manager.h"
@@ -80,12 +80,15 @@ public:
   ZC_NODISCARD const identity::Sha256Digest& contentDigest() const noexcept;
   ZC_NODISCARD uint64_t byteLength() const noexcept;
   ZC_NODISCARD const ast::Tree& tree() const noexcept;
+  ZC_NODISCARD const ParsedModuleReceipt& receipt() const noexcept;
+  ZC_NODISCARD identity::SourceSpan rootSpan() const;
   ZC_NODISCARD zc::Maybe<identity::SourceSpan> spanFor(source::SourceRange range) const;
   ZC_NODISCARD zc::Maybe<identity::SourceSpan> retainedTokenSpan(
       ast::NodeId owner, uint32_t tokenOrdinal, ast::SyntaxKind expectedKind) const;
   ZC_NODISCARD zc::Maybe<identity::SourceSpan> functionParameterNameSpan(
       ast::NodeId parameter, ast::SyntaxKind expectedKind) const;
   ZC_NODISCARD bool functionParameterHasImplicitSelfType(ast::NodeId parameter) const;
+  ZC_NODISCARD zc::Maybe<source::SourceLoc> sourceLocFor(const identity::SourceSpan& span) const;
 
 private:
   struct Impl;
@@ -98,7 +101,7 @@ private:
   friend class VerifiedParsedModule;
 };
 
-/// \brief Query-owned parsed source verified against the frozen source registry.
+/// \brief Query-owned parsed source verified against an immutable source snapshot.
 class VerifiedParsedModule final {
 public:
   ~VerifiedParsedModule() noexcept(false);
@@ -106,7 +109,6 @@ public:
   VerifiedParsedModule& operator=(VerifiedParsedModule&&) noexcept;
   ZC_DISALLOW_COPY(VerifiedParsedModule);
 
-  ZC_NODISCARD identity::SourceFileId sourceFile() const noexcept;
   ZC_NODISCARD const identity::SourceFileKey& source() const noexcept;
   ZC_NODISCARD const identity::Sha256Digest& contentDigest() const noexcept;
   ZC_NODISCARD uint64_t byteLength() const noexcept;
@@ -133,12 +135,12 @@ private:
 
 using ParsedModuleVerificationResult = zc::OneOf<VerifiedParsedModule, ParsedModuleInvariantFact>;
 
-/// \brief Verifies a ParseSource value against the frozen source identity authority.
+/// \brief Verifies a ParseSource value against its immutable source snapshot.
 class ParsedModuleVerifier final {
 public:
   ZC_NODISCARD static ParsedModuleVerificationResult verifyQueryResult(
       identity::SemanticContextBrand context,
-      const identity::SemanticIdentityRegistrySet& registries,
+      const identity::ImmutableSourceSnapshot& materializedSnapshot,
       const identity::SourceFileKey& materializedSource,
       const source::SourceManager& materializedSources, const source::BufferId& materializedBuffer,
       parser::CanonicalParsedSource&& parsedSource);

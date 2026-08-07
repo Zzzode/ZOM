@@ -2133,12 +2133,6 @@ temporary immutable verified inputs.
   precedence when a source failure and structural mutation coexist. It includes
   duplicate declaration, NFC-equivalent duplicate, and duplicate-label
   primaries with attached `ZOM3017` and no required failed reference node.
-- Fact-schema gate:
-  `python3 scripts/check-binder-fact-schema.py --check`. It rejects duplicate or
-  unstable tags, unknown domains or mutation classes, absent record codecs,
-  missing executable mutation tests, disconnected generated consumers,
-  producer reuse in production verification, target leakage, and component size
-  regressions.
 - Unlabeled control-transfer matrix: missing, additional, and reordered facts;
   wrong transfer kind, nearest target, target variant, and statement source;
   foreign target scopes; `continue` targeting a match; missing or malformed
@@ -2228,8 +2222,7 @@ temporary immutable verified inputs.
   binding allocation, surface, and interface dump goldens have bidirectional
   orphan checks in the same target set before landing.
 - Architecture commands:
-  `python3 scripts/check-binder-architecture.py --check` and
-  `python3 scripts/check-binder-fact-schema.py --check`, plus
+  `python3 scripts/check-binder-architecture.py --check`, plus
   `ctest --preset default --no-tests=error --output-on-failure -R '^binder-architecture-negative$'`.
 - Coverage commands: `cmake --preset coverage`,
   `cmake --build --preset coverage`, `ctest --preset coverageTests`,

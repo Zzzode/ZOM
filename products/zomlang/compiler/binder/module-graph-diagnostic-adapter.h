@@ -6,7 +6,8 @@
 #pragma once
 
 #include "zc/core/common.h"
-#include "zomlang/compiler/binder/binding-input.h"
+#include "zomlang/compiler/binder/module-dependency-requests.h"
+#include "zomlang/compiler/binder/module-graph-source-failure.h"
 
 namespace zomlang::compiler::diagnostics {
 class DiagnosticEngine;

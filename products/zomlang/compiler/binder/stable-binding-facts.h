@@ -183,11 +183,7 @@ private:
 
 enum class DefinitionBodyDisposition : uint8_t { NoExecutableBody = 0x01, ExecutableBody = 0x02 };
 enum class ImplementationSourceForm : uint8_t { Ordinary = 0x01, BodylessMarker = 0x02 };
-enum class StableExplicitCaptureMode : uint8_t {
-  ByValue = 0x01,
-  ByReference = 0x02,
-  This = 0x03
-};
+enum class StableExplicitCaptureMode : uint8_t { ByValue = 0x01, ByReference = 0x02, This = 0x03 };
 enum class ScopeRole : uint8_t {
   Declaration = 0x01,
   Generic = 0x02,
@@ -680,9 +676,10 @@ public:
   StableLabelFact& operator=(StableLabelFact&&) noexcept;
   ZC_DISALLOW_COPY(StableLabelFact);
 
-  ZC_NODISCARD static zc::Maybe<StableLabelFact> from(
-      StableLabelKey&& key, identity::DeclaredDefinitionName&& name,
-      LocalSyntaxPath&& statementPath, StableLabelTarget&& target);
+  ZC_NODISCARD static zc::Maybe<StableLabelFact> from(StableLabelKey&& key,
+                                                      identity::DeclaredDefinitionName&& name,
+                                                      LocalSyntaxPath&& statementPath,
+                                                      StableLabelTarget&& target);
   ZC_NODISCARD StableLabelFact clone() const;
   ZC_NODISCARD const StableLabelKey& key() const noexcept;
   ZC_NODISCARD const identity::DeclaredDefinitionName& name() const noexcept;
@@ -707,8 +704,7 @@ struct StableMatchControlTarget final {
   StableScopeOwnerKey scope;
 };
 using StableControlTargetValue =
-    zc::OneOf<StableExplicitLabelControlTarget, StableLoopControlTarget,
-              StableMatchControlTarget>;
+    zc::OneOf<StableExplicitLabelControlTarget, StableLoopControlTarget, StableMatchControlTarget>;
 
 /// \brief Closed stable target of a break or continue transfer.
 class StableControlTarget final {
@@ -740,9 +736,10 @@ public:
   StableControlTransferFact& operator=(StableControlTransferFact&&) noexcept;
   ZC_DISALLOW_COPY(StableControlTransferFact);
 
-  ZC_NODISCARD static zc::Maybe<StableControlTransferFact> from(
-      StableOwnerBodyQueryKey&& owner, LocalSyntaxPath&& transferPath,
-      ControlTransferKind kind, StableControlTarget&& target);
+  ZC_NODISCARD static zc::Maybe<StableControlTransferFact> from(StableOwnerBodyQueryKey&& owner,
+                                                                LocalSyntaxPath&& transferPath,
+                                                                ControlTransferKind kind,
+                                                                StableControlTarget&& target);
   ZC_NODISCARD StableControlTransferFact clone() const;
   ZC_NODISCARD const StableOwnerBodyQueryKey& owner() const noexcept;
   ZC_NODISCARD const LocalSyntaxPath& transferPath() const noexcept;
@@ -765,9 +762,9 @@ public:
   StableClosureFact& operator=(StableClosureFact&&) noexcept;
   ZC_DISALLOW_COPY(StableClosureFact);
 
-  ZC_NODISCARD static zc::Maybe<StableClosureFact> from(
-      StableOwnerBodyQueryKey&& owner, AnonymousOwnerLocalKey&& closure,
-      StableScopeOwnerKey&& scope);
+  ZC_NODISCARD static zc::Maybe<StableClosureFact> from(StableOwnerBodyQueryKey&& owner,
+                                                        AnonymousOwnerLocalKey&& closure,
+                                                        StableScopeOwnerKey&& scope);
   ZC_NODISCARD StableClosureFact clone() const;
   ZC_NODISCARD const StableOwnerBodyQueryKey& owner() const noexcept;
   ZC_NODISCARD const AnonymousOwnerLocalKey& closure() const noexcept;
@@ -790,8 +787,7 @@ public:
   ZC_DISALLOW_COPY(StableClosureFreeVariable);
 
   ZC_NODISCARD static StableClosureFreeVariable from(
-      StableBindingTargetKey&& target,
-      CanonicalNonEmptySequence<LocalSyntaxPath>&& referencePaths);
+      StableBindingTargetKey&& target, CanonicalNonEmptySequence<LocalSyntaxPath>&& referencePaths);
   ZC_NODISCARD StableClosureFreeVariable clone() const;
   ZC_NODISCARD const StableBindingTargetKey& target() const noexcept;
   ZC_NODISCARD const CanonicalNonEmptySequence<LocalSyntaxPath>& referencePaths() const noexcept;
@@ -820,9 +816,7 @@ public:
   ZC_NODISCARD const AnonymousOwnerLocalKey& closure() const noexcept;
   ZC_NODISCARD const CanonicalSequence<StableClosureFreeVariable>& variables() const noexcept;
   bool operator==(const StableClosureFreeVariableFact& other) const;
-  bool operator!=(const StableClosureFreeVariableFact& other) const {
-    return !(*this == other);
-  }
+  bool operator!=(const StableClosureFreeVariableFact& other) const { return !(*this == other); }
 
 private:
   struct Impl;
@@ -839,16 +833,13 @@ public:
   ZC_DISALLOW_COPY(StableExplicitCaptureBindingFact);
 
   ZC_NODISCARD static zc::Maybe<StableExplicitCaptureBindingFact> from(
-      LocalSyntaxPath&& itemPath, StableBindingTargetKey&& target,
-      StableExplicitCaptureMode mode);
+      LocalSyntaxPath&& itemPath, StableBindingTargetKey&& target, StableExplicitCaptureMode mode);
   ZC_NODISCARD StableExplicitCaptureBindingFact clone() const;
   ZC_NODISCARD const LocalSyntaxPath& itemPath() const noexcept;
   ZC_NODISCARD const StableBindingTargetKey& target() const noexcept;
   ZC_NODISCARD StableExplicitCaptureMode mode() const noexcept;
   bool operator==(const StableExplicitCaptureBindingFact& other) const;
-  bool operator!=(const StableExplicitCaptureBindingFact& other) const {
-    return !(*this == other);
-  }
+  bool operator!=(const StableExplicitCaptureBindingFact& other) const { return !(*this == other); }
 
 private:
   struct Impl;
@@ -874,9 +865,7 @@ public:
   ZC_NODISCARD const LocalSyntaxPath& captureListPath() const noexcept;
   ZC_NODISCARD const CanonicalSequence<StableExplicitCaptureBindingFact>& captures() const noexcept;
   bool operator==(const StableExplicitClosureCaptureFact& other) const;
-  bool operator!=(const StableExplicitClosureCaptureFact& other) const {
-    return !(*this == other);
-  }
+  bool operator!=(const StableExplicitClosureCaptureFact& other) const { return !(*this == other); }
 
 private:
   struct Impl;
@@ -1132,13 +1121,13 @@ public:
   ZC_NODISCARD static zc::Maybe<StableModuleAliasFact> from(
       StableSemanticImportQueryKey&& queryKey, StableScopeOwnerKey&& declaringScope,
       StableDefinitionQueryKey&& alias, identity::ModuleKey&& canonicalModule,
-      ExportSurfaceRevision targetSurfaceRevision);
+      ModuleAliasExportNamesRevision targetExportNamesRevision);
   ZC_NODISCARD StableModuleAliasFact clone() const;
   ZC_NODISCARD const StableSemanticImportQueryKey& queryKey() const noexcept;
   ZC_NODISCARD const StableScopeOwnerKey& declaringScope() const noexcept;
   ZC_NODISCARD const StableDefinitionQueryKey& alias() const noexcept;
   ZC_NODISCARD const identity::ModuleKey& canonicalModule() const noexcept;
-  ZC_NODISCARD const ExportSurfaceRevision& targetSurfaceRevision() const noexcept;
+  ZC_NODISCARD const ModuleAliasExportNamesRevision& targetExportNamesRevision() const noexcept;
   bool operator==(const StableModuleAliasFact& other) const;
   bool operator!=(const StableModuleAliasFact& other) const { return !(*this == other); }
 
@@ -1299,6 +1288,14 @@ private:
   struct Impl;
   explicit StableFailedLookupFact(zc::Own<Impl>&& impl) noexcept;
   zc::Own<Impl> impl;
+};
+
+/// \brief Runtime projection of one stable failed lookup without diagnostic ownership.
+struct MaterializedFailedLookupFact final {
+  ast::NodeId node;
+  Namespace nameSpace;
+  identity::DeclaredDefinitionName name;
+  StableFailedLookupOutcome outcome;
 };
 
 /// \brief Complete stable semantic fact inventory for one owner body.

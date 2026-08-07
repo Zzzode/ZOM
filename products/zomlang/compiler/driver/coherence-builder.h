@@ -16,7 +16,7 @@ struct CoherenceBuildInput final {
   const identity::SemanticContextFingerprint& contextFingerprint;
   const checker::signature::VerifiedMarkerPolicyRegistry& markerPolicies;
   zc::ArrayPtr<const VerifiedModuleInterface> interfaces;
-  const identity::SemanticIdentityRegistrySet& registries;
+  const checker::CheckerIdentityAuthority& identities;
 };
 
 /// \brief Sole driver projection into the checker-neutral coherence verifier.

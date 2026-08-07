@@ -8,12 +8,12 @@
 #include "zc/core/encoding.h"
 #include "zc/ztest/test.h"
 #include "zomlang/compiler/type/semantic-type-data.h"
-#include "zomlang/tests/unittests/compiler/test-semantic-identities.h"
+#include "zomlang/tests/unittests/compiler/checker/checker-authority-test-fixture.h"
 
 namespace zomlang::compiler::checker::checked {
 namespace {
 
-using namespace tests::test_identity_detail;
+using namespace tests::checker_fixture;
 
 identity::Sha256Digest repeatedDigest(uint8_t byte) {
   uint8_t bytes[32];
@@ -45,119 +45,53 @@ Map emptyMap() {
   return Map::fromEntries(zc::mv(entries));
 }
 
-identity::SemanticContextFingerprint checkedFactsFingerprint(
-    const identity::SemanticIdentityRegistrySet& registries) {
-  zc::Vector<identity::ToolchainSemanticContextInput> toolchainInputs;
-  zc::Vector<identity::PackageDependencyEdgeKey> packageEdges;
-  zc::Vector<identity::CrateDependencyEdgeKey> crateEdges;
-  auto result = identity::SemanticContextFingerprint::compute(
-      registries, toolchainInputs.asPtr(), packageEdges.asPtr(), crateEdges.asPtr());
-  ZC_IF_SOME(value, result) { return zc::mv(value); }
-  ZC_FAIL_REQUIRE("invalid checked-facts fingerprint fixture");
-}
-
-binder::ParsedModuleReceipt checkedFactsParsedReceipt(
-    const identity::SemanticIdentityRegistrySet& registries) {
-  const auto sourceBytes = tests::test_identity_detail::source().encode();
-  const auto& snapshot = registries.sourceSnapshots()[0];
-  const uint8_t astDump[] = {0x01};
-  auto result =
-      binder::ParsedModuleReceipt::compute(sourceBytes.asPtr(), snapshot.contentDigest(),
-                                           snapshot.bytes().size(), digest(0x44), astDump);
-  ZC_IF_SOME(value, result) { return value; }
-  ZC_FAIL_REQUIRE("invalid checked-facts parsed receipt fixture");
-}
-
 class CheckedFactsCodecFixture final {
 public:
-  CheckedFactsCodecFixture() {
-    auto issued = factory.issue();
-    ZC_REQUIRE(issued != zc::none);
-    ZC_IF_SOME(value, issued) { context = value; }
-    auto created = identity::SemanticIdentityRegistrySet::create(factory, context);
-    ZC_REQUIRE(created != zc::none);
-    ZC_IF_SOME(value, created) {
-      registries = zc::heap<identity::SemanticIdentityRegistrySet>(zc::mv(value));
-    }
-    auto brands = factory.issueRegistryBrandIssuer(context);
-    ZC_REQUIRE(brands != zc::none);
-    ZC_IF_SOME(value, brands) {
-      storeBrands = zc::heap<identity::RegistryBrandIssuer>(zc::mv(value));
-    }
-
-    ZC_REQUIRE(registries->collectCompilationUnit(userUnit()) ==
-               identity::FrozenRegistryFailure::None);
-    ZC_REQUIRE(registries->freezeCompilationUnits() == identity::FrozenRegistryFailure::None);
-    ZC_REQUIRE(registries->collectCrate(crate()) == identity::FrozenRegistryFailure::None);
-    ZC_REQUIRE(registries->freezeCrates() == identity::FrozenRegistryFailure::None);
-    auto snapshot = identity::ImmutableSourceSnapshot::from(tests::test_identity_detail::source(),
-                                                            zc::heapArray<uint8_t>(1, uint8_t{0}));
-    ZC_REQUIRE(snapshot != zc::none);
-    ZC_IF_SOME(value, snapshot) {
-      ZC_REQUIRE(registries->collectSourceFile(zc::mv(value)) ==
-                 identity::FrozenRegistryFailure::None);
-    }
-    ZC_REQUIRE(registries->freezeSourceFiles() == identity::FrozenRegistryFailure::None);
-    ZC_REQUIRE(registries->collectModule(module()) == identity::FrozenRegistryFailure::None);
-    ZC_REQUIRE(registries->freezeModules() == identity::FrozenRegistryFailure::None);
-    zc::Vector<identity::EnclosingStableOwnerKey> owners;
-    zc::Maybe<identity::OverloadHeaderDigest> noOverloadDigest;
-    auto definitionRecord = identity::DefinitionIdentityRecord::from(
-        module(), zc::mv(owners), identity::DefinitionKind::Constant,
-        identity::DefinitionNamespace::Value,
-        scalar<identity::DeclaredDefinitionName>("constant"_zc), zc::mv(noOverloadDigest));
-    ZC_REQUIRE(definitionRecord != zc::none);
-    ZC_IF_SOME(value, definitionRecord) {
-      retainedDefinition =
-          zc::heap<identity::DefinitionKey>(identity::DefinitionKey::compute(value));
-      zc::Maybe<identity::OverloadHeaderAuthority> noOverloadAuthority;
-      ZC_REQUIRE(registries->collectDefinition(zc::mv(value), zc::mv(noOverloadAuthority)) ==
-                 identity::FrozenRegistryFailure::None);
-    }
-    ZC_REQUIRE(registries->freezeStableIdentities() == identity::FrozenRegistryFailure::None);
-    ZC_REQUIRE(registries->freezeGenericParameters() == identity::FrozenRegistryFailure::None);
-    ZC_REQUIRE(registries->freezeCallableParameters() == identity::FrozenRegistryFailure::None);
-    auto foundModule = registries->modules().find(module());
-    ZC_REQUIRE(foundModule != zc::none);
-    ZC_IF_SOME(value, foundModule) { moduleId = value; }
-    auto foundDefinition = registries->definitions().find(*retainedDefinition);
-    ZC_REQUIRE(foundDefinition != zc::none);
-    ZC_IF_SOME(value, foundDefinition) { definitionId = value; }
-
-    auto typeToken = factory.issueSemanticTypeStoreConstructionToken(context);
-    ZC_REQUIRE(typeToken != zc::none);
-    ZC_IF_SOME(value, typeToken) {
-      semanticTypes = zc::heap<type::SemanticTypeStore>(zc::mv(value), *registries);
-    }
-    auto canonical = semanticTypes->canonicalizeClosed(type::semantic::TypeData(
+  CheckedFactsCodecFixture()
+      : session(
+            "interface Behavior { fun act(); }\n"
+            "class RecoveryOwner { fun act() {} }\n"
+            "impl Behavior for RecoveryOwner {}\n"_zc),
+        storeBrands(session.brands()),
+        semanticTypes(session.semanticTypes()) {
+    context = session.semanticContext();
+    moduleId = session.module();
+    definitionId = session.owner();
+    auto canonical = semanticTypes.canonicalizeClosed(type::semantic::TypeData(
         type::semantic::PrimitiveTypeData{type::semantic::PrimitiveKind::I32}));
     ZC_REQUIRE(canonical.is<type::semantic::CanonicalTypeData>());
     auto interned =
-        semanticTypes->intern(zc::mv(canonical).get<type::semantic::CanonicalTypeData>());
+        semanticTypes.intern(zc::mv(canonical).get<type::semantic::CanonicalTypeData>());
     ZC_REQUIRE(interned.is<type::SemanticTypeInterned>());
     i32 = interned.get<type::SemanticTypeInterned>().id;
+    zc::Vector<identity::SemanticTypeId> ownerArguments;
+    auto ownerCanonical = semanticTypes.canonicalizeClosed(type::semantic::TypeData(
+        type::semantic::NominalTypeData{definitionId, zc::mv(ownerArguments)}));
+    ZC_REQUIRE(ownerCanonical.is<type::semantic::CanonicalTypeData>());
+    auto ownerInterned =
+        semanticTypes.intern(zc::mv(ownerCanonical).get<type::semantic::CanonicalTypeData>());
+    ZC_REQUIRE(ownerInterned.is<type::SemanticTypeInterned>());
+    ownerType = ownerInterned.get<type::SemanticTypeInterned>().id;
 
-    fingerprintValue =
-        zc::heap<identity::SemanticContextFingerprint>(checkedFactsFingerprint(*registries));
-    parsedReceipt = zc::heap<binder::ParsedModuleReceipt>(checkedFactsParsedReceipt(*registries));
-    const auto moduleBytes = module().encode();
+    const auto moduleBytes = moduleKey().encode();
     const zc::ArrayPtr<const zc::ArrayPtr<const uint8_t>> emptyRecords;
     auto signature = signature::SignatureFactsRevision::computeFramed(
-        fingerprintValue->digest(), moduleBytes.asPtr(),
-        registries->sourceSnapshots()[0].contentDigest(), digest(0x21), digest(0x22), emptyRecords,
-        emptyRecords, emptyRecords);
+        session.identityAuthority().fingerprint().digest(), moduleBytes.asPtr(),
+        boundModule().parsedModule().contentDigest(), repeatedDigest(0x21), repeatedDigest(0x22),
+        emptyRecords, emptyRecords, emptyRecords);
     ZC_REQUIRE(signature != zc::none);
     ZC_IF_SOME(value, signature) {
       signatureRevision = zc::heap<signature::SignatureFactsRevision>(value);
     }
     auto imported = cross_module::ImportedSignatureViewRevision::computeFramed(
-        fingerprintValue->digest(), moduleBytes.asPtr(), emptyRecords);
+        session.identityAuthority().fingerprint().digest(), moduleBytes.asPtr(), emptyRecords);
     ZC_REQUIRE(imported != zc::none);
     ZC_IF_SOME(value, imported) {
       importedRevision = zc::heap<cross_module::ImportedSignatureViewRevision>(value);
     }
     auto coherence = cross_module::CoherenceViewRevision::computeFramed(
-        fingerprintValue->digest(), digest(0x23), emptyRecords, emptyRecords, emptyRecords);
+        session.identityAuthority().fingerprint().digest(), repeatedDigest(0x23), emptyRecords,
+        emptyRecords, emptyRecords);
     ZC_REQUIRE(coherence != zc::none);
     ZC_IF_SOME(value, coherence) {
       coherenceRevision = zc::heap<cross_module::CoherenceViewRevision>(value);
@@ -165,9 +99,7 @@ public:
   }
 
   CheckedNodeKey checkedNode(uint32_t preorder) const {
-    auto span = registries->sourceSnapshots()[0].span(0, 1);
-    ZC_IF_SOME(value, span) { return CheckedNodeKey{0x31, preorder, zc::mv(value)}; }
-    ZC_FAIL_REQUIRE("invalid checked node fixture");
+    return CheckedNodeKey{0x31, preorder, session.span(0, 1)};
   }
 
   CheckedFactsVerificationInput input(
@@ -175,16 +107,17 @@ public:
       zc::ArrayPtr<const DefinitionFactRequirement> definitionRequirements = {},
       zc::ArrayPtr<const CheckerFailureRef> registeredFailures = {},
       zc::ArrayPtr<const CaptureFactRequirement> captureRequirements = {},
-      zc::ArrayPtr<const binder::FrozenOwnerLocalBindingEntry> ownerLocalBindings = {},
-      zc::ArrayPtr<const binder::FrozenAnonymousEntityEntry> anonymousEntities = {}) const {
+      zc::ArrayPtr<const binder::MaterializedOwnerLocalBindingInventoryEntry> ownerLocalBindings =
+          {},
+      zc::ArrayPtr<const binder::MaterializedAnonymousEntityEntry> anonymousEntities = {},
+      zc::ArrayPtr<const identity::ImplId> coherentImpls = {}) const {
     const zc::ArrayPtr<const identity::DefId> importedDefinitions;
-    const zc::ArrayPtr<const identity::ImplId> coherentImpls;
     return CheckedFactsVerificationInput{context,
-                                         *fingerprintValue,
+                                         session.identityAuthority().fingerprint(),
                                          moduleId,
-                                         registries->sourceSnapshots()[0].source(),
-                                         registries->sourceSnapshots()[0].contentDigest(),
-                                         *parsedReceipt,
+                                         session.source(),
+                                         boundModule().parsedModule().contentDigest(),
+                                         boundModule().parsedModule().receipt(),
                                          *signatureRevision,
                                          *importedRevision,
                                          *coherenceRevision,
@@ -197,12 +130,26 @@ public:
                                          registeredFailures,
                                          ownerLocalBindings,
                                          anonymousEntities,
-                                         *registries,
-                                         *semanticTypes};
+                                         session.identityAuthority(),
+                                         semanticTypes};
+  }
+
+  identity::DefId definitionNamed(zc::StringPtr name) const {
+    const auto definitions = boundModule().definitions().definitions();
+    for (const auto& definition : definitions) {
+      if (definition.record.name() == name) return definition.definition;
+    }
+    ZC_FAIL_REQUIRE("missing checked-facts fixture definition");
+  }
+
+  identity::ImplId implementation() const {
+    const auto implementations = boundModule().definitions().identities().implementations();
+    ZC_REQUIRE(implementations.size() == 1);
+    return implementations[0].handle();
   }
 
   FrozenRecoveryLedger recoveryLedger() {
-    auto brand = storeBrands->issue();
+    auto brand = storeBrands.issue();
     ZC_REQUIRE(brand != zc::none);
     zc::Maybe<FrozenRecoveryLedger> result;
     ZC_IF_SOME(value, brand) {
@@ -251,8 +198,8 @@ public:
 
   CheckedFactsCandidate storeCandidate(zc::Array<uint8_t>&& substitutionRecord,
                                        zc::Array<uint8_t>&& witnessRecord) {
-    auto substitutionBrand = storeBrands->issue();
-    auto witnessBrand = storeBrands->issue();
+    auto substitutionBrand = storeBrands.issue();
+    auto witnessBrand = storeBrands.issue();
     ZC_REQUIRE(substitutionBrand != zc::none);
     ZC_REQUIRE(witnessBrand != zc::none);
     zc::Maybe<FrozenSubstitutionStore> substitutions;
@@ -280,6 +227,145 @@ public:
     ZC_UNREACHABLE
   }
 
+  CheckedFactsCandidate projectionCandidate(identity::DefId interface,
+                                            identity::ImplId implementation) {
+    auto substitutionBrand = storeBrands.issue();
+    auto witnessBrand = storeBrands.issue();
+    ZC_REQUIRE(substitutionBrand != zc::none);
+    ZC_REQUIRE(witnessBrand != zc::none);
+    zc::Maybe<FrozenSubstitutionStore> substitutions;
+    zc::Maybe<FrozenWitnessStore> witnesses;
+    ZC_IF_SOME(brand, substitutionBrand) {
+      zc::Vector<identity::DefId> parameters;
+      parameters.add(interface);
+      zc::Vector<identity::SemanticTypeId> arguments;
+      arguments.add(ownerType);
+      zc::Vector<FrozenSubstitutionStore::Record> records;
+      records.add(
+          FrozenSubstitutionStore::Record{SubstitutionData{zc::mv(parameters), zc::mv(arguments)},
+                                          zc::heapArray<uint8_t>(1, uint8_t{0xa1})});
+      substitutions = FrozenSubstitutionStore::from(context, brand, zc::mv(records));
+    }
+    ZC_IF_SOME(brand, witnessBrand) {
+      zc::Vector<identity::SemanticTypeId> interfaceArguments;
+      zc::Vector<WitnessEntry> entries;
+      entries.add(WitnessEntry{
+          ownerType, InterfaceInstantiation{interface, zc::mv(interfaceArguments)}, implementation,
+          zc::Vector<AssociatedTypeBindingData>(), zc::Vector<WitnessArgumentsId>()});
+      zc::Vector<FrozenWitnessStore::Record> records;
+      records.add(FrozenWitnessStore::Record{WitnessArgumentsData{zc::mv(entries)},
+                                             zc::heapArray<uint8_t>(1, uint8_t{0xa1})});
+      witnesses = FrozenWitnessStore::from(context, brand, zc::mv(records));
+    }
+    ZC_REQUIRE(substitutions != zc::none);
+    ZC_REQUIRE(witnesses != zc::none);
+
+    ZC_IF_SOME(substitutionStore, substitutions) {
+      ZC_IF_SOME(witnessStore, witnesses) {
+        auto substitution = substitutionStore.idAt(0);
+        auto witness = witnessStore.idAt(0);
+        ZC_REQUIRE(substitution != zc::none);
+        ZC_REQUIRE(witness != zc::none);
+        ZC_IF_SOME(substitutionId, substitution) {
+          ZC_IF_SOME(witnessId, witness) {
+            zc::Vector<identity::SemanticTypeId> interfaceArguments;
+            zc::Vector<ProjectionFactMap::Entry> projections;
+            projections.add(ProjectionFactMap::Entry{
+                ast::NodeId(33),
+                ProjectionFact{
+                    ast::NodeId(33),
+                    ProjectionKey{ownerType,
+                                  InterfaceInstantiation{interface, zc::mv(interfaceArguments)},
+                                  interface},
+                    ownerType, implementation, witnessId},
+                zc::heapArray<uint8_t>(1, uint8_t{0xa2})});
+            zc::Vector<identity::SemanticTypeId> obligationArguments;
+            zc::Vector<ObligationFactMap::Entry> obligations;
+            obligations.add(ObligationFactMap::Entry{
+                ast::NodeId(34),
+                ObligationFact{ast::NodeId(34), ownerType,
+                               InterfaceInstantiation{interface, zc::mv(obligationArguments)},
+                               ImplResolution(UniqueImplResolution{implementation, substitutionId,
+                                                                   witnessId})},
+                zc::heapArray<uint8_t>(1, uint8_t{0xa3})});
+            zc::Vector<identity::SemanticTypeId> eraseArguments;
+            zc::Vector<identity::DefId> upcastPath;
+            upcastPath.add(interface);
+            zc::Vector<CoercionStep> coercionSteps;
+            coercionSteps.add(
+                CoercionStep(DynEraseStep{InterfaceInstantiation{interface, zc::mv(eraseArguments)},
+                                          implementation, witnessId}));
+            coercionSteps.add(CoercionStep(DynUpcastStep{zc::mv(upcastPath)}));
+            zc::Vector<CoercionFactMap::Entry> coercions;
+            coercions.add(CoercionFactMap::Entry{
+                ast::NodeId(35),
+                CoercionAdjustment{CoercionSite::Argument, ownerType, ownerType,
+                                   zc::mv(coercionSteps), checkedNode(35).sourceSpan},
+                zc::heapArray<uint8_t>(1, uint8_t{0xa4})});
+            zc::Maybe<identity::ImplId> castImplementation = implementation;
+            zc::Maybe<WitnessArgumentsId> castWitnesses = witnessId;
+            zc::Vector<identity::DefId> castPath;
+            castPath.add(interface);
+            zc::Vector<CastFactMap::Entry> casts;
+            casts.add(CastFactMap::Entry{
+                ast::NodeId(36),
+                CheckedCastFact{ast::NodeId(36), CastMode::Guaranteed, CastKind::DynErase,
+                                ownerType, ownerType, ownerType, zc::mv(castImplementation),
+                                zc::mv(castWitnesses), zc::mv(castPath), UnsafeRequirement::None,
+                                checkedNode(36).sourceSpan},
+                zc::heapArray<uint8_t>(1, uint8_t{0xa5})});
+            zc::Vector<CoercionStep> receiverCoercionSteps;
+            receiverCoercionSteps.add(CoercionStep(NeverToStep{}));
+            zc::Maybe<CoercionAdjustment> receiverCoercion =
+                CoercionAdjustment{CoercionSite::Argument, ownerType, ownerType,
+                                   zc::mv(receiverCoercionSteps), checkedNode(37).sourceSpan};
+            zc::Maybe<CheckedArgumentFact> receiver = CheckedArgumentFact{
+                ast::NodeId(37), ownerType, ownerType, zc::mv(receiverCoercion)};
+            zc::Maybe<ReceiverMode> receiverMode = ReceiverMode::Shared;
+            zc::Vector<ReceiverAdjustmentStep> receiverSteps;
+            receiverSteps.add(ReceiverAdjustmentStep::DereferenceShared);
+            zc::Maybe<ReceiverAdjustment> receiverAdjustment = ReceiverAdjustment{
+                ownerType, ownerType, zc::mv(receiverSteps), checkedNode(37).sourceSpan};
+            zc::Vector<CheckedArgumentFact> arguments;
+            zc::Maybe<CoercionAdjustment> argumentCoercion;
+            arguments.add(CheckedArgumentFact{ast::NodeId(37), ownerType, ownerType,
+                                              zc::mv(argumentCoercion)});
+            zc::Maybe<CanonicalSubstitutionId> callSubstitution = substitutionId;
+            zc::Maybe<WitnessArgumentsId> callWitnesses = witnessId;
+            zc::Maybe<identity::SemanticTypeId> raises = ownerType;
+            zc::Vector<CallFactMap::Entry> calls;
+            calls.add(CallFactMap::Entry{
+                ast::NodeId(37),
+                TypedCallFact{ast::NodeId(37),
+                              CheckedCallEnvelope{SelectedCallable(DirectCallable{definitionId}),
+                                                  ownerType, zc::mv(receiver), zc::mv(receiverMode),
+                                                  zc::mv(receiverAdjustment), zc::mv(arguments),
+                                                  ownerType, ownerType, zc::mv(callSubstitution),
+                                                  zc::mv(callWitnesses), zc::mv(raises)},
+                              checkedNode(37).sourceSpan},
+                zc::heapArray<uint8_t>(1, uint8_t{0xa6})});
+            zc::Vector<ErrorUnionShapeFactMap::Entry> errorUnionShapes;
+            errorUnionShapes.add(ErrorUnionShapeFactMap::Entry{
+                ast::NodeId(37),
+                ErrorUnionShapeFact{ast::NodeId(37), ownerType, ownerType, ownerType,
+                                    ErrorUnionShapeOrigin::RaisingCall, checkedNode(37).sourceSpan},
+                zc::heapArray<uint8_t>(1, uint8_t{0xa7})});
+            auto result =
+                candidate(zc::mv(substitutionStore), zc::mv(witnessStore), emptyMap<NodeTypeMap>());
+            result.projections = ProjectionFactMap::fromEntries(zc::mv(projections));
+            result.obligations = ObligationFactMap::fromEntries(zc::mv(obligations));
+            result.coercions = CoercionFactMap::fromEntries(zc::mv(coercions));
+            result.casts = CastFactMap::fromEntries(zc::mv(casts));
+            result.calls = CallFactMap::fromEntries(zc::mv(calls));
+            result.errorUnionShapes = ErrorUnionShapeFactMap::fromEntries(zc::mv(errorUnionShapes));
+            return result;
+          }
+        }
+      }
+    }
+    ZC_UNREACHABLE
+  }
+
   CheckedFactsCandidate captureCandidate(const binder::AnonymousOwnerLocalKey& closure,
                                          binder::BindingTarget&& target, ast::NodeId node) {
     zc::Vector<PlaceProjection> projections;
@@ -297,15 +383,311 @@ public:
                      emptyMap<ConstantFactMap>(), CaptureFactMap::fromEntries(zc::mv(captures)));
   }
 
+  CheckedFactsCandidate surfaceFactsCandidate(bool includeExtendedFacts = false) {
+    const auto span = checkedNode(0).sourceSpan;
+    zc::Vector<LiteralFactMap::Entry> literals;
+    literals.add(LiteralFactMap::Entry{
+        ast::NodeId(1),
+        CheckedLiteralFact{ast::NodeId(1),
+                           CanonicalLiteral::integer(signature::CanonicalInteger{
+                               signature::IntegerSign::NonNegative, zc::heapArray<uint8_t>(0)}),
+                           i32, span.clone()},
+        zc::heapArray<uint8_t>(1, uint8_t{0xa1})});
+
+    zc::Vector<AggregateFactMap::Entry> aggregates;
+    aggregates.add(AggregateFactMap::Entry{
+        ast::NodeId(2),
+        CheckedAggregateFact{ast::NodeId(2), AggregateKind(TupleAggregate{}), i32,
+                             zc::Vector<AggregateElementFact>(), span.clone()},
+        zc::heapArray<uint8_t>(1, uint8_t{0xa2})});
+    aggregates.add(AggregateFactMap::Entry{
+        ast::NodeId(13),
+        CheckedAggregateFact{ast::NodeId(13), AggregateKind(ArrayAggregate{}), i32,
+                             zc::Vector<AggregateElementFact>(), span.clone()},
+        zc::heapArray<uint8_t>(1, uint8_t{0xd1})});
+    aggregates.add(AggregateFactMap::Entry{
+        ast::NodeId(14),
+        CheckedAggregateFact{ast::NodeId(14), AggregateKind(ObjectAggregate{}), i32,
+                             zc::Vector<AggregateElementFact>(), span.clone()},
+        zc::heapArray<uint8_t>(1, uint8_t{0xd2})});
+    aggregates.add(AggregateFactMap::Entry{
+        ast::NodeId(15),
+        CheckedAggregateFact{ast::NodeId(15), AggregateKind(NominalAggregate{definitionId}), i32,
+                             zc::Vector<AggregateElementFact>(), span.clone()},
+        zc::heapArray<uint8_t>(1, uint8_t{0xd3})});
+
+    zc::Vector<PlaceFactMap::Entry> places;
+    places.add(PlaceFactMap::Entry{
+        ast::NodeId(3),
+        CheckedPlaceFact{ast::NodeId(3), PlaceRoot(TemporaryPlaceRoot{ast::NodeId(3)}),
+                         zc::Vector<PlaceProjection>(), i32, false, true},
+        zc::heapArray<uint8_t>(1, uint8_t{0xa3})});
+    zc::Vector<PlaceProjection> projections;
+    projections.add(PlaceProjection(FieldProjection{definitionId}));
+    projections.add(PlaceProjection(TupleIndexProjection{1}));
+    projections.add(PlaceProjection(IndexProjection{ast::NodeId(16)}));
+    places.add(PlaceFactMap::Entry{
+        ast::NodeId(16),
+        CheckedPlaceFact{ast::NodeId(16), PlaceRoot(DefinitionPlaceRoot{definitionId}),
+                         zc::mv(projections), i32, true, false},
+        zc::heapArray<uint8_t>(1, uint8_t{0xd4})});
+
+    zc::Vector<CoercionStep> coercionSteps;
+    coercionSteps.add(CoercionStep(NeverToStep{}));
+    coercionSteps.add(CoercionStep(ToAnyStep{}));
+    coercionSteps.add(CoercionStep(ReborrowSharedStep{}));
+    coercionSteps.add(CoercionStep(ReferenceToRawConstStep{}));
+    coercionSteps.add(CoercionStep(ReferenceToRawMutableStep{}));
+    coercionSteps.add(CoercionStep(RawMutToConstStep{}));
+    coercionSteps.add(CoercionStep(UnionInjectStep{0, i32}));
+    zc::Vector<CoercionFactMap::Entry> coercions;
+    coercions.add(CoercionFactMap::Entry{
+        ast::NodeId(4),
+        CoercionAdjustment{CoercionSite::Argument, i32, i32, zc::mv(coercionSteps), span.clone()},
+        zc::heapArray<uint8_t>(1, uint8_t{0xa4})});
+
+    zc::Vector<CastFactMap::Entry> casts;
+    casts.add(CastFactMap::Entry{
+        ast::NodeId(5),
+        CheckedCastFact{ast::NodeId(5), CastMode::Guaranteed, CastKind::IntegerWiden, i32, i32, i32,
+                        zc::none, zc::none, zc::Vector<identity::DefId>(), UnsafeRequirement::None,
+                        span.clone()},
+        zc::heapArray<uint8_t>(1, uint8_t{0xa5})});
+
+    zc::Vector<DefinitionTypeMap::Entry> definitionTypes;
+    definitionTypes.add(
+        DefinitionTypeMap::Entry{definitionId, i32, zc::heapArray<uint8_t>(1, uint8_t{0xb0})});
+
+    zc::Vector<MemberFactMap::Entry> members;
+    members.add(MemberFactMap::Entry{
+        ast::NodeId(10), CheckedMemberFact{ast::NodeId(10), i32, definitionId, i32, zc::none},
+        zc::heapArray<uint8_t>(1, uint8_t{0xb1})});
+
+    zc::Vector<CallFactMap::Entry> calls;
+    calls.add(CallFactMap::Entry{
+        ast::NodeId(11),
+        TypedCallFact{
+            ast::NodeId(11),
+            CheckedCallEnvelope{SelectedCallable(DirectCallable{definitionId}), i32, zc::none,
+                                zc::none, zc::none, zc::Vector<CheckedArgumentFact>(), i32, i32,
+                                zc::none, zc::none, zc::none},
+            span.clone()},
+        zc::heapArray<uint8_t>(1, uint8_t{0xb2})});
+
+    zc::Vector<CompoundAssignmentFactMap::Entry> compoundAssignments;
+    compoundAssignments.add(CompoundAssignmentFactMap::Entry{
+        ast::NodeId(17),
+        CompoundAssignmentFact{
+            ast::NodeId(17), ast::NodeId(3), CompoundAssignmentOperation::AddAssign,
+            CheckedCallEnvelope{SelectedCallable(DirectCallable{definitionId}), i32, zc::none,
+                                zc::none, zc::none, zc::Vector<CheckedArgumentFact>(), i32, i32,
+                                zc::none, zc::none, zc::none},
+            zc::none, span.clone()},
+        zc::heapArray<uint8_t>(1, uint8_t{0xd5})});
+
+    zc::Vector<IndexFactMap::Entry> indexes;
+    indexes.add(IndexFactMap::Entry{
+        ast::NodeId(11),
+        CheckedIndexFact{ast::NodeId(11), i32, i32, i32, IndexAccessMode::Read, i32},
+        zc::heapArray<uint8_t>(1, uint8_t{0xb3})});
+
+    zc::Vector<PatternFactMap::Entry> patterns;
+    patterns.add(PatternFactMap::Entry{
+        ast::NodeId(6),
+        CheckedPatternFact{ast::NodeId(6), i32, PatternConstructor(WildcardPattern{}),
+                           zc::Vector<PatternBindingFact>(), zc::Vector<PatternRefinementFact>(),
+                           true, zc::none},
+        zc::heapArray<uint8_t>(1, uint8_t{0xa6})});
+    if (includeExtendedFacts) {
+      patterns.add(PatternFactMap::Entry{
+          ast::NodeId(20),
+          CheckedPatternFact{ast::NodeId(20), i32,
+                             PatternConstructor(LiteralPattern{CanonicalLiteral::integer(
+                                 signature::CanonicalInteger{signature::IntegerSign::NonNegative,
+                                                             zc::heapArray<uint8_t>(0)})}),
+                             zc::Vector<PatternBindingFact>(), zc::Vector<PatternRefinementFact>(),
+                             true, zc::none},
+          zc::heapArray<uint8_t>(1, uint8_t{0xd8})});
+      patterns.add(PatternFactMap::Entry{
+          ast::NodeId(21),
+          CheckedPatternFact{ast::NodeId(21), i32, PatternConstructor(TuplePattern{2}),
+                             zc::Vector<PatternBindingFact>(), zc::Vector<PatternRefinementFact>(),
+                             true, zc::none},
+          zc::heapArray<uint8_t>(1, uint8_t{0xd9})});
+      zc::Vector<identity::SemanticIdentifier> objectPatternFields;
+      objectPatternFields.add(scalar<identity::SemanticIdentifier>("field"_zc));
+      patterns.add(PatternFactMap::Entry{
+          ast::NodeId(22),
+          CheckedPatternFact{ast::NodeId(22), i32,
+                             PatternConstructor(ObjectPattern{zc::mv(objectPatternFields)}),
+                             zc::Vector<PatternBindingFact>(), zc::Vector<PatternRefinementFact>(),
+                             true, zc::none},
+          zc::heapArray<uint8_t>(1, uint8_t{0xda})});
+      patterns.add(PatternFactMap::Entry{
+          ast::NodeId(23),
+          CheckedPatternFact{ast::NodeId(23), i32,
+                             PatternConstructor(UnionAlternativePattern{0, i32}),
+                             zc::Vector<PatternBindingFact>(), zc::Vector<PatternRefinementFact>(),
+                             true, zc::none},
+          zc::heapArray<uint8_t>(1, uint8_t{0xdb})});
+      patterns.add(PatternFactMap::Entry{
+          ast::NodeId(24),
+          CheckedPatternFact{ast::NodeId(24), i32,
+                             PatternConstructor(EnumVariantPattern{definitionId}),
+                             zc::Vector<PatternBindingFact>(), zc::Vector<PatternRefinementFact>(),
+                             true, zc::none},
+          zc::heapArray<uint8_t>(1, uint8_t{0xdc})});
+      patterns.add(PatternFactMap::Entry{
+          ast::NodeId(25),
+          CheckedPatternFact{ast::NodeId(25), i32, PatternConstructor(NominalPattern{definitionId}),
+                             zc::Vector<PatternBindingFact>(), zc::Vector<PatternRefinementFact>(),
+                             true, zc::none},
+          zc::heapArray<uint8_t>(1, uint8_t{0xdd})});
+    }
+
+    zc::Vector<ObservedOperationFactMap::Entry> observedOperations;
+    observedOperations.add(ObservedOperationFactMap::Entry{
+        ast::NodeId(7),
+        ObservedOperationFact{ast::NodeId(7), ObservedOperation::Raise, zc::none, span.clone()},
+        zc::heapArray<uint8_t>(1, uint8_t{0xa7})});
+    if (includeExtendedFacts) {
+      observedOperations.add(ObservedOperationFactMap::Entry{
+          ast::NodeId(26),
+          ObservedOperationFact{ast::NodeId(26), ObservedOperation::MutateReceiver, zc::none,
+                                span.clone()},
+          zc::heapArray<uint8_t>(1, uint8_t{0xde})});
+      observedOperations.add(ObservedOperationFactMap::Entry{
+          ast::NodeId(27),
+          ObservedOperationFact{ast::NodeId(27), ObservedOperation::UnsafeBoundary, zc::none,
+                                span.clone()},
+          zc::heapArray<uint8_t>(1, uint8_t{0xdf})});
+      observedOperations.add(ObservedOperationFactMap::Entry{
+          ast::NodeId(28),
+          ObservedOperationFact{ast::NodeId(28), ObservedOperation::Suspend, zc::none,
+                                span.clone()},
+          zc::heapArray<uint8_t>(1, uint8_t{0xe0})});
+    }
+
+    zc::Vector<UnsafeOperationFactMap::Entry> unsafeOperations;
+    unsafeOperations.add(UnsafeOperationFactMap::Entry{
+        ast::NodeId(8), UnsafeScopeFact{ast::NodeId(8), UnsafeOperation::RawCast, zc::none, true},
+        zc::heapArray<uint8_t>(1, uint8_t{0xa8})});
+    if (includeExtendedFacts) {
+      unsafeOperations.add(UnsafeOperationFactMap::Entry{
+          ast::NodeId(29),
+          UnsafeScopeFact{ast::NodeId(29), UnsafeOperation::RawDereference, ast::NodeId(1), false},
+          zc::heapArray<uint8_t>(1, uint8_t{0xe1})});
+      unsafeOperations.add(UnsafeOperationFactMap::Entry{
+          ast::NodeId(30),
+          UnsafeScopeFact{ast::NodeId(30), UnsafeOperation::ExternCall, ast::NodeId(1), true},
+          zc::heapArray<uint8_t>(1, uint8_t{0xe2})});
+      unsafeOperations.add(UnsafeOperationFactMap::Entry{
+          ast::NodeId(31),
+          UnsafeScopeFact{ast::NodeId(31), UnsafeOperation::Transmute, ast::NodeId(1), true},
+          zc::heapArray<uint8_t>(1, uint8_t{0xe3})});
+      unsafeOperations.add(UnsafeOperationFactMap::Entry{
+          ast::NodeId(32),
+          UnsafeScopeFact{ast::NodeId(32), UnsafeOperation::PackedFieldAccess, ast::NodeId(1),
+                          true},
+          zc::heapArray<uint8_t>(1, uint8_t{0xe4})});
+    }
+
+    zc::Vector<MarkerObligationFactMap::Entry> markerObligations;
+    markerObligations.add(MarkerObligationFactMap::Entry{
+        ast::NodeId(18),
+        MarkerObligationFact{
+            ast::NodeId(18), i32, definitionId, Polarity::Positive,
+            MarkerEvidence(signature::BuiltinMarkerEvidence{signature::PrimitiveKind::I32})},
+        zc::heapArray<uint8_t>(1, uint8_t{0xd6})});
+
+    zc::Vector<ObligationFactMap::Entry> obligations;
+    zc::Vector<identity::SemanticTypeId> interfaceArguments;
+    interfaceArguments.add(i32);
+    obligations.add(ObligationFactMap::Entry{
+        ast::NodeId(19),
+        ObligationFact{ast::NodeId(19), i32,
+                       InterfaceInstantiation{definitionId, zc::mv(interfaceArguments)},
+                       ImplResolution(NoImplResolution{})},
+        zc::heapArray<uint8_t>(1, uint8_t{0xd7})});
+
+    zc::Vector<ExhaustivenessFactMap::Entry> exhaustiveness;
+    exhaustiveness.add(ExhaustivenessFactMap::Entry{
+        ast::NodeId(12),
+        ExhaustivenessFact{ast::NodeId(12), i32, ExhaustivenessDomain::Closed,
+                           zc::Vector<PatternConstructor>(), zc::Vector<PatternConstructor>(),
+                           zc::Vector<ast::NodeId>()},
+        zc::heapArray<uint8_t>(1, uint8_t{0xb4})});
+
+    zc::Vector<ErrorUnionShapeFactMap::Entry> errorUnionShapes;
+    errorUnionShapes.add(ErrorUnionShapeFactMap::Entry{
+        ast::NodeId(9),
+        ErrorUnionShapeFact{ast::NodeId(9), i32, i32, i32, ErrorUnionShapeOrigin::Coercion,
+                            span.clone()},
+        zc::heapArray<uint8_t>(1, uint8_t{0xa9})});
+
+    zc::Vector<ErrorOperatorFactMap::Entry> errorOperators;
+    errorOperators.add(
+        ErrorOperatorFactMap::Entry{ast::NodeId(9),
+                                    ErrorOperatorFact{ast::NodeId(9), ErrorOperatorKind::Propagate,
+                                                      i32, i32, i32, zc::none, span.clone()},
+                                    zc::heapArray<uint8_t>(1, uint8_t{0xaa})});
+
+    return CheckedFactsCandidate{
+        context,
+        session.identityAuthority().fingerprint().clone(),
+        moduleId,
+        boundModule().parsedModule().contentDigest(),
+        boundModule().parsedModule().receipt(),
+        *signatureRevision,
+        *importedRevision,
+        *coherenceRevision,
+        options,
+        emptySubstitutions(),
+        emptyWitnesses(),
+        emptyMap<NodeTypeMap>(),
+        DefinitionTypeMap::fromEntries(zc::mv(definitionTypes)),
+        LiteralFactMap::fromEntries(zc::mv(literals)),
+        emptyMap<ConstantFactMap>(),
+        AggregateFactMap::fromEntries(zc::mv(aggregates)),
+        PlaceFactMap::fromEntries(zc::mv(places)),
+        CoercionFactMap::fromEntries(zc::mv(coercions)),
+        CastFactMap::fromEntries(zc::mv(casts)),
+        CallFactMap::fromEntries(zc::mv(calls)),
+        includeExtendedFacts ? CompoundAssignmentFactMap::fromEntries(zc::mv(compoundAssignments))
+                             : emptyMap<CompoundAssignmentFactMap>(),
+        MemberFactMap::fromEntries(zc::mv(members)),
+        IndexFactMap::fromEntries(zc::mv(indexes)),
+        PatternFactMap::fromEntries(zc::mv(patterns)),
+        ObservedOperationFactMap::fromEntries(zc::mv(observedOperations)),
+        emptyMap<CaptureFactMap>(),
+        includeExtendedFacts ? MarkerObligationFactMap::fromEntries(zc::mv(markerObligations))
+                             : emptyMap<MarkerObligationFactMap>(),
+        ExhaustivenessFactMap::fromEntries(zc::mv(exhaustiveness)),
+        UnsafeOperationFactMap::fromEntries(zc::mv(unsafeOperations)),
+        emptyMap<ProjectionFactMap>(),
+        includeExtendedFacts ? ObligationFactMap::fromEntries(zc::mv(obligations))
+                             : emptyMap<ObligationFactMap>(),
+        ErrorUnionShapeFactMap::fromEntries(zc::mv(errorUnionShapes)),
+        ErrorOperatorFactMap::fromEntries(zc::mv(errorOperators)),
+        zc::Vector<FrozenRecoveryLedger>(),
+        zc::Vector<CheckerFailureRef>(),
+        zc::Vector<CheckerAdvisoryRef>()};
+  }
+
   identity::SemanticTypeId semanticType() const noexcept { return i32; }
   identity::DefId definition() const noexcept { return definitionId; }
   identity::SemanticContextBrand semanticContext() const noexcept { return context; }
   identity::ModuleId moduleIdentity() const noexcept { return moduleId; }
-  const identity::DefinitionKey& definitionKey() const noexcept { return *retainedDefinition; }
+  const identity::DefinitionKey& definitionKey() const {
+    auto definition = session.identityAuthority().definition(definitionId);
+    ZC_REQUIRE(definition != zc::none);
+    ZC_IF_SOME(entry, definition) { return entry.key(); }
+    ZC_UNREACHABLE
+  }
 
 private:
   FrozenSubstitutionStore emptySubstitutions() {
-    auto brand = storeBrands->issue();
+    auto brand = storeBrands.issue();
     ZC_REQUIRE(brand != zc::none);
     zc::Maybe<FrozenSubstitutionStore> result;
     ZC_IF_SOME(value, brand) {
@@ -317,7 +699,7 @@ private:
   }
 
   FrozenWitnessStore emptyWitnesses() {
-    auto brand = storeBrands->issue();
+    auto brand = storeBrands.issue();
     ZC_REQUIRE(brand != zc::none);
     zc::Maybe<FrozenWitnessStore> result;
     ZC_IF_SOME(value, brand) {
@@ -344,10 +726,10 @@ private:
                                   FrozenWitnessStore&& witnesses, NodeTypeMap&& nodeTypes,
                                   ConstantFactMap&& constants, CaptureFactMap&& captures) {
     return CheckedFactsCandidate{context,
-                                 fingerprintValue->clone(),
+                                 session.identityAuthority().fingerprint().clone(),
                                  moduleId,
-                                 registries->sourceSnapshots()[0].contentDigest(),
-                                 *parsedReceipt,
+                                 boundModule().parsedModule().contentDigest(),
+                                 boundModule().parsedModule().receipt(),
                                  *signatureRevision,
                                  *importedRevision,
                                  *coherenceRevision,
@@ -381,17 +763,28 @@ private:
                                  zc::Vector<CheckerAdvisoryRef>()};
   }
 
-  identity::SemanticContextFactory factory;
+  const driver::module_graph_query::CheckerBoundModuleView& boundModule() const {
+    auto view = session.identityAuthority().boundModule(moduleId);
+    ZC_REQUIRE(view != zc::none);
+    ZC_IF_SOME(value, view) { return value; }
+    ZC_UNREACHABLE
+  }
+
+  const identity::ModuleKey& moduleKey() const {
+    auto module = session.identityAuthority().module(moduleId);
+    ZC_REQUIRE(module != zc::none);
+    ZC_IF_SOME(entry, module) { return entry.key(); }
+    ZC_UNREACHABLE
+  }
+
+  CheckerAuthoritySession session;
+  const identity::RegistryBrandIssuer& storeBrands;
+  type::SemanticTypeStore& semanticTypes;
   identity::SemanticContextBrand context;
-  zc::Own<identity::SemanticIdentityRegistrySet> registries;
-  zc::Own<identity::RegistryBrandIssuer> storeBrands;
-  zc::Own<type::SemanticTypeStore> semanticTypes;
   identity::ModuleId moduleId;
   identity::DefId definitionId;
   identity::SemanticTypeId i32;
-  zc::Own<identity::DefinitionKey> retainedDefinition;
-  zc::Own<identity::SemanticContextFingerprint> fingerprintValue;
-  zc::Own<binder::ParsedModuleReceipt> parsedReceipt;
+  identity::SemanticTypeId ownerType;
   zc::Own<signature::SignatureFactsRevision> signatureRevision;
   zc::Own<cross_module::ImportedSignatureViewRevision> importedRevision;
   zc::Own<cross_module::CoherenceViewRevision> coherenceRevision;
@@ -440,6 +833,22 @@ binder::OwnerLocalBindingId ownerLocalId(const CheckedFactsCodecFixture& fixture
       auto allocated = value.allocateOwnerLocalBinding();
       ZC_REQUIRE(allocated != zc::none);
       ZC_IF_SOME(binding, allocated) { result = binding; }
+    }
+  }
+  return result;
+}
+
+binder::AnonymousOwnerLocalId anonymousOwnerLocalId(const CheckedFactsCodecFixture& fixture,
+                                                    uint32_t slot) {
+  auto allocator = binder::ModuleLocalIdentityAllocator::create(fixture.semanticContext(),
+                                                                fixture.moduleIdentity());
+  ZC_REQUIRE(allocator != zc::none);
+  binder::AnonymousOwnerLocalId result;
+  ZC_IF_SOME(value, allocator) {
+    for (uint32_t index = 0; index <= slot; ++index) {
+      auto allocated = value.allocateAnonymousOwnerLocal();
+      ZC_REQUIRE(allocated != zc::none);
+      ZC_IF_SOME(entity, allocated) { result = entity; }
     }
   }
   return result;
@@ -610,16 +1019,16 @@ ZC_TEST("CheckedFactsCanonicalCodec.ExpandsCaptureKeysWithoutRevisionLocalSlots"
   auto bindingKey = ownerLocalKey(fixture);
   auto sourceSpan = fixture.checkedNode(0).sourceSpan;
 
-  zc::Vector<binder::FrozenAnonymousEntityEntry> anonymousEntities;
-  anonymousEntities.add(binder::FrozenAnonymousEntityEntry{
-      ast::NodeId(2), binder::DefinitionSite::declaration(ast::NodeId(2)), closure.clone(),
-      sourceSpan.clone()});
+  zc::Vector<binder::MaterializedAnonymousEntityEntry> anonymousEntities;
+  anonymousEntities.add(binder::MaterializedAnonymousEntityEntry{
+      ast::NodeId(2), binder::DefinitionSite::declaration(ast::NodeId(2)),
+      anonymousOwnerLocalId(fixture, 0), closure.clone(), sourceSpan.clone()});
   zc::Vector<NodeFactRequirement> nodeRequirements;
   nodeRequirements.add(
       NodeFactRequirement{CheckedFactGroup::NodeType, ast::NodeId(7), fixture.checkedNode(0)});
 
-  zc::Vector<binder::FrozenOwnerLocalBindingEntry> firstBindings;
-  firstBindings.add(binder::FrozenOwnerLocalBindingEntry{
+  zc::Vector<binder::MaterializedOwnerLocalBindingInventoryEntry> firstBindings;
+  firstBindings.add(binder::MaterializedOwnerLocalBindingInventoryEntry{
       ast::NodeId(1), binder::DefinitionSite::declaration(ast::NodeId(1)), firstBinding,
       bindingKey.clone(), sourceSpan.clone()});
   zc::Vector<CaptureFactRequirement> firstRequirements;
@@ -633,8 +1042,8 @@ ZC_TEST("CheckedFactsCanonicalCodec.ExpandsCaptureKeysWithoutRevisionLocalSlots"
       firstCandidate.captures.entries()[0].key, firstCandidate, firstInput);
   ZC_REQUIRE(firstRecord != zc::none);
 
-  zc::Vector<binder::FrozenOwnerLocalBindingEntry> secondBindings;
-  secondBindings.add(binder::FrozenOwnerLocalBindingEntry{
+  zc::Vector<binder::MaterializedOwnerLocalBindingInventoryEntry> secondBindings;
+  secondBindings.add(binder::MaterializedOwnerLocalBindingInventoryEntry{
       ast::NodeId(1), binder::DefinitionSite::declaration(ast::NodeId(1)), secondBinding,
       bindingKey.clone(), sourceSpan.clone()});
   zc::Vector<CaptureFactRequirement> secondRequirements;
@@ -654,10 +1063,10 @@ ZC_TEST("CheckedFactsCanonicalCodec.ExpandsCaptureKeysWithoutRevisionLocalSlots"
 
   auto functionExpression =
       closureKey(fixture, binder::AnonymousOwnerLocalRole::FunctionExpression, 3);
-  zc::Vector<binder::FrozenAnonymousEntityEntry> functionExpressions;
-  functionExpressions.add(binder::FrozenAnonymousEntityEntry{
+  zc::Vector<binder::MaterializedAnonymousEntityEntry> functionExpressions;
+  functionExpressions.add(binder::MaterializedAnonymousEntityEntry{
       ast::NodeId(3), binder::DefinitionSite::declaration(ast::NodeId(3)),
-      functionExpression.clone(), sourceSpan.clone()});
+      anonymousOwnerLocalId(fixture, 0), functionExpression.clone(), sourceSpan.clone()});
   zc::Vector<CaptureFactRequirement> functionRequirements;
   functionRequirements.add(CaptureFactRequirement{
       CaptureKey{functionExpression.clone(), binder::BindingTarget::ownerLocal(firstBinding)}});
@@ -786,6 +1195,15 @@ ZC_TEST("CheckedFactsCanonicalCodec.ExpandsStoreValuesIndependentlyOfIssuerSlots
       auto canonical = fixture.storeCandidate(zc::heapArray<uint8_t>(substitutionRecord.asPtr()),
                                               zc::heapArray<uint8_t>(witnessRecord.asPtr()));
       ZC_EXPECT(CheckedFactsCanonicalCodec::recordsMatch(canonical, input));
+      ZC_REQUIRE(CheckedFactsCanonicalCodec::writeCanonicalRecords(canonical, input));
+      auto accepted = CheckedFactsVerifier::verify(zc::mv(canonical), input);
+      ZC_REQUIRE(accepted.is<VerifiedCheckedFacts>());
+      const auto& verified = accepted.get<VerifiedCheckedFacts>();
+      ZC_EXPECT(verified.coherenceViewRevision().digest() == input.coherenceViewRevision.digest());
+      ZC_EXPECT(verified.advisories().size() == 0);
+      ZC_IF_SOME(witnessId, verified.witnessStore().idAt(0)) {
+        ZC_EXPECT(verified.witnessStore().contains(witnessId));
+      }
 
       auto second = fixture.storeCandidate(zc::heapArray<uint8_t>(1, uint8_t{0xb1}),
                                            zc::heapArray<uint8_t>(1, uint8_t{0xb2}));
@@ -843,12 +1261,123 @@ ZC_TEST("CheckedFactsCanonicalCodec.RecomputesConstantEvaluationRevision") {
   ZC_EXPECT(canonicalMismatch(rejected));
 }
 
+ZC_TEST("CheckedFactsCanonicalCodec.VerifiesSurfaceFactFamilies") {
+  CheckedFactsCodecFixture fixture;
+  zc::Vector<NodeFactRequirement> requirements;
+  requirements.add(
+      NodeFactRequirement{CheckedFactGroup::Literal, ast::NodeId(1), fixture.checkedNode(1)});
+  requirements.add(
+      NodeFactRequirement{CheckedFactGroup::Aggregate, ast::NodeId(2), fixture.checkedNode(2)});
+  requirements.add(
+      NodeFactRequirement{CheckedFactGroup::Aggregate, ast::NodeId(13), fixture.checkedNode(13)});
+  requirements.add(
+      NodeFactRequirement{CheckedFactGroup::Aggregate, ast::NodeId(14), fixture.checkedNode(14)});
+  requirements.add(
+      NodeFactRequirement{CheckedFactGroup::Aggregate, ast::NodeId(15), fixture.checkedNode(15)});
+  requirements.add(
+      NodeFactRequirement{CheckedFactGroup::Place, ast::NodeId(3), fixture.checkedNode(3)});
+  requirements.add(
+      NodeFactRequirement{CheckedFactGroup::Place, ast::NodeId(16), fixture.checkedNode(16)});
+  requirements.add(
+      NodeFactRequirement{CheckedFactGroup::Coercion, ast::NodeId(4), fixture.checkedNode(4)});
+  requirements.add(
+      NodeFactRequirement{CheckedFactGroup::Cast, ast::NodeId(5), fixture.checkedNode(5)});
+  requirements.add(
+      NodeFactRequirement{CheckedFactGroup::Pattern, ast::NodeId(6), fixture.checkedNode(6)});
+  requirements.add(NodeFactRequirement{CheckedFactGroup::ObservedOperation, ast::NodeId(7),
+                                       fixture.checkedNode(7)});
+  requirements.add(NodeFactRequirement{CheckedFactGroup::UnsafeOperation, ast::NodeId(8),
+                                       fixture.checkedNode(8)});
+  requirements.add(NodeFactRequirement{CheckedFactGroup::ErrorUnionShape, ast::NodeId(9),
+                                       fixture.checkedNode(9)});
+  requirements.add(
+      NodeFactRequirement{CheckedFactGroup::ErrorOperator, ast::NodeId(9), fixture.checkedNode(9)});
+  requirements.add(
+      NodeFactRequirement{CheckedFactGroup::Member, ast::NodeId(10), fixture.checkedNode(10)});
+  requirements.add(
+      NodeFactRequirement{CheckedFactGroup::Call, ast::NodeId(11), fixture.checkedNode(11)});
+  requirements.add(
+      NodeFactRequirement{CheckedFactGroup::Index, ast::NodeId(11), fixture.checkedNode(11)});
+  requirements.add(NodeFactRequirement{CheckedFactGroup::Exhaustiveness, ast::NodeId(12),
+                                       fixture.checkedNode(12)});
+  zc::Vector<DefinitionFactRequirement> definitionRequirements;
+  definitionRequirements.add(
+      DefinitionFactRequirement{CheckedFactGroup::DefinitionType, fixture.definition()});
+  const auto input = fixture.input(requirements.asPtr(), definitionRequirements.asPtr());
+  auto candidate = fixture.surfaceFactsCandidate();
+
+  ZC_REQUIRE(CheckedFactsCanonicalCodec::writeCanonicalRecords(candidate, input));
+  ZC_EXPECT(CheckedFactsCanonicalCodec::recordsMatch(candidate, input));
+  auto verified = CheckedFactsVerifier::verify(zc::mv(candidate), input);
+  ZC_EXPECT(verified.is<VerifiedCheckedFacts>());
+
+  requirements.add(NodeFactRequirement{CheckedFactGroup::CompoundAssignment, ast::NodeId(17),
+                                       fixture.checkedNode(17)});
+  requirements.add(NodeFactRequirement{CheckedFactGroup::MarkerObligation, ast::NodeId(18),
+                                       fixture.checkedNode(18)});
+  requirements.add(
+      NodeFactRequirement{CheckedFactGroup::Obligation, ast::NodeId(19), fixture.checkedNode(19)});
+  for (uint32_t node = 20; node <= 25; ++node)
+    requirements.add(NodeFactRequirement{CheckedFactGroup::Pattern, ast::NodeId(node),
+                                         fixture.checkedNode(node)});
+  for (uint32_t node = 26; node <= 28; ++node)
+    requirements.add(NodeFactRequirement{CheckedFactGroup::ObservedOperation, ast::NodeId(node),
+                                         fixture.checkedNode(node)});
+  for (uint32_t node = 29; node <= 32; ++node)
+    requirements.add(NodeFactRequirement{CheckedFactGroup::UnsafeOperation, ast::NodeId(node),
+                                         fixture.checkedNode(node)});
+  const auto extendedInput = fixture.input(requirements.asPtr(), definitionRequirements.asPtr());
+  auto extendedCandidate = fixture.surfaceFactsCandidate(true);
+  ZC_REQUIRE(CheckedFactsCanonicalCodec::writeCanonicalRecords(extendedCandidate, extendedInput));
+  ZC_EXPECT(CheckedFactsCanonicalCodec::recordsMatch(extendedCandidate, extendedInput));
+  auto rejected = CheckedFactsVerifier::verify(zc::mv(extendedCandidate), extendedInput);
+  ZC_EXPECT(rejected.is<CheckedFactsInvariantRejected>());
+}
+
+ZC_TEST("CheckedFactsVerifier.AcceptsCoherentProjectionWithWitnessLease") {
+  CheckedFactsCodecFixture fixture;
+  const auto behavior = fixture.definitionNamed("Behavior"_zc);
+  const auto implementation = fixture.implementation();
+  zc::Vector<identity::ImplId> coherentImplementations;
+  coherentImplementations.add(implementation);
+  zc::Vector<NodeFactRequirement> requirements;
+  requirements.add(
+      NodeFactRequirement{CheckedFactGroup::Projection, ast::NodeId(33), fixture.checkedNode(33)});
+  requirements.add(
+      NodeFactRequirement{CheckedFactGroup::Obligation, ast::NodeId(34), fixture.checkedNode(34)});
+  requirements.add(
+      NodeFactRequirement{CheckedFactGroup::Coercion, ast::NodeId(35), fixture.checkedNode(35)});
+  requirements.add(
+      NodeFactRequirement{CheckedFactGroup::Cast, ast::NodeId(36), fixture.checkedNode(36)});
+  requirements.add(
+      NodeFactRequirement{CheckedFactGroup::Call, ast::NodeId(37), fixture.checkedNode(37)});
+  requirements.add(NodeFactRequirement{CheckedFactGroup::ErrorUnionShape, ast::NodeId(37),
+                                       fixture.checkedNode(37)});
+  const auto input =
+      fixture.input(requirements.asPtr(), {}, {}, {}, {}, {}, coherentImplementations.asPtr());
+  auto candidate = fixture.projectionCandidate(behavior, implementation);
+
+  ZC_REQUIRE(CheckedFactsCanonicalCodec::writeCanonicalRecords(candidate, input));
+  ZC_EXPECT(CheckedFactsCanonicalCodec::recordsMatch(candidate, input));
+  auto verified = CheckedFactsVerifier::verify(zc::mv(candidate), input);
+  ZC_EXPECT(verified.is<VerifiedCheckedFacts>());
+}
+
 ZC_TEST("CheckedFactsAlgebra.UsesNormativeClosedTags") {
   ZC_EXPECT(static_cast<uint8_t>(PrimitiveOperation::NullCoalesce) == 0x25);
   ZC_EXPECT(static_cast<uint8_t>(CompoundAssignmentOperation::NullCoalesceAssign) == 0x0f);
   ZC_EXPECT(static_cast<uint8_t>(CastKind::RawPointerReinterpret) == 0x0d);
   ZC_EXPECT(static_cast<uint8_t>(UnsafeOperation::PackedFieldAccess) == 0x05);
   ZC_EXPECT(static_cast<uint8_t>(ErrorOperatorKind::ForcedUnwrap) == 0x02);
+}
+
+ZC_TEST("CheckerAuthoritySession.RepeatedSkeletonMaterializationIsDeterministic") {
+  for (size_t iteration = 0; iteration < 4; ++iteration) {
+    CheckerAuthoritySession session("class RecoveryOwner {}\n"_zc);
+    const auto& authority = session.identityAuthority();
+    ZC_REQUIRE(authority.modules().size() != 0);
+    ZC_EXPECT(authority.boundModule(session.module()) != zc::none);
+  }
 }
 
 }  // namespace zomlang::compiler::checker::checked

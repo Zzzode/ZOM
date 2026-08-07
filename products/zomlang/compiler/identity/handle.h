@@ -20,12 +20,6 @@
 
 namespace zomlang::compiler::identity {
 
-template <typename Key, typename Tag>
-class FrozenContextRegistry;
-
-template <typename Key, typename Record, typename Authority, typename Tag>
-class FrozenAuthorityRegistry;
-
 template <typename Key, typename Record, typename Tag>
 class CanonicalIdentityInterner;
 
@@ -65,10 +59,6 @@ private:
   uint32_t slot = 0;
 
   friend Tag;
-  template <typename Key, typename IdentityTag>
-  friend class FrozenContextRegistry;
-  template <typename Key, typename Record, typename Authority, typename IdentityTag>
-  friend class FrozenAuthorityRegistry;
   template <typename Key, typename Record, typename IdentityTag>
   friend class CanonicalIdentityInterner;
 };

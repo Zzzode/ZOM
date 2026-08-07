@@ -12,8 +12,8 @@
 #include "zc/core/memory.h"
 #include "zc/core/vector.h"
 #include "zomlang/compiler/ast/node-id.h"
+#include "zomlang/compiler/identity/canonical-identity-interner-set.h"
 #include "zomlang/compiler/identity/definition-key.h"
-#include "zomlang/compiler/identity/frozen-registry.h"
 
 namespace zomlang::compiler::binder {
 
@@ -270,12 +270,12 @@ public:
   ZC_DISALLOW_COPY(ImplIdentityOccurrenceGroup);
 
   /// \brief Requires a valid authority handle and a non-empty, source-sorted exact site set.
-  /// \param authorities Frozen registry used to expand and validate `authority`.
-  /// \param authority Revision-local handle issued by `authorities`.
+  /// \param authorities Canonical identity authority used to expand and validate `authority`.
+  /// \param authority Context-local implementation handle issued by `authorities`.
   /// \param occurrences Occurrences in canonical source, range, then structural-path order.
   /// \param sites Current site inventory used to resolve every occurrence exactly once.
   ZC_NODISCARD static zc::Maybe<ImplIdentityOccurrenceGroup> from(
-      const identity::ImplRegistry& authorities, identity::ImplId authority,
+      const identity::CanonicalIdentityInternerSet& authorities, identity::ImplId authority,
       zc::Vector<ImplSourceOccurrenceKey>&& occurrences,
       zc::ArrayPtr<const IdentitySyntaxSite> sites);
   ZC_NODISCARD ImplIdentityOccurrenceGroup clone() const;

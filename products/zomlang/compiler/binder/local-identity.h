@@ -11,9 +11,10 @@
 #include "zc/core/common.h"
 #include "zc/core/memory.h"
 #include "zc/core/vector.h"
+#include "zomlang/compiler/identity/brand.h"
 #include "zomlang/compiler/identity/canonical-scalar.h"
 #include "zomlang/compiler/identity/definition-key.h"
-#include "zomlang/compiler/identity/frozen-registry.h"
+#include "zomlang/compiler/identity/handle.h"
 #include "zomlang/compiler/identity/source-key.h"
 
 namespace zomlang::compiler::binder {
@@ -187,6 +188,7 @@ public:
   ZC_NODISCARD constexpr bool belongsTo(identity::ModuleId expected) const noexcept {
     return isValid() && moduleValue == expected;
   }
+  ZC_NODISCARD constexpr uint32_t index() const noexcept { return slot; }
   constexpr bool operator==(OwnerLocalBindingId other) const noexcept {
     return context == other.context && moduleValue == other.moduleValue && slot == other.slot;
   }
@@ -195,6 +197,40 @@ public:
 private:
   constexpr OwnerLocalBindingId(identity::SemanticContextBrand owner, identity::ModuleId module,
                                 uint32_t value) noexcept
+      : context(owner), moduleValue(module), slot(value) {}
+
+  identity::SemanticContextBrand context;
+  identity::ModuleId moduleValue;
+  uint32_t slot = 0;
+
+  friend class ModuleLocalIdentityAllocator;
+};
+
+/// \brief Revision-local materialization handle for one anonymous owner-local entity.
+class AnonymousOwnerLocalId final {
+public:
+  constexpr AnonymousOwnerLocalId() noexcept = default;
+
+  ZC_NODISCARD constexpr bool isValid() const noexcept {
+    return context.isValid() && moduleValue.belongsTo(context);
+  }
+  ZC_NODISCARD constexpr bool belongsTo(identity::SemanticContextBrand expected) const noexcept {
+    return isValid() && context == expected;
+  }
+  ZC_NODISCARD constexpr bool belongsTo(identity::ModuleId expected) const noexcept {
+    return isValid() && moduleValue == expected;
+  }
+  ZC_NODISCARD constexpr uint32_t index() const noexcept { return slot; }
+  constexpr bool operator==(AnonymousOwnerLocalId other) const noexcept {
+    return context == other.context && moduleValue == other.moduleValue && slot == other.slot;
+  }
+  constexpr bool operator!=(AnonymousOwnerLocalId other) const noexcept {
+    return !(*this == other);
+  }
+
+private:
+  constexpr AnonymousOwnerLocalId(identity::SemanticContextBrand owner, identity::ModuleId module,
+                                  uint32_t value) noexcept
       : context(owner), moduleValue(module), slot(value) {}
 
   identity::SemanticContextBrand context;
@@ -258,15 +294,26 @@ public:
       identity::SemanticContextBrand context, identity::ModuleId module);
   /// \brief Issues the next dense owner-local binding slot, or none at uint32 exhaustion.
   ZC_NODISCARD zc::Maybe<OwnerLocalBindingId> allocateOwnerLocalBinding();
+  /// \brief Advances over a checked dense owner-local prefix without constructing handles.
+  ZC_NODISCARD bool skipOwnerLocalBindings(uint32_t count) noexcept;
+  /// \brief Issues the next dense anonymous owner-local slot, or none at uint32 exhaustion.
+  ZC_NODISCARD zc::Maybe<AnonymousOwnerLocalId> allocateAnonymousOwnerLocal();
+  /// \brief Advances over a checked dense anonymous owner-local prefix without constructing
+  /// handles.
+  ZC_NODISCARD bool skipAnonymousOwnerLocals(uint32_t count) noexcept;
   /// \brief Issues the next dense implementation-occurrence slot, or none at uint32 exhaustion.
   ZC_NODISCARD zc::Maybe<ImplOccurrenceId> allocateImplOccurrence();
   /// \brief Validates context, module, range, and exact dense position.
   ZC_NODISCARD ModuleLocalIdentityFailure validate(OwnerLocalBindingId id,
                                                    uint32_t expectedDenseSlot) const noexcept;
   /// \brief Validates context, module, range, and exact dense position.
+  ZC_NODISCARD ModuleLocalIdentityFailure validate(AnonymousOwnerLocalId id,
+                                                   uint32_t expectedDenseSlot) const noexcept;
+  /// \brief Validates context, module, range, and exact dense position.
   ZC_NODISCARD ModuleLocalIdentityFailure validate(ImplOccurrenceId id,
                                                    uint32_t expectedDenseSlot) const noexcept;
   ZC_NODISCARD uint64_t ownerLocalBindingCount() const noexcept;
+  ZC_NODISCARD uint64_t anonymousOwnerLocalCount() const noexcept;
   ZC_NODISCARD uint64_t implOccurrenceCount() const noexcept;
 
 private:

@@ -10,7 +10,8 @@
 #include "zc/core/array.h"
 #include "zc/core/common.h"
 #include "zc/core/vector.h"
-#include "zomlang/compiler/binder/binding-input.h"
+#include "zomlang/compiler/binder/canonical-input-payload-digest.h"
+#include "zomlang/compiler/binder/parsed-module-graph-input.h"
 #include "zomlang/compiler/driver/incremental-binding-query-adapter.h"
 #include "zomlang/compiler/driver/incremental-module-resolution-query.h"
 #include "zomlang/compiler/driver/incremental-package-graph-query-input.h"
@@ -21,7 +22,6 @@
 
 namespace zomlang::compiler::binder {
 class StructuralModuleResolver;
-struct ParsedModuleGraphInput;
 }  // namespace zomlang::compiler::binder
 
 namespace zomlang::compiler::driver::core_library_query {
@@ -30,10 +30,6 @@ class VerifiedCoreDistributionInputTransaction;
 
 namespace zomlang::compiler::driver::package {
 class VerifiedPackageCompilationRequest;
-}
-
-namespace zomlang::compiler::identity {
-class SemanticIdentityRegistrySet;
 }
 
 namespace zomlang::compiler::driver::module_graph_query {
@@ -655,7 +651,6 @@ struct ModuleGraphInputTransactionAuthority final {
   const package::VerifiedPackageCompilationRequest& packageRequest;
   const core_library_query::VerifiedCoreDistributionInputTransaction& coreInputs;
   const binder::StructuralModuleResolver& resolver;
-  const identity::SemanticIdentityRegistrySet& registries;
   zc::ArrayPtr<const binder::ParsedModuleGraphInput> parsedModules;
 };
 

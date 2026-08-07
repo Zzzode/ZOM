@@ -13,6 +13,7 @@
 #include "zomlang/compiler/diagnostics/source-diagnostic-draft-buffer.h"
 #include "zomlang/compiler/identity/canonical-decoder.h"
 #include "zomlang/compiler/identity/canonical-encoder.h"
+#include "zomlang/compiler/identity/canonical-identity-interner-set.h"
 #include "zomlang/compiler/parser/parser.h"
 #include "zomlang/compiler/source/manager.h"
 
@@ -106,6 +107,14 @@ identity::SourceFileKey sourceKey() {
                                        identity::SourceOriginKey::localFile(zc::mv(path)));
 }
 
+identity::SourceFileKey alternateSourceKey() {
+  zc::Vector<identity::CanonicalPathSegment> segments;
+  segments.add(requireScalar<identity::CanonicalPathSegment>("other.zom"_zc));
+  auto path = identity::CanonicalWorkspaceRelativePath::from(0, zc::mv(segments));
+  return identity::SourceFileKey::from(crateKey(),
+                                       identity::SourceOriginKey::localFile(zc::mv(path)));
+}
+
 identity::ModuleKey moduleKey() {
   zc::Vector<identity::ModulePathSegment> path;
   path.add(requireScalar<identity::ModulePathSegment>("root"_zc));
@@ -170,28 +179,18 @@ struct ParsedSource final {
 
 struct DerivationFixture final {
   explicit DerivationFixture(ParsedSource& sourceFixture, bool withDependencyAlias = false)
-      : context(requireContext(factory)), registries(createRegistries()) {
+      : context(requireContext(factory)) {
     auto snapshot = sourceFixture.snapshot();
-    ZC_REQUIRE(registries.collectCompilationUnit(identity::CompilationUnitIdentity::userPackage(
-                   packageKey())) == identity::FrozenRegistryFailure::None);
-    ZC_REQUIRE(registries.freezeCompilationUnits() == identity::FrozenRegistryFailure::None);
-    ZC_REQUIRE(registries.collectCrate(crateKey()) == identity::FrozenRegistryFailure::None);
-    ZC_REQUIRE(registries.freezeCrates() == identity::FrozenRegistryFailure::None);
-    ZC_REQUIRE(registries.collectSourceFile(snapshot.clone()) ==
-               identity::FrozenRegistryFailure::None);
-    ZC_REQUIRE(registries.freezeSourceFiles() == identity::FrozenRegistryFailure::None);
-    ZC_REQUIRE(registries.collectModule(moduleKey()) == identity::FrozenRegistryFailure::None);
-    ZC_REQUIRE(registries.freezeModules() == identity::FrozenRegistryFailure::None);
-    ZC_REQUIRE(registries.freezeStableIdentities() == identity::FrozenRegistryFailure::None);
-    ZC_REQUIRE(registries.freezeGenericParameters() == identity::FrozenRegistryFailure::None);
-    ZC_REQUIRE(registries.freezeCallableParameters() == identity::FrozenRegistryFailure::None);
-    module = requireHandle(registries.modules().find(moduleKey()));
+    auto authorities = createAuthorities();
+    auto admittedModule = authorities.internModule(context, moduleKey());
+    ZC_REQUIRE(admittedModule.is<identity::ModuleId>());
+    module = admittedModule.get<identity::ModuleId>();
 
     ZC_REQUIRE(sourceFixture.tokens != zc::none);
     ZC_IF_SOME(tokensValue, sourceFixture.tokens) {
-      parsedModule = test::requireVerifiedParsedSource(
-          context, registries, snapshot, *sourceFixture.sources, sourceFixture.buffer,
-          zc::mv(tokensValue), zc::mv(sourceFixture.tree));
+      parsedModule = test::requireVerifiedParsedSource(context, snapshot, *sourceFixture.sources,
+                                                       sourceFixture.buffer, zc::mv(tokensValue),
+                                                       zc::mv(sourceFixture.tree));
     }
 
     zc::Vector<identity::CanonicalPathSegment> noRootSegments;
@@ -214,7 +213,7 @@ struct DerivationFixture final {
     zc::Vector<StructuralModuleCatalogEntry> catalog;
     catalog.add(StructuralModuleCatalogEntry(moduleKey(), module, sourceKey()));
     auto frozen = StructuralModuleResolver::freeze(
-        context, registries,
+        context,
         ModuleResolutionEnvironmentRecord(zc::mv(searchRoots), zc::mv(snapshots), zc::mv(generated),
                                           zc::mv(aliases), zc::mv(ancestry)),
         zc::mv(catalog));
@@ -222,21 +221,14 @@ struct DerivationFixture final {
     resolver = zc::mv(frozen.get<StructuralModuleResolver>());
   }
 
-  template <typename Handle>
-  Handle requireHandle(zc::Maybe<Handle>&& value) {
-    ZC_IF_SOME(handle, value) { return handle; }
-    ZC_FAIL_REQUIRE("request-derivation handle lookup failed");
-  }
-
-  identity::SemanticIdentityRegistrySet createRegistries() {
-    auto value = identity::SemanticIdentityRegistrySet::create(factory, context);
-    ZC_IF_SOME(registrySet, value) { return zc::mv(registrySet); }
-    ZC_FAIL_REQUIRE("request-derivation registry creation failed");
+  identity::CanonicalIdentityInternerSet createAuthorities() {
+    auto value = identity::CanonicalIdentityInternerSet::create(factory, context);
+    ZC_IF_SOME(authorities, value) { return zc::mv(authorities); }
+    ZC_FAIL_REQUIRE("request-derivation identity authority creation failed");
   }
 
   identity::SemanticContextFactory factory;
   identity::SemanticContextBrand context;
-  identity::SemanticIdentityRegistrySet registries;
   identity::ModuleId module;
   zc::Maybe<VerifiedParsedModule> parsedModule;
   zc::Maybe<StructuralModuleResolver> resolver;
@@ -425,7 +417,7 @@ StructuralModuleResolver::FreezeResult freezeEnvironment(
   zc::Vector<StructuralModuleCatalogEntry> catalog;
   catalog.add(StructuralModuleCatalogEntry(moduleKey(), fixture.module, sourceKey()));
   return StructuralModuleResolver::freeze(
-      fixture.context, fixture.registries,
+      fixture.context,
       ModuleResolutionEnvironmentRecord(zc::mv(searchRoots), zc::mv(snapshots), zc::mv(generated),
                                         zc::mv(aliases), zc::mv(ancestry)),
       zc::mv(catalog));
@@ -540,6 +532,28 @@ ZC_TEST("StructuralModuleResolver.RejectsUnverifiedDiscoveryEnvironmentInputs") 
     ZC_EXPECT(result.get<ModuleResolutionInvariantFact>().kind ==
               ModuleResolutionInvariantKind::InvalidEnvironment);
   }
+
+  {
+    auto roots = workspaceSearchRoots();
+    zc::Vector<ModuleSourceSnapshotRevision> snapshots;
+    snapshots.add(ModuleSourceSnapshotRevision(alternateSourceKey(), snapshot.contentDigest()));
+    zc::Vector<GeneratedModuleSourceRevision> generated;
+    zc::Vector<ModuleDependencyAliasRoot> aliases;
+    zc::Vector<identity::ModuleKey> ancestryPath;
+    ancestryPath.add(moduleKey());
+    zc::Vector<RequesterModuleAncestryCandidate> ancestry;
+    ancestry.add(RequesterModuleAncestryCandidate(moduleKey(), zc::mv(ancestryPath)));
+    zc::Vector<StructuralModuleCatalogEntry> catalog;
+    catalog.add(StructuralModuleCatalogEntry(moduleKey(), fixture.module, sourceKey()));
+    auto result = StructuralModuleResolver::freeze(
+        fixture.context,
+        ModuleResolutionEnvironmentRecord(zc::mv(roots), zc::mv(snapshots), zc::mv(generated),
+                                          zc::mv(aliases), zc::mv(ancestry)),
+        zc::mv(catalog));
+    ZC_REQUIRE(result.is<ModuleResolutionInvariantFact>());
+    ZC_EXPECT(result.get<ModuleResolutionInvariantFact>().kind ==
+              ModuleResolutionInvariantKind::InvalidEnvironment);
+  }
 }
 
 ZC_TEST("StructuralModuleResolver.RejectsAncestryEndingAtInactiveRoot") {
@@ -547,50 +561,34 @@ ZC_TEST("StructuralModuleResolver.RejectsAncestryEndingAtInactiveRoot") {
   const auto snapshot = sourceFixture.snapshot();
   identity::SemanticContextFactory factory;
   const auto context = requireContext(factory);
-  auto registriesResult = identity::SemanticIdentityRegistrySet::create(factory, context);
-  ZC_REQUIRE(registriesResult != zc::none);
-  ZC_IF_SOME(registries, registriesResult) {
-    ZC_REQUIRE(registries.collectCompilationUnit(identity::CompilationUnitIdentity::userPackage(
-                   packageKey())) == identity::FrozenRegistryFailure::None);
-    ZC_REQUIRE(registries.freezeCompilationUnits() == identity::FrozenRegistryFailure::None);
-    ZC_REQUIRE(registries.collectCrate(crateKey()) == identity::FrozenRegistryFailure::None);
-    ZC_REQUIRE(registries.freezeCrates() == identity::FrozenRegistryFailure::None);
-    ZC_REQUIRE(registries.collectSourceFile(snapshot.clone()) ==
-               identity::FrozenRegistryFailure::None);
-    ZC_REQUIRE(registries.freezeSourceFiles() == identity::FrozenRegistryFailure::None);
-    ZC_REQUIRE(registries.collectModule(nestedModuleKey()) ==
-               identity::FrozenRegistryFailure::None);
-    ZC_REQUIRE(registries.freezeModules() == identity::FrozenRegistryFailure::None);
-    ZC_REQUIRE(registries.freezeStableIdentities() == identity::FrozenRegistryFailure::None);
-    ZC_REQUIRE(registries.freezeGenericParameters() == identity::FrozenRegistryFailure::None);
-    ZC_REQUIRE(registries.freezeCallableParameters() == identity::FrozenRegistryFailure::None);
+  auto authorities = identity::CanonicalIdentityInternerSet::create(factory, context);
+  ZC_REQUIRE(authorities != zc::none);
+  ZC_IF_SOME(interner, authorities) {
+    auto admittedModule = interner.internModule(context, nestedModuleKey());
+    ZC_REQUIRE(admittedModule.is<identity::ModuleId>());
+    const auto module = admittedModule.get<identity::ModuleId>();
+    zc::Vector<ModuleSourceSnapshotRevision> snapshots;
+    snapshots.add(
+        ModuleSourceSnapshotRevision(snapshot.source().clone(), snapshot.contentDigest()));
+    zc::Vector<GeneratedModuleSourceRevision> generated;
+    zc::Vector<ModuleDependencyAliasRoot> aliases;
+    zc::Vector<identity::ModuleKey> ancestryPath;
+    ancestryPath.add(nestedModuleKey());
+    ancestryPath.add(inactiveRootModuleKey());
+    zc::Vector<RequesterModuleAncestryCandidate> ancestry;
+    ancestry.add(RequesterModuleAncestryCandidate(nestedModuleKey(), zc::mv(ancestryPath)));
+    zc::Vector<StructuralModuleCatalogEntry> catalog;
+    catalog.add(StructuralModuleCatalogEntry(nestedModuleKey(), module, sourceKey()));
 
-    auto moduleResult = registries.modules().find(nestedModuleKey());
-    ZC_REQUIRE(moduleResult != zc::none);
-    ZC_IF_SOME(module, moduleResult) {
-      zc::Vector<ModuleSourceSnapshotRevision> snapshots;
-      snapshots.add(
-          ModuleSourceSnapshotRevision(snapshot.source().clone(), snapshot.contentDigest()));
-      zc::Vector<GeneratedModuleSourceRevision> generated;
-      zc::Vector<ModuleDependencyAliasRoot> aliases;
-      zc::Vector<identity::ModuleKey> ancestryPath;
-      ancestryPath.add(nestedModuleKey());
-      ancestryPath.add(inactiveRootModuleKey());
-      zc::Vector<RequesterModuleAncestryCandidate> ancestry;
-      ancestry.add(RequesterModuleAncestryCandidate(nestedModuleKey(), zc::mv(ancestryPath)));
-      zc::Vector<StructuralModuleCatalogEntry> catalog;
-      catalog.add(StructuralModuleCatalogEntry(nestedModuleKey(), module, sourceKey()));
-
-      auto result = StructuralModuleResolver::freeze(
-          context, registries,
-          ModuleResolutionEnvironmentRecord(workspaceSearchRoots(), zc::mv(snapshots),
-                                            zc::mv(generated), zc::mv(aliases), zc::mv(ancestry)),
-          zc::mv(catalog));
-      ZC_REQUIRE(result.is<ModuleResolutionInvariantFact>());
-      ZC_EXPECT(result.get<ModuleResolutionInvariantFact>().kind ==
-                ModuleResolutionInvariantKind::InvalidEnvironment);
-      return;
-    }
+    auto result = StructuralModuleResolver::freeze(
+        context,
+        ModuleResolutionEnvironmentRecord(workspaceSearchRoots(), zc::mv(snapshots),
+                                          zc::mv(generated), zc::mv(aliases), zc::mv(ancestry)),
+        zc::mv(catalog));
+    ZC_REQUIRE(result.is<ModuleResolutionInvariantFact>());
+    ZC_EXPECT(result.get<ModuleResolutionInvariantFact>().kind ==
+              ModuleResolutionInvariantKind::InvalidEnvironment);
+    return;
   }
   ZC_EXPECT(false);
 }

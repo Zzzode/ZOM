@@ -15,6 +15,15 @@ RESET = "\033[0m"
 formatted_files = []  # Global list to track formatted files
 
 
+def find_clang_format():
+    """Return the first executable clang-format path in PATH."""
+    for directory in os.get_exec_path():
+        candidate = os.path.join(directory, "clang-format")
+        if os.path.isfile(candidate) and os.access(candidate, os.X_OK):
+            return candidate
+    return None
+
+
 def is_format_owned(file_path):
     """Return whether a C/C++ source is maintained under ZOM formatting rules."""
     parts = PurePath(file_path).parts
@@ -30,11 +39,20 @@ def check_and_format(file_path, auto_format=False):
     if not os.path.exists(file_path):
         return True
 
+    clang_format = find_clang_format()
+    if not clang_format:
+        print(f"{RED}clang-format is not available. Please install it or check your PATH.{RESET}")
+        return False
+
     try:
         # Run clang-format on the file.
         formatted = subprocess.run(
-            ["clang-format", file_path], capture_output=True, text=True
+            [clang_format, file_path], capture_output=True, text=True
         )
+        if formatted.returncode != 0:
+            message = formatted.stderr.strip() or "clang-format failed without diagnostic output"
+            print(f"{RED}clang-format failed for {file_path}: {message}{RESET}")
+            return False
 
         # Read the contents of the file.
         with open(file_path, "r") as file:
@@ -188,13 +206,7 @@ def main():
     args = parser.parse_args()
 
     # Check if clang-format is available
-    clang_format_available = (
-        subprocess.run(
-            ["which", "clang-format"], capture_output=True, text=True
-        ).returncode
-        == 0
-    )
-    if not clang_format_available:
+    if not find_clang_format():
         print(
             f"{RED}clang-format is not available. Please install it or check your PATH.{RESET}"
         )

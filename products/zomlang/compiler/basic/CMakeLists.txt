@@ -5,3 +5,4 @@ set(BASIC_SRC
   ${CMAKE_CURRENT_SOURCE_DIR}/string-pool.cc)
 
 add_library(basic STATIC ${BASIC_SRC})
+target_link_libraries(basic PUBLIC zc)

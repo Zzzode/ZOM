@@ -8,13 +8,12 @@
 #include "zc/ztest/test.h"
 #include "zomlang/compiler/checker/inference-recovery-context.h"
 #include "zomlang/compiler/type/semantic-type-data.h"
-#include "zomlang/compiler/type/semantic-type-store.h"
-#include "zomlang/tests/unittests/compiler/test-semantic-identities.h"
+#include "zomlang/tests/unittests/compiler/checker/checker-authority-test-fixture.h"
 
 namespace zomlang::compiler::checker::inference {
 namespace {
 
-using namespace tests::test_identity_detail;
+using namespace tests::checker_fixture;
 
 struct InferenceContextPair final {
   zc::Own<InferenceRecoveryContext> recovery;
@@ -23,73 +22,14 @@ struct InferenceContextPair final {
 
 class InferenceFixture final {
 public:
-  InferenceFixture() {
-    auto issuedContext = factory.issue();
-    ZC_REQUIRE(issuedContext != zc::none);
-    ZC_IF_SOME(value, issuedContext) { context = value; }
-
-    auto createdRegistries = identity::SemanticIdentityRegistrySet::create(factory, context);
-    ZC_REQUIRE(createdRegistries != zc::none);
-    ZC_IF_SOME(value, createdRegistries) {
-      registries = zc::heap<identity::SemanticIdentityRegistrySet>(zc::mv(value));
-    }
-    auto issuedBrands = factory.issueRegistryBrandIssuer(context);
-    ZC_REQUIRE(issuedBrands != zc::none);
-    ZC_IF_SOME(value, issuedBrands) {
-      registryBrands = zc::heap<identity::RegistryBrandIssuer>(zc::mv(value));
-    }
-
-    ZC_REQUIRE(registries->collectCompilationUnit(userUnit()) ==
-               identity::FrozenRegistryFailure::None);
-    ZC_REQUIRE(registries->freezeCompilationUnits() == identity::FrozenRegistryFailure::None);
-    ZC_REQUIRE(registries->collectCrate(crate()) == identity::FrozenRegistryFailure::None);
-    ZC_REQUIRE(registries->freezeCrates() == identity::FrozenRegistryFailure::None);
-    auto snapshot = identity::ImmutableSourceSnapshot::from(tests::test_identity_detail::source(),
-                                                            zc::heapArray<uint8_t>(8, uint8_t{0}));
-    ZC_REQUIRE(snapshot != zc::none);
-    ZC_IF_SOME(value, snapshot) {
-      ZC_REQUIRE(registries->collectSourceFile(zc::mv(value)) ==
-                 identity::FrozenRegistryFailure::None);
-    }
-    ZC_REQUIRE(registries->freezeSourceFiles() == identity::FrozenRegistryFailure::None);
-    ZC_REQUIRE(registries->collectModule(module()) == identity::FrozenRegistryFailure::None);
-    ZC_REQUIRE(registries->freezeModules() == identity::FrozenRegistryFailure::None);
-
-    zc::Vector<identity::EnclosingStableOwnerKey> owners;
-    zc::Maybe<identity::OverloadHeaderDigest> noOverloadDigest;
-    auto record = identity::DefinitionIdentityRecord::from(
-        module(), zc::mv(owners), identity::DefinitionKind::Class,
-        identity::DefinitionNamespace::Type,
-        scalar<identity::DeclaredDefinitionName>("inference_owner"_zc), zc::mv(noOverloadDigest));
-    ZC_REQUIRE(record != zc::none);
-    ZC_IF_SOME(value, record) {
-      retainedDefinition =
-          zc::heap<identity::DefinitionKey>(identity::DefinitionKey::compute(value));
-      zc::Maybe<identity::OverloadHeaderAuthority> noOverloadAuthority;
-      ZC_REQUIRE(registries->collectDefinition(value.clone(), zc::mv(noOverloadAuthority)) ==
-                 identity::FrozenRegistryFailure::None);
-    }
-    ZC_REQUIRE(registries->freezeStableIdentities() == identity::FrozenRegistryFailure::None);
-    ZC_REQUIRE(registries->freezeGenericParameters() == identity::FrozenRegistryFailure::None);
-    ZC_REQUIRE(registries->freezeCallableParameters() == identity::FrozenRegistryFailure::None);
-
-    auto definition = registries->definitions().find(*retainedDefinition);
-    ZC_REQUIRE(definition != zc::none);
-    ZC_IF_SOME(value, definition) { definitionId = value; }
-
-    auto storeToken = factory.issueSemanticTypeStoreConstructionToken(context);
-    ZC_REQUIRE(storeToken != zc::none);
-    ZC_IF_SOME(value, storeToken) {
-      semanticTypes = zc::heap<type::SemanticTypeStore>(zc::mv(value), *registries);
-    }
-  }
+  InferenceFixture() : session("class RecoveryOwner {}\n"_zc) {}
 
   identity::SemanticTypeId primitive(type::semantic::PrimitiveKind kind) {
-    auto admitted = semanticTypes->canonicalizeClosed(
+    auto admitted = session.semanticTypes().canonicalizeClosed(
         type::semantic::TypeData(type::semantic::PrimitiveTypeData{kind}));
     ZC_REQUIRE(admitted.is<type::semantic::CanonicalTypeData>());
     auto interned =
-        semanticTypes->intern(zc::mv(admitted).get<type::semantic::CanonicalTypeData>());
+        session.semanticTypes().intern(zc::mv(admitted).get<type::semantic::CanonicalTypeData>());
     ZC_REQUIRE(interned.is<type::SemanticTypeInterned>());
     return interned.get<type::SemanticTypeInterned>().id;
   }
@@ -105,17 +45,15 @@ public:
   }
 
   zc::Own<InferenceRecoveryContext> makeRecoveryContext() {
-    auto created = InferenceRecoveryContext::create(*registries, *registryBrands,
-                                                    registries->sourceSnapshots()[0].source(),
-                                                    InferenceOwner::callableBody(definitionId));
+    auto created = InferenceRecoveryContext::create(session.identityAuthority(), session.brands(),
+                                                    session.source(),
+                                                    InferenceOwner::callableBody(session.owner()));
     ZC_REQUIRE(created.is<zc::Own<InferenceRecoveryContext>>());
     return zc::mv(created).get<zc::Own<InferenceRecoveryContext>>();
   }
 
   identity::SourceSpan sourceSpan(uint64_t start, uint64_t end) const {
-    auto result = registries->sourceSnapshots()[0].span(start, end);
-    ZC_IF_SOME(value, result) { return zc::mv(value); }
-    ZC_FAIL_REQUIRE("invalid inference source span fixture");
+    return session.span(start, end);
   }
 
   static checked::CheckerEmitterOrdinal emitterOrdinal(uint32_t site) {
@@ -123,13 +61,7 @@ public:
         static_cast<uint8_t>(checked::CheckerDiagnosticStage::Body), 0, site, 0};
   }
 
-  identity::SemanticContextFactory factory;
-  identity::SemanticContextBrand context;
-  zc::Own<identity::SemanticIdentityRegistrySet> registries;
-  zc::Own<identity::RegistryBrandIssuer> registryBrands;
-  zc::Own<identity::DefinitionKey> retainedDefinition;
-  identity::DefId definitionId;
-  zc::Own<type::SemanticTypeStore> semanticTypes;
+  CheckerAuthoritySession session;
 };
 
 TypeVarId requireVariable(TypeVariableIssueResult&& result) {

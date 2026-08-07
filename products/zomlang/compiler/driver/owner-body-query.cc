@@ -38,6 +38,11 @@ struct DetachedFieldProjection final {
   uint32_t childOrdinal;
 };
 
+struct ExecutableRootSelection final {
+  ExecutableRootAdmission admission;
+  uint32_t childOrdinal;
+};
+
 zc::Array<uint8_t> encodeFailure(OwnerBodyFailureKind kind,
                                  zc::ArrayPtr<const uint8_t> payload = {}) {
   identity::CanonicalEncoder encoder;
@@ -84,88 +89,19 @@ void sortOwners(zc::Vector<binder::StableBodyOwnerKey>& owners) {
   }
 }
 
-bool skipProviderScalar(identity::CanonicalDecoder& decoder, const ast::NodeSchemaFieldEntry& field,
-                        uint32_t& childOrdinal, zc::Maybe<DetachedFieldProjection>& selected,
-                        zc::StringPtr target) {
-  auto storage = decoder.decodeUint8();
-  auto optional = decoder.decodeBool();
-  if (storage == zc::none || optional == zc::none ||
-      ZC_ASSERT_NONNULL(storage) != static_cast<uint8_t>(field.storage) + 1 ||
-      ZC_ASSERT_NONNULL(optional) != field.optional) {
-    return false;
-  }
-  const bool isTarget = zc::StringPtr(field.name) == target;
-  switch (field.storage) {
-    case ast::NodeSchemaFieldStorage::NodeId: {
-      auto present = decoder.decodeBool();
-      if (present == zc::none || (!field.optional && !ZC_ASSERT_NONNULL(present))) { return false; }
-      if (isTarget) {
-        selected = DetachedFieldProjection{ZC_ASSERT_NONNULL(present), childOrdinal};
-      }
-      if (ZC_ASSERT_NONNULL(present)) { ++childOrdinal; }
-      return true;
-    }
-    case ast::NodeSchemaFieldStorage::NodeList: {
-      auto count = decoder.decodeSequenceSize(kMaximumDetachedNodes);
-      if (count == zc::none || ZC_ASSERT_NONNULL(count) > UINT32_MAX - childOrdinal) {
-        return false;
-      }
-      if (isTarget) { return false; }
-      childOrdinal += static_cast<uint32_t>(ZC_ASSERT_NONNULL(count));
-      return true;
-    }
-    case ast::NodeSchemaFieldStorage::IdentList: {
-      auto count = decoder.decodeSequenceSize(kMaximumIdentifierList);
-      if (count == zc::none || isTarget) { return false; }
-      ZC_IF_SOME(value, count) {
-        for (uint64_t index = 0; index < value; ++index) {
-          if (decoder.decodeByteString(kMaximumScalarBytes) == zc::none) { return false; }
-        }
-      }
-      return true;
-    }
-    case ast::NodeSchemaFieldStorage::StringId:
-    case ast::NodeSchemaFieldStorage::IdentId:
-    case ast::NodeSchemaFieldStorage::BigIntId:
-    case ast::NodeSchemaFieldStorage::FloatId: {
-      auto present = decoder.decodeBool();
-      if (present == zc::none || (!field.optional && !ZC_ASSERT_NONNULL(present)) || isTarget) {
-        return false;
-      }
-      return !ZC_ASSERT_NONNULL(present) ||
-             decoder.decodeByteString(kMaximumScalarBytes) != zc::none;
-    }
-    case ast::NodeSchemaFieldStorage::Bool:
-      return !isTarget && decoder.decodeBool() != zc::none;
-    case ast::NodeSchemaFieldStorage::UInt8:
-      return !isTarget && decoder.decodeUint8() != zc::none;
-    case ast::NodeSchemaFieldStorage::UInt16:
-    case ast::NodeSchemaFieldStorage::UInt32:
-    case ast::NodeSchemaFieldStorage::Enum:
-      return !isTarget && decoder.decodeUint32() != zc::none;
-    case ast::NodeSchemaFieldStorage::UInt64:
-      return !isTarget && decoder.decodeUint64() != zc::none;
-  }
-  return false;
-}
-
 zc::Maybe<DetachedFieldProjection> providerField(const binder::DetachedModuleBodyNode& node,
                                                  zc::StringPtr fieldName) {
   if (node.kind() != binder::DetachedModuleBodyNodeKind::Syntax) { return zc::none; }
   auto schema = ast::lookupNodeSchema(ZC_ASSERT_NONNULL(node.syntaxKind()));
   if (schema == nullptr) { return zc::none; }
-  identity::CanonicalDecoder decoder(node.canonicalPayload());
-  auto count = decoder.decodeSequenceSize(schema->fieldCount);
-  if (count == zc::none || ZC_ASSERT_NONNULL(count) != schema->fieldCount) { return zc::none; }
-  uint32_t childOrdinal = 0;
-  zc::Maybe<DetachedFieldProjection> selected;
   for (uint32_t index = 0; index < schema->fieldCount; ++index) {
-    if (!skipProviderScalar(decoder, schema->fields[index], childOrdinal, selected, fieldName)) {
-      return zc::none;
-    }
+    if (zc::StringPtr(schema->fields[index].name) != fieldName) { continue; }
+    auto field = node.childField(index);
+    if (field == zc::none) { return zc::none; }
+    return DetachedFieldProjection{ZC_ASSERT_NONNULL(field).present,
+                                   ZC_ASSERT_NONNULL(field).firstChildOrdinal};
   }
-  if (!decoder.finished() || childOrdinal != node.childCount()) { return zc::none; }
-  return selected;
+  return zc::none;
 }
 
 zc::Maybe<size_t> immediateChildIndex(zc::ArrayPtr<const binder::DetachedModuleBodyNode> nodes,
@@ -199,10 +135,10 @@ bool validExecutableChild(const binder::ModuleBodySyntax& syntax,
                              kind == ast::SyntaxKind::UnsafeBlockExpr;
 }
 
-ExecutableRootAdmission providerExecutableRoot(const binder::ModuleBodySyntax& syntax) {
+ExecutableRootSelection providerExecutableRootSelection(const binder::ModuleBodySyntax& syntax) {
   if (syntax.rootCount() != 1 || syntax.nodes().size() == 0 ||
       syntax.nodes()[0].kind() != binder::DetachedModuleBodyNodeKind::Syntax) {
-    return ExecutableRootAdmission::Malformed;
+    return ExecutableRootSelection{ExecutableRootAdmission::Malformed, 0};
   }
   const auto rootKind = ZC_ASSERT_NONNULL(syntax.nodes()[0].syntaxKind());
   zc::StringPtr fieldName;
@@ -229,16 +165,23 @@ ExecutableRootAdmission providerExecutableRoot(const binder::ModuleBodySyntax& s
       fieldName = "init"_zc;
       break;
     default:
-      return ExecutableRootAdmission::NoBody;
+      return ExecutableRootSelection{ExecutableRootAdmission::NoBody, 0};
   }
   auto field = providerField(syntax.nodes()[0], fieldName);
-  if (field == zc::none) { return ExecutableRootAdmission::Malformed; }
+  if (field == zc::none) { return ExecutableRootSelection{ExecutableRootAdmission::Malformed, 0}; }
   if (!ZC_ASSERT_NONNULL(field).present) {
-    return optional ? ExecutableRootAdmission::NoBody : ExecutableRootAdmission::Malformed;
+    return ExecutableRootSelection{
+        optional ? ExecutableRootAdmission::NoBody : ExecutableRootAdmission::Malformed, 0};
   }
-  return validExecutableChild(syntax, ZC_ASSERT_NONNULL(field), requiresBlock)
-             ? ExecutableRootAdmission::Executable
-             : ExecutableRootAdmission::Malformed;
+  return ExecutableRootSelection{
+      validExecutableChild(syntax, ZC_ASSERT_NONNULL(field), requiresBlock)
+          ? ExecutableRootAdmission::Executable
+          : ExecutableRootAdmission::Malformed,
+      ZC_ASSERT_NONNULL(field).childOrdinal};
+}
+
+ExecutableRootAdmission providerExecutableRoot(const binder::ModuleBodySyntax& syntax) {
+  return providerExecutableRootSelection(syntax).admission;
 }
 
 zc::Maybe<DetachedFieldProjection> verifierFieldAt(const binder::DetachedModuleBodyNode& node,
@@ -322,13 +265,13 @@ zc::Maybe<DetachedFieldProjection> verifierFieldAt(const binder::DetachedModuleB
   return selected;
 }
 
-ExecutableRootAdmission verifierExecutableRoot(const binder::ModuleBodySyntax& syntax) {
+ExecutableRootSelection verifierExecutableRootSelection(const binder::ModuleBodySyntax& syntax) {
   if (syntax.rootCount() != 1 || syntax.nodes().size() == 0) {
-    return ExecutableRootAdmission::Malformed;
+    return ExecutableRootSelection{ExecutableRootAdmission::Malformed, 0};
   }
   const auto& root = syntax.nodes()[0];
   if (root.kind() != binder::DetachedModuleBodyNodeKind::Syntax) {
-    return ExecutableRootAdmission::Malformed;
+    return ExecutableRootSelection{ExecutableRootAdmission::Malformed, 0};
   }
   uint32_t fieldIndex = 0;
   bool block = false;
@@ -354,16 +297,99 @@ ExecutableRootAdmission verifierExecutableRoot(const binder::ModuleBodySyntax& s
       fieldIndex = 2;
       break;
     default:
-      return ExecutableRootAdmission::NoBody;
+      return ExecutableRootSelection{ExecutableRootAdmission::NoBody, 0};
   }
   auto selected = verifierFieldAt(root, fieldIndex);
-  if (selected == zc::none) { return ExecutableRootAdmission::Malformed; }
-  if (!ZC_ASSERT_NONNULL(selected).present) {
-    return required ? ExecutableRootAdmission::Malformed : ExecutableRootAdmission::NoBody;
+  if (selected == zc::none) {
+    return ExecutableRootSelection{ExecutableRootAdmission::Malformed, 0};
   }
-  return validExecutableChild(syntax, ZC_ASSERT_NONNULL(selected), block)
-             ? ExecutableRootAdmission::Executable
-             : ExecutableRootAdmission::Malformed;
+  if (!ZC_ASSERT_NONNULL(selected).present) {
+    return ExecutableRootSelection{
+        required ? ExecutableRootAdmission::Malformed : ExecutableRootAdmission::NoBody, 0};
+  }
+  return ExecutableRootSelection{validExecutableChild(syntax, ZC_ASSERT_NONNULL(selected), block)
+                                     ? ExecutableRootAdmission::Executable
+                                     : ExecutableRootAdmission::Malformed,
+                                 ZC_ASSERT_NONNULL(selected).childOrdinal};
+}
+
+ExecutableRootAdmission verifierExecutableRoot(const binder::ModuleBodySyntax& syntax) {
+  return verifierExecutableRootSelection(syntax).admission;
+}
+
+zc::Maybe<binder::ModuleBodySyntax> projectProviderExecutableSyntax(
+    const binder::ModuleBodySyntax& syntax, uint32_t childOrdinal) {
+  auto start = immediateChildIndex(syntax.nodes(), childOrdinal);
+  if (start == zc::none) { return zc::none; }
+  uint64_t remaining = 1;
+  size_t end = ZC_ASSERT_NONNULL(start);
+  while (remaining != 0) {
+    if (end >= syntax.nodes().size() || remaining > UINT64_MAX - syntax.nodes()[end].childCount()) {
+      return zc::none;
+    }
+    --remaining;
+    remaining += syntax.nodes()[end].childCount();
+    ++end;
+  }
+  zc::Vector<binder::DetachedModuleBodyNode> nodes(end - ZC_ASSERT_NONNULL(start));
+  for (size_t index = ZC_ASSERT_NONNULL(start); index < end; ++index) {
+    nodes.add(syntax.nodes()[index].clone());
+  }
+  return binder::ModuleBodySyntax::from(1, zc::mv(nodes));
+}
+
+zc::Maybe<binder::ModuleBodyProvenance> projectProviderExecutableProvenance(
+    const binder::ModuleBodyProvenance& provenance, uint32_t childOrdinal) {
+  zc::Vector<binder::ModuleBodyProvenanceEntry> entries;
+  for (const auto& entry : provenance.entries()) {
+    const auto components = entry.path.components();
+    if (components.size() < 2 || components[0] != 0 || components[1] != childOrdinal) { continue; }
+    zc::Vector<uint32_t> rebased(components.size());
+    rebased.add(0);
+    for (size_t index = 2; index < components.size(); ++index) { rebased.add(components[index]); }
+    auto path = binder::LocalSyntaxPath::from(zc::mv(rebased));
+    if (path == zc::none) { return zc::none; }
+    entries.add(binder::ModuleBodyProvenanceEntry{zc::mv(ZC_ASSERT_NONNULL(path)), entry.node,
+                                                  entry.byteStart, entry.byteEnd});
+  }
+  return binder::ModuleBodyProvenance::from(provenance.source().clone(), zc::mv(entries));
+}
+
+zc::Maybe<binder::ModuleBodySyntax> projectVerifierExecutableSyntax(
+    const binder::ModuleBodySyntax& syntax, uint32_t childOrdinal) {
+  auto first = immediateChildIndex(syntax.nodes(), childOrdinal);
+  if (first == zc::none) { return zc::none; }
+  zc::Vector<binder::DetachedModuleBodyNode> nodes;
+  uint64_t openNodes = 1;
+  for (size_t index = ZC_ASSERT_NONNULL(first); openNodes != 0; ++index) {
+    if (index >= syntax.nodes().size() ||
+        openNodes > UINT64_MAX - syntax.nodes()[index].childCount()) {
+      return zc::none;
+    }
+    nodes.add(syntax.nodes()[index].clone());
+    --openNodes;
+    openNodes += syntax.nodes()[index].childCount();
+  }
+  return binder::ModuleBodySyntax::from(1, zc::mv(nodes));
+}
+
+zc::Maybe<binder::ModuleBodyProvenance> projectVerifierExecutableProvenance(
+    const binder::ModuleBodyProvenance& provenance, uint32_t childOrdinal) {
+  zc::Vector<binder::ModuleBodyProvenanceEntry> entries;
+  for (const auto& entry : provenance.entries()) {
+    const auto components = entry.path.components();
+    if (components.size() < 2 || components[0] != 0 || components[1] != childOrdinal) { continue; }
+    zc::Vector<uint32_t> rebased;
+    rebased.add(0);
+    for (size_t component = 2; component < components.size(); ++component) {
+      rebased.add(components[component]);
+    }
+    auto path = binder::LocalSyntaxPath::from(zc::mv(rebased));
+    if (path == zc::none) { return zc::none; }
+    entries.add(binder::ModuleBodyProvenanceEntry{zc::mv(ZC_ASSERT_NONNULL(path)), entry.node,
+                                                  entry.byteStart, entry.byteEnd});
+  }
+  return binder::ModuleBodyProvenance::from(provenance.source().clone(), zc::mv(entries));
 }
 
 bool samePath(zc::ArrayPtr<const uint32_t> expected, const binder::LocalSyntaxPath& actual) {
@@ -524,15 +550,10 @@ query::TypedQueryResult<binder::ModuleBodyOwners> providerModuleOwners(
         key.contextRoots().clone(),
         binder::StableDefinitionQueryKey::from(key.module().clone(), entry.key().clone())));
   }
-  auto syntaxItems = context.getParallel<NamedItemSyntaxQuery>(keys.asPtr());
-  if (syntaxItems.size() != keys.size()) {
-    return query::TypedQueryResult<binder::ModuleBodyOwners>::runtimeFailure(
-        query::QueryRuntimeFailure::InvariantViolation);
-  }
   zc::Vector<binder::StableBodyOwnerKey> owners(keys.size() + 1);
   owners.add(binder::StableBodyOwnerKey::module(ZC_ASSERT_NONNULL(module).clone()));
-  for (size_t index = 0; index < syntaxItems.size(); ++index) {
-    const auto& syntax = syntaxItems[index];
+  for (size_t index = 0; index < keys.size(); ++index) {
+    auto syntax = context.get<NamedItemSyntaxQuery>(keys[index]);
     if (syntax.kind() != query::QueryValueKind::Value || syntax.isRuntimeFailure()) {
       return propagate<binder::ModuleBodyOwners>(syntax);
     }
@@ -579,12 +600,10 @@ bool verifierModuleOwners(query::QueryContext& context, const ContextualModuleKe
         key.contextRoots().clone(),
         binder::StableDefinitionQueryKey::from(key.module().clone(), entry.key().clone())));
   }
-  auto syntaxItems = context.getParallel<NamedItemSyntaxQuery>(keys.asPtr());
-  if (syntaxItems.size() != keys.size()) { return false; }
   zc::Vector<binder::StableBodyOwnerKey> expectedOwners(keys.size() + 1);
   expectedOwners.add(binder::StableBodyOwnerKey::module(ZC_ASSERT_NONNULL(module).clone()));
-  for (size_t index = 0; index < syntaxItems.size(); ++index) {
-    const auto& syntax = syntaxItems[index];
+  for (size_t index = 0; index < keys.size(); ++index) {
+    auto syntax = context.get<NamedItemSyntaxQuery>(keys[index]);
     if (syntax.isRuntimeFailure()) { return false; }
     if (syntax.kind() == query::QueryValueKind::SemanticFailure) {
       return result.kind() == query::QueryValueKind::SemanticFailure &&
@@ -694,17 +713,23 @@ query::TypedQueryResult<OwnerBodySyntaxQuery::Value> OwnerBodySyntaxQuery::provi
     return query::TypedQueryResult<Value>::semanticFailure(
         encodeFailure(OwnerBodyFailureKind::ForeignOwner));
   }
-  const auto admission = providerExecutableRoot(syntax.value().detachedSyntax());
-  if (admission == ExecutableRootAdmission::NoBody) {
+  const auto selection = providerExecutableRootSelection(syntax.value().detachedSyntax());
+  if (selection.admission == ExecutableRootAdmission::NoBody) {
     return query::TypedQueryResult<Value>::semanticFailure(
         encodeFailure(OwnerBodyFailureKind::DefinitionWithoutBody));
   }
-  if (admission == ExecutableRootAdmission::Malformed) {
+  if (selection.admission == ExecutableRootAdmission::Malformed) {
     return query::TypedQueryResult<Value>::semanticFailure(
         encodeFailure(OwnerBodyFailureKind::MalformedDetachedSyntax));
   }
+  auto executable =
+      projectProviderExecutableSyntax(syntax.value().detachedSyntax(), selection.childOrdinal);
+  if (executable == zc::none) {
+    return query::TypedQueryResult<Value>::runtimeFailure(
+        query::QueryRuntimeFailure::InvariantViolation);
+  }
   auto value = binder::OwnerBodySyntax::from(owner.clone(), body.module().clone(),
-                                             syntax.value().detachedSyntax().clone());
+                                             zc::mv(ZC_ASSERT_NONNULL(executable)));
   if (value == zc::none) {
     return query::TypedQueryResult<Value>::runtimeFailure(
         query::QueryRuntimeFailure::InvariantViolation);
@@ -748,17 +773,20 @@ bool OwnerBodySyntaxQuery::verify(query::QueryContext& context, const Key& key,
     return result.kind() == query::QueryValueKind::SemanticFailure &&
            result.semanticFailureBytes() == expectedFailure.asPtr();
   }
-  const auto admission = verifierExecutableRoot(syntax.value().detachedSyntax());
-  if (admission != ExecutableRootAdmission::Executable) {
-    const auto failure = admission == ExecutableRootAdmission::NoBody
+  const auto selection = verifierExecutableRootSelection(syntax.value().detachedSyntax());
+  if (selection.admission != ExecutableRootAdmission::Executable) {
+    const auto failure = selection.admission == ExecutableRootAdmission::NoBody
                              ? OwnerBodyFailureKind::DefinitionWithoutBody
                              : OwnerBodyFailureKind::MalformedDetachedSyntax;
     auto expectedFailure = encodeFailure(failure);
     return result.kind() == query::QueryValueKind::SemanticFailure &&
            result.semanticFailureBytes() == expectedFailure.asPtr();
   }
+  auto executable =
+      projectVerifierExecutableSyntax(syntax.value().detachedSyntax(), selection.childOrdinal);
+  if (executable == zc::none) { return false; }
   auto expected = binder::OwnerBodySyntax::from(owner.clone(), body.module().clone(),
-                                                syntax.value().detachedSyntax().clone());
+                                                zc::mv(ZC_ASSERT_NONNULL(executable)));
   return result.kind() == query::QueryValueKind::Value && expected != zc::none &&
          ZC_ASSERT_NONNULL(expected) == result.value();
 }
@@ -846,8 +874,8 @@ query::CapabilityProviderResult<OwnerBodyProvenanceQuery> OwnerBodyProvenanceQue
       return query::CapabilityProviderResult<OwnerBodyProvenanceQuery>::runtimeRejected(
           query::QueryRuntimeFailure::InvariantViolation);
     }
-    const auto admission = providerExecutableRoot(namedSyntax.value().detachedSyntax());
-    if (admission == ExecutableRootAdmission::NoBody) {
+    const auto selection = providerExecutableRootSelection(namedSyntax.value().detachedSyntax());
+    if (selection.admission == ExecutableRootAdmission::NoBody) {
       auto failure = definitionWithoutBodyFailure(key);
       if (failure == zc::none) {
         return query::CapabilityProviderResult<OwnerBodyProvenanceQuery>::runtimeRejected(
@@ -856,17 +884,25 @@ query::CapabilityProviderResult<OwnerBodyProvenanceQuery> OwnerBodyProvenanceQue
       return query::CapabilityProviderResult<OwnerBodyProvenanceQuery>::keyRejected<
           binder::BinderKeyFailure>(zc::mv(ZC_ASSERT_NONNULL(failure)));
     }
-    if (admission != ExecutableRootAdmission::Executable) {
+    if (selection.admission != ExecutableRootAdmission::Executable) {
+      return query::CapabilityProviderResult<OwnerBodyProvenanceQuery>::runtimeRejected(
+          query::QueryRuntimeFailure::InvariantViolation);
+    }
+    auto executable = projectProviderExecutableSyntax(namedSyntax.value().detachedSyntax(),
+                                                      selection.childOrdinal);
+    auto projectedProvenance = projectProviderExecutableProvenance(
+        provenance.lease().capability().detachedProvenance(), selection.childOrdinal);
+    if (executable == zc::none || projectedProvenance == zc::none) {
       return query::CapabilityProviderResult<OwnerBodyProvenanceQuery>::runtimeRejected(
           query::QueryRuntimeFailure::InvariantViolation);
     }
     syntax = binder::OwnerBodySyntax::from(owner.clone(), body.module().clone(),
-                                           namedSyntax.value().detachedSyntax().clone());
+                                           zc::mv(ZC_ASSERT_NONNULL(executable)));
     if (syntax == zc::none) {
       return query::CapabilityProviderResult<OwnerBodyProvenanceQuery>::runtimeRejected(
           query::QueryRuntimeFailure::InvariantViolation);
     }
-    retained = provenance.lease().capability().detachedProvenance().clone();
+    retained = zc::mv(ZC_ASSERT_NONNULL(projectedProvenance));
   }
   if (retained == zc::none ||
       !providerProvenanceMatches(ZC_ASSERT_NONNULL(syntax), ZC_ASSERT_NONNULL(retained))) {
@@ -915,14 +951,19 @@ zc::Maybe<zc::Array<uint8_t>> OwnerBodyProvenanceQuery::verify(
     if (!provenance.isPublished()) { return zc::none; }
     auto namedSyntax = context.get<NamedItemSyntaxQuery>(definitionKey);
     if (namedSyntax.isRuntimeFailure() || namedSyntax.kind() != query::QueryValueKind::Value ||
-        !sameModule(namedSyntax.value().owningModule(), body.module()) ||
-        verifierExecutableRoot(namedSyntax.value().detachedSyntax()) !=
-            ExecutableRootAdmission::Executable) {
+        !sameModule(namedSyntax.value().owningModule(), body.module())) {
       return zc::none;
     }
+    const auto selection = verifierExecutableRootSelection(namedSyntax.value().detachedSyntax());
+    if (selection.admission != ExecutableRootAdmission::Executable) { return zc::none; }
+    auto executable = projectVerifierExecutableSyntax(namedSyntax.value().detachedSyntax(),
+                                                      selection.childOrdinal);
+    auto projectedProvenance = projectVerifierExecutableProvenance(
+        provenance.lease().capability().detachedProvenance(), selection.childOrdinal);
+    if (executable == zc::none || projectedProvenance == zc::none) { return zc::none; }
     syntax = binder::OwnerBodySyntax::from(owner.clone(), body.module().clone(),
-                                           namedSyntax.value().detachedSyntax().clone());
-    retained = provenance.lease().capability().detachedProvenance().clone();
+                                           zc::mv(ZC_ASSERT_NONNULL(executable)));
+    retained = zc::mv(ZC_ASSERT_NONNULL(projectedProvenance));
   }
   if (syntax == zc::none || retained == zc::none ||
       !verifierProvenanceMatches(ZC_ASSERT_NONNULL(syntax), ZC_ASSERT_NONNULL(retained))) {
@@ -1006,6 +1047,383 @@ query::CapabilityRejectionCheck verifyOwnerBodyKeyRejection(
 }
 
 }  // namespace zomlang::compiler::driver::incremental_binding_query
+
+namespace zomlang::compiler::binder {
+namespace {
+
+template <typename T>
+CanonicalSequence<T> emptyFacts() {
+  return CanonicalSequence<T>::empty();
+}
+
+zc::Maybe<CanonicalNonEmptySequence<diagnostics::DiagnosticFact>> cloneDiagnostics(
+    zc::ArrayPtr<const diagnostics::DiagnosticFact> facts) {
+  zc::Vector<diagnostics::DiagnosticFact> copies;
+  for (const auto& fact : facts) copies.add(fact.clone());
+  return StableBindingSequenceBuilder<diagnostics::DiagnosticFact>::fromNonEmpty(zc::mv(copies));
+}
+
+query::TypedQueryResult<BindOwnerBody::Value> ownerBodyRuntimeFailure(
+    query::QueryRuntimeFailure failure) {
+  return query::TypedQueryResult<BindOwnerBody::Value>::runtimeFailure(failure);
+}
+
+query::TypedQueryResult<ModuleBindingAllocationPlanQuery::Value> allocationPlanRuntimeFailure(
+    query::QueryRuntimeFailure failure) {
+  return query::TypedQueryResult<ModuleBindingAllocationPlanQuery::Value>::runtimeFailure(failure);
+}
+
+driver::incremental_binding_query::ContextualBodyOwnerKey allocationBodyKey(
+    const ModuleBindingAllocationPlanQuery::Key& key, const StableOwnerBodyQueryKey& owner) {
+  return driver::incremental_binding_query::ContextualBodyOwnerKey::from(key.contextRoots().clone(),
+                                                                         owner.clone());
+}
+
+bool sameAllocationModule(const identity::ModuleKey& left, const identity::ModuleKey& right) {
+  return left.encode().asPtr() == right.encode().asPtr();
+}
+
+}  // namespace
+
+zc::Array<uint8_t> BindOwnerBody::encodeKey(const Key& key) { return key.encodeCanonical(); }
+
+zc::Maybe<BindOwnerBody::Key> BindOwnerBody::decodeKey(zc::ArrayPtr<const uint8_t> bytes) {
+  return driver::incremental_binding_query::ContextualBodyOwnerKey::decodeCanonical(bytes);
+}
+
+zc::Array<uint8_t> BindOwnerBody::encodeValue(const Value& value) {
+  return StableBindingCodec<Value>::encode(value);
+}
+
+zc::Maybe<BindOwnerBody::Value> BindOwnerBody::decodeValue(zc::ArrayPtr<const uint8_t> bytes) {
+  return StableBindingCodec<Value>::decode(bytes);
+}
+
+query::TypedQueryResult<BindOwnerBody::Value> BindOwnerBody::provide(query::QueryContext& context,
+                                                                     const Key& key) {
+  auto provenance =
+      context.getCapability<driver::incremental_binding_query::OwnerBodyProvenanceQuery>(
+          key.clone());
+  if (provenance.isRuntimeRejected()) {
+    return ownerBodyRuntimeFailure(provenance.runtimeFailure());
+  }
+  if (provenance.isSourceRejected()) {
+    auto diagnostics = cloneDiagnostics(provenance.diagnostics().values());
+    if (diagnostics == zc::none) {
+      return ownerBodyRuntimeFailure(query::QueryRuntimeFailure::InvariantViolation);
+    }
+    return query::TypedQueryResult<Value>::value(
+        Value::sourceRejected(zc::mv(ZC_ASSERT_NONNULL(diagnostics))));
+  }
+  if (provenance.isKeyRejected()) {
+    return query::TypedQueryResult<Value>::value(
+        Value::keyRejected(provenance.keyFailure().clone()));
+  }
+  if (!provenance.isPublished()) {
+    return ownerBodyRuntimeFailure(query::QueryRuntimeFailure::InvariantViolation);
+  }
+
+  auto skeleton = context.get<BindModuleSkeleton>(key.body().module().clone());
+  if (skeleton.isRuntimeFailure()) { return ownerBodyRuntimeFailure(skeleton.runtimeFailure()); }
+  if (skeleton.kind() != query::QueryValueKind::Value) {
+    return ownerBodyRuntimeFailure(query::QueryRuntimeFailure::InvariantViolation);
+  }
+  const auto& skeletonResult = skeleton.value().storage();
+  if (skeletonResult.is<BinderSourceRejected>()) {
+    return query::TypedQueryResult<Value>::value(
+        Value::sourceRejected(skeletonResult.get<BinderSourceRejected>().diagnostics.clone()));
+  }
+  if (skeletonResult.is<BinderKeyRejected>()) {
+    return query::TypedQueryResult<Value>::value(
+        Value::keyRejected(skeletonResult.get<BinderKeyRejected>().failure.clone()));
+  }
+  const auto& skeletonValue = skeletonResult.get<BinderQueryValue<BoundModuleSkeleton>>();
+  if (skeletonValue.diagnostics.values().size() != 0) {
+    return ownerBodyRuntimeFailure(query::QueryRuntimeFailure::InvariantViolation);
+  }
+
+  auto syntax = context.get<driver::incremental_binding_query::OwnerBodySyntaxQuery>(key.clone());
+  if (syntax.isRuntimeFailure()) { return ownerBodyRuntimeFailure(syntax.runtimeFailure()); }
+  if (syntax.kind() != query::QueryValueKind::Value) {
+    return ownerBodyRuntimeFailure(query::QueryRuntimeFailure::InvariantViolation);
+  }
+  auto scopes = OwnerBodyScopeProjection::fromSkeleton(key.body(), syntax.value().detachedSyntax(),
+                                                       skeletonValue.value);
+  if (scopes == zc::none) {
+    return ownerBodyRuntimeFailure(query::QueryRuntimeFailure::InvariantViolation);
+  }
+  auto bindings = OwnerBodyBindingProjection::from(key.body(), syntax.value().detachedSyntax(),
+                                                   ZC_ASSERT_NONNULL(scopes).nodeScopes());
+  if (bindings == zc::none) {
+    return ownerBodyRuntimeFailure(query::QueryRuntimeFailure::InvariantViolation);
+  }
+  auto shadows = OwnerBodyShadowProjection::from(key.body(), ZC_ASSERT_NONNULL(scopes).scopes(),
+                                                 ZC_ASSERT_NONNULL(bindings).bindings());
+  if (shadows == zc::none) {
+    return ownerBodyRuntimeFailure(query::QueryRuntimeFailure::InvariantViolation);
+  }
+  auto lookups = OwnerBodyLookupProjection::from(
+      key.body(), syntax.value().detachedSyntax(), skeletonValue.value,
+      ZC_ASSERT_NONNULL(scopes).scopes(), ZC_ASSERT_NONNULL(scopes).nodeScopes(),
+      ZC_ASSERT_NONNULL(bindings).bindings());
+  auto selfTypes = OwnerBodySelfTypeProjection::from(key.body(), syntax.value().detachedSyntax(),
+                                                     skeletonValue.value);
+  auto receivers = OwnerBodyReceiverProjection::from(key.body(), syntax.value().detachedSyntax(),
+                                                     skeletonValue.value);
+  auto deferredMembers =
+      OwnerBodyDeferredMemberProjection::from(key.body(), syntax.value().detachedSyntax());
+  auto closures = OwnerBodyClosureProjection::from(key.body(), syntax.value().detachedSyntax(),
+                                                   ZC_ASSERT_NONNULL(scopes).nodeScopes());
+  auto labels = OwnerBodyLabelProjection::from(key.body(), syntax.value().detachedSyntax(),
+                                               ZC_ASSERT_NONNULL(scopes).nodeScopes());
+  if (lookups == zc::none || selfTypes == zc::none || receivers == zc::none ||
+      deferredMembers == zc::none || closures == zc::none || labels == zc::none) {
+    return ownerBodyRuntimeFailure(query::QueryRuntimeFailure::InvariantViolation);
+  }
+  auto freeVariables = OwnerBodyFreeVariableProjection::from(
+      key.body(), skeletonValue.value, ZC_ASSERT_NONNULL(scopes).scopes(),
+      ZC_ASSERT_NONNULL(bindings).bindings(), ZC_ASSERT_NONNULL(closures).closures(),
+      ZC_ASSERT_NONNULL(lookups).resolutions());
+  auto explicitCaptures = OwnerBodyExplicitCaptureProjection::from(
+      key.body(), syntax.value().detachedSyntax(), skeletonValue.value,
+      ZC_ASSERT_NONNULL(scopes).scopes(), ZC_ASSERT_NONNULL(scopes).nodeScopes(),
+      ZC_ASSERT_NONNULL(bindings).bindings(), ZC_ASSERT_NONNULL(closures).closures());
+  if (freeVariables == zc::none || explicitCaptures == zc::none) {
+    return ownerBodyRuntimeFailure(query::QueryRuntimeFailure::InvariantViolation);
+  }
+  auto controls = OwnerBodyControlProjection::from(key.body(), syntax.value().detachedSyntax(),
+                                                   ZC_ASSERT_NONNULL(scopes).nodeScopes(),
+                                                   ZC_ASSERT_NONNULL(labels).labels());
+  if (controls == zc::none) {
+    return ownerBodyRuntimeFailure(query::QueryRuntimeFailure::InvariantViolation);
+  }
+  auto value = BoundOwnerBody::from(
+      key.body().clone(), ZC_ASSERT_NONNULL(scopes).scopes().clone(),
+      ZC_ASSERT_NONNULL(scopes).nodeScopes().clone(),
+      ZC_ASSERT_NONNULL(bindings).bindings().clone(),
+      ZC_ASSERT_NONNULL(lookups).resolutions().clone(),
+      ZC_ASSERT_NONNULL(deferredMembers).deferredMembers().clone(),
+      ZC_ASSERT_NONNULL(selfTypes).selfTypes().clone(),
+      ZC_ASSERT_NONNULL(receivers).bindings().clone(), ZC_ASSERT_NONNULL(shadows).shadows().clone(),
+      ZC_ASSERT_NONNULL(labels).labels().clone(), ZC_ASSERT_NONNULL(controls).transfers().clone(),
+      ZC_ASSERT_NONNULL(closures).closures().clone(),
+      ZC_ASSERT_NONNULL(freeVariables).freeVariables().clone(),
+      ZC_ASSERT_NONNULL(explicitCaptures).captures().clone(),
+      ZC_ASSERT_NONNULL(lookups).failedLookups().clone());
+  if (value == zc::none) {
+    return ownerBodyRuntimeFailure(query::QueryRuntimeFailure::InvariantViolation);
+  }
+  return query::TypedQueryResult<Value>::value(
+      Value::value(zc::mv(ZC_ASSERT_NONNULL(value)), emptyFacts<diagnostics::DiagnosticFact>()));
+}
+
+bool BindOwnerBody::verify(query::QueryContext& context, const Key& key,
+                           const query::TypedQueryResult<Value>& result) {
+  auto provenance =
+      context.getCapability<driver::incremental_binding_query::OwnerBodyProvenanceQuery>(
+          key.clone());
+  if (!provenance.isPublished()) {
+    if (provenance.isSourceRejected()) {
+      auto expected = cloneDiagnostics(provenance.diagnostics().values());
+      return result.kind() == query::QueryValueKind::Value &&
+             result.value().storage().is<BinderSourceRejected>() && expected != zc::none &&
+             result.value().storage().get<BinderSourceRejected>().diagnostics ==
+                 ZC_ASSERT_NONNULL(expected);
+    }
+    if (provenance.isKeyRejected()) {
+      return result.kind() == query::QueryValueKind::Value &&
+             result.value().storage().is<BinderKeyRejected>() &&
+             result.value().storage().get<BinderKeyRejected>().failure == provenance.keyFailure();
+    }
+    return false;
+  }
+  auto skeleton = context.get<BindModuleSkeleton>(key.body().module().clone());
+  if (skeleton.isRuntimeFailure() || skeleton.kind() != query::QueryValueKind::Value) return false;
+  const auto& skeletonResult = skeleton.value().storage();
+  if (skeletonResult.is<BinderSourceRejected>()) {
+    return result.kind() == query::QueryValueKind::Value &&
+           result.value().storage().is<BinderSourceRejected>() &&
+           result.value().storage().get<BinderSourceRejected>().diagnostics ==
+               skeletonResult.get<BinderSourceRejected>().diagnostics;
+  }
+  if (skeletonResult.is<BinderKeyRejected>()) {
+    return result.kind() == query::QueryValueKind::Value &&
+           result.value().storage().is<BinderKeyRejected>() &&
+           result.value().storage().get<BinderKeyRejected>().failure ==
+               skeletonResult.get<BinderKeyRejected>().failure;
+  }
+  const auto& skeletonValue = skeletonResult.get<BinderQueryValue<BoundModuleSkeleton>>();
+  auto syntax = context.get<driver::incremental_binding_query::OwnerBodySyntaxQuery>(key.clone());
+  if (syntax.isRuntimeFailure() || syntax.kind() != query::QueryValueKind::Value ||
+      result.kind() != query::QueryValueKind::Value ||
+      !result.value().storage().is<BinderQueryValue<BoundOwnerBody>>()) {
+    return false;
+  }
+  const auto& value = result.value().storage().get<BinderQueryValue<BoundOwnerBody>>();
+  const auto& body = value.value;
+  if (skeletonValue.diagnostics.values().size() != 0 || value.diagnostics.values().size() != 0 ||
+      body.owner() != key.body() ||
+      !OwnerBodyScopeProjection::verifyFromSkeleton(key.body(), syntax.value().detachedSyntax(),
+                                                    skeletonValue.value, body.scopes(),
+                                                    body.nodeScopes()) ||
+      !OwnerBodyBindingProjection::verify(key.body(), syntax.value().detachedSyntax(),
+                                          body.nodeScopes(), body.bindings()) ||
+      !OwnerBodyShadowProjection::verify(key.body(), body.scopes(), body.bindings(),
+                                         body.shadowTargets()) ||
+      !OwnerBodyLookupProjection::verify(
+          key.body(), syntax.value().detachedSyntax(), skeletonValue.value, body.scopes(),
+          body.nodeScopes(), body.bindings(), body.resolutions(), body.failedLookups()) ||
+      !OwnerBodySelfTypeProjection::verify(key.body(), syntax.value().detachedSyntax(),
+                                           skeletonValue.value, body.selfTypes()) ||
+      !OwnerBodyReceiverProjection::verify(key.body(), syntax.value().detachedSyntax(),
+                                           skeletonValue.value, body.thisBindings()) ||
+      !OwnerBodyDeferredMemberProjection::verify(key.body(), syntax.value().detachedSyntax(),
+                                                 body.deferredMembers()) ||
+      !OwnerBodyClosureProjection::verify(key.body(), syntax.value().detachedSyntax(),
+                                          body.nodeScopes(), body.closures()) ||
+      !OwnerBodyFreeVariableProjection::verify(key.body(), skeletonValue.value, body.scopes(),
+                                               body.bindings(), body.closures(), body.resolutions(),
+                                               body.closureFreeVariables()) ||
+      !OwnerBodyLabelProjection::verify(key.body(), syntax.value().detachedSyntax(),
+                                        body.nodeScopes(), body.labels()) ||
+      !OwnerBodyControlProjection::verify(key.body(), syntax.value().detachedSyntax(),
+                                          body.nodeScopes(), body.labels(),
+                                          body.controlTransfers())) {
+    return false;
+  }
+  return OwnerBodyExplicitCaptureProjection::verify(
+      key.body(), syntax.value().detachedSyntax(), skeletonValue.value, body.scopes(),
+      body.nodeScopes(), body.bindings(), body.closures(), body.explicitClosureCaptures());
+}
+
+zc::Array<uint8_t> ModuleBindingAllocationPlanQuery::encodeKey(const Key& key) {
+  return key.encodeCanonical();
+}
+
+zc::Maybe<ModuleBindingAllocationPlanQuery::Key> ModuleBindingAllocationPlanQuery::decodeKey(
+    zc::ArrayPtr<const uint8_t> bytes) {
+  return driver::incremental_binding_query::ContextualModuleKey::decodeCanonical(bytes);
+}
+
+zc::Array<uint8_t> ModuleBindingAllocationPlanQuery::encodeValue(const Value& value) {
+  return StableBindingCodec<Value>::encode(value);
+}
+
+zc::Maybe<ModuleBindingAllocationPlanQuery::Value> ModuleBindingAllocationPlanQuery::decodeValue(
+    zc::ArrayPtr<const uint8_t> bytes) {
+  return StableBindingCodec<Value>::decode(bytes);
+}
+
+query::TypedQueryResult<ModuleBindingAllocationPlanQuery::Value>
+ModuleBindingAllocationPlanQuery::provide(query::QueryContext& context, const Key& key) {
+  auto skeleton = context.get<BindModuleSkeleton>(key.module().clone());
+  if (skeleton.isRuntimeFailure()) {
+    return allocationPlanRuntimeFailure(skeleton.runtimeFailure());
+  }
+  if (skeleton.kind() != query::QueryValueKind::Value) {
+    return allocationPlanRuntimeFailure(query::QueryRuntimeFailure::InvariantViolation);
+  }
+  const auto& skeletonResult = skeleton.value().storage();
+  if (skeletonResult.is<BinderSourceRejected>()) {
+    return query::TypedQueryResult<Value>::value(
+        Value::sourceRejected(skeletonResult.get<BinderSourceRejected>().diagnostics.clone()));
+  }
+  if (skeletonResult.is<BinderKeyRejected>()) {
+    return query::TypedQueryResult<Value>::value(
+        Value::keyRejected(skeletonResult.get<BinderKeyRejected>().failure.clone()));
+  }
+  const auto& skeletonValue = skeletonResult.get<BinderQueryValue<BoundModuleSkeleton>>();
+  if (skeletonValue.diagnostics.values().size() != 0 ||
+      !sameAllocationModule(skeletonValue.value.module(), key.module())) {
+    return allocationPlanRuntimeFailure(query::QueryRuntimeFailure::InvariantViolation);
+  }
+
+  zc::Vector<BoundOwnerBody> bodies;
+  for (const auto& owner : skeletonValue.value.bodyOwners().values()) {
+    auto body = context.get<BindOwnerBody>(allocationBodyKey(key, owner));
+    if (body.isRuntimeFailure()) { return allocationPlanRuntimeFailure(body.runtimeFailure()); }
+    if (body.kind() != query::QueryValueKind::Value) {
+      return allocationPlanRuntimeFailure(query::QueryRuntimeFailure::InvariantViolation);
+    }
+    const auto& bodyResult = body.value().storage();
+    if (bodyResult.is<BinderSourceRejected>()) {
+      return query::TypedQueryResult<Value>::value(
+          Value::sourceRejected(bodyResult.get<BinderSourceRejected>().diagnostics.clone()));
+    }
+    if (bodyResult.is<BinderKeyRejected>()) {
+      return query::TypedQueryResult<Value>::value(
+          Value::keyRejected(bodyResult.get<BinderKeyRejected>().failure.clone()));
+    }
+    const auto& bodyValue = bodyResult.get<BinderQueryValue<BoundOwnerBody>>();
+    if (bodyValue.diagnostics.values().size() != 0 || bodyValue.value.owner() != owner) {
+      return allocationPlanRuntimeFailure(query::QueryRuntimeFailure::InvariantViolation);
+    }
+    bodies.add(bodyValue.value.clone());
+  }
+  auto plan = ModuleBindingAllocationPlanner::from(skeletonValue.value, bodies.asPtr().asConst());
+  if (plan == zc::none) {
+    return allocationPlanRuntimeFailure(query::QueryRuntimeFailure::InvariantViolation);
+  }
+  return query::TypedQueryResult<Value>::value(
+      Value::value(zc::mv(ZC_ASSERT_NONNULL(plan)), emptyFacts<diagnostics::DiagnosticFact>()));
+}
+
+bool ModuleBindingAllocationPlanQuery::verify(query::QueryContext& context, const Key& key,
+                                              const query::TypedQueryResult<Value>& result) {
+  auto skeleton = context.get<BindModuleSkeleton>(key.module().clone());
+  if (skeleton.isRuntimeFailure() || skeleton.kind() != query::QueryValueKind::Value) return false;
+  const auto& skeletonResult = skeleton.value().storage();
+  if (skeletonResult.is<BinderSourceRejected>()) {
+    return result.kind() == query::QueryValueKind::Value &&
+           result.value().storage().is<BinderSourceRejected>() &&
+           result.value().storage().get<BinderSourceRejected>().diagnostics ==
+               skeletonResult.get<BinderSourceRejected>().diagnostics;
+  }
+  if (skeletonResult.is<BinderKeyRejected>()) {
+    return result.kind() == query::QueryValueKind::Value &&
+           result.value().storage().is<BinderKeyRejected>() &&
+           result.value().storage().get<BinderKeyRejected>().failure ==
+               skeletonResult.get<BinderKeyRejected>().failure;
+  }
+  const auto& skeletonValue = skeletonResult.get<BinderQueryValue<BoundModuleSkeleton>>();
+  if (skeletonValue.diagnostics.values().size() != 0 ||
+      !sameAllocationModule(skeletonValue.value.module(), key.module())) {
+    return false;
+  }
+
+  zc::Vector<BoundOwnerBody> bodies;
+  for (const auto& owner : skeletonValue.value.bodyOwners().values()) {
+    auto body = context.get<BindOwnerBody>(allocationBodyKey(key, owner));
+    if (body.isRuntimeFailure() || body.kind() != query::QueryValueKind::Value) return false;
+    const auto& bodyResult = body.value().storage();
+    if (bodyResult.is<BinderSourceRejected>()) {
+      return result.kind() == query::QueryValueKind::Value &&
+             result.value().storage().is<BinderSourceRejected>() &&
+             result.value().storage().get<BinderSourceRejected>().diagnostics ==
+                 bodyResult.get<BinderSourceRejected>().diagnostics;
+    }
+    if (bodyResult.is<BinderKeyRejected>()) {
+      return result.kind() == query::QueryValueKind::Value &&
+             result.value().storage().is<BinderKeyRejected>() &&
+             result.value().storage().get<BinderKeyRejected>().failure ==
+                 bodyResult.get<BinderKeyRejected>().failure;
+    }
+    const auto& bodyValue = bodyResult.get<BinderQueryValue<BoundOwnerBody>>();
+    if (bodyValue.diagnostics.values().size() != 0 || bodyValue.value.owner() != owner)
+      return false;
+    bodies.add(bodyValue.value.clone());
+  }
+  if (result.kind() != query::QueryValueKind::Value ||
+      !result.value().storage().is<BinderQueryValue<ModuleBindingAllocationPlan>>()) {
+    return false;
+  }
+  const auto& value = result.value().storage().get<BinderQueryValue<ModuleBindingAllocationPlan>>();
+  return value.diagnostics.values().size() == 0 &&
+         ModuleBindingAllocationPlanner::verify(skeletonValue.value, bodies.asPtr().asConst(),
+                                                value.value);
+}
+
+}  // namespace zomlang::compiler::binder
 
 namespace zomlang::compiler::query {
 

@@ -66,23 +66,14 @@ identity::ModuleId moduleIdentity() {
   identity::SemanticContextFactory factory;
   auto context = factory.issue();
   ZC_REQUIRE(context != zc::none);
-  auto registries =
-      identity::SemanticIdentityRegistrySet::create(factory, ZC_REQUIRE_NONNULL(context));
-  ZC_REQUIRE(registries != zc::none);
-  ZC_IF_SOME(values, registries) {
-    ZC_REQUIRE(values.collectCompilationUnit(userUnit()) == identity::FrozenRegistryFailure::None);
-    ZC_REQUIRE(values.freezeCompilationUnits() == identity::FrozenRegistryFailure::None);
-    ZC_REQUIRE(values.collectCrate(crate()) == identity::FrozenRegistryFailure::None);
-    ZC_REQUIRE(values.freezeCrates() == identity::FrozenRegistryFailure::None);
-    auto snapshot = identity::ImmutableSourceSnapshot::from(tests::test_identity_detail::source(),
-                                                            zc::heapArray<uint8_t>(1, uint8_t{0}));
-    ZC_REQUIRE(snapshot != zc::none);
-    ZC_REQUIRE(values.collectSourceFile(zc::mv(ZC_REQUIRE_NONNULL(snapshot))) ==
-               identity::FrozenRegistryFailure::None);
-    ZC_REQUIRE(values.freezeSourceFiles() == identity::FrozenRegistryFailure::None);
-    ZC_REQUIRE(values.collectModule(module()) == identity::FrozenRegistryFailure::None);
-    ZC_REQUIRE(values.freezeModules() == identity::FrozenRegistryFailure::None);
-    return ZC_REQUIRE_NONNULL(values.modules().find(module()));
+  ZC_IF_SOME(owner, context) {
+    auto authorities = identity::CanonicalIdentityInternerSet::create(factory, owner);
+    ZC_REQUIRE(authorities != zc::none);
+    ZC_IF_SOME(interner, authorities) {
+      auto result = interner.internModule(owner, module());
+      ZC_REQUIRE(result.is<identity::ModuleId>());
+      return result.get<identity::ModuleId>();
+    }
   }
   ZC_UNREACHABLE;
 }

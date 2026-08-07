@@ -126,6 +126,18 @@
         "stopOnFailure": true,
         "jobs": 8
       }
+    },
+    {
+      "name": "coverageCollectionTests",
+      "configurePreset": "coverage",
+      "description": "Run coverage tests without short-circuiting profile collection",
+      "output": {
+        "outputOnFailure": true
+      },
+      "execution": {
+        "noTestsAction": "error",
+        "jobs": 8
+      }
     }
   ]
 }

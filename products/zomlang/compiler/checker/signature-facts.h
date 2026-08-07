@@ -27,7 +27,6 @@
 #include "zomlang/compiler/diagnostics/diagnostic-ids.h"
 #include "zomlang/compiler/identity/identity-invariant.h"
 #include "zomlang/compiler/identity/semantic-context-fingerprint.h"
-#include "zomlang/compiler/identity/semantic-identity-registry-set.h"
 #include "zomlang/compiler/type/semantic-type-data.h"
 #include "zomlang/compiler/type/semantic-type-store.h"
 
@@ -35,8 +34,12 @@ namespace zomlang::compiler::identity {
 class CanonicalEncoder;
 }
 
-namespace zomlang::compiler::binder {
-class VerifiedBoundModuleInput;
+namespace zomlang::compiler::driver::module_graph_query {
+class CheckerBoundModuleView;
+}
+
+namespace zomlang::compiler::checker {
+class CheckerIdentityAuthority;
 }
 
 namespace zomlang::compiler::checker::signature {
@@ -196,6 +199,7 @@ private:
   zc::Own<Impl> impl;
 
   friend class SignatureFactsCanonicalEncoder;
+  friend class SignatureFactsCanonicalCodec;
 };
 
 struct ConstObjectField final {
@@ -946,8 +950,8 @@ struct SignatureFactsVerificationInput final {
   zc::ArrayPtr<const SignatureDefinitionRequirement> requiredSignatures;
   zc::ArrayPtr<const ImplHeadRequirement> requiredImplHeads;
   zc::ArrayPtr<const MarkerFactRequirement> requiredMarkerFacts;
-  const identity::SemanticIdentityRegistrySet& registries;
   const type::SemanticTypeStore& semanticTypes;
+  const CheckerIdentityAuthority& identities;
 };
 
 /// \brief Immutable verified signatures, impl heads, and explicit marker facts.
@@ -1057,25 +1061,25 @@ public:
 class SignatureFactsCanonicalCodec final {
 public:
   ZC_NODISCARD static zc::Maybe<TypeKeyPatternKey> makeTypeKeyPatternKey(
-      const TypeKeyPattern& pattern, const identity::SemanticIdentityRegistrySet& registries);
+      const TypeKeyPattern& pattern, const CheckerIdentityAuthority& identities);
   /// \brief Decode and independently re-verify one canonical type-key pattern key.
   ZC_NODISCARD static zc::Maybe<TypeKeyPatternKey> decodeTypeKeyPatternKey(
-      zc::ArrayPtr<const uint8_t> bytes, const identity::SemanticIdentityRegistrySet& registries);
+      zc::ArrayPtr<const uint8_t> bytes, const CheckerIdentityAuthority& identities);
   /// \brief Recompute and compare the canonical type-key pattern against its decoded value.
-  ZC_NODISCARD static bool typeKeyPatternKeyIsCanonical(
-      const TypeKeyPatternKey& pattern, const identity::SemanticIdentityRegistrySet& registries);
+  ZC_NODISCARD static bool typeKeyPatternKeyIsCanonical(const TypeKeyPatternKey& pattern,
+                                                        const CheckerIdentityAuthority& identities);
   ZC_NODISCARD static zc::Maybe<ImplPatternKey> makeImplPatternKey(
-      const ImplPattern& pattern, const identity::SemanticIdentityRegistrySet& registries);
+      const ImplPattern& pattern, const CheckerIdentityAuthority& identities);
   /// \brief Decode and independently re-verify one canonical complete impl-pattern key.
   ZC_NODISCARD static zc::Maybe<ImplPatternKey> decodeImplPatternKey(
-      zc::ArrayPtr<const uint8_t> bytes, const identity::SemanticIdentityRegistrySet& registries);
+      zc::ArrayPtr<const uint8_t> bytes, const CheckerIdentityAuthority& identities);
   /// \brief Recompute and compare the complete canonical key against its decoded value.
-  ZC_NODISCARD static bool implPatternKeyIsCanonical(
-      const ImplPatternKey& pattern, const identity::SemanticIdentityRegistrySet& registries);
+  ZC_NODISCARD static bool implPatternKeyIsCanonical(const ImplPatternKey& pattern,
+                                                     const CheckerIdentityAuthority& identities);
   /// \brief Perform RFC 0005 first-order unification with disjoint parameter spaces.
   ZC_NODISCARD static zc::Maybe<bool> implPatternsOverlap(
       const ImplPatternKey& left, const ImplPatternKey& right,
-      const identity::SemanticIdentityRegistrySet& registries);
+      const CheckerIdentityAuthority& identities);
   /// \brief Enforce the complete RFC 0015 publication restrictions for one impl pattern.
   ZC_NODISCARD static bool implPatternIsPublishable(const ImplPatternKey& pattern,
                                                     size_t genericParameterCount) noexcept;
@@ -1087,40 +1091,41 @@ public:
   /// \brief Derive the canonical outer head used by coherence and impl lookup.
   ZC_NODISCARD static zc::Maybe<CanonicalTypeHead> canonicalTypeHead(
       identity::SemanticTypeId type, const type::SemanticTypeStore& semanticTypes);
+  /// \brief Encodes a signature through the retained Checker identity authority.
   ZC_NODISCARD static zc::Maybe<zc::Array<uint8_t>> encodeSignature(
       const SemanticSignature& signature, identity::ModuleId owningModule,
-      const identity::SemanticIdentityRegistrySet& registries,
-      const type::SemanticTypeStore& semanticTypes);
+      const CheckerIdentityAuthority& identities, const type::SemanticTypeStore& semanticTypes);
+  /// \brief Encodes an implementation head through the retained Checker identity authority.
   ZC_NODISCARD static zc::Maybe<zc::Array<uint8_t>> encodeImplHead(
-      const ImplHead& head, const identity::SemanticIdentityRegistrySet& registries,
+      const ImplHead& head, const CheckerIdentityAuthority& identities,
       const type::SemanticTypeStore& semanticTypes);
+  /// \brief Encodes a marker fact through the retained Checker identity authority.
   ZC_NODISCARD static zc::Maybe<zc::Array<uint8_t>> encodeMarkerFact(
-      const MarkerFact& fact, const identity::SemanticIdentityRegistrySet& registries,
+      const MarkerFact& fact, const CheckerIdentityAuthority& identities,
       const type::SemanticTypeStore& semanticTypes);
+  /// \brief Encodes one canonical constraint through the retained owner module authority.
   ZC_NODISCARD static zc::Maybe<zc::Array<uint8_t>> encodeConstraint(
-      const CanonicalConstraint& constraint,
-      const identity::SemanticIdentityRegistrySet& registries,
-      const type::SemanticTypeStore& semanticTypes);
+      const CanonicalConstraint& constraint, identity::ModuleId owningModule,
+      const CheckerIdentityAuthority& identities, const type::SemanticTypeStore& semanticTypes);
+  /// \brief Encodes one interface instantiation through the retained owner module authority.
   ZC_NODISCARD static zc::Maybe<zc::Array<uint8_t>> encodeInterfaceInstantiation(
-      const InterfaceInstantiation& interface,
-      const identity::SemanticIdentityRegistrySet& registries,
-      const type::SemanticTypeStore& semanticTypes);
-  /// \brief Encode one shared canonical constant value without duplicating its algebra.
-  ZC_NODISCARD static zc::Maybe<zc::Array<uint8_t>> encodeCanonicalConstValue(
+      const InterfaceInstantiation& interface, identity::ModuleId owningModule,
+      const CheckerIdentityAuthority& identities, const type::SemanticTypeStore& semanticTypes);
+  /// \brief Encode one shared canonical constant value through retained Checker authority.
+  ZC_NODISCARD static zc::Maybe<zc::Array<uint8_t>> encodeCanonicalConstValueFromAuthority(
       const CanonicalConstValue& value, identity::ModuleId owningModule,
-      const identity::SemanticIdentityRegistrySet& registries,
-      const type::SemanticTypeStore& semanticTypes);
+      const CheckerIdentityAuthority& identities, const type::SemanticTypeStore& semanticTypes);
 
 private:
   static bool encodePattern(identity::CanonicalEncoder& encoder, const TypeKeyPattern& pattern,
-                            const identity::SemanticIdentityRegistrySet& registries);
+                            const CheckerIdentityAuthority& identities);
   static bool encodePatternInterface(identity::CanonicalEncoder& encoder,
                                      const PatternInterfaceInstantiation& interface,
-                                     const identity::SemanticIdentityRegistrySet& registries);
+                                     const CheckerIdentityAuthority& identities);
 };
 
 struct MarkerShapeModuleInput final {
-  const binder::VerifiedBoundModuleInput& boundModule;
+  const driver::module_graph_query::CheckerBoundModuleView& boundModule;
 };
 
 using MarkerShapeInventoryBuildResult =
@@ -1132,8 +1137,8 @@ public:
   ZC_NODISCARD static MarkerShapeInventoryBuildResult build(
       identity::SemanticContextBrand semanticContext,
       const identity::SemanticContextFingerprint& contextFingerprint,
-      zc::ArrayPtr<const MarkerShapeModuleInput> modules,
-      const identity::SemanticIdentityRegistrySet& registries);
+      identity::ModuleId diagnosticModule, zc::ArrayPtr<const MarkerShapeModuleInput> modules,
+      const CheckerIdentityAuthority& identities);
 };
 
 using MarkerPolicyRegistryBuildResult =
@@ -1143,19 +1148,19 @@ using MarkerPolicyRegistryBuildResult =
 class MarkerPolicyRegistryBuilder final {
 public:
   ZC_NODISCARD static MarkerPolicyRegistryBuildResult build(
-      const MarkerPolicyConfiguration& configuration,
+      identity::ModuleId diagnosticModule, const MarkerPolicyConfiguration& configuration,
       const VerifiedMarkerShapeInventory& shapeInventory,
       zc::ArrayPtr<const identity::ModuleId> authorizedPreludeModules,
-      const identity::SemanticIdentityRegistrySet& registries);
+      const CheckerIdentityAuthority& identities);
 };
 
 /// \brief Immutable verified-only inputs accepted by production signature construction.
 struct SignatureFactsBuildInput final {
-  const binder::VerifiedBoundModuleInput& boundModule;
-  const identity::SemanticIdentityRegistrySet& registries;
+  const driver::module_graph_query::CheckerBoundModuleView& boundModule;
   type::SemanticTypeStore& semanticTypes;
   const VerifiedMarkerShapeInventory& markerShapes;
   const VerifiedMarkerPolicyRegistry& markerPolicies;
+  const CheckerIdentityAuthority& identities;
 };
 
 using SignatureFactsBuildResult = zc::OneOf<VerifiedSignatureFacts, SignatureFactsSourceRejected,

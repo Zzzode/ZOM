@@ -169,9 +169,10 @@ public:
   ZC_NODISCARD zc::Maybe<zc::String> dump() const;
 
 private:
+  ZC_NODISCARD driver::module_graph_query::CheckerBoundModuleView retainBoundModule() const;
+  ZC_NODISCARD checker::CheckerIdentityAuthority retainIdentityAuthority() const;
   ZC_NODISCARD const driver::borrow_evidence::BorrowEvidenceRepository& borrowEvidenceRepository()
       const noexcept;
-  ZC_NODISCARD const identity::SemanticIdentityRegistrySet& registries() const noexcept;
   ZC_NODISCARD const type::SemanticTypeStore& semanticTypes() const noexcept;
 
   struct Impl;

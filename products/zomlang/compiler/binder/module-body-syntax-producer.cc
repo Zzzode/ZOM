@@ -25,24 +25,6 @@ bool sameModule(const identity::ModuleKey& left, const identity::ModuleKey& righ
   return leftBytes.asPtr() == rightBytes.asPtr();
 }
 
-bool findTreePath(const ast::Tree& tree, ast::NodeId current, ast::NodeId target,
-                  zc::Vector<uint32_t>& path) {
-  if (current == target) { return true; }
-  uint32_t childIndex = 0;
-  bool found = false;
-  ast::visitChildNodeIds(tree, tree.node(current), [&](ast::NodeId child) {
-    const uint32_t currentIndex = childIndex++;
-    if (found) { return; }
-    path.add(currentIndex);
-    if (findTreePath(tree, child, target, path)) {
-      found = true;
-    } else {
-      path.removeLast();
-    }
-  });
-  return found;
-}
-
 zc::Maybe<zc::ArrayPtr<const ast::NodeId>> moduleItems(const ast::Tree& tree,
                                                        ast::NodeId moduleNode) {
   if (!tree.contains(tree.root()) || tree.node(tree.root()).kind != ast::SyntaxKind::SourceFile) {
@@ -63,7 +45,8 @@ zc::Maybe<zc::ArrayPtr<const ast::NodeId>> moduleItems(const ast::Tree& tree,
     const auto& module = tree.node(moduleNode);
     const auto form = static_cast<ast::ModuleDeclarationForm>(
         module.payload.words[ast::kModuleDeclarationFormWord]);
-    if (form == ast::ModuleDeclarationForm::RootDeclaration) {
+    if (form == ast::ModuleDeclarationForm::RootDeclaration ||
+        form == ast::ModuleDeclarationForm::Alias) {
       if (declaredModule != moduleNode) { return zc::none; }
       items = ast::NodeList{source.payload.words[ast::kSourceFileStatementsFirstWord],
                             source.payload.words[ast::kSourceFileStatementsSizeWord]};
@@ -192,12 +175,10 @@ class ProjectionBuilder final {
 public:
   ProjectionBuilder(const CanonicalParsedModule& parsedModule,
                     zc::ArrayPtr<const ModuleBodyDefinitionBoundaryInput> definitions,
-                    zc::ArrayPtr<const ModuleBodyImplementationBoundaryInput> implementations,
                     ast::NodeId unprunedRoot)
       : parsedModule(parsedModule),
         tree(parsedModule.tree()),
         definitions(definitions),
-        implementations(implementations),
         unprunedRoot(unprunedRoot) {}
 
   bool visit(ast::NodeId node, zc::Vector<uint32_t>& path) {
@@ -207,20 +188,9 @@ public:
       if (definition != zc::none) { return false; }
       definition = candidate;
     }
-    zc::Maybe<const ModuleBodyImplementationBoundaryInput&> implementation;
-    for (const auto& candidate : implementations) {
-      if (candidate.node != node) { continue; }
-      if (implementation != zc::none) { return false; }
-      implementation = candidate;
-    }
-    if (definition != zc::none && implementation != zc::none) { return false; }
     if (node != unprunedRoot) {
       ZC_IF_SOME(value, definition) {
         nodes.add(DetachedModuleBodyNode::definitionBoundary(value.key));
-        return true;
-      }
-      ZC_IF_SOME(value, implementation) {
-        nodes.add(DetachedModuleBodyNode::implementationBoundary(value.key));
         return true;
       }
     }
@@ -266,14 +236,12 @@ private:
   const CanonicalParsedModule& parsedModule;
   const ast::Tree& tree;
   zc::ArrayPtr<const ModuleBodyDefinitionBoundaryInput> definitions;
-  zc::ArrayPtr<const ModuleBodyImplementationBoundaryInput> implementations;
   ast::NodeId unprunedRoot;
 };
 
-bool validateBoundaryInventory(
-    const CanonicalParsedModule& parsedModule, const identity::ModuleKey& module,
-    ast::NodeId moduleNode, zc::ArrayPtr<const ModuleBodyDefinitionBoundaryInput> definitions,
-    zc::ArrayPtr<const ModuleBodyImplementationBoundaryInput> implementations) {
+bool validateBoundaryInventory(const CanonicalParsedModule& parsedModule,
+                               const identity::ModuleKey& module, ast::NodeId moduleNode,
+                               zc::ArrayPtr<const ModuleBodyDefinitionBoundaryInput> definitions) {
   const auto& tree = parsedModule.tree();
   const auto inventory = DefinitionInventory::collect(tree);
   const ast::NodeId inventoryModuleNode = moduleNode == tree.root() ? ast::NodeId() : moduleNode;
@@ -305,40 +273,6 @@ bool validateBoundaryInventory(
     if (matches != 1) { return false; }
   }
 
-  for (size_t index = 0; index < implementations.size(); ++index) {
-    const auto& candidate = implementations[index];
-    if (!tree.contains(candidate.node) || !sameModule(candidate.key.site().module(), module) ||
-        !candidate.key.site().source().sameAs(parsedModule.source())) {
-      return false;
-    }
-    for (size_t prior = 0; prior < index; ++prior) {
-      if (implementations[prior].node == candidate.node) { return false; }
-    }
-    bool matched = false;
-    for (const auto& expected : inventory.impls()) {
-      if (expected.node == candidate.node && expected.moduleNode == inventoryModuleNode) {
-        if (matched) { return false; }
-        matched = true;
-      }
-    }
-    if (!matched) { return false; }
-    zc::Vector<uint32_t> path;
-    if (!findTreePath(tree, tree.root(), candidate.node, path) ||
-        candidate.key.site().moduleSyntaxPath() != path.asPtr()) {
-      return false;
-    }
-    for (const auto& definition : definitions) {
-      if (definition.node == candidate.node) { return false; }
-    }
-  }
-  for (const auto& expected : inventory.impls()) {
-    if (expected.moduleNode != inventoryModuleNode) { continue; }
-    size_t matches = 0;
-    for (const auto& candidate : implementations) {
-      if (candidate.node == expected.node) { ++matches; }
-    }
-    if (matches != 1) { return false; }
-  }
   return true;
 }
 
@@ -362,17 +296,6 @@ zc::Vector<ModuleBodyDefinitionBoundaryInput> definitionBoundaries(
   return result;
 }
 
-zc::Vector<ModuleBodyImplementationBoundaryInput> implementationBoundaries(
-    const StableIdentityAdmission& admission) {
-  zc::Vector<ModuleBodyImplementationBoundaryInput> result(admission.implementations().size());
-  for (const auto& implementation : admission.implementations()) {
-    result.add(ModuleBodyImplementationBoundaryInput{
-        implementation.node, ImplSourceOccurrenceKey::from(implementation.authority.key().clone(),
-                                                           implementation.site.key().clone())});
-  }
-  return result;
-}
-
 }  // namespace
 
 ModuleBodySyntaxProjectionResult ModuleBodySyntaxProducer::produce(
@@ -384,14 +307,12 @@ ModuleBodySyntaxProjectionResult ModuleBodySyntaxProducer::produce(
     return failure(ModuleBodySyntaxFailureKind::InvalidBoundaryInventory);
   }
   auto definitions = definitionBoundaries(parsedModule, moduleNode, admission);
-  auto implementations = implementationBoundaries(admission);
-  return produce(parsedModule, module, moduleNode, definitions.asPtr(), implementations.asPtr());
+  return produce(parsedModule, module, moduleNode, definitions.asPtr());
 }
 
 ModuleBodySyntaxProjectionResult ModuleBodySyntaxProducer::produce(
     const CanonicalParsedModule& parsedModule, const identity::ModuleKey& module,
-    ast::NodeId moduleNode, zc::ArrayPtr<const ModuleBodyDefinitionBoundaryInput> definitions,
-    zc::ArrayPtr<const ModuleBodyImplementationBoundaryInput> implementations) {
+    ast::NodeId moduleNode, zc::ArrayPtr<const ModuleBodyDefinitionBoundaryInput> definitions) {
   if (!parsedModule.source().belongsTo(module.crate())) {
     return failure(ModuleBodySyntaxFailureKind::InvalidSource);
   }
@@ -399,11 +320,11 @@ ModuleBodySyntaxProjectionResult ModuleBodySyntaxProducer::produce(
   if (items == zc::none) {
     return failure(ModuleBodySyntaxFailureKind::InvalidModuleRoot, moduleNode);
   }
-  if (!validateBoundaryInventory(parsedModule, module, moduleNode, definitions, implementations)) {
+  if (!validateBoundaryInventory(parsedModule, module, moduleNode, definitions)) {
     return failure(ModuleBodySyntaxFailureKind::InvalidBoundaryInventory);
   }
 
-  ProjectionBuilder builder(parsedModule, definitions, implementations, ast::NodeId());
+  ProjectionBuilder builder(parsedModule, definitions, ast::NodeId());
   ZC_IF_SOME(moduleItemsValue, items) {
     uint32_t rootIndex = 0;
     for (const auto item : moduleItemsValue) {
@@ -430,15 +351,14 @@ ModuleBodySyntaxProjectionResult ModuleBodySyntaxProducer::produce(
 ModuleBodySyntaxProjectionResult ModuleBodySyntaxProducer::produceNamedItem(
     const CanonicalParsedModule& parsedModule, const identity::ModuleKey& module,
     ast::NodeId moduleNode, ast::NodeId definitionNode, const identity::DefinitionKey& definition,
-    zc::ArrayPtr<const ModuleBodyDefinitionBoundaryInput> definitions,
-    zc::ArrayPtr<const ModuleBodyImplementationBoundaryInput> implementations) {
+    zc::ArrayPtr<const ModuleBodyDefinitionBoundaryInput> definitions) {
   if (!parsedModule.source().belongsTo(module.crate())) {
     return failure(ModuleBodySyntaxFailureKind::InvalidSource);
   }
   if (!parsedModule.tree().contains(definitionNode)) {
     return failure(ModuleBodySyntaxFailureKind::InvalidDetachedSyntax, definitionNode);
   }
-  if (!validateBoundaryInventory(parsedModule, module, moduleNode, definitions, implementations)) {
+  if (!validateBoundaryInventory(parsedModule, module, moduleNode, definitions)) {
     return failure(ModuleBodySyntaxFailureKind::InvalidBoundaryInventory);
   }
   size_t rootOccurrences = 0;
@@ -453,7 +373,7 @@ ModuleBodySyntaxProjectionResult ModuleBodySyntaxProducer::produceNamedItem(
     return failure(ModuleBodySyntaxFailureKind::InvalidBoundaryInventory, definitionNode);
   }
 
-  ProjectionBuilder builder(parsedModule, definitions, implementations, definitionNode);
+  ProjectionBuilder builder(parsedModule, definitions, definitionNode);
   zc::Vector<uint32_t> path;
   path.add(0);
   if (!builder.visit(definitionNode, path)) {

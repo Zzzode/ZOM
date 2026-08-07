@@ -9,8 +9,8 @@
 #include "zomlang/compiler/basic/string-pool.h"
 #include "zomlang/compiler/basic/thread-pool.h"
 #include "zomlang/compiler/basic/zomlang-opts.h"
-#include "zomlang/compiler/binder/binding-input.h"
 #include "zomlang/compiler/binder/module-dependency-requests.h"
+#include "zomlang/compiler/binder/parsed-module-graph-input.h"
 #include "zomlang/compiler/diagnostics/source-diagnostic-draft-buffer.h"
 #include "zomlang/compiler/driver/core-library-query-provider.h"
 #include "zomlang/compiler/driver/module-dependency-provenance-query.h"
@@ -435,11 +435,10 @@ struct ParsedSource final {
   }
 
   binder::VerifiedParsedModule verify(identity::SemanticContextBrand context,
-                                      const identity::SemanticIdentityRegistrySet& registries,
                                       const identity::SourceFileKey& source) {
     auto retained = zc::mv(ZC_REQUIRE_NONNULL(tokens));
-    return binder::test::requireVerifiedParsedSource(
-        context, registries, snapshot(source), *sources, buffer, zc::mv(retained), zc::mv(tree));
+    return binder::test::requireVerifiedParsedSource(context, snapshot(source), *sources, buffer,
+                                                     zc::mv(retained), zc::mv(tree));
   }
 
   zc::Own<source::SourceManager> sources;
@@ -493,54 +492,32 @@ zc::Maybe<VerifiedModuleGraphInputTransaction> preparedTransaction(
   identity::SemanticContextFactory contextFactory;
   auto context = contextFactory.issue();
   ZC_REQUIRE(context != zc::none);
-  auto registryResult =
-      identity::SemanticIdentityRegistrySet::create(contextFactory, ZC_REQUIRE_NONNULL(context));
-  ZC_REQUIRE(registryResult != zc::none);
-  auto registries = zc::mv(ZC_REQUIRE_NONNULL(registryResult));
-  ZC_REQUIRE(registries.collectCompilationUnit(identity::CompilationUnitIdentity::userPackage(
-                 package())) == identity::FrozenRegistryFailure::None);
-  ZC_REQUIRE(registries.collectCompilationUnit(identity::CompilationUnitIdentity::toolchain(
-                 identity::ToolchainUnitKey::core())) == identity::FrozenRegistryFailure::None);
-  ZC_REQUIRE(registries.freezeCompilationUnits() == identity::FrozenRegistryFailure::None);
-  ZC_REQUIRE(registries.collectCrate(userCrate.clone()) == identity::FrozenRegistryFailure::None);
-  ZC_REQUIRE(registries.collectCrate(core.clone()) == identity::FrozenRegistryFailure::None);
-  ZC_REQUIRE(registries.freezeCrates() == identity::FrozenRegistryFailure::None);
+  auto identities =
+      identity::CanonicalIdentityInternerSet::create(contextFactory, ZC_REQUIRE_NONNULL(context));
+  ZC_REQUIRE(identities != zc::none);
   auto userSnapshot = userParsedSource.snapshot(userFile);
   auto coreSnapshot = coreParsedSource.snapshot(coreFile);
   auto markerSnapshot = markerParsedSource.snapshot(markerFile);
   auto preludeSnapshot = preludeParsedSource.snapshot(preludeFile);
-  ZC_REQUIRE(registries.collectSourceFile(userSnapshot.clone()) ==
-             identity::FrozenRegistryFailure::None);
-  ZC_REQUIRE(registries.collectSourceFile(coreSnapshot.clone()) ==
-             identity::FrozenRegistryFailure::None);
-  ZC_REQUIRE(registries.collectSourceFile(markerSnapshot.clone()) ==
-             identity::FrozenRegistryFailure::None);
-  ZC_REQUIRE(registries.collectSourceFile(preludeSnapshot.clone()) ==
-             identity::FrozenRegistryFailure::None);
-  ZC_REQUIRE(registries.freezeSourceFiles() == identity::FrozenRegistryFailure::None);
-  ZC_REQUIRE(registries.collectModule(userModule.clone()) == identity::FrozenRegistryFailure::None);
-  ZC_REQUIRE(registries.collectModule(coreRoot.clone()) == identity::FrozenRegistryFailure::None);
-  ZC_REQUIRE(registries.collectModule(marker.clone()) == identity::FrozenRegistryFailure::None);
-  ZC_REQUIRE(registries.collectModule(prelude.clone()) == identity::FrozenRegistryFailure::None);
-  ZC_REQUIRE(registries.freezeModules() == identity::FrozenRegistryFailure::None);
-  ZC_REQUIRE(registries.freezeStableIdentities() == identity::FrozenRegistryFailure::None);
-  ZC_REQUIRE(registries.freezeGenericParameters() == identity::FrozenRegistryFailure::None);
-  ZC_REQUIRE(registries.freezeCallableParameters() == identity::FrozenRegistryFailure::None);
 
   zc::Vector<binder::VerifiedParsedModule> parsedModules(4);
-  parsedModules.add(userParsedSource.verify(ZC_REQUIRE_NONNULL(context), registries, userFile));
-  parsedModules.add(coreParsedSource.verify(ZC_REQUIRE_NONNULL(context), registries, coreFile));
-  parsedModules.add(markerParsedSource.verify(ZC_REQUIRE_NONNULL(context), registries, markerFile));
-  parsedModules.add(
-      preludeParsedSource.verify(ZC_REQUIRE_NONNULL(context), registries, preludeFile));
+  parsedModules.add(userParsedSource.verify(ZC_REQUIRE_NONNULL(context), userFile));
+  parsedModules.add(coreParsedSource.verify(ZC_REQUIRE_NONNULL(context), coreFile));
+  parsedModules.add(markerParsedSource.verify(ZC_REQUIRE_NONNULL(context), markerFile));
+  parsedModules.add(preludeParsedSource.verify(ZC_REQUIRE_NONNULL(context), preludeFile));
   const identity::ModuleKey* moduleKeys[] = {&userModule, &coreRoot, &marker, &prelude};
   const identity::SourceFileKey* sourceKeys[] = {&userFile, &coreFile, &markerFile, &preludeFile};
+  zc::Vector<identity::ModuleId> moduleHandles(4);
+  ZC_IF_SOME(interner, identities) {
+    for (const auto* moduleKey : moduleKeys) {
+      auto handle = interner.internModule(ZC_REQUIRE_NONNULL(context), *moduleKey);
+      ZC_REQUIRE(handle.is<identity::ModuleId>());
+      moduleHandles.add(handle.get<identity::ModuleId>());
+    }
+  }
   zc::Vector<binder::ParsedModuleGraphInput> parsedInputs(4);
   for (size_t index = 0; index < 4; ++index) {
-    auto handle = registries.modules().find(*moduleKeys[index]);
-    ZC_REQUIRE(handle != zc::none);
-    parsedInputs.add(
-        binder::ParsedModuleGraphInput{ZC_REQUIRE_NONNULL(handle), parsedModules[index]});
+    parsedInputs.add(binder::ParsedModuleGraphInput{moduleHandles[index], parsedModules[index]});
   }
 
   zc::Vector<binder::ModuleSearchRoot> environmentRoots;
@@ -551,9 +528,11 @@ zc::Maybe<VerifiedModuleGraphInputTransaction> preparedTransaction(
     environmentRoots.add(root.clone());
   }
   zc::Vector<binder::ModuleSourceSnapshotRevision> sourceRevisions;
-  for (const auto& snapshot : registries.sourceSnapshots()) {
-    sourceRevisions.add(
-        binder::ModuleSourceSnapshotRevision(snapshot.source().clone(), snapshot.contentDigest()));
+  const identity::ImmutableSourceSnapshot* sourceSnapshots[] = {&userSnapshot, &coreSnapshot,
+                                                                &markerSnapshot, &preludeSnapshot};
+  for (const auto* snapshot : sourceSnapshots) {
+    sourceRevisions.add(binder::ModuleSourceSnapshotRevision(snapshot->source().clone(),
+                                                             snapshot->contentDigest()));
   }
   zc::Vector<binder::GeneratedModuleSourceRevision> generatedRevisions;
   zc::Vector<binder::ModuleDependencyAliasRoot> resolverAliases;
@@ -573,12 +552,11 @@ zc::Maybe<VerifiedModuleGraphInputTransaction> preparedTransaction(
   addAncestry(prelude, coreRoot);
   zc::Vector<binder::StructuralModuleCatalogEntry> resolverCatalog;
   for (size_t index = 0; index < 4; ++index) {
-    auto handle = registries.modules().find(*moduleKeys[index]);
     resolverCatalog.add(binder::StructuralModuleCatalogEntry(
-        moduleKeys[index]->clone(), ZC_REQUIRE_NONNULL(handle), sourceKeys[index]->clone()));
+        moduleKeys[index]->clone(), moduleHandles[index], sourceKeys[index]->clone()));
   }
   auto frozenResolver = binder::StructuralModuleResolver::freeze(
-      ZC_REQUIRE_NONNULL(context), registries,
+      ZC_REQUIRE_NONNULL(context),
       binder::ModuleResolutionEnvironmentRecord(zc::mv(environmentRoots), zc::mv(sourceRevisions),
                                                 zc::mv(generatedRevisions), zc::mv(resolverAliases),
                                                 zc::mv(ancestryCandidates)),
@@ -734,7 +712,7 @@ zc::Maybe<VerifiedModuleGraphInputTransaction> preparedTransaction(
   zc::Vector<identity::CrateKey> projectedCore;
   if (!omitCoreProjection) { projectedCore.add(core.clone()); }
 
-  const ModuleGraphInputTransactionAuthority authority{request, coreInputs, resolver, registries,
+  const ModuleGraphInputTransactionAuthority authority{request, coreInputs, resolver,
                                                        parsedInputs.asPtr()};
   for (const auto& candidate : rejectedPayloads) {
     ZC_EXPECT(!VerifiedModuleGraphInputVerifier::verify(authority, candidate));

@@ -49,7 +49,6 @@ struct BrandStateData final {
   uint64_t remainingRegistryIssues;
   zc::HashSet<uint64_t> issuedContexts;
   zc::HashSet<uint64_t> claimedRegistryIssuers;
-  zc::HashSet<uint64_t> claimedIdentityRegistrySets;
   zc::HashSet<uint64_t> claimedCanonicalIdentityInternerSets;
   zc::HashSet<uint64_t> claimedSemanticTypeStores;
 };
@@ -77,16 +76,6 @@ public:
       return false;
     }
     locked->claimedRegistryIssuers.insert(contextToken);
-    return true;
-  }
-
-  bool claimIdentityRegistrySet(uint64_t contextToken) const {
-    auto locked = data.lockExclusive();
-    if (!locked->issuedContexts.contains(contextToken) ||
-        locked->claimedIdentityRegistrySets.contains(contextToken)) {
-      return false;
-    }
-    locked->claimedIdentityRegistrySets.insert(contextToken);
     return true;
   }
 
@@ -171,10 +160,6 @@ zc::Maybe<RegistryBrandIssuer> SemanticContextFactory::issueRegistryBrandIssuer(
     SemanticContextBrand context) const {
   if (!context.isValid() || !impl->state->claimRegistryIssuer(context.token)) { return zc::none; }
   return RegistryBrandIssuer(zc::heap<RegistryBrandIssuer::Impl>(context, impl->state.addRef()));
-}
-
-bool SemanticContextFactory::claimIdentityRegistrySet(SemanticContextBrand context) const {
-  return context.isValid() && impl->state->claimIdentityRegistrySet(context.token);
 }
 
 bool SemanticContextFactory::claimCanonicalIdentityInternerSet(SemanticContextBrand context) const {

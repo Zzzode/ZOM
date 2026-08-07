@@ -7,10 +7,12 @@
 
 #include "zc/core/time.h"
 #include "zc/ztest/test.h"
+#include "zomlang/compiler/checker/checker-identity-authority.h"
 #include "zomlang/compiler/diagnostics/diagnostic-engine.h"
 #include "zomlang/compiler/driver/compiler-session.h"
 #include "zomlang/compiler/driver/package/manifest-parser.h"
 #include "zomlang/compiler/driver/package/source-record.h"
+#include "zomlang/compiler/hir/checked-module.h"
 #include "zomlang/tests/unittests/compiler/driver/core-library-test-fixture.h"
 
 namespace zomlang::compiler::hir {
@@ -215,9 +217,10 @@ public:
     ZC_REQUIRE(session.bindSources());
     ZC_REQUIRE(session.checkSources());
     ZC_REQUIRE(!session.getDiagnosticEngine().hasErrors());
-    ZC_IF_SOME(registries, session.getIdentityRegistries()) {
-      ZC_REQUIRE(driver::core_library_test::userBoundModuleCount(session, registries) == 1);
-    }
+    auto identities = session.materializeCheckerIdentityAuthority();
+    ZC_REQUIRE(identities != zc::none);
+    ZC_REQUIRE(driver::core_library_test::userBoundModuleCount(ZC_REQUIRE_NONNULL(identities)) ==
+               1);
     ZC_REQUIRE(session.getVerifiedModuleInterfaces().size() == 1);
     ZC_REQUIRE(session.getCheckedEvidenceLeases().size() == 1);
     ZC_REQUIRE(session.getBorrowEvidenceRepository() != zc::none);
@@ -235,18 +238,87 @@ private:
   driver::CompilerSession session;
 };
 
+const driver::module_graph_query::CheckerBoundModuleView& checkerBoundModule(
+    const checker::CheckerIdentityAuthority& authority, identity::ModuleId module) {
+  auto bound = authority.boundModule(module);
+  ZC_REQUIRE(bound != zc::none);
+  return ZC_REQUIRE_NONNULL(bound);
+}
+
+ZC_TEST("CheckedModuleBuilder rejects a foreign checker identity authority") {
+  HirPipelineFixture sourceFixture(""_zc);
+  HirPipelineFixture foreignFixture(""_zc);
+  auto sourceAuthority = sourceFixture.compilerSession().materializeCheckerIdentityAuthority();
+  auto foreignAuthority = foreignFixture.compilerSession().materializeCheckerIdentityAuthority();
+  ZC_REQUIRE(sourceAuthority != zc::none);
+  ZC_REQUIRE(foreignAuthority != zc::none);
+  ZC_IF_SOME(sourceIdentities, sourceAuthority) {
+    ZC_IF_SOME(foreignIdentities, foreignAuthority) {
+      const auto& session = sourceFixture.compilerSession();
+      const auto& bound = checkerBoundModule(sourceIdentities, sourceFixture.hirModule().module());
+      const auto interfaces = session.getVerifiedModuleInterfaces();
+      const auto signatures = session.getVerifiedSignatureFacts();
+      const auto importedViews = session.getImportedSignatureViews();
+      const auto dispatchFacts = session.getVerifiedDispatchFacts();
+      const auto leases = session.getCheckedEvidenceLeases();
+      auto checkedRepository = session.getCheckedFactsRepository();
+      auto borrowRepository = session.getBorrowEvidenceRepository();
+      auto semanticTypes = session.getSemanticTypeStore();
+      ZC_REQUIRE(interfaces.size() == 1);
+      ZC_REQUIRE(signatures.size() == 1);
+      ZC_REQUIRE(importedViews.size() == 1);
+      ZC_REQUIRE(dispatchFacts.size() == 1);
+      ZC_REQUIRE(leases.size() == 1);
+      ZC_REQUIRE(checkedRepository != zc::none);
+      ZC_REQUIRE(borrowRepository != zc::none);
+      ZC_REQUIRE(semanticTypes != zc::none);
+      ZC_IF_SOME(repository, checkedRepository) {
+        auto lease = repository.lease(bound.module(), leases[0].revision());
+        ZC_REQUIRE(lease != zc::none);
+        ZC_IF_SOME(evidenceLease, lease) {
+          ZC_IF_SOME(borrow, borrowRepository) {
+            ZC_IF_SOME(types, semanticTypes) {
+              auto result = CheckedModuleBuilder::build(CheckedModuleBuildInput{
+                  bound, signatures[0], interfaces[0], importedViews[0], interfaces,
+                  zc::mv(evidenceLease), repository, dispatchFacts[0],
+                  const_cast<driver::borrow_evidence::BorrowEvidenceRepository&>(borrow),
+                  foreignIdentities, types});
+              ZC_EXPECT(result.isIdentityInvariantRejected());
+              return;
+            }
+          }
+        }
+      }
+    }
+  }
+  ZC_UNREACHABLE;
+}
+
 ZC_TEST("HIR pipeline publishes an exact empty module") {
   HirPipelineFixture fixture(""_zc);
   const auto& module = fixture.hirModule();
-  const auto& bound = driver::core_library_test::soleUserBoundModule(fixture.compilerSession());
+  auto authority = fixture.compilerSession().materializeCheckerIdentityAuthority();
+  ZC_REQUIRE(authority != zc::none);
+  const auto& bound = driver::core_library_test::soleUserBoundModule(ZC_REQUIRE_NONNULL(authority));
+  const auto& checkerBound = checkerBoundModule(ZC_REQUIRE_NONNULL(authority), bound.module());
   const auto& interface = fixture.compilerSession().getVerifiedModuleInterfaces()[0];
-  ZC_EXPECT(module.semanticContext() == bound.semanticContext());
-  ZC_EXPECT(module.contextFingerprint().digest() == bound.semanticFingerprint().digest());
-  ZC_EXPECT(module.compilationUnit() == bound.compilationUnit());
-  ZC_EXPECT(module.crate() == bound.crate());
-  ZC_EXPECT(module.module() == bound.module());
-  ZC_EXPECT(module.sourceContentDigest() == bound.parsedModule().contentDigest());
-  ZC_EXPECT(module.parsedModuleReceiptDigest() == bound.parsedModule().receipt().digest());
+  auto coherenceInput = interface.projectCoherenceInput();
+  auto retainedInterfaceBoundModule = interface.retainBoundModule();
+  ZC_EXPECT(coherenceInput.module() == interface.module());
+  ZC_EXPECT(coherenceInput.interfaceRevision().digest() == interface.revision().digest());
+  ZC_EXPECT(coherenceInput.markerPolicyRegistryRevision().digest() ==
+            interface.markerPolicyRegistryRevision().digest());
+  ZC_EXPECT(coherenceInput.implHeads().size() == interface.coherenceImplHeads().size());
+  ZC_EXPECT(coherenceInput.markerFacts().size() == interface.markerFacts().size());
+  ZC_EXPECT(retainedInterfaceBoundModule.semanticContext() == interface.semanticContext());
+  ZC_EXPECT(retainedInterfaceBoundModule.module() == interface.module());
+  ZC_EXPECT(module.semanticContext() == checkerBound.semanticContext());
+  ZC_EXPECT(module.contextFingerprint().digest() == checkerBound.semanticFingerprint().digest());
+  ZC_EXPECT(module.compilationUnit() == checkerBound.compilationUnit());
+  ZC_EXPECT(module.crate() == checkerBound.crate());
+  ZC_EXPECT(module.module() == checkerBound.module());
+  ZC_EXPECT(module.sourceContentDigest() == checkerBound.parsedModule().contentDigest());
+  ZC_EXPECT(module.parsedModuleReceiptDigest() == checkerBound.parsedModule().receipt().digest());
   ZC_EXPECT(module.ownInterface().revision == interface.revision().digest());
   ZC_EXPECT(module.checkedEvidenceLease().revision().digest() ==
             module.checkedFactsRevision().digest());
@@ -265,8 +337,8 @@ ZC_TEST("HIR pipeline publishes an exact empty module") {
     ZC_EXPECT(evidence.evidence().revision().digest() == module.borrowEvidenceRevision().digest());
   }
   ZC_REQUIRE(module.visibleImportedInterfaces().size() == 1);
-  ZC_IF_SOME(prelude, bound.preludeSurface()) {
-    ZC_EXPECT(module.visibleImportedInterfaces()[0].module == prelude.sourceModule());
+  ZC_IF_SOME(prelude, checkerBound.preludeSurface()) {
+    ZC_EXPECT(module.visibleImportedInterfaces()[0].module == prelude.module);
   }
   ZC_EXPECT(module.declarations().size() == 0);
   ZC_EXPECT(module.patterns().size() == 0);
@@ -338,10 +410,13 @@ ZC_TEST("HIR pipeline is deterministic across equivalent semantic contexts") {
 
 ZC_TEST("Checked-module assembly ignores interfaces outside the exact imported view") {
   HirPipelineFixture fixture(""_zc);
-  const auto& bound = driver::core_library_test::soleUserBoundModule(fixture.compilerSession());
+  auto authority = fixture.compilerSession().materializeCheckerIdentityAuthority();
+  ZC_REQUIRE(authority != zc::none);
+  const auto& bound = driver::core_library_test::soleUserBoundModule(ZC_REQUIRE_NONNULL(authority));
+  const auto& checkerBound = checkerBoundModule(ZC_REQUIRE_NONNULL(authority), bound.module());
   ZC_REQUIRE(fixture.hirModule().visibleImportedInterfaces().size() == 1);
-  ZC_IF_SOME(prelude, bound.preludeSurface()) {
-    ZC_EXPECT(fixture.hirModule().visibleImportedInterfaces()[0].module == prelude.sourceModule());
+  ZC_IF_SOME(prelude, checkerBound.preludeSurface()) {
+    ZC_EXPECT(fixture.hirModule().visibleImportedInterfaces()[0].module == prelude.module);
   }
 }
 

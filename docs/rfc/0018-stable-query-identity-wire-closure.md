@@ -1261,8 +1261,8 @@ before local stable-identity validation can reject source.
 
 `StableIdentityAdmissionQuery(StableModuleQueryKey)` reads, in order,
 `SelectedModuleSourceQuery`, `ParseSourceQuery`,
-`IdentitySyntaxSiteInventoryQuery`, `StableIdentityCandidateProducer`, and
-`StableIdentityCandidateVerifier`. Its published capability retains the parse
+`IdentitySyntaxSiteInventoryQuery`, `CandidateProducer`, and
+`CandidateVerifier`. Its published capability retains the parse
 and identity-site leases. It is the sole source-diagnostic authority for
 stable-identity validation and publishes no capability on rejection.
 

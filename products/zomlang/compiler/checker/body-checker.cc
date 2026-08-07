@@ -9,7 +9,7 @@
 
 #include "zomlang/compiler/ast/generated/node-payload.h"
 #include "zomlang/compiler/ast/generated/node-traverse.h"
-#include "zomlang/compiler/binder/frozen-definition-inventory.h"
+#include "zomlang/compiler/binder/definition-inventory.h"
 #include "zomlang/compiler/checker/inference-recovery-context.h"
 #include "zomlang/compiler/checker/operator-kind.h"
 #include "zomlang/compiler/checker/scalar-literal-facts.h"
@@ -64,20 +64,40 @@ checked::CheckedFactsInvariantRejected rejectRecoveryInvariant(
   return checked::CheckedFactsInvariantRejected{zc::mv(failures)};
 }
 
-zc::Maybe<identity::DefId> initializerOwner(const binder::VerifiedBoundModuleInput& boundModule,
-                                            ast::NodeId initializer) {
-  const auto& tree = boundModule.tree();
-  for (const auto& definition : boundModule.definitions().definitions()) {
-    const auto& site = definition.site.value();
-    if (!site.is<binder::PatternBindingSite>()) continue;
-    const auto& binding = site.get<binder::PatternBindingSite>();
-    if (!tree.contains(binding.introducer) ||
-        tree.node(binding.introducer).kind != ast::SyntaxKind::VariableDeclarator) {
+zc::Maybe<const binder::PatternBindingSite&> patternBindingSite(
+    const binder::DefinitionInventory& inventory,
+    const binder::MaterializedDefinitionInventoryEntry& definition) {
+  const auto& materialized = definition.site.value();
+  if (materialized.is<binder::PatternBindingSite>()) {
+    return materialized.get<binder::PatternBindingSite>();
+  }
+  zc::Maybe<const binder::PatternBindingSite&> result;
+  for (const auto& candidate : inventory.definitions()) {
+    if (candidate.node != definition.node || candidate.kind != definition.record.kind()) {
       continue;
     }
-    const auto& declarator = tree.node(binding.introducer);
-    if (ast::NodeId(declarator.payload.words[ast::kVariableDeclaratorInitWord]) == initializer) {
-      return definition.definition;
+    const auto& site = candidate.site.value();
+    if (!site.is<binder::PatternBindingSite>() || result != zc::none) { return zc::none; }
+    result = site.get<binder::PatternBindingSite>();
+  }
+  return result;
+}
+
+zc::Maybe<identity::DefId> initializerOwner(
+    const driver::module_graph_query::CheckerBoundModuleView& boundModule,
+    ast::NodeId initializer) {
+  const auto& tree = boundModule.tree();
+  const auto inventory = binder::DefinitionInventory::collect(tree);
+  for (const auto& definition : boundModule.definitions().definitions()) {
+    ZC_IF_SOME(binding, patternBindingSite(inventory, definition)) {
+      if (!tree.contains(binding.introducer) ||
+          tree.node(binding.introducer).kind != ast::SyntaxKind::VariableDeclarator) {
+        continue;
+      }
+      const auto& declarator = tree.node(binding.introducer);
+      if (ast::NodeId(declarator.payload.words[ast::kVariableDeclaratorInitWord]) == initializer) {
+        return definition.definition;
+      }
     }
   }
   return zc::none;
@@ -91,8 +111,8 @@ bool subtreeContains(const ast::Tree& tree, ast::NodeId root, ast::NodeId target
   return contains;
 }
 
-zc::Maybe<identity::DefId> returnValueOwner(const binder::VerifiedBoundModuleInput& boundModule,
-                                            ast::NodeId value) {
+zc::Maybe<identity::DefId> returnValueOwner(
+    const driver::module_graph_query::CheckerBoundModuleView& boundModule, ast::NodeId value) {
   const auto& tree = boundModule.tree();
   bool isReturnValue = false;
   ast::visitTreePreOrder(tree, tree.root(), [&](ast::NodeId, const ast::Node& syntax) {
@@ -135,8 +155,9 @@ zc::Maybe<identity::SemanticTypeId> callableSuccess(const signature::VerifiedSig
   return result;
 }
 
-zc::Maybe<uint32_t> definitionPreorder(const binder::VerifiedBoundModuleInput& boundModule,
-                                       identity::DefId definition) {
+zc::Maybe<uint32_t> definitionPreorder(
+    const driver::module_graph_query::CheckerBoundModuleView& boundModule,
+    identity::DefId definition) {
   ast::NodeId declaration;
   bool foundDefinition = false;
   for (const auto& candidate : boundModule.definitions().definitions()) {
@@ -210,7 +231,7 @@ attachRecoveryLedger(checked::CheckedFactsSourceRejected&& rejection,
   }
   ZC_IF_SOME(definition, callable) { ownerDefinition = definition; }
   auto created = inference::InferenceRecoveryContext::create(
-      input.registries, factStoreBrands, input.boundModule.parsedModule().source(),
+      input.identities, factStoreBrands, input.boundModule.parsedModule().source(),
       initializerOwnerKind ? inference::InferenceOwner::initializer(ownerDefinition)
                            : inference::InferenceOwner::callableBody(ownerDefinition));
   if (created.is<inference::InferenceRecoveryRejected>()) {
@@ -544,7 +565,7 @@ VerifiedBodyFactRequirementInventory::captureRequirements() const noexcept {
 }
 
 BodyFactRequirementInventoryBuildResult BodyFactRequirementInventoryBuilder::build(
-    const binder::VerifiedBoundModuleInput& boundModule) {
+    const driver::module_graph_query::CheckerBoundModuleView& boundModule) {
   const auto& tree = boundModule.tree();
   const auto& parsedModule = boundModule.parsedModule();
   if (!boundModule.semanticContext().isValid() || !tree.contains(tree.root()) ||
@@ -761,10 +782,10 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
   const auto& parsedModule = input.boundModule.parsedModule();
   if (!context.isValid() || input.signatureFacts.semanticContext() != context ||
       input.importedSignatures.semanticContext() != context ||
-      input.coherence.semanticContext() != context || input.registries.context() != context ||
-      input.semanticTypes.context() != context || input.requirements.semanticContext() != context ||
-      input.signatureFacts.module() != module || input.importedSignatures.requester() != module ||
-      input.requirements.module() != module ||
+      input.coherence.semanticContext() != context ||
+      input.identities.semanticContext() != context || input.semanticTypes.context() != context ||
+      input.requirements.semanticContext() != context || input.signatureFacts.module() != module ||
+      input.importedSignatures.requester() != module || input.requirements.module() != module ||
       input.boundModule.bindingSurface().revision().digest() !=
           input.signatureFacts.bindingSurfaceRevision().digest() ||
       input.boundModule.semanticFingerprint().digest() !=
@@ -785,7 +806,7 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
     zc::Maybe<identity::DefId> closureOwner;
     ZC_IF_SOME(ownerKey,
                input.requirements.captureRequirements()[0].key.closure.owner().definitionKey()) {
-      ZC_IF_SOME(owner, input.registries.definitions().find(ownerKey)) { closureOwner = owner; }
+      ZC_IF_SOME(owner, input.identities.definition(ownerKey)) { closureOwner = owner.handle(); }
     }
     return rejectInvariant(signature::CheckerInvariantKind::MissingRequiredFact, module, 0,
                            zc::mv(closureOwner), zc::none, zc::none,
@@ -808,7 +829,7 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
     }
     auto emitted = scalar_literal::FactEmitter::emit(scalar_literal::FactEmissionInput{
         context, module, input.boundModule.tree(), site.node, site.key,
-        input.boundModule.parsedModule().source(), input.registries, input.semanticTypes});
+        input.boundModule.parsedModule().source(), input.identities, input.semanticTypes});
     if (emitted.is<checked::CheckedFactsInvariantRejected>()) {
       return zc::mv(emitted).get<checked::CheckedFactsInvariantRejected>();
     }
@@ -841,61 +862,64 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
   }
 
   const auto& tree = input.boundModule.tree();
+  const auto definitionInventory = binder::DefinitionInventory::collect(tree);
   for (const auto& definition : input.boundModule.definitions().definitions()) {
     if (!hasDefinitionRequirement(input.requirements.definitionRequirements(),
                                   definition.definition)) {
       continue;
     }
-    const auto& siteValue = definition.site.value();
-    if (!siteValue.is<binder::PatternBindingSite>()) {
+    auto bindingSite = patternBindingSite(definitionInventory, definition);
+    if (bindingSite == zc::none) {
       return rejectInvariant(signature::CheckerInvariantKind::MissingRequiredFact, module, 0,
                              definition.definition, definition.node, definition.source.clone(),
                              factPath(CheckedFactGroup::DefinitionType));
     }
-    const auto& bindingSite = siteValue.get<binder::PatternBindingSite>();
-    if (bindingSite.patternPath.size() != 0 || !tree.contains(bindingSite.introducer) ||
-        tree.node(bindingSite.introducer).kind != ast::SyntaxKind::VariableDeclarator ||
-        !tree.contains(definition.node) ||
-        tree.node(definition.node).kind != ast::SyntaxKind::IdentifierPattern) {
-      return rejectInvariant(signature::CheckerInvariantKind::MissingRequiredFact, module, 0,
-                             definition.definition, definition.node, definition.source.clone(),
-                             factPath(CheckedFactGroup::Pattern));
-    }
-    const auto& declarator = tree.node(bindingSite.introducer);
-    const ast::NodeId annotation(declarator.payload.words[ast::kVariableDeclaratorTyWord]);
-    const ast::NodeId initializer(declarator.payload.words[ast::kVariableDeclaratorInitWord]);
-    if (tree.contains(annotation) || !tree.contains(initializer)) {
-      return rejectInvariant(signature::CheckerInvariantKind::MissingRequiredFact, module, 0,
-                             definition.definition, bindingSite.introducer,
-                             definition.source.clone(), factPath(CheckedFactGroup::DefinitionType));
-    }
-    auto initializerType = factEntry(nodeTypes.asPtr(), initializer);
-    auto initializerLiteral = factEntry(literals.asPtr(), initializer);
-    auto bindingProduction =
-        productionSite(input.requirements.impl->productionSiteValues.asPtr(), definition.node);
-    if (initializerType == zc::none || initializerLiteral == zc::none ||
-        bindingProduction == zc::none) {
-      return rejectInvariant(signature::CheckerInvariantKind::MissingRequiredFact, module, 0,
-                             definition.definition, initializer, definition.source.clone(),
-                             factPath(CheckedFactGroup::DefinitionType));
-    }
-
-    ZC_IF_SOME(typeEntry, initializerType) {
-      definitionTypes.add(checked::DefinitionTypeMap::Entry{definition.definition, typeEntry.value,
-                                                            zc::Array<uint8_t>()});
-      ZC_IF_SOME(patternSite, bindingProduction) {
-        auto pattern = identifierPatternFact(patternSite, definition.definition, typeEntry.value);
-        if (pattern == zc::none) {
-          return rejectInvariant(signature::CheckerInvariantKind::CanonicalCodecMismatch, module, 0,
-                                 definition.definition, definition.node, definition.source.clone(),
-                                 factPath(CheckedFactGroup::Pattern));
-        }
-        ZC_IF_SOME(value, pattern) { patterns.add(zc::mv(value)); }
+    ZC_IF_SOME(site, bindingSite) {
+      if (site.patternPath.size() != 0 || !tree.contains(site.introducer) ||
+          tree.node(site.introducer).kind != ast::SyntaxKind::VariableDeclarator) {
+        return rejectInvariant(signature::CheckerInvariantKind::MissingRequiredFact, module, 0,
+                               definition.definition, definition.node, definition.source.clone(),
+                               factPath(CheckedFactGroup::Pattern));
       }
-    }
-    if (definition.record.kind() == identity::DefinitionKind::Constant) {
-      ZC_IF_SOME(literalEntry, initializerLiteral) {
-        constants.add(scalarConstantFact(definition.definition, initializer, literalEntry));
+      const auto& declarator = tree.node(site.introducer);
+      const ast::NodeId pattern(declarator.payload.words[ast::kVariableDeclaratorPatternWord]);
+      const ast::NodeId annotation(declarator.payload.words[ast::kVariableDeclaratorTyWord]);
+      const ast::NodeId initializer(declarator.payload.words[ast::kVariableDeclaratorInitWord]);
+      if (!tree.contains(pattern) ||
+          tree.node(pattern).kind != ast::SyntaxKind::IdentifierPattern ||
+          tree.contains(annotation) || !tree.contains(initializer)) {
+        return rejectInvariant(signature::CheckerInvariantKind::MissingRequiredFact, module, 0,
+                               definition.definition, site.introducer, definition.source.clone(),
+                               factPath(CheckedFactGroup::DefinitionType));
+      }
+      auto initializerType = factEntry(nodeTypes.asPtr(), initializer);
+      auto initializerLiteral = factEntry(literals.asPtr(), initializer);
+      auto bindingProduction =
+          productionSite(input.requirements.impl->productionSiteValues.asPtr(), pattern);
+      if (initializerType == zc::none || initializerLiteral == zc::none ||
+          bindingProduction == zc::none) {
+        return rejectInvariant(signature::CheckerInvariantKind::MissingRequiredFact, module, 0,
+                               definition.definition, initializer, definition.source.clone(),
+                               factPath(CheckedFactGroup::DefinitionType));
+      }
+
+      ZC_IF_SOME(typeEntry, initializerType) {
+        definitionTypes.add(checked::DefinitionTypeMap::Entry{
+            definition.definition, typeEntry.value, zc::Array<uint8_t>()});
+        ZC_IF_SOME(patternSite, bindingProduction) {
+          auto pattern = identifierPatternFact(patternSite, definition.definition, typeEntry.value);
+          if (pattern == zc::none) {
+            return rejectInvariant(signature::CheckerInvariantKind::CanonicalCodecMismatch, module,
+                                   0, definition.definition, definition.node,
+                                   definition.source.clone(), factPath(CheckedFactGroup::Pattern));
+          }
+          ZC_IF_SOME(value, pattern) { patterns.add(zc::mv(value)); }
+        }
+      }
+      if (definition.record.kind() == identity::DefinitionKind::Constant) {
+        ZC_IF_SOME(literalEntry, initializerLiteral) {
+          constants.add(scalarConstantFact(definition.definition, initializer, literalEntry));
+        }
       }
     }
   }
@@ -1017,7 +1041,7 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
           candidate.sourceFailures.asPtr(),
           input.boundModule.definitions().ownerLocalBindings(),
           input.boundModule.definitions().anonymousEntities(),
-          input.registries,
+          input.identities,
           input.semanticTypes};
       if (!checked::CheckedFactsCanonicalCodec::writeCanonicalRecords(candidate, codecInput)) {
         return rejectInvariant(signature::CheckerInvariantKind::CanonicalCodecMismatch, module, 0);

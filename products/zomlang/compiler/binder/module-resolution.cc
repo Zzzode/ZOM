@@ -469,14 +469,10 @@ StructuralModuleResolver& StructuralModuleResolver::operator=(StructuralModuleRe
     default;
 
 StructuralModuleResolver::FreezeResult StructuralModuleResolver::freeze(
-    identity::SemanticContextBrand context, const identity::SemanticIdentityRegistrySet& registries,
-    ModuleResolutionEnvironmentRecord&& environment,
+    identity::SemanticContextBrand context, ModuleResolutionEnvironmentRecord&& environment,
     zc::Vector<StructuralModuleCatalogEntry>&& catalog) {
-  if (!context.isValid() || !registries.compilationUnits().isFrozen() ||
-      !registries.crates().isFrozen() || !registries.sourceFiles().isFrozen() ||
-      !registries.modules().isFrozen() || environment.searchRoots.size() == 0 ||
-      catalog.size() == 0 || catalog.size() != registries.modules().size() ||
-      environment.sourceSnapshots.size() != registries.sourceSnapshots().size() ||
+  if (!context.isValid() || environment.searchRoots.size() == 0 || catalog.size() == 0 ||
+      environment.sourceSnapshots.size() != catalog.size() ||
       environment.requesterAncestry.size() != catalog.size()) {
     return failure(ModuleResolutionInvariantKind::InputMismatch);
   }
@@ -525,9 +521,6 @@ StructuralModuleResolver::FreezeResult StructuralModuleResolver::freeze(
   zc::Vector<identity::RequesterModuleAncestry> requesterAncestry(catalog.size());
 
   for (const auto& root : environment.searchRoots) {
-    if (registries.crates().find(root.crate()) == zc::none) {
-      return failure(ModuleResolutionInvariantKind::InvalidEnvironment);
-    }
     switch (root.kind()) {
       case ModuleSearchRootKind::Workspace: {
         const auto& value = root.value.get<WorkspaceModuleSearchRoot>();
@@ -626,36 +619,22 @@ StructuralModuleResolver::FreezeResult StructuralModuleResolver::freeze(
     if (baseRootCount != 1) { return failure(ModuleResolutionInvariantKind::InvalidEnvironment); }
   }
 
+  zc::TreeMap<zc::String, const ModuleSourceSnapshotRevision*> sourceSnapshots;
   for (const auto& source : environment.sourceSnapshots) {
     if (!nonzero(source.contentDigest)) {
       return failure(ModuleResolutionInvariantKind::InvalidEnvironment);
     }
-    bool found = false;
-    for (const auto& snapshot : registries.sourceSnapshots()) {
-      if (!source.source.sameAs(snapshot.source())) { continue; }
-      if (found || source.contentDigest != snapshot.contentDigest()) {
-        return failure(ModuleResolutionInvariantKind::InvalidEnvironment);
-      }
-      found = true;
+    auto sourceKey = zc::encodeHex(source.source.encode().asPtr());
+    if (sourceSnapshots.find(sourceKey) != zc::none) {
+      return failure(ModuleResolutionInvariantKind::InvalidEnvironment);
     }
-    if (!found) { return failure(ModuleResolutionInvariantKind::InvalidEnvironment); }
+    sourceSnapshots.insert(zc::mv(sourceKey), &source);
   }
 
   for (const auto& entry : catalog) {
-    if (!entry.module.belongsTo(context) ||
-        registries.modules().validate(entry.module) != identity::FrozenRegistryFailure::None ||
-        registries.sourceFiles().find(entry.source) == zc::none ||
-        !entry.source.belongsTo(entry.key.crate())) {
+    if (!entry.module.belongsTo(context) || !entry.source.belongsTo(entry.key.crate()) ||
+        sourceSnapshots.find(zc::encodeHex(entry.source.encode().asPtr())) == zc::none) {
       return failure(ModuleResolutionInvariantKind::InvalidEnvironment);
-    }
-    auto registered = registries.modules().lookup(entry.module);
-    if (registered == zc::none) {
-      return failure(ModuleResolutionInvariantKind::InvalidEnvironment);
-    }
-    ZC_IF_SOME(value, registered) {
-      if (!sameKey(value, entry.key)) {
-        return failure(ModuleResolutionInvariantKind::InvalidEnvironment);
-      }
     }
     auto ancestryResult =
         uniqueAncestryCandidateIndex(environment.requesterAncestry.asPtr(), entry.key);
@@ -683,9 +662,6 @@ StructuralModuleResolver::FreezeResult StructuralModuleResolver::freeze(
   }
 
   for (const auto& alias : environment.dependencyAliasRoots) {
-    if (registries.crates().find(alias.requester) == zc::none) {
-      return failure(ModuleResolutionInvariantKind::InvalidEnvironment);
-    }
     bool requesterPresent = false;
     bool targetPresent = false;
     for (const auto& entry : catalog) {

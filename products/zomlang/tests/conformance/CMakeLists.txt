@@ -93,6 +93,29 @@ set_tests_properties(lexer-architecture PROPERTIES
 )
 
 add_test(
+  NAME spec-alignment
+  COMMAND "${Python3_EXECUTABLE}" ${CMAKE_SOURCE_DIR}/scripts/check-spec-alignment.py --check
+          --report ${CMAKE_BINARY_DIR}/reports/spec-alignment/rfc0027.json
+  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+)
+
+set_tests_properties(spec-alignment PROPERTIES
+  LABELS "conformance;specification;architecture"
+  TIMEOUT 120
+)
+
+add_test(
+  NAME spec-alignment-negative
+  COMMAND "${Python3_EXECUTABLE}" ${CMAKE_SOURCE_DIR}/scripts/check-spec-alignment.py --self-test
+  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+)
+
+set_tests_properties(spec-alignment-negative PROPERTIES
+  LABELS "conformance;specification;architecture;negative"
+  TIMEOUT 120
+)
+
+add_test(
   NAME ast-generated-schema
   COMMAND "${Python3_EXECUTABLE}" ${CMAKE_SOURCE_DIR}/scripts/codegen/gen_ast.py --check
   WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
@@ -210,6 +233,50 @@ add_test(
 set_tests_properties(identity-architecture-negative PROPERTIES
   LABELS "conformance;identity;architecture;negative"
   TIMEOUT 300
+)
+
+add_test(
+  NAME core-library-architecture
+  COMMAND "${Python3_EXECUTABLE}" ${CMAKE_SOURCE_DIR}/scripts/check-core-library-architecture.py --check
+  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+)
+
+set_tests_properties(core-library-architecture PROPERTIES
+  LABELS "conformance;core;architecture"
+  TIMEOUT 120
+)
+
+add_test(
+  NAME core-library-architecture-negative
+  COMMAND "${Python3_EXECUTABLE}" ${CMAKE_SOURCE_DIR}/scripts/check-core-library-architecture.py --self-test
+  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+)
+
+set_tests_properties(core-library-architecture-negative PROPERTIES
+  LABELS "conformance;core;architecture;negative"
+  TIMEOUT 120
+)
+
+add_test(
+  NAME ownership-architecture
+  COMMAND "${Python3_EXECUTABLE}" ${CMAKE_SOURCE_DIR}/scripts/check-ownership-architecture.py --check
+  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+)
+
+set_tests_properties(ownership-architecture PROPERTIES
+  LABELS "conformance;ownership;architecture"
+  TIMEOUT 120
+)
+
+add_test(
+  NAME ownership-architecture-negative
+  COMMAND "${Python3_EXECUTABLE}" ${CMAKE_SOURCE_DIR}/scripts/check-ownership-architecture.py --self-test
+  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+)
+
+set_tests_properties(ownership-architecture-negative PROPERTIES
+  LABELS "conformance;ownership;architecture;negative"
+  TIMEOUT 120
 )
 
 add_test(

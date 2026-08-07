@@ -439,18 +439,28 @@ ZC_TEST("Active sources derive exact toolchain core membership and source depend
   ZC_REQUIRE(active.value().sources().size() == 3);
   auto dependencyGroups = snapshot.dependencies<incremental_binding_query::ActiveSourcesQuery>(
       ZC_REQUIRE_NONNULL(stableCrate));
-  ZC_REQUIRE(dependencyGroups.size() == 4);
-  size_t distributionGroups = 0;
-  size_t sourceGroups = 0;
-  for (const auto& group : dependencyGroups) {
-    if (group.dependencies().size() == 1) {
-      ++distributionGroups;
-    } else if (group.dependencies().size() == 3) {
-      ++sourceGroups;
+  ZC_REQUIRE(dependencyGroups.size() == 8);
+  const auto expectedDistributionKey =
+      CoreDistributionInput::encodeKey(identity::ToolchainUnitKey::core());
+  for (size_t index = 0; index < dependencyGroups.size(); ++index) {
+    const auto& group = dependencyGroups[index];
+    ZC_REQUIRE(group.kind() == query::DependencyGroup::Kind::Sequential);
+    ZC_REQUIRE(group.dependencies().size() == 1);
+    const size_t read = index % 4;
+    if (read == 0) {
+      ZC_EXPECT(group.dependencies()[0].key().canonicalBytes() == expectedDistributionKey.asPtr());
+      continue;
     }
+    const auto& file = ZC_REQUIRE_NONNULL(distribution).record().files()[read - 1];
+    auto source = identity::SourceFileKey::from(
+        crate.clone(), identity::SourceOriginKey::coreFile(identity::ToolchainUnitKey::core(),
+                                                           file.path().clone()));
+    auto stableSource = identity::source_query::StableSourceQueryKey::fromVerified(source);
+    ZC_REQUIRE(stableSource != zc::none);
+    const auto expectedSourceKey =
+        identity::source_query::SourceSnapshotInput::encodeKey(ZC_REQUIRE_NONNULL(stableSource));
+    ZC_EXPECT(group.dependencies()[0].key().canonicalBytes() == expectedSourceKey.asPtr());
   }
-  ZC_EXPECT(distributionGroups == 2);
-  ZC_EXPECT(sourceGroups == 2);
 }
 
 ZC_TEST("Verified core distribution input transaction commits the complete pre-parse root once") {

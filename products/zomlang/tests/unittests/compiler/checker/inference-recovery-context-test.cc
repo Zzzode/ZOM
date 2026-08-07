@@ -6,12 +6,12 @@
 #include "zomlang/compiler/checker/inference-recovery-context.h"
 
 #include "zc/ztest/test.h"
-#include "zomlang/tests/unittests/compiler/test-semantic-identities.h"
+#include "zomlang/tests/unittests/compiler/checker/checker-authority-test-fixture.h"
 
 namespace zomlang::compiler::checker::inference {
 namespace {
 
-using namespace tests::test_identity_detail;
+using namespace tests::checker_fixture;
 
 bool sameBytes(zc::ArrayPtr<const uint8_t> left, zc::ArrayPtr<const uint8_t> right) noexcept {
   if (left.size() != right.size()) { return false; }
@@ -23,74 +23,32 @@ bool sameBytes(zc::ArrayPtr<const uint8_t> left, zc::ArrayPtr<const uint8_t> rig
 
 class RecoveryFixture final {
 public:
-  RecoveryFixture() {
-    auto issuedContext = factory.issue();
-    ZC_REQUIRE(issuedContext != zc::none);
-    ZC_IF_SOME(value, issuedContext) { context = value; }
+  RecoveryFixture() : session("class RecoveryOwner {}\n"_zc), context(session.semanticContext()) {}
 
-    auto createdRegistries = identity::SemanticIdentityRegistrySet::create(factory, context);
-    ZC_REQUIRE(createdRegistries != zc::none);
-    ZC_IF_SOME(value, createdRegistries) {
-      registries = zc::heap<identity::SemanticIdentityRegistrySet>(zc::mv(value));
-    }
-    auto issuedBrands = factory.issueRegistryBrandIssuer(context);
-    ZC_REQUIRE(issuedBrands != zc::none);
-    ZC_IF_SOME(value, issuedBrands) {
-      registryBrands = zc::heap<identity::RegistryBrandIssuer>(zc::mv(value));
-    }
-
-    ZC_REQUIRE(registries->collectCompilationUnit(userUnit()) ==
-               identity::FrozenRegistryFailure::None);
-    ZC_REQUIRE(registries->freezeCompilationUnits() == identity::FrozenRegistryFailure::None);
-    ZC_REQUIRE(registries->collectCrate(crate()) == identity::FrozenRegistryFailure::None);
-    ZC_REQUIRE(registries->freezeCrates() == identity::FrozenRegistryFailure::None);
-    auto snapshot = identity::ImmutableSourceSnapshot::from(tests::test_identity_detail::source(),
-                                                            zc::heapArray<uint8_t>(8, uint8_t{0}));
-    ZC_REQUIRE(snapshot != zc::none);
-    ZC_IF_SOME(value, snapshot) {
-      ZC_REQUIRE(registries->collectSourceFile(zc::mv(value)) ==
-                 identity::FrozenRegistryFailure::None);
-    }
-    ZC_REQUIRE(registries->freezeSourceFiles() == identity::FrozenRegistryFailure::None);
-    ZC_REQUIRE(registries->collectModule(module()) == identity::FrozenRegistryFailure::None);
-    ZC_REQUIRE(registries->freezeModules() == identity::FrozenRegistryFailure::None);
-
-    zc::Vector<identity::EnclosingStableOwnerKey> owners;
-    zc::Maybe<identity::OverloadHeaderDigest> noOverloadDigest;
-    auto record = identity::DefinitionIdentityRecord::from(
-        module(), zc::mv(owners), identity::DefinitionKind::Class,
-        identity::DefinitionNamespace::Type,
-        scalar<identity::DeclaredDefinitionName>("recovery_owner"_zc), zc::mv(noOverloadDigest));
-    ZC_REQUIRE(record != zc::none);
-    ZC_IF_SOME(value, record) {
-      retainedDefinition =
-          zc::heap<identity::DefinitionKey>(identity::DefinitionKey::compute(value));
-      zc::Maybe<identity::OverloadHeaderAuthority> noOverloadAuthority;
-      ZC_REQUIRE(registries->collectDefinition(value.clone(), zc::mv(noOverloadAuthority)) ==
-                 identity::FrozenRegistryFailure::None);
-    }
-    ZC_REQUIRE(registries->freezeStableIdentities() == identity::FrozenRegistryFailure::None);
-    ZC_REQUIRE(registries->freezeGenericParameters() == identity::FrozenRegistryFailure::None);
-    ZC_REQUIRE(registries->freezeCallableParameters() == identity::FrozenRegistryFailure::None);
-
-    auto foundModule = registries->modules().find(module());
-    ZC_REQUIRE(foundModule != zc::none);
-    ZC_IF_SOME(value, foundModule) { moduleId = value; }
-    auto foundDefinition = registries->definitions().find(*retainedDefinition);
-    ZC_REQUIRE(foundDefinition != zc::none);
-    ZC_IF_SOME(value, foundDefinition) { definitionId = value; }
-  }
-
-  identity::SourceSpan span(uint64_t start, uint64_t end) const {
-    auto result = registries->sourceSnapshots()[0].span(start, end);
-    ZC_IF_SOME(admitted, result) { return zc::mv(admitted); }
-    ZC_FAIL_REQUIRE("invalid inference recovery source span fixture");
-  }
+  identity::SourceSpan span(uint64_t start, uint64_t end) const { return session.span(start, end); }
 
   zc::Own<InferenceRecoveryContext> makeContext(InferenceRecoveryIssueBudget budget = {}) {
     auto created = InferenceRecoveryContext::create(
-        *registries, *registryBrands, registries->sourceSnapshots()[0].source(),
-        InferenceOwner::callableBody(definitionId), budget);
+        session.identityAuthority(), session.brands(), session.source(),
+        InferenceOwner::callableBody(session.owner()), budget);
+    ZC_REQUIRE(created.is<zc::Own<InferenceRecoveryContext>>());
+    return zc::mv(created).get<zc::Own<InferenceRecoveryContext>>();
+  }
+
+  zc::Own<InferenceRecoveryContext> makeInitializerContext() {
+    auto created = InferenceRecoveryContext::create(
+        session.identityAuthority(), session.brands(), session.source(),
+        InferenceOwner::initializer(session.owner()), {});
+    ZC_REQUIRE(created.is<zc::Own<InferenceRecoveryContext>>());
+    return zc::mv(created).get<zc::Own<InferenceRecoveryContext>>();
+  }
+
+  zc::Own<InferenceRecoveryContext> makeSignatureGroupContext() {
+    zc::Vector<identity::DefId> members;
+    members.add(session.owner());
+    auto created = InferenceRecoveryContext::create(
+        session.identityAuthority(), session.brands(), session.source(),
+        InferenceOwner::signatureGroup(session.module(), zc::mv(members)), {});
     ZC_REQUIRE(created.is<zc::Own<InferenceRecoveryContext>>());
     return zc::mv(created).get<zc::Own<InferenceRecoveryContext>>();
   }
@@ -100,13 +58,8 @@ public:
         static_cast<uint8_t>(checked::CheckerDiagnosticStage::Body), 0, site, 0};
   }
 
-  identity::SemanticContextFactory factory;
+  CheckerAuthoritySession session;
   identity::SemanticContextBrand context;
-  zc::Own<identity::SemanticIdentityRegistrySet> registries;
-  zc::Own<identity::RegistryBrandIssuer> registryBrands;
-  zc::Own<identity::DefinitionKey> retainedDefinition;
-  identity::ModuleId moduleId;
-  identity::DefId definitionId;
 };
 
 checked::TypeErrorId requireIssued(TypeErrorIssueResult&& result) {
@@ -145,6 +98,11 @@ ZC_TEST("InferenceRecoveryContext issues unique branded roots and freezes one le
   ZC_REQUIRE(ledger.idAt(1) != zc::none);
   ZC_IF_SOME(value, ledger.idAt(0)) { ZC_EXPECT(value == first); }
   ZC_IF_SOME(value, ledger.idAt(1)) { ZC_EXPECT(value == second); }
+
+  auto initializer = fixture.makeInitializerContext();
+  ZC_EXPECT(initializer->finish().is<InferenceRecoverySolved>());
+  auto signatureGroup = fixture.makeSignatureGroupContext();
+  ZC_EXPECT(signatureGroup->finish().is<InferenceRecoverySolved>());
 }
 
 ZC_TEST("InferenceRecoveryContext canonicalizes joins independently of brands and input order") {
@@ -161,6 +119,9 @@ ZC_TEST("InferenceRecoveryContext canonicalizes joins independently of brands an
   auto firstSelected =
       requireIssued(firstContext->join(ast::NodeId(3), firstParent, zc::arrayPtr(firstInputs)));
   ZC_EXPECT(firstSelected == firstA);
+  checked::CheckedNodeKey firstEarlierParent{1, 4, firstFixture.span(0, 1)};
+  ZC_EXPECT(requireIssued(firstContext->join(ast::NodeId(4), firstEarlierParent,
+                                             zc::arrayPtr(firstInputs))) == firstA);
   auto firstLedger = requireRecovered(firstContext->finish());
 
   RecoveryFixture secondFixture;
@@ -173,6 +134,9 @@ ZC_TEST("InferenceRecoveryContext canonicalizes joins independently of brands an
                                secondFixture.span(1, 2), RecoveryClass::FailedInference));
   const checked::TypeErrorId secondInputs[] = {secondA, secondB};
   checked::CheckedNodeKey secondParent{1, 3, secondFixture.span(2, 3)};
+  checked::CheckedNodeKey secondEarlierParent{1, 4, secondFixture.span(0, 1)};
+  ZC_EXPECT(requireIssued(secondContext->join(ast::NodeId(4), secondEarlierParent,
+                                              zc::arrayPtr(secondInputs))) == secondA);
   auto secondSelected =
       requireIssued(secondContext->join(ast::NodeId(3), secondParent, zc::arrayPtr(secondInputs)));
   ZC_EXPECT(secondSelected == secondA);

@@ -79,6 +79,9 @@ public:
   ZC_NODISCARD static zc::Maybe<diagnostics::DiagnosticFact> duplicateGenericParameter(
       const IdentitySyntaxSiteKey& duplicate, const IdentitySyntaxSiteKey& previous,
       const BinderIdentifierDiagnosticArguments& arguments);
+  ZC_NODISCARD static zc::Maybe<diagnostics::DiagnosticFact> definitionRedeclaration(
+      const IdentitySyntaxSiteKey& duplicate, const IdentitySyntaxSiteKey& previous,
+      diagnostics::DiagID diagnostic, zc::StringPtr name);
 };
 
 /// \brief Encodes one canonical nonempty Binder source-diagnostic sequence.

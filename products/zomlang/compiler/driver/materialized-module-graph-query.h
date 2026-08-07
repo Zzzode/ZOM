@@ -9,15 +9,36 @@
 #include "zc/core/common.h"
 #include "zc/core/memory.h"
 #include "zc/core/vector.h"
-#include "zomlang/compiler/binder/binding-input.h"
+#include "zomlang/compiler/binder/immutable-binding-metadata.h"
+#include "zomlang/compiler/binder/immutable-definition-inventory.h"
+#include "zomlang/compiler/binder/materialized-export-surface-verifier.h"
+#include "zomlang/compiler/binder/materialized-module-skeleton.h"
+#include "zomlang/compiler/binder/module-graph-revision.h"
+#include "zomlang/compiler/binder/parsed-module.h"
 #include "zomlang/compiler/diagnostics/diagnostic-fact.h"
 #include "zomlang/compiler/driver/active-identity-membership-query.h"
+#include "zomlang/compiler/driver/module-dependency-provenance-query.h"
 #include "zomlang/compiler/driver/module-graph-query.h"
+#include "zomlang/compiler/driver/named-identity-inventory-query.h"
 #include "zomlang/compiler/identity/canonical-identity-interner-set.h"
+#include "zomlang/compiler/identity/materialized-identity-entry.h"
 #include "zomlang/compiler/identity/semantic-context-fingerprint.h"
+#include "zomlang/compiler/parser/parse-source-query.h"
 #include "zomlang/compiler/query/query-database.h"
 
+namespace zomlang::compiler::binder {
+class NamedItemProvenance;
+class OwnerBodyProvenance;
+class OwnerBodySyntax;
+class RevisionLocalDefinitionSites;
+class RevisionLocalImplementationSites;
+class StableIdentityAdmission;
+}  // namespace zomlang::compiler::binder
+
 namespace zomlang::compiler::driver::module_graph_query {
+
+template <typename Key, typename Record, typename Handle>
+using MaterializedIdentityEntry = identity::MaterializedIdentityEntry<Key, Record, Handle>;
 
 /// \brief Stable request-level dependency authority retained by a materialized graph.
 class StableMaterializedDependencyWitness final {
@@ -45,38 +66,18 @@ private:
   zc::Own<Impl> impl;
 };
 
-/// \brief Runtime identity authority paired with one arena-local typed handle.
-template <typename Key, typename Record, typename Handle>
-class MaterializedIdentityEntry final {
-public:
-  ~MaterializedIdentityEntry() noexcept(false);
-  MaterializedIdentityEntry(MaterializedIdentityEntry&&) noexcept;
-  MaterializedIdentityEntry& operator=(MaterializedIdentityEntry&&) noexcept;
-  ZC_DISALLOW_COPY(MaterializedIdentityEntry);
-
-  ZC_NODISCARD static MaterializedIdentityEntry fromVerified(Key&& key, Record&& record,
-                                                             Handle handle) noexcept;
-  ZC_NODISCARD MaterializedIdentityEntry clone() const;
-  ZC_NODISCARD const Key& key() const noexcept;
-  ZC_NODISCARD const Record& record() const noexcept;
-  ZC_NODISCARD Handle handle() const noexcept;
-
-private:
-  struct Impl;
-  explicit MaterializedIdentityEntry(zc::Own<Impl>&& impl) noexcept;
-  zc::Own<Impl> impl;
-};
-
 using MaterializedCompilationUnitEntry =
-    MaterializedIdentityEntry<identity::CompilationUnitIdentity, identity::CompilationUnitIdentity,
-                              identity::CompilationUnitId>;
+    identity::MaterializedIdentityEntry<identity::CompilationUnitIdentity,
+                                        identity::CompilationUnitIdentity,
+                                        identity::CompilationUnitId>;
 using MaterializedCrateEntry =
-    MaterializedIdentityEntry<identity::CrateKey, identity::CrateKey, identity::CrateId>;
+    identity::MaterializedIdentityEntry<identity::CrateKey, identity::CrateKey, identity::CrateId>;
 using MaterializedSourceEntry =
-    MaterializedIdentityEntry<identity::SourceFileKey, identity::SourceFileKey,
-                              identity::SourceFileId>;
+    identity::MaterializedIdentityEntry<identity::SourceFileKey, identity::SourceFileKey,
+                                        identity::SourceFileId>;
 using MaterializedModuleEntry =
-    MaterializedIdentityEntry<identity::ModuleKey, identity::ModuleKey, identity::ModuleId>;
+    identity::MaterializedIdentityEntry<identity::ModuleKey, identity::ModuleKey,
+                                        identity::ModuleId>;
 
 /// \brief Request-level dependency edge using arena-local module handles.
 class MaterializedModuleDependencyEdge final {
@@ -164,7 +165,260 @@ private:
   zc::Own<Impl> impl;
 };
 
-/// \brief Logical-const four-domain identity service retained by the capability arena.
+/// \brief Retained module skeleton identity expansion bound to one sealed context.
+class MaterializedModuleSkeleton final {
+public:
+  using GraphLease = query::QueryCapabilityLease<const MaterializedModuleGraph>;
+  using DependencySkeletonLease = query::QueryCapabilityLease<const MaterializedModuleSkeleton>;
+  using DependencyProvenanceLease =
+      query::QueryCapabilityLease<const module_graph_query::ModuleDependencyProvenanceMap>;
+  using IdentityAdmissionLease = query::QueryCapabilityLease<const binder::StableIdentityAdmission>;
+  using DefinitionProvenanceLease = query::QueryCapabilityLease<const binder::NamedItemProvenance>;
+  using DefinitionSitesLease =
+      query::QueryCapabilityLease<const binder::RevisionLocalDefinitionSites>;
+  using ImplementationSitesLease =
+      query::QueryCapabilityLease<const binder::RevisionLocalImplementationSites>;
+
+  ~MaterializedModuleSkeleton() noexcept(false);
+  MaterializedModuleSkeleton(MaterializedModuleSkeleton&&) noexcept;
+  MaterializedModuleSkeleton& operator=(MaterializedModuleSkeleton&&) noexcept;
+  ZC_DISALLOW_COPY(MaterializedModuleSkeleton);
+
+  ZC_NODISCARD static zc::Maybe<MaterializedModuleSkeleton> from(
+      incremental_binding_query::ContextualModuleKey&& key, GraphLease&& graph,
+      zc::Vector<DependencySkeletonLease>&& dependencySkeletons, identity::SourceFileKey&& source,
+      binder::ModuleBodyProvenance&& provenance, DependencyProvenanceLease&& dependencyProvenance,
+      binder::MaterializedModuleSkeletonIdentities&& identities,
+      IdentityAdmissionLease&& identityAdmission, DefinitionSitesLease&& definitionSites,
+      ImplementationSitesLease&& implementationSites,
+      zc::Vector<DefinitionProvenanceLease>&& definitionProvenances,
+      const parser::CanonicalParsedSource& parsedSource);
+  ZC_NODISCARD MaterializedModuleSkeleton clone() const;
+  ZC_NODISCARD const incremental_binding_query::CompilationRootSetQueryKey& contextRoots()
+      const noexcept;
+  ZC_NODISCARD const identity::ModuleKey& module() const noexcept;
+  ZC_NODISCARD identity::SemanticContextBrand context() const noexcept;
+  ZC_NODISCARD query::DatabaseRevision revision() const noexcept;
+  ZC_NODISCARD const identity::SemanticContextFingerprint& fingerprint() const noexcept;
+  ZC_NODISCARD const identity::SourceFileKey& source() const noexcept;
+  ZC_NODISCARD const binder::ModuleBodyProvenance& provenance() const noexcept;
+  ZC_NODISCARD const DependencyProvenanceLease& dependencyProvenanceLease() const noexcept;
+  ZC_NODISCARD const binder::MaterializedModuleSkeletonIdentities& identities() const noexcept;
+  ZC_NODISCARD const IdentityAdmissionLease& identityAdmissionLease() const noexcept;
+  ZC_NODISCARD const GraphLease& graphLease() const noexcept;
+  ZC_NODISCARD zc::ArrayPtr<const DependencySkeletonLease> dependencySkeletonLeases()
+      const noexcept;
+  ZC_NODISCARD zc::ArrayPtr<const binder::MaterializedDependencyExportSurface> dependencySurfaces()
+      const noexcept;
+  ZC_NODISCARD zc::Maybe<const binder::MaterializedDependencyExportSurface&> preludeSurface()
+      const noexcept;
+  ZC_NODISCARD const DefinitionSitesLease& definitionSitesLease() const noexcept;
+  ZC_NODISCARD const ImplementationSitesLease& implementationSitesLease() const noexcept;
+  ZC_NODISCARD zc::ArrayPtr<const DefinitionProvenanceLease> definitionProvenanceLeases()
+      const noexcept;
+  ZC_NODISCARD zc::ArrayPtr<const binder::DefinitionFact> materializedDefinitions() const noexcept;
+  ZC_NODISCARD zc::ArrayPtr<const binder::GenericParameterFact> materializedGenericParameters()
+      const noexcept;
+  ZC_NODISCARD zc::ArrayPtr<const binder::CallableParameterFact> materializedCallableParameters()
+      const noexcept;
+  ZC_NODISCARD zc::ArrayPtr<const binder::ModuleAliasBindingFact> materializedModuleAliases()
+      const noexcept;
+  ZC_NODISCARD zc::ArrayPtr<const binder::ImportBindingFact> materializedImports() const noexcept;
+  ZC_NODISCARD zc::ArrayPtr<const binder::LocalExportFact> materializedLocalExports()
+      const noexcept;
+  ZC_NODISCARD const binder::VerifiedExportSurface& bindingSurface() const noexcept;
+  ZC_NODISCARD zc::ArrayPtr<const binder::ImplBindingFact> materializedImplementations()
+      const noexcept;
+  ZC_NODISCARD zc::ArrayPtr<const binder::ScopeRecord> materializedScopes() const noexcept;
+  ZC_NODISCARD zc::ArrayPtr<const binder::NodeScopeFact> materializedNodeScopes() const noexcept;
+  ZC_NODISCARD zc::ArrayPtr<const binder::MaterializedFailedLookupFact> materializedFailedLookups()
+      const noexcept;
+  ZC_NODISCARD zc::ArrayPtr<const binder::ScopeId> scopeIdentities() const noexcept;
+  ZC_NODISCARD zc::Maybe<binder::ScopeId> scopeFor(
+      const binder::StableScopeOwnerKey& scope) const noexcept;
+  ZC_NODISCARD zc::Array<uint8_t> encodeCanonical() const;
+
+  /// \brief Rebuilds materialized owner-body facts from retained stable evidence.
+  ZC_NODISCARD static zc::Maybe<zc::Vector<binder::ScopeId>> materializeScopeIdentities(
+      identity::ModuleId module, const binder::BoundModuleSkeleton& stableWitness);
+  struct Impl;
+  explicit MaterializedModuleSkeleton(zc::Own<Impl>&& impl) noexcept;
+  zc::Own<Impl> impl;
+};
+
+/// \brief Retained owner-body fact expansion bound to one sealed context.
+class MaterializedOwnerBody final {
+public:
+  using SkeletonLease = query::QueryCapabilityLease<const MaterializedModuleSkeleton>;
+  using ProvenanceLease = query::QueryCapabilityLease<const binder::OwnerBodyProvenance>;
+
+  ~MaterializedOwnerBody() noexcept(false);
+  MaterializedOwnerBody(MaterializedOwnerBody&&) noexcept;
+  MaterializedOwnerBody& operator=(MaterializedOwnerBody&&) noexcept;
+  ZC_DISALLOW_COPY(MaterializedOwnerBody);
+
+  ZC_NODISCARD static zc::Maybe<MaterializedOwnerBody> from(
+      incremental_binding_query::ContextualBodyOwnerKey&& key,
+      identity::SemanticContextBrand context, query::DatabaseRevision revision,
+      identity::SemanticContextFingerprint&& fingerprint, identity::ModuleId module,
+      SkeletonLease&& skeleton, identity::SourceFileKey&& source, ProvenanceLease&& provenance,
+      binder::BoundOwnerBody&& stableWitness, binder::OwnerAllocationRange&& allocation,
+      const binder::OwnerBodySyntax& syntax, const parser::CanonicalParsedSource& parsedSource);
+  ZC_NODISCARD MaterializedOwnerBody clone() const;
+  ZC_NODISCARD const incremental_binding_query::CompilationRootSetQueryKey& contextRoots()
+      const noexcept;
+  ZC_NODISCARD const binder::StableOwnerBodyQueryKey& owner() const noexcept;
+  ZC_NODISCARD identity::SemanticContextBrand context() const noexcept;
+  ZC_NODISCARD query::DatabaseRevision revision() const noexcept;
+  ZC_NODISCARD const identity::SemanticContextFingerprint& fingerprint() const noexcept;
+  ZC_NODISCARD identity::ModuleId module() const noexcept;
+  ZC_NODISCARD const identity::SourceFileKey& source() const noexcept;
+  ZC_NODISCARD const SkeletonLease& skeletonLease() const noexcept;
+  ZC_NODISCARD const ProvenanceLease& provenanceLease() const noexcept;
+  ZC_NODISCARD const binder::BoundOwnerBody& stableWitness() const noexcept;
+  ZC_NODISCARD const binder::OwnerAllocationRange& allocation() const noexcept;
+  ZC_NODISCARD zc::ArrayPtr<const binder::ScopeId> scopeIdentities() const noexcept;
+  ZC_NODISCARD zc::Maybe<binder::ScopeId> scopeFor(
+      const binder::StableScopeOwnerKey& scope) const noexcept;
+  ZC_NODISCARD zc::ArrayPtr<const binder::NodeScopeFact> materializedNodeScopes() const noexcept;
+  ZC_NODISCARD zc::ArrayPtr<const binder::OwnerLocalBindingFact> materializedOwnerLocalBindings()
+      const noexcept;
+  ZC_NODISCARD zc::ArrayPtr<const binder::AnonymousEntityFact> materializedAnonymousEntities()
+      const noexcept;
+  ZC_NODISCARD zc::ArrayPtr<const binder::BindingResolution> materializedResolutions()
+      const noexcept;
+  ZC_NODISCARD zc::ArrayPtr<const binder::BoundSelfType> materializedSelfTypes() const noexcept;
+  ZC_NODISCARD zc::ArrayPtr<const binder::BoundThis> materializedThisBindings() const noexcept;
+  ZC_NODISCARD zc::ArrayPtr<const binder::ShadowTargetFact> materializedShadowTargets()
+      const noexcept;
+  ZC_NODISCARD zc::ArrayPtr<const binder::LabelFact> materializedLabels() const noexcept;
+  ZC_NODISCARD zc::ArrayPtr<const binder::ControlTransferFact> materializedControlTransfers()
+      const noexcept;
+  ZC_NODISCARD zc::ArrayPtr<const binder::ClosureFreeVariableFact>
+  materializedClosureFreeVariables() const noexcept;
+  ZC_NODISCARD zc::ArrayPtr<const binder::ExplicitClosureCaptureFact>
+  materializedExplicitClosureCaptures() const noexcept;
+  ZC_NODISCARD zc::ArrayPtr<const binder::MaterializedFailedLookupFact> materializedFailedLookups()
+      const noexcept;
+  ZC_NODISCARD zc::ArrayPtr<const binder::DeferredMemberFact> materializedDeferredMembers()
+      const noexcept;
+  ZC_NODISCARD const binder::CanonicalSequence<binder::StableBodyScopeFact>& scopes()
+      const noexcept;
+  ZC_NODISCARD const binder::CanonicalSequence<binder::StableBodyNodeScopeFact>& nodeScopes()
+      const noexcept;
+  ZC_NODISCARD const binder::CanonicalSequence<binder::StableOwnerLocalBindingFact>& bindings()
+      const noexcept;
+  ZC_NODISCARD const binder::CanonicalSequence<binder::StableResolutionFact>& resolutions()
+      const noexcept;
+  ZC_NODISCARD const binder::CanonicalSequence<binder::StableDeferredMemberFact>& deferredMembers()
+      const noexcept;
+  ZC_NODISCARD const binder::CanonicalSequence<binder::StableSelfTypeFact>& selfTypes()
+      const noexcept;
+  ZC_NODISCARD const binder::CanonicalSequence<binder::StableThisBindingFact>& thisBindings()
+      const noexcept;
+  ZC_NODISCARD const binder::CanonicalSequence<binder::StableShadowTargetFact>& shadowTargets()
+      const noexcept;
+  ZC_NODISCARD const binder::CanonicalSequence<binder::StableLabelFact>& labels() const noexcept;
+  ZC_NODISCARD const binder::CanonicalSequence<binder::StableControlTransferFact>&
+  controlTransfers() const noexcept;
+  ZC_NODISCARD const binder::CanonicalSequence<binder::StableClosureFreeVariableFact>&
+  closureFreeVariables() const noexcept;
+  ZC_NODISCARD const binder::CanonicalSequence<binder::StableExplicitClosureCaptureFact>&
+  explicitClosureCaptures() const noexcept;
+  ZC_NODISCARD const binder::CanonicalSequence<binder::StableFailedLookupFact>& failedLookups()
+      const noexcept;
+  ZC_NODISCARD zc::Array<uint8_t> encodeCanonical() const;
+
+public:
+  /// \brief Rebuilds materialized owner-body facts from retained stable evidence.
+  ZC_NODISCARD static zc::Maybe<zc::Vector<binder::ScopeId>> materializeScopeIdentities(
+      identity::ModuleId module, const binder::OwnerAllocationRange& allocation,
+      const binder::BoundOwnerBody& stableWitness);
+  ZC_NODISCARD static zc::Maybe<zc::Vector<binder::NodeScopeFact>> materializeNodeScopes(
+      const MaterializedModuleSkeleton& skeleton, const binder::OwnerBodyProvenance& provenance,
+      const binder::BoundOwnerBody& stableWitness,
+      zc::ArrayPtr<const binder::ScopeId> scopeIdentities);
+  ZC_NODISCARD static zc::Maybe<zc::Vector<binder::OwnerLocalBindingFact>>
+  materializeOwnerLocalBindingFacts(const MaterializedModuleSkeleton& skeleton,
+                                    const identity::SourceFileKey& source,
+                                    const binder::OwnerBodyProvenance& provenance,
+                                    const binder::BoundOwnerBody& stableWitness,
+                                    zc::ArrayPtr<const binder::ScopeId> scopeIdentities,
+                                    zc::ArrayPtr<const binder::OwnerLocalBindingId> identities,
+                                    const binder::OwnerBodySyntax& syntax,
+                                    const parser::CanonicalParsedSource& parsedSource);
+  ZC_NODISCARD static zc::Maybe<zc::Vector<binder::AnonymousEntityFact>>
+  materializeAnonymousEntities(identity::SemanticContextBrand context, identity::ModuleId module,
+                               const binder::OwnerAllocationRange& allocation,
+                               const identity::SourceFileKey& source,
+                               const binder::OwnerBodyProvenance& provenance,
+                               const binder::BoundOwnerBody& stableWitness,
+                               const parser::CanonicalParsedSource& parsedSource);
+  ZC_NODISCARD static zc::Maybe<zc::Vector<binder::LabelFact>> materializeLabels(
+      identity::ModuleId module, const MaterializedModuleSkeleton& skeleton,
+      const identity::SourceFileKey& source, const binder::OwnerBodyProvenance& provenance,
+      const binder::BoundOwnerBody& stableWitness, const binder::OwnerAllocationRange& allocation,
+      zc::ArrayPtr<const binder::ScopeId> scopeIdentities,
+      const parser::CanonicalParsedSource& parsedSource);
+  ZC_NODISCARD static zc::Maybe<zc::Vector<binder::ControlTransferFact>>
+  materializeControlTransfers(const MaterializedModuleSkeleton& skeleton,
+                              const identity::SourceFileKey& source,
+                              const binder::OwnerBodyProvenance& provenance,
+                              const binder::BoundOwnerBody& stableWitness,
+                              zc::ArrayPtr<const binder::ScopeId> scopeIdentities,
+                              zc::ArrayPtr<const binder::LabelFact> labels,
+                              const parser::CanonicalParsedSource& parsedSource);
+
+private:
+  struct Impl;
+  explicit MaterializedOwnerBody(zc::Own<Impl>&& impl) noexcept;
+  zc::Own<Impl> impl;
+};
+
+/// \brief Retained aggregate that owns the complete verified binding lease lineage.
+class VerifiedBoundModule final {
+public:
+  using GraphLease = query::QueryCapabilityLease<const MaterializedModuleGraph>;
+  using SkeletonLease = query::QueryCapabilityLease<const MaterializedModuleSkeleton>;
+  using ParsedSourceLease = query::QueryCapabilityLease<const parser::CanonicalParsedSource>;
+  using OwnerBodyLease = query::QueryCapabilityLease<const MaterializedOwnerBody>;
+
+  ~VerifiedBoundModule() noexcept(false);
+  VerifiedBoundModule(VerifiedBoundModule&&) noexcept;
+  VerifiedBoundModule& operator=(VerifiedBoundModule&&) noexcept;
+  ZC_DISALLOW_COPY(VerifiedBoundModule);
+
+  ZC_NODISCARD static zc::Maybe<VerifiedBoundModule> from(GraphLease&& graph,
+                                                          SkeletonLease&& skeleton,
+                                                          identity::SourceFileKey&& source,
+                                                          ParsedSourceLease&& parsedSource,
+                                                          zc::Vector<OwnerBodyLease>&& ownerBodies);
+  ZC_NODISCARD VerifiedBoundModule clone() const;
+  ZC_NODISCARD const incremental_binding_query::CompilationRootSetQueryKey& contextRoots()
+      const noexcept;
+  ZC_NODISCARD const identity::ModuleKey& module() const noexcept;
+  ZC_NODISCARD identity::SemanticContextBrand context() const noexcept;
+  ZC_NODISCARD query::DatabaseRevision revision() const noexcept;
+  ZC_NODISCARD const identity::SemanticContextFingerprint& fingerprint() const noexcept;
+  ZC_NODISCARD identity::CompilationUnitId compilationUnit() const noexcept;
+  ZC_NODISCARD identity::CrateId crate() const noexcept;
+  ZC_NODISCARD const identity::SourceFileKey& source() const noexcept;
+  ZC_NODISCARD const GraphLease& graphLease() const noexcept;
+  ZC_NODISCARD const SkeletonLease& skeletonLease() const noexcept;
+  ZC_NODISCARD const ParsedSourceLease& parsedSourceLease() const noexcept;
+  ZC_NODISCARD zc::ArrayPtr<const OwnerBodyLease> ownerBodyLeases() const noexcept;
+  ZC_NODISCARD const binder::ImmutableDefinitionInventory& definitions() const noexcept;
+  ZC_NODISCARD const binder::ImmutableBindingMetadata& bindings() const noexcept;
+  ZC_NODISCARD const binder::VerifiedExportSurface& bindingSurface() const noexcept;
+  ZC_NODISCARD zc::Array<uint8_t> encodeCanonical() const;
+
+private:
+  struct Impl;
+  explicit VerifiedBoundModule(zc::Own<Impl>&& impl) noexcept;
+  zc::Own<Impl> impl;
+};
+
+/// \brief Logical-const eight-domain identity service retained by the capability arena.
 class ModuleGraphIdentityMaterializationResources
     : public query::SemanticContextCapabilityResources {
 public:
@@ -172,6 +426,7 @@ public:
   ZC_DISALLOW_COPY_AND_MOVE(ModuleGraphIdentityMaterializationResources);
 
   ZC_NODISCARD virtual identity::SemanticContextBrand semanticContext() const noexcept = 0;
+  ZC_NODISCARD virtual identity::CanonicalIdentityInternerSet& identityInterners() const = 0;
   ZC_NODISCARD virtual identity::IdentityInternResult<identity::CompilationUnitId>
   internCompilationUnit(identity::SemanticContextBrand context,
                         const identity::CompilationUnitIdentity& key) const = 0;
@@ -181,6 +436,20 @@ public:
       identity::SemanticContextBrand context, const identity::SourceFileKey& key) const = 0;
   ZC_NODISCARD virtual identity::IdentityInternResult<identity::ModuleId> internModule(
       identity::SemanticContextBrand context, const identity::ModuleKey& key) const = 0;
+  ZC_NODISCARD virtual identity::IdentityInternResult<identity::DefId> internDefinition(
+      identity::SemanticContextBrand context, const identity::DefinitionKey& key,
+      const identity::DefinitionIdentityRecord& record) const = 0;
+  ZC_NODISCARD virtual identity::IdentityInternResult<identity::ImplId> internImplementation(
+      identity::SemanticContextBrand context, const identity::ImplKey& key,
+      const identity::ImplIdentityRecord& record) const = 0;
+  ZC_NODISCARD virtual identity::IdentityInternResult<identity::GenericParameterId>
+  internGenericParameter(identity::SemanticContextBrand context,
+                         const identity::GenericParameterKey& key,
+                         const identity::GenericParameterIdentityRecord& record) const = 0;
+  ZC_NODISCARD virtual identity::IdentityInternResult<identity::CallableParameterId>
+  internCallableParameter(identity::SemanticContextBrand context,
+                          const identity::CallableParameterKey& key,
+                          const identity::CallableParameterIdentityRecord& record) const = 0;
   ZC_NODISCARD virtual zc::Maybe<identity::CompilationUnitIdentityEntry> compilationUnit(
       identity::CompilationUnitId handle) const = 0;
   ZC_NODISCARD virtual zc::Maybe<identity::CrateIdentityEntry> crate(
@@ -189,6 +458,14 @@ public:
       identity::SourceFileId handle) const = 0;
   ZC_NODISCARD virtual zc::Maybe<identity::ModuleIdentityEntry> module(
       identity::ModuleId handle) const = 0;
+  ZC_NODISCARD virtual zc::Maybe<identity::DefinitionIdentityEntry> definition(
+      identity::DefId handle) const = 0;
+  ZC_NODISCARD virtual zc::Maybe<identity::ImplementationIdentityEntry> implementation(
+      identity::ImplId handle) const = 0;
+  ZC_NODISCARD virtual zc::Maybe<identity::GenericParameterIdentityEntry> genericParameter(
+      identity::GenericParameterId handle) const = 0;
+  ZC_NODISCARD virtual zc::Maybe<identity::CallableParameterIdentityEntry> callableParameter(
+      identity::CallableParameterId handle) const = 0;
 
 protected:
   ModuleGraphIdentityMaterializationResources() = default;
@@ -215,6 +492,107 @@ struct MaterializeModuleGraphQuery final {
       const Capability& candidate);
 };
 
+/// \brief Final-sealed retained materializer for one contextual module skeleton.
+struct MaterializeModuleSkeletonQuery final {
+  using Key = incremental_binding_query::ContextualModuleKey;
+  using Capability = MaterializedModuleSkeleton;
+  using FailureAlternatives =
+      query::CapabilityFailureList<query::SourceRejection<diagnostics::DiagnosticFact>,
+                                   query::KeyRejection<binder::BinderKeyFailure>>;
+
+  static constexpr query::CapabilityDescriptorMetadata descriptor{
+      "MaterializeModuleSkeletonQuery"_zcc, "zom.query.materialize-module-skeleton"_zcc,
+      query::RetentionClass::Retained,      query::QueryCyclePolicy::Reject,
+      query::QueryCostClass::Linear,        query::CapabilityAdmission::FinalSealedSnapshot};
+  ZC_NODISCARD static zc::Array<uint8_t> encodeKey(const Key& key);
+  ZC_NODISCARD static zc::Maybe<Key> decodeKey(zc::ArrayPtr<const uint8_t> bytes);
+  ZC_NODISCARD static query::CapabilityProviderResult<MaterializeModuleSkeletonQuery> provide(
+      query::CapabilityQueryContext<MaterializeModuleSkeletonQuery>& context, const Key& key);
+  ZC_NODISCARD static zc::Maybe<zc::Array<uint8_t>> verify(
+      query::CapabilityQueryContext<MaterializeModuleSkeletonQuery>& context, const Key& key,
+      const Capability& candidate);
+};
+
+/// \brief Final-sealed retained materializer for one contextual owner body.
+struct MaterializeOwnerBodyQuery final {
+  using Key = incremental_binding_query::ContextualBodyOwnerKey;
+  using Capability = MaterializedOwnerBody;
+  using FailureAlternatives =
+      query::CapabilityFailureList<query::SourceRejection<diagnostics::DiagnosticFact>,
+                                   query::KeyRejection<binder::BinderKeyFailure>>;
+
+  static constexpr query::CapabilityDescriptorMetadata descriptor{
+      "MaterializeOwnerBodyQuery"_zcc, "zom.query.materialize-owner-body"_zcc,
+      query::RetentionClass::Retained, query::QueryCyclePolicy::Reject,
+      query::QueryCostClass::Linear,   query::CapabilityAdmission::FinalSealedSnapshot};
+  ZC_NODISCARD static zc::Array<uint8_t> encodeKey(const Key& key);
+  ZC_NODISCARD static zc::Maybe<Key> decodeKey(zc::ArrayPtr<const uint8_t> bytes);
+  ZC_NODISCARD static query::CapabilityProviderResult<MaterializeOwnerBodyQuery> provide(
+      query::CapabilityQueryContext<MaterializeOwnerBodyQuery>& context, const Key& key);
+  ZC_NODISCARD static zc::Maybe<zc::Array<uint8_t>> verify(
+      query::CapabilityQueryContext<MaterializeOwnerBodyQuery>& context, const Key& key,
+      const Capability& candidate);
+};
+
+/// \brief Final-sealed retained aggregation of the graph, skeleton, and owner-body leases.
+struct VerifyBoundModuleQuery final {
+  using Key = incremental_binding_query::ContextualModuleKey;
+  using Capability = VerifiedBoundModule;
+  using FailureAlternatives =
+      query::CapabilityFailureList<query::SourceRejection<diagnostics::DiagnosticFact>,
+                                   query::KeyRejection<binder::BinderKeyFailure>>;
+
+  static constexpr query::CapabilityDescriptorMetadata descriptor{
+      "VerifyBoundModuleQuery"_zcc,    "zom.query.verify-bound-module"_zcc,
+      query::RetentionClass::Retained, query::QueryCyclePolicy::Reject,
+      query::QueryCostClass::Linear,   query::CapabilityAdmission::FinalSealedSnapshot};
+  ZC_NODISCARD static zc::Array<uint8_t> encodeKey(const Key& key);
+  ZC_NODISCARD static zc::Maybe<Key> decodeKey(zc::ArrayPtr<const uint8_t> bytes);
+  ZC_NODISCARD static query::CapabilityProviderResult<VerifyBoundModuleQuery> provide(
+      query::CapabilityQueryContext<VerifyBoundModuleQuery>& context, const Key& key);
+  ZC_NODISCARD static zc::Maybe<zc::Array<uint8_t>> verify(
+      query::CapabilityQueryContext<VerifyBoundModuleQuery>& context, const Key& key,
+      const Capability& candidate);
+};
+
+/// \brief Checker handoff retaining one verified bound-module capability lease.
+class CheckerBoundModuleView final {
+public:
+  using BoundModuleLease = query::QueryCapabilityLease<const VerifiedBoundModule>;
+
+  ~CheckerBoundModuleView() noexcept(false);
+  CheckerBoundModuleView(CheckerBoundModuleView&&) noexcept;
+  CheckerBoundModuleView& operator=(CheckerBoundModuleView&&) noexcept;
+  ZC_DISALLOW_COPY(CheckerBoundModuleView);
+
+  ZC_NODISCARD static zc::Maybe<CheckerBoundModuleView> from(BoundModuleLease&& lease);
+  ZC_NODISCARD CheckerBoundModuleView retain() const;
+  ZC_NODISCARD identity::SemanticContextBrand semanticContext() const noexcept;
+  ZC_NODISCARD identity::CompilationUnitId compilationUnit() const noexcept;
+  ZC_NODISCARD identity::CrateId crate() const noexcept;
+  ZC_NODISCARD identity::ModuleId module() const noexcept;
+  ZC_NODISCARD identity::SourceFileId sourceFile() const noexcept;
+  ZC_NODISCARD const identity::SemanticContextFingerprint& semanticFingerprint() const noexcept;
+  ZC_NODISCARD const ast::Tree& tree() const noexcept;
+  ZC_NODISCARD const binder::CanonicalParsedModule& parsedModule() const noexcept;
+  ZC_NODISCARD const binder::ImmutableDefinitionInventory& definitions() const noexcept;
+  ZC_NODISCARD zc::ArrayPtr<const binder::MaterializedDependencyExportSurface> dependencySurfaces()
+      const noexcept;
+  ZC_NODISCARD zc::Maybe<const binder::MaterializedDependencyExportSurface&> preludeSurface()
+      const noexcept;
+  ZC_NODISCARD zc::ArrayPtr<const binder::ImportBindingFact> resolvedImports() const noexcept;
+  ZC_NODISCARD zc::ArrayPtr<const binder::ModuleAliasBindingFact> resolvedModuleAliases()
+      const noexcept;
+  ZC_NODISCARD const binder::ImmutableBindingMetadata& bindings() const noexcept;
+  ZC_NODISCARD const binder::VerifiedExportSurface& bindingSurface() const noexcept;
+  ZC_NODISCARD const BoundModuleLease& boundModuleLease() const noexcept;
+
+private:
+  struct Impl;
+  explicit CheckerBoundModuleView(zc::Own<Impl>&& impl) noexcept;
+  zc::Own<Impl> impl;
+};
+
 }  // namespace zomlang::compiler::driver::module_graph_query
 
 namespace zomlang::compiler::query {
@@ -223,6 +601,34 @@ template <>
 class CapabilityCandidateContract<driver::module_graph_query::MaterializeModuleGraphQuery> final {
 public:
   using Descriptor = driver::module_graph_query::MaterializeModuleGraphQuery;
+  ZC_NODISCARD static StableWitnessBytes encode(const Descriptor::Capability& candidate);
+  ZC_NODISCARD static zc::Maybe<zc::Own<Descriptor::Capability>> decode(
+      zc::ArrayPtr<const uint8_t> bytes);
+};
+
+template <>
+class CapabilityCandidateContract<driver::module_graph_query::MaterializeModuleSkeletonQuery>
+    final {
+public:
+  using Descriptor = driver::module_graph_query::MaterializeModuleSkeletonQuery;
+  ZC_NODISCARD static StableWitnessBytes encode(const Descriptor::Capability& candidate);
+  ZC_NODISCARD static zc::Maybe<zc::Own<Descriptor::Capability>> decode(
+      zc::ArrayPtr<const uint8_t> bytes);
+};
+
+template <>
+class CapabilityCandidateContract<driver::module_graph_query::MaterializeOwnerBodyQuery> final {
+public:
+  using Descriptor = driver::module_graph_query::MaterializeOwnerBodyQuery;
+  ZC_NODISCARD static StableWitnessBytes encode(const Descriptor::Capability& candidate);
+  ZC_NODISCARD static zc::Maybe<zc::Own<Descriptor::Capability>> decode(
+      zc::ArrayPtr<const uint8_t> bytes);
+};
+
+template <>
+class CapabilityCandidateContract<driver::module_graph_query::VerifyBoundModuleQuery> final {
+public:
+  using Descriptor = driver::module_graph_query::VerifyBoundModuleQuery;
   ZC_NODISCARD static StableWitnessBytes encode(const Descriptor::Capability& candidate);
   ZC_NODISCARD static zc::Maybe<zc::Own<Descriptor::Capability>> decode(
       zc::ArrayPtr<const uint8_t> bytes);
@@ -248,6 +654,87 @@ class CapabilityFailureContract<driver::module_graph_query::MaterializeModuleGra
     final {
 public:
   using Descriptor = driver::module_graph_query::MaterializeModuleGraphQuery;
+  ZC_NODISCARD static zc::Array<uint8_t> encode(const binder::BinderKeyFailure& failure);
+  ZC_NODISCARD static zc::Maybe<binder::BinderKeyFailure> decode(zc::ArrayPtr<const uint8_t> bytes);
+  ZC_NODISCARD static CapabilityRejectionCheck verify(CapabilityQueryContext<Descriptor>& context,
+                                                      const Descriptor::Key& key,
+                                                      const binder::BinderKeyFailure& failure);
+};
+
+template <>
+class CapabilityFailureContract<driver::module_graph_query::MaterializeModuleSkeletonQuery,
+                                SourceRejection<diagnostics::DiagnosticFact>>
+    final {
+public:
+  using Descriptor = driver::module_graph_query::MaterializeModuleSkeletonQuery;
+  using Sequence = CanonicalNonEmptySequence<diagnostics::DiagnosticFact>;
+  ZC_NODISCARD static zc::Array<uint8_t> encode(const Sequence& diagnostics);
+  ZC_NODISCARD static zc::Maybe<Sequence> decode(zc::ArrayPtr<const uint8_t> bytes);
+  ZC_NODISCARD static CapabilityRejectionCheck verify(CapabilityQueryContext<Descriptor>& context,
+                                                      const Descriptor::Key& key,
+                                                      const Sequence& diagnostics);
+};
+
+template <>
+class CapabilityFailureContract<driver::module_graph_query::MaterializeModuleSkeletonQuery,
+                                KeyRejection<binder::BinderKeyFailure>>
+    final {
+public:
+  using Descriptor = driver::module_graph_query::MaterializeModuleSkeletonQuery;
+  ZC_NODISCARD static zc::Array<uint8_t> encode(const binder::BinderKeyFailure& failure);
+  ZC_NODISCARD static zc::Maybe<binder::BinderKeyFailure> decode(zc::ArrayPtr<const uint8_t> bytes);
+  ZC_NODISCARD static CapabilityRejectionCheck verify(CapabilityQueryContext<Descriptor>& context,
+                                                      const Descriptor::Key& key,
+                                                      const binder::BinderKeyFailure& failure);
+};
+
+template <>
+class CapabilityFailureContract<driver::module_graph_query::MaterializeOwnerBodyQuery,
+                                SourceRejection<diagnostics::DiagnosticFact>>
+    final {
+public:
+  using Descriptor = driver::module_graph_query::MaterializeOwnerBodyQuery;
+  using Sequence = CanonicalNonEmptySequence<diagnostics::DiagnosticFact>;
+  ZC_NODISCARD static zc::Array<uint8_t> encode(const Sequence& diagnostics);
+  ZC_NODISCARD static zc::Maybe<Sequence> decode(zc::ArrayPtr<const uint8_t> bytes);
+  ZC_NODISCARD static CapabilityRejectionCheck verify(CapabilityQueryContext<Descriptor>& context,
+                                                      const Descriptor::Key& key,
+                                                      const Sequence& diagnostics);
+};
+
+template <>
+class CapabilityFailureContract<driver::module_graph_query::MaterializeOwnerBodyQuery,
+                                KeyRejection<binder::BinderKeyFailure>>
+    final {
+public:
+  using Descriptor = driver::module_graph_query::MaterializeOwnerBodyQuery;
+  ZC_NODISCARD static zc::Array<uint8_t> encode(const binder::BinderKeyFailure& failure);
+  ZC_NODISCARD static zc::Maybe<binder::BinderKeyFailure> decode(zc::ArrayPtr<const uint8_t> bytes);
+  ZC_NODISCARD static CapabilityRejectionCheck verify(CapabilityQueryContext<Descriptor>& context,
+                                                      const Descriptor::Key& key,
+                                                      const binder::BinderKeyFailure& failure);
+};
+
+template <>
+class CapabilityFailureContract<driver::module_graph_query::VerifyBoundModuleQuery,
+                                SourceRejection<diagnostics::DiagnosticFact>>
+    final {
+public:
+  using Descriptor = driver::module_graph_query::VerifyBoundModuleQuery;
+  using Sequence = CanonicalNonEmptySequence<diagnostics::DiagnosticFact>;
+  ZC_NODISCARD static zc::Array<uint8_t> encode(const Sequence& diagnostics);
+  ZC_NODISCARD static zc::Maybe<Sequence> decode(zc::ArrayPtr<const uint8_t> bytes);
+  ZC_NODISCARD static CapabilityRejectionCheck verify(CapabilityQueryContext<Descriptor>& context,
+                                                      const Descriptor::Key& key,
+                                                      const Sequence& diagnostics);
+};
+
+template <>
+class CapabilityFailureContract<driver::module_graph_query::VerifyBoundModuleQuery,
+                                KeyRejection<binder::BinderKeyFailure>>
+    final {
+public:
+  using Descriptor = driver::module_graph_query::VerifyBoundModuleQuery;
   ZC_NODISCARD static zc::Array<uint8_t> encode(const binder::BinderKeyFailure& failure);
   ZC_NODISCARD static zc::Maybe<binder::BinderKeyFailure> decode(zc::ArrayPtr<const uint8_t> bytes);
   ZC_NODISCARD static CapabilityRejectionCheck verify(CapabilityQueryContext<Descriptor>& context,
@@ -311,5 +798,51 @@ ZOM_DECLARE_GRAPH_MATERIALIZER_PERMISSION(identity::SourceFileKey, ActiveSourceM
 ZOM_DECLARE_GRAPH_MATERIALIZER_PERMISSION(identity::ModuleKey, ActiveModuleMembership);
 
 #undef ZOM_DECLARE_GRAPH_MATERIALIZER_PERMISSION
+
+#define ZOM_DECLARE_SKELETON_MATERIALIZER_PERMISSION(GlobalKey, Membership)                       \
+  template <>                                                                                     \
+  struct ActiveMaterializerPermission<driver::module_graph_query::MaterializeModuleSkeletonQuery, \
+                                      GlobalKey,                                                  \
+                                      driver::incremental_binding_query::Membership##Query>       \
+      final {                                                                                     \
+    static constexpr bool allowed = true;                                                         \
+  }
+
+ZOM_DECLARE_SKELETON_MATERIALIZER_PERMISSION(identity::CompilationUnitIdentity,
+                                             ActiveCompilationUnitMembership);
+ZOM_DECLARE_SKELETON_MATERIALIZER_PERMISSION(identity::CrateKey, ActiveCrateMembership);
+ZOM_DECLARE_SKELETON_MATERIALIZER_PERMISSION(identity::SourceFileKey, ActiveSourceMembership);
+ZOM_DECLARE_SKELETON_MATERIALIZER_PERMISSION(identity::ModuleKey, ActiveModuleMembership);
+ZOM_DECLARE_SKELETON_MATERIALIZER_PERMISSION(identity::DefinitionKey, ActiveDefinitionMembership);
+ZOM_DECLARE_SKELETON_MATERIALIZER_PERMISSION(identity::ImplKey, ActiveImplementationMembership);
+ZOM_DECLARE_SKELETON_MATERIALIZER_PERMISSION(identity::GenericParameterKey,
+                                             ActiveGenericParameterMembership);
+ZOM_DECLARE_SKELETON_MATERIALIZER_PERMISSION(identity::CallableParameterKey,
+                                             ActiveCallableParameterMembership);
+
+#undef ZOM_DECLARE_SKELETON_MATERIALIZER_PERMISSION
+
+#define ZOM_DECLARE_OWNER_BODY_MATERIALIZER_PERMISSION(GlobalKey, Membership)                \
+  template <>                                                                                \
+  struct ActiveMaterializerPermission<driver::module_graph_query::MaterializeOwnerBodyQuery, \
+                                      GlobalKey,                                             \
+                                      driver::incremental_binding_query::Membership##Query>  \
+      final {                                                                                \
+    static constexpr bool allowed = true;                                                    \
+  }
+
+ZOM_DECLARE_OWNER_BODY_MATERIALIZER_PERMISSION(identity::CompilationUnitIdentity,
+                                               ActiveCompilationUnitMembership);
+ZOM_DECLARE_OWNER_BODY_MATERIALIZER_PERMISSION(identity::CrateKey, ActiveCrateMembership);
+ZOM_DECLARE_OWNER_BODY_MATERIALIZER_PERMISSION(identity::SourceFileKey, ActiveSourceMembership);
+ZOM_DECLARE_OWNER_BODY_MATERIALIZER_PERMISSION(identity::ModuleKey, ActiveModuleMembership);
+ZOM_DECLARE_OWNER_BODY_MATERIALIZER_PERMISSION(identity::DefinitionKey, ActiveDefinitionMembership);
+ZOM_DECLARE_OWNER_BODY_MATERIALIZER_PERMISSION(identity::ImplKey, ActiveImplementationMembership);
+ZOM_DECLARE_OWNER_BODY_MATERIALIZER_PERMISSION(identity::GenericParameterKey,
+                                               ActiveGenericParameterMembership);
+ZOM_DECLARE_OWNER_BODY_MATERIALIZER_PERMISSION(identity::CallableParameterKey,
+                                               ActiveCallableParameterMembership);
+
+#undef ZOM_DECLARE_OWNER_BODY_MATERIALIZER_PERMISSION
 
 }  // namespace zomlang::compiler::query

@@ -18,6 +18,10 @@ namespace zomlang::compiler::driver {
 class VerifiedModuleInterface;
 }
 
+namespace zomlang::compiler::checker {
+class CheckerIdentityAuthority;
+}
+
 namespace zomlang::compiler::checker::cross_module {
 
 /// \brief Domain-separated revision of one requester-filtered imported signature view.
@@ -179,8 +183,7 @@ public:
   ZC_NODISCARD static zc::Maybe<ImportedSignatureView> build(
       identity::SemanticContextBrand semanticContext,
       const identity::SemanticContextFingerprint& contextFingerprint, identity::ModuleId requester,
-      zc::Vector<ImportedSignatureModule>&& modules,
-      const identity::SemanticIdentityRegistrySet& registries);
+      zc::Vector<ImportedSignatureModule>&& modules, const CheckerIdentityAuthority& identities);
 };
 
 }  // namespace zomlang::compiler::checker::cross_module

@@ -2,6 +2,10 @@
   "reservations": [
     {"diagnostic": "CircularImport", "tracking": "docs/rfc/tracking/0026-review-and-implementation.md"},
     {"diagnostic": "CircularReexport", "tracking": "docs/rfc/tracking/0026-review-and-implementation.md"},
+    {"diagnostic": "ImportMemberNotFound", "tracking": "docs/rfc/tracking/0004-review-and-implementation.md"},
+    {"diagnostic": "ReexportMemberNotFound", "tracking": "docs/rfc/tracking/0004-review-and-implementation.md"},
+    {"diagnostic": "ImportTargetNotVisible", "tracking": "docs/rfc/tracking/0004-review-and-implementation.md"},
+    {"diagnostic": "ReexportTargetNotVisible", "tracking": "docs/rfc/tracking/0004-review-and-implementation.md"},
     {"diagnostic": "CheckerUnreachableMatchArm", "tracking": "docs/rfc/tracking/0005-review-and-implementation.md"},
     {"diagnostic": "UseAfterMove", "tracking": "docs/rfc/tracking/0007-review-and-implementation.md"},
     {"diagnostic": "ValueMovedHere", "tracking": "docs/rfc/tracking/0007-review-and-implementation.md"},

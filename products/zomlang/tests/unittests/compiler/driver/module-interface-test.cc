@@ -65,23 +65,14 @@ identity::ModuleId moduleIdentity() {
   using namespace tests::test_identity_detail;
   identity::SemanticContextFactory factory;
   auto context = factory.issue();
-  auto registries =
-      identity::SemanticIdentityRegistrySet::create(factory, ZC_REQUIRE_NONNULL(context));
-  ZC_IF_SOME(values, registries) {
-    ZC_REQUIRE(values.collectCompilationUnit(identity::CompilationUnitIdentity::userPackage(
-                   package())) == identity::FrozenRegistryFailure::None);
-    ZC_REQUIRE(values.freezeCompilationUnits() == identity::FrozenRegistryFailure::None);
-    ZC_REQUIRE(values.collectCrate(crate()) == identity::FrozenRegistryFailure::None);
-    ZC_REQUIRE(values.freezeCrates() == identity::FrozenRegistryFailure::None);
-    auto snapshot = identity::ImmutableSourceSnapshot::from(tests::test_identity_detail::source(),
-                                                            zc::heapArray<uint8_t>(1, uint8_t{0}));
-    ZC_REQUIRE(snapshot != zc::none);
-    ZC_REQUIRE(values.collectSourceFile(zc::mv(ZC_REQUIRE_NONNULL(snapshot))) ==
-               identity::FrozenRegistryFailure::None);
-    ZC_REQUIRE(values.freezeSourceFiles() == identity::FrozenRegistryFailure::None);
-    ZC_REQUIRE(values.collectModule(module()) == identity::FrozenRegistryFailure::None);
-    ZC_REQUIRE(values.freezeModules() == identity::FrozenRegistryFailure::None);
-    return ZC_REQUIRE_NONNULL(values.modules().find(module()));
+  ZC_IF_SOME(owner, context) {
+    auto authorities = identity::CanonicalIdentityInternerSet::create(factory, owner);
+    ZC_REQUIRE(authorities != zc::none);
+    ZC_IF_SOME(interner, authorities) {
+      auto result = interner.internModule(owner, module());
+      ZC_REQUIRE(result.is<identity::ModuleId>());
+      return result.get<identity::ModuleId>();
+    }
   }
   ZC_UNREACHABLE;
 }
@@ -91,6 +82,19 @@ binder::ExportSurfaceRevision surfaceRevision() {
   auto revision = binder::ExportSurfaceRevision::computeFramed(repeatedDigest(0x10), framed, framed,
                                                                framed, framed);
   return ZC_REQUIRE_NONNULL(revision);
+}
+
+identity::SourceSpan sourceSpan(uint64_t start, uint64_t end) {
+  using namespace tests::test_identity_detail;
+  auto snapshot = identity::ImmutableSourceSnapshot::from(tests::test_identity_detail::source(),
+                                                          zc::heapArray("module-interface"_zcb));
+  ZC_REQUIRE(snapshot != zc::none);
+  ZC_IF_SOME(value, snapshot) {
+    auto span = value.span(start, end);
+    ZC_REQUIRE(span != zc::none);
+    return zc::mv(ZC_REQUIRE_NONNULL(span));
+  }
+  ZC_UNREACHABLE;
 }
 
 }  // namespace
@@ -311,6 +315,73 @@ ZC_TEST("SignatureRootAuthorization.CloneRetainsSemanticImportBinding") {
 
   auto moduleBinding = binder::BindingTarget::module(moduleIdentity());
   ZC_EXPECT(!module_interface::isSignatureRootBinding(moduleBinding));
+}
+
+ZC_TEST("TypeEnrichedBindingTarget.CloneRetainsModuleSurfaceRevision") {
+  auto expectedModule = moduleIdentity();
+  auto expectedRevision = surfaceRevision();
+  TypeEnrichedBindingTarget target(ModuleTypeEnrichedTarget{expectedModule, expectedRevision});
+  auto cloned = target.clone();
+  ZC_REQUIRE(cloned.variant().is<ModuleTypeEnrichedTarget>());
+  const auto& module = cloned.variant().get<ModuleTypeEnrichedTarget>();
+  ZC_EXPECT(module.module == expectedModule);
+  ZC_EXPECT(module.surfaceRevision.digest() == expectedRevision.digest());
+}
+
+ZC_TEST("ExportedBinding.CloneRetainsBindingAndSourceSpans") {
+  using namespace tests::test_identity_detail;
+  auto name = binder::BindingNameKey::from(
+      binder::Namespace::Module, scalar<identity::DeclaredDefinitionName>("dependency"_zc));
+  ZC_REQUIRE(name != zc::none);
+  auto expectedModule = moduleIdentity();
+  auto expectedRevision = surfaceRevision();
+  ExportedBinding binding{
+      binder::BindingTarget::module(expectedModule),
+      zc::mv(ZC_REQUIRE_NONNULL(name)),
+      TypeEnrichedBindingTarget(ModuleTypeEnrichedTarget{expectedModule, expectedRevision}),
+      binder::VisibilityEnvelope::external(),
+      sourceSpan(0, 1),
+      sourceSpan(1, 3),
+      zc::Maybe<identity::SourceSpan>(sourceSpan(3, 5)),
+      sourceSpan(5, 8)};
+
+  auto cloned = binding.clone();
+  ZC_EXPECT(cloned.bindingIdentity.value().is<binder::ModuleBindingTarget>());
+  ZC_EXPECT(cloned.bindingIdentity.value().get<binder::ModuleBindingTarget>().module ==
+            expectedModule);
+  ZC_EXPECT(cloned.name.name().text() == "dependency"_zc);
+  ZC_EXPECT(cloned.visibility.value().is<binder::ExternalVisibility>());
+  ZC_EXPECT(cloned.bindingSpan.byteStart() == 0);
+  ZC_EXPECT(cloned.canonicalDeclarationSpan.byteEnd() == 3);
+  ZC_REQUIRE(cloned.aliasSpan != zc::none);
+  ZC_IF_SOME(alias, cloned.aliasSpan) { ZC_EXPECT(alias.byteStart() == 3); }
+  ZC_EXPECT(cloned.exportSpan.byteEnd() == 8);
+  ZC_REQUIRE(cloned.target.variant().is<ModuleTypeEnrichedTarget>());
+  ZC_EXPECT(cloned.target.variant().get<ModuleTypeEnrichedTarget>().surfaceRevision.digest() ==
+            expectedRevision.digest());
+
+  auto visibleName = binder::BindingNameKey::from(
+      binder::Namespace::Module, scalar<identity::DeclaredDefinitionName>("visible"_zc));
+  ZC_REQUIRE(visibleName != zc::none);
+  VisibleBinding visible{
+      binder::BindingTarget::module(expectedModule),
+      zc::mv(ZC_REQUIRE_NONNULL(visibleName)),
+      TypeEnrichedBindingTarget(ModuleTypeEnrichedTarget{expectedModule, expectedRevision}),
+      binder::VisibilityEnvelope::external(),
+      sourceSpan(0, 1),
+      sourceSpan(1, 3),
+      zc::none};
+  auto clonedVisible = visible.clone();
+  ZC_EXPECT(clonedVisible.bindingIdentity.value().is<binder::ModuleBindingTarget>());
+  ZC_EXPECT(clonedVisible.name.name().text() == "visible"_zc);
+  ZC_EXPECT(clonedVisible.visibility.value().is<binder::ExternalVisibility>());
+  ZC_EXPECT(clonedVisible.bindingSpan.byteStart() == 0);
+  ZC_EXPECT(clonedVisible.canonicalDeclarationSpan.byteEnd() == 3);
+  ZC_EXPECT(clonedVisible.aliasSpan == zc::none);
+  ZC_REQUIRE(clonedVisible.target.variant().is<ModuleTypeEnrichedTarget>());
+  ZC_EXPECT(
+      clonedVisible.target.variant().get<ModuleTypeEnrichedTarget>().surfaceRevision.digest() ==
+      expectedRevision.digest());
 }
 
 }  // namespace zomlang::compiler::driver

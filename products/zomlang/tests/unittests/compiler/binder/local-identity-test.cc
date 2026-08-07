@@ -7,7 +7,7 @@
 
 #include "zc/core/encoding.h"
 #include "zc/ztest/test.h"
-#include "zomlang/compiler/identity/semantic-identity-registry-set.h"
+#include "zomlang/compiler/identity/canonical-identity-interner-set.h"
 
 namespace zomlang::compiler::binder {
 namespace {
@@ -111,21 +111,6 @@ identity::CrateKey crate() {
   ZC_FAIL_REQUIRE("valid local-identity test crate was rejected");
 }
 
-identity::SourceFileKey source() {
-  zc::Vector<identity::CanonicalPathSegment> segments;
-  segments.add(scalar<identity::CanonicalPathSegment>("local-identity.zom"_zc));
-  return identity::SourceFileKey::from(
-      crate(), identity::SourceOriginKey::localFile(
-                   identity::CanonicalWorkspaceRelativePath::from(0, zc::mv(segments))));
-}
-
-identity::ImmutableSourceSnapshot snapshot() {
-  auto value =
-      identity::ImmutableSourceSnapshot::from(source(), zc::heapArray<uint8_t>(1, uint8_t{0}));
-  ZC_IF_SOME(admitted, value) { return zc::mv(admitted); }
-  ZC_FAIL_REQUIRE("valid local-identity test source snapshot was rejected");
-}
-
 identity::ModuleKey module(zc::StringPtr name) {
   zc::Vector<identity::ModulePathSegment> path;
   path.add(scalar<identity::ModulePathSegment>(name));
@@ -142,37 +127,19 @@ identity::SemanticContextBrand requireContext(identity::SemanticContextFactory& 
 
 zc::Array<identity::ModuleId> issueModules(identity::SemanticContextFactory& factory,
                                            identity::SemanticContextBrand context) {
-  auto created = identity::SemanticIdentityRegistrySet::create(factory, context);
+  auto created = identity::CanonicalIdentityInternerSet::create(factory, context);
   ZC_REQUIRE(created != zc::none);
-  ZC_IF_SOME(registries, created) {
-    ZC_REQUIRE(registries.collectCompilationUnit(identity::CompilationUnitIdentity::userPackage(
-                   package())) == identity::FrozenRegistryFailure::None);
-    ZC_REQUIRE(registries.freezeCompilationUnits() == identity::FrozenRegistryFailure::None);
-    ZC_REQUIRE(registries.collectCrate(crate()) == identity::FrozenRegistryFailure::None);
-    ZC_REQUIRE(registries.freezeCrates() == identity::FrozenRegistryFailure::None);
-    ZC_REQUIRE(registries.collectSourceFile(snapshot()) == identity::FrozenRegistryFailure::None);
-    ZC_REQUIRE(registries.freezeSourceFiles() == identity::FrozenRegistryFailure::None);
-
+  ZC_IF_SOME(authorities, created) {
     auto first = module("first"_zc);
     auto second = module("second"_zc);
-    auto retainedFirst = first.clone();
-    auto retainedSecond = second.clone();
-    ZC_REQUIRE(registries.collectModule(zc::mv(first)) == identity::FrozenRegistryFailure::None);
-    ZC_REQUIRE(registries.collectModule(zc::mv(second)) == identity::FrozenRegistryFailure::None);
-    ZC_REQUIRE(registries.freezeModules() == identity::FrozenRegistryFailure::None);
-
-    auto firstId = registries.modules().find(retainedFirst);
-    auto secondId = registries.modules().find(retainedSecond);
-    ZC_REQUIRE(firstId != zc::none);
-    ZC_REQUIRE(secondId != zc::none);
-    ZC_IF_SOME(firstValue, firstId) {
-      ZC_IF_SOME(secondValue, secondId) {
-        zc::Vector<identity::ModuleId> result;
-        result.add(firstValue);
-        result.add(secondValue);
-        return result.releaseAsArray();
-      }
-    }
+    auto firstId = authorities.internModule(context, first);
+    auto secondId = authorities.internModule(context, second);
+    ZC_REQUIRE(firstId.is<identity::ModuleId>());
+    ZC_REQUIRE(secondId.is<identity::ModuleId>());
+    zc::Vector<identity::ModuleId> result;
+    result.add(firstId.get<identity::ModuleId>());
+    result.add(secondId.get<identity::ModuleId>());
+    return result.releaseAsArray();
   }
   ZC_UNREACHABLE
 }
@@ -556,6 +523,18 @@ ZC_TEST("Module-local handles enforce context module and dense position") {
   ZC_EXPECT(ModuleLocalIdentityAllocator::create(firstContext, secondModules[0]) == zc::none);
   ZC_EXPECT(ModuleLocalIdentityAllocator::create(identity::SemanticContextBrand(),
                                                  firstModules[0]) == zc::none);
+}
+
+ZC_TEST("Module-local owner bindings stop at the checked dense-count limit") {
+  identity::SemanticContextFactory factory;
+  const auto context = requireContext(factory);
+  const auto modules = issueModules(factory, context);
+  auto allocator = requireAllocator(context, modules[0]);
+
+  ZC_EXPECT(allocator.skipOwnerLocalBindings(0xffffffffu));
+  ZC_EXPECT(allocator.ownerLocalBindingCount() == static_cast<uint64_t>(0xffffffffu));
+  ZC_EXPECT(allocator.allocateOwnerLocalBinding() == zc::none);
+  ZC_EXPECT(!allocator.skipOwnerLocalBindings(1));
 }
 
 }  // namespace zomlang::compiler::binder

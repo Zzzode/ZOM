@@ -41,17 +41,17 @@ public:
     ZC_REQUIRE(issuedContext != zc::none);
     ZC_IF_SOME(value, issuedContext) { contextValue = value; }
 
-    auto created = identity::SemanticIdentityRegistrySet::create(factory, contextValue);
-    ZC_REQUIRE(created != zc::none);
-    ZC_IF_SOME(value, created) {
-      registriesValue = zc::heap<identity::SemanticIdentityRegistrySet>(zc::mv(value));
+    auto createdInterner = identity::CanonicalIdentityInternerSet::create(factory, contextValue);
+    ZC_REQUIRE(createdInterner != zc::none);
+    ZC_IF_SOME(value, createdInterner) {
+      identitiesValue = zc::heap<identity::CanonicalIdentityInternerSet>(zc::mv(value));
     }
-    buildRegistry();
+    buildIdentityAuthority();
 
     auto token = factory.issueSemanticTypeStoreConstructionToken(contextValue);
     ZC_REQUIRE(token != zc::none);
     ZC_IF_SOME(value, token) {
-      semanticTypesValue = zc::heap<type::SemanticTypeStore>(zc::mv(value), *registriesValue);
+      semanticTypesValue = zc::heap<type::SemanticTypeStore>(zc::mv(value), *identitiesValue);
     }
   }
 
@@ -73,7 +73,7 @@ public:
   }
 
   const identity::GenericParameterKey& parameter() const {
-    ZC_IF_SOME(value, registries().genericParameters().keyAt(0)) { return value; }
+    ZC_IF_SOME(value, parameterKeyValue) { return value; }
     ZC_FAIL_REQUIRE("semantic type test generic parameter is not registered");
   }
 
@@ -84,12 +84,12 @@ public:
       auto bytes = entry.key.encode();
       size_t insertion = result.size();
       while (insertion > 0) {
-        auto previous = registries().definitions().lookup(result[insertion - 1]);
-        ZC_REQUIRE(previous != zc::none);
         bool before = false;
-        ZC_IF_SOME(value, previous) {
-          const auto previousBytes = value.encode();
+        for (const auto& previous : definitions) {
+          if (previous.id != result[insertion - 1]) continue;
+          const auto previousBytes = previous.key.encode();
           before = compareBytes(bytes.asPtr(), previousBytes.asPtr()) < 0;
+          break;
         }
         if (!before) break;
         --insertion;
@@ -124,59 +124,35 @@ private:
     ZC_REQUIRE(record != zc::none);
     ZC_IF_SOME(value, record) {
       auto key = identity::DefinitionKey::compute(value);
-      definitions.add(DefinitionEntry(kind, key.clone()));
-      zc::Maybe<identity::OverloadHeaderAuthority> noOverloadAuthority;
-      ZC_REQUIRE(registries().collectDefinition(zc::mv(value), zc::mv(noOverloadAuthority),
-                                                ordinal) == identity::FrozenRegistryFailure::None);
+      auto admitted = identitiesValue->internDefinition(contextValue, key, value);
+      ZC_REQUIRE(admitted.is<identity::DefId>());
+      DefinitionEntry entry(kind, zc::mv(key));
+      entry.id = admitted.get<identity::DefId>();
+      definitions.add(zc::mv(entry));
     }
   }
 
-  void buildRegistry() {
-    using namespace tests::test_identity_detail;
-    ZC_REQUIRE(registries().collectCompilationUnit(userUnit()) ==
-               identity::FrozenRegistryFailure::None);
-    ZC_REQUIRE(registries().freezeCompilationUnits() == identity::FrozenRegistryFailure::None);
-    ZC_REQUIRE(registries().collectCrate(crate()) == identity::FrozenRegistryFailure::None);
-    ZC_REQUIRE(registries().freezeCrates() == identity::FrozenRegistryFailure::None);
-    auto snapshot = identity::ImmutableSourceSnapshot::from(tests::test_identity_detail::source(),
-                                                            zc::heapArray<uint8_t>(1, uint8_t{0}));
-    ZC_REQUIRE(snapshot != zc::none);
-    ZC_IF_SOME(value, snapshot) {
-      ZC_REQUIRE(registries().collectSourceFile(zc::mv(value)) ==
-                 identity::FrozenRegistryFailure::None);
-    }
-    ZC_REQUIRE(registries().freezeSourceFiles() == identity::FrozenRegistryFailure::None);
-    ZC_REQUIRE(registries().collectModule(module()) == identity::FrozenRegistryFailure::None);
-    ZC_REQUIRE(registries().freezeModules() == identity::FrozenRegistryFailure::None);
-
+  void buildIdentityAuthority() {
     addDefinition(identity::DefinitionKind::Class, 0);
     addDefinition(identity::DefinitionKind::Interface, 1);
     addDefinition(identity::DefinitionKind::Interface, 2);
     addDefinition(identity::DefinitionKind::Interface, 3);
     addDefinition(identity::DefinitionKind::AssociatedType, 4);
     addDefinition(identity::DefinitionKind::AssociatedType, 5);
-    ZC_REQUIRE(registries().freezeStableIdentities() == identity::FrozenRegistryFailure::None);
-
     auto parameterRecord = identity::GenericParameterIdentityRecord::type(
         identity::StableGenericParameterOwnerKey::definition(definitions[0].key.clone()), 0);
-    ZC_REQUIRE(registries().collectGenericParameter(zc::mv(parameterRecord)) ==
-               identity::FrozenRegistryFailure::None);
-    ZC_REQUIRE(registries().freezeGenericParameters() == identity::FrozenRegistryFailure::None);
-    ZC_REQUIRE(registries().freezeCallableParameters() == identity::FrozenRegistryFailure::None);
-    for (auto& entry : definitions) {
-      auto id = registries().definitions().find(entry.key);
-      ZC_REQUIRE(id != zc::none);
-      ZC_IF_SOME(value, id) { entry.id = value; }
-    }
+    const auto parameterKey = identity::GenericParameterKey::compute(parameterRecord);
+    auto admitted =
+        identitiesValue->internGenericParameter(contextValue, parameterKey, parameterRecord);
+    ZC_REQUIRE(admitted.is<identity::GenericParameterId>());
+    parameterKeyValue = parameterKey.clone();
   }
-
-  identity::SemanticIdentityRegistrySet& registries() { return *registriesValue; }
-  const identity::SemanticIdentityRegistrySet& registries() const { return *registriesValue; }
 
   identity::SemanticContextFactory factory;
   identity::SemanticContextBrand contextValue;
-  zc::Own<identity::SemanticIdentityRegistrySet> registriesValue;
+  zc::Own<identity::CanonicalIdentityInternerSet> identitiesValue;
   zc::Vector<DefinitionEntry> definitions;
+  zc::Maybe<identity::GenericParameterKey> parameterKeyValue;
   zc::Own<type::SemanticTypeStore> semanticTypesValue;
 };
 

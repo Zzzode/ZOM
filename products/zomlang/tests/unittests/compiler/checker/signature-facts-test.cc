@@ -17,6 +17,7 @@
 #include "zc/core/encoding.h"
 #include "zc/ztest/test.h"
 #include "zomlang/compiler/identity/sha256.h"
+#include "zomlang/tests/unittests/compiler/checker/checker-authority-test-fixture.h"
 #include "zomlang/tests/unittests/compiler/test-semantic-identities.h"
 
 namespace zomlang::compiler::checker::signature {
@@ -50,6 +51,90 @@ identity::Sha256Digest digestFromHex(zc::StringPtr text) {
   ZC_FAIL_REQUIRE("invalid signature-facts digest fixture");
 }
 
+class PatternAuthorityFixture final {
+public:
+  PatternAuthorityFixture()
+      : session(R"zom(class RecoveryOwner {}
+interface PatternInterface { type Associated; }
+class PatternNominal {}
+interface PatternMarker {}
+fun PatternGeneric<T>(value: T) {}
+)zom"_zc) {
+    const auto& inventory = userBoundModule().definitions();
+    interfaceDefinition = findDefinition(inventory, "PatternInterface"_zc);
+    nominalDefinition = findDefinition(inventory, "PatternNominal"_zc);
+    markerDefinition = findDefinition(inventory, "PatternMarker"_zc);
+    genericDefinition = findDefinition(inventory, "PatternGeneric"_zc);
+    associatedDefinition = findDefinition(inventory, "Associated"_zc);
+    genericParameterKey =
+        zc::heap<identity::GenericParameterKey>(findGenericParameter(inventory, genericDefinition));
+    registries = zc::heap<CheckerIdentityAuthority>(session.identityAuthority().clone());
+  }
+
+  const CheckerIdentityAuthority& identities() const { return *registries; }
+  identity::DefId definition(identity::DefinitionKind kind) const {
+    switch (kind) {
+      case identity::DefinitionKind::Class:
+        return nominalDefinition;
+      case identity::DefinitionKind::Interface:
+        return interfaceDefinition;
+      case identity::DefinitionKind::AssociatedType:
+        return associatedDefinition;
+      case identity::DefinitionKind::TypeAlias:
+        return markerDefinition;
+      default:
+        ZC_FAIL_REQUIRE("missing pattern authority definition kind");
+    }
+  }
+  identity::DefId interface() const noexcept { return interfaceDefinition; }
+  identity::DefId nominal() const noexcept { return nominalDefinition; }
+  identity::DefId marker() const noexcept { return markerDefinition; }
+  identity::DefId associated() const noexcept { return associatedDefinition; }
+  const identity::GenericParameterKey& genericParameter() const noexcept {
+    return *genericParameterKey;
+  }
+
+  zc::Own<CheckerIdentityAuthority> registries;
+
+private:
+  const driver::module_graph_query::CheckerBoundModuleView& userBoundModule() const {
+    auto module = session.identityAuthority().boundModule(session.module());
+    ZC_REQUIRE(module != zc::none);
+    return ZC_REQUIRE_NONNULL(module);
+  }
+
+  static identity::DefId findDefinition(const binder::ImmutableDefinitionInventory& inventory,
+                                        zc::StringPtr name) {
+    for (const auto& definition : inventory.definitions()) {
+      if (definition.record.name() == name) { return definition.definition; }
+    }
+    ZC_FAIL_REQUIRE("missing pattern authority definition");
+  }
+
+  static identity::GenericParameterKey findGenericParameter(
+      const binder::ImmutableDefinitionInventory& inventory, identity::DefId owner) {
+    auto ownerEntry = inventory.definition(owner);
+    ZC_REQUIRE(ownerEntry != zc::none);
+    ZC_IF_SOME(definition, ownerEntry) {
+      for (const auto& parameter : inventory.genericParameters()) {
+        auto parameterOwner = parameter.record.owner().definitionKey();
+        ZC_IF_SOME(expected, parameterOwner) {
+          if (expected == definition.key()) { return parameter.key.clone(); }
+        }
+      }
+    }
+    ZC_FAIL_REQUIRE("missing pattern authority generic parameter");
+  }
+
+  tests::checker_fixture::CheckerAuthoritySession session;
+  identity::DefId interfaceDefinition;
+  identity::DefId nominalDefinition;
+  identity::DefId markerDefinition;
+  identity::DefId genericDefinition;
+  identity::DefId associatedDefinition;
+  zc::Own<identity::GenericParameterKey> genericParameterKey;
+};
+
 zc::Array<uint8_t> bytesFromHex(zc::StringPtr text) {
   ZC_REQUIRE(text.size() % 2 == 0);
   auto bytes = zc::heapArray<uint8_t>(text.size() / 2);
@@ -61,7 +146,7 @@ zc::Array<uint8_t> bytesFromHex(zc::StringPtr text) {
 }
 
 void expectTypeKeyPatternOracle(TypeKeyPattern&& pattern,
-                                const identity::SemanticIdentityRegistrySet& registries,
+                                const CheckerIdentityAuthority& registries,
                                 zc::StringPtr expectedHex, zc::StringPtr expectedDigest) {
   auto key = SignatureFactsCanonicalCodec::makeTypeKeyPatternKey(pattern, registries);
   ZC_REQUIRE(key != zc::none);
@@ -87,13 +172,13 @@ void expectRawOracle(zc::StringPtr expectedHex, zc::StringPtr expectedDigest) {
 }
 
 void expectTypeKeyDecodeRejected(zc::Array<uint8_t>&& bytes,
-                                 const identity::SemanticIdentityRegistrySet& registries) {
+                                 const CheckerIdentityAuthority& registries) {
   ZC_EXPECT(SignatureFactsCanonicalCodec::decodeTypeKeyPatternKey(bytes.asPtr(), registries) ==
             zc::none);
 }
 
 void expectImplPatternRoundTrip(const ImplPattern& pattern,
-                                const identity::SemanticIdentityRegistrySet& registries) {
+                                const CheckerIdentityAuthority& registries) {
   auto key = SignatureFactsCanonicalCodec::makeImplPatternKey(pattern, registries);
   ZC_REQUIRE(key != zc::none);
   ZC_IF_SOME(value, key) {
@@ -105,95 +190,9 @@ void expectImplPatternRoundTrip(const ImplPattern& pattern,
 }
 
 void expectImplKeyDecodeRejected(zc::Array<uint8_t>&& bytes,
-                                 const identity::SemanticIdentityRegistrySet& registries) {
+                                 const CheckerIdentityAuthority& registries) {
   ZC_EXPECT(SignatureFactsCanonicalCodec::decodeImplPatternKey(bytes.asPtr(), registries) ==
             zc::none);
-}
-
-identity::SemanticContextFingerprint fingerprint(
-    const identity::SemanticIdentityRegistrySet& registries) {
-  zc::Vector<identity::ToolchainSemanticContextInput> toolchainInputs;
-  zc::Vector<identity::PackageDependencyEdgeKey> packageEdges;
-  zc::Vector<identity::CrateDependencyEdgeKey> crateEdges;
-  auto result = identity::SemanticContextFingerprint::compute(
-      registries, toolchainInputs.asPtr(), packageEdges.asPtr(), crateEdges.asPtr());
-  ZC_IF_SOME(value, result) { return zc::mv(value); }
-  ZC_FAIL_REQUIRE("invalid signature-facts fingerprint fixture");
-}
-
-binder::ParsedModuleReceipt parsedReceipt(const identity::SemanticIdentityRegistrySet& registries) {
-  const auto sourceBytes = tests::test_identity_detail::source().encode();
-  const auto& snapshot = registries.sourceSnapshots()[0];
-  const auto parserSchema = digest(0x44);
-  const uint8_t astDump[] = {0x01};
-  auto result =
-      binder::ParsedModuleReceipt::compute(sourceBytes.asPtr(), snapshot.contentDigest(),
-                                           snapshot.bytes().size(), parserSchema, astDump);
-  ZC_IF_SOME(value, result) { return value; }
-  ZC_FAIL_REQUIRE("invalid signature-facts parsed receipt fixture");
-}
-
-binder::ExportSurfaceRevision surfaceRevision(const identity::SemanticContextFingerprint& context) {
-  const auto moduleBytes = module().encode();
-  const auto compilationUnitBytes = userUnit().encode();
-  const uint8_t emptyMap[] = {0, 0, 0, 0, 0, 0, 0, 0};
-  auto result = binder::ExportSurfaceRevision::computeFramed(
-      context.digest(), moduleBytes.asPtr(), compilationUnitBytes.asPtr(), emptyMap, emptyMap);
-  ZC_IF_SOME(value, result) { return value; }
-  ZC_FAIL_REQUIRE("invalid signature-facts surface revision fixture");
-}
-
-template <typename Handle>
-Handle requireHandle(zc::Maybe<Handle>&& candidate) {
-  ZC_IF_SOME(value, candidate) { return value; }
-  ZC_FAIL_REQUIRE("signature-facts production identity lookup failed");
-}
-
-zc::StringPtr definitionName(uint32_t ordinal) {
-  switch (ordinal) {
-    case 0:
-      return "signature0"_zc;
-    case 1:
-      return "Signature1"_zc;
-    case 2:
-      return "Signature2"_zc;
-    case 3:
-      return "Signature3"_zc;
-    case 4:
-      return "Signature4"_zc;
-    case 5:
-      return "Signature5"_zc;
-    case 6:
-      return "SIGNATURE6"_zc;
-    default:
-      ZC_FAIL_REQUIRE("invalid signature-facts definition ordinal");
-  }
-}
-
-identity::CanonicalHeaderTypeSyntax unitHeaderType() {
-  auto value = identity::CanonicalHeaderTypeSyntax::predefined(identity::PredefinedTypeKind::Unit);
-  ZC_IF_SOME(admitted, value) { return zc::mv(admitted); }
-  ZC_FAIL_REQUIRE("invalid signature-facts unit header type");
-}
-
-identity::OverloadHeaderAuthority functionAuthority() {
-  zc::Maybe<identity::ReceiverShape> receiver;
-  zc::Vector<identity::CanonicalGenericParameter> generics;
-  zc::Maybe<identity::CanonicalHeaderTypeSyntax> noDefault;
-  generics.add(identity::CanonicalGenericParameter::from(zc::mv(noDefault)));
-  zc::Vector<identity::CanonicalBoundObligation> obligations;
-  zc::Vector<identity::CanonicalCallableParameter> parameters;
-  parameters.add(identity::CanonicalCallableParameter::from(
-      scalar<identity::SemanticIdentifier>("value"_zc), unitHeaderType(), false));
-  zc::Maybe<zc::Vector<identity::CanonicalHeaderTypeSyntax>> raises;
-  zc::Maybe<identity::ExternalAbi> abi;
-  auto header = identity::CanonicalOverloadHeader::from(
-      identity::CallableHeaderKind::Function,
-      scalar<identity::DeclaredDefinitionName>(definitionName(0)), zc::mv(receiver),
-      zc::mv(generics), zc::mv(obligations), zc::mv(parameters),
-      identity::CanonicalCallableResult::unit(), zc::mv(raises), zc::mv(abi));
-  ZC_IF_SOME(admitted, header) { return identity::OverloadHeaderAuthority::from(zc::mv(admitted)); }
-  ZC_FAIL_REQUIRE("invalid signature-facts function header");
 }
 
 struct DefinitionFixture final {
@@ -204,87 +203,48 @@ struct DefinitionFixture final {
 
 class SignatureFixture final {
 public:
-  SignatureFixture() {
-    auto issuedContext = factory.issue();
-    ZC_REQUIRE(issuedContext != zc::none);
-    ZC_IF_SOME(value, issuedContext) { context = value; }
+  SignatureFixture()
+      : session(R"zom(class RecoveryOwner {}
+fun signature0(value: unit) -> unit {}
+class Signature1 {}
+interface Signature2 { type Signature4; }
+alias Signature3 = unit;
+enum SignatureEnum { Signature5 }
+const SIGNATURE6: unit = ();
+)zom"_zc) {
+    const auto& inventory = boundModule().definitions();
+    definitions.add(findDefinition(inventory, identity::DefinitionKind::Function, "signature0"_zc));
+    definitions.add(findDefinition(inventory, identity::DefinitionKind::Class, "Signature1"_zc));
+    definitions.add(
+        findDefinition(inventory, identity::DefinitionKind::Interface, "Signature2"_zc));
+    definitions.add(
+        findDefinition(inventory, identity::DefinitionKind::TypeAlias, "Signature3"_zc));
+    definitions.add(
+        findDefinition(inventory, identity::DefinitionKind::AssociatedType, "Signature4"_zc));
+    definitions.add(
+        findDefinition(inventory, identity::DefinitionKind::EnumVariant, "Signature5"_zc));
+    definitions.add(findDefinition(inventory, identity::DefinitionKind::Constant, "SIGNATURE6"_zc));
+    callableParameterKey = zc::heap<identity::CallableParameterKey>(
+        findCallableParameter(inventory, definition(identity::DefinitionKind::Function)));
 
-    auto createdRegistries = identity::SemanticIdentityRegistrySet::create(factory, context);
-    ZC_REQUIRE(createdRegistries != zc::none);
-    ZC_IF_SOME(value, createdRegistries) {
-      registries = zc::heap<identity::SemanticIdentityRegistrySet>(zc::mv(value));
-    }
-    auto token = factory.issueSemanticTypeStoreConstructionToken(context);
-    ZC_REQUIRE(token != zc::none);
-    ZC_IF_SOME(value, token) {
-      semanticTypes = zc::heap<type::SemanticTypeStore>(zc::mv(value), *registries);
-    }
-
-    ZC_REQUIRE(registries->collectCompilationUnit(userUnit()) ==
-               identity::FrozenRegistryFailure::None);
-    ZC_REQUIRE(registries->freezeCompilationUnits() == identity::FrozenRegistryFailure::None);
-    ZC_REQUIRE(registries->collectCrate(crate()) == identity::FrozenRegistryFailure::None);
-    ZC_REQUIRE(registries->freezeCrates() == identity::FrozenRegistryFailure::None);
-    auto snapshot = identity::ImmutableSourceSnapshot::from(tests::test_identity_detail::source(),
-                                                            zc::heapArray<uint8_t>(1, uint8_t{0}));
-    ZC_REQUIRE(snapshot != zc::none);
-    ZC_IF_SOME(value, snapshot) {
-      ZC_REQUIRE(registries->collectSourceFile(zc::mv(value)) ==
-                 identity::FrozenRegistryFailure::None);
-    }
-    ZC_REQUIRE(registries->freezeSourceFiles() == identity::FrozenRegistryFailure::None);
-    ZC_REQUIRE(registries->collectModule(module()) == identity::FrozenRegistryFailure::None);
-    ZC_REQUIRE(registries->freezeModules() == identity::FrozenRegistryFailure::None);
-
-    addDefinition(identity::DefinitionKind::Function, 0);
-    addDefinition(identity::DefinitionKind::Class, 1);
-    addDefinition(identity::DefinitionKind::Interface, 2);
-    addDefinition(identity::DefinitionKind::TypeAlias, 3);
-    addDefinition(identity::DefinitionKind::AssociatedType, 4);
-    addDefinition(identity::DefinitionKind::EnumVariant, 5);
-    addDefinition(identity::DefinitionKind::Constant, 6);
-    ZC_REQUIRE(registries->freezeStableIdentities() == identity::FrozenRegistryFailure::None);
-    for (auto& definition : definitions) {
-      auto handle = registries->definitions().find(definition.key);
-      ZC_REQUIRE(handle != zc::none);
-      ZC_IF_SOME(value, handle) { definition.id = value; }
-    }
-    auto genericRecord = identity::GenericParameterIdentityRecord::type(
-        identity::StableGenericParameterOwnerKey::definition(definitions[0].key.clone()), 0);
-    ZC_REQUIRE(registries->collectGenericParameter(zc::mv(genericRecord)) ==
-               identity::FrozenRegistryFailure::None);
-    ZC_REQUIRE(registries->freezeGenericParameters() == identity::FrozenRegistryFailure::None);
-    auto parameterRecord = identity::CallableParameterIdentityRecord::from(
-        definitions[0].key.clone(), identity::CallableParameterPosition::ordinary(0));
-    ZC_REQUIRE(registries->collectCallableParameter(zc::mv(parameterRecord)) ==
-               identity::FrozenRegistryFailure::None);
-    ZC_REQUIRE(registries->freezeCallableParameters() == identity::FrozenRegistryFailure::None);
-
-    auto moduleHandle = registries->modules().find(module());
-    ZC_REQUIRE(moduleHandle != zc::none);
-    ZC_IF_SOME(value, moduleHandle) { moduleId = value; }
-
-    auto canonical = semanticTypes->canonicalizeClosed(type::semantic::TypeData(
+    auto canonical = session.semanticTypes().canonicalizeClosed(type::semantic::TypeData(
         type::semantic::PrimitiveTypeData{type::semantic::PrimitiveKind::Unit}));
     ZC_REQUIRE(canonical.is<type::semantic::CanonicalTypeData>());
     auto interned =
-        semanticTypes->intern(zc::mv(canonical).get<type::semantic::CanonicalTypeData>());
+        session.semanticTypes().intern(zc::mv(canonical).get<type::semantic::CanonicalTypeData>());
     ZC_REQUIRE(interned.is<type::SemanticTypeInterned>());
     unitType = interned.get<type::SemanticTypeInterned>().id;
 
-    contextFingerprint = zc::heap<identity::SemanticContextFingerprint>(fingerprint(*registries));
-    receipt = zc::heap<binder::ParsedModuleReceipt>(parsedReceipt(*registries));
-    surface = zc::heap<binder::ExportSurfaceRevision>(surfaceRevision(*contextFingerprint));
     zc::Vector<zc::ArrayPtr<const uint8_t>> noShapeRecords;
     auto shapeRevisionValue = MarkerShapeInventoryRevision::computeFramed(
-        contextFingerprint->digest(), noShapeRecords.asPtr());
+        boundModule().semanticFingerprint().digest(), noShapeRecords.asPtr());
     ZC_REQUIRE(shapeRevisionValue != zc::none);
     ZC_IF_SOME(value, shapeRevisionValue) {
       shapeRevision = zc::heap<MarkerShapeInventoryRevision>(zc::mv(value));
     }
     const auto configuration = MarkerPolicyConfiguration::explicitOnly();
     auto policyRevisionValue = MarkerPolicyRegistryRevision::computeFramed(
-        contextFingerprint->digest(), configuration.revision(), *shapeRevision,
+        boundModule().semanticFingerprint().digest(), configuration.revision(), *shapeRevision,
         noShapeRecords.asPtr());
     ZC_REQUIRE(policyRevisionValue != zc::none);
     ZC_IF_SOME(value, policyRevisionValue) {
@@ -299,29 +259,13 @@ public:
     ZC_FAIL_REQUIRE("missing signature-facts definition fixture");
   }
 
-  identity::SourceSpan span() const {
-    auto result = registries->sourceSnapshots()[0].span(0, 1);
-    ZC_IF_SOME(value, result) { return zc::mv(value); }
-    ZC_FAIL_REQUIRE("invalid signature-facts source span fixture");
-  }
+  identity::SourceSpan span() const { return session.span(0, 1); }
 
-  const identity::GenericParameterKey& genericParameter() const {
-    ZC_IF_SOME(value, registries->genericParameters().keyAt(0)) { return value; }
-    ZC_UNREACHABLE
-  }
-
-  const identity::CallableParameterKey& callableParameter() const {
-    ZC_IF_SOME(value, registries->callableParameters().keyAt(0)) { return value; }
-    ZC_UNREACHABLE
-  }
+  const identity::CallableParameterKey& callableParameter() const { return *callableParameterKey; }
 
   SemanticSignature functionSignature(zc::StringPtr parameterLabel, bool hasDefault,
                                       identity::SemanticTypeId success) const {
     zc::Vector<GenericParameterSignature> functionGenerics;
-    zc::Maybe<identity::SemanticTypeId> noGenericDefault;
-    functionGenerics.add(GenericParameterSignature{
-        genericParameter().clone(), 0, zc::Vector<InterfaceInstantiation>(),
-        zc::Vector<identity::DefId>(), zc::mv(noGenericDefault)});
     zc::Maybe<ReceiverSignature> noReceiver;
     zc::Vector<ParameterSignature> functionParameters;
     functionParameters.add(ParameterSignature{callableParameter().clone(),
@@ -414,14 +358,14 @@ public:
       auto current = zc::mv(result[index]);
       size_t insertion = index;
       while (insertion > 0) {
-        auto currentKey = registries->definitions().lookup(current.definition);
-        auto previousKey = registries->definitions().lookup(result[insertion - 1].definition);
+        auto currentKey = session.identityAuthority().definition(current.definition);
+        auto previousKey = session.identityAuthority().definition(result[insertion - 1].definition);
         ZC_REQUIRE(currentKey != zc::none);
         ZC_REQUIRE(previousKey != zc::none);
         bool currentBeforePrevious = false;
         ZC_IF_SOME(left, currentKey) {
           ZC_IF_SOME(right, previousKey) {
-            currentBeforePrevious = lessBytes(left.bytes(), right.bytes());
+            currentBeforePrevious = lessBytes(left.key().bytes(), right.key().bytes());
           }
         }
         if (!currentBeforePrevious) break;
@@ -437,8 +381,8 @@ public:
       zc::ArrayPtr<const SemanticSignature> signatures) const {
     zc::Vector<SignatureDefinitionRequirement> result;
     for (const auto& signature : signatures) {
-      auto record = SignatureFactsCanonicalCodec::encodeSignature(signature, moduleId, *registries,
-                                                                  *semanticTypes);
+      auto record = SignatureFactsCanonicalCodec::encodeSignature(
+          signature, boundModule().module(), session.identityAuthority(), session.semanticTypes());
       ZC_REQUIRE(record != zc::none);
       ZC_IF_SOME(bytes, record) {
         result.add(SignatureDefinitionRequirement{signature.definition, signature.definitionKind,
@@ -449,12 +393,12 @@ public:
   }
 
   SignatureFactsCandidate candidate(zc::Vector<SemanticSignature>&& signatures) const {
-    return SignatureFactsCandidate{context,
-                                   fingerprint(*registries),
-                                   moduleId,
-                                   registries->sourceSnapshots()[0].contentDigest(),
-                                   parsedReceipt(*registries),
-                                   surfaceRevision(*contextFingerprint),
+    return SignatureFactsCandidate{session.semanticContext(),
+                                   boundModule().semanticFingerprint(),
+                                   boundModule().module(),
+                                   boundModule().parsedModule().contentDigest(),
+                                   boundModule().parsedModule().receipt(),
+                                   boundModule().bindingSurface().revision(),
                                    *policyRevision,
                                    zc::mv(signatures),
                                    zc::Vector<ImplHead>(),
@@ -476,10 +420,12 @@ public:
     return SignatureFactsVerifier::verify(
         zc::mv(candidate),
         SignatureFactsVerificationInput{
-            context, *contextFingerprint, moduleId, registries->sourceSnapshots()[0].source(),
-            registries->sourceSnapshots()[0].contentDigest(), *receipt, *surface, *policyRevision,
-            sourceSignatureCensus.asPtr(), sourceImplCensus.asPtr(), expected.asPtr(),
-            noImpls.asPtr(), noMarkers.asPtr(), *registries, *semanticTypes});
+            session.semanticContext(), boundModule().semanticFingerprint(), boundModule().module(),
+            boundModule().parsedModule().source(), boundModule().parsedModule().contentDigest(),
+            boundModule().parsedModule().receipt(), boundModule().bindingSurface().revision(),
+            *policyRevision, sourceSignatureCensus.asPtr(), sourceImplCensus.asPtr(),
+            expected.asPtr(), noImpls.asPtr(), noMarkers.asPtr(), session.semanticTypes(),
+            session.identityAuthority()});
   }
 
   SignatureFactsVerificationResult verify(SignatureFactsCandidate&& candidate) const {
@@ -487,45 +433,38 @@ public:
     return verifyAgainst(zc::mv(candidate), expectedSignatures.asPtr(), expectedSignatures.asPtr());
   }
 
-  identity::SemanticContextFactory factory;
-  identity::SemanticContextBrand context;
-  zc::Own<identity::SemanticIdentityRegistrySet> registries;
-  zc::Own<type::SemanticTypeStore> semanticTypes;
-  identity::ModuleId moduleId;
+  tests::checker_fixture::CheckerAuthoritySession session;
   identity::SemanticTypeId unitType;
   zc::Vector<DefinitionFixture> definitions;
-  zc::Own<identity::SemanticContextFingerprint> contextFingerprint;
-  zc::Own<binder::ParsedModuleReceipt> receipt;
-  zc::Own<binder::ExportSurfaceRevision> surface;
+  zc::Own<identity::CallableParameterKey> callableParameterKey;
   zc::Own<MarkerShapeInventoryRevision> shapeRevision;
   zc::Own<MarkerPolicyRegistryRevision> policyRevision;
 
 private:
-  void addDefinition(identity::DefinitionKind kind, uint32_t ordinal) {
-    zc::Vector<identity::EnclosingStableOwnerKey> owners;
-    zc::Maybe<identity::OverloadHeaderDigest> overloadDigest;
-    zc::Maybe<identity::OverloadHeaderAuthority> overloadAuthority;
-    if (kind == identity::DefinitionKind::Function) {
-      auto authority = functionAuthority();
-      overloadDigest = authority.digest().clone();
-      overloadAuthority = zc::mv(authority);
+  const driver::module_graph_query::CheckerBoundModuleView& boundModule() const {
+    return session.boundModule();
+  }
+
+  static DefinitionFixture findDefinition(const binder::ImmutableDefinitionInventory& inventory,
+                                          identity::DefinitionKind kind, zc::StringPtr name) {
+    for (const auto& entry : inventory.definitions()) {
+      if (entry.record.kind() == kind && entry.record.name() == name) {
+        return DefinitionFixture{kind, entry.key.clone(), entry.definition};
+      }
     }
-    auto nameSpace = identity::definitionNamespaceFor(kind);
-    ZC_REQUIRE(nameSpace != zc::none);
-    zc::Maybe<identity::DefinitionIdentityRecord> record;
-    ZC_IF_SOME(value, nameSpace) {
-      record = identity::DefinitionIdentityRecord::from(
-          module(), zc::mv(owners), kind, value,
-          scalar<identity::DeclaredDefinitionName>(definitionName(ordinal)),
-          zc::mv(overloadDigest));
+    ZC_FAIL_REQUIRE("missing signature-facts definition fixture");
+  }
+
+  static identity::CallableParameterKey findCallableParameter(
+      const binder::ImmutableDefinitionInventory& inventory, identity::DefId owner) {
+    auto ownerDefinition = inventory.definition(owner);
+    ZC_REQUIRE(ownerDefinition != zc::none);
+    ZC_IF_SOME(definition, ownerDefinition) {
+      for (const auto& parameter : inventory.callableParameters()) {
+        if (parameter.record.owner() == definition.key()) { return parameter.key.clone(); }
+      }
     }
-    ZC_REQUIRE(record != zc::none);
-    ZC_IF_SOME(value, record) {
-      auto key = identity::DefinitionKey::compute(value);
-      definitions.add(DefinitionFixture{kind, key.clone(), identity::DefId()});
-      ZC_REQUIRE(registries->collectDefinition(zc::mv(value), zc::mv(overloadAuthority), ordinal) ==
-                 identity::FrozenRegistryFailure::None);
-    }
+    ZC_FAIL_REQUIRE("missing signature-facts callable parameter fixture");
   }
 };
 
@@ -605,20 +544,17 @@ ZC_TEST("MarkerPolicyRegistryRevision.MatchesNormativeNonEmptyFramingOracle") {
   }
 }
 
-ZC_TEST("SignatureFactsVerifier.VerifiesAllSevenStableSemanticSignatureBranches") {
+ZC_TEST("SignatureFactsVerifier.VerifiesAndRejectsAuthorityBackedSignatures") {
   SignatureFixture fixture;
-  auto result = fixture.verify(fixture.candidate(fixture.completeSignatures()));
+  auto accepted = fixture.verify(fixture.candidate(fixture.completeSignatures()));
 
-  ZC_REQUIRE(result.is<VerifiedSignatureFacts>());
-  const auto& facts = result.get<VerifiedSignatureFacts>();
-  ZC_EXPECT(facts.semanticContext() == fixture.context);
-  ZC_EXPECT(facts.module() == fixture.moduleId);
+  ZC_REQUIRE(accepted.is<VerifiedSignatureFacts>());
+  const auto& facts = accepted.get<VerifiedSignatureFacts>();
+  ZC_EXPECT(facts.semanticContext() == fixture.session.semanticContext());
+  ZC_EXPECT(facts.module() == fixture.session.module());
   ZC_EXPECT(facts.signatures().size() == 7);
   ZC_EXPECT(facts.revision().digest() != identity::Sha256Digest());
-}
 
-ZC_TEST("SignatureFactsVerifier.RejectsMissingAndKindMismatchedSignatures") {
-  SignatureFixture fixture;
   auto missing = fixture.completeSignatures();
   missing.removeLast();
   auto missingResult = fixture.verify(fixture.candidate(zc::mv(missing)));
@@ -628,36 +564,27 @@ ZC_TEST("SignatureFactsVerifier.RejectsMissingAndKindMismatchedSignatures") {
   mismatched[0].definitionKind = identity::DefinitionKind::Class;
   auto mismatchResult = fixture.verify(fixture.candidate(zc::mv(mismatched)));
   ZC_EXPECT(checkerFailure(mismatchResult).kind == CheckerInvariantKind::InvalidFact);
-}
 
-ZC_TEST("SignatureFactsVerifier.RejectsProducerAndRequirementSharedOmission") {
-  SignatureFixture fixture;
   auto candidateSignatures = fixture.completeSignatures();
   candidateSignatures.removeLast();
   auto recordSignatures = fixture.completeSignatures();
   recordSignatures.removeLast();
   auto censusSignatures = fixture.completeSignatures();
 
-  auto result = fixture.verifyAgainst(fixture.candidate(zc::mv(candidateSignatures)),
-                                      recordSignatures.asPtr(), censusSignatures.asPtr());
+  auto omissionResult = fixture.verifyAgainst(fixture.candidate(zc::mv(candidateSignatures)),
+                                              recordSignatures.asPtr(), censusSignatures.asPtr());
 
-  ZC_EXPECT(checkerFailure(result).kind == CheckerInvariantKind::MissingRequiredFact);
-}
+  ZC_EXPECT(checkerFailure(omissionResult).kind == CheckerInvariantKind::MissingRequiredFact);
 
-ZC_TEST("SignatureFactsVerifier.RejectsNonCanonicalMapOrder") {
-  SignatureFixture fixture;
-  auto signatures = fixture.completeSignatures();
-  auto first = zc::mv(signatures[0]);
-  signatures[0] = zc::mv(signatures[1]);
-  signatures[1] = zc::mv(first);
+  auto reorderedSignatures = fixture.completeSignatures();
+  auto first = zc::mv(reorderedSignatures[0]);
+  reorderedSignatures[0] = zc::mv(reorderedSignatures[1]);
+  reorderedSignatures[1] = zc::mv(first);
 
-  auto result = fixture.verify(fixture.candidate(zc::mv(signatures)));
+  auto reorderedResult = fixture.verify(fixture.candidate(zc::mv(reorderedSignatures)));
 
-  ZC_EXPECT(checkerFailure(result).kind == CheckerInvariantKind::CanonicalCodecMismatch);
-}
+  ZC_EXPECT(checkerFailure(reorderedResult).kind == CheckerInvariantKind::CanonicalCodecMismatch);
 
-ZC_TEST("SignatureFactsVerifier.RejectsCallableAuthorityDrift") {
-  SignatureFixture fixture;
   auto labelMismatch = fixture.completeSignatures();
   for (size_t index = 0; index < labelMismatch.size(); ++index) {
     if (labelMismatch[index].definitionKind == identity::DefinitionKind::Function) {
@@ -677,45 +604,51 @@ ZC_TEST("SignatureFactsVerifier.RejectsCallableAuthorityDrift") {
   }
   auto defaultResult = fixture.verify(fixture.candidate(zc::mv(defaultMismatch)));
   ZC_EXPECT(checkerFailure(defaultResult).kind == CheckerInvariantKind::CanonicalCodecMismatch);
-}
 
-ZC_TEST("SignatureFactsVerifier.RejectsCanonicalWholeRecordReplacement") {
-  SignatureFixture fixture;
-  auto signatures = fixture.completeSignatures();
-  for (size_t index = 0; index < signatures.size(); ++index) {
-    if (signatures[index].definitionKind == identity::DefinitionKind::Interface) {
-      signatures[index] = fixture.interfaceSignature(true);
+  auto interfaceReplacement = fixture.completeSignatures();
+  for (size_t index = 0; index < interfaceReplacement.size(); ++index) {
+    if (interfaceReplacement[index].definitionKind == identity::DefinitionKind::Interface) {
+      interfaceReplacement[index] = fixture.interfaceSignature(true);
       break;
     }
   }
 
-  auto result = fixture.verify(fixture.candidate(zc::mv(signatures)));
+  auto interfaceReplacementResult = fixture.verify(fixture.candidate(zc::mv(interfaceReplacement)));
 
-  ZC_EXPECT(checkerFailure(result).kind == CheckerInvariantKind::CanonicalCodecMismatch);
-}
+  ZC_EXPECT(checkerFailure(interfaceReplacementResult).kind ==
+            CheckerInvariantKind::CanonicalCodecMismatch);
 
-ZC_TEST("SignatureFactsVerifier.PreservesExactSemanticTypeIdentityInvariant") {
-  SignatureFixture fixture;
-  auto signatures = fixture.completeSignatures();
-  size_t functionIndex = signatures.size();
-  for (size_t index = 0; index < signatures.size(); ++index) {
-    if (signatures[index].definitionKind == identity::DefinitionKind::Function) {
+  auto invalidTypeSignatures = fixture.completeSignatures();
+  size_t functionIndex = invalidTypeSignatures.size();
+  for (size_t index = 0; index < invalidTypeSignatures.size(); ++index) {
+    if (invalidTypeSignatures[index].definitionKind == identity::DefinitionKind::Function) {
       functionIndex = index;
       break;
     }
   }
-  ZC_REQUIRE(functionIndex < signatures.size());
-  signatures[functionIndex] =
+  ZC_REQUIRE(functionIndex < invalidTypeSignatures.size());
+  invalidTypeSignatures[functionIndex] =
       fixture.functionSignature("value"_zc, false, identity::SemanticTypeId());
 
-  auto result = fixture.verify(fixture.candidate(zc::mv(signatures)));
+  auto invalidTypeResult = fixture.verify(fixture.candidate(zc::mv(invalidTypeSignatures)));
 
-  ZC_EXPECT(identityFailure(result).kind() == identity::IdentityInvariantKind::InvalidHandle);
-  ZC_EXPECT(identityFailure(result).phase() == identity::IdentityAllocationPhase::SemanticType);
+  ZC_EXPECT(identityFailure(invalidTypeResult).kind() ==
+            identity::IdentityInvariantKind::InvalidHandle);
+  ZC_EXPECT(identityFailure(invalidTypeResult).phase() ==
+            identity::IdentityAllocationPhase::SemanticType);
+}
+
+ZC_TEST("SignatureFactsCanonicalCodec.PatternFixtureRetainsMaterializedIdentityAuthority") {
+  PatternAuthorityFixture fixture;
+  ZC_EXPECT(fixture.identities().definition(fixture.interface()) != zc::none);
+  ZC_EXPECT(fixture.identities().definition(fixture.nominal()) != zc::none);
+  ZC_EXPECT(fixture.identities().definition(fixture.marker()) != zc::none);
+  ZC_EXPECT(fixture.identities().definition(fixture.associated()) != zc::none);
+  ZC_EXPECT(fixture.identities().genericParameter(fixture.genericParameter()) != zc::none);
 }
 
 ZC_TEST("SignatureFactsCanonicalCodec.MatchesIdentityFreePatternGoldenVectors") {
-  SignatureFixture fixture;
+  PatternAuthorityFixture fixture;
   expectTypeKeyPatternOracle(TypeKeyPattern::parameter(0), *fixture.registries,
                              "7a6f6d2e747970652d6b65792d7061747465726e001100000000"_zc,
                              "96bd577588d6b8551392c23a61a2135ddf7f29b564d37c2b7e5ede52fafe8581"_zc);
@@ -738,7 +671,7 @@ ZC_TEST("SignatureFactsCanonicalCodec.MatchesRemainingNormativeRawPatternVectors
 }
 
 ZC_TEST("SignatureFactsCanonicalCodec.EncodesNonEmptyRecursivePatternFamilies") {
-  SignatureFixture fixture;
+  PatternAuthorityFixture fixture;
   const auto interface = fixture.definition(identity::DefinitionKind::Interface);
   const auto nominal = fixture.definition(identity::DefinitionKind::Class);
   const auto associated = fixture.definition(identity::DefinitionKind::AssociatedType);
@@ -751,6 +684,11 @@ ZC_TEST("SignatureFactsCanonicalCodec.EncodesNonEmptyRecursivePatternFamilies") 
                                 TypeKeyPattern::primitive(PrimitiveKind::Unit), Mutability::Const,
                                 FieldPresence::Required});
   patterns.add(TypeKeyPattern::object(zc::mv(fields)));
+
+  patterns.add(TypeKeyPattern::dynamicArray(TypeKeyPattern::primitive(PrimitiveKind::Bool)));
+  patterns.add(TypeKeyPattern::slice(TypeKeyPattern::primitive(PrimitiveKind::Unit)));
+  patterns.add(TypeKeyPattern::fixedArray(TypeKeyPattern::primitive(PrimitiveKind::Null), 4));
+  patterns.add(TypeKeyPattern::typeParameter(fixture.genericParameter().clone()));
 
   zc::Vector<TypeKeyPattern> parameters;
   parameters.add(TypeKeyPattern::parameter(0));
@@ -804,7 +742,7 @@ ZC_TEST("SignatureFactsCanonicalCodec.EncodesNonEmptyRecursivePatternFamilies") 
 }
 
 ZC_TEST("SignatureFactsCanonicalCodec.RejectsMalformedEncodedPatternKeys") {
-  SignatureFixture fixture;
+  PatternAuthorityFixture fixture;
   const auto payloadOffset = zc::StringPtr("zom.type-key-pattern").size() + 1;
 
   auto parameter = SignatureFactsCanonicalCodec::makeTypeKeyPatternKey(TypeKeyPattern::parameter(0),
@@ -915,7 +853,7 @@ ZC_TEST("SignatureFactsCanonicalCodec.RejectsMalformedEncodedPatternKeys") {
 }
 
 ZC_TEST("SignatureFactsCanonicalCodec.RejectsNonCanonicalPatternCandidates") {
-  SignatureFixture fixture;
+  PatternAuthorityFixture fixture;
 
   auto invalidPrimitive = SignatureFactsCanonicalCodec::makeTypeKeyPatternKey(
       TypeKeyPattern::primitive(static_cast<PrimitiveKind>(0xff)), *fixture.registries);
@@ -967,7 +905,7 @@ ZC_TEST("SignatureFactsCanonicalCodec.RejectsNonCanonicalPatternCandidates") {
 }
 
 ZC_TEST("SignatureFactsCanonicalCodec.RejectsMalformedEncodedImplPatternKeys") {
-  SignatureFixture fixture;
+  PatternAuthorityFixture fixture;
   const auto interface = fixture.definition(identity::DefinitionKind::Interface);
   const ImplPattern pattern{PatternInterfaceInstantiation{interface, zc::Vector<TypeKeyPattern>()},
                             TypeKeyPattern::parameter(0)};
@@ -1017,7 +955,7 @@ ZC_TEST("SignatureFactsCanonicalCodec.RejectsMalformedEncodedImplPatternKeys") {
 }
 
 ZC_TEST("SignatureFactsCanonicalCodec.UnifiesCompleteImplPatternsWithDisjointParameters") {
-  SignatureFixture fixture;
+  PatternAuthorityFixture fixture;
   const auto interface = fixture.definition(identity::DefinitionKind::Interface);
   const auto nominal = fixture.definition(identity::DefinitionKind::Class);
   const auto makeInterface = [&]() {
@@ -1066,8 +1004,105 @@ ZC_TEST("SignatureFactsCanonicalCodec.UnifiesCompleteImplPatternsWithDisjointPar
   }
 }
 
+ZC_TEST("SignatureFactsCanonicalCodec.ComparesEquivalentConcreteTypeHeads") {
+  PatternAuthorityFixture fixture;
+  const auto interface = fixture.definition(identity::DefinitionKind::Interface);
+  const auto nominal = fixture.definition(identity::DefinitionKind::Class);
+  const auto makeInterface = [&]() {
+    return PatternInterfaceInstantiation{interface, zc::Vector<TypeKeyPattern>()};
+  };
+  const auto expectOverlap = [&](TypeKeyPattern&& left, TypeKeyPattern&& right) {
+    auto leftKey = SignatureFactsCanonicalCodec::makeImplPatternKey(
+        ImplPattern{makeInterface(), zc::mv(left)}, *fixture.registries);
+    auto rightKey = SignatureFactsCanonicalCodec::makeImplPatternKey(
+        ImplPattern{makeInterface(), zc::mv(right)}, *fixture.registries);
+    ZC_REQUIRE(leftKey != zc::none);
+    ZC_REQUIRE(rightKey != zc::none);
+    ZC_IF_SOME(leftValue, leftKey) {
+      ZC_IF_SOME(rightValue, rightKey) {
+        auto overlap = SignatureFactsCanonicalCodec::implPatternsOverlap(leftValue, rightValue,
+                                                                         *fixture.registries);
+        ZC_REQUIRE(overlap != zc::none);
+        ZC_IF_SOME(value, overlap) { ZC_EXPECT(value); }
+      }
+    }
+  };
+
+  expectOverlap(TypeKeyPattern::primitive(PrimitiveKind::I32),
+                TypeKeyPattern::primitive(PrimitiveKind::I32));
+
+  zc::Vector<TypeKeyPattern> leftTuple;
+  leftTuple.add(TypeKeyPattern::primitive(PrimitiveKind::I32));
+  leftTuple.add(TypeKeyPattern::primitive(PrimitiveKind::Bool));
+  zc::Vector<TypeKeyPattern> rightTuple;
+  rightTuple.add(TypeKeyPattern::primitive(PrimitiveKind::I32));
+  rightTuple.add(TypeKeyPattern::primitive(PrimitiveKind::Bool));
+  expectOverlap(TypeKeyPattern::tuple(zc::mv(leftTuple)),
+                TypeKeyPattern::tuple(zc::mv(rightTuple)));
+
+  zc::Vector<PatternObjectField> leftFields;
+  leftFields.add(PatternObjectField{scalar<identity::SemanticIdentifier>("field"_zc),
+                                    TypeKeyPattern::primitive(PrimitiveKind::I32),
+                                    Mutability::Const, FieldPresence::Required});
+  zc::Vector<PatternObjectField> rightFields;
+  rightFields.add(PatternObjectField{scalar<identity::SemanticIdentifier>("field"_zc),
+                                     TypeKeyPattern::primitive(PrimitiveKind::I32),
+                                     Mutability::Const, FieldPresence::Required});
+  expectOverlap(TypeKeyPattern::object(zc::mv(leftFields)),
+                TypeKeyPattern::object(zc::mv(rightFields)));
+
+  zc::Vector<TypeKeyPattern> leftUnion;
+  leftUnion.add(TypeKeyPattern::primitive(PrimitiveKind::I32));
+  leftUnion.add(TypeKeyPattern::primitive(PrimitiveKind::Bool));
+  zc::Vector<TypeKeyPattern> rightUnion;
+  rightUnion.add(TypeKeyPattern::primitive(PrimitiveKind::I32));
+  rightUnion.add(TypeKeyPattern::primitive(PrimitiveKind::Bool));
+  expectOverlap(TypeKeyPattern::unionOf(zc::mv(leftUnion)),
+                TypeKeyPattern::unionOf(zc::mv(rightUnion)));
+
+  zc::Vector<TypeKeyPattern> leftIntersection;
+  leftIntersection.add(TypeKeyPattern::primitive(PrimitiveKind::I32));
+  leftIntersection.add(TypeKeyPattern::primitive(PrimitiveKind::Bool));
+  zc::Vector<TypeKeyPattern> rightIntersection;
+  rightIntersection.add(TypeKeyPattern::primitive(PrimitiveKind::I32));
+  rightIntersection.add(TypeKeyPattern::primitive(PrimitiveKind::Bool));
+  expectOverlap(TypeKeyPattern::intersection(zc::mv(leftIntersection)),
+                TypeKeyPattern::intersection(zc::mv(rightIntersection)));
+
+  expectOverlap(TypeKeyPattern::function(PatternFunctionType{
+                    zc::Vector<TypeKeyPattern>(), TypeKeyPattern::primitive(PrimitiveKind::Unit),
+                    zc::Maybe<TypeKeyPattern>()}),
+                TypeKeyPattern::function(PatternFunctionType{
+                    zc::Vector<TypeKeyPattern>(), TypeKeyPattern::primitive(PrimitiveKind::Unit),
+                    zc::Maybe<TypeKeyPattern>()}));
+  expectOverlap(TypeKeyPattern::nominal(nominal, zc::Vector<TypeKeyPattern>()),
+                TypeKeyPattern::nominal(nominal, zc::Vector<TypeKeyPattern>()));
+  expectOverlap(
+      TypeKeyPattern::reference(Mutability::Const, TypeKeyPattern::primitive(PrimitiveKind::Bool)),
+      TypeKeyPattern::reference(Mutability::Const, TypeKeyPattern::primitive(PrimitiveKind::Bool)));
+  expectOverlap(TypeKeyPattern::rawPointer(Mutability::Mutable,
+                                           TypeKeyPattern::primitive(PrimitiveKind::I32)),
+                TypeKeyPattern::rawPointer(Mutability::Mutable,
+                                           TypeKeyPattern::primitive(PrimitiveKind::I32)));
+  expectOverlap(TypeKeyPattern::dynamicArray(TypeKeyPattern::primitive(PrimitiveKind::I32)),
+                TypeKeyPattern::dynamicArray(TypeKeyPattern::primitive(PrimitiveKind::I32)));
+  expectOverlap(TypeKeyPattern::slice(TypeKeyPattern::primitive(PrimitiveKind::I32)),
+                TypeKeyPattern::slice(TypeKeyPattern::primitive(PrimitiveKind::I32)));
+  expectOverlap(TypeKeyPattern::fixedArray(TypeKeyPattern::primitive(PrimitiveKind::I32), 4),
+                TypeKeyPattern::fixedArray(TypeKeyPattern::primitive(PrimitiveKind::I32), 4));
+
+  expectOverlap(TypeKeyPattern::existential(PatternExistentialType{
+                    PatternExistentialInterface{interface, zc::Vector<TypeKeyPattern>()},
+                    zc::Vector<PatternExistentialInterface>(), zc::Vector<identity::DefId>(),
+                    zc::Vector<PatternAssociatedTypeBinding>()}),
+                TypeKeyPattern::existential(PatternExistentialType{
+                    PatternExistentialInterface{interface, zc::Vector<TypeKeyPattern>()},
+                    zc::Vector<PatternExistentialInterface>(), zc::Vector<identity::DefId>(),
+                    zc::Vector<PatternAssociatedTypeBinding>()}));
+}
+
 ZC_TEST("SignatureFactsCanonicalCodec.EnforcesImplPatternPublicationRestrictions") {
-  SignatureFixture fixture;
+  PatternAuthorityFixture fixture;
   const auto interface = fixture.definition(identity::DefinitionKind::Interface);
   const auto nominal = fixture.definition(identity::DefinitionKind::Class);
   const auto makeInterface = [&]() {
@@ -1167,7 +1202,7 @@ ZC_TEST("SignatureFactsCanonicalCodec.EnforcesImplPatternPublicationRestrictions
 }
 
 ZC_TEST("SignatureFactsCanonicalCodec.RejectsCyclicFirstOrderUnification") {
-  SignatureFixture fixture;
+  PatternAuthorityFixture fixture;
   const auto interface = fixture.definition(identity::DefinitionKind::Interface);
 
   zc::Vector<TypeKeyPattern> leftInterfaceArguments;

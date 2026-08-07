@@ -7,8 +7,9 @@
 
 #include "zomlang/compiler/ast/generated/node-payload.h"
 #include "zomlang/compiler/ast/generated/node-traverse.h"
-#include "zomlang/compiler/binder/frozen-definition-inventory.h"
+#include "zomlang/compiler/binder/immutable-definition-inventory.h"
 #include "zomlang/compiler/binder/parsed-module.h"
+#include "zomlang/compiler/driver/materialized-module-graph-query.h"
 #include "zomlang/compiler/identity/canonical-encoder.h"
 
 namespace zomlang::compiler::checker::dispatch {
@@ -128,45 +129,12 @@ zc::Maybe<checked::CheckedNodeKey> maybeNode(const checked::CheckedNodeKey& node
 
 zc::Maybe<identity::SourceSpan> maybeSpan(const identity::SourceSpan& span) { return span.clone(); }
 
-identity::IdentityInvariantKind identityKind(identity::FrozenRegistryFailure failure) {
-  switch (failure) {
-    case identity::FrozenRegistryFailure::InvalidContext:
-    case identity::FrozenRegistryFailure::InvalidHandle:
-      return identity::IdentityInvariantKind::InvalidHandle;
-    case identity::FrozenRegistryFailure::ForeignContext:
-      return identity::IdentityInvariantKind::ForeignContext;
-    case identity::FrozenRegistryFailure::SlotOutOfRange:
-      return identity::IdentityInvariantKind::SlotOutOfRange;
-    case identity::FrozenRegistryFailure::DuplicateCanonicalKey:
-      return identity::IdentityInvariantKind::DuplicateCanonicalKey;
-    case identity::FrozenRegistryFailure::DigestCollision:
-      return identity::IdentityInvariantKind::DigestCollision;
-    case identity::FrozenRegistryFailure::InvalidAuthority:
-      return identity::IdentityInvariantKind::InvalidClosedValue;
-    case identity::FrozenRegistryFailure::UnknownOwner:
-    case identity::FrozenRegistryFailure::OwnerModuleMismatch:
-    case identity::FrozenRegistryFailure::OwnerPrefixMismatch:
-    case identity::FrozenRegistryFailure::RepeatedOwner:
-    case identity::FrozenRegistryFailure::SelfOwner:
-      return identity::IdentityInvariantKind::AncestorMismatch;
-    case identity::FrozenRegistryFailure::PostFreezeMutation:
-      return identity::IdentityInvariantKind::PostFreezeMutation;
-    case identity::FrozenRegistryFailure::AncestorMismatch:
-    case identity::FrozenRegistryFailure::RegistryNotFrozen:
-      return identity::IdentityInvariantKind::AncestorMismatch;
-    case identity::FrozenRegistryFailure::None:
-      break;
-  }
-  ZC_UNREACHABLE
-}
-
-identity::IdentityInvariant registryInvariant(identity::FrozenRegistryFailure failure,
-                                              identity::IdentityAllocationPhase phase,
-                                              uint32_t ordinal) {
+identity::IdentityInvariant invalidIdentity(identity::IdentityAllocationPhase phase,
+                                            uint32_t ordinal) {
   zc::Maybe<zc::Array<uint8_t>> noStructural;
   zc::Maybe<identity::UnbrandedSourceRange> noRange;
-  auto result = identity::IdentityInvariant::from(identityKind(failure), phase,
-                                                  zc::mv(noStructural), zc::mv(noRange),
+  auto result = identity::IdentityInvariant::from(identity::IdentityInvariantKind::InvalidHandle,
+                                                  phase, zc::mv(noStructural), zc::mv(noRange),
                                                   identity::IdentityApiSite::HandleLookup, ordinal);
   ZC_IF_SOME(value, result) { return zc::mv(value); }
   ZC_UNREACHABLE
@@ -221,11 +189,11 @@ void encodeNode(identity::CanonicalEncoder& encoder, const checked::CheckedNodeK
 
 class FactEncoder final {
 public:
-  FactEncoder(const identity::SemanticIdentityRegistrySet& registries,
+  FactEncoder(const CheckerIdentityAuthority& identities,
               const type::SemanticTypeStore& semanticTypes,
               const checked::VerifiedCheckedFacts& checkedFacts,
               const identity::SourceFileKey& source)
-      : registries(registries),
+      : identities(identities),
         semanticTypes(semanticTypes),
         checkedFacts(checkedFacts),
         source(source) {}
@@ -327,22 +295,16 @@ public:
 
 private:
   bool encodeDefinition(identity::CanonicalEncoder& encoder, identity::DefId definition) {
-    if (registries.definitions().validate(definition) != identity::FrozenRegistryFailure::None) {
-      return false;
-    }
-    ZC_IF_SOME(key, registries.definitions().lookup(definition)) {
-      key.encode(encoder);
+    ZC_IF_SOME(entry, identities.definition(definition)) {
+      entry.key().encode(encoder);
       return true;
     }
     return false;
   }
 
   bool encodeImpl(identity::CanonicalEncoder& encoder, identity::ImplId implementation) {
-    if (registries.impls().validate(implementation) != identity::FrozenRegistryFailure::None) {
-      return false;
-    }
-    ZC_IF_SOME(key, registries.impls().lookup(implementation)) {
-      key.encode(encoder);
+    ZC_IF_SOME(entry, identities.implementation(implementation)) {
+      entry.key().encode(encoder);
       return true;
     }
     return false;
@@ -528,27 +490,25 @@ private:
     return false;
   }
 
-  const identity::SemanticIdentityRegistrySet& registries;
+  const CheckerIdentityAuthority& identities;
   const type::SemanticTypeStore& semanticTypes;
   const checked::VerifiedCheckedFacts& checkedFacts;
   const identity::SourceFileKey& source;
 };
 
 bool validateDefinitionIdentity(identity::DefId definition,
-                                const identity::SemanticIdentityRegistrySet& registries,
+                                const CheckerIdentityAuthority& identities,
                                 zc::Maybe<identity::IdentityInvariant>& failure, uint32_t ordinal) {
-  const auto result = registries.definitions().validate(definition);
-  if (result == identity::FrozenRegistryFailure::None) return true;
-  failure = registryInvariant(result, identity::IdentityAllocationPhase::Definition, ordinal);
+  if (identities.definition(definition) != zc::none) return true;
+  failure = invalidIdentity(identity::IdentityAllocationPhase::Definition, ordinal);
   return false;
 }
 
 bool validateImplIdentity(identity::ImplId implementation,
-                          const identity::SemanticIdentityRegistrySet& registries,
+                          const CheckerIdentityAuthority& identities,
                           zc::Maybe<identity::IdentityInvariant>& failure, uint32_t ordinal) {
-  const auto result = registries.impls().validate(implementation);
-  if (result == identity::FrozenRegistryFailure::None) return true;
-  failure = registryInvariant(result, identity::IdentityAllocationPhase::Impl, ordinal);
+  if (identities.implementation(implementation) != zc::none) return true;
+  failure = invalidIdentity(identity::IdentityAllocationPhase::Impl, ordinal);
   return false;
 }
 
@@ -578,9 +538,9 @@ bool validateCoercionIdentities(const checked::CoercionAdjustment& adjustment,
       }
     } else if (value.is<checked::DynEraseStep>()) {
       const auto& erase = value.get<checked::DynEraseStep>();
-      if (!validateDefinitionIdentity(erase.interface.interface, input.registries, failure,
+      if (!validateDefinitionIdentity(erase.interface.interface, input.identities, failure,
                                       ordinal) ||
-          !validateImplIdentity(erase.impl, input.registries, failure, ordinal)) {
+          !validateImplIdentity(erase.impl, input.identities, failure, ordinal)) {
         return false;
       }
       for (const auto type : erase.interface.arguments) {
@@ -592,7 +552,7 @@ bool validateCoercionIdentities(const checked::CoercionAdjustment& adjustment,
       }
     } else if (value.is<checked::DynUpcastStep>()) {
       for (const auto definition : value.get<checked::DynUpcastStep>().path) {
-        if (!validateDefinitionIdentity(definition, input.registries, failure, ordinal)) {
+        if (!validateDefinitionIdentity(definition, input.identities, failure, ordinal)) {
           return false;
         }
       }
@@ -622,32 +582,32 @@ bool validateFactIdentities(const DispatchFact& fact, const DispatchFactsVerific
                             uint32_t ordinal) {
   const auto& target = fact.target.variant();
   if (target.is<DirectTarget>()) {
-    if (!validateDefinitionIdentity(target.get<DirectTarget>().callee, input.registries, failure,
+    if (!validateDefinitionIdentity(target.get<DirectTarget>().callee, input.identities, failure,
                                     ordinal)) {
       return false;
     }
   } else if (target.is<ConcreteMethodTarget>()) {
-    if (!validateDefinitionIdentity(target.get<ConcreteMethodTarget>().method, input.registries,
+    if (!validateDefinitionIdentity(target.get<ConcreteMethodTarget>().method, input.identities,
                                     failure, ordinal)) {
       return false;
     }
   } else if (target.is<ImplMethodTarget>()) {
     const auto& method = target.get<ImplMethodTarget>();
-    if (!validateImplIdentity(method.impl, input.registries, failure, ordinal) ||
-        !validateDefinitionIdentity(method.method, input.registries, failure, ordinal)) {
+    if (!validateImplIdentity(method.impl, input.identities, failure, ordinal) ||
+        !validateDefinitionIdentity(method.method, input.identities, failure, ordinal)) {
       return false;
     }
   } else if (target.is<WitnessMethodTarget>()) {
     const auto& method = target.get<WitnessMethodTarget>();
-    if (!validateDefinitionIdentity(method.witnessParameter, input.registries, failure, ordinal) ||
-        !validateDefinitionIdentity(method.interface, input.registries, failure, ordinal) ||
-        !validateDefinitionIdentity(method.method, input.registries, failure, ordinal)) {
+    if (!validateDefinitionIdentity(method.witnessParameter, input.identities, failure, ordinal) ||
+        !validateDefinitionIdentity(method.interface, input.identities, failure, ordinal) ||
+        !validateDefinitionIdentity(method.method, input.identities, failure, ordinal)) {
       return false;
     }
   } else if (target.is<DynMethodTarget>()) {
     const auto& method = target.get<DynMethodTarget>();
-    if (!validateDefinitionIdentity(method.interface, input.registries, failure, ordinal) ||
-        !validateDefinitionIdentity(method.method, input.registries, failure, ordinal)) {
+    if (!validateDefinitionIdentity(method.interface, input.identities, failure, ordinal) ||
+        !validateDefinitionIdentity(method.method, input.identities, failure, ordinal)) {
       return false;
     }
   }
@@ -1037,8 +997,8 @@ bool subtreeContains(const ast::Tree& tree, ast::NodeId root, ast::NodeId target
   return contains;
 }
 
-bool ownerFor(const binder::VerifiedBoundModuleInput& boundModule, ast::NodeId sourceNode,
-              zc::Maybe<identity::DefId>& owner) {
+bool ownerFor(const driver::module_graph_query::CheckerBoundModuleView& boundModule,
+              ast::NodeId sourceNode, zc::Maybe<identity::DefId>& owner) {
   bool found = false;
   size_t bestDepth = 0;
   identity::DefId best;
@@ -1092,7 +1052,7 @@ zc::Maybe<CompoundAssignmentOperation> compoundOperationFor(const ast::Node& syn
 }
 
 zc::Maybe<DispatchSiteRequirement> siteRequirementFor(
-    const binder::VerifiedBoundModuleInput& boundModule,
+    const driver::module_graph_query::CheckerBoundModuleView& boundModule,
     const checked::NodeFactRequirement& bodyRequirement) {
   const auto& tree = boundModule.tree();
   if (!tree.contains(bodyRequirement.node)) return zc::none;
@@ -1219,7 +1179,7 @@ zc::ArrayPtr<const DispatchNodeProjection> VerifiedDispatchSiteInventory::nodePr
 }
 
 DispatchSiteInventoryBuildResult DispatchSiteInventoryBuilder::build(
-    const binder::VerifiedBoundModuleInput& boundModule,
+    const driver::module_graph_query::CheckerBoundModuleView& boundModule,
     const body::VerifiedBodyFactRequirementInventory& bodyRequirements) {
   if (boundModule.semanticContext() != bodyRequirements.semanticContext() ||
       boundModule.module() != bodyRequirements.module() ||
@@ -1391,15 +1351,14 @@ zc::ArrayPtr<const VerifiedDispatchFact> VerifiedDispatchFacts::facts() const no
 
 zc::Maybe<zc::Array<uint8_t>> DispatchFactCanonicalCodec::encode(
     const checked::CheckedNodeKey& checkedNode, const DispatchFact& fact,
-    const identity::SemanticIdentityRegistrySet& registries,
-    const type::SemanticTypeStore& semanticTypes,
+    const CheckerIdentityAuthority& identities, const type::SemanticTypeStore& semanticTypes,
     const checked::VerifiedCheckedFacts& checkedFacts) {
-  auto module = registries.modules().lookup(checkedFacts.module());
-  if (module == zc::none || checkedFacts.semanticContext() != registries.context() ||
+  if (identities.module(checkedFacts.module()) == zc::none ||
+      checkedFacts.semanticContext() != identities.semanticContext() ||
       checkedFacts.semanticContext() != semanticTypes.context()) {
     return zc::none;
   }
-  FactEncoder encoder(registries, semanticTypes, checkedFacts, checkedNode.sourceSpan.source());
+  FactEncoder encoder(identities, semanticTypes, checkedFacts, checkedNode.sourceSpan.source());
   return encoder.encode(checkedNode, fact);
 }
 
@@ -1407,10 +1366,9 @@ DispatchFactsBuildResult DispatchFactsBuilder::build(
     const VerifiedDispatchSiteInventory& inventory,
     const identity::SemanticContextFingerprint& contextFingerprint,
     const checked::CheckedEvidenceLease& checkedLease,
-    const checked::VerifiedCheckedFacts& checkedFacts,
-    const identity::SemanticIdentityRegistrySet& registries,
+    const checked::VerifiedCheckedFacts& checkedFacts, const CheckerIdentityAuthority& identities,
     const type::SemanticTypeStore& semanticTypes) {
-  if (inventory.semanticContext() != registries.context() ||
+  if (inventory.semanticContext() != identities.semanticContext() ||
       inventory.semanticContext() != semanticTypes.context() ||
       inventory.semanticContext() != checkedFacts.semanticContext() ||
       inventory.module() != checkedFacts.module() || inventory.module() != checkedLease.module() ||
@@ -1504,7 +1462,7 @@ DispatchFactsBuildResult DispatchFactsBuilder::build(
     }
     ZC_IF_SOME(value, fact) {
       auto canonical = DispatchFactCanonicalCodec::encode(requirement.checkedNode, value,
-                                                          registries, semanticTypes, checkedFacts);
+                                                          identities, semanticTypes, checkedFacts);
       if (canonical == zc::none) {
         return rejected(DispatchInvariantKind::CanonicalCodecMismatch,
                         DispatchInvariantStage::Encoding, inventory.module(),
@@ -1525,11 +1483,7 @@ DispatchFactsBuildResult DispatchFactsBuilder::build(
 
 DispatchVerificationResult DispatchFactsVerifier::verify(
     DispatchFactsCandidate&& candidate, const DispatchFactsVerificationInput& input) {
-  const auto moduleFailure = input.registries.modules().validate(candidate.impl->module);
-  if (moduleFailure != identity::FrozenRegistryFailure::None) {
-    return reject(registryInvariant(moduleFailure, identity::IdentityAllocationPhase::Module, 0));
-  }
-  auto module = input.registries.modules().lookup(candidate.impl->module);
+  auto module = input.identities.module(candidate.impl->module);
   if (module == zc::none) {
     return reject(DispatchInvariantKind::InputMismatch, DispatchInvariantStage::Input,
                   candidate.impl->module, 0);
@@ -1539,14 +1493,13 @@ DispatchVerificationResult DispatchFactsVerifier::verify(
   const bool staleLease =
       input.checkedLease.revision().digest() != input.checkedFacts.revision().digest() ||
       input.checkedLease.module() != input.checkedFacts.module();
-  if (candidate.impl->semanticContext != input.registries.context() ||
+  if (candidate.impl->semanticContext != input.identities.semanticContext() ||
       candidate.impl->semanticContext != input.semanticTypes.context() ||
       candidate.impl->semanticContext != input.checkedFacts.semanticContext() ||
       candidate.impl->module != input.module ||
       candidate.impl->module != input.checkedFacts.module() ||
       candidate.impl->contextFingerprint.digest() != input.contextFingerprint.digest() ||
-      staleCandidate || staleLease ||
-      input.registries.sourceFiles().find(input.source) == zc::none) {
+      staleCandidate || staleLease || input.identities.sourceFile(input.source) == zc::none) {
     zc::Maybe<identity::Sha256Digest> expected = input.checkedFacts.revision().digest();
     zc::Maybe<identity::Sha256Digest> actual = candidate.impl->checkedFactsRevision.digest();
     if (staleLease) actual = input.checkedLease.revision().digest();
@@ -1579,11 +1532,9 @@ DispatchVerificationResult DispatchFactsVerifier::verify(
     for (size_t index = 0; index < input.requirements.size(); ++index) {
       const auto& requirement = input.requirements[index];
       ZC_IF_SOME(owner, requirement.owner) {
-        const auto ownerFailure = input.registries.definitions().validate(owner);
-        if (ownerFailure != identity::FrozenRegistryFailure::None) {
-          return reject(registryInvariant(ownerFailure,
-                                          identity::IdentityAllocationPhase::Definition,
-                                          static_cast<uint32_t>(index)));
+        if (input.identities.definition(owner) == zc::none) {
+          return reject(invalidIdentity(identity::IdentityAllocationPhase::Definition,
+                                        static_cast<uint32_t>(index)));
         }
       }
       auto projected = projectionFor(requirement.sourceNode, input.nodeProjections);
@@ -1608,15 +1559,13 @@ DispatchVerificationResult DispatchFactsVerifier::verify(
       }
     }
 
-    FactEncoder encoder(input.registries, input.semanticTypes, input.checkedFacts, input.source);
+    FactEncoder encoder(input.identities, input.semanticTypes, input.checkedFacts, input.source);
     for (size_t index = 0; index < candidate.impl->facts.size(); ++index) {
       const auto& entry = candidate.impl->facts[index];
       ZC_IF_SOME(owner, entry.owner) {
-        const auto ownerFailure = input.registries.definitions().validate(owner);
-        if (ownerFailure != identity::FrozenRegistryFailure::None) {
-          return reject(registryInvariant(ownerFailure,
-                                          identity::IdentityAllocationPhase::Definition,
-                                          static_cast<uint32_t>(index)));
+        if (input.identities.definition(owner) == zc::none) {
+          return reject(invalidIdentity(identity::IdentityAllocationPhase::Definition,
+                                        static_cast<uint32_t>(index)));
         }
       }
       zc::Maybe<identity::IdentityInvariant> identityFailure;
@@ -1744,7 +1693,7 @@ DispatchVerificationResult DispatchFactsVerifier::verify(
     }
     ZC_UNREACHABLE
   };
-  ZC_IF_SOME(moduleKey, module) { return verifyWithModule(moduleKey); }
+  ZC_IF_SOME(moduleEntry, module) { return verifyWithModule(moduleEntry.key()); }
   ZC_UNREACHABLE
 }
 

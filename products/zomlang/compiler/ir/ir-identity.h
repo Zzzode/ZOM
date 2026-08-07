@@ -10,7 +10,6 @@
 #include "zc/core/common.h"
 #include "zomlang/compiler/checker/checked-facts.h"
 #include "zomlang/compiler/identity/brand.h"
-#include "zomlang/compiler/identity/frozen-registry.h"
 
 namespace zomlang::compiler::mir {
 

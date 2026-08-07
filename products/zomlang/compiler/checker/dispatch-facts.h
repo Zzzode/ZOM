@@ -13,12 +13,16 @@
 #include "zc/core/one-of.h"
 #include "zc/core/vector.h"
 #include "zomlang/compiler/ast/node-id.h"
-#include "zomlang/compiler/binder/verified-bound-module-input.h"
 #include "zomlang/compiler/checker/body-checker.h"
 #include "zomlang/compiler/checker/checked-facts-repository.h"
+#include "zomlang/compiler/checker/checker-identity-authority.h"
 #include "zomlang/compiler/identity/identity-invariant.h"
 #include "zomlang/compiler/identity/semantic-context-fingerprint.h"
 #include "zomlang/compiler/type/semantic-type-store.h"
+
+namespace zomlang::compiler::driver::module_graph_query {
+class CheckerBoundModuleView;
+}
 
 namespace zomlang::compiler::checker::dispatch {
 
@@ -286,7 +290,7 @@ using DispatchSiteInventoryBuildResult =
 class DispatchSiteInventoryBuilder final {
 public:
   ZC_NODISCARD static DispatchSiteInventoryBuildResult build(
-      const binder::VerifiedBoundModuleInput& boundModule,
+      const driver::module_graph_query::CheckerBoundModuleView& boundModule,
       const body::VerifiedBodyFactRequirementInventory& bodyRequirements);
 };
 
@@ -330,7 +334,7 @@ struct DispatchFactsVerificationInput final {
   zc::ArrayPtr<const DispatchNodeProjection> nodeProjections;
   const checked::CheckedEvidenceLease& checkedLease;
   const checked::VerifiedCheckedFacts& checkedFacts;
-  const identity::SemanticIdentityRegistrySet& registries;
+  const CheckerIdentityAuthority& identities;
   const type::SemanticTypeStore& semanticTypes;
 };
 
@@ -339,8 +343,7 @@ class DispatchFactCanonicalCodec final {
 public:
   ZC_NODISCARD static zc::Maybe<zc::Array<uint8_t>> encode(
       const checked::CheckedNodeKey& checkedNode, const DispatchFact& fact,
-      const identity::SemanticIdentityRegistrySet& registries,
-      const type::SemanticTypeStore& semanticTypes,
+      const CheckerIdentityAuthority& identities, const type::SemanticTypeStore& semanticTypes,
       const checked::VerifiedCheckedFacts& checkedFacts);
 };
 
@@ -360,8 +363,7 @@ public:
       const VerifiedDispatchSiteInventory& inventory,
       const identity::SemanticContextFingerprint& contextFingerprint,
       const checked::CheckedEvidenceLease& checkedLease,
-      const checked::VerifiedCheckedFacts& checkedFacts,
-      const identity::SemanticIdentityRegistrySet& registries,
+      const checked::VerifiedCheckedFacts& checkedFacts, const CheckerIdentityAuthority& identities,
       const type::SemanticTypeStore& semanticTypes);
 };
 

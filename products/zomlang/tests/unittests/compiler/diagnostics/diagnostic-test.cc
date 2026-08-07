@@ -98,6 +98,11 @@ ZC_TEST("DiagnosticTest.TypeCheckerDiagnosticIdsAreStable") {
   ZC_EXPECT(static_cast<uint32_t>(DiagID::ModuleDeclarationNameMismatch) == 3026);
   ZC_EXPECT(static_cast<uint32_t>(DiagID::BreakTargetNotFound) == 3020);
   ZC_EXPECT(static_cast<uint32_t>(DiagID::ContinueTargetNotFound) == 3021);
+  ZC_EXPECT(static_cast<uint32_t>(DiagID::BinderMalformedScopeGraph) == 9922);
+  ZC_EXPECT(static_cast<uint32_t>(DiagID::BinderMissingRequiredResolution) == 9923);
+  ZC_EXPECT(static_cast<uint32_t>(DiagID::BinderAliasCycle) == 9924);
+  ZC_EXPECT(static_cast<uint32_t>(DiagID::BinderInvalidFact) == 9925);
+  ZC_EXPECT(static_cast<uint32_t>(DiagID::BinderInvalidEmitterOrdinal) == 9926);
   ZC_EXPECT(static_cast<uint32_t>(DiagID::InvalidBinaryOperands) == 4028);
   ZC_EXPECT(static_cast<uint32_t>(DiagID::InvalidComparisonOperands) == 4029);
   ZC_EXPECT(static_cast<uint32_t>(DiagID::CannotDereferenceType) == 4030);

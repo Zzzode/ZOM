@@ -227,13 +227,6 @@ public:
 
   driver::CompilerSession& compilerSession() noexcept { return session; }
 
-  const identity::SemanticIdentityRegistrySet& registries() const {
-    auto result = session.getIdentityRegistries();
-    ZC_REQUIRE(result != zc::none);
-    ZC_IF_SOME(value, result) { return value; }
-    ZC_UNREACHABLE
-  }
-
 private:
   basic::LangOptions languageOptions;
   basic::CompilerOptions compilerOptions;
@@ -244,10 +237,9 @@ private:
 ZC_TEST("Ownership event overlay builder and verifier accept one scalar initializer module") {
   OwnershipPipelineFixture fixture("let value = 0;"_zc);
   const auto& builtMir = fixture.builtMir();
-  const auto& registries = fixture.registries();
   ZC_REQUIRE(builtMir.functions().size() == 1);
 
-  auto candidateResult = OwnershipEventOverlayBuilder::build(builtMir, registries);
+  auto candidateResult = OwnershipEventOverlayBuilder::build(builtMir);
   ZC_REQUIRE(candidateResult.isVerified());
   auto candidate = zc::mv(candidateResult).takeVerified();
   ZC_REQUIRE(candidate.functions.size() == 1);
@@ -297,8 +289,7 @@ ZC_TEST("Ownership event overlay builder and verifier accept one scalar initiali
   ZC_REQUIRE(candidateSlots[5].roles.size() == 1);
   ZC_EXPECT(candidateSlots[5].roles[0] == OwnershipEventRole::Operation);
 
-  auto verifiedResult =
-      OwnershipEventOverlayVerifier::verify(zc::mv(candidate), builtMir, registries);
+  auto verifiedResult = OwnershipEventOverlayVerifier::verify(zc::mv(candidate), builtMir);
   ZC_REQUIRE(verifiedResult.isVerified());
   auto overlay = zc::mv(verifiedResult).takeVerified();
   ZC_EXPECT(overlay.semanticContext() == builtMir.semanticContext());
@@ -312,9 +303,8 @@ ZC_TEST("Ownership event overlay builder and verifier accept one scalar initiali
 ZC_TEST("Ownership event overlay verifier rejects a tampered function slot count") {
   OwnershipPipelineFixture fixture("let value = 0;"_zc);
   const auto& builtMir = fixture.builtMir();
-  const auto& registries = fixture.registries();
 
-  auto candidateResult = OwnershipEventOverlayBuilder::build(builtMir, registries);
+  auto candidateResult = OwnershipEventOverlayBuilder::build(builtMir);
   ZC_REQUIRE(candidateResult.isVerified());
   auto candidate = zc::mv(candidateResult).takeVerified();
   ZC_REQUIRE(candidate.functions.size() == 1);
@@ -325,8 +315,7 @@ ZC_TEST("Ownership event overlay verifier rejects a tampered function slot count
   extra.roles.add(OwnershipEventRole::Operation);
   candidate.functions[0].slots.add(zc::mv(extra));
 
-  auto verifiedResult =
-      OwnershipEventOverlayVerifier::verify(zc::mv(candidate), builtMir, registries);
+  auto verifiedResult = OwnershipEventOverlayVerifier::verify(zc::mv(candidate), builtMir);
   ZC_REQUIRE(verifiedResult.isIrInvariantRejected());
   ZC_EXPECT(verifiedResult.invariantFailures().facts().size() == 1);
   ZC_EXPECT(verifiedResult.invariantFailures().facts()[0].kind() ==
@@ -335,20 +324,20 @@ ZC_TEST("Ownership event overlay verifier rejects a tampered function slot count
 
 ZC_TEST("Ownership event overlay revision is deterministic across two builds") {
   OwnershipPipelineFixture first("let value = 0;"_zc);
-  auto firstResult = OwnershipEventOverlayBuilder::build(first.builtMir(), first.registries());
+  auto firstResult = OwnershipEventOverlayBuilder::build(first.builtMir());
   ZC_REQUIRE(firstResult.isVerified());
   auto firstCandidate = zc::mv(firstResult).takeVerified();
-  auto firstVerified = OwnershipEventOverlayVerifier::verify(zc::mv(firstCandidate),
-                                                             first.builtMir(), first.registries());
+  auto firstVerified =
+      OwnershipEventOverlayVerifier::verify(zc::mv(firstCandidate), first.builtMir());
   ZC_REQUIRE(firstVerified.isVerified());
   auto firstOverlay = zc::mv(firstVerified).takeVerified();
 
   OwnershipPipelineFixture second("let value = 0;"_zc);
-  auto secondResult = OwnershipEventOverlayBuilder::build(second.builtMir(), second.registries());
+  auto secondResult = OwnershipEventOverlayBuilder::build(second.builtMir());
   ZC_REQUIRE(secondResult.isVerified());
   auto secondCandidate = zc::mv(secondResult).takeVerified();
-  auto secondVerified = OwnershipEventOverlayVerifier::verify(
-      zc::mv(secondCandidate), second.builtMir(), second.registries());
+  auto secondVerified =
+      OwnershipEventOverlayVerifier::verify(zc::mv(secondCandidate), second.builtMir());
   ZC_REQUIRE(secondVerified.isVerified());
   auto secondOverlay = zc::mv(secondVerified).takeVerified();
 
@@ -358,9 +347,8 @@ ZC_TEST("Ownership event overlay revision is deterministic across two builds") {
 ZC_TEST("Ownership event overlay verifier rejects a tampered slot role") {
   OwnershipPipelineFixture fixture("let value = 0;"_zc);
   const auto& builtMir = fixture.builtMir();
-  const auto& registries = fixture.registries();
 
-  auto candidateResult = OwnershipEventOverlayBuilder::build(builtMir, registries);
+  auto candidateResult = OwnershipEventOverlayBuilder::build(builtMir);
   ZC_REQUIRE(candidateResult.isVerified());
   auto candidate = zc::mv(candidateResult).takeVerified();
   ZC_REQUIRE(candidate.functions.size() == 1);
@@ -371,8 +359,7 @@ ZC_TEST("Ownership event overlay verifier rejects a tampered slot role") {
                                                                : OwnershipEventRole::Operation;
   candidate.functions[0].slots[0].roles[0] = newRole;
 
-  auto verifiedResult =
-      OwnershipEventOverlayVerifier::verify(zc::mv(candidate), builtMir, registries);
+  auto verifiedResult = OwnershipEventOverlayVerifier::verify(zc::mv(candidate), builtMir);
   ZC_REQUIRE(verifiedResult.isIrInvariantRejected());
   ZC_EXPECT(verifiedResult.invariantFailures().facts().size() == 1);
   ZC_EXPECT(verifiedResult.invariantFailures().facts()[0].kind() ==
@@ -382,9 +369,8 @@ ZC_TEST("Ownership event overlay verifier rejects a tampered slot role") {
 ZC_TEST("Ownership event overlay verifier rejects a foreign event owner") {
   OwnershipPipelineFixture fixture("let value = 0; let other = 1;"_zc);
   const auto& builtMir = fixture.builtMir();
-  const auto& registries = fixture.registries();
 
-  auto candidateResult = OwnershipEventOverlayBuilder::build(builtMir, registries);
+  auto candidateResult = OwnershipEventOverlayBuilder::build(builtMir);
   ZC_REQUIRE(candidateResult.isVerified());
   auto candidate = zc::mv(candidateResult).takeVerified();
   ZC_REQUIRE(candidate.functions.size() == 2);
@@ -392,17 +378,15 @@ ZC_TEST("Ownership event overlay verifier rejects a foreign event owner") {
   ZC_REQUIRE(candidate.functions[0].owner != candidate.functions[1].owner);
   candidate.functions[0].slots[0].key.location.owner = candidate.functions[1].owner;
 
-  auto verifiedResult =
-      OwnershipEventOverlayVerifier::verify(zc::mv(candidate), builtMir, registries);
+  auto verifiedResult = OwnershipEventOverlayVerifier::verify(zc::mv(candidate), builtMir);
   ZC_EXPECT(!verifiedResult.isVerified());
 }
 
 ZC_TEST("Ownership event overlay verifier rejects a statement event at the terminator point") {
   OwnershipPipelineFixture fixture("let value = 0;"_zc);
   const auto& builtMir = fixture.builtMir();
-  const auto& registries = fixture.registries();
 
-  auto candidateResult = OwnershipEventOverlayBuilder::build(builtMir, registries);
+  auto candidateResult = OwnershipEventOverlayBuilder::build(builtMir);
   ZC_REQUIRE(candidateResult.isVerified());
   auto candidate = zc::mv(candidateResult).takeVerified();
   ZC_REQUIRE(candidate.functions.size() == 1);
@@ -411,25 +395,61 @@ ZC_TEST("Ownership event overlay verifier rejects a statement event at the termi
       candidate.functions[0].slots[0].key.location.point.beforeStatementValue().block;
   candidate.functions[0].slots[0].key.location.point = MirPoint::beforeTerminator(block);
 
-  auto verifiedResult =
-      OwnershipEventOverlayVerifier::verify(zc::mv(candidate), builtMir, registries);
+  auto verifiedResult = OwnershipEventOverlayVerifier::verify(zc::mv(candidate), builtMir);
   ZC_EXPECT(!verifiedResult.isVerified());
+}
+
+ZC_TEST("Ownership event overlay verifier encodes and rejects mismatched control-flow points") {
+  OwnershipPipelineFixture fixture("let value = 0;"_zc);
+  const auto& builtMir = fixture.builtMir();
+  const auto block = builtMir.functions()[0].blocks[0].id;
+
+  auto entry = MirPoint::entry();
+  auto afterStatement = MirPoint::afterStatement(block, 0);
+  auto edge = MirPoint::edge(block, 0, block);
+  auto exit = MirPoint::exit(block, MirExitKind::Return);
+  ZC_EXPECT(entry.kind() == MirPointKind::Entry);
+  ZC_EXPECT(afterStatement.kind() == MirPointKind::AfterStatement);
+  ZC_EXPECT(afterStatement.afterStatementValue().block == block);
+  ZC_EXPECT(afterStatement.afterStatementValue().ordinal == 0);
+  ZC_EXPECT(edge.kind() == MirPointKind::Edge);
+  ZC_EXPECT(edge.edgeValue().from == block);
+  ZC_EXPECT(edge.edgeValue().edgeOrdinal == 0);
+  ZC_EXPECT(edge.edgeValue().to == block);
+  ZC_EXPECT(exit.kind() == MirPointKind::Exit);
+  ZC_EXPECT(exit.exitValue().block == block);
+  ZC_EXPECT(exit.exitValue().kind == MirExitKind::Return);
+
+  auto expectRejected = [&](MirPoint point) {
+    auto candidateResult = OwnershipEventOverlayBuilder::build(builtMir);
+    ZC_REQUIRE(candidateResult.isVerified());
+    auto candidate = zc::mv(candidateResult).takeVerified();
+    ZC_REQUIRE(candidate.functions.size() == 1);
+    ZC_REQUIRE(candidate.functions[0].slots.size() != 0);
+    candidate.functions[0].slots[0].key.location.point = zc::mv(point);
+
+    auto verifiedResult = OwnershipEventOverlayVerifier::verify(zc::mv(candidate), builtMir);
+    ZC_EXPECT(!verifiedResult.isVerified());
+  };
+
+  expectRejected(zc::mv(entry));
+  expectRejected(zc::mv(afterStatement));
+  expectRejected(zc::mv(edge));
+  expectRejected(zc::mv(exit));
 }
 
 ZC_TEST("Ownership event overlay verifier rejects a gapped causal ordinal") {
   OwnershipPipelineFixture fixture("let value = 0;"_zc);
   const auto& builtMir = fixture.builtMir();
-  const auto& registries = fixture.registries();
 
-  auto candidateResult = OwnershipEventOverlayBuilder::build(builtMir, registries);
+  auto candidateResult = OwnershipEventOverlayBuilder::build(builtMir);
   ZC_REQUIRE(candidateResult.isVerified());
   auto candidate = zc::mv(candidateResult).takeVerified();
   ZC_REQUIRE(candidate.functions.size() == 1);
   ZC_REQUIRE(candidate.functions[0].slots.size() != 0);
   candidate.functions[0].slots[0].key.operandOrdinal = 1;
 
-  auto verifiedResult =
-      OwnershipEventOverlayVerifier::verify(zc::mv(candidate), builtMir, registries);
+  auto verifiedResult = OwnershipEventOverlayVerifier::verify(zc::mv(candidate), builtMir);
   ZC_EXPECT(!verifiedResult.isVerified());
 }
 
@@ -575,12 +595,10 @@ void expectOverlayOracle(zc::Vector<zc::Array<uint8_t>>&& functions, zc::StringP
 ZC_TEST("Ownership event overlay production revision matches the independent function oracle") {
   OwnershipPipelineFixture fixture("let value = 0;"_zc);
   const auto& builtMir = fixture.builtMir();
-  const auto& registries = fixture.registries();
-  auto candidateResult = OwnershipEventOverlayBuilder::build(builtMir, registries);
+  auto candidateResult = OwnershipEventOverlayBuilder::build(builtMir);
   ZC_REQUIRE(candidateResult.isVerified());
   auto candidate = zc::mv(candidateResult).takeVerified();
-  auto verifiedResult =
-      OwnershipEventOverlayVerifier::verify(zc::mv(candidate), builtMir, registries);
+  auto verifiedResult = OwnershipEventOverlayVerifier::verify(zc::mv(candidate), builtMir);
   ZC_REQUIRE(verifiedResult.isVerified());
   auto overlay = zc::mv(verifiedResult).takeVerified();
   ZC_REQUIRE(overlay.functions().size() == 1);
@@ -588,14 +606,17 @@ ZC_TEST("Ownership event overlay production revision matches the independent fun
   ZC_REQUIRE(builtMir.functions().size() == 1);
   ZC_REQUIRE(builtMir.functions()[0].blocks.size() == 1);
 
-  auto ownerKey = registries.definitions().lookup(overlay.functions()[0].owner);
-  auto moduleKey = registries.modules().lookup(overlay.module());
+  auto identities = fixture.compilerSession().materializeCheckerIdentityAuthority();
+  ZC_REQUIRE(identities != zc::none);
+  const auto& authority = ZC_REQUIRE_NONNULL(identities);
+  auto ownerKey = authority.definition(overlay.functions()[0].owner);
+  auto moduleKey = authority.module(overlay.module());
   ZC_REQUIRE(ownerKey != zc::none);
   ZC_REQUIRE(moduleKey != zc::none);
   ZC_IF_SOME(owner, ownerKey) {
     ZC_IF_SOME(module, moduleKey) {
-      auto expandedOwner = owner.encode();
-      auto expandedModule = module.encode();
+      auto expandedOwner = owner.key().encode();
+      auto expandedModule = module.key().encode();
       zc::Vector<zc::Array<uint8_t>> functions;
       functions.add(scalarInitializerFunctionOracle(
           expandedOwner.asPtr(), builtMir.functions()[0].blocks[0].id.ordinal()));

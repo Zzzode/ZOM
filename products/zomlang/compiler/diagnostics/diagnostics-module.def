@@ -19,12 +19,20 @@
 // Tracking: docs/rfc/tracking/0026-review-and-implementation.md
 DIAG(3011, CircularImport, kError, "Circular import detected for module '{0}'", 1)
 DIAG(3012, ImportModuleNotFound, kError, "Cannot resolve module '{0}'", 1)
+// Reserved until the BindingInputVerifier publishes selected-member failures.
+// Tracking: docs/rfc/tracking/0004-review-and-implementation.md
 DIAG(3013, ImportMemberNotFound, kError, "Module '{0}' has no exported member '{1}'", 2)
 DIAG(3014, CircularReexport, kError, "Circular re-export detected for module '{0}'", 1)
 DIAG(3015, ReexportModuleNotFound, kError, "Cannot resolve module '{0}' for re-export", 1)
+// Reserved until the BindingInputVerifier publishes selected-member failures.
+// Tracking: docs/rfc/tracking/0004-review-and-implementation.md
 DIAG(3016, ReexportMemberNotFound, kError,
      "Module '{0}' has no exported member '{1}' for re-export", 2)
+// Reserved until the BindingInputVerifier publishes visibility failures.
+// Tracking: docs/rfc/tracking/0004-review-and-implementation.md
 DIAG(3018, ImportTargetNotVisible, kError, "Import target is not visible from this module", 0)
+// Reserved until the BindingInputVerifier publishes visibility failures.
+// Tracking: docs/rfc/tracking/0004-review-and-implementation.md
 DIAG(3019, ReexportTargetNotVisible, kError,
      "Re-export target is not visible from this module", 0)
 DIAG(3023, ImportModuleAmbiguous, kError, "Import path resolves to multiple modules", 0)

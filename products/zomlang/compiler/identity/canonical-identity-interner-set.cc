@@ -102,6 +102,17 @@ public:
     return zc::none;
   }
 
+  zc::Maybe<Entry> lookup(const Key& key) const {
+    zc::Maybe<Handle> handle;
+    {
+      const auto keyBytes = encode(key);
+      auto locked = data.lockShared();
+      ZC_IF_SOME(value, locked->handlesByKey.find(keyBytes.asPtr())) { handle = value; }
+    }
+    ZC_IF_SOME(value, handle) { return lookup(value); }
+    return zc::none;
+  }
+
 private:
   SemanticContextBrand owner;
   zc::MutexGuarded<Data> data;
@@ -207,8 +218,17 @@ zc::Maybe<CompilationUnitIdentityEntry> CanonicalIdentityInternerSet::compilatio
   return impl->compilationUnits.lookup(handle);
 }
 
+zc::Maybe<CompilationUnitIdentityEntry> CanonicalIdentityInternerSet::compilationUnit(
+    const CompilationUnitIdentity& key) const {
+  return impl->compilationUnits.lookup(key);
+}
+
 zc::Maybe<CrateIdentityEntry> CanonicalIdentityInternerSet::crate(CrateId handle) const {
   return impl->crates.lookup(handle);
+}
+
+zc::Maybe<CrateIdentityEntry> CanonicalIdentityInternerSet::crate(const CrateKey& key) const {
+  return impl->crates.lookup(key);
 }
 
 zc::Maybe<SourceFileIdentityEntry> CanonicalIdentityInternerSet::sourceFile(
@@ -216,12 +236,26 @@ zc::Maybe<SourceFileIdentityEntry> CanonicalIdentityInternerSet::sourceFile(
   return impl->sourceFiles.lookup(handle);
 }
 
+zc::Maybe<SourceFileIdentityEntry> CanonicalIdentityInternerSet::sourceFile(
+    const SourceFileKey& key) const {
+  return impl->sourceFiles.lookup(key);
+}
+
 zc::Maybe<ModuleIdentityEntry> CanonicalIdentityInternerSet::module(ModuleId handle) const {
   return impl->modules.lookup(handle);
 }
 
+zc::Maybe<ModuleIdentityEntry> CanonicalIdentityInternerSet::module(const ModuleKey& key) const {
+  return impl->modules.lookup(key);
+}
+
 zc::Maybe<DefinitionIdentityEntry> CanonicalIdentityInternerSet::definition(DefId handle) const {
   return impl->definitions.lookup(handle);
+}
+
+zc::Maybe<DefinitionIdentityEntry> CanonicalIdentityInternerSet::definition(
+    const DefinitionKey& key) const {
+  return impl->definitions.lookup(key);
 }
 
 zc::Maybe<ImplementationIdentityEntry> CanonicalIdentityInternerSet::implementation(
@@ -229,14 +263,29 @@ zc::Maybe<ImplementationIdentityEntry> CanonicalIdentityInternerSet::implementat
   return impl->implementations.lookup(handle);
 }
 
+zc::Maybe<ImplementationIdentityEntry> CanonicalIdentityInternerSet::implementation(
+    const ImplKey& key) const {
+  return impl->implementations.lookup(key);
+}
+
 zc::Maybe<GenericParameterIdentityEntry> CanonicalIdentityInternerSet::genericParameter(
     GenericParameterId handle) const {
   return impl->genericParameters.lookup(handle);
 }
 
+zc::Maybe<GenericParameterIdentityEntry> CanonicalIdentityInternerSet::genericParameter(
+    const GenericParameterKey& key) const {
+  return impl->genericParameters.lookup(key);
+}
+
 zc::Maybe<CallableParameterIdentityEntry> CanonicalIdentityInternerSet::callableParameter(
     CallableParameterId handle) const {
   return impl->callableParameters.lookup(handle);
+}
+
+zc::Maybe<CallableParameterIdentityEntry> CanonicalIdentityInternerSet::callableParameter(
+    const CallableParameterKey& key) const {
+  return impl->callableParameters.lookup(key);
 }
 
 }  // namespace zomlang::compiler::identity

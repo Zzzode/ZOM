@@ -25,21 +25,21 @@ namespace {
 
 class StoreFixture final {
 public:
-  explicit StoreFixture(bool freezeDefinitionRegistry = true) {
+  StoreFixture() {
     auto issuedContext = factory.issue();
     ZC_REQUIRE(issuedContext != zc::none);
     ZC_IF_SOME(value, issuedContext) { context = value; }
 
-    auto created = identity::SemanticIdentityRegistrySet::create(factory, context);
+    auto created = identity::CanonicalIdentityInternerSet::create(factory, context);
     ZC_REQUIRE(created != zc::none);
     ZC_IF_SOME(value, created) {
-      registries = zc::heap<identity::SemanticIdentityRegistrySet>(zc::mv(value));
+      identities = zc::heap<identity::CanonicalIdentityInternerSet>(zc::mv(value));
     }
-    buildRegistry(freezeDefinitionRegistry);
+    buildIdentities();
 
     auto token = factory.issueSemanticTypeStoreConstructionToken(context);
     ZC_REQUIRE(token != zc::none);
-    ZC_IF_SOME(value, token) { store = zc::heap<SemanticTypeStore>(zc::mv(value), *registries); }
+    ZC_IF_SOME(value, token) { store = zc::heap<SemanticTypeStore>(zc::mv(value), *identities); }
   }
 
   semantic::CanonicalTypeData canonicalize(semantic::TypeData&& data) {
@@ -61,28 +61,17 @@ public:
 
   identity::SemanticContextFactory factory;
   identity::SemanticContextBrand context;
-  zc::Own<identity::SemanticIdentityRegistrySet> registries;
+  zc::Own<identity::CanonicalIdentityInternerSet> identities;
   zc::Own<SemanticTypeStore> store;
 
 private:
-  void buildRegistry(bool freezeDefinitionRegistry) {
+  void buildIdentities() {
     using namespace tests::test_identity_detail;
-    ZC_REQUIRE(registries->collectCompilationUnit(userUnit()) ==
-               identity::FrozenRegistryFailure::None);
-    ZC_REQUIRE(registries->freezeCompilationUnits() == identity::FrozenRegistryFailure::None);
-    ZC_REQUIRE(registries->collectCrate(crate()) == identity::FrozenRegistryFailure::None);
-    ZC_REQUIRE(registries->freezeCrates() == identity::FrozenRegistryFailure::None);
-    auto snapshot = identity::ImmutableSourceSnapshot::from(tests::test_identity_detail::source(),
-                                                            zc::heapArray<uint8_t>(1, uint8_t{0}));
-    ZC_REQUIRE(snapshot != zc::none);
-    ZC_IF_SOME(value, snapshot) {
-      ZC_REQUIRE(registries->collectSourceFile(zc::mv(value)) ==
-                 identity::FrozenRegistryFailure::None);
-    }
-    ZC_REQUIRE(registries->freezeSourceFiles() == identity::FrozenRegistryFailure::None);
-    ZC_REQUIRE(registries->collectModule(module()) == identity::FrozenRegistryFailure::None);
-    ZC_REQUIRE(registries->freezeModules() == identity::FrozenRegistryFailure::None);
-    if (!freezeDefinitionRegistry) return;
+    ZC_REQUIRE(
+        identities->internCompilationUnit(context, userUnit()).is<identity::CompilationUnitId>());
+    ZC_REQUIRE(identities->internCrate(context, crate()).is<identity::CrateId>());
+    ZC_REQUIRE(identities->internSourceFile(context, source()).is<identity::SourceFileId>());
+    ZC_REQUIRE(identities->internModule(context, module()).is<identity::ModuleId>());
 
     zc::Vector<identity::EnclosingStableOwnerKey> owners;
     zc::Maybe<identity::OverloadHeaderDigest> noOverloadDigest;
@@ -94,18 +83,14 @@ private:
     zc::Maybe<identity::DefinitionKey> retained;
     ZC_IF_SOME(value, record) {
       retained = identity::DefinitionKey::compute(value);
-      zc::Maybe<identity::OverloadHeaderAuthority> noOverloadAuthority;
-      ZC_REQUIRE(registries->collectDefinition(zc::mv(value), zc::mv(noOverloadAuthority)) ==
-                 identity::FrozenRegistryFailure::None);
+      ZC_REQUIRE(identities->internDefinition(context, ZC_ASSERT_NONNULL(retained), value)
+                     .is<identity::DefId>());
     }
-    ZC_REQUIRE(registries->freezeStableIdentities() == identity::FrozenRegistryFailure::None);
-    ZC_REQUIRE(registries->freezeGenericParameters() == identity::FrozenRegistryFailure::None);
-    ZC_REQUIRE(registries->freezeCallableParameters() == identity::FrozenRegistryFailure::None);
     ZC_REQUIRE(retained != zc::none);
     ZC_IF_SOME(value, retained) {
-      auto id = registries->definitions().find(value);
-      ZC_REQUIRE(id != zc::none);
-      ZC_IF_SOME(found, id) { nominalDefinitionValue = found; }
+      auto entry = identities->definition(value);
+      ZC_REQUIRE(entry != zc::none);
+      ZC_IF_SOME(found, entry) { nominalDefinitionValue = found.handle(); }
     }
   }
 
@@ -239,12 +224,12 @@ ZC_TEST("SemanticTypeStore.RejectsForeignCanonicalAdmission") {
   ZC_EXPECT(second.store->size() == 0);
 }
 
-ZC_TEST("SemanticTypeStore.RejectsUnfrozenDefinitionRegistry") {
-  StoreFixture fixture(false);
+ZC_TEST("SemanticTypeStore.RejectsUnknownDefinitionIdentity") {
+  StoreFixture fixture;
   zc::Vector<identity::SemanticTypeId> noArguments;
   auto result = fixture.store->canonicalizeClosed(
       semantic::TypeData(semantic::NominalTypeData{identity::DefId(), zc::mv(noArguments)}));
-  expectInvariant(result, identity::IdentityInvariantKind::AncestorMismatch);
+  expectInvariant(result, identity::IdentityInvariantKind::InvalidHandle);
 }
 
 ZC_TEST("SemanticTypeStore.RetainsStableLookupReferencesDuringGrowth") {

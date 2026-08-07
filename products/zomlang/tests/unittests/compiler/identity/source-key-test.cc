@@ -16,7 +16,6 @@
 #include "zc/ztest/test.h"
 #include "zomlang/compiler/identity/canonical-decoder.h"
 #include "zomlang/compiler/identity/canonical-encoder.h"
-#include "zomlang/compiler/identity/source-manager-identity-resolver.h"
 #include "zomlang/compiler/identity/source-snapshot.h"
 
 namespace zomlang::compiler::identity {
@@ -423,47 +422,6 @@ ZC_TEST("SourceSpan and ModuleKey reject malformed values") {
 
   zc::Vector<ModulePathSegment> emptyPath;
   ZC_EXPECT(ModuleKey::from(crate("a"_zc), zc::mv(emptyPath)) == zc::none);
-}
-
-ZC_TEST("Source manager resolver binds only byte-identical immutable snapshots") {
-  SemanticContextFactory factory;
-  auto created = SemanticIdentityRegistrySet::create(factory, ZC_ASSERT_NONNULL(factory.issue()));
-  ZC_IF_SOME(registries, created) {
-    ZC_REQUIRE(registries.collectCompilationUnit(CompilationUnitIdentity::userPackage(
-                   localPackage("a"_zc))) == FrozenRegistryFailure::None);
-    ZC_REQUIRE(registries.freezeCompilationUnits() == FrozenRegistryFailure::None);
-    ZC_REQUIRE(registries.collectCrate(crate("a"_zc)) == FrozenRegistryFailure::None);
-    ZC_REQUIRE(registries.freezeCrates() == FrozenRegistryFailure::None);
-
-    auto sourceKey = localSource();
-    uint8_t sourceBytes[] = {'A', 'B'};
-    auto admittedSnapshot =
-        ImmutableSourceSnapshot::from(localSource(), zc::heapArray(zc::arrayPtr(sourceBytes)));
-    ZC_IF_SOME(sourceSnapshot, admittedSnapshot) {
-      auto range = sourceSnapshot.unbrandedRange(1, 2);
-      ZC_REQUIRE(registries.collectSourceFile(zc::mv(sourceSnapshot)) ==
-                 FrozenRegistryFailure::None);
-      ZC_REQUIRE(registries.freezeSourceFiles() == FrozenRegistryFailure::None);
-      auto sourceId = registries.sourceFiles().find(sourceKey);
-      ZC_IF_SOME(id, sourceId) {
-        source::SourceManager sourceManager;
-        auto wrongBuffer = sourceManager.addMemBufferCopy("AX"_zcb, "wrong.zom"_zc);
-        auto buffer = sourceManager.addMemBufferCopy("AB"_zcb, "main.zom"_zc);
-        auto resolverValue = SourceManagerIdentityResolver::create(registries, sourceManager);
-        ZC_IF_SOME(resolver, resolverValue) {
-          ZC_EXPECT(!resolver.bind(id, wrongBuffer));
-          ZC_EXPECT(resolver.bind(id, buffer));
-          ZC_EXPECT(!resolver.bind(id, buffer));
-          ZC_IF_SOME(validRange, range) {
-            auto location = resolver.resolve(validRange);
-            ZC_IF_SOME(loc, location) {
-              ZC_EXPECT(sourceManager.getLocOffsetInBuffer(loc, buffer) == 1);
-            }
-          }
-        }
-      }
-    }
-  }
 }
 
 }  // namespace zomlang::compiler::identity

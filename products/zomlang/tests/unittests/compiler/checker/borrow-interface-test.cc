@@ -7,7 +7,7 @@
 
 #include "zc/core/encoding.h"
 #include "zc/ztest/test.h"
-#include "zomlang/tests/unittests/compiler/test-semantic-identities.h"
+#include "zomlang/tests/unittests/compiler/checker/checker-authority-test-fixture.h"
 
 namespace zomlang::compiler::checker::borrow {
 namespace {
@@ -19,119 +19,18 @@ identity::Sha256Digest repeatedDigest(uint8_t byte) {
   ZC_FAIL_REQUIRE("invalid borrow-interface digest fixture");
 }
 
-using namespace tests::test_identity_detail;
-
-identity::SemanticContextFingerprint fingerprint(
-    const identity::SemanticIdentityRegistrySet& registries) {
-  zc::Vector<identity::ToolchainSemanticContextInput> toolchainInputs;
-  zc::Vector<identity::PackageDependencyEdgeKey> packageEdges;
-  zc::Vector<identity::CrateDependencyEdgeKey> crateEdges;
-  auto result = identity::SemanticContextFingerprint::compute(
-      registries, toolchainInputs.asPtr(), packageEdges.asPtr(), crateEdges.asPtr());
-  ZC_IF_SOME(value, result) { return zc::mv(value); }
-  ZC_FAIL_REQUIRE("invalid borrow-interface fingerprint fixture");
-}
-
-zc::StringPtr definitionName(uint32_t ordinal) {
-  switch (ordinal) {
-    case 0:
-      return "borrow0"_zc;
-    case 1:
-      return "borrow1"_zc;
-    case 2:
-      return "borrow2"_zc;
-    case 3:
-      return "borrow3"_zc;
-    case 4:
-      return "BorrowOwner"_zc;
-    default:
-      ZC_FAIL_REQUIRE("invalid borrow-interface definition ordinal");
-  }
-}
-
-identity::CanonicalHeaderTypeSyntax unitHeaderType() {
-  auto value = identity::CanonicalHeaderTypeSyntax::predefined(identity::PredefinedTypeKind::Unit);
-  ZC_IF_SOME(admitted, value) { return zc::mv(admitted); }
-  ZC_FAIL_REQUIRE("invalid borrow-interface unit header type");
-}
-
-identity::OverloadHeaderAuthority callableAuthority(identity::DefinitionKind kind, uint32_t ordinal,
-                                                    uint32_t parameterCount) {
-  zc::Maybe<identity::ReceiverShape> receiver;
-  if (kind == identity::DefinitionKind::Method) { receiver = identity::ReceiverShape::Shared; }
-  zc::Vector<identity::CanonicalGenericParameter> generics;
-  zc::Vector<identity::CanonicalBoundObligation> obligations;
-  zc::Vector<identity::CanonicalCallableParameter> parameters(parameterCount);
-  for (uint32_t index = 0; index < parameterCount; ++index) {
-    parameters.add(identity::CanonicalCallableParameter::from(
-        scalar<identity::SemanticIdentifier>(index == 0 ? "first"_zc : "second"_zc),
-        unitHeaderType(), false));
-  }
-  zc::Maybe<zc::Vector<identity::CanonicalHeaderTypeSyntax>> raises;
-  zc::Maybe<identity::ExternalAbi> abi;
-  auto header = identity::CanonicalOverloadHeader::from(
-      kind == identity::DefinitionKind::Method ? identity::CallableHeaderKind::Method
-                                               : identity::CallableHeaderKind::Function,
-      scalar<identity::DeclaredDefinitionName>(definitionName(ordinal)), zc::mv(receiver),
-      zc::mv(generics), zc::mv(obligations), zc::mv(parameters),
-      identity::CanonicalCallableResult::unit(), zc::mv(raises), zc::mv(abi));
-  ZC_IF_SOME(admitted, header) { return identity::OverloadHeaderAuthority::from(zc::mv(admitted)); }
-  ZC_FAIL_REQUIRE("invalid borrow-interface callable header");
-}
-
 class BorrowInterfaceFixture final {
 public:
-  BorrowInterfaceFixture() {
-    auto issued = factory.issue();
-    ZC_REQUIRE(issued != zc::none);
-    ZC_IF_SOME(value, issued) { context = value; }
-
-    auto created = identity::SemanticIdentityRegistrySet::create(factory, context);
-    ZC_REQUIRE(created != zc::none);
-    ZC_IF_SOME(value, created) {
-      registries = zc::heap<identity::SemanticIdentityRegistrySet>(zc::mv(value));
-    }
-    ZC_REQUIRE(registries->collectCompilationUnit(userUnit()) ==
-               identity::FrozenRegistryFailure::None);
-    ZC_REQUIRE(registries->freezeCompilationUnits() == identity::FrozenRegistryFailure::None);
-    ZC_REQUIRE(registries->collectCrate(crate()) == identity::FrozenRegistryFailure::None);
-    ZC_REQUIRE(registries->freezeCrates() == identity::FrozenRegistryFailure::None);
-    auto sourceSnapshot = identity::ImmutableSourceSnapshot::from(
-        tests::test_identity_detail::source(), zc::heapArray<uint8_t>(1, uint8_t{0}));
-    ZC_REQUIRE(sourceSnapshot != zc::none);
-    ZC_IF_SOME(value, sourceSnapshot) {
-      ZC_REQUIRE(registries->collectSourceFile(zc::mv(value)) ==
-                 identity::FrozenRegistryFailure::None);
-    }
-    ZC_REQUIRE(registries->freezeSourceFiles() == identity::FrozenRegistryFailure::None);
-    ZC_REQUIRE(registries->collectModule(module()) == identity::FrozenRegistryFailure::None);
-    ZC_REQUIRE(registries->freezeModules() == identity::FrozenRegistryFailure::None);
-
-    addCallable(identity::DefinitionKind::Function, 0, 2);
-    addCallable(identity::DefinitionKind::Function, 1, 0);
-    addCallable(identity::DefinitionKind::Function, 2, 1);
-    addCallable(identity::DefinitionKind::Method, 3, 2);
-    addDefinition(identity::DefinitionKind::Class, 4);
-    ZC_REQUIRE(registries->freezeStableIdentities() == identity::FrozenRegistryFailure::None);
-    for (const auto& key : definitionKeys) {
-      auto handle = registries->definitions().find(key);
-      ZC_REQUIRE(handle != zc::none);
-      ZC_IF_SOME(value, handle) { definitions.add(value); }
-    }
-    collectCallableParameters(0, 2, false);
-    collectCallableParameters(2, 1, false);
-    collectCallableParameters(3, 2, true);
-    ZC_REQUIRE(registries->freezeGenericParameters() == identity::FrozenRegistryFailure::None);
-    ZC_REQUIRE(registries->freezeCallableParameters() == identity::FrozenRegistryFailure::None);
-    auto moduleHandle = registries->modules().find(module());
-    ZC_REQUIRE(moduleHandle != zc::none);
-    ZC_IF_SOME(value, moduleHandle) { moduleId = value; }
-
-    auto token = factory.issueSemanticTypeStoreConstructionToken(context);
-    ZC_REQUIRE(token != zc::none);
-    ZC_IF_SOME(value, token) {
-      semanticTypes = zc::heap<type::SemanticTypeStore>(zc::mv(value), *registries);
-    }
+  BorrowInterfaceFixture()
+      : session(
+            "fun borrow0(first: i32, second: i32) -> i32 { return 0; }\n"
+            "fun borrow1() -> i32 { return 0; }\n"
+            "fun borrow2(first: i32) -> i32 { return 0; }\n"
+            "class RecoveryOwner {\n"
+            "  fun borrow3(this, first: i32, second: i32) -> i32 { return 0; }\n"
+            "}\n"_zc),
+        context(session.semanticContext()),
+        moduleId(session.module()) {
     unit = intern(type::semantic::TypeData(
         type::semantic::PrimitiveTypeData{type::semantic::PrimitiveKind::Unit}));
     i32 = intern(type::semantic::TypeData(
@@ -146,18 +45,25 @@ public:
     nestedSharedI32 =
         intern(type::semantic::TypeData(type::semantic::TupleTypeData{zc::mv(tupleElements)}));
 
-    contextFingerprint = zc::heap<identity::SemanticContextFingerprint>(fingerprint(*registries));
-    const auto moduleBytes = module().encode();
+    definitions.add(definitionNamed("borrow0"_zc));
+    definitions.add(definitionNamed("borrow1"_zc));
+    definitions.add(definitionNamed("borrow2"_zc));
+    definitions.add(definitionNamed("borrow3"_zc));
+    definitions.add(session.owner());
+    auto module = session.identityAuthority().module(moduleId);
+    ZC_REQUIRE(module != zc::none);
+    const auto moduleBytes = ZC_REQUIRE_NONNULL(module).key().encode();
     const zc::ArrayPtr<const zc::ArrayPtr<const uint8_t>> emptyRecords;
     auto signature = signature::SignatureFactsRevision::computeFramed(
-        contextFingerprint->digest(), moduleBytes.asPtr(), repeatedDigest(0x11),
-        repeatedDigest(0x22), repeatedDigest(0x33), emptyRecords, emptyRecords, emptyRecords);
+        session.identityAuthority().fingerprint().digest(), moduleBytes.asPtr(),
+        repeatedDigest(0x11), repeatedDigest(0x22), repeatedDigest(0x33), emptyRecords,
+        emptyRecords, emptyRecords);
     ZC_REQUIRE(signature != zc::none);
     ZC_IF_SOME(value, signature) {
       signatureRevision = zc::heap<signature::SignatureFactsRevision>(value);
     }
     auto imported = cross_module::ImportedSignatureViewRevision::computeFramed(
-        contextFingerprint->digest(), moduleBytes.asPtr(), emptyRecords);
+        session.identityAuthority().fingerprint().digest(), moduleBytes.asPtr(), emptyRecords);
     ZC_REQUIRE(imported != zc::none);
     ZC_IF_SOME(value, imported) {
       importedRevision = zc::heap<cross_module::ImportedSignatureViewRevision>(value);
@@ -166,21 +72,25 @@ public:
 
   identity::DefId definition(size_t index) const { return definitions[index]; }
 
-  identity::SourceSpan sourceSpan() const {
-    auto result = registries->sourceSnapshots()[0].span(0, 1);
-    ZC_IF_SOME(value, result) { return zc::mv(value); }
-    ZC_FAIL_REQUIRE("invalid borrow-interface source span fixture");
-  }
+  identity::SourceSpan sourceSpan() const { return session.span(0, 1); }
 
   signature::ParameterSignature parameter(size_t callableIndex, uint32_t ordinal,
                                           identity::SemanticTypeId type,
                                           signature::ParameterMode mode) const {
-    for (const auto& value : callableParameters) {
-      if (value.owner == callableIndex && value.ordinal == ordinal) {
-        return signature::ParameterSignature{
-            value.key.clone(),
-            scalar<identity::SemanticIdentifier>(ordinal == 0 ? "first"_zc : "second"_zc), type,
-            mode, false};
+    auto owner = session.identityAuthority().definition(definition(callableIndex));
+    ZC_REQUIRE(owner != zc::none);
+    for (const auto& module : session.identityAuthority().modules()) {
+      for (const auto& value : module.definitions().identities().callableParameters()) {
+        const auto position = value.record().position();
+        ZC_IF_SOME(index, position.ordinal()) {
+          if (value.record().owner() == ZC_REQUIRE_NONNULL(owner).key() && index == ordinal) {
+            return signature::ParameterSignature{
+                value.key().clone(),
+                tests::checker_fixture::scalar<identity::SemanticIdentifier>(
+                    ordinal == 0 ? "first"_zc : "second"_zc),
+                type, mode, false};
+          }
+        }
       }
     }
     ZC_FAIL_REQUIRE("missing borrow-interface callable parameter fixture");
@@ -195,11 +105,18 @@ public:
     zc::Maybe<identity::SemanticTypeId> noRaises;
     zc::Maybe<signature::ReceiverSignature> receiverSignature;
     ZC_IF_SOME(mode, receiver) {
-      for (const auto& value : callableParameters) {
-        if (value.owner == definitionIndex && value.receiver) {
-          receiverSignature = signature::ReceiverSignature{value.key.clone(), mode};
-          break;
+      auto owner = session.identityAuthority().definition(definition(definitionIndex));
+      ZC_REQUIRE(owner != zc::none);
+      for (const auto& module : session.identityAuthority().modules()) {
+        for (const auto& value : module.definitions().identities().callableParameters()) {
+          if (value.record().owner() == ZC_REQUIRE_NONNULL(owner).key() &&
+              value.record().position().kind() ==
+                  identity::CallableParameterPositionKind::Receiver) {
+            receiverSignature = signature::ReceiverSignature{value.key().clone(), mode};
+            break;
+          }
         }
+        if (receiverSignature != zc::none) { break; }
       }
       ZC_REQUIRE(receiverSignature != zc::none);
     }
@@ -233,94 +150,42 @@ public:
 
   BorrowInterfaceBuildResult build(zc::ArrayPtr<const signature::SemanticSignature> local,
                                    zc::ArrayPtr<const signature::SemanticSignature> support = {}) {
-    return BorrowInterfaceBuilder::build(
-        BorrowInterfaceBuildInput{context, *contextFingerprint, moduleId, *signatureRevision,
-                                  *importedRevision, local, support, *registries, *semanticTypes});
+    return BorrowInterfaceBuilder::build(BorrowInterfaceBuildInput{
+        context, session.identityAuthority().fingerprint(), moduleId, *signatureRevision,
+        *importedRevision, local, support, session.identityAuthority(), session.semanticTypes()});
   }
 
-  identity::SemanticContextFactory factory;
+  tests::checker_fixture::CheckerAuthoritySession session;
   identity::SemanticContextBrand context;
-  zc::Own<identity::SemanticIdentityRegistrySet> registries;
-  zc::Own<type::SemanticTypeStore> semanticTypes;
   identity::ModuleId moduleId;
   identity::SemanticTypeId unit;
   identity::SemanticTypeId i32;
   identity::SemanticTypeId sharedI32;
   identity::SemanticTypeId mutableI32;
   identity::SemanticTypeId nestedSharedI32;
-  zc::Own<identity::SemanticContextFingerprint> contextFingerprint;
   zc::Own<signature::SignatureFactsRevision> signatureRevision;
   zc::Own<cross_module::ImportedSignatureViewRevision> importedRevision;
 
 private:
   identity::SemanticTypeId intern(type::semantic::TypeData&& data) {
-    auto canonical = semanticTypes->canonicalizeClosed(zc::mv(data));
+    auto canonical = session.semanticTypes().canonicalizeClosed(zc::mv(data));
     ZC_REQUIRE(canonical.is<type::semantic::CanonicalTypeData>());
-    auto result = semanticTypes->intern(zc::mv(canonical.get<type::semantic::CanonicalTypeData>()));
+    auto result =
+        session.semanticTypes().intern(zc::mv(canonical.get<type::semantic::CanonicalTypeData>()));
     ZC_REQUIRE(result.is<type::SemanticTypeInterned>());
     return result.get<type::SemanticTypeInterned>().id;
   }
 
-  void addDefinition(identity::DefinitionKind kind, uint32_t ordinal) {
-    zc::Vector<identity::EnclosingStableOwnerKey> owners;
-    zc::Maybe<identity::OverloadHeaderDigest> noOverload;
-    auto record = identity::DefinitionIdentityRecord::from(
-        module(), zc::mv(owners), kind, identity::DefinitionNamespace::Type,
-        scalar<identity::DeclaredDefinitionName>(definitionName(ordinal)), zc::mv(noOverload));
-    ZC_REQUIRE(record != zc::none);
-    ZC_IF_SOME(value, record) {
-      definitionKeys.add(identity::DefinitionKey::compute(value));
-      zc::Maybe<identity::OverloadHeaderAuthority> noAuthority;
-      ZC_REQUIRE(registries->collectDefinition(zc::mv(value), zc::mv(noAuthority), ordinal) ==
-                 identity::FrozenRegistryFailure::None);
+  identity::DefId definitionNamed(zc::StringPtr name) const {
+    for (const auto& module : session.identityAuthority().modules()) {
+      for (const auto& definition : module.definitions().definitions()) {
+        if (definition.record.name() == name) { return definition.definition; }
+      }
     }
+    ZC_FAIL_REQUIRE("missing borrow-interface definition fixture");
   }
 
-  void addCallable(identity::DefinitionKind kind, uint32_t ordinal, uint32_t parameterCount) {
-    auto authority = callableAuthority(kind, ordinal, parameterCount);
-    zc::Vector<identity::EnclosingStableOwnerKey> owners;
-    zc::Maybe<identity::OverloadHeaderDigest> digest = authority.digest().clone();
-    auto record = identity::DefinitionIdentityRecord::from(
-        module(), zc::mv(owners), kind, identity::DefinitionNamespace::Value,
-        scalar<identity::DeclaredDefinitionName>(definitionName(ordinal)), zc::mv(digest));
-    ZC_REQUIRE(record != zc::none);
-    ZC_IF_SOME(value, record) {
-      definitionKeys.add(identity::DefinitionKey::compute(value));
-      zc::Maybe<identity::OverloadHeaderAuthority> retained = zc::mv(authority);
-      ZC_REQUIRE(registries->collectDefinition(zc::mv(value), zc::mv(retained), ordinal) ==
-                 identity::FrozenRegistryFailure::None);
-    }
-  }
-
-  void collectCallableParameters(size_t owner, uint32_t parameterCount, bool receiver) {
-    if (receiver) {
-      auto record = identity::CallableParameterIdentityRecord::from(
-          definitionKeys[owner].clone(), identity::CallableParameterPosition::receiver());
-      auto key = identity::CallableParameterKey::compute(record);
-      callableParameters.add(CallableParameterFixture{owner, 0, true, key.clone()});
-      ZC_REQUIRE(registries->collectCallableParameter(zc::mv(record)) ==
-                 identity::FrozenRegistryFailure::None);
-    }
-    for (uint32_t ordinal = 0; ordinal < parameterCount; ++ordinal) {
-      auto record = identity::CallableParameterIdentityRecord::from(
-          definitionKeys[owner].clone(), identity::CallableParameterPosition::ordinary(ordinal));
-      auto key = identity::CallableParameterKey::compute(record);
-      callableParameters.add(CallableParameterFixture{owner, ordinal, false, key.clone()});
-      ZC_REQUIRE(registries->collectCallableParameter(zc::mv(record)) ==
-                 identity::FrozenRegistryFailure::None);
-    }
-  }
-
-  struct CallableParameterFixture final {
-    size_t owner;
-    uint32_t ordinal;
-    bool receiver;
-    identity::CallableParameterKey key;
-  };
-
-  zc::Vector<identity::DefinitionKey> definitionKeys;
   zc::Vector<identity::DefId> definitions;
-  zc::Vector<CallableParameterFixture> callableParameters;
 };
 
 }  // namespace
@@ -491,6 +356,27 @@ ZC_TEST("BorrowInterfaceBuilder.RejectsModeTypeAndReceiverProjectionMismatch") {
   ZC_REQUIRE(receiverFailures[0].variant().is<signature::CheckerInvariantFact>());
   ZC_EXPECT(receiverFailures[0].variant().get<signature::CheckerInvariantFact>().kind ==
             signature::CheckerInvariantKind::InvalidFact);
+}
+
+ZC_TEST("BorrowInterfaceBuilder.RejectsDuplicateCallableSummary") {
+  BorrowInterfaceFixture fixture;
+  zc::Vector<signature::SemanticSignature> definitions;
+  for (size_t index = 0; index < 2; ++index) {
+    zc::Vector<signature::ParameterSignature> parameters;
+    zc::Maybe<signature::ReceiverMode> noReceiver;
+    zc::Maybe<signature::ExternAbi> noAbi;
+    definitions.add(
+        fixture.callable(0, signature::SignatureScope(signature::ModuleDefinitionSignatureScope{}),
+                         zc::mv(noReceiver), zc::mv(parameters), fixture.unit, zc::mv(noAbi)));
+  }
+
+  auto result = fixture.build(definitions.asPtr());
+  ZC_REQUIRE(result.is<BorrowInterfaceInvariantRejected>());
+  const auto& failures = result.get<BorrowInterfaceInvariantRejected>().failures;
+  ZC_REQUIRE(failures.size() == 1);
+  ZC_REQUIRE(failures[0].variant().is<signature::CheckerInvariantFact>());
+  ZC_EXPECT(failures[0].variant().get<signature::CheckerInvariantFact>().kind ==
+            signature::CheckerInvariantKind::AdditionalFact);
 }
 
 }  // namespace zomlang::compiler::checker::borrow

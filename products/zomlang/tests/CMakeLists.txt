@@ -113,6 +113,19 @@ add_test(
 set_tests_properties(
   core-source-install-layout
   PROPERTIES LABELS "integration;core;install" RUN_SERIAL TRUE TIMEOUT 120)
+add_test(
+  NAME core-library-install-consumer
+  COMMAND
+    "${CMAKE_COMMAND}"
+    "-DZOM_BINARY_DIR=${CMAKE_BINARY_DIR}"
+    "-DZOM_TEST_PREFIX=${CMAKE_BINARY_DIR}/test-prefixes/core-library-install-consumer"
+    "-DZOMC_FILE_NAME=$<TARGET_FILE_NAME:zomc>"
+    "-DZOM_CONSUMER_MANIFEST=${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/installed-consumer/Zom.toml"
+    -P
+    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/verify-core-library-install-consumer.cmake")
+set_tests_properties(
+  core-library-install-consumer
+  PROPERTIES LABELS "integration;core;install" RUN_SERIAL TRUE TIMEOUT 120)
 
 # Benchmarks - Frontend micro-benchmarks
 add_subdirectory(benchmarks)

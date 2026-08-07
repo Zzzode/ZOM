@@ -488,8 +488,8 @@ The provider reads in this exact order:
 1. `SelectedModuleSourceQuery`;
 2. `ParseSourceQuery`;
 3. `IdentitySyntaxSiteInventoryQuery`;
-4. `StableIdentityCandidateProducer`; and
-5. `StableIdentityCandidateVerifier`.
+4. `CandidateProducer`; and
+5. `CandidateVerifier`.
 
 The independent candidate verifier repeats the selected-source and parse
 demands, reconstructs the candidate inventory without using provider state,
@@ -1069,8 +1069,8 @@ The additional `R29-13B` review partition has these exact files:
 |---|---|
 | Site inventory and admission payloads | `products/zomlang/compiler/binder/identity-pre-admission.h`; `products/zomlang/compiler/binder/identity-pre-admission.cc` |
 | Stable-admission Binder boundary | `products/zomlang/compiler/binder/module-body-syntax.h`; `products/zomlang/compiler/binder/module-body-syntax-producer.cc`; `products/zomlang/compiler/binder/module-body-syntax-verifier.cc` |
-| Independent site and admission production | `products/zomlang/compiler/binder/stable-identity-candidate-producer.h`; `products/zomlang/compiler/binder/stable-identity-candidate-producer.cc` |
-| Independent site and admission verification | `products/zomlang/compiler/binder/stable-identity-candidate-verifier.h`; `products/zomlang/compiler/binder/stable-identity-candidate-verifier.cc` |
+| Independent site and admission production | `products/zomlang/compiler/binder/stable/candidate/producer.h`; `products/zomlang/compiler/binder/stable/candidate/producer.cc` |
+| Independent site and admission verification | `products/zomlang/compiler/binder/stable/candidate/verifier.h`; `products/zomlang/compiler/binder/stable/candidate/verifier.cc` |
 | Canonical Module and Binder diagnostic facts | `products/zomlang/compiler/binder/stable-binding-diagnostic-fact.h`; `products/zomlang/compiler/binder/stable-binding-diagnostic-fact.cc`; `products/zomlang/compiler/diagnostics/diagnostic-fact.h`; `products/zomlang/compiler/diagnostics/diagnostic-fact.cc` |
 | Diagnostic codes, schema rows, and static mappings | `products/zomlang/compiler/diagnostics/diagnostics-binder.def`; `products/zomlang/compiler/binder/stable-binding-schema.def`; `scripts/check-stable-binding-schema.py`; `scripts/check-binder-architecture.py`; `scripts/check-diagnostic-coverage.py` |
 | Descriptors, failure contracts, and caller cutover | `products/zomlang/compiler/driver/named-identity-inventory-query.h`; `products/zomlang/compiler/driver/named-identity-inventory-query.cc`; `products/zomlang/compiler/driver/named-item-query.h`; `products/zomlang/compiler/driver/named-item-query.cc`; `products/zomlang/compiler/driver/owner-body-query.h`; `products/zomlang/compiler/driver/owner-body-query.cc` |

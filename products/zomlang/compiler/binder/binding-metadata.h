@@ -15,7 +15,6 @@
 #include "zomlang/compiler/binder/local-identity.h"
 #include "zomlang/compiler/identity/canonical-scalar.h"
 #include "zomlang/compiler/identity/definition-key.h"
-#include "zomlang/compiler/identity/frozen-registry.h"
 #include "zomlang/compiler/identity/semantic-import-binding-key.h"
 #include "zomlang/compiler/identity/source-snapshot.h"
 
@@ -28,11 +27,12 @@ namespace zomlang::compiler::identity {
 class IdentityDiagnosticLocationResolver;
 }
 
-namespace zomlang::compiler::binder {
+namespace zomlang::compiler::driver::module_graph_query {
+class MaterializedModuleSkeleton;
+class MaterializedOwnerBody;
+}  // namespace zomlang::compiler::driver::module_graph_query
 
-class BodyBindingCursor;
-class ControlTransferBuilder;
-class LabelBuilder;
+namespace zomlang::compiler::binder {
 
 enum class Namespace : uint8_t {
   Value = 0x01,
@@ -84,7 +84,8 @@ private:
   ScopeId(identity::ModuleId module, uint32_t index) noexcept;
   identity::ModuleId moduleValue;
   uint32_t indexValue;
-  friend class ScopeArenaBuilder;
+  friend class ::zomlang::compiler::driver::module_graph_query::MaterializedModuleSkeleton;
+  friend class ::zomlang::compiler::driver::module_graph_query::MaterializedOwnerBody;
 };
 
 struct ModuleScopeOwner final {
@@ -108,7 +109,10 @@ public:
   ZC_NODISCARD static ScopeOwner definition(identity::DefId value);
   ZC_NODISCARD static ScopeOwner implementation(ImplOccurrenceId value);
   ZC_NODISCARD static ScopeOwner anonymous(AnonymousOwnerLocalKey&& value);
+  ZC_NODISCARD ScopeOwner clone() const;
   ZC_NODISCARD const ScopeOwnerValue& value() const noexcept;
+  bool operator==(const ScopeOwner& other) const noexcept;
+  bool operator!=(const ScopeOwner& other) const noexcept { return !(*this == other); }
 
 private:
   explicit ScopeOwner(ScopeOwnerValue&& value) noexcept;
@@ -171,12 +175,6 @@ private:
   BindingNameKey(Namespace nameSpace, identity::DeclaredDefinitionName&& name) noexcept;
   Namespace namespaceValue;
   identity::DeclaredDefinitionName nameValue;
-  friend class BodyBindingCursor;
-  friend class BodyBindingBuilder;
-  friend class BindingBuilder;
-  friend class BindingInputVerifier;
-  friend class BindingSkeletonBuilder;
-  friend class BindingVerifier;
 };
 
 struct NameBinding final {
@@ -272,6 +270,7 @@ struct CallableParameterFact final {
 /// \brief Revision-local owner-body binding fact outside every global identity registry.
 struct OwnerLocalBindingFact final {
   OwnerLocalBindingId identity;
+  ast::NodeId node;
   DefinitionSite site;
   OwnerLocalBindingKind kind;
   identity::DeclaredDefinitionName name;
@@ -279,6 +278,15 @@ struct OwnerLocalBindingFact final {
   ScopeId declaringScope;
   identity::SourceSpan source;
   DefinitionActivation activation;
+};
+
+/// \brief Revision-local anonymous callable materialized from one stable body fact.
+struct AnonymousEntityFact final {
+  ast::NodeId node;
+  DefinitionSite site;
+  AnonymousOwnerLocalId identity;
+  AnonymousOwnerLocalKey key;
+  identity::SourceSpan source;
 };
 
 struct ModuleVisibility final {
@@ -348,8 +356,18 @@ public:
 private:
   explicit ExportSurfaceRevision(const identity::Sha256Digest& digest) noexcept;
   identity::Sha256Digest value;
-  friend class BindingBuilder;
-  friend class BindingVerifier;
+};
+
+/// \brief Revision of the canonical exported-name set retained by a module alias.
+class ModuleAliasExportNamesRevision final {
+public:
+  ZC_NODISCARD static ModuleAliasExportNamesRevision fromDigest(
+      const identity::Sha256Digest& digest) noexcept;
+  ZC_NODISCARD const identity::Sha256Digest& digest() const noexcept;
+
+private:
+  explicit ModuleAliasExportNamesRevision(const identity::Sha256Digest& digest) noexcept;
+  identity::Sha256Digest value;
 };
 
 enum class BinderDiagnosticCode : uint16_t {
@@ -408,6 +426,7 @@ public:
 
   ZC_NODISCARD const LabelOwnerValue& value() const noexcept;
   ZC_NODISCARD bool belongsTo(identity::SemanticContextBrand context) const noexcept;
+  ZC_NODISCARD LabelOwner clone() const;
   bool operator==(const LabelOwner& other) const noexcept;
   bool operator!=(const LabelOwner& other) const noexcept { return !(*this == other); }
 
@@ -417,10 +436,10 @@ private:
   ZC_NODISCARD static LabelOwner callable(identity::DefId value);
   ZC_NODISCARD static LabelOwner anonymous(identity::ModuleId module,
                                            AnonymousOwnerLocalKey&& value);
-  ZC_NODISCARD LabelOwner clone() const;
   LabelOwnerValue valueValue;
   friend class LabelId;
   friend class LabelBuilder;
+  friend class driver::module_graph_query::MaterializedOwnerBody;
 };
 
 /// \brief Sealed owner-local label identity.
@@ -433,16 +452,17 @@ public:
   ZC_NODISCARD const LabelOwner& owner() const noexcept;
   ZC_NODISCARD uint32_t index() const noexcept;
   ZC_NODISCARD bool belongsTo(identity::SemanticContextBrand context) const noexcept;
+  ZC_NODISCARD LabelId clone() const;
   bool operator==(const LabelId& other) const noexcept;
   bool operator!=(const LabelId& other) const noexcept { return !(*this == other); }
 
 private:
   LabelId(LabelOwner&& owner, uint32_t index) noexcept;
-  ZC_NODISCARD LabelId clone() const;
   LabelOwner ownerValue;
   uint32_t indexValue;
   friend class LabelBuilder;
   friend class ControlTransferBuilder;
+  friend class driver::module_graph_query::MaterializedOwnerBody;
 };
 
 struct BlockLabelTarget final {
@@ -458,6 +478,7 @@ class LabelTarget final {
 public:
   ZC_NODISCARD const LabelTargetValue& value() const noexcept;
   ZC_NODISCARD bool belongsTo(identity::SemanticContextBrand context) const noexcept;
+  ZC_NODISCARD LabelTarget clone() const;
   bool operator==(const LabelTarget& other) const noexcept;
   bool operator!=(const LabelTarget& other) const noexcept { return !(*this == other); }
 
@@ -465,10 +486,10 @@ private:
   explicit LabelTarget(LabelTargetValue&& value) noexcept;
   ZC_NODISCARD static LabelTarget block(ScopeId scope);
   ZC_NODISCARD static LabelTarget loop(ScopeId scope);
-  ZC_NODISCARD LabelTarget clone() const;
   LabelTargetValue valueValue;
   friend class LabelBuilder;
   friend class ControlTransferBuilder;
+  friend class driver::module_graph_query::MaterializedOwnerBody;
 };
 struct ExplicitLabelControlTarget final {
   LabelId label;
@@ -560,7 +581,7 @@ struct ModuleAliasBindingFact final {
   ast::NodeId node;
   identity::DefId alias;
   identity::ModuleId canonicalTarget;
-  ExportSurfaceRevision targetRevision;
+  ModuleAliasExportNamesRevision targetExportNamesRevision;
   identity::SourceSpan declarationSpan;
   identity::SourceSpan targetSpan;
 };
@@ -643,12 +664,9 @@ enum class BinderInvariantKind : uint8_t {
 };
 
 enum class BinderEmitterSite : uint8_t {
-  BindingInput = 0x01,
   ModuleSkeleton = 0x02,
   ImportBinding = 0x03,
-  BodyBinding = 0x04,
-  LabelAndClosure = 0x05,
-  BindingVerifier = 0x06
+  LabelAndClosure = 0x05
 };
 
 struct BinderInvariantFact final {
@@ -695,31 +713,6 @@ void emitBinderInvariant(
     diagnostics::DiagnosticEngine& diagnostics, const BinderInvariantFact& fact,
     zc::Maybe<const identity::IdentityDiagnosticLocationResolver&> locationResolver = zc::none);
 
-class VerifiedBindingMetadata final {
-public:
-  ~VerifiedBindingMetadata() noexcept(false);
-  VerifiedBindingMetadata(VerifiedBindingMetadata&&) noexcept;
-  VerifiedBindingMetadata& operator=(VerifiedBindingMetadata&&) noexcept;
-  ZC_DISALLOW_COPY(VerifiedBindingMetadata);
-  ZC_NODISCARD identity::SemanticContextBrand semanticContext() const noexcept;
-  ZC_NODISCARD identity::ModuleId module() const noexcept;
-#define ZOM_BINDING_ACCESSOR_Internal(type, accessor)
-#define ZOM_BINDING_ACCESSOR_Published(type, accessor) \
-  ZC_NODISCARD zc::ArrayPtr<const type> accessor() const;
-#define ZOM_BINDING_FACT(id, type, member, accessor, publication, tag, domain, mutations, test) \
-  ZOM_BINDING_ACCESSOR_##publication(type, accessor)
-#include "zomlang/compiler/binder/binding-fact-schema.def"
-#undef ZOM_BINDING_FACT
-#undef ZOM_BINDING_ACCESSOR_Published
-#undef ZOM_BINDING_ACCESSOR_Internal
-
-private:
-  struct Impl;
-  explicit VerifiedBindingMetadata(zc::Own<Impl>&& impl) noexcept;
-  zc::Own<Impl> impl;
-  friend class BindingVerifier;
-};
-
 class VerifiedExportSurface final {
 public:
   ~VerifiedExportSurface() noexcept(false);
@@ -735,9 +728,13 @@ public:
 
 private:
   struct Impl;
+  ZC_NODISCARD static VerifiedExportSurface fromVerified(
+      identity::ModuleId sourceModule, identity::CompilationUnitId sourceCompilationUnit,
+      ExportSurfaceRevision revision, zc::Vector<ExportSurfaceEntry>&& visibleEntries,
+      zc::Vector<ExportSurfaceEntry>&& exports) noexcept;
   explicit VerifiedExportSurface(zc::Own<Impl>&& impl) noexcept;
   zc::Own<Impl> impl;
-  friend class BindingVerifier;
+  friend class MaterializedExportSurfaceVerifier;
 };
 
 }  // namespace zomlang::compiler::binder

@@ -483,8 +483,8 @@ stable-binding-schema-negative
 stable-binding-landing-scope-negative
 ```
 
-The existing `binder-architecture`, `binder-architecture-negative`, and
-`binder-fact-schema` tests remain required regressions.
+The existing `binder-architecture` and `binder-architecture-negative` tests
+remain required regressions.
 
 ### Schema Gate
 
@@ -809,7 +809,7 @@ runtime observability, or release operation is added.
   `PATH=/opt/homebrew/bin:$PATH cmake --build --preset sanitizer --target stable-binding-facts-test package-compilation-request-test`;
   `PATH=/opt/homebrew/bin:$PATH cmake --build --preset sanitizer --clean-first`.
 - Unit tests:
-  `PATH=/opt/homebrew/bin:$PATH ctest --preset default -R '^(stable-binding-facts-test|package-compilation-request-test|stable-binding-schema|stable-binding-schema-negative|stable-binding-landing-scope-negative|binder-architecture|binder-architecture-negative|binder-fact-schema)$' --output-on-failure --no-tests=error`;
+  `PATH=/opt/homebrew/bin:$PATH ctest --preset default -R '^(stable-binding-facts-test|package-compilation-request-test|stable-binding-schema|stable-binding-schema-negative|stable-binding-landing-scope-negative|binder-architecture|binder-architecture-negative)$' --output-on-failure --no-tests=error`;
   `PATH=/opt/homebrew/bin:$PATH ctest --preset default -L unittest --output-on-failure --no-tests=error`.
 - Complete native tests:
   `PATH=/opt/homebrew/bin:$PATH ctest --preset default --output-on-failure --no-tests=error`.
@@ -820,8 +820,7 @@ runtime observability, or release operation is added.
   `python3 scripts/check-binder-architecture.py --check`;
   `python3 scripts/check-binder-architecture.py --self-test`;
   `python3 scripts/check-compiler-session-architecture.py --check`;
-  `python3 scripts/check-compiler-session-architecture.py --self-test`;
-  `python3 scripts/check-binder-fact-schema.py --check`.
+  `python3 scripts/check-compiler-session-architecture.py --self-test`.
 - Diagnostics:
   `python3 scripts/check-diagnostic-coverage.py --self-test`;
   `python3 scripts/check-diagnostic-coverage.py --check`;

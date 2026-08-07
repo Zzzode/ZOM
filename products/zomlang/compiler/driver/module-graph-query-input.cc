@@ -12,7 +12,6 @@
 #include "zomlang/compiler/ast/generated/node-payload.h"
 #include "zomlang/compiler/ast/generated/node-traverse.h"
 #include "zomlang/compiler/ast/schema-verifier.h"
-#include "zomlang/compiler/binder/binding-input.h"
 #include "zomlang/compiler/binder/module-resolution.h"
 #include "zomlang/compiler/driver/active-definition-authority-query.h"
 #include "zomlang/compiler/driver/core-library-query-provider.h"
@@ -3186,12 +3185,8 @@ bool ModuleGraphInputTransactionVerifier::verify(
     const VerifiedModuleGraphInputTransaction& candidate) {
   if (candidate.impl.get() == nullptr) { return false; }
   const auto& value = *candidate.impl->payload.impl;
-  if (!authority.registries.crates().isFrozen() || !authority.registries.sourceFiles().isFrozen() ||
-      !authority.registries.modules().isFrozen() || authority.resolver.catalog().size() == 0 ||
-      authority.parsedModules.size() != authority.resolver.catalog().size() ||
-      authority.registries.modules().size() != authority.resolver.catalog().size() ||
-      authority.registries.sourceFiles().size() != authority.resolver.catalog().size() ||
-      authority.registries.sourceSnapshots().size() != authority.resolver.catalog().size()) {
+  if (authority.resolver.catalog().size() == 0 ||
+      authority.parsedModules.size() != authority.resolver.catalog().size()) {
     return false;
   }
   zc::Vector<identity::CrateKey> expectedCoreCrates(authority.coreInputs.projections().size());
@@ -3258,28 +3253,27 @@ bool ModuleGraphInputTransactionVerifier::verify(
       selectedModules.insert(zc::mv(moduleKey), &selected);
     }
   }
-  if (selectedCrates.size() != authority.registries.crates().size()) { return false; }
-  for (size_t slot = 0; slot < authority.registries.crates().size(); ++slot) {
-    auto expectedCrate = authority.registries.crates().keyAt(slot);
-    if (expectedCrate == zc::none ||
-        selectedCrates.find(zc::encodeHex(ZC_ASSERT_NONNULL(expectedCrate).encode().asPtr())) ==
-            zc::none) {
-      return false;
+  zc::TreeMap<zc::String, const binder::StructuralModuleCatalogEntry*> expectedCrates;
+  for (const auto& expected : authority.resolver.catalog()) {
+    auto crateKey = zc::encodeHex(expected.key.crate().encode().asPtr());
+    if (expectedCrates.find(crateKey) == zc::none) {
+      expectedCrates.insert(zc::mv(crateKey), &expected);
     }
+  }
+  if (selectedCrates.size() != expectedCrates.size()) { return false; }
+  for (const auto& expected : authority.resolver.catalog()) {
+    auto crateKey = zc::encodeHex(expected.key.crate().encode().asPtr());
+    if (selectedCrates.find(crateKey) == zc::none) { return false; }
   }
   if (selectedModules.size() != authority.resolver.catalog().size()) { return false; }
   zc::TreeMap<zc::String, ConfiguredDependencyAlias> expectedAliases;
   for (const auto& expected : authority.resolver.catalog()) {
     auto key = zc::encodeHex(expected.key.encode().asPtr());
     auto selected = selectedModules.find(key);
-    auto registeredModule = authority.registries.modules().find(expected.key);
-    auto registeredSource = authority.registries.sourceFiles().find(expected.source);
     if (selected == zc::none ||
         ZC_ASSERT_NONNULL(selected)->module().encode().asPtr() != expected.key.encode().asPtr() ||
         ZC_ASSERT_NONNULL(selected)->source().encode().asPtr() !=
-            expected.source.encode().asPtr() ||
-        registeredModule == zc::none || ZC_ASSERT_NONNULL(registeredModule) != expected.module ||
-        registeredSource == zc::none) {
+            expected.source.encode().asPtr()) {
       return false;
     }
     zc::Maybe<const binder::ParsedModuleGraphInput&> parsed;
@@ -3957,7 +3951,10 @@ bool registerModuleGraphQueries(query::QueryDatabase& database) {
          database.registerDescriptor<ModuleDependencyRequestsQuery>().isRegistered() &&
          database.registerDescriptor<ModuleDependencyProvenanceQuery>().isRegistered() &&
          database.registerDescriptor<ModuleDependenciesQuery>().isRegistered() &&
-         database.registerDescriptor<MaterializeModuleGraphQuery>().isRegistered();
+         database.registerDescriptor<MaterializeModuleGraphQuery>().isRegistered() &&
+         database.registerDescriptor<MaterializeModuleSkeletonQuery>().isRegistered() &&
+         database.registerDescriptor<MaterializeOwnerBodyQuery>().isRegistered() &&
+         database.registerDescriptor<VerifyBoundModuleQuery>().isRegistered();
 }
 
 }  // namespace zomlang::compiler::driver::module_graph_query

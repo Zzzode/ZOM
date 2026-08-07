@@ -61,32 +61,24 @@ const StoredSemanticType& entryAt(const SemanticTypeStoreData& data, uint32_t sl
 
 struct SemanticTypeStore::Impl final {
   Impl(identity::SemanticContextBrand owner,
-       const identity::SemanticIdentityRegistrySet& registries) noexcept
-      : context(owner), registries(registries) {}
+       const identity::CanonicalIdentityInternerSet& identities) noexcept
+      : context(owner), identities(identities) {}
 
   identity::SemanticContextBrand context;
-  const identity::SemanticIdentityRegistrySet& registries;
+  const identity::CanonicalIdentityInternerSet& identities;
   zc::MutexGuarded<SemanticTypeStoreData> data;
 };
 
 SemanticTypeStore::SemanticTypeStore(identity::SemanticTypeStoreConstructionToken&& token,
-                                     const identity::SemanticIdentityRegistrySet& registries)
-    : impl(zc::heap<Impl>(token.consume(), registries)) {
+                                     const identity::CanonicalIdentityInternerSet& identities)
+    : impl(zc::heap<Impl>(token.consume(), identities)) {
   ZC_IREQUIRE(impl->context.isValid(),
               "SemanticTypeStore: construction token is invalid or already consumed");
-  ZC_IREQUIRE(impl->registries.context() == impl->context,
-              "SemanticTypeStore: registry family belongs to a different semantic context");
+  ZC_IREQUIRE(impl->identities.context() == impl->context,
+              "SemanticTypeStore: identity authority belongs to a different semantic context");
 }
 
 SemanticTypeStore::~SemanticTypeStore() noexcept(false) = default;
-
-bool SemanticTypeStore::registriesReadyForAdmission() const noexcept {
-  return impl->registries.compilationUnits().isFrozen() && impl->registries.crates().isFrozen() &&
-         impl->registries.sourceFiles().isFrozen() && impl->registries.modules().isFrozen() &&
-         impl->registries.definitions().isFrozen() && impl->registries.impls().isFrozen() &&
-         impl->registries.genericParameters().isFrozen() &&
-         impl->registries.callableParameters().isFrozen();
-}
 
 SemanticTypeInternResult SemanticTypeStore::intern(semantic::CanonicalTypeData&& canonical) {
   if (canonical.admissionContext != impl->context) {
@@ -120,49 +112,54 @@ SemanticTypeInternResult SemanticTypeStore::intern(semantic::CanonicalTypeData&&
   return SemanticTypeInterned{id};
 }
 
-identity::FrozenRegistryFailure SemanticTypeStore::validateTypeForAdmission(
+zc::Maybe<identity::IdentityInvariantKind> SemanticTypeStore::validateTypeForAdmission(
     identity::SemanticTypeId id) const {
-  if (!id.isValid()) { return identity::FrozenRegistryFailure::InvalidHandle; }
+  if (!id.isValid()) { return identity::IdentityInvariantKind::InvalidHandle; }
   if (identity::SemanticTypeTag::context(id) != impl->context) {
-    return identity::FrozenRegistryFailure::ForeignContext;
+    return identity::IdentityInvariantKind::ForeignContext;
   }
   auto locked = impl->data.lockShared();
   if (identity::SemanticTypeTag::slot(id) >= locked->entries.size()) {
-    return identity::FrozenRegistryFailure::SlotOutOfRange;
+    return identity::IdentityInvariantKind::SlotOutOfRange;
   }
-  return identity::FrozenRegistryFailure::None;
+  return zc::none;
 }
 
 zc::Maybe<const semantic::TypeData&> SemanticTypeStore::typeDataForAdmission(
     identity::SemanticTypeId id) const {
-  if (validateTypeForAdmission(id) != identity::FrozenRegistryFailure::None) { return zc::none; }
+  if (validateTypeForAdmission(id) != zc::none) { return zc::none; }
   auto locked = impl->data.lockShared();
   return entryAt(*locked, identity::SemanticTypeTag::slot(id)).data;
 }
 
-identity::FrozenRegistryFailure SemanticTypeStore::validateDefinitionForAdmission(
+zc::Maybe<identity::IdentityInvariantKind> SemanticTypeStore::validateDefinitionForAdmission(
     identity::DefId id) const {
-  return impl->registries.definitions().validate(id);
+  if (!id.isValid()) { return identity::IdentityInvariantKind::InvalidHandle; }
+  if (!id.belongsTo(impl->context)) { return identity::IdentityInvariantKind::ForeignContext; }
+  return impl->identities.definition(id) == zc::none
+             ? zc::Maybe<identity::IdentityInvariantKind>(
+                   identity::IdentityInvariantKind::SlotOutOfRange)
+             : zc::none;
 }
 
-zc::Maybe<const identity::DefinitionKey&> SemanticTypeStore::definitionKeyForAdmission(
+zc::Maybe<identity::DefinitionKey> SemanticTypeStore::definitionKeyForAdmission(
     identity::DefId id) const {
-  return impl->registries.definitions().lookup(id);
+  ZC_IF_SOME(entry, impl->identities.definition(id)) { return entry.key().clone(); }
+  return zc::none;
 }
 
-zc::Maybe<const identity::DefinitionIdentityRecord&>
-SemanticTypeStore::definitionRecordForAdmission(identity::DefId id) const {
-  return impl->registries.definitions().lookupRecord(id);
+zc::Maybe<identity::DefinitionIdentityRecord> SemanticTypeStore::definitionRecordForAdmission(
+    identity::DefId id) const {
+  ZC_IF_SOME(entry, impl->identities.definition(id)) { return entry.record().clone(); }
+  return zc::none;
 }
 
-identity::FrozenRegistryFailure SemanticTypeStore::validateGenericParameterForAdmission(
+zc::Maybe<identity::IdentityInvariantKind> SemanticTypeStore::validateGenericParameterForAdmission(
     const identity::GenericParameterKey& key) const {
-  if (!impl->registries.genericParameters().isFrozen()) {
-    return identity::FrozenRegistryFailure::RegistryNotFrozen;
-  }
-  return impl->registries.genericParameters().find(key) == zc::none
-             ? identity::FrozenRegistryFailure::InvalidHandle
-             : identity::FrozenRegistryFailure::None;
+  return impl->identities.genericParameter(key) == zc::none
+             ? zc::Maybe<identity::IdentityInvariantKind>(
+                   identity::IdentityInvariantKind::InvalidHandle)
+             : zc::none;
 }
 
 SemanticTypeLookupResult SemanticTypeStore::get(identity::SemanticTypeId id) const {

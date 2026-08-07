@@ -360,10 +360,9 @@ def validate_test_prefix(production: list[Row], combined: list[Row], path: Path)
     ]
     first = tail[0]
     if (
-        len(production) != 59
-        or len(complete_context_rows) != 1
+        len(complete_context_rows) != 1
         or first != complete_context_rows[0]
-        or first.ordinal != 59
+        or first.ordinal != len(production)
         or first.descriptor_type != TEST_COMPLETE_CONTEXT_TYPE
         or first.name != TEST_COMPLETE_CONTEXT_NAME
         or first.domain != TEST_COMPLETE_CONTEXT_DOMAIN
@@ -372,7 +371,7 @@ def validate_test_prefix(production: list[Row], combined: list[Row], path: Path)
         or first.owner != TEST_COMPLETE_CONTEXT_OWNER
     ):
         raise SchemaError(
-            f"{path}: test tail must begin with the exact slot-59 complete-context fixture"
+            f"{path}: test tail must begin with the exact first post-production complete-context fixture"
         )
     production_domains = {row.domain for row in production}
     production_names = {row.name for row in production}
@@ -531,6 +530,7 @@ def run_self_test() -> None:
     validate_rows(baseline, path, require_complete_context=True)
     combined = parse_schema_text(test_text, test_path)
     validate_test_prefix(baseline, combined, test_path)
+    test_tail_ordinal = len(baseline)
     witness_lines = [
         line
         for line in production_text.splitlines()
@@ -541,7 +541,7 @@ def run_self_test() -> None:
     test_complete_line = next(
         line
         for line in test_text.splitlines()
-        if line.startswith("ZOM_COMPLETE_CONTEXT_INPUT(59,")
+        if line.startswith(f"ZOM_COMPLETE_CONTEXT_INPUT({test_tail_ordinal},")
     )
     first_production_line = next(
         line for line in test_text.splitlines() if line.startswith("ZOM_")
@@ -598,8 +598,8 @@ def run_self_test() -> None:
         (
             "restarted test ordinal",
             test_text.replace(
-                "ZOM_COMPLETE_CONTEXT_INPUT(59,",
-                "ZOM_COMPLETE_CONTEXT_INPUT(60,",
+                f"ZOM_COMPLETE_CONTEXT_INPUT({test_tail_ordinal},",
+                f"ZOM_COMPLETE_CONTEXT_INPUT({test_tail_ordinal + 1},",
                 1,
             ),
         ),
@@ -607,7 +607,7 @@ def run_self_test() -> None:
             "test tail witness row",
             test_text.replace(
                 test_complete_line,
-                witness_lines[0].replace("ZOM_INPUT(56,", "ZOM_INPUT(59,"),
+                witness_lines[0].replace("ZOM_INPUT(56,", f"ZOM_INPUT({test_tail_ordinal},"),
                 1,
             ),
         ),

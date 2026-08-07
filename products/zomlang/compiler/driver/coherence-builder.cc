@@ -15,7 +15,7 @@ checker::coherence::CoherenceBuildResult CoherenceBuilder::build(const Coherence
     candidate.modules.add(interface.projectCoherenceInput());
   }
   return checker::coherence::CoherenceVerifier::verify(zc::mv(candidate), input.markerPolicies,
-                                                       input.registries);
+                                                       input.identities);
 }
 
 }  // namespace zomlang::compiler::driver

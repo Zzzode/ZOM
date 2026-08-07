@@ -7,4 +7,5 @@ set_target_properties(
   PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/${CMAKE_INSTALL_BINDIR}")
 add_dependencies(zomc zomcore-distribution)
+add_dependencies(zomc generate-core-library-inventory)
 install(TARGETS zomc RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}")

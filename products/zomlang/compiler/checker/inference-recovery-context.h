@@ -12,6 +12,7 @@
 #include "zc/core/one-of.h"
 #include "zc/core/vector.h"
 #include "zomlang/compiler/checker/checked-facts.h"
+#include "zomlang/compiler/checker/checker-identity-authority.h"
 
 namespace zomlang::compiler::checker::inference {
 
@@ -113,10 +114,9 @@ class InferenceRecoveryContext final {
 public:
   /// \brief Creates one context with a fresh registry brand from the semantic context issuer.
   ZC_NODISCARD static InferenceRecoveryCreationResult create(
-      const identity::SemanticIdentityRegistrySet& registries,
+      const CheckerIdentityAuthority& identities,
       const identity::RegistryBrandIssuer& registryBrands, const identity::SourceFileKey& source,
-      InferenceOwner&& owner,
-      InferenceRecoveryIssueBudget budget = {});
+      InferenceOwner&& owner, InferenceRecoveryIssueBudget budget = {});
 
   ~InferenceRecoveryContext() noexcept(false);
   InferenceRecoveryContext(InferenceRecoveryContext&&) noexcept;

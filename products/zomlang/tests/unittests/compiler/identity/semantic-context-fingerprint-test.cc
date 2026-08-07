@@ -97,19 +97,6 @@ PackageDependencyEdgeKey packageEdge() {
   ZC_FAIL_REQUIRE("valid package edge was rejected");
 }
 
-SemanticContextBrand requireContext(SemanticContextFactory& factory) {
-  auto issued = factory.issue();
-  ZC_IF_SOME(context, issued) { return context; }
-  ZC_FAIL_REQUIRE("semantic context brand space exhausted during fingerprint test");
-}
-
-SemanticIdentityRegistrySet requireRegistrySet(SemanticContextFactory& factory,
-                                               SemanticContextBrand context) {
-  auto created = SemanticIdentityRegistrySet::create(factory, context);
-  ZC_IF_SOME(registries, created) { return zc::mv(registries); }
-  ZC_FAIL_REQUIRE("semantic context registry set was already claimed during fingerprint test");
-}
-
 CanonicalTargetSpecificationKey targetSpec() {
   auto value = CanonicalTargetSpecificationKey::from(
       requireScalar<TargetComponentName>("x"_zc), requireScalar<TargetComponentName>("v"_zc),
@@ -342,36 +329,6 @@ ZC_TEST("Semantic context fingerprint changes with core distribution and policy 
   auto mutatedPolicyToolchain = coreContextInput(0x21, 0x32).toolchain().encode();
   ZC_EXPECT(stableToolchain.asPtr() == mutatedDistributionToolchain.asPtr());
   ZC_EXPECT(stableToolchain.asPtr() == mutatedPolicyToolchain.asPtr());
-}
-
-ZC_TEST("Semantic context fingerprint consumes only frozen context registries") {
-  SemanticContextFactory factory;
-  auto registries = requireRegistrySet(factory, requireContext(factory));
-  zc::Vector<ToolchainSemanticContextInput> toolchainInputs;
-  zc::Vector<PackageDependencyEdgeKey> packageEdges;
-  packageEdges.add(packageEdge());
-  zc::Vector<CrateDependencyEdgeKey> crateEdges;
-  ZC_EXPECT(SemanticContextFingerprint::compute(registries, toolchainInputs.asPtr(),
-                                                packageEdges.asPtr(),
-                                                crateEdges.asPtr()) == zc::none);
-
-  ZC_EXPECT(registries.collectCompilationUnit(userCompilationUnit("b"_zc)) ==
-            FrozenRegistryFailure::None);
-  ZC_EXPECT(registries.collectCompilationUnit(userCompilationUnit("a"_zc)) ==
-            FrozenRegistryFailure::None);
-  ZC_EXPECT(registries.freezeCompilationUnits() == FrozenRegistryFailure::None);
-  ZC_EXPECT(registries.freezeCrates() == FrozenRegistryFailure::None);
-  ZC_EXPECT(registries.freezeSourceFiles() == FrozenRegistryFailure::None);
-  ZC_EXPECT(registries.freezeModules() == FrozenRegistryFailure::None);
-  auto result = SemanticContextFingerprint::compute(registries, toolchainInputs.asPtr(),
-                                                    packageEdges.asPtr(), crateEdges.asPtr());
-
-  zc::Vector<CompilationUnitIdentity> compilationUnits;
-  compilationUnits.add(userCompilationUnit("a"_zc));
-  compilationUnits.add(userCompilationUnit("b"_zc));
-  zc::Vector<ToolchainSemanticContextInput> directToolchainInputs;
-  auto direct = fingerprint(compilationUnits, directToolchainInputs, packageEdges);
-  ZC_EXPECT(sameFingerprint(result, direct));
 }
 
 }  // namespace zomlang::compiler::identity

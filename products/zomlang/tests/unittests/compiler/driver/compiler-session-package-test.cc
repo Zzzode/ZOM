@@ -15,6 +15,7 @@
 #include "zc/core/time.h"
 #include "zc/ztest/test.h"
 #include "zomlang/compiler/checker/body-checker.h"
+#include "zomlang/compiler/checker/checker-identity-authority.h"
 #include "zomlang/compiler/diagnostics/diagnostic-consumer.h"
 #include "zomlang/compiler/diagnostics/diagnostic-engine.h"
 #include "zomlang/compiler/driver/coherence-builder.h"
@@ -250,6 +251,72 @@ package::DigestVerifiedSourceSnapshot moduleSnapshot() {
       ->writeAll("import app::child;\nlet main = 0;"_zc);
   sourceDirectory->openFile(zc::Path({"src"_zc, "child.zom"_zc}), zc::WriteMode::CREATE)
       ->writeAll("module child;\nlet value = 1;"_zc);
+  MemoryFreshDirectoryFactory factory;
+  package::SourceDirectoryMaterializer materializer;
+  auto result = materializer.materialize(*sourceDirectory, factory);
+  ZC_REQUIRE(result.is<package::DigestVerifiedSourceSnapshot>());
+  return zc::mv(result.get<package::DigestVerifiedSourceSnapshot>());
+}
+
+package::DigestVerifiedSourceSnapshot definitionImportSnapshot() {
+  auto sourceDirectory = zc::newInMemoryDirectory(zc::nullClock());
+  sourceDirectory
+      ->openFile(zc::Path({"src"_zc, "main.zom"_zc}),
+                 zc::WriteMode::CREATE | zc::WriteMode::CREATE_PARENT)
+      ->writeAll("import app::child::{Item, Companion};\nlet main = 0;"_zc);
+  sourceDirectory->openFile(zc::Path({"src"_zc, "child.zom"_zc}), zc::WriteMode::CREATE)
+      ->writeAll("module child;\nexport class Item {}\nexport class Companion {}"_zc);
+  MemoryFreshDirectoryFactory factory;
+  package::SourceDirectoryMaterializer materializer;
+  auto result = materializer.materialize(*sourceDirectory, factory);
+  ZC_REQUIRE(result.is<package::DigestVerifiedSourceSnapshot>());
+  return zc::mv(result.get<package::DigestVerifiedSourceSnapshot>());
+}
+
+package::DigestVerifiedSourceSnapshot importedBehaviorImplementationSnapshot() {
+  auto sourceDirectory = zc::newInMemoryDirectory(zc::nullClock());
+  sourceDirectory
+      ->openFile(zc::Path({"src"_zc, "main.zom"_zc}),
+                 zc::WriteMode::CREATE | zc::WriteMode::CREATE_PARENT)
+      ->writeAll("import app::child::{Behavior};\nimpl Behavior for i32 { fun act() {} }"_zc);
+  sourceDirectory->openFile(zc::Path({"src"_zc, "child.zom"_zc}), zc::WriteMode::CREATE)
+      ->writeAll("module child;\nexport interface Behavior { fun act(); }"_zc);
+  MemoryFreshDirectoryFactory factory;
+  package::SourceDirectoryMaterializer materializer;
+  auto result = materializer.materialize(*sourceDirectory, factory);
+  ZC_REQUIRE(result.is<package::DigestVerifiedSourceSnapshot>());
+  return zc::mv(result.get<package::DigestVerifiedSourceSnapshot>());
+}
+
+package::DigestVerifiedSourceSnapshot moduleAliasSnapshot() {
+  auto sourceDirectory = zc::newInMemoryDirectory(zc::nullClock());
+  sourceDirectory
+      ->openFile(zc::Path({"src"_zc, "main.zom"_zc}),
+                 zc::WriteMode::CREATE | zc::WriteMode::CREATE_PARENT)
+      ->writeAll("import app::geometry;\nlet main = 0;"_zc);
+  sourceDirectory->openFile(zc::Path({"src"_zc, "geometry.zom"_zc}), zc::WriteMode::CREATE)
+      ->writeAll("module geometry = app::child;"_zc);
+  sourceDirectory->openFile(zc::Path({"src"_zc, "child.zom"_zc}), zc::WriteMode::CREATE)
+      ->writeAll("module child;\nexport class Point {}"_zc);
+  MemoryFreshDirectoryFactory factory;
+  package::SourceDirectoryMaterializer materializer;
+  auto result = materializer.materialize(*sourceDirectory, factory);
+  ZC_REQUIRE(result.is<package::DigestVerifiedSourceSnapshot>());
+  return zc::mv(result.get<package::DigestVerifiedSourceSnapshot>());
+}
+
+package::DigestVerifiedSourceSnapshot coherenceFailureModuleSnapshot() {
+  auto sourceDirectory = zc::newInMemoryDirectory(zc::nullClock());
+  sourceDirectory
+      ->openFile(zc::Path({"src"_zc, "main.zom"_zc}),
+                 zc::WriteMode::CREATE | zc::WriteMode::CREATE_PARENT)
+      ->writeAll(
+          "import app::child::{Behavior};\nimport app::peer;\nimpl Behavior for i32 { fun act() {} }"_zc);
+  sourceDirectory->openFile(zc::Path({"src"_zc, "child.zom"_zc}), zc::WriteMode::CREATE)
+      ->writeAll("module child;\nexport interface Behavior { fun act(); }"_zc);
+  sourceDirectory->openFile(zc::Path({"src"_zc, "peer.zom"_zc}), zc::WriteMode::CREATE)
+      ->writeAll(
+          "module peer;\nimport app::child::{Behavior};\nimpl Behavior for i32 { fun act() {} }"_zc);
   MemoryFreshDirectoryFactory factory;
   package::SourceDirectoryMaterializer materializer;
   auto result = materializer.materialize(*sourceDirectory, factory);
@@ -589,6 +656,27 @@ zc::Vector<package::ResolvedPackageSourceSnapshot> moduleSnapshots() {
   return snapshots;
 }
 
+zc::Vector<package::ResolvedPackageSourceSnapshot> importedBehaviorImplementationSnapshots() {
+  zc::Vector<package::ResolvedPackageSourceSnapshot> snapshots;
+  snapshots.add(package::ResolvedPackageSourceSnapshot::from(
+      packageBase("app"_zc), importedBehaviorImplementationSnapshot()));
+  return snapshots;
+}
+
+zc::Vector<package::ResolvedPackageSourceSnapshot> moduleAliasSnapshots() {
+  zc::Vector<package::ResolvedPackageSourceSnapshot> snapshots;
+  snapshots.add(
+      package::ResolvedPackageSourceSnapshot::from(packageBase("app"_zc), moduleAliasSnapshot()));
+  return snapshots;
+}
+
+zc::Vector<package::ResolvedPackageSourceSnapshot> coherenceFailureModuleSnapshots() {
+  zc::Vector<package::ResolvedPackageSourceSnapshot> snapshots;
+  snapshots.add(package::ResolvedPackageSourceSnapshot::from(packageBase("app"_zc),
+                                                             coherenceFailureModuleSnapshot()));
+  return snapshots;
+}
+
 zc::Vector<package::ResolvedPackageSourceSnapshot> atomicCheckerFailureModuleSnapshots() {
   zc::Vector<package::ResolvedPackageSourceSnapshot> snapshots;
   snapshots.add(package::ResolvedPackageSourceSnapshot::from(packageBase("app"_zc),
@@ -769,123 +857,107 @@ bool isToolchainCore(const identity::CrateKey& crate) {
 }
 
 size_t userParsedModuleCount(const CompilerSession& session) {
+  auto parsedModules = session.materializeParsedModules();
+  if (parsedModules == zc::none) { ZC_FAIL_REQUIRE("missing sealed parser results"); }
   size_t count = 0;
-  for (const auto& parsed : session.getParsedModules()) {
+  for (const auto& parsed : ZC_ASSERT_NONNULL(parsedModules)) {
     if (!isToolchainCore(parsed.parsedModule().source().crate())) { ++count; }
   }
   return count;
 }
 
 size_t coreParsedModuleCount(const CompilerSession& session) {
-  return session.getParsedModules().size() - userParsedModuleCount(session);
+  auto parsedModules = session.materializeParsedModules();
+  if (parsedModules == zc::none) { ZC_FAIL_REQUIRE("missing sealed parser results"); }
+  return ZC_ASSERT_NONNULL(parsedModules).size() - userParsedModuleCount(session);
 }
 
-size_t userGraphModuleCount(const binder::VerifiedModuleGraph& graph) {
+const module_graph_query::MaterializedModuleEntry& materializedModule(
+    const module_graph_query::MaterializedModuleGraph& graph, identity::ModuleId handle) {
+  for (const auto& module : graph.modules()) {
+    if (module.handle() == handle) { return module; }
+  }
+  ZC_FAIL_REQUIRE("missing materialized module handle");
+}
+
+size_t userGraphModuleCount(const module_graph_query::MaterializedModuleGraph& graph) {
   size_t count = 0;
   for (const auto& module : graph.modules()) {
-    if (!isToolchainCore(module.crate())) { ++count; }
+    if (!isToolchainCore(module.key().crate())) { ++count; }
   }
   return count;
 }
 
-size_t coreGraphModuleCount(const binder::VerifiedModuleGraph& graph) {
+size_t coreGraphModuleCount(const module_graph_query::MaterializedModuleGraph& graph) {
   return graph.modules().size() - userGraphModuleCount(graph);
 }
 
-size_t userGraphEdgeCount(const binder::VerifiedModuleGraph& graph,
-                          const identity::SemanticIdentityRegistrySet& registries,
+size_t userGraphCrateCount(const module_graph_query::MaterializedModuleGraph& graph) {
+  size_t count = 0;
+  for (const auto& crate : graph.crates()) {
+    if (!isToolchainCore(crate.key())) { ++count; }
+  }
+  return count;
+}
+
+size_t coreGraphCrateCount(const module_graph_query::MaterializedModuleGraph& graph) {
+  return graph.crates().size() - userGraphCrateCount(graph);
+}
+
+size_t userGraphSourceCount(const module_graph_query::MaterializedModuleGraph& graph) {
+  size_t count = 0;
+  for (const auto& source : graph.sources()) {
+    if (!isToolchainCore(source.key().crate())) { ++count; }
+  }
+  return count;
+}
+
+size_t coreGraphSourceCount(const module_graph_query::MaterializedModuleGraph& graph) {
+  return graph.sources().size() - userGraphSourceCount(graph);
+}
+
+size_t userGraphEdgeCount(const module_graph_query::MaterializedModuleGraph& graph,
                           zc::Maybe<identity::ModuleDependencyKind> kind = zc::none) {
   size_t count = 0;
-  for (const auto& edge : graph.edges()) {
-    auto requester = registries.modules().lookup(edge.request().requester());
-    if (requester == zc::none || isToolchainCore(ZC_REQUIRE_NONNULL(requester).crate())) {
-      continue;
-    }
+  for (const auto& edge : graph.requestEdges()) {
+    if (isToolchainCore(materializedModule(graph, edge.requester()).key().crate())) { continue; }
     ZC_IF_SOME(expected, kind) {
-      if (edge.request().kind() != expected) { continue; }
+      if (edge.request().dependencyKind() != expected) { continue; }
     }
     ++count;
   }
   return count;
 }
 
-size_t coreGraphEdgeCount(const binder::VerifiedModuleGraph& graph,
-                          const identity::SemanticIdentityRegistrySet& registries) {
+size_t coreGraphEdgeCount(const module_graph_query::MaterializedModuleGraph& graph) {
   size_t count = 0;
-  for (const auto& edge : graph.edges()) {
-    auto requester = registries.modules().lookup(edge.request().requester());
-    if (requester != zc::none && isToolchainCore(ZC_REQUIRE_NONNULL(requester).crate())) {
-      ++count;
-    }
+  for (const auto& edge : graph.requestEdges()) {
+    if (isToolchainCore(materializedModule(graph, edge.requester()).key().crate())) { ++count; }
   }
   return count;
 }
 
-size_t userSourceCount(const identity::SemanticIdentityRegistrySet& registries) {
+size_t userBoundModuleCount(const checker::CheckerIdentityAuthority& authority) {
   size_t count = 0;
-  for (size_t index = 0; index < registries.sourceFiles().size(); ++index) {
-    auto source = registries.sourceFiles().keyAt(index);
-    ZC_REQUIRE(source != zc::none);
-    if (!isToolchainCore(ZC_REQUIRE_NONNULL(source).crate())) { ++count; }
-  }
-  return count;
-}
-
-size_t coreSourceCount(const identity::SemanticIdentityRegistrySet& registries) {
-  return registries.sourceFiles().size() - userSourceCount(registries);
-}
-
-size_t userModuleCount(const identity::SemanticIdentityRegistrySet& registries) {
-  size_t count = 0;
-  for (size_t index = 0; index < registries.modules().size(); ++index) {
-    auto module = registries.modules().keyAt(index);
-    ZC_REQUIRE(module != zc::none);
-    if (!isToolchainCore(ZC_REQUIRE_NONNULL(module).crate())) { ++count; }
-  }
-  return count;
-}
-
-size_t coreModuleCount(const identity::SemanticIdentityRegistrySet& registries) {
-  return registries.modules().size() - userModuleCount(registries);
-}
-
-size_t userDefinitionCount(const identity::SemanticIdentityRegistrySet& registries) {
-  size_t count = 0;
-  for (size_t index = 0; index < registries.definitions().size(); ++index) {
-    auto record = registries.definitions().recordAt(index);
-    ZC_REQUIRE(record != zc::none);
-    if (!isToolchainCore(ZC_REQUIRE_NONNULL(record).module().crate())) { ++count; }
-  }
-  return count;
-}
-
-size_t coreDefinitionCount(const identity::SemanticIdentityRegistrySet& registries) {
-  return registries.definitions().size() - userDefinitionCount(registries);
-}
-
-size_t userBoundModuleCount(const CompilerSession& session,
-                            const identity::SemanticIdentityRegistrySet& registries) {
-  size_t count = 0;
-  for (const auto& bound : session.getVerifiedBoundModules()) {
-    auto crate = registries.crates().lookup(bound.crate());
+  for (const auto& bound : authority.modules()) {
+    auto crate = authority.crate(bound.crate());
     ZC_REQUIRE(crate != zc::none);
-    if (!isToolchainCore(ZC_REQUIRE_NONNULL(crate))) { ++count; }
+    if (!isToolchainCore(ZC_REQUIRE_NONNULL(crate).key())) { ++count; }
   }
   return count;
 }
 
-size_t coreBoundModuleCount(const CompilerSession& session,
-                            const identity::SemanticIdentityRegistrySet& registries) {
-  return session.getVerifiedBoundModules().size() - userBoundModuleCount(session, registries);
+size_t coreBoundModuleCount(const checker::CheckerIdentityAuthority& authority) {
+  return authority.modules().size() - userBoundModuleCount(authority);
 }
 
-const binder::VerifiedBoundModuleInput& soleUserBoundModule(
-    const CompilerSession& session, const identity::SemanticIdentityRegistrySet& registries) {
-  zc::Maybe<const binder::VerifiedBoundModuleInput&> selected;
-  for (const auto& bound : session.getVerifiedBoundModules()) {
-    auto crate = registries.crates().lookup(bound.crate());
+const module_graph_query::CheckerBoundModuleView& soleUserBoundModule(
+    const checker::CheckerIdentityAuthority& authority) {
+  zc::Maybe<const module_graph_query::CheckerBoundModuleView&> selected;
+  for (const auto& bound : authority.modules()) {
+    auto crate = authority.crate(bound.crate());
     ZC_REQUIRE(crate != zc::none);
-    if (isToolchainCore(ZC_REQUIRE_NONNULL(crate))) { continue; }
+    if (isToolchainCore(ZC_REQUIRE_NONNULL(crate).key())) { continue; }
     ZC_REQUIRE(selected == zc::none);
     selected = bound;
   }
@@ -893,32 +965,41 @@ const binder::VerifiedBoundModuleInput& soleUserBoundModule(
   ZC_FAIL_REQUIRE("expected exactly one user-package bound module");
 }
 
-size_t userCompilationUnitCount(const identity::SemanticIdentityRegistrySet& registries) {
-  size_t count = 0;
-  for (size_t index = 0; index < registries.compilationUnits().size(); ++index) {
-    auto unit = registries.compilationUnits().keyAt(index);
-    ZC_REQUIRE(unit != zc::none);
-    if (ZC_REQUIRE_NONNULL(unit).kind() == identity::CompilationUnitKind::UserPackage) { ++count; }
+const module_graph_query::CheckerBoundModuleView& checkerBoundModule(
+    const checker::CheckerIdentityAuthority& authority, identity::ModuleId module) {
+  auto view = authority.boundModule(module);
+  ZC_REQUIRE(view != zc::none);
+  return ZC_REQUIRE_NONNULL(view);
+}
+
+checker::CheckerIdentityAuthority checkerIdentityAuthority(const CompilerSession& session) {
+  auto authority = session.materializeCheckerIdentityAuthority();
+  ZC_REQUIRE(authority != zc::none);
+  return zc::mv(ZC_REQUIRE_NONNULL(authority));
+}
+
+zc::Vector<size_t> dependencyOrderedBoundModuleIndices(
+    const checker::CheckerIdentityAuthority& authority) {
+  const auto boundModules = authority.modules();
+  const auto& materializedGraph = authority.graphLease().capability();
+  zc::Vector<size_t> indices(boundModules.size());
+  for (const auto& component : materializedGraph.witness().scc().components()) {
+    ZC_REQUIRE(component.modules().size() == 1);
+    zc::Maybe<size_t> selected;
+    for (size_t index = 0; index < materializedGraph.modules().size(); ++index) {
+      if (materializedGraph.modules()[index].key().encode().asPtr() !=
+          component.modules()[0].encode().asPtr()) {
+        continue;
+      }
+      ZC_REQUIRE(selected == zc::none);
+      selected = index;
+    }
+    ZC_REQUIRE(selected != zc::none);
+    ZC_REQUIRE(ZC_REQUIRE_NONNULL(selected) < boundModules.size());
+    indices.add(ZC_REQUIRE_NONNULL(selected));
   }
-  return count;
-}
-
-size_t coreCompilationUnitCount(const identity::SemanticIdentityRegistrySet& registries) {
-  return registries.compilationUnits().size() - userCompilationUnitCount(registries);
-}
-
-size_t userCrateCount(const identity::SemanticIdentityRegistrySet& registries) {
-  size_t count = 0;
-  for (size_t index = 0; index < registries.crates().size(); ++index) {
-    auto crate = registries.crates().keyAt(index);
-    ZC_REQUIRE(crate != zc::none);
-    if (!isToolchainCore(ZC_REQUIRE_NONNULL(crate))) { ++count; }
-  }
-  return count;
-}
-
-size_t coreCrateCount(const identity::SemanticIdentityRegistrySet& registries) {
-  return registries.crates().size() - userCrateCount(registries);
+  ZC_REQUIRE(indices.size() == boundModules.size());
+  return indices;
 }
 
 zc::Own<CompilerSession> preparedSession(const basic::LangOptions& languageOptions,
@@ -974,11 +1055,6 @@ ZC_TEST("CompilerSession installs one atomic package input exactly once") {
       packageInput(session.getPackageResolutionMemoryResource(), registry)));
   ZC_EXPECT(!session.installVerifiedPackageInput(
       packageInput(session.getPackageResolutionMemoryResource(), registry)));
-  ZC_REQUIRE(session.getIdentityRegistries() != zc::none);
-  ZC_IF_SOME(registries, session.getIdentityRegistries()) {
-    ZC_EXPECT(!registries.compilationUnits().isFrozen());
-    ZC_EXPECT(registries.compilationUnits().size() == 0);
-  }
 }
 
 ZC_TEST("CompilerSession rejects a moved-from atomic package input") {
@@ -1004,12 +1080,6 @@ ZC_TEST("CompilerSession executes and freezes one exact build-plan result map") 
   auto session = preparedSession(languageOptions, compilerOptions, true);
   ZC_REQUIRE(session->getFinalizedCompilationRoots().size() == 1);
   const auto beforeExecutionKey = session->getFinalizedCompilationRoots()[0].crateKey().encode();
-  ZC_REQUIRE(session->getIdentityRegistries() != zc::none);
-  ZC_IF_SOME(registries, session->getIdentityRegistries()) {
-    ZC_EXPECT(!registries.compilationUnits().isFrozen());
-    ZC_EXPECT(registries.compilationUnits().size() == 0);
-    ZC_EXPECT(registries.crates().size() == 0);
-  }
   RecordingPlanExecutor executor;
   ZC_EXPECT(session->executeBuildScripts(executor) == zc::none);
   ZC_REQUIRE(session->getFinalizedCompilationRoots().size() == 1);
@@ -1189,37 +1259,24 @@ ZC_TEST("CompilerSession freezes canonical crate and source identities before pa
     ZC_EXPECT(session->getSourceManager().getEntireTextForBuffer(buffer) == "let main = 0;"_zcb);
   }
   ZC_EXPECT(session->parseSources());
-  ZC_REQUIRE(session->getCoreModuleGraphs().size() == 1);
-  ZC_EXPECT(session->getCoreModuleGraphs()[0].modules().size() == 3);
-  ZC_EXPECT(session->getCoreModuleGraphs()[0].edges().size() == 1);
   ZC_REQUIRE(userParsedModuleCount(*session) == 1);
   ZC_REQUIRE(coreParsedModuleCount(*session) == 3);
-  ZC_EXPECT(session->getParsedModules()[0].parsedModule().receipt().digest().bytes().size() == 32);
-  ZC_REQUIRE(session->getVerifiedModuleGraph() != zc::none);
-  ZC_IF_SOME(graph, session->getVerifiedModuleGraph()) {
-    ZC_EXPECT(userGraphModuleCount(graph) == 1);
-    ZC_EXPECT(coreGraphModuleCount(graph) == 3);
-    ZC_EXPECT(graph.revision().digest().bytes().size() == 32);
-  }
+  auto parsedModules = session->materializeParsedModules();
+  ZC_REQUIRE(parsedModules != zc::none);
+  ZC_EXPECT(ZC_ASSERT_NONNULL(parsedModules)[0].parsedModule().receipt().digest().bytes().size() ==
+            32);
+  auto graphLease = session->materializeModuleGraph();
+  ZC_REQUIRE(graphLease != zc::none);
+  const auto& graph = ZC_REQUIRE_NONNULL(graphLease).capability();
+  ZC_EXPECT(userGraphModuleCount(graph) == 1);
+  ZC_EXPECT(coreGraphModuleCount(graph) == 3);
+  ZC_EXPECT(coreGraphEdgeCount(graph) == 1);
+  ZC_EXPECT(graph.revision().value() != 0);
 
-  ZC_REQUIRE(session->getIdentityRegistries() != zc::none);
-  ZC_IF_SOME(registries, session->getIdentityRegistries()) {
-    ZC_EXPECT(registries.crates().isFrozen());
-    ZC_EXPECT(userCrateCount(registries) == 1);
-    ZC_EXPECT(coreCrateCount(registries) == 1);
-    ZC_EXPECT(registries.sourceFiles().isFrozen());
-    ZC_EXPECT(userSourceCount(registries) == 1);
-    ZC_EXPECT(coreSourceCount(registries) == 3);
-    ZC_EXPECT(registries.sourceSnapshots().size() == 4);
-    ZC_EXPECT(registries.modules().isFrozen());
-    ZC_EXPECT(userModuleCount(registries) == 1);
-    ZC_EXPECT(coreModuleCount(registries) == 3);
-    ZC_EXPECT(registries.definitions().isFrozen());
-    ZC_EXPECT(userDefinitionCount(registries) == 1);
-    ZC_EXPECT(coreDefinitionCount(registries) == 2);
-    ZC_EXPECT(registries.impls().isFrozen());
-    ZC_EXPECT(registries.impls().size() == 0);
-  }
+  ZC_EXPECT(userGraphCrateCount(graph) == 1);
+  ZC_EXPECT(coreGraphCrateCount(graph) == 1);
+  ZC_EXPECT(userGraphSourceCount(graph) == 1);
+  ZC_EXPECT(coreGraphSourceCount(graph) == 3);
 }
 
 ZC_TEST("CompilerSession admits contextual callable names into the frozen binding inventory") {
@@ -1259,16 +1316,28 @@ ZC_TEST("CompilerSession admits contextual callable names into the frozen bindin
   ZC_REQUIRE(session.addVerifiedPackageRoot(roots[0]) != zc::none);
   ZC_REQUIRE(session.parseSources());
   ZC_EXPECT(!session.getDiagnosticEngine().hasErrors());
-  ZC_REQUIRE(session.getIdentityRegistries() != zc::none);
-  ZC_IF_SOME(registries, session.getIdentityRegistries()) {
-    ZC_EXPECT(registries.definitions().isFrozen());
-    ZC_EXPECT(userDefinitionCount(registries) == 15);
-    ZC_EXPECT(coreDefinitionCount(registries) == 2);
-    ZC_EXPECT(registries.genericParameters().isFrozen());
-    ZC_EXPECT(registries.genericParameters().size() == 2);
-    ZC_EXPECT(registries.callableParameters().isFrozen());
-    ZC_EXPECT(registries.callableParameters().size() == 10);
+  ZC_REQUIRE(session.bindSources());
+  auto authority = checkerIdentityAuthority(session);
+  size_t userDefinitions = 0;
+  size_t coreDefinitions = 0;
+  size_t genericParameters = 0;
+  size_t callableParameters = 0;
+  for (const auto& bound : authority.modules()) {
+    auto crate = authority.crate(bound.crate());
+    ZC_REQUIRE(crate != zc::none);
+    const auto& inventory = bound.definitions();
+    if (isToolchainCore(ZC_REQUIRE_NONNULL(crate).key())) {
+      coreDefinitions += inventory.definitions().size();
+      continue;
+    }
+    userDefinitions += inventory.definitions().size();
+    genericParameters += inventory.genericParameters().size();
+    callableParameters += inventory.callableParameters().size();
   }
+  ZC_EXPECT(userDefinitions == 15);
+  ZC_EXPECT(coreDefinitions == 2);
+  ZC_EXPECT(genericParameters == 2);
+  ZC_EXPECT(callableParameters == 10);
 }
 
 ZC_TEST("CompilerSession discovers imported module sources before source identity freeze") {
@@ -1290,23 +1359,100 @@ ZC_TEST("CompilerSession discovers imported module sources before source identit
   ZC_REQUIRE(session.parseSources());
   ZC_EXPECT(userParsedModuleCount(session) == 2);
   ZC_EXPECT(coreParsedModuleCount(session) == 3);
-  ZC_REQUIRE(session.getIdentityRegistries() != zc::none);
-  ZC_IF_SOME(registries, session.getIdentityRegistries()) {
-    ZC_EXPECT(userSourceCount(registries) == 2);
-    ZC_EXPECT(coreSourceCount(registries) == 3);
-    ZC_EXPECT(userModuleCount(registries) == 2);
-    ZC_EXPECT(coreModuleCount(registries) == 3);
+  auto graphLease = session.materializeModuleGraph();
+  ZC_REQUIRE(graphLease != zc::none);
+  const auto& graph = ZC_REQUIRE_NONNULL(graphLease).capability();
+  ZC_EXPECT(userGraphModuleCount(graph) == 2);
+  ZC_EXPECT(coreGraphModuleCount(graph) == 3);
+  ZC_EXPECT(userGraphSourceCount(graph) == 2);
+  ZC_EXPECT(coreGraphSourceCount(graph) == 3);
+  ZC_EXPECT(userGraphEdgeCount(graph) == 3);
+  ZC_EXPECT(userGraphEdgeCount(graph, identity::ModuleDependencyKind::Import) == 1);
+  ZC_EXPECT(coreGraphEdgeCount(graph) == 1);
+}
+
+ZC_TEST("CompilerSession materializes imported behavior implementations before checking") {
+  basic::LangOptions languageOptions;
+  basic::CompilerOptions compilerOptions;
+  identity::SemanticContextFactory contextFactory;
+  CompilerSession session(contextFactory, languageOptions, compilerOptions);
+  auto registry = targetRegistry();
+  auto input = VerifiedPackageSessionInput::from(
+      request(registry), verifiedSelection(registry), verifiedSelection(registry),
+      resolution(session.getPackageResolutionMemoryResource(), "app"_zc),
+      importedBehaviorImplementationSnapshots());
+  ZC_REQUIRE(input != zc::none);
+  ZC_IF_SOME(value, input) { ZC_REQUIRE(session.installVerifiedPackageInput(zc::mv(value))); }
+  installCore(session);
+
+  const auto roots = session.getFinalizedCompilationRoots();
+  ZC_REQUIRE(roots.size() == 1);
+  ZC_REQUIRE(session.addVerifiedPackageRoot(roots[0]) != zc::none);
+  ZC_REQUIRE(session.parseSources());
+  ZC_REQUIRE(session.bindSources());
+  ZC_EXPECT(!session.getDiagnosticEngine().hasErrors());
+  auto authority = checkerIdentityAuthority(session);
+  ZC_EXPECT(userBoundModuleCount(authority) == 2);
+}
+
+ZC_TEST("CompilerSession projects module aliases through retained dependency surfaces") {
+  basic::LangOptions languageOptions;
+  basic::CompilerOptions compilerOptions;
+  identity::SemanticContextFactory contextFactory;
+  CompilerSession session(contextFactory, languageOptions, compilerOptions);
+  auto registry = targetRegistry();
+  auto input = VerifiedPackageSessionInput::from(
+      request(registry), verifiedSelection(registry), verifiedSelection(registry),
+      resolution(session.getPackageResolutionMemoryResource(), "app"_zc), moduleAliasSnapshots());
+  ZC_REQUIRE(input != zc::none);
+  ZC_IF_SOME(value, input) { ZC_REQUIRE(session.installVerifiedPackageInput(zc::mv(value))); }
+  installCore(session);
+
+  const auto roots = session.getFinalizedCompilationRoots();
+  ZC_REQUIRE(roots.size() == 1);
+  ZC_REQUIRE(session.addVerifiedPackageRoot(roots[0]) != zc::none);
+  ZC_REQUIRE(session.parseSources());
+  ZC_REQUIRE(session.bindSources());
+  ZC_REQUIRE(session.checkSources());
+  ZC_EXPECT(!session.getDiagnosticEngine().hasErrors());
+  auto authority = checkerIdentityAuthority(session);
+  ZC_EXPECT(userBoundModuleCount(authority) == 3);
+}
+
+ZC_TEST("CompilerSession projects cross-module coherence failures") {
+  basic::LangOptions languageOptions;
+  basic::CompilerOptions compilerOptions;
+  identity::SemanticContextFactory contextFactory;
+  CompilerSession session(contextFactory, languageOptions, compilerOptions);
+  CapturedDiagnostics captured;
+  session.getDiagnosticEngine().addConsumer(zc::heap<CaptureDiagnosticConsumer>(captured));
+  auto registry = targetRegistry();
+  auto input = VerifiedPackageSessionInput::from(
+      request(registry), verifiedSelection(registry), verifiedSelection(registry),
+      resolution(session.getPackageResolutionMemoryResource(), "app"_zc),
+      coherenceFailureModuleSnapshots());
+  ZC_REQUIRE(input != zc::none);
+  ZC_IF_SOME(value, input) { ZC_REQUIRE(session.installVerifiedPackageInput(zc::mv(value))); }
+  installCore(session);
+
+  const auto roots = session.getFinalizedCompilationRoots();
+  ZC_REQUIRE(roots.size() == 1);
+  ZC_REQUIRE(session.addVerifiedPackageRoot(roots[0]) != zc::none);
+  ZC_REQUIRE(session.parseSources());
+  ZC_REQUIRE(session.bindSources());
+  ZC_EXPECT(!session.checkSources());
+  ZC_EXPECT(session.getDiagnosticEngine().hasErrors());
+  ZC_EXPECT(session.getCheckerInvariantFailures().size() == 0);
+  size_t orphanFailures = 0;
+  size_t conflictingFailures = 0;
+  for (const auto diagnostic : captured.ids) {
+    if (diagnostic == diagnostics::DiagID::OrphanImpl) { ++orphanFailures; }
+    if (diagnostic == diagnostics::DiagID::ConflictingImpl) { ++conflictingFailures; }
   }
-  ZC_REQUIRE(session.getVerifiedModuleGraph() != zc::none);
-  ZC_IF_SOME(graph, session.getVerifiedModuleGraph()) {
-    ZC_EXPECT(userGraphModuleCount(graph) == 2);
-    ZC_EXPECT(coreGraphModuleCount(graph) == 3);
-    ZC_IF_SOME(registries, session.getIdentityRegistries()) {
-      ZC_EXPECT(userGraphEdgeCount(graph, registries) == 3);
-      ZC_EXPECT(userGraphEdgeCount(graph, registries, identity::ModuleDependencyKind::Import) == 1);
-      ZC_EXPECT(coreGraphEdgeCount(graph, registries) == 1);
-    }
-  }
+  ZC_EXPECT(orphanFailures == 2);
+  ZC_EXPECT(conflictingFailures == 1);
+  ZC_EXPECT(session.getFrozenCoherenceView() == zc::none);
+  ZC_EXPECT(session.getCheckedEvidenceLeases().size() == 0);
 }
 
 ZC_TEST("CompilerSession discovers generated modules from frozen build-script outputs") {
@@ -1331,24 +1477,16 @@ ZC_TEST("CompilerSession discovers generated modules from frozen build-script ou
   ZC_REQUIRE(session.parseSources());
   ZC_EXPECT(userParsedModuleCount(session) == 2);
   ZC_EXPECT(coreParsedModuleCount(session) == 3);
-  ZC_REQUIRE(session.getIdentityRegistries() != zc::none);
-  ZC_IF_SOME(registries, session.getIdentityRegistries()) {
-    ZC_EXPECT(userSourceCount(registries) == 2);
-    ZC_EXPECT(coreSourceCount(registries) == 3);
-    ZC_EXPECT(registries.sourceSnapshots().size() == 5);
-    ZC_EXPECT(userModuleCount(registries) == 2);
-    ZC_EXPECT(coreModuleCount(registries) == 3);
-  }
-  ZC_REQUIRE(session.getVerifiedModuleGraph() != zc::none);
-  ZC_IF_SOME(graph, session.getVerifiedModuleGraph()) {
-    ZC_EXPECT(userGraphModuleCount(graph) == 2);
-    ZC_EXPECT(coreGraphModuleCount(graph) == 3);
-    ZC_IF_SOME(registries, session.getIdentityRegistries()) {
-      ZC_EXPECT(userGraphEdgeCount(graph, registries) == 3);
-      ZC_EXPECT(userGraphEdgeCount(graph, registries, identity::ModuleDependencyKind::Import) == 1);
-      ZC_EXPECT(coreGraphEdgeCount(graph, registries) == 1);
-    }
-  }
+  auto graphLease = session.materializeModuleGraph();
+  ZC_REQUIRE(graphLease != zc::none);
+  const auto& graph = ZC_REQUIRE_NONNULL(graphLease).capability();
+  ZC_EXPECT(userGraphModuleCount(graph) == 2);
+  ZC_EXPECT(coreGraphModuleCount(graph) == 3);
+  ZC_EXPECT(userGraphSourceCount(graph) == 2);
+  ZC_EXPECT(coreGraphSourceCount(graph) == 3);
+  ZC_EXPECT(userGraphEdgeCount(graph) == 3);
+  ZC_EXPECT(userGraphEdgeCount(graph, identity::ModuleDependencyKind::Import) == 1);
+  ZC_EXPECT(coreGraphEdgeCount(graph) == 1);
 }
 
 ZC_TEST("CompilerSession binds dependency modules before their requesters") {
@@ -1368,34 +1506,121 @@ ZC_TEST("CompilerSession binds dependency modules before their requesters") {
   ZC_REQUIRE(roots.size() == 1);
   ZC_REQUIRE(session.addVerifiedPackageRoot(roots[0]) != zc::none);
   ZC_REQUIRE(session.parseSources());
-  ZC_REQUIRE(session.getVerifiedModuleGraph() != zc::none);
-  ZC_IF_SOME(graph, session.getVerifiedModuleGraph()) {
-    zc::Maybe<const binder::VerifiedModuleDependencyEdge&> explicitDependency;
-    for (const auto& edge : graph.edges()) {
-      if (edge.request().kind() != identity::ModuleDependencyKind::Import) { continue; }
-      ZC_REQUIRE(explicitDependency == zc::none);
-      explicitDependency = edge;
-    }
-    ZC_REQUIRE(explicitDependency != zc::none);
-    ZC_REQUIRE(session.bindSources());
-    const auto bindings = session.getVerifiedBindingOutputs();
-    ZC_REQUIRE(bindings.size() == 5);
-    zc::Maybe<size_t> dependencyIndex;
-    zc::Maybe<size_t> requesterIndex;
-    for (size_t index = 0; index < bindings.size(); ++index) {
-      if (bindings[index].metadata.module() == ZC_REQUIRE_NONNULL(explicitDependency).target()) {
-        dependencyIndex = index;
-      }
-      if (bindings[index].metadata.module() ==
-          ZC_REQUIRE_NONNULL(explicitDependency).request().requester()) {
-        requesterIndex = index;
-      }
-      ZC_EXPECT(bindings[index].surface.sourceModule() == bindings[index].metadata.module());
-    }
-    ZC_REQUIRE(dependencyIndex != zc::none);
-    ZC_REQUIRE(requesterIndex != zc::none);
-    ZC_EXPECT(ZC_REQUIRE_NONNULL(dependencyIndex) < ZC_REQUIRE_NONNULL(requesterIndex));
+  auto graphLease = session.materializeModuleGraph();
+  ZC_REQUIRE(graphLease != zc::none);
+  const auto& graph = ZC_REQUIRE_NONNULL(graphLease).capability();
+  zc::Maybe<const module_graph_query::MaterializedModuleDependencyEdge&> explicitDependency;
+  for (const auto& edge : graph.requestEdges()) {
+    if (edge.request().dependencyKind() != identity::ModuleDependencyKind::Import) { continue; }
+    ZC_REQUIRE(explicitDependency == zc::none);
+    explicitDependency = edge;
   }
+  ZC_REQUIRE(explicitDependency != zc::none);
+  ZC_REQUIRE(session.bindSources());
+  auto authority = session.materializeCheckerIdentityAuthority();
+  ZC_REQUIRE(authority != zc::none);
+  const auto& retainedAuthority = ZC_REQUIRE_NONNULL(authority);
+  const auto bindings = retainedAuthority.modules();
+  ZC_REQUIRE(bindings.size() == 5);
+  for (const auto& binding : bindings) {
+    ZC_EXPECT(binding.bindingSurface().sourceModule() == binding.module());
+  }
+
+  auto dependency = retainedAuthority.module(ZC_REQUIRE_NONNULL(explicitDependency).dependency());
+  auto requester = retainedAuthority.module(ZC_REQUIRE_NONNULL(explicitDependency).requester());
+  ZC_REQUIRE(dependency != zc::none);
+  ZC_REQUIRE(requester != zc::none);
+
+  const auto& materializedGraph = retainedAuthority.graphLease().capability();
+  const auto& components = materializedGraph.witness().scc().components();
+  zc::Maybe<size_t> dependencyComponentIndex;
+  zc::Maybe<size_t> requesterComponentIndex;
+  for (size_t componentIndex = 0; componentIndex < components.size(); ++componentIndex) {
+    for (const auto& module : components[componentIndex].modules()) {
+      if (module.encode().asPtr() == ZC_REQUIRE_NONNULL(dependency).key().encode().asPtr()) {
+        ZC_REQUIRE(dependencyComponentIndex == zc::none);
+        dependencyComponentIndex = componentIndex;
+      }
+      if (module.encode().asPtr() == ZC_REQUIRE_NONNULL(requester).key().encode().asPtr()) {
+        ZC_REQUIRE(requesterComponentIndex == zc::none);
+        requesterComponentIndex = componentIndex;
+      }
+    }
+  }
+  ZC_REQUIRE(dependencyComponentIndex != zc::none);
+  ZC_REQUIRE(requesterComponentIndex != zc::none);
+  ZC_EXPECT(ZC_REQUIRE_NONNULL(dependencyComponentIndex) <
+            ZC_REQUIRE_NONNULL(requesterComponentIndex));
+}
+
+ZC_TEST("CompilerSession projects explicit imported module targets") {
+  basic::LangOptions languageOptions;
+  basic::CompilerOptions compilerOptions;
+  identity::SemanticContextFactory contextFactory;
+  CompilerSession session(contextFactory, languageOptions, compilerOptions);
+  auto registry = targetRegistry();
+  auto input = VerifiedPackageSessionInput::from(
+      request(registry), verifiedSelection(registry), verifiedSelection(registry),
+      resolution(session.getPackageResolutionMemoryResource(), "app"_zc), moduleSnapshots());
+  ZC_REQUIRE(input != zc::none);
+  ZC_IF_SOME(value, input) { ZC_REQUIRE(session.installVerifiedPackageInput(zc::mv(value))); }
+  installCore(session);
+
+  const auto roots = session.getFinalizedCompilationRoots();
+  ZC_REQUIRE(roots.size() == 1);
+  ZC_REQUIRE(session.addVerifiedPackageRoot(roots[0]) != zc::none);
+  ZC_REQUIRE(session.parseSources());
+  ZC_REQUIRE(session.bindSources());
+  ZC_REQUIRE(session.checkSources());
+
+  bool foundExplicitModuleTarget = false;
+  for (const auto& view : session.getImportedSignatureViews()) {
+    for (const auto& imported : view.modules()) {
+      if (imported.origin() != checker::cross_module::SignatureViewOrigin::ExplicitImport) {
+        continue;
+      }
+      ZC_REQUIRE(imported.moduleTargets().size() == 1);
+      foundExplicitModuleTarget = true;
+    }
+  }
+  ZC_EXPECT(foundExplicitModuleTarget);
+}
+
+ZC_TEST("CompilerSession projects explicit imported definition signatures") {
+  basic::LangOptions languageOptions;
+  basic::CompilerOptions compilerOptions;
+  identity::SemanticContextFactory contextFactory;
+  CompilerSession session(contextFactory, languageOptions, compilerOptions);
+  auto registry = targetRegistry();
+  zc::Vector<package::ResolvedPackageSourceSnapshot> snapshots;
+  snapshots.add(package::ResolvedPackageSourceSnapshot::from(packageBase("app"_zc),
+                                                             definitionImportSnapshot()));
+  auto input = VerifiedPackageSessionInput::from(
+      request(registry), verifiedSelection(registry), verifiedSelection(registry),
+      resolution(session.getPackageResolutionMemoryResource(), "app"_zc), zc::mv(snapshots));
+  ZC_REQUIRE(input != zc::none);
+  ZC_IF_SOME(value, input) { ZC_REQUIRE(session.installVerifiedPackageInput(zc::mv(value))); }
+  installCore(session);
+
+  const auto roots = session.getFinalizedCompilationRoots();
+  ZC_REQUIRE(roots.size() == 1);
+  ZC_REQUIRE(session.addVerifiedPackageRoot(roots[0]) != zc::none);
+  ZC_REQUIRE(session.parseSources());
+  ZC_REQUIRE(session.bindSources());
+  ZC_REQUIRE(session.checkSources());
+
+  bool foundExplicitDefinition = false;
+  for (const auto& view : session.getImportedSignatureViews()) {
+    for (const auto& imported : view.modules()) {
+      if (imported.origin() != checker::cross_module::SignatureViewOrigin::ExplicitImport ||
+          imported.authorizedRoots().size() == 0) {
+        continue;
+      }
+      ZC_EXPECT(imported.lookupDefinitions().size() == 2);
+      foundExplicitDefinition = true;
+    }
+  }
+  ZC_EXPECT(foundExplicitDefinition);
 }
 
 ZC_TEST("CompilerSession stages the complete source snapshot root with module topology") {
@@ -1415,22 +1640,13 @@ ZC_TEST("CompilerSession stages the complete source snapshot root with module to
   ZC_REQUIRE(roots.size() == 1);
   ZC_REQUIRE(session.addVerifiedPackageRoot(roots[0]) != zc::none);
   ZC_REQUIRE(session.parseSources());
-  ZC_REQUIRE(session.getIdentityRegistries() != zc::none);
-  ZC_IF_SOME(registries, session.getIdentityRegistries()) {
-    ZC_REQUIRE(registries.sourceSnapshots().size() == 5);
-    ZC_EXPECT(userSourceCount(registries) == 2);
-    ZC_EXPECT(coreSourceCount(registries) == 3);
-    for (const auto& snapshot : registries.sourceSnapshots()) {
-      auto recomputed = identity::sha256(snapshot.bytes());
-      ZC_REQUIRE(recomputed != zc::none);
-      ZC_EXPECT(ZC_REQUIRE_NONNULL(recomputed) == snapshot.contentDigest());
-    }
-  }
   ZC_REQUIRE(session.bindSources());
-  ZC_IF_SOME(registries, session.getIdentityRegistries()) {
-    ZC_EXPECT(userBoundModuleCount(session, registries) == 2);
-    ZC_EXPECT(coreBoundModuleCount(session, registries) == 3);
-  }
+  auto identities = checkerIdentityAuthority(session);
+  const auto& graph = identities.graphLease().capability();
+  ZC_REQUIRE(graph.sources().size() == 5);
+  ZC_EXPECT(userGraphSourceCount(graph) == 2);
+  ZC_EXPECT(coreGraphSourceCount(graph) == 3);
+  ZC_EXPECT(identities.modules().size() == graph.modules().size());
   ZC_EXPECT(!session.getDiagnosticEngine().hasErrors());
 }
 
@@ -1455,6 +1671,17 @@ ZC_TEST("CompilerSession publishes the complete canonical Checker rail for an em
   ZC_REQUIRE(session.bindSources());
   ZC_REQUIRE(session.checkSources());
   ZC_EXPECT(!session.getDiagnosticEngine().hasErrors());
+  auto identities = checkerIdentityAuthority(session);
+  const auto boundModules = identities.modules();
+  ZC_REQUIRE(identities.modules().size() == boundModules.size());
+  const auto& graphModules = identities.graphLease().capability().modules();
+  ZC_REQUIRE(identities.modules().size() == graphModules.size());
+  for (size_t index = 0; index < graphModules.size(); ++index) {
+    ZC_EXPECT(identities.modules()[index].module() == graphModules[index].handle());
+  }
+  for (const auto& boundModule : boundModules) {
+    ZC_EXPECT(identities.boundModule(boundModule.module()) != zc::none);
+  }
   ZC_EXPECT(session.getCheckerInvariantFailures().size() == 0);
   ZC_EXPECT(session.getVerifiedSignatureFacts().size() == 1);
   ZC_EXPECT(session.getImportedSignatureViews().size() == 1);
@@ -1493,6 +1720,75 @@ ZC_TEST("CompilerSession publishes the complete canonical Checker rail for an em
   ZC_EXPECT(session.getIrIdentityInvariantFailures().size() == 0);
 }
 
+ZC_TEST("Checker identity authority retains materialized modules after session teardown") {
+  zc::Maybe<checker::CheckerIdentityAuthority> retainedAuthority;
+  {
+    basic::LangOptions languageOptions;
+    basic::CompilerOptions compilerOptions;
+    identity::SemanticContextFactory contextFactory;
+    CompilerSession session(contextFactory, languageOptions, compilerOptions);
+    auto registry = targetRegistry();
+    auto input = VerifiedPackageSessionInput::from(
+        request(registry), verifiedSelection(registry), verifiedSelection(registry),
+        resolution(session.getPackageResolutionMemoryResource(), "app"_zc),
+        resolvedSourceSnapshots("app"_zc, ""_zc));
+    ZC_REQUIRE(input != zc::none);
+    ZC_IF_SOME(value, input) { ZC_REQUIRE(session.installVerifiedPackageInput(zc::mv(value))); }
+    installCore(session);
+
+    const auto roots = session.getFinalizedCompilationRoots();
+    ZC_REQUIRE(roots.size() == 1);
+    ZC_REQUIRE(session.addVerifiedPackageRoot(roots[0]) != zc::none);
+    ZC_REQUIRE(session.parseSources());
+    ZC_REQUIRE(session.bindSources());
+    ZC_REQUIRE(session.checkSources());
+    retainedAuthority = session.materializeCheckerIdentityAuthority();
+    ZC_REQUIRE(retainedAuthority != zc::none);
+  }
+
+  const auto& authority = ZC_REQUIRE_NONNULL(retainedAuthority);
+  const auto& graph = authority.graphLease().capability();
+  ZC_REQUIRE(authority.modules().size() == graph.modules().size());
+  for (size_t index = 0; index < authority.modules().size(); ++index) {
+    const auto& boundModule = authority.modules()[index];
+    ZC_EXPECT(boundModule.module() == graph.modules()[index].handle());
+    ZC_EXPECT(boundModule.tree().contains(boundModule.tree().root()));
+  }
+}
+
+ZC_TEST("Module interfaces retain materialized module leases after session teardown") {
+  zc::Maybe<module_graph_query::CheckerBoundModuleView> retainedBoundModule;
+  {
+    basic::LangOptions languageOptions;
+    basic::CompilerOptions compilerOptions;
+    identity::SemanticContextFactory contextFactory;
+    CompilerSession session(contextFactory, languageOptions, compilerOptions);
+    auto registry = targetRegistry();
+    auto input = VerifiedPackageSessionInput::from(
+        request(registry), verifiedSelection(registry), verifiedSelection(registry),
+        resolution(session.getPackageResolutionMemoryResource(), "app"_zc),
+        resolvedSourceSnapshots("app"_zc, ""_zc));
+    ZC_REQUIRE(input != zc::none);
+    ZC_IF_SOME(value, input) { ZC_REQUIRE(session.installVerifiedPackageInput(zc::mv(value))); }
+    installCore(session);
+
+    const auto roots = session.getFinalizedCompilationRoots();
+    ZC_REQUIRE(roots.size() == 1);
+    ZC_REQUIRE(session.addVerifiedPackageRoot(roots[0]) != zc::none);
+    ZC_REQUIRE(session.parseSources());
+    ZC_REQUIRE(session.bindSources());
+    ZC_REQUIRE(session.checkSources());
+    const auto interfaces = session.getVerifiedModuleInterfaces();
+    ZC_REQUIRE(interfaces.size() == 1);
+    retainedBoundModule = interfaces[0].retainBoundModule();
+  }
+
+  const auto& boundModule = ZC_REQUIRE_NONNULL(retainedBoundModule);
+  ZC_EXPECT(boundModule.semanticContext().isValid());
+  ZC_EXPECT(boundModule.tree().contains(boundModule.tree().root()));
+  ZC_EXPECT(boundModule.parsedModule().tree().contains(boundModule.tree().root()));
+}
+
 ZC_TEST("CompilerSession retains empty prelude signature lineage after local shadowing") {
   basic::LangOptions languageOptions;
   basic::CompilerOptions compilerOptions;
@@ -1512,88 +1808,93 @@ ZC_TEST("CompilerSession retains empty prelude signature lineage after local sha
   ZC_REQUIRE(session.addVerifiedPackageRoot(roots[0]) != zc::none);
   ZC_REQUIRE(session.parseSources());
   ZC_REQUIRE(session.bindSources());
+  ZC_REQUIRE(session.checkSources());
   ZC_REQUIRE(!session.getDiagnosticEngine().hasErrors());
-  ZC_REQUIRE(session.getIdentityRegistries() != zc::none);
-  ZC_IF_SOME(registries, session.getIdentityRegistries()) {
-    const auto& bound = soleUserBoundModule(session, registries);
-    ZC_REQUIRE(bound.preludeSurface() != zc::none);
-    ZC_IF_SOME(fingerprint, session.getSemanticContextFingerprint()) {
-      ZC_IF_SOME(constSemanticTypes, session.getSemanticTypeStore()) {
-        auto& semanticTypes = const_cast<type::SemanticTypeStore&>(constSemanticTypes);
-        zc::Vector<checker::signature::MarkerShapeModuleInput> markerInputs;
-        for (const auto& candidate : session.getVerifiedBoundModules()) {
-          markerInputs.add(checker::signature::MarkerShapeModuleInput{candidate});
+  {
+    auto identities = checkerIdentityAuthority(session);
+    const auto& bound = soleUserBoundModule(identities);
+    const auto& boundView = checkerBoundModule(identities, bound.module());
+    ZC_REQUIRE(boundView.preludeSurface() != zc::none);
+    const auto& fingerprint = identities.fingerprint();
+    const auto boundModuleIndices = dependencyOrderedBoundModuleIndices(identities);
+    ZC_IF_SOME(constSemanticTypes, session.getSemanticTypeStore()) {
+      auto& semanticTypes = const_cast<type::SemanticTypeStore&>(constSemanticTypes);
+      zc::Vector<checker::signature::MarkerShapeModuleInput> markerInputs;
+      for (const auto candidateIndex : boundModuleIndices) {
+        const auto& candidate = identities.modules()[candidateIndex];
+        markerInputs.add(checker::signature::MarkerShapeModuleInput{
+            checkerBoundModule(identities, candidate.module())});
+      }
+      auto shapeResult = checker::signature::MarkerShapeInventoryBuilder::build(
+          session.getSemanticContextBrand(), fingerprint, bound.module(), markerInputs.asPtr(),
+          identities);
+      ZC_REQUIRE(shapeResult.is<checker::signature::VerifiedMarkerShapeInventory>());
+      auto shapes = zc::mv(shapeResult).get<checker::signature::VerifiedMarkerShapeInventory>();
+
+      zc::Vector<identity::ModuleId> authorizedPreludeModules;
+      ZC_IF_SOME(surface, bound.preludeSurface()) { authorizedPreludeModules.add(surface.module); }
+      auto policyResult = checker::signature::MarkerPolicyRegistryBuilder::build(
+          bound.module(), checker::signature::MarkerPolicyConfiguration::explicitOnly(), shapes,
+          authorizedPreludeModules.asPtr(), identities);
+      ZC_REQUIRE(policyResult.is<checker::signature::VerifiedMarkerPolicyRegistry>());
+      auto policies = zc::mv(policyResult).get<checker::signature::VerifiedMarkerPolicyRegistry>();
+
+      zc::Vector<checker::signature::VerifiedSignatureFacts> signatures;
+      zc::Vector<checker::cross_module::ImportedSignatureView> importedViews;
+      zc::Vector<VerifiedModuleInterface> interfaces;
+      zc::Maybe<size_t> userModuleIndex;
+      for (const auto candidateIndex : boundModuleIndices) {
+        const auto& candidate = identities.modules()[candidateIndex];
+        auto signatureResult = checker::signature::SignatureFactsBuilder::build(
+            checker::signature::SignatureFactsBuildInput{
+                checkerBoundModule(identities, candidate.module()), semanticTypes, shapes, policies,
+                identities});
+        ZC_REQUIRE(signatureResult.is<checker::signature::VerifiedSignatureFacts>());
+        signatures.add(zc::mv(signatureResult).get<checker::signature::VerifiedSignatureFacts>());
+
+        auto importedResult = ImportedSignatureViewProjector::build(
+            checkerBoundModule(identities, candidate.module()), interfaces.asPtr(), semanticTypes,
+            identities);
+        ZC_REQUIRE(importedResult != zc::none);
+        ZC_IF_SOME(view, importedResult) { importedViews.add(zc::mv(view)); }
+
+        const auto& moduleSignatures = signatures.back();
+        const auto& imported = importedViews.back();
+        auto borrowResult = checker::borrow::BorrowInterfaceBuilder::build(
+            checker::borrow::BorrowInterfaceBuildInput{
+                session.getSemanticContextBrand(), fingerprint, candidate.module(),
+                moduleSignatures.revision(), imported.revision(), moduleSignatures.signatures(),
+                zc::ArrayPtr<const checker::signature::SemanticSignature>(), identities,
+                semanticTypes});
+        ZC_REQUIRE(borrowResult.is<checker::borrow::VerifiedBorrowInterfaceSurface>());
+        auto interfaceResult = ModuleInterfaceVerifier::build(ModuleInterfaceBuildInput{
+            checkerBoundModule(identities, candidate.module()), moduleSignatures, imported,
+            policies, zc::mv(borrowResult).get<checker::borrow::VerifiedBorrowInterfaceSurface>(),
+            semanticTypes, identities});
+        ZC_REQUIRE(interfaceResult.is<VerifiedModuleInterface>());
+        interfaces.add(zc::mv(interfaceResult).get<VerifiedModuleInterface>());
+        if (candidate.module() == bound.module()) {
+          ZC_REQUIRE(userModuleIndex == zc::none);
+          userModuleIndex = importedViews.size() - 1;
         }
-        auto shapeResult = checker::signature::MarkerShapeInventoryBuilder::build(
-            session.getSemanticContextBrand(), fingerprint, markerInputs.asPtr(), registries);
-        ZC_REQUIRE(shapeResult.is<checker::signature::VerifiedMarkerShapeInventory>());
-        auto shapes = zc::mv(shapeResult).get<checker::signature::VerifiedMarkerShapeInventory>();
+      }
 
-        zc::Vector<identity::ModuleId> authorizedPreludeModules;
-        ZC_IF_SOME(surface, bound.preludeSurface()) {
-          authorizedPreludeModules.add(surface.sourceModule());
+      ZC_REQUIRE(userModuleIndex != zc::none);
+      ZC_IF_SOME(index, userModuleIndex) {
+        const auto& view = importedViews[index];
+        ZC_EXPECT(view.requester() == bound.module());
+        ZC_REQUIRE(view.modules().size() == 1);
+        const auto& prelude = view.modules()[0];
+        ZC_IF_SOME(surface, boundView.preludeSurface()) {
+          ZC_EXPECT(prelude.sourceModule() == surface.module);
+          ZC_EXPECT(prelude.bindingSurfaceRevision().digest() ==
+                    surface.surface.revision().digest());
         }
-        auto policyResult = checker::signature::MarkerPolicyRegistryBuilder::build(
-            checker::signature::MarkerPolicyConfiguration::explicitOnly(), shapes,
-            authorizedPreludeModules.asPtr(), registries);
-        ZC_REQUIRE(policyResult.is<checker::signature::VerifiedMarkerPolicyRegistry>());
-        auto policies =
-            zc::mv(policyResult).get<checker::signature::VerifiedMarkerPolicyRegistry>();
-
-        zc::Vector<checker::signature::VerifiedSignatureFacts> signatures;
-        zc::Vector<checker::cross_module::ImportedSignatureView> importedViews;
-        zc::Vector<VerifiedModuleInterface> interfaces;
-        zc::Maybe<size_t> userModuleIndex;
-        for (const auto& candidate : session.getVerifiedBoundModules()) {
-          auto signatureResult = checker::signature::SignatureFactsBuilder::build(
-              checker::signature::SignatureFactsBuildInput{candidate, registries, semanticTypes,
-                                                           shapes, policies});
-          ZC_REQUIRE(signatureResult.is<checker::signature::VerifiedSignatureFacts>());
-          signatures.add(zc::mv(signatureResult).get<checker::signature::VerifiedSignatureFacts>());
-
-          auto importedResult = ImportedSignatureViewProjector::build(candidate, interfaces.asPtr(),
-                                                                      registries, semanticTypes);
-          ZC_REQUIRE(importedResult != zc::none);
-          ZC_IF_SOME(view, importedResult) { importedViews.add(zc::mv(view)); }
-
-          const auto& moduleSignatures = signatures.back();
-          const auto& imported = importedViews.back();
-          auto borrowResult = checker::borrow::BorrowInterfaceBuilder::build(
-              checker::borrow::BorrowInterfaceBuildInput{
-                  session.getSemanticContextBrand(), fingerprint, candidate.module(),
-                  moduleSignatures.revision(), imported.revision(), moduleSignatures.signatures(),
-                  zc::ArrayPtr<const checker::signature::SemanticSignature>(), registries,
-                  semanticTypes});
-          ZC_REQUIRE(borrowResult.is<checker::borrow::VerifiedBorrowInterfaceSurface>());
-          auto interfaceResult = ModuleInterfaceVerifier::build(ModuleInterfaceBuildInput{
-              candidate, moduleSignatures, imported, policies,
-              zc::mv(borrowResult).get<checker::borrow::VerifiedBorrowInterfaceSurface>(),
-              registries, semanticTypes});
-          ZC_REQUIRE(interfaceResult.is<VerifiedModuleInterface>());
-          interfaces.add(zc::mv(interfaceResult).get<VerifiedModuleInterface>());
-          if (candidate.module() == bound.module()) {
-            ZC_REQUIRE(userModuleIndex == zc::none);
-            userModuleIndex = importedViews.size() - 1;
-          }
-        }
-
-        ZC_REQUIRE(userModuleIndex != zc::none);
-        ZC_IF_SOME(index, userModuleIndex) {
-          const auto& view = importedViews[index];
-          ZC_EXPECT(view.requester() == bound.module());
-          ZC_REQUIRE(view.modules().size() == 1);
-          const auto& prelude = view.modules()[0];
-          ZC_IF_SOME(surface, bound.preludeSurface()) {
-            ZC_EXPECT(prelude.sourceModule() == surface.sourceModule());
-            ZC_EXPECT(prelude.bindingSurfaceRevision().digest() ==
-                      surface.sourceRevision().digest());
-          }
-          ZC_EXPECT(prelude.origin() == checker::cross_module::SignatureViewOrigin::Prelude);
-          ZC_EXPECT(prelude.authorizedRoots().size() == 0);
-          ZC_EXPECT(prelude.lookupDefinitions().size() == 0);
-          ZC_EXPECT(prelude.supportDefinitions().size() == 0);
-          ZC_EXPECT(prelude.moduleTargets().size() == 0);
-        }
+        ZC_EXPECT(prelude.origin() == checker::cross_module::SignatureViewOrigin::Prelude);
+        ZC_EXPECT(prelude.authorizedRoots().size() == 0);
+        ZC_EXPECT(prelude.lookupDefinitions().size() == 0);
+        ZC_EXPECT(prelude.supportDefinitions().size() == 0);
+        ZC_EXPECT(prelude.moduleTargets().size() == 0);
       }
     }
   }
@@ -1621,228 +1922,238 @@ ZC_TEST("MarkerProofEngine resolves explicit builtin and structural evidence") {
   ZC_REQUIRE(session.parseSources());
   ZC_REQUIRE(session.bindSources());
   ZC_REQUIRE(!session.getDiagnosticEngine().hasErrors());
-  ZC_IF_SOME(registries, session.getIdentityRegistries()) {
-    ZC_REQUIRE(userBoundModuleCount(session, registries) == 1);
-    ZC_REQUIRE(coreBoundModuleCount(session, registries) == 3);
-    const auto& boundModule = soleUserBoundModule(session, registries);
-    ZC_IF_SOME(fingerprint, session.getSemanticContextFingerprint()) {
-      ZC_IF_SOME(constSemanticTypes, session.getSemanticTypeStore()) {
-        auto& semanticTypes = const_cast<type::SemanticTypeStore&>(constSemanticTypes);
-        zc::Vector<checker::signature::MarkerShapeModuleInput> shapeInputs;
-        for (const auto& candidate : session.getVerifiedBoundModules()) {
-          shapeInputs.add(checker::signature::MarkerShapeModuleInput{candidate});
-        }
-        auto shapeResult = checker::signature::MarkerShapeInventoryBuilder::build(
-            session.getSemanticContextBrand(), fingerprint, shapeInputs.asPtr(), registries);
-        ZC_REQUIRE(shapeResult.is<checker::signature::VerifiedMarkerShapeInventory>());
-        auto shapes = zc::mv(shapeResult).get<checker::signature::VerifiedMarkerShapeInventory>();
+  auto identities = checkerIdentityAuthority(session);
+  {
+    ZC_REQUIRE(userBoundModuleCount(identities) == 1);
+    ZC_REQUIRE(coreBoundModuleCount(identities) == 3);
+    const auto& boundModule = soleUserBoundModule(identities);
+    ZC_REQUIRE(session.checkSources());
+    auto checkerBound = identities.boundModule(boundModule.module());
+    ZC_REQUIRE(checkerBound != zc::none);
+    const auto& boundView = ZC_REQUIRE_NONNULL(checkerBound);
+    const auto& fingerprint = identities.fingerprint();
+    const auto boundModuleIndices = dependencyOrderedBoundModuleIndices(identities);
+    ZC_IF_SOME(constSemanticTypes, session.getSemanticTypeStore()) {
+      auto& semanticTypes = const_cast<type::SemanticTypeStore&>(constSemanticTypes);
+      zc::Vector<checker::signature::MarkerShapeModuleInput> shapeInputs;
+      for (const auto candidateIndex : boundModuleIndices) {
+        const auto& candidate = identities.modules()[candidateIndex];
+        shapeInputs.add(checker::signature::MarkerShapeModuleInput{
+            checkerBoundModule(identities, candidate.module())});
+      }
+      auto shapeResult = checker::signature::MarkerShapeInventoryBuilder::build(
+          session.getSemanticContextBrand(), fingerprint, boundModule.module(), shapeInputs.asPtr(),
+          identities);
+      ZC_REQUIRE(shapeResult.is<checker::signature::VerifiedMarkerShapeInventory>());
+      auto shapes = zc::mv(shapeResult).get<checker::signature::VerifiedMarkerShapeInventory>();
 
-        identity::DefId structuralMarker;
-        for (const auto& signatureDefinition : boundModule.definitions().definitions()) {
-          auto record = registries.definitions().lookupRecord(signatureDefinition.definition);
-          ZC_IF_SOME(value, record) {
-            if (value.name() == "Structural"_zc) {
-              structuralMarker = signatureDefinition.definition;
-            }
+      identity::DefId structuralMarker;
+      zc::Maybe<identity::DefinitionKey> structuralMarkerKey;
+      for (const auto& signatureDefinition : boundModule.definitions().definitions()) {
+        if (signatureDefinition.record.name() == "Structural"_zc) {
+          ZC_REQUIRE(!structuralMarker.isValid());
+          auto authorityDefinition = identities.definition(signatureDefinition.key);
+          ZC_REQUIRE(authorityDefinition != zc::none);
+          ZC_IF_SOME(entry, authorityDefinition) { structuralMarker = entry.handle(); }
+          structuralMarkerKey = signatureDefinition.key.clone();
+        }
+      }
+      ZC_REQUIRE(structuralMarker.isValid());
+      ZC_REQUIRE(structuralMarkerKey != zc::none);
+      zc::Vector<checker::signature::MarkerPolicyConfigurationEntry> policyEntries;
+      ZC_IF_SOME(key, structuralMarkerKey) {
+        zc::Vector<checker::signature::MarkerStructuralSubject> structuralSubjects;
+        structuralSubjects.add(checker::signature::MarkerStructuralSubject::Tuple);
+        structuralSubjects.add(checker::signature::MarkerStructuralSubject::Object);
+        structuralSubjects.add(checker::signature::MarkerStructuralSubject::FixedArray);
+        zc::Vector<checker::signature::PrimitiveKind> builtinPrimitives;
+        builtinPrimitives.add(checker::signature::PrimitiveKind::I32);
+        zc::Vector<checker::signature::MarkerPolicyReferenceConfiguration> referenceRequirements;
+        referenceRequirements.add(checker::signature::MarkerPolicyReferenceConfiguration{
+            checker::signature::Mutability::Const, key.clone()});
+        policyEntries.add(checker::signature::MarkerPolicyConfigurationEntry{
+            key.clone(), zc::mv(structuralSubjects), zc::mv(builtinPrimitives),
+            zc::mv(referenceRequirements)});
+      }
+      auto configuration =
+          checker::signature::MarkerPolicyConfiguration::from(zc::mv(policyEntries));
+      ZC_REQUIRE(configuration != zc::none);
+      zc::Vector<identity::ModuleId> authorizedPreludeModules;
+      authorizedPreludeModules.add(boundModule.module());
+      zc::Maybe<checker::signature::VerifiedMarkerPolicyRegistry> policies;
+      ZC_IF_SOME(value, configuration) {
+        auto policyResult = checker::signature::MarkerPolicyRegistryBuilder::build(
+            boundModule.module(), value, shapes, authorizedPreludeModules.asPtr(), identities);
+        ZC_REQUIRE(policyResult.is<checker::signature::VerifiedMarkerPolicyRegistry>());
+        policies = zc::mv(policyResult).get<checker::signature::VerifiedMarkerPolicyRegistry>();
+      }
+      ZC_IF_SOME(policy, policies) {
+        zc::Vector<checker::signature::VerifiedSignatureFacts> signatureFacts;
+        zc::Vector<checker::cross_module::ImportedSignatureView> importedViews;
+        zc::Vector<VerifiedModuleInterface> interfaces;
+        zc::Maybe<size_t> userModuleIndex;
+        for (const auto candidateIndex : boundModuleIndices) {
+          const auto& candidate = identities.modules()[candidateIndex];
+          auto signatureResult = checker::signature::SignatureFactsBuilder::build(
+              checker::signature::SignatureFactsBuildInput{
+                  checkerBoundModule(identities, candidate.module()), semanticTypes, shapes, policy,
+                  identities});
+          ZC_REQUIRE(signatureResult.is<checker::signature::VerifiedSignatureFacts>());
+          signatureFacts.add(
+              zc::mv(signatureResult).get<checker::signature::VerifiedSignatureFacts>());
+
+          auto importedResult = ImportedSignatureViewProjector::build(
+              checkerBoundModule(identities, candidate.module()), interfaces.asPtr(), semanticTypes,
+              identities);
+          ZC_REQUIRE(importedResult != zc::none);
+          ZC_IF_SOME(imported, importedResult) { importedViews.add(zc::mv(imported)); }
+          const auto& signatures = signatureFacts.back();
+          const auto& imported = importedViews.back();
+          auto borrowResult = checker::borrow::BorrowInterfaceBuilder::build(
+              checker::borrow::BorrowInterfaceBuildInput{
+                  session.getSemanticContextBrand(), fingerprint, candidate.module(),
+                  signatures.revision(), imported.revision(), signatures.signatures(),
+                  zc::ArrayPtr<const checker::signature::SemanticSignature>(), identities,
+                  semanticTypes});
+          ZC_REQUIRE(borrowResult.is<checker::borrow::VerifiedBorrowInterfaceSurface>());
+          auto interfaceResult = ModuleInterfaceVerifier::build(ModuleInterfaceBuildInput{
+              checkerBoundModule(identities, candidate.module()), signatures, imported, policy,
+              zc::mv(borrowResult).get<checker::borrow::VerifiedBorrowInterfaceSurface>(),
+              semanticTypes, identities});
+          ZC_REQUIRE(interfaceResult.is<VerifiedModuleInterface>());
+          interfaces.add(zc::mv(interfaceResult).get<VerifiedModuleInterface>());
+          if (candidate.module() == boundModule.module()) {
+            ZC_REQUIRE(userModuleIndex == zc::none);
+            userModuleIndex = interfaces.size() - 1;
           }
         }
-        ZC_REQUIRE(structuralMarker.isValid());
-        auto structuralKey = registries.definitions().lookup(structuralMarker);
-        ZC_REQUIRE(structuralKey != zc::none);
-        zc::Vector<checker::signature::MarkerPolicyConfigurationEntry> policyEntries;
-        ZC_IF_SOME(key, structuralKey) {
-          zc::Vector<checker::signature::MarkerStructuralSubject> structuralSubjects;
-          structuralSubjects.add(checker::signature::MarkerStructuralSubject::Tuple);
-          structuralSubjects.add(checker::signature::MarkerStructuralSubject::Object);
-          structuralSubjects.add(checker::signature::MarkerStructuralSubject::FixedArray);
-          zc::Vector<checker::signature::PrimitiveKind> builtinPrimitives;
-          builtinPrimitives.add(checker::signature::PrimitiveKind::I32);
-          zc::Vector<checker::signature::MarkerPolicyReferenceConfiguration> referenceRequirements;
-          referenceRequirements.add(checker::signature::MarkerPolicyReferenceConfiguration{
-              checker::signature::Mutability::Const, key.clone()});
-          policyEntries.add(checker::signature::MarkerPolicyConfigurationEntry{
-              key.clone(), zc::mv(structuralSubjects), zc::mv(builtinPrimitives),
-              zc::mv(referenceRequirements)});
-        }
-        auto configuration =
-            checker::signature::MarkerPolicyConfiguration::from(zc::mv(policyEntries));
-        ZC_REQUIRE(configuration != zc::none);
-        zc::Vector<identity::ModuleId> authorizedPreludeModules;
-        authorizedPreludeModules.add(boundModule.module());
-        zc::Maybe<checker::signature::VerifiedMarkerPolicyRegistry> policies;
-        ZC_IF_SOME(value, configuration) {
-          auto policyResult = checker::signature::MarkerPolicyRegistryBuilder::build(
-              value, shapes, authorizedPreludeModules.asPtr(), registries);
-          ZC_REQUIRE(policyResult.is<checker::signature::VerifiedMarkerPolicyRegistry>());
-          policies = zc::mv(policyResult).get<checker::signature::VerifiedMarkerPolicyRegistry>();
-        }
-        ZC_IF_SOME(policy, policies) {
-          zc::Vector<checker::signature::VerifiedSignatureFacts> signatureFacts;
-          zc::Vector<checker::cross_module::ImportedSignatureView> importedViews;
-          zc::Vector<VerifiedModuleInterface> interfaces;
-          zc::Maybe<size_t> userModuleIndex;
-          for (const auto& candidate : session.getVerifiedBoundModules()) {
-            auto signatureResult = checker::signature::SignatureFactsBuilder::build(
-                checker::signature::SignatureFactsBuildInput{candidate, registries, semanticTypes,
-                                                             shapes, policy});
-            ZC_REQUIRE(signatureResult.is<checker::signature::VerifiedSignatureFacts>());
-            signatureFacts.add(
-                zc::mv(signatureResult).get<checker::signature::VerifiedSignatureFacts>());
+        ZC_REQUIRE(interfaces.size() == identities.modules().size());
+        ZC_REQUIRE(signatureFacts.size() == interfaces.size());
+        ZC_REQUIRE(importedViews.size() == interfaces.size());
+        ZC_REQUIRE(userModuleIndex != zc::none);
+        auto coherenceResult = CoherenceBuilder::build(
+            CoherenceBuildInput{session.getSemanticContextBrand(), fingerprint, policy,
+                                interfaces.asPtr(), identities});
+        ZC_REQUIRE(coherenceResult.is<checker::coherence::CoherenceFrozen>());
+        auto coherence = zc::mv(coherenceResult).get<checker::coherence::CoherenceFrozen>();
 
-            auto importedResult = ImportedSignatureViewProjector::build(
-                candidate, interfaces.asPtr(), registries, semanticTypes);
-            ZC_REQUIRE(importedResult != zc::none);
-            ZC_IF_SOME(imported, importedResult) { importedViews.add(zc::mv(imported)); }
-            const auto& signatures = signatureFacts.back();
-            const auto& imported = importedViews.back();
-            auto borrowResult = checker::borrow::BorrowInterfaceBuilder::build(
-                checker::borrow::BorrowInterfaceBuildInput{
-                    session.getSemanticContextBrand(), fingerprint, candidate.module(),
-                    signatures.revision(), imported.revision(), signatures.signatures(),
-                    zc::ArrayPtr<const checker::signature::SemanticSignature>(), registries,
-                    semanticTypes});
-            ZC_REQUIRE(borrowResult.is<checker::borrow::VerifiedBorrowInterfaceSurface>());
-            auto interfaceResult = ModuleInterfaceVerifier::build(ModuleInterfaceBuildInput{
-                candidate, signatures, imported, policy,
-                zc::mv(borrowResult).get<checker::borrow::VerifiedBorrowInterfaceSurface>(),
-                registries, semanticTypes});
-            ZC_REQUIRE(interfaceResult.is<VerifiedModuleInterface>());
-            interfaces.add(zc::mv(interfaceResult).get<VerifiedModuleInterface>());
-            if (candidate.module() == boundModule.module()) {
-              ZC_REQUIRE(userModuleIndex == zc::none);
-              userModuleIndex = interfaces.size() - 1;
-            }
-          }
-          ZC_REQUIRE(interfaces.size() == registries.modules().size());
-          ZC_REQUIRE(signatureFacts.size() == interfaces.size());
-          ZC_REQUIRE(importedViews.size() == interfaces.size());
-          ZC_REQUIRE(userModuleIndex != zc::none);
-          auto coherenceResult = CoherenceBuilder::build(
-              CoherenceBuildInput{session.getSemanticContextBrand(), fingerprint, policy,
-                                  interfaces.asPtr(), registries});
-          ZC_REQUIRE(coherenceResult.is<checker::coherence::CoherenceFrozen>());
-          auto coherence = zc::mv(coherenceResult).get<checker::coherence::CoherenceFrozen>();
+        ZC_IF_SOME(index, userModuleIndex) {
+          const auto& signatures = signatureFacts[index];
+          const auto& imported = importedViews[index];
 
-          ZC_IF_SOME(index, userModuleIndex) {
-            const auto& signatures = signatureFacts[index];
-            const auto& imported = importedViews[index];
+          auto admittedI32 = semanticTypes.canonicalizeClosed(type::semantic::TypeData(
+              type::semantic::PrimitiveTypeData{type::semantic::PrimitiveKind::I32}));
+          ZC_REQUIRE(admittedI32.is<type::semantic::CanonicalTypeData>());
+          auto internedI32 =
+              semanticTypes.intern(zc::mv(admittedI32).get<type::semantic::CanonicalTypeData>());
+          ZC_REQUIRE(internedI32.is<type::SemanticTypeInterned>());
+          const auto i32 = internedI32.get<type::SemanticTypeInterned>().id;
+          zc::Vector<identity::SemanticTypeId> tupleElements;
+          tupleElements.add(i32);
+          tupleElements.add(i32);
+          auto admittedTuple = semanticTypes.canonicalizeClosed(
+              type::semantic::TypeData(type::semantic::TupleTypeData{zc::mv(tupleElements)}));
+          ZC_REQUIRE(admittedTuple.is<type::semantic::CanonicalTypeData>());
+          auto internedTuple =
+              semanticTypes.intern(zc::mv(admittedTuple).get<type::semantic::CanonicalTypeData>());
+          ZC_REQUIRE(internedTuple.is<type::SemanticTypeInterned>());
+          const auto tuple = internedTuple.get<type::SemanticTypeInterned>().id;
+          zc::Vector<type::semantic::ObjectFieldData> objectFields;
+          objectFields.add(type::semantic::ObjectFieldData{
+              scalar<identity::SemanticIdentifier>("field"_zc), i32,
+              type::semantic::Mutability::Const, type::semantic::FieldPresence::Required});
+          auto admittedObject = semanticTypes.canonicalizeClosed(
+              type::semantic::TypeData(type::semantic::ObjectTypeData{zc::mv(objectFields)}));
+          ZC_REQUIRE(admittedObject.is<type::semantic::CanonicalTypeData>());
+          auto internedObject =
+              semanticTypes.intern(zc::mv(admittedObject).get<type::semantic::CanonicalTypeData>());
+          ZC_REQUIRE(internedObject.is<type::SemanticTypeInterned>());
+          const auto object = internedObject.get<type::SemanticTypeInterned>().id;
+          auto admittedArray = semanticTypes.canonicalizeClosed(
+              type::semantic::TypeData(type::semantic::FixedArrayTypeData{i32, 4}));
+          ZC_REQUIRE(admittedArray.is<type::semantic::CanonicalTypeData>());
+          auto internedArray =
+              semanticTypes.intern(zc::mv(admittedArray).get<type::semantic::CanonicalTypeData>());
+          ZC_REQUIRE(internedArray.is<type::SemanticTypeInterned>());
+          const auto array = internedArray.get<type::SemanticTypeInterned>().id;
+          auto admittedReference = semanticTypes.canonicalizeClosed(type::semantic::TypeData(
+              type::semantic::ReferenceTypeData{type::semantic::Mutability::Const, i32}));
+          ZC_REQUIRE(admittedReference.is<type::semantic::CanonicalTypeData>());
+          auto internedReference = semanticTypes.intern(
+              zc::mv(admittedReference).get<type::semantic::CanonicalTypeData>());
+          ZC_REQUIRE(internedReference.is<type::SemanticTypeInterned>());
+          const auto reference = internedReference.get<type::SemanticTypeInterned>().id;
+          auto admittedMutableReference = semanticTypes.canonicalizeClosed(type::semantic::TypeData(
+              type::semantic::ReferenceTypeData{type::semantic::Mutability::Mutable, i32}));
+          ZC_REQUIRE(admittedMutableReference.is<type::semantic::CanonicalTypeData>());
+          auto internedMutableReference = semanticTypes.intern(
+              zc::mv(admittedMutableReference).get<type::semantic::CanonicalTypeData>());
+          ZC_REQUIRE(internedMutableReference.is<type::SemanticTypeInterned>());
+          const auto mutableReference =
+              internedMutableReference.get<type::SemanticTypeInterned>().id;
 
-            auto admittedI32 = semanticTypes.canonicalizeClosed(type::semantic::TypeData(
-                type::semantic::PrimitiveTypeData{type::semantic::PrimitiveKind::I32}));
-            ZC_REQUIRE(admittedI32.is<type::semantic::CanonicalTypeData>());
-            auto internedI32 =
-                semanticTypes.intern(zc::mv(admittedI32).get<type::semantic::CanonicalTypeData>());
-            ZC_REQUIRE(internedI32.is<type::SemanticTypeInterned>());
-            const auto i32 = internedI32.get<type::SemanticTypeInterned>().id;
-            zc::Vector<identity::SemanticTypeId> tupleElements;
-            tupleElements.add(i32);
-            tupleElements.add(i32);
-            auto admittedTuple = semanticTypes.canonicalizeClosed(
-                type::semantic::TypeData(type::semantic::TupleTypeData{zc::mv(tupleElements)}));
-            ZC_REQUIRE(admittedTuple.is<type::semantic::CanonicalTypeData>());
-            auto internedTuple = semanticTypes.intern(
-                zc::mv(admittedTuple).get<type::semantic::CanonicalTypeData>());
-            ZC_REQUIRE(internedTuple.is<type::SemanticTypeInterned>());
-            const auto tuple = internedTuple.get<type::SemanticTypeInterned>().id;
-            zc::Vector<type::semantic::ObjectFieldData> objectFields;
-            objectFields.add(type::semantic::ObjectFieldData{
-                scalar<identity::SemanticIdentifier>("field"_zc), i32,
-                type::semantic::Mutability::Const, type::semantic::FieldPresence::Required});
-            auto admittedObject = semanticTypes.canonicalizeClosed(
-                type::semantic::TypeData(type::semantic::ObjectTypeData{zc::mv(objectFields)}));
-            ZC_REQUIRE(admittedObject.is<type::semantic::CanonicalTypeData>());
-            auto internedObject = semanticTypes.intern(
-                zc::mv(admittedObject).get<type::semantic::CanonicalTypeData>());
-            ZC_REQUIRE(internedObject.is<type::SemanticTypeInterned>());
-            const auto object = internedObject.get<type::SemanticTypeInterned>().id;
-            auto admittedArray = semanticTypes.canonicalizeClosed(
-                type::semantic::TypeData(type::semantic::FixedArrayTypeData{i32, 4}));
-            ZC_REQUIRE(admittedArray.is<type::semantic::CanonicalTypeData>());
-            auto internedArray = semanticTypes.intern(
-                zc::mv(admittedArray).get<type::semantic::CanonicalTypeData>());
-            ZC_REQUIRE(internedArray.is<type::SemanticTypeInterned>());
-            const auto array = internedArray.get<type::SemanticTypeInterned>().id;
-            auto admittedReference = semanticTypes.canonicalizeClosed(type::semantic::TypeData(
-                type::semantic::ReferenceTypeData{type::semantic::Mutability::Const, i32}));
-            ZC_REQUIRE(admittedReference.is<type::semantic::CanonicalTypeData>());
-            auto internedReference = semanticTypes.intern(
-                zc::mv(admittedReference).get<type::semantic::CanonicalTypeData>());
-            ZC_REQUIRE(internedReference.is<type::SemanticTypeInterned>());
-            const auto reference = internedReference.get<type::SemanticTypeInterned>().id;
-            auto admittedMutableReference =
-                semanticTypes.canonicalizeClosed(type::semantic::TypeData(
-                    type::semantic::ReferenceTypeData{type::semantic::Mutability::Mutable, i32}));
-            ZC_REQUIRE(admittedMutableReference.is<type::semantic::CanonicalTypeData>());
-            auto internedMutableReference = semanticTypes.intern(
-                zc::mv(admittedMutableReference).get<type::semantic::CanonicalTypeData>());
-            ZC_REQUIRE(internedMutableReference.is<type::SemanticTypeInterned>());
-            const auto mutableReference =
-                internedMutableReference.get<type::SemanticTypeInterned>().id;
+          auto inventoryResult =
+              checker::body::BodyFactRequirementInventoryBuilder::build(boundView);
+          ZC_REQUIRE(inventoryResult.is<checker::body::VerifiedBodyFactRequirementInventory>());
+          auto inventory =
+              zc::mv(inventoryResult).get<checker::body::VerifiedBodyFactRequirementInventory>();
+          auto crate = identities.crate(boundModule.crate());
+          ZC_REQUIRE(crate != zc::none);
+          ZC_IF_SOME(value, crate) {
+            checker::body::BodyCheckingInput bodyInput{
+                boundView,      identities,    signatures, imported,
+                coherence.view, semanticTypes, inventory,  value.key().semanticOptions()};
+            auto proofInput = checker::marker::MarkerProofInput::from(bodyInput, policy);
+            ZC_REQUIRE(proofInput != zc::none);
+            ZC_IF_SOME(value, proofInput) {
+              checker::marker::MarkerProofEngine engine(zc::mv(value));
+              auto builtin = engine.prove(structuralMarker, i32);
+              ZC_REQUIRE(builtin.is<checker::marker::MarkerProofPositive>());
+              ZC_EXPECT(builtin.get<checker::marker::MarkerProofPositive>()
+                            .proof.evidence.variant()
+                            .is<checker::signature::BuiltinMarkerEvidence>());
 
-            auto inventoryResult =
-                checker::body::BodyFactRequirementInventoryBuilder::build(boundModule);
-            ZC_REQUIRE(inventoryResult.is<checker::body::VerifiedBodyFactRequirementInventory>());
-            auto inventory =
-                zc::mv(inventoryResult).get<checker::body::VerifiedBodyFactRequirementInventory>();
-            auto crateKey = registries.crates().lookup(boundModule.crate());
-            ZC_REQUIRE(crateKey != zc::none);
-            ZC_IF_SOME(crate, crateKey) {
-              checker::body::BodyCheckingInput bodyInput{
-                  boundModule, signatures,    imported,  coherence.view,
-                  registries,  semanticTypes, inventory, crate.semanticOptions()};
-              auto proofInput = checker::marker::MarkerProofInput::from(bodyInput, policy);
-              ZC_REQUIRE(proofInput != zc::none);
-              ZC_IF_SOME(value, proofInput) {
-                checker::marker::MarkerProofEngine engine(zc::mv(value));
-                auto builtin = engine.prove(structuralMarker, i32);
-                ZC_REQUIRE(builtin.is<checker::marker::MarkerProofPositive>());
-                ZC_EXPECT(builtin.get<checker::marker::MarkerProofPositive>()
-                              .proof.evidence.variant()
-                              .is<checker::signature::BuiltinMarkerEvidence>());
+              auto structural = engine.prove(structuralMarker, tuple);
+              ZC_REQUIRE(structural.is<checker::marker::MarkerProofPositive>());
+              const auto& structuralEvidence =
+                  structural.get<checker::marker::MarkerProofPositive>()
+                      .proof.evidence.variant()
+                      .get<checker::signature::StructuralMarkerEvidence>();
+              ZC_EXPECT(structuralEvidence.components.size() == 2);
 
-                auto structural = engine.prove(structuralMarker, tuple);
-                ZC_REQUIRE(structural.is<checker::marker::MarkerProofPositive>());
-                const auto& structuralEvidence =
-                    structural.get<checker::marker::MarkerProofPositive>()
-                        .proof.evidence.variant()
-                        .get<checker::signature::StructuralMarkerEvidence>();
-                ZC_EXPECT(structuralEvidence.components.size() == 2);
+              auto objectProof = engine.prove(structuralMarker, object);
+              ZC_REQUIRE(objectProof.is<checker::marker::MarkerProofPositive>());
+              ZC_EXPECT(objectProof.get<checker::marker::MarkerProofPositive>()
+                            .proof.evidence.variant()
+                            .get<checker::signature::StructuralMarkerEvidence>()
+                            .components.size() == 1);
 
-                auto objectProof = engine.prove(structuralMarker, object);
-                ZC_REQUIRE(objectProof.is<checker::marker::MarkerProofPositive>());
-                ZC_EXPECT(objectProof.get<checker::marker::MarkerProofPositive>()
-                              .proof.evidence.variant()
-                              .get<checker::signature::StructuralMarkerEvidence>()
-                              .components.size() == 1);
+              auto arrayProof = engine.prove(structuralMarker, array);
+              ZC_REQUIRE(arrayProof.is<checker::marker::MarkerProofPositive>());
+              ZC_EXPECT(arrayProof.get<checker::marker::MarkerProofPositive>()
+                            .proof.evidence.variant()
+                            .get<checker::signature::StructuralMarkerEvidence>()
+                            .components.size() == 1);
 
-                auto arrayProof = engine.prove(structuralMarker, array);
-                ZC_REQUIRE(arrayProof.is<checker::marker::MarkerProofPositive>());
-                ZC_EXPECT(arrayProof.get<checker::marker::MarkerProofPositive>()
-                              .proof.evidence.variant()
-                              .get<checker::signature::StructuralMarkerEvidence>()
-                              .components.size() == 1);
+              auto referenceProof = engine.prove(structuralMarker, reference);
+              ZC_REQUIRE(referenceProof.is<checker::marker::MarkerProofPositive>());
+              const auto& referenceEvidence =
+                  referenceProof.get<checker::marker::MarkerProofPositive>()
+                      .proof.evidence.variant()
+                      .get<checker::signature::StructuralMarkerEvidence>();
+              ZC_REQUIRE(referenceEvidence.components.size() == 1);
+              ZC_EXPECT(referenceEvidence.components[0].supportingFact.marker == structuralMarker);
+              ZC_EXPECT(referenceEvidence.components[0].supportingFact.subject == i32);
 
-                auto referenceProof = engine.prove(structuralMarker, reference);
-                ZC_REQUIRE(referenceProof.is<checker::marker::MarkerProofPositive>());
-                const auto& referenceEvidence =
-                    referenceProof.get<checker::marker::MarkerProofPositive>()
-                        .proof.evidence.variant()
-                        .get<checker::signature::StructuralMarkerEvidence>();
-                ZC_REQUIRE(referenceEvidence.components.size() == 1);
-                ZC_EXPECT(referenceEvidence.components[0].supportingFact.marker ==
-                          structuralMarker);
-                ZC_EXPECT(referenceEvidence.components[0].supportingFact.subject == i32);
+              auto unsupportedReference = engine.prove(structuralMarker, mutableReference);
+              ZC_EXPECT(unsupportedReference.is<checker::marker::MarkerProofUnsatisfied>());
 
-                auto unsupportedReference = engine.prove(structuralMarker, mutableReference);
-                ZC_EXPECT(unsupportedReference.is<checker::marker::MarkerProofUnsatisfied>());
-
-                for (const auto& fact : signatures.markerFacts()) {
-                  auto explicitResult = engine.prove(fact.key.marker, fact.key.subject);
-                  if (fact.polarity == checker::signature::Polarity::Positive) {
-                    ZC_EXPECT(explicitResult.is<checker::marker::MarkerProofPositive>());
-                  } else {
-                    ZC_EXPECT(explicitResult.is<checker::marker::MarkerProofNegative>());
-                  }
+              for (const auto& fact : signatures.markerFacts()) {
+                auto explicitResult = engine.prove(fact.key.marker, fact.key.subject);
+                if (fact.polarity == checker::signature::Polarity::Positive) {
+                  ZC_EXPECT(explicitResult.is<checker::marker::MarkerProofPositive>());
+                } else {
+                  ZC_EXPECT(explicitResult.is<checker::marker::MarkerProofNegative>());
                 }
               }
             }
@@ -2217,18 +2528,14 @@ ZC_TEST("CompilerSession retains structural ancestry without intermediate module
   ZC_REQUIRE(session.parseSources());
   ZC_EXPECT(userParsedModuleCount(session) == 2);
   ZC_EXPECT(coreParsedModuleCount(session) == 3);
-  ZC_REQUIRE(session.getVerifiedModuleGraph() != zc::none);
-  ZC_IF_SOME(graph, session.getVerifiedModuleGraph()) {
-    ZC_REQUIRE(session.getIdentityRegistries() != zc::none);
-    ZC_IF_SOME(registries, session.getIdentityRegistries()) {
-      ZC_EXPECT(userGraphModuleCount(graph) == 2);
-      ZC_EXPECT(coreGraphModuleCount(graph) == 3);
-      ZC_EXPECT(userGraphEdgeCount(graph, registries, identity::ModuleDependencyKind::Import) == 1);
-      ZC_EXPECT(userGraphEdgeCount(graph, registries, identity::ModuleDependencyKind::Prelude) ==
-                2);
-      ZC_EXPECT(coreGraphEdgeCount(graph, registries) == 1);
-    }
-  }
+  auto graphLease = session.materializeModuleGraph();
+  ZC_REQUIRE(graphLease != zc::none);
+  const auto& graph = ZC_REQUIRE_NONNULL(graphLease).capability();
+  ZC_EXPECT(userGraphModuleCount(graph) == 2);
+  ZC_EXPECT(coreGraphModuleCount(graph) == 3);
+  ZC_EXPECT(userGraphEdgeCount(graph, identity::ModuleDependencyKind::Import) == 1);
+  ZC_EXPECT(userGraphEdgeCount(graph, identity::ModuleDependencyKind::Prelude) == 2);
+  ZC_EXPECT(coreGraphEdgeCount(graph) == 1);
 }
 
 ZC_TEST("CompilerSession rejects a source declaration that differs from its selected module") {
@@ -2252,17 +2559,10 @@ ZC_TEST("CompilerSession rejects a source declaration that differs from its sele
   ZC_REQUIRE(session.addVerifiedPackageRoot(roots[0]) != zc::none);
   ZC_EXPECT(!session.parseSources());
   ZC_EXPECT(session.hasVerifiedParsedSyntax());
-  ZC_EXPECT(userParsedModuleCount(session) == 1);
-  ZC_EXPECT(coreParsedModuleCount(session) == 3);
+  ZC_EXPECT(session.materializeParsedModules() == zc::none);
   ZC_REQUIRE(captured.ids.size() == 1);
   ZC_EXPECT(captured.ids[0] == diagnostics::DiagID::ModuleDeclarationNameMismatch);
   ZC_EXPECT(captured.unmanagedPrimaryLocations == 0);
-  ZC_REQUIRE(session.getIdentityRegistries() != zc::none);
-  ZC_IF_SOME(registries, session.getIdentityRegistries()) {
-    ZC_EXPECT(registries.modules().isFrozen());
-    ZC_EXPECT(userModuleCount(registries) == 0);
-    ZC_EXPECT(coreModuleCount(registries) == 3);
-  }
 }
 
 ZC_TEST("CompilerSession retains verified syntax when a structural module is missing") {
@@ -2285,8 +2585,7 @@ ZC_TEST("CompilerSession retains verified syntax when a structural module is mis
   ZC_REQUIRE(session.addVerifiedPackageRoot(roots[0]) != zc::none);
   ZC_EXPECT(!session.parseSources());
   ZC_EXPECT(session.hasVerifiedParsedSyntax());
-  ZC_EXPECT(userParsedModuleCount(session) == 1);
-  ZC_EXPECT(coreParsedModuleCount(session) == 3);
+  ZC_EXPECT(session.materializeParsedModules() == zc::none);
   ZC_REQUIRE(captured.ids.size() == 1);
   ZC_EXPECT(captured.ids[0] == diagnostics::DiagID::ImportModuleNotFound);
 }
@@ -2342,45 +2641,15 @@ ZC_TEST("CompilerSession expands final dependency crates and publishes semantic 
   ZC_REQUIRE(session.parseSources());
   ZC_REQUIRE(userParsedModuleCount(session) == 2);
   ZC_REQUIRE(coreParsedModuleCount(session) == 3);
-  ZC_REQUIRE(session.getSemanticContextFingerprint() != zc::none);
-  ZC_REQUIRE(session.getVerifiedModuleGraph() != zc::none);
-  ZC_IF_SOME(graph, session.getVerifiedModuleGraph()) {
-    ZC_EXPECT(userGraphModuleCount(graph) == 2);
-    ZC_EXPECT(coreGraphModuleCount(graph) == 3);
-  }
-  ZC_REQUIRE(session.getIdentityRegistries() != zc::none);
-  ZC_IF_SOME(registries, session.getIdentityRegistries()) {
-    ZC_EXPECT(userCompilationUnitCount(registries) == 2);
-    ZC_EXPECT(coreCompilationUnitCount(registries) == 1);
-    ZC_EXPECT(userCrateCount(registries) == 2);
-    ZC_EXPECT(coreCrateCount(registries) == 1);
-    ZC_IF_SOME(crates, session.getVerifiedCrateGraph()) {
-      auto core = core_library_test::admittedCoreDistribution();
-      zc::Vector<identity::ToolchainSemanticContextInput> toolchainInputs;
-      toolchainInputs.add(identity::ToolchainSemanticContextInput::from(
-          identity::ToolchainUnitKey::core(), core.distributionDigest(),
-          core.policyTemplate().revision()));
-      zc::Vector<identity::CrateDependencyEdgeKey> semanticEdges;
-      for (const auto& edge : crates.edges()) { semanticEdges.add(edge.clone()); }
-      for (const auto& consumer : crates.crates()) {
-        auto provider = identity::projectToolchainCoreCrate(consumer);
-        ZC_REQUIRE(provider != zc::none);
-        auto edge = identity::CrateDependencyEdgeKey::from(
-            identity::CrateDependencyOrigin::toolchainCore(), consumer.clone(),
-            zc::mv(ZC_REQUIRE_NONNULL(provider)));
-        ZC_REQUIRE(edge != zc::none);
-        semanticEdges.add(zc::mv(ZC_REQUIRE_NONNULL(edge)));
-      }
-      auto expected = identity::SemanticContextFingerprint::compute(
-          registries, toolchainInputs.asPtr(), crates.packageEdges(), semanticEdges.asPtr());
-      ZC_REQUIRE(expected != zc::none);
-      ZC_IF_SOME(expectedValue, expected) {
-        ZC_IF_SOME(actual, session.getSemanticContextFingerprint()) {
-          ZC_EXPECT(actual.digest() == expectedValue.digest());
-        }
-      }
-    }
-  }
+  auto checkerAuthority = session.materializeCheckerIdentityAuthority();
+  ZC_REQUIRE(checkerAuthority != zc::none);
+  const auto& actualFingerprint = ZC_REQUIRE_NONNULL(checkerAuthority).fingerprint();
+  auto graphLease = session.materializeModuleGraph();
+  ZC_REQUIRE(graphLease != zc::none);
+  const auto& graph = ZC_REQUIRE_NONNULL(graphLease).capability();
+  ZC_EXPECT(userGraphModuleCount(graph) == 2);
+  ZC_EXPECT(coreGraphModuleCount(graph) == 3);
+  ZC_EXPECT(actualFingerprint.digest() != identity::Sha256Digest());
 }
 
 ZC_TEST("CompilerSession applies development dependencies only to development target kinds") {
@@ -2453,15 +2722,6 @@ ZC_TEST("CompilerSession excludes build-only dependencies from the final semanti
   ZC_REQUIRE(roots.size() == 1);
   ZC_REQUIRE(session.addVerifiedPackageRoot(roots[0]) != zc::none);
   ZC_REQUIRE(session.parseSources());
-  ZC_REQUIRE(session.getIdentityRegistries() != zc::none);
-  ZC_IF_SOME(registries, session.getIdentityRegistries()) {
-    ZC_EXPECT(userCompilationUnitCount(registries) == 1);
-    ZC_EXPECT(coreCompilationUnitCount(registries) == 1);
-    ZC_EXPECT(userCrateCount(registries) == 1);
-    ZC_EXPECT(coreCrateCount(registries) == 1);
-    ZC_EXPECT(registries.compilationUnits().find(identity::CompilationUnitIdentity::userPackage(
-                  packageKey("tool"_zc))) == zc::none);
-  }
 }
 
 ZC_TEST("CompilerSession rejects duplicate stable definitions before registry mutation") {
@@ -2486,11 +2746,6 @@ ZC_TEST("CompilerSession rejects duplicate stable definitions before registry mu
   ZC_EXPECT(!session.parseSources());
   ZC_REQUIRE(captured.ids.size() == 1);
   ZC_EXPECT(captured.ids[0] == diagnostics::DiagID::RedeclareFunction);
-  ZC_REQUIRE(session.getIdentityRegistries() != zc::none);
-  ZC_IF_SOME(registries, session.getIdentityRegistries()) {
-    ZC_EXPECT(!registries.definitions().isFrozen());
-    ZC_EXPECT(registries.definitions().size() == 0);
-  }
 }
 
 ZC_TEST("CompilerSession rejects duplicate generic binders before registry mutation") {
@@ -2515,14 +2770,6 @@ ZC_TEST("CompilerSession rejects duplicate generic binders before registry mutat
   ZC_EXPECT(!session.parseSources());
   ZC_REQUIRE(captured.ids.size() == 1);
   ZC_EXPECT(captured.ids[0] == diagnostics::DiagID::DuplicateIdentifier);
-  ZC_REQUIRE(session.getIdentityRegistries() != zc::none);
-  ZC_IF_SOME(registries, session.getIdentityRegistries()) {
-    ZC_EXPECT(!registries.definitions().isFrozen());
-    ZC_EXPECT(registries.definitions().size() == 0);
-    ZC_EXPECT(registries.impls().size() == 0);
-    ZC_EXPECT(registries.genericParameters().size() == 0);
-    ZC_EXPECT(registries.callableParameters().size() == 0);
-  }
 }
 
 ZC_TEST("CompilerSession reports non-literal stable array lengths as source failures") {
@@ -2547,11 +2794,6 @@ ZC_TEST("CompilerSession reports non-literal stable array lengths as source fail
   ZC_EXPECT(!session.parseSources());
   ZC_REQUIRE(captured.ids.size() == 1);
   ZC_EXPECT(captured.ids[0] == diagnostics::DiagID::ConstantExpressionNotAllowed);
-  ZC_REQUIRE(session.getIdentityRegistries() != zc::none);
-  ZC_IF_SOME(registries, session.getIdentityRegistries()) {
-    ZC_EXPECT(!registries.definitions().isFrozen());
-    ZC_EXPECT(registries.definitions().size() == 0);
-  }
 }
 
 }  // namespace zomlang::compiler::driver

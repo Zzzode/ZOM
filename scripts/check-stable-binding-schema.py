@@ -1137,19 +1137,19 @@ def validate(text: str) -> list[str]:
 
     stable_header_provenance = {
         "StableHeaderGenericParameter": (
-            "StableDefinitionHeaderProducer",
+            "DefinitionHeaderProducer",
             "StableHeaderVerifier",
         ),
         "StableHeaderCallableParameter": (
-            "StableDefinitionHeaderProducer",
+            "DefinitionHeaderProducer",
             "StableHeaderVerifier",
         ),
         "StableDefinitionHeader": (
-            "StableDefinitionHeaderProducer",
+            "DefinitionHeaderProducer",
             "StableHeaderVerifier",
         ),
         "StableImplementationOccurrenceHeader": (
-            "StableImplementationOccurrenceHeaderProducer",
+            "ImplementationHeaderProducer",
             "StableHeaderVerifier",
         ),
     }

@@ -103,15 +103,26 @@ public:
 
   ZC_NODISCARD zc::Maybe<CompilationUnitIdentityEntry> compilationUnit(
       CompilationUnitId handle) const;
+  ZC_NODISCARD zc::Maybe<CompilationUnitIdentityEntry> compilationUnit(
+      const CompilationUnitIdentity& key) const;
   ZC_NODISCARD zc::Maybe<CrateIdentityEntry> crate(CrateId handle) const;
+  ZC_NODISCARD zc::Maybe<CrateIdentityEntry> crate(const CrateKey& key) const;
   ZC_NODISCARD zc::Maybe<SourceFileIdentityEntry> sourceFile(SourceFileId handle) const;
+  ZC_NODISCARD zc::Maybe<SourceFileIdentityEntry> sourceFile(const SourceFileKey& key) const;
   ZC_NODISCARD zc::Maybe<ModuleIdentityEntry> module(ModuleId handle) const;
+  ZC_NODISCARD zc::Maybe<ModuleIdentityEntry> module(const ModuleKey& key) const;
   ZC_NODISCARD zc::Maybe<DefinitionIdentityEntry> definition(DefId handle) const;
+  ZC_NODISCARD zc::Maybe<DefinitionIdentityEntry> definition(const DefinitionKey& key) const;
   ZC_NODISCARD zc::Maybe<ImplementationIdentityEntry> implementation(ImplId handle) const;
+  ZC_NODISCARD zc::Maybe<ImplementationIdentityEntry> implementation(const ImplKey& key) const;
   ZC_NODISCARD zc::Maybe<GenericParameterIdentityEntry> genericParameter(
       GenericParameterId handle) const;
+  ZC_NODISCARD zc::Maybe<GenericParameterIdentityEntry> genericParameter(
+      const GenericParameterKey& key) const;
   ZC_NODISCARD zc::Maybe<CallableParameterIdentityEntry> callableParameter(
       CallableParameterId handle) const;
+  ZC_NODISCARD zc::Maybe<CallableParameterIdentityEntry> callableParameter(
+      const CallableParameterKey& key) const;
 
 private:
   struct Impl;

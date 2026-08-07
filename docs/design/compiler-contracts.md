@@ -1,7 +1,7 @@
 <!-- @dsCard group="Design Documents" name="COMPILER_CONTRACTS" -->
 # ZOM Compiler Subsystem Contracts
 
-Updated: 2026-07-29
+Updated: 2026-08-06
 
 ## 1. Authority And Scope
 
@@ -18,22 +18,26 @@ subset:
 ```mermaid
 flowchart LR
     S["Verified source snapshot"] --> P["VerifiedParsedModule"]
-    P --> G["VerifiedModuleGraph"]
-    G --> I["VerifiedBindingInput"]
-    I --> B["VerifiedBindingOutput"]
-    B --> V["VerifiedBoundModuleInput"]
-    V --> C["Verified checker facts and interfaces"]
-    C --> E["Verified BorrowEvidence"]
-    C --> M["VerifiedCheckedModule"]
+    P --> G["MaterializedModuleGraph lease"]
+    G --> S2["MaterializeModuleSkeleton lease"]
+    S2 --> O["MaterializeOwnerBody leases"]
+    O --> B["VerifyBoundModule lease"]
+    B --> C["CheckerBoundModuleView"]
+    C --> F["Verified checker facts and interfaces"]
+    F --> E["Verified BorrowEvidence"]
+    F --> M["VerifiedCheckedModule"]
     E --> M
     M --> H["VerifiedHirModule"]
     H --> R["VerifiedBuiltMir"]
 ```
 
-Every checker, interface, evidence, CheckedModule, HIR, and Built MIR result is
-staged and independently verified before session publication. Production
-ownership proof, executable MIR, target LIR, LLVM, object, and binary
-publication do not exist.
+Every materialization capability has an independent verifier and a retained
+lease. `CompilerSession` publishes `CheckerBoundModuleView` values from the
+final-sealed snapshot; checked modules, HIR, Built MIR, and ownership overlays
+retain that lineage. Every checker, interface, evidence, CheckedModule, HIR,
+and Built MIR result is staged and independently verified before session
+publication. Production ownership proof, executable MIR, target LIR, LLVM,
+object, and binary publication do not exist.
 
 ## 2. Capability Rules
 
@@ -104,7 +108,7 @@ named-item roots are demanded only from a new ready snapshot.
 #### Q-05 Stable owner projection status
 
 `ModuleBodyOwners(ModuleKey)` reads exactly one named-definition inventory and
-one canonical parallel group of all corresponding `NamedItemSyntax` values. It
+one canonical sequential sequence of corresponding `NamedItemSyntax` values. It
 publishes one module owner plus only definitions in the closed executable-root
 set, sorted by complete owner bytes. `OwnerBodySyntax` then reads only the
 matching module-body or named-item syntax alternative.
@@ -113,8 +117,9 @@ matching module-body or named-item syntax alternative.
 verifier read `OwnerBodySyntax` and exactly the matching module-body or
 named-item provenance alternative, and reject missing, extra, duplicate,
 foreign-source, or boundary-crossing paths. These descriptors and their native
-success and rejection matrix are implemented. `CompilerSession` does not yet
-publish final admission or demand them as production Binder roots.
+success and rejection matrix are implemented. `MaterializeOwnerBody` consumes
+the provenance lease after the skeleton's eight-domain membership admission,
+and `VerifyBoundModule` retains every admitted owner-body lease.
 
 #### Q-06 Capability publication
 
@@ -132,8 +137,10 @@ seal through the sole generated complete-context input row. A sealed snapshot
 must match database identity, revision, context key, and final witness.
 Final-sealed descriptors reject missing or unequal admission before provider
 execution, and an admitted parent propagates the same authority to nested
-capability demands. This runtime is implemented and natively tested; production
-session adoption remains incomplete.
+capability demands. `CompilerSession` seals the binding snapshot, materializes
+the graph and every bound module, and gives the checker lease-owning bound
+module views. Nested production providers use sequential demands because worker
+contexts cannot form nested parallel dependency groups.
 
 ## 3. Lexer To Parser Contract
 
@@ -229,8 +236,10 @@ binding.
 ### ID-01 One context owner
 
 `CompilerSession` owns one `SemanticContextBrand`, one
-`SemanticIdentityRegistrySet`, and one `SemanticTypeStore`. Duplicate singleton
-stores or foreign handles are invariant failures.
+`SemanticContextCapabilityArena`, and one `SemanticTypeStore`. The arena owns
+the eight typed identity interners and survives through every retained
+capability memo and lease. Duplicate context authorities or foreign handles are
+invariant failures.
 
 ### ID-02 Freeze order
 
@@ -349,7 +358,7 @@ closed if no remaining module is ready.
 
 ### C-01 Sealed input and canonical fact families
 
-The checker consumes `VerifiedBoundModuleInput`, frozen semantic identities, the
+The checker consumes `CheckerBoundModuleView`, frozen semantic identities, the
 semantic context fingerprint, imported verified interfaces, and the sole
 `SemanticTypeStore`. Signature, coherence, inference/body, dispatch, marker,
 borrow-surface, and checked facts use branded IDs, canonical revisions, and
@@ -368,8 +377,10 @@ views are projected only from verified interfaces.
 The session verifies complete `BorrowEvidence`, assembles
 `VerifiedCheckedModule`, lowers `VerifiedHirModule`, builds and independently
 verifies `VerifiedBuiltMir`, then commits every staged repository and module
-vector together. Missing, additional, malformed, stale, foreign-context, or
-non-canonical facts fail closed without partial successor publication. No
+vector together. Each stage retains its `CheckerBoundModuleView` lineage;
+ownership overlays retain the Built MIR lineage before teardown. Missing,
+additional, malformed, stale, foreign-context, or non-canonical facts fail
+closed without partial successor publication. No
 second symbol, type, AST-metadata, or borrow representation rail exists.
 
 ## 9. Target And IR Contract

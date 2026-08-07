@@ -8,6 +8,7 @@
 #include "zc/core/time.h"
 #include "zc/ztest/test.h"
 #include "zomlang/compiler/checker/body-checker.h"
+#include "zomlang/compiler/checker/checker-identity-authority.h"
 #include "zomlang/compiler/diagnostics/diagnostic-engine.h"
 #include "zomlang/compiler/driver/coherence-builder.h"
 #include "zomlang/compiler/driver/compiler-session.h"
@@ -16,6 +17,7 @@
 #include "zomlang/compiler/driver/package/manifest-parser.h"
 #include "zomlang/compiler/driver/package/source-record.h"
 #include "zomlang/tests/unittests/compiler/driver/core-library-test-fixture.h"
+#include "zomlang/tests/unittests/compiler/test-semantic-identities.h"
 
 namespace zomlang::compiler::checker::marker {
 namespace {
@@ -23,11 +25,16 @@ namespace {
 namespace package = driver::package;
 
 constexpr zc::StringPtr kMarkerProofSource = R"zom(
-interface Structural {}
 struct GenericBox<T> { pair: (T, T); }
 enum GenericChoice<T> { Single(T), Pair(T, T), Empty }
+struct GenericContainers<T> { fixed: [T; 4]; dynamic: T[]; }
+struct NestedBox<T> { value: GenericBox<T>; }
 struct PlainStruct { value: i32; }
 enum PlainEnum { Value(i32), Empty }
+interface LocalBehavior { fun act(); }
+impl LocalBehavior for PlainStruct {}
+interface EnumBehavior { fun act(); }
+impl EnumBehavior for PlainEnum {}
 struct SelfCycle { next: SelfCycle; }
 struct LeftCycle { right: RightCycle; }
 struct RightCycle { left: LeftCycle; }
@@ -56,6 +63,18 @@ identity::CanonicalPackageSource packageSource() {
 identity::PackageBaseKey packageBase() {
   return identity::PackageBaseKey::from(packageSource(), scalar<identity::PackageName>("app"_zc),
                                         scalar<identity::ResolvedVersion>("1.0.0"_zc));
+}
+
+identity::SourceSpan codecSpan(uint64_t start, uint64_t end) {
+  auto snapshot = identity::ImmutableSourceSnapshot::from(tests::test_identity_detail::source(),
+                                                          zc::heapArray("module-interface"_zcb));
+  ZC_REQUIRE(snapshot != zc::none);
+  ZC_IF_SOME(value, snapshot) {
+    auto span = value.span(start, end);
+    ZC_REQUIRE(span != zc::none);
+    return zc::mv(ZC_REQUIRE_NONNULL(span));
+  }
+  ZC_UNREACHABLE
 }
 
 identity::PackageKey packageKey() {
@@ -229,27 +248,57 @@ public:
     ZC_REQUIRE(session.parseSources());
     ZC_REQUIRE(session.bindSources());
     ZC_REQUIRE(!session.getDiagnosticEngine().hasErrors());
-    ZC_REQUIRE(driver::core_library_test::userBoundModuleCount(session, registries()) == 1);
+    identityAuthority = session.materializeCheckerIdentityAuthority();
+    ZC_REQUIRE(identityAuthority != zc::none);
+    const auto& identities = ZC_REQUIRE_NONNULL(identityAuthority);
+    ZC_REQUIRE(driver::core_library_test::userBoundModuleCount(identities) == 1);
+    userModule = driver::core_library_test::soleUserBoundModule(identities).module();
 
     zc::Vector<signature::MarkerShapeModuleInput> shapeInputs;
-    for (const auto& candidate : session.getVerifiedBoundModules()) {
+    for (const auto& candidate : identities.modules()) {
       shapeInputs.add(signature::MarkerShapeModuleInput{candidate});
     }
     auto shapeResult = signature::MarkerShapeInventoryBuilder::build(
-        session.getSemanticContextBrand(), contextFingerprint(), shapeInputs.asPtr(), registries());
+        session.getSemanticContextBrand(), contextFingerprint(), userModule, shapeInputs.asPtr(),
+        identities);
     ZC_REQUIRE(shapeResult.is<signature::VerifiedMarkerShapeInventory>());
     markerShapes = zc::mv(shapeResult).get<signature::VerifiedMarkerShapeInventory>();
 
-    auto markerKey = registries().definitions().lookup(definition("Structural"_zc));
+    zc::Maybe<identity::DefinitionKey> markerKey;
+    for (const auto& boundModule : identities.modules()) {
+      for (const auto& definition : boundModule.definitions().definitions()) {
+        if (definition.record.name() != "Copy"_zc) continue;
+        ZC_REQUIRE(markerKey == zc::none);
+        markerKey = definition.key.clone();
+      }
+    }
     ZC_REQUIRE(markerKey != zc::none);
     ZC_IF_SOME(key, markerKey) {
+      auto markerEntry = identities.definition(key);
+      ZC_REQUIRE(markerEntry != zc::none);
+      identity::DefId authorityMarker;
+      zc::Maybe<identity::ModuleId> authorityOwner;
+      ZC_IF_SOME(entry, markerEntry) {
+        authorityMarker = entry.handle();
+        auto owner = identities.module(entry.record().module());
+        ZC_REQUIRE(owner != zc::none);
+        ZC_IF_SOME(value, owner) { authorityOwner = value.handle(); }
+      }
+      ZC_REQUIRE(authorityMarker.isValid());
+      ZC_REQUIRE(authorityOwner != zc::none);
+      ZC_REQUIRE(markerShapeInventory().shape(authorityMarker) ==
+                 signature::InterfaceMarkerShape::ClosedMarker);
       zc::Vector<signature::MarkerStructuralSubject> structuralSubjects;
       structuralSubjects.add(signature::MarkerStructuralSubject::Tuple);
+      structuralSubjects.add(signature::MarkerStructuralSubject::Object);
+      structuralSubjects.add(signature::MarkerStructuralSubject::FixedArray);
       structuralSubjects.add(signature::MarkerStructuralSubject::NominalStruct);
       structuralSubjects.add(signature::MarkerStructuralSubject::NominalEnum);
       zc::Vector<signature::PrimitiveKind> builtinPrimitives;
       builtinPrimitives.add(signature::PrimitiveKind::I32);
       zc::Vector<signature::MarkerPolicyReferenceConfiguration> referenceRequirements;
+      referenceRequirements.add(signature::MarkerPolicyReferenceConfiguration{
+          type::semantic::Mutability::Const, key.clone()});
       zc::Vector<signature::MarkerPolicyConfigurationEntry> policyEntries;
       policyEntries.add(signature::MarkerPolicyConfigurationEntry{
           key.clone(), zc::mv(structuralSubjects), zc::mv(builtinPrimitives),
@@ -258,9 +307,10 @@ public:
       ZC_REQUIRE(configuration != zc::none);
       ZC_IF_SOME(value, configuration) {
         zc::Vector<identity::ModuleId> authorizedPreludeModules;
-        authorizedPreludeModules.add(boundModule().module());
+        ZC_IF_SOME(owner, authorityOwner) { authorizedPreludeModules.add(owner); }
         auto policyResult = signature::MarkerPolicyRegistryBuilder::build(
-            value, markerShapeInventory(), authorizedPreludeModules.asPtr(), registries());
+            userModule, value, markerShapeInventory(), authorizedPreludeModules.asPtr(),
+            identities);
         ZC_REQUIRE(policyResult.is<signature::VerifiedMarkerPolicyRegistry>());
         markerPolicies = zc::mv(policyResult).get<signature::VerifiedMarkerPolicyRegistry>();
       }
@@ -270,15 +320,15 @@ public:
     zc::Vector<cross_module::ImportedSignatureView> moduleImportedViews;
     zc::Vector<driver::VerifiedModuleInterface> interfaces;
     zc::Maybe<size_t> userModuleIndex;
-    for (const auto& candidate : session.getVerifiedBoundModules()) {
+    for (const auto& candidate : identities.modules()) {
       auto signatureResult = signature::SignatureFactsBuilder::build(
-          signature::SignatureFactsBuildInput{candidate, registries(), semanticTypes(),
-                                              markerShapeInventory(), markerPolicyRegistry()});
+          signature::SignatureFactsBuildInput{candidate, semanticTypes(), markerShapeInventory(),
+                                              markerPolicyRegistry(), identities});
       ZC_REQUIRE(signatureResult.is<signature::VerifiedSignatureFacts>());
       moduleSignatures.add(zc::mv(signatureResult).get<signature::VerifiedSignatureFacts>());
 
       auto importedResult = driver::ImportedSignatureViewProjector::build(
-          candidate, interfaces.asPtr(), registries(), semanticTypes());
+          candidate, interfaces.asPtr(), semanticTypes(), identities);
       ZC_REQUIRE(importedResult != zc::none);
       ZC_IF_SOME(value, importedResult) { moduleImportedViews.add(zc::mv(value)); }
 
@@ -287,13 +337,13 @@ public:
       auto borrowResult = borrow::BorrowInterfaceBuilder::build(borrow::BorrowInterfaceBuildInput{
           session.getSemanticContextBrand(), contextFingerprint(), candidate.module(),
           signatures.revision(), imported.revision(), signatures.signatures(),
-          zc::ArrayPtr<const signature::SemanticSignature>(), registries(), semanticTypes()});
+          zc::ArrayPtr<const signature::SemanticSignature>(), identities, semanticTypes()});
       ZC_REQUIRE(borrowResult.is<borrow::VerifiedBorrowInterfaceSurface>());
       auto interfaceResult =
           driver::ModuleInterfaceVerifier::build(driver::ModuleInterfaceBuildInput{
               candidate, signatures, imported, markerPolicyRegistry(),
-              zc::mv(borrowResult).get<borrow::VerifiedBorrowInterfaceSurface>(), registries(),
-              semanticTypes()});
+              zc::mv(borrowResult).get<borrow::VerifiedBorrowInterfaceSurface>(), semanticTypes(),
+              identities});
       ZC_REQUIRE(interfaceResult.is<driver::VerifiedModuleInterface>());
       interfaces.add(zc::mv(interfaceResult).get<driver::VerifiedModuleInterface>());
       if (candidate.module() == boundModule().module()) {
@@ -301,13 +351,14 @@ public:
         userModuleIndex = interfaces.size() - 1;
       }
     }
-    ZC_REQUIRE(interfaces.size() == registries().modules().size());
+    ZC_REQUIRE(interfaces.size() == identities.modules().size());
     ZC_REQUIRE(userModuleIndex != zc::none);
     auto coherenceResult = driver::CoherenceBuilder::build(
         driver::CoherenceBuildInput{session.getSemanticContextBrand(), contextFingerprint(),
-                                    markerPolicyRegistry(), interfaces.asPtr(), registries()});
+                                    markerPolicyRegistry(), interfaces.asPtr(), identities});
     ZC_REQUIRE(coherenceResult.is<coherence::CoherenceFrozen>());
     coherenceFacts = zc::mv(coherenceResult).get<coherence::CoherenceFrozen>();
+    moduleInterfaces = zc::mv(interfaces);
     ZC_IF_SOME(index, userModuleIndex) {
       signatureFacts = zc::mv(moduleSignatures[index]);
       importedSignatures = zc::mv(moduleImportedViews[index]);
@@ -320,12 +371,18 @@ public:
 
   identity::DefId definition(zc::StringPtr name) const {
     for (const auto& entry : boundModule().definitions().definitions()) {
-      auto record = registries().definitions().lookupRecord(entry.definition);
-      ZC_IF_SOME(value, record) {
-        if (value.name() == name) return entry.definition;
-      }
+      if (entry.record.name() == name) return entry.definition;
     }
     ZC_FAIL_REQUIRE("missing marker-proof definition fixture");
+  }
+
+  identity::DefId coreDefinition(zc::StringPtr name) const {
+    for (const auto& module : ZC_REQUIRE_NONNULL(identityAuthority).modules()) {
+      for (const auto& definition : module.definitions().definitions()) {
+        if (definition.record.name() == name) return definition.definition;
+      }
+    }
+    ZC_FAIL_REQUIRE("missing marker-proof core definition fixture");
   }
 
   identity::SemanticTypeId primitive(type::semantic::PrimitiveKind kind) {
@@ -347,43 +404,152 @@ public:
         type::semantic::NominalTypeData{definition(name), zc::mv(values)}));
   }
 
+  identity::SemanticTypeId fixedArray(identity::SemanticTypeId element, uint64_t length) {
+    return intern(type::semantic::TypeData(type::semantic::FixedArrayTypeData{element, length}));
+  }
+
+  identity::SemanticTypeId object(identity::SemanticTypeId fieldType) {
+    zc::Vector<type::semantic::ObjectFieldData> fields;
+    fields.add(type::semantic::ObjectFieldData{scalar<identity::SemanticIdentifier>("field"_zc),
+                                               fieldType, type::semantic::Mutability::Const,
+                                               type::semantic::FieldPresence::Required});
+    return intern(type::semantic::TypeData(type::semantic::ObjectTypeData{zc::mv(fields)}));
+  }
+
+  identity::SemanticTypeId reference(type::semantic::Mutability mutability,
+                                     identity::SemanticTypeId referent) {
+    return intern(
+        type::semantic::TypeData(type::semantic::ReferenceTypeData{mutability, referent}));
+  }
+
   MarkerProofResult prove(identity::SemanticTypeId subject) {
-    auto crateKey = registries().crates().lookup(boundModule().crate());
-    ZC_REQUIRE(crateKey != zc::none);
-    ZC_IF_SOME(crate, crateKey) {
+    return prove(coreDefinition("Copy"_zc), subject);
+  }
+
+  MarkerProofInput proofInput() {
+    auto crateEntry = ZC_REQUIRE_NONNULL(identityAuthority).crate(boundModule().crate());
+    ZC_REQUIRE(crateEntry != zc::none);
+    ZC_IF_SOME(crate, crateEntry) {
       body::BodyCheckingInput bodyInput{boundModule(),
+                                        ZC_REQUIRE_NONNULL(identityAuthority),
                                         verifiedSignatureFacts(),
                                         importedSignatureView(),
                                         coherenceView(),
-                                        registries(),
                                         semanticTypes(),
                                         bodyRequirementInventory(),
-                                        crate.semanticOptions()};
+                                        crate.key().semanticOptions()};
       auto input = MarkerProofInput::from(bodyInput, markerPolicyRegistry());
       ZC_REQUIRE(input != zc::none);
-      ZC_IF_SOME(value, input) {
-        MarkerProofEngine engine(zc::mv(value));
-        return engine.prove(definition("Structural"_zc), subject);
-      }
+      return zc::mv(ZC_REQUIRE_NONNULL(input));
     }
     ZC_UNREACHABLE
   }
 
-  size_t semanticTypeCount() { return semanticTypes().size(); }
-
-private:
-  const binder::VerifiedBoundModuleInput& boundModule() const {
-    return driver::core_library_test::soleUserBoundModule(session, registries());
+  MarkerProofResult prove(identity::DefId marker, identity::SemanticTypeId subject) {
+    MarkerProofEngine engine(proofInput());
+    return engine.prove(marker, subject);
   }
 
-  const identity::SemanticIdentityRegistrySet& registries() const {
-    ZC_IF_SOME(value, session.getIdentityRegistries()) { return value; }
-    ZC_UNREACHABLE
+  size_t semanticTypeCount() { return semanticTypes().size(); }
+
+  zc::Maybe<zc::Array<uint8_t>> encodeModuleExport() {
+    auto name = binder::BindingNameKey::from(
+        binder::Namespace::Module, scalar<identity::DeclaredDefinitionName>("dependency"_zc));
+    ZC_REQUIRE(name != zc::none);
+    driver::ExportedBinding binding{
+        binder::BindingTarget::module(userModule),
+        zc::mv(ZC_REQUIRE_NONNULL(name)),
+        driver::TypeEnrichedBindingTarget(driver::ModuleTypeEnrichedTarget{
+            userModule, boundModule().bindingSurface().revision()}),
+        binder::VisibilityEnvelope::external(),
+        codecSpan(0, 1),
+        codecSpan(1, 3),
+        zc::Maybe<identity::SourceSpan>(codecSpan(3, 5)),
+        codecSpan(3, 5)};
+    return driver::ModuleInterfaceCanonicalCodec::encodeExportedBinding(
+        binding, ZC_REQUIRE_NONNULL(identityAuthority), semanticTypes());
+  }
+
+  zc::Maybe<zc::Array<uint8_t>> encodeSignatureRoot() {
+    const auto definitionValue = definition("GenericBox"_zc);
+    module_interface::SignatureRootAuthorization root{
+        binder::BindingTarget::definition(definitionValue),
+        definitionValue,
+        binder::VisibilityEnvelope::external(),
+        userModule,
+        boundModule().bindingSurface().revision(),
+        module_interface::SignatureAuthorizationOrigin(
+            module_interface::LocalSignatureAuthorization{})};
+    return driver::ModuleInterfaceCanonicalCodec::encodeSignatureRoot(
+        root, ZC_REQUIRE_NONNULL(identityAuthority));
+  }
+
+  zc::ArrayPtr<const signature::ImplHead> implHeads() const {
+    return verifiedSignatureFacts().implHeads();
+  }
+
+  zc::Maybe<zc::Array<uint8_t>> encodeImplHead(size_t index) {
+    const auto heads = implHeads();
+    ZC_REQUIRE(index < heads.size());
+    return signature::SignatureFactsCanonicalCodec::encodeImplHead(
+        heads[index], ZC_REQUIRE_NONNULL(identityAuthority), semanticTypes());
+  }
+
+  zc::Maybe<signature::CanonicalTypeHead> canonicalImplHead(size_t index) {
+    const auto heads = implHeads();
+    ZC_REQUIRE(index < heads.size());
+    return signature::SignatureFactsCanonicalCodec::canonicalTypeHead(heads[index].selfType,
+                                                                      semanticTypes());
+  }
+
+  const coherence::FrozenCoherenceView& frozenCoherenceView() const { return coherenceView(); }
+
+  identity::SemanticContextBrand semanticContext() const {
+    return session.getSemanticContextBrand();
+  }
+
+  identity::ModuleId requesterModule() const { return boundModule().module(); }
+
+  zc::ArrayPtr<const driver::VerifiedModuleInterface> moduleInterfaceInputs() const {
+    return moduleInterfaces.asPtr();
+  }
+
+  coherence::CoherenceBuildResult buildCoherence(
+      zc::ArrayPtr<const driver::VerifiedModuleInterface> interfaces) const {
+    return driver::CoherenceBuilder::build(driver::CoherenceBuildInput{
+        session.getSemanticContextBrand(), contextFingerprint(), markerPolicyRegistry(), interfaces,
+        ZC_REQUIRE_NONNULL(identityAuthority)});
+  }
+
+  coherence::CoherenceBuildResult buildCoherenceWithRepeatedInterface(
+      zc::ArrayPtr<const driver::VerifiedModuleInterface> interfaces) const {
+    ZC_REQUIRE(interfaces.size() > 1);
+    zc::Vector<coherence::CoherenceModuleInput> modules(interfaces.size());
+    modules.add(interfaces[0].projectCoherenceInput());
+    modules.add(interfaces[0].projectCoherenceInput());
+    for (size_t index = 1; index + 1 < interfaces.size(); ++index) {
+      modules.add(interfaces[index].projectCoherenceInput());
+    }
+    coherence::CoherenceCandidate candidate{session.getSemanticContextBrand(),
+                                            contextFingerprint().clone(),
+                                            markerPolicyRegistry().revision(), zc::mv(modules)};
+    return coherence::CoherenceVerifier::verify(zc::mv(candidate), markerPolicyRegistry(),
+                                                ZC_REQUIRE_NONNULL(identityAuthority));
+  }
+
+  zc::Maybe<cross_module::ImportedSignatureView> buildImportedSignatures(
+      zc::ArrayPtr<const driver::VerifiedModuleInterface> interfaces) {
+    return driver::ImportedSignatureViewProjector::build(boundModule(), interfaces, semanticTypes(),
+                                                         ZC_REQUIRE_NONNULL(identityAuthority));
+  }
+
+private:
+  const driver::module_graph_query::CheckerBoundModuleView& boundModule() const {
+    return ZC_REQUIRE_NONNULL(ZC_REQUIRE_NONNULL(identityAuthority).boundModule(userModule));
   }
 
   const identity::SemanticContextFingerprint& contextFingerprint() const {
-    ZC_IF_SOME(value, session.getSemanticContextFingerprint()) { return value; }
-    ZC_UNREACHABLE
+    return ZC_REQUIRE_NONNULL(identityAuthority).fingerprint();
   }
 
   type::SemanticTypeStore& semanticTypes() {
@@ -436,11 +602,14 @@ private:
   basic::CompilerOptions compilerOptions;
   identity::SemanticContextFactory contextFactory;
   driver::CompilerSession session;
+  identity::ModuleId userModule;
+  zc::Maybe<CheckerIdentityAuthority> identityAuthority;
   zc::Maybe<signature::VerifiedMarkerShapeInventory> markerShapes;
   zc::Maybe<signature::VerifiedMarkerPolicyRegistry> markerPolicies;
   zc::Maybe<signature::VerifiedSignatureFacts> signatureFacts;
   zc::Maybe<cross_module::ImportedSignatureView> importedSignatures;
   zc::Maybe<coherence::CoherenceFrozen> coherenceFacts;
+  zc::Vector<driver::VerifiedModuleInterface> moduleInterfaces;
   zc::Maybe<body::VerifiedBodyFactRequirementInventory> bodyRequirements;
 };
 
@@ -453,8 +622,165 @@ const signature::StructuralMarkerEvidence& structuralEvidence(const MarkerProofR
 
 }  // namespace
 
-ZC_TEST("MarkerProofEngine substitutes and interns generic nominal components") {
+ZC_TEST("CoherenceVerifier freezes complete module-interface projections") {
   MarkerProofFixture fixture(kMarkerProofSource);
+  const auto interfaces = fixture.moduleInterfaceInputs();
+  const auto& view = fixture.frozenCoherenceView();
+
+  ZC_REQUIRE(interfaces.size() > 1);
+  ZC_EXPECT(view.semanticContext() == fixture.semanticContext());
+  ZC_EXPECT(view.moduleInterfaceRevisions().size() == interfaces.size());
+  ZC_EXPECT(view.implHeads().size() == 2);
+  ZC_EXPECT(view.markerFacts().size() == 0);
+  for (size_t index = 0; index < interfaces.size(); ++index) {
+    ZC_EXPECT(view.moduleInterfaceRevisions()[index].module == interfaces[index].module());
+  }
+}
+
+ZC_TEST("CoherenceVerifier retains implementation lookup membership") {
+  MarkerProofFixture fixture(kMarkerProofSource);
+  const auto& view = fixture.frozenCoherenceView();
+  const auto heads = view.implHeads();
+  ZC_REQUIRE(heads.size() == 2);
+
+  auto first = view.implementation(heads[0].impl);
+  auto second = view.implementation(heads[1].impl);
+  auto missing = view.implementation(identity::ImplId());
+  ZC_REQUIRE(first != zc::none);
+  ZC_REQUIRE(second != zc::none);
+  ZC_EXPECT(ZC_REQUIRE_NONNULL(first).impl == heads[0].impl);
+  ZC_EXPECT(ZC_REQUIRE_NONNULL(second).impl == heads[1].impl);
+  ZC_EXPECT(missing == zc::none);
+}
+
+ZC_TEST("SignatureFactsBuilder retains and re-encodes behavior implementation heads") {
+  MarkerProofFixture fixture(kMarkerProofSource);
+  const auto heads = fixture.implHeads();
+
+  ZC_REQUIRE(heads.size() == 2);
+  for (size_t index = 0; index < heads.size(); ++index) {
+    ZC_EXPECT(heads[index].safety == signature::ImplSafety::Safe);
+    ZC_EXPECT(heads[index].head.variant().is<signature::NominalTypeHead>());
+
+    auto canonicalHead = fixture.canonicalImplHead(index);
+    ZC_REQUIRE(canonicalHead != zc::none);
+    ZC_IF_SOME(value, canonicalHead) {
+      ZC_EXPECT(value.variant().is<signature::NominalTypeHead>());
+      ZC_EXPECT(value.variant().get<signature::NominalTypeHead>().definition ==
+                heads[index].head.variant().get<signature::NominalTypeHead>().definition);
+    }
+
+    auto encoded = fixture.encodeImplHead(index);
+    ZC_REQUIRE(encoded != zc::none);
+    ZC_IF_SOME(value, encoded) { ZC_EXPECT(value.size() != 0); }
+  }
+}
+
+ZC_TEST("SignatureFactsBuilder canonicalizes non-nominal behavior implementation heads") {
+  auto source = zc::str(kMarkerProofSource,
+                        "interface IntegerBehavior { fun act(); }\n"
+                        "impl IntegerBehavior for i32 {}\n"
+                        "interface TupleBehavior { fun act(); }\n"
+                        "impl TupleBehavior for (i32, bool) {}\n"
+                        "interface ArrayBehavior { fun act(); }\n"
+                        "impl ArrayBehavior for i32[] {}\n"
+                        "interface FixedArrayBehavior { fun act(); }\n"
+                        "impl FixedArrayBehavior for [i32; 4] {}\n"
+                        "interface ReferenceBehavior { fun act(); }\n"
+                        "impl ReferenceBehavior for &i32 {}\n"
+                        "interface PointerBehavior { fun act(); }\n"
+                        "impl PointerBehavior for *const i32 {}\n"
+                        "interface UnionBehavior { fun act(); }\n"
+                        "impl UnionBehavior for i32 | bool {}\n"
+                        "interface IntersectionBehavior { fun act(); }\n"
+                        "impl IntersectionBehavior for i32 & bool {}\n"_zc);
+  MarkerProofFixture fixture(source);
+  const auto heads = fixture.implHeads();
+
+  ZC_REQUIRE(heads.size() == 10);
+  size_t primitiveHeads = 0;
+  size_t tupleHeads = 0;
+  size_t arrayHeads = 0;
+  size_t fixedArrayHeads = 0;
+  size_t referenceHeads = 0;
+  size_t pointerHeads = 0;
+  size_t unionHeads = 0;
+  size_t intersectionHeads = 0;
+  for (size_t index = 0; index < heads.size(); ++index) {
+    if (!heads[index].head.variant().is<signature::PrimitiveTypeHead>()) { continue; }
+    ++primitiveHeads;
+    auto canonicalHead = fixture.canonicalImplHead(index);
+    ZC_REQUIRE(canonicalHead != zc::none);
+    ZC_IF_SOME(value, canonicalHead) {
+      ZC_REQUIRE(value.variant().is<signature::PrimitiveTypeHead>());
+      ZC_EXPECT(value.variant().get<signature::PrimitiveTypeHead>().primitive ==
+                signature::PrimitiveKind::I32);
+    }
+    ZC_EXPECT(fixture.encodeImplHead(index) != zc::none);
+  }
+  for (const auto& head : heads) {
+    if (head.head.variant().is<signature::TupleTypeHead>()) { ++tupleHeads; }
+    if (head.head.variant().is<signature::DynamicArrayTypeHead>()) { ++arrayHeads; }
+    if (head.head.variant().is<signature::FixedArrayTypeHead>()) { ++fixedArrayHeads; }
+    if (head.head.variant().is<signature::ReferenceTypeHead>()) { ++referenceHeads; }
+    if (head.head.variant().is<signature::RawPointerTypeHead>()) { ++pointerHeads; }
+    if (head.head.variant().is<signature::UnionTypeHead>()) { ++unionHeads; }
+    if (head.head.variant().is<signature::IntersectionTypeHead>()) { ++intersectionHeads; }
+  }
+  ZC_EXPECT(primitiveHeads == 1);
+  ZC_EXPECT(tupleHeads == 1);
+  ZC_EXPECT(arrayHeads == 1);
+  ZC_EXPECT(fixedArrayHeads == 1);
+  ZC_EXPECT(referenceHeads == 1);
+  ZC_EXPECT(pointerHeads == 1);
+  ZC_EXPECT(unionHeads == 1);
+  ZC_EXPECT(intersectionHeads == 1);
+}
+
+ZC_TEST("CoherenceVerifier rejects an incomplete interface receipt") {
+  MarkerProofFixture fixture(kMarkerProofSource);
+  const auto interfaces = fixture.moduleInterfaceInputs();
+  ZC_REQUIRE(interfaces.size() > 1);
+
+  const auto result = fixture.buildCoherence(interfaces.first(interfaces.size() - 1));
+  ZC_REQUIRE(result.is<coherence::CoherenceInvariantRejected>());
+  const auto& rejection = result.get<coherence::CoherenceInvariantRejected>();
+  ZC_REQUIRE(rejection.failures.size() == 1);
+  const auto& failure = rejection.failures[0].variant();
+  ZC_REQUIRE(failure.is<signature::CheckerInvariantFact>());
+  ZC_EXPECT(failure.get<signature::CheckerInvariantFact>().kind ==
+            signature::CheckerInvariantKind::InputReceiptMismatch);
+  ZC_EXPECT(failure.get<signature::CheckerInvariantFact>().stage ==
+            signature::CheckerInvariantStage::Coherence);
+
+  for (size_t index = 0; index < interfaces.size(); ++index) {
+    if (interfaces[index].module() != fixture.requesterModule()) { continue; }
+    ZC_EXPECT(fixture.buildImportedSignatures(interfaces.slice(index, index + 1)) == zc::none);
+    return;
+  }
+  ZC_FAIL_REQUIRE("missing requester module interface");
+}
+
+ZC_TEST("CoherenceVerifier rejects a repeated module receipt") {
+  MarkerProofFixture fixture(kMarkerProofSource);
+  const auto interfaces = fixture.moduleInterfaceInputs();
+  const auto result = fixture.buildCoherenceWithRepeatedInterface(interfaces);
+  ZC_REQUIRE(result.is<coherence::CoherenceInvariantRejected>());
+  const auto& rejection = result.get<coherence::CoherenceInvariantRejected>();
+  ZC_REQUIRE(rejection.failures.size() == 1);
+  const auto& failure = rejection.failures[0].variant();
+  ZC_REQUIRE(failure.is<signature::CheckerInvariantFact>());
+  ZC_EXPECT(failure.get<signature::CheckerInvariantFact>().kind ==
+            signature::CheckerInvariantKind::AdditionalFact);
+  ZC_EXPECT(failure.get<signature::CheckerInvariantFact>().stage ==
+            signature::CheckerInvariantStage::Coherence);
+}
+
+ZC_TEST("MarkerProofEngine substitutes and interns generic nominal components") {
+  auto source = zc::str(kMarkerProofSource,
+                        "struct GenericPointer<T> { value: *const T; }\n"
+                        "struct GenericUnion<T> { value: T | i32; }\n"_zc);
+  MarkerProofFixture fixture(source);
   const auto i32 = fixture.primitive(type::semantic::PrimitiveKind::I32);
   const auto i32Pair = fixture.tuple(i32, i32);
   const identity::SemanticTypeId arguments[] = {i32};
@@ -479,7 +805,32 @@ ZC_TEST("MarkerProofEngine substitutes and interns generic nominal components") 
     ZC_REQUIRE(component.path.size() == 1);
     ZC_EXPECT(component.path[0].variant().is<signature::EnumVariantPayloadStep>());
   }
+
   ZC_EXPECT(fixture.semanticTypeCount() == typeCountBeforeProof);
+
+  const auto nested = fixture.nominal("NestedBox"_zc, zc::arrayPtr(arguments));
+  auto nestedResult = fixture.prove(nested);
+  const auto& nestedEvidence = structuralEvidence(nestedResult);
+  ZC_REQUIRE(nestedEvidence.components.size() == 1);
+  ZC_REQUIRE(nestedEvidence.components[0].path.size() == 1);
+  ZC_EXPECT(nestedEvidence.components[0].path[0].variant().is<signature::NominalFieldStep>());
+
+  const auto containers = fixture.nominal("GenericContainers"_zc, zc::arrayPtr(arguments));
+  ZC_EXPECT(fixture.prove(containers).is<MarkerProofUnsatisfied>());
+
+  const auto pointer = fixture.nominal("GenericPointer"_zc, zc::arrayPtr(arguments));
+  ZC_EXPECT(fixture.prove(pointer).is<MarkerProofUnsatisfied>());
+
+  const auto unionValue = fixture.nominal("GenericUnion"_zc, zc::arrayPtr(arguments));
+  ZC_EXPECT(fixture.prove(unionValue).is<MarkerProofInvariantRejected>());
+  ZC_EXPECT(fixture.encodeModuleExport() != zc::none);
+  ZC_EXPECT(fixture.encodeSignatureRoot() != zc::none);
+
+  auto retainedInput = fixture.proofInput();
+  retainedInput = fixture.proofInput();
+  MarkerProofEngine reassignedEngine(zc::mv(retainedInput));
+  ZC_EXPECT(reassignedEngine.prove(fixture.coreDefinition("Copy"_zc), genericBox)
+                .is<MarkerProofPositive>());
 }
 
 ZC_TEST("MarkerProofEngine proves nominal structs and enums structurally") {
@@ -501,6 +852,51 @@ ZC_TEST("MarkerProofEngine proves nominal structs and enums structurally") {
   ZC_EXPECT(enumEvidence.components[0].componentType == i32);
   ZC_REQUIRE(enumEvidence.components[0].path.size() == 1);
   ZC_EXPECT(enumEvidence.components[0].path[0].variant().is<signature::EnumVariantPayloadStep>());
+}
+
+ZC_TEST("MarkerProofEngine proves configured arrays and references structurally") {
+  MarkerProofFixture fixture(kMarkerProofSource);
+  const auto i32 = fixture.primitive(type::semantic::PrimitiveKind::I32);
+  const auto array = fixture.fixedArray(i32, 4);
+  const auto object = fixture.object(i32);
+  const auto reference = fixture.reference(type::semantic::Mutability::Const, i32);
+  const auto mutableReference = fixture.reference(type::semantic::Mutability::Mutable, i32);
+
+  auto arrayResult = fixture.prove(array);
+  const auto& arrayEvidence = structuralEvidence(arrayResult);
+  ZC_REQUIRE(arrayEvidence.components.size() == 1);
+  ZC_EXPECT(arrayEvidence.components[0].componentType == i32);
+  ZC_REQUIRE(arrayEvidence.components[0].path.size() == 1);
+  ZC_EXPECT(arrayEvidence.components[0].path[0].variant().is<signature::ArrayElementStep>());
+
+  auto objectResult = fixture.prove(object);
+  const auto& objectEvidence = structuralEvidence(objectResult);
+  ZC_REQUIRE(objectEvidence.components.size() == 1);
+  ZC_EXPECT(objectEvidence.components[0].componentType == i32);
+  ZC_REQUIRE(objectEvidence.components[0].path.size() == 1);
+  ZC_EXPECT(objectEvidence.components[0].path[0].variant().is<signature::ObjectFieldStep>());
+
+  auto referenceResult = fixture.prove(reference);
+  const auto& referenceEvidence = structuralEvidence(referenceResult);
+  ZC_REQUIRE(referenceEvidence.components.size() == 1);
+  ZC_EXPECT(referenceEvidence.components[0].componentType == i32);
+  ZC_REQUIRE(referenceEvidence.components[0].path.size() == 1);
+  ZC_EXPECT(
+      referenceEvidence.components[0].path[0].variant().is<signature::ReferenceReferentStep>());
+
+  ZC_EXPECT(fixture.prove(mutableReference).is<MarkerProofUnsatisfied>());
+}
+
+ZC_TEST("MarkerProofEngine rejects an unknown marker identity") {
+  MarkerProofFixture fixture(kMarkerProofSource);
+  const auto i32 = fixture.primitive(type::semantic::PrimitiveKind::I32);
+  auto result = fixture.prove(identity::DefId(), i32);
+  ZC_REQUIRE(result.is<MarkerProofInvariantRejected>());
+  ZC_REQUIRE(result.get<MarkerProofInvariantRejected>().failures.size() == 1);
+  const auto& failure = result.get<MarkerProofInvariantRejected>().failures[0].variant();
+  ZC_REQUIRE(failure.is<signature::CheckerInvariantFact>());
+  ZC_EXPECT(failure.get<signature::CheckerInvariantFact>().kind ==
+            signature::CheckerInvariantKind::InvalidFact);
 }
 
 ZC_TEST("MarkerProofEngine rejects pure self and mutual nominal cycles") {

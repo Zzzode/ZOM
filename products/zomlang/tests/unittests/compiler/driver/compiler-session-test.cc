@@ -227,11 +227,33 @@ package::ResolutionOutput sessionResolution(zc::MemoryResource& resource) {
   return zc::mv(resolution.get<package::ResolutionOutput>());
 }
 
-zc::Own<CompilerSession> packageSession(zc::StringPtr mainSource, zc::StringPtr childSource = {},
-                                        bool installCore = true) {
-  basic::LangOptions languageOptions;
-  basic::CompilerOptions compilerOptions;
-  auto session = makeSession(languageOptions, compilerOptions);
+class RetainedPackageSession final {
+public:
+  RetainedPackageSession()
+      : languageOptions(zc::heap<basic::LangOptions>()),
+        compilerOptions(zc::heap<basic::CompilerOptions>()),
+        sessionValue(createSession(*languageOptions, *compilerOptions)) {}
+  RetainedPackageSession(RetainedPackageSession&&) noexcept = default;
+  RetainedPackageSession& operator=(RetainedPackageSession&&) noexcept = default;
+  ZC_DISALLOW_COPY(RetainedPackageSession);
+
+  zc::Own<CompilerSession>& operator->() { return sessionValue; }
+
+private:
+  static zc::Own<CompilerSession> createSession(const basic::LangOptions& languageOptions,
+                                                const basic::CompilerOptions& compilerOptions) {
+    identity::SemanticContextFactory contextFactory;
+    return zc::heap<CompilerSession>(contextFactory, languageOptions, compilerOptions);
+  }
+
+  zc::Own<basic::LangOptions> languageOptions;
+  zc::Own<basic::CompilerOptions> compilerOptions;
+  zc::Own<CompilerSession> sessionValue;
+};
+
+RetainedPackageSession packageSession(zc::StringPtr mainSource, zc::StringPtr childSource = {},
+                                      bool installCore = true) {
+  RetainedPackageSession session;
   auto registry = sessionTargetRegistry();
   zc::Vector<package::ResolvedPackageSourceSnapshot> snapshots;
   snapshots.add(package::ResolvedPackageSourceSnapshot::from(
@@ -280,7 +302,7 @@ ZC_TEST("CompilerSessionTest.RejectsBuildPlanBeforePackageHandoff") {
   ZC_EXPECT(session->getBuildScriptResults() == zc::none);
 }
 
-ZC_TEST("CompilerSessionTest.OwnsDistinctContextRegistriesAndSemanticTypeStore") {
+ZC_TEST("CompilerSessionTest.OwnsDistinctSemanticContextsAndTypeStores") {
   auto langOpts = basic::LangOptions();
   auto compilerOpts = basic::CompilerOptions();
   identity::SemanticContextFactory contextFactory;
@@ -289,19 +311,10 @@ ZC_TEST("CompilerSessionTest.OwnsDistinctContextRegistriesAndSemanticTypeStore")
   ZC_EXPECT(first->getSemanticContextBrand().isValid());
   ZC_EXPECT(second->getSemanticContextBrand().isValid());
   ZC_EXPECT(first->getSemanticContextBrand() != second->getSemanticContextBrand());
-  auto firstRegistries = first->getIdentityRegistries();
-  auto secondRegistries = second->getIdentityRegistries();
-  ZC_EXPECT(firstRegistries != zc::none);
-  ZC_EXPECT(secondRegistries != zc::none);
   auto firstTypeStore = first->getSemanticTypeStore();
   auto secondTypeStore = second->getSemanticTypeStore();
   ZC_EXPECT(firstTypeStore != zc::none);
   ZC_EXPECT(secondTypeStore != zc::none);
-  ZC_IF_SOME(firstRegistrySet, firstRegistries) {
-    ZC_IF_SOME(secondRegistrySet, secondRegistries) {
-      ZC_EXPECT(&firstRegistrySet != &secondRegistrySet);
-    }
-  }
   ZC_IF_SOME(firstStore, firstTypeStore) {
     ZC_IF_SOME(secondStore, secondTypeStore) {
       ZC_EXPECT(&firstStore != &secondStore);
@@ -317,7 +330,6 @@ ZC_TEST("CompilerSessionTest.BrandExhaustionUsesRegisteredDiagnostic") {
   identity::SemanticContextFactory contextFactory(identity::SemanticContextIssueBudget{0, 1});
   auto session = zc::heap<CompilerSession>(contextFactory, langOpts, compilerOpts);
   ZC_EXPECT(!session->getSemanticContextBrand().isValid());
-  ZC_EXPECT(session->getIdentityRegistries() == zc::none);
   ZC_EXPECT(session->getSemanticTypeStore() == zc::none);
   ZC_EXPECT(session->getDiagnosticEngine().hasErrors());
   ZC_EXPECT(!session->parseSources());
@@ -342,12 +354,13 @@ ZC_TEST("CompilerSessionTest.GetDiagnosticEngine") {
   ZC_EXPECT(&diagnosticEngine != nullptr);
 }
 
-ZC_TEST("CompilerSessionTest.GetParsedModulesEmpty") {
+ZC_TEST("CompilerSessionTest.HasVerifiedParsedSyntaxInitiallyFalse") {
   auto langOpts = basic::LangOptions();
   auto compilerOpts = basic::CompilerOptions();
   auto session = makeSession(langOpts, compilerOpts);
 
-  ZC_EXPECT(session->getParsedModules().size() == 0);
+  ZC_EXPECT(!session->hasVerifiedParsedSyntax());
+  ZC_EXPECT(session->materializeParsedModules() == zc::none);
 }
 
 ZC_TEST("CompilerSessionTest.GetCheckerInvariantFailuresEmpty") {
@@ -383,11 +396,11 @@ ZC_TEST("CompilerSessionTest.PublishesOrdinaryPackageModuleGraph") {
 
   ZC_REQUIRE(session->parseSources());
   ZC_EXPECT(captured.ids.empty());
-  ZC_REQUIRE(session->getVerifiedModuleGraph() != zc::none);
-  ZC_IF_SOME(graph, session->getVerifiedModuleGraph()) {
-    ZC_EXPECT(graph.modules().size() == 4);
-    ZC_EXPECT(graph.edges().size() == 2);
-  }
+  auto graphLease = session->materializeModuleGraph();
+  ZC_REQUIRE(graphLease != zc::none);
+  const auto& graph = ZC_REQUIRE_NONNULL(graphLease).capability();
+  ZC_EXPECT(graph.modules().size() == 4);
+  ZC_EXPECT(graph.requestEdges().size() == 2);
 }
 
 ZC_TEST("CompilerSessionTest.PublishesCanonicalParseRejectionAtomically") {
@@ -402,6 +415,17 @@ ZC_TEST("CompilerSessionTest.PublishesCanonicalParseRejectionAtomically") {
   ZC_EXPECT(diagnosticCount(captured, diagnostics::DiagID::ModuleGraphInvariant) == 0);
 }
 
+ZC_TEST("CompilerSessionTest.PublishesRetainedMissingLookupDiagnosticDuringBinding") {
+  auto session = packageSession("missing_value;\n"_zc);
+  SessionDiagnostics captured;
+  session->getDiagnosticEngine().addConsumer(zc::heap<SessionDiagnosticConsumer>(captured));
+
+  ZC_REQUIRE(session->parseSources());
+  ZC_EXPECT(!session->bindSources());
+  ZC_EXPECT(diagnosticCount(captured, diagnostics::DiagID::UndefinedIdentifier) == 1);
+  ZC_EXPECT(diagnosticCount(captured, diagnostics::DiagID::CheckerMissingRequiredFact) == 0);
+}
+
 ZC_TEST("CompilerSessionTest.RejectsPackageParsingWithoutCoreDistribution") {
   auto session = packageSession("let main = 0;\n"_zc, {}, false);
   SessionDiagnostics captured;
@@ -409,7 +433,7 @@ ZC_TEST("CompilerSessionTest.RejectsPackageParsingWithoutCoreDistribution") {
 
   ZC_EXPECT(!session->parseSources());
   ZC_EXPECT(!session->hasVerifiedParsedSyntax());
-  ZC_EXPECT(session->getVerifiedModuleGraph() == zc::none);
+  ZC_EXPECT(session->materializeModuleGraph() == zc::none);
   ZC_EXPECT(diagnosticCount(captured, diagnostics::DiagID::ModuleGraphInvariant) == 1);
 }
 
@@ -420,10 +444,12 @@ ZC_TEST("CompilerSessionTest.PublishesSourceBackedCoreModulesInCompleteSemanticG
 
   ZC_REQUIRE(session->parseSources());
   ZC_EXPECT(captured.ids.empty());
-  ZC_EXPECT(session->getParsedModules().size() == 4);
+  auto parsedModules = session->materializeParsedModules();
+  ZC_REQUIRE(parsedModules != zc::none);
+  ZC_EXPECT(ZC_ASSERT_NONNULL(parsedModules).size() == 4);
   size_t userModules = 0;
   size_t toolchainModules = 0;
-  for (const auto& parsed : session->getParsedModules()) {
+  for (const auto& parsed : ZC_ASSERT_NONNULL(parsedModules)) {
     switch (parsed.parsedModule().source().crate().unit().kind()) {
       case identity::CompilationUnitKind::UserPackage:
         ++userModules;
@@ -436,18 +462,18 @@ ZC_TEST("CompilerSessionTest.PublishesSourceBackedCoreModulesInCompleteSemanticG
   ZC_EXPECT(userModules == 1);
   ZC_EXPECT(toolchainModules == 3);
 
-  ZC_REQUIRE(session->getVerifiedModuleGraph() != zc::none);
-  ZC_IF_SOME(graph, session->getVerifiedModuleGraph()) {
-    ZC_EXPECT(graph.modules().size() == 4);
-    ZC_EXPECT(graph.edges().size() == 2);
-  }
-  ZC_REQUIRE(session->getIdentityRegistries() != zc::none);
-  ZC_IF_SOME(registries, session->getIdentityRegistries()) {
-    ZC_EXPECT(registries.compilationUnits().size() == 2);
-    ZC_EXPECT(registries.crates().size() == 2);
-    ZC_EXPECT(registries.sourceFiles().size() == 4);
-    ZC_EXPECT(registries.modules().size() == 4);
-  }
+  auto graphLease = session->materializeModuleGraph();
+  ZC_REQUIRE(graphLease != zc::none);
+  const auto& graph = ZC_REQUIRE_NONNULL(graphLease).capability();
+  ZC_EXPECT(graph.modules().size() == 4);
+  ZC_EXPECT(graph.requestEdges().size() == 2);
+  auto authority = session->materializeCheckerIdentityAuthority();
+  ZC_REQUIRE(authority != zc::none);
+  const auto& materialized = ZC_REQUIRE_NONNULL(authority).graphLease().capability();
+  ZC_EXPECT(materialized.units().size() == 2);
+  ZC_EXPECT(materialized.crates().size() == 2);
+  ZC_EXPECT(materialized.sources().size() == 4);
+  ZC_EXPECT(materialized.modules().size() == 4);
 }
 
 ZC_TEST("CompilerSessionTest.RejectsReservedCoreRootWithoutPublishingModuleGraph") {
@@ -457,7 +483,7 @@ ZC_TEST("CompilerSessionTest.RejectsReservedCoreRootWithoutPublishingModuleGraph
 
   ZC_EXPECT(!session->parseSources());
   ZC_EXPECT(session->hasVerifiedParsedSyntax());
-  ZC_EXPECT(session->getVerifiedModuleGraph() == zc::none);
+  ZC_EXPECT(session->materializeModuleGraph() == zc::none);
   ZC_EXPECT(captured.ids.size() == 1);
   ZC_EXPECT(diagnosticCount(captured, diagnostics::DiagID::ToolchainModuleRootReserved) == 1);
   ZC_EXPECT(diagnosticCount(captured, diagnostics::DiagID::ModuleDeclarationNameMismatch) == 0);
@@ -476,7 +502,7 @@ ZC_TEST("CompilerSessionTest.SuppressesReservedRootCycleAndRetainsIndependentFai
 
   ZC_EXPECT(!session->parseSources());
   ZC_EXPECT(session->hasVerifiedParsedSyntax());
-  ZC_EXPECT(session->getVerifiedModuleGraph() == zc::none);
+  ZC_EXPECT(session->materializeModuleGraph() == zc::none);
   ZC_EXPECT(diagnosticCount(captured, diagnostics::DiagID::ToolchainModuleRootReserved) == 1);
   ZC_EXPECT(diagnosticCount(captured, diagnostics::DiagID::ImportModuleNotFound) == 1);
   ZC_EXPECT(diagnosticCount(captured, diagnostics::DiagID::CircularImport) == 0);

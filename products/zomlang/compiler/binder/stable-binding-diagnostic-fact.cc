@@ -347,6 +347,32 @@ StableBindingDiagnosticFactFactory::duplicateGenericParameter(
       zc::mv(factArguments), zc::mv(ZC_ASSERT_NONNULL(primaryValue)), zc::mv(secondary));
 }
 
+zc::Maybe<diagnostics::DiagnosticFact> StableBindingDiagnosticFactFactory::definitionRedeclaration(
+    const IdentitySyntaxSiteKey& duplicate, const IdentitySyntaxSiteKey& previous,
+    diagnostics::DiagID diagnostic, zc::StringPtr name) {
+  if (!sameModuleAndSource(duplicate, previous) ||
+      comparePath(previous.moduleSyntaxPath(), duplicate.moduleSyntaxPath()) >= 0) {
+    return zc::none;
+  }
+  auto occurrenceValue =
+      occurrence(duplicate, diagnostics::IdentityDiagnosticEmitter::DefinitionIdentityCollision);
+  auto primaryValue = provenance(duplicate);
+  auto previousValue = provenance(previous);
+  if (occurrenceValue == zc::none || primaryValue == zc::none || previousValue == zc::none) {
+    return zc::none;
+  }
+  auto previousSecondary = diagnostics::DiagnosticSecondary::previousDeclaration(
+      diagnostics::DiagID::PreviousDeclarationHere, zc::mv(ZC_ASSERT_NONNULL(previousValue)));
+  if (previousSecondary == zc::none) { return zc::none; }
+  zc::Vector<zc::String> arguments;
+  arguments.add(zc::str(name));
+  zc::Vector<diagnostics::DiagnosticSecondary> secondary;
+  secondary.add(zc::mv(ZC_ASSERT_NONNULL(previousSecondary)));
+  return diagnostics::DiagnosticFact::from(
+      zc::mv(ZC_ASSERT_NONNULL(occurrenceValue)), diagnostic, zc::mv(arguments),
+      zc::mv(ZC_ASSERT_NONNULL(primaryValue)), zc::mv(secondary));
+}
+
 zc::Maybe<zc::Array<uint8_t>> encodeStableBindingDiagnosticFacts(
     zc::ArrayPtr<const diagnostics::DiagnosticFact> facts) {
   if (facts.size() == 0 || !containsError(facts)) { return zc::none; }

@@ -23,7 +23,6 @@ namespace zomlang::compiler::identity {
 
 class SemanticContextFactory;
 class RegistryBrandIssuer;
-class SemanticIdentityRegistrySet;
 class CanonicalIdentityInternerSet;
 class SemanticTypeStoreConstructionToken;
 
@@ -159,13 +158,11 @@ public:
   issueSemanticTypeStoreConstructionToken(SemanticContextBrand context) const;
 
 private:
-  ZC_NODISCARD bool claimIdentityRegistrySet(SemanticContextBrand context) const;
   ZC_NODISCARD bool claimCanonicalIdentityInternerSet(SemanticContextBrand context) const;
 
   struct Impl;
   zc::Own<Impl> impl;
 
-  friend class SemanticIdentityRegistrySet;
   friend class CanonicalIdentityInternerSet;
 };
 

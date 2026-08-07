@@ -47,24 +47,24 @@ CoherenceBuildResult reject(signature::CheckerVerificationFailure&& failure) {
 
 zc::Maybe<zc::Array<uint8_t>> moduleRevisionRecord(
     identity::ModuleId module, const module_interface::ModuleInterfaceRevision& revision,
-    const identity::SemanticIdentityRegistrySet& registries) {
-  auto key = registries.modules().lookup(module);
-  if (key == zc::none) return zc::none;
+    const CheckerIdentityAuthority& identities) {
+  auto entry = identities.module(module);
+  if (entry == zc::none) return zc::none;
   identity::CanonicalEncoder encoder;
-  ZC_IF_SOME(value, key) { value.encode(encoder); }
+  ZC_IF_SOME(value, entry) { value.key().encode(encoder); }
   encoder.encodeDigest(revision.digest());
   return encoder.finish();
 }
 
 bool definitionOwnedBy(identity::DefId definition, identity::ModuleId module,
-                       const identity::SemanticIdentityRegistrySet& registries) {
-  auto definitionRecord = registries.definitions().lookupRecord(definition);
-  auto moduleKey = registries.modules().lookup(module);
-  if (definitionRecord == zc::none || moduleKey == zc::none) return false;
-  ZC_IF_SOME(definitionValue, definitionRecord) {
-    ZC_IF_SOME(moduleValue, moduleKey) {
-      const auto left = definitionValue.module().encode();
-      const auto right = moduleValue.encode();
+                       const CheckerIdentityAuthority& identities) {
+  auto definitionEntry = identities.definition(definition);
+  auto moduleEntry = identities.module(module);
+  if (definitionEntry == zc::none || moduleEntry == zc::none) return false;
+  ZC_IF_SOME(definitionValue, definitionEntry) {
+    ZC_IF_SOME(moduleValue, moduleEntry) {
+      const auto left = definitionValue.record().module().encode();
+      const auto right = moduleValue.key().encode();
       return sameBytes(left.asPtr(), right.asPtr());
     }
   }
@@ -72,22 +72,27 @@ bool definitionOwnedBy(identity::DefId definition, identity::ModuleId module,
 }
 
 bool implIsLocal(const signature::ImplHead& head, identity::ModuleId module,
-                 const identity::SemanticIdentityRegistrySet& registries) {
+                 const CheckerIdentityAuthority& identities) {
   if (definitionOwnedBy(signature::SignatureFactsCanonicalCodec::implPatternInterface(head.pattern),
-                        module, registries)) {
+                        module, identities)) {
     return true;
   }
   const auto& value = head.head.variant();
   return value.is<signature::NominalTypeHead>() &&
-         definitionOwnedBy(value.get<signature::NominalTypeHead>().definition, module, registries);
+         definitionOwnedBy(value.get<signature::NominalTypeHead>().definition, module, identities);
 }
 
 bool implementationOwnedBy(identity::ImplId implementation, identity::ModuleId module,
-                           const identity::SemanticIdentityRegistrySet& registries) {
-  auto record = registries.impls().lookupRecord(implementation);
-  if (record == zc::none) return false;
-  ZC_IF_SOME(value, record) {
-    ZC_IF_SOME(owner, registries.modules().find(value.module())) { return owner == module; }
+                           const CheckerIdentityAuthority& identities) {
+  auto implementationEntry = identities.implementation(implementation);
+  auto moduleEntry = identities.module(module);
+  if (implementationEntry == zc::none || moduleEntry == zc::none) return false;
+  ZC_IF_SOME(value, implementationEntry) {
+    ZC_IF_SOME(owner, moduleEntry) {
+      const auto left = value.record().module().encode();
+      const auto right = owner.key().encode();
+      return sameBytes(left.asPtr(), right.asPtr());
+    }
   }
   return false;
 }
@@ -160,21 +165,20 @@ zc::Vector<checked::CheckerNoteRef> conflictNotes(const identity::SourceSpan& pr
   return notes;
 }
 
-zc::Maybe<zc::Array<uint8_t>> failureOrderingKey(
-    const CoherenceFailureRef& failure, const identity::SemanticIdentityRegistrySet& registries) {
-  auto implementation = registries.impls().lookup(failure.primaryImpl);
-  auto implementationRecord = registries.impls().lookupRecord(failure.primaryImpl);
-  if (implementation == zc::none || implementationRecord == zc::none) return zc::none;
+zc::Maybe<zc::Array<uint8_t>> failureOrderingKey(const CoherenceFailureRef& failure,
+                                                 const CheckerIdentityAuthority& identities) {
+  auto implementation = identities.implementation(failure.primaryImpl);
+  if (implementation == zc::none) return zc::none;
   identity::CanonicalEncoder encoder;
-  ZC_IF_SOME(record, implementationRecord) { record.module().encode(encoder); }
+  ZC_IF_SOME(record, implementation) { record.record().module().encode(encoder); }
   failure.primarySpan.encode(encoder);
   encoder.encodeUint32(static_cast<uint32_t>(failure.diagnostic.diagnosticId()));
-  ZC_IF_SOME(key, implementation) { key.encode(encoder); }
+  ZC_IF_SOME(key, implementation) { key.key().encode(encoder); }
   ZC_IF_SOME(related, failure.relatedImpl) {
-    auto relatedKey = registries.impls().lookup(related);
+    auto relatedKey = identities.implementation(related);
     if (relatedKey == zc::none) return zc::none;
     encoder.encodeSome();
-    ZC_IF_SOME(key, relatedKey) { key.encode(encoder); }
+    ZC_IF_SOME(key, relatedKey) { key.key().encode(encoder); }
   } else {
     encoder.encodeNone();
   }
@@ -186,7 +190,7 @@ zc::Maybe<EncodedFailure> ordinaryFailure(checked::CheckerErrorId diagnostic,
                                           zc::Maybe<identity::ImplId>&& related,
                                           zc::Vector<checked::CheckerNoteRef>&& notes,
                                           CoherenceFailureProducer producer,
-                                          const identity::SemanticIdentityRegistrySet& registries) {
+                                          const CheckerIdentityAuthority& identities) {
   auto interface = signature::SignatureFactsCanonicalCodec::implPatternInterface(primary.pattern);
   CoherenceFailureRef failure{diagnostic,
                               primary.impl,
@@ -195,15 +199,16 @@ zc::Maybe<EncodedFailure> ordinaryFailure(checked::CheckerErrorId diagnostic,
                               failureArguments(interface, primary.selfType),
                               zc::mv(notes),
                               producer};
-  auto orderingKey = failureOrderingKey(failure, registries);
+  auto orderingKey = failureOrderingKey(failure, identities);
   ZC_IF_SOME(key, orderingKey) { return EncodedFailure{zc::mv(failure), zc::mv(key)}; }
   return zc::none;
 }
 
-zc::Maybe<EncodedFailure> markerConflictFailure(
-    const signature::MarkerFact& primary, identity::ImplId primaryImpl,
-    const signature::MarkerFact& related, identity::ImplId relatedImpl,
-    const identity::SemanticIdentityRegistrySet& registries) {
+zc::Maybe<EncodedFailure> markerConflictFailure(const signature::MarkerFact& primary,
+                                                identity::ImplId primaryImpl,
+                                                const signature::MarkerFact& related,
+                                                identity::ImplId relatedImpl,
+                                                const CheckerIdentityAuthority& identities) {
   if (primary.declarationSpan == zc::none || related.declarationSpan == zc::none) return zc::none;
   ZC_IF_SOME(primarySpan, primary.declarationSpan) {
     ZC_IF_SOME(relatedSpan, related.declarationSpan) {
@@ -215,7 +220,7 @@ zc::Maybe<EncodedFailure> markerConflictFailure(
                                   failureArguments(primary.key.marker, primary.key.subject),
                                   conflictNotes(relatedSpan),
                                   CoherenceFailureProducer::Coherence};
-      auto orderingKey = failureOrderingKey(failure, registries);
+      auto orderingKey = failureOrderingKey(failure, identities);
       ZC_IF_SOME(key, orderingKey) { return EncodedFailure{zc::mv(failure), zc::mv(key)}; }
     }
   }
@@ -356,9 +361,9 @@ zc::Maybe<const signature::MarkerFact&> FrozenCoherenceView::marker(
 
 CoherenceBuildResult CoherenceVerifier::verify(
     CoherenceCandidate&& candidate, const signature::VerifiedMarkerPolicyRegistry& markerPolicies,
-    const identity::SemanticIdentityRegistrySet& registries) {
-  if (candidate.modules.size() == 0 || candidate.modules.size() != registries.modules().size() ||
-      registries.context() != candidate.semanticContext ||
+    const CheckerIdentityAuthority& identities) {
+  if (candidate.modules.size() == 0 || candidate.modules.size() != identities.modules().size() ||
+      identities.semanticContext() != candidate.semanticContext ||
       markerPolicies.semanticContext() != candidate.semanticContext ||
       markerPolicies.contextFingerprint().digest() != candidate.contextFingerprint.digest() ||
       markerPolicies.revision().digest() != candidate.markerPolicyRegistryRevision.digest()) {
@@ -371,7 +376,7 @@ CoherenceBuildResult CoherenceVerifier::verify(
   zc::Vector<EncodedMarker> markers;
   uint32_t ordinal = 0;
   for (const auto& module : candidate.modules) {
-    if (registries.modules().validate(module.module()) != identity::FrozenRegistryFailure::None ||
+    if (identities.module(module.module()) == zc::none ||
         !sameDigest(module.markerPolicyRegistryRevision().digest(),
                     candidate.markerPolicyRegistryRevision.digest()) ||
         module.implHeads().size() != module.implHeadRecords().size() ||
@@ -380,7 +385,7 @@ CoherenceBuildResult CoherenceVerifier::verify(
                               module.module(), ordinal));
     }
     auto moduleRecord =
-        moduleRevisionRecord(module.module(), module.interfaceRevision(), registries);
+        moduleRevisionRecord(module.module(), module.interfaceRevision(), identities);
     if (moduleRecord == zc::none) {
       return reject(invariant(signature::CheckerInvariantKind::CanonicalCodecMismatch,
                               module.module(), ordinal));
@@ -394,17 +399,17 @@ CoherenceBuildResult CoherenceVerifier::verify(
     }
     for (size_t index = 0; index < module.implHeads().size(); ++index) {
       const auto& head = module.implHeads()[index];
-      auto key = registries.impls().lookup(head.impl);
+      auto key = identities.implementation(head.impl);
       const auto record = module.implHeadRecords()[index].asPtr();
       if (key == zc::none || record.size() == 0 ||
-          !implementationOwnedBy(head.impl, module.module(), registries)) {
+          !implementationOwnedBy(head.impl, module.module(), identities)) {
         return reject(invariant(signature::CheckerInvariantKind::CanonicalCodecMismatch,
                                 module.module(), ordinal));
       }
       ZC_IF_SOME(keyValue, key) {
         insertSorted(
             impls,
-            EncodedImpl{module.module(), head.clone(), keyValue.encode(), cloneBytes(record)},
+            EncodedImpl{module.module(), head.clone(), keyValue.key().encode(), cloneBytes(record)},
             [](const EncodedImpl& value) { return value.orderingKey.asPtr(); });
       }
     }
@@ -417,7 +422,7 @@ CoherenceBuildResult CoherenceVerifier::verify(
             invariant(signature::CheckerInvariantKind::InvalidFact, module.module(), ordinal));
       }
       ZC_IF_SOME(value, implementation) {
-        if (!implementationOwnedBy(value, module.module(), registries)) {
+        if (!implementationOwnedBy(value, module.module(), identities)) {
           return reject(
               invariant(signature::CheckerInvariantKind::InvalidFact, module.module(), ordinal));
         }
@@ -439,12 +444,12 @@ CoherenceBuildResult CoherenceVerifier::verify(
   zc::Vector<EncodedFailure> sourceFailures;
   for (size_t index = 0; index < impls.size(); ++index) {
     const auto& current = impls[index];
-    if (!implIsLocal(current.fact, current.module, registries)) {
+    if (!implIsLocal(current.fact, current.module, identities)) {
       zc::Maybe<identity::ImplId> noRelated;
       zc::Vector<checked::CheckerNoteRef> noNotes;
       auto failure =
           ordinaryFailure(checked::CheckerErrorId::OrphanImpl(), current.fact, zc::mv(noRelated),
-                          zc::mv(noNotes), CoherenceFailureProducer::Orphan, registries);
+                          zc::mv(noNotes), CoherenceFailureProducer::Orphan, identities);
       if (failure == zc::none) {
         return reject(invariant(signature::CheckerInvariantKind::InvalidFact, current.module,
                                 static_cast<uint32_t>(index)));
@@ -465,7 +470,7 @@ CoherenceBuildResult CoherenceVerifier::verify(
         continue;
       }
       auto overlap = signature::SignatureFactsCanonicalCodec::implPatternsOverlap(
-          earlier.fact.pattern, current.fact.pattern, registries);
+          earlier.fact.pattern, current.fact.pattern, identities);
       if (overlap == zc::none) {
         return reject(invariant(signature::CheckerInvariantKind::CanonicalCodecMismatch,
                                 current.module, static_cast<uint32_t>(index)));
@@ -476,7 +481,7 @@ CoherenceBuildResult CoherenceVerifier::verify(
         auto failure = ordinaryFailure(checked::CheckerErrorId::ConflictingImpl(), current.fact,
                                        zc::mv(previousImplementation),
                                        conflictNotes(earlier.fact.declarationSpan),
-                                       CoherenceFailureProducer::Coherence, registries);
+                                       CoherenceFailureProducer::Coherence, identities);
         if (failure == zc::none) {
           return reject(invariant(signature::CheckerInvariantKind::InvalidFact, current.module,
                                   static_cast<uint32_t>(index)));
@@ -510,7 +515,7 @@ CoherenceBuildResult CoherenceVerifier::verify(
       zc::Maybe<EncodedFailure> failure;
       ZC_IF_SOME(primary, implementation) {
         ZC_IF_SOME(related, previousImplementation) {
-          failure = markerConflictFailure(current.fact, primary, earlier.fact, related, registries);
+          failure = markerConflictFailure(current.fact, primary, earlier.fact, related, identities);
         }
       }
       if (failure == zc::none) {

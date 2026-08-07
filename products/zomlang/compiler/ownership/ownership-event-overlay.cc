@@ -116,13 +116,13 @@ bool encodeMirPoint(identity::CanonicalEncoder& encoder, const MirPoint& point) 
   return false;
 }
 
-zc::Maybe<zc::Array<uint8_t>> encodeEventKey(
-    const MirEventKey& event, const identity::SemanticIdentityRegistrySet& registries) {
+zc::Maybe<zc::Array<uint8_t>> encodeEventKey(const MirEventKey& event,
+                                             const checker::CheckerIdentityAuthority& identities) {
   identity::CanonicalEncoder encoder;
-  auto owner = registries.definitions().lookup(event.location.owner);
+  auto owner = identities.definition(event.location.owner);
   if (owner == zc::none) return zc::none;
   ZC_IF_SOME(key, owner) {
-    auto bytes = key.encode();
+    auto bytes = key.key().encode();
     encoder.encodeByteString(bytes.asPtr());
   }
   if (!encodeMirPoint(encoder, event.location.point)) return zc::none;
@@ -132,12 +132,12 @@ zc::Maybe<zc::Array<uint8_t>> encodeEventKey(
 
 zc::Maybe<zc::Array<uint8_t>> encodeFunctionOverlay(
     const OwnershipFunctionEventOverlay& overlay,
-    const identity::SemanticIdentityRegistrySet& registries) {
+    const checker::CheckerIdentityAuthority& identities) {
   identity::CanonicalEncoder encoder;
-  auto owner = registries.definitions().lookup(overlay.owner);
+  auto owner = identities.definition(overlay.owner);
   if (owner == zc::none) return zc::none;
   ZC_IF_SOME(key, owner) {
-    auto bytes = key.encode();
+    auto bytes = key.key().encode();
     encoder.encodeByteString(bytes.asPtr());
   }
   encoder.encodeSequenceSize(overlay.slots.size());
@@ -145,7 +145,7 @@ zc::Maybe<zc::Array<uint8_t>> encodeFunctionOverlay(
   bool hasPreviousKey = false;
   for (const auto& slot : overlay.slots) {
     if (slot.key.location.owner != overlay.owner) return zc::none;
-    auto encodedKey = encodeEventKey(slot.key, registries);
+    auto encodedKey = encodeEventKey(slot.key, identities);
     if (encodedKey == zc::none) return zc::none;
     zc::Array<uint8_t> keyBytes;
     ZC_IF_SOME(bytes, encodedKey) { keyBytes = zc::mv(bytes); }
@@ -192,20 +192,19 @@ identity::IdentityInvariant invalidIdentity(identity::IdentityAllocationPhase ph
   ZC_UNREACHABLE
 }
 
-class RegistryIdentityResolver final : public ir::IrFailureIdentityResolver {
+class AuthorityIdentityResolver final : public ir::IrFailureIdentityResolver {
 public:
-  explicit RegistryIdentityResolver(
-      const identity::SemanticIdentityRegistrySet& registries) noexcept
-      : registries(registries) {}
+  explicit AuthorityIdentityResolver(const checker::CheckerIdentityAuthority& identities) noexcept
+      : identities(identities) {}
 
   ir::ExpandedIrIdentityResult expand(identity::ModuleId module) const override {
-    auto key = registries.modules().lookup(module);
+    auto key = identities.module(module);
     if (key == zc::none) {
       return ir::RejectedIrIdentityValue{
           invalidIdentity(identity::IdentityAllocationPhase::Module, 0)};
     }
     ZC_IF_SOME(value, key) {
-      auto expanded = ir::ExpandedIrIdentity::from(value.encode());
+      auto expanded = ir::ExpandedIrIdentity::from(value.key().encode());
       ZC_IF_SOME(bytes, expanded) { return ir::ExpandedIrIdentityValue{zc::mv(bytes)}; }
     }
     return ir::RejectedIrIdentityValue{
@@ -213,13 +212,13 @@ public:
   }
 
   ir::ExpandedIrIdentityResult expand(identity::DefId definition) const override {
-    auto key = registries.definitions().lookup(definition);
+    auto key = identities.definition(definition);
     if (key == zc::none) {
       return ir::RejectedIrIdentityValue{
           invalidIdentity(identity::IdentityAllocationPhase::Definition, 0)};
     }
     ZC_IF_SOME(value, key) {
-      auto expanded = ir::ExpandedIrIdentity::from(value.encode());
+      auto expanded = ir::ExpandedIrIdentity::from(value.key().encode());
       ZC_IF_SOME(bytes, expanded) { return ir::ExpandedIrIdentityValue{zc::mv(bytes)}; }
     }
     return ir::RejectedIrIdentityValue{
@@ -232,15 +231,15 @@ public:
   }
 
 private:
-  const identity::SemanticIdentityRegistrySet& registries;
+  const checker::CheckerIdentityAuthority& identities;
 };
 
 template <typename VerifiedValue>
 ir::IrOperationResult<VerifiedValue> rejectOwnership(
     ir::IrFailurePhase phase, ir::IrFailureKind kind, identity::ModuleId module,
-    zc::Maybe<identity::DefId> definition, const identity::SemanticIdentityRegistrySet& registries,
+    zc::Maybe<identity::DefId> definition, const checker::CheckerIdentityAuthority& identities,
     uint32_t ordinal, zc::Vector<uint32_t>&& fieldPath = zc::Vector<uint32_t>()) {
-  RegistryIdentityResolver identities(registries);
+  AuthorityIdentityResolver resolver(identities);
   if (definition == zc::none) {
     zc::Vector<identity::IdentityInvariant> failures;
     failures.add(invalidIdentity(identity::IdentityAllocationPhase::Definition, ordinal));
@@ -260,7 +259,7 @@ ir::IrOperationResult<VerifiedValue> rejectOwnership(
       ir::IrRejectedBranch::IrInvariantRejected, phase, kind, ir::IrFailureOwner::definition(owner),
       zc::mv(noSite), ir::IrFailureDetail::none(), zc::mv(noSpan), zc::mv(fieldPath), ordinal);
   ZC_IF_SOME(fallbackValue, fallback) {
-    auto admitted = ir::IrFailureFactory::admit(zc::mv(descriptor), fallbackValue, identities);
+    auto admitted = ir::IrFailureFactory::admit(zc::mv(descriptor), fallbackValue, resolver);
     if (admitted.is<ir::IdentityRejectedIrFailureDescriptor>()) {
       zc::Vector<identity::IdentityInvariant> failures;
       failures.add(zc::mv(admitted).get<ir::IdentityRejectedIrFailureDescriptor>().failure);
@@ -373,12 +372,12 @@ void sortSlots(zc::Vector<MirEventSlot>& slots) {
 }
 
 bool sortFunctions(zc::Vector<OwnershipFunctionEventOverlay>& functions,
-                   const identity::SemanticIdentityRegistrySet& registries) {
+                   const checker::CheckerIdentityAuthority& identities) {
   zc::Vector<zc::Array<uint8_t>> keys;
   for (const auto& function : functions) {
-    auto key = registries.definitions().lookup(function.owner);
+    auto key = identities.definition(function.owner);
     if (key == zc::none) return false;
-    ZC_IF_SOME(value, key) { keys.add(value.encode()); }
+    ZC_IF_SOME(value, key) { keys.add(value.key().encode()); }
   }
   for (size_t index = 1; index < functions.size(); ++index) {
     auto currentFunction = zc::mv(functions[index]);
@@ -396,8 +395,7 @@ bool sortFunctions(zc::Vector<OwnershipFunctionEventOverlay>& functions,
 }
 
 zc::Maybe<zc::Vector<OwnershipFunctionEventOverlay>> projectCandidateFunctions(
-    const mir::VerifiedBuiltMir& builtMir,
-    const identity::SemanticIdentityRegistrySet& registries) {
+    const mir::VerifiedBuiltMir& builtMir, const checker::CheckerIdentityAuthority& identities) {
   zc::Vector<OwnershipFunctionEventOverlay> functions;
   for (const auto& function : builtMir.functions()) {
     zc::Vector<MirEventSlot> slots;
@@ -518,13 +516,12 @@ zc::Maybe<zc::Vector<OwnershipFunctionEventOverlay>> projectCandidateFunctions(
     sortSlots(slots);
     functions.add(OwnershipFunctionEventOverlay{function.owner, zc::mv(slots)});
   }
-  if (!sortFunctions(functions, registries)) return zc::none;
+  if (!sortFunctions(functions, identities)) return zc::none;
   return functions;
 }
 
 zc::Maybe<zc::Vector<OwnershipFunctionEventOverlay>> reconstructExpectedFunctions(
-    const mir::VerifiedBuiltMir& builtMir,
-    const identity::SemanticIdentityRegistrySet& registries) {
+    const mir::VerifiedBuiltMir& builtMir, const checker::CheckerIdentityAuthority& identities) {
   zc::Vector<OwnershipFunctionEventOverlay> functions;
   for (const auto& function : builtMir.functions()) {
     zc::Vector<MirEventSlot> slots;
@@ -644,7 +641,7 @@ zc::Maybe<zc::Vector<OwnershipFunctionEventOverlay>> reconstructExpectedFunction
     sortSlots(slots);
     functions.add(OwnershipFunctionEventOverlay{function.owner, zc::mv(slots)});
   }
-  if (!sortFunctions(functions, registries)) return zc::none;
+  if (!sortFunctions(functions, identities)) return zc::none;
   return functions;
 }
 
@@ -701,14 +698,14 @@ zc::Maybe<OwnershipEventOverlayRevision> OwnershipEventOverlayCodec::compute(
 }
 
 ir::IrOperationResult<OwnershipEventOverlayCandidate> OwnershipEventOverlayBuilder::build(
-    const mir::VerifiedBuiltMir& builtMir,
-    const identity::SemanticIdentityRegistrySet& registries) {
+    const mir::VerifiedBuiltMir& builtMir) {
+  const auto identities = builtMir.retainIdentityAuthority();
   const auto module = builtMir.module();
-  auto functions = projectCandidateFunctions(builtMir, registries);
+  auto functions = projectCandidateFunctions(builtMir, identities);
   if (functions == zc::none) {
     return rejectOwnership<OwnershipEventOverlayCandidate>(
         ir::IrFailurePhase::OwnershipProofValidation, ir::IrFailureKind::InvalidOwnershipProof,
-        module, firstFunctionDefinition(builtMir), registries, 0);
+        module, firstFunctionDefinition(builtMir), identities, 0);
   }
   ZC_IF_SOME(value, functions) {
     return ir::IrOperationResult<OwnershipEventOverlayCandidate>::verified(
@@ -720,8 +717,8 @@ ir::IrOperationResult<OwnershipEventOverlayCandidate> OwnershipEventOverlayBuild
 }
 
 ir::IrOperationResult<VerifiedOwnershipEventOverlay> OwnershipEventOverlayVerifier::verify(
-    OwnershipEventOverlayCandidate&& candidate, const mir::VerifiedBuiltMir& builtMir,
-    const identity::SemanticIdentityRegistrySet& registries) {
+    OwnershipEventOverlayCandidate&& candidate, const mir::VerifiedBuiltMir& builtMir) {
+  const auto identities = builtMir.retainIdentityAuthority();
   const auto module = builtMir.module();
   if (candidate.semanticContext != builtMir.semanticContext() ||
       candidate.contextFingerprint.digest() != builtMir.contextFingerprint().digest() ||
@@ -731,20 +728,20 @@ ir::IrOperationResult<VerifiedOwnershipEventOverlay> OwnershipEventOverlayVerifi
       candidate.functions.size() != builtMir.functions().size()) {
     return rejectOwnership<VerifiedOwnershipEventOverlay>(
         ir::IrFailurePhase::OwnershipProofValidation, ir::IrFailureKind::InputRevisionMismatch,
-        module, firstFunctionDefinition(builtMir), registries, 0);
+        module, firstFunctionDefinition(builtMir), identities, 0);
   }
-  auto expectedFunctions = reconstructExpectedFunctions(builtMir, registries);
+  auto expectedFunctions = reconstructExpectedFunctions(builtMir, identities);
   if (expectedFunctions == zc::none) {
     return rejectOwnership<VerifiedOwnershipEventOverlay>(
         ir::IrFailurePhase::OwnershipProofValidation, ir::IrFailureKind::InvalidOwnershipProof,
-        module, firstFunctionDefinition(builtMir), registries, 0);
+        module, firstFunctionDefinition(builtMir), identities, 0);
   }
   zc::Vector<zc::Array<uint8_t>> recomputedRecords;
   ZC_IF_SOME(expected, expectedFunctions) {
     if (expected.size() != candidate.functions.size()) {
       return rejectOwnership<VerifiedOwnershipEventOverlay>(
           ir::IrFailurePhase::OwnershipProofValidation, ir::IrFailureKind::AdditionalFact, module,
-          firstFunctionDefinition(builtMir), registries, 0);
+          firstFunctionDefinition(builtMir), identities, 0);
     }
     for (size_t index = 0; index < expected.size(); ++index) {
       const auto& expectedFunction = expected[index];
@@ -752,21 +749,21 @@ ir::IrOperationResult<VerifiedOwnershipEventOverlay> OwnershipEventOverlayVerifi
       if (expectedFunction.owner != candidateFunction.owner) {
         return rejectOwnership<VerifiedOwnershipEventOverlay>(
             ir::IrFailurePhase::OwnershipProofValidation, ir::IrFailureKind::InvalidFact, module,
-            expectedFunction.owner, registries, static_cast<uint32_t>(index + 1));
+            expectedFunction.owner, identities, static_cast<uint32_t>(index + 1));
       }
       for (const auto& slot : candidateFunction.slots) {
         if (slot.key.location.owner != candidateFunction.owner) {
           return rejectOwnership<VerifiedOwnershipEventOverlay>(
               ir::IrFailurePhase::OwnershipProofValidation, ir::IrFailureKind::InvalidFact, module,
-              expectedFunction.owner, registries, static_cast<uint32_t>(index + 1));
+              expectedFunction.owner, identities, static_cast<uint32_t>(index + 1));
         }
       }
-      auto expectedEncoded = encodeFunctionOverlay(expectedFunction, registries);
-      auto candidateEncoded = encodeFunctionOverlay(candidateFunction, registries);
+      auto expectedEncoded = encodeFunctionOverlay(expectedFunction, identities);
+      auto candidateEncoded = encodeFunctionOverlay(candidateFunction, identities);
       if (expectedEncoded == zc::none || candidateEncoded == zc::none) {
         return rejectOwnership<VerifiedOwnershipEventOverlay>(
             ir::IrFailurePhase::OwnershipProofValidation, ir::IrFailureKind::CanonicalCodecMismatch,
-            module, expectedFunction.owner, registries, static_cast<uint32_t>(index + 1));
+            module, expectedFunction.owner, identities, static_cast<uint32_t>(index + 1));
       }
       zc::Array<uint8_t> expectedBytes;
       zc::Array<uint8_t> candidateBytes;
@@ -775,32 +772,32 @@ ir::IrOperationResult<VerifiedOwnershipEventOverlay> OwnershipEventOverlayVerifi
       if (expectedBytes.asPtr() != candidateBytes.asPtr()) {
         return rejectOwnership<VerifiedOwnershipEventOverlay>(
             ir::IrFailurePhase::OwnershipProofValidation, ir::IrFailureKind::CanonicalCodecMismatch,
-            module, expectedFunction.owner, registries, static_cast<uint32_t>(index + 1));
+            module, expectedFunction.owner, identities, static_cast<uint32_t>(index + 1));
       }
       recomputedRecords.add(zc::mv(expectedBytes));
     }
   }
-  auto moduleKey = registries.modules().lookup(builtMir.module());
+  auto moduleKey = identities.module(builtMir.module());
   if (moduleKey == zc::none) {
     return rejectOwnership<VerifiedOwnershipEventOverlay>(
         ir::IrFailurePhase::OwnershipProofValidation, ir::IrFailureKind::MissingRequiredFact,
-        module, firstFunctionDefinition(builtMir), registries, 0);
+        module, firstFunctionDefinition(builtMir), identities, 0);
   }
   zc::Array<uint8_t> expandedModuleKey;
-  ZC_IF_SOME(key, moduleKey) { expandedModuleKey = key.encode(); }
+  ZC_IF_SOME(key, moduleKey) { expandedModuleKey = key.key().encode(); }
   zc::Maybe<OwnershipEventOverlayRevision> revision = OwnershipEventOverlayCodec::compute(
       candidate.contextFingerprint, expandedModuleKey.asPtr(), candidate.checkedFactsRevision,
       candidate.builtRevision, recomputedRecords.asPtr());
   if (revision == zc::none) {
     return rejectOwnership<VerifiedOwnershipEventOverlay>(
         ir::IrFailurePhase::OwnershipProofValidation, ir::IrFailureKind::CanonicalCodecMismatch,
-        module, firstFunctionDefinition(builtMir), registries, 0);
+        module, firstFunctionDefinition(builtMir), identities, 0);
   }
   ZC_IF_SOME(value, revision) {
     auto impl = zc::heap<VerifiedOwnershipEventOverlay::Impl>(
         candidate.semanticContext, candidate.contextFingerprint.clone(), candidate.module,
-        candidate.checkedFactsRevision, candidate.builtRevision, zc::mv(candidate.functions),
-        value);
+        candidate.checkedFactsRevision, candidate.builtRevision, zc::mv(candidate.functions), value,
+        builtMir.retainBoundModule());
     return ir::IrOperationResult<VerifiedOwnershipEventOverlay>::verified(
         VerifiedOwnershipEventOverlay(zc::mv(impl)));
   }
@@ -812,8 +809,10 @@ struct VerifiedOwnershipEventOverlay::Impl final {
        identity::SemanticContextFingerprint&& contextFingerprint, identity::ModuleId module,
        checker::checked::CheckedFactsRevision checkedFactsRevision,
        mir::MirRevisionId builtRevision, zc::Vector<OwnershipFunctionEventOverlay>&& functions,
-       OwnershipEventOverlayRevision revision) noexcept
-      : semanticContext(semanticContext),
+       OwnershipEventOverlayRevision revision,
+       driver::module_graph_query::CheckerBoundModuleView&& boundModule) noexcept
+      : boundModule(zc::mv(boundModule)),
+        semanticContext(semanticContext),
         contextFingerprint(zc::mv(contextFingerprint)),
         module(module),
         checkedFactsRevision(checkedFactsRevision),
@@ -821,6 +820,7 @@ struct VerifiedOwnershipEventOverlay::Impl final {
         functions(zc::mv(functions)),
         revision(revision) {}
 
+  driver::module_graph_query::CheckerBoundModuleView boundModule;
   identity::SemanticContextBrand semanticContext;
   identity::SemanticContextFingerprint contextFingerprint;
   identity::ModuleId module;

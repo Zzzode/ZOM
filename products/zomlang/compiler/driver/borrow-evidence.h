@@ -11,12 +11,12 @@
 #include "zc/core/one-of.h"
 #include "zc/core/vector.h"
 #include "zomlang/compiler/checker/borrow-interface.h"
+#include "zomlang/compiler/checker/checker-identity-authority.h"
 #include "zomlang/compiler/checker/cross-module-facts.h"
 #include "zomlang/compiler/checker/signature-facts.h"
 #include "zomlang/compiler/driver/module-interface.h"
 #include "zomlang/compiler/identity/brand.h"
 #include "zomlang/compiler/identity/semantic-context-fingerprint.h"
-#include "zomlang/compiler/identity/semantic-identity-registry-set.h"
 #include "zomlang/compiler/identity/sha256.h"
 #include "zomlang/compiler/ir/ir-failure.h"
 
@@ -115,7 +115,7 @@ struct BorrowEvidenceBuildInput final {
   const checker::cross_module::ImportedSignatureView& importedSignatures;
   const VerifiedModuleInterface& ownInterface;
   zc::ArrayPtr<const VerifiedModuleInterface> availableInterfaces;
-  const identity::SemanticIdentityRegistrySet& registries;
+  const checker::CheckerIdentityAuthority& identities;
 };
 
 /// \brief One complete RFC 0010-aligned borrow-evidence invariant fact.
@@ -239,7 +239,7 @@ public:
       identity::SemanticContextBrand context, identity::RegistryBrand repositoryBrand,
       uint32_t expectedEntryCount);
   ZC_NODISCARD BorrowEvidenceAdoptionResult
-  adopt(VerifiedBorrowEvidence&& evidence, const identity::SemanticIdentityRegistrySet& registries);
+  adopt(VerifiedBorrowEvidence&& evidence, const checker::CheckerIdentityAuthority& identities);
   ZC_NODISCARD zc::Maybe<VerifiedBorrowEvidenceLease> lease(
       identity::ModuleId module, const BorrowEvidenceRevision& revision) const noexcept;
   ZC_NODISCARD BorrowEvidenceLookupResult

@@ -96,9 +96,8 @@ struct ValidatedOwner final {
 };
 
 zc::OneOf<ValidatedOwner, InferenceRecoveryRejected> validateOwner(
-    const identity::SemanticIdentityRegistrySet& registries, const InferenceOwner& owner) {
-  if (!registries.context().isValid() || !registries.modules().isFrozen() ||
-      !registries.definitions().isFrozen()) {
+    const CheckerIdentityAuthority& identities, const InferenceOwner& owner) {
+  if (!identities.semanticContext().isValid()) {
     return makeRejected(InferenceRecoveryInvariant::InvalidContext, identity::ModuleId());
   }
 
@@ -108,41 +107,36 @@ zc::OneOf<ValidatedOwner, InferenceRecoveryRejected> validateOwner(
   const auto& variant = owner.variant();
   if (variant.is<SignatureGroupInferenceOwner>()) {
     const auto& group = variant.get<SignatureGroupInferenceOwner>();
-    if (registries.modules().validate(group.module) != identity::FrozenRegistryFailure::None ||
-        group.members.size() == 0) {
+    auto moduleEntry = identities.module(group.module);
+    if (moduleEntry == zc::none || group.members.size() == 0) {
       return makeRejected(InferenceRecoveryInvariant::InvalidOwner, group.module);
     }
     module = group.module;
     encoder.encodeUint8(0x01);
-    ZC_IF_SOME(moduleKey, registries.modules().lookup(module)) { moduleKey.encode(encoder); }
+    ZC_IF_SOME(moduleKey, moduleEntry) { moduleKey.key().encode(encoder); }
     encoder.encodeSequenceSize(group.members.size());
     zc::Array<uint8_t> previous;
     for (size_t index = 0; index < group.members.size(); ++index) {
       const auto definition = group.members[index];
-      auto key = registries.definitions().lookup(definition);
-      auto record = registries.definitions().lookupRecord(definition);
-      if (key == zc::none || record == zc::none) {
+      auto entry = identities.definition(definition);
+      if (entry == zc::none) {
         return makeRejected(InferenceRecoveryInvariant::InvalidOwner, module,
                             static_cast<uint32_t>(index));
       }
-      ZC_IF_SOME(definitionKey, key) {
-        zc::Maybe<identity::ModuleId> keyModule;
-        ZC_IF_SOME(definitionRecord, record) {
-          keyModule = registries.modules().find(definitionRecord.module());
+      ZC_IF_SOME(definition, entry) {
+        ZC_IF_SOME(moduleKey, moduleEntry) {
+          if (definition.record().module().encode().asPtr() != moduleKey.key().encode().asPtr()) {
+            return makeRejected(InferenceRecoveryInvariant::InvalidOwner, module,
+                                static_cast<uint32_t>(index));
+          }
         }
-        bool sameModule = false;
-        ZC_IF_SOME(moduleValue, keyModule) { sameModule = moduleValue == module; }
-        if (!sameModule) {
-          return makeRejected(InferenceRecoveryInvariant::InvalidOwner, module,
-                              static_cast<uint32_t>(index));
-        }
-        auto encoded = definitionKey.encode();
+        auto encoded = definition.key().encode();
         if (index != 0 && !lessBytes(previous.asPtr(), encoded.asPtr())) {
           return makeRejected(InferenceRecoveryInvariant::InvalidOwner, module,
                               static_cast<uint32_t>(index));
         }
         previous = zc::mv(encoded);
-        definitionKey.encode(encoder);
+        definition.key().encode(encoder);
       }
     }
   } else {
@@ -155,23 +149,24 @@ zc::OneOf<ValidatedOwner, InferenceRecoveryRejected> validateOwner(
       definition = variant.get<InitializerInferenceOwner>().definition;
       tag = 0x03;
     }
-    auto key = registries.definitions().lookup(definition);
-    auto record = registries.definitions().lookupRecord(definition);
-    if (key == zc::none || record == zc::none) {
+    auto entry = identities.definition(definition);
+    if (entry == zc::none) {
       return makeRejected(InferenceRecoveryInvariant::InvalidOwner, identity::ModuleId());
     }
-    ZC_IF_SOME(definitionKey, key) {
-      zc::Maybe<identity::ModuleId> keyModule;
-      ZC_IF_SOME(definitionRecord, record) {
-        keyModule = registries.modules().find(definitionRecord.module());
+    ZC_IF_SOME(value, entry) {
+      for (const auto& candidate : identities.modules()) {
+        ZC_IF_SOME(moduleEntry, identities.module(candidate.module())) {
+          if (moduleEntry.key().encode().asPtr() == value.record().module().encode().asPtr()) {
+            module = candidate.module();
+          }
+        }
       }
-      if (keyModule == zc::none) {
-        return makeRejected(InferenceRecoveryInvariant::InvalidOwner, identity::ModuleId());
+      if (module == identity::ModuleId()) {
+        return makeRejected(InferenceRecoveryInvariant::InvalidOwner, module);
       }
-      ZC_IF_SOME(moduleValue, keyModule) { module = moduleValue; }
       diagnosticOwner = definition;
       encoder.encodeUint8(tag);
-      definitionKey.encode(encoder);
+      value.key().encode(encoder);
     }
   }
   return ValidatedOwner{module, zc::mv(diagnosticOwner), encoder.finish()};
@@ -266,10 +261,10 @@ struct InferenceRecoveryContext::Impl final {
 };
 
 InferenceRecoveryCreationResult InferenceRecoveryContext::create(
-    const identity::SemanticIdentityRegistrySet& registries,
-    const identity::RegistryBrandIssuer& registryBrands, const identity::SourceFileKey& source,
-    InferenceOwner&& owner, InferenceRecoveryIssueBudget budget) {
-  auto validated = validateOwner(registries, owner);
+    const CheckerIdentityAuthority& identities, const identity::RegistryBrandIssuer& registryBrands,
+    const identity::SourceFileKey& source, InferenceOwner&& owner,
+    InferenceRecoveryIssueBudget budget) {
+  auto validated = validateOwner(identities, owner);
   if (validated.is<InferenceRecoveryRejected>()) {
     return zc::mv(validated).get<InferenceRecoveryRejected>();
   }
@@ -279,20 +274,21 @@ InferenceRecoveryCreationResult InferenceRecoveryContext::create(
     return makeRejected(InferenceRecoveryInvariant::RegistryIssueFailed, ownerValue.module);
   }
   ZC_IF_SOME(issuer, issued) {
-    if (!issuer.belongsTo(registries.context())) {
+    if (!issuer.belongsTo(identities.semanticContext())) {
       return makeRejected(InferenceRecoveryInvariant::InvalidContext, ownerValue.module);
     }
-    auto moduleKey = registries.modules().lookup(ownerValue.module);
+    auto moduleKey = identities.module(ownerValue.module);
     if (moduleKey == zc::none) {
       return makeRejected(InferenceRecoveryInvariant::InvalidOwner, ownerValue.module);
     }
     ZC_IF_SOME(key, moduleKey) {
-      if (registries.sourceFiles().find(source) == zc::none || !source.belongsTo(key.crate())) {
+      if (identities.sourceFile(source) == zc::none || !source.belongsTo(key.key().crate())) {
         return makeRejected(InferenceRecoveryInvariant::InvalidOwner, ownerValue.module);
       }
-      InferenceRecoveryContext context(zc::heap<Impl>(
-          registries.context(), issuer, ownerValue.module, zc::mv(ownerValue.diagnosticOwner),
-          key.clone(), source.clone(), zc::mv(ownerValue.canonicalRecord), budget));
+      InferenceRecoveryContext context(
+          zc::heap<Impl>(identities.semanticContext(), issuer, ownerValue.module,
+                         zc::mv(ownerValue.diagnosticOwner), key.key().clone(), source.clone(),
+                         zc::mv(ownerValue.canonicalRecord), budget));
       return zc::heap<InferenceRecoveryContext>(zc::mv(context));
     }
   }

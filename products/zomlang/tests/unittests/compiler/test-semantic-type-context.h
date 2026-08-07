@@ -27,21 +27,15 @@ public:
     auto issuedContext = factory.issue();
     ZC_REQUIRE(issuedContext != zc::none);
     ZC_IF_SOME(value, issuedContext) { context = value; }
-    auto issuedRegistries = identity::SemanticIdentityRegistrySet::create(factory, context);
-    ZC_REQUIRE(issuedRegistries != zc::none);
-    ZC_IF_SOME(value, issuedRegistries) {
-      registries = zc::heap<identity::SemanticIdentityRegistrySet>(zc::mv(value));
+    auto issuedIdentities = identity::CanonicalIdentityInternerSet::create(factory, context);
+    ZC_REQUIRE(issuedIdentities != zc::none);
+    ZC_IF_SOME(value, issuedIdentities) {
+      identities = zc::heap<identity::CanonicalIdentityInternerSet>(zc::mv(value));
     }
-    ZC_REQUIRE(registries->freezeCompilationUnits() == identity::FrozenRegistryFailure::None);
-    ZC_REQUIRE(registries->freezeCrates() == identity::FrozenRegistryFailure::None);
-    ZC_REQUIRE(registries->freezeSourceFiles() == identity::FrozenRegistryFailure::None);
-    ZC_REQUIRE(registries->freezeModules() == identity::FrozenRegistryFailure::None);
-    ZC_REQUIRE(registries->freezeDefinitions() == identity::FrozenRegistryFailure::None);
-    ZC_REQUIRE(registries->freezeImpls() == identity::FrozenRegistryFailure::None);
     auto issuedToken = factory.issueSemanticTypeStoreConstructionToken(context);
     ZC_REQUIRE(issuedToken != zc::none);
     ZC_IF_SOME(token, issuedToken) {
-      semanticTypeStore = zc::heap<type::SemanticTypeStore>(zc::mv(token), *registries);
+      semanticTypeStore = zc::heap<type::SemanticTypeStore>(zc::mv(token), *identities);
     }
   }
 
@@ -70,7 +64,7 @@ public:
 private:
   identity::SemanticContextFactory factory;
   identity::SemanticContextBrand context;
-  zc::Own<identity::SemanticIdentityRegistrySet> registries;
+  zc::Own<identity::CanonicalIdentityInternerSet> identities;
   zc::Own<type::SemanticTypeStore> semanticTypeStore;
 };
 

@@ -16,6 +16,7 @@
 
 #include "zc/core/debug.h"
 #include "zc/core/encoding.h"
+#include "zom/core/core-library-inventory.inc"
 #include "zomlang/compiler/identity/canonical-decoder.h"
 #include "zomlang/compiler/identity/canonical-encoder.h"
 
@@ -77,34 +78,6 @@ zc::Array<uint8_t> encodePolicyEntry(const CoreMarkerPolicyTemplateEntry& entry)
   identity::CanonicalEncoder encoder;
   entry.encode(encoder);
   return encoder.finish();
-}
-
-zc::Maybe<identity::Sha256Digest> digestFromHex(zc::StringPtr hex) {
-  auto decoded = zc::decodeHex(hex.asArray());
-  if (decoded == zc::none) { return zc::none; }
-  return identity::Sha256Digest::fromBytes(ZC_ASSERT_NONNULL(decoded).asPtr());
-}
-
-zc::Maybe<identity::CanonicalRelativePath> pathFromSegments(
-    zc::ArrayPtr<const zc::StringPtr> texts) {
-  zc::Vector<identity::CanonicalPathSegment> segments(texts.size());
-  for (const auto text : texts) {
-    auto segment = identity::CanonicalPathSegment::fromCanonical(text);
-    if (segment == zc::none) { return zc::none; }
-    ZC_IF_SOME(value, segment) { segments.add(zc::mv(value)); }
-  }
-  return identity::CanonicalRelativePath::from(zc::mv(segments));
-}
-
-zc::Maybe<zc::Vector<identity::ModulePathSegment>> modulePathFromSegments(
-    zc::ArrayPtr<const zc::StringPtr> texts) {
-  zc::Vector<identity::ModulePathSegment> segments(texts.size());
-  for (const auto text : texts) {
-    auto segment = identity::ModulePathSegment::fromCanonical(text);
-    if (segment == zc::none) { return zc::none; }
-    ZC_IF_SOME(value, segment) { segments.add(zc::mv(value)); }
-  }
-  return zc::mv(segments);
 }
 
 zc::Maybe<CoreSourceFile> decodeCoreSourceFile(identity::CanonicalDecoder& decoder) {
@@ -812,63 +785,8 @@ zc::Maybe<identity::Sha256Digest> computeCoreDistributionDigest(
 }
 
 zc::Maybe<CoreDistributionRecord> initialCoreDistributionRecord() {
-  const zc::StringPtr rootSegments[] = {"core.zom"_zc};
-  const zc::StringPtr markerSegments[] = {"core"_zc, "marker.zom"_zc};
-  const zc::StringPtr preludeSegments[] = {"core"_zc, "prelude.zom"_zc};
-  auto rootPath = pathFromSegments(rootSegments);
-  auto markerPath = pathFromSegments(markerSegments);
-  auto preludePath = pathFromSegments(preludeSegments);
-  auto rootDigest =
-      digestFromHex("63421b0e8a03da646d4e6427231bc743df2731122b56d7e23ebe4425c9c8e9d7"_zc);
-  auto markerDigest =
-      digestFromHex("0dcee31a4992b85ec803f7073e6c03519b6e963325559af28bed1443a86a9a0f"_zc);
-  auto preludeDigest =
-      digestFromHex("2431a21b2a9bec11481b2c56d4b7099865f44df38515155391e3c9b0b12dd357"_zc);
-  if (rootPath == zc::none || markerPath == zc::none || preludePath == zc::none ||
-      rootDigest == zc::none || markerDigest == zc::none || preludeDigest == zc::none) {
-    return zc::none;
-  }
-
-  zc::Vector<CoreSourceFile> files(kCoreFileCount);
-  files.add(
-      CoreSourceFile::from(zc::mv(ZC_ASSERT_NONNULL(rootPath)), ZC_ASSERT_NONNULL(rootDigest)));
-  files.add(
-      CoreSourceFile::from(zc::mv(ZC_ASSERT_NONNULL(markerPath)), ZC_ASSERT_NONNULL(markerDigest)));
-  files.add(CoreSourceFile::from(zc::mv(ZC_ASSERT_NONNULL(preludePath)),
-                                 ZC_ASSERT_NONNULL(preludeDigest)));
-
-  const zc::StringPtr markerModuleSegments[] = {"core"_zc, "marker"_zc};
-  auto copyModule = modulePathFromSegments(markerModuleSegments);
-  auto linearModule = modulePathFromSegments(markerModuleSegments);
-  auto copyName = identity::DeclaredDefinitionName::fromCanonical("Copy"_zc);
-  auto linearName = identity::DeclaredDefinitionName::fromCanonical("Linear"_zc);
-  if (copyModule == zc::none || linearModule == zc::none || copyName == zc::none ||
-      linearName == zc::none) {
-    return zc::none;
-  }
-  zc::Vector<identity::EnclosingStableOwnerKey> copyOwners;
-  zc::Vector<identity::EnclosingStableOwnerKey> linearOwners;
-  zc::Maybe<identity::OverloadHeaderDigest> noCopyOverload;
-  zc::Maybe<identity::OverloadHeaderDigest> noLinearOverload;
-  auto copy = CoreRoleIdentityTemplate::from(
-      CoreSemanticRole::Copy, zc::mv(ZC_ASSERT_NONNULL(copyModule)), zc::mv(copyOwners),
-      identity::DefinitionKind::Interface, identity::DefinitionNamespace::Type,
-      zc::mv(ZC_ASSERT_NONNULL(copyName)), zc::mv(noCopyOverload));
-  auto linear = CoreRoleIdentityTemplate::from(
-      CoreSemanticRole::Linear, zc::mv(ZC_ASSERT_NONNULL(linearModule)), zc::mv(linearOwners),
-      identity::DefinitionKind::Interface, identity::DefinitionNamespace::Type,
-      zc::mv(ZC_ASSERT_NONNULL(linearName)), zc::mv(noLinearOverload));
-  if (copy == zc::none || linear == zc::none) { return zc::none; }
-  zc::Vector<CoreRoleIdentityTemplate> roles(kCoreRoleCount);
-  roles.add(zc::mv(ZC_ASSERT_NONNULL(copy)));
-  roles.add(zc::mv(ZC_ASSERT_NONNULL(linear)));
-
-  auto rootModule = pathFromSegments(rootSegments);
-  auto preludeModule = pathFromSegments(preludeSegments);
-  if (rootModule == zc::none || preludeModule == zc::none) { return zc::none; }
-  return CoreDistributionRecord::from(2026, zc::mv(ZC_ASSERT_NONNULL(rootModule)),
-                                      zc::mv(ZC_ASSERT_NONNULL(preludeModule)), zc::mv(files),
-                                      zc::mv(roles));
+  return CoreDistributionRecord::decodeCanonical(
+      zc::arrayPtr(kGeneratedCoreDistributionRecord, sizeof(kGeneratedCoreDistributionRecord)));
 }
 
 zc::Maybe<CoreStandardMarkerPolicyTemplate> initialCoreMarkerPolicyTemplate() {
@@ -908,9 +826,14 @@ zc::Maybe<CoreDistributionInputRecord> initialCoreDistributionInput() {
   auto policy = initialCoreMarkerPolicyTemplate();
   if (record == zc::none || policy == zc::none) { return zc::none; }
   auto digest = computeCoreDistributionDigest(ZC_ASSERT_NONNULL(record));
-  if (digest == zc::none) { return zc::none; }
+  auto embeddedDigest = identity::Sha256Digest::fromBytes(
+      zc::arrayPtr(kGeneratedCoreDistributionDigest, sizeof(kGeneratedCoreDistributionDigest)));
+  if (digest == zc::none || embeddedDigest == zc::none ||
+      ZC_ASSERT_NONNULL(digest) != ZC_ASSERT_NONNULL(embeddedDigest)) {
+    return zc::none;
+  }
   return CoreDistributionInputRecord::from(zc::mv(ZC_ASSERT_NONNULL(record)),
-                                           ZC_ASSERT_NONNULL(digest),
+                                           ZC_ASSERT_NONNULL(embeddedDigest),
                                            zc::mv(ZC_ASSERT_NONNULL(policy)));
 }
 

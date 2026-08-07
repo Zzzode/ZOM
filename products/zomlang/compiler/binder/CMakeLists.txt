@@ -1,53 +1,43 @@
 set(BINDER_SRC
   ${CMAKE_CURRENT_SOURCE_DIR}/binding-diagnostic-adapter.cc
-  ${CMAKE_CURRENT_SOURCE_DIR}/binding-builder.cc
-  ${CMAKE_CURRENT_SOURCE_DIR}/binding-capture-validator.cc
-  ${CMAKE_CURRENT_SOURCE_DIR}/binding-candidate-codec.cc
-  ${CMAKE_CURRENT_SOURCE_DIR}/binding-candidate-validator.cc
-  ${CMAKE_CURRENT_SOURCE_DIR}/binding-control-validator.cc
-  ${CMAKE_CURRENT_SOURCE_DIR}/binding-context-validator.cc
-  ${CMAKE_CURRENT_SOURCE_DIR}/binding-definition-fact-validator.cc
+  ${CMAKE_CURRENT_SOURCE_DIR}/canonical-input-payload-digest.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/binding-metadata.cc
-  ${CMAKE_CURRENT_SOURCE_DIR}/binding-publication.cc
-  ${CMAKE_CURRENT_SOURCE_DIR}/binding-run.cc
-  ${CMAKE_CURRENT_SOURCE_DIR}/binding-skeleton.cc
-  ${CMAKE_CURRENT_SOURCE_DIR}/body-binding.cc
-  ${CMAKE_CURRENT_SOURCE_DIR}/closure-free-variables.cc
-  ${CMAKE_CURRENT_SOURCE_DIR}/control-transfer.cc
-  ${CMAKE_CURRENT_SOURCE_DIR}/binding-input.cc
-  ${CMAKE_CURRENT_SOURCE_DIR}/binding-input-diagnostic-adapter.cc
-  ${CMAKE_CURRENT_SOURCE_DIR}/binding-verifier.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/canonical-definition-header-producer.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/canonical-header-type-producer.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/canonical-header-verifier.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/canonical-impl-header-producer.cc
-  ${CMAKE_CURRENT_SOURCE_DIR}/verified-bound-module-input.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/definition-inventory.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/definition-site.cc
-  ${CMAKE_CURRENT_SOURCE_DIR}/frozen-definition-inventory.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/identity-pre-admission.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/import-binding.cc
-  ${CMAKE_CURRENT_SOURCE_DIR}/label-facts.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/local-identity.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/module-dependency-requests.cc
+  ${CMAKE_CURRENT_SOURCE_DIR}/module-graph-revision.cc
+  ${CMAKE_CURRENT_SOURCE_DIR}/module-graph-source-failure.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/module-body-syntax.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/module-body-syntax-producer.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/module-body-syntax-verifier.cc
+  ${CMAKE_CURRENT_SOURCE_DIR}/module-binding-allocation-plan.cc
+  ${CMAKE_CURRENT_SOURCE_DIR}/immutable-binding-metadata.cc
+  ${CMAKE_CURRENT_SOURCE_DIR}/immutable-definition-inventory.cc
+  ${CMAKE_CURRENT_SOURCE_DIR}/materialized-module-skeleton.cc
+  ${CMAKE_CURRENT_SOURCE_DIR}/materialized-export-surface-verifier.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/module-skeleton-query.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/module-graph-diagnostic-adapter.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/module-resolution.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/named-identity-inventory.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/owner-body-syntax.cc
+  ${CMAKE_CURRENT_SOURCE_DIR}/owner-body-query.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/parsed-module.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/revision-local-identity-sites.cc
-  ${CMAKE_CURRENT_SOURCE_DIR}/scope-arena.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/stable-binding-codec.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/stable-binding-diagnostic-fact.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/stable-binding-facts.cc
-  ${CMAKE_CURRENT_SOURCE_DIR}/stable-definition-header-producer.cc
-  ${CMAKE_CURRENT_SOURCE_DIR}/stable-header-verifier.cc
-  ${CMAKE_CURRENT_SOURCE_DIR}/stable-implementation-occurrence-header-producer.cc
-  ${CMAKE_CURRENT_SOURCE_DIR}/stable-identity-candidate-producer.cc
-  ${CMAKE_CURRENT_SOURCE_DIR}/stable-identity-candidate-verifier.cc)
+  ${CMAKE_CURRENT_SOURCE_DIR}/stable/definition/header-producer.cc
+  ${CMAKE_CURRENT_SOURCE_DIR}/stable/header/verifier.cc
+  ${CMAKE_CURRENT_SOURCE_DIR}/stable/implementation/header-producer.cc
+  ${CMAKE_CURRENT_SOURCE_DIR}/stable/candidate/producer.cc
+  ${CMAKE_CURRENT_SOURCE_DIR}/stable/candidate/verifier.cc
+  ${CMAKE_CURRENT_SOURCE_DIR}/verified-export-surface.cc)
 
 add_library(binder STATIC ${BINDER_SRC})

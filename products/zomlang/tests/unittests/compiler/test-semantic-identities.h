@@ -11,7 +11,7 @@
 #include "zc/core/string.h"
 #include "zc/core/vector.h"
 #include "zc/ztest/test.h"
-#include "zomlang/compiler/identity/semantic-identity-registry-set.h"
+#include "zomlang/compiler/identity/canonical-identity-interner-set.h"
 
 namespace zomlang::compiler::tests {
 namespace test_identity_detail {
@@ -120,57 +120,32 @@ inline zc::Vector<identity::DefId> makeTestDefinitionIds(size_t count) {
   identity::SemanticContextFactory factory;
   auto context = factory.issue();
   ZC_REQUIRE(context != zc::none);
-  zc::Maybe<identity::SemanticIdentityRegistrySet> registries;
   ZC_IF_SOME(value, context) {
-    registries = identity::SemanticIdentityRegistrySet::create(factory, value);
-  }
-  ZC_REQUIRE(registries != zc::none);
-
-  zc::Vector<identity::DefinitionKey> retained(count);
-  ZC_IF_SOME(values, registries) {
-    ZC_REQUIRE(values.collectCompilationUnit(userUnit()) == identity::FrozenRegistryFailure::None);
-    ZC_REQUIRE(values.freezeCompilationUnits() == identity::FrozenRegistryFailure::None);
-    ZC_REQUIRE(values.collectCrate(crate()) == identity::FrozenRegistryFailure::None);
-    ZC_REQUIRE(values.freezeCrates() == identity::FrozenRegistryFailure::None);
-    auto snapshot =
-        identity::ImmutableSourceSnapshot::from(source(), zc::heapArray<uint8_t>(1, uint8_t{0}));
-    ZC_REQUIRE(snapshot != zc::none);
-    ZC_IF_SOME(sourceValue, snapshot) {
-      ZC_REQUIRE(values.collectSourceFile(zc::mv(sourceValue)) ==
-                 identity::FrozenRegistryFailure::None);
-    }
-    ZC_REQUIRE(values.freezeSourceFiles() == identity::FrozenRegistryFailure::None);
-    ZC_REQUIRE(values.collectModule(module()) == identity::FrozenRegistryFailure::None);
-    ZC_REQUIRE(values.freezeModules() == identity::FrozenRegistryFailure::None);
-    for (size_t index = 0; index < count; ++index) {
-      auto text = zc::str("definition", static_cast<uint64_t>(index));
-      auto name = identity::DeclaredDefinitionName::fromCanonical(text);
-      ZC_REQUIRE(name != zc::none);
-      zc::Vector<identity::EnclosingStableOwnerKey> owners;
-      zc::Maybe<identity::OverloadHeaderDigest> noOverloadDigest;
-      ZC_IF_SOME(nameValue, name) {
-        auto record = identity::DefinitionIdentityRecord::from(
-            module(), zc::mv(owners), identity::DefinitionKind::Class,
-            identity::DefinitionNamespace::Type, zc::mv(nameValue), zc::mv(noOverloadDigest));
-        ZC_REQUIRE(record != zc::none);
-        ZC_IF_SOME(recordValue, record) {
-          retained.add(identity::DefinitionKey::compute(recordValue));
-          zc::Maybe<identity::OverloadHeaderAuthority> noOverloadAuthority;
-          ZC_REQUIRE(values.collectDefinition(recordValue.clone(), zc::mv(noOverloadAuthority)) ==
-                     identity::FrozenRegistryFailure::None);
+    auto authorities = identity::CanonicalIdentityInternerSet::create(factory, value);
+    ZC_REQUIRE(authorities != zc::none);
+    ZC_IF_SOME(interners, authorities) {
+      zc::Vector<identity::DefId> result(count);
+      for (size_t index = 0; index < count; ++index) {
+        auto text = zc::str("definition", static_cast<uint64_t>(index));
+        auto name = identity::DeclaredDefinitionName::fromCanonical(text);
+        ZC_REQUIRE(name != zc::none);
+        zc::Vector<identity::EnclosingStableOwnerKey> owners;
+        zc::Maybe<identity::OverloadHeaderDigest> noOverloadDigest;
+        ZC_IF_SOME(nameValue, name) {
+          auto record = identity::DefinitionIdentityRecord::from(
+              module(), zc::mv(owners), identity::DefinitionKind::Class,
+              identity::DefinitionNamespace::Type, zc::mv(nameValue), zc::mv(noOverloadDigest));
+          ZC_REQUIRE(record != zc::none);
+          ZC_IF_SOME(recordValue, record) {
+            const auto key = identity::DefinitionKey::compute(recordValue);
+            auto admitted = interners.internDefinition(value, key, recordValue);
+            ZC_REQUIRE(admitted.is<identity::DefId>());
+            result.add(admitted.get<identity::DefId>());
+          }
         }
       }
+      return result;
     }
-    ZC_REQUIRE(values.freezeStableIdentities() == identity::FrozenRegistryFailure::None);
-    ZC_REQUIRE(values.freezeGenericParameters() == identity::FrozenRegistryFailure::None);
-    ZC_REQUIRE(values.freezeCallableParameters() == identity::FrozenRegistryFailure::None);
-    zc::Vector<identity::DefId> result(count);
-    for (const auto& key : retained) {
-      auto handle = values.definitions().find(key);
-      ZC_REQUIRE(handle != zc::none);
-      ZC_IF_SOME(value, handle) { result.add(value); }
-    }
-    return result;
   }
   ZC_UNREACHABLE;
 }

@@ -6,3 +6,5 @@ set(SOURCE_SRC
   ${CMAKE_CURRENT_SOURCE_DIR}/manager.cc)
 
 add_library(source STATIC ${SOURCE_SRC})
+add_dependencies(source generate-core-library-inventory)
+target_include_directories(source PRIVATE "${CMAKE_BINARY_DIR}/generated")

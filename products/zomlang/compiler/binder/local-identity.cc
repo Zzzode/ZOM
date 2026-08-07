@@ -444,6 +444,7 @@ struct ModuleLocalIdentityAllocator::Impl final {
   identity::SemanticContextBrand context;
   identity::ModuleId module;
   uint64_t ownerLocalBindingCount = 0;
+  uint64_t anonymousOwnerLocalCount = 0;
   uint64_t implOccurrenceCount = 0;
 };
 
@@ -462,14 +463,41 @@ zc::Maybe<ModuleLocalIdentityAllocator> ModuleLocalIdentityAllocator::create(
 }
 
 zc::Maybe<OwnerLocalBindingId> ModuleLocalIdentityAllocator::allocateOwnerLocalBinding() {
-  if (impl->ownerLocalBindingCount > static_cast<uint64_t>(0xffffffffu)) { return zc::none; }
+  if (impl->ownerLocalBindingCount >= static_cast<uint64_t>(0xffffffffu)) { return zc::none; }
   const auto slot = static_cast<uint32_t>(impl->ownerLocalBindingCount);
   ++impl->ownerLocalBindingCount;
   return OwnerLocalBindingId(impl->context, impl->module, slot);
 }
 
+bool ModuleLocalIdentityAllocator::skipOwnerLocalBindings(uint32_t count) noexcept {
+  if (impl->ownerLocalBindingCount > static_cast<uint64_t>(0xffffffffu) ||
+      static_cast<uint64_t>(count) >
+          static_cast<uint64_t>(0xffffffffu) - impl->ownerLocalBindingCount) {
+    return false;
+  }
+  impl->ownerLocalBindingCount += count;
+  return true;
+}
+
+zc::Maybe<AnonymousOwnerLocalId> ModuleLocalIdentityAllocator::allocateAnonymousOwnerLocal() {
+  if (impl->anonymousOwnerLocalCount >= static_cast<uint64_t>(0xffffffffu)) { return zc::none; }
+  const auto slot = static_cast<uint32_t>(impl->anonymousOwnerLocalCount);
+  ++impl->anonymousOwnerLocalCount;
+  return AnonymousOwnerLocalId(impl->context, impl->module, slot);
+}
+
+bool ModuleLocalIdentityAllocator::skipAnonymousOwnerLocals(uint32_t count) noexcept {
+  if (impl->anonymousOwnerLocalCount > static_cast<uint64_t>(0xffffffffu) ||
+      static_cast<uint64_t>(count) >
+          static_cast<uint64_t>(0xffffffffu) - impl->anonymousOwnerLocalCount) {
+    return false;
+  }
+  impl->anonymousOwnerLocalCount += count;
+  return true;
+}
+
 zc::Maybe<ImplOccurrenceId> ModuleLocalIdentityAllocator::allocateImplOccurrence() {
-  if (impl->implOccurrenceCount > static_cast<uint64_t>(0xffffffffu)) { return zc::none; }
+  if (impl->implOccurrenceCount >= static_cast<uint64_t>(0xffffffffu)) { return zc::none; }
   const auto slot = static_cast<uint32_t>(impl->implOccurrenceCount);
   ++impl->implOccurrenceCount;
   return ImplOccurrenceId(impl->context, impl->module, slot);
@@ -488,6 +516,18 @@ ModuleLocalIdentityFailure ModuleLocalIdentityAllocator::validate(
 }
 
 ModuleLocalIdentityFailure ModuleLocalIdentityAllocator::validate(
+    AnonymousOwnerLocalId id, uint32_t expectedDenseSlot) const noexcept {
+  if (!id.isValid()) { return ModuleLocalIdentityFailure::InvalidHandle; }
+  if (!id.belongsTo(impl->context)) { return ModuleLocalIdentityFailure::ForeignContext; }
+  if (!id.belongsTo(impl->module)) { return ModuleLocalIdentityFailure::ForeignModule; }
+  if (id.slot >= impl->anonymousOwnerLocalCount) {
+    return ModuleLocalIdentityFailure::SlotOutOfRange;
+  }
+  if (id.slot != expectedDenseSlot) { return ModuleLocalIdentityFailure::NonDenseSlot; }
+  return ModuleLocalIdentityFailure::None;
+}
+
+ModuleLocalIdentityFailure ModuleLocalIdentityAllocator::validate(
     ImplOccurrenceId id, uint32_t expectedDenseSlot) const noexcept {
   if (!id.isValid()) { return ModuleLocalIdentityFailure::InvalidHandle; }
   if (!id.belongsTo(impl->context)) { return ModuleLocalIdentityFailure::ForeignContext; }
@@ -499,6 +539,10 @@ ModuleLocalIdentityFailure ModuleLocalIdentityAllocator::validate(
 
 uint64_t ModuleLocalIdentityAllocator::ownerLocalBindingCount() const noexcept {
   return impl->ownerLocalBindingCount;
+}
+
+uint64_t ModuleLocalIdentityAllocator::anonymousOwnerLocalCount() const noexcept {
+  return impl->anonymousOwnerLocalCount;
 }
 
 uint64_t ModuleLocalIdentityAllocator::implOccurrenceCount() const noexcept {

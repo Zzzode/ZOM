@@ -17,7 +17,6 @@
 #include "zc/core/array.h"
 #include "zc/core/common.h"
 #include "zomlang/compiler/identity/definition-key.h"
-#include "zomlang/compiler/identity/semantic-identity-registry-set.h"
 #include "zomlang/compiler/identity/source-snapshot.h"
 
 namespace zomlang::compiler::identity {
@@ -94,13 +93,6 @@ public:
       zc::ArrayPtr<const CrateKey> crates, zc::ArrayPtr<const CrateDependencyEdgeKey> crateEdges,
       zc::ArrayPtr<const SourceContentIdentity> sourceContents,
       zc::ArrayPtr<const ModuleKey> modules);
-
-  /// \brief Computes from the frozen context registries and resolved edge inventories.
-  ZC_NODISCARD static zc::Maybe<SemanticContextFingerprint> compute(
-      const SemanticIdentityRegistrySet& registries,
-      zc::ArrayPtr<const ToolchainSemanticContextInput> toolchainInputs,
-      zc::ArrayPtr<const PackageDependencyEdgeKey> packageEdges,
-      zc::ArrayPtr<const CrateDependencyEdgeKey> crateEdges);
 
   ZC_NODISCARD SemanticContextFingerprint clone() const noexcept;
   ZC_NODISCARD const Sha256Digest& digest() const noexcept;

@@ -228,13 +228,6 @@ DetachedModuleBodyNode DetachedModuleBodyNode::definitionBoundary(
                                          ast::SyntaxKind::Unknown, key.encode(), 0}));
 }
 
-DetachedModuleBodyNode DetachedModuleBodyNode::implementationBoundary(
-    const ImplSourceOccurrenceKey& key) {
-  return DetachedModuleBodyNode(zc::heap<detail::DetachedModuleBodyNodeData>(
-      detail::DetachedModuleBodyNodeData{DetachedModuleBodyNodeKind::ImplementationBoundary,
-                                         ast::SyntaxKind::Unknown, key.encode(), 0}));
-}
-
 DetachedModuleBodyNode DetachedModuleBodyNode::clone() const {
   return DetachedModuleBodyNode(
       zc::heap<detail::DetachedModuleBodyNodeData>(detail::DetachedModuleBodyNodeData{
@@ -254,6 +247,271 @@ zc::ArrayPtr<const uint8_t> DetachedModuleBodyNode::canonicalPayload() const {
 }
 
 uint32_t DetachedModuleBodyNode::childCount() const noexcept { return impl->childCount; }
+
+zc::Maybe<DetachedModuleBodyChildField> DetachedModuleBodyNode::childField(
+    uint32_t fieldIndex) const {
+  if (impl->kind != DetachedModuleBodyNodeKind::Syntax) { return zc::none; }
+  auto schema = ast::lookupNodeSchema(impl->syntaxKind);
+  if (schema == nullptr || fieldIndex >= schema->fieldCount) { return zc::none; }
+  const auto& schemaValue = *schema;
+  identity::CanonicalDecoder decoder(impl->canonicalPayload.asPtr());
+  auto fieldCount = decoder.decodeSequenceSize(schemaValue.fieldCount);
+  if (fieldCount == zc::none || ZC_ASSERT_NONNULL(fieldCount) != schemaValue.fieldCount) {
+    return zc::none;
+  }
+
+  uint32_t childOrdinal = 0;
+  zc::Maybe<DetachedModuleBodyChildField> selected;
+  for (uint32_t index = 0; index < schemaValue.fieldCount; ++index) {
+    const auto& field = schemaValue.fields[index];
+    auto storage = decoder.decodeUint8();
+    auto optional = decoder.decodeBool();
+    if (storage == zc::none || optional == zc::none ||
+        ZC_ASSERT_NONNULL(storage) != static_cast<uint8_t>(field.storage) + 1 ||
+        ZC_ASSERT_NONNULL(optional) != field.optional) {
+      return zc::none;
+    }
+    switch (field.storage) {
+      case ast::NodeSchemaFieldStorage::NodeId: {
+        auto present = decoder.decodeBool();
+        if (present == zc::none || (!field.optional && !ZC_ASSERT_NONNULL(present))) {
+          return zc::none;
+        }
+        if (index == fieldIndex) {
+          selected = DetachedModuleBodyChildField{ZC_ASSERT_NONNULL(present), childOrdinal,
+                                                  ZC_ASSERT_NONNULL(present) ? 1U : 0U};
+        }
+        if (ZC_ASSERT_NONNULL(present)) { ++childOrdinal; }
+        break;
+      }
+      case ast::NodeSchemaFieldStorage::NodeList: {
+        auto count = decoder.decodeSequenceSize(kMaximumDetachedNodes);
+        if (count == zc::none || ZC_ASSERT_NONNULL(count) > UINT32_MAX - childOrdinal) {
+          return zc::none;
+        }
+        if (index == fieldIndex) {
+          selected = DetachedModuleBodyChildField{true, childOrdinal,
+                                                  static_cast<uint32_t>(ZC_ASSERT_NONNULL(count))};
+        }
+        childOrdinal += static_cast<uint32_t>(ZC_ASSERT_NONNULL(count));
+        break;
+      }
+      case ast::NodeSchemaFieldStorage::IdentList: {
+        auto count = decoder.decodeSequenceSize(kMaximumIdentifierList);
+        if (count == zc::none) { return zc::none; }
+        ZC_IF_SOME(value, count) {
+          for (uint64_t item = 0; item < value; ++item) {
+            if (decoder.decodeByteString(kMaximumIdentifierBytes) == zc::none) { return zc::none; }
+          }
+        }
+        break;
+      }
+      case ast::NodeSchemaFieldStorage::StringId:
+      case ast::NodeSchemaFieldStorage::IdentId:
+      case ast::NodeSchemaFieldStorage::BigIntId:
+      case ast::NodeSchemaFieldStorage::FloatId: {
+        auto present = decoder.decodeBool();
+        if (present == zc::none || (!field.optional && !ZC_ASSERT_NONNULL(present)) ||
+            (ZC_ASSERT_NONNULL(present) &&
+             decoder.decodeByteString(field.storage == ast::NodeSchemaFieldStorage::IdentId
+                                          ? kMaximumIdentifierBytes
+                                          : kMaximumTextBytes) == zc::none)) {
+          return zc::none;
+        }
+        break;
+      }
+      case ast::NodeSchemaFieldStorage::Bool:
+        if (decoder.decodeBool() == zc::none) { return zc::none; }
+        break;
+      case ast::NodeSchemaFieldStorage::UInt8:
+        if (decoder.decodeUint8() == zc::none) { return zc::none; }
+        break;
+      case ast::NodeSchemaFieldStorage::UInt16:
+      case ast::NodeSchemaFieldStorage::UInt32:
+      case ast::NodeSchemaFieldStorage::Enum:
+        if (decoder.decodeUint32() == zc::none) { return zc::none; }
+        break;
+      case ast::NodeSchemaFieldStorage::UInt64:
+        if (decoder.decodeUint64() == zc::none) { return zc::none; }
+        break;
+    }
+  }
+  if (!decoder.finished() || childOrdinal != impl->childCount) { return zc::none; }
+  return selected;
+}
+
+zc::Maybe<identity::DeclaredDefinitionName> DetachedModuleBodyNode::identifierField(
+    uint32_t fieldIndex) const {
+  if (impl->kind != DetachedModuleBodyNodeKind::Syntax) { return zc::none; }
+  auto schema = ast::lookupNodeSchema(impl->syntaxKind);
+  if (schema == nullptr || fieldIndex >= schema->fieldCount ||
+      schema->fields[fieldIndex].storage != ast::NodeSchemaFieldStorage::IdentId) {
+    return zc::none;
+  }
+  identity::CanonicalDecoder decoder(impl->canonicalPayload.asPtr());
+  auto fieldCount = decoder.decodeSequenceSize(schema->fieldCount);
+  if (fieldCount == zc::none || ZC_ASSERT_NONNULL(fieldCount) != schema->fieldCount) {
+    return zc::none;
+  }
+
+  zc::Maybe<identity::DeclaredDefinitionName> selected;
+  for (uint32_t index = 0; index < schema->fieldCount; ++index) {
+    const auto& field = schema->fields[index];
+    auto storage = decoder.decodeUint8();
+    auto optional = decoder.decodeBool();
+    if (storage == zc::none || optional == zc::none ||
+        ZC_ASSERT_NONNULL(storage) != static_cast<uint8_t>(field.storage) + 1 ||
+        ZC_ASSERT_NONNULL(optional) != field.optional) {
+      return zc::none;
+    }
+    switch (field.storage) {
+      case ast::NodeSchemaFieldStorage::NodeId: {
+        auto present = decoder.decodeBool();
+        if (present == zc::none || (!field.optional && !ZC_ASSERT_NONNULL(present))) {
+          return zc::none;
+        }
+        break;
+      }
+      case ast::NodeSchemaFieldStorage::NodeList: {
+        auto count = decoder.decodeSequenceSize(kMaximumDetachedNodes);
+        if (count == zc::none) { return zc::none; }
+        break;
+      }
+      case ast::NodeSchemaFieldStorage::IdentList: {
+        auto count = decoder.decodeSequenceSize(kMaximumIdentifierList);
+        if (count == zc::none) { return zc::none; }
+        ZC_IF_SOME(value, count) {
+          for (uint64_t item = 0; item < value; ++item) {
+            if (decoder.decodeByteString(kMaximumIdentifierBytes) == zc::none) { return zc::none; }
+          }
+        }
+        break;
+      }
+      case ast::NodeSchemaFieldStorage::StringId:
+      case ast::NodeSchemaFieldStorage::IdentId:
+      case ast::NodeSchemaFieldStorage::BigIntId:
+      case ast::NodeSchemaFieldStorage::FloatId: {
+        auto present = decoder.decodeBool();
+        if (present == zc::none || (!field.optional && !ZC_ASSERT_NONNULL(present))) {
+          return zc::none;
+        }
+        if (!ZC_ASSERT_NONNULL(present)) { break; }
+        auto text = decoder.decodeByteString(field.storage == ast::NodeSchemaFieldStorage::IdentId
+                                                 ? kMaximumIdentifierBytes
+                                                 : kMaximumTextBytes);
+        if (text == zc::none) { return zc::none; }
+        if (index == fieldIndex) {
+          auto name = identity::DeclaredDefinitionName::fromCanonical(
+              zc::str(ZC_ASSERT_NONNULL(text).asChars()));
+          if (name == zc::none) { return zc::none; }
+          selected = zc::mv(ZC_ASSERT_NONNULL(name));
+        }
+        break;
+      }
+      case ast::NodeSchemaFieldStorage::Bool:
+        if (decoder.decodeBool() == zc::none) { return zc::none; }
+        break;
+      case ast::NodeSchemaFieldStorage::UInt8:
+        if (decoder.decodeUint8() == zc::none) { return zc::none; }
+        break;
+      case ast::NodeSchemaFieldStorage::UInt16:
+      case ast::NodeSchemaFieldStorage::UInt32:
+      case ast::NodeSchemaFieldStorage::Enum:
+        if (decoder.decodeUint32() == zc::none) { return zc::none; }
+        break;
+      case ast::NodeSchemaFieldStorage::UInt64:
+        if (decoder.decodeUint64() == zc::none) { return zc::none; }
+        break;
+    }
+  }
+  return decoder.finished() ? zc::mv(selected) : zc::Maybe<identity::DeclaredDefinitionName>();
+}
+
+zc::Maybe<zc::Vector<identity::DeclaredDefinitionName>> DetachedModuleBodyNode::identifierListField(
+    uint32_t fieldIndex) const {
+  if (impl->kind != DetachedModuleBodyNodeKind::Syntax) { return zc::none; }
+  auto schema = ast::lookupNodeSchema(impl->syntaxKind);
+  if (schema == nullptr || fieldIndex >= schema->fieldCount ||
+      schema->fields[fieldIndex].storage != ast::NodeSchemaFieldStorage::IdentList) {
+    return zc::none;
+  }
+  identity::CanonicalDecoder decoder(impl->canonicalPayload.asPtr());
+  auto fieldCount = decoder.decodeSequenceSize(schema->fieldCount);
+  if (fieldCount == zc::none || ZC_ASSERT_NONNULL(fieldCount) != schema->fieldCount) {
+    return zc::none;
+  }
+
+  zc::Vector<identity::DeclaredDefinitionName> selected;
+  for (uint32_t index = 0; index < schema->fieldCount; ++index) {
+    const auto& field = schema->fields[index];
+    auto storage = decoder.decodeUint8();
+    auto optional = decoder.decodeBool();
+    if (storage == zc::none || optional == zc::none ||
+        ZC_ASSERT_NONNULL(storage) != static_cast<uint8_t>(field.storage) + 1 ||
+        ZC_ASSERT_NONNULL(optional) != field.optional) {
+      return zc::none;
+    }
+    switch (field.storage) {
+      case ast::NodeSchemaFieldStorage::NodeId: {
+        auto present = decoder.decodeBool();
+        if (present == zc::none || (!field.optional && !ZC_ASSERT_NONNULL(present))) {
+          return zc::none;
+        }
+        break;
+      }
+      case ast::NodeSchemaFieldStorage::NodeList: {
+        if (decoder.decodeSequenceSize(kMaximumDetachedNodes) == zc::none) { return zc::none; }
+        break;
+      }
+      case ast::NodeSchemaFieldStorage::IdentList: {
+        auto count = decoder.decodeSequenceSize(kMaximumIdentifierList);
+        if (count == zc::none) { return zc::none; }
+        ZC_IF_SOME(value, count) {
+          for (uint64_t item = 0; item < value; ++item) {
+            auto text = decoder.decodeByteString(kMaximumIdentifierBytes);
+            if (text == zc::none) { return zc::none; }
+            if (index != fieldIndex) { continue; }
+            auto name = identity::DeclaredDefinitionName::fromCanonical(
+                zc::str(ZC_ASSERT_NONNULL(text).asChars()));
+            if (name == zc::none) { return zc::none; }
+            selected.add(zc::mv(ZC_ASSERT_NONNULL(name)));
+          }
+        }
+        break;
+      }
+      case ast::NodeSchemaFieldStorage::StringId:
+      case ast::NodeSchemaFieldStorage::IdentId:
+      case ast::NodeSchemaFieldStorage::BigIntId:
+      case ast::NodeSchemaFieldStorage::FloatId: {
+        auto present = decoder.decodeBool();
+        if (present == zc::none || (!field.optional && !ZC_ASSERT_NONNULL(present)) ||
+            (ZC_ASSERT_NONNULL(present) &&
+             decoder.decodeByteString(field.storage == ast::NodeSchemaFieldStorage::IdentId
+                                          ? kMaximumIdentifierBytes
+                                          : kMaximumTextBytes) == zc::none)) {
+          return zc::none;
+        }
+        break;
+      }
+      case ast::NodeSchemaFieldStorage::Bool:
+        if (decoder.decodeBool() == zc::none) { return zc::none; }
+        break;
+      case ast::NodeSchemaFieldStorage::UInt8:
+        if (decoder.decodeUint8() == zc::none) { return zc::none; }
+        break;
+      case ast::NodeSchemaFieldStorage::UInt16:
+      case ast::NodeSchemaFieldStorage::UInt32:
+      case ast::NodeSchemaFieldStorage::Enum:
+        if (decoder.decodeUint32() == zc::none) { return zc::none; }
+        break;
+      case ast::NodeSchemaFieldStorage::UInt64:
+        if (decoder.decodeUint64() == zc::none) { return zc::none; }
+        break;
+    }
+  }
+  return decoder.finished() ? zc::mv(selected)
+                            : zc::Maybe<zc::Vector<identity::DeclaredDefinitionName>>();
+}
 
 bool DetachedModuleBodyNode::operator==(const DetachedModuleBodyNode& other) const noexcept {
   return impl->kind == other.impl->kind && impl->syntaxKind == other.impl->syntaxKind &&
@@ -321,18 +579,6 @@ zc::Maybe<ModuleBodySyntax> ModuleBodySyntax::decodeCanonical(zc::ArrayPtr<const
             if (key == zc::none) { return zc::none; }
             ZC_IF_SOME(keyValue, key) {
               nodes.add(DetachedModuleBodyNode::definitionBoundary(keyValue));
-            }
-          }
-          break;
-        }
-        case DetachedModuleBodyNodeKind::ImplementationBoundary: {
-          auto payload = decoder.decodeByteString(kMaximumSourceKeyBytes + kMaximumPathBytes + 64);
-          if (payload == zc::none) { return zc::none; }
-          ZC_IF_SOME(payloadValue, payload) {
-            auto key = ImplSourceOccurrenceKey::decodeCanonical(payloadValue.asPtr());
-            if (key == zc::none) { return zc::none; }
-            ZC_IF_SOME(keyValue, key) {
-              nodes.add(DetachedModuleBodyNode::implementationBoundary(keyValue));
             }
           }
           break;

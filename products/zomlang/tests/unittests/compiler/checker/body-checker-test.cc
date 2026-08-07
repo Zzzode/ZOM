@@ -11,59 +11,26 @@
 #include "zomlang/compiler/checker/checker-diagnostic-adapter.h"
 #include "zomlang/compiler/checker/scalar-literal-facts.h"
 #include "zomlang/compiler/type/semantic-type-data.h"
+#include "zomlang/tests/unittests/compiler/checker/checker-authority-test-fixture.h"
 #include "zomlang/tests/unittests/compiler/test-semantic-identities.h"
 
 namespace zomlang::compiler::checker::body {
 namespace {
 
 using namespace tests::test_identity_detail;
+using namespace tests::checker_fixture;
 
 class BodyLiteralFixture final {
 public:
-  BodyLiteralFixture() {
-    auto issuedContext = factory.issue();
-    ZC_REQUIRE(issuedContext != zc::none);
-    ZC_IF_SOME(value, issuedContext) { context = value; }
+  BodyLiteralFixture() : session("class RecoveryOwner {}\n"_zc) {}
 
-    auto createdRegistries = identity::SemanticIdentityRegistrySet::create(factory, context);
-    ZC_REQUIRE(createdRegistries != zc::none);
-    ZC_IF_SOME(value, createdRegistries) {
-      registries = zc::heap<identity::SemanticIdentityRegistrySet>(zc::mv(value));
-    }
-    auto token = factory.issueSemanticTypeStoreConstructionToken(context);
-    ZC_REQUIRE(token != zc::none);
-    ZC_IF_SOME(value, token) {
-      semanticTypes = zc::heap<type::SemanticTypeStore>(zc::mv(value), *registries);
-    }
+  identity::SourceSpan sourceSpan() const { return session.span(0, 1); }
 
-    ZC_REQUIRE(registries->collectCompilationUnit(userUnit()) ==
-               identity::FrozenRegistryFailure::None);
-    ZC_REQUIRE(registries->freezeCompilationUnits() == identity::FrozenRegistryFailure::None);
-    ZC_REQUIRE(registries->collectCrate(crate()) == identity::FrozenRegistryFailure::None);
-    ZC_REQUIRE(registries->freezeCrates() == identity::FrozenRegistryFailure::None);
-    auto snapshot = identity::ImmutableSourceSnapshot::from(tests::test_identity_detail::source(),
-                                                            zc::heapArray<uint8_t>(1, uint8_t{0}));
-    ZC_REQUIRE(snapshot != zc::none);
-    ZC_IF_SOME(value, snapshot) {
-      ZC_REQUIRE(registries->collectSourceFile(zc::mv(value)) ==
-                 identity::FrozenRegistryFailure::None);
-    }
-    ZC_REQUIRE(registries->freezeSourceFiles() == identity::FrozenRegistryFailure::None);
-    ZC_REQUIRE(registries->collectModule(module()) == identity::FrozenRegistryFailure::None);
-    ZC_REQUIRE(registries->freezeModules() == identity::FrozenRegistryFailure::None);
-    ZC_REQUIRE(registries->freezeStableIdentities() == identity::FrozenRegistryFailure::None);
-    ZC_REQUIRE(registries->freezeGenericParameters() == identity::FrozenRegistryFailure::None);
-    ZC_REQUIRE(registries->freezeCallableParameters() == identity::FrozenRegistryFailure::None);
-
-    auto handle = registries->modules().find(module());
-    ZC_REQUIRE(handle != zc::none);
-    ZC_IF_SOME(value, handle) { moduleId = value; }
-  }
-
-  identity::SourceSpan sourceSpan() const {
-    auto result = registries->sourceSnapshots()[0].span(0, 1);
-    ZC_IF_SOME(value, result) { return zc::mv(value); }
-    ZC_FAIL_REQUIRE("invalid body-checker source span fixture");
+  scalar_literal::FactEmissionResult emit(const ast::Tree& tree, ast::NodeId node,
+                                          const checked::CheckedNodeKey& key) {
+    return scalar_literal::FactEmitter::emit(scalar_literal::FactEmissionInput{
+        session.semanticContext(), session.module(), tree, node, key, session.source(),
+        session.identityAuthority(), session.semanticTypes()});
   }
 
   ast::Tree literalTree(ast::SyntaxKind kind, ast::NodePayload payload = {}) const {
@@ -119,11 +86,7 @@ public:
     return textTree(ast::SyntaxKind::StringLiteralExpr, text);
   }
 
-  identity::SemanticContextFactory factory;
-  identity::SemanticContextBrand context;
-  zc::Own<identity::SemanticIdentityRegistrySet> registries;
-  zc::Own<type::SemanticTypeStore> semanticTypes;
-  identity::ModuleId moduleId;
+  CheckerAuthoritySession session;
 };
 
 bool sameBytes(zc::ArrayPtr<const uint8_t> left, zc::ArrayPtr<const uint8_t> right) {
@@ -141,10 +104,7 @@ void expectAccepted(BodyLiteralFixture& fixture, const ast::Tree& tree,
   const auto literal = tree.root();
   checked::CheckedNodeKey key{static_cast<uint32_t>(tree.node(literal).kind), 0,
                               fixture.sourceSpan()};
-  auto result = scalar_literal::FactEmitter::emit(
-      scalar_literal::FactEmissionInput{fixture.context, fixture.moduleId, tree, literal, key,
-                                        fixture.registries->sourceSnapshots()[0].source(),
-                                        *fixture.registries, *fixture.semanticTypes});
+  auto result = fixture.emit(tree, literal, key);
   ZC_REQUIRE(result.is<scalar_literal::EmittedFacts>());
   auto facts = zc::mv(result).get<scalar_literal::EmittedFacts>();
   ZC_EXPECT(facts.nodeType.key == literal);
@@ -154,16 +114,20 @@ void expectAccepted(BodyLiteralFixture& fixture, const ast::Tree& tree,
   ZC_EXPECT(facts.nodeType.canonicalRecord.size() == 0);
   ZC_EXPECT(facts.literal.canonicalRecord.size() == 0);
 
-  auto typeLookup = fixture.semanticTypes->get(facts.nodeType.value);
+  auto typeLookup = fixture.session.semanticTypes().get(facts.nodeType.value);
   ZC_REQUIRE(typeLookup.is<type::SemanticTypeLookup>());
   const auto& data = typeLookup.get<type::SemanticTypeLookup>().data();
   ZC_REQUIRE(data.is<type::semantic::PrimitiveTypeData>());
   ZC_EXPECT(data.get<type::semantic::PrimitiveTypeData>().kind == expectedPrimitive);
 
-  auto actualEncoding = signature::SignatureFactsCanonicalCodec::encodeCanonicalConstValue(
-      facts.literal.value.literal, fixture.moduleId, *fixture.registries, *fixture.semanticTypes);
-  auto expectedEncoding = signature::SignatureFactsCanonicalCodec::encodeCanonicalConstValue(
-      expectedLiteral, fixture.moduleId, *fixture.registries, *fixture.semanticTypes);
+  auto actualEncoding =
+      signature::SignatureFactsCanonicalCodec::encodeCanonicalConstValueFromAuthority(
+          facts.literal.value.literal, fixture.session.module(),
+          fixture.session.identityAuthority(), fixture.session.semanticTypes());
+  auto expectedEncoding =
+      signature::SignatureFactsCanonicalCodec::encodeCanonicalConstValueFromAuthority(
+          expectedLiteral, fixture.session.module(), fixture.session.identityAuthority(),
+          fixture.session.semanticTypes());
   ZC_REQUIRE(actualEncoding != zc::none);
   ZC_REQUIRE(expectedEncoding != zc::none);
   ZC_IF_SOME(actual, actualEncoding) {
@@ -174,16 +138,13 @@ void expectAccepted(BodyLiteralFixture& fixture, const ast::Tree& tree,
 }
 
 void expectInvariantRejectedWithoutPublication(BodyLiteralFixture& fixture, const ast::Tree& tree) {
-  const size_t sizeBefore = fixture.semanticTypes->size();
+  const size_t sizeBefore = fixture.session.semanticTypes().size();
   const auto literal = tree.root();
   checked::CheckedNodeKey key{static_cast<uint32_t>(tree.node(literal).kind), 0,
                               fixture.sourceSpan()};
-  auto result = scalar_literal::FactEmitter::emit(
-      scalar_literal::FactEmissionInput{fixture.context, fixture.moduleId, tree, literal, key,
-                                        fixture.registries->sourceSnapshots()[0].source(),
-                                        *fixture.registries, *fixture.semanticTypes});
+  auto result = fixture.emit(tree, literal, key);
   ZC_REQUIRE(result.is<checked::CheckedFactsInvariantRejected>());
-  ZC_EXPECT(fixture.semanticTypes->size() == sizeBefore);
+  ZC_EXPECT(fixture.session.semanticTypes().size() == sizeBefore);
   const auto& rejection = result.get<checked::CheckedFactsInvariantRejected>();
   ZC_REQUIRE(rejection.failures.size() == 1);
   const auto& failure = rejection.failures[0].variant();
@@ -195,16 +156,13 @@ void expectInvariantRejectedWithoutPublication(BodyLiteralFixture& fixture, cons
 void expectSourceRejectedWithoutPublication(BodyLiteralFixture& fixture, const ast::Tree& tree,
                                             type::semantic::PrimitiveKind expectedTarget,
                                             zc::StringPtr expectedTargetText) {
-  const size_t sizeBefore = fixture.semanticTypes->size();
+  const size_t sizeBefore = fixture.session.semanticTypes().size();
   const auto literal = tree.root();
   checked::CheckedNodeKey key{static_cast<uint32_t>(tree.node(literal).kind), 0,
                               fixture.sourceSpan()};
-  auto result = scalar_literal::FactEmitter::emit(
-      scalar_literal::FactEmissionInput{fixture.context, fixture.moduleId, tree, literal, key,
-                                        fixture.registries->sourceSnapshots()[0].source(),
-                                        *fixture.registries, *fixture.semanticTypes});
+  auto result = fixture.emit(tree, literal, key);
   ZC_REQUIRE(result.is<checked::CheckedFactsSourceRejected>());
-  ZC_EXPECT(fixture.semanticTypes->size() == sizeBefore);
+  ZC_EXPECT(fixture.session.semanticTypes().size() == sizeBefore);
   const auto& rejection = result.get<checked::CheckedFactsSourceRejected>();
   ZC_REQUIRE(rejection.failures.size() == 1);
   ZC_EXPECT(rejection.failures[0].diagnostic == checked::CheckerErrorId::BodyLiteralOutOfRange());
@@ -215,8 +173,9 @@ void expectSourceRejectedWithoutPublication(BodyLiteralFixture& fixture, const a
   const auto& target = rejection.failures[0].arguments[1].variant();
   ZC_REQUIRE(target.is<checked::PrimitiveTypeDisplayArg>());
   ZC_EXPECT(target.get<checked::PrimitiveTypeDisplayArg>().kind == expectedTarget);
-  ZC_EXPECT(renderCheckerDisplayArgument(rejection.failures[0].arguments[1], *fixture.registries,
-                                         *fixture.semanticTypes) == expectedTargetText);
+  ZC_EXPECT(renderCheckerDisplayArgument(rejection.failures[0].arguments[1],
+                                         fixture.session.identityAuthority(),
+                                         fixture.session.semanticTypes()) == expectedTargetText);
   const auto& policy = rejection.failures[0].recoveryPolicy.variant();
   ZC_REQUIRE(policy.is<checked::CreateRootRecoveryPolicy>());
   ZC_EXPECT(policy.get<checked::CreateRootRecoveryPolicy>().recoveryClass ==

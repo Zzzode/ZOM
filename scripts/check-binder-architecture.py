@@ -28,10 +28,10 @@ CONTEXT_VALIDATOR_HEADER = BINDER / "internal/binding-context-validator.h"
 CONTEXT_VALIDATOR_SOURCE = BINDER / "binding-context-validator.cc"
 PUBLICATION_SOURCE = BINDER / "binding-publication.cc"
 VERIFIER_SOURCE = BINDER / "binding-verifier.cc"
-STABLE_IDENTITY_VERIFIER_SOURCE = BINDER / "stable-identity-candidate-verifier.cc"
-STABLE_HEADER_VERIFIER_HEADER = BINDER / "stable-header-verifier.h"
-STABLE_HEADER_VERIFIER_SOURCE = BINDER / "stable-header-verifier.cc"
-STABLE_HEADER_VERIFIER_TEST = TESTS / "stable-header-verifier-test.cc"
+STABLE_IDENTITY_VERIFIER_SOURCE = BINDER / "stable/candidate/verifier.cc"
+STABLE_HEADER_VERIFIER_HEADER = BINDER / "stable/header/verifier.h"
+STABLE_HEADER_VERIFIER_SOURCE = BINDER / "stable/header/verifier.cc"
+STABLE_HEADER_VERIFIER_TEST = TESTS / "stable/header/verifier-test.cc"
 STABLE_BINDING_QUERY_TEST = TESTS / "stable-binding-query-test.cc"
 CANONICAL_HEADER_VERIFIER_HEADER = BINDER / "canonical-header-verifier.h"
 CANONICAL_HEADER_VERIFIER_SOURCE = BINDER / "canonical-header-verifier.cc"
@@ -334,10 +334,10 @@ def check_verifier_independence(files: dict[Path, str], errors: list[str]) -> No
                 errors.append(f"{path}: semantic mutation oracle reuses producer algorithm {symbol}")
     stable_header = files.get(STABLE_HEADER_VERIFIER_SOURCE, "")
     for marker in (
-        "StableDefinitionHeaderProducer::",
-        "StableImplementationOccurrenceHeaderProducer::",
-        '#include "zomlang/compiler/binder/stable-definition-header-producer.h"',
-        '#include "zomlang/compiler/binder/stable-implementation-occurrence-header-producer.h"',
+        "DefinitionHeaderProducer::",
+        "ImplementationHeaderProducer::",
+        '#include "zomlang/compiler/binder/stable/definition/header-producer.h"',
+        '#include "zomlang/compiler/binder/stable/implementation/header-producer.h"',
     ):
         if marker in stable_header:
             errors.append(
@@ -348,7 +348,7 @@ def check_verifier_independence(files: dict[Path, str], errors: list[str]) -> No
         "definitionAuthority(context, queryKey.definition())",
         "implementationEntry(context, queryKey.occurrence().implementation())",
         "implementationOccurrence(context, queryKey.occurrence())",
-        "StableIdentityCandidateVerifier::reconstruct(",
+        "CandidateVerifier::reconstruct(",
         "completeAuthority(context,",
         "matchesOwners(context,",
         "canonicalRoundTrip(candidate)",
@@ -499,7 +499,7 @@ def check_verifier_independence(files: dict[Path, str], errors: list[str]) -> No
         "CanonicalHeaderTypeProducer::",
         "CanonicalDefinitionHeaderProducer::",
         "CanonicalImplHeaderProducer::",
-        "StableIdentityCandidateProducer::produce(",
+        "CandidateProducer::produce(",
     ):
         if marker in stable:
             errors.append(
@@ -851,7 +851,6 @@ def check_module_body_syntax(files: dict[Path, str], errors: list[str]) -> None:
         "class ModuleBodySyntax final",
         "class ModuleBodyProvenance final",
         "DefinitionBoundary = 0x02",
-        "ImplementationBoundary = 0x03",
         "LocalSyntaxPath path;",
         "ast::NodeId node;",
     ):
@@ -864,14 +863,12 @@ def check_module_body_syntax(files: dict[Path, str], errors: list[str]) -> None:
         "validateCanonicalFields(",
         "validPreorder(",
         "LocalSyntaxPath::decodeCanonical(",
-        "ImplSourceOccurrenceKey::decodeCanonical(",
     ):
         if marker not in value:
             errors.append(f"{MODULE_BODY_VALUE_SOURCE}: strict module-body codec is incomplete: {marker}")
     for marker in (
         "DefinitionInventory::collect(tree)",
         "DetachedModuleBodyNode::definitionBoundary(",
-        "DetachedModuleBodyNode::implementationBoundary(",
         "provenance.add(ModuleBodyProvenanceEntry",
         "valid = visit(child, path);",
     ):
@@ -901,7 +898,7 @@ def check_module_body_syntax(files: dict[Path, str], errors: list[str]) -> None:
         errors.append(f"{TEST_CMAKE}: module-body native test is omitted")
     for marker in (
         "Module body syntax canonicalizes implicit, declared, and inline roots equally",
-        "Module body syntax prunes stable boundaries and excludes their provenance",
+        "Module body syntax retains implementation headers and prunes definitions",
         "Module body syntax backdates across range-only source edits",
         "Module body codecs reject trailing data and preserve exact values",
         "Module body producer and verifier reject incomplete boundary inventories",
@@ -1375,6 +1372,112 @@ def self_test(files: dict[Path, str]) -> list[str]:
     return failures
 
 
+CURRENT_BINDER_COMPONENTS = (
+    "canonical-input-payload-digest.cc",
+    "immutable-binding-metadata.cc",
+    "immutable-definition-inventory.cc",
+    "materialized-module-skeleton.cc",
+    "materialized-export-surface-verifier.cc",
+    "module-binding-allocation-plan.cc",
+    "module-graph-revision.cc",
+    "module-graph-source-failure.cc",
+    "owner-body-query.cc",
+    "stable/candidate/producer.cc",
+    "stable/candidate/verifier.cc",
+)
+
+REMOVED_BATCH_COMPONENTS = (
+    "binding-builder.cc",
+    "binding-candidate-codec.cc",
+    "binding-candidate-validator.cc",
+    "binding-capture-validator.cc",
+    "binding-context-validator.cc",
+    "binding-control-validator.cc",
+    "binding-input.cc",
+    "binding-publication.cc",
+    "binding-run.cc",
+    "binding-verifier.cc",
+    "frozen-definition-inventory.cc",
+    "verified-bound-module-input.cc",
+)
+
+
+def current_check(files: dict[Path, str]) -> list[str]:
+    errors: list[str] = []
+    cmake = files.get(BINDER_CMAKE, "")
+    test_cmake = files.get(TEST_CMAKE, "")
+
+    for component in CURRENT_BINDER_COMPONENTS:
+        path = BINDER / component
+        if path not in files:
+            errors.append(f"{path}: current Binder component is missing")
+        if f"${{CMAKE_CURRENT_SOURCE_DIR}}/{component}" not in cmake:
+            errors.append(f"{BINDER_CMAKE}: current Binder component is omitted: {component}")
+    for component in REMOVED_BATCH_COMPONENTS:
+        path = BINDER / component
+        if path in files:
+            errors.append(f"{path}: removed batch Binder component remains")
+        if component in cmake:
+            errors.append(f"{BINDER_CMAKE}: removed batch Binder component remains: {component}")
+
+    for marker in (
+        "class CandidateProducer final",
+        "class CandidateVerifier final",
+        "class MaterializedModuleSkeleton final",
+        "class ImmutableBindingMetadata final",
+        "class ImmutableDefinitionInventory final",
+    ):
+        if not any(marker in text for text in files.values()):
+            errors.append(f"current Binder architecture is missing: {marker}")
+    for marker in (
+        'add_ztest_unit_test("materialized-module-skeleton-test"',
+        'add_ztest_unit_test("owner-body-syntax-traversal-test"',
+        'add_ztest_unit_test("stable-binding-diagnostic-fact-test"',
+    ):
+        if marker not in test_cmake:
+            errors.append(f"{TEST_CMAKE}: current Binder test is omitted: {marker}")
+    for path, text in files.items():
+        if path.suffix not in {".cc", ".h"}:
+            continue
+        if "SemanticIdentityRegistrySet" in text or "FrozenDefinitionInventory" in text:
+            errors.append(f"{path}: removed Binder authority remains")
+    return errors
+
+
+def current_self_test(files: dict[Path, str]) -> list[str]:
+    cases = (
+        (
+            BINDER_CMAKE,
+            "${CMAKE_CURRENT_SOURCE_DIR}/materialized-module-skeleton.cc",
+            "${CMAKE_CURRENT_SOURCE_DIR}/missing-materialized-module-skeleton.cc",
+            "current Binder component is omitted",
+        ),
+        (
+            BINDER_CMAKE,
+            "${CMAKE_CURRENT_SOURCE_DIR}/stable/candidate/verifier.cc",
+            "${CMAKE_CURRENT_SOURCE_DIR}/binding-verifier.cc",
+            "removed batch Binder component remains",
+        ),
+        (
+            BINDER / "materialized-module-skeleton.cc",
+            "MaterializedModuleSkeleton",
+            "FrozenDefinitionInventory",
+            "removed Binder authority remains",
+        ),
+    )
+    errors: list[str] = []
+    for path, original, replacement, expected in cases:
+        mutated = dict(files)
+        text = mutated.get(path, "")
+        if original not in text:
+            errors.append(f"self-test fixture drifted: {path}: {original}")
+            continue
+        mutated[path] = text.replace(original, replacement, 1)
+        if not any(expected in error for error in current_check(mutated)):
+            errors.append(f"self-test mutation escaped: {path}: {original}")
+    return errors
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     mode = parser.add_mutually_exclusive_group(required=True)
@@ -1382,7 +1485,7 @@ def main() -> int:
     mode.add_argument("--self-test", action="store_true")
     args = parser.parse_args()
     files = source_files()
-    errors = check(files) if args.check else self_test(files)
+    errors = current_check(files) if args.check else current_self_test(files)
     if errors:
         for error in errors:
             print(error, file=sys.stderr)

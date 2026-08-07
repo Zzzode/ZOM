@@ -8,6 +8,7 @@
 #include "zc/core/encoding.h"
 #include "zc/ztest/test.h"
 #include "zomlang/compiler/basic/thread-pool.h"
+#include "zomlang/compiler/identity/source-snapshot.h"
 #include "zomlang/tests/unittests/compiler/test-semantic-identities.h"
 
 namespace zomlang::compiler::driver::incremental_module_resolution_query {
@@ -40,50 +41,36 @@ identity::SemanticContextBrand context(identity::SemanticContextFactory& factory
   return ZC_REQUIRE_NONNULL(result);
 }
 
-identity::SemanticIdentityRegistrySet registries(identity::SemanticContextFactory& factory,
-                                                 identity::SemanticContextBrand owner) {
-  auto result = identity::SemanticIdentityRegistrySet::create(factory, owner);
+identity::CanonicalIdentityInternerSet identityAuthorities(
+    identity::SemanticContextFactory& factory, identity::SemanticContextBrand owner) {
+  auto result = identity::CanonicalIdentityInternerSet::create(factory, owner);
   return zc::mv(ZC_REQUIRE_NONNULL(result));
 }
 
 struct Fixture final {
-  Fixture() : owner(context(factory)), identities(registries(factory, owner)) {
-    ZC_REQUIRE(identities.collectCompilationUnit(identity::CompilationUnitIdentity::userPackage(
-                   package())) == identity::FrozenRegistryFailure::None);
-    ZC_REQUIRE(identities.freezeCompilationUnits() == identity::FrozenRegistryFailure::None);
-    ZC_REQUIRE(identities.collectCrate(crate()) == identity::FrozenRegistryFailure::None);
-    ZC_REQUIRE(identities.freezeCrates() == identity::FrozenRegistryFailure::None);
+  Fixture() : owner(context(factory)), identities(identityAuthorities(factory, owner)) {
     for (const auto name : {"root.zom"_zc, "child.zom"_zc, "unrelated.zom"_zc}) {
       auto snapshot = identity::ImmutableSourceSnapshot::from(
           source(name), zc::heapArray<uint8_t>(16, uint8_t{0x41}));
       ZC_REQUIRE(snapshot != zc::none);
-      ZC_IF_SOME(value, snapshot) {
-        ZC_REQUIRE(identities.collectSourceFile(zc::mv(value)) ==
-                   identity::FrozenRegistryFailure::None);
-      }
+      ZC_IF_SOME(value, snapshot) { sourceSnapshots.add(zc::mv(value)); }
     }
-    ZC_REQUIRE(identities.freezeSourceFiles() == identity::FrozenRegistryFailure::None);
-    ZC_REQUIRE(identities.collectModule(module("root"_zc)) ==
-               identity::FrozenRegistryFailure::None);
-    ZC_REQUIRE(identities.collectModule(module("root"_zc, "child"_zc)) ==
-               identity::FrozenRegistryFailure::None);
-    ZC_REQUIRE(identities.collectModule(module("root"_zc, "unrelated"_zc)) ==
-               identity::FrozenRegistryFailure::None);
-    ZC_REQUIRE(identities.freezeModules() == identity::FrozenRegistryFailure::None);
-    ZC_REQUIRE(identities.freezeStableIdentities() == identity::FrozenRegistryFailure::None);
-    ZC_REQUIRE(identities.freezeGenericParameters() == identity::FrozenRegistryFailure::None);
-    ZC_REQUIRE(identities.freezeCallableParameters() == identity::FrozenRegistryFailure::None);
-
-    root = ZC_REQUIRE_NONNULL(identities.modules().find(module("root"_zc)));
-    child = ZC_REQUIRE_NONNULL(identities.modules().find(module("root"_zc, "child"_zc)));
-    unrelated = ZC_REQUIRE_NONNULL(identities.modules().find(module("root"_zc, "unrelated"_zc)));
+    auto rootResult = identities.internModule(owner, module("root"_zc));
+    auto childResult = identities.internModule(owner, module("root"_zc, "child"_zc));
+    auto unrelatedResult = identities.internModule(owner, module("root"_zc, "unrelated"_zc));
+    ZC_REQUIRE(rootResult.is<identity::ModuleId>());
+    ZC_REQUIRE(childResult.is<identity::ModuleId>());
+    ZC_REQUIRE(unrelatedResult.is<identity::ModuleId>());
+    root = rootResult.get<identity::ModuleId>();
+    child = childResult.get<identity::ModuleId>();
+    unrelated = unrelatedResult.get<identity::ModuleId>();
 
     zc::Vector<identity::CanonicalPathSegment> noRootSegments;
     zc::Vector<binder::ModuleSearchRoot> searchRoots;
     searchRoots.add(binder::ModuleSearchRoot::workspace(
         crate(), identity::CanonicalWorkspaceRelativePath::from(0, zc::mv(noRootSegments))));
     zc::Vector<binder::ModuleSourceSnapshotRevision> snapshots;
-    for (const auto& snapshot : identities.sourceSnapshots()) {
+    for (const auto& snapshot : sourceSnapshots) {
       snapshots.add(binder::ModuleSourceSnapshotRevision(snapshot.source().clone(),
                                                          snapshot.contentDigest()));
     }
@@ -106,7 +93,7 @@ struct Fixture final {
     catalog.add(binder::StructuralModuleCatalogEntry(module("root"_zc, "unrelated"_zc), unrelated,
                                                      source("unrelated.zom"_zc)));
     auto frozen = binder::StructuralModuleResolver::freeze(
-        owner, identities,
+        owner,
         binder::ModuleResolutionEnvironmentRecord(zc::mv(searchRoots), zc::mv(snapshots),
                                                   zc::mv(generated), zc::mv(aliases),
                                                   zc::mv(ancestry)),
@@ -135,7 +122,7 @@ struct Fixture final {
     auto key = resolver.resolutionKey(root, identity::ModuleDependencyKind::Import, zc::mv(path));
     ZC_REQUIRE(key != zc::none);
     zc::Maybe<identity::SourceSpan> span;
-    for (const auto& snapshot : identities.sourceSnapshots()) {
+    for (const auto& snapshot : sourceSnapshots) {
       if (snapshot.source().sameAs(source("root.zom"_zc))) { span = snapshot.span(0, 1); }
     }
     ZC_REQUIRE(span != zc::none);
@@ -154,7 +141,8 @@ struct Fixture final {
 
   identity::SemanticContextFactory factory;
   identity::SemanticContextBrand owner;
-  identity::SemanticIdentityRegistrySet identities;
+  identity::CanonicalIdentityInternerSet identities;
+  zc::Vector<identity::ImmutableSourceSnapshot> sourceSnapshots;
   identity::ModuleId root;
   identity::ModuleId child;
   identity::ModuleId unrelated;

@@ -19,19 +19,16 @@ set(IDENTITY_SRC
   ${CMAKE_CURRENT_SOURCE_DIR}/definition-key.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/identity-invariant.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/identity-diagnostic-adapter.cc
-  ${CMAKE_CURRENT_SOURCE_DIR}/identity-dump.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/module-resolution-key.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/overload-header-digest.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/package-key.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/semantic-version.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/semantic-import-binding-key.cc
-  ${CMAKE_CURRENT_SOURCE_DIR}/semantic-identity-registry-set.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/semantic-context-fingerprint.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/sha256.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/sorted-feature-set.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/source-key.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/source-query-input.cc
-  ${CMAKE_CURRENT_SOURCE_DIR}/source-manager-identity-resolver.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/source-snapshot.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/unicode-normalization-data.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/unicode-normalization.cc)

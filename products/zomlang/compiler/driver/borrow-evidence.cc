@@ -64,11 +64,11 @@ struct EncodedSummary final {
 };
 
 zc::Maybe<EncodedSummary> encodeSummary(const checker::borrow::BorrowSignatureSummary& summary,
-                                        const identity::SemanticIdentityRegistrySet& registries) {
-  auto key = registries.definitions().lookup(summary.callable);
-  if (key == zc::none) return zc::none;
+                                        const checker::CheckerIdentityAuthority& identities) {
+  auto definition = identities.definition(summary.callable);
+  if (definition == zc::none) return zc::none;
   zc::Array<uint8_t> expanded;
-  ZC_IF_SOME(value, key) { expanded = value.encode(); }
+  ZC_IF_SOME(value, definition) { expanded = value.key().encode(); }
   auto encoded =
       checker::borrow::BorrowSignatureCanonicalCodec::encodeFramed(summary, expanded.asPtr());
   if (encoded == zc::none) return zc::none;
@@ -112,7 +112,11 @@ ExpectedInventoryResult deriveExpectedInventory(const BorrowEvidenceBuildInput& 
   const auto context = input.localSignatureFacts.semanticContext();
   const auto module = input.localSignatureFacts.module();
   const auto& ownSurface = input.ownInterface.borrowSurface();
-  if (!context.isValid() || !module.belongsTo(context) || input.registries.context() != context ||
+  if (!context.isValid() || !module.belongsTo(context) ||
+      input.identities.semanticContext() != context ||
+      !sameFingerprint(input.identities.fingerprint(),
+                       input.localSignatureFacts.contextFingerprint()) ||
+      input.identities.module(module) == zc::none ||
       input.importedSignatures.semanticContext() != context ||
       input.importedSignatures.requester() != module ||
       !sameFingerprint(input.localSignatureFacts.contextFingerprint(),
@@ -143,7 +147,7 @@ ExpectedInventoryResult deriveExpectedInventory(const BorrowEvidenceBuildInput& 
     auto summary = findSummary(signature.definition, ownSurface);
     if (summary == zc::none) { return reject(ir::IrFailureKind::MissingRequiredFact, 2, 0); }
     ZC_IF_SOME(value, summary) {
-      auto encoded = encodeSummary(value, input.registries);
+      auto encoded = encodeSummary(value, input.identities);
       if (encoded == zc::none) { return reject(ir::IrFailureKind::CanonicalCodecMismatch, 3, 0); }
       ZC_IF_SOME(record, encoded) { expected.local.add(zc::mv(record)); }
     }
@@ -195,7 +199,7 @@ ExpectedInventoryResult deriveExpectedInventory(const BorrowEvidenceBuildInput& 
         auto summary = findSummary(signature.definition, surface);
         if (summary == zc::none) { return reject(ir::IrFailureKind::MissingRequiredFact, 10, 1); }
         ZC_IF_SOME(value, summary) {
-          auto encoded = encodeSummary(value, input.registries);
+          auto encoded = encodeSummary(value, input.identities);
           if (encoded == zc::none) {
             return reject(ir::IrFailureKind::CanonicalCodecMismatch, 11, 1);
           }
@@ -221,13 +225,13 @@ ExpectedInventoryResult deriveExpectedInventory(const BorrowEvidenceBuildInput& 
         ZC_IF_SOME(value, failure) { return zc::mv(value); }
       }
 
-      auto key = input.registries.modules().lookup(imported.sourceModule());
-      if (key == zc::none) { return reject(ir::IrFailureKind::InvalidFact, 13, 1); }
-      ZC_IF_SOME(value, key) {
+      auto sourceModule = input.identities.module(imported.sourceModule());
+      if (sourceModule == zc::none) { return reject(ir::IrFailureKind::InvalidFact, 13, 1); }
+      ZC_IF_SOME(value, sourceModule) {
         expected.imported.add(EncodedImportedSurface{
             ImportedBorrowSurface(imported.sourceModule(), selectedInterface.revision(),
                                   surface.clone()),
-            value.encode()});
+            value.key().encode()});
       }
     }
   }
@@ -245,9 +249,9 @@ zc::Maybe<zc::Array<uint8_t>> encodeInventory(
     const module_interface::ModuleInterfaceRevision& ownInterface,
     const checker::borrow::BorrowInterfaceRevision& ownBorrow,
     zc::ArrayPtr<const EncodedImportedSurface> imported,
-    const identity::SemanticIdentityRegistrySet& registries) {
-  auto moduleKey = registries.modules().lookup(module);
-  if (moduleKey == zc::none) return zc::none;
+    const checker::CheckerIdentityAuthority& identities) {
+  auto moduleEntry = identities.module(module);
+  if (moduleEntry == zc::none) return zc::none;
   zc::Vector<LocalBorrowSummaryRevisionFrame> summaryFrames;
   for (const auto& summary : summaries) {
     summaryFrames.add(
@@ -259,8 +263,8 @@ zc::Maybe<zc::Array<uint8_t>> encodeInventory(
                                                    surface.value.interfaceRevision().digest(),
                                                    surface.value.surface().revision().digest()});
   }
-  ZC_IF_SOME(value, moduleKey) {
-    const auto expanded = value.encode();
+  ZC_IF_SOME(value, moduleEntry) {
+    const auto expanded = value.key().encode();
     return BorrowEvidenceCanonicalCodec::encodeFramed(
         fingerprint.digest(), expanded.asPtr(), signatureRevision.digest(), summaryFrames.asPtr(),
         ownInterface.digest(), ownBorrow.digest(), importedFrames.asPtr());
@@ -383,7 +387,7 @@ BorrowEvidenceCandidateResult BorrowEvidenceBuilder::build(const BorrowEvidenceB
   auto canonical = encodeInventory(
       input.localSignatureFacts.contextFingerprint(), input.localSignatureFacts.module(),
       input.localSignatureFacts.revision(), expected.local.asPtr(), input.ownInterface.revision(),
-      input.ownInterface.borrowSurface().revision(), expected.imported.asPtr(), input.registries);
+      input.ownInterface.borrowSurface().revision(), expected.imported.asPtr(), input.identities);
   if (canonical == zc::none) { return reject(ir::IrFailureKind::CanonicalCodecMismatch, 14, 2); }
   ZC_IF_SOME(record, canonical) {
     auto digest = identity::sha256(record.asPtr());
@@ -594,7 +598,7 @@ BorrowEvidenceVerificationResult BorrowEvidenceVerifier::verify(
 
   zc::Vector<EncodedSummary> candidateSummaries;
   for (const auto& summary : candidate.localSummaries) {
-    auto encoded = encodeSummary(summary, input.registries);
+    auto encoded = encodeSummary(summary, input.identities);
     if (encoded == zc::none) { return reject(ir::IrFailureKind::CanonicalCodecMismatch, 21, 3); }
     ZC_IF_SOME(value, encoded) { candidateSummaries.add(zc::mv(value)); }
   }
@@ -619,10 +623,10 @@ BorrowEvidenceVerificationResult BorrowEvidenceVerifier::verify(
     if (imported.module != imported.surface.module()) {
       return reject(ir::IrFailureKind::InvalidFact, 24, 3);
     }
-    auto key = input.registries.modules().lookup(imported.module);
-    if (key == zc::none) { return reject(ir::IrFailureKind::InvalidFact, 24, 3); }
-    ZC_IF_SOME(value, key) {
-      candidateImported.add(EncodedImportedSurface{imported.surface.clone(), value.encode()});
+    auto module = input.identities.module(imported.module);
+    if (module == zc::none) { return reject(ir::IrFailureKind::InvalidFact, 24, 3); }
+    ZC_IF_SOME(value, module) {
+      candidateImported.add(EncodedImportedSurface{imported.surface.clone(), value.key().encode()});
     }
   }
   for (size_t index = 0; index < expected.imported.size(); ++index) {
@@ -654,8 +658,8 @@ BorrowEvidenceVerificationResult BorrowEvidenceVerifier::verify(
       return reject(ir::IrFailureKind::InvalidFact, 27, 3);
     }
     for (size_t summaryIndex = 0; summaryIndex < actualSurface.summaries().size(); ++summaryIndex) {
-      auto actualRecord = encodeSummary(actualSurface.summaries()[summaryIndex], input.registries);
-      auto wantedRecord = encodeSummary(wantedSurface.summaries()[summaryIndex], input.registries);
+      auto actualRecord = encodeSummary(actualSurface.summaries()[summaryIndex], input.identities);
+      auto wantedRecord = encodeSummary(wantedSurface.summaries()[summaryIndex], input.identities);
       if (actualRecord == zc::none || wantedRecord == zc::none) {
         return reject(ir::IrFailureKind::CanonicalCodecMismatch, 28, 3);
       }
@@ -672,7 +676,7 @@ BorrowEvidenceVerificationResult BorrowEvidenceVerifier::verify(
   auto canonical = encodeInventory(
       candidate.contextFingerprint, candidate.module, candidate.localSignatureFactsRevision,
       candidateSummaries.asPtr(), candidate.ownInterfaceRevision, candidate.ownBorrowRevision,
-      candidateImported.asPtr(), input.registries);
+      candidateImported.asPtr(), input.identities);
   if (canonical == zc::none) { return reject(ir::IrFailureKind::CanonicalCodecMismatch, 30, 3); }
   ZC_IF_SOME(record, canonical) {
     if (record.asPtr() != candidate.canonicalRecord.asPtr()) {
@@ -746,13 +750,15 @@ zc::Maybe<BorrowEvidenceRepository> BorrowEvidenceRepository::create(
 }
 
 BorrowEvidenceAdoptionResult BorrowEvidenceRepository::adopt(
-    VerifiedBorrowEvidence&& evidence, const identity::SemanticIdentityRegistrySet& registries) {
-  if (registries.context() != impl->context || evidence.semanticContext() != impl->context ||
-      !evidence.module().belongsTo(impl->context)) {
+    VerifiedBorrowEvidence&& evidence, const checker::CheckerIdentityAuthority& identities) {
+  if (identities.semanticContext() != impl->context ||
+      evidence.semanticContext() != impl->context || !evidence.module().belongsTo(impl->context)) {
     return BorrowEvidenceRepositoryRejected{ir::IrFailureKind::InputRevisionMismatch};
   }
-  auto key = registries.modules().lookup(evidence.module());
-  if (key == zc::none) { return BorrowEvidenceRepositoryRejected{ir::IrFailureKind::InvalidFact}; }
+  auto module = identities.module(evidence.module());
+  if (module == zc::none) {
+    return BorrowEvidenceRepositoryRejected{ir::IrFailureKind::InvalidFact};
+  }
   for (const auto& entry : impl->entries) {
     if (entry.evidence.module() == evidence.module() &&
         entry.evidence.revision().digest() == evidence.revision().digest()) {
@@ -763,7 +769,7 @@ BorrowEvidenceAdoptionResult BorrowEvidenceRepository::adopt(
     return BorrowEvidenceRepositoryRejected{ir::IrFailureKind::AdditionalFact};
   }
   zc::Array<uint8_t> expanded;
-  ZC_IF_SOME(value, key) { expanded = value.encode(); }
+  ZC_IF_SOME(value, module) { expanded = value.key().encode(); }
   BorrowEvidenceKey leaseKey{evidence.module(), evidence.revision()};
   const auto entryIndex = static_cast<uint32_t>(impl->entries.size());
   impl->entries.add(Impl::Entry{zc::mv(expanded), zc::mv(evidence)});

@@ -18,8 +18,8 @@
 #include "zc/core/memory.h"
 #include "zc/core/one-of.h"
 #include "zomlang/compiler/identity/brand.h"
+#include "zomlang/compiler/identity/canonical-identity-interner-set.h"
 #include "zomlang/compiler/identity/identity-invariant.h"
-#include "zomlang/compiler/identity/semantic-identity-registry-set.h"
 #include "zomlang/compiler/identity/semantic-type-id.h"
 #include "zomlang/compiler/type/semantic-type-key.h"
 
@@ -61,11 +61,11 @@ using SemanticTypeLookupResult = zc::OneOf<SemanticTypeLookup, identity::Identit
 class SemanticTypeStore final {
 public:
   SemanticTypeStore(identity::SemanticTypeStoreConstructionToken&& token,
-                    const identity::SemanticIdentityRegistrySet& registries);
+                    const identity::CanonicalIdentityInternerSet& identities);
   ~SemanticTypeStore() noexcept(false);
   ZC_DISALLOW_COPY_AND_MOVE(SemanticTypeStore);
 
-  /// \brief Validates and canonicalizes one closed payload against this store and registry family.
+  /// \brief Validates and canonicalizes one closed payload against this store's identity authority.
   ZC_NODISCARD SemanticTypeAdmissionResult canonicalizeClosed(semantic::TypeData&& data) const;
 
   /// \brief Interns one validated canonical semantic type payload.
@@ -83,18 +83,17 @@ public:
   ZC_NODISCARD identity::SemanticContextBrand context() const noexcept;
 
 private:
-  ZC_NODISCARD bool registriesReadyForAdmission() const noexcept;
-  ZC_NODISCARD identity::FrozenRegistryFailure validateTypeForAdmission(
+  ZC_NODISCARD zc::Maybe<identity::IdentityInvariantKind> validateTypeForAdmission(
       identity::SemanticTypeId id) const;
   ZC_NODISCARD zc::Maybe<const semantic::TypeData&> typeDataForAdmission(
       identity::SemanticTypeId id) const;
-  ZC_NODISCARD identity::FrozenRegistryFailure validateDefinitionForAdmission(
+  ZC_NODISCARD zc::Maybe<identity::IdentityInvariantKind> validateDefinitionForAdmission(
       identity::DefId id) const;
-  ZC_NODISCARD zc::Maybe<const identity::DefinitionKey&> definitionKeyForAdmission(
+  ZC_NODISCARD zc::Maybe<identity::DefinitionKey> definitionKeyForAdmission(
       identity::DefId id) const;
-  ZC_NODISCARD zc::Maybe<const identity::DefinitionIdentityRecord&> definitionRecordForAdmission(
+  ZC_NODISCARD zc::Maybe<identity::DefinitionIdentityRecord> definitionRecordForAdmission(
       identity::DefId id) const;
-  ZC_NODISCARD identity::FrozenRegistryFailure validateGenericParameterForAdmission(
+  ZC_NODISCARD zc::Maybe<identity::IdentityInvariantKind> validateGenericParameterForAdmission(
       const identity::GenericParameterKey& key) const;
 
   struct Impl;

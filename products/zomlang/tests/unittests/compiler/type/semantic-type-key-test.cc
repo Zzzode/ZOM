@@ -17,6 +17,7 @@
 #include "zc/core/encoding.h"
 #include "zc/core/memory.h"
 #include "zc/ztest/test.h"
+#include "zomlang/compiler/identity/canonical-identity-interner-set.h"
 #include "zomlang/compiler/type/semantic-type-store.h"
 
 namespace zomlang::compiler::type::semantic {
@@ -91,44 +92,35 @@ identity::ModuleKey module() {
   ZC_UNREACHABLE;
 }
 
-class RegistryStoreFixture final {
+class SemanticTypeStoreFixture final {
 public:
-  RegistryStoreFixture() {
+  SemanticTypeStoreFixture() {
     auto issuedContext = factory.issue();
     ZC_REQUIRE(issuedContext != zc::none);
     ZC_IF_SOME(value, issuedContext) { contextValue = value; }
 
-    auto created = identity::SemanticIdentityRegistrySet::create(factory, contextValue);
-    ZC_REQUIRE(created != zc::none);
-    ZC_IF_SOME(value, created) {
-      registriesValue = zc::heap<identity::SemanticIdentityRegistrySet>(zc::mv(value));
+    auto createdInterner = identity::CanonicalIdentityInternerSet::create(factory, contextValue);
+    ZC_REQUIRE(createdInterner != zc::none);
+    ZC_IF_SOME(value, createdInterner) {
+      identitiesValue = zc::heap<identity::CanonicalIdentityInternerSet>(zc::mv(value));
     }
-    buildRegistry();
+    buildIdentityAuthority();
 
     auto token = factory.issueSemanticTypeStoreConstructionToken(contextValue);
     ZC_REQUIRE(token != zc::none);
     ZC_IF_SOME(value, token) {
-      storeValue = zc::heap<type::SemanticTypeStore>(zc::mv(value), registries());
+      storeValue = zc::heap<type::SemanticTypeStore>(zc::mv(value), *identitiesValue);
     }
   }
 
   type::SemanticTypeStore& store() { return *storeValue; }
   const identity::GenericParameterKey& parameter() const {
-    ZC_IF_SOME(value, registries().genericParameters().keyAt(0)) { return value; }
+    ZC_IF_SOME(value, parameterKeyValue) { return value; }
     ZC_UNREACHABLE;
   }
 
 private:
-  void buildRegistry() {
-    ZC_REQUIRE(registries().collectCompilationUnit(identity::CompilationUnitIdentity::userPackage(
-                   package())) == identity::FrozenRegistryFailure::None);
-    ZC_REQUIRE(registries().freezeCompilationUnits() == identity::FrozenRegistryFailure::None);
-    ZC_REQUIRE(registries().collectCrate(crate()) == identity::FrozenRegistryFailure::None);
-    ZC_REQUIRE(registries().freezeCrates() == identity::FrozenRegistryFailure::None);
-    ZC_REQUIRE(registries().freezeSourceFiles() == identity::FrozenRegistryFailure::None);
-    ZC_REQUIRE(registries().collectModule(module()) == identity::FrozenRegistryFailure::None);
-    ZC_REQUIRE(registries().freezeModules() == identity::FrozenRegistryFailure::None);
-
+  void buildIdentityAuthority() {
     zc::Vector<identity::EnclosingStableOwnerKey> owners;
     zc::Maybe<identity::OverloadHeaderDigest> noOverload;
     auto definition = identity::DefinitionIdentityRecord::from(
@@ -136,39 +128,31 @@ private:
         identity::DefinitionNamespace::Type, scalar<identity::DeclaredDefinitionName>("Owner"_zc),
         zc::mv(noOverload));
     ZC_REQUIRE(definition != zc::none);
-    zc::Maybe<identity::DefinitionKey> ownerKey;
     ZC_IF_SOME(value, definition) {
-      ownerKey = identity::DefinitionKey::compute(value);
-      zc::Maybe<identity::OverloadHeaderAuthority> noOverloadAuthority;
-      ZC_REQUIRE(registries().collectDefinition(zc::mv(value), zc::mv(noOverloadAuthority)) ==
-                 identity::FrozenRegistryFailure::None);
-    }
-    ZC_REQUIRE(registries().freezeStableIdentities() == identity::FrozenRegistryFailure::None);
-
-    ZC_REQUIRE(ownerKey != zc::none);
-    ZC_IF_SOME(value, ownerKey) {
+      auto ownerKey = identity::DefinitionKey::compute(value);
+      auto admitted = identitiesValue->internDefinition(contextValue, ownerKey, value);
+      ZC_REQUIRE(admitted.is<identity::DefId>());
       auto parameter = identity::GenericParameterIdentityRecord::type(
-          identity::StableGenericParameterOwnerKey::definition(zc::mv(value)), 0);
-      ZC_REQUIRE(registries().collectGenericParameter(zc::mv(parameter)) ==
-                 identity::FrozenRegistryFailure::None);
+          identity::StableGenericParameterOwnerKey::definition(zc::mv(ownerKey)), 0);
+      auto parameterKey = identity::GenericParameterKey::compute(parameter);
+      auto admittedParameter =
+          identitiesValue->internGenericParameter(contextValue, parameterKey, parameter);
+      ZC_REQUIRE(admittedParameter.is<identity::GenericParameterId>());
+      parameterKeyValue = zc::mv(parameterKey);
     }
-    ZC_REQUIRE(registries().freezeGenericParameters() == identity::FrozenRegistryFailure::None);
-    ZC_REQUIRE(registries().freezeCallableParameters() == identity::FrozenRegistryFailure::None);
   }
-
-  identity::SemanticIdentityRegistrySet& registries() { return *registriesValue; }
-  const identity::SemanticIdentityRegistrySet& registries() const { return *registriesValue; }
 
   identity::SemanticContextFactory factory;
   identity::SemanticContextBrand contextValue;
-  zc::Own<identity::SemanticIdentityRegistrySet> registriesValue;
+  zc::Own<identity::CanonicalIdentityInternerSet> identitiesValue;
   zc::Own<type::SemanticTypeStore> storeValue;
+  zc::Maybe<identity::GenericParameterKey> parameterKeyValue;
 };
 
 }  // namespace
 
 ZC_TEST("SemanticTypeKey.EncodesGenericParameterKeyAsRawDigest") {
-  RegistryStoreFixture fixture;
+  SemanticTypeStoreFixture fixture;
   const auto& parameter = fixture.parameter();
   auto canonical =
       fixture.store().canonicalizeClosed(TypeData(TypeParameterTypeData{parameter.clone()}));
@@ -189,7 +173,7 @@ ZC_TEST("SemanticTypeKey.EncodesGenericParameterKeyAsRawDigest") {
 }
 
 ZC_TEST("SemanticTypeData.PreservesGenericParameterKeyCloneAndEquality") {
-  RegistryStoreFixture fixture;
+  SemanticTypeStoreFixture fixture;
   const auto& parameter = fixture.parameter();
   TypeData data(TypeParameterTypeData{parameter.clone()});
 
@@ -199,7 +183,7 @@ ZC_TEST("SemanticTypeData.PreservesGenericParameterKeyCloneAndEquality") {
 }
 
 ZC_TEST("SemanticTypeKey.RejectsUnretainedGenericParameterKey") {
-  RegistryStoreFixture fixture;
+  SemanticTypeStoreFixture fixture;
   auto unretained =
       identity::GenericParameterKey::fromBytes(zc::heapArray<uint8_t>(32, uint8_t{0xff}));
   ZC_REQUIRE(unretained != zc::none);

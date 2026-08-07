@@ -167,6 +167,10 @@ ExportSurfaceRevision revision() {
   ZC_FAIL_REQUIRE("invalid import-binding revision fixture");
 }
 
+ModuleAliasExportNamesRevision moduleAliasExportNamesRevision() {
+  return ModuleAliasExportNamesRevision::fromDigest(identity::Sha256Digest());
+}
+
 ImportBindingNameProjection name(Namespace nameSpace, zc::StringPtr text) {
   return ImportBindingNameProjection(nameSpace,
                                      requireScalar<identity::DeclaredDefinitionName>(text));
@@ -205,7 +209,7 @@ ZC_TEST("ImportBindingProjector.ProjectsModuleAliasesAndOrdinaryImports") {
   identity::ModuleId sourceModule;
   input.moduleAliases.add(ResolvedModuleAliasProjection(
       ast::NodeId(10), 1, moduleAlias, name(Namespace::Module, "geometry"_zc), targetModule,
-      revision(), span(1, 3), span(4, 6), false));
+      moduleAliasExportNamesRevision(), span(1, 3), span(4, 6), false));
   zc::Vector<ReexportProvenanceStep> noChain;
   input.imports.add(ResolvedImportBindingProjection(
       ast::NodeId(20), 2,
@@ -383,7 +387,7 @@ ZC_TEST("ImportBindingProjector.RejectsInexactSitesAndForeignExportShape") {
   auto repeated = emptyInput();
   repeated.moduleAliases.add(ResolvedModuleAliasProjection(
       ast::NodeId(1), 7, identity::DefId(), name(Namespace::Module, "first"_zc),
-      identity::ModuleId(), revision(), span(1, 2), span(2, 3), false));
+      identity::ModuleId(), moduleAliasExportNamesRevision(), span(1, 2), span(2, 3), false));
   zc::Vector<ReexportProvenanceStep> noChain;
   repeated.imports.add(ResolvedImportBindingProjection(
       ast::NodeId(2), 7,

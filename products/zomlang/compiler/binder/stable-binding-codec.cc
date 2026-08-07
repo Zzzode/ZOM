@@ -366,6 +366,46 @@ zc::Maybe<Namespace> StableBindingCodec<Namespace>::decode(zc::ArrayPtr<const ui
                                                                     : zc::none;
 }
 
+zc::Array<uint8_t> StableBindingCodec<BindingNameKey>::encode(const BindingNameKey& value) {
+  identity::CanonicalEncoder record;
+  encodeBindingName(record, value);
+  return withDomain("zom.binder.binding-name"_zc, record.finish().asPtr());
+}
+
+zc::Maybe<BindingNameKey> StableBindingCodec<BindingNameKey>::decode(
+    zc::ArrayPtr<const uint8_t> bytes) {
+  constexpr auto domain = "zom.binder.binding-name"_zc;
+  if (bytes.size() > kMaximumBinderValueBytes || !hasDomain(bytes, domain)) { return zc::none; }
+  identity::CanonicalDecoder decoder(bytes.slice(domain.size() + 1, bytes.size()));
+  auto result = decodeBindingName(decoder);
+  return result != zc::none && decoder.finished() &&
+                 encode(ZC_ASSERT_NONNULL(result)).asPtr() == bytes
+             ? zc::mv(result)
+             : zc::none;
+}
+
+zc::Array<uint8_t> StableBindingCodec<MemberVisibility>::encode(const MemberVisibility& value) {
+  if (value < MemberVisibility::Public || value > MemberVisibility::Protected) {
+    return zc::Array<uint8_t>();
+  }
+  identity::CanonicalEncoder record;
+  record.encodeUint8(static_cast<uint8_t>(value));
+  return withDomain("zom.query.binding-visibility-value"_zc, record.finish().asPtr());
+}
+
+zc::Maybe<MemberVisibility> StableBindingCodec<MemberVisibility>::decode(
+    zc::ArrayPtr<const uint8_t> bytes) {
+  constexpr auto domain = "zom.query.binding-visibility-value"_zc;
+  if (bytes.size() > kMaximumBinderValueBytes || !hasDomain(bytes, domain)) { return zc::none; }
+  identity::CanonicalDecoder decoder(bytes.slice(domain.size() + 1, bytes.size()));
+  auto tag = decoder.decodeUint8();
+  if (tag == zc::none || !decoder.finished()) { return zc::none; }
+  const auto result = static_cast<MemberVisibility>(ZC_ASSERT_NONNULL(tag));
+  return result >= MemberVisibility::Public && result <= MemberVisibility::Protected
+             ? zc::Maybe<MemberVisibility>(result)
+             : zc::none;
+}
+
 zc::Array<uint8_t> StableBindingCodec<StableHeaderSite>::encode(const StableHeaderSite& value) {
   identity::CanonicalEncoder encoder;
   encodeHeaderSite(encoder, value);
@@ -1072,9 +1112,9 @@ zc::Maybe<StableShadowTargetFact> StableBindingCodec<StableShadowTargetFact>::de
   if (owner == zc::none || binding == zc::none || shadowed == zc::none || !decoder.finished()) {
     return zc::none;
   }
-  auto result = StableShadowTargetFact::from(
-      zc::mv(ZC_ASSERT_NONNULL(owner)), zc::mv(ZC_ASSERT_NONNULL(binding)),
-      zc::mv(ZC_ASSERT_NONNULL(shadowed)));
+  auto result = StableShadowTargetFact::from(zc::mv(ZC_ASSERT_NONNULL(owner)),
+                                             zc::mv(ZC_ASSERT_NONNULL(binding)),
+                                             zc::mv(ZC_ASSERT_NONNULL(shadowed)));
   return result != zc::none && encode(ZC_ASSERT_NONNULL(result)).asPtr() == bytes ? zc::mv(result)
                                                                                   : zc::none;
 }
@@ -1093,16 +1133,13 @@ zc::Maybe<StableLabelKey> StableBindingCodec<StableLabelKey>::decode(
   identity::CanonicalDecoder decoder(bytes.slice(domain.size() + 1, bytes.size()));
   auto owner = decodeStableFrame<StableOwnerBodyQueryKey>(decoder);
   auto declarationPath = decodeLocalFrame<LocalSyntaxPath>(decoder);
-  if (owner == zc::none || declarationPath == zc::none || !decoder.finished()) {
-    return zc::none;
-  }
+  if (owner == zc::none || declarationPath == zc::none || !decoder.finished()) { return zc::none; }
   auto result = StableLabelKey::from(zc::mv(ZC_ASSERT_NONNULL(owner)),
                                      zc::mv(ZC_ASSERT_NONNULL(declarationPath)));
   return encode(result).asPtr() == bytes ? zc::mv(result) : zc::Maybe<StableLabelKey>();
 }
 
-zc::Array<uint8_t> StableBindingCodec<StableLabelTarget>::encode(
-    const StableLabelTarget& value) {
+zc::Array<uint8_t> StableBindingCodec<StableLabelTarget>::encode(const StableLabelTarget& value) {
   identity::CanonicalEncoder record;
   record.encodeUint8(value.value().is<StableBlockLabelTarget>() ? 0x01 : 0x02);
   encodeStableFrame(record, value.scope());
@@ -1118,10 +1155,9 @@ zc::Maybe<StableLabelTarget> StableBindingCodec<StableLabelTarget>::decode(
   auto scope = decodeStableFrame<StableScopeOwnerKey>(decoder);
   if (tag == zc::none || scope == zc::none || !decoder.finished()) { return zc::none; }
   if (ZC_ASSERT_NONNULL(tag) != 0x01 && ZC_ASSERT_NONNULL(tag) != 0x02) { return zc::none; }
-  StableLabelTarget result =
-      ZC_ASSERT_NONNULL(tag) == 0x01
-          ? StableLabelTarget::block(zc::mv(ZC_ASSERT_NONNULL(scope)))
-          : StableLabelTarget::loop(zc::mv(ZC_ASSERT_NONNULL(scope)));
+  StableLabelTarget result = ZC_ASSERT_NONNULL(tag) == 0x01
+                                 ? StableLabelTarget::block(zc::mv(ZC_ASSERT_NONNULL(scope)))
+                                 : StableLabelTarget::loop(zc::mv(ZC_ASSERT_NONNULL(scope)));
   return encode(result).asPtr() == bytes ? zc::Maybe<StableLabelTarget>(zc::mv(result)) : zc::none;
 }
 
@@ -1222,14 +1258,12 @@ zc::Maybe<StableControlTransferFact> StableBindingCodec<StableControlTransferFac
   }
   auto result = StableControlTransferFact::from(
       zc::mv(ZC_ASSERT_NONNULL(owner)), zc::mv(ZC_ASSERT_NONNULL(transferPath)),
-      static_cast<ControlTransferKind>(ZC_ASSERT_NONNULL(kind)),
-      zc::mv(ZC_ASSERT_NONNULL(target)));
+      static_cast<ControlTransferKind>(ZC_ASSERT_NONNULL(kind)), zc::mv(ZC_ASSERT_NONNULL(target)));
   return result != zc::none && encode(ZC_ASSERT_NONNULL(result)).asPtr() == bytes ? zc::mv(result)
                                                                                   : zc::none;
 }
 
-zc::Array<uint8_t> StableBindingCodec<StableClosureFact>::encode(
-    const StableClosureFact& value) {
+zc::Array<uint8_t> StableBindingCodec<StableClosureFact>::encode(const StableClosureFact& value) {
   identity::CanonicalEncoder record;
   encodeStableFrame(record, value.owner());
   encodeFrame(record, value.closure().encode().asPtr());
@@ -1248,9 +1282,9 @@ zc::Maybe<StableClosureFact> StableBindingCodec<StableClosureFact>::decode(
   if (owner == zc::none || closure == zc::none || scope == zc::none || !decoder.finished()) {
     return zc::none;
   }
-  auto result = StableClosureFact::from(zc::mv(ZC_ASSERT_NONNULL(owner)),
-                                        zc::mv(ZC_ASSERT_NONNULL(closure)),
-                                        zc::mv(ZC_ASSERT_NONNULL(scope)));
+  auto result =
+      StableClosureFact::from(zc::mv(ZC_ASSERT_NONNULL(owner)), zc::mv(ZC_ASSERT_NONNULL(closure)),
+                              zc::mv(ZC_ASSERT_NONNULL(scope)));
   return result != zc::none && encode(ZC_ASSERT_NONNULL(result)).asPtr() == bytes ? zc::mv(result)
                                                                                   : zc::none;
 }
@@ -1270,13 +1304,11 @@ zc::Maybe<StableClosureFreeVariable> StableBindingCodec<StableClosureFreeVariabl
   identity::CanonicalDecoder decoder(bytes.slice(domain.size() + 1, bytes.size()));
   auto target = decodeStableFrame<StableBindingTargetKey>(decoder);
   auto referencePaths = decodeNonEmptySequence<LocalSyntaxPath>(decoder);
-  if (target == zc::none || referencePaths == zc::none || !decoder.finished()) {
-    return zc::none;
-  }
-  auto result = StableClosureFreeVariable::from(
-      zc::mv(ZC_ASSERT_NONNULL(target)), zc::mv(ZC_ASSERT_NONNULL(referencePaths)));
+  if (target == zc::none || referencePaths == zc::none || !decoder.finished()) { return zc::none; }
+  auto result = StableClosureFreeVariable::from(zc::mv(ZC_ASSERT_NONNULL(target)),
+                                                zc::mv(ZC_ASSERT_NONNULL(referencePaths)));
   return encode(result).asPtr() == bytes ? zc::Maybe<StableClosureFreeVariable>(zc::mv(result))
-                                        : zc::none;
+                                         : zc::none;
 }
 
 zc::Array<uint8_t> StableBindingCodec<StableClosureFreeVariableFact>::encode(
@@ -1288,8 +1320,7 @@ zc::Array<uint8_t> StableBindingCodec<StableClosureFreeVariableFact>::encode(
   return withDomain("zom.binder.body-closure-free-variables"_zc, record.finish().asPtr());
 }
 
-zc::Maybe<StableClosureFreeVariableFact>
-StableBindingCodec<StableClosureFreeVariableFact>::decode(
+zc::Maybe<StableClosureFreeVariableFact> StableBindingCodec<StableClosureFreeVariableFact>::decode(
     zc::ArrayPtr<const uint8_t> bytes) {
   constexpr auto domain = "zom.binder.body-closure-free-variables"_zc;
   if (bytes.size() > kMaximumBinderValueBytes || !hasDomain(bytes, domain)) { return zc::none; }
@@ -1297,13 +1328,12 @@ StableBindingCodec<StableClosureFreeVariableFact>::decode(
   auto owner = decodeStableFrame<StableOwnerBodyQueryKey>(decoder);
   auto closure = decodeLocalFrame<AnonymousOwnerLocalKey>(decoder);
   auto variables = decodeSequence<StableClosureFreeVariable>(decoder);
-  if (owner == zc::none || closure == zc::none || variables == zc::none ||
-      !decoder.finished()) {
+  if (owner == zc::none || closure == zc::none || variables == zc::none || !decoder.finished()) {
     return zc::none;
   }
-  auto result = StableClosureFreeVariableFact::from(
-      zc::mv(ZC_ASSERT_NONNULL(owner)), zc::mv(ZC_ASSERT_NONNULL(closure)),
-      zc::mv(ZC_ASSERT_NONNULL(variables)));
+  auto result = StableClosureFreeVariableFact::from(zc::mv(ZC_ASSERT_NONNULL(owner)),
+                                                    zc::mv(ZC_ASSERT_NONNULL(closure)),
+                                                    zc::mv(ZC_ASSERT_NONNULL(variables)));
   return result != zc::none && encode(ZC_ASSERT_NONNULL(result)).asPtr() == bytes ? zc::mv(result)
                                                                                   : zc::none;
 }
@@ -1318,8 +1348,7 @@ zc::Array<uint8_t> StableBindingCodec<StableExplicitCaptureBindingFact>::encode(
 }
 
 zc::Maybe<StableExplicitCaptureBindingFact>
-StableBindingCodec<StableExplicitCaptureBindingFact>::decode(
-    zc::ArrayPtr<const uint8_t> bytes) {
+StableBindingCodec<StableExplicitCaptureBindingFact>::decode(zc::ArrayPtr<const uint8_t> bytes) {
   constexpr auto domain = "zom.binder.explicit-capture-binding"_zc;
   if (bytes.size() > kMaximumBinderValueBytes || !hasDomain(bytes, domain)) { return zc::none; }
   identity::CanonicalDecoder decoder(bytes.slice(domain.size() + 1, bytes.size()));
@@ -1347,8 +1376,7 @@ zc::Array<uint8_t> StableBindingCodec<StableExplicitClosureCaptureFact>::encode(
 }
 
 zc::Maybe<StableExplicitClosureCaptureFact>
-StableBindingCodec<StableExplicitClosureCaptureFact>::decode(
-    zc::ArrayPtr<const uint8_t> bytes) {
+StableBindingCodec<StableExplicitClosureCaptureFact>::decode(zc::ArrayPtr<const uint8_t> bytes) {
   constexpr auto domain = "zom.binder.body-explicit-closure-capture"_zc;
   if (bytes.size() > kMaximumBinderValueBytes || !hasDomain(bytes, domain)) { return zc::none; }
   identity::CanonicalDecoder decoder(bytes.slice(domain.size() + 1, bytes.size()));
@@ -1691,7 +1719,7 @@ zc::Array<uint8_t> StableBindingCodec<StableModuleAliasFact>::encode(
   encodeStableFrame(record, value.declaringScope());
   encodeStableFrame(record, value.alias());
   encodeFrame(record, value.canonicalModule().encode().asPtr());
-  record.encodeDigest(value.targetSurfaceRevision().digest());
+  record.encodeDigest(value.targetExportNamesRevision().digest());
   return withDomain("zom.binder.skeleton-module-alias"_zc, record.finish().asPtr());
 }
 
@@ -1712,7 +1740,7 @@ zc::Maybe<StableModuleAliasFact> StableBindingCodec<StableModuleAliasFact>::deco
   auto result = StableModuleAliasFact::from(
       zc::mv(ZC_ASSERT_NONNULL(queryKey)), zc::mv(ZC_ASSERT_NONNULL(declaringScope)),
       zc::mv(ZC_ASSERT_NONNULL(alias)), zc::mv(ZC_ASSERT_NONNULL(canonicalModule)),
-      ExportSurfaceRevision::fromDigest(ZC_ASSERT_NONNULL(revisionDigest)));
+      ModuleAliasExportNamesRevision::fromDigest(ZC_ASSERT_NONNULL(revisionDigest)));
   return result != zc::none && encode(ZC_ASSERT_NONNULL(result)).asPtr() == bytes ? zc::mv(result)
                                                                                   : zc::none;
 }
@@ -2208,6 +2236,65 @@ zc::Maybe<StableScopeNameBucketQueryKey> StableBindingCodec<StableScopeNameBucke
                                                                                   : zc::none;
 }
 
+zc::Array<uint8_t> StableBindingCodec<CanonicalSequence<BindingNameKey>>::encode(
+    const CanonicalSequence<BindingNameKey>& value) {
+  identity::CanonicalEncoder record;
+  encodeSequence(record, value);
+  return withDomain("zom.query.module-export-names-value"_zc, record.finish().asPtr());
+}
+
+zc::Maybe<CanonicalSequence<BindingNameKey>>
+StableBindingCodec<CanonicalSequence<BindingNameKey>>::decode(zc::ArrayPtr<const uint8_t> bytes) {
+  constexpr auto domain = "zom.query.module-export-names-value"_zc;
+  if (bytes.size() > kMaximumBinderValueBytes || !hasDomain(bytes, domain)) { return zc::none; }
+  identity::CanonicalDecoder decoder(bytes.slice(domain.size() + 1, bytes.size()));
+  auto result = decodeSequence<BindingNameKey>(decoder);
+  return result != zc::none && decoder.finished() &&
+                 encode(ZC_ASSERT_NONNULL(result)).asPtr() == bytes
+             ? zc::mv(result)
+             : zc::none;
+}
+
+zc::Array<uint8_t>
+StableBindingCodec<CanonicalSequence<StableImplementationOccurrenceFact>>::encode(
+    const CanonicalSequence<StableImplementationOccurrenceFact>& value) {
+  identity::CanonicalEncoder record;
+  encodeSequence(record, value);
+  return withDomain("zom.query.implementation-binding-header-value"_zc, record.finish().asPtr());
+}
+
+zc::Maybe<CanonicalSequence<StableImplementationOccurrenceFact>>
+StableBindingCodec<CanonicalSequence<StableImplementationOccurrenceFact>>::decode(
+    zc::ArrayPtr<const uint8_t> bytes) {
+  constexpr auto domain = "zom.query.implementation-binding-header-value"_zc;
+  if (bytes.size() > kMaximumBinderValueBytes || !hasDomain(bytes, domain)) { return zc::none; }
+  identity::CanonicalDecoder decoder(bytes.slice(domain.size() + 1, bytes.size()));
+  auto result = decodeSequence<StableImplementationOccurrenceFact>(decoder);
+  return result != zc::none && decoder.finished() &&
+                 encode(ZC_ASSERT_NONNULL(result)).asPtr() == bytes
+             ? zc::mv(result)
+             : zc::none;
+}
+
+zc::Array<uint8_t> StableBindingCodec<CanonicalSequence<StableBindingTargetKey>>::encode(
+    const CanonicalSequence<StableBindingTargetKey>& value) {
+  identity::CanonicalEncoder record;
+  encodeSequence(record, value);
+  return withDomain("zom.query.scope-name-bucket-value"_zc, record.finish().asPtr());
+}
+
+zc::Maybe<CanonicalSequence<StableBindingTargetKey>> StableBindingCodec<
+    CanonicalSequence<StableBindingTargetKey>>::decode(zc::ArrayPtr<const uint8_t> bytes) {
+  constexpr auto domain = "zom.query.scope-name-bucket-value"_zc;
+  if (bytes.size() > kMaximumBinderValueBytes || !hasDomain(bytes, domain)) { return zc::none; }
+  identity::CanonicalDecoder decoder(bytes.slice(domain.size() + 1, bytes.size()));
+  auto result = decodeSequence<StableBindingTargetKey>(decoder);
+  return result != zc::none && decoder.finished() &&
+                 encode(ZC_ASSERT_NONNULL(result)).asPtr() == bytes
+             ? zc::mv(result)
+             : zc::none;
+}
+
 zc::Array<uint8_t> StableBindingCodec<BinderKeyFailure>::encode(const BinderKeyFailure& value) {
   identity::CanonicalEncoder record;
   record.encodeUint8(static_cast<uint8_t>(value.kind()));
@@ -2324,6 +2411,9 @@ zc::Maybe<BinderQueryResult<T>> StableBindingCodec<BinderQueryResult<T>>::decode
 
 template struct StableBindingCodec<BinderQueryResult<StableDefinitionHeader>>;
 template struct StableBindingCodec<BinderQueryResult<StableImplementationOccurrenceHeader>>;
+template struct StableBindingCodec<BinderQueryResult<BoundModuleSkeleton>>;
+template struct StableBindingCodec<BinderQueryResult<BoundOwnerBody>>;
+template struct StableBindingCodec<BinderQueryResult<ModuleBindingAllocationPlan>>;
 
 #define ZOM_DEFINE_DIGEST_CODEC(Name, Domain, KeyType, KeyName)              \
   zc::Array<uint8_t> Name::encodeCanonical() const {                         \

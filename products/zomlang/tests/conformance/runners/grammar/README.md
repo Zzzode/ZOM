@@ -62,7 +62,7 @@ Prerequisites:
 - Bash 4 or newer.
 - A working JRE and JDK (`java` and `javac`).
 - ANTLR 4 complete jar. The runner first uses `ANTLRJAR` when set, then probes
-  common Homebrew install paths.
+  common Homebrew install paths and `$HOME/.cache/antlr`.
 
 ```bash
 # Run every grammar expectation in the suite

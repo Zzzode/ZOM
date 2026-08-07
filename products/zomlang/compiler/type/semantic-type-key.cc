@@ -62,37 +62,6 @@ bool definitionKindMatches(identity::DefinitionKind kind, DefinitionRole role) {
   ZC_UNREACHABLE
 }
 
-identity::IdentityInvariantKind invariantKind(identity::FrozenRegistryFailure failure) {
-  switch (failure) {
-    case identity::FrozenRegistryFailure::InvalidContext:
-    case identity::FrozenRegistryFailure::InvalidHandle:
-      return identity::IdentityInvariantKind::InvalidHandle;
-    case identity::FrozenRegistryFailure::ForeignContext:
-      return identity::IdentityInvariantKind::ForeignContext;
-    case identity::FrozenRegistryFailure::SlotOutOfRange:
-      return identity::IdentityInvariantKind::SlotOutOfRange;
-    case identity::FrozenRegistryFailure::DuplicateCanonicalKey:
-      return identity::IdentityInvariantKind::DuplicateCanonicalKey;
-    case identity::FrozenRegistryFailure::DigestCollision:
-      return identity::IdentityInvariantKind::DigestCollision;
-    case identity::FrozenRegistryFailure::InvalidAuthority:
-      return identity::IdentityInvariantKind::InvalidClosedValue;
-    case identity::FrozenRegistryFailure::PostFreezeMutation:
-      return identity::IdentityInvariantKind::PostFreezeMutation;
-    case identity::FrozenRegistryFailure::UnknownOwner:
-    case identity::FrozenRegistryFailure::OwnerModuleMismatch:
-    case identity::FrozenRegistryFailure::OwnerPrefixMismatch:
-    case identity::FrozenRegistryFailure::RepeatedOwner:
-    case identity::FrozenRegistryFailure::SelfOwner:
-    case identity::FrozenRegistryFailure::AncestorMismatch:
-    case identity::FrozenRegistryFailure::RegistryNotFrozen:
-      return identity::IdentityInvariantKind::AncestorMismatch;
-    case identity::FrozenRegistryFailure::None:
-      break;
-  }
-  ZC_UNREACHABLE
-}
-
 struct AdmissionFailure final {
   identity::IdentityInvariantKind kind;
   identity::IdentityAllocationPhase phase;
@@ -123,8 +92,9 @@ private:
     if (failure == zc::none) { failure = AdmissionFailure{kind, phase}; }
   }
 
-  void reject(identity::FrozenRegistryFailure value, identity::IdentityAllocationPhase phase) {
-    if (value != identity::FrozenRegistryFailure::None) { reject(invariantKind(value), phase); }
+  void reject(const zc::Maybe<identity::IdentityInvariantKind>& value,
+              identity::IdentityAllocationPhase phase) {
+    ZC_IF_SOME(kind, value) { reject(kind, phase); }
   }
 
   bool rejectClosedValue() {
@@ -174,7 +144,7 @@ private:
       case TypeDataTag::TypeParameter: {
         const auto& parameter = data.get<TypeParameterTypeData>().parameter;
         const auto validation = store.validateGenericParameterForAdmission(parameter);
-        if (validation != identity::FrozenRegistryFailure::None) {
+        if (validation != zc::none) {
           reject(validation, identity::IdentityAllocationPhase::GenericParameter);
           return false;
         }
@@ -206,7 +176,7 @@ private:
 
   zc::Maybe<zc::Array<uint8_t>> definitionBytes(identity::DefId id, DefinitionRole role) {
     const auto validation = store.validateDefinitionForAdmission(id);
-    if (validation != identity::FrozenRegistryFailure::None) {
+    if (validation != zc::none) {
       reject(validation, identity::IdentityAllocationPhase::Definition);
       return zc::none;
     }
@@ -238,7 +208,7 @@ private:
 
   zc::Maybe<zc::Array<uint8_t>> typeBytes(identity::SemanticTypeId id) {
     const auto validation = store.validateTypeForAdmission(id);
-    if (validation != identity::FrozenRegistryFailure::None) {
+    if (validation != zc::none) {
       reject(validation, identity::IdentityAllocationPhase::SemanticType);
       return zc::none;
     }
@@ -445,11 +415,6 @@ SemanticTypeAdmissionResult admissionInvariant(identity::IdentityInvariantKind k
 }  // namespace
 
 SemanticTypeAdmissionResult SemanticTypeStore::canonicalizeClosed(semantic::TypeData&& data) const {
-  if (!registriesReadyForAdmission()) {
-    return admissionInvariant(identity::IdentityInvariantKind::AncestorMismatch,
-                              identity::IdentityAllocationPhase::Registry);
-  }
-
   semantic::StoreBoundTypeEncoder encoder(*this);
   auto key = encoder.encodeKey(data);
   ZC_IF_SOME(value, key) {

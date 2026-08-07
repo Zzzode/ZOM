@@ -150,14 +150,14 @@ zc::String escaped(zc::StringPtr text,
 }
 
 void appendDefinition(zc::Vector<char>& output, identity::DefId definition,
-                      const identity::SemanticIdentityRegistrySet& registries) {
-  auto lookup = registries.definitions().lookupRecord(definition);
+                      const CheckerIdentityAuthority& identities) {
+  auto lookup = identities.definition(definition);
   if (lookup == zc::none) {
     append(output, "<invalid-definition>"_zc);
     return;
   }
   ZC_IF_SOME(record, lookup) {
-    const auto& module = record.module();
+    const auto& module = record.record().module();
     const auto& unit = module.crate().unit();
     if (unit.kind() == identity::CompilationUnitKind::UserPackage) {
       append(output, escaped(unit.userPackage().name()));
@@ -170,15 +170,13 @@ void appendDefinition(zc::Vector<char>& output, identity::DefId definition,
       append(output, "::"_zc);
       append(output, escaped(segment.text()));
     }
-    for (const auto& owner : record.owners()) {
+    for (const auto& owner : record.record().owners()) {
       append(output, "::"_zc);
       if (owner.kind() == identity::EnclosingStableOwnerKind::Definition) {
         ZC_IF_SOME(key, owner.definitionKey()) {
-          ZC_IF_SOME(handle, registries.definitions().find(key)) {
-            ZC_IF_SOME(ownerRecord, registries.definitions().lookupRecord(handle)) {
-              append(output, escaped(ownerRecord.name()));
-              continue;
-            }
+          ZC_IF_SOME(owner, identities.definition(key)) {
+            append(output, escaped(owner.record().name()));
+            continue;
           }
         }
         append(output, "<invalid-owner>"_zc);
@@ -187,42 +185,38 @@ void appendDefinition(zc::Vector<char>& output, identity::DefId definition,
       append(output, "<impl>"_zc);
     }
     append(output, "::"_zc);
-    append(output, escaped(record.name()));
+    append(output, escaped(record.record().name()));
   }
 }
 
 void appendGenericParameter(zc::Vector<char>& output, const identity::GenericParameterKey& key,
-                            const identity::SemanticIdentityRegistrySet& registries) {
-  auto identity = registries.genericParameters().find(key);
-  if (identity == zc::none) {
+                            const CheckerIdentityAuthority& identities) {
+  auto parameter = identities.genericParameter(key);
+  if (parameter == zc::none) {
     append(output, "<invalid-type-parameter>"_zc);
     return;
   }
-  ZC_IF_SOME(parameter, identity) {
-    ZC_IF_SOME(authority, registries.genericParameters().lookupAuthority(parameter)) {
-      if (authority.verify()) {
-        append(output, "<type-parameter#"_zc);
-        append(output, zc::str(authority.record().ordinal()));
-        append(output, ">"_zc);
-        return;
-      }
-    }
+  ZC_IF_SOME(value, parameter) {
+    append(output, "<type-parameter#"_zc);
+    append(output, zc::str(value.record().ordinal()));
+    append(output, ">"_zc);
+    return;
   }
   append(output, "<invalid-type-parameter>"_zc);
 }
 
 void appendType(zc::Vector<char>& output, identity::SemanticTypeId typeId,
-                const identity::SemanticIdentityRegistrySet& registries,
+                const CheckerIdentityAuthority& identities,
                 const type::SemanticTypeStore& semanticTypes, uint32_t depth);
 
 void appendTypeList(zc::Vector<char>& output, zc::ArrayPtr<const identity::SemanticTypeId> types,
-                    const identity::SemanticIdentityRegistrySet& registries,
+                    const CheckerIdentityAuthority& identities,
                     const type::SemanticTypeStore& semanticTypes, uint32_t depth,
                     zc::StringPtr separator) {
   const size_t count = types.size() < MAXIMUM_DISPLAY_ITEMS ? types.size() : MAXIMUM_DISPLAY_ITEMS;
   for (size_t index = 0; index < count; ++index) {
     if (index != 0) append(output, separator);
-    appendType(output, types[index], registries, semanticTypes, depth + 1);
+    appendType(output, types[index], identities, semanticTypes, depth + 1);
   }
   if (count != types.size()) {
     if (count != 0) append(output, separator);
@@ -232,17 +226,17 @@ void appendTypeList(zc::Vector<char>& output, zc::ArrayPtr<const identity::Seman
 
 void appendInterface(zc::Vector<char>& output,
                      const type::semantic::InterfaceInstantiation& interface,
-                     const identity::SemanticIdentityRegistrySet& registries,
+                     const CheckerIdentityAuthority& identities,
                      const type::SemanticTypeStore& semanticTypes, uint32_t depth) {
-  appendDefinition(output, interface.interface, registries);
+  appendDefinition(output, interface.interface, identities);
   if (interface.arguments.size() == 0) return;
   append(output, "<"_zc);
-  appendTypeList(output, interface.arguments.asPtr(), registries, semanticTypes, depth, ", "_zc);
+  appendTypeList(output, interface.arguments.asPtr(), identities, semanticTypes, depth, ", "_zc);
   append(output, ">"_zc);
 }
 
 void appendType(zc::Vector<char>& output, identity::SemanticTypeId typeId,
-                const identity::SemanticIdentityRegistrySet& registries,
+                const CheckerIdentityAuthority& identities,
                 const type::SemanticTypeStore& semanticTypes, uint32_t depth) {
   if (depth >= MAXIMUM_TYPE_DEPTH) {
     append(output, "..."_zc);
@@ -261,7 +255,7 @@ void appendType(zc::Vector<char>& output, identity::SemanticTypeId typeId,
   if (data.is<type::semantic::TupleTypeData>()) {
     append(output, "("_zc);
     const auto& value = data.get<type::semantic::TupleTypeData>();
-    appendTypeList(output, value.elements.asPtr(), registries, semanticTypes, depth, ", "_zc);
+    appendTypeList(output, value.elements.asPtr(), identities, semanticTypes, depth, ", "_zc);
     if (value.elements.size() == 1) append(output, ","_zc);
     append(output, ")"_zc);
     return;
@@ -278,7 +272,7 @@ void appendType(zc::Vector<char>& output, identity::SemanticTypeId typeId,
       append(output, escaped(field.name.text()));
       if (field.presence == type::semantic::FieldPresence::Optional) append(output, "?"_zc);
       append(output, ": "_zc);
-      appendType(output, field.type, registries, semanticTypes, depth + 1);
+      appendType(output, field.type, identities, semanticTypes, depth + 1);
     }
     if (count != value.fields.size()) {
       if (count != 0) append(output, ", "_zc);
@@ -289,14 +283,14 @@ void appendType(zc::Vector<char>& output, identity::SemanticTypeId typeId,
   }
   if (data.is<type::semantic::DynamicArrayTypeData>()) {
     append(output, "["_zc);
-    appendType(output, data.get<type::semantic::DynamicArrayTypeData>().element, registries,
+    appendType(output, data.get<type::semantic::DynamicArrayTypeData>().element, identities,
                semanticTypes, depth + 1);
     append(output, "]"_zc);
     return;
   }
   if (data.is<type::semantic::SliceTypeData>()) {
     append(output, "slice<"_zc);
-    appendType(output, data.get<type::semantic::SliceTypeData>().element, registries, semanticTypes,
+    appendType(output, data.get<type::semantic::SliceTypeData>().element, identities, semanticTypes,
                depth + 1);
     append(output, ">"_zc);
     return;
@@ -304,7 +298,7 @@ void appendType(zc::Vector<char>& output, identity::SemanticTypeId typeId,
   if (data.is<type::semantic::FixedArrayTypeData>()) {
     const auto& value = data.get<type::semantic::FixedArrayTypeData>();
     append(output, "["_zc);
-    appendType(output, value.element, registries, semanticTypes, depth + 1);
+    appendType(output, value.element, identities, semanticTypes, depth + 1);
     append(output, "; "_zc);
     append(output, zc::str(value.length));
     append(output, "]"_zc);
@@ -313,78 +307,78 @@ void appendType(zc::Vector<char>& output, identity::SemanticTypeId typeId,
   if (data.is<type::semantic::FunctionTypeData>()) {
     const auto& value = data.get<type::semantic::FunctionTypeData>();
     append(output, "("_zc);
-    appendTypeList(output, value.parameters.asPtr(), registries, semanticTypes, depth, ", "_zc);
+    appendTypeList(output, value.parameters.asPtr(), identities, semanticTypes, depth, ", "_zc);
     append(output, ") -> "_zc);
-    appendType(output, value.success, registries, semanticTypes, depth + 1);
+    appendType(output, value.success, identities, semanticTypes, depth + 1);
     ZC_IF_SOME(raises, value.raises) {
       append(output, " raises "_zc);
-      appendType(output, raises, registries, semanticTypes, depth + 1);
+      appendType(output, raises, identities, semanticTypes, depth + 1);
     }
     return;
   }
   if (data.is<type::semantic::NominalTypeData>()) {
     const auto& value = data.get<type::semantic::NominalTypeData>();
-    appendDefinition(output, value.definition, registries);
+    appendDefinition(output, value.definition, identities);
     if (value.arguments.size() != 0) {
       append(output, "<"_zc);
-      appendTypeList(output, value.arguments.asPtr(), registries, semanticTypes, depth, ", "_zc);
+      appendTypeList(output, value.arguments.asPtr(), identities, semanticTypes, depth, ", "_zc);
       append(output, ">"_zc);
     }
     return;
   }
   if (data.is<type::semantic::TypeParameterTypeData>()) {
     appendGenericParameter(output, data.get<type::semantic::TypeParameterTypeData>().parameter,
-                           registries);
+                           identities);
     return;
   }
   if (data.is<type::semantic::UnionTypeData>()) {
     appendTypeList(output, data.get<type::semantic::UnionTypeData>().alternatives.asPtr(),
-                   registries, semanticTypes, depth, " | "_zc);
+                   identities, semanticTypes, depth, " | "_zc);
     return;
   }
   if (data.is<type::semantic::IntersectionTypeData>()) {
     appendTypeList(output, data.get<type::semantic::IntersectionTypeData>().conjuncts.asPtr(),
-                   registries, semanticTypes, depth, " & "_zc);
+                   identities, semanticTypes, depth, " & "_zc);
     return;
   }
   if (data.is<type::semantic::ReferenceTypeData>()) {
     const auto& value = data.get<type::semantic::ReferenceTypeData>();
     append(output, value.mutability == type::semantic::Mutability::Mutable ? "&mut "_zc : "&"_zc);
-    appendType(output, value.referent, registries, semanticTypes, depth + 1);
+    appendType(output, value.referent, identities, semanticTypes, depth + 1);
     return;
   }
   if (data.is<type::semantic::RawPointerTypeData>()) {
     const auto& value = data.get<type::semantic::RawPointerTypeData>();
     append(output,
            value.mutability == type::semantic::Mutability::Mutable ? "*mut "_zc : "*const "_zc);
-    appendType(output, value.pointee, registries, semanticTypes, depth + 1);
+    appendType(output, value.pointee, identities, semanticTypes, depth + 1);
     return;
   }
   if (data.is<type::semantic::ExistentialTypeData>()) {
     const auto& value = data.get<type::semantic::ExistentialTypeData>();
     append(output, "dyn "_zc);
-    appendDefinition(output, value.principal.definition, registries);
+    appendDefinition(output, value.principal.definition, identities);
     if (value.principal.arguments.size() != 0) {
       append(output, "<"_zc);
-      appendTypeList(output, value.principal.arguments.asPtr(), registries, semanticTypes, depth,
+      appendTypeList(output, value.principal.arguments.asPtr(), identities, semanticTypes, depth,
                      ", "_zc);
       append(output, ">"_zc);
     }
     for (const auto& additional : value.additionalInterfaces) {
       append(output, " + "_zc);
-      appendDefinition(output, additional.definition, registries);
+      appendDefinition(output, additional.definition, identities);
     }
     for (const auto marker : value.markers) {
       append(output, " + "_zc);
-      appendDefinition(output, marker, registries);
+      appendDefinition(output, marker, identities);
     }
     if (value.associatedBindings.size() != 0) {
       append(output, " where "_zc);
       for (size_t index = 0; index < value.associatedBindings.size(); ++index) {
         if (index != 0) append(output, ", "_zc);
-        appendDefinition(output, value.associatedBindings[index].associated, registries);
+        appendDefinition(output, value.associatedBindings[index].associated, identities);
         append(output, " = "_zc);
-        appendType(output, value.associatedBindings[index].type, registries, semanticTypes,
+        appendType(output, value.associatedBindings[index].type, identities, semanticTypes,
                    depth + 1);
       }
     }
@@ -392,22 +386,22 @@ void appendType(zc::Vector<char>& output, identity::SemanticTypeId typeId,
   }
   if (data.is<type::semantic::InterfaceBoundTypeData>()) {
     appendInterface(output, data.get<type::semantic::InterfaceBoundTypeData>().interface,
-                    registries, semanticTypes, depth);
+                    identities, semanticTypes, depth);
     return;
   }
   ZC_IREQUIRE(data.is<type::semantic::InterfaceSelfTypeData>(),
               "Semantic type renderer received no closed branch");
   append(output, "Self("_zc);
-  appendDefinition(output, data.get<type::semantic::InterfaceSelfTypeData>().interface, registries);
+  appendDefinition(output, data.get<type::semantic::InterfaceSelfTypeData>().interface, identities);
   append(output, ")"_zc);
 }
 
 zc::String renderType(const checked::TypeDisplayArg& argument,
-                      const identity::SemanticIdentityRegistrySet& registries,
+                      const CheckerIdentityAuthority& identities,
                       const type::SemanticTypeStore& semanticTypes) {
   ZC_IF_SOME(alias, argument.sourceAlias) { return escaped(alias.text()); }
   zc::Vector<char> output;
-  appendType(output, argument.type, registries, semanticTypes, 0);
+  appendType(output, argument.type, identities, semanticTypes, 0);
   return zc::str(output.releaseAsArray());
 }
 
@@ -468,7 +462,7 @@ void appendInteger(zc::Vector<char>& output, const signature::CanonicalInteger& 
 }
 
 void appendLiteral(zc::Vector<char>& output, const signature::CanonicalConstValue& literal,
-                   const identity::SemanticIdentityRegistrySet& registries, uint32_t depth) {
+                   const CheckerIdentityAuthority& identities, uint32_t depth) {
   if (depth >= MAXIMUM_TYPE_DEPTH) {
     append(output, "..."_zc);
     return;
@@ -522,7 +516,7 @@ void appendLiteral(zc::Vector<char>& output, const signature::CanonicalConstValu
         values.size() < MAXIMUM_DISPLAY_ITEMS ? values.size() : MAXIMUM_DISPLAY_ITEMS;
     for (size_t index = 0; index < count; ++index) {
       if (index != 0) append(output, ", "_zc);
-      appendLiteral(output, values[index], registries, depth + 1);
+      appendLiteral(output, values[index], identities, depth + 1);
     }
     if (count != values.size()) {
       if (count != 0) append(output, ", "_zc);
@@ -540,7 +534,7 @@ void appendLiteral(zc::Vector<char>& output, const signature::CanonicalConstValu
       if (index != 0) append(output, ", "_zc);
       append(output, escaped(fields[index].name.text()));
       append(output, ": "_zc);
-      appendLiteral(output, fields[index].value, registries, depth + 1);
+      appendLiteral(output, fields[index].value, identities, depth + 1);
     }
     if (count != fields.size()) {
       if (count != 0) append(output, ", "_zc);
@@ -550,7 +544,7 @@ void appendLiteral(zc::Vector<char>& output, const signature::CanonicalConstValu
     return;
   }
   ZC_IF_SOME(enumeration, literal.enumerationValue()) {
-    appendDefinition(output, enumeration.variant, registries);
+    appendDefinition(output, enumeration.variant, identities);
     if (enumeration.payload.size() != 0) {
       append(output, "("_zc);
       const size_t count = enumeration.payload.size() < MAXIMUM_DISPLAY_ITEMS
@@ -558,7 +552,7 @@ void appendLiteral(zc::Vector<char>& output, const signature::CanonicalConstValu
                                : MAXIMUM_DISPLAY_ITEMS;
       for (size_t index = 0; index < count; ++index) {
         if (index != 0) append(output, ", "_zc);
-        appendLiteral(output, enumeration.payload[index], registries, depth + 1);
+        appendLiteral(output, enumeration.payload[index], identities, depth + 1);
       }
       if (count != enumeration.payload.size()) {
         if (count != 0) append(output, ", "_zc);
@@ -572,7 +566,7 @@ void appendLiteral(zc::Vector<char>& output, const signature::CanonicalConstValu
 }
 
 void appendPattern(zc::Vector<char>& output, const checked::PatternConstructor& pattern,
-                   const identity::SemanticIdentityRegistrySet& registries,
+                   const CheckerIdentityAuthority& identities,
                    const type::SemanticTypeStore& semanticTypes) {
   const auto& value = pattern.variant();
   if (value.is<checked::WildcardPattern>()) {
@@ -580,7 +574,7 @@ void appendPattern(zc::Vector<char>& output, const checked::PatternConstructor& 
     return;
   }
   if (value.is<checked::LiteralPattern>()) {
-    appendLiteral(output, value.get<checked::LiteralPattern>().value, registries, 0);
+    appendLiteral(output, value.get<checked::LiteralPattern>().value, identities, 0);
     return;
   }
   if (value.is<checked::TuplePattern>()) {
@@ -610,30 +604,30 @@ void appendPattern(zc::Vector<char>& output, const checked::PatternConstructor& 
     append(output, "union["_zc);
     append(output, zc::str(alternative.index));
     append(output, "]: "_zc);
-    appendType(output, alternative.type, registries, semanticTypes, 0);
+    appendType(output, alternative.type, identities, semanticTypes, 0);
     return;
   }
   if (value.is<checked::EnumVariantPattern>()) {
-    appendDefinition(output, value.get<checked::EnumVariantPattern>().variant, registries);
+    appendDefinition(output, value.get<checked::EnumVariantPattern>().variant, identities);
     return;
   }
   ZC_IREQUIRE(value.is<checked::NominalPattern>(), "Pattern renderer received no closed branch");
-  appendDefinition(output, value.get<checked::NominalPattern>().definition, registries);
+  appendDefinition(output, value.get<checked::NominalPattern>().definition, identities);
 }
 
 zc::String renderDisplayArgument(const checked::CheckerDisplayArgument& argument,
-                                 const identity::SemanticIdentityRegistrySet& registries,
+                                 const CheckerIdentityAuthority& identities,
                                  const type::SemanticTypeStore& semanticTypes) {
   const auto& value = argument.variant();
   if (value.is<checked::TypeDisplayArg>()) {
-    return renderType(value.get<checked::TypeDisplayArg>(), registries, semanticTypes);
+    return renderType(value.get<checked::TypeDisplayArg>(), identities, semanticTypes);
   }
   if (value.is<checked::PrimitiveTypeDisplayArg>()) {
     return renderPrimitive(value.get<checked::PrimitiveTypeDisplayArg>().kind);
   }
   if (value.is<checked::DefinitionDisplayArg>()) {
     zc::Vector<char> output;
-    appendDefinition(output, value.get<checked::DefinitionDisplayArg>().definition, registries);
+    appendDefinition(output, value.get<checked::DefinitionDisplayArg>().definition, identities);
     return zc::str(output.releaseAsArray());
   }
   if (value.is<checked::IdentifierDisplayArg>()) {
@@ -655,7 +649,7 @@ zc::String renderDisplayArgument(const checked::CheckerDisplayArgument& argument
   }
   if (value.is<checked::LiteralDisplayArg>()) {
     zc::Vector<char> output;
-    appendLiteral(output, value.get<checked::LiteralDisplayArg>().literal, registries, 0);
+    appendLiteral(output, value.get<checked::LiteralDisplayArg>().literal, identities, 0);
     return zc::str(output.releaseAsArray());
   }
   const auto& patterns = value.get<checked::PatternsDisplayArg>().patterns;
@@ -664,7 +658,7 @@ zc::String renderDisplayArgument(const checked::CheckerDisplayArgument& argument
       patterns.size() < MAXIMUM_DISPLAY_ITEMS ? patterns.size() : MAXIMUM_DISPLAY_ITEMS;
   for (size_t index = 0; index < count; ++index) {
     if (index != 0) append(output, ", "_zc);
-    appendPattern(output, patterns[index], registries, semanticTypes);
+    appendPattern(output, patterns[index], identities, semanticTypes);
   }
   if (count != patterns.size()) {
     if (count != 0) append(output, ", "_zc);
@@ -742,7 +736,7 @@ void emitDispatchVerificationFailures(
 
 void emitCheckedFactsSourceFailures(diagnostics::DiagnosticEngine& diagnostics,
                                     const binder::VerifiedParsedModule& parsedModule,
-                                    const identity::SemanticIdentityRegistrySet& registries,
+                                    const CheckerIdentityAuthority& identities,
                                     const type::SemanticTypeStore& semanticTypes,
                                     zc::ArrayPtr<const checked::CheckerFailureRef> failures) {
   for (const auto& failure : failures) {
@@ -750,7 +744,7 @@ void emitCheckedFactsSourceFailures(diagnostics::DiagnosticEngine& diagnostics,
     ZC_IF_SOME(value, parsedModule.sourceLocFor(failure.primarySpan)) { location = value; }
     zc::Vector<diagnostics::DiagnosticArgument> arguments(failure.arguments.size());
     for (const auto& argument : failure.arguments) {
-      arguments.add(renderDisplayArgument(argument, registries, semanticTypes));
+      arguments.add(renderDisplayArgument(argument, identities, semanticTypes));
     }
     diagnostics::Diagnostic primary(failure.diagnostic.diagnosticId(), location, zc::mv(arguments));
     for (const auto& note : failure.notes) {
@@ -758,7 +752,7 @@ void emitCheckedFactsSourceFailures(diagnostics::DiagnosticEngine& diagnostics,
       ZC_IF_SOME(value, parsedModule.sourceLocFor(note.span)) { noteLocation = value; }
       zc::Vector<diagnostics::DiagnosticArgument> noteArguments(note.arguments.size());
       for (const auto& argument : note.arguments) {
-        noteArguments.add(renderDisplayArgument(argument, registries, semanticTypes));
+        noteArguments.add(renderDisplayArgument(argument, identities, semanticTypes));
       }
       primary.addChildDiagnostic(zc::heap<diagnostics::Diagnostic>(
           note.diagnostic.diagnosticId(), noteLocation, zc::mv(noteArguments)));
@@ -769,14 +763,14 @@ void emitCheckedFactsSourceFailures(diagnostics::DiagnosticEngine& diagnostics,
 
 void emitCoherenceSourceFailure(diagnostics::DiagnosticEngine& diagnostics,
                                 const binder::VerifiedParsedModule& parsedModule,
-                                const identity::SemanticIdentityRegistrySet& registries,
+                                const CheckerIdentityAuthority& identities,
                                 const type::SemanticTypeStore& semanticTypes,
                                 const coherence::CoherenceFailureRef& failure) {
   source::SourceLoc location;
   ZC_IF_SOME(value, parsedModule.sourceLocFor(failure.primarySpan)) { location = value; }
   zc::Vector<diagnostics::DiagnosticArgument> arguments(failure.arguments.size());
   for (const auto& argument : failure.arguments) {
-    arguments.add(renderDisplayArgument(argument, registries, semanticTypes));
+    arguments.add(renderDisplayArgument(argument, identities, semanticTypes));
   }
   diagnostics::Diagnostic primary(failure.diagnostic.diagnosticId(), location, zc::mv(arguments));
   for (const auto& note : failure.notes) {
@@ -784,7 +778,7 @@ void emitCoherenceSourceFailure(diagnostics::DiagnosticEngine& diagnostics,
     ZC_IF_SOME(value, parsedModule.sourceLocFor(note.span)) { noteLocation = value; }
     zc::Vector<diagnostics::DiagnosticArgument> noteArguments(note.arguments.size());
     for (const auto& argument : note.arguments) {
-      noteArguments.add(renderDisplayArgument(argument, registries, semanticTypes));
+      noteArguments.add(renderDisplayArgument(argument, identities, semanticTypes));
     }
     primary.addChildDiagnostic(zc::heap<diagnostics::Diagnostic>(
         note.diagnostic.diagnosticId(), noteLocation, zc::mv(noteArguments)));
@@ -793,9 +787,9 @@ void emitCoherenceSourceFailure(diagnostics::DiagnosticEngine& diagnostics,
 }
 
 zc::String renderCheckerDisplayArgument(const checked::CheckerDisplayArgument& argument,
-                                        const identity::SemanticIdentityRegistrySet& registries,
+                                        const CheckerIdentityAuthority& identities,
                                         const type::SemanticTypeStore& semanticTypes) {
-  return renderDisplayArgument(argument, registries, semanticTypes);
+  return renderDisplayArgument(argument, identities, semanticTypes);
 }
 
 }  // namespace zomlang::compiler::checker

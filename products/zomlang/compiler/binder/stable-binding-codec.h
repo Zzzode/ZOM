@@ -29,6 +29,8 @@ ZOM_DECLARE_STABLE_BINDING_CODEC(ImplementationSourceForm);
 ZOM_DECLARE_STABLE_BINDING_CODEC(ScopeRole);
 ZOM_DECLARE_STABLE_BINDING_CODEC(ScopeKind);
 ZOM_DECLARE_STABLE_BINDING_CODEC(Namespace);
+ZOM_DECLARE_STABLE_BINDING_CODEC(BindingNameKey);
+ZOM_DECLARE_STABLE_BINDING_CODEC(MemberVisibility);
 ZOM_DECLARE_STABLE_BINDING_CODEC(StableHeaderSite);
 ZOM_DECLARE_STABLE_BINDING_CODEC(StableHeaderGenericParameter);
 ZOM_DECLARE_STABLE_BINDING_CODEC(StableHeaderCallableParameter);
@@ -77,6 +79,9 @@ ZOM_DECLARE_STABLE_BINDING_CODEC(BoundModuleSkeleton);
 ZOM_DECLARE_STABLE_BINDING_CODEC(StableExportedBinding);
 ZOM_DECLARE_STABLE_BINDING_CODEC(StableExportedBindingQueryKey);
 ZOM_DECLARE_STABLE_BINDING_CODEC(StableScopeNameBucketQueryKey);
+ZOM_DECLARE_STABLE_BINDING_CODEC(CanonicalSequence<BindingNameKey>);
+ZOM_DECLARE_STABLE_BINDING_CODEC(CanonicalSequence<StableImplementationOccurrenceFact>);
+ZOM_DECLARE_STABLE_BINDING_CODEC(CanonicalSequence<StableBindingTargetKey>);
 ZOM_DECLARE_STABLE_BINDING_CODEC(BinderKeyFailureKind);
 ZOM_DECLARE_STABLE_BINDING_CODEC(BinderQueryOwner);
 ZOM_DECLARE_STABLE_BINDING_CODEC(BinderKeyFailure);
@@ -92,6 +97,18 @@ inline zc::StringPtr binderQueryResultDomain<StableDefinitionHeader>() {
 template <>
 inline zc::StringPtr binderQueryResultDomain<StableImplementationOccurrenceHeader>() {
   return "zom.binder.result-implementation-occurrence-header-syntax"_zc;
+}
+template <>
+inline zc::StringPtr binderQueryResultDomain<BoundModuleSkeleton>() {
+  return "zom.binder.result-bind-module-skeleton"_zc;
+}
+template <>
+inline zc::StringPtr binderQueryResultDomain<BoundOwnerBody>() {
+  return "zom.binder.result-bind-owner-body"_zc;
+}
+template <>
+inline zc::StringPtr binderQueryResultDomain<ModuleBindingAllocationPlan>() {
+  return "zom.binder.result-module-binding-allocation-plan"_zc;
 }
 
 template <typename T>

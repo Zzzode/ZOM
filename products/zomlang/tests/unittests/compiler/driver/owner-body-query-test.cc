@@ -58,10 +58,13 @@ ZC_TEST("OwnerBodyQueryTest.ContextualKeysAndAdmissionAreExact") {
   expectKeyCodec<ModuleBodyOwnersQuery>(contextualModule());
   expectKeyCodec<OwnerBodySyntaxQuery>(contextualBody());
   expectKeyCodec<OwnerBodyProvenanceQuery>(contextualBody());
+  expectKeyCodec<binder::ModuleBindingAllocationPlanQuery>(contextualModule());
   ZC_EXPECT(ModuleBodyOwnersQuery::descriptor.retention == query::RetentionClass::Retained);
   ZC_EXPECT(OwnerBodySyntaxQuery::descriptor.retention == query::RetentionClass::Evictable);
   ZC_EXPECT(OwnerBodyProvenanceQuery::descriptor.admission ==
             query::CapabilityAdmission::FinalSealedSnapshot);
+  ZC_EXPECT(binder::ModuleBindingAllocationPlanQuery::descriptor.retention ==
+            query::RetentionClass::Retained);
 }
 
 ZC_TEST("OwnerBodyQueryTest.ValuesAndWitnessesRejectTrailingBytes") {
